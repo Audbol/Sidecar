@@ -10,7 +10,8 @@
 namespace livedaw
 {
 
-/** The 16 FX slots of the EFFECTS screen. Each slot runs one of the
+/** The FX slots of the EFFECTS screen: the WING's 16, or up to kMaxFx
+    (getNumSlots()). Each slot runs one of the
     console's built-in devices (reverbs, delays, EQs, amps... implemented in
     Rust, model table 4) or, with the EXT model, a VST/AU/LV2 plugin; strips use
     a slot through their PRE or POST insert. Premium devices run in slots 1-8. The plugin instances live here (JUCE); the Rust engine calls
@@ -44,6 +45,17 @@ class FxSlots
 {
 public:
     explicit FxSlots (ld::Engine* e) noexcept : engine (e) {}
+
+    /** The slots in use: the WING's 16 (kWingFx) to kMaxFx (SETUP > GENERAL > FX
+        SLOTS). The screens list these; the engine holds kMaxFx. */
+    int getNumSlots() const noexcept { return ld::ld_engine_num_fx (engine); }
+    /** Message thread: within kWingFx..kMaxFx and never below a slot in use
+        (isInUse), so no device, plugin or insert assignment is dropped.
+        Returns the number set. */
+    int setNumSlots (int count) { return ld::ld_engine_set_num_fx (engine, count); }
+    /** Message thread: the slot holds something (a device, plugin or outboard
+        insert) or a strip's insert is assigned to it. */
+    bool isInUse (int slot) const noexcept { return ld::ld_engine_fx_in_use (engine, slot); }
 
     /** Message thread, device stopped: re-prepares the loaded plugins. */
     void prepare (double sampleRate, int maxBlockSize);
@@ -139,7 +151,7 @@ public:
         Returns true if one changed. */
     bool updateLatencies();
 
-    FxParams& params (int slot) const noexcept { return ld::ld_engine_controls (engine)->fx[juce::jlimit (0, kNumFx - 1, slot)]; }
+    FxParams& params (int slot) const noexcept { return ld::ld_engine_controls (engine)->fx[juce::jlimit (0, kMaxFx - 1, slot)]; }
 
     /** "FX 3: Hall Reverb", "FX 3: TAL-Reverb" or "FX 3" for an empty slot. */
     juce::String describe (int slot) const;

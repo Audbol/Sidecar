@@ -1,4 +1,5 @@
 #include "dsp/DspUtils.h"
+#include "engine/DirectOut.h"
 #include "ui/Pages.h"
 
 namespace livedaw::ui
@@ -243,6 +244,24 @@ void routing::drawGroupIcon (juce::Graphics& g, Group group, juce::Rectangle<flo
             g.strokePath (p, stroke);
             text ("FX", 0.5f, 0.5f, 0.26f, 0.5f);
             return;
+        case Group::ChDirect:
+        case Group::BusDirect:
+        {
+            // A fader (its slot and cap) and an arrow out of it, over the strip type.
+            p.startNewSubPath (P (0.3f, 0.14f));
+            p.lineTo (P (0.3f, 0.66f));
+            g.strokePath (p, stroke);
+            g.fillRoundedRectangle (juce::Rectangle<float> (P (0.2f, 0.3f), P (0.4f, 0.4f)), s * 0.02f);
+            juce::Path arrow;
+            arrow.startNewSubPath (P (0.46f, 0.4f));
+            arrow.lineTo (P (0.78f, 0.4f));
+            arrow.startNewSubPath (P (0.68f, 0.3f));
+            arrow.lineTo (P (0.8f, 0.4f));
+            arrow.lineTo (P (0.68f, 0.5f));
+            g.strokePath (arrow, stroke);
+            text (group == Group::ChDirect ? "CH" : "BUS", 0.5f, 0.84f, 0.2f, 0.7f);
+            return;
+        }
     }
 }
 
@@ -669,9 +688,31 @@ std::vector<RoutingPage::Signal> RoutingPage::signals() const
     else if (signalGroup == Group::FxSend)
     {
         // FX SEND 2n-1 / 2n: FX slot n's outboard insert send (EXT, manual 11.11 p. 164).
-        for (int slot = 0; slot < kNumFx; ++slot)
+        for (int slot = 0; slot < ctx.engine.getFx().getNumSlots(); ++slot)
             for (int side = 0; side < 2; ++side)
                 list.push_back ({ nullptr, side, -1, slot });
+    }
+    else if (signalGroup == Group::ChDirect || signalGroup == Group::BusDirect)
+    {
+        // Direct outs at the tap PRE FADER / POST FADER picks: the channels then
+        // the aux (CH DIRECT), the buses (BUS DIRECT); a mono channel has one tile.
+        const int tap = directPost ? 2 : 1;
+        auto addDirect = [&] (StripKind kind)
+        {
+            for (auto& s : ctx.engine.getStrips (kind))
+            {
+                list.push_back ({ s.get(), 0, -1, -1, tap });
+                if (s->isOutput() || s->params.stereo.load())
+                    list.push_back ({ s.get(), 1, -1, -1, tap });
+            }
+        };
+        if (signalGroup == Group::ChDirect)
+        {
+            addDirect (StripKind::Channel);
+            addDirect (StripKind::Aux);
+        }
+        else
+            addDirect (StripKind::Bus);
     }
     else
     {
@@ -831,7 +872,8 @@ void RoutingPage::resized()
     // a framed black box. CHANNELS and OUTPUTS split the page 544 | 712,
     // SOURCES 712 | 544 (the settings on the right).
     for (auto* r : { &inputCaption, &mainKey, &altKey, &monoKey, &stereoKey, &midSideKey, &autoKey, &lockFrame, &lockKey, &unlockKey, &prevPage, &nextPage, &leftSelector,
-                     &rightSelector, &noneKey, &copyCaption, &srcToChKey, &chToSrcKey, &renameKey, &srcSoloKey, &meterLegend, &prevSignals, &nextSignals })
+                     &rightSelector, &noneKey, &copyCaption, &srcToChKey, &chToSrcKey, &renameKey, &srcSoloKey, &meterLegend, &prevSignals, &nextSignals,
+                     &preFaderKey, &postFaderKey })
         *r = {};
 
     const float split = mode == Mode::Sources ? 712.0f : 544.0f;
@@ -884,7 +926,14 @@ void RoutingPage::resized()
         }
         else
         {
-            meterLegend = wingRect (1068.0f, 22.0f, 196.0f, 40.0f);
+            // The direct outs' tap in place of the meter scale.
+            if (signalGroup == Group::ChDirect || signalGroup == Group::BusDirect)
+            {
+                preFaderKey = wingRect (1020.0f, 18.0f, 120.0f, 48.0f);
+                postFaderKey = wingRect (1144.0f, 18.0f, 120.0f, 48.0f);
+            }
+            else
+                meterLegend = wingRect (1068.0f, 22.0f, 196.0f, 40.0f);
             if (signals().size() > (size_t) kSignalsPerPage)
             {
                 prevSignals = wingRect (924.0f, 24.0f, 40.0f, 48.0f);
@@ -1016,6 +1065,8 @@ RoutingPage::Signal RoutingPage::feederOf (int port) const
         const auto tap = ctx.engine.getUsbRecorder().getTap (port - routing::kRecorderPortBase);
         if (tap.kind == UsbRecorder::Tap::Kind::Source && tap.source >= 0)
             return { nullptr, 0, tap.source };
+        if (tap.kind == UsbRecorder::Tap::Kind::Direct)
+            return directSignal (tap.direct);
         if (tap.kind != UsbRecorder::Tap::Kind::Strip)
             return { nullptr, -1 };
         auto& strips = ctx.engine.getStrips (tap.stripKind);
@@ -1027,7 +1078,9 @@ RoutingPage::Signal RoutingPage::feederOf (int port) const
         }
         return { nullptr, -1 };
     }
-    if (const int source = ctx.engine.getOutputSource (port); source >= 0)
+    if (const int source = ctx.engine.getOutputSource (port); DirectOut::isDirectOut (source))
+        return directSignal (source);
+    else if (source >= 0)
         return { nullptr, 0, source };
     for (int k = 0; k < kNumStripKinds; ++k)
         for (auto& s : ctx.engine.getStrips (static_cast<StripKind> (k)))
@@ -1040,7 +1093,7 @@ RoutingPage::Signal RoutingPage::feederOf (int port) const
     for (int ch = 0; ch < kMonitorSignals; ++ch)
         if (monitorOutput (ctx.engine, ch).load() == port)
             return { nullptr, ch };
-    for (int slot = 0; slot < kNumFx; ++slot)
+    for (int slot = 0; slot < kMaxFx; ++slot)
     {
         auto& p = ctx.engine.getFx().params (slot);
         if (p.sendLeft.load() == port)
@@ -1055,7 +1108,7 @@ void RoutingPage::showFxSends (int slot)
 {
     setMode (Mode::Outputs);
     signalGroup = Group::FxSend;
-    signalPage = juce::jlimit (0, juce::jmax (0, (2 * kNumFx - 1) / kSignalsPerPage), 2 * slot / kSignalsPerPage);
+    signalPage = juce::jlimit (0, juce::jmax (0, (2 * ctx.engine.getFx().getNumSlots() - 1) / kSignalsPerPage), 2 * slot / kSignalsPerPage);
     layoutTiles();
     notifyStatusKeysChanged();
     repaint();
@@ -1067,10 +1120,48 @@ void RoutingPage::showTab (int tab)
     notifyStatusKeysChanged();
 }
 
+RoutingPage::Signal RoutingPage::directSignal (int code) const
+{
+    // A direct out of a strip that isn't there (any more): n/a.
+    const auto direct = DirectOut::fromCode (code);
+    if (! direct)
+        return { nullptr, -1 };
+    for (auto& s : ctx.engine.getStrips (direct->kind))
+        if (s->getNumber() == direct->number)
+            return { s.get(), direct->side, -1, -1, direct->post ? 2 : 1 };
+    return { nullptr, -1 };
+}
+
+int RoutingPage::directCode (const Signal& sig) const
+{
+    if (sig.direct == 0 || sig.strip == nullptr || sig.channel < 0)
+        return -1;
+    return DirectOut { sig.strip->getKind(), sig.strip->getNumber(), sig.channel, sig.direct == 2 }.code();
+}
+
+void RoutingPage::setDirectPost (bool post)
+{
+    directPost = post;
+    // The selected output fed by a direct out takes the new tap at once.
+    if (auto feeder = feederOf (selectedPort); feeder.direct != 0 && ! lock.isLocked())
+    {
+        feeder.direct = post ? 2 : 1;
+        assignOutput (selectedPort, feeder);
+    }
+    layoutTiles();
+    repaint();
+}
+
 juce::String RoutingPage::signalLabel (const Signal& sig) const
 {
     if (sig.channel < 0)
         return {};
+    if (sig.direct != 0 && sig.strip != nullptr) // "CH 3 PRE", "BUS 2L POST": a direct out
+    {
+        auto plain = sig;
+        plain.direct = 0;
+        return signalLabel (plain) + (sig.direct == 2 ? " POST" : " PRE");
+    }
     if (sig.fx >= 0) // "FX 3L": FX SEND 5
         return "FX " + juce::String (sig.fx + 1) + (sig.channel == 0 ? "L" : "R");
     if (sig.source >= 0) // a source: its name, else its label ("LCL 3", "USR 2")
@@ -1357,6 +1448,8 @@ float RoutingPage::signalLevel (const Signal& sig) const
             return ctx.meters.get (strip, MeterPoint::Output, side);
         return ctx.meters.getSource (MixerEngine::sourceIndex (sig.source));
     }
+    if (sig.strip != nullptr && sig.direct == 1) // PRE FADER: where PFL listens
+        return ctx.meters.get (sig.strip, MeterPoint::PreFader, sig.channel % 2);
     if (sig.strip != nullptr)
         return ctx.meters.get (sig.strip, MeterPoint::Output, sig.channel % 2);
     // PHONES L / R (0, 1), SPEAKERS L / R (2, 3).
@@ -1420,7 +1513,9 @@ void RoutingPage::paintSignal (juce::Graphics& g, juce::Rectangle<int> area, con
         g.drawEllipse (juce::Rectangle<float> (d, d).withCentre ({ r.getX() + 32.0f * u, y }), juce::jmax (1.0f, wingPx (1.5f)));
         g.drawLine (r.getX() + 10.0f * u + d / 2.0f, y, r.getX() + 32.0f * u - d / 2.0f, y, juce::jmax (1.0f, wingPx (1.5f)));
     }
-    const char* chip = sig.fx >= 0                                     ? "FX"
+    const char* chip = sig.direct == 1                                 ? "PRE"
+                       : sig.direct == 2                               ? "POST"
+                       : sig.fx >= 0                                   ? "FX"
                        : sig.strip == nullptr                          ? "MON"
                        : sig.strip->isBus()                            ? "BUS"
                        : sig.strip->getKind() == StripKind::Main       ? "MAIN"
@@ -2382,6 +2477,14 @@ void RoutingPage::paintHeaders (juce::Graphics& g) const
         drawKey (g, srcToChKey, "SRC->CH", false, Colours::valueBlue);
         drawKey (g, chToSrcKey, "CH->SRC", false, Colours::valueBlue);
     }
+    else if (! preFaderKey.isEmpty())
+    {
+        // CH / BUS DIRECT: the tap the tiles patch (the selected output's, if a direct out feeds it).
+        drawKey (g, preFaderKey, "PRE FADER", ! directPost, Colours::valueBlue, 12.0f);
+        drawKey (g, postFaderKey, "POST FADER", directPost, Colours::valueBlue, 12.0f);
+        drawKey (g, prevSignals, "<", false, Colours::valueBlue);
+        drawKey (g, nextSignals, ">", false, Colours::valueBlue);
+    }
     else
     {
         // The tiles' meter scale.
@@ -2460,7 +2563,7 @@ void RoutingPage::paint (juce::Graphics& g)
         {
             const auto& [area, sig] = signalTiles[i];
             const bool feeds = sig.channel >= 0 && feeder.channel >= 0 && feeder.strip == sig.strip && feeder.channel == sig.channel
-                               && feeder.source == sig.source && feeder.fx == sig.fx;
+                               && feeder.source == sig.source && feeder.fx == sig.fx && feeder.direct == sig.direct;
             paintSignal (g, area, sig, signalPage * kSignalsPerPage + (int) i, feeds, i < signalPeaks.size() ? signalPeaks[i] : 0.0f);
         }
     }
@@ -2544,7 +2647,12 @@ void RoutingPage::assignOutput (int port, const Signal& sig)
     if (routing::isRecorderPort (port))
     {
         UsbRecorder::Tap tap;
-        if (sig.source >= 0)
+        if (const int code = directCode (sig); code >= 0)
+        {
+            tap.kind = UsbRecorder::Tap::Kind::Direct;
+            tap.direct = code;
+        }
+        else if (sig.source >= 0)
         {
             tap.kind = UsbRecorder::Tap::Kind::Source;
             tap.source = sig.source;
@@ -2564,6 +2672,8 @@ void RoutingPage::assignOutput (int port, const Signal& sig)
     }
     else if (sig.source >= 0)
         ctx.engine.routeOutputSource (port, sig.source); // replaces what fed the output
+    else if (const int code = directCode (sig); code >= 0)
+        ctx.engine.routeOutputSource (port, code); // a direct out: PRE or POST FADER
     else
     {
         clearOutput (port);
@@ -2781,6 +2891,8 @@ void RoutingPage::mouseUp (const juce::MouseEvent& e)
         targetPage = (targetPage + (nextPage.contains (pos) ? 1 : numTargetPages() - 1)) % numTargetPages();
         layoutTiles();
     }
+    else if (preFaderKey.contains (pos) || postFaderKey.contains (pos))
+        setDirectPost (postFaderKey.contains (pos));
     else if (prevSignals.contains (pos) || nextSignals.contains (pos))
     {
         const int pages = juce::jmax (1, ((int) signals().size() + kSignalsPerPage - 1) / kSignalsPerPage);
@@ -2845,7 +2957,15 @@ void RoutingPage::mouseUp (const juce::MouseEvent& e)
                         selectSource (source);
                 }
                 else if (const int port = routing::outputAt (outputGroup, (int) i); port >= 0)
+                {
                     selectedPort = port;
+                    // A direct out feeds it: PRE / POST FADER show (and change) its tap.
+                    if (const auto feeder = feederOf (port); feeder.direct != 0 && feeder.direct != (directPost ? 2 : 1))
+                    {
+                        directPost = feeder.direct == 2;
+                        layoutTiles();
+                    }
+                }
                 repaint();
                 notifyStatusKeysChanged(); // the title tile shows the selection
                 notifyKnobsChanged();      // SOURCES: its GAIN

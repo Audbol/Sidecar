@@ -244,7 +244,7 @@ void MixerEngine::timerCallback()
 void MixerEngine::pollPlugins()
 {
     fx.updateLatencies();
-    for (int slot = 0; slot < kNumFx; ++slot)
+    for (int slot = 0; slot < kMaxFx; ++slot)
     {
         auto* p = fx.getPlugin (slot);
         if (p != nullptr && fx.getLatency (slot) > kMaxCompensation)

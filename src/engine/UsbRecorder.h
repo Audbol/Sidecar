@@ -147,7 +147,8 @@ public:
         {
             Off,
             Source, // an input index (hardware input, playback channel, USB player)
-            Strip   // a strip's output: input / aux channels at their direct out (pre-fader)
+            Strip,  // a strip's output: input / aux channels at their direct out (pre-fader)
+            Direct  // a direct out (`direct`: a DirectOut code, PRE or POST FADER)
         };
 
         Kind kind = Kind::Off;
@@ -155,6 +156,7 @@ public:
         StripKind stripKind = StripKind::Main;
         int stripNumber = 1; // as shown: CH 3 = 3, BUS 12 = 12
         int channel = 0;     // 0 left, 1 right
+        int direct = -1;     // Direct: the DirectOut code
 
         int code() const noexcept;
         static Tap fromCode (int code) noexcept;

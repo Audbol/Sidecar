@@ -11,7 +11,7 @@ use livedaw_dsp::wing::{model_index, ModelSpec, DYN_MODELS, EQ_MODELS_BUS, EQ_MO
 use livedaw_engine::analyser::RtaViewSettings;
 use livedaw_engine::atomic::AtomicF32;
 use livedaw_engine::params::{
-    ext, DynSlotParams, EqBlockParams, InsertParams, MatrixSendParams, StripParams, FX_EXT, FX_NONE, NUM_DCAS, NUM_FX,
+    ext, DynSlotParams, EqBlockParams, InsertParams, MatrixSendParams, StripParams, FX_EXT, FX_NONE, MAX_FX, NUM_DCAS,
     NUM_MUTE_GROUPS, WING_BUSES,
 };
 use livedaw_engine::routing::{bus_feeds_bus, matrix_direct, MATRIX_DIRECT_INPUTS};
@@ -809,7 +809,7 @@ fn apply_mute_groups(engine: &Engine, parent: &Element) {
 
 fn capture_fx(engine: &Engine, parent: &mut Element, bridge: &mut dyn PluginBridge) {
     let fx = parent.add_new("Fx");
-    for i in 0..NUM_FX {
+    for i in 0..engine.num_fx() {
         fx.add(capture_fx_slot(engine, i, bridge));
     }
 }
@@ -1187,7 +1187,14 @@ pub fn apply(
     if let Some(before) = outputs_before {
         keep_safe_outputs(engine, &index, &before);
     }
+    fit_fx_slots(engine);
     result
+}
+
+/// More FX slots in use if what was loaded or recalled fills or assigns a
+/// slot beyond them (a show saved with more FX slots); never fewer.
+pub(crate) fn fit_fx_slots(engine: &Engine) {
+    engine.set_num_fx(engine.num_fx());
 }
 
 /// Every output patch of the console, in a fixed order: each strip's left and
@@ -1295,7 +1302,7 @@ pub fn load_console(engine: &Engine, console: &Element, bridge: &mut dyn PluginB
     apply_automix(engine, console);
     apply_dcas(engine, console, &mut None);
     apply_mute_groups(engine, console);
-    for i in 0..NUM_FX {
+    for i in 0..MAX_FX {
         bridge.clear_fx(i);
     }
     apply_fx(engine, console, load_plugins.then_some(InsertMode::Instantiate), bridge, &mut result.warnings);
@@ -1339,5 +1346,6 @@ pub fn load_console(engine: &Engine, console: &Element, bridge: &mut dyn PluginB
         // Saved before MUTEGROUP/SIP OVERRIDE: off, as then (a new console has it on).
         engine.controls.mute_override.store(false, Relaxed);
     }
+    fit_fx_slots(engine);
     result.warnings
 }

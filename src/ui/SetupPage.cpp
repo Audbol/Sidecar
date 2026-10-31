@@ -322,6 +322,11 @@ namespace
             chPlus.onClick = [this] { setChannels ((int) ctx.engine.getChannels().size() + 1); };
             chWing.onClick = [this] { setChannels (kWingChannels); };
             chWing.isOn = [this] { return (int) ctx.engine.getChannels().size() == kWingChannels; };
+            // FX SLOTS: the WING's 16, or more in banks of 16 (never fewer than a slot in use needs).
+            fxMinus.onClick = [this] { setFxSlots ((ctx.engine.getFx().getNumSlots() - 1) / kWingFx * kWingFx); };
+            fxPlus.onClick = [this] { setFxSlots ((ctx.engine.getFx().getNumSlots() / kWingFx + 1) * kWingFx); };
+            fxWing.onClick = [this] { setFxSlots (kWingFx); };
+            fxWing.isOn = [this] { return ctx.engine.getFx().getNumSlots() == kWingFx; };
             busPlus.onClick = [this]
             {
                 if (auto* b = ctx.engine.addBus())
@@ -344,12 +349,12 @@ namespace
                         ctx.structureChanged();
                 }
             };
-            dataKey.onClick = [] { dataDirectory().createDirectory(); dataDirectory().revealToUser(); };
+            dataKey.onClick = [] { dataDirectory().createDirectory(); paths::reveal (dataDirectory()); };
             showKey.onClick = [this]
             {
                 const juce::File f (ctx.settings.getValue ("lastShowFile"));
                 if (f.existsAsFile())
-                    f.revealToUser();
+                    paths::reveal (f);
             };
             // ABOUT: the start-up notice (the project, how it differs from a WING).
             aboutKey.onClick = [this] { startupNotice::show (ctx.settings, *this, false); };
@@ -358,9 +363,11 @@ namespace
             styleIconKey (aboutKey, true);
             for (auto* k : { &dataKey, &showKey })
                 styleIconKey (*k);
-            for (auto* k : { &chMinus, &chPlus, &chWing, &busMinus, &busPlus })
+            for (auto* k : { &chMinus, &chPlus, &chWing, &busMinus, &busPlus, &fxMinus, &fxPlus, &fxWing })
                 k->offColour = Dark::key;
-            for (auto* k : { &editKey, &aboutKey, &chMinus, &chPlus, &chWing, &busMinus, &busPlus, &dataKey, &showKey })
+            fxMinus.setTooltip ("16 fewer FX slots (a slot in use stays)");
+            fxPlus.setTooltip ("16 more FX slots (up to " + juce::String (kMaxFx) + "; the WING remote sees FX 1-16)");
+            for (auto* k : { &editKey, &aboutKey, &chMinus, &chPlus, &chWing, &busMinus, &busPlus, &fxMinus, &fxPlus, &fxWing, &dataKey, &showKey })
                 addAndMakeVisible (k);
             addAndMakeVisible (finishKeys);
             addAndMakeVisible (modelKeys);
@@ -372,6 +379,9 @@ namespace
             finishKeys.setEnabled (ctx.consoleModel != ConsoleModel::Compact);
             enableKey (busMinus, ctx.engine.getBuses().size() > (size_t) kWingBuses);
             enableKey (chMinus, ! ctx.engine.getChannels().empty());
+            const int fxSlots = ctx.engine.getFx().getNumSlots();
+            enableKey (fxMinus, fxSlots > kWingFx && ! ctx.engine.getFx().isInUse (fxSlots - 1));
+            enableKey (fxPlus, fxSlots < kMaxFx);
             enableKey (showKey, juce::File (ctx.settings.getValue ("lastShowFile")).existsAsFile());
             repaint();
         }
@@ -415,7 +425,8 @@ namespace
             g.setFont (wingFontPx (juce::jmin (TypeScale::statusCaption * getWingScreenHeight(), (float) configCaption.getHeight() * 0.9f)));
             g.drawText ("CONFIGURATION", configCaption, juce::Justification::bottomLeft);
             for (auto [row, label, value, valueArea] : { std::tuple { chRow, "CHANNELS", (int) ctx.engine.getChannels().size(), chValue },
-                                                         std::tuple { busRow, "BUSES", (int) ctx.engine.getBuses().size(), busValue } })
+                                                         std::tuple { busRow, "BUSES", (int) ctx.engine.getBuses().size(), busValue },
+                                                         std::tuple { fxRow, "FX SLOTS", ctx.engine.getFx().getNumSlots(), fxValue } })
             {
                 g.setColour (Dark::text);
                 g.setFont (wingFontFit (TypeScale::body, (float) row.getHeight() * 0.55f));
@@ -445,7 +456,7 @@ namespace
             showKey.setBounds (d);
 
             auto r = b.reduced (juce::roundToInt (wingPx (16.0f)), juce::roundToInt (wingPx (8.0f)));
-            const int configH = r.getHeight() * 40 / 100;
+            const int configH = r.getHeight() * 46 / 100;
             auto config = r.removeFromBottom (configH);
             const int rowH = r.getHeight() / 4;
             for (auto& row : infoRows)
@@ -455,8 +466,9 @@ namespace
             aboutKey.setBounds (infoRows[2].withTrimmedLeft (infoRows[2].getWidth() - keyW).reduced (0, 2));
 
             configCaption = config.removeFromTop (config.getHeight() / 6);
-            const int h = config.getHeight() / 4;
-            for (auto [row, minus, value, plus] : { std::tuple { &chRow, &chMinus, &chValue, &chPlus }, std::tuple { &busRow, &busMinus, &busValue, &busPlus } })
+            const int h = config.getHeight() / 5;
+            for (auto [row, minus, value, plus] : { std::tuple { &chRow, &chMinus, &chValue, &chPlus }, std::tuple { &busRow, &busMinus, &busValue, &busPlus },
+                                                    std::tuple { &fxRow, &fxMinus, &fxValue, &fxPlus } })
             {
                 auto rr = config.removeFromTop (h).reduced (0, 2);
                 *row = rr;
@@ -464,6 +476,8 @@ namespace
                 auto wing = keys.removeFromRight (keys.getWidth() / 3);
                 if (row == &chRow)
                     chWing.setBounds (wing.reduced (2, 0));
+                else if (row == &fxRow)
+                    fxWing.setBounds (wing.reduced (2, 0));
                 minus->setBounds (keys.removeFromLeft (rr.getHeight() + 6).reduced (2, 0));
                 plus->setBounds (keys.removeFromRight (rr.getHeight() + 6).reduced (2, 0));
                 *value = keys;
@@ -486,10 +500,26 @@ namespace
                 ctx.structureChanged();
         }
 
+        void setFxSlots (int n)
+        {
+            auto& fx = ctx.engine.getFx();
+            const int before = fx.getNumSlots();
+            const int set = fx.setNumSlots (n);
+            ctx.settings.setValue (uiprefs::fxSlots, set);
+            if (set > n)
+                ctx.log.info ("FX slots: FX " + juce::String (set) + " is in use, so " + juce::String (set) + " slots stay");
+            if (set == before)
+                return;
+            ctx.log.info ("FX slots set to " + juce::String (set));
+            if (ctx.structureChanged)
+                ctx.structureChanged();
+            update();
+        }
+
         UiContext& ctx;
         WingKey editKey { "EDIT", Icon::Edit }, aboutKey { "ABOUT", Icon::Info }, chMinus { "-" }, chPlus { "+" }, chWing { "WING" }, busMinus { "-" }, busPlus { "+" },
-            dataKey { "DATA FOLDER", Icon::Folder }, showKey { "SHOW FOLDER", Icon::Folder };
-        juce::Rectangle<int> infoBox, dataBox, dataTitle, infoRows[4], configCaption, chRow, busRow, chValue, busValue, finishRow, modelRow;
+            fxMinus { "-" }, fxPlus { "+" }, fxWing { "WING" }, dataKey { "DATA FOLDER", Icon::Folder }, showKey { "SHOW FOLDER", Icon::Folder };
+        juce::Rectangle<int> infoBox, dataBox, dataTitle, infoRows[4], configCaption, chRow, busRow, fxRow, chValue, busValue, fxValue, finishRow, modelRow;
         // SURFACE FINISH: the surface view in the silver or the black WING's colours.
         ChoiceKeys finishKeys { { ConsoleLook::finishName (SurfaceFinish::Silver), ConsoleLook::finishName (SurfaceFinish::Black) },
                                 [this] { return (int) ConsoleLook::load (ctx.settings).shownFinish(); },
@@ -2456,6 +2486,11 @@ namespace
         explicit PluginsTab (UiContext& c) : ctx (c)
         {
             scan.onClick = [this] { if (ctx.showPluginScanner) ctx.showPluginScanner(); };
+            // Every FX slot's plugins in a window of their own (to put on a second screen; Ctrl+Shift+P).
+            overview.onClick = [this] { if (ctx.showPluginOverview) ctx.showPluginOverview(); };
+            overview.setTooltip ("Every plugin of every FX slot in a separate window (Ctrl+Shift+P)");
+            styleIconKey (overview);
+            addAndMakeVisible (overview);
             styleIconKey (scan);
             addAndMakeVisible (scan);
             ctx.host.getKnownPlugins().addChangeListener (this);
@@ -2520,7 +2555,10 @@ namespace
             auto b = getLocalBounds();
             const int w = juce::jmin (b.getWidth(), screenCap (720));
             box = b.removeFromTop (juce::jmin (b.getHeight() * 45 / 100, screenCap (240))).withWidth (w);
-            scan.setBounds (darkPanelBody (box, true).reduced (12, 10).removeFromBottom (juce::jmin (44, box.getHeight() / 4)).removeFromLeft (juce::jmin (260, w / 2)));
+            auto keys = darkPanelBody (box, true).reduced (12, 10).removeFromBottom (juce::jmin (44, box.getHeight() / 4));
+            scan.setBounds (keys.removeFromLeft (juce::jmin (260, w / 2 - 6)));
+            keys.removeFromLeft (12);
+            overview.setBounds (keys.removeFromLeft (juce::jmin (260, w / 2 - 6)));
             b.removeFromTop (8);
             auto lower = b.withWidth (w);
             compensation.rowHeight = fitRowHeight (lower.getHeight(), 6.0f);
@@ -2536,7 +2574,10 @@ namespace
             auto& engine = ctx.engine;
             auto& fx = engine.getFx();
             auto body = drawDarkPanel (g, latencyList, "PLUGIN LATENCY").reduced (12, 6);
-            const int rowH = fitRowHeight (body.getHeight(), (float) kNumFx / 2.0f + 2.0f);
+            int numLoaded = 0;
+            for (int slot = 0; slot < kMaxFx; ++slot)
+                numLoaded += fx.getPlugin (slot) != nullptr ? 1 : 0;
+            const int rowH = fitRowHeight (body.getHeight(), (float) juce::jmax (kWingFx, numLoaded) / 2.0f + 2.0f);
             const double rate = juce::jmax (1.0, engine.getSampleRate());
             auto samples = [rate] (int n) { return juce::String (n) + " SMP (" + juce::String (1000.0 * n / rate, 1) + " MS)"; };
 
@@ -2558,7 +2599,7 @@ namespace
 
             // Two columns of the slots holding a plugin.
             juce::Array<int> loaded;
-            for (int slot = 0; slot < kNumFx; ++slot)
+            for (int slot = 0; slot < kMaxFx; ++slot)
                 if (fx.getPlugin (slot) != nullptr)
                     loaded.add (slot);
             g.setFont (wingFontFit (TypeScale::body, (float) rowH * 0.75f));
@@ -2591,7 +2632,7 @@ namespace
             // Repaint only when what the panel shows changes.
             auto& fx = ctx.engine.getFx();
             juce::int64 hash = ctx.engine.getTotalCompensation() * 4 + (ctx.engine.isCompensationLimited() ? 1 : 0) + (ctx.engine.isLatencyCompensationOn() ? 2 : 0);
-            for (int slot = 0; slot < kNumFx; ++slot)
+            for (int slot = 0; slot < kMaxFx; ++slot)
                 hash = hash * 31 + fx.getLatency (slot) + (fx.getPlugin (slot) != nullptr ? 7 : 0);
             if (hash != lastHash)
             {
@@ -2601,7 +2642,7 @@ namespace
         }
 
         UiContext& ctx;
-        WingKey scan { "SCAN FOR PLUGINS", Icon::Folder };
+        WingKey scan { "SCAN FOR PLUGINS", Icon::Folder }, overview { "PLUGIN OVERVIEW", Icon::Info };
         SettingsPanel compensation;
         juce::Rectangle<int> box, latencyList;
         juce::int64 lastHash = -1;
@@ -2704,7 +2745,8 @@ void SetupPage::openInitialize()
     {
         const auto sources = w->getSourceGroups();
         const bool everything = chosen.allStrips && chosen.sections == state::AllSections && chosen.dcas == state::Scope::kAllDcas
-                                && chosen.muteGroups == state::Scope::kAllMuteGroups && chosen.fx == state::Scope::kAllFx;
+                                && chosen.muteGroups == state::Scope::kAllMuteGroups
+                                && (chosen.fx & state::Scope::allFx (ctx.engine.getFx().getNumSlots())) == state::Scope::allFx (ctx.engine.getFx().getNumSlots());
         if (! everything && chosen.strips.empty() && ! chosen.allStrips && chosen.dcas == 0 && chosen.muteGroups == 0 && chosen.fx == 0 && sources == 0)
             return; // nothing chosen
         popups::confirm (*this, "INITIALIZE CONSOLE",
@@ -2739,7 +2781,7 @@ void SetupPage::initialize (const state::Scope& chosen, juce::uint32 sources, bo
     if (everything)
     {
         // Everything: a fresh 40-channel console, as before the parts could be chosen.
-        for (int i = 0; i < kNumFx; ++i)
+        for (int i = 0; i < kMaxFx; ++i)
             clearFx (ctx, i);
         ctx.engine.reset();
         ctx.engine.setNumChannels (kWingChannels);

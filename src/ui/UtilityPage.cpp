@@ -9,7 +9,7 @@ UtilityPage::UtilityPage (UiContext& c, bool setup) : ctx (c), onSetup (setup)
     clearFaultsButton.setTooltip ("Clears the FX fault and double-assignment markers (a faulted plugin is bypassed until cleared)");
     clearFaultsButton.onClick = [this]
     {
-        for (int i = 0; i < kNumFx; ++i)
+        for (int i = 0; i < kMaxFx; ++i)
             ctx.engine.getFx().clearFlags (i);
     };
     clearClipsButton.onClick = [this] { ctx.engine.outputClipEvents = 0; };

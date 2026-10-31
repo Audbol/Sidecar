@@ -165,7 +165,7 @@ pub fn item_from_file(path: &Path, fx_slot: usize, strip: StripRef) -> Result<(S
         presets::FX_EXTENSION | presets::CHANNEL_EXTENSION => {
             let preset = presets::load(path)?;
             match presets::info(&preset).map(|i| i.kind) {
-                Some(PresetType::Fx) if fx_slot < livedaw_engine::params::NUM_FX => SceneItem::Fx { preset, slot: fx_slot },
+                Some(PresetType::Fx) if fx_slot < livedaw_engine::params::MAX_FX => SceneItem::Fx { preset, slot: fx_slot },
                 Some(PresetType::Fx) => return Err(format!("FX {} doesn't exist", fx_slot + 1)),
                 Some(PresetType::Channel) => SceneItem::Channel { preset, strip },
                 None => return Err("Not a Sidecar preset".into()),

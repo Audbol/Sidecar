@@ -51,7 +51,9 @@ use std::sync::Arc;
 // ABI 21: FxParams::send_left / send_right (the EXT device's outboard insert:
 // FX SEND outputs), ld_engine_set_io_latency, source and output recall safes
 // (ld_engine_io_safe, ld_engine_set_io_safe).
-pub const LD_ABI_VERSION: i32 = 23;
+// ABI 24: 64 FX slots (EngineControls::fx), of which ld_engine_num_fx are in
+// use (ld_engine_set_num_fx); LdScope::fx is a 64-bit mask.
+pub const LD_ABI_VERSION: i32 = 24;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(default)
@@ -430,6 +432,25 @@ pub unsafe extern "C" fn ld_engine_set_num_channels(e: *const Engine, count: i32
     }
 }
 
+/// The FX slots in use (16, the WING's, to kMaxFx).
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_num_fx(e: *const Engine) -> i32 {
+    engine(e).map_or(0, |e| guard(0, || e.num_fx() as i32))
+}
+
+/// Sets the FX slots in use (clamped to 16..kMaxFx, and never below a slot in
+/// use); returns the number set.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_set_num_fx(e: *const Engine, count: i32) -> i32 {
+    engine(e).map_or(0, |e| guard(0, || e.set_num_fx(count.max(0) as usize) as i32))
+}
+
+/// FX slot `slot` holds something or a strip's insert is assigned to it.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_fx_in_use(e: *const Engine, slot: i32) -> bool {
+    engine(e).is_some_and(|e| slot >= 0 && guard(false, || e.fx_in_use(slot as usize)))
+}
+
 /// Adds a bus beyond the console's 16 (null if no slot is free).
 #[no_mangle]
 pub unsafe extern "C" fn ld_engine_add_bus(e: *const Engine, requested_slot: i32) -> *const Strip {
@@ -491,7 +512,7 @@ pub unsafe extern "C" fn ld_engine_set_group_name(e: *const Engine, group: i32, 
 #[no_mangle]
 pub unsafe extern "C" fn ld_fx_set(e: *const Engine, slot: i32, callbacks: *const InsertCallbacks) {
     let Some(e) = engine(e) else { return };
-    if slot < 0 || slot as usize >= e.num_fx() {
+    if slot < 0 || e.fx(slot as usize).is_none() {
         return;
     }
     let cb = callbacks.as_ref().copied();
@@ -504,7 +525,7 @@ pub unsafe extern "C" fn ld_fx_set(e: *const Engine, slot: i32, callbacks: *cons
 #[no_mangle]
 pub unsafe extern "C" fn ld_fx_replace(e: *const Engine, slot: i32, callbacks: *const InsertCallbacks) {
     let Some(e) = engine(e) else { return };
-    if slot < 0 || slot as usize >= e.num_fx() {
+    if slot < 0 || e.fx(slot as usize).is_none() {
         return;
     }
     let Some(cb) = callbacks.as_ref().copied() else { return };

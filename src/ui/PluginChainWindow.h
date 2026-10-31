@@ -13,8 +13,9 @@ namespace livedaw::ui
     title names the chain; the window grows to fit (staying on its screen)
     and scrolls beyond the screen. It is resizable; its size and its layout
     (ROW / FOCUS) are kept per slot in the settings. It closes itself when the
-    slot empties. */
-class PluginChainWindow final : public juce::DocumentWindow
+    slot empties. It pictures its plugins' editors for the plugin overview
+    (PluginPictures) shortly after opening and every few seconds while it shows. */
+class PluginChainWindow final : public juce::DocumentWindow, private juce::Timer
 {
 public:
     /** `onClose` deletes the window (called asynchronously). */
@@ -26,6 +27,9 @@ public:
     juce::AudioProcessor* getShownProcessor() const noexcept { return view.getShownProcessor(); }
     /** `p` is about to be destroyed: a plugin of the chain loses its editor. */
     void dropEditorFor (const juce::AudioProcessor* p) { view.dropEditorFor (p); }
+
+    /** Pictures the plugins it shows now (ctx.pluginPictures). */
+    void capturePictures();
 
     void closeButtonPressed() override;
     void resized() override;
@@ -39,12 +43,14 @@ private:
     /** Moves (or shrinks) the window back onto its screen: it grows when a plugin's
         editor takes its real size, after the window was placed. */
     void keepOnScreen();
+    void timerCallback() override;
 
     UiContext& ctx;
     PluginChainView view;
     std::function<void (PluginChainWindow&)> onClose;
     bool remembering = false; // the size is saved once the window is set up
     bool placing = false;     // keepOnScreen() moving it
+    static constexpr int kFirstPictureMs = 700, kPictureEveryMs = 3000;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginChainWindow)
 };

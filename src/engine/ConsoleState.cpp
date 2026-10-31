@@ -124,7 +124,8 @@ Scope Scope::only (juce::uint32 sections, std::vector<StripRef> strips)
     s.sections = sections;
     s.allStrips = false;
     s.strips = std::move (strips);
-    s.dcas = s.muteGroups = s.fx = 0;
+    s.dcas = s.muteGroups = 0;
+    s.fx = 0;
     s.console = false;
     return s;
 }

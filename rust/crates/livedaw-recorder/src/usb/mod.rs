@@ -74,6 +74,9 @@ pub fn usb_player_channel(input: i32) -> Option<usize> {
 /// Codes of strip taps start here (below: a source's input index).
 pub const TAP_STRIP_BASE: i32 = 0x0100_0000;
 const TAP_KIND_SPAN: i32 = 0x0010_0000;
+/// Codes of direct outs (a channel, aux or bus pre or post fader: the
+/// engine's `routing::DirectSource`) start here, past the strip taps.
+pub const DIRECT_TAP_BASE: i32 = 0x0300_0000;
 
 /// What a RECORDER port records (`/io/out/REC/n`): nothing, a source (an
 /// input port after its source processing: hardware input, playback
@@ -91,6 +94,9 @@ pub enum RecTap {
         number: i32,
         channel: usize,
     },
+    /// A direct out (`DIRECT_TAP_BASE` and up: the engine's
+    /// `routing::DirectSource` code, PRE or POST FADER).
+    Direct(i32),
 }
 
 impl RecTap {
@@ -105,6 +111,8 @@ impl RecTap {
                 TAP_STRIP_BASE + kind * TAP_KIND_SPAN + (number - 1) * 2 + (channel.min(1) as i32)
             }
             Self::Strip { .. } => -1,
+            Self::Direct(code) if code >= DIRECT_TAP_BASE => code,
+            Self::Direct(_) => -1,
         }
     }
 
@@ -113,6 +121,8 @@ impl RecTap {
             Self::Off
         } else if code < TAP_STRIP_BASE {
             Self::Source(code)
+        } else if code >= DIRECT_TAP_BASE {
+            Self::Direct(code)
         } else {
             let c = code - TAP_STRIP_BASE;
             Self::Strip { kind: c / TAP_KIND_SPAN, number: (c % TAP_KIND_SPAN) / 2 + 1, channel: (c % 2) as usize }

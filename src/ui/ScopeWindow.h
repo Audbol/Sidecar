@@ -80,7 +80,7 @@ private:
         juce::Rectangle<int> area;
         juce::String caption, number;
         state::StripRef strip {};
-        juce::uint32 bits = 0; // Content: sections; Dca, MuteGroup, Fx, Source: the item's bit; Config: 1 = CONFIG
+        juce::uint64 bits = 0; // Content: sections; Dca, MuteGroup, Fx, Source: the item's bit; Config: 1 = CONFIG
         bool dropdown = false;
         std::optional<Icon> icon {}; // Config and Content keys: an icon over the caption
     };
@@ -97,6 +97,7 @@ private:
     void toggle (const Tile&, bool on);
     bool hasStrip (const state::StripRef&) const;
     void toggleStrip (const state::StripRef&, bool on);
+    /** The 32-bit masks (DCAs, mute groups, source groups; FX slots are 64 bits). */
     juce::uint32* maskOf (Kind);
     /** A SOURCE / OUTPUT tile's group (its index in the group list). */
     static int groupOf (const Tile&);

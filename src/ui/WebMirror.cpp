@@ -1,4 +1,5 @@
 #include "ui/WebMirror.h"
+#include "engine/AppPaths.h"
 
 #include <algorithm>
 #include <atomic>
@@ -232,7 +233,15 @@ juce::String WebMirror::apply (const WebRemote::Settings& s)
         // The encoder must not talk to the server while it restarts.
         const juce::ScopedLock busy (encoder->encoding);
         encoder->clear();
-        error = server.apply (s);
+        if (s.enabled && paths::externalActionsBlocked().load())
+        {
+            auto off = s;
+            off.enabled = false;
+            server.apply (off);
+            error = "No network servers in this test run";
+        }
+        else
+            error = server.apply (s);
     }
     if (server.isRunning())
         startTimerHz (4);

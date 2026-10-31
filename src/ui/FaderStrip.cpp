@@ -138,7 +138,7 @@ void FaderStrip::refresh()
             dca = juce::jlimit (0, kNumDcas - 1, target->dcaIndex);
         else if (target->fxParam)
         {
-            const int slot = juce::jlimit (0, kNumFx - 1, target->fxSlot);
+            const int slot = juce::jlimit (0, kMaxFx - 1, target->fxSlot);
             const int model = ctx.engine.getFx().getModel (slot);
             if (model > ld::kFxExt && juce::isPositiveAndBelow (target->param, (int) models::model (models::Fx, model).params.size()))
                 fxp = ParamTarget { &ctx.engine.getFx().params (slot).values[target->param], slot, model, target->param };

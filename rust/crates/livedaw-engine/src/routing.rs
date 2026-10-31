@@ -76,6 +76,57 @@ pub(crate) fn strip_source_slot(input: i32) -> Option<usize> {
     (n < NUM_STRIP_SOURCES).then_some(n)
 }
 
+// ---- direct outs ----------------------------------------------------------------------
+
+/// Codes of direct outs: an input channel's, aux's or bus's signal PRE FADER
+/// (after INS 1, where PFL listens) or POST FADER (after the fader, INS 2 and
+/// the post-fader delay, before pan), one side, straight to a hardware output
+/// ([`OutputPatch`]) or a RECORDER port. Sidecar's own: the WING makes direct
+/// outs with user signals. Like solo and the monitor paths they aren't delay
+/// compensated.
+pub const DIRECT_SOURCE_BASE: i32 = livedaw_recorder::usb::DIRECT_TAP_BASE;
+/// Strip numbers a direct out can address per kind.
+const DIRECT_NUMBERS: i32 = 0x1_0000;
+
+/// A direct out: which strip (by its number as shown: CH 3 = 3, BUS 12 = 12),
+/// which side and which tap.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DirectSource {
+    pub kind: StripKind,
+    pub number: i32,
+    /// 0 = left, 1 = right (a mono channel gives its signal on both).
+    pub side: usize,
+    /// POST FADER, else PRE FADER.
+    pub post: bool,
+}
+
+impl DirectSource {
+    /// Channels, aux and buses have direct outs (mains and matrices are outputs already).
+    pub fn has_direct_outs(kind: StripKind) -> bool {
+        matches!(kind, StripKind::Channel | StripKind::Aux | StripKind::Bus)
+    }
+
+    /// `DIRECT_SOURCE_BASE + ((kind * 0x10000 + number - 1) * 2 + side) * 2 + post`;
+    /// -1 for a kind without direct outs or a number out of range.
+    pub fn code(self) -> i32 {
+        if !Self::has_direct_outs(self.kind) || !(1..=DIRECT_NUMBERS).contains(&self.number) || self.side > 1 {
+            return -1;
+        }
+        DIRECT_SOURCE_BASE
+            + (((self.kind as i32) * DIRECT_NUMBERS + self.number - 1) * 2 + self.side as i32) * 2
+            + i32::from(self.post)
+    }
+
+    pub fn from_code(code: i32) -> Option<Self> {
+        let c = code.checked_sub(DIRECT_SOURCE_BASE).filter(|c| *c >= 0)?;
+        let post = c % 2 == 1;
+        let side = ((c / 2) % 2) as usize;
+        let strip = c / 4;
+        let kind = StripKind::from_i32(strip / DIRECT_NUMBERS).filter(|k| Self::has_direct_outs(*k))?;
+        Some(Self { kind, number: strip % DIRECT_NUMBERS + 1, side, post })
+    }
+}
+
 // ---- the output patch ---------------------------------------------------------------
 
 /// Hardware outputs the patch can feed (as many as there are input ports

@@ -3,7 +3,7 @@
 use livedaw_dsp::wing::{model_index, DYN_MODELS, EQ_MODELS_CH, PROCESS_ORDERS};
 mod common;
 use common::{set_channels, unity_console};
-use livedaw_engine::params::{StripKind, NUM_AUX, NUM_MAINS, NUM_MATRICES, WING_BUSES};
+use livedaw_engine::params::{StripKind, FX_EXT, FX_NONE, MAX_FX, NUM_AUX, NUM_MAINS, NUM_MATRICES, WING_BUSES, WING_FX};
 use livedaw_engine::{Engine, InsertCallbacks, Strip};
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed};
@@ -90,7 +90,7 @@ fn console_has_the_wing_layout() {
     assert_eq!(e.num_strips(StripKind::Bus), WING_BUSES);
     assert_eq!(e.num_strips(StripKind::Main), NUM_MAINS);
     assert_eq!(e.num_strips(StripKind::Matrix), NUM_MATRICES);
-    assert_eq!(e.num_fx(), 16);
+    assert_eq!(e.num_fx(), WING_FX);
     set_channels(&e, 40);
     // Unnamed, as on the WING.
     assert_eq!(e.channel_at(39).unwrap().name(), "");
@@ -101,6 +101,42 @@ fn console_has_the_wing_layout() {
     let extra = e.add_bus(-1).unwrap();
     assert_eq!(extra.id(), 16);
     assert!(e.remove_strip(Arc::as_ptr(&extra)));
+}
+
+#[test]
+fn fx_slots_grow_beyond_the_wings_but_never_drop_one_in_use() {
+    let e = Engine::new(0);
+    assert_eq!(e.num_fx(), WING_FX);
+    assert_eq!(e.set_num_fx(32), 32);
+    assert_eq!(e.set_num_fx(1000), MAX_FX);
+    assert_eq!(e.set_num_fx(0), WING_FX);
+
+    // A device in FX 40 keeps 40 slots in use.
+    e.set_num_fx(48);
+    assert!(e.set_fx_model(39, FX_EXT, true));
+    assert!(e.fx_in_use(39));
+    assert_eq!(e.set_num_fx(16), 40);
+    assert!(e.set_fx_model(39, FX_NONE, true));
+    assert!(!e.fx_in_use(39));
+
+    // So does an insert assigned to FX 24, even switched off.
+    set_channels(&e, 1);
+    let ch = e.channel_at(0).unwrap();
+    ch.params.pre_insert.fx.store(23, Relaxed);
+    assert!(e.fx_in_use(23));
+    assert_eq!(e.set_num_fx(16), 24);
+    ch.params.pre_insert.fx.store(-1, Relaxed);
+    assert_eq!(e.set_num_fx(16), 16);
+
+    // An insert pointed past the slots in use some other way (a channel preset,
+    // a copy, a remote): the next collect takes them in use, never fewer.
+    ch.params.post_insert.fx.store(50, Relaxed);
+    assert_eq!(e.num_fx(), 16);
+    e.collect();
+    assert_eq!(e.num_fx(), 51);
+    ch.params.post_insert.fx.store(-1, Relaxed);
+    e.collect();
+    assert_eq!(e.num_fx(), 51, "collect never takes slots away");
 }
 
 #[test]

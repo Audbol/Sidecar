@@ -70,7 +70,7 @@ namespace
     /** FX PAR on a key: the parameter (-1: the slot's MIX), or nullptr. */
     const models::Param* fxParamOf (UiContext& ctx, int slot, int param)
     {
-        if (! juce::isPositiveAndBelow (slot, kNumFx) || param < 0)
+        if (! juce::isPositiveAndBelow (slot, kMaxFx) || param < 0)
             return nullptr;
         const auto& spec = models::model (models::Fx, ctx.engine.getFx().getModel (slot));
         return juce::isPositiveAndBelow (param, (int) spec.params.size()) ? &spec.params[(size_t) param] : nullptr;
@@ -79,7 +79,7 @@ namespace
     /** FX PARAMETER on an encoder, FX PAR on a held key: the slot's MIX or parameter. */
     KnobBinding bindFxParameter (UiContext& ctx, int slot, int param)
     {
-        if (! juce::isPositiveAndBelow (slot, kNumFx))
+        if (! juce::isPositiveAndBelow (slot, kMaxFx))
             return {};
         auto& fx = ctx.engine.getFx();
         if (param < 0)
@@ -94,7 +94,7 @@ namespace
         assigned to a CC button for Tap Tempo"). */
     bool isTapKey (UiContext& ctx, const Function& f)
     {
-        return f.category == BtnFxParameter && juce::isPositiveAndBelow (f.target, kNumFx) && f.option >= 0
+        return f.category == BtnFxParameter && juce::isPositiveAndBelow (f.target, kMaxFx) && f.option >= 0
                && TapTempo::timeParam (ctx.engine.getFx().getModel (f.target)) == f.option;
     }
 
@@ -120,8 +120,8 @@ namespace
     };
     TapState& tapState (int slot)
     {
-        static std::array<TapState, kNumFx> states;
-        return states[(size_t) juce::jlimit (0, kNumFx - 1, slot)];
+        static std::array<TapState, kMaxFx> states;
+        return states[(size_t) juce::jlimit (0, kMaxFx - 1, slot)];
     }
     // USB PLAY/REC: the USB recorder / player's keys (the option).
     // By code (append-only; custom.rs USB_PLAY_REC_FUNCTIONS), WING Edit's names.
@@ -1126,7 +1126,7 @@ void CustomControlsPage::rebuildLists()
     auto addFxParameters = [this, &targets, &options, &f]
     {
         targets.title = "EFFECT PROCESSOR";
-        for (int i = 0; i < kNumFx; ++i)
+        for (int i = 0; i < ctx.engine.getFx().getNumSlots(); ++i)
         {
             const auto& spec = models::model (models::Fx, ctx.engine.getFx().getModel (i));
             targets.rows.add ("FX" + juce::String (i + 1) + "   " + spec.name.toUpperCase());
@@ -1135,7 +1135,7 @@ void CustomControlsPage::rebuildLists()
         options.title = "PARAMETER";
         options.rows.add ("FX MIX");
         optionCodes.push_back (-1);
-        if (juce::isPositiveAndBelow (f.target, kNumFx))
+        if (juce::isPositiveAndBelow (f.target, kMaxFx))
         {
             const int model = ctx.engine.getFx().getModel (f.target);
             const auto& spec = models::model (models::Fx, model);
@@ -1332,7 +1332,7 @@ void CustomControlsPage::rebuildLists()
                 };
                 for (int i = 0; i < kNumDcas; ++i)
                     add ("DCA " + juce::String (i + 1) + "   " + ctx.engine.getDcaName (i).toUpperCase(), i);
-                for (int i = 0; i < kNumFx; ++i)
+                for (int i = 0; i < ctx.engine.getFx().getNumSlots(); ++i)
                     add ("FX " + juce::String (i + 1) + "   " + models::model (models::Fx, ctx.engine.getFx().getModel (i)).name.toUpperCase(), 200 + i);
                 auto stripRow = [] (const Strip& st) { return shortStripLabel (st) + "\t" + (stripName (st) != st.getLabel() ? stripName (st).toUpperCase() : juce::String()); };
                 for (auto& b : ctx.engine.getBuses())

@@ -624,7 +624,7 @@ pub struct LdScope {
     pub sections: u32,
     pub dcas: u32,
     pub mute_groups: u32,
-    pub fx: u32,
+    pub fx: u64,
     pub console: bool,
     pub all_strips: bool,
     pub strips: *const LdStripRef,

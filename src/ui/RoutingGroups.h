@@ -57,7 +57,9 @@ enum class Group
     AuxOut,
     AesOut,
     WliveRec,
-    Recorder
+    Recorder,
+    ChDirect, // OUTPUTS source groups (Sidecar's own): channels and aux, buses PRE / POST FADER (DirectOut)
+    BusDirect
 };
 
 /** A group's menu name, the prefix of its tile labels ("LCL 3") and its number of tiles. */
@@ -95,6 +97,8 @@ inline GroupInfo info (Group g)
         case Group::AesOut:     return { "AES/EBU OUT", "AES", 2 };
         case Group::WliveRec:   return { "WLIVE REC", "REC", 64 };
         case Group::Recorder:   return { "RECORDER", "REC", UsbRecorder::kNumChannels };
+        case Group::ChDirect:   return { "CH DIRECT", "CH", 0 };   // its tiles: the channels and aux
+        case Group::BusDirect:  return { "BUS DIRECT", "BUS", 0 }; // the buses
     }
     return { "", "", 0 };
 }
@@ -300,7 +304,8 @@ struct Menu
 };
 
 /** The SOURCE GROUP menu: CHANNELS (`forChannels`, which also lists BUS, MAIN
-    and MATRIX) or SOURCES; with `monitor` (OUTPUTS) MONITOR and FX SEND follow.
+    and MATRIX) or SOURCES; with `monitor` (OUTPUTS) MONITOR, FX SEND and the
+    direct outs (CH DIRECT, BUS DIRECT: PRE or POST FADER) follow.
     The WING COMPACT (`compact`) has no local aux inputs: no AUX IN. */
 inline Menu sourceMenu (bool forChannels, bool monitor = false, bool compact = false)
 {
@@ -315,7 +320,7 @@ inline Menu sourceMenu (bool forChannels, bool monitor = false, bool compact = f
         m.rows.push_back ({ -1, -1, -1, id (Group::UserSignal) });
     m.spacedRows = { 3 };
     if (monitor)
-        m.rows.push_back ({ id (Group::Monitor), id (Group::FxSend), -1, -1 });
+        m.rows.push_back ({ id (Group::Monitor), id (Group::FxSend), id (Group::ChDirect), id (Group::BusDirect) });
     return m;
 }
 

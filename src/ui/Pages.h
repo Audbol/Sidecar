@@ -26,8 +26,12 @@ public:
     std::vector<KnobBinding> getKnobs() override;
     /** The rack has no parameter bar [3.1]; a slot's editor has. */
     bool usesKnobs() const override;
+    /** With more than the WING's 16 FX slots (SETUP > GENERAL > FX SLOTS): a
+        key per bank of 16 (FX 1-16, FX 17-32 ...); the rack shows one bank. */
+    std::vector<StatusKey> getStatusKeys() override;
     void resized() override;
     void paint (juce::Graphics&) override;
+    void visibilityChanged() override;
 
     /** The blank key beside the display taps the tempo of a delay open in the editor. */
     bool hasBlankKeyFunction() const override { return tapParam() >= 0; }
@@ -43,9 +47,14 @@ public:
 private:
     /** The TIME (ms) parameter of the device open in the editor, or -1. */
     int tapParam() const;
+    int numBanks() const;
+    void showBank (int);
+    /** Places the shown bank's tiles (and hides the rest). */
+    void layoutTiles();
 
     UiContext& ctx;
     juce::OwnedArray<Tile> tiles;
+    int bank = 0; // the 16 slots the rack shows: FX 16 * bank + 1 ...
     std::unique_ptr<Editor> editor;
     TapTempo tapTempo;
     juce::Rectangle<int> rack, premiumLabel, standardLabel;
@@ -173,6 +182,8 @@ private:
         int channel = 0;
         int source = -1;
         int fx = -1;
+        /** A direct out of `strip` (CH / BUS DIRECT): 1 PRE FADER, 2 POST FADER; 0 not one. */
+        int direct = 0;
     };
 
     void timerCallback() override;
@@ -194,6 +205,13 @@ private:
     /** What feeds output `port` (strip nullptr + channel -1: nothing). */
     Signal feederOf (int port) const;
     juce::String signalLabel (const Signal&) const;
+    /** The signal of a direct out's code (n/a if its strip isn't there). */
+    Signal directSignal (int code) const;
+    /** The DirectOut code of a direct-out signal (-1 if it is none). */
+    int directCode (const Signal&) const;
+    /** PRE FADER / POST FADER: the tap the direct-out tiles patch, and the selected
+        output's if a direct out feeds it. */
+    void setDirectPost (bool post);
     /** The channels patched to a source, each with true when it's their ALT input. */
     std::vector<std::pair<Strip*, bool>> sourceUsers (int port) const;
     /** A source's name (RENAME), else its label ("LCL 3"). */
@@ -227,10 +245,12 @@ private:
     bool autoAdvance = false;
     routing::PatchLock lock { ctx.engine };
     bool editAlt = false; // CHANNEL INPUT MAIN / ALT: which input the source grid patches
+    bool directPost = false; // OUTPUTS, CH / BUS DIRECT: PRE FADER (the default) or POST FADER
 
     juce::Rectangle<int> leftPanel, rightPanel, leftHeader, rightHeader, leftGrid, rightGrid;
     juce::Rectangle<int> inputCaption, mainKey, altKey, monoKey, stereoKey, midSideKey, autoKey, lockFrame, lockKey, unlockKey, prevPage, nextPage, leftSelector,
-        rightSelector, noneKey, copyCaption, srcToChKey, chToSrcKey, separator, renameKey, meterLegend, prevSignals, nextSignals;
+        rightSelector, noneKey, copyCaption, srcToChKey, chToSrcKey, separator, renameKey, meterLegend, prevSignals, nextSignals, preFaderKey,
+        postFaderKey;
     std::vector<std::pair<juce::Rectangle<int>, Strip*>> channelTiles;
     std::vector<juce::Rectangle<int>> leftPorts, rightPorts;
     std::vector<std::pair<juce::Rectangle<int>, Signal>> signalTiles;

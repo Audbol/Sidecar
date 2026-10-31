@@ -700,7 +700,7 @@ bool MidiRemote::fxControl (int channel, int controller, int& slot, int& param) 
 
 int MidiRemote::fxCc (int slot, int param) noexcept
 {
-    if (! juce::isPositiveAndBelow (slot, kNumFx))
+    if (! juce::isPositiveAndBelow (slot, kWingFx))
         return -1;
     const bool low = slot < 8;
     switch (param)
@@ -740,10 +740,10 @@ void MidiRemote::handleFx (int, const juce::MidiMessage& m)
     if (m.getChannel() == kFirstFxChannel && controller == kRequestAllCc)
     {
         // FX data request: 1-16 one FX, 0 all of them.
-        if (value >= 1 && value <= kNumFx)
+        if (value >= 1 && value <= kWingFx)
             sendAllFx (value - 1);
         else
-            for (int s = 0; s < kNumFx; ++s)
+            for (int s = 0; s < kWingFx; ++s)
                 sendAllFx (s);
         return;
     }
@@ -774,7 +774,7 @@ void MidiRemote::handleFx (int, const juce::MidiMessage& m)
 void MidiRemote::sendAllFx (int slot)
 {
     const int port = portOf (FxControl);
-    if (port < 0 || ! juce::isPositiveAndBelow (slot, kNumFx))
+    if (port < 0 || ! juce::isPositiveAndBelow (slot, kWingFx))
         return;
     const int channel = kFirstFxChannel + slot % 8;
     for (int param = -3; param < 33; ++param)
@@ -1103,7 +1103,7 @@ void MidiRemote::sendFeedback()
     // FX PARAMETER CONTROL.
     if (const int port = portOf (FxControl); port >= 0)
     {
-        for (int slot = 0; slot < kNumFx; ++slot)
+        for (int slot = 0; slot < kWingFx; ++slot)
         {
             auto& last = lastFxValues[(size_t) slot];
             for (int param = -3; param < 33; ++param)

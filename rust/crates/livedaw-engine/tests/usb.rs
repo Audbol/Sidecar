@@ -5,6 +5,7 @@
 use livedaw_engine::params::StripKind;
 use livedaw_engine::recorder::usb::{PlayerState, RecFormat, RecState, RecTap};
 use livedaw_engine::recorder::wav::WavReader;
+use livedaw_engine::routing::DirectSource;
 use livedaw_engine::{Engine, USB_PLAYER_SOURCE_BASE};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering::Relaxed;
@@ -62,6 +63,45 @@ impl Rig {
         self.out1.extend_from_slice(&self.outputs[0]);
         self.clock += BLOCK;
     }
+}
+
+/// The RECORDER group takes direct outs too: a channel PRE and POST FADER.
+#[test]
+fn records_direct_outs_pre_and_post_fader() {
+    let dir = temp_dir("direct");
+    let mut rig = Rig::new();
+    let ch1 = rig.engine.channel_at(0).unwrap();
+    ch1.params.input_left.store(0, Relaxed);
+    ch1.params.fader_db.store(-6.0);
+    let code = |post| DirectSource { kind: StripKind::Channel, number: 1, side: 0, post }.code();
+    let usb = rig.engine.usb();
+    usb.set_tap(0, RecTap::from_code(code(false)));
+    usb.set_tap(1, RecTap::from_code(code(true)));
+    // REC 3: the channel's own direct-out tap (its processed signal before the fader).
+    usb.set_tap(2, RecTap::Strip { kind: StripKind::Channel as i32, number: 1, channel: 0 });
+    assert_eq!(usb.tap(0), RecTap::Direct(code(false)));
+    assert_eq!(usb.tap(1).code(), code(true));
+    for _ in 0..8 {
+        rig.block(); // past the fader's ramp
+    }
+
+    let take = dir.join("R_direct.wav");
+    rig.engine.usb().record(&take, RecFormat { channels: 4, bits: 24, ..Default::default() }).unwrap();
+    let start = rig.clock;
+    while rig.clock < start + 24_000 {
+        rig.block();
+    }
+    rig.engine.usb().stop_recording();
+    rig.block();
+    assert!(rig.engine.usb().wait_for_disk(WAIT));
+
+    let rec = read_wav(&take);
+    let pre = &rec[2];
+    assert!(pre.iter().any(|&x| x != 0.0), "the channel carries the input");
+    assert_eq!(&rec[0], pre, "PRE FADER: the channel's signal before its fader, bit-exact");
+    let g = livedaw_dsp::util::db_to_gain(-6.0);
+    let worst = rec[1].iter().zip(pre).map(|(a, b)| (a - g * b).abs()).fold(0.0f32, f32::max);
+    assert!(worst <= 1.0 / 8_388_608.0, "POST FADER: -6 dB within a 24-bit step ({worst})");
 }
 
 #[test]

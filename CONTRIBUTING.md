@@ -26,6 +26,24 @@ cargo test --workspace
 ```
 
 The C++ build must stay free of warnings (JUCE's recommended warning flags are on).
+
+**Monkey tests.** `ctest` runs one (the *Monkey* test: random FX slot, plugin,
+direct out, scene and plugin overview operations while audio runs; set
+`LIVEDAW_MONKEY_SEED` / `LIVEDAW_MONKEY_SECONDS` to replay a seed or run longer). For
+changes to the UI, also run the whole-program monkey, which opens the real Sidecar
+window on the virtual audio device and sends it random clicks, drags, wheel turns and
+keys:
+
+```bash
+build/SidecarMonkey_artefacts/Release/SidecarMonkey --seconds 180 --buffer 128
+```
+
+It runs with a home folder of its own (`SIDECAR_HOME`, under the temp folder: your
+settings and documents aren't touched), no network servers and no file manager
+windows, and fails on a crash, non-finite audio, a message-thread stall or an audio
+dropout (a block that takes longer to process than it lasts, a block the engine
+silences, a device xrun). `monkey.log` in its home folder lists every action; the
+seed (`--seed`) replays a run.
 CI builds and tests Windows, macOS and Linux, and runs the tests under
 AddressSanitizer, UndefinedBehaviorSanitizer and ThreadSanitizer.
 

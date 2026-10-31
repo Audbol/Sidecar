@@ -41,7 +41,7 @@ use crate::refs::{refs_from_string, refs_to_string, StripRef};
 use crate::scope::{self, ChangeCounts, GlobalSafe, RecordedChanges, Recording, Scope};
 use crate::xml::{self, Element};
 use livedaw_dsp::fader::{fader_to_pos, pos_to_fader};
-use livedaw_engine::params::NUM_FX;
+use livedaw_engine::params::MAX_FX;
 use livedaw_engine::Engine;
 use std::collections::HashMap;
 use std::fs;
@@ -63,7 +63,7 @@ pub struct Snippet {
     /// console-wide settings (see `scope::Scope`).
     pub dcas: u32,
     pub mute_groups: u32,
-    pub fx: u32,
+    pub fx: u64,
     pub console: bool,
     pub fire_with_scene: bool,
     /// The number of parameters REC recorded (0: not recorded).
@@ -206,7 +206,7 @@ impl SceneItem {
             "snip" => Self::Snippet(read_snippet(x.child("Snippet")?, state_of, refs_of)),
             "clip" => Self::Clip(PathBuf::from(x.str_or("file", ""))),
             "fx" => {
-                let slot = usize::try_from(x.int_or("slot", 1) - 1).ok().filter(|s| *s < NUM_FX)?;
+                let slot = usize::try_from(x.int_or("slot", 1) - 1).ok().filter(|s| *s < MAX_FX)?;
                 Self::Fx { preset: preset()?, slot }
             }
             "chan" => Self::Channel { preset: preset()?, strip: StripRef::parse(x.str_or("strip", "")) },
@@ -226,7 +226,7 @@ pub struct Scene {
     pub scope_strips: Option<Vec<StripRef>>,
     pub scope_dcas: u32,
     pub scope_mute_groups: u32,
-    pub scope_fx: u32,
+    pub scope_fx: u64,
     pub scope_console: bool,
     pub fade_seconds: f64,
     /// EDIT TAG: #1..#128, 0 = none.

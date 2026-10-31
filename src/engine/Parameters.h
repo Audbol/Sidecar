@@ -17,7 +17,10 @@ constexpr int kNumMatrices = ld::kNumMatrices;
 constexpr int kNumAux = ld::kNumAux;
 constexpr int kNumDcas = ld::kNumDcas;
 constexpr int kNumMuteGroups = ld::kNumMuteGroups;
-constexpr int kNumFx = ld::kNumFx;
+/** FX slots the engine holds; FxSlots::getNumSlots() of them are in use (SETUP > GENERAL > FX SLOTS). */
+constexpr int kMaxFx = ld::kMaxFx;
+/** The WING's 16 FX slots: the default number in use, and the ones the WING and MIDI remotes see. */
+constexpr int kWingFx = ld::kWingFx;
 constexpr int kWingChannels = ld::kWingChannels;
 constexpr int kWingBuses = ld::kWingBuses;
 /** Bus slot `from` can send to bus slot `to`: any other bus (manual 5.10,

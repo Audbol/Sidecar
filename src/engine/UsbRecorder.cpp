@@ -53,6 +53,7 @@ int UsbRecorder::Tap::code() const noexcept
     {
         case Kind::Off: return -1;
         case Kind::Source: return source >= 0 && source < ld::kUsbTapStripBase ? source : -1;
+        case Kind::Direct: return direct >= ld::kDirectSourceBase ? direct : -1;
         case Kind::Strip:
             if (stripNumber < 1 || stripNumber > kTapKindSpan / 2)
                 return -1;
@@ -70,6 +71,12 @@ UsbRecorder::Tap UsbRecorder::Tap::fromCode (int code) noexcept
     {
         t.kind = Kind::Source;
         t.source = code;
+        return t;
+    }
+    if (code >= ld::kDirectSourceBase)
+    {
+        t.kind = Kind::Direct;
+        t.direct = code;
         return t;
     }
     const int c = code - ld::kUsbTapStripBase;

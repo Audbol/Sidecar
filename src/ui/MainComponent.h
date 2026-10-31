@@ -10,6 +10,7 @@
 #include "ui/LookAndFeel.h"
 #include "ui/MainDisplay.h"
 #include "ui/MeterBank.h"
+#include "ui/PluginPictures.h"
 #include "ui/SurfaceLock.h"
 #include "ui/SurfaceSections.h"
 #include "ui/UiContext.h"
@@ -21,6 +22,7 @@ namespace livedaw::ui
 
 class DawEditor;
 class PluginChainWindow;
+class PluginOverviewWindow;
 class WebMirror;
 
 /** The window: a WING surface. Top: the channel strip section, the main
@@ -105,6 +107,12 @@ private:
     juce::Rectangle<int> consoleArea() const;
 
     void showPluginScanner();
+    /** The plugin overview (a window of its own): opens it, or brings it to the front. */
+    void showPluginOverview();
+    /** CAPTURE ALL (ctx.capturePluginPictures): the next slot of captureQueue. */
+    void captureNextPluginPicture();
+    /** Forgets the pictures of plugins no longer in an FX slot. */
+    void prunePluginPictures();
     void openPluginEditor (int slot);
     void closePluginWindowsFor (juce::AudioProcessor*);
     void closeAllPluginWindows();
@@ -171,6 +179,13 @@ private:
 
     juce::OwnedArray<PluginChainWindow> pluginWindows;
     std::unique_ptr<juce::DocumentWindow> scannerWindow;
+    std::unique_ptr<PluginOverviewWindow> pluginOverview;
+    PluginPictures pluginPictures; // the plugins' editor pictures (the overview shows them)
+    /** CAPTURE ALL: the slots still to picture, and how many there were. */
+    std::vector<int> captureQueue;
+    int captureTotal = 0;
+    static constexpr int kCaptureWaitMs = 1200;
+    std::function<void (int, int)> captureProgress;
     std::unique_ptr<juce::FileChooser> fileChooser;
     juce::File showFile;
 

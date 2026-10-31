@@ -137,7 +137,7 @@ struct ToneRig
 
     ~ToneRig()
     {
-        for (int slot = 0; slot < kNumFx; ++slot)
+        for (int slot = 0; slot < kMaxFx; ++slot)
             engine.getFx().setPlugin (slot, nullptr);
         engine.getGarbage().collectAllNow();
     }

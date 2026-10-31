@@ -511,7 +511,7 @@ private:
 
     std::array<StripList, kNumStripKinds> lists;
     /** Plugins already reported for a latency beyond kMaxCompensation (per FX slot). */
-    std::array<juce::AudioProcessor*, kNumFx> warnedLatency {};
+    std::array<juce::AudioProcessor*, kMaxFx> warnedLatency {};
     int structureVersion = 0, initializeVersion = 0;
 
     juce::StringArray inputNames, outputNames;

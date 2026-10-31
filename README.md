@@ -42,7 +42,9 @@ the WING manual. Expect rough edges, and please [report what you find](#reportin
   and edit, import and export the tracks in the built-in multitrack editor.
 - **Mixing with your plugins and your outboard gear.** VST3, AU and LV2 plugins sit
   in the FX rack next to the WING's effects, and the EXTERNAL effect puts a hardware
-  compressor or reverb on an insert through the interface's outputs and inputs.
+  compressor or reverb on an insert through the interface's outputs and inputs. The
+  plugin overview keeps every plugin (its picture, state, meters, CPU) in view in a
+  window of its own, on a second screen if you like.
 - **Remote mixing from a tablet or phone.** The web remote shows the console's
   screen in a browser on the network; MIDI controllers and Mackie Control / HUI
   surfaces drive it too.
@@ -64,8 +66,9 @@ relying on it at a show (see [Known limitations](#known-limitations)).
 ## What it does
 
 - **A WING console:** 40 input channels, 8 aux, 16 stereo buses, 4 stereo mains,
-  8 matrices, 16 DCAs, 8 mute groups and 16 FX slots. More channels and buses can be
-  added; the limit is your CPU.
+  8 matrices, 16 DCAs, 8 mute groups and 16 FX slots. More channels, buses and FX
+  slots (up to 64) can be added; the limit is your CPU. Channels and buses have
+  direct outs, PRE or POST FADER.
 - **Two console models:** the full-size WING (grey or black) and the **WING COMPACT**
   (one 12-fader section with its own BUS, DCA, MAIN / MATRIX and USER keys, the
   VIRTUAL section and its custom control sets), chosen in SETUP > GENERAL > CONSOLE.
@@ -196,6 +199,7 @@ On macOS, use Cmd instead of Ctrl.
 | Ctrl+E | Open / close the multitrack editor |
 | Ctrl+L | Lock / unlock the surface and the touchscreen (as holding HOME alone) |
 | Ctrl+P | Save a screenshot of the display to `Documents/Sidecar/screens` |
+| Ctrl+Shift+P | Open the plugin overview (every FX slot's plugins in a window of its own) |
 
 Surface keys with a second function act on a long press (half a second) or a
 right-click. The multitrack editor has its own keys (space, R, L, M, S, Ctrl+Z...;

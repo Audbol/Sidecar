@@ -280,7 +280,7 @@ void showFxProcessorWindow (UiContext& ctx, juce::Component& over, int current, 
     auto& fx = ctx.engine.getFx();
     std::vector<popups::RackSlot> slots;
     std::vector<int> icons; // the users' WING icons (0: none)
-    for (int i = 0; i < kNumFx; ++i)
+    for (int i = 0; i < fx.getNumSlots(); ++i)
     {
         popups::RackSlot slot { "- FREE -", {}, {} };
         const Strip* user = nullptr;

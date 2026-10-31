@@ -5,6 +5,42 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+### Added
+
+- **More FX slots**: SETUP > GENERAL > CONSOLE > FX SLOTS sets 16 (WING, the
+  default), 32, 48 or 64. EFFECTS, the inserts' SELECT FX PROCESSOR window, the scene
+  SCOPE and GLOBAL SAFE windows, ROUTING's FX SEND group, custom controls and the plugin
+  latency list follow, in banks of 16. Fewer slots never drop a slot in use; a show
+  that uses more brings them along. The WING and MIDI remotes see FX 1-16.
+- **Plugin overview** (SETUP > PLUGINS > PLUGIN OVERVIEW, Ctrl+Shift+P): every plugin
+  of every FX slot in a window of its own, for a second screen during a show. CARDS
+  with a picture of each plugin's editor, or a compact LIST; each slot's state, the
+  strips using it, IN / OUT meters, CPU and latency; faults and bypass stand out. The
+  plugin windows take the pictures while they are open, CAPTURE ALL takes them all.
+  The window remembers its screen, size, layout, ON TOP and text size, and reopens at
+  start-up.
+- **Direct outs**: ROUTING > OUTPUTS has the source groups CH DIRECT (channels and
+  aux) and BUS DIRECT, each tapped PRE FADER or POST FADER, to any output or RECORDER
+  port. Saved with the show, recalled with ROUTING.
+
+- **Monkey tests**: a *Monkey* unit test (random FX slot, plugin, direct out, scene
+  and plugin overview operations while audio runs) and `SidecarMonkey`, which drives
+  the whole program's UI with random input on the virtual audio device and checks for
+  crashes, non-finite audio, stalls and audio dropouts. `SIDECAR_HOME` puts Sidecar's
+  settings and documents in another folder (test runs).
+
+### Fixed
+
+- An insert pointed at an FX slot past the ones in use some other way than a show or
+  scene (a channel preset, a copy, a remote) now brings that slot into use, so the
+  EFFECTS rack always shows every slot that runs (found by the monkey test).
+
+### Changed
+
+- The C ABI is version 24: 64 FX slots in `EngineControls`, `ld_engine_num_fx` /
+  `ld_engine_set_num_fx` / `ld_engine_fx_in_use`, 64-bit FX masks in `ScopeC`, and
+  `kDirectSourceBase` direct-out codes.
+
 ## [0.1.6] - beta
 
 The fourth round of matching Sidecar to a real WING, cross-checked against WING Edit

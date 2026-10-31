@@ -221,6 +221,8 @@ public:
             pluginHost->setSandboxOptions (sandbox);
         }
         engine = std::make_unique<MixerEngine>();
+        // SETUP > GENERAL > FX SLOTS, before the console is restored (a show using more raises it).
+        engine->getFx().setNumSlots (settings.getIntValue (ui::uiprefs::fxSlots, kWingFx));
         show = std::make_unique<Show> (*engine, *pluginHost);
 
         log.info ("Sidecar " + getApplicationVersion() + " starting, "

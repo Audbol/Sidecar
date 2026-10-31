@@ -5758,7 +5758,7 @@ int initializeParts (UiContext& ctx, const state::Scope& scope)
             ctx.engine.muteGroups &= ~(1u << i);
             ctx.engine.setMuteGroupName (i, {});
         }
-    for (int i = 0; i < kNumFx; ++i)
+    for (int i = 0; i < kMaxFx; ++i)
         if ((scope.fx >> i) & 1u)
             clearFx (ctx, i);
     return done;

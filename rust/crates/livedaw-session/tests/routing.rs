@@ -155,3 +155,39 @@ fn older_shows_load_with_their_routing_mapped() {
     assert_eq!(warnings.len(), 1, "{warnings:?}");
     assert!(warnings[0].contains("MTX 3") && warnings[0].contains("CH 1"), "{warnings:?}");
 }
+
+/// Direct outs (a channel, aux or bus PRE or POST FADER) on outputs come back
+/// with the show, and scenes recall them with ROUTING like any output patch.
+#[test]
+fn direct_outs_survive_a_show_and_recall_with_routing() {
+    use livedaw_engine::routing::DirectSource;
+    let engine = Engine::new(0);
+    engine.set_num_channels(4);
+    let pre = DirectSource { kind: StripKind::Channel, number: 3, side: 0, post: false }.code();
+    let post = DirectSource { kind: StripKind::Bus, number: 7, side: 1, post: true }.code();
+    let aux = DirectSource { kind: StripKind::Aux, number: 2, side: 0, post: true }.code();
+    assert!(engine.route_output_source(0, pre));
+    assert!(engine.route_output_source(1, post));
+    assert!(engine.route_output_source(9, aux));
+
+    let (e2, warnings) = round_trip(&engine);
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(e2.output_patch().get(0), pre);
+    assert_eq!(e2.output_patch().get(1), post);
+    assert_eq!(e2.output_patch().get(9), aux);
+    assert_eq!(
+        DirectSource::from_code(e2.output_patch().get(1)),
+        Some(DirectSource { kind: StripKind::Bus, number: 7, side: 1, post: true })
+    );
+
+    // A scene with ROUTING puts them back.
+    let mut show = Show::new();
+    show.add_scene(&engine, &mut NoPlugins, "Direct", -1);
+    show.scene_mut(0).unwrap().scope = section::ROUTING;
+    engine.clear_output(0);
+    engine.clear_output(1);
+    assert_eq!(engine.output_patch().patched().count(), 1);
+    show.recall_scene(&engine, &mut NoPlugins, 0);
+    assert_eq!(engine.output_patch().get(0), pre);
+    assert_eq!(engine.output_patch().get(1), post);
+}
