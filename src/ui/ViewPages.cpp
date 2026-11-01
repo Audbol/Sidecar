@@ -2744,7 +2744,7 @@ void ConfigViewPage::chooseField (int field, DropdownField& fieldKey)
     if (field == 2)
     {
         auto& fx = ctx.engine.getFx();
-        for (int i = 0; i < kNumFx; ++i)
+        for (int i = 0; i < fx.getNumSlots(); ++i)
             items.add ("FX " + juce::String (i + 1) + "  " + (fx.getModel (i) > ld::kFxExt ? models::model (models::Fx, fx.getModel (i)).name.toUpperCase() : juce::String ("-")));
         selected = fxSlot;
     }

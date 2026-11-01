@@ -238,3 +238,33 @@ fn monitor_processing_source_solo_and_source_tags_survive_a_show() {
     assert!(!o.paths[1].eq_on.load(Relaxed), "the defaults");
     assert_eq!(o.source_solo.load(Relaxed), 0);
 }
+
+#[test]
+fn a_show_with_more_fx_slots_brings_them_along() {
+    use livedaw_dsp::wing::{model_index, FX_MODELS};
+    use livedaw_engine::params::WING_FX;
+    let deesser = model_index(FX_MODELS, "DE-S2").unwrap();
+    let engine = Engine::new(0);
+    engine.set_num_channels(2);
+    engine.set_num_fx(40);
+    // A device in FX 30 and a channel insert assigned to FX 36.
+    assert!(engine.set_fx_model(29, deesser, true));
+    engine.controls.fx[29].mix.store(42.0);
+    engine.channel_at(1).unwrap().params.pre_insert.fx.store(35, Relaxed);
+
+    let other = round_trip(&engine);
+    assert_eq!(other.controls.fx[29].model_index(), deesser);
+    assert_eq!(other.controls.fx[29].mix.load(), 42.0);
+    assert_eq!(other.channel_at(1).unwrap().params.pre_insert.fx.load(Relaxed), 35);
+    // The slots in use come along; the empty ones above them don't.
+    assert_eq!(other.num_fx(), 36);
+
+    // An older show (16 slots) leaves a larger count alone.
+    let old = Engine::new(0);
+    let fresh = round_trip(&old);
+    assert_eq!(fresh.num_fx(), WING_FX);
+    fresh.set_num_fx(24);
+    let text = console::save_console(&old, &mut NoPlugins).to_document();
+    console::load_console(&fresh, &xml::parse(&text).unwrap(), &mut NoPlugins, false);
+    assert_eq!(fresh.num_fx(), 24);
+}

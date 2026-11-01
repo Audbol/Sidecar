@@ -195,7 +195,7 @@ public:
                         break;
                     case 3:
                     {
-                        const int slot = rng.nextInt (kNumFx);
+                        const int slot = rng.nextInt (kMaxFx);
                         if (rng.nextBool())
                             engine.getFx().setPlugin (slot, std::make_unique<FakePlugin> (0.5f));
                         else
@@ -205,7 +205,7 @@ public:
                         {
                             auto& s = *engine.getChannels()[(size_t) rng.nextInt ((int) engine.getChannels().size())];
                             s.params.preInsert.on = rng.nextBool();
-                            s.params.preInsert.fx = rng.nextInt (kNumFx);
+                            s.params.preInsert.fx = rng.nextInt (kMaxFx);
                             s.params.processOrder = rng.nextInt (24);
                             s.params.stereo = rng.nextBool();
                             s.sends[(size_t) rng.nextInt (128)].enabled = rng.nextBool();

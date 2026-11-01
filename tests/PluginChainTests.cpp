@@ -1,9 +1,23 @@
 #include "TestHelpers.h"
+#include "engine/DirectOut.h"
+#include "engine/Models.h"
 #include "engine/PluginChain.h"
 #include "engine/Show.h"
 #include "sandbox/TestPlugins.h"
 #include "ui/LookAndFeel.h"
 #include "ui/PluginChainView.h"
+#include "ui/PluginOverviewWindow.h"
+#include "ui/PluginPictures.h"
+
+#include <thread>
+
+#if JUCE_WINDOWS
+ #ifndef NOMINMAX
+  #define NOMINMAX
+ #endif
+ #include <windows.h>
+ #undef small // (rpcndr.h)
+#endif
 
 using namespace livedaw;
 using livedaw::sandbox::TestPluginFormat;
@@ -176,6 +190,36 @@ public:
                 fx.removeFromChain (4, 0);
             expect (! fx.hasPlugin (4)); // the last one empties the slot
             engine.getGarbage().collectAllNow();
+        }
+
+        beginTest ("More FX slots than the WING's: a plugin in FX 40 runs, and keeps 40 slots in use");
+        {
+            MixerEngine engine (0);
+            OfflineRig rig (engine, 1, 2);
+            engine.outputProtection = false;
+            test::setChannels (engine, 1);
+            auto& fx = engine.getFx();
+            expectEquals (fx.getNumSlots(), kWingFx);
+            expectEquals (fx.setNumSlots (48), 48);
+            expectEquals (fx.setNumSlots (1000), kMaxFx);
+
+            auto& strip = *engine.getChannels()[0];
+            strip.params.preInsert.on = true;
+            strip.params.preInsert.fx = 39;
+            fx.setPlugin (39, std::make_unique<AffinePlugin> ("Double", 2.0f, 0.0f));
+            expect (fx.hasPlugin (39));
+            expectEquals (fx.describe (39), juce::String ("FX 40: Double"));
+            rig.setInput (0, 0.25f);
+            rig.run (4);
+            expectWithinAbsoluteError (rig.out (0), 0.5f * kCentre, 1.0e-5f);
+
+            expect (fx.isInUse (39));
+            expectEquals (fx.setNumSlots (kWingFx), 40);
+            fx.setPlugin (39, nullptr);
+            engine.getGarbage().collectAllNow();
+            expectEquals (fx.setNumSlots (kWingFx), 40); // the insert still points at it
+            strip.params.preInsert.fx = -1;
+            expectEquals (fx.setNumSlots (kWingFx), kWingFx);
         }
 
         beginTest ("The latency is the sum of the members that aren't bypassed");
@@ -867,3 +911,509 @@ public:
 };
 
 static PluginChainZoomTests pluginChainZoomTests;
+
+
+namespace
+{
+    /** A window with four coloured quadrants (red, green, blue, white) to picture. */
+    struct Quadrants final : public juce::Component
+    {
+        void paint (juce::Graphics& g) override
+        {
+            const auto b = getLocalBounds();
+            const int w = b.getWidth() / 2, h = b.getHeight() / 2;
+            g.setColour (juce::Colours::red);
+            g.fillRect (0, 0, w, h);
+            g.setColour (juce::Colours::lime);
+            g.fillRect (w, 0, b.getWidth() - w, h);
+            g.setColour (juce::Colours::blue);
+            g.fillRect (0, h, w, b.getHeight() - h);
+            g.setColour (juce::Colours::white);
+            g.fillRect (w, h, b.getWidth() - w, b.getHeight() - h);
+        }
+    };
+
+    /** The plugin overview's dependencies, with a settings file of its own. */
+    struct OverviewRig
+    {
+        explicit OverviewRig (MixerEngine& e) : engine (e), show (e, host), meters (e), ctx (e, host, show, log, devices, settings, meters)
+        {
+            ctx.pluginPictures = &pictures;
+            ctx.openPluginEditor = [this] (int slot) { opened = slot; };
+        }
+        ~OverviewRig() { settingsFile.deleteFile(); }
+
+        MixerEngine& engine;
+        PluginHost host { nullptr };
+        Show show;
+        EventLog log;
+        juce::AudioDeviceManager devices;
+        juce::File settingsFile = juce::File::createTempFile (".settings");
+        juce::PropertiesFile settings { settingsFile, {} };
+        ui::MeterBank meters;
+        ui::PluginPictures pictures;
+        ui::UiContext ctx;
+        int opened = -1;
+    };
+
+    /** True if `image` has a pixel of `c` (to within `tolerance` per channel) in `area`. */
+    bool hasColour (const juce::Image& image, juce::Colour c, juce::Rectangle<int> area = {}, int tolerance = 6)
+    {
+        if (area.isEmpty())
+            area = image.getBounds();
+        area = area.getIntersection (image.getBounds());
+        for (int y = area.getY(); y < area.getBottom(); y += 2)
+            for (int x = area.getX(); x < area.getRight(); x += 2)
+            {
+                const auto p = image.getPixelAt (x, y);
+                if (std::abs (p.getRed() - c.getRed()) <= tolerance && std::abs (p.getGreen() - c.getGreen()) <= tolerance
+                    && std::abs (p.getBlue() - c.getBlue()) <= tolerance)
+                    return true;
+            }
+        return false;
+    }
+
+    void saveSnapshot (const juce::Image& image, const juce::String& name)
+    {
+        // LIVEDAW_SNAPSHOT_DIR: where to put the overview's pictures to look at them.
+        const auto dir = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SNAPSHOT_DIR", {});
+        if (dir.isEmpty())
+            return;
+        juce::FileOutputStream out (juce::File (dir).getChildFile (name));
+        out.setPosition (0);
+        out.truncate();
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+} // namespace
+
+/** The plugin overview window and the plugins' pictures. */
+class PluginOverviewTests final : public juce::UnitTest
+{
+public:
+    PluginOverviewTests() : juce::UnitTest ("Plugin overview", "LiveDAW") {}
+
+    void runTest() override
+    {
+        beginTest ("A picture of an editor shows what it draws on screen, scaled down to the width asked for");
+        {
+            juce::DocumentWindow window ("Picture test", juce::Colours::black, 0);
+            window.setUsingNativeTitleBar (true);
+            Quadrants quadrants;
+            quadrants.setSize (400, 200);
+            window.setContentNonOwned (&quadrants, true);
+            window.setTopLeftPosition (60, 60);
+            window.setVisible (true);
+            quadrants.repaint();
+            test::pumpMessages (300);
+
+            const auto image = ui::PluginPictures::grab (quadrants, 200);
+            expect (image.isValid());
+            expectEquals (image.getWidth(), 200);
+            expectEquals (image.getHeight(), 100);
+            const int w = image.getWidth(), h = image.getHeight();
+            expect (hasColour (image, juce::Colours::red, { 0, 0, w / 2 - 4, h / 2 - 4 }));
+            expect (hasColour (image, juce::Colours::lime, { w / 2 + 4, 0, w / 2 - 4, h / 2 - 4 }));
+            expect (hasColour (image, juce::Colours::blue, { 0, h / 2 + 4, w / 2 - 4, h / 2 - 4 }));
+            expect (hasColour (image, juce::Colours::white, { w / 2 + 4, h / 2 + 4, w / 2 - 4, h / 2 - 4 }));
+
+            // Only what shows: a hidden or minimised editor gives no picture.
+            window.setVisible (false);
+            expect (ui::PluginPictures::grab (quadrants).isNull());
+        }
+
+       #if JUCE_WINDOWS
+        beginTest ("A native plugin view (a child window of its own) is in the picture");
+        {
+            // What a VST3 editor is on Windows: a child window JUCE doesn't draw. A
+            // component snapshot shows black there; the window's own drawing shows it.
+            static const auto* className = L"SidecarPictureTestView";
+            WNDCLASSEXW wc {};
+            wc.cbSize = sizeof (wc);
+            wc.lpfnWndProc = DefWindowProcW;
+            wc.hInstance = GetModuleHandleW (nullptr);
+            wc.hbrBackground = CreateSolidBrush (RGB (255, 0, 255));
+            wc.lpszClassName = className;
+            RegisterClassExW (&wc);
+
+            juce::DocumentWindow window ("Native picture test", juce::Colours::black, 0);
+            window.setUsingNativeTitleBar (true);
+            juce::HWNDComponent nativeView;
+            nativeView.setSize (300, 160);
+            window.setContentNonOwned (&nativeView, true);
+            window.setTopLeftPosition (80, 80);
+            window.setVisible (true);
+            auto* parent = static_cast<HWND> (window.getPeer()->getNativeHandle());
+            auto* child = CreateWindowExW (0, className, L"", WS_CHILD | WS_VISIBLE, 0, 0, 300, 160, parent, nullptr, wc.hInstance, nullptr);
+            expect (child != nullptr);
+            nativeView.setHWND (child);
+            nativeView.updateHWNDBounds();
+            test::pumpMessages (300);
+
+            const auto image = ui::PluginPictures::grab (nativeView);
+            expect (image.isValid());
+            expect (hasColour (image, juce::Colours::magenta, image.getBounds().reduced (10)));
+            expect (! hasColour (nativeView.createComponentSnapshot (nativeView.getLocalBounds()), juce::Colours::magenta));
+
+            nativeView.setHWND (nullptr);
+            DestroyWindow (child);
+            DeleteObject (wc.hbrBackground);
+            UnregisterClassW (className, wc.hInstance);
+        }
+       #endif
+
+        beginTest ("Pictures are kept per plugin, never shown for another plugin at the same address, and pruned");
+        {
+            ui::PluginPictures pictures;
+            AffinePlugin a ("Alpha", 1.0f, 0.0f), b ("Beta", 1.0f, 0.0f);
+            juce::Image red (juce::Image::ARGB, 8, 8, true);
+            red.clear (red.getBounds(), juce::Colours::red);
+            const int before = pictures.getGeneration();
+            pictures.store (a, red);
+            pictures.store (b, {}); // an empty picture is ignored
+            expect (pictures.getGeneration() > before);
+            expectEquals (pictures.size(), 1);
+            expect (pictures.find (&a) != nullptr && pictures.find (&b) == nullptr);
+            expectEquals (pictures.find (&a)->name, juce::String ("Alpha"));
+
+            // Only the plugins still in a slot keep theirs.
+            AffinePlugin c ("Gamma", 1.0f, 0.0f);
+            pictures.store (c, red);
+            pictures.retainOnly ({ &c });
+            expect (pictures.find (&a) == nullptr && pictures.find (&c) != nullptr);
+            pictures.forget (&c);
+            expectEquals (pictures.size(), 0);
+        }
+
+        beginTest ("The overview opens in a window of its own, shows every slot's plugins with their pictures and remembers that it was open");
+        {
+            MixerEngine engine (0);
+            OfflineRig rig (engine, 2, 2);
+            test::setChannels (engine, 2);
+            OverviewRig ui (engine);
+
+            auto& fx = engine.getFx();
+            fx.setNumSlots (48);
+            fx.setPlugin (2, std::make_unique<AffinePlugin> ("Double", 2.0f, 0.0f));
+            expect (fx.addToChain (2, std::make_unique<AffinePlugin> ("Offset", 1.0f, 0.5f)));
+            fx.setChainMemberBypassed (2, 1, true);
+            fx.setPlugin (39, std::make_unique<AffinePlugin> ("Far away", 1.0f, 0.0f));
+            fx.setPlugin (5, std::make_unique<AffinePlugin> ("Bypassed slot", 1.0f, 0.0f));
+            fx.params (5).bypass = true;
+            engine.getChannels()[0]->params.preInsert.on = true;
+            engine.getChannels()[0]->params.preInsert.fx = 2;
+            engine.getChannels()[1]->params.preInsert.on = true;
+            engine.getChannels()[1]->params.preInsert.fx = 5;
+            rig.setInput (0, 0.25f);
+            rig.run (4);
+
+            // A picture of FX 3's first plugin: magenta.
+            juce::Image magenta (juce::Image::ARGB, 320, 180, true);
+            magenta.clear (magenta.getBounds(), juce::Colours::magenta);
+            ui.pictures.store (*fx.getChainMember (2, 0), magenta);
+
+            {
+                ui::PluginOverviewWindow window (ui.ctx, [] {});
+                expect (window.isOnDesktop());
+                expect (ui.settings.getBoolValue (ui::PluginOverviewWindow::openKey, false));
+                expect (window.getShownSlots() == std::vector<int> ({ 2, 5, 39 }));
+                auto* content = window.getContentComponent();
+                expect (content != nullptr && content->getWidth() > 0);
+
+                window.setLayout (ui::PluginOverviewWindow::Layout::cards);
+                const auto cards = content->createComponentSnapshot (content->getLocalBounds());
+                saveSnapshot (cards, "plugin-overview-cards.png");
+                expect (hasColour (cards, ui::Colours::green));   // FX 3 runs
+                expect (hasColour (cards, ui::Colours::chipOff)); // FX 6 bypassed, FX 40 not used
+                expect (hasColour (cards, juce::Colours::magenta)); // FX 3's picture
+
+                window.setLayout (ui::PluginOverviewWindow::Layout::list);
+                expect (ui.settings.getValue ("pluginOverview.layout") == "list");
+                const auto list = content->createComponentSnapshot (content->getLocalBounds());
+                saveSnapshot (list, "plugin-overview-list.png");
+                expect (hasColour (list, juce::Colours::magenta));
+
+                // A slot emptied goes from the overview at its next look.
+                fx.setPlugin (39, nullptr);
+                test::pumpMessages (200);
+                expect (window.getShownSlots() == std::vector<int> ({ 2, 5 }));
+
+                window.closeButtonPressed();
+                expect (! ui.settings.getBoolValue (ui::PluginOverviewWindow::openKey, true));
+            }
+            // A new overview opens with the layout chosen last time.
+            {
+                ui::PluginOverviewWindow window (ui.ctx, [] {});
+                expect (window.getLayout() == ui::PluginOverviewWindow::Layout::list);
+            }
+            fx.setPlugin (2, nullptr);
+            fx.setPlugin (5, nullptr);
+            engine.getGarbage().collectAllNow();
+        }
+
+        beginTest ("The overview with nothing loaded says so");
+        {
+            MixerEngine engine (0);
+            OverviewRig ui (engine);
+            ui::PluginOverviewWindow window (ui.ctx, [] {});
+            expect (window.getShownSlots().empty());
+            const auto image = window.getContentComponent()->createComponentSnapshot (window.getContentComponent()->getLocalBounds());
+            saveSnapshot (image, "plugin-overview-empty.png");
+            expect (image.isValid());
+        }
+    }
+};
+
+static PluginOverviewTests pluginOverviewTests;
+
+/** Monkey test: random operations on the FX slots (more of them, plugins, chains,
+    devices, faults), the inserts, the direct outs and RECORDER taps, scenes and
+    shows, with the audio running on its own thread and the plugin overview open
+    and clicked, resized and drawn at random. It checks the audio stays finite and
+    the rules hold: 16 to 64 slots, none in use past them, only real direct outs
+    taken, the overview showing the slots that hold plugins.
+    LIVEDAW_MONKEY_SEED / LIVEDAW_MONKEY_SECONDS replay a seed or run longer. */
+class MonkeyTests final : public juce::UnitTest
+{
+public:
+    MonkeyTests() : juce::UnitTest ("Monkey", "LiveDAW") {}
+
+    void runTest() override
+    {
+        const auto seedText = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_MONKEY_SEED", {});
+        const juce::int64 seed = seedText.isNotEmpty() ? seedText.getLargeIntValue() : 20261031;
+        const int seconds = juce::jlimit (1, 3600, juce::SystemStats::getEnvironmentVariable ("LIVEDAW_MONKEY_SECONDS", "4").getIntValue());
+        beginTest ("Monkey: FX slots, plugins, direct outs, scenes and the plugin overview at random while audio runs (seed "
+                   + juce::String (seed) + ", " + juce::String (seconds) + " s)");
+
+        MixerEngine engine (2);
+        OfflineRig rig (engine, 8, 8);
+        for (int i = 0; i < 8; ++i)
+            rig.setInput (i, 0.05f * static_cast<float> (i + 1));
+        test::setChannels (engine, 8);
+        OverviewRig ui (engine);
+        int opened = -1;
+        ui.ctx.openPluginEditor = [&opened] (int slot) { opened = slot; };
+        ui.show.addScene ("Start");
+        engine.getGarbage().setDeviceRunning (true);
+
+        std::atomic<bool> running { true }, notFinite { false };
+        std::atomic<int> blocks { 0 };
+        std::thread audio ([&]
+        {
+            std::vector<const float*> in;
+            std::vector<float*> out;
+            for (auto& v : rig.inputs)
+                in.push_back (v.data());
+            for (auto& v : rig.outputs)
+                out.push_back (v.data());
+            while (running.load())
+            {
+                engine.processBlock (in.data(), (int) in.size(), out.data(), (int) out.size(), OfflineRig::kBlock);
+                for (auto& o : rig.outputs)
+                    for (float x : o)
+                        if (! std::isfinite (x))
+                            notFinite = true;
+                ++blocks;
+            }
+        });
+
+        auto& fx = engine.getFx();
+        juce::Random rng (seed);
+        auto window = std::make_unique<ui::PluginOverviewWindow> (ui.ctx, [] {});
+        auto* content = window->getContentComponent();
+        juce::Component* body = nullptr;
+        std::vector<juce::Button*> keys;
+        for (auto* c : content->getChildren())
+        {
+            if (auto* b = dynamic_cast<juce::Button*> (c))
+                keys.push_back (b);
+            if (auto* v = dynamic_cast<juce::Viewport*> (c))
+                body = v->getViewedComponent();
+        }
+        expect (body != nullptr && keys.size() >= 6);
+
+        auto randomPlugin = [&rng]
+        {
+            const int r = rng.nextInt (20);
+            const auto mode = r == 0 ? FakePlugin::Mode::EmitNaN : r == 1 ? FakePlugin::Mode::Throw : FakePlugin::Mode::Gain;
+            return std::make_unique<FakePlugin> (rng.nextFloat() * 1.5f, mode, "monkey-" + juce::String (rng.nextInt (6)));
+        };
+        auto randomStrip = [&]() -> Strip*
+        {
+            const auto kind = static_cast<StripKind> (rng.nextInt (kNumStripKinds));
+            auto& strips = engine.getStrips (kind);
+            return strips.empty() ? nullptr : strips[(size_t) rng.nextInt ((int) strips.size())].get();
+        };
+        auto randomDirect = [&rng]
+        {
+            // Mostly direct outs (mains and matrices have none: refused), some junk.
+            if (rng.nextInt (8) == 0)
+                return rng.nextInt();
+            return DirectOut { static_cast<StripKind> (rng.nextInt (kNumStripKinds)), 1 + rng.nextInt (70), rng.nextInt (2), rng.nextBool() }.code();
+        };
+        auto click = [] (juce::Component& c, juce::Point<int> p)
+        {
+            auto source = juce::Desktop::getInstance().getMainMouseSource();
+            const auto now = juce::Time::getCurrentTime();
+            const juce::MouseEvent e (source, p.toFloat(), {}, juce::MouseInputSource::defaultPressure, 0.0f, 0.0f, 0.0f, 0.0f, &c, &c, now, p.toFloat(), now,
+                                      1, false);
+            c.mouseMove (e);
+            c.mouseUp (e);
+        };
+        const int numModels = (int) models::table (models::Fx).size();
+
+        int operations = 0, ruleBreaks = 0, overviewMismatches = 0, refusedJunk = 0, lastOp = -1;
+        auto breakRule = [&] (const juce::String& what)
+        {
+            if (ruleBreaks++ < 5)
+                logMessage ("RULE BROKEN after operation " + juce::String (operations) + " (kind " + juce::String (lastOp) + "): " + what);
+        };
+        const auto end = juce::Time::getMillisecondCounter() + (juce::uint32) seconds * 1000u;
+        while (juce::Time::getMillisecondCounter() < end)
+        {
+            const int slot = rng.nextInt (kMaxFx);
+            lastOp = rng.nextInt (14);
+            switch (lastOp)
+            {
+                case 0: fx.setNumSlots (rng.nextInt (90)); break;
+                case 1: fx.setPlugin (slot, rng.nextInt (4) == 0 ? nullptr : randomPlugin()); break;
+                case 2:
+                    if (fx.hasPlugin (slot))
+                    {
+                        const int n = fx.getNumChainMembers (slot);
+                        switch (rng.nextInt (4))
+                        {
+                            case 0: fx.addToChain (slot, randomPlugin(), rng.nextInt (n + 2) - 1); break;
+                            case 1: fx.removeFromChain (slot, rng.nextInt (n)); break;
+                            case 2: fx.moveInChain (slot, rng.nextInt (n), rng.nextInt (n)); break;
+                            default: fx.setChainMemberBypassed (slot, rng.nextInt (n), rng.nextBool()); break;
+                        }
+                    }
+                    break;
+                case 3:
+                {
+                    const int model = rng.nextInt (numModels);
+                    if (model != ld::kFxExt && FxSlots::isAllowed (model, slot))
+                        fx.setModel (slot, model);
+                    break;
+                }
+                case 4:
+                    if (auto* s = randomStrip())
+                    {
+                        auto& ins = rng.nextBool() ? s->params.preInsert : s->params.postInsert;
+                        ins.on = rng.nextBool();
+                        ins.fx = rng.nextInt (kMaxFx + 1) - 1;
+                    }
+                    break;
+                case 5:
+                {
+                    const int port = rng.nextInt (8), code = randomDirect();
+                    const bool ok = engine.routeOutputSource (port, code);
+                    if (! ok && code >= ld::kDirectSourceBase)
+                        ++refusedJunk;
+                    if (code >= ld::kDirectSourceBase && ok != DirectOut::isDirectOut (code))
+                        breakRule ("code " + juce::String::toHexString (code) + (ok ? " taken" : " refused")); // only real direct outs are taken
+                    break;
+                }
+                case 6:
+                    engine.getUsbRecorder().setTap (rng.nextInt (UsbRecorder::kNumChannels), UsbRecorder::Tap::fromCode (randomDirect()));
+                    break;
+                case 7:
+                    if (rng.nextBool())
+                        test::setChannels (engine, rng.nextInt (24));
+                    else if (rng.nextBool())
+                        engine.addBus();
+                    else if (engine.getBuses().size() > (size_t) kWingBuses)
+                        engine.removeStrip (engine.getBuses().back().get());
+                    break;
+                case 8:
+                    switch (rng.nextInt (3))
+                    {
+                        case 0: ui.show.addScene ("M" + juce::String (operations)); break;
+                        case 1: ui.show.recallScene (rng.nextInt (juce::jmax (1, ui.show.getNumScenes()))); break;
+                        default:
+                        {
+                            auto xml = ui.show.toXml();
+                            ui.show.loadFromXml (*xml, false);
+                            break;
+                        }
+                    }
+                    break;
+                case 9: fx.clearFlags (slot); break;
+                case 10:
+                    // Pictures come and go.
+                    if (fx.hasPlugin (slot) && rng.nextBool())
+                    {
+                        juce::Image picture (juce::Image::ARGB, 40 + rng.nextInt (600), 20 + rng.nextInt (400), true);
+                        picture.clear (picture.getBounds(), juce::Colour ((juce::uint32) rng.nextInt() | 0xff000000u));
+                        ui.pictures.store (*fx.getChainMember (slot, rng.nextInt (fx.getNumChainMembers (slot))), picture);
+                    }
+                    else
+                    {
+                        std::vector<const juce::AudioProcessor*> live;
+                        for (int s = 0; s < kMaxFx; ++s)
+                            for (int i = 0; i < fx.getNumChainMembers (s); ++i)
+                                live.push_back (fx.getChainMember (s, i));
+                        ui.pictures.retainOnly (live);
+                    }
+                    break;
+                case 11:
+                    // The overview: its keys, its slots, its size, its layout.
+                    switch (rng.nextInt (4))
+                    {
+                        case 0: keys[(size_t) rng.nextInt ((int) keys.size())]->triggerClick(); break;
+                        case 1: click (*body, { rng.nextInt (juce::jmax (1, body->getWidth())), rng.nextInt (juce::jmax (1, body->getHeight())) }); break;
+                        case 2: window->setSize (300 + rng.nextInt (1800), 150 + rng.nextInt (1100)); break;
+                        default: window->setLayout (rng.nextBool() ? ui::PluginOverviewWindow::Layout::cards : ui::PluginOverviewWindow::Layout::list); break;
+                    }
+                    break;
+                case 12:
+                    // Draw it as it is now (every paint path, any state).
+                    if (const auto image = content->createComponentSnapshot (content->getLocalBounds()); ! image.isValid())
+                        breakRule ("the overview didn't draw");
+                    break;
+                default: test::pumpMessages (rng.nextInt (30)); break; // timers: the overview polls, keys click
+            }
+            engine.getGarbage().collect();
+            ++operations;
+
+            // The rules.
+            const int n = fx.getNumSlots();
+            if (n < kWingFx || n > kMaxFx)
+                breakRule (juce::String (n) + " slots");
+            for (int s = n; s < kMaxFx; ++s)
+                if (fx.isInUse (s))
+                    breakRule ("FX " + juce::String (s + 1) + " in use past " + juce::String (n) + " slots");
+            if (operations % 250 == 0)
+            {
+                test::pumpMessages (120); // a poll or two
+                std::vector<int> withPlugins;
+                for (int s = 0; s < kMaxFx; ++s)
+                    if (fx.hasPlugin (s))
+                        withPlugins.push_back (s);
+                if (window->getShownSlots() != withPlugins)
+                    ++overviewMismatches;
+            }
+        }
+
+        running = false;
+        audio.join();
+        window.reset();
+        test::pumpMessages (50);
+        for (int s = 0; s < kMaxFx; ++s)
+            fx.setPlugin (s, nullptr);
+        engine.getGarbage().setDeviceRunning (false);
+        engine.getGarbage().collectAllNow();
+
+        logMessage (juce::String (operations) + " random operations during " + juce::String (blocks.load()) + " audio blocks; "
+                    + juce::String (refusedJunk) + " codes that are no direct out refused; the overview opened " + (opened >= 0 ? "FX " + juce::String (opened + 1) : juce::String ("no slot")) + " last");
+        expect (operations > 200, "too few operations to mean much");
+        expect (blocks.load() > 100);
+        expect (! notFinite.load(), "the outputs stay finite");
+        expectEquals (ruleBreaks, 0);
+        expectEquals (overviewMismatches, 0);
+        expectEquals ((int) engine.getGarbage().numPending(), 0);
+    }
+};
+
+static MonkeyTests monkeyTests;

@@ -208,10 +208,8 @@ juce_add_gui_app(LiveDAW
     MICROPHONE_PERMISSION_ENABLED TRUE
     MICROPHONE_PERMISSION_TEXT "Sidecar needs access to your audio inputs to mix them.")
 
-target_sources(LiveDAW PRIVATE
-    src/Main.cpp
-    ${LIVEDAW_ENGINE_SOURCES}
-    ${LIVEDAW_DAW_SOURCES}
+# The UI (the app and the monkey test, SidecarMonkey, build it).
+set(LIVEDAW_UI_SOURCES
     src/ui/LookAndFeel.cpp
     src/ui/Icons.cpp
     src/ui/Knobs.cpp
@@ -224,6 +222,8 @@ target_sources(LiveDAW PRIVATE
     src/ui/PluginMenu.cpp
     src/ui/PluginChainView.cpp
     src/ui/PluginChainWindow.cpp
+    src/ui/PluginOverviewWindow.cpp
+    src/ui/PluginPictures.cpp
     src/ui/FaderStrip.cpp
     src/ui/Scribble.cpp
     src/ui/FaderSection.cpp
@@ -256,10 +256,11 @@ target_sources(LiveDAW PRIVATE
     src/ui/FourChannelSection.cpp
     src/ui/CompactSection.cpp
     src/ui/WebMirror.cpp
-    src/ui/MainComponent.cpp)
+    src/ui/MainComponent.cpp
+    src/ui/MidiRemoteUi.cpp
+    src/ui/DawSurface.cpp)
 
-# MIDI remote control and DAW remote control: the UI side.
-target_sources(LiveDAW PRIVATE src/ui/MidiRemoteUi.cpp src/ui/DawSurface.cpp)
+target_sources(LiveDAW PRIVATE src/Main.cpp ${LIVEDAW_ENGINE_SOURCES} ${LIVEDAW_DAW_SOURCES} ${LIVEDAW_UI_SOURCES})
 
 livedaw_configure_juce_target(LiveDAW)
 
@@ -354,6 +355,8 @@ if(LIVEDAW_BUILD_TESTS)
         tests/PluginHostingTests.cpp
         tests/PluginChainTests.cpp
         src/ui/PluginChainView.cpp
+        src/ui/PluginOverviewWindow.cpp
+        src/ui/PluginPictures.cpp
         src/ui/LookAndFeel.cpp
         tests/LayerTests.cpp
         tests/DeviceTests.cpp
@@ -402,4 +405,20 @@ if(LIVEDAW_BUILD_TESTS)
         tests/SurfaceTests.cpp
         src/ui/Scribble.cpp
         src/ui/MeterComponent.cpp)
+
+    # The monkey test of the whole program (tests/MonkeyMain.cpp): the real UI on the
+    # virtual audio device, sent random input for a while. Run by hand (it opens
+    # windows): SidecarMonkey --seed N --seconds S.
+    juce_add_gui_app(SidecarMonkey
+        PRODUCT_NAME "SidecarMonkey"
+        COMPANY_NAME "Sidecar"
+        VERSION ${PROJECT_VERSION})
+    target_sources(SidecarMonkey PRIVATE
+        tests/MonkeyMain.cpp
+        src/sandbox/TestPlugins.cpp
+        ${LIVEDAW_ENGINE_SOURCES}
+        ${LIVEDAW_DAW_SOURCES}
+        ${LIVEDAW_UI_SOURCES})
+    livedaw_configure_juce_target(SidecarMonkey)
+    target_link_libraries(SidecarMonkey PRIVATE LiveDAWResources)
 endif()

@@ -1,4 +1,5 @@
 #include "TestHelpers.h"
+#include "engine/DirectOut.h"
 #include "ui/RoutingGroups.h"
 #include "ui/UiContext.h"
 
@@ -175,7 +176,7 @@ public:
             expectEquals (names (routing::sourceMenu (false)),
                           juce::String ("LOCAL IN,AUX IN,AES/EBU IN,OSCILLATOR,AES50 A,AES50 B,AES50 C,ST CONNECT,USB AUDIO,WLIVE PLAY,DANTE,"
                                         "USB PLAYER,USER SIGNAL"));
-            expect (names (routing::sourceMenu (true, true)).endsWith ("USER SIGNAL,MONITOR,FX SEND"));
+            expect (names (routing::sourceMenu (true, true)).endsWith ("USER SIGNAL,MONITOR,FX SEND,CH DIRECT,BUS DIRECT"));
             expectEquals (names (routing::outputMenu()),
                           juce::String ("LOCAL OUT,AUX OUT,AES/EBU OUT,AES50 A,AES50 B,AES50 C,ST CONNECT,USB AUDIO,WLIVE REC,DANTE,RECORDER"));
             expect (routing::sourceMenu (true).spacedRows == std::vector<int> { 3 });
@@ -285,6 +286,72 @@ public:
                 expectEquals (none.clamp (12.0f), 0.0f);
             }
             expect (! MixerEngine::sourceGainRange (-1).hasGain());
+        }
+
+        beginTest ("Direct outs: codes for channels, aux and buses, the same as the engine's");
+        {
+            for (auto kind : { StripKind::Channel, StripKind::Aux, StripKind::Bus })
+                for (const DirectOut d : { DirectOut { kind, 1, 0, false }, DirectOut { kind, 40, 1, true }, DirectOut { kind, DirectOut::kNumbers, 1, false } })
+                {
+                    const int code = d.code();
+                    expect (code >= ld::kDirectSourceBase);
+                    expect (DirectOut::fromCode (code) == d);
+                    expect (DirectOut::isDirectOut (code));
+                }
+            expectEquals (DirectOut { StripKind::Main, 1, 0, false }.code(), -1);
+            expectEquals (DirectOut { StripKind::Channel, 0, 0, false }.code(), -1);
+            expect (! DirectOut::isDirectOut (5));
+            expect (! DirectOut::isDirectOut (ld::kUsbTapStripBase));
+
+            // A RECORDER port takes one as a tap of its own kind.
+            const int code = DirectOut { StripKind::Bus, 3, 1, true }.code();
+            const auto tap = UsbRecorder::Tap::fromCode (code);
+            expect (tap.kind == UsbRecorder::Tap::Kind::Direct);
+            expectEquals (tap.code(), code);
+            expect (UsbRecorder::Tap::fromCode (ld::kUsbTapStripBase + 3).kind == UsbRecorder::Tap::Kind::Strip);
+        }
+
+        beginTest ("Direct outs on outputs: a channel PRE FADER and POST FADER, a bus side, what the engine plays");
+        {
+            MixerEngine engine (0);
+            OfflineRig rig (engine, 2, 8);
+            engine.outputProtection = false;
+            test::setChannels (engine, 2);
+            auto& ch1 = *engine.getChannels()[0];
+            ch1.params.faderDb = -6.0f;
+            ch1.params.mains[0].on = false;
+            rig.setInput (0, 0.25f);
+
+            const auto pre = DirectOut { StripKind::Channel, 1, 0, false }, post = DirectOut { StripKind::Channel, 1, 0, true };
+            expect (engine.routeOutputSource (2, pre.code()));
+            expect (engine.routeOutputSource (3, post.code()));
+            expectEquals (engine.getOutputSource (2), pre.code());
+            rig.run (20);
+            expectWithinAbsoluteError (rig.out (2), 0.25f, 1.0e-5f);
+            expectWithinAbsoluteError (rig.out (3), 0.25f * juce::Decibels::decibelsToGain (-6.0f), 1.0e-4f);
+
+            // Muted: POST goes quiet, PRE plays on.
+            ch1.params.mute = true;
+            rig.run (20);
+            expectWithinAbsoluteError (rig.out (3), 0.0f, 1.0e-6f);
+            expectWithinAbsoluteError (rig.out (2), 0.25f, 1.0e-5f);
+            ch1.params.mute = false;
+
+            // Bus 1 R, fed by CH 1 at unity through a send panned hard right.
+            auto& send = ch1.sends[0];
+            send.enabled = true;
+            send.levelDb = 0.0f;
+            send.panLink = false;
+            send.pan = 100.0f;
+            expect (engine.routeOutputSource (4, DirectOut { StripKind::Bus, 1, 1, true }.code()));
+            rig.run (20);
+            expect (std::abs (rig.out (4)) > 0.2f);
+
+            // Cleared, the output is silent; a code that is no direct out is refused.
+            engine.clearOutput (2);
+            rig.run (4);
+            expectWithinAbsoluteError (rig.out (2), 0.0f, 0.0f);
+            expect (! engine.routeOutputSource (5, ld::kDirectSourceBase + (int) StripKind::Main * DirectOut::kNumbers * 4));
         }
     }
 };

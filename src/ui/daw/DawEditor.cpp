@@ -1,4 +1,5 @@
 #include "ui/daw/DawEditor.h"
+#include "engine/AppPaths.h"
 
 namespace livedaw::ui
 {
@@ -229,7 +230,7 @@ namespace dawfiles
         m.addSubMenu ("Open recent", recent, recent.getNumItems() > 0);
         m.addItem ("Save   (Ctrl+S)", [parent, &session] { save (parent, session); });
         m.addItem ("Save as...   (Ctrl+Shift+S)", [parent, &session] { saveAs (parent, session); });
-        m.addItem ("Show the project folder", session.getProject().hasFolder(), false, [&session] { session.getProject().getFolder().revealToUser(); });
+        m.addItem ("Show the project folder", session.getProject().hasFolder(), false, [&session] { paths::reveal (session.getProject().getFolder()); });
         m.addSeparator();
         m.addItem ("Import audio...   (Ctrl+I)", [parent, &session, &chooser] { importWithChooser (parent, session, chooser); });
         m.addItem ("Import a folder (X32 / WING SD card session)...", [parent, &session, &chooser] { importFolderWithChooser (parent, session, chooser); });
@@ -260,7 +261,7 @@ namespace dawfiles
         {
             const auto f = session.getProjectsFolder();
             if (f.isDirectory() || (! session.hasCustomProjectsFolder() && f.createDirectory()))
-                f.revealToUser();
+                paths::reveal (f);
         });
         m.addSubMenu ("Projects folder: " + session.getProjectsFolder().getFullPathName(), folders);
         m.addSeparator();

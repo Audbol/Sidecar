@@ -1000,6 +1000,13 @@ bool PluginChainView::isCardVisible (int index) const
     return juce::isPositiveAndBelow (index, getNumCards()) && cards[(size_t) index]->isVisible();
 }
 
+void PluginChainView::forEachShownEditor (const std::function<void (juce::AudioProcessor&, juce::Component&)>& f) const
+{
+    for (auto& card : cards)
+        if (card->isVisible() && ! card->collapsed && card->editor != nullptr && card->editor->isShowing())
+            f (card->plugin, *card->editor);
+}
+
 juce::String PluginChainView::signature() const
 {
     juce::String s;

@@ -7,7 +7,7 @@
 mod common;
 use common::{set_channels, unity_console};
 use livedaw_engine::params::StripKind;
-use livedaw_engine::routing::{matrix_direct, strip_source_input};
+use livedaw_engine::routing::{matrix_direct, strip_source_input, DirectSource, DIRECT_SOURCE_BASE};
 use livedaw_engine::sources::{source_mode, user_side, NUM_USER_SIGNALS, OSC_SOURCE_BASE, USR_SOURCE_BASE, USR_SOURCE_INDEX};
 use livedaw_engine::{Engine, Strip};
 use std::cell::Cell;
@@ -332,6 +332,137 @@ fn user_signals_copy_a_strip_to_outputs_and_channels() {
     e.sources().get(USR_SOURCE_INDEX).unwrap().mute.store(false, Relaxed);
     rig.run(2);
     assert!(rig.last_block_matches(2, |_| 0.0, 0.0) && rig.last_block_matches(4, |_| 0.0, 0.0));
+}
+
+// ---- direct outs ---------------------------------------------------------------------------
+
+fn direct(kind: StripKind, number: i32, side: usize, post: bool) -> i32 {
+    DirectSource { kind, number, side, post }.code()
+}
+
+/// A channel's direct out PRE FADER plays its processed signal whatever its
+/// fader and mute; POST FADER follows the fader and the mute. Same block.
+#[test]
+fn channel_direct_outs_tap_pre_or_post_fader() {
+    let mut rig = Rig::new(0, 2, 8);
+    set_channels(&rig.engine, 2);
+    let e = rig.engine.clone();
+    let ch1 = rig.ch(0);
+    quiet(&ch1);
+    ch1.params.fader_db.store(-6.0);
+    assert!(e.route_output_source(2, direct(StripKind::Channel, 1, 0, false)));
+    assert!(e.route_output_source(3, direct(StripKind::Channel, 1, 0, true)));
+    // A mono channel gives its signal on the right side too.
+    assert!(e.route_output_source(4, direct(StripKind::Channel, 1, 1, true)));
+    rig.run(4);
+    let g = livedaw_dsp::util::db_to_gain(-6.0);
+    assert!(rig.last_block_matches(2, |t| input(0, t), 1e-5), "PRE FADER: before the fader");
+    assert!(rig.last_block_matches(3, |t| g * input(0, t), 1e-5), "POST FADER: after it");
+    assert!(rig.last_block_matches(4, |t| g * input(0, t), 1e-5), "a mono channel's R");
+
+    // The fader moves POST only (after its ramp).
+    ch1.params.fader_db.store(0.0);
+    rig.run(4);
+    assert!(rig.last_block_matches(3, |t| input(0, t), 1e-5));
+    assert!(rig.last_block_matches(2, |t| input(0, t), 1e-5));
+    // Muted: POST is silent, PRE keeps playing.
+    ch1.params.mute.store(true, Relaxed);
+    rig.run(4);
+    assert!(rig.last_block_matches(3, |_| 0.0, 1e-6));
+    assert!(rig.last_block_matches(2, |t| input(0, t), 1e-5));
+    ch1.params.mute.store(false, Relaxed);
+
+    // Two direct outs of different channels on their own outputs.
+    let ch2 = rig.ch(1);
+    quiet(&ch2);
+    ch2.params.input_left.store(1, Relaxed);
+    assert!(e.route_output_source(5, direct(StripKind::Channel, 2, 0, true)));
+    rig.run(3);
+    assert!(rig.last_block_matches(5, |t| input(1, t), 1e-5));
+
+    // An output has one source: a direct out replaces a source and goes when cleared.
+    e.clear_output(2);
+    rig.run(2);
+    assert!(rig.last_block_matches(2, |_| 0.0, 0.0));
+    // A channel that isn't there (CH 9 of 2) is silent, not an error.
+    assert!(e.route_output_source(6, direct(StripKind::Channel, 9, 0, false)));
+    rig.run(2);
+    assert!(rig.last_block_matches(6, |_| 0.0, 0.0));
+}
+
+/// A bus's direct outs: each side, PRE or POST its fader.
+#[test]
+fn bus_direct_outs_tap_each_side_pre_or_post_fader() {
+    let mut rig = Rig::new(0, 2, 8);
+    set_channels(&rig.engine, 2);
+    let e = rig.engine.clone();
+    // Bus 1 fed by CH 1 (hard left) and CH 2 (hard right).
+    let (ch1, ch2) = (rig.ch(0), rig.ch(1));
+    quiet(&ch1);
+    quiet(&ch2);
+    ch2.params.input_left.store(1, Relaxed);
+    for (s, pan) in [(&ch1, -100.0), (&ch2, 100.0)] {
+        let send = s.sends.get_or_create(0).unwrap();
+        send.enabled.store(true, Relaxed);
+        send.level_db.store(0.0);
+        send.pan_link.store(false, Relaxed);
+        send.pan.store(pan);
+    }
+    let bus = rig.bus(0);
+    bus.params.fader_db.store(-12.0);
+    let edge = std::f32::consts::SQRT_2;
+    let g = livedaw_dsp::util::db_to_gain(-12.0);
+    assert!(e.route_output_source(0, direct(StripKind::Bus, 1, 0, false)));
+    assert!(e.route_output_source(1, direct(StripKind::Bus, 1, 1, false)));
+    assert!(e.route_output_source(2, direct(StripKind::Bus, 1, 0, true)));
+    assert!(e.route_output_source(3, direct(StripKind::Bus, 1, 1, true)));
+    rig.run(4);
+    assert!(rig.last_block_matches(0, |t| edge * input(0, t), 1e-5));
+    assert!(rig.last_block_matches(1, |t| edge * input(1, t), 1e-5));
+    assert!(rig.last_block_matches(2, |t| g * edge * input(0, t), 1e-5));
+    assert!(rig.last_block_matches(3, |t| g * edge * input(1, t), 1e-5));
+    // The bus's own outputs are left alone.
+    assert_eq!(bus.params.output_left.load(Relaxed), -1);
+}
+
+#[test]
+fn direct_out_codes_round_trip_and_only_channels_aux_and_buses_have_them() {
+    for kind in [StripKind::Channel, StripKind::Aux, StripKind::Bus] {
+        for (number, side, post) in [(1, 0, false), (40, 1, true), (65536, 1, false)] {
+            let d = DirectSource { kind, number, side, post };
+            let code = d.code();
+            assert!(code >= DIRECT_SOURCE_BASE, "{d:?}");
+            assert_eq!(DirectSource::from_code(code), Some(d));
+        }
+    }
+    for kind in [StripKind::Main, StripKind::Matrix] {
+        assert_eq!(DirectSource { kind, number: 1, side: 0, post: false }.code(), -1);
+    }
+    assert_eq!(DirectSource { kind: StripKind::Channel, number: 0, side: 0, post: false }.code(), -1);
+    assert_eq!(DirectSource { kind: StripKind::Channel, number: 1, side: 2, post: false }.code(), -1);
+    assert_eq!(DirectSource::from_code(5), None);
+    assert_eq!(DirectSource::from_code(USR_SOURCE_BASE), None);
+    // Codes no direct out has are refused.
+    let e = Engine::new(0);
+    let main_code = DIRECT_SOURCE_BASE + ((StripKind::Main as i32) * 0x1_0000 * 4);
+    assert!(DirectSource::from_code(main_code).is_none());
+    assert!(!e.route_output_source(0, main_code));
+    assert_eq!(e.output_patch().get(0), -1);
+}
+
+#[test]
+fn direct_outs_never_allocate_on_the_audio_thread() {
+    let mut rig = Rig::new(2, 2, 8);
+    set_channels(&rig.engine, 4);
+    rig.run(2);
+    for (port, kind, number) in
+        [(0, StripKind::Channel, 1), (1, StripKind::Aux, 1), (2, StripKind::Bus, 3), (3, StripKind::Channel, 4)]
+    {
+        assert!(rig.engine.route_output_source(port, direct(kind, number, 0, port % 2 == 0)));
+    }
+    let before = AUDIO_ALLOCS.load(Relaxed);
+    rig.run(8);
+    assert_eq!(AUDIO_ALLOCS.load(Relaxed), before);
 }
 
 /// Two adjacent user signals as one STEREO source.

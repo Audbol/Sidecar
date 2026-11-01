@@ -61,7 +61,7 @@ use crate::params::*;
 use crate::pdc::{pdc_tap, PdcState, MAX_PDC};
 use crate::pool::WorkerPool;
 use crate::routing::{bus_feeds_bus, matrix_direct_pair, return_tap, strip_source, BusSchedule, OutputPatch, ReturnClock};
-use crate::routing::{ReturnRing, NUM_PATCH_OUTPUTS, NUM_STRIP_SOURCES, STRIP_SOURCE_BASE};
+use crate::routing::{DirectSource, ReturnRing, DIRECT_SOURCE_BASE, NUM_PATCH_OUTPUTS, NUM_STRIP_SOURCES, STRIP_SOURCE_BASE};
 use crate::sends::{send_mode, MAX_BUSES};
 use crate::solo::{self, solo_mode, SoloBlock};
 use crate::sources::{user_side, SourceDsp, SourceTable, UserSignalParams};
@@ -74,7 +74,7 @@ use livedaw_recorder::usb::{RecTap, UsbDeck, USB_CHANNELS};
 use livedaw_recorder::{playback_channel, usb_player_channel, RecordStream, RecordTrackSpec, Recorder, SourceKind};
 use std::cell::UnsafeCell;
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::atomic::{AtomicPtr, AtomicU32, Ordering::*};
+use std::sync::atomic::{AtomicPtr, AtomicU32, AtomicUsize, Ordering::*};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Instant;
 
@@ -260,6 +260,8 @@ pub struct Engine {
     /// remote's meter stream, which takes them (the UI takes `controls`').
     pub monitor_remote_peaks: [[AtomicF32; 2]; 2],
     fx: Box<[FxRack]>,
+    /// The FX slots in use (`set_num_fx`): the first `num_fx` of `fx`.
+    num_fx: AtomicUsize,
     recorder: Recorder,
     /// The USB recorder / player (USB PLAYER sources, RECORDER outputs).
     usb: UsbDeck,
@@ -340,7 +342,8 @@ impl Engine {
             }),
             controls: EngineControls::default(),
             monitor_remote_peaks: Default::default(),
-            fx: (0..NUM_FX).map(|_| FxRack::default()).collect(),
+            fx: (0..MAX_FX).map(|_| FxRack::default()).collect(),
+            num_fx: AtomicUsize::new(WING_FX),
             recorder: Recorder::new(),
             usb: UsbDeck::new(),
             analysis: Analyser::new(),
@@ -726,9 +729,14 @@ impl Engine {
     /// Message thread: patches source `source` (an input index as channels
     /// take it; -1 none) straight to hardware output `port`, replacing what
     /// fed it (manual 5.4 OUTPUTS). A bus, main or matrix signal goes to the
-    /// strip's own output instead. False when `port` can't be patched.
+    /// strip's own output instead. A direct out ([`DirectSource`]: a channel,
+    /// aux or bus PRE or POST FADER) is patched like a source. False when
+    /// `port` can't be patched or `source` is no direct out it knows.
     pub fn route_output_source(&self, port: i32, source: i32) -> bool {
         if usize::try_from(port).map_or(true, |p| p >= NUM_PATCH_OUTPUTS) {
+            return false;
+        }
+        if source >= DIRECT_SOURCE_BASE && DirectSource::from_code(source).is_none() {
             return false;
         }
         self.clear_output(port);
@@ -794,13 +802,40 @@ impl Engine {
         }
     }
 
-    /// FX slot `i` (0..16).
+    /// FX slot `i` (0..MAX_FX; the console uses the first `num_fx()`).
     pub fn fx(&self, i: usize) -> Option<&FxRack> {
         self.fx.get(i)
     }
 
+    /// The FX slots in use: WING_FX to MAX_FX.
     pub fn num_fx(&self) -> usize {
-        self.fx.len()
+        self.num_fx.load(Relaxed)
+    }
+
+    /// Message thread: sets the number of FX slots in use (SETUP > GENERAL >
+    /// FX SLOTS), within WING_FX..=MAX_FX and never below a slot in use
+    /// (`fx_in_use`), so fewer slots never drop a device, a plugin or an
+    /// insert's assignment. Returns the number set.
+    pub fn set_num_fx(&self, count: usize) -> usize {
+        let st = self.lock();
+        let needed = (0..MAX_FX).rev().find(|&i| self.slot_in_use(&st, i)).map_or(0, |i| i + 1);
+        let n = count.clamp(WING_FX, MAX_FX).max(needed);
+        self.num_fx.store(n, Relaxed);
+        n
+    }
+
+    /// FX slot `i` holds something (any model but NONE: a device, a plugin
+    /// or an outboard insert), or a strip's insert is assigned to it (on or off).
+    pub fn fx_in_use(&self, i: usize) -> bool {
+        self.slot_in_use(&self.lock(), i)
+    }
+
+    fn slot_in_use(&self, st: &Structure, i: usize) -> bool {
+        let slot = i as i32;
+        let assigned = |s: &Arc<Strip>| {
+            s.params.pre_insert.fx.load(Relaxed) == slot || (s.has_post_insert() && s.params.post_insert.fx.load(Relaxed) == slot)
+        };
+        self.controls.fx.get(i).is_some_and(|p| p.model_index() != FX_NONE) || st.all().any(assigned)
     }
 
     /// Strips whose inserts currently use FX slot `i`.
@@ -816,10 +851,13 @@ impl Engine {
         self.fx.iter().filter(|f| f.is_faulted()).count()
     }
 
-    /// Message thread: frees what the audio thread can no longer see, and
-    /// creates the devices of FX slots whose model was changed directly through
-    /// the shared parameters (e.g. by a recall).
+    /// Message thread: frees what the audio thread can no longer see, creates
+    /// the devices of FX slots whose model was changed directly through the
+    /// shared parameters (e.g. by a recall), and takes more FX slots in use when
+    /// one past them got used that way (an insert from a channel preset, a copy,
+    /// a remote): the console always shows every slot that runs.
     pub fn collect(&self) {
+        self.set_num_fx(self.num_fx());
         self.sync_fx_devices();
         self.update_pdc();
         self.update_keys();
@@ -842,7 +880,7 @@ impl Engine {
     pub fn update_pdc(&self) {
         let st = self.lock();
         let enabled = self.pdc.enabled.load(Relaxed);
-        let fx: [u32; NUM_FX] =
+        let fx: [u32; MAX_FX] =
             std::array::from_fn(|i| if enabled { self.fx[i].effective_latency(&self.controls.fx[i]) } else { 0 });
         let add = |own: [u32; pdc_tap::COUNT], base: u32| own.map(|l| l.saturating_add(base));
 
@@ -1443,6 +1481,7 @@ impl Engine {
                 RecTap::Strip { kind, number, channel } => StripKind::from_i32(kind)
                     .and_then(|k| topo.by_number(k, number))
                     .map(|s| if s.kind().is_input() { s.dsp().pfl(channel, n) } else { s.dsp().out(channel, n) }),
+                RecTap::Direct(code) => DirectSource::from_code(code).and_then(|d| direct_signal(topo, d, n)),
             };
             self.usb.write_rec(port, src, n);
         }
@@ -1711,7 +1750,11 @@ impl Engine {
             if source < 0 {
                 continue;
             }
-            if let Some(p) = source_ptr(hw, internal, source) {
+            if let Some(direct) = DirectSource::from_code(source) {
+                if let Some(signal) = direct_signal(topo, direct, n) {
+                    add_to(port as i32, signal);
+                }
+            } else if let Some(p) = source_ptr(hw, internal, source) {
                 add_to(port as i32, std::slice::from_raw_parts(p, n));
             }
         }
@@ -2156,6 +2199,17 @@ unsafe fn sum_matrix(mtx: &Strip, index: usize, topo: &Topology, monitor: &[*con
 ///
 /// # Safety
 /// Audio thread, after every stage.
+/// A direct out's signal this block (the strip ran): its PFL copy (pre fader)
+/// or its post-fader copy (before pan); a mono channel's on either side.
+/// None when the strip doesn't exist or is idle.
+unsafe fn direct_signal(topo: &Topology, direct: DirectSource, n: usize) -> Option<&[f32]> {
+    let d = topo.by_number(direct.kind, direct.number)?.dsp();
+    if d.idle() {
+        return None;
+    }
+    Some(if direct.post { d.post(direct.side, n) } else { d.pfl(direct.side, n) })
+}
+
 unsafe fn copy_user_signal(s: &Strip, u: &UserSignalParams, buf: &mut [f32], n: usize) {
     let d = s.dsp();
     if d.idle() {

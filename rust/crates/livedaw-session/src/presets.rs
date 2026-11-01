@@ -15,7 +15,7 @@ use crate::refs::StripRef;
 use crate::show::write_atomically;
 use crate::xml::{self, Element};
 use livedaw_dsp::wing::{model_index, FX_MODELS};
-use livedaw_engine::params::NUM_FX;
+use livedaw_engine::params::MAX_FX;
 use livedaw_engine::{Engine, StripKind};
 use std::fs;
 use std::path::Path;
@@ -88,7 +88,7 @@ pub fn info(preset: &Element) -> Option<PresetInfo> {
 
 /// SAVE on the FX tab: FX slot `slot` as a preset.
 pub fn capture_fx(engine: &Engine, bridge: &mut dyn PluginBridge, slot: usize, name: &str) -> Option<Element> {
-    if slot >= NUM_FX {
+    if slot >= MAX_FX {
         return None;
     }
     let mut preset = root(PresetType::Fx, name);
@@ -106,13 +106,14 @@ pub fn apply_fx(engine: &Engine, bridge: &mut dyn PluginBridge, preset: &Element
     if info.kind != PresetType::Fx {
         return Err("Not an FX preset".into());
     }
-    if slot >= NUM_FX {
+    if slot >= MAX_FX {
         return Err(format!("FX {} doesn't exist", slot + 1));
     }
     let x = preset.child("Slot").ok_or("The preset holds no FX slot")?;
     // Like a recall: a plugin's state only goes into the same plugin.
     let mut warnings = Vec::new();
     console::apply_fx_slot(engine, x, slot, Some(InsertMode::StateOnly), bridge, &mut warnings);
+    console::fit_fx_slots(engine);
     Ok(warnings)
 }
 

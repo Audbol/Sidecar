@@ -18,7 +18,7 @@
 use crate::console::{self, section, ApplyResult, FadeTarget, NoPlugins, PluginBridge};
 use crate::refs::{refs_from_string, refs_to_string, StripRef};
 use crate::xml::{parse_int_prefix, Element, Node};
-use livedaw_engine::params::{NUM_DCAS, NUM_FX, NUM_MUTE_GROUPS};
+use livedaw_engine::params::{MAX_FX, NUM_DCAS, NUM_MUTE_GROUPS};
 use livedaw_engine::Engine;
 use std::collections::HashMap;
 use std::sync::atomic::Ordering::Relaxed;
@@ -28,7 +28,8 @@ pub type ChangeCounts = HashMap<(StripRef, u32), usize>;
 
 pub const ALL_DCAS: u32 = (1 << NUM_DCAS) - 1;
 pub const ALL_MUTE_GROUPS: u32 = (1 << NUM_MUTE_GROUPS) - 1;
-pub const ALL_FX: u32 = (1 << NUM_FX) - 1;
+/// Every FX slot the engine holds (bit n = FX n+1).
+pub const ALL_FX: u64 = u64::MAX >> (64 - MAX_FX);
 
 /// Console-wide parts of a state that belong to no strip, DCA, mute group or
 /// FX slot (the monitor setup, INPUT SELECT, the automix enables and anything
@@ -49,7 +50,7 @@ pub struct Scope {
     /// Mute groups (bit n = group n+1), recalled with GROUPS.
     pub mute_groups: u32,
     /// FX slots (bit n = FX n+1), recalled with INSERTS.
-    pub fx: u32,
+    pub fx: u64,
     /// The console-wide settings: monitor setup and INPUT SELECT (with
     /// ROUTING), automix enables (with INSERTS).
     pub console: bool,
@@ -127,7 +128,7 @@ impl Scope {
             },
             dcas: mask("scopeDca", defaults.dcas),
             mute_groups: mask("scopeMgrp", defaults.mute_groups),
-            fx: mask("scopeFx", defaults.fx),
+            fx: e.attr("scopeFx").map_or(defaults.fx, fx_mask),
             console: e.bool_or("scopeConsole", defaults.console),
         }
         .sanitised()
@@ -142,7 +143,7 @@ pub struct GlobalSafe {
     pub sections: u32,
     pub dcas: u32,
     pub mute_groups: u32,
-    pub fx: u32,
+    pub fx: u64,
     pub console: bool,
 }
 
@@ -175,15 +176,20 @@ impl GlobalSafe {
             sections: mask("sections"),
             dcas: mask("dcas"),
             mute_groups: mask("mgrps"),
-            fx: mask("fx"),
+            fx: e.attr("fx").map_or(0, fx_mask),
             console: e.bool_or("console", false),
         }
         .sanitised()
     }
 }
 
-fn index_bit(i: i32) -> u32 {
-    if (0..32).contains(&i) {
+/// An FX slot mask attribute: 64 bits (shows from before more FX slots hold 16).
+fn fx_mask(v: &str) -> u64 {
+    v.trim().parse::<u64>().unwrap_or_else(|_| u64::from(parse_int_prefix(v) as u32))
+}
+
+fn index_bit(i: i32) -> u64 {
+    if (0..64).contains(&i) {
         1 << i
     } else {
         0
@@ -195,7 +201,8 @@ fn index_of(e: &Element) -> i32 {
 }
 
 /// Keeps the children of `e` named `name` whose "i" is in `mask`.
-fn keep_indexed(e: &Element, name: &str, mask: u32) -> Element {
+fn keep_indexed(e: &Element, name: &str, mask: impl Into<u64>) -> Element {
+    let mask = mask.into();
     let mut out = Element { name: e.name.clone(), attrs: e.attrs.clone(), children: Vec::new() };
     for c in e.elements() {
         if c.name != name || mask & index_bit(index_of(c)) != 0 {
@@ -466,7 +473,7 @@ pub struct RecordedChanges {
     pub strips: Vec<(StripRef, u32)>,
     pub dcas: u32,
     pub mute_groups: u32,
-    pub fx: u32,
+    pub fx: u64,
     pub console: bool,
     /// Every section with a change (the console-wide ones included).
     pub sections: u32,
@@ -604,7 +611,7 @@ impl Recording {
                             "MuteGroups" => "G",
                             _ => "Slot",
                         };
-                        let mut mask = 0;
+                        let mut mask: u64 = 0;
                         for x in c.children_named(item) {
                             let i = x.str_or("i", "");
                             let n = old
@@ -621,13 +628,13 @@ impl Recording {
                             };
                             let changed = on(Some(c)) ^ on(old);
                             out.count += changed.count_ones() as usize;
-                            mask |= changed;
+                            mask |= u64::from(changed);
                         }
                         if mask != 0 {
                             out.sections |= bit;
                             match c.name.as_str() {
-                                "Dcas" => out.dcas |= mask,
-                                "MuteGroups" => out.mute_groups |= mask,
+                                "Dcas" => out.dcas |= mask as u32,
+                                "MuteGroups" => out.mute_groups |= mask as u32,
                                 _ => out.fx |= mask,
                             }
                         }
@@ -685,10 +692,30 @@ mod tests {
 
     #[test]
     fn global_safe_round_trip() {
-        let g = GlobalSafe { sections: section::EQ, dcas: 3, mute_groups: 1 << 7, fx: 1 << 20, console: true }.sanitised();
-        assert_eq!(g.fx, 0);
+        // FX slots beyond the WING's 16, up to the 64th.
+        let g =
+            GlobalSafe { sections: section::EQ, dcas: 3, mute_groups: 1 << 7, fx: 1 << 20 | 1 << 63, console: true }.sanitised();
+        assert_eq!(g.fx, 1 << 20 | 1 << 63);
         assert_eq!(GlobalSafe::from_xml(&g.to_xml()), g);
         assert!(GlobalSafe::from_xml(&el("<GlobalSafe/>")).is_empty());
+        // Shows from before: a 16-slot mask.
+        assert_eq!(GlobalSafe::from_xml(&el(r#"<GlobalSafe fx="65535"/>"#)).fx, 0xffff);
+    }
+
+    #[test]
+    fn scope_fx_masks_reach_the_64th_slot() {
+        let state =
+            el(r#"<State sections="1023"><Fx><Slot i="3" mdl="A"/><Slot i="40" mdl="B"/><Slot i="63" mdl="C"/></Fx></State>"#);
+        let fx = state.child("Fx").unwrap();
+        let kept = keep_indexed(fx, "Slot", 1u64 << 40 | 1 << 63);
+        let slots: Vec<_> = kept.children_named("Slot").map(|s| s.int_or("i", -1)).collect();
+        assert_eq!(slots, [40, 63]);
+
+        let mut e = Element::new("Scene");
+        let s = Scope { fx: 1 << 63, ..Scope::default() };
+        s.write_attrs(&mut e, "scope");
+        assert_eq!(Scope::read_attrs(&e, "scope", &Scope::default()).fx, 1 << 63);
+        assert_eq!(Scope::default().fx, ALL_FX);
     }
 
     #[test]

@@ -168,12 +168,17 @@ struct FaderRef
     automix enables with Inserts). Also holds the GLOBAL safes beyond strips. */
 struct Scope
 {
-    static constexpr juce::uint32 kAllDcas = 0xffffu, kAllMuteGroups = 0xffu, kAllFx = 0xffffu;
+    static constexpr juce::uint32 kAllDcas = 0xffffu, kAllMuteGroups = 0xffu;
+    /** Every FX slot the engine holds (kMaxFx: 64 bits). */
+    static constexpr juce::uint64 kAllFx = ~juce::uint64 (0);
+    /** The first `numSlots` FX slots. */
+    static constexpr juce::uint64 allFx (int numSlots) noexcept { return numSlots >= 64 ? kAllFx : (juce::uint64 (1) << juce::jmax (0, numSlots)) - 1; }
 
     juce::uint32 sections = AllSections;
     bool allStrips = true;
     std::vector<StripRef> strips;
-    juce::uint32 dcas = kAllDcas, muteGroups = kAllMuteGroups, fx = kAllFx;
+    juce::uint32 dcas = kAllDcas, muteGroups = kAllMuteGroups;
+    juce::uint64 fx = kAllFx;
     bool console = true;
 
     /** The whole console within `sections`. */

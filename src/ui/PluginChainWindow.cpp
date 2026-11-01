@@ -1,5 +1,6 @@
 #include "ui/PluginChainWindow.h"
 #include "ui/LookAndFeel.h"
+#include "ui/PluginPictures.h"
 
 namespace livedaw::ui
 {
@@ -34,6 +35,8 @@ PluginChainWindow::PluginChainWindow (UiContext& c, int slot, std::function<void
     centreWithSize (getWidth(), getHeight());
     remembering = true;
     setVisible (true);
+    // The first picture once the editors have drawn themselves, then every few seconds.
+    startTimer (kFirstPictureMs);
 }
 
 juce::String PluginChainWindow::settingsKey (const char* what) const
@@ -70,6 +73,7 @@ void PluginChainWindow::keepOnScreen()
 
 PluginChainWindow::~PluginChainWindow()
 {
+    stopTimer();
     clearContentComponent();
 }
 
@@ -127,4 +131,19 @@ void PluginChainWindow::removeMember (int index)
     });
 }
 
+void PluginChainWindow::timerCallback()
+{
+    startTimer (kPictureEveryMs);
+    capturePictures();
+}
+
+void PluginChainWindow::capturePictures()
+{
+    if (ctx.pluginPictures == nullptr || isMinimised() || ! isShowing())
+        return;
+    view.forEachShownEditor ([this] (juce::AudioProcessor& plugin, juce::Component& editor)
+    {
+        ctx.pluginPictures->store (plugin, PluginPictures::grab (editor));
+    });
+}
 } // namespace livedaw::ui

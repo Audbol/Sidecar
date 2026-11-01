@@ -1665,7 +1665,8 @@ namespace
     /** SELECT FX PROCESSOR (firmware 3.1): a black window over the dimmed
         page with a #202020 title bar (NONE, the title, CLOSE), the 16 slots
         256 x 92 px in four columns with a #707070 outline, and the group
-        captions under them. Touch a slot to use it. */
+        captions under them. Touch a slot to use it. With more than 16 slots
+        (SETUP > GENERAL > FX SLOTS) the title bar has a key per bank of 16. */
     class RackSlotPopup final : public Popup
     {
     public:
@@ -1675,6 +1676,7 @@ namespace
             : over (&overComponent), slots (std::move (rackSlots)), selected (selectedSlot), paintDevice (std::move (device)),
               paintSourceIcon (std::move (sourceIcon)), onChosen (std::move (chosen))
         {
+            bank = juce::jlimit (0, numBanks() - 1, juce::jmax (0, selected) / kBankSize);
         }
 
         void paint (juce::Graphics& g) override
@@ -1701,25 +1703,47 @@ namespace
             g.setFont (wingFontPx (10.0f * u));
             g.drawText ("NONE", units.at (56.0f, 124.0f, 80.0f, 20.0f), juce::Justification::centred, false);
             g.setFont (wingFontPx (20.0f * u));
-            g.drawText ("SELECT FX PROCESSOR", units.at (300.0f, 80.0f, 560.0f, 64.0f), juce::Justification::centred, false);
+            if (numBanks() > 1)
+                g.drawText ("SELECT FX PROCESSOR", units.at (150.0f, 80.0f, 310.0f, 64.0f), juce::Justification::centred, false);
+            else
+                g.drawText ("SELECT FX PROCESSOR", units.at (300.0f, 80.0f, 560.0f, 64.0f), juce::Justification::centred, false);
             g.setFont (wingFontPx (14.5f * u));
             g.drawText ("CLOSE", units.at (900.0f, 80.0f, 140.0f, 64.0f), juce::Justification::centredRight, false);
             drawIcon (g, Icon::Check, units.at (1055.0f, 96.0f, 32.0f, 32.0f), Colours::caption);
 
-            for (int i = 0; i < (int) slots.size(); ++i)
+            // The banks of 16: FX 1-16, FX 17-32 ...
+            for (int b = 0; numBanks() > 1 && b < numBanks(); ++b)
+            {
+                const auto key = bankArea (b);
+                g.setColour (b == bank ? Colours::screenTile : Colours::screenHeader);
+                g.fillRect (key);
+                g.setColour (b == bank ? Colours::gold : Colours::textDim);
+                g.drawRect (key, (b == bank ? 2.0f : 1.0f) * u);
+                g.setColour (Colours::caption);
+                g.setFont (wingFontPx (12.0f * u));
+                g.drawText ("FX " + juce::String (b * kBankSize + 1) + "-" + juce::String (juce::jmin ((b + 1) * kBankSize, (int) slots.size())), key,
+                            juce::Justification::centred, false);
+            }
+
+            for (int i = firstInBank(); i < endOfBank(); ++i)
                 paintSlot (g, i, slotArea (i), u);
 
-            // The groups' captions, centred under their two columns.
+            // The groups' captions, centred under their two columns (premium devices run in FX 1-8 only).
             g.setColour (Colours::textDim);
             const auto font = wingFontPx (14.5f * u); // (3.1: 14.5 px capitals, the diamond 26 px wide)
             g.setFont (font);
-            const float premiumW = juce::GlyphArrangement::getStringWidth (font, "PREMIUM FX");
             const auto premium = units.at (56.0f, 536.0f, 517.0f, 26.0f);
+            g.drawText ("STANDARD FX", units.at (586.0f, 536.0f, 517.0f, 26.0f), juce::Justification::centred, false);
+            if (bank > 0)
+            {
+                g.drawText ("STANDARD FX", premium, juce::Justification::centred, false);
+                return;
+            }
+            const float premiumW = juce::GlyphArrangement::getStringWidth (font, "PREMIUM FX");
             const float x0 = premium.getCentreX() - (premiumW + 33.0f * u) * 0.5f;
             drawIcon (g, Icon::Premium, juce::Rectangle<float> (x0, premium.getY() + 1.0f * u, 26.0f * u, 24.0f * u), Colours::textDim);
             g.drawText ("PREMIUM FX", juce::Rectangle<float> (x0 + 33.0f * u, premium.getY(), premiumW + 4.0f, premium.getHeight()),
                         juce::Justification::centredLeft, false);
-            g.drawText ("STANDARD FX", units.at (586.0f, 536.0f, 517.0f, 26.0f), juce::Justification::centred, false);
         }
 
         void mouseDown (const juce::MouseEvent& e) override
@@ -1740,7 +1764,12 @@ namespace
             repaint();
             if (was == kNothing || hit (e.position) != was)
                 return;
-            if (was == kClose)
+            if (was <= kFirstBank)
+            {
+                bank = kFirstBank - was;
+                repaint();
+            }
+            else if (was == kClose)
                 cancel();
             else
                 closeThen ([chosen = onChosen, was] { if (chosen != nullptr) chosen (was == kNone ? -1 : was); });
@@ -1748,6 +1777,14 @@ namespace
 
     private:
         static constexpr int kNothing = -3, kClose = -2, kNone = -1;
+        /** hit(): bank b's key is kFirstBank - b. */
+        static constexpr int kFirstBank = -10;
+        static constexpr int kBankSize = 16;
+
+        int numBanks() const { return juce::jmax (1, ((int) slots.size() + kBankSize - 1) / kBankSize); }
+        int firstInBank() const { return bank * kBankSize; }
+        int endOfBank() const { return juce::jmin ((int) slots.size(), (bank + 1) * kBankSize); }
+        juce::Rectangle<float> bankArea (int b) const { return pageUnits().at (470.0f + 100.0f * (float) b, 90.0f, 92.0f, 44.0f); }
 
         PageUnits pageUnits() const
         {
@@ -1771,7 +1808,10 @@ namespace
                 return kNone;
             if (closeArea().contains (p))
                 return kClose;
-            for (int i = 0; i < (int) slots.size(); ++i)
+            for (int b = 0; numBanks() > 1 && b < numBanks(); ++b)
+                if (bankArea (b).contains (p))
+                    return kFirstBank - b;
+            for (int i = firstInBank(); i < endOfBank(); ++i)
                 if (slotArea (i).contains (p))
                     return i;
             return kNothing;
@@ -1823,7 +1863,7 @@ namespace
 
         juce::Component::SafePointer<juce::Component> over;
         std::vector<RackSlot> slots;
-        int selected, pressed = kNothing;
+        int selected, pressed = kNothing, bank = 0;
         std::function<bool (juce::Graphics&, juce::Rectangle<float>, int)> paintDevice;
         std::function<void (juce::Graphics&, juce::Rectangle<float>, int)> paintSourceIcon;
         std::function<void (int)> onChosen;

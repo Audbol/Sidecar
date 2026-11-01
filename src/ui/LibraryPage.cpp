@@ -886,7 +886,7 @@ private:
     {
         auto& fx = page.ctx.engine.getFx();
         juce::StringArray items;
-        for (int i = 0; i < kNumFx; ++i)
+        for (int i = 0; i < fx.getNumSlots(); ++i)
         {
             auto* plugin = fx.getPlugin (i);
             const auto device = plugin != nullptr ? plugin->getName() : (fx.isLoaded (i) ? models::model (models::Fx, fx.getModel (i)).name : juce::String ("-"));

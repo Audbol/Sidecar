@@ -28,7 +28,7 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 23;
+constexpr int kAbiVersion = 24;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -38,7 +38,10 @@ constexpr int kNumMatrices = 8;
 constexpr int kNumAux = 8;
 constexpr int kNumDcas = 16;
 constexpr int kNumMuteGroups = 8;
-constexpr int kNumFx = 16;
+/** FX slots the engine holds; ld_engine_num_fx of them are in use (the WING's 16 by default). */
+constexpr int kMaxFx = 64;
+/** The WING's FX slots: the default number in use and the ones the WING remote sees. */
+constexpr int kWingFx = 16;
 constexpr int kWingChannels = 40;
 constexpr int kWingBuses = 16;
 constexpr int kMaxDynParams = 20;
@@ -94,6 +97,10 @@ constexpr int kNumOutputKeyTaps = 6;
 /** RECORDER tap codes (ld_usb_rec_tap): -1 off, 0.. an input index (a source),
     kUsbTapStripBase + kind * 0x100000 + (number - 1) * 2 + channel a strip. */
 constexpr int32_t kUsbTapStripBase = 0x01000000;
+/** Direct outs (ROUTING > OUTPUTS CH / BUS DIRECT, RECORDER ports): kDirectSourceBase +
+    ((kind * 0x10000 + number - 1) * 2 + side) * 2 + (POST FADER ? 1 : 0), for input channels, aux
+    and buses (Rust: routing::DirectSource). As an output's source or a RECORDER tap. */
+constexpr int32_t kDirectSourceBase = 0x03000000;
 constexpr int kSamplesPerPeak = 256;
 /** The longest plugin delay compensation (samples); paths needing more stay late by the rest. */
 constexpr int kMaxPdc = 8192;
@@ -542,7 +549,7 @@ struct EngineControls
     std::atomic<int32_t> engineFaults;
     std::atomic<uint32_t> muteGroups;
     DcaParams dcas[kNumDcas];
-    FxParams fx[kNumFx];
+    FxParams fx[kMaxFx];
 
     std::atomic<bool> busSoloAfl, mainSoloAfl, matrixSoloAfl; // BUS / MAIN / MATRIX SOLO: AFL (default)
     std::atomic<bool> monitorDim, monitorMute, monitorMono, monitorSwap;
@@ -790,7 +797,8 @@ struct ApplyResultC
 /// strips go to a separate buffer.
 struct ScopeC
 {
-    uint32_t sections, dcas, muteGroups, fx;
+    uint32_t sections, dcas, muteGroups;
+    uint64_t fx;
     bool console, allStrips;
     const StripRefC* strips;
     int32_t numStrips;
@@ -883,6 +891,13 @@ extern "C"
     Strip* ld_engine_strip_at (const Engine*, int32_t kind, int32_t index);
     Strip* ld_engine_add_channel (const Engine*, int32_t requestedId);
     void ld_engine_set_num_channels (const Engine*, int32_t count);
+    /** The FX slots in use (kWingFx to kMaxFx). */
+    int32_t ld_engine_num_fx (const Engine*);
+    /** Sets the FX slots in use (clamped to kWingFx..kMaxFx and never below a slot
+        in use, ld_engine_fx_in_use); returns the number set. */
+    int32_t ld_engine_set_num_fx (const Engine*, int32_t count);
+    /** The FX slot holds something (any model but NONE) or a strip's insert is assigned to it. */
+    bool ld_engine_fx_in_use (const Engine*, int32_t slot);
     /** Adds a bus beyond the console's 16 (null if no slot is free). */
     Strip* ld_engine_add_bus (const Engine*, int32_t requestedSlot);
     Strip* ld_engine_bus_in_slot (const Engine*, int32_t slot);

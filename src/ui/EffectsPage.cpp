@@ -363,6 +363,8 @@ private:
     {
         // Repaint only when what the tile shows changes: sixteen tiles redrawn
         // ten times a second cost a lot on a big (maximized) screen.
+        if (! isShowing())
+            return; // another bank, or the editor is open
         if (auto now = signature(); now != shown)
         {
             shown = now;
@@ -445,7 +447,7 @@ public:
 
     void setSlot (int s)
     {
-        slot = juce::jlimit (0, kNumFx - 1, s);
+        slot = juce::jlimit (0, kMaxFx - 1, s);
         for (auto& m : outboardMeters)
             m.reset();
         meterPolledAt = 0;
@@ -933,23 +935,58 @@ private:
 
 EffectsPage::EffectsPage (UiContext& c) : ctx (c)
 {
-    for (int i = 0; i < kNumFx; ++i)
-        addAndMakeVisible (tiles.add (new Tile (ctx, i, *this)));
+    for (int i = 0; i < kMaxFx; ++i)
+        addChildComponent (tiles.add (new Tile (ctx, i, *this)));
     editor = std::make_unique<Editor> (ctx, *this);
     addChildComponent (*editor);
 }
 
 void EffectsPage::editSlot (int slot)
 {
-    const bool open = juce::isPositiveAndBelow (slot, kNumFx);
+    const bool open = juce::isPositiveAndBelow (slot, ctx.engine.getFx().getNumSlots());
     if (open)
+    {
         editor->setSlot (slot);
+        bank = slot / kWingFx; // back in the rack, the slot's bank
+    }
     editor->setVisible (open);
-    for (auto* t : tiles)
-        t->setVisible (! open);
+    layoutTiles();
     notifyKnobsChanged();
     notifyStatusKeysChanged(); // the rack has no parameter bar
     repaint();
+}
+
+int EffectsPage::numBanks() const
+{
+    return (ctx.engine.getFx().getNumSlots() + kWingFx - 1) / kWingFx;
+}
+
+void EffectsPage::showBank (int b)
+{
+    bank = b;
+    layoutTiles();
+    notifyStatusKeysChanged();
+    repaint();
+}
+
+std::vector<StatusKey> EffectsPage::getStatusKeys()
+{
+    if (numBanks() < 2 || (editor != nullptr && editor->isVisible()))
+        return {};
+    std::vector<StatusKey> keys;
+    for (int b = 0; b < numBanks(); ++b)
+        keys.push_back ({ "FX " + juce::String (b * kWingFx + 1) + "-" + juce::String ((b + 1) * kWingFx), std::nullopt, b == bank, [this, b] { showBank (b); } });
+    return keys;
+}
+
+void EffectsPage::visibilityChanged()
+{
+    // The number of FX slots may have changed (SETUP > GENERAL) while away.
+    if (isVisible())
+    {
+        layoutTiles();
+        notifyStatusKeysChanged();
+    }
 }
 
 EffectsPage::~EffectsPage() = default;
@@ -1029,13 +1066,18 @@ void EffectsPage::paint (juce::Graphics& g)
     const auto font = wingFontPx (15.0f * uy);
     g.setFont (font);
     g.setColour (Colours::textDim);
+    g.drawText ("STANDARD FX", standardLabel, juce::Justification::centred);
+    if (bank > 0) // premium devices run in FX 1-8 only
+    {
+        g.drawText ("STANDARD FX", premiumLabel, juce::Justification::centred);
+        return;
+    }
     const float textW = juce::GlyphArrangement::getStringWidth (font, "PREMIUM FX");
     const float gemW = 26.0f * ux, gap = 8.0f * ux;
     const auto premium = premiumLabel.toFloat();
     const float x0 = premium.getCentreX() - (gemW + gap + textW) * 0.5f;
     drawIcon (g, Icon::Premium, juce::Rectangle<float> (x0, premium.getY(), gemW, premium.getHeight()).withSizeKeepingCentre (gemW, 18.0f * uy), Colours::textDim);
     g.drawText ("PREMIUM FX", juce::Rectangle<float> (x0 + gemW + gap, premium.getY(), textW + 4.0f, premium.getHeight()), juce::Justification::centredLeft, false);
-    g.drawText ("STANDARD FX", standardLabel, juce::Justification::centred);
 }
 
 void EffectsPage::resized()
@@ -1054,9 +1096,19 @@ void EffectsPage::resized()
     for (int i = 0; i < tiles.size(); ++i)
     {
         // Slots run down the columns: 1-4 in the first, 5-8 in the second ...
-        const int col = i / 4, row = i % 4;
+        // (each bank of 16 in the same places).
+        const int col = (i % kWingFx) / 4, row = i % 4;
         tiles[i]->setBounds (at (columns[col], 75.0f + 145.0f * (float) row, 282.0f, 140.0f));
     }
+    layoutTiles();
+}
+
+void EffectsPage::layoutTiles()
+{
+    bank = juce::jlimit (0, numBanks() - 1, bank);
+    const bool rackShown = editor == nullptr || ! editor->isVisible();
+    for (int i = 0; i < tiles.size(); ++i)
+        tiles[i]->setVisible (rackShown && i / kWingFx == bank && i < ctx.engine.getFx().getNumSlots());
 }
 
 } // namespace livedaw::ui

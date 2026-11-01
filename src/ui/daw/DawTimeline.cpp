@@ -1,4 +1,5 @@
 #include "ui/daw/DawTimeline.h"
+#include "engine/AppPaths.h"
 
 namespace livedaw::ui
 {
@@ -1137,7 +1138,7 @@ void DawLanes::clipMenu (int row, int index, int64 at)
         state.project.beginEdit ("Crossfade");
         state.project.crossfadeOverlaps (track);
     });
-    m.addItem ("Show the file", [file = state.project.resolve (c.file)] { file.revealToUser(); });
+    m.addItem ("Show the file", [file = state.project.resolve (c.file)] { paths::reveal (file); });
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition());
 }
 

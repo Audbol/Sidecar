@@ -23,7 +23,13 @@ pub const NUM_MATRICES: usize = 8;
 pub const NUM_AUX: usize = 8;
 pub const NUM_DCAS: usize = 16;
 pub const NUM_MUTE_GROUPS: usize = 8;
-pub const NUM_FX: usize = 16;
+/// FX slots the engine holds. How many of them the console uses is set at run
+/// time (`Engine::set_num_fx`, SETUP > GENERAL > FX SLOTS): the WING's 16 by
+/// default, up to this many.
+pub const MAX_FX: usize = 64;
+/// The WING's FX slots: the default number in use, and the slots the WING
+/// remote and the WING's control surface see.
+pub const WING_FX: usize = 16;
 /// FX slot models (indices into `FX_MODELS`): an empty slot, and EXT (a plugin
 /// hosted by the application).
 pub const FX_NONE: usize = 0;
@@ -1098,7 +1104,7 @@ pub struct EngineControls {
     /// Bit n = mute group n+1 engaged.
     pub mute_groups: AtomicU32,
     pub dcas: [DcaParams; NUM_DCAS],
-    pub fx: [FxParams; NUM_FX],
+    pub fx: [FxParams; MAX_FX],
 
     /// BUS / MAIN / MATRIX SOLO: AFL (the default) instead of PFL.
     pub bus_solo_afl: AtomicBool,
@@ -1174,7 +1180,7 @@ impl Default for EngineControls {
             engine_faults: AtomicI32::new(0),
             mute_groups: AtomicU32::new(0),
             dcas: Default::default(),
-            fx: Default::default(),
+            fx: std::array::from_fn(|_| FxParams::default()),
             // A WING after INITIALIZE: buses AFL, mains and matrices PFL.
             bus_solo_afl: AtomicBool::new(true),
             main_solo_afl: AtomicBool::new(false),

@@ -119,6 +119,13 @@ Rust; audio devices, plugin hosting and the UI are C++ with JUCE.
     processed: gain, mute, polarity). `Engine::route_output_source` keeps one source per
     output: it clears the strips and monitor paths routed there (`clear_output`), and a
     bus, main or matrix signal goes to the strip's own output instead.
+  - *Direct outs* (`routing::DirectSource`, codes from `DIRECT_SOURCE_BASE` =
+    `ld::kDirectSourceBase`, C++ `DirectOut`): an input channel's, aux's or bus's side
+    PRE FADER (its `pfl` copy, after INS 1) or POST FADER (its `post` copy, after the
+    fader, INS 2 and the post delay, before pan), as an output patch source or a
+    RECORDER tap (`RecTap::Direct`, an opaque code the recorder crate passes back).
+    `write_outputs` and `record_usb` read the strip's buffer after the strips ran
+    (`direct_signal`, nothing for an idle or missing strip); not delay compensated.
   - *Bus to bus* (`BusSchedule`): each block the audio thread orders the buses by
     their enabled bus-to-bus sends into waves (Kahn's algorithm on 64-bit masks, no
     allocation): a bus runs in a wave after every bus feeding it, so chains arrive in
@@ -288,7 +295,16 @@ views after a show load changes the console from Rust.
   repaint only the live elements that moved (`paintDesign` culls the rest).
   `FxAlgo::latency` (the PRECISION LIMITER's look-ahead) feeds the slot's latency, the
   delay compensation and FX MIX's dry delay.
-- **FX slots.** The 16 slots are the WING's FX rack. Each holds one device from the
+- **FX slots.** The engine holds `MAX_FX` (64) slots: `EngineControls::fx` and the
+  racks are fixed arrays, so the audio thread never sees them grow. `Engine::num_fx`
+  (SETUP > GENERAL > FX SLOTS, `ld_engine_set_num_fx`) is how many the console uses:
+  the WING's 16 (`WING_FX`) by default; `set_num_fx` never goes below a slot in use
+  (`fx_in_use`: any model but NONE, or an insert assigned to it), and loading a show
+  or recalling a scene raises it to cover what they fill (`console::fit_fx_slots`);
+  `Engine::collect` does the same for a slot used any other way (a channel preset's
+  insert, a copy, a remote), so the console always shows every slot that runs.
+  Shows save the slots in use; scope and safe masks are 64-bit. The WING remote and
+  the MIDI remote map FX 1-16 only. The first 16 slots are the WING's FX rack. Each holds one device from the
   console's FX table (`FX_MODELS`, generated like the processing models): the 26
   premium effects (reverbs, chorus/flanger/phaser, delays, pitch; slots 1-8 only), the
   32 standard effects (EQs, dynamics, enhancers, amps, utilities) and the 5 channel
@@ -804,6 +820,19 @@ blinking LEDs.
   meter stream is the second reader: the engine keeps a copy of the strips' input,
   post-trim (PRE) and output peaks and of the
   monitor paths (`RemotePeaks`, `Engine::monitor_remote_peaks`, outside the C ABI).
+- **Plugin overview** (`PluginOverviewWindow.*`, owned by `MainComponent`): a
+  top-level `DocumentWindow` of its own (so it can sit on another screen) that polls
+  `FxSlots` at 15 Hz and repaints only when what it shows changes (state, chain,
+  users, meters to the dB, pictures). Its pictures come from `PluginPictures`
+  (`ctx.pluginPictures`): each `PluginChainWindow` grabs the editors it shows
+  (`PluginChainView::forEachShownEditor`) after opening and every 3 s; on Windows
+  `PluginPictures::grab` has the window draw itself into a bitmap (`PrintWindow`,
+  `PW_RENDERFULLCONTENT`), so native plugin views (child HWNDs, GPU-drawn ones too)
+  are in it whether the window is covered or not; elsewhere a component snapshot.
+  Pictures are keyed by plugin instance and checked by name (an address can be
+  reused); `pluginRemoved` forgets them and prunes those no slot holds.
+  `ctx.capturePluginPictures` (CAPTURE ALL) opens each slot's window in turn
+  (`MainComponent::captureNextPluginPicture`, 1.2 s each) and closes those it opened.
 
 ### Multitrack projects, the editor and the recorder screen
 

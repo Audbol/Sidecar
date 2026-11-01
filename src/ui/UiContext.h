@@ -29,6 +29,7 @@ namespace livedaw::ui
 
 struct KnobBinding;
 class WebMirror;
+class PluginPictures;
 
 namespace cc
 {
@@ -109,6 +110,13 @@ struct UiContext
     std::function<void (int tab)> showRoutingTab;
     std::function<void (juce::AudioProcessor*)> pluginRemoved;
     std::function<void()> showPluginScanner;
+    /** The plugin overview window (every FX slot's plugins, PluginOverviewWindow): opens it, or brings it to the front. */
+    std::function<void()> showPluginOverview;
+    /** The plugins' editor pictures (the overview shows them; the plugin windows take them). */
+    PluginPictures* pluginPictures = nullptr;
+    /** CAPTURE ALL: opens each FX slot's plugin window in turn long enough to picture its
+        plugins, closing the ones it opened; `progress` (done, total) after each, done == total at the end. */
+    std::function<void (std::function<void (int done, int total)> progress)> capturePluginPictures;
 
     // Structure and fader banks: call after changes so the surface rebuilds.
     std::function<void()> structureChanged;
@@ -218,6 +226,9 @@ namespace uiprefs
 {
     constexpr const char* clock24 = "ui.clock24";       // bool, default true (SETUP > GENERAL > TIME)
     constexpr const char* dateFormat = "ui.dateFormat"; // "YYYY-MM-DD" (default) or "DD-MM-YYYY" (DATE)
+    /** SETUP > GENERAL > FX SLOTS: the FX slots in use (16, the WING's, to kMaxFx). A show
+        that uses more brings them along (for that run). */
+    constexpr const char* fxSlots = "setup.fxSlots";
 
     inline bool use24h (juce::PropertiesFile& s) { return s.getBoolValue (clock24, true); }
     inline bool dayFirst (juce::PropertiesFile& s) { return s.getValue (dateFormat, "YYYY-MM-DD") == "DD-MM-YYYY"; }

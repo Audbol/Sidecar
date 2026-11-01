@@ -25,8 +25,8 @@ use livedaw_engine::atomic::AtomicF32;
 use livedaw_engine::keytap::KeySource;
 use livedaw_engine::monitor::{MonitorDspParams, MONITOR_EQ_BANDS};
 use livedaw_engine::params::{
-    ext, DynSlotParams, EngineControls, InsertParams, MonitorSourceParams, StripParams, FX_EXT, FX_NONE, NUM_DCAS, NUM_FX,
-    NUM_MUTE_GROUPS,
+    ext, DynSlotParams, EngineControls, InsertParams, MonitorSourceParams, StripParams, FX_EXT, FX_NONE, NUM_DCAS,
+    NUM_MUTE_GROUPS, WING_FX,
 };
 use livedaw_engine::recorder::codec::FileFormat;
 use livedaw_engine::recorder::usb::{PlayerState, RecFormat, RecState, RecTap};
@@ -1137,11 +1137,11 @@ pub fn bind(parts: &[&str]) -> Binding {
             (Some(n), "mute") => Binding::MuteGroup(n as u8 - 1, true),
             _ => Binding::None,
         },
-        ["fx", n] => number(n, NUM_FX as u16).map_or(Binding::None, |n| Binding::FxSlot(n as u8 - 1)),
-        ["fx", n, "mdl"] => number(n, NUM_FX as u16).map_or(Binding::None, |n| Binding::FxModel(n as u8 - 1)),
-        ["fx", n, "fxmix"] => number(n, NUM_FX as u16).map_or(Binding::None, |n| Binding::FxMix(n as u8 - 1)),
+        ["fx", n] => number(n, WING_FX as u16).map_or(Binding::None, |n| Binding::FxSlot(n as u8 - 1)),
+        ["fx", n, "mdl"] => number(n, WING_FX as u16).map_or(Binding::None, |n| Binding::FxModel(n as u8 - 1)),
+        ["fx", n, "fxmix"] => number(n, WING_FX as u16).map_or(Binding::None, |n| Binding::FxMix(n as u8 - 1)),
         ["fx", n, f @ ("$a_chn" | "$a_pos")] => {
-            number(n, NUM_FX as u16).map_or(Binding::None, |n| Binding::FxAssign(n as u8 - 1, *f == "$a_pos"))
+            number(n, WING_FX as u16).map_or(Binding::None, |n| Binding::FxAssign(n as u8 - 1, *f == "$a_pos"))
         }
         ["play", f] => play_field(f).map_or(Binding::None, Binding::Play),
         ["rec", f] => rec_field(f).map_or(Binding::None, Binding::Rec),
@@ -1364,7 +1364,7 @@ fn safe_count(sf: SafeF) -> u16 {
         SafeF::Strips(kind) => wing_strips(kind),
         SafeF::Dcas => NUM_DCAS as u16,
         SafeF::MuteGroups => NUM_MUTE_GROUPS as u16,
-        SafeF::Fx => NUM_FX as u16,
+        SafeF::Fx => WING_FX as u16,
         SafeF::Source(g) => SAFE_SOURCE_GROUPS[g as usize].1,
         SafeF::Output(g) => SAFE_OUTPUT_GROUPS[g as usize].1,
     }
@@ -1845,7 +1845,7 @@ fn fx_from_item(v: &Value) -> Option<i32> {
         return Some(-1);
     }
     let n: i32 = s.trim_start_matches(|c: char| c.is_ascii_alphabetic()).parse().ok()?;
-    (1..=NUM_FX as i32).contains(&n).then_some(n - 1)
+    (1..=WING_FX as i32).contains(&n).then_some(n - 1)
 }
 
 /// "#D1,#M3": DCA and mute group memberships plus other tags.
@@ -2411,7 +2411,7 @@ impl<'a> Console<'a> {
             return Some(("MON", k));
         }
         // FX SEND 2i+1 / 2i+2: FX slot i+1's outboard insert send.
-        for (i, f) in c.fx.iter().enumerate() {
+        for (i, f) in c.fx.iter().take(WING_FX).enumerate() {
             for (side, o) in [&f.send_left, &f.send_right].into_iter().enumerate() {
                 if o.load(Relaxed) == port {
                     return Some(("SEND", 2 * i as i32 + side as i32 + 1));
@@ -3327,6 +3327,7 @@ impl<'a> Console<'a> {
                 };
                 group.map(|g| (g, 2 * (number - 1) + channel as i32 + 1))
             }
+            RecTap::Direct(_) => None, // a direct out (PRE / POST FADER): no WING group
         };
         match (shown, self.shadow_pair(row, "grp", "in")) {
             (Some(gk), _) => gk,
@@ -3409,7 +3410,10 @@ impl<'a> Console<'a> {
             _ => None,
         };
         // FX SEND n: FX slot (n+1)/2's outboard insert send (manual 11.11 p. 164).
-        let send = (group == "SEND").then(|| c.fx.get(((n - 1) / 2) as usize)).flatten().filter(|_| n >= 1);
+        let send = (group == "SEND")
+            .then(|| c.fx.get(((n - 1) / 2) as usize))
+            .flatten()
+            .filter(|_| (1..=2 * WING_FX as i32).contains(&n));
         // Any source Sidecar has (manual 5.4 OUTPUTS: "route any Source to
         // any digital or analog output"): a port, a playback channel, the USB
         // player, an oscillator, a user signal or patch.

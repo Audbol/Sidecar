@@ -2,6 +2,7 @@
 #include "engine/AppPaths.h"
 #include "ui/MidiRemoteUi.h"
 #include "ui/PluginChainWindow.h"
+#include "ui/PluginOverviewWindow.h"
 #include "ui/StartupNotice.h"
 #include "ui/WebMirror.h"
 #include "ui/WingPopups.h"
@@ -150,8 +151,30 @@ MainComponent::MainComponent (juce::AudioDeviceManager& dm, MixerEngine& e, Plug
     ctx.editFx = [this] (int slot) { display->editFx (slot); };
     ctx.showFxSendOutputs = [this] (int slot) { display->showFxSendOutputs (slot); };
     ctx.showRoutingTab = [this] (int tab) { display->showRoutingTab (tab); };
-    ctx.pluginRemoved = [this] (juce::AudioProcessor* p) { closePluginWindowsFor (p); };
+    ctx.pluginRemoved = [this] (juce::AudioProcessor* p)
+    {
+        closePluginWindowsFor (p);
+        pluginPictures.forget (p);
+        // A chain's plugins go with it: once it is gone, forget theirs too.
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainComponent> (this)] { if (safe != nullptr) safe->prunePluginPictures(); });
+    };
+    ctx.pluginPictures = &pluginPictures;
+    ctx.capturePluginPictures = [this] (std::function<void (int, int)> progress)
+    {
+        if (! captureQueue.empty())
+            return; // already capturing
+        for (int slot = 0; slot < kMaxFx; ++slot)
+            if (engine.getFx().hasPlugin (slot))
+                captureQueue.push_back (slot);
+        captureTotal = (int) captureQueue.size();
+        captureProgress = std::move (progress);
+        captureNextPluginPicture();
+    };
     ctx.showPluginScanner = [this] { showPluginScanner(); };
+    ctx.showPluginOverview = [this] { showPluginOverview(); };
+    // The plugin overview was open when Sidecar quit: again (after the main window).
+    if (settings.getBoolValue (PluginOverviewWindow::openKey, false))
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainComponent> (this)] { if (safe != nullptr) safe->showPluginOverview(); });
     ctx.structureChanged = [this] { refreshAll(); };
     ctx.layersChanged = [this] { refreshSections(); };
     ctx.sofChanged = [this]
@@ -359,6 +382,7 @@ MainComponent::~MainComponent()
     lockOverlay.reset();
     closeAllPluginWindows();
     scannerWindow.reset();
+    pluginOverview.reset(); // (stays "open" in the settings: it reopens next time)
     fourChannel.reset();
     compactKeys.reset();
     for (auto& sec : dawSections)
@@ -811,6 +835,11 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
             logRecall (ctx, "next scene", show.recallNext());
             return true;
         }
+        if ((c == 'p' || k == 'p') && key.getModifiers().isShiftDown())
+        {
+            showPluginOverview();
+            return true;
+        }
         if (c == 'p' || k == 'p')
         {
             saveScreenshot();
@@ -913,6 +942,72 @@ void MainComponent::showPluginScanner()
     };
 
     scannerWindow = std::make_unique<ScannerWindow> (ctx.host, *this);
+}
+
+void MainComponent::showPluginOverview()
+{
+    if (pluginOverview != nullptr)
+    {
+        pluginOverview->setMinimised (false);
+        pluginOverview->toFront (true);
+        return;
+    }
+    pluginOverview = std::make_unique<PluginOverviewWindow> (ctx, [safe = juce::Component::SafePointer<MainComponent> (this)]
+    {
+        if (safe != nullptr)
+            safe->pluginOverview.reset();
+    });
+}
+
+void MainComponent::captureNextPluginPicture()
+{
+    if (captureQueue.empty())
+    {
+        if (auto progress = std::exchange (captureProgress, nullptr))
+            progress (captureTotal, captureTotal);
+        return;
+    }
+    const int slot = captureQueue.front();
+    captureQueue.erase (captureQueue.begin());
+    auto windowFor = [this] (int s) -> PluginChainWindow*
+    {
+        for (auto* w : pluginWindows)
+            if (w->getSlot() == s)
+                return w;
+        return nullptr;
+    };
+    const bool wasOpen = windowFor (slot) != nullptr;
+    if (! engine.getFx().hasPlugin (slot))
+    {
+        captureNextPluginPicture();
+        return;
+    }
+    openPluginEditor (slot);
+    // Long enough for the editors to open and draw themselves.
+    juce::Timer::callAfterDelay (kCaptureWaitMs, [safe = juce::Component::SafePointer<MainComponent> (this), slot, wasOpen, windowFor]
+    {
+        if (safe == nullptr)
+            return;
+        if (auto* w = windowFor (slot))
+        {
+            w->capturePictures();
+            if (! wasOpen)
+                safe->pluginWindows.removeObject (w);
+        }
+        if (safe->captureProgress)
+            safe->captureProgress (safe->captureTotal - (int) safe->captureQueue.size(), safe->captureTotal);
+        safe->captureNextPluginPicture();
+    });
+}
+
+void MainComponent::prunePluginPictures()
+{
+    std::vector<const juce::AudioProcessor*> live;
+    auto& fx = engine.getFx();
+    for (int slot = 0; slot < kMaxFx; ++slot)
+        for (int i = 0; i < fx.getNumChainMembers (slot); ++i)
+            live.push_back (fx.getChainMember (slot, i));
+    pluginPictures.retainOnly (live);
 }
 
 void MainComponent::openPluginEditor (int slot)
@@ -1100,7 +1195,7 @@ void MainComponent::newShow()
     popups::confirm (*display, "NEW SHOW", "Clear the console and all scenes and start a new show (a 40 channel WING)?", "NEW", [this]
     {
         closeAllPluginWindows();
-        for (int i = 0; i < kNumFx; ++i)
+        for (int i = 0; i < kMaxFx; ++i)
             engine.getFx().setPlugin (i, nullptr);
         show.clear (kWingChannels);
         showFile = juce::File();

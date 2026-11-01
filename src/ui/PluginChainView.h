@@ -115,6 +115,10 @@ public:
     juce::Rectangle<int> getEditorBounds (int index) const;
     bool isCardVisible (int index) const;
 
+    /** Each plugin whose editor shows (its card visible, not collapsed), in chain
+        order, with its editor (for PluginPictures). */
+    void forEachShownEditor (const std::function<void (juce::AudioProcessor&, juce::Component& editor)>&) const;
+
     /** The zoom step after `percent` in `direction` (capped at 50 and 100 %). */
     static int nextZoom (int percent, int direction) noexcept;
     /** The largest zoom step at which an editor `baseHeight` px tall at 100 %

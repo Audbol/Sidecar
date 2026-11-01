@@ -181,8 +181,8 @@ juce::uint32* ScopeWindow::maskOf (Kind k)
     {
         case Kind::Dca:       return &selection.dcas;
         case Kind::MuteGroup: return &selection.muteGroups;
-        case Kind::Fx:        return &selection.fx;
         case Kind::Source:    return &sourceGroups;
+        case Kind::Fx: // 64 bits: see toggle()
         case Kind::Strip:
         case Kind::Config:
         case Kind::Content:
@@ -211,7 +211,7 @@ bool ScopeWindow::isActive (const Tile& t) const
 int ScopeWindow::groupOf (const Tile& t)
 {
     for (int i = 0; i < 32; ++i)
-        if (t.bits == (1u << i))
+        if (t.bits == (juce::uint64 (1) << i))
             return i;
     return 0;
 }
@@ -262,10 +262,12 @@ void ScopeWindow::toggle (const Tile& t, bool on)
     }
     if (t.kind == Kind::Strip)
         toggleStrip (t.strip, on);
+    else if (t.kind == Kind::Fx)
+        selection.fx = on ? (selection.fx | t.bits) : (selection.fx & ~t.bits);
     else if (t.kind == Kind::Config && t.bits == kConsoleTile)
         selection.console = on;
     else if (auto* mask = maskOf (t.kind))
-        *mask = on ? (*mask | t.bits) : (*mask & ~t.bits);
+        *mask = on ? (*mask | (juce::uint32) t.bits) : (*mask & ~(juce::uint32) t.bits);
 }
 
 void ScopeWindow::paint (juce::Graphics& g)
@@ -368,22 +370,23 @@ void ScopeWindow::resized()
     const int headerH = juce::jmax (10, Y (108.0f) - Y (84.0f));
     const int pitchX = X (92.0f) - X (36.0f);
 
-    // A group of `count` tiles, eight to a row, from `top`; returns the bottom.
-    auto addGroup = [&] (const juce::String& groupTitle, float left, int top, int count, int pitch, std::function<Tile (int index, juce::Rectangle<int>)> make)
+    // A group of `count` tiles, eight (or `perRow`) to a row, from `top`; returns the bottom.
+    auto addGroup = [&] (const juce::String& groupTitle, float left, int top, int count, int pitch, std::function<Tile (int index, juce::Rectangle<int>)> make,
+                         int perRow = 8)
     {
         Group gr { groupTitle, juce::Rectangle<int> (X (left - 6.0f), top, X (left + 450.0f) - X (left - 6.0f), headerH), tiles.size(), (size_t) count };
         const int y0 = top + headerH + juce::roundToInt (4.0f * sy);
         for (int i = 0; i < count; ++i)
-            tiles.push_back (make (i, juce::Rectangle<int> (X (left) + (i % 8) * pitchX, y0 + (i / 8) * pitch, pitchX, pitch)));
+            tiles.push_back (make (i, juce::Rectangle<int> (X (left) + (i % perRow) * pitchX * 8 / perRow, y0 + (i / perRow) * pitch, pitchX * 8 / perRow, pitch)));
         groups.push_back (gr);
-        return y0 + (count + 7) / 8 * pitch + juce::roundToInt (4.0f * sy);
+        return y0 + (count + perRow - 1) / perRow * pitch + juce::roundToInt (4.0f * sy);
     };
     auto simple = [] (Kind kind, const char* caption)
     {
         return [kind, caption] (int i, juce::Rectangle<int> area)
         {
             Tile t { kind, area, caption, juce::String (i + 1) };
-            t.bits = 1u << i;
+            t.bits = juce::uint64 (1) << i;
             return t;
         };
     };
@@ -427,14 +430,14 @@ void ScopeWindow::resized()
         addGroup ("SOURCE", 530.0f, Y (84.0f), (int) std::size (sourceNames), pitchY, [] (int i, juce::Rectangle<int> area)
         {
             Tile t { Kind::Source, area, "SRC", sourceNames[i] };
-            t.bits = 1u << i;
+            t.bits = juce::uint64 (1) << i;
             t.dropdown = true;
             return t;
         });
         addGroup ("OUTPUT", 530.0f, Y (245.0f), (int) std::size (outputNames), pitchY, [] (int i, juce::Rectangle<int> area)
         {
             Tile t { Kind::Output, area, "OUT", outputNames[i] };
-            t.bits = 1u << i;
+            t.bits = juce::uint64 (1) << i;
             t.dropdown = true;
             return t;
         });
@@ -443,7 +446,10 @@ void ScopeWindow::resized()
         titleArea = rect (530.0f, 100.0f, 980.0f, 380.0f);
     const int mgTop = addGroup ("DCA", 530.0f, Y (406.0f), kNumDcas, pitchY, simple (Kind::Dca, "DCA"));
     addGroup ("MUTEGROUP", 530.0f, mgTop, kNumMuteGroups, pitchY, simple (Kind::MuteGroup, "MUTE"));
-    addGroup ("FX", 530.0f, Y (652.0f), kNumFx, pitchY, simple (Kind::Fx, "FX"));
+    // More than the WING's 16 FX slots: 16 to a row, the rows shrunk to fit the same space.
+    const int numFx = ctx.engine.getFx().getNumSlots(), fxPerRow = numFx > kWingFx ? 16 : 8;
+    const int fxPitch = juce::jmin (pitchY, (Y (792.0f) - Y (652.0f) - headerH - juce::roundToInt (8.0f * sy)) / juce::jmax (1, (numFx + fxPerRow - 1) / fxPerRow));
+    addGroup ("FX", 530.0f, Y (652.0f), numFx, numFx > kWingFx ? fxPitch : pitchY, simple (Kind::Fx, "FX"), fxPerRow);
 
     // Right column.
     noneKey.setBounds (rect (999.0f, 84.0f, 1061.0f, 148.0f));
@@ -504,7 +510,7 @@ void ScopeWindow::mouseUp (const juce::MouseEvent& e)
             else if (t.bits == kAllKey)
                 selection.sections = state::AllSections;
             else
-                selection.sections ^= t.bits;
+                selection.sections ^= (juce::uint32) t.bits;
         }
         else
             toggle (t, ! isSelected (t));

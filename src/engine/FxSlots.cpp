@@ -112,12 +112,12 @@ private:
 FxSlots::Holder* FxSlots::holderAt (int slot) const noexcept
 {
     // Every slot context registered with the engine is a Holder (see setPlugin).
-    return juce::isPositiveAndBelow (slot, kNumFx) ? static_cast<Holder*> (ld::ld_fx_ctx (engine, slot)) : nullptr;
+    return juce::isPositiveAndBelow (slot, kMaxFx) ? static_cast<Holder*> (ld::ld_fx_ctx (engine, slot)) : nullptr;
 }
 
 void FxSlots::prepare (double sampleRate, int maxBlockSize)
 {
-    for (int slot = 0; slot < kNumFx; ++slot)
+    for (int slot = 0; slot < kMaxFx; ++slot)
     {
         if (auto* h = holderAt (slot))
         {
@@ -135,7 +135,7 @@ void FxSlots::setPlugin (int slot, std::unique_ptr<juce::AudioPluginInstance> pl
 
 void FxSlots::install (int slot, std::shared_ptr<juce::AudioPluginInstance> plugin, bool rearranged)
 {
-    if (! juce::isPositiveAndBelow (slot, kNumFx))
+    if (! juce::isPositiveAndBelow (slot, kMaxFx))
         return;
 
     if (auto* old = holderAt (slot))
@@ -164,7 +164,7 @@ void FxSlots::install (int slot, std::shared_ptr<juce::AudioPluginInstance> plug
 bool FxSlots::updateLatencies()
 {
     bool changed = false;
-    for (int slot = 0; slot < kNumFx; ++slot)
+    for (int slot = 0; slot < kMaxFx; ++slot)
     {
         auto* h = holderAt (slot);
         if (h != nullptr && h->chain != nullptr)
@@ -336,7 +336,7 @@ bool FxSlots::isAllowed (int model, int slot)
 
 bool FxSlots::setModel (int slot, int model)
 {
-    if (! juce::isPositiveAndBelow (slot, kNumFx) || ! isAllowed (model, slot))
+    if (! juce::isPositiveAndBelow (slot, kMaxFx) || ! isAllowed (model, slot))
         return false;
     if (model == ld::kFxExt)
         return true; // EXT: the slot becomes a plugin slot when a plugin is loaded
@@ -347,7 +347,7 @@ bool FxSlots::setModel (int slot, int model)
 
 void FxSlots::setOutboard (int slot)
 {
-    if (! juce::isPositiveAndBelow (slot, kNumFx))
+    if (! juce::isPositiveAndBelow (slot, kMaxFx))
         return;
     if (hasPlugin (slot))
         setPlugin (slot, nullptr); // the slot's EXT settings stay

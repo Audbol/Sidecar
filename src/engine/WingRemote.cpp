@@ -1,4 +1,5 @@
 #include "engine/WingRemote.h"
+#include "engine/AppPaths.h"
 
 #include "engine/MixerEngine.h"
 #include "engine/RustStrings.h"
@@ -64,6 +65,11 @@ juce::StringArray WingRemote::apply (const Settings& s)
     {
         stop();
         return {};
+    }
+    if (paths::externalActionsBlocked().load())
+    {
+        stop();
+        return { "No network servers in this test run" };
     }
 
     auto sameServers = s;
@@ -327,10 +333,11 @@ void WingRemote::pumpSafes()
     {
         safe.dcas = dcas;
         safe.muteGroups = muteGroups;
-        safe.fx = fx;
+        // The WING knows FX 1-16: the safes of the slots beyond stay.
+        safe.fx = (safe.fx & ~state::Scope::allFx (kWingFx)) | (fx & state::Scope::allFx (kWingFx));
         libraryShow->setGlobalSafe (safe);
     }
-    ld::ld_wing_set_safes (handle, safe.dcas, safe.muteGroups, safe.fx);
+    ld::ld_wing_set_safes (handle, safe.dcas, safe.muteGroups, (juce::uint32) (safe.fx & state::Scope::allFx (kWingFx)));
 }
 
 void WingRemote::pumpUsb()

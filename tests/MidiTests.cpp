@@ -210,7 +210,7 @@ private:
     void testFx()
     {
         beginTest ("FX PARAMETER CONTROL: the CC map and both directions");
-        for (int slot = 0; slot < kNumFx; ++slot)
+        for (int slot = 0; slot < kWingFx; ++slot)
             for (int param = -3; param < 33; ++param)
                 if (const int c = MidiRemote::fxCc (slot, param); c >= 0)
                 {

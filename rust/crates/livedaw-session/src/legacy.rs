@@ -13,7 +13,7 @@
 use crate::refs::StripRef;
 use crate::xml::{fmt_f32, Element};
 use livedaw_dsp::wing::{model_index, ParamKind, DYN_MODELS, EQ_MODELS_BUS, EQ_MODELS_CH};
-use livedaw_engine::params::{nearest_colour, NUM_FX};
+use livedaw_engine::params::{nearest_colour, MAX_FX};
 use livedaw_engine::StripKind;
 use std::collections::HashMap;
 
@@ -179,7 +179,7 @@ impl Converter {
         for i in old.child("Inserts").into_iter().flat_map(|i| i.children_named("Insert")) {
             let Some(desc) = i.child("PLUGIN") else { continue };
             let name = desc.str_or("name", "plugin");
-            if used == 2 || self.next_fx == NUM_FX {
+            if used == 2 || self.next_fx == MAX_FX {
                 let strip_name = old.str_or("name", old_ref);
                 self.warnings.push(format!("{strip_name}: {name} could not be moved to an FX slot (removed)"));
                 continue;

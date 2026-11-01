@@ -38,7 +38,7 @@ juce::String text()
            "parameters and every custom control mode's function nodes; the rest is stored but does "
            "nothing). WING Edit 3.3.4 works with it (sync both ways, live control, FX, processing "
            "models, inserts, the EXTERNAL effect as an outboard insert; a plugin's FX slot shows as an EXTERNAL "
-           "effect); the parameters WING "
+           "effect; it sees FX 1-16 only, and not the direct outs); the parameters WING "
            "Edit knows from firmware newer than 3.1 are ignored. WING Copilot has not been tried, "
            "and exported WING snapshots have not been loaded into a console.\n"
            "- MIDI and DAW remote control (MCU / HUI) have not been tested with real hardware.\n"

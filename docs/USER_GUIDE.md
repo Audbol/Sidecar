@@ -12,7 +12,8 @@ with or endorsed by Behringer or Music Tribe; "WING" is their trademark.
 
 - **Console topology:** 40 input channels, 8 aux channels, 16 stereo buses, 4 stereo
   mains, 8 stereo matrices, 16 DCAs, 8 mute groups and 16 FX slots. Unlike the
-  hardware, the channel count is only limited by CPU and more buses can be added.
+  hardware, the channel count is only limited by CPU, more buses can be added and
+  **SETUP > GENERAL > FX SLOTS** gives up to 64 FX slots (see *More FX slots* below).
 - **Channel processing, in the WING's order:**
   - **INPUT:** trim, balance, polarity and delay (m, ft, ms or samples, converted as
     the WING does: 0.3 m per ms, 0.1 to 150 m, at least 16 samples).
@@ -29,7 +30,7 @@ with or endorsed by Behringer or Music Tribe; "WING" is their trademark.
     one audio block late.
   - **EQ:** the 6-band WING EQ (8 bands on buses) or the analog models (SOUL, E88,
     E84, F110, PULSAR, MACH4, PIA on buses), with blend/mix.
-  - **PRE INSERT and POST INSERT** use the 16 FX slots; the post insert can also join
+  - **PRE INSERT and POST INSERT** use the FX slots (16, or up to 64); the post insert can also join
     automix group X or Y (gain sharing; a channel is a member while its INS 2 is set
     to AUTO X / AUTO Y and ON, and its group's X / Y ENABLE is on).
   - Gate, EQ, dynamics and the pre insert run in any of the **24 process orders**, and
@@ -131,6 +132,40 @@ with or endorsed by Behringer or Music Tribe; "WING" is their trademark.
   latency. Adding, removing and moving plugins swaps the new chain in without
   stopping the audio; the plugins that stay keep running with their state. Removing
   the last plugin empties the slot.
+- **More FX slots:** **SETUP > GENERAL > CONSOLE > FX SLOTS** sets how many FX slots
+  the console has: **WING** (16, the default) or 32, 48 or 64 with **-** / **+** (16
+  at a time). It is an app setting, kept between runs. EFFECTS then shows the rack in
+  banks of 16 (keys **FX 1-16**, **FX 17-32** ... in the status bar; premium devices
+  stay in FX 1-8), and so do the inserts' SELECT FX PROCESSOR window, the scene SCOPE
+  and GLOBAL SAFE windows, ROUTING's FX SEND group, custom controls and the plugin
+  latency list. **-** won't go below a slot in use (a device, a plugin, an outboard
+  insert, or an insert assigned to it, even switched off): empty the last slots
+  first. A show that uses more slots than set brings them along when it loads; shows
+  save every slot in use. The WING remote (WING Edit) and the MIDI remote see FX 1-16
+  only: a strip inserting FX 17 or above shows it as `FX17` there, and the slots
+  above 16 can't be edited from them.
+- **Plugin overview:** every plugin of every FX slot in a window of its own, to keep
+  in view during a show, for instance on a second screen. Open it with **SETUP >
+  PLUGINS > PLUGIN OVERVIEW** or **Ctrl+Shift+P**. **CARDS** (the default) shows a
+  card per slot: the slot and its state (**RUNNING** green, **BYPASS** / **NOT USED**
+  grey, **PLUGIN FAULT** amber when a plugin of its chain faulted on its own, **FAULT**
+  or **DOUBLE** red), the strips whose inserts use it, a picture of each plugin's
+  editor in chain order (dimmed and marked when bypassed, framed red when faulted,
+  with how old the picture is), the slot's IN / OUT meters, its CPU share and its
+  latency. **LIST** shows one compact row per slot with a small picture. The title
+  row sums it up (plugins, faults, DSP load, delay compensation). Touch a slot to
+  open its plugin window. **ON TOP** keeps the window above the others; **-** / **+**
+  scale it to read from further away. The window remembers its place (screen
+  included), size, layout and scale, and opens again when Sidecar starts if it was
+  open when Sidecar quit. It only reads the slots: nothing in it changes a plugin.
+  - **Pictures:** a plugin draws its editor only while its window is open, so the
+    overview shows the last picture taken. A plugin window takes one of each plugin
+    it shows shortly after it opens and every 3 seconds while it is open (also when
+    other windows cover it, on Windows); **CAPTURE ALL** opens each slot's plugin
+    window in turn for about a second to take them, and closes the ones it opened. A
+    plugin without a picture yet shows its name. On macOS and Linux only editors
+    Sidecar draws itself (generic controls, the sandbox panel) can be pictured;
+    native plugin views show as blank there.
 - **Plugin delay compensation:** plugins that report a latency (lookahead limiters,
   linear-phase EQs...) delay their signal. Sidecar reads each plugin's latency and
   delays the other sources summed into the same bus, main or matrix by the
@@ -478,15 +513,28 @@ like the finish. The COMPACT is black, so it always shows the black finish. It f
     outputs; **RECORDER** taps a signal for the USB recorder), then the signal feeding
     it from the source group: **BUS**, **MAIN**, **MATRIX** (each L / R), **MONITOR**
     (PHONES 1L / 1R, SPEAKERS 2L / 2R), **FX SEND** (FX 1L ... FX 16R: the FX
-    slots' outboard insert sends), **USER SIGNAL** (USR 1-56) or any input group
+    slots' outboard insert sends), **CH DIRECT** and **BUS DIRECT** (Sidecar's own
+    direct outs, below), **USER SIGNAL** (USR 1-56) or any input group
     (LOCAL IN, AES50 B / C, OSCILLATOR, WLIVE PLAY, USB PLAYER: the source after its
     gain, mute and polarity, straight to the output, as the manual's "route any
     Source to any digital or analog output"). An output has one signal: patching one
-    replaces what fed it. Direct outs of channels from older shows still play and show
+    replaces what fed it. **Direct outs** (CH DIRECT: the input channels, then the
+    aux; BUS DIRECT: the buses; each L / R, a mono channel one tile) feed an output, or
+    a RECORDER port, straight from a channel's or bus's signal, tapped where the
+    **PRE FADER** / **POST FADER** keys (in place of the meter scale) say: PRE FADER
+    after INS 1 where PFL listens, so the fader and mute don't touch it; POST FADER
+    after the fader, mute, INS 2 and the post-fader delay, before pan. The keys set the
+    tap of the next tiles you touch, and switch the selected output's tap at once if a
+    direct out feeds it; selecting such an output shows its tap. Its tile reads "CH 3
+    PRE" or "BUS 2L POST". A strip's outputs stay as they are, and one strip can feed
+    any number of direct outs. Direct outs are saved with the show and recalled with
+    ROUTING; like solo they aren't delay compensated. The WING has no such group (it
+    makes direct outs with user signals): the WING remote shows these outputs as OFF.
+    Direct outs of channels from older shows still play and show
     on their outputs (user signals now make them). Defaults: every interface input on its channel (the
     console patches its eight local inputs to channels 1-8) and MAIN 1 on LOCAL OUT
     1-2 (the console uses LOCAL OUT 7-8 and feeds buses 1-6 to 1-6).
-  - **SETUP:** GENERAL (lighting, clock, console info and size, the surface's finish
+  - **SETUP:** GENERAL (lighting, clock, console info and size (CHANNELS, BUSES, FX SLOTS), the surface's finish
     SILVER / BLACK, the console model FULL / COMPACT, OPERATION, OPTIONS),
     AUDIO (clock rate, INPUT SELECT: the global MAIN / ALT switch, and the channel grid,
     which opens the INPUT SELECT window: MAIN/ALT INPUT switches a channel, GLOBAL
@@ -500,7 +548,7 @@ like the finish. The COMPACT is black, so it always shows the black finish. It f
     key in the FADERS header opens Sidecar's FADER SECTIONS: section widths, SHIFT STEP
     and FADER VALUES), REMOTE (MIDI REMOTE CONTROL with the DIN and USB MIDI ports under
     it, HA REMOTE, NETWORK, REMOTE LOCK and Sidecar's WING REMOTE and WEB REMOTE) and DAW (DAW CONTROL,
-    DAW PORTS; see *MIDI and DAW remote control*), PLUGINS (scanning, delay compensation,
+    DAW PORTS; see *MIDI and DAW remote control*), PLUGINS (scanning, PLUGIN OVERVIEW, delay compensation,
     RUN PLUGINS IN SANDBOX; see *Stability*) and LOG (system health and the
     event log), with INITIALIZE CONSOLE and SHUTDOWN. **INITIALIZE CONSOLE** opens a page
     like the LIBRARY's scope window: pick strips, the CONTENTS to reset, DCAs, mute
