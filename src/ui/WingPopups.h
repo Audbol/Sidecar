@@ -184,6 +184,10 @@ struct NoticeOptions
     /** A tick key left of OK (empty: none) and its state when the window opens. */
     juce::String checkText;
     bool checked = false;
+    /** A key at the left of the bottom bar that opens `linkUrl` in the browser
+        (empty text: none). */
+    juce::String linkText;
+    juce::URL linkUrl;
     /** Called when the window closes (OK, Esc or a key of the surface), with
         the tick key's state. */
     std::function<void (bool checked)> onClose;

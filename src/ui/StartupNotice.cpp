@@ -47,6 +47,10 @@ juce::String text()
            "- Drawn but disabled: the GPIO and SD functions of the custom controls (there is no GPIO "
            "socket or SD card), and settings that only make sense on the hardware.\n"
            "\n"
+           "## Community\n"
+           "Questions, setup help and feedback: the " + kAppName + " Discord server, " + kDiscordUrl + " (the DISCORD key below "
+           "opens it). Bugs: https://github.com/Audbol/Live-Daw/issues\n"
+           "\n"
            "## Before you use it live\n"
            "Don't rely on " + kAppName + " for a critical live show without testing it thoroughly first, "
            "with your own computer, audio interface and show. It comes with no warranty.\n"
@@ -66,6 +70,8 @@ void show (juce::PropertiesFile& settings, juce::Component& host, bool atStartup
     popups::NoticeOptions options;
     options.checkText = "DON'T SHOW AGAIN UNTIL THE NEXT VERSION";
     options.checked = settings.getValue (uiprefs::noticeDismissed) == version;
+    options.linkText = "DISCORD";
+    options.linkUrl = juce::URL (kDiscordUrl);
     // Over the whole window (the window's content), so it stays readable
     // however small the main display is.
     juce::Component* cover = &host;
