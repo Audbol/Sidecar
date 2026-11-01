@@ -15,8 +15,13 @@ constexpr int kMaxBuses = ld::kMaxBuses;
 constexpr int kNumMains = ld::kNumMains;
 constexpr int kNumMatrices = ld::kNumMatrices;
 constexpr int kNumAux = ld::kNumAux;
-constexpr int kNumDcas = ld::kNumDcas;
-constexpr int kNumMuteGroups = ld::kNumMuteGroups;
+/** The WING's 16 DCAs and 8 mute groups (its surface, screens and remotes). The
+    console uses MixerEngine::getNumDcas() / getNumMuteGroups() of them, up to
+    kMaxDcas / kMaxMuteGroups. */
+constexpr int kWingDcas = ld::kWingDcas;
+constexpr int kWingMuteGroups = ld::kWingMuteGroups;
+constexpr int kMaxDcas = ld::kMaxDcas;
+constexpr int kMaxMuteGroups = ld::kMaxMuteGroups;
 /** FX slots the engine holds; FxSlots::getNumSlots() of them are in use (SETUP > GENERAL > FX SLOTS). */
 constexpr int kMaxFx = ld::kMaxFx;
 /** The WING's 16 FX slots: the default number in use, and the ones the WING and MIDI remotes see. */
@@ -46,6 +51,10 @@ using StripParams = ld::StripParams;
 using SendParams = ld::SendParams;
 using DcaParams = ld::DcaParams;
 using FxParams = ld::FxParams;
+/** A set of DCAs or mute groups (0-based), and its atomic form shared with the engine. */
+using GroupBits = ld::GroupBits;
+using GroupMask = ld::GroupMask;
+using Counts = ld::CountsC;
 
 /** Bus send modes (list 4). Pre is the WING's TAP mode on input and aux
     channels (taken at the tap point; cut by the channel mute unless the send's

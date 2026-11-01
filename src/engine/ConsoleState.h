@@ -163,12 +163,13 @@ struct FaderRef
 
 /** What a recall, a partial update or a snippet touches (the LIBRARY's SCOPE
     window): strip sections, strips (allStrips: every one), DCAs, mute groups
-    and FX slots (bit n = item n+1, recalled with FADER, GROUPS and INSERTS)
+    and FX slots (0-based sets; FX: bit n = slot n+1; recalled with FADER, GROUPS and INSERTS)
     and the console-wide settings (monitor setup and INPUT SELECT with Routing,
     automix enables with Inserts). Also holds the GLOBAL safes beyond strips. */
 struct Scope
 {
-    static constexpr juce::uint32 kAllDcas = 0xffffu, kAllMuteGroups = 0xffu;
+    /** Every DCA and mute group the engine holds. */
+    static constexpr GroupBits kAllDcas = GroupBits::all(), kAllMuteGroups = GroupBits::all();
     /** Every FX slot the engine holds (kMaxFx: 64 bits). */
     static constexpr juce::uint64 kAllFx = ~juce::uint64 (0);
     /** The first `numSlots` FX slots. */
@@ -177,7 +178,7 @@ struct Scope
     juce::uint32 sections = AllSections;
     bool allStrips = true;
     std::vector<StripRef> strips;
-    juce::uint32 dcas = kAllDcas, muteGroups = kAllMuteGroups;
+    GroupBits dcas = kAllDcas, muteGroups = kAllMuteGroups;
     juce::uint64 fx = kAllFx;
     bool console = true;
 

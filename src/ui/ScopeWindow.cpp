@@ -179,9 +179,9 @@ juce::uint32* ScopeWindow::maskOf (Kind k)
 {
     switch (k)
     {
-        case Kind::Dca:       return &selection.dcas;
-        case Kind::MuteGroup: return &selection.muteGroups;
         case Kind::Source:    return &sourceGroups;
+        case Kind::Dca:       // group sets: see toggle()
+        case Kind::MuteGroup:
         case Kind::Fx: // 64 bits: see toggle()
         case Kind::Strip:
         case Kind::Config:
@@ -231,8 +231,8 @@ bool ScopeWindow::isSelected (const Tile& t) const
     switch (t.kind)
     {
         case Kind::Strip:     return hasStrip (t.strip);
-        case Kind::Dca:       return (selection.dcas & t.bits) != 0;
-        case Kind::MuteGroup: return (selection.muteGroups & t.bits) != 0;
+        case Kind::Dca:       return (selection.dcas.low() & t.bits) != 0; // the WING's 16 DCAs and 8 mute groups
+        case Kind::MuteGroup: return (selection.muteGroups.low() & t.bits) != 0;
         case Kind::Fx:        return (selection.fx & t.bits) != 0;
         case Kind::Config:    return t.bits == kConsoleTile && selection.console;
         case Kind::Source:
@@ -264,6 +264,11 @@ void ScopeWindow::toggle (const Tile& t, bool on)
         toggleStrip (t.strip, on);
     else if (t.kind == Kind::Fx)
         selection.fx = on ? (selection.fx | t.bits) : (selection.fx & ~t.bits);
+    else if (t.kind == Kind::Dca || t.kind == Kind::MuteGroup)
+    {
+        auto& set = t.kind == Kind::Dca ? selection.dcas : selection.muteGroups;
+        set = on ? (set | GroupBits::mask (t.bits)) : (set & ~GroupBits::mask (t.bits));
+    }
     else if (t.kind == Kind::Config && t.bits == kConsoleTile)
         selection.console = on;
     else if (auto* mask = maskOf (t.kind))
@@ -444,8 +449,8 @@ void ScopeWindow::resized()
     }
     else
         titleArea = rect (530.0f, 100.0f, 980.0f, 380.0f);
-    const int mgTop = addGroup ("DCA", 530.0f, Y (406.0f), kNumDcas, pitchY, simple (Kind::Dca, "DCA"));
-    addGroup ("MUTEGROUP", 530.0f, mgTop, kNumMuteGroups, pitchY, simple (Kind::MuteGroup, "MUTE"));
+    const int mgTop = addGroup ("DCA", 530.0f, Y (406.0f), kWingDcas, pitchY, simple (Kind::Dca, "DCA"));
+    addGroup ("MUTEGROUP", 530.0f, mgTop, kWingMuteGroups, pitchY, simple (Kind::MuteGroup, "MUTE"));
     // More than the WING's 16 FX slots: 16 to a row, the rows shrunk to fit the same space.
     const int numFx = ctx.engine.getFx().getNumSlots(), fxPerRow = numFx > kWingFx ? 16 : 8;
     const int fxPitch = juce::jmin (pitchY, (Y (792.0f) - Y (652.0f) - headerH - juce::roundToInt (8.0f * sy)) / juce::jmax (1, (numFx + fxPerRow - 1) / fxPerRow));

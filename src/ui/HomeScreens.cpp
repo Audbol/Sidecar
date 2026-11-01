@@ -4717,8 +4717,8 @@ void copyStripParams (MixerEngine& engine, const Strip& src, const Strip& dst, j
     }
     if (has (Tags))
     {
-        d.dcaMask = s.dcaMask.load();
-        d.muteGroupMask = s.muteGroupMask.load();
+        d.dcaMask.store (s.dcaMask.load());
+        d.muteGroupMask.store (s.muteGroupMask.load());
         setStripTags (dst, stripTags (src));
     }
     if (has (In))
@@ -5755,8 +5755,8 @@ int initializeParts (UiContext& ctx, const state::Scope& scope)
                     }
 
     if (const auto* fresh = defaults.dca())
-        for (int i = 0; i < kNumDcas; ++i)
-            if ((scope.dcas >> i) & 1u)
+        for (int i = 0; i < ctx.engine.getNumDcas(); ++i)
+            if (scope.dcas.contains (i))
             {
                 auto& d = ctx.engine.getDca (i);
                 d.faderDb = fresh->faderDb.load();
@@ -5767,10 +5767,10 @@ int initializeParts (UiContext& ctx, const state::Scope& scope)
                 d.icon = fresh->icon.load();
                 ctx.engine.setDcaName (i, {});
             }
-    for (int i = 0; i < kNumMuteGroups; ++i)
-        if ((scope.muteGroups >> i) & 1u)
+    for (int i = 0; i < ctx.engine.getNumMuteGroups(); ++i)
+        if (scope.muteGroups.contains (i))
         {
-            ctx.engine.muteGroups &= ~(1u << i);
+            ctx.engine.muteGroups.set (i, false);
             ctx.engine.setMuteGroupName (i, {});
         }
     for (int i = 0; i < kMaxFx; ++i)

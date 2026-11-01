@@ -1171,10 +1171,10 @@ public:
         };
 
         auto dcas = frame (dcaFrame);
-        for (int i = 0; i < kNumDcas; ++i)
+        for (int i = 0; i < kWingDcas; ++i)
         {
             auto r = cell (dcas, i, 4, 4, 122.0f, 80.0f, 96.0f, 64.0f);
-            const bool on = (p.dcaMask.load() >> i) & 1u;
+            const bool on = p.dcaMask.contains (i);
             // Unnamed (or an older show's default "DCA.3"): a blank strip, as on the console.
             const auto name = engine.getDcaName (i);
             const auto title = name == "DCA." + juce::String (i + 1) ? juce::String() : name.toUpperCase();
@@ -1183,10 +1183,10 @@ public:
             tiles.push_back ({ r.toNearestInt(), i });
         }
         auto mutes = frame (muteFrame);
-        for (int i = 0; i < kNumMuteGroups; ++i)
+        for (int i = 0; i < kWingMuteGroups; ++i)
         {
             auto r = cell (mutes, i, 4, 2, 122.0f, 80.0f, 96.0f, 64.0f);
-            const bool on = (p.muteGroupMask.load() >> i) & 1u;
+            const bool on = p.muteGroupMask.contains (i);
             tile (r, engine.getMuteGroupName (i).toUpperCase(), "MGRP" + juce::String (i + 1), colours::muteTag, colours::tagBody, on);
             tiles.push_back ({ r.toNearestInt(), 100 + i });
         }
@@ -1241,7 +1241,7 @@ public:
                     return;
                 }
                 auto& mask = index >= 100 ? strip.params.muteGroupMask : strip.params.dcaMask;
-                mask = mask.load() ^ (1u << (index % 100));
+                mask.toggle (index % 100);
                 repaint();
                 return;
             }
@@ -1275,7 +1275,7 @@ private:
     int chipH = 30;
     std::vector<std::pair<juce::Rectangle<int>, int>> tiles;
     std::vector<std::pair<juce::Rectangle<int>, juce::String>> chips;
-    std::tuple<uint32_t, uint32_t, juce::String> shown;
+    std::tuple<GroupBits, GroupBits, juce::String> shown;
 };
 } // namespace
 

@@ -28,7 +28,7 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 24;
+constexpr int kAbiVersion = 25;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -36,8 +36,15 @@ constexpr int kMaxBuses = 16384;
 constexpr int kNumMains = 4;
 constexpr int kNumMatrices = 8;
 constexpr int kNumAux = 8;
-constexpr int kNumDcas = 16;
-constexpr int kNumMuteGroups = 8;
+/** ABI 25: DCAs and mute groups the engine holds; how many the console uses is
+    set at run time (ld_engine_counts, ld_engine_set_num_dcas, ld_engine_set_num_mute_groups). */
+constexpr int kGroupWords = 4;
+constexpr int kMaxGroups = kGroupWords * 64;
+constexpr int kMaxDcas = kMaxGroups;
+constexpr int kMaxMuteGroups = kMaxGroups;
+/** The WING's 16 DCAs and 8 mute groups (its surface, screens and remote). */
+constexpr int kWingDcas = 16;
+constexpr int kWingMuteGroups = 8;
 /** FX slots the engine holds; ld_engine_num_fx of them are in use (the WING's 16 by default). */
 constexpr int kMaxFx = 64;
 /** The WING's FX slots: the default number in use and the ones the WING remote sees. */
@@ -151,6 +158,102 @@ enum MainLinkMode : int32_t
     kMainLink2_4 = 3  // 1>2-4
 };
 
+/** ABI 25: a set of groups (DCAs or mute groups), 0-based: bit n of word w is
+    group 64w + n. livedaw_engine::GroupSet. */
+struct GroupBits
+{
+    uint64_t words[kGroupWords] {};
+
+    /** Groups 0..63 from a mask (bit n = group n). */
+    static constexpr GroupBits mask (uint64_t low) noexcept { GroupBits b; b.words[0] = low; return b; }
+    /** Groups 0..n-1. */
+    static constexpr GroupBits first (int n) noexcept
+    {
+        GroupBits b;
+        for (int w = 0; w < kGroupWords; ++w)
+        {
+            const int bits = n - w * 64;
+            b.words[w] = bits >= 64 ? ~uint64_t (0) : bits <= 0 ? 0 : (uint64_t (1) << bits) - 1;
+        }
+        return b;
+    }
+    static constexpr GroupBits all() noexcept { return first (kMaxGroups); }
+    static constexpr GroupBits single (int i) noexcept { GroupBits b; b.set (i, true); return b; }
+
+    constexpr bool contains (int i) const noexcept { return i >= 0 && i < kMaxGroups && ((words[i / 64] >> (i % 64)) & 1u) != 0; }
+    constexpr void set (int i, bool on) noexcept
+    {
+        if (i < 0 || i >= kMaxGroups)
+            return;
+        const uint64_t bit = uint64_t (1) << (i % 64);
+        words[i / 64] = on ? (words[i / 64] | bit) : (words[i / 64] & ~bit);
+    }
+    constexpr bool any() const noexcept { return (words[0] | words[1] | words[2] | words[3]) != 0; }
+    /** Groups 0..63 as a mask (the WING's groups fit). */
+    constexpr uint64_t low() const noexcept { return words[0]; }
+    int count() const noexcept
+    {
+        int n = 0;
+        for (auto w : words)
+            for (; w != 0; w &= w - 1)
+                ++n;
+        return n;
+    }
+
+    constexpr GroupBits operator& (const GroupBits& o) const noexcept { GroupBits b; for (int w = 0; w < kGroupWords; ++w) b.words[w] = words[w] & o.words[w]; return b; }
+    constexpr GroupBits operator| (const GroupBits& o) const noexcept { GroupBits b; for (int w = 0; w < kGroupWords; ++w) b.words[w] = words[w] | o.words[w]; return b; }
+    constexpr GroupBits operator~() const noexcept { GroupBits b; for (int w = 0; w < kGroupWords; ++w) b.words[w] = ~words[w]; return b; }
+    constexpr GroupBits& operator&= (const GroupBits& o) noexcept { return *this = *this & o; }
+    constexpr GroupBits& operator|= (const GroupBits& o) noexcept { return *this = *this | o; }
+    constexpr bool operator== (const GroupBits& o) const noexcept
+    {
+        for (int w = 0; w < kGroupWords; ++w)
+            if (words[w] != o.words[w])
+                return false;
+        return true;
+    }
+    constexpr bool operator!= (const GroupBits& o) const noexcept { return ! (*this == o); }
+};
+
+/** ABI 25: a GroupBits shared with the audio thread (livedaw_engine::AtomicGroupSet). */
+struct GroupMask
+{
+    std::atomic<uint64_t> words[kGroupWords];
+
+    GroupBits load() const noexcept
+    {
+        GroupBits b;
+        for (int w = 0; w < kGroupWords; ++w)
+            b.words[w] = words[w].load (std::memory_order_relaxed);
+        return b;
+    }
+    void store (const GroupBits& b) noexcept
+    {
+        for (int w = 0; w < kGroupWords; ++w)
+            words[w].store (b.words[w], std::memory_order_relaxed);
+    }
+    bool contains (int i) const noexcept
+    {
+        return i >= 0 && i < kMaxGroups && ((words[i / 64].load (std::memory_order_relaxed) >> (i % 64)) & 1u) != 0;
+    }
+    /** Adds or removes one group (atomically for that group). */
+    void set (int i, bool on) noexcept
+    {
+        if (i < 0 || i >= kMaxGroups)
+            return;
+        const uint64_t bit = uint64_t (1) << (i % 64);
+        if (on)
+            words[i / 64].fetch_or (bit, std::memory_order_relaxed);
+        else
+            words[i / 64].fetch_and (~bit, std::memory_order_relaxed);
+    }
+    void toggle (int i) noexcept { set (i, ! contains (i)); }
+    bool any() const noexcept { return load().any(); }
+    void clear() noexcept { store ({}); }
+};
+
+static_assert (sizeof (std::atomic<uint64_t>) == 8 && std::atomic<uint64_t>::is_always_lock_free);
+
 struct InputParams
 {
     std::atomic<float> trimDb, balanceDb;
@@ -256,7 +359,7 @@ struct StripParams
     MainSendParams mains[kNumMains];
     MatrixSendParams matrix[kNumMatrices];
 
-    std::atomic<uint32_t> dcaMask, muteGroupMask;
+    GroupMask dcaMask, muteGroupMask; // ABI 25: the DCAs and mute groups the strip is a member of
 
     // Matrices: DIRECT IN (manual 6.4). ABI 19: directSource is a
     // MatrixDirectInput (before, an input channel), no PRE.
@@ -473,7 +576,7 @@ struct SourceParams
     std::atomic<int32_t> mode; // SourceMode
     std::atomic<int32_t> colour, icon;
     std::atomic<float> peak;
-    std::atomic<uint32_t> muteGroups; // ABI 8, SOURCES > TAGS: bit n = mute group n+1 mutes the source
+    GroupMask muteGroups; // ABI 8, SOURCES > TAGS: the mute groups that mute the source (ABI 25: a group set)
 };
 
 /** An oscillator (the OSC source group; ld_engine_oscillators): MODE (OscMode),
@@ -547,8 +650,8 @@ struct EngineControls
     std::atomic<float> monitorPeak[2];
     std::atomic<float> dspLoad;
     std::atomic<int32_t> engineFaults;
-    std::atomic<uint32_t> muteGroups;
-    DcaParams dcas[kNumDcas];
+    GroupMask muteGroups; // ABI 25: the engaged mute groups
+    DcaParams dcas[kMaxDcas]; // ABI 25: the console uses the first ld_engine_counts().dcas
     FxParams fx[kMaxFx];
 
     std::atomic<bool> busSoloAfl, mainSoloAfl, matrixSoloAfl; // BUS / MAIN / MATRIX SOLO: AFL (default)
@@ -667,7 +770,15 @@ struct LayoutInfo
         // ABI 21 (FX SEND outputs)
         offFxSendLeft,
         // ABI 22 (GLOBAL INPUT SELECT ENABLE)
-        offSrcAuto;
+        offSrcAuto,
+        // ABI 25 (group sets, the console's counts)
+        groupSet, offMuteGroupMask, scope, offScopeFx, counts;
+};
+
+/** ABI 25: how many of each kind a console has (ld_engine_counts, ld_engine_configure). */
+struct CountsC
+{
+    int32_t channels, aux, buses, mains, matrices, dcas, muteGroups, fx;
 };
 
 /** A console model's surface and local I/O (ld_console_model_info). Models:
@@ -797,7 +908,8 @@ struct ApplyResultC
 /// strips go to a separate buffer.
 struct ScopeC
 {
-    uint32_t sections, dcas, muteGroups;
+    uint32_t sections;
+    GroupBits dcas, muteGroups; // ABI 25: group sets
     uint64_t fx;
     bool console, allStrips;
     const StripRefC* strips;
@@ -891,6 +1003,16 @@ extern "C"
     Strip* ld_engine_strip_at (const Engine*, int32_t kind, int32_t index);
     Strip* ld_engine_add_channel (const Engine*, int32_t requestedId);
     void ld_engine_set_num_channels (const Engine*, int32_t count);
+    /** ABI 25: what the console has now (strips by kind; DCAs, mute groups and FX slots in use). */
+    void ld_engine_counts (const Engine*, CountsC* out);
+    /** The counts the console was configured with (the WING's by default). */
+    void ld_engine_configured_counts (const Engine*, CountsC* out);
+    /** Makes the engine a fresh console of `counts` (null: the WING). */
+    void ld_engine_configure (const Engine*, const CountsC* counts);
+    /** Sets the DCAs in use (up to kMaxDcas, never below a DCA with a member); returns the number set. */
+    int32_t ld_engine_set_num_dcas (const Engine*, int32_t count);
+    /** Sets the mute groups in use (up to kMaxMuteGroups, never below one engaged or with a member). */
+    int32_t ld_engine_set_num_mute_groups (const Engine*, int32_t count);
     /** The FX slots in use (kWingFx to kMaxFx). */
     int32_t ld_engine_num_fx (const Engine*);
     /** Sets the FX slots in use (clamped to kWingFx..kMaxFx and never below a slot
@@ -1628,6 +1750,11 @@ inline const char* verifyLayout()
         { info.faderRef, sizeof (FaderRefC), "FaderRefC size" },
         { info.offFxSendLeft, offsetof (FxParams, sendLeft), "FxParams.sendLeft" },
         { info.offSrcAuto, offsetof (StripParams, srcAuto), "StripParams.srcAuto" },
+        { info.groupSet, sizeof (GroupMask), "GroupMask size" },
+        { info.offMuteGroupMask, offsetof (StripParams, muteGroupMask), "StripParams.muteGroupMask" },
+        { info.scope, sizeof (ScopeC), "ScopeC size" },
+        { info.offScopeFx, offsetof (ScopeC, fx), "ScopeC.fx" },
+        { info.counts, sizeof (CountsC), "CountsC size" },
     };
 
     if (info.abiVersion != kAbiVersion)

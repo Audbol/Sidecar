@@ -7,6 +7,7 @@
 //! by `livedaw_engine.h`.
 
 use crate::atomic::AtomicF32;
+use crate::groups::{AtomicGroupSet, MAX_GROUPS};
 use crate::monitor::MonitorControls;
 use crate::solo::solo_mode;
 use crate::talk::TalkParams;
@@ -16,13 +17,18 @@ use livedaw_dsp::wing::{
     model_index, DYN_MODELS, EQ_MODELS_BUS, EQ_MODELS_CH, FILTER_TOOLS, FX_MODELS, MAX_DYN_PARAMS, MAX_EQ_PARAMS, MAX_FX_PARAMS,
     MAX_TOOL_PARAMS,
 };
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering::Relaxed};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering::Relaxed};
 
 pub const NUM_MAINS: usize = 4;
 pub const NUM_MATRICES: usize = 8;
 pub const NUM_AUX: usize = 8;
-pub const NUM_DCAS: usize = 16;
-pub const NUM_MUTE_GROUPS: usize = 8;
+/// DCAs and mute groups the engine holds; how many the console uses is set
+/// at run time (`Engine::set_num_dcas`, `set_num_mute_groups`).
+pub const MAX_DCAS: usize = MAX_GROUPS;
+pub const MAX_MUTE_GROUPS: usize = MAX_GROUPS;
+/// The WING's 16 DCAs and 8 mute groups.
+pub const WING_DCAS: usize = 16;
+pub const WING_MUTE_GROUPS: usize = 8;
 /// FX slots the engine holds. How many of them the console uses is set at run
 /// time (`Engine::set_num_fx`, SETUP > GENERAL > FX SLOTS): the WING's 16 by
 /// default, up to this many.
@@ -469,10 +475,10 @@ pub struct StripParams {
     pub mains: [MainSendParams; NUM_MAINS],
     pub matrix: [MatrixSendParams; NUM_MATRICES],
 
-    /// Bit n = member of DCA n+1.
-    pub dca_mask: AtomicU32,
-    /// Bit n = member of mute group n+1.
-    pub mute_group_mask: AtomicU32,
+    /// The DCAs the strip is a member of (0-based).
+    pub dca_mask: AtomicGroupSet,
+    /// The mute groups the strip is a member of (0-based).
+    pub mute_group_mask: AtomicGroupSet,
 
     /// Matrices: DIRECT IN (manual 6.4; `/mtx/n/dir`), added to the matrix's sum.
     pub direct_on: AtomicBool,
@@ -787,8 +793,8 @@ impl StripParams {
             output_right: AtomicI32::new(-1),
             mains: std::array::from_fn(new_main),
             matrix: std::array::from_fn(new_mtx),
-            dca_mask: AtomicU32::new(0),
-            mute_group_mask: AtomicU32::new(0),
+            dca_mask: AtomicGroupSet::default(),
+            mute_group_mask: AtomicGroupSet::default(),
             direct_on: AtomicBool::new(false),
             direct_invert: AtomicBool::new(false),
             direct_source: AtomicI32::new(crate::routing::matrix_direct::OFF),
@@ -1101,9 +1107,10 @@ pub struct EngineControls {
     pub dsp_load: AtomicF32,
     /// Engine-level faults (a caught panic silences the block).
     pub engine_faults: AtomicI32,
-    /// Bit n = mute group n+1 engaged.
-    pub mute_groups: AtomicU32,
-    pub dcas: [DcaParams; NUM_DCAS],
+    /// The engaged mute groups.
+    pub mute_groups: AtomicGroupSet,
+    /// Every DCA the engine holds; the console uses the first `Engine::num_dcas`.
+    pub dcas: [DcaParams; MAX_DCAS],
     pub fx: [FxParams; MAX_FX],
 
     /// BUS / MAIN / MATRIX SOLO: AFL (the default) instead of PFL.
@@ -1178,8 +1185,8 @@ impl Default for EngineControls {
             monitor_peak: Default::default(),
             dsp_load: AtomicF32::new(0.0),
             engine_faults: AtomicI32::new(0),
-            mute_groups: AtomicU32::new(0),
-            dcas: Default::default(),
+            mute_groups: AtomicGroupSet::default(),
+            dcas: std::array::from_fn(|_| DcaParams::default()),
             fx: std::array::from_fn(|_| FxParams::default()),
             // A WING after INITIALIZE: buses AFL, mains and matrices PFL.
             bus_solo_afl: AtomicBool::new(true),
@@ -1254,7 +1261,7 @@ impl EngineControls {
         self.phones.reset();
         self.monitor.reset();
         self.monitor_level_db.store(0.0);
-        self.mute_groups.store(0, Relaxed);
+        self.mute_groups.clear();
         for d in &self.dcas {
             d.fader_db.store(livedaw_dsp::fader::FADER_MIN);
             d.mute.store(false, Relaxed);

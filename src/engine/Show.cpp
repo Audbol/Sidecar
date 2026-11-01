@@ -528,7 +528,7 @@ void Show::setGlobalSafe (const state::Scope& safe)
 bool Show::hasGlobalSafes() const
 {
     const auto g = getGlobalSafe();
-    return g.sections != 0 || g.dcas != 0 || g.muteGroups != 0 || g.fx != 0 || g.console;
+    return g.sections != 0 || g.dcas.any() || g.muteGroups.any() || g.fx != 0 || g.console;
 }
 
 //==============================================================================

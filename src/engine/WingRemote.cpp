@@ -331,13 +331,16 @@ void WingRemote::pumpSafes()
     auto safe = libraryShow->getGlobalSafe();
     if (ld::ld_wing_take_safes (handle, &dcas, &muteGroups, &fx))
     {
-        safe.dcas = dcas;
-        safe.muteGroups = muteGroups;
+        // The WING knows DCAs 1-16 and mute groups 1-8: the safes beyond stay.
+        const auto wing = [] (GroupBits set, int n, juce::uint32 mask) { return (set & ~GroupBits::first (n)) | (GroupBits::mask (mask) & GroupBits::first (n)); };
+        safe.dcas = wing (safe.dcas, kWingDcas, dcas);
+        safe.muteGroups = wing (safe.muteGroups, kWingMuteGroups, muteGroups);
         // The WING knows FX 1-16: the safes of the slots beyond stay.
         safe.fx = (safe.fx & ~state::Scope::allFx (kWingFx)) | (fx & state::Scope::allFx (kWingFx));
         libraryShow->setGlobalSafe (safe);
     }
-    ld::ld_wing_set_safes (handle, safe.dcas, safe.muteGroups, (juce::uint32) (safe.fx & state::Scope::allFx (kWingFx)));
+    ld::ld_wing_set_safes (handle, (juce::uint32) (safe.dcas.low() & 0xffffu), (juce::uint32) (safe.muteGroups.low() & 0xffu),
+                           (juce::uint32) (safe.fx & state::Scope::allFx (kWingFx)));
 }
 
 void WingRemote::pumpUsb()

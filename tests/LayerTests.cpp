@@ -472,8 +472,8 @@ public:
             PluginHost host (nullptr);
             Show show (engine, host);
             engine.setNumChannels (4);
-            engine.getChannels()[1]->params.dcaMask = 1u << 3;
-            engine.getChannels()[3]->params.dcaMask = 1u << 3;
+            engine.getChannels()[1]->params.dcaMask.set (3, true);
+            engine.getChannels()[3]->params.dcaMask.set (3, true);
 
             expect (LayerSet::spillTarget (S::Right) == S::Center);
             expect (LayerSet::spillTarget (std::nullopt) == S::Left);

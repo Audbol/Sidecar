@@ -18,6 +18,7 @@
 use crate::analyser::{listen_mode, rta_tap, Probes, StripProbe};
 use crate::atomic::AtomicF32;
 use crate::fx::{FxInputs, FxRack};
+use crate::groups::GroupSet;
 use crate::keytap::{key_tap, stage_of, KeySource, StripKeyTaps, TAP_EQ_POST, TAP_INS2};
 use crate::monitor::SoloPatch;
 use crate::params::{DcaParams, DynSlotParams, FxParams, StripKind, StripMeters, StripParams, NUM_MAINS, NUM_MATRICES};
@@ -55,7 +56,7 @@ pub(crate) struct ProcessContext<'a> {
     pub fx: &'a [FxRack],
     pub fx_params: &'a [FxParams],
     pub dcas: &'a [DcaParams],
-    pub mute_groups: u32,
+    pub mute_groups: GroupSet,
     /// DCA MUTEGROUPS: a muted DCA mutes its strips.
     pub dca_mute_groups: bool,
     /// MAIN LINK: mains 2..=`main_link_last` (0-based 1..) add Main 1's fader level.
@@ -652,13 +653,17 @@ impl Strip {
 
     /// Effective mute: own mute, an engaged mute group or (with DCA MUTEGROUPS)
     /// a muted DCA.
-    pub(crate) fn is_muted(&self, dcas: &[DcaParams], mute_groups: u32, dca_mute_groups: bool) -> bool {
+    pub(crate) fn is_muted(&self, dcas: &[DcaParams], mute_groups: &GroupSet, dca_mute_groups: bool) -> bool {
         let p = &self.params;
-        if p.mute.load(Relaxed) || p.mute_group_mask.load(Relaxed) & mute_groups != 0 {
+        if p.mute.load(Relaxed) || p.mute_group_mask.load().intersects(mute_groups) {
             return true;
         }
-        let mask = p.dca_mask.load(Relaxed);
-        dca_mute_groups && mask != 0 && dcas.iter().enumerate().any(|(i, d)| mask & (1 << i) != 0 && d.mute.load(Relaxed))
+        dca_mute_groups && Self::member_dcas(p, dcas).any(|d| d.mute.load(Relaxed))
+    }
+
+    /// The DCAs a strip is a member of.
+    fn member_dcas<'a>(p: &StripParams, dcas: &'a [DcaParams]) -> impl Iterator<Item = &'a DcaParams> {
+        p.dca_mask.load().iter().map_while(move |i| dcas.get(i))
     }
 
     /// Effective solo: own solo or a soloed DCA.
@@ -667,8 +672,7 @@ impl Strip {
         if p.solo.load(Relaxed) {
             return true;
         }
-        let mask = p.dca_mask.load(Relaxed);
-        mask != 0 && dcas.iter().enumerate().any(|(i, d)| mask & (1 << i) != 0 && d.solo.load(Relaxed))
+        Self::member_dcas(p, dcas).any(|d| d.solo.load(Relaxed))
     }
 
     /// SOLO MODE LIVE: the monitor paths (`solo::path_mask`) a soloed strip
@@ -676,12 +680,9 @@ impl Strip {
     /// the strip's own solo (and a talk or source solo) to the strip's.
     pub(crate) fn live_solo_paths(&self, dcas: &[DcaParams]) -> u32 {
         let p = &self.params;
-        let mask = p.dca_mask.load(Relaxed);
-        let from_dcas = dcas
-            .iter()
-            .enumerate()
-            .filter(|(i, d)| mask & (1 << i) != 0 && d.solo.load(Relaxed))
-            .fold(0, |paths, (_, d)| paths | crate::solo::path_mask(d.mon.load(Relaxed)));
+        let from_dcas = Self::member_dcas(p, dcas)
+            .filter(|d| d.solo.load(Relaxed))
+            .fold(0, |paths, d| paths | crate::solo::path_mask(d.mon.load(Relaxed)));
         if p.solo.load(Relaxed) || from_dcas == 0 {
             from_dcas | crate::solo::path_mask(p.monitor_bus.load(Relaxed))
         } else {
@@ -690,11 +691,7 @@ impl Strip {
     }
 
     fn dca_offset_db(&self, dcas: &[DcaParams]) -> f32 {
-        let mask = self.params.dca_mask.load(Relaxed);
-        if mask == 0 {
-            return 0.0;
-        }
-        dcas.iter().enumerate().filter(|(i, _)| mask & (1 << i) != 0).map(|(_, d)| d.fader_db.load()).sum()
+        Self::member_dcas(&self.params, dcas).map(|d| d.fader_db.load()).sum()
     }
 
     // ---- audio thread ---------------------------------------------------------
@@ -950,7 +947,7 @@ impl Strip {
 
         // Fader with DCAs, mute and mute groups (and Main 1's level on linked mains);
         // the console decides over that mute (SIP, OVERRIDE, TALK ON: solo.rs).
-        let muted = self.console.apply_mute(self.is_muted(ctx.dcas, ctx.mute_groups, ctx.dca_mute_groups));
+        let muted = self.console.apply_mute(self.is_muted(ctx.dcas, &ctx.mute_groups, ctx.dca_mute_groups));
         d.muted = muted;
         let mut level = p.fader_db.load() + self.dca_offset_db(ctx.dcas);
         if kind == StripKind::Main && (1..=ctx.main_link_last).contains(&(self.id.max(0) as usize)) {

@@ -3,6 +3,7 @@
 
 use livedaw_engine::sources::source_mode;
 use livedaw_engine::talk::talk_tag;
+use livedaw_engine::GroupSet;
 use livedaw_engine::{Engine, StripKind};
 use livedaw_session::console::{self, find_strip, section};
 use livedaw_session::xml;
@@ -197,7 +198,7 @@ fn monitor_processing_source_solo_and_source_tags_survive_a_show() {
     }
     m.source_solo.store(2, Relaxed);
     m.source_solo_on.store(true, Relaxed); // a key state: not saved
-    engine.sources().params()[5].mute_groups.store(0b1001, Relaxed);
+    engine.sources().params()[5].mute_groups.store(GroupSet::from_mask(0b1001));
 
     let other = round_trip(&engine);
     let o = &other.controls.monitor;
@@ -218,7 +219,7 @@ fn monitor_processing_source_solo_and_source_tags_survive_a_show() {
     }
     assert_eq!(o.source_solo.load(Relaxed), 2);
     assert!(!o.source_solo_on.load(Relaxed), "a source solo isn't saved");
-    assert_eq!(other.sources().params()[5].mute_groups.load(Relaxed), 0b1001);
+    assert_eq!(other.sources().params()[5].mute_groups.load().low(), 0b1001);
 
     // Scenes recall the paths' processing with ROUTING.
     let state = console::capture(&other, section::ALL, None, &mut NoPlugins);

@@ -1,7 +1,7 @@
 //! Show / scene / snippet / console-state tests against a real engine (no audio device).
 
 use livedaw_dsp::wing::{model_index, DYN_MODELS};
-use livedaw_engine::{Engine, InsertCallbacks, Strip, StripKind};
+use livedaw_engine::{Engine, GroupSet, InsertCallbacks, Strip, StripKind};
 use livedaw_session::console::{self, find_strip};
 use livedaw_session::layers::{CENTER, LEFT};
 use livedaw_session::xml::{self, Element};
@@ -116,8 +116,8 @@ fn console_survives_a_show_round_trip() {
     p.recall_safe.store(true, Relaxed);
     p.mains[1].on.store(true, Relaxed);
     p.matrix[3].level_db.store(-7.0);
-    p.dca_mask.store(0b100, Relaxed);
-    p.mute_group_mask.store(0b10, Relaxed);
+    p.dca_mask.store(GroupSet::from_mask(0b100));
+    p.mute_group_mask.store(GroupSet::from_mask(0b10));
     kick.set_tags("#Drums,Band \"A\"");
     let send = kick.sends.get_or_create(79).unwrap();
     send.enabled.store(true, Relaxed);
@@ -129,8 +129,15 @@ fn console_survives_a_show_round_trip() {
     engine.controls.fx[2].bypass.store(true, Relaxed);
     engine.set_dca_name(2, "Drums");
     engine.controls.dcas[2].fader_db.store(-4.0);
-    engine.controls.mute_groups.store(0b1, Relaxed);
+    engine.controls.mute_groups.store(GroupSet::from_mask(0b1));
     engine.set_mute_group_name(0, "Band");
+    // Groups beyond the WING's and beyond 64.
+    engine.set_num_dcas(80);
+    engine.set_num_mute_groups(101);
+    p.dca_mask.set(70, true);
+    engine.controls.dcas[70].fader_db.store(-9.0);
+    p.mute_group_mask.set(100, true);
+    engine.set_mute_group_name(100, "Choir");
     engine.main(0).unwrap().params.fader_db.store(-2.0);
     engine.strip_at(StripKind::Matrix, 1).unwrap().params.direct_source.store(2, Relaxed);
     engine.controls.solo_afl.store(true, Relaxed);
@@ -175,7 +182,11 @@ fn console_survives_a_show_round_trip() {
     assert!(p.recall_safe.load(Relaxed));
     assert!(p.mains[0].on.load(Relaxed) && p.mains[1].on.load(Relaxed));
     assert_eq!(p.matrix[3].level_db.load(), -7.0);
-    assert_eq!((p.dca_mask.load(Relaxed), p.mute_group_mask.load(Relaxed)), (0b100, 0b10));
+    assert_eq!((p.dca_mask.load().low(), p.mute_group_mask.load().low()), (0b100, 0b10));
+    assert!(p.dca_mask.contains(70) && p.mute_group_mask.contains(100));
+    assert_eq!((e2.num_dcas(), e2.num_mute_groups()), (80, 101));
+    assert_eq!(e2.controls.dcas[70].fader_db.load(), -9.0);
+    assert_eq!(e2.mute_group_name(100), "Choir");
     assert_eq!(k.tags(), "#Drums,Band \"A\"");
     let send = k.sends.find(79).unwrap();
     assert!(send.enabled.load(Relaxed));
@@ -185,7 +196,7 @@ fn console_survives_a_show_round_trip() {
     assert!(e2.controls.fx[2].bypass.load(Relaxed));
     assert_eq!(e2.dca_name(2), "Drums");
     assert_eq!(e2.controls.dcas[2].fader_db.load(), -4.0);
-    assert_eq!(e2.controls.mute_groups.load(Relaxed), 1);
+    assert_eq!(e2.controls.mute_groups.load().low(), 1);
     assert_eq!(e2.mute_group_name(0), "Band");
     assert_eq!(e2.main(0).unwrap().params.fader_db.load(), -2.0);
     assert_eq!(e2.strip_at(StripKind::Matrix, 1).unwrap().params.direct_source.load(Relaxed), 2);
@@ -205,7 +216,7 @@ fn scenes_respect_scope_and_recall_safe() {
     let (a, b) = (ch(&engine, 0), ch(&engine, 1));
     a.params.fader_db.store(-20.0);
     a.params.input_left.store(7, Relaxed);
-    a.params.dca_mask.store(1, Relaxed);
+    a.params.dca_mask.store(GroupSet::from_mask(1));
     b.params.fader_db.store(-30.0);
     b.params.recall_safe.store(true, Relaxed);
     engine.controls.dcas[0].fader_db.store(-10.0);
@@ -214,7 +225,7 @@ fn scenes_respect_scope_and_recall_safe() {
     assert_eq!(r.strips_skipped_safe, 1);
     assert_eq!(a.params.fader_db.load(), 0.0);
     assert_eq!(a.params.input_left.load(Relaxed), 7, "routing is outside the default scope");
-    assert_eq!(a.params.dca_mask.load(Relaxed), 0, "DCA assignments are in the default scope");
+    assert_eq!(a.params.dca_mask.load().low(), 0, "DCA assignments are in the default scope");
     assert_eq!(engine.controls.dcas[0].fader_db.load(), FACTORY_DCA_DB, "DCA levels recall with the faders");
     assert_eq!(b.params.fader_db.load(), -30.0);
 
@@ -1196,8 +1207,8 @@ fn input_select_from_before_global_input_select_enable_sounds_as_then() {
 
 // ---- scopes, global safes, partial load / update, restore, snippet REC -----------------
 
-fn mute_groups(engine: &Engine) -> u32 {
-    engine.controls.mute_groups.load(Relaxed)
+fn mute_groups(engine: &Engine) -> u64 {
+    engine.controls.mute_groups.load().low()
 }
 
 #[test]
@@ -1212,7 +1223,7 @@ fn per_strip_scene_scope_and_item_masks() {
         let scene = show.scene_mut(0).unwrap();
         let mut scope = scene.recall_scope();
         scope.strips = Some(vec![StripRef::of(&a)]);
-        scope.dcas = 0b10; // DCA 2 only
+        scope.dcas = GroupSet::from_mask(0b10); // DCA 2 only
         scope.fx = 0;
         scene.set_recall_scope(&scope);
     }
@@ -1250,12 +1261,18 @@ fn global_safes_beyond_strips() {
     show.scene_mut(0).unwrap().scope = section::ALL;
     let a = ch(&engine, 0);
 
-    show.global_safe = GlobalSafe { sections: section::GATE, dcas: 1, mute_groups: 0b100, fx: 1 << 3, console: true };
+    show.global_safe = GlobalSafe {
+        sections: section::GATE,
+        dcas: GroupSet::from_mask(1),
+        mute_groups: GroupSet::from_mask(0b100),
+        fx: 1 << 3,
+        console: true,
+    };
     a.params.gate.on.store(true, Relaxed);
     a.params.fader_db.store(-12.0);
     engine.controls.dcas[0].fader_db.store(-5.0);
     engine.controls.dcas[1].fader_db.store(-5.0);
-    engine.controls.mute_groups.store(0b101, Relaxed);
+    engine.controls.mute_groups.store(GroupSet::from_mask(0b101));
     engine.controls.fx[3].mix.store(40.0);
     engine.controls.fx[4].mix.store(40.0);
     engine.controls.monitor_dim_db.store(-30.0);
@@ -1284,7 +1301,7 @@ fn global_safes_beyond_strips() {
     let (_, loaded) = round_trip(&engine, &show);
     assert_eq!(loaded.global_safe, show.global_safe);
     let mut cleared = Show::new();
-    cleared.global_safe.dcas = 3;
+    cleared.global_safe.dcas = GroupSet::from_mask(3);
     cleared.clear(&engine, 2);
     assert!(cleared.global_safe.is_empty());
 }
@@ -1355,7 +1372,7 @@ fn snippet_rec_records_the_changed_parameters() {
 
     let changes = show.recorded_changes(None).unwrap();
     assert_eq!(changes.strips, vec![(StripRef::of(&b), section::GATE | section::FADER), (StripRef::of(&a), section::FADER)]);
-    assert_eq!(changes.dcas, 1 << 4);
+    assert_eq!(changes.dcas, GroupSet::single(4));
 
     // REC FOCUS limits what SAVE keeps: faders of channel 2 only.
     let focus = Scope::strips(section::FADER, vec![StripRef::of(&b)]);
@@ -1368,7 +1385,7 @@ fn snippet_rec_records_the_changed_parameters() {
     assert!(show.recorded_changes(None).is_none(), "SAVE uses up the recording");
     let sn = show.snippet(0, 0).unwrap().clone();
     assert_eq!(sn.parameter_count(), 4);
-    assert_eq!(sn.dcas, 1 << 4);
+    assert_eq!(sn.dcas, GroupSet::single(4));
 
     // Recall: exactly the changed pairs, not their cross product.
     a.params.fader_db.store(-50.0);
@@ -1394,7 +1411,7 @@ fn snippet_rec_records_the_changed_parameters() {
     assert_eq!(b.params.fader_db.load(), -9.0);
     let (_, loaded) = round_trip(&engine, &show);
     let l = loaded.snippet(0, 0).unwrap();
-    assert_eq!((l.parameter_count(), l.dcas, l.scope()), (4, 1 << 4, show.snippet(0, 0).unwrap().scope()));
+    assert_eq!((l.parameter_count(), l.dcas, l.scope()), (4, GroupSet::single(4), show.snippet(0, 0).unwrap().scope()));
 
     // CLEAR ALL drops a recording; SAVE then has nothing to store.
     show.start_recording(&engine);
@@ -1417,11 +1434,11 @@ fn snippet_items_and_partial_load() {
     // ADD ITEMS: channel 2's gate and DCA 1.
     b.params.gate.on.store(true, Relaxed);
     engine.controls.dcas[0].fader_db.store(-2.0);
-    let items = Scope { dcas: 1, ..Scope::strips(section::GATE, vec![StripRef::of(&b)]) };
+    let items = Scope { dcas: GroupSet::single(0), ..Scope::strips(section::GATE, vec![StripRef::of(&b)]) };
     show.add_snippet_items(&engine, &mut np, 0, 0, &items);
     let sn = show.snippet(0, 0).unwrap();
     assert_eq!(sn.strips, vec![StripRef::of(&a), StripRef::of(&b)]);
-    assert_eq!((sn.sections, sn.dcas), (section::FADER | section::GATE, 1));
+    assert_eq!((sn.sections, sn.dcas), (section::FADER | section::GATE, GroupSet::single(0)));
 
     b.params.gate.on.store(false, Relaxed);
     b.params.fader_db.store(-20.0);
@@ -1438,9 +1455,9 @@ fn snippet_items_and_partial_load() {
     assert_eq!(engine.controls.dcas[0].fader_db.load(), -2.0);
 
     // REMOVE ITEMS: the faders (of every strip) and DCA 1.
-    show.remove_snippet_items(0, 0, &Scope { dcas: 1, ..Scope::strips(section::FADER, vec![]) });
+    show.remove_snippet_items(0, 0, &Scope { dcas: GroupSet::single(0), ..Scope::strips(section::FADER, vec![]) });
     let sn = show.snippet(0, 0).unwrap();
-    assert_eq!((sn.strips.clone(), sn.sections, sn.dcas), (vec![StripRef::of(&b)], section::GATE, 0));
+    assert_eq!((sn.strips.clone(), sn.sections, sn.dcas), (vec![StripRef::of(&b)], section::GATE, GroupSet::EMPTY));
 }
 
 // ---- spill ----------------------------------------------------------------------------
@@ -1456,10 +1473,10 @@ fn spill_layers_follow_the_console() {
     let strip = |s: &Strip| FaderRef::Strip(StripRef::of(s));
 
     // DCA spill: the strips assigned to the DCA, in console order.
-    a.params.dca_mask.store(0b100, Relaxed);
-    c.params.dca_mask.store(0b110, Relaxed);
+    a.params.dca_mask.store(GroupSet::from_mask(0b100));
+    c.params.dca_mask.store(GroupSet::from_mask(0b110));
     let bus = engine.bus_in_slot(3).unwrap();
-    bus.params.dca_mask.store(0b100, Relaxed);
+    bus.params.dca_mask.store(GroupSet::from_mask(0b100));
     assert_eq!(spill_faders(&engine, &SpillKind::Dca(2)), vec![strip(&a), strip(&c), strip(&bus)]);
     assert!(spill_faders(&engine, &SpillKind::Dca(99)).is_empty());
 

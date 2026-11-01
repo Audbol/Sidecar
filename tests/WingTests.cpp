@@ -227,7 +227,7 @@ public:
             expect (run ("/$ctl.safes.ch=2"));
             expect (run ("/rec.channels=4,resolution=16,$path=LIVE"));
             wing.pump();
-            expectEquals ((int) show.getGlobalSafe().dcas, 1 << 4);
+            expectEquals ((int) show.getGlobalSafe().dcas.low(), 1 << 4);
             expect (engine.getChannels()[1]->params.recallSafe.load(), "a strip's SAFE key");
             expect (usb.getRecChannels() == 4 && usb.getRecBits() == 16);
             expect (usb.getRecPath() == dir.getChildFile ("LIVE"), usb.getRecPath().getFullPathName());

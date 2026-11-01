@@ -327,7 +327,7 @@ protected:
 private:
     void renameGroup (int);
 
-    juce::Rectangle<int> columns[kNumMuteGroups], headers[kNumMuteGroups], groupKeys[kNumMuteGroups];
+    juce::Rectangle<int> columns[kWingMuteGroups], headers[kWingMuteGroups], groupKeys[kWingMuteGroups];
     std::unique_ptr<MemberAssignView> assign;
 };
 

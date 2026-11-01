@@ -35,6 +35,7 @@
 //! channels one block late (through a `ReturnRing`).
 
 use crate::atomic::AtomicF32;
+use crate::groups::{AtomicGroupSet, GroupSet};
 use crate::params::StripKind;
 use crate::routing::{ReturnRing, NUM_STRIP_SOURCES};
 use livedaw_dsp::generator::{generator_mode, SignalGenerator, GENERATOR_MODES};
@@ -42,7 +43,7 @@ use livedaw_dsp::generator::{GENERATOR_FREQ_MAX_HZ, GENERATOR_FREQ_MIN_HZ, GENER
 use livedaw_dsp::util::{apply_gain_ramp, db_to_gain, peak_level};
 use livedaw_recorder::{playback_channel, usb_player_channel, NUM_PLAYBACK_CHANNELS, PLAYBACK_SOURCE_BASE};
 use livedaw_recorder::{USB_CHANNELS, USB_PLAYER_SOURCE_BASE};
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering::Relaxed};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering::Relaxed};
 use std::sync::Mutex;
 
 /// Hardware input ports with a source (12 groups of 48); ports beyond pass through.
@@ -363,8 +364,8 @@ pub struct SourceParams {
     pub icon: AtomicI32,
     /// Peak since the last read (after the source's processing).
     pub peak: AtomicF32,
-    /// ABI 8, SOURCES > TAGS: bit n = mute group n+1 mutes the source.
-    pub mute_groups: AtomicU32,
+    /// ABI 8, SOURCES > TAGS: the mute groups that mute the source.
+    pub mute_groups: AtomicGroupSet,
 }
 
 impl Default for SourceParams {
@@ -378,7 +379,7 @@ impl Default for SourceParams {
             colour: AtomicI32::new(DEFAULT_SOURCE_COLOUR),
             icon: AtomicI32::new(0),
             peak: AtomicF32::new(0.0),
-            mute_groups: AtomicU32::new(0),
+            mute_groups: AtomicGroupSet::default(),
         }
     }
 }
@@ -392,7 +393,7 @@ impl SourceParams {
         self.phantom.store(false, Relaxed);
         self.colour.store(f.colour, Relaxed);
         self.icon.store(f.icon, Relaxed);
-        self.mute_groups.store(0, Relaxed);
+        self.mute_groups.clear();
     }
 
     /// True if the settings are the defaults `f` (shows store the others).
@@ -404,7 +405,7 @@ impl SourceParams {
             && self.mode.load(Relaxed) == f.mode
             && self.colour.load(Relaxed) == f.colour
             && self.icon.load(Relaxed) == f.icon
-            && self.mute_groups.load(Relaxed) == 0
+            && self.mute_groups.is_empty()
     }
 
     /// True if the settings are a plain source's defaults ([`SourceFactory::PLAIN`]).
@@ -413,12 +414,12 @@ impl SourceParams {
     }
 
     /// Muted: its own MUTE, or one of its mute groups is engaged.
-    pub fn is_muted(&self, mute_groups: u32) -> bool {
-        self.mute.load(Relaxed) || self.mute_groups.load(Relaxed) & mute_groups != 0
+    pub fn is_muted(&self, mute_groups: &GroupSet) -> bool {
+        self.mute.load(Relaxed) || self.mute_groups.load().intersects(mute_groups)
     }
 
     /// The gain the source applies (mute, mute groups, gain in `range`, polarity).
-    fn gain(&self, range: GainRange, mute_groups: u32) -> f32 {
+    fn gain(&self, range: GainRange, mute_groups: &GroupSet) -> f32 {
         if self.is_muted(mute_groups) {
             return 0.0;
         }
@@ -580,7 +581,7 @@ impl SourceTable {
             b.mute.store(a.mute.load(Relaxed), Relaxed);
             b.invert.store(a.invert.load(Relaxed), Relaxed);
             b.phantom.store(a.phantom.load(Relaxed), Relaxed);
-            b.mute_groups.store(a.mute_groups.load(Relaxed), Relaxed);
+            b.mute_groups.store(a.mute_groups.load());
         }
         a.mode.store(mode, Relaxed);
         b.mode.store(mode, Relaxed);
@@ -732,7 +733,7 @@ impl SourceDsp {
     ///
     /// # Safety
     /// Audio thread, after `process` in the same block.
-    pub unsafe fn process_user_signals(&mut self, table: &SourceTable, pos: usize, n: usize, mute_groups: u32) {
+    pub unsafe fn process_user_signals(&mut self, table: &SourceTable, pos: usize, n: usize, mute_groups: &GroupSet) {
         if self.user_raw.is_empty() || n > self.user_raw[0].len() {
             return;
         }
@@ -772,7 +773,7 @@ impl SourceDsp {
         playback: &[*const f32],
         usb: &[*const f32; USB_CHANNELS],
         n: usize,
-        mute_groups: u32,
+        mute_groups: &GroupSet,
         pos: usize,
     ) {
         if !self.ready(hw.len(), n) {
@@ -892,7 +893,7 @@ impl SourceDsp {
         slot: usize,
         raw: [*const f32; 2],
         n: usize,
-        mute_groups: u32,
+        mute_groups: &GroupSet,
     ) -> [*const f32; 2] {
         let p = &table.params[index..index + 2];
         let mode = p[0].mode.load(Relaxed);
@@ -1041,8 +1042,8 @@ mod tests {
         // The audio takes the clamped gain even before that.
         let p = &t.params()[3];
         p.gain_db.store(60.0);
-        assert!((p.gain(source_gain_range(3), 0) - db_to_gain(45.0)).abs() < 1e-3);
-        assert_eq!(t.params()[NUM_HW_SOURCES + 1].gain(source_gain_range(NUM_HW_SOURCES + 1), 0), 1.0);
+        assert!((p.gain(source_gain_range(3), &GroupSet::EMPTY) - db_to_gain(45.0)).abs() < 1e-3);
+        assert_eq!(t.params()[NUM_HW_SOURCES + 1].gain(source_gain_range(NUM_HW_SOURCES + 1), &GroupSet::EMPTY), 1.0);
     }
 
     #[test]

@@ -18,16 +18,18 @@
 use crate::console::{self, section, ApplyResult, FadeTarget, NoPlugins, PluginBridge};
 use crate::refs::{refs_from_string, refs_to_string, StripRef};
 use crate::xml::{parse_int_prefix, Element, Node};
-use livedaw_engine::params::{MAX_FX, NUM_DCAS, NUM_MUTE_GROUPS};
+use livedaw_engine::groups::ALL_GROUPS;
+use livedaw_engine::params::MAX_FX;
 use livedaw_engine::Engine;
+use livedaw_engine::GroupSet;
 use std::collections::HashMap;
-use std::sync::atomic::Ordering::Relaxed;
 
 /// The number of changed values per strip and section (one bit).
 pub type ChangeCounts = HashMap<(StripRef, u32), usize>;
 
-pub const ALL_DCAS: u32 = (1 << NUM_DCAS) - 1;
-pub const ALL_MUTE_GROUPS: u32 = (1 << NUM_MUTE_GROUPS) - 1;
+/// Every DCA and every mute group the engine holds.
+pub const ALL_DCAS: GroupSet = ALL_GROUPS;
+pub const ALL_MUTE_GROUPS: GroupSet = ALL_GROUPS;
 /// Every FX slot the engine holds (bit n = FX n+1).
 pub const ALL_FX: u64 = u64::MAX >> (64 - MAX_FX);
 
@@ -45,10 +47,10 @@ pub struct Scope {
     pub sections: u32,
     /// The strips; `None` = every strip.
     pub strips: Option<Vec<StripRef>>,
-    /// DCAs (bit n = DCA n+1), recalled with FADER (levels, mutes) and NAME.
-    pub dcas: u32,
-    /// Mute groups (bit n = group n+1), recalled with GROUPS.
-    pub mute_groups: u32,
+    /// DCAs (0-based), recalled with FADER (levels, mutes) and NAME.
+    pub dcas: GroupSet,
+    /// Mute groups (0-based), recalled with GROUPS.
+    pub mute_groups: GroupSet,
     /// FX slots (bit n = FX n+1), recalled with INSERTS.
     pub fx: u64,
     /// The console-wide settings: monitor setup and INPUT SELECT (with
@@ -77,7 +79,14 @@ impl Scope {
 
     /// Only `sections` of `strips` (a snippet's classic scope).
     pub fn strips(sections: u32, strips: Vec<StripRef>) -> Self {
-        Self { sections: sections & section::ALL, strips: Some(strips), dcas: 0, mute_groups: 0, fx: 0, console: false }
+        Self {
+            sections: sections & section::ALL,
+            strips: Some(strips),
+            dcas: GroupSet::EMPTY,
+            mute_groups: GroupSet::EMPTY,
+            fx: 0,
+            console: false,
+        }
     }
 
     pub fn includes_strip(&self, r: &StripRef) -> bool {
@@ -86,7 +95,7 @@ impl Scope {
 
     /// True when the scope reaches beyond its strips.
     pub fn has_globals(&self) -> bool {
-        self.dcas != 0 || self.mute_groups != 0 || self.fx != 0 || self.console
+        !self.dcas.is_empty() || !self.mute_groups.is_empty() || self.fx != 0 || self.console
     }
 
     /// Nothing at all.
@@ -110,8 +119,8 @@ impl Scope {
         if let Some(strips) = &self.strips {
             e.set("scopeStrips", refs_to_string(strips));
         }
-        e.set("scopeDca", self.dcas)
-            .set("scopeMgrp", self.mute_groups)
+        e.set("scopeDca", self.dcas.to_attr())
+            .set("scopeMgrp", self.mute_groups.to_attr())
             .set("scopeFx", self.fx)
             .set_bool("scopeConsole", self.console);
     }
@@ -126,8 +135,8 @@ impl Scope {
                 Some(s) => Some(refs_from_string(s)),
                 None => defaults.strips.clone(),
             },
-            dcas: mask("scopeDca", defaults.dcas),
-            mute_groups: mask("scopeMgrp", defaults.mute_groups),
+            dcas: groups_attr(e, "scopeDca", defaults.dcas),
+            mute_groups: groups_attr(e, "scopeMgrp", defaults.mute_groups),
             fx: e.attr("scopeFx").map_or(defaults.fx, fx_mask),
             console: e.bool_or("scopeConsole", defaults.console),
         }
@@ -141,8 +150,8 @@ impl Scope {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct GlobalSafe {
     pub sections: u32,
-    pub dcas: u32,
-    pub mute_groups: u32,
+    pub dcas: GroupSet,
+    pub mute_groups: GroupSet,
     pub fx: u64,
     pub console: bool,
 }
@@ -163,8 +172,8 @@ impl GlobalSafe {
     pub fn to_xml(&self) -> Element {
         let mut e = Element::new("GlobalSafe");
         e.set("sections", self.sections)
-            .set("dcas", self.dcas)
-            .set("mgrps", self.mute_groups)
+            .set("dcas", self.dcas.to_attr())
+            .set("mgrps", self.mute_groups.to_attr())
             .set("fx", self.fx)
             .set_bool("console", self.console);
         e
@@ -174,13 +183,20 @@ impl GlobalSafe {
         let mask = |name: &str| e.attr(name).map_or(0, |v| parse_int_prefix(v) as u32);
         GlobalSafe {
             sections: mask("sections"),
-            dcas: mask("dcas"),
-            mute_groups: mask("mgrps"),
+            dcas: groups_attr(e, "dcas", GroupSet::EMPTY),
+            mute_groups: groups_attr(e, "mgrps", GroupSet::EMPTY),
             fx: e.attr("fx").map_or(0, fx_mask),
             console: e.bool_or("console", false),
         }
         .sanitised()
     }
+}
+
+/// A group set attribute (`GroupSet::to_attr`; older shows: a decimal mask).
+pub(crate) fn groups_attr(e: &Element, name: &str, default: GroupSet) -> GroupSet {
+    e.attr(name).map_or(default, |v| {
+        GroupSet::parse_attr(v).unwrap_or_else(|| GroupSet::from_mask(u64::from(parse_int_prefix(v) as u32)))
+    })
 }
 
 /// An FX slot mask attribute: 64 bits (shows from before more FX slots hold 16).
@@ -196,16 +212,25 @@ fn index_bit(i: i32) -> u64 {
     }
 }
 
+/// Index `i` is in `set`.
+fn in_set(set: GroupSet) -> impl Fn(i32) -> bool {
+    move |i| usize::try_from(i).is_ok_and(|i| set.contains(i))
+}
+
+/// Index `i` is in the FX slot mask.
+fn in_mask(mask: u64) -> impl Fn(i32) -> bool {
+    move |i| mask & index_bit(i) != 0
+}
+
 fn index_of(e: &Element) -> i32 {
     e.int_or("i", -1)
 }
 
-/// Keeps the children of `e` named `name` whose "i" is in `mask`.
-fn keep_indexed(e: &Element, name: &str, mask: impl Into<u64>) -> Element {
-    let mask = mask.into();
+/// Keeps the children of `e` named `name` whose "i" `keep` takes.
+fn keep_indexed(e: &Element, name: &str, keep: impl Fn(i32) -> bool) -> Element {
     let mut out = Element { name: e.name.clone(), attrs: e.attrs.clone(), children: Vec::new() };
     for c in e.elements() {
-        if c.name != name || mask & index_bit(index_of(c)) != 0 {
+        if c.name != name || keep(index_of(c)) {
             out.add(c.clone());
         }
     }
@@ -231,19 +256,20 @@ pub fn filter_state(engine: &Engine, state: &Element, scope: &Scope, safe: Optio
                     out.add(c.clone());
                 }
             }
-            "Dcas" if dcas != 0 => {
-                out.add(keep_indexed(c, "Dca", dcas));
+            "Dcas" if !dcas.is_empty() => {
+                out.add(keep_indexed(c, "Dca", in_set(dcas)));
             }
-            "MuteGroups" if groups != 0 => {
-                let mut m = keep_indexed(c, "G", groups);
-                if let Some(saved) = c.attr("on").map(|v| v.trim().parse::<u32>().unwrap_or(0)) {
-                    let current = engine.controls.mute_groups.load(Relaxed);
-                    m.set("on", (current & !groups) | (saved & groups));
+            "MuteGroups" if !groups.is_empty() => {
+                let mut m = keep_indexed(c, "G", in_set(groups));
+                if c.has_attr("on") {
+                    let saved = groups_attr(c, "on", GroupSet::EMPTY);
+                    let current = engine.controls.mute_groups.load();
+                    m.set("on", ((current & !groups) | (saved & groups)).to_attr());
                 }
                 out.add(m);
             }
             "Fx" if fx != 0 => {
-                out.add(keep_indexed(c, "Slot", fx));
+                out.add(keep_indexed(c, "Slot", in_mask(fx)));
             }
             name if is_console_part(name) && console => {
                 out.add(c.clone());
@@ -275,10 +301,10 @@ pub fn apply_scoped(
 /// INSERTS) in a capture.
 pub fn global_sections(scope: &Scope) -> u32 {
     let mut s = 0;
-    if scope.dcas != 0 {
+    if !scope.dcas.is_empty() {
         s |= section::FADER | section::NAME;
     }
-    if scope.mute_groups != 0 {
+    if !scope.mute_groups.is_empty() {
         s |= section::GROUPS | section::NAME;
     }
     if scope.fx != 0 {
@@ -310,14 +336,14 @@ pub fn capture_scoped(engine: &Engine, scope: &Scope, bridge: &mut dyn PluginBri
     for c in full.elements() {
         match c.name.as_str() {
             "Strip" => {}
-            "Dcas" if scope.dcas != 0 => {
-                out.add(keep_indexed(c, "Dca", scope.dcas));
+            "Dcas" if !scope.dcas.is_empty() => {
+                out.add(keep_indexed(c, "Dca", in_set(scope.dcas)));
             }
-            "MuteGroups" if scope.mute_groups != 0 => {
-                out.add(keep_indexed(c, "G", scope.mute_groups));
+            "MuteGroups" if !scope.mute_groups.is_empty() => {
+                out.add(keep_indexed(c, "G", in_set(scope.mute_groups)));
             }
             "Fx" if scope.fx != 0 => {
-                out.add(keep_indexed(c, "Slot", scope.fx));
+                out.add(keep_indexed(c, "Slot", in_mask(scope.fx)));
             }
             name if is_console_part(name) && scope.console => {
                 out.add(c.clone());
@@ -471,8 +497,8 @@ fn direct_text(e: &Element) -> String {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct RecordedChanges {
     pub strips: Vec<(StripRef, u32)>,
-    pub dcas: u32,
-    pub mute_groups: u32,
+    pub dcas: GroupSet,
+    pub mute_groups: GroupSet,
     pub fx: u64,
     pub console: bool,
     /// Every section with a change (the console-wide ones included).
@@ -509,12 +535,11 @@ impl RecordedChanges {
                 section_bits().filter(|b| m & b != 0).map(|b| counts.get(&(*r, b)).copied().unwrap_or(1)).sum::<usize>()
             })
             .sum();
-        out.count +=
-            (out.dcas.count_ones() + out.mute_groups.count_ones() + out.fx.count_ones()) as usize + usize::from(out.console);
-        if out.dcas != 0 {
+        out.count += out.dcas.count() + out.mute_groups.count() + out.fx.count_ones() as usize + usize::from(out.console);
+        if !out.dcas.is_empty() {
             out.sections |= section::FADER;
         }
-        if out.mute_groups != 0 {
+        if !out.mute_groups.is_empty() {
             out.sections |= section::GROUPS;
         }
         if out.fx != 0 {
@@ -546,7 +571,7 @@ impl RecordedChanges {
                 state.add(s.clone());
             }
         }
-        if self.dcas != 0 || self.mute_groups != 0 || self.fx != 0 || self.console {
+        if !self.dcas.is_empty() || !self.mute_groups.is_empty() || self.fx != 0 || self.console {
             let globals = Scope { strips: Some(Vec::new()), ..self.scope() };
             let captured = capture_scoped(engine, &globals, bridge);
             for c in captured.elements().filter(|c| c.name != "Strip") {
@@ -611,31 +636,32 @@ impl Recording {
                             "MuteGroups" => "G",
                             _ => "Slot",
                         };
-                        let mut mask: u64 = 0;
+                        let mut changed = GroupSet::EMPTY;
                         for x in c.children_named(item) {
                             let i = x.str_or("i", "");
                             let n = old
                                 .and_then(|o| o.children_named(item).find(|y| y.str_or("i", "") == i))
                                 .map_or(1, |y| count_differences(y, x));
                             if n > 0 {
-                                mask |= index_bit(parse_int_prefix(i));
+                                if let Ok(i) = usize::try_from(parse_int_prefix(i)) {
+                                    changed.insert(i);
+                                }
                                 out.count += n;
                             }
                         }
                         if c.name == "MuteGroups" {
-                            let on = |e: Option<&Element>| {
-                                e.and_then(|e| e.attr("on")).map_or(0, |v| v.trim().parse::<u32>().unwrap_or(0))
-                            };
-                            let changed = on(Some(c)) ^ on(old);
-                            out.count += changed.count_ones() as usize;
-                            mask |= u64::from(changed);
+                            let on = |e: Option<&Element>| e.map_or(GroupSet::EMPTY, |e| groups_attr(e, "on", GroupSet::EMPTY));
+                            let (now_on, old_on) = (on(Some(c)), on(old));
+                            let engaged = (now_on & !old_on) | (old_on & !now_on);
+                            out.count += engaged.count();
+                            changed |= engaged;
                         }
-                        if mask != 0 {
+                        if !changed.is_empty() {
                             out.sections |= bit;
                             match c.name.as_str() {
-                                "Dcas" => out.dcas |= mask as u32,
-                                "MuteGroups" => out.mute_groups |= mask as u32,
-                                _ => out.fx |= mask,
+                                "Dcas" => out.dcas |= changed,
+                                "MuteGroups" => out.mute_groups |= changed,
+                                _ => out.fx |= changed.low(),
                             }
                         }
                     }
@@ -673,8 +699,8 @@ mod tests {
         let s = Scope {
             sections: section::FADER | section::EQ,
             strips: Some(vec![StripRef::new(StripKind::Channel, 3), StripRef::new(StripKind::Bus, 0)]),
-            dcas: 0b101,
-            mute_groups: 0,
+            dcas: GroupSet::from_mask(0b101),
+            mute_groups: GroupSet::EMPTY,
             fx: 1 << 15,
             console: false,
         };
@@ -692,9 +718,15 @@ mod tests {
 
     #[test]
     fn global_safe_round_trip() {
-        // FX slots beyond the WING's 16, up to the 64th.
-        let g =
-            GlobalSafe { sections: section::EQ, dcas: 3, mute_groups: 1 << 7, fx: 1 << 20 | 1 << 63, console: true }.sanitised();
+        // FX slots beyond the WING's 16, up to the 64th; DCAs beyond 64.
+        let g = GlobalSafe {
+            sections: section::EQ,
+            dcas: GroupSet::from_mask(3) | GroupSet::single(200),
+            mute_groups: GroupSet::single(7),
+            fx: 1 << 20 | 1 << 63,
+            console: true,
+        }
+        .sanitised();
         assert_eq!(g.fx, 1 << 20 | 1 << 63);
         assert_eq!(GlobalSafe::from_xml(&g.to_xml()), g);
         assert!(GlobalSafe::from_xml(&el("<GlobalSafe/>")).is_empty());
@@ -707,7 +739,7 @@ mod tests {
         let state =
             el(r#"<State sections="1023"><Fx><Slot i="3" mdl="A"/><Slot i="40" mdl="B"/><Slot i="63" mdl="C"/></Fx></State>"#);
         let fx = state.child("Fx").unwrap();
-        let kept = keep_indexed(fx, "Slot", 1u64 << 40 | 1 << 63);
+        let kept = keep_indexed(fx, "Slot", in_mask(1u64 << 40 | 1 << 63));
         let slots: Vec<_> = kept.children_named("Slot").map(|s| s.int_or("i", -1)).collect();
         assert_eq!(slots, [40, 63]);
 

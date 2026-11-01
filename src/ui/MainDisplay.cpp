@@ -1495,7 +1495,7 @@ void MainDisplay::clearSolo()
     for (int k = 0; k < kNumStripKinds; ++k)
         for (auto& s : ctx.engine.getStrips (static_cast<StripKind> (k)))
             s->params.solo = false;
-    for (int i = 0; i < kNumDcas; ++i)
+    for (int i = 0; i < kWingDcas; ++i)
         ctx.engine.getDca (i).solo = false;
     // CLR SOLO also ends LISTEN (the HOME screens' band / key listening).
     ctx.engine.getAnalysis().stopListening();

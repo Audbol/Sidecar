@@ -18,8 +18,17 @@ or environment. Keep it up to date as phases land.
 3. **Consoles to emulate after the WING:** Behringer X32 / Midas M32, Yamaha (CL / QL /
    TF / DM7), Allen & Heath (SQ / dLive / Avantis) and DiGiCo (SD / Quantum). The
    Universal Mixer must be able to express all of them.
-4. **Channel and bus formats:** mono, stereo and LCR. (No surround or immersive for
-   now; the engine shouldn't make adding them later impossible.)
+4. **Channel and bus formats:** mono and stereo. LCR was planned at first and then
+   dropped (November 2026); no LCR, surround or immersive for now. A strip's format
+   is a field (`format`: mono, stereo), so another one can be added later without
+   changing the show format again.
+5. **Phase 1 details** (November 2026):
+   - Realtime caps: up to 256 DCAs, 256 mute groups and 32 processing blocks per
+     strip (fixed-size tables the audio thread reads without allocating).
+   - Shows saved by the Universal core (show format 4) don't open in 0.1.x; Phase 1
+     is released as **0.2.0**.
+   - The stage order stays Bus → Main → Matrix (buses send to buses in waves); no
+     main → main or matrix → matrix sends until an emulation needs them.
 
 ## Where the code stands (Sidecar 0.1.6)
 
@@ -40,7 +49,8 @@ WING-specific today, to generalize:
 
 - Fixed counts in `livedaw-engine/src/params.rs`: `NUM_MAINS` 4, `NUM_MATRICES` 8,
   `NUM_AUX` 8, `NUM_DCAS` 16, `NUM_MUTE_GROUPS` 8, `NUM_FX` 16 (and `WING_CHANNELS`,
-  `WING_BUSES` as defaults).
+  `WING_BUSES` as defaults). (Since Phase 1 step 1: the aux, bus, DCA, mute group
+  and FX counts are configured; mains and matrices follow in step 2.)
 - A fixed strip layout: `StripParams` is input, filter, gate, EQ, dynamics, two
   inserts, with the WING's 24 process orders and fixed tap points (`TAP_POINTS`,
   `keytap.rs`); aux, bus, main and matrix strips each have their own fixed chain.
@@ -80,9 +90,27 @@ Three layers:
 ## Phases
 
 1. **Generalize the engine and show model** behind the current API: replace the
-   fixed counts with configurable ones, add LCR, introduce the block chain with the
-   WING's fixed layout and process orders expressed as one configuration of it. The
-   WING keeps working on every commit; tests stay green.
+   fixed counts with configurable ones, introduce the block chain with the WING's
+   fixed layout and process orders expressed as one configuration of it. The WING
+   keeps working on every commit; tests stay green. Steps:
+   1. **Counts** (done): `ConsoleConfig` / `Counts` (`livedaw-engine/src/config.rs`)
+      with `ConsoleConfig::wing()`; `Engine::configure`, `counts`,
+      `set_num_dcas`, `set_num_mute_groups` (and the FX slots' `set_num_fx`). DCA
+      and mute group memberships, the engaged mute groups and the sources' mute
+      groups are group sets of up to 256 (`groups.rs`: `GroupSet`,
+      `AtomicGroupSet`; C++ `ld::GroupBits`, `ld::GroupMask`); `EngineControls`
+      holds 256 DCAs. Shows store a set as before (a decimal mask while only the
+      first 64 are used, else four hex words). C ABI 25 (`ld_engine_counts`,
+      `ld_engine_configure`, ...). Mains stay at most 4 and matrices at most 8
+      until step 2.
+   2. **Sends**: one send table per strip keyed by the destination (buses, mains,
+      matrices), with a tap reference; mains and matrices then any number.
+   3. **Block chain and taps**: a strip's processing as a chain of blocks with tap
+      markers; the WING's templates and its 24 process orders as permutations;
+      `StripParams` keeps the strip-level state; C++ and `map.rs` facades.
+   4. **Show format 4**: the configuration, chains and sends; 0.1.x shows (format
+      3) load through a converter.
+   5. **A console that isn't a WING** in the tests (Rust and C++), and the docs.
 2. **Universal Mixer UI**: a new interface over the core (strips, chains, routing
    matrix, sends, monitoring, scenes, recorder), its own look and layout.
 3. **WING as a profile**: move the WING's limits, defaults, laws, surface, protocols

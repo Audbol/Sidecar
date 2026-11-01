@@ -573,16 +573,16 @@ int MidiRemote::currentValue (int midiChannel, int controller) const
             return panToMidi (s->params.pan.load());
         }
         case kDcaChannel:
-            if (controller >= 12 && controller < 12 + kNumDcas)
+            if (controller >= 12 && controller < 12 + kWingDcas)
                 return toMidi (faderPosition (engine.getDca (controller - 12).faderDb.load()));
             return -1;
         case kDcaMuteChannel:
-            if (controller >= 12 && controller < 12 + kNumDcas)
+            if (controller >= 12 && controller < 12 + kWingDcas)
                 return engine.getDca (controller - 12).mute.load() ? 127 : 0;
             if ((controller >= 28 && controller <= 31) || (controller >= 44 && controller <= 47))
             {
                 const int group = controller <= 31 ? controller - 28 : controller - 40;
-                return ((engine.muteGroups.load() >> group) & 1u) != 0 ? 127 : 0;
+                return engine.muteGroups.contains (group) ? 127 : 0;
             }
             return -1;
         default:
@@ -611,17 +611,15 @@ void MidiRemote::applyValue (int midiChannel, int controller, int value)
             break;
         }
         case kDcaChannel:
-            if (controller >= 12 && controller < 12 + kNumDcas)
+            if (controller >= 12 && controller < 12 + kWingDcas)
                 engine.getDca (controller - 12).faderDb = faderDb ((float) value / 127.0f);
             break;
         case kDcaMuteChannel:
-            if (controller >= 12 && controller < 12 + kNumDcas)
+            if (controller >= 12 && controller < 12 + kWingDcas)
                 engine.getDca (controller - 12).mute = on;
             else if ((controller >= 28 && controller <= 31) || (controller >= 44 && controller <= 47))
             {
-                const auto bit = 1u << (uint32_t) (controller <= 31 ? controller - 28 : controller - 40);
-                const auto groups = engine.muteGroups.load();
-                engine.muteGroups = on ? groups | bit : groups & ~bit;
+                engine.muteGroups.set (controller <= 31 ? controller - 28 : controller - 40, on);
             }
             break;
         default:

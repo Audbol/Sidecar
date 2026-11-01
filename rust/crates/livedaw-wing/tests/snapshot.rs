@@ -2,6 +2,7 @@
 //! export, export -> import round trips, and show files.
 
 use livedaw_engine::sends::send_mode;
+use livedaw_engine::GroupSet;
 use livedaw_engine::{Engine, StripKind, PLAYBACK_SOURCE_BASE};
 use livedaw_session::console::NoPlugins;
 use livedaw_session::Show;
@@ -71,8 +72,8 @@ fn imports_the_fixture() {
     assert!(s9.pan_reversed.load(Relaxed));
     assert!(c1.matrix[0].on.load(Relaxed) && c1.matrix[0].pre.load(Relaxed));
     assert_eq!(c1.matrix[0].pan.load(), 20.0);
-    assert_eq!(c1.dca_mask.load(Relaxed), 1);
-    assert_eq!(c1.mute_group_mask.load(Relaxed), 1);
+    assert_eq!(c1.dca_mask.load().low(), 1);
+    assert_eq!(c1.mute_group_mask.load().low(), 1);
     // Channel 2: models chosen by name, fader at -oo.
     let c2 = &ch(2).params;
     assert!(c2.mute.load(Relaxed));
@@ -111,7 +112,7 @@ fn imports_the_fixture() {
     assert_eq!(e.controls.dcas[0].fader_db.load(), -2.0);
     assert!(e.controls.dcas[1].mute.load(Relaxed));
     assert_eq!(e.mute_group_name(1), "KEYS");
-    assert_eq!(e.controls.mute_groups.load(Relaxed), 0b10);
+    assert_eq!(e.controls.mute_groups.load().low(), 0b10);
     let fx1 = &e.controls.fx[0];
     assert_eq!(livedaw_dsp::wing::FX_MODELS[fx1.model_index()].token, "HALL");
     // 2.2 s lands on the nearest of the decay's 101 steps, as on the console.
@@ -299,7 +300,7 @@ fn console_level_settings_round_trip_through_a_snapshot() {
     let sources = e.sources();
     sources.set_name(10, "Bass DI");
     sources.get(10).unwrap().gain_db.store(12.5); // LOCAL IN: 2.5 dB steps
-    sources.get(10).unwrap().mute_groups.store(0b100, Relaxed);
+    sources.get(10).unwrap().mute_groups.store(GroupSet::from_mask(0b100));
     sources.get(10).unwrap().colour.store(4, Relaxed);
     sources.set_mode(20, source_mode::STEREO);
     let click = source_index(PLAYBACK_SOURCE_BASE + 5).unwrap();
@@ -339,7 +340,7 @@ fn console_level_settings_round_trip_through_a_snapshot() {
     let s2 = e2.sources();
     assert_eq!(s2.name(10), "Bass DI");
     assert_eq!(s2.get(10).unwrap().gain_db.load(), 12.5);
-    assert_eq!(s2.get(10).unwrap().mute_groups.load(Relaxed), 0b100);
+    assert_eq!(s2.get(10).unwrap().mute_groups.load().low(), 0b100);
     assert_eq!(s2.get(10).unwrap().colour.load(Relaxed), 4);
     assert_eq!(s2.get(21).unwrap().mode.load(Relaxed), source_mode::STEREO);
     assert_eq!(s2.name(click), "Click");

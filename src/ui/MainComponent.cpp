@@ -66,7 +66,7 @@ public:
             for (auto& s : engine.getStrips (static_cast<StripKind> (k)))
                 if (s->getHandle() != keep)
                     s->params.solo = false;
-        for (int i = 0; i < kNumDcas; ++i)
+        for (int i = 0; i < kWingDcas; ++i)
             if (&engine.getDca (i) != keep)
                 engine.getDca (i).solo = false;
     }
@@ -80,7 +80,7 @@ private:
             for (auto& s : engine.getStrips (static_cast<StripKind> (k)))
                 if (s->params.solo.load())
                     soloed.insert (s->getHandle());
-        for (int i = 0; i < kNumDcas; ++i)
+        for (int i = 0; i < kWingDcas; ++i)
             if (engine.getDca (i).solo.load())
                 soloed.insert (&engine.getDca (i));
         return soloed;

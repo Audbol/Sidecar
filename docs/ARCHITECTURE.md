@@ -244,6 +244,33 @@ Rust; audio devices, plugin hosting and the UI are C++ with JUCE.
   `startup_main_mute` (applied by the application through
   `ld_engine_apply_startup_main_mute`).
 
+## Console configuration and groups
+
+The engine is moving to the *Universal core* (`docs/UNIVERSAL_MIXER.md`): a console
+of any size, of which the WING is one configuration.
+
+- `ConsoleConfig` / `Counts` (`livedaw-engine/src/config.rs`): how many channels,
+  aux, buses, mains, matrices, DCAs, mute groups and FX slots the console has.
+  `ConsoleConfig::wing()` is the WING's (40 / 8 / 16 / 4 / 8 / 16 / 8 / 16).
+  `Engine::configure` makes the engine a fresh console of a configuration (a reset
+  that builds its counts; `reset` keeps the configuration); `Engine::counts` says
+  what it has now (channels and buses can be added beyond the configuration). Mains
+  stay at most 4 and matrices at most 8 until their sends are general (Phase 1, step 2).
+- DCAs and mute groups: the engine holds 256 of each (`MAX_DCAS`,
+  `MAX_MUTE_GROUPS`) and the console uses the first `num_dcas` / `num_mute_groups`
+  (`set_num_dcas`, `set_num_mute_groups`: never below a group in use, so a hidden
+  group never acts on a strip). A strip's memberships, the engaged mute groups and a
+  source's mute groups are `AtomicGroupSet`s (`groups.rs`: four `AtomicU64`s; C++
+  `ld::GroupMask`, its value `ld::GroupBits`); the audio thread walks only the set
+  bits. A strip's mute cause (`solo.rs`), which MUTEGROUP/SIP OVERRIDE compares
+  block to block, is a 64-bit signature of the groups, DCAs and SIP muting it. Show
+  files store a set as a decimal mask while only groups 0-63 are in it (what shows
+  always stored), else as four hex words (`GroupSet::to_attr`); scopes, safes and
+  snippets carry group sets too (`LdScope`, ABI 25).
+- The WING's surface, screens and remotes address its 16 DCAs and 8 mute groups
+  (`WING_DCAS`, `WING_MUTE_GROUPS`; C++ `kWingDcas`, `kWingMuteGroups`); setting the
+  WING's memberships (`/ch/n/tags`) keeps the groups beyond them.
+
 ## Processing models
 
 `rust/crates/livedaw-dsp/src/wing/models_gen.rs` holds the WING's model tables: the 32
@@ -282,7 +309,7 @@ views after a show load changes the console from Rust.
   engine controls are `#[repr(C)]` blocks of atomics owned by Rust. C++ sees the same
   memory as `std::atomic<float/bool/int32_t>` structs, and the UI writes them directly
   with no FFI call. Both sides describe the layout; `ld::verifyLayout()` compares the
-  two at startup and in the tests (ABI version 23), and the app refuses to run if they
+  two at startup and in the tests (ABI version 25), and the app refuses to run if they
   differ.
 - **FX meters (ABI 23).** A device reports its screen's live values with
   `FxAlgo::readouts` (48 floats laid out per device, documented in each device's

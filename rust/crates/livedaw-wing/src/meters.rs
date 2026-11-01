@@ -248,11 +248,10 @@ pub fn frame_words(c: &Console, clock: &MeterClock, meters: &[Meter]) -> Vec<i16
                         // Pre fader L/R, post fader L/R: DCAs carry no signal
                         // here, so the loudest member's, as the METERS screen
                         // (PRE: after the members' trim, as the meters' PRE tap).
-                        let bit = 1u32.checked_shl(i as u32).unwrap_or(0);
                         let mut words = [FLOOR_DB; 4];
                         for kind in StripKind::ALL {
                             for s in c.engine.strips(kind) {
-                                if s.params.dca_mask.load(Relaxed) & bit != 0 {
+                                if s.params.dca_mask.contains(usize::from(i)) {
                                     let right = usize::from(s.num_channels() > 1);
                                     for (w, (point, ch)) in
                                         words.iter_mut().zip([(PRE, 0), (PRE, right), (OUTPUT, 0), (OUTPUT, right)])

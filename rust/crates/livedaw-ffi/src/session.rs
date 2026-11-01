@@ -5,7 +5,7 @@
 //! owned `LdString` handles coming out (free with `ld_string_free`).
 
 use super::guard;
-use livedaw_engine::{Engine, StripKind};
+use livedaw_engine::{Engine, GroupSet, StripKind};
 use livedaw_session::console::{CapturedInsert, InsertMode, PluginBridge, RestoreError};
 use livedaw_session::layers::{FaderRef, Layer, LayerSet, SpillKind};
 use livedaw_session::library::{self, FileType};
@@ -622,8 +622,9 @@ pub unsafe extern "C" fn ld_snippet_set_strips(s: *mut LdShow, scene: i32, snipp
 #[repr(C)]
 pub struct LdScope {
     pub sections: u32,
-    pub dcas: u32,
-    pub mute_groups: u32,
+    /// ABI 25: every DCA and mute group (four words each, bit n of word w = group 64w + n).
+    pub dcas: GroupSet,
+    pub mute_groups: GroupSet,
     pub fx: u64,
     pub console: bool,
     pub all_strips: bool,

@@ -21,10 +21,11 @@
 //! groups, DCA mutes) through [`StripConsole::apply_mute`].
 
 use crate::atomic::AtomicF32;
+use crate::groups::{GroupSet, MAX_GROUPS};
 use crate::params::EngineControls;
 use crate::strip::Strip;
 use crate::talk;
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering::Relaxed};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, Ordering::Relaxed};
 use std::sync::Arc;
 
 /// SOLO MODE (`EngineControls::solo_mode`).
@@ -66,8 +67,19 @@ mod force {
     pub const MUTE: i32 = 2;
 }
 
-/// Cause bits: mute groups 0-7, DCAs 8-23, SIP 24.
-const CAUSE_SIP: u32 = 1 << 24;
+/// A strip's mute cause (`StripConsole::cause`) is a signature of the mute
+/// groups, DCAs and SIP muting it: 0 = none, else a hash of their indices
+/// (the override holds while it stays the same; a collision only keeps an
+/// override a cause change would have cleared).
+const CAUSE_SIP: u64 = 1 << 63;
+
+fn cause_bits(id: u64) -> u64 {
+    // splitmix64's finaliser: indices spread over the whole word.
+    let mut z = id.wrapping_add(0x9e37_79b9_7f4a_7c15);
+    z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+    z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+    (z ^ (z >> 31)) & !CAUSE_SIP
+}
 
 /// Console-level state kept on every strip.
 #[derive(Debug, Default)]
@@ -83,7 +95,7 @@ pub struct StripConsole {
     /// [`force`] decision for this block (audio thread).
     force: AtomicI32,
     /// The group / DCA / SIP mute cause of the last block (audio thread).
-    cause: AtomicU32,
+    cause: AtomicU64,
     /// The monitor stage's solo ramp to the PHONES (the SPEAKERS use the strip's own).
     pub(crate) solo_ramp_b: AtomicF32,
 }
@@ -116,19 +128,22 @@ pub(crate) struct SoloBlock {
     pub any_solo: bool,
 }
 
-/// The mute groups and DCA mutes acting on `s` (cause bits).
-fn group_cause(s: &Strip, c: &EngineControls, mute_groups: u32, dca_mute_groups: bool) -> u32 {
+/// The mute groups and DCA mutes acting on `s` (its cause signature, 0 = none).
+fn group_cause(s: &Strip, c: &EngineControls, mute_groups: &GroupSet, dca_mute_groups: bool) -> u64 {
     let p = &s.params;
-    let mut cause = p.mute_group_mask.load(Relaxed) & mute_groups & 0xff;
-    let mask = p.dca_mask.load(Relaxed);
-    if dca_mute_groups && mask != 0 {
-        for (i, d) in c.dcas.iter().enumerate() {
-            if mask & (1 << i) != 0 && d.mute.load(Relaxed) {
-                cause |= 1 << (8 + i);
-            }
-        }
+    let groups = (p.mute_group_mask.load() & *mute_groups).iter();
+    let dcas = p.dca_mask.load().iter().filter(|&i| dca_mute_groups && c.dcas.get(i).is_some_and(|d| d.mute.load(Relaxed)));
+    let mut any = false;
+    let mut cause = 0;
+    for id in groups.chain(dcas.map(|i| MAX_GROUPS + i)) {
+        any = true;
+        cause ^= cause_bits(id as u64);
     }
-    cause
+    if any {
+        cause | 1
+    } else {
+        0
+    }
 }
 
 /// Audio thread, before the channels run: every strip's effective solo, then
@@ -152,14 +167,14 @@ where
     let sip = c.solo_mode.load(Relaxed) == solo_mode::SIP && any_input_solo;
     c.sip_active.store(sip, Relaxed);
 
-    let mute_groups = c.mute_groups.load(Relaxed);
+    let mute_groups = c.mute_groups.load();
     let dca_mute_groups = c.dca_mute_groups.load(Relaxed);
     let override_enabled = c.mute_override.load(Relaxed);
     for s in strips {
         let k = &s.console;
         let own = s.params.mute.load(Relaxed);
         let sip_mute = sip && s.kind().is_input() && !k.soloed.load(Relaxed) && !s.params.solo_safe.load(Relaxed);
-        let cause = group_cause(s, c, mute_groups, dca_mute_groups) | if sip_mute { CAUSE_SIP } else { 0 };
+        let cause = group_cause(s, c, &mute_groups, dca_mute_groups) | if sip_mute { CAUSE_SIP } else { 0 };
         let last_cause = k.cause.swap(cause, Relaxed);
 
         // The override holds while the cause it overrode stays the same.

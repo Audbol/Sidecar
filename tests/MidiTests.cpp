@@ -169,9 +169,9 @@ private:
         expect (engine.getDca (15).mute.load());
         midi.handleMessage (MidiRemote::Usb, cc (5, 28, 127));
         midi.handleMessage (MidiRemote::Usb, cc (5, 47, 127));
-        expectEquals ((int) engine.muteGroups.load(), 0x81);
+        expectEquals ((int) engine.muteGroups.load().low(), 0x81);
         midi.handleMessage (MidiRemote::Usb, cc (5, 28, 0));
-        expectEquals ((int) engine.muteGroups.load(), 0x80);
+        expectEquals ((int) engine.muteGroups.load().low(), 0x80);
         // Only on the routed port.
         midi.handleMessage (MidiRemote::Din, cc (2, 12, 127));
         expect (! ch1.params.mute.load());
@@ -184,7 +184,7 @@ private:
         midi.stripForCc (16)->params.mute = true;
         midi.stripForCc (80)->params.pan = 100.0f;   // BUS 3
         engine.getDca (0).mute = true;
-        engine.muteGroups = engine.muteGroups.load() | 0x4u; // group 3
+        engine.muteGroups.set (2, true); // group 3
         midi.sendFeedback();
         expectEquals (sent.ccValue (1, 16), juce::roundToInt (MidiRemote::faderPosition (-20.0f) * 127.0f));
         expectEquals (sent.ccValue (2, 16), 127);

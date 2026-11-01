@@ -11,13 +11,12 @@ use livedaw_dsp::wing::{model_index, ModelSpec, DYN_MODELS, EQ_MODELS_BUS, EQ_MO
 use livedaw_engine::analyser::RtaViewSettings;
 use livedaw_engine::atomic::AtomicF32;
 use livedaw_engine::params::{
-    ext, DynSlotParams, EqBlockParams, InsertParams, MatrixSendParams, StripParams, FX_EXT, FX_NONE, MAX_FX, NUM_DCAS,
-    NUM_MUTE_GROUPS, WING_BUSES,
+    ext, DynSlotParams, EqBlockParams, InsertParams, MatrixSendParams, StripParams, FX_EXT, FX_NONE, MAX_FX, WING_BUSES,
 };
 use livedaw_engine::routing::{bus_feeds_bus, matrix_direct, MATRIX_DIRECT_INPUTS};
-use livedaw_engine::{Engine, Strip, StripKind, MAX_BUSES};
+use livedaw_engine::{AtomicGroupSet, Engine, GroupSet, Strip, StripKind, MAX_BUSES};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering::Relaxed};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering::Relaxed};
 use std::sync::Arc;
 
 pub const CONSOLE_VERSION: i32 = 3;
@@ -180,11 +179,17 @@ fn put_b(e: &mut Element, name: &str, v: &AtomicBool) {
 fn put_i(e: &mut Element, name: &str, v: &AtomicI32) {
     e.set(name, v.load(Relaxed));
 }
-fn put_u(e: &mut Element, name: &str, v: &AtomicU32) {
-    e.set(name, v.load(Relaxed));
-}
 fn put_f(e: &mut Element, name: &str, v: &AtomicF32) {
     e.set(name, fmt_f32(v.load()));
+}
+/// A group set (DCAs, mute groups), as `GroupSet::to_attr`.
+pub(crate) fn put_groups(e: &mut Element, name: &str, v: &AtomicGroupSet) {
+    e.set(name, v.load().to_attr());
+}
+pub(crate) fn get_groups(e: &Element, name: &str, v: &AtomicGroupSet) {
+    if e.has_attr(name) {
+        v.store(crate::scope::groups_attr(e, name, GroupSet::EMPTY));
+    }
 }
 fn get_b(e: &Element, name: &str, v: &AtomicBool) {
     if e.has_attr(name) {
@@ -194,11 +199,6 @@ fn get_b(e: &Element, name: &str, v: &AtomicBool) {
 fn get_i(e: &Element, name: &str, v: &AtomicI32) {
     if e.has_attr(name) {
         v.store(e.int_or(name, 0), Relaxed);
-    }
-}
-fn get_u(e: &Element, name: &str, v: &AtomicU32) {
-    if let Some(s) = e.attr(name) {
-        v.store(s.trim().parse::<u32>().unwrap_or(0), Relaxed);
     }
 }
 fn get_f(e: &Element, name: &str, v: &AtomicF32) {
@@ -512,8 +512,8 @@ fn capture_strip(s: &Strip, sections: u32, slots: &[usize]) -> Element {
     }
     if sections & GROUPS != 0 {
         let g = e.add_new("Grp");
-        put_u(g, "dca", &p.dca_mask);
-        put_u(g, "mgrp", &p.mute_group_mask);
+        put_groups(g, "dca", &p.dca_mask);
+        put_groups(g, "mgrp", &p.mute_group_mask);
         let tags = s.tags();
         if !tags.is_empty() {
             g.set("tags", tags);
@@ -755,7 +755,7 @@ fn apply_prefs(engine: &Engine, parent: &Element) {
 
 fn capture_dcas(engine: &Engine, parent: &mut Element, names: bool) {
     let d = parent.add_new("Dcas");
-    for (i, dca) in engine.controls.dcas.iter().enumerate() {
+    for (i, dca) in engine.controls.dcas.iter().enumerate().take(engine.num_dcas()) {
         let x = d.add_new("Dca");
         x.set("i", i);
         if names {
@@ -774,7 +774,11 @@ fn apply_dcas(engine: &Engine, parent: &Element, fades: &mut Option<&mut Vec<Fad
     let Some(d) = parent.child("Dcas") else { return };
     for x in d.children_named("Dca") {
         let i = x.int_or("i", -1);
-        let Some(dca) = engine.controls.dcas.get(usize::try_from(i).unwrap_or(NUM_DCAS)) else { continue };
+        let Some(dca) = usize::try_from(i).ok().and_then(|i| engine.controls.dcas.get(i)) else { continue };
+        // A show of a console with more DCAs brings them into use.
+        if i as usize >= engine.num_dcas() {
+            engine.set_num_dcas(i as usize + 1);
+        }
         if let Some(n) = x.attr("name") {
             engine.set_dca_name(i as usize, n);
         }
@@ -789,9 +793,9 @@ fn apply_dcas(engine: &Engine, parent: &Element, fades: &mut Option<&mut Vec<Fad
 
 fn capture_mute_groups(engine: &Engine, parent: &mut Element, names: bool) {
     let g = parent.add_new("MuteGroups");
-    put_u(g, "on", &engine.controls.mute_groups);
+    put_groups(g, "on", &engine.controls.mute_groups);
     if names {
-        for i in 0..NUM_MUTE_GROUPS {
+        for i in 0..engine.num_mute_groups() {
             g.add_new("G").set("i", i).set("name", engine.mute_group_name(i));
         }
     }
@@ -799,9 +803,12 @@ fn capture_mute_groups(engine: &Engine, parent: &mut Element, names: bool) {
 
 fn apply_mute_groups(engine: &Engine, parent: &Element) {
     let Some(g) = parent.child("MuteGroups") else { return };
-    get_u(g, "on", &engine.controls.mute_groups);
+    get_groups(g, "on", &engine.controls.mute_groups);
     for x in g.children_named("G") {
         if let (Ok(i), Some(n)) = (usize::try_from(x.int_or("i", -1)), x.attr("name")) {
+            if i >= engine.num_mute_groups() {
+                engine.set_num_mute_groups(i + 1);
+            }
             engine.set_mute_group_name(i, n);
         }
     }
@@ -1118,8 +1125,8 @@ fn apply_strip(
         get_b(o, "mute", &p.mute);
     }
     if let Some(g) = e.child("Grp").filter(|_| sections & GROUPS != 0) {
-        get_u(g, "dca", &p.dca_mask);
-        get_u(g, "mgrp", &p.mute_group_mask);
+        get_groups(g, "dca", &p.dca_mask);
+        get_groups(g, "mgrp", &p.mute_group_mask);
         s.set_tags(g.attr("tags").unwrap_or_default());
     }
 

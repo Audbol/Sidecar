@@ -29,7 +29,10 @@ use livedaw_engine::params::{
 use livedaw_engine::params::{MonitorPathParams, MonitorSourceParams};
 use livedaw_engine::sources::{SourceParams, UserPatchParams, UserSignalParams};
 use livedaw_engine::talk::{TalkParams, TalkPathParams};
-use livedaw_engine::{pdc_tap, Engine, EngineControls, InsertCallbacks, SendParams, Strip, StripKind, StripMeters, StripParams};
+use livedaw_engine::{
+    pdc_tap, AtomicGroupSet, ConsoleConfig, Counts, Engine, EngineControls, InsertCallbacks, SendParams, Strip, StripKind,
+    StripMeters, StripParams,
+};
 use std::mem::{offset_of, size_of};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
@@ -53,7 +56,13 @@ use std::sync::Arc;
 // (ld_engine_io_safe, ld_engine_set_io_safe).
 // ABI 24: 64 FX slots (EngineControls::fx), of which ld_engine_num_fx are in
 // use (ld_engine_set_num_fx); LdScope::fx is a 64-bit mask.
-pub const LD_ABI_VERSION: i32 = 24;
+// ABI 25 (the Universal core, Phase 1 step 1): strip DCA and mute group
+// memberships, the engaged mute groups and a source's mute groups are group
+// sets of up to 256 (`ld::GroupMask`), EngineControls holds 256 DCAs, of
+// which ld_engine_counts().dcas are in use; LdScope's DCAs and mute groups
+// are group sets; the console's counts (ld_engine_counts, ld_engine_configure,
+// ld_engine_set_num_dcas, ld_engine_set_num_mute_groups).
+pub const LD_ABI_VERSION: i32 = 25;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(default)
@@ -179,6 +188,12 @@ pub struct LdLayoutInfo {
     pub off_fx_send_left: i32,
     // ABI 22: GLOBAL INPUT SELECT ENABLE
     pub off_src_auto: i32,
+    // ABI 25: DCA and mute group sets (up to 256 each), the console's counts
+    pub group_set: i32,
+    pub off_mute_group_mask: i32,
+    pub scope: i32,
+    pub off_scope_fx: i32,
+    pub counts: i32,
 }
 
 #[no_mangle]
@@ -273,6 +288,11 @@ pub unsafe extern "C" fn ld_layout_info(out: *mut LdLayoutInfo) {
         fader_ref: size_of::<session::LdFaderRef>() as i32,
         off_fx_send_left: offset_of!(FxParams, send_left) as i32,
         off_src_auto: offset_of!(StripParams, src_auto) as i32,
+        group_set: size_of::<AtomicGroupSet>() as i32,
+        off_mute_group_mask: offset_of!(StripParams, mute_group_mask) as i32,
+        scope: size_of::<session::LdScope>() as i32,
+        off_scope_fx: offset_of!(session::LdScope, fx) as i32,
+        counts: size_of::<LdCounts>() as i32,
     };
 }
 
@@ -430,6 +450,89 @@ pub unsafe extern "C" fn ld_engine_set_num_channels(e: *const Engine, count: i32
     if let Some(e) = engine(e) {
         guard((), || e.set_num_channels(count.max(0) as usize));
     }
+}
+
+/// How many of each kind a console has (`livedaw_engine::Counts`).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LdCounts {
+    pub channels: i32,
+    pub aux: i32,
+    pub buses: i32,
+    pub mains: i32,
+    pub matrices: i32,
+    pub dcas: i32,
+    pub mute_groups: i32,
+    pub fx: i32,
+}
+
+impl From<Counts> for LdCounts {
+    fn from(c: Counts) -> Self {
+        let n = |v: usize| v.min(i32::MAX as usize) as i32;
+        Self {
+            channels: n(c.channels),
+            aux: n(c.aux),
+            buses: n(c.buses),
+            mains: n(c.mains),
+            matrices: n(c.matrices),
+            dcas: n(c.dcas),
+            mute_groups: n(c.mute_groups),
+            fx: n(c.fx),
+        }
+    }
+}
+
+impl From<LdCounts> for Counts {
+    fn from(c: LdCounts) -> Self {
+        let n = |v: i32| v.max(0) as usize;
+        Self {
+            channels: n(c.channels),
+            aux: n(c.aux),
+            buses: n(c.buses),
+            mains: n(c.mains),
+            matrices: n(c.matrices),
+            dcas: n(c.dcas),
+            mute_groups: n(c.mute_groups),
+            fx: n(c.fx),
+        }
+    }
+}
+
+/// What the console has now: strips by kind, DCAs, mute groups and FX slots in use.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_counts(e: *const Engine, out: *mut LdCounts) {
+    if let (Some(e), Some(out)) = (engine(e), out.as_mut()) {
+        *out = guard(LdCounts::default(), || e.counts().into());
+    }
+}
+
+/// The counts the console was configured with (`ld_engine_configure`; the WING's by default).
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_configured_counts(e: *const Engine, out: *mut LdCounts) {
+    if let (Some(e), Some(out)) = (engine(e), out.as_mut()) {
+        *out = guard(LdCounts::default(), || e.config().counts.into());
+    }
+}
+
+/// Makes the engine a fresh console of `counts` (null: the WING).
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_configure(e: *const Engine, counts: *const LdCounts) {
+    if let Some(e) = engine(e) {
+        let config = counts.as_ref().map_or_else(ConsoleConfig::wing, |c| ConsoleConfig { counts: (*c).into() });
+        guard((), || e.configure(&config));
+    }
+}
+
+/// Sets the DCAs in use (never below a DCA with a member); returns the number set.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_set_num_dcas(e: *const Engine, count: i32) -> i32 {
+    engine(e).map_or(0, |e| guard(0, || e.set_num_dcas(count.max(0) as usize) as i32))
+}
+
+/// Sets the mute groups in use (never below one engaged or with a member); returns the number set.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_set_num_mute_groups(e: *const Engine, count: i32) -> i32 {
+    engine(e).map_or(0, |e| guard(0, || e.set_num_mute_groups(count.max(0) as usize) as i32))
 }
 
 /// The FX slots in use (16, the WING's, to kMaxFx).

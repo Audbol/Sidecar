@@ -299,11 +299,11 @@ public:
             expectWithinAbsoluteError (rig.out (4), 0.25f, 1.0e-4f);
 
             // Source tags: a mute group mutes the source.
-            engine.getSource (0)->muteGroups = 1u << 1;
-            engine.muteGroups = 1u << 1;
+            engine.getSource (0)->muteGroups.store (GroupBits::mask (1u << 1));
+            engine.muteGroups.store (GroupBits::mask (1u << 1));
             rig.run (4);
             expectWithinAbsoluteError (rig.out (4), 0.0f, 1.0e-6f);
-            engine.muteGroups = 0;
+            engine.muteGroups.clear();
 
             // All of it survives a show.
             phones.delayOn = true;
@@ -315,7 +315,7 @@ public:
             expect (restoredEngine.monitorPath (true).delayOn.load());
             expectEquals (restoredEngine.monitorPath (true).delayM.load(), 20.0f);
             expectEquals ((int) restoredEngine.monitor.sourceSolo.load(), (int) ld::kSourceSoloCh39);
-            expectEquals ((int) restoredEngine.getSource (0)->muteGroups.load(), 2);
+            expectEquals ((int) restoredEngine.getSource (0)->muteGroups.load().low(), 2);
         }
 
         beginTest ("The surface finish persists in the app settings");

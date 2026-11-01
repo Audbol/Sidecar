@@ -2747,7 +2747,7 @@ void SetupPage::openInitialize()
         const bool everything = chosen.allStrips && chosen.sections == state::AllSections && chosen.dcas == state::Scope::kAllDcas
                                 && chosen.muteGroups == state::Scope::kAllMuteGroups
                                 && (chosen.fx & state::Scope::allFx (ctx.engine.getFx().getNumSlots())) == state::Scope::allFx (ctx.engine.getFx().getNumSlots());
-        if (! everything && chosen.strips.empty() && ! chosen.allStrips && chosen.dcas == 0 && chosen.muteGroups == 0 && chosen.fx == 0 && sources == 0)
+        if (! everything && chosen.strips.empty() && ! chosen.allStrips && ! chosen.dcas.any() && ! chosen.muteGroups.any() && chosen.fx == 0 && sources == 0)
             return; // nothing chosen
         popups::confirm (*this, "INITIALIZE CONSOLE",
                          everything ? "Reset the whole console to a fresh 40-channel console? GLOBAL safes are overwritten too. Scenes are kept."

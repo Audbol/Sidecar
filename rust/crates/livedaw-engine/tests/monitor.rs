@@ -8,6 +8,7 @@ use livedaw_engine::monitor::{delay_ms, direct_index, MonitorDspParams};
 use livedaw_engine::params::StripKind;
 use livedaw_engine::solo::{mute_state, solo_mode};
 use livedaw_engine::sources::source_mode;
+use livedaw_engine::GroupSet;
 use livedaw_engine::{Engine, Strip};
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
@@ -388,20 +389,20 @@ fn sources_follow_their_mute_groups() {
     rig.dc(0, 0.5);
     let engine = rig.engine.clone();
     let src = engine.sources().get(0).unwrap();
-    src.mute_groups.store(0b100, Relaxed); // MGRP 3
+    src.mute_groups.store(GroupSet::from_mask(0b100)); // MGRP 3
     rig.run(4, 0);
     assert!(close(rig.last(0), 0.5, 1e-5));
-    assert!(!src.is_muted(0) && src.is_muted(0b100));
-    rig.engine.controls.mute_groups.store(0b100, Relaxed);
+    assert!(!src.is_muted(&GroupSet::EMPTY) && src.is_muted(&GroupSet::from_mask(0b100)));
+    rig.engine.controls.mute_groups.store(GroupSet::from_mask(0b100));
     let fade = rig.run(4, 0);
     assert!(close(rig.last(0), 0.0, 1e-6));
     assert!(max_step(&fade) < 0.05, "ramped");
-    rig.engine.controls.mute_groups.store(0b010, Relaxed);
+    rig.engine.controls.mute_groups.store(GroupSet::from_mask(0b010));
     rig.run(4, 0);
     assert!(close(rig.last(0), 0.5, 1e-5));
     assert!(!src.is_default());
     engine.sources().initialize(0);
-    assert_eq!(src.mute_groups.load(Relaxed), 0);
+    assert_eq!(src.mute_groups.load(), GroupSet::EMPTY);
 }
 
 #[test]

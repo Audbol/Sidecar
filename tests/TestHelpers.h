@@ -60,7 +60,7 @@ inline void unityConsole (MixerEngine& engine)
     for (auto& s : engine.getChannels())
         legacySends (*s);
     engine.muteOverride = false;
-    for (int i = 0; i < kNumDcas; ++i)
+    for (int i = 0; i < kWingDcas; ++i)
         engine.getDca (i).faderDb = 0.0f;
     engine.soloMode = ld::kSoloStudio;
     engine.soloBus = 2;

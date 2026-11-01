@@ -261,7 +261,7 @@ void MetersPage::resized()
                             juce::jmin (8, buses - first), LayerSet::Center, {}, {} });
     const size_t busEnd = groups.size();
     groups.push_back ({ "DCA 1-8", StripKind::Bus, true, 0, 8, LayerSet::Center, {}, {} });
-    groups.push_back ({ "DCA 9-16", StripKind::Bus, true, 8, kNumDcas - 8, LayerSet::Center, {}, {} });
+    groups.push_back ({ "DCA 9-16", StripKind::Bus, true, 8, kWingDcas - 8, LayerSet::Center, {}, {} });
     groups.push_back ({ "MAIN", StripKind::Main, false, 0, laidOutCounts[(size_t) StripKind::Main], LayerSet::Right, {}, {} });
     groups.push_back ({ "MATRIX", StripKind::Matrix, false, 0, laidOutCounts[(size_t) StripKind::Matrix], LayerSet::Right, {}, {} });
 
@@ -370,12 +370,12 @@ float MetersPage::peakOf (const Group& group, int index, int channel, bool hold)
     }
 
     // A DCA shows the loudest of its members, before or after their faders.
-    const uint32_t bit = 1u << (uint32_t) (group.first + index);
+    const int dca = group.first + index;
     const auto point = prefs::tapPoint (prefs::meterPageTapPre (ctx, 4));
     float peak = 0.0f;
     for (auto kind : { StripKind::Channel, StripKind::Aux, StripKind::Bus, StripKind::Main, StripKind::Matrix })
         for (auto& s : ctx.engine.getStrips (kind))
-            if ((s->params.dcaMask.load() & bit) != 0)
+            if (s->params.dcaMask.contains (dca))
                 peak = juce::jmax (peak, read (s.get(), point, channel));
     return peak;
 }

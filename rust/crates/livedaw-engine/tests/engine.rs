@@ -4,7 +4,8 @@ use livedaw_dsp::wing::{model_index, DYN_MODELS, EQ_MODELS_CH, PROCESS_ORDERS};
 mod common;
 use common::{set_channels, unity_console};
 use livedaw_engine::params::{StripKind, FX_EXT, FX_NONE, MAX_FX, NUM_AUX, NUM_MAINS, NUM_MATRICES, WING_BUSES, WING_FX};
-use livedaw_engine::{Engine, InsertCallbacks, Strip};
+use livedaw_engine::params::{MAX_DCAS, MAX_MUTE_GROUPS};
+use livedaw_engine::{ConsoleConfig, Counts, Engine, GroupSet, InsertCallbacks, Strip};
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed};
 use std::sync::Arc;
@@ -164,7 +165,7 @@ fn mute_fader_dcas_and_mute_groups() {
     assert!(close(rig.out(0), 0.25 * CENTRE, 1e-4));
 
     // DCA 3 adds its fader to the channel's.
-    ch.params.dca_mask.store(1 << 2, Relaxed);
+    ch.params.dca_mask.store(GroupSet::from_mask(1 << 2));
     rig.engine.controls.dcas[2].fader_db.store(-6.0206);
     rig.run(20);
     assert!(close(rig.out(0), 0.125 * CENTRE, 1e-4));
@@ -174,11 +175,11 @@ fn mute_fader_dcas_and_mute_groups() {
     rig.engine.controls.dcas[2].mute.store(false, Relaxed);
 
     // Mute group 2
-    ch.params.mute_group_mask.store(1 << 1, Relaxed);
-    rig.engine.controls.mute_groups.store(1 << 1, Relaxed);
+    ch.params.mute_group_mask.store(GroupSet::from_mask(1 << 1));
+    rig.engine.controls.mute_groups.store(GroupSet::from_mask(1 << 1));
     rig.run(20);
     assert!(close(rig.out(0), 0.0, 1e-6));
-    rig.engine.controls.mute_groups.store(0, Relaxed);
+    rig.engine.controls.mute_groups.store(GroupSet::from_mask(0));
 
     ch.params.mute.store(true, Relaxed);
     rig.run(20);
@@ -187,6 +188,71 @@ fn mute_fader_dcas_and_mute_groups() {
     ch.params.mains[0].on.store(false, Relaxed);
     rig.run(20);
     assert!(close(rig.out(0), 0.0, 1e-6));
+}
+
+#[test]
+fn a_console_of_any_counts_and_groups_beyond_the_wings() {
+    // A console that isn't a WING: more channels, buses and groups, fewer mains.
+    let rig = Rig::new(2, 2, 2);
+    let e = &rig.engine;
+    // A new engine is a WING without channels (the application adds them).
+    assert_eq!(e.counts(), Counts { channels: 0, ..Counts::WING });
+    let counts = Counts { channels: 64, aux: 4, buses: 24, mains: 2, matrices: 3, dcas: 24, mute_groups: 200, fx: 32 };
+    e.configure(&ConsoleConfig { counts });
+    assert_eq!(e.counts(), counts);
+    assert_eq!(e.config().counts, counts);
+    assert_eq!(e.num_strips(StripKind::Bus), 24);
+    // A reset keeps the configuration (but drops the channels, as before).
+    e.reset();
+    assert_eq!(Counts { channels: 64, ..e.counts() }, counts);
+    e.configure(&ConsoleConfig::wing());
+    assert_eq!(e.counts(), Counts::WING);
+
+    // Never fewer DCAs or mute groups than the highest one in use.
+    let ch = e.channel_at(0).unwrap();
+    ch.params.dca_mask.set(20, true);
+    assert_eq!(e.set_num_dcas(4), 21);
+    ch.params.dca_mask.clear();
+    assert_eq!(e.set_num_dcas(4), 4);
+    e.controls.mute_groups.set(9, true);
+    e.sources().get(3).unwrap().mute_groups.set(30, true);
+    assert_eq!(e.set_num_mute_groups(2), 31);
+    assert_eq!(e.set_num_mute_groups(9999), MAX_MUTE_GROUPS);
+}
+
+#[test]
+fn dcas_and_mute_groups_beyond_64_act_on_the_audio() {
+    let mut rig = Rig::new(2, 2, 2);
+    set_channels(&rig.engine, 1);
+    rig.engine.set_num_dcas(MAX_DCAS);
+    rig.engine.set_num_mute_groups(MAX_MUTE_GROUPS);
+    let ch = rig.ch(0);
+    rig.set_input(0, 0.5);
+    ch.params.fader_db.store(0.0);
+    rig.run(20);
+    assert!(close(rig.out(0), 0.5 * CENTRE, 1e-4));
+
+    // DCA 201 adds its fader; with DCA MUTEGROUPS its mute mutes.
+    ch.params.dca_mask.set(200, true);
+    rig.engine.controls.dcas[200].fader_db.store(-6.0206);
+    rig.run(20);
+    assert!(close(rig.out(0), 0.25 * CENTRE, 1e-4));
+    rig.engine.controls.dcas[200].mute.store(true, Relaxed);
+    rig.run(20);
+    assert!(close(rig.out(0), 0.0, 1e-6));
+    assert_eq!(ch.console.mute_state(), livedaw_engine::solo::mute_state::GROUP);
+    rig.engine.controls.dcas[200].mute.store(false, Relaxed);
+    rig.engine.controls.dcas[200].fader_db.store(0.0);
+
+    // Mute group 100.
+    ch.params.mute_group_mask.set(99, true);
+    rig.engine.controls.mute_groups.set(99, true);
+    rig.run(20);
+    assert!(close(rig.out(0), 0.0, 1e-6));
+    rig.engine.controls.mute_groups.set(99, false);
+    rig.run(20);
+    assert!(close(rig.out(0), 0.5 * CENTRE, 1e-4));
+    assert_eq!(ch.console.mute_state(), livedaw_engine::solo::mute_state::OFF);
 }
 
 #[test]
@@ -848,19 +914,19 @@ fn tap_sends_follow_the_channel_mute_unless_ignored() {
         match how {
             0 => ch.params.mute.store(true, Relaxed),
             1 => {
-                ch.params.dca_mask.store(1, Relaxed);
+                ch.params.dca_mask.store(GroupSet::from_mask(1));
                 rig.engine.controls.dcas[0].mute.store(true, Relaxed);
             }
             _ => {
-                ch.params.mute_group_mask.store(1, Relaxed);
-                rig.engine.controls.mute_groups.store(1, Relaxed);
+                ch.params.mute_group_mask.store(GroupSet::from_mask(1));
+                rig.engine.controls.mute_groups.store(GroupSet::from_mask(1));
             }
         }
         rig.run(20);
         assert!(rig.out(2).abs() < 1e-6 && rig.out(4).abs() < 1e-6 && rig.out(6).abs() < 1e-6, "mute {how}");
         ch.params.mute.store(false, Relaxed);
         rig.engine.controls.dcas[0].mute.store(false, Relaxed);
-        rig.engine.controls.mute_groups.store(0, Relaxed);
+        rig.engine.controls.mute_groups.store(GroupSet::from_mask(0));
     }
 
     // IGNORE CHANNEL MUTE keeps bus and matrix TAP sends (not the main send).
@@ -1190,7 +1256,7 @@ fn dca_mutegroups_main_link_and_startup_main_mute() {
     let c = &engine.controls;
     let ch = rig.ch(0);
     rig.set_input(0, 0.5);
-    ch.params.dca_mask.store(1, Relaxed);
+    ch.params.dca_mask.store(GroupSet::from_mask(1));
     c.dcas[0].mute.store(true, Relaxed);
     rig.run(20);
     assert!(rig.out(0).abs() < 1e-6);
@@ -1249,7 +1315,7 @@ fn post_solo_follows_the_pan() {
     }
 
     // A DCA solo solos its members after their pan too.
-    ch.params.dca_mask.store(1, Relaxed);
+    ch.params.dca_mask.store(GroupSet::from_mask(1));
     c.dcas[0].solo.store(true, Relaxed);
     rig.run(20);
     assert!(close(rig.out(2), 0.5 * EDGE, 1e-4) && rig.out(3).abs() < 1e-5, "{} {}", rig.out(2), rig.out(3));

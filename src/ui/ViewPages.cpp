@@ -166,7 +166,7 @@ namespace
         if (f.dca)
         {
             Target t;
-            t.dca = juce::jlimit (0, kNumDcas - 1, f.dcaIndex);
+            t.dca = juce::jlimit (0, kWingDcas - 1, f.dcaIndex);
             return t;
         }
         if (f.fxParam || f.midiCc)
@@ -479,7 +479,7 @@ public:
 
     void show (int index)
     {
-        dca = juce::jlimit (0, kNumDcas - 1, index);
+        dca = juce::jlimit (0, kWingDcas - 1, index);
         category = home::wingIconCategory (ctx.engine.getDca (dca).icon.load());
         // The default name ("DCA.1") reads as an empty field, as on the console.
         keyboard.setText (isDefaultName() ? juce::String() : ctx.engine.getDcaName (dca));
@@ -1027,12 +1027,12 @@ std::vector<ViewBank> viewBanks (UiContext& ctx)
     addStrips (StripKind::Bus, "BUS ", "BUS ", 2);
     addStrips (StripKind::Main, "MAIN ", "MAIN ", 3);
     addStrips (StripKind::Matrix, "MTX ", "MATRIX ", 3);
-    for (int first = 0; first < kNumDcas; first += 8)
+    for (int first = 0; first < kWingDcas; first += 8)
     {
         Bank b;
-        b.key = b.title = "DCA " + juce::String (first + 1) + "-" + juce::String (juce::jmin (kNumDcas, first + 8));
+        b.key = b.title = "DCA " + juce::String (first + 1) + "-" + juce::String (juce::jmin (kWingDcas, first + 8));
         b.group = 4;
-        for (int i = first; i < juce::jmin (kNumDcas, first + 8); ++i)
+        for (int i = first; i < juce::jmin (kWingDcas, first + 8); ++i)
             b.faders.push_back (state::FaderRef::ofDca (i));
         out.push_back (std::move (b));
     }
@@ -1499,16 +1499,15 @@ public:
             if (area.contains (pos))
             {
                 if (auto* src = sourceOf (index))
-                    src->muteGroups = src->muteGroups.load() ^ bit();
+                    src->muteGroups.toggle (group);
                 repaint();
                 return;
             }
     }
 
 private:
-    int groupCount() const noexcept { return kind == Kind::Dca ? kNumDcas : kNumMuteGroups; }
+    int groupCount() const noexcept { return kind == Kind::Dca ? kWingDcas : kWingMuteGroups; }
     int firstTab() const noexcept { return kind == Kind::Dca ? group / 8 * 8 : 0; }
-    uint32_t bit() const noexcept { return 1u << (uint32_t) group; }
 
     /** The source of tile `index` of the group shown (nullptr: n/a). */
     ld::SourceParams* sourceOf (int index) const
@@ -1520,18 +1519,17 @@ private:
     bool isMember (int sourceTile) const
     {
         const auto* src = sourceOf (sourceTile);
-        return src != nullptr && (src->muteGroups.load() & bit()) != 0;
+        return src != nullptr && src->muteGroups.contains (group);
     }
 
     bool isMember (const Strip& s) const
     {
-        return ((kind == Kind::Dca ? s.params.dcaMask.load() : s.params.muteGroupMask.load()) & bit()) != 0;
+        return (kind == Kind::Dca ? s.params.dcaMask : s.params.muteGroupMask).contains (group);
     }
 
     void toggle (Strip& s)
     {
-        auto& mask = kind == Kind::Dca ? s.params.dcaMask : s.params.muteGroupMask;
-        mask = mask.load() ^ bit();
+        (kind == Kind::Dca ? s.params.dcaMask : s.params.muteGroupMask).toggle (group);
     }
 
     void unassignAll()
@@ -1539,14 +1537,13 @@ private:
         for (int k = 0; k < kNumStripKinds; ++k)
             for (auto& s : ctx.engine.getStrips (static_cast<StripKind> (k)))
             {
-                auto& mask = kind == Kind::Dca ? s->params.dcaMask : s->params.muteGroupMask;
-                mask = mask.load() & ~bit();
+                (kind == Kind::Dca ? s->params.dcaMask : s->params.muteGroupMask).set (group, false);
             }
         // A mute group's sources too (ROUTING > SOURCES > TAGS).
         if (kind == Kind::MuteGroup)
             for (int i = 0; i < ctx.engine.getNumSources(); ++i)
                 if (auto* src = ctx.engine.getSource (i))
-                    src->muteGroups = src->muteGroups.load() & ~bit();
+                    src->muteGroups.set (group, false);
         repaint();
     }
 
@@ -1860,9 +1857,9 @@ void OverviewViewPage::paintContent (juce::Graphics& g)
         if (t.strip == nullptr)
         {
             // [WING] a DCA: its members, "DCA" at the bottom.
-            const uint32_t bit = 1u << (uint32_t) t.dca;
+            const int dca = t.dca;
             const auto body = cols[i].withTop (cols[i].getY() + px (72.0f));
-            paintMemberColumn (g, ctx, body, Colours::screenPanel, [bit] (const Strip& s) { return (s.params.dcaMask.load() & bit) != 0; },
+            paintMemberColumn (g, ctx, body, Colours::screenPanel, [dca] (const Strip& s) { return s.params.dcaMask.contains (dca); },
                                "PH", "SPK");
             // Yellow while the DCA is soloed [WING].
             g.setColour (ctx.engine.getDca (t.dca).solo.load() ? Colours::solo : darkLabel);
@@ -2012,7 +2009,7 @@ namespace
     /** DCA 1-16, MAIN 1-4 and MUTE GROUP 1-8 membership as rows of tiny cells. */
     void paintAssignments (juce::Graphics& g, juce::Rectangle<float> r, Strip& s)
     {
-        const uint32_t dca = s.params.dcaMask.load(), mute = s.params.muteGroupMask.load();
+        const auto dca = s.params.dcaMask.load(), mute = s.params.muteGroupMask.load();
         const float rowH = r.getHeight() / 3.0f;
         auto row = [&g, &r, rowH] (int index, int count, auto isOn, juce::Colour c)
         {
@@ -2023,9 +2020,9 @@ namespace
                 g.fillRect (juce::Rectangle<float> (r.getX() + w * (float) i, r.getY() + rowH * (float) index, w, rowH).reduced (0.5f));
             }
         };
-        row (0, kNumDcas, [dca] (int i) { return (dca >> i) & 1u; }, Colours::cyan);
+        row (0, kWingDcas, [dca] (int i) { return dca.contains (i); }, Colours::cyan);
         row (1, kNumMains, [&s] (int i) { return s.params.mains[i].on.load(); }, Dark::faderFill);
-        row (2, kNumMuteGroups, [mute] (int i) { return (mute >> i) & 1u; }, Dark::muteGroup);
+        row (2, kWingMuteGroups, [mute] (int i) { return mute.contains (i); }, Dark::muteGroup);
     }
 
     juce::String bottomLabel (const Target& t)
@@ -2844,7 +2841,7 @@ std::vector<state::FaderRef> ConfigViewPage::sourceItems() const
         add (StripKind::Matrix);
     }
     else
-        for (int i = 0; i < kNumDcas; ++i)
+        for (int i = 0; i < kWingDcas; ++i)
             items.push_back (state::FaderRef::ofDca (i));
     return items;
 }
@@ -3394,7 +3391,7 @@ void MuteGroupsViewPage::layoutContent()
 {
     // [WING] eight columns 106 apart from x = 9, the group keys in two
     // columns of four on the right.
-    for (int gi = 0; gi < kNumMuteGroups; ++gi)
+    for (int gi = 0; gi < kWingMuteGroups; ++gi)
     {
         columns[gi] = wingRect (9.0f + 106.0f * (float) gi, 0.0f, 96.0f, 672.0f);
         headers[gi] = columns[gi].withHeight (px (64.0f));
@@ -3405,11 +3402,10 @@ void MuteGroupsViewPage::layoutContent()
 
 void MuteGroupsViewPage::paintContent (juce::Graphics& g)
 {
-    const uint32_t engaged = ctx.engine.muteGroups.load();
-    for (int gi = 0; gi < kNumMuteGroups; ++gi)
+    const auto engaged = ctx.engine.muteGroups.load();
+    for (int gi = 0; gi < kWingMuteGroups; ++gi)
     {
-        const uint32_t bit = 1u << (uint32_t) gi;
-        const bool on = (engaged & bit) != 0;
+        const bool on = engaged.contains (gi);
         auto col = columns[gi];
         // The name on the red bar, the number, then the members (the column
         // red while the group is engaged).
@@ -3427,12 +3423,12 @@ void MuteGroupsViewPage::paintContent (juce::Graphics& g)
         g.drawText (juce::String (gi + 1), number, juce::Justification::centred);
         col.removeFromTop (px (8.0f));
         paintMemberColumn (g, ctx, col, on ? engagedColumn : Colours::screenPanel,
-                           [bit] (const Strip& s) { return (s.params.muteGroupMask.load() & bit) != 0; }, "M PH", "M SPK");
+                           [gi] (const Strip& s) { return s.params.muteGroupMask.contains (gi); }, "M PH", "M SPK");
 
         // SOURCES: how many sources the group mutes (ROUTING > SOURCES > TAGS).
         int sources = 0;
         for (int i = 0; i < ctx.engine.getNumSources(); ++i)
-            if (const auto* src = ctx.engine.getSource (i); src != nullptr && (src->muteGroups.load() & bit) != 0)
+            if (const auto* src = ctx.engine.getSource (i); src != nullptr && src->muteGroups.contains (gi))
                 ++sources;
         auto at = [&col] (float y, float x, float w, float h) { return juce::Rectangle<int> (col.getX() + px (x), col.getY() + px (y), px (x + w) - px (x), px (y + h) - px (y)); };
         g.setColour (keyText);
@@ -3446,7 +3442,7 @@ void MuteGroupsViewPage::paintContent (juce::Graphics& g)
     }
 
     // The group keys: the number large and dim, the key lit red while the group is engaged.
-    for (int gi = 0; gi < kNumMuteGroups; ++gi)
+    for (int gi = 0; gi < kWingMuteGroups; ++gi)
     {
         auto r = groupKeys[gi];
         g.setColour (Colours::screenPanel);
@@ -3454,7 +3450,7 @@ void MuteGroupsViewPage::paintContent (juce::Graphics& g)
         g.setColour (Colours::screenLine);
         g.setFont (capFont (28.0f, WingWeight::SemiBold));
         g.drawText (juce::String (gi + 1), r.withHeight (px (60.0f)), juce::Justification::centred);
-        const bool on = (engaged >> (uint32_t) gi) & 1u;
+        const bool on = engaged.contains (gi);
         auto key = juce::Rectangle<int> (r.getX() + px (42.0f), r.getY() + px (60.0f), px (120.0f), px (64.0f));
         g.setColour (juce::Colours::black);
         g.fillRect (key);
@@ -3470,11 +3466,11 @@ void MuteGroupsViewPage::paintContent (juce::Graphics& g)
 void MuteGroupsViewPage::mouseUp (const juce::MouseEvent& e)
 {
     const auto pos = e.getPosition();
-    for (int gi = 0; gi < kNumMuteGroups; ++gi)
+    for (int gi = 0; gi < kWingMuteGroups; ++gi)
     {
         if (groupKeys[gi].contains (pos))
         {
-            ctx.engine.muteGroups = ctx.engine.muteGroups.load() ^ (1u << (uint32_t) gi);
+            ctx.engine.muteGroups.toggle (gi);
             repaint();
             return;
         }

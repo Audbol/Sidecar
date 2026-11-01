@@ -6,11 +6,13 @@
 
 pub mod analyser;
 pub mod atomic;
+pub mod config;
 pub mod denormals;
 pub mod engine;
 pub mod fft;
 pub mod fx;
 pub mod garbage;
+pub mod groups;
 pub mod iosafes;
 pub mod keytap;
 pub mod listen;
@@ -27,8 +29,10 @@ pub mod talk;
 pub mod tapsend;
 
 pub use analyser::{Analyser, AnalysisControls};
+pub use config::{ConsoleConfig, Counts};
 pub use engine::Engine;
 pub use fx::{FxRack, InsertCallbacks};
+pub use groups::{AtomicGroupSet, GroupSet};
 pub use livedaw_recorder as recorder;
 pub use livedaw_recorder::{Recorder, NUM_PLAYBACK_CHANNELS, PLAYBACK_SOURCE_BASE};
 pub use livedaw_recorder::{UsbDeck, USB_CHANNELS, USB_PLAYER_SOURCE_BASE};

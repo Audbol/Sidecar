@@ -42,7 +42,7 @@ use crate::scope::{self, ChangeCounts, GlobalSafe, RecordedChanges, Recording, S
 use crate::xml::{self, Element};
 use livedaw_dsp::fader::{fader_to_pos, pos_to_fader};
 use livedaw_engine::params::MAX_FX;
-use livedaw_engine::Engine;
+use livedaw_engine::{Engine, GroupSet};
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write as _;
@@ -61,8 +61,8 @@ pub struct Snippet {
     pub strips: Vec<StripRef>,
     /// DCAs, mute groups and FX slots it recalls (bit n = item n+1), and the
     /// console-wide settings (see `scope::Scope`).
-    pub dcas: u32,
-    pub mute_groups: u32,
+    pub dcas: GroupSet,
+    pub mute_groups: GroupSet,
     pub fx: u64,
     pub console: bool,
     pub fire_with_scene: bool,
@@ -79,8 +79,8 @@ impl Default for Snippet {
             name: String::new(),
             sections: section::FADER | section::SENDS,
             strips: Vec::new(),
-            dcas: 0,
-            mute_groups: 0,
+            dcas: GroupSet::EMPTY,
+            mute_groups: GroupSet::EMPTY,
             fx: 0,
             console: false,
             fire_with_scene: false,
@@ -224,8 +224,8 @@ pub struct Scene {
     /// The rest of the recall scope: strips (`None` = all), DCAs, mute groups,
     /// FX slots and the console-wide settings (see [`Scene::recall_scope`]).
     pub scope_strips: Option<Vec<StripRef>>,
-    pub scope_dcas: u32,
-    pub scope_mute_groups: u32,
+    pub scope_dcas: GroupSet,
+    pub scope_mute_groups: GroupSet,
     pub scope_fx: u64,
     pub scope_console: bool,
     pub fade_seconds: f64,
@@ -1232,8 +1232,11 @@ pub(crate) fn snippet_to_xml(sn: &Snippet) -> Element {
         .set("sections", sn.sections as i32)
         .set("strips", refs_to_string(&sn.strips))
         .set_bool("fireWithScene", sn.fire_with_scene);
-    if sn.dcas != 0 || sn.mute_groups != 0 || sn.fx != 0 || sn.console {
-        nx.set("scopeDca", sn.dcas).set("scopeMgrp", sn.mute_groups).set("scopeFx", sn.fx).set_bool("scopeConsole", sn.console);
+    if !sn.dcas.is_empty() || !sn.mute_groups.is_empty() || sn.fx != 0 || sn.console {
+        nx.set("scopeDca", sn.dcas.to_attr())
+            .set("scopeMgrp", sn.mute_groups.to_attr())
+            .set("scopeFx", sn.fx)
+            .set_bool("scopeConsole", sn.console);
     }
     if sn.recorded_parameters > 0 {
         nx.set("pars", sn.recorded_parameters);

@@ -7,6 +7,7 @@ use livedaw_engine::params::StripKind;
 use livedaw_engine::solo::{mute_state, solo_mode};
 use livedaw_engine::sources::{source_index, source_mode};
 use livedaw_engine::talk::talk_tag;
+use livedaw_engine::GroupSet;
 use livedaw_engine::{Engine, Strip, PLAYBACK_SOURCE_BASE};
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
@@ -101,7 +102,7 @@ fn sip_mutes_every_input_that_is_neither_soloed_nor_solo_safe() {
 
     // A soloed DCA solos its members in place.
     rig.ch(0).params.solo.store(false, Relaxed);
-    rig.ch(2).params.dca_mask.store(1, Relaxed);
+    rig.ch(2).params.dca_mask.store(GroupSet::from_mask(1));
     c.dcas[0].solo.store(true, Relaxed);
     rig.run(4);
     assert!(close(rig.out(0), 0.6, 1e-5), "{}", rig.out(0));
@@ -220,7 +221,7 @@ fn live_dca_solo_goes_to_the_dcas_solo_bus() {
     c.solo_mode.store(solo_mode::LIVE, Relaxed);
 
     // Channel 2 in DCA 1, its own SOLO BUS the phones, DCA 1's the speakers.
-    rig.ch(1).params.dca_mask.store(1, Relaxed);
+    rig.ch(1).params.dca_mask.store(GroupSet::from_mask(1));
     rig.ch(1).params.monitor_bus.store(0, Relaxed);
     c.dcas[0].mon.store(1, Relaxed);
     c.dcas[0].solo.store(true, Relaxed);
@@ -322,8 +323,8 @@ fn mutegroup_sip_override_unmutes_until_the_group_changes() {
     let engine = rig.engine.clone();
     let c = &engine.controls;
     let ch = rig.ch(0);
-    ch.params.mute_group_mask.store(0b11, Relaxed);
-    c.mute_groups.store(1, Relaxed);
+    ch.params.mute_group_mask.store(GroupSet::from_mask(0b11));
+    c.mute_groups.store(GroupSet::from_mask(1));
     rig.run(2);
     assert_eq!(ch.console.mute_state(), mute_state::GROUP);
     assert!(close(rig.out(0), 0.25, 1e-5));
@@ -345,7 +346,7 @@ fn mutegroup_sip_override_unmutes_until_the_group_changes() {
     assert_eq!(ch.console.mute_state(), mute_state::OVERRIDDEN);
     assert!(close(rig.out(0), 0.75, 1e-5), "{}", rig.out(0));
     // ...until the group changes.
-    c.mute_groups.store(0b11, Relaxed);
+    c.mute_groups.store(GroupSet::from_mask(0b11));
     rig.run(2);
     assert_eq!(ch.console.mute_state(), mute_state::GROUP);
     assert!(close(rig.out(0), 0.25, 1e-5));
@@ -359,7 +360,7 @@ fn mutegroup_sip_override_unmutes_until_the_group_changes() {
     assert_eq!(ch.console.mute_state(), mute_state::GROUP);
 
     // DCA mutes and SIP can be overridden too; releasing the group ends it.
-    c.mute_groups.store(0, Relaxed);
+    c.mute_groups.store(GroupSet::from_mask(0));
     rig.run(2);
     assert_eq!(ch.console.mute_state(), mute_state::OFF);
     c.solo_mode.store(solo_mode::SIP, Relaxed);

@@ -43,7 +43,7 @@ use crate::model::ConsoleModel;
 use crate::refs::StripRef;
 use crate::xml::{parse_int_prefix, Element};
 use livedaw_dsp::wing::{ParamKind, FX_MODELS};
-use livedaw_engine::params::{FX_EXT, NUM_DCAS, NUM_MAINS, NUM_MATRICES};
+use livedaw_engine::params::{FX_EXT, NUM_MAINS, NUM_MATRICES, WING_DCAS};
 use livedaw_engine::{Engine, StripKind};
 use std::collections::hash_map::RandomState;
 use std::fmt;
@@ -338,10 +338,9 @@ fn bus_can_send(from: &StripRef, to_slot: i32) -> bool {
 pub fn spill_faders(engine: &Engine, kind: &SpillKind) -> Vec<FaderRef> {
     let strips = || StripKind::ALL.into_iter().flat_map(|k| engine.strips(k));
     match *kind {
-        SpillKind::Dca(i) if (0..NUM_DCAS as i32).contains(&i) => strips()
-            .filter(|s| s.params.dca_mask.load(Ordering::Relaxed) & (1 << i) != 0)
-            .map(|s| FaderRef::Strip(StripRef::of(&s)))
-            .collect(),
+        SpillKind::Dca(i) if (0..WING_DCAS as i32).contains(&i) => {
+            strips().filter(|s| s.params.dca_mask.contains(i as usize)).map(|s| FaderRef::Strip(StripRef::of(&s))).collect()
+        }
         SpillKind::Automix(group) => engine
             .strips(StripKind::Channel)
             .iter()
@@ -499,7 +498,7 @@ impl ConsoleRefs {
             buses: refs(StripKind::Bus),
             mains: refs(StripKind::Main),
             matrices: refs(StripKind::Matrix),
-            num_dcas: NUM_DCAS,
+            num_dcas: WING_DCAS,
         }
     }
 
@@ -512,7 +511,7 @@ impl ConsoleRefs {
             buses: refs(StripKind::Bus, 0..16),
             mains: refs(StripKind::Main, 0..4),
             matrices: refs(StripKind::Matrix, 0..8),
-            num_dcas: NUM_DCAS,
+            num_dcas: WING_DCAS,
         }
     }
 }

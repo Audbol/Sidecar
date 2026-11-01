@@ -25,8 +25,8 @@ use livedaw_engine::atomic::AtomicF32;
 use livedaw_engine::keytap::KeySource;
 use livedaw_engine::monitor::{MonitorDspParams, MONITOR_EQ_BANDS};
 use livedaw_engine::params::{
-    ext, DynSlotParams, EngineControls, InsertParams, MonitorSourceParams, StripParams, FX_EXT, FX_NONE, NUM_DCAS,
-    NUM_MUTE_GROUPS, WING_FX,
+    ext, DynSlotParams, EngineControls, InsertParams, MonitorSourceParams, StripParams, FX_EXT, FX_NONE, WING_DCAS, WING_FX,
+    WING_MUTE_GROUPS,
 };
 use livedaw_engine::recorder::codec::FileFormat;
 use livedaw_engine::recorder::usb::{PlayerState, RecFormat, RecState, RecTap};
@@ -34,6 +34,7 @@ use livedaw_engine::sends::send_mode;
 use livedaw_engine::solo::solo_mode;
 use livedaw_engine::sources::{self, source_mode, SourceParams};
 use livedaw_engine::talk::TALK_OFF;
+use livedaw_engine::GroupSet;
 use livedaw_engine::{Engine, Strip, StripKind, PLAYBACK_SOURCE_BASE};
 use livedaw_session::ConsoleModel;
 use std::collections::{BTreeMap, HashMap, VecDeque};
@@ -1114,7 +1115,7 @@ pub fn bind(parts: &[&str]) -> Binding {
                 None => Binding::None,
             }
         }
-        ["dca", n, f] => match number(n, NUM_DCAS as u16) {
+        ["dca", n, f] => match number(n, WING_DCAS as u16) {
             Some(n) => {
                 let i = n as u8 - 1;
                 match *f {
@@ -1132,7 +1133,7 @@ pub fn bind(parts: &[&str]) -> Binding {
             }
             None => Binding::None,
         },
-        ["mgrp", n, f] => match (number(n, NUM_MUTE_GROUPS as u16), *f) {
+        ["mgrp", n, f] => match (number(n, WING_MUTE_GROUPS as u16), *f) {
             (Some(n), "name") => Binding::MuteGroup(n as u8 - 1, false),
             (Some(n), "mute") => Binding::MuteGroup(n as u8 - 1, true),
             _ => Binding::None,
@@ -1362,8 +1363,8 @@ fn wing_strips(kind: StripKind) -> u16 {
 fn safe_count(sf: SafeF) -> u16 {
     match sf {
         SafeF::Strips(kind) => wing_strips(kind),
-        SafeF::Dcas => NUM_DCAS as u16,
-        SafeF::MuteGroups => NUM_MUTE_GROUPS as u16,
+        SafeF::Dcas => WING_DCAS as u16,
+        SafeF::MuteGroups => WING_MUTE_GROUPS as u16,
         SafeF::Fx => WING_FX as u16,
         SafeF::Source(g) => SAFE_SOURCE_GROUPS[g as usize].1,
         SafeF::Output(g) => SAFE_OUTPUT_GROUPS[g as usize].1,
@@ -1558,7 +1559,7 @@ fn mon_dsp(c: &EngineControls, path: u8) -> &MonitorDspParams {
 }
 
 /// A source's `$mute`: 0 off, 1 muted, 2 muted by a mute group.
-fn source_mute_state(p: &SourceParams, mute_groups: u32) -> i32 {
+fn source_mute_state(p: &SourceParams, mute_groups: &GroupSet) -> i32 {
     if p.mute.load(Relaxed) {
         1
     } else if p.is_muted(mute_groups) {
@@ -1848,15 +1849,26 @@ fn fx_from_item(v: &Value) -> Option<i32> {
     (1..=WING_FX as i32).contains(&n).then_some(n - 1)
 }
 
+/// The WING's DCAs or mute groups of a membership, as a mask (`parse_tags`).
+fn wing_groups(set: GroupSet) -> u32 {
+    set.low() as u32
+}
+
+/// `set` with its WING groups (the first `wing` ones) replaced by `mask`; the
+/// groups beyond the WING's stay as they are.
+fn with_wing_groups(set: GroupSet, wing: usize, mask: u32) -> GroupSet {
+    (set & !GroupSet::first(wing)) | (GroupSet::from_mask(u64::from(mask)) & GroupSet::first(wing))
+}
+
 /// "#D1,#M3": DCA and mute group memberships plus other tags.
 fn compose_tags(dca: u32, mgrp: u32, extra: &str) -> String {
     let mut tags: Vec<String> = Vec::new();
-    for i in 0..NUM_DCAS {
+    for i in 0..WING_DCAS {
         if dca & (1 << i) != 0 {
             tags.push(format!("#D{}", i + 1));
         }
     }
-    for i in 0..NUM_MUTE_GROUPS {
+    for i in 0..WING_MUTE_GROUPS {
         if mgrp & (1 << i) != 0 {
             tags.push(format!("#M{}", i + 1));
         }
@@ -1871,8 +1883,8 @@ fn parse_tags(s: &str) -> (u32, u32, String) {
     for t in s.split(',').map(str::trim).filter(|t| !t.is_empty()) {
         let num = |p: &str| t.strip_prefix(p).and_then(|n| n.parse::<u32>().ok());
         match (num("#D"), num("#M")) {
-            (Some(n), _) if (1..=NUM_DCAS as u32).contains(&n) => dca |= 1 << (n - 1),
-            (_, Some(n)) if (1..=NUM_MUTE_GROUPS as u32).contains(&n) => mgrp |= 1 << (n - 1),
+            (Some(n), _) if (1..=WING_DCAS as u32).contains(&n) => dca |= 1 << (n - 1),
+            (_, Some(n)) if (1..=WING_MUTE_GROUPS as u32).contains(&n) => mgrp |= 1 << (n - 1),
             _ => extra.push(t),
         }
     }
@@ -2138,7 +2150,7 @@ impl<'a> Console<'a> {
                     DcaF::Mon => item(def, d.mon.load(Relaxed)),
                 }
             }
-            Binding::MuteGroup(i, true) => Value::bool(c.mute_groups.load(Relaxed) & (1 << i) != 0),
+            Binding::MuteGroup(i, true) => Value::bool(c.mute_groups.contains(i as usize)),
             Binding::MuteGroup(i, false) => Value::Str(e.mute_group_name(i as usize)),
             Binding::FxModel(i) => Value::str(FX_MODELS[c.fx.get(i as usize)?.model_index()].token),
             Binding::FxMix(i) => f(&c.fx.get(i as usize)?.mix),
@@ -2316,9 +2328,9 @@ impl<'a> Console<'a> {
                             }
                             _ => (0, String::new()),
                         };
-                        Value::Str(compose_tags(dca, p.mute_groups.load(Relaxed), &extra))
+                        Value::Str(compose_tags(dca, wing_groups(p.mute_groups.load()), &extra))
                     }
-                    SrcF::MuteState => Value::Int(source_mute_state(p, c.mute_groups.load(Relaxed))),
+                    SrcF::MuteState => Value::Int(source_mute_state(p, &c.mute_groups.load())),
                     SrcF::Mode => return None,
                 }
             }
@@ -2491,9 +2503,9 @@ impl<'a> Console<'a> {
             SF::Mon => item(def, p.monitor_bus.load(Relaxed)),
             SF::EffMute => {
                 let c = &self.engine.controls;
-                let group = p.mute_group_mask.load(Relaxed) & c.mute_groups.load(Relaxed) != 0;
+                let group = p.mute_group_mask.load().intersects(&c.mute_groups.load());
                 let dca = c.dca_mute_groups.load(Relaxed)
-                    && c.dcas.iter().enumerate().any(|(i, d)| p.dca_mask.load(Relaxed) & (1 << i) != 0 && d.mute.load(Relaxed));
+                    && p.dca_mask.load().iter().any(|i| c.dcas.get(i).is_some_and(|d| d.mute.load(Relaxed)));
                 Value::Int(if p.mute.load(Relaxed) {
                     1
                 } else if group || dca {
@@ -2625,7 +2637,7 @@ impl<'a> Console<'a> {
                     Some(Value::Str(t)) => parse_tags(&t).2,
                     _ => String::new(),
                 };
-                Value::Str(compose_tags(p.dca_mask.load(Relaxed), p.mute_group_mask.load(Relaxed), &extra))
+                Value::Str(compose_tags(wing_groups(p.dca_mask.load()), wing_groups(p.mute_group_mask.load()), &extra))
             }
             SF::BusMono => b(&p.mono),
             SF::DirOn => b(&p.direct_on),
@@ -2995,14 +3007,7 @@ impl<'a> Console<'a> {
                     DcaF::Mon => set_item(&d.mon, def, v),
                 }
             }
-            Binding::MuteGroup(i, true) => {
-                let bit = 1u32 << i;
-                if v.as_bool() {
-                    c.mute_groups.fetch_or(bit, Relaxed);
-                } else {
-                    c.mute_groups.fetch_and(!bit, Relaxed);
-                }
-            }
+            Binding::MuteGroup(i, true) => c.mute_groups.set(i as usize, v.as_bool()),
             Binding::MuteGroup(i, false) => e.set_mute_group_name(i as usize, &str_of(v)),
             Binding::FxModel(i) => self.set_fx_model(i as usize, v)?,
             Binding::FxMix(i) => set_f(&c.fx.get(i as usize).ok_or(SetError::NotFound)?.mix, v),
@@ -3168,7 +3173,7 @@ impl<'a> Console<'a> {
                     SrcF::Tags => {
                         // #M1..#M8 are the source's mute groups; the rest is kept as set.
                         let (dca, mgrp, extra) = parse_tags(&str_of(v));
-                        p.mute_groups.store(mgrp, Relaxed);
+                        p.mute_groups.store(with_wing_groups(p.mute_groups.load(), WING_MUTE_GROUPS, mgrp));
                         // Sources have no DCAs here: their #D tags are kept with the rest.
                         self.state.shadow_set(ShadowKey::Row(row), Value::Str(compose_tags(dca, 0, &extra)));
                     }
@@ -3648,8 +3653,8 @@ impl<'a> Console<'a> {
             }
             SF::Tags => {
                 let (dca, mgrp, extra) = parse_tags(&str_of(v));
-                p.dca_mask.store(dca, Relaxed);
-                p.mute_group_mask.store(mgrp, Relaxed);
+                p.dca_mask.store(with_wing_groups(p.dca_mask.load(), WING_DCAS, dca));
+                p.mute_group_mask.store(with_wing_groups(p.mute_group_mask.load(), WING_MUTE_GROUPS, mgrp));
                 self.state.shadow_set(ShadowKey::Row(row), Value::Str(extra));
             }
             SF::BusMono => set_b(&p.mono, v),
@@ -3987,8 +3992,8 @@ mod tests {
         // The engine saw it.
         let ch3 = c.strip(StripKind::Channel, 3).unwrap();
         assert_eq!(ch3.params.fader_db.load(), -6.5);
-        assert_eq!(ch3.params.dca_mask.load(Relaxed), 1);
-        assert_eq!(ch3.params.mute_group_mask.load(Relaxed), 4);
+        assert_eq!(ch3.params.dca_mask.load(), GroupSet::from_mask(1));
+        assert_eq!(ch3.params.mute_group_mask.load().low(), 4);
         assert_eq!(ch3.name(), "Kick");
         // KEY TAP (TAP_POINTS order).
         assert_eq!((ch3.params.gate.sc_tap.load(Relaxed), ch3.params.dynamics.sc_tap.load(Relaxed)), (7, 5));
@@ -4004,7 +4009,7 @@ mod tests {
         assert!(ch3.sends.find(4).unwrap().pan_reversed.load(Relaxed));
         assert_eq!(e.controls.main_link.load(Relaxed), 2);
         assert_eq!(e.dca_name(2), "Drums");
-        assert_eq!(e.controls.mute_groups.load(Relaxed), 2);
+        assert_eq!(e.controls.mute_groups.load(), GroupSet::from_mask(2));
         let bus12 = c.strip(StripKind::Bus, 12).unwrap();
         assert_eq!(bus12.sends.find(2).unwrap().mode.load(Relaxed), send_mode::POST);
     }
@@ -4407,14 +4412,14 @@ mod tests {
         assert_eq!((p.colour.load(Relaxed), p.icon.load(Relaxed)), (9, 14));
         assert_eq!(p.gain_db.load(), 30.0);
         assert!(p.phantom.load(Relaxed) && p.invert.load(Relaxed));
-        assert_eq!(p.mute_groups.load(Relaxed), 0b10);
+        assert_eq!(p.mute_groups.load(), GroupSet::from_mask(0b10));
         assert_eq!(c.get(node(&c, "/io/in/A/5/tags")), Some(Value::str("#D3,#M2,drums")));
         assert!(table.get(48).unwrap().mute.load(Relaxed));
         assert_eq!(table.name(sources::source_index(PLAYBACK_SOURCE_BASE + 2).unwrap()), "Play 3");
         // $mute: 1 own mute, 2 a mute group.
         assert_eq!(c.get(node(&c, "/io/in/B/1/$mute")), Some(Value::Int(1)));
         assert_eq!(c.get(node(&c, "/io/in/A/5/$mute")), Some(Value::Int(0)));
-        e.controls.mute_groups.store(0b10, Relaxed);
+        e.controls.mute_groups.store(GroupSet::from_mask(0b10));
         assert_eq!(c.get(node(&c, "/io/in/A/5/$mute")), Some(Value::Int(2)));
         // LOCAL IN is A here: the same sources.
         assert!(c.is_mapped(node(&c, "/io/in/LCL/5/name")));
@@ -5008,7 +5013,7 @@ mod tests {
         assert!(!sync(&mut layers, &mut custom).layers);
 
         // Spill: DCA 3 on the left; it shows, and ends with 0.
-        e.strips(StripKind::Channel)[4].params.dca_mask.store(1 << 2, Relaxed);
+        e.strips(StripKind::Channel)[4].params.dca_mask.set(2, true);
         f("/$ctl/layer/L/spidx", Value::Int(3));
         sync(&mut layers, &mut custom);
         assert_eq!(layers.spill(LEFT), Some(SpillKind::Dca(2)));

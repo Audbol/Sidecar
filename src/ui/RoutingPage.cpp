@@ -1588,7 +1588,7 @@ void RoutingPage::layoutSourcePanel()
         auto tags = sourceBody.withTrimmedTop (px (40.0f));
         tags = tags.withHeight (juce::jmin (tags.getHeight(), px (200.0f)));
         const int cw = tags.getWidth() / 4, chh = tags.getHeight() / 2;
-        for (int i = 0; i < kNumMuteGroups; ++i)
+        for (int i = 0; i < kWingMuteGroups; ++i)
             sourceTagCells.push_back ({ juce::Rectangle<int> (tags.getX() + (i % 4) * cw, tags.getY() + (i / 4) * chh, cw, chh).reduced (px (4.0f)), i });
     }
 
@@ -2002,10 +2002,10 @@ void RoutingPage::paintSourceTags (juce::Graphics& g) const
     const auto engaged = ctx.engine.muteGroups.load();
     for (auto& [cell, i] : sourceTagCells)
     {
-        const bool on = (mask >> i) & 1u;
+        const bool on = mask.contains (i);
         g.setColour (on ? Dark::muteGroup : Dark::key);
         g.fillRoundedRectangle (cell.toFloat(), 2.0f);
-        if ((engaged >> i) & 1u)
+        if (engaged.contains (i))
         {
             g.setColour (Dark::muteGroup);
             g.drawRoundedRectangle (cell.toFloat().reduced (1.0f), 2.0f, 2.0f);
@@ -2021,7 +2021,7 @@ void RoutingPage::paintSourceTags (juce::Graphics& g) const
     // The source's state.
     g.setColour (Dark::textDim);
     g.setFont (capFont (10.0f));
-    const auto state = src->mute.load() ? "MUTED" : ((mask & engaged) != 0 ? "MUTED BY A MUTE GROUP" : "");
+    const auto state = src->mute.load() ? "MUTED" : ((mask & engaged).any() ? "MUTED BY A MUTE GROUP" : "");
     g.drawText (state, sourceBody.withTrimmedTop (sourceTagCells.empty() ? 0 : sourceTagCells.back().first.getBottom() - sourceBody.getY() + 10).withHeight (px (24.0f)),
                 juce::Justification::centred);
 }
@@ -2858,9 +2858,8 @@ void RoutingPage::mouseUp (const juce::MouseEvent& e)
                 if (cell.contains (pos))
                 {
                     // The group on (or off) for every selected source, as for the first.
-                    const auto bit = 1u << group;
-                    const bool on = (src->muteGroups.load() & bit) == 0;
-                    forSelectedSources ([bit, on] (int, ld::SourceParams& s) { s.muteGroups = on ? (s.muteGroups.load() | bit) : (s.muteGroups.load() & ~bit); });
+                    const bool on = ! src->muteGroups.contains (group);
+                    forSelectedSources ([group, on] (int, ld::SourceParams& s) { s.muteGroups.set (group, on); });
                 }
         }
         else

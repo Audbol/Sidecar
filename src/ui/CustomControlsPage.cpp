@@ -376,7 +376,7 @@ KnobBinding bindEncoder (UiContext& ctx, const Function& f)
                 return bindPan ("PAN", s->params.pan);
             break;
         case EncDcaFader:
-            if (juce::isPositiveAndBelow (f.target, kNumDcas))
+            if (juce::isPositiveAndBelow (f.target, kWingDcas))
                 return bindFader ("DCA " + juce::String (f.target + 1), ctx.engine.getDca (f.target).faderDb);
             break;
         case EncSelBusSend:
@@ -491,12 +491,12 @@ void press (UiContext& ctx, const Function& f)
                 flip (s->params.solo);
             break;
         case BtnDcaMute:
-            if (juce::isPositiveAndBelow (f.target, kNumDcas))
+            if (juce::isPositiveAndBelow (f.target, kWingDcas))
                 flip (ctx.engine.getDca (f.target).mute);
             break;
         case BtnMuteGroup:
-            if (juce::isPositiveAndBelow (f.target, kNumMuteGroups))
-                ctx.engine.muteGroups = ctx.engine.muteGroups.load() ^ (1u << (uint32_t) f.target);
+            if (juce::isPositiveAndBelow (f.target, kWingMuteGroups))
+                ctx.engine.muteGroups.toggle (f.target);
             break;
         case BtnSendsOnFader:
             // Sends on Fader with this destination fixed; again: off.
@@ -761,8 +761,8 @@ bool isLit (UiContext& ctx, const Function& f)
             if (auto* s = stripOf (ctx, f.target))
                 return s->params.solo.load();
             break;
-        case BtnDcaMute: return juce::isPositiveAndBelow (f.target, kNumDcas) && ctx.engine.getDca (f.target).mute.load();
-        case BtnMuteGroup: return juce::isPositiveAndBelow (f.target, kNumMuteGroups) && ((ctx.engine.muteGroups.load() >> f.target) & 1u) != 0;
+        case BtnDcaMute: return juce::isPositiveAndBelow (f.target, kWingDcas) && ctx.engine.getDca (f.target).mute.load();
+        case BtnMuteGroup: return juce::isPositiveAndBelow (f.target, kWingMuteGroups) && ctx.engine.muteGroups.contains (f.target);
         case BtnSendsOnFader:
             if (auto* s = stripOf (ctx, f.target))
                 return ctx.sendsOnFader && ctx.sofDestination.has_value() && *ctx.sofDestination == state::StripRef::of (*s);
@@ -859,7 +859,7 @@ juce::String describe (UiContext& ctx, Slot s, const Function& f)
         auto* st = stripOf (ctx, f.target);
         return st != nullptr ? shortStripLabel (*st) : juce::String ("--");
     };
-    auto dcaName = [&ctx] (int i) { return ("DCA " + ctx.engine.getDcaName (juce::jlimit (0, kNumDcas - 1, i)).toUpperCase()).trimEnd(); };
+    auto dcaName = [&ctx] (int i) { return ("DCA " + ctx.engine.getDcaName (juce::jlimit (0, kWingDcas - 1, i)).toUpperCase()).trimEnd(); };
     auto fx = [&ctx, &f]
     {
         const auto* p = fxParamOf (ctx, f.target, f.option);
@@ -904,7 +904,7 @@ juce::String describe (UiContext& ctx, Slot s, const Function& f)
         case BtnMute:         return strip() + " MUTE";
         case BtnSolo:         return strip() + " SOLO";
         case BtnDcaMute:      return dcaName (f.target);
-        case BtnMuteGroup:    return "MGRP MGRP." + juce::String (juce::jlimit (0, kNumMuteGroups - 1, f.target) + 1);
+        case BtnMuteGroup:    return "MGRP MGRP." + juce::String (juce::jlimit (0, kWingMuteGroups - 1, f.target) + 1);
         case BtnSendsOnFader: return strip() + " SOF";
         case BtnChannelPage:  return strip() + " " + pageTokens[juce::jlimit (0, (int) std::size (pageTokens) - 1, f.option)];
         case BtnGlobalPage:   return globalTokens[juce::jlimit (0, kNumGlobalPages - 1, f.option)];
@@ -1155,7 +1155,7 @@ void CustomControlsPage::rebuildLists()
         {
             case EncFader:
             case EncPan: addStrips (false); break;
-            case EncDcaFader: addNumbered (targets, targetCodes, "DCA", "DCA ", kNumDcas); break;
+            case EncDcaFader: addNumbered (targets, targetCodes, "DCA", "DCA ", kWingDcas); break;
             case EncSelBusSend: addNumbered (targets, targetCodes, "BUS", "BUS ", buses); break;
             case EncFixedBusSend:
                 addStrips (true);
@@ -1241,10 +1241,10 @@ void CustomControlsPage::rebuildLists()
                 }
                 break;
             }
-            case BtnDcaMute: addNumbered (targets, targetCodes, "DCA", "DCA ", kNumDcas); break;
+            case BtnDcaMute: addNumbered (targets, targetCodes, "DCA", "DCA ", kWingDcas); break;
             case BtnMuteGroup:
                 targets.title = "MUTE GROUP";
-                for (int i = 0; i < kNumMuteGroups; ++i)
+                for (int i = 0; i < kWingMuteGroups; ++i)
                 {
                     targets.rows.add (juce::String (i + 1) + "   " + ctx.engine.getMuteGroupName (i).toUpperCase());
                     targetCodes.push_back (i);
@@ -1330,7 +1330,7 @@ void CustomControlsPage::rebuildLists()
                     options.rows.add (row);
                     optionCodes.push_back (code);
                 };
-                for (int i = 0; i < kNumDcas; ++i)
+                for (int i = 0; i < kWingDcas; ++i)
                     add ("DCA " + juce::String (i + 1) + "   " + ctx.engine.getDcaName (i).toUpperCase(), i);
                 for (int i = 0; i < ctx.engine.getFx().getNumSlots(); ++i)
                     add ("FX " + juce::String (i + 1) + "   " + models::model (models::Fx, ctx.engine.getFx().getModel (i)).name.toUpperCase(), 200 + i);

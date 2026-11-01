@@ -51,9 +51,11 @@
 
 use crate::analyser::{rta_tap, Analyser, Probes};
 use crate::atomic::AtomicF32;
+use crate::config::{ConsoleConfig, Counts};
 use crate::denormals::ScopedNoDenormals;
 use crate::fx::{FxRack, InsertCallbacks};
 use crate::garbage::Garbage;
+use crate::groups::{AtomicGroupSet, GroupSet};
 use crate::iosafes::IoSafes;
 use crate::keytap::{key_sources, key_tap, KeySchedule, KeySource};
 use crate::monitor::{direct_source, MonitorPathDsp, SoloPatch, BAND_SOLO_MAX_DB};
@@ -145,6 +147,8 @@ struct Structure {
     matrices: Vec<Arc<Strip>>,
     next_channel_id: i32,
     device: DeviceConfig,
+    /// The configured counts (`Engine::configure`); a reset builds them.
+    counts: Counts,
 }
 
 impl Structure {
@@ -165,16 +169,16 @@ impl Structure {
 
 /// Names of console-wide groups (message thread only).
 struct GroupNames {
-    dcas: [String; NUM_DCAS],
-    mute_groups: [String; NUM_MUTE_GROUPS],
+    dcas: Vec<String>,
+    mute_groups: Vec<String>,
 }
 
 impl Default for GroupNames {
     fn default() -> Self {
         Self {
             // The WING's factory names: DCAs unnamed, mute groups MGRP.n.
-            dcas: std::array::from_fn(|_| String::new()),
-            mute_groups: std::array::from_fn(|i| format!("MGRP.{}", i + 1)),
+            dcas: vec![String::new(); MAX_DCAS],
+            mute_groups: (0..MAX_MUTE_GROUPS).map(|i| format!("MGRP.{}", i + 1)).collect(),
         }
     }
 }
@@ -227,7 +231,7 @@ const MONITOR_SWAP: [f32; 4] = [0.0, 1.0, 1.0, 0.0];
 
 /// Console-wide group settings read once per block.
 struct GroupState<'a> {
-    mute_groups: u32,
+    mute_groups: GroupSet,
     dca_mute_groups: bool,
     main_link_last: usize,
     main_link_db: f32,
@@ -271,9 +275,13 @@ pub struct Engine {
     sources: SourceTable,
     /// Talkback's ramps per destination (owned by the destination tasks).
     talk_ramps: TalkRamps,
-    /// DCAs named MON A / MON B / MON LVL: bit n = DCA n+1 controls the
-    /// SPEAKERS path, bit 16 + n the PHONES path.
-    dca_monitor: AtomicU32,
+    /// DCAs named MON A / MON B / MON LVL: the DCAs that control the
+    /// SPEAKERS path, and the PHONES path.
+    dca_monitor: [AtomicGroupSet; 2],
+    /// The DCAs and mute groups in use (`set_num_dcas`, `set_num_mute_groups`):
+    /// the first ones of `controls.dcas` and of the mute group indices.
+    num_dcas: AtomicUsize,
+    num_mute_groups: AtomicUsize,
     /// Plugin delay compensation: the setting and the plan's status.
     pdc: PdcState,
     /// The audio interface's reported input + output latency in samples (the
@@ -322,6 +330,7 @@ impl Engine {
                 matrices: Vec::new(),
                 next_channel_id: 1,
                 device,
+                counts: Counts::WING,
             }),
             names: Mutex::new(GroupNames::default()),
             audio: UnsafeCell::new(AudioState {
@@ -349,7 +358,9 @@ impl Engine {
             analysis: Analyser::new(),
             sources: SourceTable::default(),
             talk_ramps: TalkRamps::default(),
-            dca_monitor: AtomicU32::new(0),
+            dca_monitor: Default::default(),
+            num_dcas: AtomicUsize::new(WING_DCAS),
+            num_mute_groups: AtomicUsize::new(WING_MUTE_GROUPS),
             pdc: PdcState::default(),
             io_latency: AtomicU32::new(0),
             io_safes: IoSafes::default(),
@@ -398,12 +409,14 @@ impl Engine {
         s
     }
 
-    /// Aux channels, the WING's 16 buses, 4 mains and 8 matrices.
+    /// The configured aux channels, buses, mains and matrices (the WING's 8,
+    /// 16, 4 and 8).
     fn build_fixed(&self, st: &mut Structure) {
-        st.auxes = (0..NUM_AUX).map(|i| self.new_strip(st, StripKind::Aux, i as i32)).collect();
-        st.buses = (0..WING_BUSES).map(|i| self.new_strip(st, StripKind::Bus, i as i32)).collect();
-        st.mains = (0..NUM_MAINS).map(|i| self.new_strip(st, StripKind::Main, i as i32)).collect();
-        st.matrices = (0..NUM_MATRICES).map(|i| self.new_strip(st, StripKind::Matrix, i as i32)).collect();
+        let c = st.counts;
+        st.auxes = (0..c.aux).map(|i| self.new_strip(st, StripKind::Aux, i as i32)).collect();
+        st.buses = (0..c.buses).map(|i| self.new_strip(st, StripKind::Bus, i as i32)).collect();
+        st.mains = (0..c.mains).map(|i| self.new_strip(st, StripKind::Main, i as i32)).collect();
+        st.matrices = (0..c.matrices).map(|i| self.new_strip(st, StripKind::Matrix, i as i32)).collect();
         // Main 1 plays on the first two outputs.
         st.mains[0].params.output_left.store(0, Relaxed);
         st.mains[0].params.output_right.store(1, Relaxed);
@@ -493,15 +506,18 @@ impl Engine {
         Some(strip)
     }
 
-    /// Removes a channel, or a bus beyond the console's 16. The strip is
-    /// dropped later, once unreachable.
+    /// Removes a channel, or a bus beyond the console's configured ones
+    /// (the WING's 16). The strip is dropped later, once unreachable.
     pub fn remove_strip(&self, strip: *const Strip) -> bool {
         let mut st = self.lock();
+        let fixed_buses = st.counts.buses;
         let removed = match st.channels.iter().position(|s| Arc::as_ptr(s) == strip) {
             Some(i) => Some(st.channels.remove(i)),
-            None => {
-                st.buses.iter().position(|s| Arc::as_ptr(s) == strip && s.id() as usize >= WING_BUSES).map(|i| st.buses.remove(i))
-            }
+            None => st
+                .buses
+                .iter()
+                .position(|s| Arc::as_ptr(s) == strip && s.id() as usize >= fixed_buses)
+                .map(|i| st.buses.remove(i)),
         };
         let Some(removed) = removed else { return false };
         self.publish(&st);
@@ -524,6 +540,8 @@ impl Engine {
         st.next_channel_id = 1;
         self.build_fixed(&mut st);
         self.publish(&st);
+        self.num_dcas.store(st.counts.dcas, Relaxed);
+        self.num_mute_groups.store(st.counts.mute_groups, Relaxed);
         self.controls.reset();
         self.analysis.reset();
         self.sources.reset();
@@ -532,6 +550,72 @@ impl Engine {
         let mut names = self.names.lock().unwrap_or_else(|e| e.into_inner());
         *names = GroupNames::default();
         self.update_monitor_dcas(&names);
+    }
+
+    /// Message thread: makes this a fresh console of `config` (a reset with
+    /// its counts: channels, aux, buses, mains, matrices, DCAs, mute groups
+    /// and FX slots). The WING is `ConsoleConfig::wing()`.
+    pub fn configure(&self, config: &ConsoleConfig) {
+        let counts = config.counts.sanitised();
+        self.lock().counts = counts;
+        self.reset();
+        self.set_num_channels(counts.channels);
+        self.set_num_fx(counts.fx);
+    }
+
+    /// The configuration of the console (`configure`).
+    pub fn config(&self) -> ConsoleConfig {
+        ConsoleConfig { counts: self.lock().counts }
+    }
+
+    /// What the console has now: its strips by kind (channels and buses
+    /// can be added beyond the configuration), and the DCAs, mute groups and
+    /// FX slots in use.
+    pub fn counts(&self) -> Counts {
+        let st = self.lock();
+        Counts {
+            channels: st.channels.len(),
+            aux: st.auxes.len(),
+            buses: st.buses.len(),
+            mains: st.mains.len(),
+            matrices: st.matrices.len(),
+            dcas: self.num_dcas(),
+            mute_groups: self.num_mute_groups(),
+            fx: self.num_fx(),
+        }
+    }
+
+    /// The DCAs in use: the first `num_dcas` of `controls.dcas`.
+    pub fn num_dcas(&self) -> usize {
+        self.num_dcas.load(Relaxed)
+    }
+
+    /// The mute groups in use (indices `0..num_mute_groups`).
+    pub fn num_mute_groups(&self) -> usize {
+        self.num_mute_groups.load(Relaxed)
+    }
+
+    /// Message thread: sets the number of DCAs in use (up to `MAX_DCAS`),
+    /// never below a DCA a strip is a member of, so a hidden DCA never acts
+    /// on a strip. Returns the number set.
+    pub fn set_num_dcas(&self, count: usize) -> usize {
+        let st = self.lock();
+        let used = st.all().fold(GroupSet::EMPTY, |used, s| used | s.params.dca_mask.load());
+        let n = count.min(MAX_DCAS).max(used.iter().last().map_or(0, |i| i + 1));
+        self.num_dcas.store(n, Relaxed);
+        n
+    }
+
+    /// Message thread: sets the number of mute groups in use (up to
+    /// `MAX_MUTE_GROUPS`), never below a group that is engaged or has a strip
+    /// or a source as a member. Returns the number set.
+    pub fn set_num_mute_groups(&self, count: usize) -> usize {
+        let st = self.lock();
+        let used = st.all().fold(self.controls.mute_groups.load(), |used, s| used | s.params.mute_group_mask.load());
+        let used = self.sources.params().iter().fold(used, |used, p| used | p.mute_groups.load());
+        let n = count.min(MAX_MUTE_GROUPS).max(used.iter().last().map_or(0, |i| i + 1));
+        self.num_mute_groups.store(n, Relaxed);
+        n
     }
 
     pub fn strips(&self, kind: StripKind) -> Vec<Arc<Strip>> {
@@ -655,34 +739,31 @@ impl Engine {
     /// DCAs named MON A, MON B or MON LVL control the monitor level of the
     /// PHONES, the SPEAKERS or both, as on the WING (firmware 1.09).
     fn update_monitor_dcas(&self, names: &GroupNames) {
-        let roles = names.dcas.iter().enumerate().fold(0u32, |roles, (i, name)| {
-            let paths = monitor_dca_paths(name);
-            roles | (paths & 1) << i | (paths >> 1) << (16 + i)
-        });
-        self.dca_monitor.store(roles, Relaxed);
+        for (path, roles) in self.dca_monitor.iter().enumerate() {
+            let mut dcas = GroupSet::EMPTY;
+            for (i, name) in names.dcas.iter().enumerate() {
+                dcas.set(i, monitor_dca_paths(name) & (1 << path) != 0);
+            }
+            roles.store(dcas);
+        }
     }
 
     /// The monitor paths (bit 0 = SPEAKERS, bit 1 = PHONES) whose level DCA `i` controls.
     pub fn dca_monitor_paths(&self, i: usize) -> u32 {
-        let roles = self.dca_monitor.load(Relaxed);
-        if i >= NUM_DCAS {
-            return 0;
-        }
-        (roles >> i) & 1 | ((roles >> (16 + i)) & 1) << 1
+        (0..2).filter(|&path| self.dca_monitor[path].contains(i)).fold(0, |paths, path| paths | 1 << path)
     }
 
     /// The level offset (dB) and mute the MON DCAs give monitor path `path`.
     fn monitor_dca(&self, path: usize) -> (f32, bool) {
-        let roles = self.dca_monitor.load(Relaxed) >> (16 * path);
-        if roles & 0xffff == 0 {
+        let Some(roles) = self.dca_monitor.get(path) else { return (0.0, false) };
+        if roles.is_empty() {
             return (0.0, false);
         }
-        self.controls
-            .dcas
+        roles
+            .load()
             .iter()
-            .enumerate()
-            .filter(|(i, _)| roles & (1 << i) != 0)
-            .fold((0.0, false), |(db, muted), (_, d)| (db + d.fader_db.load(), muted || d.mute.load(Relaxed)))
+            .filter_map(|i| self.controls.dcas.get(i))
+            .fold((0.0, false), |(db, muted), d| (db + d.fader_db.load(), muted || d.mute.load(Relaxed)))
     }
 
     /// ROUTING > SOURCES: every input port's source.
@@ -1188,7 +1269,7 @@ impl Engine {
             rec.playback_ptrs(),
             self.usb.player_ptrs(),
             n,
-            self.controls.mute_groups.load(Relaxed),
+            &self.controls.mute_groups.load(),
             pos,
         );
         let streams = rec.record_streams();
@@ -1212,7 +1293,7 @@ impl Engine {
         let playback = SharedPtrs(a.sources.playback_ptrs());
         let playback = &playback;
         let groups = GroupState {
-            mute_groups: self.controls.mute_groups.load(Relaxed),
+            mute_groups: self.controls.mute_groups.load(),
             dca_mute_groups: self.controls.dca_mute_groups.load(Relaxed),
             main_link_last: self.controls.main_link_last(),
             main_link_db: topo.mains.first().map_or(0.0, |m| m.params.fader_db.load()),
@@ -1397,7 +1478,7 @@ impl Engine {
                 None => buf.fill(0.0),
             }
         }
-        a.sources.process_user_signals(&self.sources, a.returns.pos, n, self.controls.mute_groups.load(Relaxed));
+        a.sources.process_user_signals(&self.sources, a.returns.pos, n, &self.controls.mute_groups.load());
     }
 
     #[allow(clippy::too_many_arguments)]

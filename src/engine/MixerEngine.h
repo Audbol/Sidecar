@@ -96,7 +96,18 @@ public:
 
     //==============================================================================
     // Groups and FX
-    DcaParams& getDca (int index) const noexcept { return controls.dcas[juce::jlimit (0, kNumDcas - 1, index)]; }
+    DcaParams& getDca (int index) const noexcept { return controls.dcas[juce::jlimit (0, kMaxDcas - 1, index)]; }
+    /** What the console has now: strips by kind, the DCAs, mute groups and FX slots in use. */
+    Counts getCounts() const noexcept { Counts c {}; ld::ld_engine_counts (engine, &c); return c; }
+    /** The counts the console was configured with (the WING's by default). */
+    Counts getConfiguredCounts() const noexcept { Counts c {}; ld::ld_engine_configured_counts (engine, &c); return c; }
+    /** Makes the engine a fresh console of `counts` (nullptr: the WING); rebuilds the strip views. */
+    void configure (const Counts* counts) { ld::ld_engine_configure (engine, counts); syncStrips(); }
+    int getNumDcas() const noexcept { return getCounts().dcas; }
+    int getNumMuteGroups() const noexcept { return getCounts().muteGroups; }
+    /** Sets the DCAs / mute groups in use (never below one in use); returns the number set. */
+    int setNumDcas (int count) noexcept { return ld::ld_engine_set_num_dcas (engine, count); }
+    int setNumMuteGroups (int count) noexcept { return ld::ld_engine_set_num_mute_groups (engine, count); }
     juce::String getDcaName (int index) const { return takeString (ld::ld_engine_group_name (engine, 0, index)); }
     void setDcaName (int index, const juce::String&);
     juce::String getMuteGroupName (int index) const { return takeString (ld::ld_engine_group_name (engine, 1, index)); }
@@ -169,7 +180,7 @@ public:
     std::atomic<bool>& anySoloActive;
 
     /** Bit n = mute group n+1 engaged. */
-    std::atomic<uint32_t>& muteGroups;
+    GroupMask& muteGroups; // the engaged mute groups
 
     /** Automix X ENABLE / Y ENABLE (default on). */
     std::atomic<bool> (&automixEnable)[2];

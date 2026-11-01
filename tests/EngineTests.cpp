@@ -55,6 +55,37 @@ public:
             expectEquals (ch.getName(), juce::String ("Own"));
         }
 
+        beginTest ("A console of other counts: the configuration, DCAs and mute groups beyond the WING's");
+        {
+            MixerEngine engine (0);
+            const auto wing = engine.getConfiguredCounts();
+            expectEquals (wing.dcas, kWingDcas);
+            expectEquals (wing.muteGroups, kWingMuteGroups);
+            const Counts other { 64, 4, 24, 2, 3, 24, 100, 32 };
+            engine.configure (&other);
+            const auto now = engine.getCounts();
+            expectEquals ((int) engine.getChannels().size(), 64);
+            expectEquals ((int) engine.getBuses().size(), 24);
+            expectEquals ((int) engine.getMains().size(), 2);
+            expectEquals ((int) engine.getMatrices().size(), 3);
+            expectEquals (now.dcas, 24);
+            expectEquals (now.muteGroups, 100);
+            expectEquals (now.fx, 32);
+
+            // DCA 201 and mute group 100 through the shared memory.
+            auto& ch = *engine.getChannels()[0];
+            ch.params.dcaMask.set (200, true);
+            expect (ch.params.dcaMask.contains (200) && ! ch.params.dcaMask.contains (199));
+            expectEquals (engine.setNumDcas (8), 201, "never below a DCA with a member");
+            engine.muteGroups.set (99, true);
+            expect (engine.muteGroups.load() == GroupBits::single (99));
+            expectEquals (engine.getDca (200).faderDb.load(), engine.getDca (0).faderDb.load());
+
+            engine.configure (nullptr);
+            expectEquals (engine.getCounts().dcas, kWingDcas);
+            expectEquals ((int) engine.getChannels().size(), kWingChannels);
+        }
+
         beginTest ("The console has the WING layout");
         {
             MixerEngine engine (0);
@@ -202,7 +233,7 @@ public:
             rig.run();
             expectWithinAbsoluteError (rig.out (0), 0.25f * kCentre, 1.0e-4f);
 
-            p.dcaMask = 1u << 2;
+            p.dcaMask.store (GroupBits::mask (1u << 2));
             engine.getDca (2).faderDb = -6.0206f;
             rig.run();
             expectWithinAbsoluteError (rig.out (0), 0.125f * kCentre, 1.0e-4f);
@@ -211,11 +242,11 @@ public:
             expectWithinAbsoluteError (rig.out (0), 0.0f, 1.0e-6f);
             engine.getDca (2).mute = false;
 
-            p.muteGroupMask = 1u << 1;
-            engine.muteGroups = 1u << 1;
+            p.muteGroupMask.store (GroupBits::mask (1u << 1));
+            engine.muteGroups.store (GroupBits::mask (1u << 1));
             rig.run();
             expectWithinAbsoluteError (rig.out (0), 0.0f, 1.0e-6f);
-            engine.muteGroups = 0u;
+            engine.muteGroups.clear();
 
             p.mute = true;
             rig.run();
@@ -488,7 +519,7 @@ public:
             auto& ch = *engine.getChannels()[0];
             rig.setInput (0, 0.5f);
             expect (engine.dcaMuteGroups.load() && engine.automixEnable[0].load() && engine.automixEnable[1].load());
-            ch.params.dcaMask = 1u;
+            ch.params.dcaMask.store (GroupBits::mask (1u));
             engine.getDca (0).mute = true;
             rig.run();
             expectWithinAbsoluteError (rig.out (0), 0.0f, 1.0e-6f);

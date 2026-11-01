@@ -205,7 +205,7 @@ pub(crate) fn capture_sources(engine: &Engine, parent: &mut Element) {
         put_i(x, "mode", &p.mode);
         put_i(x, "colour", &p.colour);
         put_i(x, "icon", &p.icon);
-        put_u(x, "mgrp", &p.mute_groups);
+        crate::console::put_groups(x, "mgrp", &p.mute_groups);
     }
     // The oscillators (the OSC group's generator settings).
     for (i, o) in table.oscillators().iter().enumerate() {
@@ -227,7 +227,7 @@ fn apply_source(x: &Element, p: &SourceParams) {
     get_b(x, "phantom", &p.phantom);
     get_i(x, "colour", &p.colour);
     get_i(x, "icon", &p.icon);
-    get_u(x, "mgrp", &p.mute_groups);
+    crate::console::get_groups(x, "mgrp", &p.mute_groups);
 }
 
 fn apply_sources(engine: &Engine, parent: &Element) {

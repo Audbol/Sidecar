@@ -110,7 +110,7 @@ CompactSection::CompactSection (UiContext& c) : ctx (c), fader13 (c, LayerSet::C
     fader13.setSelectHeld ([this] (bool down)
     {
         const bool dcaKeys = keyMode() == compact::KeyMode::Dca && ! ctx.settings.getBoolValue (uiprefs::compactDcaCustom, false);
-        ctx.compactDcaAssign = down && dcaKeys && juce::isPositiveAndBelow (assignDca, kNumDcas) ? assignDca : -1;
+        ctx.compactDcaAssign = down && dcaKeys && juce::isPositiveAndBelow (assignDca, kWingDcas) ? assignDca : -1;
     });
     addAndMakeVisible (fader13);
     startTimerHz (4);
@@ -322,7 +322,7 @@ std::optional<compact::MainFader> CompactSection::keyMainFader (int key) const
         return std::nullopt;
     const auto mf = compact::keyMainFader (keyMode(), key);
     if (mf && mf->group == compact::MainFader::Dca)
-        return mf->number <= kNumDcas ? mf : std::nullopt;
+        return mf->number <= kWingDcas ? mf : std::nullopt;
     return mf && mainFaderStrip (*mf) != nullptr ? mf : std::nullopt;
 }
 

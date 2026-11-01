@@ -60,7 +60,7 @@ FaderStrip::FaderStrip (UiContext& c, LayerSet::Section s) : ctx (c), section (s
     {
         // The COMPACT's DCA assignment: lit on the DCA's members.
         if (ctx.compactDcaAssign >= 0 && section == LayerSet::Left && strip != nullptr)
-            return ((strip->params.dcaMask.load() >> ctx.compactDcaAssign) & 1u) != 0 ? SurfaceKey::Lit : SurfaceKey::Off;
+            return strip->params.dcaMask.contains (ctx.compactDcaAssign) ? SurfaceKey::Lit : SurfaceKey::Off;
         // A DCA's SELECT lights while it spills (DCA SPILL).
         if (dca >= 0)
             return isSpilling (ctx, { LayerSet::Spill::Kind::Dca, dca, {} }) ? SurfaceKey::Lit : SurfaceKey::Off;
@@ -135,7 +135,7 @@ void FaderStrip::refresh()
     if (target)
     {
         if (target->dca)
-            dca = juce::jlimit (0, kNumDcas - 1, target->dcaIndex);
+            dca = juce::jlimit (0, kWingDcas - 1, target->dcaIndex);
         else if (target->fxParam)
         {
             const int slot = juce::jlimit (0, kMaxFx - 1, target->fxSlot);
@@ -365,7 +365,7 @@ void FaderStrip::pressSelect()
     // takes it out.
     if (ctx.compactDcaAssign >= 0 && section == LayerSet::Left && ! (target && target->send))
     {
-        strip->params.dcaMask = strip->params.dcaMask.load() ^ (1u << ctx.compactDcaAssign);
+        strip->params.dcaMask.toggle (ctx.compactDcaAssign);
         return;
     }
 
@@ -498,12 +498,11 @@ void FaderStrip::timerCallback()
         colour = d.colour.load();
         source = juce::String (d.icon.load()); // repaints when the icon changes
         // DCA METERS: the loudest member, before or after its fader (as the METERS screen).
-        const uint32_t bit = 1u << (uint32_t) dca;
         const auto point = prefs::tapPoint (prefs::meterTapPre (ctx, 4));
         std::array<float, 2> peak {};
         for (int k = 0; k < kNumStripKinds; ++k)
             for (auto& s : ctx.engine.getStrips (static_cast<StripKind> (k)))
-                if ((s->params.dcaMask.load() & bit) != 0)
+                if (s->params.dcaMask.contains (dca))
                     for (int ch = 0; ch < 2; ++ch)
                         peak[(size_t) ch] = juce::jmax (peak[(size_t) ch], ctx.meters.get (s.get(), point, ch));
         for (int ch = 0; ch < 2; ++ch)

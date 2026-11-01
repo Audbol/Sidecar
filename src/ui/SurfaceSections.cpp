@@ -450,7 +450,7 @@ juce::String ChannelStripSection::panelState() const
             s << bit (dsp::gainToDb (ctx.meters.get (strip, MeterPoint::Trim, ch)) >= thr);
     s << juce::roundToInt (strip->meters.dynReductionDb.load()) << bit (slotOn (Input)) << bit (p.filter.lowCut.load())
       << bit (p.filter.highCut.load()) << bit (p.filter.tool.load()) << p.filter.toolModel.load() << bit (p.input.delayOn.load())
-      << bit (p.stereo.load()) << bit (strip->isUsingAltInput()) << (int) p.dcaMask.load() << ':' << (int) p.muteGroupMask.load() << ':' << p.postInsert.mode.load();
+      << bit (p.stereo.load()) << bit (strip->isUsingAltInput()) << (juce::int64) p.dcaMask.load().low() << ':' << (juce::int64) p.muteGroupMask.load().low() << ':' << p.postInsert.mode.load();
     for (auto& m : p.mains)
         s << bit (m.on.load());
     for (int i = 0; i < 16; ++i)
@@ -680,11 +680,11 @@ void ChannelStripSection::paintPanel (juce::Graphics& g)
         text (labelX, labelW, 1, "AUTO");
 
         // Eight DCA LEDs for 16 DCAs: LED i shows DCA i or i + 8.
-        const auto dcas = any ? p->dcaMask.load() : 0u;
+        const auto dcas = any ? p->dcaMask.load().low() : 0u;
         rowOf (3, 4, [&] (int i) { return ((dcas >> i) | (dcas >> (i + 8))) & 1u; });
         rowOf (4, 4, [&] (int i) { return ((dcas >> (i + 4)) | (dcas >> (i + 12))) & 1u; });
         drawSilk (g, { labelX, rowY (3), labelW, rowH * 2.0f }, "DCA", font, juce::Justification::centredLeft, surfaceColours().silk);
-        const auto mutes = any ? p->muteGroupMask.load() : 0u;
+        const auto mutes = any ? p->muteGroupMask.load().low() : 0u;
         rowOf (6, 4, [&] (int i) { return (mutes >> i) & 1u; });
         rowOf (7, 4, [&] (int i) { return (mutes >> (i + 4)) & 1u; });
         drawSilk (g, { labelX, rowY (6), labelW, rowH * 2.0f }, "MUTE", font, juce::Justification::centredLeft, surfaceColours().silk);
@@ -1269,7 +1269,7 @@ void CustomControlSection::pressLowerKey (int key)
     }
     if (lowerLayer == MuteGroups)
     {
-        ctx.engine.muteGroups = ctx.engine.muteGroups.load() ^ (1u << key);
+        ctx.engine.muteGroups.toggle (key);
     }
     else if (lowerLayer == ShowControl)
     {
@@ -1486,7 +1486,7 @@ bool CustomControlSection::lowerKeyLit (int key) const
     if (const int l = lowerCcLayer(); l >= 0)
         return cc::isLit (ctx, ccFunction (l, key));
     if (lowerLayer == MuteGroups)
-        return (ctx.engine.muteGroups.load() >> key) & 1u;
+        return ctx.engine.muteGroups.contains (key);
     if (lowerLayer == TwoTrack)
     {
         auto& usb = ctx.engine.getUsbRecorder();
@@ -1567,8 +1567,8 @@ void CustomControlSection::timerCallback()
     juce::String state (lowerLayer);
     if (lowerLayer == MuteGroups)
     {
-        state << (int) ctx.engine.muteGroups.load() << '|';
-        for (int i = 0; i < kNumMuteGroups; ++i)
+        state << (juce::int64) ctx.engine.muteGroups.load().low() << '|';
+        for (int i = 0; i < kWingMuteGroups; ++i)
             state << ctx.engine.getMuteGroupName (i) << '|';
     }
     else if (lowerLayer == ShowControl)
@@ -1638,7 +1638,7 @@ void CustomControlSection::paintMuteGroupLcd (juce::Graphics& g, juce::Rectangle
             const float textW = juce::jmin (juce::GlyphArrangement::getStringWidth (font, name), column.getWidth() - cap * 1.2f);
             const auto box = line.withSizeKeepingCentre (textW + cap * 0.6f, juce::jmin (line.getHeight(), cap * 1.7f));
             g.setColour (ink);
-            if (((active >> group) & 1u) != 0)
+            if (active.contains (group))
             {
                 g.fillRect (box);
                 g.setColour (bg);

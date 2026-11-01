@@ -36,7 +36,7 @@ public:
             kick->setModel (ModelBlock::Dynamics, models::findModel (models::Dynamics, "B560"));
             p.processOrder = 7;
             p.recallSafe = true;
-            p.dcaMask = 0b101u;
+            p.dcaMask.store (GroupBits::mask (0b101u));
             p.mains[2].on = true;
             kick->sends[0].enabled = true;
             kick->sends[0].levelDb = -3.0f;
@@ -46,7 +46,7 @@ public:
             engine.setDcaName (2, "Drums");
             engine.getDca (2).faderDb = -5.0f;
             engine.setMuteGroupName (0, "Band");
-            engine.muteGroups = 1u;
+            engine.muteGroups.store (GroupBits::mask (1u));
 
             // Remove channel 1 so ids are no longer contiguous: they must survive.
             engine.removeStrip (engine.getChannels()[0].get());
@@ -77,7 +77,7 @@ public:
             expectEquals (models::model (models::Dynamics, r->params.dynamics.model.load()).token, juce::String ("B560"));
             expectEquals (r->params.processOrder.load(), 7);
             expect (r->params.recallSafe.load());
-            expectEquals ((int) r->params.dcaMask.load(), 0b101);
+            expectEquals ((int) r->params.dcaMask.load().low(), 0b101);
             expect (r->params.mains[2].on.load());
             expect (r->sends[0].enabled.load());
             expectEquals (r->sends[0].levelDb.load(), -3.0f);
@@ -88,7 +88,7 @@ public:
             expectEquals (restoredEngine.getDcaName (2), juce::String ("Drums"));
             expectEquals (restoredEngine.getDca (2).faderDb.load(), -5.0f);
             expectEquals (restoredEngine.getMuteGroupName (0), juce::String ("Band"));
-            expectEquals ((int) restoredEngine.muteGroups.load(), 1);
+            expectEquals ((int) restoredEngine.muteGroups.load().low(), 1);
 
             // New channels must not reuse a restored id.
             expect (restoredEngine.addChannel()->getId() > kickId);
@@ -550,7 +550,7 @@ public:
             expect (scope.allStrips && scope.dcas == state::Scope::kAllDcas);
             scope.allStrips = false;
             scope.strips = { refA };
-            scope.dcas = 0b10;
+            scope.dcas = GroupBits::mask (0b10);
             show.setSceneRecallScope (0, scope);
             expect (show.getSceneRecallScope (0) == scope);
             a.params.faderDb = -10.0f;
@@ -566,7 +566,7 @@ public:
             // GLOBAL safes: DCA 2; RESTORE ignores them and the scope.
             auto safe = show.getGlobalSafe();
             expect (! show.hasGlobalSafes());
-            safe.dcas = 0b10;
+            safe.dcas = GroupBits::mask (0b10);
             show.setGlobalSafe (safe);
             expect (show.hasGlobalSafes());
             engine.getDca (1).faderDb = -4.0f;
@@ -607,9 +607,9 @@ public:
             // ADD ITEMS: DCA 1 with the faders.
             engine.getDca (0).faderDb = -8.0f;
             auto items = state::Scope::only (state::Fader, {});
-            items.dcas = 1;
+            items.dcas = GroupBits::mask (1);
             show.addSnippetItems (0, sn, items);
-            expect (show.getSnippet (0, sn)->scope.dcas == 1u);
+            expect (show.getSnippet (0, sn)->scope.dcas == GroupBits::mask (1));
             engine.getDca (0).faderDb = 0.0f;
             show.recallSnippet (0, sn);
             expectEquals (engine.getDca (0).faderDb.load(), -8.0f);

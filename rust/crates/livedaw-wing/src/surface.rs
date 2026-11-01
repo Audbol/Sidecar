@@ -69,7 +69,7 @@ use crate::map::{SetError, WingState};
 use crate::schema::CC_DAW_ROTARY;
 use crate::value::Value;
 use livedaw_dsp::wing::FX_MODELS;
-use livedaw_engine::params::{NUM_DCAS, WING_FX};
+use livedaw_engine::params::{WING_DCAS, WING_FX};
 use livedaw_engine::{Engine, StripKind};
 use livedaw_session::custom::{
     daw_command_group, other, CcFunction, CustomControls, CC_BANK_CATEGORY, COMPACT_MAIN_MATRIX_LAYER, DAW_VPOT_KEY_CATEGORY,
@@ -1184,7 +1184,7 @@ impl Numbering {
             T_OFF => return Ok(None),
             T_CH => FaderRef::Strip(strip(w.i)?),
             T_BUS if (1..=28).contains(&w.i) => FaderRef::Strip(strip(48 + w.i)?),
-            T_DCA if (1..=NUM_DCAS as i32).contains(&w.i) => FaderRef::Dca(w.i - 1),
+            T_DCA if (1..=WING_DCAS as i32).contains(&w.i) => FaderRef::Dca(w.i - 1),
             T_MIDI => FaderRef::midi_cc(w.dst - 1, w.i),
             T_SEND if (1..=28).contains(&w.dst) => FaderRef::Send { from: strip(w.i)?, to: strip(48 + w.dst)? },
             T_FX if (1..=WING_FX as i32).contains(&w.i) && w.dst >= 1 => FaderRef::FxParam { slot: w.i - 1, param: w.dst - 1 },
@@ -1294,7 +1294,7 @@ pub fn publish(engine: &Engine, layers: &LayerSet, custom: &CustomControls, cc_b
         })
         .collect();
     let names = FnameNames {
-        dcas: (0..NUM_DCAS).map(|i| engine.dca_name(i)).collect(),
+        dcas: (0..WING_DCAS).map(|i| engine.dca_name(i)).collect(),
         fx_params: engine
             .controls
             .fx

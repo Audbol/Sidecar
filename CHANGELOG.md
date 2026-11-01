@@ -5,7 +5,20 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+The start of the Universal Mixer (`docs/UNIVERSAL_MIXER.md`): Sidecar becomes a
+mixer core without one console's limits, on which the WING (and later other
+consoles) are emulations. Phase 1 generalizes the engine and the show model; the
+WING works as before throughout.
+
 ### Added
+
+- Universal core, Phase 1 step 1: the console's counts are a configuration
+  (`ConsoleConfig`, `Engine::configure`; the WING's by default). Up to 256 DCAs and
+  256 mute groups (the WING uses 16 and 8): strip memberships, engaged mute groups,
+  source mute groups, recall scopes, global safes and snippets hold any of them, and
+  shows store them (as before while only the first 64 are used). C ABI 25:
+  `ld::GroupMask` / `ld::GroupBits`, `ld_engine_counts`, `ld_engine_configure`,
+  `ld_engine_set_num_dcas`, `ld_engine_set_num_mute_groups`.
 
 - SETUP > GENERAL > ABOUT (and the start-up notice) links the Sidecar Discord server
   for questions, setup help and feedback: a Community section and a **DISCORD** key
