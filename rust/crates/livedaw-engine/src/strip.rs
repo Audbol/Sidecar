@@ -10,6 +10,9 @@
 //!   (post-fader) -> INS 2 -> delay -> width/pan. The TAP point is fixed after
 //!   INS 1 (pre-fader).
 //!
+//! The strip runs these as a chain of nodes (`chain.rs`: the WING's template
+//! for its kind, the process order resolved each block).
+//!
 //! Signal taps along the way feed TAP-mode sends, solo (PFL/AFL) and direct outs.
 //! Input channels shape their tap signal with TAP EQ and TAP WIDTH. The
 //! analysed strip (`analyser`) also copies its signal to the RTA and scope
@@ -17,9 +20,10 @@
 
 use crate::analyser::{listen_mode, rta_tap, Probes, StripProbe};
 use crate::atomic::AtomicF32;
+use crate::chain::{self, Node};
 use crate::fx::{FxInputs, FxRack};
 use crate::groups::GroupSet;
-use crate::keytap::{key_tap, stage_of, KeySource, StripKeyTaps, TAP_EQ_POST, TAP_INS2};
+use crate::keytap::{key_tap, stage_of, KeySource, StripKeyTaps};
 use crate::monitor::SoloPatch;
 use crate::params::{DcaParams, DynSlotParams, FxParams, StripKind, StripMeters, StripParams};
 use crate::params::{MainSendParams, MatrixSendParams, MAIN_SEND_PAGE, MAX_MAINS, MAX_MATRICES};
@@ -873,145 +877,28 @@ impl Strip {
         }
     }
 
+    /// The strip's chain (`chain.rs`): the WING's template for its kind.
+    pub fn chain(&self) -> &'static [Node] {
+        chain::template(self.kind)
+    }
+
     unsafe fn run_chain(&self, d: &mut StripDsp, ctx: &ProcessContext, n: usize) {
-        let p = &self.params;
-        let nc = d.num_channels;
-        let kind = self.kind;
-        d.tap_point = if self.has_selectable_tap() { p.tap.load(Relaxed).clamp(0, 7) as usize } else { tap::PFL };
+        d.tap_point = if self.has_selectable_tap() { self.params.tap.load(Relaxed).clamp(0, 7) as usize } else { tap::PFL };
         let probe = ctx.probes.of(self);
         let mut listened = false;
         if d.listen_state != probe.listen {
             d.listen_filter.reset(); // a new LISTEN source (faded in) starts clean
             d.listen_fresh = true;
         }
-        Self::probe_rta(d, ctx, &probe, rta_tap::IN, n);
-
-        // INPUT: trim, balance, polarity
-        let polarity = if p.input.invert.load(Relaxed) { -1.0 } else { 1.0 };
-        let trim = db_to_gain(p.input.trim_db.load()) * polarity;
-        let bal = if nc == 2 { p.input.balance_db.load() } else { 0.0 };
-        let gains = [trim * db_to_gain(-bal.max(0.0)), trim * db_to_gain(bal.min(0.0))];
-        for (ch, &gain) in gains.iter().enumerate().take(nc) {
-            apply_gain_ramp(&mut d.work[ch][..n], d.last_in[ch], gain);
-            let peak = peak_level(&d.work[ch][..n]);
-            self.meters.trim_peak[ch].fetch_max(peak);
-            self.remote_peaks.pre[ch].fetch_max(peak);
-        }
-        d.last_in = gains;
-        // The LR VECTOR SCOPE: after the INPUT block, before pan.
-        if probe.scope {
-            ctx.probes.push_scope([&d.work[0][..n], &d.work[1][..n]], nc, n);
-        }
-
-        // Aux channels delay before the fader; the others after it (below).
-        if kind == StripKind::Aux {
-            self.apply_delay(d, n);
-        }
-        self.tap_at(d, ctx, tap::IN, n);
-        Self::probe_rta(d, ctx, &probe, rta_tap::PRE_FILTER, n);
-
-        // FILTER (input channels only)
-        if kind == StripKind::Channel {
-            let settings = p.filter.snapshot();
-            if settings.is_active() {
-                let [w0, w1] = &mut d.work;
-                let mut chans: [&mut [f32]; 2] = [&mut w0[..n], &mut w1[..n]];
-                d.filter.process(&mut chans[..nc], &settings);
-            }
-        }
-        self.tap_at(d, ctx, tap::FILT, n);
-        Self::probe_rta(d, ctx, &probe, rta_tap::POST_FILTER, n);
-
-        for (pos, block) in self.pre_fader_order().iter().enumerate() {
-            match block {
-                b'G' => {
-                    if let Some((listen_mode::GATE_KEY, _)) = probe.listen {
-                        listened = self.listen_key(d, ctx, &p.gate, n);
-                    }
-                    self.run_gate(d, ctx, n)
-                }
-                b'E' => self.run_eq_probed(d, ctx, &probe, &mut listened, n),
-                b'D' => {
-                    match probe.listen {
-                        Some((listen_mode::DYN_KEY, _)) => listened = self.listen_key(d, ctx, &p.dynamics, n),
-                        Some((listen_mode::XOVER, _)) => {
-                            let c = p.dynamics.xover().coefficients(d.sample_rate);
-                            listened = Self::listen_filtered(d, c, None, n);
-                        }
-                        _ => {}
-                    }
-                    self.run_dynamics(d, ctx, n)
-                }
-                b'I' => self.run_insert(d, ctx, n, false),
-                _ => {}
-            }
-            // Tap points "3", "4", "5" sit after the 1st, 2nd and 3rd block.
-            if pos < 3 {
-                self.tap_at(d, ctx, 2 + pos, n);
-            }
-        }
-        let nc = d.num_channels; // INS 1 may have made a mono strip stereo
-
-        // PFL: pre-fader, after INS 1 (solo, direct outs, the fixed tap of aux,
-        // buses, mains and matrices, the METERS screen).
-        for ch in 0..nc {
-            d.pfl[ch][..n].copy_from_slice(&d.work[ch][..n]);
-            self.meters.pfl_peak[ch].fetch_max(peak_level(&d.pfl[ch][..n]));
-        }
-        self.tap_at(d, ctx, tap::PFL, n);
-
-        // Fader with DCAs, mute and mute groups (and Main 1's level on linked mains);
-        // the console decides over that mute (SIP, OVERRIDE, TALK ON: solo.rs).
-        let muted = self.console.apply_mute(self.is_muted(ctx.dcas, &ctx.mute_groups, ctx.dca_mute_groups));
-        d.muted = muted;
-        let mut level = p.fader_db.load() + self.dca_offset_db(ctx.dcas);
-        if kind == StripKind::Main && (1..=ctx.main_link_last).contains(&(self.id.max(0) as usize)) {
-            level += ctx.main_link_db;
-        }
-        let gain = if muted { 0.0 } else { db_to_gain(level) };
-        for ch in 0..nc {
-            apply_gain_ramp(&mut d.work[ch][..n], d.last_gain, gain);
-        }
-        d.last_gain = gain;
-        self.tap_at(d, ctx, tap::AFL, n);
-        Self::probe_rta(d, ctx, &probe, rta_tap::POST_FADER, n);
-
-        // Buses, mains and matrices: the EQ is post-fader.
-        if kind.is_output() {
-            self.run_eq_probed(d, ctx, &probe, &mut listened, n);
-            self.tap_at(d, ctx, TAP_EQ_POST, n);
-        }
-
-        // INS 2 (automix is applied by the engine after all channels ran; it
-        // follows the post-fader level, so the fader shapes the automix response).
-        if self.post_insert_fx().is_some() {
-            self.run_insert(d, ctx, n, true);
-        }
-        let nc = d.num_channels; // so may INS 2
-                                 // The INS2 key tap of aux, bus, main and matrix keys (keytap.rs).
-        if kind != StripKind::Channel {
-            self.tap_at(d, ctx, TAP_INS2, n);
-        }
-        if self.automix_group().is_some() {
-            let power: f32 = (0..nc).map(|ch| d.work[ch][..n].iter().map(|x| x * x).sum::<f32>()).sum::<f32>() / (n * nc) as f32;
-            let c = 0.7;
-            d.automix_power = c * d.automix_power + (1.0 - c) * power * db_to_gain(p.post_insert.weight.load() * 2.0);
-        }
-
-        // Post-fader delay: input channels (DELAY (POST)), buses, mains, matrices.
-        if kind != StripKind::Aux {
-            self.apply_delay(d, n);
-        }
-        for ch in 0..nc {
-            d.post[ch][..n].copy_from_slice(&d.work[ch][..n]);
-        }
-        self.tap_at(d, ctx, tap::POST, n);
-
-        // TAP EQ and TAP WIDTH on what TAP-mode sends take.
-        if kind == StripKind::Channel {
-            let [t0, t1] = &mut d.tap;
-            let mut chans: [&mut [f32]; 2] = [&mut t0[..n], &mut t1[..n]];
-            d.tap_shaper.process(&mut chans[..nc], p);
+        for &node in self.chain() {
+            let node = match node {
+                Node::Slot(k) => match self.pre_fader_order().get(k as usize).and_then(|&b| chain::order_block(b)) {
+                    Some(block) => block,
+                    None => continue,
+                },
+                other => other,
+            };
+            self.run_node(node, d, ctx, &probe, &mut listened, n);
         }
 
         // LISTEN with nothing to play (no such block on this strip): silence.
@@ -1020,6 +907,119 @@ impl Strip {
             d.listen_channels = 1;
         }
         d.listen_state = probe.listen;
+    }
+
+    /// One node of the chain. `d.num_channels` is read at each node: an
+    /// insert may make a mono strip stereo from there on.
+    unsafe fn run_node(
+        &self,
+        node: Node,
+        d: &mut StripDsp,
+        ctx: &ProcessContext,
+        probe: &StripProbe,
+        listened: &mut bool,
+        n: usize,
+    ) {
+        let p = &self.params;
+        let nc = d.num_channels;
+        match node {
+            Node::Input => {
+                // INPUT: trim, balance, polarity
+                let polarity = if p.input.invert.load(Relaxed) { -1.0 } else { 1.0 };
+                let trim = db_to_gain(p.input.trim_db.load()) * polarity;
+                let bal = if nc == 2 { p.input.balance_db.load() } else { 0.0 };
+                let gains = [trim * db_to_gain(-bal.max(0.0)), trim * db_to_gain(bal.min(0.0))];
+                for (ch, &gain) in gains.iter().enumerate().take(nc) {
+                    apply_gain_ramp(&mut d.work[ch][..n], d.last_in[ch], gain);
+                    let peak = peak_level(&d.work[ch][..n]);
+                    self.meters.trim_peak[ch].fetch_max(peak);
+                    self.remote_peaks.pre[ch].fetch_max(peak);
+                }
+                d.last_in = gains;
+                // The LR VECTOR SCOPE: after the INPUT block, before pan.
+                if probe.scope {
+                    ctx.probes.push_scope([&d.work[0][..n], &d.work[1][..n]], nc, n);
+                }
+            }
+            Node::Delay => self.apply_delay(d, n),
+            Node::Filter => {
+                let settings = p.filter.snapshot();
+                if settings.is_active() {
+                    let [w0, w1] = &mut d.work;
+                    let mut chans: [&mut [f32]; 2] = [&mut w0[..n], &mut w1[..n]];
+                    d.filter.process(&mut chans[..nc], &settings);
+                }
+            }
+            Node::Gate => {
+                if let Some((listen_mode::GATE_KEY, _)) = probe.listen {
+                    *listened = self.listen_key(d, ctx, &p.gate, n);
+                }
+                self.run_gate(d, ctx, n)
+            }
+            Node::Eq => self.run_eq_probed(d, ctx, probe, listened, n),
+            Node::Dynamics => {
+                match probe.listen {
+                    Some((listen_mode::DYN_KEY, _)) => *listened = self.listen_key(d, ctx, &p.dynamics, n),
+                    Some((listen_mode::XOVER, _)) => {
+                        let c = p.dynamics.xover().coefficients(d.sample_rate);
+                        *listened = Self::listen_filtered(d, c, None, n);
+                    }
+                    _ => {}
+                }
+                self.run_dynamics(d, ctx, n)
+            }
+            Node::PreInsert => self.run_insert(d, ctx, n, false),
+            Node::PostInsert => {
+                // INS 2 (automix is applied by the engine after all channels ran; it
+                // follows the post-fader level, so the fader shapes the automix response).
+                if self.post_insert_fx().is_some() {
+                    self.run_insert(d, ctx, n, true);
+                }
+                if self.automix_group().is_some() {
+                    let nc = d.num_channels;
+                    let power: f32 =
+                        (0..nc).map(|ch| d.work[ch][..n].iter().map(|x| x * x).sum::<f32>()).sum::<f32>() / (n * nc) as f32;
+                    let c = 0.7;
+                    d.automix_power = c * d.automix_power + (1.0 - c) * power * db_to_gain(p.post_insert.weight.load() * 2.0);
+                }
+            }
+            Node::Pfl => {
+                // PFL: pre-fader (solo, direct outs, the METERS screen).
+                for ch in 0..nc {
+                    d.pfl[ch][..n].copy_from_slice(&d.work[ch][..n]);
+                    self.meters.pfl_peak[ch].fetch_max(peak_level(&d.pfl[ch][..n]));
+                }
+            }
+            Node::Fader => {
+                // Fader with DCAs, mute and mute groups (and Main 1's level on linked mains);
+                // the console decides over that mute (SIP, OVERRIDE, TALK ON: solo.rs).
+                let muted = self.console.apply_mute(self.is_muted(ctx.dcas, &ctx.mute_groups, ctx.dca_mute_groups));
+                d.muted = muted;
+                let mut level = p.fader_db.load() + self.dca_offset_db(ctx.dcas);
+                if self.kind == StripKind::Main && (1..=ctx.main_link_last).contains(&(self.id.max(0) as usize)) {
+                    level += ctx.main_link_db;
+                }
+                let gain = if muted { 0.0 } else { db_to_gain(level) };
+                for ch in 0..nc {
+                    apply_gain_ramp(&mut d.work[ch][..n], d.last_gain, gain);
+                }
+                d.last_gain = gain;
+            }
+            Node::Post => {
+                for ch in 0..nc {
+                    d.post[ch][..n].copy_from_slice(&d.work[ch][..n]);
+                }
+            }
+            Node::TapShaper => {
+                // TAP EQ and TAP WIDTH on what TAP-mode sends take.
+                let [t0, t1] = &mut d.tap;
+                let mut chans: [&mut [f32]; 2] = [&mut t0[..n], &mut t1[..n]];
+                d.tap_shaper.process(&mut chans[..nc], p);
+            }
+            Node::Tap(point) => self.tap_at(d, ctx, point as usize, n),
+            Node::Rta(at) => Self::probe_rta(d, ctx, probe, at as usize, n),
+            Node::Slot(_) => {}
+        }
     }
 
     /// The RTA signal, if this strip is analysed at `at`.

@@ -280,6 +280,21 @@ of any size, of which the WING is one configuration.
   (`WING_DCAS`, `WING_MUTE_GROUPS`; C++ `kWingDcas`, `kWingMuteGroups`); setting the
   WING's memberships (`/ch/n/tags`) keeps the groups beyond them.
 
+## Strip chains
+
+A strip runs its processing as a chain of nodes (`livedaw-engine/src/chain.rs`,
+`Strip::run_chain`): blocks (`Input`, `Delay`, `Filter`, `Gate`, `Eq`, `Dynamics`,
+`PreInsert`, `PostInsert`, `Fader`, the `Pfl` and `Post` copies, `TapShaper`), tap
+markers (`Tap`: the TAP-mode copy and the key taps, `strip::tap` and `keytap.rs`)
+and RTA markers (`Rta`). The WING's strips are templates (`chain::template`):
+channels, aux, and buses / mains / matrices, as in the signal flow above. A
+channel's four `Slot` nodes are the GATE, EQ, DYNAMICS and INS 1 slots in its process
+order, resolved through `PROCESS_ORDERS` each block, so the 24 orders are
+permutations of one group and TAP 3 / 4 / 5 stay after the 1st / 2nd / 3rd block.
+Each node reads the strip's channel count when it runs (an insert can widen a mono
+strip). Phase 1 step 3 goes on to chains other than the templates (extra blocks, taps
+anywhere).
+
 ## Processing models
 
 `rust/crates/livedaw-dsp/src/wing/models_gen.rs` holds the WING's model tables: the 32

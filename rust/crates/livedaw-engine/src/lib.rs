@@ -6,6 +6,7 @@
 
 pub mod analyser;
 pub mod atomic;
+pub mod chain;
 pub mod config;
 pub mod denormals;
 pub mod engine;

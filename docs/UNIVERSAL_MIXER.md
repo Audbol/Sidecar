@@ -112,9 +112,19 @@ Three layers:
       sources (`$BUS`/`$MAIN`/`$MTX`), the monitor SOURCE and DIRECT IN lists and
       the talkback destinations cover its 16 buses, 4 mains and 8 matrices. The
       tap reference on a send comes with the taps (step 3).
-   3. **Block chain and taps**: a strip's processing as a chain of blocks with tap
-      markers; the WING's templates and its 24 process orders as permutations;
-      `StripParams` keeps the strip-level state; C++ and `map.rs` facades.
+   3. **Block chain and taps**, in four commits:
+      - 3a (done): a strip runs a chain of nodes (`chain.rs`: blocks, tap
+        markers, RTA markers) instead of fixed code; the WING's strips are
+        templates of it, the 24 process orders the four `Slot` nodes of the
+        channel template resolved through `PROCESS_ORDERS` each block (no
+        allocation). The WING's output is byte for byte the same (`render`
+        example, three set-ups, before and after).
+      - 3b: extra blocks (EQ, dynamics, filter, insert, delay) anywhere in a
+        strip's chain: a published chain layout per strip replaces the template.
+      - 3c: tap markers anywhere, referenced by sends, keys and the delay
+        compensation.
+      - 3d: the blocks' parameters leave `StripParams` (which keeps the
+        strip-level state); C++ and `map.rs` facades.
    4. **Show format 4**: the configuration, chains and sends; 0.1.x shows (format
       3) load through a converter.
    5. **A console that isn't a WING** in the tests (Rust and C++), and the docs.

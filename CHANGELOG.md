@@ -24,6 +24,9 @@ WING works as before throughout.
   its bus sends, instead of a fixed block of 4 and 8. Shows save a strip's sends to
   the console's mains and matrices. C ABI 26: `ld_strip_main_send`,
   `ld_strip_matrix_send` (C++ `strip.mains[i]`, `strip.matrix[i]`).
+- Universal core, Phase 1 step 3a: a strip runs its processing as a chain of
+  blocks and tap points (`chain.rs`); the WING's strips and its 24 process orders
+  are templates of that chain. The sound is unchanged (checked byte for byte).
 
 - SETUP > GENERAL > ABOUT (and the start-up notice) links the Sidecar Discord server
   for questions, setup help and feedback: a Community section and a **DISCORD** key
