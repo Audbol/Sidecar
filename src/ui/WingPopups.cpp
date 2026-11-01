@@ -1974,6 +1974,9 @@ namespace
             const int keyW = juce::roundToInt (cap * 9.0f);
             okKey = keys.removeFromRight (keyW);
             keys.removeFromRight (juce::roundToInt (cap));
+            linkKey = options.linkText.isEmpty() ? juce::Rectangle<int>() : keys.removeFromLeft (juce::roundToInt (cap * 11.0f));
+            if (! linkKey.isEmpty())
+                keys.removeFromLeft (juce::roundToInt (cap));
             checkKey = options.checkText.isEmpty() ? juce::Rectangle<int>()
                                                    : keys.removeFromRight (juce::jmin (keys.getWidth(), juce::roundToInt (cap * 30.0f)));
             const int side = juce::roundToInt (cap * 1.6f);
@@ -2020,6 +2023,13 @@ namespace
                 g.setFont (wingFontPx (cap * 0.95f));
                 g.drawFittedText (options.checkText, k, juce::Justification::centredLeft, 2, 0.8f);
             }
+            if (! linkKey.isEmpty())
+            {
+                paintKey (g, linkKey.toFloat(), pressed == 3 ? Colours::screenKey.brighter (0.15f) : Colours::screenKey, juce::Colours::black);
+                g.setColour (Colours::text);
+                g.setFont (wingFontPx (cap * 1.05f, WingWeight::SemiBold));
+                g.drawFittedText (options.linkText, linkKey.reduced (juce::roundToInt (cap * 0.5f), 0), juce::Justification::centred, 1, 0.8f);
+            }
             paintKey (g, okKey.toFloat(), pressed == 2 ? Colours::gold.brighter (0.15f) : Colours::gold, juce::Colours::black);
             g.setColour (juce::Colours::black);
             g.setFont (wingFontPx (cap * 1.05f, WingWeight::SemiBold));
@@ -2029,7 +2039,7 @@ namespace
         void mouseDown (const juce::MouseEvent& e) override
         {
             const auto p = e.getPosition();
-            pressed = okKey.contains (p) ? 2 : (checkKey.contains (p) ? 1 : 0);
+            pressed = okKey.contains (p) ? 2 : (checkKey.contains (p) ? 1 : (linkKey.contains (p) ? 3 : 0));
             repaint();
         }
 
@@ -2040,6 +2050,8 @@ namespace
             pressed = 0;
             if (was == 1 && checkKey.contains (p))
                 checked = ! checked;
+            if (was == 3 && linkKey.contains (p))
+                options.linkUrl.launchInDefaultBrowser();
             repaint();
             if (was == 2 && okKey.contains (p))
                 closeThen ({});
@@ -2094,7 +2106,7 @@ namespace
         juce::Viewport viewport;
         bool checked;
         float cap = 12.0f;
-        juce::Rectangle<int> window, titleBar, panel, okKey, checkKey;
+        juce::Rectangle<int> window, titleBar, panel, okKey, checkKey, linkKey;
         int pressed = 0;
     };
 } // namespace

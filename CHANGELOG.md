@@ -5,6 +5,12 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+### Added
+
+- SETUP > GENERAL > ABOUT (and the start-up notice) links the Sidecar Discord server
+  for questions, setup help and feedback: a Community section and a **DISCORD** key
+  that opens the invite in the browser.
+
 ### Fixed
 
 - Measured against a WING COMPACT (firmware 3.1.1) with `tools/wing/audio_compare`:

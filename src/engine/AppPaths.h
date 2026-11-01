@@ -8,6 +8,9 @@ namespace livedaw
 /** The app's name as the user sees it. */
 inline constexpr const char* kAppName = "Sidecar";
 
+/** The Sidecar Discord server (an invite that doesn't expire): questions, help and feedback. */
+inline constexpr const char* kDiscordUrl = "https://discord.gg/TEE8q979x";
+
 /** The app's folders. The app was called "Live DAW" before; an existing
     folder under the old name keeps being used (projects refer to their
     audio by path, so it isn't moved). */
