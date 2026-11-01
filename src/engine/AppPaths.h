@@ -45,8 +45,12 @@ namespace paths
     /** <app data>/Sidecar (settings, logs, safe-mode state). */
     inline juce::File appData()
     {
-        return chooseFolder (firstKnown ({ juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory),
-                                           juce::File::getSpecialLocation (juce::File::windowsLocalAppData) }),
+#if JUCE_WINDOWS
+        const auto local = juce::File::getSpecialLocation (juce::File::windowsLocalAppData);
+#else
+        const juce::File local; // windowsLocalAppData is Windows-only in JUCE
+#endif
+        return chooseFolder (firstKnown ({ juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory), local }),
                              kAppName, "LiveDAW");
     }
 

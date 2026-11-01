@@ -128,6 +128,27 @@ namespace dawfiles
         });
     }
 
+    void importFolderWithChooser (juce::Component* parent, daw::Session& session, std::unique_ptr<juce::FileChooser>& chooser)
+    {
+        chooser = std::make_unique<juce::FileChooser> ("Import a folder (an X32 / WING SD card session: its folder of numbered WAVs)",
+                                                       juce::File::getSpecialLocation (juce::File::userMusicDirectory));
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+                              [parent, &session] (const juce::FileChooser& fc)
+        {
+            const auto folder = fc.getResult();
+            if (folder == juce::File())
+                return;
+            const auto files = daw::filesToImport (session.getFormats(), { folder });
+            if (files.isEmpty())
+            {
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Import a folder",
+                                                        "No audio files in " + folder.getFullPathName() + ".", "OK", parent);
+                return;
+            }
+            importAudio (parent, session, files, session.selectedTrack, session.getPosition());
+        });
+    }
+
     void exportTracks (juce::Component* parent, daw::Session& session, AudioFileFormat format)
     {
         auto result = session.ensureFolder();
@@ -211,6 +232,7 @@ namespace dawfiles
         m.addItem ("Show the project folder", session.getProject().hasFolder(), false, [&session] { session.getProject().getFolder().revealToUser(); });
         m.addSeparator();
         m.addItem ("Import audio...   (Ctrl+I)", [parent, &session, &chooser] { importWithChooser (parent, session, chooser); });
+        m.addItem ("Import a folder (X32 / WING SD card session)...", [parent, &session, &chooser] { importFolderWithChooser (parent, session, chooser); });
         juce::PopupMenu imports;
         for (const auto mode : { daw::Session::ImportMode::Copy, daw::Session::ImportMode::KeepInPlace, daw::Session::ImportMode::Ask })
             imports.addItem (importModeName (mode), true, session.getImportMode() == mode, [&session, mode] { session.setImportMode (mode); });
@@ -806,11 +828,7 @@ void DawEditor::filesDropped (const juce::StringArray& files, int x, int y)
 {
     // Dropped outside the lanes (headers, top bar): new tracks at the playhead.
     juce::ignoreUnused (x, y);
-    juce::Array<juce::File> list;
-    for (auto& f : files)
-        if (daw::canImport (session.getFormats(), juce::File (f)))
-            list.add (juce::File (f));
-    importAudio (getTopLevelComponent(), session, list, 0, session.getPosition());
+    importAudio (getTopLevelComponent(), session, droppedFiles (session, files), 0, session.getPosition());
 }
 
 bool DawEditor::keyPressed (const juce::KeyPress& key)

@@ -787,11 +787,17 @@ void Session::importFiles (const juce::Array<juce::File>& files, int64 trackId, 
     runJob ("IMPORT", [this, files, folder, rate, keep, trackId, position, token] (const std::atomic<bool>& stop, std::atomic<float>& progress)
     {
         std::vector<ImportResult> results;
-        for (int i = 0; i < files.size() && ! stop.load(); ++i)
-            results.push_back (importOrReference (formats, files[i], folder, rate, keep, stop, [&progress, i, n = files.size()] (float p)
-            {
-                progress = ((float) i + p) / (float) n;
-            }));
+        const auto groups = groupImports (formats, files);
+        for (size_t i = 0; i < groups.size() && ! stop.load(); ++i)
+        {
+            auto onProgress = [&progress, i, n = groups.size()] (float p) { progress = ((float) i + p) / (float) n; };
+            const auto& g = groups[i];
+            if (g.multichannel)
+                for (auto& r : importMultichannel (formats, g.files, g.name, folder, rate, stop, onProgress))
+                    results.push_back (std::move (r));
+            else
+                results.push_back (importOrReference (formats, g.files[0], folder, rate, keep, stop, onProgress));
+        }
 
         juce::MessageManager::callAsync ([this, token, results, keep, trackId, position]
         {
@@ -799,7 +805,7 @@ void Session::importFiles (const juce::Array<juce::File>& files, int64 trackId, 
                 return;
             project.beginEdit ("Import audio");
             int index = project.indexOfTrack (trackId);
-            int placed = 0, referenced = 0;
+            int placed = 0, referenced = 0, sources = 0;
             for (auto& r : results)
             {
                 if (r.result.failed())
@@ -834,15 +840,19 @@ void Session::importFiles (const juce::Array<juce::File>& files, int64 trackId, 
                 if (placed == 0)
                     selectedTrack = track.id;
                 ++placed;
+                if (r.channel <= 1)
+                    ++sources;
                 if (r.referenced)
                     ++referenced;
                 ++index;
             }
             if (placed > 0)
             {
-                juce::String text = "Imported " + juce::String (placed) + (placed == 1 ? " file" : " files");
+                juce::String text = "Imported " + juce::String (sources) + (sources == 1 ? " file" : " files");
+                if (placed != sources)
+                    text << " on " << placed << " tracks";
                 if (keep)
-                    text << " (" << referenced << " kept in place, " << (placed - referenced) << " copied into the project)";
+                    text << " (" << referenced << " kept in place, " << (sources - referenced) << " copied into the project)";
                 message (text);
             }
         });
