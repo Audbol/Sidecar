@@ -20,6 +20,13 @@ All notable changes to Sidecar are listed here. Versions follow
   share a port now moves to a free AES50 B / C port (a stereo pair to a free pair) with
   its name, colour, icon, gain and mode, and every patch to it (channel, ALT, outputs)
   follows; the import log lists each move.
+- Windows: when Windows couldn't resolve the Documents folder (redirected to a
+  network share or to OneDrive and not there), Sidecar put its folders at the root
+  of the drive (`C:\Sidecar\Recordings`), which a standard user can't create, and
+  recording failed with "Couldn't create ...". The default is now the `Documents`
+  folder in the user's folder (or app data), and a project that can't be created
+  says to choose another folder in FILE > Projects folder
+  ([#12](https://github.com/Audbol/Live-Daw/issues/12)).
 
 ## [0.1.6] - beta
 
