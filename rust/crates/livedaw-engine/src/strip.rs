@@ -976,7 +976,7 @@ impl Strip {
             self.run_insert(d, ctx, n, true);
         }
         let nc = d.num_channels; // so may INS 2
-        // The INS2 key tap of aux, bus, main and matrix keys (keytap.rs).
+                                 // The INS2 key tap of aux, bus, main and matrix keys (keytap.rs).
         if kind != StripKind::Channel {
             self.tap_at(d, ctx, TAP_INS2, n);
         }

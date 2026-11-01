@@ -1518,7 +1518,15 @@ impl WingDynamics {
     /// With `band` the compressors return their reduction for the crossover band
     /// instead of applying it.
     #[inline]
-    fn tick(&mut self, cfg: &Config, key: f32, x: [f32; 2], stereo: bool, band: bool, st: &mut DynStatus) -> (Option<f32>, [f32; 2]) {
+    fn tick(
+        &mut self,
+        cfg: &Config,
+        key: f32,
+        x: [f32; 2],
+        stereo: bool,
+        band: bool,
+        st: &mut DynStatus,
+    ) -> (Option<f32>, [f32; 2]) {
         match *cfg {
             Config::Gate(g) | Config::Duck(g) => {
                 let duck = matches!(cfg, Config::Duck(_));
