@@ -162,7 +162,7 @@ const CHORUS_MAX_SWEEP_MS: f32 = 8.0;
 /// Each channel has its own delay line (DELAY L/R, 5-50 ms) swept by a shared
 /// LFO (SPEED) whose WAVE morphs from sine (0) to triangle (100), as the
 /// manual describes it; the right sweep is PHASE degrees behind the left. DEPTH L/R sets the sweep as a share of the
-/// channel's delay (100 % = +-40 %, at most +-8 ms). SPREAD narrows the wet
+/// channel's delay (100 % = +-50 %, measured on a WING; at most +-8 ms). SPREAD narrows the wet
 /// signal from full L/R separation (100 %) to mono (0 %). LO/HI CUT filter
 /// the wet signal; MIX is the device's own dry/wet balance.
 pub(super) struct Chorus {
@@ -218,7 +218,7 @@ impl FxAlgo for Chorus {
         for (ch, (dly, dep)) in [("dlyl", "depl"), ("dlyr", "depr")].into_iter().enumerate() {
             let d = p.f(dly);
             self.base[ch].target = ms(d, sr);
-            self.depth[ch].target = ms((p.f(dep) * 0.01 * 0.4 * d).min(CHORUS_MAX_SWEEP_MS), sr);
+            self.depth[ch].target = ms((p.f(dep) * 0.01 * 0.5 * d).min(CHORUS_MAX_SWEEP_MS), sr);
         }
         self.tri.target = p.f("wave") * 0.01;
         self.offset.target = p.f("phase") / 360.0;

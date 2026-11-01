@@ -36,7 +36,8 @@ const MODE_X: usize = 1;
 /// the two loops independent; X (cross) feeds the left loop back into the
 /// right delay and vice versa, so a source panned to one side ping-pongs;
 /// M (mono) sums both loops (their average, so FEED keeps its meaning) and
-/// feeds that back to both delays. FEED is the level of each repeat,
+/// feeds that back to both delays. FEED sets the level of each repeat on a
+/// square law (measured on a WING: 40 % gives repeats 16 dB apart, 0.40^2),
 /// through FEED LCUT / HCUT and a loop limiter (100 % holds the repeats
 /// without running away). Time changes crossfade to the new position; mode
 /// changes switch under a short fade.
@@ -82,7 +83,7 @@ impl FxAlgo for StereoDelay {
         let tap = |t_ms: f32| (ms(t_ms, sr).round() as usize).saturating_sub(1).min(max);
         self.taps[0].set(tap(base * pl));
         self.taps[1].set(tap(base * pr + p.f("offs")));
-        self.fb.target = p.f("feed") * 0.01;
+        self.fb.target = (p.f("feed") * 0.01).powi(2);
         self.fcut.set(p.f("flc"), p.f("fhc"));
         self.cut.set(p.f("lc"), p.f("hc"));
         self.next_mode = p.choice("mode").min(2);
@@ -168,7 +169,7 @@ mod tests {
     /// peak of each output around 1, 2 and 3 x 100 ms.
     fn left_impulse_repeats(mode: f32) -> [(f32, f32); 3] {
         let settings =
-            [("lc", 20.0), ("hc", 20_000.0), ("flc", 20.0), ("fhc", 20_000.0), ("mode", mode), ("time", 100.0), ("feed", 50.0)];
+            [("lc", 20.0), ("hc", 20_000.0), ("flc", 20.0), ("fhc", 20_000.0), ("mode", mode), ("time", 100.0), ("feed", 71.0)];
         let (mut dev, v) = device("ST-DL", &settings);
         let (l, r) = impulse_lr(&mut dev, &v, 0.5, 1.0, 0.0);
         let t = (0.1 * SR) as usize;

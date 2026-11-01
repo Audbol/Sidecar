@@ -215,6 +215,7 @@ fn context(token: &str, id: &str) -> &'static [(&'static str, f32)] {
         ("CHAMBER", "ecl" | "ecr") => &[("ell", 0.0), ("elr", 0.0)],
         ("UKROCK" | "ANGEL" | "DELUXE", "sag") => &[("gain", 9.0), ("vol", 9.0), ("mstr", 9.0)],
         ("CHORUS", "sprd") => &[("phase", 0.0)],
+        ("ST-DL", "mode") => &[("feed", 71.0)],
         ("DIMCRS", "in") => &[],
         ("PITCH", "cent") => &[("semi", 0.0)],
         ("D-PITCH", "cent1" | "cent2") => &[],
@@ -564,7 +565,8 @@ fn delay_times_are_exact() {
 
 #[test]
 fn feedback_sets_the_repeats() {
-    // Each repeat is FEED times the last (ST-DL, through open loop filters),
+    // Each repeat is FEED^2 times the last (ST-DL, through open loop filters;
+    // the square law measured on a WING),
     // SUSTAIN / FEED lengthen the tape, oil can and BBD repeats, and TAP-DL's
     // SLOPE tilts its taps by SLOPE dB from first to last.
     let mut rig = Rig::new(
@@ -574,7 +576,7 @@ fn feedback_sets_the_repeats() {
     let (l, _) = rig.run(&impulse(secs(1.0)), &impulse(secs(1.0)));
     let e = echoes(&l, 3);
     let ratio = l[e[1]].abs() / l[e[0]].abs();
-    assert!((ratio - 0.5).abs() < 0.08, "ST-DL FEED 50 %: second echo {ratio} of the first");
+    assert!((ratio - 0.25).abs() < 0.04, "ST-DL FEED 50 %: second echo {ratio} of the first");
     for (token, id, time, lo, hi) in [
         ("TAPE-DL", "sust", ("time", 200.0), 10.0, 70.0),
         ("OILCAN", "sust", ("time", 3.0), 1.0, 7.0),

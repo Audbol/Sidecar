@@ -42,6 +42,25 @@ All notable changes to Sidecar are listed here. Versions follow
   under the port it asked replies on, not once per request. Its own changes are no
   longer pushed back to it when they arrive from a different port.
 
+### Fixed
+
+- Measured against a WING COMPACT (firmware 3.1.1) with `tools/wing/audio_compare`:
+  - An FX inserted on a mono channel stays stereo after the insert, each side at the
+    mono pan law, as on the WING (a plate came out summed to mono, the chorus lost
+    its stereo sweep).
+  - The compressor models work on the crossover band in DYN XOVER LO / HI: they key
+    from the band and reduce only the band, which DEPTH doesn't limit. Before, the
+    crossover was ignored and the whole signal was compressed.
+  - The dynamics' GAIN applies to the processed signal ahead of MIX: COMP 4:1 at MIX
+    50 % and GAIN +6 dB gains +3.5 dB below the threshold, as on the WING (it gained
+    +6 dB).
+  - The dynamics models that sense peaks (SOUL BUS, 76 LIMITER AMP and the other
+    non-RMS ones) hold the peak for 5 ms instead of releasing in every trough of a
+    tone: SOUL BUS reaches 63 % of a 40 dB step in 10.7 ms (WING 9.3 ms, before 19.3).
+  - STEREO DELAY's FEED follows a square law: 40 % gives repeats 16 dB apart (0.40²),
+    as on the WING; before, they were 8 dB apart.
+  - STEREO CHORUS's DEPTH at 100 % sweeps +-50 % of the delay (it swept +-40 %).
+
 ## [0.1.6] - beta
 
 The fourth round of matching Sidecar to a real WING, cross-checked against WING Edit

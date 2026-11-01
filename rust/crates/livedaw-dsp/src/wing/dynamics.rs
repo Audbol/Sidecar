@@ -163,6 +163,11 @@ const WING_COMP_DELAY_MS: f32 = 0.25;
 const WING_GATE_DELAY_MS: f32 = 0.1;
 /// Decay of the WING's peak detector (ms).
 const WING_PEAK_DECAY_MS: f32 = 0.5;
+/// Decay of the other peak-sensing models' detector (ms): long enough to
+/// bridge a tone's troughs. Measured on a WING: SOUL BUS reaches 63 % of a
+/// 40 dB step in 9.3 ms, as with a 5 ms peak detector (an instantaneous one
+/// releases in every trough and takes twice as long).
+const MODEL_PEAK_DECAY_MS: f32 = 5.0;
 /// How long the ETERNAL BLISS's detector holds a peak before its release runs.
 const BLISS_PEAK_HOLD_MS: f32 = 10.0;
 /// Averaging of the COMP's RMS detector (ms): KNEE-free 2:1 and 10:1 lag a
@@ -1054,7 +1059,7 @@ struct CompState {
     /// Reduction when the release began (anti-log release).
     rel_from: f32,
     /// WING envelope: samples since the last attack, the slow start of an
-    /// AUTO release and the peak detector.
+    /// AUTO release and the peak detector (also the other peak-sensing models').
     since: u32,
     onset: f32,
     wing_peak: f32,
@@ -1082,6 +1087,7 @@ struct Coefs {
     rms: f32,
     wing_rms: f32,
     wing_peak: f32,
+    model_peak: f32,
     gate_peak: f32,
     accent: f32,
     tilt: f32,
@@ -1106,6 +1112,7 @@ impl Coefs {
             rms: coef(10.0, sr),
             wing_rms: coef(WING_RMS_MS, sr),
             wing_peak: coef(WING_PEAK_DECAY_MS, sr),
+            model_peak: coef(MODEL_PEAK_DECAY_MS, sr),
             gate_peak: coef(5.0, sr),
             accent: coef(30.0, sr),
             // One-pole low pass at 1 kHz: its complement is the detector's HF emphasis.
@@ -1137,8 +1144,10 @@ pub struct WingDynamics {
     key_line: [f32; KEY_LINE],
     key_pos: usize,
     sc_settings: Option<SidechainSettings>,
-    // Crossover band filter (per channel) and its settings
+    // Crossover band filter (per channel), the same band on the key (the
+    // compressors' detector) and their settings
     xo: Biquad,
+    xo_key: Biquad,
     xo_settings: Option<XoverSettings>,
     // De-esser / dynamic EQ helpers
     /// Per band: detection, processing and (12 dB shelves, the 902's HF
@@ -1177,6 +1186,7 @@ impl Default for WingDynamics {
             key_pos: 0,
             sc_settings: None,
             xo: Biquad::default(),
+            xo_key: Biquad::default(),
             xo_settings: None,
             aux_filters: Default::default(),
             aux_env: [0.0; 4],
@@ -1336,6 +1346,7 @@ impl WingDynamics {
         }
         if self.xo_settings != Some(*xo) {
             self.xo.set_coefficients(xo.coefficients(self.sr as f64));
+            self.xo_key.set_coefficients(xo.coefficients(self.sr as f64));
             self.xo_settings = Some(*xo);
         }
     }
@@ -1393,7 +1404,7 @@ impl WingDynamics {
     /// Processes `chans` (1 or 2 channels) in place, the slot ON.
     ///
     /// * `key` - external key signal (another channel), or None for the input itself;
-    /// * `mix` - 0..1 wet/dry, `makeup_db` - gain after the processor.
+    /// * `mix` - 0..1 wet/dry, `makeup_db` - gain of the processed signal, ahead of the mix.
     #[allow(clippy::too_many_arguments)]
     pub fn process(
         &mut self,
@@ -1441,7 +1452,11 @@ impl WingDynamics {
             self.primed = true;
         }
         let use_xo = xo.kind != 0;
-        let depth = if xo.depth.abs() > 0.0 { xo.depth.abs() } else { f32::INFINITY };
+        // The compressors work on the crossover band too: they key from the band
+        // and return their reduction for it. Measured on a WING: COMP in LO / HI
+        // leaves the other band untouched, and DEPTH doesn't limit it there.
+        let band = use_xo && matches!(cfg, Config::Comp(_) | Config::Dual(..) | Config::Combo(..));
+        let depth = if xo.depth.abs() > 0.0 && !(band && xo.kind <= 2) { xo.depth.abs() } else { f32::INFINITY };
         let (kp, fade) = (self.k.param, self.k.fade_step);
         let target_wet = if on { 1.0 } else { 0.0 };
         let mut status = DynStatus::default();
@@ -1456,8 +1471,9 @@ impl WingDynamics {
                 None => l,
             };
             let key_sample = self.sc.tick(key_raw, 0);
+            let key_sample = if band { self.xo_key.tick(key_sample, 0) } else { key_sample };
 
-            let (gain_db, outs) = self.tick(&cfg, key_sample, [l, r], stereo, &mut status);
+            let (gain_db, outs) = self.tick(&cfg, key_sample, [l, r], stereo, band, &mut status);
             let (mut yl, mut yr) = (outs[0], outs[1]);
             if let Some(g) = gain_db {
                 let g = if use_xo { g.clamp(-depth, depth) } else { g };
@@ -1477,13 +1493,14 @@ impl WingDynamics {
             self.mix_s = kp * self.mix_s + (1.0 - kp) * mix;
             self.makeup_s = kp * self.makeup_s + (1.0 - kp) * makeup;
             self.wet = step_toward(self.wet, target_wet, fade);
+            // GAIN belongs to the processed signal, ahead of MIX. Measured on a
+            // WING: COMP 4:1, MIX 50 %, GAIN +6 dB gains +3.5 dB below threshold.
             let wet = self.wet * self.mix_s;
-            let gain = 1.0 + self.wet * (self.makeup_s - 1.0);
-            let ol = (l + wet * (yl - l)) * gain;
+            let ol = l + wet * (yl * self.makeup_s - l);
             chans[0][i] = ol;
             status.out_peak = status.out_peak.max(ol.abs());
             if stereo {
-                let or = (r + wet * (yr - r)) * gain;
+                let or = r + wet * (yr * self.makeup_s - r);
                 chans[1][i] = or;
                 status.out_peak = status.out_peak.max(or.abs());
             }
@@ -1498,8 +1515,18 @@ impl WingDynamics {
     }
 
     /// One sample: returns the gain to apply (dB) and/or already processed samples.
+    /// With `band` the compressors return their reduction for the crossover band
+    /// instead of applying it.
     #[inline]
-    fn tick(&mut self, cfg: &Config, key: f32, x: [f32; 2], stereo: bool, st: &mut DynStatus) -> (Option<f32>, [f32; 2]) {
+    fn tick(
+        &mut self,
+        cfg: &Config,
+        key: f32,
+        x: [f32; 2],
+        stereo: bool,
+        band: bool,
+        st: &mut DynStatus,
+    ) -> (Option<f32>, [f32; 2]) {
         match *cfg {
             Config::Gate(g) | Config::Duck(g) => {
                 let duck = matches!(cfg, Config::Duck(_));
@@ -1512,26 +1539,27 @@ impl WingDynamics {
             }
             Config::Comp(c) => {
                 let key = self.delay_key(key, c.wing.map_or(0, |w| w.delay));
-                let (y, gr, lvl) = self.comp_tick(&c, 0, key, x, 1.0);
+                let (y, gr, lvl) = self.comp_tick(&c, 0, key, x, 1.0, band);
                 st.report(gr, lvl);
-                (None, y)
+                (band.then_some(gr), y)
             }
             Config::Dual(a, b) => {
                 // The second stage (the limiter) keys from the first one's output;
                 // the meter shows both reductions together.
-                let (y, gr_a, lvl) = self.comp_tick(&a, 0, key, x, 1.0);
-                let k2 = if stereo { y[0].abs().max(y[1].abs()) } else { y[0] };
-                let (y, gr_b, _) = self.comp_tick(&b, 1, k2, y, 1.0);
+                let (y, gr_a, lvl) = self.comp_tick(&a, 0, key, x, 1.0, band);
+                let reduced = if band { db_to_gain(gr_a) } else { 1.0 };
+                let k2 = if stereo { y[0].abs().max(y[1].abs()) } else { y[0] } * reduced;
+                let (y, gr_b, _) = self.comp_tick(&b, 1, k2, y, 1.0, band);
                 st.report(gr_a + gr_b, lvl);
-                (None, y)
+                (band.then_some(gr_a + gr_b), y)
             }
             Config::Combo(g, c) => {
                 let (gain, lvl) = self.gate_tick(&g, key, false);
                 let gl = db_to_gain(gain);
-                let y = [x[0] * gl, x[1] * gl];
-                let (y, gr, _) = self.comp_tick(&c, 0, key * gl, y, 1.0);
+                let y = if band { x } else { [x[0] * gl, x[1] * gl] };
+                let (y, gr, _) = self.comp_tick(&c, 0, key * gl, y, 1.0, band);
                 st.report(gain.min(0.0) + gr, lvl);
-                (None, y)
+                (band.then_some(gain.min(0.0) + gr), y)
             }
             Config::DeEss { range, full_band, .. } => {
                 st.key_db = st.key_db.max(gain_to_db(key.abs()));
@@ -1663,7 +1691,7 @@ impl WingDynamics {
                 } else {
                     1.0
                 };
-                let (y, gr, lvl) = self.comp_tick(&comp, 0, key * tg, [x[0] * tg, x[1] * tg], scale);
+                let (y, gr, lvl) = self.comp_tick(&comp, 0, key * tg, [x[0] * tg, x[1] * tg], scale, false);
                 st.report(gr, lvl);
                 (None, y)
             }
@@ -1836,8 +1864,10 @@ impl WingDynamics {
     /// `gr_scale` scales the stage's reduction (the LMT transient shaper).
     #[inline]
     /// Returns the samples, the stage's whole reduction in dB (<= 0) and the
-    /// detector level on the input scale (dB).
-    fn comp_tick(&mut self, c: &CompCfg, idx: usize, key: f32, x: [f32; 2], gr_scale: f32) -> ([f32; 2], f32, f32) {
+    /// detector level on the input scale (dB). With `band` the reduction is
+    /// left to the caller (the crossover band): the samples carry only the
+    /// stage's colouration and output level.
+    fn comp_tick(&mut self, c: &CompCfg, idx: usize, key: f32, x: [f32; 2], gr_scale: f32, band: bool) -> ([f32; 2], f32, f32) {
         if !c.enabled {
             return (x, 0.0, MINUS_INF);
         }
@@ -1861,11 +1891,10 @@ impl WingDynamics {
             let kr = if c.wing.is_some() { k.wing_rms } else { k.rms };
             s.ms = kr * s.ms + (1.0 - kr) * det * det;
             10.0 * (s.ms + 1e-12).log10()
-        } else if c.wing.is_some() {
-            s.wing_peak = det.abs().max(s.wing_peak * k.wing_peak);
-            gain_to_db(s.wing_peak + 1e-9)
         } else {
-            gain_to_db(det.abs() + 1e-9)
+            let decay = if c.wing.is_some() { k.wing_peak } else { k.model_peak };
+            s.wing_peak = det.abs().max(s.wing_peak * decay);
+            gain_to_db(s.wing_peak + 1e-9)
         };
         // The level dot: what the detector sees, on the input scale (a feedback
         // detector sees the output, so its dot uses the input's peak).
@@ -1953,23 +1982,29 @@ impl WingDynamics {
 
         // The input gain only drives the detector and the colouration; the level
         // after the stage is set by `post_db` (models with input/output knobs).
-        let g = db_to_gain(gr + post);
+        let g = db_to_gain(if band { post } else { gr + post });
         let y_l = if c.colour > 0.0 { colour(x[0] * pre, c.colour) / pre } else { x[0] };
         let y_r = if c.colour > 0.0 { colour(x[1] * pre, c.colour) / pre } else { x[1] };
         let mut y = [y_l * g, y_r * g];
 
+        // In band mode the samples haven't had the reduction yet: the limiter
+        // hears them as reduced, and its reduction joins the band's.
+        let reduced = if band { db_to_gain(gr) } else { 1.0 };
         let mut total = gr;
         if let Some((lthr, lrel)) = c.limiter {
-            let peak = y[0].abs().max(y[1].abs());
+            let peak = y[0].abs().max(y[1].abs()) * reduced;
             let over = (gain_to_db(peak + 1e-9) - lthr).max(0.0);
             let t = -over;
             s.lim_gr = if t < s.lim_gr { t } else { lrel * s.lim_gr + (1.0 - lrel) * t };
-            let lg = db_to_gain(s.lim_gr);
-            y = [y[0] * lg, y[1] * lg];
+            if !band {
+                let lg = db_to_gain(s.lim_gr);
+                y = [y[0] * lg, y[1] * lg];
+            }
             total += s.lim_gr;
         }
 
-        s.last_out = y[0].abs().max(y[1].abs());
+        let applied = if band { db_to_gain(total.min(0.0)) } else { 1.0 };
+        s.last_out = y[0].abs().max(y[1].abs()) * applied;
         (y, total.min(0.0), shown)
     }
 
@@ -2206,7 +2241,8 @@ mod tests {
         let orig = buf.clone();
         d.process(&mut [&mut buf[..]], None, m, &v, &SidechainSettings::default(), &XoverSettings::default(), 0.5, 6.0);
         let g = buf[1000] / orig[1000];
-        assert!((g - db_to_gain(6.0)).abs() < 0.01);
+        // GAIN is on the processed half only (as a WING: +3.5 dB, not +6).
+        assert!((g - (0.5 + 0.5 * db_to_gain(6.0))).abs() < 0.01, "{g}");
     }
 
     #[test]
@@ -2844,16 +2880,16 @@ mod tests {
         // Steady sine: the crest-driven scale stays near 1.
         for i in 0..48000 {
             let x = (i as f32 * 0.05).sin() * 0.3;
-            d.comp_tick(&c, 0, x, [x, x], 1.0);
+            d.comp_tick(&c, 0, x, [x, x], 1.0, false);
         }
         let s = d.comp[0];
         let crest = 10.0 * ((s.peak * s.peak) / s.power).log10();
         assert!((crest - 3.0).abs() < 0.5, "sine crest {crest}");
         // A click after silence reads as a large crest factor.
         for _ in 0..48000 {
-            d.comp_tick(&c, 0, 0.0, [0.0; 2], 1.0);
+            d.comp_tick(&c, 0, 0.0, [0.0; 2], 1.0, false);
         }
-        d.comp_tick(&c, 0, 0.9, [0.9; 2], 1.0);
+        d.comp_tick(&c, 0, 0.9, [0.9; 2], 1.0, false);
         let s = d.comp[0];
         assert!(10.0 * ((s.peak * s.peak) / s.power).log10() > 20.0);
     }
