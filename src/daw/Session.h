@@ -219,6 +219,8 @@ public:
 
     /** Imports files as clips at `position`, the first on `trackId` (0: a new
         track) and each further one on the next track (added as needed).
+        A multichannel recording (an X32 X-LIVE or WING-LIVE take, its parts
+        joined: see groupImports) is split into a mono track per channel.
         `keepInPlace` overrides the IMPORT setting (ASK EACH TIME without it
         copies). */
     void importFiles (const juce::Array<juce::File>&, int64 trackId, int64 position, std::optional<bool> keepInPlace = std::nullopt);

@@ -10,6 +10,12 @@ All notable changes to Sidecar are listed here. Versions follow
 - SETUP > GENERAL > ABOUT (and the start-up notice) links the Sidecar Discord server
   for questions, setup help and feedback: a Community section and a **DISCORD** key
   that opens the invite in the browser.
+- The multitrack editor imports multichannel WAVs, such as the takes an X32 (X-LIVE
+  card) or a WING (WING-LIVE card) records to its SD cards: each channel becomes a
+  mono track. A take the card split into 00000001.WAV, 00000002.WAV, ... is joined
+  back into one clip per track, named after its session folder. Drop the session
+  folder on the editor, choose it with FILE > Import a folder, or pick its WAVs with
+  FILE > Import audio. Before, only the first two channels were imported.
 
 ### Fixed
 

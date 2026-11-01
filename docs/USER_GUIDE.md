@@ -724,9 +724,22 @@ a WING with a WING-LIVE card, and edits them in a DAW-style editor.
       at the project's rate with one or two channels. Any other file still gets a
       converted copy, and the event log says why for each one ("pad: resampled copy:
       44.1 kHz file in a 48 kHz project"; MP3 and other compressed files get a
-      decoded copy, files with more than two channels a copy of the first two).
+      decoded copy).
     - **ASK EACH TIME**: every import asks KEEP IN PLACE or COPY TO PROJECT;
       *Remember my choice* makes that the setting.
+
+    **Multichannel recordings** (more than two channels, such as an X32's X-LIVE or
+    a WING's WING-LIVE SD card takes) are split into a mono track per channel,
+    "<name> 1", "<name> 2", ..., with either setting (the mono files go into the
+    project's Audio folder, at the project's rate). The cards split a long take into
+    numbered parts (`00000001.WAV`, `00000002.WAV`, ... in the take's session
+    folder): parts with consecutive numbers are joined back into one clip per track,
+    named after the folder. Drop the session folder on the editor, choose it with
+    **FILE > Import a folder (X32 / WING SD card session)**, or select its WAVs in
+    FILE > Import audio. A recording spread over two cards has a session folder on
+    each: import one, then the other. The import first checks that the
+    project's drive has room for the copies (32-bit float: an hour of 32 channels at
+    48 kHz is about 22 GB).
 
     A referenced file keeps its full path in the project, so Save As to another
     folder keeps it playing. If it goes missing (a drive unplugged, a file moved),
