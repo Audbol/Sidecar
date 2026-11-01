@@ -34,7 +34,41 @@ struct ImportResult
     juce::String name;      // the source's name
     bool referenced = false;   // the clip plays the source where it is (KEEP IN PLACE)
     juce::String copyReason;   // KEEP IN PLACE fell back to a copy: why ("resampled copy: ...")
+    int channel = 0;           // a channel (1, 2, ...) of a multichannel recording split into mono files
 };
+
+/** What a drop or a chosen folder imports: a folder gives the audio files in
+    it (not its subfolders) in name order, so an X32 X-LIVE or WING-LIVE
+    session folder gives its 00000001.WAV, 00000002.WAV, ...; other files stay
+    as they are, unless the formats can't read them. */
+juce::Array<juce::File> filesToImport (juce::AudioFormatManager& formats, const juce::Array<juce::File>&);
+
+/** One import: a file, or a multichannel recording in one or more parts. */
+struct ImportGroup
+{
+    juce::Array<juce::File> files;   // the parts, in playing order
+    bool multichannel = false;       // more than two channels: importMultichannel()
+    juce::String name;               // the tracks' name ("<name> 1", ...)
+};
+
+/** Groups the files of an import. A file with more than two channels is a
+    multichannel recording; consoles that record to SD cards (X32 X-LIVE,
+    WING-LIVE) split a take at 4 GB into 00000001.WAV, 00000002.WAV, ... in
+    its session folder, so files there with consecutive numbers, the same
+    channels and rate are parts of one recording, named after the folder. Any
+    other file is an import of its own (order kept; the parts of a recording
+    in number order, where its first one was). Opens every file's header. */
+std::vector<ImportGroup> groupImports (juce::AudioFormatManager& formats, const juce::Array<juce::File>&);
+
+/** Imports a multichannel recording (`parts` one after another) as a mono
+    32-bit float WAV per channel at `sampleRate` in `folder`: a result per
+    channel ("<name> 1", "<name> 2", ...), or a single failed one. The first
+    result's copyReason says what happened ("32-channel recording split into
+    mono files, 3 parts joined"). Fails before writing when the drive hasn't
+    room for the copies. Any thread; `cancel` stops it, `progress` gets 0..1. */
+std::vector<ImportResult> importMultichannel (juce::AudioFormatManager& formats, const juce::Array<juce::File>& parts, const juce::String& name,
+                                              const juce::File& folder, double sampleRate, const std::atomic<bool>& cancel,
+                                              std::function<void (float)> progress = {});
 
 /** "44.1", "48", "88.2" (kHz, for messages). */
 juce::String khzText (double sampleRate);
@@ -62,7 +96,7 @@ juce::Result copyFile (const juce::File& source, const juce::File& dest, const s
 
 /** Converts an audio file to a 32-bit float WAV at `sampleRate` in `folder`
     (resampled with a windowed sinc; more than two channels keep the first
-    two). Runs on any thread (`formats` is only read); `cancel` stops it,
+    two, importMultichannel() keeps them all). Runs on any thread (`formats` is only read); `cancel` stops it,
     `progress` gets 0..1. */
 ImportResult importAudioFile (juce::AudioFormatManager& formats, const juce::File& source, const juce::File& folder, double sampleRate,
                               const std::atomic<bool>& cancel, std::function<void (float)> progress = {});

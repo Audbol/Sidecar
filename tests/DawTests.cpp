@@ -39,6 +39,40 @@ juce::File writeSine (const juce::File& file, double rate, double seconds, int c
     return file;
 }
 
+/** Channel `ch` at frame `t` of a console take (counted across its parts): a
+    sawtooth whose level tells the channels apart. */
+float consoleSample (int ch, int64 t)
+{
+    return (float) (ch + 1) / 64.0f * (float) ((t % 1000) - 500) / 500.0f;
+}
+
+/** A WAV as the consoles' SD card recorders (X32 X-LIVE, WING-LIVE) write it:
+    32-bit integer PCM, the channels interleaved, `frames` of consoleSample()
+    from frame `from` of the take. */
+juce::File writeConsoleWav (const juce::File& file, int channels, double rate, int64 from, int frames)
+{
+    file.getParentDirectory().createDirectory();
+    juce::MemoryOutputStream out;
+    const int dataBytes = frames * channels * 4;
+    out.write ("RIFF", 4);
+    out.writeInt (36 + dataBytes);
+    out.write ("WAVEfmt ", 8);
+    out.writeInt (16);
+    out.writeShort (1); // WAVE_FORMAT_PCM
+    out.writeShort ((short) channels);
+    out.writeInt ((int) rate);
+    out.writeInt ((int) rate * channels * 4);
+    out.writeShort ((short) (channels * 4));
+    out.writeShort (32);
+    out.write ("data", 4);
+    out.writeInt (dataBytes);
+    for (int i = 0; i < frames; ++i)
+        for (int ch = 0; ch < channels; ++ch)
+            out.writeInt ((int) std::lround ((double) consoleSample (ch, from + i) * 2147483647.0));
+    file.replaceWithData (out.getData(), out.getDataSize());
+    return file;
+}
+
 ClipData makeClip (int64 start, int64 length, int64 fileOffset = 0, int64 fileLength = 1000000)
 {
     ClipData c;
@@ -67,6 +101,7 @@ public:
         testTakes();
         testImportAndRender();
         testKeepInPlace();
+        testConsoleRecordings();
         testFormats();
         testSessionSetups();
         testPlayModesAndAutoInput();
@@ -695,6 +730,119 @@ private:
             expectWithinAbsoluteError (o.getMagnitude (0, 24000, 12000), 0.25f, 0.01f);
             expect (o.getMagnitude (0, 12000, 2000) < 0.05f); // the fade starts at zero
             expectEquals (o.getMagnitude (0, 36000, 12000), 0.0f);
+        }
+    }
+
+    void testConsoleRecordings()
+    {
+        beginTest ("IMPORT: an X32 / WING SD card take (multichannel, in parts) splits into a mono file per channel");
+        {
+            TempFolder temp;
+            juce::AudioFormatManager formats;
+            formats.registerBasicFormats();
+            std::atomic<bool> cancel { false };
+            constexpr int kChannels = 32, kPart = 30000, kLast = 12000;
+            const auto take = temp.folder.getChildFile ("X_LIVE/4B2A1C3D");
+            writeConsoleWav (take.getChildFile ("00000002.WAV"), kChannels, 48000.0, kPart, kLast);
+            writeConsoleWav (take.getChildFile ("00000001.WAV"), kChannels, 48000.0, 0, kPart);
+            take.getChildFile ("SE_LOG.BIN").replaceWithText ("log");
+            take.getChildFile ("._00000001.WAV").replaceWithText ("a Mac's metadata");
+
+            // The folder gives its WAVs in order; in any order they are one take, named after the folder.
+            const auto files = filesToImport (formats, { take });
+            expectEquals (files.size(), 2);
+            expectEquals (files[0].getFileName(), juce::String ("00000001.WAV"));
+            const auto groups = groupImports (formats, { files[1], files[0] });
+            expectEquals ((int) groups.size(), 1);
+            expect (groups[0].multichannel);
+            expectEquals (groups[0].name, juce::String ("4B2A1C3D"));
+            expect (groups[0].files[0] == files[0] && groups[0].files[1] == files[1]);
+
+            // A mono file per channel, the parts joined sample for sample.
+            const auto audio = temp.folder.getChildFile ("Audio");
+            const auto results = importMultichannel (formats, groups[0].files, groups[0].name, audio, 48000.0, cancel);
+            expectEquals ((int) results.size(), kChannels);
+            expect (results[0].result.wasOk(), results[0].result.getErrorMessage());
+            expectEquals (results[0].copyReason, juce::String ("32-channel recording split into mono files, 2 parts joined"));
+            expectEquals (audio.getNumberOfChildFiles (juce::File::findFiles), kChannels);
+            for (const int ch : { 0, 7, 31 })
+            {
+                const auto& r = results[(size_t) ch];
+                expectEquals (r.name, "4B2A1C3D " + juce::String (ch + 1));
+                expectEquals (r.channel, ch + 1);
+                expectEquals (r.numChannels, 1);
+                expectEquals (r.length, (int64) (kPart + kLast));
+                std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (r.file));
+                expect (reader != nullptr && reader->numChannels == 1 && reader->lengthInSamples == kPart + kLast);
+                if (reader == nullptr)
+                    continue;
+                juce::AudioBuffer<float> b (1, kPart + kLast);
+                reader->read (&b, 0, kPart + kLast, 0, true, false);
+                float worst = 0.0f;
+                for (int i = 0; i < kPart + kLast; ++i)
+                    worst = std::max (worst, std::abs (b.getSample (0, i) - consoleSample (ch, i)));
+                expect (worst < 1.0e-6f, "channel " + juce::String (ch + 1) + " is off by " + juce::String (worst));
+            }
+
+            // A 44.1 kHz take in a 48 kHz project is resampled.
+            const auto slow = writeConsoleWav (temp.folder.getChildFile ("CARD/5C000001/00000001.WAV"), 8, 44100.0, 0, 44100);
+            const auto resampled = importMultichannel (formats, { slow }, "5C000001", audio, 48000.0, cancel);
+            expectEquals ((int) resampled.size(), 8);
+            expectEquals (resampled[7].length, (int64) 48000);
+            expectEquals (resampled[0].copyReason, juce::String ("8-channel recording split into mono files, resampled from 44.1 kHz"));
+
+            // A missing part makes two takes; a stereo file stays an import of its own.
+            const auto fourth = writeConsoleWav (take.getChildFile ("00000004.WAV"), kChannels, 48000.0, 0, 1000);
+            const auto stereo = writeSine (temp.folder.getChildFile ("mix.wav"), 48000.0, 0.1, 2);
+            const auto split = groupImports (formats, { stereo, fourth, files[0], files[1] });
+            expectEquals ((int) split.size(), 3);
+            expect (! split[0].multichannel);
+            expectEquals (split[1].name, juce::String ("4B2A1C3D-1"));
+            expectEquals (split[1].files.size(), 2);
+            expectEquals (split[2].name, juce::String ("4B2A1C3D-4"));
+
+            // Cancelled: nothing is left behind.
+            std::atomic<bool> stop { true };
+            const auto cancelled = temp.folder.getChildFile ("Cancelled");
+            expect (importMultichannel (formats, groups[0].files, "x", cancelled, 48000.0, stop)[0].result.failed());
+            expectEquals (cancelled.getNumberOfChildFiles (juce::File::findFiles), 0);
+        }
+
+        beginTest ("IMPORT: a console take lands on a mono track per channel, also with KEEP IN PLACE");
+        {
+            TempFolder temp;
+            MixerEngine engine (0);
+            engine.prepareOffline (48000.0, 128, 2, 2);
+            Session session (engine.getRecorder(), nullptr);
+            session.setDefaultFolder (temp.folder.getChildFile ("Projects"));
+            juce::StringArray messages;
+            session.onMessage = [&messages] (const juce::String& m, bool) { messages.add (m); };
+            const auto take = temp.folder.getChildFile ("4B2A1C3D");
+            writeConsoleWav (take.getChildFile ("00000001.WAV"), 8, 48000.0, 0, 4800);
+            writeConsoleWav (take.getChildFile ("00000002.WAV"), 8, 48000.0, 4800, 4800);
+            session.importFiles (filesToImport (session.getFormats(), { take }), 0, 0, true);
+            for (int i = 0; i < 2000 && session.isBusy(); ++i)
+                test::pumpMessages (5);
+            test::pumpMessages (5);
+
+            auto& p = session.getProject();
+            expectEquals (p.getNumTracks(), 8);
+            for (int i = 0; i < p.getNumTracks(); ++i)
+            {
+                const auto t = p.getTrackData (i);
+                expectEquals (t.name, "4B2A1C3D " + juce::String (i + 1));
+                expect (! t.stereo);
+                const auto clips = p.getClips (t.id);
+                expectEquals ((int) clips.size(), 1);
+                if (clips.empty())
+                    continue;
+                expectEquals (clips[0].length, (int64) 9600);
+                expectEquals (clips[0].numChannels, 1);
+                expect (p.resolve (clips[0].file).isAChildOf (p.getAudioFolder()));
+            }
+            const auto log = messages.joinIntoString ("\n");
+            expect (log.contains ("8-channel recording split into mono files, 2 parts joined"), log);
+            expect (log.contains ("Imported 1 file on 8 tracks (0 kept in place, 1 copied into the project)"), log);
         }
     }
 

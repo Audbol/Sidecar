@@ -23,6 +23,8 @@ namespace dawfiles
     void saveAs (juce::Component* parent, daw::Session&);
     /** IMPORT...: audio files at the playhead on the selected track. */
     void importWithChooser (juce::Component* parent, daw::Session&, std::unique_ptr<juce::FileChooser>&);
+    /** IMPORT A FOLDER...: the audio files in a folder (an X32 / WING SD card session). */
+    void importFolderWithChooser (juce::Component* parent, daw::Session&, std::unique_ptr<juce::FileChooser>&);
     /** EXPORT: every track consolidated to a WAV in the project's Export folder. */
     void exportTracks (juce::Component* parent, daw::Session&);
     /** The FILE menu (new, open, recent, save, save as, import, export). */

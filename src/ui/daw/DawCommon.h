@@ -289,6 +289,10 @@ void askForText (juce::Component* parent, const juce::String& title, const juce:
     IMPORT setting). */
 void importAudio (juce::Component* parent, daw::Session&, const juce::Array<juce::File>&, daw::int64 trackId, daw::int64 position);
 
+/** What dropped paths import: the audio files, and those in dropped folders
+    (an X32 / WING SD card session folder; see daw::filesToImport). */
+juce::Array<juce::File> droppedFiles (daw::Session&, const juce::StringArray& paths);
+
 /** "COPY TO PROJECT", "KEEP IN PLACE", "ASK EACH TIME". */
 juce::String importModeName (daw::Session::ImportMode);
 

@@ -223,7 +223,8 @@ void importAudio (juce::Component* parent, daw::Session& session, const juce::Ar
     auto* w = new juce::AlertWindow ("IMPORT AUDIO",
                                      "Import " + what + ":\n\n"
                                          "KEEP IN PLACE: the clips play the files where they are, nothing is copied (a file at another "
-                                         "sample rate, with more than two channels or in a compressed format still gets a converted copy).\n\n"
+                                         "sample rate or in a compressed format still gets a converted copy, and a multichannel recording "
+                                         "is split into a mono file per channel).\n\n"
                                          "COPY TO PROJECT: every file is converted into the project's Audio folder (" + audio + ").",
                                      juce::MessageBoxIconType::QuestionIcon, parent);
     auto remember = std::make_shared<juce::ToggleButton> ("Remember my choice (FILE > Import)");
@@ -241,6 +242,14 @@ void importAudio (juce::Component* parent, daw::Session& session, const juce::Ar
             session.setImportMode (keep ? Mode::KeepInPlace : Mode::Copy);
         session.importFiles (files, trackId, position, keep);
     }), true);
+}
+
+juce::Array<juce::File> droppedFiles (daw::Session& session, const juce::StringArray& paths)
+{
+    juce::Array<juce::File> items;
+    for (const auto& p : paths)
+        items.add (juce::File (p));
+    return daw::filesToImport (session.getFormats(), items);
 }
 
 //==============================================================================

@@ -1161,10 +1161,7 @@ void DawLanes::laneMenu (int row, int64 at)
 //==============================================================================
 bool DawLanes::isInterestedInFileDrag (const juce::StringArray& files)
 {
-    for (auto& f : files)
-        if (daw::canImport (state.session.getFormats(), juce::File (f)))
-            return true;
-    return false;
+    return ! droppedFiles (state.session, files).isEmpty();
 }
 
 void DawLanes::fileDragEnter (const juce::StringArray& files, int x, int y) { fileDragMove (files, x, y); }
@@ -1191,13 +1188,9 @@ void DawLanes::filesDropped (const juce::StringArray& files, int x, int y)
 {
     dropRow = -2;
     repaint();
-    juce::Array<juce::File> list;
-    for (auto& f : files)
-        if (daw::canImport (state.session.getFormats(), juce::File (f)))
-            list.add (juce::File (f));
     const int row = state.rowAt (y);
     const auto at = snapPosition (state.sampleAt ((float) x), false, false);
-    importAudio (getTopLevelComponent(), state.session, list, row >= 0 ? state.rows[(size_t) row].id : 0, at);
+    importAudio (getTopLevelComponent(), state.session, droppedFiles (state.session, files), row >= 0 ? state.rows[(size_t) row].id : 0, at);
 }
 
 } // namespace livedaw::ui
