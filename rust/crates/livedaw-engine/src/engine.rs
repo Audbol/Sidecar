@@ -1875,7 +1875,7 @@ unsafe fn pre_gains(src: &Strip, pan: Option<f32>) -> [f32; 2] {
     match pan {
         None => d.pan_gains(),
         Some(p) => {
-            let (l, r) = if d.channels() == 1 { wing_mono_pan(p) } else { stereo_balance(p) };
+            let (l, r) = if d.mono_source() { wing_mono_pan(p) } else { stereo_balance(p) };
             [l, r]
         }
     }

@@ -142,6 +142,8 @@ pub(crate) struct StripDsp {
     sample_rate: f64,
     max_block: usize,
     num_channels: usize,
+    /// A mono strip made stereo by an insert in this block (see `run_insert`).
+    widened: bool,
     input_connected: bool,
     idle: bool,
     work: [Vec<f32>; 2],
@@ -191,6 +193,7 @@ impl StripDsp {
             sample_rate: 48000.0,
             max_block: 0,
             num_channels: 1,
+            widened: false,
             input_connected: true,
             idle: false,
             work: [Vec::new(), Vec::new()],
@@ -711,6 +714,7 @@ impl Strip {
             }
         };
         d.num_channels = if stereo { 2 } else { 1 };
+        d.widened = false;
         if d.num_channels == 2 && right < 0 && left >= 0 {
             right = left + 1; // stereo without an explicit right input: next channel
         }
@@ -748,6 +752,7 @@ impl Strip {
     pub(crate) unsafe fn begin_summed_block(&self, n: usize) {
         let d = self.dsp_mut();
         d.num_channels = 2;
+        d.widened = false;
         self.meters.current_width.store(2, Relaxed);
         for ch in 0..2 {
             d.work[ch][..n].fill(0.0);
@@ -833,10 +838,11 @@ impl Strip {
 
     fn copy_tap(d: &mut StripDsp, point: usize, n: usize) {
         if d.tap_point == point {
+            // A mono tap fills both sides: an insert after it may make the strip stereo.
             let nc = d.num_channels;
             let (work, tap) = (&d.work, &mut d.tap);
-            for ch in 0..nc {
-                tap[ch][..n].copy_from_slice(&work[ch][..n]);
+            for (ch, t) in tap.iter_mut().enumerate() {
+                t[..n].copy_from_slice(&work[ch.min(nc - 1)][..n]);
             }
         }
     }
@@ -932,6 +938,7 @@ impl Strip {
                 self.tap_at(d, ctx, 2 + pos, n);
             }
         }
+        let nc = d.num_channels; // INS 1 may have made a mono strip stereo
 
         // PFL: pre-fader, after INS 1 (solo, direct outs, the fixed tap of aux,
         // buses, mains and matrices, the METERS screen).
@@ -968,6 +975,7 @@ impl Strip {
         if self.post_insert_fx().is_some() {
             self.run_insert(d, ctx, n, true);
         }
+        let nc = d.num_channels; // so may INS 2
         // The INS2 key tap of aux, bus, main and matrix keys (keytap.rs).
         if kind != StripKind::Channel {
             self.tap_at(d, ctx, TAP_INS2, n);
@@ -1188,12 +1196,21 @@ impl Strip {
         if slot < 0 {
             return;
         }
-        let nc = d.num_channels;
+        // A mono strip feeds both of the FX's inputs and carries its stereo
+        // output from here on, each side at the mono pan law. Measured on a
+        // WING: a plate inserted on a mono channel comes out decorrelated
+        // (L/R correlation 0.02), at the level of one side panned centre.
+        if d.num_channels == 1 {
+            let [w0, w1] = &mut d.work;
+            w1[..n].copy_from_slice(&w0[..n]);
+            d.num_channels = 2;
+            d.widened = true;
+        }
         let [w0, w1] = &mut d.work;
         let mut chans: [&mut [f32]; 2] = [&mut w0[..n], &mut w1[..n]];
         // An outboard insert's RETURN reads the block's processed sources.
         let inputs = FxInputs { hw: ctx.hw_inputs, playback: ctx.playback };
-        rack.process(&mut chans[..nc], d.sample_rate, fxp, &inputs, ctx.block);
+        rack.process(&mut chans, d.sample_rate, fxp, &inputs, ctx.block);
     }
 
     fn run_output_stage(&self, d: &mut StripDsp, n: usize) {
@@ -1201,10 +1218,14 @@ impl Strip {
         let nc = d.num_channels;
         let pan = p.pan.load() / 100.0;
 
-        let target = if nc == 1 {
+        let target = if nc == 1 || d.widened {
             let (l, r) = wing_mono_pan(pan);
             d.pan_gains = [l, r];
-            [l, 0.0, r, 0.0]
+            if nc == 1 {
+                [l, 0.0, r, 0.0]
+            } else {
+                [l, 0.0, 0.0, r]
+            }
         } else {
             let (gl, gr) = stereo_balance(pan);
             d.pan_gains = [gl, gr];
@@ -1293,6 +1314,11 @@ impl StripDsp {
     #[inline]
     pub(crate) fn channels(&self) -> usize {
         self.num_channels
+    }
+    /// A mono source (pans with the mono pan law), also when an insert made it stereo.
+    #[inline]
+    pub(crate) fn mono_source(&self) -> bool {
+        self.num_channels == 1 || self.widened
     }
     #[inline]
     pub(crate) fn idle(&self) -> bool {
