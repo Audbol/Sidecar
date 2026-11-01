@@ -319,7 +319,7 @@ public:
             test::setChannels (engine, 2);
             auto& ch1 = *engine.getChannels()[0];
             ch1.params.faderDb = -6.0f;
-            ch1.params.mains[0].on = false;
+            ch1.mains[0].on = false;
             rig.setInput (0, 0.25f);
 
             const auto pre = DirectOut { StripKind::Channel, 1, 0, false }, post = DirectOut { StripKind::Channel, 1, 0, true };

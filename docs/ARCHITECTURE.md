@@ -254,8 +254,17 @@ of any size, of which the WING is one configuration.
   `ConsoleConfig::wing()` is the WING's (40 / 8 / 16 / 4 / 8 / 16 / 8 / 16).
   `Engine::configure` makes the engine a fresh console of a configuration (a reset
   that builds its counts; `reset` keeps the configuration); `Engine::counts` says
-  what it has now (channels and buses can be added beyond the configuration). Mains
-  stay at most 4 and matrices at most 8 until their sends are general (Phase 1, step 2).
+  what it has now (channels and buses can be added beyond the configuration).
+- Sends (`sends.rs`): a strip's sends to buses, mains and matrices are paged banks
+  (`Bank<T>`) by the destination's index: `sends` (by bus slot, up to `MAX_BUSES`),
+  `mains` and `matrices` (up to `MAX_MAINS` / `MAX_MATRICES`, 256). Pages are added
+  by the message thread and freed with the strip, so the audio thread reads them
+  lock-free (`find`; no page = no send). Each send holds its own gain ramp, owned by
+  the task that sums its destination. The engine creates a new strip's sends to the
+  console's mains and matrices (`Strip::create_sends`), with the factory settings
+  (`BankItem::factory`: channels and aux feed Main 1, a WING's buses 9-16 too). C++
+  reaches them as `strip.mains[i]` / `strip.matrix[i]` (`ld_strip_main_send`,
+  `ld_strip_matrix_send`, ABI 26).
 - DCAs and mute groups: the engine holds 256 of each (`MAX_DCAS`,
   `MAX_MUTE_GROUPS`) and the console uses the first `num_dcas` / `num_mute_groups`
   (`set_num_dcas`, `set_num_mute_groups`: never below a group in use, so a hidden
@@ -309,7 +318,7 @@ views after a show load changes the console from Rust.
   engine controls are `#[repr(C)]` blocks of atomics owned by Rust. C++ sees the same
   memory as `std::atomic<float/bool/int32_t>` structs, and the UI writes them directly
   with no FFI call. Both sides describe the layout; `ld::verifyLayout()` compares the
-  two at startup and in the tests (ABI version 25), and the app refuses to run if they
+  two at startup and in the tests (ABI version 26), and the app refuses to run if they
   differ.
 - **FX meters (ABI 23).** A device reports its screen's live values with
   `FxAlgo::readouts` (48 floats laid out per device, documented in each device's

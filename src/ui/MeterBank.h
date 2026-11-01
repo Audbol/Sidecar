@@ -19,13 +19,13 @@ namespace livedaw::ui
     5-12 MTX 1-8, 13 the phones, 14 the selected channel. */
 namespace mainmeter
 {
-    constexpr int kSpeakers = 0, kFirstMain = 1, kFirstMatrix = kFirstMain + kNumMains, kPhones = kFirstMatrix + kNumMatrices,
+    constexpr int kSpeakers = 0, kFirstMain = 1, kFirstMatrix = kFirstMain + kWingMains, kPhones = kFirstMatrix + kWingMatrices,
                   kSelectedChannel = kPhones + 1, kNumSources = kSelectedChannel + 1;
 
     /** The setting at position `i` of the WING's list. */
     constexpr int settingAt (int i) noexcept
     {
-        return i < kNumMains + kNumMatrices ? i + 1 : i == kNumMains + kNumMatrices ? kPhones : i == kNumMains + kNumMatrices + 1 ? kSpeakers : kSelectedChannel;
+        return i < kWingMains + kWingMatrices ? i + 1 : i == kWingMains + kWingMatrices ? kPhones : i == kWingMains + kWingMatrices + 1 ? kSpeakers : kSelectedChannel;
     }
     /** The position of setting `s` in the WING's list. */
     constexpr int listIndex (int s) noexcept

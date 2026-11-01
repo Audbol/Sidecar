@@ -143,9 +143,9 @@ impl FadeParam {
             FadeParam::Width(s) => Some(&s.params.width),
             FadeParam::SendLevel(s, slot) => s.sends.find(*slot).map(|p| &p.level_db),
             FadeParam::SendPan(s, slot) => s.sends.find(*slot).map(|p| &p.pan),
-            FadeParam::MainLevel(s, i) => s.params.mains.get(*i).map(|m| &m.level_db),
-            FadeParam::MatrixLevel(s, i) => s.params.matrix.get(*i).map(|m| &m.level_db),
-            FadeParam::MatrixPan(s, i) => s.params.matrix.get(*i).map(|m| &m.pan),
+            FadeParam::MainLevel(s, i) => s.main_send(*i).map(|m| &m.level_db),
+            FadeParam::MatrixLevel(s, i) => s.matrix_send(*i).map(|m| &m.level_db),
+            FadeParam::MatrixPan(s, i) => s.matrix_send(*i).map(|m| &m.pan),
             FadeParam::Dca(i) => engine.controls.dcas.get(*i).map(|d| &d.fader_db),
         }
     }
@@ -364,7 +364,8 @@ fn contains(only: Option<&[StripRef]>, r: &StripRef) -> bool {
 
 // ---- capture --------------------------------------------------------------------------
 
-fn capture_strip(s: &Strip, sections: u32, slots: &[usize]) -> Element {
+/// `mains`, `matrices`: the console's (the strip's sends to each are saved).
+fn capture_strip(s: &Strip, sections: u32, slots: &[usize], mains: usize, matrices: usize) -> Element {
     use section::*;
     let p = &s.params;
     let kind = s.kind();
@@ -439,7 +440,7 @@ fn capture_strip(s: &Strip, sections: u32, slots: &[usize]) -> Element {
     if sections & SENDS != 0 {
         if kind != StripKind::Matrix {
             let m = e.add_new("Mtx");
-            for (i, ms) in p.matrix.iter().enumerate() {
+            for (i, ms) in (0..matrices).filter_map(|i| Some((i, s.matrix_send(i)?))) {
                 let x = m.add_new("S");
                 x.set("i", i);
                 put_b(x, "on", &ms.on);
@@ -453,7 +454,7 @@ fn capture_strip(s: &Strip, sections: u32, slots: &[usize]) -> Element {
         }
         if !matches!(kind, StripKind::Main | StripKind::Matrix) {
             let m = e.add_new("Mains");
-            for (i, ms) in p.mains.iter().enumerate() {
+            for (i, ms) in (0..mains).filter_map(|i| Some((i, s.main_send(i)?))) {
                 let x = m.add_new("S");
                 x.set("i", i);
                 put_b(x, "on", &ms.on);
@@ -625,7 +626,7 @@ fn apply_legacy_direct_input(engine: &Engine, mtx: &Strip, d: &Element, warnings
         warnings.push(format!("MTX {mtx_number}: the direct input from CH {number} was dropped (no such channel)"));
         return;
     };
-    let Some(ms) = channel.params.matrix.get(mtx.id().max(0) as usize) else { return };
+    let Some(ms) = channel.matrix_send(mtx.id().max(0) as usize) else { return };
     if ms.on.load(Relaxed) {
         warnings.push(format!("MTX {mtx_number}: the direct input from CH {number} was dropped (its matrix send is in use)"));
         return;
@@ -948,12 +949,13 @@ pub(crate) fn apply_fx_slot(
 pub fn capture(engine: &Engine, sections: u32, only: Option<&[StripRef]>, bridge: &mut dyn PluginBridge) -> Element {
     let index = StripIndex::new(engine);
     let slots = index.bus_slots();
+    let (mains, matrices) = (engine.num_strips(StripKind::Main), engine.num_strips(StripKind::Matrix));
     let mut state = Element::new("State");
     state.set("version", CONSOLE_VERSION).set("sections", sections);
 
     for s in &index.strips {
         if contains(only, &StripRef::of(s)) {
-            state.add(capture_strip(s, sections, &slots));
+            state.add(capture_strip(s, sections, &slots, mains, matrices));
         }
     }
     if only.is_none() {
@@ -1068,7 +1070,7 @@ fn apply_strip(
         if let Some(m) = e.child("Mtx") {
             for x in m.children_named("S") {
                 let Ok(i) = usize::try_from(x.int_or("i", -1)) else { continue };
-                let Some(ms) = p.matrix.get(i) else { continue };
+                let Some(ms) = s.matrices.get_or_create(i) else { continue };
                 get_b(x, "on", &ms.on);
                 get_b(x, "pre", &ms.pre);
                 get_ignore_mute(x, &ms.ignore_mute, ms.pre.load(Relaxed));
@@ -1080,7 +1082,7 @@ fn apply_strip(
         if let Some(m) = e.child("Mains") {
             for x in m.children_named("S") {
                 let Ok(i) = usize::try_from(x.int_or("i", -1)) else { continue };
-                let Some(ms) = p.mains.get(i) else { continue };
+                let Some(ms) = s.mains.get_or_create(i) else { continue };
                 get_b(x, "on", &ms.on);
                 get_b(x, "pre", &ms.pre);
                 get_fadable(x, "lvl", FadeParam::MainLevel(s.clone(), i), engine, fades);
@@ -1263,6 +1265,7 @@ const LISTS: [(StripKind, &str); 5] = [
 pub fn save_console(engine: &Engine, bridge: &mut dyn PluginBridge) -> Element {
     let index = StripIndex::new(engine);
     let slots = index.bus_slots();
+    let (mains, matrices) = (engine.num_strips(StripKind::Main), engine.num_strips(StripKind::Matrix));
     let mut console = Element::new("Console");
     console.set("version", CONSOLE_VERSION);
     put_b(&mut console, "outputProtection", &engine.controls.output_protection);
@@ -1280,7 +1283,7 @@ pub fn save_console(engine: &Engine, bridge: &mut dyn PluginBridge) -> Element {
     for (kind, tag) in LISTS {
         let list = console.add_new(tag);
         for s in index.strips.iter().filter(|s| s.kind() == kind) {
-            let mut e = capture_strip(s, section::ALL, &slots);
+            let mut e = capture_strip(s, section::ALL, &slots, mains, matrices);
             e.set("id", s.id()).set_bool("recallSafe", s.params.recall_safe.load(Relaxed));
             list.add(e);
         }

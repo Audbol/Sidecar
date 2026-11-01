@@ -37,7 +37,7 @@ public:
             p.processOrder = 7;
             p.recallSafe = true;
             p.dcaMask.store (GroupBits::mask (0b101u));
-            p.mains[2].on = true;
+            kick->mains[2].on = true;
             kick->sends[0].enabled = true;
             kick->sends[0].levelDb = -3.0f;
             kick->sends[(size_t) extraBus->getId()].enabled = true;
@@ -78,7 +78,7 @@ public:
             expectEquals (r->params.processOrder.load(), 7);
             expect (r->params.recallSafe.load());
             expectEquals ((int) r->params.dcaMask.load().low(), 0b101);
-            expect (r->params.mains[2].on.load());
+            expect (r->mains[2].on.load());
             expect (r->sends[0].enabled.load());
             expectEquals (r->sends[0].levelDb.load(), -3.0f);
             expect (r->sends[(size_t) extraBus->getId()].enabled.load());
@@ -358,7 +358,7 @@ public:
             expectEquals ((int) engine.getChannels().size(), 19);
             expectEquals ((int) engine.getBuses().size(), 16);
             expectEquals (engine.getBuses()[0]->getName(), juce::String ("Aux 1"));
-            expect (! engine.getBuses()[0]->params.mains[0].on.load(), "an aux stays off the main");
+            expect (! engine.getBuses()[0]->mains[0].on.load(), "an aux stays off the main");
             expectEquals (engine.getChannels()[0]->getName(), juce::String ("Ch 1"));
             expectEquals (engine.getMain().getColourIndex(), 9);
 
@@ -501,9 +501,9 @@ public:
             auto& ch = *engine.getChannels()[0];
             ch.sends[2].ignoreMute = true;
             ch.sends[2].panReversed = true;
-            ch.params.matrix[1].ignoreMute = true;
-            ch.params.matrix[3].panLink = false;
-            ch.params.matrix[4].panReversed = true;
+            ch.matrix[1].ignoreMute = true;
+            ch.matrix[3].panLink = false;
+            ch.matrix[4].panReversed = true;
             engine.getDca (2).icon = 112;
             engine.getDca (2).led = true; // off by default, as on the WING
             engine.setSoloAfl (StripKind::Main, false);
@@ -519,9 +519,9 @@ public:
             expect (loaded.loadFromXml (*xml).wasOk());
             auto& c2 = *e2.getChannels()[0];
             expect (c2.sends[2].ignoreMute.load() && c2.sends[2].panReversed.load());
-            expect (c2.params.matrix[1].ignoreMute.load() && ! c2.params.matrix[0].ignoreMute.load());
-            expect (! c2.params.matrix[3].panLink.load() && c2.params.matrix[0].panLink.load());
-            expect (c2.params.matrix[4].panLink.load() && c2.params.matrix[4].panReversed.load());
+            expect (c2.matrix[1].ignoreMute.load() && ! c2.matrix[0].ignoreMute.load());
+            expect (! c2.matrix[3].panLink.load() && c2.matrix[0].panLink.load());
+            expect (c2.matrix[4].panLink.load() && c2.matrix[4].panReversed.load());
             expectEquals ((int) e2.getDca (2).icon.load(), 112);
             expect (e2.getDca (2).led.load() && ! e2.getDca (0).led.load());
             expect (! e2.isSoloAfl (StripKind::Main) && e2.isSoloAfl (StripKind::Bus));

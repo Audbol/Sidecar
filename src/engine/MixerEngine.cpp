@@ -381,7 +381,7 @@ void MixerEngine::talkKey (int path, bool down) noexcept
 juce::String MixerEngine::monitorSourceName (int index)
 {
     struct Group { const char* name; int count; };
-    const Group groups[] = { { "MAIN", kNumMains }, { "MTX", kNumMatrices }, { "BUS", kWingBuses }, { "AUX", kNumAux } };
+    const Group groups[] = { { "MAIN", kWingMains }, { "MTX", kWingMatrices }, { "BUS", kWingBuses }, { "AUX", kWingAux } };
     for (auto& g : groups)
     {
         if (juce::isPositiveAndBelow (index, g.count))

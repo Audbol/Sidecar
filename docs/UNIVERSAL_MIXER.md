@@ -49,8 +49,8 @@ WING-specific today, to generalize:
 
 - Fixed counts in `livedaw-engine/src/params.rs`: `NUM_MAINS` 4, `NUM_MATRICES` 8,
   `NUM_AUX` 8, `NUM_DCAS` 16, `NUM_MUTE_GROUPS` 8, `NUM_FX` 16 (and `WING_CHANNELS`,
-  `WING_BUSES` as defaults). (Since Phase 1 step 1: the aux, bus, DCA, mute group
-  and FX counts are configured; mains and matrices follow in step 2.)
+  `WING_BUSES` as defaults). (Since Phase 1 steps 1 and 2 every count is
+  configured; the `WING_*` constants are the WING's values.)
 - A fixed strip layout: `StripParams` is input, filter, gate, EQ, dynamics, two
   inserts, with the WING's 24 process orders and fixed tap points (`TAP_POINTS`,
   `keytap.rs`); aux, bus, main and matrix strips each have their own fixed chain.
@@ -101,10 +101,17 @@ Three layers:
       `AtomicGroupSet`; C++ `ld::GroupBits`, `ld::GroupMask`); `EngineControls`
       holds 256 DCAs. Shows store a set as before (a decimal mask while only the
       first 64 are used, else four hex words). C ABI 25 (`ld_engine_counts`,
-      `ld_engine_configure`, ...). Mains stay at most 4 and matrices at most 8
-      until step 2.
-   2. **Sends**: one send table per strip keyed by the destination (buses, mains,
-      matrices), with a tap reference; mains and matrices then any number.
+      `ld_engine_configure`, ...).
+   2. **Sends** (done): a strip's sends to mains and matrices left `StripParams`
+      for paged banks on the strip, by the destination's index, like its bus sends
+      (`sends::Bank`; `Strip::mains`, `Strip::matrices`, `main_send`,
+      `matrix_send`; C++ `strip.mains[i]`, `strip.matrix[i]`), so a console has
+      any number of mains and matrices (up to 256 each). The engine creates a
+      strip's sends to the console's mains and matrices with the strip. C ABI 26
+      (`ld_strip_main_send`, `ld_strip_matrix_send`). Still the WING's: the strip
+      sources (`$BUS`/`$MAIN`/`$MTX`), the monitor SOURCE and DIRECT IN lists and
+      the talkback destinations cover its 16 buses, 4 mains and 8 matrices. The
+      tap reference on a send comes with the taps (step 3).
    3. **Block chain and taps**: a strip's processing as a chain of blocks with tap
       markers; the WING's templates and its 24 process orders as permutations;
       `StripParams` keeps the strip-level state; C++ and `map.rs` facades.

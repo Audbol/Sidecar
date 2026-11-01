@@ -1197,8 +1197,8 @@ private:
             { "OSCILLATOR", MixerEngine::oscSource (0), ld::kNumOscillators },
             { "BUS 1-12", ld::kStripSourceBase, 24 },
             { "BUS 13-16", ld::kStripSourceBase + 24, 2 * kWingBuses - 24 },
-            { "MAIN", ld::kStripSourceBase + 2 * kWingBuses, 2 * kNumMains },
-            { "MATRIX", ld::kStripSourceBase + 2 * (kWingBuses + kNumMains), 2 * kNumMatrices },
+            { "MAIN", ld::kStripSourceBase + 2 * kWingBuses, 2 * kWingMains },
+            { "MATRIX", ld::kStripSourceBase + 2 * (kWingBuses + kWingMains), 2 * kWingMatrices },
             { "USR 1-24", MixerEngine::usrSource (0), 24 },
             { "USR 25-48", MixerEngine::usrSource (24), 24 },
             { "USR 49-56", MixerEngine::usrSource (48), ld::kNumUsrSources - 48 },
@@ -3343,8 +3343,8 @@ public:
         auto& p = strip.params;
         hasMainSends = strip.getKind() != StripKind::Main && strip.getKind() != StripKind::Matrix;
         if (hasMainSends)
-            for (int i = 0; i < kNumMains && i < (int) ctx.engine.getMains().size(); ++i)
-                sends.push_back (&make<MainSendColumn> (*ctx.engine.getMains()[(size_t) i], p.mains[i]));
+            for (int i = 0; i < kWingMains && i < (int) ctx.engine.getMains().size(); ++i)
+                sends.push_back (&make<MainSendColumn> (*ctx.engine.getMains()[(size_t) i], strip.mains[i]));
         else
         {
             delay = &make<DelayPanel> (ctx, p.input);
@@ -3361,8 +3361,8 @@ public:
         std::vector<HomeKnob> k;
         if (hasMainSends)
         {
-            for (int i = 0; i < kNumMains; ++i)
-                k.push_back ({ wingFader ("MAIN " + juce::String (i + 1), p.mains[i].levelDb), levelStyle (i < (int) sends.size() ? sends[(size_t) i]->getFader() : nullptr) });
+            for (int i = 0; i < kWingMains; ++i)
+                k.push_back ({ wingFader ("MAIN " + juce::String (i + 1), strip.mains[i].levelDb), levelStyle (i < (int) sends.size() ? sends[(size_t) i]->getFader() : nullptr) });
             k.push_back ({ wingWidth ("WIDTH", p.width), widthStyle (pan) });
         }
         else
@@ -4310,8 +4310,8 @@ public:
         columns.clear();
         if (matrix)
         {
-            for (int i = 0; i < kNumMatrices && i < (int) ctx.engine.getMatrices().size(); ++i)
-                columns.push_back (&make<SendColumn> (strip, *ctx.engine.getMatrices()[(size_t) i], nullptr, &strip.params.matrix[i], true,
+            for (int i = 0; i < kWingMatrices && i < (int) ctx.engine.getMatrices().size(); ++i)
+                columns.push_back (&make<SendColumn> (strip, *ctx.engine.getMatrices()[(size_t) i], nullptr, &strip.matrix[i], true,
                                                       [this, i] { select (i); }));
         }
         else
@@ -4437,7 +4437,7 @@ public:
         auto* col = columns[(size_t) selected];
         if (matrix)
         {
-            auto& m = strip.params.matrix[selected];
+            auto& m = strip.matrix[selected];
             k.push_back ({ wingFader ("SEND LVL", m.levelDb), levelStyle (col->getFader()) });
             if (! (strip.isInput() && m.panLink.load()))
                 k.push_back ({ wingPan ("PAN", m.pan), thumbStyle (col) });
@@ -4803,24 +4803,24 @@ void copyStripParams (MixerEngine& engine, const Strip& src, const Strip& dst, j
             }
         }
         if (dst.getKind() != StripKind::Matrix && src.getKind() != StripKind::Matrix)
-            for (int i = 0; i < kNumMatrices; ++i)
+            for (int i = 0; i < engine.getCounts().matrices; ++i)
             {
-                d.matrix[i].on = s.matrix[i].on.load();
-                d.matrix[i].pre = s.matrix[i].pre.load();
-                d.matrix[i].ignoreMute = s.matrix[i].ignoreMute.load();
-                d.matrix[i].levelDb = s.matrix[i].levelDb.load();
-                d.matrix[i].pan = s.matrix[i].pan.load();
-                d.matrix[i].panLink = s.matrix[i].panLink.load();
-                d.matrix[i].panReversed = s.matrix[i].panReversed.load();
+                dst.matrix[(size_t) i].on = src.matrix[(size_t) i].on.load();
+                dst.matrix[(size_t) i].pre = src.matrix[(size_t) i].pre.load();
+                dst.matrix[(size_t) i].ignoreMute = src.matrix[(size_t) i].ignoreMute.load();
+                dst.matrix[(size_t) i].levelDb = src.matrix[(size_t) i].levelDb.load();
+                dst.matrix[(size_t) i].pan = src.matrix[(size_t) i].pan.load();
+                dst.matrix[(size_t) i].panLink = src.matrix[(size_t) i].panLink.load();
+                dst.matrix[(size_t) i].panReversed = src.matrix[(size_t) i].panReversed.load();
             }
     }
     if (has (MainBit) && dst.getKind() != StripKind::Main && dst.getKind() != StripKind::Matrix
         && src.getKind() != StripKind::Main && src.getKind() != StripKind::Matrix)
-        for (int i = 0; i < kNumMains; ++i)
+        for (int i = 0; i < engine.getCounts().mains; ++i)
         {
-            d.mains[i].on = s.mains[i].on.load();
-            d.mains[i].pre = s.mains[i].pre.load();
-            d.mains[i].levelDb = s.mains[i].levelDb.load();
+            dst.mains[(size_t) i].on = src.mains[(size_t) i].on.load();
+            dst.mains[(size_t) i].pre = src.mains[(size_t) i].pre.load();
+            dst.mains[(size_t) i].levelDb = src.mains[(size_t) i].levelDb.load();
         }
     if (has (Fdr))
         d.faderDb = s.faderDb.load();
@@ -5450,7 +5450,7 @@ private:
                 possible = false;
                 return;
             }
-            auto& m = src.params.mains[juce::jlimit (0, kNumMains - 1, dst.getId())];
+            auto& m = src.mains[juce::jlimit (0, kWingMains - 1, dst.getId())];
             on = m.on.load();
             mode = m.pre.load() ? 0 : 1;
             link = true;
@@ -5462,7 +5462,7 @@ private:
             possible = false;
             return;
         }
-        auto& m = src.params.matrix[juce::jlimit (0, kNumMatrices - 1, dst.getId())];
+        auto& m = src.matrix[juce::jlimit (0, kWingMatrices - 1, dst.getId())];
         on = m.on.load();
         mode = m.pre.load() ? 0 : 1;
         link = src.isInput() && m.panLink.load();
@@ -5516,7 +5516,7 @@ private:
             }
             else if (dst->getKind() == StripKind::Main)
             {
-                auto& m = src->params.mains[juce::jlimit (0, kNumMains - 1, dst->getId())];
+                auto& m = src->mains[juce::jlimit (0, kWingMains - 1, dst->getId())];
                 if (modeChoice > 0)
                     m.pre = modeChoice == 1;
                 if (levelChoice > 0)
@@ -5526,7 +5526,7 @@ private:
             }
             else
             {
-                auto& m = src->params.matrix[juce::jlimit (0, kNumMatrices - 1, dst->getId())];
+                auto& m = src->matrix[juce::jlimit (0, kWingMatrices - 1, dst->getId())];
                 if (modeChoice > 0)
                     m.pre = modeChoice == 1;
                 if (ignoreChoice > 0 && src->canIgnoreMuteOnSends())

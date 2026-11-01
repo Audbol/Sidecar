@@ -21,7 +21,7 @@ pub fn legacy_sends(s: &Strip) {
             }
         }
     }
-    for m in &s.params.matrix {
+    for m in (0..livedaw_engine::params::WING_MATRICES).filter_map(|i| s.matrix_send(i)) {
         m.level_db.store(0.0);
         m.pan_link.store(true, Relaxed);
         m.pre.store(false, Relaxed);
@@ -56,7 +56,7 @@ pub fn unity_console(e: &Engine) {
             s.params.fader_db.store(0.0);
             s.params.eq.on.store(true, Relaxed);
             if kind == StripKind::Bus {
-                s.params.mains[0].on.store(false, Relaxed);
+                s.main_send(0).unwrap().on.store(false, Relaxed);
             }
             if kind == StripKind::Aux {
                 s.params.stereo.store(false, Relaxed);

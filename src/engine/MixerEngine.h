@@ -61,7 +61,7 @@ public:
     const StripList& getMains() const noexcept { return getStrips (StripKind::Main); }
     const StripList& getMatrices() const noexcept { return getStrips (StripKind::Matrix); }
     /** Main 1 (the default monitor source). */
-    Strip& getMain (int index = 0) const noexcept { return *getMains()[(size_t) juce::jlimit (0, kNumMains - 1, index)]; }
+    Strip& getMain (int index = 0) const noexcept { return *getMains()[(size_t) juce::jlimit (0, kWingMains - 1, index)]; }
 
     /** Grows or shrinks the number of channels. New channel N is patched to
         hardware input N (when it exists). */
@@ -319,18 +319,18 @@ public:
     /** DYNAMICS KEY SOURCE of aux, buses, mains and matrices (the WING's
         `/bus/n/dynsc/src`): the n-th of BUS.1-16, MAIN.1-4, MTX.1-8, AUX.1-8,
         as DynSlotParams::scSource (ld::kKeyStripBase * kind + index). */
-    static constexpr int kNumOutputKeySources = ld::kWingBuses + ld::kNumMains + ld::kNumMatrices + ld::kNumAux;
+    static constexpr int kNumOutputKeySources = ld::kWingBuses + ld::kWingMains + ld::kWingMatrices + ld::kWingAux;
     static constexpr int outputKeySource (int n) noexcept
     {
         if (n < ld::kWingBuses)
             return ld::kKeyStripBase * ld::kBus + n;
         n -= ld::kWingBuses;
-        if (n < ld::kNumMains)
+        if (n < ld::kWingMains)
             return ld::kKeyStripBase * ld::kMain + n;
-        n -= ld::kNumMains;
-        if (n < ld::kNumMatrices)
+        n -= ld::kWingMains;
+        if (n < ld::kWingMatrices)
             return ld::kKeyStripBase * ld::kMatrix + n;
-        return ld::kKeyStripBase * ld::kAux + (n - ld::kNumMatrices);
+        return ld::kKeyStripBase * ld::kAux + (n - ld::kWingMatrices);
     }
     /** The position of a KEY SOURCE in that list, or -1 (SELF, a channel). */
     static constexpr int outputKeySourceIndex (int scSource) noexcept

@@ -156,9 +156,9 @@ inline bool stripOfSource (int source, StripKind& kind, int& number, int& side)
     {
         n -= 2 * kWingBuses;
         kind = StripKind::Main;
-        if (n >= 2 * kNumMains)
+        if (n >= 2 * kWingMains)
         {
-            n -= 2 * kNumMains;
+            n -= 2 * kWingMains;
             kind = StripKind::Matrix;
         }
     }

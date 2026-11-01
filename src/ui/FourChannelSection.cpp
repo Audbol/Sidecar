@@ -120,7 +120,7 @@ FourChannelSection::FourChannelSection (UiContext& c, std::function<Strip* (int)
                 case Gate:   if (s->getKind() == StripKind::Channel) flip (p.gate.on); break;
                 case Comp:   flip (p.dynamics.on); break;
                 case Filter: if (s->getKind() == StripKind::Channel) flip (p.filter.lowCut); break;
-                case Pan:    if (s->isInput() || s->isBus()) flip (p.mains[0].on); break;
+                case Pan:    if (s->isInput() || s->isBus()) flip (s->mains[0].on); break;
                 case F1:
                 case F2:
                 case F3:
@@ -147,7 +147,7 @@ FourChannelSection::FourChannelSection (UiContext& c, std::function<Strip* (int)
                 case Gate:   on = p.gate.on.load(); break;
                 case Comp:   on = p.dynamics.on.load(); break;
                 case Filter: on = p.filter.lowCut.load(); break;
-                case Pan:    on = (s->isInput() || s->isBus()) && p.mains[0].on.load(); break;
+                case Pan:    on = (s->isInput() || s->isBus()) && s->mains[0].on.load(); break;
                 case F1:
                 case F2:
                 case F3:

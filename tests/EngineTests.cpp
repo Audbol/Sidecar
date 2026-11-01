@@ -61,19 +61,25 @@ public:
             const auto wing = engine.getConfiguredCounts();
             expectEquals (wing.dcas, kWingDcas);
             expectEquals (wing.muteGroups, kWingMuteGroups);
-            const Counts other { 64, 4, 24, 2, 3, 24, 100, 32 };
+            const Counts other { 64, 4, 24, 6, 12, 24, 100, 32 };
             engine.configure (&other);
             const auto now = engine.getCounts();
             expectEquals ((int) engine.getChannels().size(), 64);
             expectEquals ((int) engine.getBuses().size(), 24);
-            expectEquals ((int) engine.getMains().size(), 2);
-            expectEquals ((int) engine.getMatrices().size(), 3);
+            expectEquals ((int) engine.getMains().size(), 6);
+            expectEquals ((int) engine.getMatrices().size(), 12);
             expectEquals (now.dcas, 24);
             expectEquals (now.muteGroups, 100);
             expectEquals (now.fx, 32);
 
             // DCA 201 and mute group 100 through the shared memory.
             auto& ch = *engine.getChannels()[0];
+            // Sends to MAIN 6 and MTX 12 (ABI 26: beyond the WING's 4 and 8).
+            expect (ch.mains[0].on.load() && ! ch.mains[5].on.load(), "Main 1 by default");
+            ch.mains[5].levelDb = -3.0f;
+            ch.matrix[11].on = true;
+            expectEquals (ch.mains[5].levelDb.load(), -3.0f);
+            expect (ch.matrix[11].on.load() && ! ch.matrix[10].on.load());
             ch.params.dcaMask.set (200, true);
             expect (ch.params.dcaMask.contains (200) && ! ch.params.dcaMask.contains (199));
             expectEquals (engine.setNumDcas (8), 201, "never below a DCA with a member");
@@ -98,8 +104,8 @@ public:
             expectEquals (engine.getChannels()[39]->getLabel(), juce::String ("CH 40"));
             expectEquals (engine.getBuses()[15]->getLabel(), juce::String ("BUS 16"));
             expectEquals (engine.getMain().getLabel(), juce::String ("MAIN 1"));
-            expect (engine.getChannels()[0]->params.mains[0].on.load(), "channels feed Main 1");
-            expect (! engine.getBuses()[0]->params.mains[0].on.load(), "buses start as aux mixes");
+            expect (engine.getChannels()[0]->mains[0].on.load(), "channels feed Main 1");
+            expect (! engine.getBuses()[0]->mains[0].on.load(), "buses start as aux mixes");
             expect (engine.getChannels()[0]->getColour() == wingColour (1));
             expect (wingColour (1) == juce::Colour (0xff380088), "the factory Dark Blue");
             expectEquals (engine.getChannels()[0]->params.filter.lowCutFreq.load(), kLowCutDefaultHz, "the LO CUT reset matches");
@@ -253,7 +259,7 @@ public:
             expectWithinAbsoluteError (rig.out (0), 0.0f, 1.0e-6f);
 
             p.mute = false;
-            p.mains[0].on = false;
+            engine.getChannels()[0]->mains[0].on = false;
             rig.run();
             expectWithinAbsoluteError (rig.out (0), 0.0f, 1.0e-6f);
         }
@@ -301,8 +307,8 @@ public:
 
             ch.params.faderDb = 0.0f;
             send.mode = (int32_t) SendMode::Group;
-            ch.params.mains[0].on = false;
-            bus.params.mains[0].on = true;
+            ch.mains[0].on = false;
+            bus.mains[0].on = true;
             rig.run();
             expectWithinAbsoluteError (rig.out (0), 0.5f * kCentre, 1.0e-5f);
         }
@@ -315,7 +321,7 @@ public:
             engine.getChannels()[1]->params.inputLeft = 1;
             rig.setInput (0, 0.5f);
             rig.setInput (1, 0.25f);
-            engine.getMain().params.matrix[0].on = true;
+            engine.getMain().matrix[0].on = true;
             auto& mtx = *engine.getMatrices()[0];
             mtx.params.outputLeft = 4;
             rig.run();
@@ -506,7 +512,7 @@ public:
             ch.params.mute = false;
             send.mode = (int32_t) SendMode::Group;
             send.levelDb = -100.0f;
-            ch.params.mains[0].on = false;
+            ch.mains[0].on = false;
             rig.run();
             expectWithinAbsoluteError (rig.out (2), 0.5f * kCentre, 1.0e-5f);
         }
@@ -527,7 +533,7 @@ public:
             rig.run();
             expectWithinAbsoluteError (rig.out (0), 0.5f * kCentre, 1.0e-5f);
 
-            ch.params.mains[1].on = true;
+            ch.mains[1].on = true;
             engine.getMain (1).params.outputLeft = 2;
             engine.getMain().params.faderDb = -6.0206f;
             engine.mainLink = (int32_t) MainLink::To2;
@@ -749,7 +755,7 @@ public:
             auto& ch = *engine.getChannels()[0];
             ch.params.stereo = true;
             ch.params.inputRight = 1;
-            ch.params.mains[0].on = false;
+            ch.mains[0].on = false;
             rig.setInput (0, 0.4f);
             auto& bus = *engine.getBusInSlot (0);
             bus.params.outputLeft = 4;

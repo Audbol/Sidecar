@@ -472,7 +472,7 @@ fn talk_from_an_aux_channel() {
     t.assign_kind.store(StripKind::Aux as i32, Relaxed);
     t.assign_index.store(7, Relaxed);
     t.paths[0].mains.store(1, Relaxed);
-    aux.params.mains[0].on.store(false, Relaxed);
+    aux.main_send(0).unwrap().on.store(false, Relaxed);
     rig.run(4);
     assert!(rig.out(0).abs() < 1e-7);
     t.paths[0].on.store(true, Relaxed);
@@ -521,11 +521,11 @@ fn sources_process_the_ports_before_the_channels() {
     let ms = rig.ch(2);
     ms.params.stereo.store(true, Relaxed);
     ms.params.input_left.store(2, Relaxed);
-    ms.params.mains[0].on.store(false, Relaxed);
+    ms.main_send(0).unwrap().on.store(false, Relaxed);
     ms.params.output_left.store(0, Relaxed); // direct out: the PFL copy
     ms.params.output_right.store(1, Relaxed);
     for ch in 0..2 {
-        rig.ch(ch).params.mains[0].on.store(false, Relaxed);
+        rig.ch(ch).main_send(0).unwrap().on.store(false, Relaxed);
     }
     rig.set_input(2, 0.5);
     rig.set_input(3, 0.125);

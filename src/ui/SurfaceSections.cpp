@@ -253,7 +253,7 @@ std::vector<KnobBinding> ChannelStripSection::slotParams (int slot) const
         case Main:
             list.push_back (bindPan ("PAN", p.pan));
             list.push_back (bindLinear ("WIDTH", p.width, -150.0f, 150.0f, "%", 0, 100.0f));
-            list.push_back (bindFader ("MAIN 1", p.mains[0].levelDb));
+            list.push_back (bindFader ("MAIN 1", strip->mains[0].levelDb));
             break;
         default:
             break;
@@ -324,7 +324,7 @@ bool ChannelStripSection::slotOn (int slot) const
         case Gate:   return p.gate.on.load();
         case Comp:   return p.dynamics.on.load();
         case Insert: return p.preInsert.on.load() && p.preInsert.fx.load() >= 0;
-        case Main:   return p.mains[0].on.load();
+        case Main:   return strip->mains[0].on.load();
         default:     return false;
     }
 }
@@ -342,7 +342,7 @@ void ChannelStripSection::toggleSlot (int slot)
         case Gate:   flip (p.gate.on); break;
         case Comp:   flip (p.dynamics.on); break;
         case Insert: flip (p.preInsert.on); break;
-        case Main:   flip (p.mains[0].on); break;
+        case Main:   flip (strip->mains[0].on); break;
         default:     break;
     }
     showSlot (slot);
@@ -451,8 +451,8 @@ juce::String ChannelStripSection::panelState() const
     s << juce::roundToInt (strip->meters.dynReductionDb.load()) << bit (slotOn (Input)) << bit (p.filter.lowCut.load())
       << bit (p.filter.highCut.load()) << bit (p.filter.tool.load()) << p.filter.toolModel.load() << bit (p.input.delayOn.load())
       << bit (p.stereo.load()) << bit (strip->isUsingAltInput()) << (juce::int64) p.dcaMask.load().low() << ':' << (juce::int64) p.muteGroupMask.load().low() << ':' << p.postInsert.mode.load();
-    for (auto& m : p.mains)
-        s << bit (m.on.load());
+    for (int i = 0; i < kWingMains; ++i)
+        s << bit (strip->mains[(size_t) i].on.load());
     for (int i = 0; i < 16; ++i)
         if (auto* send = strip->sends.find (i))
             s << (send->enabled.load() ? i : 0) << ',';
@@ -667,7 +667,7 @@ void ChannelStripSection::paintPanel (juce::Graphics& g)
             for (int i = 0; i < count; ++i)
                 ledAt (groups + step * (float) i, row, on (i));
         };
-        rowOf (0, 4, [&] (int i) { return any && p->mains[i].on.load(); });
+        rowOf (0, 4, [&] (int i) { return any && strip->mains[(size_t) i].on.load(); });
         const float labelX = groups + step * 4.0f + 1.0f, labelW = W * 0.06f;
         text (labelX, labelW, 0, "MAIN");
 

@@ -107,9 +107,9 @@ fn bus_send_reverb_rings_on_into_main() {
             let mut rig = Rig::new(sr, block);
             let (ch, bus) = (rig.ch(), rig.bus());
             // Only the reverb reaches Main 1: the channel feeds bus 1 (PRE).
-            ch.params.mains[0].on.store(false, Relaxed);
+            ch.main_send(0).unwrap().on.store(false, Relaxed);
             ch.sends.get_or_create(0).unwrap().enabled.store(true, Relaxed);
-            bus.params.mains[0].on.store(true, Relaxed);
+            bus.main_send(0).unwrap().on.store(true, Relaxed);
             let slot = slot % 8;
             rig.set_model(slot, token);
             bus.params.pre_insert.fx.store(slot as i32, Relaxed);
@@ -153,9 +153,9 @@ fn channel_insert_reverb_mixes_dry_and_wet() {
 fn reverb_survives_model_changes_and_slot_moves() {
     let mut rig = Rig::new(48_000.0, 256);
     let (ch, bus) = (rig.ch(), rig.bus());
-    ch.params.mains[0].on.store(false, Relaxed);
+    ch.main_send(0).unwrap().on.store(false, Relaxed);
     ch.sends.get_or_create(0).unwrap().enabled.store(true, Relaxed);
-    bus.params.mains[0].on.store(true, Relaxed);
+    bus.main_send(0).unwrap().on.store(true, Relaxed);
     bus.params.pre_insert.on.store(true, Relaxed);
     for (slot, token) in [(0, "HALL"), (0, "PLATE"), (5, "SPRING"), (2, "V-ROOM"), (2, "ROOM")] {
         rig.set_model(slot, token);

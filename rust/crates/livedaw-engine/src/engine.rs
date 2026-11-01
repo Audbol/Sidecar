@@ -404,6 +404,13 @@ impl Engine {
     fn new_strip(&self, st: &Structure, kind: StripKind, id: i32) -> Arc<Strip> {
         // Unnamed, as on the WING (the screens show "CH 3" and so on).
         let s = Arc::new(Strip::new(kind, id));
+        // Its sends to the console's mains and matrices (a matrix has none).
+        let (mains, matrices) = match kind {
+            StripKind::Matrix => (0, 0),
+            StripKind::Main => (0, st.counts.matrices),
+            _ => (st.counts.mains, st.counts.matrices),
+        };
+        s.create_sends(mains, matrices);
         // SAFETY: not published yet.
         unsafe { s.prepare(st.device.sample_rate, st.device.block_size) };
         s
@@ -2088,7 +2095,7 @@ fn pdc_feeds<'a>(
         }
         StripKind::Main => {
             for s in inputs.chain(&st.buses) {
-                let send = &s.params.mains[index.min(NUM_MAINS - 1)];
+                let Some(send) = s.main_send(index) else { continue };
                 if send.on.load(Relaxed) {
                     feeds.push((s, tap_or_out(send.pre.load(Relaxed))));
                 }
@@ -2096,7 +2103,7 @@ fn pdc_feeds<'a>(
         }
         StripKind::Matrix => {
             for s in inputs.chain(&st.buses).chain(&st.mains) {
-                let send = &s.params.matrix[index.min(NUM_MATRICES - 1)];
+                let Some(send) = s.matrix_send(index) else { continue };
                 if send.on.load(Relaxed) {
                     feeds.push((s, matrix_send_route(s, send).0));
                 }
@@ -2196,12 +2203,12 @@ unsafe fn sum_main<'a>(main: &Strip, index: usize, sources: impl Iterator<Item =
     main.begin_summed_block(n);
     let target = main.pdc.target();
     for s in sources {
-        let send = &s.params.mains[index];
+        let Some(send) = s.main_send(index) else { continue };
         let pre = send.pre.load(Relaxed);
         // Pre-fader main sends still follow the strip's mute.
         let on = send.on.load(Relaxed) && !(pre && s.dsp().muted());
         let level = if on { db_to_gain(send.level_db.load()) } else { 0.0 };
-        let last = s.last_main(index);
+        let last = send.last();
         let src = s.dsp();
         if (level == 0.0 && *last == [0.0, 0.0]) || src.idle() {
             *last = [0.0, 0.0];
@@ -2224,10 +2231,10 @@ unsafe fn sum_matrix(mtx: &Strip, index: usize, topo: &Topology, monitor: &[*con
     mtx.begin_summed_block(n);
     let target = mtx.pdc.target();
     for s in topo.active().iter().chain(topo.buses()).chain(&topo.mains) {
-        let send = &s.params.matrix[index];
+        let Some(send) = s.matrix_send(index) else { continue };
         let on = send.on.load(Relaxed) && !(send.pre.load(Relaxed) && tap_send_muted(s, send.ignore_mute.load(Relaxed)));
         let level = if on { db_to_gain(send.level_db.load()) } else { 0.0 };
-        let last = s.last_mtx(index);
+        let last = send.last();
         let src = s.dsp();
         if (level == 0.0 && *last == [0.0, 0.0]) || src.idle() {
             *last = [0.0, 0.0];

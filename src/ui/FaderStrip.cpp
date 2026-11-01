@@ -182,14 +182,14 @@ void FaderStrip::refresh()
                 case StripKind::Main:
                     if (from.isInput() || from.isBus())
                     {
-                        auto& s = from.params.mains[juce::jlimit (0, kNumMains - 1, to.getId())];
+                        auto& s = from.mains[juce::jlimit (0, kWingMains - 1, to.getId())];
                         return SendTarget { &s.levelDb, &s.on, tag };
                     }
                     break;
                 case StripKind::Matrix:
                     if (from.isInput() || from.isBus() || from.getKind() == StripKind::Main)
                     {
-                        auto& s = from.params.matrix[juce::jlimit (0, kNumMatrices - 1, to.getId())];
+                        auto& s = from.matrix[juce::jlimit (0, kWingMatrices - 1, to.getId())];
                         return SendTarget { &s.levelDb, &s.on, tag };
                     }
                     break;

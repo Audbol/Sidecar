@@ -25,7 +25,7 @@
 //! device block (`L` = the block size), whatever the chunk lengths, and
 //! never the half a running task is writing.
 
-use crate::params::{StripKind, NUM_MAINS, NUM_MATRICES, WING_BUSES};
+use crate::params::{StripKind, WING_BUSES, WING_MAINS, WING_MATRICES};
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicI32, Ordering::Relaxed};
 
@@ -35,8 +35,8 @@ use std::sync::atomic::{AtomicI32, Ordering::Relaxed};
 pub const STRIP_SOURCE_BASE: i32 = 0x40000;
 /// The WING's `$BUS` (16 stereo buses), `$MAIN` (4) and `$MTX` (8) signals.
 pub const NUM_BUS_SOURCES: usize = 2 * WING_BUSES;
-pub const NUM_MAIN_SOURCES: usize = 2 * NUM_MAINS;
-pub const NUM_MTX_SOURCES: usize = 2 * NUM_MATRICES;
+pub const NUM_MAIN_SOURCES: usize = 2 * WING_MAINS;
+pub const NUM_MTX_SOURCES: usize = 2 * WING_MATRICES;
 pub const NUM_STRIP_SOURCES: usize = NUM_BUS_SOURCES + NUM_MAIN_SOURCES + NUM_MTX_SOURCES;
 
 /// The strip signal of input `input`: (kind, 0-based number (a bus's slot),
@@ -60,8 +60,8 @@ pub fn strip_source(input: i32) -> Option<(StripKind, usize, usize)> {
 pub fn strip_source_input(kind: StripKind, number: usize, side: usize) -> i32 {
     let (base, count) = match kind {
         StripKind::Bus => (0, WING_BUSES),
-        StripKind::Main => (NUM_BUS_SOURCES, NUM_MAINS),
-        StripKind::Matrix => (NUM_BUS_SOURCES + NUM_MAIN_SOURCES, NUM_MATRICES),
+        StripKind::Main => (NUM_BUS_SOURCES, WING_MAINS),
+        StripKind::Matrix => (NUM_BUS_SOURCES + NUM_MAIN_SOURCES, WING_MATRICES),
         _ => return -1,
     };
     if number >= count || side > 1 {

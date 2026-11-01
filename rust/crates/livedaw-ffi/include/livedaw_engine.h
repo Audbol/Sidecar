@@ -28,14 +28,19 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 25;
+constexpr int kAbiVersion = 26;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
 constexpr int kMaxBuses = 16384;
-constexpr int kNumMains = 4;
-constexpr int kNumMatrices = 8;
-constexpr int kNumAux = 8;
+/** The WING's 4 mains, 8 matrices and 8 aux (its surface and screens). ABI 26: a
+    console has any number of mains and matrices, up to kMaxMains / kMaxMatrices
+    (ld_engine_counts). */
+constexpr int kWingMains = 4;
+constexpr int kWingMatrices = 8;
+constexpr int kWingAux = 8;
+constexpr int kMaxMains = 256;
+constexpr int kMaxMatrices = 256;
 /** ABI 25: DCAs and mute groups the engine holds; how many the console uses is
     set at run time (ld_engine_counts, ld_engine_set_num_dcas, ld_engine_set_num_mute_groups). */
 constexpr int kGroupWords = 4;
@@ -89,7 +94,7 @@ constexpr int32_t kOscSourceBase = 0x30000;
     bus slot * 2 + side), $MAIN (32-39) and $MTX (40-55) signals
     (ld_strip_source_input). A channel hears them one block late. */
 constexpr int32_t kStripSourceBase = 0x40000;
-constexpr int kNumStripSources = 2 * (kWingBuses + kNumMains + kNumMatrices);
+constexpr int kNumStripSources = 2 * (kWingBuses + kWingMains + kWingMatrices);
 /** ABI 19, the USER SIGNAL group (USR): USR n is input kUsrSourceBase + n - 1;
     USR 1-24 user signals (ld_engine_user_signals), USR 25-56 user patches
     (ld_engine_user_patches). */
@@ -306,10 +311,12 @@ struct InsertParams
     std::atomic<float> weight; // automix weight, dB
 };
 
+/** A strip's send to a main (ABI 26: ld_strip_main_send, by the main's index). */
 struct MainSendParams
 {
     std::atomic<bool> on, pre; // pre: from the tap point (the strip's mute still cuts it)
     std::atomic<float> levelDb;
+    float lastGain_[2]; // owned by the audio thread: do not touch
 };
 
 struct MatrixSendParams
@@ -319,6 +326,7 @@ struct MatrixSendParams
     std::atomic<bool> panLink;    // PAN LINK (input/aux channels): the pan follows the channel's
     std::atomic<bool> panReversed; // with panLink: mirrored (LINK REVERSED)
     std::atomic<float> levelDb, pan;
+    float lastGain_[2]; // owned by the audio thread: do not touch
 };
 
 /// TAP EQ (WING /ch/n/peq): band 0 low shelf, 1 peak, 2 high shelf.
@@ -355,9 +363,6 @@ struct StripParams
     std::atomic<bool> stereo, mono;
     std::atomic<int32_t> inputLeft, inputRight;
     std::atomic<int32_t> outputLeft, outputRight;
-
-    MainSendParams mains[kNumMains];
-    MatrixSendParams matrix[kNumMatrices];
 
     GroupMask dcaMask, muteGroupMask; // ABI 25: the DCAs and mute groups the strip is a member of
 
@@ -525,7 +530,7 @@ enum OscMode : int32_t
     kOscWhite = 2
 };
 /** Monitor SOURCE choices: MAIN.1-4, MTX.1-8, BUS.1-16, AUX.1-8. */
-constexpr int kNumMonitorSources = kNumMains + kNumMatrices + kWingBuses + kNumAux;
+constexpr int kNumMonitorSources = kWingMains + kWingMatrices + kWingBuses + kWingAux;
 /** TalkParams::assignKind without a talkback channel. */
 constexpr int32_t kTalkOff = -1;
 
@@ -594,7 +599,7 @@ struct OscParams
 /** Monitor EQ bands: L (low shelf), 1-6 (PEQ), H (high shelf). */
 constexpr int kMonitorEqBands = 8;
 /** DIRECT IN choices: CH.1-40, AUX.1-8, BUS.1-16, MAIN.1-4, MTX.1-8 (-1 = OFF). */
-constexpr int kNumDirectSources = kWingChannels + kNumAux + kWingBuses + kNumMains + kNumMatrices;
+constexpr int kNumDirectSources = kWingChannels + kWingAux + kWingBuses + kWingMains + kWingMatrices;
 
 /** One monitor EQ band (the shelves have no Q). */
 struct MonitorEqBand
@@ -740,7 +745,7 @@ struct AnalysisControls
 struct LayoutInfo
 {
     int32_t abiVersion, stripParams, input, filter, dynSlot, eqBlock, insert, mainSend, matrixSend, meters, send, dca,
-        fx, controls, offFilter, offGate, offEq, offDynamics, offPostInsert, offFader, offStereo, offMains, offMatrix,
+        fx, controls, offFilter, offGate, offEq, offDynamics, offPostInsert, offFader, offStereo, offMainSendLevel, offMatrixSendPan,
         offDcaMask, offDirectLevel, offColour, offRecallSafe, offDynValues, offDynXoDepth, offEqValues, offSendPan,
         offMetersAutomix, offControlsDcas, offControlsFx, offFxValues, offSendMode, offMatrixSendLevel,
         offMetersTrimPeak, offMetersPflPeak, offControlsBusSoloAfl, offControlsAutomixEnable, offControlsDimDb,
@@ -1099,6 +1104,9 @@ extern "C"
     bool ld_strip_is_idle (const Strip*);
     SendParams* ld_strip_send (const Strip*, int32_t slot);
     SendParams* ld_strip_find_send (const Strip*, int32_t slot);
+    /** ABI 26: the strip's send to main / matrix `index` (created if needed; null past 256). */
+    MainSendParams* ld_strip_main_send (const Strip*, int32_t index);
+    MatrixSendParams* ld_strip_matrix_send (const Strip*, int32_t index);
     LdString* ld_strip_name (const Strip*);
     void ld_strip_set_name (const Strip*, const char* utf8, size_t len);
     /** HOME > TAGS: the strip's free tags, comma-separated. */
@@ -1683,8 +1691,8 @@ inline const char* verifyLayout()
         { info.offPostInsert, offsetof (StripParams, postInsert), "StripParams.postInsert" },
         { info.offFader, offsetof (StripParams, faderDb), "StripParams.faderDb" },
         { info.offStereo, offsetof (StripParams, stereo), "StripParams.stereo" },
-        { info.offMains, offsetof (StripParams, mains), "StripParams.mains" },
-        { info.offMatrix, offsetof (StripParams, matrix), "StripParams.matrix" },
+        { info.offMainSendLevel, offsetof (MainSendParams, levelDb), "MainSendParams.levelDb" },
+        { info.offMatrixSendPan, offsetof (MatrixSendParams, pan), "MatrixSendParams.pan" },
         { info.offDcaMask, offsetof (StripParams, dcaMask), "StripParams.dcaMask" },
         { info.offDirectLevel, offsetof (StripParams, directLevelDb), "StripParams.directLevelDb" },
         { info.offColour, offsetof (StripParams, colour), "StripParams.colour" },

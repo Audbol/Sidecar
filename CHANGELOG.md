@@ -19,6 +19,11 @@ WING works as before throughout.
   shows store them (as before while only the first 64 are used). C ABI 25:
   `ld::GroupMask` / `ld::GroupBits`, `ld_engine_counts`, `ld_engine_configure`,
   `ld_engine_set_num_dcas`, `ld_engine_set_num_mute_groups`.
+- Universal core, Phase 1 step 2: any number of mains and matrices (up to 256 each;
+  the WING has 4 and 8). A strip's sends to them are stored by destination, like
+  its bus sends, instead of a fixed block of 4 and 8. Shows save a strip's sends to
+  the console's mains and matrices. C ABI 26: `ld_strip_main_send`,
+  `ld_strip_matrix_send` (C++ `strip.mains[i]`, `strip.matrix[i]`).
 
 - SETUP > GENERAL > ABOUT (and the start-up notice) links the Sidecar Discord server
   for questions, setup help and feedback: a Community section and a **DISCORD** key

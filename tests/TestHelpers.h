@@ -22,8 +22,9 @@ inline void legacySends (Strip& s)
             send.panLink = true;
             send.mode = 0;
         }
-    for (auto& m : s.params.matrix)
+    for (int i = 0; i < kWingMatrices; ++i)
     {
+        auto& m = s.matrix[(size_t) i];
         m.levelDb = 0.0f;
         m.panLink = true;
         m.pre = false;
@@ -48,7 +49,7 @@ inline void unityConsole (MixerEngine& engine)
             s->params.faderDb = 0.0f;
             s->params.eq.on = true;
             if (kind == StripKind::Bus)
-                s->params.mains[0].on = false;
+                s->mains[0].on = false;
             if (kind == StripKind::Aux)
             {
                 s->params.stereo = false;

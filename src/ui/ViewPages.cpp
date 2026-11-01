@@ -138,14 +138,14 @@ namespace
             case StripKind::Main:
                 if (! from.isInput() && ! from.isBus())
                     return false;
-                t.sendLevel = &from.params.mains[juce::jlimit (0, kNumMains - 1, to.getId())].levelDb;
-                t.sendOn = &from.params.mains[juce::jlimit (0, kNumMains - 1, to.getId())].on;
+                t.sendLevel = &from.mains[juce::jlimit (0, kWingMains - 1, to.getId())].levelDb;
+                t.sendOn = &from.mains[juce::jlimit (0, kWingMains - 1, to.getId())].on;
                 return true;
             case StripKind::Matrix:
                 if (from.getKind() == StripKind::Matrix)
                     return false;
-                t.sendLevel = &from.params.matrix[juce::jlimit (0, kNumMatrices - 1, to.getId())].levelDb;
-                t.sendOn = &from.params.matrix[juce::jlimit (0, kNumMatrices - 1, to.getId())].on;
+                t.sendLevel = &from.matrix[juce::jlimit (0, kWingMatrices - 1, to.getId())].levelDb;
+                t.sendOn = &from.matrix[juce::jlimit (0, kWingMatrices - 1, to.getId())].on;
                 return true;
             case StripKind::Channel:
             case StripKind::Aux:
@@ -351,9 +351,9 @@ namespace
         g.setColour (Colours::screenWell);
         g.fillRect (quad (0, 0));
         if (s.getKind() != StripKind::Matrix)
-            bars (quad (1, 0), kNumMatrices, [&s, &colourOf] (int i)
+            bars (quad (1, 0), kWingMatrices, [&s, &colourOf] (int i)
             {
-                const auto& m = s.params.matrix[(size_t) i];
+                const auto& m = s.matrix[(size_t) i];
                 return std::make_pair (m.on.load() ? fader::dbToPos (m.levelDb.load()) : 0.0f, colourOf (m.pre.load() ? 0 : 1));
             });
         else
@@ -1780,9 +1780,9 @@ namespace
         {
             auto mains = inner.removeFromRight (juce::jmax (5.0f, inner.getWidth() * 0.14f));
             const float h = mains.getHeight() / 4.0f;
-            for (int i = 0; i < kNumMains; ++i)
+            for (int i = 0; i < kWingMains; ++i)
             {
-                g.setColour (s.params.mains[i].on.load() ? Dark::faderFill : Colours::screenDark);
+                g.setColour (s.mains[i].on.load() ? Dark::faderFill : Colours::screenDark);
                 g.fillRect (mains.withHeight (h).translated (0.0f, h * (float) i).reduced (0.5f));
             }
             inner.removeFromRight (2.0f);
@@ -2021,7 +2021,7 @@ namespace
             }
         };
         row (0, kWingDcas, [dca] (int i) { return dca.contains (i); }, Colours::cyan);
-        row (1, kNumMains, [&s] (int i) { return s.params.mains[i].on.load(); }, Dark::faderFill);
+        row (1, kWingMains, [&s] (int i) { return s.mains[i].on.load(); }, Dark::faderFill);
         row (2, kWingMuteGroups, [mute] (int i) { return mute.contains (i); }, Dark::muteGroup);
     }
 
@@ -2233,10 +2233,10 @@ std::vector<SendsViewPage::Destination> SendsViewPage::destinations() const
             d.push_back ({ StripKind::Bus, i });
     }
     else if (group == busGroups)
-        for (int i = 0; i < kNumMains; ++i)
+        for (int i = 0; i < kWingMains; ++i)
             d.push_back ({ StripKind::Main, i });
     else
-        for (int i = 0; i < kNumMatrices; ++i)
+        for (int i = 0; i < kWingMatrices; ++i)
             d.push_back ({ StripKind::Matrix, i });
     return d;
 }
@@ -2292,7 +2292,7 @@ std::atomic<float>* SendsViewPage::sendLevel (Strip& s, bool create) const
         auto* send = create ? &s.sends[(size_t) dest->getId()] : s.sends.find (dest->getId());
         return send != nullptr ? &send->levelDb : nullptr;
     }
-    return d.kind == StripKind::Main ? &s.params.mains[d.index].levelDb : &s.params.matrix[d.index].levelDb;
+    return d.kind == StripKind::Main ? &s.mains[d.index].levelDb : &s.matrix[d.index].levelDb;
 }
 
 std::atomic<bool>* SendsViewPage::sendOn (Strip& s, bool create) const
@@ -2306,7 +2306,7 @@ std::atomic<bool>* SendsViewPage::sendOn (Strip& s, bool create) const
         auto* send = create ? &s.sends[(size_t) dest->getId()] : s.sends.find (dest->getId());
         return send != nullptr ? &send->enabled : nullptr;
     }
-    return d.kind == StripKind::Main ? &s.params.mains[d.index].on : &s.params.matrix[d.index].on;
+    return d.kind == StripKind::Main ? &s.mains[d.index].on : &s.matrix[d.index].on;
 }
 
 void SendsViewPage::layoutContent()

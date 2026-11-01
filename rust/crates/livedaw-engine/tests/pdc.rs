@@ -152,7 +152,7 @@ fn a_bus_with_a_plugin_lines_up_with_the_direct_path() {
     send.mode.store(1, Relaxed); // POST
     bus.params.pre_insert.on.store(true, Relaxed);
     bus.params.pre_insert.fx.store(3, Relaxed);
-    bus.params.mains[0].on.store(true, Relaxed);
+    bus.main_send(0).unwrap().on.store(true, Relaxed);
 
     let out = rig.impulse(4);
     let p = peaks(&out);
@@ -220,12 +220,12 @@ fn the_tap_point_decides_whether_ins_1_counts() {
     a.params.pre_insert.fx.store(0, Relaxed);
     // Both feed Bus 2 in TAP mode, tapped at the INPUT: before INS 1, no latency.
     for s in [&a, &b] {
-        s.params.mains[0].on.store(false, Relaxed);
+        s.main_send(0).unwrap().on.store(false, Relaxed);
         s.params.tap.store(0, Relaxed);
         s.sends.get_or_create(1).unwrap().enabled.store(true, Relaxed);
     }
     let bus = e.strip_at(StripKind::Bus, 1).unwrap();
-    bus.params.mains[0].on.store(true, Relaxed);
+    bus.main_send(0).unwrap().on.store(true, Relaxed);
     let out = rig.impulse(2);
     assert_eq!(peaks(&out).len(), 1);
     assert_eq!(peaks(&out)[0].0, 0);
@@ -252,10 +252,10 @@ fn the_tap_points_follow_the_process_order() {
     a.params.pre_insert.on.store(true, Relaxed);
     a.params.pre_insert.fx.store(0, Relaxed);
     for s in [&a, &b] {
-        s.params.mains[0].on.store(false, Relaxed);
+        s.main_send(0).unwrap().on.store(false, Relaxed);
         s.sends.get_or_create(1).unwrap().enabled.store(true, Relaxed);
     }
-    e.strip_at(StripKind::Bus, 1).unwrap().params.mains[0].on.store(true, Relaxed);
+    e.strip_at(StripKind::Bus, 1).unwrap().main_send(0).unwrap().on.store(true, Relaxed);
     let order = |name: &str| livedaw_dsp::wing::PROCESS_ORDERS.iter().position(|o| *o == name).unwrap() as i32;
     // (process order, tap, INS 1's 40 samples in the TAP signal)
     for (proc, tap, after_ins1) in [

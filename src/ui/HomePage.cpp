@@ -222,23 +222,23 @@ namespace
     class MainSquares final : public juce::Component, private juce::Timer
     {
     public:
-        explicit MainSquares (StripParams& p) : params (p) { startTimerHz (6); }
+        explicit MainSquares (Strip& s) : strip (s) { startTimerHz (6); }
 
         bool isRow() const { return getWidth() > getHeight(); }
 
         void paint (juce::Graphics& g) override
         {
             const bool row = isRow();
-            const float h = row ? (float) getHeight() * 0.55f : (float) getHeight() / (float) kNumMains;
-            const float w = row ? (float) getWidth() / (float) kNumMains : (float) getWidth();
+            const float h = row ? (float) getHeight() * 0.55f : (float) getHeight() / (float) kWingMains;
+            const float w = row ? (float) getWidth() / (float) kWingMains : (float) getWidth();
             const float s = juce::jmin (h * 0.9f, w * 0.9f);
-            for (int i = 0; i < kNumMains; ++i)
+            for (int i = 0; i < kWingMains; ++i)
             {
                 auto cell = row ? juce::Rectangle<float> ((float) i * w, (float) getHeight() - h, w, h) : juce::Rectangle<float> (0.0f, (float) i * h, w, h);
                 auto r = cell.withSizeKeepingCentre (s, s);
                 if (row)
                 {
-                    const bool pre = params.mains[i].pre.load();
+                    const bool pre = strip.mains[(size_t) i].pre.load();
                     auto badge = juce::Rectangle<float> (cell.getX(), 0.0f, w, (float) getHeight() - h).withSizeKeepingCentre (s, ((float) getHeight() - h) * 0.7f);
                     g.setColour (colours::well);
                     g.fillRoundedRectangle (badge, 2.0f);
@@ -246,7 +246,7 @@ namespace
                     g.setFont (wingFontFit (TypeScale::caption, badge.getHeight() * 0.85f, WingWeight::SemiBold));
                     g.drawText ("PRE", badge.toNearestInt(), juce::Justification::centred);
                 }
-                const bool on = params.mains[i].on.load();
+                const bool on = strip.mains[(size_t) i].on.load();
                 g.setColour (on ? juce::Colour (0xff00a4f8) : colours::well); // WING 3.1: a lit main in light blue
                 g.fillRect (r);
                 g.setColour (on ? juce::Colours::black : Colours::textDim);
@@ -257,14 +257,14 @@ namespace
 
         void mouseUp (const juce::MouseEvent& e) override
         {
-            const int i = juce::jlimit (0, kNumMains - 1, isRow() ? e.x * kNumMains / juce::jmax (1, getWidth()) : e.y * kNumMains / juce::jmax (1, getHeight()));
-            params.mains[i].on = ! params.mains[i].on.load();
+            const int i = juce::jlimit (0, kWingMains - 1, isRow() ? e.x * kWingMains / juce::jmax (1, getWidth()) : e.y * kWingMains / juce::jmax (1, getHeight()));
+            strip.mains[(size_t) i].on = ! strip.mains[(size_t) i].on.load();
             repaint();
         }
 
     private:
         void timerCallback() override { repaint(); }
-        StripParams& params;
+        Strip& strip;
     };
 } // namespace
 
@@ -369,7 +369,7 @@ public:
         pan = &make<PanWidthDisplay> (p.pan, p.width, false);
         pan->onClick = open (HomeTab::Main);
         if (strip.getKind() != StripKind::Main && strip.getKind() != StripKind::Matrix)
-            mains = &make<MainSquares> (p);
+            mains = &make<MainSquares> (strip);
         soloA = &key ({}, Icon::Headphones, colours::soloBus);
         soloA->isOn = [&p] { return p.monitorBus.load() != 1; };
         soloA->onClick = [&p] { p.monitorBus = p.monitorBus.load() == 2 ? 1 : (p.monitorBus.load() == 1 ? 2 : 0); };
@@ -2008,10 +2008,10 @@ private:
                 PanWidthDisplay::paintRing (g, at (6.5f, 4.5f, 37.0f, 37.0f), p.pan.load(), p.width.load(), false);
                 if (strip->getKind() != StripKind::Main && strip->getKind() != StripKind::Matrix)
                 {
-                    for (int i = 0; i < kNumMains; ++i)
+                    for (int i = 0; i < kWingMains; ++i)
                     {
                         auto sq = at (50.0f, 6.0f + 14.0f * (float) i, 11.0f, 11.0f);
-                        const bool assigned = p.mains[i].on.load();
+                        const bool assigned = strip->mains[i].on.load();
                         g.setColour (assigned ? kMainOn : colours::panel);
                         g.fillRect (sq);
                         if (assigned)
@@ -2056,10 +2056,10 @@ private:
                 g.setColour (juce::Colours::black);
                 g.fillRect (at (4.0f, 32.0f, 88.0f, 1.5f));
                 if (strip->getKind() != StripKind::Matrix)
-                    bars (52.0f, 4.0f, kNumMatrices, [&p] (int i)
+                    bars (52.0f, 4.0f, kWingMatrices, [this] (int i)
                     {
-                        const auto c = p.matrix[i].pre.load() ? colours::tap : colours::post;
-                        return std::make_pair (p.matrix[i].on.load() ? fader::dbToPos (p.matrix[i].levelDb.load()) : 0.0f, c);
+                        const auto c = strip->matrix[(size_t) i].pre.load() ? colours::tap : colours::post;
+                        return std::make_pair (strip->matrix[(size_t) i].on.load() ? fader::dbToPos (strip->matrix[(size_t) i].levelDb.load()) : 0.0f, c);
                     });
                 if (strip->getKind() != StripKind::Main)
                 {

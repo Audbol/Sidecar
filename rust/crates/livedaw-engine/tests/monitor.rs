@@ -119,7 +119,7 @@ fn max_step(x: &[f32]) -> f32 {
 /// the mains.
 fn two_channels(rig: &mut Rig, main: f32, other: f32) {
     set_channels(&rig.engine, 2);
-    rig.ch(1).params.mains[0].on.store(false, Relaxed);
+    rig.ch(1).main_send(0).unwrap().on.store(false, Relaxed);
     rig.dc(0, main);
     rig.dc(1, other);
 }
@@ -316,7 +316,7 @@ fn source_solo_patches_and_solos_its_host() {
     // Channel 1 on input 1 in the mix; CH39 patched to input 4 (silent), off the mains.
     rig.ch(0).params.input_left.store(0, Relaxed);
     rig.ch(38).params.input_left.store(3, Relaxed);
-    rig.ch(38).params.mains[0].on.store(false, Relaxed);
+    rig.ch(38).main_send(0).unwrap().on.store(false, Relaxed);
     rig.dc(0, 0.1);
     rig.dc(2, 0.3);
     c.solo_bus.store(1, Relaxed); // SPEAKERS
@@ -347,7 +347,7 @@ fn source_solo_patches_and_solos_its_host() {
 
     // SIP: the other inputs are muted while the source plays in place.
     c.solo_mode.store(solo_mode::SIP, Relaxed);
-    rig.ch(38).params.mains[0].on.store(true, Relaxed);
+    rig.ch(38).main_send(0).unwrap().on.store(true, Relaxed);
     rig.run(4, 0);
     assert!(c.sip_active.load(Relaxed));
     assert_eq!(rig.ch(0).console.mute_state(), mute_state::GROUP);
@@ -355,7 +355,7 @@ fn source_solo_patches_and_solos_its_host() {
 
     // A stereo pair plays both ports; AUX7 can host instead.
     c.solo_mode.store(solo_mode::STUDIO, Relaxed);
-    rig.ch(38).params.mains[0].on.store(false, Relaxed);
+    rig.ch(38).main_send(0).unwrap().on.store(false, Relaxed);
     engine.sources().set_mode(2, source_mode::STEREO);
     rig.dc(3, 0.2);
     m.source_solo.store(2, Relaxed);

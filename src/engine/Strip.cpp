@@ -51,6 +51,8 @@ juce::String wingColourName (int index)
 Strip::Strip (ld::Engine* engine, ld::Strip* h)
     : params (*ld::ld_strip_params (h)),
       sends (h),
+      mains (h),
+      matrix (h),
       meters (*ld::ld_strip_meters (h)),
       controls (ld::ld_engine_controls (engine)),
       engineHandle (engine),

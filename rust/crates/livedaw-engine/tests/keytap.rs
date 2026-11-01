@@ -88,7 +88,7 @@ fn the_key_follows_the_tap_of_the_source() {
     set_channels(&rig.engine, 2);
     // Channel 1 is the key source (fader down, off Main 1); channel 2 is gated by it.
     let src = rig.ch(0);
-    src.params.mains[0].on.store(false, Relaxed);
+    src.main_send(0).unwrap().on.store(false, Relaxed);
     src.params.fader_db.store(-100.0);
     rig.inputs[0].fill(0.5);
     rig.inputs[1].fill(0.5);
@@ -130,7 +130,7 @@ fn the_in_tap_is_after_the_input_trim() {
     let mut rig = Rig::new(0, 2, 2);
     set_channels(&rig.engine, 2);
     let src = rig.ch(0);
-    src.params.mains[0].on.store(false, Relaxed);
+    src.main_send(0).unwrap().on.store(false, Relaxed);
     rig.inputs[0].fill(0.5);
     rig.inputs[1].fill(0.5);
     rig.key_gate(1, 0, IN);

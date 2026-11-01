@@ -357,7 +357,7 @@ fn tap_width_and_tap_eq_shape_tap_sends_only() {
     let p = &ch.params;
     p.stereo.store(true, Relaxed);
     p.input_right.store(1, Relaxed);
-    p.mains[0].on.store(false, Relaxed);
+    ch.main_send(0).unwrap().on.store(false, Relaxed);
     rig.constant(0, 0.6);
     rig.constant(1, 0.0);
     // Bus 1 (TAP send) on outputs 4/5, bus 2 (POST send) on 6/7.

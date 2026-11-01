@@ -21,10 +21,11 @@ use crate::fx::{FxInputs, FxRack};
 use crate::groups::GroupSet;
 use crate::keytap::{key_tap, stage_of, KeySource, StripKeyTaps, TAP_EQ_POST, TAP_INS2};
 use crate::monitor::SoloPatch;
-use crate::params::{DcaParams, DynSlotParams, FxParams, StripKind, StripMeters, StripParams, NUM_MAINS, NUM_MATRICES};
+use crate::params::{DcaParams, DynSlotParams, FxParams, StripKind, StripMeters, StripParams};
+use crate::params::{MainSendParams, MatrixSendParams, MAIN_SEND_PAGE, MAX_MAINS, MAX_MATRICES};
 use crate::pdc::{pdc_tap, StripPdc};
 use crate::routing::{return_tap, strip_source_slot, ReturnRing};
-use crate::sends::SendBank;
+use crate::sends::{Bank, SendBank};
 use crate::solo::StripConsole;
 use crate::sources::{internal, osc_channel, usr_channel};
 use crate::tapsend::TapShaper;
@@ -253,8 +254,8 @@ impl StripDsp {
 /// * the stage task processing a strip owns its `dsp`; later stages only *read*
 ///   the buffers of strips processed in earlier stages;
 /// * each destination task owns the ramps of the sends feeding it: bus tasks the
-///   `SendParams::last_gain` of their slot, main task `i` `last_main[i]`, matrix
-///   task `j` `last_mtx[j]`;
+///   `last_gain` of their send (`SendParams`, `MainSendParams`,
+///   `MatrixSendParams`) on every strip feeding them;
 /// * the monitor stage runs on the audio thread alone and owns `last_solo`;
 /// * the message thread only touches `dsp` through `prepare`, while the strip is
 ///   not reachable by the audio thread (device stopped, or not yet published).
@@ -271,6 +272,10 @@ pub struct Strip {
     pub remote_peaks: RemotePeaks,
     /// Sends to buses (channels/aux: all buses; buses: every other bus).
     pub sends: SendBank,
+    /// Sends to mains and matrices, by the destination's index (paged: as
+    /// many as the console has, up to `MAX_MAINS` / `MAX_MATRICES`).
+    pub mains: Bank<MainSendParams>,
+    pub matrices: Bank<MatrixSendParams>,
     /// UI metadata (never touched by the audio thread).
     name: Mutex<String>,
     /// The free tags of HOME > TAGS, comma-separated (the WING's `/ch/n/tags`).
@@ -286,8 +291,6 @@ pub struct Strip {
     /// the readers that run before them (`routing.rs`).
     returns: StripReturns,
     dsp: UnsafeCell<StripDsp>,
-    last_main: [UnsafeCell<[f32; 2]>; NUM_MAINS],
-    last_mtx: [UnsafeCell<[f32; 2]>; NUM_MATRICES],
     last_solo: UnsafeCell<f32>,
 }
 
@@ -366,6 +369,8 @@ impl Strip {
             band_meters: DynBandMeters::default(),
             remote_peaks: RemotePeaks::default(),
             sends: SendBank::for_kind(kind),
+            mains: Bank::new(MAX_MAINS, MAIN_SEND_PAGE, kind, usize::try_from(id).unwrap_or(0)),
+            matrices: Bank::new(MAX_MATRICES, MAIN_SEND_PAGE, kind, usize::try_from(id).unwrap_or(0)),
             name: Mutex::new(String::new()),
             tags: Mutex::new(String::new()),
             console: StripConsole::default(),
@@ -373,8 +378,6 @@ impl Strip {
             keys: StripKeyTaps::default(),
             returns: StripReturns::default(),
             dsp: UnsafeCell::new(StripDsp::new()),
-            last_main: Default::default(),
-            last_mtx: Default::default(),
             last_solo: UnsafeCell::new(0.0),
         }
     }
@@ -622,16 +625,28 @@ impl Strip {
         &mut *self.dsp.get()
     }
 
+    /// Any thread: the send to main `i` (None: off; the engine creates the
+    /// sends to the console's mains with the strip).
     #[inline]
-    #[allow(clippy::mut_from_ref)]
-    pub(crate) unsafe fn last_main(&self, main: usize) -> &mut [f32; 2] {
-        &mut *self.last_main[main].get()
+    pub fn main_send(&self, i: usize) -> Option<&MainSendParams> {
+        self.mains.find(i)
     }
 
+    /// Any thread: the send to matrix `i` (None: off).
     #[inline]
-    #[allow(clippy::mut_from_ref)]
-    pub(crate) unsafe fn last_mtx(&self, mtx: usize) -> &mut [f32; 2] {
-        &mut *self.last_mtx[mtx].get()
+    pub fn matrix_send(&self, i: usize) -> Option<&MatrixSendParams> {
+        self.matrices.find(i)
+    }
+
+    /// Message thread: the strip's sends to `mains` mains and `matrices`
+    /// matrices exist (the factory sends; existing ones are kept).
+    pub fn create_sends(&self, mains: usize, matrices: usize) {
+        for i in 0..mains {
+            self.mains.get_or_create(i);
+        }
+        for i in 0..matrices {
+            self.matrices.get_or_create(i);
+        }
     }
 
     #[inline]

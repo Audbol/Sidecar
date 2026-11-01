@@ -232,7 +232,7 @@ public:
             auto& ch2 = *engine.getChannels()[1];
             ch1.params.inputLeft = 0;
             ch2.params.inputLeft = 1;
-            ch2.params.mains[0].on = false;
+            ch2.mains[0].on = false;
             rig.setInput (0, 0.25f);
             rig.setInput (1, 0.125f);
             rig.setInput (2, 0.5f);

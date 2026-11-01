@@ -1278,14 +1278,14 @@ public:
                     possible = false;
                     return false;
                 }
-                return src.params.mains[juce::jlimit (0, kNumMains - 1, target.getId())].on.load();
+                return src.mains[juce::jlimit (0, kWingMains - 1, target.getId())].on.load();
             case StripKind::Matrix:
                 if (src.getKind() == StripKind::Matrix)
                 {
                     possible = false;
                     return false;
                 }
-                return src.params.matrix[juce::jlimit (0, kNumMatrices - 1, target.getId())].on.load();
+                return src.matrix[juce::jlimit (0, kWingMatrices - 1, target.getId())].on.load();
             case StripKind::Channel:
             case StripKind::Aux:
                 break;

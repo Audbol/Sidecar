@@ -14,7 +14,7 @@
 //! sets `TalkPathParams::on`.
 
 use crate::atomic::AtomicF32;
-use crate::params::{StripKind, NUM_MAINS, NUM_MATRICES, WING_BUSES};
+use crate::params::{StripKind, WING_BUSES, WING_MAINS, WING_MATRICES};
 use crate::strip::Strip;
 use livedaw_dsp::util::db_to_gain;
 use std::cell::UnsafeCell;
@@ -248,17 +248,21 @@ impl<'a> TalkBlock<'a> {
     }
 
     pub fn main(&self, i: usize) -> TalkGains {
-        if i >= NUM_MAINS {
+        if i >= WING_MAINS {
             return TalkGains::NONE;
         }
-        self.gains(|p| p.mains & (1 << i) != 0, |s| s.params.mains[i].level_db.load(), false)
+        self.gains(|p| p.mains & (1 << i) != 0, |s| s.main_send(i).map_or(0.0, |m| m.level_db.load()), false)
     }
 
     pub fn matrix(&self, i: usize) -> TalkGains {
-        if i >= NUM_MATRICES {
+        if i >= WING_MATRICES {
             return TalkGains::NONE;
         }
-        self.gains(|p| p.matrices & (1 << i) != 0, |s| s.params.matrix[i].level_db.load(), false)
+        self.gains(
+            |p| p.matrices & (1 << i) != 0,
+            |s| s.matrix_send(i).map_or(livedaw_dsp::fader::FADER_MIN, |m| m.level_db.load()),
+            false,
+        )
     }
 
     /// MON DIM of the selected monitoring path(s) while talking.
@@ -275,8 +279,8 @@ impl<'a> TalkBlock<'a> {
 /// send ramps it sums.
 pub(crate) struct TalkRamps {
     buses: [UnsafeCell<TalkGains>; WING_BUSES],
-    mains: [UnsafeCell<TalkGains>; NUM_MAINS],
-    matrices: [UnsafeCell<TalkGains>; NUM_MATRICES],
+    mains: [UnsafeCell<TalkGains>; WING_MAINS],
+    matrices: [UnsafeCell<TalkGains>; WING_MATRICES],
 }
 
 // SAFETY: each entry is only touched by the task of its destination.

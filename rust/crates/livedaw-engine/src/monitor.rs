@@ -25,7 +25,7 @@
 //! The host's own SOLO key also starts it (firmware 1.12), so CLR SOLO ends it.
 
 use crate::atomic::AtomicF32;
-use crate::params::{StripKind, NUM_AUX, NUM_MAINS, NUM_MATRICES, WING_BUSES, WING_CHANNELS};
+use crate::params::{StripKind, WING_AUX, WING_BUSES, WING_CHANNELS, WING_MAINS, WING_MATRICES};
 use crate::sources::{pair_first, source_index, source_mode, source_port, SourceTable};
 use livedaw_dsp::biquad::BiquadCoeffs;
 use livedaw_dsp::delay::SPEED_OF_SOUND;
@@ -76,17 +76,17 @@ pub fn delay_ms(meters: f32) -> f32 {
 
 /// DIRECT IN choices (`MonitorDspParams::direct_source`, the WING's `dirin`
 /// without OFF = -1): CH.1-40, AUX.1-8, BUS.1-16, MAIN.1-4, MTX.1-8.
-pub const NUM_DIRECT_SOURCES: usize = WING_CHANNELS + NUM_AUX + WING_BUSES + NUM_MAINS + NUM_MATRICES;
+pub const NUM_DIRECT_SOURCES: usize = WING_CHANNELS + WING_AUX + WING_BUSES + WING_MAINS + WING_MATRICES;
 
 /// The strip a DIRECT IN index plays: (kind, 0-based number; buses by slot).
 pub fn direct_source(index: i32) -> Option<(StripKind, usize)> {
     let mut i = usize::try_from(index).ok()?;
     for (kind, count) in [
         (StripKind::Channel, WING_CHANNELS),
-        (StripKind::Aux, NUM_AUX),
+        (StripKind::Aux, WING_AUX),
         (StripKind::Bus, WING_BUSES),
-        (StripKind::Main, NUM_MAINS),
-        (StripKind::Matrix, NUM_MATRICES),
+        (StripKind::Main, WING_MAINS),
+        (StripKind::Matrix, WING_MATRICES),
     ] {
         if i < count {
             return Some((kind, i));
@@ -101,10 +101,10 @@ pub fn direct_index(kind: StripKind, number: usize) -> i32 {
     let mut base = 0;
     for (k, count) in [
         (StripKind::Channel, WING_CHANNELS),
-        (StripKind::Aux, NUM_AUX),
+        (StripKind::Aux, WING_AUX),
         (StripKind::Bus, WING_BUSES),
-        (StripKind::Main, NUM_MAINS),
-        (StripKind::Matrix, NUM_MATRICES),
+        (StripKind::Main, WING_MAINS),
+        (StripKind::Matrix, WING_MATRICES),
     ] {
         if k == kind {
             return if number < count { (base + number) as i32 } else { -1 };

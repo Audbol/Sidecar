@@ -36,7 +36,8 @@ fn imports_the_fixture() {
     assert!(r.applied > 250, "{}", r.details());
     let chs: Vec<_> = (0..4).map(|i| e.channel_at(i).unwrap()).collect();
     let ch = |n: usize| &chs[n - 1];
-    let c1 = &ch(1).params;
+    let c1s = ch(1);
+    let c1 = &c1s.params;
     assert_eq!(ch(1).name(), "Kick");
     assert_eq!(c1.colour.load(Relaxed), 9);
     assert_eq!(c1.icon.load(Relaxed), 12);
@@ -61,7 +62,7 @@ fn imports_the_fixture() {
     assert!(c1.pre_insert.on.load(Relaxed));
     assert_eq!(c1.pre_insert.fx.load(Relaxed), 1);
     assert_eq!(c1.post_insert.fx.load(Relaxed), 0);
-    assert!(c1.mains[0].on.load(Relaxed));
+    assert!(c1s.main_send(0).unwrap().on.load(Relaxed));
     let s1 = ch(1).sends.find(0).unwrap();
     assert!(s1.enabled.load(Relaxed) && s1.ignore_mute.load(Relaxed));
     assert_eq!(s1.level_db.load(), -6.0);
@@ -70,8 +71,8 @@ fn imports_the_fixture() {
     let s9 = ch(1).sends.find(8).unwrap();
     assert_eq!(s9.mode.load(Relaxed), send_mode::GROUP);
     assert!(s9.pan_reversed.load(Relaxed));
-    assert!(c1.matrix[0].on.load(Relaxed) && c1.matrix[0].pre.load(Relaxed));
-    assert_eq!(c1.matrix[0].pan.load(), 20.0);
+    assert!(c1s.matrix_send(0).unwrap().on.load(Relaxed) && c1s.matrix_send(0).unwrap().pre.load(Relaxed));
+    assert_eq!(c1s.matrix_send(0).unwrap().pan.load(), 20.0);
     assert_eq!(c1.dca_mask.load().low(), 1);
     assert_eq!(c1.mute_group_mask.load().low(), 1);
     // Channel 2: models chosen by name, fader at -oo.
@@ -95,7 +96,7 @@ fn imports_the_fixture() {
     assert!(bus1.params.mono.load(Relaxed));
     assert!(bus1.params.input.delay_on.load(Relaxed));
     assert_eq!(bus1.params.eq.param("3g", true).unwrap().load(), -6.0);
-    assert!(bus1.params.matrix[1].pre.load(Relaxed));
+    assert!(bus1.matrix_send(1).unwrap().pre.load(Relaxed));
     assert_eq!(bus1.params.output_left.load(Relaxed), 2); // A 3/4 = Bus 1
     let bus10 = e.strip_by_number(StripKind::Bus, 10).unwrap();
     assert_eq!(bus10.sends.find(1).unwrap().level_db.load(), -4.0);

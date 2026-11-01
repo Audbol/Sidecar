@@ -43,7 +43,7 @@ use crate::model::ConsoleModel;
 use crate::refs::StripRef;
 use crate::xml::{parse_int_prefix, Element};
 use livedaw_dsp::wing::{ParamKind, FX_MODELS};
-use livedaw_engine::params::{FX_EXT, NUM_MAINS, NUM_MATRICES, WING_DCAS};
+use livedaw_engine::params::{FX_EXT, WING_DCAS};
 use livedaw_engine::{Engine, StripKind};
 use std::collections::hash_map::RandomState;
 use std::fmt;
@@ -384,21 +384,23 @@ pub fn spill_faders(engine: &Engine, kind: &SpillKind) -> Vec<FaderRef> {
             out
         }
         SpillKind::Main(i) => {
-            let Some(index) = usize::try_from(i).ok().filter(|&i| i < NUM_MAINS) else { return Vec::new() };
+            let Some(index) = usize::try_from(i).ok().filter(|&i| i < engine.num_strips(StripKind::Main)) else {
+                return Vec::new();
+            };
             [StripKind::Channel, StripKind::Aux, StripKind::Bus]
                 .into_iter()
                 .flat_map(|k| engine.strips(k))
-                .filter(|s| s.params.mains[index].on.load(Ordering::Relaxed))
+                .filter(|s| s.main_send(index).is_some_and(|m| m.on.load(Ordering::Relaxed)))
                 .map(|s| FaderRef::Strip(StripRef::of(&s)))
                 .collect()
         }
         SpillKind::Matrix(i) => {
-            let Some(index) = usize::try_from(i).ok().filter(|&i| i < NUM_MATRICES) else { return Vec::new() };
+            let Some(index) = usize::try_from(i).ok() else { return Vec::new() };
             let Some(to) = engine.strips(StripKind::Matrix).get(index).map(|m| StripRef::of(m)) else { return Vec::new() };
             [StripKind::Channel, StripKind::Aux, StripKind::Bus, StripKind::Main]
                 .into_iter()
                 .flat_map(|k| engine.strips(k))
-                .filter(|s| s.params.matrix[index].on.load(Ordering::Relaxed))
+                .filter(|s| s.matrix_send(index).is_some_and(|m| m.on.load(Ordering::Relaxed)))
                 .map(|s| FaderRef::Send { from: StripRef::of(&s), to })
                 .collect()
         }
@@ -1551,7 +1553,7 @@ mod tests {
         assert!(buses.len() >= 4 && !mains.is_empty() && mtx.len() >= 3);
         // MTX 3: channel 2, bus 4 and main 1 send to it (CH 5 only has a send off).
         for s in [&chans[1], &buses[3], &mains[0]] {
-            s.params.matrix[2].on.store(true, Ordering::Relaxed);
+            s.matrix_send(2).unwrap().on.store(true, Ordering::Relaxed);
         }
         let to = StripRef::of(&mtx[2]);
         let send = |s: &livedaw_engine::Strip| FaderRef::Send { from: StripRef::of(s), to };

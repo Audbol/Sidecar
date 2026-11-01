@@ -504,7 +504,7 @@ public:
             expect (! layers.getSpill (S::Left).has_value());
 
             // A matrix's spill (ABI 22, spill kind 6): the sends of the strips sending to it.
-            engine.getChannels()[2]->params.matrix[1].on = true;
+            engine.getChannels()[2]->matrix[1].on = true;
             const LayerSet::Spill mtx2 { LayerSet::Spill::Kind::Matrix, 1, {} };
             layers.startSpill (S::Left, mtx2);
             expect (layers.getSpill (S::Left).has_value() && *layers.getSpill (S::Left) == mtx2);

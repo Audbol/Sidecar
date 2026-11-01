@@ -55,6 +55,29 @@ private:
     ld::Strip* strip;
 };
 
+/** A strip's sends to the mains or the matrices, by the destination's index (ABI 26:
+    storage in the Rust engine; the console has any number of mains and matrices). */
+template <typename Params, Params* (*get) (const ld::Strip*, int32_t)>
+class OutputSendBank
+{
+public:
+    explicit OutputSendBank (ld::Strip* s) : strip (s) {}
+
+    /** Message thread: the send to destination `index` (created if needed). */
+    Params& operator[] (size_t index) const
+    {
+        auto* p = get (strip, static_cast<int32_t> (index));
+        jassert (p != nullptr);
+        return *p;
+    }
+
+private:
+    ld::Strip* strip;
+};
+
+using MainSendBank = OutputSendBank<MainSendParams, ld::ld_strip_main_send>;
+using MatrixSendBank = OutputSendBank<MatrixSendParams, ld::ld_strip_matrix_send>;
+
 /** Blocks that hold a model (see ld_strip_set_model). */
 enum class ModelBlock : int32_t
 {
@@ -262,6 +285,9 @@ public:
 
     StripParams& params;
     SendBank sends;
+    /** Sends to main / matrix `i` (ABI 26; before, params.mains / params.matrix). */
+    MainSendBank mains;
+    MatrixSendBank matrix;
     ld::StripMeters& meters;
 
     int getNumChannels() const noexcept { return ld::ld_strip_num_channels (handle); }

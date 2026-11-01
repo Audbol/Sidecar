@@ -3,8 +3,8 @@
 //! first) is one configuration of it (`docs/UNIVERSAL_MIXER.md`).
 
 use crate::params::{
-    MAX_DCAS, MAX_FX, MAX_MUTE_GROUPS, NUM_AUX, NUM_MAINS, NUM_MATRICES, WING_BUSES, WING_CHANNELS, WING_DCAS, WING_FX,
-    WING_MUTE_GROUPS,
+    MAX_DCAS, MAX_FX, MAX_MAINS, MAX_MATRICES, MAX_MUTE_GROUPS, WING_AUX, WING_BUSES, WING_CHANNELS, WING_DCAS, WING_FX,
+    WING_MAINS, WING_MATRICES, WING_MUTE_GROUPS,
 };
 use crate::sends::MAX_BUSES;
 
@@ -20,10 +20,8 @@ pub struct Counts {
     pub channels: usize,
     pub aux: usize,
     pub buses: usize,
-    /// Up to the WING's 4 for now: sends to mains are still a fixed block
-    /// of every strip (Phase 1, step 2 makes them general).
+    /// At least one (the console's main), up to `MAX_MAINS`.
     pub mains: usize,
-    /// Up to the WING's 8 for now (as `mains`).
     pub matrices: usize,
     pub dcas: usize,
     pub mute_groups: usize,
@@ -35,10 +33,10 @@ impl Counts {
     /// DCAs, 8 mute groups, 16 FX slots.
     pub const WING: Counts = Counts {
         channels: WING_CHANNELS,
-        aux: NUM_AUX,
+        aux: WING_AUX,
         buses: WING_BUSES,
-        mains: NUM_MAINS,
-        matrices: NUM_MATRICES,
+        mains: WING_MAINS,
+        matrices: WING_MATRICES,
         dcas: WING_DCAS,
         mute_groups: WING_MUTE_GROUPS,
         fx: WING_FX,
@@ -50,8 +48,8 @@ impl Counts {
             channels: self.channels.min(MAX_CHANNELS),
             aux: self.aux.min(MAX_AUX),
             buses: self.buses.min(MAX_BUSES),
-            mains: self.mains.clamp(1, NUM_MAINS),
-            matrices: self.matrices.min(NUM_MATRICES),
+            mains: self.mains.clamp(1, MAX_MAINS),
+            matrices: self.matrices.min(MAX_MATRICES),
             dcas: self.dcas.min(MAX_DCAS),
             mute_groups: self.mute_groups.min(MAX_MUTE_GROUPS),
             fx: self.fx.min(MAX_FX),
@@ -84,9 +82,9 @@ mod tests {
 
     #[test]
     fn counts_stay_within_what_the_engine_holds() {
-        let c = Counts { channels: 99999, mains: 0, matrices: 99, dcas: 1000, mute_groups: 1000, fx: 1000, ..Counts::WING };
+        let c = Counts { channels: 99999, mains: 0, matrices: 9999, dcas: 1000, mute_groups: 1000, fx: 1000, ..Counts::WING };
         let s = c.sanitised();
-        assert_eq!((s.channels, s.mains, s.matrices), (MAX_CHANNELS, 1, NUM_MATRICES));
+        assert_eq!((s.channels, s.mains, s.matrices), (MAX_CHANNELS, 1, MAX_MATRICES));
         assert_eq!((s.dcas, s.mute_groups, s.fx), (MAX_DCAS, MAX_MUTE_GROUPS, MAX_FX));
         assert_eq!(Counts::WING.sanitised(), Counts::WING);
         assert_eq!(ConsoleConfig::default(), ConsoleConfig::wing());

@@ -62,7 +62,11 @@ use std::sync::Arc;
 // which ld_engine_counts().dcas are in use; LdScope's DCAs and mute groups
 // are group sets; the console's counts (ld_engine_counts, ld_engine_configure,
 // ld_engine_set_num_dcas, ld_engine_set_num_mute_groups).
-pub const LD_ABI_VERSION: i32 = 25;
+// ABI 26 (Phase 1 step 2): sends to mains and matrices left StripParams for
+// paged banks on the strip, by the destination's index, as many as the
+// console has (ld_strip_main_send, ld_strip_matrix_send); MainSendParams and
+// MatrixSendParams end with their ramp state (lastGain_).
+pub const LD_ABI_VERSION: i32 = 26;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(default)
@@ -108,8 +112,9 @@ pub struct LdLayoutInfo {
     pub off_post_insert: i32,
     pub off_fader: i32,
     pub off_stereo: i32,
-    pub off_mains: i32,
-    pub off_matrix: i32,
+    // ABI 26: main and matrix sends left StripParams (Strip::mains, Strip::matrices)
+    pub off_main_send_level: i32,
+    pub off_matrix_send_pan: i32,
     pub off_dca_mask: i32,
     pub off_direct_level: i32,
     pub off_colour: i32,
@@ -221,8 +226,8 @@ pub unsafe extern "C" fn ld_layout_info(out: *mut LdLayoutInfo) {
         off_post_insert: offset_of!(StripParams, post_insert) as i32,
         off_fader: offset_of!(StripParams, fader_db) as i32,
         off_stereo: offset_of!(StripParams, stereo) as i32,
-        off_mains: offset_of!(StripParams, mains) as i32,
-        off_matrix: offset_of!(StripParams, matrix) as i32,
+        off_main_send_level: offset_of!(MainSendParams, level_db) as i32,
+        off_matrix_send_pan: offset_of!(MatrixSendParams, pan) as i32,
         off_dca_mask: offset_of!(StripParams, dca_mask) as i32,
         off_direct_level: offset_of!(StripParams, direct_level_db) as i32,
         off_colour: offset_of!(StripParams, colour) as i32,
@@ -877,6 +882,20 @@ pub unsafe extern "C" fn ld_strip_send(s: *const Strip, slot: i32) -> *const Sen
 }
 
 /// Any thread: the send to bus `slot` if it was ever configured, else null.
+/// Message thread: the send to main `index` (created if needed); null past `MAX_MAINS`.
+#[no_mangle]
+pub unsafe extern "C" fn ld_strip_main_send(s: *const Strip, index: i32) -> *const MainSendParams {
+    let (Some(s), Ok(i)) = (strip(s), usize::try_from(index)) else { return std::ptr::null() };
+    guard(std::ptr::null(), || s.mains.get_or_create(i).map_or(std::ptr::null(), |p| p as *const _))
+}
+
+/// Message thread: the send to matrix `index` (created if needed); null past `MAX_MATRICES`.
+#[no_mangle]
+pub unsafe extern "C" fn ld_strip_matrix_send(s: *const Strip, index: i32) -> *const MatrixSendParams {
+    let (Some(s), Ok(i)) = (strip(s), usize::try_from(index)) else { return std::ptr::null() };
+    guard(std::ptr::null(), || s.matrices.get_or_create(i).map_or(std::ptr::null(), |p| p as *const _))
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn ld_strip_find_send(s: *const Strip, slot: i32) -> *const SendParams {
     let Some(s) = strip(s) else { return std::ptr::null() };

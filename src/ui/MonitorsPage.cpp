@@ -1215,8 +1215,8 @@ void MonitorsPage::resized()
     mtxGrid = wingRect (344.0f, 411.0f, 232.0f, 142.0f);
     mainGrid = wingRect (344.0f, 570.0f, 232.0f, 86.0f);
     busTiles = gridTiles (busGrid, kWingBuses, 4);
-    mtxTiles = gridTiles (mtxGrid, kNumMatrices, 4);
-    mainTiles = gridTiles (mainGrid, kNumMains, 4);
+    mtxTiles = gridTiles (mtxGrid, kWingMatrices, 4);
+    mainTiles = gridTiles (mainGrid, kWingMains, 4);
 
     // PHONES / SPEAKERS SETTINGS: SOURCE, SRC LEVEL, SRC MIX; DIM, PFL DIM,
     // BAND SOLO; DIRECT IN; the EQ key, the DIST slider, INVERT and DELAY.

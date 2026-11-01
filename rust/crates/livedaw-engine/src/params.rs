@@ -9,6 +9,7 @@
 use crate::atomic::AtomicF32;
 use crate::groups::{AtomicGroupSet, MAX_GROUPS};
 use crate::monitor::MonitorControls;
+use crate::sends::BankItem;
 use crate::solo::solo_mode;
 use crate::talk::TalkParams;
 use livedaw_dsp::wing::{
@@ -17,11 +18,19 @@ use livedaw_dsp::wing::{
     model_index, DYN_MODELS, EQ_MODELS_BUS, EQ_MODELS_CH, FILTER_TOOLS, FX_MODELS, MAX_DYN_PARAMS, MAX_EQ_PARAMS, MAX_FX_PARAMS,
     MAX_TOOL_PARAMS,
 };
+use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering::Relaxed};
 
-pub const NUM_MAINS: usize = 4;
-pub const NUM_MATRICES: usize = 8;
-pub const NUM_AUX: usize = 8;
+/// The WING's 4 mains, 8 matrices and 8 aux channels. A console has any
+/// number (its configuration, `config.rs`), up to `MAX_MAINS` and
+/// `MAX_MATRICES`: every strip's sends to them are paged (`sends::Bank`).
+pub const WING_MAINS: usize = 4;
+pub const WING_MATRICES: usize = 8;
+pub const WING_AUX: usize = 8;
+pub const MAX_MAINS: usize = 256;
+pub const MAX_MATRICES: usize = 256;
+/// Sends to mains and matrices per page of a strip's bank.
+pub const MAIN_SEND_PAGE: usize = 8;
 /// DCAs and mute groups the engine holds; how many the console uses is set
 /// at run time (`Engine::set_num_dcas`, `set_num_mute_groups`).
 pub const MAX_DCAS: usize = MAX_GROUPS;
@@ -398,7 +407,7 @@ impl Default for InsertParams {
     }
 }
 
-/// Send from a strip to one of the 4 main buses.
+/// Send from a strip to a main bus (`Strip::mains`, by the main's index).
 #[repr(C)]
 #[derive(Debug)]
 pub struct MainSendParams {
@@ -407,9 +416,40 @@ pub struct MainSendParams {
     /// still cuts it).
     pub pre: AtomicBool,
     pub level_db: AtomicF32,
+    /// Gain ramp state (left, right), owned by the task that sums the main.
+    pub(crate) last_gain: UnsafeCell<[f32; 2]>,
 }
 
-/// Send from a strip to one of the 8 matrices.
+// SAFETY: `last_gain` is only touched by the task that sums the main; the rest is atomic.
+unsafe impl Sync for MainSendParams {}
+
+impl MainSendParams {
+    /// The send's gain ramp.
+    ///
+    /// # Safety
+    /// The task summing the main only.
+    #[inline]
+    #[allow(clippy::mut_from_ref)]
+    pub(crate) unsafe fn last(&self) -> &mut [f32; 2] {
+        &mut *self.last_gain.get()
+    }
+}
+
+impl BankItem for MainSendParams {
+    /// Channels and aux feed Main 1; buses are aux mixes until routed, but a
+    /// factory-set WING's buses 9-16 feed Main 1 (`StripParams::new_in_slot`).
+    fn factory(kind: StripKind, slot: usize, index: usize) -> Self {
+        let main1 = index == 0 && (kind.is_input() || (kind == StripKind::Bus && (8..WING_BUSES).contains(&slot)));
+        Self {
+            on: AtomicBool::new(main1),
+            pre: AtomicBool::new(false),
+            level_db: AtomicF32::new(0.0),
+            last_gain: UnsafeCell::new([0.0; 2]),
+        }
+    }
+}
+
+/// Send from a strip to a matrix (`Strip::matrices`, by the matrix's index).
 #[repr(C)]
 #[derive(Debug)]
 pub struct MatrixSendParams {
@@ -427,6 +467,40 @@ pub struct MatrixSendParams {
     pub pan_reversed: AtomicBool,
     pub level_db: AtomicF32,
     pub pan: AtomicF32,
+    /// Gain ramp state (left, right), owned by the task that sums the matrix.
+    pub(crate) last_gain: UnsafeCell<[f32; 2]>,
+}
+
+// SAFETY: `last_gain` is only touched by the task that sums the matrix; the rest is atomic.
+unsafe impl Sync for MatrixSendParams {}
+
+impl MatrixSendParams {
+    /// The send's gain ramp.
+    ///
+    /// # Safety
+    /// The task summing the matrix only.
+    #[inline]
+    #[allow(clippy::mut_from_ref)]
+    pub(crate) unsafe fn last(&self) -> &mut [f32; 2] {
+        &mut *self.last_gain.get()
+    }
+}
+
+impl BankItem for MatrixSendParams {
+    /// The WING's factory matrix sends: off at -oo without pan link, input
+    /// and aux channels in PRE (TAP), buses and mains post-fader.
+    fn factory(kind: StripKind, _slot: usize, _index: usize) -> Self {
+        Self {
+            on: AtomicBool::new(false),
+            pre: AtomicBool::new(kind.is_input()),
+            ignore_mute: AtomicBool::new(false),
+            pan_link: AtomicBool::new(false),
+            pan_reversed: AtomicBool::new(false),
+            level_db: AtomicF32::new(livedaw_dsp::fader::FADER_MIN),
+            pan: AtomicF32::new(0.0),
+            last_gain: UnsafeCell::new([0.0; 2]),
+        }
+    }
 }
 
 /// Monitor bus a solo goes to (SOLO MODE LIVE): A = PHONES, B = SPEAKERS, both.
@@ -471,9 +545,6 @@ pub struct StripParams {
     /// Hardware outputs (-1 = none). Channels: direct out (pre-fader).
     pub output_left: AtomicI32,
     pub output_right: AtomicI32,
-
-    pub mains: [MainSendParams; NUM_MAINS],
-    pub matrix: [MatrixSendParams; NUM_MATRICES],
 
     /// The DCAs the strip is a member of (0-based).
     pub dca_mask: AtomicGroupSet,
@@ -683,15 +754,18 @@ mod colour_tests {
             StripParams::new_in_slot(StripKind::Bus, 10),
         );
         assert_eq!((b1.colour.load(Relaxed), b9.colour.load(Relaxed), b11.colour.load(Relaxed)), (10, 6, 12));
-        assert!(!b1.mains[0].on.load(Relaxed) && b9.mains[0].on.load(Relaxed));
+        let main1 = |kind, slot| MainSendParams::factory(kind, slot, 0).on.load(Relaxed);
+        assert!(!main1(StripKind::Bus, 0) && main1(StripKind::Bus, 8) && main1(StripKind::Bus, 15));
+        assert!(!main1(StripKind::Bus, 16) && main1(StripKind::Channel, 0) && main1(StripKind::Aux, 3));
+        assert!(!MainSendParams::factory(StripKind::Channel, 0, 1).on.load(Relaxed), "only Main 1");
         assert_eq!(b9.fader_db.load(), 0.0);
         // TAP "5"; matrix sends off at -oo, not linked, PRE from channels and
         // post-fader from buses; a matrix's direct input at -oo.
         assert_eq!(ch.tap.load(Relaxed), DEFAULT_TAP);
-        let m = &ch.matrix[0];
+        let m = &MatrixSendParams::factory(StripKind::Channel, 0, 0);
         assert!(m.pre.load(Relaxed) && !m.pan_link.load(Relaxed) && !m.on.load(Relaxed));
         assert_eq!(m.level_db.load(), livedaw_dsp::fader::FADER_MIN);
-        assert!(!b1.matrix[0].pre.load(Relaxed));
+        assert!(!MatrixSendParams::factory(StripKind::Bus, 0, 0).pre.load(Relaxed));
         assert_eq!(StripParams::new(StripKind::Matrix).direct_level_db.load(), livedaw_dsp::fader::FADER_MIN);
         // AUX 2 plays the USB player's PLAY 1/2 in stereo; AUX 1 has no input.
         let (aux1, aux2) = (StripParams::new_in_slot(StripKind::Aux, 0), StripParams::new_in_slot(StripKind::Aux, 1));
@@ -751,23 +825,6 @@ pub fn default_colour(kind: StripKind) -> i32 {
 impl StripParams {
     pub fn new(kind: StripKind) -> Self {
         let output = kind.is_output();
-        let new_main = |i: usize| MainSendParams {
-            // Channels and aux feed Main 1 by default; buses are aux mixes until routed.
-            on: AtomicBool::new(i == 0 && kind.is_input()),
-            pre: AtomicBool::new(false),
-            level_db: AtomicF32::new(0.0),
-        };
-        // The WING's factory matrix sends: off at -oo without pan link, input
-        // and aux channels in PRE (TAP), buses and mains post-fader.
-        let new_mtx = |_| MatrixSendParams {
-            on: AtomicBool::new(false),
-            pre: AtomicBool::new(kind.is_input()),
-            ignore_mute: AtomicBool::new(false),
-            pan_link: AtomicBool::new(false),
-            pan_reversed: AtomicBool::new(false),
-            level_db: AtomicF32::new(livedaw_dsp::fader::FADER_MIN),
-            pan: AtomicF32::new(0.0),
-        };
         let p = Self {
             input: InputParams::default(),
             filter: FilterParams::default(),
@@ -791,8 +848,6 @@ impl StripParams {
             input_right: AtomicI32::new(-1),
             output_left: AtomicI32::new(-1),
             output_right: AtomicI32::new(-1),
-            mains: std::array::from_fn(new_main),
-            matrix: std::array::from_fn(new_mtx),
             dca_mask: AtomicGroupSet::default(),
             mute_group_mask: AtomicGroupSet::default(),
             direct_on: AtomicBool::new(false),
@@ -824,14 +879,14 @@ impl StripParams {
 
     /// A new strip in slot `index` of its kind, as on a factory-initialized
     /// WING: buses 1-8 (aux mixes) Salmon (colour 10) with the fader down;
-    /// buses 9-10 Lime (6) and 11-16 Magenta (12), at 0 dB into Main 1;
+    /// buses 9-10 Lime (6) and 11-16 Magenta (12), at 0 dB into Main 1 (their
+    /// main send: `MainSendParams::factory`);
     /// AUX 2 on the USB player's PLAY 1/2 (the "2TR" pair), in stereo.
     pub fn new_in_slot(kind: StripKind, index: usize) -> Self {
         let p = Self::new(kind);
         if kind == StripKind::Bus && (8..WING_BUSES).contains(&index) {
             p.colour.store(if index < 10 { 6 } else { 12 }, Relaxed);
             p.fader_db.store(0.0);
-            p.mains[0].on.store(true, Relaxed);
         }
         if kind == StripKind::Aux && index == FACTORY_PLAYER_AUX {
             p.stereo.store(true, Relaxed);
@@ -985,14 +1040,17 @@ pub const DEFAULT_PFL_DIM_DB: f32 = 12.0;
 
 /// A monitor path's SOURCE choices (`MonitorSourceParams::source`): what the
 /// path plays without a solo: MAIN.1-4, MTX.1-8, BUS.1-16, AUX.1-8.
-pub const NUM_MONITOR_SOURCES: usize = NUM_MAINS + NUM_MATRICES + WING_BUSES + NUM_AUX;
+pub const NUM_MONITOR_SOURCES: usize = WING_MAINS + WING_MATRICES + WING_BUSES + WING_AUX;
 
 /// The strip a monitor SOURCE index plays: (kind, 0-based number; buses by slot).
 pub fn monitor_source(index: i32) -> Option<(StripKind, usize)> {
     let mut i = usize::try_from(index).ok()?;
-    for (kind, count) in
-        [(StripKind::Main, NUM_MAINS), (StripKind::Matrix, NUM_MATRICES), (StripKind::Bus, WING_BUSES), (StripKind::Aux, NUM_AUX)]
-    {
+    for (kind, count) in [
+        (StripKind::Main, WING_MAINS),
+        (StripKind::Matrix, WING_MATRICES),
+        (StripKind::Bus, WING_BUSES),
+        (StripKind::Aux, WING_AUX),
+    ] {
         if i < count {
             return Some((kind, i));
         }

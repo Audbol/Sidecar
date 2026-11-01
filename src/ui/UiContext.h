@@ -420,9 +420,9 @@ inline juce::String inputPortName (int input, int pad = 0)
         if (n >= 2 * kWingBuses)
         {
             n -= 2 * kWingBuses;
-            prefix = n >= 2 * kNumMains ? "MTX " : "MAIN ";
-            if (n >= 2 * kNumMains)
-                n -= 2 * kNumMains;
+            prefix = n >= 2 * kWingMains ? "MTX " : "MAIN ";
+            if (n >= 2 * kWingMains)
+                n -= 2 * kWingMains;
         }
         return prefix + juce::String (n / 2 + 1) + (n % 2 == 0 ? "L" : "R");
     }

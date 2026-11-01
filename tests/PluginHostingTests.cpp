@@ -272,13 +272,13 @@ public:
 
         beginTest ("A bus with a plugin lines up with the direct path");
         auto& ch2 = *engine.getChannels()[1];
-        ch2.params.mains[0].on = false;
+        ch2.mains[0].on = false;
         ch1.params.preInsert.on = false;
         auto& bus = *engine.getBusInSlot (0);
         auto& send = ch2.sends[0];
         send.enabled = true;
         send.mode = 1; // POST
-        bus.params.mains[0].on = true;
+        bus.mains[0].on = true;
         bus.params.preInsert.on = true;
         bus.params.preInsert.fx = 2;
         plugin->setLatencySamples (64);

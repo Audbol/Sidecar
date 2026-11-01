@@ -2591,7 +2591,7 @@ impl<'a> Console<'a> {
                 }
             }
             SF::Main(i, mf) => {
-                let m = p.mains.get(i as usize)?;
+                let m = s.main_send(i as usize)?;
                 match mf {
                     MainF::On => b(&m.on),
                     MainF::Lvl => lvl(&m.level_db),
@@ -2621,7 +2621,7 @@ impl<'a> Console<'a> {
                 },
             },
             SF::Mtx(i, sf) => {
-                let m = p.matrix.get(i as usize)?;
+                let m = s.matrix_send(i as usize)?;
                 match sf {
                     SendF::On => b(&m.on),
                     SendF::Lvl => lvl(&m.level_db),
@@ -3614,7 +3614,7 @@ impl<'a> Console<'a> {
                 }
             }
             SF::Main(i, mf) => {
-                let m = p.mains.get(i as usize).ok_or(SetError::NotFound)?;
+                let m = s.main_send(i as usize).ok_or(SetError::NotFound)?;
                 match mf {
                     MainF::On => set_b(&m.on, v),
                     MainF::Lvl => set_lvl(&m.level_db, v),
@@ -3634,7 +3634,7 @@ impl<'a> Console<'a> {
                 }
             }
             SF::Mtx(i, sf) => {
-                let m = p.matrix.get(i as usize).ok_or(SetError::NotFound)?;
+                let m = s.matrix_send(i as usize).ok_or(SetError::NotFound)?;
                 match sf {
                     SendF::On => set_b(&m.on, v),
                     SendF::Lvl => set_lvl(&m.level_db, v),
@@ -4748,7 +4748,7 @@ mod tests {
         let st = WingState::default();
         let c = Console::new(&e, &st);
         let ch3 = c.strip(StripKind::Channel, 3).unwrap().clone();
-        let m = &ch3.params.matrix[1];
+        let m = &ch3.matrix_send(1).unwrap();
         assert_eq!(c.get(node(&c, "/ch/3/send/MX2/plink")), Some(Value::Int(0)), "not linked by default, as on the WING");
         c.set(node(&c, "/ch/3/send/MX2/plink"), &Value::Int(1)).unwrap();
         assert!(m.pan_link.load(Relaxed));
@@ -4756,7 +4756,7 @@ mod tests {
         assert!(!m.pan_link.load(Relaxed));
         c.set(node(&c, "/aux/2/send/MX8/plink"), &Value::Int(2)).unwrap();
         let aux2 = c.strip(StripKind::Aux, 2).unwrap();
-        assert!(aux2.params.matrix[7].pan_link.load(Relaxed) && aux2.params.matrix[7].pan_reversed.load(Relaxed));
+        assert!(aux2.matrix_send(7).unwrap().pan_link.load(Relaxed) && aux2.matrix_send(7).unwrap().pan_reversed.load(Relaxed));
         assert_eq!(c.get(node(&c, "/aux/2/send/MX8/plink")), Some(Value::Int(2)));
         // Buses have no matrix PAN LINK on the WING.
         assert!(schema().resolve("/bus/1/send/MX1/plink", &c).is_none());

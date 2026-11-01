@@ -118,7 +118,7 @@ fn older_shows_load_with_their_routing_mapped() {
     let engine = Engine::new(0);
     engine.set_num_channels(4);
     let a = engine.channel_at(2).unwrap();
-    a.params.matrix[1].level_db.store(-20.0);
+    a.matrix_send(1).unwrap().level_db.store(-20.0);
     let text = Show::new().to_xml(&engine, &mut NoPlugins).to_document();
     assert!(text.contains("<Patch"));
     // As Sidecar 0.1.5 wrote them: no Patch, `src` / `pre` on the direct input.
@@ -145,11 +145,13 @@ fn older_shows_load_with_their_routing_mapped() {
     let m2 = e2.strip_at(StripKind::Matrix, 1).unwrap();
     assert!(!m2.params.direct_on.load(Relaxed));
     assert_eq!(m2.params.direct_source.load(Relaxed), matrix_direct::OFF);
-    let send = &e2.channel_at(2).unwrap().params.matrix[1];
+    let ch3 = e2.channel_at(2).unwrap();
+    let send = ch3.matrix_send(1).unwrap();
     assert!(send.on.load(Relaxed) && !send.pre.load(Relaxed) && send.pan_link.load(Relaxed));
     assert_eq!(send.level_db.load(), -6.0);
     // MTX 3 from CH 1, inverted: CH 1's send 3 (PRE), and a warning about the polarity.
-    let send = &e2.channel_at(0).unwrap().params.matrix[2];
+    let ch1 = e2.channel_at(0).unwrap();
+    let send = ch1.matrix_send(2).unwrap();
     assert!(send.on.load(Relaxed) && send.pre.load(Relaxed));
     assert!(!e2.strip_at(StripKind::Matrix, 2).unwrap().params.direct_invert.load(Relaxed));
     assert_eq!(warnings.len(), 1, "{warnings:?}");

@@ -12,9 +12,9 @@ namespace livedaw
 /** Upper bound on bus slots (send storage grows on demand; CPU is the real limit). */
 constexpr int kMaxBuses = ld::kMaxBuses;
 
-constexpr int kNumMains = ld::kNumMains;
-constexpr int kNumMatrices = ld::kNumMatrices;
-constexpr int kNumAux = ld::kNumAux;
+constexpr int kWingMains = ld::kWingMains;
+constexpr int kWingMatrices = ld::kWingMatrices;
+constexpr int kWingAux = ld::kWingAux;
 /** The WING's 16 DCAs and 8 mute groups (its surface, screens and remotes). The
     console uses MixerEngine::getNumDcas() / getNumMuteGroups() of them, up to
     kMaxDcas / kMaxMuteGroups. */

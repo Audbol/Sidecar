@@ -3,8 +3,8 @@
 use livedaw_dsp::wing::{model_index, DYN_MODELS, EQ_MODELS_CH, PROCESS_ORDERS};
 mod common;
 use common::{set_channels, unity_console};
-use livedaw_engine::params::{StripKind, FX_EXT, FX_NONE, MAX_FX, NUM_AUX, NUM_MAINS, NUM_MATRICES, WING_BUSES, WING_FX};
-use livedaw_engine::params::{MAX_DCAS, MAX_MUTE_GROUPS};
+use livedaw_engine::params::{StripKind, FX_EXT, FX_NONE, MAX_FX, WING_AUX, WING_BUSES, WING_FX, WING_MAINS, WING_MATRICES};
+use livedaw_engine::params::{MAIN_SEND_PAGE, MAX_DCAS, MAX_MUTE_GROUPS};
 use livedaw_engine::{ConsoleConfig, Counts, Engine, GroupSet, InsertCallbacks, Strip};
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::Relaxed};
@@ -87,10 +87,10 @@ fn close(a: f32, b: f32, tol: f32) -> bool {
 fn console_has_the_wing_layout() {
     let e = Engine::new(0);
     assert_eq!(e.num_strips(StripKind::Channel), 0);
-    assert_eq!(e.num_strips(StripKind::Aux), NUM_AUX);
+    assert_eq!(e.num_strips(StripKind::Aux), WING_AUX);
     assert_eq!(e.num_strips(StripKind::Bus), WING_BUSES);
-    assert_eq!(e.num_strips(StripKind::Main), NUM_MAINS);
-    assert_eq!(e.num_strips(StripKind::Matrix), NUM_MATRICES);
+    assert_eq!(e.num_strips(StripKind::Main), WING_MAINS);
+    assert_eq!(e.num_strips(StripKind::Matrix), WING_MATRICES);
     assert_eq!(e.num_fx(), WING_FX);
     set_channels(&e, 40);
     // Unnamed, as on the WING.
@@ -185,7 +185,7 @@ fn mute_fader_dcas_and_mute_groups() {
     rig.run(20);
     assert!(close(rig.out(0), 0.0, 1e-6));
     ch.params.mute.store(false, Relaxed);
-    ch.params.mains[0].on.store(false, Relaxed);
+    ch.main_send(0).unwrap().on.store(false, Relaxed);
     rig.run(20);
     assert!(close(rig.out(0), 0.0, 1e-6));
 }
@@ -218,6 +218,43 @@ fn a_console_of_any_counts_and_groups_beyond_the_wings() {
     e.sources().get(3).unwrap().mute_groups.set(30, true);
     assert_eq!(e.set_num_mute_groups(2), 31);
     assert_eq!(e.set_num_mute_groups(9999), MAX_MUTE_GROUPS);
+}
+
+#[test]
+fn any_number_of_mains_and_matrices_carry_audio() {
+    // Six mains and twelve matrices: CH 1 into MAIN 6, MAIN 6 into MTX 12.
+    let mut rig = Rig::new(2, 2, 4);
+    let counts = Counts { channels: 1, mains: 6, matrices: 12, ..Counts::WING };
+    rig.engine.configure(&ConsoleConfig { counts });
+    unity_console(&rig.engine);
+    assert_eq!((rig.engine.num_strips(StripKind::Main), rig.engine.num_strips(StripKind::Matrix)), (6, 12));
+    let ch = rig.ch(0);
+    ch.params.fader_db.store(0.0);
+    assert!(ch.main_send(0).unwrap().on.load(Relaxed), "Main 1 by default");
+    assert!(!ch.main_send(5).unwrap().on.load(Relaxed));
+    assert!(ch.main_send(6).is_some() && ch.main_send(MAIN_SEND_PAGE).is_none(), "a page of sends, no more");
+    ch.main_send(0).unwrap().on.store(false, Relaxed);
+    ch.main_send(5).unwrap().on.store(true, Relaxed);
+    let mains = rig.engine.strips(StripKind::Main);
+    for (m, outs) in [(&mains[0], -1), (&mains[5], 0)] {
+        m.params.output_left.store(outs, Relaxed);
+        m.params.output_right.store(if outs < 0 { -1 } else { outs + 1 }, Relaxed);
+    }
+    let mtx = rig.engine.strips(StripKind::Matrix)[11].clone();
+    mtx.params.output_left.store(2, Relaxed);
+    mtx.params.output_right.store(3, Relaxed);
+    let send = mains[5].matrix_send(11).unwrap();
+    send.on.store(true, Relaxed);
+    send.level_db.store(-6.0206);
+    assert!(mains[5].main_send(0).is_none() && mtx.matrix_send(0).is_none(), "mains feed matrices only");
+
+    rig.set_input(0, 0.5);
+    rig.run(20);
+    assert!(close(rig.out(0), 0.5 * CENTRE, 1e-4), "MAIN 6: {}", rig.out(0));
+    assert!(close(rig.out(2), 0.25 * CENTRE, 1e-4), "MTX 12: {}", rig.out(2));
+    // Back to the WING: four mains, eight matrices.
+    rig.engine.configure(&ConsoleConfig::wing());
+    assert_eq!((rig.engine.num_strips(StripKind::Main), rig.engine.num_strips(StripKind::Matrix)), (4, 8));
 }
 
 #[test]
@@ -308,8 +345,8 @@ fn bus_sends_pre_post_and_subgroup() {
 
     // GRP: post-fader, post-pan; the bus feeds Main 1.
     send.mode.store(2, Relaxed);
-    ch.params.mains[0].on.store(false, Relaxed);
-    bus.params.mains[0].on.store(true, Relaxed);
+    ch.main_send(0).unwrap().on.store(false, Relaxed);
+    bus.main_send(0).unwrap().on.store(true, Relaxed);
     ch.params.pan.store(-100.0);
     rig.run(20);
     assert!(close(rig.out(0), 0.5 * EDGE, 1e-5) && close(rig.out(1), 0.0, 1e-5));
@@ -320,7 +357,7 @@ fn upper_buses_feed_buses_1_to_8() {
     let mut rig = Rig::new(2, 1, 4);
     set_channels(&rig.engine, 1);
     let ch = rig.ch(0);
-    ch.params.mains[0].on.store(false, Relaxed);
+    ch.main_send(0).unwrap().on.store(false, Relaxed);
     rig.set_input(0, 0.5);
     let fx_bus = rig.strip(StripKind::Bus, 12);
     let bus1 = rig.strip(StripKind::Bus, 0);
@@ -342,7 +379,7 @@ fn matrix_takes_mains_and_a_monitor_path_as_direct_input() {
     rig.set_input(1, 0.25);
     let main = rig.strip(StripKind::Main, 0);
     let mtx = rig.strip(StripKind::Matrix, 0);
-    main.params.matrix[0].on.store(true, Relaxed);
+    main.matrix_send(0).unwrap().on.store(true, Relaxed);
     mtx.params.output_left.store(4, Relaxed);
     rig.run(20);
     assert!(close(rig.out(4), 0.75 * CENTRE, 1e-4));
@@ -708,7 +745,7 @@ fn stress_structural_changes_while_audio_runs() {
                         send.enabled.store(rand(2) == 0, Relaxed);
                         send.mode.store(rand(3) as i32, Relaxed);
                     }
-                    p.matrix[rand(8) as usize].on.store(rand(2) == 0, Relaxed);
+                    s.matrix_send(rand(8) as usize).unwrap().on.store(rand(2) == 0, Relaxed);
                 }
             }
             _ => e.reset(),
@@ -807,7 +844,7 @@ fn bus_runs_dyn_ins1_fader_eq_ins2_with_the_tap_after_ins1() {
     set_channels(&rig.engine, 1);
     let engine = rig.engine.clone();
     let ch = rig.ch(0);
-    ch.params.mains[0].on.store(false, Relaxed);
+    ch.main_send(0).unwrap().on.store(false, Relaxed);
     rig.set_input(0, 0.5);
     engine.set_fx_plugin(0, Some(fake(0.5, 0).0));
     engine.set_fx_plugin(1, Some(fake(0.25, 0).0));
@@ -898,11 +935,11 @@ fn tap_sends_follow_the_channel_mute_unless_ignored() {
     let send = ch.sends.get_or_create(2).unwrap();
     send.enabled.store(true, Relaxed);
     rig.strip(StripKind::Bus, 2).params.output_left.store(2, Relaxed);
-    ch.params.matrix[0].on.store(true, Relaxed);
-    ch.params.matrix[0].pre.store(true, Relaxed);
+    ch.matrix_send(0).unwrap().on.store(true, Relaxed);
+    ch.matrix_send(0).unwrap().pre.store(true, Relaxed);
     rig.strip(StripKind::Matrix, 0).params.output_left.store(4, Relaxed);
-    ch.params.mains[1].on.store(true, Relaxed);
-    ch.params.mains[1].pre.store(true, Relaxed);
+    ch.main_send(1).unwrap().on.store(true, Relaxed);
+    ch.main_send(1).unwrap().pre.store(true, Relaxed);
     rig.strip(StripKind::Main, 1).params.output_left.store(6, Relaxed);
     rig.run(20);
     assert!(close(rig.out(2), 0.5 * CENTRE, 1e-5));
@@ -932,7 +969,7 @@ fn tap_sends_follow_the_channel_mute_unless_ignored() {
     // IGNORE CHANNEL MUTE keeps bus and matrix TAP sends (not the main send).
     ch.params.mute.store(true, Relaxed);
     send.ignore_mute.store(true, Relaxed);
-    ch.params.matrix[0].ignore_mute.store(true, Relaxed);
+    ch.matrix_send(0).unwrap().ignore_mute.store(true, Relaxed);
     rig.run(20);
     assert!(close(rig.out(2), 0.5 * CENTRE, 1e-5));
     assert!(close(rig.out(4), 0.5 * CENTRE, 1e-5));
@@ -949,7 +986,7 @@ fn bus_pre_sends_follow_the_bus_mute() {
     let mut rig = Rig::new(1, 1, 4);
     set_channels(&rig.engine, 1);
     let ch = rig.ch(0);
-    ch.params.mains[0].on.store(false, Relaxed);
+    ch.main_send(0).unwrap().on.store(false, Relaxed);
     rig.set_input(0, 0.5);
     let fx_bus = rig.strip(StripKind::Bus, 12);
     ch.sends.get_or_create(12).unwrap().enabled.store(true, Relaxed);
@@ -969,7 +1006,7 @@ fn group_sends_ignore_the_send_level_and_reversed_pan_link() {
     let mut rig = Rig::new(1, 1, 4);
     set_channels(&rig.engine, 1);
     let ch = rig.ch(0);
-    ch.params.mains[0].on.store(false, Relaxed);
+    ch.main_send(0).unwrap().on.store(false, Relaxed);
     rig.set_input(0, 0.5);
     let send = ch.sends.get_or_create(2).unwrap();
     send.enabled.store(true, Relaxed);
@@ -999,9 +1036,9 @@ fn matrix_send_pan_link() {
     let mut rig = Rig::new(1, 1, 6);
     set_channels(&rig.engine, 1);
     let ch = rig.ch(0);
-    ch.params.mains[0].on.store(false, Relaxed);
+    ch.main_send(0).unwrap().on.store(false, Relaxed);
     rig.set_input(0, 0.5);
-    let send = &ch.params.matrix[1];
+    let send = &ch.matrix_send(1).unwrap();
     send.on.store(true, Relaxed);
     let mtx = rig.strip(StripKind::Matrix, 1);
     mtx.params.output_left.store(2, Relaxed);
@@ -1041,7 +1078,7 @@ fn matrix_send_pan_link() {
     send.on.store(false, Relaxed);
     ch.sends.get_or_create(4).unwrap().enabled.store(true, Relaxed);
     let bus = rig.strip(StripKind::Bus, 4);
-    let bus_send = &bus.params.matrix[1];
+    let bus_send = &bus.matrix_send(1).unwrap();
     bus_send.on.store(true, Relaxed);
     bus_send.pan_link.store(false, Relaxed);
     bus.params.pan.store(-100.0);
@@ -1267,7 +1304,7 @@ fn dca_mutegroups_main_link_and_startup_main_mute() {
 
     // MAIN LINK 1>2: Main 1's fader also acts on Main 2, not on Main 3.
     for i in 1..3 {
-        ch.params.mains[i].on.store(true, Relaxed);
+        ch.main_send(i).unwrap().on.store(true, Relaxed);
         rig.strip(StripKind::Main, i).params.output_left.store(2 * i as i32, Relaxed);
     }
     let main1 = rig.strip(StripKind::Main, 0);
@@ -1288,7 +1325,7 @@ fn dca_mutegroups_main_link_and_startup_main_mute() {
     assert!(!main1.params.mute.load(Relaxed));
     c.startup_main_mute.store(true, Relaxed);
     assert!(engine.apply_startup_main_mute());
-    assert!((0..NUM_MAINS).all(|i| rig.strip(StripKind::Main, i).params.mute.load(Relaxed)));
+    assert!((0..WING_MAINS).all(|i| rig.strip(StripKind::Main, i).params.mute.load(Relaxed)));
 }
 
 /// WING 3.0.6: a POST (AFL) solo of an input, aux or DCA follows the pan.

@@ -164,7 +164,7 @@ fn input(i: usize, t: usize) -> f32 {
 /// A channel at unity, sending nowhere.
 fn quiet(s: &Strip) {
     s.params.fader_db.store(0.0);
-    s.params.mains[0].on.store(false, Relaxed);
+    s.main_send(0).unwrap().on.store(false, Relaxed);
 }
 
 // ---- 9: sources straight to outputs ------------------------------------------------------
@@ -222,7 +222,7 @@ fn a_bus_main_or_matrix_feeds_a_channel_one_block_late() {
         assert!(rig.last_block_matches(6, |t| input(0, t - BLOCK), 1e-5), "workers {workers}");
 
         // A stereo channel on Main 1 L/R (Main 1 takes CH 1).
-        src.params.mains[0].on.store(true, Relaxed);
+        src.main_send(0).unwrap().on.store(true, Relaxed);
         dst.params.stereo.store(true, Relaxed);
         dst.params.input_left.store(strip_source_input(StripKind::Main, 0, 0), Relaxed);
         dst.params.input_right.store(-1, Relaxed); // the next signal: Main 1 R
@@ -232,8 +232,8 @@ fn a_bus_main_or_matrix_feeds_a_channel_one_block_late() {
         assert!(rig.last_block_matches(7, |t| input(0, t - BLOCK), 1e-5));
 
         // A matrix: Main 1 -> Matrix 2 -> CH 2.
-        rig.strip(StripKind::Main, 0).params.matrix[1].on.store(true, Relaxed);
-        rig.strip(StripKind::Main, 0).params.matrix[1].level_db.store(0.0);
+        rig.strip(StripKind::Main, 0).matrix_send(1).unwrap().on.store(true, Relaxed);
+        rig.strip(StripKind::Main, 0).matrix_send(1).unwrap().level_db.store(0.0);
         dst.params.input_left.store(strip_source_input(StripKind::Matrix, 1, 0), Relaxed);
         rig.run(6);
         assert!(rig.last_block_matches(6, |t| input(0, t - BLOCK), 1e-5));
@@ -554,7 +554,7 @@ fn any_bus_feeds_any_other_bus_in_the_same_block() {
         bus_send(&rig.bus(4), 0, -6.0);
         bus_send(&rig.bus(0), 15, 0.0);
         let b16 = rig.bus(15);
-        b16.params.mains[0].on.store(false, Relaxed);
+        b16.main_send(0).unwrap().on.store(false, Relaxed);
         b16.params.output_left.store(2, Relaxed);
         rig.run(4);
         let g = livedaw_dsp::util::db_to_gain(-6.0);

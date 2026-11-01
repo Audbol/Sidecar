@@ -114,8 +114,8 @@ fn console_survives_a_show_round_trip() {
     p.process_order.store(5, Relaxed);
     p.stereo.store(true, Relaxed);
     p.recall_safe.store(true, Relaxed);
-    p.mains[1].on.store(true, Relaxed);
-    p.matrix[3].level_db.store(-7.0);
+    kick.main_send(1).unwrap().on.store(true, Relaxed);
+    kick.matrix_send(3).unwrap().level_db.store(-7.0);
     p.dca_mask.store(GroupSet::from_mask(0b100));
     p.mute_group_mask.store(GroupSet::from_mask(0b10));
     kick.set_tags("#Drums,Band \"A\"");
@@ -180,8 +180,8 @@ fn console_survives_a_show_round_trip() {
     assert_eq!(p.process_order.load(Relaxed), 5);
     assert!(p.stereo.load(Relaxed));
     assert!(p.recall_safe.load(Relaxed));
-    assert!(p.mains[0].on.load(Relaxed) && p.mains[1].on.load(Relaxed));
-    assert_eq!(p.matrix[3].level_db.load(), -7.0);
+    assert!(k.main_send(0).unwrap().on.load(Relaxed) && k.main_send(1).unwrap().on.load(Relaxed));
+    assert_eq!(k.matrix_send(3).unwrap().level_db.load(), -7.0);
     assert_eq!((p.dca_mask.load().low(), p.mute_group_mask.load().low()), (0b100, 0b10));
     assert!(p.dca_mask.contains(70) && p.mute_group_mask.contains(100));
     assert_eq!((e2.num_dcas(), e2.num_mute_groups()), (80, 101));
@@ -290,7 +290,7 @@ fn fades_glide_and_survive_removed_strips() {
     let bus = engine.bus_in_slot(0).unwrap();
     let (a, b) = (ch(&engine, 0), ch(&engine, 1));
     a.sends.get_or_create(bus.id() as usize).unwrap().level_db.store(-10.0);
-    a.params.mains[0].level_db.store(-10.0);
+    a.main_send(0).unwrap().level_db.store(-10.0);
 
     let mut show = Show::new();
     show.add_scene(&engine, &mut np, "A", -1);
@@ -298,7 +298,7 @@ fn fades_glide_and_survive_removed_strips() {
     a.params.fader_db.store(-40.0);
     b.params.fader_db.store(-40.0);
     a.sends.find(bus.id() as usize).unwrap().level_db.store(-30.0);
-    a.params.mains[0].level_db.store(-30.0);
+    a.main_send(0).unwrap().level_db.store(-30.0);
 
     let start = Instant::now();
     show.recall_scene(&engine, &mut np, 0);
@@ -309,7 +309,7 @@ fn fades_glide_and_survive_removed_strips() {
     assert!(mid > -30.0 && mid < -10.0, "{mid}");
     let send_mid = a.sends.find(bus.id() as usize).unwrap().level_db.load();
     assert!(send_mid > -30.0 && send_mid < -10.0, "{send_mid}");
-    let main_mid = a.params.mains[0].level_db.load();
+    let main_mid = a.main_send(0).unwrap().level_db.load();
     assert!(main_mid > -30.0 && main_mid < -10.0, "{main_mid}");
 
     // Remove a strip mid-fade: the fade keeps it alive, nothing dangles.
@@ -375,8 +375,8 @@ fn fades_glide_dcas_widths_and_send_pans_while_switches_jump() {
     dca.fader_db.store(-10.0);
     a.params.width.store(50.0);
     send.pan.store(-50.0);
-    a.params.matrix[0].pan.store(-50.0);
-    a.params.matrix[0].pan_link.store(false, Relaxed);
+    a.matrix_send(0).unwrap().pan.store(-50.0);
+    a.matrix_send(0).unwrap().pan_link.store(false, Relaxed);
     a.params.mute.store(true, Relaxed);
     dca.mute.store(true, Relaxed);
 
@@ -386,27 +386,27 @@ fn fades_glide_dcas_widths_and_send_pans_while_switches_jump() {
     dca.fader_db.store(-30.0);
     a.params.width.store(100.0);
     send.pan.store(50.0);
-    a.params.matrix[0].pan.store(50.0);
+    a.matrix_send(0).unwrap().pan.store(50.0);
     a.params.mute.store(false, Relaxed);
     dca.mute.store(false, Relaxed);
 
     let start = Instant::now();
     show.recall_scene(&engine, &mut np, 0);
     assert!(a.params.mute.load(Relaxed) && dca.mute.load(Relaxed), "switches jump at the start");
-    assert!(!a.params.matrix[0].pan_link.load(Relaxed), "the saved pan decides an old show's link");
+    assert!(!a.matrix_send(0).unwrap().pan_link.load(Relaxed), "the saved pan decides an old show's link");
     assert_eq!(dca.fader_db.load(), -30.0, "nothing glides before the first tick");
     assert!(show.tick_at(&engine, start + Duration::from_millis(1000)));
     let between = |v: f32, x: f32, y: f32| v > x.min(y) && v < x.max(y);
     assert!(between(dca.fader_db.load(), -30.0, -10.0), "{}", dca.fader_db.load());
     assert!(between(a.params.width.load(), 100.0, 50.0), "{}", a.params.width.load());
     assert!(between(send.pan.load(), 50.0, -50.0), "{}", send.pan.load());
-    assert!(between(a.params.matrix[0].pan.load(), 50.0, -50.0), "{}", a.params.matrix[0].pan.load());
+    assert!(between(a.matrix_send(0).unwrap().pan.load(), 50.0, -50.0), "{}", a.matrix_send(0).unwrap().pan.load());
 
     assert!(!show.tick_at(&engine, start + Duration::from_secs(3)));
     assert_eq!(dca.fader_db.load(), -10.0);
     assert_eq!(a.params.width.load(), 50.0);
     assert_eq!(send.pan.load(), -50.0);
-    assert_eq!(a.params.matrix[0].pan.load(), -50.0);
+    assert_eq!(a.matrix_send(0).unwrap().pan.load(), -50.0);
 }
 
 #[test]
@@ -655,7 +655,7 @@ fn legacy_v2_show_converts_to_the_wing_layout() {
     assert_eq!(DYN_MODELS[p.dynamics.model_index()].token, "COMP");
     assert_eq!(dyn_param(&kick, "thr"), -15.0);
     assert_eq!(p.dynamics.gain.load(), 2.0);
-    assert!(p.mains[0].on.load(Relaxed));
+    assert!(kick.main_send(0).unwrap().on.load(Relaxed));
     let pre = kick.sends.find(0).unwrap();
     assert_eq!((pre.enabled.load(Relaxed), pre.level_db.load(), pre.mode.load(Relaxed)), (true, -6.0, 0));
     assert_eq!(kick.sends.find(1).unwrap().mode.load(Relaxed), 1);
@@ -664,8 +664,8 @@ fn legacy_v2_show_converts_to_the_wing_layout() {
 
     let wedge = engine.bus_in_slot(0).unwrap();
     assert_eq!(wedge.name(), "Wedge");
-    assert!(!wedge.params.mains[0].on.load(Relaxed));
-    assert!(engine.bus_in_slot(1).unwrap().params.mains[0].on.load(Relaxed), "groups keep feeding the main");
+    assert!(!wedge.main_send(0).unwrap().on.load(Relaxed));
+    assert!(engine.bus_in_slot(1).unwrap().main_send(0).unwrap().on.load(Relaxed), "groups keep feeding the main");
     assert_eq!(engine.main(0).unwrap().params.fader_db.load(), -3.0);
     assert!(engine.controls.solo_afl.load(Relaxed));
     assert_eq!(engine.controls.output_ceiling_db.load(), -0.5);
@@ -774,6 +774,39 @@ fn round_trip(engine: &Engine, show: &Show) -> (Engine, Show) {
 }
 
 #[test]
+fn sends_to_mains_and_matrices_beyond_the_wings_survive_a_show() {
+    use livedaw_engine::{ConsoleConfig, Counts};
+    let config = ConsoleConfig { counts: Counts { channels: 1, mains: 6, matrices: 12, ..Counts::WING } };
+    let engine = Engine::new(0);
+    engine.configure(&config);
+    let c = ch(&engine, 0);
+    c.main_send(5).unwrap().on.store(true, Relaxed);
+    c.main_send(5).unwrap().level_db.store(-3.0);
+    c.matrix_send(11).unwrap().level_db.store(-9.0);
+    engine.strips(StripKind::Main)[5].matrix_send(10).unwrap().on.store(true, Relaxed);
+    let text = Show::new().to_xml(&engine, &mut NoPlugins).to_document();
+
+    // (Show format 4 will store the configuration; until then the loading console has it.)
+    let e2 = Engine::new(0);
+    e2.configure(&config);
+    Show::new().load_from_text(&e2, &mut NoPlugins, &text, true).unwrap();
+    let c2 = ch(&e2, 0);
+    assert!(c2.main_send(5).unwrap().on.load(Relaxed));
+    assert_eq!(c2.main_send(5).unwrap().level_db.load(), -3.0);
+    assert_eq!(c2.matrix_send(11).unwrap().level_db.load(), -9.0);
+    assert!(e2.strips(StripKind::Main)[5].matrix_send(10).unwrap().on.load(Relaxed));
+    // A WING console saves its 4 and 8, as before.
+    let wing = Engine::new(0);
+    set_channels(&wing, 1);
+    let text = Show::new().to_xml(&wing, &mut NoPlugins).to_document();
+    let strip = xml::parse(&text).unwrap();
+    let console = strip.child("Console").unwrap();
+    let ch1 = console.child("Channels").unwrap().children_named("Strip").next().unwrap();
+    assert_eq!(ch1.child("Mains").unwrap().children_named("S").count(), 4);
+    assert_eq!(ch1.child("Mtx").unwrap().children_named("S").count(), 8);
+}
+
+#[test]
 fn wing_settings_survive_a_show_round_trip() {
     let engine = Engine::new(0);
     set_channels(&engine, 1);
@@ -782,7 +815,7 @@ fn wing_settings_survive_a_show_round_trip() {
     let send = a.sends.get_or_create(3).unwrap();
     send.ignore_mute.store(true, Relaxed);
     send.pan_reversed.store(true, Relaxed);
-    a.params.matrix[2].ignore_mute.store(true, Relaxed);
+    a.matrix_send(2).unwrap().ignore_mute.store(true, Relaxed);
     c.bus_solo_afl.store(false, Relaxed);
     c.main_solo_afl.store(false, Relaxed);
     c.matrix_solo_afl.store(false, Relaxed);
@@ -800,7 +833,7 @@ fn wing_settings_survive_a_show_round_trip() {
     let send = b.sends.find(3).unwrap();
     assert!(send.ignore_mute.load(Relaxed) && send.pan_reversed.load(Relaxed));
     assert!(!b.sends.find(4).unwrap().ignore_mute.load(Relaxed), "untouched sends keep the WING default");
-    assert!(b.params.matrix[2].ignore_mute.load(Relaxed) && !b.params.matrix[1].ignore_mute.load(Relaxed));
+    assert!(b.matrix_send(2).unwrap().ignore_mute.load(Relaxed) && !b.matrix_send(1).unwrap().ignore_mute.load(Relaxed));
     assert!(!c2.bus_solo_afl.load(Relaxed) && !c2.main_solo_afl.load(Relaxed) && !c2.matrix_solo_afl.load(Relaxed));
     assert_eq!(c2.monitor_dim_db.load(), 12.0);
     assert!(c2.monitor_dim.load(Relaxed) && c2.monitor_mono.load(Relaxed));
@@ -837,10 +870,10 @@ fn matrix_pan_link_dca_icons_and_solo_buses_survive_a_show_round_trip() {
     let engine = Engine::new(0);
     set_channels(&engine, 1);
     let a = ch(&engine, 0);
-    a.params.matrix[1].pan_link.store(false, Relaxed);
-    a.params.matrix[1].pan.store(-40.0);
-    a.params.matrix[2].pan_link.store(true, Relaxed); // off by default, as on the WING
-    a.params.matrix[2].pan_reversed.store(true, Relaxed);
+    a.matrix_send(1).unwrap().pan_link.store(false, Relaxed);
+    a.matrix_send(1).unwrap().pan.store(-40.0);
+    a.matrix_send(2).unwrap().pan_link.store(true, Relaxed); // off by default, as on the WING
+    a.matrix_send(2).unwrap().pan_reversed.store(true, Relaxed);
     let d = &engine.controls.dcas[4];
     d.icon.store(112, Relaxed);
     d.led.store(true, Relaxed);
@@ -848,10 +881,10 @@ fn matrix_pan_link_dca_icons_and_solo_buses_survive_a_show_round_trip() {
 
     let (e2, _) = round_trip(&engine, &Show::new());
     let b = ch(&e2, 0);
-    let m = &b.params.matrix;
-    assert!(!m[1].pan_link.load(Relaxed) && m[1].pan.load() == -40.0);
-    assert!(m[2].pan_link.load(Relaxed) && m[2].pan_reversed.load(Relaxed));
-    assert!(!m[0].pan_link.load(Relaxed) && !m[0].pan_reversed.load(Relaxed));
+    let m = |i| b.matrix_send(i).unwrap();
+    assert!(!m(1).pan_link.load(Relaxed) && m(1).pan.load() == -40.0);
+    assert!(m(2).pan_link.load(Relaxed) && m(2).pan_reversed.load(Relaxed));
+    assert!(!m(0).pan_link.load(Relaxed) && !m(0).pan_reversed.load(Relaxed));
     let d2 = &e2.controls.dcas[4];
     assert_eq!(d2.icon.load(Relaxed), 112);
     assert!(d2.led.load(Relaxed) && !e2.controls.dcas[0].led.load(Relaxed), "a DCA's light is off by default");
@@ -865,9 +898,10 @@ fn matrix_pan_link_dca_icons_and_solo_buses_survive_a_show_round_trip() {
     }
     let e3 = Engine::new(0);
     Show::new().load_from_text(&e3, &mut NoPlugins, &text, true).unwrap();
-    let m = &ch(&e3, 0).params.matrix;
-    assert!(!m[1].pan_link.load(Relaxed), "panned: its own pan");
-    assert!(m[2].pan_link.load(Relaxed) && !m[2].pan_reversed.load(Relaxed));
+    let c = ch(&e3, 0);
+    let m = |i| c.matrix_send(i).unwrap();
+    assert!(!m(1).pan_link.load(Relaxed), "panned: its own pan");
+    assert!(m(2).pan_link.load(Relaxed) && !m(2).pan_reversed.load(Relaxed));
     assert_eq!(e3.controls.dcas[4].icon.load(Relaxed), 0);
     assert!(!e3.controls.dcas[4].led.load(Relaxed));
     assert_eq!(e3.controls.dcas[4].mon.load(Relaxed), 0);
@@ -899,8 +933,8 @@ fn shows_without_the_new_settings_load_with_the_old_behaviour() {
     a.sends.get_or_create(3).unwrap().enabled.store(true, Relaxed); // PRE
     let post = a.sends.get_or_create(4).unwrap();
     post.mode.store(1, Relaxed);
-    a.params.matrix[0].pre.store(true, Relaxed);
-    a.params.matrix[1].pre.store(false, Relaxed); // channels' matrix sends start in PRE, as on the WING
+    a.matrix_send(0).unwrap().pre.store(true, Relaxed);
+    a.matrix_send(1).unwrap().pre.store(false, Relaxed); // channels' matrix sends start in PRE, as on the WING
     let mut show = Show::new();
     show.add_scene(&engine, &mut NoPlugins, "A", -1);
     let mut text = show.to_xml(&engine, &mut NoPlugins).to_document();
@@ -921,7 +955,7 @@ fn shows_without_the_new_settings_load_with_the_old_behaviour() {
     // Pre-fader sends of old shows never followed the channel mute.
     assert!(b.sends.find(3).unwrap().ignore_mute.load(Relaxed));
     assert!(!b.sends.find(4).unwrap().ignore_mute.load(Relaxed));
-    assert!(b.params.matrix[0].ignore_mute.load(Relaxed) && !b.params.matrix[1].ignore_mute.load(Relaxed));
+    assert!(b.matrix_send(0).unwrap().ignore_mute.load(Relaxed) && !b.matrix_send(1).unwrap().ignore_mute.load(Relaxed));
     assert!(e2.controls.bus_solo_afl.load(Relaxed), "buses soloed AFL");
     assert!(e2.controls.dca_mute_groups.load(Relaxed), "DCA mutes muted their strips");
     let scene = loaded.scene(0).unwrap();
@@ -1494,13 +1528,13 @@ fn spill_layers_follow_the_console() {
     // Main spill: the channels, aux and buses feeding the main, as their faders.
     for k in [StripKind::Channel, StripKind::Aux, StripKind::Bus] {
         for s in engine.strips(k) {
-            s.params.mains[1].on.store(false, Relaxed);
+            s.main_send(1).unwrap().on.store(false, Relaxed);
         }
     }
     assert!(spill_faders(&engine, &SpillKind::Main(1)).is_empty());
-    c.params.mains[1].on.store(true, Relaxed);
-    bus.params.mains[1].on.store(true, Relaxed);
-    engine.strips(StripKind::Matrix)[0].params.mains[1].on.store(true, Relaxed);
+    c.main_send(1).unwrap().on.store(true, Relaxed);
+    bus.main_send(1).unwrap().on.store(true, Relaxed);
+    assert!(engine.strips(StripKind::Matrix)[0].main_send(1).is_none(), "a matrix sends to no main");
     assert_eq!(spill_faders(&engine, &SpillKind::Main(1)), vec![strip(&c), strip(&bus)]);
     assert!(spill_faders(&engine, &SpillKind::Main(4)).is_empty());
 

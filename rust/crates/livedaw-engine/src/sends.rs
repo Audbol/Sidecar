@@ -1,4 +1,5 @@
-//! Per-strip send storage that grows in pages as buses are created.
+//! Per-strip send storage that grows in pages: sends to buses, mains and
+//! matrices, by the destination's index.
 
 use crate::atomic::AtomicF32;
 use crate::StripKind;
@@ -9,7 +10,6 @@ use std::sync::atomic::{AtomicBool, AtomicI32, AtomicPtr, Ordering};
 /// only the page-pointer table (2 KB per strip); in practice CPU is the limit.
 pub const MAX_BUSES: usize = 16384;
 pub const PAGE_SIZE: usize = 64;
-const NUM_PAGES: usize = MAX_BUSES.div_ceil(PAGE_SIZE);
 
 /// Bus send modes: TAP (the WING's name for input channels; pre-fader for
 /// buses), post-fader, or GROUP (post-fader and post-pan, like routing the
@@ -102,17 +102,38 @@ impl SendParams {
     }
 }
 
-struct Page {
-    sends: [SendParams; PAGE_SIZE],
+impl BankItem for SendParams {
+    fn factory(kind: StripKind, _slot: usize, index: usize) -> Self {
+        Self::with_mode(default_mode(kind, index))
+    }
 }
 
-/// Pages are only added (by the message thread) and freed with the strip, so the
-/// audio thread reads them lock-free; a slot whose page doesn't exist has no send.
-pub struct SendBank {
-    pages: Box<[AtomicPtr<Page>]>,
-    /// The kind of strip the sends are from (their factory modes, [`default_mode`]).
-    kind: StripKind,
+/// An item of a [`Bank`]: a strip's send to one destination.
+pub trait BankItem: Sized {
+    /// The factory send `index` of a strip of `kind` in slot `slot`.
+    fn factory(kind: StripKind, slot: usize, index: usize) -> Self;
 }
+
+/// Per-strip sends to the destinations of one kind (buses, mains,
+/// matrices), by the destination's index. Pages are only added (by the
+/// message thread) and freed with the strip, so the audio thread reads them
+/// lock-free; an index whose page doesn't exist has no send (off).
+pub struct Bank<T> {
+    pages: Box<[AtomicPtr<T>]>,
+    page_size: usize,
+    max: usize,
+    /// The strip the sends are from (their factory settings, [`BankItem`]).
+    kind: StripKind,
+    slot: usize,
+}
+
+/// A strip's sends to buses (by bus slot).
+pub type SendBank = Bank<SendParams>;
+
+// SAFETY: pages are published once (Release) and only read after; the items
+// are shared like any parameter block (atomics, and ramps owned by one task).
+unsafe impl<T: Sync> Sync for Bank<T> {}
+unsafe impl<T: Send> Send for Bank<T> {}
 
 impl Default for SendBank {
     fn default() -> Self {
@@ -121,57 +142,70 @@ impl Default for SendBank {
 }
 
 impl SendBank {
-    /// The sends of a strip of `kind`.
+    /// The bus sends of a strip of `kind`.
     pub fn for_kind(kind: StripKind) -> Self {
-        Self { pages: (0..NUM_PAGES).map(|_| AtomicPtr::new(std::ptr::null_mut())).collect(), kind }
+        Bank::new(MAX_BUSES, PAGE_SIZE, kind, 0)
     }
 
     /// The factory mode of the send to `slot`.
     pub fn default_mode(&self, slot: usize) -> i32 {
         default_mode(self.kind, slot)
     }
+}
 
-    /// Any thread: the send for `slot`, or None if it was never configured.
-    #[inline]
-    pub fn find(&self, slot: usize) -> Option<&SendParams> {
-        if slot >= MAX_BUSES {
-            return None;
-        }
-        let page = self.pages[slot / PAGE_SIZE].load(Ordering::Acquire);
-        // SAFETY: pages are never freed while the bank is alive.
-        unsafe { page.as_ref() }.map(|p| &p.sends[slot % PAGE_SIZE])
+impl<T: BankItem> Bank<T> {
+    /// Up to `max` sends in pages of `page_size`, from a strip of `kind` in slot `slot`.
+    pub fn new(max: usize, page_size: usize, kind: StripKind, slot: usize) -> Self {
+        let pages = (0..max.div_ceil(page_size)).map(|_| AtomicPtr::new(std::ptr::null_mut())).collect();
+        Self { pages, page_size, max, kind, slot }
     }
 
-    /// Any thread but the audio thread (it allocates): the send for `slot`,
-    /// allocating its page if needed. Two threads creating the same page race
-    /// through a compare-exchange; the loser frees its copy.
-    pub fn get_or_create(&self, slot: usize) -> Option<&SendParams> {
-        if slot >= MAX_BUSES {
+    /// The most sends the bank holds.
+    pub fn capacity(&self) -> usize {
+        self.max
+    }
+
+    /// Any thread: the send to `index`, or None if it was never configured.
+    #[inline]
+    pub fn find(&self, index: usize) -> Option<&T> {
+        if index >= self.max {
             return None;
         }
-        let ptr = &self.pages[slot / PAGE_SIZE];
+        let page = self.pages[index / self.page_size].load(Ordering::Acquire);
+        // SAFETY: pages are never freed while the bank is alive; each holds
+        // `page_size` items.
+        (!page.is_null()).then(|| unsafe { &*page.add(index % self.page_size) })
+    }
+
+    /// Any thread but the audio thread (it allocates): the send to `index`,
+    /// allocating its page if needed. Two threads creating the same page race
+    /// through a compare-exchange; the loser frees its copy.
+    pub fn get_or_create(&self, index: usize) -> Option<&T> {
+        if index >= self.max {
+            return None;
+        }
+        let ptr = &self.pages[index / self.page_size];
         if ptr.load(Ordering::Acquire).is_null() {
-            let first = slot / PAGE_SIZE * PAGE_SIZE;
-            let page = Box::into_raw(Box::new(Page {
-                sends: std::array::from_fn(|i| SendParams::with_mode(self.default_mode(first + i))),
-            }));
+            let first = index / self.page_size * self.page_size;
+            let items: Box<[T]> = (first..first + self.page_size).map(|i| T::factory(self.kind, self.slot, i)).collect();
+            let page = Box::into_raw(items) as *mut T;
             // Release publishes the initialised page to the audio thread.
             if ptr.compare_exchange(std::ptr::null_mut(), page, Ordering::AcqRel, Ordering::Acquire).is_err() {
-                // SAFETY: never published; allocated just above.
-                drop(unsafe { Box::from_raw(page) });
+                // SAFETY: never published; allocated just above with `page_size` items.
+                drop(unsafe { Box::from_raw(std::ptr::slice_from_raw_parts_mut(page, self.page_size)) });
             }
         }
-        self.find(slot)
+        self.find(index)
     }
 }
 
-impl Drop for SendBank {
+impl<T> Drop for Bank<T> {
     fn drop(&mut self) {
         for p in self.pages.iter() {
             let page = p.swap(std::ptr::null_mut(), Ordering::AcqRel);
             if !page.is_null() {
-                // SAFETY: allocated by Box::into_raw in get_or_create.
-                drop(unsafe { Box::from_raw(page) });
+                // SAFETY: allocated by get_or_create as a boxed slice of `page_size` items.
+                drop(unsafe { Box::from_raw(std::ptr::slice_from_raw_parts_mut(page, self.page_size)) });
             }
         }
     }
