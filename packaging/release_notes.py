@@ -73,6 +73,8 @@ libraries; JACK (or pipewire-jack) is used when installed. See README-LINUX.txt 
 
 Choose the audio driver and device in SETUP > AUDIO.
 
+Questions and feedback: the [Sidecar Discord server](https://discord.gg/TEE8q979x).
+
 ## About
 
 Sidecar is an independent hobby project, made for fun and practice. It is not

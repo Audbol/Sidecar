@@ -11,6 +11,9 @@ For a bug, say which OS, audio interface, driver, sample rate and buffer size yo
 used, and what the event log (SETUP > LOG) shows. Security problems: see
 [SECURITY.md](SECURITY.md).
 
+Questions, testing reports and ideas you want to talk over first are welcome on the
+[Sidecar Discord server](https://discord.gg/TEE8q979x).
+
 ## Building and testing
 
 See [Building from source](README.md#building-from-source). Before opening a pull

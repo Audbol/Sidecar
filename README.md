@@ -20,6 +20,8 @@ model, every effect measured against its WING original with live meters on its p
 and the routing, monitoring and custom controls checked against WING Edit 3.3.4 and
 the WING manual. Expect rough edges, and please [report what you find](#reporting-problems).
 
+**Community:** questions, tips and feedback on the [Sidecar Discord server](https://discord.gg/TEE8q979x).
+
 ![The full-size console: the HOME screen of a channel, the channel strip, fader sections with the input list on the left and DCAs in the middle, all metering a signal](docs/images/console.png)
 
 ## Use cases
@@ -256,6 +258,9 @@ what happened. The event log (**SETUP > LOG** or **UTILITY**) shows device resta
 plugin faults and errors; a screenshot of it helps. When Sidecar is started from a
 terminal, the same messages are printed there. Security issues: see
 [SECURITY.md](SECURITY.md).
+
+For questions, setup help and quick feedback, join the
+[Sidecar Discord server](https://discord.gg/TEE8q979x); bugs are easier to track as issues.
 
 ## Building from source
 
