@@ -503,6 +503,49 @@ fn show_files_are_atomic_with_backup_and_safe_mode() {
 }
 
 #[test]
+fn saving_an_unchanged_show_leaves_the_file_alone() {
+    let dir = std::env::temp_dir().join(format!("livedaw-session-unchanged-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("autosave.lshow");
+    let bak = show::backup_path(&path);
+
+    let engine = Engine::new(0);
+    let mut host = FakeHost::default();
+    set_channels(&engine, 3);
+    let a = ch(&engine, 0);
+    a.params.fader_db.store(-6.0);
+    a.params.eq.param("2g", false).unwrap().store(-4.5);
+    host.load(&engine, 1, "Delay", "S");
+    let mut show = Show::new();
+    show.name = "Gig".into();
+    show.layers.add_user_layer("Mine", vec![StripRef::of(&a).into(), FaderRef::Dca(2)]);
+    show.add_scene(&engine, &mut Bridge { host: &mut host, engine: &engine }, "Verse", -1);
+    show.add_snippet(&engine, &mut Bridge { host: &mut host, engine: &engine }, 0, "S", section::FADER, vec![StripRef::of(&a)]);
+    let save =
+        |show: &Show, host: &mut FakeHost| show.save_to_file(&engine, &mut Bridge { host, engine: &engine }, &path).unwrap();
+
+    save(&show, &mut host);
+    let first = std::fs::read(&path).unwrap();
+    // Backdate the file, so a rewrite would show in its modification time.
+    let past = std::time::SystemTime::now() - Duration::from_secs(3600);
+    std::fs::File::options().write(true).open(&path).unwrap().set_modified(past).unwrap();
+
+    // The same show again (an idle autosave): no rewrite, no backup.
+    save(&show, &mut host);
+    assert_eq!(std::fs::metadata(&path).unwrap().modified().unwrap(), past);
+    assert_eq!(std::fs::read(&path).unwrap(), first);
+    assert!(!bak.exists());
+
+    // A change is written, and the previous version backed up.
+    a.params.fader_db.store(-9.0);
+    save(&show, &mut host);
+    assert_ne!(std::fs::read(&path).unwrap(), first);
+    assert_ne!(std::fs::metadata(&path).unwrap().modified().unwrap(), past);
+    assert_eq!(std::fs::read(&bak).unwrap(), first);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn clear_builds_a_wing() {
     let engine = Engine::new(0);
     let mut show = Show::new();

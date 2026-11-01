@@ -1321,6 +1321,12 @@ pub fn write_atomically(path: &Path, text: &str) -> Result<(), String> {
     let dir = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
     let file_name = path.file_name().ok_or_else(|| format!("Invalid file name: {}", path.display()))?;
 
+    // Nothing changed (an idle console's autosave): leave the file, its backup
+    // and the disk alone. The old file is still cached, so comparing is cheap.
+    if fs::read(path).is_ok_and(|old| old == text.as_bytes()) {
+        return Ok(());
+    }
+
     if path.is_file() {
         // Best effort: a failed backup must not prevent saving.
         let _ = fs::copy(path, backup_path(path));

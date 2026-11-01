@@ -86,6 +86,12 @@ All notable changes to Sidecar are listed here. Versions follow
 - An insert pointed at an FX slot past the ones in use some other way than a show or
   scene (a channel preset, a copy, a remote) now brings that slot into use, so the
   EFFECTS rack always shows every slot that runs (found by the monkey test).
+- The console's autosave rewrote the whole show, and its backup, every 30 seconds
+  even when nothing had changed: constant writes to a USB stick or SD card while
+  the console only plays audio. A save whose show is the same as the file on disk
+  now leaves the file alone (also for presets and library files); a changed show is
+  still written to a verified temporary file, with the previous version kept as
+  `.bak`.
 
 ## [0.1.6] - beta
 
