@@ -20,12 +20,14 @@
 
 use crate::analyser::{listen_mode, rta_tap, Probes, StripProbe};
 use crate::atomic::AtomicF32;
+use crate::blocks::{Block, BlockDsp, BlockParams, ChainLayout, Step};
 use crate::chain::{self, Node};
 use crate::fx::{FxInputs, FxRack};
+use crate::garbage::Garbage;
 use crate::groups::GroupSet;
 use crate::keytap::{key_tap, stage_of, KeySource, StripKeyTaps};
 use crate::monitor::SoloPatch;
-use crate::params::{DcaParams, DynSlotParams, FxParams, StripKind, StripMeters, StripParams};
+use crate::params::{DcaParams, DynSlotParams, FxParams, InsertParams, StripKind, StripMeters, StripParams};
 use crate::params::{MainSendParams, MatrixSendParams, MAIN_SEND_PAGE, MAX_MAINS, MAX_MATRICES};
 use crate::pdc::{pdc_tap, StripPdc};
 use crate::routing::{return_tap, strip_source_slot, ReturnRing};
@@ -42,7 +44,10 @@ use livedaw_dsp::wing::filter::WingFilter;
 use livedaw_dsp::wing::{EQ_MODELS_BUS, EQ_MODELS_CH, MAX_DYN_PARAMS, MAX_EQ_PARAMS, PROCESS_ORDERS};
 use livedaw_recorder::{playback_channel, usb_player_channel};
 use std::cell::UnsafeCell;
-use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
+use std::sync::atomic::{
+    AtomicBool, AtomicPtr, AtomicU32,
+    Ordering::{AcqRel, Acquire, Relaxed},
+};
 use std::sync::{Arc, Mutex};
 
 /// Tap points (TAP_POINTS order). WING names: INPUT, FILTER, TAP 3/4/5 (after
@@ -294,6 +299,12 @@ pub struct Strip {
     /// Buses, mains and matrices: their output and tap one block late, for
     /// the readers that run before them (`routing.rs`).
     returns: StripReturns,
+    /// The chain when it isn't the template (extra blocks, `blocks.rs`);
+    /// null = `chain::template(kind)`. Swapped by the message thread
+    /// (`set_layout`), the old one retired through the garbage list.
+    layout: AtomicPtr<ChainLayout>,
+    /// The id the next extra block gets.
+    next_block_uid: AtomicU32,
     dsp: UnsafeCell<StripDsp>,
     last_solo: UnsafeCell<f32>,
 }
@@ -362,6 +373,17 @@ impl RemotePeaks {
 unsafe impl Sync for Strip {}
 unsafe impl Send for Strip {}
 
+impl Drop for Strip {
+    fn drop(&mut self) {
+        let layout = *self.layout.get_mut();
+        if !layout.is_null() {
+            // SAFETY: created by Box::into_raw in `set_layout`; the strip is
+            // dropped once no callback can reach it.
+            drop(unsafe { Box::from_raw(layout) });
+        }
+    }
+}
+
 impl Strip {
     pub fn new(kind: StripKind, id: i32) -> Self {
         Self {
@@ -381,6 +403,8 @@ impl Strip {
             pdc: StripPdc::default(),
             keys: StripKeyTaps::default(),
             returns: StripReturns::default(),
+            layout: AtomicPtr::new(std::ptr::null_mut()),
+            next_block_uid: AtomicU32::new(1),
             dsp: UnsafeCell::new(StripDsp::new()),
             last_solo: UnsafeCell::new(0.0),
         }
@@ -482,11 +506,84 @@ impl Strip {
         let p = &self.params;
         (p.pre_insert.on.load(Relaxed) && p.pre_insert.fx.load(Relaxed) == slot as i32)
             || self.post_insert_fx() == Some(slot as i32)
+            || self.block_inserts().any(|ins| ins.on.load(Relaxed) && ins.fx.load(Relaxed) == slot as i32)
+    }
+
+    /// An insert of the strip names FX slot `slot`, on or off.
+    pub fn assigns_fx(&self, slot: usize) -> bool {
+        let p = &self.params;
+        let slot = slot as i32;
+        p.pre_insert.fx.load(Relaxed) == slot
+            || (self.has_post_insert() && p.post_insert.fx.load(Relaxed) == slot)
+            || self.block_inserts().any(|ins| ins.fx.load(Relaxed) == slot)
     }
 
     fn has_inserts(&self) -> bool {
         let p = &self.params;
-        (p.pre_insert.on.load(Relaxed) && p.pre_insert.fx.load(Relaxed) >= 0) || self.post_insert_fx().is_some_and(|fx| fx >= 0)
+        (p.pre_insert.on.load(Relaxed) && p.pre_insert.fx.load(Relaxed) >= 0)
+            || self.post_insert_fx().is_some_and(|fx| fx >= 0)
+            || self.block_inserts().any(|ins| ins.on.load(Relaxed) && ins.fx.load(Relaxed) >= 0)
+    }
+
+    /// The parameters of the extra insert blocks.
+    fn block_inserts(&self) -> impl Iterator<Item = &InsertParams> {
+        self.layout().into_iter().flat_map(|l| l.blocks()).filter_map(|b| match &b.params {
+            BlockParams::Insert(ins) => Some(ins),
+            _ => None,
+        })
+    }
+
+    // ---- the chain (message thread) -------------------------------------------
+
+    /// The published chain when it isn't the template (any thread: the
+    /// layout lives until the garbage list frees it, after the audio thread
+    /// and the message thread are done with it).
+    pub fn layout(&self) -> Option<&ChainLayout> {
+        // SAFETY: published by `set_layout` with Release; retired through the
+        // garbage list, freed only once no callback can see it.
+        unsafe { self.layout.load(Acquire).as_ref() }
+    }
+
+    /// The strip's chain as steps: its layout, or its template.
+    pub fn steps(&self) -> Vec<Step> {
+        match self.layout() {
+            Some(l) => l.steps().to_vec(),
+            None => self.chain().iter().map(|&n| Step::Node(n)).collect(),
+        }
+    }
+
+    /// The extra blocks of the chain, in order.
+    pub fn blocks(&self) -> Vec<Arc<Block>> {
+        self.layout().map(|l| l.blocks().cloned().collect()).unwrap_or_default()
+    }
+
+    /// A new id for an extra block (unique on the strip; `ensure_block_uid`
+    /// keeps it above the ids loaded from a show).
+    pub(crate) fn new_block_uid(&self) -> u32 {
+        self.next_block_uid.fetch_add(1, Relaxed)
+    }
+
+    pub(crate) fn ensure_block_uid(&self, uid: u32) {
+        self.next_block_uid.fetch_max(uid.saturating_add(1), Relaxed);
+    }
+
+    /// Message thread: publishes `steps` as the strip's chain (the template's
+    /// nodes alone go back to the template) and retires the old layout.
+    pub(crate) fn set_layout(&self, steps: Vec<Step>, garbage: &Garbage) {
+        let template = steps.iter().all(|s| matches!(s, Step::Node(_)))
+            && steps
+                .iter()
+                .map(|s| match s {
+                    Step::Node(n) => Some(*n),
+                    Step::Block(_) => None,
+                })
+                .eq(self.chain().iter().map(|&n| Some(n)));
+        let next = if template { std::ptr::null_mut() } else { Box::into_raw(Box::new(ChainLayout::new(steps))) };
+        let old = self.layout.swap(next, AcqRel);
+        if !old.is_null() {
+            // SAFETY: created by Box::into_raw above; now unpublished.
+            garbage.retire(unsafe { Box::from_raw(old) });
+        }
     }
 
     /// The plugin latency of each of the strip's taps (`pdc_tap` order)
@@ -496,26 +593,43 @@ impl Strip {
     pub(crate) fn own_latency(&self, fx_latency: &[u32]) -> [u32; pdc_tap::COUNT] {
         let p = &self.params;
         let slot = |fx: i32| usize::try_from(fx).ok().and_then(|i| fx_latency.get(i)).copied().unwrap_or(0);
-        let pre = if p.pre_insert.on.load(Relaxed) { slot(p.pre_insert.fx.load(Relaxed)) } else { 0 };
-        let post = self.post_insert_fx().map_or(0, slot);
-        let tap = if self.has_selectable_tap() {
-            match p.tap.load(Relaxed).clamp(0, 7) as usize {
-                tap::IN | tap::FILT => 0,
-                // TAP 3/4/5: after the 1st/2nd/3rd block of the process order.
-                t @ 2..=4 => {
-                    if self.pre_fader_order().iter().take(t - 1).any(|&b| b == b'I') {
-                        pre
-                    } else {
-                        0
+        let insert = |ins: &InsertParams| if ins.on.load(Relaxed) { slot(ins.fx.load(Relaxed)) } else { 0 };
+        let tap_point = if self.has_selectable_tap() { p.tap.load(Relaxed).clamp(0, 7) as usize } else { tap::PFL };
+        // The inserts' latency accumulated along the chain, read at the taps.
+        let (mut at, mut tap_l, mut pfl, mut post) = (0, 0, 0, 0);
+        let mut visit = |node: Option<Node>, block: Option<&Block>| match (node, block) {
+            (Some(Node::PreInsert), _) => at += insert(&p.pre_insert),
+            (Some(Node::PostInsert), _) => at += self.post_insert_fx().map_or(0, slot),
+            (Some(Node::Tap(t)), _) if t as usize == tap_point => tap_l = at,
+            (Some(Node::Pfl), _) => pfl = at,
+            (Some(Node::Post), _) => post = at,
+            (None, Some(b)) => {
+                if let BlockParams::Insert(ins) = &b.params {
+                    at += insert(ins);
+                }
+            }
+            _ => {}
+        };
+        let resolve = |node: Node| match node {
+            Node::Slot(k) => self.pre_fader_order().get(k as usize).and_then(|&b| chain::order_block(b)),
+            other => Some(other),
+        };
+        match self.layout() {
+            Some(layout) => {
+                for step in layout.steps() {
+                    match step {
+                        Step::Node(n) => visit(resolve(*n), None),
+                        Step::Block(b) => visit(None, Some(b)),
                     }
                 }
-                tap::POST => pre + post,
-                _ => pre,
             }
-        } else {
-            pre
-        };
-        [tap, pre, pre + post, pre + post]
+            None => {
+                for &n in self.chain() {
+                    visit(resolve(n), None);
+                }
+            }
+        }
+        [tap_l, pfl, post, post]
     }
 
     /// Writes this block's taps into their compensation rings (the ones that exist).
@@ -614,6 +728,11 @@ impl Strip {
         d.listen_filter.reset();
         d.listen_state = None;
         d.tap_shaper.prepare(sample_rate);
+        if let Some(layout) = self.layout() {
+            for b in layout.blocks() {
+                b.dsp_mut().prepare(sample_rate);
+            }
+        }
     }
 
     // ---- read-only views (valid after the strip's stage has run) ------------
@@ -824,6 +943,7 @@ impl Strip {
 
         if d.idle {
             d.reset_dsp(); // coming back from idle: no stale filter state
+            self.reset_blocks();
             d.idle = false;
         }
 
@@ -836,6 +956,7 @@ impl Strip {
                 buffers.iter_mut().for_each(|b| b[..n].fill(0.0));
             }
             d.reset_dsp();
+            self.reset_blocks();
             self.keys.clear(ctx.block, n);
             self.meters.dsp_faults.fetch_add(1, Relaxed);
         }
@@ -890,15 +1011,20 @@ impl Strip {
             d.listen_filter.reset(); // a new LISTEN source (faded in) starts clean
             d.listen_fresh = true;
         }
-        for &node in self.chain() {
-            let node = match node {
-                Node::Slot(k) => match self.pre_fader_order().get(k as usize).and_then(|&b| chain::order_block(b)) {
-                    Some(block) => block,
-                    None => continue,
-                },
-                other => other,
-            };
-            self.run_node(node, d, ctx, &probe, &mut listened, n);
+        match self.layout() {
+            Some(layout) => {
+                for step in layout.steps() {
+                    match step {
+                        Step::Node(node) => self.run_template_node(*node, d, ctx, &probe, &mut listened, n),
+                        Step::Block(b) => self.run_block(b, d, ctx, n),
+                    }
+                }
+            }
+            None => {
+                for &node in self.chain() {
+                    self.run_template_node(node, d, ctx, &probe, &mut listened, n);
+                }
+            }
         }
 
         // LISTEN with nothing to play (no such block on this strip): silence.
@@ -907,6 +1033,98 @@ impl Strip {
             d.listen_channels = 1;
         }
         d.listen_state = probe.listen;
+    }
+
+    /// A node of the template, its process order `Slot`s resolved.
+    unsafe fn run_template_node(
+        &self,
+        node: Node,
+        d: &mut StripDsp,
+        ctx: &ProcessContext,
+        probe: &StripProbe,
+        listened: &mut bool,
+        n: usize,
+    ) {
+        let node = match node {
+            Node::Slot(k) => match self.pre_fader_order().get(k as usize).and_then(|&b| chain::order_block(b)) {
+                Some(block) => block,
+                None => return,
+            },
+            other => other,
+        };
+        self.run_node(node, d, ctx, probe, listened, n);
+    }
+
+    /// An extra block (`blocks.rs`).
+    unsafe fn run_block(&self, b: &Block, d: &mut StripDsp, ctx: &ProcessContext, n: usize) {
+        let nc = d.num_channels;
+        match (&b.params, b.dsp_mut()) {
+            (BlockParams::Filter(p), BlockDsp::Filter(f)) => {
+                let settings = p.snapshot();
+                if settings.is_active() {
+                    let [w0, w1] = &mut d.work;
+                    let mut chans: [&mut [f32]; 2] = [&mut w0[..n], &mut w1[..n]];
+                    f.process(&mut chans[..nc], &settings);
+                }
+            }
+            (BlockParams::Eq(p), BlockDsp::Eq(eq, values)) => {
+                p.values_snapshot(values);
+                let table = if self.kind.is_output() { EQ_MODELS_BUS } else { EQ_MODELS_CH };
+                let model = (p.model.load(Relaxed).max(0) as usize).min(table.len() - 1);
+                let [w0, w1] = &mut d.work;
+                let mut chans: [&mut [f32]; 2] = [&mut w0[..n], &mut w1[..n]];
+                eq.process(&mut chans[..nc], table, model, p.on.load(Relaxed), p.mix.load(), &values[..]);
+            }
+            (BlockParams::Dynamics(p), BlockDsp::Dynamics(dynamics, values)) => {
+                let on = p.on.load(Relaxed);
+                if !dynamics.is_running(on) {
+                    b.meters.reduction_db.store(0.0);
+                    b.meters.active.store(false, Relaxed);
+                    return;
+                }
+                p.values_snapshot(values);
+                let external = self.key_for(d, ctx, p, n);
+                let [w0, w1] = &mut d.work;
+                let mut chans: [&mut [f32]; 2] = [&mut w0[..n], &mut w1[..n]];
+                let key = if external { Some(&d.key[..n]) } else { None };
+                let status = dynamics.process_slot(
+                    &mut chans[..nc],
+                    key,
+                    p.model_index(),
+                    &values[..],
+                    &p.sidechain(),
+                    &p.xover(),
+                    p.mix.load() / 100.0,
+                    p.gain.load(),
+                    on,
+                );
+                b.meters.reduction_db.store(if on { status.gain_reduction_db } else { 0.0 });
+                b.meters.active.store(on && status.active, Relaxed);
+            }
+            (BlockParams::Insert(p), _) => self.run_insert_params(d, ctx, n, p),
+            (BlockParams::Delay(p), BlockDsp::Delay(line)) if p.on.load(Relaxed) => {
+                let samples = delay_samples(p.delay.load(), p.mode.load(Relaxed).clamp(0, 3) as usize, d.sample_rate);
+                let [w0, w1] = &mut d.work;
+                let mut chans: [&mut [f32]; 2] = [&mut w0[..n], &mut w1[..n]];
+                line.process(&mut chans[..nc], samples);
+            }
+            _ => {}
+        }
+        let nc = d.num_channels;
+        let peak = (0..nc).map(|ch| peak_level(&d.work[ch][..n])).fold(0.0, f32::max);
+        b.meters.out_peak.fetch_max(peak);
+    }
+
+    /// Resets the extra blocks' DSP state (coming back from idle, after a fault).
+    ///
+    /// # Safety
+    /// The task running the strip only.
+    unsafe fn reset_blocks(&self) {
+        if let Some(layout) = self.layout() {
+            for b in layout.blocks() {
+                b.dsp_mut().reset();
+            }
+        }
     }
 
     /// One node of the chain. `d.num_channels` is read at each node: an
@@ -1200,6 +1418,11 @@ impl Strip {
 
     unsafe fn run_insert(&self, d: &mut StripDsp, ctx: &ProcessContext, n: usize, post: bool) {
         let ins = if post { &self.params.post_insert } else { &self.params.pre_insert };
+        self.run_insert_params(d, ctx, n, ins);
+    }
+
+    /// An insert: the FX slot it names, when it is on.
+    unsafe fn run_insert_params(&self, d: &mut StripDsp, ctx: &ProcessContext, n: usize, ins: &InsertParams) {
         if !ins.on.load(Relaxed) {
             return;
         }

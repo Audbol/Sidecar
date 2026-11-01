@@ -51,6 +51,7 @@
 
 use crate::analyser::{rta_tap, Analyser, Probes};
 use crate::atomic::AtomicF32;
+use crate::blocks::{Block, BlockKind, Step, MAX_EXTRA_BLOCKS};
 use crate::config::{ConsoleConfig, Counts};
 use crate::denormals::ScopedNoDenormals;
 use crate::fx::{FxRack, InsertCallbacks};
@@ -625,6 +626,64 @@ impl Engine {
         n
     }
 
+    // ---- extra blocks in a strip's chain (`blocks.rs`) -------------------------
+
+    /// Message thread: adds a block of `kind` at step `at` of `strip`'s chain
+    /// (`Strip::steps`; past the end = last). None when the strip has its
+    /// `MAX_EXTRA_BLOCKS` already.
+    pub fn insert_block(&self, strip: &Strip, kind: BlockKind, at: usize) -> Option<Arc<Block>> {
+        self.place_block(strip, strip.new_block_uid(), kind, at)
+    }
+
+    /// Message thread: a block with the id `uid` (a show's), at step `at`.
+    pub fn restore_block(&self, strip: &Strip, uid: u32, kind: BlockKind, at: usize) -> Option<Arc<Block>> {
+        if strip.blocks().iter().any(|b| b.uid() == uid) {
+            return None;
+        }
+        strip.ensure_block_uid(uid);
+        self.place_block(strip, uid, kind, at)
+    }
+
+    fn place_block(&self, strip: &Strip, uid: u32, kind: BlockKind, at: usize) -> Option<Arc<Block>> {
+        let st = self.lock();
+        let mut steps = strip.steps();
+        if steps.iter().filter(|s| matches!(s, Step::Block(_))).count() >= MAX_EXTRA_BLOCKS {
+            return None;
+        }
+        let block = Arc::new(Block::new(uid, kind, strip.kind().is_output(), st.device.sample_rate));
+        steps.insert(at.min(steps.len()), Step::Block(block.clone()));
+        strip.set_layout(steps, &self.garbage);
+        Some(block)
+    }
+
+    /// Message thread: takes block `uid` out of `strip`'s chain.
+    pub fn remove_block(&self, strip: &Strip, uid: u32) -> bool {
+        let _st = self.lock();
+        let mut steps = strip.steps();
+        let Some(i) = steps.iter().position(|s| matches!(s, Step::Block(b) if b.uid() == uid)) else { return false };
+        steps.remove(i);
+        strip.set_layout(steps, &self.garbage);
+        true
+    }
+
+    /// Message thread: moves block `uid` to step `at` (of the chain without
+    /// it), keeping its settings and state.
+    pub fn move_block(&self, strip: &Strip, uid: u32, at: usize) -> bool {
+        let _st = self.lock();
+        let mut steps = strip.steps();
+        let Some(i) = steps.iter().position(|s| matches!(s, Step::Block(b) if b.uid() == uid)) else { return false };
+        let step = steps.remove(i);
+        steps.insert(at.min(steps.len()), step);
+        strip.set_layout(steps, &self.garbage);
+        true
+    }
+
+    /// Message thread: back to the strip's template (no extra blocks).
+    pub fn clear_blocks(&self, strip: &Strip) {
+        let _st = self.lock();
+        strip.set_layout(strip.chain().iter().map(|&n| Step::Node(n)).collect(), &self.garbage);
+    }
+
     pub fn strips(&self, kind: StripKind) -> Vec<Arc<Strip>> {
         self.lock().list(kind).clone()
     }
@@ -919,10 +978,7 @@ impl Engine {
     }
 
     fn slot_in_use(&self, st: &Structure, i: usize) -> bool {
-        let slot = i as i32;
-        let assigned = |s: &Arc<Strip>| {
-            s.params.pre_insert.fx.load(Relaxed) == slot || (s.has_post_insert() && s.params.post_insert.fx.load(Relaxed) == slot)
-        };
+        let assigned = |s: &Arc<Strip>| s.assigns_fx(i);
         self.controls.fx.get(i).is_some_and(|p| p.model_index() != FX_NONE) || st.all().any(assigned)
     }
 

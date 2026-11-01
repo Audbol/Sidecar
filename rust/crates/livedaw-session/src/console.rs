@@ -10,8 +10,10 @@ use crate::xml::{fmt_f32, parse, Element};
 use livedaw_dsp::wing::{model_index, ModelSpec, DYN_MODELS, EQ_MODELS_BUS, EQ_MODELS_CH, FILTER_TOOLS, FX_MODELS};
 use livedaw_engine::analyser::RtaViewSettings;
 use livedaw_engine::atomic::AtomicF32;
+use livedaw_engine::blocks::{BlockKind, BlockParams, Step};
 use livedaw_engine::params::{
-    ext, DynSlotParams, EqBlockParams, InsertParams, MatrixSendParams, StripParams, FX_EXT, FX_NONE, MAX_FX, WING_BUSES,
+    ext, DynSlotParams, EqBlockParams, FilterParams, InsertParams, MatrixSendParams, StripParams, FX_EXT, FX_NONE, MAX_FX,
+    WING_BUSES,
 };
 use livedaw_engine::routing::{bus_feeds_bus, matrix_direct, MATRIX_DIRECT_INPUTS};
 use livedaw_engine::{AtomicGroupSet, Engine, GroupSet, Strip, StripKind, MAX_BUSES};
@@ -308,6 +310,116 @@ fn get_eq(e: &Element, eq: &EqBlockParams, bus: bool) {
     get_model_params(e, table, current, &eq.values, |m| eq.set_model(m, bus));
 }
 
+fn put_filter(f: &mut Element, fp: &FilterParams) {
+    put_b(f, "lc", &fp.low_cut);
+    put_f(f, "lcf", &fp.low_cut_freq);
+    put_i(f, "lcs", &fp.low_cut_slope);
+    put_b(f, "hc", &fp.high_cut);
+    put_f(f, "hcf", &fp.high_cut_freq);
+    put_i(f, "hcs", &fp.high_cut_slope);
+    put_b(f, "tf", &fp.tool);
+    let tool = (fp.tool_model.load(Relaxed).max(0) as usize).min(FILTER_TOOLS.len() - 1);
+    f.set("mdl", FILTER_TOOLS[tool].token);
+    put_model_params(f, &FILTER_TOOLS[tool], &fp.tool_params);
+}
+
+fn get_filter(f: &Element, fp: &FilterParams) {
+    get_b(f, "lc", &fp.low_cut);
+    get_f(f, "lcf", &fp.low_cut_freq);
+    get_i(f, "lcs", &fp.low_cut_slope);
+    get_b(f, "hc", &fp.high_cut);
+    get_f(f, "hcf", &fp.high_cut_freq);
+    get_i(f, "hcs", &fp.high_cut_slope);
+    get_b(f, "tf", &fp.tool);
+    let current = fp.tool_model.load(Relaxed).max(0) as usize;
+    get_model_params(f, FILTER_TOOLS, current, &fp.tool_params, |m| fp.set_tool_model(m));
+}
+
+// ---- extra blocks of a strip's chain (`livedaw_engine::blocks`) ---------------------
+
+/// The section an extra block's settings belong to (scenes recall them with it).
+pub fn block_section(kind: BlockKind) -> u32 {
+    match kind {
+        BlockKind::Filter | BlockKind::Delay => section::PREAMP,
+        BlockKind::Eq => section::EQ,
+        BlockKind::Dynamics => section::DYNAMICS,
+        BlockKind::Insert => section::INSERTS,
+    }
+}
+
+/// `<Chain>`: the strip's extra blocks (`uid`, `kind`, `at`: the step they sit
+/// at), each with its settings when its section is captured. Not written for a
+/// strip running its template.
+fn capture_chain(s: &Strip, sections: u32, e: &mut Element) {
+    let steps = s.steps();
+    if !steps.iter().any(|st| matches!(st, Step::Block(_))) {
+        return;
+    }
+    let c = e.add_new("Chain");
+    for (at, step) in steps.iter().enumerate() {
+        let Step::Block(b) = step else { continue };
+        let x = c.add_new("B");
+        x.set("uid", b.uid()).set("kind", b.kind().as_str()).set("at", at);
+        if sections & block_section(b.kind()) == 0 {
+            continue;
+        }
+        match &b.params {
+            BlockParams::Filter(f) => put_filter(x, f),
+            BlockParams::Eq(q) => put_eq(x, q, s.kind().is_output()),
+            BlockParams::Dynamics(d) => put_dyn_slot(x, d),
+            BlockParams::Insert(i) => put_insert(x, i),
+            BlockParams::Delay(d) => {
+                put_b(x, "on", &d.on);
+                put_i(x, "mode", &d.mode);
+                put_f(x, "dly", &d.delay);
+            }
+        }
+    }
+}
+
+/// Console load: rebuilds the strip's extra blocks from `<Chain>` (none
+/// without one: the template); their settings come with `apply_chain`.
+fn restore_chain(engine: &Engine, s: &Strip, e: &Element) {
+    engine.clear_blocks(s);
+    let Some(c) = e.child("Chain") else { return };
+    let mut blocks: Vec<(usize, u32, BlockKind)> = c
+        .children_named("B")
+        .filter_map(|x| {
+            let at = usize::try_from(x.int_or("at", -1)).ok()?;
+            let uid = u32::try_from(x.int_or("uid", -1)).ok()?;
+            Some((at, uid, BlockKind::parse(x.str_or("kind", ""))?))
+        })
+        .collect();
+    blocks.sort_by_key(|b| b.0);
+    for (at, uid, kind) in blocks {
+        engine.restore_block(s, uid, kind, at);
+    }
+}
+
+/// The settings of the strip's extra blocks in `<Chain>`, by id, within `sections`.
+fn apply_chain(s: &Strip, e: &Element, sections: u32) {
+    let Some(c) = e.child("Chain") else { return };
+    let blocks = s.blocks();
+    for x in c.children_named("B") {
+        let uid = x.int_or("uid", -1);
+        let Some(b) = blocks.iter().find(|b| b.uid() as i64 == i64::from(uid)) else { continue };
+        if sections & block_section(b.kind()) == 0 || x.str_or("kind", "") != b.kind().as_str() {
+            continue;
+        }
+        match &b.params {
+            BlockParams::Filter(f) => get_filter(x, f),
+            BlockParams::Eq(q) => get_eq(x, q, s.kind().is_output()),
+            BlockParams::Dynamics(d) => get_dyn_slot(x, d),
+            BlockParams::Insert(i) => get_insert(x, i),
+            BlockParams::Delay(d) => {
+                get_b(x, "on", &d.on);
+                get_i(x, "mode", &d.mode);
+                get_f(x, "dly", &d.delay);
+            }
+        }
+    }
+}
+
 fn put_insert(e: &mut Element, ins: &InsertParams) {
     put_b(e, "on", &ins.on);
     put_i(e, "fx", &ins.fx);
@@ -407,18 +519,7 @@ fn capture_strip(s: &Strip, sections: u32, slots: &[usize], mains: usize, matric
         put_i(i, "dlymode", &p.input.delay_mode);
         put_f(i, "dly", &p.input.delay);
         if kind == StripKind::Channel {
-            let f = e.add_new("Flt");
-            let fp = &p.filter;
-            put_b(f, "lc", &fp.low_cut);
-            put_f(f, "lcf", &fp.low_cut_freq);
-            put_i(f, "lcs", &fp.low_cut_slope);
-            put_b(f, "hc", &fp.high_cut);
-            put_f(f, "hcf", &fp.high_cut_freq);
-            put_i(f, "hcs", &fp.high_cut_slope);
-            put_b(f, "tf", &fp.tool);
-            let tool = (fp.tool_model.load(Relaxed).max(0) as usize).min(FILTER_TOOLS.len() - 1);
-            f.set("mdl", FILTER_TOOLS[tool].token);
-            put_model_params(f, &FILTER_TOOLS[tool], &fp.tool_params);
+            put_filter(e.add_new("Flt"), &p.filter);
         }
     }
     if sections & GATE != 0 && kind == StripKind::Channel {
@@ -520,6 +621,7 @@ fn capture_strip(s: &Strip, sections: u32, slots: &[usize], mains: usize, matric
             g.set("tags", tags);
         }
     }
+    capture_chain(s, sections, &mut e);
     e
 }
 
@@ -1035,16 +1137,7 @@ fn apply_strip(
             get_f(i, "dly", &p.input.delay);
         }
         if let Some(f) = e.child("Flt") {
-            let fp = &p.filter;
-            get_b(f, "lc", &fp.low_cut);
-            get_f(f, "lcf", &fp.low_cut_freq);
-            get_i(f, "lcs", &fp.low_cut_slope);
-            get_b(f, "hc", &fp.high_cut);
-            get_f(f, "hcf", &fp.high_cut_freq);
-            get_i(f, "hcs", &fp.high_cut_slope);
-            get_b(f, "tf", &fp.tool);
-            let current = fp.tool_model.load(Relaxed).max(0) as usize;
-            get_model_params(f, FILTER_TOOLS, current, &fp.tool_params, |m| fp.set_tool_model(m));
+            get_filter(f, &p.filter);
         }
     }
     if let Some(g) = e.child("Gate").filter(|_| sections & GATE != 0) {
@@ -1056,6 +1149,7 @@ fn apply_strip(
     if let Some(d) = e.child("Dyn").filter(|_| sections & DYNAMICS != 0) {
         get_dyn_slot(d, &p.dynamics);
     }
+    apply_chain(s, e, sections);
     if let Some(ins) = e.child("Ins").filter(|_| sections & INSERTS != 0) {
         get_i(ins, "proc", &p.process_order);
         get_i(ins, "tap", &p.tap);
@@ -1343,6 +1437,7 @@ pub fn load_console(engine: &Engine, console: &Element, bridge: &mut dyn PluginB
         }
     }
     for (s, e) in loaded {
+        restore_chain(engine, &s, e);
         apply_strip(engine, &s, e, section::ALL, &mut None, &mut result);
         s.params.recall_safe.store(e.bool_or("recallSafe", false), Relaxed);
     }

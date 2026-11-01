@@ -449,7 +449,7 @@ pub fn merge_state(stored: &mut Element, partial: &Element) {
 
 /// The key of a child for pairing it between two captures.
 fn pair_key(e: &Element) -> String {
-    for key in ["ref", "i", "slot", "n"] {
+    for key in ["ref", "i", "slot", "n", "uid"] {
         if let Some(v) = e.attr(key) {
             return format!("{}:{key}={v}", e.name);
         }

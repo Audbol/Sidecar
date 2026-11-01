@@ -119,8 +119,15 @@ Three layers:
         channel template resolved through `PROCESS_ORDERS` each block (no
         allocation). The WING's output is byte for byte the same (`render`
         example, three set-ups, before and after).
-      - 3b: extra blocks (EQ, dynamics, filter, insert, delay) anywhere in a
-        strip's chain: a published chain layout per strip replaces the template.
+      - 3b (done): extra blocks (filter, EQ, dynamics, insert, delay; up to 32
+        per strip) anywhere in a strip's chain (`blocks.rs`): a published
+        `ChainLayout` (the template's nodes with the blocks among them)
+        replaces the template; `Engine::insert_block`, `move_block`,
+        `remove_block`, `clear_blocks`. Blocks are shared between layouts, so
+        they keep their settings and state when the chain changes; FX slot
+        use and delay compensation walk the chain. Shows store them as
+        `<Chain>` (structure with the console, settings recalled by scenes
+        with their section). Not yet in the C ABI (with 3d).
       - 3c: tap markers anywhere, referenced by sends, keys and the delay
         compensation.
       - 3d: the blocks' parameters leave `StripParams` (which keeps the

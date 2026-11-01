@@ -292,8 +292,24 @@ channel's four `Slot` nodes are the GATE, EQ, DYNAMICS and INS 1 slots in its pr
 order, resolved through `PROCESS_ORDERS` each block, so the 24 orders are
 permutations of one group and TAP 3 / 4 / 5 stay after the 1st / 2nd / 3rd block.
 Each node reads the strip's channel count when it runs (an insert can widen a mono
-strip). Phase 1 step 3 goes on to chains other than the templates (extra blocks, taps
-anywhere).
+strip).
+
+Extra blocks (`blocks.rs`): a strip can have up to `MAX_EXTRA_BLOCKS` (32) more
+filters, EQs, dynamics, inserts and delays anywhere among its template's nodes. They
+live in a `ChainLayout` (`Step::Node` / `Step::Block`) that the message thread builds
+and publishes on the strip (`Strip::set_layout`, an `AtomicPtr`; null = the template;
+the old layout goes to the garbage list). A `Block` (`Arc`, shared between layouts)
+holds its parameters (the same `#[repr(C)]` blocks as the strip's own, or
+`DelayParams`), its meters and its DSP state, prepared on the message thread, so it
+keeps its settings and state when the chain around it changes. `Engine::insert_block`
+/ `restore_block` / `move_block` / `remove_block` / `clear_blocks`; a block's place is
+an index into `Strip::steps`. An EQ block uses its strip's EQ table; a dynamics block
+keys like the strip's slots; an insert block runs an FX slot like INS 1 (FX slot use,
+`fx_in_use` and the delay compensation's tap latencies walk the chain:
+`Strip::own_latency`). Shows store a strip's blocks as `<Chain><B uid kind at>` with
+the block's settings when its section is captured (filter and delay: PREAMP, EQ, DYN,
+inserts: INSERTS); a console load rebuilds the chain, a scene recall only sets the
+blocks' settings (by `uid`), and snippet REC pairs them by `uid`.
 
 ## Processing models
 

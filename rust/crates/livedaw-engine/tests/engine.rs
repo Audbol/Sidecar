@@ -839,6 +839,75 @@ fn eq_dc_gain(s: &Strip) -> f32 {
 }
 
 #[test]
+fn extra_blocks_run_where_they_sit_in_the_chain() {
+    use livedaw_engine::blocks::{BlockKind, BlockParams, Step};
+    use livedaw_engine::chain::Node;
+    let mut rig = Rig::new(1, 1, 2);
+    set_channels(&rig.engine, 1);
+    let engine = rig.engine.clone();
+    let ch = rig.ch(0);
+    ch.params.fader_db.store(0.0);
+    rig.set_input(0, 0.5);
+    rig.run(20);
+    assert!(close(rig.out(0), 0.5 * CENTRE, 1e-4));
+    assert!(ch.layout().is_none(), "the WING template");
+    let at = |node: Node| ch.steps().iter().position(|s| matches!(s, Step::Node(n) if *n == node)).unwrap();
+
+    // An insert block (FX 3, a plugin at half gain) before PFL: the PFL meter
+    // and the output both take it.
+    engine.set_fx_plugin(2, Some(fake(0.5, 0).0));
+    let ins = engine.insert_block(&ch, BlockKind::Insert, at(Node::Pfl)).unwrap();
+    let BlockParams::Insert(p) = &ins.params else { panic!() };
+    p.fx.store(2, Relaxed);
+    p.on.store(true, Relaxed);
+    assert!(ch.uses_fx(2) && engine.fx_in_use(2));
+    ch.meters.pfl_peak[0].store(0.0);
+    rig.run(20);
+    assert!(close(rig.out(0), 0.25 * CENTRE, 1e-4), "{}", rig.out(0));
+    assert!(close(ch.meters.pfl_peak[0].load(), 0.25, 1e-4));
+
+    // Moved after the fader: the PFL is whole again, the output still halved.
+    assert!(engine.move_block(&ch, ins.uid(), at(Node::Fader) + 1));
+    assert!(at(Node::Fader) < ch.steps().iter().position(|s| matches!(s, Step::Block(_))).unwrap());
+    rig.run(20);
+    ch.meters.pfl_peak[0].store(0.0);
+    rig.run(4);
+    assert!(close(rig.out(0), 0.25 * CENTRE, 1e-4));
+    assert!(close(ch.meters.pfl_peak[0].load(), 0.5, 1e-4));
+
+    // Its latency counts for the taps after it (delay compensation).
+    engine.fx(2).unwrap().set_latency(64);
+    engine.update_pdc();
+    assert_eq!(ch.pdc.latency(livedaw_engine::pdc_tap::PFL), 0);
+    assert_eq!(ch.pdc.latency(livedaw_engine::pdc_tap::POST), 64);
+
+    // An EQ block (+6 dB low shelf) and the plugin taken out: the EQ alone.
+    let eq = engine.insert_block(&ch, BlockKind::Eq, at(Node::Post)).unwrap();
+    let BlockParams::Eq(e) = &eq.params else { panic!() };
+    assert!(!e.on.load(Relaxed), "a new EQ block is off");
+    e.param("lg", false).unwrap().store(6.0);
+    e.on.store(true, Relaxed);
+    assert!(engine.remove_block(&ch, ins.uid()));
+    assert!(!ch.uses_fx(2));
+    rig.run(200);
+    assert!(rig.out(0) > 0.5 * CENTRE * 1.9, "{}", rig.out(0));
+    assert_eq!(ch.blocks().len(), 1);
+
+    // No blocks left: back to the template.
+    assert!(engine.remove_block(&ch, eq.uid()));
+    assert!(ch.layout().is_none());
+    rig.run(20);
+    assert!(close(rig.out(0), 0.5 * CENTRE, 1e-4));
+    // At most MAX_EXTRA_BLOCKS.
+    for _ in 0..livedaw_engine::blocks::MAX_EXTRA_BLOCKS {
+        assert!(engine.insert_block(&ch, BlockKind::Delay, 0).is_some());
+    }
+    assert!(engine.insert_block(&ch, BlockKind::Delay, 0).is_none());
+    engine.clear_blocks(&ch);
+    assert!(ch.layout().is_none());
+}
+
+#[test]
 fn bus_runs_dyn_ins1_fader_eq_ins2_with_the_tap_after_ins1() {
     let mut rig = Rig::new(1, 1, 6);
     set_channels(&rig.engine, 1);

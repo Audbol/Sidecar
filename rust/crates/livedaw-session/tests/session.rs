@@ -807,6 +807,53 @@ fn sends_to_mains_and_matrices_beyond_the_wings_survive_a_show() {
 }
 
 #[test]
+fn extra_blocks_survive_a_show_and_recall_with_their_sections() {
+    use livedaw_engine::blocks::{BlockKind, BlockParams, Step};
+    let engine = Engine::new(0);
+    set_channels(&engine, 1);
+    let c = ch(&engine, 0);
+    let eq = engine.insert_block(&c, BlockKind::Eq, 3).unwrap();
+    let dly = engine.insert_block(&c, BlockKind::Delay, 9).unwrap();
+    let BlockParams::Eq(e) = &eq.params else { panic!() };
+    e.on.store(true, Relaxed);
+    e.param("lg", false).unwrap().store(4.5);
+    let BlockParams::Delay(d) = &dly.params else { panic!() };
+    d.on.store(true, Relaxed);
+    d.delay.store(12.0);
+    let mut show = Show::new();
+    show.add_scene(&engine, &mut NoPlugins, "A", -1);
+
+    // A scene recall puts the blocks' settings back by section, not the structure.
+    e.param("lg", false).unwrap().store(-3.0);
+    d.delay.store(1.0);
+    show.recall_scene_with(&engine, &mut NoPlugins, 0, Some(&Scope::console(section::EQ)), false);
+    assert_eq!(e.param("lg", false).unwrap().load(), 4.5);
+    assert_eq!(d.delay.load(), 1.0, "PREAMP wasn't recalled");
+
+    // The show: the same chain (ids, kinds, places) and settings.
+    let (e2, _) = round_trip(&engine, &show);
+    let c2 = ch(&e2, 0);
+    let at = |s: &[Step], uid: u32| s.iter().position(|x| matches!(x, Step::Block(b) if b.uid() == uid));
+    let (s1, s2) = (c.steps(), c2.steps());
+    assert_eq!(s1.len(), s2.len());
+    assert_eq!((at(&s2, eq.uid()), at(&s2, dly.uid())), (at(&s1, eq.uid()), at(&s1, dly.uid())));
+    let blocks = c2.blocks();
+    let BlockParams::Eq(e2q) = &blocks[0].params else { panic!("{:?}", blocks[0].kind()) };
+    assert!(e2q.on.load(Relaxed));
+    assert_eq!(e2q.param("lg", false).unwrap().load(), 4.5);
+    let BlockParams::Delay(d2) = &blocks[1].params else { panic!() };
+    assert_eq!(d2.delay.load(), 1.0);
+    // A new block on the loaded strip gets a fresh id.
+    let more = e2.insert_block(&c2, BlockKind::Insert, 0).unwrap();
+    assert!(more.uid() > eq.uid().max(dly.uid()));
+    // A strip without blocks writes no <Chain> and loads back on its template.
+    e2.clear_blocks(&c2);
+    let (e3, _) = round_trip(&e2, &Show::new());
+    assert!(ch(&e3, 0).layout().is_none());
+    assert!(!Show::new().to_xml(&e2, &mut NoPlugins).to_document().contains("<Chain"));
+}
+
+#[test]
 fn wing_settings_survive_a_show_round_trip() {
     let engine = Engine::new(0);
     set_channels(&engine, 1);

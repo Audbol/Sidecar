@@ -27,6 +27,10 @@ WING works as before throughout.
 - Universal core, Phase 1 step 3a: a strip runs its processing as a chain of
   blocks and tap points (`chain.rs`); the WING's strips and its 24 process orders
   are templates of that chain. The sound is unchanged (checked byte for byte).
+- Universal core, Phase 1 step 3b: extra processing blocks (filter, EQ, dynamics,
+  insert, delay; up to 32 per strip) anywhere in a strip's chain, saved with the show
+  (`<Chain>`) and recalled by scenes with their section. Engine and show only for
+  now; the C ABI and the new interface come later.
 
 - SETUP > GENERAL > ABOUT (and the start-up notice) links the Sidecar Discord server
   for questions, setup help and feedback: a Community section and a **DISCORD** key
