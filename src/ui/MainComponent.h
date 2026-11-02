@@ -94,7 +94,6 @@ private:
     /** Reopens the last recording project (offering its autosave). */
     void openLastProject();
 
-    juce::AudioDeviceManager& deviceManager;
     MixerEngine& engine;
     Show& show;
     EventLog& log;

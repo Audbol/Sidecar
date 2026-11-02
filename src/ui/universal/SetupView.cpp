@@ -61,9 +61,9 @@ public:
           plus8 ("+8", o.theme.accent, o.theme)
     {
         const std::pair<ToggleKey*, int> keys[] = { { &minus8, -8 }, { &minus1, -1 }, { &plus1, 1 }, { &plus8, 8 } };
-        for (auto [key, step] : keys)
+        for (auto [key, delta] : keys)
         {
-            key->onClick = [this, step = step] { owner.setPending (kind, owner.getPending (kind) + step); };
+            key->onClick = [this, step = delta] { owner.setPending (kind, owner.getPending (kind) + step); };
             addAndMakeVisible (key);
         }
     }
@@ -106,10 +106,10 @@ SetupView::SetupView (UiContext& c, const Theme& t)
       protectionKey ("OUTPUT PROTECTION", t.accent, t), ctx (c), theme (t)
 {
     const std::pair<ToggleKey*, Page> tabs[] = { { &consoleTab, Page::Console }, { &audioTab, Page::Audio }, { &prefsTab, Page::Preferences } };
-    for (auto [key, p] : tabs)
+    for (auto [key, target] : tabs)
     {
-        key->isOn = [this, p = p] { return page == p; };
-        key->onClick = [this, p = p] { showPage (p); };
+        key->isOn = [this, p = target] { return page == p; };
+        key->onClick = [this, p = target] { showPage (p); };
         addAndMakeVisible (key);
     }
     for (int k = 0; k < NumKinds; ++k)
@@ -148,10 +148,10 @@ SetupView::SetupView (UiContext& c, const Theme& t)
     interfaceChoice.choose = [this] (int i)
     {
         // Switching rebuilds the window's skin: let the tap return first.
-        juce::MessageManager::callAsync ([&c = ctx, i]
+        juce::MessageManager::callAsync ([&context = ctx, i]
         {
-            if (c.setInterface)
-                c.setInterface (i == 1 ? InterfaceKind::Universal : InterfaceKind::Wing);
+            if (context.setInterface)
+                context.setInterface (i == 1 ? InterfaceKind::Universal : InterfaceKind::Wing);
         });
     };
     compensationKey.isOn = [this] { return ctx.engine.isLatencyCompensationOn(); };

@@ -84,6 +84,16 @@ if(MSVC)
     corrosion_add_target_rustflags(livedaw_ffi -Ctarget-feature=+crt-static)
 endif()
 
+if(APPLE)
+    # The Rust library asks for -lSystem, which the toolchain links anyway, and Xcode 15's
+    # linker warns about the duplicate: quiet that where the linker knows the flag.
+    include(CheckLinkerFlag)
+    check_linker_flag(CXX "LINKER:-no_warn_duplicate_libraries" LIVEDAW_LD_NO_WARN_DUPLICATES)
+    if(LIVEDAW_LD_NO_WARN_DUPLICATES)
+        target_link_options(livedaw_ffi INTERFACE "LINKER:-no_warn_duplicate_libraries")
+    endif()
+endif()
+
 #-------------------------------------------------------------------------------
 # Shared engine sources + JUCE configuration (used by the app and the tests)
 #-------------------------------------------------------------------------------

@@ -419,8 +419,8 @@ void DawTrackHeader::showMenu()
     m.addItem ("Playback channel...", [this] { playbackMenu(); });
     juce::PopupMenu heights;
     const std::pair<const char*, int> sizes[] = { { "Small", 40 }, { "Normal", daw::Project::kDefaultTrackHeight }, { "Large", 120 }, { "Huge", 200 } };
-    for (auto& [name, h] : sizes)
-        heights.addItem (name, true, getHeight() == h, [this, h = h] { state.project.setTrackProperty (trackId, daw::ids::height, h, false); });
+    for (auto& [name, px] : sizes)
+        heights.addItem (name, true, getHeight() == px, [this, h = px] { state.project.setTrackProperty (trackId, daw::ids::height, h, false); });
     heights.addItem ("All tracks this size", [this]
     {
         for (auto& other : state.tracks)

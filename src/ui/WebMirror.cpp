@@ -109,13 +109,13 @@ public:
         stopThread (4000);
     }
 
-    void add (juce::uint32 generation, juce::uint32 index, juce::Image tile)
+    void add (juce::uint32 tileGeneration, juce::uint32 index, juce::Image tile)
     {
         const juce::ScopedLock sl (lock);
-        if (generation != pendingGeneration)
+        if (tileGeneration != pendingGeneration)
         {
             pending.clear();
-            pendingGeneration = generation;
+            pendingGeneration = tileGeneration;
         }
         pending[index] = std::move (tile);
     }

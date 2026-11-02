@@ -780,9 +780,9 @@ namespace
         class Editor final : public juce::AudioProcessorEditor
         {
         public:
-            Editor (NativeEditorPlugin& p, bool resizable, bool snaps) : juce::AudioProcessorEditor (p), snapsBack (snaps)
+            Editor (NativeEditorPlugin& p, bool canResize, bool snapBack) : juce::AudioProcessorEditor (p), snapsBack (snapBack)
             {
-                setResizable (resizable, false);
+                setResizable (canResize, false);
                 setSize (32, 32);
             }
 

@@ -12,21 +12,21 @@ UniversalSkin::UniversalSkin (UiContext& c)
     const std::pair<const char*, View> views[] = { { "MIXER", View::Mixer },           { "ROUTING", View::Routing }, { "FX RACK", View::Fx },
                                                    { "MONITORING", View::Monitoring }, { "SCENES", View::Scenes },   { "RECORDER", View::Recorder },
                                                    { "SETUP", View::Setup } };
-    for (auto [name, v] : views)
+    for (auto [name, target] : views)
     {
         auto key = std::make_unique<ToggleKey> (name, theme.accent, theme);
-        key->isOn = [this, v = v] { return view == v; };
-        key->onClick = [this, v = v] { showView (v); };
+        key->isOn = [this, v = target] { return view == v; };
+        key->onClick = [this, v = target] { showView (v); };
         addAndMakeVisible (*key);
         viewKeys.push_back (std::move (key));
     }
     // Switching rebuilds the window's skin: let the click return first.
-    wingKey.onClick = [&c = ctx]
+    wingKey.onClick = [&context = ctx]
     {
-        juce::MessageManager::callAsync ([&c]
+        juce::MessageManager::callAsync ([&context]
         {
-            if (c.setInterface)
-                c.setInterface (InterfaceKind::Wing);
+            if (context.setInterface)
+                context.setInterface (InterfaceKind::Wing);
         });
     };
     wingKey.setTooltip ("Back to the WING surface");

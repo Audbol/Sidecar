@@ -471,7 +471,7 @@ public:
         keyboard.setMaxLength (16);
         keyboard.setCapsLock (true);
         keyboard.setActionText ("CLOSE");
-        keyboard.onChange = [this] (const juce::String& t) { setName (t); };
+        keyboard.onChange = [this] (const juce::String& t) { rename (t); };
         keyboard.onAction = [this] (const juce::String&) { close(); };
         keyboard.onCancel = [this] { close(); };
         addAndMakeVisible (keyboard);
@@ -641,7 +641,7 @@ public:
         else if (clearKey.contains (pos))
         {
             keyboard.setText ({});
-            setName ({});
+            rename ({});
         }
         else if (phonesKey.contains (pos) || speakerKey.contains (pos))
         {
@@ -683,7 +683,7 @@ private:
         return name.isEmpty() || name.removeCharacters (" .").equalsIgnoreCase ("DCA" + juce::String (dca + 1));
     }
 
-    void setName (const juce::String& name)
+    void rename (const juce::String& name)
     {
         ctx.engine.setDcaName (dca, name.trim());
         repaint (field);
@@ -2646,9 +2646,9 @@ ConfigViewPage::ConfigViewPage (UiContext& c) : ViewPage (c, Screen::Config)
         }
         else if (ctx.show.layers.hasDefaultOverride (section(), layer.id))
         {
-            popups::confirm (*this, "RESTORE LAYER", "Give \"" + layer.name + "\" its own faders back?", "RESTORE", [this, id = layer.id]
+            popups::confirm (*this, "RESTORE LAYER", "Give \"" + layer.name + "\" its own faders back?", "RESTORE", [this, layerId = layer.id]
             {
-                ctx.show.layers.clearDefaultOverride (section(), id);
+                ctx.show.layers.clearDefaultOverride (section(), layerId);
                 notifyLayersChangedAsync (ctx);
                 resized();
                 repaint();

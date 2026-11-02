@@ -957,14 +957,14 @@ bool MidiRemote::parseMidiText (const juce::String& text, std::vector<PortMessag
     {
         for (size_t i = 0; i < bytes.size();)
         {
-            const int status = bytes[i];
-            if (status < 0x80)
+            const int statusByte = bytes[i];
+            if (statusByte < 0x80)
             {
                 error = "DATA BYTE WITHOUT A STATUS BYTE";
                 return false;
             }
             size_t length = 0;
-            if (status == 0xf0)
+            if (statusByte == 0xf0)
             {
                 const auto end = std::find (bytes.begin() + (std::ptrdiff_t) i, bytes.end(), (juce::uint8) 0xf7);
                 if (end == bytes.end())
@@ -975,13 +975,13 @@ bool MidiRemote::parseMidiText (const juce::String& text, std::vector<PortMessag
                 length = (size_t) (end - bytes.begin()) + 1 - i;
             }
             else
-                length = (size_t) juce::MidiMessage::getMessageLengthFromFirstByte ((juce::uint8) status);
+                length = (size_t) juce::MidiMessage::getMessageLengthFromFirstByte ((juce::uint8) statusByte);
             if (i + length > bytes.size())
             {
                 error = "INCOMPLETE MESSAGE";
                 return false;
             }
-            for (size_t k = i + 1; k < i + length - (status == 0xf0 ? 1 : 0); ++k)
+            for (size_t k = i + 1; k < i + length - (statusByte == 0xf0 ? 1 : 0); ++k)
                 if (bytes[k] >= 0x80)
                 {
                     error = "INCOMPLETE MESSAGE";

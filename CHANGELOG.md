@@ -177,6 +177,12 @@ WING works as before throughout.
   window an event closed. On Windows its log also names the stack of an abort, an
   uncaught exception or another C runtime fail-fast (its build has symbols). Sidecar
   itself wasn't at fault; a test (*Windows*) shows the case.
+- The macOS (AppleClang) build compiles without warnings. The strip and DCA name
+  windows had a `setName` of their own (it names the strip, the DCA) that overrode
+  JUCE's `Component::setName` by accident; it is `rename` now. The rest: lambda
+  captures, parameters and loop bindings that hid other names, two unused members, the
+  multitrack editor's FILE helpers private to their file, and the linker's note about
+  the Rust library's duplicate `-lSystem` (quieted where the linker knows the flag).
 - Importing a WING snapshot no longer patches two of its inputs to one port. The WING's
   LOCAL, AUX, StageConnect, USB, MOD and AES/EBU inputs land on the ports AES50 A (or B)
   has here, so a show with the drums on A 1-5 and the vocals on the console's LOCAL 1-5

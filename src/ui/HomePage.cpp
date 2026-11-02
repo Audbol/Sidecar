@@ -734,14 +734,14 @@ public:
         keyboard->setActionText ("NEXT");
         keyboard->onChange = [this] (const juce::String& t)
         {
-            setName (t.substring (0, kMaxNameLength));
+            rename (t.substring (0, kMaxNameLength));
             repaint (field);
         };
         keyboard->onAction = [this] (const juce::String& t)
         {
-            setName (t.substring (0, kMaxNameLength));
+            rename (t.substring (0, kMaxNameLength));
             if (auto* next = adjacentStrip (ctx.engine, &strip, 1); next != nullptr && ctx.selectStrip)
-                juce::MessageManager::callAsync ([&c = ctx, next] { if (c.selectStrip) c.selectStrip (next); });
+                juce::MessageManager::callAsync ([&context = ctx, next] { if (context.selectStrip) context.selectStrip (next); });
         };
         keyboard->setSuggestionRowAlwaysShown (true);
         keyboard->setSuggestions (nameSuggestions (shownIcon (strip)));
@@ -755,7 +755,7 @@ public:
     std::vector<HomeKnob> knobs() override { return homeTabKnobs (ctx, strip); }
 
     /** Names the strip, or its source while linked. */
-    void setName (const juce::String& name)
+    void rename (const juce::String& name)
     {
         if (const int index = strip.linkedSourceIndex(); index >= 0)
             ctx.engine.setSourceName (index, name);
@@ -849,7 +849,7 @@ public:
     {
         if (clearArea.contains (e.getPosition()))
         {
-            setName ({});
+            rename ({});
             keyboard->setText ({});
             repaint (field);
         }

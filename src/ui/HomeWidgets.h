@@ -379,10 +379,10 @@ public:
         filling with the colour it turns to meanwhile; a tap does nothing. */
     void switchOnHold (std::function<void()> onHeld, double seconds = kPhantomHoldSeconds)
     {
-        hold = std::make_unique<HoldKey> ([this, onHeld = std::move (onHeld)]
+        hold = std::make_unique<HoldKey> ([this, held = std::move (onHeld)]
         {
             juce::Component::SafePointer<IconKey> safe (this);
-            onHeld();
+            held();
             if (safe != nullptr && isOn)
                 setToggleState (isOn(), juce::dontSendNotification);
         }, [this] { repaint(); }, seconds);

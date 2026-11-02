@@ -341,9 +341,9 @@ public:
             if (! scene)
                 return;
             page.openScope ((int) ScopeWindow::Mode::PartialUpdate, "PARTIAL UPDATE: " + scene->name.toUpperCase(), page.ctx.show.getPartialScope(),
-                            [this, index] (const state::Scope& scope, bool)
+                            [this, index] (const state::Scope& chosen, bool)
                             {
-                                page.ctx.show.storeScenePartial (index, scope);
+                                page.ctx.show.storeScenePartial (index, chosen);
                                 page.ctx.log.info ("Updated part of scene " + juce::String (index + 1));
                             });
         };
@@ -364,10 +364,10 @@ public:
             if (! scene)
                 return;
             page.openScope ((int) ScopeWindow::Mode::PartialLoad, "PARTIAL LOAD: " + scene->name.toUpperCase(), page.ctx.show.getPartialScope(),
-                            [this, index] (const state::Scope& scope, bool noGlobal)
+                            [this, index] (const state::Scope& chosen, bool noGlobal)
                             {
                                 logRecall (page.ctx, "part of scene " + juce::String (index + 1) + (noGlobal ? " (NO GLOB)" : ""),
-                                           page.ctx.show.recallScenePartial (index, scope, noGlobal));
+                                           page.ctx.show.recallScenePartial (index, chosen, noGlobal));
                                 page.list->refresh();
                             });
         };
@@ -482,7 +482,7 @@ private:
         if (! scene)
             return;
         page.openScope ((int) ScopeWindow::Mode::SceneScope, "EDIT SCOPE: " + scene->name.toUpperCase(), page.ctx.show.getSceneRecallScope (index),
-                        [this, index] (const state::Scope& scope, bool) { page.ctx.show.setSceneRecallScope (index, scope); });
+                        [this, index] (const state::Scope& chosen, bool) { page.ctx.show.setSceneRecallScope (index, chosen); });
     }
 
     LibraryPage& page;
@@ -563,10 +563,10 @@ public:
             if (! sn)
                 return;
             page.openScope ((int) ScopeWindow::Mode::PartialLoad, "PARTIAL LOAD: " + sn->name.toUpperCase(), page.ctx.show.getPartialScope(),
-                            [this, item] (const state::Scope& scope, bool)
+                            [this, item] (const state::Scope& chosen, bool)
                             {
                                 logRecall (page.ctx, "part of snippet " + juce::String (item.scene + 1) + "." + juce::String (item.snippet + 1),
-                                           page.ctx.show.recallSnippetPartial (item.scene, item.snippet, scope));
+                                           page.ctx.show.recallSnippetPartial (item.scene, item.snippet, chosen));
                             });
         };
         rec->onClick = [this]

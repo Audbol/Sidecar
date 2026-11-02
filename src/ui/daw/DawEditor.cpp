@@ -150,7 +150,7 @@ namespace dawfiles
         });
     }
 
-    void exportTracks (juce::Component* parent, daw::Session& session, AudioFileFormat format)
+    static void exportTracks (juce::Component* parent, daw::Session& session, AudioFileFormat format)
     {
         auto result = session.ensureFolder();
         if (result.failed())
@@ -170,7 +170,7 @@ namespace dawfiles
         }));
     }
 
-    void chooseProjectsFolder (juce::Component* parent, daw::Session& session, std::unique_ptr<juce::FileChooser>& chooser)
+    static void chooseProjectsFolder (juce::Component* parent, daw::Session& session, std::unique_ptr<juce::FileChooser>& chooser)
     {
         chooser = std::make_unique<juce::FileChooser> ("Projects folder (new projects and their recordings)", session.getProjectsFolder());
         chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
@@ -189,7 +189,7 @@ namespace dawfiles
         });
     }
 
-    void collectFiles (juce::Component* parent, daw::Session& session)
+    static void collectFiles (juce::Component* parent, daw::Session& session)
     {
         const int n = session.getNumReferencedFiles();
         if (n == 0)
@@ -434,9 +434,9 @@ public:
         juce::PopupMenu m;
         m.addSectionHeader ("TIME SIGNATURE");
         const std::pair<int, int> sigs[] = { { 2, 4 }, { 3, 4 }, { 4, 4 }, { 5, 4 }, { 6, 4 }, { 7, 4 }, { 3, 8 }, { 5, 8 }, { 6, 8 }, { 7, 8 }, { 9, 8 }, { 12, 8 }, { 2, 2 } };
-        for (auto [n, d] : sigs)
-            m.addItem (juce::String (n) + "/" + juce::String (d), true,
-                       state.project.getSigNumerator() == n && state.project.getSigDenominator() == d, [this, n = n, d = d]
+        for (auto [num, den] : sigs)
+            m.addItem (juce::String (num) + "/" + juce::String (den), true,
+                       state.project.getSigNumerator() == num && state.project.getSigDenominator() == den, [this, n = num, d = den]
             {
                 state.project.beginEdit ("Time signature");
                 state.project.setTimeSignature (n, d);

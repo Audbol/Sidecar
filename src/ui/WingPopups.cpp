@@ -102,11 +102,11 @@ namespace
             onClosing();
             setVisible (false);
             giveFocusBack();
-            juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<Popup> (this), after = std::move (after)]
+            juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<Popup> (this), then = std::move (after)]
             {
                 delete safe.getComponent();
-                if (after != nullptr)
-                    after();
+                if (then != nullptr)
+                    then();
             });
         }
 

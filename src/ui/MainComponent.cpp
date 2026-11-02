@@ -95,8 +95,7 @@ private:
 //==============================================================================
 MainComponent::MainComponent (juce::AudioDeviceManager& dm, MixerEngine& e, PluginHost& h, Show& s,
                               EventLog& l, juce::PropertiesFile& props)
-    : deviceManager (dm),
-      engine (e),
+    : engine (e),
       show (s),
       log (l),
       settings (props),

@@ -4,7 +4,7 @@
 namespace livedaw::ui
 {
 
-UtilityPage::UtilityPage (UiContext& c, bool setup) : ctx (c), onSetup (setup)
+UtilityPage::UtilityPage (UiContext& c, bool) : ctx (c)
 {
     clearFaultsButton.setTooltip ("Clears the FX fault and double-assignment markers (a faulted plugin is bypassed until cleared)");
     clearFaultsButton.onClick = [this]

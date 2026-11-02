@@ -925,12 +925,12 @@ void SandboxedPlugin::openEditorWindow (const juce::String& title, std::function
 
     sandbox::allowProcessToTakeFocus (helperPid);
     connection->requestAsync (Msg::openEditor, [&] (auto& out) { out.writeString (title); },
-                              [done = std::move (done)] (const Reply& r)
+                              [callback = std::move (done)] (const Reply& r)
                               {
-                                  juce::MessageManager::callAsync ([done, error = r.ok ? juce::String() : r.error]
+                                  juce::MessageManager::callAsync ([callback, error = r.ok ? juce::String() : r.error]
                                   {
-                                      if (done)
-                                          done (error);
+                                      if (callback)
+                                          callback (error);
                                   });
                               });
 }
