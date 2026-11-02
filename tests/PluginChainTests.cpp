@@ -1417,14 +1417,19 @@ public:
             for (int s = n; s < kMaxFx; ++s)
                 if (fx.isInUse (s))
                     breakRule ("FX " + juce::String (s + 1) + " in use past " + juce::String (n) + " slots");
-            if (operations % 250 == 0)
+            if (operations % 250 == 0 && window != nullptr)
             {
-                test::pumpMessages (120); // a poll or two
+                // The overview catches up at its next poll (15 a second). A timer can run
+                // late (a busy macOS runner was 120 ms behind): a mismatch is one that lasts 2 s.
                 std::vector<int> withPlugins;
                 for (int s = 0; s < kMaxFx; ++s)
                     if (fx.hasPlugin (s))
                         withPlugins.push_back (s);
-                if (window != nullptr && window->getShownSlots() != withPlugins)
+                const auto deadline = juce::Time::getMillisecondCounter() + 2000u;
+                do
+                    test::pumpMessages (20);
+                while (window->getShownSlots() != withPlugins && juce::Time::getMillisecondCounter() < deadline);
+                if (window->getShownSlots() != withPlugins)
                     ++overviewMismatches;
             }
         }

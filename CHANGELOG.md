@@ -152,7 +152,10 @@ WING works as before throughout.
   open windows (the plugin overview's, the *Windows* test) crashed without an X display;
   they now skip their windows there, and the *Monkey* test runs without the overview.
   The *Monkey* test also runs past its 4 s, up to a minute, until it has done 300
-  operations: the sanitizer builds are slower and managed only 179.
+  operations: the sanitizer builds are slower and managed only 179. It gives the plugin
+  overview up to 2 s to catch up before it counts a mismatch (on macOS its timer ran
+  more than 120 ms late). The scribble strips' descender test, never run on macOS
+  before, allows a row less of a "g"'s tail there, where CoreGraphics draws the text.
   A timing check of the WING effects (`tails_end_cleanly`: silence must cost no more
   than sound) took one measurement and failed when a shared runner hiccuped; it now
   takes the best of three.
