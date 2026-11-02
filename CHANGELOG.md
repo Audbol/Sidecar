@@ -44,6 +44,14 @@ WING works as before throughout.
   preference). A show of a console that isn't a WING opens in the Universal Mixer;
   choosing WING then offers to make it a fresh WING. The monkey test can start on the
   Universal Mixer (`--interface universal`).
+- Universal Mixer, Phase 2 step 2: a strip's chain in the C ABI (version 28) and the
+  C++ facades, for the Universal Mixer's chain editor: its steps in processing order
+  (`ld_strip_chain`), its extra blocks with their parameters and meters
+  (`ld_strip_block`), adding, moving and removing blocks and user taps, clearing the
+  chain, a block's model and its curve (`ld_strip_block_response`), and
+  `ld_engine_set_config`. C++: `Strip::getChain`, `getBlock`, `insertBlock`,
+  `moveBlock`, `removeBlock`, `clearChain`, `insertTap`, `moveTap`, `removeTap`,
+  `setBlockModel`, `getBlockResponse`; `MixerEngine::setConfig`.
 
 ### Changed
 

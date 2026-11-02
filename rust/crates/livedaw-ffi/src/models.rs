@@ -18,7 +18,11 @@ use livedaw_dsp::wing::{
     ModelCategory, ModelSpec, ParamKind, ParamSpec, AUX_DYN_MODELS, DYN_MODELS, EQ_MODELS_BUS, EQ_MODELS_CH, FILTER_TOOLS,
     FX_MODELS, MAX_EQ_PARAMS, PROCESS_ORDERS, TAP_POINTS,
 };
-use livedaw_engine::params::{colour_rgb, MAIN_LINK_MODES, MONITOR_BUSES, POST_INSERT_MODES, WING_COLOURS, WING_COLOUR_GRID};
+use livedaw_engine::blocks::{Block, BlockParams};
+use livedaw_engine::params::{
+    colour_rgb, DynSlotParams, EqBlockParams, FilterParams, MAIN_LINK_MODES, MONITOR_BUSES, POST_INSERT_MODES, WING_COLOURS,
+    WING_COLOUR_GRID,
+};
 use livedaw_engine::{Strip, SEND_MODES};
 
 fn table(t: i32) -> &'static [ModelSpec] {
@@ -271,39 +275,60 @@ pub extern "C" fn ld_list_item(l: i32, i: i32) -> *mut LdString {
 
 /// See `ld_strip_response`.
 pub(crate) fn strip_response(s: &Strip, block: i32, freqs: &[f64], out: &mut [f64], sr: f64) {
-    if block == 4 {
-        // TAP EQ
-        let d = livedaw_engine::tapsend::tap_eq_design(&s.params.tap_eq, sr);
-        for (f, o) in freqs.iter().zip(out.iter_mut()) {
-            let mag: f64 = d.iter().flatten().map(|c| c.magnitude_at(*f, sr)).product();
-            *o = 20.0 * mag.max(1e-9).log10();
+    let p = &s.params;
+    match block {
+        4 => {
+            // TAP EQ
+            let d = livedaw_engine::tapsend::tap_eq_design(&p.tap_eq, sr);
+            fill(freqs, out, |f| d.iter().flatten().map(|c| c.magnitude_at(f, sr)).product());
         }
-        return;
+        // The GATE's or the DYNAMICS' key filter, the DYNAMICS' crossover.
+        5 => key_response(&p.gate, freqs, out, sr),
+        6 => key_response(&p.dynamics, freqs, out, sr),
+        7 => xover_response(&p.dynamics, freqs, out, sr),
+        3 => filter_response(&p.filter, freqs, out, sr),
+        _ => eq_response(&p.eq, s.kind().is_output(), freqs, out, sr),
     }
-    if (5..=7).contains(&block) {
-        // The GATE's or the DYNAMICS' key filter, the DYNAMICS' crossover (as
-        // its page draws it: PEAK as the band taken down by DEPTH).
-        let c = match block {
-            5 => s.params.gate.sidechain().coefficients(sr),
-            6 => s.params.dynamics.sidechain().coefficients(sr),
-            _ => s.params.dynamics.xover().graph_coefficients(sr),
-        };
-        for (f, o) in freqs.iter().zip(out.iter_mut()) {
-            *o = 20.0 * c.magnitude_at(*f, sr).max(1e-9).log10();
-        }
-        return;
+}
+
+/// See `ld_strip_block_response`: an EQ or filter block's curve (`part` 0), a
+/// dynamics block's key filter (0) or crossover (1). False for anything else.
+pub(crate) fn block_response(s: &Strip, b: &Block, part: i32, freqs: &[f64], out: &mut [f64], sr: f64) -> bool {
+    match (&b.params, part) {
+        (BlockParams::Eq(p), 0) => eq_response(p, s.kind().is_output(), freqs, out, sr),
+        (BlockParams::Filter(p), 0) => filter_response(p, freqs, out, sr),
+        (BlockParams::Dynamics(p), 0) => key_response(p, freqs, out, sr),
+        (BlockParams::Dynamics(p), 1) => xover_response(p, freqs, out, sr),
+        _ => return false,
     }
-    if block == 3 {
-        let settings = s.params.filter.snapshot();
-        let (coeffs, n) = settings.design(sr);
-        for (f, o) in freqs.iter().zip(out.iter_mut()) {
-            let mag: f64 = coeffs[..n].iter().map(|c| c.magnitude_at(*f, sr)).product();
-            *o = 20.0 * mag.max(1e-9).log10();
-        }
-        return;
+    true
+}
+
+/// `out` = the magnitude `mag(f)` at each of `freqs`, in dB.
+fn fill(freqs: &[f64], out: &mut [f64], mag: impl Fn(f64) -> f64) {
+    for (f, o) in freqs.iter().zip(out.iter_mut()) {
+        *o = 20.0 * mag(*f).max(1e-9).log10();
     }
-    let eq = &s.params.eq;
-    let table = if s.kind().is_output() { EQ_MODELS_BUS } else { EQ_MODELS_CH };
+}
+
+fn filter_response(p: &FilterParams, freqs: &[f64], out: &mut [f64], sr: f64) {
+    let (coeffs, n) = p.snapshot().design(sr);
+    fill(freqs, out, |f| coeffs[..n].iter().map(|c| c.magnitude_at(f, sr)).product());
+}
+
+fn key_response(p: &DynSlotParams, freqs: &[f64], out: &mut [f64], sr: f64) {
+    let c = p.sidechain().coefficients(sr);
+    fill(freqs, out, |f| c.magnitude_at(f, sr));
+}
+
+/// As the DYNAMICS page draws it: PEAK as the band taken down by DEPTH.
+fn xover_response(p: &DynSlotParams, freqs: &[f64], out: &mut [f64], sr: f64) {
+    let c = p.xover().graph_coefficients(sr);
+    fill(freqs, out, |f| c.magnitude_at(f, sr));
+}
+
+fn eq_response(eq: &EqBlockParams, bus: bool, freqs: &[f64], out: &mut [f64], sr: f64) {
+    let table = if bus { EQ_MODELS_BUS } else { EQ_MODELS_CH };
     let spec = &table[(eq.model.load(std::sync::atomic::Ordering::Relaxed).max(0) as usize).min(table.len() - 1)];
     let mut values = [0.0; MAX_EQ_PARAMS];
     eq.values_snapshot(&mut values);

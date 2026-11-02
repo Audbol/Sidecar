@@ -51,6 +51,9 @@ using StripParams = ld::StripParams;
 using SendParams = ld::SendParams;
 using DcaParams = ld::DcaParams;
 using FxParams = ld::FxParams;
+/** An extra delay block's settings and an extra block's meters (ABI 28, a strip's chain). */
+using DelayBlockParams = ld::DelayBlockParams;
+using BlockMeters = ld::BlockMeters;
 /** A set of DCAs or mute groups (0-based), and its atomic form shared with the engine. */
 using GroupBits = ld::GroupBits;
 using GroupMask = ld::GroupMask;

@@ -9,6 +9,7 @@
 #![allow(clippy::missing_safety_doc)]
 
 pub mod analysis;
+pub mod chain;
 pub mod codec;
 pub mod console;
 pub mod models;
@@ -20,6 +21,7 @@ pub mod web;
 pub mod wing;
 
 use livedaw_dsp::wing::fx::FX_READOUTS;
+use livedaw_engine::blocks::{BlockMeters, DelayParams};
 use livedaw_engine::fx::FX_LEVELS;
 use livedaw_engine::monitor::{MonitorControls, MonitorDspParams};
 use livedaw_engine::params::{
@@ -68,7 +70,14 @@ use std::sync::Arc;
 // MatrixSendParams end with their ramp state (lastGain_).
 // ABI 27 (Phase 1 step 3c): sends to buses, mains and matrices have a `tap`
 // (a user tap of the source strip, `livedaw_engine::taps`; -1 = none).
-pub const LD_ABI_VERSION: i32 = 27;
+// ABI 28 (the Universal Mixer, Phase 2 step 2): a strip's chain (`chain.rs`:
+// ld_strip_chain and LdChainStep; the extra blocks with ld_strip_block,
+// LdBlock, BlockMeters and blocks::DelayParams, ld_engine_insert_block,
+// ld_engine_move_block, ld_engine_remove_block, ld_engine_clear_chain,
+// ld_strip_set_block_model, ld_strip_block_response; the user taps with
+// ld_engine_insert_tap, ld_engine_move_tap, ld_engine_remove_tap) and
+// ld_engine_set_config.
+pub const LD_ABI_VERSION: i32 = 28;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(default)
@@ -201,6 +210,13 @@ pub struct LdLayoutInfo {
     pub scope: i32,
     pub off_scope_fx: i32,
     pub counts: i32,
+    // ABI 28: a strip's chain
+    pub chain_step: i32,
+    pub block: i32,
+    pub off_block_meters: i32,
+    pub block_meters: i32,
+    pub off_block_meters_out_peak: i32,
+    pub delay_block: i32,
 }
 
 #[no_mangle]
@@ -300,6 +316,12 @@ pub unsafe extern "C" fn ld_layout_info(out: *mut LdLayoutInfo) {
         scope: size_of::<session::LdScope>() as i32,
         off_scope_fx: offset_of!(session::LdScope, fx) as i32,
         counts: size_of::<LdCounts>() as i32,
+        chain_step: size_of::<chain::LdChainStep>() as i32,
+        block: size_of::<chain::LdBlock>() as i32,
+        off_block_meters: offset_of!(chain::LdBlock, meters) as i32,
+        block_meters: size_of::<BlockMeters>() as i32,
+        off_block_meters_out_peak: offset_of!(BlockMeters, out_peak) as i32,
+        delay_block: size_of::<DelayParams>() as i32,
     };
 }
 
@@ -527,6 +549,20 @@ pub unsafe extern "C" fn ld_engine_configure(e: *const Engine, counts: *const Ld
     if let Some(e) = engine(e) {
         let config = counts.as_ref().map_or_else(ConsoleConfig::wing, |c| ConsoleConfig { counts: (*c).into() });
         guard((), || e.configure(&config));
+    }
+}
+
+/// Makes the engine a fresh console of the structure of `counts` (null: the
+/// WING's) without its channels or FX slot count, as a show load does before
+/// it adds the channels; writes the counts configured (within what the engine
+/// holds) to `out` (may be null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_set_config(e: *const Engine, counts: *const LdCounts, out: *mut LdCounts) {
+    let Some(e) = engine(e) else { return };
+    let config = counts.as_ref().map_or_else(ConsoleConfig::wing, |c| ConsoleConfig { counts: (*c).into() });
+    let used = guard(LdCounts::default(), || e.set_config(&config).into());
+    if let Some(out) = out.as_mut() {
+        *out = used;
     }
 }
 

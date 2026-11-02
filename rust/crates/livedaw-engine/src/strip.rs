@@ -1003,6 +1003,11 @@ impl Strip {
         }
     }
 
+    /// The block that process order slot `k` (`Node::Slot`) runs now.
+    pub fn slot_block(&self, k: u8) -> Option<Node> {
+        self.pre_fader_order().get(k as usize).and_then(|&b| chain::order_block(b))
+    }
+
     /// The strip's chain (`chain.rs`): the WING's template for its kind.
     pub fn chain(&self) -> &'static [Node] {
         chain::template(self.kind)
@@ -1051,7 +1056,7 @@ impl Strip {
         n: usize,
     ) {
         let node = match node {
-            Node::Slot(k) => match self.pre_fader_order().get(k as usize).and_then(|&b| chain::order_block(b)) {
+            Node::Slot(k) => match self.slot_block(k) {
                 Some(block) => block,
                 None => return,
             },

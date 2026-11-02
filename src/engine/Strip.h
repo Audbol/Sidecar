@@ -5,6 +5,8 @@
 
 #include <juce_graphics/juce_graphics.h>
 
+#include <vector>
+
 namespace livedaw
 {
 
@@ -85,6 +87,70 @@ enum class ModelBlock : int32_t
     Eq = 1,
     Dynamics = 2,
     FilterTool = 3
+};
+
+/** The kinds of extra block in a strip's chain (ABI 28). */
+enum class BlockKind : int32_t
+{
+    Filter = ld::kBlockFilter,
+    Eq = ld::kBlockEq,             // a new one is off
+    Dynamics = ld::kBlockDynamics, // a new one is off (COMP)
+    Insert = ld::kBlockInsert,
+    Delay = ld::kBlockDelay
+};
+
+/** A step of a strip's chain (Strip::getChain), in processing order. */
+struct ChainStep
+{
+    ld::StepKind kind = ld::kStepSlot; // what runs; for a process order slot, the block it runs now
+    int arg = -1;                      // a tap's id, an RTA point, an extra block's kind; else -1
+    int uid = -1;                      // an extra block's id (unique on the strip); else -1
+    int slot = -1;                     // the process order slot (0-3, input channels) the step is; else -1
+
+    bool isBlock() const noexcept { return kind == ld::kStepBlock; }
+    bool isTap() const noexcept { return kind == ld::kStepTap; }
+    /** A user tap: the chain editor places, moves and removes it; sends can take it. */
+    bool isUserTap() const noexcept { return isTap() && arg >= ld::kFirstUserTap; }
+    BlockKind getBlockKind() const noexcept { return static_cast<BlockKind> (arg); }
+};
+
+/** An extra block of a strip's chain (Strip::getBlock): its parameters, by its
+    kind, and its meters, in the engine. Valid until the block is removed and
+    the engine has collected (MixerEngine's timer), as strips are. */
+class ChainBlock
+{
+public:
+    ChainBlock() = default;
+    explicit ChainBlock (const ld::BlockC& b) noexcept
+        : uid (b.uid), kind (static_cast<BlockKind> (b.kind)), params (b.params), meters (b.meters)
+    {
+    }
+
+    bool isValid() const noexcept { return params != nullptr; }
+    int getUid() const noexcept { return uid; }
+    BlockKind getKind() const noexcept { return kind; }
+
+    /** The parameters of a block of that kind (nullptr for another kind). */
+    FilterParams* filter() const noexcept { return as<FilterParams> (BlockKind::Filter); }
+    EqBlockParams* eq() const noexcept { return as<EqBlockParams> (BlockKind::Eq); }
+    DynSlotParams* dynamics() const noexcept { return as<DynSlotParams> (BlockKind::Dynamics); }
+    InsertParams* insert() const noexcept { return as<InsertParams> (BlockKind::Insert); }
+    DelayBlockParams* delay() const noexcept { return as<DelayBlockParams> (BlockKind::Delay); }
+
+    /** What it measures (nullptr when not valid). */
+    BlockMeters* getMeters() const noexcept { return meters; }
+
+private:
+    template <typename T>
+    T* as (BlockKind k) const noexcept
+    {
+        return kind == k ? static_cast<T*> (params) : nullptr;
+    }
+
+    int uid = -1;
+    BlockKind kind = BlockKind::Filter;
+    void* params = nullptr;
+    BlockMeters* meters = nullptr;
 };
 
 /** Where a strip's peak meters measure (Strip::peakMeter). */
@@ -282,6 +348,43 @@ public:
     /** HOME > TAGS talk tags (ld::TalkTag bits). */
     uint32_t getTalkTags() const noexcept { return ld::ld_strip_talk_tags (handle); }
     void setTalkTags (uint32_t tags) const noexcept { ld::ld_strip_set_talk_tags (handle, tags); }
+
+    //==============================================================================
+    // The strip's chain (ABI 28, the Universal Mixer): its WING template's blocks
+    // and taps, with extra blocks and user taps among them. `at` is a step index
+    // of getChain() (< 0 or past the end: last). The engine follows a change
+    // (FX slots in use, delay compensation, the user taps sends take) when it
+    // next collects (MixerEngine's timer).
+
+    /** The steps, in processing order. */
+    std::vector<ChainStep> getChain() const;
+    /** Extra block `uid` (not valid if there's none). */
+    ChainBlock getBlock (int uid) const noexcept;
+    /** Adds a block of `kind` at step `at`; returns its id, or -1 when the strip
+        holds ld::kMaxExtraBlocks already. */
+    int insertBlock (BlockKind blockKind, int at) const noexcept
+    {
+        return ld::ld_engine_insert_block (engineHandle, handle, static_cast<int32_t> (blockKind), at);
+    }
+    /** Moves block `uid` to step `at` of the chain without it (it keeps its settings and state). */
+    bool moveBlock (int uid, int at) const noexcept { return ld::ld_engine_move_block (engineHandle, handle, uid, at); }
+    bool removeBlock (int uid) const noexcept { return ld::ld_engine_remove_block (engineHandle, handle, uid); }
+    /** Back to the WING template: no extra blocks, no user taps. */
+    void clearChain() const noexcept { ld::ld_engine_clear_chain (engineHandle, handle); }
+    /** Selects a model for an EQ or dynamics block (a filter block: its tool) and loads its defaults. */
+    bool setBlockModel (int uid, int model) const noexcept { return ld::ld_strip_set_block_model (handle, uid, model); }
+    /** The response in dB of an EQ or filter block (part 0), or of a dynamics
+        block's key filter (0) or crossover (1), at `count` frequencies. */
+    bool getBlockResponse (int uid, int part, const double* freqs, double* outDb, int count, double sampleRate) const noexcept
+    {
+        return ld::ld_strip_block_response (handle, uid, part, freqs, outDb, count, sampleRate);
+    }
+    /** Places a user tap at step `at`; returns its id, or -1 when all ld::kMaxUserTaps are placed. */
+    int insertTap (int at) const noexcept { return ld::ld_engine_insert_tap (engineHandle, handle, at); }
+    /** Moves user tap `id` to step `at` of the chain without it. */
+    bool moveTap (int tapId, int at) const noexcept { return ld::ld_engine_move_tap (engineHandle, handle, tapId, at); }
+    /** Takes user tap `id` out (sends taking it go silent). */
+    bool removeTap (int tapId) const noexcept { return ld::ld_engine_remove_tap (engineHandle, handle, tapId); }
 
     StripParams& params;
     SendBank sends;

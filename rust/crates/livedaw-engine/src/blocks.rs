@@ -50,6 +50,15 @@ impl BlockKind {
     pub fn parse(s: &str) -> Option<Self> {
         Self::ALL.into_iter().find(|k| k.as_str() == s)
     }
+
+    /// The kind's number in the C ABI: its place in [`Self::ALL`].
+    pub fn index(self) -> usize {
+        self as usize
+    }
+
+    pub fn from_index(i: usize) -> Option<Self> {
+        Self::ALL.get(i).copied()
+    }
 }
 
 /// A delay block's settings (as the strip's own delay: `InputParams`).
@@ -108,6 +117,7 @@ impl BlockParams {
 }
 
 /// What a block measures, for the screens (written by the audio thread).
+#[repr(C)]
 #[derive(Debug, Default)]
 pub struct BlockMeters {
     /// Dynamics: gain reduction in the latest block, dB.

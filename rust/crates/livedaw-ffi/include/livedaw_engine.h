@@ -11,7 +11,8 @@
 // models), an EQ (one of the EQ models), PRE and POST inserts (FX slots),
 // sends to buses, the 4 mains and the 8 matrices, DCA and mute group masks.
 // Model parameters are stored by index in the model's table; ld_model_* below
-// describes the tables (names, ranges, units, choices) for the UI.
+// describes the tables (names, ranges, units, choices) for the UI. A strip's
+// chain can also hold extra blocks and user taps (ABI 28, ld_strip_chain).
 //
 // If you change a struct here, change it in Rust too (and bump LD_ABI_VERSION).
 
@@ -28,7 +29,7 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 27;
+constexpr int kAbiVersion = 28;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -123,6 +124,43 @@ constexpr int kRtaBands = 120;
 /** ld_wing_sync_surface flags: a client changed the show's layers / custom controls. */
 constexpr uint32_t kWingSurfaceLayers = 1;
 constexpr uint32_t kWingSurfaceControls = 2;
+/** ABI 28, a strip's chain: up to kMaxExtraBlocks extra blocks, and user taps with
+    the ids kFirstUserTap .. kFirstUserTap + kMaxUserTaps - 1 (the WING's taps are 0-9). */
+constexpr int kMaxExtraBlocks = 32;
+constexpr int kFirstUserTap = 16;
+constexpr int kMaxUserTaps = 32;
+
+/** ABI 28: what a step of a strip's chain runs (ChainStepC::kind): a node of the
+    strip's template, or an extra block. */
+enum StepKind : int32_t
+{
+    kStepInput = 0,
+    kStepDelay = 1,
+    kStepFilter = 2,
+    kStepGate = 3,
+    kStepEq = 4,
+    kStepDynamics = 5,
+    kStepPreInsert = 6,  // INS 1
+    kStepPostInsert = 7, // INS 2
+    kStepSlot = 8,       // a process order slot that runs no block
+    kStepPfl = 9,
+    kStepFader = 10,
+    kStepPost = 11,
+    kStepTapShaper = 12, // TAP EQ and TAP WIDTH
+    kStepTap = 13,       // a tap point (arg: its id)
+    kStepRta = 14,       // an RTA point (arg: its index)
+    kStepBlock = 15      // an extra block (arg: its kind, uid: its id)
+};
+
+/** ABI 28: the kinds of extra block (ld_engine_insert_block, BlockC::kind). */
+enum ChainBlockKind : int32_t
+{
+    kBlockFilter = 0,   // FilterParams
+    kBlockEq = 1,       // EqBlockParams (a new one is off)
+    kBlockDynamics = 2, // DynSlotParams (a new one is off: COMP)
+    kBlockInsert = 3,   // InsertParams
+    kBlockDelay = 4     // DelayBlockParams
+};
 
 enum StripKindId : int32_t
 {
@@ -329,6 +367,41 @@ struct MatrixSendParams
     std::atomic<float> levelDb, pan;
     std::atomic<int32_t> tap; // ABI 27: a user tap of the source (16..47) to take, -1 = none
     float lastGain_[2]; // owned by the audio thread: do not touch
+};
+
+/** ABI 28: a delay block's settings (Rust: blocks::DelayParams), as the strip's own delay. */
+struct DelayBlockParams
+{
+    std::atomic<bool> on;
+    std::atomic<int32_t> mode; // list 5: M, FT, MS, SMP
+    std::atomic<float> delay;  // in `mode` units
+};
+
+/** ABI 28: what an extra block measures (written by the audio thread). */
+struct BlockMeters
+{
+    std::atomic<float> reductionDb; // dynamics: gain reduction in the latest block, dB
+    std::atomic<bool> active;       // dynamics: working (the DYN LED)
+    std::atomic<float> outPeak;     // output peak since the last read (linear): exchange it with 0
+};
+
+/** ABI 28: a step of a strip's chain (ld_strip_chain). */
+struct ChainStepC
+{
+    int32_t kind; // StepKind; for a process order slot, the block it runs now
+    int32_t arg;  // a tap's id, an RTA point, an extra block's ChainBlockKind; else -1
+    int32_t uid;  // an extra block's id (unique on the strip); else -1
+    int32_t slot; // the process order slot (0-3, input channels) the step is; else -1
+};
+
+/** ABI 28: an extra block of a strip's chain (ld_strip_block). Its pointers stay
+    valid until the block is removed and ld_engine_collect has run. */
+struct BlockC
+{
+    int32_t uid;
+    int32_t kind; // ChainBlockKind
+    void* params; // by kind: FilterParams, EqBlockParams, DynSlotParams, InsertParams, DelayBlockParams
+    BlockMeters* meters;
 };
 
 /// TAP EQ (WING /ch/n/peq): band 0 low shelf, 1 peak, 2 high shelf.
@@ -780,7 +853,9 @@ struct LayoutInfo
         // ABI 22 (GLOBAL INPUT SELECT ENABLE)
         offSrcAuto,
         // ABI 25 (group sets, the console's counts)
-        groupSet, offMuteGroupMask, scope, offScopeFx, counts;
+        groupSet, offMuteGroupMask, scope, offScopeFx, counts,
+        // ABI 28 (a strip's chain)
+        chainStep, block, offBlockMeters, blockMeters, offBlockMetersOutPeak, delayBlock;
 };
 
 /** ABI 25: how many of each kind a console has (ld_engine_counts, ld_engine_configure). */
@@ -1017,6 +1092,11 @@ extern "C"
     void ld_engine_configured_counts (const Engine*, CountsC* out);
     /** Makes the engine a fresh console of `counts` (null: the WING). */
     void ld_engine_configure (const Engine*, const CountsC* counts);
+    /** ABI 28: makes the engine a fresh console of the structure of `counts` (null: the
+        WING's) without its channels or FX slot count, as a show load does before it adds
+        the channels; writes the counts configured (within what the engine holds) to `out`
+        (may be null). */
+    void ld_engine_set_config (const Engine*, const CountsC* counts, CountsC* out);
     /** Sets the DCAs in use (up to kMaxDcas, never below a DCA with a member); returns the number set. */
     int32_t ld_engine_set_num_dcas (const Engine*, int32_t count);
     /** Sets the mute groups in use (up to kMaxMuteGroups, never below one engaged or with a member). */
@@ -1120,6 +1200,33 @@ extern "C"
     /** Response in dB of the EQ (block 1), FILTER (block 3), TAP EQ (block 4), the GATE key filter (5),
         the DYNAMICS key filter (6) or the DYNAMICS crossover (7) at `count` frequencies. */
     void ld_strip_response (const Strip*, int32_t block, const double* freqs, double* outDb, int32_t count, double sampleRate);
+
+    // ABI 28: a strip's chain (message thread); `at` is a step index in processing order.
+    /** The steps: the first `max` into `out` (may be null); returns how many there are. */
+    int32_t ld_strip_chain (const Strip*, ChainStepC* out, int32_t max);
+    /** Extra block `uid` into `out`; false if there's none. */
+    bool ld_strip_block (const Strip*, int32_t uid, BlockC* out);
+    /** Selects a model for block `uid` and loads its defaults: an EQ block's (table 1, or 2
+        on a bus, main or matrix), a dynamics block's (table 0), a filter block's tool (table 3). */
+    bool ld_strip_set_block_model (const Strip*, int32_t uid, int32_t model);
+    /** Response in dB of block `uid` at `count` frequencies: an EQ or filter block's curve
+        (part 0), a dynamics block's key filter (0) or crossover (1). False if it has none. */
+    bool ld_strip_block_response (const Strip*, int32_t uid, int32_t part, const double* freqs, double* outDb, int32_t count,
+                                  double sampleRate);
+    /** Adds a block of `kind` (ChainBlockKind) at step `at` (< 0 or past the end: last);
+        returns its id, or -1 (an unknown kind, or the strip has kMaxExtraBlocks). */
+    int32_t ld_engine_insert_block (const Engine*, const Strip*, int32_t kind, int32_t at);
+    /** Moves block `uid` to step `at` of the chain without it (it keeps its settings and state). */
+    bool ld_engine_move_block (const Engine*, const Strip*, int32_t uid, int32_t at);
+    bool ld_engine_remove_block (const Engine*, const Strip*, int32_t uid);
+    /** Back to the strip's template: no extra blocks, no user taps. */
+    void ld_engine_clear_chain (const Engine*, const Strip*);
+    /** Places a user tap at step `at` (< 0 or past the end: last); returns its id, or -1 when all are placed. */
+    int32_t ld_engine_insert_tap (const Engine*, const Strip*, int32_t at);
+    /** Moves user tap `id` to step `at` of the chain without it. */
+    bool ld_engine_move_tap (const Engine*, const Strip*, int32_t id, int32_t at);
+    /** Takes user tap `id` out of the chain (sends taking it go silent). */
+    bool ld_engine_remove_tap (const Engine*, const Strip*, int32_t id);
 
     // Model tables: 0 = dynamics models, 1 = channel EQ models, 2 = bus EQ models, 3 = filter tools.
     int32_t ld_model_count (int32_t table);
@@ -1766,6 +1873,12 @@ inline const char* verifyLayout()
         { info.scope, sizeof (ScopeC), "ScopeC size" },
         { info.offScopeFx, offsetof (ScopeC, fx), "ScopeC.fx" },
         { info.counts, sizeof (CountsC), "CountsC size" },
+        { info.chainStep, sizeof (ChainStepC), "ChainStepC size" },
+        { info.block, sizeof (BlockC), "BlockC size" },
+        { info.offBlockMeters, offsetof (BlockC, meters), "BlockC.meters" },
+        { info.blockMeters, sizeof (BlockMeters), "BlockMeters size" },
+        { info.offBlockMetersOutPeak, offsetof (BlockMeters, outPeak), "BlockMeters.outPeak" },
+        { info.delayBlock, sizeof (DelayBlockParams), "DelayBlockParams size" },
     };
 
     if (info.abiVersion != kAbiVersion)

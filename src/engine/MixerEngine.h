@@ -103,6 +103,16 @@ public:
     Counts getConfiguredCounts() const noexcept { Counts c {}; ld::ld_engine_configured_counts (engine, &c); return c; }
     /** Makes the engine a fresh console of `counts` (nullptr: the WING); rebuilds the strip views. */
     void configure (const Counts* counts) { ld::ld_engine_configure (engine, counts); syncStrips(); }
+    /** Makes the engine a fresh console of the structure of `counts` without its
+        channels or FX slot count (as a show load does before it adds the channels);
+        rebuilds the strip views. Returns the counts configured (within what the engine holds). */
+    Counts setConfig (const Counts& counts)
+    {
+        Counts used {};
+        ld::ld_engine_set_config (engine, &counts, &used);
+        syncStrips();
+        return used;
+    }
     int getNumDcas() const noexcept { return getCounts().dcas; }
     int getNumMuteGroups() const noexcept { return getCounts().muteGroups; }
     /** Sets the DCAs / mute groups in use (never below one in use); returns the number set. */

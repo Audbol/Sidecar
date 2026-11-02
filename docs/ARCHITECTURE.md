@@ -319,7 +319,7 @@ blocks' settings (by `uid`), and snippet REC pairs them by `uid`.
 
 User taps (`taps.rs`): a strip's taps have ids, 0-9 the WING's (`strip::tap`,
 `keytap::TAP_EQ_POST`, `TAP_INS2`) and 16-47 user taps, placed as `Node::Tap(id)` steps
-of the chain layout (`Engine::insert_tap` / `restore_tap` / `remove_tap`). A send to a
+of the chain layout (`Engine::insert_tap` / `restore_tap` / `move_tap` / `remove_tap`). A send to a
 bus, main or matrix whose `tap` names one takes its source's signal there like a
 pre-fader send (cut by the source's mute unless it ignores it; the send's pan or the
 source's). The strip copies the tap into a stereo buffer of its own (`StripTaps`)
@@ -329,6 +329,21 @@ buffer carries the block it holds; a destination takes it only when written this
 block (the source runs in an earlier stage), else silence, and a bus send closing a
 loop can't take one. User taps are not delay compensated. Shows store them as `<T id
 at>` in `<Chain>` and a send's `tap` when it has one.
+
+The C ABI gives the chain to C++ (ABI 28, `livedaw-ffi/src/chain.rs`, message thread).
+`ld_strip_chain` lists the steps in processing order (`LdChainStep`: what runs; a tap's
+id, an RTA point or a block's kind; a block's id; and for a process order slot, the
+slot, with the block it runs now as what runs). `ld_strip_block` gives a block's
+parameters (by its kind) and meters (`LdBlock`, `BlockMeters`), which live like strip
+pointers: until the block is removed and `ld_engine_collect` has run.
+`ld_engine_insert_block` / `move_block` / `remove_block` / `clear_chain` and
+`ld_engine_insert_tap` / `move_tap` / `remove_tap` change the chain;
+`ld_strip_set_block_model` and `ld_strip_block_response` (the curves of EQ, filter and
+dynamics blocks) serve block editors. The C++ facades are `Strip::getChain`
+(`ChainStep`), `getBlock` (`ChainBlock`: typed parameters, meters), `insertBlock`,
+`moveBlock`, `removeBlock`, `clearChain`, `insertTap`, `moveTap`, `removeTap`,
+`setBlockModel`, `getBlockResponse`, and `MixerEngine::setConfig`
+(`ld_engine_set_config`: a configuration's structure without its channels).
 
 ## Processing models
 
@@ -1301,9 +1316,8 @@ presets are Sidecar's own (built from the translation table), not the WING's fil
 The user-facing summary is the start-up notice (`src/ui/StartupNotice.cpp`) and the
 README's *Known limitations*; keep the three in step.
 
-- The Universal core (Phase 1, `docs/UNIVERSAL_MIXER.md`): the extra blocks and user
-  taps are not in the C ABI yet (the Universal Mixer's interface, Phase 2, needs them),
-  user taps feed sends only (not keys or direct outs) and aren't delay compensated,
+- The Universal core (Phase 1, `docs/UNIVERSAL_MIXER.md`): user taps feed sends only
+  (not keys or direct outs) and aren't delay compensated,
   the WING's own blocks still live in `StripParams` (they move out with the WING
   profile, Phase 3), and the strip sources, the monitor SOURCE / DIRECT IN lists and
   the talkback destinations cover the WING's buses, mains and matrices only. The UI is

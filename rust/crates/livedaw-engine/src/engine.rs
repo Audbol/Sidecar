@@ -714,6 +714,19 @@ impl Engine {
         true
     }
 
+    /// Message thread: moves user tap `id` to step `at` (of the chain without it).
+    pub fn move_tap(&self, strip: &Strip, id: u8, at: usize) -> bool {
+        let _st = self.lock();
+        let mut steps = strip.steps();
+        let Some(i) = steps.iter().position(|s| matches!(s, Step::Node(Node::Tap(t)) if *t == id && id >= FIRST_USER_TAP)) else {
+            return false;
+        };
+        let step = steps.remove(i);
+        steps.insert(at.min(steps.len()), step);
+        strip.set_layout(steps, &self.garbage);
+        true
+    }
+
     /// Message thread: takes user tap `id` out of `strip`'s chain (sends
     /// taking it go silent).
     pub fn remove_tap(&self, strip: &Strip, id: u8) -> bool {
@@ -758,7 +771,7 @@ impl Engine {
         }
     }
 
-    /// Message thread: back to the strip's template (no extra blocks).
+    /// Message thread: back to the strip's template (no extra blocks, no user taps).
     pub fn clear_blocks(&self, strip: &Strip) {
         let _st = self.lock();
         strip.set_layout(strip.chain().iter().map(|&n| Step::Node(n)).collect(), &self.garbage);

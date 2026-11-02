@@ -157,8 +157,7 @@ Three layers:
       same) and the C++ `ShowTests` ("A console that isn't a WING", through the
       C++ facades and the C++ show).
 
-   *Left for later* (each where it is needed): the extra blocks and user taps in
-   the C ABI (Phase 2, for the new interface); keys and direct outs at user taps,
+   *Left for later* (each where it is needed): keys and direct outs at user taps,
    and their delay compensation; strip sources, the monitor SOURCE / DIRECT IN
    lists and the talkback destinations beyond the WING's buses, mains and
    matrices; pan and fader laws, ballistics and solo behaviour as settings; the
@@ -202,7 +201,17 @@ Three layers:
       surface); SETUP > GENERAL > CONSOLE > INTERFACE; a console that isn't a WING
       opens in the Universal Mixer.
    2. C ABI 28: a strip's chain (steps, blocks with their params and meters, insert /
-      move / remove / clear, taps) and `set_config`; C++ facades and tests.
+      move / remove / clear, taps) and `set_config`; C++ facades and tests (done):
+      `livedaw-ffi/src/chain.rs` (`ld_strip_chain` and `LdChainStep`, process order
+      slots with the block they run now; `ld_strip_block` and `LdBlock`, a block's
+      parameters by kind and its `BlockMeters`; `ld_engine_insert_block`,
+      `move_block`, `remove_block`, `clear_chain`; `ld_engine_insert_tap`,
+      `move_tap`, `remove_tap` (`Engine::move_tap` is new); `ld_strip_set_block_model`;
+      `ld_strip_block_response`, the curves of EQ, filter and dynamics blocks) and
+      `ld_engine_set_config`. C++: `Strip::getChain`, `getBlock` (`ChainBlock`),
+      `insertBlock` and the rest, `MixerEngine::setConfig`. Tests: the C ABI
+      (`chain.rs`) and the C++ facades (`ShowTests`: a filter block and a user tap
+      that sound, through a show save and load).
    3. Theme, widgets, the strip column and the MIXER view for any configuration.
    4. The inspector: chain editor with block editors and taps; the sends panel.
    5. ROUTING matrix, FX RACK (generic parameter panels, the WING faceplates where a

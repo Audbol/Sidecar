@@ -166,6 +166,111 @@ public:
             restoredEngine.getGarbage().collectAllNow();
         }
 
+        beginTest ("A strip's chain through the C++ facades: an extra block and a user tap that sound, and a show round trip");
+        {
+            MixerEngine engine (0);
+            PluginHost host (nullptr);
+            Show show (engine, host);
+            const Counts counts { 2, 0, 4, 1, 2, 8, 4, 16 };
+            const auto used = engine.setConfig (counts);
+            expect (used.buses == 4 && used.mains == 1 && used.matrices == 2 && used.dcas == 8);
+            expectEquals ((int) engine.getChannels().size(), 0, "setConfig adds no channels (a show load does)");
+            test::setChannels (engine, 1);
+            test::OfflineRig rig (engine, 1, 4);
+
+            // CH 1 -> MAIN 1 (outputs 1-2), and post-fader -> BUS 1 (outputs 3-4).
+            auto& ch = *engine.getChannels()[0];
+            ch.params.inputLeft = 0;
+            auto& main = *engine.getMains()[0];
+            main.params.outputLeft = 0;
+            main.params.outputRight = 1;
+            auto& bus = *engine.getStrips (StripKind::Bus)[0];
+            bus.params.outputLeft = 2;
+            bus.params.outputRight = 3;
+            auto& send = ch.sends[0];
+            send.enabled = true;
+            send.mode = (int32_t) SendMode::Post;
+            send.levelDb = 0.0f;
+            rig.setInput (0, 0.5f);
+            rig.run (20);
+            expectWithinAbsoluteError (rig.out (0), 0.5f * test::kCentre, 1.0e-4f);
+            expectWithinAbsoluteError (rig.out (2), 0.5f * test::kCentre, 1.0e-4f);
+
+            // The WING template; the process order's four slots.
+            const auto stepAt = [] (const std::vector<ChainStep>& steps, ld::StepKind kind)
+            {
+                for (size_t i = 0; i < steps.size(); ++i)
+                    if (steps[i].kind == kind)
+                        return (int) i;
+                return -1;
+            };
+            const auto wingChain = ch.getChain();
+            expectEquals ((int) std::count_if (wingChain.begin(), wingChain.end(), [] (const ChainStep& s) { return s.slot >= 0; }), 4);
+            expect (std::none_of (wingChain.begin(), wingChain.end(), [] (const ChainStep& s) { return s.isBlock() || s.isUserTap(); }));
+
+            // A filter block before PFL with its low cut on: the DC input is gone.
+            const int uid = ch.insertBlock (BlockKind::Filter, stepAt (wingChain, ld::kStepPfl));
+            expect (uid >= 0);
+            const auto block = ch.getBlock (uid);
+            expect (block.isValid() && block.getKind() == BlockKind::Filter && block.eq() == nullptr);
+            auto* filter = block.filter();
+            expect (filter != nullptr && block.getMeters() != nullptr);
+            if (filter == nullptr)
+                return;
+            filter->lowCutFreq = 100.0f;
+            filter->lowCut = true;
+            rig.run (100);
+            expectWithinAbsoluteError (rig.out (0), 0.0f, 1.0e-4f);
+            expectWithinAbsoluteError (rig.out (2), 0.0f, 1.0e-4f);
+            const double freqs[] = { 20.0, 10000.0 };
+            double db[] = { 0.0, -1.0 };
+            expect (ch.getBlockResponse (uid, 0, freqs, db, 2, 48000.0));
+            expect (db[0] < -6.0 && std::abs (db[1]) < 0.1);
+            expect (ch.setBlockModel (uid, 1), "a filter block's tool");
+
+            // A user tap after INPUT: the send takes the signal before the filter.
+            const int tap = ch.insertTap (stepAt (ch.getChain(), ld::kStepInput) + 1);
+            expect (tap >= ld::kFirstUserTap);
+            send.tap = tap;
+            engine.getGarbage().collect(); // plans the tap's buffer
+            rig.run (20);
+            expectWithinAbsoluteError (rig.out (2), 0.5f * test::kCentre, 1.0e-4f);
+            expectWithinAbsoluteError (rig.out (0), 0.0f, 1.0e-4f);
+
+            // The show keeps the block and the tap where they are.
+            auto xml = show.toXml();
+            MixerEngine restoredEngine (0);
+            Show restored (restoredEngine, host);
+            const auto result = restored.loadFromXml (*xml);
+            expect (result.wasOk(), result.getErrorMessage());
+            auto* r = state::findStrip (restoredEngine, { StripKind::Channel, ch.getId() });
+            expect (r != nullptr);
+            if (r == nullptr)
+                return;
+            const auto chain = ch.getChain(), restoredChain = r->getChain();
+            expectEquals ((int) restoredChain.size(), (int) chain.size());
+            for (size_t i = 0; i < juce::jmin (chain.size(), restoredChain.size()); ++i)
+                expect (restoredChain[i].kind == chain[i].kind && restoredChain[i].arg == chain[i].arg
+                        && restoredChain[i].uid == chain[i].uid && restoredChain[i].slot == chain[i].slot, "step " + juce::String (i));
+            auto* restoredFilter = r->getBlock (uid).filter();
+            expect (restoredFilter != nullptr && restoredFilter->lowCut.load());
+            expectEquals (r->sends[0].tap.load(), tap);
+
+            // Moved after the filter, the tap is filtered too; cleared, the template again.
+            expect (ch.moveTap (tap, stepAt (ch.getChain(), ld::kStepPfl)));
+            rig.run (100);
+            expectWithinAbsoluteError (rig.out (2), 0.0f, 1.0e-4f);
+            expect (ch.removeTap (tap) && ! ch.removeTap (tap));
+            expect (ch.removeBlock (uid) && ! ch.getBlock (uid).isValid());
+            ch.insertBlock (BlockKind::Delay, -1);
+            ch.clearChain();
+            const auto cleared = ch.getChain();
+            expectEquals ((int) cleared.size(), (int) wingChain.size());
+            expect (std::none_of (cleared.begin(), cleared.end(), [] (const ChainStep& s) { return s.isBlock() || s.isUserTap(); }));
+            engine.getGarbage().collectAllNow();
+            restoredEngine.getGarbage().collectAllNow();
+        }
+
         beginTest ("Scenes store and recall the console");
         {
             MixerEngine engine (0);

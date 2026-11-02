@@ -940,6 +940,15 @@ fn sends_take_user_taps_anywhere_in_the_chain() {
     rig.run(20);
     assert!(rig.out(2).abs() < 1e-6);
     ch.params.mute.store(false, Relaxed);
+    // Moved after the fader (down): silence; back before it: the signal again.
+    let fader = ch.steps().iter().position(|s| matches!(s, Step::Node(Node::Fader))).unwrap();
+    assert!(engine.move_tap(&ch, id, fader + 1));
+    rig.run(20);
+    assert!(rig.out(2).abs() < 1e-6, "{}", rig.out(2));
+    assert!(engine.move_tap(&ch, id, input + 1));
+    rig.run(20);
+    assert!(close(rig.out(2), 0.5 * CENTRE, 1e-4), "{}", rig.out(2));
+    assert!(!engine.move_tap(&ch, livedaw_engine::strip::tap::PFL as u8, 0), "the WING's taps stay");
     // A second tap gets another id; the tap taken away: silence.
     assert_ne!(engine.insert_tap(&ch, 0), Some(id));
     assert!(engine.remove_tap(&ch, id));

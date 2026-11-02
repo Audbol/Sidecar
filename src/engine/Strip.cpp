@@ -96,4 +96,21 @@ int Strip::getIcon() const noexcept
     return src != nullptr ? src->icon.load() : params.icon.load();
 }
 
+std::vector<ChainStep> Strip::getChain() const
+{
+    std::vector<ld::ChainStepC> raw ((size_t) juce::jmax (0, ld::ld_strip_chain (handle, nullptr, 0)));
+    ld::ld_strip_chain (handle, raw.data(), (int32_t) raw.size());
+    std::vector<ChainStep> steps;
+    steps.reserve (raw.size());
+    for (const auto& s : raw)
+        steps.push_back ({ static_cast<ld::StepKind> (s.kind), s.arg, s.uid, s.slot });
+    return steps;
+}
+
+ChainBlock Strip::getBlock (int uid) const noexcept
+{
+    ld::BlockC b {};
+    return ld::ld_strip_block (handle, uid, &b) ? ChainBlock (b) : ChainBlock();
+}
+
 } // namespace livedaw
