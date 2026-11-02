@@ -5,6 +5,19 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+### Fixed
+
+- The console's autosave rewrote the whole show, and its backup, every 30 seconds
+  even when nothing had changed: constant writes to a USB stick or SD card while
+  the console only plays audio. A save whose show is the same as the file on disk
+  now leaves the file alone (also for presets and library files); a changed show is
+  still written to a verified temporary file, with the previous version kept as
+  `.bak`.
+- The multitrack editor's autosave rewrote a project with unsaved changes every
+  30 seconds until it was saved, even when nothing had changed since the last
+  autosave. It is now written only when it changes, and SAVE of an unchanged
+  project leaves the file alone.
+
 ## [0.1.6] - beta
 
 The fourth round of matching Sidecar to a real WING, cross-checked against WING Edit

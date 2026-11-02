@@ -286,9 +286,18 @@ juce::Result Project::writeTo (const juce::File& file) const
     if (xml == nullptr)
         return juce::Result::fail ("Couldn't serialise the project");
 
+    juce::MemoryOutputStream text;
+    xml->writeTo (text);
+
+    // Nothing changed since the last write (a project left with unsaved changes
+    // autosaves every 30 s): leave the file, its backup and the disk alone.
+    juce::MemoryBlock old;
+    if (file.existsAsFile() && file.loadFileAsData (old) && old == text.getMemoryBlock())
+        return juce::Result::ok();
+
     // Write a temporary file, check it reads back, then swap it in.
     const auto temp = file.getSiblingFile (file.getFileName() + ".tmp");
-    if (! xml->writeTo (temp))
+    if (! temp.replaceWithData (text.getData(), text.getDataSize()))
         return juce::Result::fail ("Couldn't write " + temp.getFullPathName());
     if (juce::parseXML (temp) == nullptr)
     {
