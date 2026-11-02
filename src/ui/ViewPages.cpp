@@ -1888,6 +1888,7 @@ void OverviewViewPage::paintContent (juce::Graphics& g)
                 case HomeTab::Main:
                 case HomeTab::Sends:
                 case HomeTab::Name:
+                case HomeTab::Chain:
                     break;
             }
         }

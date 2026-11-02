@@ -76,7 +76,4 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChainList)
 };
 
-/** A step's name in the chain list ("EQ", "INSERT 1", "TAP 3", "EQ BLOCK"). */
-juce::String stepName (const ChainStep&);
-
 } // namespace livedaw::ui::universal

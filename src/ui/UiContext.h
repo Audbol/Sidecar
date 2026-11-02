@@ -81,7 +81,10 @@ enum class HomeTab
     PostInsert,
     Main,
     Sends,
-    Name
+    Name,
+    /** Sidecar's own: the strip's whole chain, with the blocks and taps the
+        Universal Mixer added (the console's screens don't show those). */
+    Chain
 };
 
 /** What the views share: the engine, the show, app-level actions, the

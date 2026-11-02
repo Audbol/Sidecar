@@ -1,91 +1,17 @@
 #include "ui/universal/ChainList.h"
 
+#include "ui/ChainSummary.h"
+
 #include <algorithm>
 
 namespace livedaw::ui::universal
 {
 
-juce::String stepName (const ChainStep& s)
-{
-    switch (s.kind)
-    {
-        case ld::kStepInput:      return "INPUT";
-        case ld::kStepDelay:      return "DELAY";
-        case ld::kStepFilter:     return "FILTER";
-        case ld::kStepGate:       return "GATE";
-        case ld::kStepEq:         return "EQ";
-        case ld::kStepDynamics:   return "DYNAMICS";
-        case ld::kStepPreInsert:  return "INSERT 1";
-        case ld::kStepPostInsert: return "INSERT 2";
-        case ld::kStepPfl:        return "PRE-FADER";
-        case ld::kStepFader:      return "FADER";
-        case ld::kStepPost:       return "POST";
-        case ld::kStepTapShaper:  return "TAP EQ";
-        case ld::kStepTap:        return s.isUserTap() ? "TAP " + juce::String (s.arg - ld::kFirstUserTap + 1) : juce::String ("TAP");
-        case ld::kStepBlock:
-            switch (s.getBlockKind())
-            {
-                case BlockKind::Filter:   return "FILTER BLOCK";
-                case BlockKind::Eq:       return "EQ BLOCK";
-                case BlockKind::Dynamics: return "DYNAMICS BLOCK";
-                case BlockKind::Insert:   return "INSERT BLOCK";
-                case BlockKind::Delay:    return "DELAY BLOCK";
-            }
-            break;
-        case ld::kStepSlot:
-        case ld::kStepRta:
-            break;
-    }
-    return {};
-}
-
 namespace
 {
-    bool shown (const ChainStep& s)
-    {
-        switch (s.kind)
-        {
-            case ld::kStepTap:
-                return s.isUserTap();
-            case ld::kStepRta:
-            case ld::kStepSlot:
-            case ld::kStepTapShaper:
-                return false;
-            case ld::kStepInput:
-            case ld::kStepDelay:
-            case ld::kStepFilter:
-            case ld::kStepGate:
-            case ld::kStepEq:
-            case ld::kStepDynamics:
-            case ld::kStepPreInsert:
-            case ld::kStepPostInsert:
-            case ld::kStepPfl:
-            case ld::kStepFader:
-            case ld::kStepPost:
-            case ld::kStepBlock:
-                break;
-        }
-        return true;
-    }
-
-    bool isMarker (const ChainStep& s)
-    {
-        return s.kind == ld::kStepPfl || s.kind == ld::kStepFader || s.kind == ld::kStepPost;
-    }
-
     bool sameStep (const ChainStep& a, const ChainStep& b)
     {
         return a.kind == b.kind && a.arg == b.arg && a.uid == b.uid && a.slot == b.slot;
-    }
-
-    bool filterOn (const FilterParams& f)
-    {
-        return f.lowCut.load() || f.highCut.load() || f.tool.load();
-    }
-
-    bool insertOn (const InsertParams& i)
-    {
-        return i.on.load() && i.fx.load() >= 0;
     }
 } // namespace
 
@@ -292,44 +218,7 @@ bool ChainList::sameChain (const std::vector<ChainStep>& a, const std::vector<Ch
 
 bool ChainList::isOn (const ChainStep& s) const
 {
-    if (strip == nullptr)
-        return false;
-    auto& p = strip->params;
-    switch (s.kind)
-    {
-        case ld::kStepFilter:     return filterOn (p.filter);
-        case ld::kStepGate:       return p.gate.on.load();
-        case ld::kStepEq:         return p.eq.on.load();
-        case ld::kStepDynamics:   return p.dynamics.on.load();
-        case ld::kStepPreInsert:  return insertOn (p.preInsert);
-        case ld::kStepPostInsert: return insertOn (p.postInsert);
-        case ld::kStepDelay:      return p.input.delayOn.load();
-        case ld::kStepBlock:
-        {
-            const auto b = strip->getBlock (s.uid);
-            if (auto* f = b.filter())
-                return filterOn (*f);
-            if (auto* e = b.eq())
-                return e->on.load();
-            if (auto* d = b.dynamics())
-                return d->on.load();
-            if (auto* i = b.insert())
-                return insertOn (*i);
-            if (auto* d = b.delay())
-                return d->on.load();
-            return false;
-        }
-        case ld::kStepInput:
-        case ld::kStepSlot:
-        case ld::kStepPfl:
-        case ld::kStepFader:
-        case ld::kStepPost:
-        case ld::kStepTapShaper:
-        case ld::kStepTap:
-        case ld::kStepRta:
-            break;
-    }
-    return false;
+    return strip != nullptr && stepOn (*strip, s);
 }
 
 void ChainList::rebuild (const std::vector<ChainStep>& chain)
@@ -340,7 +229,7 @@ void ChainList::rebuild (const std::vector<ChainStep>& chain)
     for (int i = 0; i < (int) chain.size(); ++i)
     {
         const auto& s = chain[(size_t) i];
-        if (! shown (s))
+        if (! isShown (s))
             continue;
         const bool own = ! s.isBlock() && ! s.isUserTap() && ! isMarker (s);
         rows.push_back ({ s, i, stepName (s), s.isBlock() || s.isUserTap(), isMarker (s), own ? devices::wing : juce::String() });

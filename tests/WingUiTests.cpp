@@ -6,9 +6,12 @@
 #include "engine/MixerEngine.h"
 #include "engine/PluginHost.h"
 #include "engine/Show.h"
+#include "ui/ChainSummary.h"
+#include "ui/HomePage.h"
 #include "ui/HomeScreens.h"
 #include "ui/HomeWidgets.h"
 #include "ui/Knobs.h"
+#include "ui/LookAndFeel.h"
 #include "ui/MeterBank.h"
 #include "ui/Pages.h"
 #include "ui/SurfaceSections.h"
@@ -154,6 +157,58 @@ public:
                 rig.settings.setValue (ui::uiprefs::stripTouchSelect, false);
                 band->getSlider().onDragStart();
                 expectEquals ((int) rig.tabs.size(), 3);
+            }
+        }
+
+        beginTest ("HOME > CHAIN: the tab counts the blocks and taps the Universal Mixer added; the screen shows the chain with them");
+        {
+            MixerEngine engine (0);
+            test::setChannels (engine, 2);
+            WingRig rig (engine);
+            auto& ch = *engine.getChannels()[0];
+            rig.selected = &ch;
+            ui::HomePage page (rig.ctx);
+            ui::setWingScreenHeight (800.0f); // the display's screen, as MainDisplay sets it
+            page.setSize (1280, 800);
+            page.setVisible (true);
+            page.refresh();
+            test::pumpMessages (300);
+            expect (findButton (page, "CHAIN") != nullptr, "a strip of the console's own blocks: CHAIN");
+
+            // An EQ block after the dynamics and a user tap at the end (the Universal core's).
+            const auto chain = ch.getChain();
+            int afterDyn = -1;
+            for (int i = 0; i < (int) chain.size(); ++i)
+                if (chain[(size_t) i].kind == ld::kStepDynamics)
+                    afterDyn = i + 1;
+            const int uid = ch.insertBlock (BlockKind::Eq, afterDyn);
+            expect (uid >= 0 && ch.insertTap (-1) >= 0);
+            expectEquals (ui::countExtras (ch), 2);
+            test::pumpMessages (300); // the block column's look (8 a second) updates the tab
+            expect (findButton (page, "CHAIN +2") != nullptr, "CHAIN +2");
+
+            // In the chain's order, named, the block with its model.
+            juce::StringArray names;
+            for (const auto& step : ch.getChain())
+                if (ui::isShown (step))
+                    names.add (ui::stepName (step));
+            const auto order = names.joinIntoString (" ");
+            expect (order.contains ("DYNAMICS EQ BLOCK") && order.endsWith ("TAP 1"), order);
+            for (const auto& step : ch.getChain())
+                if (step.isBlock())
+                    expect (ui::blockDetail (ch, step).isNotEmpty(), "the block's model");
+
+            page.showTab (ui::HomeTab::Chain);
+            expect (page.getTab() == ui::HomeTab::Chain);
+            const auto picture = page.createComponentSnapshot (page.getLocalBounds());
+            expect (picture.isValid());
+            // LIVEDAW_UI_SNAPSHOTS=<folder> keeps the picture there, to look at.
+            if (const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_UI_SNAPSHOTS", {}); folder.isNotEmpty())
+            {
+                juce::FileOutputStream out (juce::File (folder).getChildFile ("wing-home-chain.png"));
+                out.setPosition (0);
+                out.truncate();
+                juce::PNGImageFormat().writeImageToStream (picture, out);
             }
         }
 

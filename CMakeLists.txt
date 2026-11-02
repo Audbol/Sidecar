@@ -239,6 +239,7 @@ set(LIVEDAW_UI_SOURCES
     src/ui/FaderSection.cpp
     src/ui/ResponseGraph.cpp
     src/ui/DynamicsGraph.cpp
+    src/ui/ChainSummary.cpp
     src/ui/HomeScreens.cpp
     src/ui/HomePage.cpp
     src/ui/EffectsPage.cpp

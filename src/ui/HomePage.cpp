@@ -1,4 +1,5 @@
 #include "ui/HomePage.h"
+#include "ui/ChainSummary.h"
 #include "dsp/DspUtils.h"
 #include "ui/Faceplate.h"
 #include "ui/FaderStrip.h"
@@ -179,6 +180,7 @@ namespace
                     case HomeTab::Main:
                     case HomeTab::Sends:
                     case HomeTab::Name:
+                    case HomeTab::Chain:
                         break;
                 }
             }
@@ -2080,6 +2082,7 @@ private:
             case HomeTab::Tags:
             case HomeTab::Filter:
             case HomeTab::Name:
+            case HomeTab::Chain:
                 return;
         }
     }
@@ -2090,6 +2093,7 @@ private:
             return;
         if (strip->params.processOrder.load() != builtOrder)
             setStrip (strip);
+        page.updateChainTab();
 
         // The EQ thumbnail's curve, from the engine's own filters.
         std::vector<double> freqs, db (24, 0.0);
@@ -2164,13 +2168,142 @@ private:
 };
 
 //==============================================================================
+/** CHAIN (Sidecar's): the strip's processing in order, as the engine runs it, with
+    the blocks and taps added in the Universal Mixer (gold), which the console's own
+    screens don't show. The console's blocks are grey, lit while on; PRE-FADER, FADER
+    and POST mark their places. Under the line, each added block with its model or
+    setting. They are edited in the Universal Mixer (its inspector's CHAIN). */
+class ChainScreen final : public HomeScreen, private juce::Timer
+{
+public:
+    ChainScreen (UiContext& c, Strip& s) : HomeScreen (c, s)
+    {
+        addLevelPanel();
+        startTimerHz (4);
+    }
+
+    std::vector<HomeKnob> knobs() override { return homeTabKnobs (ctx, strip); }
+
+    void resized() override
+    {
+        clearBoxes();
+        layoutLevelPanel (getLocalBounds());
+        area = wingRect (284.0f, 152.0f, 764.0f, 600.0f);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        HomeScreen::paint (g);
+        shown = signature();
+        auto r = area;
+        g.setColour (colours::panel);
+        g.fillRect (r);
+        r = r.reduced (juce::roundToInt (wingPx (16.0f)));
+
+        g.setColour (Colours::gold);
+        g.setFont (wingFontPx (wingPx (22.0f), WingWeight::SemiBold));
+        g.drawText ("CHAIN", r.removeFromTop (juce::roundToInt (wingPx (32.0f))), juce::Justification::centredLeft, false);
+        g.setColour (colours::dim);
+        g.setFont (wingFontPx (wingPx (15.0f)));
+        g.drawFittedText ("In processing order. Gold: added in the Universal Mixer.",
+                          r.removeFromTop (juce::roundToInt (wingPx (26.0f))), juce::Justification::centredLeft, 1, 0.8f);
+        r.removeFromTop (juce::roundToInt (wingPx (12.0f)));
+
+        // The line: a box per block or tap, wrapping; the markers as small captions.
+        const float boxH = wingPx (44.0f), gap = wingPx (8.0f);
+        float x = (float) r.getX(), y = (float) r.getY();
+        std::vector<ChainStep> extras;
+        for (const auto& step : strip.getChain())
+        {
+            if (! isShown (step))
+                continue;
+            const bool extra = isExtra (step), marker = isMarker (step);
+            if (extra)
+                extras.push_back (step);
+            const auto name = stepName (step);
+            g.setFont (wingFontPx (wingPx (marker ? 13.0f : 16.0f), WingWeight::SemiBold));
+            const float w = juce::jmax (wingPx (marker ? 60.0f : 96.0f), juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), name) + wingPx (24.0f));
+            if (x + w > (float) r.getRight())
+            {
+                x = (float) r.getX();
+                y += boxH + gap;
+            }
+            const juce::Rectangle<float> box (x, y, w, boxH);
+            x += w + gap;
+            if (marker)
+            {
+                g.setColour (colours::dim);
+                g.fillRect (box.withWidth (wingPx (2.0f)).withX (box.getCentreX()).reduced (0.0f, boxH * 0.3f).translated (0.0f, -boxH * 0.3f));
+                g.drawText (name, box.withTrimmedTop (boxH * 0.55f), juce::Justification::centred, false);
+                continue;
+            }
+            const bool on = stepOn (strip, step);
+            const auto edge = extra ? Colours::gold : colours::dim;
+            g.setColour (on ? edge.withAlpha (0.35f) : juce::Colours::black);
+            g.fillRoundedRectangle (box, wingPx (4.0f));
+            g.setColour (edge);
+            g.drawRoundedRectangle (box.reduced (1.0f), wingPx (4.0f), extra ? 2.0f : 1.0f);
+            g.setColour (on || extra ? colours::ink : colours::dim);
+            g.drawText (name, box, juce::Justification::centred, false);
+        }
+
+        // The added blocks and taps, one row each.
+        r.setTop (juce::roundToInt (y + boxH + wingPx (28.0f)));
+        g.setFont (wingFontPx (wingPx (16.0f)));
+        if (extras.empty())
+        {
+            g.setColour (colours::dim);
+            g.drawFittedText ("No blocks or taps added. The Universal Mixer adds them: its inspector's CHAIN, ADD.",
+                              r.removeFromTop (juce::roundToInt (wingPx (30.0f))), juce::Justification::centredLeft, 2, 0.8f);
+            return;
+        }
+        const int rowH = juce::roundToInt (wingPx (34.0f));
+        for (const auto& step : extras)
+        {
+            if (r.getHeight() < rowH)
+                break;
+            auto row = r.removeFromTop (rowH);
+            const bool on = step.isBlock() && stepOn (strip, step);
+            g.setColour (Colours::gold);
+            g.drawText (stepName (step), row.removeFromLeft (juce::roundToInt (wingPx (200.0f))), juce::Justification::centredLeft, false);
+            g.setColour (colours::ink);
+            g.drawText (blockDetail (strip, step), row.removeFromLeft (juce::roundToInt (wingPx (400.0f))), juce::Justification::centredLeft, false);
+            if (step.isBlock())
+            {
+                g.setColour (on ? Colours::gold : colours::dim);
+                g.drawText (on ? "ON" : "OFF", row, juce::Justification::centredRight, false);
+            }
+        }
+    }
+
+private:
+    /** What the screen shows, to repaint when it changes (here or in the Universal Mixer). */
+    juce::String signature() const
+    {
+        juce::String sig;
+        for (const auto& step : strip.getChain())
+            sig << (int) step.kind << ',' << step.arg << ',' << step.uid << ',' << (int) stepOn (strip, step) << ',' << blockDetail (strip, step) << ';';
+        return sig;
+    }
+
+    void timerCallback() override
+    {
+        if (signature() != shown)
+            repaint();
+    }
+
+    juce::Rectangle<int> area;
+    juce::String shown;
+};
+
+//==============================================================================
 HomePage::HomePage (UiContext& c) : ctx (c)
 {
     column = std::make_unique<BlockColumn> (*this);
     addAndMakeVisible (*column);
 
     const std::pair<HomeTab, const char*> tabs[] = { { HomeTab::Home, "OVERVIEW" }, { HomeTab::Icon, "ICON/COLOR" },
-                                                     { HomeTab::Name, "NAME" }, { HomeTab::Tags, "TAGS" } };
+                                                     { HomeTab::Name, "NAME" }, { HomeTab::Tags, "TAGS" }, { HomeTab::Chain, "CHAIN" } };
     for (auto [tab, text] : tabs)
     {
         auto* b = topTabs.add (new WingTab (text));
@@ -2188,6 +2321,16 @@ HomePage::HomePage (UiContext& c) : ctx (c)
 }
 
 HomePage::~HomePage() = default;
+
+void HomePage::updateChainTab()
+{
+    if (topTabs.size() < 5)
+        return;
+    const int n = strip != nullptr ? countExtras (*strip) : 0;
+    const juce::String text (n > 0 ? "CHAIN +" + juce::String (n) : juce::String ("CHAIN"));
+    if (topTabs[4]->getButtonText() != text)
+        topTabs[4]->setButtonText (text);
+}
 
 int HomePage::tapSlot() const
 {
@@ -2272,7 +2415,7 @@ void HomePage::rebuild()
     column->setStrip (strip);
     column->setShowKeys (isOverviewGroup (current));
     const bool overviewGroup = isOverviewGroup (current);
-    const HomeTab group[] = { HomeTab::Home, HomeTab::Icon, HomeTab::Name, HomeTab::Tags };
+    const HomeTab group[] = { HomeTab::Home, HomeTab::Icon, HomeTab::Name, HomeTab::Tags, HomeTab::Chain };
     for (int i = 0; i < topTabs.size(); ++i)
     {
         topTabs[i]->setVisible (overviewGroup && strip != nullptr);
@@ -2299,6 +2442,7 @@ void HomePage::rebuild()
             case HomeTab::PostInsert: content = makeInsertScreen (ctx, s, true); break;
             case HomeTab::Main:       content = makeMainScreen (ctx, s); break;
             case HomeTab::Sends:      content = makeSendsScreen (ctx, s, matrixSends || s.getKind() == StripKind::Main); break;
+            case HomeTab::Chain:      content = std::make_unique<ChainScreen> (ctx, s); break;
         }
         content->knobsChanged = [this] { notifyKnobsChanged(); };
         content->statusKeysChanged = [this] { notifyStatusKeysChanged(); };
@@ -2448,7 +2592,8 @@ void HomePage::resized()
         for (int i = 0; i < topTabs.size(); ++i)
             topTabs[i]->setBounds (wr (284.0f + 160.0f * (float) i, 0.0f, 157.0f, 55.0f));
         safeKey->setBounds (wr (1148.0f, 4.0f, 120.0f, 56.0f));
-        tabBar = wr (924.0f, 0.0f, 348.0f, 64.0f);   // right of the tabs, round SAFE
+        // Sidecar's CHAIN takes the fifth place; the bar runs on from it to SAFE.
+        tabBar = wr (284.0f + 160.0f * (float) topTabs.size(), 0.0f, 988.0f - 160.0f * (float) topTabs.size(), 64.0f);
         tabLine = wr (284.0f, 58.0f, 988.0f, 6.0f);  // under the black line below the tabs
         // The panels from y 152 (the content's half gaps around them).
         b = wr (280.0f, 68.0f, 996.0f, 608.0f);

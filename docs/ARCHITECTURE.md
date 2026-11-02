@@ -840,7 +840,11 @@ MUTE through `MixerEngine::pressMute`, SOLO, fader and meter) and `MixerView` (a
 column per strip in a `Viewport`, kinds apart, filter keys; it rebuilds when the
 engine's structure version changes and refreshes its columns 30 times a second).
 `UniversalSkin` puts a top bar over the MIXER view, with the inspector of the
-selected strip beside it (`Inspector.h`, opened by `selectionChanged`). The
+selected strip beside it (`Inspector.h`, opened by `selectionChanged`). What a
+skin shows of a chain is shared (`ui/ChainSummary.h`: `stepName`, `stepOn`, `isShown`,
+`isExtra`, `blockDetail`, `countExtras`), so every console's surface shows the same
+chain: the WING surface's HOME > CHAIN (Sidecar's, with the Universal Mixer's extra
+blocks and user taps in gold) and the Universal Mixer's inspector. The
 inspector's CHAIN page is a `ChainList` (the strip's chain from `Strip::getChain`
 without its RTA points and the WING's own taps; ADD, REMOVE and drag to reorder
 through `insertBlock` / `moveBlock` / `removeBlock` / `insertTap` / `moveTap` /

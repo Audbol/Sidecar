@@ -62,7 +62,12 @@ private:
     bool isAvailable (HomeTab, const Strip*) const;
     /** The FX slot of the insert screen shown, when its device has a delay TIME; else -1. */
     int tapSlot() const;
-    static bool isOverviewGroup (HomeTab t) { return t == HomeTab::Home || t == HomeTab::Icon || t == HomeTab::Name || t == HomeTab::Tags; }
+    static bool isOverviewGroup (HomeTab t)
+    {
+        return t == HomeTab::Home || t == HomeTab::Icon || t == HomeTab::Name || t == HomeTab::Tags || t == HomeTab::Chain;
+    }
+    /** CHAIN, or CHAIN +n with n blocks and taps the Universal Mixer added. */
+    void updateChainTab();
 
     UiContext& ctx;
     HomeTab current = HomeTab::Home;

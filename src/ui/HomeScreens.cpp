@@ -4597,6 +4597,7 @@ juce::uint32 scopeFor (HomeTab from)
         case HomeTab::Icon:
         case HomeTab::Tags:
         case HomeTab::Name:
+        case HomeTab::Chain:
             break;
     }
     return ((1u << kNumScopeBits) - 1u) & ~bit (Conn); // Channel Home: all but CONN
