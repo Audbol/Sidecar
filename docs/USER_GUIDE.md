@@ -228,7 +228,10 @@ sideways; double-tap for centre), **MUTE** (lit for the strip's own mute, outlin
 while a mute group, a DCA or SIP mutes it), **SOLO**, and its fader with the output
 meter beside it on the fader's scale (drag, or turn the wheel; Shift for fine moves;
 double-tap for 0 dB). A drag moves a control by how far you move, so touching a fader
-never makes it jump.
+never makes it jump. Above the fader, the strip's overview shows its processing at a
+glance: **IN** (its level after trim), **GATE** and **DYN** (their gain reduction, the
+name lit while the block is on), its **EQ** curve and **OUT**. **FADERS** (top right)
+hides or shows every fader at any moment: hidden, the overview takes the whole column.
 
 Selecting a strip (a tap on its name) opens the inspector beside the mixer; **CLOSE**
 hides it. **CHAIN** lists the strip's processing in order: its own blocks (INPUT,
@@ -261,7 +264,20 @@ and the device's controls: its front panel (**FRONT PANEL**) or the list of its
 parameters. **MONITORING** has the **SPEAKERS** and **PHONES** paths (their source,
 levels, DIM, MONO and MUTE for the speakers, the outputs and meters) and **SOLO** (where
 solos go, the solo mode, PFL or AFL for channels, buses, mains and matrices, and
-**CLEAR SOLO**). Scenes, the recorder and setup are on the WING surface for now.
+**CLEAR SOLO**). **SCENES** lists the show's scenes (the current one marked, LINK,
+SKIP and tags shown): **GO** recalls the selected scene, **PREV** and **NEXT** the
+show's previous and next ones, **ADD** captures the console as a new scene after the
+selected one, **STORE** captures it into the selected one (it asks first), **RENAME**,
+**UP** and **DOWN** move it, **REMOVE** deletes it (it asks first). **RECORDER** shows
+the WING display's recorder pages: **MULTITRACK** and the **USB** recorder, with
+**MULTITRACK EDITOR**. **SETUP** has **CONSOLE**, the configuration: how many channels,
+aux, buses, mains, matrices, DCAs, mute groups and FX slots the console has, changed
+with the -8, -1, +1, +8 keys and **APPLY** without a reset. New ones come at the end
+and everything else stays; fewer take from the end, asking first: channels and aux go
+with their settings, but a bus, main or matrix that something sends to, a DCA or mute
+group with members and an FX slot in use stay (with those before them), and SETUP
+says which. **AUDIO** has the audio device, **PREFERENCES** the interface, delay
+compensation and output protection.
 
 A part of the Universal Mixer that comes from one console's emulation carries that
 console's name as a tag: **WING** marks the strip's own blocks (its WING template),

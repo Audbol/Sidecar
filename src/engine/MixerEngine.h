@@ -103,6 +103,25 @@ public:
     Counts getConfiguredCounts() const noexcept { Counts c {}; ld::ld_engine_configured_counts (engine, &c); return c; }
     /** Makes the engine a fresh console of `counts` (nullptr: the WING); rebuilds the strip views. */
     void configure (const Counts* counts) { ld::ld_engine_configure (engine, counts); syncStrips(); }
+    /** The number of strips of `kind` changed without a reset (the configuration
+        editor): channels and aux at the end, whatever they hold (warn first); buses,
+        mains and matrices at the end too, but never one that something feeds (nor
+        those before it). Rebuilds the strip views; returns the number set. */
+    int setNumStrips (StripKind kind, int count)
+    {
+        int n = 0;
+        if (kind == StripKind::Channel)
+        {
+            setNumChannels (count);
+            n = (int) getChannels().size();
+        }
+        else
+        {
+            n = ld::ld_engine_set_num_strips (engine, (int32_t) kind, count);
+            syncStrips();
+        }
+        return n;
+    }
     /** Makes the engine a fresh console of the structure of `counts` without its
         channels or FX slot count (as a show load does before it adds the channels);
         rebuilds the strip views. Returns the counts configured (within what the engine holds). */

@@ -271,6 +271,9 @@ set(LIVEDAW_UI_SOURCES
     src/ui/universal/RoutingView.cpp
     src/ui/universal/FxRackView.cpp
     src/ui/universal/MonitorView.cpp
+    src/ui/universal/ScenesView.cpp
+    src/ui/universal/RecorderView.cpp
+    src/ui/universal/SetupView.cpp
     src/ui/MidiRemoteUi.cpp
     src/ui/DawSurface.cpp)
 
@@ -430,7 +433,16 @@ if(LIVEDAW_BUILD_TESTS)
         src/ui/universal/RoutingView.cpp
         src/ui/universal/FxRackView.cpp
         src/ui/universal/MonitorView.cpp
+        src/ui/universal/ScenesView.cpp
+        src/ui/universal/RecorderView.cpp
+        src/ui/universal/SetupView.cpp
         src/ui/PluginMenu.cpp
+        src/ui/daw/RecorderPage.cpp
+        src/ui/daw/DawCommon.cpp
+        src/ui/daw/DawEditor.cpp
+        src/ui/daw/DawTimeline.cpp
+        src/ui/daw/DawTracks.cpp
+        src/ui/UsbRecorderPage.cpp
         src/ui/UniversalSkin.cpp)
 
     # The surface's scribble strip LCDs.

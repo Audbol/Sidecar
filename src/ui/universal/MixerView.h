@@ -9,13 +9,46 @@
 namespace livedaw::ui::universal
 {
 
+/** A strip's processing at a glance: its input level, its GATE's and
+    DYNAMICS' gain reduction (their names lit while on), its EQ's curve (as the
+    engine runs it, taken again only when the EQ changes) and its output
+    level. Taller, it gives the EQ the room. */
+class StripOverview final : public juce::Component
+{
+public:
+    StripOverview (UiContext&, Strip&, const Theme&);
+
+    void refresh();
+    /** What it shows (for the tests): levels 0..1 on the fader scale, reductions in dB. */
+    float getInput() const noexcept { return input; }
+    float getOutput() const noexcept { return output; }
+    float getGateReduction() const noexcept { return gateGr; }
+    float getDynamicsReduction() const noexcept { return dynGr; }
+    const std::vector<double>& getEqCurve() const noexcept { return eqCurve; }
+
+    void paint (juce::Graphics&) override;
+
+private:
+    UiContext& ctx;
+    Strip& strip;
+    const Theme& theme;
+    float input = 0.0f, output = 0.0f, gateGr = 0.0f, dynGr = 0.0f;
+    bool gateOn = false, dynOn = false, eqOn = false;
+    std::vector<float> eqState;
+    std::vector<double> eqFreqs, eqCurve;
+};
+
 /** One strip of any kind as a column of the MIXER view: its colour, name and
-    label (a tap selects it), pan, MUTE and SOLO, the fader with its output
-    meter, and the fader's value. */
+    label (a tap selects it), pan, MUTE and SOLO, its overview (StripOverview),
+    the fader with its output meter (hidden with the view's FADERS key, the
+    overview then taking the column), and the fader's value. */
 class StripColumn final : public juce::Component
 {
 public:
     StripColumn (UiContext&, Strip&, const Theme&);
+    /** Shows or hides the fader (the overview takes its room). */
+    void setFaderShown (bool);
+    bool isFaderShown() const noexcept { return faderShown; }
 
     Strip& getStrip() const noexcept { return strip; }
     /** Takes the strip's values and meters (the view's timer calls it). */
@@ -25,6 +58,7 @@ public:
 
     ToggleKey muteKey, soloKey;
     PanControl pan;
+    StripOverview overview;
     FaderControl fader;
     MeterControl meter;
 
@@ -41,7 +75,7 @@ private:
     juce::String name;
     int colour = 0;
     float shownDb = 0.0f;
-    bool selected = false;
+    bool selected = false, faderShown = true;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StripColumn)
 };
@@ -57,6 +91,9 @@ public:
 
     /** -1: every kind; else a StripKind. */
     void setFilter (int kind);
+    /** The FADERS key: the columns show their faders, or only their overviews. */
+    void setFadersShown (bool);
+    bool areFadersShown() const noexcept { return fadersShown; }
     int getFilter() const noexcept { return filter; }
     /** The strips changed (the view also notices by itself). */
     void rebuild();
@@ -83,6 +120,8 @@ private:
     int filter = -1;
     int structureVersion = -1;
     std::vector<std::unique_ptr<ToggleKey>> filterKeys;
+    ToggleKey fadersKey;
+    bool fadersShown = true;
     juce::Viewport viewport;
     juce::Component content;
     std::vector<std::unique_ptr<StripColumn>> columns;

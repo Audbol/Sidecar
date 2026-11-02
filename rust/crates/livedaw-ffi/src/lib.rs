@@ -77,7 +77,9 @@ use std::sync::Arc;
 // ld_strip_set_block_model, ld_strip_block_response; the user taps with
 // ld_engine_insert_tap, ld_engine_move_tap, ld_engine_remove_tap) and
 // ld_engine_set_config.
-pub const LD_ABI_VERSION: i32 = 28;
+// ABI 29 (Phase 2 step 6): the configuration without a reset
+// (ld_engine_set_num_strips: aux, buses, mains, matrices).
+pub const LD_ABI_VERSION: i32 = 29;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(default)
@@ -479,6 +481,17 @@ pub unsafe extern "C" fn ld_engine_set_num_channels(e: *const Engine, count: i32
     if let Some(e) = engine(e) {
         guard((), || e.set_num_channels(count.max(0) as usize));
     }
+}
+
+/// Message thread: the number of aux channels, buses, mains or matrices
+/// (`kind`), changed without a reset: new strips at the end, strips removed
+/// from the end but never a bus, main or matrix that something feeds (nor
+/// those before it). Returns the number set (a channel kind: the channels,
+/// unchanged; see ld_engine_set_num_channels).
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_set_num_strips(e: *const Engine, kind: i32, count: i32) -> i32 {
+    let (Some(e), Some(kind)) = (engine(e), StripKind::from_i32(kind)) else { return 0 };
+    guard(0, || e.set_num_strips(kind, count.max(0) as usize) as i32)
 }
 
 /// How many of each kind a console has (`livedaw_engine::Counts`).
@@ -1046,6 +1059,22 @@ mod tests {
             p.dynamics.xo_kind.store(2, std::sync::atomic::Ordering::Relaxed); // HIGH at 1 kHz
             ld_strip_response(ch, 7, freqs.as_ptr(), out.as_mut_ptr(), 2, 48000.0);
             assert!(out[0] < -30.0 && (out[1] + 3.0).abs() < 0.2, "{out:?}");
+            ld_engine_collect(e);
+            ld_engine_destroy(e);
+        }
+    }
+
+    #[test]
+    fn the_configuration_changes_through_the_c_abi() {
+        unsafe {
+            let e = ld_engine_create(0);
+            assert_eq!(ld_engine_set_num_strips(e, StripKind::Main as i32, 6), 6);
+            assert_eq!(ld_engine_num_strips(e, StripKind::Main as i32), 6);
+            assert_eq!(ld_engine_set_num_strips(e, StripKind::Matrix as i32, 2), 2);
+            assert_eq!(ld_engine_set_num_strips(e, 99, 2), 0, "no such kind");
+            let mut c = LdCounts::default();
+            ld_engine_configured_counts(e, &mut c);
+            assert_eq!((c.mains, c.matrices), (6, 2), "the configuration follows");
             ld_engine_collect(e);
             ld_engine_destroy(e);
         }

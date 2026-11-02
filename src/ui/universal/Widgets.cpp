@@ -291,6 +291,7 @@ void ToggleKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
     g.setColour (lit ? theme.textOnAccent : (isEnabled() ? theme.text : theme.textDim));
     g.setFont (type::font (type::kLabel, true));
     g.drawText (getButtonText(), area, juce::Justification::centred);
+    drawDeviceTag (g, area.reduced (5.0f, 3.0f).removeFromTop (14.0f), device, theme);
 }
 
 } // namespace livedaw::ui::universal

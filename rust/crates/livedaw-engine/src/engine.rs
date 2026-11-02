@@ -53,7 +53,7 @@ use crate::analyser::{rta_tap, Analyser, Probes};
 use crate::atomic::AtomicF32;
 use crate::blocks::{Block, BlockKind, Step, MAX_EXTRA_BLOCKS};
 use crate::chain::Node;
-use crate::config::{ConsoleConfig, Counts};
+use crate::config::{ConsoleConfig, Counts, MAX_AUX};
 use crate::denormals::ScopedNoDenormals;
 use crate::fx::{FxRack, InsertCallbacks};
 use crate::garbage::Garbage;
@@ -514,6 +514,110 @@ impl Engine {
         st.buses.sort_by_key(|b| b.id());
         self.publish(&st);
         Some(strip)
+    }
+
+    /// Message thread: changes how many aux channels, buses, mains or matrices
+    /// the console has, without a reset (the Universal Mixer's configuration,
+    /// docs/UNIVERSAL_MIXER.md). New strips come at the end with factory
+    /// settings, and every strip gets its (factory) sends to new mains and
+    /// matrices. Strips go from the end, but a bus, main or matrix that
+    /// something feeds (a send that is on) stays, with those before it: the
+    /// count never goes below the last one fed. Aux channels are inputs:
+    /// they go whatever they do (the interface warns first). Channels:
+    /// `set_num_channels`. Returns the number set; the configuration (shows
+    /// save it) follows.
+    pub fn set_num_strips(&self, kind: StripKind, count: usize) -> usize {
+        let mut st = self.lock();
+        let inputs_and_buses = |st: &Structure| st.channels.iter().chain(&st.auxes).chain(&st.buses).cloned().collect::<Vec<_>>();
+        let n = match kind {
+            StripKind::Channel => return st.channels.len(),
+            StripKind::Aux => {
+                let n = count.min(MAX_AUX);
+                st.counts.aux = n;
+                while st.auxes.len() < n {
+                    let s = self.new_strip(&st, StripKind::Aux, st.auxes.len() as i32);
+                    st.auxes.push(s);
+                }
+                st.auxes.truncate(n);
+                n
+            }
+            StripKind::Bus => {
+                let old = st.counts.buses;
+                let fed = |slot: usize| {
+                    inputs_and_buses(&st).iter().any(|s| s.sends.find(slot).is_some_and(|send| send.enabled.load(Relaxed)))
+                };
+                let n = count.min(MAX_BUSES);
+                let n = if n < old { (n..old).rev().find(|&b| fed(b)).map_or(n, |b| b + 1) } else { n };
+                st.counts.buses = n;
+                for slot in old..n {
+                    if st.buses.iter().any(|b| b.id() as usize == slot) {
+                        continue; // an added bus in that slot is now one of the console's
+                    }
+                    for s in inputs_and_buses(&st) {
+                        if let Some(send) = s.sends.find(slot) {
+                            send.reset(s.sends.default_mode(slot));
+                        }
+                    }
+                    let b = self.new_strip(&st, StripKind::Bus, slot as i32);
+                    st.buses.push(b);
+                }
+                st.buses.retain(|b| !(n..old).contains(&(b.id() as usize)));
+                st.buses.sort_by_key(|b| b.id());
+                n
+            }
+            StripKind::Main => {
+                let old = st.mains.len();
+                let fed =
+                    |i: usize| inputs_and_buses(&st).iter().any(|s| s.main_send(i).is_some_and(|send| send.on.load(Relaxed)));
+                let n = count.clamp(1, MAX_MAINS);
+                let n = if n < old { (n..old).rev().find(|&i| fed(i)).map_or(n, |i| i + 1) } else { n };
+                st.counts.mains = n;
+                for i in old..n {
+                    for s in inputs_and_buses(&st) {
+                        if let Some(send) = s.main_send(i) {
+                            send.reset(s.kind(), s.id().max(0) as usize, i);
+                        }
+                    }
+                    let m = self.new_strip(&st, StripKind::Main, i as i32);
+                    st.mains.push(m);
+                }
+                st.mains.truncate(n);
+                let matrices = st.matrices.len();
+                for s in inputs_and_buses(&st) {
+                    s.create_sends(n, matrices);
+                }
+                n
+            }
+            StripKind::Matrix => {
+                let old = st.matrices.len();
+                let sources =
+                    |st: &Structure| inputs_and_buses(st).into_iter().chain(st.mains.iter().cloned()).collect::<Vec<_>>();
+                let fed = |i: usize| sources(&st).iter().any(|s| s.matrix_send(i).is_some_and(|send| send.on.load(Relaxed)));
+                let n = count.min(MAX_MATRICES);
+                let n = if n < old { (n..old).rev().find(|&i| fed(i)).map_or(n, |i| i + 1) } else { n };
+                st.counts.matrices = n;
+                for i in old..n {
+                    for s in sources(&st) {
+                        if let Some(send) = s.matrix_send(i) {
+                            send.reset(s.kind());
+                        }
+                    }
+                    let m = self.new_strip(&st, StripKind::Matrix, i as i32);
+                    st.matrices.push(m);
+                }
+                st.matrices.truncate(n);
+                let mains = st.mains.len();
+                for s in inputs_and_buses(&st) {
+                    s.create_sends(mains, n);
+                }
+                for s in st.mains.iter() {
+                    s.create_sends(0, n);
+                }
+                n
+            }
+        };
+        self.publish(&st);
+        n
     }
 
     /// Removes a channel, or a bus beyond the console's configured ones

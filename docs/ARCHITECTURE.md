@@ -877,6 +877,23 @@ screens) and its controls: the WING's front panel (`ui::Faceplate`) or a
 solo bus (`setSoloBus`), solo mode, PFL / AFL (`setSoloAfl`) and CLEAR SOLO (every
 strip and every DCA in use).
 
+SCENES (`ScenesView.h`) runs and edits the show's scenes through `Show` (`recallScene`,
+`recallNext` / `recallPrevious`, `addScene`, `storeScene`, `moveScene`, `removeScene`,
+`setSceneName`; recalls are logged with `logRecall`). RECORDER (`RecorderView.h`)
+embeds the WING display's `RecorderPage` (on `UiContext::recording`) and
+`UsbRecorderPage`, with `showEditor` for the multitrack editor. SETUP (`SetupView.h`):
+the configuration editor applies its counts with `MixerEngine::setNumStrips`
+(`Engine::set_num_strips`, C ABI 29: aux, buses, mains and matrices without a reset,
+new strips at the end with factory settings and every strip's factory sends to new
+mains and matrices, a main or matrix added again starting clean; strips go from the
+end but never one that something feeds, nor those before it), `setNumChannels`,
+`setNumDcas`, `setNumMuteGroups` and `FxSlots::setNumSlots`, then
+`UiContext::structureChanged`; AUDIO is JUCE's `AudioDeviceSelectorComponent`. A strip
+column's `StripOverview` draws the strip's trim and output levels (`MeterBank`), its
+GATE and DYNAMICS gain reduction (`StripMeters`) and its EQ curve (`ld_strip_response`,
+taken again only when the EQ's model or values change); the MIXER view's FADERS key
+(`uiprefs::universalFaders`) hides the faders and gives the overview the column.
+
 Device tags: the Universal Mixer will hold several emulations, so a part that one
 console's emulation defines shows its name (`devices::wing`, drawn by
 `drawDeviceTag`): `ChainList::Row::device` and `BlockTarget::device` (the strip's own
@@ -1380,9 +1397,10 @@ README's *Known limitations*; keep the three in step.
   the WING's own blocks still live in `StripParams` (they move out with the WING
   profile, Phase 3), and the strip sources, the monitor SOURCE / DIRECT IN lists and
   the talkback destinations cover the WING's buses, mains and matrices only. The
-  Universal Mixer's interface is a preview: its MIXER view covers any configuration,
-  and the rest of the console's controls are on the WING surface, which addresses the
-  WING's ranges.
+  Universal Mixer's interface is a preview: it covers the mixer, chains, sends,
+  routing, FX, monitoring, scenes, the recorder and setup for any configuration; the
+  monitor paths' processing, talkback, custom controls, the library, snippets and the
+  remotes' settings are on the WING surface, which addresses the WING's ranges.
 
 - Hardware: the audio interface's ports stand in for the WING's. No StageConnect,
   AES50 or Dante; source GAIN is digital and +48V is only stored.

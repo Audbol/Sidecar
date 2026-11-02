@@ -1480,3 +1480,75 @@ fn post_solo_follows_the_pan() {
     rig.run(20);
     assert!(close(rig.out(2), rig.out(3), 1e-5));
 }
+
+#[test]
+fn the_console_grows_and_shrinks_without_a_reset() {
+    let mut rig = Rig::new(1, 1, 4);
+    set_channels(&rig.engine, 2);
+    let engine = rig.engine.clone();
+    let ch = rig.ch(0);
+    let main1 = rig.strip(StripKind::Main, 0);
+    main1.params.fader_db.store(-6.0);
+
+    // Two more mains: every strip sends to them (off, as the factory has it),
+    // and the rest of the console stays as it was.
+    assert_eq!(engine.set_num_strips(StripKind::Main, 6), 6);
+    assert_eq!(engine.num_strips(StripKind::Main), 6);
+    assert_eq!(engine.config().counts.mains, 6, "the configuration follows");
+    assert!(Arc::ptr_eq(&main1, &rig.strip(StripKind::Main, 0)), "MAIN 1 is the same strip");
+    assert_eq!(main1.params.fader_db.load(), -6.0);
+    assert!(Arc::ptr_eq(&ch, &rig.ch(0)));
+    let to_main6 = ch.main_send(5).unwrap();
+    assert!(!to_main6.on.load(Relaxed));
+    assert!(rig.strip(StripKind::Bus, 3).main_send(5).is_some());
+
+    // Audio through MAIN 6.
+    let main6 = rig.strip(StripKind::Main, 5);
+    main6.params.fader_db.store(0.0);
+    main6.params.output_left.store(2, Relaxed);
+    ch.params.fader_db.store(0.0);
+    ch.main_send(0).unwrap().on.store(false, Relaxed);
+    to_main6.on.store(true, Relaxed);
+    to_main6.level_db.store(0.0);
+    rig.set_input(0, 0.5);
+    rig.run(20);
+    assert!(close(rig.out(2), 0.5 * CENTRE, 1e-4), "{}", rig.out(2));
+
+    // A main something feeds stays (and those before it); unfed, they go.
+    assert_eq!(engine.set_num_strips(StripKind::Main, 2), 6, "MAIN 6 is fed");
+    to_main6.on.store(false, Relaxed);
+    assert_eq!(engine.set_num_strips(StripKind::Main, 2), 2);
+    assert_eq!(engine.config().counts.mains, 2);
+    assert_eq!(engine.set_num_strips(StripKind::Main, 0), 1, "a console has a main");
+    // Added again, a main starts clean: the old send's settings don't come back.
+    to_main6.on.store(true, Relaxed);
+    assert_eq!(engine.set_num_strips(StripKind::Main, 6), 6);
+    assert!(!ch.main_send(5).unwrap().on.load(Relaxed));
+    rig.run(4);
+
+    // Matrices: likewise, fed from a main too.
+    assert_eq!(engine.set_num_strips(StripKind::Matrix, 10), 10);
+    assert!(main1.matrix_send(9).is_some() && ch.matrix_send(9).is_some());
+    main1.matrix_send(9).unwrap().on.store(true, Relaxed);
+    assert_eq!(engine.set_num_strips(StripKind::Matrix, 4), 10);
+    main1.matrix_send(9).unwrap().on.store(false, Relaxed);
+    assert_eq!(engine.set_num_strips(StripKind::Matrix, 4), 4);
+
+    // Buses: a fed bus stays.
+    assert_eq!(engine.set_num_strips(StripKind::Bus, 24), 24);
+    assert_eq!(engine.num_strips(StripKind::Bus), 24);
+    ch.sends.get_or_create(22).unwrap().enabled.store(true, Relaxed);
+    assert_eq!(engine.set_num_strips(StripKind::Bus, 8), 23);
+    ch.sends.find(22).unwrap().enabled.store(false, Relaxed);
+    assert_eq!(engine.set_num_strips(StripKind::Bus, 8), 8);
+    assert_eq!(engine.num_strips(StripKind::Bus), 8);
+
+    // Aux: inputs, they come and go (the interface warns first).
+    assert_eq!(engine.set_num_strips(StripKind::Aux, 12), 12);
+    assert_eq!(engine.set_num_strips(StripKind::Aux, 2), 2);
+    assert_eq!(engine.num_strips(StripKind::Aux), 2);
+    // Channels have set_num_channels.
+    assert_eq!(engine.set_num_strips(StripKind::Channel, 9), 2);
+    rig.run(4);
+    engine.collect();
+}

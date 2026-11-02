@@ -29,7 +29,7 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 28;
+constexpr int kAbiVersion = 29;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -1097,6 +1097,11 @@ extern "C"
         the channels; writes the counts configured (within what the engine holds) to `out`
         (may be null). */
     void ld_engine_set_config (const Engine*, const CountsC* counts, CountsC* out);
+    /** ABI 29: the number of aux channels, buses, mains or matrices (`kind`, StripKindId),
+        changed without a reset: new strips at the end; strips removed from the end, but
+        never a bus, main or matrix something feeds (nor those before it). Returns the
+        number set (kChannel: the channels, unchanged: ld_engine_set_num_channels). */
+    int32_t ld_engine_set_num_strips (const Engine*, int32_t kind, int32_t count);
     /** Sets the DCAs in use (up to kMaxDcas, never below a DCA with a member); returns the number set. */
     int32_t ld_engine_set_num_dcas (const Engine*, int32_t count);
     /** Sets the mute groups in use (up to kMaxMuteGroups, never below one engaged or with a member). */

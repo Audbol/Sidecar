@@ -76,6 +76,16 @@ WING works as before throughout.
   tile per FX slot and the selected slot's device, plugins and controls (the device's
   front panel or its parameter list). MONITORING has the speakers' and phones' paths
   and the solo settings, with CLEAR SOLO.
+- Universal Mixer, Phase 2 step 6: SCENES (GO, PREV, NEXT, ADD, STORE, RENAME, UP,
+  DOWN, REMOVE), RECORDER (the recorder pages and the multitrack editor) and SETUP: the
+  console's configuration (channels, aux, buses, mains, matrices, DCAs, mute groups,
+  FX slots) changes without a reset. New ones are added at the end and everything else
+  stays; fewer take from the end after a warning, keeping a bus, main or matrix that
+  something sends to, a DCA or mute group with members and an FX slot in use. AUDIO
+  (the audio device) and PREFERENCES too. C ABI 29: `ld_engine_set_num_strips`.
+- The Universal MIXER view's strips have an overview above a shorter fader: input
+  level, GATE and DYNAMICS gain reduction, the EQ curve and output level. **FADERS**
+  hides or shows the faders at any moment, the overview then taking the column.
 - The Universal Mixer tags the parts that come from one console's emulation with its
   name (WING: the strip's own blocks, the model lists, front panels, routing groups,
   send modes, monitor sources, solo modes and the fader law), ready for the other

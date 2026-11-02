@@ -760,6 +760,144 @@ public:
             expect (skin.getMonitoring().isVisible() && ! skin.getFxRack().isVisible());
             skin.showView (ui::UniversalSkin::View::Mixer);
             expect (skin.getMixer().isVisible() && ! skin.getMonitoring().isVisible());
+            for (auto v : { ui::UniversalSkin::View::Scenes, ui::UniversalSkin::View::Recorder, ui::UniversalSkin::View::Setup })
+            {
+                skin.showView (v);
+                expect (skin.getView() == v && ! skin.getMixer().isVisible());
+            }
+            expect (skin.getScenes().isVisible() == false && skin.getSetup().isVisible());
+            // The recorder pages are the WING display's.
+            expectEquals (skin.getRecorder().usbTab.device, devices::wing);
+            skin.getRecorder().showPage (RecorderView::Page::Usb);
+            expect (skin.getRecorder().getPageComponent() != nullptr && skin.getRecorder().getPageComponent()->isVisible());
+        }
+
+        beginTest ("A strip's overview shows its input, gate, compression, EQ and output; FADERS hides or shows the faders");
+        {
+            MixerEngine engine (0);
+            test::setChannels (engine, 2);
+            UiRig rig (engine);
+            MixerView view (rig.ctx, Theme::dark());
+            view.setSize (1400, 900);
+            auto& column = *view.getColumn (0);
+            auto& strip = column.getStrip();
+            auto& p = strip.params;
+            p.gate.on = true;
+            p.dynamics.on = true;
+            strip.meters.gateReductionDb = 6.0f;
+            strip.meters.dynReductionDb = 3.0f;
+            strip.meters.trimPeak[0] = 0.5f;
+            strip.meters.outputPeak[0] = 0.25f;
+            p.eq.on = true;
+            p.eq.values[models::model ((models::Table) strip.getEqTable(), p.eq.model.load()).find ("lg")] = 6.0f;
+            rig.meters.advance (0.01f);
+            view.refresh();
+            const auto& o = column.overview;
+            expectWithinAbsoluteError (o.getGateReduction(), 6.0f, 0.01f);
+            expectWithinAbsoluteError (o.getDynamicsReduction(), 3.0f, 0.01f);
+            expectWithinAbsoluteError (o.getInput(), ui::fader::dbToPos (dsp::gainToDb (0.5f)), 0.01f);
+            expectWithinAbsoluteError (o.getOutput(), ui::fader::dbToPos (dsp::gainToDb (0.25f)), 0.01f);
+            expect (! o.getEqCurve().empty() && o.getEqCurve().front() > 5.0, "the EQ's low shelf");
+
+            // With faders: the fader no taller than it needs, the overview above it.
+            expect (view.areFadersShown() && column.fader.isVisible());
+            expect (column.fader.getHeight() <= 340 && column.overview.getBottom() < column.fader.getY());
+            const int withFaders = column.overview.getHeight();
+            expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds(), true, 1.0f), "universal-overview-faders.png"));
+            // FADERS off: no fader, the overview takes the column.
+            view.setFadersShown (false);
+            expect (! column.fader.isVisible() && ! column.meter.isVisible());
+            expect (column.overview.getHeight() > withFaders + 200);
+            expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds(), true, 1.0f), "universal-overview.png"));
+            // A rebuild keeps the choice.
+            view.setFilter ((int) StripKind::Channel);
+            expect (! view.getColumn (0)->fader.isVisible());
+            view.setFadersShown (true);
+            expect (view.getColumn (0)->fader.isVisible());
+        }
+
+        beginTest ("SCENES runs and edits the show's scenes");
+        {
+            MixerEngine engine (0);
+            test::setChannels (engine, 2);
+            UiRig rig (engine);
+            ScenesView view (rig.ctx, Theme::dark());
+            view.setSize (1200, 700);
+            expectEquals (view.getNumRows(), 0);
+            auto& fader = engine.getChannels()[0]->params.faderDb;
+            fader = -10.0f;
+            expectEquals (view.add(), 0);
+            fader = -20.0f;
+            expectEquals (view.add(), 1);
+            expectEquals (view.getNumRows(), 2);
+            expectEquals (view.getSelectedScene(), 1);
+            view.rename ("Verse");
+            expectEquals (rig.show.getScene (1)->name, juce::String ("Verse"));
+            // GO: the selected scene's console.
+            view.selectScene (0);
+            view.go();
+            expectEquals (fader.load(), -10.0f);
+            expectEquals (rig.show.getCurrentSceneIndex(), 0);
+            // STORE: the console into the selected scene.
+            fader = -5.0f;
+            view.store();
+            fader = 0.0f;
+            view.go();
+            expectEquals (fader.load(), -5.0f);
+            // DOWN, then REMOVE.
+            view.move (1);
+            expectEquals (view.getSelectedScene(), 1);
+            expectEquals (rig.show.getScene (0)->name, juce::String ("Verse"));
+            view.remove();
+            expectEquals (view.getNumRows(), 1);
+            expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds(), true, 1.0f), "universal-scenes.png"));
+        }
+
+        beginTest ("SETUP changes the console's configuration without a reset, keeping what is in use");
+        {
+            MixerEngine engine (0);
+            const Counts counts { 8, 2, 8, 2, 4, 8, 4, 16 };
+            engine.configure (&counts);
+            UiRig rig (engine);
+            SetupView view (rig.ctx, Theme::dark());
+            view.setSize (1200, 800);
+            auto& ch1 = *engine.getChannels()[0];
+            ch1.setName ("Kick");
+            ch1.params.faderDb = -3.0f;
+
+            // More mains and matrices: nothing goes, everything stays.
+            view.setPending (SetupView::Mains, 4);
+            view.setPending (SetupView::Matrices, 6);
+            expect (view.describeRemovals().isEmpty());
+            view.apply();
+            const auto c = engine.getCounts();
+            expect (c.mains == 4 && c.matrices == 6, "the new counts");
+            auto& kick = *engine.getChannels()[0];
+            expectEquals (kick.getOwnName(), juce::String ("Kick"));
+            expectEquals (kick.params.faderDb.load(), -3.0f, "no reset");
+            expect (kick.mains[3].on.load() == false, "its send to MAIN 4: the factory's");
+
+            // Fewer buses: one that something feeds stays (with those before it).
+            kick.sends[5].enabled = true;
+            view.setPending (SetupView::Buses, 4);
+            expect (view.describeRemovals().joinIntoString (" ").contains ("BUS 5-8"));
+            view.apply();
+            expectEquals (engine.getCounts().buses, 6);
+            expect (view.getStatus().contains ("kept"), view.getStatus());
+            // Fewer channels: they go, with their settings.
+            view.setPending (SetupView::Channels, 4);
+            expect (view.describeRemovals().joinIntoString (" ").contains ("CH 5-8, with their settings"));
+            view.apply();
+            expectEquals (engine.getCounts().channels, 4);
+            // The ranges hold: FX slots from the WING's 16, a main at least.
+            view.setPending (SetupView::FxSlots, 4);
+            expectEquals (view.getPending (SetupView::FxSlots), ld::kWingFx);
+            view.setPending (SetupView::Mains, 0);
+            expectEquals (view.getPending (SetupView::Mains), 1);
+            view.revert();
+            expectEquals (view.getPending (SetupView::Mains), 4);
+            view.refresh();
+            expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds(), true, 1.0f), "universal-setup.png"));
         }
     }
 };

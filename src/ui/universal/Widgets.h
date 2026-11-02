@@ -124,6 +124,8 @@ public:
     ToggleKey (const juce::String& label, juce::Colour onColour, const Theme&);
 
     std::function<bool()> isOn, isHalfOn;
+    /** The console the key's page comes from (devices::wing), as a tag in its corner. */
+    juce::String device;
     void refresh();
 
     void paintButton (juce::Graphics&, bool highlighted, bool down) override;

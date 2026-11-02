@@ -426,6 +426,16 @@ pub struct MainSendParams {
 unsafe impl Sync for MainSendParams {}
 
 impl MainSendParams {
+    /// Message thread: back to the factory send `index` of a strip of `kind`
+    /// in `slot` (a main added again starts clean). The ramp is left alone.
+    pub fn reset(&self, kind: StripKind, slot: usize, index: usize) {
+        let f = Self::factory(kind, slot, index);
+        self.on.store(f.on.load(Relaxed), Relaxed);
+        self.pre.store(f.pre.load(Relaxed), Relaxed);
+        self.level_db.store(f.level_db.load());
+        self.tap.store(f.tap.load(Relaxed), Relaxed);
+    }
+
     /// The send's gain ramp.
     ///
     /// # Safety
@@ -480,6 +490,20 @@ pub struct MatrixSendParams {
 unsafe impl Sync for MatrixSendParams {}
 
 impl MatrixSendParams {
+    /// Message thread: back to the factory send of a strip of `kind` (a matrix
+    /// added again starts clean). The ramp is left alone.
+    pub fn reset(&self, kind: StripKind) {
+        let f = Self::factory(kind, 0, 0);
+        self.on.store(f.on.load(Relaxed), Relaxed);
+        self.pre.store(f.pre.load(Relaxed), Relaxed);
+        self.ignore_mute.store(f.ignore_mute.load(Relaxed), Relaxed);
+        self.pan_link.store(f.pan_link.load(Relaxed), Relaxed);
+        self.pan_reversed.store(f.pan_reversed.load(Relaxed), Relaxed);
+        self.level_db.store(f.level_db.load());
+        self.pan.store(f.pan.load());
+        self.tap.store(f.tap.load(Relaxed), Relaxed);
+    }
+
     /// The send's gain ramp.
     ///
     /// # Safety

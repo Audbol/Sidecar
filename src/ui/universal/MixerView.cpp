@@ -1,13 +1,112 @@
 #include "ui/universal/MixerView.h"
 
+#include "dsp/DspUtils.h"
 #include "ui/Knobs.h"
 
 namespace livedaw::ui::universal
 {
 
 //==============================================================================
+StripOverview::StripOverview (UiContext& c, Strip& s, const Theme& t) : ctx (c), strip (s), theme (t)
+{
+    setInterceptsMouseClicks (false, false);
+    for (int i = 0; i < 24; ++i)
+        eqFreqs.push_back (20.0 * std::pow (1000.0, (double) i / 23.0));
+}
+
+void StripOverview::refresh()
+{
+    const auto level = [this] (MeterPoint point)
+    {
+        const float peak = juce::jmax (ctx.meters.get (&strip, point, 0), ctx.meters.get (&strip, point, 1));
+        return fader::dbToPos (dsp::gainToDb (peak));
+    };
+    const float in = level (MeterPoint::Trim), out = level (MeterPoint::Output);
+    const auto& p = strip.params;
+    const float g = std::abs (strip.meters.gateReductionDb.load()), d = std::abs (strip.meters.dynReductionDb.load());
+    const bool go = p.gate.on.load(), dO = p.dynamics.on.load(), eo = p.eq.on.load();
+    bool changed = std::abs (in - input) > 0.005f || std::abs (out - output) > 0.005f || std::abs (g - gateGr) > 0.2f || std::abs (d - dynGr) > 0.2f
+                   || go != gateOn || dO != dynOn || eo != eqOn;
+    input = in;
+    output = out;
+    gateGr = g;
+    dynGr = d;
+    gateOn = go;
+    dynOn = dO;
+    eqOn = eo;
+
+    // The EQ's curve, only when the EQ changed (its model, its values, ON, MIX).
+    std::vector<float> state { (float) p.eq.model.load(), eo ? 1.0f : 0.0f, p.eq.mix.load() };
+    for (const auto& v : p.eq.values)
+        state.push_back (v.load());
+    if (state != eqState)
+    {
+        eqState = std::move (state);
+        eqCurve.assign (eqFreqs.size(), 0.0);
+        const double sr = ctx.engine.getSampleRate() > 0.0 ? ctx.engine.getSampleRate() : 48000.0;
+        ld::ld_strip_response (strip.getHandle(), 1, eqFreqs.data(), eqCurve.data(), (int) eqFreqs.size(), sr);
+        changed = true;
+    }
+    if (changed)
+        repaint();
+}
+
+void StripOverview::paint (juce::Graphics& g)
+{
+    auto area = getLocalBounds().toFloat();
+    const auto bar = [&] (const char* label, bool lit, float fill, juce::Colour colour, bool fromRight)
+    {
+        auto row = area.removeFromTop (18.0f);
+        area.removeFromTop (4.0f);
+        g.setColour (lit ? theme.text : theme.textDim);
+        g.setFont (type::font (type::kCaption - 1.0f, true));
+        g.drawText (label, row.removeFromLeft (30.0f), juce::Justification::centredLeft);
+        const auto well = row.withSizeKeepingCentre (row.getWidth(), 8.0f);
+        g.setColour (theme.well);
+        g.fillRoundedRectangle (well, 2.0f);
+        const float w = well.getWidth() * juce::jlimit (0.0f, 1.0f, fill);
+        g.setColour (colour);
+        g.fillRoundedRectangle (fromRight ? well.withLeft (well.getRight() - w) : well.withWidth (w), 2.0f);
+    };
+    // Levels on the fader's scale; gain reduction over 24 dB, from the right.
+    bar ("IN", true, input, theme.meterLow, false);
+    bar ("GATE", gateOn, gateGr / 24.0f, theme.solo, true);
+    bar ("DYN", dynOn, dynGr / 24.0f, theme.solo, true);
+
+    // The EQ, +-15 dB.
+    auto eq = area.withTrimmedBottom (22.0f);
+    if (eq.getHeight() > 16.0f)
+    {
+        g.setColour (theme.well);
+        g.fillRoundedRectangle (eq, 4.0f);
+        g.setColour (theme.outline);
+        g.fillRect (eq.getX(), eq.getCentreY(), eq.getWidth(), 1.0f);
+        g.setColour (eqOn ? theme.text : theme.textDim);
+        g.setFont (type::font (type::kCaption - 1.0f, true));
+        g.drawText ("EQ", eq.reduced (5.0f, 3.0f), juce::Justification::topLeft);
+        if (! eqCurve.empty())
+        {
+            juce::Path path;
+            for (size_t i = 0; i < eqCurve.size(); ++i)
+            {
+                const float x = eq.getX() + eq.getWidth() * (float) i / (float) (eqCurve.size() - 1);
+                const float y = eq.getCentreY() - eq.getHeight() * 0.45f * (float) juce::jlimit (-1.0, 1.0, eqCurve[i] / 15.0);
+                if (i == 0)
+                    path.startNewSubPath (x, y);
+                else
+                    path.lineTo (x, y);
+            }
+            g.setColour (eqOn ? theme.accent : theme.textDim);
+            g.strokePath (path, juce::PathStrokeType (1.5f));
+        }
+    }
+    area = area.removeFromBottom (18.0f);
+    bar ("OUT", true, output, theme.meterLow, false);
+}
+
+//==============================================================================
 StripColumn::StripColumn (UiContext& c, Strip& s, const Theme& t)
-    : muteKey ("MUTE", t.mute, t), soloKey ("SOLO", t.solo, t), pan (t), fader (t), meter (t), ctx (c), strip (s), theme (t)
+    : muteKey ("MUTE", t.mute, t), soloKey ("SOLO", t.solo, t), pan (t), overview (c, s, t), fader (t), meter (t), ctx (c), strip (s), theme (t)
 {
     muteKey.onClick = [this] { ctx.engine.pressMute (strip); };
     // Lit for its own mute; muted by a mute group, a DCA or SIP, the outline (the WING's key flashes).
@@ -18,7 +117,7 @@ StripColumn::StripColumn (UiContext& c, Strip& s, const Theme& t)
     pan.bind (&strip.params.pan);
     fader.bind (&strip.params.faderDb);
     meter.level = [this] (int ch) { return ctx.meters.get (&strip, MeterPoint::Output, ch); };
-    for (auto* child : std::initializer_list<juce::Component*> { &muteKey, &soloKey, &pan, &fader, &meter })
+    for (auto* child : std::initializer_list<juce::Component*> { &muteKey, &soloKey, &pan, &overview, &fader, &meter })
         addAndMakeVisible (child);
     setTitle (strip.getLabel());
     refresh();
@@ -30,8 +129,12 @@ void StripColumn::refresh()
     muteKey.refresh();
     soloKey.refresh();
     pan.refresh();
-    fader.refresh();
-    meter.refresh();
+    overview.refresh();
+    if (faderShown)
+    {
+        fader.refresh();
+        meter.refresh();
+    }
 
     const auto newName = strip.getName();
     const int newColour = strip.getColourIndex();
@@ -43,6 +146,16 @@ void StripColumn::refresh()
         shownDb = db;
         repaint();
     }
+}
+
+void StripColumn::setFaderShown (bool shown)
+{
+    if (shown == faderShown)
+        return;
+    faderShown = shown;
+    fader.setVisible (shown);
+    meter.setVisible (shown);
+    resized();
 }
 
 void StripColumn::setSelected (bool shouldBeSelected)
@@ -100,9 +213,20 @@ void StripColumn::resized()
     area.removeFromTop (sizes::kGapSmall);
     soloKey.setBounds (area.removeFromTop (sizes::kTouch));
     area.removeFromTop (sizes::kGap);
-    meter.setBounds (area.removeFromRight (12)); // as tall as the fader: they line up
-    area.removeFromRight (sizes::kGapSmall);
-    fader.setBounds (area);
+    if (! faderShown)
+    {
+        overview.setBounds (area); // the overview takes the column
+        return;
+    }
+    // The fader no taller than it needs: the rest is the overview's.
+    constexpr int kOverview = 176, kMaxFader = 340;
+    const int faderHeight = juce::jlimit (0, kMaxFader, area.getHeight() - kOverview - sizes::kGap);
+    auto faderArea = area.removeFromBottom (faderHeight);
+    area.removeFromBottom (sizes::kGap);
+    overview.setBounds (area);
+    meter.setBounds (faderArea.removeFromRight (12)); // as tall as the fader: they line up
+    faderArea.removeFromRight (sizes::kGapSmall);
+    fader.setBounds (faderArea);
 }
 
 void StripColumn::mouseUp (const juce::MouseEvent& e)
@@ -130,8 +254,17 @@ namespace
     }
 } // namespace
 
-MixerView::MixerView (UiContext& c, const Theme& t) : ctx (c), theme (t)
+MixerView::MixerView (UiContext& c, const Theme& t) : fadersKey ("FADERS", t.accent, t), ctx (c), theme (t)
 {
+    // FADERS shows or hides the faders at any moment (the overviews then take the columns); an app setting.
+    fadersShown = ctx.settings.getBoolValue (uiprefs::universalFaders, true);
+    fadersKey.isOn = [this] { return fadersShown; };
+    fadersKey.onClick = [this]
+    {
+        setFadersShown (! fadersShown);
+        ctx.settings.setValue (uiprefs::universalFaders, fadersShown);
+    };
+    addAndMakeVisible (fadersKey);
     for (int kind = -1; kind < kNumStripKinds; ++kind)
     {
         auto key = std::make_unique<ToggleKey> (filterName (kind), theme.accent, theme);
@@ -155,6 +288,14 @@ MixerView::~MixerView()
     stopTimer();
 }
 
+void MixerView::setFadersShown (bool shown)
+{
+    fadersShown = shown;
+    for (auto& c : columns)
+        c->setFaderShown (shown);
+    fadersKey.refresh();
+}
+
 void MixerView::setFilter (int kind)
 {
     const int f = juce::jlimit (-1, kNumStripKinds - 1, kind);
@@ -175,11 +316,13 @@ void MixerView::rebuild()
         for (auto& s : ctx.engine.getStrips (static_cast<StripKind> (k)))
         {
             columns.push_back (std::make_unique<StripColumn> (ctx, *s, theme));
+            columns.back()->setFaderShown (fadersShown);
             content.addAndMakeVisible (*columns.back());
         }
     }
     for (auto& key : filterKeys)
         key->refresh();
+    fadersKey.refresh();
     layoutColumns();
     selectionChanged();
 }
@@ -211,18 +354,20 @@ StripColumn* MixerView::getColumn (int index) const noexcept
 void MixerView::paint (juce::Graphics& g)
 {
     g.fillAll (theme.background);
-    // The faders' law is the WING's (ui::fader).
+    // The strips' blocks (the overview's GATE, DYN, EQ) and the faders' law are the WING's.
     auto bar = getLocalBounds().removeFromTop (sizes::kFilterBar).reduced (sizes::kGapLarge, 0).toFloat();
+    bar.removeFromRight ((float) fadersKey.getWidth() + sizes::kGap);
     bar.removeFromRight (drawDeviceTag (g, bar, devices::wing, theme));
     g.setColour (theme.textDim);
     g.setFont (type::font (type::kCaption, true));
-    g.drawText ("FADER LAW", bar, juce::Justification::centredRight);
+    g.drawText ("BLOCKS AND FADER LAW", bar, juce::Justification::centredRight);
 }
 
 void MixerView::resized()
 {
     auto area = getLocalBounds();
     auto bar = area.removeFromTop (sizes::kFilterBar).reduced (sizes::kGap, sizes::kGapSmall);
+    fadersKey.setBounds (bar.removeFromRight (120));
     for (auto& key : filterKeys)
     {
         key->setBounds (bar.removeFromLeft (112));

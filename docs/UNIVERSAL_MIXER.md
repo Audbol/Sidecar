@@ -244,7 +244,13 @@ Three layers:
       talkback stay on the WING surface.
    6. SCENES, RECORDER (the recorder page and the multitrack editor) and SETUP
       (audio device, preferences, a configuration editor with the non-destructive
-      changes).
+      changes) (done): `ScenesView`, `RecorderView` (the WING display's recorder
+      pages, tagged WING), `SetupView` (CONSOLE: the counts with APPLY, through
+      `Engine::set_num_strips`, C ABI 29; AUDIO; PREFERENCES). Also, from the owner's
+      review of the MIXER view: the faders were too tall for the room a strip's
+      processing deserves, so a column has an overview (input, GATE and DYNAMICS gain
+      reduction, the EQ curve, output) and the FADERS key hides or shows the faders
+      at any moment.
    7. Docs, a user-guide chapter and screenshots.
 3. **WING as a profile**: move the WING's limits, defaults, laws, surface, protocols
    and files into a WING profile over the core (including Phase 1's step 3d: the
