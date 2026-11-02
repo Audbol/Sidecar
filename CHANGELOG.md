@@ -34,6 +34,9 @@ WING works as before throughout.
 - Universal core, Phase 1 step 3c: tap points anywhere in a strip's chain (up to 32
   per strip); any send to a bus, main or matrix can take its signal at one. Saved with
   the show. C ABI 27: the sends' `tap`.
+- Universal core, Phase 1 step 5: tests that run a console that isn't a WING (48
+  channels, 24 buses, 2 mains, 6 matrices, 32 DCAs, 12 mute groups, extra blocks and
+  taps) end to end, in Rust and in C++, through a show save and load.
 
 ### Changed
 

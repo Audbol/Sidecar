@@ -95,6 +95,77 @@ public:
             engine.getGarbage().collectAllNow();
         }
 
+        beginTest ("A console that isn't a WING: audio through BUS 21, MAIN 2 and MTX 6, and a show round trip");
+        {
+            MixerEngine engine (0);
+            PluginHost host (nullptr);
+            Show show (engine, host);
+            const Counts counts { 4, 2, 24, 2, 6, 32, 12, 16 };
+            engine.configure (&counts);
+            test::OfflineRig rig (engine, 1, 6);
+
+            // CH 4 -> BUS 21 (post) -> MAIN 2 -> MTX 6 at -6 dB; CH 4 in DCA 30 at -6 dB.
+            auto& ch = *engine.getChannels()[3];
+            ch.params.faderDb = 0.0f;
+            ch.params.inputLeft = 0;
+            ch.mains[0].on = false;
+            auto& send = ch.sends[20];
+            send.enabled = true;
+            send.mode = (int32_t) SendMode::Post;
+            send.levelDb = 0.0f;
+            auto* bus21 = engine.getBusInSlot (20);
+            expect (bus21 != nullptr);
+            if (bus21 == nullptr)
+                return;
+            bus21->mains[1].on = true;
+            auto& main1 = *engine.getMains()[0];
+            auto& main2 = *engine.getMains()[1];
+            auto& mtx6 = *engine.getMatrices()[5];
+            main1.params.outputLeft = -1;
+            main1.params.outputRight = -1;
+            main2.params.outputLeft = 0;
+            main2.params.outputRight = 1;
+            main2.matrix[5].on = true;
+            main2.matrix[5].levelDb = -6.0206f;
+            mtx6.params.outputLeft = 2;
+            mtx6.params.outputRight = 3;
+            ch.params.dcaMask.set (29, true);
+            engine.getDca (29).faderDb = -6.0206f;
+            rig.setInput (0, 0.5f);
+            rig.run (40);
+            expectWithinAbsoluteError (rig.out (0), 0.25f * test::kCentre, 1.0e-4f);
+            expectWithinAbsoluteError (rig.out (2), 0.125f * test::kCentre, 1.0e-4f);
+
+            // The show brings the configuration and everything in it.
+            auto xml = show.toXml();
+            MixerEngine restoredEngine (0);
+            Show restored (restoredEngine, host);
+            const auto result = restored.loadFromXml (*xml);
+            expect (result.wasOk(), result.getErrorMessage());
+            const auto c = restoredEngine.getConfiguredCounts();
+            expect (c.buses == 24 && c.mains == 2 && c.matrices == 6 && c.dcas == 32 && c.muteGroups == 12);
+            expectEquals ((int) restoredEngine.getBuses().size(), 24);
+            expectEquals ((int) restoredEngine.getMains().size(), 2);
+            expectEquals ((int) restoredEngine.getMatrices().size(), 6);
+            expectEquals (restoredEngine.getNumDcas(), 32);
+            auto* r = state::findStrip (restoredEngine, { StripKind::Channel, ch.getId() });
+            expect (r != nullptr);
+            if (r == nullptr)
+                return;
+            expect (r->sends[20].enabled.load() && r->params.dcaMask.contains (29));
+            expect (restoredEngine.getMains()[1]->matrix[5].on.load());
+            expectEquals (restoredEngine.getDca (29).faderDb.load(), -6.0206f);
+
+            // And sounds the same.
+            test::OfflineRig again (restoredEngine, 1, 6, false);
+            again.setInput (0, 0.5f);
+            again.run (40);
+            for (int out = 0; out < 6; ++out)
+                expectWithinAbsoluteError (again.out (out), rig.out (out), 1.0e-5f);
+            engine.getGarbage().collectAllNow();
+            restoredEngine.getGarbage().collectAllNow();
+        }
+
         beginTest ("Scenes store and recall the console");
         {
             MixerEngine engine (0);

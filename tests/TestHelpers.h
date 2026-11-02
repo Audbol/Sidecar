@@ -92,14 +92,16 @@ inline void setChannels (MixerEngine& engine, int count)
     }
 }
 
-/** Drives a MixerEngine with constant (DC) inputs and captures its outputs. */
+/** Drives a MixerEngine with constant (DC) inputs and captures its outputs
+    (`unity`: on the console of unityConsole; false: the console as it is). */
 struct OfflineRig
 {
     static constexpr int kBlock = 128;
 
-    OfflineRig (MixerEngine& e, int numIns, int numOuts) : engine (e)
+    OfflineRig (MixerEngine& e, int numIns, int numOuts, bool unity = true) : engine (e)
     {
-        unityConsole (engine);
+        if (unity)
+            unityConsole (engine);
         engine.prepareOffline (48000.0, kBlock, numIns, numOuts);
         inputs.assign ((size_t) numIns, std::vector<float> (kBlock, 0.0f));
         outputs.assign ((size_t) numOuts, std::vector<float> (kBlock, 0.0f));

@@ -30,7 +30,7 @@ or environment. Keep it up to date as phases land.
    - The stage order stays Bus → Main → Matrix (buses send to buses in waves); no
      main → main or matrix → matrix sends until an emulation needs them.
 
-## Where the code stands (Sidecar 0.1.6)
+## Where the code stood (Sidecar 0.1.6, before Phase 1)
 
 Already general, reused as is:
 
@@ -63,14 +63,17 @@ WING-specific today, to generalize:
 - The show format stores WING-shaped state; the C ABI (version 23) mirrors the fixed
   `#[repr(C)]` blocks.
 
+Phase 1 (below) generalized the counts, the sends, the strip chain and the show
+format; what is still the WING's is listed under Phase 1's *Left for later*.
+
 ## Architecture
 
 Three layers:
 
 1. **Universal core** (engine + show model), with no fixed counts:
    - Any number of input channels, aux / stereo inputs, buses, mains, matrices, DCAs
-     (VCAs), mute groups, FX slots and monitor paths; mono, stereo or LCR strips and
-     buses.
+     (VCAs), mute groups, FX slots and monitor paths; mono or stereo strips and buses
+     (decision 4).
    - A strip's processing is a **chain of blocks**: any number of filters, EQs,
      dynamics, inserts (FX slot or plugin), delays and utility blocks, in any order,
      each block holding any model of its kind; **taps** (sends, direct outs, meters,
@@ -89,10 +92,10 @@ Three layers:
 
 ## Phases
 
-1. **Generalize the engine and show model** behind the current API: replace the
-   fixed counts with configurable ones, introduce the block chain with the WING's
-   fixed layout and process orders expressed as one configuration of it. The WING
-   keeps working on every commit; tests stay green. Steps:
+1. **Generalize the engine and show model** (done, November 2026) behind the current
+   API: replace the fixed counts with configurable ones, introduce the block chain with
+   the WING's fixed layout and process orders expressed as one configuration of it.
+   The WING kept working on every commit, its sound byte for byte the same. Steps:
    1. **Counts** (done): `ConsoleConfig` / `Counts` (`livedaw-engine/src/config.rs`)
       with `ConsoleConfig::wing()`; `Engine::configure`, `counts`,
       `set_num_dcas`, `set_num_mute_groups` (and the FX slots' `set_num_fx`). DCA
@@ -137,20 +140,36 @@ Three layers:
         Still to come: keys and direct outs at user taps, and their delay
         compensation (user taps are not compensated, like solo and direct
         outs).
-      - 3d: the blocks' parameters leave `StripParams` (which keeps the
-        strip-level state); C++ and `map.rs` facades.
+      - 3d, moved to Phase 3 (the owner's choice): the WING's own blocks' parameters
+        leave `StripParams` (which keeps the strip-level state), with C++ and
+        `map.rs` facades: that is what making the WING a profile does anyway.
    4. **Show format 4** (done): `<LiveDAWShow version="4">` with `<Console
       version="4" profile="wing">` and its `<Config>` (the counts), restored first
       (`Engine::set_config`) before the strips, chains and sends. Format 3 shows
       (0.1.x) load as a WING; the legacy converter applies below version 3; a
       newer format is refused (and 0.1.x refuses format 4). Another profile loads
       as a WING with a warning. The FX slots in use stay an app setting.
-   5. **A console that isn't a WING** in the tests (Rust and C++), and the docs.
+   5. **A console that isn't a WING** (done) in the tests:
+      `livedaw-session/tests/universal.rs` (48 channels, 24 buses, 2 mains, 6
+      matrices, 32 DCAs, 12 mute groups; audio through BUS 21, MAIN 2 with an
+      extra EQ block and MTX 6 with a user tap, DCA 30 and mute group 12; saved
+      and loaded into a fresh engine, which becomes the same console and sounds the
+      same) and the C++ `ShowTests` ("A console that isn't a WING", through the
+      C++ facades and the C++ show).
+
+   *Left for later* (each where it is needed): the extra blocks and user taps in
+   the C ABI (Phase 2, for the new interface); keys and direct outs at user taps,
+   and their delay compensation; strip sources, the monitor SOURCE / DIRECT IN
+   lists and the talkback destinations beyond the WING's buses, mains and
+   matrices; pan and fader laws, ballistics and solo behaviour as settings; the
+   console profile beyond the `profile="wing"` a show records (Phase 3). The UI
+   is the WING surface whatever the configuration.
 2. **Universal Mixer UI**: a new interface over the core (strips, chains, routing
    matrix, sends, monitoring, scenes, recorder), its own look and layout.
 3. **WING as a profile**: move the WING's limits, defaults, laws, surface, protocols
-   and files into a WING profile over the core, and check it against the WING tests
-   and WING Edit as today.
+   and files into a WING profile over the core (including Phase 1's step 3d: the
+   WING's blocks out of `StripParams`), and check it against the WING tests and WING
+   Edit as today.
 4. **Second emulation** (likely the X32 / M32, the closest to the WING), then Yamaha,
    Allen & Heath and DiGiCo, each extending the core where it needs something new.
 

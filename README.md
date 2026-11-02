@@ -20,6 +20,14 @@ model, every effect measured against its WING original with live meters on its p
 and the routing, monitoring and custom controls checked against WING Edit 3.3.4 and
 the WING manual. Expect rough edges, and please [report what you find](#reporting-problems).
 
+**Coming next: the Universal Mixer.** Sidecar is growing from a WING emulator into an
+emulator of several consoles (the X32 / M32, Yamaha, Allen & Heath and DiGiCo after the
+WING), built on a mixer core without any one console's limits. The engine and show
+format in the current code are its first step: the console's size is a configuration
+(any number of channels, buses, mains, matrices, up to 256 DCAs and mute groups), and
+each strip's processing is a chain that can hold extra blocks and tap points. The WING
+works exactly as before. The plan is in [docs/UNIVERSAL_MIXER.md](docs/UNIVERSAL_MIXER.md).
+
 **Community:** questions, tips and feedback on the [Sidecar Discord server](https://discord.gg/TEE8q979x).
 
 ![The full-size console: the HOME screen of a channel, the channel strip, fader sections with the input list on the left and DCAs in the middle, all metering a signal](docs/images/console.png)
@@ -366,7 +374,7 @@ cd rust && RUSTFLAGS=-Zsanitizer=thread cargo +nightly test -Zbuild-std --target
 
 ```
 rust/crates/livedaw-dsp/      DSP: the WING models (filters, EQ models, 32 dynamics models), FX rack devices
-rust/crates/livedaw-engine/   Realtime engine: WING topology, strips, sends, DCAs, mute groups, FX slots, solo, worker pool
+rust/crates/livedaw-engine/   Realtime engine: the console's configuration (the WING's by default), strips and their chains (extra blocks, taps), sends, DCAs, mute groups, FX slots, solo, worker pool
 rust/crates/livedaw-session/  Sessions: console state, Show > Scene > Snippet, fades, fader banks, show files
 rust/crates/livedaw-wing/     WING parameter tree, its mapping onto the engine, the WING remote protocols, .snap/.show files
 rust/crates/livedaw-recorder/ Multitrack recorder and the USB recorder / player (WAV, FLAC, AIFF, MP3 codecs, disk threads)

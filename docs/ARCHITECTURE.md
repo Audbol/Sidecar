@@ -4,6 +4,12 @@ Sidecar emulates a Behringer WING: the console topology, the processing models a
 the control surface with its main display. The audio engine, DSP and sessions are
 Rust; audio devices, plugin hosting and the UI are C++ with JUCE.
 
+The engine is becoming the *Universal core* that several console emulations will be
+built on (`docs/UNIVERSAL_MIXER.md`). Since Phase 1 the console's counts are a
+configuration (*Console configuration and groups*) and a strip's processing is a chain
+(*Strip chains*); the WING is the default configuration and its strips are templates of
+that chain, so everything below describes the WING as it runs on that core.
+
 ## Signal flow
 
 ```
@@ -345,7 +351,7 @@ same tables through `ld_model_*` (`livedaw-ffi/src/models.rs`, `src/engine/Model
 | Layer | Language | Where |
 |---|---|---|
 | DSP (filters, EQ models, dynamics models, the FX rack's devices, delay) | Rust | `rust/crates/livedaw-dsp` |
-| Realtime engine (WING topology, strips, sends, DCAs, mute groups, FX slots, automix, solo, monitor, output protection, worker pool, deferred frees) | Rust | `rust/crates/livedaw-engine` |
+| Realtime engine (the console's configuration, strips and their chains, extra blocks and taps, sends, DCAs, mute groups, FX slots, automix, solo, monitor, output protection, worker pool, deferred frees) | Rust | `rust/crates/livedaw-engine` |
 | Recorder (SPSC rings, WAV / RF64, AIFF, FLAC and MP3 codecs, transport, disk reader and writer threads, playlist rendering) and the USB recorder / player (`usb`) | Rust | `rust/crates/livedaw-recorder` |
 | Sessions (console state, Show > Scene > Snippet, fades, fader banks, show files, legacy import) | Rust | `rust/crates/livedaw-session` |
 | WING interoperability (parameter tree, mapping, discovery / OSC / native servers, .snap / .show files) | Rust | `rust/crates/livedaw-wing` |
@@ -1276,6 +1282,14 @@ presets are Sidecar's own (built from the translation table), not the WING's fil
 
 The user-facing summary is the start-up notice (`src/ui/StartupNotice.cpp`) and the
 README's *Known limitations*; keep the three in step.
+
+- The Universal core (Phase 1, `docs/UNIVERSAL_MIXER.md`): the extra blocks and user
+  taps are not in the C ABI yet (the Universal Mixer's interface, Phase 2, needs them),
+  user taps feed sends only (not keys or direct outs) and aren't delay compensated,
+  the WING's own blocks still live in `StripParams` (they move out with the WING
+  profile, Phase 3), and the strip sources, the monitor SOURCE / DIRECT IN lists and
+  the talkback destinations cover the WING's buses, mains and matrices only. The UI is
+  the WING surface for any configuration.
 
 - Hardware: the audio interface's ports stand in for the WING's. No StageConnect,
   AES50 or Dante; source GAIN is digital and +48V is only stored.
