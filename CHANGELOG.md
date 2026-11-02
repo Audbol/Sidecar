@@ -13,6 +13,10 @@ All notable changes to Sidecar are listed here. Versions follow
   now leaves the file alone (also for presets and library files); a changed show is
   still written to a verified temporary file, with the previous version kept as
   `.bak`.
+- The multitrack editor's autosave rewrote a project with unsaved changes every
+  30 seconds until it was saved, even when nothing had changed since the last
+  autosave. It is now written only when it changes, and SAVE of an unchanged
+  project leaves the file alone.
 
 ## [0.1.6] - beta
 
