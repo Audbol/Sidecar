@@ -6,7 +6,7 @@ namespace livedaw::ui
 using namespace universal;
 
 UniversalSkin::UniversalSkin (UiContext& c)
-    : ctx (c), theme (Theme::dark()), wingKey ("WING SURFACE", theme.accent, theme), mixer (c, theme)
+    : ctx (c), theme (Theme::dark()), wingKey ("WING SURFACE", theme.accent, theme), mixer (c, theme), inspector (c, theme)
 {
     // Switching rebuilds the window's skin: let the click return first.
     wingKey.onClick = [&c = ctx]
@@ -20,7 +20,24 @@ UniversalSkin::UniversalSkin (UiContext& c)
     wingKey.setTooltip ("Back to the WING surface");
     addAndMakeVisible (wingKey);
     addAndMakeVisible (mixer);
+    // Opened by a strip's selection (a tap on its name), closed by its CLOSE key.
+    addChildComponent (inspector);
+    inspector.onClose = [this]
+    {
+        inspectorOpen = false;
+        resized();
+    };
     refreshAll();
+}
+
+void UniversalSkin::selectionChanged()
+{
+    mixer.selectionChanged();
+    auto* selected = ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr;
+    if (selected != inspector.getStrip())
+        inspector.setStrip (selected);
+    inspectorOpen = selected != nullptr;
+    resized();
 }
 
 void UniversalSkin::refreshAll()
@@ -30,6 +47,8 @@ void UniversalSkin::refreshAll()
               + juce::String (n.mains) + " MAIN  " + juce::String (n.matrices) + " MTX  " + juce::String (n.dcas) + " DCA  "
               + juce::String (n.muteGroups) + " MGRP  " + juce::String (n.fx) + " FX";
     mixer.rebuild();
+    // The strips may be new ones: the selected strip again.
+    inspector.setStrip (ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr);
     repaint();
 }
 
@@ -64,6 +83,10 @@ void UniversalSkin::resized()
     auto area = getLocalBounds();
     auto bar = area.removeFromTop (sizes::kTopBar).reduced (sizes::kGapLarge, (sizes::kTopBar - sizes::kTouch) / 2);
     wingKey.setBounds (bar.removeFromRight (160));
+    const bool showInspector = inspectorOpen && inspector.getStrip() != nullptr;
+    inspector.setVisible (showInspector);
+    if (showInspector)
+        inspector.setBounds (area.removeFromRight (juce::jmin (460, area.getWidth() / 2)));
     mixer.setBounds (area);
 }
 

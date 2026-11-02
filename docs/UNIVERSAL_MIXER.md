@@ -219,7 +219,14 @@ Three layers:
       bar over the MIXER view. Tests: `UniversalUiTests` (the theme's contrast, the
       fader's law and gestures, a column per strip of a 48-channel console and of a
       WING, a column's keys, pan, fader and meter, the skin's picture).
-   4. The inspector: chain editor with block editors and taps; the sends panel.
+   4. The inspector: chain editor with block editors and taps; the sends panel
+      (done): `Inspector` beside the MIXER view for the selected strip. CHAIN:
+      `ChainList` (the chain's blocks, user taps and the fader's markers; ADD after
+      the selected row, REMOVE, drag to reorder) over `BlockEditor` (`BlockTarget`:
+      the strip's own blocks and extra ones alike; model, curve, gain reduction and
+      the model's parameters through `ValueControls`). SENDS: `SendsPanel`, a row
+      per bus, main and matrix the strip can feed, with ON, level and its source
+      (PRE / POST / GRP or a user tap). Tests in `UniversalUiTests`.
    5. ROUTING matrix, FX RACK (generic parameter panels, the WING faceplates where a
       device has one) and MONITORING.
    6. SCENES, RECORDER (the recorder page and the multitrack editor) and SETUP

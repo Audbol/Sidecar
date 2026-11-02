@@ -60,6 +60,15 @@ WING works as before throughout.
   tap resets them, keys are at least 44 px. It is drawn with a dark theme's design
   tokens (`src/ui/universal`). The top bar shows the console's counts and a key back
   to the WING surface.
+- Universal Mixer, Phase 2 step 4: the inspector. Selecting a strip in the Universal
+  Mixer opens it beside the mixer. CHAIN lists the strip's processing in order (its own
+  blocks, the fader between PRE-FADER and POST, extra blocks and user taps): ADD puts a
+  filter, EQ, dynamics, insert or delay block or a user tap after the selected row,
+  REMOVE takes one away, and a drag moves it. The selected block's editor has its keys,
+  model, curve, gain reduction and every parameter of its model, for the strip's own
+  blocks and extra blocks alike. SENDS has a row per bus, main and matrix the strip can
+  send to, with ON, level and where the send takes the signal (PRE, POST, GRP or one of
+  the strip's user taps).
 
 ### Changed
 

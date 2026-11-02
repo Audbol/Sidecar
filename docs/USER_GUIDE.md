@@ -228,8 +228,23 @@ sideways; double-tap for centre), **MUTE** (lit for the strip's own mute, outlin
 while a mute group, a DCA or SIP mutes it), **SOLO**, and its fader with the output
 meter beside it on the fader's scale (drag, or turn the wheel; Shift for fine moves;
 double-tap for 0 dB). A drag moves a control by how far you move, so touching a fader
-never makes it jump. The rest of the console (chains, routing, effects, monitoring,
-scenes, the recorder and setup) is on the WING surface for now.
+never makes it jump.
+
+Selecting a strip (a tap on its name) opens the inspector beside the mixer; **CLOSE**
+hides it. **CHAIN** lists the strip's processing in order: its own blocks (INPUT,
+FILTER, the GATE, EQ, DYNAMICS and INSERT 1 of its process order, INSERT 2, DELAY),
+the fader between **PRE-FADER** and **POST**, and any extra blocks and user taps (a
+green light: the block is on). **ADD** puts a filter, EQ, dynamics, insert or delay
+block, or a user tap, after the selected row (before PRE-FADER with none selected);
+drag an extra block or a tap by its grip to move it; **REMOVE** takes the selected one
+away. Under the list, the selected block's editor: its keys, its model (EQ, dynamics,
+the filter's tool), its curve, the gain reduction of a dynamics block and every
+parameter of its model; a bar moves as you drag it and a double tap resets it. A delay
+keeps its time when you change its unit. **SENDS** lists every bus, main and matrix
+the strip can send to, each with **ON**, its level and where it takes the signal:
+**FROM** PRE or POST (a bus send's GRP too) or one of the strip's user taps, so a send
+can take the signal anywhere in the chain. The rest of the console (routing,
+effects, monitoring, scenes, the recorder and setup) is on the WING surface for now.
 The window changes at once and the choice is an app preference. Shows, scenes, the
 recorder, plugins and the remotes keep working whichever interface shows. A show of a
 console that isn't a WING (more mains or matrices, say) opens in the Universal Mixer;

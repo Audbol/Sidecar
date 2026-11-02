@@ -839,7 +839,25 @@ it, and a control's drag doesn't scroll the view it sits in
 MUTE through `MixerEngine::pressMute`, SOLO, fader and meter) and `MixerView` (a
 column per strip in a `Viewport`, kinds apart, filter keys; it rebuilds when the
 engine's structure version changes and refreshes its columns 30 times a second).
-`UniversalSkin` puts a top bar over the MIXER view.
+`UniversalSkin` puts a top bar over the MIXER view, with the inspector of the
+selected strip beside it (`Inspector.h`, opened by `selectionChanged`). The
+inspector's CHAIN page is a `ChainList` (the strip's chain from `Strip::getChain`
+without its RTA points and the WING's own taps; ADD, REMOVE and drag to reorder
+through `insertBlock` / `moveBlock` / `removeBlock` / `insertTap` / `moveTap` /
+`removeTap`) over a `BlockEditor` for the selected row: `BlockTarget::of` turns a step
+into what to edit (the strip's own blocks in `StripParams`, an extra block's
+parameters by its kind) with its model setter (`Strip::setModel` /
+`setBlockModel`), its curve (`ld_strip_response` / `getBlockResponse`) and its gain
+reduction. `ValueControls.h` has the editor's controls: `ValueBar` (linear, log
+frequency, fader-law level or a model parameter's own scale and text),
+`ChoiceBar`, `ResponseView` and `ParamPanel` (a model's parameters from the model
+tables, rebuilt when the model changes). The SENDS page (`SendsPanel`) has a row per
+destination the strip feeds (buses from channels, aux and other buses; mains from
+those; matrices from all but matrices) with ON, level and the source (the send's
+modes, then the strip's user taps, as `tap`). The inspector re-resolves the selected
+strip when the engine's structure version changes before it reads anything, and a
+block's editor lets go of the block before the list removes it. The delay units (M,
+FT, MS, SMP) are shared with the WING screens (`ui/DelayUnits.h`).
 
 `src/ui/` draws the WING surface (`WingSurface`): three fader sections (`FaderSection.*`,
 `FaderStrip.*`) with VIEW, the layer and shift keys, colour bars and scribble strips,

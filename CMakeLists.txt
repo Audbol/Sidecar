@@ -262,6 +262,11 @@ set(LIVEDAW_UI_SOURCES
     src/ui/universal/Theme.cpp
     src/ui/universal/Widgets.cpp
     src/ui/universal/MixerView.cpp
+    src/ui/universal/ValueControls.cpp
+    src/ui/universal/BlockEditor.cpp
+    src/ui/universal/ChainList.cpp
+    src/ui/universal/SendsPanel.cpp
+    src/ui/universal/Inspector.cpp
     src/ui/MidiRemoteUi.cpp
     src/ui/DawSurface.cpp)
 
@@ -412,6 +417,11 @@ if(LIVEDAW_BUILD_TESTS)
         src/ui/universal/Theme.cpp
         src/ui/universal/Widgets.cpp
         src/ui/universal/MixerView.cpp
+        src/ui/universal/ValueControls.cpp
+        src/ui/universal/BlockEditor.cpp
+        src/ui/universal/ChainList.cpp
+        src/ui/universal/SendsPanel.cpp
+        src/ui/universal/Inspector.cpp
         src/ui/UniversalSkin.cpp)
 
     # The surface's scribble strip LCDs.
