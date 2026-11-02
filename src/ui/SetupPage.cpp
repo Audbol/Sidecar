@@ -371,6 +371,7 @@ namespace
                 addAndMakeVisible (k);
             addAndMakeVisible (finishKeys);
             addAndMakeVisible (modelKeys);
+            addAndMakeVisible (interfaceKeys);
         }
 
         void update()
@@ -438,6 +439,7 @@ namespace
             g.drawFittedText ("SURFACE FINISH", finishRow.withRight (finishKeys.getX() - 4), juce::Justification::centredLeft, 1, 0.8f);
             g.setColour (Dark::text);
             g.drawFittedText ("CONSOLE MODEL", modelRow.withRight (modelKeys.getX() - 4), juce::Justification::centredLeft, 1, 0.8f);
+            g.drawFittedText ("INTERFACE", interfaceRow.withRight (interfaceKeys.getX() - 4), juce::Justification::centredLeft, 1, 0.8f);
         }
 
         void resized() override
@@ -466,7 +468,7 @@ namespace
             aboutKey.setBounds (infoRows[2].withTrimmedLeft (infoRows[2].getWidth() - keyW).reduced (0, 2));
 
             configCaption = config.removeFromTop (config.getHeight() / 6);
-            const int h = config.getHeight() / 5;
+            const int h = config.getHeight() / 6;
             for (auto [row, minus, value, plus] : { std::tuple { &chRow, &chMinus, &chValue, &chPlus }, std::tuple { &busRow, &busMinus, &busValue, &busPlus },
                                                     std::tuple { &fxRow, &fxMinus, &fxValue, &fxPlus } })
             {
@@ -486,6 +488,8 @@ namespace
             finishKeys.setBounds (finishRow.withTrimmedLeft (finishRow.getWidth() - juce::jmin (finishRow.getWidth() * 62 / 100, screenCap (200))).reduced (2, 0));
             modelRow = config.removeFromTop (h).reduced (0, 2);
             modelKeys.setBounds (modelRow.withTrimmedLeft (modelRow.getWidth() - juce::jmin (modelRow.getWidth() * 62 / 100, screenCap (200))).reduced (2, 0));
+            interfaceRow = config.removeFromTop (h).reduced (0, 2);
+            interfaceKeys.setBounds (interfaceRow.withTrimmedLeft (interfaceRow.getWidth() - juce::jmin (interfaceRow.getWidth() * 62 / 100, screenCap (200))).reduced (2, 0));
         }
 
     private:
@@ -519,7 +523,7 @@ namespace
         UiContext& ctx;
         WingKey editKey { "EDIT", Icon::Edit }, aboutKey { "ABOUT", Icon::Info }, chMinus { "-" }, chPlus { "+" }, chWing { "WING" }, busMinus { "-" }, busPlus { "+" },
             fxMinus { "-" }, fxPlus { "+" }, fxWing { "WING" }, dataKey { "DATA FOLDER", Icon::Folder }, showKey { "SHOW FOLDER", Icon::Folder };
-        juce::Rectangle<int> infoBox, dataBox, dataTitle, infoRows[4], configCaption, chRow, busRow, fxRow, chValue, busValue, fxValue, finishRow, modelRow;
+        juce::Rectangle<int> infoBox, dataBox, dataTitle, infoRows[4], configCaption, chRow, busRow, fxRow, chValue, busValue, fxValue, finishRow, modelRow, interfaceRow;
         // SURFACE FINISH: the surface view in the silver or the black WING's colours.
         ChoiceKeys finishKeys { { ConsoleLook::finishName (SurfaceFinish::Silver), ConsoleLook::finishName (SurfaceFinish::Black) },
                                 [this] { return (int) ConsoleLook::load (ctx.settings).shownFinish(); },
@@ -545,6 +549,18 @@ namespace
                                    // The surface is rebuilt: let this key's callback return first.
                                    juce::MessageManager::callAsync ([&c = ctx, m] { if (c.setConsoleModel) c.setConsoleModel (m); });
                                } };
+        // INTERFACE (Sidecar's own): the WING surface or the Universal Mixer (a
+        // preview, docs/UNIVERSAL_MIXER.md); the window changes at once.
+        ChoiceKeys interfaceKeys { { "WING", "UNIVERSAL" },
+                                   [this] { return (int) ctx.interfaceKind; },
+                                   [this] (int i)
+                                   {
+                                       const auto kind = i == 1 ? InterfaceKind::Universal : InterfaceKind::Wing;
+                                       if (kind == ctx.interfaceKind || ! ctx.setInterface)
+                                           return;
+                                       // The window's skin is replaced (this page with it): let the key's callback return first.
+                                       juce::MessageManager::callAsync ([&c = ctx, kind] { if (c.setInterface) c.setInterface (kind); });
+                                   } };
     };
 
     //==============================================================================

@@ -38,6 +38,13 @@ WING works as before throughout.
   channels, 24 buses, 2 mains, 6 matrices, 32 DCAs, 12 mute groups, extra blocks and
   taps) end to end, in Rust and in C++, through a show save and load.
 
+- Universal Mixer, Phase 2 step 1: the window is a shell around an interface ("skin"):
+  the WING surface, unchanged, or the Universal Mixer's own interface, a preview for
+  now. SETUP > GENERAL > CONSOLE > INTERFACE switches between them at once (an app
+  preference). A show of a console that isn't a WING opens in the Universal Mixer;
+  choosing WING then offers to make it a fresh WING. The monkey test can start on the
+  Universal Mixer (`--interface universal`).
+
 ### Changed
 
 - **Show format 4.** Shows now store the console's configuration (how many channels,

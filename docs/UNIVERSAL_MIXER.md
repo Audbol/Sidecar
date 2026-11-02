@@ -165,7 +165,52 @@ Three layers:
    console profile beyond the `profile="wing"` a show records (Phase 3). The UI
    is the WING surface whatever the configuration.
 2. **Universal Mixer UI**: a new interface over the core (strips, chains, routing
-   matrix, sends, monitoring, scenes, recorder), its own look and layout.
+   matrix, sends, monitoring, scenes, recorder), its own look and layout. Decisions
+   (November 2026):
+   - One shell, two skins: `MainComponent` keeps what both share (engine, show,
+     plugin host, recorder session and multitrack editor, remotes, event log,
+     `UiContext`'s services); the **WING skin** is today's surface unchanged, the
+     **Universal skin** the new interface. An app preference (`interface`) picks one.
+   - The Universal Mixer drives any configuration, the WING's included, and the
+     skins switch live; switching to the WING skin on a console that isn't a WING
+     offers to reconfigure it as a WING (the WING skin addresses the WING's ranges).
+   - The WING skin stays the default; the Universal Mixer is an opt-in preview until
+     Phase 2 is complete.
+   - Touch-friendly from the start (large hit targets, no hover-only actions), good
+     with mouse and keyboard too; a dark theme first, built on colour tokens so a
+     light one can follow.
+   - The configuration changes without a reset where it can: adding mains,
+     matrices, buses or groups keeps everything else; removing takes only unused
+     ones, with a warning.
+   - The web remote keeps mirroring the WING display in Phase 2; mirroring the
+     Universal Mixer comes later.
+
+   Layout: a top bar (show, scene GO / NEXT, recorder transport, DSP load, clock,
+   menu), a navigator (strips by kind, DCAs, filters, banks), a main view with tabs
+   (MIXER: strip columns for any count; ROUTING matrix; FX RACK; MONITORING; SCENES;
+   RECORDER; SETUP) and an inspector for the selected strip (its chain: blocks and
+   taps, drag to reorder, add; a block's editor; its sends with their taps). Reusable
+   parts in `src/ui/common`: meter ballistics, the EQ and dynamics graphs, the model
+   parameter bindings, the plugin windows, and new widgets (fader, meter, knob,
+   button, a parameter control bound through the model tables).
+
+   Steps (each keeps the WING skin working, every check green):
+   1. The shell and the WING skin split, no behaviour change; the `interface`
+      preference (done): `MainComponent` is the shell, `Skin.h` the interface a
+      skin implements, `WingSurface` today's surface moved over unchanged,
+      `UniversalSkin` a placeholder (the console it runs, a key back to the WING
+      surface); SETUP > GENERAL > CONSOLE > INTERFACE; a console that isn't a WING
+      opens in the Universal Mixer.
+   2. C ABI 28: a strip's chain (steps, blocks with their params and meters, insert /
+      move / remove / clear, taps) and `set_config`; C++ facades and tests.
+   3. Theme, widgets, the strip column and the MIXER view for any configuration.
+   4. The inspector: chain editor with block editors and taps; the sends panel.
+   5. ROUTING matrix, FX RACK (generic parameter panels, the WING faceplates where a
+      device has one) and MONITORING.
+   6. SCENES, RECORDER (the recorder page and the multitrack editor) and SETUP
+      (audio device, preferences, a configuration editor with the non-destructive
+      changes).
+   7. Docs, a user-guide chapter and screenshots.
 3. **WING as a profile**: move the WING's limits, defaults, laws, surface, protocols
    and files into a WING profile over the core (including Phase 1's step 3d: the
    WING's blocks out of `StripParams`), and check it against the WING tests and WING

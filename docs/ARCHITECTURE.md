@@ -792,7 +792,25 @@ Show
 
 ## The UI
 
-`src/ui/` draws the WING surface: three fader sections (`FaderSection.*`,
+The window (`MainComponent`) is a shell around one *skin* (`Skin.h`): the WING surface
+(`WingSurface`, the default) or the Universal Mixer (`UniversalSkin`, a preview while
+Phase 2 of `docs/UNIVERSAL_MIXER.md` builds it), chosen by the app setting
+`ui.interface` (SETUP > GENERAL > INTERFACE, `ctx.setInterface`) and switched live: the
+shell destroys one skin and builds the other. The shell owns what both share: the
+`UiContext` and its services, the selection and the solo system (`SoloWatcher`), the
+plugin windows, the plugin scanner and overview, the recorder session and the
+multitrack editor (which covers the skin: `Skin::setCovered`), the MIDI and web
+remotes, the show files, full screen and the start-up notice. It tells the skin what
+changed (`refreshAll`, `refreshLayers`, `selectionChanged`, `sendsOnFaderChanged`,
+`showChanged`, `customControlsChanged`), opens pop-ups over `Skin::popupHost` and offers
+it the keys it doesn't use (`skinKeyPressed`). A skin sets the context functions that
+reach its own views (the WING surface: `showScreen`, `revealFader`, screen only, the
+surface lock...) and resets them to no-ops when it goes. A console that isn't a WING
+(`MainComponent::isWingConsole`: other aux, main, matrix, DCA or mute group counts)
+shows the Universal Mixer; choosing the WING surface then offers `Engine::configure`
+to a WING.
+
+`src/ui/` draws the WING surface (`WingSurface`): three fader sections (`FaderSection.*`,
 `FaderStrip.*`) with VIEW, the layer and shift keys, colour bars and scribble strips,
 SELECT / SOLO / MUTE, LED meters and scaled faders; the custom controls section
 between the center and right sections (mute groups, show control); and the top row

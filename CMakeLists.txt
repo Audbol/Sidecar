@@ -257,6 +257,8 @@ set(LIVEDAW_UI_SOURCES
     src/ui/CompactSection.cpp
     src/ui/WebMirror.cpp
     src/ui/MainComponent.cpp
+    src/ui/WingSurface.cpp
+    src/ui/UniversalSkin.cpp
     src/ui/MidiRemoteUi.cpp
     src/ui/DawSurface.cpp)
 

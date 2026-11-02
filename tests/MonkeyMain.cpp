@@ -13,9 +13,10 @@
 // outside the app (SHUTDOWN, scanning the computer's plugins) aren't pressed and
 // native file dialogs are cancelled.
 //
-//   SidecarMonkey [--seed N] [--seconds S] [--buffer SAMPLES] [--home DIR] [--idle]
+//   SidecarMonkey [--seed N] [--seconds S] [--buffer SAMPLES] [--home DIR] [--idle] [--interface wing|universal]
 //
 // --idle sends no input: a baseline of what the audio does with the app just running.
+// --interface universal starts on the Universal Mixer instead of the WING surface.
 //
 // It also watches for dropouts: blocks that take longer to process than they
 // last (overruns), callbacks the device runs late, blocks the engine silences
@@ -653,6 +654,8 @@ public:
         options.applicationName = "SidecarMonkey";
         settings = std::make_unique<juce::PropertiesFile> (paths::appData().getChildFile ("Sidecar.settings"), options);
         settings->setValue ("pluginOverview.open", true); // the plugin overview opens with the app
+        if (option ("--interface", "wing") == "universal")
+            settings->setValue ("ui.interface", "universal"); // the Universal Mixer (ui::uiprefs::interfaceKind)
 
         pluginHost = std::make_unique<PluginHost> (settings.get());
         // Plugins to load: Sidecar's own test plugin (a gain), never the computer's.

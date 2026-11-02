@@ -214,6 +214,15 @@ an app preference (not saved in shows) and changes the surface at once; the
 touchscreen looks the same in both. WING remote clients see the black WING as model
 `wing-bk`.
 
+SETUP > GENERAL > CONSOLE > INTERFACE chooses the window's interface: **WING** (the
+surface described in this guide, the default) or **UNIVERSAL**, the Universal Mixer's
+own interface (docs/UNIVERSAL_MIXER.md). The Universal Mixer is a preview while it is
+being built: for now it shows the console it runs and a key back to the WING surface.
+The window changes at once and the choice is an app preference. Shows, scenes, the
+recorder, plugins and the remotes keep working whichever interface shows. A show of a
+console that isn't a WING (more mains or matrices, say) opens in the Universal Mixer;
+choosing WING then offers to make the console a fresh WING.
+
 SETUP > GENERAL > CONSOLE > CONSOLE MODEL **COMPACT** shows a WING COMPACT instead of
 the full-size WING. The surface changes at once, and the choice is an app preference
 like the finish. The COMPACT is black, so it always shows the black finish. It fits a

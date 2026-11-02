@@ -2,17 +2,10 @@
 
 #include "daw/Session.h"
 #include "engine/MidiRemote.h"
-#include "ui/CompactSection.h"
-#include "ui/Controls.h"
-#include "ui/DawSurface.h"
-#include "ui/FaderSection.h"
-#include "ui/FourChannelSection.h"
 #include "ui/LookAndFeel.h"
-#include "ui/MainDisplay.h"
 #include "ui/MeterBank.h"
 #include "ui/PluginPictures.h"
-#include "ui/SurfaceLock.h"
-#include "ui/SurfaceSections.h"
+#include "ui/Skin.h"
 #include "ui/UiContext.h"
 
 #include <juce_audio_utils/juce_audio_utils.h>
@@ -25,16 +18,14 @@ class PluginChainWindow;
 class PluginOverviewWindow;
 class WebMirror;
 
-/** The window: a WING surface. Top: the channel strip section, the main
-    display and the monitoring panel. Bottom: the left (12) and center (8)
-    fader sections, the custom controls section and the right (4) fader
-    section, each fader section with its layer keys. The multitrack editor
-    can take the whole window instead (Ctrl+E, EDIT on the recorder screen,
-    the surface's DAW key). The main display can take the whole window too
-    (F10, its maximize key): the rest of the surface stays alive underneath.
-    As a WING COMPACT (SETUP > GENERAL > CONSOLE MODEL): the display and the
-    monitoring panel on top; one fader section of 12 with the COMPACT's nine
-    layer keys, and its key section with fader 13, below (layout::compact). */
+/** The window: the shell around one of the interfaces (skins) over the
+    console: the WING surface (WingSurface, the default) or the Universal Mixer
+    (UniversalSkin, a preview while Phase 2 of docs/UNIVERSAL_MIXER.md is under
+    way), switched live (SETUP > GENERAL > INTERFACE). The shell owns what both
+    share: the engine, the show and its files, the selection, the solo system,
+    the plugin windows, the recorder and the multitrack editor (which can take
+    the whole window: Ctrl+E, EDIT on the recorder screen, the surface's DAW
+    key), the MIDI and web remotes, full screen (F11) and the start-up notice. */
 class MainComponent final : public juce::Component
 {
 public:
@@ -65,46 +56,20 @@ public:
     juce::String getWindowStateBeforeFullScreen() const { return windowStateBeforeFullScreen; }
 
 private:
-    class LockOverlay;
     class SoloWatcher;
 
     void selectStrip (Strip*);
-    void saveScreenshot();
-    /** Hold HOME (with the keys of `held`): locks or unlocks the surface (SurfaceLock). */
-    void holdHomeLock (const juce::String& held);
     Strip* getSelectedStrip() const;
     void refreshAll();
-    void refreshSections();
-    void layoutTopRow();
-    void layoutSections();
-    /** The WING COMPACT's surface (both rows). */
-    void layoutCompact();
-    /** The display in `bounds`, or over the whole window in screen-only mode. */
-    void placeDisplay (juce::Rectangle<int> bounds);
-    /** Shows the surface as `model` (saved in the app settings with `save`). */
+    /** Shows the console model (ctx.consoleModel; saved in the app settings with
+        `save`): the layers, the WING remote's identity, the surface. */
     void applyConsoleModel (ConsoleModel model, bool save);
-    bool isCompact() const noexcept { return ctx.consoleModel == ConsoleModel::Compact; }
-    /** The top row's height: the splitter's share, a little more on wide
-        windows (the screen gains most from it). */
-    int topRowHeight() const;
-    /** The fader strips' width and whether the custom controls fit beside
-        them, for a bottom row `total` wide and `height` tall. */
-    struct BottomRowPlan
-    {
-        int stripW = 40;
-        bool withCc = true;
-    };
-    BottomRowPlan planBottomRow (int total, int height) const;
-    /** The console's columns: the whole window, or on very wide windows the
-        width the sections use at their natural size, centred. */
-    /** The widths of the top row's sections beside the display unit. */
-    struct TopRowSides
-    {
-        int monitor, strip, fourChannel;
-        int total() const noexcept { return monitor + strip + fourChannel; }
-    };
-    static TopRowSides topRowSideWidths (int width);
-    juce::Rectangle<int> consoleArea() const;
+    /** Shows `kind`'s skin (saved in the app settings with `save`). The WING
+        surface on a console that isn't a WING offers to make it a WING first. */
+    void setInterface (InterfaceKind kind, bool save);
+    /** The console is a WING as far as the WING surface goes: the WING's aux,
+        mains, matrices, DCAs and mute groups (channels, buses and FX slots grow). */
+    bool isWingConsole() const;
 
     void showPluginScanner();
     /** The plugin overview (a window of its own): opens it, or brings it to the front. */
@@ -126,10 +91,6 @@ private:
 
     /** The multitrack editor in place of the console view, or back. */
     void showEditor (bool);
-    /** Only the main display, as large as the window allows (F10), or back. */
-    void setScreenMaximized (bool);
-    /** Shows the parts that the editor and the screen-only mode leave. */
-    void updateVisibility();
     /** Reopens the last recording project (offering its autosave). */
     void openLastProject();
 
@@ -146,13 +107,7 @@ private:
     std::unique_ptr<WebMirror> webMirror;   // the web remote (screen mirror)
     std::unique_ptr<DawEditor> editor;
     bool editorShown = false;
-    bool screenMaximized = false, fullScreen = false;
-    /** Screen only: the display's layout height; taller windows scale it up. */
-    static constexpr float kMaxScreenOnlyLayoutHeight = 1100.0f;
-    /** The narrowest the channel strip and the right-hand column (monitoring
-        over the 4-Channel section) get when a narrow window's top row makes
-        room for a legible screen. */
-    static constexpr int kMinCompactStripWidth = 300, kMinCompactRightWidth = 220;
+    bool fullScreen = false;
     juce::String windowStateBeforeFullScreen;
     juce::uint32 lastFullScreenSwitch = 0;
 
@@ -162,20 +117,9 @@ private:
     state::StripRef selected;
     bool hasSelection = false;
 
-    std::unique_ptr<ChannelStripSection> channelStrip;
-    std::unique_ptr<MainDisplay> display;
-    std::unique_ptr<MonitorSection> monitor;
-    std::unique_ptr<FourChannelSection> fourChannel;
-    std::unique_ptr<FaderSection> sections[LayerSet::kNumSections];
-    std::unique_ptr<CustomControlSection> customControls;
-    std::unique_ptr<CompactSection> compactKeys; // the WING COMPACT's key section and fader 13
-    std::unique_ptr<DawFaderSection> dawSections[LayerSet::kNumSections]; // the fader sections in DAW mode
-    bool ccInBottomRow = true; // else docked under the monitoring panel
-    std::unique_ptr<LockOverlay> lockOverlay;
-    SurfaceLock surfaceLock;
+    /** The interface over the console (WingSurface or UniversalSkin). */
+    std::unique_ptr<Skin> skin;
     std::unique_ptr<SoloWatcher> soloWatcher;
-    ResizerBar splitter { false };
-    float topFraction = 0.52f;
 
     juce::OwnedArray<PluginChainWindow> pluginWindows;
     std::unique_ptr<juce::DocumentWindow> scannerWindow;

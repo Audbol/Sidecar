@@ -56,6 +56,15 @@ enum class Screen
     UsbRecorder  // the USB recorder / player (the status bar's USB icon, monitoring VIEW held)
 };
 
+/** The window's interfaces over the console (docs/UNIVERSAL_MIXER.md, Phase 2):
+    the WING surface (the default) and the Universal Mixer (a preview while Phase 2
+    is under way). An app setting (SETUP > GENERAL > INTERFACE). */
+enum class InterfaceKind
+{
+    Wing,
+    Universal
+};
+
 /** The HOME screen's tabs for the selected strip: the overview group
     (OVERVIEW, ICON/COLOR, NAME, TAGS) and the processing blocks. */
 enum class HomeTab
@@ -219,6 +228,12 @@ struct UiContext
     ConsoleModel consoleModel = ConsoleModel::Full;
     /** Switches the model: saves it and lays the surface out again. */
     std::function<void (ConsoleModel)> setConsoleModel;
+
+    /** The interface the window shows (the main component sets it from the app settings). */
+    InterfaceKind interfaceKind = InterfaceKind::Wing;
+    /** Switches the interface: saves it and replaces the window's skin (the WING
+        surface on a console that isn't a WING asks first). */
+    std::function<void (InterfaceKind)> setInterface;
 };
 
 /** SETUP settings that the status bar, the surface and the pages share. */
@@ -246,6 +261,7 @@ namespace uiprefs
 
     // The window (MainComponent).
     constexpr const char* screenMaximized = "ui.screenMaximized";   // bool: only the main display (F10)
+    constexpr const char* interfaceKind = "ui.interface";           // "wing" (default) or "universal": the window's skin
     constexpr const char* fullScreen = "ui.fullScreen";             // bool: the window covers the screen (F11)
     constexpr const char* noticeDismissed = "ui.noticeDismissedFor"; // the app version the start-up notice was turned off for
 
