@@ -259,6 +259,9 @@ set(LIVEDAW_UI_SOURCES
     src/ui/MainComponent.cpp
     src/ui/WingSurface.cpp
     src/ui/UniversalSkin.cpp
+    src/ui/universal/Theme.cpp
+    src/ui/universal/Widgets.cpp
+    src/ui/universal/MixerView.cpp
     src/ui/MidiRemoteUi.cpp
     src/ui/DawSurface.cpp)
 
@@ -402,6 +405,14 @@ if(LIVEDAW_BUILD_TESTS)
         src/ui/DynamicsGraph.cpp
         src/ui/WingPopups.cpp
         src/ui/Icons.cpp)
+
+    # The Universal Mixer's interface (src/ui/universal).
+    target_sources(LiveDAWTests PRIVATE
+        tests/UniversalUiTests.cpp
+        src/ui/universal/Theme.cpp
+        src/ui/universal/Widgets.cpp
+        src/ui/universal/MixerView.cpp
+        src/ui/UniversalSkin.cpp)
 
     # The surface's scribble strip LCDs.
     target_sources(LiveDAWTests PRIVATE

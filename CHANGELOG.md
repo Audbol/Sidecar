@@ -52,6 +52,14 @@ WING works as before throughout.
   `ld_engine_set_config`. C++: `Strip::getChain`, `getBlock`, `insertBlock`,
   `moveBlock`, `removeBlock`, `clearChain`, `insertTap`, `moveTap`, `removeTap`,
   `setBlockModel`, `getBlockResponse`; `MixerEngine::setConfig`.
+- Universal Mixer, Phase 2 step 3: the Universal Mixer's first view. Its MIXER view
+  has a column for every strip of the console, whatever its size (pan, MUTE, SOLO, the
+  fader with its output meter, the strip's colour, label and name; a tap on the name
+  selects the strip), scrolled sideways, with keys that show one kind of strip at a
+  time. Touch first: controls move by how far a finger travels and never jump, a double
+  tap resets them, keys are at least 44 px. It is drawn with a dark theme's design
+  tokens (`src/ui/universal`). The top bar shows the console's counts and a key back
+  to the WING surface.
 
 ### Changed
 

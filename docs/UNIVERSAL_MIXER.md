@@ -212,7 +212,13 @@ Three layers:
       `insertBlock` and the rest, `MixerEngine::setConfig`. Tests: the C ABI
       (`chain.rs`) and the C++ facades (`ShowTests`: a filter block and a user tap
       that sound, through a show save and load).
-   3. Theme, widgets, the strip column and the MIXER view for any configuration.
+   3. Theme, widgets, the strip column and the MIXER view for any configuration
+      (done): `src/ui/universal/` (`Theme`: colour, size and type tokens, dark first,
+      a contrast check; `FaderControl`, `MeterControl`, `PanControl`, `ToggleKey`;
+      `StripColumn`, `MixerView` with filter keys by kind); `UniversalSkin` is a top
+      bar over the MIXER view. Tests: `UniversalUiTests` (the theme's contrast, the
+      fader's law and gestures, a column per strip of a 48-channel console and of a
+      WING, a column's keys, pan, fader and meter, the skin's picture).
    4. The inspector: chain editor with block editors and taps; the sends panel.
    5. ROUTING matrix, FX RACK (generic parameter panels, the WING faceplates where a
       device has one) and MONITORING.

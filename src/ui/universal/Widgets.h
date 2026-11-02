@@ -1,0 +1,123 @@
+#pragma once
+
+#include "ui/universal/Theme.h"
+
+#include <array>
+#include <atomic>
+#include <functional>
+
+namespace livedaw::ui::universal
+{
+
+/** The Universal Mixer's controls. Each is bound to an engine value and drawn
+    with the theme's tokens; refresh() takes changes made elsewhere (another
+    view, a scene, a remote) and repaints only what moved. Touch first: a drag
+    moves a control by how far it travels (no jump to the touch), a double tap
+    resets it, and a drag on one doesn't scroll the view it sits in. */
+
+/** A fader's travel and a meter's bars leave this much at either end, so a
+    meter beside a fader of the same height lines up with its marks. */
+constexpr float kTrackInset = 14.0f;
+
+/** A fader in dB on the WING fader law (+10 dB at the top, 0 dB at 3/4, -oo at
+    the bottom: ui::fader). */
+class FaderControl final : public juce::Component
+{
+public:
+    explicit FaderControl (const Theme&);
+
+    /** The value it moves (nullptr: none, disabled). */
+    void bind (std::atomic<float>* db);
+    /** 0 (-oo) to 1 (+10 dB). */
+    double getPosition() const noexcept { return position; }
+    /** Moves the fader as the user would: writes the value. */
+    void setPositionFromUser (double newPosition);
+    void refresh();
+
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+
+private:
+    juce::Rectangle<float> track() const noexcept;
+
+    const Theme& theme;
+    std::atomic<float>* value = nullptr;
+    double position = 0.0, dragStart = 0.0;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FaderControl)
+};
+
+/** A level meter: one or two bars on the fader's scale (ui::fader, so the marks
+    beside a fader read for its meter too), green to -18 dB, yellow to -6 dB,
+    orange to 0 dBFS and red above, with a clip light. */
+class MeterControl final : public juce::Component
+{
+public:
+    explicit MeterControl (const Theme&);
+
+    /** The level of side `channel` (linear), and how many sides there are. */
+    std::function<float (int channel)> level;
+    void setChannels (int numChannels);
+
+    /** Where side `channel` stands now, 0 to 1. */
+    float getPosition (int channel) const noexcept { return positions[(size_t) juce::jlimit (0, 1, channel)]; }
+    void refresh();
+
+    void paint (juce::Graphics&) override;
+
+private:
+    const Theme& theme;
+    int channels = 1;
+    std::array<float, 2> positions {};
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MeterControl)
+};
+
+/** A pan (or balance) bar, -100 (left) to 100 (right), filled from the centre. */
+class PanControl final : public juce::Component
+{
+public:
+    explicit PanControl (const Theme&);
+
+    void bind (std::atomic<float>* pan);
+    float getPan() const noexcept { return shown; }
+    void setPanFromUser (float newPan);
+    void refresh();
+
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
+
+private:
+    const Theme& theme;
+    std::atomic<float>* value = nullptr;
+    float shown = 0.0f, dragStart = 0.0f;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PanControl)
+};
+
+/** A key that shows a state: lit in its colour while `isOn`; `isHalfOn` (a
+    mute by a group, say) lights only its outline. */
+class ToggleKey final : public juce::Button
+{
+public:
+    ToggleKey (const juce::String& label, juce::Colour onColour, const Theme&);
+
+    std::function<bool()> isOn, isHalfOn;
+    void refresh();
+
+    void paintButton (juce::Graphics&, bool highlighted, bool down) override;
+
+private:
+    const Theme& theme;
+    juce::Colour colour;
+    bool lit = false, halfLit = false;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ToggleKey)
+};
+
+} // namespace livedaw::ui::universal

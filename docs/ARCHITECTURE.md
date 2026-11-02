@@ -825,6 +825,22 @@ surface lock...) and resets them to no-ops when it goes. A console that isn't a 
 shows the Universal Mixer; choosing the WING surface then offers `Engine::configure`
 to a WING.
 
+The Universal Mixer's views live in `src/ui/universal/`. `Theme.h` holds its design
+tokens (colours by role, sizes with a 44 px smallest touch target, a type scale) and
+draws nothing itself: views take every colour and size from a `Theme` (dark first;
+`contrastRatio` checks a theme reads). `Widgets.h` has its controls, each bound to an
+engine value and refreshed by its view's timer (`refresh()` repaints only what moved):
+`FaderControl` (the WING fader law, `ui::fader`), `MeterControl` (on the fader's scale,
+reading `MeterBank`, the window's single reader of the engine's peaks), `PanControl`
+and `ToggleKey`. A drag moves a control by how far it travels, a double tap resets
+it, and a control's drag doesn't scroll the view it sits in
+(`setViewportIgnoreDragFlag`; touch drags elsewhere do: `ScrollOnDragMode::nonHover`).
+`MixerView.h`: `StripColumn` (one strip of any kind: colour, label and name, pan,
+MUTE through `MixerEngine::pressMute`, SOLO, fader and meter) and `MixerView` (a
+column per strip in a `Viewport`, kinds apart, filter keys; it rebuilds when the
+engine's structure version changes and refreshes its columns 30 times a second).
+`UniversalSkin` puts a top bar over the MIXER view.
+
 `src/ui/` draws the WING surface (`WingSurface`): three fader sections (`FaderSection.*`,
 `FaderStrip.*`) with VIEW, the layer and shift keys, colour bars and scribble strips,
 SELECT / SOLO / MUTE, LED meters and scaled faders; the custom controls section
@@ -1320,8 +1336,10 @@ README's *Known limitations*; keep the three in step.
   (not keys or direct outs) and aren't delay compensated,
   the WING's own blocks still live in `StripParams` (they move out with the WING
   profile, Phase 3), and the strip sources, the monitor SOURCE / DIRECT IN lists and
-  the talkback destinations cover the WING's buses, mains and matrices only. The UI is
-  the WING surface for any configuration.
+  the talkback destinations cover the WING's buses, mains and matrices only. The
+  Universal Mixer's interface is a preview: its MIXER view covers any configuration,
+  and the rest of the console's controls are on the WING surface, which addresses the
+  WING's ranges.
 
 - Hardware: the audio interface's ports stand in for the WING's. No StageConnect,
   AES50 or Dante; source GAIN is digital and +48V is only stored.

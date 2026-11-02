@@ -25,8 +25,10 @@ emulator of several consoles (the X32 / M32, Yamaha, Allen & Heath and DiGiCo af
 WING), built on a mixer core without any one console's limits. The engine and show
 format in the current code are its first step: the console's size is a configuration
 (any number of channels, buses, mains, matrices, up to 256 DCAs and mute groups), and
-each strip's processing is a chain that can hold extra blocks and tap points. The WING
-works exactly as before. The plan is in [docs/UNIVERSAL_MIXER.md](docs/UNIVERSAL_MIXER.md).
+each strip's processing is a chain that can hold extra blocks and tap points. A first
+preview of its own interface, a touch-friendly MIXER view for a console of any size, is
+under SETUP > GENERAL > CONSOLE > INTERFACE. The WING works exactly as before. The plan
+is in [docs/UNIVERSAL_MIXER.md](docs/UNIVERSAL_MIXER.md).
 
 **Community:** questions, tips and feedback on the [Sidecar Discord server](https://discord.gg/TEE8q979x).
 

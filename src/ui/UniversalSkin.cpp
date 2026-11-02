@@ -3,18 +3,13 @@
 namespace livedaw::ui
 {
 
-namespace
-{
-    // The Universal Mixer's first colours (its theme comes with its widgets, Phase 2 step 3).
-    const juce::Colour background { 0xff15171c }, text { 0xffe6e8ee }, dim { 0xff9aa0ad }, accent { 0xff4c8dff };
-} // namespace
+using namespace universal;
 
-UniversalSkin::UniversalSkin (UiContext& c) : ctx (c)
+UniversalSkin::UniversalSkin (UiContext& c)
+    : ctx (c), theme (Theme::dark()), wingKey ("WING SURFACE", theme.accent, theme), mixer (c, theme)
 {
-    wingButton.setColour (juce::TextButton::buttonColourId, accent);
-    wingButton.setColour (juce::TextButton::textColourOffId, juce::Colours::white);
     // Switching rebuilds the window's skin: let the click return first.
-    wingButton.onClick = [&c = ctx]
+    wingKey.onClick = [&c = ctx]
     {
         juce::MessageManager::callAsync ([&c]
         {
@@ -22,40 +17,54 @@ UniversalSkin::UniversalSkin (UiContext& c) : ctx (c)
                 c.setInterface (InterfaceKind::Wing);
         });
     };
-    addAndMakeVisible (wingButton);
+    wingKey.setTooltip ("Back to the WING surface");
+    addAndMakeVisible (wingKey);
+    addAndMakeVisible (mixer);
+    refreshAll();
+}
+
+void UniversalSkin::refreshAll()
+{
+    const auto n = ctx.engine.getCounts();
+    summary = juce::String (n.channels) + " CH  " + juce::String (n.aux) + " AUX  " + juce::String (n.buses) + " BUS  "
+              + juce::String (n.mains) + " MAIN  " + juce::String (n.matrices) + " MTX  " + juce::String (n.dcas) + " DCA  "
+              + juce::String (n.muteGroups) + " MGRP  " + juce::String (n.fx) + " FX";
+    mixer.rebuild();
+    repaint();
 }
 
 void UniversalSkin::paint (juce::Graphics& g)
 {
-    g.fillAll (background);
-    auto area = getLocalBounds().reduced (48).withSizeKeepingCentre (juce::jmin (getWidth() - 96, 760), juce::jmin (getHeight() - 96, 420));
-    g.setColour (text);
-    g.setFont (juce::FontOptions (34.0f, juce::Font::bold));
-    g.drawText ("Universal Mixer", area.removeFromTop (48), juce::Justification::centredLeft);
-    g.setColour (accent);
-    g.setFont (juce::FontOptions (16.0f, juce::Font::bold));
-    g.drawText ("PREVIEW", area.removeFromTop (26), juce::Justification::centredLeft);
-    area.removeFromTop (18);
+    g.fillAll (theme.background);
+    auto bar = getLocalBounds().removeFromTop (sizes::kTopBar);
+    g.setColour (theme.panel);
+    g.fillRect (bar);
+    g.setColour (theme.outline);
+    g.fillRect (bar.removeFromBottom (1));
 
-    const auto n = ctx.engine.getCounts();
-    const auto counts = juce::String (n.channels) + " channels, " + juce::String (n.aux) + " aux, " + juce::String (n.buses) + " buses, "
-                        + juce::String (n.mains) + (n.mains == 1 ? " main, " : " mains, ") + juce::String (n.matrices) + " matrices, "
-                        + juce::String (n.dcas) + " DCAs, " + juce::String (n.muteGroups) + " mute groups and " + juce::String (n.fx) + " FX slots.";
-    g.setColour (text);
-    g.setFont (juce::FontOptions (19.0f));
-    g.drawFittedText ("The console is running: " + counts, area.removeFromTop (60), juce::Justification::topLeft, 3);
-    g.setColour (dim);
-    g.setFont (juce::FontOptions (17.0f));
-    g.drawFittedText ("This interface is being built (Phase 2 of the Universal Mixer: mixer, chains, routing, FX, monitoring, "
-                      "scenes, recorder and setup views). Shows, scenes, the recorder, plugins and the remotes keep working meanwhile.",
-                      area.removeFromTop (80), juce::Justification::topLeft, 4);
+    bar.reduce (sizes::kGapLarge, 0);
+    g.setColour (theme.text);
+    g.setFont (type::font (type::kTitle, true));
+    const int titleWidth = 200;
+    g.drawText ("Universal Mixer", bar.removeFromLeft (titleWidth), juce::Justification::centredLeft);
+    // PREVIEW until Phase 2 is complete.
+    auto badge = bar.removeFromLeft (84).withSizeKeepingCentre (76, 24).toFloat();
+    g.setColour (theme.accent);
+    g.drawRoundedRectangle (badge, 4.0f, 1.5f);
+    g.setFont (type::font (type::kCaption, true));
+    g.drawText ("PREVIEW", badge, juce::Justification::centred);
+    bar.removeFromLeft (sizes::kGapLarge);
+    g.setColour (theme.textDim);
+    g.setFont (type::font (type::kLabel));
+    g.drawFittedText (summary, bar.withTrimmedRight (wingKey.getWidth() + sizes::kGapLarge), juce::Justification::centredLeft, 1, 0.8f);
 }
 
 void UniversalSkin::resized()
 {
-    // Touch-sized (at least 48 px tall), under the text.
-    auto area = getLocalBounds().reduced (48).withSizeKeepingCentre (juce::jmin (getWidth() - 96, 760), juce::jmin (getHeight() - 96, 420));
-    wingButton.setBounds (area.removeFromBottom (56).removeFromLeft (juce::jmin (area.getWidth(), 300)));
+    auto area = getLocalBounds();
+    auto bar = area.removeFromTop (sizes::kTopBar).reduced (sizes::kGapLarge, (sizes::kTopBar - sizes::kTouch) / 2);
+    wingKey.setBounds (bar.removeFromRight (160));
+    mixer.setBounds (area);
 }
 
 } // namespace livedaw::ui

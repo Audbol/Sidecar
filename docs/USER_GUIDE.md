@@ -217,7 +217,19 @@ touchscreen looks the same in both. WING remote clients see the black WING as mo
 SETUP > GENERAL > CONSOLE > INTERFACE chooses the window's interface: **WING** (the
 surface described in this guide, the default) or **UNIVERSAL**, the Universal Mixer's
 own interface (docs/UNIVERSAL_MIXER.md). The Universal Mixer is a preview while it is
-being built: for now it shows the console it runs and a key back to the WING surface.
+being built. Its top bar shows the console it runs (how many channels, aux, buses,
+mains, matrices, DCAs, mute groups and FX slots) and a **WING SURFACE** key back to the
+WING surface. Under it is the MIXER view: a column for every strip of the console,
+whatever its size, channels first and matrices last, scrolled sideways (drag with a
+finger, or use the scroll bar). The keys above it show every kind (**ALL**) or one
+(**CHANNELS**, **AUX**, **BUSES**, **MAINS**, **MATRICES**). A column shows the
+strip's colour, its label and name (tap them to select the strip), its pan (drag
+sideways; double-tap for centre), **MUTE** (lit for the strip's own mute, outlined
+while a mute group, a DCA or SIP mutes it), **SOLO**, and its fader with the output
+meter beside it on the fader's scale (drag, or turn the wheel; Shift for fine moves;
+double-tap for 0 dB). A drag moves a control by how far you move, so touching a fader
+never makes it jump. The rest of the console (chains, routing, effects, monitoring,
+scenes, the recorder and setup) is on the WING surface for now.
 The window changes at once and the choice is an app preference. Shows, scenes, the
 recorder, plugins and the remotes keep working whichever interface shows. A show of a
 console that isn't a WING (more mains or matrices, say) opens in the Universal Mixer;
