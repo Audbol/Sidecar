@@ -23,7 +23,8 @@
 // after a fault, and the device's xruns (128-sample blocks by default).
 //
 // Exit code 0: no problem found; 1: a dropout, the audio stopped or went non-finite, or the
-// message thread stalled; 3: a crash (Windows: the log has the exception).
+// message thread stalled; 3: a crash (Windows: the log has the exception, or for an abort
+// or an uncaught exception, its stack; the monkey's build has symbols).
 
 #include "engine/AppPaths.h"
 #include "engine/EventLog.h"
@@ -41,6 +42,8 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <csignal>
+#include <exception>
 #include <map>
 #include <set>
 #include <typeinfo>
@@ -103,6 +106,49 @@ namespace
         std::fflush (stderr);
         TerminateProcess (GetCurrentProcess(), 3);
         return EXCEPTION_EXECUTE_HANDLER;
+    }
+
+    /** abort() (std::terminate after an uncaught exception), an invalid parameter
+        to a C runtime function or a pure virtual call: the process would end in the
+        runtime's fail-fast (0xC0000409), which no exception filter sees. Logs `why`,
+        the stack and the last actions instead, and ends with the crash code. */
+    [[noreturn]] void onAbortWith (const juce::String& why)
+    {
+        actionLog.write ("CRASH: " + why + ". Stack:\n" + juce::SystemStats::getStackBacktrace() + "The last actions:");
+        for (auto& line : actionLog.recent)
+            actionLog.write ("  " + line);
+        std::fputs (("CRASH: " + why + "\n").toRawUTF8(), stderr);
+        std::fflush (stderr);
+        TerminateProcess (GetCurrentProcess(), 3);
+        std::_Exit (3);
+    }
+
+    void onAbort (int) { onAbortWith ("abort"); }
+    void onInvalidParameter (const wchar_t*, const wchar_t*, const wchar_t*, unsigned int, uintptr_t)
+    {
+        onAbortWith ("an invalid parameter to a C runtime function");
+    }
+    void onPureCall() { onAbortWith ("a pure virtual function call"); }
+
+    [[noreturn]] void onTerminate()
+    {
+        juce::String why ("std::terminate");
+        if (auto e = std::current_exception())
+        {
+            try
+            {
+                std::rethrow_exception (e);
+            }
+            catch (const std::exception& x)
+            {
+                why << ": uncaught " << typeid (x).name() << " (" << x.what() << ")";
+            }
+            catch (...)
+            {
+                why << ": an uncaught exception of an unknown type";
+            }
+        }
+        onAbortWith (why);
     }
 
     /** Cancels the native dialogs (file choosers) of this process. */
@@ -357,13 +403,19 @@ private:
         lastHealth = now;
     }
 
-    /** The windows on screen (the main one, plugin windows, the overview, pop-ups). */
+    /** The windows on screen (the main one, plugin windows, the overview, pop-ups),
+        but not those the OS sends no mouse input to (a drop shadow's, a tooltip, a
+        drag image): a click there reaches the window under them, which the monkey
+        clicks anyway. Sent straight to a drop shadow's window, a press went to the
+        window under it, dismissed the menu that cast the shadow and so deleted the
+        window it had been sent to (tests/WindowTests.cpp). */
     std::vector<juce::Component*> windows()
     {
         std::vector<juce::Component*> list;
         auto& desktop = juce::Desktop::getInstance();
         for (int i = 0; i < desktop.getNumComponents(); ++i)
-            if (auto* c = desktop.getComponent (i); c != nullptr && c->isShowing() && c->getPeer() != nullptr && ! c->getPeer()->isMinimised())
+            if (auto* c = desktop.getComponent (i); c != nullptr && c->isShowing() && c->getPeer() != nullptr && ! c->getPeer()->isMinimised()
+                                                    && (c->getPeer()->getStyleFlags() & juce::ComponentPeer::windowIgnoresMouseClicks) == 0)
                 list.push_back (c);
         return list;
     }
@@ -479,8 +531,14 @@ private:
             actionLog.write ("drag " + what + " by " + (to - at).toString());
             peer->handleMouseEvent (mouse, at, juce::ModifierKeys::leftButtonModifier, 1.0f, 0.0f, juce::Time::currentTimeMillis());
             for (int i = 1; i <= 6; ++i)
+            {
+                if (! stillOpen (peer))
+                    return;
                 peer->handleMouseEvent (mouse, at + (to - at) * ((float) i / 6.0f), juce::ModifierKeys::leftButtonModifier, 1.0f, 0.0f,
                                         juce::Time::currentTimeMillis());
+            }
+            if (! stillOpen (peer))
+                return;
             pendingPeer = peer;
             pendingAt = to;
             pendingUp = true;
@@ -494,7 +552,8 @@ private:
             count ("wheel");
             actionLog.write ("wheel " + juce::String (wheel.deltaY, 2) + " on " + what);
             peer->handleMouseEvent (mouse, at, {}, 0.0f, 0.0f, juce::Time::currentTimeMillis());
-            peer->handleMouseWheel (mouse, at, juce::Time::currentTimeMillis(), wheel);
+            if (stillOpen (peer))
+                peer->handleMouseWheel (mouse, at, juce::Time::currentTimeMillis(), wheel);
         }
     }
 
@@ -512,7 +571,11 @@ private:
         }
         const auto t = juce::Time::currentTimeMillis();
         peer.handleMouseEvent (mouse, at, {}, 0.0f, 0.0f, t);
+        if (! stillOpen (&peer))
+            return;
         peer.handleMouseEvent (mouse, at, mods, 1.0f, 0.0f, t);
+        if (! stillOpen (&peer))
+            return;
         if (holdMs > 0)
         {
             pendingPeer = &peer;
@@ -530,13 +593,19 @@ private:
             return;
         pendingUp = false;
         // The window may have closed meanwhile.
-        auto& desktop = juce::Desktop::getInstance();
-        for (int i = 0; i < desktop.getNumComponents(); ++i)
-            if (desktop.getComponent (i)->getPeer() == pendingPeer)
-            {
-                pendingPeer->handleMouseEvent (mouse, pendingAt, {}, 0.0f, 0.0f, juce::Time::currentTimeMillis());
-                return;
-            }
+        if (juce::ComponentPeer::isValidPeer (pendingPeer))
+            pendingPeer->handleMouseEvent (mouse, pendingAt, {}, 0.0f, 0.0f, juce::Time::currentTimeMillis());
+    }
+
+    /** An event can close the window it went to. The OS sends nothing more to a
+        window that is gone, so neither does the monkey: the rest of a click once
+        went to a deleted window, a crash of the test (0xC0000409). */
+    static bool stillOpen (const juce::ComponentPeer* peer)
+    {
+        if (juce::ComponentPeer::isValidPeer (peer))
+            return true;
+        actionLog.write ("  (its window closed: the rest of the gesture isn't sent)");
+        return false;
     }
 
     void key()
@@ -640,6 +709,12 @@ public:
        #if JUCE_WINDOWS
         SetEnvironmentVariableW (L"SIDECAR_HOME", home.getFullPathName().toWideCharPointer());
         SetUnhandledExceptionFilter (onCrash);
+        // The runtime's own fail-fasts are crashes the log names too.
+        std::set_terminate (onTerminate);
+        std::signal (SIGABRT, onAbort);
+        _set_abort_behavior (0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+        _set_invalid_parameter_handler (onInvalidParameter);
+        _set_purecall_handler (onPureCall);
        #else
         setenv ("SIDECAR_HOME", home.getFullPathName().toRawUTF8(), 1);
        #endif

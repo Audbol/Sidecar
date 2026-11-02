@@ -46,7 +46,9 @@ settings and documents aren't touched), no network servers and no file manager
 windows, and fails on a crash, non-finite audio, a message-thread stall or an audio
 dropout (a block that takes longer to process than it lasts, a block the engine
 silences, a device xrun). `monkey.log` in its home folder lists every action; the
-seed (`--seed`) replays a run.
+seed (`--seed`) replays a run. On Windows a crash's entry names the exception, or for
+an abort, an uncaught exception or another C runtime fail-fast, the stack (the
+monkey is built with symbols).
 CI builds and tests Windows, macOS and Linux, and runs the tests under
 AddressSanitizer, UndefinedBehaviorSanitizer and ThreadSanitizer.
 

@@ -91,6 +91,14 @@ WING works as before throughout.
 
 ### Fixed
 
+- The whole-program monkey test (`SidecarMonkey`) could crash itself (0xC0000409) on a
+  click it sent to a pop-up's drop shadow. Windows sends a shadow's window no mouse
+  input; sent one anyway, the press reached the window under it, dismissed the menu,
+  and the shadow's window was deleted before the click's mouse-up went to it. The
+  monkey now leaves windows that take no mouse input alone and sends nothing more to a
+  window an event closed. On Windows its log also names the stack of an abort, an
+  uncaught exception or another C runtime fail-fast (its build has symbols). Sidecar
+  itself wasn't at fault; a test (*Windows*) shows the case.
 - Importing a WING snapshot no longer patches two of its inputs to one port. The WING's
   LOCAL, AUX, StageConnect, USB, MOD and AES/EBU inputs land on the ports AES50 A (or B)
   has here, so a show with the drums on A 1-5 and the vocals on the console's LOCAL 1-5

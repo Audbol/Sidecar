@@ -374,6 +374,7 @@ if(LIVEDAW_BUILD_TESTS)
         tests/ConsoleRulesTests.cpp
         tests/SandboxTests.cpp
         tests/RealPluginTests.cpp
+        tests/WindowTests.cpp
         src/sandbox/TestPlugins.cpp
         ${LIVEDAW_ENGINE_SOURCES}
         ${LIVEDAW_DAW_SOURCES})
@@ -423,4 +424,11 @@ if(LIVEDAW_BUILD_TESTS)
         ${LIVEDAW_UI_SOURCES})
     livedaw_configure_juce_target(SidecarMonkey)
     target_link_libraries(SidecarMonkey PRIVATE LiveDAWResources)
+    # Symbols, so a crash's stack in the monkey's log names the functions.
+    if(MSVC)
+        target_compile_options(SidecarMonkey PRIVATE /Zi)
+        target_link_options(SidecarMonkey PRIVATE /DEBUG /OPT:REF /OPT:ICF)
+    else()
+        target_compile_options(SidecarMonkey PRIVATE -g)
+    endif()
 endif()
