@@ -395,6 +395,11 @@ if(LIVEDAW_BUILD_TESTS)
         ${LIVEDAW_DAW_SOURCES})
     livedaw_configure_juce_target(LiveDAWTests)
     target_link_libraries(LiveDAWTests PRIVATE LiveDAWResources) # the screen fonts (the plugin chain view)
+    # Symbols, so the stack a crash prints (tests/TestMain.cpp) names the functions.
+    if(MSVC)
+        target_compile_options(LiveDAWTests PRIVATE /Zi)
+        target_link_options(LiveDAWTests PRIVATE /DEBUG /OPT:REF /OPT:ICF)
+    endif()
 
     # The sandbox tests start the real helper (with its test plugins).
     add_dependencies(LiveDAWTests SidecarPluginHost)

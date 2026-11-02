@@ -14,6 +14,9 @@ public:
     void runTest() override
     {
         beginTest ("A press on a pop-up menu's drop shadow goes to the window under it and can delete the shadow's window");
+        if (! test::hasDisplay())
+            logMessage ("No display: no windows");
+        else
         {
             // The monkey once picked a drop shadow's window for its clicks. Blocked by the
             // menu, the press under it dismissed the menu, the shadow's window was deleted

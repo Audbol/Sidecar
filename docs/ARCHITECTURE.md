@@ -1034,7 +1034,10 @@ blinking LEDs.
   `PW_RENDERFULLCONTENT`), so native plugin views (child HWNDs, GPU-drawn ones too)
   are in it whether the window is covered or not; elsewhere a component snapshot.
   Pictures are keyed by plugin instance and checked by name (an address can be
-  reused); `pluginRemoved` forgets them and prunes those no slot holds.
+  reused); `pluginRemoved` forgets them and prunes those no slot holds. The overview
+  draws what it read at its last poll, so a plugin it shows may be gone by the time it
+  paints: `PluginPictures::find` takes the name read with the pointer and never
+  touches the plugin.
   `ctx.capturePluginPictures` (CAPTURE ALL) opens each slot's window in turn
   (`MainComponent::captureNextPluginPicture`, 1.2 s each) and closes those it opened.
 

@@ -160,6 +160,17 @@ inline void pumpMessages (int ms)
 #endif
     }
 }
+
+/** False where windows can't be opened: Linux without an X display (CI). Tests that
+    put a window on the desktop skip without one (JUCE dereferences the display). */
+inline bool hasDisplay()
+{
+#if JUCE_LINUX || JUCE_BSD
+    return juce::SystemStats::getEnvironmentVariable ("DISPLAY", {}).isNotEmpty();
+#else
+    return true;
+#endif
+}
 } // namespace livedaw::test
 
 #include <juce_audio_processors/juce_audio_processors.h>

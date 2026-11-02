@@ -1072,19 +1072,34 @@ public:
             pictures.store (b, {}); // an empty picture is ignored
             expect (pictures.getGeneration() > before);
             expectEquals (pictures.size(), 1);
-            expect (pictures.find (&a) != nullptr && pictures.find (&b) == nullptr);
-            expectEquals (pictures.find (&a)->name, juce::String ("Alpha"));
+            expect (pictures.find (&a, "Alpha") != nullptr && pictures.find (&b, "Beta") == nullptr);
+            expectEquals (pictures.find (&a, "Alpha")->name, juce::String ("Alpha"));
+            expect (pictures.find (&a, "Beta") == nullptr, "another plugin at the same address");
 
             // Only the plugins still in a slot keep theirs.
             AffinePlugin c ("Gamma", 1.0f, 0.0f);
             pictures.store (c, red);
             pictures.retainOnly ({ &c });
-            expect (pictures.find (&a) == nullptr && pictures.find (&c) != nullptr);
+            expect (pictures.find (&a, "Alpha") == nullptr && pictures.find (&c, "Gamma") != nullptr);
             pictures.forget (&c);
             expectEquals (pictures.size(), 0);
+
+            // A plugin that is gone isn't touched: the overview may draw what it read
+            // before the plugin was removed (the monkey test found the overview calling a
+            // deleted plugin; the sanitizer build catches a touch).
+            auto gone = std::make_unique<AffinePlugin> ("Delta", 1.0f, 0.0f);
+            const juce::AudioProcessor* address = gone.get();
+            pictures.store (*gone, red);
+            gone.reset();
+            expect (pictures.find (address, "Delta") != nullptr);
+            pictures.retainOnly ({});
+            expect (pictures.find (address, "Delta") == nullptr);
         }
 
         beginTest ("The overview opens in a window of its own, shows every slot's plugins with their pictures and remembers that it was open");
+        if (! test::hasDisplay())
+            logMessage ("No display: no window for the overview");
+        else
         {
             MixerEngine engine (0);
             OfflineRig rig (engine, 2, 2);
@@ -1151,6 +1166,9 @@ public:
         }
 
         beginTest ("The overview with nothing loaded says so");
+        if (! test::hasDisplay())
+            logMessage ("No display: no window for the overview");
+        else
         {
             MixerEngine engine (0);
             OverviewRig ui (engine);
@@ -1219,18 +1237,24 @@ public:
 
         auto& fx = engine.getFx();
         juce::Random rng (seed);
-        auto window = std::make_unique<ui::PluginOverviewWindow> (ui.ctx, [] {});
-        auto* content = window->getContentComponent();
+        // Without a display (Linux CI) the overview can't open; the rest runs without it.
+        std::unique_ptr<ui::PluginOverviewWindow> window;
+        juce::Component* content = nullptr;
         juce::Component* body = nullptr;
         std::vector<juce::Button*> keys;
-        for (auto* c : content->getChildren())
+        if (test::hasDisplay())
         {
-            if (auto* b = dynamic_cast<juce::Button*> (c))
-                keys.push_back (b);
-            if (auto* v = dynamic_cast<juce::Viewport*> (c))
-                body = v->getViewedComponent();
+            window = std::make_unique<ui::PluginOverviewWindow> (ui.ctx, [] {});
+            content = window->getContentComponent();
+            for (auto* c : content->getChildren())
+            {
+                if (auto* b = dynamic_cast<juce::Button*> (c))
+                    keys.push_back (b);
+                if (auto* v = dynamic_cast<juce::Viewport*> (c))
+                    body = v->getViewedComponent();
+            }
+            expect (body != nullptr && keys.size() >= 6);
         }
-        expect (body != nullptr && keys.size() >= 6);
 
         auto randomPlugin = [&rng]
         {
@@ -1359,6 +1383,8 @@ public:
                     break;
                 case 11:
                     // The overview: its keys, its slots, its size, its layout.
+                    if (window == nullptr)
+                        break;
                     switch (rng.nextInt (4))
                     {
                         case 0: keys[(size_t) rng.nextInt ((int) keys.size())]->triggerClick(); break;
@@ -1369,6 +1395,8 @@ public:
                     break;
                 case 12:
                     // Draw it as it is now (every paint path, any state).
+                    if (window == nullptr)
+                        break;
                     if (const auto image = content->createComponentSnapshot (content->getLocalBounds()); ! image.isValid())
                         breakRule ("the overview didn't draw");
                     break;
@@ -1391,7 +1419,7 @@ public:
                 for (int s = 0; s < kMaxFx; ++s)
                     if (fx.hasPlugin (s))
                         withPlugins.push_back (s);
-                if (window->getShownSlots() != withPlugins)
+                if (window != nullptr && window->getShownSlots() != withPlugins)
                     ++overviewMismatches;
             }
         }

@@ -30,6 +30,10 @@ cargo test --workspace
 
 The C++ build must stay free of warnings (JUCE's recommended warning flags are on).
 
+A crash of `LiveDAWTests` prints the test it happened in and the stack (named
+functions on Windows, where the tests are built with symbols). Tests that open
+windows skip them without an X display (Linux CI); `test::hasDisplay()` says so.
+
 **Monkey tests.** `ctest` runs one (the *Monkey* test: random FX slot, plugin,
 direct out, scene and plugin overview operations while audio runs; set
 `LIVEDAW_MONKEY_SEED` / `LIVEDAW_MONKEY_SECONDS` to replay a seed or run longer). For

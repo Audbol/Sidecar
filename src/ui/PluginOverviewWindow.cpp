@@ -497,9 +497,11 @@ private:
                           juce::Justification::centredTop, 2, 0.8f);
     }
 
+    /** The member's picture. Its plugin may have gone since the last poll (a paint can
+        come first): only its address and the name read with it are used. */
     const PluginPictures::Picture* picture (const Member& m) const
     {
-        return ctx.pluginPictures != nullptr ? ctx.pluginPictures->find (m.plugin) : nullptr;
+        return ctx.pluginPictures != nullptr ? ctx.pluginPictures->find (m.plugin, m.name) : nullptr;
     }
 
     /** A pill: a colour with black capitals. */

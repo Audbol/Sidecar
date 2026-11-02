@@ -1028,13 +1028,20 @@ fn tails_end_cleanly() {
             slow.push(format!("{token}: denormals in the tail"));
         }
         if !cfg!(debug_assertions) {
-            let t = std::time::Instant::now();
-            rig.mono(&vec![0.0; secs(5.0)]);
-            let quiet = t.elapsed();
-            let busy_in = noise(4, 0.3, secs(5.0));
-            let t = std::time::Instant::now();
-            rig.mono(&busy_in);
-            let busy = t.elapsed();
+            // The best of three of each (silence first, all of it after the long
+            // silence): a hiccup of a shared CI runner is no slowdown.
+            let best_of_three = |rig: &mut Rig, input: &[f32]| {
+                (0..3)
+                    .map(|_| {
+                        let t = std::time::Instant::now();
+                        rig.mono(input);
+                        t.elapsed()
+                    })
+                    .min()
+                    .unwrap()
+            };
+            let quiet = best_of_three(&mut rig, &vec![0.0; secs(2.0)]);
+            let busy = best_of_three(&mut rig, &noise(4, 0.3, secs(2.0)));
             if quiet > busy * 3 + std::time::Duration::from_millis(10) {
                 slow.push(format!("{token}: silence costs {quiet:?}, sound {busy:?}"));
             }

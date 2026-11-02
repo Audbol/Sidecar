@@ -106,10 +106,10 @@ void PluginPictures::store (const juce::AudioProcessor& plugin, juce::Image imag
     ++generation;
 }
 
-const PluginPictures::Picture* PluginPictures::find (const juce::AudioProcessor* plugin) const
+const PluginPictures::Picture* PluginPictures::find (const juce::AudioProcessor* plugin, const juce::String& name) const
 {
     const auto it = pictures.find (plugin);
-    if (it == pictures.end() || it->second.name != plugin->getName())
+    if (it == pictures.end() || it->second.name != name)
         return nullptr;
     return &it->second;
 }

@@ -33,9 +33,11 @@ public:
 
     /** Keeps `image` as `plugin`'s picture (an empty image is ignored). */
     void store (const juce::AudioProcessor& plugin, juce::Image image);
-    /** `plugin`'s last picture, or nullptr (also when a plugin of another name
-        now lives at the address of the one pictured). */
-    const Picture* find (const juce::AudioProcessor* plugin) const;
+    /** The last picture of `plugin`, named `name` (its name when the pointer was
+        read), or nullptr (also when a plugin of another name now lives at the
+        address of the one pictured). It never touches the plugin, which may be
+        gone: the overview draws what it read at its last look. */
+    const Picture* find (const juce::AudioProcessor* plugin, const juce::String& name) const;
     /** `plugin` is about to be destroyed (its address may be reused). */
     void forget (const juce::AudioProcessor* plugin);
     /** Forgets the pictures of every plugin but `live` (the ones in the FX slots). */

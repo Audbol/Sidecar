@@ -26,17 +26,6 @@ static bool leakChecks() noexcept
 #endif
 }
 
-bool hasDisplay()
-{
-#if JUCE_LINUX || JUCE_BSD
-    // LSP's VST3 build (and many other Linux plugins) crash in createView /
-    // hasEditor without an X display: their editors need one.
-    return juce::SystemStats::getEnvironmentVariable ("DISPLAY", {}).isNotEmpty();
-#else
-    return true;
-#endif
-}
-
 float toDb (float gain) { return 20.0f * std::log10 (juce::jmax (gain, 1.0e-9f)); }
 
 juce::AudioProcessorParameter* findParam (juce::AudioProcessor& p, const juce::String& name)
@@ -727,7 +716,9 @@ private:
 
             //==================================================================
             beginTest (tag + "editors of real plugins, and the plugin window with zoom");
-            if (! hasDisplay())
+            // LSP's VST3 build (and many other Linux plugins) crash in createView /
+            // hasEditor without an X display: their editors need one.
+            if (! test::hasDisplay())
             {
                 logMessage ("No display: skipping the editors");
             }

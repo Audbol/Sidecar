@@ -141,6 +141,22 @@ WING works as before throughout.
 
 ### Fixed
 
+- The plugin overview could crash Sidecar when a plugin was removed while it was open.
+  It looks at the FX slots 15 times a second and draws what it saw; a paint that came
+  between a plugin's removal and the next look asked the deleted plugin its name (to
+  find its picture). It now uses the name it read at its look and never touches a
+  plugin that may be gone. The *Monkey* test found it (seed 2 on Windows; CI's macOS
+  runs with the default seed).
+- CI's Linux and macOS test jobs had failed since 1 November, so no release could be
+  published. On macOS it was the plugin overview's crash above. On Linux the tests that
+  open windows (the plugin overview's, the *Windows* test) crashed without an X display;
+  they now skip their windows there, and the *Monkey* test runs without the overview.
+  A timing check of the WING effects (`tails_end_cleanly`: silence must cost no more
+  than sound) took one measurement and failed when a shared runner hiccuped; it now
+  takes the best of three.
+- A crash of `LiveDAWTests` (a fault, an abort, an uncaught exception, a pure virtual
+  call) prints the test it happened in and the stack, in a CI log too; on Windows the
+  tests are built with symbols, so the stack names the functions.
 - The Windows (MSVC) build compiles without warnings again: number conversions, local
   names that hid a class's members and a constant condition in the UI and the tests,
   which only a full rebuild showed, and the plugin sandbox's intended cache-line padding.
