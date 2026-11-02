@@ -11,11 +11,13 @@ use livedaw_dsp::wing::{model_index, ModelSpec, DYN_MODELS, EQ_MODELS_BUS, EQ_MO
 use livedaw_engine::analyser::RtaViewSettings;
 use livedaw_engine::atomic::AtomicF32;
 use livedaw_engine::blocks::{BlockKind, BlockParams, Step};
+use livedaw_engine::chain::Node;
 use livedaw_engine::params::{
     ext, DynSlotParams, EqBlockParams, FilterParams, InsertParams, MatrixSendParams, StripParams, FX_EXT, FX_NONE, MAX_FX,
     WING_BUSES,
 };
 use livedaw_engine::routing::{bus_feeds_bus, matrix_direct, MATRIX_DIRECT_INPUTS};
+use livedaw_engine::taps::FIRST_USER_TAP;
 use livedaw_engine::{AtomicGroupSet, Engine, GroupSet, Strip, StripKind, MAX_BUSES};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering::Relaxed};
@@ -184,6 +186,19 @@ fn put_i(e: &mut Element, name: &str, v: &AtomicI32) {
 fn put_f(e: &mut Element, name: &str, v: &AtomicF32) {
     e.set(name, fmt_f32(v.load()));
 }
+/// A send's user tap (`livedaw_engine::taps`), written only when it has one.
+fn put_tap(e: &mut Element, v: &AtomicI32) {
+    let tap = v.load(Relaxed);
+    if tap >= 0 {
+        e.set("tap", tap);
+    }
+}
+
+/// A send's user tap; none without the attribute (shows from before taps).
+fn get_tap(e: &Element, v: &AtomicI32) {
+    v.store(e.int_or("tap", -1), Relaxed);
+}
+
 /// A group set (DCAs, mute groups), as `GroupSet::to_attr`.
 pub(crate) fn put_groups(e: &mut Element, name: &str, v: &AtomicGroupSet) {
     e.set(name, v.load().to_attr());
@@ -352,11 +367,17 @@ pub fn block_section(kind: BlockKind) -> u32 {
 /// strip running its template.
 fn capture_chain(s: &Strip, sections: u32, e: &mut Element) {
     let steps = s.steps();
-    if !steps.iter().any(|st| matches!(st, Step::Block(_))) {
+    if s.layout().is_none() {
         return;
     }
     let c = e.add_new("Chain");
     for (at, step) in steps.iter().enumerate() {
+        if let Step::Node(Node::Tap(id)) = step {
+            if *id >= FIRST_USER_TAP {
+                c.add_new("T").set("id", *id).set("at", at);
+            }
+            continue;
+        }
         let Step::Block(b) = step else { continue };
         let x = c.add_new("B");
         x.set("uid", b.uid()).set("kind", b.kind().as_str()).set("at", at);
@@ -382,17 +403,33 @@ fn capture_chain(s: &Strip, sections: u32, e: &mut Element) {
 fn restore_chain(engine: &Engine, s: &Strip, e: &Element) {
     engine.clear_blocks(s);
     let Some(c) = e.child("Chain") else { return };
-    let mut blocks: Vec<(usize, u32, BlockKind)> = c
-        .children_named("B")
+    // Blocks and user taps, each put back at its step (in step order).
+    enum Item {
+        Block(u32, BlockKind),
+        Tap(u8),
+    }
+    let mut items: Vec<(usize, Item)> = c
+        .elements()
         .filter_map(|x| {
             let at = usize::try_from(x.int_or("at", -1)).ok()?;
-            let uid = u32::try_from(x.int_or("uid", -1)).ok()?;
-            Some((at, uid, BlockKind::parse(x.str_or("kind", ""))?))
+            let item = match x.name.as_str() {
+                "B" => Item::Block(u32::try_from(x.int_or("uid", -1)).ok()?, BlockKind::parse(x.str_or("kind", ""))?),
+                "T" => Item::Tap(u8::try_from(x.int_or("id", -1)).ok()?),
+                _ => return None,
+            };
+            Some((at, item))
         })
         .collect();
-    blocks.sort_by_key(|b| b.0);
-    for (at, uid, kind) in blocks {
-        engine.restore_block(s, uid, kind, at);
+    items.sort_by_key(|i| i.0);
+    for (at, item) in items {
+        match item {
+            Item::Block(uid, kind) => {
+                engine.restore_block(s, uid, kind, at);
+            }
+            Item::Tap(id) => {
+                engine.restore_tap(s, id, at);
+            }
+        }
     }
 }
 
@@ -551,6 +588,7 @@ fn capture_strip(s: &Strip, sections: u32, slots: &[usize], mains: usize, matric
                 put_f(x, "pan", &ms.pan);
                 put_b(x, "plink", &ms.pan_link);
                 put_b(x, "prev", &ms.pan_reversed);
+                put_tap(x, &ms.tap);
             }
         }
         if !matches!(kind, StripKind::Main | StripKind::Matrix) {
@@ -561,6 +599,7 @@ fn capture_strip(s: &Strip, sections: u32, slots: &[usize], mains: usize, matric
                 put_b(x, "on", &ms.on);
                 put_b(x, "pre", &ms.pre);
                 put_f(x, "lvl", &ms.level_db);
+                put_tap(x, &ms.tap);
             }
             let sends = e.add_new("Sends");
             for &slot in slots {
@@ -578,6 +617,7 @@ fn capture_strip(s: &Strip, sections: u32, slots: &[usize], mains: usize, matric
                         put_b(x, "plink", &send.pan_link);
                         put_b(x, "prev", &send.pan_reversed);
                         put_b(x, "ignmute", &send.ignore_mute);
+                        put_tap(x, &send.tap);
                     }
                     None => {
                         // Never touched: record the defaults so a recall resets it.
@@ -1171,6 +1211,7 @@ fn apply_strip(
                 get_fadable(x, "lvl", FadeParam::MatrixLevel(s.clone(), i), engine, fades);
                 get_fadable(x, "pan", FadeParam::MatrixPan(s.clone(), i), engine, fades);
                 get_matrix_pan_link(x, ms);
+                get_tap(x, &ms.tap);
             }
         }
         if let Some(m) = e.child("Mains") {
@@ -1180,6 +1221,7 @@ fn apply_strip(
                 get_b(x, "on", &ms.on);
                 get_b(x, "pre", &ms.pre);
                 get_fadable(x, "lvl", FadeParam::MainLevel(s.clone(), i), engine, fades);
+                get_tap(x, &ms.tap);
             }
         }
         if let Some(sends) = e.child("Sends") {
@@ -1196,6 +1238,7 @@ fn apply_strip(
                 get_b(x, "plink", &send.pan_link);
                 send.pan_reversed.store(x.bool_or("prev", false), Relaxed);
                 get_ignore_mute(x, &send.ignore_mute, send.mode.load(Relaxed) == livedaw_engine::sends::send_mode::PRE);
+                get_tap(x, &send.tap);
             }
         }
         if let Some(t) = e.child("Tap") {

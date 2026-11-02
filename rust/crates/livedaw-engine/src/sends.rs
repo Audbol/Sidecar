@@ -38,6 +38,8 @@ pub struct SendParams {
     pub mode: AtomicI32,
     pub level_db: AtomicF32,
     pub pan: AtomicF32,
+    /// ABI 27: a user tap of the source strip to take the signal at (`taps.rs`; -1 = none).
+    pub tap: AtomicI32,
     /// Gain ramp state (left, right), owned by the audio task that sums the destination bus.
     pub(crate) last_gain: UnsafeCell<[f32; 2]>,
 }
@@ -86,6 +88,7 @@ impl SendParams {
             mode: AtomicI32::new(mode),
             level_db: AtomicF32::new(DEFAULT_SEND_LEVEL_DB),
             pan: AtomicF32::new(0.0),
+            tap: AtomicI32::new(-1),
             last_gain: UnsafeCell::new([0.0; 2]),
         }
     }
@@ -99,6 +102,7 @@ impl SendParams {
         self.mode.store(mode, Ordering::Relaxed);
         self.level_db.store(DEFAULT_SEND_LEVEL_DB);
         self.pan.store(0.0);
+        self.tap.store(-1, Ordering::Relaxed);
     }
 }
 

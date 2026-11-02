@@ -52,6 +52,7 @@
 use crate::analyser::{rta_tap, Analyser, Probes};
 use crate::atomic::AtomicF32;
 use crate::blocks::{Block, BlockKind, Step, MAX_EXTRA_BLOCKS};
+use crate::chain::Node;
 use crate::config::{ConsoleConfig, Counts};
 use crate::denormals::ScopedNoDenormals;
 use crate::fx::{FxRack, InsertCallbacks};
@@ -70,6 +71,7 @@ use crate::solo::{self, solo_mode, SoloBlock};
 use crate::sources::{user_side, SourceDsp, SourceTable, UserSignalParams};
 use crate::strip::{source_ptr, KeyStrips, ProcessContext, Strip};
 use crate::talk::{TalkBlock, TalkGains, TalkRamps};
+use crate::taps::{user_tap, FIRST_USER_TAP, NUM_TAP_IDS};
 use livedaw_dsp::util::*;
 use livedaw_dsp::wing::fx::{allowed_in_slot, FxContext, FxDevice};
 use livedaw_dsp::wing::FX_MODELS;
@@ -678,6 +680,76 @@ impl Engine {
         true
     }
 
+    /// Message thread: places a user tap (`taps.rs`) at step `at` of
+    /// `strip`'s chain; returns its id (None when all are placed).
+    pub fn insert_tap(&self, strip: &Strip, at: usize) -> Option<u8> {
+        let _st = self.lock();
+        let mut steps = strip.steps();
+        let used = |id: u8| steps.iter().any(|s| matches!(s, Step::Node(Node::Tap(t)) if *t == id));
+        let id = (FIRST_USER_TAP..NUM_TAP_IDS as u8).find(|&id| !used(id))?;
+        steps.insert(at.min(steps.len()), Step::Node(Node::Tap(id)));
+        strip.set_layout(steps, &self.garbage);
+        Some(id)
+    }
+
+    /// Message thread: a user tap with the id `id` (a show's) at step `at`.
+    pub fn restore_tap(&self, strip: &Strip, id: u8, at: usize) -> bool {
+        let _st = self.lock();
+        let mut steps = strip.steps();
+        if !(FIRST_USER_TAP..NUM_TAP_IDS as u8).contains(&id)
+            || steps.iter().any(|s| matches!(s, Step::Node(Node::Tap(t)) if *t == id))
+        {
+            return false;
+        }
+        steps.insert(at.min(steps.len()), Step::Node(Node::Tap(id)));
+        strip.set_layout(steps, &self.garbage);
+        true
+    }
+
+    /// Message thread: takes user tap `id` out of `strip`'s chain (sends
+    /// taking it go silent).
+    pub fn remove_tap(&self, strip: &Strip, id: u8) -> bool {
+        let _st = self.lock();
+        let mut steps = strip.steps();
+        let Some(i) = steps.iter().position(|s| matches!(s, Step::Node(Node::Tap(t)) if *t == id && id >= FIRST_USER_TAP)) else {
+            return false;
+        };
+        steps.remove(i);
+        strip.set_layout(steps, &self.garbage);
+        true
+    }
+
+    /// Message thread: the user tap buffers every strip writes: the taps its
+    /// own sends (to buses, mains, matrices) take. Called by `collect`.
+    pub fn update_taps(&self) {
+        let st = self.lock();
+        let bus_slots: Vec<usize> = st.buses.iter().map(|b| b.id() as usize).collect();
+        for s in st.all() {
+            let mut wanted = [false; NUM_TAP_IDS];
+            let mut want = |tap: i32| {
+                if let Some(id) = user_tap(tap) {
+                    wanted[id] = true;
+                }
+            };
+            for &slot in &bus_slots {
+                if let Some(send) = s.sends.find(slot).filter(|send| send.enabled.load(Relaxed)) {
+                    want(send.tap.load(Relaxed));
+                }
+            }
+            for i in 0..st.mains.len() {
+                if let Some(send) = s.main_send(i).filter(|send| send.on.load(Relaxed)) {
+                    want(send.tap.load(Relaxed));
+                }
+            }
+            for i in 0..st.matrices.len() {
+                if let Some(send) = s.matrix_send(i).filter(|send| send.on.load(Relaxed)) {
+                    want(send.tap.load(Relaxed));
+                }
+            }
+            s.taps.plan(&wanted, st.device.block_size, &self.garbage);
+        }
+    }
+
     /// Message thread: back to the strip's template (no extra blocks).
     pub fn clear_blocks(&self, strip: &Strip) {
         let _st = self.lock();
@@ -1005,6 +1077,7 @@ impl Engine {
         self.sync_fx_devices();
         self.update_pdc();
         self.update_keys();
+        self.update_taps();
         self.garbage.collect();
     }
 
@@ -1413,7 +1486,7 @@ impl Engine {
             self.pool.parallel_for(wave.len(), &|j| {
                 let index = wave[j] as usize;
                 let bus = &topo.bus_list[index];
-                sum_bus(bus, index, topo, schedule, pos, n);
+                sum_bus(bus, index, topo, schedule, pos, block, n);
                 add_talk(bus, talk.bus(bus.id() as usize), ramps.get(StripKind::Bus, bus.id() as usize), talk, n);
                 bus.process(&ctx_of(hw.get(), None), n);
                 bus.write_pdc(n);
@@ -1424,7 +1497,7 @@ impl Engine {
         // 5. Mains
         self.pool.parallel_for(topo.mains.len(), &|i| {
             let main = &topo.mains[i];
-            sum_main(main, i, topo.active().iter().chain(topo.buses()), n);
+            sum_main(main, i, topo.active().iter().chain(topo.buses()), block, n);
             add_talk(main, talk.main(i), ramps.get(StripKind::Main, i), talk, n);
             main.process(&ctx_of(hw.get(), None), n);
             main.write_pdc(n);
@@ -1442,7 +1515,7 @@ impl Engine {
         let monitor_direct = &monitor_direct;
         self.pool.parallel_for(topo.matrices.len(), &|i| {
             let mtx = &topo.matrices[i];
-            sum_matrix(mtx, i, topo, monitor_direct.get(), n);
+            sum_matrix(mtx, i, topo, monitor_direct.get(), block, n);
             add_talk(mtx, talk.matrix(i), ramps.get(StripKind::Matrix, i), talk, n);
             mtx.process(&ctx_of(hw.get(), None), n);
             mtx.write_pdc(n);
@@ -2068,6 +2141,35 @@ unsafe fn pre_gains(src: &Strip, pan: Option<f32>) -> [f32; 2] {
     }
 }
 
+/// A send taking a user tap of its source (`taps.rs`): its settings.
+struct UserTapSend {
+    id: usize,
+    on: bool,
+    level_db: f32,
+    ignore_mute: bool,
+    /// The send's own pan (None: the source's).
+    pan: Option<f32>,
+}
+
+/// Adds source `s`'s user tap to `dst` as a pre-fader send would (cut by
+/// the source's mute unless the send ignores it); silence when the tap
+/// wasn't written this block. Not delay compensated.
+///
+/// # Safety
+/// The task summing `dst`, which owns the send's ramp `last`.
+unsafe fn add_user_tap(dst: &Strip, s: &Strip, send: &UserTapSend, block: u64, last: &mut [f32; 2], n: usize) {
+    let level = if send.on && !tap_send_muted(s, send.ignore_mute) { db_to_gain(send.level_db) } else { 0.0 };
+    if level == 0.0 && *last == [0.0, 0.0] {
+        return;
+    }
+    let (Some(l), Some(r)) = (s.taps.read(send.id, block, 0, n), s.taps.read(send.id, block, 1, n)) else {
+        *last = [0.0, 0.0];
+        return;
+    };
+    let g = pre_gains(s, send.pan);
+    add_pair(dst, n, l, r, last, [level * g[0], level * g[1]]);
+}
+
 /// A TAP-mode (pre-fader) send is cut while its source is muted, unless it is
 /// an input or aux channel's send set to IGNORE CHANNEL MUTE.
 #[inline]
@@ -2178,18 +2280,18 @@ fn pdc_feeds<'a>(
 ///
 /// # Safety
 /// Bus task only, after the stages and waves feeding it.
-unsafe fn sum_bus(bus: &Strip, index: usize, topo: &Topology, schedule: &BusSchedule, pos: usize, n: usize) {
+unsafe fn sum_bus(bus: &Strip, index: usize, topo: &Topology, schedule: &BusSchedule, pos: usize, block: u64, n: usize) {
     bus.begin_summed_block(n);
     let slot = bus.id() as usize;
     let target = bus.pdc.target();
     for s in topo.active() {
-        add_bus_send(bus, s, slot, target, None, n);
+        add_bus_send(bus, s, slot, target, None, block, n);
     }
     for (from, s) in topo.bus_list.iter().enumerate() {
         if from == index || !bus_feeds_bus(s.id() as usize, slot) {
             continue;
         }
-        add_bus_send(bus, s, slot, target, schedule.is_late(from, index).then_some(pos), n);
+        add_bus_send(bus, s, slot, target, schedule.is_late(from, index).then_some(pos), block, n);
     }
 }
 
@@ -2197,8 +2299,29 @@ unsafe fn sum_bus(bus: &Strip, index: usize, topo: &Topology, schedule: &BusSche
 /// closes a loop and reads `s`'s previous block at that return clock
 /// position (its output, or its tap for PRE; the send's own pan balances it,
 /// and it follows `s`'s own MUTE), never `s`'s buffers, which may be running.
-unsafe fn add_bus_send(bus: &Strip, s: &Strip, slot: usize, target: u32, late: Option<usize>, n: usize) {
+unsafe fn add_bus_send(bus: &Strip, s: &Strip, slot: usize, target: u32, late: Option<usize>, block: u64, n: usize) {
     let Some(send) = s.sends.find(slot) else { return };
+    if let Some(id) = user_tap(send.tap.load(Relaxed)) {
+        let last = &mut *send.last_gain.get();
+        if late.is_some() {
+            *last = [0.0, 0.0]; // a send closing a loop can't take a tap of this block
+            return;
+        }
+        let pan = match (send.pan_link.load(Relaxed), send.pan_reversed.load(Relaxed)) {
+            (true, false) => None,
+            (true, true) => Some(-s.params.pan.load() / 100.0),
+            (false, _) => Some(send.pan.load() / 100.0),
+        };
+        let tap = UserTapSend {
+            id,
+            on: send.enabled.load(Relaxed),
+            level_db: send.level_db.load(),
+            ignore_mute: send.ignore_mute.load(Relaxed),
+            pan,
+        };
+        add_user_tap(bus, s, &tap, block, last, n);
+        return;
+    }
     let mode = send.mode.load(Relaxed);
     let muted = || match late {
         Some(_) => s.params.mute.load(Relaxed),
@@ -2255,11 +2378,17 @@ unsafe fn add_bus_send(bus: &Strip, s: &Strip, slot: usize, target: u32, late: O
 
 /// # Safety
 /// Main task `index` only, after the bus stages.
-unsafe fn sum_main<'a>(main: &Strip, index: usize, sources: impl Iterator<Item = &'a Arc<Strip>>, n: usize) {
+unsafe fn sum_main<'a>(main: &Strip, index: usize, sources: impl Iterator<Item = &'a Arc<Strip>>, block: u64, n: usize) {
     main.begin_summed_block(n);
     let target = main.pdc.target();
     for s in sources {
         let Some(send) = s.main_send(index) else { continue };
+        if let Some(id) = user_tap(send.tap.load(Relaxed)) {
+            let tap =
+                UserTapSend { id, on: send.on.load(Relaxed), level_db: send.level_db.load(), ignore_mute: false, pan: None };
+            add_user_tap(main, s, &tap, block, send.last(), n);
+            continue;
+        }
         let pre = send.pre.load(Relaxed);
         // Pre-fader main sends still follow the strip's mute.
         let on = send.on.load(Relaxed) && !(pre && s.dsp().muted());
@@ -2283,11 +2412,23 @@ unsafe fn sum_main<'a>(main: &Strip, index: usize, sources: impl Iterator<Item =
 
 /// # Safety
 /// Matrix task `index` only, after the main stage.
-unsafe fn sum_matrix(mtx: &Strip, index: usize, topo: &Topology, monitor: &[*const f32; 6], n: usize) {
+unsafe fn sum_matrix(mtx: &Strip, index: usize, topo: &Topology, monitor: &[*const f32; 6], block: u64, n: usize) {
     mtx.begin_summed_block(n);
     let target = mtx.pdc.target();
     for s in topo.active().iter().chain(topo.buses()).chain(&topo.mains) {
         let Some(send) = s.matrix_send(index) else { continue };
+        if let Some(id) = user_tap(send.tap.load(Relaxed)) {
+            let pan = (!send.pan_link.load(Relaxed)).then(|| send.pan.load() / 100.0);
+            let tap = UserTapSend {
+                id,
+                on: send.on.load(Relaxed),
+                level_db: send.level_db.load(),
+                ignore_mute: send.ignore_mute.load(Relaxed),
+                pan,
+            };
+            add_user_tap(mtx, s, &tap, block, send.last(), n);
+            continue;
+        }
         let on = send.on.load(Relaxed) && !(send.pre.load(Relaxed) && tap_send_muted(s, send.ignore_mute.load(Relaxed)));
         let level = if on { db_to_gain(send.level_db.load()) } else { 0.0 };
         let last = send.last();

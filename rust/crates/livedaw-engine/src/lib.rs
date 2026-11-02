@@ -28,6 +28,7 @@ pub mod solo;
 pub mod sources;
 pub mod strip;
 pub mod talk;
+pub mod taps;
 pub mod tapsend;
 
 pub use analyser::{Analyser, AnalysisControls};

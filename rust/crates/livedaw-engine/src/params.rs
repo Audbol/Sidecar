@@ -416,6 +416,8 @@ pub struct MainSendParams {
     /// still cuts it).
     pub pre: AtomicBool,
     pub level_db: AtomicF32,
+    /// ABI 27: a user tap of the source strip to take the signal at (`taps.rs`; -1 = none).
+    pub tap: AtomicI32,
     /// Gain ramp state (left, right), owned by the task that sums the main.
     pub(crate) last_gain: UnsafeCell<[f32; 2]>,
 }
@@ -444,6 +446,7 @@ impl BankItem for MainSendParams {
             on: AtomicBool::new(main1),
             pre: AtomicBool::new(false),
             level_db: AtomicF32::new(0.0),
+            tap: AtomicI32::new(-1),
             last_gain: UnsafeCell::new([0.0; 2]),
         }
     }
@@ -467,6 +470,8 @@ pub struct MatrixSendParams {
     pub pan_reversed: AtomicBool,
     pub level_db: AtomicF32,
     pub pan: AtomicF32,
+    /// ABI 27: a user tap of the source strip to take the signal at (`taps.rs`; -1 = none).
+    pub tap: AtomicI32,
     /// Gain ramp state (left, right), owned by the task that sums the matrix.
     pub(crate) last_gain: UnsafeCell<[f32; 2]>,
 }
@@ -498,6 +503,7 @@ impl BankItem for MatrixSendParams {
             pan_reversed: AtomicBool::new(false),
             level_db: AtomicF32::new(livedaw_dsp::fader::FADER_MIN),
             pan: AtomicF32::new(0.0),
+            tap: AtomicI32::new(-1),
             last_gain: UnsafeCell::new([0.0; 2]),
         }
     }

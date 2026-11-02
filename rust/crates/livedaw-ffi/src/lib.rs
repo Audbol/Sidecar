@@ -66,7 +66,9 @@ use std::sync::Arc;
 // paged banks on the strip, by the destination's index, as many as the
 // console has (ld_strip_main_send, ld_strip_matrix_send); MainSendParams and
 // MatrixSendParams end with their ramp state (lastGain_).
-pub const LD_ABI_VERSION: i32 = 26;
+// ABI 27 (Phase 1 step 3c): sends to buses, mains and matrices have a `tap`
+// (a user tap of the source strip, `livedaw_engine::taps`; -1 = none).
+pub const LD_ABI_VERSION: i32 = 27;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(default)
@@ -974,7 +976,7 @@ mod tests {
         let mut info = LdLayoutInfo::default();
         unsafe { ld_layout_info(&mut info) };
         assert_eq!(info.abi_version, LD_ABI_VERSION);
-        assert!(info.strip_params > 0 && info.send == 24);
+        assert!(info.strip_params > 0 && info.send == 28, "SendParams: 28 bytes since ABI 27 (`tap`)");
     }
 
     #[test]

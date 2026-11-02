@@ -908,6 +908,47 @@ fn extra_blocks_run_where_they_sit_in_the_chain() {
 }
 
 #[test]
+fn sends_take_user_taps_anywhere_in_the_chain() {
+    use livedaw_engine::blocks::Step;
+    use livedaw_engine::chain::Node;
+    let mut rig = Rig::new(1, 1, 4);
+    set_channels(&rig.engine, 1);
+    let engine = rig.engine.clone();
+    let ch = rig.ch(0);
+    let bus = rig.strip(StripKind::Bus, 0);
+    bus.params.output_left.store(2, Relaxed);
+    bus.params.output_right.store(3, Relaxed);
+    ch.params.fader_db.store(livedaw_dsp::fader::FADER_MIN); // fader down: post sends silent
+    let send = ch.sends.get_or_create(0).unwrap();
+    send.enabled.store(true, Relaxed);
+    send.mode.store(livedaw_engine::sends::send_mode::POST, Relaxed);
+    send.level_db.store(0.0);
+    rig.set_input(0, 0.5);
+    rig.run(20);
+    assert!(rig.out(2).abs() < 1e-6, "post-fader: nothing");
+
+    // A user tap right after INPUT, before the fader: the send takes it.
+    let input = ch.steps().iter().position(|s| matches!(s, Step::Node(Node::Input))).unwrap();
+    let id = engine.insert_tap(&ch, input + 1).unwrap();
+    assert!(id >= livedaw_engine::taps::FIRST_USER_TAP);
+    send.tap.store(id as i32, Relaxed);
+    engine.update_taps();
+    rig.run(20);
+    assert!(close(rig.out(2), 0.5 * CENTRE, 1e-4), "{}", rig.out(2));
+    // Like a pre-fader send: the channel's mute cuts it.
+    ch.params.mute.store(true, Relaxed);
+    rig.run(20);
+    assert!(rig.out(2).abs() < 1e-6);
+    ch.params.mute.store(false, Relaxed);
+    // A second tap gets another id; the tap taken away: silence.
+    assert_ne!(engine.insert_tap(&ch, 0), Some(id));
+    assert!(engine.remove_tap(&ch, id));
+    rig.run(20);
+    assert!(rig.out(2).abs() < 1e-6);
+    assert!(!engine.remove_tap(&ch, livedaw_engine::strip::tap::PFL as u8), "the WING's taps stay");
+}
+
+#[test]
 fn bus_runs_dyn_ins1_fader_eq_ins2_with_the_tap_after_ins1() {
     let mut rig = Rig::new(1, 1, 6);
     set_channels(&rig.engine, 1);

@@ -31,6 +31,9 @@ WING works as before throughout.
   insert, delay; up to 32 per strip) anywhere in a strip's chain, saved with the show
   (`<Chain>`) and recalled by scenes with their section. Engine and show only for
   now; the C ABI and the new interface come later.
+- Universal core, Phase 1 step 3c: tap points anywhere in a strip's chain (up to 32
+  per strip); any send to a bus, main or matrix can take its signal at one. Saved with
+  the show. C ABI 27: the sends' `tap`.
 
 - SETUP > GENERAL > ABOUT (and the start-up notice) links the Sidecar Discord server
   for questions, setup help and feedback: a Community section and a **DISCORD** key

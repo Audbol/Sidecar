@@ -28,7 +28,7 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 26;
+constexpr int kAbiVersion = 27;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -316,6 +316,7 @@ struct MainSendParams
 {
     std::atomic<bool> on, pre; // pre: from the tap point (the strip's mute still cuts it)
     std::atomic<float> levelDb;
+    std::atomic<int32_t> tap; // ABI 27: a user tap of the source (16..47) to take, -1 = none
     float lastGain_[2]; // owned by the audio thread: do not touch
 };
 
@@ -326,6 +327,7 @@ struct MatrixSendParams
     std::atomic<bool> panLink;    // PAN LINK (input/aux channels): the pan follows the channel's
     std::atomic<bool> panReversed; // with panLink: mirrored (LINK REVERSED)
     std::atomic<float> levelDb, pan;
+    std::atomic<int32_t> tap; // ABI 27: a user tap of the source (16..47) to take, -1 = none
     float lastGain_[2]; // owned by the audio thread: do not touch
 };
 
@@ -419,6 +421,7 @@ struct SendParams
     std::atomic<bool> panReversed; // with panLink: LINK REVERSED (mirrored channel pan)
     std::atomic<int32_t> mode; // list 4: PRE (TAP), POST, GRP (GROUP: no send level)
     std::atomic<float> levelDb, pan;
+    std::atomic<int32_t> tap; // ABI 27: a user tap of the source (16..47) to take, -1 = none
     float lastGain_[2]; // owned by the audio thread: do not touch
 };
 

@@ -311,6 +311,19 @@ the block's settings when its section is captured (filter and delay: PREAMP, EQ,
 inserts: INSERTS); a console load rebuilds the chain, a scene recall only sets the
 blocks' settings (by `uid`), and snippet REC pairs them by `uid`.
 
+User taps (`taps.rs`): a strip's taps have ids, 0-9 the WING's (`strip::tap`,
+`keytap::TAP_EQ_POST`, `TAP_INS2`) and 16-47 user taps, placed as `Node::Tap(id)` steps
+of the chain layout (`Engine::insert_tap` / `restore_tap` / `remove_tap`). A send to a
+bus, main or matrix whose `tap` names one takes its source's signal there like a
+pre-fader send (cut by the source's mute unless it ignores it; the send's pan or the
+source's). The strip copies the tap into a stereo buffer of its own (`StripTaps`)
+when it runs the node, but only for taps a send reads: `Engine::update_taps` (from
+`collect`) plans the buffers and retires the others through the garbage list. A
+buffer carries the block it holds; a destination takes it only when written this
+block (the source runs in an earlier stage), else silence, and a bus send closing a
+loop can't take one. User taps are not delay compensated. Shows store them as `<T id
+at>` in `<Chain>` and a send's `tap` when it has one.
+
 ## Processing models
 
 `rust/crates/livedaw-dsp/src/wing/models_gen.rs` holds the WING's model tables: the 32
@@ -349,7 +362,7 @@ views after a show load changes the console from Rust.
   engine controls are `#[repr(C)]` blocks of atomics owned by Rust. C++ sees the same
   memory as `std::atomic<float/bool/int32_t>` structs, and the UI writes them directly
   with no FFI call. Both sides describe the layout; `ld::verifyLayout()` compares the
-  two at startup and in the tests (ABI version 26), and the app refuses to run if they
+  two at startup and in the tests (ABI version 27), and the app refuses to run if they
   differ.
 - **FX meters (ABI 23).** A device reports its screen's live values with
   `FxAlgo::readouts` (48 floats laid out per device, documented in each device's

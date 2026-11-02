@@ -34,6 +34,7 @@ use crate::routing::{return_tap, strip_source_slot, ReturnRing};
 use crate::sends::{Bank, SendBank};
 use crate::solo::StripConsole;
 use crate::sources::{internal, osc_channel, usr_channel};
+use crate::taps::{StripTaps, FIRST_USER_TAP};
 use crate::tapsend::TapShaper;
 use livedaw_dsp::biquad::{Biquad, BiquadCoeffs};
 use livedaw_dsp::delay::{delay_samples, DelayLine};
@@ -296,6 +297,8 @@ pub struct Strip {
     pub pdc: StripPdc,
     /// Input channels: the taps other strips' keys read (`keytap.rs`).
     pub keys: StripKeyTaps,
+    /// User taps read by sends (`taps.rs`).
+    pub taps: StripTaps,
     /// Buses, mains and matrices: their output and tap one block late, for
     /// the readers that run before them (`routing.rs`).
     returns: StripReturns,
@@ -402,6 +405,7 @@ impl Strip {
             console: StripConsole::default(),
             pdc: StripPdc::default(),
             keys: StripKeyTaps::default(),
+            taps: StripTaps::default(),
             returns: StripReturns::default(),
             layout: AtomicPtr::new(std::ptr::null_mut()),
             next_block_uid: AtomicU32::new(1),
@@ -699,6 +703,7 @@ impl Strip {
     pub(crate) unsafe fn prepare(&self, sample_rate: f64, max_block: usize) {
         self.pdc.drop_rings(); // sized for the old block size; the next plan rebuilds them
         self.keys.drop_all();
+        self.taps.drop_all();
         if self.kind.is_output() {
             *self.returns.ring.get() = ReturnRing::new(4, max_block);
             for live in &self.returns.live {
@@ -1233,6 +1238,9 @@ impl Strip {
                 let [t0, t1] = &mut d.tap;
                 let mut chans: [&mut [f32]; 2] = [&mut t0[..n], &mut t1[..n]];
                 d.tap_shaper.process(&mut chans[..nc], p);
+            }
+            Node::Tap(id) if id >= FIRST_USER_TAP => {
+                self.taps.write(id as usize, ctx.block, [&d.work[0][..n], &d.work[1][..n]], nc, n)
             }
             Node::Tap(point) => self.tap_at(d, ctx, point as usize, n),
             Node::Rta(at) => Self::probe_rta(d, ctx, probe, at as usize, n),

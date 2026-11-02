@@ -843,6 +843,17 @@ fn extra_blocks_survive_a_show_and_recall_with_their_sections() {
     assert_eq!(e2q.param("lg", false).unwrap().load(), 4.5);
     let BlockParams::Delay(d2) = &blocks[1].params else { panic!() };
     assert_eq!(d2.delay.load(), 1.0);
+    // A user tap in the chain and a send taking it come back too.
+    let id = engine.insert_tap(&c, 2).unwrap();
+    c.sends.get_or_create(3).unwrap().tap.store(id as i32, Relaxed);
+    c.matrix_send(1).unwrap().tap.store(id as i32, Relaxed);
+    let (et, _) = round_trip(&engine, &Show::new());
+    let ct = ch(&et, 0);
+    let tap_at = |s: &[Step]| s.iter().position(|x| matches!(x, Step::Node(livedaw_engine::chain::Node::Tap(t)) if *t == id));
+    assert_eq!(tap_at(&ct.steps()), tap_at(&c.steps()));
+    assert_eq!(ct.sends.find(3).unwrap().tap.load(Relaxed), id as i32);
+    assert_eq!(ct.matrix_send(1).unwrap().tap.load(Relaxed), id as i32);
+    assert_eq!(ct.matrix_send(0).unwrap().tap.load(Relaxed), -1);
     // A new block on the loaded strip gets a fresh id.
     let more = e2.insert_block(&c2, BlockKind::Insert, 0).unwrap();
     assert!(more.uid() > eq.uid().max(dly.uid()));

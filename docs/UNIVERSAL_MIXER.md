@@ -128,8 +128,15 @@ Three layers:
         use and delay compensation walk the chain. Shows store them as
         `<Chain>` (structure with the console, settings recalled by scenes
         with their section). Not yet in the C ABI (with 3d).
-      - 3c: tap markers anywhere, referenced by sends, keys and the delay
-        compensation.
+      - 3c (done): user taps (`taps.rs`, ids 16-47, up to 32 per strip) placed
+        anywhere in a strip's chain (`Engine::insert_tap`, `remove_tap`); any
+        send to a bus, main or matrix can take its source's signal at one
+        (its `tap` field, C ABI 27), as a pre-fader send. A strip writes a
+        user tap into a buffer only while a send reads it (`update_taps`).
+        Shows store the taps (`<Chain><T id at>`) and the sends' `tap`.
+        Still to come: keys and direct outs at user taps, and their delay
+        compensation (user taps are not compensated, like solo and direct
+        outs).
       - 3d: the blocks' parameters leave `StripParams` (which keeps the
         strip-level state); C++ and `map.rs` facades.
    4. **Show format 4**: the configuration, chains and sends; 0.1.x shows (format
