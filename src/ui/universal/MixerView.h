@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui/UiContext.h"
+#include "ui/universal/ChannelPanel.h"
 #include "ui/universal/Widgets.h"
 
 #include <memory>
@@ -94,6 +95,10 @@ public:
     /** The FADERS key: the columns show their faders, or only their overviews. */
     void setFadersShown (bool);
     bool areFadersShown() const noexcept { return fadersShown; }
+    /** The CHANNEL key: the selected strip's panel (ChannelPanel) across the top. */
+    void setChannelShown (bool);
+    bool isChannelShown() const noexcept { return channelShown; }
+    ChannelPanel& getChannelPanel() noexcept { return channel; }
     int getFilter() const noexcept { return filter; }
     /** The strips changed (the view also notices by itself). */
     void rebuild();
@@ -120,8 +125,10 @@ private:
     int filter = -1;
     int structureVersion = -1;
     std::vector<std::unique_ptr<ToggleKey>> filterKeys;
-    ToggleKey fadersKey;
-    bool fadersShown = true;
+    ToggleKey fadersKey, channelKey;
+    bool fadersShown = true, channelShown = true;
+    ChannelPanel channel;
+    int ticks = 0;
     juce::Viewport viewport;
     juce::Component content;
     std::vector<std::unique_ptr<StripColumn>> columns;

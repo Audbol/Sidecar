@@ -1,5 +1,7 @@
 #include "ui/universal/BlockEditor.h"
 
+#include "ui/Faceplate.h"
+
 #include "ui/DelayUnits.h"
 
 namespace livedaw::ui::universal
@@ -271,13 +273,15 @@ ChoiceBar& BlockEditor::addChoice (const juce::String& caption, std::function<ju
 void BlockEditor::addModel (std::atomic<int32_t>& model)
 {
     const auto table = target.table;
-    addChoice ("MODEL", [table] { return modelNames (table); }, [&model] { return model.load(); },
-               [set = target.setModel] (int m)
-               {
-                   if (set)
-                       set (m);
-               },
-               devices::wing); // the WING's model tables
+    auto& choice = addChoice ("MODEL", [table] { return modelNames (table); }, [&model] { return model.load(); },
+                              [set = target.setModel] (int m)
+                              {
+                                  if (set)
+                                      set (m);
+                              },
+                              devices::wing); // the WING's model tables
+    // Chosen by their pictures: the WING's front panels.
+    choice.paintItem = [table] (juce::Graphics& g, juce::Rectangle<float> r, int m) { Faceplate::paintThumbnail (g, r, table, m, {}); };
 }
 
 void BlockEditor::addParams (std::atomic<int32_t>& model, std::atomic<float>* values, int numValues)
@@ -294,13 +298,26 @@ void BlockEditor::addParams (std::atomic<int32_t>& model, std::atomic<float>* va
     });
 }
 
-void BlockEditor::addResponse()
+void BlockEditor::addResponse (std::function<std::vector<ResponseView::Handle>()> handles)
 {
     auto view = std::make_unique<ResponseView> (theme);
     view->response = target.response;
+    view->handleSource = std::move (handles);
+    view->onEdited = [this] { refresh(); }; // the bars follow a handle
     response = view.get();
     add (std::move (view), kCurve);
     refreshers.push_back ([this] { response->refresh(); });
+}
+
+void BlockEditor::addTransfer (DynSlotParams& d)
+{
+    auto view = std::make_unique<TransferView> (theme);
+    view->bind (&d);
+    view->reductionDb = target.reductionDb;
+    view->onEdited = [this] { refresh(); };
+    transfer = view.get();
+    add (std::move (view), kCurve);
+    refreshers.push_back ([this] { transfer->refresh(); });
 }
 
 void BlockEditor::build()
@@ -308,6 +325,7 @@ void BlockEditor::build()
     rows.clear();
     refreshers.clear();
     response = nullptr;
+    transfer = nullptr;
     const double sr = sampleRateOf (ctx);
 
     switch (target.kind)
@@ -323,7 +341,23 @@ void BlockEditor::build()
         case BlockTarget::Kind::Filter:
         {
             auto& f = *target.filter;
-            addResponse();
+            addResponse ([&f]
+            {
+                ResponseView::Handle low, high;
+                low.label = "L";
+                low.freq = &f.lowCutFreq;
+                low.minFreq = 20.0f;
+                low.maxFreq = 2000.0f;
+                low.defaultFreq = kLowCutDefaultHz;
+                low.active = [&f] { return f.lowCut.load(); };
+                high.label = "H";
+                high.freq = &f.highCutFreq;
+                high.minFreq = 50.0f;
+                high.maxFreq = 20000.0f;
+                high.defaultFreq = kHighCutDefaultHz;
+                high.active = [&f] { return f.highCut.load(); };
+                return std::vector<ResponseView::Handle> { low, high };
+            });
             addKey ("LOW CUT", f.lowCut);
             addBar (ValueBar::frequency ("LOW CUT", f.lowCutFreq, 20.0f, 2000.0f, kLowCutDefaultHz));
             addChoice ("SLOPE", [] { return models::list (models::LowCutSlopes); }, [&f] { return f.lowCutSlope.load(); },
@@ -342,7 +376,7 @@ void BlockEditor::build()
             auto& eq = *target.eq;
             addKey ("ON", eq.on);
             addModel (eq.model);
-            addResponse();
+            addResponse ([&eq, table = target.table] { return ResponseView::eqHandles (models::model (table, eq.model.load()), eq.values); });
             addBar (ValueBar::linear ("MIX", eq.mix, 0.0f, 125.0f, 100.0f, " %", 0));
             addParams (eq.model, eq.values, ld::kMaxEqParams);
             break;
@@ -352,6 +386,7 @@ void BlockEditor::build()
             auto& d = *target.dynamics;
             addKey ("ON", d.on);
             addModel (d.model);
+            addTransfer (d);
             auto& meter = add (std::make_unique<ReductionMeter> (theme), kRow);
             refreshers.push_back ([&meter, gr = target.reductionDb] { meter.setReduction (gr ? gr() : 0.0f); });
             addBar (ValueBar::linear ("MIX", d.mix, 0.0f, 100.0f, 100.0f, " %", 0));

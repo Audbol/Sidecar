@@ -840,7 +840,15 @@ MUTE through `MixerEngine::pressMute`, SOLO, fader and meter) and `MixerView` (a
 column per strip in a `Viewport`, kinds apart, filter keys; it rebuilds when the
 engine's structure version changes and refreshes its columns 30 times a second).
 `UniversalSkin` puts a top bar over the MIXER view, with the inspector of the
-selected strip beside it (`Inspector.h`, opened by `selectionChanged`). What a
+selected strip beside it (`Inspector.h`, opened by `selectionChanged`). The MIXER
+view's `ChannelPanel` shows the selected strip whole (its own blocks' curves from
+`ld_strip_response`, the transfer curves from `models::dynStaticCurve`, a compact
+`SendsPanel`). The curves take handles: `ResponseView::Handle` (an atomic frequency,
+gain and Q with their ranges; `eqHandles` finds a model's bands by its `<band>f / g / q`
+parameters, so any console's EQ models get them) and `TransferView` (the `thr` and
+`ratio` / `range` parameters of a dynamics model). A `ChoiceBar` with `paintItem` opens
+a `PictureGrid` (in a `CallOutBox`) instead of a menu: MODEL and DEVICE draw the WING's
+front panels (`Faceplate::paintThumbnail`). What a
 skin shows of a chain is shared (`ui/ChainSummary.h`: `stepName`, `stepOn`, `isShown`,
 `isExtra`, `blockDetail`, `countExtras`), so every console's surface shows the same
 chain: the WING surface's HOME > CHAIN (Sidecar's, with the Universal Mixer's extra

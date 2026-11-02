@@ -273,6 +273,7 @@ set(LIVEDAW_UI_SOURCES
     src/ui/universal/Theme.cpp
     src/ui/universal/Widgets.cpp
     src/ui/universal/MixerView.cpp
+    src/ui/universal/ChannelPanel.cpp
     src/ui/universal/ValueControls.cpp
     src/ui/universal/BlockEditor.cpp
     src/ui/universal/ChainList.cpp

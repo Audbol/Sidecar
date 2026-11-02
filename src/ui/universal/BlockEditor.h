@@ -68,6 +68,8 @@ public:
     int getNumControls() const noexcept { return (int) rows.size(); }
     juce::Component* getControl (int index) const noexcept;
     ResponseView* getResponse() const noexcept { return response; }
+    /** A dynamics block's transfer curve (nullptr for other blocks). */
+    TransferView* getTransfer() const noexcept { return transfer; }
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -82,7 +84,8 @@ private:
                           const juce::String& device = {});
     void addModel (std::atomic<int32_t>& model);
     void addParams (std::atomic<int32_t>& model, std::atomic<float>* values, int numValues);
-    void addResponse();
+    void addResponse (std::function<std::vector<ResponseView::Handle>()> handles = {});
+    void addTransfer (DynSlotParams&);
 
     UiContext& ctx;
     const Theme& theme;
@@ -92,6 +95,7 @@ private:
     std::vector<std::pair<std::unique_ptr<juce::Component>, int>> rows;
     std::vector<std::function<void()>> refreshers;
     ResponseView* response = nullptr; // one of the rows
+    TransferView* transfer = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BlockEditor)
 };

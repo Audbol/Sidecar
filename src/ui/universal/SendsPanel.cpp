@@ -8,6 +8,7 @@ namespace livedaw::ui::universal
 namespace
 {
     constexpr int kLine = 40, kRowGap = 6;
+    constexpr int kCompactLine = 30, kCompactName = 110; // a send on one line: its name this wide
 
     juce::String destinationName (const Strip& s)
     {
@@ -36,6 +37,13 @@ void SendsPanel::Row::paint (juce::Graphics& g)
 {
     g.setColour (theme.raised.withAlpha (0.5f));
     g.fillRoundedRectangle (getLocalBounds().toFloat(), sizes::kRadius);
+    if (compact)
+    {
+        g.setColour (theme.text);
+        g.setFont (type::font (type::kCaption, true));
+        g.drawFittedText (destination, getLocalBounds().withWidth (kCompactName).reduced (sizes::kGapSmall, 0), juce::Justification::centredLeft, 1, 0.7f);
+        return;
+    }
     auto line = getLocalBounds().removeFromTop (kLine).reduced (sizes::kGap, 0);
     line.removeFromRight (on.getWidth() + source.getWidth() + sizes::kGap * 2);
     g.setColour (theme.text);
@@ -45,6 +53,18 @@ void SendsPanel::Row::paint (juce::Graphics& g)
 
 void SendsPanel::Row::resized()
 {
+    if (compact)
+    {
+        // NAME | ON | LEVEL | FROM, on one line.
+        auto area = getLocalBounds().reduced (2);
+        area.removeFromLeft (kCompactName);
+        on.setBounds (area.removeFromLeft (44));
+        area.removeFromLeft (sizes::kGapSmall);
+        source.setBounds (area.removeFromRight (juce::jmin (90, area.getWidth() / 3)));
+        area.removeFromRight (sizes::kGapSmall);
+        level.setBounds (area);
+        return;
+    }
     auto area = getLocalBounds().reduced (sizes::kGapSmall);
     auto line = area.removeFromTop (kLine - sizes::kGapSmall);
     on.setBounds (line.removeFromRight (64));
@@ -202,6 +222,17 @@ void SendsPanel::paint (juce::Graphics& g)
     }
 }
 
+void SendsPanel::setCompact (bool c)
+{
+    compact = c;
+    for (auto& r : rows)
+    {
+        r->compact = c;
+        r->source.caption = c ? juce::String() : juce::String ("FROM");
+    }
+    resized();
+}
+
 void SendsPanel::resized()
 {
     viewport.setBounds (getLocalBounds());
@@ -209,8 +240,10 @@ void SendsPanel::resized()
     int y = 0;
     for (auto& r : rows)
     {
-        r->setBounds (0, y, width, kLine * 2 + sizes::kGapSmall);
-        y += r->getHeight() + kRowGap;
+        r->compact = compact;
+        r->source.caption = compact ? juce::String() : juce::String ("FROM");
+        r->setBounds (0, y, width, compact ? kCompactLine : kLine * 2 + sizes::kGapSmall);
+        y += r->getHeight() + (compact ? 2 : kRowGap);
     }
     content.setSize (width, y);
 }

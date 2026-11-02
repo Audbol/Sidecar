@@ -1,5 +1,7 @@
 #include "ui/universal/FxRackView.h"
 
+#include "ui/Faceplate.h"
+
 namespace livedaw::ui::universal
 {
 
@@ -104,6 +106,8 @@ FxRackView::FxRackView (UiContext& c, const Theme& t)
         return names;
     };
     device.current = [this] { return ctx.engine.getFx().getModel (selected); };
+    // Chosen by their pictures: the WING's FX devices' front panels.
+    device.paintItem = [] (juce::Graphics& g, juce::Rectangle<float> r, int model) { Faceplate::paintThumbnail (g, r, models::Fx, model, {}); };
     device.choose = [this] (int model)
     {
         // EXT is a plugin's slot: the plugin menu loads one.

@@ -100,8 +100,12 @@ public:
             logMessage ("wrote " + file.getFullPathName());
         };
 
-        // MIXER, with and without its faders.
+        // MIXER, with and without its faders, the lead vocal selected (its panel across the top).
+        auto& vox = *engine.getChannels()[18];
+        rig.selected = &vox;
+        skin.selectionChanged();
         skin.getMixer().refresh();
+        skin.getMixer().getChannelPanel().refresh();
         shot ("universal-mixer.png");
         skin.getMixer().setFadersShown (false);
         skin.getMixer().refresh();
@@ -110,7 +114,6 @@ public:
 
         // The inspector on the lead vocal: an EQ block after its DYNAMICS, a user tap
         // after that for the reverb send.
-        auto& vox = *engine.getChannels()[18];
         const auto chain = vox.getChain();
         int afterDyn = -1;
         for (size_t i = 0; i < chain.size(); ++i)

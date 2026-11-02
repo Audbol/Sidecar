@@ -30,6 +30,8 @@ namespace devices
 /** Draws `device` as a small tag at the right of `area` (at its left with
     `atLeft`; nothing for none); returns the width it took, gap included. */
 float drawDeviceTag (juce::Graphics&, juce::Rectangle<float> area, const juce::String& device, const Theme&, bool atLeft = false);
+/** The room drawDeviceTag takes for `device` (0 for none). */
+float deviceTagWidth (const juce::String& device);
 
 /** A fader's travel and a meter's bars leave this much at either end, so a
     meter beside a fader of the same height lines up with its marks. */

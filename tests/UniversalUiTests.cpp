@@ -778,6 +778,7 @@ public:
             test::setChannels (engine, 2);
             UiRig rig (engine);
             MixerView view (rig.ctx, Theme::dark());
+            view.setChannelShown (false); // the columns alone (the channel panel has a test of its own)
             view.setSize (1400, 900);
             auto& column = *view.getColumn (0);
             auto& strip = column.getStrip();
@@ -898,6 +899,115 @@ public:
             expectEquals (view.getPending (SetupView::Mains), 4);
             view.refresh();
             expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds(), true, 1.0f), "universal-setup.png"));
+        }
+
+        beginTest ("The EQ curve's handles: a band's frequency and gain by dragging, its Q with the wheel, its default with a double tap");
+        {
+            MixerEngine engine (0);
+            test::setChannels (engine, 2);
+            auto& strip = *engine.getChannels()[0];
+            auto& eq = strip.params.eq;
+            const auto& model = models::model ((models::Table) strip.getEqTable(), eq.model.load());
+            ResponseView view (Theme::dark());
+            view.setSize (600, 300);
+            view.response = [&strip] (const double* f, double* db, int n)
+            {
+                ld::ld_strip_response (strip.getHandle(), 1, f, db, n, 48000.0);
+                return true;
+            };
+            view.handleSource = [&eq, &model] { return ResponseView::eqHandles (model, eq.values); };
+            view.refresh();
+            const auto& handles = view.getHandles();
+            juce::StringArray labels;
+            for (const auto& h : handles)
+                labels.add (h.label);
+            expect (labels.joinIntoString (" ") == "L 1 2 3 4 H", labels.joinIntoString (" "));
+
+            // Band 1 up and to the right.
+            const int band = labels.indexOf ("1");
+            auto& h = handles[(size_t) band];
+            const float freqBefore = h.freq->load(), gainBefore = h.gain->load(), qBefore = h.q->load();
+            const auto at = view.handlePosition (band);
+            view.mouseDown (mouseEvent (view, at, at));
+            view.mouseDrag (mouseEvent (view, at + juce::Point<float> (60.0f, -50.0f), at));
+            view.mouseUp (mouseEvent (view, at + juce::Point<float> (60.0f, -50.0f), at));
+            expect (h.freq->load() > freqBefore * 1.3f, "higher");
+            expect (h.gain->load() > gainBefore + 3.0f, "louder");
+            expect (! view.getCurve().empty(), "the curve follows");
+            // The wheel over it: Q.
+            const auto moved = view.handlePosition (band);
+            view.mouseWheelMove (mouseEvent (view, moved, moved), juce::MouseWheelDetails { 0.0f, 1.0f, false, false, false });
+            expect (h.q->load() > qBefore, "a narrower band");
+            // A double tap: back to its defaults.
+            view.mouseDoubleClick (mouseEvent (view, moved, moved));
+            expectWithinAbsoluteError (h.gain->load(), model.params[(size_t) model.find ("1g")].defaultValue, 0.001f);
+        }
+
+        beginTest ("The dynamics curve's handles: the threshold along the curve, the ratio up or down");
+        {
+            MixerEngine engine (0);
+            test::setChannels (engine, 2);
+            auto& strip = *engine.getChannels()[0];
+            auto& dyn = strip.params.dynamics;
+            const auto& model = models::model (models::Dynamics, dyn.model.load());
+            const int thr = model.find ("thr"), ratio = model.find ("ratio");
+            expect (thr >= 0 && ratio >= 0, "a compressor");
+            TransferView view (Theme::dark());
+            view.setSize (300, 300);
+            view.bind (&dyn);
+            view.refresh();
+            expect (view.getCurveAt (0.0f) < 0.0f || dyn.values[thr].load() >= 0.0f, "it compresses above the threshold");
+
+            const float thrBefore = dyn.values[thr].load();
+            const auto at = view.handlePosition (0);
+            expect (! at.isOrigin(), "a threshold handle");
+            view.mouseDown (mouseEvent (view, at, at));
+            view.mouseDrag (mouseEvent (view, at - juce::Point<float> (60.0f, 0.0f), at));
+            view.mouseUp (mouseEvent (view, at - juce::Point<float> (60.0f, 0.0f), at));
+            expect (dyn.values[thr].load() < thrBefore - 5.0f, "a lower threshold");
+
+            const float ratioBefore = dyn.values[ratio].load();
+            const auto top = view.handlePosition (1);
+            view.mouseDown (mouseEvent (view, top, top));
+            view.mouseDrag (mouseEvent (view, top + juce::Point<float> (0.0f, 80.0f), top));
+            view.mouseUp (mouseEvent (view, top + juce::Point<float> (0.0f, 80.0f), top));
+            expect (dyn.values[ratio].load() > ratioBefore, "down: more ratio");
+        }
+
+        beginTest ("MIXER's channel panel shows the selected strip whole; CHANNEL hides it and the columns take the room");
+        {
+            MixerEngine engine (0);
+            test::setChannels (engine, 4);
+            UiRig rig (engine);
+            MixerView view (rig.ctx, Theme::dark());
+            view.setSize (1920, 1000);
+            view.setChannelShown (true);
+            auto& panel = view.getChannelPanel();
+            expect (panel.isVisible() && panel.getStrip() == nullptr, "nothing selected: a hint");
+            rig.selected = engine.getChannels()[2].get();
+            view.selectionChanged();
+            view.refresh();
+            expect (panel.getStrip() == rig.selected);
+            expect (panel.getEqView().getHandles().size() == 6, "the EQ's bands as handles");
+            expect (panel.getEqView().getWidth() > 300 && panel.getDynamicsView().getWidth() > 150);
+            const int columnHeight = view.getColumn (0)->getHeight();
+            expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds(), true, 1.0f), "universal-channel-panel.png"));
+            view.setChannelShown (false);
+            expect (! panel.isVisible() && view.getColumn (0)->getHeight() > columnHeight + 150);
+        }
+
+        beginTest ("A model or device is chosen by its picture: a grid of the front panels, a tap chooses");
+        {
+            juce::StringArray names { "One", "Two", "Three", "Four", "Five", "Six", "Seven" };
+            int painted = 0, picked = -1;
+            PictureGrid grid (Theme::dark(), names, 2, [&painted] (juce::Graphics&, juce::Rectangle<float>, int) { ++painted; },
+                              [&picked] (int i) { picked = i; });
+            expectEquals (grid.getNumItems(), 7);
+            expectEquals (grid.getHeight(), 2 * PictureGrid::kTileHeight);
+            expect (grid.createComponentSnapshot (grid.getLocalBounds()).isValid() && painted == 7);
+            const auto tile = grid.tileBounds (5).getCentre().toFloat();
+            grid.mouseUp (mouseEvent (grid, tile, tile));
+            expectEquals (picked, 5);
         }
     }
 };

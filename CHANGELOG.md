@@ -83,6 +83,15 @@ WING works as before throughout.
   stays; fewer take from the end after a warning, keeping a bus, main or matrix that
   something sends to, a DCA or mute group with members and an FX slot in use. AUDIO
   (the audio device) and PREFERENCES too. C ABI 29: `ld_engine_set_num_strips`.
+- Universal Mixer: a **channel panel** across the top of MIXER shows the selected strip
+  whole (input, filter, gate, EQ and dynamics with their curves, its chain in order, its
+  sends a line each); **CHANNEL** hides or shows it. The curves have handles there and
+  in the inspector: EQ bands (frequency and gain by dragging, Q with the wheel, default
+  with a double tap), a filter's cuts, and a dynamics block's threshold and ratio (a
+  gate's range) on its transfer curve, a new view with its gain reduction. MODEL and FX
+  RACK's DEVICE open a grid of the models' front panels (the WING's pictures). Its
+  screenshots are rendered at 1920 x 1080. A list's device tag no longer covers its value
+  when the list is narrow.
 - The WING surface shows the blocks and taps added in the Universal Mixer: HOME has a
   **CHAIN** tab of Sidecar's (after TAGS; **CHAIN +n** while the strip has n of them)
   listing the strip's processing top to bottom, a row per block with its model or

@@ -20,6 +20,8 @@ public:
     SendsPanel (UiContext&, const Theme&);
 
     void setStrip (Strip*);
+    /** A line per send (the channel panel): its name, ON, level and FROM side by side. */
+    void setCompact (bool);
     /** Follows the console's buses, mains and matrices and the sends' values. */
     void refresh();
 
@@ -33,6 +35,7 @@ public:
         ValueBar level;
         ChoiceBar source;
         juce::String destination;
+        bool compact = false;
 
         void paint (juce::Graphics&) override;
         void resized() override;
@@ -58,6 +61,7 @@ private:
     /** The strip's user taps (ids), taken each refresh. */
     std::vector<int> taps;
     int structureVersion = -1;
+    bool compact = false;
     juce::Viewport viewport;
     juce::Component content;
     std::vector<std::unique_ptr<Row>> rows;

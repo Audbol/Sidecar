@@ -7,6 +7,11 @@ namespace livedaw::ui::universal
 {
 
 //==============================================================================
+float deviceTagWidth (const juce::String& device)
+{
+    return device.isEmpty() ? 0.0f : juce::GlyphArrangement::getStringWidth (type::font (type::kCaption - 2.0f, true), device) + 16.0f;
+}
+
 float drawDeviceTag (juce::Graphics& g, juce::Rectangle<float> area, const juce::String& device, const Theme& theme, bool atLeft)
 {
     if (device.isEmpty())

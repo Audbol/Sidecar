@@ -254,8 +254,20 @@ namespace
     }
 } // namespace
 
-MixerView::MixerView (UiContext& c, const Theme& t) : ctx (c), theme (t), fadersKey ("FADERS", t.accent, t)
+MixerView::MixerView (UiContext& c, const Theme& t)
+    : ctx (c), theme (t), fadersKey ("FADERS", t.accent, t), channelKey ("CHANNEL", t.accent, t), channel (c, t)
 {
+    // CHANNEL shows or hides the selected strip's panel across the top; an app setting.
+    channelShown = ctx.settings.getBoolValue (uiprefs::universalChannel, true);
+    channelKey.isOn = [this] { return channelShown; };
+    channelKey.onClick = [this]
+    {
+        setChannelShown (! channelShown);
+        ctx.settings.setValue (uiprefs::universalChannel, channelShown);
+    };
+    addAndMakeVisible (channelKey);
+    addChildComponent (channel);
+    channel.setVisible (channelShown);
     // FADERS shows or hides the faders at any moment (the overviews then take the columns); an app setting.
     fadersShown = ctx.settings.getBoolValue (uiprefs::universalFaders, true);
     fadersKey.isOn = [this] { return fadersShown; };
@@ -332,6 +344,15 @@ void MixerView::selectionChanged()
     auto* selected = ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr;
     for (auto& c : columns)
         c->setSelected (&c->getStrip() == selected);
+    channel.setStrip (ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr);
+}
+
+void MixerView::setChannelShown (bool shown)
+{
+    channelShown = shown;
+    channel.setVisible (shown);
+    channelKey.repaint();
+    resized();
 }
 
 void MixerView::refresh()
@@ -341,6 +362,12 @@ void MixerView::refresh()
     {
         rebuild();
         return;
+    }
+    // The panel's curves ten times a second (the columns' meters take all thirty).
+    if (channelShown && ++ticks % 3 == 0)
+    {
+        channel.setStrip (ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr);
+        channel.refresh();
     }
     for (auto& c : columns)
         c->refresh();
@@ -356,7 +383,7 @@ void MixerView::paint (juce::Graphics& g)
     g.fillAll (theme.background);
     // The strips' blocks (the overview's GATE, DYN, EQ) and the faders' law are the WING's.
     auto bar = getLocalBounds().removeFromTop (sizes::kFilterBar).reduced (sizes::kGapLarge, 0).toFloat();
-    bar.removeFromRight ((float) fadersKey.getWidth() + sizes::kGap);
+    bar.removeFromRight ((float) (fadersKey.getWidth() + channelKey.getWidth()) + sizes::kGap * 2.0f);
     bar.removeFromRight (drawDeviceTag (g, bar, devices::wing, theme));
     g.setColour (theme.textDim);
     g.setFont (type::font (type::kCaption, true));
@@ -368,11 +395,15 @@ void MixerView::resized()
     auto area = getLocalBounds();
     auto bar = area.removeFromTop (sizes::kFilterBar).reduced (sizes::kGap, sizes::kGapSmall);
     fadersKey.setBounds (bar.removeFromRight (120));
+    bar.removeFromRight (sizes::kGapSmall);
+    channelKey.setBounds (bar.removeFromRight (120));
     for (auto& key : filterKeys)
     {
         key->setBounds (bar.removeFromLeft (112));
         bar.removeFromLeft (sizes::kGapSmall);
     }
+    if (channelShown)
+        channel.setBounds (area.removeFromTop (juce::jlimit (200, 300, area.getHeight() * 32 / 100)));
     viewport.setBounds (area);
     layoutColumns();
 }

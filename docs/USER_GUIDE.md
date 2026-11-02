@@ -776,6 +776,18 @@ sideways (drag with a finger, or use the scroll bar). **ALL** shows every kind;
 **FADERS** hides or shows every fader at any moment. Hidden, the overview takes the
 whole column, to watch the processing.
 
+Across the top, the **channel panel** shows the selected strip whole: **INPUT** (trim,
+balance, invert, delay), **FILTER**, **GATE**, **EQ** and **DYNAMICS** with their curves,
+its **CHAIN** in order (the blocks and taps you added in the accent colour) and its
+**SENDS**, a line each (ON, level, where it takes the signal). **CHANNEL** hides or shows
+it; hidden, the columns take its room. Both keys are remembered.
+
+The curves have handles, here and in the inspector: an EQ's bands (drag one for its
+frequency and gain, turn the wheel over it for its Q, double tap it for its default), a
+filter's cuts while they are on (drag sideways), and on a gate's or compressor's curve
+its threshold (drag along the curve) and its ratio, or a gate's range (drag up for
+less, down for more). The gain reduction shows at the curve's right.
+
 ![The MIXER view with FADERS off: each column is its overview, input level, gate and compression, EQ curve and output](images/universal-overview.png)
 
 ### The inspector
@@ -793,8 +805,9 @@ extra blocks and user taps. A green light means the block is on.
   The strip's own blocks stay where its process order puts them.
 
 Under the list, the selected block's editor: its keys, its **MODEL** (EQ, dynamics,
-the filter's tool), its curve, a dynamics block's gain reduction and every parameter
-of its model. The strip's own blocks and extra blocks have the same editors. A delay
+the filter's tool; a tap shows the models' front panels to choose from), its curve with
+its handles, a dynamics block's curve and gain reduction and every parameter of its
+model. The strip's own blocks and extra blocks have the same editors. A delay
 keeps its time when you change its unit.
 
 ![The inspector on the lead vocal: its chain with an EQ block after DYNAMICS, and the EQ block's editor](images/universal-inspector.png)
@@ -825,7 +838,8 @@ signal, so the new one replaces what fed it.
 ### FX RACK
 
 A tile per FX slot in use: its device or plugin, how many inserts use it and its
-level. Under them, the selected slot: **DEVICE** (premium devices in FX 1-8 only),
+level. Under them, the selected slot: **DEVICE** (the devices' front panels to choose from; premium
+devices in FX 1-8 only),
 **PLUGIN** (load a plugin, open its window, bypass or remove it; a slot with a plugin
 is EXT) and the device's controls, its front panel (**FRONT PANEL**) or the list of its
 parameters.
