@@ -851,7 +851,10 @@ the USB key on the screen to choose another folder).
 ## Shows, scenes and snippets
 
 - A **show** is the file. It holds the console (channels, buses, FX devices and plugins,
-  patching, DCAs, mute groups, fader banks) and all of its scenes.
+  patching, DCAs, mute groups, fader banks) and all of its scenes. Shows saved by this
+  version (show format 4) also hold the console's configuration (how many channels,
+  buses, mains, matrices, DCAs and mute groups it has) and don't open in Sidecar 0.1.x;
+  shows from 0.1.x open as before.
 - A **scene** is a console snapshot with a **recall scope**: the sections (Name,
   Routing, Input, Gate, EQ, Dynamics, Inserts, Sends, Fader, DCA/Mute), which strips,
   DCAs, mute groups and FX slots, and the console settings (monitor setup, INPUT

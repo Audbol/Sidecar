@@ -14,16 +14,20 @@ use livedaw_engine::blocks::{BlockKind, BlockParams, Step};
 use livedaw_engine::chain::Node;
 use livedaw_engine::params::{
     ext, DynSlotParams, EqBlockParams, FilterParams, InsertParams, MatrixSendParams, StripParams, FX_EXT, FX_NONE, MAX_FX,
-    WING_BUSES,
 };
 use livedaw_engine::routing::{bus_feeds_bus, matrix_direct, MATRIX_DIRECT_INPUTS};
 use livedaw_engine::taps::FIRST_USER_TAP;
-use livedaw_engine::{AtomicGroupSet, Engine, GroupSet, Strip, StripKind, MAX_BUSES};
+use livedaw_engine::{AtomicGroupSet, ConsoleConfig, Counts, Engine, GroupSet, Strip, StripKind, MAX_BUSES};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering::Relaxed};
 use std::sync::Arc;
 
-pub const CONSOLE_VERSION: i32 = 3;
+/// 4: the Universal core's console (`<Config>`: the configuration, strip
+/// chains, any number of groups, mains and matrices); 3: the WING layout.
+pub const CONSOLE_VERSION: i32 = 4;
+
+/// The console profile shows of this version describe (the emulation): the WING.
+pub const PROFILE: &str = "wing";
 
 // ---- sections -------------------------------------------------------------------
 
@@ -1404,7 +1408,8 @@ pub fn save_console(engine: &Engine, bridge: &mut dyn PluginBridge) -> Element {
     let slots = index.bus_slots();
     let (mains, matrices) = (engine.num_strips(StripKind::Main), engine.num_strips(StripKind::Matrix));
     let mut console = Element::new("Console");
-    console.set("version", CONSOLE_VERSION);
+    console.set("version", CONSOLE_VERSION).set("profile", PROFILE);
+    capture_config(engine, &mut console);
     put_b(&mut console, "outputProtection", &engine.controls.output_protection);
     put_f(&mut console, "outputCeilingDb", &engine.controls.output_ceiling_db);
     capture_monitor(engine, &mut console, true);
@@ -1433,12 +1438,52 @@ pub fn save_console(engine: &Engine, bridge: &mut dyn PluginBridge) -> Element {
     console
 }
 
-/// Rebuilds the console from a `<Console>` element (version 3; older consoles
-/// are converted by `legacy` first). With `load_plugins` false (safe mode) no
-/// FX processor is instantiated. Returns the warnings.
+/// `<Config>`: the console's configuration (`Engine::config`).
+fn capture_config(engine: &Engine, console: &mut Element) {
+    let c = engine.config().counts;
+    console
+        .add_new("Config")
+        .set("channels", c.channels)
+        .set("aux", c.aux)
+        .set("buses", c.buses)
+        .set("mains", c.mains)
+        .set("matrices", c.matrices)
+        .set("dcas", c.dcas)
+        .set("mgrps", c.mute_groups)
+        .set("fx", c.fx);
+}
+
+/// The configuration a `<Console>` describes: its `<Config>`, or the WING
+/// (consoles before format 4 were WINGs). The FX slots in use stay an app
+/// setting (a show brings along the slots it uses: `fit_fx_slots`).
+fn read_config(console: &Element) -> ConsoleConfig {
+    let Some(x) = console.child("Config") else { return ConsoleConfig::wing() };
+    let w = Counts::WING;
+    let n = |name: &str, default: usize| usize::try_from(x.int_or(name, default as i32)).unwrap_or(default);
+    let counts = Counts {
+        channels: n("channels", w.channels),
+        aux: n("aux", w.aux),
+        buses: n("buses", w.buses),
+        mains: n("mains", w.mains),
+        matrices: n("matrices", w.matrices),
+        dcas: n("dcas", w.dcas),
+        mute_groups: n("mgrps", w.mute_groups),
+        fx: n("fx", w.fx),
+    };
+    ConsoleConfig { counts }
+}
+
+/// Rebuilds the console from a `<Console>` element (version 4, or 3: a WING;
+/// older consoles are converted by `legacy` first): its configuration first,
+/// then everything in it. With `load_plugins` false (safe mode) no FX
+/// processor is instantiated. Returns the warnings.
 pub fn load_console(engine: &Engine, console: &Element, bridge: &mut dyn PluginBridge, load_plugins: bool) -> Vec<String> {
-    engine.reset();
     let mut result = ApplyResult::default();
+    let config = read_config(console);
+    engine.set_config(&config);
+    if let Some(profile) = console.attr("profile").filter(|p| *p != PROFILE) {
+        result.warnings.push(format!("The show was made for the console profile \"{profile}\"; loaded as a WING"));
+    }
 
     get_b(console, "outputProtection", &engine.controls.output_protection);
     get_f(console, "outputCeilingDb", &engine.controls.output_ceiling_db);
@@ -1464,7 +1509,7 @@ pub fn load_console(engine: &Engine, console: &Element, bridge: &mut dyn PluginB
             let strip = match kind {
                 StripKind::Channel => Some(engine.add_channel(id)),
                 StripKind::Bus => {
-                    if (0..WING_BUSES as i32).contains(&id) {
+                    if (0..config.counts.buses as i32).contains(&id) {
                         engine.bus_in_slot(id)
                     } else {
                         engine.add_bus(id)

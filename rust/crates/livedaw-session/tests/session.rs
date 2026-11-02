@@ -690,9 +690,42 @@ fn legacy_v2_show_converts_to_the_wing_layout() {
     show.recall_snippet(&engine, &mut np, 0, 0);
     assert_eq!(p.fader_db.load(), -1.0);
 
-    // Saved again, it's a version 3 show.
+    // Saved again, it's a current show (format 4, a WING).
     let text = show.to_xml(&engine, &mut Bridge { host: &mut host, engine: &engine }).to_document();
-    assert!(text.contains("<LiveDAWShow version=\"3\""), "{}", &text[..200]);
+    assert!(text.contains("<LiveDAWShow version=\"4\""), "{}", &text[..200]);
+    assert!(text.contains("<Console version=\"4\" profile=\"wing\""), "{}", &text[..300]);
+}
+
+#[test]
+fn show_format_4_brings_its_configuration_and_reads_format_3_as_a_wing() {
+    use livedaw_engine::{ConsoleConfig, Counts};
+    // A console that isn't a WING: its show rebuilds it as it was.
+    let counts = Counts { channels: 12, aux: 2, buses: 20, mains: 3, matrices: 5, dcas: 24, mute_groups: 12, fx: 16 };
+    let engine = Engine::new(0);
+    engine.configure(&ConsoleConfig { counts });
+    let text = Show::new().to_xml(&engine, &mut NoPlugins).to_document();
+    assert!(text.contains("<Config channels=\"12\" aux=\"2\" buses=\"20\" mains=\"3\" matrices=\"5\""), "{text}");
+    let e2 = Engine::new(0); // a WING
+    let warnings = Show::new().load_from_text(&e2, &mut NoPlugins, &text, true).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(e2.config().counts, counts);
+    assert_eq!(e2.counts(), counts);
+
+    // A format 3 show (no <Config>) loads into that console as a WING.
+    let v3 = r#"<LiveDAWShow version="3" name="Old"><Console version="3"><Channels><Strip ref="ch:1" id="1" name="Kick"/></Channels></Console></LiveDAWShow>"#;
+    let warnings = Show::new().load_from_text(&e2, &mut NoPlugins, v3, true).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(e2.config(), ConsoleConfig::wing());
+    let c = e2.counts();
+    assert_eq!((c.aux, c.buses, c.mains, c.matrices, c.dcas, c.mute_groups), (8, 16, 4, 8, 16, 8));
+    assert_eq!(ch(&e2, 0).name(), "Kick");
+
+    // Another console profile: loaded as a WING, with a warning; a newer format: refused.
+    let other = text.replace("profile=\"wing\"", "profile=\"x32\"");
+    let warnings = Show::new().load_from_text(&e2, &mut NoPlugins, &other, true).unwrap();
+    assert!(warnings.iter().any(|w| w.contains("x32")), "{warnings:?}");
+    let newer = text.replace("<LiveDAWShow version=\"4\"", "<LiveDAWShow version=\"5\"");
+    assert!(Show::new().load_from_text(&e2, &mut NoPlugins, &newer, true).is_err());
 }
 
 #[test]
@@ -786,15 +819,15 @@ fn sends_to_mains_and_matrices_beyond_the_wings_survive_a_show() {
     engine.strips(StripKind::Main)[5].matrix_send(10).unwrap().on.store(true, Relaxed);
     let text = Show::new().to_xml(&engine, &mut NoPlugins).to_document();
 
-    // (Show format 4 will store the configuration; until then the loading console has it.)
+    // The show brings its configuration (format 4): a WING engine becomes that console.
     let e2 = Engine::new(0);
-    e2.configure(&config);
     Show::new().load_from_text(&e2, &mut NoPlugins, &text, true).unwrap();
     let c2 = ch(&e2, 0);
     assert!(c2.main_send(5).unwrap().on.load(Relaxed));
     assert_eq!(c2.main_send(5).unwrap().level_db.load(), -3.0);
     assert_eq!(c2.matrix_send(11).unwrap().level_db.load(), -9.0);
     assert!(e2.strips(StripKind::Main)[5].matrix_send(10).unwrap().on.load(Relaxed));
+    assert_eq!(e2.config(), config);
     // A WING console saves its 4 and 8, as before.
     let wing = Engine::new(0);
     set_channels(&wing, 1);

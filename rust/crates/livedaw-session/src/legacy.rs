@@ -17,9 +17,13 @@ use livedaw_engine::params::{nearest_colour, MAX_FX};
 use livedaw_engine::StripKind;
 use std::collections::HashMap;
 
+/// The first console version with the WING layout (3); format 4 (the
+/// Universal core's) reads version 3 as a WING.
+pub const WING_LAYOUT_VERSION: i32 = 3;
+
 /// Consoles and states without a version (or below 3) are legacy.
 pub fn is_legacy(e: &Element) -> bool {
-    e.int_or("version", 0) < crate::console::CONSOLE_VERSION
+    e.int_or("version", 0) < WING_LAYOUT_VERSION
 }
 
 /// "input:3" -> "ch:3", "aux:2"/"group:2" -> "bus:2", "master:0" -> "main:0".
@@ -503,7 +507,7 @@ mod tests {
         .unwrap();
         let mut c = Converter::default();
         let console = c.convert_console(&old);
-        assert_eq!(console.int_or("version", 0), 3);
+        assert_eq!(console.int_or("version", 0), crate::console::CONSOLE_VERSION);
         assert_eq!(console.double_or("outputCeilingDb", 0.0), -1.0);
 
         let vox = console.child("Channels").unwrap().child("Strip").unwrap();
@@ -534,7 +538,7 @@ mod tests {
         )
         .unwrap();
         let st = c.convert_state(&state);
-        assert_eq!(st.int_or("version", 0), 3);
+        assert_eq!(st.int_or("version", 0), crate::console::CONSOLE_VERSION);
         let slot = st.child("Fx").unwrap().child("Slot").unwrap();
         assert_eq!((slot.int_or("i", -1), slot.child("State").unwrap().text()), (1, "b2".to_string()));
     }

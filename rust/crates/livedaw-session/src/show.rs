@@ -49,7 +49,8 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-pub const SHOW_VERSION: i32 = 3;
+/// 4: the Universal core's (the console's `<Config>`); 3: the WING layout.
+pub const SHOW_VERSION: i32 = 4;
 pub const MAX_FADE_SECONDS: f64 = 60.0;
 /// Scene tags are #1..#128 (0 = no tag).
 pub const MAX_SCENE_TAG: i32 = 128;
@@ -1070,7 +1071,7 @@ impl Show {
         root
     }
 
-    /// Loads a show (version 3, or an older show or version 1 session file,
+    /// Loads a show (version 4 or 3, or an older show or version 1 session file,
     /// converted to the WING layout). With `load_plugins` false (safe mode) the
     /// console is restored without instantiating plugins. Ok carries warnings
     /// (e.g. plugins that failed to load); Err means nothing was loaded.

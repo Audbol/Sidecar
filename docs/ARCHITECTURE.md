@@ -669,11 +669,15 @@ strip records which sections it holds, and `apply()` only touches the intersecti
 a console runs in two passes (structure first, then state), so sends to buses added by
 the same load are kept.
 
-`livedaw-session/src/show.rs` (show format version 3):
+`livedaw-session/src/show.rs` (show format version 4; 3 was the WING layout, read as a
+WING; older ones go through `legacy.rs`, whose converter applies below version 3):
 
 ```
 Show
- ├─ Console     full structure, DCAs, mute groups, FX slots (via the bridge)
+ ├─ Console     profile ("wing"), Config (the counts: `Engine::config`, restored first
+ │              with `Engine::set_config`; the FX slots in use stay an app setting),
+ │              full structure with each strip's <Chain>, DCAs, mute groups, FX slots
+ │              (via the bridge)
  ├─ Layers      section widths, user banks, selected banks
  ├─ GlobalSafe  DCAs, mute groups, FX slots, sections, console settings
  ├─ PartialScope  the scope PARTIAL LOAD / UPDATE last used

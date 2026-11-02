@@ -35,6 +35,14 @@ WING works as before throughout.
   per strip); any send to a bus, main or matrix can take its signal at one. Saved with
   the show. C ABI 27: the sends' `tap`.
 
+### Changed
+
+- **Show format 4.** Shows now store the console's configuration (how many channels,
+  aux, buses, mains, matrices, DCAs, mute groups and FX slots it has) and the profile
+  they were made for (`wing`), and a load rebuilds that console first. Shows saved by
+  this version don't open in Sidecar 0.1.x; shows from 0.1.x (format 3) open as a
+  WING, as before.
+
 - SETUP > GENERAL > ABOUT (and the start-up notice) links the Sidecar Discord server
   for questions, setup help and feedback: a Community section and a **DISCORD** key
   that opens the invite in the browser.

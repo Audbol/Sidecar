@@ -566,11 +566,19 @@ impl Engine {
     /// its counts: channels, aux, buses, mains, matrices, DCAs, mute groups
     /// and FX slots). The WING is `ConsoleConfig::wing()`.
     pub fn configure(&self, config: &ConsoleConfig) {
+        let counts = self.set_config(config);
+        self.set_num_channels(counts.channels);
+        self.set_num_fx(counts.fx);
+    }
+
+    /// Message thread: makes this a fresh console of `config`'s structure
+    /// without its channels (a show load adds them by id) or FX slot count;
+    /// returns the counts in use.
+    pub fn set_config(&self, config: &ConsoleConfig) -> Counts {
         let counts = config.counts.sanitised();
         self.lock().counts = counts;
         self.reset();
-        self.set_num_channels(counts.channels);
-        self.set_num_fx(counts.fx);
+        counts
     }
 
     /// The configuration of the console (`configure`).

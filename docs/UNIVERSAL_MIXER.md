@@ -139,8 +139,12 @@ Three layers:
         outs).
       - 3d: the blocks' parameters leave `StripParams` (which keeps the
         strip-level state); C++ and `map.rs` facades.
-   4. **Show format 4**: the configuration, chains and sends; 0.1.x shows (format
-      3) load through a converter.
+   4. **Show format 4** (done): `<LiveDAWShow version="4">` with `<Console
+      version="4" profile="wing">` and its `<Config>` (the counts), restored first
+      (`Engine::set_config`) before the strips, chains and sends. Format 3 shows
+      (0.1.x) load as a WING; the legacy converter applies below version 3; a
+      newer format is refused (and 0.1.x refuses format 4). Another profile loads
+      as a WING with a warning. The FX slots in use stay an app setting.
    5. **A console that isn't a WING** in the tests (Rust and C++), and the docs.
 2. **Universal Mixer UI**: a new interface over the core (strips, chains, routing
    matrix, sends, monitoring, scenes, recorder), its own look and layout.
