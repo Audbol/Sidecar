@@ -183,6 +183,11 @@ Three layers:
      ones, with a warning.
    - The web remote keeps mirroring the WING display in Phase 2; mirroring the
      Universal Mixer comes later.
+   - A part of the interface that comes from one console's emulation is tagged with
+     that console's name (WING today: its template blocks, model tables, front
+     panels, port groups and lists, fader law); the Universal core's own parts are
+     not (the owner, November 2026: "label each component with the device it comes
+     from").
 
    Layout: a top bar (show, scene GO / NEXT, recorder transport, DSP load, clock,
    menu), a navigator (strips by kind, DCAs, filters, banks), a main view with tabs
@@ -228,7 +233,15 @@ Three layers:
       per bus, main and matrix the strip can feed, with ON, level and its source
       (PRE / POST / GRP or a user tap). Tests in `UniversalUiTests`.
    5. ROUTING matrix, FX RACK (generic parameter panels, the WING faceplates where a
-      device has one) and MONITORING.
+      device has one) and MONITORING (done): view keys under the top bar;
+      `RoutingView` (a `PatchGrid` for INPUTS: channels and aux against a source
+      group, and OUTPUTS: output ports against every bus, main and matrix side and
+      the monitor paths), `FxRackView` (slot tiles; DEVICE, PLUGIN, the front panel
+      or the parameter list), `MonitorView` (SPEAKERS, PHONES, SOLO); device tags
+      (`devices::wing`) on the parts that come from the WING. Still the WING's: the
+      source groups' strip signals and the monitor source list cover its 16 buses,
+      4 mains and 8 matrices; the monitor paths' processing (EQ, delay, limiter) and
+      talkback stay on the WING surface.
    6. SCENES, RECORDER (the recorder page and the multitrack editor) and SETUP
       (audio device, preferences, a configuration editor with the non-destructive
       changes).

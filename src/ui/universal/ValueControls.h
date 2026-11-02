@@ -67,6 +67,8 @@ public:
     explicit ChoiceBar (const Theme&);
 
     juce::String caption;
+    /** The console the items come from (devices::wing), shown as a tag after the caption. */
+    juce::String device;
     std::function<juce::StringArray()> items;
     /** The chosen item's index (-1: none). */
     std::function<int()> current;

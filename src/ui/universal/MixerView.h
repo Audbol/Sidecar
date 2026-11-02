@@ -71,7 +71,11 @@ public:
     void resized() override;
 
 private:
-    void timerCallback() override { refresh(); }
+    void timerCallback() override
+    {
+        if (isVisible())
+            refresh();
+    }
     void layoutColumns();
 
     UiContext& ctx;

@@ -243,8 +243,32 @@ parameter of its model; a bar moves as you drag it and a double tap resets it. A
 keeps its time when you change its unit. **SENDS** lists every bus, main and matrix
 the strip can send to, each with **ON**, its level and where it takes the signal:
 **FROM** PRE or POST (a bus send's GRP too) or one of the strip's user taps, so a send
-can take the signal anywhere in the chain. The rest of the console (routing,
-effects, monitoring, scenes, the recorder and setup) is on the WING surface for now.
+can take the signal anywhere in the chain.
+
+The keys under the top bar show one view at a time: **MIXER**, **ROUTING**, **FX
+RACK** and **MONITORING** (the inspector stays beside them). **ROUTING** is a patch
+matrix: **INPUTS** has the channels and aux down the side and the sources of the
+**GROUP** chosen across the top (LOCAL IN are the audio interface's inputs; then the
+oscillators, playback, the USB player, the buses', mains' and matrices' signals and
+the user signals); a tap on a point patches that source to the channel (a stereo
+source, or a strip's signal, takes the pair), a tap on a lit point takes it away.
+**OUTPUTS** has the interface's outputs down the side and every bus, main and matrix
+side and the two monitor paths across; a point feeds that output (a signal per
+output: the new one replaces what fed it). **FX RACK** has a tile per FX slot in use
+(its device or plugin, how many inserts use it, its level); under them, the selected
+slot's **DEVICE**, **PLUGIN** (load a plugin, open its window, bypass or remove it)
+and the device's controls: its front panel (**FRONT PANEL**) or the list of its
+parameters. **MONITORING** has the **SPEAKERS** and **PHONES** paths (their source,
+levels, DIM, MONO and MUTE for the speakers, the outputs and meters) and **SOLO** (where
+solos go, the solo mode, PFL or AFL for channels, buses, mains and matrices, and
+**CLEAR SOLO**). Scenes, the recorder and setup are on the WING surface for now.
+
+A part of the Universal Mixer that comes from one console's emulation carries that
+console's name as a tag: **WING** marks the strip's own blocks (its WING template),
+the model lists (EQ, dynamics, filter tools, FX devices), the front panels, the
+routing groups, the send modes, the monitor sources and the solo modes, and the
+fader law. The Universal Mixer's own parts (extra blocks, user taps, the patch
+matrix) have none; other consoles' parts will carry theirs.
 The window changes at once and the choice is an app preference. Shows, scenes, the
 recorder, plugins and the remotes keep working whichever interface shows. A show of a
 console that isn't a WING (more mains or matrices, say) opens in the Universal Mixer;

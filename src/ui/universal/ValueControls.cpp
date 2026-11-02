@@ -183,8 +183,10 @@ void ChoiceBar::paint (juce::Graphics& g)
     g.drawRoundedRectangle (area, sizes::kRadius, 1.0f);
     auto text = area.reduced (10.0f, 0.0f);
     g.setColour (theme.textDim);
-    g.setFont (type::font (type::kCaption, true));
+    const auto captionFont = type::font (type::kCaption, true);
+    g.setFont (captionFont);
     g.drawText (caption, text, juce::Justification::centredLeft);
+    drawDeviceTag (g, text.withTrimmedLeft (juce::GlyphArrangement::getStringWidth (captionFont, caption) + 8.0f), device, theme, true);
     // The value, with a mark that says it opens a list.
     g.setColour (theme.text);
     g.setFont (type::font (type::kValue, true));

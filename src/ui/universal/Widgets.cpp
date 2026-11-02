@@ -7,6 +7,22 @@ namespace livedaw::ui::universal
 {
 
 //==============================================================================
+float drawDeviceTag (juce::Graphics& g, juce::Rectangle<float> area, const juce::String& device, const Theme& theme, bool atLeft)
+{
+    if (device.isEmpty())
+        return 0.0f;
+    const auto font = type::font (type::kCaption - 2.0f, true);
+    const float w = juce::GlyphArrangement::getStringWidth (font, device) + 10.0f;
+    const float h = juce::jmin (area.getHeight(), 16.0f);
+    const auto tag = (atLeft ? area.removeFromLeft (w) : area.removeFromRight (w)).withSizeKeepingCentre (w, h);
+    g.setColour (theme.textDim);
+    g.drawRoundedRectangle (tag.reduced (0.5f), 3.0f, 1.0f);
+    g.setFont (font);
+    g.drawText (device, tag, juce::Justification::centred);
+    return w + 6.0f;
+}
+
+//==============================================================================
 FaderControl::FaderControl (const Theme& t) : theme (t)
 {
     setViewportIgnoreDragFlag (true);

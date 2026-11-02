@@ -69,6 +69,17 @@ WING works as before throughout.
   blocks and extra blocks alike. SENDS has a row per bus, main and matrix the strip can
   send to, with ON, level and where the send takes the signal (PRE, POST, GRP or one of
   the strip's user taps).
+- Universal Mixer, Phase 2 step 5: ROUTING, FX RACK and MONITORING, shown by keys under
+  the top bar. ROUTING is a patch matrix: INPUTS patches the channels' and aux's
+  inputs from a group of sources, OUTPUTS feeds the interface's outputs from any bus,
+  main or matrix side or the monitor paths, for a console of any size. FX RACK has a
+  tile per FX slot and the selected slot's device, plugins and controls (the device's
+  front panel or its parameter list). MONITORING has the speakers' and phones' paths
+  and the solo settings, with CLEAR SOLO.
+- The Universal Mixer tags the parts that come from one console's emulation with its
+  name (WING: the strip's own blocks, the model lists, front panels, routing groups,
+  send modes, monitor sources, solo modes and the fader law), ready for the other
+  consoles to come.
 
 ### Changed
 

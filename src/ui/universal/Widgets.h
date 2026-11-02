@@ -15,6 +15,22 @@ namespace livedaw::ui::universal
     moves a control by how far it travels (no jump to the touch), a double tap
     resets it, and a drag on one doesn't scroll the view it sits in. */
 
+/** The console a part of the interface comes from (docs/UNIVERSAL_MIXER.md):
+    the Universal Mixer will hold the emulations of several consoles, so a part
+    that one of them defines (its blocks and process orders, its model tables
+    and front panels, its port groups, its lists) shows that console's name as
+    a tag. The Universal core's own parts (extra blocks, user taps, the patch
+    matrix) have none. */
+namespace devices
+{
+    /** The Behringer WING emulation. */
+    inline const juce::String wing { "WING" };
+} // namespace devices
+
+/** Draws `device` as a small tag at the right of `area` (at its left with
+    `atLeft`; nothing for none); returns the width it took, gap included. */
+float drawDeviceTag (juce::Graphics&, juce::Rectangle<float> area, const juce::String& device, const Theme&, bool atLeft = false);
+
 /** A fader's travel and a meter's bars leave this much at either end, so a
     meter beside a fader of the same height lines up with its marks. */
 constexpr float kTrackInset = 14.0f;

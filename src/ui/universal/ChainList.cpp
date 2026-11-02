@@ -163,9 +163,8 @@ public:
                 for (int k = -1; k <= 1; ++k)
                     g.fillRect (grip.getX(), grip.getCentreY() + (float) k * 5.0f - 1.0f, grip.getWidth(), 2.0f);
             }
-            g.setColour (row.step.isBlock() || row.step.isUserTap() ? t.accent : t.text);
-            g.setFont (type::font (type::kLabel, true));
-            g.drawText (row.name, content, juce::Justification::centredLeft);
+            // The console the block comes from (its WING template's), then a process order slot's place.
+            content.removeFromRight (drawDeviceTag (g, content, row.device, t));
             if (row.step.slot >= 0)
             {
                 // A process order slot: it moves with the order, not on its own.
@@ -173,6 +172,9 @@ public:
                 g.setFont (type::font (type::kCaption));
                 g.drawText ("ORDER " + juce::String (row.step.slot + 1), content, juce::Justification::centredRight);
             }
+            g.setColour (row.step.isBlock() || row.step.isUserTap() ? t.accent : t.text);
+            g.setFont (type::font (type::kLabel, true));
+            g.drawText (row.name, content, juce::Justification::centredLeft);
         }
         if (dragging)
         {
@@ -319,7 +321,8 @@ void ChainList::rebuild (const std::vector<ChainStep>& chain)
         const auto& s = chain[(size_t) i];
         if (! shown (s))
             continue;
-        rows.push_back ({ s, i, stepName (s), s.isBlock() || s.isUserTap(), isMarker (s) });
+        const bool own = ! s.isBlock() && ! s.isUserTap() && ! isMarker (s);
+        rows.push_back ({ s, i, stepName (s), s.isBlock() || s.isUserTap(), isMarker (s), own ? devices::wing : juce::String() });
     }
     lit.assign (rows.size(), false);
 

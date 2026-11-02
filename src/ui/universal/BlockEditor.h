@@ -23,6 +23,9 @@ struct BlockTarget
 
     Kind kind = Kind::None;
     juce::String title;
+    /** The console the block comes from: the strip's own blocks are its WING
+        template's (devices::wing); an extra block, none (the Universal core). */
+    juce::String device;
     /** An extra block's id, else -1. */
     int uid = -1;
 
@@ -75,7 +78,8 @@ private:
     C& add (std::unique_ptr<C>, int height);
     ToggleKey& addKey (const juce::String& label, std::atomic<bool>&);
     ValueBar& addBar (ValueBar::Binding);
-    ChoiceBar& addChoice (const juce::String& caption, std::function<juce::StringArray()>, std::function<int()>, std::function<void (int)>);
+    ChoiceBar& addChoice (const juce::String& caption, std::function<juce::StringArray()>, std::function<int()>, std::function<void (int)>,
+                          const juce::String& device = {});
     void addModel (std::atomic<int32_t>& model);
     void addParams (std::atomic<int32_t>& model, std::atomic<float>* values, int numValues);
     void addResponse();

@@ -79,6 +79,8 @@ BlockTarget BlockTarget::of (UiContext& ctx, Strip& strip, const ChainStep& step
     };
     const auto withModel = [&strip] (ModelBlock block) { return [&strip, block] (int m) { strip.setModel (block, m); }; };
 
+    // The strip's own blocks are its WING template's; an extra block (below) is the core's.
+    t.device = devices::wing;
     switch (step.kind)
     {
         case ld::kStepInput:
@@ -143,6 +145,7 @@ BlockTarget BlockTarget::of (UiContext& ctx, Strip& strip, const ChainStep& step
                 break;
             const int uid = step.uid;
             t.uid = uid;
+            t.device = {};
             const auto curve = [&strip, sr, uid] (int part)
             {
                 return [&strip, sr, uid, part] (const double* f, double* db, int n) { return strip.getBlockResponse (uid, part, f, db, n, sr); };
@@ -193,6 +196,7 @@ BlockTarget BlockTarget::of (UiContext& ctx, Strip& strip, const ChainStep& step
             break;
         }
         default:
+            t.device = {};
             break;
     }
     return t;
@@ -246,10 +250,11 @@ ValueBar& BlockEditor::addBar (ValueBar::Binding binding)
 }
 
 ChoiceBar& BlockEditor::addChoice (const juce::String& caption, std::function<juce::StringArray()> items, std::function<int()> current,
-                                   std::function<void (int)> choose)
+                                   std::function<void (int)> choose, const juce::String& device)
 {
     auto& choice = add (std::make_unique<ChoiceBar> (theme), kRow);
     choice.caption = caption;
+    choice.device = device;
     choice.items = std::move (items);
     choice.current = std::move (current);
     choice.choose = std::move (choose);
@@ -265,7 +270,8 @@ void BlockEditor::addModel (std::atomic<int32_t>& model)
                {
                    if (set)
                        set (m);
-               });
+               },
+               devices::wing); // the WING's model tables
 }
 
 void BlockEditor::addParams (std::atomic<int32_t>& model, std::atomic<float>* values, int numValues)
@@ -315,11 +321,11 @@ void BlockEditor::build()
             addKey ("LOW CUT", f.lowCut);
             addBar (ValueBar::frequency ("LOW CUT", f.lowCutFreq, 20.0f, 2000.0f, kLowCutDefaultHz));
             addChoice ("SLOPE", [] { return models::list (models::LowCutSlopes); }, [&f] { return f.lowCutSlope.load(); },
-                       [&f] (int i) { f.lowCutSlope = i; });
+                       [&f] (int i) { f.lowCutSlope = i; }, devices::wing);
             addKey ("HIGH CUT", f.highCut);
             addBar (ValueBar::frequency ("HIGH CUT", f.highCutFreq, 50.0f, 20000.0f, kHighCutDefaultHz));
             addChoice ("SLOPE", [] { return models::list (models::HighCutSlopes); }, [&f] { return f.highCutSlope.load(); },
-                       [&f] (int i) { f.highCutSlope = i; });
+                       [&f] (int i) { f.highCutSlope = i; }, devices::wing);
             addKey ("TOOL", f.tool);
             addModel (f.toolModel);
             addParams (f.toolModel, f.toolParams, ld::kMaxToolParams);
@@ -362,7 +368,7 @@ void BlockEditor::build()
                        [&ins] { return juce::jmax (0, ins.fx.load() + 1); }, [&ins] (int i) { ins.fx = i - 1; });
             if (target.postInsert)
                 addChoice ("MODE", [] { return models::list (models::PostInsertModes); }, [&ins] { return ins.mode.load(); },
-                           [&ins] (int i) { ins.mode = i; });
+                           [&ins] (int i) { ins.mode = i; }, devices::wing);
             break;
         }
         case BlockTarget::Kind::Delay:
@@ -379,7 +385,8 @@ void BlockEditor::build()
                            const float ms = delayToMs (value.load(), from, (float) sr);
                            mode = juce::jlimit (0, 3, i);
                            value = delayRange (mode.load(), (float) sr).snapToLegalValue (msToDelay (ms, mode.load(), (float) sr));
-                       });
+                       },
+                       devices::wing);
             ValueBar::Binding b;
             b.caption = "DELAY";
             b.value = &value;
@@ -411,11 +418,14 @@ void BlockEditor::refresh()
 
 void BlockEditor::paint (juce::Graphics& g)
 {
-    auto title = getLocalBounds().removeFromTop (kTitle).reduced (sizes::kGap, 0);
+    auto title = getLocalBounds().removeFromTop (kTitle).reduced (sizes::kGap, 0).toFloat();
     g.setColour (theme.text);
-    g.setFont (type::font (type::kLabel + 2.0f, true));
-    g.drawText (target.kind == BlockTarget::Kind::None ? juce::String ("Select a block to edit it") : target.title, title,
-                juce::Justification::centredLeft);
+    const auto font = type::font (type::kLabel + 2.0f, true);
+    g.setFont (font);
+    const auto text = target.kind == BlockTarget::Kind::None ? juce::String ("Select a block to edit it") : target.title;
+    g.drawText (text, title, juce::Justification::centredLeft);
+    drawDeviceTag (g, title.withTrimmedLeft (juce::GlyphArrangement::getStringWidth (font, text) + 10.0f),
+                   target.kind == BlockTarget::Kind::None ? juce::String() : target.device, theme, true);
 }
 
 void BlockEditor::resized()

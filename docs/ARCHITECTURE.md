@@ -859,6 +859,31 @@ strip when the engine's structure version changes before it reads anything, and 
 block's editor lets go of the block before the list removes it. The delay units (M,
 FT, MS, SMP) are shared with the WING screens (`ui/DelayUnits.h`).
 
+Keys under the top bar show one view at a time (`UniversalSkin::showView`; a hidden
+view's timer does nothing). ROUTING (`RoutingView.h`) is a `PatchGrid` (a crosspoint
+matrix over a `Model` of rows, columns, states and a toggle, its labels kept in view
+as it scrolls): INPUTS has the channels and aux against one of the WING's source
+groups (`ui::routing`: `tileCount`, `sourceAt`, `sourceLabel`), a point being the
+strip's `inputLeft` (a stereo source or a strip signal takes the pair, as ROUTING >
+CHANNELS patches); OUTPUTS has the output ports (`outputPorts`: LOCAL OUT, AES50 B / C
+when the interface has them) against every bus, main and matrix side and the
+monitor paths, a point setting that side's output after `MixerEngine::clearOutput`
+(one signal per port). FX RACK (`FxRackView.h`) tiles the FX slots in use
+(`FxSlots::describe`, `getNumUsers`, `getReadouts`) over the selected slot's DEVICE
+(`FxSlots::setModel`, `isAllowed`), PLUGIN (`showFxSlotMenu`, shared with the WING
+screens) and its controls: the WING's front panel (`ui::Faceplate`) or a
+`ParamPanel` on the FX table. MONITORING (`MonitorView.h`) binds the speakers'
+(`monitorLevelDb`, `monitorDim`...) and phones' (`MixerEngine::phones`) paths, the
+solo bus (`setSoloBus`), solo mode, PFL / AFL (`setSoloAfl`) and CLEAR SOLO (every
+strip and every DCA in use).
+
+Device tags: the Universal Mixer will hold several emulations, so a part that one
+console's emulation defines shows its name (`devices::wing`, drawn by
+`drawDeviceTag`): `ChainList::Row::device` and `BlockTarget::device` (the strip's own
+blocks are its WING template's; extra blocks are the core's, untagged),
+`ChoiceBar::device` (the WING's model tables, lists and port groups), the FX tiles of
+built-in devices and the MIXER view's fader law.
+
 `src/ui/` draws the WING surface (`WingSurface`): three fader sections (`FaderSection.*`,
 `FaderStrip.*`) with VIEW, the layer and shift keys, colour bars and scribble strips,
 SELECT / SOLO / MUTE, LED meters and scaled faders; the custom controls section

@@ -6,8 +6,19 @@ namespace livedaw::ui
 using namespace universal;
 
 UniversalSkin::UniversalSkin (UiContext& c)
-    : ctx (c), theme (Theme::dark()), wingKey ("WING SURFACE", theme.accent, theme), mixer (c, theme), inspector (c, theme)
+    : ctx (c), theme (Theme::dark()), wingKey ("WING SURFACE", theme.accent, theme), mixer (c, theme), routingView (c, theme), fxRack (c, theme),
+      monitoring (c, theme), inspector (c, theme)
 {
+    const std::pair<const char*, View> views[] = { { "MIXER", View::Mixer }, { "ROUTING", View::Routing }, { "FX RACK", View::Fx },
+                                                   { "MONITORING", View::Monitoring } };
+    for (auto [name, v] : views)
+    {
+        auto key = std::make_unique<ToggleKey> (name, theme.accent, theme);
+        key->isOn = [this, v = v] { return view == v; };
+        key->onClick = [this, v = v] { showView (v); };
+        addAndMakeVisible (*key);
+        viewKeys.push_back (std::move (key));
+    }
     // Switching rebuilds the window's skin: let the click return first.
     wingKey.onClick = [&c = ctx]
     {
@@ -20,6 +31,9 @@ UniversalSkin::UniversalSkin (UiContext& c)
     wingKey.setTooltip ("Back to the WING surface");
     addAndMakeVisible (wingKey);
     addAndMakeVisible (mixer);
+    addChildComponent (routingView);
+    addChildComponent (fxRack);
+    addChildComponent (monitoring);
     // Opened by a strip's selection (a tap on its name), closed by its CLOSE key.
     addChildComponent (inspector);
     inspector.onClose = [this]
@@ -28,6 +42,25 @@ UniversalSkin::UniversalSkin (UiContext& c)
         resized();
     };
     refreshAll();
+}
+
+void UniversalSkin::showView (View v)
+{
+    view = v;
+    mixer.setVisible (v == View::Mixer);
+    routingView.setVisible (v == View::Routing);
+    fxRack.setVisible (v == View::Fx);
+    monitoring.setVisible (v == View::Monitoring);
+    for (auto& key : viewKeys)
+        key->refresh();
+    // The view shown takes the console at once.
+    switch (v)
+    {
+        case View::Mixer:      mixer.refresh(); break;
+        case View::Routing:    routingView.refresh(); break;
+        case View::Fx:         fxRack.refresh(); break;
+        case View::Monitoring: monitoring.refresh(); break;
+    }
 }
 
 void UniversalSkin::selectionChanged()
@@ -83,11 +116,18 @@ void UniversalSkin::resized()
     auto area = getLocalBounds();
     auto bar = area.removeFromTop (sizes::kTopBar).reduced (sizes::kGapLarge, (sizes::kTopBar - sizes::kTouch) / 2);
     wingKey.setBounds (bar.removeFromRight (160));
+    auto keys = area.removeFromTop (sizes::kTabBar + sizes::kGap).reduced (sizes::kGap, sizes::kGapSmall);
+    for (auto& key : viewKeys)
+    {
+        key->setBounds (keys.removeFromLeft (150));
+        keys.removeFromLeft (sizes::kGapSmall);
+    }
     const bool showInspector = inspectorOpen && inspector.getStrip() != nullptr;
     inspector.setVisible (showInspector);
     if (showInspector)
         inspector.setBounds (area.removeFromRight (juce::jmin (460, area.getWidth() / 2)));
-    mixer.setBounds (area);
+    for (auto* v : std::initializer_list<juce::Component*> { &mixer, &routingView, &fxRack, &monitoring })
+        v->setBounds (area);
 }
 
 } // namespace livedaw::ui

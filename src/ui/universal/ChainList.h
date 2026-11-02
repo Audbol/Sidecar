@@ -10,7 +10,7 @@ namespace livedaw::ui::universal
 {
 
 /** A strip's chain as a list, in processing order: its blocks (the WING
-    template's and extra ones), its user taps, and PRE-FADER, FADER and POST
+    template's, tagged WING, and extra ones), its user taps, and PRE-FADER, FADER and POST
     as markers (the RTA points and the WING's own taps aren't shown). A tap
     selects a row; extra blocks and user taps can be dragged to another place
     and removed; ADD puts a block or a tap after the selected row. */
@@ -34,6 +34,9 @@ public:
         bool movable = false;
         /** PRE-FADER, FADER, POST: a marker, not a block. */
         bool marker = false;
+        /** The console it comes from: the strip's own blocks are its WING
+            template's (devices::wing); extra blocks and user taps, none. */
+        juce::String device;
     };
     const std::vector<Row>& getRows() const noexcept { return rows; }
     int getSelectedRow() const noexcept { return selected; }

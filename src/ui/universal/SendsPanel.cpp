@@ -26,6 +26,7 @@ SendsPanel::Row::Row (const Theme& t, const juce::String& dest)
     : on ("ON", t.accent, t), level (t), source (t), destination (dest), theme (t)
 {
     source.caption = "FROM";
+    source.device = devices::wing; // the WING's send modes (then the core's user taps)
     for (auto* c : std::initializer_list<juce::Component*> { &on, &level, &source })
         addAndMakeVisible (c);
     setTitle (dest);

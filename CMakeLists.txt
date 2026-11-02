@@ -267,6 +267,10 @@ set(LIVEDAW_UI_SOURCES
     src/ui/universal/ChainList.cpp
     src/ui/universal/SendsPanel.cpp
     src/ui/universal/Inspector.cpp
+    src/ui/universal/PatchGrid.cpp
+    src/ui/universal/RoutingView.cpp
+    src/ui/universal/FxRackView.cpp
+    src/ui/universal/MonitorView.cpp
     src/ui/MidiRemoteUi.cpp
     src/ui/DawSurface.cpp)
 
@@ -422,6 +426,11 @@ if(LIVEDAW_BUILD_TESTS)
         src/ui/universal/ChainList.cpp
         src/ui/universal/SendsPanel.cpp
         src/ui/universal/Inspector.cpp
+        src/ui/universal/PatchGrid.cpp
+        src/ui/universal/RoutingView.cpp
+        src/ui/universal/FxRackView.cpp
+        src/ui/universal/MonitorView.cpp
+        src/ui/PluginMenu.cpp
         src/ui/UniversalSkin.cpp)
 
     # The surface's scribble strip LCDs.

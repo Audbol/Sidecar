@@ -211,6 +211,12 @@ StripColumn* MixerView::getColumn (int index) const noexcept
 void MixerView::paint (juce::Graphics& g)
 {
     g.fillAll (theme.background);
+    // The faders' law is the WING's (ui::fader).
+    auto bar = getLocalBounds().removeFromTop (sizes::kFilterBar).reduced (sizes::kGapLarge, 0).toFloat();
+    bar.removeFromRight (drawDeviceTag (g, bar, devices::wing, theme));
+    g.setColour (theme.textDim);
+    g.setFont (type::font (type::kCaption, true));
+    g.drawText ("FADER LAW", bar, juce::Justification::centredRight);
 }
 
 void MixerView::resized()

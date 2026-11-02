@@ -4,7 +4,9 @@
 #include "engine/EventLog.h"
 #include "engine/PluginHost.h"
 #include "engine/Show.h"
+#include "engine/Recorder.h"
 #include "ui/Knobs.h"
+#include "ui/RoutingGroups.h"
 #include "ui/UniversalSkin.h"
 
 #include <optional>
@@ -530,6 +532,234 @@ public:
             skin.refreshAll();
             skin.selectionChanged();
             expect (! skin.isInspectorOpen() && ! inspector.isVisible());
+        }
+
+        beginTest ("The parts that come from the WING are tagged WING; the Universal core's own are not");
+        {
+            MixerEngine engine (0);
+            test::setChannels (engine, 1);
+            UiRig rig (engine);
+            auto& ch = *engine.getChannels()[0];
+            const int uid = ch.insertBlock (BlockKind::Eq, -1);
+            const int tap = ch.insertTap (-1);
+            ChainList list (rig.ctx, Theme::dark());
+            list.setSize (420, 600);
+            list.setStrip (&ch);
+            for (const auto& row : list.getRows())
+            {
+                if (row.marker)
+                    expect (row.device.isEmpty(), row.name);
+                else if (row.step.isBlock() || row.step.isUserTap())
+                    expect (row.device.isEmpty(), row.name + ": the core's");
+                else
+                    expectEquals (row.device, devices::wing, row.name + ": the WING template's");
+            }
+            const auto own = BlockTarget::of (rig.ctx, ch, stepOf (ch, [] (const ChainStep& s) { return s.kind == ld::kStepEq; }));
+            const auto extra = BlockTarget::of (rig.ctx, ch, stepOf (ch, [uid] (const ChainStep& s) { return s.uid == uid; }));
+            expectEquals (own.device, devices::wing);
+            expect (extra.device.isEmpty());
+            // An extra block's models are the WING's model tables all the same.
+            BlockEditor editor (rig.ctx, Theme::dark());
+            editor.setSize (420, 700);
+            editor.setTarget (extra);
+            auto* model = dynamic_cast<ChoiceBar*> (editor.getControl (1));
+            expect (model != nullptr && model->device == devices::wing);
+            SendsPanel sends (rig.ctx, Theme::dark());
+            sends.setSize (420, 600);
+            sends.setStrip (&ch);
+            expect (sends.getNumRows() > 0 && sends.getRow (0)->source.device == devices::wing, "the WING's send modes");
+            expect (ch.removeTap (tap));
+            editor.setTarget ({});
+            ch.clearChain();
+            engine.getGarbage().collectAllNow();
+        }
+
+        beginTest ("The patch matrix shows its model's points and patches with a tap");
+        {
+            PatchGrid grid (Theme::dark());
+            grid.setSize (600, 400);
+            std::vector<int> patched { -1, 2, -1 }; // a column per row, -1 none
+            PatchGrid::Model m;
+            m.numRows = [] { return 3; };
+            m.numColumns = [] { return 4; };
+            m.rowName = [] (int r) { return "ROW " + juce::String (r + 1); };
+            m.columnName = [] (int c) { return "COL " + juce::String (c + 1); };
+            m.state = [&patched] (int r, int c)
+            {
+                return patched[(size_t) r] == c ? PatchGrid::On : (patched[(size_t) r] >= 0 && patched[(size_t) r] + 1 == c ? PatchGrid::Pair : PatchGrid::Off);
+            };
+            m.toggle = [&patched] (int r, int c) { patched[(size_t) r] = patched[(size_t) r] == c ? -1 : c; };
+            grid.setModel (m);
+            expectEquals (grid.getNumRows(), 3);
+            expectEquals (grid.getNumColumns(), 4);
+            expect (grid.getState (1, 2) == PatchGrid::On && grid.getState (1, 3) == PatchGrid::Pair && grid.getState (0, 0) == PatchGrid::Off);
+            grid.tap (0, 1);
+            expectEquals (patched[0], 1);
+            expect (grid.getState (0, 1) == PatchGrid::On);
+            grid.tap (0, 1);
+            expectEquals (patched[0], -1, "a tap on a patch takes it away");
+            grid.tap (7, 1); // outside: nothing
+            expect (grid.getState (0, 1) == PatchGrid::Off);
+        }
+
+        beginTest ("ROUTING patches a channel's input and feeds an output port, for any configuration");
+        {
+            MixerEngine engine (0);
+            const Counts counts { 4, 1, 6, 2, 3, 8, 4, 16 };
+            engine.configure (&counts);
+            UiRig rig (engine);
+            RoutingView view (rig.ctx, Theme::dark());
+            view.setSize (1200, 700);
+
+            // INPUTS: the channels and aux against LOCAL IN.
+            const int ins = engine.getHardwareInputNames().size();
+            expect (view.getGroup() == ui::routing::Group::LocalIn);
+            expectEquals (view.grid.getNumRows(), 4 + 1);
+            expectEquals (view.grid.getNumColumns(), ui::routing::tileCount (ui::routing::Group::LocalIn, ins));
+            auto& ch1 = *engine.getChannels()[0];
+            auto& ch2 = *engine.getChannels()[1];
+            view.grid.tap (0, 2);
+            expectEquals (ch1.params.inputLeft.load(), 2);
+            expect (view.grid.getState (0, 2) == PatchGrid::On);
+            ch2.params.stereo = true;
+            view.grid.tap (1, 4);
+            view.refresh();
+            expect (view.grid.getState (1, 4) == PatchGrid::On && view.grid.getState (1, 5) == PatchGrid::Pair, "a stereo channel's pair");
+            view.grid.tap (0, 2);
+            expectEquals (ch1.params.inputLeft.load(), -1, "a tap on the patch takes it away");
+            // Another group: the oscillators.
+            view.setGroup (ui::routing::Group::Oscillator);
+            expectEquals (view.grid.getNumColumns(), ld::kNumOscillators);
+            view.grid.tap (0, 1);
+            expectEquals (ch1.params.inputLeft.load(), MixerEngine::oscSource (1));
+
+            // OUTPUTS: the ports against every bus, main and matrix side and the monitor paths.
+            view.showPage (RoutingView::Page::Outputs);
+            expect (view.getGroup() == ui::routing::Group::LocalOut);
+            expectEquals (view.grid.getNumColumns(), (6 + 2 + 3) * 2 + 4);
+            const int main1L = 2 * 6; // after the buses' sides
+            auto& main1 = *engine.getMains()[0];
+            // MAIN 1 L moves to LCL 6 (a side feeds one port).
+            view.grid.tap (5, main1L);
+            expectEquals (main1.params.outputLeft.load(), 5);
+            expect (view.grid.getState (5, main1L) == PatchGrid::On);
+            // Another signal on the port replaces it.
+            auto& mtx3 = *engine.getMatrices()[2];
+            view.grid.tap (5, 2 * (6 + 2 + 2) + 1);
+            expectEquals (mtx3.params.outputRight.load(), 5);
+            expectEquals (main1.params.outputLeft.load(), -1, "one signal per port");
+            view.grid.tap (5, 2 * (6 + 2 + 2) + 1);
+            expectEquals (mtx3.params.outputRight.load(), -1, "a tap on the patch takes it away");
+            engine.monitorOutputLeft = -1;
+            view.grid.tap (6, 2 * (6 + 2 + 3)); // SPEAKERS L
+            expectEquals (engine.monitorOutputLeft.load(), 6);
+        }
+
+        beginTest ("FX RACK shows the slots in use and sets the selected slot's device, panel and parameters");
+        {
+            MixerEngine engine (0);
+            UiRig rig (engine);
+            FxRackView view (rig.ctx, Theme::dark());
+            view.setSize (1400, 800);
+            auto& fx = engine.getFx();
+            expectEquals (view.getNumSlots(), fx.getNumSlots());
+
+            // A device with a front panel in FX 3.
+            view.selectSlot (2);
+            int withPanel = -1;
+            for (const auto& m : models::table (models::Fx))
+                if (m.index > ld::kFxExt && withPanel < 0 && FxSlots::isAllowed (m.index, 2))
+                {
+                    ui::Faceplate probe;
+                    std::vector<std::atomic<float>> values (ld::kMaxFxParams);
+                    probe.bind (models::Fx, m.index, values.data());
+                    if (probe.hasDesign())
+                        withPanel = m.index;
+                    probe.unbind();
+                }
+            expect (withPanel > ld::kFxExt, "a device with a front panel");
+            view.device.chooseItem (withPanel);
+            expectEquals (fx.getModel (2), withPanel);
+            view.refresh();
+            expect (view.isShowingPanel() && view.faceplate.isVisible());
+            expectEquals (view.device.device, devices::wing);
+            expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds(), true, 1.0f), "universal-fx.png"));
+            // The list of its parameters instead.
+            view.panelKey.onClick();
+            expect (! view.isShowingPanel());
+            const auto& params = models::model (models::Fx, withPanel).params;
+            expectEquals (view.params.getNumControls(),
+                          (int) std::count_if (params.begin(), params.end(), [] (const models::Param& p) { return p.index < ld::kMaxFxParams; }));
+
+            // A premium device needs FX 1-8.
+            int premium = -1;
+            for (const auto& m : models::table (models::Fx))
+                if (m.category == models::Category::FxPremium && premium < 0)
+                    premium = m.index;
+            view.selectSlot (10);
+            const int before = fx.getModel (10);
+            view.device.chooseItem (premium);
+            expectEquals (fx.getModel (10), before, "not in FX 11");
+            // The slot's plugins are a menu away, whatever the slot holds.
+            expect (view.pluginKey.isEnabled());
+        }
+
+        beginTest ("MONITORING sets the monitor paths and the solo settings");
+        {
+            MixerEngine engine (0);
+            const Counts counts { 2, 0, 4, 1, 2, 32, 8, 16 };
+            engine.configure (&counts);
+            UiRig rig (engine);
+            MonitorView view (rig.ctx, Theme::dark());
+            view.setSize (1400, 700);
+            view.speakers.level.setPositionFromUser (0.75f);
+            expectWithinAbsoluteError (engine.monitorLevelDb.load(), 0.0f, 1.0e-4f);
+            const bool dimmed = engine.monitorDim.load();
+            view.speakers.dim.onClick();
+            expect (engine.monitorDim.load() != dimmed);
+            view.phones.source.chooseItem (3);
+            expectEquals (engine.phones.source.source.load(), 3);
+            view.speakers.outputLeft.chooseItem (2);
+            expectEquals (engine.monitorOutputLeft.load(), 1);
+            view.speakers.outputLeft.chooseItem (0);
+            expectEquals (engine.monitorOutputLeft.load(), -1, "OFF");
+            view.soloMode.chooseItem (0);
+            expectEquals (engine.soloMode.load(), (int32_t) ld::kSoloLive);
+            const bool afl = engine.isSoloAfl (StripKind::Bus);
+            view.aflBuses.onClick();
+            expect (engine.isSoloAfl (StripKind::Bus) != afl);
+            // CLEAR SOLO: every strip and every DCA in use (DCA 30 of 32 here).
+            engine.getChannels()[1]->params.solo = true;
+            engine.getDca (29).solo = true;
+            view.clearSolo.onClick();
+            expect (! engine.getChannels()[1]->params.solo.load() && ! engine.getDca (29).solo.load());
+            expect (view.phones.source.device == devices::wing && view.soloMode.device == devices::wing);
+            view.refresh();
+            expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds(), true, 1.0f), "universal-monitoring.png"));
+        }
+
+        beginTest ("The Universal skin's view keys show one view at a time");
+        {
+            MixerEngine engine (0);
+            const Counts counts { 16, 2, 8, 2, 4, 16, 8, 16 };
+            engine.configure (&counts);
+            UiRig rig (engine);
+            ui::UniversalSkin skin (rig.ctx);
+            skin.setSize (1600, 900);
+            expect (skin.getView() == ui::UniversalSkin::View::Mixer && skin.getMixer().isVisible() && ! skin.getRouting().isVisible());
+            skin.showView (ui::UniversalSkin::View::Routing);
+            expect (skin.getRouting().isVisible() && ! skin.getMixer().isVisible());
+            // A few channels patched, for the picture.
+            for (int i = 0; i < 6; ++i)
+                engine.getChannels()[(size_t) i]->params.inputLeft = i;
+            skin.getRouting().refresh();
+            expect (keepPicture (skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f), "universal-routing.png"));
+            skin.showView (ui::UniversalSkin::View::Fx);
+            expect (skin.getFxRack().isVisible() && ! skin.getRouting().isVisible());
+            skin.showView (ui::UniversalSkin::View::Monitoring);
+            expect (skin.getMonitoring().isVisible() && ! skin.getFxRack().isVisible());
+            skin.showView (ui::UniversalSkin::View::Mixer);
+            expect (skin.getMixer().isVisible() && ! skin.getMonitoring().isVisible());
         }
     }
 };
