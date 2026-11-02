@@ -3303,7 +3303,7 @@ public:
         hasMainSends = strip.getKind() != StripKind::Main && strip.getKind() != StripKind::Matrix;
         if (hasMainSends)
             for (int i = 0; i < kWingMains && i < (int) ctx.engine.getMains().size(); ++i)
-                sends.push_back (&make<MainSendColumn> (*ctx.engine.getMains()[(size_t) i], strip.mains[i]));
+                sends.push_back (&make<MainSendColumn> (*ctx.engine.getMains()[(size_t) i], strip.mains[(size_t) i]));
         else
         {
             delay = &make<DelayPanel> (ctx, p.input);
@@ -3321,7 +3321,7 @@ public:
         if (hasMainSends)
         {
             for (int i = 0; i < kWingMains; ++i)
-                k.push_back ({ wingFader ("MAIN " + juce::String (i + 1), strip.mains[i].levelDb), levelStyle (i < (int) sends.size() ? sends[(size_t) i]->getFader() : nullptr) });
+                k.push_back ({ wingFader ("MAIN " + juce::String (i + 1), strip.mains[(size_t) i].levelDb), levelStyle (i < (int) sends.size() ? sends[(size_t) i]->getFader() : nullptr) });
             k.push_back ({ wingWidth ("WIDTH", p.width), widthStyle (pan) });
         }
         else
@@ -4270,7 +4270,7 @@ public:
         if (matrix)
         {
             for (int i = 0; i < kWingMatrices && i < (int) ctx.engine.getMatrices().size(); ++i)
-                columns.push_back (&make<SendColumn> (strip, *ctx.engine.getMatrices()[(size_t) i], nullptr, &strip.matrix[i], true,
+                columns.push_back (&make<SendColumn> (strip, *ctx.engine.getMatrices()[(size_t) i], nullptr, &strip.matrix[(size_t) i], true,
                                                       [this, i] { select (i); }));
         }
         else
@@ -4396,7 +4396,7 @@ public:
         auto* col = columns[(size_t) selected];
         if (matrix)
         {
-            auto& m = strip.matrix[selected];
+            auto& m = strip.matrix[(size_t) selected];
             k.push_back ({ wingFader ("SEND LVL", m.levelDb), levelStyle (col->getFader()) });
             if (! (strip.isInput() && m.panLink.load()))
                 k.push_back ({ wingPan ("PAN", m.pan), thumbStyle (col) });
@@ -5409,7 +5409,7 @@ private:
                 possible = false;
                 return;
             }
-            auto& m = src.mains[juce::jlimit (0, kWingMains - 1, dst.getId())];
+            auto& m = src.mains[(size_t) juce::jlimit (0, kWingMains - 1, dst.getId())];
             on = m.on.load();
             mode = m.pre.load() ? 0 : 1;
             link = true;
@@ -5421,7 +5421,7 @@ private:
             possible = false;
             return;
         }
-        auto& m = src.matrix[juce::jlimit (0, kWingMatrices - 1, dst.getId())];
+        auto& m = src.matrix[(size_t) juce::jlimit (0, kWingMatrices - 1, dst.getId())];
         on = m.on.load();
         mode = m.pre.load() ? 0 : 1;
         link = src.isInput() && m.panLink.load();
@@ -5475,7 +5475,7 @@ private:
             }
             else if (dst->getKind() == StripKind::Main)
             {
-                auto& m = src->mains[juce::jlimit (0, kWingMains - 1, dst->getId())];
+                auto& m = src->mains[(size_t) juce::jlimit (0, kWingMains - 1, dst->getId())];
                 if (modeChoice > 0)
                     m.pre = modeChoice == 1;
                 if (levelChoice > 0)
@@ -5485,7 +5485,7 @@ private:
             }
             else
             {
-                auto& m = src->matrix[juce::jlimit (0, kWingMatrices - 1, dst->getId())];
+                auto& m = src->matrix[(size_t) juce::jlimit (0, kWingMatrices - 1, dst->getId())];
                 if (modeChoice > 0)
                     m.pre = modeChoice == 1;
                 if (ignoreChoice > 0 && src->canIgnoreMuteOnSends())

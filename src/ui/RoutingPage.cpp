@@ -2859,7 +2859,7 @@ void RoutingPage::mouseUp (const juce::MouseEvent& e)
                 {
                     // The group on (or off) for every selected source, as for the first.
                     const bool on = ! src->muteGroups.contains (group);
-                    forSelectedSources ([group, on] (int, ld::SourceParams& s) { s.muteGroups.set (group, on); });
+                    forSelectedSources ([g = group, on] (int, ld::SourceParams& s) { s.muteGroups.set (g, on); });
                 }
         }
         else

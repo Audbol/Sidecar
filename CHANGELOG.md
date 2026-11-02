@@ -151,12 +151,18 @@ WING works as before throughout.
   published. On macOS it was the plugin overview's crash above. On Linux the tests that
   open windows (the plugin overview's, the *Windows* test) crashed without an X display;
   they now skip their windows there, and the *Monkey* test runs without the overview.
+  The *Monkey* test also runs past its 4 s, up to a minute, until it has done 300
+  operations: the sanitizer builds are slower and managed only 179.
   A timing check of the WING effects (`tails_end_cleanly`: silence must cost no more
   than sound) took one measurement and failed when a shared runner hiccuped; it now
   takes the best of three.
 - A crash of `LiveDAWTests` (a fault, an abort, an uncaught exception, a pure virtual
   call) prints the test it happened in and the stack, in a CI log too; on Windows the
   tests are built with symbols, so the stack names the functions.
+- The Linux (gcc) build compiles without warnings again: the main and matrix send
+  indices are cast where the sends became a bank of any size, the Universal Mixer's
+  switches name every kind of chain step, and the MIXER view initialises its members
+  in order.
 - The Windows (MSVC) build compiles without warnings again: number conversions, local
   names that hid a class's members and a constant condition in the UI and the tests,
   which only a full rebuild showed, and the plugin sandbox's intended cache-line padding.

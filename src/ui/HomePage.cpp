@@ -2011,7 +2011,7 @@ private:
                     for (int i = 0; i < kWingMains; ++i)
                     {
                         auto sq = at (50.0f, 6.0f + 14.0f * (float) i, 11.0f, 11.0f);
-                        const bool assigned = strip->mains[i].on.load();
+                        const bool assigned = strip->mains[(size_t) i].on.load();
                         g.setColour (assigned ? kMainOn : colours::panel);
                         g.fillRect (sq);
                         if (assigned)

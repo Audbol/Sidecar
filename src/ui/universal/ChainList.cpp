@@ -32,7 +32,8 @@ juce::String stepName (const ChainStep& s)
                 case BlockKind::Delay:    return "DELAY BLOCK";
             }
             break;
-        default:
+        case ld::kStepSlot:
+        case ld::kStepRta:
             break;
     }
     return {};
@@ -50,9 +51,21 @@ namespace
             case ld::kStepSlot:
             case ld::kStepTapShaper:
                 return false;
-            default:
-                return true;
+            case ld::kStepInput:
+            case ld::kStepDelay:
+            case ld::kStepFilter:
+            case ld::kStepGate:
+            case ld::kStepEq:
+            case ld::kStepDynamics:
+            case ld::kStepPreInsert:
+            case ld::kStepPostInsert:
+            case ld::kStepPfl:
+            case ld::kStepFader:
+            case ld::kStepPost:
+            case ld::kStepBlock:
+                break;
         }
+        return true;
     }
 
     bool isMarker (const ChainStep& s)
@@ -223,8 +236,8 @@ private:
 };
 
 //==============================================================================
-ChainList::ChainList (UiContext& c, const Theme& t)
-    : addKey ("ADD", t.accent, t), removeKey ("REMOVE", t.mute, t), ctx (c), theme (t), rowsView (std::make_unique<Rows> (*this))
+ChainList::ChainList (UiContext&, const Theme& t)
+    : addKey ("ADD", t.accent, t), removeKey ("REMOVE", t.mute, t), theme (t), rowsView (std::make_unique<Rows> (*this))
 {
     viewport.setViewedComponent (rowsView.get(), false);
     viewport.setScrollBarsShown (true, false);
@@ -306,9 +319,17 @@ bool ChainList::isOn (const ChainStep& s) const
                 return d->on.load();
             return false;
         }
-        default:
-            return false;
+        case ld::kStepInput:
+        case ld::kStepSlot:
+        case ld::kStepPfl:
+        case ld::kStepFader:
+        case ld::kStepPost:
+        case ld::kStepTapShaper:
+        case ld::kStepTap:
+        case ld::kStepRta:
+            break;
     }
+    return false;
 }
 
 void ChainList::rebuild (const std::vector<ChainStep>& chain)

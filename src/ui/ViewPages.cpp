@@ -138,14 +138,14 @@ namespace
             case StripKind::Main:
                 if (! from.isInput() && ! from.isBus())
                     return false;
-                t.sendLevel = &from.mains[juce::jlimit (0, kWingMains - 1, to.getId())].levelDb;
-                t.sendOn = &from.mains[juce::jlimit (0, kWingMains - 1, to.getId())].on;
+                t.sendLevel = &from.mains[(size_t) juce::jlimit (0, kWingMains - 1, to.getId())].levelDb;
+                t.sendOn = &from.mains[(size_t) juce::jlimit (0, kWingMains - 1, to.getId())].on;
                 return true;
             case StripKind::Matrix:
                 if (from.getKind() == StripKind::Matrix)
                     return false;
-                t.sendLevel = &from.matrix[juce::jlimit (0, kWingMatrices - 1, to.getId())].levelDb;
-                t.sendOn = &from.matrix[juce::jlimit (0, kWingMatrices - 1, to.getId())].on;
+                t.sendLevel = &from.matrix[(size_t) juce::jlimit (0, kWingMatrices - 1, to.getId())].levelDb;
+                t.sendOn = &from.matrix[(size_t) juce::jlimit (0, kWingMatrices - 1, to.getId())].on;
                 return true;
             case StripKind::Channel:
             case StripKind::Aux:
@@ -1782,7 +1782,7 @@ namespace
             const float h = mains.getHeight() / 4.0f;
             for (int i = 0; i < kWingMains; ++i)
             {
-                g.setColour (s.mains[i].on.load() ? Dark::faderFill : Colours::screenDark);
+                g.setColour (s.mains[(size_t) i].on.load() ? Dark::faderFill : Colours::screenDark);
                 g.fillRect (mains.withHeight (h).translated (0.0f, h * (float) i).reduced (0.5f));
             }
             inner.removeFromRight (2.0f);
@@ -2021,7 +2021,7 @@ namespace
             }
         };
         row (0, kWingDcas, [dca] (int i) { return dca.contains (i); }, Colours::cyan);
-        row (1, kWingMains, [&s] (int i) { return s.mains[i].on.load(); }, Dark::faderFill);
+        row (1, kWingMains, [&s] (int i) { return s.mains[(size_t) i].on.load(); }, Dark::faderFill);
         row (2, kWingMuteGroups, [mute] (int i) { return mute.contains (i); }, Dark::muteGroup);
     }
 
@@ -2292,7 +2292,7 @@ std::atomic<float>* SendsViewPage::sendLevel (Strip& s, bool create) const
         auto* send = create ? &s.sends[(size_t) dest->getId()] : s.sends.find (dest->getId());
         return send != nullptr ? &send->levelDb : nullptr;
     }
-    return d.kind == StripKind::Main ? &s.mains[d.index].levelDb : &s.matrix[d.index].levelDb;
+    return d.kind == StripKind::Main ? &s.mains[(size_t) d.index].levelDb : &s.matrix[(size_t) d.index].levelDb;
 }
 
 std::atomic<bool>* SendsViewPage::sendOn (Strip& s, bool create) const
@@ -2306,7 +2306,7 @@ std::atomic<bool>* SendsViewPage::sendOn (Strip& s, bool create) const
         auto* send = create ? &s.sends[(size_t) dest->getId()] : s.sends.find (dest->getId());
         return send != nullptr ? &send->enabled : nullptr;
     }
-    return d.kind == StripKind::Main ? &s.mains[d.index].on : &s.matrix[d.index].on;
+    return d.kind == StripKind::Main ? &s.mains[(size_t) d.index].on : &s.matrix[(size_t) d.index].on;
 }
 
 void SendsViewPage::layoutContent()

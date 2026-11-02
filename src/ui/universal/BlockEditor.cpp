@@ -195,7 +195,13 @@ BlockTarget BlockTarget::of (UiContext& ctx, Strip& strip, const ChainStep& step
             }
             break;
         }
-        default:
+        case ld::kStepSlot:
+        case ld::kStepPfl:
+        case ld::kStepFader:
+        case ld::kStepPost:
+        case ld::kStepTapShaper:
+        case ld::kStepTap:
+        case ld::kStepRta:
             t.device = {};
             break;
     }

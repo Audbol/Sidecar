@@ -254,7 +254,7 @@ namespace
     }
 } // namespace
 
-MixerView::MixerView (UiContext& c, const Theme& t) : fadersKey ("FADERS", t.accent, t), ctx (c), theme (t)
+MixerView::MixerView (UiContext& c, const Theme& t) : ctx (c), theme (t), fadersKey ("FADERS", t.accent, t)
 {
     // FADERS shows or hides the faders at any moment (the overviews then take the columns); an app setting.
     fadersShown = ctx.settings.getBoolValue (uiprefs::universalFaders, true);

@@ -1292,8 +1292,13 @@ public:
             if (ruleBreaks++ < 5)
                 logMessage ("RULE BROKEN after operation " + juce::String (operations) + " (kind " + juce::String (lastOp) + "): " + what);
         };
+        // The time asked for, and longer until there are enough operations to mean much
+        // (a sanitizer's Debug build manages fewer than 200 in 4 s), a minute at most.
+        constexpr int kEnoughOperations = 300;
         const auto end = juce::Time::getMillisecondCounter() + (juce::uint32) seconds * 1000u;
-        while (juce::Time::getMillisecondCounter() < end)
+        const auto limit = end + 60000u;
+        for (auto now = juce::Time::getMillisecondCounter(); now < end || (operations < kEnoughOperations && now < limit);
+             now = juce::Time::getMillisecondCounter())
         {
             const int slot = rng.nextInt (kMaxFx);
             lastOp = rng.nextInt (14);

@@ -64,7 +64,6 @@ private:
     bool isOn (const ChainStep&) const;
     void selectStep (std::function<bool (const ChainStep&)> match);
 
-    UiContext& ctx;
     const Theme& theme;
     Strip* strip = nullptr;
     std::vector<ChainStep> shownChain;

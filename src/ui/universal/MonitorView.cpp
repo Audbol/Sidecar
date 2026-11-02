@@ -37,11 +37,11 @@ namespace
 } // namespace
 
 //==============================================================================
-MonitorView::Path::Path (UiContext& ctx, const Theme& t, bool isPhones)
+MonitorView::Path::Path (UiContext& c, const Theme& t, bool isPhones)
     : source (t), sourceLevel (t), level (t), dimAmount (t), dim ("DIM", t.solo, t), mono ("MONO", t.accent, t), mute ("MUTE", t.mute, t),
       outputLeft (t), outputRight (t), meter (t), theme (t), phones (isPhones)
 {
-    auto& e = ctx.engine;
+    auto& e = c.engine;
     auto& src = phones ? e.phones.source : e.speakers;
     source.caption = "SOURCE";
     source.device = devices::wing; // the WING's monitor source list
@@ -64,10 +64,10 @@ MonitorView::Path::Path (UiContext& ctx, const Theme& t, bool isPhones)
     mono.onClick = [&e] { e.monitorMono = ! e.monitorMono.load(); };
     mute.isOn = [&e] { return e.monitorMute.load(); };
     mute.onClick = [&e] { e.monitorMute = ! e.monitorMute.load(); };
-    bindOutput (outputLeft, ctx, "OUTPUT L", phones ? e.phones.outputLeft : e.monitorOutputLeft);
-    bindOutput (outputRight, ctx, "OUTPUT R", phones ? e.phones.outputRight : e.monitorOutputRight);
+    bindOutput (outputLeft, c, "OUTPUT L", phones ? e.phones.outputLeft : e.monitorOutputLeft);
+    bindOutput (outputRight, c, "OUTPUT R", phones ? e.phones.outputRight : e.monitorOutputRight);
     meter.setChannels (2);
-    meter.level = [&ctx, isPhones] (int ch) { return isPhones ? ctx.meters.getPhones (ch) : ctx.meters.getMonitor (ch); };
+    meter.level = [&bank = c.meters, isPhones] (int ch) { return isPhones ? bank.getPhones (ch) : bank.getMonitor (ch); };
 
     rows = { { &source, kRow }, { &sourceLevel, kRow }, { &level, kRow } };
     if (! phones)
@@ -75,9 +75,9 @@ MonitorView::Path::Path (UiContext& ctx, const Theme& t, bool isPhones)
     rows.push_back ({ &dimAmount, kRow });
     rows.push_back ({ &outputLeft, kRow });
     rows.push_back ({ &outputRight, kRow });
-    for (auto& [c, h] : rows)
-        if (c != nullptr)
-            addAndMakeVisible (c);
+    for (auto& [row, h] : rows)
+        if (row != nullptr)
+            addAndMakeVisible (row);
     if (! phones)
         for (auto* k : { &dim, &mono, &mute })
             addAndMakeVisible (k);
