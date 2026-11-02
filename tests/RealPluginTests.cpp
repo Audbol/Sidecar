@@ -16,12 +16,15 @@ constexpr double kRate = 48000.0;
 constexpr int kBlock = 128;
 
 // JUCE defines JUCE_CHECK_MEMORY_LEAKS only in Debug builds (to 1), so it can't be
-// used in an expression directly.
+// used in an expression directly (and a constant condition is a warning on MSVC).
+static bool leakChecks() noexcept
+{
 #if defined (JUCE_CHECK_MEMORY_LEAKS) && JUCE_CHECK_MEMORY_LEAKS
-constexpr bool kLeakChecks = true;
+    return true;
 #else
-constexpr bool kLeakChecks = false;
+    return false;
 #endif
+}
 
 bool hasDisplay()
 {
@@ -728,7 +731,7 @@ private:
             {
                 logMessage ("No display: skipping the editors");
             }
-            else if (kLeakChecks && lsp.format == "VST3" && ! sandboxed
+            else if (leakChecks() && lsp.format == "VST3" && ! sandboxed
                      && juce::SystemStats::getEnvironmentVariable ("SIDECAR_REAL_PLUGIN_VST3_EDITORS", {}).isEmpty())
             {
                 // Creating an LSP VST3 editor in-process (even with JUCE alone:

@@ -1040,7 +1040,8 @@ void MonitorsPage::paintEqKey (juce::Graphics& g)
     g.setFont (capFont (15.0f));
     g.drawText ("EQ", text.withTrimmedLeft (wingPx (8.0f)), juce::Justification::centredLeft, false);
     auto c = r.reduced (wingPx (6.0f), r.getHeight() * 0.25f);
-    std::vector<float> freqs (eqKeyFreqs.begin(), eqKeyFreqs.end()), db (eqKeyFreqs.size(), 0.0f);
+    std::vector<float> freqs (eqKeyFreqs.size()), db (eqKeyFreqs.size(), 0.0f);
+    std::transform (eqKeyFreqs.begin(), eqKeyFreqs.end(), freqs.begin(), [] (double f) { return (float) f; });
     ctx.engine.getMonitorEqResponse (showsPhones(), -1, freqs.data(), db.data(), (int) freqs.size());
     juce::Path p;
     for (size_t i = 0; i < db.size(); ++i)

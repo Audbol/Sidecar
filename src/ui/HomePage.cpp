@@ -820,7 +820,7 @@ public:
         drawChannelIcon (g, shownIcon (strip), strip.getKind(), inner.removeFromLeft (inner.getHeight() * 1.3f), colours::ink);
         inner.removeFromLeft (inner.getHeight() * 0.5f);
         auto clear = clearArea.toFloat().reduced (clearArea.getHeight() * 0.24f);
-        inner.removeFromRight (clearArea.getWidth());
+        inner.removeFromRight ((float) clearArea.getWidth());
         // The text as typed (a space at its end included), the caret where
         // typing goes (the arrow keys move it).
         const auto name = keyboard->getText();
@@ -2096,7 +2096,8 @@ private:
         for (int i = 0; i < 24; ++i)
             freqs.push_back (20.0 * std::pow (1000.0, i / 23.0));
         ld::ld_strip_response (strip->getHandle(), 1, freqs.data(), db.data(), 24, 48000.0);
-        eqCurve.assign (db.begin(), db.end());
+        eqCurve.resize (db.size());
+        std::transform (db.begin(), db.end(), eqCurve.begin(), [] (double v) { return (float) v; });
         repaint();
     }
 

@@ -1650,7 +1650,7 @@ namespace
         r.name = c.removeFromTop (wingPx (22.0f));
         r.number = c.removeFromTop (wingPx (42.0f));
         c.removeFromTop (wingPx (8.0f));
-        const float h = column.getHeight();
+        const float h = (float) column.getHeight();
         const float barH = juce::jmax (5.0f, h * 0.028f);
         const float gap = 3.0f;
         const float blockH = (c.getHeight() - barH - gap * 9.0f) / 8.0f;

@@ -319,10 +319,16 @@ namespace
             label (d, unit, cx, y + size * 0.3f, size * 0.85f, colour);
     }
 
-    void screwsAt (Design& d, std::initializer_list<std::pair<float, float>> at, float dia = 14.0f)
+    /** A screw's centre: written as int literals, converted without a warning (std::pair's constructor converts them in a template). */
+    struct ScrewAt
     {
-        for (auto [x, y] : at)
-            d.add (Type::Screw, x, y, dia, dia);
+        float x, y;
+    };
+
+    void screwsAt (Design& d, std::initializer_list<ScrewAt> at, float dia = 14.0f)
+    {
+        for (const auto& s : at)
+            d.add (Type::Screw, s.x, s.y, dia, dia);
     }
 
     /** A tab key of a paged panel. */
@@ -703,8 +709,8 @@ namespace
         label (d, "Output", 1050, 246, 13, ink);
         d.key (p ("trans"), 952, 288, 62, 62, Look::LitSquare, "OFF", green).sel (0).size = 14;
         d.key (p ("trans"), 1018, 288, 62, 62, Look::LitSquare, "ON", green).sel (1).size = 14;
-        const std::pair<const char*, float> captions[] = { { "Decay", 255 },  { "Predelay", 350 }, { "Lo Multi", 462 }, { "Lo Cut", 542 },
-                                                           { "Hi Multi", 652 }, { "Hi Cut", 732 },  { "Modulate", 845 }, { "Transformer", 1050 } };
+        const std::pair<const char*, float> captions[] = { { "Decay", 255.0f },  { "Predelay", 350.0f }, { "Lo Multi", 462.0f }, { "Lo Cut", 542.0f },
+                                                           { "Hi Multi", 652.0f }, { "Hi Cut", 732.0f },  { "Modulate", 845.0f }, { "Transformer", 1050.0f } };
         for (auto [s, x] : captions)
             label (d, s, x, 374, 13, ink);
         return d;
@@ -2094,12 +2100,12 @@ namespace
                 for (int r = 0; r < 9; ++r)
                     for (int c = 0; c < 34; ++c)
                         d.path ("M " + juce::String (78 + 30 * c) + " " + juce::String (106 + 17 * r) + " l 10 0 m -5 -5 l 0 10", 0xffb8b8b8, 1.5f);
-            label (d, uk ? "Musichall" : "ANGEL", 580, 168, uk ? 64 : 62, 0xfff0f0f0, uk ? Look::Script : Look::SansLight).kerning (angel ? 0.05f : 0.0f);
-            d.box (68, 260, 1022, uk ? 120 : 132, Look::Bevel, strip);
+            label (d, uk ? "Musichall" : "ANGEL", 580, 168, uk ? 64.0f : 62.0f, 0xfff0f0f0, uk ? Look::Script : Look::SansLight).kerning (angel ? 0.05f : 0.0f);
+            d.box (68, 260, 1022, uk ? 120.0f : 132.0f, Look::Bevel, strip);
             const juce::uint32 ink = uk ? 0xff1a1a1a : 0xffe8e8e8;
             const auto amp = [&] (const char* id, float cx, const char* caption)
             {
-                auto& k = d.knob (p (id), cx, 330, uk ? 44 : 40, uk ? Look::Knurled : Look::BlackSkirt, 0xffd8b860);
+                auto& k = d.knob (p (id), cx, 330, uk ? 44.0f : 40.0f, uk ? Look::Knurled : Look::BlackSkirt, 0xffd8b860);
                 if (uk)
                     k.scaleOf (6, "0|2|4|6|8|10", 300).radii (1.3f, 1.75f).lsize (11).scol (ink);
                 else

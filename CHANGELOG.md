@@ -99,6 +99,9 @@ WING works as before throughout.
 
 ### Fixed
 
+- The Windows (MSVC) build compiles without warnings again: number conversions, local
+  names that hid a class's members and a constant condition in the UI and the tests,
+  which only a full rebuild showed, and the plugin sandbox's intended cache-line padding.
 - The whole-program monkey test (`SidecarMonkey`) could crash itself (0xC0000409) on a
   click it sent to a pop-up's drop shadow. Windows sends a shadow's window no mouse
   input; sent one anyway, the press reached the window under it, dismissed the menu,

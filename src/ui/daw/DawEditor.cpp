@@ -839,7 +839,7 @@ bool DawEditor::keyPressed (const juce::KeyPress& key)
     const auto ch = juce::CharacterFunctions::toLowerCase (key.getTextCharacter());
     const bool cmd = mods.isCommandDown();
     // With Ctrl the text character can be a control code: compare the key code too.
-    auto is = [&] (char c) { return ch == c || juce::CharacterFunctions::toLowerCase ((juce::juce_wchar) code) == (juce::juce_wchar) c; };
+    auto is = [&] (char c) { return ch == (juce::juce_wchar) c || juce::CharacterFunctions::toLowerCase ((juce::juce_wchar) code) == (juce::juce_wchar) c; };
     auto& p = session.getProject();
 
     if (code == juce::KeyPress::spaceKey)

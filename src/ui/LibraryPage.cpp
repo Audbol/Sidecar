@@ -125,7 +125,7 @@ class LibraryPage::ShowTab final : public juce::Component
 public:
     explicit ShowTab (LibraryPage& p) : page (p)
     {
-        auto& ctx = page.ctx;
+        auto& context = page.ctx;
         // OPEN: the show selected at INT / USB, else a file dialog.
         makeKey (keys, *this, "OPEN", Icon::OpenOut)->onClick = [this]
         {
@@ -136,9 +136,9 @@ public:
             else if (c.openShow)
                 c.openShow();
         };
-        makeKey (keys, *this, "CREATE", Icon::Edit)->onClick = [&ctx] { if (ctx.newShow) ctx.newShow(); };
-        makeKey (keys, *this, "SAVE", Icon::SaveTray)->onClick = [&ctx] { if (ctx.saveShow) ctx.saveShow (false); };
-        makeKey (keys, *this, "CLOSE", Icon::CloseIn)->onClick = [&ctx] { if (ctx.newShow) ctx.newShow(); };
+        makeKey (keys, *this, "CREATE", Icon::Edit)->onClick = [&context] { if (context.newShow) context.newShow(); };
+        makeKey (keys, *this, "SAVE", Icon::SaveTray)->onClick = [&context] { if (context.saveShow) context.saveShow (false); };
+        makeKey (keys, *this, "CLOSE", Icon::CloseIn)->onClick = [&context] { if (context.newShow) context.newShow(); };
         // SAVE AS: into the folder shown at INT / USB, else a file dialog.
         makeKey (keys, *this, "SAVE AS", Icon::SaveTray)->onClick = [this]
         {
@@ -179,10 +179,10 @@ public:
     void paint (juce::Graphics& g) override
     {
         paintKeyRows (g, rows);
-        auto& ctx = page.ctx;
+        auto& context = page.ctx;
         g.setColour (Dark::textDim);
         g.setFont (wingFontFit (TypeScale::body, (float) info.getHeight() * 0.4f));
-        g.drawFittedText ("SHOW: " + ctx.show.getName().toUpperCase() + "\n" + juce::String (ctx.show.getNumScenes()) + " SCENES", info,
+        g.drawFittedText ("SHOW: " + context.show.getName().toUpperCase() + "\n" + juce::String (context.show.getNumScenes()) + " SCENES", info,
                           juce::Justification::bottomLeft, 2);
     }
 
@@ -267,8 +267,8 @@ private:
     /** EXPORT WING SNAP: the console as a WING snapshot (experimental). */
     void exportWing()
     {
-        auto& ctx = page.ctx;
-        const auto name = juce::File::createLegalFileName (ctx.show.getName().isNotEmpty() ? ctx.show.getName() : juce::String (kAppName));
+        auto& context = page.ctx;
+        const auto name = juce::File::createLegalFileName (context.show.getName().isNotEmpty() ? context.show.getName() : juce::String (kAppName));
         chooser = std::make_unique<juce::FileChooser> ("Export a WING snapshot (experimental)",
                                                        juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile (name + ".snap"),
                                                        "*.snap");
@@ -699,8 +699,8 @@ private:
         int index = -1;
         if (show.hasRecordedSnippet())
         {
-            const auto focus = currentFocus();
-            index = show.addRecordedSnippet (item.scene, name, page.focusEdited ? &focus : nullptr);
+            const auto snippetFocus = currentFocus();
+            index = show.addRecordedSnippet (item.scene, name, page.focusEdited ? &snippetFocus : nullptr);
         }
         else
             index = show.addSnippet (item.scene, name, currentFocus());
@@ -712,9 +712,9 @@ private:
     {
         auto& show = page.ctx.show;
         const auto name = "Snippet " + juce::String (show.getNumScenes() + 1);
-        const auto focus = currentFocus();
+        const auto snippetFocus = currentFocus();
         const bool recorded = show.hasRecordedSnippet();
-        const int index = show.addSnippetScene (name, recorded && ! page.focusEdited ? nullptr : &focus, recorded, page.insertionIndex());
+        const int index = show.addSnippetScene (name, recorded && ! page.focusEdited ? nullptr : &snippetFocus, recorded, page.insertionIndex());
         if (index < 0)
             return;
         page.ctx.log.info ("Saved \"" + name + "\" as scene " + juce::String (index + 1));
@@ -819,8 +819,8 @@ public:
     void paint (juce::Graphics& g) override
     {
         paintKeyRows (g, rows);
-        auto& ctx = page.ctx;
-        auto& fx = ctx.engine.getFx();
+        auto& context = page.ctx;
+        auto& fx = context.engine.getFx();
 
         // The selected preset.
         const auto file = page.list->getSelectedFile();
@@ -864,7 +864,7 @@ public:
                           juce::Justification::centred, 2);
         g.setColour (Dark::textDim);
         g.setFont (wingFont (TypeScale::statusCaption));
-        g.drawFittedText (fxUser (ctx, slot), sb, juce::Justification::centredTop, 1);
+        g.drawFittedText (fxUser (context, slot), sb, juce::Justification::centredTop, 1);
     }
 
     void resized() override

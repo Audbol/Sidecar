@@ -594,8 +594,8 @@ public:
 
     void update()
     {
-        auto& fx = owner.fx;
-        const int n = fx.getNumChainMembers (owner.slot);
+        auto& slots = owner.fx;
+        const int n = slots.getNumChainMembers (owner.slot);
         while ((int) chips.size() > n)
             chips.pop_back();
         while ((int) chips.size() < n)
@@ -604,12 +604,12 @@ public:
         for (int i = 0; i < n; ++i)
         {
             auto& chip = *chips[(size_t) i];
-            auto* plugin = fx.getChainMember (owner.slot, i);
+            auto* plugin = slots.getChainMember (owner.slot, i);
             chip.index = i;
             chip.name = plugin->getName();
             chip.latency = latencyText (*plugin);
-            chip.bypassed = fx.isChainMemberBypassed (owner.slot, i);
-            chip.faulted = fx.isChainMemberFaulted (owner.slot, i);
+            chip.bypassed = slots.isChainMemberBypassed (owner.slot, i);
+            chip.faulted = slots.isChainMemberFaulted (owner.slot, i);
             chip.selected = i == owner.selected && (owner.layoutMode == Layout::focus || n > 1);
             chip.setTooltip (chip.name + (chip.faulted ? " (FAULT: bypassed until cleared)" : chip.bypassed ? " (bypassed)" : juce::String())
                              + "\nClick: show it. Dot: bypass. Drag: move it in the chain. Right-click: more");

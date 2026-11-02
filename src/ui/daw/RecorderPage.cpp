@@ -238,7 +238,7 @@ class RecorderPage::Settings final : public juce::Component
 public:
     explicit Settings (RecorderPage& p) : page (p)
     {
-        auto& settings = page.ctx.settings;
+        auto& appSettings = page.ctx.settings;
         closeKey.onClick = [this] { page.showSettings (false); };
         addAndMakeVisible (closeKey);
         auto add = [this] (const juce::String& name, ChoiceKeys* keys)
@@ -246,16 +246,16 @@ public:
             names.add (name);
             addAndMakeVisible (rows.add (keys));
         };
-        add ("SHOW METERS", new ChoiceKeys ({ "OFF", "ON" }, [&settings] { return settings.getBoolValue (daw::Session::showMetersKey, true) ? 1 : 0; },
-                                            [&settings] (int v) { settings.setValue (daw::Session::showMetersKey, v == 1); }));
-        add ("AUTO INPUT SELECT", new ChoiceKeys ({ "OFF", "ON" }, [&settings] { return settings.getIntValue (daw::Session::autoInputKey, 0) != 0 ? 1 : 0; },
-                                                  [&settings] (int v) { settings.setValue (daw::Session::autoInputKey, v); }));
+        add ("SHOW METERS", new ChoiceKeys ({ "OFF", "ON" }, [&appSettings] { return appSettings.getBoolValue (daw::Session::showMetersKey, true) ? 1 : 0; },
+                                            [&appSettings] (int v) { appSettings.setValue (daw::Session::showMetersKey, v == 1); }));
+        add ("AUTO INPUT SELECT", new ChoiceKeys ({ "OFF", "ON" }, [&appSettings] { return appSettings.getIntValue (daw::Session::autoInputKey, 0) != 0 ? 1 : 0; },
+                                                  [&appSettings] (int v) { appSettings.setValue (daw::Session::autoInputKey, v); }));
         const char* const statusNames[] = { "[ STOP ]  INPUT", "[ PLAY ]  INPUT", "[ RECORD ]  INPUT" };
         for (int i = 0; i < 3; ++i)
         {
             const auto* key = daw::Session::autoInputModeKeys[i];
-            add (statusNames[i], new ChoiceKeys ({ "KEEP", "MAIN", "ALT" }, [&settings, key] { return juce::jlimit (0, 2, settings.getIntValue (key, 0)); },
-                                                 [&settings, key] (int v) { settings.setValue (key, v); },
+            add (statusNames[i], new ChoiceKeys ({ "KEEP", "MAIN", "ALT" }, [&appSettings, key] { return juce::jlimit (0, 2, appSettings.getIntValue (key, 0)); },
+                                                 [&appSettings, key] (int v) { appSettings.setValue (key, v); },
                                                  std::vector<juce::Colour> { Colours::gold, Colours::valueBlue, juce::Colour (0xffe07020) }));
         }
     }

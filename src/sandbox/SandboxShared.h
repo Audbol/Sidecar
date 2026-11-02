@@ -36,6 +36,12 @@ struct ParamSlot
     std::atomic<std::uint32_t> serial;
 };
 
+// SharedBlock is padded on purpose: its alignas (64) groups sit on cache lines of their own.
+#if JUCE_MSVC
+ #pragma warning (push)
+ #pragma warning (disable : 4324)
+#endif
+
 /** The shared memory block (created by Sidecar, opened by the helper). */
 struct SharedBlock
 {
@@ -59,6 +65,10 @@ struct SharedBlock
     ParamSlot toHelper[kMaxParams];   // values set from Sidecar (automation, generic editor)
     ParamSlot fromHelper[kMaxParams]; // values changed in the plugin (its editor, its state)
 };
+
+#if JUCE_MSVC
+ #pragma warning (pop)
+#endif
 
 /** Control messages (first int32 of every pipe message, then an int32 request id). */
 enum class Msg : std::int32_t

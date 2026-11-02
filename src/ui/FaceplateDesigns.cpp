@@ -1292,7 +1292,7 @@ namespace
         auto boost = [&] (int param, float cx, float cy, const char* caption)
         {
             d.knob (param, cx, cy, 72, Look::BlackSkirt).scaleOf (11, "0||||||||||10", 280).radii (1.25f, 1.45f).lsize (12).scol (txt).skip();
-            d.caption (caption, cx, cy > 250 ? 357 : 213, 15, txt);
+            d.caption (caption, cx, cy > 250 ? 357.0f : 213.0f, 15, txt);
         };
         chooser (o + 11, 240, 170, "200|300|500|700|1000", 200, "LO-MID FREQ");
         chooser (o + 13, 343, 162, "200|300|500|700|1|1.5|2|3|4|5|7", 260, "MID FREQ");

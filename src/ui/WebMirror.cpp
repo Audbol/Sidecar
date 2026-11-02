@@ -147,11 +147,11 @@ private:
             wait (-1);
             const juce::ScopedLock busy (encoding);
             std::map<juce::uint32, juce::Image> batch;
-            juce::uint32 generation;
+            juce::uint32 batchGeneration;
             {
                 const juce::ScopedLock sl (lock);
                 batch.swap (pending);
-                generation = pendingGeneration;
+                batchGeneration = pendingGeneration;
             }
             auto published = juce::Time::getMillisecondCounterHiRes();
             for (auto& [index, tile] : batch)
@@ -172,7 +172,7 @@ private:
                         format = WebRemote::jpeg;
                     }
                 }
-                server.putTile (generation, index, format, data);
+                server.putTile (batchGeneration, index, format, data);
                 const auto now = juce::Time::getMillisecondCounterHiRes();
                 encodeMicros += (juce::int64) ((now - start) * 1000.0);
                 // A big batch (a whole screen) shows up as it goes.
