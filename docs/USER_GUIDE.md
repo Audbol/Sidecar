@@ -216,79 +216,11 @@ touchscreen looks the same in both. WING remote clients see the black WING as mo
 
 SETUP > GENERAL > CONSOLE > INTERFACE chooses the window's interface: **WING** (the
 surface described in this guide, the default) or **UNIVERSAL**, the Universal Mixer's
-own interface (docs/UNIVERSAL_MIXER.md). The Universal Mixer is a preview while it is
-being built. Its top bar shows the console it runs (how many channels, aux, buses,
-mains, matrices, DCAs, mute groups and FX slots) and a **WING SURFACE** key back to the
-WING surface. Under it is the MIXER view: a column for every strip of the console,
-whatever its size, channels first and matrices last, scrolled sideways (drag with a
-finger, or use the scroll bar). The keys above it show every kind (**ALL**) or one
-(**CHANNELS**, **AUX**, **BUSES**, **MAINS**, **MATRICES**). A column shows the
-strip's colour, its label and name (tap them to select the strip), its pan (drag
-sideways; double-tap for centre), **MUTE** (lit for the strip's own mute, outlined
-while a mute group, a DCA or SIP mutes it), **SOLO**, and its fader with the output
-meter beside it on the fader's scale (drag, or turn the wheel; Shift for fine moves;
-double-tap for 0 dB). A drag moves a control by how far you move, so touching a fader
-never makes it jump. Above the fader, the strip's overview shows its processing at a
-glance: **IN** (its level after trim), **GATE** and **DYN** (their gain reduction, the
-name lit while the block is on), its **EQ** curve and **OUT**. **FADERS** (top right)
-hides or shows every fader at any moment: hidden, the overview takes the whole column.
-
-Selecting a strip (a tap on its name) opens the inspector beside the mixer; **CLOSE**
-hides it. **CHAIN** lists the strip's processing in order: its own blocks (INPUT,
-FILTER, the GATE, EQ, DYNAMICS and INSERT 1 of its process order, INSERT 2, DELAY),
-the fader between **PRE-FADER** and **POST**, and any extra blocks and user taps (a
-green light: the block is on). **ADD** puts a filter, EQ, dynamics, insert or delay
-block, or a user tap, after the selected row (before PRE-FADER with none selected);
-drag an extra block or a tap by its grip to move it; **REMOVE** takes the selected one
-away. Under the list, the selected block's editor: its keys, its model (EQ, dynamics,
-the filter's tool), its curve, the gain reduction of a dynamics block and every
-parameter of its model; a bar moves as you drag it and a double tap resets it. A delay
-keeps its time when you change its unit. **SENDS** lists every bus, main and matrix
-the strip can send to, each with **ON**, its level and where it takes the signal:
-**FROM** PRE or POST (a bus send's GRP too) or one of the strip's user taps, so a send
-can take the signal anywhere in the chain.
-
-The keys under the top bar show one view at a time: **MIXER**, **ROUTING**, **FX
-RACK** and **MONITORING** (the inspector stays beside them). **ROUTING** is a patch
-matrix: **INPUTS** has the channels and aux down the side and the sources of the
-**GROUP** chosen across the top (LOCAL IN are the audio interface's inputs; then the
-oscillators, playback, the USB player, the buses', mains' and matrices' signals and
-the user signals); a tap on a point patches that source to the channel (a stereo
-source, or a strip's signal, takes the pair), a tap on a lit point takes it away.
-**OUTPUTS** has the interface's outputs down the side and every bus, main and matrix
-side and the two monitor paths across; a point feeds that output (a signal per
-output: the new one replaces what fed it). **FX RACK** has a tile per FX slot in use
-(its device or plugin, how many inserts use it, its level); under them, the selected
-slot's **DEVICE**, **PLUGIN** (load a plugin, open its window, bypass or remove it)
-and the device's controls: its front panel (**FRONT PANEL**) or the list of its
-parameters. **MONITORING** has the **SPEAKERS** and **PHONES** paths (their source,
-levels, DIM, MONO and MUTE for the speakers, the outputs and meters) and **SOLO** (where
-solos go, the solo mode, PFL or AFL for channels, buses, mains and matrices, and
-**CLEAR SOLO**). **SCENES** lists the show's scenes (the current one marked, LINK,
-SKIP and tags shown): **GO** recalls the selected scene, **PREV** and **NEXT** the
-show's previous and next ones, **ADD** captures the console as a new scene after the
-selected one, **STORE** captures it into the selected one (it asks first), **RENAME**,
-**UP** and **DOWN** move it, **REMOVE** deletes it (it asks first). **RECORDER** shows
-the WING display's recorder pages: **MULTITRACK** and the **USB** recorder, with
-**MULTITRACK EDITOR**. **SETUP** has **CONSOLE**, the configuration: how many channels,
-aux, buses, mains, matrices, DCAs, mute groups and FX slots the console has, changed
-with the -8, -1, +1, +8 keys and **APPLY** without a reset. New ones come at the end
-and everything else stays; fewer take from the end, asking first: channels and aux go
-with their settings, but a bus, main or matrix that something sends to, a DCA or mute
-group with members and an FX slot in use stay (with those before them), and SETUP
-says which. **AUDIO** has the audio device, **PREFERENCES** the interface, delay
-compensation and output protection.
-
-A part of the Universal Mixer that comes from one console's emulation carries that
-console's name as a tag: **WING** marks the strip's own blocks (its WING template),
-the model lists (EQ, dynamics, filter tools, FX devices), the front panels, the
-routing groups, the send modes, the monitor sources and the solo modes, and the
-fader law. The Universal Mixer's own parts (extra blocks, user taps, the patch
-matrix) have none; other consoles' parts will carry theirs.
-The window changes at once and the choice is an app preference. Shows, scenes, the
-recorder, plugins and the remotes keep working whichever interface shows. A show of a
-console that isn't a WING (more mains or matrices, say) opens in the Universal Mixer;
-choosing WING then offers to make the console a fresh WING.
+own interface (see *The Universal Mixer (preview)*). The window changes at once and the
+choice is an app preference. Shows, scenes, the recorder, plugins and the remotes keep
+working whichever interface shows. A show of a console that isn't a WING (more mains or
+matrices, say) opens in the Universal Mixer; choosing WING then offers to make the
+console a fresh WING.
 
 SETUP > GENERAL > CONSOLE > CONSOLE MODEL **COMPACT** shows a WING COMPACT instead of
 the full-size WING. The surface changes at once, and the choice is an app preference
@@ -780,6 +712,168 @@ like the finish. The COMPACT is black, so it always shows the black finish. It f
   control off: the multitrack editor). With USE CRSR/WHEEL the arrows and the wheel
   edit the display. Holding a key with a parameter (FX PAR) gives it to the encoder
   above the key until it is let go (WING manual 4.8).
+
+## The Universal Mixer (preview)
+
+Sidecar is growing into an emulator of several consoles, built on a mixer core
+without any one console's limits (docs/UNIVERSAL_MIXER.md). The Universal Mixer is
+that core's own interface: a touch-friendly mixer for a console of any size, dark,
+with large keys. It is a preview, and the WING surface stays the default.
+
+To open it, choose **UNIVERSAL** in SETUP > GENERAL > CONSOLE > INTERFACE on the WING
+surface. The **WING SURFACE** key at its top right goes back, and its SETUP >
+PREFERENCES > INTERFACE switches too. The window changes at once, and the console,
+the show, plugins, the recorder and the remotes carry on as they were. A show of a
+console that isn't a WING opens in the Universal Mixer.
+
+![The Universal Mixer's MIXER view: a band on a 32-channel console, each strip with its pan, MUTE, SOLO, overview and fader](images/universal-mixer.png)
+
+### The top bar and the views
+
+The top bar shows how many channels, aux, buses, mains, matrices, DCAs, mute groups
+and FX slots the console has. Under it, the view keys show one view at a time:
+**MIXER**, **ROUTING**, **FX RACK**, **MONITORING**, **SCENES**, **RECORDER** and
+**SETUP**. The inspector of the selected strip opens beside any of them.
+
+Every control works the same way. A drag moves it by how far your finger or the mouse
+travels, so touching a fader never makes it jump; Shift makes the move finer. A
+double tap sets its default (0 dB for a fader, centre for a pan), and the mouse
+wheel steps it.
+
+A part that comes from one console's emulation carries that console's name as a tag:
+**WING** marks the strip's own blocks (its WING template), the model lists (EQ,
+dynamics, filter tools, FX devices), the routing groups, the send modes, the monitor
+sources, the solo modes, the recorder pages and the fader law. The Universal Mixer's
+own parts (extra blocks, user taps, the patch matrix, FX slots) have no tag. Other
+consoles' parts will carry their names.
+
+### MIXER
+
+A column for every strip of the console, channels first and matrices last, scrolled
+sideways (drag with a finger, or use the scroll bar). **ALL** shows every kind;
+**CHANNELS**, **AUX**, **BUSES**, **MAINS** and **MATRICES** one. A column has:
+
+- the strip's colour, its label and its name: a tap selects the strip and opens the
+  inspector;
+- its pan (drag sideways);
+- **MUTE**, lit for the strip's own mute and outlined while a mute group, a DCA or SIP
+  mutes it, and **SOLO**;
+- its overview: **IN** (its level after trim), **GATE** and **DYN** (their gain
+  reduction, the name lit while the block is on), its **EQ** curve as the engine runs
+  it, and **OUT** (its output level);
+- its fader with the output meter beside it, both on the fader's scale (the meter's
+  colour turns at -18 dB, -6 dB and 0 dBFS), and the fader's value under them.
+
+**FADERS** hides or shows every fader at any moment. Hidden, the overview takes the
+whole column, to watch the processing.
+
+![The MIXER view with FADERS off: each column is its overview, input level, gate and compression, EQ curve and output](images/universal-overview.png)
+
+### The inspector
+
+Selecting a strip opens the inspector beside the view; **CLOSE** hides it.
+
+**CHAIN** lists the strip's processing in order: its own blocks (INPUT, FILTER, the
+GATE, EQ, DYNAMICS and INSERT 1 of its process order, each marked with its place in
+the order, INSERT 2, DELAY), the fader between **PRE-FADER** and **POST**, and any
+extra blocks and user taps. A green light means the block is on.
+
+- **ADD** puts a filter, EQ, dynamics, insert or delay block, or a user tap, after the
+  selected row (before PRE-FADER with nothing selected).
+- Drag an extra block or a user tap by its grip to move it; **REMOVE** takes it away.
+  The strip's own blocks stay where its process order puts them.
+
+Under the list, the selected block's editor: its keys, its **MODEL** (EQ, dynamics,
+the filter's tool), its curve, a dynamics block's gain reduction and every parameter
+of its model. The strip's own blocks and extra blocks have the same editors. A delay
+keeps its time when you change its unit.
+
+![The inspector on the lead vocal: its chain with an EQ block after DYNAMICS, and the EQ block's editor](images/universal-inspector.png)
+
+**SENDS** lists every bus, main and matrix the strip can send to (buses take channels,
+aux and other buses; mains the same; matrices everything but matrices), each with
+**ON**, its level and **FROM**: where the send takes the signal. That is PRE or POST
+(a bus send's GRP too), or one of the strip's user taps, so a send can take the signal
+anywhere in the chain.
+
+![The inspector's SENDS: the lead vocal's sends, the one to the reverb bus taking its signal from a user tap](images/universal-sends.png)
+
+### ROUTING
+
+A patch matrix. **INPUTS** has the channels and aux down the side and the sources of
+the **GROUP** chosen across the top: LOCAL IN (the audio interface's inputs, AES50 B
+and C beyond 48), the oscillators, playback, the USB player, the buses', mains' and
+matrices' signals and the user signals. A tap on a point patches that source to the
+channel; a stereo source or a strip's signal takes the pair, which shows dimmer. A tap
+on a lit point takes the patch away.
+
+**OUTPUTS** has the interface's outputs down the side and every bus, main and matrix
+side and the two monitor paths across. A point feeds that output; an output takes one
+signal, so the new one replaces what fed it.
+
+![ROUTING > INPUTS: the channels against the interface's inputs, each channel on its own input](images/universal-routing.png)
+
+### FX RACK
+
+A tile per FX slot in use: its device or plugin, how many inserts use it and its
+level. Under them, the selected slot: **DEVICE** (premium devices in FX 1-8 only),
+**PLUGIN** (load a plugin, open its window, bypass or remove it; a slot with a plugin
+is EXT) and the device's controls, its front panel (**FRONT PANEL**) or the list of its
+parameters.
+
+![The FX RACK: reverbs, a delay and a chorus in FX 1-4, a limiter and a de-esser in FX 9-10, the hall's parameters](images/universal-fx.png)
+
+### MONITORING
+
+**SPEAKERS** and **PHONES**: their source and source level, their level, **DIM**,
+**MONO** and **MUTE** for the speakers, how far DIM takes them down, their outputs and
+meters. **SOLO**: where solos go (**SOLO TO**), the solo mode (LIVE, STUDIO, SIP), PFL
+or AFL for channels, buses, mains and matrices, and **CLEAR SOLO**, lit while anything
+is soloed.
+
+![MONITORING: the speakers and phones paths and the solo settings](images/universal-monitoring.png)
+
+### SCENES
+
+The show's scenes, the current one marked, with LINK, SKIP and tags shown. **GO**
+recalls the selected scene; **PREV** and **NEXT** recall the show's previous and next
+ones (skipping as the WING does). **ADD** captures the console as a new scene after the
+selected one, **STORE** captures it into the selected one, **RENAME** names it, **UP**
+and **DOWN** move it, and **REMOVE** deletes it. STORE and REMOVE ask first.
+
+![SCENES: a show's scenes, Song 1 selected](images/universal-scenes.png)
+
+### RECORDER
+
+The WING display's recorder pages: **MULTITRACK** (see *Multitrack recording*) and
+the **USB** recorder and player (see *USB recorder / player*). **MULTITRACK EDITOR**
+opens the multitrack editor over the window.
+
+### SETUP
+
+**CONSOLE** is the console's configuration: how many channels, aux, buses, mains,
+matrices, DCAs, mute groups and FX slots it has. The -8, -1, +1 and +8 keys set the
+new numbers (shown with an arrow), **APPLY** makes them so without a reset and
+**REVERT** forgets them.
+
+- New ones come at the end; everything else stays as it was.
+- Fewer take from the end, after a warning that names them. Channels and aux go with
+  their settings. A bus, main or matrix that something sends to, a DCA or mute group
+  with members and an FX slot in use stay, with those before them, and SETUP says
+  which stayed.
+
+**AUDIO** chooses the audio device. **PREFERENCES** has the interface, delay
+compensation and output protection.
+
+![SETUP > CONSOLE: the configuration, the buses about to go from 16 to 24](images/universal-setup.png)
+
+### Still on the WING surface
+
+The monitor paths' processing (EQ, delay, limiter), talkback, custom controls, the
+LIBRARY, snippets and the remotes' settings are on the WING surface for now. The WING
+surface addresses the WING's ranges: a console with other aux, main, matrix, DCA or
+mute group counts opens in the Universal Mixer, and choosing the WING surface offers to
+make it a WING first.
 
 ## Multitrack recording
 

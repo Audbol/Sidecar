@@ -27,8 +27,9 @@ format in the current code are its first step: the console's size is a configura
 (any number of channels, buses, mains, matrices, up to 256 DCAs and mute groups), and
 each strip's processing is a chain that can hold extra blocks and tap points. A first
 preview of its own interface, a touch-friendly MIXER view for a console of any size, is
-under SETUP > GENERAL > CONSOLE > INTERFACE. The WING works exactly as before. The plan
-is in [docs/UNIVERSAL_MIXER.md](docs/UNIVERSAL_MIXER.md).
+under SETUP > GENERAL > CONSOLE > INTERFACE (see the user guide's chapter *The
+Universal Mixer*). The WING works exactly as before. The plan is in
+[docs/UNIVERSAL_MIXER.md](docs/UNIVERSAL_MIXER.md).
 
 **Community:** questions, tips and feedback on the [Sidecar Discord server](https://discord.gg/TEE8q979x).
 
@@ -74,6 +75,8 @@ relying on it at a show (see [Known limitations](#known-limitations)).
 | **EFFECTS**: the WING's 16-slot rack | **Faceplates** with live meters |
 | ![The recorder screen recording 40 channels, with the input levels and the tracks armed](docs/images/recorder.png) | ![The multitrack editor with the recording: one track per channel, waveforms in the channels' colours](docs/images/editor.png) |
 | **Recorder**: RECORD ALL CHANNELS | **Multitrack editor** (Ctrl+E) |
+| ![The Universal Mixer's MIXER view: a band on a 32-channel console, each strip with its pan, MUTE, SOLO, overview of its processing and fader](docs/images/universal-mixer.png) | ![The Universal Mixer's inspector: the lead vocal's chain with an extra EQ block, and the block's editor](docs/images/universal-inspector.png) |
+| **Universal Mixer** (preview): a console of any size | **Inspector**: a strip's chain, blocks and sends |
 
 ## What it does
 

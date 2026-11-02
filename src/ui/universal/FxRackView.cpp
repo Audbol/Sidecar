@@ -254,7 +254,7 @@ void FxRackView::resized()
         const int w = juce::jmin (area.getWidth(), juce::roundToInt ((float) area.getHeight() * kPanelAspect));
         faceplate.setBounds (area.withSizeKeepingCentre (w, juce::roundToInt ((float) w / kPanelAspect)).withY (area.getY()));
     }
-    listView.setBounds (area);
+    listView.setBounds (area.withWidth (juce::jmin (area.getWidth(), 900))); // bars too long to read across a wide window
     const int width = juce::jmax (0, listView.getWidth() - listView.getScrollBarThickness() - sizes::kGapSmall);
     params.setSize (width, params.getHeightFor (width));
 }

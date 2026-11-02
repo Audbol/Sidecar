@@ -421,6 +421,7 @@ if(LIVEDAW_BUILD_TESTS)
     # The Universal Mixer's interface (src/ui/universal).
     target_sources(LiveDAWTests PRIVATE
         tests/UniversalUiTests.cpp
+        tests/ScreenshotTests.cpp
         src/ui/universal/Theme.cpp
         src/ui/universal/Widgets.cpp
         src/ui/universal/MixerView.cpp

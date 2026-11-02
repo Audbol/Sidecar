@@ -49,6 +49,15 @@ silences, a device xrun). `monkey.log` in its home folder lists every action; th
 seed (`--seed`) replays a run. On Windows a crash's entry names the exception, or for
 an abort, an uncaught exception or another C runtime fail-fast, the stack (the
 monkey is built with symbols).
+
+**Screenshots.** The Universal Mixer's pictures in `docs/images` (`universal-*.png`)
+are rendered by a test category of their own, on a demo console
+(`tests/ScreenshotTests.cpp`). After changing its views, render them again from the
+repository's folder:
+
+```bash
+LIVEDAW_SCREENSHOTS=docs/images build/LiveDAWTests_artefacts/Release/LiveDAWTests Screenshots
+```
 CI builds and tests Windows, macOS and Linux, and runs the tests under
 AddressSanitizer, UndefinedBehaviorSanitizer and ThreadSanitizer.
 

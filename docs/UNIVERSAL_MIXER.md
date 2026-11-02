@@ -251,7 +251,14 @@ Three layers:
       processing deserves, so a column has an overview (input, GATE and DYNAMICS gain
       reduction, the EQ curve, output) and the FADERS key hides or shows the faders
       at any moment.
-   7. Docs, a user-guide chapter and screenshots.
+   7. Docs, a user-guide chapter and screenshots (done): the user guide's chapter *The
+      Universal Mixer (preview)*, rendered screenshots (`tests/ScreenshotTests.cpp`,
+      `docs/images/universal-*.png`), the README, the start-up notice.
+
+   Phase 2 is complete (November 2026). Still on the WING surface: the monitor paths'
+   processing, talkback, custom controls, the LIBRARY, snippets and the remotes'
+   settings. The interface still says PREVIEW: dropping it, as the decision above
+   foresees once Phase 2 is complete, waits for the owner's go.
 3. **WING as a profile**: move the WING's limits, defaults, laws, surface, protocols
    and files into a WING profile over the core (including Phase 1's step 3d: the
    WING's blocks out of `StripParams`), and check it against the WING tests and WING

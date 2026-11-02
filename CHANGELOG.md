@@ -83,6 +83,10 @@ WING works as before throughout.
   stays; fewer take from the end after a warning, keeping a bus, main or matrix that
   something sends to, a DCA or mute group with members and an FX slot in use. AUDIO
   (the audio device) and PREFERENCES too. C ABI 29: `ld_engine_set_num_strips`.
+- Universal Mixer, Phase 2 step 7 (Phase 2 complete): the user guide's chapter *The
+  Universal Mixer (preview)*, view by view with screenshots; the README shows it, and the
+  start-up notice says what it covers. The screenshots are rendered by a test category of
+  their own (`LiveDAWTests Screenshots`) on a demo console.
 - The Universal MIXER view's strips have an overview above a shorter fader: input
   level, GATE and DYNAMICS gain reduction, the EQ curve and output level. **FADERS**
   hides or shows the faders at any moment, the overview then taking the column.

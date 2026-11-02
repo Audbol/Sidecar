@@ -894,6 +894,11 @@ GATE and DYNAMICS gain reduction (`StripMeters`) and its EQ curve (`ld_strip_res
 taken again only when the EQ's model or values change); the MIXER view's FADERS key
 (`uiprefs::universalFaders`) hides the faders and gives the overview the column.
 
+The user guide's pictures of the Universal Mixer are rendered, not captured:
+`tests/ScreenshotTests.cpp` (the test category "Screenshots", not run with the
+others) sets up a demo console and snapshots each view to `LIVEDAW_SCREENSHOTS`
+(`docs/images/universal-*.png`).
+
 Device tags: the Universal Mixer will hold several emulations, so a part that one
 console's emulation defines shows its name (`devices::wing`, drawn by
 `drawDeviceTag`): `ChainList::Row::device` and `BlockTarget::device` (the strip's own
