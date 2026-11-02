@@ -381,10 +381,6 @@ if(LIVEDAW_BUILD_TESTS)
         tests/StabilityTests.cpp
         tests/PluginHostingTests.cpp
         tests/PluginChainTests.cpp
-        src/ui/PluginChainView.cpp
-        src/ui/PluginOverviewWindow.cpp
-        src/ui/PluginPictures.cpp
-        src/ui/LookAndFeel.cpp
         tests/LayerTests.cpp
         tests/DeviceTests.cpp
         tests/RecorderTests.cpp
@@ -402,7 +398,8 @@ if(LIVEDAW_BUILD_TESTS)
         tests/WindowTests.cpp
         src/sandbox/TestPlugins.cpp
         ${LIVEDAW_ENGINE_SOURCES}
-        ${LIVEDAW_DAW_SOURCES})
+        ${LIVEDAW_DAW_SOURCES}
+        ${LIVEDAW_UI_SOURCES}) # the whole UI, as the app has it: every screen can be tested
     livedaw_configure_juce_target(LiveDAWTests)
     target_link_libraries(LiveDAWTests PRIVATE LiveDAWResources) # the screen fonts (the plugin chain view)
     # Symbols, so the stack a crash prints (tests/TestMain.cpp) names the functions.
@@ -421,51 +418,18 @@ if(LIVEDAW_BUILD_TESTS)
     target_sources(LiveDAWTests PRIVATE tests/MidiTests.cpp)
 
     # The processing models' front panels (FX rack devices, dynamics, EQs).
-    target_sources(LiveDAWTests PRIVATE
-        tests/FaceplateTests.cpp
-        src/ui/Faceplate.cpp
-        src/ui/FaceplateDraw.cpp
-        src/ui/FaceplateDesigns.cpp
-        src/ui/FaceplateDevices.cpp
-        src/ui/ModelParams.cpp
-        src/ui/Knobs.cpp
-        src/ui/DynamicsGraph.cpp
-        src/ui/WingPopups.cpp
-        src/ui/Icons.cpp)
+    target_sources(LiveDAWTests PRIVATE tests/FaceplateTests.cpp)
+
+    # The WING surface's screens and pages.
+    target_sources(LiveDAWTests PRIVATE tests/WingUiTests.cpp)
 
     # The Universal Mixer's interface (src/ui/universal).
     target_sources(LiveDAWTests PRIVATE
         tests/UniversalUiTests.cpp
-        tests/ScreenshotTests.cpp
-        src/ui/universal/Theme.cpp
-        src/ui/universal/Widgets.cpp
-        src/ui/universal/MixerView.cpp
-        src/ui/universal/ValueControls.cpp
-        src/ui/universal/BlockEditor.cpp
-        src/ui/universal/ChainList.cpp
-        src/ui/universal/SendsPanel.cpp
-        src/ui/universal/Inspector.cpp
-        src/ui/universal/PatchGrid.cpp
-        src/ui/universal/RoutingView.cpp
-        src/ui/universal/FxRackView.cpp
-        src/ui/universal/MonitorView.cpp
-        src/ui/universal/ScenesView.cpp
-        src/ui/universal/RecorderView.cpp
-        src/ui/universal/SetupView.cpp
-        src/ui/PluginMenu.cpp
-        src/ui/daw/RecorderPage.cpp
-        src/ui/daw/DawCommon.cpp
-        src/ui/daw/DawEditor.cpp
-        src/ui/daw/DawTimeline.cpp
-        src/ui/daw/DawTracks.cpp
-        src/ui/UsbRecorderPage.cpp
-        src/ui/UniversalSkin.cpp)
+        tests/ScreenshotTests.cpp)
 
     # The surface's scribble strip LCDs.
-    target_sources(LiveDAWTests PRIVATE
-        tests/SurfaceTests.cpp
-        src/ui/Scribble.cpp
-        src/ui/MeterComponent.cpp)
+    target_sources(LiveDAWTests PRIVATE tests/SurfaceTests.cpp)
 
     # The monkey test of the whole program (tests/MonkeyMain.cpp): the real UI on the
     # virtual audio device, sent random input for a while. Run by hand (it opens

@@ -544,7 +544,7 @@ public:
             g.setColour (Colours::screenPanel);
             g.fillRect (body);
             auto* plugin = fx.getPlugin (slot);
-            auto r = body.reduced (24).withHeight (juce::jmin (body.getHeight() - 48, 120));
+            auto r = pluginText;
             g.setColour (Colours::text);
             g.setFont (wingFont (TypeScale::statusTitle, WingWeight::SemiBold));
             g.drawFittedText (plugin != nullptr ? plugin->getName().toUpperCase() : juce::String ("NO PLUGIN LOADED"), r.removeFromTop (40),
@@ -581,11 +581,14 @@ public:
         b.removeFromTop (6);
         body = b;
         face.setBounds (body);
-        auto keys = body.reduced (24).withTrimmedTop (juce::jmin (body.getHeight() - 48, 120) + 12).withHeight (48);
+        layoutOutboard();
+        // A plugin: its name and what it is under the SOURCE keys, then OPEN EDITOR and
+        // LOAD / REPLACE.
+        pluginText = juce::Rectangle<int> (sourceKeys.getX(), sourceKeys.getBottom() + 12, juce::jmax (0, body.getRight() - 24 - sourceKeys.getX()), 68);
+        auto keys = pluginText.withY (pluginText.getBottom() + 12).withHeight (48);
         openKey.setBounds (keys.removeFromLeft (220));
         keys.removeFromLeft (10);
         pluginKey.setBounds (keys.removeFromLeft (220));
-        layoutOutboard();
     }
 
     void mouseUp (const juce::MouseEvent& e) override
@@ -647,6 +650,8 @@ private:
         repaint (header);
         if (shownOutboard)
             repaint (body); // the patch, the RETURN, the round trip
+        else if (shownModel == ld::kFxExt)
+            repaint (pluginText); // the plugin as soon as it's in, and its LOAD
     }
 
     //==============================================================================
@@ -907,8 +912,23 @@ private:
                                      auto& fx = ctx.engine.getFx();
                                      if (i == 1 && ! fx.isOutboard (slot))
                                      {
-                                         if (fx.hasPlugin (slot))
-                                             clearFx (ctx, slot); // closes its editor first
+                                         if (auto* plugin = fx.getPlugin (slot))
+                                         {
+                                             // The plugin goes: ask first.
+                                             popups::confirm (*this, "OUTBOARD",
+                                                              "Unload " + plugin->getName() + " from FX " + juce::String (slot + 1)
+                                                                  + " and use the outboard insert?",
+                                                              "UNLOAD",
+                                                              [safe = juce::Component::SafePointer<Editor> (this), &context = ctx, s = slot]
+                                                              {
+                                                                  clearFx (context, s); // closes its editor first
+                                                                  context.engine.getFx().setOutboard (s);
+                                                                  if (safe != nullptr)
+                                                                      safe->rebind();
+                                                              },
+                                                              true);
+                                             return;
+                                         }
                                          fx.setOutboard (slot);
                                      }
                                      else if (i == 0 && fx.isOutboard (slot))
@@ -930,7 +950,7 @@ private:
                                 },
                                 [this] (DropdownField& f) { showFxDeviceMenu (ctx, slot, &f, [this] { rebind(); }, this); } };
     home::KnobBox mix { KnobBinding {} };
-    juce::Rectangle<int> header, sourceArea, body;
+    juce::Rectangle<int> header, sourceArea, body, pluginText;
 };
 
 EffectsPage::EffectsPage (UiContext& c) : ctx (c)

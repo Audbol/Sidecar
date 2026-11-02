@@ -79,15 +79,23 @@ public:
 
     /** Called when the knob is touched: hovered or grabbed. */
     std::function<void()> onTouch;
+    /** Called when the knob is grabbed or its wheel turned: a hand on it, which a
+        pointer passing over it is not. */
+    std::function<void()> onGrab;
 
     void setTooltip (const juce::String& tip) { slider.setTooltip (tip); }
 
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseEnter (const juce::MouseEvent&) override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+
+    /** The knob's dial (for tests: drag or turn it). */
+    juce::Slider& getSlider() noexcept { return slider; }
 
 private:
     void timerCallback() override;
+    void grabbed();
 
     KnobBinding binding;
     juce::Slider slider;

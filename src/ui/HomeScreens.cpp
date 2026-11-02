@@ -3105,6 +3105,9 @@ public:
             openEditor->setBounds (b.withSizeKeepingCentre (juce::jmin (screenCap (200), b.getWidth()), 40));
         hint->setBounds (b.withTrimmedTop (b.getHeight() / 2 + 24).withHeight (24));
         face->setBounds (b);
+        // Only a device has a front panel; unbound it would still cover OPEN EDITOR and
+        // take its clicks.
+        face->setVisible (shownSlot >= 0 && shownModel > ld::kFxExt && ! shownPlugin);
     }
 
     void paint (juce::Graphics& g) override

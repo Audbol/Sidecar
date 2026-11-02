@@ -164,7 +164,7 @@ DisplayKnob::DisplayKnob()
         }
     };
     slider.onDragEnd = [this] { timerCallback(); };
-    slider.onDragStart = [this] { if (onTouch) onTouch(); };
+    slider.onDragStart = [this] { grabbed(); };
     slider.setDoubleClickReturnValue (false, 0.0);
     slider.addMouseListener (this, false);
     addAndMakeVisible (slider);
@@ -189,6 +189,27 @@ void DisplayKnob::mouseEnter (const juce::MouseEvent&)
 {
     if (onTouch && slider.isEnabled())
         onTouch();
+}
+
+void DisplayKnob::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
+{
+    // Heard as the dial's listener: a turn of the dial is a grab. Elsewhere on the knob
+    // the wheel goes on to the parent, as it would have.
+    if (e.eventComponent == &slider)
+    {
+        if (slider.isEnabled())
+            grabbed();
+    }
+    else
+        juce::Component::mouseWheelMove (e, wheel);
+}
+
+void DisplayKnob::grabbed()
+{
+    if (onTouch)
+        onTouch();
+    if (onGrab)
+        onGrab();
 }
 
 void DisplayKnob::setBinding (KnobBinding b)

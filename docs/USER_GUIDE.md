@@ -69,7 +69,8 @@ with or endorsed by Behringer or Music Tribe; "WING" is their trademark.
     inserts*).
 - **Outboard inserts** (WING manual 11.11, EXTERNAL): the EXT device's **SOURCE**
   key chooses **PLUGIN** or **OUTBOARD** (the FX slot menu has **Outboard insert
-  (SEND / RETURN)** too). An outboard slot sends what its strip inserts to its **FX
+  (SEND / RETURN)** too); OUTBOARD asks first when the slot holds a plugin, which it
+  unloads. An outboard slot sends what its strip inserts to its **FX
   SEND** and takes its **RETURN** back in its place. Its page, **EXTERNAL EFFECT**,
   is laid out as the console's: **SEND** shows the two outputs FX SEND is patched to
   (tap it for ROUTING > OUTPUTS, source group FX SEND: slot n's send is FX SEND 2n-1
@@ -676,7 +677,10 @@ like the finish. The COMPACT is black, so it always shows the black finish. It f
   PROCESSING with an encoder over each of INPUT, FILTER, GATE, COMP, INSERT and MAIN
   (press: show it on the screen, again: next parameter; hold: on/off); CHANNEL
   EQUALIZER with SHIFT, four band encoders, BLEND/MIX, EQ and GAIN / WIDTH / FREQ;
-  VIEW opens the shown slot on HOME. With the WING EQ the encoders are bands 1-4 and
+  VIEW opens the shown slot on HOME. Pointing at an encoder shows its slot on the small
+  screen; grabbing or turning one also opens it on the display while SETUP > SURFACE >
+  CH STRIP TOUCH SELECT is on (the default), as touching one does on the WING. With
+  the WING EQ the encoders are bands 1-4 and
   SHIFT gives the shelves (bus EQs: bands 5-8 and the shelves); GAIN / WIDTH / FREQ
   choose what they set. With an analog EQ model the encoders set the model's
   parameters in the order of its screen, four at a time: each SHIFT press moves on to

@@ -141,6 +141,21 @@ WING works as before throughout.
 
 ### Fixed
 
+- From a macOS user's report, all platforms:
+  - A channel's INS screen: **OPEN EDITOR** did nothing. The effect's front panel,
+    unused with a plugin in the slot, lay over the key and took the press; it now
+    shows only for a device.
+  - The display jumped to a channel's EQ (or another block) by itself: the pointer
+    passing over one of the channel strip section's encoders counted as touching it,
+    and CH STRIP TOUCH SELECT followed. Pointing at an encoder now only shows its slot
+    on the section's small screen; a grab or a wheel turn is the touch.
+  - EFFECTS, a plugin's slot: **OUTBOARD** unloaded the plugin at once; it now asks
+    first. The plugin's name and its maker / format / LOAD line lay under the SOURCE
+    keys; they are under them now. After a plugin was loaded the page still said NO
+    PLUGIN LOADED until something else repainted it; it shows the plugin (and its
+    LOAD) as it changes.
+  - The tests now link the whole UI (the WING surface's screens and pages too), and a
+    test of their own (*WING surface UI*) drives these as a user would.
 - The plugin overview could crash Sidecar when a plugin was removed while it was open.
   It looks at the FX slots 15 times a second and draws what it saw; a paint that came
   between a plugin's removal and the next look asked the deleted plugin its name (to
@@ -162,6 +177,12 @@ WING works as before throughout.
 - A crash of `LiveDAWTests` (a fault, an abort, an uncaught exception, a pure virtual
   call) prints the test it happened in and the stack, in a CI log too; on Windows the
   tests are built with symbols, so the stack names the functions.
+- The macOS (AppleClang) build compiles without warnings. The strip and DCA name
+  windows had a `setName` of their own (it names the strip, the DCA) that overrode
+  JUCE's `Component::setName` by accident; it is `rename` now. The rest: lambda
+  captures, parameters and loop bindings that hid other names, two unused members, the
+  multitrack editor's FILE helpers private to their file, and the linker's note about
+  the Rust library's duplicate `-lSystem` (quieted where the linker knows the flag).
 - The Linux (gcc) build compiles without warnings again: the main and matrix send
   indices are cast where the sends became a bank of any size, the Universal Mixer's
   switches name every kind of chain step, and the MIXER view initialises its members
@@ -177,12 +198,6 @@ WING works as before throughout.
   window an event closed. On Windows its log also names the stack of an abort, an
   uncaught exception or another C runtime fail-fast (its build has symbols). Sidecar
   itself wasn't at fault; a test (*Windows*) shows the case.
-- The macOS (AppleClang) build compiles without warnings. The strip and DCA name
-  windows had a `setName` of their own (it names the strip, the DCA) that overrode
-  JUCE's `Component::setName` by accident; it is `rename` now. The rest: lambda
-  captures, parameters and loop bindings that hid other names, two unused members, the
-  multitrack editor's FILE helpers private to their file, and the linker's note about
-  the Rust library's duplicate `-lSystem` (quieted where the linker knows the flag).
 - Importing a WING snapshot no longer patches two of its inputs to one port. The WING's
   LOCAL, AUX, StageConnect, USB, MOD and AES/EBU inputs land on the ports AES50 A (or B)
   has here, so a show with the drums on A 1-5 and the vocals on the console's LOCAL 1-5

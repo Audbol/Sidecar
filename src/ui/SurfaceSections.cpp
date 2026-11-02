@@ -37,7 +37,10 @@ ChannelStripSection::ChannelStripSection (UiContext& c) : ctx (c)
     for (int i = 0; i < kNumSlots; ++i)
     {
         slotKnobs[i].setHardware (true);
-        slotKnobs[i].onTouch = [this, i] { showSlot (i); followScreen (i, true); };
+        // Pointing at an encoder shows its slot on the small screen; a hand on it (a
+        // grab, a wheel turn) is the WING's touch, which the display may follow.
+        slotKnobs[i].onTouch = [this, i] { showSlot (i); };
+        slotKnobs[i].onGrab = [this, i] { followScreen (i, true); };
         addAndMakeVisible (slotKnobs[i]);
 
         auto& key = *(slotKeys[i] = std::make_unique<SurfaceKey> (names[i]));
@@ -57,8 +60,8 @@ ChannelStripSection::ChannelStripSection (UiContext& c) : ctx (c)
             eqBand = i;
             eqMixShown = false;
             showSlot (EqSlot);
-            followScreen (EqSlot, true);
         };
+        eqKnobs[i].onGrab = [this] { followScreen (EqSlot, true); };
         addAndMakeVisible (eqKnobs[i]);
     }
     eqMix.setHardware (true);
@@ -66,8 +69,8 @@ ChannelStripSection::ChannelStripSection (UiContext& c) : ctx (c)
     {
         eqMixShown = true;
         showSlot (EqSlot);
-        followScreen (EqSlot, true);
     };
+    eqMix.onGrab = [this] { followScreen (EqSlot, true); };
     addAndMakeVisible (eqMix);
 
     shiftKey.shape = SurfaceKey::Shape::Square;
@@ -292,7 +295,8 @@ HomeTab ChannelStripSection::homeTabOf (int slot)
 void ChannelStripSection::followScreen (int slot, bool touch)
 {
     // SCREEN FOLLOWS CH STRIP: the display shows the block being edited here;
-    // CH STRIP TOUCH SELECT: touching an encoder does too (SETUP > SURFACE).
+    // CH STRIP TOUCH SELECT: touching an encoder does too (SETUP > SURFACE): a grab
+    // or a wheel turn, not the pointer passing over it on its way elsewhere.
     const bool follow = ctx.settings.getBoolValue (uiprefs::screenFollowsStrip, false)
                         || (touch && ctx.settings.getBoolValue (uiprefs::stripTouchSelect, true));
     if (follow && strip != nullptr && ctx.showHomeTab)
