@@ -389,10 +389,11 @@ like the finish. The COMPACT is black, so it always shows the black finish. It f
     channels: closed, SIP never mutes the channel),
     **ICON/COLOR**, **NAME**, **TAGS** (DCAs, mute groups, the talk tags TALK ON / TALK
     SOLO for both talk keys, A or B), Sidecar's **CHAIN** and the **SAFE** key. CHAIN
-    shows the strip's processing in order as the engine runs it, with the blocks and
-    taps added in the Universal Mixer (gold; the WING's screens don't show them), each
-    added block with its model or setting; the tab reads **CHAIN +n** while the strip
-    has n of them. They are edited in the Universal Mixer. As on a factory-initialized
+    lists the strip's processing top to bottom as the engine runs it, a row per block
+    with its model or setting and ON, PRE-FADER / FADER / POST as dividers, and the
+    blocks and taps added in the Universal Mixer in gold (the WING's screens don't show
+    them); the tab reads **CHAIN +n** while the strip has n of them, and the block
+    column on the left has a gold **+n** notch under the block they follow. They are edited in the Universal Mixer. As on a factory-initialized
     WING the faders start at -oo (buses 9-16 at 0 dB), the EQs off, and channels and
     aux have **LINK CUSTOMIZATION TO SOURCE** on: the strip shows the name, colour and
     icon of the source it listens to, and ICON/COLOR and NAME edit the source (the link key on those tabs, or NONE /

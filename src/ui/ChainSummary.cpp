@@ -120,29 +120,56 @@ bool isShown (const ChainStep& s) noexcept
 
 juce::String blockDetail (const Strip& strip, const ChainStep& s)
 {
-    if (! s.isBlock())
-        return {};
-    const auto b = strip.getBlock (s.uid);
     const auto modelName = [] (models::Table table, int model) { return models::model (table, model).name.toUpperCase(); };
-    if (auto* f = b.filter())
+    const auto filterText = [&modelName] (const FilterParams& f)
     {
         juce::StringArray parts;
-        if (f->lowCut.load())
-            parts.add ("LO CUT " + juce::String (juce::roundToInt (f->lowCutFreq.load())) + " Hz");
-        if (f->highCut.load())
-            parts.add ("HI CUT " + juce::String (juce::roundToInt (f->highCutFreq.load())) + " Hz");
-        if (f->tool.load())
-            parts.add (modelName (models::FilterTools, f->toolModel.load()));
+        if (f.lowCut.load())
+            parts.add ("LO CUT " + juce::String (juce::roundToInt (f.lowCutFreq.load())) + " Hz");
+        if (f.highCut.load())
+            parts.add ("HI CUT " + juce::String (juce::roundToInt (f.highCutFreq.load())) + " Hz");
+        if (f.tool.load())
+            parts.add (modelName (models::FilterTools, f.toolModel.load()));
         return parts.isEmpty() ? juce::String ("NO CUT") : parts.joinIntoString ("  ");
+    };
+    const auto eqTable = static_cast<models::Table> (strip.getEqTable());
+    const auto insertText = [] (const InsertParams& i) { return i.fx.load() >= 0 ? "FX " + juce::String (i.fx.load() + 1) : juce::String ("NO FX"); };
+
+    auto& p = strip.params;
+    switch (s.kind)
+    {
+        case ld::kStepFilter:     return filterText (p.filter);
+        case ld::kStepGate:       return modelName (models::Dynamics, p.gate.model.load());
+        case ld::kStepEq:         return modelName (eqTable, p.eq.model.load());
+        case ld::kStepDynamics:   return modelName (models::Dynamics, p.dynamics.model.load());
+        case ld::kStepPreInsert:  return insertText (p.preInsert);
+        case ld::kStepPostInsert: return insertText (p.postInsert);
+        case ld::kStepDelay:      return delayText (p.input.delay.load(), p.input.delayMode.load());
+        case ld::kStepBlock:
+        {
+            const auto b = strip.getBlock (s.uid);
+            if (auto* f = b.filter())
+                return filterText (*f);
+            if (auto* e = b.eq())
+                return modelName (eqTable, e->model.load());
+            if (auto* d = b.dynamics())
+                return modelName (models::Dynamics, d->model.load());
+            if (auto* i = b.insert())
+                return insertText (*i);
+            if (auto* d = b.delay())
+                return delayText (d->delay.load(), d->mode.load());
+            return {};
+        }
+        case ld::kStepInput:
+        case ld::kStepSlot:
+        case ld::kStepPfl:
+        case ld::kStepFader:
+        case ld::kStepPost:
+        case ld::kStepTapShaper:
+        case ld::kStepTap:
+        case ld::kStepRta:
+            break;
     }
-    if (auto* e = b.eq())
-        return modelName (static_cast<models::Table> (strip.getEqTable()), e->model.load());
-    if (auto* d = b.dynamics())
-        return modelName (models::Dynamics, d->model.load());
-    if (auto* i = b.insert())
-        return i->fx.load() >= 0 ? "FX " + juce::String (i->fx.load() + 1) : juce::String ("NO FX");
-    if (auto* d = b.delay())
-        return delayText (d->delay.load(), d->mode.load());
     return {};
 }
 

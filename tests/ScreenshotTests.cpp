@@ -85,11 +85,11 @@ public:
         rig.meters.advance (0.01f);
 
         ui::UniversalSkin skin (rig.ctx);
-        skin.setSize (1600, 900);
+        skin.setSize (1920, 1080); // a 1080p screen, the size Sidecar is laid out for
         const auto shot = [this, &skin] (const juce::String& fileName)
         {
             const auto image = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
-            expect (image.isValid() && image.getWidth() == 1600, fileName);
+            expect (image.isValid() && image.getWidth() == 1920, fileName);
             const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {});
             if (folder.isEmpty())
                 return;

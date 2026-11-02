@@ -31,8 +31,8 @@ inline bool isExtra (const ChainStep& s) noexcept { return s.isBlock() || s.isUs
     emulation's own tap points. */
 bool isShown (const ChainStep&) noexcept;
 
-/** An extra block's model or setting in a few words ("EQ: WING EQ", "DELAY 12.0 ms",
-    "FX 3"); empty for the other steps. */
+/** A block's model or setting in a few words ("WING EQ", "12.0 ms", "FX 3", "LO CUT
+    80 Hz"): the strip's own blocks and extra ones; empty for markers and taps. */
 juce::String blockDetail (const Strip&, const ChainStep&);
 
 /** How many extra blocks and user taps the strip has. */

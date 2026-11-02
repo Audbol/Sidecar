@@ -85,8 +85,9 @@ WING works as before throughout.
   (the audio device) and PREFERENCES too. C ABI 29: `ld_engine_set_num_strips`.
 - The WING surface shows the blocks and taps added in the Universal Mixer: HOME has a
   **CHAIN** tab of Sidecar's (after TAGS; **CHAIN +n** while the strip has n of them)
-  with the strip's processing in order, the added ones in gold, and each added block's
-  model or setting. What a skin shows of a chain is shared (`ui/ChainSummary`), for the
+  listing the strip's processing top to bottom, a row per block with its model or
+  setting and ON, the added ones in gold; the block column on the left has a gold **+n**
+  notch under the block they follow. What a skin shows of a chain is shared (`ui/ChainSummary`), for the
   consoles to come.
 - Universal Mixer, Phase 2 step 7 (Phase 2 complete): the user guide's chapter *The
   Universal Mixer (preview)*, view by view with screenshots; the README shows it, and the

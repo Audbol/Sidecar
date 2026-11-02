@@ -1426,6 +1426,8 @@ public:
                 paintKey (g, r);
         }
 
+        paintExtrasMarks (g);
+
         // The strip's tag chips right of the HOME key, above the keys (I12).
         if (keys && ! rows.empty())
         {
@@ -1605,6 +1607,63 @@ private:
         HomeTab tab = HomeTab::Home;
         juce::Rectangle<int> thumb {}, key {};
     };
+
+    /** Sidecar's: where the Universal Mixer added blocks or taps, a gold notch under the
+        block they follow (the fader bar for those after PRE-FADER, FADER or POST) with
+        how many; HOME > CHAIN lists them. */
+    void paintExtrasMarks (juce::Graphics& g)
+    {
+        std::vector<std::pair<juce::Rectangle<float>, int>> marks; // under what, how many
+        juce::Rectangle<float> anchor = rowOf (HomeTab::Input).toFloat();
+        for (const auto& step : strip->getChain())
+        {
+            std::optional<HomeTab> tab;
+            switch (step.kind)
+            {
+                case ld::kStepInput:
+                case ld::kStepFilter:
+                case ld::kStepDelay:      tab = HomeTab::Input; break;
+                case ld::kStepGate:       tab = HomeTab::Gate; break;
+                case ld::kStepEq:         tab = HomeTab::Eq; break;
+                case ld::kStepDynamics:   tab = HomeTab::Dynamics; break;
+                case ld::kStepPreInsert:  tab = HomeTab::PreInsert; break;
+                case ld::kStepPostInsert: tab = HomeTab::PostInsert; break;
+                case ld::kStepPfl:
+                case ld::kStepFader:
+                case ld::kStepPost:       anchor = faderBar; continue;
+                case ld::kStepBlock:
+                case ld::kStepTap:
+                    if (isExtra (step))
+                    {
+                        if (! marks.empty() && marks.back().first == anchor)
+                            ++marks.back().second;
+                        else
+                            marks.push_back ({ anchor, 1 });
+                    }
+                    continue;
+                case ld::kStepSlot:
+                case ld::kStepTapShaper:
+                case ld::kStepRta:        continue;
+            }
+            if (tab.has_value())
+                if (const auto row = rowOf (*tab); ! row.isEmpty())
+                    anchor = row.toFloat();
+        }
+        for (const auto& [under, count] : marks)
+        {
+            if (under.isEmpty())
+                continue;
+            const float h = juce::jmax (3.0f, wingPx (4.0f));
+            const auto notch = juce::Rectangle<float> (under.getX(), under.getBottom() + wingPx (2.0f), under.getWidth(), h);
+            g.setColour (Colours::gold);
+            g.fillRect (notch);
+            const auto badge = juce::Rectangle<float> (wingPx (26.0f), wingPx (16.0f)).withCentre ({ under.getRight() - wingPx (16.0f), notch.getCentreY() });
+            g.fillRoundedRectangle (badge, wingPx (3.0f));
+            g.setColour (juce::Colours::black);
+            g.setFont (wingFontPx (badge.getHeight() * 0.8f, WingWeight::SemiBold));
+            g.drawText ("+" + juce::String (count), badge, juce::Justification::centred, false);
+        }
+    }
 
     static std::optional<HomeTab> tabFor (juce::juce_wchar letter)
     {
@@ -2168,11 +2227,11 @@ private:
 };
 
 //==============================================================================
-/** CHAIN (Sidecar's): the strip's processing in order, as the engine runs it, with
-    the blocks and taps added in the Universal Mixer (gold), which the console's own
-    screens don't show. The console's blocks are grey, lit while on; PRE-FADER, FADER
-    and POST mark their places. Under the line, each added block with its model or
-    setting. They are edited in the Universal Mixer (its inspector's CHAIN). */
+/** CHAIN (Sidecar's): the strip's processing in order, top to bottom, as the engine
+    runs it, with the blocks and taps added in the Universal Mixer (gold), which the
+    console's own screens don't show. A row per block or tap with its model or setting
+    and ON; PRE-FADER, FADER and POST as divider lines. They are edited in the
+    Universal Mixer (its inspector's CHAIN). */
 class ChainScreen final : public HomeScreen, private juce::Timer
 {
 public:
@@ -2198,81 +2257,63 @@ public:
         auto r = area;
         g.setColour (colours::panel);
         g.fillRect (r);
-        r = r.reduced (juce::roundToInt (wingPx (16.0f)));
+        r = r.reduced (juce::roundToInt (wingPx (16.0f)), juce::roundToInt (wingPx (12.0f)));
 
+        auto title = r.removeFromTop (juce::roundToInt (wingPx (34.0f)));
         g.setColour (Colours::gold);
         g.setFont (wingFontPx (wingPx (22.0f), WingWeight::SemiBold));
-        g.drawText ("CHAIN", r.removeFromTop (juce::roundToInt (wingPx (32.0f))), juce::Justification::centredLeft, false);
+        g.drawText ("CHAIN", title, juce::Justification::centredLeft, false);
         g.setColour (colours::dim);
         g.setFont (wingFontPx (wingPx (15.0f)));
-        g.drawFittedText ("In processing order. Gold: added in the Universal Mixer.",
-                          r.removeFromTop (juce::roundToInt (wingPx (26.0f))), juce::Justification::centredLeft, 1, 0.8f);
-        r.removeFromTop (juce::roundToInt (wingPx (12.0f)));
+        g.drawText ("Top to bottom. Gold: added in the Universal Mixer.", title, juce::Justification::centredRight, false);
+        r.removeFromTop (juce::roundToInt (wingPx (6.0f)));
 
-        // The line: a box per block or tap, wrapping; the markers as small captions.
-        const float boxH = wingPx (44.0f), gap = wingPx (8.0f);
-        float x = (float) r.getX(), y = (float) r.getY();
-        std::vector<ChainStep> extras;
+        std::vector<ChainStep> steps;
         for (const auto& step : strip.getChain())
+            if (isShown (step))
+                steps.push_back (step);
+        int blocks = 0, markers = 0;
+        for (const auto& step : steps)
+            (isMarker (step) ? markers : blocks)++;
+        // Rows of 40 WING px (dividers 18), smaller when the chain is long.
+        const float unit = juce::jmin (wingPx (40.0f), (float) r.getHeight() / juce::jmax (1.0f, (float) blocks + (float) markers * 0.45f));
+        const float nameW = wingPx (210.0f), onW = wingPx (64.0f);
+        float y = (float) r.getY();
+        for (const auto& step : steps)
         {
-            if (! isShown (step))
-                continue;
-            const bool extra = isExtra (step), marker = isMarker (step);
-            if (extra)
-                extras.push_back (step);
             const auto name = stepName (step);
-            g.setFont (wingFontPx (wingPx (marker ? 13.0f : 16.0f), WingWeight::SemiBold));
-            const float w = juce::jmax (wingPx (marker ? 60.0f : 96.0f), juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), name) + wingPx (24.0f));
-            if (x + w > (float) r.getRight())
+            if (isMarker (step))
             {
-                x = (float) r.getX();
-                y += boxH + gap;
-            }
-            const juce::Rectangle<float> box (x, y, w, boxH);
-            x += w + gap;
-            if (marker)
-            {
+                const auto row = juce::Rectangle<float> ((float) r.getX(), y, (float) r.getWidth(), unit * 0.45f);
+                y += row.getHeight();
                 g.setColour (colours::dim);
-                g.fillRect (box.withWidth (wingPx (2.0f)).withX (box.getCentreX()).reduced (0.0f, boxH * 0.3f).translated (0.0f, -boxH * 0.3f));
-                g.drawText (name, box.withTrimmedTop (boxH * 0.55f), juce::Justification::centred, false);
+                g.setFont (wingFontPx (juce::jmin (wingPx (12.0f), row.getHeight() * 0.8f), WingWeight::SemiBold));
+                const float textW = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), name) + wingPx (12.0f);
+                g.drawText (name, row.withWidth (textW), juce::Justification::centredLeft, false);
+                g.fillRect (row.withTrimmedLeft (textW).withSizeKeepingCentre (row.getWidth() - textW, 1.0f));
                 continue;
             }
+            const bool extra = isExtra (step);
             const bool on = stepOn (strip, step);
-            const auto edge = extra ? Colours::gold : colours::dim;
-            g.setColour (on ? edge.withAlpha (0.35f) : juce::Colours::black);
-            g.fillRoundedRectangle (box, wingPx (4.0f));
-            g.setColour (edge);
-            g.drawRoundedRectangle (box.reduced (1.0f), wingPx (4.0f), extra ? 2.0f : 1.0f);
-            g.setColour (on || extra ? colours::ink : colours::dim);
-            g.drawText (name, box, juce::Justification::centred, false);
-        }
-
-        // The added blocks and taps, one row each.
-        r.setTop (juce::roundToInt (y + boxH + wingPx (28.0f)));
-        g.setFont (wingFontPx (wingPx (16.0f)));
-        if (extras.empty())
-        {
-            g.setColour (colours::dim);
-            g.drawFittedText ("No blocks or taps added. The Universal Mixer adds them: its inspector's CHAIN, ADD.",
-                              r.removeFromTop (juce::roundToInt (wingPx (30.0f))), juce::Justification::centredLeft, 2, 0.8f);
-            return;
-        }
-        const int rowH = juce::roundToInt (wingPx (34.0f));
-        for (const auto& step : extras)
-        {
-            if (r.getHeight() < rowH)
-                break;
-            auto row = r.removeFromTop (rowH);
-            const bool on = step.isBlock() && stepOn (strip, step);
-            g.setColour (Colours::gold);
-            g.drawText (stepName (step), row.removeFromLeft (juce::roundToInt (wingPx (200.0f))), juce::Justification::centredLeft, false);
-            g.setColour (colours::ink);
-            g.drawText (blockDetail (strip, step), row.removeFromLeft (juce::roundToInt (wingPx (400.0f))), juce::Justification::centredLeft, false);
-            if (step.isBlock())
+            auto row = juce::Rectangle<float> ((float) r.getX(), y, (float) r.getWidth(), unit).reduced (0.0f, unit * 0.06f);
+            y += unit;
+            g.setColour (on ? (extra ? Colours::gold.withAlpha (0.18f) : colours::keyOff) : juce::Colours::black);
+            g.fillRoundedRectangle (row, wingPx (4.0f));
+            g.setColour (extra ? Colours::gold : colours::chipOff);
+            g.fillRect (row.removeFromLeft (wingPx (6.0f)));
+            row.removeFromLeft (wingPx (12.0f));
+            g.setFont (wingFontPx (juce::jmin (wingPx (18.0f), row.getHeight() * 0.6f), WingWeight::SemiBold));
+            g.setColour (extra ? Colours::gold : (on ? colours::ink : colours::dim));
+            g.drawText (name, row.removeFromLeft (nameW), juce::Justification::centredLeft, false);
+            const auto state = row.removeFromRight (onW);
+            if (! step.isTap() && step.kind != ld::kStepInput)
             {
-                g.setColour (on ? Colours::gold : colours::dim);
-                g.drawText (on ? "ON" : "OFF", row, juce::Justification::centredRight, false);
+                g.setColour (on ? (extra ? Colours::gold : colours::ink) : colours::dim);
+                g.drawText (on ? "ON" : "OFF", state, juce::Justification::centred, false);
             }
+            g.setFont (wingFontPx (juce::jmin (wingPx (16.0f), row.getHeight() * 0.55f)));
+            g.setColour (on || extra ? colours::ink : colours::dim);
+            g.drawFittedText (blockDetail (strip, step), row.toNearestInt(), juce::Justification::centredLeft, 1, 0.8f);
         }
     }
 
