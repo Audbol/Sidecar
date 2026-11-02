@@ -1,5 +1,7 @@
 #include "ui/universal/RoutingView.h"
 
+#include "ui/InterfacePage.h"
+
 #include <algorithm>
 
 namespace livedaw::ui::universal
@@ -37,12 +39,16 @@ std::vector<int> outputPorts (MixerEngine& engine)
 }
 
 RoutingView::RoutingView (UiContext& c, const Theme& t)
-    : inputsTab ("INPUTS", t.accent, t), outputsTab ("OUTPUTS", t.accent, t), group (t), grid (t), ctx (c), theme (t)
+    : inputsTab ("INPUTS", t.accent, t), outputsTab ("OUTPUTS", t.accent, t), interfaceTab ("INTERFACE", t.accent, t), group (t), grid (t), ctx (c),
+      theme (t)
 {
     inputsTab.isOn = [this] { return page == Page::Inputs; };
     inputsTab.onClick = [this] { showPage (Page::Inputs); };
     outputsTab.isOn = [this] { return page == Page::Outputs; };
     outputsTab.onClick = [this] { showPage (Page::Outputs); };
+    interfaceTab.isOn = [this] { return page == Page::Interface; };
+    interfaceTab.onClick = [this] { showPage (Page::Interface); };
+    addAndMakeVisible (interfaceTab);
     group.caption = "GROUP";
     group.device = devices::wing; // the WING's port groups
     group.items = [this]
@@ -104,7 +110,20 @@ void RoutingView::showPage (Page p)
     page = p;
     inputsTab.refresh();
     outputsTab.refresh();
-    rebuild();
+    interfaceTab.refresh();
+    // The interface's page (Sidecar's own device) in place of the group and the grid.
+    if (p == Page::Interface && interfacePage == nullptr)
+    {
+        interfacePage = std::make_unique<InterfacePage> (ctx);
+        addChildComponent (*interfacePage);
+    }
+    if (interfacePage != nullptr)
+        interfacePage->setVisible (p == Page::Interface);
+    group.setVisible (p != Page::Interface);
+    grid.setVisible (p != Page::Interface);
+    resized();
+    if (p != Page::Interface)
+        rebuild();
 }
 
 void RoutingView::setGroup (routing::Group g)
@@ -264,7 +283,12 @@ void RoutingView::resized()
     inputsTab.setBounds (bar.removeFromLeft (140));
     bar.removeFromLeft (sizes::kGapSmall);
     outputsTab.setBounds (bar.removeFromLeft (140));
+    bar.removeFromLeft (sizes::kGapSmall);
+    interfaceTab.setButtonText (interfaceLabel (ctx.engine));
+    interfaceTab.setBounds (bar.removeFromLeft (160));
     bar.removeFromLeft (sizes::kGapLarge);
+    if (interfacePage != nullptr)
+        interfacePage->setBounds (area.reduced (sizes::kGap, 0));
     group.setBounds (bar.removeFromLeft (300));
     grid.setBounds (area.reduced (sizes::kGap, 0));
 }

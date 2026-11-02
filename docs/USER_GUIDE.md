@@ -478,7 +478,8 @@ like the finish. The COMPACT is black, so it always shows the black finish. It f
     LCL 1 ..., B 1 ..., C 1 ... (on the source tiles, HOME, SELECT MAIN INPUT, the
     ALT list and the scribble strips' source tag); a name you give a source stays
     its name. The **SOURCE GROUP** selector opens the console's group menu. Sidecar's
-    ports sit in the groups they stand in for: **LOCAL IN** is your audio interface's
+    ports sit in the groups they stand in for, through your audio interface's own page
+    (below): straight through, **LOCAL IN** is your audio interface's
     inputs 1-48 (LCL 1 ..., 24 tiles as on the console, more for bigger interfaces;
     tiles past the interface's inputs read n/a but can be patched), inputs 49-96 and
     97-144 are **AES50 B** / **C** (as the WING remote protocol numbers them),
@@ -491,6 +492,16 @@ like the finish. The COMPACT is black, so it always shows the black finish. It f
     console. **USER SIGNAL** holds USR 1-56 (below). The other groups (AUX IN,
     AES/EBU, AES50 A, ST CONNECT, USB AUDIO, DANTE) can be selected and show n/a
     tiles, like a console without that card.
+    The fourth key at the bottom, named after your interface's driver (**ASIO**, **CORE
+    AUDIO**, **ALSA**, **JACK**, **WASAPI**), opens Sidecar's page for the interface
+    itself, a device of its own beside the console's port groups, like a stagebox: a
+    row per interface input with the console input port it feeds (LOCAL IN, AES50 B or
+    C; NONE), a row per interface output with the console output port it plays, each
+    with the driver's own name for the channel; tap the port to change it. Straight
+    through by default (input n is LCL n, output n plays LOCAL OUT n); **STRAIGHT** puts
+    it back. The patch belongs to the computer, not the show: Sidecar keeps it per
+    driver and device and brings it back when you choose that interface again, so a
+    show moves between computers with its LOCAL IN patching intact.
     SOURCES sets each input's source (drag over the tiles to select several: every
     change then goes to all of them, each GAIN in its group's range; the first one's
     settings show, and a touch selects one again):
@@ -822,7 +833,9 @@ anywhere in the chain.
 
 ### ROUTING
 
-A patch matrix. **INPUTS** has the channels and aux down the side and the sources of
+A patch matrix. The third tab, named after your interface's driver (**ASIO**, **CORE
+AUDIO**, **ALSA**, **JACK**, **WASAPI**), is the interface's own patch (as on the WING
+surface's ROUTING, below). **INPUTS** has the channels and aux down the side and the sources of
 the **GROUP** chosen across the top: LOCAL IN (the audio interface's inputs, AES50 B
 and C beyond 48), the oscillators, playback, the USB player, the buses', mains' and
 matrices' signals and the user signals. A tap on a point patches that source to the

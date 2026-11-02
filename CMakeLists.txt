@@ -99,6 +99,7 @@ endif()
 #-------------------------------------------------------------------------------
 set(LIVEDAW_ENGINE_SOURCES
     src/engine/FxSlots.cpp
+    src/engine/InterfacePatch.cpp
     src/engine/Models.cpp
     src/engine/Strip.cpp
     src/engine/MixerEngine.cpp
@@ -245,6 +246,7 @@ set(LIVEDAW_UI_SOURCES
     src/ui/EffectsPage.cpp
     src/ui/MetersPage.cpp
     src/ui/RoutingPage.cpp
+    src/ui/InterfacePage.cpp
     src/ui/SetupPage.cpp
     src/ui/LibraryPage.cpp
     src/ui/UtilityPage.cpp

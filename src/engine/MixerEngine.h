@@ -2,6 +2,7 @@
 
 #include "engine/Analysis.h"
 #include "engine/FxSlots.h"
+#include "engine/InterfacePatch.h"
 #include "engine/Recorder.h"
 #include "engine/UsbRecorder.h"
 #include "engine/Strip.h"
@@ -488,6 +489,16 @@ public:
     int getBlockSize() const noexcept { return ld::ld_engine_block_size (engine); }
     const juce::StringArray& getHardwareInputNames() const noexcept { return inputNames; }
     const juce::StringArray& getHardwareOutputNames() const noexcept { return outputNames; }
+    /** The audio interface's driver ("ASIO", "CoreAudio", "ALSA" ...) and its name; empty without a device. */
+    const juce::String& getDeviceTypeName() const noexcept { return deviceTypeName; }
+    const juce::String& getDeviceName() const noexcept { return deviceName; }
+
+    /** The audio interface's patch to the console's ports (ROUTING's interface page);
+        straight through by default. The device callback applies it. */
+    InterfacePatch& getInterfacePatch() noexcept { return interfacePatch; }
+    /** One device block through the interface patch, as the device callback runs it
+        (for tests: what the interface's inputs and outputs carry). */
+    void processDeviceBlock (const float* const* ins, int numIns, float* const* outs, int numOuts, int numSamples) noexcept;
     int getNumWorkerThreads() const noexcept { return ld::ld_engine_num_workers (engine); }
 
     /** Called (on the message thread) whenever the audio device or its channel layout changes. */
@@ -555,6 +566,15 @@ private:
     int structureVersion = 0, initializeVersion = 0;
 
     juce::StringArray inputNames, outputNames;
+    juce::String deviceTypeName, deviceName;
+    InterfacePatch interfacePatch;
+    /** The console's ports while a patch is in use (sized when the device starts). */
+    std::vector<std::vector<float>> portOutputs;
+    std::vector<float> silence;
+    std::vector<const float*> portInPointers;
+    std::vector<float*> portOutPointers;
+    int patchCapacity = 0;
+    void preparePatch (int maxBlock);
     std::atomic<juce::uint32> lastCallbackMs { 0 };
     std::atomic<bool> deviceRunning { false };
     std::shared_ptr<bool> aliveFlag = std::make_shared<bool> (true);

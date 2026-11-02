@@ -8,6 +8,8 @@
 #include "engine/Show.h"
 #include "ui/ChainSummary.h"
 #include "ui/HomePage.h"
+#include "ui/InterfacePage.h"
+#include "ui/RoutingGroups.h"
 #include "ui/HomeScreens.h"
 #include "ui/HomeWidgets.h"
 #include "ui/Knobs.h"
@@ -23,6 +25,7 @@
 
 using namespace livedaw;
 using livedaw::test::FakePlugin;
+using livedaw::test::OfflineRig;
 
 namespace
 {
@@ -206,6 +209,87 @@ public:
             if (const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_UI_SNAPSHOTS", {}); folder.isNotEmpty())
             {
                 juce::FileOutputStream out (juce::File (folder).getChildFile ("wing-home-chain.png"));
+                out.setPosition (0);
+                out.truncate();
+                juce::PNGImageFormat().writeImageToStream (picture, out);
+            }
+        }
+
+        beginTest ("The audio interface's patch: straight through by default; its inputs to any console input port, its outputs from any output port");
+        {
+            InterfacePatch patch;
+            expect (patch.isStraight() && patch.inputFor (5) == 5 && patch.outputSource (7) == 7);
+            patch.setInputFor (0, 2);
+            patch.setOutputSource (3, 0);
+            expect (! patch.isStraight());
+            expect (patch.portsFedBy (2) == std::vector<int> ({ 0, 2 }));
+            // Saved and back.
+            const auto xml = patch.toXml();
+            InterfacePatch again;
+            again.fromXml (xml.get());
+            expect (again.inputFor (0) == 2 && again.outputSource (3) == 0 && ! again.isStraight());
+            again.reset();
+            expect (again.isStraight() && again.toXml() == nullptr);
+
+            // Through the engine's device callback: LOCAL OUT 1 plays LCL 1 (a source to an output).
+            MixerEngine engine (0);
+            OfflineRig rig (engine, 4, 4);
+            expect (engine.routeOutputSource (0, 0));
+            const auto runDevice = [&engine, &rig] (int input, float level)
+            {
+                for (auto& v : rig.inputs)
+                    std::fill (v.begin(), v.end(), 0.0f);
+                rig.setInput (input, level);
+                std::vector<const float*> in;
+                std::vector<float*> out;
+                for (auto& v : rig.inputs)
+                    in.push_back (v.data());
+                for (auto& v : rig.outputs)
+                    out.push_back (v.data());
+                for (int b = 0; b < 4; ++b)
+                    engine.processDeviceBlock (in.data(), (int) in.size(), out.data(), (int) out.size(), OfflineRig::kBlock);
+            };
+            runDevice (0, 0.5f);
+            expectWithinAbsoluteError (rig.outputs[0].back(), 0.5f, 0.001f, "straight: input 1 is LCL 1, LOCAL OUT 1 is output 1");
+            // Interface input 3 feeds LCL 1; interface output 4 plays LOCAL OUT 1.
+            auto& p = engine.getInterfacePatch();
+            p.setInputFor (0, 2);
+            p.setOutputSource (3, 0);
+            p.setOutputSource (0, -1);
+            runDevice (2, 0.25f);
+            expectWithinAbsoluteError (rig.outputs[3].back(), 0.25f, 0.001f, "input 3 to output 4");
+            expectWithinAbsoluteError (rig.outputs[0].back(), 0.0f, 0.001f, "output 1 plays nothing now");
+            runDevice (0, 0.5f);
+            expectWithinAbsoluteError (rig.outputs[3].back(), 0.0f, 0.001f, "input 1 feeds nothing now");
+        }
+
+        beginTest ("ROUTING's interface page: named by the driver, patches a row and keeps the patch per device in the settings");
+        {
+            MixerEngine engine (0);
+            OfflineRig rig (engine, 8, 8);
+            WingRig wing (engine);
+            expectEquals (ui::interfaceLabel (engine), juce::String ("OFFLINE"));
+            ui::InterfacePage page (wing.ctx);
+            page.setSize (1200, 600);
+            expectEquals (page.inputText (2), juce::String ("LCL 3"));
+            page.patchInput (2, ui::routing::sourceAt (ui::routing::Group::Aes50B, 0));
+            expectEquals (page.inputText (2), juce::String ("B 1"));
+            expect (engine.getInterfacePatch().inputFor (2) == -1, "LCL 3 lost its input");
+            page.patchOutput (5, 0);
+            expectEquals (page.outputText (5), juce::String ("LCL 1"));
+            bool kept = false;
+            for (const auto& key : wing.settings.getAllProperties().getAllKeys())
+                kept = kept || (key.startsWith ("interfacePatch.") && wing.settings.getValue (key).contains ("InterfacePatch"));
+            expect (kept, "kept in the settings");
+            // Another console starting on this device gets it back.
+            engine.getInterfacePatch().reset();
+            ui::loadInterfacePatch (wing.ctx);
+            expect (engine.getInterfacePatch().inputFor (48) == 2);
+            const auto picture = page.createComponentSnapshot (page.getLocalBounds());
+            expect (picture.isValid());
+            if (const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_UI_SNAPSHOTS", {}); folder.isNotEmpty())
+            {
+                juce::FileOutputStream out (juce::File (folder).getChildFile ("interface-page.png"));
                 out.setPosition (0);
                 out.truncate();
                 juce::PNGImageFormat().writeImageToStream (picture, out);

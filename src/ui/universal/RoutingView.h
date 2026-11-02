@@ -34,7 +34,8 @@ public:
     enum class Page
     {
         Inputs,
-        Outputs
+        Outputs,
+        Interface // the audio interface's own patch (ui::InterfacePage), named by its driver
     };
     void showPage (Page);
     Page getPage() const noexcept { return page; }
@@ -46,7 +47,8 @@ public:
     /** Takes the patch again (the timer does this 10 times a second). */
     void refresh();
 
-    ToggleKey inputsTab, outputsTab;
+    ToggleKey inputsTab, outputsTab, interfaceTab;
+    std::unique_ptr<juce::Component> interfacePage;
     ChoiceBar group;
     PatchGrid grid;
 

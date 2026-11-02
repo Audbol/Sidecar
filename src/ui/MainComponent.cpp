@@ -1,4 +1,5 @@
 #include "ui/MainComponent.h"
+#include "ui/InterfacePage.h"
 #include "engine/AppPaths.h"
 #include "ui/MidiRemoteUi.h"
 #include "ui/PluginChainWindow.h"
@@ -117,6 +118,9 @@ MainComponent::MainComponent (juce::AudioDeviceManager& dm, MixerEngine& e, Plug
     ctx.selectStrip = [this] (Strip* strip) { selectStrip (strip); };
     ctx.getSelectedStrip = [this] { return getSelectedStrip(); };
     ctx.openPluginEditor = [this] (int slot) { openPluginEditor (slot); };
+    // The audio interface's patch is the computer's: it comes back with its device.
+    engine.onDeviceChanged = [this] { loadInterfacePatch (ctx); };
+    loadInterfacePatch (ctx); // the device may be running already
     ctx.pluginRemoved = [this] (juce::AudioProcessor* p)
     {
         closePluginWindowsFor (p);

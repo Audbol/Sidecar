@@ -169,7 +169,8 @@ private:
     {
         Channels,
         Sources,
-        Outputs
+        Outputs,
+        Interface // Sidecar's: the audio interface's own patch (InterfacePage)
     };
 
     /** A signal that can feed an output: a strip's left or right channel,
@@ -235,6 +236,7 @@ private:
 
     UiContext& ctx;
     Mode mode = Mode::Channels;
+    std::unique_ptr<juce::Component> interfacePage;
     Group inputGroup = Group::LocalIn, outputGroup = Group::LocalOut, signalGroup = Group::Bus;
     int targetPage = 0, signalPage = 0, layoutVersion = -1;
     int selectedPort = 0, selectedSource = 0;

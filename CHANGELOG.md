@@ -83,6 +83,12 @@ WING works as before throughout.
   stays; fewer take from the end after a warning, keeping a bus, main or matrix that
   something sends to, a DCA or mute group with members and an FX slot in use. AUDIO
   (the audio device) and PREFERENCES too. C ABI 29: `ld_engine_set_num_strips`.
+- The audio interface is a device of its own in ROUTING: a page named after its driver
+  (ASIO, CORE AUDIO, ALSA, JACK, WASAPI; the WING surface's fourth ROUTING key, the
+  Universal Mixer's third ROUTING tab) patches each interface input to a console input
+  port (LOCAL IN, AES50 B / C) and each interface output to a console output port, with
+  the driver's channel names. Straight through by default, as before; STRAIGHT puts it
+  back. The patch is the computer's, kept per driver and device in the app settings.
 - Universal Mixer: a **channel panel** across the top of MIXER shows the selected strip
   whole (input, filter, gate, EQ and dynamics with their curves, its chain in order, its
   sends a line each); **CHANNEL** hides or shows it. The curves have handles there and

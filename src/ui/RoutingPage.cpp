@@ -1,6 +1,7 @@
 #include "dsp/DspUtils.h"
 #include "engine/DirectOut.h"
 #include "ui/Pages.h"
+#include "ui/InterfacePage.h"
 
 namespace livedaw::ui
 {
@@ -633,7 +634,9 @@ std::vector<StatusKey> RoutingPage::getStatusKeys()
 {
     return { { "CHANNELS", Icon::ChannelFaders, mode == Mode::Channels, [this] { setMode (Mode::Channels); } },
              { "SOURCES", Icon::SourcesIn, mode == Mode::Sources, [this] { setMode (Mode::Sources); } },
-             { "OUTPUTS", Icon::OutputsOut, mode == Mode::Outputs, [this] { setMode (Mode::Outputs); } } };
+             { "OUTPUTS", Icon::OutputsOut, mode == Mode::Outputs, [this] { setMode (Mode::Outputs); } },
+             // Sidecar's: the audio interface as a device of its own, named by its driver.
+             { interfaceLabel (ctx.engine), Icon::Xlr, mode == Mode::Interface, [this] { setMode (Mode::Interface); } } };
 }
 
 std::vector<Strip*> RoutingPage::channelTargets() const
@@ -782,6 +785,18 @@ void RoutingPage::setMode (Mode m)
 {
     mode = m;
     groupMenu.reset();
+    // The interface's page covers the console's while it shows.
+    if (m == Mode::Interface && interfacePage == nullptr)
+    {
+        interfacePage = std::make_unique<InterfacePage> (ctx);
+        addAndMakeVisible (*interfacePage);
+    }
+    if (interfacePage != nullptr)
+    {
+        interfacePage->setVisible (m == Mode::Interface);
+        interfacePage->setBounds (getLocalBounds());
+        interfacePage->toFront (false);
+    }
     // SOURCES has no BUS, MAIN or MATRIX group (their signals have no source
     // settings): back to LOCAL IN when CHANNELS showed one.
     if (m == Mode::Sources && (inputGroup == Group::Bus || inputGroup == Group::Main || inputGroup == Group::Matrix))
@@ -868,6 +883,8 @@ void RoutingPage::timerCallback()
 
 void RoutingPage::resized()
 {
+    if (interfacePage != nullptr)
+        interfacePage->setBounds (getLocalBounds());
     // [WING px] Each side: a header box 80 tall, an 8 px gap, then the tiles in
     // a framed black box. CHANNELS and OUTPUTS split the page 544 | 712,
     // SOURCES 712 | 544 (the settings on the right).

@@ -496,6 +496,9 @@ void MixerEngine::audioDeviceAboutToStart (juce::AudioIODevice* device)
 {
     inputNames = device->getInputChannelNames();
     outputNames = device->getOutputChannelNames();
+    deviceTypeName = device->getTypeName();
+    deviceName = device->getName();
+    preparePatch (juce::jmax (device->getCurrentBufferSizeSamples(), 4096));
 
     // JUCE calls this from the thread that (re)starts the device, which is the
     // message thread for AudioDeviceManager.
@@ -535,6 +538,9 @@ void MixerEngine::prepareOffline (double sampleRate, int blockSize, int numHwIns
 {
     inputNames.clear();
     outputNames.clear();
+    deviceTypeName = "Offline";
+    deviceName = {};
+    preparePatch (juce::jmax (blockSize, 4096));
 
     for (int i = 0; i < numHwIns; ++i)
         inputNames.add ("In " + juce::String (i + 1));
@@ -554,7 +560,47 @@ void MixerEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
                                                     int numSamples,
                                                     const juce::AudioIODeviceCallbackContext&)
 {
-    processBlock (inputChannelData, numInputChannels, outputChannelData, numOutputChannels, numSamples);
+    processDeviceBlock (inputChannelData, numInputChannels, outputChannelData, numOutputChannels, numSamples);
+}
+
+void MixerEngine::preparePatch (int maxBlock)
+{
+    // Message thread, before the device runs: the callback never allocates.
+    patchCapacity = maxBlock;
+    portOutputs.assign ((size_t) InterfacePatch::kPorts, std::vector<float> ((size_t) maxBlock, 0.0f));
+    silence.assign ((size_t) maxBlock, 0.0f);
+    portInPointers.assign ((size_t) InterfacePatch::kPorts, nullptr);
+    portOutPointers.assign ((size_t) InterfacePatch::kPorts, nullptr);
+    for (int p = 0; p < InterfacePatch::kPorts; ++p)
+        portOutPointers[(size_t) p] = portOutputs[(size_t) p].data();
+}
+
+void MixerEngine::processDeviceBlock (const float* const* ins, int numIns, float* const* outs, int numOuts, int numSamples) noexcept
+{
+    // Straight through (the default), or no room prepared: the device's channels are the ports.
+    if (interfacePatch.isStraight() || numSamples > patchCapacity || portInPointers.empty())
+    {
+        processBlock (ins, numIns, outs, numOuts, numSamples);
+        return;
+    }
+    // Each console input port reads the interface input patched to it (or silence) ...
+    for (int p = 0; p < InterfacePatch::kPorts; ++p)
+    {
+        const int in = interfacePatch.inputFor (p);
+        portInPointers[(size_t) p] = juce::isPositiveAndBelow (in, numIns) && ins[in] != nullptr ? ins[in] : silence.data();
+    }
+    processBlock (portInPointers.data(), InterfacePatch::kPorts, portOutPointers.data(), InterfacePatch::kPorts, numSamples);
+    // ... and each interface output plays the console output port patched to it.
+    for (int o = 0; o < numOuts; ++o)
+    {
+        if (outs[o] == nullptr)
+            continue;
+        const int port = interfacePatch.outputSource (o);
+        if (juce::isPositiveAndBelow (port, InterfacePatch::kPorts))
+            std::copy_n (portOutputs[(size_t) port].data(), numSamples, outs[o]);
+        else
+            std::fill_n (outs[o], numSamples, 0.0f);
+    }
 }
 
 void MixerEngine::processBlock (const float* const* ins, int numIns,

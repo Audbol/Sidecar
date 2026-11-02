@@ -840,7 +840,14 @@ MUTE through `MixerEngine::pressMute`, SOLO, fader and meter) and `MixerView` (a
 column per strip in a `Viewport`, kinds apart, filter keys; it rebuilds when the
 engine's structure version changes and refreshes its columns 30 times a second).
 `UniversalSkin` puts a top bar over the MIXER view, with the inspector of the
-selected strip beside it (`Inspector.h`, opened by `selectionChanged`). The MIXER
+selected strip beside it (`Inspector.h`, opened by `selectionChanged`). The audio interface's patch (`engine/InterfacePatch`) sits between the device and the
+console's ports: `MixerEngine::processDeviceBlock` (the device callback) points each
+console input port (3 x 48) at the interface input patched to it, runs the engine on
+the ports, and copies each interface output's port; straight through it calls
+`processBlock` with the device's channels as before, and its buffers are allocated when
+the device starts. `ui/InterfacePage` (ROUTING's page named by the driver, on both
+skins) edits it; it is kept in the app settings per driver and device
+(`loadInterfacePatch` on `MixerEngine::onDeviceChanged`), not in the show. The MIXER
 view's `ChannelPanel` shows the selected strip whole (its own blocks' curves from
 `ld_strip_response`, the transfer curves from `models::dynStaticCurve`, a compact
 `SendsPanel`). The curves take handles: `ResponseView::Handle` (an atomic frequency,
