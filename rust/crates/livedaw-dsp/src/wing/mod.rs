@@ -32,6 +32,8 @@ pub static MODELS: ModelTables = ModelTables {
     eq_bus: EQ_MODELS_BUS,
     filter_tools: FILTER_TOOLS,
     fx: FX_MODELS,
+    gate_default: "GATE",
+    comp_default: "COMP",
 };
 
 /// Parameter slots per dynamics model (the largest, DEQ2, uses 18).

@@ -3,6 +3,7 @@
 #include "engine/MidiRemote.h"
 #include "engine/Models.h"
 #include "engine/PluginHost.h"
+#include "engine/RustStrings.h"
 #include "engine/Show.h"
 #include "ui/Knobs.h"
 
@@ -154,6 +155,10 @@ private:
         expectEquals (engine.getAux()[7]->getLabel(), juce::String ("AUX 8"));
         expectEquals (engine.getAux()[8]->getLabel(), juce::String ("FX 1"), "the X32's FX returns");
         expectEquals (labelOf (StripKind::Aux, 16), juce::String ("FX 8"));
+        // Its models (step 3b): the model calls describe the shown console's.
+        expectEquals (takeString (ld::ld_model_text (0, engine.getChannels()[0]->params.gate().model.load(), 0)),
+                      juce::String ("X32GATE"));
+        expectEquals ((int) ld::ld_model_count (1), 1, "the 4-band EQ");
         setShownProfile (ld::kProfileWing);
         engine.configure (nullptr);
         expect (engine.getProfile() == ld::kProfileWing);

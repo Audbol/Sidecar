@@ -59,6 +59,10 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
   `ld_profile_slot_ranges`.
 - A gate, dynamics or EQ block holds its console's models (its profile's tables), so a
   console's own models can run, save and load; the WING's sound is unchanged. C ABI 36.
+- The X32's processing models: its gate (EXP2, EXP3, EXP4, GATE, DUCK), its compressor
+  and expander, and its 4-band (inputs) and 6-band (buses, mains, matrices) EQ, with its
+  ranges and steps. An X32's strips run them, and the app's model menus show the
+  console's models. C ABI 37: `ld_models_show_profile`.
 
 ## [0.2.0] - beta
 

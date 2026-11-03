@@ -23,10 +23,20 @@ use livedaw_engine::params::{
 };
 use livedaw_engine::{Strip, SEND_MODES};
 
-/// The host's model tables are the WING's (the Universal's are too until a
-/// console with its own models comes: `ProfileSpec::models`).
+/// The profile whose models the host's model calls describe (`ld_engine_profile`'s
+/// numbers; the WING's until the host shows another console).
+static SHOWN_PROFILE: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(1);
+
+/// ABI 37: the host's model calls (`ld_model_*`) describe profile `profile`'s
+/// models from now on (the console it shows; an unknown one: the WING's).
+#[no_mangle]
+pub extern "C" fn ld_models_show_profile(profile: i32) {
+    SHOWN_PROFILE.store(profile, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// The host's model tables: the shown profile's (`ProfileSpec::models`).
 fn table(t: i32) -> &'static [ModelSpec] {
-    livedaw_dsp::wing::MODELS.table(t)
+    crate::profile_of(SHOWN_PROFILE.load(std::sync::atomic::Ordering::Relaxed)).spec().models.table(t)
 }
 
 fn model(t: i32, m: i32) -> Option<&'static ModelSpec> {

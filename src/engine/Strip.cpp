@@ -60,6 +60,7 @@ void setShownProfile (ld::ProfileId profile)
         return;
     shown().profile = profile;
     shown().load();
+    ld::ld_models_show_profile (profile); // the model menus and editors: its models
 }
 
 ld::ProfileId shownProfile() noexcept { return shown().profile; }

@@ -13,5 +13,6 @@ pub mod generator;
 pub mod model;
 pub mod util;
 pub mod wing;
+pub mod x32;
 
 pub use biquad::{Biquad, BiquadCoeffs};

@@ -348,9 +348,10 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
 };
 
 /// The Behringer X32: its counts (`Counts::X32`), fader law, colours and
-/// labels; its aux in and FX returns (aux slots 1-8 and 9-16) run EQ only
+/// labels and its models (`livedaw_dsp::x32`: gate, compressor, 4- and
+/// 6-band EQ); its aux in and FX returns (aux slots 1-8 and 9-16) run EQ only
 /// (`chain::X32_AUX`). Until Phase 4's steps replace them its channels and
-/// buses run the WING's chains, its strips the WING's models, its routing pages list the WING's port groups, and it speaks no
+/// buses run the WING's chains (and filter), its routing pages list the WING's port groups, and it speaks no
 /// remote protocol (its OSC and MIDI come with steps 5 and 6).
 static X32: ProfileSpec = ProfileSpec {
     profile: Profile::X32,
@@ -363,7 +364,7 @@ static X32: ProfileSpec = ProfileSpec {
     fader: FaderLaw::X32,
     pan: PanLaw::WING,
     port_groups: WING_PORT_GROUPS,
-    models: &WING_MODELS,
+    models: &livedaw_dsp::x32::MODELS,
     remotes: Remotes { midi: None, network: &[] },
     palette: Palette::X32,
     labels: WING_LABELS,
@@ -491,7 +492,7 @@ mod tests {
     #[test]
     fn the_wings_models() {
         use livedaw_dsp::wing::{AUX_DYN_MODELS, DYN_MODELS, EQ_MODELS_BUS, EQ_MODELS_CH, FILTER_TOOLS, FX_MODELS};
-        for p in Profile::ALL {
+        for p in [Profile::Universal, Profile::Wing] {
             let m = p.spec().models;
             assert_eq!(m.table(0), DYN_MODELS);
             assert_eq!(m.table(1), EQ_MODELS_CH);
@@ -503,5 +504,25 @@ mod tests {
             assert!(AUX_DYN_MODELS.iter().all(|t| m.aux_may_hold(t)));
             assert!(!m.aux_may_hold("NO SUCH MODEL"));
         }
+    }
+
+    #[test]
+    fn the_x32s_models_run_on_its_strips() {
+        use crate::params::StripParams;
+        let x = Profile::X32.spec().models;
+        assert_eq!(x.table(0), livedaw_dsp::x32::DYN_MODELS);
+        assert_eq!(x.table(1), livedaw_dsp::x32::EQ_CHANNEL);
+        assert_eq!(x.table(2), livedaw_dsp::x32::EQ_BUS);
+        assert!(x.aux_dynamics.is_empty(), "its aux in and FX returns have no dynamics");
+        // A new X32 strip: the gate on GATE, the dynamics on the compressor, the
+        // 4-band EQ (buses: 6 bands).
+        let ch = StripParams::new_with(StripKind::Channel, x);
+        assert_eq!(ch.gate().model_spec().unwrap().token, "X32GATE");
+        assert_eq!(ch.dynamics().model_spec().unwrap().token, "X32COMP");
+        assert_eq!(ch.eq().model_spec().unwrap().token, "X32EQ4");
+        assert_eq!(ch.dynamics().param("ratio").unwrap().load(), 6.0, "3.0:1 (item 6)");
+        let bus = StripParams::new_with(StripKind::Bus, x);
+        assert_eq!(bus.eq().model_spec().unwrap().token, "X32EQ6");
+        assert!(bus.eq().param("6q").is_some() && ch.eq().param("6q").is_none());
     }
 }

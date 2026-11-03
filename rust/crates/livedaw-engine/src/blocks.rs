@@ -97,7 +97,7 @@ impl BlockParams {
 
     /// New parameters of `kind` for a console of `models`: EQs off on the
     /// channel (`bus` false) or bus table's first model, dynamics off with
-    /// COMP (or the table's first), inserts empty, delays off.
+    /// the table's compressor, inserts empty, delays off.
     pub fn new_in(kind: BlockKind, bus: bool, models: &'static ModelTables) -> Self {
         match kind {
             BlockKind::Filter => Self::Filter(FilterParams::default()),
@@ -106,7 +106,7 @@ impl BlockParams {
                 p.on.store(false, Relaxed);
                 Self::Eq(p)
             }
-            BlockKind::Dynamics => Self::Dynamics(DynSlotParams::new_in(models.dynamics, "COMP")),
+            BlockKind::Dynamics => Self::Dynamics(DynSlotParams::new_in(models.dynamics, models.comp_default)),
             BlockKind::Insert => Self::Insert(InsertParams::default()),
             BlockKind::Delay => Self::Delay(DelayParams::default()),
         }

@@ -91,7 +91,8 @@ use std::sync::Arc;
 // ABI 35 (Phase 4 steps 1-2): the X32 profile (2), ld_engine_configure_profile,
 // ld_profile_slot_ranges (LdSlotRange).
 // ABI 36 (Phase 4 step 3b): DynSlotParams and EqBlockParams end with their model table.
-pub const LD_ABI_VERSION: i32 = 36;
+// ABI 37 (Phase 4 step 3b): the model calls describe the shown profile's (ld_models_show_profile).
+pub const LD_ABI_VERSION: i32 = 37;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(default)
@@ -703,7 +704,7 @@ pub unsafe extern "C" fn ld_profile_port_groups(profile: i32, out: *mut LdPortGr
     guard(0, || write_port_groups(profile_of(profile), out, max))
 }
 
-fn profile_of(id: i32) -> Profile {
+pub(crate) fn profile_of(id: i32) -> Profile {
     Profile::ALL.into_iter().find(|&p| profile_id(p) == id).unwrap_or(Profile::Wing)
 }
 

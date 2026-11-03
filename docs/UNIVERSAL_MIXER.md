@@ -393,7 +393,18 @@ Three layers:
         words): `set_model`, `model_index`, `param` and `model_spec` read it, the
         strip runs it, a show saves and loads by it, and a strip's blocks take their
         console's (`StripParams::new_with`, `BlockParams::new_in`).
-      - 3b-2, next: the X32's tables (`livedaw_dsp::x32`) and their DSP.
+      - 3b-2 (done): the X32's models (`livedaw_dsp::x32::MODELS`): the gate's five
+        modes and the compressor / expander as one dynamics table, with the X32's
+        ranges and steps, on the dynamics DSP (the compressor is the WING's with a
+        makeup GAIN); the 4-band and 6-band EQ (each band LCut, LShv, PEQ, VEQ, HShv
+        or HCut; Q only on the bells), on the EQ DSP. An X32's strips start on its
+        GATE, its compressor and its EQ (`ModelTables::gate_default`,
+        `comp_default`). The app's model calls describe the shown console's (C ABI
+        37 `ld_models_show_profile`, from `setShownProfile`; `models::table` keeps a
+        set per profile). Sidecar's choices where the references are silent: the
+        expander ratios of EXP2-4, the vintage bell's shape, the EQ's factory bands.
+      - 3c, next: the channel's low cut and order (dynamics PRE / POST EQ, the insert
+        PRE / POST) and the X32's own chains for channels and buses.
    4. **Sends and mains as the X32's**: channels to buses (tap points per bus pair,
       GRP), LR and M/C assigns (main 1 the stereo LR, main 2 the mono M/C), buses and
       mains to matrices only; odd/even links (`/config/chlink`...) over mono strips.

@@ -549,6 +549,17 @@ fn configure(spec: &ModelSpec, v: &[f32], sr: f32) -> Config {
             Config::Gate(g)
         }
         "DUCK" => Config::Duck(gate(p.f("thr"), p.f("range"), 0.0, p.f("att"), p.f("hld"), p.f("rel"))),
+        // The X32's gate modes (`livedaw_dsp::x32`): gate, ducker, expanders.
+        "X32GATE" | "X32EXP2" | "X32EXP3" | "X32EXP4" => {
+            let ratio = match spec.token {
+                "X32EXP2" => 2.0,
+                "X32EXP3" => 3.0,
+                "X32EXP4" => 4.0,
+                _ => 0.0,
+            };
+            Config::Gate(gate(p.f("thr"), p.f("range"), ratio, p.f("att"), p.f("hld"), p.f("rel")))
+        }
+        "X32DUCK" => Config::Duck(gate(p.f("thr"), p.f("range"), 0.0, p.f("att"), p.f("hld"), p.f("rel"))),
         "E88" => {
             // Opens HYST dB above the threshold and closes at it; FAST is 50 us
             // instead of 500 us (p.123). Fully counter-clockwise, HYST reads
@@ -645,7 +656,9 @@ fn configure(spec: &ModelSpec, v: &[f32], sr: f32) -> Config {
         },
 
         // ---- compressors ---------------------------------------------------------------
-        "COMP" | "EXP" => {
+        // The X32's compressor and expander (`livedaw_dsp::x32`) are the
+        // WING's with its own ranges and a makeup GAIN.
+        "COMP" | "EXP" | "X32COMP" | "X32EXP" => {
             let ratio = p.f("ratio");
             // KNEE 0..5: each step widens the transition by 6 dB (3 = about
             // 18 dB, as the curve of the manual's figure 92 bends).
@@ -673,7 +686,10 @@ fn configure(spec: &ModelSpec, v: &[f32], sr: f32) -> Config {
                 WingTimes::Set { lin: false, att: c.att, rel: c.rel, hold_ramp }
             };
             c.wing = Some(WingEnv { delay: delay_samples(WING_COMP_DELAY_MS, sr), times });
-            if spec.token == "EXP" {
+            if spec.token.starts_with("X32") {
+                c.post_db = p.f("mgain");
+            }
+            if spec.token == "EXP" || spec.token == "X32EXP" {
                 c.curve = Curve::Expand { thr, ratio, knee, range: 60.0 };
             }
             Config::Comp(c)

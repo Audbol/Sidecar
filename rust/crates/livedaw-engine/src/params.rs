@@ -1055,16 +1055,19 @@ impl StripParams {
     }
 
     /// A new strip of `kind` whose blocks hold `models` (its console's): the
-    /// GATE slot on GATE, the DYNAMICS slot on COMP (aux: GATE), each the
-    /// table's first where it hasn't them.
+    /// GATE slot on the table's gate, the DYNAMICS slot on its compressor
+    /// (aux: its gate; the WING's GATE and COMP).
     pub fn new_with(kind: StripKind, models: &'static ModelTables) -> Self {
         let output = kind.is_output();
         let p = Self {
             input: InputParams::default(),
             blocks: OwnBlocks::new(
-                DynSlotParams::new_in(models.dynamics, "GATE"),
+                DynSlotParams::new_in(models.dynamics, models.gate_default),
                 EqBlockParams::new_in(if output { models.eq_bus } else { models.eq_channel }),
-                DynSlotParams::new_in(models.dynamics, if kind == StripKind::Aux { "GATE" } else { "COMP" }),
+                DynSlotParams::new_in(
+                    models.dynamics,
+                    if kind == StripKind::Aux { models.gate_default } else { models.comp_default },
+                ),
             ),
             process_order: AtomicI32::new(0),
             tap: AtomicI32::new(DEFAULT_TAP),

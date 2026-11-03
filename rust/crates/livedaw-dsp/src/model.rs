@@ -335,6 +335,10 @@ pub struct ModelTables {
     pub filter_tools: &'static [ModelSpec],
     /// The FX rack's devices.
     pub fx: &'static [ModelSpec],
+    /// The models a new strip's GATE and DYNAMICS slots start on (tokens of
+    /// `dynamics`).
+    pub gate_default: &'static str,
+    pub comp_default: &'static str,
 }
 
 impl ModelTables {

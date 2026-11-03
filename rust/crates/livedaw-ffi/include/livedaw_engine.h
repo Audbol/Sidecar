@@ -29,7 +29,7 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 36;
+constexpr int kAbiVersion = 37;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -1172,6 +1172,9 @@ extern "C"
     /** ABI 35: makes the engine a fresh console of `profile` (ProfileId; an unknown one:
         the WING) with that console's counts. */
     void ld_engine_configure_profile (const Engine*, int32_t profile);
+    /** ABI 37: the model calls (ld_model_*) describe `profile`'s models (ProfileId; the
+        console the app shows; an unknown one: the WING's). */
+    void ld_models_show_profile (int32_t profile);
     /** ABI 31: the console's fader law (its profile's; the WING's for the Universal). */
     void ld_engine_fader_law (const Engine*, FaderLawC* out);
     /** ABI 31: the console's port groups (its profile's), in its menus' order: writes up

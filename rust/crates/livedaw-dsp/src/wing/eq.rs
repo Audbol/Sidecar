@@ -60,6 +60,7 @@ pub fn design(spec: &ModelSpec, values: &[f32], sr: f64, gain_scale: f32) -> EqD
         "PULSAR" => design_pulsar(&p, sr, k, &mut d),
         "MACH4" => design_mach4(&p, sr, k, &mut d),
         "PIA" => design_pia(&p, sr, k, &mut d),
+        "X32EQ4" | "X32EQ6" => design_x32(&p, sr, k, &mut d),
         _ => {}
     }
     d
@@ -192,6 +193,43 @@ fn design_std(p: &Params, sr: f64, k: f32, d: &mut EqDesign) {
         d.push(low_shelf(sr, 1000.0, 0.5, -tilt * 0.5));
         d.push(high_shelf(sr, 1000.0, 0.5, tilt * 0.5));
     }
+}
+
+/// The X32's bands (`livedaw_dsp::x32`): each its TYPE (low cut, low shelf,
+/// bell, vintage bell, high shelf, high cut) at FREQ and GAIN; Q only shapes
+/// the bells (the X32's manual). The cuts are 12 dB/oct Butterworth, the shelves
+/// gentle (Q 0.71); the vintage bell narrows as it is boosted or cut further
+/// (Sidecar's reading: the references don't describe it).
+fn design_x32(p: &Params, sr: f64, k: f32, d: &mut EqDesign) {
+    const IDS: [[&str; 4]; 6] = [
+        ["1t", "1f", "1g", "1q"],
+        ["2t", "2f", "2g", "2q"],
+        ["3t", "3f", "3g", "3q"],
+        ["4t", "4f", "4g", "4q"],
+        ["5t", "5f", "5g", "5q"],
+        ["6t", "6f", "6g", "6q"],
+    ];
+    for ids in IDS {
+        if p.spec.param_index(ids[0]).is_none() {
+            break;
+        }
+        let (f, g, q) = (p.f(ids[1]), p.f(ids[2]) * k, p.f(ids[3]));
+        match p.text(ids[0]) {
+            "LCut" => sec_cut(d, sr, f, true),
+            "LShv" => push_gain(d, g, || low_shelf(sr, f, std::f32::consts::FRAC_1_SQRT_2, g)),
+            "PEQ" => push_gain(d, g, || peak(sr, f, q, g)),
+            "VEQ" => push_gain(d, g, || peak(sr, f, proportional_q(q, g), g)),
+            "HShv" => push_gain(d, g, || high_shelf(sr, f, std::f32::consts::FRAC_1_SQRT_2, g)),
+            "HCut" => sec_cut(d, sr, f, false),
+            _ => {}
+        }
+    }
+}
+
+/// A 12 dB/oct Butterworth cut at `f`.
+fn sec_cut(d: &mut EqDesign, sr: f64, f: f32, high_pass: bool) {
+    let (f, q) = (f as f64, FRAC_1_SQRT_2);
+    d.push(if high_pass { BiquadCoeffs::high_pass(sr, f, q) } else { BiquadCoeffs::low_pass(sr, f, q) });
 }
 
 /// E-series style: bells get narrower as they're boosted or cut further.
@@ -417,7 +455,7 @@ pub struct WingEq {
     sr: f64,
     sections: [Biquad; MAX_SECTIONS],
     len: usize,
-    model: Option<(usize, bool)>,
+    model: Option<(usize, usize)>,
     smoothed: [f32; MAX_EQ_PARAMS],
     scale: f32,
     out_gain: f32,
@@ -463,7 +501,7 @@ impl WingEq {
         values: &[f32],
     ) {
         let Some(spec) = table.get(model) else { return };
-        let key = (model, std::ptr::eq(table.as_ptr(), super::EQ_MODELS_BUS.as_ptr()));
+        let key = (model, table.as_ptr() as usize);
         let target_scale = if on { mix_pct.clamp(0.0, 125.0) / 100.0 } else { 0.0 };
 
         if self.model != Some(key) {

@@ -1,4 +1,8 @@
 #include "engine/Models.h"
+#include "engine/Strip.h"
+
+#include <array>
+#include <map>
 
 namespace livedaw::models
 {
@@ -82,8 +86,22 @@ static std::vector<Model> build (Table t)
 
 const std::vector<Model>& table (Table t)
 {
-    static const std::vector<Model> tables[] = { build (Dynamics), build (ChannelEq), build (BusEq), build (FilterTools), build (Fx) };
-    return tables[juce::jlimit (0, 4, (int) t)];
+    // The shown console's models (setShownProfile; the Rust side's model calls
+    // follow it), built once per console profile.
+    struct Set
+    {
+        bool built = false;
+        std::array<std::vector<Model>, 5> tables;
+    };
+    static std::map<int, Set> sets;
+    auto& set = sets[(int) shownProfile()];
+    if (! set.built)
+    {
+        for (int i = 0; i < (int) set.tables.size(); ++i)
+            set.tables[(size_t) i] = build ((Table) i);
+        set.built = true;
+    }
+    return set.tables[(size_t) juce::jlimit (0, 4, (int) t)];
 }
 
 const Model& model (Table t, int index)
