@@ -1680,7 +1680,7 @@ namespace
     void paintInsertBlock (juce::Graphics& g, juce::Rectangle<float> r, UiContext& ctx, Strip& s, bool post)
     {
         block (g, r);
-        auto& ins = post ? s.params.postInsert : s.params.preInsert;
+        auto& ins = post ? s.params.postInsert() : s.params.preInsert();
         const int slot = ins.fx.load();
         const int mode = post ? ins.mode.load() : 0;
         const bool on = ins.on.load() && (slot >= 0 || mode > 0);
@@ -1706,7 +1706,7 @@ namespace
     void paintDynBlock (juce::Graphics& g, juce::Rectangle<float> r, Strip& s, bool gate)
     {
         block (g, r);
-        auto& slot = gate ? s.params.gate : s.params.dynamics;
+        auto& slot = gate ? s.params.gate() : s.params.dynamics();
         auto inner = r.reduced (3.0f);
         const float gr = (gate ? s.meters.gateReductionDb.load() : s.meters.dynReductionDb.load()) / 24.0f;
         verticalMeter (g, inner.removeFromRight (juce::jmax (3.0f, inner.getWidth() * 0.1f)), juce::jlimit (0.0f, 1.0f, gr), Colours::meterYellow);
@@ -1745,7 +1745,7 @@ namespace
             else
                 curve.lineTo (x, y);
         }
-        g.setColour (s.params.eq.on.load() ? eqCurve : Dark::textDim.withAlpha (0.5f));
+        g.setColour (s.params.eq().on.load() ? eqCurve : Dark::textDim.withAlpha (0.5f));
         g.strokePath (curve, juce::PathStrokeType (1.5f));
     }
 
@@ -1758,8 +1758,8 @@ namespace
         inner.removeFromRight (2.0f);
         auto& p = s.params;
         const bool ch = s.getKind() == StripKind::Channel;
-        const std::pair<const char*, bool> chips[] = { { "INV", p.input.invert.load() }, { "LC", ch && p.filter.lowCut.load() },
-                                                       { "HC", ch && p.filter.highCut.load() }, { "FLT", ch && p.filter.tool.load() },
+        const std::pair<const char*, bool> chips[] = { { "INV", p.input.invert.load() }, { "LC", ch && p.filter().lowCut.load() },
+                                                       { "HC", ch && p.filter().highCut.load() }, { "FLT", ch && p.filter().tool.load() },
                                                        { "DLY", p.input.delayOn.load() }, { p.stereo.load() || s.isOutput() ? "ST" : "M", false } };
         const float w = inner.getWidth() / 3.0f, h = juce::jmin (inner.getHeight() / 2.0f, screenCap (16.0f));
         for (int i = 0; i < 6; ++i)
@@ -2073,7 +2073,7 @@ void FadersViewPage::paintContent (juce::Graphics& g)
                 for (int k = 0; k < 2; ++k)
                 {
                     auto bar = gr.removeFromTop (gr.getHeight() / (k == 0 ? 2.0f : 1.0f)).reduced (0.0f, 1.0f);
-                    auto& slot = k == 0 ? s.params.gate : s.params.dynamics;
+                    auto& slot = k == 0 ? s.params.gate() : s.params.dynamics();
                     const auto& token = models::model (models::Dynamics, slot.model.load()).token;
                     const bool isGate = token == "GATE";
                     auto square = bar.removeFromLeft (bar.getHeight());

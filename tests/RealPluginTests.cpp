@@ -138,8 +138,8 @@ struct ToneRig
 
     void insert (int channelIndex, int slot)
     {
-        channel (channelIndex).params.preInsert.fx = slot;
-        channel (channelIndex).params.preInsert.on = true;
+        channel (channelIndex).params.preInsert().fx = slot;
+        channel (channelIndex).params.preInsert().on = true;
     }
 
     /** Runs `blocks` blocks of the tones (pumping messages now and then), and

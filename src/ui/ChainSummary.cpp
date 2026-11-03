@@ -51,12 +51,12 @@ bool stepOn (const Strip& strip, const ChainStep& s)
     auto& p = strip.params;
     switch (s.kind)
     {
-        case ld::kStepFilter:     return filterOn (p.filter);
-        case ld::kStepGate:       return p.gate.on.load();
-        case ld::kStepEq:         return p.eq.on.load();
-        case ld::kStepDynamics:   return p.dynamics.on.load();
-        case ld::kStepPreInsert:  return insertOn (p.preInsert);
-        case ld::kStepPostInsert: return insertOn (p.postInsert);
+        case ld::kStepFilter:     return filterOn (p.filter());
+        case ld::kStepGate:       return p.gate().on.load();
+        case ld::kStepEq:         return p.eq().on.load();
+        case ld::kStepDynamics:   return p.dynamics().on.load();
+        case ld::kStepPreInsert:  return insertOn (p.preInsert());
+        case ld::kStepPostInsert: return insertOn (p.postInsert());
         case ld::kStepDelay:      return p.input.delayOn.load();
         case ld::kStepBlock:
         {
@@ -138,12 +138,12 @@ juce::String blockDetail (const Strip& strip, const ChainStep& s)
     auto& p = strip.params;
     switch (s.kind)
     {
-        case ld::kStepFilter:     return filterText (p.filter);
-        case ld::kStepGate:       return modelName (models::Dynamics, p.gate.model.load());
-        case ld::kStepEq:         return modelName (eqTable, p.eq.model.load());
-        case ld::kStepDynamics:   return modelName (models::Dynamics, p.dynamics.model.load());
-        case ld::kStepPreInsert:  return insertText (p.preInsert);
-        case ld::kStepPostInsert: return insertText (p.postInsert);
+        case ld::kStepFilter:     return filterText (p.filter());
+        case ld::kStepGate:       return modelName (models::Dynamics, p.gate().model.load());
+        case ld::kStepEq:         return modelName (eqTable, p.eq().model.load());
+        case ld::kStepDynamics:   return modelName (models::Dynamics, p.dynamics().model.load());
+        case ld::kStepPreInsert:  return insertText (p.preInsert());
+        case ld::kStepPostInsert: return insertText (p.postInsert());
         case ld::kStepDelay:      return delayText (p.input.delay.load(), p.input.delayMode.load());
         case ld::kStepBlock:
         {

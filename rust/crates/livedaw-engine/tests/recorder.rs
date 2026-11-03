@@ -319,7 +319,7 @@ fn playback_follows_the_loop_through_the_engine() {
     rig.engine.recorder().set_playlist(&Playlist { tracks: vec![PlaybackTrack::new(0, 1, vec![Clip::new(&file, 0, 20_000)])] });
     let ch = rig.engine.channel_at(0).unwrap();
     ch.params.input_left.store(PLAYBACK_SOURCE_BASE, Relaxed);
-    ch.params.eq.on.store(false, Relaxed);
+    ch.params.eq().on.store(false, Relaxed);
     ch.params.output_left.store(2, Relaxed); // direct out
                                              // 300 samples from 1000: not a multiple of the block.
     rig.engine.recorder().set_loop(1000, 1300, true);

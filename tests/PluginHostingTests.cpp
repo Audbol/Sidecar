@@ -79,8 +79,8 @@ public:
             auto& strip = *engine.getChannels()[0];
             auto& fx = engine.getFx();
             fx.setPlugin (0, std::move (instance));
-            strip.params.preInsert.on = true;
-            strip.params.preInsert.fx = 0;
+            strip.params.preInsert().on = true;
+            strip.params.preInsert().fx = 0;
             rig.setInput (0, 0.25f);
             rig.run (200);
 
@@ -245,8 +245,8 @@ public:
         auto* plugin = new LatencyPlugin (100);
         fx.setPlugin (2, std::unique_ptr<juce::AudioPluginInstance> (plugin));
         auto& ch1 = *engine.getChannels()[0];
-        ch1.params.preInsert.on = true;
-        ch1.params.preInsert.fx = 2;
+        ch1.params.preInsert().on = true;
+        ch1.params.preInsert().fx = 2;
 
         beginTest ("Compensation is on by default and lines up channels at Main 1");
         expect (engine.isLatencyCompensationOn());
@@ -273,14 +273,14 @@ public:
         beginTest ("A bus with a plugin lines up with the direct path");
         auto& ch2 = *engine.getChannels()[1];
         ch2.mains[0].on = false;
-        ch1.params.preInsert.on = false;
+        ch1.params.preInsert().on = false;
         auto& bus = *engine.getBusInSlot (0);
         auto& send = ch2.sends[0];
         send.enabled = true;
         send.mode = 1; // POST
         bus.mains[0].on = true;
-        bus.params.preInsert.on = true;
-        bus.params.preInsert.fx = 2;
+        bus.params.preInsert().on = true;
+        bus.params.preInsert().fx = 2;
         plugin->setLatencySamples (64);
         peaks = impulse (engine, 3);
         expectEquals ((int) peaks.size(), 1);
@@ -356,8 +356,8 @@ public:
         expectEquals (fx.getLatency (0), n); // one block: the offline rig reports no I/O latency
         expect (fx.describe (0).contains ("outboard"));
         auto& ch1 = *engine.getChannels()[0];
-        ch1.params.preInsert.on = true;
-        ch1.params.preInsert.fx = 0;
+        ch1.params.preInsert().on = true;
+        ch1.params.preInsert().fx = 0;
 
         beginTest ("The send goes out, the return comes back a block later, in time with the direct path");
         engine.updateLatencyCompensation();
@@ -493,8 +493,8 @@ public:
             fx.setPlugin (0, std::make_unique<MonoGainPlugin> (0.5f));
             if (chained)
                 fx.addToChain (0, std::make_unique<test::FakePlugin> (1.0f));
-            strip.params.preInsert.on = true;
-            strip.params.preInsert.fx = 0;
+            strip.params.preInsert().on = true;
+            strip.params.preInsert().fx = 0;
             rig.run (4);
             // Both sides get half the mono sum (0.3), relative to their dry level.
             expectWithinAbsoluteError (rig.out (0), 0.5f * 0.3f / 0.4f * dryL, 1.0e-5f);

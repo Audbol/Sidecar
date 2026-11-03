@@ -124,19 +124,19 @@ fn fx_slots_grow_beyond_the_wings_but_never_drop_one_in_use() {
     // So does an insert assigned to FX 24, even switched off.
     set_channels(&e, 1);
     let ch = e.channel_at(0).unwrap();
-    ch.params.pre_insert.fx.store(23, Relaxed);
+    ch.params.pre_insert().fx.store(23, Relaxed);
     assert!(e.fx_in_use(23));
     assert_eq!(e.set_num_fx(16), 24);
-    ch.params.pre_insert.fx.store(-1, Relaxed);
+    ch.params.pre_insert().fx.store(-1, Relaxed);
     assert_eq!(e.set_num_fx(16), 16);
 
     // An insert pointed past the slots in use some other way (a channel preset,
     // a copy, a remote): the next collect takes them in use, never fewer.
-    ch.params.post_insert.fx.store(50, Relaxed);
+    ch.params.post_insert().fx.store(50, Relaxed);
     assert_eq!(e.num_fx(), 16);
     e.collect();
     assert_eq!(e.num_fx(), 51);
-    ch.params.post_insert.fx.store(-1, Relaxed);
+    ch.params.post_insert().fx.store(-1, Relaxed);
     e.collect();
     assert_eq!(e.num_fx(), 51, "collect never takes slots away");
 }
@@ -422,14 +422,14 @@ fn gate_model_and_process_order() {
     set_channels(&rig.engine, 1);
     let ch = rig.ch(0);
     rig.set_input(0, 0.001); // -60 dB, below the -40 dB default threshold
-    ch.params.gate.on.store(true, Relaxed);
+    ch.params.gate().on.store(true, Relaxed);
     rig.run(200);
     // Closed down towards its 40 dB default range (1e-5 here).
     assert!(rig.out(0).abs() < 2e-5, "gate didn't close: {}", rig.out(0));
     assert!(ch.meters.gate_active.load(Relaxed));
 
     // The gate slot can hold a compressor model too.
-    ch.params.gate.set_model(model_index(DYN_MODELS, "COMP").unwrap());
+    ch.params.gate().set_model(model_index(DYN_MODELS, "COMP").unwrap());
     rig.run(50);
     assert!(close(rig.out(0), 0.001 * CENTRE, 1e-5));
 
@@ -515,7 +515,8 @@ fn automix_shares_gain() {
     rig.set_input(0, 0.5);
     rig.set_input(1, 0.5);
     for i in 0..2 {
-        let ins = &rig.ch(i).params.post_insert;
+        let ch = rig.ch(i);
+        let ins = ch.params.post_insert();
         ins.on.store(true, Relaxed);
         ins.mode.store(1, Relaxed); // AUTO_X
     }
@@ -526,19 +527,19 @@ fn automix_shares_gain() {
 
     // AUTO_X with INS 2 off is not a member: it isn't shared and takes no
     // share from the others (channel 1 alone in the group keeps unity).
-    rig.ch(1).params.post_insert.on.store(false, Relaxed);
+    rig.ch(1).params.post_insert().on.store(false, Relaxed);
     assert_eq!(rig.ch(1).automix_group(), None);
     rig.run(200);
     assert!(close(rig.ch(0).meters.automix_db.load(), 0.0, 0.05), "{}", rig.ch(0).meters.automix_db.load());
     assert!(close(rig.ch(1).meters.automix_db.load(), 0.0, 0.05), "{}", rig.ch(1).meters.automix_db.load());
     assert!(close(rig.out(0), 2.0 * 0.5 * CENTRE, 1e-3), "{}", rig.out(0));
     // ON again: it joins.
-    rig.ch(1).params.post_insert.on.store(true, Relaxed);
-    rig.ch(1).params.post_insert.mode.store(2, Relaxed); // AUTO_Y: its own group
+    rig.ch(1).params.post_insert().on.store(true, Relaxed);
+    rig.ch(1).params.post_insert().mode.store(2, Relaxed); // AUTO_Y: its own group
     assert_eq!(rig.ch(1).automix_group(), Some(1));
     rig.run(50);
     assert!(close(rig.out(0), 2.0 * 0.5 * CENTRE, 1e-3), "{}", rig.out(0));
-    rig.ch(1).params.post_insert.mode.store(1, Relaxed);
+    rig.ch(1).params.post_insert().mode.store(1, Relaxed);
     rig.run(50);
     assert!(close(rig.out(0), 0.5 * CENTRE * 2.0 * SHARE, 1e-3), "{}", rig.out(0));
 }
@@ -591,22 +592,22 @@ fn fx_slots_as_inserts_and_faulty_ones_are_auto_bypassed() {
     engine.set_fx_plugin(0, Some(half));
     engine.set_fx_plugin(1, Some(fake(1.0, 1).0)); // NaN
     engine.set_fx_plugin(2, Some(fake(1.0, 2).0)); // failing
-    a.params.pre_insert.on.store(true, Relaxed);
-    a.params.pre_insert.fx.store(0, Relaxed);
+    a.params.pre_insert().on.store(true, Relaxed);
+    a.params.pre_insert().fx.store(0, Relaxed);
     rig.set_input(0, 0.5);
     rig.run(20);
     assert!(close(rig.out(0), 0.25 * CENTRE, 1e-5));
 
     // Post insert with a NaN plugin: auto-bypassed, signal kept.
-    a.params.post_insert.on.store(true, Relaxed);
-    a.params.post_insert.fx.store(1, Relaxed);
+    a.params.post_insert().on.store(true, Relaxed);
+    a.params.post_insert().fx.store(1, Relaxed);
     rig.run(20);
     assert!(engine.fx(1).unwrap().is_faulted());
     assert!(close(rig.out(0), 0.25 * CENTRE, 1e-5));
 
     // Failing plugin on another strip.
-    b.params.pre_insert.on.store(true, Relaxed);
-    b.params.pre_insert.fx.store(2, Relaxed);
+    b.params.pre_insert().on.store(true, Relaxed);
+    b.params.pre_insert().fx.store(2, Relaxed);
     rig.run(5);
     assert!(engine.fx(2).unwrap().is_faulted());
     assert_eq!(engine.num_faulted_fx(), 2);
@@ -622,7 +623,7 @@ fn fx_slots_as_inserts_and_faulty_ones_are_auto_bypassed() {
     assert!(!engine.fx(1).unwrap().is_faulted());
 
     // Two strips on one slot: never concurrent, reported.
-    b.params.pre_insert.fx.store(0, Relaxed);
+    b.params.pre_insert().fx.store(0, Relaxed);
     rig.set_input(1, 0.5);
     rig.run(5);
     assert!(engine.fx(0).unwrap().is_double_assigned());
@@ -729,18 +730,18 @@ fn stress_structural_changes_while_audio_runs() {
             4 => {
                 if let Some(s) = e.channel_at(rand(e.num_channels().max(1) as u32) as usize) {
                     let p = &s.params;
-                    p.pre_insert.on.store(rand(2) == 0, Relaxed);
-                    p.pre_insert.fx.store(rand(17) as i32 - 1, Relaxed);
+                    p.pre_insert().on.store(rand(2) == 0, Relaxed);
+                    p.pre_insert().fx.store(rand(17) as i32 - 1, Relaxed);
                     p.stereo.store(rand(2) == 0, Relaxed);
-                    p.gate.on.store(rand(2) == 0, Relaxed);
-                    p.dynamics.set_model(rand(DYN_MODELS.len() as u32) as usize);
-                    p.dynamics.on.store(true, Relaxed);
+                    p.gate().on.store(rand(2) == 0, Relaxed);
+                    p.dynamics().set_model(rand(DYN_MODELS.len() as u32) as usize);
+                    p.dynamics().on.store(true, Relaxed);
                     // Keys from other channels (cycles and itself included) at any tap.
-                    for slot in [&p.gate, &p.dynamics] {
+                    for slot in [p.gate(), p.dynamics()] {
                         slot.sc_source.store(rand(66) as i32 - 1, Relaxed);
                         slot.sc_tap.store(rand(8) as i32, Relaxed);
                     }
-                    p.eq.set_model(rand(7) as usize, false);
+                    p.eq().set_model(rand(7) as usize, false);
                     p.process_order.store(rand(24) as i32, Relaxed);
                     if let Some(send) = s.sends.get_or_create(rand(24) as usize) {
                         send.enabled.store(rand(2) == 0, Relaxed);
@@ -779,8 +780,8 @@ fn builtin_fx_devices_run_in_slots() {
     let geq = fx("GEQ").unwrap();
     assert!(engine.set_fx_model(9, geq, true));
     assert!(engine.fx(9).unwrap().has_device());
-    a.params.pre_insert.on.store(true, Relaxed);
-    a.params.pre_insert.fx.store(9, Relaxed);
+    a.params.pre_insert().on.store(true, Relaxed);
+    a.params.pre_insert().fx.store(9, Relaxed);
     rig.set_input(0, 0.25);
     rig.run(40);
     let flat = rig.out(0);
@@ -803,7 +804,7 @@ fn builtin_fx_devices_run_in_slots() {
     let hall = fx("HALL").unwrap();
     assert!(!engine.set_fx_model(9, hall, true));
     assert!(engine.set_fx_model(0, hall, true));
-    a.params.pre_insert.fx.store(0, Relaxed);
+    a.params.pre_insert().fx.store(0, Relaxed);
     rig.run(20);
     rig.set_input(0, 0.0);
     rig.run(30);
@@ -832,10 +833,10 @@ fn builtin_fx_devices_run_in_slots() {
 fn eq_dc_gain(s: &Strip) -> f32 {
     use livedaw_dsp::wing::{eq::design, EQ_MODELS_BUS, EQ_MODELS_CH, MAX_EQ_PARAMS};
     let table = if s.kind().is_output() { EQ_MODELS_BUS } else { EQ_MODELS_CH };
-    let spec = &table[s.params.eq.model_index(s.kind().is_output())];
+    let spec = &table[s.params.eq().model_index(s.kind().is_output())];
     let mut v = [0.0; MAX_EQ_PARAMS];
-    s.params.eq.values_snapshot(&mut v);
-    let d = design(spec, &v[..spec.params.len()], 48000.0, s.params.eq.mix.load() / 100.0);
+    s.params.eq().values_snapshot(&mut v);
+    let d = design(spec, &v[..spec.params.len()], 48000.0, s.params.eq().mix.load() / 100.0);
     10f32.powf(d.response_db(1.0, 48000.0) as f32 / 20.0)
 }
 
@@ -973,11 +974,11 @@ fn bus_runs_dyn_ins1_fader_eq_ins2_with_the_tap_after_ins1() {
     let bus1 = rig.strip(StripKind::Bus, 0);
     ch.sends.get_or_create(12).unwrap().enabled.store(true, Relaxed);
     let p = &fx_bus.params;
-    p.pre_insert.on.store(true, Relaxed);
-    p.pre_insert.fx.store(0, Relaxed);
-    p.post_insert.on.store(true, Relaxed);
-    p.post_insert.fx.store(1, Relaxed);
-    p.eq.param("lg", true).unwrap().store(6.0);
+    p.pre_insert().on.store(true, Relaxed);
+    p.pre_insert().fx.store(0, Relaxed);
+    p.post_insert().on.store(true, Relaxed);
+    p.post_insert().fx.store(1, Relaxed);
+    p.eq().param("lg", true).unwrap().store(6.0);
     p.tap.store(0, Relaxed); // ignored: a bus taps after INS 1
     p.fader_db.store(-100.0);
     p.output_left.store(4, Relaxed);
@@ -1008,10 +1009,10 @@ fn aux_has_no_post_insert_and_taps_after_ins1() {
     engine.set_fx_plugin(0, Some(fake(0.5, 0).0));
     engine.set_fx_plugin(1, Some(fake(0.25, 0).0));
     let p = &aux.params;
-    p.pre_insert.on.store(true, Relaxed);
-    p.pre_insert.fx.store(0, Relaxed);
-    p.post_insert.on.store(true, Relaxed); // the aux has no INS 2: ignored
-    p.post_insert.fx.store(1, Relaxed);
+    p.pre_insert().on.store(true, Relaxed);
+    p.pre_insert().fx.store(0, Relaxed);
+    p.post_insert().on.store(true, Relaxed); // the aux has no INS 2: ignored
+    p.post_insert().fx.store(1, Relaxed);
     p.tap.store(0, Relaxed); // ignored: aux taps after INS 1, pre-fader
     p.fader_db.store(-6.0206);
     aux.sends.get_or_create(2).unwrap().enabled.store(true, Relaxed);
@@ -1023,7 +1024,7 @@ fn aux_has_no_post_insert_and_taps_after_ins1() {
     assert_eq!(engine.fx_users(1).len(), 0);
 
     // Aux can't join automix either.
-    p.post_insert.mode.store(1, Relaxed);
+    p.post_insert().mode.store(1, Relaxed);
     rig.run(20);
     assert!(close(rig.out(0), 0.5 * 0.5 * 0.5 * CENTRE, 1e-4));
 }
@@ -1214,7 +1215,8 @@ fn automix_enables_input_channels_only_and_follows_the_fader() {
     rig.set_input(0, 0.5);
     rig.set_input(1, 0.5);
     for i in 0..2 {
-        let ins = &rig.ch(i).params.post_insert;
+        let ch = rig.ch(i);
+        let ins = ch.params.post_insert();
         ins.on.store(true, Relaxed);
         ins.mode.store(1, Relaxed); // AUTO_X
     }
@@ -1319,7 +1321,7 @@ fn the_pre_meter_tap_follows_trim_not_eq() {
     assert!(close(trim0, -12.04, 0.1) && close(pfl0, -12.04, 0.3) && close(pre0, trim0, 0.01), "{trim0} {pfl0} {pre0}");
     // +12 dB of EQ on the tone: PRE stays, the pre-fader level rises.
     let spec = &EQ_MODELS_CH[model_index(EQ_MODELS_CH, "STD").unwrap()];
-    let eq = &ch.params.eq;
+    let eq = ch.params.eq();
     eq.on.store(true, Relaxed);
     eq.set_model(model_index(EQ_MODELS_CH, "STD").unwrap(), false);
     eq.values[spec.param_index("2f").unwrap()].store(750.0);

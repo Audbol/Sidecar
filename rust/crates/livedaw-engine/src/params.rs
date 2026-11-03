@@ -541,12 +541,14 @@ pub const MONITOR_BUSES: [&str; 3] = ["A", "B", "A+B"];
 #[derive(Debug)]
 pub struct StripParams {
     pub input: InputParams,
-    pub filter: FilterParams,
-    pub gate: DynSlotParams,
-    pub eq: EqBlockParams,
-    pub dynamics: DynSlotParams,
-    pub pre_insert: InsertParams,
-    pub post_insert: InsertParams,
+    // The WING's own blocks (Phase 3 step 5): reached through their accessors
+    // (`filter()`...), so they can leave the strip for its chain.
+    filter: FilterParams,
+    gate: DynSlotParams,
+    eq: EqBlockParams,
+    dynamics: DynSlotParams,
+    pre_insert: InsertParams,
+    post_insert: InsertParams,
     /// Index into `PROCESS_ORDERS` (input channels; aux, buses, mains and
     /// matrices have a fixed order).
     pub process_order: AtomicI32,
@@ -853,6 +855,49 @@ pub fn default_colour(kind: StripKind) -> i32 {
 }
 
 impl StripParams {
+    /// The strip's own filter block (input channels).
+    #[inline]
+    pub fn filter(&self) -> &FilterParams {
+        &self.filter
+    }
+
+    /// The GATE slot (input channels).
+    #[inline]
+    pub fn gate(&self) -> &DynSlotParams {
+        &self.gate
+    }
+
+    /// The strip's own EQ.
+    #[inline]
+    pub fn eq(&self) -> &EqBlockParams {
+        &self.eq
+    }
+
+    /// The DYNAMICS slot.
+    #[inline]
+    pub fn dynamics(&self) -> &DynSlotParams {
+        &self.dynamics
+    }
+
+    /// INSERT 1 (before the fader) and INSERT 2 (after it).
+    #[inline]
+    pub fn pre_insert(&self) -> &InsertParams {
+        &self.pre_insert
+    }
+
+    #[inline]
+    pub fn post_insert(&self) -> &InsertParams {
+        &self.post_insert
+    }
+
+    /// Where the blocks sit in the struct, for the C ABI's layout check
+    /// (`ld_layout_info`: the C++ side reads them in place until they move).
+    pub const OFFSET_FILTER: usize = std::mem::offset_of!(StripParams, filter);
+    pub const OFFSET_GATE: usize = std::mem::offset_of!(StripParams, gate);
+    pub const OFFSET_EQ: usize = std::mem::offset_of!(StripParams, eq);
+    pub const OFFSET_DYNAMICS: usize = std::mem::offset_of!(StripParams, dynamics);
+    pub const OFFSET_POST_INSERT: usize = std::mem::offset_of!(StripParams, post_insert);
+
     pub fn new(kind: StripKind) -> Self {
         let output = kind.is_output();
         let p = Self {

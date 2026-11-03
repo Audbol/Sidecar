@@ -743,10 +743,10 @@ public:
         for (int slot : { 0, 3, 20 })
             engine->getFx().setPlugin (slot, sandbox::TestPluginFormat::create (sandbox::TestPluginFormat::Kind::gain));
         engine->getFx().addToChain (3, sandbox::TestPluginFormat::create (sandbox::TestPluginFormat::Kind::gain));
-        engine->getChannels()[0]->params.preInsert.on = true;
-        engine->getChannels()[0]->params.preInsert.fx = 0;
-        engine->getChannels()[1]->params.postInsert.on = true;
-        engine->getChannels()[1]->params.postInsert.fx = 20;
+        engine->getChannels()[0]->params.preInsert().on = true;
+        engine->getChannels()[0]->params.preInsert().fx = 0;
+        engine->getChannels()[1]->params.postInsert().on = true;
+        engine->getChannels()[1]->params.postInsert().fx = 20;
         show = std::make_unique<Show> (*engine, *pluginHost);
         log.info ("Monkey test");
 

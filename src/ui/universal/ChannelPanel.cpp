@@ -42,11 +42,11 @@ ChannelPanel::ChannelPanel (UiContext& c, const Theme& t)
     };
     bindKey (invert, [] (StripParams& p) -> std::atomic<bool>& { return p.input.invert; });
     bindKey (delayOn, [] (StripParams& p) -> std::atomic<bool>& { return p.input.delayOn; });
-    bindKey (lowCut, [] (StripParams& p) -> std::atomic<bool>& { return p.filter.lowCut; });
-    bindKey (highCut, [] (StripParams& p) -> std::atomic<bool>& { return p.filter.highCut; });
-    bindKey (gateOn, [] (StripParams& p) -> std::atomic<bool>& { return p.gate.on; });
-    bindKey (eqOn, [] (StripParams& p) -> std::atomic<bool>& { return p.eq.on; });
-    bindKey (dynOn, [] (StripParams& p) -> std::atomic<bool>& { return p.dynamics.on; });
+    bindKey (lowCut, [] (StripParams& p) -> std::atomic<bool>& { return p.filter().lowCut; });
+    bindKey (highCut, [] (StripParams& p) -> std::atomic<bool>& { return p.filter().highCut; });
+    bindKey (gateOn, [] (StripParams& p) -> std::atomic<bool>& { return p.gate().on; });
+    bindKey (eqOn, [] (StripParams& p) -> std::atomic<bool>& { return p.eq().on; });
+    bindKey (dynOn, [] (StripParams& p) -> std::atomic<bool>& { return p.dynamics().on; });
 
     // The curves, as the engine runs them (1 EQ, 3 FILTER).
     const auto curve = [this] (int block)
@@ -66,7 +66,7 @@ ChannelPanel::ChannelPanel (UiContext& c, const Theme& t)
         std::vector<ResponseView::Handle> handles;
         if (strip == nullptr)
             return handles;
-        auto& f = strip->params.filter;
+        auto& f = strip->params.filter();
         ResponseView::Handle low, high;
         low.label = "L";
         low.freq = &f.lowCutFreq;
@@ -87,7 +87,7 @@ ChannelPanel::ChannelPanel (UiContext& c, const Theme& t)
     {
         if (strip == nullptr)
             return std::vector<ResponseView::Handle>();
-        auto& eq = strip->params.eq;
+        auto& eq = strip->params.eq();
         return ResponseView::eqHandles (models::model (static_cast<models::Table> (strip->getEqTable()), eq.model.load()), eq.values);
     };
     sends.setCompact (true);
@@ -143,8 +143,8 @@ void ChannelPanel::bindStrip()
     auto d = ValueBar::linear ("DELAY", p.input.delay, range.start, range.end, 0.0f, {}, 1);
     d.text = [mode] (float v) { return delayText (v, mode); };
     delay.bind (d);
-    gateView.bind (&p.gate);
-    dynView.bind (&p.dynamics);
+    gateView.bind (&p.gate());
+    dynView.bind (&p.dynamics());
     sends.setStrip (strip);
     // Inputs only: aux have no filter or gate (their sections stay, empty).
     const bool channel = strip->getKind() == StripKind::Channel;
@@ -238,7 +238,7 @@ void ChannelPanel::paint (juce::Graphics& g)
             title.removeFromLeft (juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), text) + (float) sizes::kGap);
             if (s == GateSection || s == DynamicsSection)
             {
-                const auto& slot = s == GateSection ? strip->params.gate : strip->params.dynamics;
+                const auto& slot = s == GateSection ? strip->params.gate() : strip->params.dynamics();
                 g.setColour (theme.text);
                 g.drawFittedText (models::model (models::Dynamics, slot.model.load()).name.toUpperCase(), title.toNearestInt(),
                                   juce::Justification::centredLeft, 1, 0.7f);

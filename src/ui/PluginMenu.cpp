@@ -287,10 +287,10 @@ void showFxProcessorWindow (UiContext& ctx, juce::Component& over, int current, 
         bool post = false;
         for (auto kind : { StripKind::Channel, StripKind::Aux, StripKind::Bus, StripKind::Main, StripKind::Matrix })
             for (auto& s : ctx.engine.getStrips (kind))
-                if (user == nullptr && (s->params.preInsert.fx.load() == i || (s->params.postInsert.fx.load() == i && s->params.postInsert.mode.load() == 0)))
+                if (user == nullptr && (s->params.preInsert().fx.load() == i || (s->params.postInsert().fx.load() == i && s->params.postInsert().mode.load() == 0)))
                 {
                     user = s.get();
-                    post = s->params.preInsert.fx.load() != i;
+                    post = s->params.preInsert().fx.load() != i;
                 }
         if (user != nullptr)
         {

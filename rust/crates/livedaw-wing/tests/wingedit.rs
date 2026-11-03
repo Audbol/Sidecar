@@ -308,8 +308,8 @@ fn pc_to_mixer_carries_models_parameters_and_inserts() {
     assert!(d.is_empty(), "{} differ:\n{}", d.len(), d[..d.len().min(40)].join("\n"));
     // The engine runs it: the insert is routed to the slot.
     let ch1 = e.channel_at(0).unwrap();
-    assert!(ch1.params.pre_insert.on.load(Relaxed));
-    assert_eq!(ch1.params.pre_insert.fx.load(Relaxed), 8);
+    assert!(ch1.params.pre_insert().on.load(Relaxed));
+    assert_eq!(ch1.params.pre_insert().fx.load(Relaxed), 8);
     assert_eq!(c.get(s.resolve("/fx/9/$a_chn", &c).unwrap()), Some(Value::Int(1)));
 }
 

@@ -562,8 +562,8 @@ public:
             ch.params.inputLeft = 0;
             ch.params.inputRight = 0;
             ch.params.faderDb = 0.0f;
-            ch.params.preInsert.on = true;
-            ch.params.preInsert.fx = 9;
+            ch.params.preInsert().on = true;
+            ch.params.preInsert().fx = 9;
             std::vector<float> in (kBlock), out0 (kBlock), out1 (kBlock);
             for (int b = 0; b < 48000 / kBlock; ++b)
             {

@@ -428,11 +428,27 @@ struct TapEqParams
 struct StripParams
 {
     InputParams input;
-    FilterParams filter;
-    DynSlotParams gate;
-    EqBlockParams eq;
-    DynSlotParams dynamics;
-    InsertParams preInsert, postInsert; // aux channels have no post insert (INS 2)
+    // The WING's own blocks (Phase 3 step 5): reached through filter(), gate(),
+    // eq(), dynamics(), preInsert() and postInsert(), so they can leave the strip.
+    FilterParams filter_;
+    DynSlotParams gate_;
+    EqBlockParams eq_;
+    DynSlotParams dynamics_;
+    InsertParams preInsert_, postInsert_; // aux channels have no post insert (INS 2)
+
+    FilterParams& filter() { return filter_; }
+    const FilterParams& filter() const { return filter_; }
+    DynSlotParams& gate() { return gate_; }
+    const DynSlotParams& gate() const { return gate_; }
+    EqBlockParams& eq() { return eq_; }
+    const EqBlockParams& eq() const { return eq_; }
+    DynSlotParams& dynamics() { return dynamics_; }
+    const DynSlotParams& dynamics() const { return dynamics_; }
+    InsertParams& preInsert() { return preInsert_; }
+    const InsertParams& preInsert() const { return preInsert_; }
+    InsertParams& postInsert() { return postInsert_; }
+    const InsertParams& postInsert() const { return postInsert_; }
+
     std::atomic<int32_t> processOrder; // list 0 (input channels only)
     std::atomic<int32_t> tap;          // list 1 (input channels only)
 
@@ -1840,11 +1856,11 @@ inline const char* verifyLayout()
         { info.dca, sizeof (DcaParams), "DcaParams size" },
         { info.fx, sizeof (FxParams), "FxParams size" },
         { info.controls, sizeof (EngineControls), "EngineControls size" },
-        { info.offFilter, offsetof (StripParams, filter), "StripParams.filter" },
-        { info.offGate, offsetof (StripParams, gate), "StripParams.gate" },
-        { info.offEq, offsetof (StripParams, eq), "StripParams.eq" },
-        { info.offDynamics, offsetof (StripParams, dynamics), "StripParams.dynamics" },
-        { info.offPostInsert, offsetof (StripParams, postInsert), "StripParams.postInsert" },
+        { info.offFilter, offsetof (StripParams, filter_), "StripParams.filter" },
+        { info.offGate, offsetof (StripParams, gate_), "StripParams.gate" },
+        { info.offEq, offsetof (StripParams, eq_), "StripParams.eq" },
+        { info.offDynamics, offsetof (StripParams, dynamics_), "StripParams.dynamics" },
+        { info.offPostInsert, offsetof (StripParams, postInsert_), "StripParams.postInsert" },
         { info.offFader, offsetof (StripParams, faderDb), "StripParams.faderDb" },
         { info.offStereo, offsetof (StripParams, stereo), "StripParams.stereo" },
         { info.offMainSendLevel, offsetof (MainSendParams, levelDb), "MainSendParams.levelDb" },

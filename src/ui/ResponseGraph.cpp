@@ -238,7 +238,7 @@ void ResponseGraph::setStrip (Strip* s, Block b)
 juce::StringArray ResponseGraph::stdBands (const Strip& s)
 {
     const auto table = static_cast<models::Table> (s.getEqTable());
-    const auto& spec = models::model (table, s.params.eq.model.load());
+    const auto& spec = models::model (table, s.params.eq().model.load());
     juce::StringArray ids;
     if (spec.token != "STD")
         return ids;
@@ -254,7 +254,7 @@ void ResponseGraph::updateBands()
     if (strip == nullptr || block != Eq)
         return;
 
-    builtModel = strip->params.eq.model.load();
+    builtModel = strip->params.eq().model.load();
     const auto& spec = models::model (static_cast<models::Table> (strip->getEqTable()), builtModel);
     for (auto& id : stdBands (*strip))
         bands.push_back ({ id, spec.find (id + "f"), spec.find (id + "g"), spec.find (id + "q") });
@@ -266,7 +266,7 @@ void ResponseGraph::timerCallback()
         return;
     updateRta();
 
-    if (block == Eq && strip->params.eq.model.load() != builtModel)
+    if (block == Eq && strip->params.eq().model.load() != builtModel)
         updateBands();
 
     std::vector<double> next (freqs.size(), 0.0);
@@ -293,12 +293,12 @@ void ResponseGraph::timerCallback()
         marks.push_back (freq->load());
     else if (block == Filter)
     {
-        auto& f = strip->params.filter;
+        auto& f = strip->params.filter();
         marks = { f.lowCutFreq.load(), f.highCutFreq.load(), (float) f.toolModel.load(), f.toolParams[0].load(), f.toolParams[1].load() };
     }
     else
         for (auto& band : bands)
-            marks.push_back (strip->params.eq.values[band.f].load());
+            marks.push_back (strip->params.eq().values[band.f].load());
     if (marks != shownMarks)
     {
         shownMarks = std::move (marks);
@@ -387,9 +387,9 @@ std::atomic<float>* ResponseGraph::keyFreq() const
         return nullptr;
     switch (block)
     {
-        case GateKey:     return &strip->params.gate.scFreq;
-        case DynamicsKey: return &strip->params.dynamics.scFreq;
-        case Xover:       return &strip->params.dynamics.xoFreq;
+        case GateKey:     return &strip->params.gate().scFreq;
+        case DynamicsKey: return &strip->params.dynamics().scFreq;
+        case Xover:       return &strip->params.dynamics().xoFreq;
         case Eq:
         case Filter:      break;
     }
@@ -459,7 +459,7 @@ void ResponseGraph::paint (juce::Graphics& g)
     if (strip == nullptr)
         return;
 
-    auto& f = strip->params.filter;
+    auto& f = strip->params.filter();
 
     // The RTA: over the curve's lower part (or all of it), or in its own strip.
     const auto layout = rtaLayout();
@@ -550,7 +550,7 @@ void ResponseGraph::paint (juce::Graphics& g)
         g.saveState();
         g.reduceClipRegion (p.toNearestInt());
         const auto eqCurve = curveOf (eqResponse);
-        g.setColour (strip->params.eq.on.load() ? eqCurveColour.withAlpha (0.55f) : dimLabelColour);
+        g.setColour (strip->params.eq().on.load() ? eqCurveColour.withAlpha (0.55f) : dimLabelColour);
         g.strokePath (eqCurve, juce::PathStrokeType (juce::jlimit (1.5f, 2.0f, getHeight() / 120.0f)));
         const auto curve = curveOf (response);
         juce::Path cut (curve);
@@ -579,7 +579,7 @@ void ResponseGraph::paint (juce::Graphics& g)
         g.saveState();
         g.reduceClipRegion (p.toNearestInt());
         const auto curve = curveOf (response);
-        const bool on = strip->params.eq.on.load();
+        const bool on = strip->params.eq().on.load();
         // The console's EQ screen fills everything under the curve [D10]; at
         // the user's request both screens shade only the boosts and cuts
         // against 0 dB (a flat EQ shows none).
@@ -620,7 +620,7 @@ void ResponseGraph::paint (juce::Graphics& g)
     }
 
     // The bands: a line from the label at the top, an open ring at the gain.
-    auto& values = strip->params.eq.values;
+    auto& values = strip->params.eq().values;
     const bool labels = showLabels();
     // WING 3.1: open rings 26 px across (3 px), light grey, the selected one white.
     const float radius = juce::jlimit (3.5f, wingPx (13.0f), getHeight() / 34.0f);
@@ -666,7 +666,7 @@ int ResponseGraph::bandAt (juce::Point<float> pos) const
 {
     if (strip == nullptr)
         return -1;
-    auto& values = strip->params.eq.values;
+    auto& values = strip->params.eq().values;
     int best = -1;
     float bestDist = 14.0f;
     for (size_t i = 0; i < bands.size(); ++i)
@@ -691,7 +691,7 @@ int ResponseGraph::cutLineAt (juce::Point<float> pos) const
         return std::abs (xForFreq (freq->load()) - pos.x) <= 16.0f ? 3 : -1;
     if (block != Filter)
         return -1;
-    auto& f = strip->params.filter;
+    auto& f = strip->params.filter();
     const float lc = std::abs (xForFreq (f.lowCutFreq.load()) - pos.x);
     const float hc = std::abs (xForFreq (f.highCutFreq.load()) - pos.x);
     float ap = 1.0e9f;
@@ -732,7 +732,7 @@ void ResponseGraph::mouseDrag (const juce::MouseEvent& e)
     }
     if (dragLine >= 0)
     {
-        auto& f = strip->params.filter;
+        auto& f = strip->params.filter();
         if (dragLine == 0)
             f.lowCutFreq = juce::jlimit (20.0f, 2000.0f, freqForX (e.position.x));
         else if (dragLine == 1)
@@ -749,9 +749,9 @@ void ResponseGraph::mouseDrag (const juce::MouseEvent& e)
     if (dragBand < 0)
         return;
 
-    const auto& spec = models::model (static_cast<models::Table> (strip->getEqTable()), strip->params.eq.model.load());
+    const auto& spec = models::model (static_cast<models::Table> (strip->getEqTable()), strip->params.eq().model.load());
     const auto& band = bands[(size_t) dragBand];
-    auto& values = strip->params.eq.values;
+    auto& values = strip->params.eq().values;
     const auto& fp = spec.params[(size_t) band.f];
     const auto& gp = spec.params[(size_t) band.g];
     values[band.f] = juce::jlimit (fp.min, fp.max, freqForX (e.position.x));
@@ -774,7 +774,7 @@ void ResponseGraph::mouseDoubleClick (const juce::MouseEvent& e)
     {
         if (const int b = bandAt (e.position); b >= 0)
         {
-            auto& eq = strip->params.eq;
+            auto& eq = strip->params.eq();
             const auto& spec = models::model (static_cast<models::Table> (strip->getEqTable()), eq.model.load());
             const auto& band = bands[(size_t) b];
             for (const int i : { band.g, band.f, band.q, spec.find (band.id + "eq") })
@@ -790,7 +790,7 @@ void ResponseGraph::mouseDoubleClick (const juce::MouseEvent& e)
     const int line = cutLineAt (e.position);
     if (line < 0)
         return;
-    auto& f = strip->params.filter;
+    auto& f = strip->params.filter();
     if (line == 3)
     {
         if (auto* freq = keyFreq())
@@ -817,9 +817,9 @@ void ResponseGraph::mouseWheelMove (const juce::MouseEvent& e, const juce::Mouse
     if (strip == nullptr || i < 0 || bands[(size_t) i].q < 0)
         return;
 
-    const auto& spec = models::model (static_cast<models::Table> (strip->getEqTable()), strip->params.eq.model.load());
+    const auto& spec = models::model (static_cast<models::Table> (strip->getEqTable()), strip->params.eq().model.load());
     const auto& qp = spec.params[(size_t) bands[(size_t) i].q];
-    auto& q = strip->params.eq.values[bands[(size_t) i].q];
+    auto& q = strip->params.eq().values[bands[(size_t) i].q];
     q = qp.fromNormalised (juce::jlimit (0.0f, 1.0f, qp.toNormalised (q.load()) + wheel.deltaY * 0.15f));
 }
 

@@ -111,15 +111,15 @@ namespace
                                      : juce::String ("GDI");
             for (auto letter : order)
             {
-                if (letter == 'G' && strip.getKind() == StripKind::Channel && p.gate.on.load())
+                if (letter == 'G' && strip.getKind() == StripKind::Channel && p.gate().on.load())
                     tabs.push_back (HomeTab::Gate);
-                else if (letter == 'D' && p.dynamics.on.load())
+                else if (letter == 'D' && p.dynamics().on.load())
                     tabs.push_back (HomeTab::Dynamics);
-                else if (letter == 'I' && p.preInsert.on.load() && p.preInsert.fx.load() >= 0 && ctx.engine.getFx().isLoaded (p.preInsert.fx.load()))
+                else if (letter == 'I' && p.preInsert().on.load() && p.preInsert().fx.load() >= 0 && ctx.engine.getFx().isLoaded (p.preInsert().fx.load()))
                     tabs.push_back (HomeTab::PreInsert);
             }
-            if (strip.hasPostInsert() && p.postInsert.on.load() && p.postInsert.mode.load() == 0 && p.postInsert.fx.load() >= 0
-                && ctx.engine.getFx().isLoaded (p.postInsert.fx.load()))
+            if (strip.hasPostInsert() && p.postInsert().on.load() && p.postInsert().mode.load() == 0 && p.postInsert().fx.load() >= 0
+                && ctx.engine.getFx().isLoaded (p.postInsert().fx.load()))
                 tabs.push_back (HomeTab::PostInsert);
             return tabs;
         }
@@ -136,8 +136,8 @@ namespace
             const float pitch = juce::jmin (r.getHeight() / (float) n, r.getWidth() * 64.0f / 160.0f);
             for (int i = 0; i < n; ++i)
             {
-                const bool curve = (tabs[(size_t) i] == HomeTab::Gate && isNativeDynamics (strip.params.gate.model.load()))
-                                   || (tabs[(size_t) i] == HomeTab::Dynamics && isNativeDynamics (strip.params.dynamics.model.load()));
+                const bool curve = (tabs[(size_t) i] == HomeTab::Gate && isNativeDynamics (strip.params.gate().model.load()))
+                                   || (tabs[(size_t) i] == HomeTab::Dynamics && isNativeDynamics (strip.params.dynamics().model.load()));
                 auto cell = juce::Rectangle<float> (r.getX(), r.getY() + (float) i * pitch, r.getWidth(), pitch * 50.0f / 64.0f);
                 cell = cell.withSizeKeepingCentre (juce::jmin (cell.getWidth(), cell.getHeight() * (curve ? 1.5f : 3.2f)), cell.getHeight());
                 items.push_back ({ tabs[(size_t) i], cell.withX (r.getRight() - cell.getWidth()) });
@@ -155,7 +155,7 @@ namespace
                     case HomeTab::Gate:
                     case HomeTab::Dynamics:
                     {
-                        auto& slot = item.tab == HomeTab::Gate ? p.gate : p.dynamics;
+                        auto& slot = item.tab == HomeTab::Gate ? p.gate() : p.dynamics();
                         const int model = slot.model.load();
                         if (isNativeDynamics (model))
                             paintTransferCurve (g, item.area, slot, item.tab == HomeTab::Gate, true);
@@ -166,7 +166,7 @@ namespace
                     case HomeTab::PreInsert:
                     case HomeTab::PostInsert:
                     {
-                        const int slot = (item.tab == HomeTab::PreInsert ? p.preInsert : p.postInsert).fx.load();
+                        const int slot = (item.tab == HomeTab::PreInsert ? p.preInsert() : p.postInsert()).fx.load();
                         auto* plugin = fx.getPlugin (slot);
                         Faceplate::paintThumbnail (g, item.area, models::Fx, fx.getModel (slot), plugin != nullptr ? plugin->getName().toUpperCase() : juce::String());
                         break;
@@ -202,7 +202,7 @@ namespace
         void timerCallback() override
         {
             auto& p = strip.params;
-            const auto now = std::make_tuple (active(), p.gate.model.load(), p.dynamics.model.load(), p.preInsert.fx.load(), p.postInsert.fx.load());
+            const auto now = std::make_tuple (active(), p.gate().model.load(), p.dynamics().model.load(), p.preInsert().fx.load(), p.postInsert().fx.load());
             if (now != shown)
             {
                 shown = now;
@@ -352,11 +352,11 @@ public:
         if (strip.getKind() == StripKind::Channel)
         {
             loCut = &key ("LO CUT", Icon::LowCut, colours::eqOn);
-            bindKey (*loCut, p.filter.lowCut);
+            bindKey (*loCut, p.filter().lowCut);
             hiCut = &key ("HI CUT", Icon::HighCut, colours::eqOn);
-            bindKey (*hiCut, p.filter.highCut);
-            tool = &key (toolFilterName (p.filter.toolModel.load()), toolFilterIcon (p.filter.toolModel.load()), toolFilterColour (p.filter.toolModel.load()));
-            bindKey (*tool, p.filter.tool);
+            bindKey (*hiCut, p.filter().highCut);
+            tool = &key (toolFilterName (p.filter().toolModel.load()), toolFilterIcon (p.filter().toolModel.load()), toolFilterColour (p.filter().toolModel.load()));
+            bindKey (*tool, p.filter().tool);
             for (auto* k : { loCut, hiCut, tool })
                 k->labelBeside = true;
         }
@@ -485,12 +485,12 @@ public:
     {
         HomeScreen::paint (g);
         // An analog EQ shows its faceplate at the right end of the EQ header.
-        const auto& eqModel = models::model (static_cast<models::Table> (strip.getEqTable()), strip.params.eq.model.load());
+        const auto& eqModel = models::model (static_cast<models::Table> (strip.getEqTable()), strip.params.eq().model.load());
         if (eqModel.token != "STD")
         {
             auto header = sectionHeader (eqArea).toFloat();
             auto plate = header.removeFromRight (header.getWidth() * 0.32f).withTrimmedRight (26.0f).reduced (0.0f, 3.0f);
-            Faceplate::paintThumbnail (g, plate, static_cast<models::Table> (strip.getEqTable()), strip.params.eq.model.load(), {});
+            Faceplate::paintThumbnail (g, plate, static_cast<models::Table> (strip.getEqTable()), strip.params.eq().model.load(), {});
         }
     }
 
@@ -566,15 +566,15 @@ private:
         if (gain != nullptr)
             gain->setEnabled (sourceOf (strip) != nullptr);
         // The FILTER panel's third key is named after the current tool filter.
-        if (tool != nullptr && tool->getButtonText() != toolFilterName (strip.params.filter.toolModel.load()))
+        if (tool != nullptr && tool->getButtonText() != toolFilterName (strip.params.filter().toolModel.load()))
         {
-            tool->setButtonText (toolFilterName (strip.params.filter.toolModel.load()));
-            tool->setIcon (toolFilterIcon (strip.params.filter.toolModel.load()));
-            tool->setOnColour (toolFilterColour (strip.params.filter.toolModel.load()));
+            tool->setButtonText (toolFilterName (strip.params.filter().toolModel.load()));
+            tool->setIcon (toolFilterIcon (strip.params.filter().toolModel.load()));
+            tool->setOnColour (toolFilterColour (strip.params.filter().toolModel.load()));
         }
-        if (strip.params.eq.model.load() != shownEq)
+        if (strip.params.eq().model.load() != shownEq)
         {
-            shownEq = strip.params.eq.model.load();
+            shownEq = strip.params.eq().model.load();
             repaint();
         }
     }
@@ -1752,11 +1752,11 @@ private:
     bool isOn (HomeTab t) const
     {
         auto& p = strip->params;
-        if (t == HomeTab::Gate)       return p.gate.on.load();
-        if (t == HomeTab::Dynamics)   return p.dynamics.on.load();
-        if (t == HomeTab::Eq)         return p.eq.on.load();
-        if (t == HomeTab::PreInsert)  return p.preInsert.on.load() && p.preInsert.fx.load() >= 0;
-        if (t == HomeTab::PostInsert) return p.postInsert.on.load() && (p.postInsert.fx.load() >= 0 || p.postInsert.mode.load() > 0);
+        if (t == HomeTab::Gate)       return p.gate().on.load();
+        if (t == HomeTab::Dynamics)   return p.dynamics().on.load();
+        if (t == HomeTab::Eq)         return p.eq().on.load();
+        if (t == HomeTab::PreInsert)  return p.preInsert().on.load() && p.preInsert().fx.load() >= 0;
+        if (t == HomeTab::PostInsert) return p.postInsert().on.load() && (p.postInsert().fx.load() >= 0 || p.postInsert().mode.load() > 0);
         return false;
     }
 
@@ -1764,11 +1764,11 @@ private:
     {
         auto& p = strip->params;
         auto flip = [] (std::atomic<bool>& b) { b = ! b.load(); };
-        if (t == HomeTab::Gate)            flip (p.gate.on);
-        else if (t == HomeTab::Dynamics)   flip (p.dynamics.on);
-        else if (t == HomeTab::Eq)         flip (p.eq.on);
-        else if (t == HomeTab::PreInsert)  flip (p.preInsert.on);
-        else if (t == HomeTab::PostInsert) flip (p.postInsert.on);
+        if (t == HomeTab::Gate)            flip (p.gate().on);
+        else if (t == HomeTab::Dynamics)   flip (p.dynamics().on);
+        else if (t == HomeTab::Eq)         flip (p.eq().on);
+        else if (t == HomeTab::PreInsert)  flip (p.preInsert().on);
+        else if (t == HomeTab::PostInsert) flip (p.postInsert().on);
     }
 
     static void paintKeyFrame (juce::Graphics& g, juce::Rectangle<float> k, juce::Colour fill, Icon icon, bool on)
@@ -1947,12 +1947,12 @@ private:
                 {
                     case StripKind::Channel:
                     {
-                        const int tool = p.filter.toolModel.load();
+                        const int tool = p.filter().toolModel.load();
                         chip (g, cell (0, 0), "48V", false);
                         chip (g, cell (1, 0), "INV", p.input.invert.load());
-                        chip (g, cell (0, 1), "LC", p.filter.lowCut.load(), colours::eqOn);
-                        chip (g, cell (1, 1), "HC", p.filter.highCut.load(), colours::eqOn);
-                        chip (g, cell (0, 2), toolFilterToken (tool), p.filter.tool.load(), toolFilterColour (tool));
+                        chip (g, cell (0, 1), "LC", p.filter().lowCut.load(), colours::eqOn);
+                        chip (g, cell (1, 1), "HC", p.filter().highCut.load(), colours::eqOn);
+                        chip (g, cell (0, 2), toolFilterToken (tool), p.filter().tool.load(), toolFilterColour (tool));
                         chip (g, cell (1, 2), "DLY", p.input.delayOn.load());
                         break;
                     }
@@ -1978,7 +1978,7 @@ private:
             case HomeTab::Dynamics:
             {
                 const bool gate = tab == HomeTab::Gate;
-                auto& slot = gate ? p.gate : p.dynamics;
+                auto& slot = gate ? p.gate() : p.dynamics();
                 const float grDb = gate ? strip->meters.gateReductionDb.load() : strip->meters.dynReductionDb.load();
                 miniMeter (g, meterArea, juce::jlimit (0.0f, 1.0f, grDb / (gate ? 40.0f : 24.0f)), Colours::meterRed);
                 const auto& model = models::model (models::Dynamics, slot.model.load());
@@ -1997,7 +1997,7 @@ private:
             case HomeTab::PreInsert:
             case HomeTab::PostInsert:
             {
-                auto& ins = tab == HomeTab::PreInsert ? p.preInsert : p.postInsert;
+                auto& ins = tab == HomeTab::PreInsert ? p.preInsert() : p.postInsert();
                 const int slot = ins.fx.load();
                 const int mode = tab == HomeTab::PostInsert ? ins.mode.load() : 0;
                 // Automix on INS 2: chip AUTO with the group below right (Fig. 64).
@@ -2048,7 +2048,7 @@ private:
                         else
                             curve.lineTo (x, y);
                     }
-                    const bool on = p.eq.on.load();
+                    const bool on = p.eq().on.load();
                     juce::Path fill (curve);
                     fill.lineTo (r.getRight(), r.getCentreY());
                     fill.lineTo (r.getX(), r.getCentreY());
@@ -2377,7 +2377,7 @@ int HomePage::tapSlot() const
 {
     if (strip == nullptr || overlay != nullptr || (current != HomeTab::PreInsert && current != HomeTab::PostInsert))
         return -1;
-    const auto& ins = current == HomeTab::PreInsert ? strip->params.preInsert : strip->params.postInsert;
+    const auto& ins = current == HomeTab::PreInsert ? strip->params.preInsert() : strip->params.postInsert();
     // INS 2 in automix mode has no FX.
     if (current == HomeTab::PostInsert && ins.mode.load() != 0)
         return -1;

@@ -29,7 +29,7 @@ public:
             engine.setNumChannels (1);
             auto& ch = *engine.getChannels()[0];
             expect (ch.params.custLink.load(), "linked, as on the WING");
-            expect (ch.params.faderDb.load() < -100.0f && ! ch.params.eq.on.load(), "fader down, EQ off");
+            expect (ch.params.faderDb.load() < -100.0f && ! ch.params.eq().on.load(), "fader down, EQ off");
             expectEquals (ch.getOwnName(), juce::String(), "unnamed");
             ch.setName ("Own");
             ch.setColourIndex (9);
@@ -108,8 +108,8 @@ public:
             expect (! engine.getBuses()[0]->mains[0].on.load(), "buses start as aux mixes");
             expect (engine.getChannels()[0]->getColour() == wingColour (1));
             expect (wingColour (1) == juce::Colour (0xff380088), "the factory Dark Blue");
-            expectEquals (engine.getChannels()[0]->params.filter.lowCutFreq.load(), kLowCutDefaultHz, "the LO CUT reset matches");
-            expectEquals (engine.getChannels()[0]->params.filter.highCutFreq.load(), kHighCutDefaultHz, "the HI CUT reset matches");
+            expectEquals (engine.getChannels()[0]->params.filter().lowCutFreq.load(), kLowCutDefaultHz, "the LO CUT reset matches");
+            expectEquals (engine.getChannels()[0]->params.filter().highCutFreq.load(), kHighCutDefaultHz, "the HI CUT reset matches");
             expectEquals (wingColourName (9), juce::String ("Red"));
 
             // Wrappers survive structure changes; numbering follows position.
@@ -168,9 +168,9 @@ public:
             auto& ch = *engine.getChannels()[0];
             const int la = models::findModel (models::Dynamics, "LA");
             ch.setModel (ModelBlock::Dynamics, la);
-            expectEquals ((int) ch.params.dynamics.model.load(), la);
+            expectEquals ((int) ch.params.dynamics().model.load(), la);
             const auto& laModel = models::model (models::Dynamics, la);
-            expectEquals (ch.params.dynamics.values[laModel.find ("peak")].load(), laModel.params[(size_t) laModel.find ("peak")].defaultValue);
+            expectEquals (ch.params.dynamics().values[laModel.find ("peak")].load(), laModel.params[(size_t) laModel.find ("peak")].defaultValue);
 
             double freqs[] = { 100.0, 1000.0 }, db[2] = { 1.0, 1.0 };
             ld::ld_strip_response (ch.getHandle(), 1, freqs, db, 2, 48000.0);
@@ -199,9 +199,9 @@ public:
             test::setChannels (engine, 1);
             auto& ch = *engine.getChannels()[0];
             ch.setModel (ModelBlock::Dynamics, comp);
-            ch.params.dynamics.values[m.find ("knee")] = 0.0f;
-            ch.params.dynamics.values[m.find ("thr")] = -20.0f;
-            ch.params.dynamics.on = true;
+            ch.params.dynamics().values[m.find ("knee")] = 0.0f;
+            ch.params.dynamics().values[m.find ("thr")] = -20.0f;
+            ch.params.dynamics().on = true;
             rig.setInput (0, 0.5f); // -6 dB: 14 dB over, 9.3 dB of reduction
             rig.run (200);
             const float gr = ch.meters.dynReductionDb.load();
@@ -460,19 +460,19 @@ public:
 
             // Automix membership: AUTO X / AUTO Y with INS 2 ON, input channels only.
             expectEquals (ch.automixGroup(), -1);
-            ch.params.postInsert.mode = (int) PostInsertMode::AutomixY;
+            ch.params.postInsert().mode = (int) PostInsertMode::AutomixY;
             expectEquals (ch.automixGroup(), -1, "INS 2 off: not a member");
-            ch.params.postInsert.on = true;
+            ch.params.postInsert().on = true;
             expectEquals (ch.automixGroup(), 1);
-            ch.params.postInsert.mode = (int) PostInsertMode::AutomixX;
+            ch.params.postInsert().mode = (int) PostInsertMode::AutomixX;
             expectEquals (ch.automixGroup(), 0);
-            bus.params.postInsert.mode = (int) PostInsertMode::AutomixX;
-            bus.params.postInsert.on = true;
+            bus.params.postInsert().mode = (int) PostInsertMode::AutomixX;
+            bus.params.postInsert().on = true;
             expectEquals (bus.automixGroup(), -1);
             for (auto* s : { &ch, &bus })
             {
-                s->params.postInsert.on = false;
-                s->params.postInsert.mode = 0;
+                s->params.postInsert().on = false;
+                s->params.postInsert().mode = 0;
             }
 
             rig.setInput (0, 0.25f);
@@ -560,8 +560,8 @@ public:
             test::setChannels (engine, numCh);
             for (auto& ch : engine.getChannels())
             {
-                ch->params.gate.on = true;
-                ch->params.dynamics.on = true;
+                ch->params.gate().on = true;
+                ch->params.dynamics().on = true;
             }
 
             for (int i = 0; i < 8; ++i)
@@ -575,8 +575,8 @@ public:
                         + juce::String (1000.0 * OfflineRig::kBlock / 48000.0, 2) + " ms block");
 
             auto& ch = *engine.getChannels()[100];
-            ch.params.gate.on = false;
-            ch.params.dynamics.on = false;
+            ch.params.gate().on = false;
+            ch.params.dynamics().on = false;
             ch.params.inputLeft = 0;
             for (int i = 0; i < 8; ++i)
                 engine.getChannels()[(size_t) i]->params.mute = true;
@@ -625,17 +625,17 @@ public:
             for (int i = 0; i < numCh; ++i)
             {
                 auto& ch = *engine.getChannels()[(size_t) i];
-                ch.params.gate.on = true;
-                ch.params.dynamics.on = true;
-                ch.params.filter.lowCut = true;
-                ch.params.eq.values[4] = 3.0f;
+                ch.params.gate().on = true;
+                ch.params.dynamics().on = true;
+                ch.params.filter().lowCut = true;
+                ch.params.eq().values[4] = 3.0f;
                 for (int b = 0; b < kWingBuses; ++b)
                     ch.sends[(size_t) b].enabled = true;
                 for (auto& v : rig.inputs[(size_t) i])
                     v = rng.nextFloat() * 0.2f - 0.1f;
             }
             for (auto& b : engine.getBuses())
-                b->params.dynamics.on = true;
+                b->params.dynamics().on = true;
 
             rig.run (10);
             const auto start = juce::Time::getMillisecondCounterHiRes();

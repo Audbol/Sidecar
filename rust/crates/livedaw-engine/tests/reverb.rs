@@ -112,8 +112,8 @@ fn bus_send_reverb_rings_on_into_main() {
             bus.main_send(0).unwrap().on.store(true, Relaxed);
             let slot = slot % 8;
             rig.set_model(slot, token);
-            bus.params.pre_insert.fx.store(slot as i32, Relaxed);
-            bus.params.pre_insert.on.store(true, Relaxed);
+            bus.params.pre_insert().fx.store(slot as i32, Relaxed);
+            bus.params.pre_insert().on.store(true, Relaxed);
             let (playing, tail) = rig.burst();
             assert!(db(playing) > -40.0, "{token} @ {sr}: wet level {:.1} dB", db(playing));
             assert!(db(tail) > db(playing) - 45.0, "{token} @ {sr}: tail {:.1} dB vs {:.1} dB", db(tail), db(playing));
@@ -133,7 +133,7 @@ fn channel_insert_reverb_mixes_dry_and_wet() {
                 ch.params.input_right.store(0, Relaxed);
                 rig.set_model(3, token);
                 rig.engine.controls.fx[3].mix.store(30.0);
-                let ins = if post { &ch.params.post_insert } else { &ch.params.pre_insert };
+                let ins = if post { ch.params.post_insert() } else { ch.params.pre_insert() };
                 ins.fx.store(3, Relaxed);
                 ins.on.store(true, Relaxed);
                 let (playing, tail) = rig.burst();
@@ -156,10 +156,10 @@ fn reverb_survives_model_changes_and_slot_moves() {
     ch.main_send(0).unwrap().on.store(false, Relaxed);
     ch.sends.get_or_create(0).unwrap().enabled.store(true, Relaxed);
     bus.main_send(0).unwrap().on.store(true, Relaxed);
-    bus.params.pre_insert.on.store(true, Relaxed);
+    bus.params.pre_insert().on.store(true, Relaxed);
     for (slot, token) in [(0, "HALL"), (0, "PLATE"), (5, "SPRING"), (2, "V-ROOM"), (2, "ROOM")] {
         rig.set_model(slot, token);
-        bus.params.pre_insert.fx.store(slot as i32, Relaxed);
+        bus.params.pre_insert().fx.store(slot as i32, Relaxed);
         let (playing, tail) = rig.burst();
         assert!(db(tail) > db(playing) - 45.0, "{token} in FX {}: tail {:.1} dB", slot + 1, db(tail));
     }

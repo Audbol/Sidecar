@@ -252,12 +252,12 @@ fn a_show_with_more_fx_slots_brings_them_along() {
     // A device in FX 30 and a channel insert assigned to FX 36.
     assert!(engine.set_fx_model(29, deesser, true));
     engine.controls.fx[29].mix.store(42.0);
-    engine.channel_at(1).unwrap().params.pre_insert.fx.store(35, Relaxed);
+    engine.channel_at(1).unwrap().params.pre_insert().fx.store(35, Relaxed);
 
     let other = round_trip(&engine);
     assert_eq!(other.controls.fx[29].model_index(), deesser);
     assert_eq!(other.controls.fx[29].mix.load(), 42.0);
-    assert_eq!(other.channel_at(1).unwrap().params.pre_insert.fx.load(Relaxed), 35);
+    assert_eq!(other.channel_at(1).unwrap().params.pre_insert().fx.load(Relaxed), 35);
     // The slots in use come along; the empty ones above them don't.
     assert_eq!(other.num_fx(), 36);
 

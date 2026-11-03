@@ -26,9 +26,9 @@ namespace
         for (auto kind : { StripKind::Channel, StripKind::Aux, StripKind::Bus, StripKind::Main, StripKind::Matrix })
             for (auto& s : engine.getStrips (kind))
             {
-                if (s->params.preInsert.fx.load() == slot)
+                if (s->params.preInsert().fx.load() == slot)
                     return { s.get(), false };
-                if (s->params.postInsert.fx.load() == slot && s->params.postInsert.mode.load() == 0)
+                if (s->params.postInsert().fx.load() == slot && s->params.postInsert().mode.load() == 0)
                     return { s.get(), true };
             }
         return {};
@@ -506,8 +506,8 @@ public:
         for (auto kind : { StripKind::Channel, StripKind::Aux, StripKind::Bus, StripKind::Main, StripKind::Matrix })
             for (auto& s : ctx.engine.getStrips (kind))
             {
-                const bool pre = s->params.preInsert.fx.load() == slot;
-                const bool post = s->params.postInsert.fx.load() == slot && s->params.postInsert.mode.load() == 0;
+                const bool pre = s->params.preInsert().fx.load() == slot;
+                const bool post = s->params.postInsert().fx.load() == slot && s->params.postInsert().mode.load() == 0;
                 if ((pre || post) && users.isEmpty())
                     users = stripName (*s).toUpperCase() + (pre ? "  PRE" : "  POST");
             }

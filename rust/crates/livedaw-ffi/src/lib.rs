@@ -243,11 +243,11 @@ pub unsafe extern "C" fn ld_layout_info(out: *mut LdLayoutInfo) {
         dca: size_of::<DcaParams>() as i32,
         fx: size_of::<FxParams>() as i32,
         controls: size_of::<EngineControls>() as i32,
-        off_filter: offset_of!(StripParams, filter) as i32,
-        off_gate: offset_of!(StripParams, gate) as i32,
-        off_eq: offset_of!(StripParams, eq) as i32,
-        off_dynamics: offset_of!(StripParams, dynamics) as i32,
-        off_post_insert: offset_of!(StripParams, post_insert) as i32,
+        off_filter: StripParams::OFFSET_FILTER as i32,
+        off_gate: StripParams::OFFSET_GATE as i32,
+        off_eq: StripParams::OFFSET_EQ as i32,
+        off_dynamics: StripParams::OFFSET_DYNAMICS as i32,
+        off_post_insert: StripParams::OFFSET_POST_INSERT as i32,
         off_fader: offset_of!(StripParams, fader_db) as i32,
         off_stereo: offset_of!(StripParams, stereo) as i32,
         off_main_send_level: offset_of!(MainSendParams, level_db) as i32,
@@ -1093,10 +1093,10 @@ pub unsafe extern "C" fn ld_strip_set_model(s: *const Strip, block: i32, model: 
     let Some(s) = strip(s) else { return };
     let m = model.max(0) as usize;
     guard((), || match block {
-        0 => s.params.gate.set_model(m),
-        1 => s.params.eq.set_model(m, s.kind().is_output()),
-        2 => s.params.dynamics.set_model(m),
-        _ => s.params.filter.set_tool_model(m),
+        0 => s.params.gate().set_model(m),
+        1 => s.params.eq().set_model(m, s.kind().is_output()),
+        2 => s.params.dynamics().set_model(m),
+        _ => s.params.filter().set_tool_model(m),
     });
 }
 
@@ -1147,7 +1147,7 @@ mod tests {
             assert!(!ld_strip_find_send(ch, ld_strip_id(bus)).is_null());
             assert!(ld_engine_remove_strip(e, bus));
             ld_strip_set_model(ch, 2, 3);
-            assert_eq!((*ld_strip_params(ch)).dynamics.model_index(), 3);
+            assert_eq!((*ld_strip_params(ch)).dynamics().model_index(), 3);
             let freqs = [100.0, 1000.0];
             let mut out = [1.0; 2];
             ld_strip_response(ch, 1, freqs.as_ptr(), out.as_mut_ptr(), 2, 48000.0);
@@ -1158,10 +1158,10 @@ mod tests {
                 assert!(out[0].abs() < 1e-6 && out[1].abs() < 1e-6, "block {block}");
             }
             let p = &*ld_strip_params(ch);
-            p.gate.sc_filter.store(1, std::sync::atomic::Ordering::Relaxed); // LOWPASS at 1 kHz
+            p.gate().sc_filter.store(1, std::sync::atomic::Ordering::Relaxed); // LOWPASS at 1 kHz
             ld_strip_response(ch, 5, freqs.as_ptr(), out.as_mut_ptr(), 2, 48000.0);
             assert!(out[0].abs() < 0.1 && (out[1] + 3.0).abs() < 0.2, "{out:?}");
-            p.dynamics.xo_kind.store(2, std::sync::atomic::Ordering::Relaxed); // HIGH at 1 kHz
+            p.dynamics().xo_kind.store(2, std::sync::atomic::Ordering::Relaxed); // HIGH at 1 kHz
             ld_strip_response(ch, 7, freqs.as_ptr(), out.as_mut_ptr(), 2, 48000.0);
             assert!(out[0] < -30.0 && (out[1] + 3.0).abs() < 0.2, "{out:?}");
             ld_engine_collect(e);
@@ -1226,8 +1226,8 @@ mod tests {
             assert!(ld_engine_io_safe(e, 1, 7) && ld_engine_io_safe(e, 1, -1) && !ld_engine_io_safe(e, 0, -1));
             let ch = ld_engine_strip_at(e, 0, 0);
             let p = &*ld_strip_params(ch);
-            p.pre_insert.on.store(true, std::sync::atomic::Ordering::Relaxed);
-            p.pre_insert.fx.store(2, std::sync::atomic::Ordering::Relaxed);
+            p.pre_insert().on.store(true, std::sync::atomic::Ordering::Relaxed);
+            p.pre_insert().fx.store(2, std::sync::atomic::Ordering::Relaxed);
             ld_engine_update_pdc(e);
             assert_eq!(ld_strip_latency(ch), 256);
             assert_eq!(ld_strip_latency(ld_engine_strip_at(e, StripKind::Main as i32, 0)), 256);

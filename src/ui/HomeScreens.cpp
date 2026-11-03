@@ -1438,13 +1438,13 @@ public:
         {
             loCut = &key ("LOCUT", Icon::LowCut, colours::eqOn);
             loCut->captionBelow = true;
-            bindKey (*loCut, p.filter.lowCut);
+            bindKey (*loCut, p.filter().lowCut);
             hiCut = &key ("HICUT", Icon::HighCut, colours::eqOn);
             hiCut->captionBelow = true;
-            bindKey (*hiCut, p.filter.highCut);
-            tool = &key (toolFilterName (p.filter.toolModel.load()), toolFilterIcon (p.filter.toolModel.load()), toolFilterColour (p.filter.toolModel.load()));
+            bindKey (*hiCut, p.filter().highCut);
+            tool = &key (toolFilterName (p.filter().toolModel.load()), toolFilterIcon (p.filter().toolModel.load()), toolFilterColour (p.filter().toolModel.load()));
             tool->captionBelow = true;
-            bindKey (*tool, p.filter.tool);
+            bindKey (*tool, p.filter().tool);
         }
 
         // Mains and matrices have their delay in the output slot (MAIN screen).
@@ -1668,7 +1668,7 @@ class FilterTab final : public HomeScreen, private juce::Timer
 public:
     FilterTab (UiContext& c, Strip& s) : HomeScreen (c, s)
     {
-        auto& f = strip.params.filter;
+        auto& f = strip.params.filter();
         freeze = &key ("FREEZE");
         freeze->outlined = true;
         bindFreeze (*freeze, strip);
@@ -1746,7 +1746,7 @@ public:
 
     std::vector<HomeKnob> knobs() override
     {
-        auto& f = strip.params.filter;
+        auto& f = strip.params.filter();
         std::vector<HomeKnob> k { { lowCutFreqBinding (f), freqStyle (graph) } };
         // The tool filter's parameters (TILT...) in the middle, HC FREQ always on the 6th knob.
         const auto& spec = models::model (models::FilterTools, f.toolModel.load());
@@ -1809,7 +1809,7 @@ public:
 private:
     void timerCallback() override
     {
-        auto& f = strip.params.filter;
+        auto& f = strip.params.filter();
         if (f.toolModel.load() != shownTool)
         {
             shownTool = f.toolModel.load();
@@ -1846,7 +1846,7 @@ public:
         keys of KEY FILTER and XOVER MODE open the GATE KEY FILTER / COMP
         XOVER page over the slot: the filter's response, its type and the
         solo key, FREQ on the knobs. */
-    DynTab (UiContext& c, Strip& s, bool gateSlot) : HomeScreen (c, s), isGate (gateSlot), slot (gateSlot ? s.params.gate : s.params.dynamics)
+    DynTab (UiContext& c, Strip& s, bool gateSlot) : HomeScreen (c, s), isGate (gateSlot), slot (gateSlot ? s.params.gate() : s.params.dynamics())
     {
         on = &key ("ON", std::nullopt, colours::accent);
         on->frameWingPx = 4.0f; // the slot's ON in its 4 px black frame [3.1]
@@ -2310,7 +2310,7 @@ class EqTab final : public HomeScreen, private juce::Timer
 public:
     EqTab (UiContext& c, Strip& s) : HomeScreen (c, s)
     {
-        auto& eq = strip.params.eq;
+        auto& eq = strip.params.eq();
         const auto table = static_cast<models::Table> (strip.getEqTable());
         on = &key ("ON", std::nullopt, colours::accent);
         on->frameWingPx = 4.0f; // the slot's ON in its 4 px black frame [3.1]
@@ -2320,10 +2320,10 @@ public:
             for (auto& m : models::table (table))
                 if (m.token != "MACH4")
                     allowed.add (m.token);
-        model = &make<ChoiceField> ("EQ MODEL", [this, table] { return models::model (table, strip.params.eq.model.load()).name.toUpperCase(); },
+        model = &make<ChoiceField> ("EQ MODEL", [this, table] { return models::model (table, strip.params.eq().model.load()).name.toUpperCase(); },
                                     [this, table] (ChoiceField& field)
                                     {
-                                        ModelSelector::chooseEq (field, table, strip.params.eq.model.load(),
+                                        ModelSelector::chooseEq (field, table, strip.params.eq().model.load(),
                                                                  [this] (int m) { strip.setModel (ModelBlock::Eq, m); }, allowed);
                                     });
         model->arrowKey = true;
@@ -2332,7 +2332,7 @@ public:
         {
             // The FILTER block's keys as on FILTER SETUP: icons over captions in
             // their colour on the header, filled while on [3.1].
-            auto& f = strip.params.filter;
+            auto& f = strip.params.filter();
             shownTool = f.toolModel.load();
             loCut = &key ("LO CUT", Icon::LowCut, colours::eqOn);
             bindKey (*loCut, f.lowCut);
@@ -2358,7 +2358,7 @@ public:
                                                  names.add (toolFilterName (m));
                                              popups::ListOptions options;
                                              options.caption = "TOOL FILTER";
-                                             popups::chooseFrom (field, names, strip.params.filter.toolModel.load(),
+                                             popups::chooseFrom (field, names, strip.params.filter().toolModel.load(),
                                                                  [this] (int m) { strip.setModel (ModelBlock::FilterTool, m); }, options);
                                          });
             filter->chevronKey = true;
@@ -2397,7 +2397,7 @@ public:
 
     std::vector<HomeKnob> knobs() override
     {
-        auto& eq = strip.params.eq;
+        auto& eq = strip.params.eq();
         std::vector<HomeKnob> k;
         if (bands.isEmpty())
         {
@@ -2419,7 +2419,7 @@ public:
         k.push_back ({ b[1], styleOf (KnobStyle::Bar::Thumb, KnobColours::blue, graph) });
         // On channels the lit LO CUT / TILT / HI CUT take the first, second and sixth knobs [3.1.2].
         if (filter != nullptr)
-            addEqFilterKnobs (k, strip.params.filter, graph);
+            addEqFilterKnobs (k, strip.params.filter(), graph);
         return k;
     }
 
@@ -2484,7 +2484,7 @@ public:
         if (bands.isEmpty())
             return;
         auto area = bandKeyArea;
-        const auto& spec = models::model (static_cast<models::Table> (strip.getEqTable()), strip.params.eq.model.load());
+        const auto& spec = models::model (static_cast<models::Table> (strip.getEqTable()), strip.params.eq().model.load());
         for (int i = 0; i < bands.size(); ++i)
         {
             auto k = area.removeFromTop (bandKeyH).toFloat();
@@ -2502,7 +2502,7 @@ public:
             if (id == "l" || id == "h")
             {
                 if (const int t = spec.find (id + "eq"); t >= 0)
-                    type = consoleText (spec.params[(size_t) t], strip.params.eq.values[t].load()).toUpperCase();
+                    type = consoleText (spec.params[(size_t) t], strip.params.eq().values[t].load()).toUpperCase();
                 const bool cut = type.contains ("CUT");
                 const bool shelf = type.contains ("SH");
                 const auto icon = id == "l" ? (cut ? Icon::LowCut : (shelf ? Icon::LowShelf : Icon::Bell))
@@ -2606,7 +2606,7 @@ private:
     {
         if (index < 0 || index >= bands.size())
             return;
-        auto& eq = strip.params.eq;
+        auto& eq = strip.params.eq();
         const auto& spec = models::model (static_cast<models::Table> (strip.getEqTable()), eq.model.load());
         for (auto suffix : { "g", "f", "q", "eq" })
             if (const int i = spec.find (bands[index] + suffix); i >= 0)
@@ -2618,7 +2618,7 @@ private:
     /** GAIN, FREQ, Q and the band type of the selected band. */
     std::vector<KnobBinding> bandBindings() const
     {
-        auto& eq = strip.params.eq;
+        auto& eq = strip.params.eq();
         std::vector<KnobBinding> k;
         if (bands.isEmpty())
             return k;
@@ -2647,7 +2647,7 @@ private:
     bool isShelf (const models::Model& spec, const juce::String& band) const
     {
         const int i = spec.find (band + "eq");
-        return i >= 0 && spec.params[(size_t) i].display (strip.params.eq.values[i].load()) == "SHV";
+        return i >= 0 && spec.params[(size_t) i].display (strip.params.eq().values[i].load()) == "SHV";
     }
 
     void bindBand()
@@ -2660,11 +2660,11 @@ private:
 
     void timerCallback() override
     {
-        auto& eq = strip.params.eq;
-        if (toolKey != nullptr && strip.params.filter.toolModel.load() != shownTool)
+        auto& eq = strip.params.eq();
+        if (toolKey != nullptr && strip.params.filter().toolModel.load() != shownTool)
         {
             // The tool filter changed: its key follows.
-            shownTool = strip.params.filter.toolModel.load();
+            shownTool = strip.params.filter().toolModel.load();
             toolKey->setButtonText (toolFilterName (shownTool));
             toolKey->setIcon (toolFilterIcon (shownTool));
             toolKey->setOnColour (toolFilterColour (shownTool));
@@ -2674,7 +2674,7 @@ private:
         {
             // LO CUT, HI CUT or the tool filter switched (here, on FILTER SETUP
             // or remotely): their knobs come or go.
-            auto& f = strip.params.filter;
+            auto& f = strip.params.filter();
             const int filters = (f.lowCut.load() ? 1 : 0) | (f.highCut.load() ? 2 : 0) | (f.tool.load() ? 4 : 0) | (shownTool << 3);
             if (filters != shownFilters)
             {
@@ -2742,7 +2742,7 @@ public:
         g.setFont (wingFont (TypeScale::caption));
         g.drawFittedText (stripName (strip).toUpperCase(), name.toNearestInt(), juce::Justification::centred, 1, 0.6f);
         groupKey = r.removeFromTop (juce::jlimit (16.0f, screenCap (24.0f), r.getHeight() * 0.1f)).reduced (r.getWidth() * 0.2f, 1.0f);
-        const int mode = strip.params.postInsert.mode.load();
+        const int mode = strip.params.postInsert().mode.load();
         const bool member = strip.automixGroup() >= 0;
         g.setColour (! member ? colours::dim : (mode == 1 ? colours::fader : Colours::active));
         g.fillRect (groupKey);
@@ -2768,14 +2768,14 @@ public:
         slider = r.reduced (r.getWidth() * 0.2f, 2.0f);
         g.setColour (colours::well);
         g.fillRect (slider);
-        const float pos = (strip.params.postInsert.weight.load() + 12.0f) / 24.0f;
+        const float pos = (strip.params.postInsert().weight.load() + 12.0f) / 24.0f;
         const float y = slider.getBottom() - slider.getHeight() * pos;
         auto tag = juce::Rectangle<float> (juce::jmin (r.getWidth(), screenCap (40.0f)), 18.0f).withCentre ({ slider.getCentreX(), y });
         g.setColour (Colours::text);
         g.fillRect (tag);
         g.setColour (juce::Colours::black);
         g.setFont (wingFont (TypeScale::body, WingWeight::SemiBold));
-        g.drawText (juce::String (strip.params.postInsert.weight.load(), 1), tag.toNearestInt(), juce::Justification::centred);
+        g.drawText (juce::String (strip.params.postInsert().weight.load(), 1), tag.toNearestInt(), juce::Justification::centred);
 
         if (selected)
         {
@@ -2786,10 +2786,10 @@ public:
 
     void mouseDown (const juce::MouseEvent& e) override
     {
-        start = strip.params.postInsert.weight.load();
+        start = strip.params.postInsert().weight.load();
         if (groupKey.contains (e.position))
         {
-            strip.params.postInsert.mode = strip.params.postInsert.mode.load() == 1 ? 2 : 1;
+            strip.params.postInsert().mode = strip.params.postInsert().mode.load() == 1 ? 2 : 1;
             repaint();
         }
     }
@@ -2798,11 +2798,11 @@ public:
     {
         if (groupKey.contains (e.mouseDownPosition))
             return;
-        strip.params.postInsert.weight = juce::jlimit (-12.0f, 12.0f, start - (float) e.getDistanceFromDragStartY() / juce::jmax (40.0f, slider.getHeight()) * 24.0f);
+        strip.params.postInsert().weight = juce::jlimit (-12.0f, 12.0f, start - (float) e.getDistanceFromDragStartY() / juce::jmax (40.0f, slider.getHeight()) * 24.0f);
         repaint();
     }
 
-    void mouseDoubleClick (const juce::MouseEvent&) override { strip.params.postInsert.weight = 0.0f; }
+    void mouseDoubleClick (const juce::MouseEvent&) override { strip.params.postInsert().weight = 0.0f; }
 
 private:
     void timerCallback() override { repaint(); }
@@ -2821,7 +2821,7 @@ private:
 class InsertTab final : public HomeScreen, private juce::Timer
 {
 public:
-    InsertTab (UiContext& c, Strip& s, bool postInsert) : HomeScreen (c, s), post (postInsert), ins (post ? s.params.postInsert : s.params.preInsert)
+    InsertTab (UiContext& c, Strip& s, bool postInsert) : HomeScreen (c, s), post (postInsert), ins (post ? s.params.postInsert() : s.params.preInsert())
     {
         on = &key ("ON", std::nullopt, colours::accent);
         on->frameWingPx = 4.0f; // the slot's ON in its 4 px black frame [3.1]
@@ -4605,8 +4605,8 @@ juce::uint32 scopeFor (HomeTab from)
 
 void copyDyn (const Strip& src, const Strip& dst, ModelBlock block)
 {
-    auto& s = block == ModelBlock::Gate ? src.params.gate : src.params.dynamics;
-    auto& d = block == ModelBlock::Gate ? dst.params.gate : dst.params.dynamics;
+    auto& s = block == ModelBlock::Gate ? src.params.gate() : src.params.dynamics();
+    auto& d = block == ModelBlock::Gate ? dst.params.gate() : dst.params.dynamics();
     const int model = s.model.load();
     if (dst.getKind() == StripKind::Aux && block == ModelBlock::Dynamics
         && ! models::list (models::AuxDynModels).contains (models::model (models::Dynamics, model).token))
@@ -4692,8 +4692,8 @@ void copyStripParams (MixerEngine& engine, const Strip& src, const Strip& dst, j
     }
     if (has (FilterBit) && bothChannels)
     {
-        auto& sf = s.filter;
-        auto& df = d.filter;
+        auto& sf = s.filter();
+        auto& df = d.filter();
         dst.setModel (ModelBlock::FilterTool, sf.toolModel.load());
         df.lowCut = sf.lowCut.load();
         df.highCut = sf.highCut.load();
@@ -4711,13 +4711,13 @@ void copyStripParams (MixerEngine& engine, const Strip& src, const Strip& dst, j
         copyDyn (src, dst, ModelBlock::Dynamics);
     // (Aux channels don't offer the MACH EQ4.)
     if (has (EqBit) && src.getEqTable() == dst.getEqTable()
-        && ! (dst.getKind() == StripKind::Aux && models::model (models::ChannelEq, s.eq.model.load()).token == "MACH4"))
+        && ! (dst.getKind() == StripKind::Aux && models::model (models::ChannelEq, s.eq().model.load()).token == "MACH4"))
     {
-        dst.setModel (ModelBlock::Eq, s.eq.model.load());
+        dst.setModel (ModelBlock::Eq, s.eq().model.load());
         for (int i = 0; i < ld::kMaxEqParams; ++i)
-            d.eq.values[i] = s.eq.values[i].load();
-        d.eq.on = s.eq.on.load();
-        d.eq.mix = s.eq.mix.load();
+            d.eq().values[i] = s.eq().values[i].load();
+        d.eq().on = s.eq().on.load();
+        d.eq().mix = s.eq().mix.load();
     }
     if (has (DelayBit))
     {
@@ -4726,9 +4726,9 @@ void copyStripParams (MixerEngine& engine, const Strip& src, const Strip& dst, j
         d.input.delay = s.input.delay.load();
     }
     if (has (Pre))
-        copyInsert (s.preInsert, d.preInsert, false);
+        copyInsert (s.preInsert(), d.preInsert(), false);
     if (has (Post) && dst.getKind() != StripKind::Aux && src.getKind() != StripKind::Aux)
-        copyInsert (s.postInsert, d.postInsert, bothChannels);
+        copyInsert (s.postInsert(), d.postInsert(), bothChannels);
     if (has (Send))
     {
         for (auto& bus : engine.getBuses())
@@ -5546,14 +5546,14 @@ public:
     {
         if (eq)
         {
-            const auto& spec = models::model (static_cast<models::Table> (strip.getEqTable()), strip.params.eq.model.load());
+            const auto& spec = models::model (static_cast<models::Table> (strip.getEqTable()), strip.params.eq().model.load());
             for (auto [id, caption] : { std::make_pair ("leq", "LO BAND"), std::make_pair ("heq", "HI BAND") })
             {
                 const int i = spec.find (id);
                 if (i < 0)
                     continue;
                 const auto& param = spec.params[(size_t) i];
-                auto& value = strip.params.eq.values[i];
+                auto& value = strip.params.eq().values[i];
                 juce::StringArray names;
                 for (auto& c : param.choices)
                     names.add (c.toUpperCase());

@@ -296,7 +296,7 @@ pub(crate) fn key_sources(p: &StripParams, has_gate: bool) -> [i32; 2] {
         KeySource::Channel(n) => n as i32,
         _ => -1,
     };
-    [if has_gate { src(&p.gate) } else { -1 }, src(&p.dynamics)]
+    [if has_gate { src(p.gate()) } else { -1 }, src(p.dynamics())]
 }
 
 /// A slot's key source and the tap buffer its key takes.

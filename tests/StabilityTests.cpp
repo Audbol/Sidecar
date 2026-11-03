@@ -22,8 +22,8 @@ public:
             test::setChannels (engine, 1);
             auto& strip = *engine.getChannels()[0];
             engine.getFx().setPlugin (0, std::make_unique<FakePlugin> (1.0f, FakePlugin::Mode::EmitNaN));
-            strip.params.preInsert.on = true;
-            strip.params.preInsert.fx = 0;
+            strip.params.preInsert().on = true;
+            strip.params.preInsert().fx = 0;
             rig.setInput (0, 0.5f);
             rig.run();
 
@@ -42,10 +42,10 @@ public:
             auto& fx = engine.getFx();
             fx.setPlugin (0, std::make_unique<FakePlugin> (1.0f, FakePlugin::Mode::Throw));
             fx.setPlugin (1, std::make_unique<FakePlugin> (0.5f));
-            strip.params.preInsert.on = true;
-            strip.params.preInsert.fx = 0;
-            strip.params.postInsert.on = true;
-            strip.params.postInsert.fx = 1;
+            strip.params.preInsert().on = true;
+            strip.params.preInsert().fx = 0;
+            strip.params.postInsert().on = true;
+            strip.params.postInsert().fx = 1;
             rig.setInput (0, 0.5f);
             rig.run();
 
@@ -70,8 +70,8 @@ public:
             engine.getFx().setPlugin (3, std::make_unique<FakePlugin> (0.5f));
             for (auto& ch : engine.getChannels())
             {
-                ch->params.preInsert.on = true;
-                ch->params.preInsert.fx = 3;
+                ch->params.preInsert().on = true;
+                ch->params.preInsert().fx = 3;
             }
             rig.setInput (0, 0.5f);
             rig.setInput (1, 0.5f);
@@ -88,7 +88,7 @@ public:
             OfflineRig rig (engine, 2, 2);
             test::setChannels (engine, 2);
             engine.getChannels()[1]->params.inputLeft = 1;
-            engine.getChannels()[0]->params.eq.values[4] = 6.0f; // filter state that NaN would poison
+            engine.getChannels()[0]->params.eq().values[4] = 6.0f; // filter state that NaN would poison
             rig.setInput (0, std::numeric_limits<float>::quiet_NaN());
             rig.setInput (1, 0.25f);
             rig.run (4);
@@ -204,8 +204,8 @@ public:
                         if (! engine.getChannels().empty())
                         {
                             auto& s = *engine.getChannels()[(size_t) rng.nextInt ((int) engine.getChannels().size())];
-                            s.params.preInsert.on = rng.nextBool();
-                            s.params.preInsert.fx = rng.nextInt (kMaxFx);
+                            s.params.preInsert().on = rng.nextBool();
+                            s.params.preInsert().fx = rng.nextInt (kMaxFx);
                             s.params.processOrder = rng.nextInt (24);
                             s.params.stereo = rng.nextBool();
                             s.sends[(size_t) rng.nextInt (128)].enabled = rng.nextBool();

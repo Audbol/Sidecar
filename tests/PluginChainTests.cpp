@@ -142,8 +142,8 @@ public:
             engine.outputProtection = false; // levels above 0 dBFS
             test::setChannels (engine, 1);
             auto& strip = *engine.getChannels()[0];
-            strip.params.preInsert.on = true;
-            strip.params.preInsert.fx = 4;
+            strip.params.preInsert().on = true;
+            strip.params.preInsert().fx = 4;
             auto& fx = engine.getFx();
             rig.setInput (0, 0.25f);
 
@@ -204,8 +204,8 @@ public:
             expectEquals (fx.setNumSlots (1000), kMaxFx);
 
             auto& strip = *engine.getChannels()[0];
-            strip.params.preInsert.on = true;
-            strip.params.preInsert.fx = 39;
+            strip.params.preInsert().on = true;
+            strip.params.preInsert().fx = 39;
             fx.setPlugin (39, std::make_unique<AffinePlugin> ("Double", 2.0f, 0.0f));
             expect (fx.hasPlugin (39));
             expectEquals (fx.describe (39), juce::String ("FX 40: Double"));
@@ -218,7 +218,7 @@ public:
             fx.setPlugin (39, nullptr);
             engine.getGarbage().collectAllNow();
             expectEquals (fx.setNumSlots (kWingFx), 40); // the insert still points at it
-            strip.params.preInsert.fx = -1;
+            strip.params.preInsert().fx = -1;
             expectEquals (fx.setNumSlots (kWingFx), kWingFx);
         }
 
@@ -270,8 +270,8 @@ public:
                 engine.outputProtection = false;
                 test::setChannels (engine, 1);
                 auto& strip = *engine.getChannels()[0];
-                strip.params.preInsert.on = true;
-                strip.params.preInsert.fx = 0;
+                strip.params.preInsert().on = true;
+                strip.params.preInsert().fx = 0;
                 auto& fx = engine.getFx();
                 juce::StringArray warnings;
                 engine.onPluginWarning = [&warnings] (const juce::String& text) { warnings.add (text); };
@@ -344,8 +344,8 @@ public:
             OfflineRig rig (engine, 1, 2);
             test::setChannels (engine, 1);
             auto& strip = *engine.getChannels()[0];
-            strip.params.preInsert.on = true;
-            strip.params.preInsert.fx = 0;
+            strip.params.preInsert().on = true;
+            strip.params.preInsert().fx = 0;
             auto& fx = engine.getFx();
             auto* bad = new FakePlugin (1.0f, FakePlugin::Mode::Gain, "bad");
             fx.setPlugin (0, std::unique_ptr<juce::AudioPluginInstance> (bad));
@@ -373,8 +373,8 @@ public:
             OfflineRig rig (engine, 1, 2);
             test::setChannels (engine, 1);
             auto& strip = *engine.getChannels()[0];
-            strip.params.preInsert.on = true;
-            strip.params.preInsert.fx = 0;
+            strip.params.preInsert().on = true;
+            strip.params.preInsert().fx = 0;
             auto& fx = engine.getFx();
             auto* bad = new FakePlugin (1.0f, FakePlugin::Mode::Throw, "bad");
             fx.setPlugin (0, std::unique_ptr<juce::AudioPluginInstance> (bad)); // a plugin on its own
@@ -655,8 +655,8 @@ public:
             engine.outputProtection = false;
             test::setChannels (engine, 1);
             auto& strip = *engine.getChannels()[0];
-            strip.params.preInsert.on = true;
-            strip.params.preInsert.fx = 0;
+            strip.params.preInsert().on = true;
+            strip.params.preInsert().fx = 0;
             auto& fx = engine.getFx();
             fx.setPlugin (0, TestPluginFormat::create (TestPluginFormat::Kind::gain));
             int adds = 0;
@@ -1114,10 +1114,10 @@ public:
             fx.setPlugin (39, std::make_unique<AffinePlugin> ("Far away", 1.0f, 0.0f));
             fx.setPlugin (5, std::make_unique<AffinePlugin> ("Bypassed slot", 1.0f, 0.0f));
             fx.params (5).bypass = true;
-            engine.getChannels()[0]->params.preInsert.on = true;
-            engine.getChannels()[0]->params.preInsert.fx = 2;
-            engine.getChannels()[1]->params.preInsert.on = true;
-            engine.getChannels()[1]->params.preInsert.fx = 5;
+            engine.getChannels()[0]->params.preInsert().on = true;
+            engine.getChannels()[0]->params.preInsert().fx = 2;
+            engine.getChannels()[1]->params.preInsert().on = true;
+            engine.getChannels()[1]->params.preInsert().fx = 5;
             rig.setInput (0, 0.25f);
             rig.run (4);
 
@@ -1329,7 +1329,7 @@ public:
                 case 4:
                     if (auto* s = randomStrip())
                     {
-                        auto& ins = rng.nextBool() ? s->params.preInsert : s->params.postInsert;
+                        auto& ins = rng.nextBool() ? s->params.preInsert() : s->params.postInsert();
                         ins.on = rng.nextBool();
                         ins.fx = rng.nextInt (kMaxFx + 1) - 1;
                     }

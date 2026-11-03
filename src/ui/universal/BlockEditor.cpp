@@ -100,7 +100,7 @@ BlockTarget BlockTarget::of (UiContext& ctx, Strip& strip, const ChainStep& step
         case ld::kStepFilter:
             t.kind = Kind::Filter;
             t.title = "FILTER";
-            t.filter = &p.filter;
+            t.filter = &p.filter();
             t.table = models::FilterTools;
             t.setModel = withModel (ModelBlock::FilterTool);
             t.response = own (3);
@@ -108,7 +108,7 @@ BlockTarget BlockTarget::of (UiContext& ctx, Strip& strip, const ChainStep& step
         case ld::kStepGate:
             t.kind = Kind::Dynamics;
             t.title = "GATE";
-            t.dynamics = &p.gate;
+            t.dynamics = &p.gate();
             t.setModel = withModel (ModelBlock::Gate);
             t.response = own (5);
             t.reductionDb = [&strip] { return strip.meters.gateReductionDb.load(); };
@@ -116,7 +116,7 @@ BlockTarget BlockTarget::of (UiContext& ctx, Strip& strip, const ChainStep& step
         case ld::kStepEq:
             t.kind = Kind::Eq;
             t.title = "EQ";
-            t.eq = &p.eq;
+            t.eq = &p.eq();
             t.table = (models::Table) strip.getEqTable();
             t.setModel = withModel (ModelBlock::Eq);
             t.response = own (1);
@@ -124,7 +124,7 @@ BlockTarget BlockTarget::of (UiContext& ctx, Strip& strip, const ChainStep& step
         case ld::kStepDynamics:
             t.kind = Kind::Dynamics;
             t.title = "DYNAMICS";
-            t.dynamics = &p.dynamics;
+            t.dynamics = &p.dynamics();
             t.setModel = withModel (ModelBlock::Dynamics);
             t.response = own (6);
             t.reductionDb = [&strip] { return strip.meters.dynReductionDb.load(); };
@@ -132,12 +132,12 @@ BlockTarget BlockTarget::of (UiContext& ctx, Strip& strip, const ChainStep& step
         case ld::kStepPreInsert:
             t.kind = Kind::Insert;
             t.title = "INSERT 1";
-            t.insert = &p.preInsert;
+            t.insert = &p.preInsert();
             break;
         case ld::kStepPostInsert:
             t.kind = Kind::Insert;
             t.title = "INSERT 2";
-            t.insert = &p.postInsert;
+            t.insert = &p.postInsert();
             t.postInsert = strip.hasAutomix();
             break;
         case ld::kStepBlock:

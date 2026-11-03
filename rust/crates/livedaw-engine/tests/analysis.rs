@@ -149,7 +149,7 @@ fn rta_reads_the_selected_strip_at_its_tap() {
     // The EQ view, PRE the EQ, with a -9 dB WING EQ band on the tone: PRE sees
     // the tone at -18 dB, POST at -27 dB.
     let spec = &EQ_MODELS_CH[model_index(EQ_MODELS_CH, "STD").unwrap()];
-    let eq = &ch.params.eq;
+    let eq = ch.params.eq();
     eq.on.store(true, Relaxed); // a new channel's EQ is off, as on the WING
     eq.set_model(model_index(EQ_MODELS_CH, "STD").unwrap(), false);
     eq.values[spec.param_index("2f").unwrap()].store(f);
@@ -218,11 +218,11 @@ fn band_solo_plays_the_selected_band_on_the_monitor() {
     let ch = rig.ch(0);
     let table = &EQ_MODELS_CH;
     let std = model_index(table, "STD").unwrap();
-    ch.params.eq.set_model(std, false);
+    ch.params.eq().set_model(std, false);
     let spec = &table[std];
     // Band "2" (index 2: l, 1, 2, ...) at 2 kHz, Q 4.
-    ch.params.eq.values[spec.param_index("2f").unwrap()].store(2000.0);
-    ch.params.eq.values[spec.param_index("2q").unwrap()].store(4.0);
+    ch.params.eq().values[spec.param_index("2f").unwrap()].store(2000.0);
+    ch.params.eq().values[spec.param_index("2q").unwrap()].store(4.0);
     rig.engine.controls.monitor.paths[0].band_solo_db.store(0.0);
 
     // Without LISTEN the monitor follows Main 1.
@@ -277,13 +277,13 @@ fn listen_replaces_the_solo_bus_and_switches_without_clicks() {
     rig.run(10, 2);
     // XOVER SOLO on channel 1 with a low pass far below its tone: silence,
     // not channel 2.
-    a.params.dynamics.xo_kind.store(1, Relaxed); // LO
-    a.params.dynamics.xo_freq.store(100.0);
+    a.params.dynamics().xo_kind.store(1, Relaxed); // LO
+    a.params.dynamics().xo_freq.store(100.0);
     rig.listen(&a, listen_mode::XOVER, 0);
     let mut out = rig.run(30, 2);
     assert!(rms(&out[BLOCK * 10..]) < 0.01, "{}", rms(&out[BLOCK * 10..]));
     // A high pass instead: channel 1's tone.
-    a.params.dynamics.xo_kind.store(2, Relaxed); // HI
+    a.params.dynamics().xo_kind.store(2, Relaxed); // HI
     out.extend(rig.run(30, 2));
     let tail = &out[out.len() - BLOCK * 10..];
     assert!((rms(tail) - 0.5 * std::f32::consts::FRAC_1_SQRT_2).abs() < 0.02, "{}", rms(tail));
@@ -310,7 +310,7 @@ fn key_solo_plays_the_filtered_key_even_from_another_channel() {
     let ch = rig.ch(0);
     rig.sine(0, 100.0, 0.5);
     rig.sine(1, 5000.0, 0.5);
-    let gate = &ch.params.gate;
+    let gate = ch.params.gate();
     gate.sc_filter.store(2, Relaxed); // HP12
     gate.sc_freq.store(1000.0);
     rig.listen(&ch, listen_mode::GATE_KEY, 0);

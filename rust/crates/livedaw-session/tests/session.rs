@@ -90,7 +90,7 @@ fn ch(engine: &Engine, i: usize) -> Arc<Strip> {
 }
 
 fn dyn_param(s: &Strip, id: &str) -> f32 {
-    s.params.dynamics.param(id).unwrap().load()
+    s.params.dynamics().param(id).unwrap().load()
 }
 
 #[test]
@@ -105,13 +105,13 @@ fn console_survives_a_show_round_trip() {
     let p = &kick.params;
     p.colour.store(9, Relaxed);
     p.icon.store(42, Relaxed);
-    p.filter.low_cut.store(true, Relaxed);
-    p.filter.low_cut_freq.store(95.0);
-    p.gate.on.store(true, Relaxed);
-    p.gate.param("thr").unwrap().store(-33.0);
-    p.eq.param("2g", false).unwrap().store(-4.5);
-    p.dynamics.set_model(model_index(DYN_MODELS, "B560").unwrap());
-    p.dynamics.param("thr").unwrap().store(-12.0);
+    p.filter().low_cut.store(true, Relaxed);
+    p.filter().low_cut_freq.store(95.0);
+    p.gate().on.store(true, Relaxed);
+    p.gate().param("thr").unwrap().store(-33.0);
+    p.eq().param("2g", false).unwrap().store(-4.5);
+    p.dynamics().set_model(model_index(DYN_MODELS, "B560").unwrap());
+    p.dynamics().param("thr").unwrap().store(-12.0);
     p.process_order.store(5, Relaxed);
     p.stereo.store(true, Relaxed);
     p.recall_safe.store(true, Relaxed);
@@ -124,8 +124,8 @@ fn console_survives_a_show_round_trip() {
     send.enabled.store(true, Relaxed);
     send.level_db.store(-3.0);
     send.mode.store(2, Relaxed);
-    p.pre_insert.on.store(true, Relaxed);
-    p.pre_insert.fx.store(2, Relaxed);
+    p.pre_insert().on.store(true, Relaxed);
+    p.pre_insert().fx.store(2, Relaxed);
     host.load(&engine, 2, "Reverb", "ABC=");
     engine.controls.fx[2].bypass.store(true, Relaxed);
     engine.set_dca_name(2, "Drums");
@@ -171,12 +171,12 @@ fn console_survives_a_show_round_trip() {
     let p = &k.params;
     assert_eq!(k.name(), "Kick \"in\" & <out>");
     assert_eq!((p.colour.load(Relaxed), p.icon.load(Relaxed)), (9, 42));
-    assert!(p.filter.low_cut.load(Relaxed));
-    assert_eq!(p.filter.low_cut_freq.load(), 95.0);
-    assert!(p.gate.on.load(Relaxed));
-    assert_eq!(p.gate.param("thr").unwrap().load(), -33.0);
-    assert_eq!(p.eq.param("2g", false).unwrap().load(), -4.5);
-    assert_eq!(DYN_MODELS[p.dynamics.model_index()].token, "B560");
+    assert!(p.filter().low_cut.load(Relaxed));
+    assert_eq!(p.filter().low_cut_freq.load(), 95.0);
+    assert!(p.gate().on.load(Relaxed));
+    assert_eq!(p.gate().param("thr").unwrap().load(), -33.0);
+    assert_eq!(p.eq().param("2g", false).unwrap().load(), -4.5);
+    assert_eq!(DYN_MODELS[p.dynamics().model_index()].token, "B560");
     assert_eq!(dyn_param(&k, "thr"), -12.0);
     assert_eq!(p.process_order.load(Relaxed), 5);
     assert!(p.stereo.load(Relaxed));
@@ -192,7 +192,7 @@ fn console_survives_a_show_round_trip() {
     let send = k.sends.find(79).unwrap();
     assert!(send.enabled.load(Relaxed));
     assert_eq!((send.level_db.load(), send.mode.load(Relaxed)), (-3.0, 2));
-    assert_eq!((p.pre_insert.on.load(Relaxed), p.pre_insert.fx.load(Relaxed)), (true, 2));
+    assert_eq!((p.pre_insert().on.load(Relaxed), p.pre_insert().fx.load(Relaxed)), (true, 2));
     assert_eq!(host2.plugins.get(&2), Some(&("Reverb".to_string(), "ABC=".to_string())));
     assert!(e2.controls.fx[2].bypass.load(Relaxed));
     assert_eq!(e2.dca_name(2), "Drums");
@@ -249,14 +249,14 @@ fn snippets_touch_only_their_strips_and_sections() {
     show.add_snippet(&engine, &mut np, 0, "S", section::FADER, vec![StripRef::of(&a)]);
 
     a.params.fader_db.store(-50.0);
-    a.params.gate.on.store(true, Relaxed);
+    a.params.gate().on.store(true, Relaxed);
     a.params.recall_safe.store(true, Relaxed);
     b.params.fader_db.store(-50.0);
     let r = show.recall_snippet(&engine, &mut np, 0, 0);
     assert_eq!(r.strips_applied, 1);
     assert_eq!(a.params.fader_db.load(), -6.0, "snippets ignore recall safe");
     assert!(a.params.mute.load(Relaxed));
-    assert!(a.params.gate.on.load(Relaxed), "the gate is not in the snippet");
+    assert!(a.params.gate().on.load(Relaxed), "the gate is not in the snippet");
     assert_eq!(b.params.fader_db.load(), -50.0);
 
     // Auto-fire with the scene: the scene sets 0 dB, the snippet overrides it.
@@ -273,13 +273,13 @@ fn model_changes_recall_with_their_parameters() {
     let mut np = NoPlugins;
     set_channels(&engine, 1);
     let a = ch(&engine, 0);
-    a.params.dynamics.set_model(model_index(DYN_MODELS, "LA").unwrap());
-    a.params.dynamics.param("peak").unwrap().store(70.0);
+    a.params.dynamics().set_model(model_index(DYN_MODELS, "LA").unwrap());
+    a.params.dynamics().param("peak").unwrap().store(70.0);
     let state = console::capture(&engine, section::DYNAMICS, None, &mut np);
 
-    a.params.dynamics.set_model(model_index(DYN_MODELS, "COMP").unwrap());
+    a.params.dynamics().set_model(model_index(DYN_MODELS, "COMP").unwrap());
     console::apply(&engine, &state, section::ALL, None, true, None, &mut np);
-    assert_eq!(DYN_MODELS[a.params.dynamics.model_index()].token, "LA");
+    assert_eq!(DYN_MODELS[a.params.dynamics().model_index()].token, "LA");
     assert_eq!(dyn_param(&a, "peak"), 70.0);
 }
 
@@ -526,7 +526,7 @@ fn saving_an_unchanged_show_leaves_the_file_alone() {
     set_channels(&engine, 3);
     let a = ch(&engine, 0);
     a.params.fader_db.store(-6.0);
-    a.params.eq.param("2g", false).unwrap().store(-4.5);
+    a.params.eq().param("2g", false).unwrap().store(-4.5);
     host.load(&engine, 1, "Delay", "S");
     let mut show = Show::new();
     show.name = "Gig".into();
@@ -647,20 +647,20 @@ fn legacy_v2_show_converts_to_the_wing_layout() {
     assert_eq!(p.colour.load(Relaxed), 5, "green");
     assert_eq!((p.fader_db.load(), p.pan.load()), (-4.0, 50.0));
     assert_eq!(p.input.trim_db.load(), 3.0);
-    assert!(p.filter.low_cut.load(Relaxed));
-    assert_eq!(p.filter.low_cut_freq.load(), 70.0);
-    assert!(p.gate.on.load(Relaxed));
-    assert_eq!(p.gate.param("thr").unwrap().load(), -35.0);
-    assert_eq!(p.gate.param("hld").unwrap().load(), 40.0);
-    assert!(p.dynamics.on.load(Relaxed));
-    assert_eq!(DYN_MODELS[p.dynamics.model_index()].token, "COMP");
+    assert!(p.filter().low_cut.load(Relaxed));
+    assert_eq!(p.filter().low_cut_freq.load(), 70.0);
+    assert!(p.gate().on.load(Relaxed));
+    assert_eq!(p.gate().param("thr").unwrap().load(), -35.0);
+    assert_eq!(p.gate().param("hld").unwrap().load(), 40.0);
+    assert!(p.dynamics().on.load(Relaxed));
+    assert_eq!(DYN_MODELS[p.dynamics().model_index()].token, "COMP");
     assert_eq!(dyn_param(&kick, "thr"), -15.0);
-    assert_eq!(p.dynamics.gain.load(), 2.0);
+    assert_eq!(p.dynamics().gain.load(), 2.0);
     assert!(kick.main_send(0).unwrap().on.load(Relaxed));
     let pre = kick.sends.find(0).unwrap();
     assert_eq!((pre.enabled.load(Relaxed), pre.level_db.load(), pre.mode.load(Relaxed)), (true, -6.0, 0));
     assert_eq!(kick.sends.find(1).unwrap().mode.load(Relaxed), 1);
-    assert_eq!((p.pre_insert.on.load(Relaxed), p.pre_insert.fx.load(Relaxed)), (true, 0));
+    assert_eq!((p.pre_insert().on.load(Relaxed), p.pre_insert().fx.load(Relaxed)), (true, 0));
     assert_eq!(host.plugins.get(&0), Some(&("Tape".to_string(), "T1".to_string())));
 
     let wedge = engine.bus_in_slot(0).unwrap();
@@ -761,16 +761,16 @@ fn capture_and_apply_by_section() {
     let mut np = NoPlugins;
     set_channels(&engine, 2);
     let a = ch(&engine, 0);
-    a.params.eq.param("1g", false).unwrap().store(5.0);
-    a.params.dynamics.param("thr").unwrap().store(-12.0);
+    a.params.eq().param("1g", false).unwrap().store(5.0);
+    a.params.dynamics().param("thr").unwrap().store(-12.0);
     let state = console::capture(&engine, section::EQ, None, &mut np);
-    a.params.eq.param("1g", false).unwrap().store(0.0);
-    a.params.dynamics.param("thr").unwrap().store(-30.0);
+    a.params.eq().param("1g", false).unwrap().store(0.0);
+    a.params.dynamics().param("thr").unwrap().store(-30.0);
 
     // Asking for more than was captured only touches the captured part.
     let r = console::apply(&engine, &state, section::ALL, None, true, None, &mut np);
     assert_eq!(r.strips_applied, 2 + 8 + 16 + 4 + 8);
-    assert_eq!(a.params.eq.param("1g", false).unwrap().load(), 5.0);
+    assert_eq!(a.params.eq().param("1g", false).unwrap().load(), 5.0);
     assert_eq!(dyn_param(&a, "thr"), -30.0);
 
     // Strips missing from the console are counted, not fatal.
@@ -966,21 +966,22 @@ fn key_source_and_tap_survive_a_show_round_trip() {
     let engine = Engine::new(0);
     set_channels(&engine, 3);
     let a = ch(&engine, 0);
-    a.params.gate.sc_source.store(2, Relaxed);
-    a.params.gate.sc_tap.store(7, Relaxed); // POST
-    a.params.dynamics.sc_source.store(1, Relaxed);
-    a.params.dynamics.sc_tap.store(5, Relaxed); // PFL
+    a.params.gate().sc_source.store(2, Relaxed);
+    a.params.gate().sc_tap.store(7, Relaxed); // POST
+    a.params.dynamics().sc_source.store(1, Relaxed);
+    a.params.dynamics().sc_tap.store(5, Relaxed); // PFL
     let bus = engine.bus_in_slot(0).unwrap();
-    bus.params.dynamics.sc_source.store(0, Relaxed);
-    bus.params.dynamics.sc_tap.store(6, Relaxed); // AFL
+    bus.params.dynamics().sc_source.store(0, Relaxed);
+    bus.params.dynamics().sc_tap.store(6, Relaxed); // AFL
 
     let (e2, _) = round_trip(&engine, &Show::new());
     let b = ch(&e2, 0);
-    assert_eq!((b.params.gate.sc_source.load(Relaxed), b.params.gate.sc_tap.load(Relaxed)), (2, 7));
-    assert_eq!((b.params.dynamics.sc_source.load(Relaxed), b.params.dynamics.sc_tap.load(Relaxed)), (1, 5));
-    let d = &e2.bus_in_slot(0).unwrap().params.dynamics;
+    assert_eq!((b.params.gate().sc_source.load(Relaxed), b.params.gate().sc_tap.load(Relaxed)), (2, 7));
+    assert_eq!((b.params.dynamics().sc_source.load(Relaxed), b.params.dynamics().sc_tap.load(Relaxed)), (1, 5));
+    let bus = e2.bus_in_slot(0).unwrap();
+    let d = bus.params.dynamics();
     assert_eq!((d.sc_source.load(Relaxed), d.sc_tap.load(Relaxed)), (0, 6));
-    assert_eq!(ch(&e2, 1).params.gate.sc_tap.load(Relaxed), 0, "untouched: IN");
+    assert_eq!(ch(&e2, 1).params.gate().sc_tap.load(Relaxed), 0, "untouched: IN");
 }
 
 #[test]
@@ -1420,7 +1421,7 @@ fn global_safes_beyond_strips() {
         fx: 1 << 3,
         console: true,
     };
-    a.params.gate.on.store(true, Relaxed);
+    a.params.gate().on.store(true, Relaxed);
     a.params.fader_db.store(-12.0);
     engine.controls.dcas[0].fader_db.store(-5.0);
     engine.controls.dcas[1].fader_db.store(-5.0);
@@ -1430,7 +1431,7 @@ fn global_safes_beyond_strips() {
     engine.controls.monitor_dim_db.store(-30.0);
 
     show.recall_scene(&engine, &mut np, 0);
-    assert!(a.params.gate.on.load(Relaxed), "the gate is a safe section");
+    assert!(a.params.gate().on.load(Relaxed), "the gate is a safe section");
     assert_eq!(a.params.fader_db.load(), 0.0);
     assert_eq!(engine.controls.dcas[0].fader_db.load(), -5.0, "DCA 1 is safe");
     assert_eq!(engine.controls.dcas[1].fader_db.load(), FACTORY_DCA_DB);
@@ -1444,7 +1445,7 @@ fn global_safes_beyond_strips() {
     a.params.recall_safe.store(true, Relaxed);
     let r = show.recall_scene_with(&engine, &mut np, 0, None, false);
     assert_eq!(r.strips_skipped_safe, 0);
-    assert!(!a.params.gate.on.load(Relaxed));
+    assert!(!a.params.gate().on.load(Relaxed));
     assert_eq!(engine.controls.dcas[0].fader_db.load(), FACTORY_DCA_DB);
     assert_eq!(mute_groups(&engine), 0);
     assert_eq!(engine.controls.fx[3].mix.load(), 100.0);
@@ -1469,19 +1470,19 @@ fn partial_load_and_update_keep_their_scope() {
 
     // PARTIAL UPDATE: only channel 1's fader goes into the scene.
     a.params.fader_db.store(-4.0);
-    a.params.gate.on.store(true, Relaxed);
+    a.params.gate().on.store(true, Relaxed);
     b.params.fader_db.store(-8.0);
     let only_a = Scope::strips(section::FADER, vec![StripRef::of(&a)]);
     show.store_scene_partial(&engine, &mut np, 0, &only_a);
     assert_eq!(show.partial_scope, only_a, "PARTIAL UPDATE keeps its scope");
 
     a.params.fader_db.store(-30.0);
-    a.params.gate.on.store(false, Relaxed);
+    a.params.gate().on.store(false, Relaxed);
     b.params.fader_db.store(-30.0);
     show.scene_mut(0).unwrap().scope = section::ALL;
     show.recall_scene(&engine, &mut np, 0);
     assert_eq!(a.params.fader_db.load(), -4.0);
-    assert!(!a.params.gate.on.load(Relaxed), "the gate was not updated");
+    assert!(!a.params.gate().on.load(Relaxed), "the gate was not updated");
     assert_eq!(b.params.fader_db.load(), 0.0, "channel 2 kept the stored level");
 
     // PARTIAL LOAD: channel 2 only, respecting safes unless NO GLOB.
@@ -1514,7 +1515,7 @@ fn snippet_rec_records_the_changed_parameters() {
     show.start_recording(&engine);
     assert!(show.is_recording());
     a.params.fader_db.store(-6.0);
-    b.params.gate.on.store(true, Relaxed);
+    b.params.gate().on.store(true, Relaxed);
     b.params.fader_db.store(-3.0);
     engine.controls.dcas[4].mute.store(true, Relaxed);
     assert_eq!(show.recorded_count(&engine), 4);
@@ -1541,15 +1542,15 @@ fn snippet_rec_records_the_changed_parameters() {
 
     // Recall: exactly the changed pairs, not their cross product.
     a.params.fader_db.store(-50.0);
-    a.params.gate.on.store(true, Relaxed);
-    b.params.gate.on.store(false, Relaxed);
+    a.params.gate().on.store(true, Relaxed);
+    b.params.gate().on.store(false, Relaxed);
     b.params.fader_db.store(-50.0);
     c.params.fader_db.store(-50.0);
     engine.controls.dcas[4].mute.store(false, Relaxed);
     show.recall_snippet(&engine, &mut np, 0, 0);
     assert_eq!(a.params.fader_db.load(), -6.0);
-    assert!(a.params.gate.on.load(Relaxed), "channel 1's gate was not recorded");
-    assert!(b.params.gate.on.load(Relaxed));
+    assert!(a.params.gate().on.load(Relaxed), "channel 1's gate was not recorded");
+    assert!(b.params.gate().on.load(Relaxed));
     assert_eq!(b.params.fader_db.load(), -3.0);
     assert_eq!(c.params.fader_db.load(), -50.0);
     assert!(engine.controls.dcas[4].mute.load(Relaxed));
@@ -1557,9 +1558,9 @@ fn snippet_rec_records_the_changed_parameters() {
     // UPDATE keeps each strip's own sections; the snippet survives a round trip.
     b.params.fader_db.store(-9.0);
     show.store_snippet(&engine, &mut np, 0, 0);
-    a.params.gate.on.store(false, Relaxed);
+    a.params.gate().on.store(false, Relaxed);
     show.recall_snippet(&engine, &mut np, 0, 0);
-    assert!(!a.params.gate.on.load(Relaxed));
+    assert!(!a.params.gate().on.load(Relaxed));
     assert_eq!(b.params.fader_db.load(), -9.0);
     let (_, loaded) = round_trip(&engine, &show);
     let l = loaded.snippet(0, 0).unwrap();
@@ -1584,7 +1585,7 @@ fn snippet_items_and_partial_load() {
     show.add_snippet(&engine, &mut np, 0, "S", section::FADER, vec![StripRef::of(&a)]);
 
     // ADD ITEMS: channel 2's gate and DCA 1.
-    b.params.gate.on.store(true, Relaxed);
+    b.params.gate().on.store(true, Relaxed);
     engine.controls.dcas[0].fader_db.store(-2.0);
     let items = Scope { dcas: GroupSet::single(0), ..Scope::strips(section::GATE, vec![StripRef::of(&b)]) };
     show.add_snippet_items(&engine, &mut np, 0, 0, &items);
@@ -1592,13 +1593,13 @@ fn snippet_items_and_partial_load() {
     assert_eq!(sn.strips, vec![StripRef::of(&a), StripRef::of(&b)]);
     assert_eq!((sn.sections, sn.dcas), (section::FADER | section::GATE, GroupSet::single(0)));
 
-    b.params.gate.on.store(false, Relaxed);
+    b.params.gate().on.store(false, Relaxed);
     b.params.fader_db.store(-20.0);
     a.params.fader_db.store(-20.0);
     engine.controls.dcas[0].fader_db.store(-20.0);
     // PARTIAL LOAD: only the gate part.
     show.recall_snippet_with(&engine, &mut np, 0, 0, Some(&Scope::console(section::GATE)));
-    assert!(b.params.gate.on.load(Relaxed));
+    assert!(b.params.gate().on.load(Relaxed));
     assert_eq!(a.params.fader_db.load(), -20.0);
     assert_eq!(engine.controls.dcas[0].fader_db.load(), -20.0, "DCA levels recall with FADER");
     show.recall_snippet(&engine, &mut np, 0, 0);
@@ -1633,9 +1634,9 @@ fn spill_layers_follow_the_console() {
     assert!(spill_faders(&engine, &SpillKind::Dca(99)).is_empty());
 
     // Automix spill: the channels in group Y (members only: INS 2 ON).
-    b.params.post_insert.mode.store(2, Relaxed);
-    c.params.post_insert.mode.store(2, Relaxed);
-    b.params.post_insert.on.store(true, Relaxed);
+    b.params.post_insert().mode.store(2, Relaxed);
+    c.params.post_insert().mode.store(2, Relaxed);
+    b.params.post_insert().on.store(true, Relaxed);
     assert_eq!(spill_faders(&engine, &SpillKind::Automix(1)), vec![strip(&b)]);
 
     // Bus spill: the send levels of the sources sending to the bus.
@@ -1766,7 +1767,7 @@ fn channel_presets_load_onto_other_strips_within_their_scope() {
     set_channels(&engine, 4);
     let (a, b) = (ch(&engine, 0), ch(&engine, 1));
     a.set_name("Kick");
-    a.params.gate.on.store(true, Relaxed);
+    a.params.gate().on.store(true, Relaxed);
     a.params.input.trim_db.store(6.0);
     a.params.fader_db.store(-7.0);
     a.params.input_left.store(9, Relaxed);
@@ -1775,7 +1776,7 @@ fn channel_presets_load_onto_other_strips_within_their_scope() {
     assert_eq!(presets::info(&preset).unwrap().scope, section::GATE | section::PREAMP);
     let r = presets::apply_channel(&engine, &mut np, &preset, &StripRef::of(&b), None).unwrap();
     assert_eq!(r.strips_applied, 1);
-    assert!(b.params.gate.on.load(Relaxed));
+    assert!(b.params.gate().on.load(Relaxed));
     assert_eq!(b.params.input.trim_db.load(), 6.0);
     assert_eq!(b.params.fader_db.load(), 0.0, "the fader is outside the preset's scope");
     assert_eq!(b.params.input_left.load(Relaxed), 1, "nor the input patch");
@@ -1956,7 +1957,7 @@ fn shows_hold_snippets_clips_and_presets_as_scenes() {
     assert!(engine.set_fx_model(1, fx("HALL"), true));
     engine.controls.fx[1].param("dcy").unwrap().store(4.5);
     presets::save(&dir.join("Hall.lfx"), &presets::capture_fx(&engine, &mut np, 1, "Hall").unwrap()).unwrap();
-    a.params.eq.on.store(true, Relaxed);
+    a.params.eq().on.store(true, Relaxed);
     a.params.fader_db.store(-12.0);
     presets::save(
         &dir.join("Vox.lchn"),

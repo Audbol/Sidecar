@@ -276,8 +276,8 @@ private:
                 for (auto& st : ctx.engine.getStrips (kind))
                 {
                     auto& p = st->params;
-                    const bool pre = p.preInsert.on.load() && p.preInsert.fx.load() == slot;
-                    const bool post = p.postInsert.on.load() && p.postInsert.fx.load() == slot && p.postInsert.mode.load() == 0;
+                    const bool pre = p.preInsert().on.load() && p.preInsert().fx.load() == slot;
+                    const bool post = p.postInsert().on.load() && p.postInsert().fx.load() == slot && p.postInsert().mode.load() == 0;
                     if (! pre && ! post)
                         continue;
                     auto label = st->getLabel(); // CH 1, BUS 3 ...

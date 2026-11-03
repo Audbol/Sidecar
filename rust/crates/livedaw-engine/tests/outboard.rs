@@ -61,8 +61,8 @@ impl Rig {
         p.send_left.store(SEND_L, Relaxed);
         p.send_right.store(SEND_R, Relaxed);
         let ch = e.channel_at(0).unwrap();
-        ch.params.pre_insert.on.store(true, Relaxed);
-        ch.params.pre_insert.fx.store(0, Relaxed);
+        ch.params.pre_insert().on.store(true, Relaxed);
+        ch.params.pre_insert().fx.store(0, Relaxed);
     }
 
     /// Runs `blocks` blocks with a unit impulse on the microphone at sample 0

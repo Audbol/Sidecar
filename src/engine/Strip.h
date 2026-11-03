@@ -247,7 +247,7 @@ public:
     {
         if (kind != StripKind::Bus && kind != StripKind::Main && kind != StripKind::Matrix)
             return 0;
-        return params.preInsert.fx.load() < 0 ? 2 : 1;
+        return params.preInsert().fx.load() < 0 ? 2 : 1;
     }
     /** Automix X/Y (in INS 2): the input channels only. */
     bool hasAutomix() const noexcept { return kind == StripKind::Channel; }
@@ -255,8 +255,8 @@ public:
         set to AUTO X / AUTO Y and ON, as the engine shares gain (`Strip::automix_group`). */
     int automixGroup() const noexcept
     {
-        const int mode = params.postInsert.mode.load();
-        return hasAutomix() && params.postInsert.on.load() && (mode == 1 || mode == 2) ? mode - 1 : -1;
+        const int mode = params.postInsert().mode.load();
+        return hasAutomix() && params.postInsert().on.load() && (mode == 1 || mode == 2) ? mode - 1 : -1;
     }
     /** A selectable TAP point and process order: input channels only (the
         others tap after INS 1, pre-fader, and have a fixed order). */

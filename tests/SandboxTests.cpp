@@ -285,8 +285,8 @@ private:
         auto& fx = engine.getFx();
         fx.setPlugin (2, std::move (plugin));
         auto& ch1 = *engine.getChannels()[0];
-        ch1.params.preInsert.on = true;
-        ch1.params.preInsert.fx = 2;
+        ch1.params.preInsert().on = true;
+        ch1.params.preInsert().fx = 2;
         expectEquals (fx.getLatency (2), kBlock);
 
         // Channel 2 is delayed to meet channel 1's sandboxed insert: one impulse at Main 1.
@@ -374,8 +374,8 @@ private:
         fx.clearFlags (0);
         expect (fx.isSandboxed (0));
         expectEquals (fx.getLatency (0), kBlock); // reported to the delay compensation
-        strip.params.preInsert.on = true;
-        strip.params.preInsert.fx = 0;
+        strip.params.preInsert().on = true;
+        strip.params.preInsert().fx = 0;
 
         // Processed: gain 0.25 -> x0.5.
         sandboxed->getParameters()[0]->setValue (0.25f);
@@ -467,8 +467,8 @@ private:
         expect (fx.addToChain (0, std::move (instance)));
         expect (fx.addToChain (0, halve()));
         fx.clearFlags (0);
-        strip.params.preInsert.on = true;
-        strip.params.preInsert.fx = 0;
+        strip.params.preInsert().on = true;
+        strip.params.preInsert().fx = 0;
         rig.run (40);
         expect (! fx.isFaulted (0) && fx.getNumFaultedChainMembers (0) == 0, "faulted while healthy");
         expectWithinAbsoluteError (rig.out (0), 0.25f * dry, 1.0e-4f);

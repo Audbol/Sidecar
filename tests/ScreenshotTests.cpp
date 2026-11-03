@@ -201,17 +201,17 @@ private:
         // Gates on the drums, compressors on the bass and vocals, EQs with some shape.
         for (int i : { 0, 2, 5, 6 })
         {
-            channels[(size_t) i]->params.gate.on = true;
+            channels[(size_t) i]->params.gate().on = true;
             channels[(size_t) i]->meters.gateReductionDb = 4.0f + (float) i;
         }
         for (int i : { 0, 2, 10, 18, 19, 20 })
         {
-            channels[(size_t) i]->params.dynamics.on = true;
+            channels[(size_t) i]->params.dynamics().on = true;
             channels[(size_t) i]->meters.dynReductionDb = 3.0f + (float) (i % 5);
         }
         for (int i : { 0, 1, 2, 10, 12, 13, 18 })
         {
-            auto& eq = channels[(size_t) i]->params.eq;
+            auto& eq = channels[(size_t) i]->params.eq();
             const auto table = (models::Table) channels[(size_t) i]->getEqTable();
             eq.on = true;
             setEq (eq, table, "lg", i < 2 ? 5.0f : -3.0f);
@@ -243,8 +243,8 @@ private:
             fx.setModel (slot, models::findModel (models::Fx, token));
         for (auto [strip, slot] : { std::pair<int, int> { 18, 9 }, { 19, 9 } })
         {
-            channels[(size_t) strip]->params.preInsert.fx = slot;
-            channels[(size_t) strip]->params.preInsert.on = true;
+            channels[(size_t) strip]->params.preInsert().fx = slot;
+            channels[(size_t) strip]->params.preInsert().on = true;
         }
 
         // The show's scenes.

@@ -42,9 +42,9 @@ public:
             send.levelDb = 0.0f;
             auto& bus2 = *engine.getBuses()[1];
             bus2.setModel (ModelBlock::Dynamics, models::findModel (models::Dynamics, "GATE"));
-            bus2.params.dynamics.on = true;
-            bus2.params.dynamics.scSource = MixerEngine::outputKeySource (0);
-            bus2.params.dynamics.scTap = 0;
+            bus2.params.dynamics().on = true;
+            bus2.params.dynamics().scSource = MixerEngine::outputKeySource (0);
+            bus2.params.dynamics().scTap = 0;
             engine.getGarbage().collect(); // plans Bus 1's key tap
             rig.run (10);
             expect (bus2.meters.dynKeyDb.load() < -99.0f, juce::String (bus2.meters.dynKeyDb.load()));
@@ -61,9 +61,9 @@ public:
             expectEquals (engine.getAux()[0]->busFxInsert(), 0);
             for (auto* s : { engine.getBuses()[0].get(), engine.getMains()[0].get(), engine.getMatrices()[0].get() })
             {
-                s->params.preInsert.fx = -1;
+                s->params.preInsert().fx = -1;
                 expectEquals (s->busFxInsert(), 2);
-                s->params.preInsert.fx = 3;
+                s->params.preInsert().fx = 3;
                 expectEquals (s->busFxInsert(), 1);
             }
         }

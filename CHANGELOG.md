@@ -30,6 +30,9 @@ Phase 3, the WING as a profile (`docs/UNIVERSAL_MIXER.md`), begins.
 - Processing models are described in console-neutral terms (`livedaw_dsp::model`:
   `ModelSpec`, `ParamSpec`, `Params`, `ModelTables`), and a profile names the models
   its blocks may hold (`ProfileSpec::models`; the WING's are `wing::MODELS`).
+- A strip's own filter, gate, EQ, dynamics and inserts are reached only through
+  accessors (`StripParams::filter()`... in Rust and C++), the first part of moving
+  them into the strip's chain. No change in behaviour or sound.
 
 ## [0.2.0] - beta
 

@@ -186,9 +186,9 @@ public:
             expectWithinAbsoluteError (pre(), pre0, 0.05f);
             ch.params.faderDb = 0.0f;
             // +12 dB of EQ on the tone: PRE stays, the pre-fader level rises.
-            ch.params.eq.on = true;
-            ch.params.eq.values[8] = 750.0f; // STD 2f
-            ch.params.eq.values[7] = 12.0f;  // STD 2g
+            ch.params.eq().on = true;
+            ch.params.eq().values[8] = 750.0f; // STD 2f
+            ch.params.eq().values[7] = 12.0f;  // STD 2g
             settle();
             expectWithinAbsoluteError (pre(), pre0, 0.05f);
             expect (pfl() > pfl0 + 9.0f, "the EQ reaches the pre-fader point: " + juce::String (pfl()));

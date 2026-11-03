@@ -66,7 +66,8 @@ impl Rig {
 
     /// Keys channel `dst`'s gate (on) from channel `src` at `tap`, and plans the buffers.
     fn key_gate(&self, dst: usize, src: i32, tap: i32) {
-        let gate = &self.ch(dst).params.gate;
+        let ch = self.ch(dst);
+        let gate = ch.params.gate();
         gate.on.store(true, Relaxed);
         gate.sc_source.store(src, Relaxed);
         gate.sc_tap.store(tap, Relaxed);
@@ -121,7 +122,7 @@ fn the_key_follows_the_tap_of_the_source() {
     assert!((rig.out(0) - open).abs() < 1e-3, "{}", rig.out(0));
 
     // Back to SELF: the buffers are retired.
-    rig.ch(1).params.gate.sc_source.store(-1, Relaxed);
+    rig.ch(1).params.gate().sc_source.store(-1, Relaxed);
     rig.engine.collect();
     assert!(!rig.ch(0).keys.has(IN as usize));
 }
@@ -201,7 +202,7 @@ fn buses_and_aux_key_from_channels() {
     let bus = rig.engine.strip_at(StripKind::Bus, 0).unwrap();
     let aux = rig.engine.strip_at(StripKind::Aux, 0).unwrap();
     for s in [&bus, &aux] {
-        let d = &s.params.dynamics;
+        let d = s.params.dynamics();
         d.set_model(model_index(DYN_MODELS, "GATE").unwrap()); // its key meter reads the plain key
         d.on.store(true, Relaxed);
         d.sc_source.store(1, Relaxed);
@@ -239,7 +240,7 @@ fn an_idle_source_keys_silence() {
 /// Keys `s`'s DYNAMICS (on, the GATE model, whose key meter reads the plain
 /// key) from `source` at the output tap `tap` (`OUTPUT_KEY_TAPS`).
 fn key_dynamics(s: &Strip, source: KeySource, tap: i32) {
-    let d = &s.params.dynamics;
+    let d = s.params.dynamics();
     d.set_model(model_index(DYN_MODELS, "GATE").unwrap());
     d.on.store(true, Relaxed);
     d.sc_source.store(source.code(), Relaxed);
@@ -286,11 +287,11 @@ fn aux_buses_mains_and_matrices_key_from_buses_mains_matrices_and_aux() {
     assert!(key_db(&main1) > -30.0, "{}", key_db(&main1));
 
     // A bus's EQ tap is after its post-fader EQ; back to SELF retires the buffers.
-    bus2.params.dynamics.sc_tap.store(4, Relaxed);
+    bus2.params.dynamics().sc_tap.store(4, Relaxed);
     rig.engine.collect();
     assert!(bus1.keys.has(TAP_EQ_POST) && !bus1.keys.has(6));
     for s in [&bus2, &main1, &mtx1, &aux1] {
-        s.params.dynamics.sc_source.store(-1, Relaxed);
+        s.params.dynamics().sc_source.store(-1, Relaxed);
     }
     rig.engine.collect();
     assert!((0..NUM_KEY_TAPS).all(|t| !bus1.keys.has(t) && !main1.keys.has(t)));

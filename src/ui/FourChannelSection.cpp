@@ -117,9 +117,9 @@ FourChannelSection::FourChannelSection (UiContext& c, std::function<Strip* (int)
                                 each->phantom = on;
                     }
                     break;
-                case Gate:   if (s->getKind() == StripKind::Channel) flip (p.gate.on); break;
-                case Comp:   flip (p.dynamics.on); break;
-                case Filter: if (s->getKind() == StripKind::Channel) flip (p.filter.lowCut); break;
+                case Gate:   if (s->getKind() == StripKind::Channel) flip (p.gate().on); break;
+                case Comp:   flip (p.dynamics().on); break;
+                case Filter: if (s->getKind() == StripKind::Channel) flip (p.filter().lowCut); break;
                 case Pan:    if (s->isInput() || s->isBus()) flip (s->mains[0].on); break;
                 case F1:
                 case F2:
@@ -144,9 +144,9 @@ FourChannelSection::FourChannelSection (UiContext& c, std::function<Strip* (int)
             switch (mode)
             {
                 case Gain:   if (const auto* src = inputSource (ctx.engine, *s)) on = src->phantom.load(); break;
-                case Gate:   on = p.gate.on.load(); break;
-                case Comp:   on = p.dynamics.on.load(); break;
-                case Filter: on = p.filter.lowCut.load(); break;
+                case Gate:   on = p.gate().on.load(); break;
+                case Comp:   on = p.dynamics().on.load(); break;
+                case Filter: on = p.filter().lowCut.load(); break;
                 case Pan:    on = (s->isInput() || s->isBus()) && s->mains[0].on.load(); break;
                 case F1:
                 case F2:
@@ -238,12 +238,12 @@ void FourChannelSection::bind()
             switch (mode)
             {
                 case Gain:   b = bindLinear ("TRIM", p.input.trimDb, -18.0f, 18.0f, " dB", 1, 0.0f); break;
-                case Gate:   if (channel) b = thresholdOf (p.gate, "GATE THR"); break;
-                case Comp:   b = thresholdOf (p.dynamics, "COMP THR"); break;
+                case Gate:   if (channel) b = thresholdOf (p.gate(), "GATE THR"); break;
+                case Comp:   b = thresholdOf (p.dynamics(), "COMP THR"); break;
                 case Filter:
                     if (channel)
-                        b = alternate ? bindFreq ("HI CUT", p.filter.highCutFreq, 50.0f, 20000.0f, kHighCutDefaultHz)
-                                      : bindFreq ("LO CUT", p.filter.lowCutFreq, 20.0f, 2000.0f, kLowCutDefaultHz);
+                        b = alternate ? bindFreq ("HI CUT", p.filter().highCutFreq, 50.0f, 20000.0f, kHighCutDefaultHz)
+                                      : bindFreq ("LO CUT", p.filter().lowCutFreq, 20.0f, 2000.0f, kLowCutDefaultHz);
                     break;
                 case Pan:
                     b = alternate ? bindLinear ("WIDTH", p.width, -150.0f, 150.0f, "%", 0, 100.0f) : bindPan ("PAN", p.pan);

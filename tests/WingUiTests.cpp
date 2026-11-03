@@ -102,8 +102,8 @@ public:
             auto& fx = engine.getFx();
             fx.setPlugin (0, std::make_unique<FakePlugin> (1.0f, FakePlugin::Mode::Gain, "editor"));
             auto& ch = *engine.getChannels()[0];
-            ch.params.preInsert.on = true;
-            ch.params.preInsert.fx = 0;
+            ch.params.preInsert().on = true;
+            ch.params.preInsert().fx = 0;
 
             auto screen = ui::makeInsertScreen (rig.ctx, ch, false);
             screen->setSize (1160, 600);

@@ -183,7 +183,7 @@ fn reduction_word(db: f32, full_scale: f32) -> i16 {
 
 /// The full scale of a strip's gate gain word: 60 dB for the WING gate, else 20.
 fn gate_scale(s: &Strip) -> f32 {
-    let model = s.params.gate.model.load(Relaxed).max(0) as usize;
+    let model = s.params.gate().model.load(Relaxed).max(0) as usize;
     if DYN_MODELS.get(model).is_some_and(|m| m.token == "GATE") {
         60.0
     } else {
@@ -203,8 +203,8 @@ fn strip_words(clock: &MeterClock, s: Option<&Arc<Strip>>, v2: bool, out: &mut V
     let (il, ir) = (level(INPUT, 0), level(INPUT, right));
     // Keys: the slot's detector while it works, else the strip's input.
     let key = |active: bool, key_db: f32| if active && key_db > -119.0 { key_db } else { il.max(ir) };
-    let gate_on = s.params.gate.on.load(Relaxed);
-    let dyn_on = s.params.dynamics.on.load(Relaxed);
+    let gate_on = s.params.gate().on.load(Relaxed);
+    let dyn_on = s.params.dynamics().on.load(Relaxed);
     out.push(db_word(il));
     out.push(db_word(ir));
     out.push(db_word(level(OUTPUT, 0)));

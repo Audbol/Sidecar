@@ -369,7 +369,7 @@ public:
 
             // The strip's own EQ: ON, MODEL, its curve, MIX, its model's parameters.
             auto target = BlockTarget::of (rig.ctx, ch, stepOf (ch, [] (const ChainStep& s) { return s.kind == ld::kStepEq; }));
-            expect (target.kind == BlockTarget::Kind::Eq && target.eq == &ch.params.eq);
+            expect (target.kind == BlockTarget::Kind::Eq && target.eq == &ch.params.eq());
             editor.setTarget (target);
             auto* on = dynamic_cast<ToggleKey*> (editor.getControl (0));
             auto* model = dynamic_cast<ChoiceBar*> (editor.getControl (1));
@@ -377,14 +377,14 @@ public:
             expect (on != nullptr && model != nullptr && panel != nullptr && editor.getResponse() != nullptr);
             if (on == nullptr || model == nullptr || panel == nullptr)
                 return;
-            const bool wasOn = ch.params.eq.on.load();
+            const bool wasOn = ch.params.eq().on.load();
             on->onClick();
-            expect (ch.params.eq.on.load() != wasOn);
+            expect (ch.params.eq().on.load() != wasOn);
             const auto eqTable = (models::Table) ch.getEqTable();
-            expectEquals (panel->getNumControls(), paramsOf (eqTable, ch.params.eq.model.load(), ld::kMaxEqParams));
+            expectEquals (panel->getNumControls(), paramsOf (eqTable, ch.params.eq().model.load(), ld::kMaxEqParams));
             // Another model: its parameters.
             model->chooseItem (1);
-            expectEquals (ch.params.eq.model.load(), 1);
+            expectEquals (ch.params.eq().model.load(), 1);
             editor.refresh();
             expectEquals (panel->getNumControls(), paramsOf (eqTable, 1, ld::kMaxEqParams));
             // A parameter's bar writes the block's value.
@@ -393,7 +393,7 @@ public:
                 {
                     bar->setPositionFromUser (1.0f);
                     const auto& p = models::model (eqTable, 1).params[(size_t) i];
-                    expectWithinAbsoluteError (ch.params.eq.values[p.index].load(), p.fromNormalised (1.0f), 1.0e-4f, p.label);
+                    expectWithinAbsoluteError (ch.params.eq().values[p.index].load(), p.fromNormalised (1.0f), 1.0e-4f, p.label);
                     break;
                 }
 
@@ -783,14 +783,14 @@ public:
             auto& column = *view.getColumn (0);
             auto& strip = column.getStrip();
             auto& p = strip.params;
-            p.gate.on = true;
-            p.dynamics.on = true;
+            p.gate().on = true;
+            p.dynamics().on = true;
             strip.meters.gateReductionDb = 6.0f;
             strip.meters.dynReductionDb = 3.0f;
             strip.meters.trimPeak[0] = 0.5f;
             strip.meters.outputPeak[0] = 0.25f;
-            p.eq.on = true;
-            p.eq.values[models::model ((models::Table) strip.getEqTable(), p.eq.model.load()).find ("lg")] = 6.0f;
+            p.eq().on = true;
+            p.eq().values[models::model ((models::Table) strip.getEqTable(), p.eq().model.load()).find ("lg")] = 6.0f;
             rig.meters.advance (0.01f);
             view.refresh();
             const auto& o = column.overview;
@@ -906,7 +906,7 @@ public:
             MixerEngine engine (0);
             test::setChannels (engine, 2);
             auto& strip = *engine.getChannels()[0];
-            auto& eq = strip.params.eq;
+            auto& eq = strip.params.eq();
             const auto& model = models::model ((models::Table) strip.getEqTable(), eq.model.load());
             ResponseView view (Theme::dark());
             view.setSize (600, 300);
@@ -951,7 +951,7 @@ public:
             MixerEngine engine (0);
             test::setChannels (engine, 2);
             auto& strip = *engine.getChannels()[0];
-            auto& dyn = strip.params.dynamics;
+            auto& dyn = strip.params.dynamics();
             const auto& model = models::model (models::Dynamics, dyn.model.load());
             const int thr = model.find ("thr"), ratio = model.find ("ratio");
             expect (thr >= 0 && ratio >= 0, "a compressor");

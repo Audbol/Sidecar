@@ -277,11 +277,11 @@ pub(crate) fn strip_response(s: &Strip, block: i32, freqs: &[f64], out: &mut [f6
             fill(freqs, out, |f| d.iter().flatten().map(|c| c.magnitude_at(f, sr)).product());
         }
         // The GATE's or the DYNAMICS' key filter, the DYNAMICS' crossover.
-        5 => key_response(&p.gate, freqs, out, sr),
-        6 => key_response(&p.dynamics, freqs, out, sr),
-        7 => xover_response(&p.dynamics, freqs, out, sr),
-        3 => filter_response(&p.filter, freqs, out, sr),
-        _ => eq_response(&p.eq, s.kind().is_output(), freqs, out, sr),
+        5 => key_response(p.gate(), freqs, out, sr),
+        6 => key_response(p.dynamics(), freqs, out, sr),
+        7 => xover_response(p.dynamics(), freqs, out, sr),
+        3 => filter_response(p.filter(), freqs, out, sr),
+        _ => eq_response(p.eq(), s.kind().is_output(), freqs, out, sr),
     }
 }
 

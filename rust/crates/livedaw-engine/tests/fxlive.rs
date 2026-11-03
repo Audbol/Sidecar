@@ -44,8 +44,8 @@ fn sine(amp: f32) -> impl Fn(usize) -> f32 {
 fn through(engine: &Engine, token: &str) {
     assert!(engine.set_fx_model(0, model_index(FX_MODELS, token).unwrap(), true));
     let ch = engine.channel_at(0).unwrap();
-    ch.params.pre_insert.on.store(true, Relaxed);
-    ch.params.pre_insert.fx.store(0, Relaxed);
+    ch.params.pre_insert().on.store(true, Relaxed);
+    ch.params.pre_insert().fx.store(0, Relaxed);
 }
 
 #[test]

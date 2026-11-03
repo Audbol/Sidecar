@@ -304,6 +304,14 @@ Three layers:
    5. **The WING's blocks out of `StripParams`** (Phase 1's 3d): call sites move to
       facades first, then the blocks become chain blocks; the sound must stay the same
       sample for sample.
+      - 5a, the facades (done): the strip's own filter, gate, EQ, dynamics and inserts
+        are private to `StripParams`, reached through `filter()`, `gate()`, `eq()`,
+        `dynamics()`, `pre_insert()` and `post_insert()` (Rust) and the same accessors
+        on the C++ `StripParams` (`filter()`, ..., `preInsert()`, `postInsert()`; the
+        members are `filter_`...). No caller names where the blocks are stored;
+        the layout and the sound are unchanged.
+      - 5b, next: the blocks' storage moves to the strip's chain, the accessors
+        reading it there.
    6. **Remotes per profile**: the MIDI remote splits into a port layer (devices,
       hot-plug, the queue, SysEx framing) and a protocol per profile (the WING's CC map
       and SysEx id; next the X32's and the Yamaha consoles'); the profile owns its

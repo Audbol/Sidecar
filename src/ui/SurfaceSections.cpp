@@ -91,8 +91,8 @@ ChannelStripSection::ChannelStripSection (UiContext& c) : ctx (c)
     eqKey.ledColour = Colours::keyLayer;
     eqKey.setTooltip ("EQ: press to show it on the screen, hold to switch it on/off");
     eqKey.onPress = [this] { eqMixShown = false; showSlot (EqSlot); followScreen (EqSlot, false); };
-    eqKey.onHold = [this] { if (strip != nullptr) strip->params.eq.on = ! strip->params.eq.on.load(); };
-    eqKey.ledState = [this] { return strip != nullptr && strip->params.eq.on.load() ? SurfaceKey::Lit : SurfaceKey::Off; };
+    eqKey.onHold = [this] { if (strip != nullptr) strip->params.eq().on = ! strip->params.eq().on.load(); };
+    eqKey.ledState = [this] { return strip != nullptr && strip->params.eq().on.load() ? SurfaceKey::Lit : SurfaceKey::Off; };
 
     SurfaceKey* elements[] = { &gainKey, &widthKey, &freqKey };
     for (int i = 0; i < 3; ++i)
@@ -186,7 +186,7 @@ void ChannelStripSection::refresh()
             // Gate and compressor start on their threshold.
             if (i == Gate || i == Comp)
             {
-                auto& slot = i == Gate ? strip->params.gate : strip->params.dynamics;
+                auto& slot = i == Gate ? strip->params.gate() : strip->params.dynamics();
                 paramIndex[i] = juce::jmax (0, models::model (models::Dynamics, slot.model.load()).find ("thr"));
             }
             else
@@ -202,7 +202,7 @@ void ChannelStripSection::refresh()
     if (strip != nullptr)
     {
         auto& p = strip->params;
-        const int models[] = { p.filter.toolModel.load(), p.gate.model.load(), p.dynamics.model.load(), p.preInsert.fx.load() };
+        const int models[] = { p.filter().toolModel.load(), p.gate().model.load(), p.dynamics().model.load(), p.preInsert().fx.load() };
         std::copy (std::begin (models), std::end (models), std::begin (boundModels));
     }
     eqModel = -1;
@@ -237,20 +237,20 @@ std::vector<KnobBinding> ChannelStripSection::slotParams (int slot) const
         case Filter:
             if (channel)
             {
-                list.push_back (bindFreq ("LO CUT", p.filter.lowCutFreq, 20.0f, 2000.0f, kLowCutDefaultHz));
-                list.push_back (bindFreq ("HI CUT", p.filter.highCutFreq, 50.0f, 20000.0f, kHighCutDefaultHz));
-                modelParams (models::FilterTools, p.filter.toolModel.load(), p.filter.toolParams);
+                list.push_back (bindFreq ("LO CUT", p.filter().lowCutFreq, 20.0f, 2000.0f, kLowCutDefaultHz));
+                list.push_back (bindFreq ("HI CUT", p.filter().highCutFreq, 50.0f, 20000.0f, kHighCutDefaultHz));
+                modelParams (models::FilterTools, p.filter().toolModel.load(), p.filter().toolParams);
             }
             break;
         case Gate:
             if (channel)
-                modelParams (models::Dynamics, p.gate.model.load(), p.gate.values);
+                modelParams (models::Dynamics, p.gate().model.load(), p.gate().values);
             break;
         case Comp:
-            modelParams (models::Dynamics, p.dynamics.model.load(), p.dynamics.values);
+            modelParams (models::Dynamics, p.dynamics().model.load(), p.dynamics().values);
             break;
         case Insert:
-            if (const int fx = p.preInsert.fx.load(); fx >= 0)
+            if (const int fx = p.preInsert().fx.load(); fx >= 0)
                 list.push_back (bindLinear ("FX MIX", ctx.engine.getFx().params (fx).mix, 0.0f, 100.0f, "%", 0, 100.0f));
             break;
         case Main:
@@ -324,10 +324,10 @@ bool ChannelStripSection::slotOn (int slot) const
     switch (slot)
     {
         case Input:  return p.input.invert.load();
-        case Filter: return p.filter.lowCut.load() || p.filter.highCut.load() || p.filter.tool.load();
-        case Gate:   return p.gate.on.load();
-        case Comp:   return p.dynamics.on.load();
-        case Insert: return p.preInsert.on.load() && p.preInsert.fx.load() >= 0;
+        case Filter: return p.filter().lowCut.load() || p.filter().highCut.load() || p.filter().tool.load();
+        case Gate:   return p.gate().on.load();
+        case Comp:   return p.dynamics().on.load();
+        case Insert: return p.preInsert().on.load() && p.preInsert().fx.load() >= 0;
         case Main:   return strip->mains[0].on.load();
         default:     return false;
     }
@@ -342,10 +342,10 @@ void ChannelStripSection::toggleSlot (int slot)
     switch (slot)
     {
         case Input:  flip (p.input.invert); break;
-        case Filter: flip (p.filter.lowCut); break;
-        case Gate:   flip (p.gate.on); break;
-        case Comp:   flip (p.dynamics.on); break;
-        case Insert: flip (p.preInsert.on); break;
+        case Filter: flip (p.filter().lowCut); break;
+        case Gate:   flip (p.gate().on); break;
+        case Comp:   flip (p.dynamics().on); break;
+        case Insert: flip (p.preInsert().on); break;
         case Main:   flip (strip->mains[0].on); break;
         default:     break;
     }
@@ -363,7 +363,7 @@ void ChannelStripSection::bindEq()
     if (strip == nullptr)
         return;
 
-    auto& eq = strip->params.eq;
+    auto& eq = strip->params.eq();
     eqModel = eq.model.load();
     eqMix.setBinding (bindLinear ("BLEND/MIX", eq.mix, 0.0f, 125.0f, "%", 0, 100.0f));
     const auto& spec = models::model (static_cast<models::Table> (strip->getEqTable()), eqModel);
@@ -414,14 +414,14 @@ void ChannelStripSection::bindEq()
 
 void ChannelStripSection::timerCallback()
 {
-    if (strip != nullptr && strip->params.eq.model.load() != eqModel)
+    if (strip != nullptr && strip->params.eq().model.load() != eqModel)
         bindEq();
 
     // Model changes (filter tool, gate, comp, insert FX) change the slots' parameter lists.
     if (strip != nullptr)
     {
         auto& p = strip->params;
-        const int models[] = { p.filter.toolModel.load(), p.gate.model.load(), p.dynamics.model.load(), p.preInsert.fx.load() };
+        const int models[] = { p.filter().toolModel.load(), p.gate().model.load(), p.dynamics().model.load(), p.preInsert().fx.load() };
         const int slots[] = { Filter, Gate, Comp, Insert };
         for (int i = 0; i < 4; ++i)
         {
@@ -452,9 +452,9 @@ juce::String ChannelStripSection::panelState() const
     for (float thr : kLevelThresholds)
         for (int ch = 0; ch < 2; ++ch)
             s << bit (dsp::gainToDb (ctx.meters.get (strip, MeterPoint::Trim, ch)) >= thr);
-    s << juce::roundToInt (strip->meters.dynReductionDb.load()) << bit (slotOn (Input)) << bit (p.filter.lowCut.load())
-      << bit (p.filter.highCut.load()) << bit (p.filter.tool.load()) << p.filter.toolModel.load() << bit (p.input.delayOn.load())
-      << bit (p.stereo.load()) << bit (strip->isUsingAltInput()) << (juce::int64) p.dcaMask.load().low() << ':' << (juce::int64) p.muteGroupMask.load().low() << ':' << p.postInsert.mode.load();
+    s << juce::roundToInt (strip->meters.dynReductionDb.load()) << bit (slotOn (Input)) << bit (p.filter().lowCut.load())
+      << bit (p.filter().highCut.load()) << bit (p.filter().tool.load()) << p.filter().toolModel.load() << bit (p.input.delayOn.load())
+      << bit (p.stereo.load()) << bit (strip->isUsingAltInput()) << (juce::int64) p.dcaMask.load().low() << ':' << (juce::int64) p.muteGroupMask.load().low() << ':' << p.postInsert().mode.load();
     for (int i = 0; i < kWingMains; ++i)
         s << bit (strip->mains[(size_t) i].on.load());
     for (int i = 0; i < 16; ++i)
@@ -583,8 +583,8 @@ void ChannelStripSection::paintPanel (juce::Graphics& g)
         const float c1 = details, c2 = details + W * 0.165f, labelW = W * 0.15f;
         const bool input = any && strip->isInput();
         juce::String toolToken;
-        if (any && p->filter.tool.load())
-            toolToken = models::model (models::FilterTools, p->filter.toolModel.load()).token;
+        if (any && p->filter().tool.load())
+            toolToken = models::model (models::FilterTools, p->filter().toolModel.load()).token;
         const std::tuple<float, int, const char*, bool> items[] = {
             { c1, 0, "MAIN SOURCE", input && ! strip->isUsingAltInput() },
             { c1, 1, "ALT SOURCE", input && strip->isUsingAltInput() },
@@ -592,8 +592,8 @@ void ChannelStripSection::paintPanel (juce::Graphics& g)
             { c1, 4, "INVERT", any && p->input.invert.load() },
             { c1, 6, "STEREO", any && (strip->isOutput() || p->stereo.load()) },
             { c1, 7, "MONO", any && strip->isInput() && ! p->stereo.load() },
-            { c2, 0, "24 dB LOW-CUT", any && p->filter.lowCut.load() },
-            { c2, 1, "12 dB HIGH-CUT", any && p->filter.highCut.load() },
+            { c2, 0, "24 dB LOW-CUT", any && p->filter().lowCut.load() },
+            { c2, 1, "12 dB HIGH-CUT", any && p->filter().highCut.load() },
             { c2, 2, "ALLPASS", toolToken.startsWith ("AP") },
             { c2, 3, "TILT EQUALIZER", toolToken == "TILT" },
             { c2, 4, "SOUND MAXER", toolToken == "MAX" },
@@ -732,7 +732,7 @@ void ChannelStripSection::paintScreen (juce::Graphics& g, juce::Rectangle<float>
     static const char* slotNames[] = { "INPUT", "FILTER", "GATE", "COMP", "INSERT", "MAIN", "EQ" };
     const bool eq = shownSlot == EqSlot;
     const auto& knob = eq ? (eqMixShown ? eqMix : eqKnobs[eqBand]) : slotKnobs[shownSlot];
-    const bool on = eq ? strip->params.eq.on.load() : slotOn (shownSlot);
+    const bool on = eq ? strip->params.eq().on.load() : slotOn (shownSlot);
     r.removeFromTop (2.0f);
     auto head = r.removeFromTop (r.getHeight() * 0.28f);
     g.setFont (juce::FontOptions (juce::jlimit (9.0f, 15.0f, head.getHeight() * 0.8f), juce::Font::bold));

@@ -108,9 +108,9 @@ namespace
         for (int k = 0; k < kNumStripKinds; ++k)
             for (auto& s : ctx.engine.getStrips (static_cast<StripKind> (k)))
             {
-                if (s->params.preInsert.fx.load() == slot)
+                if (s->params.preInsert().fx.load() == slot)
                     return s->getLabel().toUpperCase() + "  INSERT PRE";
-                if (s->params.postInsert.fx.load() == slot && s->params.postInsert.mode.load() == 0)
+                if (s->params.postInsert().fx.load() == slot && s->params.postInsert().mode.load() == 0)
                     return s->getLabel().toUpperCase() + "  INSERT POST";
             }
         return "NOT INSERTED";

@@ -452,7 +452,7 @@ void press (UiContext& ctx, const Function& f)
         case BtnInsertPost:
             // The strip's INS 1 / INS 2 on or off (HOME's insert key).
             if (auto* s = stripOf (ctx, f.target); s != nullptr && (f.category == BtnInsertPre || s->hasPostInsert()))
-                flip (f.category == BtnInsertPre ? s->params.preInsert.on : s->params.postInsert.on);
+                flip (f.category == BtnInsertPre ? s->params.preInsert().on : s->params.postInsert().on);
             break;
         case BtnFxParameter:
         {
@@ -779,11 +779,11 @@ bool isLit (UiContext& ctx, const Function& f)
         case BtnMidi: return midiui::midiKeyLit (ctx, f.target, f.option);
         case BtnInsertPre:
             if (auto* s = stripOf (ctx, f.target))
-                return s->params.preInsert.on.load();
+                return s->params.preInsert().on.load();
             break;
         case BtnInsertPost:
             if (auto* s = stripOf (ctx, f.target))
-                return s->hasPostInsert() && s->params.postInsert.on.load();
+                return s->hasPostInsert() && s->params.postInsert().on.load();
             break;
         case BtnFxParameter:
             // A switch shows its state; the other parameters have none.

@@ -54,7 +54,7 @@ fn dual_dynamic_eq_reports_each_band_up_or_down() {
     let engine = engine();
     let ch = engine.channel_at(0).unwrap();
     let m = model_index(DYN_MODELS, "DEQ2").unwrap();
-    let d = &ch.params.dynamics;
+    let d = ch.params.dynamics();
     d.set_model(m);
     // Band 1 cuts 200 Hz by 6 dB, band 2 lifts 5 kHz by 4 dB (both above -40 dB).
     for (id, v) in [
@@ -117,8 +117,8 @@ fn triple_deq_reports_each_band_up_or_down() {
         let i = spec.param_index(id).unwrap();
         p.values[i].store(value(spec.params[i].kind, v));
     }
-    ch.params.pre_insert.on.store(true, Relaxed);
-    ch.params.pre_insert.fx.store(0, Relaxed);
+    ch.params.pre_insert().on.store(true, Relaxed);
+    ch.params.pre_insert().fx.store(0, Relaxed);
     run(&engine, 200, tones);
     let rack = engine.fx(0).unwrap();
     let g: Vec<f32> = (0..fx::FX_BANDS).map(|b| rack.band_gain(b)).collect();

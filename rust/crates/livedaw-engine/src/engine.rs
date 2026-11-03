@@ -1298,7 +1298,8 @@ impl Engine {
         for s in st.all() {
             let p = &s.params;
             // The gate runs on input channels only.
-            let slots: &[&DynSlotParams] = if s.kind() == StripKind::Channel { &[&p.gate, &p.dynamics] } else { &[&p.dynamics] };
+            let slots: &[&DynSlotParams] =
+                if s.kind() == StripKind::Channel { &[p.gate(), p.dynamics()] } else { &[p.dynamics()] };
             for slot in slots {
                 let (source, buffer) = key_tap(slot);
                 let src = match source {

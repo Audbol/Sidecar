@@ -47,7 +47,7 @@ inline void unityConsole (MixerEngine& engine)
         for (auto& s : engine.getStrips (kind))
         {
             s->params.faderDb = 0.0f;
-            s->params.eq.on = true;
+            s->params.eq().on = true;
             if (kind == StripKind::Bus)
                 s->mains[0].on = false;
             if (kind == StripKind::Aux)

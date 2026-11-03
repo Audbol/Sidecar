@@ -24,7 +24,7 @@ void StripOverview::refresh()
     const float in = level (MeterPoint::Trim), out = level (MeterPoint::Output);
     const auto& p = strip.params;
     const float g = std::abs (strip.meters.gateReductionDb.load()), d = std::abs (strip.meters.dynReductionDb.load());
-    const bool go = p.gate.on.load(), dO = p.dynamics.on.load(), eo = p.eq.on.load();
+    const bool go = p.gate().on.load(), dO = p.dynamics().on.load(), eo = p.eq().on.load();
     bool changed = std::abs (in - input) > 0.005f || std::abs (out - output) > 0.005f || std::abs (g - gateGr) > 0.2f || std::abs (d - dynGr) > 0.2f
                    || go != gateOn || dO != dynOn || eo != eqOn;
     input = in;
@@ -36,8 +36,8 @@ void StripOverview::refresh()
     eqOn = eo;
 
     // The EQ's curve, only when the EQ changed (its model, its values, ON, MIX).
-    std::vector<float> state { (float) p.eq.model.load(), eo ? 1.0f : 0.0f, p.eq.mix.load() };
-    for (const auto& v : p.eq.values)
+    std::vector<float> state { (float) p.eq().model.load(), eo ? 1.0f : 0.0f, p.eq().mix.load() };
+    for (const auto& v : p.eq().values)
         state.push_back (v.load());
     if (state != eqState)
     {

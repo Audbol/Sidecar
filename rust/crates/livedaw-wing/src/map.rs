@@ -1744,15 +1744,15 @@ impl ModelSource for Console<'_> {
 /// The model table and current spec of a strip block.
 fn block_spec(p: &StripParams, kind: StripKind, blk: Blk) -> (&'static ModelSpec, &'static [ModelSpec]) {
     match blk {
-        Blk::Gate => (&DYN_MODELS[p.gate.model_index()], DYN_MODELS),
-        Blk::Dyn => (&DYN_MODELS[p.dynamics.model_index()], DYN_MODELS),
+        Blk::Gate => (&DYN_MODELS[p.gate().model_index()], DYN_MODELS),
+        Blk::Dyn => (&DYN_MODELS[p.dynamics().model_index()], DYN_MODELS),
         Blk::Eq => {
             let bus = kind.is_output();
             let table = if bus { EQ_MODELS_BUS } else { EQ_MODELS_CH };
-            (&table[p.eq.model_index(bus)], table)
+            (&table[p.eq().model_index(bus)], table)
         }
         Blk::Tool => {
-            let i = (p.filter.tool_model.load(Relaxed).max(0) as usize).min(FILTER_TOOLS.len() - 1);
+            let i = (p.filter().tool_model.load(Relaxed).max(0) as usize).min(FILTER_TOOLS.len() - 1);
             (&FILTER_TOOLS[i], FILTER_TOOLS)
         }
     }
@@ -1760,18 +1760,18 @@ fn block_spec(p: &StripParams, kind: StripKind, blk: Blk) -> (&'static ModelSpec
 
 fn block_values(p: &StripParams, blk: Blk) -> &[AtomicF32] {
     match blk {
-        Blk::Gate => &p.gate.values,
-        Blk::Dyn => &p.dynamics.values,
-        Blk::Eq => &p.eq.values,
-        Blk::Tool => &p.filter.tool_params,
+        Blk::Gate => &p.gate().values,
+        Blk::Dyn => &p.dynamics().values,
+        Blk::Eq => &p.eq().values,
+        Blk::Tool => &p.filter().tool_params,
     }
 }
 
 fn dyn_slot(p: &StripParams, blk: Blk) -> &DynSlotParams {
     if blk == Blk::Gate {
-        &p.gate
+        p.gate()
     } else {
-        &p.dynamics
+        p.dynamics()
     }
 }
 
@@ -2271,8 +2271,8 @@ impl<'a> Console<'a> {
                     .numbered()
                     .find_map(|(kind, n, s)| {
                         let p = &s.params;
-                        let post = kind != StripKind::Aux && p.post_insert.fx.load(Relaxed) == i as i32;
-                        (p.pre_insert.fx.load(Relaxed) == i as i32 || post).then_some((n, post))
+                        let post = kind != StripKind::Aux && p.post_insert().fx.load(Relaxed) == i as i32;
+                        (p.pre_insert().fx.load(Relaxed) == i as i32 || post).then_some((n, post))
                     })
                     .unwrap_or((0, false));
                 Value::Int(if pos { post as i32 } else { number })
@@ -2534,22 +2534,22 @@ impl<'a> Console<'a> {
                     Value::str(g)
                 }
             }
-            SF::LowCut => b(&p.filter.low_cut),
-            SF::LowCutF => f(&p.filter.low_cut_freq),
-            SF::LowCutS => item(def, p.filter.low_cut_slope.load(Relaxed)),
-            SF::HighCut => b(&p.filter.high_cut),
-            SF::HighCutF => f(&p.filter.high_cut_freq),
-            SF::HighCutS => item(def, p.filter.high_cut_slope.load(Relaxed)),
-            SF::Tool => b(&p.filter.tool),
+            SF::LowCut => b(&p.filter().low_cut),
+            SF::LowCutF => f(&p.filter().low_cut_freq),
+            SF::LowCutS => item(def, p.filter().low_cut_slope.load(Relaxed)),
+            SF::HighCut => b(&p.filter().high_cut),
+            SF::HighCutF => f(&p.filter().high_cut_freq),
+            SF::HighCutS => item(def, p.filter().high_cut_slope.load(Relaxed)),
+            SF::Tool => b(&p.filter().tool),
             SF::Slot(_) => return None,
             SF::BlkOn(blk) => match blk {
-                Blk::Eq => b(&p.eq.on),
-                Blk::Tool => b(&p.filter.tool),
+                Blk::Eq => b(&p.eq().on),
+                Blk::Tool => b(&p.filter().tool),
                 _ => b(&dyn_slot(p, blk).on),
             },
             SF::BlkMdl(blk) => Value::str(block_spec(p, kind, blk).0.token),
             SF::BlkMix(blk) => match blk {
-                Blk::Eq => f(&p.eq.mix),
+                Blk::Eq => f(&p.eq().mix),
                 _ => f(&dyn_slot(p, blk).mix),
             },
             SF::BlkGain(blk) => f(&dyn_slot(p, blk).gain),
@@ -2569,7 +2569,7 @@ impl<'a> Console<'a> {
                 }
             }
             SF::Xo(xo) => {
-                let d = &p.dynamics;
+                let d = p.dynamics();
                 match xo {
                     XoF::Depth => f(&d.xo_depth),
                     XoF::Type => item(def, d.xo_kind.load(Relaxed)),
@@ -2578,7 +2578,7 @@ impl<'a> Console<'a> {
                 }
             }
             SF::Ins(post, insf) => {
-                let ins: &InsertParams = if post { &p.post_insert } else { &p.pre_insert };
+                let ins: &InsertParams = if post { p.post_insert() } else { p.pre_insert() };
                 match insf {
                     InsF::On => b(&ins.on),
                     InsF::Fx => fx_item(ins.fx.load(Relaxed)),
@@ -3543,16 +3543,16 @@ impl<'a> Console<'a> {
                     }
                 }
             }
-            SF::LowCut => set_b(&p.filter.low_cut, v),
-            SF::LowCutF => set_f(&p.filter.low_cut_freq, v),
-            SF::LowCutS => set_item(&p.filter.low_cut_slope, def, v),
-            SF::HighCut => set_b(&p.filter.high_cut, v),
-            SF::HighCutF => set_f(&p.filter.high_cut_freq, v),
-            SF::HighCutS => set_item(&p.filter.high_cut_slope, def, v),
-            SF::Tool => set_b(&p.filter.tool, v),
+            SF::LowCut => set_b(&p.filter().low_cut, v),
+            SF::LowCutF => set_f(&p.filter().low_cut_freq, v),
+            SF::LowCutS => set_item(&p.filter().low_cut_slope, def, v),
+            SF::HighCut => set_b(&p.filter().high_cut, v),
+            SF::HighCutF => set_f(&p.filter().high_cut_freq, v),
+            SF::HighCutS => set_item(&p.filter().high_cut_slope, def, v),
+            SF::Tool => set_b(&p.filter().tool, v),
             SF::BlkOn(blk) => match blk {
-                Blk::Eq => set_b(&p.eq.on, v),
-                Blk::Tool => set_b(&p.filter.tool, v),
+                Blk::Eq => set_b(&p.eq().on, v),
+                Blk::Tool => set_b(&p.filter().tool, v),
                 _ => set_b(&dyn_slot(p, blk).on, v),
             },
             SF::BlkMdl(blk) => {
@@ -3562,13 +3562,13 @@ impl<'a> Console<'a> {
                 if table[m].token != current.token {
                     match blk {
                         Blk::Gate | Blk::Dyn => dyn_slot(p, blk).set_model(m),
-                        Blk::Eq => p.eq.set_model(m, kind.is_output()),
-                        Blk::Tool => p.filter.set_tool_model(m),
+                        Blk::Eq => p.eq().set_model(m, kind.is_output()),
+                        Blk::Tool => p.filter().set_tool_model(m),
                     }
                 }
             }
             SF::BlkMix(blk) => match blk {
-                Blk::Eq => set_f(&p.eq.mix, v),
+                Blk::Eq => set_f(&p.eq().mix, v),
                 _ => set_f(&dyn_slot(p, blk).mix, v),
             },
             SF::BlkGain(blk) => set_f(&dyn_slot(p, blk).gain, v),
@@ -3596,7 +3596,7 @@ impl<'a> Console<'a> {
                 }
             }
             SF::Xo(xo) => {
-                let d = &p.dynamics;
+                let d = p.dynamics();
                 match xo {
                     XoF::Depth => set_f(&d.xo_depth, v),
                     XoF::Type => set_item(&d.xo_kind, def, v),
@@ -3605,7 +3605,7 @@ impl<'a> Console<'a> {
                 }
             }
             SF::Ins(post, insf) => {
-                let ins: &InsertParams = if post { &p.post_insert } else { &p.pre_insert };
+                let ins: &InsertParams = if post { p.post_insert() } else { p.pre_insert() };
                 match insf {
                     InsF::On => set_b(&ins.on, v),
                     InsF::Fx => ins.fx.store(fx_from_item(v).ok_or(SetError::BadValue)?, Relaxed),
@@ -3997,15 +3997,15 @@ mod tests {
         assert_eq!(ch3.params.mute_group_mask.load().low(), 4);
         assert_eq!(ch3.name(), "Kick");
         // KEY TAP (TAP_POINTS order).
-        assert_eq!((ch3.params.gate.sc_tap.load(Relaxed), ch3.params.dynamics.sc_tap.load(Relaxed)), (7, 5));
+        assert_eq!((ch3.params.gate().sc_tap.load(Relaxed), ch3.params.dynamics().sc_tap.load(Relaxed)), (7, 5));
         // KEY SOURCE: channels from channels, the others from buses, mains, matrices and aux.
-        assert_eq!(ch3.params.dynamics.sc_source.load(Relaxed), 4);
+        assert_eq!(ch3.params.dynamics().sc_source.load(Relaxed), 4);
         let bus4 = c.strip(StripKind::Bus, 4).unwrap();
-        assert_eq!(KeySource::from_code(bus4.params.dynamics.sc_source.load(Relaxed)), KeySource::Strip(StripKind::Main, 1));
-        assert_eq!(bus4.params.dynamics.sc_tap.load(Relaxed), 4);
+        assert_eq!(KeySource::from_code(bus4.params.dynamics().sc_source.load(Relaxed)), KeySource::Strip(StripKind::Main, 1));
+        assert_eq!(bus4.params.dynamics().sc_tap.load(Relaxed), 4);
         assert!(c.strip(StripKind::Aux, 2).unwrap().params.solo_safe.load(Relaxed), "SOLO SAFE on an aux");
         let mtx2 = c.strip(StripKind::Matrix, 2).unwrap();
-        assert_eq!(KeySource::from_code(mtx2.params.dynamics.sc_source.load(Relaxed)), KeySource::Strip(StripKind::Bus, 15));
+        assert_eq!(KeySource::from_code(mtx2.params.dynamics().sc_source.load(Relaxed)), KeySource::Strip(StripKind::Bus, 15));
         assert!(!c.set(node(&c, "/bus/4/dynsc/src"), &Value::str("CH.1")).is_ok_and(|v| v == Value::str("CH.1")));
         assert!(ch3.sends.find(4).unwrap().pan_reversed.load(Relaxed));
         assert_eq!(e.controls.main_link.load(Relaxed), 2);
@@ -4023,7 +4023,7 @@ mod tests {
         c.set(node(&c, "/ch/1/gate/mdl"), &Value::str("GATE")).unwrap();
         let thr = node(&c, "/ch/1/gate/thr");
         assert_eq!(c.set(thr, &Value::Float(-33.0)).unwrap(), Value::Float(-33.0));
-        assert_eq!(c.strip(StripKind::Channel, 1).unwrap().params.gate.param("thr").unwrap().load(), -33.0);
+        assert_eq!(c.strip(StripKind::Channel, 1).unwrap().params.gate().param("thr").unwrap().load(), -33.0);
         // A choice parameter by item and by index.
         let ratio = node(&c, "/ch/1/gate/ratio");
         assert_eq!(c.set(ratio, &Value::str("1:2")).unwrap(), Value::str("1:2"));

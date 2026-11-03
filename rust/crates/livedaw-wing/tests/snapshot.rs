@@ -49,19 +49,19 @@ fn imports_the_fixture() {
     assert_eq!(c1.input.delay.load(), 2.5);
     assert_eq!(c1.input_left.load(Relaxed), 0); // A 1
     assert_eq!(c1.alt_input_left.load(Relaxed), PLAYBACK_SOURCE_BASE); // CRD 1
-    assert!(c1.filter.low_cut.load(Relaxed));
-    assert_eq!(c1.filter.low_cut_slope.load(Relaxed), 2);
-    assert_eq!(c1.filter.tool_params[0].load(), 1.5);
-    assert!(c1.gate.on.load(Relaxed));
-    assert_eq!(c1.gate.param("thr").unwrap().load(), -35.0);
-    assert_eq!(c1.gate.sc_filter.load(Relaxed), 2); // HP12
-    assert_eq!(c1.eq.param("1g", false).unwrap().load(), -4.0);
-    assert_eq!(c1.dynamics.param("thr").unwrap().load(), -18.0);
-    assert_eq!(c1.dynamics.gain.load(), 2.0);
-    assert_eq!(c1.dynamics.sc_source.load(Relaxed), 1); // CH.2
-    assert!(c1.pre_insert.on.load(Relaxed));
-    assert_eq!(c1.pre_insert.fx.load(Relaxed), 1);
-    assert_eq!(c1.post_insert.fx.load(Relaxed), 0);
+    assert!(c1.filter().low_cut.load(Relaxed));
+    assert_eq!(c1.filter().low_cut_slope.load(Relaxed), 2);
+    assert_eq!(c1.filter().tool_params[0].load(), 1.5);
+    assert!(c1.gate().on.load(Relaxed));
+    assert_eq!(c1.gate().param("thr").unwrap().load(), -35.0);
+    assert_eq!(c1.gate().sc_filter.load(Relaxed), 2); // HP12
+    assert_eq!(c1.eq().param("1g", false).unwrap().load(), -4.0);
+    assert_eq!(c1.dynamics().param("thr").unwrap().load(), -18.0);
+    assert_eq!(c1.dynamics().gain.load(), 2.0);
+    assert_eq!(c1.dynamics().sc_source.load(Relaxed), 1); // CH.2
+    assert!(c1.pre_insert().on.load(Relaxed));
+    assert_eq!(c1.pre_insert().fx.load(Relaxed), 1);
+    assert_eq!(c1.post_insert().fx.load(Relaxed), 0);
     assert!(c1s.main_send(0).unwrap().on.load(Relaxed));
     let s1 = ch(1).sends.find(0).unwrap();
     assert!(s1.enabled.load(Relaxed) && s1.ignore_mute.load(Relaxed));
@@ -79,9 +79,9 @@ fn imports_the_fixture() {
     let c2 = &ch(2).params;
     assert!(c2.mute.load(Relaxed));
     assert!(c2.fader_db.load() <= -100.0);
-    assert_eq!(livedaw_dsp::wing::DYN_MODELS[c2.gate.model_index()].token, "E88");
-    assert_eq!(livedaw_dsp::wing::DYN_MODELS[c2.dynamics.model_index()].token, "LA");
-    assert_eq!(c2.dynamics.mix.load(), 80.0);
+    assert_eq!(livedaw_dsp::wing::DYN_MODELS[c2.gate().model_index()].token, "E88");
+    assert_eq!(livedaw_dsp::wing::DYN_MODELS[c2.dynamics().model_index()].token, "LA");
+    assert_eq!(c2.dynamics().mix.load(), 80.0);
     // Channel 3: a stereo source (io/in/A/3 mode ST) applied after the patch.
     let c3 = &ch(3).params;
     assert!(c3.stereo.load(Relaxed));
@@ -95,7 +95,7 @@ fn imports_the_fixture() {
     let bus1 = e.strip_by_number(StripKind::Bus, 1).unwrap();
     assert!(bus1.params.mono.load(Relaxed));
     assert!(bus1.params.input.delay_on.load(Relaxed));
-    assert_eq!(bus1.params.eq.param("3g", true).unwrap().load(), -6.0);
+    assert_eq!(bus1.params.eq().param("3g", true).unwrap().load(), -6.0);
     assert!(bus1.matrix_send(1).unwrap().pre.load(Relaxed));
     assert_eq!(bus1.params.output_left.load(Relaxed), 2); // A 3/4 = Bus 1
     let bus10 = e.strip_by_number(StripKind::Bus, 10).unwrap();

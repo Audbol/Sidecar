@@ -468,7 +468,7 @@ impl Strip {
     /// not listed on the automix screen, not spilled). The group's ENABLE is
     /// separate (`EngineControls::automix_enable`).
     pub fn automix_group(&self) -> Option<usize> {
-        let ins = &self.params.post_insert;
+        let ins = self.params.post_insert();
         if !self.has_automix() || !ins.on.load(Relaxed) {
             return None;
         }
@@ -512,14 +512,14 @@ impl Strip {
 
     /// The INS 2 slot runs an FX slot (not automix), with `fx` its slot index.
     pub(crate) fn post_insert_fx(&self) -> Option<i32> {
-        let ins = &self.params.post_insert;
+        let ins = self.params.post_insert();
         (self.has_post_insert() && ins.on.load(Relaxed) && ins.mode.load(Relaxed) == 0).then(|| ins.fx.load(Relaxed))
     }
 
     /// True if this strip feeds `slot` from its pre/post insert.
     pub fn uses_fx(&self, slot: usize) -> bool {
         let p = &self.params;
-        (p.pre_insert.on.load(Relaxed) && p.pre_insert.fx.load(Relaxed) == slot as i32)
+        (p.pre_insert().on.load(Relaxed) && p.pre_insert().fx.load(Relaxed) == slot as i32)
             || self.post_insert_fx() == Some(slot as i32)
             || self.block_inserts().any(|ins| ins.on.load(Relaxed) && ins.fx.load(Relaxed) == slot as i32)
     }
@@ -528,14 +528,14 @@ impl Strip {
     pub fn assigns_fx(&self, slot: usize) -> bool {
         let p = &self.params;
         let slot = slot as i32;
-        p.pre_insert.fx.load(Relaxed) == slot
-            || (self.has_post_insert() && p.post_insert.fx.load(Relaxed) == slot)
+        p.pre_insert().fx.load(Relaxed) == slot
+            || (self.has_post_insert() && p.post_insert().fx.load(Relaxed) == slot)
             || self.block_inserts().any(|ins| ins.fx.load(Relaxed) == slot)
     }
 
     fn has_inserts(&self) -> bool {
         let p = &self.params;
-        (p.pre_insert.on.load(Relaxed) && p.pre_insert.fx.load(Relaxed) >= 0)
+        (p.pre_insert().on.load(Relaxed) && p.pre_insert().fx.load(Relaxed) >= 0)
             || self.post_insert_fx().is_some_and(|fx| fx >= 0)
             || self.block_inserts().any(|ins| ins.on.load(Relaxed) && ins.fx.load(Relaxed) >= 0)
     }
@@ -613,7 +613,7 @@ impl Strip {
         // The inserts' latency accumulated along the chain, read at the taps.
         let (mut at, mut tap_l, mut pfl, mut post) = (0, 0, 0, 0);
         let mut visit = |node: Option<Node>, block: Option<&Block>| match (node, block) {
-            (Some(Node::PreInsert), _) => at += insert(&p.pre_insert),
+            (Some(Node::PreInsert), _) => at += insert(p.pre_insert()),
             (Some(Node::PostInsert), _) => at += self.post_insert_fx().map_or(0, slot),
             (Some(Node::Tap(t)), _) if t as usize == tap_point => tap_l = at,
             (Some(Node::Pfl), _) => pfl = at,
@@ -1186,7 +1186,7 @@ impl Strip {
             }
             Node::Delay => self.apply_delay(d, n),
             Node::Filter => {
-                let settings = p.filter.snapshot();
+                let settings = p.filter().snapshot();
                 if settings.is_active() {
                     let [w0, w1] = &mut d.work;
                     let mut chans: [&mut [f32]; 2] = [&mut w0[..n], &mut w1[..n]];
@@ -1195,16 +1195,16 @@ impl Strip {
             }
             Node::Gate => {
                 if let Some((listen_mode::GATE_KEY, _)) = probe.listen {
-                    *listened = self.listen_key(d, ctx, &p.gate, n);
+                    *listened = self.listen_key(d, ctx, p.gate(), n);
                 }
                 self.run_gate(d, ctx, n)
             }
             Node::Eq => self.run_eq_probed(d, ctx, probe, listened, n),
             Node::Dynamics => {
                 match probe.listen {
-                    Some((listen_mode::DYN_KEY, _)) => *listened = self.listen_key(d, ctx, &p.dynamics, n),
+                    Some((listen_mode::DYN_KEY, _)) => *listened = self.listen_key(d, ctx, p.dynamics(), n),
                     Some((listen_mode::XOVER, _)) => {
-                        let c = p.dynamics.xover().coefficients(d.sample_rate);
+                        let c = p.dynamics().xover().coefficients(d.sample_rate);
                         *listened = Self::listen_filtered(d, c, None, n);
                     }
                     _ => {}
@@ -1223,7 +1223,7 @@ impl Strip {
                     let power: f32 =
                         (0..nc).map(|ch| d.work[ch][..n].iter().map(|x| x * x).sum::<f32>()).sum::<f32>() / (n * nc) as f32;
                     let c = 0.7;
-                    d.automix_power = c * d.automix_power + (1.0 - c) * power * db_to_gain(p.post_insert.weight.load() * 2.0);
+                    d.automix_power = c * d.automix_power + (1.0 - c) * power * db_to_gain(p.post_insert().weight.load() * 2.0);
                 }
             }
             Node::Pfl => {
@@ -1280,7 +1280,7 @@ impl Strip {
     fn run_eq_probed(&self, d: &mut StripDsp, ctx: &ProcessContext, probe: &StripProbe, listened: &mut bool, n: usize) {
         Self::probe_rta(d, ctx, probe, rta_tap::PRE_EQ, n);
         if let Some((listen_mode::BAND, band)) = probe.listen {
-            let eq = &self.params.eq;
+            let eq = self.params.eq();
             eq.values_snapshot(&mut d.eq_values);
             let table = if self.kind.is_output() { EQ_MODELS_BUS } else { EQ_MODELS_CH };
             let model = (eq.model.load(Relaxed).max(0) as usize).min(table.len() - 1);
@@ -1388,7 +1388,7 @@ impl Strip {
     /// The GATE or DYNAMICS slot. Switching it ON or OFF crossfades (the slot
     /// keeps running for the 5 ms fade after OFF).
     unsafe fn run_dyn_slot(&self, d: &mut StripDsp, ctx: &ProcessContext, n: usize, gate: bool) {
-        let slot = if gate { &self.params.gate } else { &self.params.dynamics };
+        let slot = if gate { self.params.gate() } else { self.params.dynamics() };
         let m = &self.meters;
         let (reduction, active, key_db, out_peak) = if gate {
             (&m.gate_reduction_db, &m.gate_active, &m.gate_key_db, &m.gate_out_peak)
@@ -1434,7 +1434,7 @@ impl Strip {
     }
 
     fn run_eq(&self, d: &mut StripDsp, n: usize) {
-        let eq = &self.params.eq;
+        let eq = self.params.eq();
         eq.values_snapshot(&mut d.eq_values);
         let table = if self.kind.is_output() { EQ_MODELS_BUS } else { EQ_MODELS_CH };
         let model = (eq.model.load(Relaxed).max(0) as usize).min(table.len() - 1);
@@ -1445,7 +1445,7 @@ impl Strip {
     }
 
     unsafe fn run_insert(&self, d: &mut StripDsp, ctx: &ProcessContext, n: usize, post: bool) {
-        let ins = if post { &self.params.post_insert } else { &self.params.pre_insert };
+        let ins = if post { self.params.post_insert() } else { self.params.pre_insert() };
         self.run_insert_params(d, ctx, n, ins);
     }
 

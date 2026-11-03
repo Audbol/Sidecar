@@ -558,24 +558,24 @@ fn capture_strip(s: &Strip, sections: u32, slots: &[usize], mains: usize, matric
         put_i(i, "dlymode", &p.input.delay_mode);
         put_f(i, "dly", &p.input.delay);
         if kind == StripKind::Channel {
-            put_filter(e.add_new("Flt"), &p.filter);
+            put_filter(e.add_new("Flt"), p.filter());
         }
     }
     if sections & GATE != 0 && kind == StripKind::Channel {
-        put_dyn_slot(e.add_new("Gate"), &p.gate);
+        put_dyn_slot(e.add_new("Gate"), p.gate());
     }
     if sections & EQ != 0 {
-        put_eq(e.add_new("Eq"), &p.eq, kind.is_output());
+        put_eq(e.add_new("Eq"), p.eq(), kind.is_output());
     }
     if sections & DYNAMICS != 0 {
-        put_dyn_slot(e.add_new("Dyn"), &p.dynamics);
+        put_dyn_slot(e.add_new("Dyn"), p.dynamics());
     }
     if sections & INSERTS != 0 {
         let ins = e.add_new("Ins");
         put_i(ins, "proc", &p.process_order);
         put_i(ins, "tap", &p.tap);
-        put_insert(ins.add_new("Pre"), &p.pre_insert);
-        put_insert(ins.add_new("Post"), &p.post_insert);
+        put_insert(ins.add_new("Pre"), p.pre_insert());
+        put_insert(ins.add_new("Post"), p.post_insert());
     }
     if sections & SENDS != 0 {
         if kind != StripKind::Matrix {
@@ -1179,27 +1179,27 @@ fn apply_strip(
             get_f(i, "dly", &p.input.delay);
         }
         if let Some(f) = e.child("Flt") {
-            get_filter(f, &p.filter);
+            get_filter(f, p.filter());
         }
     }
     if let Some(g) = e.child("Gate").filter(|_| sections & GATE != 0) {
-        get_dyn_slot(g, &p.gate);
+        get_dyn_slot(g, p.gate());
     }
     if let Some(q) = e.child("Eq").filter(|_| sections & EQ != 0) {
-        get_eq(q, &p.eq, kind.is_output());
+        get_eq(q, p.eq(), kind.is_output());
     }
     if let Some(d) = e.child("Dyn").filter(|_| sections & DYNAMICS != 0) {
-        get_dyn_slot(d, &p.dynamics);
+        get_dyn_slot(d, p.dynamics());
     }
     apply_chain(s, e, sections);
     if let Some(ins) = e.child("Ins").filter(|_| sections & INSERTS != 0) {
         get_i(ins, "proc", &p.process_order);
         get_i(ins, "tap", &p.tap);
         if let Some(x) = ins.child("Pre") {
-            get_insert(x, &p.pre_insert);
+            get_insert(x, p.pre_insert());
         }
         if let Some(x) = ins.child("Post") {
-            get_insert(x, &p.post_insert);
+            get_insert(x, p.post_insert());
         }
     }
     if sections & SENDS != 0 {

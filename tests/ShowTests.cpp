@@ -30,9 +30,9 @@ public:
             p.custLink = false; // its own name and colour, not its source's
             p.stereo = true;
             p.input.trimDb = 12.0f;
-            p.filter.lowCut = true;
-            p.gate.values[0] = -33.0f; // GATE thr
-            p.eq.values[7] = -4.5f;    // STD 2g
+            p.filter().lowCut = true;
+            p.gate().values[0] = -33.0f; // GATE thr
+            p.eq().values[7] = -4.5f;    // STD 2g
             kick->setModel (ModelBlock::Dynamics, models::findModel (models::Dynamics, "B560"));
             p.processOrder = 7;
             p.recallSafe = true;
@@ -71,10 +71,10 @@ public:
             expect (! r->params.custLink.load());
             expect (r->params.stereo.load());
             expectEquals (r->params.input.trimDb.load(), 12.0f);
-            expect (r->params.filter.lowCut.load());
-            expectEquals (r->params.gate.values[0].load(), -33.0f);
-            expectEquals (r->params.eq.values[7].load(), -4.5f);
-            expectEquals (models::model (models::Dynamics, r->params.dynamics.model.load()).token, juce::String ("B560"));
+            expect (r->params.filter().lowCut.load());
+            expectEquals (r->params.gate().values[0].load(), -33.0f);
+            expectEquals (r->params.eq().values[7].load(), -4.5f);
+            expectEquals (models::model (models::Dynamics, r->params.dynamics().model.load()).token, juce::String ("B560"));
             expectEquals (r->params.processOrder.load(), 7);
             expect (r->params.recallSafe.load());
             expectEquals ((int) r->params.dcaMask.load().low(), 0b101);
@@ -282,17 +282,17 @@ public:
             auto& ch1 = engine.getChannels()[0]->params;
 
             ch1.faderDb = -10.0f;
-            ch1.eq.values[4] = 4.0f;
+            ch1.eq().values[4] = 4.0f;
             expectEquals (show.addScene ("Verse"), 0);
 
             ch1.faderDb = 3.0f;
-            ch1.eq.values[4] = -2.0f;
+            ch1.eq().values[4] = -2.0f;
             ch1.mute = true;
             expectEquals (show.addScene ("Chorus"), 1);
 
             show.recallScene (0);
             expectEquals (ch1.faderDb.load(), -10.0f);
-            expectEquals (ch1.eq.values[4].load(), 4.0f);
+            expectEquals (ch1.eq().values[4].load(), 4.0f);
             expect (! ch1.mute.load());
             expectEquals (show.getCurrentSceneIndex(), 0);
 
@@ -344,18 +344,18 @@ public:
             auto& p = engine.getChannels()[0]->params;
 
             p.faderDb = -20.0f;
-            p.dynamics.values[0] = -30.0f;
+            p.dynamics().values[0] = -30.0f;
             p.inputLeft = 0;
             show.addScene ("A");
             show.setSceneScope (0, state::Fader); // only faders
 
             p.faderDb = 0.0f;
-            p.dynamics.values[0] = -10.0f;
+            p.dynamics().values[0] = -10.0f;
             p.inputLeft = 5;
             show.recallScene (0);
 
             expectEquals (p.faderDb.load(), -20.0f);
-            expectEquals (p.dynamics.values[0].load(), -10.0f); // out of scope
+            expectEquals (p.dynamics().values[0].load(), -10.0f); // out of scope
             expectEquals (p.inputLeft.load(), 5);              // routing is never in the default scope
         }
 
@@ -397,17 +397,17 @@ public:
 
             show.addScene ("Base");
             a.faderDb = -7.0f;
-            a.eq.values[0] = 5.0f;
+            a.eq().values[0] = 5.0f;
             b.faderDb = -7.0f;
             show.addSnippet (0, "Ch1 fader", state::Fader, { state::StripRef::of (*engine.getChannels()[0]) });
 
             a.faderDb = 0.0f;
-            a.eq.values[0] = 0.0f;
+            a.eq().values[0] = 0.0f;
             b.faderDb = 0.0f;
             show.recallSnippet (0, 0);
 
             expectEquals (a.faderDb.load(), -7.0f);
-            expectEquals (a.eq.values[0].load(), 0.0f); // section not in snippet
+            expectEquals (a.eq().values[0].load(), 0.0f); // section not in snippet
             expectEquals (b.faderDb.load(), 0.0f);            // strip not in snippet
         }
 
@@ -582,7 +582,7 @@ public:
             expect (result.getErrorMessage().contains ("Missing Reverb"));
             expectEquals ((int) e2.getChannels().size(), 1); // ...but everything else loads
             auto& ch = *e2.getChannels()[0];
-            expectEquals (ch.params.preInsert.fx.load(), 0, "the plugin moved to FX slot 1");
+            expectEquals (ch.params.preInsert().fx.load(), 0, "the plugin moved to FX slot 1");
             expectEquals (loaded.getName(), juce::String ("Gig \"A\" & <B>\nline 2"));
             expectEquals (ch.getName(), juce::String::fromUTF8 ("Gr\xc3\xbc\xc3\x9f Gott \xe2\x99\xab"));
             expectEquals (ch.params.faderDb.load(), -12.5f);

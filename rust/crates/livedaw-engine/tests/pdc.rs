@@ -108,8 +108,8 @@ fn channels_summed_into_a_main_line_up() {
     let e = &rig.engine;
     load(e, 0, 100);
     let ch = e.channel_at(0).unwrap();
-    ch.params.pre_insert.on.store(true, Relaxed);
-    ch.params.pre_insert.fx.store(0, Relaxed);
+    ch.params.pre_insert().on.store(true, Relaxed);
+    ch.params.pre_insert().fx.store(0, Relaxed);
 
     // Both channels' impulses arrive together, 100 samples late.
     let out = rig.impulse(4);
@@ -150,8 +150,8 @@ fn a_bus_with_a_plugin_lines_up_with_the_direct_path() {
     let send = ch.sends.get_or_create(0).unwrap();
     send.enabled.store(true, Relaxed);
     send.mode.store(1, Relaxed); // POST
-    bus.params.pre_insert.on.store(true, Relaxed);
-    bus.params.pre_insert.fx.store(3, Relaxed);
+    bus.params.pre_insert().on.store(true, Relaxed);
+    bus.params.pre_insert().fx.store(3, Relaxed);
     bus.main_send(0).unwrap().on.store(true, Relaxed);
 
     let out = rig.impulse(4);
@@ -166,8 +166,8 @@ fn a_bus_with_a_plugin_lines_up_with_the_direct_path() {
 
     // A plugin on the channel too: the bus sum is aligned first, then the main.
     load(e, 4, 20);
-    ch.params.pre_insert.on.store(true, Relaxed);
-    ch.params.pre_insert.fx.store(4, Relaxed);
+    ch.params.pre_insert().on.store(true, Relaxed);
+    ch.params.pre_insert().fx.store(4, Relaxed);
     let out = rig.impulse(4);
     let p = peaks(&out);
     assert_eq!(p.len(), 1, "{p:?}");
@@ -181,8 +181,8 @@ fn a_wet_dry_mix_delays_the_dry_signal() {
     let e = &rig.engine;
     load(e, 0, 30);
     let ch = e.channel_at(0).unwrap();
-    ch.params.pre_insert.on.store(true, Relaxed);
-    ch.params.pre_insert.fx.store(0, Relaxed);
+    ch.params.pre_insert().on.store(true, Relaxed);
+    ch.params.pre_insert().fx.store(0, Relaxed);
     e.controls.fx[0].mix.store(50.0);
     let out = rig.impulse(2);
     let p = peaks(&out);
@@ -197,8 +197,8 @@ fn compensation_is_capped_and_reported() {
     let e = &rig.engine;
     load(e, 0, MAX_PDC + 500);
     let ch = e.channel_at(0).unwrap();
-    ch.params.pre_insert.on.store(true, Relaxed);
-    ch.params.pre_insert.fx.store(0, Relaxed);
+    ch.params.pre_insert().on.store(true, Relaxed);
+    ch.params.pre_insert().fx.store(0, Relaxed);
     let out = rig.impulse((MAX_PDC + 600) / BLOCK + 2);
     // The plain channel is delayed by the maximum; the plugin's path stays 500 later.
     let p = peaks(&out);
@@ -216,8 +216,8 @@ fn the_tap_point_decides_whether_ins_1_counts() {
     let e = &rig.engine;
     load(e, 0, 40);
     let (a, b) = (e.channel_at(0).unwrap(), e.channel_at(1).unwrap());
-    a.params.pre_insert.on.store(true, Relaxed);
-    a.params.pre_insert.fx.store(0, Relaxed);
+    a.params.pre_insert().on.store(true, Relaxed);
+    a.params.pre_insert().fx.store(0, Relaxed);
     // Both feed Bus 2 in TAP mode, tapped at the INPUT: before INS 1, no latency.
     for s in [&a, &b] {
         s.main_send(0).unwrap().on.store(false, Relaxed);
@@ -249,8 +249,8 @@ fn the_tap_points_follow_the_process_order() {
     let e = &rig.engine;
     load(e, 0, 40);
     let (a, b) = (e.channel_at(0).unwrap(), e.channel_at(1).unwrap());
-    a.params.pre_insert.on.store(true, Relaxed);
-    a.params.pre_insert.fx.store(0, Relaxed);
+    a.params.pre_insert().on.store(true, Relaxed);
+    a.params.pre_insert().fx.store(0, Relaxed);
     for s in [&a, &b] {
         s.main_send(0).unwrap().on.store(false, Relaxed);
         s.sends.get_or_create(1).unwrap().enabled.store(true, Relaxed);

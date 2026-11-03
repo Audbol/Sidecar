@@ -54,7 +54,7 @@ pub fn unity_console(e: &Engine) {
     for kind in [StripKind::Aux, StripKind::Bus, StripKind::Main, StripKind::Matrix] {
         for s in e.strips(kind) {
             s.params.fader_db.store(0.0);
-            s.params.eq.on.store(true, Relaxed);
+            s.params.eq().on.store(true, Relaxed);
             if kind == StripKind::Bus {
                 s.main_send(0).unwrap().on.store(false, Relaxed);
             }

@@ -26,8 +26,8 @@ fn engine() -> Arc<Engine> {
 fn insert(engine: &Engine, slot: usize, token: &str) {
     assert!(engine.set_fx_model(slot, model_index(FX_MODELS, token).unwrap(), true));
     let ch = engine.channel_at(0).unwrap();
-    ch.params.pre_insert.on.store(true, Relaxed);
-    ch.params.pre_insert.fx.store(slot as i32, Relaxed);
+    ch.params.pre_insert().on.store(true, Relaxed);
+    ch.params.pre_insert().fx.store(slot as i32, Relaxed);
 }
 
 fn set(engine: &Engine, slot: usize, id: &str, v: f32) {
