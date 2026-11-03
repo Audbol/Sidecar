@@ -354,6 +354,36 @@ Three layers:
 4. **Second emulation** (the X32 / M32, the closest to the WING), then Yamaha,
    Allen & Heath and DiGiCo, each extending the core where it needs something new.
 
+   The X32, from the owner's reference notes (kept outside the repository: the
+   manual, the quick start guide and P.-G. Maillot's *Unofficial X32/M32 OSC Remote
+   Protocol*). What it needs that the core doesn't have yet: a third input kind (8 FX
+   returns: EQ only, fed by FX 1-4), mono strips made stereo by linking odd/even
+   pairs, a mono M/C main beside the stereo LR, matrices fed only by buses and mains,
+   fixed blocks (its gate with 5 modes, its compressor before or after the EQ, a
+   4-band EQ on inputs and 6 bands on buses, mains and matrices, one insert), its
+   level law (four segments, 1024 fader steps, 161 for sends), 16 colours, OSC on
+   UDP 10023 and a fixed MIDI map. Steps, each with every check green and the WING
+   unchanged:
+   1. **The X32 profile value**: `Profile::X32` with its counts (32 channels, 8 aux,
+      16 buses, 2 mains, 6 matrices, 8 DCAs, 6 mute groups, 8 FX slots), fader and
+      pan laws, labels, palette and port groups; a console configured as an X32
+      runs the WING's processing until the steps below replace it.
+   2. **Strips per slot**: a profile's chain template per strip slot, not only per
+      kind, so aux 9-16 can be FX returns; mono-pair links (`/config/chlink`...)
+      over the core's mono and stereo strips; the M/C main.
+   3. **The X32's processing models** (`livedaw_dsp::x32`): gate, compressor /
+      expander, low cut, the 4- and 6-band EQ, clean-room from the documented
+      ranges and laws; the chain's dynamics PRE / POST EQ and insert PRE / POST.
+   4. **Sends as the X32's**: channels to buses (tap points per bus pair, GRP),
+      LR and M/C assigns, buses and mains to matrices only.
+   5. **X32 OSC** (`livedaw-x32`, UDP 10023): `/info`, `/xinfo`, `/status`,
+      `/xremote`, get / set with the console's value steps, `/node` and `/`, the
+      meters; tests replay the documented traffic (X32-Edit itself isn't run).
+   6. **X32 MIDI** (`MidiProtocol::X32`): the fixed CC map (faders, mutes, pans on
+      channels 1-3, scenes by program change) and OSC over SysEx.
+   7. **Scenes and the interface**: `.scn` import and export; the Universal Mixer
+      shows the X32 (its strip kinds, blocks and colours from the profile).
+
 Each emulation keeps the independent-project disclaimer: not affiliated with or
 endorsed by the console's maker, their trademarks used only to say what is emulated,
 none of their firmware, software, documents or artwork included.
