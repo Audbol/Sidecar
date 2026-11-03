@@ -82,6 +82,8 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
   `ld_x32_*`. Compared with a freshly initialised X32 Compact (`tools/x32/compare.py`):
   all 943 parameter groups answer the same, an X32's factory strips, names, colours,
   pans and DCAs included.
+- X32 MIDI: faders, mutes, pans and mute groups by control change on MIDI channels 1-3,
+  scenes by program change, both ways, as an X32's fixed MIDI map.
 
 ## [0.2.0] - beta
 

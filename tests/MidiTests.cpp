@@ -1,6 +1,7 @@
 #include "TestHelpers.h"
 #include "engine/MidiPorts.h"
 #include "engine/MidiRemote.h"
+#include "engine/X32Midi.h"
 #include "engine/Models.h"
 #include "engine/PluginHost.h"
 #include "engine/RustStrings.h"
@@ -147,7 +148,40 @@ private:
         expectEquals ((int) engine.getChannels().size(), 32);
         expectEquals ((int) engine.getMatrices().size(), 6);
         const auto x32 = engine.getRemotes();
-        expect (x32.midi == MidiProtocol::None && x32.network == 8u, "its OSC (livedaw-x32), no MIDI yet");
+        expect (x32.midi == MidiProtocol::X32 && x32.network == 8u, "its MIDI and OSC (livedaw-x32)");
+        {
+            // Its MIDI (Phase 4 step 6): faders, mutes and pans by CC, both ways.
+            auto protocol = MidiProtocol::create (x32.midi, engine, show, false);
+            auto* x = dynamic_cast<X32Midi*> (protocol.get());
+            expect (x != nullptr && protocol->asWing() == nullptr);
+            std::vector<juce::MidiMessage> sent;
+            x->onSend = [&] (const juce::MidiMessage& m) { sent.push_back (m); };
+            x->sendFeedback();
+            expect (sent.empty(), "nothing at start");
+            auto& ch3 = *engine.getChannels()[2];
+            x->handleMessage (0, juce::MidiMessage::controllerEvent (1, 2, 95));
+            expectWithinAbsoluteError (ch3.params.faderDb.load(), 0.0f, 0.1f, "95 is 0 dB");
+            x->handleMessage (0, juce::MidiMessage::controllerEvent (2, 2, 127));
+            expect (ch3.params.mute.load());
+            x->handleMessage (0, juce::MidiMessage::controllerEvent (3, 2, 1));
+            expectEquals (ch3.params.pan.load(), -100.0f);
+            x->handleMessage (0, juce::MidiMessage::controllerEvent (1, 70, 95)); // main LR
+            expectWithinAbsoluteError (engine.getMains()[0]->params.faderDb.load(), 0.0f, 0.1f);
+            x->handleMessage (0, juce::MidiMessage::controllerEvent (2, 81, 127)); // mute group 2
+            expect (engine.muteGroups.contains (1));
+            x->sendFeedback();
+            expect (sent.empty(), "what was received isn't echoed");
+            // A change made elsewhere goes out: bus 1 (CC 48) to -10 dB, DCA 1 (CC 72) muted.
+            engine.getBuses()[0]->params.faderDb.store (-10.0f);
+            engine.getDca (0).mute.store (true);
+            x->sendFeedback();
+            expectEquals ((int) sent.size(), 2);
+            expect (sent[0].isControllerOfType (48) && sent[0].getChannel() == 1 && sent[0].getControllerValue() == 63);
+            expect (sent[1].isControllerOfType (72) && sent[1].getChannel() == 2 && sent[1].getControllerValue() == 127);
+            ch3.params.mute.store (false);
+            engine.muteGroups.set (1, false);
+            engine.getDca (0).mute.store (false);
+        }
         expectEquals (engine.getFaderLaw().steps, 1024);
         expectEquals (engine.getBuses()[0]->getColourIndex(), 7, "a new bus is CY, as on an X32");
         expectEquals (engine.getBuses()[0]->getName(), juce::String ("MixBus 1"));

@@ -370,6 +370,8 @@ void MainComponent::syncRemotes()
         midi = MidiProtocol::create (remotes.midi, engine, show);
         ctx.midi = midi != nullptr ? midi->asWing() : nullptr;
         midiui::connect (ctx);
+        if (midi != nullptr && ctx.midi == nullptr)
+            midi->loadSettings (settings); // another console's: its own devices
     }
     engine.getWing().refreshProtocols();
 }

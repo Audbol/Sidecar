@@ -915,7 +915,7 @@ struct SlotRangeC
 static_assert (sizeof (SlotRangeC) == 20);
 
 /** ABI 33: the remote protocols a console speaks (ld_engine_remotes): its MIDI
-    protocol (-1 none, 0 the WING's: MidiProtocol::Id) and its network protocols, a set
+    protocol (-1 none, 0 the WING's, 1 the X32's: MidiProtocol::Id) and its network protocols, a set
     of bits (1 WING discovery, 2 WING OSC, 4 WING native: the WING remote's servers). */
 struct RemotesC
 {

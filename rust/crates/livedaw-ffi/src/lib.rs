@@ -587,7 +587,7 @@ pub unsafe extern "C" fn ld_engine_profile(e: *const Engine) -> i32 {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LdRemotes {
-    /// Its MIDI protocol: -1 none, 0 the WING's.
+    /// Its MIDI protocol: -1 none, 0 the WING's, 1 the X32's.
     pub midi: i32,
     /// Its network protocols: `NetworkProtocol::bit`s (1 WING discovery, 2 WING
     /// OSC, 4 WING native).
@@ -607,6 +607,7 @@ pub unsafe extern "C" fn ld_engine_remotes(e: *const Engine, out: *mut LdRemotes
             midi: match r.midi {
                 None => -1,
                 Some(livedaw_engine::MidiProtocol::Wing) => 0,
+                Some(livedaw_engine::MidiProtocol::X32) => 1,
             },
             network: r.network_bits(),
         };

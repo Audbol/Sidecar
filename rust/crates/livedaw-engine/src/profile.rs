@@ -94,6 +94,9 @@ pub enum MidiProtocol {
     /// The WING's: MIDI REMOTE CONTROL (CH CONTROL, FX PARAMETER CONTROL,
     /// CUSTOM CONTROLS, SYSEX CONTROL, scenes, show control) and the DAW remote.
     Wing,
+    /// The X32's fixed map: faders, mutes, pans and mute groups by CC on MIDI
+    /// channels 1-3, scenes by program change.
+    X32,
 }
 
 /// A network protocol a console serves (`livedaw-wing`'s servers for the WING's).
@@ -472,7 +475,7 @@ static X32: ProfileSpec = ProfileSpec {
     pan: PanLaw::WING,
     port_groups: WING_PORT_GROUPS,
     models: &livedaw_dsp::x32::MODELS,
-    remotes: Remotes { midi: None, network: &[NetworkProtocol::X32Osc] },
+    remotes: Remotes { midi: Some(MidiProtocol::X32), network: &[NetworkProtocol::X32Osc] },
     palette: Palette::X32,
     labels: WING_LABELS,
     slots: &[
@@ -528,7 +531,7 @@ mod tests {
         assert_eq!((factory(StripKind::Aux, 5), factory(StripKind::Aux, 8)), (3, 6), "aux in GN, FX returns MG");
         assert_eq!((factory(StripKind::Bus, 0), factory(StripKind::Bus, 12), factory(StripKind::Main, 1)), (7, 6, 8));
         assert_eq!(factory(StripKind::Aux, 6), 4, "the USB playback YE");
-        assert_eq!((x.remotes.midi, x.remotes.network_bits()), (None, 8), "its OSC, no MIDI yet");
+        assert_eq!((x.remotes.midi, x.remotes.network_bits()), (Some(MidiProtocol::X32), 8), "its MIDI and OSC");
     }
 
     #[test]

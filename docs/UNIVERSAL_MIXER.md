@@ -466,6 +466,15 @@ Three layers:
         devices (FX 1-4 fed by buses 13-16, GEQs in 5-8) come with the X32's FX.
    6. **X32 MIDI** (`MidiProtocol::X32`): the fixed CC map (faders, mutes, pans on
       channels 1-3, scenes by program change) and OSC over SysEx.
+      - 6a (done): `X32Midi` (`src/engine/X32Midi.*`): CC 0-79 on MIDI channels 1-3
+        are the faders (95 = 0 dB on the X32's law), mutes and pans of channels 1-32,
+        aux in, FX returns, buses, matrices, LR, M/C and (fader, mute) DCAs 1-8;
+        channel 2 CC 80-85 the mute groups; channel 1 program changes recall scenes.
+        Both ways: console changes go out, received values don't echo, nothing is
+        sent at start. One port, its devices in the app settings (`x32midi.input`,
+        `x32midi.output`; the app's virtual port where the platform has them); the
+        profile names it (C ABI `RemotesC::midi` 1). Still to come: OSC over SysEx,
+        snippets and cues by program change, a settings page for the devices.
    7. **Scenes and the interface**: `.scn` import and export; the Universal Mixer
       shows the X32 (its strip kinds, blocks and colours from the profile).
 
