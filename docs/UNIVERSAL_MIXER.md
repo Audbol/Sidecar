@@ -285,7 +285,11 @@ Three layers:
       them (3, 5, 7).
    3. **Laws and ranges from the profile**: the fader and pan laws, and the WING's
       source and destination ranges, behind the profile; the C++ widgets ask the
-      engine instead of using the WING's law directly.
+      engine instead of using the WING's law directly. The laws are done: a profile
+      names its `FaderLaw` (breakpoints and steps, so the ProMix 01's 128 position
+      fader fits) and its `PanLaw`; strips, scene fades and the UI's faders use the
+      console's (C ABI 31 `ld_engine_fader_law`), the WING's protocols keep the
+      WING's. The ranges are next.
    4. **Model tables out of `wing`**: the model description (`ModelSpec`) becomes
       console-neutral; each profile names the models a block may hold.
    5. **The WING's blocks out of `StripParams`** (Phase 1's 3d): call sites move to

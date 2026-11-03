@@ -4,6 +4,7 @@
 #include "engine/Models.h"
 #include "engine/PluginHost.h"
 #include "engine/Show.h"
+#include "ui/Knobs.h"
 
 using namespace livedaw;
 
@@ -121,6 +122,27 @@ private:
 
     void testFaderLaw()
     {
+        beginTest ("Fader laws: the console's from its profile, the WING's for its MIDI protocol");
+        {
+            MixerEngine engine (0);
+            expect (engine.getFaderLaw() == FaderLaw::wing(), "a WING's faders");
+            const Counts universal { 40, 8, 16, 6, 8, 16, 8, 16 };
+            engine.configure (&universal);
+            expect (engine.getProfile() == ld::kProfileUniversal && engine.getFaderLaw() == FaderLaw::wing(), "the Universal's are the WING's");
+
+            // A stepped law (128 positions, +6 to -66 dB): the UI's faders follow it.
+            const FaderLaw stepped { { { 1.0f / 127.0f, -66.0f }, { 1.0f, 6.0f } }, 128 };
+            ui::fader::setLaw (stepped);
+            expectEquals (ui::fader::maxDb(), 6.0f);
+            const float p = ui::fader::dbToPos (0.0f);
+            expectWithinAbsoluteError (p * 127.0f, std::round (p * 127.0f), 1.0e-4f, "on a step");
+            expectEquals (ui::fader::posToDb (0.0f), ui::fader::kMinDb);
+            expectEquals (ui::fader::text (-66.0f), juce::String ("-66.0"), "the lowest step isn't silence");
+            ui::fader::setLaw (FaderLaw::wing());
+            expectEquals (ui::fader::text (-90.0f), juce::String::fromUTF8 ("-\xe2\x88\x9e"), "a WING's bottom is");
+            expectEquals (ui::fader::dbToPos (0.0f), 0.75f);
+        }
+
         beginTest ("WING fader law and the CH CONTROL map");
         for (auto [db, pos] : { std::pair { 0.0f, 0.75f }, { 10.0f, 1.0f }, { -10.0f, 0.5f }, { -30.0f, 0.25f }, { -60.0f, 0.0625f } })
         {

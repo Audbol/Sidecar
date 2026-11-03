@@ -1023,6 +1023,11 @@ impl Strip {
         self.spec.profile
     }
 
+    /// What the strip's console is (its profile's spec: chains, laws).
+    pub fn spec(&self) -> &'static ProfileSpec {
+        self.spec
+    }
+
     unsafe fn run_chain(&self, d: &mut StripDsp, ctx: &ProcessContext, n: usize) {
         d.tap_point = if self.has_selectable_tap() { self.params.tap.load(Relaxed).clamp(0, 7) as usize } else { tap::PFL };
         let probe = ctx.probes.of(self);
@@ -1477,7 +1482,7 @@ impl Strip {
         let pan = p.pan.load() / 100.0;
 
         let target = if nc == 1 || d.widened {
-            let (l, r) = wing_mono_pan(pan);
+            let (l, r) = (self.spec.pan.mono)(pan);
             d.pan_gains = [l, r];
             if nc == 1 {
                 [l, 0.0, r, 0.0]
@@ -1485,7 +1490,7 @@ impl Strip {
                 [l, 0.0, 0.0, r]
             }
         } else {
-            let (gl, gr) = stereo_balance(pan);
+            let (gl, gr) = (self.spec.pan.stereo)(pan);
             d.pan_gains = [gl, gr];
             let w = (p.width.load() / 100.0).clamp(-1.5, 1.5);
             let (same, cross) = ((1.0 + w) * 0.5, (1.0 - w) * 0.5);

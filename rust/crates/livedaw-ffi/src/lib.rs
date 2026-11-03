@@ -20,6 +20,7 @@ pub mod usb;
 pub mod web;
 pub mod wing;
 
+use livedaw_dsp::fader::FaderLaw;
 use livedaw_dsp::wing::fx::FX_READOUTS;
 use livedaw_engine::blocks::{BlockMeters, DelayParams};
 use livedaw_engine::fx::FX_LEVELS;
@@ -79,7 +80,9 @@ use std::sync::Arc;
 // ld_engine_set_config.
 // ABI 29 (Phase 2 step 6): the configuration without a reset
 // (ld_engine_set_num_strips: aux, buses, mains, matrices).
-pub const LD_ABI_VERSION: i32 = 30;
+// ABI 30 (Phase 3 step 1): the console's profile (ld_engine_profile).
+// ABI 31 (Phase 3 step 3): the profile's fader law (ld_engine_fader_law, LdFaderLaw).
+pub const LD_ABI_VERSION: i32 = 31;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(default)
@@ -572,6 +575,38 @@ fn profile_id(p: Profile) -> i32 {
     match p {
         Profile::Universal => 0,
         Profile::Wing => 1,
+    }
+}
+
+/// A fader law (`livedaw_dsp::fader::FaderLaw`): its breakpoints, (position,
+/// dB) rising, and its steps (0: continuous).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct LdFaderLaw {
+    pub num_points: i32,
+    pub steps: i32,
+    pub position: [f32; FaderLaw::MAX_POINTS],
+    pub db: [f32; FaderLaw::MAX_POINTS],
+}
+
+impl From<&FaderLaw> for LdFaderLaw {
+    fn from(law: &FaderLaw) -> Self {
+        let mut out = LdFaderLaw { steps: law.steps as i32, ..Default::default() };
+        for (i, &(p, db)) in law.points.iter().take(FaderLaw::MAX_POINTS).enumerate() {
+            out.position[i] = p;
+            out.db[i] = db;
+            out.num_points = i as i32 + 1;
+        }
+        out
+    }
+}
+
+/// The console's fader law (its profile's): the interface draws faders and
+/// the remotes move them along it.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_fader_law(e: *const Engine, out: *mut LdFaderLaw) {
+    if let (Some(e), Some(out)) = (engine(e), out.as_mut()) {
+        *out = guard(LdFaderLaw::from(&FaderLaw::WING), || (&e.profile().spec().fader).into());
     }
 }
 
@@ -1094,6 +1129,11 @@ mod tests {
             let mut c = LdCounts::default();
             ld_engine_configured_counts(e, &mut c);
             assert_eq!((c.mains, c.matrices), (6, 2), "the configuration follows");
+            assert_eq!(ld_engine_profile(e), 0, "six mains: the Universal");
+            let mut law = LdFaderLaw::default();
+            ld_engine_fader_law(e, &mut law);
+            assert_eq!(law, LdFaderLaw::from(&FaderLaw::WING), "the Universal's faders are the WING's");
+            assert_eq!((law.num_points, law.steps, law.position[1], law.db[4]), (5, 0, 0.0625, 10.0));
             ld_engine_collect(e);
             ld_engine_destroy(e);
         }

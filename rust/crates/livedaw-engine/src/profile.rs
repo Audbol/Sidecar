@@ -1,5 +1,6 @@
 //! Console profiles: the console a configuration emulates and what that
-//! console is (its counts, its strips' chains and process orders). The
+//! console is (its counts, its strips' chains and process orders, its fader
+//! and pan laws). The
 //! Universal core takes any configuration; a profile limits and dresses it
 //! (`docs/UNIVERSAL_MIXER.md`, Phase 3). The WING is the first; the Universal
 //! is no console's limits.
@@ -7,6 +8,8 @@
 use crate::chain::{self, Node};
 use crate::config::Counts;
 use crate::params::StripKind;
+use livedaw_dsp::fader::FaderLaw;
+use livedaw_dsp::util::PanLaw;
 use livedaw_dsp::wing::PROCESS_ORDERS;
 
 /// The console a configuration emulates (its profile: `docs/UNIVERSAL_MIXER.md`).
@@ -93,6 +96,11 @@ pub struct ProfileSpec {
     /// The fixed pre-fader order of aux channels, and of buses, mains and matrices.
     aux_order: &'static [u8],
     output_order: &'static [u8],
+    /// Where a level sits on the console's faders (the interface and the
+    /// remotes ask it; scene fades run along it).
+    pub fader: FaderLaw,
+    /// How its strips pan (mono sources) and balance (stereo ones).
+    pub pan: PanLaw,
 }
 
 impl ProfileSpec {
@@ -130,6 +138,8 @@ static WING: ProfileSpec = ProfileSpec {
     process_orders: PROCESS_ORDERS,
     aux_order: b"DEI",
     output_order: b"DI",
+    fader: FaderLaw::WING,
+    pan: PanLaw::WING,
 };
 
 /// No console's limits. Its strips are the WING's until the WING's blocks
@@ -142,6 +152,8 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
     process_orders: PROCESS_ORDERS,
     aux_order: b"DEI",
     output_order: b"DI",
+    fader: FaderLaw::WING,
+    pan: PanLaw::WING,
 };
 
 #[cfg(test)]
@@ -172,6 +184,16 @@ mod tests {
         assert_eq!(w.pre_fader_order(StripKind::Matrix, 0), b"DI");
         for kind in [StripKind::Channel, StripKind::Aux, StripKind::Bus, StripKind::Main, StripKind::Matrix] {
             assert_eq!(w.template(kind), chain::template(kind));
+        }
+    }
+
+    #[test]
+    fn the_wings_laws() {
+        for p in Profile::ALL {
+            let s = p.spec();
+            assert_eq!(s.fader, FaderLaw::WING);
+            assert_eq!(s.pan.gains(true, -1.0), livedaw_dsp::util::wing_mono_pan(-1.0));
+            assert_eq!(s.pan.gains(false, 0.5), livedaw_dsp::util::stereo_balance(0.5));
         }
     }
 }

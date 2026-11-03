@@ -6,51 +6,48 @@ namespace livedaw::ui
 
 namespace fader
 {
-    // (position, dB) breakpoints, linear in dB between them.
-    static constexpr float points[][2] = { { 0.0f, -90.0f }, { 0.0625f, -60.0f }, { 0.25f, -30.0f },
-                                           { 0.5f, -10.0f }, { 0.75f, 0.0f },     { 1.0f, 10.0f } };
-    static constexpr int numPoints = (int) (sizeof (points) / sizeof (points[0]));
+    static FaderLaw active = FaderLaw::wing();
+
+    void setLaw (const FaderLaw& l) { active = l; }
+    const FaderLaw& law() noexcept { return active; }
+    float maxDb() noexcept { return active.maxDb(); }
+
+    /** Levels at or below this show as -inf: the law's lowest when it sits at the
+        bottom of the travel (the WING's -90 dB), else kMinDb. */
+    static float silentAtDb() noexcept
+    {
+        return ! active.points.empty() && active.points.front().first <= 0.0f ? active.minDb() + 0.1f : kMinDb;
+    }
 
     float posToDb (float pos) noexcept
     {
         pos = juce::jlimit (0.0f, 1.0f, pos);
         if (pos <= 0.002f)
             return kMinDb;
-        for (int i = 1; i < numPoints; ++i)
-            if (pos <= points[i][0])
-            {
-                const float t = (pos - points[i - 1][0]) / (points[i][0] - points[i - 1][0]);
-                return points[i - 1][1] + t * (points[i][1] - points[i - 1][1]);
-            }
-        return kMaxDb;
+        return juce::jmax (kMinDb, active.toDb (pos));
     }
 
     float dbToPos (float db) noexcept
     {
-        if (db <= points[0][1])
+        if (db <= active.minDb())
             return db <= kMinDb ? 0.0f : 0.002f;
-        for (int i = 1; i < numPoints; ++i)
-            if (db <= points[i][1])
-            {
-                const float t = (db - points[i - 1][1]) / (points[i][1] - points[i - 1][1]);
-                return points[i - 1][0] + t * (points[i][0] - points[i - 1][0]);
-            }
-        return 1.0f;
+        return active.toPosition (db);
     }
 
     juce::String text (float db)
     {
-        if (db <= -89.9f)
+        if (db <= silentAtDb())
             return juce::String::fromUTF8 ("-\xe2\x88\x9e");
         return (db > 0.05f ? "+" : "") + juce::String (db, 1);
     }
 
     juce::NormalisableRange<double> range()
     {
-        return { (double) kMinDb, (double) kMaxDb,
+        return { (double) kMinDb, (double) maxDb(),
                  [] (double, double, double p) { return (double) posToDb ((float) p); },
                  [] (double, double, double v) { return (double) dbToPos ((float) v); },
-                 [] (double, double, double v) { return v <= -89.9 ? (double) kMinDb : juce::jlimit ((double) -90, (double) kMaxDb, v); } };
+                 [] (double, double, double v)
+                 { return v <= (double) silentAtDb() ? (double) kMinDb : juce::jlimit ((double) active.minDb(), (double) maxDb(), v); } };
     }
 } // namespace fader
 

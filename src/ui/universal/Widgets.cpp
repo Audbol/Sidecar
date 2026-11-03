@@ -76,6 +76,8 @@ void FaderControl::paint (juce::Graphics& g)
     g.setFont (type::font (type::kCaption));
     for (float db : marks)
     {
+        if (db > fader::maxDb() + 0.01f)
+            continue;
         const float y = yAt (fader::dbToPos (db));
         g.setColour (db == 0.0f ? theme.text : theme.textDim);
         const auto label = db <= fader::kMinDb ? juce::String::fromUTF8 ("-\xe2\x88\x9e") : (db > 0.0f ? "+" : "") + juce::String ((int) db);

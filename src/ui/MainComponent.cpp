@@ -330,6 +330,9 @@ void MainComponent::selectStrip (Strip* strip)
 
 void MainComponent::refreshAll()
 {
+    // The console's faders move along its profile's law.
+    ui::fader::setLaw (engine.getFaderLaw());
+
     // A loaded or new show brings its own custom controls.
     customControlAssignments->reload();
 

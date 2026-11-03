@@ -121,6 +121,7 @@ set(LIVEDAW_ENGINE_SOURCES
 # MIDI remote control and DAW remote control (MCU / HUI).
 list(APPEND LIVEDAW_ENGINE_SOURCES
     src/engine/DawRemote.cpp
+    src/engine/FaderLaw.cpp
     src/engine/MidiPorts.cpp
     src/engine/MidiRemote.cpp)
 

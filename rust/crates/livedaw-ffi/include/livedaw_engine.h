@@ -29,7 +29,7 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 30;
+constexpr int kAbiVersion = 31;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -871,6 +871,18 @@ struct CountsC
     int32_t channels, aux, buses, mains, matrices, dcas, muteGroups, fx;
 };
 
+/** ABI 31: a fader law (ld_engine_fader_law): where a level sits on a fader's travel,
+    as straight segments between (position, dB) breakpoints, rising. Below the first
+    point is silence; a stepped fader (steps > 0) lands on its steps. */
+constexpr int kMaxFaderLawPoints = 8;
+struct FaderLawC
+{
+    int32_t numPoints, steps;
+    float position[kMaxFaderLawPoints];
+    float db[kMaxFaderLawPoints];
+};
+static_assert (sizeof (FaderLawC) == 72);
+
 /** A console model's surface and local I/O (ld_console_model_info). Models:
     0 the full-size WING, 1 the WING COMPACT (2 is kept for the RACK). */
 struct ConsoleModelInfo
@@ -1103,6 +1115,8 @@ extern "C"
     /** ABI 30: the console emulated (ProfileId). It is the Universal once the counts leave
         the profile's (ld_engine_set_num_strips) or a show of another console is loaded. */
     int32_t ld_engine_profile (const Engine*);
+    /** ABI 31: the console's fader law (its profile's; the WING's for the Universal). */
+    void ld_engine_fader_law (const Engine*, FaderLawC* out);
     /** ABI 28: makes the engine a fresh console of the structure of `counts` (null: the
         WING's) without its channels or FX slot count, as a show load does before it adds
         the channels; writes the counts configured (within what the engine holds) to `out`

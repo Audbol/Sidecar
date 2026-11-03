@@ -104,6 +104,29 @@ pub fn stereo_balance(pan: f32) -> (f32, f32) {
     ((1.0 - pan).min(1.0), (1.0 + pan).min(1.0))
 }
 
+/// A pan law: the left and right gains of a mono source and of a stereo one
+/// (its balance) for a pan of -1 (L) .. +1 (R). A console's profile names its law.
+#[derive(Clone, Copy, Debug)]
+pub struct PanLaw {
+    pub mono: fn(f32) -> (f32, f32),
+    pub stereo: fn(f32) -> (f32, f32),
+}
+
+impl PanLaw {
+    /// The WING's: [`wing_mono_pan`] and [`stereo_balance`].
+    pub const WING: PanLaw = PanLaw { mono: wing_mono_pan, stereo: stereo_balance };
+
+    /// The gains of a mono (or widened) source, else a stereo one.
+    #[inline]
+    pub fn gains(&self, mono_source: bool, pan: f32) -> (f32, f32) {
+        if mono_source {
+            (self.mono)(pan)
+        } else {
+            (self.stereo)(pan)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

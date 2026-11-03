@@ -193,7 +193,7 @@ public:
     static bool customEncoder (int cc, int& layer, int& control) noexcept;
     static int customEncoderCc (int layer, int control) noexcept;
 
-    /** The WING fader law: 0..1 position for a level in dB (-oo = -144), and back. */
+    /** The WING fader law (FaderLaw::wing()): 0..1 position for a level in dB (-oo = -144), and back. */
     static float faderPosition (float db) noexcept;
     static float faderDb (float position) noexcept;
 

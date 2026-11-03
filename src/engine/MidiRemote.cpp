@@ -16,7 +16,6 @@ namespace
     constexpr int kFaderChannel = 1, kMuteChannel = 2, kPanChannel = 3, kDcaChannel = 4, kDcaMuteChannel = 5, kCustomChannel = 6,
                   kSceneChannel = 7, kTagChannel = 8, kShowChannel = 9, kFirstFxChannel = 9;
     constexpr int kRequestAllCc = 9;
-    constexpr float kFaderMinDb = -144.0f, kFaderMaxDb = 10.0f;
 
     const char* const routeKeys[MidiRemote::kNumFunctions] = { "enchctl", "enfxctl", "encustctl", "ensysex", "enmidicc", "enscenes", "enshowctl", "enscenetx" };
     const char* const portKeys[MidiRemote::kNumPorts] = { "din", "usb", "daw1", "daw2", "daw3" };
@@ -319,31 +318,13 @@ void MidiRemote::handleMessage (int port, const juce::MidiMessage& m)
 //==============================================================================
 float MidiRemote::faderPosition (float db) noexcept
 {
-    // Four linear segments meeting at -60, -30 and -10 dB; 0 dB at 0.75,
-    // +10 dB at the top and -90 dB at the bottom (the WING / X32 fader law).
-    const float d = juce::jlimit (kFaderMinDb, kFaderMaxDb, db);
-    float pos;
-    if (d >= -10.0f)
-        pos = (d + 30.0f) / 40.0f;
-    else if (d >= -30.0f)
-        pos = (d + 50.0f) / 80.0f;
-    else if (d >= -60.0f)
-        pos = (d + 70.0f) / 160.0f;
-    else
-        pos = (d + 90.0f) / 480.0f;
-    return juce::jlimit (0.0f, 1.0f, pos);
+    // The WING's MIDI protocol: its fader law, whatever the console's.
+    return FaderLaw::wing().toPosition (db);
 }
 
 float MidiRemote::faderDb (float position) noexcept
 {
-    const float p = juce::jlimit (0.0f, 1.0f, position);
-    if (p >= 0.5f)
-        return p * 40.0f - 30.0f;
-    if (p >= 0.25f)
-        return p * 80.0f - 50.0f;
-    if (p >= 0.0625f)
-        return p * 160.0f - 70.0f;
-    return p > 0.0f ? p * 480.0f - 90.0f : kFaderMinDb;
+    return FaderLaw::wing().toDb (position);
 }
 
 void MidiRemote::refreshCcStrips() const

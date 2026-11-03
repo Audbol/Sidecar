@@ -77,7 +77,8 @@ that chain, so everything below describes the WING as it runs on that core.
 - PFL solo, direct outs and the pre-fader meter
   (`StripMeters::pfl_peak`) read the PFL copy; AFL solo and post-fader sends read the
   output. `trim_peak` measures after trim, `input_peak` before it.
-- Pan laws (`livedaw-dsp/util.rs`): a mono strip pans with the WING's law
+- Pan laws (`livedaw-dsp/util.rs`; a strip pans by its profile's `PanLaw`, the
+  WING's on both profiles today): a mono strip pans with the WING's law
   (`wing_mono_pan`, measured on a WING 3.1): unity on both sides at centre, the near
   side rising linearly to +3 dB (gain √2) and the far side falling linearly to off at the
   edge (L50: +1.63 / -6.02 dB). A stereo strip's PAN is a balance (`stereo_balance`:
@@ -271,6 +272,16 @@ of any size, of which the WING is one configuration.
   `ProfileSpec` (`Strip::of_profile`; `Strip::new` is a WING strip) and runs its
   template. Shows store the profile (`<Console profile="...">`); C ABI 30
   `ld_engine_profile`.
+- Laws (Phase 3 step 3): a `ProfileSpec` names its fader law (`FaderLaw`,
+  `livedaw-dsp/fader.rs`: (position, dB) breakpoints and an optional step count, so
+  a 128 position fader fits) and its pan law (`PanLaw`, `util.rs`: the mono and
+  stereo gain functions); both profiles use the WING's (`FaderLaw::WING`,
+  `PanLaw::WING`). Strips pan by their spec's law, scene fades run along the
+  console's fader law, and the app reads it through C ABI 31 `ld_engine_fader_law`
+  (`FaderLawC`; C++ `FaderLaw`, `src/engine/FaderLaw.*`). The UI's `ui::fader` uses
+  the law `MainComponent::refreshAll` sets from the engine; a console's protocol
+  keeps its own (`MidiRemote` and `livedaw-wing` use the WING's, `FaderLaw::wing()`
+  and `fader_to_pos`).
 - Sends (`sends.rs`): a strip's sends to buses, mains and matrices are paged banks
   (`Bank<T>`) by the destination's index: `sends` (by bus slot, up to `MAX_BUSES`),
   `mains` and `matrices` (up to `MAX_MAINS` / `MAX_MATRICES`, 256). Pages are added
@@ -842,7 +853,7 @@ tokens (colours by role, sizes with a 44 px smallest touch target, a type scale)
 draws nothing itself: views take every colour and size from a `Theme` (dark first;
 `contrastRatio` checks a theme reads). `Widgets.h` has its controls, each bound to an
 engine value and refreshed by its view's timer (`refresh()` repaints only what moved):
-`FaderControl` (the WING fader law, `ui::fader`), `MeterControl` (on the fader's scale,
+`FaderControl` (the console's fader law, `ui::fader`), `MeterControl` (on the fader's scale,
 reading `MeterBank`, the window's single reader of the engine's peaks), `PanControl`
 and `ToggleKey`. A drag moves a control by how far it travels, a double tap resets
 it, and a control's drag doesn't scroll the view it sits in
@@ -1400,7 +1411,8 @@ public Mackie Control and reverse-engineered HUI protocol descriptions.
   and read `onSend`; `useDevices = false` keeps them off the MIDI system.
 - **MIDI REMOTE CONTROL.** Each function (`/$ctl/midi`) is OFF / DIN / USB and handles
   only its port's messages. The CC maps are static (`stripForCc`, `fxControl`,
-  `customEncoder`); fader values use the WING fader law (0..127 = position), pans
+  `customEncoder`); fader values use the WING fader law (`FaderLaw::wing()`, 0..127 =
+  position, whatever the console's law), pans
   64 = centre, mutes >= 64 = on. Feedback: a 25 Hz timer diffs the mapped values
   against what was last sent or received (no echo of received values; the first pass
   after a route change only learns) and sends the changes; CC 9 sends everything.

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/FaderLaw.h"
 #include "engine/Models.h"
 #include "ui/LookAndFeel.h"
 
@@ -9,11 +10,17 @@
 namespace livedaw::ui
 {
 
-/** The WING fader law: +10 dB at the top, 0 dB at 3/4, -inf at the bottom. */
+/** The console's fader law (its profile's: MainComponent sets it from the engine;
+    the WING's until then), as the faders and meters use it: kMinDb and below is -inf
+    at the very bottom; the law's lowest level sits just above it. Message thread. */
 namespace fader
 {
     constexpr float kMinDb = -100.0f; // and below: -inf
-    constexpr float kMaxDb = 10.0f;
+
+    void setLaw (const FaderLaw&);
+    const FaderLaw& law() noexcept;
+    /** The level at the top of the travel (+10 dB on a WING). */
+    float maxDb() noexcept;
 
     float dbToPos (float db) noexcept;
     float posToDb (float pos) noexcept;

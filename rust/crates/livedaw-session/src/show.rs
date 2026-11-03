@@ -40,7 +40,6 @@ use crate::presets;
 use crate::refs::{refs_from_string, refs_to_string, StripRef};
 use crate::scope::{self, ChangeCounts, GlobalSafe, RecordedChanges, Recording, Scope};
 use crate::xml::{self, Element};
-use livedaw_dsp::fader::{fader_to_pos, pos_to_fader};
 use livedaw_engine::params::MAX_FX;
 use livedaw_engine::{Engine, GroupSet};
 use std::collections::HashMap;
@@ -1025,6 +1024,7 @@ impl Show {
         }
         let elapsed = now.saturating_duration_since(self.fade_start).as_secs_f64();
         let t = (elapsed / self.fade_duration.as_secs_f64().max(0.001)).clamp(0.0, 1.0) as f32;
+        let law = engine.profile().spec().fader;
         self.fades.retain_mut(|f| {
             let Some(v) = f.param.value(engine) else { return false };
             if f.moved(v.load()) {
@@ -1035,8 +1035,8 @@ impl Show {
             } else if f.param.is_level() {
                 // Along the fader's travel, as a moving fader goes: a fade up
                 // from -oo is heard from the start, not only in its second half.
-                let (from, to) = (fader_to_pos(f.start), fader_to_pos(f.target));
-                pos_to_fader(from + t * (to - from))
+                let (from, to) = (law.to_pos(f.start), law.to_pos(f.target));
+                law.to_db(from + t * (to - from))
             } else {
                 f.start + t * (f.target - f.start)
             };

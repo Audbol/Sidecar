@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/Analysis.h"
+#include "engine/FaderLaw.h"
 #include "engine/FxSlots.h"
 #include "engine/InterfacePatch.h"
 #include "engine/Recorder.h"
@@ -105,6 +106,8 @@ public:
     /** The console emulated (kProfileWing, or kProfileUniversal once the counts leave the
         WING's or a show of another console is loaded). */
     ld::ProfileId getProfile() const noexcept { return (ld::ProfileId) ld::ld_engine_profile (engine); }
+    /** The console's fader law (its profile's). */
+    FaderLaw getFaderLaw() const { ld::FaderLawC c {}; ld::ld_engine_fader_law (engine, &c); return FaderLaw::of (c); }
     /** Makes the engine a fresh console of `counts` (nullptr: the WING); rebuilds the strip views. */
     void configure (const Counts* counts) { ld::ld_engine_configure (engine, counts); syncStrips(); }
     /** The number of strips of `kind` changed without a reset (the configuration

@@ -20,6 +20,10 @@ Phase 3, the WING as a profile (`docs/UNIVERSAL_MIXER.md`), begins.
 - MIDI ports (devices, virtual ports, hot-plug, the input queue) are their own layer
   (`MidiPorts`), under the WING's MIDI protocol, ready for consoles controlled over
   MIDI.
+- A profile names its fader and pan laws (`FaderLaw`, which can be stepped, and
+  `PanLaw`; both the WING's for now). Strips pan, scene fades move and the app's
+  faders draw by the console's law; the WING's MIDI and OSC keep the WING's. C ABI 31:
+  `ld_engine_fader_law`.
 
 ## [0.2.0] - beta
 
