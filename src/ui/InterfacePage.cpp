@@ -261,7 +261,7 @@ void InterfacePage::paint (juce::Graphics& g)
     if (ctx.engine.getHardwareInputNames().isEmpty() && ctx.engine.getHardwareOutputNames().isEmpty())
     {
         g.setColour (Colours::textDim);
-        g.drawText ("No audio device: choose one on SETUP > AUDIO.", inputView.getBounds(), juce::Justification::centred, false);
+        g.drawText ("No audio device: choose one on SETUP > SIDECAR.", inputView.getBounds(), juce::Justification::centred, false);
     }
 }
 

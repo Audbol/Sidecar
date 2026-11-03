@@ -184,8 +184,10 @@ struct UiContext
 
     // Set by the SETUP page while it exists.
     /** Opens SETUP on a tab (0 GENERAL, 1 AUDIO, 2 SURFACE, 3 REMOTE, 4 DAW,
-        5 PLUGINS, 6 LOG): the status bar's chips tile opens AUDIO. */
+        5 SIDECAR; setupLogTab: SIDECAR's LOG): the status bar's chips tile opens AUDIO. */
     std::function<void (int tab)> showSetupTab;
+    /** showSetupTab's number for SIDECAR's LOG (past the tabs: 0 GENERAL ... 5 SIDECAR). */
+    static constexpr int setupLogTab = 6;
     /** Opens CUSTOM CONTROLS (CC EDIT) on SETUP, at a layer when >= 0 (SETUP
         pressed twice, the CC section's VIEW key). */
     std::function<void (int layer)> showCustomControls;

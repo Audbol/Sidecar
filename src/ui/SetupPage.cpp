@@ -296,12 +296,20 @@ namespace
     };
 
     //==============================================================================
-    /** CONSOLE: name, software, engine, audio device, the console size, the
-        surface's finish and the data folders. */
+    /** CONSOLE, in two parts. GENERAL's (the console's): its name, software, engine,
+        audio device and the data folders. SIDECAR's: the console's configuration (how
+        many channels, buses and FX slots), the surface's finish, the CONSOLE MODEL and
+        the INTERFACE, which a WING doesn't have. */
     class ConsolePanel final : public juce::Component
     {
     public:
-        explicit ConsolePanel (UiContext& c) : ctx (c)
+        enum class Part
+        {
+            Info,
+            Sidecar
+        };
+
+        ConsolePanel (UiContext& c, Part p) : ctx (c), part (p)
         {
             editKey.onClick = [this]
             {
@@ -367,11 +375,19 @@ namespace
                 k->offColour = Dark::key;
             fxMinus.setTooltip ("16 fewer FX slots (a slot in use stays)");
             fxPlus.setTooltip ("16 more FX slots (up to " + juce::String (kMaxFx) + "; the WING remote sees FX 1-16)");
-            for (auto* k : { &editKey, &aboutKey, &chMinus, &chPlus, &chWing, &busMinus, &busPlus, &fxMinus, &fxPlus, &fxWing, &dataKey, &showKey })
-                addAndMakeVisible (k);
-            addAndMakeVisible (finishKeys);
-            addAndMakeVisible (modelKeys);
-            addAndMakeVisible (interfaceKeys);
+            const bool sidecar = part == Part::Sidecar;
+            for (auto* k : { &editKey, &aboutKey, &dataKey, &showKey })
+            {
+                addChildComponent (k);
+                k->setVisible (! sidecar);
+            }
+            for (juce::Component* k : { (juce::Component*) &chMinus, (juce::Component*) &chPlus, (juce::Component*) &chWing, (juce::Component*) &busMinus,
+                                        (juce::Component*) &busPlus, (juce::Component*) &fxMinus, (juce::Component*) &fxPlus, (juce::Component*) &fxWing,
+                                        (juce::Component*) &finishKeys, (juce::Component*) &modelKeys, (juce::Component*) &interfaceKeys })
+            {
+                addChildComponent (k);
+                k->setVisible (sidecar);
+            }
         }
 
         void update()
@@ -389,6 +405,11 @@ namespace
 
         void paint (juce::Graphics& g) override
         {
+            if (part == Part::Sidecar)
+            {
+                paintConfiguration (g);
+                return;
+            }
             drawDarkPanel (g, getLocalBounds(), "CONSOLE", setupHeaderHeight(), setupGap());
             // [Fig. 33] the info box and, under a black gap, the box of the two
             // folder keys (the console's USB DIRECT ACCESS) with its dim title.
@@ -404,7 +425,7 @@ namespace
             auto* device = ctx.deviceManager.getCurrentAudioDevice();
             const std::pair<juce::String, juce::String> info[] = {
                 { "CONSOLE NAME (network)", ctx.settings.getValue (prefs::consoleName, "SIDECAR") },
-                // The audio thread and the workers, as the log and SETUP > LOG count them.
+                // The audio thread and the workers, as the log and SETUP > SIDECAR > LOG count them.
                 { "ENGINE", "RUST, " + juce::String (ctx.engine.getNumWorkerThreads() + 1) + " DSP THREADS" },
                 { "SOFTWARE", juce::String (kAppName).toUpperCase() + " " + juce::String (JUCE_APPLICATION_VERSION_STRING) },
                 { "AUDIO DEVICE", device != nullptr ? device->getName().toUpperCase() : juce::String ("NONE") },
@@ -421,7 +442,12 @@ namespace
                 g.drawFittedText (info[i].second, row.withTrimmedRight (i == 0 ? editKey.getWidth() + 4 : (i == 2 ? aboutKey.getWidth() + 4 : 0)),
                                   juce::Justification::centredLeft, 1, 0.8f);
             }
+        }
 
+        /** SIDECAR's part: the configuration, the finish, the model and the interface. */
+        void paintConfiguration (juce::Graphics& g) const
+        {
+            drawDarkPanel (g, getLocalBounds(), "CONSOLE", setupHeaderHeight(), setupGap());
             g.setColour (Dark::textDim.brighter (0.3f));
             g.setFont (wingFontPx (juce::jmin (TypeScale::statusCaption * getWingScreenHeight(), (float) configCaption.getHeight() * 0.9f)));
             g.drawText ("CONFIGURATION", configCaption, juce::Justification::bottomLeft);
@@ -444,6 +470,12 @@ namespace
 
         void resized() override
         {
+            if (part == Part::Sidecar)
+            {
+                layoutConfiguration (darkPanelBody (getLocalBounds(), true, setupHeaderHeight(), setupGap())
+                                         .reduced (juce::roundToInt (wingPx (16.0f)), juce::roundToInt (wingPx (8.0f))));
+                return;
+            }
             // [Fig. 33] the info box 296 px tall, a gap, the 100 px folder box.
             auto b = darkPanelBody (getLocalBounds(), true, setupHeaderHeight(), setupGap());
             dataBox = b.removeFromBottom (juce::jmin (b.getHeight() / 3, juce::roundToInt (wingPx (100.0f))));
@@ -458,16 +490,19 @@ namespace
             showKey.setBounds (d);
 
             auto r = b.reduced (juce::roundToInt (wingPx (16.0f)), juce::roundToInt (wingPx (8.0f)));
-            const int configH = r.getHeight() * 46 / 100;
-            auto config = r.removeFromBottom (configH);
             const int rowH = r.getHeight() / 4;
             for (auto& row : infoRows)
                 row = r.removeFromTop (rowH);
             const int keyW = juce::jmin (juce::roundToInt (wingPx (52.0f)), rowH + 12);
             editKey.setBounds (infoRows[0].withTrimmedLeft (infoRows[0].getWidth() - keyW).reduced (0, 2));
             aboutKey.setBounds (infoRows[2].withTrimmedLeft (infoRows[2].getWidth() - keyW).reduced (0, 2));
+        }
 
-            configCaption = config.removeFromTop (config.getHeight() / 6);
+        void layoutConfiguration (juce::Rectangle<int> config)
+        {
+            // A caption and six rows, no taller than the WING's 52 px rows.
+            config = config.withHeight (juce::jmin (config.getHeight(), 7 * juce::roundToInt (wingPx (56.0f))));
+            configCaption = config.removeFromTop (config.getHeight() / 7);
             const int h = config.getHeight() / 6;
             for (auto [row, minus, value, plus] : { std::tuple { &chRow, &chMinus, &chValue, &chPlus }, std::tuple { &busRow, &busMinus, &busValue, &busPlus },
                                                     std::tuple { &fxRow, &fxMinus, &fxValue, &fxPlus } })
@@ -521,6 +556,7 @@ namespace
         }
 
         UiContext& ctx;
+        const Part part;
         WingKey editKey { "EDIT", Icon::Edit }, aboutKey { "ABOUT", Icon::Info }, chMinus { "-" }, chPlus { "+" }, chWing { "WING" }, busMinus { "-" }, busPlus { "+" },
             fxMinus { "-" }, fxPlus { "+" }, fxWing { "WING" }, dataKey { "DATA FOLDER", Icon::Folder }, showKey { "SHOW FOLDER", Icon::Folder };
         juce::Rectangle<int> infoBox, dataBox, dataTitle, infoRows[4], configCaption, chRow, busRow, fxRow, chValue, busValue, fxValue, finishRow, modelRow, interfaceRow;
@@ -568,7 +604,7 @@ namespace
     class GeneralTab final : public juce::Component, private juce::Timer
     {
     public:
-        explicit GeneralTab (UiContext& c) : ctx (c), console (c)
+        explicit GeneralTab (UiContext& c) : ctx (c), console (c, ConsolePanel::Part::Info)
         {
             // Brightness (the main display, the surface LCDs, meters and colour bars) and the
             // rear-panel / external lamps, which this console doesn't have.
@@ -965,16 +1001,6 @@ namespace
                                                              },
                                                              offFirst (3)),
                                3.65f);
-            prefsPanel.newBox();
-            prefsPanel.addRow ("OUTPUT PROTECTION", OnKey::forAtomic (ctx.engine.outputProtection), 1.3f);
-            auto ceilingSlider = std::make_unique<juce::Slider> (juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight);
-            ceilingSlider->setRange (-24.0, 6.0, 0.1);
-            ceilingSlider->setTextValueSuffix (" dB");
-            ceilingSlider->setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 20);
-            ceilingSlider->setDoubleClickReturnValue (true, 0.0);
-            ceiling = ceilingSlider.get();
-            ceiling->onValueChange = [this] { ctx.engine.outputCeilingDb = (float) ceiling->getValue(); };
-            prefsPanel.addRow ("CEILING", std::move (ceilingSlider), 4.8f);
             addAndMakeVisible (prefsPanel);
 
             // LIVE: each channel's SOLO BUS (phones / speakers); STUDIO: the solo
@@ -1008,11 +1034,6 @@ namespace
             solo.addRow ("SEND PAGE ACTIVATES SOLO", OnKey::forSetting (ctx.settings, uiprefs::sendPageActivatesSolo, false), 1.3f);
             addAndMakeVisible (solo);
 
-            device.addRow ({}, std::make_unique<DropdownField> ("DEVICE", [this] { return deviceName(); },
-                                                                [this] (DropdownField&) { showOverlay ("AUDIO DEVICE", std::make_unique<DeviceBody> (ctx.deviceManager), OverlayPlacement::fullPage()); }),
-                           0.0f, true, false, kFieldRows);
-            device.addRow ({}, std::make_unique<DropdownField> ("IN/OUT", [this] { return channelsText(); }), 0.0f, true, false, kFieldRows);
-            addAndMakeVisible (device);
 
             automix.addRow ("X ENABLE", OnKey::forAtomic (ctx.engine.automixEnable[0]), 1.3f);
             automix.addRow ("Y ENABLE", OnKey::forAtomic (ctx.engine.automixEnable[1]), 1.3f);
@@ -1026,12 +1047,7 @@ namespace
             timerCallback();
         }
 
-        void timerCallback() override
-        {
-            if (ceiling != nullptr && ! ceiling->isMouseButtonDown())
-                ceiling->setValue (ctx.engine.outputCeilingDb.load(), juce::dontSendNotification);
-            repaint (errorsArea);
-        }
+        void timerCallback() override { repaint (errorsArea); }
 
         void paint (juce::Graphics& g) override
         {
@@ -1073,27 +1089,23 @@ namespace
             auto c1 = take (244.0f), c2 = take (376.0f), c3 = take (376.0f), c4 = b;
 
             int rowH = juce::roundToInt (wingPx (52.0f));
-            for (auto* p : { &clock, &inputSelect, &prefsPanel, &solo, &device, &automix })
+            for (auto* p : { &clock, &inputSelect, &prefsPanel, &solo, &automix })
                 setupPanel (*p, rowH);
             // A small window: rows shrink until the tallest column fits.
             auto tallest = [this, gap] { return juce::jmax (solo.preferredHeight(), clock.preferredHeight() + gap + inputSelect.preferredHeight(),
-                                                             device.preferredHeight() + automix.preferredHeight() + errorsHeight() + 2 * gap); };
+                                                             automix.preferredHeight() + errorsHeight() + gap); };
             while (rowH > 10 && tallest() > getHeight())
             {
                 --rowH;
-                for (auto* p : { &clock, &inputSelect, &prefsPanel, &solo, &device, &automix })
+                for (auto* p : { &clock, &inputSelect, &prefsPanel, &solo, &automix })
                     p->rowHeight = rowH;
             }
-            if (ceiling != nullptr)
-                ceiling->setTextBoxStyle (juce::Slider::TextBoxRight, false, screenCap (64), juce::jmin (rowH, screenCap (20)));
 
             clock.setBounds (c1.removeFromTop (clock.preferredHeight()));
             c1.removeFromTop (gap);
             inputSelect.setBounds (c1.withHeight (juce::jmin (c1.getHeight(), inputSelect.preferredHeight())));
             prefsPanel.setBounds (c2.withHeight (juce::jmin (c2.getHeight(), prefsPanel.preferredHeight())));
             solo.setBounds (c3.withHeight (juce::jmin (c3.getHeight(), solo.preferredHeight())));
-            device.setBounds (c4.removeFromTop (device.preferredHeight()));
-            c4.removeFromTop (gap);
             automix.setBounds (c4.removeFromTop (automix.preferredHeight()));
             c4.removeFromTop (gap);
             errorsArea = c4.withHeight (juce::jmin (c4.getHeight(), errorsHeight()));
@@ -1112,21 +1124,6 @@ namespace
                 return juce::String (sr / 1000.0, std::fmod (sr, 1000.0) == 0.0 ? 0 : 1) + "K";
             }
             return "--";
-        }
-
-        juce::String deviceName() const
-        {
-            auto* d = ctx.deviceManager.getCurrentAudioDevice();
-            return d != nullptr ? d->getName().toUpperCase() : juce::String ("NONE");
-        }
-
-        juce::String channelsText() const
-        {
-            auto* d = ctx.deviceManager.getCurrentAudioDevice();
-            if (d == nullptr)
-                return "-";
-            return juce::String (d->getActiveInputChannels().countNumberOfSetBits()) + "/" + juce::String (d->getActiveOutputChannels().countNumberOfSetBits())
-                   + " CH";
         }
 
         void showRates (DropdownField& f)
@@ -1162,8 +1159,7 @@ namespace
         UiContext& ctx;
         std::function<void (const juce::String&, std::unique_ptr<juce::Component>, OverlayPlacement)> showOverlay;
         SettingsPanel clock { "AUDIO CLOCK" }, inputSelect { "INPUT SELECT" }, prefsPanel { "PREFERENCES" }, solo { "SOLO SYSTEM" },
-            device { "AUDIO DEVICE" }, automix { "AUTOMIX" };
-        juce::Slider* ceiling = nullptr;
+            automix { "AUTOMIX" };
         WingKey clearKey { "CLEAR", Icon::ClearCircle };
         juce::Rectangle<int> errorsArea;
     };
@@ -2663,12 +2659,148 @@ namespace
         juce::Rectangle<int> box, latencyList;
         juce::int64 lastHash = -1;
     };
+
+    //==============================================================================
+    /** SIDECAR's SETTINGS: what a WING doesn't have. The console's configuration, its
+        finish, model and the interface (ConsolePanel's Sidecar part), the audio device,
+        and the outputs' protection. */
+    class SidecarSettings final : public juce::Component, private juce::Timer
+    {
+    public:
+        SidecarSettings (UiContext& c, std::function<void (const juce::String&, std::unique_ptr<juce::Component>, OverlayPlacement)> overlay)
+            : ctx (c), showOverlay (std::move (overlay)), console (c, ConsolePanel::Part::Sidecar)
+        {
+            addAndMakeVisible (console);
+            device.addRow ({}, std::make_unique<DropdownField> ("DEVICE", [this] { return deviceName(); },
+                                                                [this] (DropdownField&) { showOverlay ("AUDIO DEVICE", std::make_unique<DeviceBody> (ctx.deviceManager), OverlayPlacement::fullPage()); }),
+                           0.0f, true, false, kFieldRows);
+            device.addRow ({}, std::make_unique<DropdownField> ("IN/OUT", [this] { return channelsText(); }), 0.0f, true, false, kFieldRows);
+            addAndMakeVisible (device);
+
+            output.addRow ("OUTPUT PROTECTION", OnKey::forAtomic (ctx.engine.outputProtection), 1.3f);
+            auto ceilingSlider = std::make_unique<juce::Slider> (juce::Slider::LinearHorizontal, juce::Slider::TextBoxRight);
+            ceilingSlider->setRange (-24.0, 6.0, 0.1);
+            ceilingSlider->setTextValueSuffix (" dB");
+            ceilingSlider->setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 20);
+            ceilingSlider->setDoubleClickReturnValue (true, 0.0);
+            ceiling = ceilingSlider.get();
+            ceiling->setValue (ctx.engine.outputCeilingDb.load(), juce::dontSendNotification);
+            ceiling->onValueChange = [this] { ctx.engine.outputCeilingDb = (float) ceiling->getValue(); };
+            output.addRow ("CEILING", std::move (ceilingSlider), 4.8f);
+            addAndMakeVisible (output);
+            startTimerHz (2);
+        }
+
+        void refresh() { console.update(); }
+
+        void resized() override
+        {
+            auto b = getLocalBounds();
+            const int gap = setupGap();
+            int rowH = juce::roundToInt (wingPx (52.0f));
+            for (auto* p : { &device, &output })
+                setupPanel (*p, rowH);
+            if (ceiling != nullptr)
+                ceiling->setTextBoxStyle (juce::Slider::TextBoxRight, false, screenCap (64), juce::jmin (rowH, screenCap (20)));
+            console.setBounds (b.removeFromLeft (b.getWidth() * 48 / 100));
+            b.removeFromLeft (gap);
+            device.setBounds (b.removeFromTop (device.preferredHeight()));
+            b.removeFromTop (gap);
+            output.setBounds (b.removeFromTop (juce::jmin (b.getHeight(), output.preferredHeight())));
+        }
+
+    private:
+        void timerCallback() override
+        {
+            if (isShowing())
+            {
+                console.update();
+                device.repaint();
+            }
+            // The ceiling as it is (a show load, a remote).
+            if (ceiling != nullptr && ! ceiling->isMouseButtonDown())
+                ceiling->setValue (ctx.engine.outputCeilingDb.load(), juce::dontSendNotification);
+        }
+
+        juce::String deviceName() const
+        {
+            auto* d = ctx.deviceManager.getCurrentAudioDevice();
+            return d != nullptr ? d->getName().toUpperCase() : juce::String ("NONE");
+        }
+
+        juce::String channelsText() const
+        {
+            auto* d = ctx.deviceManager.getCurrentAudioDevice();
+            if (d == nullptr)
+                return "-";
+            return juce::String (d->getActiveInputChannels().countNumberOfSetBits()) + "/" + juce::String (d->getActiveOutputChannels().countNumberOfSetBits())
+                   + " CH";
+        }
+
+        UiContext& ctx;
+        std::function<void (const juce::String&, std::unique_ptr<juce::Component>, OverlayPlacement)> showOverlay;
+        ConsolePanel console;
+        SettingsPanel device { "AUDIO DEVICE" }, output { "OUTPUTS" };
+        juce::Slider* ceiling = nullptr;
+    };
+
+    //==============================================================================
+    /** SIDECAR (Sidecar's own tab, gold): SETTINGS (what a WING doesn't have),
+        PLUGINS and the LOG (system health and the event log), behind keys of its own. */
+    class SidecarTab final : public juce::Component
+    {
+    public:
+        enum Page
+        {
+            Settings,
+            Plugins,
+            Log
+        };
+
+        SidecarTab (UiContext& c, std::function<void (const juce::String&, std::unique_ptr<juce::Component>, OverlayPlacement)> overlay)
+            : settings (c, std::move (overlay)), plugins (c), log (c, true)
+        {
+            addAndMakeVisible (keys);
+            for (auto* p : pages())
+                addChildComponent (p);
+            showPage (Settings);
+        }
+
+        void showPage (int p)
+        {
+            page = juce::jlimit (0, 2, p);
+            for (int i = 0; i < 3; ++i)
+                pages()[(size_t) i]->setVisible (i == page);
+            keys.repaint();
+            if (page == Settings)
+                settings.refresh();
+        }
+        int getPage() const noexcept { return page; }
+
+        void resized() override
+        {
+            auto b = getLocalBounds();
+            keys.setBounds (b.removeFromTop (juce::roundToInt (wingPx (52.0f))).withWidth (juce::jmin (b.getWidth(), juce::roundToInt (wingPx (540.0f)))));
+            b.removeFromTop (setupGap());
+            for (auto* p : pages())
+                p->setBounds (b);
+        }
+
+    private:
+        std::array<juce::Component*, 3> pages() { return { &settings, &plugins, &log }; }
+
+        int page = Settings;
+        SidecarSettings settings;
+        PluginsTab plugins;
+        UtilityPage log;
+        ChoiceKeys keys { { "SETTINGS", "PLUGINS", "LOG" }, [this] { return page; }, [this] (int i) { showPage (i); } };
+    };
 } // namespace
 
 //==============================================================================
 SetupPage::SetupPage (UiContext& c) : ctx (c)
 {
-    tabRow.setTabs ({ { "GENERAL" }, { "AUDIO" }, { "SURFACE" }, { "REMOTE" }, { "DAW" }, { "PLUGINS", Dark::gold, true, 10 }, { "LOG" } });
+    tabRow.setTabs ({ { "GENERAL" }, { "AUDIO" }, { "SURFACE" }, { "REMOTE" }, { "DAW" }, { "SIDECAR", Dark::gold, true, 10 } });
     tabRow.onChange = [this] (int) { showTab(); };
     addAndMakeVisible (tabRow);
 
@@ -2679,10 +2811,10 @@ SetupPage::SetupPage (UiContext& c) : ctx (c)
     pages.push_back (ownedPages.add (new SurfaceTab (ctx)));
     pages.push_back (ownedPages.add (new RemoteTab (ctx)));
     pages.push_back (ownedPages.add (new DawTab (ctx)));
-    pages.push_back (ownedPages.add (new PluginsTab (ctx)));
-    // LOG: system health and the event log (the UTILITY screen's content; the
-    // WING's UTILITY key has no screen of its own).
-    pages.push_back (ownedPages.add (new UtilityPage (ctx, true)));
+    // SIDECAR: Sidecar's own settings, PLUGINS and the LOG (system health and the event
+    // log: the UTILITY screen's content; the WING's UTILITY key has no screen of its own).
+    sidecarTab = ownedPages.add (new SidecarTab (ctx, overlay));
+    pages.push_back (sidecarTab);
     for (auto* p : pages)
         addChildComponent (p);
 
@@ -2708,6 +2840,13 @@ SetupPage::SetupPage (UiContext& c) : ctx (c)
         if (ctx.showScreen)
             ctx.showScreen (Screen::Setup);
         closeSubScreen();
+        // Past the tabs: SIDECAR's pages (UiContext::setupLogTab: its LOG).
+        if (tab >= (int) pages.size())
+        {
+            if (auto* sidecar = dynamic_cast<SidecarTab*> (sidecarTab))
+                sidecar->showPage (tab == UiContext::setupLogTab ? SidecarTab::Log : SidecarTab::Settings);
+            tab = (int) pages.size() - 1;
+        }
         tabRow.setCurrent (juce::jlimit (0, (int) pages.size() - 1, tab));
     };
     ctx.showCustomControls = [this] (int layer)

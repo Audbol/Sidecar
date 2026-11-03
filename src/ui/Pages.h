@@ -374,6 +374,7 @@ private:
     std::unique_ptr<juce::Component> general;
     juce::OwnedArray<juce::Component> ownedPages;
     std::vector<juce::Component*> pages;
+    juce::Component* sidecarTab = nullptr; // SIDECAR: SETTINGS, PLUGINS, LOG
     WingKey initKey { "INITIALIZE\nCONSOLE", Icon::Reset }, shutdownKey { "SHUTDOWN", Icon::Power };
     OverlayHolder overlays;
     std::unique_ptr<DisplayPage> subScreen;

@@ -83,6 +83,11 @@ WING works as before throughout.
   stays; fewer take from the end after a warning, keeping a bus, main or matrix that
   something sends to, a DCA or mute group with members and an FX slot in use. AUDIO
   (the audio device) and PREFERENCES too. C ABI 29: `ld_engine_set_num_strips`.
+- SETUP has a **SIDECAR** tab (gold) for everything a WING doesn't have, behind three
+  keys: **SETTINGS** (the console's size, the surface's finish, the console model, the
+  interface WING / UNIVERSAL, the audio device and the outputs' protection, which were on
+  GENERAL and AUDIO), **PLUGINS** and **LOG** (the tabs they were). GENERAL's CONSOLE
+  keeps the console's own name, software and data folders; UTILITY opens SIDECAR's LOG.
 - The audio interface is a device of its own in ROUTING: a page named after its driver
   (ASIO, CORE AUDIO, ALSA, JACK, WASAPI; the WING surface's fourth ROUTING key, the
   Universal Mixer's third ROUTING tab) patches each interface input to a console input

@@ -604,7 +604,7 @@ recorded.
 - **Virtual device** (`src/engine/VirtualAudioDevice.*`): the device type
   "Virtual (no hardware)" runs the callback from a clocked thread with 64 silent
   inputs and 64 outputs. `Main.cpp` registers it after the platform types, so it is
-  only used when chosen (SETUP > AUDIO or the saved device settings).
+  only used when chosen (SETUP > SIDECAR or the saved device settings).
 
 ## USB recorder / player
 
@@ -967,7 +967,7 @@ blinking LEDs.
   red while the gate is closed, the DYN LED orange while the dynamics work.
 - **Console look and model.** `ConsoleLook` (`ConsoleLook.h`) is how the console
   looks, kept in the app settings, not the show: today the surface FINISH (SILVER /
-  BLACK, SETUP > GENERAL > CONSOLE), which `MainComponent` applies at start-up and
+  BLACK, SETUP > SIDECAR), which `MainComponent` applies at start-up and
   SETUP applies at once (`setSurfaceFinish`, then a repaint of the window). Planned
   beside it: a console MODEL, WING (full-size), WING COMPACT or WING RACK. The models
   differ in surface layout and features (the compact's smaller fader sections and
@@ -1129,7 +1129,7 @@ blinking LEDs.
 
 ## Plugin sandbox
 
-Experimental, off by default (SETUP > PLUGINS > RUN PLUGINS IN SANDBOX, setting
+Experimental, off by default (SETUP > SIDECAR > PLUGINS > RUN PLUGINS IN SANDBOX, setting
 `plugins.sandbox`). With it on, `PluginHost::createInstance` returns a
 `SandboxedPlugin` (`src/engine/SandboxedPlugin.*`): an `AudioPluginInstance` whose
 plugin runs in a helper process, `SidecarPluginHost` (`src/sandbox/HostProcess.cpp`, a

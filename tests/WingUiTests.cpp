@@ -296,6 +296,51 @@ public:
             }
         }
 
+        beginTest ("SETUP > SIDECAR: Sidecar's own settings, the plugins and the log in one tab; UTILITY opens its LOG");
+        {
+            MixerEngine engine (0);
+            OfflineRig rig (engine, 8, 8);
+            WingRig wing (engine);
+            ui::SetupPage page (wing.ctx);
+            ui::setWingScreenHeight (800.0f);
+            page.setSize (1280, 800);
+            page.setVisible (true);
+            expect (wing.ctx.showSetupTab != nullptr);
+            const auto visibleLogs = [&page]
+            {
+                int n = 0;
+                for (auto* log : findAll<ui::UtilityPage> (page))
+                {
+                    bool shown = true;
+                    for (juce::Component* c = log; c != nullptr && c != &page; c = c->getParentComponent())
+                        shown = shown && c->isVisible();
+                    n += shown ? 1 : 0;
+                }
+                return n;
+            };
+            wing.ctx.showSetupTab (5); // SIDECAR: its SETTINGS first
+            expectEquals (visibleLogs(), 0);
+            const auto picture = page.createComponentSnapshot (page.getLocalBounds());
+            expect (picture.isValid());
+            if (const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_UI_SNAPSHOTS", {}); folder.isNotEmpty())
+            {
+                juce::FileOutputStream out (juce::File (folder).getChildFile ("setup-sidecar.png"));
+                out.setPosition (0);
+                out.truncate();
+                juce::PNGImageFormat().writeImageToStream (picture, out);
+            }
+            wing.ctx.showSetupTab (0); // GENERAL: the console's own CONSOLE panel
+            if (const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_UI_SNAPSHOTS", {}); folder.isNotEmpty())
+            {
+                juce::FileOutputStream out (juce::File (folder).getChildFile ("setup-general.png"));
+                out.setPosition (0);
+                out.truncate();
+                juce::PNGImageFormat().writeImageToStream (page.createComponentSnapshot (page.getLocalBounds()), out);
+            }
+            wing.ctx.showSetupTab (ui::UiContext::setupLogTab); // the UTILITY key
+            expectEquals (visibleLogs(), 1, "SIDECAR's LOG");
+        }
+
         beginTest ("EFFECTS, a plugin's slot: its name and keys sit under the SOURCE keys; OUTBOARD asks before it unloads the plugin");
         {
             MixerEngine engine (0);

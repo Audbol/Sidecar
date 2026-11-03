@@ -13,7 +13,7 @@ with or endorsed by Behringer or Music Tribe; "WING" is their trademark.
 - **Console topology:** 40 input channels, 8 aux channels, 16 stereo buses, 4 stereo
   mains, 8 stereo matrices, 16 DCAs, 8 mute groups and 16 FX slots. Unlike the
   hardware, the channel count is only limited by CPU, more buses can be added and
-  **SETUP > GENERAL > FX SLOTS** gives up to 64 FX slots (see *More FX slots* below).
+  **SETUP > SIDECAR > FX SLOTS** gives up to 64 FX slots (see *More FX slots* below).
 - **Channel processing, in the WING's order:**
   - **INPUT:** trim, balance, polarity and delay (m, ft, ms or samples, converted as
     the WING does: 0.3 m per ms, 0.1 to 150 m, at least 16 samples).
@@ -133,7 +133,7 @@ with or endorsed by Behringer or Music Tribe; "WING" is their trademark.
   latency. Adding, removing and moving plugins swaps the new chain in without
   stopping the audio; the plugins that stay keep running with their state. Removing
   the last plugin empties the slot.
-- **More FX slots:** **SETUP > GENERAL > CONSOLE > FX SLOTS** sets how many FX slots
+- **More FX slots:** **SETUP > SIDECAR > FX SLOTS** sets how many FX slots
   the console has: **WING** (16, the default) or 32, 48 or 64 with **-** / **+** (16
   at a time). It is an app setting, kept between runs. EFFECTS then shows the rack in
   banks of 16 (keys **FX 1-16**, **FX 17-32** ... in the status bar; premium devices
@@ -147,7 +147,7 @@ with or endorsed by Behringer or Music Tribe; "WING" is their trademark.
   above 16 can't be edited from them.
 - **Plugin overview:** every plugin of every FX slot in a window of its own, to keep
   in view during a show, for instance on a second screen. Open it with **SETUP >
-  PLUGINS > PLUGIN OVERVIEW** or **Ctrl+Shift+P**. **CARDS** (the default) shows a
+  SIDECAR > PLUGINS > PLUGIN OVERVIEW** or **Ctrl+Shift+P**. **CARDS** (the default) shows a
   card per slot: the slot and its state (**RUNNING** green, **BYPASS** / **NOT USED**
   grey, **PLUGIN FAULT** amber when a plugin of its chain faulted on its own, **FAULT**
   or **DOUBLE** red), the strips whose inserts use it, a picture of each plugin's
@@ -177,7 +177,7 @@ with or endorsed by Behringer or Music Tribe; "WING" is their trademark.
   the tap of each send (an insert counts only once the send's tap point is past it).
   A plugin's FX MIX delays its dry signal by the plugin's latency too; an outboard
   insert counts as a plugin with its round trip as latency. It is on by
-  default; **SETUP > PLUGINS > DELAY COMPENSATION** turns it off, and the panel
+  default; **SETUP > SIDECAR > PLUGINS > DELAY COMPENSATION** turns it off, and the panel
   below shows the total compensation (the longest path the console is aligned to)
   and each loaded plugin's latency (a chain's is the sum of its plugins' that aren't
   bypassed or faulted). Compensation stops at 8192 samples (about 170
@@ -208,14 +208,14 @@ The screens follow the WING's own: the same panels, keys, colours and layout, se
 Barlow Condensed. The surface around them looks like the silver WING: a light grey
 surface with mid grey decks (monitoring, channel strip, 4-Channel, custom controls),
 light grey keys and dark grey SELECT / SOLO / MUTE keys, black fader caps, and the
-scribble strips, meters and LCDs in black windows. SETUP > GENERAL > CONSOLE >
-SURFACE FINISH **BLACK** shows the black WING instead: a black surface with printed
+scribble strips, meters and LCDs in black windows. SETUP > SIDECAR > SURFACE
+FINISH **BLACK** shows the black WING instead: a black surface with printed
 frames, keys backlit lavender in black bezels and silver fader caps. The finish is
 an app preference (not saved in shows) and changes the surface at once; the
 touchscreen looks the same in both. WING remote clients see the black WING as model
 `wing-bk`.
 
-SETUP > GENERAL > CONSOLE > INTERFACE chooses the window's interface: **WING** (the
+SETUP > SIDECAR > INTERFACE chooses the window's interface: **WING** (the
 surface described in this guide, the default) or **UNIVERSAL**, the Universal Mixer's
 own interface (see *The Universal Mixer (preview)*). The window changes at once and the
 choice is an app preference. Shows, scenes, the recorder, plugins and the remotes keep
@@ -223,7 +223,7 @@ working whichever interface shows. A show of a console that isn't a WING (more m
 matrices, say) opens in the Universal Mixer; choosing WING then offers to make the
 console a fresh WING.
 
-SETUP > GENERAL > CONSOLE > CONSOLE MODEL **COMPACT** shows a WING COMPACT instead of
+SETUP > SIDECAR > CONSOLE MODEL **COMPACT** shows a WING COMPACT instead of
 the full-size WING. The surface changes at once, and the choice is an app preference
 like the finish. The COMPACT is black, so it always shows the black finish. It fits a
 1366 x 768 window.
@@ -559,23 +559,27 @@ like the finish. The COMPACT is black, so it always shows the black finish. It f
     on their outputs (user signals now make them). Defaults: every interface input on its channel (the
     console patches its eight local inputs to channels 1-8) and MAIN 1 on LOCAL OUT
     1-2 (the console uses LOCAL OUT 7-8 and feeds buses 1-6 to 1-6).
-  - **SETUP:** GENERAL (lighting, clock, console info and size (CHANNELS, BUSES, FX SLOTS), the surface's finish
-    SILVER / BLACK, the console model FULL / COMPACT, OPERATION, OPTIONS),
+  - **SETUP:** GENERAL (lighting, clock, console info, OPERATION, OPTIONS),
     AUDIO (clock rate, INPUT SELECT: the global MAIN / ALT switch, and the channel grid,
     which opens the INPUT SELECT window: MAIN/ALT INPUT switches a channel, GLOBAL
     INPUT SELECT ENABLE puts it under the global switch, as HOME's INDIVIDUAL / GLOBAL;
     preferences such as MAIN LINK, DCA MUTEGROUPS, MUTEGROUP/SIP OVERRIDE, GLOBAL INPUT
     SELECT OVERRIDE (on: a GLOBAL channel's own MAIN / ALT still works; off: only the
     global switch moves it), SOURCE SOLO (CH39 / AUX7) and the TALKBACK channel, SOLO SYSTEM with SOLO MODE LIVE / STUDIO /
-    SIP, PFL/AFL per strip type and the solo / select preferences (BUS SoF/SPILL ACTIVATES SOLO: Sends on Fader or a spill of a bus or main solos it), audio device,
+    SIP, PFL/AFL per strip type and the solo / select preferences (BUS SoF/SPILL ACTIVATES SOLO: Sends on Fader or a spill of a bus or main solos it),
     AUTOMIX), SURFACE (meter taps, SEL DBL CLICK, SOF and scribble options, CH
     AUTOSELECT, FADER SPEED, paging, user layer link, alternative SOF; the **SECTIONS**
     key in the FADERS header opens Sidecar's FADER SECTIONS: section widths, SHIFT STEP
     and FADER VALUES), REMOTE (MIDI REMOTE CONTROL with the DIN and USB MIDI ports under
     it, HA REMOTE, NETWORK, REMOTE LOCK and Sidecar's WING REMOTE and WEB REMOTE) and DAW (DAW CONTROL,
-    DAW PORTS; see *MIDI and DAW remote control*), PLUGINS (scanning, PLUGIN OVERVIEW, delay compensation,
-    RUN PLUGINS IN SANDBOX; see *Stability*) and LOG (system health and the
-    event log), with INITIALIZE CONSOLE and SHUTDOWN. **INITIALIZE CONSOLE** opens a page
+    DAW PORTS; see *MIDI and DAW remote control*) and Sidecar's own **SIDECAR** (gold): everything
+    a WING doesn't have, behind three keys. **SETTINGS**: the console's size (CHANNELS,
+    BUSES, FX SLOTS), the surface's finish SILVER / BLACK, the CONSOLE MODEL FULL /
+    COMPACT, the INTERFACE (WING / UNIVERSAL), the audio device (DEVICE, IN/OUT) and the
+    OUTPUTS' protection (OUTPUT PROTECTION, CEILING). **PLUGINS**: scanning, PLUGIN
+    OVERVIEW, delay compensation, RUN PLUGINS IN SANDBOX (see *Stability*). **LOG**:
+    system health and the event log (the UTILITY key opens it). The web and WING remotes
+    stay on REMOTE with the console's other remotes. With INITIALIZE CONSOLE and SHUTDOWN. **INITIALIZE CONSOLE** opens a page
     like the LIBRARY's scope window: pick strips, the CONTENTS to reset, DCAs, mute
     groups, FX slots and SOURCE groups (LCL: the audio interface's inputs, CRD: the
     playback channels, PLAY: the USB player, OSC), then INIT. With everything picked it
@@ -656,7 +660,7 @@ like the finish. The COMPACT is black, so it always shows the black finish. It f
     column opens the group's assign screen like a DCA's, with a SOURCE tab for the
     sources it mutes: one source group at a time as ROUTING's tiles, eight to a row,
     the groups (LOCAL IN ... USER SIGNAL) as tiles on the right).
-  - **UTILITY:** system health and the event log (also on SETUP > LOG).
+  - **UTILITY:** system health and the event log (also on SETUP > SIDECAR > LOG).
   - **RECORDER** (the status bar's **LIVE** card icon, red while recording): laid out
     like the WING-LIVE screens. See *Multitrack recording* below.
 - **Editing user layers** (VIEW > CONFIG): as on the WING, a layer's slots are
@@ -740,7 +744,7 @@ without any one console's limits (docs/UNIVERSAL_MIXER.md). The Universal Mixer 
 that core's own interface: a touch-friendly mixer for a console of any size, dark,
 with large keys. It is a preview, and the WING surface stays the default.
 
-To open it, choose **UNIVERSAL** in SETUP > GENERAL > CONSOLE > INTERFACE on the WING
+To open it, choose **UNIVERSAL** in SETUP > SIDECAR > INTERFACE on the WING
 surface. The **WING SURFACE** key at its top right goes back, and its SETUP >
 PREFERENCES > INTERFACE switches too. The window changes at once, and the console,
 the show, plugins, the recorder and the remotes carry on as they were. A show of a
@@ -1439,7 +1443,7 @@ Live sound gets no second take, so stability is designed in at every layer:
 | Plugins | A plugin that outputs NaN/Inf or throws is **auto-bypassed on the spot**. Its input passes through, and the FX slot is flagged. In a plugin chain of two or more only that plugin is bypassed (the rest keeps running) and the event log names it. Two inserts on one slot never run it concurrently. Per-slot CPU is measured. |
 | Plugin scanning | Scans run **in a separate process**, so a plugin that crashes during a scan only kills the scanner. |
 | Plugin loading | The plugin being loaded is recorded on disk first. If it crashes the app, it's blacklisted on the next start. |
-| Plugin sandbox (experimental) | With **SETUP > PLUGINS > RUN PLUGINS IN SANDBOX** on, each plugin loaded afterwards runs in its own helper process (see below): a plugin that crashes or hangs only takes its helper down. Its FX slot is bypassed, the event log says so, and the console keeps running. |
+| Plugin sandbox (experimental) | With **SETUP > SIDECAR > PLUGINS > RUN PLUGINS IN SANDBOX** on, each plugin loaded afterwards runs in its own helper process (see below): a plugin that crashes or hangs only takes its helper down. Its FX slot is bypassed, the event log says so, and the console keeps running. |
 | Strips | Every strip checks its own output. NaN/Inf is silenced and the DSP reset before it can poison a bus. |
 | Outputs | A brick-wall **safety clip** (adjustable ceiling) protects the amplifiers and speakers. |
 | Device | A **watchdog** reopens the audio device if it errors, disappears or stops calling back. Retries back off. |
@@ -1452,7 +1456,7 @@ The **UTILITY** screen shows device health, xruns, DSP load, fault counters and 
 
 ### Plugin sandbox (experimental)
 
-**SETUP > PLUGINS > RUN PLUGINS IN SANDBOX** (off by default) runs every plugin you
+**SETUP > SIDECAR > PLUGINS > RUN PLUGINS IN SANDBOX** (off by default) runs every plugin you
 load from then on in its own helper process (`SidecarPluginHost`, installed with
 Sidecar). Plugins already loaded keep running where they are until you load them
 again (or reload the show); shows store only the plugin and its state, so they open
@@ -1469,7 +1473,7 @@ running in-process, depending on when each was loaded).
 - **Latency:** the sandbox adds one audio block (the buffer size, e.g. 128 samples) on
   top of the plugin's own latency (per sandboxed plugin of a chain). The plugin reports the sum, so delay compensation
   lines the other paths up with it and FX MIX delays its dry signal to match, as for
-  any plugin with latency (EFFECTS and SETUP > PLUGINS show it). The insert's own
+  any plugin with latency (EFFECTS and SETUP > SIDECAR > PLUGINS show it). The insert's own
   strip still comes that much later through the uncompensated paths (solo, monitoring,
   direct outs, recorder taps), and while the slot is bypassed after a fault the
   console is realigned without it.

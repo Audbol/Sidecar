@@ -23,7 +23,6 @@ namespace
 
     // SETUP's tabs (ctx.showSetupTab).
     constexpr int kSetupAudioTab = 1;
-    constexpr int kSetupLogTab = 6;
 
     // SETUP > GENERAL's LIGHTS tiles (percent, defaults as SETUP shows them).
     constexpr const char* kMainLcd = "setup.brightness.mainLcd";
@@ -1288,7 +1287,7 @@ void MainDisplay::utilityPressed()
     if (auto* p = page (screen); p->hasUtilityFunction())
         p->utilityPressed();
     else if (ctx.showSetupTab)
-        ctx.showSetupTab (kSetupLogTab); // system health and the event log
+        ctx.showSetupTab (UiContext::setupLogTab); // system health and the event log (SIDECAR > LOG)
 }
 
 void MainDisplay::clearSoloPressed()

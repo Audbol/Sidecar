@@ -203,7 +203,7 @@ Three layers:
       preference (done): `MainComponent` is the shell, `Skin.h` the interface a
       skin implements, `WingSurface` today's surface moved over unchanged,
       `UniversalSkin` a placeholder (the console it runs, a key back to the WING
-      surface); SETUP > GENERAL > CONSOLE > INTERFACE; a console that isn't a WING
+      surface); SETUP > SIDECAR > INTERFACE; a console that isn't a WING
       opens in the Universal Mixer.
    2. C ABI 28: a strip's chain (steps, blocks with their params and meters, insert /
       move / remove / clear, taps) and `set_config`; C++ facades and tests (done):

@@ -105,13 +105,13 @@ MainComponent::MainComponent (juce::AudioDeviceManager& dm, MixerEngine& e, Plug
 {
     juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
     setLookAndFeel (&lookAndFeel);
-    // The surface's finish and the console model (SETUP > GENERAL > CONSOLE)
+    // The surface's finish and the console model (SETUP > SIDECAR)
     // are app settings; the COMPACT is black.
     const auto look = ConsoleLook::load (settings);
     setSurfaceFinish (look.shownFinish());
     ctx.consoleModel = look.model;
 
-    // Plugin delay compensation (SETUP > PLUGINS) is an app setting, on by default.
+    // Plugin delay compensation (SETUP > SIDECAR > PLUGINS) is an app setting, on by default.
     engine.setLatencyCompensation (settings.getBoolValue (uiprefs::latencyCompensation, true));
     engine.onPluginWarning = [this] (const juce::String& text) { log.warning (text); };
 

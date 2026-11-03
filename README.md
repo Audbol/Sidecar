@@ -27,7 +27,7 @@ format in the current code are its first step: the console's size is a configura
 (any number of channels, buses, mains, matrices, up to 256 DCAs and mute groups), and
 each strip's processing is a chain that can hold extra blocks and tap points. A first
 preview of its own interface, a touch-friendly MIXER view for a console of any size, is
-under SETUP > GENERAL > CONSOLE > INTERFACE (see the user guide's chapter *The
+under SETUP > SIDECAR > INTERFACE (see the user guide's chapter *The
 Universal Mixer*). The WING works exactly as before. The plan is in
 [docs/UNIVERSAL_MIXER.md](docs/UNIVERSAL_MIXER.md).
 
@@ -70,7 +70,7 @@ relying on it at a show (see [Known limitations](#known-limitations)).
 | | |
 |---|---|
 | ![The WING COMPACT model: the black surface with one 12-fader section, the main display, the BUS / DCA / MAIN MATRIX / USER keys and the monitoring section](docs/images/compact.png) | ![The METERS screen: channels, buses, DCAs, mains and matrices metering a signal](docs/images/meters.png) |
-| **WING COMPACT**: SETUP > GENERAL > CONSOLE MODEL | **METERS**: every strip at a glance |
+| **WING COMPACT**: SETUP > SIDECAR > CONSOLE MODEL | **METERS**: every strip at a glance |
 | ![The EFFECTS rack: reverbs, delay and chorus in the premium slots, COMBINATOR, PSYCHO BASS, MASTER and LIMITER in the standard slots, two of them inserted on channels](docs/images/fx-rack.png) | ![PSYCHO BASS on its faceplate, inserted on the bass DI, its VU needles moving with the signal](docs/images/effects.png) |
 | **EFFECTS**: the WING's 16-slot rack | **Faceplates** with live meters |
 | ![The recorder screen recording 40 channels, with the input levels and the tracks armed](docs/images/recorder.png) | ![The multitrack editor with the recording: one track per channel, waveforms in the channels' colours](docs/images/editor.png) |
@@ -86,7 +86,7 @@ relying on it at a show (see [Known limitations](#known-limitations)).
   direct outs, PRE or POST FADER.
 - **Two console models:** the full-size WING (grey or black) and the **WING COMPACT**
   (one 12-fader section with its own BUS, DCA, MAIN / MATRIX and USER keys, the
-  VIRTUAL section and its custom control sets), chosen in SETUP > GENERAL > CONSOLE.
+  VIRTUAL section and its custom control sets), chosen in SETUP > SIDECAR.
 - **The WING's processing**, in its order and with its process orders: input (trim,
   polarity, delay), filters, a gate and a dynamics slot with the WING's 32 dynamics
   models, the WING EQ and its analog EQ models, two inserts and sends with all of the
@@ -169,9 +169,9 @@ for the files of each version.
 
 ## First steps
 
-1. **Choose the audio device:** on the main display, press **SETUP**, then **AUDIO**.
+1. **Choose the audio device:** on the main display, press **SETUP**, then **SIDECAR**.
    The **DEVICE** field opens the driver (ASIO, WASAPI, CoreAudio, ALSA, JACK...),
-   the device and the buffer size; **CLOCK RATE** sets the sample rate. On Windows,
+   the device and the buffer size; **CLOCK RATE** (SETUP > AUDIO) sets the sample rate. On Windows,
    Sidecar picks ASIO automatically when an ASIO driver is installed. A buffer of 64
    to 256 samples suits live use.
 2. **Patch the inputs:** press **ROUTING**. Pick a channel tile, then its source (the
@@ -245,11 +245,11 @@ This list matches the notice Sidecar shows at start-up.
   masking model).
 - **Plugins** (VST3, AU, LV2) run inside the mixer process by default: a plugin that
   crashes takes Sidecar down (safe mode then restores the show without plugins). The
-  experimental **plugin sandbox** (SETUP > PLUGINS > RUN PLUGINS IN SANDBOX, off by
+  experimental **plugin sandbox** (SETUP > SIDECAR > PLUGINS > RUN PLUGINS IN SANDBOX, off by
   default) runs each plugin in its own helper process instead: a crash or hang only
   bypasses that FX slot. It adds one audio block of latency (delay-compensated like a
   plugin's own), and the plugin's editor opens in a separate window.
-  Delay compensation (SETUP > PLUGINS) lines up the paths into buses, mains and
+  Delay compensation (SETUP > SIDECAR > PLUGINS) lines up the paths into buses, mains and
   matrices up to 8192 samples; solo, monitoring, direct outs and recorder taps are
   not compensated.
 - **WING remote apps:** the WING network protocols answer every parameter of the
@@ -271,7 +271,7 @@ This list matches the notice Sidecar shows at start-up.
 
 Please open an [issue](https://github.com/Audbol/Live-Daw/issues/new/choose) with
 your operating system, audio interface and driver, buffer size and sample rate, and
-what happened. The event log (**SETUP > LOG** or **UTILITY**) shows device restarts,
+what happened. The event log (**SETUP > SIDECAR > LOG** or **UTILITY**) shows device restarts,
 plugin faults and errors; a screenshot of it helps. When Sidecar is started from a
 terminal, the same messages are printed there. Security issues: see
 [SECURITY.md](SECURITY.md).
