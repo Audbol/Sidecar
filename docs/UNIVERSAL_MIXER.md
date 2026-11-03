@@ -364,10 +364,14 @@ Three layers:
    level law (four segments, 1024 fader steps, 161 for sends), 16 colours, OSC on
    UDP 10023 and a fixed MIDI map. Steps, each with every check green and the WING
    unchanged:
-   1. **The X32 profile value**: `Profile::X32` with its counts (32 channels, 8 aux,
-      16 buses, 2 mains, 6 matrices, 8 DCAs, 6 mute groups, 8 FX slots), fader and
-      pan laws, labels, palette and port groups; a console configured as an X32
-      runs the WING's processing until the steps below replace it.
+   1. **The X32 profile value** (done): `Profile::X32` (show id `x32`, C ABI 35
+      profile 2, `ld_engine_configure_profile`) with its counts (`Counts::X32`: 32
+      channels, 16 aux for the 8 aux in and the 8 FX returns, 16 buses, 2 mains, 6
+      matrices, 8 DCAs, 6 mute groups, 8 FX slots, which an X32 keeps exactly), its
+      fader law (`FaderLaw::X32`, 1024 steps), its 16 colours (Sidecar's RGB; new strips
+      OFF) and no remote protocol yet. It runs the WING's chains and models, pan law,
+      labels and port groups until the steps below replace them; the app shows it in
+      the Universal Mixer.
    2. **Strips per slot**: a profile's chain template per strip slot, not only per
       kind, so aux 9-16 can be FX returns; mono-pair links (`/config/chlink`...)
       over the core's mono and stereo strips; the M/C main.

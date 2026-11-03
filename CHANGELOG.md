@@ -48,6 +48,13 @@ Phase 3, the WING as a profile (`docs/UNIVERSAL_MIXER.md`), begins.
   run only the network protocols the console's profile names. Phase 3 is complete;
   the WING's description stays shared with the Universal until a second console.
 
+Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
+
+- An X32 profile: a console can be configured as an X32 (its counts, its fader law on
+  1024 steps, its 16 colours; C ABI 35 `ld_engine_configure_profile`) and a show stores
+  it. Its processing, sends and remote protocols are still the WING's or none, until
+  the next steps.
+
 ## [0.2.0] - beta
 
 The first public beta of the Universal Mixer: Sidecar becomes a mixer core without one

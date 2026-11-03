@@ -58,6 +58,13 @@ impl Counts {
     }
 }
 
+impl Counts {
+    /// The X32's: 32 channels, 16 aux (8 aux in and, from Phase 4 step 2, 8 FX
+    /// returns), 16 buses, 2 mains (LR and M/C), 6 matrices, 8 DCAs, 6 mute
+    /// groups, 8 FX slots.
+    pub const X32: Counts = Counts { channels: 32, aux: 16, buses: 16, mains: 2, matrices: 6, dcas: 8, mute_groups: 6, fx: 8 };
+}
+
 impl Default for Counts {
     fn default() -> Self {
         Self::WING

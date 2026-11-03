@@ -57,9 +57,13 @@ pub struct FaderLaw {
 impl FaderLaw {
     pub const MAX_POINTS: usize = 8;
 
-    /// The WING's (and the X32's): `fader_to_pos`.
+    /// The WING's: `fader_to_pos`.
     pub const WING: FaderLaw =
         FaderLaw { points: &[(0.0, -90.0), (0.0625, -60.0), (0.25, -30.0), (0.5, -10.0), (1.0, 10.0)], steps: 0 };
+
+    /// The X32's: the WING's four segments (0 dB at 0.75, -60 dB at 0.0625), on
+    /// its faders' 1024 steps.
+    pub const X32: FaderLaw = FaderLaw { points: Self::WING.points, steps: 1024 };
 
     /// The level at the top of the travel.
     pub fn max_db(&self) -> f32 {

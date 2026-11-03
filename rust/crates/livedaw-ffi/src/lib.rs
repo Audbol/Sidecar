@@ -88,7 +88,8 @@ use std::sync::Arc;
 // ABI 33 (Phase 3 step 6): the profile's remote protocols (ld_engine_remotes, LdRemotes).
 // ABI 34 (Phase 3 step 7): a profile's port groups, colours and strip labels without
 // an engine (ld_profile_port_groups, ld_profile_colour_*, ld_profile_strip_label).
-pub const LD_ABI_VERSION: i32 = 34;
+// ABI 35 (Phase 4 step 1): the X32 profile (2), ld_engine_configure_profile.
+pub const LD_ABI_VERSION: i32 = 35;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(default)
@@ -611,6 +612,7 @@ fn profile_id(p: Profile) -> i32 {
     match p {
         Profile::Universal => 0,
         Profile::Wing => 1,
+        Profile::X32 => 2,
     }
 }
 
@@ -748,6 +750,16 @@ unsafe fn write_port_groups(p: Profile, out: *mut LdPortGroup, max: i32) -> i32 
         }
     }
     groups.len() as i32
+}
+
+/// ABI 35: makes the engine a fresh console of profile `profile` (as
+/// `ld_engine_profile` numbers them; an unknown one: the WING) with its counts.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_configure_profile(e: *const Engine, profile: i32) {
+    if let Some(e) = engine(e) {
+        let profile = profile_of(profile);
+        guard((), || e.configure(&livedaw_engine::config::ConsoleConfig { profile, counts: profile.spec().counts }));
+    }
 }
 
 /// Makes the engine a fresh console of `counts` (null: the WING).

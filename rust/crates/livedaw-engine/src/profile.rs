@@ -23,16 +23,19 @@ pub enum Profile {
     /// The Behringer WING.
     #[default]
     Wing,
+    /// The Behringer X32 (Phase 4: its processing, sends and protocols follow).
+    X32,
 }
 
 impl Profile {
-    pub const ALL: [Profile; 2] = [Profile::Universal, Profile::Wing];
+    pub const ALL: [Profile; 3] = [Profile::Universal, Profile::Wing, Profile::X32];
 
     /// The id shows store (`<Console profile="...">`).
     pub fn id(self) -> &'static str {
         match self {
             Profile::Universal => "universal",
             Profile::Wing => "wing",
+            Profile::X32 => "x32",
         }
     }
 
@@ -45,6 +48,7 @@ impl Profile {
         match self {
             Profile::Universal => &UNIVERSAL,
             Profile::Wing => &WING,
+            Profile::X32 => &X32,
         }
     }
 
@@ -55,10 +59,12 @@ impl Profile {
 
     /// Whether a console of `counts` is one of this profile's: the WING's
     /// aux, mains, matrices, DCAs and mute groups (what its surface
-    /// addresses; channels, buses and FX slots can grow on a WING too).
+    /// addresses; channels, buses and FX slots can grow on a WING too); the
+    /// X32's counts exactly.
     pub fn fits(self, counts: &Counts) -> bool {
         match self {
             Profile::Universal => true,
+            Profile::X32 => *counts == self.spec().counts,
             Profile::Wing => {
                 let w = self.spec().counts;
                 counts.aux == w.aux
@@ -145,11 +151,25 @@ pub struct Palette {
     pub grid: &'static [i32],
     /// The colour of a new channel, source and DCA.
     pub default: i32,
+    /// A new strip's colour by its kind; `None`: the WING's factory colours
+    /// (`StripParams::new_in_slot`).
+    pub factory: Option<fn(StripKind) -> i32>,
 }
 
 impl Palette {
     /// The WING's 18 (`params::WING_COLOURS`) and ICON/COLOR's grid.
-    pub const WING: Palette = Palette { colours: &WING_COLOURS, grid: &WING_COLOUR_GRID, default: DEFAULT_COLOUR };
+    pub const WING: Palette = Palette { colours: &WING_COLOURS, grid: &WING_COLOUR_GRID, default: DEFAULT_COLOUR, factory: None };
+
+    /// The X32's 16 (`config/color` 0-15 are indexes 1-16): OFF and seven
+    /// colours, then the same eight inverted (coloured text on black; drawn as
+    /// the colour for now). The RGB values are Sidecar's own (the references
+    /// give none). A new strip is OFF (its factory colour isn't documented).
+    pub const X32: Palette = Palette {
+        colours: &X32_COLOURS,
+        grid: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+        default: 1,
+        factory: Some(|_| 1),
+    };
 
     /// Colour `index` (1-based), if the palette has it.
     pub fn colour(&self, index: i32) -> Option<(&'static str, u32)> {
@@ -223,6 +243,26 @@ impl ProfileSpec {
     }
 }
 
+/// The X32's colours (`Palette::X32`).
+const X32_COLOURS: [(&str, u32); 16] = [
+    ("OFF", 0x303030),
+    ("RD", 0xe02424),
+    ("GN", 0x28c040),
+    ("YE", 0xe8d020),
+    ("BL", 0x2850e8),
+    ("MG", 0xd028d0),
+    ("CY", 0x20c8d8),
+    ("WH", 0xe8e8e8),
+    ("OFFi", 0x303030),
+    ("RDi", 0xe02424),
+    ("GNi", 0x28c040),
+    ("YEi", 0xe8d020),
+    ("BLi", 0x2850e8),
+    ("MGi", 0xd028d0),
+    ("CYi", 0x20c8d8),
+    ("WHi", 0xe8e8e8),
+];
+
 /// The WING's strip labels, as on its scribble strips (`StripKind::label`).
 const WING_LABELS: [&str; 5] = ["CH", "AUX", "BUS", "MAIN", "MTX"];
 
@@ -266,6 +306,27 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
     labels: WING_LABELS,
 };
 
+/// The Behringer X32: its counts (`Counts::X32`), fader law, colours and
+/// labels. Until Phase 4's steps replace them its strips run the WING's chains
+/// and models, its routing pages list the WING's port groups, and it speaks no
+/// remote protocol (its OSC and MIDI come with steps 5 and 6).
+static X32: ProfileSpec = ProfileSpec {
+    profile: Profile::X32,
+    name: "X32",
+    counts: Counts::X32,
+    templates: [chain::CHANNEL, chain::AUX, chain::OUTPUT],
+    process_orders: PROCESS_ORDERS,
+    aux_order: b"DEI",
+    output_order: b"DI",
+    fader: FaderLaw::X32,
+    pan: PanLaw::WING,
+    port_groups: WING_PORT_GROUPS,
+    models: &WING_MODELS,
+    remotes: Remotes { midi: None, network: &[] },
+    palette: Palette::X32,
+    labels: WING_LABELS,
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -277,12 +338,28 @@ mod tests {
             assert_eq!(p.spec().profile, p);
             assert!(p.fits(&p.spec().counts));
         }
-        assert_eq!(Profile::from_id("x32"), None);
+        assert_eq!(Profile::from_id("m32"), None);
         assert!(Profile::Wing.fits(&Counts { channels: 64, buses: 24, fx: 32, ..Counts::WING }));
         for c in [Counts { mains: 2, ..Counts::WING }, Counts { buses: 8, ..Counts::WING }, Counts { dcas: 24, ..Counts::WING }] {
             assert!(!Profile::Wing.fits(&c));
             assert_eq!(Profile::Wing.or_universal(&c), Profile::Universal);
         }
+    }
+
+    #[test]
+    fn the_x32() {
+        let x = Profile::X32.spec();
+        assert_eq!(Profile::from_id("x32"), Some(Profile::X32));
+        assert_eq!((x.name, x.counts), ("X32", Counts::X32));
+        assert!(Profile::X32.fits(&Counts::X32));
+        assert!(!Profile::X32.fits(&Counts { channels: 40, ..Counts::X32 }));
+        assert_eq!(Profile::X32.or_universal(&Counts::WING), Profile::Universal);
+        assert!(!Profile::Wing.fits(&Counts::X32), "an X32 isn't a WING");
+        assert_eq!((x.fader.steps, x.fader.max_db()), (1024, 10.0));
+        assert_eq!(x.palette.colours.len(), 16);
+        assert_eq!(x.palette.colour(5), Some(("BL", 0x2850e8)), "config/color 4");
+        assert_eq!(x.palette.factory.map(|f| f(StripKind::Bus)), Some(1));
+        assert_eq!((x.remotes.midi, x.remotes.network_bits()), (None, 0), "no protocol yet");
     }
 
     #[test]
@@ -296,7 +373,7 @@ mod tests {
 
     #[test]
     fn the_wings_colours() {
-        for p in Profile::ALL {
+        for p in [Profile::Universal, Profile::Wing] {
             let c = p.spec().palette;
             assert_eq!(c.colours.len(), 18, "{p:?}");
             assert_eq!(c.colour(1), Some(("Dark Blue", 0x380088)));
@@ -310,7 +387,7 @@ mod tests {
 
     #[test]
     fn the_wings_remotes() {
-        for p in Profile::ALL {
+        for p in [Profile::Universal, Profile::Wing] {
             let r = p.spec().remotes;
             assert_eq!(r.midi, Some(MidiProtocol::Wing), "{p:?}");
             // The WING remote's enable bits: discovery 1, OSC 2, native 4.
@@ -334,7 +411,9 @@ mod tests {
     fn the_wings_laws() {
         for p in Profile::ALL {
             let s = p.spec();
-            assert_eq!(s.fader, FaderLaw::WING);
+            // The X32's faders run the same law on 1024 steps.
+            assert_eq!(s.fader.points, FaderLaw::WING.points);
+            assert_eq!(s.fader.steps, if p == Profile::X32 { 1024 } else { 0 });
             assert_eq!(s.pan.gains(true, -1.0), livedaw_dsp::util::wing_mono_pan(-1.0));
             assert_eq!(s.pan.gains(false, 0.5), livedaw_dsp::util::stereo_balance(0.5));
             assert_eq!(s.port_groups, WING_PORT_GROUPS);

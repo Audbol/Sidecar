@@ -139,6 +139,21 @@ private:
             expect (protocol->getPortStatus (MidiRemote::Usb).received == 1);
         }
         expect (MidiProtocol::create (MidiProtocol::None, engine, show, false) == nullptr, "no MIDI remote");
+
+        beginTest ("An X32 (Phase 4 step 1): its counts, colours and fader steps; no remote protocol yet");
+        engine.configureProfile (ld::kProfileX32);
+        expect (engine.getProfile() == ld::kProfileX32);
+        expectEquals ((int) engine.getChannels().size(), 32);
+        expectEquals ((int) engine.getMatrices().size(), 6);
+        const auto x32 = engine.getRemotes();
+        expect (x32.midi == MidiProtocol::None && x32.network == 0u);
+        expectEquals (engine.getFaderLaw().steps, 1024);
+        expectEquals (engine.getBuses()[0]->getColourIndex(), 1, "a new strip is OFF");
+        setShownProfile (ld::kProfileX32);
+        expect (palette::count() == 16 && consoleColourName (5) == "BL");
+        setShownProfile (ld::kProfileWing);
+        engine.configure (nullptr);
+        expect (engine.getProfile() == ld::kProfileWing);
     }
 
     void testFaderLaw()

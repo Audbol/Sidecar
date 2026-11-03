@@ -29,7 +29,7 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 34;
+constexpr int kAbiVersion = 35;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -166,7 +166,8 @@ enum ChainBlockKind : int32_t
 enum ProfileId : int32_t
 {
     kProfileUniversal = 0, // no console's limits: the Universal Mixer's own
-    kProfileWing = 1
+    kProfileWing = 1,
+    kProfileX32 = 2 // Phase 4: its processing, sends and protocols follow
 };
 
 enum StripKindId : int32_t
@@ -1156,6 +1157,9 @@ extern "C"
     /** ABI 30: the console emulated (ProfileId). It is the Universal once the counts leave
         the profile's (ld_engine_set_num_strips) or a show of another console is loaded. */
     int32_t ld_engine_profile (const Engine*);
+    /** ABI 35: makes the engine a fresh console of `profile` (ProfileId; an unknown one:
+        the WING) with that console's counts. */
+    void ld_engine_configure_profile (const Engine*, int32_t profile);
     /** ABI 31: the console's fader law (its profile's; the WING's for the Universal). */
     void ld_engine_fader_law (const Engine*, FaderLawC* out);
     /** ABI 31: the console's port groups (its profile's), in its menus' order: writes up

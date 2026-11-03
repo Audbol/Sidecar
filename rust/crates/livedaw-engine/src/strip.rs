@@ -383,8 +383,15 @@ impl Strip {
             spec,
             kind,
             id,
-            // Buses are numbered by their slot (`id`), whose factory settings differ.
-            params: StripParams::new_in_slot(kind, usize::try_from(id).unwrap_or(0)),
+            // Buses are numbered by their slot (`id`), whose factory settings differ;
+            // a console with its own factory colours (`Palette::factory`) uses them.
+            params: {
+                let p = StripParams::new_in_slot(kind, usize::try_from(id).unwrap_or(0));
+                if let Some(colour) = spec.palette.factory {
+                    p.colour.store(colour(kind), Relaxed);
+                }
+                p
+            },
             meters: StripMeters::default(),
             band_meters: DynBandMeters::default(),
             remote_peaks: RemotePeaks::default(),

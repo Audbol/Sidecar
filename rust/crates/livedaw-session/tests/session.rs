@@ -732,9 +732,9 @@ fn show_format_4_brings_its_configuration_and_reads_format_3_as_a_wing() {
 
     // A console this version doesn't know: a warning, and loaded as what fits
     // (these counts: the Universal); a newer format: refused.
-    let other = text.replace("profile=\"universal\"", "profile=\"x32\"");
+    let other = text.replace("profile=\"universal\"", "profile=\"console9\"");
     let warnings = Show::new().load_from_text(&e2, &mut NoPlugins, &other, true).unwrap();
-    assert!(warnings.iter().any(|w| w.contains("x32")), "{warnings:?}");
+    assert!(warnings.iter().any(|w| w.contains("console9")), "{warnings:?}");
     assert_eq!(e2.profile(), Profile::Universal);
     let newer = text.replace("<LiveDAWShow version=\"4\"", "<LiveDAWShow version=\"5\"");
     assert!(Show::new().load_from_text(&e2, &mut NoPlugins, &newer, true).is_err());
@@ -753,6 +753,25 @@ fn growing_a_wing_beyond_its_counts_makes_it_the_universal() {
     assert_eq!(engine.profile(), Profile::Universal);
     let text = Show::new().to_xml(&engine, &mut NoPlugins).to_document();
     assert!(text.contains("profile=\"universal\""), "{text}");
+}
+
+#[test]
+fn an_x32_show_loads_as_an_x32() {
+    use livedaw_engine::config::{ConsoleConfig, Counts};
+    use livedaw_engine::Profile;
+    let engine = Engine::new(0);
+    engine.configure(&ConsoleConfig { profile: Profile::X32, counts: Counts::X32 });
+    assert_eq!(engine.profile(), Profile::X32);
+    let text = Show::new().to_xml(&engine, &mut NoPlugins).to_document();
+    assert!(text.contains("profile=\"x32\""), "{text}");
+
+    let e2 = Engine::new(0);
+    let warnings = Show::new().load_from_text(&e2, &mut NoPlugins, &text, true).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(e2.config(), ConsoleConfig { profile: Profile::X32, counts: Counts::X32 });
+    // More buses than an X32 has: the Universal.
+    engine.set_num_strips(StripKind::Bus, 17);
+    assert_eq!(engine.profile(), Profile::Universal);
 }
 
 #[test]
