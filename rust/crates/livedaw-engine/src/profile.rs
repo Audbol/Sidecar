@@ -8,7 +8,7 @@
 
 use crate::chain::{self, Node};
 use crate::config::Counts;
-use crate::params::{StripKind, DEFAULT_COLOUR, WING_COLOURS, WING_COLOUR_GRID};
+use crate::params::{StripKind, DEFAULT_COLOUR, WING_BUSES, WING_COLOURS, WING_COLOUR_GRID};
 use crate::ports::{PortGroup, WING_PORT_GROUPS};
 use livedaw_dsp::fader::FaderLaw;
 use livedaw_dsp::model::ModelTables;
@@ -239,6 +239,11 @@ pub struct ProfileSpec {
     labels: [&'static str; 5],
     /// Strips whose chain and label aren't their kind's.
     pub slots: &'static [SlotRange],
+    /// The buses (slots) that feed Main 1 at 0 dB on a new console: a WING's
+    /// subgroups 9-16; none on an X32.
+    pub buses_to_main: std::ops::Range<usize>,
+    /// The mains (0-based) that are mono: the X32's M/C.
+    pub mono_mains: &'static [usize],
 }
 
 impl ProfileSpec {
@@ -331,6 +336,8 @@ static WING: ProfileSpec = ProfileSpec {
     palette: Palette::WING,
     labels: WING_LABELS,
     slots: &[],
+    buses_to_main: 8..WING_BUSES,
+    mono_mains: &[],
 };
 
 /// No console's limits. Its strips have the WING's blocks (a profile's own set
@@ -352,6 +359,8 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
     palette: Palette::WING,
     labels: WING_LABELS,
     slots: &[],
+    buses_to_main: 8..WING_BUSES,
+    mono_mains: &[],
 };
 
 /// The Behringer X32: its counts (`Counts::X32`), fader law, colours and
@@ -381,6 +390,9 @@ static X32: ProfileSpec = ProfileSpec {
         SlotRange { kind: StripKind::Aux, first: 0, count: 8, chain: chain::X32_AUX, label: "AUX" },
         SlotRange { kind: StripKind::Aux, first: 8, count: 8, chain: chain::X32_AUX, label: "FX" },
     ],
+    // Its buses don't feed LR at first; main 2 is the mono M/C.
+    buses_to_main: 0..0,
+    mono_mains: &[1],
 };
 
 #[cfg(test)]

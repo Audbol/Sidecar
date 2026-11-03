@@ -385,7 +385,7 @@ impl Strip {
             // Buses are numbered by their slot (`id`), whose factory settings differ;
             // a console with its own factory colours (`Palette::factory`) uses them.
             params: {
-                let p = StripParams::new_in_slot_with(kind, usize::try_from(id).unwrap_or(0), spec.models);
+                let p = StripParams::new_in_slot_of(kind, usize::try_from(id).unwrap_or(0), spec);
                 if let Some(colour) = spec.palette.factory {
                     p.colour.store(colour(kind, usize::try_from(id).unwrap_or(0)), Relaxed);
                 }
@@ -394,9 +394,9 @@ impl Strip {
             meters: StripMeters::default(),
             band_meters: DynBandMeters::default(),
             remote_peaks: RemotePeaks::default(),
-            sends: SendBank::for_kind(kind),
-            mains: Bank::new(MAX_MAINS, MAIN_SEND_PAGE, kind, usize::try_from(id).unwrap_or(0)),
-            matrices: Bank::new(MAX_MATRICES, MAIN_SEND_PAGE, kind, usize::try_from(id).unwrap_or(0)),
+            sends: SendBank::of(spec, kind),
+            mains: Bank::new(MAX_MAINS, MAIN_SEND_PAGE, kind, usize::try_from(id).unwrap_or(0), spec),
+            matrices: Bank::new(MAX_MATRICES, MAIN_SEND_PAGE, kind, usize::try_from(id).unwrap_or(0), spec),
             name: Mutex::new(String::new()),
             tags: Mutex::new(String::new()),
             console: StripConsole::default(),

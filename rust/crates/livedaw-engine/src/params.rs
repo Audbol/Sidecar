@@ -6,6 +6,7 @@
 //! the parts the console gives it. All structs are `#[repr(C)]` and mirrored
 //! by `livedaw_engine.h`.
 
+use crate::profile::{Profile, ProfileSpec};
 use crate::atomic::AtomicF32;
 use crate::blocks::{Block, BlockParams};
 use crate::groups::{AtomicGroupSet, MAX_GROUPS};
@@ -475,8 +476,8 @@ unsafe impl Sync for MainSendParams {}
 impl MainSendParams {
     /// Message thread: back to the factory send `index` of a strip of `kind`
     /// in `slot` (a main added again starts clean). The ramp is left alone.
-    pub fn reset(&self, kind: StripKind, slot: usize, index: usize) {
-        let f = Self::factory(kind, slot, index);
+    pub fn reset(&self, spec: &ProfileSpec, kind: StripKind, slot: usize, index: usize) {
+        let f = Self::factory(spec, kind, slot, index);
         self.on.store(f.on.load(Relaxed), Relaxed);
         self.pre.store(f.pre.load(Relaxed), Relaxed);
         self.level_db.store(f.level_db.load());
@@ -495,10 +496,11 @@ impl MainSendParams {
 }
 
 impl BankItem for MainSendParams {
-    /// Channels and aux feed Main 1; buses are aux mixes until routed, but a
-    /// factory-set WING's buses 9-16 feed Main 1 (`StripParams::new_in_slot`).
-    fn factory(kind: StripKind, slot: usize, index: usize) -> Self {
-        let main1 = index == 0 && (kind.is_input() || (kind == StripKind::Bus && (8..WING_BUSES).contains(&slot)));
+    /// Channels and aux feed Main 1; buses are aux mixes until routed, but
+    /// the console's `buses_to_main` (a factory-set WING's buses 9-16) feed
+    /// Main 1 (`StripParams::new_in_slot`).
+    fn factory(spec: &ProfileSpec, kind: StripKind, slot: usize, index: usize) -> Self {
+        let main1 = index == 0 && (kind.is_input() || (kind == StripKind::Bus && spec.buses_to_main.contains(&slot)));
         Self {
             on: AtomicBool::new(main1),
             pre: AtomicBool::new(false),
@@ -540,7 +542,7 @@ impl MatrixSendParams {
     /// Message thread: back to the factory send of a strip of `kind` (a matrix
     /// added again starts clean). The ramp is left alone.
     pub fn reset(&self, kind: StripKind) {
-        let f = Self::factory(kind, 0, 0);
+        let f = Self::factory(Profile::Wing.spec(), kind, 0, 0);
         self.on.store(f.on.load(Relaxed), Relaxed);
         self.pre.store(f.pre.load(Relaxed), Relaxed);
         self.ignore_mute.store(f.ignore_mute.load(Relaxed), Relaxed);
@@ -565,7 +567,7 @@ impl MatrixSendParams {
 impl BankItem for MatrixSendParams {
     /// The WING's factory matrix sends: off at -oo without pan link, input
     /// and aux channels in PRE (TAP), buses and mains post-fader.
-    fn factory(kind: StripKind, _slot: usize, _index: usize) -> Self {
+    fn factory(_spec: &ProfileSpec, kind: StripKind, _slot: usize, _index: usize) -> Self {
         Self {
             on: AtomicBool::new(false),
             pre: AtomicBool::new(kind.is_input()),
@@ -920,18 +922,18 @@ mod colour_tests {
             StripParams::new_in_slot(StripKind::Bus, 10),
         );
         assert_eq!((b1.colour.load(Relaxed), b9.colour.load(Relaxed), b11.colour.load(Relaxed)), (10, 6, 12));
-        let main1 = |kind, slot| MainSendParams::factory(kind, slot, 0).on.load(Relaxed);
+        let main1 = |kind, slot| MainSendParams::factory(Profile::Wing.spec(), kind, slot, 0).on.load(Relaxed);
         assert!(!main1(StripKind::Bus, 0) && main1(StripKind::Bus, 8) && main1(StripKind::Bus, 15));
         assert!(!main1(StripKind::Bus, 16) && main1(StripKind::Channel, 0) && main1(StripKind::Aux, 3));
-        assert!(!MainSendParams::factory(StripKind::Channel, 0, 1).on.load(Relaxed), "only Main 1");
+        assert!(!MainSendParams::factory(Profile::Wing.spec(), StripKind::Channel, 0, 1).on.load(Relaxed), "only Main 1");
         assert_eq!(b9.fader_db.load(), 0.0);
         // TAP "5"; matrix sends off at -oo, not linked, PRE from channels and
         // post-fader from buses; a matrix's direct input at -oo.
         assert_eq!(ch.tap.load(Relaxed), DEFAULT_TAP);
-        let m = &MatrixSendParams::factory(StripKind::Channel, 0, 0);
+        let m = &MatrixSendParams::factory(Profile::Wing.spec(), StripKind::Channel, 0, 0);
         assert!(m.pre.load(Relaxed) && !m.pan_link.load(Relaxed) && !m.on.load(Relaxed));
         assert_eq!(m.level_db.load(), livedaw_dsp::fader::FADER_MIN);
-        assert!(!MatrixSendParams::factory(StripKind::Bus, 0, 0).pre.load(Relaxed));
+        assert!(!MatrixSendParams::factory(Profile::Wing.spec(), StripKind::Bus, 0, 0).pre.load(Relaxed));
         assert_eq!(StripParams::new(StripKind::Matrix).direct_level_db.load(), livedaw_dsp::fader::FADER_MIN);
         // AUX 2 plays the USB player's PLAY 1/2 in stereo; AUX 1 has no input.
         let (aux1, aux2) = (StripParams::new_in_slot(StripKind::Aux, 0), StripParams::new_in_slot(StripKind::Aux, 1));
@@ -1119,13 +1121,17 @@ impl StripParams {
     /// main send: `MainSendParams::factory`);
     /// AUX 2 on the USB player's PLAY 1/2 (the "2TR" pair), in stereo.
     pub fn new_in_slot(kind: StripKind, index: usize) -> Self {
-        Self::new_in_slot_with(kind, index, &livedaw_dsp::wing::MODELS)
+        Self::new_in_slot_of(kind, index, Profile::Wing.spec())
     }
 
-    /// [`Self::new_in_slot`] with `models` (its console's) in its blocks.
-    pub fn new_in_slot_with(kind: StripKind, index: usize, models: &'static ModelTables) -> Self {
-        let p = Self::new_with(kind, models);
-        if kind == StripKind::Bus && (8..WING_BUSES).contains(&index) {
+    /// [`Self::new_in_slot`] on a console of `spec` (its models in the
+    /// blocks; its `buses_to_main` are the subgroups at 0 dB; its mono mains).
+    pub fn new_in_slot_of(kind: StripKind, index: usize, spec: &ProfileSpec) -> Self {
+        let p = Self::new_with(kind, spec.models);
+        if kind == StripKind::Main && spec.mono_mains.contains(&index) {
+            p.stereo.store(false, Relaxed);
+        }
+        if kind == StripKind::Bus && spec.buses_to_main.contains(&index) {
             p.colour.store(if index < 10 { 6 } else { 12 }, Relaxed);
             p.fader_db.store(0.0);
         }

@@ -67,6 +67,8 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
 - The X32's signal chains: on channels the delay before the low cut, the compressor
   before or after the EQ and one insert before or after both; on buses, mains and
   matrices everything before the fader.
+- An X32's mains: main 1 is the stereo LR, main 2 the mono M/C; channels feed LR, and
+  its buses don't feed LR until routed (a factory WING's buses 9-16 do).
 
 ## [0.2.0] - beta
 

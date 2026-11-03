@@ -415,6 +415,13 @@ Three layers:
    4. **Sends and mains as the X32's**: channels to buses (tap points per bus pair,
       GRP), LR and M/C assigns (main 1 the stereo LR, main 2 the mono M/C), buses and
       mains to matrices only; odd/even links (`/config/chlink`...) over mono strips.
+      - 4a, the mains (done): factory sends follow the console (`BankItem::factory`
+        takes its `ProfileSpec`; `buses_to_main`, the WING's subgroups 9-16 or none
+        on an X32; `mono_mains`): on an X32 main 1 is the stereo LR and main 2 the
+        mono M/C, channels feed LR and not M/C, and no bus feeds LR at first (all
+        as on the owner's X32).
+      - 4b, next: the X32's send taps (IN/LC, <-EQ, EQ->, PRE, POST, GRP per bus
+        pair) and M/C level; 4c the odd/even links.
    5. **X32 OSC** (`livedaw-x32`, UDP 10023): `/info`, `/xinfo`, `/status`,
       `/xremote`, get / set with the console's value steps, `/node` and `/`, the
       meters; tests replay the documented traffic (X32-Edit itself isn't run).

@@ -421,6 +421,16 @@ fn an_x32_runs_its_own_chains_and_models() {
     use livedaw_engine::Profile;
     let mut rig = Rig::new(1, 1, 2);
     rig.engine.configure(&ConsoleConfig { profile: Profile::X32, counts: Counts::X32 });
+    // Its mains: LR stereo, M/C mono; channels feed LR, not M/C; no bus feeds
+    // LR at first (a WING's buses 9-16 do).
+    let main = |i| rig.strip(StripKind::Main, i);
+    assert!(main(0).params.stereo.load(Relaxed) && !main(1).params.stereo.load(Relaxed));
+    let ch1 = rig.ch(0);
+    assert!(ch1.main_send(0).unwrap().on.load(Relaxed) && !ch1.main_send(1).unwrap().on.load(Relaxed));
+    for b in rig.engine.strips(StripKind::Bus) {
+        assert!(!b.main_send(0).unwrap().on.load(Relaxed), "bus {}", b.id() + 1);
+        assert_eq!(b.params.fader_db.load(), livedaw_dsp::fader::FADER_MIN);
+    }
     unity_console(&rig.engine);
     for ch in rig.engine.strips(StripKind::Channel) {
         ch.params.fader_db.store(0.0);

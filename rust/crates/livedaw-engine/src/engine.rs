@@ -581,7 +581,7 @@ impl Engine {
                 for i in old..n {
                     for s in inputs_and_buses(&st) {
                         if let Some(send) = s.main_send(i) {
-                            send.reset(s.kind(), s.id().max(0) as usize, i);
+                            send.reset(s.spec(), s.kind(), s.id().max(0) as usize, i);
                         }
                     }
                     let m = self.new_strip(&st, StripKind::Main, i as i32);

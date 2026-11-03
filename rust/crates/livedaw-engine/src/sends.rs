@@ -1,6 +1,7 @@
 //! Per-strip send storage that grows in pages: sends to buses, mains and
 //! matrices, by the destination's index.
 
+use crate::profile::{Profile, ProfileSpec};
 use crate::atomic::AtomicF32;
 use crate::StripKind;
 use std::cell::UnsafeCell;
@@ -107,15 +108,16 @@ impl SendParams {
 }
 
 impl BankItem for SendParams {
-    fn factory(kind: StripKind, _slot: usize, index: usize) -> Self {
+    fn factory(_spec: &ProfileSpec, kind: StripKind, _slot: usize, index: usize) -> Self {
         Self::with_mode(default_mode(kind, index))
     }
 }
 
 /// An item of a [`Bank`]: a strip's send to one destination.
 pub trait BankItem: Sized {
-    /// The factory send `index` of a strip of `kind` in slot `slot`.
-    fn factory(kind: StripKind, slot: usize, index: usize) -> Self;
+    /// The factory send `index` of a strip of `kind` in slot `slot` on a
+    /// console of `spec`.
+    fn factory(spec: &ProfileSpec, kind: StripKind, slot: usize, index: usize) -> Self;
 }
 
 /// Per-strip sends to the destinations of one kind (buses, mains,
@@ -126,9 +128,11 @@ pub struct Bank<T> {
     pages: Box<[AtomicPtr<T>]>,
     page_size: usize,
     max: usize,
-    /// The strip the sends are from (their factory settings, [`BankItem`]).
+    /// The strip the sends are from and its console (their factory settings,
+    /// [`BankItem`]).
     kind: StripKind,
     slot: usize,
+    spec: &'static ProfileSpec,
 }
 
 /// A strip's sends to buses (by bus slot).
@@ -146,9 +150,14 @@ impl Default for SendBank {
 }
 
 impl SendBank {
-    /// The bus sends of a strip of `kind`.
+    /// The bus sends of a WING strip of `kind`.
     pub fn for_kind(kind: StripKind) -> Self {
-        Bank::new(MAX_BUSES, PAGE_SIZE, kind, 0)
+        Self::of(Profile::Wing.spec(), kind)
+    }
+
+    /// The bus sends of a strip of `kind` on a console of `spec`.
+    pub fn of(spec: &'static ProfileSpec, kind: StripKind) -> Self {
+        Bank::new(MAX_BUSES, PAGE_SIZE, kind, 0, spec)
     }
 
     /// The factory mode of the send to `slot`.
@@ -159,9 +168,9 @@ impl SendBank {
 
 impl<T: BankItem> Bank<T> {
     /// Up to `max` sends in pages of `page_size`, from a strip of `kind` in slot `slot`.
-    pub fn new(max: usize, page_size: usize, kind: StripKind, slot: usize) -> Self {
+    pub fn new(max: usize, page_size: usize, kind: StripKind, slot: usize, spec: &'static ProfileSpec) -> Self {
         let pages = (0..max.div_ceil(page_size)).map(|_| AtomicPtr::new(std::ptr::null_mut())).collect();
-        Self { pages, page_size, max, kind, slot }
+        Self { pages, page_size, max, kind, slot, spec }
     }
 
     /// The most sends the bank holds.
@@ -191,7 +200,8 @@ impl<T: BankItem> Bank<T> {
         let ptr = &self.pages[index / self.page_size];
         if ptr.load(Ordering::Acquire).is_null() {
             let first = index / self.page_size * self.page_size;
-            let items: Box<[T]> = (first..first + self.page_size).map(|i| T::factory(self.kind, self.slot, i)).collect();
+            let items: Box<[T]> =
+                (first..first + self.page_size).map(|i| T::factory(self.spec, self.kind, self.slot, i)).collect();
             let page = Box::into_raw(items) as *mut T;
             // Release publishes the initialised page to the audio thread.
             if ptr.compare_exchange(std::ptr::null_mut(), page, Ordering::AcqRel, Ordering::Acquire).is_err() {
