@@ -1254,7 +1254,11 @@ impl Strip {
             Node::Tap(id) if id >= FIRST_USER_TAP => {
                 self.taps.write(id as usize, ctx.block, [&d.work[0][..n], &d.work[1][..n]], nc, n)
             }
-            Node::Tap(point) => self.tap_at(d, ctx, point as usize, n),
+            Node::Tap(point) => {
+                self.tap_at(d, ctx, point as usize, n);
+                // A send that takes this point (an X32's IN/LC, <-EQ, EQ->).
+                self.taps.write(point as usize, ctx.block, [&d.work[0][..n], &d.work[1][..n]], nc, n)
+            }
             Node::Rta(at) => Self::probe_rta(d, ctx, probe, at as usize, n),
             Node::Slot(_) => {}
         }

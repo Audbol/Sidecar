@@ -1136,6 +1136,7 @@ impl StripParams {
         if !spec.source_link {
             p.cust_link.store(false, Relaxed);
         }
+        p.tap.store(spec.tap_point, Relaxed);
         if kind == StripKind::Bus && spec.buses_to_main.contains(&index) {
             p.colour.store(if index < 10 { 6 } else { 12 }, Relaxed);
             p.fader_db.store(0.0);

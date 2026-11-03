@@ -72,7 +72,7 @@ use crate::solo::{self, solo_mode, SoloBlock};
 use crate::sources::{user_side, SourceDsp, SourceTable, UserSignalParams};
 use crate::strip::{source_ptr, KeyStrips, ProcessContext, Strip};
 use crate::talk::{TalkBlock, TalkGains, TalkRamps};
-use crate::taps::{user_tap, FIRST_USER_TAP, NUM_TAP_IDS};
+use crate::taps::{send_tap, FIRST_USER_TAP, NUM_TAP_IDS};
 use livedaw_dsp::util::*;
 use livedaw_dsp::wing::fx::{allowed_in_slot, FxContext, FxDevice};
 use livedaw_dsp::wing::FX_MODELS;
@@ -875,7 +875,7 @@ impl Engine {
         for s in st.all() {
             let mut wanted = [false; NUM_TAP_IDS];
             let mut want = |tap: i32| {
-                if let Some(id) = user_tap(tap) {
+                if let Some(id) = send_tap(tap) {
                     wanted[id] = true;
                 }
             };
@@ -2450,7 +2450,7 @@ unsafe fn sum_bus(bus: &Strip, index: usize, topo: &Topology, schedule: &BusSche
 /// and it follows `s`'s own MUTE), never `s`'s buffers, which may be running.
 unsafe fn add_bus_send(bus: &Strip, s: &Strip, slot: usize, target: u32, late: Option<usize>, block: u64, n: usize) {
     let Some(send) = s.sends.find(slot) else { return };
-    if let Some(id) = user_tap(send.tap.load(Relaxed)) {
+    if let Some(id) = send_tap(send.tap.load(Relaxed)) {
         let last = &mut *send.last_gain.get();
         if late.is_some() {
             *last = [0.0, 0.0]; // a send closing a loop can't take a tap of this block
@@ -2532,7 +2532,7 @@ unsafe fn sum_main<'a>(main: &Strip, index: usize, sources: impl Iterator<Item =
     let target = main.pdc.target();
     for s in sources {
         let Some(send) = s.main_send(index) else { continue };
-        if let Some(id) = user_tap(send.tap.load(Relaxed)) {
+        if let Some(id) = send_tap(send.tap.load(Relaxed)) {
             let tap =
                 UserTapSend { id, on: send.on.load(Relaxed), level_db: send.level_db.load(), ignore_mute: false, pan: None };
             add_user_tap(main, s, &tap, block, send.last(), n);
@@ -2566,7 +2566,7 @@ unsafe fn sum_matrix(mtx: &Strip, index: usize, topo: &Topology, monitor: &[*con
     let target = mtx.pdc.target();
     for s in topo.active().iter().chain(topo.buses()).chain(&topo.mains) {
         let Some(send) = s.matrix_send(index) else { continue };
-        if let Some(id) = user_tap(send.tap.load(Relaxed)) {
+        if let Some(id) = send_tap(send.tap.load(Relaxed)) {
             let pan = (!send.pan_link.load(Relaxed)).then(|| send.pan.load() / 100.0);
             let tap = UserTapSend {
                 id,

@@ -17,6 +17,9 @@ use crate::value::{Fmt, Law, Ty, Val};
 use livedaw_dsp::delay::{delay_to_ms, ms_to_delay};
 use livedaw_dsp::fader::FADER_MIN;
 use livedaw_engine::params::DynSlotParams;
+use livedaw_engine::sends::send_mode;
+use livedaw_engine::strip::tap;
+use livedaw_engine::SendParams;
 use livedaw_engine::{Engine, Strip, StripKind};
 use std::collections::HashMap;
 use std::sync::atomic::Ordering::Relaxed;
@@ -85,6 +88,12 @@ pub enum Bind {
     SendLevel(usize),
     SendPan(usize),
     SendFollow(usize),
+    /// The tap point of the sends to bus pair `n`, `n + 1` (IN/LC, <-EQ, EQ->,
+    /// PRE, POST, GRP).
+    SendType(usize),
+    /// A channel's compressor and insert PRE / POST (its process order).
+    DynPos,
+    InsertPos,
     /// A send to matrix `n`.
     MtxOn(usize),
     MtxLevel(usize),
@@ -446,7 +455,7 @@ fn strip(b: &mut Builder, p: &str, t: Target, kind: Kind) {
         b.leaf(&d, "attack", t, ATTACK, Bind::Dyn("att"), real(10.0));
         b.leaf(&d, "hold", t, HOLD, Bind::Dyn("hld"), real(10.0));
         b.leaf(&d, "release", t, RELEASE, Bind::Dyn("rel"), real(151.0));
-        b.leaf(&d, "pos", t, POS, Bind::State, int(1));
+        b.leaf(&d, "pos", t, POS, Bind::DynPos, int(1));
         // A bus's, matrix's or main's key source answers a get, but its
         // `/node` line leaves it out (as an X32 does).
         b.add(&d, "keysrc", t, SOURCE, Bind::State, int(0), kind == Kind::Ch);
@@ -457,7 +466,7 @@ fn strip(b: &mut Builder, p: &str, t: Target, kind: Kind) {
     if !input || kind == Kind::Ch {
         let s = format!("{p}/insert");
         b.leaf(&s, "on", t, ONOFF, Bind::InsertOn, int(0));
-        b.leaf(&s, "pos", t, POS, Bind::State, int(i32::from(kind == Kind::Ch)));
+        b.leaf(&s, "pos", t, POS, Bind::InsertPos, int(i32::from(kind == Kind::Ch)));
         b.leaf(&s, "sel", t, INSERT, Bind::InsertSel, int(0));
     }
     let e = format!("{p}/eq");
@@ -497,7 +506,7 @@ fn strip(b: &mut Builder, p: &str, t: Target, kind: Kind) {
             b.leaf(&s, "level", t, LEVEL, Bind::SendLevel(k), real(FADER_MIN));
             if k % 2 == 0 {
                 b.leaf(&s, "pan", t, PAN, Bind::SendPan(k), real(0.0));
-                b.leaf(&s, "type", t, SEND_TYPE, Bind::State, int(tap));
+                b.leaf(&s, "type", t, SEND_TYPE, Bind::SendType(k), int(tap));
                 b.leaf(&s, "panFollow", t, FOLLOW, Bind::SendFollow(k), int(0));
             }
         }
@@ -661,6 +670,10 @@ impl<'a> Console<'a> {
             Bind::SendLevel(k) => Val::Real(s.sends.get_or_create(k)?.level_db.load()),
             Bind::SendPan(k) => Val::Real(s.sends.get_or_create(k)?.pan.load()),
             Bind::SendFollow(k) => return on(s.sends.get_or_create(k)?.pan_link.load(Relaxed)),
+            Bind::SendType(k) => Val::Int(send_type(s, s.sends.get_or_create(k)?)?),
+            // Only a channel's are in its chain (buses, mains, matrices: kept).
+            Bind::DynPos if s.kind() == StripKind::Channel => Val::Int(i32::from(order(s) & 1 == 0)),
+            Bind::InsertPos if s.kind() == StripKind::Channel => Val::Int(i32::from(order(s) & 2 == 0)),
             Bind::MtxOn(k) => return on(s.matrices.get_or_create(k)?.on.load(Relaxed)),
             Bind::MtxLevel(k) => Val::Real(s.matrices.get_or_create(k)?.level_db.load()),
             Bind::MtxPan(k) => Val::Real(s.matrices.get_or_create(k)?.pan.load()),
@@ -767,6 +780,33 @@ impl<'a> Console<'a> {
                     _ => send.pan_link.store(v.on(), Relaxed),
                 }
             }
+            Bind::SendType(k) => {
+                for slot in [k, k + 1] {
+                    let Some(send) = s.sends.get_or_create(slot) else { return false };
+                    if !set_send_type(s, send, v.int()) {
+                        return false;
+                    }
+                }
+            }
+            Bind::DynPos | Bind::InsertPos => {
+                if s.kind() != StripKind::Channel {
+                    return false;
+                }
+                // The sends keep their tap points (<-EQ, EQ->) in the new order.
+                let types: Vec<(usize, i32)> =
+                    (0..16).step_by(2).filter_map(|k| Some((k, send_type(s, s.sends.get_or_create(k)?)?))).collect();
+                let bit = if matches!(e.bind, Bind::DynPos) { 1 } else { 2 };
+                let pre = v.int() == 0;
+                let o = (order(s) & !bit) | if pre { bit } else { 0 };
+                p.process_order.store(o, Relaxed);
+                for (k, ty) in types {
+                    for slot in [k, k + 1] {
+                        if let Some(send) = s.sends.get_or_create(slot) {
+                            set_send_type(s, send, ty);
+                        }
+                    }
+                }
+            }
             Bind::MtxOn(k) | Bind::MtxLevel(k) | Bind::MtxPan(k) | Bind::MtxFollow(k) => {
                 let Some(send) = s.matrices.get_or_create(k) else { return false };
                 match e.bind {
@@ -841,6 +881,52 @@ fn set_model(slot: &DynSlotParams, token: &str) -> bool {
             a.store(v);
         }
     }
+    true
+}
+
+/// A channel's X32 process order (`chain::X32_ORDERS`: bit 1 the compressor
+/// PRE the EQ, bit 2 the insert PRE).
+fn order(s: &Strip) -> i32 {
+    s.params.process_order.load(Relaxed).clamp(0, 3)
+}
+
+/// The strip's tap ids just before and after its EQ (the tap after `Slot(j)`
+/// is `2 + j`; before the first slot, the low cut's).
+fn eq_taps(s: &Strip) -> (i32, i32) {
+    let letters = s.spec().pre_fader_order(s.kind(), order(s));
+    let at = letters.iter().position(|&b| b == b'E').unwrap_or(0) as i32;
+    (if at == 0 { tap::FILT as i32 } else { 1 + at }, 2 + at)
+}
+
+/// The X32 type of a send (0 IN/LC, 1 <-EQ, 2 EQ->, 3 PRE, 4 POST, 5 GRP).
+fn send_type(s: &Strip, send: &SendParams) -> Option<i32> {
+    let (before, after) = eq_taps(s);
+    Some(match (send.mode.load(Relaxed), send.tap.load(Relaxed)) {
+        (send_mode::GROUP, _) => 5,
+        (send_mode::POST, _) => 4,
+        (_, -1) => 3, // PRE: the strip's tap point, PFL on an X32
+        (_, t) if t == tap::FILT as i32 => 0,
+        (_, t) if t == before => 1,
+        (_, t) if t == after => 2,
+        _ => 3,
+    })
+}
+
+/// Sets a send to X32 type `ty`: the low cut's, the EQ's input or output tap
+/// (`SendParams::tap`), pre-fader, post-fader or GRP.
+fn set_send_type(s: &Strip, send: &SendParams, ty: i32) -> bool {
+    let (before, after) = eq_taps(s);
+    let (mode, at) = match ty {
+        0 => (send_mode::PRE, tap::FILT as i32),
+        1 => (send_mode::PRE, before),
+        2 => (send_mode::PRE, after),
+        3 => (send_mode::PRE, -1),
+        4 => (send_mode::POST, -1),
+        5 => (send_mode::GROUP, -1),
+        _ => return false,
+    };
+    send.mode.store(mode, Relaxed);
+    send.tap.store(at, Relaxed);
     true
 }
 

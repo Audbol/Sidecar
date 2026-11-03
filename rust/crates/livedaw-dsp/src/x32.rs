@@ -196,6 +196,23 @@ mod tests {
     }
 
     #[test]
+    fn the_x32s_eqs_run_finite_from_their_defaults() {
+        use crate::wing::eq::WingEq;
+        for table in [EQ_CHANNEL, EQ_BUS] {
+            let v = values(&table[0], &[]);
+            let mut eq = WingEq::default();
+            eq.prepare(48000.0);
+            let mut l: Vec<f32> = (0..4800).map(|i| (i as f32 * 0.01).sin() * 0.5).collect();
+            let mut r = vec![0.0f32; 4800];
+            for _ in 0..20 {
+                eq.process(&mut [&mut l[..], &mut r[..]], table, 0, true, 100.0, &v[..table[0].params.len()]);
+            }
+            assert!(l.iter().chain(&r).all(|x| x.is_finite()), "{}", table[0].token);
+            // Its gains glide from the jump of a new model, so a band later set rings in clean.
+        }
+    }
+
+    #[test]
     fn the_x32s_eq_bands() {
         use crate::wing::eq::design;
         let eq = &EQ_CHANNEL[0];

@@ -69,6 +69,10 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
   matrices everything before the fader.
 - An X32's mains: main 1 is the stereo LR, main 2 the mono M/C; channels feed LR, and
   its buses don't feed LR until routed (a factory WING's buses 9-16 do).
+- A send can take its signal at any of its strip's own tap points; an X32's send types
+  (IN/LC, <-EQ, EQ->, PRE, POST, GRP per bus pair) and its compressor and insert
+  positions now shape the audio, set through its OSC server. Its sends start as on
+  the console (on at -oo, EQ->), its buses send to matrices only.
 - An X32 OSC server (`livedaw-x32`, UDP 10023) that answers like an X32: info and
   status, gets and sets on the console's value steps, `/node` and `/` text, `/xremote`
   change updates and meters, over the engine's strips. The X32 profile names it; the app

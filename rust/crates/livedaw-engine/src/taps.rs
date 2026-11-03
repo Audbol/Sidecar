@@ -27,9 +27,11 @@ pub const MAX_USER_TAPS: usize = 32;
 /// Tap ids of a strip: the WING's, then the user taps.
 pub const NUM_TAP_IDS: usize = FIRST_USER_TAP as usize + MAX_USER_TAPS;
 
-/// A send's tap field: the user tap it names, if any (-1 = none: the send's mode).
-pub fn user_tap(tap: i32) -> Option<usize> {
-    usize::try_from(tap).ok().filter(|&t| (FIRST_USER_TAP as usize..NUM_TAP_IDS).contains(&t))
+/// A send's tap field: the tap it names, if any (-1 = none: the send's mode):
+/// one of the strip's own tap points (0-9: an X32's IN/LC, <-EQ and EQ->
+/// sends take them) or a user tap.
+pub fn send_tap(tap: i32) -> Option<usize> {
+    usize::try_from(tap).ok().filter(|&t| t < NUM_TAP_IDS)
 }
 
 struct TapBuf {
@@ -144,9 +146,9 @@ mod tests {
             taps.write(21, 4, [&l, &r], 2, 8); // not planned: nothing
             assert!(taps.read(21, 4, 0, 8).is_none());
         }
-        assert_eq!(user_tap(-1), None);
-        assert_eq!(user_tap(5), None, "the WING's taps aren't user taps");
-        assert_eq!(user_tap(16), Some(16));
-        assert_eq!(user_tap(NUM_TAP_IDS as i32), None);
+        assert_eq!(send_tap(-1), None);
+        assert_eq!(send_tap(1), Some(1), "a tap point of the strip's own (FILT)");
+        assert_eq!(send_tap(16), Some(16));
+        assert_eq!(send_tap(NUM_TAP_IDS as i32), None);
     }
 }

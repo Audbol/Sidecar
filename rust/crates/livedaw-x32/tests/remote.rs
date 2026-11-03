@@ -485,3 +485,34 @@ fn bad_requests_are_ignored() {
     c.send_raw(b"/ch/01/mix/fader\0\0\0\0,f\0\0\x3f");
     assert_eq!(c.get("/info").addr, "/info");
 }
+
+#[test]
+fn send_types_and_positions_reach_the_audio() {
+    let (engine, server) = start();
+    let c = Client::new(&server);
+    let ch = engine.strip_at(StripKind::Channel, 0).unwrap();
+    let send = |k: usize| ch.sends.get_or_create(k).unwrap();
+    // The factory type is EQ->: with GEDI (the compressor POST the EQ) the tap
+    // after the EQ, the second slot's (3).
+    assert_eq!(c.get_i("/ch/01/mix/01/type"), 2, "EQ->, as an X32 starts");
+    assert_eq!(send(0).tap.load(Relaxed), 3);
+    c.set("/ch/01/mix/01/type", vec![Arg::Int(2)]);
+    assert_eq!((send(0).tap.load(Relaxed), send(1).tap.load(Relaxed)), (3, 3), "both sends of the pair");
+    assert_eq!(c.get_i("/ch/01/mix/01/type"), 2);
+    c.set("/ch/01/mix/01/type", vec![Arg::Int(0)]);
+    assert_eq!(send(0).tap.load(Relaxed), 1, "IN/LC: after the low cut");
+    c.set("/ch/01/mix/03/type", vec![Arg::Int(1)]);
+    assert_eq!(send(2).tap.load(Relaxed), 2, "<-EQ: after the gate");
+    c.set("/ch/01/mix/05/type", vec![Arg::Int(4)]);
+    assert_eq!((send(4).mode.load(Relaxed), send(4).tap.load(Relaxed)), (1, -1), "POST");
+    // The compressor PRE the EQ (GDEI): <-EQ follows to after the compressor.
+    c.set("/ch/01/dyn/pos", vec![Arg::Int(0)]);
+    assert_eq!(ch.params.process_order.load(Relaxed), 1);
+    assert_eq!(c.get_i("/ch/01/dyn/pos"), 0);
+    assert_eq!(send(2).tap.load(Relaxed), 3, "<-EQ is now after the second slot");
+    assert_eq!(c.get_i("/ch/01/mix/03/type"), 1);
+    // The insert PRE as well (GIDE).
+    c.set("/ch/01/insert/pos", vec![Arg::Int(0)]);
+    assert_eq!(ch.params.process_order.load(Relaxed), 3);
+    assert_eq!(c.get_i("/ch/01/insert/pos"), 0);
+}

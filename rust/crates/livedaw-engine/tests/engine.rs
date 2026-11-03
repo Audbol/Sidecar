@@ -434,6 +434,9 @@ fn an_x32_runs_its_own_chains_and_models() {
     assert!(send.enabled.load(Relaxed) && send.level_db.load() == livedaw_dsp::fader::FADER_MIN);
     assert_eq!(ch1.main_send(1).unwrap().level_db.load(), livedaw_dsp::fader::FADER_MIN);
     assert_eq!(rig.engine.controls.dcas[0].colour.load(Relaxed), 8);
+    // An X32's buses send to matrices only: their bus sends stay off.
+    let bus2 = rig.strip(StripKind::Bus, 1);
+    assert!(!bus2.sends.get_or_create(0).unwrap().enabled.load(Relaxed));
     for b in rig.engine.strips(StripKind::Bus) {
         assert!(!b.main_send(0).unwrap().on.load(Relaxed), "bus {}", b.id() + 1);
         assert_eq!(b.params.fader_db.load(), livedaw_dsp::fader::FADER_MIN);
@@ -469,6 +472,30 @@ fn an_x32_runs_its_own_chains_and_models() {
     rig.run(400);
     let gr = 20.0 * (rig.out(0) / unity).log10();
     assert!(close(gr, -17.8, 0.5), "compressed by {gr} dB");
+
+    // A send takes the signal at one of the channel's own tap points: before
+    // the EQ (tap 2, after the gate) or after it (tap 3), the X32's <-EQ and
+    // EQ-> (GEDI). Bus 1 to LR, the channel to bus 1 only.
+    d.on.store(false, Relaxed);
+    eq.on.store(true, Relaxed);
+    ch.main_send(0).unwrap().on.store(false, Relaxed);
+    let bus = rig.strip(StripKind::Bus, 0);
+    bus.params.fader_db.store(0.0);
+    bus.main_send(0).unwrap().on.store(true, Relaxed);
+    let send = ch.sends.get_or_create(0).unwrap();
+    send.level_db.store(0.0);
+    send.enabled.store(true, Relaxed);
+    let at = |rig: &mut Rig, tap: i32| {
+        send.tap.store(tap, Relaxed);
+        rig.engine.update_taps();
+        rig.run(200);
+        rig.out(0)
+    };
+    let (pre_eq, post_eq) = (at(&mut rig, 2), at(&mut rig, 3));
+    assert!(pre_eq > 0.0 && close(post_eq / pre_eq, 1.995, 0.03), "EQ-> / <-EQ: {}", post_eq / pre_eq);
+    eq.on.store(false, Relaxed);
+    ch.main_send(0).unwrap().on.store(true, Relaxed);
+    send.enabled.store(false, Relaxed);
 
     // Every one of its process orders runs.
     for i in 0..4 {

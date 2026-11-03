@@ -252,6 +252,12 @@ pub struct ProfileSpec {
     pub source_link: bool,
     /// Bus sends start on (at -oo, an X32's); a WING's start off.
     pub sends_on: bool,
+    /// The tap a new input's bus sends take (`SendParams::tap`; -1: their
+    /// mode's): an X32's EQ->, the tap after the EQ in its default order.
+    pub send_tap: i32,
+    /// Where an input channel's PRE (TAP) sends take their signal at first
+    /// (`StripParams::tap`, a `TAP_POINTS` index): the WING's "5", an X32's PFL.
+    pub tap_point: i32,
 }
 
 impl ProfileSpec {
@@ -348,6 +354,8 @@ static WING: ProfileSpec = ProfileSpec {
     mono_mains: &[],
     source_link: true,
     sends_on: false,
+    send_tap: -1,
+    tap_point: crate::params::DEFAULT_TAP,
 };
 
 /// No console's limits. Its strips have the WING's blocks (a profile's own set
@@ -373,6 +381,8 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
     mono_mains: &[],
     source_link: true,
     sends_on: false,
+    send_tap: -1,
+    tap_point: crate::params::DEFAULT_TAP,
 };
 
 /// The Behringer X32: its counts (`Counts::X32`), fader law, colours and
@@ -407,6 +417,8 @@ static X32: ProfileSpec = ProfileSpec {
     mono_mains: &[1],
     source_link: false,
     sends_on: true,
+    send_tap: 3, // EQ-> (GEDI: after the second slot)
+    tap_point: crate::strip::tap::PFL as i32,
 };
 
 #[cfg(test)]

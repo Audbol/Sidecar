@@ -108,15 +108,16 @@ impl SendParams {
 }
 
 impl BankItem for SendParams {
-    /// The WING's factory sends ([`default_mode`], off); an X32's are on at
-    /// -oo (its `sends_on`), PRE where the X32 takes EQ-> (inputs) and POST from
-    /// buses.
+    /// The WING's factory sends ([`default_mode`], off); an X32's inputs' are
+    /// on at -oo (its `sends_on`), PRE at its `send_tap`. (An X32's buses send
+    /// to its matrices only: their bus sends stay off.)
     fn factory(spec: &ProfileSpec, kind: StripKind, _slot: usize, index: usize) -> Self {
-        if !spec.sends_on {
+        if !spec.sends_on || !kind.is_input() {
             return Self::with_mode(default_mode(kind, index));
         }
-        let s = Self::with_mode(if kind == StripKind::Bus { send_mode::POST } else { send_mode::PRE });
+        let s = Self::with_mode(send_mode::PRE);
         s.enabled.store(true, Ordering::Relaxed);
+        s.tap.store(spec.send_tap, Ordering::Relaxed);
         s
     }
 }
