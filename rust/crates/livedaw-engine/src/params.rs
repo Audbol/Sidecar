@@ -13,6 +13,7 @@ use crate::monitor::MonitorControls;
 use crate::sends::BankItem;
 use crate::solo::solo_mode;
 use crate::talk::TalkParams;
+use livedaw_dsp::model::{ModelSpec, ModelTables};
 use livedaw_dsp::wing::{
     dynamics::{SidechainSettings, XoverSettings},
     filter::FilterSettings,
@@ -265,14 +266,26 @@ pub struct DynSlotParams {
     pub xo_freq: AtomicF32,
     pub xo_q: AtomicF32,
     pub xo_depth: AtomicF32,
+    /// The models `model` indexes: its console's dynamics table (Phase 4; the
+    /// C side mirrors it as two words it doesn't read).
+    table: &'static [ModelSpec],
 }
+
+const _: () = assert!(std::mem::size_of::<&[ModelSpec]>() == 2 * std::mem::size_of::<usize>());
 
 /// The aux channels' dynamics slot holds the WING GATE at -36 dB on a
 /// factory-set console.
 pub const AUX_GATE_THRESHOLD_DB: f32 = -36.0;
 
 impl DynSlotParams {
+    /// A WING slot holding `model_token`.
     pub fn new(model_token: &str) -> Self {
+        Self::new_in(DYN_MODELS, model_token)
+    }
+
+    /// A slot of a console whose dynamics models are `table`, holding
+    /// `model_token` (the first model if the table hasn't it).
+    pub fn new_in(table: &'static [ModelSpec], model_token: &str) -> Self {
         let (sc, xo) = (SidechainSettings::default(), XoverSettings::default());
         let p = Self {
             on: AtomicBool::new(false),
@@ -289,14 +302,20 @@ impl DynSlotParams {
             xo_freq: AtomicF32::new(xo.freq),
             xo_q: AtomicF32::new(xo.q),
             xo_depth: AtomicF32::new(xo.depth),
+            table,
         };
-        p.set_model(model_index(DYN_MODELS, model_token).unwrap_or(0));
+        p.set_model(model_index(table, model_token).unwrap_or(0));
         p
+    }
+
+    /// The models the slot can hold (its console's).
+    pub fn table(&self) -> &'static [ModelSpec] {
+        self.table
     }
 
     /// Selects a model and loads its defaults (the session keeps per-model memories).
     pub fn set_model(&self, model: usize) {
-        let Some(spec) = DYN_MODELS.get(model) else { return };
+        let Some(spec) = self.table.get(model) else { return };
         self.model.store(model as i32, Relaxed);
         let mut d = [0.0; MAX_DYN_PARAMS];
         spec.defaults_into(&mut d);
@@ -306,12 +325,17 @@ impl DynSlotParams {
     }
 
     pub fn model_index(&self) -> usize {
-        (self.model.load(Relaxed).max(0) as usize).min(DYN_MODELS.len() - 1)
+        (self.model.load(Relaxed).max(0) as usize).min(self.table.len().max(1) - 1)
+    }
+
+    /// The current model.
+    pub fn model_spec(&self) -> Option<&'static ModelSpec> {
+        self.table.get(self.model_index())
     }
 
     /// A parameter of the current model by its console id ("thr").
     pub fn param(&self, id: &str) -> Option<&AtomicF32> {
-        self.values.get(DYN_MODELS[self.model_index()].param_index(id)?)
+        self.values.get(self.model_spec()?.param_index(id)?)
     }
 
     pub fn values_snapshot(&self, out: &mut [f32; MAX_DYN_PARAMS]) {
@@ -348,19 +372,37 @@ pub struct EqBlockParams {
     /// 0..125 %.
     pub mix: AtomicF32,
     pub values: [AtomicF32; MAX_EQ_PARAMS],
+    /// The models `model` indexes: its console's channel or bus EQ table
+    /// (the C side mirrors it as two words it doesn't read).
+    table: &'static [ModelSpec],
 }
 
 impl EqBlockParams {
+    /// A WING EQ: the bus table's first model (`bus`), else the channel table's.
     pub fn new(bus: bool) -> Self {
-        let p =
-            Self { on: AtomicBool::new(true), model: AtomicI32::new(0), mix: AtomicF32::new(100.0), values: Default::default() };
-        p.set_model(0, bus);
+        Self::new_in(if bus { EQ_MODELS_BUS } else { EQ_MODELS_CH })
+    }
+
+    /// An EQ of a console whose models (channel or bus EQ) are `table`, on its first.
+    pub fn new_in(table: &'static [ModelSpec]) -> Self {
+        let p = Self {
+            on: AtomicBool::new(true),
+            model: AtomicI32::new(0),
+            mix: AtomicF32::new(100.0),
+            values: Default::default(),
+            table,
+        };
+        p.set_model(0);
         p
     }
 
-    pub fn set_model(&self, model: usize, bus: bool) {
-        let table = if bus { EQ_MODELS_BUS } else { EQ_MODELS_CH };
-        let Some(spec) = table.get(model) else { return };
+    /// The models the EQ can hold (its console's).
+    pub fn table(&self) -> &'static [ModelSpec] {
+        self.table
+    }
+
+    pub fn set_model(&self, model: usize) {
+        let Some(spec) = self.table.get(model) else { return };
         self.model.store(model as i32, Relaxed);
         let mut d = [0.0; MAX_EQ_PARAMS];
         spec.defaults_into(&mut d);
@@ -369,15 +411,18 @@ impl EqBlockParams {
         }
     }
 
-    pub fn model_index(&self, bus: bool) -> usize {
-        let table = if bus { EQ_MODELS_BUS } else { EQ_MODELS_CH };
-        (self.model.load(Relaxed).max(0) as usize).min(table.len() - 1)
+    pub fn model_index(&self) -> usize {
+        (self.model.load(Relaxed).max(0) as usize).min(self.table.len().max(1) - 1)
+    }
+
+    /// The current model.
+    pub fn model_spec(&self) -> Option<&'static ModelSpec> {
+        self.table.get(self.model_index())
     }
 
     /// A parameter of the current model by its console id ("2g").
-    pub fn param(&self, id: &str, bus: bool) -> Option<&AtomicF32> {
-        let table = if bus { EQ_MODELS_BUS } else { EQ_MODELS_CH };
-        self.values.get(table[self.model_index(bus)].param_index(id)?)
+    pub fn param(&self, id: &str) -> Option<&AtomicF32> {
+        self.values.get(self.model_spec()?.param_index(id)?)
     }
 
     pub fn values_snapshot(&self, out: &mut [f32; MAX_EQ_PARAMS]) {
@@ -1006,13 +1051,20 @@ impl StripParams {
         std::mem::offset_of!(StripParams, blocks) + std::mem::offset_of!(OwnBlocks, post_insert);
 
     pub fn new(kind: StripKind) -> Self {
+        Self::new_with(kind, &livedaw_dsp::wing::MODELS)
+    }
+
+    /// A new strip of `kind` whose blocks hold `models` (its console's): the
+    /// GATE slot on GATE, the DYNAMICS slot on COMP (aux: GATE), each the
+    /// table's first where it hasn't them.
+    pub fn new_with(kind: StripKind, models: &'static ModelTables) -> Self {
         let output = kind.is_output();
         let p = Self {
             input: InputParams::default(),
             blocks: OwnBlocks::new(
-                DynSlotParams::new("GATE"),
-                EqBlockParams::new(output),
-                DynSlotParams::new(if kind == StripKind::Aux { "GATE" } else { "COMP" }),
+                DynSlotParams::new_in(models.dynamics, "GATE"),
+                EqBlockParams::new_in(if output { models.eq_bus } else { models.eq_channel }),
+                DynSlotParams::new_in(models.dynamics, if kind == StripKind::Aux { "GATE" } else { "COMP" }),
             ),
             process_order: AtomicI32::new(0),
             tap: AtomicI32::new(DEFAULT_TAP),
@@ -1064,7 +1116,12 @@ impl StripParams {
     /// main send: `MainSendParams::factory`);
     /// AUX 2 on the USB player's PLAY 1/2 (the "2TR" pair), in stereo.
     pub fn new_in_slot(kind: StripKind, index: usize) -> Self {
-        let p = Self::new(kind);
+        Self::new_in_slot_with(kind, index, &livedaw_dsp::wing::MODELS)
+    }
+
+    /// [`Self::new_in_slot`] with `models` (its console's) in its blocks.
+    pub fn new_in_slot_with(kind: StripKind, index: usize, models: &'static ModelTables) -> Self {
+        let p = Self::new_with(kind, models);
         if kind == StripKind::Bus && (8..WING_BUSES).contains(&index) {
             p.colour.store(if index < 10 { 6 } else { 12 }, Relaxed);
             p.fader_db.store(0.0);

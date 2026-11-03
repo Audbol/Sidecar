@@ -388,6 +388,12 @@ Three layers:
         (`WingDynamics::set_table`, the profile's `ModelTables::dynamics`, as the EQ
         already took its table), so a console's own gate and compressor models can
         use the dynamics DSP. The WING's renders are byte-identical.
+      - 3b-1 (done): a gate / dynamics slot and an EQ carry their model table
+        (`DynSlotParams::table`, `EqBlockParams::table`; C ABI 36 mirrors it as two
+        words): `set_model`, `model_index`, `param` and `model_spec` read it, the
+        strip runs it, a show saves and loads by it, and a strip's blocks take their
+        console's (`StripParams::new_with`, `BlockParams::new_in`).
+      - 3b-2, next: the X32's tables (`livedaw_dsp::x32`) and their DSP.
    4. **Sends and mains as the X32's**: channels to buses (tap points per bus pair,
       GRP), LR and M/C assigns (main 1 the stereo LR, main 2 the mono M/C), buses and
       mains to matrices only; odd/even links (`/config/chlink`...) over mono strips.

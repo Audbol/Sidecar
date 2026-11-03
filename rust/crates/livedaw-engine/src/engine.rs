@@ -783,8 +783,7 @@ impl Engine {
         if steps.iter().filter(|s| matches!(s, Step::Block(_))).count() >= MAX_EXTRA_BLOCKS {
             return None;
         }
-        let dynamics = strip.spec().models.dynamics;
-        let block = Arc::new(Block::new(uid, kind, strip.kind().is_output(), st.device.sample_rate, dynamics));
+        let block = Arc::new(Block::new(uid, kind, strip.kind().is_output(), st.device.sample_rate, strip.spec().models));
         steps.insert(at.min(steps.len()), Step::Block(block.clone()));
         strip.set_layout(steps, &self.garbage);
         Some(block)

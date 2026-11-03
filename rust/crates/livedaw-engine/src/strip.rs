@@ -41,7 +41,6 @@ use livedaw_dsp::biquad::{Biquad, BiquadCoeffs};
 use livedaw_dsp::delay::{delay_samples, DelayLine};
 use livedaw_dsp::util::*;
 use livedaw_dsp::wing::dynamics::{DynStatus, DYN_BANDS};
-use livedaw_dsp::wing::{EQ_MODELS_BUS, EQ_MODELS_CH};
 use livedaw_recorder::{playback_channel, usb_player_channel};
 use std::cell::UnsafeCell;
 use std::sync::atomic::{
@@ -386,7 +385,7 @@ impl Strip {
             // Buses are numbered by their slot (`id`), whose factory settings differ;
             // a console with its own factory colours (`Palette::factory`) uses them.
             params: {
-                let p = StripParams::new_in_slot(kind, usize::try_from(id).unwrap_or(0));
+                let p = StripParams::new_in_slot_with(kind, usize::try_from(id).unwrap_or(0), spec.models);
                 if let Some(colour) = spec.palette.factory {
                     p.colour.store(colour(kind), Relaxed);
                 }
@@ -723,13 +722,8 @@ impl Strip {
         d.listen_scratch.clear();
         d.listen_scratch.resize(mb, 0.0);
         d.idle = false;
-        let dynamics = self.spec.models.dynamics;
         for b in self.params.own_blocks() {
-            let dsp = b.dsp_mut();
-            dsp.prepare(sample_rate);
-            if let BlockDsp::Dynamics(p, _) = dsp {
-                p.set_table(dynamics); // the console's models
-            }
+            b.dsp_mut().prepare(sample_rate);
         }
         d.delay.prepare(sample_rate);
         d.listen_filter.reset();
@@ -737,11 +731,7 @@ impl Strip {
         d.tap_shaper.prepare(sample_rate);
         if let Some(layout) = self.layout() {
             for b in layout.blocks() {
-                let dsp = b.dsp_mut();
-                dsp.prepare(sample_rate);
-                if let BlockDsp::Dynamics(p, _) = dsp {
-                    p.set_table(dynamics);
-                }
+                b.dsp_mut().prepare(sample_rate);
             }
         }
     }
@@ -1090,13 +1080,13 @@ impl Strip {
             }
             (BlockParams::Eq(p), BlockDsp::Eq(eq, values)) => {
                 p.values_snapshot(values);
-                let table = if self.kind.is_output() { EQ_MODELS_BUS } else { EQ_MODELS_CH };
-                let model = (p.model.load(Relaxed).max(0) as usize).min(table.len() - 1);
+                let (table, model) = (p.table(), p.model_index());
                 let [w0, w1] = &mut d.work;
                 let mut chans: [&mut [f32]; 2] = [&mut w0[..n], &mut w1[..n]];
                 eq.process(&mut chans[..nc], table, model, p.on.load(Relaxed), p.mix.load(), &values[..]);
             }
             (BlockParams::Dynamics(p), BlockDsp::Dynamics(dynamics, values)) => {
+                dynamics.set_table(p.table());
                 let on = p.on.load(Relaxed);
                 if !dynamics.is_running(on) {
                     b.meters.reduction_db.store(0.0);
@@ -1286,8 +1276,7 @@ impl Strip {
             // SAFETY: the task running the strip.
             let BlockDsp::Eq(_, values) = (unsafe { self.params.own_block(OwnBlocks::EQ).dsp_mut() }) else { return };
             eq.values_snapshot(values);
-            let table = if self.kind.is_output() { EQ_MODELS_BUS } else { EQ_MODELS_CH };
-            let model = (eq.model.load(Relaxed).max(0) as usize).min(table.len() - 1);
+            let (table, model) = (eq.table(), eq.model_index());
             let coeffs = crate::listen::band_solo_coeffs(&table[model], values, band.max(0) as usize, d.sample_rate);
             if let Some(c) = coeffs {
                 *listened = Self::listen_filtered(d, c, None, n);
@@ -1405,6 +1394,7 @@ impl Strip {
         else {
             return;
         };
+        proc.set_table(slot.table()); // its console's models
         let running = proc.is_running(on);
         if !running {
             reduction.store(0.0);
@@ -1442,8 +1432,7 @@ impl Strip {
         // SAFETY: the task running the strip.
         let BlockDsp::Eq(proc, values) = (unsafe { self.params.own_block(OwnBlocks::EQ).dsp_mut() }) else { return };
         eq.values_snapshot(values);
-        let table = if self.kind.is_output() { EQ_MODELS_BUS } else { EQ_MODELS_CH };
-        let model = (eq.model.load(Relaxed).max(0) as usize).min(table.len() - 1);
+        let (table, model) = (eq.table(), eq.model_index());
         let nc = d.num_channels;
         let [w0, w1] = &mut d.work;
         let mut chans: [&mut [f32]; 2] = [&mut w0[..n], &mut w1[..n]];

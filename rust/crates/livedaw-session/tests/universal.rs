@@ -98,7 +98,7 @@ fn build(e: &Engine) {
     let post = mains[1].steps().iter().position(|s| matches!(s, Step::Node(Node::Post))).unwrap();
     let eq = e.insert_block(&mains[1], BlockKind::Eq, post).unwrap();
     let BlockParams::Eq(p) = &eq.params else { unreachable!() };
-    p.param("lg", true).unwrap().store(6.0);
+    p.param("lg").unwrap().store(6.0);
     p.on.store(true, Relaxed);
 
     // A user tap after CH 40's INPUT, sent to MTX 6.

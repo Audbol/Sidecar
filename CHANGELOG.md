@@ -57,6 +57,8 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
 - A profile can give strips from a slot on their own chain and label: the X32's aux 1-8
   (AUX) and FX returns (aux 9-16, "FX 1"-"FX 8") run trim, EQ and fader only. C ABI 35:
   `ld_profile_slot_ranges`.
+- A gate, dynamics or EQ block holds its console's models (its profile's tables), so a
+  console's own models can run, save and load; the WING's sound is unchanged. C ABI 36.
 
 ## [0.2.0] - beta
 

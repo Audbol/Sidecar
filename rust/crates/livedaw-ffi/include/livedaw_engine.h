@@ -29,7 +29,7 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 35;
+constexpr int kAbiVersion = 36;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -339,6 +339,7 @@ struct DynSlotParams
     std::atomic<int32_t> scSource, scTap;
     std::atomic<int32_t> xoKind; // list 3
     std::atomic<float> xoFreq, xoQ, xoDepth;
+    const void* modelTable_[2]; // ABI 36: the engine's (its console's models); not read here
 };
 
 struct EqBlockParams
@@ -347,6 +348,7 @@ struct EqBlockParams
     std::atomic<int32_t> model; // table 1 (channels, aux) or 2 (buses, mains, matrices)
     std::atomic<float> mix;
     std::atomic<float> values[kMaxEqParams];
+    const void* modelTable_[2]; // ABI 36: the engine's (its console's models); not read here
 };
 
 struct InsertParams

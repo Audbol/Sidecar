@@ -151,7 +151,7 @@ fn rta_reads_the_selected_strip_at_its_tap() {
     let spec = &EQ_MODELS_CH[model_index(EQ_MODELS_CH, "STD").unwrap()];
     let eq = ch.params.eq();
     eq.on.store(true, Relaxed); // a new channel's EQ is off, as on the WING
-    eq.set_model(model_index(EQ_MODELS_CH, "STD").unwrap(), false);
+    eq.set_model(model_index(EQ_MODELS_CH, "STD").unwrap());
     eq.values[spec.param_index("2f").unwrap()].store(f);
     eq.values[spec.param_index("2g").unwrap()].store(-9.0);
     c.view.store(rta_view::EQ, Relaxed);
@@ -218,7 +218,7 @@ fn band_solo_plays_the_selected_band_on_the_monitor() {
     let ch = rig.ch(0);
     let table = &EQ_MODELS_CH;
     let std = model_index(table, "STD").unwrap();
-    ch.params.eq().set_model(std, false);
+    ch.params.eq().set_model(std);
     let spec = &table[std];
     // Band "2" (index 2: l, 1, 2, ...) at 2 kHz, Q 4.
     ch.params.eq().values[spec.param_index("2f").unwrap()].store(2000.0);

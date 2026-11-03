@@ -109,7 +109,7 @@ fn console_survives_a_show_round_trip() {
     p.filter().low_cut_freq.store(95.0);
     p.gate().on.store(true, Relaxed);
     p.gate().param("thr").unwrap().store(-33.0);
-    p.eq().param("2g", false).unwrap().store(-4.5);
+    p.eq().param("2g").unwrap().store(-4.5);
     p.dynamics().set_model(model_index(DYN_MODELS, "B560").unwrap());
     p.dynamics().param("thr").unwrap().store(-12.0);
     p.process_order.store(5, Relaxed);
@@ -175,7 +175,7 @@ fn console_survives_a_show_round_trip() {
     assert_eq!(p.filter().low_cut_freq.load(), 95.0);
     assert!(p.gate().on.load(Relaxed));
     assert_eq!(p.gate().param("thr").unwrap().load(), -33.0);
-    assert_eq!(p.eq().param("2g", false).unwrap().load(), -4.5);
+    assert_eq!(p.eq().param("2g").unwrap().load(), -4.5);
     assert_eq!(DYN_MODELS[p.dynamics().model_index()].token, "B560");
     assert_eq!(dyn_param(&k, "thr"), -12.0);
     assert_eq!(p.process_order.load(Relaxed), 5);
@@ -526,7 +526,7 @@ fn saving_an_unchanged_show_leaves_the_file_alone() {
     set_channels(&engine, 3);
     let a = ch(&engine, 0);
     a.params.fader_db.store(-6.0);
-    a.params.eq().param("2g", false).unwrap().store(-4.5);
+    a.params.eq().param("2g").unwrap().store(-4.5);
     host.load(&engine, 1, "Delay", "S");
     let mut show = Show::new();
     show.name = "Gig".into();
@@ -780,16 +780,16 @@ fn capture_and_apply_by_section() {
     let mut np = NoPlugins;
     set_channels(&engine, 2);
     let a = ch(&engine, 0);
-    a.params.eq().param("1g", false).unwrap().store(5.0);
+    a.params.eq().param("1g").unwrap().store(5.0);
     a.params.dynamics().param("thr").unwrap().store(-12.0);
     let state = console::capture(&engine, section::EQ, None, &mut np);
-    a.params.eq().param("1g", false).unwrap().store(0.0);
+    a.params.eq().param("1g").unwrap().store(0.0);
     a.params.dynamics().param("thr").unwrap().store(-30.0);
 
     // Asking for more than was captured only touches the captured part.
     let r = console::apply(&engine, &state, section::ALL, None, true, None, &mut np);
     assert_eq!(r.strips_applied, 2 + 8 + 16 + 4 + 8);
-    assert_eq!(a.params.eq().param("1g", false).unwrap().load(), 5.0);
+    assert_eq!(a.params.eq().param("1g").unwrap().load(), 5.0);
     assert_eq!(dyn_param(&a, "thr"), -30.0);
 
     // Strips missing from the console are counted, not fatal.
@@ -895,7 +895,7 @@ fn extra_blocks_survive_a_show_and_recall_with_their_sections() {
     let dly = engine.insert_block(&c, BlockKind::Delay, 9).unwrap();
     let BlockParams::Eq(e) = &eq.params else { panic!() };
     e.on.store(true, Relaxed);
-    e.param("lg", false).unwrap().store(4.5);
+    e.param("lg").unwrap().store(4.5);
     let BlockParams::Delay(d) = &dly.params else { panic!() };
     d.on.store(true, Relaxed);
     d.delay.store(12.0);
@@ -903,10 +903,10 @@ fn extra_blocks_survive_a_show_and_recall_with_their_sections() {
     show.add_scene(&engine, &mut NoPlugins, "A", -1);
 
     // A scene recall puts the blocks' settings back by section, not the structure.
-    e.param("lg", false).unwrap().store(-3.0);
+    e.param("lg").unwrap().store(-3.0);
     d.delay.store(1.0);
     show.recall_scene_with(&engine, &mut NoPlugins, 0, Some(&Scope::console(section::EQ)), false);
-    assert_eq!(e.param("lg", false).unwrap().load(), 4.5);
+    assert_eq!(e.param("lg").unwrap().load(), 4.5);
     assert_eq!(d.delay.load(), 1.0, "PREAMP wasn't recalled");
 
     // The show: the same chain (ids, kinds, places) and settings.
@@ -919,7 +919,7 @@ fn extra_blocks_survive_a_show_and_recall_with_their_sections() {
     let blocks = c2.blocks();
     let BlockParams::Eq(e2q) = &blocks[0].params else { panic!("{:?}", blocks[0].kind()) };
     assert!(e2q.on.load(Relaxed));
-    assert_eq!(e2q.param("lg", false).unwrap().load(), 4.5);
+    assert_eq!(e2q.param("lg").unwrap().load(), 4.5);
     let BlockParams::Delay(d2) = &blocks[1].params else { panic!() };
     assert_eq!(d2.delay.load(), 1.0);
     // A user tap in the chain and a send taking it come back too.

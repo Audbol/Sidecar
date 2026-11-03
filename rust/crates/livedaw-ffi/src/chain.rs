@@ -154,7 +154,7 @@ pub unsafe extern "C" fn ld_strip_set_block_model(s: *const Strip, uid: i32, mod
     let m = model.max(0) as usize;
     guard(false, || match &b.params {
         BlockParams::Eq(p) => {
-            p.set_model(m, s.kind().is_output());
+            p.set_model(m);
             true
         }
         BlockParams::Dynamics(p) => {
@@ -189,7 +189,7 @@ pub unsafe extern "C" fn ld_strip_block_response(
     }
     let freqs = std::slice::from_raw_parts(freqs, count as usize);
     let out = std::slice::from_raw_parts_mut(out_db, count as usize);
-    guard(false, || models::block_response(s, b, part, freqs, out, sample_rate))
+    guard(false, || models::block_response(b, part, freqs, out, sample_rate))
 }
 
 /// A step index: past the end (or < 0) is the end.
@@ -327,7 +327,7 @@ mod tests {
             let mut db = [1.0; 2];
             assert!(ld_strip_block_response(ch, eq, 0, freqs.as_ptr(), db.as_mut_ptr(), 2, 48000.0));
             assert!(db.iter().all(|d| d.abs() < 0.01), "{db:?}");
-            p.param("lg", false).unwrap().store(6.0);
+            p.param("lg").unwrap().store(6.0);
             p.on.store(true, Relaxed);
             assert!(ld_strip_block_response(ch, eq, 0, freqs.as_ptr(), db.as_mut_ptr(), 2, 48000.0));
             assert!(db[0] > 5.0 && db[1].abs() < 0.5, "{db:?}");

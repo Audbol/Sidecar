@@ -8,7 +8,7 @@
 use crate::refs::StripRef;
 use crate::xml::{fmt_f32, parse, Element};
 use livedaw_dsp::model::{model_index, ModelSpec};
-use livedaw_dsp::wing::{DYN_MODELS, EQ_MODELS_BUS, EQ_MODELS_CH, FILTER_TOOLS, FX_MODELS};
+use livedaw_dsp::wing::{FILTER_TOOLS, FX_MODELS};
 use livedaw_engine::analyser::RtaViewSettings;
 use livedaw_engine::atomic::AtomicF32;
 use livedaw_engine::blocks::{BlockKind, BlockParams, Step};
@@ -277,7 +277,7 @@ fn get_model_params(e: &Element, table: &[ModelSpec], current: usize, values: &[
 }
 
 fn put_dyn_slot(e: &mut Element, slot: &DynSlotParams) {
-    let spec = &DYN_MODELS[slot.model_index()];
+    let Some(spec) = slot.model_spec() else { return };
     put_b(e, "on", &slot.on);
     e.set("mdl", spec.token);
     put_f(e, "mix", &slot.mix);
@@ -307,24 +307,21 @@ fn get_dyn_slot(e: &Element, slot: &DynSlotParams) {
     get_f(e, "xof", &slot.xo_freq);
     get_f(e, "xoq", &slot.xo_q);
     get_f(e, "xod", &slot.xo_depth);
-    get_model_params(e, DYN_MODELS, slot.model_index(), &slot.values, |m| slot.set_model(m));
+    get_model_params(e, slot.table(), slot.model_index(), &slot.values, |m| slot.set_model(m));
 }
 
-fn put_eq(e: &mut Element, eq: &EqBlockParams, bus: bool) {
-    let table = if bus { EQ_MODELS_BUS } else { EQ_MODELS_CH };
-    let spec = &table[(eq.model.load(Relaxed).max(0) as usize).min(table.len() - 1)];
+fn put_eq(e: &mut Element, eq: &EqBlockParams) {
+    let Some(spec) = eq.model_spec() else { return };
     put_b(e, "on", &eq.on);
     e.set("mdl", spec.token);
     put_f(e, "mix", &eq.mix);
     put_model_params(e, spec, &eq.values);
 }
 
-fn get_eq(e: &Element, eq: &EqBlockParams, bus: bool) {
-    let table = if bus { EQ_MODELS_BUS } else { EQ_MODELS_CH };
+fn get_eq(e: &Element, eq: &EqBlockParams) {
     get_b(e, "on", &eq.on);
     get_f(e, "mix", &eq.mix);
-    let current = (eq.model.load(Relaxed).max(0) as usize).min(table.len() - 1);
-    get_model_params(e, table, current, &eq.values, |m| eq.set_model(m, bus));
+    get_model_params(e, eq.table(), eq.model_index(), &eq.values, |m| eq.set_model(m));
 }
 
 fn put_filter(f: &mut Element, fp: &FilterParams) {
@@ -388,7 +385,7 @@ fn capture_chain(s: &Strip, sections: u32, e: &mut Element) {
         }
         match &b.params {
             BlockParams::Filter(f) => put_filter(x, f),
-            BlockParams::Eq(q) => put_eq(x, q, s.kind().is_output()),
+            BlockParams::Eq(q) => put_eq(x, q),
             BlockParams::Dynamics(d) => put_dyn_slot(x, d),
             BlockParams::Insert(i) => put_insert(x, i),
             BlockParams::Delay(d) => {
@@ -447,7 +444,7 @@ fn apply_chain(s: &Strip, e: &Element, sections: u32) {
         }
         match &b.params {
             BlockParams::Filter(f) => get_filter(x, f),
-            BlockParams::Eq(q) => get_eq(x, q, s.kind().is_output()),
+            BlockParams::Eq(q) => get_eq(x, q),
             BlockParams::Dynamics(d) => get_dyn_slot(x, d),
             BlockParams::Insert(i) => get_insert(x, i),
             BlockParams::Delay(d) => {
@@ -565,7 +562,7 @@ fn capture_strip(s: &Strip, sections: u32, slots: &[usize], mains: usize, matric
         put_dyn_slot(e.add_new("Gate"), p.gate());
     }
     if sections & EQ != 0 {
-        put_eq(e.add_new("Eq"), p.eq(), kind.is_output());
+        put_eq(e.add_new("Eq"), p.eq());
     }
     if sections & DYNAMICS != 0 {
         put_dyn_slot(e.add_new("Dyn"), p.dynamics());
@@ -1186,7 +1183,7 @@ fn apply_strip(
         get_dyn_slot(g, p.gate());
     }
     if let Some(q) = e.child("Eq").filter(|_| sections & EQ != 0) {
-        get_eq(q, p.eq(), kind.is_output());
+        get_eq(q, p.eq());
     }
     if let Some(d) = e.child("Dyn").filter(|_| sections & DYNAMICS != 0) {
         get_dyn_slot(d, p.dynamics());

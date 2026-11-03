@@ -12,7 +12,7 @@ use crate::atomic::AtomicF32;
 use crate::chain::Node;
 use crate::params::{DynSlotParams, EqBlockParams, FilterParams, InsertParams, DELAY_MIN_M};
 use livedaw_dsp::delay::DelayLine;
-use livedaw_dsp::model::ModelSpec;
+use livedaw_dsp::model::ModelTables;
 use livedaw_dsp::wing::dynamics::WingDynamics;
 use livedaw_dsp::wing::eq::WingEq;
 use livedaw_dsp::wing::filter::WingFilter;
@@ -90,17 +90,23 @@ pub enum BlockParams {
 }
 
 impl BlockParams {
-    /// New parameters of `kind`: EQs off on the channel (`bus` false) or bus
-    /// table's first model, dynamics off with COMP, inserts empty, delays off.
+    /// New WING parameters of `kind` (`new_in` with the WING's models).
     pub fn new(kind: BlockKind, bus: bool) -> Self {
+        Self::new_in(kind, bus, &livedaw_dsp::wing::MODELS)
+    }
+
+    /// New parameters of `kind` for a console of `models`: EQs off on the
+    /// channel (`bus` false) or bus table's first model, dynamics off with
+    /// COMP (or the table's first), inserts empty, delays off.
+    pub fn new_in(kind: BlockKind, bus: bool, models: &'static ModelTables) -> Self {
         match kind {
             BlockKind::Filter => Self::Filter(FilterParams::default()),
             BlockKind::Eq => {
-                let p = EqBlockParams::new(bus);
+                let p = EqBlockParams::new_in(if bus { models.eq_bus } else { models.eq_channel });
                 p.on.store(false, Relaxed);
                 Self::Eq(p)
             }
-            BlockKind::Dynamics => Self::Dynamics(DynSlotParams::new("COMP")),
+            BlockKind::Dynamics => Self::Dynamics(DynSlotParams::new_in(models.dynamics, "COMP")),
             BlockKind::Insert => Self::Insert(InsertParams::default()),
             BlockKind::Delay => Self::Delay(DelayParams::default()),
         }
@@ -184,16 +190,12 @@ unsafe impl Sync for Block {}
 unsafe impl Send for Block {}
 
 impl Block {
-    /// A new block of `kind` with the strip-unique id `uid`, prepared for
-    /// `sample_rate`; a dynamics block runs the models of `dynamics` (its
-    /// console's table).
-    pub fn new(uid: u32, kind: BlockKind, bus: bool, sample_rate: f64, dynamics: &'static [ModelSpec]) -> Self {
+    /// A new block of `kind` with the strip-unique id `uid`, its models its
+    /// console's (`models`), prepared for `sample_rate`.
+    pub fn new(uid: u32, kind: BlockKind, bus: bool, sample_rate: f64, models: &'static ModelTables) -> Self {
         let mut dsp = BlockDsp::new(kind);
         dsp.prepare(sample_rate);
-        if let BlockDsp::Dynamics(d, _) = &mut dsp {
-            d.set_table(dynamics);
-        }
-        Self { uid, params: BlockParams::new(kind, bus), meters: BlockMeters::default(), dsp: UnsafeCell::new(dsp) }
+        Self { uid, params: BlockParams::new_in(kind, bus, models), meters: BlockMeters::default(), dsp: UnsafeCell::new(dsp) }
     }
 
     /// One of the strip's own blocks (`params::OwnBlocks`, id 0), prepared

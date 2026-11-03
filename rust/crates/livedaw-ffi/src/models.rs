@@ -15,7 +15,7 @@ use livedaw_dsp::model::{ModelCategory, ModelSpec, ParamKind, ParamSpec};
 use livedaw_dsp::wing::dynamics::{SC_FILTERS, XOVER_TYPES};
 use livedaw_dsp::wing::eq::design;
 use livedaw_dsp::wing::filter::{HIGH_CUT_SLOPES, LOW_CUT_SLOPES};
-use livedaw_dsp::wing::{AUX_DYN_MODELS, EQ_MODELS_BUS, EQ_MODELS_CH, MAX_EQ_PARAMS, PROCESS_ORDERS, TAP_POINTS};
+use livedaw_dsp::wing::{AUX_DYN_MODELS, MAX_EQ_PARAMS, PROCESS_ORDERS, TAP_POINTS};
 use livedaw_engine::blocks::{Block, BlockParams};
 use livedaw_engine::params::{
     colour_rgb, DynSlotParams, EqBlockParams, FilterParams, MAIN_LINK_MODES, MONITOR_BUSES, POST_INSERT_MODES, WING_COLOURS,
@@ -281,15 +281,15 @@ pub(crate) fn strip_response(s: &Strip, block: i32, freqs: &[f64], out: &mut [f6
         6 => key_response(p.dynamics(), freqs, out, sr),
         7 => xover_response(p.dynamics(), freqs, out, sr),
         3 => filter_response(p.filter(), freqs, out, sr),
-        _ => eq_response(p.eq(), s.kind().is_output(), freqs, out, sr),
+        _ => eq_response(p.eq(), freqs, out, sr),
     }
 }
 
 /// See `ld_strip_block_response`: an EQ or filter block's curve (`part` 0), a
 /// dynamics block's key filter (0) or crossover (1). False for anything else.
-pub(crate) fn block_response(s: &Strip, b: &Block, part: i32, freqs: &[f64], out: &mut [f64], sr: f64) -> bool {
+pub(crate) fn block_response(b: &Block, part: i32, freqs: &[f64], out: &mut [f64], sr: f64) -> bool {
     match (&b.params, part) {
-        (BlockParams::Eq(p), 0) => eq_response(p, s.kind().is_output(), freqs, out, sr),
+        (BlockParams::Eq(p), 0) => eq_response(p, freqs, out, sr),
         (BlockParams::Filter(p), 0) => filter_response(p, freqs, out, sr),
         (BlockParams::Dynamics(p), 0) => key_response(p, freqs, out, sr),
         (BlockParams::Dynamics(p), 1) => xover_response(p, freqs, out, sr),
@@ -321,9 +321,8 @@ fn xover_response(p: &DynSlotParams, freqs: &[f64], out: &mut [f64], sr: f64) {
     fill(freqs, out, |f| c.magnitude_at(f, sr));
 }
 
-fn eq_response(eq: &EqBlockParams, bus: bool, freqs: &[f64], out: &mut [f64], sr: f64) {
-    let table = if bus { EQ_MODELS_BUS } else { EQ_MODELS_CH };
-    let spec = &table[(eq.model.load(std::sync::atomic::Ordering::Relaxed).max(0) as usize).min(table.len() - 1)];
+fn eq_response(eq: &EqBlockParams, freqs: &[f64], out: &mut [f64], sr: f64) {
+    let Some(spec) = eq.model_spec() else { return };
     let mut values = [0.0; MAX_EQ_PARAMS];
     eq.values_snapshot(&mut values);
     let on = eq.on.load(std::sync::atomic::Ordering::Relaxed);

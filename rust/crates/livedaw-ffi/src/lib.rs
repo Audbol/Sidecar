@@ -90,7 +90,8 @@ use std::sync::Arc;
 // an engine (ld_profile_port_groups, ld_profile_colour_*, ld_profile_strip_label).
 // ABI 35 (Phase 4 steps 1-2): the X32 profile (2), ld_engine_configure_profile,
 // ld_profile_slot_ranges (LdSlotRange).
-pub const LD_ABI_VERSION: i32 = 35;
+// ABI 36 (Phase 4 step 3b): DynSlotParams and EqBlockParams end with their model table.
+pub const LD_ABI_VERSION: i32 = 36;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(default)
@@ -1233,7 +1234,7 @@ pub unsafe extern "C" fn ld_strip_set_model(s: *const Strip, block: i32, model: 
     let m = model.max(0) as usize;
     guard((), || match block {
         0 => s.params.gate().set_model(m),
-        1 => s.params.eq().set_model(m, s.kind().is_output()),
+        1 => s.params.eq().set_model(m),
         2 => s.params.dynamics().set_model(m),
         _ => s.params.filter().set_tool_model(m),
     });

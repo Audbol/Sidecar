@@ -741,7 +741,7 @@ fn stress_structural_changes_while_audio_runs() {
                         slot.sc_source.store(rand(66) as i32 - 1, Relaxed);
                         slot.sc_tap.store(rand(8) as i32, Relaxed);
                     }
-                    p.eq().set_model(rand(7) as usize, false);
+                    p.eq().set_model(rand(7) as usize);
                     p.process_order.store(rand(24) as i32, Relaxed);
                     if let Some(send) = s.sends.get_or_create(rand(24) as usize) {
                         send.enabled.store(rand(2) == 0, Relaxed);
@@ -833,7 +833,7 @@ fn builtin_fx_devices_run_in_slots() {
 fn eq_dc_gain(s: &Strip) -> f32 {
     use livedaw_dsp::wing::{eq::design, EQ_MODELS_BUS, EQ_MODELS_CH, MAX_EQ_PARAMS};
     let table = if s.kind().is_output() { EQ_MODELS_BUS } else { EQ_MODELS_CH };
-    let spec = &table[s.params.eq().model_index(s.kind().is_output())];
+    let spec = &table[s.params.eq().model_index()];
     let mut v = [0.0; MAX_EQ_PARAMS];
     s.params.eq().values_snapshot(&mut v);
     let d = design(spec, &v[..spec.params.len()], 48000.0, s.params.eq().mix.load() / 100.0);
@@ -887,7 +887,7 @@ fn extra_blocks_run_where_they_sit_in_the_chain() {
     let eq = engine.insert_block(&ch, BlockKind::Eq, at(Node::Post)).unwrap();
     let BlockParams::Eq(e) = &eq.params else { panic!() };
     assert!(!e.on.load(Relaxed), "a new EQ block is off");
-    e.param("lg", false).unwrap().store(6.0);
+    e.param("lg").unwrap().store(6.0);
     e.on.store(true, Relaxed);
     assert!(engine.remove_block(&ch, ins.uid()));
     assert!(!ch.uses_fx(2));
@@ -978,7 +978,7 @@ fn bus_runs_dyn_ins1_fader_eq_ins2_with_the_tap_after_ins1() {
     p.pre_insert().fx.store(0, Relaxed);
     p.post_insert().on.store(true, Relaxed);
     p.post_insert().fx.store(1, Relaxed);
-    p.eq().param("lg", true).unwrap().store(6.0);
+    p.eq().param("lg").unwrap().store(6.0);
     p.tap.store(0, Relaxed); // ignored: a bus taps after INS 1
     p.fader_db.store(-100.0);
     p.output_left.store(4, Relaxed);
@@ -1323,7 +1323,7 @@ fn the_pre_meter_tap_follows_trim_not_eq() {
     let spec = &EQ_MODELS_CH[model_index(EQ_MODELS_CH, "STD").unwrap()];
     let eq = ch.params.eq();
     eq.on.store(true, Relaxed);
-    eq.set_model(model_index(EQ_MODELS_CH, "STD").unwrap(), false);
+    eq.set_model(model_index(EQ_MODELS_CH, "STD").unwrap());
     eq.values[spec.param_index("2f").unwrap()].store(750.0);
     eq.values[spec.param_index("2g").unwrap()].store(12.0);
     let (trim1, pfl1, pre1) = measure(&mut rig);

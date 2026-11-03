@@ -1749,7 +1749,7 @@ fn block_spec(p: &StripParams, kind: StripKind, blk: Blk) -> (&'static ModelSpec
         Blk::Eq => {
             let bus = kind.is_output();
             let table = if bus { EQ_MODELS_BUS } else { EQ_MODELS_CH };
-            (&table[p.eq().model_index(bus)], table)
+            (&table[p.eq().model_index()], table)
         }
         Blk::Tool => {
             let i = (p.filter().tool_model.load(Relaxed).max(0) as usize).min(FILTER_TOOLS.len() - 1);
@@ -3562,7 +3562,7 @@ impl<'a> Console<'a> {
                 if table[m].token != current.token {
                     match blk {
                         Blk::Gate | Blk::Dyn => dyn_slot(p, blk).set_model(m),
-                        Blk::Eq => p.eq().set_model(m, kind.is_output()),
+                        Blk::Eq => p.eq().set_model(m),
                         Blk::Tool => p.filter().set_tool_model(m),
                     }
                 }

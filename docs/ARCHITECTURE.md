@@ -445,7 +445,7 @@ views after a show load changes the console from Rust.
   blocks through pointers in its `StripParams`). C++ sees the same
   memory as `std::atomic<float/bool/int32_t>` structs, and the UI writes them directly
   with no FFI call. Both sides describe the layout; `ld::verifyLayout()` compares the
-  two at startup and in the tests (ABI version 35), and the app refuses to run if they
+  two at startup and in the tests (ABI version 36), and the app refuses to run if they
   differ.
 - **FX meters (ABI 23).** A device reports its screen's live values with
   `FxAlgo::readouts` (48 floats laid out per device, documented in each device's

@@ -55,7 +55,7 @@ fn imports_the_fixture() {
     assert!(c1.gate().on.load(Relaxed));
     assert_eq!(c1.gate().param("thr").unwrap().load(), -35.0);
     assert_eq!(c1.gate().sc_filter.load(Relaxed), 2); // HP12
-    assert_eq!(c1.eq().param("1g", false).unwrap().load(), -4.0);
+    assert_eq!(c1.eq().param("1g").unwrap().load(), -4.0);
     assert_eq!(c1.dynamics().param("thr").unwrap().load(), -18.0);
     assert_eq!(c1.dynamics().gain.load(), 2.0);
     assert_eq!(c1.dynamics().sc_source.load(Relaxed), 1); // CH.2
@@ -95,7 +95,7 @@ fn imports_the_fixture() {
     let bus1 = e.strip_by_number(StripKind::Bus, 1).unwrap();
     assert!(bus1.params.mono.load(Relaxed));
     assert!(bus1.params.input.delay_on.load(Relaxed));
-    assert_eq!(bus1.params.eq().param("3g", true).unwrap().load(), -6.0);
+    assert_eq!(bus1.params.eq().param("3g").unwrap().load(), -6.0);
     assert!(bus1.matrix_send(1).unwrap().pre.load(Relaxed));
     assert_eq!(bus1.params.output_left.load(Relaxed), 2); // A 3/4 = Bus 1
     let bus10 = e.strip_by_number(StripKind::Bus, 10).unwrap();
