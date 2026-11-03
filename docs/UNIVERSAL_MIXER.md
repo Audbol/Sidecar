@@ -317,11 +317,17 @@ Three layers:
         order are byte-identical before and after. Still the WING's: which blocks a
         strip has, and the slots' meters in `StripMeters`; a profile's own set of
         blocks comes with Phase 4's consoles.
-   6. **Remotes per profile**: the MIDI remote splits into a port layer (devices,
-      hot-plug, the queue, SysEx framing) and a protocol per profile (the WING's CC map
-      and SysEx id; next the X32's and the Yamaha consoles'); the profile owns its
-      network protocols too. The port layer is done (`MidiPorts`, brought forward for
-      the Yamaha consoles); `MidiRemote` is the WING's protocol over it.
+   6. **Remotes per profile** (done): the MIDI remote is a port layer (`MidiPorts`:
+      devices, hot-plug, the queue) under a protocol per profile, and the profile owns
+      its network protocols too. A `ProfileSpec` names its `Remotes` (a `MidiProtocol`,
+      or none, and its `NetworkProtocol`s), read through C ABI 33 `ld_engine_remotes`.
+      The app makes the console's MIDI protocol (`MidiProtocol::create`, the interface
+      it drives whatever the console; `MidiRemote` is the WING's) and remakes it when
+      the console's changes; the WING remote's servers run only the network protocols
+      the profile names. The WING and the Universal speak the WING's: MIDI, discovery,
+      OSC and the native protocol. Next, with their emulations: the X32's OSC and the
+      Yamaha consoles' MIDI (the 02R's and ProMix 01's CC maps), and their settings
+      pages (step 7).
    7. **The shared UI asks the profile** for its tags, port groups, colours and names.
    8. **`livedaw-wing` becomes the WING profile**, checked against the WING tests and
       WING Edit.

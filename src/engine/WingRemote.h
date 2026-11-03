@@ -51,6 +51,9 @@ public:
     /** Starts, restarts or stops the servers to match `settings`. Returns the
         servers that could not start (the others run). */
     juce::StringArray apply (const Settings& settings);
+    /** The servers run the console's network protocols only (its profile's,
+        MixerEngine::getRemotes): restarts them if that set changed since apply(). */
+    void refreshProtocols();
     void stop();
     bool isRunning() const;
     /** Renames the console at once (discovery and connected clients). */
@@ -150,6 +153,7 @@ private:
     MixerEngine& engine;
     ld::LdWing* handle;
     Settings running;
+    juce::uint32 runningProtocols = 0; // the profile's set the servers started with
     Show* libraryShow = nullptr;
     std::function<void (const juce::String&, const state::ApplyResult&)> onRecalled;
     std::function<int()> surfaceBank;

@@ -291,6 +291,10 @@ of any size, of which the WING is one configuration.
   `ld_engine_port_groups` (`PortGroupC`, `MixerEngine::getPortGroups`). The app's
   routing pages still use their own table (`src/ui/RoutingGroups.h`); a test keeps
   the two equal until the UI asks the profile (step 7).
+- Remote protocols (Phase 3 step 6): a `ProfileSpec` names its `Remotes`: a
+  `MidiProtocol` (or none) over the app's MIDI ports and the `NetworkProtocol`s its
+  servers run (bits in C ABI 33 `ld_engine_remotes`). The WING's and the Universal's
+  are `Remotes::WING`.
 - The strip's own blocks (Phase 3 step 5): FILTER, GATE, EQ, DYNAMICS, INS 1 and
   INS 2 are `Block`s like the extra ones (parameters and DSP state together), kept by
   `OwnBlocks` in `StripParams` and run by the template's nodes; the slots' meters
@@ -429,7 +433,7 @@ views after a show load changes the console from Rust.
   blocks through pointers in its `StripParams`). C++ sees the same
   memory as `std::atomic<float/bool/int32_t>` structs, and the UI writes them directly
   with no FFI call. Both sides describe the layout; `ld::verifyLayout()` compares the
-  two at startup and in the tests (ABI version 32), and the app refuses to run if they
+  two at startup and in the tests (ABI version 33), and the app refuses to run if they
   differ.
 - **FX meters (ABI 23).** A device reports its screen's live values with
   `FxAlgo::readouts` (48 floats laid out per device, documented in each device's
@@ -1346,7 +1350,9 @@ dependencies beyond the other Sidecar crates.
 - **C ABI / C++.** `livedaw-ffi/src/wing.rs` (`ld_wing_*`) owns the server and state;
   `src/engine/WingRemote` wraps it, owned by `MixerEngine`, which destroys it before
   the engine. SETUP > REMOTE starts it from the app settings (`wing.*` keys and the
-  console name); LIBRARY > SHOW imports and exports files.
+  console name), with only the network protocols the console's profile names
+  (`MixerEngine::getRemotes`, `WingRemote::refreshProtocols`); LIBRARY > SHOW imports
+  and exports files.
 - **Tests.** `tests/remote.rs` drives the servers over sockets, `tests/snapshot.rs`
   imports an authored fixture and round-trips exports, `tests/libwing.rs` runs
   libwing's own clients when `LIBWING_TOOLS` is set (`tools/wing/libwing_tools.sh`),
@@ -1411,7 +1417,11 @@ A screen mirror for browsers on the local network (SETUP > REMOTE > WEB REMOTE).
 
 ## MIDI remote control and DAW remote control
 
-`src/engine/MidiRemote.*` (MIDI, owned by `MainComponent`, `UiContext::midi`) and
+`src/engine/MidiProtocol.*` (a console's MIDI protocol, the interface the app drives:
+messages in, feedback out, its ports; `MidiProtocol::create` makes the one the
+console's profile names, `ld_engine_remotes`; owned by `MainComponent`, which remakes
+it when the console's protocol changes, `syncRemotes`), `src/engine/MidiRemote.*` (the
+WING's protocol, `UiContext::midi` while the console speaks it) and
 `src/engine/DawRemote.*` (the MCU / HUI protocols); `src/ui/MidiRemoteUi.*` connects
 them to the views, `src/ui/DawSurface.*` is the fader sections' DAW mode. Sources: the
 WING MIDI and DAW documentation (firmware 1.07), the DAW translation table, Patrick-

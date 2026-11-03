@@ -1,6 +1,7 @@
 //! Console profiles: the console a configuration emulates and what that
 //! console is (its counts, its strips' chains and process orders, its fader
-//! and pan laws, its port groups, its processing models). The
+//! and pan laws, its port groups, its processing models, its remote
+//! protocols). The
 //! Universal core takes any configuration; a profile limits and dresses it
 //! (`docs/UNIVERSAL_MIXER.md`, Phase 3). The WING is the first; the Universal
 //! is no console's limits.
@@ -80,6 +81,60 @@ impl Profile {
     }
 }
 
+/// A MIDI protocol: what a console's MIDI messages mean (the app's
+/// `MidiProtocol::create` makes it, over the console-neutral `MidiPorts`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MidiProtocol {
+    /// The WING's: MIDI REMOTE CONTROL (CH CONTROL, FX PARAMETER CONTROL,
+    /// CUSTOM CONTROLS, SYSEX CONTROL, scenes, show control) and the DAW remote.
+    Wing,
+}
+
+/// A network protocol a console serves (`livedaw-wing`'s servers for the WING's).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NetworkProtocol {
+    /// The WING's discovery (UDP 2222): WING Edit and apps find the console.
+    WingDiscovery,
+    /// The WING's OSC (UDP 2223).
+    WingOsc,
+    /// The WING's native binary protocol (TCP 2222).
+    WingNative,
+}
+
+impl NetworkProtocol {
+    /// The protocol's bit in the C ABI's set (`LdRemotes::network`): the WING
+    /// remote's `enable` bits.
+    pub fn bit(self) -> u32 {
+        match self {
+            Self::WingDiscovery => 1,
+            Self::WingOsc => 2,
+            Self::WingNative => 4,
+        }
+    }
+}
+
+/// The remote protocols a console speaks (Phase 3 step 6): the app runs these
+/// and no others.
+#[derive(Clone, Copy, Debug)]
+pub struct Remotes {
+    /// Over its MIDI ports (none: the console has no MIDI remote).
+    pub midi: Option<MidiProtocol>,
+    pub network: &'static [NetworkProtocol],
+}
+
+impl Remotes {
+    /// The WING's: its MIDI protocol, discovery, OSC and the native protocol.
+    pub const WING: Remotes = Remotes {
+        midi: Some(MidiProtocol::Wing),
+        network: &[NetworkProtocol::WingDiscovery, NetworkProtocol::WingOsc, NetworkProtocol::WingNative],
+    };
+
+    /// The network protocols as a set of [`NetworkProtocol::bit`]s.
+    pub fn network_bits(&self) -> u32 {
+        self.network.iter().fold(0, |bits, p| bits | p.bit())
+    }
+}
+
 /// What a console is: what a new console of the profile has and how its
 /// strips run.
 #[derive(Debug)]
@@ -108,6 +163,8 @@ pub struct ProfileSpec {
     pub port_groups: &'static [PortGroup],
     /// The models its blocks may hold (`livedaw_dsp::model`).
     pub models: &'static ModelTables,
+    /// The remote protocols it speaks.
+    pub remotes: Remotes,
 }
 
 impl ProfileSpec {
@@ -149,10 +206,12 @@ static WING: ProfileSpec = ProfileSpec {
     pan: PanLaw::WING,
     port_groups: WING_PORT_GROUPS,
     models: &WING_MODELS,
+    remotes: Remotes::WING,
 };
 
-/// No console's limits. Its strips are the WING's until the WING's blocks
-/// leave the strip (Phase 3, step 5); a new one starts with the WING's counts.
+/// No console's limits. Its strips have the WING's blocks (a profile's own set
+/// comes with Phase 4's consoles), it speaks the WING's remote protocols, and a
+/// new one starts with the WING's counts.
 static UNIVERSAL: ProfileSpec = ProfileSpec {
     profile: Profile::Universal,
     name: "Universal",
@@ -165,6 +224,7 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
     pan: PanLaw::WING,
     port_groups: WING_PORT_GROUPS,
     models: &WING_MODELS,
+    remotes: Remotes::WING,
 };
 
 #[cfg(test)]
@@ -183,6 +243,16 @@ mod tests {
         for c in [Counts { mains: 2, ..Counts::WING }, Counts { buses: 8, ..Counts::WING }, Counts { dcas: 24, ..Counts::WING }] {
             assert!(!Profile::Wing.fits(&c));
             assert_eq!(Profile::Wing.or_universal(&c), Profile::Universal);
+        }
+    }
+
+    #[test]
+    fn the_wings_remotes() {
+        for p in Profile::ALL {
+            let r = p.spec().remotes;
+            assert_eq!(r.midi, Some(MidiProtocol::Wing), "{p:?}");
+            // The WING remote's enable bits: discovery 1, OSC 2, native 4.
+            assert_eq!(r.network_bits(), 7, "{p:?}");
         }
     }
 

@@ -29,7 +29,7 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 32;
+constexpr int kAbiVersion = 33;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -901,6 +901,16 @@ struct FaderLawC
 };
 static_assert (sizeof (FaderLawC) == 72);
 
+/** ABI 33: the remote protocols a console speaks (ld_engine_remotes): its MIDI
+    protocol (-1 none, 0 the WING's: MidiProtocol::Id) and its network protocols, a set
+    of bits (1 WING discovery, 2 WING OSC, 4 WING native: the WING remote's servers). */
+struct RemotesC
+{
+    int32_t midi;
+    uint32_t network;
+};
+static_assert (sizeof (RemotesC) == 8);
+
 /** ABI 31: a port group (ld_engine_port_groups): a console's sources (input), output
     ports (output) or both as its routing pages group them, a range of the engine's
     numbering: port n is source and output port first + n (n < maxSize; the console has `size`; the
@@ -1151,6 +1161,8 @@ extern "C"
     /** ABI 31: the console's port groups (its profile's), in its menus' order: writes up
         to `max` to `out` (may be null) and returns how many there are. */
     int32_t ld_engine_port_groups (const Engine*, PortGroupC* out, int32_t max);
+    /** ABI 33: the console's remote protocols (its profile's): the app runs these only. */
+    void ld_engine_remotes (const Engine*, RemotesC* out);
     /** ABI 28: makes the engine a fresh console of the structure of `counts` (null: the
         WING's) without its channels or FX slot count, as a show load does before it adds
         the channels; writes the counts configured (within what the engine holds) to `out`

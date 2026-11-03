@@ -108,6 +108,10 @@ public:
     ld::ProfileId getProfile() const noexcept { return (ld::ProfileId) ld::ld_engine_profile (engine); }
     /** The console's fader law (its profile's). */
     FaderLaw getFaderLaw() const { ld::FaderLawC c {}; ld::ld_engine_fader_law (engine, &c); return FaderLaw::of (c); }
+    /** The remote protocols the console speaks (its profile's): its MIDI protocol
+        (MidiProtocol::Id) and its network protocols (bits: 1 WING discovery, 2 WING OSC,
+        4 WING native). */
+    ld::RemotesC getRemotes() const { ld::RemotesC r { -1, 0 }; ld::ld_engine_remotes (engine, &r); return r; }
     /** The console's port groups (its profile's), in its routing menus' order. */
     std::vector<ld::PortGroupC> getPortGroups() const
     {

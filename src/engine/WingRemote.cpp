@@ -72,9 +72,11 @@ juce::StringArray WingRemote::apply (const Settings& s)
         return { "No network servers in this test run" };
     }
 
+    // Only the network protocols the console's profile speaks.
+    const auto protocols = engine.getRemotes().network;
     auto sameServers = s;
     sameServers.name = running.name;
-    if (isRunning() && sameServers == running)
+    if (isRunning() && sameServers == running && protocols == runningProtocols)
     {
         if (s.name != running.name)
             setName (s.name);
@@ -83,10 +85,17 @@ juce::StringArray WingRemote::apply (const Settings& s)
     }
 
     const Utf8 name (s.name);
-    const auto enable = (juce::uint32) ((s.discovery ? 1 : 0) | (s.osc ? 2 : 0) | (s.native ? 4 : 0));
+    const auto enable = (juce::uint32) ((s.discovery ? 1 : 0) | (s.osc ? 2 : 0) | (s.native ? 4 : 0)) & protocols;
     ld::ld_wing_start (handle, name.data, name.size, s.discoveryPort, s.oscPort, s.nativePort, enable);
     running = s;
+    runningProtocols = protocols;
     return getStatus().errors;
+}
+
+void WingRemote::refreshProtocols()
+{
+    if (isRunning() && running.enabled && engine.getRemotes().network != runningProtocols)
+        apply (running);
 }
 
 void WingRemote::stop()

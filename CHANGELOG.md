@@ -35,6 +35,10 @@ Phase 3, the WING as a profile (`docs/UNIVERSAL_MIXER.md`), begins.
   like the extra ones: parameters and DSP state together (`OwnBlocks`), run by the
   strip's template, `StripParams` pointing to them. Renders are identical sample for
   sample. C ABI 32: `StripParams` holds pointers to the blocks.
+- A profile names its remote protocols (`Remotes`: its MIDI protocol and its network
+  protocols; the WING's for the WING and the Universal). The app makes the console's
+  MIDI protocol from it (`MidiProtocol`, of which the WING's MIDI remote is one) and
+  runs only the network servers it names. C ABI 33: `ld_engine_remotes`.
 
 ## [0.2.0] - beta
 

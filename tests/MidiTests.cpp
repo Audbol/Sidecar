@@ -118,6 +118,27 @@ private:
         midi.handleMessage (MidiRemote::Din, juce::MidiMessage::controllerEvent (1, 20, 64));
         expect (midi.getPortStatus (MidiRemote::Din).received == 1);
         expectEquals (MidiRemote::virtualPortName (MidiRemote::Daw2), juce::String ("Sidecar MIDI DAW 2"));
+
+        beginTest ("The console's remote protocols come from its profile: the WING's on a WING and the Universal");
+        for (const bool universal : { false, true })
+        {
+            if (universal)
+            {
+                const Counts counts { 40, 8, 16, 6, 8, 16, 8, 16 };
+                engine.configure (&counts);
+                expect (engine.getProfile() == ld::kProfileUniversal);
+            }
+            const auto remotes = engine.getRemotes();
+            expectEquals ((int) remotes.midi, (int) MidiProtocol::Wing);
+            expectEquals ((int) remotes.network, 7, "WING discovery, OSC and native");
+            auto protocol = MidiProtocol::create (remotes.midi, engine, show, false);
+            expect (protocol != nullptr && protocol->getId() == MidiProtocol::Wing && protocol->asWing() != nullptr);
+            expectEquals (protocol->getNumPorts(), (int) MidiRemote::kNumPorts);
+            expectEquals (protocol->getPortName (MidiRemote::Usb), MidiRemote::portName (MidiRemote::Usb));
+            protocol->handleMessage (MidiRemote::Usb, juce::MidiMessage::controllerEvent (1, 20, 64));
+            expect (protocol->getPortStatus (MidiRemote::Usb).received == 1);
+        }
+        expect (MidiProtocol::create (MidiProtocol::None, engine, show, false) == nullptr, "no MIDI remote");
     }
 
     void testFaderLaw()

@@ -85,7 +85,8 @@ use std::sync::Arc;
 // and port groups (ld_engine_port_groups, LdPortGroup).
 // ABI 32 (Phase 3 step 5): the strip's own blocks are chain blocks; StripParams
 // points to their parameters (OwnBlocks).
-pub const LD_ABI_VERSION: i32 = 32;
+// ABI 33 (Phase 3 step 6): the profile's remote protocols (ld_engine_remotes, LdRemotes).
+pub const LD_ABI_VERSION: i32 = 33;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(default)
@@ -572,6 +573,36 @@ unsafe fn config_of(counts: *const LdCounts) -> ConsoleConfig {
 #[no_mangle]
 pub unsafe extern "C" fn ld_engine_profile(e: *const Engine) -> i32 {
     engine(e).map_or(1, |e| guard(1, || profile_id(e.profile())))
+}
+
+/// The remote protocols a console speaks (`profile::Remotes`).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LdRemotes {
+    /// Its MIDI protocol: -1 none, 0 the WING's.
+    pub midi: i32,
+    /// Its network protocols: `NetworkProtocol::bit`s (1 WING discovery, 2 WING
+    /// OSC, 4 WING native).
+    pub network: u32,
+}
+
+/// ABI 33: the console's remote protocols (its profile's).
+///
+/// # Safety
+/// `e` is an engine or null; `out` is writable or null.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_remotes(e: *const Engine, out: *mut LdRemotes) {
+    let (Some(e), Some(out)) = (engine(e), out.as_mut()) else { return };
+    guard((), || {
+        let r = e.profile().spec().remotes;
+        *out = LdRemotes {
+            midi: match r.midi {
+                None => -1,
+                Some(livedaw_engine::MidiProtocol::Wing) => 0,
+            },
+            network: r.network_bits(),
+        };
+    });
 }
 
 fn profile_id(p: Profile) -> i32 {

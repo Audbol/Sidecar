@@ -3,6 +3,7 @@
 #include "engine/ConsoleState.h"
 #include "engine/DawRemote.h"
 #include "engine/MidiPorts.h"
+#include "engine/MidiProtocol.h"
 
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_data_structures/juce_data_structures.h>
@@ -40,14 +41,16 @@ class Strip;
       PARAMETER CONTROL.
     - DAW remote control (DawRemote) on MIDI DAW 1-3, or DIN.
 
-    This is the WING's MIDI protocol over the console-neutral MidiPorts;
-    another console's emulation brings its own protocol over the same ports.
+    This is the WING's MIDI protocol (MidiProtocol::Wing) over the
+    console-neutral MidiPorts; another console's emulation brings its own
+    protocol over the same ports.
 
     Threading: MIDI input callbacks only queue the messages; everything else,
     including applying them to the console, runs on the message thread.
     Console parameters are the engine's shared atomics, as the UI and the WING
     remote write them. Message thread only (apart from the device callbacks). */
-class MidiRemote final : private juce::Timer
+class MidiRemote final : public MidiProtocol,
+                         private juce::Timer
 {
 public:
     /** `useDevices` false: no MIDI devices are opened (tests feed
@@ -126,19 +129,24 @@ public:
     static juce::String virtualPortName (int port);
 
     using PortStatus = MidiPorts::Status;
-    PortStatus getPortStatus (int port) const { return ports.getStatus (port); }
+    PortStatus getPortStatus (int port) const override { return ports.getStatus (port); }
+
+    int getId() const noexcept override { return MidiProtocol::Wing; }
+    int getNumPorts() const noexcept override { return kNumPorts; }
+    juce::String getPortName (int port) const override { return portName (port); }
+    MidiRemote* asWing() noexcept override { return this; }
 
     //==============================================================================
     // Messages (message thread)
 
     /** Handles a message that arrived on `port` (the device callbacks queue
         theirs here; tests call it directly). */
-    void handleMessage (int port, const juce::MidiMessage&);
+    void handleMessage (int port, const juce::MidiMessage&) override;
     /** Sends the console changes since the last call (CH CONTROL and FX
         PARAMETER CONTROL feedback, SCENE MIDI TX). Called by a timer. */
-    void sendFeedback();
+    void sendFeedback() override;
     /** Forgets what was sent, so the next sendFeedback() sends every value. */
-    void resendAll();
+    void resendAll() override;
     /** Every outgoing message, before it goes to the port's device (tests, monitors). */
     std::function<void (int port, const juce::MidiMessage&)> onSend;
 

@@ -209,10 +209,9 @@ MainComponent::MainComponent (juce::AudioDeviceManager& dm, MixerEngine& e, Plug
             closePluginWindowsFor (p);
     };
 
-    // MIDI remote control and DAW remote control (SETUP > REMOTE and DAW).
-    midiRemote = std::make_unique<MidiRemote> (engine, show);
-    ctx.midi = midiRemote.get();
-    midiui::connect (ctx);
+    // The console's MIDI protocol: the WING's MIDI remote control and DAW
+    // remote control (SETUP > REMOTE and DAW).
+    syncRemotes();
 
     // The web remote (SETUP > REMOTE): starts now if it is enabled.
     webMirror = std::make_unique<WebMirror> (*this, settings, log);
@@ -241,8 +240,8 @@ MainComponent::MainComponent (juce::AudioDeviceManager& dm, MixerEngine& e, Plug
                                           for (const auto& k : keys)
                                               if (k.startsWith ("midi.") || k.startsWith ("daw."))
                                               {
-                                                  if (midiRemote != nullptr)
-                                                      midiRemote->apply (MidiRemote::Settings::load (settings));
+                                                  if (ctx.midi != nullptr)
+                                                      ctx.midi->apply (MidiRemote::Settings::load (settings));
                                                   break;
                                               }
                                           // The recorder's MODE from a client (/cards/wlive/1/cfg/playmode).
@@ -285,7 +284,7 @@ MainComponent::~MainComponent()
     engine.getWing().setSurfaceCallbacks ({}, {});
     engine.getWing().setHostSettings (nullptr);
     ctx.midi = nullptr;
-    midiRemote.reset();
+    midi.reset();
     engine.onPluginWarning = nullptr;
 
     // Unsaved project changes survive the quit in the autosave (offered on the next open).
@@ -353,7 +352,22 @@ void MainComponent::refreshAll()
         log.info ("This console isn't a WING: the Universal Mixer shows it (SETUP > GENERAL > INTERFACE)");
         setInterface (InterfaceKind::Universal, false);
     }
+    syncRemotes();
     skin->refreshAll();
+}
+
+void MainComponent::syncRemotes()
+{
+    const auto remotes = engine.getRemotes();
+    if (midi == nullptr ? remotes.midi != MidiProtocol::None : midi->getId() != remotes.midi)
+    {
+        ctx.midi = nullptr;
+        midi.reset(); // its devices close before the next one opens them
+        midi = MidiProtocol::create (remotes.midi, engine, show);
+        ctx.midi = midi != nullptr ? midi->asWing() : nullptr;
+        midiui::connect (ctx);
+    }
+    engine.getWing().refreshProtocols();
 }
 
 bool MainComponent::isWingConsole() const

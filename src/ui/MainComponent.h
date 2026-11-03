@@ -93,6 +93,9 @@ private:
     void showEditor (bool);
     /** Reopens the last recording project (offering its autosave). */
     void openLastProject();
+    /** Runs the console's remote protocols (its profile's): makes its MIDI protocol
+        if it changed, and restarts the WING remote's servers if their set did. */
+    void syncRemotes();
 
     MixerEngine& engine;
     Show& show;
@@ -102,7 +105,7 @@ private:
     UiContext ctx;
     std::unique_ptr<daw::Session> recording;
     std::unique_ptr<cc::Assignments> customControlAssignments;
-    std::unique_ptr<MidiRemote> midiRemote; // MIDI remote control and DAW remote control
+    std::unique_ptr<MidiProtocol> midi; // the console's MIDI protocol (the WING's: MIDI and DAW remote control)
     std::unique_ptr<WebMirror> webMirror;   // the web remote (screen mirror)
     std::unique_ptr<DawEditor> editor;
     bool editorShown = false;

@@ -123,6 +123,7 @@ list(APPEND LIVEDAW_ENGINE_SOURCES
     src/engine/DawRemote.cpp
     src/engine/FaderLaw.cpp
     src/engine/MidiPorts.cpp
+    src/engine/MidiProtocol.cpp
     src/engine/MidiRemote.cpp)
 
 # The multitrack project model (no UI), shared by the app and the tests.
