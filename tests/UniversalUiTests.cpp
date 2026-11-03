@@ -925,22 +925,25 @@ public:
 
             // Band 1 up and to the right.
             const int band = labels.indexOf ("1");
-            auto& h = handles[(size_t) band];
-            const float freqBefore = h.freq->load(), gainBefore = h.gain->load(), qBefore = h.q->load();
+            // The band's values (the handles are taken again at every refresh: keep what they point at).
+            auto* freq = handles[(size_t) band].freq;
+            auto* gain = handles[(size_t) band].gain;
+            auto* q = handles[(size_t) band].q;
+            const float freqBefore = freq->load(), gainBefore = gain->load(), qBefore = q->load();
             const auto at = view.handlePosition (band);
             view.mouseDown (mouseEvent (view, at, at));
             view.mouseDrag (mouseEvent (view, at + juce::Point<float> (60.0f, -50.0f), at));
             view.mouseUp (mouseEvent (view, at + juce::Point<float> (60.0f, -50.0f), at));
-            expect (h.freq->load() > freqBefore * 1.3f, "higher");
-            expect (h.gain->load() > gainBefore + 3.0f, "louder");
+            expect (freq->load() > freqBefore * 1.3f, "higher");
+            expect (gain->load() > gainBefore + 3.0f, "louder");
             expect (! view.getCurve().empty(), "the curve follows");
             // The wheel over it: Q.
             const auto moved = view.handlePosition (band);
             view.mouseWheelMove (mouseEvent (view, moved, moved), juce::MouseWheelDetails { 0.0f, 1.0f, false, false, false });
-            expect (h.q->load() > qBefore, "a narrower band");
+            expect (q->load() > qBefore, "a narrower band");
             // A double tap: back to its defaults.
             view.mouseDoubleClick (mouseEvent (view, moved, moved));
-            expectWithinAbsoluteError (h.gain->load(), model.params[(size_t) model.find ("1g")].defaultValue, 0.001f);
+            expectWithinAbsoluteError (gain->load(), model.params[(size_t) model.find ("1g")].defaultValue, 0.001f);
         }
 
         beginTest ("The dynamics curve's handles: the threshold along the curve, the ratio up or down");
