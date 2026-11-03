@@ -62,7 +62,9 @@ enum class Screen
 enum class InterfaceKind
 {
     Wing,
-    Universal
+    Universal,
+    /** The X32 surface (an X32 console's skin). */
+    X32
 };
 
 /** The HOME screen's tabs for the selected strip: the overview group

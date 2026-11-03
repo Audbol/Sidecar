@@ -12,6 +12,7 @@
 #include "engine/PluginHost.h"
 #include "engine/Show.h"
 #include "ui/UniversalSkin.h"
+#include "ui/X32Surface.h"
 
 using namespace livedaw;
 using namespace livedaw::ui::universal;
@@ -166,9 +167,67 @@ public:
         skin.getSetup().setPending (SetupView::Buses, 24);
         skin.getSetup().refresh();
         shot ("universal-setup.png");
+        x32Surface();
     }
 
 private:
+    /** The X32 surface (Phase 4 step 8) on an X32 with a few channels named. */
+    void x32Surface()
+    {
+        beginTest ("The X32 surface, on an X32");
+        MixerEngine engine (0);
+        engine.configureProfile (ld::kProfileX32);
+        ShotRig rig (engine);
+        setShownProfile (ld::kProfileX32);
+        const char* names[] = { "Kick", "Snare", "Hat", "Tom 1", "Tom 2", "OH L", "OH R", "Bass", "Gtr 1", "Gtr 2", "Keys L", "Keys R", "Vox 1", "Vox 2", "Vox 3", "Click" };
+        const int colours[] = { 2, 2, 2, 2, 2, 3, 3, 5, 4, 4, 6, 6, 7, 7, 7, 9 };
+        auto& channels = engine.getChannels();
+        for (int i = 0; i < 16; ++i)
+        {
+            auto& s = *channels[(size_t) i];
+            s.setName (names[i]);
+            s.setColourIndex (colours[i]);
+            s.params.faderDb = i % 5 == 0 ? 0.0f : -6.0f - (float) (i % 4) * 3.0f;
+            s.meters.outputPeak[0] = 0.15f + 0.6f * (float) ((i * 37) % 11) / 10.0f;
+        }
+        channels[12]->params.mute = true;
+        channels[1]->params.solo = true;
+        engine.getMains()[0]->params.faderDb = 0.0f;
+        engine.getMains()[0]->meters.outputPeak[0] = 0.5f;
+        engine.getMains()[0]->meters.outputPeak[1] = 0.48f;
+        rig.meters.advance (0.01f);
+        rig.selected = channels[12].get();
+
+        ui::X32Surface skin (rig.ctx);
+        skin.setSize (1920, 1080);
+        skin.selectionChanged();
+        skin.refreshAll();
+        // The layers: AUX IN / FX RTN shows aux in 1-8, then FX returns 1-8;
+        // MATRIX / M/C the matrices and, last, the M/C.
+        expect (skin.getInputStrip (0).getStrip() == channels[0].get());
+        skin.setInputLayer (ui::X32Surface::InputLayer::AuxFx);
+        expectEquals (skin.getInputStrip (8).getStrip()->getLabel(), juce::String ("FX 1"));
+        expectEquals (skin.getInputStrip (6).getName(), juce::String ("USB L"));
+        skin.setGroupLayer (ui::X32Surface::GroupLayer::MatrixMain);
+        expect (skin.getGroupStrip (7).getStrip() == engine.getMains()[1].get(), "the M/C on the last fader");
+        expect (skin.getGroupStrip (6).isEmpty());
+        skin.setGroupLayer (ui::X32Surface::GroupLayer::Dca);
+        expectEquals (skin.getGroupStrip (0).getName(), juce::String ("DCA 1"));
+        skin.setInputLayer (ui::X32Surface::InputLayer::Ch1to16);
+
+        const auto image = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
+        expect (image.isValid() && image.getWidth() == 1920);
+        const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {});
+        if (folder.isNotEmpty())
+        {
+            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile ("x32-surface.png");
+            file.deleteFile();
+            juce::FileOutputStream out (file);
+            expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out), file.getFullPathName());
+        }
+        setShownProfile (ld::kProfileWing);
+    }
+
     /** A band on the demo console: names, colours, faders, pans, dynamics and EQs,
         buses, FX devices on inserts, scenes. */
     void setUpBand (MixerEngine& engine, Show& show)

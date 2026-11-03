@@ -487,9 +487,16 @@ Three layers:
       EQ, bus sends, each with its VIEW key); the colour display with its page keys
       (HOME, METERS, ROUTING, SETUP, LIBRARY, EFFECTS, MUTE GRP, UTILITY); sends on
       fader, mute groups, the assignable controls, monitoring and talkback.
-      - 8a: the skeleton: `InterfaceKind::X32`, `X32Surface` (a `Skin`) chosen for an
-        X32 console, its sections laid out for 1920 x 1080.
-      - 8b: the fader banks and their layers, scribble strips in the X32's colours.
+      - 8a and 8b (done): `InterfaceKind::X32`, `X32Surface` (`src/ui/X32Surface.*`, a
+        `Skin`): an X32 console opens on it (MainComponent), the Universal Mixer's
+        switch key leads back to it (X32 SURFACE), the settings keep it (`x32`). The
+        16 input faders and their layers (CH 1-16, CH 17-32, AUX / FX RTN, BUS
+        MASTER), the 8 group faders and theirs (DCA 1-8, BUS 1-8, BUS 9-16, MTX 1-6 /
+        M/C), the main LR; on each fader its scribble strip (`x32::FaderStrip`: the
+        X32's colours, the inverted ones as coloured text on black; LR and M/C), a
+        meter, SELECT, SOLO and MUTE. The display shows the selected strip's
+        inspector (HOME) and the Universal Mixer's ROUTING, SETUP, LIBRARY, EFFECTS
+        and MONITOR views. A screenshot test (`x32-surface.png`) checks the layers.
       - 8c: the channel strip section.
       - 8d: the display's pages (the Universal Mixer's views inside it first).
       - 8e: polish, screenshots, the user guide. The X32 Compact (16 + 1 faders) as

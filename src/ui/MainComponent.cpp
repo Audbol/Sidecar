@@ -3,6 +3,7 @@
 #include "engine/AppPaths.h"
 #include "ui/MidiRemoteUi.h"
 #include "ui/RoutingGroups.h"
+#include "ui/X32Surface.h"
 #include "ui/PluginChainWindow.h"
 #include "ui/PluginOverviewWindow.h"
 #include "ui/StartupNotice.h"
@@ -267,7 +268,8 @@ MainComponent::MainComponent (juce::AudioDeviceManager& dm, MixerEngine& e, Plug
     // identity), then the interface (the WING surface unless the settings say
     // the Universal Mixer, or the console isn't a WING).
     applyConsoleModel (look.model, false);
-    setInterface (settings.getValue (uiprefs::interfaceKind) == "universal" ? InterfaceKind::Universal : InterfaceKind::Wing, false);
+    const auto savedKind = settings.getValue (uiprefs::interfaceKind);
+    setInterface (savedKind == "universal" ? InterfaceKind::Universal : savedKind == "x32" ? InterfaceKind::X32 : InterfaceKind::Wing, false);
     setWantsKeyboardFocus (true);
     setSize (1680, 1000);
     refreshAll();
@@ -350,12 +352,17 @@ void MainComponent::refreshAll()
         }
     }
 
-    // A console that isn't a WING (a show of one was loaded): the Universal Mixer shows it.
+    // A console that isn't a WING (a show of one was loaded): the X32 surface
+    // shows an X32, the Universal Mixer any other; an X32 surface without an X32
+    // gives way to the Universal Mixer.
+    const bool x32 = engine.getProfile() == ld::kProfileX32;
     if (ctx.interfaceKind == InterfaceKind::Wing && ! isWingConsole())
     {
-        log.info ("This console isn't a WING: the Universal Mixer shows it (SETUP > GENERAL > INTERFACE)");
-        setInterface (InterfaceKind::Universal, false);
+        log.info (x32 ? "This console is an X32: the X32 surface shows it" : "This console isn't a WING: the Universal Mixer shows it (SETUP > GENERAL > INTERFACE)");
+        setInterface (x32 ? InterfaceKind::X32 : InterfaceKind::Universal, false);
     }
+    else if (ctx.interfaceKind == InterfaceKind::X32 && ! x32)
+        setInterface (InterfaceKind::Universal, false);
     syncRemotes();
     skin->refreshAll();
 }
@@ -402,15 +409,19 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
         return;
     }
     if (save)
-        settings.setValue (uiprefs::interfaceKind, kind == InterfaceKind::Universal ? "universal" : "wing");
+        settings.setValue (uiprefs::interfaceKind, kind == InterfaceKind::Universal ? "universal" : kind == InterfaceKind::X32 ? "x32" : "wing");
     if (skin != nullptr && kind == ctx.interfaceKind)
         return;
     ctx.interfaceKind = kind;
     if (skin != nullptr)
         removeChildComponent (skin.get());
     skin.reset();
+    if (kind == InterfaceKind::X32 && engine.getProfile() != ld::kProfileX32)
+        kind = ctx.interfaceKind = InterfaceKind::Universal; // the X32 surface shows an X32 only
     if (kind == InterfaceKind::Wing)
         skin = std::make_unique<WingSurface> (ctx);
+    else if (kind == InterfaceKind::X32)
+        skin = std::make_unique<X32Surface> (ctx);
     else
         skin = std::make_unique<UniversalSkin> (ctx);
     addChildComponent (*skin, 0); // under the editor and anything over the window
@@ -420,7 +431,9 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
     if (save)
     {
         skin->refreshAll();
-        log.info (kind == InterfaceKind::Universal ? "Interface: the Universal Mixer (preview)" : "Interface: the WING surface");
+        log.info (kind == InterfaceKind::Universal ? "Interface: the Universal Mixer (preview)"
+                  : kind == InterfaceKind::X32     ? "Interface: the X32 surface"
+                                                   : "Interface: the WING surface");
     }
 }
 

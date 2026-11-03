@@ -6,7 +6,8 @@ namespace livedaw::ui
 using namespace universal;
 
 UniversalSkin::UniversalSkin (UiContext& c)
-    : ctx (c), theme (Theme::dark()), wingKey ("WING SURFACE", theme.accent, theme), mixer (c, theme), routingView (c, theme), fxRack (c, theme),
+    : ctx (c), theme (Theme::dark()),
+      wingKey (c.engine.getProfile() == ld::kProfileX32 ? "X32 SURFACE" : "WING SURFACE", theme.accent, theme), mixer (c, theme), routingView (c, theme), fxRack (c, theme),
       monitoring (c, theme), scenes (c, theme), recorder (c, theme), setup (c, theme), inspector (c, theme)
 {
     const std::pair<const char*, View> views[] = { { "MIXER", View::Mixer },           { "ROUTING", View::Routing }, { "FX RACK", View::Fx },
@@ -21,15 +22,17 @@ UniversalSkin::UniversalSkin (UiContext& c)
         viewKeys.push_back (std::move (key));
     }
     // Switching rebuilds the window's skin: let the click return first.
-    wingKey.onClick = [&context = ctx]
+    // (An X32 console's surface is the X32's.)
+    const bool x32 = ctx.engine.getProfile() == ld::kProfileX32;
+    wingKey.onClick = [&context = ctx, x32]
     {
-        juce::MessageManager::callAsync ([&context]
+        juce::MessageManager::callAsync ([&context, x32]
         {
             if (context.setInterface)
-                context.setInterface (InterfaceKind::Wing);
+                context.setInterface (x32 ? InterfaceKind::X32 : InterfaceKind::Wing);
         });
     };
-    wingKey.setTooltip ("Back to the WING surface");
+    wingKey.setTooltip (x32 ? "Back to the X32 surface" : "Back to the WING surface");
     addAndMakeVisible (wingKey);
     addAndMakeVisible (mixer);
     addChildComponent (routingView);
