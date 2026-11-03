@@ -11,8 +11,10 @@
 namespace livedaw::ui::routing
 {
 
-/** The WING's port groups as ROUTING's group menus list them (firmware 3.1).
-    Sidecar's own ports stand in for the hardware it doesn't have:
+/** The port groups as ROUTING's group menus list them: the console's profile's
+    (ld_profile_port_groups, Phase 3 step 7), by their place in its list; the
+    menus' arrangement is the WING's. The WING's (firmware 3.1), the only ones
+    so far, where Sidecar's own ports stand in for the hardware it doesn't have:
 
     - LOCAL IN / LOCAL OUT: the audio interface's inputs and outputs 1-48
       (LCL 1 ...), 24 input and 8 output tiles like the console, more when
@@ -62,7 +64,42 @@ enum class Group
     BusDirect
 };
 
-/** A group's menu name, the prefix of its tile labels ("LCL 3") and its number of tiles. */
+/** The console's profile whose port groups the routing pages show (the WING's
+    until the app says otherwise; MainComponent follows the console's). Message
+    thread only. */
+inline ld::ProfileId& shownProfile() noexcept
+{
+    static ld::ProfileId profile = ld::kProfileWing;
+    return profile;
+}
+
+/** The profile's port groups, in its list's order (a Group is a place in it). */
+inline const std::vector<ld::PortGroupC>& portGroups()
+{
+    static ld::ProfileId loaded = (ld::ProfileId) -1;
+    static std::vector<ld::PortGroupC> groups;
+    if (loaded != shownProfile())
+    {
+        loaded = shownProfile();
+        groups.assign ((size_t) juce::jmax (0, ld::ld_profile_port_groups (loaded, nullptr, 0)), {});
+        ld::ld_profile_port_groups (loaded, groups.data(), (int32_t) groups.size());
+    }
+    return groups;
+}
+
+/** Shows `profile`'s port groups (the console's: ld_engine_profile). */
+inline void setProfile (ld::ProfileId profile) noexcept { shownProfile() = profile; }
+
+/** Group `g` of the profile (none: no ports, no tiles). */
+inline const ld::PortGroupC& portGroup (Group g)
+{
+    static const ld::PortGroupC none { {}, {}, 0, 0, -1, 0, 0 };
+    const auto& groups = portGroups();
+    return (size_t) g < groups.size() ? groups[(size_t) g] : none;
+}
+
+/** A group's menu name, the prefix of its tile labels ("LCL 3") and its number of
+    tiles (the profile's: valid until the profile shown changes). */
 struct GroupInfo
 {
     const char* name;
@@ -72,35 +109,8 @@ struct GroupInfo
 
 inline GroupInfo info (Group g)
 {
-    switch (g)
-    {
-        case Group::LocalIn:    return { "LOCAL IN", "LCL", 24 };
-        case Group::AuxIn:      return { "AUX IN", "AUX", 8 };
-        case Group::AesIn:      return { "AES/EBU IN", "AES", 2 };
-        case Group::Oscillator: return { "OSCILLATOR", "OSC", ld::kNumOscillators };
-        case Group::Aes50A:     return { "AES50 A", "A", 48 };
-        case Group::Aes50B:     return { "AES50 B", "B", 48 };
-        case Group::Aes50C:     return { "AES50 C", "C", 48 };
-        case Group::StConnect:  return { "ST CONNECT", "SC", 32 };
-        case Group::UsbAudio:   return { "USB AUDIO", "USB", 48 };
-        case Group::WlivePlay:  return { "WLIVE PLAY", "PLAY", Recorder::kNumPlaybackChannels };
-        case Group::Dante:      return { "DANTE", "DAN", 64 };
-        case Group::UsbPlayer:  return { "USB PLAYER", "PLAYER", UsbRecorder::kNumChannels };
-        case Group::Bus:        return { "BUS", "BUS", 32 };
-        case Group::Main:       return { "MAIN", "MAIN", 8 };
-        case Group::Matrix:     return { "MATRIX", "MTX", 16 };
-        case Group::UserSignal: return { "USER SIGNAL", "USR", ld::kNumUsrSources };
-        case Group::Monitor:    return { "MONITOR", "MON", 4 };
-        case Group::FxSend:     return { "FX SEND", "FX", 32 };
-        case Group::LocalOut:   return { "LOCAL OUT", "LCL", 8 };
-        case Group::AuxOut:     return { "AUX OUT", "AUX", 8 };
-        case Group::AesOut:     return { "AES/EBU OUT", "AES", 2 };
-        case Group::WliveRec:   return { "WLIVE REC", "REC", 64 };
-        case Group::Recorder:   return { "RECORDER", "REC", UsbRecorder::kNumChannels };
-        case Group::ChDirect:   return { "CH DIRECT", "CH", 0 };   // its tiles: the channels and aux
-        case Group::BusDirect:  return { "BUS DIRECT", "BUS", 0 }; // the buses
-    }
-    return { "", "", 0 };
+    const auto& p = portGroup (g);
+    return { p.name, p.prefix, p.size };
 }
 
 /** Interface ports per group (LOCAL, AES50 B, AES50 C). */
@@ -110,39 +120,25 @@ constexpr int kBlock = 48;
 constexpr int kRecorderPortBase = 0x20000;
 constexpr bool isRecorderPort (int port) noexcept { return port >= kRecorderPortBase && port < kRecorderPortBase + UsbRecorder::kNumChannels; }
 
-/** The tiles group `g` shows: LOCAL IN 24 and LOCAL OUT 8 like the console,
-    in rows of 8 up to 48 when the interface has more ports (`numHardware`). */
+/** The tiles group `g` shows: its size, in rows of 8 up to its most when the
+    interface has more ports (`numHardware`: the WING's LOCAL IN 24 and LOCAL OUT
+    8 like the console, up to 48). */
 inline int tileCount (Group g, int numHardware)
 {
-    const int size = info (g).size;
-    if (g == Group::LocalIn || g == Group::LocalOut)
-        return juce::jlimit (size, kBlock, (numHardware + 7) / 8 * 8);
-    return size;
+    const auto& p = portGroup (g);
+    if (p.maxSize > p.size)
+        return juce::jlimit (p.size, p.maxSize, (numHardware + 7) / 8 * 8);
+    return p.size;
 }
 
 /** The source (a strip's input index) of tile `index` of an input group, or
-    -1 when Sidecar has no such source (an n/a tile that can't be patched). */
+    -1 when Sidecar has no such source (an n/a tile that can't be patched):
+    the group's range of the engine's numbering (a bus, main or matrix signal
+    2k = strip k+1 L, 2k+1 = R; buses by slot). */
 inline int sourceAt (Group g, int index)
 {
-    if (index < 0)
-        return -1;
-    if (g == Group::LocalIn || g == Group::Aes50B || g == Group::Aes50C)
-        return index < kBlock ? (g == Group::LocalIn ? 0 : g == Group::Aes50B ? kBlock : 2 * kBlock) + index : -1;
-    if (g == Group::Oscillator)
-        return index < ld::kNumOscillators ? MixerEngine::oscSource (index) : -1;
-    if (g == Group::WlivePlay)
-        return index < Recorder::kNumPlaybackChannels ? Recorder::playbackSource (index) : -1;
-    if (g == Group::UsbPlayer)
-        return index < UsbRecorder::kNumChannels ? UsbRecorder::playerSource (index) : -1;
-    // A bus, main or matrix signal (2k = strip k+1 L, 2k+1 = R; buses by slot).
-    if (g == Group::Bus || g == Group::Main || g == Group::Matrix)
-    {
-        const auto kind = g == Group::Bus ? StripKind::Bus : g == Group::Main ? StripKind::Main : StripKind::Matrix;
-        return index < info (g).size ? MixerEngine::stripSource (kind, index / 2, index % 2) : -1;
-    }
-    if (g == Group::UserSignal)
-        return index < ld::kNumUsrSources ? MixerEngine::usrSource (index) : -1;
-    return -1;
+    const auto& p = portGroup (g);
+    return p.input != 0 && p.first >= 0 && index >= 0 && index < p.maxSize ? p.first + index : -1;
 }
 
 /** A strip signal's strip (kind and 0-based number, a bus by its slot) and side; false for other inputs. */
@@ -172,11 +168,10 @@ inline int outputAt (Group g, int index)
 {
     if (index < 0)
         return -1;
-    if (g == Group::LocalOut || g == Group::Aes50B || g == Group::Aes50C)
-        return index < kBlock ? (g == Group::LocalOut ? 0 : g == Group::Aes50B ? kBlock : 2 * kBlock) + index : -1;
-    if (g == Group::Recorder)
+    if (g == Group::Recorder) // a tap for the USB recorder, not a port
         return index < UsbRecorder::kNumChannels ? kRecorderPortBase + index : -1;
-    return -1;
+    const auto& p = portGroup (g);
+    return p.output != 0 && p.first >= 0 && index < p.maxSize ? p.first + index : -1;
 }
 
 /** The input group a source belongs to. */

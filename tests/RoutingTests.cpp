@@ -88,10 +88,14 @@ public:
             // USR 1-24 user signals, 25-56 user patches: sources with settings.
             expectEquals (routing::info (Group::UserSignal).size, 56);
 
-            // The engine's profile names the same groups (Phase 3 step 3): the UI's
-            // table and the profile's agree until the UI asks the profile (step 7).
+            // The routing pages show the console's profile's groups (Phase 3 step 7):
+            // the engine's, whatever profile is shown (the Universal's are the WING's).
             MixerEngine engine (0);
             const auto groups = engine.getPortGroups();
+            routing::setProfile (ld::kProfileUniversal);
+            expectEquals ((int) routing::portGroups().size(), (int) groups.size());
+            expectEquals (juce::String (routing::info (Group::Aes50B).name), juce::String ("AES50 B"));
+            routing::setProfile (engine.getProfile());
             expectEquals ((int) groups.size(), (int) Group::BusDirect + 1);
             for (int i = 0; i < (int) groups.size(); ++i)
             {

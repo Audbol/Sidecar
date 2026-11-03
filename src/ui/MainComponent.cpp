@@ -2,6 +2,7 @@
 #include "ui/InterfacePage.h"
 #include "engine/AppPaths.h"
 #include "ui/MidiRemoteUi.h"
+#include "ui/RoutingGroups.h"
 #include "ui/PluginChainWindow.h"
 #include "ui/PluginOverviewWindow.h"
 #include "ui/StartupNotice.h"
@@ -329,8 +330,10 @@ void MainComponent::selectStrip (Strip* strip)
 
 void MainComponent::refreshAll()
 {
-    // The console's faders move along its profile's law.
+    // The console's faders move along its profile's law; its routing pages
+    // show its profile's port groups.
     ui::fader::setLaw (engine.getFaderLaw());
+    ui::routing::setProfile (engine.getProfile());
 
     // A loaded or new show brings its own custom controls.
     customControlAssignments->reload();

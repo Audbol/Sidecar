@@ -86,7 +86,8 @@ use std::sync::Arc;
 // ABI 32 (Phase 3 step 5): the strip's own blocks are chain blocks; StripParams
 // points to their parameters (OwnBlocks).
 // ABI 33 (Phase 3 step 6): the profile's remote protocols (ld_engine_remotes, LdRemotes).
-pub const LD_ABI_VERSION: i32 = 33;
+// ABI 34 (Phase 3 step 7): a profile's port groups without an engine (ld_profile_port_groups).
+pub const LD_ABI_VERSION: i32 = 34;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(default)
@@ -683,15 +684,29 @@ impl From<&PortGroup> for LdPortGroup {
 #[no_mangle]
 pub unsafe extern "C" fn ld_engine_port_groups(e: *const Engine, out: *mut LdPortGroup, max: i32) -> i32 {
     let Some(e) = engine(e) else { return 0 };
-    guard(0, || {
-        let groups = e.profile().spec().port_groups;
-        if !out.is_null() {
-            for (i, g) in groups.iter().take(max.max(0) as usize).enumerate() {
-                *out.add(i) = g.into();
-            }
+    guard(0, || write_port_groups(e.profile(), out, max))
+}
+
+/// ABI 34: profile `profile`'s port groups (`ld_engine_profile`'s numbers; an
+/// unknown one: the WING's), as `ld_engine_port_groups` writes them: the
+/// interface's routing pages read them before there is an engine.
+///
+/// # Safety
+/// `out` holds `max` groups, or is null.
+#[no_mangle]
+pub unsafe extern "C" fn ld_profile_port_groups(profile: i32, out: *mut LdPortGroup, max: i32) -> i32 {
+    let p = Profile::ALL.into_iter().find(|&p| profile_id(p) == profile).unwrap_or(Profile::Wing);
+    guard(0, || write_port_groups(p, out, max))
+}
+
+unsafe fn write_port_groups(p: Profile, out: *mut LdPortGroup, max: i32) -> i32 {
+    let groups = p.spec().port_groups;
+    if !out.is_null() {
+        for (i, g) in groups.iter().take(max.max(0) as usize).enumerate() {
+            *out.add(i) = g.into();
         }
-        groups.len() as i32
-    })
+    }
+    groups.len() as i32
 }
 
 /// Makes the engine a fresh console of `counts` (null: the WING).
