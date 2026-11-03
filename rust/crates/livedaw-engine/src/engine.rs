@@ -665,6 +665,10 @@ impl Engine {
         self.num_dcas.store(st.counts.dcas, Relaxed);
         self.num_mute_groups.store(st.counts.mute_groups, Relaxed);
         self.controls.reset();
+        // The console's new DCAs take its palette's colour (an X32's WH).
+        for d in &self.controls.dcas {
+            d.colour.store(st.profile.spec().palette.default, Relaxed);
+        }
         self.analysis.reset();
         self.sources.reset();
         self.io_safes.clear();

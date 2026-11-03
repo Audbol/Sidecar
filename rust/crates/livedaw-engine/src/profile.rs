@@ -172,7 +172,7 @@ impl Palette {
     pub const X32: Palette = Palette {
         colours: &X32_COLOURS,
         grid: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
-        default: 1,
+        default: 8, // WH: a new DCA's
         factory: Some(|kind, slot| match kind {
             StripKind::Channel => 4,                                  // YE
             StripKind::Aux if slot < 8 => 3,                          // GN: aux in
@@ -250,6 +250,8 @@ pub struct ProfileSpec {
     /// Input channels show their source's name, colour and icon at first (the
     /// WING's LINK CUSTOMIZATION TO SOURCE); an X32's have their own.
     pub source_link: bool,
+    /// Bus sends start on (at -oo, an X32's); a WING's start off.
+    pub sends_on: bool,
 }
 
 impl ProfileSpec {
@@ -345,6 +347,7 @@ static WING: ProfileSpec = ProfileSpec {
     buses_to_main: 8..WING_BUSES,
     mono_mains: &[],
     source_link: true,
+    sends_on: false,
 };
 
 /// No console's limits. Its strips have the WING's blocks (a profile's own set
@@ -369,6 +372,7 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
     buses_to_main: 8..WING_BUSES,
     mono_mains: &[],
     source_link: true,
+    sends_on: false,
 };
 
 /// The Behringer X32: its counts (`Counts::X32`), fader law, colours and
@@ -402,6 +406,7 @@ static X32: ProfileSpec = ProfileSpec {
     buses_to_main: 0..0,
     mono_mains: &[1],
     source_link: false,
+    sends_on: true,
 };
 
 #[cfg(test)]

@@ -501,10 +501,12 @@ impl BankItem for MainSendParams {
     /// Main 1 (`StripParams::new_in_slot`).
     fn factory(spec: &ProfileSpec, kind: StripKind, slot: usize, index: usize) -> Self {
         let main1 = index == 0 && (kind.is_input() || (kind == StripKind::Bus && spec.buses_to_main.contains(&slot)));
+        // A mono main's send (an X32's M/C level) starts at -oo.
+        let level = if spec.mono_mains.contains(&index) { livedaw_dsp::fader::FADER_MIN } else { 0.0 };
         Self {
             on: AtomicBool::new(main1),
             pre: AtomicBool::new(false),
-            level_db: AtomicF32::new(0.0),
+            level_db: AtomicF32::new(level),
             tap: AtomicI32::new(-1),
             last_gain: UnsafeCell::new([0.0; 2]),
         }

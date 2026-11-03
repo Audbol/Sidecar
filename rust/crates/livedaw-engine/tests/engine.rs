@@ -429,6 +429,11 @@ fn an_x32_runs_its_own_chains_and_models() {
     assert!(ch1.main_send(0).unwrap().on.load(Relaxed) && !ch1.main_send(1).unwrap().on.load(Relaxed));
     // Its channels show their own colour (YE), not their source's.
     assert!(!ch1.params.cust_link.load(Relaxed) && ch1.params.colour.load(Relaxed) == 4);
+    // Its sends start on at -oo, its M/C level at -oo, its DCAs WH.
+    let send = ch1.sends.get_or_create(0).unwrap();
+    assert!(send.enabled.load(Relaxed) && send.level_db.load() == livedaw_dsp::fader::FADER_MIN);
+    assert_eq!(ch1.main_send(1).unwrap().level_db.load(), livedaw_dsp::fader::FADER_MIN);
+    assert_eq!(rig.engine.controls.dcas[0].colour.load(Relaxed), 8);
     for b in rig.engine.strips(StripKind::Bus) {
         assert!(!b.main_send(0).unwrap().on.load(Relaxed), "bus {}", b.id() + 1);
         assert_eq!(b.params.fader_db.load(), livedaw_dsp::fader::FADER_MIN);

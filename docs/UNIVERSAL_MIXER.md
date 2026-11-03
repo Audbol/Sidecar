@@ -422,8 +422,10 @@ Three layers:
         as on the owner's X32). Its channels show their own name and colour, not
         their source's (`ProfileSpec::source_link`, the WING's LINK CUSTOMIZATION
         TO SOURCE).
-      - 4b, next: the X32's send taps (IN/LC, <-EQ, EQ->, PRE, POST, GRP per bus
-        pair) and M/C level; 4c the odd/even links.
+      - 4b, factory sends (done): an X32's bus sends start on at -oo (`sends_on`; PRE
+        from inputs, POST from buses), its M/C level at -oo, its DCAs WH. Still to
+        come: the send taps IN/LC, <-EQ and EQ-> in the audio (the OSC server keeps
+        them), and 4c the odd/even links.
    5. **X32 OSC** (`livedaw-x32`, UDP 10023): `/info`, `/xinfo`, `/status`,
       `/xremote`, get / set with the console's value steps, `/node` and `/`, the
       meters; tests replay the documented traffic (X32-Edit itself isn't run).
