@@ -232,6 +232,43 @@ private:
         channels[12]->params.dynamics().on = true;
         skin.selectionChanged(); // the knobs and keys show it at once
 
+        // The display: HOME's encoders as the X32's manual maps them, and touch.
+        auto& display = skin.getDisplay();
+        auto& gate = channels[12]->params.gate();
+        expect (display.getScreen() == ui::x32::Display::Screen::Home && display.getTab() == 0);
+        expectEquals (display.getEncoder (1).pushLabel, juce::String ("GATE"));
+        display.pushEncoder (1);
+        expect (! gate.on.load(), "encoder 2's push: the gate off");
+        display.pushEncoder (1);
+        expect (gate.on.load());
+        auto touch = [&display] (juce::Point<int> at, juce::Point<int> to)
+        {
+            auto source = juce::Desktop::getInstance().getMainMouseSource();
+            const auto now = juce::Time::getCurrentTime();
+            auto event = [&] (juce::Point<int> p, bool dragged)
+            {
+                return juce::MouseEvent (source, p.toFloat(), juce::ModifierKeys::leftButtonModifier, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, &display, &display, now,
+                                         at.toFloat(), now, 1, dragged);
+            };
+            display.mouseDown (event (at, false));
+            if (to != at)
+                display.mouseDrag (event (to, true));
+            display.mouseUp (event (to, to != at));
+        };
+        touch (display.getTabBounds (2).getCentre(), display.getTabBounds (2).getCentre());
+        expectEquals (display.getTab(), 2, "a tap on the gate tab");
+        expectEquals (display.getEncoder (1).turn.label, juce::String ("MODE"));
+        const float before = gate.values[0].load();
+        const auto cell = display.getEncoderCell (0).getCentre();
+        touch (cell, cell.translated (0, -40));
+        expect (gate.values[0].load() > before, "a drag up on the encoder row turns the threshold up");
+        expect (gate.on.load(), "a drag isn't a push");
+        touch (cell, cell);
+        expect (! gate.on.load(), "a tap on the encoder row is its push");
+        gate.on = true;
+        display.showScreen (ui::x32::Display::Screen::Home, 4);
+        expectEquals (display.getEncoder (2).turn.label, juce::String ("GAIN"));
+
         const auto image = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
         expect (image.isValid() && image.getWidth() == 1920);
         const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {});
@@ -241,6 +278,14 @@ private:
             file.deleteFile();
             juce::FileOutputStream out (file);
             expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out), file.getFullPathName());
+
+            // The display's HOME tab: the signal path.
+            display.showScreen (ui::x32::Display::Screen::Home, 0);
+            const auto home = display.createComponentSnapshot (display.getLocalBounds(), true, 1.0f);
+            const auto homeFile = file.getSiblingFile ("x32-display-home.png");
+            homeFile.deleteFile();
+            juce::FileOutputStream homeOut (homeFile);
+            expect (homeOut.openedOk() && juce::PNGImageFormat().writeImageToStream (home, homeOut), homeFile.getFullPathName());
         }
         setShownProfile (ld::kProfileWing);
     }

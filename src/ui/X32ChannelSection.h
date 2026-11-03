@@ -39,8 +39,8 @@ public:
     int getBand() const noexcept { return band; }
     int getSendBank() const noexcept { return sendBank; }
 
-    /** A VIEW key: show the strip on the display. */
-    std::function<void()> onView;
+    /** A VIEW key: show the section (0: CONFIG / PREAMP... 5: MAIN BUS) on the display. */
+    std::function<void (int section)> onView;
 
     /** For tests: the knob of a control ("GAIN", "THRESHOLD"...) of a section. */
     DisplayKnob* knob (const juce::String& section, const juce::String& label);

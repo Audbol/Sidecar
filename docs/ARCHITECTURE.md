@@ -871,8 +871,9 @@ Show
 ## The UI
 
 The window (`MainComponent`) is a shell around one *skin* (`Skin.h`): the WING surface
-(`WingSurface`, the default) or the Universal Mixer (`UniversalSkin`, a preview while
-Phase 2 of `docs/UNIVERSAL_MIXER.md` builds it), chosen by the app setting
+(`WingSurface`, the default), the X32 surface (`X32Surface`, while the console is an
+X32) or the Universal Mixer (`UniversalSkin`, a preview while Phase 2 of
+`docs/UNIVERSAL_MIXER.md` builds it), chosen by the app setting
 `ui.interface` (SETUP > GENERAL > INTERFACE, `ctx.setInterface`) and switched live: the
 shell destroys one skin and builds the other. The shell owns what both share: the
 `UiContext` and its services, the selection and the solo system (`SoloWatcher`), the
@@ -988,6 +989,12 @@ console's emulation defines shows its name (`devices::wing`, drawn by
 blocks are its WING template's; extra blocks are the core's, untagged),
 `ChoiceBar::device` (the WING's model tables, lists and port groups), the FX tiles of
 built-in devices and the MIXER view's fader law.
+
+The X32 surface (`X32Surface.*`) lays an X32's top panel out in the same style: its
+fader banks and layers (`x32::FaderStrip`), the channel strip section
+(`X32ChannelSection.*`) and the display (`X32Display.*`: status bar, screen keys,
+tabs, six push-encoders mapped per tab as an X32's are, a screen that takes touch).
+Its knobs are `DisplayKnob`s bound through the console's models.
 
 `src/ui/` draws the WING surface (`WingSurface`): three fader sections (`FaderSection.*`,
 `FaderStrip.*`) with VIEW, the layer and shift keys, colour bars and scribble strips,

@@ -19,8 +19,8 @@ using x32::kScribble;
 
 //==============================================================================
 X32Surface::X32Surface (UiContext& c)
-    : ctx (c), theme (Theme::dark()), universalKey ("UNIVERSAL MIXER", theme.accent, theme), channel (c, theme), home (c, theme), routing (c, theme),
-      setup (c, theme), library (c, theme), effects (c, theme), monitor (c, theme)
+    : ctx (c), theme (Theme::dark()), universalKey ("UNIVERSAL MIXER", theme.accent, theme), channel (c, theme),
+      display (c, theme)
 {
     for (auto& s : inputs)
     {
@@ -59,16 +59,6 @@ X32Surface::X32Surface (UiContext& c)
         addAndMakeVisible (*key);
         groupLayerKeys.push_back (std::move (key));
     }
-    const std::pair<const char*, Page> pages[] = { { "HOME", Page::Home },       { "ROUTING", Page::Routing }, { "SETUP", Page::Setup },
-                                                   { "LIBRARY", Page::Library }, { "EFFECTS", Page::Effects }, { "MONITOR", Page::Monitor } };
-    for (auto [name, target] : pages)
-    {
-        auto key = std::make_unique<ToggleKey> (name, theme.accent, theme);
-        key->isOn = [this, p = target] { return page == p; };
-        key->onClick = [this, p = target] { showPage (p); };
-        addAndMakeVisible (*key);
-        pageKeys.push_back (std::move (key));
-    }
 
     // Switching rebuilds the window's skin: let the click return first.
     universalKey.onClick = [&context = ctx]
@@ -83,10 +73,9 @@ X32Surface::X32Surface (UiContext& c)
     addAndMakeVisible (universalKey);
 
     addAndMakeVisible (channel);
-    channel.onView = [this] { showPage (Page::Home); };
-    addAndMakeVisible (home);
-    for (auto* v : std::initializer_list<juce::Component*> { &routing, &setup, &library, &effects, &monitor })
-        addChildComponent (v);
+    // A VIEW key opens its section's tab of the display's HOME screen.
+    channel.onView = [this] (int section) { display.showScreen (x32::Display::Screen::Home, section + 1); };
+    addAndMakeVisible (display);
     refreshAll();
     startTimerHz (30);
 }
@@ -167,42 +156,19 @@ void X32Surface::assignBanks()
     timerCallback(); // the faders, meters and keys at once
 }
 
-void X32Surface::showPage (Page p)
-{
-    page = p;
-    home.setVisible (p == Page::Home);
-    routing.setVisible (p == Page::Routing);
-    setup.setVisible (p == Page::Setup);
-    library.setVisible (p == Page::Library);
-    effects.setVisible (p == Page::Effects);
-    monitor.setVisible (p == Page::Monitor);
-    switch (p)
-    {
-        case Page::Home:    break;
-        case Page::Routing: routing.refresh(); break;
-        case Page::Setup:   setup.refresh(); break;
-        case Page::Library: library.refresh(); break;
-        case Page::Effects: effects.refresh(); break;
-        case Page::Monitor: monitor.refresh(); break;
-    }
-    for (auto& k : pageKeys)
-        k->refresh();
-}
-
 void X32Surface::refreshAll()
 {
     assignBanks();
-    home.setStrip (ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr);
     channel.setStrip (ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr);
-    showPage (page);
+    display.refreshStrip();
     repaint();
 }
 
 void X32Surface::selectionChanged()
 {
-    home.setStrip (ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr);
     channel.setStrip (ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr);
     timerCallback(); // the SELECT keys
+    display.refreshStrip();
     repaint (channelArea);
 }
 
@@ -291,17 +257,7 @@ void X32Surface::resized()
     channelArea = upper;
     channel.setBounds (channelArea.reduced (12).withTrimmedTop (22 + 24 + sizes::kGap));
 
-    auto display = displayArea;
-    auto keys = display.removeFromBottom (36);
-    display.removeFromBottom (sizes::kGapSmall);
-    const int keyWidth = (keys.getWidth() - ((int) pageKeys.size() - 1) * sizes::kGapSmall) / (int) pageKeys.size();
-    for (auto& k : pageKeys)
-    {
-        k->setBounds (keys.removeFromLeft (keyWidth));
-        keys.removeFromLeft (sizes::kGapSmall);
-    }
-    for (auto* v : std::initializer_list<juce::Component*> { &home, &routing, &setup, &library, &effects, &monitor })
-        v->setBounds (display);
+    display.setBounds (displayArea);
 
     // The faders: input bank, its layer keys, group bank, its layer keys, main.
     fadersArea = area;

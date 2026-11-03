@@ -277,6 +277,7 @@ set(LIVEDAW_UI_SOURCES
     src/ui/WingSurface.cpp
     src/ui/UniversalSkin.cpp
     src/ui/X32ChannelSection.cpp
+    src/ui/X32Display.cpp
     src/ui/X32Surface.cpp
     src/ui/universal/Theme.cpp
     src/ui/universal/Widgets.cpp

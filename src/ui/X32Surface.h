@@ -2,15 +2,10 @@
 
 #include "ui/Skin.h"
 #include "ui/UiContext.h"
-#include "ui/universal/FxRackView.h"
-#include "ui/universal/Inspector.h"
-#include "ui/universal/MonitorView.h"
-#include "ui/universal/RoutingView.h"
-#include "ui/universal/ScenesView.h"
-#include "ui/universal/SetupView.h"
 #include "ui/universal/Widgets.h"
 #include "ui/MeterBank.h"
 #include "ui/X32ChannelSection.h"
+#include "ui/X32Display.h"
 
 #include <array>
 
@@ -227,8 +222,8 @@ namespace x32
     - on every fader its scribble strip (number, name, the X32's colours, the
       inverted ones as coloured text on black), a meter, SOLO, MUTE and SELECT;
     - the channel strip section for the selected strip (step 8c);
-    - the display with its page keys, showing the Universal Mixer's views of
-      the console for now (step 8d).
+    - the X32's display, its screen keys and its six push-encoders, the screen
+      taking touch (step 8d).
 
     Shown while the console is an X32 (MainComponent); UNIVERSAL MIXER switches
     to the Universal Mixer. */
@@ -243,7 +238,7 @@ public:
     void resized() override;
     void refreshAll() override;
     void selectionChanged() override;
-    void showChanged() override { library.refresh(); }
+    void showChanged() override { display.refreshStrip(); }
 
     enum class InputLayer
     {
@@ -264,24 +259,12 @@ public:
     InputLayer getInputLayer() const noexcept { return inputLayer; }
     GroupLayer getGroupLayer() const noexcept { return groupLayer; }
 
-    /** The display's pages. */
-    enum class Page
-    {
-        Home,
-        Routing,
-        Setup,
-        Library,
-        Effects,
-        Monitor
-    };
-    void showPage (Page);
-    Page getPage() const noexcept { return page; }
-
     /** Fader `i` of the input bank (0-15) and of the group bank (0-7); the main LR. */
     x32::FaderStrip& getInputStrip (int i);
     x32::FaderStrip& getGroupStrip (int i);
     x32::FaderStrip& getMainStrip();
     x32::ChannelSection& getChannelSection() noexcept { return channel; }
+    x32::Display& getDisplay() noexcept { return display; }
 
 private:
     void timerCallback() override;
@@ -291,22 +274,15 @@ private:
     UiContext& ctx;
     const universal::Theme& theme;
     universal::ToggleKey universalKey;
-    std::vector<std::unique_ptr<universal::ToggleKey>> inputLayerKeys, groupLayerKeys, pageKeys;
+    std::vector<std::unique_ptr<universal::ToggleKey>> inputLayerKeys, groupLayerKeys;
     std::array<std::unique_ptr<x32::FaderStrip>, 16> inputs;
     std::array<std::unique_ptr<x32::FaderStrip>, 8> groups;
     std::unique_ptr<x32::FaderStrip> main;
     x32::ChannelSection channel;
+    x32::Display display;
     InputLayer inputLayer = InputLayer::Ch1to16;
     GroupLayer groupLayer = GroupLayer::Dca;
 
-    // The display's pages.
-    universal::Inspector home;
-    universal::RoutingView routing;
-    universal::SetupView setup;
-    universal::ScenesView library;
-    universal::FxRackView effects;
-    universal::MonitorView monitor;
-    Page page = Page::Home;
 
     juce::Rectangle<int> displayArea, channelArea, fadersArea;
 

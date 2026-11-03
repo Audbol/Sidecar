@@ -494,19 +494,29 @@ Three layers:
         MASTER), the 8 group faders and theirs (DCA 1-8, BUS 1-8, BUS 9-16, MTX 1-6 /
         M/C), the main LR; on each fader its scribble strip (`x32::FaderStrip`: the
         X32's colours, the inverted ones as coloured text on black; LR and M/C), a
-        meter, SELECT, SOLO and MUTE. The display shows the selected strip's
-        inspector (HOME) and the Universal Mixer's ROUTING, SETUP, LIBRARY, EFFECTS
-        and MONITOR views. A screenshot test (`x32-surface.png`) checks the layers.
+        meter, SELECT, SOLO and MUTE. A screenshot test (`x32-surface.png`) checks
+        the layers.
       - 8c, the channel strip section (done): `x32::ChannelSection`
         (`src/ui/X32ChannelSection.*`) for the selected strip: CONFIG / PREAMP (GAIN,
         LOW CUT and its key, polarity), GATE (THRESHOLD, its key, the gain
         reduction), DYNAMICS (THRESHOLD, RATIO, COMP, the gain reduction), EQUALIZER
         (the band keys, 4 or 6, the band's TYPE, FREQ, GAIN and Q, EQ), BUS SENDS (four
         at a time, the bank keys), MAIN BUS (PAN, LR, M/C and its level); each
-        section's VIEW key shows the strip on the display. The knobs are the WING
+        section's VIEW key opens its tab of the display's HOME screen. The knobs are the WING
         screens' `DisplayKnob`s, bound through the console's models (an X32's gate,
         compressor and EQ).
-      - 8d: the display's pages (the Universal Mixer's views inside it first).
+      - 8d, the display (done): `x32::Display` (`src/ui/X32Display.*`), the X32's
+        screen in Sidecar's style, as the WING surface draws the WING's: the status
+        bar (the selected strip, the scene and the next, the sample rate, the clock),
+        the eight screen keys (HOME, METERS, ROUTING, SETUP, LIBRARY, EFFECTS, MUTE
+        GRP, UTILITY), PAGE < > for the tabs, LAYER for HOME's second layers, and six
+        push-encoders mapped per tab as the X32's manual maps them (HOME: home,
+        config, gate, dyn, eq, sends, main). Its HOME tab draws the signal path in the
+        strip's process order; gate, dyn and eq their graphs; sends the 16 sends;
+        LIBRARY recalls scenes; MUTE GRP its six keys. Unlike an X32's, the screen
+        takes touch: a tap on a tab, a drag on the encoder row turns, a tap pushes,
+        the graphs drag. Deep editing (patching, FX, show files) stays on the
+        Universal Mixer for now. The X32's factory delays are times (0.3 ms).
       - 8e: polish, screenshots, the user guide. The X32 Compact (16 + 1 faders) as
         a model of it, like the WING COMPACT.
 

@@ -78,7 +78,7 @@ ChannelSection::ChannelSection (UiContext& c, const Theme& t)
     for (size_t s = 0; s < sections.size(); ++s)
     {
         auto key = std::make_unique<ToggleKey> ("VIEW", t.accent, t);
-        key->onClick = [this] { if (onView) onView(); };
+        key->onClick = [this, s] { if (onView) onView ((int) s); };
         addAndMakeVisible (*key);
         viewKeys.push_back (std::move (key));
     }

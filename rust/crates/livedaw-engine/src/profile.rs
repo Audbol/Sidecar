@@ -301,8 +301,12 @@ fn x32_name(kind: StripKind, slot: usize) -> Option<String> {
 /// X32 Compact has it (its colours: `Palette::X32`): channels' low cut at
 /// 20 Hz; the FX returns at 0 dB, they and the USB playback (aux in 7-8)
 /// linked pairs panned apart; buses 13-16 (the FX sends) at 0 dB; buses',
-/// matrices' and mains' compressors detecting RMS.
+/// matrices' and mains' compressors detecting RMS; delays in milliseconds.
 fn x32_factory(p: &crate::params::StripParams, kind: StripKind, slot: usize) {
+    // The X32's delays are times, 0.3 .. 500 ms (factory 0.3 ms, off).
+    use std::sync::atomic::Ordering::Relaxed;
+    p.input.delay_mode.store(2, Relaxed);
+    p.input.delay.store(0.3);
     if kind == StripKind::Channel {
         p.filter().low_cut_freq.store(20.0);
     }
@@ -666,7 +670,9 @@ mod tests {
         assert_eq!(bus.eq().model_spec().unwrap().token, "X32EQ6");
         // Its factory strip beyond the shared settings (as the owner's X32 shows).
         let spec = Profile::X32.spec();
-        assert_eq!(StripParams::new_in_slot_of(StripKind::Channel, 0, spec).filter().low_cut_freq.load(), 20.0);
+        let ch1 = StripParams::new_in_slot_of(StripKind::Channel, 0, spec);
+        assert_eq!(ch1.filter().low_cut_freq.load(), 20.0);
+        assert_eq!((ch1.input.delay_mode.load(std::sync::atomic::Ordering::Relaxed), ch1.input.delay.load()), (2, 0.3), "0.3 ms");
         let bus1 = StripParams::new_in_slot_of(StripKind::Bus, 0, spec);
         assert_eq!(bus1.dynamics().param("det").unwrap().load(), 1.0, "RMS");
         assert_eq!(bus1.tap.load(std::sync::atomic::Ordering::Relaxed), crate::strip::tap::PFL as i32);
