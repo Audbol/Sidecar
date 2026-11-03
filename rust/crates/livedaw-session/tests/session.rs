@@ -433,18 +433,20 @@ fn a_value_moved_during_a_fade_leaves_the_fade() {
     let start = Instant::now();
     show.recall_scene(&engine, &mut np, 0);
     assert!(show.tick_at(&engine, start + Duration::from_millis(500)));
-    // Moved by hand (surface, MIDI, a remote: they all write the parameter).
-    a.params.fader_db.store(-25.0);
+    // Moved by hand (surface, MIDI, a remote: they all write the parameter),
+    // to where this fade up from -40 never goes: on a loaded machine its
+    // first tick comes early in the fade, and could have written -25 itself.
+    a.params.fader_db.store(-60.0);
     dca.fader_db.store(-5.0);
     a.sends.find(slot).unwrap().level_db.store(-12.0);
     assert!(show.tick_at(&engine, start + Duration::from_millis(1000)));
-    assert_eq!(a.params.fader_db.load(), -25.0);
+    assert_eq!(a.params.fader_db.load(), -60.0);
     assert_eq!(dca.fader_db.load(), -5.0);
     assert_eq!(a.sends.find(slot).unwrap().level_db.load(), -12.0);
     let mid = b.params.fader_db.load();
     assert!(mid > -40.0 && mid < 0.0, "the others keep fading: {mid}");
     assert!(!show.tick_at(&engine, start + Duration::from_secs(3)));
-    assert_eq!(a.params.fader_db.load(), -25.0);
+    assert_eq!(a.params.fader_db.load(), -60.0);
     assert_eq!(b.params.fader_db.load(), 0.0);
 
     // A value moved just before the fade is cancelled (by the next recall) stays too.
