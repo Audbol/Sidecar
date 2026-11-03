@@ -15,20 +15,20 @@ anything can be sent to any hardware output. It runs on Windows, macOS and Linux
 > SETUP > GENERAL > ABOUT, lists the differences). Don't rely on it for a critical
 > live show without testing it thoroughly first.
 
-**Status: v0.1.6 beta**, the sixth public beta: the WING COMPACT as a second console
-model, every effect measured against its WING original with live meters on its page,
-and the routing, monitoring and custom controls checked against WING Edit 3.3.4 and
-the WING manual. Expect rough edges, and please [report what you find](#reporting-problems).
+**Status: v0.2.0 beta**, the seventh public beta and the first of the **Universal
+Mixer**: Sidecar is growing from a WING emulator into an emulator of several consoles,
+built on a mixer core without any one console's limits. The console's size is a
+configuration (any number of channels, buses, mains and matrices, up to 256 DCAs and
+mute groups, 64 FX slots), and each strip's processing is a chain that can hold extra
+blocks and tap points. The Universal Mixer's own interface is a preview beside the WING
+surface, under SETUP > SIDECAR > INTERFACE (see the user guide's chapter *The
+Universal Mixer*): a touch-friendly MIXER view for a console of any size with the
+selected strip whole across the top and curves you set by their handles, an
+inspector, ROUTING, FX RACK, MONITORING, SCENES, RECORDER and SETUP. The WING works as
+before. Expect rough edges, and please [report what you find](#reporting-problems).
 
-**Coming next: the Universal Mixer.** Sidecar is growing from a WING emulator into an
-emulator of several consoles (the X32 / M32, Yamaha, Allen & Heath and DiGiCo after the
-WING), built on a mixer core without any one console's limits. The engine and show
-format in the current code are its first step: the console's size is a configuration
-(any number of channels, buses, mains, matrices, up to 256 DCAs and mute groups), and
-each strip's processing is a chain that can hold extra blocks and tap points. A first
-preview of its own interface, a touch-friendly MIXER view for a console of any size, is
-under SETUP > SIDECAR > INTERFACE (see the user guide's chapter *The
-Universal Mixer*). The WING works exactly as before. The plan is in
+**Coming next: more consoles.** After the WING come the X32 / M32, Yamaha, Allen &
+Heath and DiGiCo, each an emulation on the same core. The plan is in
 [docs/UNIVERSAL_MIXER.md](docs/UNIVERSAL_MIXER.md).
 
 **Community:** questions, tips and feedback on the [Sidecar Discord server](https://discord.gg/TEE8q979x).
@@ -252,6 +252,11 @@ This list matches the notice Sidecar shows at start-up.
   Delay compensation (SETUP > SIDECAR > PLUGINS) lines up the paths into buses, mains and
   matrices up to 8192 samples; solo, monitoring, direct outs and recorder taps are
   not compensated.
+- **The Universal Mixer** (SETUP > SIDECAR > INTERFACE: UNIVERSAL) is a preview: the
+  monitor paths' processing, talkback, custom controls, the LIBRARY, snippets and the
+  remotes' settings are still on the WING surface, and on a console bigger than a WING
+  the WING surface and the WING remote apps reach its first 40 channels, 16 buses, 4
+  mains and 8 matrices.
 - **WING remote apps:** the WING network protocols answer every parameter of the
   WING 3.1 tree but one; 93.2 % drive the engine or Sidecar's settings (of 79,326,
   counting every processing model's parameters and every custom control mode's

@@ -3,12 +3,27 @@
 All notable changes to Sidecar are listed here. Versions follow
 [semantic versioning](https://semver.org); 0.x releases are betas.
 
-## [Unreleased]
+## [0.2.0] - beta
 
-The start of the Universal Mixer (`docs/UNIVERSAL_MIXER.md`): Sidecar becomes a
-mixer core without one console's limits, on which the WING (and later other
-consoles) are emulations. Phase 1 generalizes the engine and the show model; the
-WING works as before throughout.
+The first public beta of the Universal Mixer: Sidecar becomes a mixer core without one
+console's limits (`docs/UNIVERSAL_MIXER.md`), on which the WING is an emulation and
+other consoles will be. The engine and the show format take any configuration (any
+number of channels, buses, mains and matrices, up to 256 DCAs and mute groups, 64 FX
+slots), and a strip's processing is a chain that can hold extra blocks and tap points.
+Its own interface, the **Universal Mixer**, is a preview beside the WING surface
+(SETUP > SIDECAR > INTERFACE): a MIXER view for a console of any size with the selected
+strip whole across the top, an inspector for a strip's chain and sends, curves with
+handles, ROUTING, FX RACK, MONITORING, SCENES, RECORDER and SETUP. The WING surface
+works as before and shows the Universal Mixer's blocks on HOME > CHAIN.
+
+Also new: the audio interface as a device of its own in ROUTING, a SIDECAR tab on
+SETUP for everything a WING doesn't have, a plugin overview window, more FX slots,
+direct outs, multichannel WAV import in the multitrack editor; and fixes for a crash in
+the plugin overview, OPEN EDITOR on the INS screen, the display jumping to the EQ, and
+the WING DSP measured against a WING COMPACT.
+
+Shows saved by this version (format 4) don't open in Sidecar 0.1.x; shows from 0.1.x
+open as before.
 
 ### Added
 
@@ -40,7 +55,7 @@ WING works as before throughout.
 
 - Universal Mixer, Phase 2 step 1: the window is a shell around an interface ("skin"):
   the WING surface, unchanged, or the Universal Mixer's own interface, a preview for
-  now. SETUP > GENERAL > CONSOLE > INTERFACE switches between them at once (an app
+  now. SETUP > SIDECAR > INTERFACE switches between them at once (an app
   preference). A show of a console that isn't a WING opens in the Universal Mixer;
   choosing WING then offers to make it a fresh WING. The monkey test can start on the
   Universal Mixer (`--interface universal`).
@@ -120,15 +135,6 @@ WING works as before throughout.
   name (WING: the strip's own blocks, the model lists, front panels, routing groups,
   send modes, monitor sources, solo modes and the fader law), ready for the other
   consoles to come.
-
-### Changed
-
-- **Show format 4.** Shows now store the console's configuration (how many channels,
-  aux, buses, mains, matrices, DCAs, mute groups and FX slots it has) and the profile
-  they were made for (`wing`), and a load rebuilds that console first. Shows saved by
-  this version don't open in Sidecar 0.1.x; shows from 0.1.x (format 3) open as a
-  WING, as before.
-
 - SETUP > GENERAL > ABOUT (and the start-up notice) links the Sidecar Discord server
   for questions, setup help and feedback: a Community section and a **DISCORD** key
   that opens the invite in the browser.
@@ -138,12 +144,12 @@ WING works as before throughout.
   back into one clip per track, named after its session folder. Drop the session
   folder on the editor, choose it with FILE > Import a folder, or pick its WAVs with
   FILE > Import audio. Before, only the first two channels were imported.
-- **More FX slots**: SETUP > GENERAL > CONSOLE > FX SLOTS sets 16 (WING, the
+- **More FX slots**: SETUP > SIDECAR > FX SLOTS sets 16 (WING, the
   default), 32, 48 or 64. EFFECTS, the inserts' SELECT FX PROCESSOR window, the scene
   SCOPE and GLOBAL SAFE windows, ROUTING's FX SEND group, custom controls and the plugin
   latency list follow, in banks of 16. Fewer slots never drop a slot in use; a show
   that uses more brings them along. The WING and MIDI remotes see FX 1-16.
-- **Plugin overview** (SETUP > PLUGINS > PLUGIN OVERVIEW, Ctrl+Shift+P): every plugin
+- **Plugin overview** (SETUP > SIDECAR > PLUGINS > PLUGIN OVERVIEW, Ctrl+Shift+P): every plugin
   of every FX slot in a window of its own, for a second screen during a show. CARDS
   with a picture of each plugin's editor, or a compact LIST; each slot's state, the
   strips using it, IN / OUT meters, CPU and latency; faults and bypass stand out. The
@@ -161,6 +167,11 @@ WING works as before throughout.
 
 ### Changed
 
+- **Show format 4.** Shows now store the console's configuration (how many channels,
+  aux, buses, mains, matrices, DCAs, mute groups and FX slots it has) and the profile
+  they were made for (`wing`), and a load rebuilds that console first. Shows saved by
+  this version don't open in Sidecar 0.1.x; shows from 0.1.x (format 3) open as a
+  WING, as before.
 - The C ABI is version 24: 64 FX slots in `EngineControls`, `ld_engine_num_fx` /
   `ld_engine_set_num_fx` / `ld_engine_fx_in_use`, 64-bit FX masks in `ScopeC`, and
   `kDirectSourceBase` direct-out codes.

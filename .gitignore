@@ -3,6 +3,8 @@
 /out/
 /cmake-build-*/
 /rust/target/
+/rust/target-ci/
+/dist/
 CMakeUserPresets.json
 compile_commands.json
 
