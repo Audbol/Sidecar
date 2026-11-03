@@ -368,7 +368,7 @@ mod tests {
         let ch = engine.channel_at(0).unwrap();
         assert_eq!(
             ch.params.dynamics.model_index(),
-            livedaw_dsp::wing::model_index(livedaw_dsp::wing::DYN_MODELS, "COMP").unwrap()
+            livedaw_dsp::model::model_index(livedaw_dsp::wing::DYN_MODELS, "COMP").unwrap()
         );
         assert!(apply(&c, &[set("/ch/1/eq/nothing", Value::Float(1.0))]).unwrap_err().contains("no such WING parameter"));
         assert!(list(&c, "/ch/1/eq").unwrap().iter().any(|l| l.starts_with("/ch/1/eq/2g = 6.0")));

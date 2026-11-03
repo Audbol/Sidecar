@@ -12,7 +12,8 @@
 
 use crate::refs::StripRef;
 use crate::xml::{fmt_f32, Element};
-use livedaw_dsp::wing::{model_index, ParamKind, DYN_MODELS, EQ_MODELS_BUS, EQ_MODELS_CH};
+use livedaw_dsp::model::{model_index, ParamKind};
+use livedaw_dsp::wing::{DYN_MODELS, EQ_MODELS_BUS, EQ_MODELS_CH};
 use livedaw_engine::params::{nearest_colour, MAX_FX};
 use livedaw_engine::StripKind;
 use std::collections::HashMap;
@@ -66,7 +67,7 @@ fn param(e: &mut Element, id: &str, v: f64) {
     e.add_new("P").set("n", id).set("v", fmt_f32(v as f32));
 }
 
-fn choice_index(table: &[livedaw_dsp::wing::ModelSpec], model: &str, id: &str, choice: &str) -> Option<usize> {
+fn choice_index(table: &[livedaw_dsp::model::ModelSpec], model: &str, id: &str, choice: &str) -> Option<usize> {
     let spec = &table[model_index(table, model)?];
     match spec.params[spec.param_index(id)?].kind {
         ParamKind::Choice(items) => items.iter().position(|c| *c == choice),
@@ -75,7 +76,7 @@ fn choice_index(table: &[livedaw_dsp::wing::ModelSpec], model: &str, id: &str, c
 }
 
 /// Index of the value closest to `x` in a values parameter.
-fn nearest_value(table: &[livedaw_dsp::wing::ModelSpec], model: &str, id: &str, x: f64) -> f64 {
+fn nearest_value(table: &[livedaw_dsp::model::ModelSpec], model: &str, id: &str, x: f64) -> f64 {
     let Some(spec) = model_index(table, model).map(|m| &table[m]) else { return 0.0 };
     let Some(ParamKind::Values(items)) = spec.param_index(id).map(|i| spec.params[i].kind) else { return 0.0 };
     let best = items.iter().enumerate().min_by(|a, b| {

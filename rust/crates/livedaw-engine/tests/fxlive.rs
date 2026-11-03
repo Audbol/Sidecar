@@ -4,8 +4,9 @@
 
 mod common;
 use common::{set_channels, unity_console};
+use livedaw_dsp::model::model_index;
 use livedaw_dsp::wing::fx::readout::{ENVELOPE, LFO_L, LFO_R, NEEDLE};
-use livedaw_dsp::wing::{model_index, FX_MODELS};
+use livedaw_dsp::wing::FX_MODELS;
 use livedaw_engine::Engine;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;

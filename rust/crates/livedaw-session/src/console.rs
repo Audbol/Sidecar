@@ -7,7 +7,8 @@
 
 use crate::refs::StripRef;
 use crate::xml::{fmt_f32, parse, Element};
-use livedaw_dsp::wing::{model_index, ModelSpec, DYN_MODELS, EQ_MODELS_BUS, EQ_MODELS_CH, FILTER_TOOLS, FX_MODELS};
+use livedaw_dsp::model::{model_index, ModelSpec};
+use livedaw_dsp::wing::{DYN_MODELS, EQ_MODELS_BUS, EQ_MODELS_CH, FILTER_TOOLS, FX_MODELS};
 use livedaw_engine::analyser::RtaViewSettings;
 use livedaw_engine::atomic::AtomicF32;
 use livedaw_engine::blocks::{BlockKind, BlockParams, Step};

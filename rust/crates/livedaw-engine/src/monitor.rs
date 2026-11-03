@@ -29,9 +29,10 @@ use crate::params::{StripKind, WING_AUX, WING_BUSES, WING_CHANNELS, WING_MAINS, 
 use crate::sources::{pair_first, source_index, source_mode, source_port, SourceTable};
 use livedaw_dsp::biquad::BiquadCoeffs;
 use livedaw_dsp::delay::SPEED_OF_SOUND;
+use livedaw_dsp::model::{model_index, ModelSpec};
 use livedaw_dsp::util::{db_to_gain, gain_to_db, stereo_balance};
 use livedaw_dsp::wing::eq::{self, WingEq};
-use livedaw_dsp::wing::{model_index, ModelSpec, EQ_MODELS_BUS, MAX_EQ_PARAMS};
+use livedaw_dsp::wing::{EQ_MODELS_BUS, MAX_EQ_PARAMS};
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering::Relaxed};
 use std::sync::OnceLock;
 

@@ -1,6 +1,7 @@
 //! Realtime-safe DSP building blocks for Sidecar.
 //!
-//! Nothing in this crate allocates, locks or panics on the audio path. The
+//! Nothing in this crate allocates, locks or panics on the audio path.
+//! Processing models are described in console-neutral terms in [`model`]; the
 //! WING's processing (filter, EQ models, gate and dynamics models) lives in
 //! [`wing`]; it is built from the biquads, delay lines and helpers here.
 
@@ -9,6 +10,7 @@ pub mod delay;
 pub mod denormals;
 pub mod fader;
 pub mod generator;
+pub mod model;
 pub mod util;
 pub mod wing;
 

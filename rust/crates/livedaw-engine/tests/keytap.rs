@@ -1,7 +1,8 @@
 //! KEY TAP: GATE and DYNAMICS keys taken at a tap point of another channel,
 //! in the right order within a block (`keytap.rs`).
 
-use livedaw_dsp::wing::{model_index, DYN_MODELS};
+use livedaw_dsp::model::model_index;
+use livedaw_dsp::wing::DYN_MODELS;
 mod common;
 use common::{set_channels, unity_console};
 use livedaw_engine::keytap::{KeySource, NUM_KEY_TAPS, TAP_EQ_POST, TAP_INS2};

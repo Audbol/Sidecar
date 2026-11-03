@@ -42,7 +42,8 @@
 use crate::model::ConsoleModel;
 use crate::refs::StripRef;
 use crate::xml::{parse_int_prefix, Element};
-use livedaw_dsp::wing::{ParamKind, FX_MODELS};
+use livedaw_dsp::model::ParamKind;
+use livedaw_dsp::wing::FX_MODELS;
 use livedaw_engine::params::{FX_EXT, WING_DCAS};
 use livedaw_engine::{Engine, StripKind};
 use std::collections::hash_map::RandomState;

@@ -3,7 +3,7 @@
 //! the range they act on).
 
 use livedaw_dsp::biquad::BiquadCoeffs;
-use livedaw_dsp::wing::{ModelSpec, Params};
+use livedaw_dsp::model::{ModelSpec, Params};
 use std::f64::consts::FRAC_1_SQRT_2;
 
 /// The parameter index of `<band><suffix>` ("2" + "q"), without allocating.
@@ -47,7 +47,8 @@ pub fn band_solo_coeffs(spec: &ModelSpec, values: &[f32], band: usize, sr: f64) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use livedaw_dsp::wing::{model_index, EQ_MODELS_BUS, EQ_MODELS_CH, MAX_EQ_PARAMS};
+    use livedaw_dsp::model::model_index;
+    use livedaw_dsp::wing::{EQ_MODELS_BUS, EQ_MODELS_CH, MAX_EQ_PARAMS};
 
     #[test]
     fn the_wing_eq_bands_and_their_filters() {

@@ -295,8 +295,12 @@ Three layers:
       onto them in step 7, a test keeping their table equal until then. Still to
       come with the consoles that need them: a fader law per strip kind (the 02R's
       master runs 0 to -120 dB, its channels +10 to -90).
-   4. **Model tables out of `wing`**: the model description (`ModelSpec`) becomes
-      console-neutral; each profile names the models a block may hold.
+   4. **Model tables out of `wing`** (done): the model description (`ModelSpec`,
+      `ParamSpec`, `Params`...) is console-neutral in `livedaw_dsp::model`; each
+      profile names the models its blocks may hold (`ProfileSpec::models`, a
+      `ModelTables`: dynamics, aux dynamics, channel and bus EQ, filter tools, FX).
+      The WING's tables stay in `wing` as `wing::MODELS`; the strips still read them
+      directly until step 5, the interface until step 7.
    5. **The WING's blocks out of `StripParams`** (Phase 1's 3d): call sites move to
       facades first, then the blocks become chain blocks; the sound must stay the same
       sample for sample.

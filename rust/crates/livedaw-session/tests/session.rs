@@ -1,6 +1,7 @@
 //! Show / scene / snippet / console-state tests against a real engine (no audio device).
 
-use livedaw_dsp::wing::{model_index, DYN_MODELS};
+use livedaw_dsp::model::model_index;
+use livedaw_dsp::wing::DYN_MODELS;
 use livedaw_engine::{Engine, GroupSet, InsertCallbacks, Strip, StripKind};
 use livedaw_session::console::{self, find_strip};
 use livedaw_session::layers::{CENTER, LEFT};
@@ -1662,7 +1663,7 @@ fn spill_layers_follow_the_console() {
 
     // FX spill: the device's continuous parameters.
     assert!(spill_faders(&engine, &SpillKind::Fx(9)).is_empty(), "an empty slot has none");
-    let geq = livedaw_dsp::wing::model_index(FX_MODELS, "GEQ").unwrap();
+    let geq = livedaw_dsp::model::model_index(FX_MODELS, "GEQ").unwrap();
     engine.set_fx_model(9, geq, true);
     let params = spill_faders(&engine, &SpillKind::Fx(9));
     assert!(params.len() > 10);

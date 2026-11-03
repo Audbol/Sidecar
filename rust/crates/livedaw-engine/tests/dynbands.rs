@@ -4,7 +4,8 @@
 
 mod common;
 use common::{set_channels, unity_console};
-use livedaw_dsp::wing::{fx, model_index, ParamKind, DYN_MODELS, FX_MODELS};
+use livedaw_dsp::model::{model_index, ParamKind};
+use livedaw_dsp::wing::{fx, DYN_MODELS, FX_MODELS};
 use livedaw_engine::Engine;
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;

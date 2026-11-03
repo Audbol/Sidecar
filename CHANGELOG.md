@@ -27,6 +27,9 @@ Phase 3, the WING as a profile (`docs/UNIVERSAL_MIXER.md`), begins.
 - A profile names its port groups (`PortGroup`: the console's sources and outputs as
   its routing pages group them, as ranges of the engine's numbering); the WING's 25
   are the first. C ABI 31: `ld_engine_port_groups`.
+- Processing models are described in console-neutral terms (`livedaw_dsp::model`:
+  `ModelSpec`, `ParamSpec`, `Params`, `ModelTables`), and a profile names the models
+  its blocks may hold (`ProfileSpec::models`; the WING's are `wing::MODELS`).
 
 ## [0.2.0] - beta
 

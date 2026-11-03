@@ -11,13 +11,11 @@
 
 use crate::session::LdString;
 use livedaw_dsp::delay::DELAY_MODES;
+use livedaw_dsp::model::{ModelCategory, ModelSpec, ParamKind, ParamSpec};
 use livedaw_dsp::wing::dynamics::{SC_FILTERS, XOVER_TYPES};
 use livedaw_dsp::wing::eq::design;
 use livedaw_dsp::wing::filter::{HIGH_CUT_SLOPES, LOW_CUT_SLOPES};
-use livedaw_dsp::wing::{
-    ModelCategory, ModelSpec, ParamKind, ParamSpec, AUX_DYN_MODELS, DYN_MODELS, EQ_MODELS_BUS, EQ_MODELS_CH, FILTER_TOOLS,
-    FX_MODELS, MAX_EQ_PARAMS, PROCESS_ORDERS, TAP_POINTS,
-};
+use livedaw_dsp::wing::{AUX_DYN_MODELS, EQ_MODELS_BUS, EQ_MODELS_CH, MAX_EQ_PARAMS, PROCESS_ORDERS, TAP_POINTS};
 use livedaw_engine::blocks::{Block, BlockParams};
 use livedaw_engine::params::{
     colour_rgb, DynSlotParams, EqBlockParams, FilterParams, MAIN_LINK_MODES, MONITOR_BUSES, POST_INSERT_MODES, WING_COLOURS,
@@ -25,14 +23,10 @@ use livedaw_engine::params::{
 };
 use livedaw_engine::{Strip, SEND_MODES};
 
+/// The host's model tables are the WING's (the Universal's are too until a
+/// console with its own models comes: `ProfileSpec::models`).
 fn table(t: i32) -> &'static [ModelSpec] {
-    match t {
-        1 => EQ_MODELS_CH,
-        2 => EQ_MODELS_BUS,
-        3 => FILTER_TOOLS,
-        4 => FX_MODELS,
-        _ => DYN_MODELS,
-    }
+    livedaw_dsp::wing::MODELS.table(t)
 }
 
 fn model(t: i32, m: i32) -> Option<&'static ModelSpec> {

@@ -1,6 +1,6 @@
 //! Console profiles: the console a configuration emulates and what that
 //! console is (its counts, its strips' chains and process orders, its fader
-//! and pan laws, its port groups). The
+//! and pan laws, its port groups, its processing models). The
 //! Universal core takes any configuration; a profile limits and dresses it
 //! (`docs/UNIVERSAL_MIXER.md`, Phase 3). The WING is the first; the Universal
 //! is no console's limits.
@@ -10,8 +10,9 @@ use crate::config::Counts;
 use crate::params::StripKind;
 use crate::ports::{PortGroup, WING_PORT_GROUPS};
 use livedaw_dsp::fader::FaderLaw;
+use livedaw_dsp::model::ModelTables;
 use livedaw_dsp::util::PanLaw;
-use livedaw_dsp::wing::PROCESS_ORDERS;
+use livedaw_dsp::wing::{MODELS as WING_MODELS, PROCESS_ORDERS};
 
 /// The console a configuration emulates (its profile: `docs/UNIVERSAL_MIXER.md`).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -105,6 +106,8 @@ pub struct ProfileSpec {
     /// Its sources and destinations as its routing pages group them: ranges
     /// of the engine's numbering (`ports.rs`).
     pub port_groups: &'static [PortGroup],
+    /// The models its blocks may hold (`livedaw_dsp::model`).
+    pub models: &'static ModelTables,
 }
 
 impl ProfileSpec {
@@ -145,6 +148,7 @@ static WING: ProfileSpec = ProfileSpec {
     fader: FaderLaw::WING,
     pan: PanLaw::WING,
     port_groups: WING_PORT_GROUPS,
+    models: &WING_MODELS,
 };
 
 /// No console's limits. Its strips are the WING's until the WING's blocks
@@ -160,6 +164,7 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
     fader: FaderLaw::WING,
     pan: PanLaw::WING,
     port_groups: WING_PORT_GROUPS,
+    models: &WING_MODELS,
 };
 
 #[cfg(test)]
@@ -201,6 +206,23 @@ mod tests {
             assert_eq!(s.pan.gains(true, -1.0), livedaw_dsp::util::wing_mono_pan(-1.0));
             assert_eq!(s.pan.gains(false, 0.5), livedaw_dsp::util::stereo_balance(0.5));
             assert_eq!(s.port_groups, WING_PORT_GROUPS);
+        }
+    }
+
+    #[test]
+    fn the_wings_models() {
+        use livedaw_dsp::wing::{AUX_DYN_MODELS, DYN_MODELS, EQ_MODELS_BUS, EQ_MODELS_CH, FILTER_TOOLS, FX_MODELS};
+        for p in Profile::ALL {
+            let m = p.spec().models;
+            assert_eq!(m.table(0), DYN_MODELS);
+            assert_eq!(m.table(1), EQ_MODELS_CH);
+            assert_eq!(m.table(2), EQ_MODELS_BUS);
+            assert_eq!(m.table(3), FILTER_TOOLS);
+            assert_eq!(m.table(4), FX_MODELS);
+            assert_eq!(m.table(9), DYN_MODELS, "out of range: dynamics");
+            assert_eq!(m.aux_dynamics, AUX_DYN_MODELS);
+            assert!(AUX_DYN_MODELS.iter().all(|t| m.aux_may_hold(t)));
+            assert!(!m.aux_may_hold("NO SUCH MODEL"));
         }
     }
 }

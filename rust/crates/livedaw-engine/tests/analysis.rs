@@ -1,7 +1,8 @@
 //! RTA, LR vector scope, LISTEN (band / key / xover solo) and TAP WIDTH /
 //! TAP EQ through the whole engine.
 
-use livedaw_dsp::wing::{model_index, EQ_MODELS_CH};
+use livedaw_dsp::model::model_index;
+use livedaw_dsp::wing::EQ_MODELS_CH;
 mod common;
 use common::{set_channels, unity_console};
 use livedaw_engine::analyser::{listen_mode, rta_band_hz, rta_view, RTA_BANDS};

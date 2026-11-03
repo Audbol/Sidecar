@@ -1239,7 +1239,7 @@ mod tests {
             ld_fx_set(e, 2, std::ptr::null());
             assert_eq!(ld_fx_latency(e, 2), 0);
             // A built-in device's own latency (ABI 23): the PRECISION LIMITER's 1 ms look-ahead.
-            let lim = livedaw_dsp::wing::model_index(livedaw_dsp::wing::FX_MODELS, "LIMITER").unwrap();
+            let lim = livedaw_dsp::model::model_index(livedaw_dsp::wing::FX_MODELS, "LIMITER").unwrap();
             assert!(ld_fx_set_model(e, 4, lim as i32, true));
             assert_eq!(ld_fx_latency(e, 4), (ld_engine_sample_rate(e) / 1000.0).ceil() as i32);
             // Its meters (ABI 23): 4 levels, then the readouts; idle before it runs.

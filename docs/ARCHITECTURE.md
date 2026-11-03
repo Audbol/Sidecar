@@ -291,6 +291,11 @@ of any size, of which the WING is one configuration.
   `ld_engine_port_groups` (`PortGroupC`, `MixerEngine::getPortGroups`). The app's
   routing pages still use their own table (`src/ui/RoutingGroups.h`); a test keeps
   the two equal until the UI asks the profile (step 7).
+- Processing models (Phase 3 step 4): a `ProfileSpec` names the models its blocks
+  may hold (`models: &ModelTables`, `livedaw-dsp/src/model.rs`: the dynamics, aux
+  dynamics, channel and bus EQ, filter tool and FX tables). The WING's and the
+  Universal's are `livedaw_dsp::wing::MODELS`; the host's model calls
+  (`ld_model_*`) number the tables by `ModelTables::table`.
 - Sends (`sends.rs`): a strip's sends to buses, mains and matrices are paged banks
   (`Bank<T>`) by the destination's index: `sends` (by bus slot, up to `MAX_BUSES`),
   `mains` and `matrices` (up to `MAX_MAINS` / `MAX_MATRICES`, 256). Pages are added
@@ -378,7 +383,10 @@ dynamics blocks) serve block editors. The C++ facades are `Strip::getChain`
 
 ## Processing models
 
-`rust/crates/livedaw-dsp/src/wing/models_gen.rs` holds the WING's model tables: the 32
+A model is described in console-neutral terms in `rust/crates/livedaw-dsp/src/model.rs`
+(`ModelSpec`, `ParamSpec`, `ParamKind`, `ModelCategory`, `Params`, `ModelTables`; value
+text keeps the WING's conventions for now). `livedaw_dsp::wing` re-exports them for its
+own code. `rust/crates/livedaw-dsp/src/wing/models_gen.rs` holds the WING's model tables: the 32
 dynamics models, the channel and bus EQ models, the filter tools, the 24 process
 orders and the tap points. `tools/wing/gen_models.py` generates the file from libwing's
 parameter map (`propmap.jsonl`, WING firmware 3.1) and the console's defaults in

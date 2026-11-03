@@ -1,6 +1,7 @@
 //! Engine behaviour tests: the WING signal flow end to end.
 
-use livedaw_dsp::wing::{model_index, DYN_MODELS, EQ_MODELS_CH, PROCESS_ORDERS};
+use livedaw_dsp::model::model_index;
+use livedaw_dsp::wing::{DYN_MODELS, EQ_MODELS_CH, PROCESS_ORDERS};
 mod common;
 use common::{set_channels, unity_console};
 use livedaw_engine::params::{StripKind, FX_EXT, FX_NONE, MAX_FX, WING_AUX, WING_BUSES, WING_FX, WING_MAINS, WING_MATRICES};

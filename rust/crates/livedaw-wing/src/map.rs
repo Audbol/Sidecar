@@ -17,9 +17,10 @@ use crate::schema::{schema, Def, ModelSource, NoModels, Node, NodeType};
 use crate::surface::{self, LayerF, Surface, SurfaceEdit, UserF};
 use crate::value::{self, Value, FADER_MAX, FADER_MIN};
 use livedaw_dsp::delay::delay_range;
+use livedaw_dsp::model::{model_index, ModelSpec, ParamKind};
 use livedaw_dsp::util::MINUS_INF_DB;
 use livedaw_dsp::wing::fx::allowed_in_slot;
-use livedaw_dsp::wing::{model_index, ModelSpec, ParamKind, DYN_MODELS, EQ_MODELS_BUS, EQ_MODELS_CH, FILTER_TOOLS, FX_MODELS};
+use livedaw_dsp::wing::{DYN_MODELS, EQ_MODELS_BUS, EQ_MODELS_CH, FILTER_TOOLS, FX_MODELS};
 use livedaw_engine::analyser::{listen_mode, rta_view};
 use livedaw_engine::atomic::AtomicF32;
 use livedaw_engine::keytap::KeySource;
@@ -1892,7 +1893,7 @@ fn parse_tags(s: &str) -> (u32, u32, String) {
 }
 
 /// A model parameter between our table (choices stored as indices) and the WING (items, values).
-fn param_to_wing(spec_param: &livedaw_dsp::wing::ParamSpec, wdef: &Def, v: f32) -> Value {
+fn param_to_wing(spec_param: &livedaw_dsp::model::ParamSpec, wdef: &Def, v: f32) -> Value {
     match spec_param.kind {
         ParamKind::Choice(items) => {
             let text = items.get(v.max(0.0) as usize).copied().unwrap_or("");
@@ -1923,7 +1924,7 @@ fn param_to_wing(spec_param: &livedaw_dsp::wing::ParamSpec, wdef: &Def, v: f32) 
     }
 }
 
-fn param_from_wing(spec_param: &livedaw_dsp::wing::ParamSpec, wdef: &Def, v: &Value) -> Option<f32> {
+fn param_from_wing(spec_param: &livedaw_dsp::model::ParamSpec, wdef: &Def, v: &Value) -> Option<f32> {
     let x = match spec_param.kind {
         ParamKind::Choice(items) => {
             let text = match v {

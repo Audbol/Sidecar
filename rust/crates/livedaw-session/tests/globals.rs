@@ -242,7 +242,8 @@ fn monitor_processing_source_solo_and_source_tags_survive_a_show() {
 
 #[test]
 fn a_show_with_more_fx_slots_brings_them_along() {
-    use livedaw_dsp::wing::{model_index, FX_MODELS};
+    use livedaw_dsp::model::model_index;
+    use livedaw_dsp::wing::FX_MODELS;
     use livedaw_engine::params::WING_FX;
     let deesser = model_index(FX_MODELS, "DE-S2").unwrap();
     let engine = Engine::new(0);
