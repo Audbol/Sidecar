@@ -439,7 +439,9 @@ fn an_x32_runs_its_own_chains_and_models() {
     assert!(!bus2.sends.get_or_create(0).unwrap().enabled.load(Relaxed));
     for b in rig.engine.strips(StripKind::Bus) {
         assert!(!b.main_send(0).unwrap().on.load(Relaxed), "bus {}", b.id() + 1);
-        assert_eq!(b.params.fader_db.load(), livedaw_dsp::fader::FADER_MIN);
+        // Buses 13-16 feed FX 1-4 at 0 dB; the others start down.
+        let up = b.id() >= 12;
+        assert_eq!(b.params.fader_db.load(), if up { 0.0 } else { livedaw_dsp::fader::FADER_MIN });
     }
     unity_console(&rig.engine);
     for ch in rig.engine.strips(StripKind::Channel) {
@@ -795,9 +797,13 @@ fn stress_structural_changes_while_audio_runs() {
         seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
         (seed >> 8) % n.max(1)
     };
-    let end = std::time::Instant::now() + std::time::Duration::from_millis(1500);
+    // 1.5 s of changes, longer if the audio hasn't run 100 blocks by then (a
+    // loaded machine, as when the checks run beside a build), up to 15 s.
+    let start = std::time::Instant::now();
     let mut ops = 0;
-    while std::time::Instant::now() < end {
+    while start.elapsed() < std::time::Duration::from_millis(1500)
+        || (blocks.load(Relaxed) <= 100 && start.elapsed() < std::time::Duration::from_secs(15))
+    {
         let e = &rig.engine;
         match rand(6) {
             0 => set_channels(e, rand(64) as usize),

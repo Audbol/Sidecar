@@ -311,8 +311,11 @@ fn node_text_and_sets_from_text() {
     assert_eq!(c.node("ch/01/mix/02"), "/ch/01/mix/02 ON   -oo\n");
     assert_eq!(c.node("ch/01/grp"), "/ch/01/grp %00000000 %000000\n");
     assert_eq!(c.node("ch/01/automix"), "/ch/01/automix OFF  +0.0\n");
-    c.set_text("/bus/01/dyn OFF COMP RMS LOG 0.0 3.0 1 0.00 10 10.0 151 POST 100 OFF");
-    assert_eq!(c.node("bus/01/dyn"), "/bus/01/dyn OFF COMP RMS LOG 0.0 3.0 1 0.00 10 10.0  151 POST 100 OFF\n");
+    // As the real X32 prints them: a bus lists its key source, a matrix doesn't.
+    c.set_text("/bus/01/dyn OFF COMP RMS LOG 0.0 3.0 1 0.00 10 10.0 151 POST 0 100 OFF");
+    assert_eq!(c.node("bus/01/dyn"), "/bus/01/dyn OFF COMP RMS LOG 0.0 3.0 1 0.00 10 10.0  151 POST 0 100 OFF\n");
+    c.set_text("/mtx/01/dyn OFF COMP RMS LOG 0.0 3.0 1 0.00 10 10.0 151 POST 100 OFF");
+    assert_eq!(c.node("mtx/01/dyn"), "/mtx/01/dyn OFF COMP RMS LOG 0.0 3.0 1 0.00 10 10.0  151 POST 100 OFF\n");
     c.set_text("/bus/01/mix/01 ON -oo +0 POST 0");
     assert_eq!(c.node("bus/01/mix/01"), "/bus/01/mix/01 ON   -oo +0 POST 0\n");
     c.set_text("/main/st/mix ON -oo +0");

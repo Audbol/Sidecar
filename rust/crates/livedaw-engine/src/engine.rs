@@ -675,6 +675,16 @@ impl Engine {
         self.output_patch.reset();
         let mut names = self.names.lock().unwrap_or_else(|e| e.into_inner());
         *names = GroupNames::default();
+        // A console's own factory DCAs (an X32's "DCA 1"... at 0 dB).
+        let spec = st.profile.spec();
+        if let Some(prefix) = spec.dca_names {
+            for (i, n) in names.dcas.iter_mut().enumerate().take(st.counts.dcas) {
+                *n = format!("{prefix} {}", i + 1);
+            }
+            for d in self.controls.dcas.iter().take(st.counts.dcas) {
+                d.fader_db.store(spec.dca_fader_db);
+            }
+        }
         self.update_monitor_dcas(&names);
     }
 

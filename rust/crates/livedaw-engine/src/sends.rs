@@ -120,6 +120,7 @@ impl BankItem for SendParams {
         let s = Self::with_mode(if fx_return { send_mode::POST } else { send_mode::PRE });
         s.enabled.store(true, Ordering::Relaxed);
         s.pan_link.store(false, Ordering::Relaxed); // the X32's pan follow starts off
+        s.pan.store(crate::profile::x32_pair_pan(kind, slot)); // a linked pair's sends too
         if !fx_return {
             s.tap.store(spec.send_tap, Ordering::Relaxed);
         }

@@ -454,13 +454,16 @@ Three layers:
         WING or the Universal.
       - 5c, compared with a real X32 (done): `tools/x32/compare.py` asks Sidecar
         (`cargo run -p livedaw-x32 --example serve`) and a console the same `/node`
-        questions, read-only. Against the owner's X32 Compact 885 of 943 groups match;
-        the comparison brought `/config/mono` and `/config/solo`, the channels' low cut
-        at 20 Hz and the buses', matrices' and mains' compressors on RMS
-        (`ProfileSpec::factory`), the aux in sends at EQ->, the FX returns' sends POST,
-        pan follow off, the buses' and mains' matrix sends on. The rest is that
-        console's own state (names, the CY bus colours, faders of buses 13-16 and the
-        DCAs, the pans of its linked pairs), which a factory reset would tell apart.
+        questions, read-only. Against the owner's freshly initialised X32 Compact all
+        943 groups now match. The comparison brought `/config/mono` and
+        `/config/solo`; the X32's factory strip (`ProfileSpec::factory`,
+        `factory_name`, `Palette::X32`'s factory colours, `dca_names`): channels' low
+        cut at 20 Hz; aux in 7-8 "USB L/R" (YE) and the FX returns (at 0 dB) linked
+        pairs panned apart, their sends too; buses 1-12 "MixBus n" (CY), 13-16 "Fx n"
+        (MG, at 0 dB: they feed FX 1-4); buses', matrices' and mains' compressors on
+        RMS; DCAs "DCA n" at 0 dB; the aux in sends at EQ->, the FX returns' POST, pan
+        follow off; the buses' and mains' matrix sends on. Its FX rack's factory
+        devices (FX 1-4 fed by buses 13-16, GEQs in 5-8) come with the X32's FX.
    6. **X32 MIDI** (`MidiProtocol::X32`): the fixed CC map (faders, mutes, pans on
       channels 1-3, scenes by program change) and OSC over SysEx.
    7. **Scenes and the interface**: `.scn` import and export; the Universal Mixer

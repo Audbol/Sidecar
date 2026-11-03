@@ -175,8 +175,10 @@ impl Palette {
         default: 8, // WH: a new DCA's
         factory: Some(|kind, slot| match kind {
             StripKind::Channel => 4,                                  // YE
+            StripKind::Aux if (6..8).contains(&slot) => 4,            // YE: the USB playback
             StripKind::Aux if slot < 8 => 3,                          // GN: aux in
-            StripKind::Aux | StripKind::Bus | StripKind::Matrix => 6, // MG: FX returns, buses, matrices
+            StripKind::Bus if slot < 12 => 7,                         // CY
+            StripKind::Aux | StripKind::Bus | StripKind::Matrix => 6, // MG: FX returns, FX sends, matrices
             StripKind::Main => 8,                                     // WH
         }),
     };
@@ -261,14 +263,54 @@ pub struct ProfileSpec {
     /// The rest of a new strip's factory settings (kind, slot), after the
     /// shared ones: an X32's low cut at 20 Hz, its buses' compressors on RMS.
     pub factory: Option<fn(&crate::params::StripParams, StripKind, usize)>,
+    /// A new strip's name (kind, slot): an X32's "MixBus 1", "USB L"...
+    pub factory_name: Option<fn(StripKind, usize) -> Option<String>>,
+    /// A new console's DCAs: their names ("DCA 1") and fader (dB), if not the
+    /// WING's (no name, faders down).
+    pub dca_names: Option<&'static str>,
+    pub dca_fader_db: f32,
 }
 
-/// An X32's factory strip (`ProfileSpec::factory`), as the owner's X32
-/// Compact shows it: channels' low cut at 20 Hz; buses', matrices' and mains'
-/// compressors detecting RMS.
-fn x32_factory(p: &crate::params::StripParams, kind: StripKind, _slot: usize) {
+/// The pan of a strip a new console links into a pair (odd left, even
+/// right): an X32's USB playback (aux in 7-8) and FX returns.
+pub fn x32_pair_pan(kind: StripKind, slot: usize) -> f32 {
+    let linked = kind == StripKind::Aux && (6..16).contains(&slot);
+    match (linked, slot % 2) {
+        (false, _) => 0.0,
+        (true, 0) => -100.0,
+        (true, _) => 100.0,
+    }
+}
+
+/// An X32's factory names: aux in 7-8 the USB playback, buses 1-12 "MixBus",
+/// 13-16 "Fx 1"-"Fx 4" (they feed FX 1-4).
+fn x32_name(kind: StripKind, slot: usize) -> Option<String> {
+    match (kind, slot) {
+        (StripKind::Aux, 6) => Some("USB L".into()),
+        (StripKind::Aux, 7) => Some("USB R".into()),
+        (StripKind::Bus, 0..=11) => Some(format!("MixBus {}", slot + 1)),
+        (StripKind::Bus, 12..=15) => Some(format!("Fx {}", slot - 11)),
+        _ => None,
+    }
+}
+
+/// An X32's factory strip (`ProfileSpec::factory`), as a freshly initialised
+/// X32 Compact has it (its colours: `Palette::X32`): channels' low cut at
+/// 20 Hz; the FX returns at 0 dB, they and the USB playback (aux in 7-8)
+/// linked pairs panned apart; buses 13-16 (the FX sends) at 0 dB; buses',
+/// matrices' and mains' compressors detecting RMS.
+fn x32_factory(p: &crate::params::StripParams, kind: StripKind, slot: usize) {
     if kind == StripKind::Channel {
         p.filter().low_cut_freq.store(20.0);
+    }
+    if kind == StripKind::Aux {
+        p.pan.store(x32_pair_pan(kind, slot));
+        if slot >= 8 {
+            p.fader_db.store(0.0);
+        }
+    }
+    if kind == StripKind::Bus && slot >= 12 {
+        p.fader_db.store(0.0);
     }
     if kind.is_output() {
         if let Some(det) = p.dynamics().param("det") {
@@ -374,6 +416,9 @@ static WING: ProfileSpec = ProfileSpec {
     send_tap: -1,
     tap_point: crate::params::DEFAULT_TAP,
     factory: None,
+    factory_name: None,
+    dca_names: None,
+    dca_fader_db: livedaw_dsp::fader::FADER_MIN,
 };
 
 /// No console's limits. Its strips have the WING's blocks (a profile's own set
@@ -402,6 +447,9 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
     send_tap: -1,
     tap_point: crate::params::DEFAULT_TAP,
     factory: None,
+    factory_name: None,
+    dca_names: None,
+    dca_fader_db: livedaw_dsp::fader::FADER_MIN,
 };
 
 /// The Behringer X32: its counts (`Counts::X32`), fader law, colours and
@@ -439,6 +487,9 @@ static X32: ProfileSpec = ProfileSpec {
     send_tap: 3, // EQ-> (GEDI: after the second slot)
     tap_point: crate::strip::tap::PFL as i32,
     factory: Some(x32_factory),
+    factory_name: Some(x32_name),
+    dca_names: Some("DCA"),
+    dca_fader_db: 0.0,
 };
 
 #[cfg(test)]
@@ -474,8 +525,9 @@ mod tests {
         assert_eq!(x.palette.colour(5), Some(("BL", 0x2850e8)), "config/color 4");
         let factory = x.palette.factory.unwrap();
         assert_eq!(x.palette.colour(factory(StripKind::Channel, 0)), Some(("YE", 0xe8d020)));
-        assert_eq!((factory(StripKind::Aux, 7), factory(StripKind::Aux, 8)), (3, 6), "aux in GN, FX returns MG");
-        assert_eq!((factory(StripKind::Bus, 0), factory(StripKind::Main, 1)), (6, 8));
+        assert_eq!((factory(StripKind::Aux, 5), factory(StripKind::Aux, 8)), (3, 6), "aux in GN, FX returns MG");
+        assert_eq!((factory(StripKind::Bus, 0), factory(StripKind::Bus, 12), factory(StripKind::Main, 1)), (7, 6, 8));
+        assert_eq!(factory(StripKind::Aux, 6), 4, "the USB playback YE");
         assert_eq!((x.remotes.midi, x.remotes.network_bits()), (None, 8), "its OSC, no MIDI yet");
     }
 

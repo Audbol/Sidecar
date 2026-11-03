@@ -429,7 +429,8 @@ fn strip(b: &mut Builder, p: &str, t: Target, kind: Kind) {
     // config: name, icon, colour (and the source of channels and aux in).
     let (icon, colour, source) = match (kind, t) {
         (Kind::Ch, Target::Ch(i)) => (1, 3, Some(i as i32 + 1)),
-        (Kind::AuxIn, Target::AuxIn(i)) => (55, 2, Some(33 + i as i32)),
+        // Aux in 7-8 are the USB playback (icon 60).
+        (Kind::AuxIn, Target::AuxIn(i)) => (if i >= 6 { 60 } else { 55 }, 2, Some(33 + i as i32)),
         (Kind::FxRtn, _) => (61, 5, None),
         (Kind::Bus, _) => (71, 5, None),
         (Kind::Mtx, _) => (72, 5, None),
@@ -1047,7 +1048,8 @@ mod tests {
         assert_eq!(names("/mtx/01/mix"), ["on", "fader"]);
         assert_eq!(names("/dca/1"), ["on", "fader"]);
         assert_eq!(names("/ch/01"), ["name", "icon", "color", "source"], "the first group");
-        assert_eq!(names("/bus/01/dyn").len(), 14, "no key source in a bus's line");
+        assert_eq!(names("/bus/01/dyn").len(), 15, "a bus lists its key source (the real X32 does)");
+        assert_eq!(names("/mtx/01/dyn").len(), 14, "a matrix doesn't");
         assert_eq!(names("/ch/01/dyn").len(), 15);
         assert!(t.find("/bus/01/dyn/keysrc").is_some());
         assert_eq!(names("/bus/01/eq/6"), ["type", "f", "g", "q"]);

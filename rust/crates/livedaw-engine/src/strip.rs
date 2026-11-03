@@ -397,7 +397,7 @@ impl Strip {
             sends: SendBank::of(spec, kind, usize::try_from(id).unwrap_or(0)),
             mains: Bank::new(MAX_MAINS, MAIN_SEND_PAGE, kind, usize::try_from(id).unwrap_or(0), spec),
             matrices: Bank::new(MAX_MATRICES, MAIN_SEND_PAGE, kind, usize::try_from(id).unwrap_or(0), spec),
-            name: Mutex::new(String::new()),
+            name: Mutex::new(spec.factory_name.and_then(|f| f(kind, usize::try_from(id).unwrap_or(0))).unwrap_or_default()),
             tags: Mutex::new(String::new()),
             console: StripConsole::default(),
             pdc: StripPdc::default(),
