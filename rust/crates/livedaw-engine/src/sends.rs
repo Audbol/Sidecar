@@ -1,8 +1,8 @@
 //! Per-strip send storage that grows in pages: sends to buses, mains and
 //! matrices, by the destination's index.
 
-use crate::profile::{Profile, ProfileSpec};
 use crate::atomic::AtomicF32;
+use crate::profile::{Profile, ProfileSpec};
 use crate::StripKind;
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicPtr, Ordering};

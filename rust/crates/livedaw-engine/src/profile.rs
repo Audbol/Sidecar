@@ -105,6 +105,8 @@ pub enum NetworkProtocol {
     WingOsc,
     /// The WING's native binary protocol (TCP 2222).
     WingNative,
+    /// The X32's OSC (UDP 10023, `livedaw-x32`).
+    X32Osc,
 }
 
 impl NetworkProtocol {
@@ -115,6 +117,7 @@ impl NetworkProtocol {
             Self::WingDiscovery => 1,
             Self::WingOsc => 2,
             Self::WingNative => 4,
+            Self::X32Osc => 8,
         }
     }
 }
@@ -375,7 +378,7 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
 /// `X32_OUTPUT`: one insert, the compressor and insert PRE or POST by the
 /// process order, everything before the fader; the low cut is the filter
 /// block's). Its pan law is the WING's, its routing pages list the WING's port
-/// groups, and it speaks no remote protocol yet (OSC and MIDI: steps 5 and 6).
+/// groups, and it speaks its OSC (`livedaw-x32`; its MIDI comes with step 6).
 static X32: ProfileSpec = ProfileSpec {
     profile: Profile::X32,
     name: "X32",
@@ -388,7 +391,7 @@ static X32: ProfileSpec = ProfileSpec {
     pan: PanLaw::WING,
     port_groups: WING_PORT_GROUPS,
     models: &livedaw_dsp::x32::MODELS,
-    remotes: Remotes { midi: None, network: &[] },
+    remotes: Remotes { midi: None, network: &[NetworkProtocol::X32Osc] },
     palette: Palette::X32,
     labels: WING_LABELS,
     slots: &[
@@ -436,7 +439,7 @@ mod tests {
         assert_eq!(x.palette.colour(factory(StripKind::Channel, 0)), Some(("YE", 0xe8d020)));
         assert_eq!((factory(StripKind::Aux, 7), factory(StripKind::Aux, 8)), (3, 6), "aux in GN, FX returns MG");
         assert_eq!((factory(StripKind::Bus, 0), factory(StripKind::Main, 1)), (6, 8));
-        assert_eq!((x.remotes.midi, x.remotes.network_bits()), (None, 0), "no protocol yet");
+        assert_eq!((x.remotes.midi, x.remotes.network_bits()), (None, 8), "its OSC, no MIDI yet");
     }
 
     #[test]

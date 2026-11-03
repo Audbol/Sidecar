@@ -427,6 +427,16 @@ Three layers:
    5. **X32 OSC** (`livedaw-x32`, UDP 10023): `/info`, `/xinfo`, `/status`,
       `/xremote`, get / set with the console's value steps, `/node` and `/`, the
       meters; tests replay the documented traffic (X32-Edit itself isn't run).
+      - 5a (done, the server only): `livedaw_x32::X32Server` answers `/info`,
+        `/xinfo` and `/status`; gets and sets of the channels, aux in, FX returns,
+        buses, matrices, mains and DCAs (config, mix and sends, groups, the channel's
+        preamp, delay, gate, dynamics, EQ and insert), floats on the console's steps,
+        enums by name or number; `/node` and `/` in real units; `/xremote` (4
+        clients, 10 s); `/meters` 0, 1, 2, 6 and 13. Gate, dynamics and EQ are the
+        X32 models; what the engine has no place for yet (icons, sources, key
+        sources and filters, send tap types, dynamics and insert positions, links,
+        automix) the server keeps and answers back. The profile names it
+        (`NetworkProtocol::X32Osc`, bit 8); the app starts it later.
    6. **X32 MIDI** (`MidiProtocol::X32`): the fixed CC map (faders, mutes, pans on
       channels 1-3, scenes by program change) and OSC over SysEx.
    7. **Scenes and the interface**: `.scn` import and export; the Universal Mixer

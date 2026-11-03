@@ -6,11 +6,11 @@
 //! the parts the console gives it. All structs are `#[repr(C)]` and mirrored
 //! by `livedaw_engine.h`.
 
-use crate::profile::{Profile, ProfileSpec};
 use crate::atomic::AtomicF32;
 use crate::blocks::{Block, BlockParams};
 use crate::groups::{AtomicGroupSet, MAX_GROUPS};
 use crate::monitor::MonitorControls;
+use crate::profile::{Profile, ProfileSpec};
 use crate::sends::BankItem;
 use crate::solo::solo_mode;
 use crate::talk::TalkParams;

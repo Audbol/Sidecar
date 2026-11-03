@@ -141,13 +141,13 @@ private:
         }
         expect (MidiProtocol::create (MidiProtocol::None, engine, show, false) == nullptr, "no MIDI remote");
 
-        beginTest ("An X32 (Phase 4 step 1): its counts, colours and fader steps; no remote protocol yet");
+        beginTest ("An X32 (Phase 4 step 1): its counts, colours and fader steps; its OSC");
         engine.configureProfile (ld::kProfileX32);
         expect (engine.getProfile() == ld::kProfileX32);
         expectEquals ((int) engine.getChannels().size(), 32);
         expectEquals ((int) engine.getMatrices().size(), 6);
         const auto x32 = engine.getRemotes();
-        expect (x32.midi == MidiProtocol::None && x32.network == 0u);
+        expect (x32.midi == MidiProtocol::None && x32.network == 8u, "its OSC (livedaw-x32), no MIDI yet");
         expectEquals (engine.getFaderLaw().steps, 1024);
         expectEquals (engine.getBuses()[0]->getColourIndex(), 6, "a new bus is MG, as on an X32");
         expectEquals (engine.getChannels()[0]->getColourIndex(), 4, "a new channel YE");
