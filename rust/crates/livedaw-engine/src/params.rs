@@ -7,6 +7,7 @@
 //! by `livedaw_engine.h`.
 
 use crate::atomic::AtomicF32;
+use crate::blocks::{Block, BlockParams};
 use crate::groups::{AtomicGroupSet, MAX_GROUPS};
 use crate::monitor::MonitorControls;
 use crate::sends::BankItem;
@@ -20,6 +21,7 @@ use livedaw_dsp::wing::{
 };
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering::Relaxed};
+use std::sync::Arc;
 
 /// The WING's 4 mains, 8 matrices and 8 aux channels. A console has any
 /// number (its configuration, `config.rs`), up to `MAX_MAINS` and
@@ -536,19 +538,89 @@ impl BankItem for MatrixSendParams {
 /// Monitor bus a solo goes to (SOLO MODE LIVE): A = PHONES, B = SPEAKERS, both.
 pub const MONITOR_BUSES: [&str; 3] = ["A", "B", "A+B"];
 
+/// A strip's own blocks (the WING's FILTER, GATE, EQ, DYNAMICS, INS 1 and
+/// INS 2): chain blocks like the extra ones (`blocks.rs`), parameters, meters
+/// and DSP state together, run by the nodes of the strip's template
+/// (`Node::Filter`...; the slots' meters stay in `StripMeters`). The C ABI
+/// reads their parameters through the pointers (`StripParams` in
+/// `livedaw_engine.h`); `blocks` keeps what they point into.
+#[repr(C)]
+pub struct OwnBlocks {
+    filter: *const FilterParams,
+    gate: *const DynSlotParams,
+    eq: *const EqBlockParams,
+    dynamics: *const DynSlotParams,
+    pre_insert: *const InsertParams,
+    post_insert: *const InsertParams,
+    blocks: [Arc<Block>; 6],
+}
+
+// The C side mirrors `blocks` as six pointers.
+const _: () = assert!(std::mem::size_of::<Arc<Block>>() == std::mem::size_of::<*const Block>());
+
+// SAFETY: the pointers point into the blocks `OwnBlocks` keeps (`Block` is
+// Send and Sync), never written after `new`.
+unsafe impl Send for OwnBlocks {}
+unsafe impl Sync for OwnBlocks {}
+
+impl OwnBlocks {
+    pub const FILTER: usize = 0;
+    pub const GATE: usize = 1;
+    pub const EQ: usize = 2;
+    pub const DYNAMICS: usize = 3;
+    pub const PRE_INSERT: usize = 4;
+    pub const POST_INSERT: usize = 5;
+
+    fn new(gate: DynSlotParams, eq: EqBlockParams, dynamics: DynSlotParams) -> Self {
+        let blocks = [
+            BlockParams::Filter(FilterParams::default()),
+            BlockParams::Dynamics(gate),
+            BlockParams::Eq(eq),
+            BlockParams::Dynamics(dynamics),
+            BlockParams::Insert(InsertParams::default()),
+            BlockParams::Insert(InsertParams::default()),
+        ]
+        .map(|p| Arc::new(Block::own(p)));
+        let dyn_slot = |b: &Block| match &b.params {
+            BlockParams::Dynamics(p) => p as *const DynSlotParams,
+            _ => unreachable!(),
+        };
+        let insert = |b: &Block| match &b.params {
+            BlockParams::Insert(p) => p as *const InsertParams,
+            _ => unreachable!(),
+        };
+        Self {
+            filter: match &blocks[Self::FILTER].params {
+                BlockParams::Filter(p) => p,
+                _ => unreachable!(),
+            },
+            gate: dyn_slot(&blocks[Self::GATE]),
+            eq: match &blocks[Self::EQ].params {
+                BlockParams::Eq(p) => p,
+                _ => unreachable!(),
+            },
+            dynamics: dyn_slot(&blocks[Self::DYNAMICS]),
+            pre_insert: insert(&blocks[Self::PRE_INSERT]),
+            post_insert: insert(&blocks[Self::POST_INSERT]),
+            blocks,
+        }
+    }
+}
+
+impl std::fmt::Debug for OwnBlocks {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list().entries(self.blocks.iter().map(|b| &b.params)).finish()
+    }
+}
+
 /// Everything the UI can change on a strip. Bus sends live in its `SendBank`.
 #[repr(C)]
 #[derive(Debug)]
 pub struct StripParams {
     pub input: InputParams,
-    // The WING's own blocks (Phase 3 step 5): reached through their accessors
-    // (`filter()`...), so they can leave the strip for its chain.
-    filter: FilterParams,
-    gate: DynSlotParams,
-    eq: EqBlockParams,
-    dynamics: DynSlotParams,
-    pre_insert: InsertParams,
-    post_insert: InsertParams,
+    /// The strip's own blocks, chain blocks run by its template's nodes
+    /// (Phase 3 step 5), reached through `filter()`, `gate()`...
+    blocks: OwnBlocks,
     /// Index into `PROCESS_ORDERS` (input channels; aux, buses, mains and
     /// matrices have a fixed order).
     pub process_order: AtomicI32,
@@ -760,12 +832,29 @@ mod colour_tests {
     }
 
     #[test]
+    fn the_own_blocks_are_chain_blocks() {
+        // The accessors read the blocks' own parameters, of the kind each names.
+        let p = StripParams::new(StripKind::Channel);
+        let at = |k: usize| &p.own_block(k).params;
+        assert!(matches!(at(OwnBlocks::FILTER), BlockParams::Filter(f) if std::ptr::eq(f, p.filter())));
+        assert!(matches!(at(OwnBlocks::GATE), BlockParams::Dynamics(d) if std::ptr::eq(d, p.gate())));
+        assert!(matches!(at(OwnBlocks::EQ), BlockParams::Eq(e) if std::ptr::eq(e, p.eq())));
+        assert!(matches!(at(OwnBlocks::DYNAMICS), BlockParams::Dynamics(d) if std::ptr::eq(d, p.dynamics())));
+        assert!(matches!(at(OwnBlocks::PRE_INSERT), BlockParams::Insert(i) if std::ptr::eq(i, p.pre_insert())));
+        assert!(matches!(at(OwnBlocks::POST_INSERT), BlockParams::Insert(i) if std::ptr::eq(i, p.post_insert())));
+        assert!(p.own_blocks().all(|b| b.uid() == 0));
+        // Moving the strip's parameters leaves the pointers good.
+        let moved = Box::new(p);
+        assert!(matches!(&moved.own_block(OwnBlocks::EQ).params, BlockParams::Eq(e) if std::ptr::eq(e, moved.eq())));
+    }
+
+    #[test]
     fn new_strips_start_as_the_wings_factory_init() {
         // A channel: fader down, EQ off, customization linked to its source,
         // Dark Blue, the delay in METERS at its 0.1 m minimum.
         let ch = StripParams::new(StripKind::Channel);
         assert_eq!(ch.fader_db.load(), livedaw_dsp::fader::FADER_MIN);
-        assert!(!ch.eq.on.load(Relaxed));
+        assert!(!ch.eq().on.load(Relaxed));
         assert!(ch.cust_link.load(Relaxed));
         assert_eq!(ch.colour.load(Relaxed), DEFAULT_COLOUR);
         assert_eq!(ch.icon.load(Relaxed), 0);
@@ -776,7 +865,7 @@ mod colour_tests {
         for kind in [StripKind::Aux, StripKind::Bus, StripKind::Main, StripKind::Matrix] {
             let p = StripParams::new(kind);
             assert_eq!(p.fader_db.load(), livedaw_dsp::fader::FADER_MIN, "{kind:?}");
-            assert!(!p.eq.on.load(Relaxed), "{kind:?}");
+            assert!(!p.eq().on.load(Relaxed), "{kind:?}");
             assert_eq!(p.cust_link.load(Relaxed), kind == StripKind::Aux, "{kind:?}");
         }
         // Buses 9-16 at 0 dB into Main 1, coloured by pairs of four.
@@ -825,14 +914,14 @@ mod factory_tests {
     fn dynamics_slots_start_as_a_factory_set_console() {
         // Channels: COMP in the dynamics slot; aux: the WING GATE at -36 dB.
         let ch = StripParams::new(StripKind::Channel);
-        assert_eq!(DYN_MODELS[ch.dynamics.model_index()].token, "COMP");
+        assert_eq!(DYN_MODELS[ch.dynamics().model_index()].token, "COMP");
         let aux = StripParams::new(StripKind::Aux);
-        assert_eq!(DYN_MODELS[aux.dynamics.model_index()].token, "GATE");
-        assert_eq!(aux.dynamics.param("thr").unwrap().load(), AUX_GATE_THRESHOLD_DB);
+        assert_eq!(DYN_MODELS[aux.dynamics().model_index()].token, "GATE");
+        assert_eq!(aux.dynamics().param("thr").unwrap().load(), AUX_GATE_THRESHOLD_DB);
         // Key filters 1k0 Hz / Q 2.00, the crossover 1k0 Hz / Q 0.40 / DEPTH 6 dB.
-        let s = &ch.gate;
+        let s = ch.gate();
         assert_eq!((s.sc_freq.load(), s.sc_q.load()), (1002.374, 1.995882));
-        let s = &ch.dynamics;
+        let s = ch.dynamics();
         assert_eq!((s.xo_freq.load(), s.xo_q.load(), s.xo_depth.load()), (1002.374, 0.4, 6.0));
         assert_eq!(ch.tap_eq.bands[2].q.load(), 0.9979702);
     }
@@ -858,56 +947,73 @@ impl StripParams {
     /// The strip's own filter block (input channels).
     #[inline]
     pub fn filter(&self) -> &FilterParams {
-        &self.filter
+        // SAFETY: `OwnBlocks` points into the blocks it keeps.
+        unsafe { &*self.blocks.filter }
     }
 
     /// The GATE slot (input channels).
     #[inline]
     pub fn gate(&self) -> &DynSlotParams {
-        &self.gate
+        // SAFETY: as `filter`.
+        unsafe { &*self.blocks.gate }
     }
 
     /// The strip's own EQ.
     #[inline]
     pub fn eq(&self) -> &EqBlockParams {
-        &self.eq
+        // SAFETY: as `filter`.
+        unsafe { &*self.blocks.eq }
     }
 
     /// The DYNAMICS slot.
     #[inline]
     pub fn dynamics(&self) -> &DynSlotParams {
-        &self.dynamics
+        // SAFETY: as `filter`.
+        unsafe { &*self.blocks.dynamics }
     }
 
     /// INSERT 1 (before the fader) and INSERT 2 (after it).
     #[inline]
     pub fn pre_insert(&self) -> &InsertParams {
-        &self.pre_insert
+        // SAFETY: as `filter`.
+        unsafe { &*self.blocks.pre_insert }
     }
 
     #[inline]
     pub fn post_insert(&self) -> &InsertParams {
-        &self.post_insert
+        // SAFETY: as `filter`.
+        unsafe { &*self.blocks.post_insert }
     }
 
-    /// Where the blocks sit in the struct, for the C ABI's layout check
-    /// (`ld_layout_info`: the C++ side reads them in place until they move).
-    pub const OFFSET_FILTER: usize = std::mem::offset_of!(StripParams, filter);
-    pub const OFFSET_GATE: usize = std::mem::offset_of!(StripParams, gate);
-    pub const OFFSET_EQ: usize = std::mem::offset_of!(StripParams, eq);
-    pub const OFFSET_DYNAMICS: usize = std::mem::offset_of!(StripParams, dynamics);
-    pub const OFFSET_POST_INSERT: usize = std::mem::offset_of!(StripParams, post_insert);
+    /// Own block `k` ([`OwnBlocks::FILTER`]...), with its DSP state.
+    #[inline]
+    pub fn own_block(&self, k: usize) -> &Block {
+        &self.blocks.blocks[k]
+    }
+
+    /// The own blocks, in [`OwnBlocks`] order.
+    pub fn own_blocks(&self) -> impl Iterator<Item = &Block> {
+        self.blocks.blocks.iter().map(|b| &**b)
+    }
+
+    /// Where the pointers to the blocks sit in the struct, for the C ABI's
+    /// layout check (`ld_layout_info`).
+    pub const OFFSET_FILTER: usize = std::mem::offset_of!(StripParams, blocks) + std::mem::offset_of!(OwnBlocks, filter);
+    pub const OFFSET_GATE: usize = std::mem::offset_of!(StripParams, blocks) + std::mem::offset_of!(OwnBlocks, gate);
+    pub const OFFSET_EQ: usize = std::mem::offset_of!(StripParams, blocks) + std::mem::offset_of!(OwnBlocks, eq);
+    pub const OFFSET_DYNAMICS: usize = std::mem::offset_of!(StripParams, blocks) + std::mem::offset_of!(OwnBlocks, dynamics);
+    pub const OFFSET_POST_INSERT: usize =
+        std::mem::offset_of!(StripParams, blocks) + std::mem::offset_of!(OwnBlocks, post_insert);
 
     pub fn new(kind: StripKind) -> Self {
         let output = kind.is_output();
         let p = Self {
             input: InputParams::default(),
-            filter: FilterParams::default(),
-            gate: DynSlotParams::new("GATE"),
-            eq: EqBlockParams::new(output),
-            dynamics: DynSlotParams::new(if kind == StripKind::Aux { "GATE" } else { "COMP" }),
-            pre_insert: InsertParams::default(),
-            post_insert: InsertParams::default(),
+            blocks: OwnBlocks::new(
+                DynSlotParams::new("GATE"),
+                EqBlockParams::new(output),
+                DynSlotParams::new(if kind == StripKind::Aux { "GATE" } else { "COMP" }),
+            ),
             process_order: AtomicI32::new(0),
             tap: AtomicI32::new(DEFAULT_TAP),
             fader_db: AtomicF32::new(0.0),
@@ -943,9 +1049,9 @@ impl StripParams {
         };
         // The WING's factory strips: the fader down, the EQ off.
         p.fader_db.store(livedaw_dsp::fader::FADER_MIN);
-        p.eq.on.store(false, Relaxed);
+        p.eq().on.store(false, Relaxed);
         if kind == StripKind::Aux {
-            if let Some(thr) = p.dynamics.param("thr") {
+            if let Some(thr) = p.dynamics().param("thr") {
                 thr.store(AUX_GATE_THRESHOLD_DB);
             }
         }

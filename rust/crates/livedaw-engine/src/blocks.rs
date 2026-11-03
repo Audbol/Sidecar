@@ -190,7 +190,14 @@ impl Block {
         Self { uid, params: BlockParams::new(kind, bus), meters: BlockMeters::default(), dsp: UnsafeCell::new(dsp) }
     }
 
-    /// The block's id, unique on its strip (kept in shows).
+    /// One of the strip's own blocks (`params::OwnBlocks`, id 0), prepared
+    /// with the strip (`Strip::prepare`).
+    pub(crate) fn own(params: BlockParams) -> Self {
+        Self { uid: 0, dsp: UnsafeCell::new(BlockDsp::new(params.kind())), params, meters: BlockMeters::default() }
+    }
+
+    /// The block's id, unique on its strip (kept in shows; 0 for the strip's
+    /// own blocks).
     pub fn uid(&self) -> u32 {
         self.uid
     }

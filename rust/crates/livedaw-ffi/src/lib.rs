@@ -83,7 +83,9 @@ use std::sync::Arc;
 // ABI 30 (Phase 3 step 1): the console's profile (ld_engine_profile).
 // ABI 31 (Phase 3 step 3): the profile's fader law (ld_engine_fader_law, LdFaderLaw)
 // and port groups (ld_engine_port_groups, LdPortGroup).
-pub const LD_ABI_VERSION: i32 = 31;
+// ABI 32 (Phase 3 step 5): the strip's own blocks are chain blocks; StripParams
+// points to their parameters (OwnBlocks).
+pub const LD_ABI_VERSION: i32 = 32;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(default)

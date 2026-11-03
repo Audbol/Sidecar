@@ -29,7 +29,7 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 31;
+constexpr int kAbiVersion = 32;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -428,26 +428,28 @@ struct TapEqParams
 struct StripParams
 {
     InputParams input;
-    // The WING's own blocks (Phase 3 step 5): reached through filter(), gate(),
-    // eq(), dynamics(), preInsert() and postInsert(), so they can leave the strip.
-    FilterParams filter_;
-    DynSlotParams gate_;
-    EqBlockParams eq_;
-    DynSlotParams dynamics_;
-    InsertParams preInsert_, postInsert_; // aux channels have no post insert (INS 2)
+    // ABI 32: the strip's own blocks are chain blocks (Phase 3 step 5), owned by
+    // the engine; reached through filter(), gate(), eq(), dynamics(), preInsert()
+    // and postInsert(). Aux channels have no post insert (INS 2).
+    FilterParams* filter_;
+    DynSlotParams* gate_;
+    EqBlockParams* eq_;
+    DynSlotParams* dynamics_;
+    InsertParams *preInsert_, *postInsert_;
+    const void* ownBlocks_[6]; // the engine's: what the pointers point into
 
-    FilterParams& filter() { return filter_; }
-    const FilterParams& filter() const { return filter_; }
-    DynSlotParams& gate() { return gate_; }
-    const DynSlotParams& gate() const { return gate_; }
-    EqBlockParams& eq() { return eq_; }
-    const EqBlockParams& eq() const { return eq_; }
-    DynSlotParams& dynamics() { return dynamics_; }
-    const DynSlotParams& dynamics() const { return dynamics_; }
-    InsertParams& preInsert() { return preInsert_; }
-    const InsertParams& preInsert() const { return preInsert_; }
-    InsertParams& postInsert() { return postInsert_; }
-    const InsertParams& postInsert() const { return postInsert_; }
+    FilterParams& filter() { return *filter_; }
+    const FilterParams& filter() const { return *filter_; }
+    DynSlotParams& gate() { return *gate_; }
+    const DynSlotParams& gate() const { return *gate_; }
+    EqBlockParams& eq() { return *eq_; }
+    const EqBlockParams& eq() const { return *eq_; }
+    DynSlotParams& dynamics() { return *dynamics_; }
+    const DynSlotParams& dynamics() const { return *dynamics_; }
+    InsertParams& preInsert() { return *preInsert_; }
+    const InsertParams& preInsert() const { return *preInsert_; }
+    InsertParams& postInsert() { return *postInsert_; }
+    const InsertParams& postInsert() const { return *postInsert_; }
 
     std::atomic<int32_t> processOrder; // list 0 (input channels only)
     std::atomic<int32_t> tap;          // list 1 (input channels only)

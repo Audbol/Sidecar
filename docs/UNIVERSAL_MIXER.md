@@ -310,8 +310,13 @@ Three layers:
         on the C++ `StripParams` (`filter()`, ..., `preInsert()`, `postInsert()`; the
         members are `filter_`...). No caller names where the blocks are stored;
         the layout and the sound are unchanged.
-      - 5b, next: the blocks' storage moves to the strip's chain, the accessors
-        reading it there.
+      - 5b, the storage (done): the six are chain blocks (`Block`, as the extra
+        ones: parameters and DSP state together), kept by `OwnBlocks` and run by the
+        template's nodes; `StripParams` points to their parameters (C ABI 32), so
+        the C++ accessors read them there. Renders of every block, model and process
+        order are byte-identical before and after. Still the WING's: which blocks a
+        strip has, and the slots' meters in `StripMeters`; a profile's own set of
+        blocks comes with Phase 4's consoles.
    6. **Remotes per profile**: the MIDI remote splits into a port layer (devices,
       hot-plug, the queue, SysEx framing) and a protocol per profile (the WING's CC map
       and SysEx id; next the X32's and the Yamaha consoles'); the profile owns its

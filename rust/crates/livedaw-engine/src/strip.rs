@@ -27,7 +27,7 @@ use crate::garbage::Garbage;
 use crate::groups::GroupSet;
 use crate::keytap::{key_tap, stage_of, KeySource, StripKeyTaps};
 use crate::monitor::SoloPatch;
-use crate::params::{DcaParams, DynSlotParams, FxParams, InsertParams, StripKind, StripMeters, StripParams};
+use crate::params::{DcaParams, DynSlotParams, FxParams, InsertParams, OwnBlocks, StripKind, StripMeters, StripParams};
 use crate::params::{MainSendParams, MatrixSendParams, MAIN_SEND_PAGE, MAX_MAINS, MAX_MATRICES};
 use crate::pdc::{pdc_tap, StripPdc};
 use crate::profile::{Profile, ProfileSpec};
@@ -40,10 +40,8 @@ use crate::tapsend::TapShaper;
 use livedaw_dsp::biquad::{Biquad, BiquadCoeffs};
 use livedaw_dsp::delay::{delay_samples, DelayLine};
 use livedaw_dsp::util::*;
-use livedaw_dsp::wing::dynamics::{DynStatus, WingDynamics, DYN_BANDS};
-use livedaw_dsp::wing::eq::WingEq;
-use livedaw_dsp::wing::filter::WingFilter;
-use livedaw_dsp::wing::{EQ_MODELS_BUS, EQ_MODELS_CH, MAX_DYN_PARAMS, MAX_EQ_PARAMS};
+use livedaw_dsp::wing::dynamics::{DynStatus, DYN_BANDS};
+use livedaw_dsp::wing::{EQ_MODELS_BUS, EQ_MODELS_CH};
 use livedaw_recorder::{playback_channel, usb_player_channel};
 use std::cell::UnsafeCell;
 use std::sync::atomic::{
@@ -166,13 +164,6 @@ pub(crate) struct StripDsp {
     out: [Vec<f32>; 2],
     key: Vec<f32>,
     delay: DelayLine,
-    filter: WingFilter,
-    gate: WingDynamics,
-    eq: WingEq,
-    dynamics: WingDynamics,
-    gate_values: [f32; MAX_DYN_PARAMS],
-    dyn_values: [f32; MAX_DYN_PARAMS],
-    eq_values: [f32; MAX_EQ_PARAMS],
     last_in: [f32; 2],
     last_gain: f32,
     /// 2x2 output matrix (ll, rl, lr, rr): out_l = ll*L + rl*R, out_r = lr*L + rr*R.
@@ -216,13 +207,6 @@ impl StripDsp {
             out: [Vec::new(), Vec::new()],
             key: Vec::new(),
             delay: DelayLine::default(),
-            filter: WingFilter::default(),
-            gate: WingDynamics::default(),
-            eq: WingEq::default(),
-            dynamics: WingDynamics::default(),
-            gate_values: [0.0; MAX_DYN_PARAMS],
-            dyn_values: [0.0; MAX_DYN_PARAMS],
-            eq_values: [0.0; MAX_EQ_PARAMS],
             last_in: [1.0; 2],
             last_gain: 1.0,
             out_matrix: [0.0; 4],
@@ -245,10 +229,6 @@ impl StripDsp {
     }
 
     fn reset_dsp(&mut self) {
-        self.filter.reset();
-        self.gate.reset();
-        self.eq.reset();
-        self.dynamics.reset();
         self.delay.reset();
         self.listen_filter.reset();
         self.tap_shaper.reset();
@@ -736,10 +716,9 @@ impl Strip {
         d.listen_scratch.clear();
         d.listen_scratch.resize(mb, 0.0);
         d.idle = false;
-        d.filter.prepare(sample_rate);
-        d.gate.prepare(sample_rate);
-        d.eq.prepare(sample_rate);
-        d.dynamics.prepare(sample_rate);
+        for b in self.params.own_blocks() {
+            b.dsp_mut().prepare(sample_rate);
+        }
         d.delay.prepare(sample_rate);
         d.listen_filter.reset();
         d.listen_state = None;
@@ -1140,11 +1119,15 @@ impl Strip {
         b.meters.out_peak.fetch_max(peak);
     }
 
-    /// Resets the extra blocks' DSP state (coming back from idle, after a fault).
+    /// Resets the blocks' DSP state, the strip's own and the extra ones
+    /// (coming back from idle, after a fault).
     ///
     /// # Safety
     /// The task running the strip only.
     unsafe fn reset_blocks(&self) {
+        for b in self.params.own_blocks() {
+            b.dsp_mut().reset();
+        }
         if let Some(layout) = self.layout() {
             for b in layout.blocks() {
                 b.dsp_mut().reset();
@@ -1190,7 +1173,9 @@ impl Strip {
                 if settings.is_active() {
                     let [w0, w1] = &mut d.work;
                     let mut chans: [&mut [f32]; 2] = [&mut w0[..n], &mut w1[..n]];
-                    d.filter.process(&mut chans[..nc], &settings);
+                    if let BlockDsp::Filter(f) = self.params.own_block(OwnBlocks::FILTER).dsp_mut() {
+                        f.process(&mut chans[..nc], &settings);
+                    }
                 }
             }
             Node::Gate => {
@@ -1281,10 +1266,12 @@ impl Strip {
         Self::probe_rta(d, ctx, probe, rta_tap::PRE_EQ, n);
         if let Some((listen_mode::BAND, band)) = probe.listen {
             let eq = self.params.eq();
-            eq.values_snapshot(&mut d.eq_values);
+            // SAFETY: the task running the strip.
+            let BlockDsp::Eq(_, values) = (unsafe { self.params.own_block(OwnBlocks::EQ).dsp_mut() }) else { return };
+            eq.values_snapshot(values);
             let table = if self.kind.is_output() { EQ_MODELS_BUS } else { EQ_MODELS_CH };
             let model = (eq.model.load(Relaxed).max(0) as usize).min(table.len() - 1);
-            let coeffs = crate::listen::band_solo_coeffs(&table[model], &d.eq_values, band.max(0) as usize, d.sample_rate);
+            let coeffs = crate::listen::band_solo_coeffs(&table[model], values, band.max(0) as usize, d.sample_rate);
             if let Some(c) = coeffs {
                 *listened = Self::listen_filtered(d, c, None, n);
             }
@@ -1396,7 +1383,12 @@ impl Strip {
             (&m.dyn_reduction_db, &m.dyn_active, &m.dyn_key_db, &m.dyn_out_peak)
         };
         let on = slot.on.load(Relaxed);
-        let running = if gate { d.gate.is_running(on) } else { d.dynamics.is_running(on) };
+        let BlockDsp::Dynamics(proc, values) =
+            self.params.own_block(if gate { OwnBlocks::GATE } else { OwnBlocks::DYNAMICS }).dsp_mut()
+        else {
+            return;
+        };
+        let running = proc.is_running(on);
         if !running {
             reduction.store(0.0);
             self.band_meters.store(gate, [0.0; DYN_BANDS]);
@@ -1404,22 +1396,17 @@ impl Strip {
             key_db.store(-120.0);
             return;
         }
-        if gate {
-            slot.values_snapshot(&mut d.gate_values);
-        } else {
-            slot.values_snapshot(&mut d.dyn_values);
-        }
+        slot.values_snapshot(values);
         let external = self.key_for(d, ctx, slot, n);
         let nc = d.num_channels;
         let [w0, w1] = &mut d.work;
         let mut chans: [&mut [f32]; 2] = [&mut w0[..n], &mut w1[..n]];
         let key = if external { Some(&d.key[..n]) } else { None };
-        let (proc, values) = if gate { (&mut d.gate, &d.gate_values) } else { (&mut d.dynamics, &d.dyn_values) };
         let status: DynStatus = proc.process_slot(
             &mut chans[..nc],
             key,
             slot.model_index(),
-            values,
+            &values[..],
             &slot.sidechain(),
             &slot.xover(),
             slot.mix.load() / 100.0,
@@ -1435,13 +1422,15 @@ impl Strip {
 
     fn run_eq(&self, d: &mut StripDsp, n: usize) {
         let eq = self.params.eq();
-        eq.values_snapshot(&mut d.eq_values);
+        // SAFETY: the task running the strip.
+        let BlockDsp::Eq(proc, values) = (unsafe { self.params.own_block(OwnBlocks::EQ).dsp_mut() }) else { return };
+        eq.values_snapshot(values);
         let table = if self.kind.is_output() { EQ_MODELS_BUS } else { EQ_MODELS_CH };
         let model = (eq.model.load(Relaxed).max(0) as usize).min(table.len() - 1);
         let nc = d.num_channels;
         let [w0, w1] = &mut d.work;
         let mut chans: [&mut [f32]; 2] = [&mut w0[..n], &mut w1[..n]];
-        d.eq.process(&mut chans[..nc], table, model, eq.on.load(Relaxed), eq.mix.load(), &d.eq_values);
+        proc.process(&mut chans[..nc], table, model, eq.on.load(Relaxed), eq.mix.load(), &values[..]);
     }
 
     unsafe fn run_insert(&self, d: &mut StripDsp, ctx: &ProcessContext, n: usize, post: bool) {

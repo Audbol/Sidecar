@@ -291,6 +291,12 @@ of any size, of which the WING is one configuration.
   `ld_engine_port_groups` (`PortGroupC`, `MixerEngine::getPortGroups`). The app's
   routing pages still use their own table (`src/ui/RoutingGroups.h`); a test keeps
   the two equal until the UI asks the profile (step 7).
+- The strip's own blocks (Phase 3 step 5): FILTER, GATE, EQ, DYNAMICS, INS 1 and
+  INS 2 are `Block`s like the extra ones (parameters and DSP state together), kept by
+  `OwnBlocks` in `StripParams` and run by the template's nodes; the slots' meters
+  stay in `StripMeters`. Code reaches them through `StripParams::filter()`...
+  (`own_block(k)` for the DSP state); the C ABI's `StripParams` holds pointers to
+  their parameters (ABI 32), which the C++ accessors (`filter()`...) follow.
 - Processing models (Phase 3 step 4): a `ProfileSpec` names the models its blocks
   may hold (`models: &ModelTables`, `livedaw-dsp/src/model.rs`: the dynamics, aux
   dynamics, channel and bus EQ, filter tool and FX tables). The WING's and the
@@ -419,10 +425,11 @@ colours and slot state live in the engine, and `MixerEngine::syncStrips()` rebui
 views after a show load changes the console from Rust.
 
 - **Shared parameters.** Strip parameters, meters, sends, DCAs, FX slot controls and
-  engine controls are `#[repr(C)]` blocks of atomics owned by Rust. C++ sees the same
+  engine controls are `#[repr(C)]` blocks of atomics owned by Rust (a strip's own
+  blocks through pointers in its `StripParams`). C++ sees the same
   memory as `std::atomic<float/bool/int32_t>` structs, and the UI writes them directly
   with no FFI call. Both sides describe the layout; `ld::verifyLayout()` compares the
-  two at startup and in the tests (ABI version 27), and the app refuses to run if they
+  two at startup and in the tests (ABI version 32), and the app refuses to run if they
   differ.
 - **FX meters (ABI 23).** A device reports its screen's live values with
   `FxAlgo::readouts` (48 floats laid out per device, documented in each device's
@@ -904,7 +911,7 @@ inspector's CHAIN page is a `ChainList` (the strip's chain from `Strip::getChain
 without its RTA points and the WING's own taps; ADD, REMOVE and drag to reorder
 through `insertBlock` / `moveBlock` / `removeBlock` / `insertTap` / `moveTap` /
 `removeTap`) over a `BlockEditor` for the selected row: `BlockTarget::of` turns a step
-into what to edit (the strip's own blocks in `StripParams`, an extra block's
+into what to edit (the strip's own blocks through `StripParams`, an extra block's
 parameters by its kind) with its model setter (`Strip::setModel` /
 `setBlockModel`), its curve (`ld_strip_response` / `getBlockResponse`) and its gain
 reduction. `ValueControls.h` has the editor's controls: `ValueBar` (linear, log
@@ -1468,8 +1475,8 @@ README's *Known limitations*; keep the three in step.
 
 - The Universal core (Phase 1, `docs/UNIVERSAL_MIXER.md`): user taps feed sends only
   (not keys or direct outs) and aren't delay compensated,
-  the WING's own blocks still live in `StripParams` (they move out with the WING
-  profile, Phase 3), and the strip sources, the monitor SOURCE / DIRECT IN lists and
+  every strip has the WING's own blocks (chain blocks since Phase 3 step 5; a
+  profile's own set comes with Phase 4), and the strip sources, the monitor SOURCE / DIRECT IN lists and
   the talkback destinations cover the WING's buses, mains and matrices only. The
   Universal Mixer's interface is a preview: it covers the mixer, chains, sends,
   routing, FX, monitoring, scenes, the recorder and setup for any configuration; the
