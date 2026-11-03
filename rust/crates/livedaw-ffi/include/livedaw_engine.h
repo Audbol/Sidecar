@@ -902,6 +902,16 @@ struct FaderLawC
 };
 static_assert (sizeof (FaderLawC) == 72);
 
+/** ABI 35: a profile's slot range (ld_profile_slot_ranges): strips of `kind`
+    (StripKindId) from slot `first` (0-based) for `count` run their own chain and go by
+    `label` (NUL-terminated), numbered from 1 again: the X32's FX returns, aux 9-16. */
+struct SlotRangeC
+{
+    int32_t kind, first, count;
+    char label[8];
+};
+static_assert (sizeof (SlotRangeC) == 20);
+
 /** ABI 33: the remote protocols a console speaks (ld_engine_remotes): its MIDI
     protocol (-1 none, 0 the WING's: MidiProtocol::Id) and its network protocols, a set
     of bits (1 WING discovery, 2 WING OSC, 4 WING native: the WING remote's servers). */
@@ -1179,6 +1189,9 @@ extern "C"
     /** ABI 34: what a profile calls a strip of `kind` (StripKindId), before its number
         ("CH" for "CH 1"). Free with ld_string_free. */
     LdString* ld_profile_strip_label (int32_t profile, int32_t kind);
+    /** ABI 35: a profile's slot ranges: writes up to `max` to `out` (may be null) and
+        returns how many there are. */
+    int32_t ld_profile_slot_ranges (int32_t profile, SlotRangeC* out, int32_t max);
     /** ABI 33: the console's remote protocols (its profile's): the app runs these only. */
     void ld_engine_remotes (const Engine*, RemotesC* out);
     /** ABI 28: makes the engine a fresh console of the structure of `counts` (null: the

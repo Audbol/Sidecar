@@ -151,6 +151,9 @@ private:
         expectEquals (engine.getBuses()[0]->getColourIndex(), 1, "a new strip is OFF");
         setShownProfile (ld::kProfileX32);
         expect (palette::count() == 16 && consoleColourName (5) == "BL");
+        expectEquals (engine.getAux()[7]->getLabel(), juce::String ("AUX 8"));
+        expectEquals (engine.getAux()[8]->getLabel(), juce::String ("FX 1"), "the X32's FX returns");
+        expectEquals (labelOf (StripKind::Aux, 16), juce::String ("FX 8"));
         setShownProfile (ld::kProfileWing);
         engine.configure (nullptr);
         expect (engine.getProfile() == ld::kProfileWing);

@@ -54,6 +54,9 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
   1024 steps, its 16 colours; C ABI 35 `ld_engine_configure_profile`) and a show stores
   it. Its processing, sends and remote protocols are still the WING's or none, until
   the next steps.
+- A profile can give strips from a slot on their own chain and label: the X32's aux 1-8
+  (AUX) and FX returns (aux 9-16, "FX 1"-"FX 8") run trim, EQ and fader only. C ABI 35:
+  `ld_profile_slot_ranges`.
 
 ## [0.2.0] - beta
 

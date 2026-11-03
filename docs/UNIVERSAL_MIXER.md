@@ -375,6 +375,11 @@ Three layers:
    2. **Strips per slot**: a profile's chain template per strip slot, not only per
       kind, so aux 9-16 can be FX returns; mono-pair links (`/config/chlink`...)
       over the core's mono and stereo strips; the M/C main.
+      - 2a, slots (done): a profile's `SlotRange`s give strips of a kind from a slot
+        on their own chain and label (`template_at`, `label_at`; C ABI 35
+        `ld_profile_slot_ranges`, `labelOf`). The X32's aux 1-8 are AUX and 9-16 FX
+        returns ("FX 1"), both EQ only (`chain::X32_AUX`).
+      - 2b, next: mono-pair links and the M/C main.
    3. **The X32's processing models** (`livedaw_dsp::x32`): gate, compressor /
       expander, low cut, the 4- and 6-band EQ, clean-room from the documented
       ranges and laws; the chain's dynamics PRE / POST EQ and insert PRE / POST.

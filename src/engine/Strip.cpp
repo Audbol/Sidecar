@@ -31,11 +31,14 @@ namespace
     {
         ld::ProfileId profile = ld::kProfileWing;
         std::array<std::string, 5> labels; // by StripKind
+        std::vector<ld::SlotRangeC> slots;
 
         void load()
         {
             for (int k = 0; k < (int) labels.size(); ++k)
                 labels[(size_t) k] = takeString (ld::ld_profile_strip_label (profile, k)).toStdString();
+            slots.assign ((size_t) juce::jmax (0, ld::ld_profile_slot_ranges (profile, nullptr, 0)), {});
+            ld::ld_profile_slot_ranges (profile, slots.data(), (int32_t) slots.size());
         }
     };
 
@@ -65,6 +68,14 @@ const char* label (StripKind kind) noexcept
 {
     const auto k = (size_t) kind;
     return k < shown().labels.size() ? shown().labels[k].c_str() : "";
+}
+
+juce::String labelOf (StripKind kind, int number)
+{
+    for (const auto& r : shown().slots)
+        if (r.kind == (int32_t) kind && number - 1 >= r.first && number - 1 < r.first + r.count)
+            return juce::String (r.label) + " " + juce::String (number - r.first);
+    return juce::String (label (kind)) + " " + juce::String (number);
 }
 
 namespace palette

@@ -143,6 +143,30 @@ pub(crate) const OUTPUT: &[Node] = &[
     t(tap::POST),
 ];
 
+/// The X32's aux in and FX return channels: trim and polarity, the EQ, the
+/// fader; no delay, dynamics or inserts (the X32's OSC tree has none). The
+/// WING's tap points stay, so taps and keys read them where they are.
+pub(crate) const X32_AUX: &[Node] = &[
+    rta(rta_tap::IN),
+    Node::Input,
+    t(tap::IN),
+    rta(rta_tap::PRE_FILTER),
+    t(tap::FILT),
+    rta(rta_tap::POST_FILTER),
+    t(2),
+    Node::Eq,
+    t(3),
+    t(4),
+    Node::Pfl,
+    t(tap::PFL),
+    Node::Fader,
+    t(tap::AFL),
+    rta(rta_tap::POST_FADER),
+    t(TAP_INS2),
+    Node::Post,
+    t(tap::POST),
+];
+
 /// The WING's chain for a strip of `kind`.
 pub fn template(kind: StripKind) -> &'static [Node] {
     match kind {

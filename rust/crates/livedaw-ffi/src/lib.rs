@@ -88,7 +88,8 @@ use std::sync::Arc;
 // ABI 33 (Phase 3 step 6): the profile's remote protocols (ld_engine_remotes, LdRemotes).
 // ABI 34 (Phase 3 step 7): a profile's port groups, colours and strip labels without
 // an engine (ld_profile_port_groups, ld_profile_colour_*, ld_profile_strip_label).
-// ABI 35 (Phase 4 step 1): the X32 profile (2), ld_engine_configure_profile.
+// ABI 35 (Phase 4 steps 1-2): the X32 profile (2), ld_engine_configure_profile,
+// ld_profile_slot_ranges (LdSlotRange).
 pub const LD_ABI_VERSION: i32 = 35;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
@@ -732,6 +733,43 @@ pub extern "C" fn ld_profile_colour_name(profile: i32, index: i32) -> *mut sessi
 pub extern "C" fn ld_profile_colour_at_grid(profile: i32, position: i32) -> i32 {
     let grid = profile_of(profile).spec().palette.grid;
     usize::try_from(position).ok().and_then(|i| grid.get(i)).copied().unwrap_or(0)
+}
+
+/// A profile's slot range (`profile::SlotRange`): strips of `kind` from slot
+/// `first` (0-based) for `count` go by `label` (NUL-terminated), numbered from 1.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LdSlotRange {
+    pub kind: i32,
+    pub first: i32,
+    pub count: i32,
+    pub label: [u8; 8],
+}
+
+/// ABI 35: profile `profile`'s slot ranges: writes up to `max` to `out` (may be
+/// null) and returns how many there are.
+///
+/// # Safety
+/// `out` holds `max` ranges, or is null.
+#[no_mangle]
+pub unsafe extern "C" fn ld_profile_slot_ranges(profile: i32, out: *mut LdSlotRange, max: i32) -> i32 {
+    guard(0, || {
+        let slots = profile_of(profile).spec().slots;
+        if !out.is_null() {
+            for (i, r) in slots.iter().take(max.max(0) as usize).enumerate() {
+                let mut label = [0u8; 8];
+                let n = r.label.len().min(7);
+                label[..n].copy_from_slice(&r.label.as_bytes()[..n]);
+                *out.add(i) = LdSlotRange {
+                    kind: StripKind::ALL.iter().position(|&k| k == r.kind).unwrap_or(0) as i32,
+                    first: r.first as i32,
+                    count: r.count as i32,
+                    label,
+                };
+            }
+        }
+        slots.len() as i32
+    })
 }
 
 /// ABI 34: what profile `profile` calls a strip of `kind` (`StripKind` numbers),

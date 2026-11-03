@@ -177,6 +177,24 @@ impl Palette {
     }
 }
 
+/// Strips of one kind, from slot `first` (0-based) for `count`, that run their
+/// own chain and go by their own label, numbered from 1 again: the X32's FX
+/// returns, aux slots 9-16 ("FX 1").
+#[derive(Clone, Copy, Debug)]
+pub struct SlotRange {
+    pub kind: StripKind,
+    pub first: usize,
+    pub count: usize,
+    pub chain: &'static [Node],
+    pub label: &'static str,
+}
+
+impl SlotRange {
+    pub fn holds(&self, kind: StripKind, index: usize) -> bool {
+        kind == self.kind && index >= self.first && index < self.first + self.count
+    }
+}
+
 /// What a console is: what a new console of the profile has and how its
 /// strips run.
 #[derive(Debug)]
@@ -212,6 +230,8 @@ pub struct ProfileSpec {
     /// What its strips are called ("CH 1", "MTX 2"): input channels, aux
     /// channels, buses, mains, matrices.
     labels: [&'static str; 5],
+    /// Strips whose chain and label aren't their kind's.
+    pub slots: &'static [SlotRange],
 }
 
 impl ProfileSpec {
@@ -227,6 +247,25 @@ impl ProfileSpec {
     /// The label of a strip of `kind`, before its number ("CH" for "CH 1").
     pub fn label(&self, kind: StripKind) -> &'static str {
         self.labels[StripKind::ALL.iter().position(|&k| k == kind).unwrap_or(0)]
+    }
+
+    /// The slot range strip `index` (0-based) of `kind` is in, if any.
+    pub fn slot(&self, kind: StripKind, index: usize) -> Option<&'static SlotRange> {
+        self.slots.iter().find(|r| r.holds(kind, index))
+    }
+
+    /// The chain of strip `index` (0-based) of `kind`: its slot range's, or its kind's.
+    pub fn template_at(&self, kind: StripKind, index: usize) -> &'static [Node] {
+        self.slot(kind, index).map_or_else(|| self.template(kind), |r| r.chain)
+    }
+
+    /// What strip `index` (0-based) of `kind` is called: the label and number
+    /// ("FX", 1 for the X32's aux slot 9).
+    pub fn label_at(&self, kind: StripKind, index: usize) -> (&'static str, usize) {
+        match self.slot(kind, index) {
+            Some(r) => (r.label, index - r.first + 1),
+            None => (self.label(kind), index + 1),
+        }
     }
 
     /// The pre-fader blocks' order (`Node::Slot`) of a strip of `kind`;
@@ -284,6 +323,7 @@ static WING: ProfileSpec = ProfileSpec {
     remotes: Remotes::WING,
     palette: Palette::WING,
     labels: WING_LABELS,
+    slots: &[],
 };
 
 /// No console's limits. Its strips have the WING's blocks (a profile's own set
@@ -304,11 +344,13 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
     remotes: Remotes::WING,
     palette: Palette::WING,
     labels: WING_LABELS,
+    slots: &[],
 };
 
 /// The Behringer X32: its counts (`Counts::X32`), fader law, colours and
-/// labels. Until Phase 4's steps replace them its strips run the WING's chains
-/// and models, its routing pages list the WING's port groups, and it speaks no
+/// labels; its aux in and FX returns (aux slots 1-8 and 9-16) run EQ only
+/// (`chain::X32_AUX`). Until Phase 4's steps replace them its channels and
+/// buses run the WING's chains, its strips the WING's models, its routing pages list the WING's port groups, and it speaks no
 /// remote protocol (its OSC and MIDI come with steps 5 and 6).
 static X32: ProfileSpec = ProfileSpec {
     profile: Profile::X32,
@@ -325,6 +367,10 @@ static X32: ProfileSpec = ProfileSpec {
     remotes: Remotes { midi: None, network: &[] },
     palette: Palette::X32,
     labels: WING_LABELS,
+    slots: &[
+        SlotRange { kind: StripKind::Aux, first: 0, count: 8, chain: chain::X32_AUX, label: "AUX" },
+        SlotRange { kind: StripKind::Aux, first: 8, count: 8, chain: chain::X32_AUX, label: "FX" },
+    ],
 };
 
 #[cfg(test)]
@@ -360,6 +406,28 @@ mod tests {
         assert_eq!(x.palette.colour(5), Some(("BL", 0x2850e8)), "config/color 4");
         assert_eq!(x.palette.factory.map(|f| f(StripKind::Bus)), Some(1));
         assert_eq!((x.remotes.midi, x.remotes.network_bits()), (None, 0), "no protocol yet");
+    }
+
+    #[test]
+    fn the_x32s_aux_in_and_fx_returns() {
+        let x = Profile::X32.spec();
+        assert_eq!(x.template_at(StripKind::Aux, 0), chain::X32_AUX);
+        assert_eq!(x.template_at(StripKind::Aux, 15), chain::X32_AUX);
+        assert_eq!(x.template_at(StripKind::Channel, 0), chain::CHANNEL);
+        assert_eq!(x.label_at(StripKind::Aux, 7), ("AUX", 8));
+        assert_eq!(x.label_at(StripKind::Aux, 8), ("FX", 1));
+        assert_eq!(x.label_at(StripKind::Bus, 3), ("BUS", 4));
+        // No dynamics or inserts on them; every tap point still once.
+        let count = |n: Node| chain::X32_AUX.iter().filter(|&&x| x == n).count();
+        for n in [Node::Dynamics, Node::PreInsert, Node::PostInsert, Node::Delay, Node::Filter] {
+            assert_eq!(count(n), 0, "{n:?}");
+        }
+        for n in [Node::Input, Node::Eq, Node::Pfl, Node::Fader, Node::Post] {
+            assert_eq!(count(n), 1, "{n:?}");
+        }
+        // The WING has no slot ranges.
+        assert_eq!(Profile::Wing.spec().template_at(StripKind::Aux, 9), chain::AUX);
+        assert_eq!(Profile::Wing.spec().label_at(StripKind::Aux, 9), ("AUX", 10));
     }
 
     #[test]

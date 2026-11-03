@@ -29,6 +29,9 @@ StripKind stripKindFromString (const juce::String& s) noexcept;
     scribble strips: the shown profile's (the WING's "CH", "AUX", "BUS", "MAIN",
     "MTX"; valid until the profile shown changes). */
 const char* label (StripKind kind) noexcept;
+/** What the console calls strip `number` (1-based) of `kind`: "CH 3", or the
+    label of the shown profile's slot range it is in ("FX 1" for the X32's aux 9). */
+juce::String labelOf (StripKind kind, int number);
 
 inline bool isInputKind (StripKind k) noexcept { return k == StripKind::Channel || k == StripKind::Aux; }
 
@@ -211,7 +214,7 @@ public:
     int getNumber() const noexcept { return number; }
     void setNumber (int n) noexcept { number = n; }
     /** "CH 3", "BUS 12", ... */
-    juce::String getLabel() const { return juce::String (livedaw::label (kind)) + " " + juce::String (number); }
+    juce::String getLabel() const { return labelOf (kind, number); }
 
     ld::Strip* getHandle() const noexcept { return handle; }
     /** The engine the strip belongs to (its analysis: RTA, scope, LISTEN). */

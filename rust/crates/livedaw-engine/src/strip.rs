@@ -1001,7 +1001,8 @@ impl Strip {
 
     /// The strip's chain (`chain.rs`): its profile's template for its kind.
     pub fn chain(&self) -> &'static [Node] {
-        self.spec.template(self.kind)
+        // Aux, buses, mains and matrices: `id` is the 0-based slot.
+        self.spec.template_at(self.kind, usize::try_from(self.id).unwrap_or(0))
     }
 
     /// The console's profile when the strip was made.
