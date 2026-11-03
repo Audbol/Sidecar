@@ -355,11 +355,9 @@ void MainComponent::refreshAll()
 
 bool MainComponent::isWingConsole() const
 {
-    // What the WING surface addresses: the WING's aux, mains, matrices, DCAs and
-    // mute groups (channels, buses and FX slots can grow on a WING too).
-    const auto c = engine.getConfiguredCounts();
-    return c.aux == kWingAux && c.buses >= kWingBuses && c.mains == kWingMains && c.matrices == kWingMatrices && c.dcas == kWingDcas
-           && c.muteGroups == kWingMuteGroups;
+    // The console's profile: the engine makes it the Universal once the counts
+    // leave what the WING surface addresses, and a show records it.
+    return engine.getProfile() == ld::kProfileWing;
 }
 
 void MainComponent::setInterface (InterfaceKind kind, bool save)

@@ -198,7 +198,7 @@ fn a_console_of_any_counts_and_groups_beyond_the_wings() {
     // A new engine is a WING without channels (the application adds them).
     assert_eq!(e.counts(), Counts { channels: 0, ..Counts::WING });
     let counts = Counts { channels: 64, aux: 4, buses: 24, mains: 2, matrices: 3, dcas: 24, mute_groups: 200, fx: 32 };
-    e.configure(&ConsoleConfig { counts });
+    e.configure(&ConsoleConfig::of_counts(counts));
     assert_eq!(e.counts(), counts);
     assert_eq!(e.config().counts, counts);
     assert_eq!(e.num_strips(StripKind::Bus), 24);
@@ -225,7 +225,7 @@ fn any_number_of_mains_and_matrices_carry_audio() {
     // Six mains and twelve matrices: CH 1 into MAIN 6, MAIN 6 into MTX 12.
     let mut rig = Rig::new(2, 2, 4);
     let counts = Counts { channels: 1, mains: 6, matrices: 12, ..Counts::WING };
-    rig.engine.configure(&ConsoleConfig { counts });
+    rig.engine.configure(&ConsoleConfig::of_counts(counts));
     unity_console(&rig.engine);
     assert_eq!((rig.engine.num_strips(StripKind::Main), rig.engine.num_strips(StripKind::Matrix)), (6, 12));
     let ch = rig.ch(0);

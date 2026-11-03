@@ -32,8 +32,8 @@ use livedaw_engine::params::{MonitorPathParams, MonitorSourceParams};
 use livedaw_engine::sources::{SourceParams, UserPatchParams, UserSignalParams};
 use livedaw_engine::talk::{TalkParams, TalkPathParams};
 use livedaw_engine::{
-    pdc_tap, AtomicGroupSet, ConsoleConfig, Counts, Engine, EngineControls, InsertCallbacks, SendParams, Strip, StripKind,
-    StripMeters, StripParams,
+    pdc_tap, AtomicGroupSet, ConsoleConfig, Counts, Engine, EngineControls, InsertCallbacks, Profile, SendParams, Strip,
+    StripKind, StripMeters, StripParams,
 };
 use std::mem::{offset_of, size_of};
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -79,7 +79,7 @@ use std::sync::Arc;
 // ld_engine_set_config.
 // ABI 29 (Phase 2 step 6): the configuration without a reset
 // (ld_engine_set_num_strips: aux, buses, mains, matrices).
-pub const LD_ABI_VERSION: i32 = 29;
+pub const LD_ABI_VERSION: i32 = 30;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(default)
@@ -556,11 +556,30 @@ pub unsafe extern "C" fn ld_engine_configured_counts(e: *const Engine, out: *mut
     }
 }
 
+/// The configuration `counts` describe (null: the WING): a WING if they
+/// are the WING's, else the Universal.
+unsafe fn config_of(counts: *const LdCounts) -> ConsoleConfig {
+    counts.as_ref().map_or_else(ConsoleConfig::wing, |c| ConsoleConfig::of_counts((*c).into()))
+}
+
+/// The console emulated (`ProfileId`: 0 the Universal, 1 the WING).
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_profile(e: *const Engine) -> i32 {
+    engine(e).map_or(1, |e| guard(1, || profile_id(e.profile())))
+}
+
+fn profile_id(p: Profile) -> i32 {
+    match p {
+        Profile::Universal => 0,
+        Profile::Wing => 1,
+    }
+}
+
 /// Makes the engine a fresh console of `counts` (null: the WING).
 #[no_mangle]
 pub unsafe extern "C" fn ld_engine_configure(e: *const Engine, counts: *const LdCounts) {
     if let Some(e) = engine(e) {
-        let config = counts.as_ref().map_or_else(ConsoleConfig::wing, |c| ConsoleConfig { counts: (*c).into() });
+        let config = config_of(counts);
         guard((), || e.configure(&config));
     }
 }
@@ -572,7 +591,7 @@ pub unsafe extern "C" fn ld_engine_configure(e: *const Engine, counts: *const Ld
 #[no_mangle]
 pub unsafe extern "C" fn ld_engine_set_config(e: *const Engine, counts: *const LdCounts, out: *mut LdCounts) {
     let Some(e) = engine(e) else { return };
-    let config = counts.as_ref().map_or_else(ConsoleConfig::wing, |c| ConsoleConfig { counts: (*c).into() });
+    let config = config_of(counts);
     let used = guard(LdCounts::default(), || e.set_config(&config).into());
     if let Some(out) = out.as_mut() {
         *out = used;

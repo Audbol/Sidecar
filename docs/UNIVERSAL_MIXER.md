@@ -17,7 +17,10 @@ or environment. Keep it up to date as phases land.
    the Universal core.
 3. **Consoles to emulate after the WING:** Behringer X32 / Midas M32, Yamaha (CL / QL /
    TF / DM7), Allen & Heath (SQ / dLive / Avantis) and DiGiCo (SD / Quantum). The
-   Universal Mixer must be able to express all of them.
+   Universal Mixer must be able to express all of them. Named next (November 2026):
+   the **X32**, and the Yamaha **ProMix 01** and **02R**, which are controlled over
+   MIDI (control and program changes, SysEx), so a profile brings its own MIDI
+   protocol as well as network ones.
 4. **Channel and bus formats:** mono and stereo. LCR was planned at first and then
    dropped (November 2026); no LCR, surround or immersive for now. A strip's format
    is a field (`format`: mono, stereo), so another one can be added later without
@@ -263,7 +266,36 @@ Three layers:
    and files into a WING profile over the core (including Phase 1's step 3d: the
    WING's blocks out of `StripParams`), and check it against the WING tests and WING
    Edit as today.
-4. **Second emulation** (likely the X32 / M32, the closest to the WING), then Yamaha,
+
+   Steps (each behaviour-neutral, every check green, the WING the only profile until
+   Phase 4):
+   1. **The profile is part of the configuration** (done): `ConsoleConfig::profile`
+      (`Profile`: `Wing`, or `Universal` for no console's limits); the engine makes a
+      console the Universal when its counts leave its profile's (`Profile::fits`), and
+      it stays the Universal (a WING again only by reconfiguring); the show stores and
+      restores it (an unknown one is a warning and loads as what fits); C ABI 30
+      `ld_engine_profile`, `MixerEngine::getProfile`, which the app asks instead of
+      comparing the counts.
+   2. **A profile value**: one place for what a console is: its counts, its strip
+      kinds' chain templates and process orders, its factory defaults, colours and
+      names; the WING's built from today's constants. A new show starts from the
+      profile.
+   3. **Laws and ranges from the profile**: the fader and pan laws, and the WING's
+      source and destination ranges, behind the profile; the C++ widgets ask the
+      engine instead of using the WING's law directly.
+   4. **Model tables out of `wing`**: the model description (`ModelSpec`) becomes
+      console-neutral; each profile names the models a block may hold.
+   5. **The WING's blocks out of `StripParams`** (Phase 1's 3d): call sites move to
+      facades first, then the blocks become chain blocks; the sound must stay the same
+      sample for sample.
+   6. **Remotes per profile**: the MIDI remote splits into a port layer (devices,
+      hot-plug, the queue, SysEx framing) and a protocol per profile (the WING's CC map
+      and SysEx id; next the X32's and the Yamaha consoles'); the profile owns its
+      network protocols too.
+   7. **The shared UI asks the profile** for its tags, port groups, colours and names.
+   8. **`livedaw-wing` becomes the WING profile**, checked against the WING tests and
+      WING Edit.
+4. **Second emulation** (the X32 / M32, the closest to the WING), then Yamaha,
    Allen & Heath and DiGiCo, each extending the core where it needs something new.
 
 Each emulation keeps the independent-project disclaimer: not affiliated with or

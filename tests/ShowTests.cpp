@@ -171,9 +171,11 @@ public:
             MixerEngine engine (0);
             PluginHost host (nullptr);
             Show show (engine, host);
+            expectEquals ((int) engine.getProfile(), (int) ld::kProfileWing);
             const Counts counts { 2, 0, 4, 1, 2, 8, 4, 16 };
             const auto used = engine.setConfig (counts);
             expect (used.buses == 4 && used.mains == 1 && used.matrices == 2 && used.dcas == 8);
+            expectEquals ((int) engine.getProfile(), (int) ld::kProfileUniversal, "these counts aren't a WING's");
             expectEquals ((int) engine.getChannels().size(), 0, "setConfig adds no channels (a show load does)");
             test::setChannels (engine, 1);
             test::OfflineRig rig (engine, 1, 4);

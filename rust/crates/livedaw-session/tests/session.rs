@@ -698,18 +698,27 @@ fn legacy_v2_show_converts_to_the_wing_layout() {
 
 #[test]
 fn show_format_4_brings_its_configuration_and_reads_format_3_as_a_wing() {
-    use livedaw_engine::{ConsoleConfig, Counts};
+    use livedaw_engine::{ConsoleConfig, Counts, Profile};
     // A console that isn't a WING: its show rebuilds it as it was.
     let counts = Counts { channels: 12, aux: 2, buses: 20, mains: 3, matrices: 5, dcas: 24, mute_groups: 12, fx: 16 };
     let engine = Engine::new(0);
-    engine.configure(&ConsoleConfig { counts });
+    engine.configure(&ConsoleConfig::of_counts(counts));
+    assert_eq!(engine.profile(), Profile::Universal);
     let text = Show::new().to_xml(&engine, &mut NoPlugins).to_document();
+    assert!(text.contains("<Console version=\"4\" profile=\"universal\""), "{text}");
     assert!(text.contains("<Config channels=\"12\" aux=\"2\" buses=\"20\" mains=\"3\" matrices=\"5\""), "{text}");
     let e2 = Engine::new(0); // a WING
+    assert_eq!(e2.profile(), Profile::Wing);
     let warnings = Show::new().load_from_text(&e2, &mut NoPlugins, &text, true).unwrap();
     assert!(warnings.is_empty(), "{warnings:?}");
-    assert_eq!(e2.config().counts, counts);
+    assert_eq!(e2.config(), ConsoleConfig { profile: Profile::Universal, counts });
     assert_eq!(e2.counts(), counts);
+
+    // 0.2.0 wrote profile="wing" whatever the counts: such a console loads as the Universal.
+    let old = text.replace("profile=\"universal\"", "profile=\"wing\"");
+    let e3 = Engine::new(0);
+    assert!(Show::new().load_from_text(&e3, &mut NoPlugins, &old, true).unwrap().is_empty());
+    assert_eq!(e3.profile(), Profile::Universal);
 
     // A format 3 show (no <Config>) loads into that console as a WING.
     let v3 = r#"<LiveDAWShow version="3" name="Old"><Console version="3"><Channels><Strip ref="ch:1" id="1" name="Kick"/></Channels></Console></LiveDAWShow>"#;
@@ -720,12 +729,29 @@ fn show_format_4_brings_its_configuration_and_reads_format_3_as_a_wing() {
     assert_eq!((c.aux, c.buses, c.mains, c.matrices, c.dcas, c.mute_groups), (8, 16, 4, 8, 16, 8));
     assert_eq!(ch(&e2, 0).name(), "Kick");
 
-    // Another console profile: loaded as a WING, with a warning; a newer format: refused.
-    let other = text.replace("profile=\"wing\"", "profile=\"x32\"");
+    // A console this version doesn't know: a warning, and loaded as what fits
+    // (these counts: the Universal); a newer format: refused.
+    let other = text.replace("profile=\"universal\"", "profile=\"x32\"");
     let warnings = Show::new().load_from_text(&e2, &mut NoPlugins, &other, true).unwrap();
     assert!(warnings.iter().any(|w| w.contains("x32")), "{warnings:?}");
+    assert_eq!(e2.profile(), Profile::Universal);
     let newer = text.replace("<LiveDAWShow version=\"4\"", "<LiveDAWShow version=\"5\"");
     assert!(Show::new().load_from_text(&e2, &mut NoPlugins, &newer, true).is_err());
+}
+
+#[test]
+fn growing_a_wing_beyond_its_counts_makes_it_the_universal() {
+    use livedaw_engine::Profile;
+    let engine = Engine::new(0);
+    assert_eq!(engine.profile(), Profile::Wing);
+    engine.set_num_strips(StripKind::Bus, 24); // a WING can have more buses
+    assert_eq!(engine.profile(), Profile::Wing);
+    engine.set_num_strips(StripKind::Main, 5);
+    assert_eq!(engine.profile(), Profile::Universal);
+    engine.set_num_strips(StripKind::Main, 4); // and stays it
+    assert_eq!(engine.profile(), Profile::Universal);
+    let text = Show::new().to_xml(&engine, &mut NoPlugins).to_document();
+    assert!(text.contains("profile=\"universal\""), "{text}");
 }
 
 #[test]
@@ -809,7 +835,7 @@ fn round_trip(engine: &Engine, show: &Show) -> (Engine, Show) {
 #[test]
 fn sends_to_mains_and_matrices_beyond_the_wings_survive_a_show() {
     use livedaw_engine::{ConsoleConfig, Counts};
-    let config = ConsoleConfig { counts: Counts { channels: 1, mains: 6, matrices: 12, ..Counts::WING } };
+    let config = ConsoleConfig::of_counts(Counts { channels: 1, mains: 6, matrices: 12, ..Counts::WING });
     let engine = Engine::new(0);
     engine.configure(&config);
     let c = ch(&engine, 0);

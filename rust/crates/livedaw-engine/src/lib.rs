@@ -32,7 +32,7 @@ pub mod taps;
 pub mod tapsend;
 
 pub use analyser::{Analyser, AnalysisControls};
-pub use config::{ConsoleConfig, Counts};
+pub use config::{ConsoleConfig, Counts, Profile};
 pub use engine::Engine;
 pub use fx::{FxRack, InsertCallbacks};
 pub use groups::{AtomicGroupSet, GroupSet};

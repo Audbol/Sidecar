@@ -102,6 +102,9 @@ public:
     Counts getCounts() const noexcept { Counts c {}; ld::ld_engine_counts (engine, &c); return c; }
     /** The counts the console was configured with (the WING's by default). */
     Counts getConfiguredCounts() const noexcept { Counts c {}; ld::ld_engine_configured_counts (engine, &c); return c; }
+    /** The console emulated (kProfileWing, or kProfileUniversal once the counts leave the
+        WING's or a show of another console is loaded). */
+    ld::ProfileId getProfile() const noexcept { return (ld::ProfileId) ld::ld_engine_profile (engine); }
     /** Makes the engine a fresh console of `counts` (nullptr: the WING); rebuilds the strip views. */
     void configure (const Counts* counts) { ld::ld_engine_configure (engine, counts); syncStrips(); }
     /** The number of strips of `kind` changed without a reset (the configuration

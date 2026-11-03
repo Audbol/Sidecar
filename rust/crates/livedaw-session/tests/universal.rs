@@ -66,7 +66,7 @@ const COUNTS: Counts = Counts { channels: 48, aux: 4, buses: 24, mains: 2, matri
 /// * CH 2 (input 2, 0.25) -> MAIN 1, in mute group 12;
 /// * MAIN 2 on outputs 1/2, MTX 6 on 3/4, MAIN 1 on 5/6.
 fn build(e: &Engine) {
-    e.configure(&ConsoleConfig { counts: COUNTS });
+    e.configure(&ConsoleConfig::of_counts(COUNTS));
     e.set_num_dcas(COUNTS.dcas);
     let ch40 = e.channel_at(39).unwrap();
     let ch2 = e.channel_at(1).unwrap();

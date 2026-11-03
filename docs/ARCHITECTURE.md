@@ -695,8 +695,9 @@ WING; older ones go through `legacy.rs`, whose converter applies below version 3
 
 ```
 Show
- ├─ Console     profile ("wing"), Config (the counts: `Engine::config`, restored first
- │              with `Engine::set_config`; the FX slots in use stay an app setting),
+ ├─ Console     profile ("wing" or "universal": `Engine::profile`), Config (the counts:
+ │              `Engine::config`, restored first with `Engine::set_config`; the FX
+ │              slots in use stay an app setting),
  │              full structure with each strip's <Chain>, DCAs, mute groups, FX slots
  │              (via the bridge)
  ├─ Layers      section widths, user banks, selected banks
@@ -903,6 +904,7 @@ embeds the WING display's `RecorderPage` (on `UiContext::recording`) and
 `UsbRecorderPage`, with `showEditor` for the multitrack editor. SETUP (`SetupView.h`):
 the configuration editor applies its counts with `MixerEngine::setNumStrips`
 (`Engine::set_num_strips`, C ABI 29: aux, buses, mains and matrices without a reset,
+counts beyond the WING's making the console's profile the Universal,
 new strips at the end with factory settings and every strip's factory sends to new
 mains and matrices, a main or matrix added again starting clean; strips go from the
 end but never one that something feeds, nor those before it), `setNumChannels`,

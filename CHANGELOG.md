@@ -3,6 +3,17 @@
 All notable changes to Sidecar are listed here. Versions follow
 [semantic versioning](https://semver.org); 0.x releases are betas.
 
+## [Unreleased]
+
+Phase 3, the WING as a profile (`docs/UNIVERSAL_MIXER.md`), begins.
+
+- The console's profile (the console it emulates: the WING, or the Universal for a
+  console beyond a WING's counts) is part of its configuration (`Profile`,
+  `ConsoleConfig::profile`). The engine keeps it, a show stores and restores it
+  (`<Console profile="...">`; a show of 0.2.0 whose counts aren't a WING's loads as the
+  Universal), and the app asks it instead of comparing the counts. C ABI 30:
+  `ld_engine_profile`.
+
 ## [0.2.0] - beta
 
 The first public beta of the Universal Mixer: Sidecar becomes a mixer core without one

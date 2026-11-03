@@ -29,7 +29,7 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 29;
+constexpr int kAbiVersion = 30;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -160,6 +160,13 @@ enum ChainBlockKind : int32_t
     kBlockDynamics = 2, // DynSlotParams (a new one is off: COMP)
     kBlockInsert = 3,   // InsertParams
     kBlockDelay = 4     // DelayBlockParams
+};
+
+/// ABI 30: the console a configuration emulates (ld_engine_profile).
+enum ProfileId : int32_t
+{
+    kProfileUniversal = 0, // no console's limits: the Universal Mixer's own
+    kProfileWing = 1
 };
 
 enum StripKindId : int32_t
@@ -1090,8 +1097,12 @@ extern "C"
     void ld_engine_counts (const Engine*, CountsC* out);
     /** The counts the console was configured with (the WING's by default). */
     void ld_engine_configured_counts (const Engine*, CountsC* out);
-    /** Makes the engine a fresh console of `counts` (null: the WING). */
+    /** Makes the engine a fresh console of `counts` (null: the WING): a WING if they are
+        the WING's, else the Universal. */
     void ld_engine_configure (const Engine*, const CountsC* counts);
+    /** ABI 30: the console emulated (ProfileId). It is the Universal once the counts leave
+        the profile's (ld_engine_set_num_strips) or a show of another console is loaded. */
+    int32_t ld_engine_profile (const Engine*);
     /** ABI 28: makes the engine a fresh console of the structure of `counts` (null: the
         WING's) without its channels or FX slot count, as a show load does before it adds
         the channels; writes the counts configured (within what the engine holds) to `out`

@@ -53,7 +53,7 @@ use crate::analyser::{rta_tap, Analyser, Probes};
 use crate::atomic::AtomicF32;
 use crate::blocks::{Block, BlockKind, Step, MAX_EXTRA_BLOCKS};
 use crate::chain::Node;
-use crate::config::{ConsoleConfig, Counts, MAX_AUX};
+use crate::config::{ConsoleConfig, Counts, Profile, MAX_AUX};
 use crate::denormals::ScopedNoDenormals;
 use crate::fx::{FxRack, InsertCallbacks};
 use crate::garbage::Garbage;
@@ -152,6 +152,9 @@ struct Structure {
     device: DeviceConfig,
     /// The configured counts (`Engine::configure`); a reset builds them.
     counts: Counts,
+    /// The console emulated (`ConsoleConfig::profile`): the Universal once
+    /// the counts leave the profile's (`set_num_strips`).
+    profile: Profile,
 }
 
 impl Structure {
@@ -334,6 +337,7 @@ impl Engine {
                 next_channel_id: 1,
                 device,
                 counts: Counts::WING,
+                profile: Profile::Wing,
             }),
             names: Mutex::new(GroupNames::default()),
             audio: UnsafeCell::new(AudioState {
@@ -525,7 +529,8 @@ impl Engine {
     /// count never goes below the last one fed. Aux channels are inputs:
     /// they go whatever they do (the interface warns first). Channels:
     /// `set_num_channels`. Returns the number set; the configuration (shows
-    /// save it) follows.
+    /// save it) follows, and so does the profile: counts beyond its make the
+    /// console the Universal.
     pub fn set_num_strips(&self, kind: StripKind, count: usize) -> usize {
         let mut st = self.lock();
         let inputs_and_buses = |st: &Structure| st.channels.iter().chain(&st.auxes).chain(&st.buses).cloned().collect::<Vec<_>>();
@@ -616,6 +621,8 @@ impl Engine {
                 n
             }
         };
+        // Beyond the console emulated: the Universal Mixer's own.
+        st.profile = st.profile.or_universal(&st.counts);
         self.publish(&st);
         n
     }
@@ -680,14 +687,25 @@ impl Engine {
     /// returns the counts in use.
     pub fn set_config(&self, config: &ConsoleConfig) -> Counts {
         let counts = config.counts.sanitised();
-        self.lock().counts = counts;
+        {
+            let mut st = self.lock();
+            st.counts = counts;
+            st.profile = config.profile.or_universal(&counts);
+        }
         self.reset();
         counts
     }
 
-    /// The configuration of the console (`configure`).
+    /// The configuration of the console (`configure`; its profile is the
+    /// Universal if the counts don't fit the one asked for).
     pub fn config(&self) -> ConsoleConfig {
-        ConsoleConfig { counts: self.lock().counts }
+        let st = self.lock();
+        ConsoleConfig { profile: st.profile, counts: st.counts }
+    }
+
+    /// The console emulated.
+    pub fn profile(&self) -> Profile {
+        self.lock().profile
     }
 
     /// What the console has now: its strips by kind (channels and buses

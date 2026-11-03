@@ -17,7 +17,7 @@ use livedaw_engine::params::{
 };
 use livedaw_engine::routing::{bus_feeds_bus, matrix_direct, MATRIX_DIRECT_INPUTS};
 use livedaw_engine::taps::FIRST_USER_TAP;
-use livedaw_engine::{AtomicGroupSet, ConsoleConfig, Counts, Engine, GroupSet, Strip, StripKind, MAX_BUSES};
+use livedaw_engine::{AtomicGroupSet, ConsoleConfig, Counts, Engine, GroupSet, Profile, Strip, StripKind, MAX_BUSES};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering::Relaxed};
 use std::sync::Arc;
@@ -25,9 +25,6 @@ use std::sync::Arc;
 /// 4: the Universal core's console (`<Config>`: the configuration, strip
 /// chains, any number of groups, mains and matrices); 3: the WING layout.
 pub const CONSOLE_VERSION: i32 = 4;
-
-/// The console profile shows of this version describe (the emulation): the WING.
-pub const PROFILE: &str = "wing";
 
 // ---- sections -------------------------------------------------------------------
 
@@ -1408,7 +1405,7 @@ pub fn save_console(engine: &Engine, bridge: &mut dyn PluginBridge) -> Element {
     let slots = index.bus_slots();
     let (mains, matrices) = (engine.num_strips(StripKind::Main), engine.num_strips(StripKind::Matrix));
     let mut console = Element::new("Console");
-    console.set("version", CONSOLE_VERSION).set("profile", PROFILE);
+    console.set("version", CONSOLE_VERSION).set("profile", engine.profile().id());
     capture_config(engine, &mut console);
     put_b(&mut console, "outputProtection", &engine.controls.output_protection);
     put_f(&mut console, "outputCeilingDb", &engine.controls.output_ceiling_db);
@@ -1453,11 +1450,20 @@ fn capture_config(engine: &Engine, console: &mut Element) {
         .set("fx", c.fx);
 }
 
-/// The configuration a `<Console>` describes: its `<Config>`, or the WING
-/// (consoles before format 4 were WINGs). The FX slots in use stay an app
-/// setting (a show brings along the slots it uses: `fit_fx_slots`).
-fn read_config(console: &Element) -> ConsoleConfig {
+/// The configuration a `<Console>` describes: its profile and `<Config>`, or
+/// the WING (consoles before format 4 were WINGs; a profile this version
+/// doesn't know is a warning, and the console loads as a WING if it is one,
+/// else as the Universal). The FX slots in use stay an app setting (a show
+/// brings along the slots it uses: `fit_fx_slots`).
+fn read_config(console: &Element, warnings: &mut Vec<String>) -> ConsoleConfig {
     let Some(x) = console.child("Config") else { return ConsoleConfig::wing() };
+    let profile = match console.attr("profile") {
+        None => Profile::Wing,
+        Some(id) => Profile::from_id(id).unwrap_or_else(|| {
+            warnings.push(format!("The show was made for a console this version doesn't know (\"{id}\")"));
+            Profile::Wing
+        }),
+    };
     let w = Counts::WING;
     let n = |name: &str, default: usize| usize::try_from(x.int_or(name, default as i32)).unwrap_or(default);
     let counts = Counts {
@@ -1470,7 +1476,7 @@ fn read_config(console: &Element) -> ConsoleConfig {
         mute_groups: n("mgrps", w.mute_groups),
         fx: n("fx", w.fx),
     };
-    ConsoleConfig { counts }
+    ConsoleConfig { profile: profile.or_universal(&counts), counts }
 }
 
 /// Rebuilds the console from a `<Console>` element (version 4, or 3: a WING;
@@ -1479,11 +1485,8 @@ fn read_config(console: &Element) -> ConsoleConfig {
 /// processor is instantiated. Returns the warnings.
 pub fn load_console(engine: &Engine, console: &Element, bridge: &mut dyn PluginBridge, load_plugins: bool) -> Vec<String> {
     let mut result = ApplyResult::default();
-    let config = read_config(console);
+    let config = read_config(console, &mut result.warnings);
     engine.set_config(&config);
-    if let Some(profile) = console.attr("profile").filter(|p| *p != PROFILE) {
-        result.warnings.push(format!("The show was made for the console profile \"{profile}\"; loaded as a WING"));
-    }
 
     get_b(console, "outputProtection", &engine.controls.output_protection);
     get_f(console, "outputCeilingDb", &engine.controls.output_ceiling_db);
