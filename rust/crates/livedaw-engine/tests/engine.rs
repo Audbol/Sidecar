@@ -427,6 +427,8 @@ fn an_x32_runs_its_own_chains_and_models() {
     assert!(main(0).params.stereo.load(Relaxed) && !main(1).params.stereo.load(Relaxed));
     let ch1 = rig.ch(0);
     assert!(ch1.main_send(0).unwrap().on.load(Relaxed) && !ch1.main_send(1).unwrap().on.load(Relaxed));
+    // Its channels show their own colour (YE), not their source's.
+    assert!(!ch1.params.cust_link.load(Relaxed) && ch1.params.colour.load(Relaxed) == 4);
     for b in rig.engine.strips(StripKind::Bus) {
         assert!(!b.main_send(0).unwrap().on.load(Relaxed), "bus {}", b.id() + 1);
         assert_eq!(b.params.fader_db.load(), livedaw_dsp::fader::FADER_MIN);

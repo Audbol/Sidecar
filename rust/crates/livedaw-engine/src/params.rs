@@ -1131,6 +1131,9 @@ impl StripParams {
         if kind == StripKind::Main && spec.mono_mains.contains(&index) {
             p.stereo.store(false, Relaxed);
         }
+        if !spec.source_link {
+            p.cust_link.store(false, Relaxed);
+        }
         if kind == StripKind::Bus && spec.buses_to_main.contains(&index) {
             p.colour.store(if index < 10 { 6 } else { 12 }, Relaxed);
             p.fader_db.store(0.0);

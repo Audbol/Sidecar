@@ -419,7 +419,9 @@ Three layers:
         takes its `ProfileSpec`; `buses_to_main`, the WING's subgroups 9-16 or none
         on an X32; `mono_mains`): on an X32 main 1 is the stereo LR and main 2 the
         mono M/C, channels feed LR and not M/C, and no bus feeds LR at first (all
-        as on the owner's X32).
+        as on the owner's X32). Its channels show their own name and colour, not
+        their source's (`ProfileSpec::source_link`, the WING's LINK CUSTOMIZATION
+        TO SOURCE).
       - 4b, next: the X32's send taps (IN/LC, <-EQ, EQ->, PRE, POST, GRP per bus
         pair) and M/C level; 4c the odd/even links.
    5. **X32 OSC** (`livedaw-x32`, UDP 10023): `/info`, `/xinfo`, `/status`,
