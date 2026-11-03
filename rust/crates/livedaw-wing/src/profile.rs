@@ -44,10 +44,11 @@ mod tests {
     #[test]
     fn the_wing_serves_its_profiles_protocols() {
         // Everything the WING's profile (and the Universal's, the WING's for
-        // now) names, this crate serves.
-        for p in Profile::ALL {
+        // now) names, this crate serves; the X32's is `livedaw-x32`'s.
+        for p in [Profile::Universal, Profile::Wing] {
             assert!(p.spec().remotes.network.iter().all(|&n| serves(n)), "{p:?}");
         }
+        assert!(!serves(NetworkProtocol::X32Osc));
         assert_eq!(spec().profile, Profile::Wing);
 
         let all = Config::default().limited_to(&spec().remotes);

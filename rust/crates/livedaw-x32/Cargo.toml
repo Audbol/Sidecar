@@ -1,0 +1,12 @@
+[package]
+name = "livedaw-x32"
+description = "Behringer X32 interoperability for Sidecar: an OSC server (UDP 10023) that answers like an X32, mapped onto the engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+livedaw-dsp = { path = "../livedaw-dsp" }
+livedaw-engine = { path = "../livedaw-engine" }
+livedaw-wing = { path = "../livedaw-wing" }

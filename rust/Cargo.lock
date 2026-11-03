@@ -49,3 +49,12 @@ dependencies = [
  "livedaw-engine",
  "livedaw-session",
 ]
+
+[[package]]
+name = "livedaw-x32"
+version = "0.2.0"
+dependencies = [
+ "livedaw-dsp",
+ "livedaw-engine",
+ "livedaw-wing",
+]

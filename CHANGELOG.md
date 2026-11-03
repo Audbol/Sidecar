@@ -63,6 +63,10 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
   and expander, and its 4-band (inputs) and 6-band (buses, mains, matrices) EQ, with its
   ranges and steps. An X32's strips run them, and the app's model menus show the
   console's models. C ABI 37: `ld_models_show_profile`.
+- An X32 OSC server (`livedaw-x32`, UDP 10023) that answers like an X32: info and
+  status, gets and sets on the console's value steps, `/node` and `/` text, `/xremote`
+  change updates and meters, over the engine's strips. The X32 profile names it; the app
+  doesn't start it yet.
 
 ## [0.2.0] - beta
 

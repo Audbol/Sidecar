@@ -105,6 +105,8 @@ pub enum NetworkProtocol {
     WingOsc,
     /// The WING's native binary protocol (TCP 2222).
     WingNative,
+    /// The X32's OSC (UDP 10023, `livedaw-x32`).
+    X32Osc,
 }
 
 impl NetworkProtocol {
@@ -115,6 +117,7 @@ impl NetworkProtocol {
             Self::WingDiscovery => 1,
             Self::WingOsc => 2,
             Self::WingNative => 4,
+            Self::X32Osc => 8,
         }
     }
 }
@@ -351,8 +354,8 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
 /// labels and its models (`livedaw_dsp::x32`: gate, compressor, 4- and
 /// 6-band EQ); its aux in and FX returns (aux slots 1-8 and 9-16) run EQ only
 /// (`chain::X32_AUX`). Until Phase 4's steps replace them its channels and
-/// buses run the WING's chains (and filter), its routing pages list the WING's port groups, and it speaks no
-/// remote protocol (its OSC and MIDI come with steps 5 and 6).
+/// buses run the WING's chains (and filter), its routing pages list the WING's port groups, and it speaks
+/// its OSC (`livedaw-x32`; its MIDI comes with step 6).
 static X32: ProfileSpec = ProfileSpec {
     profile: Profile::X32,
     name: "X32",
@@ -365,7 +368,7 @@ static X32: ProfileSpec = ProfileSpec {
     pan: PanLaw::WING,
     port_groups: WING_PORT_GROUPS,
     models: &livedaw_dsp::x32::MODELS,
-    remotes: Remotes { midi: None, network: &[] },
+    remotes: Remotes { midi: None, network: &[NetworkProtocol::X32Osc] },
     palette: Palette::X32,
     labels: WING_LABELS,
     slots: &[
@@ -406,7 +409,7 @@ mod tests {
         assert_eq!(x.palette.colours.len(), 16);
         assert_eq!(x.palette.colour(5), Some(("BL", 0x2850e8)), "config/color 4");
         assert_eq!(x.palette.factory.map(|f| f(StripKind::Bus)), Some(1));
-        assert_eq!((x.remotes.midi, x.remotes.network_bits()), (None, 0), "no protocol yet");
+        assert_eq!((x.remotes.midi, x.remotes.network_bits()), (None, 8), "its OSC, no MIDI yet");
     }
 
     #[test]
