@@ -345,10 +345,30 @@ fn osc_surface_layers_and_custom_controls() {
     assert_eq!(layers.user_layers()[0].faders, vec![FaderRef::Dca(3)]);
     assert_eq!(custom.control(1, 2).unwrap().encoder.category, 2);
 
-    // Changes made on the console reach subscribers.
-    c.send(&Message::new("/*S", vec![]));
-    std::thread::sleep(Duration::from_millis(300));
+    // Changes made on the console reach subscribers. (First a probe change,
+    // subscribing again until it arrives: on a loaded machine, as when the
+    // checks run beside a build, the subscription can land after a change.)
     let id = layers.user_layers()[0].id.clone();
+    let probe = Message::new("/$ctl/layer/L/6/name", vec![Arg::Str("Probe".into())]);
+    layers.rename_user_layer(&id, "Probe");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut subscribed = false;
+    while Instant::now() < deadline && !subscribed {
+        c.send(&Message::new("/*S", vec![]));
+        std::thread::sleep(Duration::from_millis(200));
+        sync(&mut layers, &mut custom);
+        let until = Instant::now() + Duration::from_millis(300);
+        while Instant::now() < until && !subscribed {
+            subscribed = c.recv().is_some_and(|m| m == probe);
+        }
+        if !subscribed {
+            // Make it a change again for the next try.
+            layers.rename_user_layer(&id, "Probe 2");
+            sync(&mut layers, &mut custom);
+            layers.rename_user_layer(&id, "Probe");
+        }
+    }
+    assert!(subscribed, "no subscription");
     layers.rename_user_layer(&id, "Drums");
     custom.control_mut(0, 0).unwrap().name = "Lead".into();
     sync(&mut layers, &mut custom);
