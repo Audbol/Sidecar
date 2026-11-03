@@ -53,7 +53,7 @@ use crate::analyser::{rta_tap, Analyser, Probes};
 use crate::atomic::AtomicF32;
 use crate::blocks::{Block, BlockKind, Step, MAX_EXTRA_BLOCKS};
 use crate::chain::Node;
-use crate::config::{ConsoleConfig, Counts, Profile, MAX_AUX};
+use crate::config::{ConsoleConfig, Counts, MAX_AUX};
 use crate::denormals::ScopedNoDenormals;
 use crate::fx::{FxRack, InsertCallbacks};
 use crate::garbage::Garbage;
@@ -64,6 +64,7 @@ use crate::monitor::{direct_source, MonitorPathDsp, SoloPatch, BAND_SOLO_MAX_DB}
 use crate::params::*;
 use crate::pdc::{pdc_tap, PdcState, MAX_PDC};
 use crate::pool::WorkerPool;
+use crate::profile::Profile;
 use crate::routing::{bus_feeds_bus, matrix_direct_pair, return_tap, strip_source, BusSchedule, OutputPatch, ReturnClock};
 use crate::routing::{DirectSource, ReturnRing, DIRECT_SOURCE_BASE, NUM_PATCH_OUTPUTS, NUM_STRIP_SOURCES, STRIP_SOURCE_BASE};
 use crate::sends::{send_mode, MAX_BUSES};
@@ -336,7 +337,7 @@ impl Engine {
                 matrices: Vec::new(),
                 next_channel_id: 1,
                 device,
-                counts: Counts::WING,
+                counts: Profile::Wing.spec().counts,
                 profile: Profile::Wing,
             }),
             names: Mutex::new(GroupNames::default()),
@@ -410,7 +411,7 @@ impl Engine {
 
     fn new_strip(&self, st: &Structure, kind: StripKind, id: i32) -> Arc<Strip> {
         // Unnamed, as on the WING (the screens show "CH 3" and so on).
-        let s = Arc::new(Strip::new(kind, id));
+        let s = Arc::new(Strip::of_profile(st.profile.spec(), kind, id));
         // Its sends to the console's mains and matrices (a matrix has none).
         let (mains, matrices) = match kind {
             StripKind::Matrix => (0, 0),

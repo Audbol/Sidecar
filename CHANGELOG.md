@@ -13,6 +13,10 @@ Phase 3, the WING as a profile (`docs/UNIVERSAL_MIXER.md`), begins.
   (`<Console profile="...">`; a show of 0.2.0 whose counts aren't a WING's loads as the
   Universal), and the app asks it instead of comparing the counts. C ABI 30:
   `ld_engine_profile`.
+- A profile says what its console is (`ProfileSpec`): a new console's counts and its
+  strips' chains and process orders; a strip runs its profile's chain.
+- NEW SHOW keeps the console as it is configured (a console of 48 channels stays one)
+  instead of always making a 40 channel WING.
 
 ## [0.2.0] - beta
 

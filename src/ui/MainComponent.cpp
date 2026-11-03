@@ -756,12 +756,16 @@ void MainComponent::updateTitle()
 
 void MainComponent::newShow()
 {
-    popups::confirm (skin->popupHost(), "NEW SHOW", "Clear the console and all scenes and start a new show (a 40 channel WING)?", "NEW", [this]
+    // The console stays what it is (its profile and configuration), with its
+    // configured channels.
+    const int channels = engine.getConfiguredCounts().channels;
+    const auto console = isWingConsole() ? juce::String (channels) + " channel WING" : "console of " + juce::String (channels) + " channels";
+    popups::confirm (skin->popupHost(), "NEW SHOW", "Clear the console and all scenes and start a new show (a " + console + ")?", "NEW", [this, channels]
     {
         closeAllPluginWindows();
         for (int i = 0; i < kMaxFx; ++i)
             engine.getFx().setPlugin (i, nullptr);
-        show.clear (kWingChannels);
+        show.clear (channels);
         showFile = juce::File();
         hasSelection = false;
         refreshAll();

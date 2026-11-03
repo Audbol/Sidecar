@@ -64,7 +64,7 @@ const fn rta(point: usize) -> Node {
 
 /// Input channels (Fig. 34 of the WING manual; TAP 3/4/5 after the 1st, 2nd
 /// and 3rd block of the process order).
-const CHANNEL: &[Node] = &[
+pub(crate) const CHANNEL: &[Node] = &[
     rta(rta_tap::IN),
     Node::Input,
     t(tap::IN),
@@ -92,7 +92,7 @@ const CHANNEL: &[Node] = &[
 ];
 
 /// Aux channels (Fig. 68): the delay before the fader, DYNAMICS, EQ, INS 1.
-const AUX: &[Node] = &[
+pub(crate) const AUX: &[Node] = &[
     rta(rta_tap::IN),
     Node::Input,
     Node::Delay,
@@ -118,7 +118,7 @@ const AUX: &[Node] = &[
 ];
 
 /// Buses, mains and matrices: DYNAMICS and INS 1 before the fader, the EQ after it.
-const OUTPUT: &[Node] = &[
+pub(crate) const OUTPUT: &[Node] = &[
     rta(rta_tap::IN),
     Node::Input,
     t(tap::IN),

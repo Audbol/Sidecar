@@ -261,6 +261,16 @@ of any size, of which the WING is one configuration.
   `Engine::configure` makes the engine a fresh console of a configuration (a reset
   that builds its counts; `reset` keeps the configuration); `Engine::counts` says
   what it has now (channels and buses can be added beyond the configuration).
+- `Profile` / `ProfileSpec` (`livedaw-engine/src/profile.rs`, Phase 3): the console a
+  configuration emulates (`ConsoleConfig::profile`: the WING, or the Universal for no
+  console's limits) and what that console is: its name, a new console's counts, its
+  strips' chain templates and pre-fader orders (`ProfileSpec::template`,
+  `pre_fader_order`, the WING's 24 process orders). `Profile::fits` says whether
+  counts are the profile's; the engine makes a console the Universal when they leave
+  them (`Engine::set_config`, `set_num_strips`). A strip keeps its console's
+  `ProfileSpec` (`Strip::of_profile`; `Strip::new` is a WING strip) and runs its
+  template. Shows store the profile (`<Console profile="...">`); C ABI 30
+  `ld_engine_profile`.
 - Sends (`sends.rs`): a strip's sends to buses, mains and matrices are paged banks
   (`Bank<T>`) by the destination's index: `sends` (by bus slot, up to `MAX_BUSES`),
   `mains` and `matrices` (up to `MAX_MAINS` / `MAX_MATRICES`, 256). Pages are added
@@ -292,7 +302,8 @@ A strip runs its processing as a chain of nodes (`livedaw-engine/src/chain.rs`,
 `Strip::run_chain`): blocks (`Input`, `Delay`, `Filter`, `Gate`, `Eq`, `Dynamics`,
 `PreInsert`, `PostInsert`, `Fader`, the `Pfl` and `Post` copies, `TapShaper`), tap
 markers (`Tap`: the TAP-mode copy and the key taps, `strip::tap` and `keytap.rs`)
-and RTA markers (`Rta`). The WING's strips are templates (`chain::template`):
+and RTA markers (`Rta`). A strip's chain is its profile's template
+(`ProfileSpec::template`); the WING's (`chain::template`) are
 channels, aux, and buses / mains / matrices, as in the signal flow above. A
 channel's four `Slot` nodes are the GATE, EQ, DYNAMICS and INS 1 slots in its process
 order, resolved through `PROCESS_ORDERS` each block, so the 24 orders are

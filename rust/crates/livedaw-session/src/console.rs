@@ -1464,7 +1464,7 @@ fn read_config(console: &Element, warnings: &mut Vec<String>) -> ConsoleConfig {
             Profile::Wing
         }),
     };
-    let w = Counts::WING;
+    let w = profile.spec().counts;
     let n = |name: &str, default: usize| usize::try_from(x.int_or(name, default as i32)).unwrap_or(default);
     let counts = Counts {
         channels: n("channels", w.channels),

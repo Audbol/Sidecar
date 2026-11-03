@@ -6,6 +6,7 @@ use crate::params::{
     MAX_DCAS, MAX_FX, MAX_MAINS, MAX_MATRICES, MAX_MUTE_GROUPS, WING_AUX, WING_BUSES, WING_CHANNELS, WING_DCAS, WING_FX,
     WING_MAINS, WING_MATRICES, WING_MUTE_GROUPS,
 };
+use crate::profile::Profile;
 use crate::sends::MAX_BUSES;
 
 /// The most input channels a console can have (a bound for sanity, not a
@@ -63,67 +64,6 @@ impl Default for Counts {
     }
 }
 
-/// The console a configuration emulates (its profile: `docs/UNIVERSAL_MIXER.md`).
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub enum Profile {
-    /// No console's limits: the Universal Mixer's own.
-    Universal,
-    /// The Behringer WING.
-    #[default]
-    Wing,
-}
-
-impl Profile {
-    pub const ALL: [Profile; 2] = [Profile::Universal, Profile::Wing];
-
-    /// The id shows store (`<Console profile="...">`).
-    pub fn id(self) -> &'static str {
-        match self {
-            Profile::Universal => "universal",
-            Profile::Wing => "wing",
-        }
-    }
-
-    pub fn from_id(id: &str) -> Option<Profile> {
-        Self::ALL.into_iter().find(|p| p.id() == id)
-    }
-
-    /// The name the interface shows.
-    pub fn name(self) -> &'static str {
-        match self {
-            Profile::Universal => "Universal",
-            Profile::Wing => "WING",
-        }
-    }
-
-    /// Whether a console of `counts` is one of this profile's: the WING's
-    /// aux, mains, matrices, DCAs and mute groups (what its surface
-    /// addresses; channels, buses and FX slots can grow on a WING too).
-    pub fn fits(self, counts: &Counts) -> bool {
-        match self {
-            Profile::Universal => true,
-            Profile::Wing => {
-                let w = Counts::WING;
-                counts.aux == w.aux
-                    && counts.buses >= w.buses
-                    && counts.mains == w.mains
-                    && counts.matrices == w.matrices
-                    && counts.dcas == w.dcas
-                    && counts.mute_groups == w.mute_groups
-            }
-        }
-    }
-
-    /// This profile if a console of `counts` fits it, else the Universal.
-    pub fn or_universal(self, counts: &Counts) -> Profile {
-        if self.fits(counts) {
-            self
-        } else {
-            Profile::Universal
-        }
-    }
-}
-
 /// A console configuration (`Engine::configure`).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ConsoleConfig {
@@ -134,7 +74,8 @@ pub struct ConsoleConfig {
 impl ConsoleConfig {
     /// The Behringer WING.
     pub fn wing() -> Self {
-        Self { profile: Profile::Wing, counts: Counts::WING }
+        let profile = Profile::Wing;
+        Self { profile, counts: profile.spec().counts }
     }
 
     /// A console of `counts`: a WING if they are the WING's, else the Universal.
@@ -158,17 +99,8 @@ mod tests {
     }
 
     #[test]
-    fn profiles() {
-        for p in Profile::ALL {
-            assert_eq!(Profile::from_id(p.id()), Some(p));
-        }
-        assert_eq!(Profile::from_id("x32"), None);
-        assert!(Profile::Wing.fits(&Counts::WING));
-        assert!(Profile::Wing.fits(&Counts { channels: 64, buses: 24, fx: 32, ..Counts::WING }));
-        for c in [Counts { mains: 2, ..Counts::WING }, Counts { buses: 8, ..Counts::WING }, Counts { dcas: 24, ..Counts::WING }] {
-            assert!(!Profile::Wing.fits(&c));
-            assert_eq!(ConsoleConfig::of_counts(c).profile, Profile::Universal);
-        }
+    fn of_counts() {
+        assert_eq!(ConsoleConfig::of_counts(Counts { mains: 2, ..Counts::WING }).profile, Profile::Universal);
         assert_eq!(ConsoleConfig::of_counts(Counts::WING), ConsoleConfig::wing());
     }
 }

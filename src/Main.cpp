@@ -19,9 +19,6 @@ namespace livedaw
 
 /** Enough to open every channel of large ASIO/CoreAudio/ALSA/JACK interfaces. */
 constexpr int kMaxDeviceChannels = 256;
-/** A fresh console is a WING: 40 channels. */
-constexpr int kDefaultChannelCount = kWingChannels;
-
 //==============================================================================
 /** Keeps audio running: reopens the device if it disappears, stops calling back
     or reports an error. Retries with a back-off so a missing interface doesn't
@@ -266,7 +263,7 @@ public:
         }
 
         if (engine->getChannels().empty())
-            engine->setNumChannels (kDefaultChannelCount);
+            engine->setNumChannels (engine->getConfiguredCounts().channels); // a fresh console: the WING's 40
 
         // STARTUP MAIN MUTE: the mains start muted (before any audio runs) when
         // the show asks for it.

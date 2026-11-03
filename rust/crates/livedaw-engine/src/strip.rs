@@ -30,6 +30,7 @@ use crate::monitor::SoloPatch;
 use crate::params::{DcaParams, DynSlotParams, FxParams, InsertParams, StripKind, StripMeters, StripParams};
 use crate::params::{MainSendParams, MatrixSendParams, MAIN_SEND_PAGE, MAX_MAINS, MAX_MATRICES};
 use crate::pdc::{pdc_tap, StripPdc};
+use crate::profile::{Profile, ProfileSpec};
 use crate::routing::{return_tap, strip_source_slot, ReturnRing};
 use crate::sends::{Bank, SendBank};
 use crate::solo::StripConsole;
@@ -42,7 +43,7 @@ use livedaw_dsp::util::*;
 use livedaw_dsp::wing::dynamics::{DynStatus, WingDynamics, DYN_BANDS};
 use livedaw_dsp::wing::eq::WingEq;
 use livedaw_dsp::wing::filter::WingFilter;
-use livedaw_dsp::wing::{EQ_MODELS_BUS, EQ_MODELS_CH, MAX_DYN_PARAMS, MAX_EQ_PARAMS, PROCESS_ORDERS};
+use livedaw_dsp::wing::{EQ_MODELS_BUS, EQ_MODELS_CH, MAX_DYN_PARAMS, MAX_EQ_PARAMS};
 use livedaw_recorder::{playback_channel, usb_player_channel};
 use std::cell::UnsafeCell;
 use std::sync::atomic::{
@@ -302,8 +303,11 @@ pub struct Strip {
     /// Buses, mains and matrices: their output and tap one block late, for
     /// the readers that run before them (`routing.rs`).
     returns: StripReturns,
+    /// The console's profile when the strip was made: its chain template and
+    /// process orders.
+    spec: &'static ProfileSpec,
     /// The chain when it isn't the template (extra blocks, `blocks.rs`);
-    /// null = `chain::template(kind)`. Swapped by the message thread
+    /// null = the profile's template. Swapped by the message thread
     /// (`set_layout`), the old one retired through the garbage list.
     layout: AtomicPtr<ChainLayout>,
     /// The id the next extra block gets.
@@ -388,8 +392,15 @@ impl Drop for Strip {
 }
 
 impl Strip {
+    /// A WING strip.
     pub fn new(kind: StripKind, id: i32) -> Self {
+        Self::of_profile(Profile::Wing.spec(), kind, id)
+    }
+
+    /// A strip of a console of `spec`'s profile.
+    pub fn of_profile(spec: &'static ProfileSpec, kind: StripKind, id: i32) -> Self {
         Self {
+            spec,
             kind,
             id,
             // Buses are numbered by their slot (`id`), whose factory settings differ.
@@ -989,18 +1000,12 @@ impl Strip {
         }
     }
 
-    /// The pre-fader blocks in processing order: input channels use their
-    /// process order, aux channels run DYNAMICS, EQ, INS 1 (Fig. 68), and
-    /// buses, mains and matrices DYNAMICS and INS 1 (their EQ is post-fader).
+    /// The pre-fader blocks in processing order (the profile's: on the WING,
+    /// input channels use their process order, aux channels run DYNAMICS, EQ,
+    /// INS 1 (Fig. 68), and buses, mains and matrices DYNAMICS and INS 1, their
+    /// EQ being post-fader).
     fn pre_fader_order(&self) -> &'static [u8] {
-        match self.kind {
-            StripKind::Channel => {
-                let i = self.params.process_order.load(Relaxed).clamp(0, PROCESS_ORDERS.len() as i32 - 1) as usize;
-                PROCESS_ORDERS[i].as_bytes()
-            }
-            StripKind::Aux => b"DEI",
-            _ => b"DI",
-        }
+        self.spec.pre_fader_order(self.kind, self.params.process_order.load(Relaxed))
     }
 
     /// The block that process order slot `k` (`Node::Slot`) runs now.
@@ -1008,9 +1013,14 @@ impl Strip {
         self.pre_fader_order().get(k as usize).and_then(|&b| chain::order_block(b))
     }
 
-    /// The strip's chain (`chain.rs`): the WING's template for its kind.
+    /// The strip's chain (`chain.rs`): its profile's template for its kind.
     pub fn chain(&self) -> &'static [Node] {
-        chain::template(self.kind)
+        self.spec.template(self.kind)
+    }
+
+    /// The console's profile when the strip was made.
+    pub fn profile(&self) -> Profile {
+        self.spec.profile
     }
 
     unsafe fn run_chain(&self, d: &mut StripDsp, ctx: &ProcessContext, n: usize) {

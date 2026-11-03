@@ -276,10 +276,13 @@ Three layers:
       restores it (an unknown one is a warning and loads as what fits); C ABI 30
       `ld_engine_profile`, `MixerEngine::getProfile`, which the app asks instead of
       comparing the counts.
-   2. **A profile value**: one place for what a console is: its counts, its strip
-      kinds' chain templates and process orders, its factory defaults, colours and
-      names; the WING's built from today's constants. A new show starts from the
-      profile.
+   2. **A profile value** (done for the counts, chains and process orders):
+      `ProfileSpec` (`livedaw-engine/src/profile.rs`), one place for what a console
+      is: its name, a new console's counts, its strip kinds' chain templates and
+      pre-fader orders; a strip keeps its console's and runs its template. NEW SHOW
+      keeps the console (its configured channels) instead of making a 40 channel
+      WING. The factory defaults, colours and names follow with the steps that move
+      them (3, 5, 7).
    3. **Laws and ranges from the profile**: the fader and pan laws, and the WING's
       source and destination ranges, behind the profile; the C++ widgets ask the
       engine instead of using the WING's law directly.
