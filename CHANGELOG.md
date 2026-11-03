@@ -86,8 +86,9 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
   scenes by program change, both ways, as an X32's fixed MIDI map.
 - The X32 surface: an X32 console opens on a skin laid out as an X32 (in Sidecar's own
   style): 16 input and 8 group faders in their layers, the main LR, scribble strips in
-  the X32's colours, meters, SELECT, SOLO and MUTE, and the display with its pages. The
-  channel strip section's controls follow.
+  the X32's colours, meters, SELECT, SOLO and MUTE, the display with its pages, and the
+  channel strip section's knobs and keys for the selected strip (preamp and low cut,
+  gate, compressor, the EQ's bands, bus sends, main bus).
 
 ## [0.2.0] - beta
 

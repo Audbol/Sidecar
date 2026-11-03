@@ -214,6 +214,23 @@ private:
         skin.setGroupLayer (ui::X32Surface::GroupLayer::Dca);
         expectEquals (skin.getGroupStrip (0).getName(), juce::String ("DCA 1"));
         skin.setInputLayer (ui::X32Surface::InputLayer::Ch1to16);
+        // The channel strip section turns the selected strip's X32 models.
+        auto& section = skin.getChannelSection();
+        expect (section.getStrip() == channels[12].get());
+        auto* thr = section.knob ("GATE", "THRESHOLD");
+        expect (thr != nullptr);
+        if (thr != nullptr)
+        {
+            thr->getBinding().set (0.5f);
+            expectWithinAbsoluteError (channels[12]->params.gate().values[0].load(), -40.0f, 0.5f, "X32GATE thr -80..0");
+        }
+        expect (section.knob ("EQUALIZER", "FREQ") != nullptr);
+        channels[12]->params.gate().on = true;
+        channels[12]->params.eq().on = true;
+        channels[12]->params.eq().values[2] = 4.5f; // band 1 gain
+        channels[12]->meters.dynReductionDb = 6.0f;
+        channels[12]->params.dynamics().on = true;
+        skin.selectionChanged(); // the knobs and keys show it at once
 
         const auto image = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
         expect (image.isValid() && image.getWidth() == 1920);

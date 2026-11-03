@@ -497,7 +497,15 @@ Three layers:
         meter, SELECT, SOLO and MUTE. The display shows the selected strip's
         inspector (HOME) and the Universal Mixer's ROUTING, SETUP, LIBRARY, EFFECTS
         and MONITOR views. A screenshot test (`x32-surface.png`) checks the layers.
-      - 8c: the channel strip section.
+      - 8c, the channel strip section (done): `x32::ChannelSection`
+        (`src/ui/X32ChannelSection.*`) for the selected strip: CONFIG / PREAMP (GAIN,
+        LOW CUT and its key, polarity), GATE (THRESHOLD, its key, the gain
+        reduction), DYNAMICS (THRESHOLD, RATIO, COMP, the gain reduction), EQUALIZER
+        (the band keys, 4 or 6, the band's TYPE, FREQ, GAIN and Q, EQ), BUS SENDS (four
+        at a time, the bank keys), MAIN BUS (PAN, LR, M/C and its level); each
+        section's VIEW key shows the strip on the display. The knobs are the WING
+        screens' `DisplayKnob`s, bound through the console's models (an X32's gate,
+        compressor and EQ).
       - 8d: the display's pages (the Universal Mixer's views inside it first).
       - 8e: polish, screenshots, the user guide. The X32 Compact (16 + 1 faders) as
         a model of it, like the WING COMPACT.

@@ -10,6 +10,7 @@
 #include "ui/universal/SetupView.h"
 #include "ui/universal/Widgets.h"
 #include "ui/MeterBank.h"
+#include "ui/X32ChannelSection.h"
 
 #include <array>
 
@@ -280,6 +281,7 @@ public:
     x32::FaderStrip& getInputStrip (int i);
     x32::FaderStrip& getGroupStrip (int i);
     x32::FaderStrip& getMainStrip();
+    x32::ChannelSection& getChannelSection() noexcept { return channel; }
 
 private:
     void timerCallback() override;
@@ -293,6 +295,7 @@ private:
     std::array<std::unique_ptr<x32::FaderStrip>, 16> inputs;
     std::array<std::unique_ptr<x32::FaderStrip>, 8> groups;
     std::unique_ptr<x32::FaderStrip> main;
+    x32::ChannelSection channel;
     InputLayer inputLayer = InputLayer::Ch1to16;
     GroupLayer groupLayer = GroupLayer::Dca;
 

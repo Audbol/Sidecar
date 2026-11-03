@@ -19,7 +19,7 @@ using x32::kScribble;
 
 //==============================================================================
 X32Surface::X32Surface (UiContext& c)
-    : ctx (c), theme (Theme::dark()), universalKey ("UNIVERSAL MIXER", theme.accent, theme), home (c, theme), routing (c, theme),
+    : ctx (c), theme (Theme::dark()), universalKey ("UNIVERSAL MIXER", theme.accent, theme), channel (c, theme), home (c, theme), routing (c, theme),
       setup (c, theme), library (c, theme), effects (c, theme), monitor (c, theme)
 {
     for (auto& s : inputs)
@@ -82,6 +82,8 @@ X32Surface::X32Surface (UiContext& c)
     universalKey.setTooltip ("The Universal Mixer");
     addAndMakeVisible (universalKey);
 
+    addAndMakeVisible (channel);
+    channel.onView = [this] { showPage (Page::Home); };
     addAndMakeVisible (home);
     for (auto* v : std::initializer_list<juce::Component*> { &routing, &setup, &library, &effects, &monitor })
         addChildComponent (v);
@@ -191,6 +193,7 @@ void X32Surface::refreshAll()
 {
     assignBanks();
     home.setStrip (ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr);
+    channel.setStrip (ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr);
     showPage (page);
     repaint();
 }
@@ -198,6 +201,7 @@ void X32Surface::refreshAll()
 void X32Surface::selectionChanged()
 {
     home.setStrip (ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr);
+    channel.setStrip (ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr);
     timerCallback(); // the SELECT keys
     repaint (channelArea);
 }
@@ -257,19 +261,6 @@ void X32Surface::paint (juce::Graphics& g)
     g.setFont (type::font (type::kValue, true));
     g.drawText (selected != nullptr ? selected->getLabel() + "   " + selected->getName() : "No strip selected", inner.removeFromTop (24),
                 juce::Justification::centredLeft);
-    inner.removeFromTop (sizes::kGap);
-    const char* sections[] = { "CONFIG / PREAMP", "GATE", "DYNAMICS", "EQUALIZER", "BUS SENDS" };
-    const int w = (inner.getWidth() - 4 * sizes::kGap) / 5;
-    for (auto* name : sections)
-    {
-        auto s = inner.removeFromLeft (w);
-        inner.removeFromLeft (sizes::kGap);
-        g.setColour (juce::Colour (0xff1b1d21));
-        g.fillRoundedRectangle (s.toFloat(), 6.0f);
-        g.setColour (juce::Colour (0xff8b9099));
-        g.setFont (type::font (type::kCaption, true));
-        g.drawText (name, s.reduced (8, 6).removeFromTop (16), juce::Justification::centredLeft);
-    }
 
     // The bank labels.
     g.setColour (juce::Colour (0xff8b9099));
@@ -298,6 +289,7 @@ void X32Surface::resized()
     displayArea = upper.removeFromRight (juce::roundToInt (upper.getWidth() * 0.42f)).reduced (10);
     upper.removeFromRight (sizes::kGapLarge);
     channelArea = upper;
+    channel.setBounds (channelArea.reduced (12).withTrimmedTop (22 + 24 + sizes::kGap));
 
     auto display = displayArea;
     auto keys = display.removeFromBottom (36);
