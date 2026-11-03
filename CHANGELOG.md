@@ -73,6 +73,8 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
   (IN/LC, <-EQ, EQ->, PRE, POST, GRP per bus pair) and its compressor and insert
   positions now shape the audio, set through its OSC server. Its sends start as on
   the console (on at -oo, EQ->), its buses send to matrices only.
+- X32 links: over OSC, a linked odd/even pair shares what the console's link
+  configuration says (preamp and delay, EQ, dynamics, fader and mute).
 - An X32 OSC server (`livedaw-x32`, UDP 10023) that answers like an X32: info and
   status, gets and sets on the console's value steps, `/node` and `/` text, `/xremote`
   change updates and meters, over the engine's strips. The X32 profile names it; the app

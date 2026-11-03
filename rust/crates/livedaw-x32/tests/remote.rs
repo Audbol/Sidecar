@@ -516,3 +516,31 @@ fn send_types_and_positions_reach_the_audio() {
     assert_eq!(ch.params.process_order.load(Relaxed), 3);
     assert_eq!(c.get_i("/ch/01/insert/pos"), 0);
 }
+
+#[test]
+fn linked_pairs_share_what_the_link_config_says() {
+    let (engine, server) = start();
+    let c = Client::new(&server);
+    let ch = |i: usize| engine.strip_at(StripKind::Channel, i).unwrap();
+    // Unlinked: a set stays on its channel.
+    c.set("/ch/01/mix/fader", vec![Arg::Float(0.75)]);
+    assert!(ch(1).params.fader_db.load() < -100.0);
+    // Linked 1-2: the fader, the EQ and the dynamics follow; the pan doesn't.
+    c.set("/config/chlink/1-2", vec![Arg::Int(1)]);
+    c.set("/ch/02/mix/fader", vec![Arg::Float(0.5)]);
+    assert_eq!(ch(0).params.fader_db.load(), ch(1).params.fader_db.load());
+    assert!((ch(0).params.fader_db.load() + 10.0).abs() < 0.05, "-10 dB, on the fader's step");
+    c.set("/ch/01/eq/2/g", vec![Arg::Float(0.75)]);
+    assert_eq!(ch(1).params.eq().param("2g").unwrap().load(), 7.5);
+    c.set("/ch/01/dyn/on", vec![Arg::Int(1)]);
+    assert!(ch(1).params.dynamics().on.load(Relaxed));
+    c.set("/ch/01/mix/pan", vec![Arg::Float(0.0)]);
+    assert_eq!((ch(0).params.pan.load(), ch(1).params.pan.load()), (-100.0, 0.0));
+    // linkcfg: without EQ sharing, the EQ stays on its channel.
+    c.set("/config/linkcfg/eq", vec![Arg::Int(0)]);
+    c.set("/ch/02/eq/2/g", vec![Arg::Float(0.5)]);
+    assert_eq!((ch(0).params.eq().param("2g").unwrap().load(), ch(1).params.eq().param("2g").unwrap().load()), (7.5, 0.0));
+    // Channels 3-4 aren't linked.
+    c.set("/ch/03/mix/fader", vec![Arg::Float(0.75)]);
+    assert!(ch(3).params.fader_db.load() < -100.0);
+}

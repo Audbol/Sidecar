@@ -204,6 +204,8 @@ const RATIO: Ty = Ty::Enum(&["1.1", "1.3", "1.5", "2.0", "2.5", "3.0", "4.0", "5
 const KNEE: Ty = Ty::Float(Law::Lin(0.0, 5.0, 6), num(0, false, 0));
 const MGAIN: Ty = Ty::Float(Law::Lin(0.0, 24.0, 49), num(2, false, 0));
 const POS: Ty = Ty::Enum(&["PRE", "POST"]);
+/// What a link can share (`/config/linkcfg`, in its order).
+const LINK_SHARES: [&str; 4] = ["hadly", "eq", "dyn", "fdrmute"];
 const MIX: Ty = Ty::Float(Law::Lin(0.0, 100.0, 21), num(0, false, 0));
 pub const INSERTS: &[&str] = &[
     "OFF", "FX1L", "FX1R", "FX2L", "FX2R", "FX3L", "FX3R", "FX4L", "FX4R", "FX5L", "FX5R", "FX6L", "FX6R", "FX7L", "FX7R",
@@ -380,13 +382,19 @@ fn config(b: &mut Builder) {
     for g in 0..6 {
         b.leaf("/config/mute", &(g + 1).to_string(), t, ONOFF, Bind::MuteGroup(g), int(0));
     }
-    // Links pair strips (1-2, 3-4...); the engine has no links yet. Factory: the
-    // FX returns and USB playback (aux in 7-8) linked.
+    // Links pair strips (1-2, 3-4...): a set on one goes to both for what
+    // `linkcfg` shares (`Console::set`). Factory: the FX returns and USB
+    // playback (aux in 7-8) linked.
     for (node, pairs, on) in [("chlink", 16, 0), ("auxlink", 4, 8), ("fxlink", 4, 0xf), ("buslink", 8, 0), ("mtxlink", 3, 0)] {
         for k in 0..pairs {
             let name = format!("{}-{}", 2 * k + 1, 2 * k + 2);
             b.leaf(&format!("/config/{node}"), &name, t, ONOFF, Bind::State, int((on >> k) & 1));
         }
+    }
+    // What a link shares: preamp and delay, EQ, dynamics (gate and compressor),
+    // fader and mute.
+    for name in LINK_SHARES {
+        b.leaf("/config/linkcfg", name, t, ONOFF, Bind::State, int(1));
     }
 }
 
@@ -611,14 +619,63 @@ impl<'a> Console<'a> {
         self.read_engine(i, e).unwrap_or_else(|| self.state.get(i).unwrap_or_else(|| e.default.clone()))
     }
 
-    /// Sets entry `i` (made a value it can hold); returns what it holds now.
+    /// Sets entry `i` (made a value it can hold), and the same on its linked
+    /// partner for what the link shares; returns what it holds now.
     pub fn set(&self, i: usize, v: Val) -> Val {
         let e = &self.tree.entries[i];
         let v = e.ty.normalise(v);
+        if let Some(partner) = self.linked_partner(&e.path) {
+            self.set_one(partner, v.clone());
+        }
+        self.set_one(i, v)
+    }
+
+    fn set_one(&self, i: usize, v: Val) -> Val {
+        let e = &self.tree.entries[i];
         if !self.write_engine(i, e, &v) {
             self.state.set(i, v);
         }
         self.get(i)
+    }
+
+    /// The entry of `path`'s linked partner (1 for 2, 4 for 3...), when the
+    /// pair is linked and the link shares that part (`/config/linkcfg`).
+    fn linked_partner(&self, path: &str) -> Option<usize> {
+        let mut parts = path.trim_start_matches('/').splitn(3, '/');
+        let (kind, n, rest) = (parts.next()?, parts.next()?, parts.next()?);
+        let link = match kind {
+            "ch" => "chlink",
+            "auxin" => "auxlink",
+            "fxrtn" => "fxlink",
+            "bus" => "buslink",
+            "mtx" => "mtxlink",
+            _ => return None,
+        };
+        let share = if rest.starts_with("preamp") || rest.starts_with("delay") {
+            "hadly"
+        } else if rest.starts_with("eq") {
+            "eq"
+        } else if rest.starts_with("gate") || rest.starts_with("dyn") {
+            "dyn"
+        } else if rest == "mix/fader" || rest == "mix/on" {
+            "fdrmute"
+        } else {
+            return None;
+        };
+        let k: usize = n.parse().ok()?;
+        let pair = (k - 1) / 2;
+        let on = |addr: &str| match self.tree.find(addr) {
+            Some(Found::Leaf(i)) => self.get(i).on(),
+            _ => false,
+        };
+        if !on(&format!("/config/{link}/{}-{}", 2 * pair + 1, 2 * pair + 2)) || !on(&format!("/config/linkcfg/{share}")) {
+            return None;
+        }
+        let other = if k % 2 == 1 { k + 1 } else { k - 1 };
+        match self.tree.find(&format!("/{kind}/{other:0w$}/{rest}", w = n.len())) {
+            Some(Found::Leaf(i)) => Some(i),
+            _ => None,
+        }
     }
 
     fn typed(e: &Entry, v: f32) -> Val {

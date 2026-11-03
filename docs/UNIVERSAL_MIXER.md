@@ -430,7 +430,11 @@ Three layers:
         insert PRE / POST into the process order, the sends keeping their types. An
         X32's input sends start on at -oo, EQ-> (`sends_on`, `send_tap`); its buses
         send to matrices only; its M/C level starts at -oo, its DCAs WH.
-      - 4c, next: the odd/even links.
+      - 4c, links (done, in the X32 server): `/config/chlink`, `auxlink`, `fxlink`,
+        `buslink` and `mtxlink` pair odd and even strips; a set on one goes to both
+        for what `/config/linkcfg` shares (preamp and delay, EQ, dynamics, fader and
+        mute). The engine has no links of its own: the Universal Mixer's interface
+        doesn't mirror a linked pair yet, and a linked pair stays two mono strips.
    5. **X32 OSC** (`livedaw-x32`, UDP 10023): `/info`, `/xinfo`, `/status`,
       `/xremote`, get / set with the console's value steps, `/node` and `/`, the
       meters; tests replay the documented traffic (X32-Edit itself isn't run).
