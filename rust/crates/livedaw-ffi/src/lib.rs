@@ -86,8 +86,8 @@ use std::sync::Arc;
 // ABI 32 (Phase 3 step 5): the strip's own blocks are chain blocks; StripParams
 // points to their parameters (OwnBlocks).
 // ABI 33 (Phase 3 step 6): the profile's remote protocols (ld_engine_remotes, LdRemotes).
-// ABI 34 (Phase 3 step 7): a profile's port groups and colours without an engine
-// (ld_profile_port_groups, ld_profile_colour_*).
+// ABI 34 (Phase 3 step 7): a profile's port groups, colours and strip labels without
+// an engine (ld_profile_port_groups, ld_profile_colour_*, ld_profile_strip_label).
 pub const LD_ABI_VERSION: i32 = 34;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
@@ -730,6 +730,14 @@ pub extern "C" fn ld_profile_colour_name(profile: i32, index: i32) -> *mut sessi
 pub extern "C" fn ld_profile_colour_at_grid(profile: i32, position: i32) -> i32 {
     let grid = profile_of(profile).spec().palette.grid;
     usize::try_from(position).ok().and_then(|i| grid.get(i)).copied().unwrap_or(0)
+}
+
+/// ABI 34: what profile `profile` calls a strip of `kind` (`StripKind` numbers),
+/// before its number ("CH" for "CH 1"). Free with `ld_string_free`.
+#[no_mangle]
+pub extern "C" fn ld_profile_strip_label(profile: i32, kind: i32) -> *mut session::LdString {
+    let kind = usize::try_from(kind).ok().and_then(|k| StripKind::ALL.get(k)).copied().unwrap_or(StripKind::Channel);
+    session::LdString::new(profile_of(profile).spec().label(kind).to_string())
 }
 
 unsafe fn write_port_groups(p: Profile, out: *mut LdPortGroup, max: i32) -> i32 {

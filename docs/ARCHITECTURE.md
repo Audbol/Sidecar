@@ -296,9 +296,11 @@ of any size, of which the WING is one configuration.
   arrangement is the WING's.
 - Colours (Phase 3 step 7): a `ProfileSpec` names its `Palette` (named RGB colours,
   the colour picker's order, a new strip's); a strip's, source's or DCA's colour is
-  an index into it. The interface shows the console's (`palette::setProfile` in
-  `src/engine/Strip.h`, `consoleColour`, `consoleColourName`, `consoleColourAtGrid`;
-  C ABI 34 `ld_profile_colour_*`). The WING's and the Universal's are the WING's 18.
+  an index into it. A profile also names its strips' labels ("CH" of "CH 1",
+  `ProfileSpec::label`). The interface shows the console's (`setShownProfile` in
+  `src/engine/Strip.h`, set by `MainComponent::refreshAll`: `label`, `consoleColour`,
+  `consoleColourName`, `consoleColourAtGrid`; C ABI 34 `ld_profile_colour_*`,
+  `ld_profile_strip_label`). The WING's and the Universal's are the WING's.
 - Remote protocols (Phase 3 step 6): a `ProfileSpec` names its `Remotes`: a
   `MidiProtocol` (or none) over the app's MIDI ports and the `NetworkProtocol`s its
   servers run (bits in C ABI 33 `ld_engine_remotes`). The WING's and the Universal's

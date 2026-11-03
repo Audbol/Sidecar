@@ -25,39 +25,61 @@ StripKind stripKindFromString (const juce::String& s) noexcept
     return StripKind::Channel;
 }
 
+namespace
+{
+    struct Shown
+    {
+        ld::ProfileId profile = ld::kProfileWing;
+        std::array<std::string, 5> labels; // by StripKind
+
+        void load()
+        {
+            for (int k = 0; k < (int) labels.size(); ++k)
+                labels[(size_t) k] = takeString (ld::ld_profile_strip_label (profile, k)).toStdString();
+        }
+    };
+
+    Shown& shown()
+    {
+        static Shown s = []
+        {
+            Shown fresh;
+            fresh.load();
+            return fresh;
+        }();
+        return s;
+    }
+}
+
+void setShownProfile (ld::ProfileId profile)
+{
+    if (shown().profile == profile)
+        return;
+    shown().profile = profile;
+    shown().load();
+}
+
+ld::ProfileId shownProfile() noexcept { return shown().profile; }
+
 const char* label (StripKind kind) noexcept
 {
-    switch (kind)
-    {
-        case StripKind::Channel: return "CH";
-        case StripKind::Aux:     return "AUX";
-        case StripKind::Bus:     return "BUS";
-        case StripKind::Main:    return "MAIN";
-        case StripKind::Matrix:  return "MTX";
-    }
-    return "CH";
+    const auto k = (size_t) kind;
+    return k < shown().labels.size() ? shown().labels[k].c_str() : "";
 }
 
 namespace palette
 {
-    namespace
-    {
-        ld::ProfileId shown = ld::kProfileWing;
-    }
-
-    void setProfile (ld::ProfileId p) noexcept { shown = p; }
-    ld::ProfileId profile() noexcept { return shown; }
-    int count() noexcept { return ld::ld_profile_colour_count (shown); }
+    int count() noexcept { return ld::ld_profile_colour_count (shownProfile()); }
 }
 
 juce::Colour consoleColour (int index) noexcept
 {
-    return juce::Colour (0xff000000u | ld::ld_profile_colour_rgb (palette::profile(), index));
+    return juce::Colour (0xff000000u | ld::ld_profile_colour_rgb (shownProfile(), index));
 }
 
 juce::String consoleColourName (int index)
 {
-    return takeString (ld::ld_profile_colour_name (palette::profile(), index));
+    return takeString (ld::ld_profile_colour_name (shownProfile(), index));
 }
 
 Strip::Strip (ld::Engine* engine, ld::Strip* h)

@@ -335,7 +335,12 @@ Three layers:
       - 7b, colours (done): a profile names its `Palette`; the interface draws and
         offers the console's colours (`palette::setProfile`, `consoleColour`...,
         `ld_profile_colour_*`), the WING's 18 for the WING and the Universal.
-      - 7c, next: the strips' names and labels ("CH 1", "MTX 2") and the tags.
+      - 7c, labels (done): a profile names its strips' labels ("CH" of "CH 1"); the
+        interface shows the console's (`setShownProfile`, `label`,
+        `ld_profile_strip_label`), the WING's for both profiles.
+      - Still the WING's, with the WING surface: the group menus' arrangement, the
+        ICON/COLOR page's grid of 18, the tags (HOME > TAGS, talk tags) and the WING
+        pages' texts; they follow the consoles that differ (Phase 4).
    8. **`livedaw-wing` becomes the WING profile**, checked against the WING tests and
       WING Edit.
 4. **Second emulation** (the X32 / M32, the closest to the WING), then Yamaha,

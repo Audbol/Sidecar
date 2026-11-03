@@ -25,20 +25,24 @@ constexpr int kNumStripKinds = 5;
 /** Name used in show files ("ch", "aux", "bus", "main", "mtx"). */
 const char* toString (StripKind kind) noexcept;
 StripKind stripKindFromString (const juce::String& s) noexcept;
-/** Scribble strip label ("CH", "AUX", "BUS", "MAIN", "MTX"). */
+/** What the console calls a strip of `kind` before its number, as on the
+    scribble strips: the shown profile's (the WING's "CH", "AUX", "BUS", "MAIN",
+    "MTX"; valid until the profile shown changes). */
 const char* label (StripKind kind) noexcept;
 
 inline bool isInputKind (StripKind k) noexcept { return k == StripKind::Channel || k == StripKind::Aux; }
 
 /** The WING colour palette (index 1..18). */
-/** The colours the interface shows: the console's profile's palette (Phase 3
-    step 7; the WING's until the app says otherwise, MainComponent following the
-    console's). A strip's, source's or DCA's colour is an index into it, 1-based.
-    Message thread only. */
+/** The console profile the interface shows (Phase 3 step 7): its strips' labels
+    (label()) and colours (palette). The WING's until the app says otherwise
+    (MainComponent follows the console's). Message thread only. */
+void setShownProfile (ld::ProfileId);
+ld::ProfileId shownProfile() noexcept;
+
+/** The colours the interface shows: the shown profile's palette. A strip's,
+    source's or DCA's colour is an index into it, 1-based. */
 namespace palette
 {
-    void setProfile (ld::ProfileId) noexcept;
-    ld::ProfileId profile() noexcept;
     /** How many colours the palette has (the WING's 18). */
     int count() noexcept;
     /** A colour index kept in the palette (1..count()). */
@@ -48,7 +52,7 @@ namespace palette
 juce::Colour consoleColour (int index) noexcept;
 juce::String consoleColourName (int index);
 /** ICON/COLOR's colour grid: the colour index at place 0..17 (row by row, three to a row). */
-inline int consoleColourAtGrid (int position) noexcept { return ld::ld_profile_colour_at_grid (palette::profile(), position); }
+inline int consoleColourAtGrid (int position) noexcept { return ld::ld_profile_colour_at_grid (shownProfile(), position); }
 
 /** A strip's sends to every bus slot (storage in the Rust engine, grown on demand). */
 class SendBank

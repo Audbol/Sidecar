@@ -111,14 +111,16 @@ public:
             expectEquals (engine.getChannels()[0]->params.filter().lowCutFreq.load(), kLowCutDefaultHz, "the LO CUT reset matches");
             expectEquals (engine.getChannels()[0]->params.filter().highCutFreq.load(), kHighCutDefaultHz, "the HI CUT reset matches");
             expectEquals (consoleColourName (9), juce::String ("Red"));
-            // The interface's colours are the console's profile's (the Universal's are the WING's).
-            expect (palette::profile() == ld::kProfileWing && palette::count() == 18);
+            // The interface's colours and labels are the console's profile's (the Universal's
+            // are the WING's).
+            expect (shownProfile() == ld::kProfileWing && palette::count() == 18);
             expectEquals (consoleColourAtGrid (0), 13);
-            palette::setProfile (ld::kProfileUniversal);
+            setShownProfile (ld::kProfileUniversal);
+            expectEquals (juce::String (label (StripKind::Matrix)), juce::String ("MTX"));
             expect (palette::count() == 18 && consoleColour (9) == juce::Colour (0xff000000u | ld::ld_colour_rgb (9)) && consoleColourName (1) == "Dark Blue");
             expectEquals (palette::clamp (40), 18);
             expectEquals (consoleColourName (19), juce::String(), "no such colour");
-            palette::setProfile (ld::kProfileWing);
+            setShownProfile (ld::kProfileWing);
 
             // Wrappers survive structure changes; numbering follows position.
             auto* ch5 = engine.getChannels()[4].get();

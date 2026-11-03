@@ -1172,6 +1172,9 @@ extern "C"
     uint32_t ld_profile_colour_rgb (int32_t profile, int32_t index);
     LdString* ld_profile_colour_name (int32_t profile, int32_t index);
     int32_t ld_profile_colour_at_grid (int32_t profile, int32_t position);
+    /** ABI 34: what a profile calls a strip of `kind` (StripKindId), before its number
+        ("CH" for "CH 1"). Free with ld_string_free. */
+    LdString* ld_profile_strip_label (int32_t profile, int32_t kind);
     /** ABI 33: the console's remote protocols (its profile's): the app runs these only. */
     void ld_engine_remotes (const Engine*, RemotesC* out);
     /** ABI 28: makes the engine a fresh console of the structure of `counts` (null: the

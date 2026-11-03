@@ -1,7 +1,7 @@
 //! Console profiles: the console a configuration emulates and what that
 //! console is (its counts, its strips' chains and process orders, its fader
 //! and pan laws, its port groups, its processing models, its remote
-//! protocols, its colours). The
+//! protocols, its colours, its strips' labels). The
 //! Universal core takes any configuration; a profile limits and dresses it
 //! (`docs/UNIVERSAL_MIXER.md`, Phase 3). The WING is the first; the Universal
 //! is no console's limits.
@@ -189,6 +189,9 @@ pub struct ProfileSpec {
     pub remotes: Remotes,
     /// Its colours.
     pub palette: Palette,
+    /// What its strips are called ("CH 1", "MTX 2"): input channels, aux
+    /// channels, buses, mains, matrices.
+    labels: [&'static str; 5],
 }
 
 impl ProfileSpec {
@@ -199,6 +202,11 @@ impl ProfileSpec {
             StripKind::Aux => self.templates[1],
             StripKind::Bus | StripKind::Main | StripKind::Matrix => self.templates[2],
         }
+    }
+
+    /// The label of a strip of `kind`, before its number ("CH" for "CH 1").
+    pub fn label(&self, kind: StripKind) -> &'static str {
+        self.labels[StripKind::ALL.iter().position(|&k| k == kind).unwrap_or(0)]
     }
 
     /// The pre-fader blocks' order (`Node::Slot`) of a strip of `kind`;
@@ -214,6 +222,9 @@ impl ProfileSpec {
         }
     }
 }
+
+/// The WING's strip labels, as on its scribble strips (`StripKind::label`).
+const WING_LABELS: [&str; 5] = ["CH", "AUX", "BUS", "MAIN", "MTX"];
 
 /// The Behringer WING: 40 channels, 8 aux, 16 buses, 4 mains, 8 matrices, 16
 /// DCAs, 8 mute groups, 16 FX slots; its chains (`chain.rs`, Figs. 34 and 68
@@ -232,6 +243,7 @@ static WING: ProfileSpec = ProfileSpec {
     models: &WING_MODELS,
     remotes: Remotes::WING,
     palette: Palette::WING,
+    labels: WING_LABELS,
 };
 
 /// No console's limits. Its strips have the WING's blocks (a profile's own set
@@ -251,6 +263,7 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
     models: &WING_MODELS,
     remotes: Remotes::WING,
     palette: Palette::WING,
+    labels: WING_LABELS,
 };
 
 #[cfg(test)]
@@ -269,6 +282,15 @@ mod tests {
         for c in [Counts { mains: 2, ..Counts::WING }, Counts { buses: 8, ..Counts::WING }, Counts { dcas: 24, ..Counts::WING }] {
             assert!(!Profile::Wing.fits(&c));
             assert_eq!(Profile::Wing.or_universal(&c), Profile::Universal);
+        }
+    }
+
+    #[test]
+    fn the_wings_labels() {
+        for p in Profile::ALL {
+            for kind in StripKind::ALL {
+                assert_eq!(p.spec().label(kind), kind.label(), "{p:?} {kind:?}");
+            }
         }
     }
 
