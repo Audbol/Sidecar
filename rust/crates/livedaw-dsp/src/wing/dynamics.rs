@@ -945,7 +945,12 @@ fn configure(spec: &ModelSpec, v: &[f32], sr: f32) -> Config {
 /// EQ, transient designer, rider, saturation). MIX, GAIN and the crossover
 /// are not part of it.
 pub fn static_curve(model: usize, values: &[f32], input_db: &[f32], out: &mut [f32]) -> bool {
-    let Some(spec) = DYN_MODELS.get(model) else { return false };
+    static_curve_in(DYN_MODELS, model, values, input_db, out)
+}
+
+/// [`static_curve`] for model `model` of `table` (a console's dynamics table).
+pub fn static_curve_in(table: &[ModelSpec], model: usize, values: &[f32], input_db: &[f32], out: &mut [f32]) -> bool {
+    let Some(spec) = table.get(model) else { return false };
     let n = spec.params.len().min(values.len());
     let cfg = configure(spec, &values[..n], 48000.0);
     if static_gain(&cfg, 0.0).is_none() {
@@ -1134,6 +1139,8 @@ impl Coefs {
 
 pub struct WingDynamics {
     sr: f32,
+    /// The models `model` indexes (a console's dynamics table; the WING's by default).
+    table: &'static [ModelSpec],
     model: Option<usize>,
     values: [f32; MAX_DYN_PARAMS],
     cfg: Option<Config>,
@@ -1176,6 +1183,7 @@ impl Default for WingDynamics {
     fn default() -> Self {
         let mut d = Self {
             sr: 48000.0,
+            table: DYN_MODELS,
             model: None,
             values: [0.0; MAX_DYN_PARAMS],
             cfg: None,
@@ -1321,13 +1329,23 @@ impl WingDynamics {
         self.primed = false;
     }
 
+    /// Runs the models of `table` (a console's dynamics table: its profile's
+    /// `ModelTables::dynamics`); a new table starts the next block afresh.
+    pub fn set_table(&mut self, table: &'static [ModelSpec]) {
+        if !std::ptr::eq(self.table, table) {
+            self.table = table;
+            self.model = None;
+            self.cfg = None;
+        }
+    }
+
     /// True while the slot must still run: ON, or fading out after OFF.
     pub fn is_running(&self, on: bool) -> bool {
         on || self.wet > 0.0
     }
 
     fn update(&mut self, model: usize, values: &[f32], sc: &SidechainSettings, xo: &XoverSettings) {
-        let Some(spec) = DYN_MODELS.get(model) else { return };
+        let Some(spec) = self.table.get(model) else { return };
         let n = spec.params.len().min(MAX_DYN_PARAMS);
         let changed = self.model != Some(model) || self.values[..n] != values[..n.min(values.len())];
         if changed {

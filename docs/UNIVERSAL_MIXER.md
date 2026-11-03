@@ -379,12 +379,18 @@ Three layers:
         on their own chain and label (`template_at`, `label_at`; C ABI 35
         `ld_profile_slot_ranges`, `labelOf`). The X32's aux 1-8 are AUX and 9-16 FX
         returns ("FX 1"), both EQ only (`chain::X32_AUX`).
-      - 2b, next: mono-pair links and the M/C main.
+      - The mono-pair links and the M/C main move to step 4: both are about how
+        strips feed the mix.
    3. **The X32's processing models** (`livedaw_dsp::x32`): gate, compressor /
       expander, low cut, the 4- and 6-band EQ, clean-room from the documented
       ranges and laws; the chain's dynamics PRE / POST EQ and insert PRE / POST.
-   4. **Sends as the X32's**: channels to buses (tap points per bus pair, GRP),
-      LR and M/C assigns, buses and mains to matrices only.
+      - 3a (done): a dynamics processor runs its console's model table
+        (`WingDynamics::set_table`, the profile's `ModelTables::dynamics`, as the EQ
+        already took its table), so a console's own gate and compressor models can
+        use the dynamics DSP. The WING's renders are byte-identical.
+   4. **Sends and mains as the X32's**: channels to buses (tap points per bus pair,
+      GRP), LR and M/C assigns (main 1 the stereo LR, main 2 the mono M/C), buses and
+      mains to matrices only; odd/even links (`/config/chlink`...) over mono strips.
    5. **X32 OSC** (`livedaw-x32`, UDP 10023): `/info`, `/xinfo`, `/status`,
       `/xremote`, get / set with the console's value steps, `/node` and `/`, the
       meters; tests replay the documented traffic (X32-Edit itself isn't run).

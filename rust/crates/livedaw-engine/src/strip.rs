@@ -723,8 +723,13 @@ impl Strip {
         d.listen_scratch.clear();
         d.listen_scratch.resize(mb, 0.0);
         d.idle = false;
+        let dynamics = self.spec.models.dynamics;
         for b in self.params.own_blocks() {
-            b.dsp_mut().prepare(sample_rate);
+            let dsp = b.dsp_mut();
+            dsp.prepare(sample_rate);
+            if let BlockDsp::Dynamics(p, _) = dsp {
+                p.set_table(dynamics); // the console's models
+            }
         }
         d.delay.prepare(sample_rate);
         d.listen_filter.reset();
@@ -732,7 +737,11 @@ impl Strip {
         d.tap_shaper.prepare(sample_rate);
         if let Some(layout) = self.layout() {
             for b in layout.blocks() {
-                b.dsp_mut().prepare(sample_rate);
+                let dsp = b.dsp_mut();
+                dsp.prepare(sample_rate);
+                if let BlockDsp::Dynamics(p, _) = dsp {
+                    p.set_table(dynamics);
+                }
             }
         }
     }

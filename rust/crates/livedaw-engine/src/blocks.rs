@@ -12,6 +12,7 @@ use crate::atomic::AtomicF32;
 use crate::chain::Node;
 use crate::params::{DynSlotParams, EqBlockParams, FilterParams, InsertParams, DELAY_MIN_M};
 use livedaw_dsp::delay::DelayLine;
+use livedaw_dsp::model::ModelSpec;
 use livedaw_dsp::wing::dynamics::WingDynamics;
 use livedaw_dsp::wing::eq::WingEq;
 use livedaw_dsp::wing::filter::WingFilter;
@@ -183,10 +184,15 @@ unsafe impl Sync for Block {}
 unsafe impl Send for Block {}
 
 impl Block {
-    /// A new block of `kind` with the strip-unique id `uid`, prepared for `sample_rate`.
-    pub fn new(uid: u32, kind: BlockKind, bus: bool, sample_rate: f64) -> Self {
+    /// A new block of `kind` with the strip-unique id `uid`, prepared for
+    /// `sample_rate`; a dynamics block runs the models of `dynamics` (its
+    /// console's table).
+    pub fn new(uid: u32, kind: BlockKind, bus: bool, sample_rate: f64, dynamics: &'static [ModelSpec]) -> Self {
         let mut dsp = BlockDsp::new(kind);
         dsp.prepare(sample_rate);
+        if let BlockDsp::Dynamics(d, _) = &mut dsp {
+            d.set_table(dynamics);
+        }
         Self { uid, params: BlockParams::new(kind, bus), meters: BlockMeters::default(), dsp: UnsafeCell::new(dsp) }
     }
 
