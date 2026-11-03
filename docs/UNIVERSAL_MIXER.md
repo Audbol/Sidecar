@@ -477,6 +477,23 @@ Three layers:
         snippets and cues by program change, a settings page for the devices.
    7. **Scenes and the interface**: `.scn` import and export; the Universal Mixer
       shows the X32 (its strip kinds, blocks and colours from the profile).
+   8. **An X32 skin** (the owner's choice, November 2026: "make it look good"): a
+      surface laid out as an X32, the way the WING surface is the WING's skin, drawn
+      in Sidecar's own style (no Behringer artwork). From the X32's manual: 16 input
+      faders in four layers (Ch 1-16, Ch 17-32, Aux / FX returns, bus masters), 8
+      group faders in four (DCAs, buses 1-8, buses 9-16, matrices and M/C), the main
+      LR fader; a scribble strip, meter, mute, solo and select on every fader; the
+      channel strip section for the selected strip (config / preamp, gate, dynamics,
+      EQ, bus sends, each with its VIEW key); the colour display with its page keys
+      (HOME, METERS, ROUTING, SETUP, LIBRARY, EFFECTS, MUTE GRP, UTILITY); sends on
+      fader, mute groups, the assignable controls, monitoring and talkback.
+      - 8a: the skeleton: `InterfaceKind::X32`, `X32Surface` (a `Skin`) chosen for an
+        X32 console, its sections laid out for 1920 x 1080.
+      - 8b: the fader banks and their layers, scribble strips in the X32's colours.
+      - 8c: the channel strip section.
+      - 8d: the display's pages (the Universal Mixer's views inside it first).
+      - 8e: polish, screenshots, the user guide. The X32 Compact (16 + 1 faders) as
+        a model of it, like the WING COMPACT.
 
 Each emulation keeps the independent-project disclaimer: not affiliated with or
 endorsed by the console's maker, their trademarks used only to say what is emulated,

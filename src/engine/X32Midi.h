@@ -2,6 +2,7 @@
 
 #include "engine/FaderLaw.h"
 #include "engine/MidiProtocol.h"
+#include "engine/Parameters.h"
 
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_data_structures/juce_data_structures.h>
@@ -13,7 +14,6 @@ namespace livedaw
 {
 
 class Strip;
-struct DcaParams;
 
 /** The X32's MIDI protocol (MidiProtocol::X32): its fixed map, both ways
     (the X32's MIDI implementation, Sept 2017, as P.-G. Maillot's protocol
