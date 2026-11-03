@@ -1000,6 +1000,11 @@ impl Show {
         self.fade_duration = Duration::from_secs_f64(seconds.clamp(0.0, MAX_FADE_SECONDS));
     }
 
+    /// When the running (or last) fade started: `tick_at` measures from it.
+    pub fn fade_started(&self) -> Instant {
+        self.fade_start
+    }
+
     /// Jumps to the end of a running fade so the previous scene is fully applied.
     /// Values moved by hand during the fade stay where they were put.
     pub fn cancel_fade(&mut self, engine: &Engine) {

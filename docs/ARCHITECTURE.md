@@ -282,6 +282,15 @@ of any size, of which the WING is one configuration.
   the law `MainComponent::refreshAll` sets from the engine; a console's protocol
   keeps its own (`MidiRemote` and `livedaw-wing` use the WING's, `FaderLaw::wing()`
   and `fader_to_pos`).
+- Port groups (`livedaw-engine/src/ports.rs`, Phase 3 step 3): a `ProfileSpec`
+  names its console's sources and destinations as its routing pages group them
+  (`PortGroup`: name, label prefix, inputs and/or outputs, the engine index of its
+  first port or none for n/a tiles and the app's own groups, its size and how far
+  it grows). The WING's 25 (`WING_PORT_GROUPS`) are ranges of the engine's one
+  numbering (`sources.rs`, `routing.rs`); `group_of` finds an index's group. C ABI 31
+  `ld_engine_port_groups` (`PortGroupC`, `MixerEngine::getPortGroups`). The app's
+  routing pages still use their own table (`src/ui/RoutingGroups.h`); a test keeps
+  the two equal until the UI asks the profile (step 7).
 - Sends (`sends.rs`): a strip's sends to buses, mains and matrices are paged banks
   (`Bank<T>`) by the destination's index: `sends` (by bus slot, up to `MAX_BUSES`),
   `mains` and `matrices` (up to `MAX_MAINS` / `MAX_MATRICES`, 256). Pages are added

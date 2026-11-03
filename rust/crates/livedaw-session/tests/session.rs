@@ -347,9 +347,9 @@ fn levels_fade_along_the_fader_travel() {
     a.params.pan.store(-100.0);
 
     show.recall_scene(&engine, &mut np, 0);
-    // The fade's clock starts during the recall, a moment before this one (so
-    // "halfway" here is a hair past it on a busy machine).
-    let start = Instant::now();
+    // Measured from the fade's own start (during the recall), so a busy machine
+    // can't move "halfway".
+    let start = show.fade_started();
     assert!(show.tick_at(&engine, start + Duration::from_millis(1000)));
     // Halfway along the travel from -oo (0) to 0 dB (0.75) is 0.375: -20 dB,
     // where a straight line in dB would still be at -72 dB.

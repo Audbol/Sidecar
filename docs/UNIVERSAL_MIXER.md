@@ -289,7 +289,12 @@ Three layers:
       names its `FaderLaw` (breakpoints and steps, so the ProMix 01's 128 position
       fader fits) and its `PanLaw`; strips, scene fades and the UI's faders use the
       console's (C ABI 31 `ld_engine_fader_law`), the WING's protocols keep the
-      WING's. The ranges are next.
+      WING's. The ranges are done on the engine's side: a profile names its port
+      groups (`PortGroup`, `ports.rs`: ranges of the engine's numbering, inputs,
+      outputs or both), read through `ld_engine_port_groups`; the routing pages move
+      onto them in step 7, a test keeping their table equal until then. Still to
+      come with the consoles that need them: a fader law per strip kind (the 02R's
+      master runs 0 to -120 dB, its channels +10 to -90).
    4. **Model tables out of `wing`**: the model description (`ModelSpec`) becomes
       console-neutral; each profile names the models a block may hold.
    5. **The WING's blocks out of `StripParams`** (Phase 1's 3d): call sites move to

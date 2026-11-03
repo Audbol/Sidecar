@@ -22,6 +22,7 @@ pub mod monitor;
 pub mod params;
 pub mod pdc;
 pub mod pool;
+pub mod ports;
 pub mod profile;
 pub mod routing;
 pub mod sends;
@@ -42,6 +43,7 @@ pub use livedaw_recorder::{Recorder, NUM_PLAYBACK_CHANNELS, PLAYBACK_SOURCE_BASE
 pub use livedaw_recorder::{UsbDeck, USB_CHANNELS, USB_PLAYER_SOURCE_BASE};
 pub use params::{EngineControls, StripKind, StripMeters, StripParams};
 pub use pdc::{pdc_tap, MAX_PDC};
+pub use ports::PortGroup;
 pub use profile::{Profile, ProfileSpec};
 pub use sends::{SendParams, MAX_BUSES, SEND_MODES};
 pub use strip::Strip;

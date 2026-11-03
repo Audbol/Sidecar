@@ -108,6 +108,13 @@ public:
     ld::ProfileId getProfile() const noexcept { return (ld::ProfileId) ld::ld_engine_profile (engine); }
     /** The console's fader law (its profile's). */
     FaderLaw getFaderLaw() const { ld::FaderLawC c {}; ld::ld_engine_fader_law (engine, &c); return FaderLaw::of (c); }
+    /** The console's port groups (its profile's), in its routing menus' order. */
+    std::vector<ld::PortGroupC> getPortGroups() const
+    {
+        std::vector<ld::PortGroupC> groups ((size_t) juce::jmax (0, ld::ld_engine_port_groups (engine, nullptr, 0)));
+        ld::ld_engine_port_groups (engine, groups.data(), (int32_t) groups.size());
+        return groups;
+    }
     /** Makes the engine a fresh console of `counts` (nullptr: the WING); rebuilds the strip views. */
     void configure (const Counts* counts) { ld::ld_engine_configure (engine, counts); syncStrips(); }
     /** The number of strips of `kind` changed without a reset (the configuration

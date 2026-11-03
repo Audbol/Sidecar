@@ -1,6 +1,6 @@
 //! Console profiles: the console a configuration emulates and what that
 //! console is (its counts, its strips' chains and process orders, its fader
-//! and pan laws). The
+//! and pan laws, its port groups). The
 //! Universal core takes any configuration; a profile limits and dresses it
 //! (`docs/UNIVERSAL_MIXER.md`, Phase 3). The WING is the first; the Universal
 //! is no console's limits.
@@ -8,6 +8,7 @@
 use crate::chain::{self, Node};
 use crate::config::Counts;
 use crate::params::StripKind;
+use crate::ports::{PortGroup, WING_PORT_GROUPS};
 use livedaw_dsp::fader::FaderLaw;
 use livedaw_dsp::util::PanLaw;
 use livedaw_dsp::wing::PROCESS_ORDERS;
@@ -101,6 +102,9 @@ pub struct ProfileSpec {
     pub fader: FaderLaw,
     /// How its strips pan (mono sources) and balance (stereo ones).
     pub pan: PanLaw,
+    /// Its sources and destinations as its routing pages group them: ranges
+    /// of the engine's numbering (`ports.rs`).
+    pub port_groups: &'static [PortGroup],
 }
 
 impl ProfileSpec {
@@ -140,6 +144,7 @@ static WING: ProfileSpec = ProfileSpec {
     output_order: b"DI",
     fader: FaderLaw::WING,
     pan: PanLaw::WING,
+    port_groups: WING_PORT_GROUPS,
 };
 
 /// No console's limits. Its strips are the WING's until the WING's blocks
@@ -154,6 +159,7 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
     output_order: b"DI",
     fader: FaderLaw::WING,
     pan: PanLaw::WING,
+    port_groups: WING_PORT_GROUPS,
 };
 
 #[cfg(test)]
@@ -194,6 +200,7 @@ mod tests {
             assert_eq!(s.fader, FaderLaw::WING);
             assert_eq!(s.pan.gains(true, -1.0), livedaw_dsp::util::wing_mono_pan(-1.0));
             assert_eq!(s.pan.gains(false, 0.5), livedaw_dsp::util::stereo_balance(0.5));
+            assert_eq!(s.port_groups, WING_PORT_GROUPS);
         }
     }
 }

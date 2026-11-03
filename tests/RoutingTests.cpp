@@ -3,6 +3,8 @@
 #include "ui/RoutingGroups.h"
 #include "ui/UiContext.h"
 
+#include <algorithm>
+
 using namespace livedaw;
 using livedaw::test::OfflineRig;
 namespace routing = livedaw::ui::routing;
@@ -85,6 +87,35 @@ public:
 
             // USR 1-24 user signals, 25-56 user patches: sources with settings.
             expectEquals (routing::info (Group::UserSignal).size, 56);
+
+            // The engine's profile names the same groups (Phase 3 step 3): the UI's
+            // table and the profile's agree until the UI asks the profile (step 7).
+            MixerEngine engine (0);
+            const auto groups = engine.getPortGroups();
+            expectEquals ((int) groups.size(), (int) Group::BusDirect + 1);
+            for (int i = 0; i < (int) groups.size(); ++i)
+            {
+                const auto& p = groups[(size_t) i];
+                const auto g = (Group) i;
+                const auto mine = routing::info (g);
+                expectEquals (juce::String (p.name), juce::String (mine.name));
+                expectEquals (juce::String (p.prefix), juce::String (mine.prefix));
+                expectEquals (p.size, mine.size, p.name);
+                expectEquals (p.maxSize, routing::tileCount (g, 999), juce::String ("max ") + p.name);
+                const auto menu = [g] (const routing::Menu& m)
+                {
+                    for (auto& row : m.rows)
+                        if (std::find (row.begin(), row.end(), (int) g) != row.end())
+                            return true;
+                    return false;
+                };
+                expect ((p.input != 0) == menu (routing::sourceMenu (true, true)), juce::String ("in ") + p.name);
+                expect ((p.output != 0) == menu (routing::outputMenu()), juce::String ("out ") + p.name);
+                if (p.input != 0)
+                    expectEquals (routing::sourceAt (g, 1), p.first >= 0 ? p.first + 1 : -1, p.name);
+                if (p.output != 0 && g != Group::Recorder)
+                    expectEquals (routing::outputAt (g, 1), p.first >= 0 ? p.first + 1 : -1, p.name);
+            }
             expectEquals (routing::sourceAt (Group::UserSignal, 0), MixerEngine::usrSource (0));
             expectEquals (routing::sourceAt (Group::UserSignal, 55), MixerEngine::usrSource (55));
             expectEquals (routing::sourceAt (Group::UserSignal, 56), -1);

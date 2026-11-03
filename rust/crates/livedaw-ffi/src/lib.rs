@@ -33,8 +33,8 @@ use livedaw_engine::params::{MonitorPathParams, MonitorSourceParams};
 use livedaw_engine::sources::{SourceParams, UserPatchParams, UserSignalParams};
 use livedaw_engine::talk::{TalkParams, TalkPathParams};
 use livedaw_engine::{
-    pdc_tap, AtomicGroupSet, ConsoleConfig, Counts, Engine, EngineControls, InsertCallbacks, Profile, SendParams, Strip,
-    StripKind, StripMeters, StripParams,
+    pdc_tap, AtomicGroupSet, ConsoleConfig, Counts, Engine, EngineControls, InsertCallbacks, PortGroup, Profile, SendParams,
+    Strip, StripKind, StripMeters, StripParams,
 };
 use std::mem::{offset_of, size_of};
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -81,7 +81,8 @@ use std::sync::Arc;
 // ABI 29 (Phase 2 step 6): the configuration without a reset
 // (ld_engine_set_num_strips: aux, buses, mains, matrices).
 // ABI 30 (Phase 3 step 1): the console's profile (ld_engine_profile).
-// ABI 31 (Phase 3 step 3): the profile's fader law (ld_engine_fader_law, LdFaderLaw).
+// ABI 31 (Phase 3 step 3): the profile's fader law (ld_engine_fader_law, LdFaderLaw)
+// and port groups (ld_engine_port_groups, LdPortGroup).
 pub const LD_ABI_VERSION: i32 = 31;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
@@ -610,6 +611,56 @@ pub unsafe extern "C" fn ld_engine_fader_law(e: *const Engine, out: *mut LdFader
     }
 }
 
+/// A port group (`livedaw_engine::PortGroup`): names NUL-terminated (cut to
+/// fit), `first` -1 when the engine has no such ports.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct LdPortGroup {
+    pub name: [u8; 24],
+    pub prefix: [u8; 8],
+    pub input: i32,
+    pub output: i32,
+    pub first: i32,
+    pub size: i32,
+    pub max_size: i32,
+}
+
+impl From<&PortGroup> for LdPortGroup {
+    fn from(g: &PortGroup) -> Self {
+        fn copy<const N: usize>(s: &str) -> [u8; N] {
+            let mut out = [0u8; N];
+            let n = s.len().min(N - 1);
+            out[..n].copy_from_slice(&s.as_bytes()[..n]);
+            out
+        }
+        LdPortGroup {
+            name: copy(g.name),
+            prefix: copy(g.prefix),
+            input: g.input as i32,
+            output: g.output as i32,
+            first: g.first.unwrap_or(-1),
+            size: g.size,
+            max_size: g.max_size,
+        }
+    }
+}
+
+/// The console's port groups (its profile's), in its menus' order: writes up
+/// to `max` to `out` (may be null) and returns how many there are.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_port_groups(e: *const Engine, out: *mut LdPortGroup, max: i32) -> i32 {
+    let Some(e) = engine(e) else { return 0 };
+    guard(0, || {
+        let groups = e.profile().spec().port_groups;
+        if !out.is_null() {
+            for (i, g) in groups.iter().take(max.max(0) as usize).enumerate() {
+                *out.add(i) = g.into();
+            }
+        }
+        groups.len() as i32
+    })
+}
+
 /// Makes the engine a fresh console of `counts` (null: the WING).
 #[no_mangle]
 pub unsafe extern "C" fn ld_engine_configure(e: *const Engine, counts: *const LdCounts) {
@@ -1134,6 +1185,13 @@ mod tests {
             ld_engine_fader_law(e, &mut law);
             assert_eq!(law, LdFaderLaw::from(&FaderLaw::WING), "the Universal's faders are the WING's");
             assert_eq!((law.num_points, law.steps, law.position[1], law.db[4]), (5, 0, 0.0625, 10.0));
+            let n = ld_engine_port_groups(e, std::ptr::null_mut(), 0);
+            assert_eq!(n, 25);
+            let mut groups = vec![LdPortGroup::default(); n as usize];
+            assert_eq!(ld_engine_port_groups(e, groups.as_mut_ptr(), 2), 25, "writes 2, says 25");
+            assert_eq!(&groups[0].name[..9], b"LOCAL IN\0");
+            assert_eq!((groups[1].first, groups[0].max_size), (-1, 48));
+            assert_eq!(groups[2], LdPortGroup::default(), "not written");
             ld_engine_collect(e);
             ld_engine_destroy(e);
         }

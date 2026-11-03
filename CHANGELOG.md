@@ -24,6 +24,9 @@ Phase 3, the WING as a profile (`docs/UNIVERSAL_MIXER.md`), begins.
   `PanLaw`; both the WING's for now). Strips pan, scene fades move and the app's
   faders draw by the console's law; the WING's MIDI and OSC keep the WING's. C ABI 31:
   `ld_engine_fader_law`.
+- A profile names its port groups (`PortGroup`: the console's sources and outputs as
+  its routing pages group them, as ranges of the engine's numbering); the WING's 25
+  are the first. C ABI 31: `ld_engine_port_groups`.
 
 ## [0.2.0] - beta
 

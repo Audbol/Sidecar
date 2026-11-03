@@ -883,6 +883,19 @@ struct FaderLawC
 };
 static_assert (sizeof (FaderLawC) == 72);
 
+/** ABI 31: a port group (ld_engine_port_groups): a console's sources (input), output
+    ports (output) or both as its routing pages group them, a range of the engine's
+    numbering: port n is source and output port first + n (n < maxSize; the console has `size`; the
+    local ports grow with the interface). first = -1: the engine has no such ports
+    (n/a tiles, or the app's own groups). Names are NUL-terminated. */
+struct PortGroupC
+{
+    char name[24];
+    char prefix[8];
+    int32_t input, output, first, size, maxSize;
+};
+static_assert (sizeof (PortGroupC) == 52);
+
 /** A console model's surface and local I/O (ld_console_model_info). Models:
     0 the full-size WING, 1 the WING COMPACT (2 is kept for the RACK). */
 struct ConsoleModelInfo
@@ -1117,6 +1130,9 @@ extern "C"
     int32_t ld_engine_profile (const Engine*);
     /** ABI 31: the console's fader law (its profile's; the WING's for the Universal). */
     void ld_engine_fader_law (const Engine*, FaderLawC* out);
+    /** ABI 31: the console's port groups (its profile's), in its menus' order: writes up
+        to `max` to `out` (may be null) and returns how many there are. */
+    int32_t ld_engine_port_groups (const Engine*, PortGroupC* out, int32_t max);
     /** ABI 28: makes the engine a fresh console of the structure of `counts` (null: the
         WING's) without its channels or FX slot count, as a show load does before it adds
         the channels; writes the counts configured (within what the engine holds) to `out`
