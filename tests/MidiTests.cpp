@@ -149,7 +149,8 @@ private:
         const auto x32 = engine.getRemotes();
         expect (x32.midi == MidiProtocol::None && x32.network == 0u);
         expectEquals (engine.getFaderLaw().steps, 1024);
-        expectEquals (engine.getBuses()[0]->getColourIndex(), 1, "a new strip is OFF");
+        expectEquals (engine.getBuses()[0]->getColourIndex(), 6, "a new bus is MG, as on an X32");
+        expectEquals (engine.getChannels()[0]->getColourIndex(), 4, "a new channel YE");
         setShownProfile (ld::kProfileX32);
         expect (palette::count() == 16 && consoleColourName (5) == "BL");
         expectEquals (engine.getAux()[7]->getLabel(), juce::String ("AUX 8"));

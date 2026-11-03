@@ -387,7 +387,7 @@ impl Strip {
             params: {
                 let p = StripParams::new_in_slot_with(kind, usize::try_from(id).unwrap_or(0), spec.models);
                 if let Some(colour) = spec.palette.factory {
-                    p.colour.store(colour(kind), Relaxed);
+                    p.colour.store(colour(kind, usize::try_from(id).unwrap_or(0)), Relaxed);
                 }
                 p
             },

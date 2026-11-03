@@ -62,7 +62,8 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
 - The X32's processing models: its gate (EXP2, EXP3, EXP4, GATE, DUCK), its compressor
   and expander, and its 4-band (inputs) and 6-band (buses, mains, matrices) EQ, with its
   ranges and steps. An X32's strips run them, and the app's model menus show the
-  console's models. C ABI 37: `ld_models_show_profile`.
+  console's models. C ABI 37: `ld_models_show_profile`. Their defaults and a new strip's
+  colours are those of a real X32 (checked on an X32 Compact).
 
 ## [0.2.0] - beta
 

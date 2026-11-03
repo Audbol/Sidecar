@@ -402,7 +402,9 @@ Three layers:
         `comp_default`). The app's model calls describe the shown console's (C ABI
         37 `ld_models_show_profile`, from `setShownProfile`; `models::table` keeps a
         set per profile). Sidecar's choices where the references are silent: the
-        expander ratios of EXP2-4, the vintage bell's shape, the EQ's factory bands.
+        expander ratios of EXP2-4, the vintage bell's shape. The defaults (the gate,
+        the compressor, the EQ bands, a new strip's colour by kind) are what the
+        owner's X32 Compact shows on untouched strips.
       - 3c, next: the channel's low cut and order (dynamics PRE / POST EQ, the insert
         PRE / POST) and the X32's own chains for channels and buses.
    4. **Sends and mains as the X32's**: channels to buses (tap points per bus pair,

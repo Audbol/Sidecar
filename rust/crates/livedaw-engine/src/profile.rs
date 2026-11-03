@@ -151,9 +151,9 @@ pub struct Palette {
     pub grid: &'static [i32],
     /// The colour of a new channel, source and DCA.
     pub default: i32,
-    /// A new strip's colour by its kind; `None`: the WING's factory colours
-    /// (`StripParams::new_in_slot`).
-    pub factory: Option<fn(StripKind) -> i32>,
+    /// A new strip's colour by its kind and slot (0-based); `None`: the WING's
+    /// factory colours (`StripParams::new_in_slot`).
+    pub factory: Option<fn(StripKind, usize) -> i32>,
 }
 
 impl Palette {
@@ -163,12 +163,19 @@ impl Palette {
     /// The X32's 16 (`config/color` 0-15 are indexes 1-16): OFF and seven
     /// colours, then the same eight inverted (coloured text on black; drawn as
     /// the colour for now). The RGB values are Sidecar's own (the references
-    /// give none). A new strip is OFF (its factory colour isn't documented).
+    /// give none). New strips take the colours an X32 starts with (seen on
+    /// the owner's console: channels YE, aux in GN, FX returns, buses and
+    /// matrices MG, mains WH).
     pub const X32: Palette = Palette {
         colours: &X32_COLOURS,
         grid: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
         default: 1,
-        factory: Some(|_| 1),
+        factory: Some(|kind, slot| match kind {
+            StripKind::Channel => 4,                                  // YE
+            StripKind::Aux if slot < 8 => 3,                          // GN: aux in
+            StripKind::Aux | StripKind::Bus | StripKind::Matrix => 6, // MG: FX returns, buses, matrices
+            StripKind::Main => 8,                                     // WH
+        }),
     };
 
     /// Colour `index` (1-based), if the palette has it.
@@ -405,7 +412,10 @@ mod tests {
         assert_eq!((x.fader.steps, x.fader.max_db()), (1024, 10.0));
         assert_eq!(x.palette.colours.len(), 16);
         assert_eq!(x.palette.colour(5), Some(("BL", 0x2850e8)), "config/color 4");
-        assert_eq!(x.palette.factory.map(|f| f(StripKind::Bus)), Some(1));
+        let factory = x.palette.factory.unwrap();
+        assert_eq!(x.palette.colour(factory(StripKind::Channel, 0)), Some(("YE", 0xe8d020)));
+        assert_eq!((factory(StripKind::Aux, 7), factory(StripKind::Aux, 8)), (3, 6), "aux in GN, FX returns MG");
+        assert_eq!((factory(StripKind::Bus, 0), factory(StripKind::Main, 1)), (6, 8));
         assert_eq!((x.remotes.midi, x.remotes.network_bits()), (None, 0), "no protocol yet");
     }
 
@@ -520,7 +530,7 @@ mod tests {
         assert_eq!(ch.gate().model_spec().unwrap().token, "X32GATE");
         assert_eq!(ch.dynamics().model_spec().unwrap().token, "X32COMP");
         assert_eq!(ch.eq().model_spec().unwrap().token, "X32EQ4");
-        assert_eq!(ch.dynamics().param("ratio").unwrap().load(), 6.0, "3.0:1 (item 6)");
+        assert_eq!(ch.dynamics().param("ratio").unwrap().load(), 5.0, "3.0:1 (item 5)");
         let bus = StripParams::new_with(StripKind::Bus, x);
         assert_eq!(bus.eq().model_spec().unwrap().token, "X32EQ6");
         assert!(bus.eq().param("6q").is_some() && ch.eq().param("6q").is_none());

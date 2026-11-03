@@ -8,7 +8,8 @@
 //! `design` pick them by token): the X32's compressor is a close relative of
 //! the WING's, its gate modes are that DSP's gate, ducker and expanders.
 //! Where the references are silent (the expander ratios of EXP2-4, the VEQ
-//! band's shape, the EQ's factory bands) the choices are Sidecar's own.
+//! band's shape) the choices are Sidecar's own; the defaults are what the
+//! owner's X32 Compact shows on an untouched strip (firmware 4.09).
 
 use crate::model::{ModelCategory, ModelSpec, ModelTables, ParamKind, ParamSpec};
 use crate::wing::{FILTER_TOOLS, FX_MODELS};
@@ -32,11 +33,11 @@ const fn p(
 /// RANGE 3..60 dB, ATTACK 0..120 ms, HOLD 0.02..2000 ms and RELEASE
 /// 5..4000 ms on the console's log scales.
 const GATE_PARAMS: &[ParamSpec] = &[
-    p("thr", "THRESHOLD", "dB", ParamKind::Linear, -80.0, 0.0, 161, -40.0),
+    p("thr", "THRESHOLD", "dB", ParamKind::Linear, -80.0, 0.0, 161, -80.0),
     p("range", "RANGE", "dB", ParamKind::Linear, 3.0, 60.0, 58, 60.0),
-    p("att", "ATTACK", "ms", ParamKind::Linear, 0.0, 120.0, 121, 0.0),
-    p("hld", "HOLD", "ms", ParamKind::Log, 0.02, 2000.0, 101, 10.0),
-    p("rel", "RELEASE", "ms", ParamKind::Log, 5.0, 4000.0, 101, 200.0),
+    p("att", "ATTACK", "ms", ParamKind::Linear, 0.0, 120.0, 121, 10.0),
+    p("hld", "HOLD", "ms", ParamKind::Log, 0.02, 2000.0, 101, 50.2),
+    p("rel", "RELEASE", "ms", ParamKind::Log, 5.0, 4000.0, 101, 258.0),
 ];
 
 /// The compressor's ratios (`dyn/ratio` 0-11).
@@ -45,13 +46,13 @@ pub const DYN_RATIOS: &[f32] = &[1.1, 1.3, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 7.0, 10
 /// The compressor's / expander's parameters (`/ch/NN/dyn`); MIX is the slot's.
 const DYN_PARAMS: &[ParamSpec] = &[
     p("thr", "THRESHOLD", "dB", ParamKind::Linear, -60.0, 0.0, 121, 0.0),
-    p("ratio", "RATIO", "", ParamKind::Values(DYN_RATIOS), 0.0, 11.0, 12, 6.0),
-    p("knee", "KNEE", "", ParamKind::Int, 0.0, 5.0, 6, 0.0),
+    p("ratio", "RATIO", "", ParamKind::Values(DYN_RATIOS), 0.0, 11.0, 12, 5.0),
+    p("knee", "KNEE", "", ParamKind::Int, 0.0, 5.0, 6, 1.0),
     p("mgain", "GAIN", "dB", ParamKind::Linear, 0.0, 24.0, 49, 0.0),
     p("det", "DETECT", "", ParamKind::Choice(&["PEAK", "RMS"]), 0.0, 1.0, 2, 0.0),
     p("att", "ATTACK", "ms", ParamKind::Linear, 0.0, 120.0, 121, 10.0),
     p("hld", "HOLD", "ms", ParamKind::Log, 0.02, 2000.0, 101, 10.0),
-    p("rel", "RELEASE", "ms", ParamKind::Log, 5.0, 4000.0, 101, 150.0),
+    p("rel", "RELEASE", "ms", ParamKind::Log, 5.0, 4000.0, 101, 151.0),
     p("env", "ENVELOPE", "", ParamKind::Choice(&["LIN", "LOG"]), 0.0, 1.0, 2, 1.0),
     p("auto", "AUTO", "", ParamKind::Toggle, 0.0, 1.0, 2, 0.0),
 ];
@@ -95,23 +96,23 @@ const fn flatten<const N: usize, const M: usize>(bands: [[ParamSpec; 4]; N]) -> 
     out
 }
 
-/// The inputs' 4 bands (Low, Lo-Mid, Hi-Mid, High; the factory bands are
-/// Sidecar's: low shelf, two bells, high shelf).
+/// The inputs' 4 bands (Low, Lo-Mid, Hi-Mid, High): three bells and a high
+/// shelf to start.
 static EQ4_PARAMS: [ParamSpec; 16] = flatten([
-    band!("1t", "1f", "1g", "1q", "LOW", 1.0, 200.0),
-    band!("2t", "2f", "2g", "2q", "LO-MID", 2.0, 500.0),
-    band!("3t", "3f", "3g", "3q", "HI-MID", 2.0, 2000.0),
-    band!("4t", "4f", "4g", "4q", "HIGH", 4.0, 10000.0),
+    band!("1t", "1f", "1g", "1q", "LOW", 2.0, 124.7),
+    band!("2t", "2f", "2g", "2q", "LO-MID", 2.0, 496.6),
+    band!("3t", "3f", "3g", "3q", "HI-MID", 2.0, 1970.0),
+    band!("4t", "4f", "4g", "4q", "HIGH", 4.0, 10020.0),
 ]);
 
 /// Buses', mains' and matrices' 6 bands (Low, Low2, Lo-Mid, Hi-Mid, High2, High).
 static EQ6_PARAMS: [ParamSpec; 24] = flatten([
-    band!("1t", "1f", "1g", "1q", "LOW", 1.0, 80.0),
-    band!("2t", "2f", "2g", "2q", "LOW2", 2.0, 200.0),
-    band!("3t", "3f", "3g", "3q", "LO-MID", 2.0, 500.0),
-    band!("4t", "4f", "4g", "4q", "HI-MID", 2.0, 2000.0),
-    band!("5t", "5f", "5g", "5q", "HIGH2", 2.0, 6000.0),
-    band!("6t", "6f", "6g", "6q", "HIGH", 4.0, 12000.0),
+    band!("1t", "1f", "1g", "1q", "LOW", 1.0, 79.6),
+    band!("2t", "2f", "2g", "2q", "LOW2", 2.0, 158.9),
+    band!("3t", "3f", "3g", "3q", "LO-MID", 2.0, 496.6),
+    band!("4t", "4f", "4g", "4q", "HI-MID", 2.0, 1970.0),
+    band!("5t", "5f", "5g", "5q", "HIGH2", 2.0, 5020.0),
+    band!("6t", "6f", "6g", "6q", "HIGH", 4.0, 10020.0),
 ]);
 
 /// The inputs' EQ (`/ch/NN/eq`, `/auxin`, `/fxrtn`).
