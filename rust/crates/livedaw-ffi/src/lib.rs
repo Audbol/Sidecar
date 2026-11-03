@@ -19,6 +19,7 @@ pub mod session;
 pub mod usb;
 pub mod web;
 pub mod wing;
+pub mod x32;
 
 use livedaw_dsp::fader::FaderLaw;
 use livedaw_dsp::wing::fx::FX_READOUTS;
@@ -92,7 +93,8 @@ use std::sync::Arc;
 // ld_profile_slot_ranges (LdSlotRange).
 // ABI 36 (Phase 4 step 3b): DynSlotParams and EqBlockParams end with their model table.
 // ABI 37 (Phase 4 step 3b): the model calls describe the shown profile's (ld_models_show_profile).
-pub const LD_ABI_VERSION: i32 = 37;
+// ABI 38 (Phase 4 step 5): the X32 OSC server (ld_x32_*).
+pub const LD_ABI_VERSION: i32 = 38;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(default)

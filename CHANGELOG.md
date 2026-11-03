@@ -77,8 +77,9 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
   configuration says (preamp and delay, EQ, dynamics, fader and mute).
 - An X32 OSC server (`livedaw-x32`, UDP 10023) that answers like an X32: info and
   status, gets and sets on the console's value steps, `/node` and `/` text, `/xremote`
-  change updates and meters, over the engine's strips. The X32 profile names it; the app
-  doesn't start it yet.
+  change updates and meters, over the engine's strips. The app runs it on UDP 10023 while
+  the console is an X32 and the network remote (SETUP > REMOTE) is on. C ABI 38:
+  `ld_x32_*`.
 
 ## [0.2.0] - beta
 

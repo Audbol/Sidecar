@@ -23,6 +23,7 @@ dependencies = [
  "livedaw-session",
  "livedaw-web",
  "livedaw-wing",
+ "livedaw-x32",
 ]
 
 [[package]]

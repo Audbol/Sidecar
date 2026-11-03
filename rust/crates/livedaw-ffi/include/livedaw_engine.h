@@ -29,7 +29,7 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 37;
+constexpr int kAbiVersion = 38;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -989,6 +989,7 @@ enum AudioFileFormat : int32_t
     kFormatMp3 = 3
 };
 struct LdWing;    // opaque WING remote (servers + snapshot files), see ld_wing_*
+struct LdX32;     // ABI 38: opaque X32 OSC server, see ld_x32_*
 struct LdWeb;     // opaque web remote (HTTP + WebSocket screen mirror), see ld_web_*
 
 /** An input event from a browser (ld_web_take_input). */
@@ -1745,6 +1746,16 @@ extern "C"
     /** Sends the tiles put since the last call. */
     void ld_web_publish (LdWeb*);
     bool ld_web_take_input (LdWeb*, LdWebInput* out);
+
+    // ABI 38: the X32 OSC server (message thread; destroy it before the engine).
+    LdX32* ld_x32_create (const Engine*);
+    void ld_x32_destroy (LdX32*);
+    /** (Re)starts it as console `name` on UDP `port` (0: any free port); false if the
+        port couldn't be bound. */
+    bool ld_x32_start (LdX32*, const char* name, size_t nameLen, int32_t port);
+    void ld_x32_stop (LdX32*);
+    /** Its UDP port, or -1 when it isn't running. */
+    int32_t ld_x32_port (const LdX32*);
 
     // WING remote (message thread). Destroy it before the engine.
     LdWing* ld_wing_create (const Engine*);

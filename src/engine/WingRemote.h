@@ -56,6 +56,10 @@ public:
     void refreshProtocols();
     void stop();
     bool isRunning() const;
+    /** The X32's OSC server (livedaw-x32): run with the others while the console
+        is an X32 (its profile names that protocol), on UDP 10023. */
+    bool isX32Running() const;
+    static constexpr int x32Port = 10023;
     /** Renames the console at once (discovery and connected clients). */
     void setName (const juce::String&);
     /** The model the console reports (discovery, /? and /$syscfg/$cnsmdl), as
@@ -152,6 +156,11 @@ private:
 
     MixerEngine& engine;
     ld::LdWing* handle;
+    ld::LdX32* x32;
+    juce::String x32Name;
+    static constexpr juce::uint32 x32OscBit = 8; // RemotesC::network
+    juce::StringArray applyWing (const Settings&);
+    bool applyX32 (const Settings&);
     Settings running;
     juce::uint32 runningProtocols = 0; // the profile's set the servers started with
     Show* libraryShow = nullptr;

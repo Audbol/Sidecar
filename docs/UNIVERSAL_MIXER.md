@@ -445,9 +445,14 @@ Three layers:
         enums by name or number; `/node` and `/` in real units; `/xremote` (4
         clients, 10 s); `/meters` 0, 1, 2, 6 and 13. Gate, dynamics and EQ are the
         X32 models; what the engine has no place for yet (icons, sources, key
-        sources and filters, send tap types, dynamics and insert positions, links,
-        automix) the server keeps and answers back. The profile names it
-        (`NetworkProtocol::X32Osc`, bit 8); the app starts it later.
+        sources and filters, links, automix) the server keeps and answers back
+        (send types and the dynamics and insert positions reach the audio since
+        4b). The profile names it (`NetworkProtocol::X32Osc`, bit 8).
+      - 5b, in the app (done): C ABI 38 `ld_x32_*`; the network remote
+        (`WingRemote`, SETUP > REMOTE's switch and console name) runs it on UDP
+        10023 while the console is an X32, and the WING's servers while it is a
+        WING or the Universal.
+      - 5c, next: compare its replies with the owner's X32 Compact (read-only).
    6. **X32 MIDI** (`MidiProtocol::X32`): the fixed CC map (faders, mutes, pans on
       channels 1-3, scenes by program change) and OSC over SysEx.
    7. **Scenes and the interface**: `.scn` import and export; the Universal Mixer

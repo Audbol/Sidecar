@@ -8,13 +8,15 @@
 namespace livedaw
 {
 
-WingRemote::WingRemote (MixerEngine& e) : engine (e), handle (ld::ld_wing_create (e.getHandle()))
+WingRemote::WingRemote (MixerEngine& e)
+    : engine (e), handle (ld::ld_wing_create (e.getHandle())), x32 (ld::ld_x32_create (e.getHandle()))
 {
 }
 
 WingRemote::~WingRemote()
 {
     stopTimer();
+    ld::ld_x32_destroy (x32);
     ld::ld_wing_destroy (handle);
 }
 
@@ -61,6 +63,37 @@ bool WingRemote::Settings::operator== (const Settings& o) const
 //==============================================================================
 juce::StringArray WingRemote::apply (const Settings& s)
 {
+    auto errors = applyWing (s);
+    if (! applyX32 (s))
+        errors.add ("X32 OSC: UDP port " + juce::String (x32Port) + " is in use");
+    return errors;
+}
+
+bool WingRemote::applyX32 (const Settings& s)
+{
+    // The X32's OSC while the console is one and the network remote is on.
+    const bool wanted = s.enabled && ! paths::externalActionsBlocked().load()
+                        && (engine.getRemotes().network & x32OscBit) != 0;
+    if (! wanted)
+    {
+        ld::ld_x32_stop (x32);
+        x32Name.clear();
+        return true;
+    }
+    if (isX32Running() && x32Name == s.name)
+        return true;
+    const Utf8 name (s.name);
+    x32Name = s.name;
+    return ld::ld_x32_start (x32, name.data, name.size, x32Port);
+}
+
+bool WingRemote::isX32Running() const
+{
+    return ld::ld_x32_port (x32) >= 0;
+}
+
+juce::StringArray WingRemote::applyWing (const Settings& s)
+{
     if (! s.enabled)
     {
         stop();
@@ -95,13 +128,15 @@ juce::StringArray WingRemote::apply (const Settings& s)
 
 void WingRemote::refreshProtocols()
 {
-    if (isRunning() && running.enabled && engine.getRemotes().network != runningProtocols)
+    if (running.enabled && engine.getRemotes().network != runningProtocols)
         apply (running);
 }
 
 void WingRemote::stop()
 {
     ld::ld_wing_stop (handle);
+    ld::ld_x32_stop (x32);
+    x32Name.clear();
     running.enabled = false;
 }
 
