@@ -31,10 +31,24 @@ const char* label (StripKind kind) noexcept;
 inline bool isInputKind (StripKind k) noexcept { return k == StripKind::Channel || k == StripKind::Aux; }
 
 /** The WING colour palette (index 1..18). */
-juce::Colour wingColour (int index) noexcept;
-juce::String wingColourName (int index);
+/** The colours the interface shows: the console's profile's palette (Phase 3
+    step 7; the WING's until the app says otherwise, MainComponent following the
+    console's). A strip's, source's or DCA's colour is an index into it, 1-based.
+    Message thread only. */
+namespace palette
+{
+    void setProfile (ld::ProfileId) noexcept;
+    ld::ProfileId profile() noexcept;
+    /** How many colours the palette has (the WING's 18). */
+    int count() noexcept;
+    /** A colour index kept in the palette (1..count()). */
+    inline int clamp (int index) noexcept { return juce::jlimit (1, juce::jmax (1, count()), index); }
+}
+
+juce::Colour consoleColour (int index) noexcept;
+juce::String consoleColourName (int index);
 /** ICON/COLOR's colour grid: the colour index at place 0..17 (row by row, three to a row). */
-inline int wingColourAtGrid (int position) noexcept { return ld::ld_colour_at_grid (position); }
+inline int consoleColourAtGrid (int position) noexcept { return ld::ld_profile_colour_at_grid (palette::profile(), position); }
 
 /** A strip's sends to every bus slot (storage in the Rust engine, grown on demand). */
 class SendBank
@@ -217,8 +231,8 @@ public:
 
     /** The colour the strip shows (1..18; its source's while linked). */
     int getColourIndex() const noexcept;
-    void setColourIndex (int index) const noexcept { params.colour.store (juce::jlimit (1, 18, index)); }
-    juce::Colour getColour() const noexcept { return wingColour (getColourIndex()); }
+    void setColourIndex (int index) const noexcept { params.colour.store (palette::clamp (index)); }
+    juce::Colour getColour() const noexcept { return consoleColour (getColourIndex()); }
 
     /** The WING icon the strip shows (0 = none; its source's while linked). */
     int getIcon() const noexcept;

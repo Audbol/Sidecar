@@ -104,7 +104,7 @@ void DawTrackHeader::paint (juce::Graphics& g)
     g.fillRect (0, getHeight() - 1, getWidth(), 1);
     g.fillRect (getWidth() - 1, 0, 1, getHeight());
 
-    const auto colour = wingColour (t->colour);
+    const auto colour = consoleColour (t->colour);
     g.setColour (colour);
     g.fillRect (colourArea.withTrimmedBottom (1));
     if (selected)

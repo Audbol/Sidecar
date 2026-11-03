@@ -1,14 +1,14 @@
 //! Console profiles: the console a configuration emulates and what that
 //! console is (its counts, its strips' chains and process orders, its fader
 //! and pan laws, its port groups, its processing models, its remote
-//! protocols). The
+//! protocols, its colours). The
 //! Universal core takes any configuration; a profile limits and dresses it
 //! (`docs/UNIVERSAL_MIXER.md`, Phase 3). The WING is the first; the Universal
 //! is no console's limits.
 
 use crate::chain::{self, Node};
 use crate::config::Counts;
-use crate::params::StripKind;
+use crate::params::{StripKind, DEFAULT_COLOUR, WING_COLOURS, WING_COLOUR_GRID};
 use crate::ports::{PortGroup, WING_PORT_GROUPS};
 use livedaw_dsp::fader::FaderLaw;
 use livedaw_dsp::model::ModelTables;
@@ -135,6 +135,28 @@ impl Remotes {
     }
 }
 
+/// The colours a console's strips, sources and DCAs take: a strip's colour is
+/// an index (1-based) into `colours`.
+#[derive(Clone, Copy, Debug)]
+pub struct Palette {
+    /// Name and RGB of each colour.
+    pub colours: &'static [(&'static str, u32)],
+    /// The colour indexes in the order its colour picker shows them.
+    pub grid: &'static [i32],
+    /// The colour of a new channel, source and DCA.
+    pub default: i32,
+}
+
+impl Palette {
+    /// The WING's 18 (`params::WING_COLOURS`) and ICON/COLOR's grid.
+    pub const WING: Palette = Palette { colours: &WING_COLOURS, grid: &WING_COLOUR_GRID, default: DEFAULT_COLOUR };
+
+    /// Colour `index` (1-based), if the palette has it.
+    pub fn colour(&self, index: i32) -> Option<(&'static str, u32)> {
+        usize::try_from(index - 1).ok().and_then(|i| self.colours.get(i)).copied()
+    }
+}
+
 /// What a console is: what a new console of the profile has and how its
 /// strips run.
 #[derive(Debug)]
@@ -165,6 +187,8 @@ pub struct ProfileSpec {
     pub models: &'static ModelTables,
     /// The remote protocols it speaks.
     pub remotes: Remotes,
+    /// Its colours.
+    pub palette: Palette,
 }
 
 impl ProfileSpec {
@@ -207,6 +231,7 @@ static WING: ProfileSpec = ProfileSpec {
     port_groups: WING_PORT_GROUPS,
     models: &WING_MODELS,
     remotes: Remotes::WING,
+    palette: Palette::WING,
 };
 
 /// No console's limits. Its strips have the WING's blocks (a profile's own set
@@ -225,6 +250,7 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
     port_groups: WING_PORT_GROUPS,
     models: &WING_MODELS,
     remotes: Remotes::WING,
+    palette: Palette::WING,
 };
 
 #[cfg(test)]
@@ -243,6 +269,20 @@ mod tests {
         for c in [Counts { mains: 2, ..Counts::WING }, Counts { buses: 8, ..Counts::WING }, Counts { dcas: 24, ..Counts::WING }] {
             assert!(!Profile::Wing.fits(&c));
             assert_eq!(Profile::Wing.or_universal(&c), Profile::Universal);
+        }
+    }
+
+    #[test]
+    fn the_wings_colours() {
+        for p in Profile::ALL {
+            let c = p.spec().palette;
+            assert_eq!(c.colours.len(), 18, "{p:?}");
+            assert_eq!(c.colour(1), Some(("Dark Blue", 0x380088)));
+            assert_eq!(c.colour(19), None);
+            assert_eq!(c.colour(0), None);
+            let mut grid = c.grid.to_vec();
+            grid.sort_unstable();
+            assert_eq!(grid, (1..=18).collect::<Vec<_>>(), "every colour once in the picker");
         }
     }
 

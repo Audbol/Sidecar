@@ -484,7 +484,7 @@ void DawLanes::paint (juce::Graphics& g)
 void DawLanes::paintClip (juce::Graphics& g, int row, const daw::ClipData& c, juce::Rectangle<int> area) const
 {
     const auto& track = state.tracks[(size_t) row];
-    const auto colour = wingColour (track.colour);
+    const auto colour = consoleColour (track.colour);
     const bool selected = state.isSelected (c.id);
     const bool hovered = hover.row == row && hover.index >= 0 && hover.index < (int) state.clips[(size_t) row].size()
                          && state.clips[(size_t) row][(size_t) hover.index].id == c.id;

@@ -589,7 +589,7 @@ void FaderStrip::paint (juce::Graphics& g)
     if (scribbleShown)
     {
         const juce::Colour colour = strip != nullptr ? stripDisplayColour (*strip)
-                                    : (dca >= 0 ? wingColour (shownColour) : (fxp ? kFxColour : (midi ? Colours::midiCc : surfaceColours().ledOff)));
+                                    : (dca >= 0 ? consoleColour (shownColour) : (fxp ? kFxColour : (midi ? Colours::midiCc : surfaceColours().ledOff)));
         drawLightBar (g, barArea.toFloat(), lightBarColour (colour).withMultipliedBrightness (uiprefs::brightness (ctx.settings, "colorLed", 25)),
                       active && shownLight);
         const auto info = active ? scribbleInfo() : blankScribble();

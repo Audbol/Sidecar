@@ -44,6 +44,6 @@ pub use livedaw_recorder::{UsbDeck, USB_CHANNELS, USB_PLAYER_SOURCE_BASE};
 pub use params::{EngineControls, StripKind, StripMeters, StripParams};
 pub use pdc::{pdc_tap, MAX_PDC};
 pub use ports::PortGroup;
-pub use profile::{MidiProtocol, NetworkProtocol, Profile, ProfileSpec, Remotes};
+pub use profile::{MidiProtocol, NetworkProtocol, Palette, Profile, ProfileSpec, Remotes};
 pub use sends::{SendParams, MAX_BUSES, SEND_MODES};
 pub use strip::Strip;

@@ -38,14 +38,26 @@ const char* label (StripKind kind) noexcept
     return "CH";
 }
 
-juce::Colour wingColour (int index) noexcept
+namespace palette
 {
-    return juce::Colour (0xff000000u | ld::ld_colour_rgb (index));
+    namespace
+    {
+        ld::ProfileId shown = ld::kProfileWing;
+    }
+
+    void setProfile (ld::ProfileId p) noexcept { shown = p; }
+    ld::ProfileId profile() noexcept { return shown; }
+    int count() noexcept { return ld::ld_profile_colour_count (shown); }
 }
 
-juce::String wingColourName (int index)
+juce::Colour consoleColour (int index) noexcept
 {
-    return takeString (ld::ld_list_item (11, index - 1));
+    return juce::Colour (0xff000000u | ld::ld_profile_colour_rgb (palette::profile(), index));
+}
+
+juce::String consoleColourName (int index)
+{
+    return takeString (ld::ld_profile_colour_name (palette::profile(), index));
 }
 
 Strip::Strip (ld::Engine* engine, ld::Strip* h)

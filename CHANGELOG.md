@@ -39,6 +39,10 @@ Phase 3, the WING as a profile (`docs/UNIVERSAL_MIXER.md`), begins.
   protocols; the WING's for the WING and the Universal). The app makes the console's
   MIDI protocol from it (`MidiProtocol`, of which the WING's MIDI remote is one) and
   runs only the network servers it names. C ABI 33: `ld_engine_remotes`.
+- The routing pages show the console's profile's port groups instead of a table of
+  their own, and the interface draws and offers the profile's colours (`Palette`; the
+  WING's 18 for both profiles). C ABI 34: `ld_profile_port_groups`,
+  `ld_profile_colour_count`, `_rgb`, `_name` and `_at_grid`.
 
 ## [0.2.0] - beta
 

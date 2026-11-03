@@ -489,7 +489,7 @@ namespace
         if (auto* s = stripOfSignal (engine, source))
             return stripDisplayColour (*s);
         const auto* src = sourceSettings (engine, source);
-        return wingColour (src != nullptr ? src->colour.load() : 1);
+        return consoleColour (src != nullptr ? src->colour.load() : 1);
     }
 
     /** A source is one side of a stereo signal: a pair (STEREO, MID/SIDE), a strip's L or R. */
@@ -1307,7 +1307,7 @@ void routing::paintSourceTile (juce::Graphics& g, juce::Rectangle<int> area, Mix
     const auto* src = port >= 0 ? sourceSettings (engine, port) : nullptr;
     const int colour = src != nullptr ? src->colour.load() : 1;
     const bool playback = group == Group::WlivePlay || group == Group::UsbPlayer;
-    const auto stripColour = playback && colour == 1 ? playbackStrip : wingColour (colour);
+    const auto stripColour = playback && colour == 1 ? playbackStrip : consoleColour (colour);
     if (port < 0 || src == nullptr || ! sourceAvailable (engine, port))
     {
         const auto label = port >= 0 ? routing::sourceLabel (port) : juce::String (routing::info (group).prefix) + " " + juce::String (index + 1);
@@ -1412,7 +1412,7 @@ void RoutingPage::paintOutputTile (juce::Graphics& g, juce::Rectangle<int> area,
     const int port = routing::outputAt (group, index);
     const auto feeder = port >= 0 ? feederOf (port) : Signal { nullptr, -1 };
     const bool present = port >= 0 && (routing::isRecorderPort (port) || port < numHardware (true));
-    const auto colour = feeder.channel < 0         ? wingColour (1)
+    const auto colour = feeder.channel < 0         ? consoleColour (1)
                         : feeder.strip != nullptr  ? feeder.strip->getColour()
                         : feeder.source >= 0       ? sourceColour (ctx.engine, feeder.source)
                                                    : Colours::lime;
@@ -1479,7 +1479,7 @@ void RoutingPage::paintSignal (juce::Graphics& g, juce::Rectangle<int> area, con
     // meter, the stereo link glyph and the group chip in the signal's colour.
     if (sig.channel < 0)
     {
-        paintNaTile (g, area, wingColour (1), juce::String (routing::info (signalGroup).prefix) + " " + juce::String (index + 1), 16.0f / 68.0f, true,
+        paintNaTile (g, area, consoleColour (1), juce::String (routing::info (signalGroup).prefix) + " " + juce::String (index + 1), 16.0f / 68.0f, true,
                      false);
         return;
     }
@@ -1978,7 +1978,7 @@ void RoutingPage::paintSourceLook (juce::Graphics& g) const
         return;
     for (auto& [cell, colour] : sourceColourCells)
     {
-        g.setColour (wingColour (colour));
+        g.setColour (consoleColour (colour));
         g.fillRect (cell);
         if (colour == src->colour.load())
         {

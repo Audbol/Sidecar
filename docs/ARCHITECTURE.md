@@ -288,9 +288,17 @@ of any size, of which the WING is one configuration.
   first port or none for n/a tiles and the app's own groups, its size and how far
   it grows). The WING's 25 (`WING_PORT_GROUPS`) are ranges of the engine's one
   numbering (`sources.rs`, `routing.rs`); `group_of` finds an index's group. C ABI 31
-  `ld_engine_port_groups` (`PortGroupC`, `MixerEngine::getPortGroups`). The app's
-  routing pages still use their own table (`src/ui/RoutingGroups.h`); a test keeps
-  the two equal until the UI asks the profile (step 7).
+  `ld_engine_port_groups` (`PortGroupC`, `MixerEngine::getPortGroups`), and C ABI 34
+  `ld_profile_port_groups` without an engine. The routing pages
+  (`src/ui/RoutingGroups.h`) show the console's profile's (`routing::setProfile`,
+  set by `MainComponent::refreshAll`; a `Group` is a place in the profile's list):
+  names, tile prefixes, sizes and the tiles' sources and output ports; the menus'
+  arrangement is the WING's.
+- Colours (Phase 3 step 7): a `ProfileSpec` names its `Palette` (named RGB colours,
+  the colour picker's order, a new strip's); a strip's, source's or DCA's colour is
+  an index into it. The interface shows the console's (`palette::setProfile` in
+  `src/engine/Strip.h`, `consoleColour`, `consoleColourName`, `consoleColourAtGrid`;
+  C ABI 34 `ld_profile_colour_*`). The WING's and the Universal's are the WING's 18.
 - Remote protocols (Phase 3 step 6): a `ProfileSpec` names its `Remotes`: a
   `MidiProtocol` (or none) over the app's MIDI ports and the `NetworkProtocol`s its
   servers run (bits in C ABI 33 `ld_engine_remotes`). The WING's and the Universal's

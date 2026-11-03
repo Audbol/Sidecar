@@ -1164,6 +1164,14 @@ extern "C"
     /** ABI 34: a profile's port groups (ProfileId; an unknown one: the WING's), as
         ld_engine_port_groups writes them, without an engine. */
     int32_t ld_profile_port_groups (int32_t profile, PortGroupC* out, int32_t max);
+    /** ABI 34: a profile's colours (ProfileId; an unknown one: the WING's): how many,
+        colour `index` (1-based) as 0xRRGGBB (grey for one it hasn't) and its name
+        (free with ld_string_free), and the index at place `position` of its colour
+        picker (0 outside it). */
+    int32_t ld_profile_colour_count (int32_t profile);
+    uint32_t ld_profile_colour_rgb (int32_t profile, int32_t index);
+    LdString* ld_profile_colour_name (int32_t profile, int32_t index);
+    int32_t ld_profile_colour_at_grid (int32_t profile, int32_t position);
     /** ABI 33: the console's remote protocols (its profile's): the app runs these only. */
     void ld_engine_remotes (const Engine*, RemotesC* out);
     /** ABI 28: makes the engine a fresh console of the structure of `counts` (null: the

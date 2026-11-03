@@ -169,10 +169,10 @@ void showColourMenu (int current, juce::Component* target, std::function<void (i
 {
     juce::PopupMenu menu;
     menu.addSectionHeader ("COLOUR");
-    for (int i = 1; i <= 18; ++i)
+    for (int i = 1; i <= palette::count(); ++i)
     {
-        juce::PopupMenu::Item item (wingColourName (i));
-        item.setColour (wingColour (i));
+        juce::PopupMenu::Item item (consoleColourName (i));
+        item.setColour (consoleColour (i));
         item.setTicked (i == current);
         item.setAction ([chosen, i] { chosen (i); });
         menu.addItem (std::move (item));

@@ -850,7 +850,7 @@ void RecorderPage::paintTracks (juce::Graphics& g)
         if (index < 0)
             continue;
         const auto t = project.getTrackData (index);
-        const auto colour = wingColour (t.colour);
+        const auto colour = consoleColour (t.colour);
         auto f = r.toFloat();
         g.setColour (t.arm ? juce::Colour (0xff3a1414) : rowColour);
         g.fillRect (f);

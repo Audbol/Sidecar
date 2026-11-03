@@ -106,11 +106,19 @@ public:
             expectEquals (engine.getMain().getLabel(), juce::String ("MAIN 1"));
             expect (engine.getChannels()[0]->mains[0].on.load(), "channels feed Main 1");
             expect (! engine.getBuses()[0]->mains[0].on.load(), "buses start as aux mixes");
-            expect (engine.getChannels()[0]->getColour() == wingColour (1));
-            expect (wingColour (1) == juce::Colour (0xff380088), "the factory Dark Blue");
+            expect (engine.getChannels()[0]->getColour() == consoleColour (1));
+            expect (consoleColour (1) == juce::Colour (0xff380088), "the factory Dark Blue");
             expectEquals (engine.getChannels()[0]->params.filter().lowCutFreq.load(), kLowCutDefaultHz, "the LO CUT reset matches");
             expectEquals (engine.getChannels()[0]->params.filter().highCutFreq.load(), kHighCutDefaultHz, "the HI CUT reset matches");
-            expectEquals (wingColourName (9), juce::String ("Red"));
+            expectEquals (consoleColourName (9), juce::String ("Red"));
+            // The interface's colours are the console's profile's (the Universal's are the WING's).
+            expect (palette::profile() == ld::kProfileWing && palette::count() == 18);
+            expectEquals (consoleColourAtGrid (0), 13);
+            palette::setProfile (ld::kProfileUniversal);
+            expect (palette::count() == 18 && consoleColour (9) == juce::Colour (0xff000000u | ld::ld_colour_rgb (9)) && consoleColourName (1) == "Dark Blue");
+            expectEquals (palette::clamp (40), 18);
+            expectEquals (consoleColourName (19), juce::String(), "no such colour");
+            palette::setProfile (ld::kProfileWing);
 
             // Wrappers survive structure changes; numbering follows position.
             auto* ch5 = engine.getChannels()[4].get();

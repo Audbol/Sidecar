@@ -697,7 +697,7 @@ void paintInputSourceTile (juce::Graphics& g, juce::Rectangle<float> r, MixerEng
     // The strip carries the source's name once it has one [I1].
     const juce::String name = index >= 0 ? engine.getSourceName (index) : juce::String();
     const int colourIndex = src != nullptr ? src->colour.load() : ld::kDefaultColour;
-    const auto colour = playback && colourIndex == ld::kDefaultColour ? juce::Colour (0xff2f5a32) : wingColour (colourIndex);
+    const auto colour = playback && colourIndex == ld::kDefaultColour ? juce::Colour (0xff2f5a32) : consoleColour (colourIndex);
     const float screenH = getWingScreenHeight();
     // Small tiles (small windows) keep the icon and the port only.
     const bool roomy = r.getHeight() >= 44.0f && r.getWidth() >= 64.0f;
@@ -1289,7 +1289,7 @@ public:
         g.setColour (juce::Colours::black);
         g.fillRect (c);
         c = c.reduced (c.getWidth() * 0.07f, c.getHeight() * 0.18f);
-        g.setColour (wingColour (strip.params.colour.load()));
+        g.setColour (consoleColour (strip.params.colour.load()));
         g.fillRect (c.removeFromTop (c.getHeight() * 0.28f));
         g.setColour (colours::keyOff);
         g.fillRect (c);

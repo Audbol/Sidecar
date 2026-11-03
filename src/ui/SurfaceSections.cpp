@@ -1198,7 +1198,7 @@ void CustomControlSection::setLowerLayer (int layer)
             lowerKeys[i]->setLabel (name);
             lowerKeys[i]->setIcon (std::nullopt);
             lowerKeys[i]->setEnabled (name.isNotEmpty());
-            lowerKeys[i]->ledColour = control.colour > 0 ? wingColour (control.colour) : Colours::keyWhite;
+            lowerKeys[i]->ledColour = control.colour > 0 ? consoleColour (control.colour) : Colours::keyWhite;
             lowerKeys[i]->setTooltip (cc::layerName (l) + ": " + name);
         }
         shownState = {};
@@ -1385,7 +1385,7 @@ void CustomControlSection::bindCustomControls()
         {
             auto* k = upperKeys[row * cc::kNumControls + i];
             k->setEnabled (daw || (row == 0 ? control.upper : control.lower).isAssigned());
-            k->ledColour = daw ? (row == 0 ? Colours::keyWhite : Colours::mute) : control.colour > 0 ? wingColour (control.colour) : Colours::keyWhite;
+            k->ledColour = daw ? (row == 0 ? Colours::keyWhite : Colours::mute) : control.colour > 0 ? consoleColour (control.colour) : Colours::keyWhite;
         }
     }
     applyDawMode();
@@ -1681,7 +1681,7 @@ void CustomControlSection::paintLcd (juce::Graphics& g, juce::Rectangle<int> are
         {
             // The control's colour (CC EDIT > COLOR).
             drawLightBar (g, cell.removeFromTop (juce::jmax (4, cell.getHeight() / 9)).toFloat().reduced ((float) w * 0.15f, 0.5f),
-                          lightBarColour (wingColour (juce::jmax (1, control.colour))).withMultipliedBrightness (uiprefs::brightness (ctx.settings, "colorLed", 25)),
+                          lightBarColour (consoleColour (juce::jmax (1, control.colour))).withMultipliedBrightness (uiprefs::brightness (ctx.settings, "colorLed", 25)),
                           control.colour > 0);
             cell.removeFromTop (juce::jmax (3, cell.getHeight() / 8));
         }

@@ -291,8 +291,8 @@ Three layers:
       console's (C ABI 31 `ld_engine_fader_law`), the WING's protocols keep the
       WING's. The ranges are done on the engine's side: a profile names its port
       groups (`PortGroup`, `ports.rs`: ranges of the engine's numbering, inputs,
-      outputs or both), read through `ld_engine_port_groups`; the routing pages move
-      onto them in step 7, a test keeping their table equal until then. Still to
+      outputs or both), read through `ld_engine_port_groups`; the routing pages show
+      them since step 7. Still to
       come with the consoles that need them: a fader law per strip kind (the 02R's
       master runs 0 to -120 dB, its channels +10 to -90).
    4. **Model tables out of `wing`** (done): the model description (`ModelSpec`,
@@ -329,6 +329,13 @@ Three layers:
       Yamaha consoles' MIDI (the 02R's and ProMix 01's CC maps), and their settings
       pages (step 7).
    7. **The shared UI asks the profile** for its tags, port groups, colours and names.
+      - 7a, port groups (done): the routing pages show the console's profile's groups
+        (C ABI 34 `ld_profile_port_groups`, `routing::setProfile`): names, prefixes,
+        sizes and the tiles' ports, the menus' arrangement still the WING's.
+      - 7b, colours (done): a profile names its `Palette`; the interface draws and
+        offers the console's colours (`palette::setProfile`, `consoleColour`...,
+        `ld_profile_colour_*`), the WING's 18 for the WING and the Universal.
+      - 7c, next: the strips' names and labels ("CH 1", "MTX 2") and the tags.
    8. **`livedaw-wing` becomes the WING profile**, checked against the WING tests and
       WING Edit.
 4. **Second emulation** (the X32 / M32, the closest to the WING), then Yamaha,

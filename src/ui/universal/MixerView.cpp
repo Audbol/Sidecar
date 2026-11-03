@@ -185,7 +185,7 @@ void StripColumn::paint (juce::Graphics& g)
 
     // The strip's colour, its label (by kind) and its name.
     auto h = header().toFloat();
-    g.setColour (wingColour (colour));
+    g.setColour (consoleColour (colour));
     g.fillRoundedRectangle (h.removeFromTop (6.0f), 3.0f);
     h.removeFromTop (4.0f);
     g.setColour (theme.kindColour (strip.getKind()));

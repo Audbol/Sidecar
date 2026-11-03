@@ -6,7 +6,7 @@ namespace livedaw::ui
 juce::Colour lightBarColour (juce::Colour screenColour)
 {
     // Measured off photos of a WING's light bars at the factory colour.
-    const auto darkBlue = wingColour (1);
+    const auto darkBlue = consoleColour (1);
     const juce::Colour ledBlue (0xff1468ff);
     if (screenColour == darkBlue)
         return ledBlue;

@@ -371,7 +371,7 @@ juce::Colour CompactSection::keyColour (int key) const
     // Each custom control has its own colour on the display (WING manual 4.8).
     if (const auto kc = keyControl (key); kc && ctx.customControls != nullptr)
         if (const int colour = ctx.customControls->get (cc::kFirstCompactUserLayer + kc->set, kc->control).colour; colour > 0)
-            return wingColour (colour);
+            return consoleColour (colour);
     return juce::Colours::transparentBlack;
 }
 

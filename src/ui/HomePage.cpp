@@ -911,7 +911,7 @@ public:
     void setColour (int colour)
     {
         if (auto* src = strip.linkedSource())
-            src->colour = juce::jlimit (1, 18, colour);
+            src->colour = palette::clamp (colour);
         else
             strip.setColourIndex (colour);
     }
@@ -1025,7 +1025,7 @@ public:
         const float pitch72 = wingPx (72.0f), sw = wingPx (64.0f);
         for (int i = 0; i < 18; ++i)
         {
-            const int colour = wingColourAtGrid (i);
+            const int colour = consoleColourAtGrid (i);
             auto swatch = juce::Rectangle<float> (cf.getX() + pitch72 * (float) (i % 3), cf.getY() + pitch72 * (float) (i / 3), sw, sw);
             swatches.push_back ({ swatch.expanded (wingPx (4.0f)).toNearestInt(), colour });
             const bool selected = strip.getColourIndex() == colour;
@@ -1036,7 +1036,7 @@ public:
                 g.drawRect (swatch.expanded (wingPx (4.0f)), wingPx (3.0f));
                 swatch = swatch.reduced (wingPx (2.0f));
             }
-            g.setColour (wingColour (colour));
+            g.setColour (consoleColour (colour));
             g.fillRect (swatch);
         }
 
@@ -1180,7 +1180,7 @@ public:
             // Unnamed (or an older show's default "DCA.3"): a blank strip, as on the console.
             const auto name = engine.getDcaName (i);
             const auto title = name == "DCA." + juce::String (i + 1) ? juce::String() : name.toUpperCase();
-            const auto colour = wingColour (engine.getDca (i).colour.load());
+            const auto colour = consoleColour (engine.getDca (i).colour.load());
             tile (r, title, "D" + juce::String (i + 1), colour.withMultipliedBrightness (0.7f), colours::tagBody, on);
             tiles.push_back ({ r.toNearestInt(), i });
         }

@@ -331,9 +331,10 @@ void MainComponent::selectStrip (Strip* strip)
 void MainComponent::refreshAll()
 {
     // The console's faders move along its profile's law; its routing pages
-    // show its profile's port groups.
+    // show its profile's port groups, its strips its profile's colours.
     ui::fader::setLaw (engine.getFaderLaw());
     ui::routing::setProfile (engine.getProfile());
+    palette::setProfile (engine.getProfile());
 
     // A loaded or new show brings its own custom controls.
     customControlAssignments->reload();

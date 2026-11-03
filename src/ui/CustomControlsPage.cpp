@@ -1727,7 +1727,7 @@ void CustomControlsPage::paintLayer (juce::Graphics& g)
     for (int i = 0; i < cc::kNumControls; ++i)
     {
         const auto c = assignments.get (layer, i);
-        g.setColour (c.colour > 0 ? wingColour (c.colour) : (c.encoder.isAssigned() || c.upper.isAssigned() || c.lower.isAssigned() ? keyGrey : juce::Colours::black));
+        g.setColour (c.colour > 0 ? consoleColour (c.colour) : (c.encoder.isAssigned() || c.upper.isAssigned() || c.lower.isAssigned() ? keyGrey : juce::Colours::black));
         g.fillRect (colourBars[(size_t) i]);
     }
     for (auto& e : elements)
@@ -1865,8 +1865,8 @@ void CustomControlsPage::mouseUp (const juce::MouseEvent& e)
     if (colourKey.contains (pos))
     {
         juce::StringArray items { "NONE" };
-        for (int k = 1; k <= 18; ++k)
-            items.add (wingColourName (k).toUpperCase());
+        for (int k = 1; k <= palette::count(); ++k)
+            items.add (consoleColourName (k).toUpperCase());
         anchor.setBounds (colourKey);
         juce::Component::SafePointer<CustomControlsPage> safe (this);
         const int l = layer, i = index;

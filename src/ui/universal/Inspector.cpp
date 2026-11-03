@@ -114,7 +114,7 @@ void Inspector::paint (juce::Graphics& g)
         g.drawText ("Select a strip", header, juce::Justification::centredLeft);
         return;
     }
-    g.setColour (wingColour (strip->getColourIndex()));
+    g.setColour (consoleColour (strip->getColourIndex()));
     g.fillRoundedRectangle (header.removeFromLeft (6).toFloat(), 3.0f);
     header.removeFromLeft (sizes::kGap);
     g.setColour (theme.kindColour (strip->getKind()));

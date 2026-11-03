@@ -209,7 +209,7 @@ namespace
 
     juce::Colour colourOf (UiContext& ctx, const Target& t)
     {
-        return t.look() != nullptr ? stripDisplayColour (*t.look()) : wingColour (ctx.engine.getDca (t.dca).colour.load());
+        return t.look() != nullptr ? stripDisplayColour (*t.look()) : consoleColour (ctx.engine.getDca (t.dca).colour.load());
     }
 
     /** The name shown in the name bar (empty for default names, as on the console). */
@@ -552,7 +552,7 @@ public:
         g.fillRect (wingRect (196.0f, 125.0f, 1066.0f, 63.0f));
         for (int i = 0; i < 18; ++i)
         {
-            g.setColour (wingColour (swatchColour (i)));
+            g.setColour (consoleColour (swatchColour (i)));
             g.fillRect (swatches[i]);
             if (d.colour.load() == swatchColour (i))
             {
@@ -675,7 +675,7 @@ public:
 private:
     /** The colour of swatch `i` of the row: ICON/COLOR's grid (three columns
         of six) read column by column, as the console lines them up. */
-    static int swatchColour (int i) { return wingColourAtGrid (i % 6 * 3 + i / 6); }
+    static int swatchColour (int i) { return consoleColourAtGrid (i % 6 * 3 + i / 6); }
 
     bool isDefaultName() const
     {
@@ -1556,7 +1556,7 @@ private:
                 continue;
             const bool on = index == group;
             auto r = tabs[i];
-            const auto colour = kind == Kind::Dca ? wingColour (ctx.engine.getDca (index).colour.load()) : groupRed;
+            const auto colour = kind == Kind::Dca ? consoleColour (ctx.engine.getDca (index).colour.load()) : groupRed;
             const auto bar = r.removeFromTop (px (22.0f));
             g.setColour (on ? colour : colour.withMultipliedBrightness (0.5f));
             g.fillRect (bar);
@@ -1823,7 +1823,7 @@ StatusTitle OverviewViewPage::getStatusTitle()
     const int dca = assign->getGroup();
     StatusTitle t;
     t.kind = StatusTitle::Kind::Text;
-    t.fill = wingColour (ctx.engine.getDca (dca).colour.load());
+    t.fill = consoleColour (ctx.engine.getDca (dca).colour.load());
     t.ink = juce::Colours::black;
     const auto name = ctx.engine.getDcaName (dca);
     const bool defaultName = name.isEmpty() || name.removeCharacters (" .").equalsIgnoreCase ("DCA" + juce::String (dca + 1));

@@ -86,7 +86,8 @@ use std::sync::Arc;
 // ABI 32 (Phase 3 step 5): the strip's own blocks are chain blocks; StripParams
 // points to their parameters (OwnBlocks).
 // ABI 33 (Phase 3 step 6): the profile's remote protocols (ld_engine_remotes, LdRemotes).
-// ABI 34 (Phase 3 step 7): a profile's port groups without an engine (ld_profile_port_groups).
+// ABI 34 (Phase 3 step 7): a profile's port groups and colours without an engine
+// (ld_profile_port_groups, ld_profile_colour_*).
 pub const LD_ABI_VERSION: i32 = 34;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
@@ -695,8 +696,40 @@ pub unsafe extern "C" fn ld_engine_port_groups(e: *const Engine, out: *mut LdPor
 /// `out` holds `max` groups, or is null.
 #[no_mangle]
 pub unsafe extern "C" fn ld_profile_port_groups(profile: i32, out: *mut LdPortGroup, max: i32) -> i32 {
-    let p = Profile::ALL.into_iter().find(|&p| profile_id(p) == profile).unwrap_or(Profile::Wing);
-    guard(0, || write_port_groups(p, out, max))
+    guard(0, || write_port_groups(profile_of(profile), out, max))
+}
+
+fn profile_of(id: i32) -> Profile {
+    Profile::ALL.into_iter().find(|&p| profile_id(p) == id).unwrap_or(Profile::Wing)
+}
+
+/// ABI 34: how many colours profile `profile` has (`ld_engine_profile`'s numbers;
+/// an unknown one: the WING's).
+#[no_mangle]
+pub extern "C" fn ld_profile_colour_count(profile: i32) -> i32 {
+    profile_of(profile).spec().palette.colours.len() as i32
+}
+
+/// ABI 34: colour `index` (1-based) of profile `profile` as 0xRRGGBB (grey for one
+/// it hasn't).
+#[no_mangle]
+pub extern "C" fn ld_profile_colour_rgb(profile: i32, index: i32) -> u32 {
+    profile_of(profile).spec().palette.colour(index).map_or(0x9a9a9a, |c| c.1)
+}
+
+/// ABI 34: the name of colour `index` of profile `profile` (empty for one it
+/// hasn't). Free with `ld_string_free`.
+#[no_mangle]
+pub extern "C" fn ld_profile_colour_name(profile: i32, index: i32) -> *mut session::LdString {
+    session::LdString::new(profile_of(profile).spec().palette.colour(index).map_or("", |c| c.0).to_string())
+}
+
+/// ABI 34: the colour index at place `position` of profile `profile`'s colour
+/// picker (0 outside it).
+#[no_mangle]
+pub extern "C" fn ld_profile_colour_at_grid(profile: i32, position: i32) -> i32 {
+    let grid = profile_of(profile).spec().palette.grid;
+    usize::try_from(position).ok().and_then(|i| grid.get(i)).copied().unwrap_or(0)
 }
 
 unsafe fn write_port_groups(p: Profile, out: *mut LdPortGroup, max: i32) -> i32 {
