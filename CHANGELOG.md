@@ -64,6 +64,9 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
   ranges and steps. An X32's strips run them, and the app's model menus show the
   console's models. C ABI 37: `ld_models_show_profile`. Their defaults and a new strip's
   colours are those of a real X32 (checked on an X32 Compact).
+- The X32's signal chains: on channels the delay before the low cut, the compressor
+  before or after the EQ and one insert before or after both; on buses, mains and
+  matrices everything before the fader.
 
 ## [0.2.0] - beta
 

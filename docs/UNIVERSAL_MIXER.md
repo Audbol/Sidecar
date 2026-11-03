@@ -405,8 +405,13 @@ Three layers:
         expander ratios of EXP2-4, the vintage bell's shape. The defaults (the gate,
         the compressor, the EQ bands, a new strip's colour by kind) are what the
         owner's X32 Compact shows on untouched strips.
-      - 3c, next: the channel's low cut and order (dynamics PRE / POST EQ, the insert
-        PRE / POST) and the X32's own chains for channels and buses.
+      - 3c (done): the X32's chains. Channels (`chain::X32_CHANNEL`): the delay
+        before the low cut (the filter block's), the gate, then the compressor PRE or
+        POST the EQ and the one insert PRE or POST both, by the process order
+        (`chain::X32_ORDERS`: GEDI, the X32's default, GDEI, GIED, GIDE), the fader;
+        no TAP EQ or INS 2. Buses, mains and matrices (`X32_OUTPUT`): EQ, compressor,
+        insert, all before the fader. An end-to-end test runs an X32 channel to the
+        main through its EQ and compressor.
    4. **Sends and mains as the X32's**: channels to buses (tap points per bus pair,
       GRP), LR and M/C assigns (main 1 the stereo LR, main 2 the mono M/C), buses and
       mains to matrices only; odd/even links (`/config/chlink`...) over mono strips.

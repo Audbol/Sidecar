@@ -357,17 +357,19 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
 /// The Behringer X32: its counts (`Counts::X32`), fader law, colours and
 /// labels and its models (`livedaw_dsp::x32`: gate, compressor, 4- and
 /// 6-band EQ); its aux in and FX returns (aux slots 1-8 and 9-16) run EQ only
-/// (`chain::X32_AUX`). Until Phase 4's steps replace them its channels and
-/// buses run the WING's chains (and filter), its routing pages list the WING's port groups, and it speaks no
-/// remote protocol (its OSC and MIDI come with steps 5 and 6).
+/// (`chain::X32_AUX`); its channels and buses run its chains (`chain::X32_CHANNEL`,
+/// `X32_OUTPUT`: one insert, the compressor and insert PRE or POST by the
+/// process order, everything before the fader; the low cut is the filter
+/// block's). Its pan law is the WING's, its routing pages list the WING's port
+/// groups, and it speaks no remote protocol yet (OSC and MIDI: steps 5 and 6).
 static X32: ProfileSpec = ProfileSpec {
     profile: Profile::X32,
     name: "X32",
     counts: Counts::X32,
-    templates: [chain::CHANNEL, chain::AUX, chain::OUTPUT],
-    process_orders: PROCESS_ORDERS,
-    aux_order: b"DEI",
-    output_order: b"DI",
+    templates: [chain::X32_CHANNEL, chain::X32_AUX, chain::X32_OUTPUT],
+    process_orders: chain::X32_ORDERS,
+    aux_order: b"",
+    output_order: b"EDI",
     fader: FaderLaw::X32,
     pan: PanLaw::WING,
     port_groups: WING_PORT_GROUPS,
@@ -424,7 +426,23 @@ mod tests {
         let x = Profile::X32.spec();
         assert_eq!(x.template_at(StripKind::Aux, 0), chain::X32_AUX);
         assert_eq!(x.template_at(StripKind::Aux, 15), chain::X32_AUX);
-        assert_eq!(x.template_at(StripKind::Channel, 0), chain::CHANNEL);
+        assert_eq!(x.template_at(StripKind::Channel, 0), chain::X32_CHANNEL);
+        assert_eq!(x.template_at(StripKind::Matrix, 0), chain::X32_OUTPUT);
+        // GEDI by default (the compressor and the insert POST the EQ).
+        assert_eq!(x.pre_fader_order(StripKind::Channel, 0), b"GEDI");
+        assert_eq!(x.pre_fader_order(StripKind::Channel, 3), b"GIDE", "both PRE");
+        assert_eq!(x.pre_fader_order(StripKind::Bus, 0), b"EDI");
+        for chain in [chain::X32_CHANNEL, chain::X32_OUTPUT] {
+            let count = |n: Node| chain.iter().filter(|&&x| x == n).count();
+            assert_eq!((count(Node::PostInsert), count(Node::Eq), count(Node::Dynamics)), (0, 0, 0), "by slot only");
+            for n in [Node::Input, Node::Pfl, Node::Fader, Node::Post] {
+                assert_eq!(count(n), 1, "{n:?}");
+            }
+        }
+        // Every slot names a block of the X32's.
+        for order in chain::X32_ORDERS {
+            assert!(order.bytes().all(|b| chain::order_block(b).is_some()), "{order}");
+        }
         assert_eq!(x.label_at(StripKind::Aux, 7), ("AUX", 8));
         assert_eq!(x.label_at(StripKind::Aux, 8), ("FX", 1));
         assert_eq!(x.label_at(StripKind::Bus, 3), ("BUS", 4));

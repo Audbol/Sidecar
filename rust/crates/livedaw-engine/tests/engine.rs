@@ -417,6 +417,51 @@ fn solo_pfl_goes_to_the_monitor() {
 }
 
 #[test]
+fn an_x32_runs_its_own_chains_and_models() {
+    use livedaw_engine::Profile;
+    let mut rig = Rig::new(1, 1, 2);
+    rig.engine.configure(&ConsoleConfig { profile: Profile::X32, counts: Counts::X32 });
+    unity_console(&rig.engine);
+    for ch in rig.engine.strips(StripKind::Channel) {
+        ch.params.fader_db.store(0.0);
+    }
+    let ch = rig.ch(0);
+    ch.params.input_left.store(0, Relaxed);
+    assert_eq!(ch.chain()[1], livedaw_engine::chain::Node::Input);
+    rig.set_input(0, 0.25);
+    rig.run(50);
+    let unity = rig.out(0);
+    assert!(close(unity, 0.25 * CENTRE, 1e-4), "an X32 channel reaches the main: {unity}");
+
+    // Its 4-band EQ: a low shelf of +6 dB on band 1 lifts DC by 6 dB.
+    let eq = ch.params.eq();
+    eq.on.store(true, Relaxed);
+    eq.param("1t").unwrap().store(1.0); // LShv
+    eq.param("1g").unwrap().store(6.0);
+    rig.run(200);
+    assert!(close(rig.out(0) / unity, 1.995, 0.02), "EQ: {}", rig.out(0) / unity);
+    eq.on.store(false, Relaxed);
+
+    // Its compressor: 0.25 (-12 dB) over a -30 dB threshold at 100:1 comes down
+    // to about the threshold, 18 dB lower.
+    let d = ch.params.dynamics();
+    assert_eq!(d.model_spec().unwrap().token, "X32COMP");
+    d.param("thr").unwrap().store(-30.0);
+    d.param("ratio").unwrap().store(11.0);
+    d.on.store(true, Relaxed);
+    rig.run(400);
+    let gr = 20.0 * (rig.out(0) / unity).log10();
+    assert!(close(gr, -17.8, 0.5), "compressed by {gr} dB");
+
+    // Every one of its process orders runs.
+    for i in 0..4 {
+        ch.params.process_order.store(i, Relaxed);
+        rig.run(2);
+        assert!(rig.out(0).is_finite());
+    }
+}
+
+#[test]
 fn gate_model_and_process_order() {
     let mut rig = Rig::new(1, 1, 2);
     set_channels(&rig.engine, 1);

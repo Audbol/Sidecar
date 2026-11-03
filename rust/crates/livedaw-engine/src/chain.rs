@@ -143,6 +143,66 @@ pub(crate) const OUTPUT: &[Node] = &[
     t(tap::POST),
 ];
 
+/// The X32's input channels: the delay before the low cut (the filter's low
+/// cut), the gate, then the compressor before or after the EQ and the insert
+/// before or after both (the three `Slot`s after the gate, by the strip's
+/// process order: `X32_ORDERS`), the fader. One insert, no TAP EQ.
+pub(crate) const X32_CHANNEL: &[Node] = &[
+    rta(rta_tap::IN),
+    Node::Input,
+    t(tap::IN),
+    Node::Delay,
+    rta(rta_tap::PRE_FILTER),
+    Node::Filter,
+    t(tap::FILT),
+    rta(rta_tap::POST_FILTER),
+    Node::Slot(0),
+    t(2),
+    Node::Slot(1),
+    t(3),
+    Node::Slot(2),
+    t(4),
+    Node::Slot(3),
+    Node::Pfl,
+    t(tap::PFL),
+    Node::Fader,
+    t(tap::AFL),
+    rta(rta_tap::POST_FADER),
+    t(TAP_INS2),
+    Node::Post,
+    t(tap::POST),
+];
+
+/// The X32 channel's process orders: the gate first, then (index 0, the
+/// X32's default) EQ, compressor, insert; (1) compressor PRE the EQ; (2) the
+/// insert PRE; (3) both PRE. Index = compressor PRE + 2 x insert PRE.
+pub(crate) const X32_ORDERS: &[&str] = &["GEDI", "GDEI", "GIED", "GIDE"];
+
+/// The X32's buses, mains and matrices: the EQ, the compressor and the insert
+/// before the fader (`Slot`s, the profile's output order), nothing after it.
+pub(crate) const X32_OUTPUT: &[Node] = &[
+    rta(rta_tap::IN),
+    Node::Input,
+    t(tap::IN),
+    rta(rta_tap::PRE_FILTER),
+    t(tap::FILT),
+    rta(rta_tap::POST_FILTER),
+    Node::Slot(0),
+    t(2),
+    Node::Slot(1),
+    t(3),
+    Node::Slot(2),
+    t(TAP_EQ_POST),
+    Node::Pfl,
+    t(tap::PFL),
+    Node::Fader,
+    t(tap::AFL),
+    rta(rta_tap::POST_FADER),
+    t(TAP_INS2),
+    Node::Post,
+    t(tap::POST),
+];
+
 /// The X32's aux in and FX return channels: trim and polarity, the EQ, the
 /// fader; no delay, dynamics or inserts (the X32's OSC tree has none). The
 /// WING's tap points stay, so taps and keys read them where they are.
