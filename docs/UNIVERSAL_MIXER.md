@@ -342,7 +342,15 @@ Three layers:
         ICON/COLOR page's grid of 18, the tags (HOME > TAGS, talk tags) and the WING
         pages' texts; they follow the consoles that differ (Phase 4).
    8. **`livedaw-wing` becomes the WING profile**, checked against the WING tests and
-      WING Edit.
+      WING Edit (`tests/wingedit.rs` replays it). Done in its light form (the owner's
+      choice, November 2026): `livedaw_wing::profile` is the crate as the WING's
+      profile, serving the network protocols its `Remotes` name
+      (`Config::limited_to`, applied when the servers start). The WING's description
+      stays the engine's `Profile::Wing` spec, which the Universal shares; it moves
+      into `livedaw-wing` once a second console (Phase 4) shows what is shared and
+      what is the WING's.
+
+   Phase 3 is complete (November 2026).
 4. **Second emulation** (the X32 / M32, the closest to the WING), then Yamaha,
    Allen & Heath and DiGiCo, each extending the core where it needs something new.
 

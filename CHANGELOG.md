@@ -44,6 +44,9 @@ Phase 3, the WING as a profile (`docs/UNIVERSAL_MIXER.md`), begins.
   WING's 18 for both profiles) and its strips' labels ("CH 1"). C ABI 34:
   `ld_profile_port_groups`, `ld_profile_colour_count`, `_rgb`, `_name` and `_at_grid`,
   `ld_profile_strip_label`.
+- `livedaw-wing` speaks as the WING's profile (`livedaw_wing::profile`): its servers
+  run only the network protocols the console's profile names. Phase 3 is complete;
+  the WING's description stays shared with the Universal until a second console.
 
 ## [0.2.0] - beta
 

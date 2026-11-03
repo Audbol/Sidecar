@@ -72,7 +72,8 @@ juce::StringArray WingRemote::apply (const Settings& s)
         return { "No network servers in this test run" };
     }
 
-    // Only the network protocols the console's profile speaks.
+    // The servers run only the network protocols the console's profile names
+    // (livedaw-wing limits them); a change of that set restarts them.
     const auto protocols = engine.getRemotes().network;
     auto sameServers = s;
     sameServers.name = running.name;
@@ -85,7 +86,7 @@ juce::StringArray WingRemote::apply (const Settings& s)
     }
 
     const Utf8 name (s.name);
-    const auto enable = (juce::uint32) ((s.discovery ? 1 : 0) | (s.osc ? 2 : 0) | (s.native ? 4 : 0)) & protocols;
+    const auto enable = (juce::uint32) ((s.discovery ? 1 : 0) | (s.osc ? 2 : 0) | (s.native ? 4 : 0));
     ld::ld_wing_start (handle, name.data, name.size, s.discoveryPort, s.oscPort, s.nativePort, enable);
     running = s;
     runningProtocols = protocols;

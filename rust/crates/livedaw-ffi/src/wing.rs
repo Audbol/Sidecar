@@ -102,6 +102,11 @@ pub unsafe extern "C" fn ld_wing_start(
             native: enable & 4 != 0,
             ..Config::default()
         };
+        // Only the servers the console's profile names (`profile::Remotes`).
+        let config = match w.engine.as_ref() {
+            Some(e) => config.limited_to(&e.profile().spec().remotes),
+            None => config,
+        };
         let handle: Arc<dyn EngineHandle> = Arc::new(EnginePtr(w.engine));
         let server = WingServer::start(handle, w.state.clone(), &config);
         let ok = server.status().errors.is_empty();

@@ -9,6 +9,7 @@
 //! * Remote servers that answer like a WING: discovery (UDP 2222), OSC (UDP
 //!   2223) and the Native protocol (TCP 2222, meters over UDP).
 //! * WING snapshot (.snap) and show (.show) files.
+//! * [`profile`]: the crate as the WING's profile: the servers it names.
 //!
 //! Clean-room: built from the public protocol document (Patrick-Gilles
 //! Maillot's "WING Remote Protocols"), libwing and the Bitfocus Companion
@@ -20,6 +21,7 @@ pub mod map;
 pub mod meters;
 pub mod native;
 pub mod osc;
+pub mod profile;
 pub mod schema;
 pub mod server;
 pub mod snap;

@@ -304,7 +304,9 @@ of any size, of which the WING is one configuration.
 - Remote protocols (Phase 3 step 6): a `ProfileSpec` names its `Remotes`: a
   `MidiProtocol` (or none) over the app's MIDI ports and the `NetworkProtocol`s its
   servers run (bits in C ABI 33 `ld_engine_remotes`). The WING's and the Universal's
-  are `Remotes::WING`.
+  are `Remotes::WING`. `livedaw_wing::profile` is that crate as the WING's profile:
+  its servers run only the protocols the console's profile names
+  (`Config::limited_to`, applied by `ld_wing_start`).
 - The strip's own blocks (Phase 3 step 5): FILTER, GATE, EQ, DYNAMICS, INS 1 and
   INS 2 are `Block`s like the extra ones (parameters and DSP state together), kept by
   `OwnBlocks` in `StripParams` and run by the template's nodes; the slots' meters
