@@ -394,7 +394,7 @@ impl Strip {
             meters: StripMeters::default(),
             band_meters: DynBandMeters::default(),
             remote_peaks: RemotePeaks::default(),
-            sends: SendBank::of(spec, kind),
+            sends: SendBank::of(spec, kind, usize::try_from(id).unwrap_or(0)),
             mains: Bank::new(MAX_MAINS, MAIN_SEND_PAGE, kind, usize::try_from(id).unwrap_or(0), spec),
             matrices: Bank::new(MAX_MATRICES, MAIN_SEND_PAGE, kind, usize::try_from(id).unwrap_or(0), spec),
             name: Mutex::new(String::new()),

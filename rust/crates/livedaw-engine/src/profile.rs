@@ -258,6 +258,23 @@ pub struct ProfileSpec {
     /// Where an input channel's PRE (TAP) sends take their signal at first
     /// (`StripParams::tap`, a `TAP_POINTS` index): the WING's "5", an X32's PFL.
     pub tap_point: i32,
+    /// The rest of a new strip's factory settings (kind, slot), after the
+    /// shared ones: an X32's low cut at 20 Hz, its buses' compressors on RMS.
+    pub factory: Option<fn(&crate::params::StripParams, StripKind, usize)>,
+}
+
+/// An X32's factory strip (`ProfileSpec::factory`), as the owner's X32
+/// Compact shows it: channels' low cut at 20 Hz; buses', matrices' and mains'
+/// compressors detecting RMS.
+fn x32_factory(p: &crate::params::StripParams, kind: StripKind, _slot: usize) {
+    if kind == StripKind::Channel {
+        p.filter().low_cut_freq.store(20.0);
+    }
+    if kind.is_output() {
+        if let Some(det) = p.dynamics().param("det") {
+            det.store(1.0); // RMS
+        }
+    }
 }
 
 impl ProfileSpec {
@@ -356,6 +373,7 @@ static WING: ProfileSpec = ProfileSpec {
     sends_on: false,
     send_tap: -1,
     tap_point: crate::params::DEFAULT_TAP,
+    factory: None,
 };
 
 /// No console's limits. Its strips have the WING's blocks (a profile's own set
@@ -383,6 +401,7 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
     sends_on: false,
     send_tap: -1,
     tap_point: crate::params::DEFAULT_TAP,
+    factory: None,
 };
 
 /// The Behringer X32: its counts (`Counts::X32`), fader law, colours and
@@ -419,6 +438,7 @@ static X32: ProfileSpec = ProfileSpec {
     sends_on: true,
     send_tap: 3, // EQ-> (GEDI: after the second slot)
     tap_point: crate::strip::tap::PFL as i32,
+    factory: Some(x32_factory),
 };
 
 #[cfg(test)]
@@ -589,6 +609,12 @@ mod tests {
         assert_eq!(ch.dynamics().param("ratio").unwrap().load(), 5.0, "3.0:1 (item 5)");
         let bus = StripParams::new_with(StripKind::Bus, x);
         assert_eq!(bus.eq().model_spec().unwrap().token, "X32EQ6");
+        // Its factory strip beyond the shared settings (as the owner's X32 shows).
+        let spec = Profile::X32.spec();
+        assert_eq!(StripParams::new_in_slot_of(StripKind::Channel, 0, spec).filter().low_cut_freq.load(), 20.0);
+        let bus1 = StripParams::new_in_slot_of(StripKind::Bus, 0, spec);
+        assert_eq!(bus1.dynamics().param("det").unwrap().load(), 1.0, "RMS");
+        assert_eq!(bus1.tap.load(std::sync::atomic::Ordering::Relaxed), crate::strip::tap::PFL as i32);
         assert!(bus.eq().param("6q").is_some() && ch.eq().param("6q").is_none());
     }
 }

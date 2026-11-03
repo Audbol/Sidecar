@@ -79,7 +79,8 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
   status, gets and sets on the console's value steps, `/node` and `/` text, `/xremote`
   change updates and meters, over the engine's strips. The app runs it on UDP 10023 while
   the console is an X32 and the network remote (SETUP > REMOTE) is on. C ABI 38:
-  `ld_x32_*`.
+  `ld_x32_*`. Compared with a real X32 Compact (`tools/x32/compare.py`): 885 of 943
+  parameter groups answer the same; the rest are that console's own settings.
 
 ## [0.2.0] - beta
 

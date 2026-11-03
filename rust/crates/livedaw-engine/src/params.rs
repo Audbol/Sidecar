@@ -569,9 +569,10 @@ impl MatrixSendParams {
 impl BankItem for MatrixSendParams {
     /// The WING's factory matrix sends: off at -oo without pan link, input
     /// and aux channels in PRE (TAP), buses and mains post-fader.
-    fn factory(_spec: &ProfileSpec, kind: StripKind, _slot: usize, _index: usize) -> Self {
+    fn factory(spec: &ProfileSpec, kind: StripKind, _slot: usize, _index: usize) -> Self {
         Self {
-            on: AtomicBool::new(false),
+            // An X32's buses and mains send to its matrices: on at -oo.
+            on: AtomicBool::new(spec.sends_on && !kind.is_input()),
             pre: AtomicBool::new(kind.is_input()),
             ignore_mute: AtomicBool::new(false),
             pan_link: AtomicBool::new(false),
@@ -1137,6 +1138,9 @@ impl StripParams {
             p.cust_link.store(false, Relaxed);
         }
         p.tap.store(spec.tap_point, Relaxed);
+        if let Some(factory) = spec.factory {
+            factory(&p, kind, index);
+        }
         if kind == StripKind::Bus && spec.buses_to_main.contains(&index) {
             p.colour.store(if index < 10 { 6 } else { 12 }, Relaxed);
             p.fader_db.store(0.0);

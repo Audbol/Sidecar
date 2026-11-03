@@ -452,7 +452,15 @@ Three layers:
         (`WingRemote`, SETUP > REMOTE's switch and console name) runs it on UDP
         10023 while the console is an X32, and the WING's servers while it is a
         WING or the Universal.
-      - 5c, next: compare its replies with the owner's X32 Compact (read-only).
+      - 5c, compared with a real X32 (done): `tools/x32/compare.py` asks Sidecar
+        (`cargo run -p livedaw-x32 --example serve`) and a console the same `/node`
+        questions, read-only. Against the owner's X32 Compact 885 of 943 groups match;
+        the comparison brought `/config/mono` and `/config/solo`, the channels' low cut
+        at 20 Hz and the buses', matrices' and mains' compressors on RMS
+        (`ProfileSpec::factory`), the aux in sends at EQ->, the FX returns' sends POST,
+        pan follow off, the buses' and mains' matrix sends on. The rest is that
+        console's own state (names, the CY bus colours, faders of buses 13-16 and the
+        DCAs, the pans of its linked pairs), which a factory reset would tell apart.
    6. **X32 MIDI** (`MidiProtocol::X32`): the fixed CC map (faders, mutes, pans on
       channels 1-3, scenes by program change) and OSC over SysEx.
    7. **Scenes and the interface**: `.scn` import and export; the Universal Mixer

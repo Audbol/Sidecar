@@ -111,13 +111,18 @@ impl BankItem for SendParams {
     /// The WING's factory sends ([`default_mode`], off); an X32's inputs' are
     /// on at -oo (its `sends_on`), PRE at its `send_tap`. (An X32's buses send
     /// to its matrices only: their bus sends stay off.)
-    fn factory(spec: &ProfileSpec, kind: StripKind, _slot: usize, index: usize) -> Self {
+    fn factory(spec: &ProfileSpec, kind: StripKind, slot: usize, index: usize) -> Self {
         if !spec.sends_on || !kind.is_input() {
             return Self::with_mode(default_mode(kind, index));
         }
-        let s = Self::with_mode(send_mode::PRE);
+        // The X32's FX returns (aux slots of its "FX" range) send POST.
+        let fx_return = spec.slot(kind, slot).is_some_and(|r| r.label == "FX");
+        let s = Self::with_mode(if fx_return { send_mode::POST } else { send_mode::PRE });
         s.enabled.store(true, Ordering::Relaxed);
-        s.tap.store(spec.send_tap, Ordering::Relaxed);
+        s.pan_link.store(false, Ordering::Relaxed); // the X32's pan follow starts off
+        if !fx_return {
+            s.tap.store(spec.send_tap, Ordering::Relaxed);
+        }
         s
     }
 }
@@ -161,12 +166,12 @@ impl Default for SendBank {
 impl SendBank {
     /// The bus sends of a WING strip of `kind`.
     pub fn for_kind(kind: StripKind) -> Self {
-        Self::of(Profile::Wing.spec(), kind)
+        Self::of(Profile::Wing.spec(), kind, 0)
     }
 
-    /// The bus sends of a strip of `kind` on a console of `spec`.
-    pub fn of(spec: &'static ProfileSpec, kind: StripKind) -> Self {
-        Bank::new(MAX_BUSES, PAGE_SIZE, kind, 0, spec)
+    /// The bus sends of the strip of `kind` in `slot` on a console of `spec`.
+    pub fn of(spec: &'static ProfileSpec, kind: StripKind, slot: usize) -> Self {
+        Bank::new(MAX_BUSES, PAGE_SIZE, kind, slot, spec)
     }
 
     /// The factory mode of the send to `slot`.

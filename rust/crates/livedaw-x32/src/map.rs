@@ -391,6 +391,32 @@ fn config(b: &mut Builder) {
             b.leaf(&format!("/config/{node}"), &name, t, ONOFF, Bind::State, int((on >> k) & 1));
         }
     }
+    // The mono bus's mode and link to LR; the solo / monitor settings (kept by
+    // the server: the engine's monitor is the WING's).
+    b.leaf("/config/mono", "mode", t, Ty::Enum(&["LR+M", "LCR"]), Bind::State, int(0));
+    b.leaf("/config/mono", "link", t, ONOFF, Bind::State, int(0));
+    let modes = Ty::Enum(&["PFL", "AFL"]);
+    for (name, ty, v) in [
+        ("level", LEVEL, real(0.0)),
+        ("source", Ty::Enum(&["OFF", "LR", "LR+C", "LRPFL", "LRAFL", "AUX56", "AUX78"]), int(4)),
+        ("sourcetrim", Ty::Float(Law::Lin(-18.0, 18.0, 73), num(1, false, 0)), real(0.0)),
+        ("chmode", modes, int(0)),
+        ("busmode", modes, int(0)),
+        ("dcamode", modes, int(0)),
+        ("exclusive", ONOFF, int(0)),
+        ("followsel", ONOFF, int(0)),
+        ("followsolo", ONOFF, int(0)),
+        ("dimatt", Ty::Float(Law::Lin(-40.0, 0.0, 41), num(0, false, 0)), real(-20.0)),
+        ("dim", ONOFF, int(0)),
+        ("mono", ONOFF, int(0)),
+        ("delay", ONOFF, int(0)),
+        ("delaytime", DELAY, real(0.3)),
+        ("masterctrl", ONOFF, int(0)),
+        ("mute", ONOFF, int(0)),
+        ("dimpfl", ONOFF, int(0)),
+    ] {
+        b.leaf("/config/solo", name, t, ty, Bind::State, v);
+    }
     // What a link shares: preamp and delay, EQ, dynamics (gate and compressor),
     // fader and mute.
     for name in LINK_SHARES {
@@ -464,9 +490,9 @@ fn strip(b: &mut Builder, p: &str, t: Target, kind: Kind) {
         b.leaf(&d, "hold", t, HOLD, Bind::Dyn("hld"), real(10.0));
         b.leaf(&d, "release", t, RELEASE, Bind::Dyn("rel"), real(151.0));
         b.leaf(&d, "pos", t, POS, Bind::DynPos, int(1));
-        // A bus's, matrix's or main's key source answers a get, but its
-        // `/node` line leaves it out (as an X32 does).
-        b.add(&d, "keysrc", t, SOURCE, Bind::State, int(0), kind == Kind::Ch);
+        // A matrix's or main's key source answers a get, but its `/node` line
+        // leaves it out (as an X32 does; a channel's and a bus's list it).
+        b.add(&d, "keysrc", t, SOURCE, Bind::State, int(0), matches!(kind, Kind::Ch | Kind::Bus));
         b.leaf(&d, "mix", t, MIX, Bind::DynMix, real(100.0));
         b.leaf(&d, "auto", t, ONOFF, Bind::Dyn("auto"), int(0));
         key_filter(b, &format!("{d}/filter"), t);
@@ -951,8 +977,14 @@ fn order(s: &Strip) -> i32 {
 /// is `2 + j`; before the first slot, the low cut's).
 fn eq_taps(s: &Strip) -> (i32, i32) {
     let letters = s.spec().pre_fader_order(s.kind(), order(s));
-    let at = letters.iter().position(|&b| b == b'E').unwrap_or(0) as i32;
-    (if at == 0 { tap::FILT as i32 } else { 1 + at }, 2 + at)
+    match letters.iter().position(|&b| b == b'E') {
+        Some(at) => {
+            let at = at as i32;
+            (if at == 0 { tap::FILT as i32 } else { 1 + at }, 2 + at)
+        }
+        // Aux in and FX returns: the EQ sits between taps 2 and 3 (`chain::X32_AUX`).
+        None => (2, 3),
+    }
 }
 
 /// The X32 type of a send (0 IN/LC, 1 <-EQ, 2 EQ->, 3 PRE, 4 POST, 5 GRP).

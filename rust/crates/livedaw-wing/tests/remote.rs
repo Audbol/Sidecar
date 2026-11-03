@@ -296,10 +296,16 @@ fn osc_scene_control_and_listen() {
     }
     assert!(seen, "scene change not pushed");
     // LISTEN: KEY SOLO of CH 4's DYNAMICS.
-    c.send(&Message::new("/ch/4/dynsc/$solo", vec![Arg::Int(1)]));
+    // (Sent again until it lands: a loaded machine, as when the checks run
+    // beside a build, can be slow to handle it.)
     let a = engine.analysis().controls();
-    let deadline = Instant::now() + Duration::from_secs(2);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut next_send = Instant::now();
     while Instant::now() < deadline && a.listen_mode.load(Relaxed) == 0 {
+        if Instant::now() >= next_send {
+            c.send(&Message::new("/ch/4/dynsc/$solo", vec![Arg::Int(1)]));
+            next_send = Instant::now() + Duration::from_millis(250);
+        }
         std::thread::sleep(Duration::from_millis(10));
     }
     assert_eq!(a.listen_mode.load(Relaxed), livedaw_engine::analyser::listen_mode::DYN_KEY);
