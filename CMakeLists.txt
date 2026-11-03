@@ -121,6 +121,7 @@ set(LIVEDAW_ENGINE_SOURCES
 # MIDI remote control and DAW remote control (MCU / HUI).
 list(APPEND LIVEDAW_ENGINE_SOURCES
     src/engine/DawRemote.cpp
+    src/engine/MidiPorts.cpp
     src/engine/MidiRemote.cpp)
 
 # The multitrack project model (no UI), shared by the app and the tests.

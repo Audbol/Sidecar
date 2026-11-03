@@ -2,6 +2,7 @@
 
 #include "engine/ConsoleState.h"
 #include "engine/DawRemote.h"
+#include "engine/MidiPorts.h"
 
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_data_structures/juce_data_structures.h>
@@ -21,12 +22,12 @@ class Strip;
 /** MIDI on the console (WING SETUP > REMOTE and DAW, WING MIDI documentation
     and "WING Remote Protocols"):
 
-    - Ports. The WING's DIN socket and its USB MIDI ports (MIDI Control, MIDI
-      DAW 1-3) become MIDI devices of this computer: each port has an input
-      and an output, a device chosen on SETUP or a virtual port the app
-      creates ("Sidecar MIDI Control", "Sidecar MIDI DAW 1"...) where the
-      platform allows it. Devices that disappear are reopened when they come
-      back.
+    - Ports (MidiPorts). The WING's DIN socket and its USB MIDI ports (MIDI
+      Control, MIDI DAW 1-3) become MIDI devices of this computer: each port
+      has an input and an output, a device chosen on SETUP or a virtual port
+      the app creates ("Sidecar MIDI Control", "Sidecar MIDI DAW 1"...) where
+      the platform allows it. Devices that disappear are reopened when they
+      come back.
     - MIDI REMOTE CONTROL. Each function is OFF, DIN or USB, as on the WING:
       CH CONTROL (faders on MIDI channel 1, mutes on 2, pans on 3, DCAs on 4,
       DCA mutes and mute groups on 5), FX PARAMETER CONTROL (channels 9-16),
@@ -39,11 +40,14 @@ class Strip;
       PARAMETER CONTROL.
     - DAW remote control (DawRemote) on MIDI DAW 1-3, or DIN.
 
+    This is the WING's MIDI protocol over the console-neutral MidiPorts;
+    another console's emulation brings its own protocol over the same ports.
+
     Threading: MIDI input callbacks only queue the messages; everything else,
     including applying them to the console, runs on the message thread.
     Console parameters are the engine's shared atomics, as the UI and the WING
     remote write them. Message thread only (apart from the device callbacks). */
-class MidiRemote final : private juce::AsyncUpdater, private juce::Timer
+class MidiRemote final : private juce::Timer
 {
 public:
     /** `useDevices` false: no MIDI devices are opened (tests feed
@@ -89,7 +93,7 @@ public:
     };
 
     /** The value of a port's device setting that means the app's virtual port. */
-    static constexpr const char* virtualDevice = "<virtual>";
+    static constexpr const char* virtualDevice = MidiPorts::virtualDevice;
 
     /** SETUP > REMOTE and DAW, kept in the app settings (`midi.*`, `daw.*`). */
     struct Settings
@@ -114,20 +118,15 @@ public:
     // Devices
 
     /** The devices of this computer (names), without the app's own virtual ports. */
-    static juce::StringArray getInputDevices();
-    static juce::StringArray getOutputDevices();
+    static juce::StringArray getInputDevices() { return MidiPorts::getInputDevices(); }
+    static juce::StringArray getOutputDevices() { return MidiPorts::getOutputDevices(); }
     /** Whether this platform lets the app create virtual MIDI ports. */
-    static bool canCreateVirtualPorts();
+    static bool canCreateVirtualPorts() { return MidiPorts::canCreateVirtualPorts(); }
     /** The name of the app's virtual port for `port` ("Sidecar MIDI DAW 1"). */
     static juce::String virtualPortName (int port);
 
-    struct PortStatus
-    {
-        bool inputOpen = false, outputOpen = false;
-        bool inputMissing = false, outputMissing = false; // configured but not there
-        juce::int64 received = 0, sent = 0;
-    };
-    PortStatus getPortStatus (int port) const;
+    using PortStatus = MidiPorts::Status;
+    PortStatus getPortStatus (int port) const { return ports.getStatus (port); }
 
     //==============================================================================
     // Messages (message thread)
@@ -209,15 +208,10 @@ public:
     std::function<std::optional<juce::String> (const juce::String& node)> sysexDump, sysexDescribe;
 
 private:
-    struct Device;
-
-    /** Called by the device callbacks (MIDI threads): queues the message. */
-    void enqueue (int port, const juce::MidiMessage&);
-    void handleAsyncUpdate() override;
     void timerCallback() override;
 
+    /** Opens the ports the settings use, with their devices. */
     void openDevices();
-    void closeDevices();
     void send (int port, const juce::MidiMessage&);
     int routeOf (int port) const noexcept;
     bool routed (int function, int port) const noexcept;
@@ -244,25 +238,14 @@ private:
 
     MixerEngine& engine;
     Show& show;
-    const bool useDevices;
     Settings settings;
     DawRemote daw;
-
-    std::array<std::unique_ptr<Device>, kNumPorts> devices;
-    juce::MidiDeviceListConnection deviceListConnection;
-    bool listening = false;
-    std::array<PortStatus, kNumPorts> status {};
-
-    // Device callbacks -> the message thread.
-    juce::CriticalSection queueLock;
-    std::vector<std::pair<int, juce::MidiMessage>> queue, draining;
 
     // What was sent / received last (-1: unknown), to send changes only.
     std::array<std::array<int, 128>, 5> lastChannelValues {};
     std::array<std::array<int, 128>, 16> lastFxValues {};
     bool primeChannels = true, primeFx = true;
     int lastSceneIndex = -2;
-    int ticks = 0;
 
     // The strips of the CH CONTROL CCs, rebuilt when the console's structure changes.
     mutable std::array<Strip*, 128> ccStrips {};
@@ -274,6 +257,9 @@ private:
 
     std::array<std::array<juce::uint8, 128>, 16> externalCc {};
     std::array<std::array<bool, 256>, 16> externalToggles {};
+
+    // Last, so its devices close (and no message arrives) before the rest goes.
+    MidiPorts ports;
 
     JUCE_DECLARE_NON_COPYABLE (MidiRemote)
 };

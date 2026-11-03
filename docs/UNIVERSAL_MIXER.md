@@ -294,7 +294,8 @@ Three layers:
    6. **Remotes per profile**: the MIDI remote splits into a port layer (devices,
       hot-plug, the queue, SysEx framing) and a protocol per profile (the WING's CC map
       and SysEx id; next the X32's and the Yamaha consoles'); the profile owns its
-      network protocols too.
+      network protocols too. The port layer is done (`MidiPorts`, brought forward for
+      the Yamaha consoles); `MidiRemote` is the WING's protocol over it.
    7. **The shared UI asks the profile** for its tags, port groups, colours and names.
    8. **`livedaw-wing` becomes the WING profile**, checked against the WING tests and
       WING Edit.

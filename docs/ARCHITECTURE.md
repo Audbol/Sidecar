@@ -1383,11 +1383,16 @@ WING MIDI and DAW documentation (firmware 1.07), the DAW translation table, Patr
 Gilles Maillot's *WING Remote Protocols* (MIDI chapter, the MCU command lists), the
 public Mackie Control and reverse-engineered HUI protocol descriptions.
 
-- **Ports.** Five logical ports, as on the WING: DIN, USB (MIDI Control), MIDI DAW
-  1-3. Each has an input and an output device (JUCE `MidiInput` / `MidiOutput`,
-  chosen by name) or the app's virtual port. A port opens only while a function or
-  the DAW uses it; `MidiDeviceListConnection` and a 2 s retry reopen devices that come
-  back. Settings: `midi.*` and `daw.*` in the app settings (`MidiRemote::Settings`).
+- **Ports** (`src/engine/MidiPorts.*`, console-neutral: another emulation's MIDI
+  protocol uses them too). `MidiPorts` holds named ports, each with an input and an
+  output device (JUCE `MidiInput` / `MidiOutput`, chosen by name) or the app's virtual
+  port ("Sidecar MIDI <name>"); `open` takes what each port should have open,
+  `MidiDeviceListConnection` and a 2 s retry reopen devices that come back, the input
+  callbacks queue and `onMessage` delivers on the message thread; it counts what each
+  port sent and received. `MidiRemote` is the WING's protocol over five of them, as on
+  the WING: DIN, USB (MIDI Control), MIDI DAW 1-3; a port opens only while a function
+  or the DAW uses it. Settings: `midi.*` and `daw.*` in the app settings
+  (`MidiRemote::Settings`).
 - **Threads.** Device callbacks only queue the message (a locked vector) and trigger
   an `AsyncUpdater`; `handleMessage()` runs on the message thread, where it writes the
   engine's shared atomics (as the UI and the WING remote do), recalls scenes and calls

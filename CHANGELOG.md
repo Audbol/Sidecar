@@ -17,6 +17,9 @@ Phase 3, the WING as a profile (`docs/UNIVERSAL_MIXER.md`), begins.
   strips' chains and process orders; a strip runs its profile's chain.
 - NEW SHOW keeps the console as it is configured (a console of 48 channels stays one)
   instead of always making a 40 channel WING.
+- MIDI ports (devices, virtual ports, hot-plug, the input queue) are their own layer
+  (`MidiPorts`), under the WING's MIDI protocol, ready for consoles controlled over
+  MIDI.
 
 ## [0.2.0] - beta
 

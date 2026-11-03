@@ -20,7 +20,8 @@ namespace
 
     const char* const routeKeys[MidiRemote::kNumFunctions] = { "enchctl", "enfxctl", "encustctl", "ensysex", "enmidicc", "enscenes", "enshowctl", "enscenetx" };
     const char* const portKeys[MidiRemote::kNumPorts] = { "din", "usb", "daw1", "daw2", "daw3" };
-    constexpr const char* virtualPrefix = "Sidecar MIDI";
+    // The app's virtual ports: "Sidecar MIDI DAW 1"...
+    const char* const virtualNames[MidiRemote::kNumPorts] = { "DIN", "Control", "DAW 1", "DAW 2", "DAW 3" };
 
     int panToMidi (float pan)
     {
@@ -43,72 +44,6 @@ namespace
         return juce::MidiMessage::controllerEvent (channel, controller, juce::jlimit (0, 127, value));
     }
 } // namespace
-
-//==============================================================================
-/** A port's open devices. The input's callback only queues the messages. */
-struct MidiRemote::Device final : private juce::MidiInputCallback
-{
-    Device (MidiRemote& o, int p) : owner (o), port (p) {}
-    ~Device() override { closeInput(); }
-
-    void handleIncomingMidiMessage (juce::MidiInput*, const juce::MidiMessage& m) override { owner.enqueue (port, m); }
-
-    bool openInput (const juce::String& name)
-    {
-        closeInput();
-        if (name == virtualDevice)
-            input = juce::MidiInput::createNewDevice (virtualPortName (port), this);
-        else
-            for (auto& d : juce::MidiInput::getAvailableDevices())
-                if (d.name == name)
-                {
-                    input = juce::MidiInput::openDevice (d.identifier, this);
-                    break;
-                }
-        if (input == nullptr)
-            return false;
-        input->start();
-        inputName = name;
-        return true;
-    }
-
-    bool openOutput (const juce::String& name)
-    {
-        output.reset();
-        if (name == virtualDevice)
-            output = juce::MidiOutput::createNewDevice (virtualPortName (port));
-        else
-            for (auto& d : juce::MidiOutput::getAvailableDevices())
-                if (d.name == name)
-                {
-                    output = juce::MidiOutput::openDevice (d.identifier);
-                    break;
-                }
-        if (output != nullptr)
-            outputName = name;
-        return output != nullptr;
-    }
-
-    void closeInput()
-    {
-        if (input != nullptr)
-            input->stop(); // no callback runs after this
-        input.reset();
-        inputName = {};
-    }
-
-    void closeOutput()
-    {
-        output.reset();
-        outputName = {};
-    }
-
-    MidiRemote& owner;
-    const int port;
-    std::unique_ptr<juce::MidiInput> input;
-    std::unique_ptr<juce::MidiOutput> output;
-    juce::String inputName, outputName;
-};
 
 //==============================================================================
 juce::String MidiRemote::portName (int port)
@@ -169,8 +104,7 @@ juce::String MidiRemote::functionInfo (int function)
 
 juce::String MidiRemote::virtualPortName (int port)
 {
-    static const char* names[] = { "DIN", "Control", "DAW 1", "DAW 2", "DAW 3" };
-    return juce::String (virtualPrefix) + " " + names[juce::jlimit (0, (int) kNumPorts - 1, port)];
+    return juce::String (MidiPorts::virtualPrefix) + " " + virtualNames[juce::jlimit (0, (int) kNumPorts - 1, port)];
 }
 
 //==============================================================================
@@ -216,10 +150,10 @@ bool MidiRemote::Settings::operator== (const Settings& o) const
 }
 
 //==============================================================================
-MidiRemote::MidiRemote (MixerEngine& e, Show& s, bool devicesOn) : engine (e), show (s), useDevices (devicesOn)
+MidiRemote::MidiRemote (MixerEngine& e, Show& s, bool devicesOn)
+    : engine (e), show (s), ports (juce::StringArray (virtualNames, kNumPorts), devicesOn)
 {
-    for (int p = 0; p < kNumPorts; ++p)
-        devices[(size_t) p] = std::make_unique<Device> (*this, p);
+    ports.onMessage = [this] (int port, const juce::MidiMessage& m) { handleMessage (port, m); };
     for (auto& a : lastChannelValues)
         a.fill (-1);
     for (auto& a : lastFxValues)
@@ -264,9 +198,8 @@ MidiRemote::~MidiRemote()
 {
     show.onSceneMidi = nullptr;
     stopTimer();
-    deviceListConnection.reset();
-    closeDevices();
-    cancelPendingUpdate();
+    ports.onMessage = nullptr;
+    ports.closeAll();
 }
 
 void MidiRemote::apply (const Settings& s)
@@ -283,49 +216,9 @@ void MidiRemote::apply (const Settings& s)
 }
 
 //==============================================================================
-juce::StringArray MidiRemote::getInputDevices()
-{
-    juce::StringArray names;
-    for (auto& d : juce::MidiInput::getAvailableDevices())
-        if (! d.name.startsWith (virtualPrefix))
-            names.addIfNotAlreadyThere (d.name);
-    return names;
-}
-
-juce::StringArray MidiRemote::getOutputDevices()
-{
-    juce::StringArray names;
-    for (auto& d : juce::MidiOutput::getAvailableDevices())
-        if (! d.name.startsWith (virtualPrefix))
-            names.addIfNotAlreadyThere (d.name);
-    return names;
-}
-
-bool MidiRemote::canCreateVirtualPorts()
-{
-   #if JUCE_LINUX || JUCE_MAC || JUCE_BSD
-    return true;
-   #else
-    return false;
-   #endif
-}
-
-MidiRemote::PortStatus MidiRemote::getPortStatus (int port) const
-{
-    return juce::isPositiveAndBelow (port, (int) kNumPorts) ? status[(size_t) port] : PortStatus {};
-}
-
 void MidiRemote::openDevices()
 {
-    if (! useDevices)
-        return;
-    if (! listening)
-    {
-        // Hot-plug: reopen the configured devices when the device list changes.
-        deviceListConnection = juce::MidiDeviceListConnection::make ([this] { openDevices(); });
-        listening = true;
-    }
-
+    std::vector<MidiPorts::Want> wants ((size_t) kNumPorts);
     for (int p = 0; p < kNumPorts; ++p)
     {
         bool needed = false;
@@ -335,78 +228,24 @@ void MidiRemote::openDevices()
         if (settings.daw.enabled && ((p == Din && ! settings.daw.usb) || (p >= Daw1 && settings.daw.usb && p - Daw1 < daw.getNumUnits())))
             needed = true;
 
-        auto& d = *devices[(size_t) p];
-        auto& st = status[(size_t) p];
-        const auto& wantIn = settings.inputs[(size_t) p];
-        const auto& wantOut = settings.outputs[(size_t) p];
-        if (! needed || wantIn.isEmpty() || d.inputName != wantIn)
-            d.closeInput();
-        if (! needed || wantOut.isEmpty() || d.outputName != wantOut)
-            d.closeOutput();
-        if (needed && wantIn.isNotEmpty() && d.input == nullptr)
-            d.openInput (wantIn);
-        if (needed && wantOut.isNotEmpty() && d.output == nullptr)
-            d.openOutput (wantOut);
-        st.inputOpen = d.input != nullptr;
-        st.outputOpen = d.output != nullptr;
-        st.inputMissing = needed && wantIn.isNotEmpty() && ! st.inputOpen;
-        st.outputMissing = needed && wantOut.isNotEmpty() && ! st.outputOpen;
+        wants[(size_t) p] = { needed, settings.inputs[(size_t) p], settings.outputs[(size_t) p] };
     }
-}
-
-void MidiRemote::closeDevices()
-{
-    for (auto& d : devices)
-        if (d != nullptr)
-        {
-            d->closeInput();
-            d->closeOutput();
-        }
-}
-
-void MidiRemote::enqueue (int port, const juce::MidiMessage& m)
-{
-    {
-        const juce::ScopedLock sl (queueLock);
-        queue.emplace_back (port, m);
-    }
-    triggerAsyncUpdate();
-}
-
-void MidiRemote::handleAsyncUpdate()
-{
-    {
-        const juce::ScopedLock sl (queueLock);
-        draining.swap (queue);
-    }
-    for (auto& [port, message] : draining)
-        handleMessage (port, message);
-    draining.clear();
+    ports.open (std::move (wants));
 }
 
 void MidiRemote::timerCallback()
 {
     sendFeedback();
     daw.tick (juce::Time::getMillisecondCounter());
-    // Devices that went away: try again every two seconds (hot-plug).
-    if (++ticks % 50 == 0)
-        for (auto& st : status)
-            if (st.inputMissing || st.outputMissing)
-            {
-                openDevices();
-                break;
-            }
 }
 
 void MidiRemote::send (int port, const juce::MidiMessage& m)
 {
     if (! juce::isPositiveAndBelow (port, (int) kNumPorts))
         return;
-    ++status[(size_t) port].sent;
     if (onSend)
         onSend (port, m);
-    if (auto* out = devices[(size_t) port]->output.get())
-        out->sendMessageNow (m);
+    ports.send (port, m);
 }
 
 int MidiRemote::routeOf (int port) const noexcept
@@ -450,7 +289,7 @@ void MidiRemote::handleMessage (int port, const juce::MidiMessage& m)
 {
     if (! juce::isPositiveAndBelow (port, (int) kNumPorts))
         return;
-    ++status[(size_t) port].received;
+    ports.noteReceived (port);
 
     if (const int unit = dawUnit (port); unit >= 0)
     {

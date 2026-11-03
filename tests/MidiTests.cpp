@@ -1,4 +1,5 @@
 #include "TestHelpers.h"
+#include "engine/MidiPorts.h"
 #include "engine/MidiRemote.h"
 #include "engine/Models.h"
 #include "engine/PluginHost.h"
@@ -80,6 +81,7 @@ public:
 
     void runTest() override
     {
+        testPorts();
         testFaderLaw();
         testChannelControl();
         testFx();
@@ -93,6 +95,30 @@ public:
     }
 
 private:
+    void testPorts()
+    {
+        beginTest ("MIDI ports, apart from any console's protocol: names, counts, the WING's ports over them");
+        MidiPorts ports ({ "IN/OUT", "TO HOST" }, false);
+        expectEquals (ports.size(), 2);
+        expectEquals (ports.virtualPortName (1), juce::String ("Sidecar MIDI TO HOST"));
+        ports.open ({ { true, MidiPorts::virtualDevice, MidiPorts::virtualDevice } }); // one want: the other port is unused
+        ports.send (0, juce::MidiMessage::controllerEvent (1, 7, 100));
+        ports.send (5, juce::MidiMessage::controllerEvent (1, 7, 100)); // no such port
+        ports.noteReceived (1);
+        expect (ports.getStatus (0).sent == 1 && ports.getStatus (0).received == 0);
+        expect (ports.getStatus (1).received == 1 && ! ports.getStatus (1).inputOpen, "no devices in tests");
+        expect (ports.getStatus (7).sent == 0);
+
+        // The WING's MIDI remote counts through its ports.
+        MixerEngine engine (0);
+        PluginHost host (nullptr);
+        Show show (engine, host);
+        MidiRemote midi (engine, show, false);
+        midi.handleMessage (MidiRemote::Din, juce::MidiMessage::controllerEvent (1, 20, 64));
+        expect (midi.getPortStatus (MidiRemote::Din).received == 1);
+        expectEquals (MidiRemote::virtualPortName (MidiRemote::Daw2), juce::String ("Sidecar MIDI DAW 2"));
+    }
+
     void testFaderLaw()
     {
         beginTest ("WING fader law and the CH CONTROL map");
