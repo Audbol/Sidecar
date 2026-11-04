@@ -1,5 +1,7 @@
 #include "ui/FaceplateDesign.h"
 
+#include "engine/Strip.h"
+
 #include <map>
 
 /* The front panels as the console's screen draws them, measured in the
@@ -1748,7 +1750,17 @@ namespace
 
 const Design* findDesign (models::Table table, const juce::String& token)
 {
-    static const std::map<juce::String, Design> designs = buildDesigns();
+    // The designs are the WING's devices and read the WING's model tables:
+    // built while another console is shown (the Universal Mixer opened on an
+    // X32), they would read that console's, which hasn't their models.
+    static const std::map<juce::String, Design> designs = []
+    {
+        const auto shown = shownProfile();
+        setShownProfile (ld::kProfileWing);
+        auto built = buildDesigns();
+        setShownProfile (shown);
+        return built;
+    }();
     const char* prefix = table == models::Dynamics ? "D:" : (table == models::Fx ? "F:" : "E:");
     if (auto it = designs.find (prefix + token); it != designs.end())
         return &it->second;

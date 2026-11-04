@@ -1,4 +1,4 @@
-// The Universal Mixer's screenshots for the docs (docs/images/universal-*.png).
+﻿// The Universal Mixer's screenshots for the docs (docs/images/universal-*.png).
 // A category of its own, not run with the others:
 //
 //   LIVEDAW_SCREENSHOTS=docs/images build/LiveDAWTests_artefacts/Release/LiveDAWTests Screenshots
@@ -171,6 +171,35 @@ public:
         shot ("universal-setup.png");
         x32Surface();
         proMixSurface();
+        universalOnEveryConsole();
+    }
+
+    /** The Universal Mixer on each console's profile, every view drawn: the X32
+        surface's UNIVERSAL MIXER key opens it on an X32. */
+    void universalOnEveryConsole()
+    {
+        for (const auto profile : { ld::kProfileX32, ld::kProfileProMix01, ld::kProfileYamaha02R })
+        {
+            beginTest ("The Universal Mixer on profile " + juce::String ((int) profile));
+            MixerEngine engine (0);
+            engine.configureProfile (profile);
+            ShotRig rig (engine);
+            setShownProfile (profile);
+            rig.selected = engine.getChannels()[0].get();
+            ui::UniversalSkin skin (rig.ctx);
+            skin.setSize (1920, 1080);
+            skin.refreshAll();
+            skin.selectionChanged();
+            for (auto view : { ui::UniversalSkin::View::Mixer, ui::UniversalSkin::View::Routing, ui::UniversalSkin::View::Fx,
+                               ui::UniversalSkin::View::Monitoring, ui::UniversalSkin::View::Scenes, ui::UniversalSkin::View::Recorder, ui::UniversalSkin::View::Setup })
+            {
+                skin.showView (view);
+                skin.refreshAll();
+                const auto image = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
+                expect (image.isValid());
+            }
+            setShownProfile (ld::kProfileWing);
+        }
     }
 
 private:

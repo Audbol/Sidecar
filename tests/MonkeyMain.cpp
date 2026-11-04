@@ -13,9 +13,13 @@
 // outside the app (SHUTDOWN, scanning the computer's plugins) aren't pressed and
 // native file dialogs are cancelled.
 //
-//   SidecarMonkey [--seed N] [--seconds S] [--buffer SAMPLES] [--home DIR] [--idle] [--interface wing|universal]
+//   SidecarMonkey [--seed N] [--seconds S] [--buffer SAMPLES] [--home DIR] [--idle] [--interface wing|universal|x32|promix]
+//                 [--press "KEY TEXT"]
 //
 // --idle sends no input: a baseline of what the audio does with the app just running.
+// --interface x32 / promix starts on that console and its surface; --press clicks the
+// key whose text it gives two seconds in (a user's report replayed: the X32 surface's
+// UNIVERSAL MIXER key).
 // --interface universal starts on the Universal Mixer instead of the WING surface.
 //
 // It also watches for dropouts: blocks that take longer to process than they
@@ -98,7 +102,8 @@ namespace
     LONG WINAPI onCrash (EXCEPTION_POINTERS* info)
     {
         juce::String report ("CRASH: exception 0x" + juce::String::toHexString ((juce::int64) info->ExceptionRecord->ExceptionCode) + " at 0x"
-                             + juce::String::toHexString ((juce::pointer_sized_int) info->ExceptionRecord->ExceptionAddress) + ". The last actions:");
+                             + juce::String::toHexString ((juce::pointer_sized_int) info->ExceptionRecord->ExceptionAddress)
+                             + ". Stack:\n" + juce::SystemStats::getStackBacktrace() + "The last actions:");
         actionLog.write (report);
         for (auto& line : actionLog.recent)
             actionLog.write ("  " + line);
@@ -729,8 +734,9 @@ public:
         options.applicationName = "SidecarMonkey";
         settings = std::make_unique<juce::PropertiesFile> (paths::appData().getChildFile ("Sidecar.settings"), options);
         settings->setValue ("pluginOverview.open", true); // the plugin overview opens with the app
-        if (option ("--interface", "wing") == "universal")
-            settings->setValue ("ui.interface", "universal"); // the Universal Mixer (ui::uiprefs::interfaceKind)
+        const auto startOn = option ("--interface", "wing");
+        if (startOn != "wing")
+            settings->setValue ("ui.interface", startOn); // ui::uiprefs::interfaceKind
 
         pluginHost = std::make_unique<PluginHost> (settings.get());
         // Plugins to load: Sidecar's own test plugin (a gain), never the computer's.
@@ -747,6 +753,8 @@ public:
         engine->getChannels()[0]->params.preInsert().fx = 0;
         engine->getChannels()[1]->params.postInsert().on = true;
         engine->getChannels()[1]->params.postInsert().fx = 20;
+        if (startOn == "x32" || startOn == "promix")
+            engine->configureProfile (startOn == "x32" ? ld::kProfileX32 : ld::kProfileProMix01);
         show = std::make_unique<Show> (*engine, *pluginHost);
         log.info ("Monkey test");
 
@@ -778,6 +786,23 @@ public:
 
         monkey = std::make_unique<Monkey> (seed, seconds, *window, *callback);
         monkey->idle = args.contains ("--idle");
+        if (const auto key = option ("--press", {}); key.isNotEmpty())
+            juce::Timer::callAfterDelay (2000, [this, key]
+            {
+                std::function<juce::Button*(juce::Component&)> find = [&find, &key] (juce::Component& c) -> juce::Button*
+                {
+                    if (auto* b = dynamic_cast<juce::Button*> (&c); b != nullptr && b->isShowing() && b->getButtonText() == key)
+                        return b;
+                    for (auto* child : c.getChildren())
+                        if (auto* b = find (*child))
+                            return b;
+                    return nullptr;
+                };
+                auto* button = window != nullptr ? find (*window) : nullptr;
+                actionLog.write ("press \"" + key + "\": " + (button != nullptr ? "clicked" : "not found"));
+                if (button != nullptr)
+                    button->triggerClick();
+            });
         monkey->onFinished = [this]
         {
             const auto summary = monkey->summary();

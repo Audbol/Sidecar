@@ -250,6 +250,10 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   45: profile 4, and `ld_engine_fader_law_of` (a strip kind's fader law).
 - A new channel takes its console's factory settings, colour and name by its slot,
   not its id (a channel's id is 1-based and kept by shows).
+- Fixed: the X32 surface's UNIVERSAL MIXER key crashed the app when the Universal
+  Mixer hadn't been opened before (the FX rack's device faceplates were built from
+  the X32's model tables instead of the WING's). SidecarMonkey can replay it:
+  `--interface x32 --press "UNIVERSAL MIXER"`, and prints a crash's stack.
 
 ## [0.2.0] - beta
 
