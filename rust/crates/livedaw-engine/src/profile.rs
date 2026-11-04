@@ -712,7 +712,9 @@ static PROMIX01: ProfileSpec = ProfileSpec {
     factory_outputs: Some(promix01_factory_outputs),
     dca_names: None,
     dca_fader_db: 0.0,
-    fx_factory: &[],
+    // REVERB HALL 1 and DELAY L-C-R (Sidecar's choice: the guide doesn't say
+    // what scene 00's effects are).
+    fx_factory: &["PMREV", "PMDLCR"],
     fx_send_buses: &[0, 1],
 };
 

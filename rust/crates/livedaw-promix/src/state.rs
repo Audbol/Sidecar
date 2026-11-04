@@ -168,6 +168,8 @@ pub struct State {
     pub oscillator: Oscillator,
     /// CUE mode: 0 MIX, 1 LAST CUE, 2 GROUP CUE, 3 STEREO OUT FIX.
     pub cue_mode: u8,
+    /// The effects programs last recalled into effects 1-2 (0-39).
+    pub fx_programs: [u8; 2],
 }
 
 impl Default for State {
@@ -183,6 +185,8 @@ impl Default for State {
             stereo_pans: [[0, 32]; 3],
             oscillator: Oscillator::default(),
             cue_mode: 1,
+            // REVERB HALL 1 and DELAY L-C-R (the factory rack: Sidecar's choice).
+            fx_programs: [0, 13],
         }
     }
 }
@@ -233,6 +237,7 @@ impl State {
         let o = &self.oscillator;
         put("osc", list(&[o.on as u8, o.level, o.freq, o.to_send3 as u8, o.to_send4 as u8, o.to_stereo as u8]));
         put("cue_mode", self.cue_mode.to_string());
+        put("fx_programs", list(&self.fx_programs));
         out
     }
 
@@ -297,6 +302,7 @@ impl State {
                     };
                 }
                 "cue_mode" => fill(std::slice::from_mut(&mut s.cue_mode), v, 3),
+                "fx_programs" => fill(&mut s.fx_programs, v, 39),
                 _ => {}
             }
         }
@@ -338,6 +344,7 @@ mod tests {
         s.stereo_pans[2] = [4, 30];
         s.oscillator = Oscillator { on: true, level: 100, freq: 2, to_send3: false, to_send4: true, to_stereo: true };
         s.cue_mode = 3;
+        s.fx_programs = [22, 39];
         assert_eq!(State::from_text(&s.to_text()), s);
         assert_eq!(State::from_text(""), State::default());
         assert_eq!(

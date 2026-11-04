@@ -6,7 +6,7 @@
 //! The strips (`PmStrip`) are the engine's: channels 1-16, ST IN aux 1,
 //! RTN1-2 aux 2-3, SEND1-4 buses 1-4, ST OUT main 1.
 
-use crate::library::DynLibrary;
+use crate::library::Library;
 use crate::state::{KeyIn, Patch, State, CHANNELS, PROCESSORS};
 use livedaw_dsp::fader::FaderLaw;
 use livedaw_dsp::promix::DYN_MODELS;
@@ -70,7 +70,7 @@ pub const EQ_IDS: [[&str; 3]; 3] = [["lf", "lg", "lq"], ["mf", "mg", "mq"], ["hf
 pub struct Console<'a> {
     pub engine: &'a Engine,
     pub state: &'a mut State,
-    pub dyn_library: &'a DynLibrary,
+    pub library: &'a Library,
 }
 
 /// A fader step (0-127) as dB on the ProMix's law.
@@ -117,8 +117,8 @@ pub fn step_param(spec: &livedaw_dsp::model::ParamSpec, k: u16) -> f32 {
 }
 
 impl<'a> Console<'a> {
-    pub fn new(engine: &'a Engine, state: &'a mut State, dyn_library: &'a DynLibrary) -> Self {
-        Console { engine, state, dyn_library }
+    pub fn new(engine: &'a Engine, state: &'a mut State, library: &'a Library) -> Self {
+        Console { engine, state, library }
     }
 
     /// The engine's strip, if the console has it.
@@ -518,7 +518,7 @@ impl<'a> Console<'a> {
 
     /// Recalls dynamics program `n` (0-19) into processor `i` (`Comp n Type`).
     pub fn recall_dyn_program(&mut self, i: usize, n: usize) {
-        let Some(prog) = self.dyn_library.program(n) else { return };
+        let Some(prog) = self.library.program(n) else { return };
         if let Some(p) = self.state.processors.get_mut(i) {
             p.program = n as u8;
             p.model = prog.model;
@@ -551,6 +551,61 @@ impl<'a> Console<'a> {
         let s = [PmStrip::Send(2), PmStrip::Send(3), PmStrip::StOut][which.min(2)];
         if let Some(st) = self.strip(s) {
             st.params.process_order.store(pre as i32, Relaxed);
+        }
+    }
+
+    // ---- effects and the EQ library ------------------------------------------------
+
+    /// Recalls effects program `n` (0-39) into effect `slot` (0-1): its type
+    /// and values onto the FX slot (`Internal Effect n Type`, p.34).
+    pub fn recall_fx_program(&mut self, slot: usize, n: usize) {
+        let Some(prog) = self.library.fx_program(n) else { return };
+        let Some(fx) = self.engine.controls.fx.get(slot) else { return };
+        let models = self.engine.fx_models();
+        let Some(model) = livedaw_dsp::model::model_index(models, prog.token) else { return };
+        if fx.model_index_in(models) != model {
+            self.engine.set_fx_model(slot, model, true);
+        }
+        for (k, v) in prog.values.iter().enumerate() {
+            if let Some(x) = fx.values.get(k) {
+                x.store(*v);
+            }
+        }
+        if let Some(p) = self.state.fx_programs.get_mut(slot) {
+            *p = n as u8;
+        }
+    }
+
+    /// Effect `slot`'s parameter `k` as its step, and how many steps it has.
+    pub fn fx_param(&self, slot: usize, k: usize) -> (u16, u16) {
+        let Some(fx) = self.engine.controls.fx.get(slot) else { return (0, 1) };
+        let models = self.engine.fx_models();
+        let spec = &models[fx.model_index_in(models).min(models.len() - 1)];
+        match (spec.params.get(k), fx.values.get(k)) {
+            (Some(ps), Some(v)) => (param_step(ps, v.load()), ps.steps.max(1) as u16),
+            _ => (0, 1),
+        }
+    }
+
+    pub fn set_fx_param(&mut self, slot: usize, k: usize, step: u16) {
+        let Some(fx) = self.engine.controls.fx.get(slot) else { return };
+        let models = self.engine.fx_models();
+        let spec = &models[fx.model_index_in(models).min(models.len() - 1)];
+        if let (Some(ps), Some(v)) = (spec.params.get(k), fx.values.get(k)) {
+            v.store(step_param(ps, step));
+        }
+    }
+
+    /// Recalls EQ program `n` (0-49) onto a strip's EQ (and its pair partner's).
+    pub fn recall_eq_program(&mut self, s: PmStrip, n: usize) {
+        use livedaw_dsp::promix::{HIGH_FREQS, LOW_FREQS, MID_FREQS};
+        let Some(prog) = self.library.eq_program(n) else { return };
+        for (band, (g, f, q)) in prog.bands.iter().enumerate() {
+            let table = [LOW_FREQS, MID_FREQS, HIGH_FREQS][band];
+            let fi = table.iter().position(|x| x == f).unwrap_or(0) as u16;
+            self.set_eq_value(s, band, 0, fi);
+            self.set_eq_value(s, band, 1, (*g + 15.0) as u16);
+            self.set_eq_value(s, band, 2, *q as u16);
         }
     }
 
@@ -635,7 +690,7 @@ mod tests {
     #[test]
     fn pairs_link_and_groups_follow_the_panel() {
         let e = promix();
-        let (mut s, lib) = (State::default(), DynLibrary::default());
+        let (mut s, lib) = (State::default(), Library::default());
         let mut c = Console::new(&e, &mut s, &lib);
         // ST (1->2): channel 1's settings onto 2, then linked.
         c.set_level(PmStrip::Ch(0), 100, Origin::Panel);
@@ -673,7 +728,7 @@ mod tests {
     #[test]
     fn the_processors_are_a_pool_patched_into_strips() {
         let e = promix();
-        let (mut s, lib) = (State::default(), DynLibrary::default());
+        let (mut s, lib) = (State::default(), Library::default());
         let mut c = Console::new(&e, &mut s, &lib);
         let dyn_on = |c: &Console, st: PmStrip| c.strip(st).unwrap().params.dynamics().on.load(Relaxed);
         // COMP1 on channel 3, as GATE FAST.
@@ -713,7 +768,7 @@ mod tests {
     #[test]
     fn sends_pre_post_and_send34_as_a_stereo_pair() {
         let e = promix();
-        let (mut s, lib) = (State::default(), DynLibrary::default());
+        let (mut s, lib) = (State::default(), Library::default());
         let mut c = Console::new(&e, &mut s, &lib);
         c.set_send_pre(0, false);
         c.set_send_pre(2, true);
@@ -730,5 +785,32 @@ mod tests {
         assert!(c.send_pre(3));
         c.set_send34_stereo(false);
         assert_eq!(e.output_patch().get(3), strip_source_input(StripKind::Bus, 3, 0));
+    }
+
+    #[test]
+    fn effects_programs_and_eq_programs_recall() {
+        let e = promix();
+        let (mut s, lib) = (State::default(), Library::default());
+        let mut c = Console::new(&e, &mut s, &lib);
+        // A new console: effect 1 REVERB HALL 1, effect 2 DELAY L-C-R.
+        let token = |c: &Console, slot: usize| {
+            let m = c.engine.fx_models();
+            m[c.engine.controls.fx[slot].model_index_in(m)].token
+        };
+        assert_eq!((token(&c, 0), token(&c, 1)), ("PMREV", "PMDLCR"));
+        c.recall_fx_program(1, 18); // KARAOKE ECHO 2
+        assert_eq!((token(&c, 1), c.state.fx_programs[1]), ("PMECHO", 18));
+        assert_eq!(c.engine.controls.fx[1].param_in(c.engine.fx_models(), "fbr").unwrap().load(), -55.0);
+        let (step, steps) = c.fx_param(1, 2); // DLY R 180.0 ms
+        assert_eq!((step, steps), (1799, 3220));
+        c.set_fx_param(1, 2, 0);
+        assert!((c.engine.controls.fx[1].param_in(c.engine.fx_models(), "dr").unwrap().load() - 0.1).abs() < 1e-4);
+        // EQ program 27 NOTCH 4kHz on channel 1 and its partner.
+        c.execute_pair(0, 3);
+        c.recall_eq_program(PmStrip::Ch(0), 26);
+        let eq = c.strip(PmStrip::Ch(1)).unwrap();
+        assert_eq!(eq.params.eq().param("hg").unwrap().load(), -10.0);
+        assert_eq!(eq.params.eq().param("hf").unwrap().load(), 12.0, "4.0 kHz, HIGH's 13th");
+        assert_eq!(eq.params.eq().param("hq").unwrap().load(), 0.0, "1/6 oct");
     }
 }

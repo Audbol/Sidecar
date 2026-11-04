@@ -6,8 +6,8 @@
 //!
 //! They run on the EQ and dynamics DSP of [`crate::wing`] (`design` and
 //! `configure` pick them by token). The EQ's frequencies run in 1/6 octave
-//! steps (p.21), named as the guide's presets write them (110 Hz, 360 Hz,
-//! 3.6 kHz: pp.23-24); its Q is in octaves (1/6 to 3, the guide's table of
+//! steps (p.21), named as the guide's presets write them (60 Hz, 110 Hz,
+//! 360 Hz, 3.6 kHz: pp.23-24); its Q is in octaves (1/6 to 3, the guide's table of
 //! decimal Qs), the outer bands' last value SHELF. The compressor's ratios
 //! aren't listed (1:1 to oo:1, p.69): the steps are Sidecar's reading. The
 //! gate's HOLD and DECAY are 128 even steps from 2.67 ms and 85 ms (3-341 ms,
@@ -15,6 +15,9 @@
 
 use crate::model::{ModelCategory, ModelSpec, ModelTables, ParamKind, ParamSpec};
 use crate::wing::FILTER_TOOLS;
+
+pub mod fx;
+pub use fx::FX_MODELS;
 
 /// A parameter, in `ParamSpec`'s field order.
 #[allow(clippy::too_many_arguments)]
@@ -33,13 +36,13 @@ const fn p(
 
 /// The LOW band's frequencies: 32 Hz to 1 kHz in 1/6 octave steps (31 values).
 pub const LOW_FREQS: &[f32] = &[
-    32.0, 36.0, 40.0, 45.0, 50.0, 56.0, 63.0, 70.0, 80.0, 90.0, 100.0, 110.0, 125.0, 140.0, 160.0, 180.0, 200.0, 220.0, 250.0,
+    32.0, 36.0, 40.0, 45.0, 50.0, 56.0, 60.0, 70.0, 80.0, 90.0, 100.0, 110.0, 125.0, 140.0, 160.0, 180.0, 200.0, 220.0, 250.0,
     280.0, 315.0, 360.0, 400.0, 450.0, 500.0, 560.0, 630.0, 700.0, 800.0, 900.0, 1000.0,
 ];
 
 /// The MID band's: 32 Hz to 18 kHz (56 values).
 pub const MID_FREQS: &[f32] = &[
-    32.0, 36.0, 40.0, 45.0, 50.0, 56.0, 63.0, 70.0, 80.0, 90.0, 100.0, 110.0, 125.0, 140.0, 160.0, 180.0, 200.0, 220.0, 250.0,
+    32.0, 36.0, 40.0, 45.0, 50.0, 56.0, 60.0, 70.0, 80.0, 90.0, 100.0, 110.0, 125.0, 140.0, 160.0, 180.0, 200.0, 220.0, 250.0,
     280.0, 315.0, 360.0, 400.0, 450.0, 500.0, 560.0, 630.0, 700.0, 800.0, 900.0, 1000.0, 1100.0, 1250.0, 1400.0, 1600.0, 1800.0,
     2000.0, 2200.0, 2500.0, 2800.0, 3200.0, 3600.0, 4000.0, 4500.0, 5000.0, 5600.0, 6300.0, 7000.0, 8000.0, 9000.0, 10000.0,
     11000.0, 12000.0, 14000.0, 16000.0, 18000.0,
@@ -134,15 +137,15 @@ pub static DYN_MODELS: &[ModelSpec] = &[
     ModelSpec { token: "PMDUCK", name: "Ducking", category: ModelCategory::Gate, params: &DUCK_PARAMS },
 ];
 
-/// The ProMix 01's models, as its profile names them. Its FX rack runs the
-/// WING's devices until its own effects (Phase 5 step 4).
+/// The ProMix 01's models, as its profile names them; its two FX slots take
+/// its 15 effect types (`fx`).
 pub static MODELS: ModelTables = ModelTables {
     dynamics: DYN_MODELS,
     aux_dynamics: &[],
     eq_channel: EQ,
     eq_bus: EQ,
     filter_tools: FILTER_TOOLS,
-    fx: crate::wing::FX_MODELS,
+    fx: &fx::FX_MODELS,
     fx_premium_slots: 2,
     gate_default: "PMGATE",
     comp_default: "PMCOMP",

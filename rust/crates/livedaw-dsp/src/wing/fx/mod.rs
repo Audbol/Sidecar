@@ -145,6 +145,7 @@ pub fn create(token: &str, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
         .or_else(|| x32_eqs::create(token, ctx))
         .or_else(|| x32_misc::create(token, ctx))
         .or_else(|| crate::x32::fx::create(token, ctx))
+        .or_else(|| crate::promix::fx::create(token, ctx))
 }
 
 /// The devices whose screen graph is their measured frequency response.
@@ -358,8 +359,14 @@ pub(crate) mod tests {
 
     /// The checks every device must pass (used by each family's tests).
     pub(crate) fn check_device(token: &str) {
-        // The X32's devices are in its own table.
-        let table = if token.starts_with("X32") { crate::x32::FX_MODELS } else { FX_MODELS };
+        // The X32's and the ProMix 01's devices are in their own tables.
+        let table = if token.starts_with("X32") {
+            crate::x32::FX_MODELS
+        } else if crate::promix::fx::is_promix(token) {
+            &crate::promix::FX_MODELS
+        } else {
+            FX_MODELS
+        };
         let model = crate::model::model_index(table, token).unwrap_or_else(|| panic!("{token}: not in its FX table"));
         let spec = &table[model];
         for sr in [44_100.0, 96_000.0] {

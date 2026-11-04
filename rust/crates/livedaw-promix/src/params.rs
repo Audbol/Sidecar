@@ -161,7 +161,8 @@ pub fn steps(c: &Console, n: u16) -> u16 {
             _ => 10,
         },
         Some(FxType(_)) => 40,
-        Some(FxParam(..)) => 128,
+        // The parameter's own steps; MIDI carries it in 14 bits (high and low bytes).
+        Some(FxParam(f, k, _)) => c.fx_param(f, k).1,
         Some(CompType(_) | CompPatch(_)) => 20,
         Some(CompKey(_)) => 21,
         Some(CompIn(_)) => 3,
@@ -177,7 +178,8 @@ pub fn steps(c: &Console, n: u16) -> u16 {
 }
 
 /// Parameter `n`'s value now (None: not a parameter, or one with no state:
-/// the Execute parameters, Local OFF's faders, the effects until step 4).
+/// the Execute parameters, Local OFF's faders). An effect parameter's high
+/// and low bytes both read its value (`midi` splits it).
 pub fn get(c: &Console, n: u16) -> Option<u16> {
     use Param::*;
     let s = &c.state;
@@ -194,7 +196,8 @@ pub fn get(c: &Console, n: u16) -> Option<u16> {
         EqOn(st) => c.eq_on(st) as u16,
         Eq(st, band, what) => c.eq_value(st, band, what),
         PairFlag(p) => s.pairs[p] as u16,
-        FxType(_) | FxParam(..) => return None,
+        FxType(f) => s.fx_programs[f] as u16,
+        FxParam(f, k, _) => c.fx_param(f, k).0,
         CompType(i) => s.processors[i].program as u16,
         CompPatch(i) => s.processors[i].patch.value(),
         CompKey(i) => s.processors[i].key_in.value(),
@@ -236,7 +239,8 @@ pub fn set(c: &mut Console, n: u16, v: u16, origin: Origin) {
         EqOn(st) => c.set_eq_on(st, on),
         Eq(st, band, what) => c.set_eq_value(st, band, what, v),
         PairFlag(pair) => c.state.pairs[pair] = on,
-        FxType(_) | FxParam(..) => {}
+        FxType(f) => c.recall_fx_program(f, v as usize),
+        FxParam(f, k, _) => c.set_fx_param(f, k, v),
         CompType(i) => c.recall_dyn_program(i, v as usize),
         CompPatch(i) => {
             c.set_patch(i, Patch::of_value(v));
@@ -328,7 +332,7 @@ pub fn name(n: u16) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::library::DynLibrary;
+    use crate::library::Library;
     use crate::state::State;
     use livedaw_engine::config::{ConsoleConfig, Counts};
     use livedaw_engine::{Engine, Profile};
@@ -366,7 +370,7 @@ mod tests {
     fn values_reach_the_engine_and_read_back() {
         let e = Engine::new(0);
         e.configure(&ConsoleConfig { profile: Profile::ProMix01, counts: Counts::PROMIX01 });
-        let (mut s, lib) = (State::default(), DynLibrary::default());
+        let (mut s, lib) = (State::default(), Library::default());
         let mut c = Console::new(&e, &mut s, &lib);
         let mut check = |n: u16, v: u16| {
             set(&mut c, n, v, Origin::Midi);
@@ -404,6 +408,9 @@ mod tests {
         set(&mut c, 446, 6, Origin::Midi);
         assert_eq!((get(&c, 446), steps(&c, 461 + 2)), (Some(6), 128), "HOLD's 128 steps");
         assert_eq!(get(&c, 461 + 2), Some(37), "101 ms is step 38 (0-based 37)");
+        // The effects: a program by its number, a parameter by its step.
+        set(&mut c, 405, 25, Origin::Midi); // effect 2: FLANGE
+        assert_eq!((get(&c, 405), get(&c, 426 + 2)), (Some(25), Some(25)), "FLANGE's MOD DEPTH 25 %");
         // Executes: a pair, SEND3-4 stereo.
         set(&mut c, 503, 3, Origin::Midi);
         assert_eq!(get(&c, 396), Some(1));

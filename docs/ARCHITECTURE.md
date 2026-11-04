@@ -288,8 +288,10 @@ of any size, of which the WING is one configuration.
   dynamics processors, pairs, groups, SEND3-4 stereo, oscillator; as text),
   `Console` (its panel's operations on the engine's strips: pairs linked, groups,
   a processor written onto the dynamics block of the strip it is patched into),
-  `library` (its programs) and `params` (its 531 parameters as internal values,
-  what its control changes carry).
+  `library` (its effects, dynamics and EQ programs) and `params` (its 531
+  parameters as internal values, what its control changes carry). Its effect
+  types are `livedaw_dsp::promix::fx` (`FX_MODELS`, `PM...` tokens; the devices
+  run the WING's in series and `Taps`, a delay of their own).
 - Laws (Phase 3 step 3): a `ProfileSpec` names its fader law (`FaderLaw`,
   `livedaw-dsp/fader.rs`: (position, dB) breakpoints and an optional step count, so
   a 128 position fader fits) and its pan law (`PanLaw`, `util.rs`: the mono and

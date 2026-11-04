@@ -204,6 +204,12 @@ Phase 5, the Yamaha ProMix 01 (`docs/UNIVERSAL_MIXER.md`), begins.
   group's faders follow the panel, a processor runs on the strip it is patched into
   with its key), its dynamics presets, and its 531 parameters as the User's Guide's
   Control Change table numbers them.
+- The ProMix 01's effects: its two internal effects, fed by SEND1-2 and returning on
+  RTN1-2, run its 15 effect types (reverb, delays, chorus, flange, phasing, pitch
+  change, tremolo, auto pan and their combinations) with the User's Guide's
+  parameters, on the WING's devices and a delay of Sidecar's own; its program
+  libraries: the 30 preset effects programs, the dynamics presets and the 30 EQ
+  presets, and the user programs.
 
 ## [0.2.0] - beta
 

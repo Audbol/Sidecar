@@ -549,6 +549,34 @@ fn a_promix01s_st_out_runs_its_dynamics_pre_or_post_fader_and_its_channels_their
 }
 
 #[test]
+fn a_promix01s_send1_feeds_its_reverb_which_returns_on_rtn1() {
+    use livedaw_engine::Profile;
+    let mut rig = Rig::new(1, 1, 2);
+    rig.engine.configure(&ConsoleConfig { profile: Profile::ProMix01, counts: Counts::PROMIX01 });
+    let fx = |rig: &Rig, i: usize| {
+        let m = rig.engine.fx_models();
+        m[rig.engine.controls.fx[i].model_index_in(m)].token
+    };
+    assert_eq!((fx(&rig, 0), fx(&rig, 1)), ("PMREV", "PMDLCR"), "REVERB HALL 1, DELAY L-C-R");
+    let ch = rig.ch(0);
+    ch.params.input_left.store(0, Relaxed);
+    ch.params.fader_db.store(0.0);
+    let send1 = ch.sends.get_or_create(0).unwrap();
+    send1.level_db.store(0.0);
+    send1.enabled.store(true, Relaxed);
+    let rtn = |rig: &Rig, i: usize| rig.strip(StripKind::Aux, 1 + i);
+    let peaks = |rig: &mut Rig| {
+        (0..2).for_each(|i| rtn(rig, i).meters.input_peak[0].store(0.0));
+        rig.run(200);
+        (0..2).map(|i| rtn(rig, i).meters.input_peak[0].load()).collect::<Vec<_>>()
+    };
+    rig.set_input(0, 0.25);
+    let p = peaks(&mut rig);
+    assert!(p[0] > 0.01, "the reverb returns on RTN1: {p:?}");
+    assert_eq!(p[1], 0.0, "SEND2 has nothing for the delay: {p:?}");
+}
+
+#[test]
 fn an_x32_runs_its_own_chains_and_models() {
     use livedaw_engine::Profile;
     let mut rig = Rig::new(1, 1, 2);

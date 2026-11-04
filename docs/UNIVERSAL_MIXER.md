@@ -784,13 +784,27 @@ Three layers:
       the engine can't take on that strip (a channel keyed by SEND3, ST-L / ST-R
       apart) keys itself or both sides; the oscillator is kept, not heard yet.
       The effects' parameters (404-445) come with step 4.
-   4. **Its effects**: the two slots fed by SEND1-2 and returning on RTN1-2; the
-      effect types of the 30 preset programs (reverbs, chorus / flange into
-      reverb, L-C-R and karaoke delays, delay and chorus combinations, pitch
-      change, chorus, symphonic, flange, phasing, tremolo, auto pan) on the
-      WING's devices of the same design, as the X32's are; the preset programs
-      (pp.37-44) and 10 user programs; the dynamics programs (10 presets, p.78)
-      and the EQ library (30 presets, pp.23-24).
+   4. **Its effects** (done): the two slots fed by SEND1-2 and returning on
+      RTN1-2, at first REVERB HALL 1 and DELAY L-C-R (Sidecar's choice: the guide
+      doesn't say what scene 00 holds). The 15 effect types of the 30 preset
+      programs (`livedaw_dsp::promix::fx`, `PMREV`...: reverb; chorus and flange
+      into reverb; L-C-R, mono, two-stage and karaoke delays and their chorus
+      combinations; stereo pitch change; chorus, symphonic, flange, phasing,
+      tremolo, auto pan) with the guide's parameters, ranges and steps
+      (pp.37-44), each type's defaults its first program. Their algorithms are
+      Sidecar's, on the WING's ROOM, CHORUS, FLANGER, PHASER, PITCH and PANNER and a
+      delay line of Sidecar's own (taps, feedback tap, HIGH RATIO a low-pass in
+      the feedback); the combinations run in series, REV DEPTH mixing the reverb
+      in. Unmodelled: the chorus' AM DEPTH, the pitch changers' feedback, auto
+      pan's F/R DEPTH and DIRECTION; the WING devices' ranges limit some values
+      (a chorus faster than 5 Hz). The libraries (`livedaw_promix::library`): the
+      30 effects presets and 10 user programs, the dynamics' 10 and 10, the EQ
+      library's 30 presets (pp.23-24: each printed column lists its 15 G / F / Q
+      triples per page in program order) and 20 user programs; recalling one
+      sets an effect slot (`Internal Effect n Type`), a processor or a strip's
+      EQ; the effects' parameters (404-445) read and set a slot's values by
+      their steps. The guide's HUM REDUCE 60Hz preset puts LOW at 60 Hz, so the
+      EQ's 1/6 octave step between 56 and 70 Hz is 60 Hz.
    5. **ProMix MIDI** (`MidiProtocol::ProMix01`): the 531 parameters and the
       default CC map, Channel and Register modes, the scaling, program changes
       through the table, echo, and the SysEx: bulk dumps and requests with
