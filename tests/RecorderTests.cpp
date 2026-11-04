@@ -110,7 +110,7 @@ public:
             expectEquals (ld::kAbiVersion, 41);
             ld::LayoutInfo info {};
             ld::ld_layout_info (&info);
-            expectEquals ((int) info.abiVersion, 40);
+            expectEquals ((int) info.abiVersion, 41);
             const char* mismatch = ld::verifyLayout();
             expect (mismatch == nullptr, mismatch != nullptr ? juce::String (mismatch) : juce::String());
         }
