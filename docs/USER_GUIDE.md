@@ -965,6 +965,9 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
   models (reverbs, delays, modulation, pitch and the insert models), FX 5-8 its 34
   insert models (graphic EQs, dynamics, enhancers, amps), and a new X32 starts with
   its factory rack (Vintage Room, Hall, Stereo Delay, Stereo Chorus, graphic EQs).
+  As on an X32, FX 1-4 are fed from buses 13-16 (each effect's SOURCE can be any
+  bus or M/C, or INS to use it as an insert) and come back on the FX return channels
+  (FX RTN), ready to fade up.
   X32 remote apps and scene files see and set them. The models' sound is still being
   built: for now the reverbs, delays and modulation effects are silent and the insert
   effects pass the signal through unchanged.

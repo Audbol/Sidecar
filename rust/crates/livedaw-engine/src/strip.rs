@@ -34,7 +34,7 @@ use crate::profile::{Profile, ProfileSpec};
 use crate::routing::{return_tap, strip_source_slot, ReturnRing};
 use crate::sends::{Bank, SendBank};
 use crate::solo::StripConsole;
-use crate::sources::{internal, osc_channel, usr_channel};
+use crate::sources::{fx_return_channel, internal, osc_channel, usr_channel};
 use crate::taps::{StripTaps, FIRST_USER_TAP};
 use crate::tapsend::TapShaper;
 use livedaw_dsp::biquad::{Biquad, BiquadCoeffs};
@@ -1455,7 +1455,8 @@ impl Strip {
         }
         let slot = ins.fx.load(Relaxed);
         let (Some(rack), Some(fxp)) = (ctx.fx.get(slot.max(0) as usize), ctx.fx_params.get(slot.max(0) as usize)) else { return };
-        if slot < 0 {
+        // A send effect (fed from a bus) isn't an insert: the strip passes through.
+        if slot < 0 || fxp.is_send() {
             return;
         }
         // A mono strip feeds both of the FX's inputs and carries its stereo
@@ -1551,8 +1552,9 @@ impl Strip {
 /// The buffer of input source `index`: hardware input `index`, playback
 /// channel `index - PLAYBACK_SOURCE_BASE`, USB PLAYER channel `index -
 /// USB_PLAYER_SOURCE_BASE`, oscillator `index - OSC_SOURCE_BASE`, USR
-/// source `index - USR_SOURCE_BASE` or strip source `index -
-/// STRIP_SOURCE_BASE` (in `playback`, laid out as `sources::internal`).
+/// source `index - USR_SOURCE_BASE`, strip source `index -
+/// STRIP_SOURCE_BASE` or FX return `index - FX_RETURN_SOURCE_BASE` (in
+/// `playback`, laid out as `sources::internal`).
 /// None = not connected.
 pub(crate) fn source_ptr(hw: &[*const f32], playback: &[*const f32], index: i32) -> Option<*const f32> {
     let p = if let Some(n) = playback_channel(index) {
@@ -1565,6 +1567,8 @@ pub(crate) fn source_ptr(hw: &[*const f32], playback: &[*const f32], index: i32)
         playback.get(internal::USR + n)
     } else if let Some(n) = strip_source_slot(index) {
         playback.get(internal::STRIP + n)
+    } else if let Some(n) = fx_return_channel(index) {
+        playback.get(internal::FX + n)
     } else {
         hw.get(usize::try_from(index).ok()?)
     };

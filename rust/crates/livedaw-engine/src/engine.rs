@@ -55,7 +55,7 @@ use crate::blocks::{Block, BlockKind, Step, MAX_EXTRA_BLOCKS};
 use crate::chain::Node;
 use crate::config::{ConsoleConfig, Counts, MAX_AUX};
 use crate::denormals::ScopedNoDenormals;
-use crate::fx::{FxRack, InsertCallbacks};
+use crate::fx::{FxInputs, FxRack, InsertCallbacks};
 use crate::garbage::Garbage;
 use crate::groups::{AtomicGroupSet, GroupSet};
 use crate::iosafes::IoSafes;
@@ -69,7 +69,7 @@ use crate::routing::{bus_feeds_bus, matrix_direct_pair, return_tap, strip_source
 use crate::routing::{DirectSource, ReturnRing, DIRECT_SOURCE_BASE, NUM_PATCH_OUTPUTS, NUM_STRIP_SOURCES, STRIP_SOURCE_BASE};
 use crate::sends::{send_mode, MAX_BUSES};
 use crate::solo::{self, solo_mode, SoloBlock};
-use crate::sources::{user_side, SourceDsp, SourceTable, UserSignalParams};
+use crate::sources::{user_side, SourceDsp, SourceTable, UserSignalParams, NUM_SEND_FX};
 use crate::strip::{source_ptr, KeyStrips, ProcessContext, Strip};
 use crate::talk::{TalkBlock, TalkGains, TalkRamps};
 use crate::taps::{send_tap, FIRST_USER_TAP, NUM_TAP_IDS};
@@ -696,11 +696,17 @@ impl Engine {
         self.set_num_channels(counts.channels);
         self.set_num_fx(counts.fx);
         // The console's factory FX rack (an X32's), each device on its defaults.
+        let spec = config.profile.spec();
         let fx = self.fx_models();
-        for (i, token) in config.profile.spec().fx_factory.iter().enumerate() {
+        for (i, token) in spec.fx_factory.iter().enumerate() {
             if let Some(model) = livedaw_dsp::model::model_index(fx, token) {
                 self.set_fx_model(i, model, true);
             }
+        }
+        for (p, &bus) in self.controls.fx.iter().zip(spec.fx_send_buses) {
+            let input = crate::routing::strip_source_input(StripKind::Bus, bus, 0);
+            p.source_left.store(input, Relaxed);
+            p.source_right.store(input, Relaxed);
         }
     }
 
@@ -1461,8 +1467,9 @@ impl Engine {
         self.usb.prepare(sample_rate, block_size);
         self.analysis.prepare(sample_rate);
         // Devices are built for a sample rate and block size: rebuild them.
+        let fx = self.fx_models();
         for (i, (rack, params)) in self.fx.iter().zip(self.controls.fx.iter()).enumerate() {
-            self.install_fx_device(i, rack, params.model_index());
+            self.install_fx_device(i, rack, params.model_index_in(fx));
         }
         self.pool.set_block_duration_hint(sample_rate, block_size);
         self.update_round_trip();
@@ -1600,6 +1607,8 @@ impl Engine {
         let talk = &talk;
         // What is read a block late this block, and the bus stage's order (routing.rs).
         self.plan_returns(topo, a, n, source_solo.map(|(_, p)| p));
+        // The send effects, on the buses' last block, for the FX return channels.
+        self.send_effects(a, n);
 
         let hw = SharedPtrs(a.sources.hw_ptrs());
         let hw = &hw;
@@ -1733,6 +1742,10 @@ impl Engine {
             want(l);
             want(if r < 0 && l >= 0 && s.params.stereo.load(Relaxed) { l + 1 } else { r });
         }
+        for p in self.controls.fx.iter().take(self.num_fx().min(NUM_SEND_FX)).filter(|p| p.is_send()) {
+            want(p.source_left.load(Relaxed));
+            want(p.source_right.load(Relaxed));
+        }
         if let Some(p) = solo {
             want(p.left);
             want(if p.right >= 0 { p.right } else { p.left + 1 });
@@ -1776,6 +1789,37 @@ impl Engine {
                 a.monitor_returns.clear(2 * pair + 1);
             }
             a.monitor_returns_live[pair] = w;
+        }
+    }
+
+    /// The send effects (an X32's FX 1-4): each slot with sources processes
+    /// their signals (one block late, as channels read them) into its FX
+    /// returns, which the channels read this block; the others' are silent.
+    unsafe fn send_effects(&self, a: &mut AudioState, n: usize) {
+        let count = self.num_fx().min(NUM_SEND_FX);
+        let live = |slot: usize| slot < count && self.controls.fx[slot].is_send();
+        for slot in 0..NUM_SEND_FX {
+            a.sources.fx_return_live(slot, live(slot));
+        }
+        let block = a.block_counter;
+        let sources = &mut a.sources;
+        for slot in (0..count).filter(|&s| live(s)) {
+            let Some(bufs) = sources.fx_return_ptrs(slot, n) else { continue };
+            let p = &self.controls.fx[slot];
+            let left = p.source_left.load(Relaxed);
+            let right = Some(p.source_right.load(Relaxed)).filter(|&r| r >= 0).unwrap_or(left);
+            let (hw, playback) = (sources.hw_ptrs(), sources.playback_ptrs());
+            // SAFETY: the return buffers are only written here; a source is a
+            // bus, main or matrix signal (never a return).
+            let [l, r] = bufs.map(|b| std::slice::from_raw_parts_mut(b, n));
+            for (buf, input) in [(&mut *l, left), (&mut *r, right)] {
+                match source_ptr(hw, playback, input).filter(|_| strip_source(input).is_some()) {
+                    Some(src) => buf.copy_from_slice(std::slice::from_raw_parts(src, n)),
+                    None => buf.fill(0.0),
+                }
+            }
+            let mut chans: [&mut [f32]; 2] = [l, r];
+            self.fx[slot].process(&mut chans, a.sample_rate, p, &FxInputs { hw, playback }, block);
         }
     }
 

@@ -103,6 +103,11 @@ constexpr int32_t kUsrSourceBase = 0x50000;
 constexpr int kNumUserSignals = 24;
 constexpr int kNumUserPatches = 32;
 constexpr int kNumUsrSources = kNumUserSignals + kNumUserPatches;
+/** The FX returns (Phase 4 step 9c, an X32's FX 1-4 on its FX return
+    channels): FX slot n's stereo output as a send effect is input
+    kFxReturnSourceBase + 2n (L) and + 2n + 1 (R), n < kNumSendFx. */
+constexpr int32_t kFxReturnSourceBase = 0x60000;
+constexpr int kNumSendFx = 8;
 /** DYNAMICS KEY SOURCE of aux, buses, mains and matrices (DynSlotParams::scSource):
     kKeyStripBase * kind (StripKindId) + index; they take one of kNumOutputKeyTaps taps. */
 constexpr int32_t kKeyStripBase = 0x10000;

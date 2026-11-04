@@ -977,6 +977,9 @@ pub(crate) fn capture_fx_slot(engine: &Engine, i: usize, bridge: &mut dyn Plugin
     // FX SEND (the outboard insert's outputs; ROUTING > OUTPUTS).
     put_i(&mut x, "sendL", &p.send_left);
     put_i(&mut x, "sendR", &p.send_right);
+    // A send effect's sources (an X32's FX 1-4 SOURCE; -1 = an insert).
+    put_i(&mut x, "srcL", &p.source_left);
+    put_i(&mut x, "srcR", &p.source_right);
     // EXT's parameters too: the outboard insert, and the SOURCE.
     put_model_params(&mut x, &fx[model], &p.values);
     if fx[model].token == "PCORR" {
@@ -1027,6 +1030,8 @@ pub(crate) fn apply_fx_slot(
     // Saved before FX SEND: leave the current outputs.
     get_i(x, "sendL", &p.send_left);
     get_i(x, "sendR", &p.send_right);
+    get_i(x, "srcL", &p.source_left);
+    get_i(x, "srcR", &p.source_right);
 
     // Shows from before the FX rack hold plugins only.
     let fx = engine.fx_models();

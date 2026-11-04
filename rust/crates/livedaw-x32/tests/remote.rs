@@ -576,4 +576,14 @@ fn the_fx_rack_answers_its_models_and_parameters() {
     assert!(c.node("fx/1/par").starts_with("/fx/1/par 50 2.50 60 "));
     // Beyond the model's parameters: 0.
     assert_eq!(c.get_f("/fx/1/par/40"), 0.0);
+    // SOURCE: buses 13-16 feed FX 1-4; INS makes one an insert, M/C feeds it from the mono main.
+    assert_eq!(c.node("fx/2/source").trim_end(), "/fx/2/source MIX14 MIX14");
+    assert!(engine.controls.fx[1].is_send());
+    c.set_text("/fx/2/source/l INS");
+    assert!(!engine.controls.fx[1].is_send());
+    assert_eq!(c.node("fx/2/source").trim_end(), "/fx/2/source INS INS");
+    c.set("/fx/2/source/r", vec![Arg::Int(17)]);
+    assert_eq!(c.node("fx/2/source").trim_end(), "/fx/2/source M/C M/C", "L follows a send's first side");
+    c.set_text("/fx/2/source/l MIX3");
+    assert_eq!(c.node("fx/2/source").trim_end(), "/fx/2/source MIX3 M/C");
 }

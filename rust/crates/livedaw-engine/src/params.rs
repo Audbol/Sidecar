@@ -1234,6 +1234,12 @@ pub struct FxParams {
     /// EXT device's outboard insert sends there (manual 11.11 p. 164, SEND).
     pub send_left: AtomicI32,
     pub send_right: AtomicI32,
+    /// A send effect's sources (an X32's FX 1-4 SOURCE, MIX 1-16 or M/C):
+    /// the strip signals (`routing::strip_source_input`) it processes, one
+    /// block late, into the FX return group (`sources::FX_RETURN_SOURCE_BASE`);
+    /// -1 = an insert (INS), as on the WING. A right of -1 takes the left.
+    pub source_left: AtomicI32,
+    pub source_right: AtomicI32,
 }
 
 impl Default for FxParams {
@@ -1245,11 +1251,18 @@ impl Default for FxParams {
             values: std::array::from_fn(|_| AtomicF32::new(0.0)),
             send_left: AtomicI32::new(-1),
             send_right: AtomicI32::new(-1),
+            source_left: AtomicI32::new(-1),
+            source_right: AtomicI32::new(-1),
         }
     }
 }
 
 impl FxParams {
+    /// A send effect: fed from its sources, not inserted.
+    pub fn is_send(&self) -> bool {
+        self.source_left.load(Relaxed) >= 0
+    }
+
     /// The model, in the WING's FX table (`model_index_in` for a console's).
     pub fn model_index(&self) -> usize {
         self.model_index_in(FX_MODELS)
@@ -1609,6 +1622,8 @@ impl EngineControls {
             f.set_model(FX_NONE, true);
             f.send_left.store(-1, Relaxed);
             f.send_right.store(-1, Relaxed);
+            f.source_left.store(-1, Relaxed);
+            f.source_right.store(-1, Relaxed);
         }
     }
 }

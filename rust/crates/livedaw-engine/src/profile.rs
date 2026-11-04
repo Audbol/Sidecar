@@ -275,6 +275,10 @@ pub struct ProfileSpec {
     /// A new console's FX rack, slot by slot (tokens of `models.fx`, on their
     /// defaults): an X32's VRM, HALL, DLY, CRS and GEQs. Empty: every slot empty.
     pub fx_factory: &'static [&'static str],
+    /// The buses (0-based slots) feeding the first FX slots as send effects
+    /// (`FxParams::source_left`): an X32's buses 13-16 feed FX 1-4. Empty:
+    /// every slot an insert.
+    pub fx_send_buses: &'static [usize],
 }
 
 /// The pan of a strip a new console links into a pair (odd left, even
@@ -316,7 +320,9 @@ fn x32_factory(p: &crate::params::StripParams, kind: StripKind, slot: usize) {
     if kind == StripKind::Aux {
         p.pan.store(x32_pair_pan(kind, slot));
         if slot >= 8 {
+            // FX returns 1-8: FX 1 L, FX 1 R ... FX 4 R.
             p.fader_db.store(0.0);
+            p.input_left.store(crate::sources::FX_RETURN_SOURCE_BASE + (slot - 8) as i32, Relaxed);
         }
     }
     if kind == StripKind::Bus && slot >= 12 {
@@ -430,6 +436,7 @@ static WING: ProfileSpec = ProfileSpec {
     dca_names: None,
     dca_fader_db: livedaw_dsp::fader::FADER_MIN,
     fx_factory: &[],
+    fx_send_buses: &[],
 };
 
 /// No console's limits. Its strips have the WING's blocks (a profile's own set
@@ -462,6 +469,7 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
     dca_names: None,
     dca_fader_db: livedaw_dsp::fader::FADER_MIN,
     fx_factory: &[],
+    fx_send_buses: &[],
 };
 
 /// The Behringer X32: its counts (`Counts::X32`), fader law, colours and
@@ -503,6 +511,7 @@ static X32: ProfileSpec = ProfileSpec {
     dca_names: Some("DCA"),
     dca_fader_db: 0.0,
     fx_factory: &["X32VRM", "X32HALL", "X32DLY", "X32CRS", "X32GEQ2", "X32GEQ2", "X32GEQ2", "X32GEQ"],
+    fx_send_buses: &[12, 13, 14, 15],
 };
 
 #[cfg(test)]

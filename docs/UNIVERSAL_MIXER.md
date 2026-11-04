@@ -554,18 +554,24 @@ Three layers:
         transcribed and checked against each model's type signature; the document's
         typos noted and corrected there) and the factory values of the owner's X32
         Compact. `/fx/1..8` on the X32 remote and in scene files: `type` (FX 1-4 the
-        61, FX 5-8 the 34 insert models, their own numbering), `source/l|r` (kept until
-        9c), `par/01..64` typed by the slot's model (`Console::ty`) and written as the
+        61, FX 5-8 the 34 insert models, their own numbering), `source/l|r` (9c),
+        `par/01..64` typed by the slot's model (`Console::ty`) and written as the
         console writes them ("97", "10k4", "1.94", "0.0"). A factory console's scene
         file matches the owner's console line for line, its FX rack included. Where
         the console contradicts the document (VRM's SIZE and ER LEFT / RIGHT hold 24,
         28, 34; the document says 0-10) the range is widened to 0-100, to be checked
         when the FX tests run on the console. The other 56 models' defaults are
         Sidecar's choice until they are read from a console.
-      - 9c, the factory rack (the models done: `ProfileSpec::fx_factory`; the routing
-        to come): FX 1-4 Vintage Room, Hall, Stereo Delay, Stereo Chorus
-        fed by buses 13-16 and returning on the FX returns; FX 5-7 Dual GEQ, FX 8
-        Stereo GEQ (as a freshly initialised X32 Compact has them).
+      - 9c, the factory rack (done): FX 1-4 Vintage Room, Hall, Stereo Delay, Stereo
+        Chorus fed by buses 13-16 and returning on the FX returns; FX 5-7 Dual GEQ, FX 8
+        Stereo GEQ (as a freshly initialised X32 Compact has them;
+        `ProfileSpec::fx_factory`, `fx_send_buses`). A slot with a SOURCE
+        (`FxParams::source_left` / `source_right`, strip signals; -1 = INS) is a send
+        effect: before the channels run, the engine processes its sources' last block
+        (as a channel patched to a bus hears it) into the FX return source group
+        (`sources::FX_RETURN_SOURCE_BASE + 2 * slot + side`), which the X32's FX return
+        channels are patched to. Inserted on a strip, a send effect passes the signal
+        through. `/fx/1..4/source/l|r` sets it (INS on either side makes an insert).
       - 9d-9g, the algorithms in batches, each measured (decay, taps, curves,
         gain reduction) since none can be compared by ear here: reverbs, delays and
         modulation (the factory four first); the combos and pitch; EQs and dynamics

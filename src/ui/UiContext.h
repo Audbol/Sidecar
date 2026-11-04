@@ -438,6 +438,9 @@ inline juce::String inputPortName (int input, int pad = 0)
     // The USER SIGNAL group and the strips' signals (manual 2.6): "USR 3", "BUS 12L", "MTX 2R".
     if (const int n = MixerEngine::usrChannelOf (input); n >= 0)
         return "USR " + juce::String (n + 1).paddedLeft ('0', pad);
+    // A send effect's return (an X32's FX 1-4): "FX 1L".
+    if (input >= ld::kFxReturnSourceBase && input < ld::kFxReturnSourceBase + 2 * ld::kNumSendFx)
+        return "FX " + juce::String ((input - ld::kFxReturnSourceBase) / 2 + 1) + ((input - ld::kFxReturnSourceBase) % 2 == 0 ? "L" : "R");
     if (MixerEngine::isStripSource (input))
     {
         int n = input - ld::kStripSourceBase;

@@ -57,6 +57,12 @@ pub const NUM_USER_SIGNALS: usize = 24;
 pub const NUM_USER_PATCHES: usize = 32;
 pub const NUM_USR_SOURCES: usize = NUM_USER_SIGNALS + NUM_USER_PATCHES;
 pub const USR_SOURCE_BASE: i32 = 0x50000;
+/// The FX returns (an X32's FX 1-4 on its FX return channels): the stereo
+/// output of FX slot `n` as a send effect (`FxParams::source_left`) is input
+/// `FX_RETURN_SOURCE_BASE + 2n` (L) and `+ 2n + 1` (R).
+pub const NUM_SEND_FX: usize = 8;
+pub const NUM_FX_RETURNS: usize = 2 * NUM_SEND_FX;
+pub const FX_RETURN_SOURCE_BASE: i32 = 0x60000;
 /// Sources: the hardware ports, the playback channels, the USB PLAYER, the
 /// oscillators, then the USR group.
 pub const NUM_SOURCES: usize = NUM_HW_SOURCES + NUM_PLAYBACK_CHANNELS + USB_CHANNELS + NUM_OSCILLATORS + NUM_USR_SOURCES;
@@ -81,6 +87,13 @@ pub fn usr_channel(input: i32) -> Option<usize> {
     usize::try_from(n).ok().filter(|&n| n < NUM_USR_SOURCES)
 }
 
+/// The FX return (0-based: FX slot `n / 2`, side `n % 2`) an input index
+/// refers to, if any.
+pub fn fx_return_channel(input: i32) -> Option<usize> {
+    let n = input.checked_sub(FX_RETURN_SOURCE_BASE)?;
+    usize::try_from(n).ok().filter(|&n| n < NUM_FX_RETURNS)
+}
+
 /// Where each kind of internal signal sits in the pointer list the channels
 /// read besides the hardware ports (`SourceDsp::playback_ptrs`).
 pub(crate) mod internal {
@@ -90,7 +103,8 @@ pub(crate) mod internal {
     pub const OSC: usize = USB + USB_CHANNELS;
     pub const USR: usize = OSC + NUM_OSCILLATORS;
     pub const STRIP: usize = USR + NUM_USR_SOURCES;
-    pub const COUNT: usize = STRIP + NUM_STRIP_SOURCES;
+    pub const FX: usize = STRIP + NUM_STRIP_SOURCES;
+    pub const COUNT: usize = FX + NUM_FX_RETURNS;
 }
 
 /// An external source a user patch can copy (a hardware port, a playback
@@ -683,6 +697,8 @@ pub(crate) struct SourceDsp {
     user_raw: Vec<Vec<f32>>,
     user_ring: ReturnRing,
     user_live: [bool; NUM_USER_SIGNALS],
+    /// The send effects' outputs this block (the FX return group).
+    fx_returns: Vec<Vec<f32>>,
 }
 
 impl SourceDsp {
@@ -703,6 +719,7 @@ impl SourceDsp {
         self.user_raw = vec![vec![0.0; block_size]; NUM_USER_SIGNALS];
         self.user_ring = ReturnRing::new(NUM_USER_SIGNALS, block_size);
         self.user_live = [false; NUM_USER_SIGNALS];
+        self.fx_returns = vec![vec![0.0; block_size]; NUM_FX_RETURNS];
     }
 
     /// Prepared for blocks of `n` samples and this many hardware inputs.
@@ -715,6 +732,26 @@ impl SourceDsp {
     pub fn set_strip_return(&mut self, slot: usize, ptr: *const f32) {
         if let Some(p) = self.playback_out.get_mut(internal::STRIP + slot) {
             *p = ptr;
+        }
+    }
+
+    /// Send effect `slot`'s two return buffers for this block (None when not
+    /// prepared for `n`); `fx_return_live` hands them to the channels.
+    pub fn fx_return_ptrs(&mut self, slot: usize, n: usize) -> Option<[*mut f32; 2]> {
+        let [l, r] = self.fx_returns.get_mut(2 * slot..2 * slot + 2)? else { return None };
+        (l.len() >= n && r.len() >= n).then_some([l.as_mut_ptr(), r.as_mut_ptr()])
+    }
+
+    /// Whether send effect `slot`'s returns carry its output this block (or silence).
+    pub fn fx_return_live(&mut self, slot: usize, live: bool) {
+        for side in 0..2 {
+            let ptr = match self.fx_returns.get(2 * slot + side) {
+                Some(b) if live => b.as_ptr(),
+                _ => std::ptr::null(),
+            };
+            if let Some(p) = self.playback_out.get_mut(internal::FX + 2 * slot + side) {
+                *p = ptr;
+            }
         }
     }
 

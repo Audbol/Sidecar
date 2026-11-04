@@ -19,7 +19,8 @@ that chain, so everything below describes the WING as it runs on that core.
        ▼                 ▼   sources: gain · mute · Ø · MONO / STEREO / MID-SIDE pairs
        │                 │   USR 25-56 user patches (input 0x50000 + 24..55): copies of ports
        │                 │   ┄┄ one block late (return rings): BUS / MAIN / MTX signals
-       │                 │      (input 0x40000 + n), USR 1-24 user signals (0x50000 + n)
+       │                 │      (input 0x40000 + n), USR 1-24 user signals (0x50000 + n),
+       │                 │      send effects' FX returns (0x60000 + 2 * slot + side)
        ▼                 ▼   (each input / aux channel: MAIN or ALT source, INPUT SELECT)
 ┌──────────── input channels and aux (parallel stage 1) ─────────────────────────────────┐
 │ channel: INPUT trim · balance · Ø ─ IN ─ FILTER ─ FILT                                 │
@@ -121,6 +122,12 @@ that chain, so everything below describes the WING as it runs on that core.
     each side) after stage 6 (`Engine::user_signals`), get their source processing
     there, and go to the outputs and the RECORDER in that block and into a ring the
     channels read the next block.
+  - *FX returns* (`sources.rs`, input `FX_RETURN_SOURCE_BASE` 0x60000 + 2 * slot +
+    side, slots 1-8): a send effect (an X32's FX 1-4: `FxParams::source_left` /
+    `source_right` name strip signals; -1 = an insert) runs before stage 1
+    (`Engine::send_effects`) on its sources' last block, read like a channel reads
+    them, into buffers the channels read in the same block. Inserted on a strip, a
+    send effect passes through.
   - *The output patch* (`OutputPatch`, 576 `AtomicI32`s, `ld_engine_output_patch`): a
     source per hardware output, added after the strips in `write_outputs` (the source
     processed: gain, mute, polarity). `Engine::route_output_source` keeps one source per

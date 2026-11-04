@@ -438,6 +438,47 @@ fn an_x32s_fx_rack_runs_its_table_and_takes_premium_devices_in_fx_1_to_4() {
 }
 
 #[test]
+fn an_x32s_fx_1_to_4_take_buses_13_to_16_and_return_on_the_fx_returns() {
+    use livedaw_engine::Profile;
+    let mut rig = Rig::new(1, 1, 2);
+    rig.engine.configure(&ConsoleConfig { profile: Profile::X32, counts: Counts::X32 });
+    // FX 1 on an insert model (it passes the signal), fed from bus 13.
+    let geq = model_index(rig.engine.fx_models(), "X32GEQ2").unwrap();
+    assert!(rig.engine.set_fx_model(0, geq, true));
+    let fx = |rig: &Rig, i: usize| rig.engine.controls.fx[i].is_send();
+    assert!(fx(&rig, 0) && fx(&rig, 3) && !fx(&rig, 4), "FX 1-4 are send effects");
+    // Channel 1 to bus 13 (POST, 0 dB); the FX returns' inputs are FX 1 L, FX 1 R...
+    let ch = rig.ch(0);
+    ch.params.input_left.store(0, Relaxed);
+    ch.params.fader_db.store(0.0);
+    let send = ch.sends.get_or_create(12).unwrap();
+    send.level_db.store(0.0);
+    send.enabled.store(true, Relaxed);
+    rig.set_input(0, 0.25);
+    let returns: Vec<_> = (0..4).map(|i| rig.strip(StripKind::Aux, 8 + i)).collect();
+    let peaks = |rig: &mut Rig| {
+        returns.iter().for_each(|s| s.meters.input_peak[0].store(0.0));
+        rig.run(50);
+        returns.iter().map(|s| s.meters.input_peak[0].load()).collect::<Vec<_>>()
+    };
+    let p = peaks(&mut rig);
+    assert!(p[0] > 0.1 && close(p[0], p[1], 1e-5), "FX 1 L and R: {p:?}");
+    assert!(p[2] == 0.0 && p[3] == 0.0, "FX 2 has nothing on bus 14: {p:?}");
+    // INS: an insert again; the returns go silent.
+    rig.engine.controls.fx[0].source_left.store(-1, Relaxed);
+    let p = peaks(&mut rig);
+    assert!(p[0] == 0.0 && p[1] == 0.0, "INS: {p:?}");
+    // A send effect inserted on a channel passes it through untouched.
+    let bus13 = livedaw_engine::routing::strip_source_input(StripKind::Bus, 12, 0);
+    rig.engine.controls.fx[0].source_left.store(bus13, Relaxed);
+    let ins = ch.params.pre_insert();
+    ins.fx.store(0, Relaxed);
+    ins.on.store(true, Relaxed);
+    let p = peaks(&mut rig);
+    assert!(p[0] > 0.1, "{p:?}");
+}
+
+#[test]
 fn an_x32_runs_its_own_chains_and_models() {
     use livedaw_engine::Profile;
     let mut rig = Rig::new(1, 1, 2);

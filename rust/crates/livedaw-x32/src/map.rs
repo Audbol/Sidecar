@@ -132,6 +132,8 @@ pub enum Bind {
     /// and its parameter `k` (0-based; its type is the model's).
     FxType(usize),
     FxPar(usize, usize),
+    /// FX slot `n`'s SOURCE, side 0 = L / 1 = R (INS, MIX 1-16, M/C).
+    FxSource(usize, usize),
 }
 
 /// One address.
@@ -383,7 +385,8 @@ fn build() -> Tree {
     b.t
 }
 
-/// `/fx/1..8`: the model, its sources (FX 1-4; kept until 9c) and its 64
+/// `/fx/1..8`: the model, its sources (FX 1-4: a bus feeds it, its outputs
+/// are FX returns 1-8; INS: an insert, as FX 5-8 always are) and its 64
 /// parameters, typed by the model (`Console::ty`).
 fn fx(b: &mut Builder) {
     const SOURCES: &[&str] = &[
@@ -399,13 +402,34 @@ fn fx(b: &mut Builder) {
         b.leaf(&p, "type", t, Ty::Enum(types), Bind::FxType(n), int(factory));
         if n < 4 {
             let s = format!("{p}/source");
-            b.leaf(&s, "l", t, Ty::Enum(SOURCES), Bind::State, int(13 + n as i32));
-            b.leaf(&s, "r", t, Ty::Enum(SOURCES), Bind::State, int(13 + n as i32));
+            b.leaf(&s, "l", t, Ty::Enum(SOURCES), Bind::FxSource(n, 0), int(13 + n as i32));
+            b.leaf(&s, "r", t, Ty::Enum(SOURCES), Bind::FxSource(n, 1), int(13 + n as i32));
         }
         let par = format!("{p}/par");
         for k in 0..64 {
             b.leaf(&par, &format!("{:02}", k + 1), t, FX_UNUSED, Bind::FxPar(n, k), real(0.0));
         }
+    }
+}
+
+/// An FX SOURCE (0 INS, 1-16 MIX 1-16, 17 M/C) as the engine's strip
+/// signal (-1 = an insert); None beyond the list.
+fn fx_source_input(index: i32) -> Option<i32> {
+    use livedaw_engine::routing::strip_source_input;
+    Some(match index {
+        0 => -1,
+        1..=16 => strip_source_input(StripKind::Bus, index as usize - 1, 0),
+        17 => strip_source_input(StripKind::Main, 1, 0),
+        _ => return None,
+    })
+}
+
+/// The SOURCE index of an engine FX source (INS for anything else).
+fn fx_source_index(input: i32) -> i32 {
+    match livedaw_engine::routing::strip_source(input) {
+        Some((StripKind::Bus, n, _)) if n < 16 => n as i32 + 1,
+        Some((StripKind::Main, 1, _)) => 17,
+        _ => 0,
     }
 }
 
@@ -825,6 +849,11 @@ impl<'a> Console<'a> {
                     .then(|| Val::Int(i32::from(self.engine.controls.mute_groups.contains(g))))
             }
             Bind::FxType(n) => return self.fx_type(n).map(Val::Int),
+            Bind::FxSource(n, side) => {
+                let p = self.engine.controls.fx.get(n)?;
+                let input = if side == 0 { &p.source_left } else { &p.source_right };
+                return Some(Val::Int(fx_source_index(input.load(Relaxed))));
+            }
             Bind::FxPar(n, k) => {
                 let p = self.engine.controls.fx.get(n)?;
                 return Some(match self.fx_param(n, k) {
@@ -933,6 +962,27 @@ impl<'a> Console<'a> {
                 let Some(model) = livedaw_dsp::model::model_index(table, &format!("X32{code}")) else { return false };
                 let current = self.engine.controls.fx.get(n).map(|p| p.model_index_in(table));
                 return current == Some(model) || self.engine.set_fx_model(n, model, true);
+            }
+            Bind::FxSource(n, side) => {
+                let (Some(p), Some(input)) = (self.engine.controls.fx.get(n), fx_source_input(v.int())) else { return false };
+                // INS on either side makes it an insert; a send's R follows L until set.
+                let (l, r) = (&p.source_left, &p.source_right);
+                match (side, input) {
+                    (_, -1) => [l, r].iter().for_each(|a| a.store(-1, Relaxed)),
+                    (0, i) => {
+                        if r.load(Relaxed) < 0 {
+                            r.store(i, Relaxed);
+                        }
+                        l.store(i, Relaxed);
+                    }
+                    (_, i) => {
+                        if l.load(Relaxed) < 0 {
+                            l.store(i, Relaxed);
+                        }
+                        r.store(i, Relaxed);
+                    }
+                }
+                return true;
             }
             Bind::FxPar(n, k) => {
                 let (Some(p), Some(_)) = (self.engine.controls.fx.get(n), self.fx_param(n, k)) else { return false };
