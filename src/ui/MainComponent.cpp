@@ -408,6 +408,23 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                          }, true);
         return;
     }
+    if (kind == InterfaceKind::X32 && skin != nullptr && engine.getProfile() != ld::kProfileX32)
+    {
+        // Likewise the X32 surface: an X32's 32 channels, 16 buses, 6 matrices.
+        popups::confirm (skin->popupHost(), "X32 SURFACE",
+                         "This console isn't an X32. The X32 surface shows an X32: clear the console and make it a fresh X32 (32 channels, 8 aux, "
+                         "8 FX returns, 16 buses, 6 matrices)?",
+                         "MAKE IT AN X32",
+                         [this, save]
+                         {
+                             closeAllPluginWindows();
+                             engine.configureProfile (ld::kProfileX32);
+                             setInterface (InterfaceKind::X32, save);
+                             refreshAll();
+                             log.info ("The console is an X32");
+                         }, true);
+        return;
+    }
     if (save)
         settings.setValue (uiprefs::interfaceKind, kind == InterfaceKind::Universal ? "universal" : kind == InterfaceKind::X32 ? "x32" : "wing");
     if (skin != nullptr && kind == ctx.interfaceKind)

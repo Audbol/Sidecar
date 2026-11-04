@@ -205,7 +205,7 @@ private:
         // The layers: AUX IN / FX RTN shows aux in 1-8, then FX returns 1-8;
         // MATRIX / M/C the matrices and, last, the M/C.
         expect (skin.getInputStrip (0).getStrip() == channels[0].get());
-        skin.setInputLayer (ui::X32Surface::InputLayer::AuxFx);
+        skin.setInputLayer (2); // AUX / FX RTN
         expectEquals (skin.getInputStrip (8).getStrip()->getLabel(), juce::String ("FX 1"));
         expectEquals (skin.getInputStrip (6).getName(), juce::String ("USB L"));
         skin.setGroupLayer (ui::X32Surface::GroupLayer::MatrixMain);
@@ -213,7 +213,7 @@ private:
         expect (skin.getGroupStrip (6).isEmpty());
         skin.setGroupLayer (ui::X32Surface::GroupLayer::Dca);
         expectEquals (skin.getGroupStrip (0).getName(), juce::String ("DCA 1"));
-        skin.setInputLayer (ui::X32Surface::InputLayer::Ch1to16);
+        skin.setInputLayer (0);
         // The channel strip section turns the selected strip's X32 models.
         auto& section = skin.getChannelSection();
         expect (section.getStrip() == channels[12].get());
@@ -287,6 +287,30 @@ private:
             juce::FileOutputStream homeOut (homeFile);
             expect (homeOut.openedOk() && juce::PNGImageFormat().writeImageToStream (home, homeOut), homeFile.getFullPathName());
         }
+
+        // The X32 COMPACT: 8 input faders in eight layers, chosen on SETUP.
+        display.showScreen (ui::x32::Display::Screen::Setup);
+        expectEquals (display.getEncoder (0).turn.label, juce::String ("MODEL"));
+        skin.setInputLayer (1); // CH 17-32
+        display.pushEncoder (0);
+        expect (skin.getModel() == ui::X32Surface::Model::Compact);
+        expectEquals (skin.getNumInputFaders(), 8);
+        expectEquals (skin.getInputLayerNames().size(), 8);
+        expectEquals (skin.getInputLayer(), 2, "CH 17-32 stays up as CH 17-24");
+        expect (skin.getInputStrip (0).getStrip() == channels[16].get());
+        skin.setInputLayer (5); // FX RTN
+        expectEquals (skin.getInputStrip (0).getStrip()->getLabel(), juce::String ("FX 1"));
+        skin.setInputLayer (0);
+        if (folder.isNotEmpty())
+        {
+            const auto compact = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
+            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile ("x32-compact.png");
+            file.deleteFile();
+            juce::FileOutputStream out (file);
+            expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (compact, out), file.getFullPathName());
+        }
+        display.pushEncoder (0);
+        expect (skin.getModel() == ui::X32Surface::Model::Full);
         setShownProfile (ld::kProfileWing);
     }
 

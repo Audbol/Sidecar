@@ -915,6 +915,48 @@ surface addresses the WING's ranges: a console with other aux, main, matrix, DCA
 mute group counts opens in the Universal Mixer, and choosing the WING surface offers to
 make it a WING first.
 
+## The X32 surface (preview)
+
+Sidecar also emulates a Behringer X32: an X32 console has the X32's 32 channels, 8 aux
+inputs and 8 FX returns, 16 buses, the LR and M/C mains, 6 matrices, 8 DCAs and 6 mute
+groups, its gate, compressor and EQ models and its fader law, and answers X32 remote
+apps (OSC on UDP 10023, SETUP > REMOTE) and the X32's MIDI map. Sidecar isn't affiliated
+with Behringer, and none of their artwork is used: the surface is drawn in Sidecar's own
+style.
+
+To make the console an X32, choose **X32** in SETUP > SIDECAR > INTERFACE on the WING
+surface (SETUP > PREFERENCES > INTERFACE on the Universal Mixer). Sidecar asks first: the
+console is cleared and becomes a fresh X32, as an initialised X32 is (scenes stay). A
+show of an X32 opens on the X32 surface; its **UNIVERSAL MIXER** key at the top right
+switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
+
+![The X32 surface: the channel strip section and the display along the top, the input and group faders below](images/x32-surface.png)
+
+- **Faders.** The input faders and their layer keys at the left (CH 1-16, CH 17-32,
+  AUX / FX RTN, BUS MASTER), the group faders and theirs (DCA 1-8, BUS 1-8, BUS 9-16,
+  MTX 1-6 / M/C, the M/C on the last fader), the main LR at the right. Each has its
+  scribble strip in the X32's colours, a meter, SELECT, SOLO and MUTE. DCAs can't be
+  selected, as on an X32.
+- **Channel strip.** The selected strip's CONFIG / PREAMP, GATE, DYNAMICS,
+  EQUALIZER, BUS SENDS and MAIN BUS controls. Each section's **VIEW** key opens its tab
+  on the display.
+- **Display.** Its status bar shows the selected strip, the scene (and the next one),
+  the sample rate and the time. The keys beside it choose the screen (HOME, METERS,
+  ROUTING, SETUP, LIBRARY, EFFECTS, MUTE GRP, UTILITY), **<** and **>** the tab, and
+  **LAYER** HOME's second row of encoders. Under it, six encoders turn what the screen
+  shows above them, and their keys push them, as on an X32: on HOME's home tab gain,
+  gate, insert, the compressor's position, its threshold and pan; on gate, dyn and eq
+  each block's own controls; on sends four sends at a time. LIBRARY recalls a scene
+  (the sixth encoder, its key GO); MUTE GRP has the six mute groups.
+- **Touch.** Unlike an X32's, the screen takes touch: tap a tab, drag up or down on
+  an encoder's cell to turn it, tap the cell to push it, and drag the EQ's bands on
+  its graph.
+- **X32 COMPACT.** SETUP's first encoder switches the surface between the X32 and the
+  X32 COMPACT: 8 input faders, in the layers CH 1-8 .. CH 25-32, AUX IN / USB, FX RTN,
+  BUS 1-8 and BUS 9-16. The console is the same.
+
+Patching, the FX rack, show files and copy and paste are on the Universal Mixer for now.
+
 ## Multitrack recording
 
 Sidecar records up to 64 tracks and plays up to 64 tracks back into the console, like

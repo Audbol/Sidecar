@@ -143,15 +143,15 @@ SetupView::SetupView (UiContext& c, const Theme& t)
     addChildComponent (revertKey);
 
     interfaceChoice.caption = "INTERFACE";
-    interfaceChoice.items = [] { return juce::StringArray { "WING", "UNIVERSAL" }; };
-    interfaceChoice.current = [this] { return ctx.interfaceKind == InterfaceKind::Universal ? 1 : 0; };
+    interfaceChoice.items = [] { return juce::StringArray { "WING", "UNIVERSAL", "X32" }; };
+    interfaceChoice.current = [this] { return (int) ctx.interfaceKind; };
     interfaceChoice.choose = [this] (int i)
     {
         // Switching rebuilds the window's skin: let the tap return first.
         juce::MessageManager::callAsync ([&context = ctx, i]
         {
             if (context.setInterface)
-                context.setInterface (i == 1 ? InterfaceKind::Universal : InterfaceKind::Wing);
+                context.setInterface (static_cast<InterfaceKind> (i));
         });
     };
     compensationKey.isOn = [this] { return ctx.engine.isLatencyCompensationOn(); };

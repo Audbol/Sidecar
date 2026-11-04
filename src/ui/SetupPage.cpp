@@ -585,13 +585,14 @@ namespace
                                    // The surface is rebuilt: let this key's callback return first.
                                    juce::MessageManager::callAsync ([&c = ctx, m] { if (c.setConsoleModel) c.setConsoleModel (m); });
                                } };
-        // INTERFACE (Sidecar's own): the WING surface or the Universal Mixer (a
-        // preview, docs/UNIVERSAL_MIXER.md); the window changes at once.
-        ChoiceKeys interfaceKeys { { "WING", "UNIVERSAL" },
+        // INTERFACE (Sidecar's own): the WING surface, the Universal Mixer (a
+        // preview, docs/UNIVERSAL_MIXER.md) or the X32 surface (which offers to
+        // make the console an X32); the window changes at once.
+        ChoiceKeys interfaceKeys { { "WING", "UNIVERSAL", "X32" },
                                    [this] { return (int) ctx.interfaceKind; },
                                    [this] (int i)
                                    {
-                                       const auto kind = i == 1 ? InterfaceKind::Universal : InterfaceKind::Wing;
+                                       const auto kind = static_cast<InterfaceKind> (i);
                                        if (kind == ctx.interfaceKind || ! ctx.setInterface)
                                            return;
                                        // The window's skin is replaced (this page with it): let the key's callback return first.

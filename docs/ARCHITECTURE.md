@@ -994,7 +994,10 @@ The X32 surface (`X32Surface.*`) lays an X32's top panel out in the same style: 
 fader banks and layers (`x32::FaderStrip`), the channel strip section
 (`X32ChannelSection.*`) and the display (`X32Display.*`: status bar, screen keys,
 tabs, six push-encoders mapped per tab as an X32's are, a screen that takes touch).
-Its knobs are `DisplayKnob`s bound through the console's models.
+Its knobs are `DisplayKnob`s bound through the console's models. `X32Surface::Model`
+(the app setting `ui.x32Model`) is the X32 or the X32 COMPACT: 16 or 8 input faders
+and their layers. Choosing the X32 interface on another console makes it a fresh X32
+(`MainComponent::setInterface`, `MixerEngine::configureProfile`).
 
 `src/ui/` draws the WING surface (`WingSurface`): three fader sections (`FaderSection.*`,
 `FaderStrip.*`) with VIEW, the layer and shift keys, colour bars and scribble strips,

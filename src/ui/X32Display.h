@@ -51,6 +51,10 @@ public:
     int getLayer() const noexcept { return layer; }
     juce::StringArray getTabs() const;
 
+    /** The surface's model (SETUP, encoder 1): 0 the X32, 1 the X32 COMPACT. */
+    std::function<int()> getModel;
+    std::function<void (int)> setModel;
+
     /** The selected strip changed (or the console did). */
     void refreshStrip();
 

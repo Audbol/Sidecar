@@ -517,8 +517,15 @@ Three layers:
         takes touch: a tap on a tab, a drag on the encoder row turns, a tap pushes,
         the graphs drag. Deep editing (patching, FX, show files) stays on the
         Universal Mixer for now. The X32's factory delays are times (0.3 ms).
-      - 8e: polish, screenshots, the user guide. The X32 Compact (16 + 1 faders) as
-        a model of it, like the WING COMPACT.
+      - 8e (done): the X32 COMPACT as a model of the surface (`X32Surface::Model`, the
+        app setting `ui.x32Model`, chosen by the display's SETUP encoder): 8 input
+        faders in eight layers (CH 1-8 .. CH 25-32, AUX IN / USB, FX RTN, BUS 1-8, BUS
+        9-16), the group faders and the main as the X32's. SETUP > INTERFACE offers the
+        X32 on both skins (and makes the console a fresh X32, asking first). The
+        display's polish (rows and values fitted, scenes scrolled to the selected one,
+        no tabs it doesn't draw), screenshots (`x32-surface.png`, `x32-display-home.png`,
+        `x32-compact.png`), the user guide's chapter, the README and the start-up
+        notice.
 
 Each emulation keeps the independent-project disclaimer: not affiliated with or
 endorsed by the console's maker, their trademarks used only to say what is emulated,

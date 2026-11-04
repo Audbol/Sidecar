@@ -91,6 +91,8 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
   bus sends, main bus), and the X32's display: its status bar, screen keys, tabs and six
   push-encoders mapped as an X32 maps them, the signal path, the gate, compressor and EQ
   graphs, sends, meters, scenes and mute groups. Unlike an X32, its screen takes touch.
+  The X32 COMPACT is a model of it (8 input faders, in eight layers). SETUP > SIDECAR >
+  INTERFACE offers the X32 and makes the console a fresh X32, asking first.
 
 ## [0.2.0] - beta
 

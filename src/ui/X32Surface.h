@@ -240,13 +240,25 @@ public:
     void selectionChanged() override;
     void showChanged() override { display.refreshStrip(); }
 
-    enum class InputLayer
+    /** The model: the full-size X32 (16 input faders) or the X32 COMPACT (8,
+        in twice the layers), kept in the app settings. */
+    enum class Model
     {
-        Ch1to16,
-        Ch17to32,
-        AuxFx,
-        BusMasters
+        Full,
+        Compact
     };
+    static constexpr const char* modelKey = "ui.x32Model"; // "X32" (default) or "COMPACT"
+    void setModel (Model);
+    Model getModel() const noexcept { return model; }
+    int getNumInputFaders() const noexcept { return model == Model::Compact ? 8 : 16; }
+
+    /** The input bank's layers, the model's: CH 1-16, CH 17-32, AUX / FX RTN,
+        BUS MASTER on an X32; CH 1-8 .. CH 25-32, AUX IN / USB, FX RTN, BUS 1-8,
+        BUS 9-16 on an X32 COMPACT. */
+    juce::StringArray getInputLayerNames() const;
+    void setInputLayer (int);
+    int getInputLayer() const noexcept { return inputLayer; }
+
     enum class GroupLayer
     {
         Dca,
@@ -254,12 +266,10 @@ public:
         Bus9to16,
         MatrixMain
     };
-    void setInputLayer (InputLayer);
     void setGroupLayer (GroupLayer);
-    InputLayer getInputLayer() const noexcept { return inputLayer; }
     GroupLayer getGroupLayer() const noexcept { return groupLayer; }
 
-    /** Fader `i` of the input bank (0-15) and of the group bank (0-7); the main LR. */
+    /** Fader `i` of the input bank (0-15; 0-7 on an X32 COMPACT) and of the group bank (0-7); the main LR. */
     x32::FaderStrip& getInputStrip (int i);
     x32::FaderStrip& getGroupStrip (int i);
     x32::FaderStrip& getMainStrip();
@@ -269,6 +279,7 @@ public:
 private:
     void timerCallback() override;
     void assignBanks();
+    void buildInputLayerKeys();
     juce::Rectangle<int> channelSectionArea() const;
 
     UiContext& ctx;
@@ -280,7 +291,8 @@ private:
     std::unique_ptr<x32::FaderStrip> main;
     x32::ChannelSection channel;
     x32::Display display;
-    InputLayer inputLayer = InputLayer::Ch1to16;
+    Model model = Model::Full;
+    int inputLayer = 0;
     GroupLayer groupLayer = GroupLayer::Dca;
 
 

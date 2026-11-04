@@ -128,8 +128,8 @@ juce::StringArray Display::getTabs() const
     {
         case Screen::Home:       return { "home", "config", "gate", "dyn", "eq", "sends", "main" };
         case Screen::Meters:     return { "channel", "mix bus", "aux / fx", "in / out" };
-        case Screen::Routing:    return { "home", "out 1-16", "aux out" };
-        case Screen::Setup:      return { "global", "config", "remote", "network" };
+        case Screen::Routing:    return { "home" };
+        case Screen::Setup:      return { "global" };
         case Screen::Library:    return { "scenes" };
         case Screen::Effects:    return { "home" };
         case Screen::MuteGroups: return { "mute grp" };
@@ -367,6 +367,21 @@ void Display::assignEncoders()
                 break;
         }
     }
+    else if (screen == Screen::Setup && getModel && setModel)
+    {
+        KnobBinding m;
+        m.label = "MODEL";
+        m.get = [this] { return (float) getModel(); };
+        m.set = [this] (float v)
+        {
+            const int to = v < 0.5f ? 0 : 1;
+            if (to != getModel())
+                setModel (to);
+        };
+        m.text = [this] { return getModel() == 1 ? juce::String ("X32 COMPACT") : juce::String ("X32"); };
+        m.steps = 2.0f;
+        encoders[0] = encoder (m, "SWITCH", [this] { setModel (1 - getModel()); }, [] { return false; });
+    }
     else if (screen == Screen::Library)
     {
         KnobBinding scene;
@@ -533,7 +548,7 @@ void Display::paintTabs (juce::Graphics& g, juce::Rectangle<int> r)
 
 void Display::paintRows (juce::Graphics& g, juce::Rectangle<int> r, const juce::StringArray& left, const juce::StringArray& right)
 {
-    const int h = 30;
+    const int h = juce::jmin (30, r.getHeight() / juce::jmax (1, left.size()));
     for (int i = 0; i < left.size(); ++i)
     {
         auto row = r.removeFromTop (h);
@@ -724,7 +739,10 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
             auto& show = ctx.show;
             const int n = show.getNumScenes();
             juce::StringArray left, right;
-            for (int i = 0; i < juce::jmin (n, 12); ++i)
+            // The rows that fit, around the scene the encoder points at.
+            const int rows = juce::jmax (1, (r.getHeight() - 24) / 26);
+            const int from = juce::jlimit (0, juce::jmax (0, n - rows), selectedScene - rows / 2);
+            for (int i = from; i < juce::jmin (n, from + rows); ++i)
             {
                 const auto scene = show.getScene (i);
                 left.add ((i == selectedScene ? "> " : "  ") + juce::String (i + 1).paddedLeft ('0', 2));
@@ -761,12 +779,16 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
                 const int first = (8 * b < (int) ch.size()) ? ch[(size_t) (8 * b)]->params.inputLeft.load() : -1;
                 right.add (first >= 0 ? "IN " + juce::String (first + 1) + "-" + juce::String (first + 8) : juce::String ("OFF"));
             }
+            auto& aux = ctx.engine.getAux();
+            left.add ("AUX 1-8");
+            const int auxFirst = ! aux.empty() ? aux[0]->params.inputLeft.load() : -1;
+            right.add (auxFirst >= 0 ? "IN " + juce::String (auxFirst + 1) + "-" + juce::String (auxFirst + 8) : juce::String ("OFF"));
             paintRows (g, r.reduced (12), left, right);
             break;
         }
         case Screen::Setup:
-            paintRows (g, r.reduced (12), { "CONSOLE", "SAMPLE RATE", "CHANNELS", "BUSES / MATRICES" },
-                       { "X32 (Sidecar)", juce::String (juce::roundToInt (ctx.engine.getSampleRate())) + " Hz",
+            paintRows (g, r.reduced (12), { "CONSOLE", "SURFACE", "SAMPLE RATE", "CHANNELS", "BUSES / MATRICES" },
+                       { "X32 (Sidecar)", getModel && getModel() == 1 ? "X32 COMPACT" : "X32", juce::String (juce::roundToInt (ctx.engine.getSampleRate())) + " Hz",
                          juce::String ((int) ctx.engine.getChannels().size()),
                          juce::String ((int) ctx.engine.getBuses().size()) + " / " + juce::String ((int) ctx.engine.getMatrices().size()) });
             break;
@@ -775,7 +797,8 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
         case Screen::Utility:
             g.setColour (kDim);
             g.setFont (type::font (type::kLabel));
-            g.drawFittedText ("The UTILITY key's functions (copy, paste, presets) follow with the X32's libraries.", r.reduced (24), juce::Justification::centred, 3);
+            g.drawFittedText ("Copy, paste and presets: on the Universal Mixer for now (UNIVERSAL MIXER, top right).", r.reduced (24),
+                              juce::Justification::centred, 3);
             break;
     }
 }
@@ -818,7 +841,7 @@ void Display::paintEncoderRow (juce::Graphics& g, juce::Rectangle<int> r)
         {
             g.setColour (theme.text);
             g.setFont (type::font (type::kValue, true));
-            g.drawText (e.turn.text ? e.turn.text() : juce::String(), cell, juce::Justification::centredLeft);
+            g.drawFittedText (e.turn.text ? e.turn.text() : juce::String(), cell, juce::Justification::centredLeft, 1, 0.75f);
             // How far it is turned.
             auto bar = cell.removeFromBottom (3).toFloat();
             g.setColour (kLine);

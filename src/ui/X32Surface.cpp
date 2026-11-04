@@ -11,6 +11,23 @@ namespace
 {
     constexpr int kTopBar = 48;
     constexpr int kLayerColumn = 112;
+
+    /** An input layer: its key, the strips (0 channels, 1 aux, 2 buses) from the first. */
+    struct InputLayerSpec
+    {
+        const char* name;
+        int list, first;
+    };
+    constexpr InputLayerSpec kFullLayers[] = { { "CH 1-16", 0, 0 }, { "CH 17-32", 0, 16 }, { "AUX / FX RTN", 1, 0 }, { "BUS MASTER", 2, 0 } };
+    constexpr InputLayerSpec kCompactLayers[] = { { "CH 1-8", 0, 0 },        { "CH 9-16", 0, 8 }, { "CH 17-24", 0, 16 }, { "CH 25-32", 0, 24 },
+                                                  { "AUX IN / USB", 1, 0 }, { "FX RTN", 1, 8 },  { "BUS 1-8", 2, 0 },   { "BUS 9-16", 2, 8 } };
+
+    std::vector<InputLayerSpec> layersOf (X32Surface::Model m)
+    {
+        if (m == X32Surface::Model::Compact)
+            return { std::begin (kCompactLayers), std::end (kCompactLayers) };
+        return { std::begin (kFullLayers), std::end (kFullLayers) };
+    }
 } // namespace
 
 using x32::kKeyHeight;
@@ -35,18 +52,10 @@ X32Surface::X32Surface (UiContext& c)
     main = std::make_unique<x32::FaderStrip> (ctx, theme);
     addAndMakeVisible (*main);
 
-    const std::pair<const char*, InputLayer> inputLayers[] = { { "CH 1-16", InputLayer::Ch1to16 },
-                                                               { "CH 17-32", InputLayer::Ch17to32 },
-                                                               { "AUX / FX RTN", InputLayer::AuxFx },
-                                                               { "BUS MASTER", InputLayer::BusMasters } };
-    for (auto [name, layer] : inputLayers)
-    {
-        auto key = std::make_unique<ToggleKey> (name, theme.accent, theme);
-        key->isOn = [this, l = layer] { return inputLayer == l; };
-        key->onClick = [this, l = layer] { setInputLayer (l); };
-        addAndMakeVisible (*key);
-        inputLayerKeys.push_back (std::move (key));
-    }
+    model = ctx.settings.getValue (modelKey) == "COMPACT" ? Model::Compact : Model::Full;
+    buildInputLayerKeys();
+    for (int i = 0; i < 16; ++i)
+        inputs[(size_t) i]->setVisible (i < getNumInputFaders());
     const std::pair<const char*, GroupLayer> groupLayers[] = { { "DCA 1-8", GroupLayer::Dca },
                                                                { "BUS 1-8", GroupLayer::Bus1to8 },
                                                                { "BUS 9-16", GroupLayer::Bus9to16 },
@@ -75,6 +84,8 @@ X32Surface::X32Surface (UiContext& c)
     addAndMakeVisible (channel);
     // A VIEW key opens its section's tab of the display's HOME screen.
     channel.onView = [this] (int section) { display.showScreen (x32::Display::Screen::Home, section + 1); };
+    display.getModel = [this] { return (int) model; };
+    display.setModel = [this] (int m) { setModel (m == 1 ? Model::Compact : Model::Full); };
     addAndMakeVisible (display);
     refreshAll();
     startTimerHz (30);
@@ -87,7 +98,7 @@ X32Surface::~X32Surface()
 
 x32::FaderStrip& X32Surface::getInputStrip (int i)
 {
-    return *inputs[(size_t) juce::jlimit (0, 15, i)];
+    return *inputs[(size_t) juce::jlimit (0, getNumInputFaders() - 1, i)];
 }
 
 x32::FaderStrip& X32Surface::getGroupStrip (int i)
@@ -100,9 +111,52 @@ x32::FaderStrip& X32Surface::getMainStrip()
     return *main;
 }
 
-void X32Surface::setInputLayer (InputLayer l)
+juce::StringArray X32Surface::getInputLayerNames() const
 {
-    inputLayer = l;
+    juce::StringArray names;
+    for (auto& l : layersOf (model))
+        names.add (l.name);
+    return names;
+}
+
+void X32Surface::buildInputLayerKeys()
+{
+    inputLayerKeys.clear();
+    const auto layers = layersOf (model);
+    for (int i = 0; i < (int) layers.size(); ++i)
+    {
+        auto key = std::make_unique<ToggleKey> (layers[(size_t) i].name, theme.accent, theme);
+        key->isOn = [this, i] { return inputLayer == i; };
+        key->onClick = [this, i] { setInputLayer (i); };
+        addAndMakeVisible (*key);
+        inputLayerKeys.push_back (std::move (key));
+    }
+}
+
+void X32Surface::setModel (Model m)
+{
+    if (m == model)
+        return;
+    model = m;
+    ctx.settings.setValue (modelKey, m == Model::Compact ? "COMPACT" : "X32");
+    // The same strips stay up where the new model has them (CH 17-32: CH 17-24).
+    const auto from = layersOf (m == Model::Compact ? Model::Full : Model::Compact)[(size_t) inputLayer];
+    const auto layers = layersOf (m);
+    inputLayer = 0;
+    for (int i = 0; i < (int) layers.size(); ++i)
+        if (layers[(size_t) i].list == from.list && layers[(size_t) i].first == from.first)
+            inputLayer = i;
+    buildInputLayerKeys();
+    for (int i = 0; i < 16; ++i)
+        inputs[(size_t) i]->setVisible (i < getNumInputFaders());
+    assignBanks();
+    resized();
+    repaint();
+}
+
+void X32Surface::setInputLayer (int l)
+{
+    inputLayer = juce::jlimit (0, (int) layersOf (model).size() - 1, l);
     assignBanks();
 }
 
@@ -118,18 +172,10 @@ void X32Surface::assignBanks()
     auto at = [] (const MixerEngine::StripList& list, int i) -> Strip*
     { return juce::isPositiveAndBelow (i, (int) list.size()) ? list[(size_t) i].get() : nullptr; };
 
+    const auto layer = layersOf (model)[(size_t) inputLayer];
+    const auto& list = layer.list == 0 ? e.getChannels() : layer.list == 1 ? e.getAux() : e.getBuses();
     for (int i = 0; i < 16; ++i)
-    {
-        Strip* s = nullptr;
-        switch (inputLayer)
-        {
-            case InputLayer::Ch1to16:    s = at (e.getChannels(), i); break;
-            case InputLayer::Ch17to32:   s = at (e.getChannels(), 16 + i); break;
-            case InputLayer::AuxFx:      s = at (e.getAux(), i); break; // aux in 1-8, FX returns 1-8
-            case InputLayer::BusMasters: s = at (e.getBuses(), i); break;
-        }
-        inputs[(size_t) i]->setStrip (s);
-    }
+        inputs[(size_t) i]->setStrip (i < getNumInputFaders() ? at (list, layer.first + i) : nullptr);
     for (int i = 0; i < 8; ++i)
     {
         auto& g = *groups[(size_t) i];
@@ -176,8 +222,8 @@ void X32Surface::timerCallback()
 {
     if (isCovered())
         return;
-    for (auto& s : inputs)
-        s->refresh();
+    for (int i = 0; i < getNumInputFaders(); ++i)
+        inputs[(size_t) i]->refresh();
     for (auto& s : groups)
         s->refresh();
     main->refresh();
@@ -236,7 +282,7 @@ void X32Surface::paint (juce::Graphics& g)
         const auto r = first.getBounds().getUnion (last.getBounds());
         g.drawText (text, r.withY (first.getY() - 18).withHeight (16), juce::Justification::centredLeft);
     };
-    label (*inputs.front(), *inputs.back(), "INPUT CHANNELS");
+    label (*inputs.front(), *inputs[(size_t) getNumInputFaders() - 1], "INPUT CHANNELS");
     label (*groups.front(), *groups.back(), "GROUPS / BUSES / DCA");
     label (*main, *main, "MAIN");
 }
@@ -267,16 +313,17 @@ void X32Surface::resized()
         auto column = faders.removeFromLeft (kLayerColumn);
         faders.removeFromLeft (sizes::kGap);
         column.removeFromTop (kScribble + sizes::kGapSmall);
+        const int keyHeight = juce::jmin (40, column.getHeight() / juce::jmax (1, (int) keyList.size()) - sizes::kGapSmall);
         for (auto& k : keyList)
         {
-            k->setBounds (column.removeFromTop (40));
+            k->setBounds (column.removeFromTop (keyHeight));
             column.removeFromTop (sizes::kGapSmall);
         }
     };
-    const int stripWidth = (faders.getWidth() - 2 * (kLayerColumn + sizes::kGap) - 3 * sizes::kGapLarge) / 25;
+    const int stripWidth = (faders.getWidth() - 2 * (kLayerColumn + sizes::kGap) - 3 * sizes::kGapLarge) / (getNumInputFaders() + 9);
     layerColumn (inputLayerKeys);
-    for (auto& s : inputs)
-        s->setBounds (faders.removeFromLeft (stripWidth));
+    for (int i = 0; i < getNumInputFaders(); ++i)
+        inputs[(size_t) i]->setBounds (faders.removeFromLeft (stripWidth));
     faders.removeFromLeft (sizes::kGapLarge);
     layerColumn (groupLayerKeys);
     for (auto& s : groups)

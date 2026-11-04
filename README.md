@@ -27,8 +27,14 @@ selected strip whole across the top and curves you set by their handles, an
 inspector, ROUTING, FX RACK, MONITORING, SCENES, RECORDER and SETUP. The WING works as
 before. Expect rough edges, and please [report what you find](#reporting-problems).
 
-**Coming next: more consoles.** After the WING come the X32 / M32, Yamaha, Allen &
-Heath and DiGiCo, each an emulation on the same core. The plan is in
+**In progress: the X32.** An X32 console (SETUP > SIDECAR > INTERFACE: X32) has the X32's
+channels, buses, models and fader law, answers X32 remote apps and the X32's MIDI map,
+and opens on the **X32 surface** (a preview): its faders and layers, the channel strip
+section and the X32's display, which takes touch (see the user guide's chapter *The X32
+surface*).
+
+**Coming next: more consoles.** After the X32 / M32 come Yamaha, Allen & Heath and
+DiGiCo, each an emulation on the same core. The plan is in
 [docs/UNIVERSAL_MIXER.md](docs/UNIVERSAL_MIXER.md).
 
 **Community:** questions, tips and feedback on the [Sidecar Discord server](https://discord.gg/TEE8q979x).
@@ -77,6 +83,8 @@ relying on it at a show (see [Known limitations](#known-limitations)).
 | **Recorder**: RECORD ALL CHANNELS | **Multitrack editor** (Ctrl+E) |
 | ![The Universal Mixer's MIXER view: a band on a 32-channel console, each strip with its pan, MUTE, SOLO, overview of its processing and fader](docs/images/universal-mixer.png) | ![The Universal Mixer's inspector: the lead vocal's chain with an extra EQ block, and the block's editor](docs/images/universal-inspector.png) |
 | **Universal Mixer** (preview): a console of any size | **Inspector**: a strip's chain, blocks and sends |
+| ![The X32 surface: the channel strip section and the X32's display along the top, 16 input faders, 8 DCAs and the main LR below](docs/images/x32-surface.png) | |
+| **X32 surface** (preview): an X32's faders, channel strip and display | |
 
 ## What it does
 
