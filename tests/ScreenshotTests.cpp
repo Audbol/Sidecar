@@ -408,6 +408,21 @@ private:
             skin.selectionChanged();
         }
 
+        // MONITOR / TALKBACK (step 12b): the engine's monitor and talk controls.
+        {
+            auto& mon = skin.getMonitorSection();
+            expect (mon.knob ("MONITOR") != nullptr && mon.knob ("PHONES") != nullptr && mon.knob ("TALK") != nullptr);
+            mon.knob ("PHONES")->getBinding().set (0.0f);
+            expect (engine.phones.levelDb.load() < -60.0f, "PHONES down");
+            mon.key ("DIM")->onClick();
+            expect (engine.monitorDim.load());
+            mon.key ("DIM")->onClick();
+            mon.key ("TALK B")->onClick();
+            expect (engine.talk.paths[1].on.load(), "TALK B latches");
+            mon.key ("TALK B")->onClick();
+            expect (! engine.talk.paths[1].on.load());
+        }
+
         // The X32 COMPACT: 8 input faders in eight layers, chosen on SETUP.
         display.showScreen (ui::x32::Display::Screen::Setup);
         expectEquals (display.getEncoder (0).turn.label, juce::String ("MODEL"));

@@ -37,7 +37,7 @@ using x32::kScribble;
 //==============================================================================
 X32Surface::X32Surface (UiContext& c)
     : ctx (c), theme (Theme::dark()), universalKey ("UNIVERSAL MIXER", theme.accent, theme),
-      sendsOnFaderKey ("SENDS ON FADER", juce::Colour (0xfff0a020), theme), channel (c, theme),
+      sendsOnFaderKey ("SENDS ON FADER", juce::Colour (0xfff0a020), theme), channel (c, theme), monitor (c, theme),
       display (c, theme)
 {
     for (auto& s : inputs)
@@ -87,6 +87,7 @@ X32Surface::X32Surface (UiContext& c)
     addAndMakeVisible (sendsOnFaderKey);
 
     addAndMakeVisible (channel);
+    addAndMakeVisible (monitor);
     // A VIEW key opens its section's tab of the display's HOME screen.
     channel.onView = [this] (int section) { display.showScreen (x32::Display::Screen::Home, section + 1); };
     display.getModel = [this] { return (int) model; };
@@ -350,7 +351,10 @@ void X32Surface::resized()
     // The upper half: the channel strip section and the display.
     auto upper = area.removeFromTop (juce::roundToInt (area.getHeight() * 0.44f));
     area.removeFromTop (sizes::kGapLarge);
-    displayArea = upper.removeFromRight (juce::roundToInt (upper.getWidth() * 0.42f)).reduced (10);
+    displayArea = upper.removeFromRight (juce::roundToInt (upper.getWidth() * 0.39f)).reduced (10);
+    upper.removeFromRight (sizes::kGapLarge);
+    // Monitoring and talkback, beside the display.
+    monitor.setBounds (upper.removeFromRight (150).reduced (0, 10));
     upper.removeFromRight (sizes::kGapLarge);
     channelArea = upper;
     channel.setBounds (channelArea.reduced (12).withTrimmedTop (22 + 24 + sizes::kGap));

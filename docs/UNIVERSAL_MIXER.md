@@ -677,9 +677,13 @@ Three layers:
         aux selected: the BUS 1-8 / 9-16 layers bind to its sends. The faders'
         SOLO, MUTE and SELECT stay the strips' (`FaderStrip::setSend`, the
         scribble strip's amber band); the sends follow the selection.
-      - Still to come: monitoring and talkback, the assignable controls (three
-        sets of encoders and keys, their MIDI), show files on LIBRARY, UTILITY
-        (copy, paste, presets).
+      - 12b, monitoring and talkback (done): `x32::MonitorSection`
+        (`src/ui/X32MonitorSection.*`), between the channel strip and the display:
+        MONITOR, PHONES, DIM, MONO, MUTE, TALK and TALK A / B (latching) on the
+        engine's monitor and talk controls. Where talkback goes and which input
+        it takes are set on the Universal Mixer for now.
+      - Still to come: the assignable controls (three sets of encoders and keys,
+        their MIDI), show files on LIBRARY, UTILITY (copy, paste, presets).
 
 Each emulation keeps the independent-project disclaimer: not affiliated with or
 endorsed by the console's maker, their trademarks used only to say what is emulated,

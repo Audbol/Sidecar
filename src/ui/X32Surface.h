@@ -6,6 +6,7 @@
 #include "ui/MeterBank.h"
 #include "ui/X32ChannelSection.h"
 #include "ui/X32Display.h"
+#include "ui/X32MonitorSection.h"
 
 #include <array>
 
@@ -246,6 +247,7 @@ namespace x32
     - on every fader its scribble strip (number, name, the X32's colours, the
       inverted ones as coloured text on black), a meter, SOLO, MUTE and SELECT;
     - the channel strip section for the selected strip (step 8c);
+    - monitoring and talkback (step 12b);
     - the X32's display, its screen keys and its six push-encoders, the screen
       taking touch (step 8d).
 
@@ -298,6 +300,7 @@ public:
     x32::FaderStrip& getGroupStrip (int i);
     x32::FaderStrip& getMainStrip();
     x32::ChannelSection& getChannelSection() noexcept { return channel; }
+    x32::MonitorSection& getMonitorSection() noexcept { return monitor; }
 
     /** SENDS ON FADER (the X32's key): with a bus selected, the input faders
         move each strip's send to it; with a channel or aux selected, the bus
@@ -321,6 +324,7 @@ private:
     std::array<std::unique_ptr<x32::FaderStrip>, 8> groups;
     std::unique_ptr<x32::FaderStrip> main;
     x32::ChannelSection channel;
+    x32::MonitorSection monitor;
     x32::Display display;
     Model model = Model::Full;
     int inputLayer = 0;

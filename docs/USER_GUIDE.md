@@ -940,6 +940,11 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
 - **Channel strip.** The selected strip's CONFIG / PREAMP, GATE, DYNAMICS,
   EQUALIZER, BUS SENDS and MAIN BUS controls. Each section's **VIEW** key opens its tab
   on the display.
+- **Monitor and talkback.** Between the channel strip and the display: **MONITOR**
+  and **PHONES** set the speakers' and the phones' level; **DIM**, **MONO** and
+  **MUTE** act on the monitor; **TALK** sets the talkback level, and **TALK A** and
+  **TALK B** switch talkback on and off (they latch). Which input is the talkback
+  microphone and where TALK A and B go are set on the Universal Mixer for now.
 - **Sends on fader.** The **SENDS ON FADER** key (top right) turns faders into
   sends: select a bus (its SELECT on BUS 1-8 or BUS 9-16) and the input faders set
   each channel's send to it; select a channel and the BUS 1-8 / BUS 9-16 layers set

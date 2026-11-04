@@ -165,6 +165,9 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
   strip's send to it; with a channel or aux selected, the BUS 1-8 / 9-16 layers move
   its sends to the buses (and with a bus selected, the MTX layer its matrix sends).
   The scribble strips mark the send in amber.
+- The X32 surface's MONITOR / TALKBACK section, beside the display: the MONITOR and
+  PHONES levels, DIM, MONO and MUTE, the TALK level and the TALK A and TALK B keys
+  (latching). The channel strip's sections were re-proportioned to fit.
 - The X32 display's ROUTING screen sets the input blocks (encoders 1-5) and switches
   between the recording and playback blocks (encoder 6), and shows which interface
   inputs each block takes. The channel strip's GAIN knob turns the head amp of the

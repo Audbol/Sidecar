@@ -238,7 +238,7 @@ void ChannelSection::resized()
 {
     auto area = getLocalBounds();
     // Six sections: the EQ wider (its band keys and four knobs).
-    const float weights[] = { 1.2f, 0.8f, 1.0f, 1.8f, 1.55f, 1.0f };
+    const float weights[] = { 1.2f, 0.75f, 0.9f, 2.0f, 1.75f, 0.8f };
     float total = 0.0f;
     for (auto w : weights)
         total += w;
