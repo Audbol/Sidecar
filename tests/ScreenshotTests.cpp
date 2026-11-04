@@ -322,6 +322,33 @@ private:
             expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (routing, out), file.getFullPathName());
         }
 
+        // ROUTING's output tabs: out 1-16's signals (Main LR on 15-16), then its blocks.
+        display.showScreen (ui::x32::Display::Screen::Routing, 1);
+        expectEquals (display.getEncoder (1).turn.label, juce::String ("SOURCE"));
+        display.getEncoder (0).turn.set (14.0f / 15.0f); // OUT 15
+        expectEquals (display.getEncoder (1).turn.text(), juce::String ("MAIN L"));
+        const int mainL = engine.getOutputSource (14);
+        display.getEncoder (1).turn.set (4.0f / 76.0f); // MIXBUS 01
+        expect (engine.getOutputSource (14) == engine.getOutputSource (0) && engine.getOutputSource (14) != mainL, "output 15 plays bus 1");
+        display.getEncoder (1).turn.set (1.0f / 76.0f); // MAIN L again
+        expectEquals (engine.getOutputSource (14), mainL);
+        if (folder.isNotEmpty())
+        {
+            const auto outs = display.createComponentSnapshot (display.getLocalBounds(), true, 1.0f);
+            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile ("x32-display-outputs.png");
+            file.deleteFile();
+            juce::FileOutputStream out (file);
+            expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (outs, out), file.getFullPathName());
+        }
+        display.setLayer (1);
+        expectEquals (display.getEncoder (3).turn.text(), juce::String ("OUT13-16"));
+        display.showScreen (ui::x32::Display::Screen::Routing, 4); // card out
+        expectEquals (display.getEncoder (0).turn.text(), juce::String ("AN1-8"));
+        display.getEncoder (0).turn.set (10.0f / 35.0f); // B1-8
+        expectEquals (engine.getOutputSource (128), 80, "card 1 records AES50 B 1");
+        display.getEncoder (0).turn.set (0.0f);
+        expectEquals (engine.getOutputSource (128), 0);
+
         // The X32 COMPACT: 8 input faders in eight layers, chosen on SETUP.
         display.showScreen (ui::x32::Display::Screen::Setup);
         expectEquals (display.getEncoder (0).turn.label, juce::String ("MODEL"));

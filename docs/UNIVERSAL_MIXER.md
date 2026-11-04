@@ -655,9 +655,11 @@ Three layers:
         blocks and `routswitch` through the X32 map's text commands
         (`WingRemote::runX32Text`, as OSC over SysEx does) and shows the interface
         inputs each block takes; the channel strip's GAIN turns the head amp of
-        the strip's input (interface inputs 1-128), else the trim. Still to come:
-        its output tabs (out 1-16, aux out, P16, card, AES50), and the Universal
-        Mixer's routing pages in the X32's port groups.
+        the strip's input (interface inputs 1-128), else the trim. Its output tabs
+        (done): out 1-16, aux out, P16 out (encoder 1 picks the output; source, tap,
+        invert, out 1-16's delay; out 1-16's second layer the `OUT` blocks), card
+        out, AES50-A, AES50-B (their blocks). Still to come: the Universal Mixer's
+        routing pages in the X32's port groups.
 
 Each emulation keeps the independent-project disclaimer: not affiliated with or
 endorsed by the console's maker, their trademarks used only to say what is emulated,

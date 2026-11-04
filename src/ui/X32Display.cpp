@@ -27,6 +27,66 @@ namespace
     const juce::StringArray kRoutingAux { "AUX1-4", "AN1-2", "AN1-4", "AN1-6", "A1-2", "A1-4", "A1-6", "B1-2",
                                           "B1-4", "B1-6", "CARD1-2", "CARD1-4", "CARD1-6", "UIN1-2", "UIN1-4", "UIN1-6" };
     const char* const kInBlocks[] = { "1-8", "9-16", "17-24", "25-32", "AUX" };
+    // The output blocks' choices: local outputs in fours (OUT/1-4 and 9-12, then
+    // 5-8 and 13-16), AES50 and the card in eights.
+    const juce::StringArray kRoutingOutA { "AN1-4", "AN9-12", "AN17-20", "AN25-28", "A1-4", "A9-12", "A17-20", "A25-28", "A33-36",
+                                           "A41-44", "B1-4", "B9-12", "B17-20", "B25-28", "B33-36", "B41-44", "CARD1-4", "CARD9-12",
+                                           "CARD17-20", "CARD25-28", "OUT1-4", "OUT9-12", "P161-4", "P169-12", "AUX/CR", "AUX/TB",
+                                           "UOUT1-4", "UOUT9-12", "UOUT17-20", "UOUT25-28", "UOUT33-36", "UOUT41-44", "UIN1-4",
+                                           "UIN9-12", "UIN17-20", "UIN25-28" };
+    const juce::StringArray kRoutingOutB { "AN5-8", "AN13-16", "AN21-24", "AN29-32", "A5-8", "A13-16", "A21-24", "A29-32", "A37-40",
+                                           "A45-48", "B5-8", "B13-16", "B21-24", "B29-32", "B37-40", "B45-48", "CARD5-8", "CARD13-16",
+                                           "CARD21-24", "CARD29-32", "OUT5-8", "OUT13-16", "P165-8", "P1613-16", "AUX/CR", "AUX/TB",
+                                           "UOUT5-8", "UOUT13-16", "UOUT21-24", "UOUT29-32", "UOUT37-40", "UOUT45-48", "UIN5-8",
+                                           "UIN13-16", "UIN21-24", "UIN29-32" };
+    const juce::StringArray kRoutingNet { "AN1-8", "AN9-16", "AN17-24", "AN25-32", "A1-8", "A9-16", "A17-24", "A25-32", "A33-40",
+                                          "A41-48", "B1-8", "B9-16", "B17-24", "B25-32", "B33-40", "B41-48", "CARD1-8", "CARD9-16",
+                                          "CARD17-24", "CARD25-32", "OUT1-8", "OUT9-16", "P161-8", "P169-16", "AUX1-6/Mon",
+                                          "AuxIN1-6/TB", "UOUT1-8", "UOUT9-16", "UOUT17-24", "UOUT25-32", "UOUT33-40", "UOUT41-48",
+                                          "UIN1-8", "UIN9-16", "UIN17-24", "UIN25-32" };
+    const juce::StringArray kOutputTaps { "IN/LC", "IN/LC+M", "<-EQ", "<-EQ+M", "EQ->", "EQ->+M", "PRE", "PRE+M", "POST" };
+    const char* const kOutBlocks[] = { "1-4", "5-8", "9-12", "13-16" };
+    const char* const kNetBlocks[] = { "1-8", "9-16", "17-24", "25-32", "33-40", "41-48" };
+
+    /** An output signal's sources (`/outputs/.../src` 0-76), as the screen names them. */
+    const juce::StringArray& outputSources()
+    {
+        static const juce::StringArray names = []
+        {
+            juce::StringArray s { "OFF", "MAIN L", "MAIN R", "M/C" };
+            for (int i = 1; i <= 16; ++i)
+                s.add ("MIXBUS " + juce::String (i).paddedLeft ('0', 2));
+            for (int i = 1; i <= 6; ++i)
+                s.add ("MATRIX " + juce::String (i));
+            for (int i = 1; i <= 32; ++i)
+                s.add ("CH " + juce::String (i).paddedLeft ('0', 2) + " DIRECT");
+            for (int i = 1; i <= 8; ++i)
+                s.add ("AUX " + juce::String (i) + " DIRECT");
+            for (int i = 1; i <= 4; ++i)
+                s.addArray (juce::StringArray { "FX " + juce::String (i) + "L DIRECT", "FX " + juce::String (i) + "R DIRECT" });
+            s.addArray (juce::StringArray { "MONITOR L", "MONITOR R", "TALKBACK" });
+            return s;
+        }();
+        return names;
+    }
+
+    /** ROUTING's signal tabs: the `/outputs` group and its count (tabs 1-3). */
+    struct SignalTab
+    {
+        const char* group;
+        int count;
+        const char* label;
+    };
+    const SignalTab kSignalTabs[] = { { "main", 16, "OUT" }, { "aux", 6, "AUX OUT" }, { "p16", 16, "P16" } };
+    /** Its block tabs (4-6): the node, the blocks, the interface's first output. */
+    struct BlockTab
+    {
+        const char* node;
+        int blocks;
+        int firstPort;
+        const char* label;
+    };
+    const BlockTab kBlockTabs[] = { { "CARD", 4, 128, "CARD" }, { "AES50A", 6, 32, "AES50 A" }, { "AES50B", 6, 80, "AES50 B" } };
 
     const char* const kScreenNames[] = { "HOME", "METERS", "ROUTING", "SETUP", "LIBRARY", "EFFECTS", "MUTE GRP", "UTILITY" };
 
@@ -139,7 +199,7 @@ juce::StringArray Display::getTabs() const
     {
         case Screen::Home:       return { "home", "config", "gate", "dyn", "eq", "sends", "main" };
         case Screen::Meters:     return { "channel", "mix bus", "aux / fx", "in / out" };
-        case Screen::Routing:    return { "home" };
+        case Screen::Routing:    return { "home", "out 1-16", "aux out", "p16 out", "card out", "aes50-a", "aes50-b" };
         case Screen::Setup:      return { "global", "remote" };
         case Screen::Library:    return { "scenes" };
         case Screen::Effects:    return { "home" };
@@ -153,6 +213,8 @@ int Display::numLayers() const
 {
     if (screen == Screen::Setup)
         return tab == 1 ? 2 : 1; // remote: the MIDI kinds, then SysEx
+    if (screen == Screen::Routing)
+        return tab == 1 ? 2 : 1; // out 1-16: the signals, then the local outputs' blocks
     if (screen != Screen::Home)
         return 1;
     // HOME's home, gate and dynamics tabs have a second layer of encoders.
@@ -451,8 +513,141 @@ juce::String Display::x32Value (const juce::String& address) const
     return answer.fromFirstOccurrenceOf (" ", false, false).trim();
 }
 
+KnobBinding Display::enumKnob (const juce::String& label, const juce::String& path, const juce::StringArray& choices)
+{
+    KnobBinding k;
+    k.label = label;
+    const int n = choices.size();
+    k.get = [this, path, &choices, n] { return (float) juce::jmax (0, choices.indexOf (x32Value (path))) / (float) juce::jmax (1, n - 1); };
+    k.set = [this, path, &choices, n] (float v)
+    {
+        int set = 0;
+        ctx.engine.getWing().runX32Text (path + " " + choices[juce::roundToInt (v * (float) (n - 1))], set);
+        repaint();
+    };
+    k.text = [this, path] { return x32Value (path); };
+    k.steps = (float) n;
+    return k;
+}
+
+void Display::assignOutputEncoders()
+{
+    auto run = [this] (const juce::String& text)
+    {
+        int set = 0;
+        ctx.engine.getWing().runX32Text (text, set);
+        repaint();
+    };
+    if (tab >= 4)
+    {
+        // card out, AES50-A, AES50-B: what each block of eight outputs plays.
+        const auto& t = kBlockTabs[tab - 4];
+        for (int b = 0; b < t.blocks; ++b)
+            encoders[(size_t) b] = encoder (enumKnob (juce::String (t.label) + " " + kNetBlocks[b],
+                                                      "/config/routing/" + juce::String (t.node) + "/" + kNetBlocks[b], kRoutingNet));
+        return;
+    }
+    if (tab == 1 && layer == 1)
+    {
+        // The local outputs 1-16, four at a time.
+        for (int b = 0; b < 4; ++b)
+            encoders[(size_t) b] = encoder (enumKnob ("LOCAL " + juce::String (kOutBlocks[b]), "/config/routing/OUT/" + juce::String (kOutBlocks[b]),
+                                                      b % 2 == 0 ? kRoutingOutA : kRoutingOutB));
+        return;
+    }
+    // out 1-16, aux out, P16 out: the output signals, one chosen at a time.
+    const auto& t = kSignalTabs[tab - 1];
+    selectedOutput = juce::jlimit (0, t.count - 1, selectedOutput);
+    const auto path = [t] (int n) { return "/outputs/" + juce::String (t.group) + "/" + juce::String (n + 1).paddedLeft ('0', 2); };
+    KnobBinding pick;
+    pick.label = t.label;
+    pick.get = [this, t] { return (float) selectedOutput / (float) (t.count - 1); };
+    pick.set = [this, t] (float v)
+    {
+        selectedOutput = juce::roundToInt (v * (float) (t.count - 1));
+        assignEncoders();
+    };
+    pick.text = [this] { return juce::String (selectedOutput + 1); };
+    pick.steps = (float) t.count;
+    encoders[0] = encoder (pick);
+
+    const auto p = path (selectedOutput);
+    KnobBinding src;
+    src.label = "SOURCE";
+    const int n = outputSources().size();
+    src.get = [this, p, n] { return (float) x32Value (p + "/src").getIntValue() / (float) (n - 1); };
+    src.set = [p, n, run] (float v) { run (p + "/src " + juce::String (juce::roundToInt (v * (float) (n - 1)))); };
+    src.text = [this, p] { return outputSources()[x32Value (p + "/src").getIntValue()]; };
+    src.steps = (float) n;
+    encoders[1] = encoder (src);
+    encoders[2] = encoder (enumKnob ("TAP", p + "/pos", kOutputTaps));
+    const auto inverted = [this, p] { return x32Value (p + "/invert") == "ON"; };
+    encoders[3] = encoder ({}, "INVERT", [inverted, run, p] { run (p + "/invert " + (inverted() ? "OFF" : "ON")); }, inverted);
+    if (juce::String (t.group) == "main")
+    {
+        // The output's delay, 0.3 to 500 ms.
+        KnobBinding delay;
+        delay.label = "DELAY";
+        const auto time = [this, p] { return x32Value (p + "/delay/time").getFloatValue(); };
+        delay.get = [time] { return (time() - 0.3f) / 499.7f; };
+        delay.set = [run, p] (float v) { run (p + "/delay/time " + juce::String (0.3f + juce::jlimit (0.0f, 1.0f, v) * 499.7f, 1)); };
+        delay.text = [time] { return juce::String (time(), 1) + " ms"; };
+        const auto on = [this, p] { return x32Value (p + "/delay/on") == "ON"; };
+        encoders[4] = encoder (delay, "DELAY", [on, run, p] { run (p + "/delay/on " + (on() ? "OFF" : "ON")); }, on);
+    }
+}
+
+void Display::paintOutputs (juce::Graphics& g, juce::Rectangle<int> r)
+{
+    if (tab >= 4)
+    {
+        const auto& t = kBlockTabs[tab - 4];
+        juce::StringArray left, right;
+        for (int b = 0; b < t.blocks; ++b)
+        {
+            left.add (juce::String (t.label) + " " + kNetBlocks[b] + "  (INTERFACE " + juce::String (t.firstPort + 8 * b + 1) + "-"
+                      + juce::String (t.firstPort + 8 * b + 8) + ")");
+            right.add (x32Value ("/config/routing/" + juce::String (t.node) + "/" + kNetBlocks[b]));
+        }
+        paintRows (g, r, left, right);
+        return;
+    }
+    if (tab == 1 && layer == 1)
+    {
+        juce::StringArray left, right;
+        for (int b = 0; b < 4; ++b)
+        {
+            left.add ("LOCAL OUTPUTS " + juce::String (kOutBlocks[b]) + "  (INTERFACE " + kOutBlocks[b] + ")");
+            right.add (x32Value ("/config/routing/OUT/" + juce::String (kOutBlocks[b])));
+        }
+        paintRows (g, r, left, right);
+        return;
+    }
+    // The output signals, in two columns of up to eight; the chosen one marked.
+    const auto& t = kSignalTabs[tab - 1];
+    const int perColumn = juce::jmin (8, t.count);
+    auto columns = r;
+    for (int c = 0; c * perColumn < t.count; ++c)
+    {
+        auto area = columns.removeFromLeft (r.getWidth() / ((t.count + perColumn - 1) / perColumn)).reduced (c == 0 ? 0 : 4, 0);
+        juce::StringArray left, right;
+        for (int i = c * perColumn; i < juce::jmin (t.count, (c + 1) * perColumn); ++i)
+        {
+            const auto p = "/outputs/" + juce::String (t.group) + "/" + juce::String (i + 1).paddedLeft ('0', 2);
+            left.add ((i == selectedOutput ? "> " : "") + juce::String (t.label) + " " + juce::String (i + 1));
+            right.add (outputSources()[x32Value (p + "/src").getIntValue()] + "  " + x32Value (p + "/pos"));
+        }
+        paintRows (g, area, left, right);
+    }
+}
+
 void Display::assignRoutingEncoders()
 {
+    if (tab > 0)
+    {
+        assignOutputEncoders();
+        return;
+    }
     // Encoders 1-5: what feeds inputs 1-8 .. 25-32 and aux 1-6; 6: the
     // recording (IN) or playback (PLAY) blocks.
     const auto group = [this] { return x32Value ("/config/routing/routswitch") == "PLAY" ? juce::String ("PLAY") : juce::String ("IN"); };
@@ -1044,7 +1239,10 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
             break;
         }
         case Screen::Routing:
-            paintRouting (g, r.reduced (12));
+            if (tab > 0)
+                paintOutputs (g, r.reduced (12));
+            else
+                paintRouting (g, r.reduced (12));
             break;
         case Screen::Setup:
             if (tab == 1)

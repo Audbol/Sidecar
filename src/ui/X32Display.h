@@ -105,6 +105,12 @@ private:
     /** ROUTING > home (step 10c): the input blocks, through the X32 map's
         text commands (`/config/routing/...`). */
     void assignRoutingEncoders();
+    /** ROUTING's output tabs (out 1-16, aux out, P16 out, card out, AES50-A
+        and -B): the output signals and the output blocks. */
+    void assignOutputEncoders();
+    void paintOutputs (juce::Graphics&, juce::Rectangle<int>);
+    /** An encoder that turns `path`'s value through `choices` (by name). */
+    KnobBinding enumKnob (const juce::String& label, const juce::String& path, const juce::StringArray& choices);
     /** An X32 address's values as the console answers them ("AN1-8"), or empty. */
     juce::String x32Value (const juce::String& address) const;
     /** SETUP > remote: the X32's MIDI (step 6b). */
@@ -115,6 +121,7 @@ private:
     const universal::Theme& theme;
     Screen screen = Screen::Home;
     int tab = 0, layer = 0, sendBank = 0, eqBand = 0, selectedScene = 0;
+    int selectedOutput = 0; // ROUTING's signal tabs: the output the encoders set
 
     std::array<Encoder, 6> encoders;
     std::array<DisplayKnob, 6> knobs;

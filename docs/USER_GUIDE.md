@@ -957,8 +957,12 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
   the local outputs, 17-22 aux out, 33-80 AES50 A, 81-128 AES50 B, 129-160 the card,
   161-176 P16. As on a full-size X32, outputs 1-14 play buses 1-14 and **15-16 the
   main LR**, the same on AES50 A and B, and the card's outputs carry the local
-  inputs (for recording). X32 remote apps and scene files set what each output
-  plays (its source and tap) and the output routing blocks, as on an X32.
+  inputs (for recording). On the display, ROUTING's tabs set them as on an X32:
+  **out 1-16**, **aux out** and **p16 out** choose an output (encoder 1) and what it
+  plays (SOURCE: a main, bus, matrix or direct out; TAP; INVERT; out 1-16's DELAY),
+  and out 1-16's second LAYER which outputs signals feed the local outputs, four at a
+  time; **card out**, **aes50-a** and **aes50-b** what each block of eight outputs
+  plays. X32 remote apps and scene files set the same.
 - **Touch.** Unlike an X32's, the screen takes touch: tap a tab, drag up or down on
   an encoder's cell to turn it, tap the cell to push it, and drag the EQ's bands on
   its graph.
