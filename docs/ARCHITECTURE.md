@@ -280,7 +280,10 @@ of any size, of which the WING is one configuration.
   template. Shows store the profile (`<Console profile="...">`); C ABI 30
   `ld_engine_profile`. The profiles: the Universal, the WING, the X32 (Phase 4) and
   the Yamaha ProMix 01 (Phase 5: `Counts::PROMIX01`, `FaderLaw::PROMIX01`,
-  `PROMIX01_PORT_GROUPS`, `Palette::PROMIX01`; C ABI 43 profile 3).
+  `PROMIX01_PORT_GROUPS`, `Palette::PROMIX01`; C ABI 43 profile 3; its models in
+  `livedaw_dsp::promix`, its chains `chain::PROMIX01_*`). A profile's buses, mains
+  and matrices may have several orders (`ProfileSpec::output_orders`, picked by the
+  strip's process order: the ProMix's dynamics PRE or POST fader).
 - Laws (Phase 3 step 3): a `ProfileSpec` names its fader law (`FaderLaw`,
   `livedaw-dsp/fader.rs`: (position, dB) breakpoints and an optional step count, so
   a 128 position fader fits) and its pan law (`PanLaw`, `util.rs`: the mono and

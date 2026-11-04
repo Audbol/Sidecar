@@ -227,6 +227,90 @@ pub(crate) const X32_AUX: &[Node] = &[
     t(tap::POST),
 ];
 
+/// The ProMix 01's input channels (User's Guide p.8): phase (INPUT), the
+/// 3-band EQ, then a dynamics processor's patch point (post-EQ, pre-fader:
+/// p.72; the block is on only where one of its three processors is patched),
+/// the fader. No delay, filter, gate or insert.
+pub(crate) const PROMIX01_CHANNEL: &[Node] = &[
+    rta(rta_tap::IN),
+    Node::Input,
+    t(tap::IN),
+    rta(rta_tap::PRE_FILTER),
+    t(tap::FILT),
+    rta(rta_tap::POST_FILTER),
+    Node::Eq,
+    t(2),
+    Node::Dynamics,
+    t(3),
+    t(4),
+    Node::Pfl,
+    t(tap::PFL),
+    Node::Fader,
+    t(tap::AFL),
+    rta(rta_tap::POST_FADER),
+    t(TAP_INS2),
+    Node::Post,
+    t(tap::POST),
+];
+
+/// The ProMix 01's input channels have no process orders (one, unused).
+pub(crate) const PROMIX01_ORDERS: &[&str] = &["ED"];
+
+/// The ProMix 01's sends (SEND1-4): the fader (SEND3-4's master; SEND1-2 have
+/// none and stay at 0 dB), and a dynamics patch point before or after it
+/// (`Slot`s by the strip's output order, `PROMIX01_OUTPUT_ORDERS`: p.74).
+pub(crate) const PROMIX01_SEND: &[Node] = &[
+    rta(rta_tap::IN),
+    Node::Input,
+    t(tap::IN),
+    rta(rta_tap::PRE_FILTER),
+    t(tap::FILT),
+    rta(rta_tap::POST_FILTER),
+    Node::Slot(0),
+    t(2),
+    t(3),
+    Node::Pfl,
+    t(tap::PFL),
+    Node::Fader,
+    t(tap::AFL),
+    rta(rta_tap::POST_FADER),
+    Node::Slot(1),
+    t(TAP_EQ_POST),
+    t(TAP_INS2),
+    Node::Post,
+    t(tap::POST),
+];
+
+/// ST OUT: its 3-band EQ, then the dynamics patch point before or after the
+/// fader, as the sends'.
+pub(crate) const PROMIX01_MAIN: &[Node] = &[
+    rta(rta_tap::IN),
+    Node::Input,
+    t(tap::IN),
+    rta(rta_tap::PRE_FILTER),
+    t(tap::FILT),
+    rta(rta_tap::POST_FILTER),
+    Node::Eq,
+    t(2),
+    Node::Slot(0),
+    t(3),
+    Node::Pfl,
+    t(tap::PFL),
+    Node::Fader,
+    t(tap::AFL),
+    rta(rta_tap::POST_FADER),
+    Node::Slot(1),
+    t(TAP_EQ_POST),
+    t(TAP_INS2),
+    Node::Post,
+    t(tap::POST),
+];
+
+/// The output patch points of SEND3-4 and ST OUT (the strip's process order):
+/// 0 POST fader (as the console starts, p.74), 1 PRE. A letter that names no
+/// block (`-`) leaves its slot empty.
+pub(crate) const PROMIX01_OUTPUT_ORDERS: &[&str] = &["-D", "D-"];
+
 /// The WING's chain for a strip of `kind`.
 pub fn template(kind: StripKind) -> &'static [Node] {
     match kind {

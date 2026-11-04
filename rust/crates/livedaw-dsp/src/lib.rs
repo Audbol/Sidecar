@@ -11,6 +11,7 @@ pub mod denormals;
 pub mod fader;
 pub mod generator;
 pub mod model;
+pub mod promix;
 pub mod util;
 pub mod wing;
 pub mod x32;

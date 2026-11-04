@@ -191,6 +191,13 @@ Phase 5, the Yamaha ProMix 01 (`docs/UNIVERSAL_MIXER.md`), begins.
   OUT, REC OUT, MONITOR OUT, DIGITAL OUT) and names (ST IN, RTN1-2, SEND1-4, ST OUT).
   A show stores it; the Universal Mixer shows it. Its processing, effects and MIDI
   come with the next steps. C ABI 43: profile 3.
+- The ProMix 01's processing: its 3-band parametric EQ (1/6 octave frequency steps,
+  +-15 dB, Q from 1/6 to 3 octaves, the outer bands also shelving) on the inputs, ST
+  IN, the effect returns and ST OUT, and its dynamics types (compressor, gate,
+  ducking, with the User's Guide's ranges). A channel runs phase, EQ, dynamics and
+  fader; on the sends and ST OUT the dynamics sit before or after the fader.
+- A stepped fader's lowest step is a level of its own (a ProMix 01's -66 dB), not
+  silence.
 
 ## [0.2.0] - beta
 

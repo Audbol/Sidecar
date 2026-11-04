@@ -560,6 +560,17 @@ fn configure(spec: &ModelSpec, v: &[f32], sr: f32) -> Config {
             Config::Gate(gate(p.f("thr"), p.f("range"), ratio, p.f("att"), p.f("hld"), p.f("rel")))
         }
         "X32DUCK" => Config::Duck(gate(p.f("thr"), p.f("range"), 0.0, p.f("att"), p.f("hld"), p.f("rel"))),
+        // The ProMix 01's gate and ducking (`livedaw_dsp::promix`): RANGE is
+        // the level the signal closes to (-80..0 dB), DECAY the release.
+        "PMGATE" => Config::Gate(gate(p.f("thr"), -p.f("range"), 0.0, p.f("att"), p.f("hld"), p.f("dcy"))),
+        "PMDUCK" => Config::Duck(gate(p.f("thr"), -p.f("range"), 0.0, p.f("att"), p.f("hld"), p.f("dcy"))),
+        // Its compressor: hard knee, RELEASE in seconds, OUT GAIN after it.
+        "PMCOMP" => {
+            let att = p.f("att").max(WING_MIN_ATTACK_MS);
+            let mut c = comp(p.f("thr"), p.f("ratio"), 0.0, att, p.f("rel") * 1000.0);
+            c.post_db = p.f("gain");
+            Config::Comp(c)
+        }
         "E88" => {
             // Opens HYST dB above the threshold and closes at it; FAST is 50 us
             // instead of 500 us (p.123). Fully counter-clockwise, HYST reads

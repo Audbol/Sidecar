@@ -739,12 +739,27 @@ Three layers:
       WING's places (`PROMIX01_PORT_GROUPS`); a new console plays ST OUT on outputs
       1-2, 5-6 and 9-10, SEND3-4 on 3-4. The fader's steps between +6 and -66 dB are
       Sidecar's reading of the panel's scale (0 dB on step 115).
-   2. **Its processing**: the 3-band EQ (`livedaw_dsp::promix`: the 1/6 octave
-      tables, the octave Qs and SHELF) on inputs, returns and ST OUT; the
-      dynamics models (Compressor and Limiter, Gate, Ducking with the guide's
-      ranges, p.69-71) on the dynamics DSP; its chains: phase, EQ, then the
-      dynamics post-EQ pre-fader on channels; on SEND3-4 and ST OUT the dynamics
-      PRE or POST fader (an output process order); no gate, filter or insert.
+   2. **Its processing** (done): the 3-band EQ (`livedaw_dsp::promix`, token
+      `PMEQ`: LOW 32 Hz-1 kHz, MID 32 Hz-18 kHz, HIGH 1-18 kHz in 1/6 octave steps
+      named as the guide's presets name them; gain +-15 dB in 1 dB steps; Q 1/6 to
+      3 octaves by the guide's table of decimal Qs, LOW and HIGH also SHELF;
+      scene 00's 80 Hz SHELF, 2.0 kHz 3/2 oct, 10 kHz SHELF) on inputs, ST IN, the
+      returns and ST OUT; the dynamics models (`PMCOMP`: threshold -40..+18 dB,
+      ratio, attack 0-120 ms, release 0.1-6.0 s, OUT GAIN +-18 dB; `PMGATE` and
+      `PMDUCK`: threshold -50..+10 dB, attack, hold 3-341 ms, decay 85 ms-10.9 s,
+      range -80..0 dB; pp.69-71, their defaults the presets TOTAL COMP, GATE FAST
+      and DUCKING of p.78) on the dynamics DSP. Its chains: channels phase, EQ,
+      the dynamics (post-EQ, pre-fader: p.72), the fader; ST IN and the returns
+      EQ and fader; the sends and ST OUT (ST OUT with its EQ first) the dynamics
+      before or after the fader by the strip's process order
+      (`chain::PROMIX01_OUTPUT_ORDERS`, POST at first: p.74; a profile's outputs
+      may now have several orders, `ProfileSpec::output_orders`); no gate, filter,
+      delay or insert. Sidecar's reading where the guide is silent: the
+      compressor's ratio steps (1:1 ... 20:1, oo as 100:1, as later Yamaha
+      consoles list them), the gate's HOLD and DECAY as 128 even steps (the
+      guide's preset values fall on them), the shelves' slope. The dynamics
+      block is off on every strip: the three processors (step 3) turn on the ones
+      they are patched to.
    3. **The console's own state** (`livedaw-promix`, as `livedaw-x32`'s map): the
       three dynamics processors (patch, key in, IN mode, the program on the
       patched strip's dynamics block), the pairs (linked odd / even channels:

@@ -513,6 +513,42 @@ fn a_promix01_has_no_matrices_dcas_or_mute_groups_and_runs_its_sends_and_returns
 }
 
 #[test]
+fn a_promix01s_st_out_runs_its_dynamics_pre_or_post_fader_and_its_channels_their_eq() {
+    use livedaw_engine::Profile;
+    let mut rig = Rig::new(1, 1, 2);
+    rig.engine.configure(&ConsoleConfig { profile: Profile::ProMix01, counts: Counts::PROMIX01 });
+    let ch = rig.ch(0);
+    ch.params.input_left.store(0, Relaxed);
+    ch.params.fader_db.store(0.0);
+    ch.params.pan.store(-100.0);
+    rig.set_input(0, 0.5);
+    let st = rig.strip(StripKind::Main, 0);
+    // A gate on ST OUT opening at -20 dB; the ST OUT fader at -30 dB.
+    let dynamics = st.params.dynamics();
+    dynamics.set_model(livedaw_dsp::model::model_index(dynamics.table(), "PMGATE").unwrap());
+    dynamics.param("thr").unwrap().store(-20.0);
+    dynamics.param("range").unwrap().store(-80.0);
+    dynamics.param("dcy").unwrap().store(85.0);
+    dynamics.on.store(true, Relaxed);
+    st.params.fader_db.store(-30.0);
+    // POST (as the console starts): the gate hears -36 dB and closes.
+    rig.run(400);
+    assert!(rig.out(0) < 1e-3, "POST: {}", rig.out(0));
+    // PRE: it hears the mix before the fader and opens.
+    st.params.process_order.store(1, Relaxed);
+    rig.run(400);
+    let open = rig.out(0);
+    assert!(open > 0.005, "PRE: {open}");
+    // The channel's EQ: LOW as a shelf at +12 dB lifts a DC-like input by 12 dB.
+    let eq = ch.params.eq();
+    assert_eq!(eq.model_spec().unwrap().token, "PMEQ");
+    eq.param("lg").unwrap().store(12.0);
+    eq.on.store(true, Relaxed);
+    rig.run(400);
+    assert!((rig.out(0) / open - 3.98).abs() < 0.2, "+12 dB: {}", rig.out(0) / open);
+}
+
+#[test]
 fn an_x32_runs_its_own_chains_and_models() {
     use livedaw_engine::Profile;
     let mut rig = Rig::new(1, 1, 2);

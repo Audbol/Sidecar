@@ -246,9 +246,11 @@ pub struct ProfileSpec {
     /// The input channels' process orders (`Node::Slot`'s blocks, letters as
     /// `chain::order_block` reads them); `StripParams::process_order` picks one.
     pub process_orders: &'static [&'static str],
-    /// The fixed pre-fader order of aux channels, and of buses, mains and matrices.
+    /// The fixed pre-fader order of aux channels; the orders of buses, mains
+    /// and matrices (one for most consoles; a ProMix 01's send or ST OUT
+    /// picks its dynamics PRE or POST fader by its process order).
     aux_order: &'static [u8],
-    output_order: &'static [u8],
+    output_orders: &'static [&'static str],
     /// Where a level sits on the console's faders (the interface and the
     /// remotes ask it; scene fades run along it).
     pub fader: FaderLaw,
@@ -449,8 +451,8 @@ impl ProfileSpec {
         }
     }
 
-    /// The pre-fader blocks' order (`Node::Slot`) of a strip of `kind`;
-    /// input channels: process order `order` (clamped).
+    /// The blocks' order (`Node::Slot`) of a strip of `kind`; input channels,
+    /// and a ProMix 01's outputs: process order `order` (clamped).
     pub fn pre_fader_order(&self, kind: StripKind, order: i32) -> &'static [u8] {
         match kind {
             StripKind::Channel => {
@@ -458,7 +460,10 @@ impl ProfileSpec {
                 self.process_orders[i].as_bytes()
             }
             StripKind::Aux => self.aux_order,
-            _ => self.output_order,
+            _ => {
+                let i = order.clamp(0, self.output_orders.len() as i32 - 1) as usize;
+                self.output_orders[i].as_bytes()
+            }
         }
     }
 }
@@ -466,7 +471,7 @@ impl ProfileSpec {
 /// The ProMix 01's factory strip (`ProfileSpec::factory`), as its scene 00
 /// starts (User's Guide p.32, p.45, p.62): ST IN and the returns stereo, the
 /// returns fed by the internal effects (FX 1-2: `fx_send_buses`) at 0 dB; the
-/// four sends mono.
+/// four sends mono, SEND1-2 (no master) at 0 dB.
 fn promix01_factory(p: &crate::params::StripParams, kind: StripKind, slot: usize) {
     use std::sync::atomic::Ordering::Relaxed;
     match kind {
@@ -481,7 +486,13 @@ fn promix01_factory(p: &crate::params::StripParams, kind: StripKind, slot: usize
             p.input_left.store(16, Relaxed);
             p.input_right.store(17, Relaxed);
         }
-        StripKind::Bus => p.stereo.store(false, Relaxed),
+        StripKind::Bus => {
+            p.stereo.store(false, Relaxed);
+            if slot < 2 {
+                // SEND1-2 feed the effects and have no master (p.32).
+                p.fader_db.store(0.0);
+            }
+        }
         _ => {}
     }
 }
@@ -560,7 +571,7 @@ static WING: ProfileSpec = ProfileSpec {
     templates: [chain::CHANNEL, chain::AUX, chain::OUTPUT],
     process_orders: PROCESS_ORDERS,
     aux_order: b"DEI",
-    output_order: b"DI",
+    output_orders: &["DI"],
     fader: FaderLaw::WING,
     pan: PanLaw::WING,
     port_groups: WING_PORT_GROUPS,
@@ -594,7 +605,7 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
     templates: [chain::CHANNEL, chain::AUX, chain::OUTPUT],
     process_orders: PROCESS_ORDERS,
     aux_order: b"DEI",
-    output_order: b"DI",
+    output_orders: &["DI"],
     fader: FaderLaw::WING,
     pan: PanLaw::WING,
     port_groups: WING_PORT_GROUPS,
@@ -633,7 +644,7 @@ static X32: ProfileSpec = ProfileSpec {
     templates: [chain::X32_CHANNEL, chain::X32_AUX, chain::X32_OUTPUT],
     process_orders: chain::X32_ORDERS,
     aux_order: b"",
-    output_order: b"EDI",
+    output_orders: &["EDI"],
     fader: FaderLaw::X32,
     pan: PanLaw::WING,
     port_groups: X32_PORT_GROUPS,
@@ -663,27 +674,31 @@ static X32: ProfileSpec = ProfileSpec {
 
 /// The Yamaha ProMix 01 (Phase 5): its counts (`Counts::PROMIX01`), its
 /// 128-step fader law, its labels and names (ST IN, RTN1-2, SEND1-4, ST OUT),
-/// its port groups, its factory strip and output patch. It runs the WING's
-/// chains and models and speaks no remote protocol until Phase 5's steps 2
-/// and 5 bring its own.
+/// its port groups, its factory strip and output patch; its models
+/// (`livedaw_dsp::promix`: the 3-band EQ, the compressor, gate and ducking)
+/// and chains: channels phase, EQ, dynamics, fader; ST IN and the returns EQ
+/// and fader (as the X32's aux in); the sends and ST OUT (EQ, ST OUT only)
+/// the dynamics PRE or POST their fader (`chain::PROMIX01_OUTPUT_ORDERS`).
+/// It speaks no remote protocol until Phase 5 step 5.
 static PROMIX01: ProfileSpec = ProfileSpec {
     profile: Profile::ProMix01,
     name: "ProMix 01",
     counts: Counts::PROMIX01,
-    templates: [chain::CHANNEL, chain::AUX, chain::OUTPUT],
-    process_orders: PROCESS_ORDERS,
-    aux_order: b"DEI",
-    output_order: b"DI",
+    templates: [chain::PROMIX01_CHANNEL, chain::X32_AUX, chain::PROMIX01_SEND],
+    process_orders: chain::PROMIX01_ORDERS,
+    aux_order: b"",
+    output_orders: chain::PROMIX01_OUTPUT_ORDERS,
     fader: FaderLaw::PROMIX01,
     pan: PanLaw::WING,
     port_groups: PROMIX01_PORT_GROUPS,
-    models: &WING_MODELS,
+    models: &livedaw_dsp::promix::MODELS,
     remotes: Remotes { midi: None, network: &[] },
     palette: Palette::PROMIX01,
     labels: PROMIX01_LABELS,
     slots: &[
-        SlotRange { kind: StripKind::Aux, first: 0, count: 1, chain: chain::AUX, label: "ST IN" },
-        SlotRange { kind: StripKind::Aux, first: 1, count: 2, chain: chain::AUX, label: "RTN" },
+        SlotRange { kind: StripKind::Aux, first: 0, count: 1, chain: chain::X32_AUX, label: "ST IN" },
+        SlotRange { kind: StripKind::Aux, first: 1, count: 2, chain: chain::X32_AUX, label: "RTN" },
+        SlotRange { kind: StripKind::Main, first: 0, count: 1, chain: chain::PROMIX01_MAIN, label: "ST OUT" },
     ],
     // The sends don't feed ST OUT, the only main.
     buses_to_main: 0..0,
@@ -806,6 +821,39 @@ mod tests {
         assert_eq!(rtn2.input_left.load(Relaxed), crate::sources::FX_RETURN_SOURCE_BASE + 2, "FX 2 L");
         let send1 = StripParams::new_in_slot_of(StripKind::Bus, 0, p);
         assert!(!send1.stereo.load(Relaxed), "the sends are mono");
+        assert_eq!(send1.fader_db.load(), 0.0, "SEND1 has no master");
+    }
+
+    #[test]
+    fn the_promix01s_chains_and_models() {
+        use crate::params::StripParams;
+        let p = Profile::ProMix01.spec();
+        assert_eq!(p.template_at(StripKind::Channel, 0), chain::PROMIX01_CHANNEL);
+        assert_eq!(p.template_at(StripKind::Aux, 2), chain::X32_AUX);
+        assert_eq!(p.template_at(StripKind::Bus, 3), chain::PROMIX01_SEND);
+        assert_eq!(p.template_at(StripKind::Main, 0), chain::PROMIX01_MAIN);
+        // The dynamics after the fader at first (POST), before it as order 1.
+        assert_eq!(p.pre_fader_order(StripKind::Bus, 0), b"-D");
+        assert_eq!(p.pre_fader_order(StripKind::Main, 1), b"D-");
+        assert_eq!(p.pre_fader_order(StripKind::Main, 9), b"D-", "clamped");
+        for c in [chain::PROMIX01_CHANNEL, chain::PROMIX01_SEND, chain::PROMIX01_MAIN] {
+            let count = |n: Node| c.iter().filter(|&&x| x == n).count();
+            for n in [Node::Gate, Node::Filter, Node::Delay, Node::PreInsert, Node::PostInsert] {
+                assert_eq!(count(n), 0, "{n:?}");
+            }
+            for n in [Node::Input, Node::Pfl, Node::Fader, Node::Post] {
+                assert_eq!(count(n), 1, "{n:?}");
+            }
+        }
+        assert!(!chain::PROMIX01_SEND.contains(&Node::Eq), "the sends have no EQ");
+        // A new strip holds the ProMix's models.
+        let ch = StripParams::new_with(StripKind::Channel, p.models);
+        assert_eq!(ch.eq().model_spec().unwrap().token, "PMEQ");
+        assert_eq!(ch.dynamics().model_spec().unwrap().token, "PMCOMP");
+        assert_eq!(ch.dynamics().param("ratio").unwrap().load(), 5.0, "2:1");
+        // The WING's and the X32's outputs keep their one order.
+        assert_eq!(Profile::Wing.spec().pre_fader_order(StripKind::Bus, 1), b"DI");
+        assert_eq!(Profile::X32.spec().pre_fader_order(StripKind::Matrix, 3), b"EDI");
     }
 
     #[test]

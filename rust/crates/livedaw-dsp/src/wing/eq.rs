@@ -61,6 +61,7 @@ pub fn design(spec: &ModelSpec, values: &[f32], sr: f64, gain_scale: f32) -> EqD
         "MACH4" => design_mach4(&p, sr, k, &mut d),
         "PIA" => design_pia(&p, sr, k, &mut d),
         "X32EQ4" | "X32EQ6" => design_x32(&p, sr, k, &mut d),
+        "PMEQ" => design_promix(&p, sr, k, &mut d),
         _ => {}
     }
     d
@@ -223,6 +224,28 @@ fn design_x32(p: &Params, sr: f64, k: f32, d: &mut EqDesign) {
             "HCut" => sec_cut(d, sr, f, false),
             _ => {}
         }
+    }
+}
+
+/// The ProMix 01's 3 bands (`livedaw_dsp::promix`): bells of the octave Q
+/// table, LOW and HIGH shelving at their last Q (SHELF).
+fn design_promix(p: &Params, sr: f64, k: f32, d: &mut EqDesign) {
+    use crate::promix::{Q_VALUES, SHELF};
+    let q = |id: &str| Q_VALUES[p.choice(id).min(Q_VALUES.len() - 1)];
+    let shelf = |id: &str| p.choice(id) == SHELF as usize;
+    let (lf, lg) = (p.f("lf"), p.f("lg") * k);
+    if shelf("lq") {
+        push_gain(d, lg, || low_shelf(sr, lf, std::f32::consts::FRAC_1_SQRT_2, lg));
+    } else {
+        push_gain(d, lg, || peak(sr, lf, q("lq"), lg));
+    }
+    let (mf, mg) = (p.f("mf"), p.f("mg") * k);
+    push_gain(d, mg, || peak(sr, mf, q("mq"), mg));
+    let (hf, hg) = (p.f("hf"), p.f("hg") * k);
+    if shelf("hq") {
+        push_gain(d, hg, || high_shelf(sr, hf, std::f32::consts::FRAC_1_SQRT_2, hg));
+    } else {
+        push_gain(d, hg, || peak(sr, hf, q("hq"), hg));
     }
 }
 
