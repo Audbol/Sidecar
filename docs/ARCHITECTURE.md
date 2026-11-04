@@ -278,7 +278,9 @@ of any size, of which the WING is one configuration.
   them (`Engine::set_config`, `set_num_strips`). A strip keeps its console's
   `ProfileSpec` (`Strip::of_profile`; `Strip::new` is a WING strip) and runs its
   template. Shows store the profile (`<Console profile="...">`); C ABI 30
-  `ld_engine_profile`.
+  `ld_engine_profile`. The profiles: the Universal, the WING, the X32 (Phase 4) and
+  the Yamaha ProMix 01 (Phase 5: `Counts::PROMIX01`, `FaderLaw::PROMIX01`,
+  `PROMIX01_PORT_GROUPS`, `Palette::PROMIX01`; C ABI 43 profile 3).
 - Laws (Phase 3 step 3): a `ProfileSpec` names its fader law (`FaderLaw`,
   `livedaw-dsp/fader.rs`: (position, dB) breakpoints and an optional step count, so
   a 128 position fader fits) and its pan law (`PanLaw`, `util.rs`: the mono and

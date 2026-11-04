@@ -247,6 +247,26 @@ private:
         setShownProfile (ld::kProfileWing);
         engine.configure (nullptr);
         expect (engine.getProfile() == ld::kProfileWing);
+
+        beginTest ("A ProMix 01 (Phase 5 step 1): its counts, fader steps and names; no remote yet");
+        engine.configureProfile (ld::kProfileProMix01);
+        expect (engine.getProfile() == ld::kProfileProMix01);
+        expectEquals ((int) engine.getChannels().size(), 16);
+        expectEquals ((int) engine.getAux().size(), 3);
+        expectEquals ((int) engine.getBuses().size(), 4);
+        expectEquals ((int) engine.getMains().size(), 1);
+        expect (engine.getMatrices().empty(), "no matrices");
+        expect (engine.getRemotes().midi == MidiProtocol::None, "its MIDI comes with step 5");
+        expectEquals (engine.getFaderLaw().steps, 128);
+        expectEquals (engine.getAux()[1]->getName(), juce::String ("RTN1"));
+        expectEquals (engine.getBuses()[3]->getName(), juce::String ("SEND4"));
+        setShownProfile (ld::kProfileProMix01);
+        expectEquals (engine.getAux()[0]->getLabel(), juce::String ("ST IN 1"));
+        expectEquals (engine.getAux()[2]->getLabel(), juce::String ("RTN 2"));
+        expect (palette::count() == 8 && consoleColourName (4) == "YELLOW");
+        setShownProfile (ld::kProfileWing);
+        engine.configure (nullptr);
+        expect (engine.getProfile() == ld::kProfileWing);
     }
 
     void testFaderLaw()

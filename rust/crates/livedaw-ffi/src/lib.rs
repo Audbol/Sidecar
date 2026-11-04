@@ -97,7 +97,8 @@ use std::sync::Arc;
 // ABI 39 (Phase 4 step 7): X32 scene files (ld_x32_scene_write/read).
 // ABI 40 (Phase 4 step 9a): 64 parameters per FX slot (the X32's dual GEQ).
 // ABI 41 (Phase 4 step 9c): FxParams::source_left / source_right (send effects).
-pub const LD_ABI_VERSION: i32 = 42;
+// ABI 43 (Phase 5 step 1): the ProMix 01 profile (3).
+pub const LD_ABI_VERSION: i32 = 43;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(default)
@@ -622,6 +623,7 @@ fn profile_id(p: Profile) -> i32 {
         Profile::Universal => 0,
         Profile::Wing => 1,
         Profile::X32 => 2,
+        Profile::ProMix01 => 3,
     }
 }
 

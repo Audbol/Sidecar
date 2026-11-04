@@ -65,6 +65,25 @@ impl FaderLaw {
     /// its faders' 1024 steps.
     pub const X32: FaderLaw = FaderLaw { points: Self::WING.points, steps: 1024 };
 
+    /// The Yamaha ProMix 01's: 128 steps, +6 dB at the top, -66 dB on the
+    /// step above -oo (User's Guide p.25, p.105). The guide gives no table of
+    /// the steps between, so the breakpoints are Sidecar's reading of the
+    /// panel's scale (6, 0, 5, 10, 20, 40, 60): 0 dB on step 115, half a dB
+    /// a step down to -20 dB, then about 0.7 dB a step; to be measured on a
+    /// console. Every breakpoint sits on a step (`k / 127`).
+    pub const PROMIX01: FaderLaw = FaderLaw {
+        points: &[
+            (1.0 / 127.0, -66.0),
+            (15.0 / 127.0, -60.0),
+            (45.0 / 127.0, -40.0),
+            (75.0 / 127.0, -20.0),
+            (95.0 / 127.0, -10.0),
+            (115.0 / 127.0, 0.0),
+            (1.0, 6.0),
+        ],
+        steps: 128,
+    };
+
     /// The level at the top of the travel.
     pub fn max_db(&self) -> f32 {
         self.points.last().map_or(FADER_MAX, |p| p.1)
@@ -136,6 +155,21 @@ mod tests {
         let p = law.to_pos(0.0);
         assert_eq!((p * 127.0).round(), p * 127.0, "on a step");
         assert!((law.to_db(p) - 0.0).abs() < 0.3);
+    }
+
+    #[test]
+    fn the_promix01s_law() {
+        let law = FaderLaw::PROMIX01;
+        assert!(law.points.len() <= FaderLaw::MAX_POINTS);
+        assert_eq!((law.steps, law.max_db()), (128, 6.0));
+        let step = |k: i32| law.to_db(k as f32 / 127.0);
+        assert_eq!(step(0), FADER_MIN, "the bottom is -oo");
+        assert!((step(1) + 66.0).abs() < 1e-4);
+        assert!(step(115).abs() < 1e-4, "0 dB");
+        assert!((step(114) + 0.5).abs() < 1e-3);
+        // Every step is a level of its own, rising.
+        assert!((1..128).all(|k| step(k) > step(k - 1)));
+        assert_eq!((law.to_pos(0.0) * 127.0).round(), 115.0);
     }
 
     #[test]

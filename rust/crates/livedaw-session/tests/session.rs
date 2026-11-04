@@ -777,6 +777,24 @@ fn an_x32_show_loads_as_an_x32() {
 }
 
 #[test]
+fn a_promix01_show_loads_as_a_promix01() {
+    use livedaw_engine::config::{ConsoleConfig, Counts};
+    use livedaw_engine::Profile;
+    let engine = Engine::new(0);
+    engine.configure(&ConsoleConfig { profile: Profile::ProMix01, counts: Counts::PROMIX01 });
+    let text = Show::new().to_xml(&engine, &mut NoPlugins).to_document();
+    assert!(text.contains("profile=\"promix01\""), "{text}");
+    let e2 = Engine::new(0);
+    let warnings = Show::new().load_from_text(&e2, &mut NoPlugins, &text, true).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(e2.config(), ConsoleConfig { profile: Profile::ProMix01, counts: Counts::PROMIX01 });
+    assert_eq!(e2.strip_at(StripKind::Aux, 1).unwrap().name(), "RTN1");
+    // A matrix more: the Universal.
+    e2.set_num_strips(StripKind::Matrix, 1);
+    assert_eq!(e2.profile(), Profile::Universal);
+}
+
+#[test]
 fn capture_and_apply_by_section() {
     let engine = Engine::new(0);
     let mut np = NoPlugins;

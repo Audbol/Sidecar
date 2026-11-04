@@ -182,6 +182,16 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
   inputs each block takes. The channel strip's GAIN knob turns the head amp of the
   channel's input (-12 to +60 dB), or the digital trim for a channel without one.
 
+Phase 5, the Yamaha ProMix 01 (`docs/UNIVERSAL_MIXER.md`), begins.
+
+- A ProMix 01 profile: a console can be configured as a ProMix 01 (16 channels; ST IN
+  and the two effect returns; SEND1-4; ST OUT; no matrices, DCAs or mute groups; two
+  FX slots), with its 128-step fader (+6 dB to -66 dB; the steps between are Sidecar's
+  reading until measured), its port groups (INPUT 1-16, ST IN, 2TR IN; ST OUT, SEND
+  OUT, REC OUT, MONITOR OUT, DIGITAL OUT) and names (ST IN, RTN1-2, SEND1-4, ST OUT).
+  A show stores it; the Universal Mixer shows it. Its processing, effects and MIDI
+  come with the next steps. C ABI 43: profile 3.
+
 ## [0.2.0] - beta
 
 The first public beta of the Universal Mixer: Sidecar becomes a mixer core without one

@@ -126,6 +126,41 @@ pub static X32_PORT_GROUPS: &[PortGroup] = &[
     PortGroup::new("BUS DIRECT", "BUS", IN, None, 0),
 ];
 
+/// The Yamaha ProMix 01's port groups (Phase 5), in the WING's places as the
+/// X32's are. Its interface inputs: 1-16 the channels' (LOCAL IN), 17-18 ST
+/// IN L / R (AUX IN's place), 19-20 2TR IN (AES/EBU IN's); outputs: 1-2 ST OUT
+/// (LOCAL OUT's), 3-4 SEND3-4 (AUX OUT's), 5-6 REC OUT (WLIVE REC's), 7-8
+/// MONITOR OUT (ST CONNECT's), 9-10 the coaxial DIGITAL OUT (AES/EBU OUT's)
+/// (User's Guide pp.5-7, p.106). Its sources: the oscillator, SEND1-4 and ST
+/// OUT; it has no network, card or USB ports.
+pub static PROMIX01_PORT_GROUPS: &[PortGroup] = &[
+    PortGroup::new("INPUT", "IN", IN, Some(0), 16),
+    PortGroup::new("ST IN", "ST", IN, Some(16), 2),
+    PortGroup::new("2TR IN", "2TR", IN, Some(18), 2),
+    PortGroup::new("OSCILLATOR", "OSC", IN, Some(OSC_SOURCE_BASE), NUM_OSCILLATORS as i32),
+    PortGroup::new("AES50 A", "A", BOTH, None, 0),
+    PortGroup::new("AES50 B", "B", BOTH, None, 0),
+    PortGroup::new("AES50 C", "C", BOTH, None, 0),
+    PortGroup::new("MONITOR OUT", "MON", OUT, Some(6), 2),
+    PortGroup::new("USB AUDIO", "USB", BOTH, None, 0),
+    PortGroup::new("WLIVE PLAY", "PLAY", IN, Some(PLAYBACK_SOURCE_BASE), NUM_PLAYBACK_CHANNELS as i32),
+    PortGroup::new("DANTE", "DAN", BOTH, None, 0),
+    PortGroup::new("USB PLAYER", "PLAYER", IN, Some(USB_PLAYER_SOURCE_BASE), USB_CHANNELS as i32),
+    PortGroup::new("SEND", "SEND", IN, Some(BUS_SOURCES), 2 * 4),
+    PortGroup::new("ST OUT", "ST", IN, Some(MAIN_SOURCES), 2),
+    PortGroup::new("MATRIX", "MTX", IN, None, 0),
+    PortGroup::new("USER SIGNAL", "USR", IN, None, 0),
+    PortGroup::new("MONITOR", "MON", IN, None, 0),
+    PortGroup::new("FX SEND", "FX", IN, None, 0),
+    PortGroup::new("ST OUT", "ST", OUT, Some(0), 2),
+    PortGroup::new("SEND OUT", "SEND", OUT, Some(2), 2),
+    PortGroup::new("DIGITAL OUT", "DIG", OUT, Some(8), 2),
+    PortGroup::new("REC OUT", "REC", OUT, Some(4), 2),
+    PortGroup::new("RECORDER", "REC", OUT, None, USB_CHANNELS as i32),
+    PortGroup::new("CH DIRECT", "CH", IN, None, 0),
+    PortGroup::new("BUS DIRECT", "BUS", IN, None, 0),
+];
+
 /// The group (of `groups`) an engine index belongs to, and its number there.
 pub fn group_of(groups: &'static [PortGroup], output: bool, index: i32) -> Option<(&'static PortGroup, i32)> {
     groups.iter().filter(|g| if output { g.output } else { g.input }).find_map(|g| Some((g, g.number_of(index)?)))
@@ -179,5 +214,27 @@ mod tests {
         assert_eq!(group_of(g, true, 160).map(|(g, n)| (g.name, n)), Some(("P16", 0)));
         let mtx6r = strip_source_input(StripKind::Matrix, 5, 1);
         assert_eq!(group_of(g, false, mtx6r).map(|(g, n)| (g.prefix, n)), Some(("MTX", 11)));
+    }
+
+    #[test]
+    fn the_promix01s_groups_are_its_ports_in_the_wings_places() {
+        let (g, w) = (PROMIX01_PORT_GROUPS, WING_PORT_GROUPS);
+        assert_eq!(g.len(), w.len());
+        for (p, wing) in g.iter().zip(w) {
+            assert!(p.input == wing.input || p.first.is_none() || wing.first.is_none(), "{}", p.name);
+        }
+        for group in g.iter().filter(|g| g.input && g.first.is_some()) {
+            for n in 0..group.size {
+                let i = group.port(n).unwrap();
+                assert!(source_index(i).is_some() || strip_source(i).is_some(), "{} {}", group.prefix, n + 1);
+            }
+        }
+        assert_eq!(group_of(g, false, 15).map(|(g, n)| (g.name, n)), Some(("INPUT", 15)));
+        assert_eq!(group_of(g, false, 17).map(|(g, n)| (g.name, n)), Some(("ST IN", 1)));
+        assert_eq!(group_of(g, false, 16 + 4), None, "20 inputs");
+        assert_eq!(group_of(g, true, 3).map(|(g, n)| (g.name, n)), Some(("SEND OUT", 1)));
+        assert_eq!(group_of(g, true, 9).map(|(g, n)| (g.name, n)), Some(("DIGITAL OUT", 1)));
+        let send4 = strip_source_input(StripKind::Bus, 3, 0);
+        assert_eq!(group_of(g, false, send4).map(|(g, n)| (g.prefix, n)), Some(("SEND", 6)));
     }
 }

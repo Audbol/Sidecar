@@ -479,6 +479,40 @@ fn an_x32s_fx_1_to_4_take_buses_13_to_16_and_return_on_the_fx_returns() {
 }
 
 #[test]
+fn a_promix01_has_no_matrices_dcas_or_mute_groups_and_runs_its_sends_and_returns() {
+    use livedaw_engine::Profile;
+    let mut rig = Rig::new(1, 1, 4);
+    rig.engine.configure(&ConsoleConfig { profile: Profile::ProMix01, counts: Counts::PROMIX01 });
+    let e = &rig.engine;
+    assert_eq!(e.profile(), Profile::ProMix01);
+    assert_eq!((e.num_strips(StripKind::Channel), e.num_strips(StripKind::Aux), e.num_strips(StripKind::Bus)), (16, 3, 4));
+    assert_eq!((e.num_strips(StripKind::Main), e.num_strips(StripKind::Matrix)), (1, 0));
+    // The engine keeps the WING's 16 FX slots at least; the console addresses two.
+    assert_eq!((e.counts().dcas, e.counts().mute_groups, e.config().counts.fx), (0, 0, 2));
+    // The effect sends feed FX 1-2; the returns take FX 1-2.
+    assert_eq!(e.controls.fx[1].source_left.load(Relaxed), livedaw_engine::routing::strip_source_input(StripKind::Bus, 1, 0));
+    assert_eq!(rig.strip(StripKind::Aux, 1).params.input_left.load(Relaxed), livedaw_engine::sources::FX_RETURN_SOURCE_BASE);
+    // CH 1 at 0 dB reaches ST OUT on outputs 1-2, and SEND3 (PRE, at 0 dB, its
+    // master at 0 dB) on output 3.
+    let ch = rig.ch(0);
+    ch.params.input_left.store(0, Relaxed);
+    ch.params.fader_db.store(0.0);
+    let send3 = ch.sends.get_or_create(2).unwrap();
+    send3.level_db.store(0.0);
+    send3.enabled.store(true, Relaxed);
+    send3.mode.store(livedaw_engine::sends::send_mode::PRE, Relaxed);
+    rig.strip(StripKind::Bus, 2).params.fader_db.store(0.0);
+    rig.strip(StripKind::Main, 0).params.fader_db.store(0.0);
+    rig.set_input(0, 0.5);
+    rig.run(30);
+    assert!(rig.out(0) > 0.2 && close(rig.out(0), rig.out(1), 1e-5), "ST OUT: {} {}", rig.out(0), rig.out(1));
+    assert!(close(rig.out(2), 0.5, 1e-3), "SEND3 on output 3: {}", rig.out(2));
+    assert_eq!(rig.out(3), 0.0, "SEND4 has nothing");
+    // A fader on the console's steps.
+    assert_eq!(rig.engine.profile().spec().fader.to_pos(0.0), 115.0 / 127.0);
+}
+
+#[test]
 fn an_x32_runs_its_own_chains_and_models() {
     use livedaw_engine::Profile;
     let mut rig = Rig::new(1, 1, 2);

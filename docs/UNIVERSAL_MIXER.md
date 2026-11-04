@@ -725,7 +725,7 @@ Three layers:
    so Sidecar's reading until measured on a console: the fader's position-to-dB
    table, the byte map of a scene dump, the effects' algorithms. Steps, each
    with every check green and the WING and X32 unchanged:
-   1. **The ProMix 01 profile value**: `Profile::ProMix01` (show id `promix01`,
+   1. **The ProMix 01 profile value** (done): `Profile::ProMix01` (show id `promix01`,
       C ABI profile 3) with its counts (`Counts::PROMIX01`: 16 channels; 3 aux,
       ST IN and the two returns; 4 buses, SEND1-4; 1 main, ST OUT; no matrices,
       DCAs or mute groups; 2 FX slots), its fader law (`FaderLaw::PROMIX01`, 128
@@ -733,7 +733,12 @@ Three layers:
       its port groups (the 16 inputs, ST IN, 2TR IN; ST OUT, SEND3-4, REC OUT,
       MONITOR, DIGITAL), a palette (the console has no strip colours: one per
       kind), its factory strip (SEND1-2 POST, SEND3-4 PRE, the returns fed by the
-      effects); no remote yet. Consoles with no matrices, DCAs or mute groups.
+      effects); no remote yet. Consoles with no matrices, DCAs or mute groups
+      carry audio (`tests/engine.rs`). The engine keeps the WING's 16 FX slots at
+      least (as on an X32); the console addresses two. Its port groups sit in the
+      WING's places (`PROMIX01_PORT_GROUPS`); a new console plays ST OUT on outputs
+      1-2, 5-6 and 9-10, SEND3-4 on 3-4. The fader's steps between +6 and -66 dB are
+      Sidecar's reading of the panel's scale (0 dB on step 115).
    2. **Its processing**: the 3-band EQ (`livedaw_dsp::promix`: the 1/6 octave
       tables, the octave Qs and SHELF) on inputs, returns and ST OUT; the
       dynamics models (Compressor and Limiter, Gate, Ducking with the guide's

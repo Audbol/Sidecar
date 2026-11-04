@@ -63,6 +63,11 @@ impl Counts {
     /// returns), 16 buses, 2 mains (LR and M/C), 6 matrices, 8 DCAs, 6 mute
     /// groups, 8 FX slots.
     pub const X32: Counts = Counts { channels: 32, aux: 16, buses: 16, mains: 2, matrices: 6, dcas: 8, mute_groups: 6, fx: 8 };
+
+    /// The Yamaha ProMix 01's: 16 channels, 3 aux (the stereo input ST IN and
+    /// the effect returns RTN1-2), 4 buses (SEND1-4), 1 main (ST OUT), no
+    /// matrices, DCAs or mute groups, 2 FX slots (its internal effects).
+    pub const PROMIX01: Counts = Counts { channels: 16, aux: 3, buses: 4, mains: 1, matrices: 0, dcas: 0, mute_groups: 0, fx: 2 };
 }
 
 impl Default for Counts {

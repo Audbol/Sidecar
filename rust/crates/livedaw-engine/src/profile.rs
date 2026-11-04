@@ -9,7 +9,7 @@
 use crate::chain::{self, Node};
 use crate::config::Counts;
 use crate::params::{StripKind, DEFAULT_COLOUR, WING_BUSES, WING_COLOURS, WING_COLOUR_GRID};
-use crate::ports::{PortGroup, WING_PORT_GROUPS, X32_PORT_GROUPS};
+use crate::ports::{PortGroup, PROMIX01_PORT_GROUPS, WING_PORT_GROUPS, X32_PORT_GROUPS};
 use livedaw_dsp::fader::FaderLaw;
 use livedaw_dsp::model::ModelTables;
 use livedaw_dsp::util::PanLaw;
@@ -23,12 +23,14 @@ pub enum Profile {
     /// The Behringer WING.
     #[default]
     Wing,
-    /// The Behringer X32 (Phase 4: its processing, sends and protocols follow).
+    /// The Behringer X32 (Phase 4).
     X32,
+    /// The Yamaha ProMix 01 (Phase 5: its processing, effects and MIDI follow).
+    ProMix01,
 }
 
 impl Profile {
-    pub const ALL: [Profile; 3] = [Profile::Universal, Profile::Wing, Profile::X32];
+    pub const ALL: [Profile; 4] = [Profile::Universal, Profile::Wing, Profile::X32, Profile::ProMix01];
 
     /// The id shows store (`<Console profile="...">`).
     pub fn id(self) -> &'static str {
@@ -36,6 +38,7 @@ impl Profile {
             Profile::Universal => "universal",
             Profile::Wing => "wing",
             Profile::X32 => "x32",
+            Profile::ProMix01 => "promix01",
         }
     }
 
@@ -49,6 +52,7 @@ impl Profile {
             Profile::Universal => &UNIVERSAL,
             Profile::Wing => &WING,
             Profile::X32 => &X32,
+            Profile::ProMix01 => &PROMIX01,
         }
     }
 
@@ -60,11 +64,11 @@ impl Profile {
     /// Whether a console of `counts` is one of this profile's: the WING's
     /// aux, mains, matrices, DCAs and mute groups (what its surface
     /// addresses; channels, buses and FX slots can grow on a WING too); the
-    /// X32's counts exactly.
+    /// X32's and the ProMix 01's counts exactly.
     pub fn fits(self, counts: &Counts) -> bool {
         match self {
             Profile::Universal => true,
-            Profile::X32 => *counts == self.spec().counts,
+            Profile::X32 | Profile::ProMix01 => *counts == self.spec().counts,
             Profile::Wing => {
                 let w = self.spec().counts;
                 counts.aux == w.aux
@@ -183,6 +187,23 @@ impl Palette {
             StripKind::Bus if slot < 12 => 7,                         // CY
             StripKind::Aux | StripKind::Bus | StripKind::Matrix => 6, // MG: FX returns, FX sends, matrices
             StripKind::Main => 8,                                     // WH
+        }),
+    };
+
+    /// The ProMix 01's: the console has no strip colours (its scribble strips
+    /// are the LCD's), so Sidecar's own eight, a new strip coloured by what it
+    /// is: channels white, ST IN yellow, the effect returns magenta, the sends
+    /// cyan, ST OUT red.
+    pub const PROMIX01: Palette = Palette {
+        colours: &PROMIX01_COLOURS,
+        grid: &[1, 2, 3, 4, 5, 6, 7, 8],
+        default: 8,
+        factory: Some(|kind, slot| match kind {
+            StripKind::Channel => 8,
+            StripKind::Aux if slot == 0 => 4,
+            StripKind::Aux => 6,
+            StripKind::Bus => 7,
+            StripKind::Main | StripKind::Matrix => 2,
         }),
     };
 
@@ -442,6 +463,70 @@ impl ProfileSpec {
     }
 }
 
+/// The ProMix 01's factory strip (`ProfileSpec::factory`), as its scene 00
+/// starts (User's Guide p.32, p.45, p.62): ST IN and the returns stereo, the
+/// returns fed by the internal effects (FX 1-2: `fx_send_buses`) at 0 dB; the
+/// four sends mono.
+fn promix01_factory(p: &crate::params::StripParams, kind: StripKind, slot: usize) {
+    use std::sync::atomic::Ordering::Relaxed;
+    match kind {
+        StripKind::Aux if slot >= 1 => {
+            let fx = crate::sources::FX_RETURN_SOURCE_BASE + 2 * (slot as i32 - 1);
+            p.fader_db.store(0.0);
+            p.input_left.store(fx, Relaxed);
+            p.input_right.store(fx + 1, Relaxed);
+        }
+        StripKind::Aux => {
+            // ST IN: the interface's inputs 17-18.
+            p.input_left.store(16, Relaxed);
+            p.input_right.store(17, Relaxed);
+        }
+        StripKind::Bus => p.stereo.store(false, Relaxed),
+        _ => {}
+    }
+}
+
+/// The ProMix 01's strip names: ST IN, RTN1-2, SEND1-4 and ST OUT as its
+/// panel prints them.
+fn promix01_name(kind: StripKind, slot: usize) -> Option<String> {
+    match (kind, slot) {
+        (StripKind::Aux, 0) => Some("ST IN".into()),
+        (StripKind::Aux, _) => Some(format!("RTN{slot}")),
+        (StripKind::Bus, _) => Some(format!("SEND{}", slot + 1)),
+        (StripKind::Main, 0) => Some("ST OUT".into()),
+        _ => None,
+    }
+}
+
+/// A new ProMix 01's output patch: ST OUT on outputs 1-2 (STEREO OUT), 5-6
+/// (REC OUT) and 9-10 (DIGITAL OUT), SEND3-4 on 3-4 (`PROMIX01_PORT_GROUPS`).
+fn promix01_factory_outputs(patch: &crate::routing::OutputPatch) {
+    use crate::routing::strip_source_input;
+    for side in 0..2 {
+        let st = strip_source_input(StripKind::Main, 0, side);
+        for port in [0, 4, 8] {
+            patch.set(port + side as i32, st);
+        }
+        patch.set(2 + side as i32, strip_source_input(StripKind::Bus, 2 + side, 0));
+    }
+}
+
+/// The ProMix 01's strip labels: CH 1-16, the sends, ST OUT; its aux strips go
+/// by their slot ranges' (ST IN, RTN).
+const PROMIX01_LABELS: [&str; 5] = ["CH", "ST IN", "SEND", "ST OUT", "MTX"];
+
+/// Sidecar's colours for the ProMix 01 (`Palette::PROMIX01`).
+const PROMIX01_COLOURS: [(&str, u32); 8] = [
+    ("GRAY", 0x606060),
+    ("RED", 0xe02424),
+    ("GREEN", 0x28c040),
+    ("YELLOW", 0xe8d020),
+    ("BLUE", 0x2850e8),
+    ("MAGENTA", 0xd028d0),
+    ("CYAN", 0x20c8d8),
+    ("WHITE", 0xe8e8e8),
+];
+
 /// The X32's colours (`Palette::X32`).
 const X32_COLOURS: [(&str, u32); 16] = [
     ("OFF", 0x303030),
@@ -576,6 +661,46 @@ static X32: ProfileSpec = ProfileSpec {
     fx_send_buses: &[12, 13, 14, 15],
 };
 
+/// The Yamaha ProMix 01 (Phase 5): its counts (`Counts::PROMIX01`), its
+/// 128-step fader law, its labels and names (ST IN, RTN1-2, SEND1-4, ST OUT),
+/// its port groups, its factory strip and output patch. It runs the WING's
+/// chains and models and speaks no remote protocol until Phase 5's steps 2
+/// and 5 bring its own.
+static PROMIX01: ProfileSpec = ProfileSpec {
+    profile: Profile::ProMix01,
+    name: "ProMix 01",
+    counts: Counts::PROMIX01,
+    templates: [chain::CHANNEL, chain::AUX, chain::OUTPUT],
+    process_orders: PROCESS_ORDERS,
+    aux_order: b"DEI",
+    output_order: b"DI",
+    fader: FaderLaw::PROMIX01,
+    pan: PanLaw::WING,
+    port_groups: PROMIX01_PORT_GROUPS,
+    models: &WING_MODELS,
+    remotes: Remotes { midi: None, network: &[] },
+    palette: Palette::PROMIX01,
+    labels: PROMIX01_LABELS,
+    slots: &[
+        SlotRange { kind: StripKind::Aux, first: 0, count: 1, chain: chain::AUX, label: "ST IN" },
+        SlotRange { kind: StripKind::Aux, first: 1, count: 2, chain: chain::AUX, label: "RTN" },
+    ],
+    // The sends don't feed ST OUT, the only main.
+    buses_to_main: 0..0,
+    mono_mains: &[],
+    source_link: false,
+    sends_on: true,
+    send_tap: -1,
+    tap_point: crate::strip::tap::PFL as i32,
+    factory: Some(promix01_factory),
+    factory_name: Some(promix01_name),
+    factory_outputs: Some(promix01_factory_outputs),
+    dca_names: None,
+    dca_fader_db: 0.0,
+    fx_factory: &[],
+    fx_send_buses: &[0, 1],
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -654,8 +779,38 @@ mod tests {
     }
 
     #[test]
+    fn the_promix01() {
+        let p = Profile::ProMix01.spec();
+        assert_eq!(Profile::from_id("promix01"), Some(Profile::ProMix01));
+        assert_eq!((p.name, p.counts), ("ProMix 01", Counts::PROMIX01));
+        assert!(!Profile::ProMix01.fits(&Counts { fx: 4, ..Counts::PROMIX01 }));
+        assert!(!Profile::X32.fits(&Counts::PROMIX01) && !Profile::Wing.fits(&Counts::PROMIX01));
+        assert_eq!(Profile::Wing.or_universal(&Counts::PROMIX01), Profile::Universal);
+        assert_eq!((p.fader.steps, p.fader.max_db()), (128, 6.0));
+        assert_eq!(p.port_groups, PROMIX01_PORT_GROUPS);
+        assert!(p.remotes.midi.is_none() && p.remotes.network.is_empty(), "no remote until step 5");
+        assert_eq!(p.label_at(StripKind::Aux, 0), ("ST IN", 1));
+        assert_eq!(p.label_at(StripKind::Aux, 2), ("RTN", 2));
+        assert_eq!((p.label(StripKind::Bus), p.label(StripKind::Main)), ("SEND", "ST OUT"));
+        let name = p.factory_name.unwrap();
+        assert_eq!((name(StripKind::Aux, 1), name(StripKind::Bus, 3)), (Some("RTN1".into()), Some("SEND4".into())));
+        assert_eq!(name(StripKind::Channel, 0), None);
+        let colour = p.palette.factory.unwrap();
+        assert_eq!(p.palette.colour(colour(StripKind::Aux, 0)), Some(("YELLOW", 0xe8d020)));
+        assert_eq!(p.palette.colour(colour(StripKind::Main, 0)).map(|c| c.0), Some("RED"));
+        // A new strip as scene 00 has it.
+        use crate::params::StripParams;
+        use std::sync::atomic::Ordering::Relaxed;
+        let rtn2 = StripParams::new_in_slot_of(StripKind::Aux, 2, p);
+        assert_eq!(rtn2.fader_db.load(), 0.0);
+        assert_eq!(rtn2.input_left.load(Relaxed), crate::sources::FX_RETURN_SOURCE_BASE + 2, "FX 2 L");
+        let send1 = StripParams::new_in_slot_of(StripKind::Bus, 0, p);
+        assert!(!send1.stereo.load(Relaxed), "the sends are mono");
+    }
+
+    #[test]
     fn the_wings_labels() {
-        for p in Profile::ALL {
+        for p in [Profile::Universal, Profile::Wing, Profile::X32] {
             for kind in StripKind::ALL {
                 assert_eq!(p.spec().label(kind), kind.label(), "{p:?} {kind:?}");
             }
@@ -702,6 +857,10 @@ mod tests {
     fn the_wings_laws() {
         for p in Profile::ALL {
             let s = p.spec();
+            if p == Profile::ProMix01 {
+                assert_eq!(s.fader, FaderLaw::PROMIX01);
+                continue;
+            }
             // The X32's faders run the same law on 1024 steps.
             assert_eq!(s.fader.points, FaderLaw::WING.points);
             assert_eq!(s.fader.steps, if p == Profile::X32 { 1024 } else { 0 });
