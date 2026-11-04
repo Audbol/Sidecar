@@ -940,6 +940,12 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
 - **Channel strip.** The selected strip's CONFIG / PREAMP, GATE, DYNAMICS,
   EQUALIZER, BUS SENDS and MAIN BUS controls. Each section's **VIEW** key opens its tab
   on the display.
+- **Sends on fader.** The **SENDS ON FADER** key (top right) turns faders into
+  sends: select a bus (its SELECT on BUS 1-8 or BUS 9-16) and the input faders set
+  each channel's send to it; select a channel and the BUS 1-8 / BUS 9-16 layers set
+  its sends to the buses; with a bus selected, the MTX layer sets its matrix sends.
+  An amber band on the scribble strip shows where a fader sends. Press the key again
+  for the faders.
 - **Display.** Its status bar shows the selected strip, the scene (and the next one),
   the sample rate and the time. The keys beside it choose the screen (HOME, METERS,
   ROUTING, SETUP, LIBRARY, EFFECTS, MUTE GRP, UTILITY), **<** and **>** the tab, and

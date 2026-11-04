@@ -377,6 +377,37 @@ private:
             }
         }
 
+        // SENDS ON FADER (step 12): a bus selected, the input faders are the sends to it;
+        // a channel selected, the bus layers are its sends.
+        {
+            auto& buses = engine.getBuses();
+            skin.setInputLayer (0);
+            rig.selected = buses[2].get(); // BUS 3
+            skin.setSendsOnFader (true);
+            expectEquals (skin.getInputStrip (0).getSendTo(), juce::String ("BUS 3"));
+            auto& send = channels[0]->sends[2].levelDb;
+            send.store (-20.0f);
+            expect (skin.getInputStrip (0).getStrip() == channels[0].get(), "the strip stays");
+            if (folder.isNotEmpty())
+            {
+                const auto shot = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
+                const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile ("x32-sends-on-fader.png");
+                file.deleteFile();
+                juce::FileOutputStream out (file);
+                expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (shot, out), file.getFullPathName());
+            }
+            rig.selected = channels[4].get(); // CH 5: its sends to buses 9-16
+            skin.setGroupLayer (ui::X32Surface::GroupLayer::Bus9to16);
+            skin.selectionChanged();
+            expect (skin.getGroupStrip (0).getSendTo().startsWith ("FROM"), skin.getGroupStrip (0).getSendTo());
+            expectEquals (skin.getInputStrip (0).getSendTo(), juce::String(), "the inputs are their own faders again");
+            skin.setSendsOnFader (false);
+            expectEquals (skin.getGroupStrip (0).getSendTo(), juce::String());
+            skin.setGroupLayer (ui::X32Surface::GroupLayer::Dca);
+            rig.selected = channels[12].get();
+            skin.selectionChanged();
+        }
+
         // The X32 COMPACT: 8 input faders in eight layers, chosen on SETUP.
         display.showScreen (ui::x32::Display::Screen::Setup);
         expectEquals (display.getEncoder (0).turn.label, juce::String ("MODEL"));

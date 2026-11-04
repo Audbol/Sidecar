@@ -36,7 +36,8 @@ using x32::kScribble;
 
 //==============================================================================
 X32Surface::X32Surface (UiContext& c)
-    : ctx (c), theme (Theme::dark()), universalKey ("UNIVERSAL MIXER", theme.accent, theme), channel (c, theme),
+    : ctx (c), theme (Theme::dark()), universalKey ("UNIVERSAL MIXER", theme.accent, theme),
+      sendsOnFaderKey ("SENDS ON FADER", juce::Colour (0xfff0a020), theme), channel (c, theme),
       display (c, theme)
 {
     for (auto& s : inputs)
@@ -80,6 +81,10 @@ X32Surface::X32Surface (UiContext& c)
     };
     universalKey.setTooltip ("The Universal Mixer");
     addAndMakeVisible (universalKey);
+    sendsOnFaderKey.isOn = [this] { return sendsOnFader; };
+    sendsOnFaderKey.onClick = [this] { setSendsOnFader (! sendsOnFader); };
+    sendsOnFaderKey.setTooltip ("Sends on fader: select a bus for the inputs' sends to it, or a channel for its sends to the buses");
+    addAndMakeVisible (sendsOnFaderKey);
 
     addAndMakeVisible (channel);
     // A VIEW key opens its section's tab of the display's HOME screen.
@@ -196,10 +201,52 @@ void X32Surface::assignBanks()
         }
     }
     main->setStrip (at (e.getMains(), 0));
+    applySendsOnFader();
     for (auto* keys : { &inputLayerKeys, &groupLayerKeys })
         for (auto& k : *keys)
             k->refresh();
     timerCallback(); // the faders, meters and keys at once
+}
+
+void X32Surface::setSendsOnFader (bool on)
+{
+    sendsOnFader = on;
+    assignBanks();
+    sendsOnFaderKey.refresh();
+}
+
+void X32Surface::applySendsOnFader()
+{
+    auto* sel = ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr;
+    sofShown = sel;
+    for (int i = 0; i < getNumInputFaders(); ++i)
+        inputs[(size_t) i]->setSend (nullptr, {});
+    for (auto& g : groups)
+        g->setSend (nullptr, {});
+    if (! sendsOnFader || sel == nullptr)
+        return;
+    if (sel->getKind() == StripKind::Bus)
+    {
+        // The inputs' sends to the selected bus.
+        const int slot = sel->getId();
+        const auto to = "BUS " + juce::String (slot + 1);
+        for (int i = 0; i < getNumInputFaders(); ++i)
+            if (auto* s = inputs[(size_t) i]->getStrip(); s != nullptr && s->isInput())
+                inputs[(size_t) i]->setSend (&s->sends[(size_t) slot].levelDb, to);
+        // A bus's sends to the matrices, on the MTX layer.
+        if (groupLayer == GroupLayer::MatrixMain)
+            for (int i = 0; i < juce::jmin (6, (int) ctx.engine.getMatrices().size()); ++i)
+                groups[(size_t) i]->setSend (&sel->matrix[(size_t) i].levelDb, "FROM BUS " + juce::String (slot + 1));
+        return;
+    }
+    if (sel->isInput() && (groupLayer == GroupLayer::Bus1to8 || groupLayer == GroupLayer::Bus9to16))
+    {
+        // The selected channel's sends to buses 1-8 or 9-16.
+        const int first = groupLayer == GroupLayer::Bus1to8 ? 0 : 8;
+        for (int i = 0; i < 8; ++i)
+            if (groups[(size_t) i]->getStrip() != nullptr)
+                groups[(size_t) i]->setSend (&sel->sends[(size_t) (first + i)].levelDb, "FROM " + sel->getLabel());
+    }
 }
 
 void X32Surface::refreshAll()
@@ -213,6 +260,8 @@ void X32Surface::refreshAll()
 void X32Surface::selectionChanged()
 {
     channel.setStrip (ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr);
+    if (sendsOnFader && sofShown != (ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr))
+        applySendsOnFader(); // the sends follow the selection
     timerCallback(); // the SELECT keys
     display.refreshStrip();
     repaint (channelArea);
@@ -227,6 +276,7 @@ void X32Surface::timerCallback()
     for (auto& s : groups)
         s->refresh();
     main->refresh();
+    sendsOnFaderKey.refresh();
 }
 
 //==============================================================================
@@ -292,6 +342,8 @@ void X32Surface::resized()
     auto area = getLocalBounds();
     auto bar = area.removeFromTop (kTopBar).reduced (sizes::kGapLarge, 8);
     universalKey.setBounds (bar.removeFromRight (170));
+    bar.removeFromRight (sizes::kGap);
+    sendsOnFaderKey.setBounds (bar.removeFromRight (170));
     area.reduce (sizes::kGapLarge, 0);
     area.removeFromBottom (sizes::kGapLarge);
 

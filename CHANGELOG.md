@@ -161,6 +161,10 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
 - The X32 display's EFFECTS screen: home picks a slot (encoder 1), its effect (encoder
   2, FX 5-8 the insert effects only; its key EDIT opens the slot) and FX 1-4's SOURCE;
   fx1-fx8 list the slot's parameters and turn them six at a time (LAYER for the rest).
+- The X32 surface's SENDS ON FADER: with a bus selected, the input faders move each
+  strip's send to it; with a channel or aux selected, the BUS 1-8 / 9-16 layers move
+  its sends to the buses (and with a bus selected, the MTX layer its matrix sends).
+  The scribble strips mark the send in amber.
 - The X32 display's ROUTING screen sets the input blocks (encoders 1-5) and switches
   between the recording and playback blocks (encoder 6), and shows which interface
   inputs each block takes. The channel strip's GAIN knob turns the head amp of the

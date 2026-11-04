@@ -670,6 +670,16 @@ Three layers:
        map's text commands), fx1-fx8 (the slot's parameters, six per layer,
        bound to the engine's `FxParams` by the model's table, every value listed
        in two columns).
+   12. **The rest of the X32's surface**, from step 8's list:
+      - 12a, sends on fader (done): `X32Surface::setSendsOnFader`, its key in the
+        top bar. A bus selected: the input faders bind to each input strip's send
+        to it, and on the MTX layer the bus's sends to the matrices; a channel or
+        aux selected: the BUS 1-8 / 9-16 layers bind to its sends. The faders'
+        SOLO, MUTE and SELECT stay the strips' (`FaderStrip::setSend`, the
+        scribble strip's amber band); the sends follow the selection.
+      - Still to come: monitoring and talkback, the assignable controls (three
+        sets of encoders and keys, their MIDI), show files on LIBRARY, UTILITY
+        (copy, paste, presets).
 
 Each emulation keeps the independent-project disclaimer: not affiliated with or
 endorsed by the console's maker, their trademarks used only to say what is emulated,

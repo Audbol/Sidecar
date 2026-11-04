@@ -81,6 +81,7 @@ namespace x32
         {
             strip = s;
             dca = -1;
+            sendTo = {};
             fader.bind (s != nullptr ? &s->params.faderDb : nullptr);
             meter.setChannels (s != nullptr && s->params.stereo.load() ? 2 : 1);
             meter.setVisible (s != nullptr);
@@ -95,6 +96,7 @@ namespace x32
         {
             strip = nullptr;
             dca = index;
+            sendTo = {};
             fader.bind (&ctx.engine.getDca (index).faderDb);
             meter.setVisible (false);
             select.setEnabled (false);
@@ -105,6 +107,18 @@ namespace x32
         }
 
         void clear() { setStrip (nullptr); }
+
+        /** Sends on fader: the fader moves a send of the strip (`level`, null for
+            the strip's own fader again), the scribble strip marks it with `to`
+            ("BUS 3"). SOLO, MUTE and SELECT stay the strip's. */
+        void setSend (std::atomic<float>* level, const juce::String& to)
+        {
+            sendTo = level != nullptr ? to : juce::String();
+            fader.bind (level != nullptr ? level : strip != nullptr ? &strip->params.faderDb : dca >= 0 ? &ctx.engine.getDca (dca).faderDb : nullptr);
+            repaint();
+        }
+        /** What the fader sends to ("BUS 3"), or empty for its own fader. */
+        const juce::String& getSendTo() const noexcept { return sendTo; }
 
         Strip* getStrip() const noexcept { return strip; }
         int getDca() const noexcept { return dca; }
@@ -141,7 +155,7 @@ namespace x32
             for (auto* key : { &solo, &mute, &select })
                 key->refresh();
             // The scribble strip follows renames and recolours.
-            const auto now = getLabel() + "|" + getName() + "|" + juce::String (getColourIndex());
+            const auto now = getLabel() + "|" + getName() + "|" + juce::String (getColourIndex()) + "|" + sendTo;
             if (now != shown)
             {
                 shown = now;
@@ -163,6 +177,16 @@ namespace x32
             g.fillRoundedRectangle (area, 3.0f);
             g.setColour (look.frame);
             g.drawRoundedRectangle (area.reduced (0.5f), 3.0f, 1.0f);
+            if (sendTo.isNotEmpty())
+            {
+                // Sends on fader: the send's destination along the bottom, in amber.
+                auto band = area.removeFromBottom (15.0f);
+                g.setColour (juce::Colour (0xfff0a020));
+                g.fillRoundedRectangle (band, 3.0f);
+                g.setColour (juce::Colour (0xff101010));
+                g.setFont (type::font (type::kCaption, true));
+                g.drawText ("> " + sendTo, band, juce::Justification::centred);
+            }
             auto text = area.reduced (4.0f, 3.0f);
             g.setColour (look.text);
             const auto name = getName(), label = getLabel();
@@ -204,7 +228,7 @@ namespace x32
         FaderControl fader;
         MeterControl meter;
         ToggleKey solo, mute, select;
-        juce::String shown;
+        juce::String shown, sendTo;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FaderStrip)
     };
@@ -274,6 +298,13 @@ public:
     x32::FaderStrip& getGroupStrip (int i);
     x32::FaderStrip& getMainStrip();
     x32::ChannelSection& getChannelSection() noexcept { return channel; }
+
+    /** SENDS ON FADER (the X32's key): with a bus selected, the input faders
+        move each strip's send to it; with a channel or aux selected, the bus
+        layers of the group faders move its sends to buses 1-16 (and a bus's to
+        the matrices on the MTX layer). */
+    void setSendsOnFader (bool);
+    bool isSendsOnFader() const noexcept { return sendsOnFader; }
     x32::Display& getDisplay() noexcept { return display; }
 
 private:
@@ -284,7 +315,7 @@ private:
 
     UiContext& ctx;
     const universal::Theme& theme;
-    universal::ToggleKey universalKey;
+    universal::ToggleKey universalKey, sendsOnFaderKey;
     std::vector<std::unique_ptr<universal::ToggleKey>> inputLayerKeys, groupLayerKeys;
     std::array<std::unique_ptr<x32::FaderStrip>, 16> inputs;
     std::array<std::unique_ptr<x32::FaderStrip>, 8> groups;
@@ -294,6 +325,9 @@ private:
     Model model = Model::Full;
     int inputLayer = 0;
     GroupLayer groupLayer = GroupLayer::Dca;
+    bool sendsOnFader = false;
+    void applySendsOnFader();
+    Strip* sofShown = nullptr; // the selected strip the sends were laid out for
 
 
     juce::Rectangle<int> displayArea, channelArea, fadersArea;
