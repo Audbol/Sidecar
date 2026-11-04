@@ -13,11 +13,11 @@
 // outside the app (SHUTDOWN, scanning the computer's plugins) aren't pressed and
 // native file dialogs are cancelled.
 //
-//   SidecarMonkey [--seed N] [--seconds S] [--buffer SAMPLES] [--home DIR] [--idle] [--interface wing|universal|x32|promix]
+//   SidecarMonkey [--seed N] [--seconds S] [--buffer SAMPLES] [--home DIR] [--idle] [--interface wing|universal|x32|promix|02r]
 //                 [--press "KEY TEXT"]
 //
 // --idle sends no input: a baseline of what the audio does with the app just running.
-// --interface x32 / promix starts on that console and its surface; --press clicks the
+// --interface x32 / promix / 02r starts on that console and its surface; --press clicks the
 // key whose text it gives two seconds in (a user's report replayed: the X32 surface's
 // UNIVERSAL MIXER key).
 // --interface universal starts on the Universal Mixer instead of the WING surface.
@@ -753,8 +753,8 @@ public:
         engine->getChannels()[0]->params.preInsert().fx = 0;
         engine->getChannels()[1]->params.postInsert().on = true;
         engine->getChannels()[1]->params.postInsert().fx = 20;
-        if (startOn == "x32" || startOn == "promix")
-            engine->configureProfile (startOn == "x32" ? ld::kProfileX32 : ld::kProfileProMix01);
+        if (startOn == "x32" || startOn == "promix" || startOn == "02r")
+            engine->configureProfile (startOn == "x32" ? ld::kProfileX32 : startOn == "promix" ? ld::kProfileProMix01 : ld::kProfileYamaha02R);
         show = std::make_unique<Show> (*engine, *pluginHost);
         log.info ("Monkey test");
 
