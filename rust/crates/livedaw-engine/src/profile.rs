@@ -9,7 +9,7 @@
 use crate::chain::{self, Node};
 use crate::config::Counts;
 use crate::params::{StripKind, DEFAULT_COLOUR, WING_BUSES, WING_COLOURS, WING_COLOUR_GRID};
-use crate::ports::{PortGroup, PROMIX01_PORT_GROUPS, WING_PORT_GROUPS, X32_PORT_GROUPS};
+use crate::ports::{PortGroup, PROMIX01_PORT_GROUPS, WING_PORT_GROUPS, X32_PORT_GROUPS, Y02R_PORT_GROUPS};
 use livedaw_dsp::fader::FaderLaw;
 use livedaw_dsp::model::ModelTables;
 use livedaw_dsp::util::PanLaw;
@@ -25,12 +25,14 @@ pub enum Profile {
     Wing,
     /// The Behringer X32 (Phase 4).
     X32,
-    /// The Yamaha ProMix 01 (Phase 5: its processing, effects and MIDI follow).
+    /// The Yamaha ProMix 01 (Phase 5).
     ProMix01,
+    /// The Yamaha 02R, Version 2 (Phase 6: its processing, effects and MIDI follow).
+    Yamaha02R,
 }
 
 impl Profile {
-    pub const ALL: [Profile; 4] = [Profile::Universal, Profile::Wing, Profile::X32, Profile::ProMix01];
+    pub const ALL: [Profile; 5] = [Profile::Universal, Profile::Wing, Profile::X32, Profile::ProMix01, Profile::Yamaha02R];
 
     /// The id shows store (`<Console profile="...">`).
     pub fn id(self) -> &'static str {
@@ -39,6 +41,7 @@ impl Profile {
             Profile::Wing => "wing",
             Profile::X32 => "x32",
             Profile::ProMix01 => "promix01",
+            Profile::Yamaha02R => "02r",
         }
     }
 
@@ -53,6 +56,7 @@ impl Profile {
             Profile::Wing => &WING,
             Profile::X32 => &X32,
             Profile::ProMix01 => &PROMIX01,
+            Profile::Yamaha02R => &Y02R,
         }
     }
 
@@ -64,11 +68,11 @@ impl Profile {
     /// Whether a console of `counts` is one of this profile's: the WING's
     /// aux, mains, matrices, DCAs and mute groups (what its surface
     /// addresses; channels, buses and FX slots can grow on a WING too); the
-    /// X32's and the ProMix 01's counts exactly.
+    /// X32's, the ProMix 01's and the 02R's counts exactly.
     pub fn fits(self, counts: &Counts) -> bool {
         match self {
             Profile::Universal => true,
-            Profile::X32 | Profile::ProMix01 => *counts == self.spec().counts,
+            Profile::X32 | Profile::ProMix01 | Profile::Yamaha02R => *counts == self.spec().counts,
             Profile::Wing => {
                 let w = self.spec().counts;
                 counts.aux == w.aux
@@ -210,6 +214,25 @@ impl Palette {
         }),
     };
 
+    /// The 02R's: no strip colours either, so the ProMix 01's eight, a new strip
+    /// coloured by what it is: MIC/LINE white, LINE 17-24 yellow, the tape
+    /// returns green, the effect returns magenta, BUS 1-8 cyan, AUX 1-8 blue,
+    /// STEREO red.
+    pub const Y02R: Palette = Palette {
+        colours: &PROMIX01_COLOURS,
+        grid: &[1, 2, 3, 4, 5, 6, 7, 8],
+        default: 8,
+        factory: Some(|kind, slot| match kind {
+            StripKind::Channel if slot >= y02r::TAPE => 3,
+            StripKind::Channel if slot >= y02r::LINE => 4,
+            StripKind::Channel => 8,
+            StripKind::Aux => 6,
+            StripKind::Bus if slot >= y02r::AUX => 5,
+            StripKind::Bus => 7,
+            StripKind::Main | StripKind::Matrix => 2,
+        }),
+    };
+
     /// Colour `index` (1-based), if the palette has it.
     pub fn colour(&self, index: i32) -> Option<(&'static str, u32)> {
         usize::try_from(index - 1).ok().and_then(|i| self.colours.get(i)).copied()
@@ -257,6 +280,8 @@ pub struct ProfileSpec {
     /// Where a level sits on the console's faders (the interface and the
     /// remotes ask it; scene fades run along it).
     pub fader: FaderLaw,
+    /// The mains' faders, if not `fader` (the 02R's STEREO: 0 to -120 dB).
+    pub main_fader: Option<FaderLaw>,
     /// How its strips pan (mono sources) and balance (stereo ones).
     pub pan: PanLaw,
     /// Its sources and destinations as its routing pages group them: ranges
@@ -430,6 +455,14 @@ impl ProfileSpec {
         }
     }
 
+    /// The fader law of a strip of `kind`: the mains' own, or the console's.
+    pub fn fader_for(&self, kind: StripKind) -> FaderLaw {
+        match (kind, self.main_fader) {
+            (StripKind::Main, Some(law)) => law,
+            _ => self.fader,
+        }
+    }
+
     /// The label of a strip of `kind`, before its number ("CH" for "CH 1").
     pub fn label(&self, kind: StripKind) -> &'static str {
         self.labels[StripKind::ALL.iter().position(|&k| k == kind).unwrap_or(0)]
@@ -576,6 +609,7 @@ static WING: ProfileSpec = ProfileSpec {
     aux_order: b"DEI",
     output_orders: &["DI"],
     fader: FaderLaw::WING,
+    main_fader: None,
     pan: PanLaw::WING,
     port_groups: WING_PORT_GROUPS,
     models: &WING_MODELS,
@@ -610,6 +644,7 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
     aux_order: b"DEI",
     output_orders: &["DI"],
     fader: FaderLaw::WING,
+    main_fader: None,
     pan: PanLaw::WING,
     port_groups: WING_PORT_GROUPS,
     models: &WING_MODELS,
@@ -649,6 +684,7 @@ static X32: ProfileSpec = ProfileSpec {
     aux_order: b"",
     output_orders: &["EDI"],
     fader: FaderLaw::X32,
+    main_fader: None,
     pan: PanLaw::WING,
     port_groups: X32_PORT_GROUPS,
     models: &livedaw_dsp::x32::MODELS,
@@ -692,6 +728,7 @@ static PROMIX01: ProfileSpec = ProfileSpec {
     aux_order: b"",
     output_orders: chain::PROMIX01_OUTPUT_ORDERS,
     fader: FaderLaw::PROMIX01,
+    main_fader: None,
     pan: PanLaw::WING,
     port_groups: PROMIX01_PORT_GROUPS,
     models: &livedaw_dsp::promix::MODELS,
@@ -719,6 +756,136 @@ static PROMIX01: ProfileSpec = ProfileSpec {
     // what scene 00's effects are).
     fx_factory: &["PMREV", "PMDLCR"],
     fx_send_buses: &[0, 1],
+};
+
+/// The 02R's strips (Phase 6): channel slots 16-19 are LINE 17/18-23/24,
+/// 20-35 TAPE 1-16; bus slots 8-15 AUX 1-8.
+pub mod y02r {
+    /// The first LINE channel (0-based), and the first tape return.
+    pub const LINE: usize = 16;
+    pub const TAPE: usize = 20;
+    /// AUX 1-8 are bus slots 8-15 (after BUS 1-8).
+    pub const AUX: usize = 8;
+}
+
+/// The 02R's factory strip (`ProfileSpec::factory`), as its scene 0 starts
+/// (MAN-GS pp.22-56, V2 p.129): LINE 17/18-23/24 stereo on inputs 17-24, the
+/// tape returns on the card slots 1-2 (TAPE 1-8 slot 1, 9-16 slot 2), the
+/// effect returns stereo, fed by the internal effects (FX 1-2:
+/// `fx_send_buses`, AUX 7-8); BUS 1-8 and AUX 1-8 mono with their masters at
+/// 0 dB (V2 p.129).
+fn y02r_factory(p: &crate::params::StripParams, kind: StripKind, slot: usize) {
+    use std::sync::atomic::Ordering::Relaxed;
+    match kind {
+        StripKind::Channel if (y02r::LINE..y02r::TAPE).contains(&slot) => {
+            let first = (y02r::LINE + 2 * (slot - y02r::LINE)) as i32;
+            p.stereo.store(true, Relaxed);
+            p.input_left.store(first, Relaxed);
+            p.input_right.store(first + 1, Relaxed);
+        }
+        StripKind::Channel if slot >= y02r::TAPE => {
+            // Card slot 1's 8 inputs are engine inputs 32-39, slot 2's 40-47.
+            p.input_left.store(32 + (slot - y02r::TAPE) as i32, Relaxed);
+        }
+        StripKind::Aux => {
+            let fx = crate::sources::FX_RETURN_SOURCE_BASE + 2 * slot as i32;
+            p.stereo.store(true, Relaxed);
+            p.input_left.store(fx, Relaxed);
+            p.input_right.store(fx + 1, Relaxed);
+        }
+        StripKind::Bus => {
+            p.stereo.store(false, Relaxed);
+            p.fader_db.store(0.0);
+        }
+        _ => {}
+    }
+}
+
+/// The 02R's strip names as its panel and display print them.
+fn y02r_name(kind: StripKind, slot: usize) -> Option<String> {
+    match (kind, slot) {
+        (StripKind::Channel, s) if (y02r::LINE..y02r::TAPE).contains(&s) => {
+            let n = 17 + 2 * (s - y02r::LINE);
+            Some(format!("LINE {n}/{}", n + 1))
+        }
+        (StripKind::Channel, s) if s >= y02r::TAPE => Some(format!("TAPE {}", s - y02r::TAPE + 1)),
+        (StripKind::Aux, s) => Some(format!("EFF{}", s + 1)),
+        (StripKind::Bus, s) if s < y02r::AUX => Some(format!("BUS {}", s + 1)),
+        (StripKind::Bus, s) => Some(format!("AUX {}", s - y02r::AUX + 1)),
+        (StripKind::Main, 0) => Some("STEREO".into()),
+        _ => None,
+    }
+}
+
+/// A new 02R's output patch (MAN p.11, p.39): STEREO on STEREO OUT (1-2) and
+/// 2TR OUT D1 and D2 (9-12), AUX 1-6 on the AUX SEND outputs (3-8), BUS 1-8
+/// on each card slot's 8 outputs (its direct outs off).
+fn y02r_factory_outputs(patch: &crate::routing::OutputPatch) {
+    use crate::routing::strip_source_input;
+    for side in 0..2 {
+        let st = strip_source_input(StripKind::Main, 0, side);
+        for port in [0, 8, 10] {
+            patch.set(port + side as i32, st);
+        }
+    }
+    for aux in 0..6 {
+        patch.set(2 + aux as i32, strip_source_input(StripKind::Bus, y02r::AUX + aux, 0));
+    }
+    for slot in 0..4 {
+        for bus in 0..8 {
+            patch.set(32 + 8 * slot + bus as i32, strip_source_input(StripKind::Bus, bus, 0));
+        }
+    }
+}
+
+/// The 02R's strip labels: CH 1-16 (and its slot ranges LINE, TAPE), EFF,
+/// BUS (and AUX), STEREO.
+const Y02R_LABELS: [&str; 5] = ["CH", "EFF", "BUS", "STEREO", "MTX"];
+
+/// The Yamaha 02R (Phase 6), Version 2: its counts (`Counts::Y02R`), its
+/// 128-step fader laws (the channels' +10 to -90 dB, STEREO's 0 to -120 dB),
+/// its labels and names (MIC/LINE 1-16, LINE 17/18-23/24, TAPE 1-16, EFF1-2,
+/// BUS 1-8, AUX 1-8, STEREO), its port groups, its factory strip and output
+/// patch. It runs the WING's chains and models and has no remote until the
+/// next steps.
+static Y02R: ProfileSpec = ProfileSpec {
+    profile: Profile::Yamaha02R,
+    name: "02R",
+    counts: Counts::Y02R,
+    templates: [chain::CHANNEL, chain::AUX, chain::OUTPUT],
+    process_orders: PROCESS_ORDERS,
+    aux_order: b"DEI",
+    output_orders: &["DI"],
+    fader: FaderLaw::Y02R,
+    main_fader: Some(FaderLaw::Y02R_STEREO),
+    pan: PanLaw::WING,
+    port_groups: Y02R_PORT_GROUPS,
+    models: &WING_MODELS,
+    remotes: Remotes { midi: None, network: &[] },
+    palette: Palette::Y02R,
+    labels: Y02R_LABELS,
+    slots: &[
+        SlotRange { kind: StripKind::Channel, first: y02r::LINE, count: 4, chain: chain::CHANNEL, label: "LINE" },
+        SlotRange { kind: StripKind::Channel, first: y02r::TAPE, count: 16, chain: chain::CHANNEL, label: "TAPE" },
+        SlotRange { kind: StripKind::Bus, first: y02r::AUX, count: 8, chain: chain::OUTPUT, label: "AUX" },
+    ],
+    // BUS 1-8 and AUX 1-8 don't feed STEREO (MAN p.195).
+    buses_to_main: 0..0,
+    mono_mains: &[],
+    source_link: false,
+    // The aux sends start on (MAN-GS p.43).
+    sends_on: true,
+    send_tap: -1,
+    tap_point: crate::strip::tap::PFL as i32,
+    factory: Some(y02r_factory),
+    factory_name: Some(y02r_name),
+    factory_outputs: Some(y02r_factory_outputs),
+    dca_names: None,
+    dca_fader_db: 0.0,
+    // Its effects come with step 4.
+    fx_factory: &[],
+    // AUX 7 feeds Effect 1, AUX 8 Effect 2 (MAN p.90).
+    fx_send_buses: &[y02r::AUX + 6, y02r::AUX + 7],
 };
 
 #[cfg(test)]
@@ -830,6 +997,50 @@ mod tests {
     }
 
     #[test]
+    fn the_02r() {
+        let p = Profile::Yamaha02R.spec();
+        assert_eq!(Profile::from_id("02r"), Some(Profile::Yamaha02R));
+        assert_eq!((p.name, p.counts), ("02R", Counts::Y02R));
+        assert!(!Profile::Yamaha02R.fits(&Counts { channels: 40, ..Counts::Y02R }));
+        assert!(!Profile::ProMix01.fits(&Counts::Y02R) && !Profile::Wing.fits(&Counts::Y02R));
+        assert_eq!(Profile::Wing.or_universal(&Counts::Y02R), Profile::Universal);
+        // The channels' fader and STEREO's.
+        assert_eq!((p.fader.steps, p.fader.max_db()), (128, 10.0));
+        assert_eq!(p.fader_for(StripKind::Main), FaderLaw::Y02R_STEREO);
+        assert_eq!(p.fader_for(StripKind::Bus), FaderLaw::Y02R);
+        assert_eq!(Profile::X32.spec().fader_for(StripKind::Main), FaderLaw::X32, "one law elsewhere");
+        assert_eq!(p.port_groups, Y02R_PORT_GROUPS);
+        assert_eq!(p.label_at(StripKind::Channel, 15), ("CH", 16));
+        assert_eq!(p.label_at(StripKind::Channel, 17), ("LINE", 2));
+        assert_eq!(p.label_at(StripKind::Channel, 35), ("TAPE", 16));
+        assert_eq!(p.label_at(StripKind::Bus, 7), ("BUS", 8));
+        assert_eq!(p.label_at(StripKind::Bus, 8), ("AUX", 1));
+        assert_eq!((p.label(StripKind::Aux), p.label(StripKind::Main)), ("EFF", "STEREO"));
+        let name = p.factory_name.unwrap();
+        assert_eq!(name(StripKind::Channel, 19), Some("LINE 23/24".into()));
+        assert_eq!(name(StripKind::Channel, 20), Some("TAPE 1".into()));
+        assert_eq!((name(StripKind::Aux, 1), name(StripKind::Bus, 15)), (Some("EFF2".into()), Some("AUX 8".into())));
+        assert_eq!(name(StripKind::Channel, 0), None);
+        let colour = p.palette.factory.unwrap();
+        assert_eq!(p.palette.colour(colour(StripKind::Channel, 20)).map(|c| c.0), Some("GREEN"));
+        assert_eq!(p.palette.colour(colour(StripKind::Bus, 8)).map(|c| c.0), Some("BLUE"));
+        assert_eq!(p.fx_send_buses, &[14, 15], "AUX 7-8 feed the effects");
+        // A new strip as scene 0 has it.
+        use crate::params::StripParams;
+        use std::sync::atomic::Ordering::Relaxed;
+        let line = StripParams::new_in_slot_of(StripKind::Channel, 17, p);
+        assert!(line.stereo.load(Relaxed));
+        assert_eq!((line.input_left.load(Relaxed), line.input_right.load(Relaxed)), (18, 19), "LINE 19/20");
+        let tape16 = StripParams::new_in_slot_of(StripKind::Channel, 35, p);
+        assert_eq!(tape16.input_left.load(Relaxed), 47, "card slot 2's 8th input");
+        let eff2 = StripParams::new_in_slot_of(StripKind::Aux, 1, p);
+        assert_eq!(eff2.input_left.load(Relaxed), crate::sources::FX_RETURN_SOURCE_BASE + 2, "FX 2 L");
+        let aux8 = StripParams::new_in_slot_of(StripKind::Bus, 15, p);
+        assert!(!aux8.stereo.load(Relaxed));
+        assert_eq!(aux8.fader_db.load(), 0.0, "the masters at 0 dB");
+    }
+
+    #[test]
     fn the_promix01s_chains_and_models() {
         use crate::params::StripParams;
         let p = Profile::ProMix01.spec();
@@ -910,8 +1121,8 @@ mod tests {
     fn the_wings_laws() {
         for p in Profile::ALL {
             let s = p.spec();
-            if p == Profile::ProMix01 {
-                assert_eq!(s.fader, FaderLaw::PROMIX01);
+            if p == Profile::ProMix01 || p == Profile::Yamaha02R {
+                assert_eq!(s.fader.steps, 128, "a Yamaha's");
                 continue;
             }
             // The X32's faders run the same law on 1024 steps.

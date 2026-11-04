@@ -109,6 +109,13 @@ public:
     ld::ProfileId getProfile() const noexcept { return (ld::ProfileId) ld::ld_engine_profile (engine); }
     /** The console's fader law (its profile's). */
     FaderLaw getFaderLaw() const { ld::FaderLawC c {}; ld::ld_engine_fader_law (engine, &c); return FaderLaw::of (c); }
+    /** The fader law of a strip of `kind` (ld::StripKindId): an 02R's STEREO has its own. */
+    FaderLaw getFaderLaw (int kind) const
+    {
+        ld::FaderLawC c {};
+        ld::ld_engine_fader_law_of (engine, kind, &c);
+        return FaderLaw::of (c);
+    }
     /** The remote protocols the console speaks (its profile's): its MIDI protocol
         (MidiProtocol::Id) and its network protocols (bits: 1 WING discovery, 2 WING OSC,
         4 WING native). */

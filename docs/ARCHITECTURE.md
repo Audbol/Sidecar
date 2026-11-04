@@ -285,7 +285,13 @@ of any size, of which the WING is one configuration.
   DYNAMICS sections). The profiles: the Universal, the WING, the X32 (Phase 4) and
   the Yamaha ProMix 01 (Phase 5: `Counts::PROMIX01`, `FaderLaw::PROMIX01`,
   `PROMIX01_PORT_GROUPS`, `Palette::PROMIX01`; C ABI 43 profile 3; its models in
-  `livedaw_dsp::promix`, its chains `chain::PROMIX01_*`). A profile's buses, mains
+  `livedaw_dsp::promix`, its chains `chain::PROMIX01_*`) and the Yamaha 02R (Phase
+  6: `Counts::Y02R`, `FaderLaw::Y02R` and STEREO's `Y02R_STEREO` (a profile's mains
+  may have their own law: `ProfileSpec::main_fader`, `fader_for`; C ABI 45
+  `ld_engine_fader_law_of`), `Y02R_PORT_GROUPS`, `Palette::Y02R`, the strip slots
+  of `profile::y02r`; C ABI 45 profile 4). A strip's factory settings, colour
+  and name come from its slot (`Strip::of_profile_in`): a bus's id is its slot, a
+  channel's isn't. A profile's buses, mains
   and matrices may have several orders (`ProfileSpec::output_orders`, picked by the
   strip's process order: the ProMix's dynamics PRE or POST fader).
 - `livedaw-promix` (Phase 5): the ProMix 01 over the engine. `State` (its three

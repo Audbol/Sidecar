@@ -68,6 +68,12 @@ impl Counts {
     /// the effect returns RTN1-2), 4 buses (SEND1-4), 1 main (ST OUT), no
     /// matrices, DCAs or mute groups, 2 FX slots (its internal effects).
     pub const PROMIX01: Counts = Counts { channels: 16, aux: 3, buses: 4, mains: 1, matrices: 0, dcas: 0, mute_groups: 0, fx: 2 };
+
+    /// The Yamaha 02R's: 36 channels (MIC/LINE 1-16, LINE 17/18-23/24 stereo,
+    /// TAPE 1-16), 2 aux (the effect returns EFF1-2), 16 buses (BUS 1-8, AUX
+    /// 1-8), 1 main (STEREO), no matrices, DCAs or mute groups (its fader and
+    /// mute groups are its own), 2 FX slots (its internal effects).
+    pub const Y02R: Counts = Counts { channels: 36, aux: 2, buses: 16, mains: 1, matrices: 0, dcas: 0, mute_groups: 0, fx: 2 };
 }
 
 impl Default for Counts {

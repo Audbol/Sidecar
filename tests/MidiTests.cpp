@@ -312,6 +312,29 @@ private:
         setShownProfile (ld::kProfileWing);
         engine.configure (nullptr);
         expect (engine.getProfile() == ld::kProfileWing);
+
+        beginTest ("A 02R (Phase 6 step 1): its counts, fader laws and names; no remote yet");
+        engine.configureProfile (ld::kProfileYamaha02R);
+        expect (engine.getProfile() == ld::kProfileYamaha02R);
+        expectEquals ((int) engine.getChannels().size(), 36);
+        expectEquals ((int) engine.getAux().size(), 2);
+        expectEquals ((int) engine.getBuses().size(), 16);
+        expectEquals ((int) engine.getMains().size(), 1);
+        expect (engine.getMatrices().empty(), "no matrices");
+        expect (engine.getRemotes().midi == MidiProtocol::None, "its MIDI comes with step 5");
+        expectEquals (engine.getFaderLaw().steps, 128);
+        expectEquals (engine.getFaderLaw().maxDb(), 10.0f);
+        expectEquals (engine.getFaderLaw (ld::kMain).maxDb(), 0.0f, "STEREO: 0 dB at the top");
+        expect (engine.getFaderLaw (ld::kBus) == engine.getFaderLaw());
+        expectEquals (engine.getChannels()[20]->getName(), juce::String ("TAPE 1"));
+        expectEquals (engine.getAux()[1]->getName(), juce::String ("EFF2"));
+        expectEquals (engine.getBuses()[15]->getName(), juce::String ("AUX 8"));
+        setShownProfile (ld::kProfileYamaha02R);
+        expectEquals (engine.getChannels()[16]->getLabel(), juce::String ("LINE 1"));
+        expectEquals (engine.getBuses()[8]->getLabel(), juce::String ("AUX 1"));
+        setShownProfile (ld::kProfileWing);
+        engine.configure (nullptr);
+        expect (engine.getProfile() == ld::kProfileWing);
     }
 
     void testFaderLaw()

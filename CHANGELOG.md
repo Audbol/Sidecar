@@ -228,6 +228,29 @@ Phase 5, the Yamaha ProMix 01 (`docs/UNIVERSAL_MIXER.md`), begins.
   LIBRARY, GROUP, PAIR, UTILITY, MIDI), the cursor keys, ENTER and the PARAMETER wheel, the
   screen taking touch, SCENE MEMORY (STORE, RECALL, INC, DEC) and the stereo LED meter.
 
+Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
+
+- An 02R profile (Version 2): a console can be configured as an 02R:
+  - 36 channels: MIC/LINE 1-16, LINE 17/18-23/24 stereo, TAPE 1-16
+  - the two effect returns EFF1-2
+  - 16 buses: BUS 1-8 and AUX 1-8, with AUX 7-8 feeding its two FX slots
+  - STEREO
+  - no matrices, DCAs or mute groups
+
+  It has:
+  - its 128-step faders: +10 to -90 dB on the channels, 0 to -120 dB on STEREO;
+    the steps between are Sidecar's reading until measured
+  - its port groups: INPUT 1-24, 2TR IN, the four card slots; STEREO OUT, AUX SEND
+    1-6, 2TR OUT
+  - its names: TAPE 1, EFF1, AUX 8, STEREO
+  - its factory patch: the tape returns on card slots 1-2; BUS 1-8 on every slot's
+    outputs
+
+  A show stores it. Its processing, effects and MIDI come with the next steps. C ABI
+  45: profile 4, and `ld_engine_fader_law_of` (a strip kind's fader law).
+- A new channel takes its console's factory settings, colour and name by its slot,
+  not its id (a channel's id is 1-based and kept by shows).
+
 ## [0.2.0] - beta
 
 The first public beta of the Universal Mixer: Sidecar becomes a mixer core without one

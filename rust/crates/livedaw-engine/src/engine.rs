@@ -415,8 +415,13 @@ impl Engine {
     // Structure (message thread)
 
     fn new_strip(&self, st: &Structure, kind: StripKind, id: i32) -> Arc<Strip> {
+        self.new_strip_in(st, kind, id, usize::try_from(id).unwrap_or(0))
+    }
+
+    /// A new strip in `slot` (0-based) of its kind, whose id may differ (a channel's).
+    fn new_strip_in(&self, st: &Structure, kind: StripKind, id: i32, slot: usize) -> Arc<Strip> {
         // Unnamed, as on the WING (the screens show "CH 3" and so on).
-        let s = Arc::new(Strip::of_profile(st.profile.spec(), kind, id));
+        let s = Arc::new(Strip::of_profile_in(st.profile.spec(), kind, id, slot));
         // Its sends to the console's mains and matrices (a matrix has none).
         let (mains, matrices) = match kind {
             StripKind::Matrix => (0, 0),
@@ -468,9 +473,13 @@ impl Engine {
         let id = if id_free { requested_id } else { st.next_channel_id };
         st.next_channel_id = st.next_channel_id.max(id + 1);
 
-        let strip = self.new_strip(st, StripKind::Channel, id);
+        let strip = self.new_strip_in(st, StripKind::Channel, id, index);
+        // Its own input, unless its console's factory patched it (an 02R's
+        // tape returns on the card slots).
         let patched = st.device.num_hw_inputs == 0 || index < st.device.num_hw_inputs;
-        strip.params.input_left.store(if patched { index as i32 } else { -1 }, Relaxed);
+        if strip.params.input_left.load(Relaxed) < 0 {
+            strip.params.input_left.store(if patched { index as i32 } else { -1 }, Relaxed);
+        }
         strip
     }
 

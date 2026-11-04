@@ -100,7 +100,9 @@ use std::sync::Arc;
 // ABI 41 (Phase 4 step 9c): FxParams::source_left / source_right (send effects).
 // ABI 43 (Phase 5 step 1): the ProMix 01 profile (3).
 // ABI 44 (Phase 5 step 5): the ProMix 01's MIDI (ld_promix_*, RemotesC::midi 2).
-pub const LD_ABI_VERSION: i32 = 44;
+// ABI 45 (Phase 6 step 1): the 02R profile (4); a strip kind's fader law
+// (ld_engine_fader_law_of: the 02R's STEREO has its own).
+pub const LD_ABI_VERSION: i32 = 45;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(default)
@@ -627,6 +629,7 @@ fn profile_id(p: Profile) -> i32 {
         Profile::Wing => 1,
         Profile::X32 => 2,
         Profile::ProMix01 => 3,
+        Profile::Yamaha02R => 4,
     }
 }
 
@@ -659,6 +662,18 @@ impl From<&FaderLaw> for LdFaderLaw {
 pub unsafe extern "C" fn ld_engine_fader_law(e: *const Engine, out: *mut LdFaderLaw) {
     if let (Some(e), Some(out)) = (engine(e), out.as_mut()) {
         *out = guard(LdFaderLaw::from(&FaderLaw::WING), || (&e.profile().spec().fader).into());
+    }
+}
+
+/// The fader law of a strip of `kind` (`ProfileSpec::fader_for`): the 02R's
+/// STEREO has its own; else the console's (`ld_engine_fader_law`).
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_fader_law_of(e: *const Engine, kind: i32, out: *mut LdFaderLaw) {
+    if let (Some(e), Some(out)) = (engine(e), out.as_mut()) {
+        *out = guard(LdFaderLaw::from(&FaderLaw::WING), || {
+            let spec = e.profile().spec();
+            (&StripKind::from_i32(kind).map_or(spec.fader, |k| spec.fader_for(k))).into()
+        });
     }
 }
 

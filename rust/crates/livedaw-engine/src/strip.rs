@@ -378,6 +378,14 @@ impl Strip {
 
     /// A strip of a console of `spec`'s profile.
     pub fn of_profile(spec: &'static ProfileSpec, kind: StripKind, id: i32) -> Self {
+        Self::of_profile_in(spec, kind, id, usize::try_from(id).unwrap_or(0))
+    }
+
+    /// A strip of a console of `spec`'s profile in `slot` (0-based) of its kind:
+    /// its factory settings, colour and name are the slot's. A bus's id is its
+    /// slot; a channel's id (1-based, kept by shows) isn't, and an 02R's
+    /// channels differ by slot (LINE, TAPE).
+    pub fn of_profile_in(spec: &'static ProfileSpec, kind: StripKind, id: i32, slot: usize) -> Self {
         Self {
             spec,
             kind,
@@ -385,9 +393,9 @@ impl Strip {
             // Buses are numbered by their slot (`id`), whose factory settings differ;
             // a console with its own factory colours (`Palette::factory`) uses them.
             params: {
-                let p = StripParams::new_in_slot_of(kind, usize::try_from(id).unwrap_or(0), spec);
+                let p = StripParams::new_in_slot_of(kind, slot, spec);
                 if let Some(colour) = spec.palette.factory {
-                    p.colour.store(colour(kind, usize::try_from(id).unwrap_or(0)), Relaxed);
+                    p.colour.store(colour(kind, slot), Relaxed);
                 }
                 p
             },
@@ -397,7 +405,7 @@ impl Strip {
             sends: SendBank::of(spec, kind, usize::try_from(id).unwrap_or(0)),
             mains: Bank::new(MAX_MAINS, MAIN_SEND_PAGE, kind, usize::try_from(id).unwrap_or(0), spec),
             matrices: Bank::new(MAX_MATRICES, MAIN_SEND_PAGE, kind, usize::try_from(id).unwrap_or(0), spec),
-            name: Mutex::new(spec.factory_name.and_then(|f| f(kind, usize::try_from(id).unwrap_or(0))).unwrap_or_default()),
+            name: Mutex::new(spec.factory_name.and_then(|f| f(kind, slot)).unwrap_or_default()),
             tags: Mutex::new(String::new()),
             console: StripConsole::default(),
             pdc: StripPdc::default(),

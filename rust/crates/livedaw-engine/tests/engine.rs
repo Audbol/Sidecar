@@ -513,6 +513,41 @@ fn a_promix01_has_no_matrices_dcas_or_mute_groups_and_runs_its_sends_and_returns
 }
 
 #[test]
+fn an_02r_runs_its_tape_returns_aux_sends_and_stereo() {
+    use livedaw_engine::Profile;
+    let mut rig = Rig::new(1, 48, 64);
+    rig.engine.configure(&ConsoleConfig { profile: Profile::Yamaha02R, counts: Counts::Y02R });
+    let e = &rig.engine;
+    assert_eq!(e.profile(), Profile::Yamaha02R);
+    assert_eq!((e.num_strips(StripKind::Channel), e.num_strips(StripKind::Aux), e.num_strips(StripKind::Bus)), (36, 2, 16));
+    assert_eq!((e.num_strips(StripKind::Main), e.num_strips(StripKind::Matrix)), (1, 0));
+    assert_eq!((e.counts().dcas, e.counts().mute_groups, e.config().counts.fx), (0, 0, 2));
+    // AUX 7-8 feed FX 1-2; the effect returns take them.
+    assert_eq!(e.controls.fx[0].source_left.load(Relaxed), livedaw_engine::routing::strip_source_input(StripKind::Bus, 14, 0));
+    assert_eq!(rig.strip(StripKind::Aux, 1).params.input_left.load(Relaxed), livedaw_engine::sources::FX_RETURN_SOURCE_BASE + 2);
+    // TAPE 1 (card slot 1's first input) at 0 dB reaches STEREO OUT and 2TR
+    // OUT D1, and AUX 1 (PRE, at 0 dB, its master at 0 dB) on AUX SEND 1.
+    let tape1 = rig.ch(20);
+    assert_eq!(tape1.name(), "TAPE 1");
+    tape1.params.fader_db.store(0.0);
+    let aux1 = tape1.sends.get_or_create(8).unwrap();
+    aux1.level_db.store(0.0);
+    aux1.enabled.store(true, Relaxed);
+    aux1.mode.store(livedaw_engine::sends::send_mode::PRE, Relaxed);
+    rig.strip(StripKind::Main, 0).params.fader_db.store(0.0);
+    rig.set_input(32, 0.5);
+    rig.run(30);
+    assert!(rig.out(0) > 0.2 && close(rig.out(0), rig.out(1), 1e-5), "STEREO OUT: {} {}", rig.out(0), rig.out(1));
+    assert!(close(rig.out(8), rig.out(0), 1e-6), "2TR OUT D1");
+    assert!(close(rig.out(2), 0.5, 1e-3), "AUX 1 on AUX SEND 1: {}", rig.out(2));
+    assert_eq!(rig.out(3), 0.0, "AUX 2 has nothing");
+    // Its channel faders and STEREO's run on their own laws.
+    let spec = rig.engine.profile().spec();
+    assert_eq!(spec.fader.to_pos(0.0), 103.0 / 127.0);
+    assert_eq!(spec.fader_for(StripKind::Main).to_pos(0.0), 1.0);
+}
+
+#[test]
 fn a_promix01s_st_out_runs_its_dynamics_pre_or_post_fader_and_its_channels_their_eq() {
     use livedaw_engine::Profile;
     let mut rig = Rig::new(1, 1, 2);

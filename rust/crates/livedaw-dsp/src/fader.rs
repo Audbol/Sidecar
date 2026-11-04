@@ -84,6 +84,42 @@ impl FaderLaw {
         steps: 128,
     };
 
+    /// The Yamaha 02R's channel faders: 128 steps, +10 dB at the top, -90 dB
+    /// on the step above -oo (02R User's Guide p.192). The guide gives no table
+    /// of the steps between, so the breakpoints are Sidecar's reading of the
+    /// panel's scale (10, 5, 0, 5, 10, 15, 20, 30, 40, 50): 0 dB on step 103,
+    /// half a dB a step down to -20 dB, then wider; to be measured on a console.
+    pub const Y02R: FaderLaw = FaderLaw {
+        points: &[
+            (1.0 / 127.0, -90.0),
+            (25.0 / 127.0, -50.0),
+            (35.0 / 127.0, -40.0),
+            (48.0 / 127.0, -30.0),
+            (63.0 / 127.0, -20.0),
+            (83.0 / 127.0, -10.0),
+            (103.0 / 127.0, 0.0),
+            (1.0, 10.0),
+        ],
+        steps: 128,
+    };
+
+    /// The 02R's STEREO fader: 128 steps, 0 dB at the top, -120 dB on the step
+    /// above -oo (p.192); the steps between are Sidecar's reading of its scale
+    /// (0, 5, 10, 15, 20, 30, 40, 50, 60, 70): half a dB a step down to -20 dB.
+    pub const Y02R_STEREO: FaderLaw = FaderLaw {
+        points: &[
+            (1.0 / 127.0, -120.0),
+            (17.0 / 127.0, -70.0),
+            (27.0 / 127.0, -60.0),
+            (39.0 / 127.0, -50.0),
+            (53.0 / 127.0, -40.0),
+            (69.0 / 127.0, -30.0),
+            (87.0 / 127.0, -20.0),
+            (1.0, 0.0),
+        ],
+        steps: 128,
+    };
+
     /// The level at the top of the travel.
     pub fn max_db(&self) -> f32 {
         self.points.last().map_or(FADER_MAX, |p| p.1)
@@ -172,6 +208,21 @@ mod tests {
         assert_eq!((law.to_pos(0.0) * 127.0).round(), 115.0);
         assert_eq!((law.to_pos(-66.0) * 127.0).round(), 1.0, "-66 dB is step 1");
         assert_eq!(law.to_pos(-66.5), 0.0, "below it: -oo");
+    }
+
+    #[test]
+    fn the_02rs_laws() {
+        for (law, top, bottom, zero) in [(FaderLaw::Y02R, 10.0, -90.0, 103.0), (FaderLaw::Y02R_STEREO, 0.0, -120.0, 127.0)] {
+            assert!(law.points.len() <= FaderLaw::MAX_POINTS);
+            assert_eq!((law.steps, law.max_db()), (128, top));
+            let step = |k: i32| law.to_db(k as f32 / 127.0);
+            assert_eq!(step(0), FADER_MIN, "the bottom is -oo");
+            assert!((step(1) - bottom).abs() < 1e-3);
+            assert!((1..128).all(|k| step(k) > step(k - 1)), "every step its own level");
+            assert_eq!((law.to_pos(0.0) * 127.0).round(), zero, "0 dB");
+            // Every breakpoint on a step.
+            assert!(law.points.iter().all(|p| ((p.0 * 127.0).round() - p.0 * 127.0).abs() < 1e-4));
+        }
     }
 
     #[test]

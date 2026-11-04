@@ -161,6 +161,42 @@ pub static PROMIX01_PORT_GROUPS: &[PortGroup] = &[
     PortGroup::new("BUS DIRECT", "BUS", IN, None, 0),
 ];
 
+/// The Yamaha 02R's port groups (Phase 6), in the WING's places as the
+/// X32's are. Its interface inputs: 1-16 MIC/LINE, 17-24 LINE (LOCAL IN), 25-28
+/// 2TR IN D1 and D2 (AUX IN's place), the four I/O card slots' 8 inputs each
+/// from 33 (AES50 A, B, C and ST CONNECT's places: slot 1 the tape returns
+/// 1-8, slot 2 9-16); outputs: 1-2 STEREO OUT (LOCAL OUT's), 3-8 AUX SEND 1-6
+/// (AUX OUT's), 9-12 2TR OUT D1 and D2 (AES/EBU OUT's), the slots' 8 outputs
+/// each from 33 (MAN pp.11-15, p.39). Its sources: the oscillator, BUS 1-8,
+/// AUX 1-8 and STEREO; it has no network or USB ports.
+pub static Y02R_PORT_GROUPS: &[PortGroup] = &[
+    PortGroup::new("INPUT", "IN", IN, Some(0), 24),
+    PortGroup::new("2TR IN", "2TR", IN, Some(24), 4),
+    PortGroup::new("AES/EBU IN", "AES", IN, None, 0),
+    PortGroup::new("OSCILLATOR", "OSC", IN, Some(OSC_SOURCE_BASE), NUM_OSCILLATORS as i32),
+    PortGroup::new("SLOT 1", "S1", BOTH, Some(32), 8),
+    PortGroup::new("SLOT 2", "S2", BOTH, Some(40), 8),
+    PortGroup::new("SLOT 3", "S3", BOTH, Some(48), 8),
+    PortGroup::new("SLOT 4", "S4", BOTH, Some(56), 8),
+    PortGroup::new("USB AUDIO", "USB", BOTH, None, 0),
+    PortGroup::new("WLIVE PLAY", "PLAY", IN, Some(PLAYBACK_SOURCE_BASE), NUM_PLAYBACK_CHANNELS as i32),
+    PortGroup::new("DANTE", "DAN", BOTH, None, 0),
+    PortGroup::new("USB PLAYER", "PLAYER", IN, Some(USB_PLAYER_SOURCE_BASE), USB_CHANNELS as i32),
+    PortGroup::new("BUS / AUX", "BUS", IN, Some(BUS_SOURCES), 2 * 16),
+    PortGroup::new("STEREO", "ST", IN, Some(MAIN_SOURCES), 2),
+    PortGroup::new("MATRIX", "MTX", IN, None, 0),
+    PortGroup::new("USER SIGNAL", "USR", IN, None, 0),
+    PortGroup::new("MONITOR", "MON", IN, None, 0),
+    PortGroup::new("FX SEND", "FX", IN, None, 0),
+    PortGroup::new("STEREO OUT", "ST", OUT, Some(0), 2),
+    PortGroup::new("AUX SEND", "AUX", OUT, Some(2), 6),
+    PortGroup::new("2TR OUT", "2TR", OUT, Some(8), 4),
+    PortGroup::new("WLIVE REC", "REC", OUT, None, 0),
+    PortGroup::new("RECORDER", "REC", OUT, None, USB_CHANNELS as i32),
+    PortGroup::new("CH DIRECT", "CH", IN, None, 0),
+    PortGroup::new("BUS DIRECT", "BUS", IN, None, 0),
+];
+
 /// The group (of `groups`) an engine index belongs to, and its number there.
 pub fn group_of(groups: &'static [PortGroup], output: bool, index: i32) -> Option<(&'static PortGroup, i32)> {
     groups.iter().filter(|g| if output { g.output } else { g.input }).find_map(|g| Some((g, g.number_of(index)?)))
@@ -236,5 +272,28 @@ mod tests {
         assert_eq!(group_of(g, true, 9).map(|(g, n)| (g.name, n)), Some(("DIGITAL OUT", 1)));
         let send4 = strip_source_input(StripKind::Bus, 3, 0);
         assert_eq!(group_of(g, false, send4).map(|(g, n)| (g.prefix, n)), Some(("SEND", 6)));
+    }
+
+    #[test]
+    fn the_02rs_groups_are_its_ports_in_the_wings_places() {
+        let (g, w) = (Y02R_PORT_GROUPS, WING_PORT_GROUPS);
+        assert_eq!(g.len(), w.len());
+        for (p, wing) in g.iter().zip(w) {
+            assert!(p.input == wing.input || p.first.is_none() || wing.first.is_none(), "{}", p.name);
+            assert!(p.output == wing.output || p.first.is_none() || wing.first.is_none(), "{}", p.name);
+        }
+        for group in g.iter().filter(|g| g.input && g.first.is_some()) {
+            for n in 0..group.size {
+                let i = group.port(n).unwrap();
+                assert!(source_index(i).is_some() || strip_source(i).is_some(), "{} {}", group.prefix, n + 1);
+            }
+        }
+        assert_eq!(group_of(g, false, 23).map(|(g, n)| (g.name, n)), Some(("INPUT", 23)));
+        assert_eq!(group_of(g, false, 32).map(|(g, n)| (g.name, n)), Some(("SLOT 1", 0)), "TAPE 1");
+        assert_eq!(group_of(g, false, 47).map(|(g, n)| (g.name, n)), Some(("SLOT 2", 7)), "TAPE 16");
+        assert_eq!(group_of(g, true, 7).map(|(g, n)| (g.name, n)), Some(("AUX SEND", 5)));
+        assert_eq!(group_of(g, true, 63).map(|(g, n)| (g.name, n)), Some(("SLOT 4", 7)));
+        let aux8 = strip_source_input(StripKind::Bus, 15, 0);
+        assert_eq!(group_of(g, false, aux8).map(|(g, n)| (g.prefix, n)), Some(("BUS", 30)));
     }
 }

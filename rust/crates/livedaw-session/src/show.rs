@@ -1029,7 +1029,7 @@ impl Show {
         }
         let elapsed = now.saturating_duration_since(self.fade_start).as_secs_f64();
         let t = (elapsed / self.fade_duration.as_secs_f64().max(0.001)).clamp(0.0, 1.0) as f32;
-        let law = engine.profile().spec().fader;
+        let spec = engine.profile().spec();
         self.fades.retain_mut(|f| {
             let Some(v) = f.param.value(engine) else { return false };
             if f.moved(v.load()) {
@@ -1040,6 +1040,11 @@ impl Show {
             } else if f.param.is_level() {
                 // Along the fader's travel, as a moving fader goes: a fade up
                 // from -oo is heard from the start, not only in its second half.
+                // A fader along its own law (the 02R's STEREO has one of its own).
+                let law = match &f.param {
+                    FadeParam::Fader(s) => spec.fader_for(s.kind()),
+                    _ => spec.fader,
+                };
                 let (from, to) = (law.to_pos(f.start), law.to_pos(f.target));
                 law.to_db(from + t * (to - from))
             } else {

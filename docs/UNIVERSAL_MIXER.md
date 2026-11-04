@@ -953,16 +953,30 @@ Three layers:
    - FX 1-2 are its effects, fed by AUX 7-8
    
    Steps, each with every check green and the WING, X32 and ProMix 01 unchanged:
-   1. **The 02R profile value**:
-      - `Profile::Yamaha02R`: show id `02r`, C ABI profile 4.
+   1. **The 02R profile value** (done):
+      - `Profile::Yamaha02R`: show id `02r`, C ABI 45 profile 4.
       - Its counts (`Counts::Y02R`): 36 channels, 2 aux, 16 buses, 1 main, no
         matrices, DCAs or mute groups, 2 FX slots.
       - Its fader laws: the channels' `FaderLaw::Y02R`, and STEREO's own
-        (`FaderLaw::Y02R_STEREO`), so a profile's law can now depend on the
-        strip's kind.
-      - Its labels and slot ranges (CH, ST IN, TAPE, EFF, BUS, AUX, STEREO).
-      - Its port groups and palette.
-      - Its factory strip and output patch.
+        (`FaderLaw::Y02R_STEREO`), so a profile's mains can now have their own law
+        (`ProfileSpec::main_fader`, `fader_for`; scene fades use it; C ABI 45
+        `ld_engine_fader_law_of`). The steps between the ends are Sidecar's
+        reading of the panels' scales: 0 dB on step 103 of the channels' faders,
+        on the top of STEREO's.
+      - Its labels and slot ranges: CH 1-16, LINE 1-4, TAPE 1-16, EFF, BUS, AUX
+        (bus slots 9-16), STEREO; the names TAPE 1, LINE 17/18, EFF1, AUX 8.
+      - Its port groups (`Y02R_PORT_GROUPS`, in the WING's places):
+        - INPUT 1-24, 2TR IN D1-D2
+        - SLOT 1-4 (8 each, both ways)
+        - STEREO OUT, AUX SEND 1-6, 2TR OUT D1-D2
+      - Its palette: the ProMix 01's eight colours, one per strip kind.
+      - Its factory strip: LINE 17-24 stereo on inputs 17-24, TAPE 1-16 on card
+        slots 1-2, EFF1-2 on FX 1-2, BUS and AUX mono at 0 dB.
+      - Its output patch: STEREO on STEREO OUT and 2TR OUT D1-D2, AUX 1-6 on AUX
+        SEND 1-6, BUS 1-8 on every slot's outputs.
+      - It still runs the WING's chains and models and has no remote.
+      - A strip's factory settings, colour and name now come from its slot
+        (`Strip::of_profile_in`), not from a channel's 1-based id.
    2. **Its processing**:
       - The 4-band EQ.
       - The six dynamics types. The compander is a new curve: compress above the
