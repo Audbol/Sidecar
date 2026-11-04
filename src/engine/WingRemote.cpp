@@ -98,6 +98,15 @@ juce::String WingRemote::writeX32Scene (const juce::String& name, const juce::St
     return takeString (ld::ld_x32_scene_write (x32, n.data, n.size, t.data, t.size));
 }
 
+juce::String WingRemote::runX32Text (const juce::String& text, int& set)
+{
+    const Utf8 t (text);
+    juce::int32 n = -1;
+    auto answer = takeString (ld::ld_x32_sysex (x32, t.data, t.size, &n));
+    set = (int) n;
+    return answer;
+}
+
 WingRemote::X32SceneRead WingRemote::readX32Scene (const juce::String& text)
 {
     const Utf8 t (text);

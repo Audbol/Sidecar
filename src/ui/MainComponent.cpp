@@ -373,9 +373,11 @@ void MainComponent::syncRemotes()
     if (midi == nullptr ? remotes.midi != MidiProtocol::None : midi->getId() != remotes.midi)
     {
         ctx.midi = nullptr;
+        ctx.consoleMidi = nullptr;
         midi.reset(); // its devices close before the next one opens them
         midi = MidiProtocol::create (remotes.midi, engine, show);
         ctx.midi = midi != nullptr ? midi->asWing() : nullptr;
+        ctx.consoleMidi = midi.get();
         midiui::connect (ctx);
         if (midi != nullptr && ctx.midi == nullptr)
             midi->loadSettings (settings); // another console's: its own devices

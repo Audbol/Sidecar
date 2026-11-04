@@ -10,6 +10,7 @@ use super::session::{str_arg, LdString};
 use livedaw_engine::{Engine, Profile};
 use livedaw_wing::server::{EngineHandle, EnginePtr};
 use livedaw_x32::map::State;
+use livedaw_x32::sysex::{self, Done};
 use livedaw_x32::{scn, Config, Console, Identity, X32Server};
 use std::sync::Arc;
 
@@ -162,6 +163,38 @@ pub unsafe extern "C" fn ld_x32_scene_read(x: *const LdX32, text: *const u8, len
     })
 }
 
+/// ABI 42: runs an OSC command's text from a MIDI SysEx message (`F0 00 20 32
+/// 32 <text> F7`, the host strips the framing) on the console. Returns the
+/// answer to a query (an address alone: its `/node` line), else null; `set`
+/// (if not null) gets how many values were set, -1 for an unknown address or
+/// a console that isn't an X32.
+///
+/// # Safety
+/// `x` is from `ld_x32_create` (or null); `text` holds `len` bytes; `set` is null or writable.
+#[no_mangle]
+pub unsafe extern "C" fn ld_x32_sysex(x: *const LdX32, text: *const u8, len: usize, set: *mut i32) -> *mut LdString {
+    let set = set.as_mut();
+    let Some(x) = x.as_ref() else {
+        if let Some(s) = set {
+            *s = -1;
+        }
+        return std::ptr::null_mut();
+    };
+    let text = str_arg(text, len);
+    let done = guard(Done::Unknown, || x.with_console(|c| sysex::command(c, &text)).unwrap_or(Done::Unknown));
+    if let Some(s) = set {
+        *s = match &done {
+            Done::Set(n) => i32::try_from(*n).unwrap_or(i32::MAX),
+            Done::Answer(_) => 0,
+            Done::Unknown => -1,
+        };
+    }
+    match done {
+        Done::Answer(line) => LdString::new(line),
+        _ => std::ptr::null_mut(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -210,6 +243,26 @@ mod tests {
             let text = Box::from_raw(ld_x32_scene_write(x, name.as_ptr(), name.len(), std::ptr::null(), 0));
             assert!(text.0.starts_with("#2.7# \"Gig\" \"\""));
             assert!(text.0.contains("\n/ch/01/config \"Kick\" 1 RD 1\n"));
+            ld_x32_destroy(x);
+        }
+    }
+
+    #[test]
+    fn a_sysex_text_sets_and_answers() {
+        let engine = Engine::new(0);
+        engine.configure(&ConsoleConfig { profile: Profile::X32, counts: Counts::X32 });
+        unsafe {
+            let x = ld_x32_create(&engine);
+            let mut set = 0;
+            let cmd = "/ch/03/mix/on OFF";
+            assert!(ld_x32_sysex(x, cmd.as_ptr(), cmd.len(), &mut set).is_null());
+            assert_eq!(set, 1);
+            let query = "/ch/03/mix/on";
+            let answer = Box::from_raw(ld_x32_sysex(x, query.as_ptr(), query.len(), &mut set));
+            assert_eq!((answer.0.as_str(), set), ("/ch/03/mix/on OFF", 0));
+            let unknown = "/nope 1";
+            assert!(ld_x32_sysex(x, unknown.as_ptr(), unknown.len(), &mut set).is_null());
+            assert_eq!(set, -1);
             ld_x32_destroy(x);
         }
     }

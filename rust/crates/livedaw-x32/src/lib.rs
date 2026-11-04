@@ -8,6 +8,7 @@
 //!   without an equivalent are kept by the server.
 //! * [`meters`]: the meter replies.
 //! * [`scn`]: scene files (`.scn`), written and read.
+//! * [`sysex`]: OSC commands as text in MIDI SysEx.
 //! * [`server`]: the server itself.
 //!
 //! The OSC codec and the engine handle are `livedaw-wing`'s.
@@ -20,6 +21,7 @@ pub mod map;
 pub mod meters;
 pub mod scn;
 pub mod server;
+pub mod sysex;
 pub mod value;
 
 pub use map::{Console, Found, Target, Tree};

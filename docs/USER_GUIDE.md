@@ -960,6 +960,13 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
 - **X32 COMPACT.** SETUP's first encoder switches the surface between the X32 and the
   X32 COMPACT: 8 input faders, in the layers CH 1-8 .. CH 25-32, AUX IN / USB, FX RTN,
   BUS 1-8 and BUS 9-16. The console is the same.
+- **MIDI.** An X32 console speaks the X32's MIDI map: on MIDI channel 1 the faders
+  (CC 0-79, 95 is 0 dB) and scenes (program change), on channel 2 the mutes, the
+  mute groups (CC 80-85) and the current scene's snippets (program change), on
+  channel 3 the pans, and OSC commands as text in SysEx. SETUP's **remote** tab
+  chooses the MIDI IN and MIDI OUT devices (turn the encoder to one, push **USE**)
+  and, per kind, whether it is received, sent, both or neither; its second LAYER
+  turns OSC over SysEx on or off and **SEND ALL** sends every value again.
 
 - **Effects.** An X32 console has the X32's effects rack: FX 1-4 take any of its 61
   models (reverbs, delays, modulation, pitch and the insert models), FX 5-8 its 34
@@ -968,9 +975,8 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
   As on an X32, FX 1-4 are fed from buses 13-16 (each effect's SOURCE can be any
   bus or M/C, or INS to use it as an insert) and come back on the FX return channels
   (FX RTN), ready to fade up.
-  X32 remote apps and scene files see and set them. The models' sound is still being
-  built: every one of the X32's effects works, most on the WING's devices of
-  the same design; they haven't yet been measured against a real X32, so their
+  X32 remote apps and scene files see and set them. Every one of the X32's effects
+  works, most on the WING's devices of the same design; they haven't yet been measured against a real X32, so their
   sound may differ from the console's in detail.
 
 Patching, the FX rack, show files and copy and paste are on the Universal Mixer for now.

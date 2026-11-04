@@ -8,6 +8,11 @@
 
 #include <array>
 
+namespace livedaw
+{
+class X32Midi;
+}
+
 namespace livedaw::ui::x32
 {
 
@@ -95,6 +100,10 @@ private:
     void paintRows (juce::Graphics&, juce::Rectangle<int>, const juce::StringArray& left, const juce::StringArray& right);
     void paintMeters (juce::Graphics&, juce::Rectangle<int>);
     void paintSends (juce::Graphics&, juce::Rectangle<int>, Strip&);
+    void paintRemote (juce::Graphics&, juce::Rectangle<int>);
+    /** SETUP > remote: the X32's MIDI (step 6b). */
+    void assignRemoteEncoders();
+    X32Midi* x32Midi() const;
 
     UiContext& ctx;
     const universal::Theme& theme;
@@ -105,6 +114,10 @@ private:
     std::array<DisplayKnob, 6> knobs;
     SceneFiles sceneFiles { ctx };
     juce::String libraryStatus; // what the last IMPORT / EXPORT .scn did
+    // SETUP > remote: the devices an encoder offers (shown, setting values)
+    // and the one it is on (a push uses it), for MIDI IN [0] and OUT [1].
+    std::array<juce::StringArray, 2> midiChoices, midiValues;
+    std::array<int, 2> midiPick { 0, 0 };
     std::vector<std::unique_ptr<universal::ToggleKey>> screenKeys, pushKeys, muteGroupKeys;
     universal::ToggleKey pagePrev, pageNext, layerUp, layerDown;
     universal::ResponseView eqView;

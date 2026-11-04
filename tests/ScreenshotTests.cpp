@@ -289,6 +289,22 @@ private:
             expect (homeOut.openedOk() && juce::PNGImageFormat().writeImageToStream (home, homeOut), homeFile.getFullPathName());
         }
 
+        // SETUP > remote (step 6b): the X32's MIDI devices and what goes in and out.
+        display.showScreen (ui::x32::Display::Screen::Setup, 1);
+        expectEquals (display.getEncoder (0).turn.label, juce::String ("MIDI IN"));
+        expectEquals (display.getEncoder (2).turn.label, juce::String ("PROGRAM"));
+        display.setLayer (1);
+        expectEquals (display.getEncoder (0).turn.label, juce::String ("OSC SYSEX"));
+        if (folder.isNotEmpty())
+        {
+            display.setLayer (0);
+            const auto remote = display.createComponentSnapshot (display.getLocalBounds(), true, 1.0f);
+            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile ("x32-display-remote.png");
+            file.deleteFile();
+            juce::FileOutputStream out (file);
+            expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (remote, out), file.getFullPathName());
+        }
+
         // The X32 COMPACT: 8 input faders in eight layers, chosen on SETUP.
         display.showScreen (ui::x32::Display::Screen::Setup);
         expectEquals (display.getEncoder (0).turn.label, juce::String ("MODEL"));

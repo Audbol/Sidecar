@@ -3,6 +3,7 @@
 #include "engine/MixerEngine.h"
 #include "engine/Show.h"
 #include "engine/Strip.h"
+#include "engine/WingRemote.h"
 
 namespace livedaw
 {
@@ -31,6 +32,7 @@ X32Midi::~X32Midi()
 
 void X32Midi::loadSettings (juce::PropertiesFile& p)
 {
+    setEnabled (p.getIntValue (enableKey, All));
     ports.open ({ { true, p.getValue (inputKey, MidiPorts::virtualDevice), p.getValue (outputKey, MidiPorts::virtualDevice) } });
 }
 
@@ -138,23 +140,69 @@ void X32Midi::applyValue (int channel, int cc, int value)
 }
 
 //==============================================================================
+int X32Midi::ccBit (int channel, bool tx) noexcept
+{
+    const int rx = channel == kFaderChannel ? RxFader : channel == kMuteChannel ? RxMute : RxPan;
+    return tx ? rx << 1 : rx;
+}
+
 void X32Midi::handleMessage (int port, const juce::MidiMessage& m)
 {
     ports.noteReceived (port);
-    const int ch = m.getChannel();
-    if (m.isProgramChange() && ch == kFaderChannel)
+    if (m.isSysEx())
     {
-        const int scene = m.getProgramChangeNumber();
-        if (juce::isPositiveAndBelow (scene, show.getNumScenes()))
-            show.recallScene (scene);
+        handleSysEx (m);
+        return;
+    }
+    const int ch = m.getChannel();
+    if (m.isProgramChange())
+    {
+        if ((enabled & RxProgram) == 0)
+            return;
+        const int n = m.getProgramChangeNumber();
+        if (ch == kFaderChannel && juce::isPositiveAndBelow (n, show.getNumScenes()))
+        {
+            show.recallScene (n);
+            lastScene = show.getCurrentSceneIndex(); // not sent back
+        }
+        else if (ch == kMuteChannel)
+        {
+            const int scene = show.getCurrentSceneIndex();
+            if (show.getSnippet (scene, n).has_value())
+                show.recallSnippet (scene, n);
+        }
         return;
     }
     if (! m.isController() || ch < kFaderChannel || ch > kPanChannel)
         return;
     const int cc = m.getControllerNumber(), value = m.getControllerValue();
+    if ((enabled & ccBit (ch, false)) == 0)
+        return;
     applyValue (ch, cc, value);
     // Not echoed: what it holds now is what was received (or where it landed).
     last[(size_t) ch - 1][(size_t) cc] = currentValue (ch, cc);
+}
+
+void X32Midi::handleSysEx (const juce::MidiMessage& m)
+{
+    // F0 00 20 32 32 <text> F7: getSysExData() is what lies between F0 and F7.
+    const auto* data = m.getSysExData();
+    const int size = m.getSysExDataSize();
+    if ((enabled & SysEx) == 0 || size < 4 || data[0] != 0x00 || data[1] != 0x20 || data[2] != 0x32 || data[3] != 0x32)
+        return;
+    int end = size;
+    while (end > 4 && data[end - 1] == 0) // some senders end the text with a zero
+        --end;
+    const auto text = juce::String::fromUTF8 (reinterpret_cast<const char*> (data + 4), end - 4);
+    int set = 0;
+    const auto answer = engine.getWing().runX32Text (text, set);
+    if (answer.isEmpty())
+        return;
+    juce::MemoryBlock reply;
+    const juce::uint8 header[] = { 0x00, 0x20, 0x32, 0x32 };
+    reply.append (header, sizeof (header));
+    reply.append (answer.toRawUTF8(), answer.getNumBytesAsUTF8());
+    send (juce::MidiMessage::createSysExMessage (reply.getData(), (int) reply.getSize()));
 }
 
 void X32Midi::sendFeedback()
@@ -167,10 +215,18 @@ void X32Midi::sendFeedback()
             if (v >= 0 && v != seen)
             {
                 seen = v;
-                if (primed)
+                if (primed && (enabled & ccBit (ch, true)) != 0)
                     send (juce::MidiMessage::controllerEvent (ch, cc, v));
             }
         }
+    // A scene recalled on the console: its program change on channel 1.
+    const int scene = show.getCurrentSceneIndex();
+    if (scene != lastScene)
+    {
+        if (primed && scene >= 0 && scene < 128 && (enabled & TxProgram) != 0)
+            send (juce::MidiMessage::programChange (kFaderChannel, scene));
+        lastScene = scene;
+    }
     primed = true;
 }
 
@@ -178,6 +234,7 @@ void X32Midi::resendAll()
 {
     for (auto& a : last)
         a.fill (-1);
+    lastScene = -1;
     primed = true;
     sendFeedback();
 }

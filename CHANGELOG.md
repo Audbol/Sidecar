@@ -131,6 +131,12 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
 - Every X32 effect now has its algorithm: the Program and Midrange EQs run on the two
   halves of the WING's PULSAR EQ, and Tube Stage, Stereo Imager, Edison EX1 and Sound
   Maxer are new devices of Sidecar's own.
+- X32 MIDI: the X32 display's SETUP > remote tab chooses the MIDI input and output and
+  what is received and sent (program changes, faders, mutes, pans, OSC over SysEx), as
+  an X32's MIDI settings do. Program changes on MIDI channel 2 recall the current
+  scene's snippets, a scene recalled on the console goes out as a program change, and
+  OSC commands arrive as text in SysEx (`F0 00 20 32 32 <text> F7`; an address alone
+  is answered with its values). C ABI 42: `ld_x32_sysex`.
 
 ## [0.2.0] - beta
 

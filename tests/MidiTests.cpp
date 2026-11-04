@@ -181,6 +181,55 @@ private:
             ch3.params.mute.store (false);
             engine.muteGroups.set (1, false);
             engine.getDca (0).mute.store (false);
+            x->sendFeedback();
+            sent.clear();
+
+            // Step 6b: each kind received and sent or not.
+            x->setEnabled (X32Midi::All & ~(X32Midi::RxFader | X32Midi::TxMute));
+            x->handleMessage (0, juce::MidiMessage::controllerEvent (1, 2, 0));
+            expectWithinAbsoluteError (ch3.params.faderDb.load(), 0.0f, 0.1f, "faders not received");
+            ch3.params.mute.store (true);
+            x->sendFeedback();
+            expect (sent.empty(), "mutes not sent");
+            ch3.params.mute.store (false);
+            x->setEnabled (X32Midi::All);
+            x->sendFeedback();
+            sent.clear();
+            // A scene recalled on the console goes out as a program change on channel 1;
+            // one received recalls the scene and isn't sent back.
+            const int before = show.getNumScenes();
+            show.addScene ("A");
+            show.addScene ("B");
+            show.recallScene (before + 1);
+            x->sendFeedback();
+            expect (! sent.empty() && sent.back().isProgramChange() && sent.back().getChannel() == 1
+                    && sent.back().getProgramChangeNumber() == before + 1);
+            sent.clear();
+            x->handleMessage (0, juce::MidiMessage::programChange (1, before));
+            expectEquals (show.getCurrentSceneIndex(), before);
+            x->sendFeedback();
+            expect (std::none_of (sent.begin(), sent.end(), [] (const juce::MidiMessage& m) { return m.isProgramChange(); }));
+            // OSC over SysEx: a set, then a query answered by SysEx.
+            sent.clear();
+            x->handleMessage (0, sysexText ({ 0x00, 0x20, 0x32, 0x32 }, "/ch/05/mix/on OFF"));
+            expect (engine.getChannels()[4]->params.mute.load(), "OFF mutes");
+            expect (sent.empty());
+            x->handleMessage (0, sysexText ({ 0x00, 0x20, 0x32, 0x32 }, "/ch/05/mix/on"));
+            expectEquals ((int) sent.size(), 1);
+            if (! sent.empty())
+            {
+                const auto& reply = sent[0];
+                expect (reply.isSysEx());
+                const auto* d = reply.getSysExData();
+                expect (reply.getSysExDataSize() > 4 && d[0] == 0x00 && d[1] == 0x20 && d[2] == 0x32 && d[3] == 0x32);
+                expectEquals (juce::String::fromUTF8 ((const char*) d + 4, reply.getSysExDataSize() - 4), juce::String ("/ch/05/mix/on OFF"));
+            }
+            sent.clear();
+            x->setEnabled (X32Midi::All & ~X32Midi::SysEx);
+            x->handleMessage (0, sysexText ({ 0x00, 0x20, 0x32, 0x32 }, "/ch/05/mix/on ON"));
+            expect (engine.getChannels()[4]->params.mute.load() && sent.empty(), "SysEx off");
+            x->setEnabled (X32Midi::All);
+            engine.getChannels()[4]->params.mute.store (false);
         }
         expectEquals (engine.getFaderLaw().steps, 1024);
         expectEquals (engine.getBuses()[0]->getColourIndex(), 7, "a new bus is CY, as on an X32");

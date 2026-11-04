@@ -29,7 +29,7 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 41;
+constexpr int kAbiVersion = 42;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -1777,6 +1777,10 @@ extern "C"
     LdString* ld_x32_scene_write (const LdX32*, const char* name, size_t nameLen, const char* note, size_t noteLen);
     /** Sets the console from a scene file's text; false if it isn't an X32. */
     bool ld_x32_scene_read (const LdX32*, const char* text, size_t len, LdX32SceneRead* out);
+    /** ABI 42: runs an OSC command's text from a MIDI SysEx message (the
+        framing stripped): the answer to a query (an address alone), else
+        null; `set` gets how many values were set, -1 for an unknown address. */
+    LdString* ld_x32_sysex (const LdX32*, const char* text, size_t len, int32_t* set);
 
     // WING remote (message thread). Destroy it before the engine.
     LdWing* ld_wing_create (const Engine*);

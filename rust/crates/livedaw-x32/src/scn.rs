@@ -70,11 +70,7 @@ pub fn read(c: &Console, text: &str) -> Read {
             continue;
         };
         // Values in the node's order; fewer than all set the first ones.
-        for (i, t) in tree.group(found).into_iter().zip(&f[1..]) {
-            if let Some(v) = c.ty(i).parse(t) {
-                c.set(i, v);
-            }
-        }
+        crate::sysex::set_values(c, tree.group(found), &f[1..]);
         r.applied += 1;
     }
     r

@@ -473,8 +473,18 @@ Three layers:
         Both ways: console changes go out, received values don't echo, nothing is
         sent at start. One port, its devices in the app settings (`x32midi.input`,
         `x32midi.output`; the app's virtual port where the platform has them); the
-        profile names it (C ABI `RemotesC::midi` 1). Still to come: OSC over SysEx,
-        snippets and cues by program change, a settings page for the devices.
+        profile names it (C ABI `RemotesC::midi` 1).
+      - 6b (done): the X32 display's SETUP > remote tab: MIDI IN and OUT (turn to a
+        device, push USE), and per kind (program changes, faders, mutes, pans) OFF,
+        RX, TX or RX + TX, with OSC over SysEx on the second layer, as an X32's
+        `/-prefs/remote/ioenable` bits (`x32midi.enable`). Channel 2 program changes
+        recall the current scene's snippets (an X32's snippets are the show's,
+        Sidecar's a scene's); a scene recalled on the console goes out on channel 1.
+        OSC over SysEx (`F0 00 20 32 32 <text> F7`): `livedaw_x32::sysex` runs the
+        text as the `/` command does; an address alone is a query, answered by
+        SysEx with its `/node` line (Sidecar's reading). C ABI 42 (`ld_x32_sysex`).
+        Not done: cues by program change (channels 3-6; Sidecar has no cue list),
+        the user-assign controls' MIDI.
    7. **Scenes and the interface**: `.scn` import and export (done): `livedaw-x32::scn`
       writes the console as the server's `/node` answers it (`/config` first, the
       header `#2.7# "name" "note" %000000000 1`) and reads a file as its `/` command
@@ -605,12 +615,7 @@ Three layers:
         Sidecar's own from their controls (`wing::fx::x32_misc`). Every X32 model
         now has its algorithm. Still to do, with the FX testing setup on the
         owner's X32: measure each against the console (decay, taps, curves, gain
-        reduction) and correct the mappings marked as Sidecar's reading. The batches
-        were, in order: EQs and dynamics
-        (GEQ, TruEQ, Xtec EQ1 / EQ5, de-esser, limiter, Combinator, Fair, Leisure and
-        Ultimo comps, Wave Designer); enhancers, exciters, imagers, amps and drive.
-        Until a model's algorithm lands it passes the signal through unprocessed
-        and keeps its settings.
+        reduction) and correct the mappings marked as Sidecar's reading.
 
 Each emulation keeps the independent-project disclaimer: not affiliated with or
 endorsed by the console's maker, their trademarks used only to say what is emulated,

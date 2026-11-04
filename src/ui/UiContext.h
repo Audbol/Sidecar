@@ -22,6 +22,7 @@ class Session;
 namespace livedaw
 {
 class MidiRemote;
+class MidiProtocol;
 }
 
 namespace livedaw::ui
@@ -225,6 +226,9 @@ struct UiContext
     /** MIDI remote control and DAW remote control (owned by the main component;
         SETUP > REMOTE and DAW, the surface's DAW key). */
     MidiRemote* midi = nullptr;
+    /** The console's MIDI protocol whatever the console (the X32's: its
+        display's SETUP > remote), or nullptr. Owned by the main component. */
+    MidiProtocol* consoleMidi = nullptr;
 
     /** The web remote's screen mirror and its server (owned by the main
         component; SETUP > REMOTE). */

@@ -1,7 +1,9 @@
 #include "ui/X32Display.h"
 
+#include "engine/MidiPorts.h"
 #include "engine/Models.h"
 #include "engine/Show.h"
+#include "engine/X32Midi.h"
 #include "ui/MeterBank.h"
 
 namespace livedaw::ui::x32
@@ -129,7 +131,7 @@ juce::StringArray Display::getTabs() const
         case Screen::Home:       return { "home", "config", "gate", "dyn", "eq", "sends", "main" };
         case Screen::Meters:     return { "channel", "mix bus", "aux / fx", "in / out" };
         case Screen::Routing:    return { "home" };
-        case Screen::Setup:      return { "global" };
+        case Screen::Setup:      return { "global", "remote" };
         case Screen::Library:    return { "scenes" };
         case Screen::Effects:    return { "home" };
         case Screen::MuteGroups: return { "mute grp" };
@@ -140,6 +142,8 @@ juce::StringArray Display::getTabs() const
 
 int Display::numLayers() const
 {
+    if (screen == Screen::Setup)
+        return tab == 1 ? 2 : 1; // remote: the MIDI kinds, then SysEx
     if (screen != Screen::Home)
         return 1;
     // HOME's home, gate and dynamics tabs have a second layer of encoders.
@@ -367,6 +371,10 @@ void Display::assignEncoders()
                 break;
         }
     }
+    else if (screen == Screen::Setup && tab == 1)
+    {
+        assignRemoteEncoders();
+    }
     else if (screen == Screen::Setup && getModel && setModel)
     {
         KnobBinding m;
@@ -423,10 +431,157 @@ void Display::assignEncoders()
     repaint();
 }
 
+X32Midi* Display::x32Midi() const
+{
+    return dynamic_cast<X32Midi*> (ctx.consoleMidi);
+}
+
+void Display::assignRemoteEncoders()
+{
+    auto& settings = ctx.settings;
+    if (layer == 0)
+    {
+        // MIDI IN and OUT: turn to a device, push to use it.
+        for (int io = 0; io < 2; ++io)
+        {
+            const bool input = io == 0;
+            auto& items = midiChoices[(size_t) io];
+            auto& values = midiValues[(size_t) io];
+            items = { "NONE" };
+            values = { juce::String() };
+            if (MidiPorts::canCreateVirtualPorts())
+            {
+                items.add ("VIRTUAL: SIDECAR MIDI X32");
+                values.add (MidiPorts::virtualDevice);
+            }
+            for (auto& d : input ? MidiPorts::getInputDevices() : MidiPorts::getOutputDevices())
+            {
+                items.add (d.toUpperCase());
+                values.add (d);
+            }
+            const auto key = input ? X32Midi::inputKey : X32Midi::outputKey;
+            const auto current = settings.getValue (key, MidiPorts::virtualDevice);
+            int at = values.indexOf (current);
+            if (at < 0)
+            {
+                // The default (the app's virtual port) where the platform has none (Windows).
+                items.add (current == MidiPorts::virtualDevice ? juce::String ("VIRTUAL: UNAVAILABLE") : "NOT FOUND: " + current.toUpperCase());
+                values.add (current);
+                at = items.size() - 1;
+            }
+            midiPick[(size_t) io] = at;
+
+            KnobBinding b;
+            b.label = input ? "MIDI IN" : "MIDI OUT";
+            const int n = items.size();
+            b.get = [this, io, n] { return n > 1 ? (float) midiPick[(size_t) io] / (float) (n - 1) : 0.0f; };
+            b.set = [this, io, n] (float v)
+            {
+                midiPick[(size_t) io] = juce::jlimit (0, n - 1, juce::roundToInt (v * (float) (n - 1)));
+                repaint();
+            };
+            b.text = [this, io] { return midiChoices[(size_t) io][midiPick[(size_t) io]]; };
+            b.steps = (float) juce::jmax (2, n);
+            encoders[(size_t) io] = encoder (b, "USE", [this, io, key]
+            {
+                ctx.settings.setValue (key, midiValues[(size_t) io][midiPick[(size_t) io]]);
+                if (ctx.consoleMidi != nullptr)
+                    ctx.consoleMidi->loadSettings (ctx.settings);
+                assignEncoders();
+            }, [this, io, key] { return ctx.settings.getValue (key, MidiPorts::virtualDevice) == midiValues[(size_t) io][midiPick[(size_t) io]]; });
+        }
+
+        // Program changes, faders, mutes, pans: OFF, RX, TX or RX + TX.
+        const char* const kinds[] = { "PROGRAM", "FADERS", "MUTES", "PANS" };
+        for (int k = 0; k < 4; ++k)
+        {
+            const int rx = 1 << (2 * k), both = rx | (rx << 1);
+            auto mode = [this, rx, both]
+            {
+                const int bits = ctx.settings.getIntValue (X32Midi::enableKey, X32Midi::All) & both;
+                return (bits & rx ? 1 : 0) + (bits & (rx << 1) ? 2 : 0);
+            };
+            auto setMode = [this, rx, both] (int m)
+            {
+                int bits = ctx.settings.getIntValue (X32Midi::enableKey, X32Midi::All) & ~both;
+                bits |= (m & 1 ? rx : 0) | (m & 2 ? rx << 1 : 0);
+                ctx.settings.setValue (X32Midi::enableKey, bits);
+                if (auto* m32 = x32Midi())
+                    m32->setEnabled (bits);
+                repaint();
+            };
+            KnobBinding b;
+            b.label = kinds[k];
+            b.get = [mode] { return (float) mode() / 3.0f; };
+            b.set = [setMode] (float v) { setMode (juce::roundToInt (v * 3.0f)); };
+            b.text = [mode] { return juce::StringArray { "OFF", "RX", "TX", "RX + TX" }[mode()]; };
+            b.steps = 4.0f;
+            encoders[(size_t) k + 2] = encoder (b, kinds[k], [mode, setMode] { setMode ((mode() + 1) % 4); }, [mode] { return mode() != 0; });
+        }
+        return;
+    }
+
+    // Layer 2: OSC over SysEx, and every value sent again.
+    auto sysexOn = [this] { return (ctx.settings.getIntValue (X32Midi::enableKey, X32Midi::All) & X32Midi::SysEx) != 0; };
+    auto setSysex = [this] (bool on)
+    {
+        int bits = ctx.settings.getIntValue (X32Midi::enableKey, X32Midi::All);
+        bits = on ? bits | X32Midi::SysEx : bits & ~X32Midi::SysEx;
+        ctx.settings.setValue (X32Midi::enableKey, bits);
+        if (auto* m = x32Midi())
+            m->setEnabled (bits);
+        repaint();
+    };
+    KnobBinding b;
+    b.label = "OSC SYSEX";
+    b.get = [sysexOn] { return sysexOn() ? 1.0f : 0.0f; };
+    b.set = [setSysex] (float v) { setSysex (v >= 0.5f); };
+    b.text = [sysexOn] { return sysexOn() ? juce::String ("ON") : juce::String ("OFF"); };
+    b.steps = 2.0f;
+    encoders[0] = encoder (b, "SYSEX", [sysexOn, setSysex] { setSysex (! sysexOn()); }, sysexOn);
+    encoders[5] = encoder ({}, "SEND ALL", [this]
+    {
+        if (ctx.consoleMidi != nullptr)
+            ctx.consoleMidi->resendAll();
+    });
+}
+
+void Display::paintRemote (juce::Graphics& g, juce::Rectangle<int> r)
+{
+    auto& settings = ctx.settings;
+    const int bits = settings.getIntValue (X32Midi::enableKey, X32Midi::All);
+    auto* midi = x32Midi();
+    const auto status = midi != nullptr ? midi->getPortStatus (0) : MidiPorts::Status {};
+    auto device = [&] (bool input)
+    {
+        const auto value = settings.getValue (input ? X32Midi::inputKey : X32Midi::outputKey, MidiPorts::virtualDevice);
+        if (value.isEmpty())
+            return juce::String ("NONE");
+        const bool isVirtual = value == MidiPorts::virtualDevice;
+        if (isVirtual && ! MidiPorts::canCreateVirtualPorts())
+            return juce::String ("VIRTUAL: UNAVAILABLE ON THIS SYSTEM");
+        const auto shown = isVirtual ? juce::String ("VIRTUAL: SIDECAR MIDI X32") : value.toUpperCase();
+        if (input ? status.inputMissing : status.outputMissing)
+            return "NOT FOUND: " + shown;
+        return shown + ((input ? status.inputOpen : status.outputOpen) ? "" : " (CLOSED)");
+    };
+    auto mode = [bits] (int rx)
+    {
+        const bool in = (bits & rx) != 0, out = (bits & (rx << 1)) != 0;
+        return in && out ? juce::String ("RX + TX") : in ? juce::String ("RX") : out ? juce::String ("TX") : juce::String ("OFF");
+    };
+    paintRows (g, r, { "MIDI IN", "MIDI OUT", "RECEIVED / SENT", "SCENES, SNIPPETS (PC, CH 1, 2)", "FADERS (CC, CH 1)",
+                       "MUTES, MUTE GROUPS (CC, CH 2)", "PANS (CC, CH 3)", "OSC OVER SYSEX" },
+               { device (true), device (false), juce::String (status.received) + " / " + juce::String (status.sent), mode (X32Midi::RxProgram),
+                 mode (X32Midi::RxFader), mode (X32Midi::RxMute), mode (X32Midi::RxPan), (bits & X32Midi::SysEx) != 0 ? "ON" : "OFF" });
+}
+
 void Display::timerCallback()
 {
     if (! isShowing())
         return;
+    if (screen == Screen::Setup && tab == 1)
+        repaint(); // the messages counted
     // A model, an order or a strip changed under the encoders: map them anew.
     juce::String now;
     if (auto* s = selected())
@@ -806,6 +961,11 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
             break;
         }
         case Screen::Setup:
+            if (tab == 1)
+            {
+                paintRemote (g, r.reduced (12));
+                break;
+            }
             paintRows (g, r.reduced (12), { "CONSOLE", "SURFACE", "SAMPLE RATE", "CHANNELS", "BUSES / MATRICES" },
                        { "X32 (Sidecar)", getModel && getModel() == 1 ? "X32 COMPACT" : "X32", juce::String (juce::roundToInt (ctx.engine.getSampleRate())) + " Hz",
                          juce::String ((int) ctx.engine.getChannels().size()),
