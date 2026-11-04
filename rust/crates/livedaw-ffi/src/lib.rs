@@ -21,6 +21,7 @@ pub mod usb;
 pub mod web;
 pub mod wing;
 pub mod x32;
+pub mod y02r;
 
 use livedaw_dsp::fader::FaderLaw;
 use livedaw_dsp::wing::fx::FX_READOUTS;
@@ -102,7 +103,8 @@ use std::sync::Arc;
 // ABI 44 (Phase 5 step 5): the ProMix 01's MIDI (ld_promix_*, RemotesC::midi 2).
 // ABI 45 (Phase 6 step 1): the 02R profile (4); a strip kind's fader law
 // (ld_engine_fader_law_of: the 02R's STEREO has its own).
-pub const LD_ABI_VERSION: i32 = 45;
+// ABI 46 (Phase 6 step 5): the 02R's MIDI (ld_y02r_*, RemotesC::midi 3).
+pub const LD_ABI_VERSION: i32 = 46;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(default)
@@ -595,7 +597,7 @@ pub unsafe extern "C" fn ld_engine_profile(e: *const Engine) -> i32 {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LdRemotes {
-    /// Its MIDI protocol: -1 none, 0 the WING's, 1 the X32's, 2 the ProMix 01's.
+    /// Its MIDI protocol: -1 none, 0 the WING's, 1 the X32's, 2 the ProMix 01's, 3 the 02R's.
     pub midi: i32,
     /// Its network protocols: `NetworkProtocol::bit`s (1 WING discovery, 2 WING
     /// OSC, 4 WING native).
@@ -617,6 +619,7 @@ pub unsafe extern "C" fn ld_engine_remotes(e: *const Engine, out: *mut LdRemotes
                 Some(livedaw_engine::MidiProtocol::Wing) => 0,
                 Some(livedaw_engine::MidiProtocol::X32) => 1,
                 Some(livedaw_engine::MidiProtocol::ProMix01) => 2,
+                Some(livedaw_engine::MidiProtocol::Yamaha02R) => 3,
             },
             network: r.network_bits(),
         };

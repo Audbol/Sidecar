@@ -291,6 +291,19 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
     their values
   - user programs in the rest of each library's 128
   - recalling one onto a strip or an effect, and storing one
+- The 02R's MIDI, its only remote:
+  - SysEx parameter changes and requests on its edit buffer: Sidecar's addresses,
+    since the guides give none; a byte or a bit.
+  - Recall and store of scenes and library programs; key remote; fader and
+    encoder remote.
+  - Control changes through its CC assign table (the 02R preset map).
+  - Scenes by program change through its table (97 recalls scene 0, the initial
+    data).
+  - Yamaha bulk dumps and requests: scenes, the edit buffer, the program change
+    and CC tables, the setup, the library programs. The bytes inside are
+    Sidecar's layout.
+  - MIDI SETUP is kept in the app settings. The console's changes go out as
+    parameter changes. C ABI 46: `ld_y02r_*`.
 - A new channel takes its console's factory settings, colour and name by its slot,
   not its id (a channel's id is 1-based and kept by shows).
 - Fixed: the X32 surface's UNIVERSAL MIXER key crashed the app when the Universal

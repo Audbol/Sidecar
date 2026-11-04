@@ -1068,7 +1068,21 @@ Three layers:
         - user programs up to 128 (EQ from 33, the others from 41: MAN p.211)
         - `Console::recall_eq`, `recall_dyn`, `recall_fx`, `store_*`
         - not done: the channel library
-   5. **02R MIDI** (`MidiProtocol::Yamaha02R`):
+   5. **02R MIDI** (done; `MidiProtocol::Yamaha02R`, C ABI 46 `ld_y02r_*`;
+      `livedaw_02r::midi` and `params`, the app's `Y02RMidi` a thin port over
+      them). The edit buffer is 2016 bytes in Sidecar's layout: 55 strips of 28
+      (fader, ON, pans, attenuator, the switches as bits, delay, EQ, dynamics,
+      routing), then the inputs' aux sends. A type 0 change sets a byte (as
+      nibbles) or a bit. Type 26 moves the 21 panel faders and the encoders of
+      TAPE 1-16 and EFF1-2; its other encoders and type 25 go to the app.
+      Received values aren't echoed; the console's changes go out as type 0.
+      MIDI SETUP lives in `y02rmidi.setup`. Not done:
+      - a scene memory's dump on request (it needs the scene's mix without
+        recalling it)
+      - the key remote's keys (their numbers aren't in the guides)
+      - the multiple-02R link (type 27)
+
+      What it does:
       - program changes through the table
       - control changes through the CC map (the 02R preset, editable)
       - SysEx types 24 (recall / store), 26 (fader / encoder remote), 25 (key

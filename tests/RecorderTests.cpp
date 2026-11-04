@@ -107,10 +107,10 @@ public:
     {
         beginTest ("The C ABI is version 40 and both sides agree on the layout");
         {
-            expectEquals (ld::kAbiVersion, 45);
+            expectEquals (ld::kAbiVersion, 46);
             ld::LayoutInfo info {};
             ld::ld_layout_info (&info);
-            expectEquals ((int) info.abiVersion, 45);
+            expectEquals ((int) info.abiVersion, 46);
             const char* mismatch = ld::verifyLayout();
             expect (mismatch == nullptr, mismatch != nullptr ? juce::String (mismatch) : juce::String());
         }

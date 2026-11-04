@@ -325,6 +325,17 @@ of any size, of which the WING is one configuration.
   - pairs linked, fader groups by steps, mute groups flipping, gangs by offset
   - aux sends and routing
   - EQ and dynamics steps, the keys as the engine's `sc_source` / `sc_tap`
+
+  `params` is its edit buffer as 2016 bytes at Sidecar's addresses (the
+  guides give none): 55 strips of 28 bytes, then the inputs' aux sends. Its
+  parameter changes address them and its scene dumps carry them. `midi` is
+  its MIDI: program changes, control changes through its assign table,
+  SysEx (parameter change, recall / store, key and fader remote), bulk dumps.
+
+  C ABI 46 `ld_y02r_*` (`livedaw-ffi/src/y02r.rs`): the panel's values as
+  edit buffer bytes (`ld_y02r_get` / `set`). The app's `Yamaha02R`
+  (`src/engine/Yamaha02R.h`, held by the MixerEngine) and `Y02RMidi`
+  (`src/engine/Y02RMidi.*`, a `MidiProtocol` over one port).
 - Laws (Phase 3 step 3): a `ProfileSpec` names its fader law (`FaderLaw`,
   `livedaw-dsp/fader.rs`: (position, dB) breakpoints and an optional step count, so
   a 128 position fader fits) and its pan law (`PanLaw`, `util.rs`: the mono and

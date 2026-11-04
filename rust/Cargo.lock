@@ -27,6 +27,7 @@ dependencies = [
 name = "livedaw-ffi"
 version = "0.2.0"
 dependencies = [
+ "livedaw-02r",
  "livedaw-dsp",
  "livedaw-engine",
  "livedaw-promix",

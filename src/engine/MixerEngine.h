@@ -8,6 +8,7 @@
 #include "engine/UsbRecorder.h"
 #include "engine/Strip.h"
 #include "engine/ProMix.h"
+#include "engine/Yamaha02R.h"
 #include "engine/WingRemote.h"
 
 #include <juce_audio_devices/juce_audio_devices.h>
@@ -184,6 +185,9 @@ public:
     /** The ProMix 01's own state, program libraries and MIDI (Phase 5; inert
         while the console isn't a ProMix 01). */
     ProMix& getProMix() noexcept { return *promix; }
+    /** The 02R's own state, libraries and MIDI (Phase 6; inert while the
+        console isn't an 02R). */
+    Yamaha02R& getYamaha02R() noexcept { return *y02r; }
 
     /** The RTA, LR vector scope and LISTEN (BAND / KEY / XOVER SOLO) of the analysed strip. */
     Analysis getAnalysis() const noexcept { return Analysis (engine); }
@@ -591,6 +595,7 @@ private:
     std::unique_ptr<UsbRecorder> usbRecorder = std::make_unique<UsbRecorder> (engine);
     std::unique_ptr<WingRemote> wing = std::make_unique<WingRemote> (*this);
     std::unique_ptr<ProMix> promix = std::make_unique<ProMix> (engine);
+    std::unique_ptr<Yamaha02R> y02r = std::make_unique<Yamaha02R> (engine);
     std::vector<std::unique_ptr<Worker>> workers;
 
     std::array<StripList, kNumStripKinds> lists;

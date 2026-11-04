@@ -18,7 +18,7 @@ class Show;
     console-neutral MidiPorts (Phase 3 step 6). The console's profile names it
     (ld_engine_remotes); the app makes it with create() and remakes it when the
     console's protocol changes. The WING's is MidiRemote, the X32's X32Midi,
-    the ProMix 01's ProMixMidi.
+    the ProMix 01's ProMixMidi, the 02R's Y02RMidi.
 
     This is what the app drives whatever the console; a protocol's own
     settings and pages are its own (the WING's: asWing()). Message thread only. */
@@ -31,7 +31,8 @@ public:
         None = -1,
         Wing = 0,
         X32 = 1,
-        ProMix01 = 2
+        ProMix01 = 2,
+        Yamaha02R = 3
     };
 
     virtual ~MidiProtocol() = default;

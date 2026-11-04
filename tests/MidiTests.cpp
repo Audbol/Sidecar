@@ -2,6 +2,9 @@
 #include "engine/MidiPorts.h"
 #include "engine/MidiRemote.h"
 #include "engine/ProMixMidi.h"
+#include "engine/Y02RMidi.h"
+
+#include <cstring>
 #include "engine/X32Midi.h"
 #include "engine/Models.h"
 #include "engine/PluginHost.h"
@@ -313,7 +316,7 @@ private:
         engine.configure (nullptr);
         expect (engine.getProfile() == ld::kProfileWing);
 
-        beginTest ("A 02R (Phase 6 step 1): its counts, fader laws and names; no remote yet");
+        beginTest ("A 02R (Phase 6): its counts, fader laws, names and MIDI");
         engine.configureProfile (ld::kProfileYamaha02R);
         expect (engine.getProfile() == ld::kProfileYamaha02R);
         expectEquals ((int) engine.getChannels().size(), 36);
@@ -321,7 +324,45 @@ private:
         expectEquals ((int) engine.getBuses().size(), 16);
         expectEquals ((int) engine.getMains().size(), 1);
         expect (engine.getMatrices().empty(), "no matrices");
-        expect (engine.getRemotes().midi == MidiProtocol::None, "its MIDI comes with step 5");
+        expect (engine.getRemotes().midi == MidiProtocol::Yamaha02R && engine.getRemotes().network == 0u, "MIDI only");
+        {
+            // Its MIDI (step 5): SysEx parameter changes, CCs, program changes.
+            auto protocol = MidiProtocol::create (MidiProtocol::Yamaha02R, engine, show, false);
+            auto* p = dynamic_cast<Y02RMidi*> (protocol.get());
+            expect (p != nullptr && protocol->asWing() == nullptr);
+            std::vector<juce::MidiMessage> sent;
+            p->onSend = [&] (const juce::MidiMessage& m) { sent.push_back (m); };
+            p->sendFeedback();
+            expect (sent.empty(), "nothing at start");
+            // CC 3 (the 02R map: MIC 3's fader) to step 103, 0 dB; not echoed.
+            p->handleMessage (0, juce::MidiMessage::controllerEvent (1, 3, 103));
+            expectWithinAbsoluteError (engine.getChannels()[2]->params.faderDb.load(), 0.0f, 1e-3f);
+            p->sendFeedback();
+            expect (sent.empty(), "not echoed");
+            // TAPE 1's ON off on the console: a type 0 parameter change of its address.
+            auto& y = engine.getYamaha02R();
+            engine.getChannels()[20]->params.mute.store (true);
+            p->sendFeedback();
+            const int on = 20 * Yamaha02R::perStrip + 1;
+            const uint8_t change[] = { 0x43, 0x10, 0x3d, 0x00, (uint8_t) (on >> 7), (uint8_t) (on & 0x7f), 0, 0 };
+            expect (sent.size() == 1 && sent[0].isSysEx() && sent[0].getSysExDataSize() == 8
+                    && std::memcmp (sent[0].getSysExData(), change, 8) == 0);
+            expectEquals (Yamaha02R::addressName (on), juce::String ("TAPE 1 ON"));
+            // An edit buffer request: a bulk dump of 2016 bytes as nibbles.
+            sent.clear();
+            const uint8_t request[] = { 0xf0, 0x43, 0x20, 0x7e, 'L', 'M', ' ', ' ', '8', 'A', '6', '7', 'M', 0x7f, 0xf7 };
+            p->handleMessage (0, juce::MidiMessage (request, (int) sizeof (request)));
+            expect (sent.size() == 1 && sent[0].isSysEx() && sent[0].getRawDataSize() == 4082);
+            expect (y.getSceneBytes().size() == 2016);
+            // A program change recalls the show's scene; 97 scene 0.
+            const int scene = show.addScene ("VERSE");
+            y.set (0, 90);
+            p->handleMessage (0, juce::MidiMessage::programChange (1, 96));
+            expectEquals (y.get (0), 0, "scene 0: faders down");
+            p->handleMessage (0, juce::MidiMessage::programChange (1, scene));
+            expectEquals (show.getCurrentSceneIndex(), scene);
+            expectEquals (y.programName (Yamaha02R::Effects, 22), juce::String ("DELAY L-C-R 1"));
+        }
         expectEquals (engine.getFaderLaw().steps, 128);
         expectEquals (engine.getFaderLaw().maxDb(), 10.0f);
         expectEquals (engine.getFaderLaw (ld::kMain).maxDb(), 0.0f, "STEREO: 0 dB at the top");

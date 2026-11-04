@@ -12,6 +12,10 @@
 //!   and dynamics steps).
 //! * [`library`]: its EQ, dynamics and effects libraries, 40 presets each and
 //!   user programs.
+//! * [`params`]: its edit buffer as bytes (Sidecar's addresses): what its
+//!   parameter changes address and its scene dumps carry.
+//! * [`midi`]: its MIDI: program changes, control changes, SysEx parameter
+//!   changes, recall / store, fader remote, bulk dumps.
 //!
 //! The console's strips are the engine's: MIC/LINE 1-16 channels 1-16, LINE
 //! 17/18-23/24 channels 17-20, TAPE 1-16 channels 21-36, EFF1-2 aux 1-2, BUS
@@ -22,6 +26,8 @@
 
 pub mod console;
 pub mod library;
+pub mod midi;
+pub mod params;
 pub mod state;
 
 pub use console::{Console, Origin, Y2Strip};

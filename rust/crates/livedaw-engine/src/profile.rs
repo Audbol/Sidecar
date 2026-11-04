@@ -108,6 +108,10 @@ pub enum MidiProtocol {
     /// The ProMix 01's: its 531 parameters by CC (Channel or Register mode),
     /// scenes by program change, Yamaha bulk dumps (`livedaw-promix`).
     ProMix01,
+    /// The 02R's: SysEx parameter changes, recall / store and fader remote,
+    /// control changes through its map, scenes by program change, Yamaha bulk
+    /// dumps (`livedaw-02r`).
+    Yamaha02R,
 }
 
 /// A network protocol a console serves (`livedaw-wing`'s servers for the WING's).
@@ -850,7 +854,7 @@ const Y02R_LABELS: [&str; 5] = ["CH", "EFF", "BUS", "STEREO", "MTX"];
 /// types) and chains: the inputs and tape returns attenuator and phase, EQ,
 /// dynamics, delay, fader; the effect returns no dynamics; BUS 1-8 dynamics and
 /// master, AUX 1-8 the master alone; STEREO EQ, dynamics and fader
-/// (`chain::Y02R_*`). It has no remote until step 5.
+/// (`chain::Y02R_*`). It speaks its MIDI (`livedaw-02r`), its only remote.
 static Y02R: ProfileSpec = ProfileSpec {
     profile: Profile::Yamaha02R,
     name: "02R",
@@ -864,7 +868,7 @@ static Y02R: ProfileSpec = ProfileSpec {
     pan: PanLaw::WING,
     port_groups: Y02R_PORT_GROUPS,
     models: &livedaw_dsp::y02r::MODELS,
-    remotes: Remotes { midi: None, network: &[] },
+    remotes: Remotes { midi: Some(MidiProtocol::Yamaha02R), network: &[] },
     palette: Palette::Y02R,
     labels: Y02R_LABELS,
     slots: &[

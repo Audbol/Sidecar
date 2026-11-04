@@ -29,7 +29,7 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 45;
+constexpr int kAbiVersion = 46;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -925,7 +925,7 @@ struct SlotRangeC
 static_assert (sizeof (SlotRangeC) == 20);
 
 /** ABI 33: the remote protocols a console speaks (ld_engine_remotes): its MIDI
-    protocol (-1 none, 0 the WING's, 1 the X32's, 2 the ProMix 01's: MidiProtocol::Id) and its network protocols, a set
+    protocol (-1 none, 0 the WING's, 1 the X32's, 2 the ProMix 01's, 3 the 02R's: MidiProtocol::Id) and its network protocols, a set
     of bits (1 WING discovery, 2 WING OSC, 4 WING native: the WING remote's servers). */
 struct RemotesC
 {
@@ -1001,6 +1001,7 @@ enum AudioFileFormat : int32_t
 struct LdWing;    // opaque WING remote (servers + snapshot files), see ld_wing_*
 struct LdX32;     // ABI 38: opaque X32 OSC server, see ld_x32_*
 struct LdProMix;  // ABI 44: opaque ProMix 01 state and MIDI, see ld_promix_*
+struct LdY02R;    // ABI 46: opaque 02R state, libraries and MIDI, see ld_y02r_*
 struct LdWeb;     // opaque web remote (HTTP + WebSocket screen mirror), see ld_web_*
 
 /** An input event from a browser (ld_web_take_input). */
@@ -1845,6 +1846,60 @@ extern "C"
     void ld_promix_set_state_text (LdProMix*, const char* text, size_t len);
     /** Recalls scene 00, the initial data: every mix setting as a new ProMix 01 has it. */
     void ld_promix_recall_initial (LdProMix*);
+
+    // ABI 46: the 02R (livedaw-02r): its own state, libraries and MIDI over the
+    // engine. Message thread; destroy it before the engine. Every call does
+    // nothing (or answers none) while the engine isn't an 02R. Its values are its
+    // edit buffer's bytes at Sidecar's addresses (0-2015, livedaw_02r::params).
+    LdY02R* ld_y02r_create (const Engine*);
+    void ld_y02r_destroy (LdY02R*);
+    /** One received message (a channel message, or a whole SysEx F0..F7). */
+    void ld_y02r_midi_in (LdY02R*, const uint8_t* bytes, size_t len);
+    /** Queues the console's changes since the last call (the first sends nothing). */
+    void ld_y02r_midi_poll (LdY02R*);
+    /** Scene `scene` (0-96) was recalled: its program change goes out. */
+    void ld_y02r_scene_recalled (LdY02R*, int32_t scene);
+    /** The next message to send: its length, 0 for none, minus its length if `max` is too small. */
+    int32_t ld_y02r_midi_out (LdY02R*, uint8_t* out, size_t max);
+    struct LdY02REvent
+    {
+        int32_t kind; // 0 recall scene `value` (1-96), 1 store into it, 2 request for its dump,
+                      // 3 dump of it (`size` bytes, `title`), 4 key remote `value` (`data` on),
+                      // 5 encoder `value` by `data` steps
+        int32_t value, data, size;
+        char title[17];
+    };
+    bool ld_y02r_event (LdY02R*, LdY02REvent* out, uint8_t* bytes, size_t max);
+    /** The edit buffer as scene bytes (2016); how many were written. */
+    int32_t ld_y02r_scene_bytes (LdY02R*, uint8_t* out, size_t max);
+    void ld_y02r_load_scene_bytes (LdY02R*, const uint8_t* data, size_t len);
+    /** Queues a bulk dump of scene `scene` (1-96) titled `title`, holding `data`. */
+    void ld_y02r_send_scene_dump (LdY02R*, int32_t scene, const char* title, size_t titleLen, const uint8_t* data,
+                                  size_t len);
+    struct LdY02RSetup
+    {
+        int32_t channel;     // 0-15
+        uint8_t switches[7]; // PC RX, TX, OMNI, ECHO; PARAM RX, TX; CC RX
+    };
+    void ld_y02r_get_setup (const LdY02R*, LdY02RSetup* out);
+    void ld_y02r_set_setup (LdY02R*, const LdY02RSetup*);
+    /** The edit buffer's byte at address `a` (-1 none); set as the console's
+        control does (`panel`: its fader and mute groups and gangs follow); its name. */
+    int32_t ld_y02r_get (LdY02R*, int32_t a);
+    void ld_y02r_set (LdY02R*, int32_t a, int32_t value, bool panel);
+    LdString* ld_y02r_address_name (int32_t a);
+    /** Library `kind` (0 EQ, 1 dynamics, 2 effects) program `n`'s title (caller
+        frees; "" empty); recalled onto strip `strip` (the edit buffer's numbering)
+        or Effect `strip` (0-1); false if nothing was. */
+    LdString* ld_y02r_program_name (const LdY02R*, int32_t kind, int32_t n);
+    bool ld_y02r_recall (LdY02R*, int32_t kind, int32_t n, int32_t strip);
+    /** Recalls scene 0, the initial data. */
+    void ld_y02r_recall_initial (LdY02R*);
+    /** The console's own state as text (pairs, groups, keys...), and back. */
+    LdString* ld_y02r_state_text (LdY02R*);
+    void ld_y02r_set_state_text (LdY02R*, const char* text, size_t len);
+    /** The strip panel fader `n` (0-20) moves, in the edit buffer's numbering. */
+    int32_t ld_y02r_panel_fader_strip (int32_t n);
 
     // WING remote (message thread). Destroy it before the engine.
     LdWing* ld_wing_create (const Engine*);
