@@ -1,15 +1,21 @@
-//! The X32's devices that run on one of the WING's (Phase 4 step 9d): the two
-//! consoles' Hall, Vintage Room and Stereo Chorus are the same designs with
-//! the same controls, so the X32 model's values are mapped onto the WING
-//! device's controls (over ranges wide enough for both) and the WING device
-//! runs them. The X32's Stereo Delay is the WING's with a factor and a
-//! feedback per side (`delay::stereo`, X32DLY).
+//! The X32's devices that run on one of the WING's (Phase 4 steps 9d-9e): the
+//! two consoles share most of their reverbs and modulation effects, the same
+//! designs with the same controls, so the X32 model's values are mapped onto
+//! the WING device's controls and the WING device runs them. The X32's Stereo
+//! Delay is the WING's with a factor and a feedback per side (`delay::stereo`,
+//! X32DLY).
 //!
-//! Where the ranges differ the mapping is Sidecar's reading, to be measured
-//! on an X32: Vintage Room's SIZE (0-100 on the console, factory 24) takes
-//! the WING's 1-50 at half, its ER LEVEL (0-190) and ER LEFT / RIGHT (ms) are
-//! the WING's units; Hall's LEVEL (the WING's has none) is an output gain;
-//! the X32's LO CUT reaches 10-500 Hz and the chorus delays 0.5-20 ms.
+//! Hall, Vintage Room and Stereo Chorus (the factory rack) map over ranges
+//! wide enough for both consoles; the others over the WING device's own (an
+//! X32 value beyond them, such as a 10 Hz LO CUT, takes the WING's limit).
+//! A LEVEL the WING device lacks is an output gain. Where the controls'
+//! units differ the mapping is Sidecar's reading, to be measured on an X32:
+//! Vintage Room's SIZE (0-100 on the console, factory 24) takes the WING's
+//! 1-50 at half; DIFFUSE 1-30 is the WING Room's and Chamber's 0-100 scaled;
+//! Chamber's REFLECTION GAIN (%) the WING's level in dB; Vintage Reverb's
+//! MODULATE 0-10 the WING's 0-100; Phaser's BASE 0-50 the WING's RANGE at
+//! twice; Mood Filter's RESONANCE and DRIVE 0-100 the WING's 0-10. The X32's
+//! Plate is the WING's Blue Plate design, its Rich Plate the WING's Plate.
 
 use super::{FxAlgo, FxContext, FX_READOUTS};
 use crate::model::{ModelCategory, ModelSpec, ParamKind, ParamSpec, Params};
@@ -17,20 +23,201 @@ use crate::util::db_to_gain;
 use crate::wing::MAX_FX_PARAMS;
 
 /// The X32 models built on a WING device.
-pub(super) const TOKENS: &[&str] = &["X32HALL", "X32VRM", "X32CRS"];
+pub(super) const TOKENS: &[&str] = &[
+    "X32HALL", "X32VRM", "X32CRS", "X32AMBI", "X32ROOM", "X32CHAM", "X32PLAT", "X32RPLT", "X32VREV", "X32GATE", "X32RVRS",
+    "X32FLNG", "X32PHAS", "X32DIMC", "X32FILT", "X32ROTA", "X32PAN", "X32PIT",
+];
 
 pub(super) fn create(token: &str, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
     if !TOKENS.contains(&token) {
         return None;
     }
-    let (wing, spec, map): (&str, &'static ModelSpec, Map) = match token {
-        "X32HALL" => ("HALL", &HALL, hall),
-        "X32VRM" => ("V-ROOM", &VROOM, vroom),
-        "X32CRS" => ("CHORUS", &CHORUS, chorus),
+    // The wide specs, or the WING device's own.
+    let (wing, spec, map): (&str, Option<&'static ModelSpec>, Map) = match token {
+        "X32HALL" => ("HALL", Some(&HALL), hall),
+        "X32VRM" => ("V-ROOM", Some(&VROOM), vroom),
+        "X32CRS" => ("CHORUS", Some(&CHORUS), chorus),
+        "X32AMBI" => ("AMBI", None, ambi),
+        "X32ROOM" => ("ROOM", None, room),
+        "X32CHAM" => ("CHAMBER", None, chamber),
+        "X32PLAT" => ("BPLATE", None, plate),
+        "X32RPLT" => ("PLATE", None, rich_plate),
+        "X32VREV" => ("V-REV", None, vintage_reverb),
+        "X32GATE" => ("GATED", None, gated),
+        "X32RVRS" => ("REVERSE", None, reverse),
+        "X32FLNG" => ("FLANGER", None, flanger),
+        "X32PHAS" => ("PHASER", None, phaser),
+        "X32DIMC" => ("DIMCRS", None, dimension),
+        "X32FILT" => ("MOOD", None, mood),
+        "X32ROTA" => ("ROTARY", None, rotary),
+        "X32PAN" => ("PANNER", None, panner),
+        "X32PIT" => ("PITCH", None, pitch),
         _ => return None,
     };
+    let spec = spec.or_else(|| Some(&crate::wing::FX_MODELS[super::model_index(wing)?]))?;
     let dev = super::create(wing, ctx)?;
-    Some(Box::new(Bridge { dev, spec, map, values: [0.0; MAX_FX_PARAMS], gain: 1.0, last_gain: 1.0 }))
+    // Controls a mapping leaves alone keep the WING device's defaults.
+    let mut values = [0.0; MAX_FX_PARAMS];
+    spec.defaults_into(&mut values);
+    Some(Box::new(Bridge { dev, spec, map, values, gain: 1.0, last_gain: 1.0 }))
+}
+
+/// Sets each WING control (first) from the X32 control of the same meaning.
+fn copy(p: &Params, set: &mut dyn FnMut(&'static str, f32), pairs: &[(&'static str, &str)]) {
+    for &(wing, x32) in pairs {
+        set(wing, p.f(x32));
+    }
+}
+
+/// The X32's DIFFUSE (1-30) as the WING Room's and Chamber's DIFFUSION (0-100).
+fn diffusion(x32: f32) -> f32 {
+    (x32 - 1.0) * 100.0 / 29.0
+}
+
+fn ambi(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
+    let pairs = [("pdel", "pre_delay"), ("size", "size"), ("dcy", "decay"), ("tail", "tail_gain"), ("damp", "damping")];
+    copy(p, set, &pairs);
+    copy(p, set, &[("diff", "diffuse"), ("mod", "modulate"), ("lc", "lo_cut"), ("hc", "hi_cut")]);
+    p.f("level")
+}
+
+/// The controls the X32's Room, Chamber and Rich Plate share with the WING's.
+fn lexicon(p: &Params, set: &mut dyn FnMut(&'static str, f32)) {
+    let pairs = [("pdel", "pre_delay"), ("size", "size"), ("dcy", "decay"), ("mult", "bass_multi"), ("damp", "damping")];
+    copy(p, set, &pairs);
+    copy(p, set, &[("lc", "lo_cut"), ("hc", "hi_cut"), ("sprd", "spread"), ("spin", "spin")]);
+    set("diff", diffusion(p.f("diffuse")));
+}
+
+fn room(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
+    lexicon(p, set);
+    let pairs = [("shp", "shape"), ("ecl", "echo_l"), ("ecr", "echo_r"), ("efl", "echo_feed_l"), ("efr", "echo_feed_r")];
+    copy(p, set, &pairs);
+    p.f("level")
+}
+
+fn chamber(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
+    lexicon(p, set);
+    copy(p, set, &[("shp", "shape"), ("ecl", "reflection_l"), ("ecr", "reflection_r")]);
+    // REFLECTION GAIN in % of full level.
+    let db = |pct: f32| if pct <= 0.1 { -60.0 } else { 20.0 * (pct * 0.01).log10() };
+    set("ell", db(p.f("reflection_gain_l")));
+    set("elr", db(p.f("reflection_gain_r")));
+    p.f("level")
+}
+
+fn rich_plate(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
+    lexicon(p, set);
+    let pairs = [("att", "attack"), ("ecl", "echo_l"), ("ecr", "echo_r"), ("efl", "echo_feed_l"), ("efr", "echo_feed_r")];
+    copy(p, set, &pairs);
+    p.f("level")
+}
+
+fn plate(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
+    let pairs = [("pdel", "pre_delay"), ("size", "size"), ("dcy", "decay"), ("mult", "bass_multi"), ("damp", "damping")];
+    copy(p, set, &pairs);
+    let pairs =
+        [("lc", "lo_cut"), ("hc", "hi_cut"), ("xover", "xover"), ("mdep", "mod"), ("mspd", "mod_speed"), ("diff", "diffuse")];
+    copy(p, set, &pairs);
+    p.f("level")
+}
+
+fn vintage_reverb(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
+    let pairs = [("pdel", "pre_delay"), ("dcy", "decay"), ("lmult", "lo_multiply"), ("hmult", "hi_multiply")];
+    copy(p, set, &pairs);
+    copy(p, set, &[("lc", "lo_cut"), ("hc", "hi_cut"), ("out", "position"), ("trans", "vintage")]);
+    set("mod", 10.0 * p.f("modulate"));
+    p.f("level")
+}
+
+/// Gated and Reverse: DECAY in ms on the X32, seconds on the WING.
+fn nonlinear(p: &Params, set: &mut dyn FnMut(&'static str, f32)) {
+    let pairs = [("pdel", "pre_delay"), ("diff", "diffuse"), ("sprd", "spread"), ("lc", "lo_cut"), ("hsf", "hi_cut")];
+    copy(p, set, &pairs);
+    set("hsg", p.f("hi_shv_gain"));
+    set("dcy", 0.001 * p.f("decay"));
+}
+
+fn gated(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
+    nonlinear(p, set);
+    copy(p, set, &[("att", "attack"), ("dens", "density")]);
+    p.f("level")
+}
+
+fn reverse(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
+    nonlinear(p, set);
+    set("rise", p.f("rise"));
+    p.f("level")
+}
+
+fn flanger(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
+    let pairs = [("lc", "lo_cut"), ("hc", "hi_cut"), ("flc", "feed_lo_cut"), ("fhc", "feed_hi_cut"), ("mix", "mix")];
+    copy(p, set, &pairs);
+    let pairs = [("dlyl", "delay_l"), ("dlyr", "delay_r"), ("depl", "depth_l"), ("depr", "depth_r"), ("phase", "phase")];
+    copy(p, set, &pairs);
+    copy(p, set, &[("spd", "speed"), ("feed", "feed")]);
+    0.0
+}
+
+fn phaser(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
+    let pairs = [("spd", "speed"), ("phase", "phase"), ("wave", "wave"), ("depth", "depth"), ("emod", "env_modulation")];
+    copy(p, set, &pairs);
+    let pairs =
+        [("att", "attack"), ("hld", "hold"), ("rel", "release"), ("mix", "mix"), ("stg", "stages"), ("reso", "resonance")];
+    copy(p, set, &pairs);
+    set("range", 2.0 * p.f("base"));
+    0.0
+}
+
+fn dimension(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
+    // ACTIVE off: no mode pressed (the WING's OFF).
+    let active = p.f("active");
+    for (wing, x32) in [("sw1", "mode_1"), ("sw2", "mode_2"), ("sw3", "mode_3"), ("sw4", "mode_4")] {
+        set(wing, active * p.f(x32));
+    }
+    copy(p, set, &[("in", "mode"), ("drysw", "dry")]);
+    0.0
+}
+
+fn mood(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
+    let pairs = [("fbase", "base"), ("filt", "mode"), ("slope", "4_pole"), ("env", "env_modulation"), ("att", "attack")];
+    copy(p, set, &pairs);
+    let pairs = [("rel", "release"), ("mix", "mix"), ("lfo", "depth"), ("spd", "speed"), ("phase", "phase"), ("wave", "wave")];
+    copy(p, set, &pairs);
+    set("reso", 0.1 * p.f("resonance"));
+    set("drv", 0.1 * p.f("drive"));
+    0.0
+}
+
+fn rotary(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
+    let pairs = [("lo", "lo_speed"), ("hi", "hi_speed"), ("bal", "balance"), ("mix", "mix"), ("dist", "distance")];
+    copy(p, set, &pairs);
+    // One ACCELERATE for both rotors; STOP, else SLOW or FAST.
+    copy(p, set, &[("dac", "accelerate"), ("hac", "accelerate")]);
+    set(
+        "sw",
+        if p.on("stop") {
+            0.0
+        } else if p.on("slow") {
+            1.0
+        } else {
+            2.0
+        },
+    );
+    0.0
+}
+
+fn panner(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
+    let pairs = [("spd", "speed"), ("phase", "phase"), ("wave", "wave"), ("depth", "depth"), ("espd", "env_speed")];
+    copy(p, set, &pairs);
+    copy(p, set, &[("edep", "env_depth"), ("att", "attack"), ("hld", "hold"), ("rel", "release")]);
+    0.0
+}
+
+fn pitch(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
+    let pairs = [("semi", "semitone"), ("cent", "cent"), ("dly", "delay"), ("lc", "lo_cut"), ("hc", "hi_cut"), ("mix", "mix")];
+    copy(p, set, &pairs);
+    0.0
 }
 
 /// Writes the WING device's values (by its ids) from the X32 model's; returns
@@ -220,6 +407,74 @@ fn chorus(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_bridged_model_runs_and_names_only_its_wing_devices_controls() {
+        // A mapping that names a control the WING device lacks would set nothing:
+        // record every id each mapping sets and check the device has it.
+        let ctx = FxContext { sample_rate: 48_000.0, max_block: 64 };
+        for token in TOKENS {
+            assert!(create(token, ctx).is_some(), "{token}");
+            let x32 = &crate::x32::FX_MODELS[crate::model::model_index(crate::x32::FX_MODELS, token).unwrap()];
+            let mut values = [0.0; MAX_FX_PARAMS];
+            x32.defaults_into(&mut values);
+            let map = |t: &str| -> Map {
+                match t {
+                    "X32HALL" => hall,
+                    "X32VRM" => vroom,
+                    "X32CRS" => chorus,
+                    "X32AMBI" => ambi,
+                    "X32ROOM" => room,
+                    "X32CHAM" => chamber,
+                    "X32PLAT" => plate,
+                    "X32RPLT" => rich_plate,
+                    "X32VREV" => vintage_reverb,
+                    "X32GATE" => gated,
+                    "X32RVRS" => reverse,
+                    "X32FLNG" => flanger,
+                    "X32PHAS" => phaser,
+                    "X32DIMC" => dimension,
+                    "X32FILT" => mood,
+                    "X32ROTA" => rotary,
+                    "X32PAN" => panner,
+                    _ => pitch,
+                }
+            };
+            let wing = [
+                ("X32HALL", "HALL"),
+                ("X32VRM", "V-ROOM"),
+                ("X32CRS", "CHORUS"),
+                ("X32AMBI", "AMBI"),
+                ("X32ROOM", "ROOM"),
+                ("X32CHAM", "CHAMBER"),
+                ("X32PLAT", "BPLATE"),
+                ("X32RPLT", "PLATE"),
+                ("X32VREV", "V-REV"),
+                ("X32GATE", "GATED"),
+                ("X32RVRS", "REVERSE"),
+                ("X32FLNG", "FLANGER"),
+                ("X32PHAS", "PHASER"),
+                ("X32DIMC", "DIMCRS"),
+                ("X32FILT", "MOOD"),
+                ("X32ROTA", "ROTARY"),
+                ("X32PAN", "PANNER"),
+                ("X32PIT", "PITCH"),
+            ]
+            .into_iter()
+            .find(|(x, _)| x == token)
+            .unwrap()
+            .1;
+            let real = &crate::wing::FX_MODELS[crate::wing::fx::model_index(wing).unwrap()];
+            let mut named = Vec::new();
+            map(token)(&Params::new(x32, &values), &mut |id, _| named.push(id));
+            for id in &named {
+                assert!(real.param_index(id).is_some(), "{token} -> {wing}: {id}");
+            }
+            // Every X32 control is read: as many WING controls set as it has (less LEVEL
+            // when it's an output gain, plus the ones it splits or the WING alone has).
+            assert!(!named.is_empty(), "{token}");
+        }
+    }
 
     #[test]
     fn every_mapped_control_is_the_wing_devices() {

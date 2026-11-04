@@ -299,7 +299,7 @@ const DIMC: &[ParamSpec] = &[
     p("active", "ACTIVE", "", ParamKind::Toggle, 0.0, 1.0, 2, 1.0),
     p("mode", "MODE", "", ParamKind::Choice(CHOICE_3), 0.0, 1.0, 2, 0.0),
     p("dry", "DRY", "", ParamKind::Toggle, 0.0, 1.0, 2, 0.0),
-    p("mode_1", "MODE 1", "", ParamKind::Toggle, 0.0, 1.0, 2, 0.0),
+    p("mode_1", "MODE 1", "", ParamKind::Toggle, 0.0, 1.0, 2, 1.0),
     p("mode_2", "MODE 2", "", ParamKind::Toggle, 0.0, 1.0, 2, 0.0),
     p("mode_3", "MODE 3", "", ParamKind::Toggle, 0.0, 1.0, 2, 0.0),
     p("mode_4", "MODE 4", "", ParamKind::Toggle, 0.0, 1.0, 2, 0.0),

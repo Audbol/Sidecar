@@ -579,9 +579,17 @@ Three layers:
         (`delay::stereo`, X32DLY) with FACTOR L / R, FEED LEFT / RIGHT and MIX. Tests
         hold each to the WING device's output sample for sample. The mappings where
         the ranges differ are to be measured on the owner's X32.
-      - 9e-9g, the algorithms in batches, each measured (decay, taps, curves,
-        gain reduction) since none can be compared by ear here: the other reverbs,
-        delays and modulation; the combos and pitch; EQs and dynamics
+      - 9e, the shared designs (part 1 done): Ambiance, Room, Chamber, Plate (the
+        WING's Blue Plate design), Rich Plate (the WING's Plate), Vintage Reverb,
+        Gated, Reverse, Flanger, Phaser, Dimensional Chorus, Mood Filter, Rotary,
+        Tremolo / Panner and Pitch Shifter run on the WING's devices, mapped over the
+        WING device's ranges (`x32_voices` lists each mapping where the units
+        differ). Part 2: the dual effects (Sub Octaver, Dual Pitch: two WING devices,
+        one per side), the combinations (Delay / Chamber, Chorus / Chamber, Flanger /
+        Chamber, Delay / Chorus, Delay / Flanger: two in series or parallel),
+        Modulation Delay and the 3- and 4-tap delays.
+      - 9f-9g, the insert models in batches, each measured (curves, gain
+        reduction) since none can be compared by ear here: EQs and dynamics
         (GEQ, TruEQ, Xtec EQ1 / EQ5, de-esser, limiter, Combinator, Fair, Leisure and
         Ultimo comps, Wave Designer); enhancers, exciters, imagers, amps and drive.
         Until a model's algorithm lands it passes the signal through unprocessed

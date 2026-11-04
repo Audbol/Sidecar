@@ -72,7 +72,8 @@ def default(code, p, factory):
     if p['type'] == 'enum':
         items = p['items']
         if items == ['OFF', 'ON']:
-            return 1.0 if n.startswith('active') else 0.0
+            # Dimension Chorus with its first mode pressed (none: no effect).
+            return 1.0 if n.startswith('active') or (code == 'DIMC' and n == 'mode 1') else 0.0
         return 0.0
     lo, hi = p['min'], p['max']
     if min(lo, hi) < 0 < max(lo, hi):

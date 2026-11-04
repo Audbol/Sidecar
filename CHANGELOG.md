@@ -114,8 +114,13 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
 - The X32's factory four effects make sound: Hall Reverb, Vintage Room and Stereo
   Chorus run on the WING's own Hall, Vintage Room and Chorus (the same designs, their
   controls mapped across), and Stereo Delay is the WING's stereo delay with a factor
-  and a feedback per side and its own MIX. The other 57 X32 models still return
-  silence or pass the signal through.
+  and a feedback per side and its own MIX.
+- 15 more X32 effects make sound on the WING's devices of the same design: Ambiance,
+  Room, Chamber, Plate, Rich Plate, Vintage Reverb, Gated and Reverse Reverb, Flanger,
+  Phaser, Dimensional Chorus, Mood Filter, Rotary Speaker, Tremolo / Panner and Pitch
+  Shifter. Dimensional Chorus now starts with MODE 1 pressed. The X32's tap delays,
+  dual and combination effects and its insert effects still return silence or pass
+  the signal through.
 
 ## [0.2.0] - beta
 
