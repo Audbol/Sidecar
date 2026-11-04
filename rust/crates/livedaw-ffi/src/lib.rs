@@ -96,7 +96,8 @@ use std::sync::Arc;
 // ABI 38 (Phase 4 step 5): the X32 OSC server (ld_x32_*).
 // ABI 39 (Phase 4 step 7): X32 scene files (ld_x32_scene_write/read).
 // ABI 40 (Phase 4 step 9a): 64 parameters per FX slot (the X32's dual GEQ).
-pub const LD_ABI_VERSION: i32 = 40;
+// ABI 41 (Phase 4 step 9c): FxParams::source_left / source_right (send effects).
+pub const LD_ABI_VERSION: i32 = 41;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(default)

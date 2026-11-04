@@ -107,7 +107,7 @@ public:
     {
         beginTest ("The C ABI is version 40 and both sides agree on the layout");
         {
-            expectEquals (ld::kAbiVersion, 40);
+            expectEquals (ld::kAbiVersion, 41);
             ld::LayoutInfo info {};
             ld::ld_layout_info (&info);
             expectEquals ((int) info.abiVersion, 40);

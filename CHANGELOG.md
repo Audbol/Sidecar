@@ -108,7 +108,7 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
   (they started EQ->).
 - An X32's FX 1-4 are send effects, as on the console: each is fed from a bus (factory:
   buses 13-16; any of MIX 1-16 or M/C, or INS to make it an insert) and plays back on
-  the FX return channels (FX 1L/1R .. 4L/4R), one block late. `/fx/1..4/source` on the
+  the FX return channels (FX 1L/1R .. 4L/4R), one block late (C ABI 41). `/fx/1..4/source` on the
   X32 remote and in scene files sets them; show files keep them. The engine has a new
   source group for it, the FX returns (`FX_RETURN_SOURCE_BASE`).
 
