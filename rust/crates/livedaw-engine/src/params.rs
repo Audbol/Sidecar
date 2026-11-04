@@ -1250,14 +1250,26 @@ impl Default for FxParams {
 }
 
 impl FxParams {
+    /// The model, in the WING's FX table (`model_index_in` for a console's).
     pub fn model_index(&self) -> usize {
-        (self.model.load(Relaxed).max(0) as usize).min(FX_MODELS.len() - 1)
+        self.model_index_in(FX_MODELS)
     }
 
-    /// Selects a model; with `defaults`, loads the device's default settings.
-    /// (The engine creates the device itself: use `Engine::set_fx_model`.)
+    /// The model, in a console's FX table (`Engine::fx_models`).
+    pub fn model_index_in(&self, table: &[ModelSpec]) -> usize {
+        (self.model.load(Relaxed).max(0) as usize).min(table.len().max(1) - 1)
+    }
+
+    /// Selects a WING model (`set_model_in` for a console's).
     pub fn set_model(&self, model: usize, defaults: bool) {
-        let Some(spec) = FX_MODELS.get(model) else { return };
+        self.set_model_in(FX_MODELS, model, defaults);
+    }
+
+    /// Selects model `model` of a console's FX table; with `defaults`, loads the
+    /// device's default settings. (The engine creates the device itself: use
+    /// `Engine::set_fx_model`.)
+    pub fn set_model_in(&self, table: &[ModelSpec], model: usize, defaults: bool) {
+        let Some(spec) = table.get(model) else { return };
         if defaults {
             let mut d = [0.0; MAX_FX_PARAMS];
             spec.defaults_into(&mut d);
@@ -1268,9 +1280,14 @@ impl FxParams {
         self.model.store(model as i32, Relaxed);
     }
 
-    /// A parameter of the current device by its console id ("dcy").
+    /// A parameter of the current WING device by its console id ("dcy").
     pub fn param(&self, id: &str) -> Option<&AtomicF32> {
-        self.values.get(FX_MODELS[self.model_index()].param_index(id)?)
+        self.param_in(FX_MODELS, id)
+    }
+
+    /// A parameter of the current device of a console's FX table.
+    pub fn param_in(&self, table: &[ModelSpec], id: &str) -> Option<&AtomicF32> {
+        self.values.get(table[self.model_index_in(table)].param_index(id)?)
     }
 
     /// The EXT device with SOURCE OUTBOARD (`ext::SOURCE`): without a plugin in

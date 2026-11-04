@@ -32,6 +32,7 @@ pub static MODELS: ModelTables = ModelTables {
     eq_bus: EQ_MODELS_BUS,
     filter_tools: FILTER_TOOLS,
     fx: FX_MODELS,
+    fx_premium_slots: 8,
     gate_default: "GATE",
     comp_default: "COMP",
 };
@@ -43,7 +44,7 @@ pub const MAX_EQ_PARAMS: usize = 32;
 /// Parameter slots per filter tool.
 pub const MAX_TOOL_PARAMS: usize = 2;
 /// Parameter slots per FX device (the graphic EQ and the channel strips use 33).
-pub const MAX_FX_PARAMS: usize = 36;
+pub const MAX_FX_PARAMS: usize = 64;
 
 /// Maps a 0..10 dial to `lo..hi` logarithmically (analog-style frequency knobs).
 pub fn dial_log(dial: f32, lo: f32, hi: f32) -> f32 {

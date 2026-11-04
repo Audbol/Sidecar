@@ -337,6 +337,14 @@ impl FxRack {
         unsafe { p.as_ref() }.map(|d| (d.model(), d.context()))
     }
 
+    /// The FX table of the installed device (None without one): a console
+    /// changed to another profile has its devices made again.
+    pub fn device_table(&self) -> Option<&'static [livedaw_dsp::model::ModelSpec]> {
+        let p = self.device.load(Acquire);
+        // SAFETY: as in device_info.
+        unsafe { p.as_ref() }.map(|d| d.table())
+    }
+
     /// The device's meter: gain reduction in dB (<= 0).
     pub fn meter(&self) -> f32 {
         self.meter.load()

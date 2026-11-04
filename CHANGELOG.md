@@ -97,6 +97,8 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
   SCENES) sets the console from an X32 scene file and keeps it as a new scene; EXPORT
   .scn writes the console as one. What Sidecar doesn't emulate yet (FX slots, outputs,
   head amps) is skipped. C ABI 39: `ld_x32_scene_write`, `ld_x32_scene_read`.
+- The FX rack runs its console's own list of devices (on an X32, premium devices in FX
+  1-4); a slot holds 64 parameters (C ABI 40).
 - An X32's sends to buses 9-16 now start POST, as a freshly initialised X32's do
   (they started EQ->).
 

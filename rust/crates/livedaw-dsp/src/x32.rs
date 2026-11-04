@@ -133,6 +133,7 @@ pub static MODELS: ModelTables = ModelTables {
     eq_bus: EQ_BUS,
     filter_tools: FILTER_TOOLS,
     fx: FX_MODELS,
+    fx_premium_slots: 4,
     gate_default: "X32GATE",
     comp_default: "X32COMP",
 };

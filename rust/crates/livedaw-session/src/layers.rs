@@ -43,7 +43,6 @@ use crate::model::ConsoleModel;
 use crate::refs::StripRef;
 use crate::xml::{parse_int_prefix, Element};
 use livedaw_dsp::model::ParamKind;
-use livedaw_dsp::wing::FX_MODELS;
 use livedaw_engine::params::{FX_EXT, WING_DCAS};
 use livedaw_engine::{Engine, StripKind};
 use std::collections::hash_map::RandomState;
@@ -407,12 +406,12 @@ pub fn spill_faders(engine: &Engine, kind: &SpillKind) -> Vec<FaderRef> {
         }
         SpillKind::Fx(slot) => {
             let Some(p) = usize::try_from(slot).ok().and_then(|i| engine.controls.fx.get(i)) else { return Vec::new() };
-            let model = p.model_index();
+            let fx = engine.fx_models();
+            let model = p.model_index_in(fx);
             if model == FX_EXT {
                 return Vec::new();
             }
-            FX_MODELS
-                .get(model)
+            fx.get(model)
                 .map(|m| {
                     m.params
                         .iter()

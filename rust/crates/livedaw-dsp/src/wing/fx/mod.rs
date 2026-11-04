@@ -29,6 +29,7 @@ mod time_audit;
 mod utility;
 
 use super::{ModelCategory, ModelSpec, Params, FX_MODELS, MAX_FX_PARAMS};
+use crate::model::ModelTables;
 
 /// Fixed for an instance's lifetime.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -105,11 +106,17 @@ pub fn model_index(token: &str) -> Option<usize> {
     super::model_index(FX_MODELS, token)
 }
 
-/// Whether a device may run in FX slot `slot` (0-based): premium devices need
-/// slots 1-8, everything else runs anywhere.
+/// Whether a WING device may run in FX slot `slot` (0-based): premium devices
+/// need slots 1-8, everything else runs anywhere.
 pub fn allowed_in_slot(model: usize, slot: usize) -> bool {
-    match FX_MODELS.get(model) {
-        Some(m) => m.category != ModelCategory::FxPremium || slot < 8,
+    allowed_in(&super::MODELS, model, slot)
+}
+
+/// Whether device `model` of a console's FX table may run in FX slot `slot`
+/// (0-based): premium devices need its premium slots, the rest run anywhere.
+pub fn allowed_in(models: &ModelTables, model: usize, slot: usize) -> bool {
+    match models.fx.get(model) {
+        Some(m) => m.category != ModelCategory::FxPremium || slot < models.fx_premium_slots,
         None => false,
     }
 }
@@ -181,6 +188,8 @@ pub fn response(token: &str, values: &[f32], freqs: &[f32], out: &mut [f32]) -> 
 /// A running device: the instance plus the parameter values it last saw.
 /// The FX slot owns one of these and feeds it the slot's parameter atomics.
 pub struct FxDevice {
+    /// The console's FX table `model` indexes.
+    table: &'static [ModelSpec],
     model: usize,
     ctx: FxContext,
     algo: Box<dyn FxAlgo>,
@@ -191,11 +200,21 @@ pub struct FxDevice {
 impl FxDevice {
     /// Message thread (allocates). `None` if the model isn't a built-in device.
     pub fn new(model: usize, ctx: FxContext) -> Option<Self> {
-        let spec = FX_MODELS.get(model)?;
+        Self::new_in(FX_MODELS, model, ctx)
+    }
+
+    /// Model `model` of a console's FX table (`ModelTables::fx`).
+    pub fn new_in(table: &'static [ModelSpec], model: usize, ctx: FxContext) -> Option<Self> {
+        let spec = table.get(model)?;
         let algo = create(spec.token, ctx)?;
         let mut values = [0.0; MAX_FX_PARAMS];
         spec.defaults_into(&mut values);
-        Some(Self { model, ctx, algo, values, primed: false })
+        Some(Self { table, model, ctx, algo, values, primed: false })
+    }
+
+    /// The FX table the device's model is in.
+    pub fn table(&self) -> &'static [ModelSpec] {
+        self.table
     }
 
     pub fn model(&self) -> usize {
@@ -203,7 +222,7 @@ impl FxDevice {
     }
 
     pub fn spec(&self) -> &'static ModelSpec {
-        &FX_MODELS[self.model]
+        &self.table[self.model]
     }
 
     pub fn context(&self) -> FxContext {
@@ -236,7 +255,7 @@ impl FxDevice {
     /// Audio thread: applies `values` if they changed, then processes in blocks
     /// of at most `max_block`.
     pub fn process(&mut self, values: &[f32], left: &mut [f32], right: &mut [f32]) {
-        let spec = &FX_MODELS[self.model];
+        let spec = &self.table[self.model];
         let n = spec.params.len().min(MAX_FX_PARAMS).min(values.len());
         if !self.primed || self.values[..n] != values[..n] {
             for (i, p) in spec.params.iter().enumerate().take(n) {

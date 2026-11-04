@@ -335,6 +335,9 @@ pub struct ModelTables {
     pub filter_tools: &'static [ModelSpec],
     /// The FX rack's devices.
     pub fx: &'static [ModelSpec],
+    /// The FX slots (from the first) that take `FxPremium` devices: the WING's
+    /// 1-8, the X32's 1-4 (its send / return slots).
+    pub fx_premium_slots: usize,
     /// The models a new strip's GATE and DYNAMICS slots start on (tokens of
     /// `dynamics`).
     pub gate_default: &'static str,

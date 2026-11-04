@@ -29,7 +29,7 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 39;
+constexpr int kAbiVersion = 40;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -60,7 +60,7 @@ constexpr int kWingBuses = 16;
 constexpr int kMaxDynParams = 20;
 constexpr int kMaxEqParams = 32;
 constexpr int kMaxToolParams = 2;
-constexpr int kMaxFxParams = 36;
+constexpr int kMaxFxParams = 64;
 /** The WING colour (1..18) of a new channel, source and DCA: Dark Blue. */
 constexpr int kDefaultColour = 1;
 /** FX slot models (indices into model table 4): an empty slot, and EXT (a

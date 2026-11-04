@@ -73,9 +73,9 @@ use crate::sources::{user_side, SourceDsp, SourceTable, UserSignalParams};
 use crate::strip::{source_ptr, KeyStrips, ProcessContext, Strip};
 use crate::talk::{TalkBlock, TalkGains, TalkRamps};
 use crate::taps::{send_tap, FIRST_USER_TAP, NUM_TAP_IDS};
+use livedaw_dsp::model::ModelSpec;
 use livedaw_dsp::util::*;
-use livedaw_dsp::wing::fx::{allowed_in_slot, FxContext, FxDevice};
-use livedaw_dsp::wing::FX_MODELS;
+use livedaw_dsp::wing::fx::{allowed_in, FxContext, FxDevice};
 use livedaw_recorder::usb::{RecTap, UsbDeck, USB_CHANNELS};
 use livedaw_recorder::{playback_channel, usb_player_channel, RecordStream, RecordTrackSpec, Recorder, SourceKind};
 use std::cell::UnsafeCell;
@@ -1331,15 +1331,23 @@ impl Engine {
         }
     }
 
+    /// The console's FX devices (its profile's `ModelTables::fx`): what FX
+    /// slots' model indexes mean.
+    pub fn fx_models(&self) -> &'static [ModelSpec] {
+        self.profile().spec().models.fx
+    }
+
     /// Message thread: selects the device of FX slot `i` (an index into
-    /// `FX_MODELS`), creating it now. With `defaults`, its settings are reset to
-    /// the device's defaults. Premium devices are refused in slots 9-16.
+    /// [`Engine::fx_models`]), creating it now. With `defaults`, its settings
+    /// are reset to the device's defaults. Premium devices are refused beyond
+    /// the console's premium slots (the WING's 1-8, the X32's 1-4).
     pub fn set_fx_model(&self, i: usize, model: usize, defaults: bool) -> bool {
         let (Some(rack), Some(params)) = (self.fx.get(i), self.controls.fx.get(i)) else { return false };
-        if model >= FX_MODELS.len() || !allowed_in_slot(model, i) {
+        let models = self.profile().spec().models;
+        if model >= models.fx.len() || !allowed_in(models, model, i) {
             return false;
         }
-        params.set_model(model, defaults);
+        params.set_model_in(models.fx, model, defaults);
         self.install_fx_device(i, rack, model);
         true
     }
@@ -1377,22 +1385,25 @@ impl Engine {
     /// Creates (or removes) the built-in device of slot `i` for `model`.
     fn install_fx_device(&self, i: usize, rack: &FxRack, model: usize) {
         let ctx = self.fx_context();
-        if rack.device_info() == Some((model, ctx)) {
+        let models = self.profile().spec().models;
+        if rack.device_info() == Some((model, ctx)) && rack.device_table().is_none_or(|t| std::ptr::eq(t, models.fx)) {
             return;
         }
-        let device = if model == FX_NONE || model == FX_EXT || !allowed_in_slot(model, i) {
+        let device = if model == FX_NONE || model == FX_EXT || !allowed_in(models, model, i) {
             None
         } else {
-            FxDevice::new(model, ctx).map(Box::new)
+            FxDevice::new_in(models.fx, model, ctx).map(Box::new)
         };
         rack.set_device(device, &self.garbage);
     }
 
     fn sync_fx_devices(&self) {
+        let fx = self.fx_models();
         for (i, (rack, params)) in self.fx.iter().zip(self.controls.fx.iter()).enumerate() {
-            let model = params.model_index();
+            let model = params.model_index_in(fx);
             let wanted = !(model == FX_NONE || model == FX_EXT);
-            if rack.device_info().map(|(m, _)| m) != wanted.then_some(model) {
+            let other_table = rack.device_table().is_some_and(|t| !std::ptr::eq(t, fx));
+            if other_table || rack.device_info().map(|(m, _)| m) != wanted.then_some(model) {
                 self.install_fx_device(i, rack, model);
             }
         }

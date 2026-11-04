@@ -536,6 +536,31 @@ Three layers:
         no tabs it doesn't draw), screenshots (`x32-surface.png`, `x32-display-home.png`,
         `x32-compact.png`), the user guide's chapter, the README and the start-up
         notice.
+   9. **The X32's effects** (the owner's choice, November 2026: the X32's own models
+      first, not stand-ins from the WING's catalogue):
+      - 9a, the rack per console (done): the FX rack runs its console's FX table
+        (`ModelTables::fx`), as the strips' blocks run theirs (`FxDevice` with a
+        table; the slot rules from the profile: on an X32, slots 1-4 take any model,
+        5-8 the insert models only). `Engine::fx_models`, `FxParams::*_in`,
+        `FxDevice::new_in`, `ModelTables::fx_premium_slots` (the WING's 8, the X32's
+        4); show files read and write a slot's device in the console's table. A slot
+        holds 64 parameters (C ABI 40), for the X32's dual GEQ.
+        The devices are measured against the owner's X32 Compact (from 9d): the
+        computer cabled to it over USB plays test signals through its effects and
+        records them.
+      - 9b, the catalogue: the 61 models (`livedaw_dsp::x32`, tokens `X32HALL`...),
+        their parameters as the OSC document lists them (pp. 85-115); `/fx/N`
+        (type, source, par) on the X32 remote and in scene files.
+      - 9c, the factory rack: FX 1-4 Vintage Room, Hall, Stereo Delay, Stereo Chorus
+        fed by buses 13-16 and returning on the FX returns; FX 5-7 Dual GEQ, FX 8
+        Stereo GEQ (as a freshly initialised X32 Compact has them).
+      - 9d-9g, the algorithms in batches, each measured (decay, taps, curves,
+        gain reduction) since none can be compared by ear here: reverbs, delays and
+        modulation (the factory four first); the combos and pitch; EQs and dynamics
+        (GEQ, TruEQ, Xtec EQ1 / EQ5, de-esser, limiter, Combinator, Fair, Leisure and
+        Ultimo comps, Wave Designer); enhancers, exciters, imagers, amps and drive.
+        Until a model's algorithm lands it passes the signal through unprocessed
+        and keeps its settings.
 
 Each emulation keeps the independent-project disclaimer: not affiliated with or
 endorsed by the console's maker, their trademarks used only to say what is emulated,
