@@ -260,6 +260,10 @@ impl SharedPtrs<'_> {
 }
 
 pub struct Engine {
+    /// A console's own state beyond its strips (a ProMix 01's pairs, groups,
+    /// dynamics processors...: its profile's text), and how often it was set.
+    /// Shows and scenes keep it (`<ConsoleState>`); a reset clears it.
+    console_text: Mutex<(String, u64)>,
     garbage: Garbage,
     pool: WorkerPool,
     topology: AtomicPtr<Topology>,
@@ -326,6 +330,7 @@ impl Engine {
     pub fn new(num_workers: usize) -> Self {
         let device = DeviceConfig { sample_rate: DEFAULT_SAMPLE_RATE, block_size: DEFAULT_BLOCK, num_hw_inputs: 0 };
         let engine = Self {
+            console_text: Mutex::new((String::new(), 0)),
             garbage: Garbage::default(),
             pool: WorkerPool::new(num_workers),
             topology: AtomicPtr::new(std::ptr::null_mut()),
@@ -657,6 +662,7 @@ impl Engine {
     /// Back to a fresh console: no channels, default aux/buses/mains/matrices,
     /// DCAs, mute groups and FX settings.
     pub fn reset(&self) {
+        self.set_console_text("");
         let mut st = self.lock();
         st.channels.clear();
         st.next_channel_id = 1;
@@ -731,6 +737,23 @@ impl Engine {
         }
         self.reset();
         counts
+    }
+
+    /// The console's own state beyond its strips, as its profile writes it
+    /// (empty: none), and its version (it changes with every set).
+    pub fn console_text(&self) -> (String, u64) {
+        self.console_text.lock().unwrap_or_else(|e| e.into_inner()).clone()
+    }
+
+    /// Sets the console's own state (a show load, a scene recall, the
+    /// profile's own code); returns the new version.
+    pub fn set_console_text(&self, text: &str) -> u64 {
+        let mut t = self.console_text.lock().unwrap_or_else(|e| e.into_inner());
+        if t.0 != text {
+            t.0 = text.to_string();
+            t.1 += 1;
+        }
+        t.1
     }
 
     /// The configuration of the console (`configure`; its profile is the

@@ -165,7 +165,7 @@ pub fn from_midi(x: u16, n: u16, top: u16) -> u16 {
 /// What the app should do on the console's behalf.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Event {
-    /// Recall scene 0-50 (0: scene 00, the initial data).
+    /// Recall scene 1-50 (the protocol recalls scene 00, the initial data, itself).
     RecallScene(u8),
     /// A bulk request for scene 1-50: the app answers with `scene_dump`.
     SceneDumpRequest(u8),
@@ -395,6 +395,18 @@ pub fn load_scene_bytes(c: &mut Console, data: &[u8]) {
     }
 }
 
+/// Scene 00 (p.62): the scene bytes of a new ProMix 01, read once from one.
+pub fn initial_bytes() -> &'static [u8] {
+    static BYTES: std::sync::OnceLock<Vec<u8>> = std::sync::OnceLock::new();
+    BYTES.get_or_init(|| {
+        use livedaw_engine::config::{ConsoleConfig, Counts};
+        let e = livedaw_engine::Engine::new(0);
+        e.configure(&ConsoleConfig { profile: livedaw_engine::Profile::ProMix01, counts: Counts::PROMIX01 });
+        let (mut s, lib) = (crate::State::default(), crate::library::Library::default());
+        scene_bytes(&Console::new(&e, &mut s, &lib))
+    })
+}
+
 /// The MIDI protocol's state: its setup and tables, what it sent last, and
 /// what waits to go out.
 pub struct Midi {
@@ -472,8 +484,11 @@ impl Midi {
                 if !self.for_us(ch, sw) {
                     return;
                 }
-                if let Some(scene) = self.pc_table.scenes[(msg[1] & 0x7f) as usize] {
-                    self.events.push_back(Event::RecallScene(scene));
+                match self.pc_table.scenes[(msg[1] & 0x7f) as usize] {
+                    // Scene 00: the initial data, here.
+                    Some(0) => load_scene_bytes(c, initial_bytes()),
+                    Some(scene) => self.events.push_back(Event::RecallScene(scene)),
+                    None => {}
                 }
             }
             0xb0 if msg.len() >= 3 => {
@@ -871,13 +886,12 @@ mod tests {
         let mut c = Console::new(&e, &mut s, &lib);
         let mut m = Midi::default();
         m.receive(&mut c, &[0xc0, 4]);
+        c.set_level(PmStrip::Ch(0), 115, Origin::Midi);
         m.receive(&mut c, &[0xc0, 127]);
+        assert_eq!(c.level(PmStrip::Ch(0)), 0, "scene 00: faders down");
         m.receive(&mut c, &[0xc0, 99]);
         m.receive(&mut c, &[0xc5, 4]);
-        assert_eq!(
-            (m.take_event(), m.take_event(), m.take_event()),
-            (Some(Event::RecallScene(5)), Some(Event::RecallScene(0)), None)
-        );
+        assert_eq!((m.take_event(), m.take_event()), (Some(Event::RecallScene(5)), None), "128: scene 00, here");
         m.scene_recalled(12);
         assert_eq!(m.take_out(), Some(vec![0xc0, 11]));
         m.setup.program.echo = true;

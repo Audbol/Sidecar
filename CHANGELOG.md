@@ -217,6 +217,10 @@ Phase 5, the Yamaha ProMix 01 (`docs/UNIVERSAL_MIXER.md`), begins.
   setup, the user programs; the bytes inside are Sidecar's layout) and Key Remote.
   MIDI SETUP (channels, TX, RX, OMNI, ECHO) is kept in the app settings. C ABI 44:
   `ld_promix_*`.
+- The ProMix 01's scene memories are the show's scenes, and keep its own state: a
+  console's state beyond its strips (the ProMix's pairs, groups, dynamics processors,
+  SEND3-4 mode) is the engine's (`Engine::console_text`), stored by shows and scenes
+  (`<ConsoleState>`). Program change 128 recalls scene 00, the console's initial data.
 
 ## [0.2.0] - beta
 

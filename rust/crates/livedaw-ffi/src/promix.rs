@@ -17,21 +17,44 @@ use livedaw_promix::{params, State};
 
 pub struct LdProMix {
     engine: *const Engine,
+    /// The console's own state: the engine's console text (`Engine::console_text`,
+    /// which shows and scenes keep) as read at `version`.
     state: State,
+    version: u64,
     library: Library,
     midi: Midi,
 }
 
 impl LdProMix {
-    /// The console (None if the engine isn't a ProMix 01) and the MIDI state.
+    /// The console (None if the engine isn't a ProMix 01) and the MIDI state;
+    /// the state read again if a show or a scene set it since.
     fn with<R>(&mut self, f: impl FnOnce(&mut Console, &mut Midi) -> R) -> Option<R> {
         // SAFETY: the host keeps the engine alive while `self` is.
         let engine = unsafe { self.engine.as_ref()? };
         if engine.profile() != Profile::ProMix01 {
             return None;
         }
+        let (text, version) = engine.console_text();
+        if text.is_empty() {
+            // A fresh console: its state from the start, so scenes keep it.
+            self.state = State::default();
+            self.version = engine.set_console_text(&self.state.to_text());
+        } else if version != self.version {
+            self.state = State::from_text(&text);
+            self.version = version;
+        }
         let mut c = Console::new(engine, &mut self.state, &self.library);
         Some(f(&mut c, &mut self.midi))
+    }
+
+    /// As `with`, then the state written back to the engine.
+    fn with_mut<R>(&mut self, f: impl FnOnce(&mut Console, &mut Midi) -> R) -> Option<R> {
+        let r = self.with(f)?;
+        // SAFETY: as `with`.
+        if let Some(engine) = unsafe { self.engine.as_ref() } {
+            self.version = engine.set_console_text(&self.state.to_text());
+        }
+        Some(r)
     }
 }
 
@@ -48,6 +71,7 @@ pub unsafe extern "C" fn ld_promix_create(e: *const Engine) -> *mut LdProMix {
         Box::into_raw(Box::new(LdProMix {
             engine: e,
             state: State::default(),
+            version: 0,
             library: Library::default(),
             midi: Midi::default(),
         }))
@@ -76,7 +100,7 @@ pub unsafe extern "C" fn ld_promix_midi_in(p: *mut LdProMix, bytes: *const u8, l
     }
     let msg = std::slice::from_raw_parts(bytes, len).to_vec();
     guard((), || {
-        p.with(|c, m| m.receive(c, &msg));
+        p.with_mut(|c, m| m.receive(c, &msg));
     });
 }
 
@@ -206,7 +230,7 @@ pub unsafe extern "C" fn ld_promix_load_scene_bytes(p: *mut LdProMix, data: *con
     }
     let data = std::slice::from_raw_parts(data, len).to_vec();
     guard((), || {
-        p.with(|c, _| livedaw_promix::midi::load_scene_bytes(c, &data));
+        p.with_mut(|c, _| livedaw_promix::midi::load_scene_bytes(c, &data));
     });
 }
 
@@ -312,7 +336,7 @@ pub unsafe extern "C" fn ld_promix_param_steps(p: *mut LdProMix, n: i32) -> i32 
 pub unsafe extern "C" fn ld_promix_set_param(p: *mut LdProMix, n: i32, value: i32) {
     let (Some(p), Ok(n), Ok(v)) = (p.as_mut(), u16::try_from(n), u16::try_from(value.max(0))) else { return };
     guard((), || {
-        p.with(|c, _| params::set(c, n, v, Origin::Panel));
+        p.with_mut(|c, _| params::set(c, n, v, Origin::Panel));
     });
 }
 
@@ -327,8 +351,10 @@ pub extern "C" fn ld_promix_param_name(n: i32) -> *mut LdString {
 /// # Safety
 /// `p` is from `ld_promix_create` (or null).
 #[no_mangle]
-pub unsafe extern "C" fn ld_promix_state_text(p: *const LdProMix) -> *mut LdString {
-    p.as_ref().map_or(std::ptr::null_mut(), |p| LdString::new(p.state.to_text()))
+pub unsafe extern "C" fn ld_promix_state_text(p: *mut LdProMix) -> *mut LdString {
+    let Some(p) = p.as_mut() else { return std::ptr::null_mut() };
+    p.with(|_, _| ());
+    LdString::new(p.state.to_text())
 }
 
 /// Sets the console's own state from text (missing values: the defaults).
@@ -338,7 +364,22 @@ pub unsafe extern "C" fn ld_promix_state_text(p: *const LdProMix) -> *mut LdStri
 #[no_mangle]
 pub unsafe extern "C" fn ld_promix_set_state_text(p: *mut LdProMix, text: *const u8, len: usize) {
     if let Some(p) = p.as_mut() {
-        p.state = State::from_text(&str_arg(text, len));
+        let state = State::from_text(&str_arg(text, len));
+        p.with_mut(|c, _| *c.state = state);
+    }
+}
+
+/// Recalls scene 00, the console's initial data (p.62): every mix setting as
+/// a new ProMix 01 has it (its names and patches stay).
+///
+/// # Safety
+/// `p` is from `ld_promix_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_promix_recall_initial(p: *mut LdProMix) {
+    if let Some(p) = p.as_mut() {
+        guard((), || {
+            p.with_mut(|c, _| livedaw_promix::midi::load_scene_bytes(c, livedaw_promix::midi::initial_bytes()));
+        });
     }
 }
 
@@ -381,6 +422,15 @@ mod tests {
             assert_eq!((setup.tx_channel, setup.switches[1]), (0, [1, 1, 0, 0]));
             setup.register_mode = 1;
             ld_promix_set_setup(p, &setup);
+            // Its own state lives in the engine's console text (shows and scenes keep it).
+            ld_promix_set_param(p, 503, 3); // pair CH1/2
+            assert!(e.console_text().0.contains("pairs=1 "));
+            e.set_console_text("pairs=0 1 0 0 0 0 0 0\n");
+            assert_eq!((ld_promix_param(p, 396), ld_promix_param(p, 397)), (0, 1), "a recalled scene's pairs");
+            // Scene 00: the initial data.
+            ld_promix_set_param(p, 3, 20);
+            ld_promix_recall_initial(p);
+            assert_eq!((ld_promix_param(p, 3), ld_promix_param(p, 397)), (0, 0));
             ld_promix_destroy(p);
         }
     }

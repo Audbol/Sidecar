@@ -287,6 +287,20 @@ private:
             expect (sent.size() == 1 && sent[0].isSysEx() && sent[0].getRawDataSize() == 834);
             expectEquals (ProMix::name (21), juce::String ("Stereo Output Level"));
             expect (engine.getProMix().getSceneBytes().size() == 408);
+
+            // Scene memories (step 6): the show's scenes keep its own state too.
+            auto& pm = engine.getProMix();
+            pm.set (503, 3); // pair CH1/2 (ST RESET)
+            const int scene = show.addScene ("PAIRED");
+            pm.set (503, 0); // MONO x 2
+            expectEquals (pm.get (396), 0);
+            p->handleMessage (0, juce::MidiMessage::programChange (1, scene)); // program 1 + scene: that scene
+            expectEquals (pm.get (396), 1, "the scene's pair is back");
+            // Program change 128: scene 00, the initial data.
+            pm.set (5, 100);
+            p->handleMessage (0, juce::MidiMessage::programChange (1, 127));
+            expectEquals (pm.get (5), 0, "scene 00: faders down");
+            expectEquals (pm.get (396), 0, "no pairs");
         }
         expectEquals (engine.getFaderLaw().steps, 128);
         expectEquals (engine.getAux()[1]->getName(), juce::String ("RTN1"));

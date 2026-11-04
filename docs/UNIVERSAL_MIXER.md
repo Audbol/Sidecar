@@ -833,8 +833,21 @@ Three layers:
       only the formats: a dump goes back into Sidecar, not into a ProMix 01.
       Not done: the scene memories' dumps (step 6), Local OFF (the panel's,
       step 7), the bulk interval, the Error report, the Backup Memory.
-   6. **Scene memories**: 50 scenes and scene 00 (the console's initial data) over
-      the show's scenes, recalled by program change, sent as bulk dumps.
+   6. **Scene memories** (done): scenes 1-50 are the show's scenes 1-50 (program
+      changes through the table recall them; a recall on the console sends its
+      program change), and they keep the console's own state: the engine holds a
+      console's state beyond its strips as text (`Engine::console_text`, with a
+      version; a reset clears it), which shows and scenes store
+      (`<ConsoleState profile="promix01" state="...">`, the lines `;`-separated,
+      with the FADER, SENDS, GROUPS and DYNAMICS sections; only for the console
+      it was saved from) and the ProMix handle reads again whenever it changes
+      and writes after its own changes (`ld_promix_*`), so a scene brings back
+      its pairs, groups, processors and SEND3-4 mode. Scene 00, the initial data
+      (p.62), is the mix of a new ProMix 01 (`midi::initial_bytes`, its scene
+      bytes), recalled by program change 128 or `ld_promix_recall_initial`
+      without rebuilding the console. Not done: scene memories as bulk dumps
+      (a request for scene n, a dump into it: they need the scene's mix without
+      recalling it), the program and user libraries in the show.
    7. **A ProMix skin**: the surface laid out as the ProMix 01, drawn in
       Sidecar's style: 16 channel faders, ST IN, RTN / SEND and ST OUT with SEL
       and ON, the LCD with its function keys (METER, PAN / PHASE, COMP, CUE,

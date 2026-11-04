@@ -1125,9 +1125,32 @@ pub fn capture(engine: &Engine, sections: u32, only: Option<&[StripRef]>, bridge
             capture_fx(engine, &mut state, bridge);
             capture_automix(engine, &mut state);
         }
+        if sections & CONSOLE_STATE_SECTIONS != 0 {
+            capture_console_state(engine, &mut state);
+        }
     }
     state
 }
+
+/// `<ConsoleState>`: the console's own state beyond its strips (a ProMix 01's
+/// pairs, groups, processors: `Engine::console_text`), its lines `;`-separated.
+fn capture_console_state(engine: &Engine, parent: &mut Element) {
+    let (text, _) = engine.console_text();
+    if !text.is_empty() {
+        parent.add_new("ConsoleState").set("profile", engine.profile().id()).set("state", text.trim_end().replace('\n', ";"));
+    }
+}
+
+/// Restores `<ConsoleState>` if it is this console's profile's.
+fn apply_console_state(engine: &Engine, parent: &Element) {
+    if let Some(c) = parent.child("ConsoleState").filter(|c| c.str_or("profile", "") == engine.profile().id()) {
+        engine.set_console_text(&c.str_or("state", "").replace(';', "\n"));
+    }
+}
+
+/// The sections a console's own state goes with: it ties faders, sends,
+/// groups and dynamics together (a ProMix 01's pairs and processors).
+const CONSOLE_STATE_SECTIONS: u32 = section::FADER | section::SENDS | section::GROUPS | section::DYNAMICS;
 
 // ---- apply ----------------------------------------------------------------------------
 
@@ -1315,6 +1338,9 @@ pub fn apply(
         apply_strip(engine, strip, e, sections, &mut fades, &mut result);
     }
 
+    if only.is_none() && effective & CONSOLE_STATE_SECTIONS != 0 {
+        apply_console_state(engine, state);
+    }
     if only.is_none() {
         let main_safe = respect_recall_safe
             && index.find(&StripRef::new(StripKind::Main, 0)).is_some_and(|m| m.params.recall_safe.load(Relaxed));
@@ -1434,6 +1460,7 @@ pub fn save_console(engine: &Engine, bridge: &mut dyn PluginBridge) -> Element {
         }
     }
     crate::globals::capture(engine, &mut console);
+    capture_console_state(engine, &mut console);
     let io = engine.io_safes();
     if io.any() {
         console.add_new("IoSafes").set("sources", io.sources.to_ranges()).set("outputs", io.outputs.to_ranges());
@@ -1503,6 +1530,7 @@ pub fn load_console(engine: &Engine, console: &Element, bridge: &mut dyn PluginB
     apply_automix(engine, console);
     apply_dcas(engine, console, &mut None);
     apply_mute_groups(engine, console);
+    apply_console_state(engine, console);
     for i in 0..MAX_FX {
         bridge.clear_fx(i);
     }

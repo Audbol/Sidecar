@@ -278,7 +278,11 @@ of any size, of which the WING is one configuration.
   them (`Engine::set_config`, `set_num_strips`). A strip keeps its console's
   `ProfileSpec` (`Strip::of_profile`; `Strip::new` is a WING strip) and runs its
   template. Shows store the profile (`<Console profile="...">`); C ABI 30
-  `ld_engine_profile`. The profiles: the Universal, the WING, the X32 (Phase 4) and
+  `ld_engine_profile`. A console's own state beyond its strips (a ProMix 01's pairs,
+  groups, processors) is text the engine keeps for its profile's code
+  (`Engine::console_text` / `set_console_text`, versioned, cleared by a reset);
+  shows and scenes store it (`<ConsoleState>`, with the FADER, SENDS, GROUPS and
+  DYNAMICS sections). The profiles: the Universal, the WING, the X32 (Phase 4) and
   the Yamaha ProMix 01 (Phase 5: `Counts::PROMIX01`, `FaderLaw::PROMIX01`,
   `PROMIX01_PORT_GROUPS`, `Palette::PROMIX01`; C ABI 43 profile 3; its models in
   `livedaw_dsp::promix`, its chains `chain::PROMIX01_*`). A profile's buses, mains

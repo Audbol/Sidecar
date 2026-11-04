@@ -1826,8 +1826,10 @@ extern "C"
     void ld_promix_set_param (LdProMix*, int32_t n, int32_t value);
     LdString* ld_promix_param_name (int32_t n);
     /** The console's own state as text (pairs, groups, processors...), and back. */
-    LdString* ld_promix_state_text (const LdProMix*);
+    LdString* ld_promix_state_text (LdProMix*);
     void ld_promix_set_state_text (LdProMix*, const char* text, size_t len);
+    /** Recalls scene 00, the initial data: every mix setting as a new ProMix 01 has it. */
+    void ld_promix_recall_initial (LdProMix*);
 
     // WING remote (message thread). Destroy it before the engine.
     LdWing* ld_wing_create (const Engine*);

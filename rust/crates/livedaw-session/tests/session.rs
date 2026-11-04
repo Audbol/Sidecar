@@ -795,6 +795,33 @@ fn a_promix01_show_loads_as_a_promix01() {
 }
 
 #[test]
+fn a_consoles_own_state_goes_with_its_shows_and_scenes() {
+    use livedaw_engine::config::{ConsoleConfig, Counts};
+    use livedaw_engine::Profile;
+    let engine = Engine::new(0);
+    engine.configure(&ConsoleConfig { profile: Profile::ProMix01, counts: Counts::PROMIX01 });
+    assert_eq!(engine.console_text().0, "", "a fresh console has none");
+    let mut np = NoPlugins;
+    let mut show = Show::new();
+    engine.set_console_text("pairs=1 0 0 0 0 0 0 0\ngroups=2\n");
+    show.add_scene(&engine, &mut np, "A", -1);
+    let v = engine.set_console_text("pairs=0 0 0 0 0 0 0 1\n");
+    show.recall_scene(&engine, &mut np, 0);
+    let (text, v2) = engine.console_text();
+    assert_eq!(text, "pairs=1 0 0 0 0 0 0 0\ngroups=2\n".trim_end());
+    assert!(v2 > v, "a new version: the console's code reads it again");
+    // A show keeps it.
+    let xml = show.to_xml(&engine, &mut np).to_document();
+    assert!(xml.contains("ConsoleState"), "{xml}");
+    let e2 = Engine::new(0);
+    Show::new().load_from_text(&e2, &mut np, &xml, true).unwrap();
+    assert_eq!(e2.console_text().0, text);
+    // Another console's state isn't applied; a reset clears it.
+    e2.configure(&ConsoleConfig { profile: Profile::X32, counts: Counts::X32 });
+    assert_eq!(e2.console_text().0, "");
+}
+
+#[test]
 fn capture_and_apply_by_section() {
     let engine = Engine::new(0);
     let mut np = NoPlugins;
