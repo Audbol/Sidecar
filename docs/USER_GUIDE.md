@@ -970,9 +970,10 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
   (FX RTN), ready to fade up.
   X32 remote apps and scene files see and set them. The models' sound is still being
   built: the reverbs, delays, modulation, pitch and combination effects work, and
-  of the insert effects the graphic EQs, de-essers, limiter, combinators,
-  enhancers, exciters and guitar amps; the compressors and the other insert effects
-  pass the signal through unchanged for now.
+  of the insert effects the graphic EQs, de-essers, limiter, compressors,
+  combinators, enhancers, exciters, wave designer and guitar amps; the program and
+  midrange EQs, tube stage, imager, Edison and sound maxer pass the signal through
+  unchanged for now.
 
 Patching, the FX rack, show files and copy and paste are on the Universal Mixer for now.
 

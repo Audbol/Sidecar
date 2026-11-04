@@ -124,9 +124,11 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
   Chamber, Delay / Chorus, Delay / Flanger) and Modulation Delay.
 - 15 of the X32's insert effects work, on the WING's devices of the same design: the
   graphic EQs (GEQ and TruEQ, stereo and dual), the de-essers, the Precision Limiter,
-  the Combinators, Enhancers, Exciters and Guitar Amps. The compressors, the program
-  and midrange EQs, Wave Designer, Tube Stage, Imager, Edison and Sound Maxer still
-  pass the signal through.
+  the Combinators, Enhancers, Exciters and Guitar Amps.
+- The X32's compressors work: Fair (stereo, dual and M/S), Leisure and Ultimo
+  (stereo and dual) run on the WING's dynamics models of the same designs, as does
+  the Wave Designer. The program and midrange EQs, Tube Stage, Imager, Edison and
+  Sound Maxer still pass the signal through.
 
 ## [0.2.0] - beta
 

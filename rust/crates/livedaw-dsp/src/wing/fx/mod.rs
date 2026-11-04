@@ -28,6 +28,7 @@ mod reverb;
 mod time_audit;
 mod utility;
 mod x32_combos;
+mod x32_dynamics;
 mod x32_inserts;
 mod x32_voices;
 
@@ -138,6 +139,7 @@ pub fn create(token: &str, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
         .or_else(|| x32_voices::create(token, ctx))
         .or_else(|| x32_combos::create(token, ctx))
         .or_else(|| x32_inserts::create(token, ctx))
+        .or_else(|| x32_dynamics::create(token, ctx))
         .or_else(|| crate::x32::fx::create(token, ctx))
 }
 

@@ -594,9 +594,11 @@ Three layers:
       - 9f, the insert models (part 1 done): the graphic EQs (GEQ the WING GEQ's
         STD type, TruEQ its TRU), de-essers, Precision Limiter, Combinators,
         Enhancers, Exciters and Guitar Amps on the WING's FX devices
-        (`wing::fx::x32_inserts`; the dual models one device per side). Part 2: the
-        compressors (Fair, Leisure, Ultimo) and Wave Designer on the WING's
-        channel dynamics models of the same designs.
+        (`wing::fx::x32_inserts`; the dual models one device per side). Part 2
+        (done): the compressors (Fair, Leisure, Ultimo) and Wave Designer on the
+        WING's channel dynamics models of the same designs (F670, LA, 76LA, WAVE),
+        run by its dynamics engine as an FX device (`wing::fx::x32_dynamics`:
+        stereo linked, dual one unit per side, FAC1M on mid and side).
       - 9g, the rest, each measured (curves, gain reduction) since none can be
         compared by ear here: EQs and dynamics
         (GEQ, TruEQ, Xtec EQ1 / EQ5, de-esser, limiter, Combinator, Fair, Leisure and
