@@ -66,7 +66,9 @@ enum class InterfaceKind
     Wing,
     Universal,
     /** The X32 surface (an X32 console's skin). */
-    X32
+    X32,
+    /** The ProMix 01 surface (a ProMix 01 console's skin). */
+    ProMix
 };
 
 /** The HOME screen's tabs for the selected strip: the overview group

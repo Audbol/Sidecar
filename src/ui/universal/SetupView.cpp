@@ -143,7 +143,7 @@ SetupView::SetupView (UiContext& c, const Theme& t)
     addChildComponent (revertKey);
 
     interfaceChoice.caption = "INTERFACE";
-    interfaceChoice.items = [] { return juce::StringArray { "WING", "UNIVERSAL", "X32" }; };
+    interfaceChoice.items = [] { return juce::StringArray { "WING", "UNIVERSAL", "X32", "PROMIX 01" }; };
     interfaceChoice.current = [this] { return (int) ctx.interfaceKind; };
     interfaceChoice.choose = [this] (int i)
     {

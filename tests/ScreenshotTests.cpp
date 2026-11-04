@@ -13,6 +13,7 @@
 #include "engine/Show.h"
 #include "ui/UniversalSkin.h"
 #include "ui/X32SceneFiles.h"
+#include "ui/ProMixSurface.h"
 #include "ui/X32Surface.h"
 
 using namespace livedaw;
@@ -169,9 +170,108 @@ public:
         skin.getSetup().refresh();
         shot ("universal-setup.png");
         x32Surface();
+        proMixSurface();
     }
 
 private:
+    /** The ProMix 01 surface (Phase 5 step 7) on a ProMix 01 with a mix on it. */
+    void proMixSurface()
+    {
+        beginTest ("The ProMix 01 surface, on a ProMix 01");
+        MixerEngine engine (0);
+        engine.configureProfile (ld::kProfileProMix01);
+        ShotRig rig (engine);
+        setShownProfile (ld::kProfileProMix01);
+        auto& pm = engine.getProMix();
+        auto& channels = engine.getChannels();
+        for (int i = 0; i < 16; ++i)
+        {
+            pm.set (i, i % 5 == 0 ? 115 : 95 - 4 * (i % 4)); // levels on the console's steps
+            channels[(size_t) i]->meters.inputPeak[0] = 0.08f + 0.5f * (float) ((i * 37) % 11) / 10.0f;
+            channels[(size_t) i]->meters.outputPeak[0] = channels[(size_t) i]->meters.inputPeak[0].load();
+        }
+        pm.set (16, 107); // ST IN
+        pm.set (21, 115); // ST OUT
+        pm.set (22 + 12, 0); // CH13 OFF
+        engine.getMains()[0]->meters.outputPeak[0] = 0.2f;
+        engine.getMains()[0]->meters.outputPeak[1] = 0.18f;
+        rig.meters.advance (0.01f);
+        rig.selected = channels[4].get();
+
+        ui::ProMixSurface skin (rig.ctx);
+        skin.setSize (1920, 1080);
+        skin.refreshAll();
+        using F = ui::promix::Function;
+        // The faders: the channels' levels, then in SEND1 their sends to it, RTN1 on RTN / SEND.
+        expectEquals (skin.getFader (0).getParam(), 0);
+        expectEquals (skin.getFader (18).getParam(), 21, "ST OUT");
+        skin.pressFunction (F::Send1);
+        expectEquals (skin.getFader (2).getParam(), 68 + 2, "CH3 to SEND1");
+        expectEquals (skin.getFader (17).getParam(), 17, "RTN1");
+        skin.pressFunction (F::Send4);
+        expectEquals (skin.getFader (17).getParam(), 20, "SEND4's master");
+        expectEquals (skin.getRtnSend(), 3);
+        // A pair moves together from the surface (the panel's operations).
+        pm.set (503 + 3, 3); // CH7/8 ST (RESET)
+        skin.pressFunction (F::Meter);
+        pm.set (6, 100);
+        skin.getFader (7).refresh();
+        expectEquals (pm.get (7), 100, "CH8 follows CH7");
+        // GROUP: SEL puts a channel in the group shown.
+        skin.pressFunction (F::Group);
+        skin.pressSel (9);
+        expectEquals (pm.get (484 + 9), 1, "CH10 in A");
+        skin.pressSel (9);
+        expectEquals (pm.get (484 + 9), 0, "and out");
+        // COMP: its fields, PATCH set by ENTER; COMP again: processor 2.
+        skin.pressFunction (F::Comp);
+        auto& display = skin.getDisplay();
+        expectEquals (display.getFields()[1].label, juce::String ("PATCH"));
+        display.cursor (1);
+        display.turn (5); // CH5, chosen
+        expectEquals (pm.get (449), 0, "not until ENTER");
+        display.enter();
+        expectEquals (pm.get (449), 5, "COMP1 on CH5");
+        skin.pressFunction (F::Comp);
+        expectEquals (display.getProcessor(), 1);
+        // SCENE MEMORY: STORE into scene 1, RECALL it.
+        skin.setMemory (1);
+        skin.store();
+        expectEquals (rig.show.getNumScenes(), 1);
+        pm.set (0, 20);
+        skin.recall();
+        expectEquals (pm.get (0), 115, "scene 1's CH1");
+        // The EQ function on the selected channel (CH5), a bell on MID.
+        skin.selectionChanged();
+        expectEquals (display.getEqStrip(), 4);
+        pm.set (296 + 4, 24); // MID G +9 dB
+        pm.set (196 + 4, 1);  // EQ ON
+        skin.pressFunction (F::EqMid);
+        expectEquals (display.getFields()[display.getCursor()].label, juce::String ("MID F"));
+        skin.refreshAll();
+
+        const auto image = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
+        expect (image.isValid() && image.getWidth() == 1920);
+        const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {});
+        if (folder.isNotEmpty())
+        {
+            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile ("promix-surface.png");
+            file.deleteFile();
+            juce::FileOutputStream out (file);
+            expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out), file.getFullPathName());
+            // The LCD's COMP function.
+            skin.pressFunction (F::Comp);
+            skin.pressFunction (F::Comp);
+            skin.pressFunction (F::Comp); // back to COMP 1
+            const auto lcd = display.createComponentSnapshot (display.getLocalBounds(), true, 1.0f);
+            const auto lcdFile = file.getSiblingFile ("promix-display-comp.png");
+            lcdFile.deleteFile();
+            juce::FileOutputStream lcdOut (lcdFile);
+            expect (lcdOut.openedOk() && juce::PNGImageFormat().writeImageToStream (lcd, lcdOut), lcdFile.getFullPathName());
+        }
+        setShownProfile (ld::kProfileWing);
+    }
+
     /** The X32 surface (Phase 4 step 8) on an X32 with a few channels named. */
     void x32Surface()
     {

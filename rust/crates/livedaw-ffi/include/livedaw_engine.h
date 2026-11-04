@@ -1825,6 +1825,17 @@ extern "C"
     int32_t ld_promix_param_steps (LdProMix*, int32_t n);
     void ld_promix_set_param (LdProMix*, int32_t n, int32_t value);
     LdString* ld_promix_param_name (int32_t n);
+    /** Parameter `n`'s value as the ProMix's LCD shows it ("+3dB", "L12", "ON"...),
+        and its short label there ("CH3", "LOW F", "THRESHOLD"). */
+    LdString* ld_promix_param_text (LdProMix*, int32_t n);
+    LdString* ld_promix_param_label (LdProMix*, int32_t n);
+    /** Parameter `n`'s value `value` as the LCD would show it (a choice waiting for ENTER). */
+    LdString* ld_promix_value_text (LdProMix*, int32_t n, int32_t value);
+    /** Program `n`'s name in library `kind` (0 effects 1-40, 1 dynamics 1-20, 2 EQ
+        1-50; 0-based), null past its end; an EQ program recalled onto EQ strip
+        `strip` (0-15 CH, 16 ST IN, 17-18 RTN, 19 ST OUT). */
+    LdString* ld_promix_program_name (const LdProMix*, int32_t kind, int32_t n);
+    void ld_promix_recall_eq (LdProMix*, int32_t strip, int32_t n);
     /** The console's own state as text (pairs, groups, processors...), and back. */
     LdString* ld_promix_state_text (LdProMix*);
     void ld_promix_set_state_text (LdProMix*, const char* text, size_t len);

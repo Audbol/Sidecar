@@ -31,6 +31,25 @@ public:
     int steps (int n) const { return ld::ld_promix_param_steps (handle, n); }
     void set (int n, int value) { ld::ld_promix_set_param (handle, n, value); }
     static juce::String name (int n) { return takeString (ld::ld_promix_param_name (n)); }
+    /** Its value as the ProMix's LCD shows it ("+3dB", "L12", "ON"...), and its
+        short label there ("CH3", "LOW F", "THRESHOLD"). */
+    juce::String text (int n) const { return takeString (ld::ld_promix_param_text (handle, n)); }
+    juce::String label (int n) const { return takeString (ld::ld_promix_param_label (handle, n)); }
+    /** Its value `v` as the LCD would show it (a choice waiting for ENTER). */
+    juce::String text (int n, int v) const { return takeString (ld::ld_promix_value_text (handle, n, v)); }
+
+    /** The libraries: 0 effects (40 programs), 1 dynamics (20), 2 EQ (50). */
+    enum Library
+    {
+        Effects = 0,
+        Dynamics = 1,
+        Eq = 2
+    };
+    juce::String programName (int library, int n) const { return takeString (ld::ld_promix_program_name (handle, library, n)); }
+    /** Recalls EQ program `n` (0-49) onto EQ strip `strip` (0-15 CH, 16 ST IN, 17-18 RTN, 19 ST OUT). */
+    void recallEq (int strip, int n) { ld::ld_promix_recall_eq (handle, strip, n); }
+    /** Recalls scene 00, the initial data. */
+    void recallInitial() { ld::ld_promix_recall_initial (handle); }
 
     /** The console's own state as text (a show keeps it), and back. */
     juce::String getStateText() const { return takeString (ld::ld_promix_state_text (handle)); }

@@ -34,14 +34,16 @@ impl LdProMix {
         if engine.profile() != Profile::ProMix01 {
             return None;
         }
-        let (text, version) = engine.console_text();
-        if text.is_empty() {
-            // A fresh console: its state from the start, so scenes keep it.
-            self.state = State::default();
-            self.version = engine.set_console_text(&self.state.to_text());
-        } else if version != self.version {
-            self.state = State::from_text(&text);
-            self.version = version;
+        if engine.console_text_version() != self.version || self.version == 0 {
+            let (text, version) = engine.console_text();
+            if text.is_empty() {
+                // A fresh console: its state from the start, so scenes keep it.
+                self.state = State::default();
+                self.version = engine.set_console_text(&self.state.to_text());
+            } else {
+                self.state = State::from_text(&text);
+                self.version = version;
+            }
         }
         let mut c = Console::new(engine, &mut self.state, &self.library);
         Some(f(&mut c, &mut self.midi))
@@ -337,6 +339,75 @@ pub unsafe extern "C" fn ld_promix_set_param(p: *mut LdProMix, n: i32, value: i3
     let (Some(p), Ok(n), Ok(v)) = (p.as_mut(), u16::try_from(n), u16::try_from(value.max(0))) else { return };
     guard((), || {
         p.with_mut(|c, _| params::set(c, n, v, Origin::Panel));
+    });
+}
+
+/// Parameter `n`'s value as the ProMix's LCD shows it (empty for none).
+///
+/// # Safety
+/// `p` is from `ld_promix_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_promix_param_text(p: *mut LdProMix, n: i32) -> *mut LdString {
+    let (Some(p), Ok(n)) = (p.as_mut(), u16::try_from(n)) else { return std::ptr::null_mut() };
+    let text = guard(None, || p.with(|c, _| params::text(c, n))).unwrap_or_default();
+    LdString::new(text)
+}
+
+/// Parameter `n`'s value `value` as the ProMix's LCD would show it (a choice
+/// waiting for ENTER).
+///
+/// # Safety
+/// `p` is from `ld_promix_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_promix_value_text(p: *mut LdProMix, n: i32, value: i32) -> *mut LdString {
+    let (Some(p), Ok(n), Ok(v)) = (p.as_mut(), u16::try_from(n), u16::try_from(value.max(0))) else {
+        return std::ptr::null_mut();
+    };
+    let text = guard(None, || p.with(|c, _| params::text_of(c, n, v))).unwrap_or_default();
+    LdString::new(text)
+}
+
+/// Parameter `n`'s short label on the ProMix's LCD ("CH3", "LOW F", "THRESHOLD").
+///
+/// # Safety
+/// `p` is from `ld_promix_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_promix_param_label(p: *mut LdProMix, n: i32) -> *mut LdString {
+    let (Some(p), Ok(n)) = (p.as_mut(), u16::try_from(n)) else { return std::ptr::null_mut() };
+    let text = guard(None, || p.with(|c, _| params::label(c, n))).unwrap_or_default();
+    LdString::new(text)
+}
+
+/// The name of program `n` (0-based) of library `kind` (0 effects, 1-40; 1
+/// dynamics, 1-20; 2 EQ, 1-50), null past its end.
+///
+/// # Safety
+/// `p` is from `ld_promix_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_promix_program_name(p: *const LdProMix, kind: i32, n: i32) -> *mut LdString {
+    let (Some(p), Ok(n)) = (p.as_ref(), usize::try_from(n)) else { return std::ptr::null_mut() };
+    let name = match kind {
+        0 => p.library.fx_program(n).map(|x| x.name),
+        1 => p.library.program(n).map(|x| x.name),
+        _ => p.library.eq_program(n).map(|x| x.name),
+    };
+    name.map_or(std::ptr::null_mut(), LdString::new)
+}
+
+/// Recalls EQ program `n` (0-49) onto EQ strip `strip` (0-15 CH1-16, 16 ST IN,
+/// 17-18 RTN1-2, 19 ST OUT) and its pair partner.
+///
+/// # Safety
+/// `p` is from `ld_promix_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_promix_recall_eq(p: *mut LdProMix, strip: i32, n: i32) {
+    let (Some(p), Ok(strip), Ok(n)) = (p.as_mut(), usize::try_from(strip), usize::try_from(n)) else { return };
+    guard((), || {
+        p.with_mut(|c, _| {
+            if let Some(s) = livedaw_promix::console::PmStrip::eq_strip(strip) {
+                c.recall_eq_program(s, n);
+            }
+        });
     });
 }
 

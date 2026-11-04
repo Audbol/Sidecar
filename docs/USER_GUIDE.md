@@ -1033,6 +1033,62 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
   sends and fader (all four at first). Resetting a strip and channel presets are on
   the Universal Mixer for now.
 
+## The ProMix 01 surface (preview)
+
+Sidecar also emulates a Yamaha ProMix 01, the 1994 digital mixer controlled over MIDI: a
+ProMix 01 console has its 16 channels, the stereo input (ST IN), its two internal effects
+and their returns (RTN1, RTN2), SEND1-4 and the stereo output (ST OUT); its 3-band EQ on
+every input, the returns and ST OUT; three dynamics processors (compressor, gate or
+ducking) patched where you need them; its 30 effects programs; its 128-step faders; and its
+MIDI. Sidecar isn't affiliated with Yamaha, and none of their artwork is used: the surface
+is drawn in Sidecar's own style.
+
+To make the console a ProMix 01, choose **PROMIX 01** in SETUP > SIDECAR > INTERFACE on
+the WING surface (SETUP > PREFERENCES > INTERFACE on the Universal Mixer). Sidecar asks
+first: the console is cleared and becomes a fresh ProMix 01 (scenes stay). A show of a
+ProMix 01 opens on the ProMix surface; its **UNIVERSAL MIXER** key switches to the
+Universal Mixer, whose **PROMIX SURFACE** key comes back.
+
+![The ProMix 01 surface: the LCD with its function keys, the scene memory, the cursor keys and the PARAMETER wheel along the top, the 16 channel faders, ST IN, RTN / SEND and ST OUT below](images/promix-surface.png)
+
+- **Faders.** CH 1-16, ST IN, RTN / SEND and ST OUT, each with **SEL** and **ON**. They
+  have the console's 128 steps (+6 dB to -66 dB, then off); double-click a fader for 0 dB.
+  RTN / SEND's SEL steps through RTN1, RTN2, SEND3 and SEND4, and its fader and ON follow.
+  While a **SEND** function is on the LCD the channel and ST IN faders are their send
+  levels to it, and RTN / SEND is the effect's return (SEND1-2) or the send's master
+  (SEND3-4), as on the console. A paired channel's fader moves its partner; a grouped
+  one moves its group.
+- **The LCD** shows the function its key calls: **METER** (the inputs; the cursor keys for
+  ST IN, the returns and SEND3-4), **PAN / PHASE** (pressed again: the stereo strips'
+  pans and balances, then PHASE), **COMP** (pressed again: the next of the three
+  processors; its ON, PATCH, KEY IN and IN, and its program list; the cursor past the last
+  field: its EDIT page), **CUE**, **SEND1-4** (SEND1-2: the effect's program list and PRE /
+  POST, then its EDIT page; SEND3-4: PRE / POST and, as a stereo pair, the pans), **EQ
+  LOW / MID / HIGH** (the selected strip's EQ, its curve and nine values), **LIBRARY** (the
+  EQ library's 50 programs), **GROUP**, **PAIR**, **UTILITY** (SEND3-4 as a stereo pair, the
+  outputs' dynamics patch points, the oscillator) and **MIDI** (MIDI SETUP). The cursor
+  keys move between the page's values, the **PARAMETER** wheel changes the one under the
+  cursor, **ENTER** switches it, or sets a choice that waits for it (a program to recall, a
+  processor's PATCH and KEY IN, a pair's option). The screen also takes touch: tap a
+  value to put the cursor on it, drag up or down to turn it.
+- **SEL** selects a channel for EQ, PHASE and LIBRARY. In GROUP it puts the channel in
+  the group shown or takes it out; in CUE it cues it.
+- **SCENE MEMORY.** INC and DEC choose a number, STORE stores the console as that scene
+  of the show (a new scene at the end if the show has fewer), RECALL recalls it. 00 is the
+  console's initial data: RECALL resets the mix. The LCD shows the scene last recalled.
+- **MIDI.** The ProMix 01's MIDI is its only remote: its 531 parameters by control change
+  (Channel or Register mode), scenes by program change (1-50, 128 for scene 00), Yamaha
+  bulk dumps of the Edit Buffer, the tables and the setup. The MIDI page sets the Tx and Rx
+  channels, the mode and each kind's TX, RX, OMNI and ECHO; the devices are in the app
+  settings (`promixmidi.input`, `.output`; the app's virtual port where the system has
+  them). A dump's bytes are Sidecar's layout: dumps come back into Sidecar, not into a
+  ProMix 01.
+
+Not there yet: the oscillator's sound, Local OFF, scene memories by bulk dump, the GAIN
+and PAD controls (the console's are analog; use the strip's trim on the Universal Mixer).
+The fader's steps, the effects' algorithms and the compressor's ratio steps are Sidecar's
+reading of the User's Guide, not measured on a console.
+
 ## Multitrack recording
 
 Sidecar records up to 64 tracks and plays up to 64 tracks back into the console, like

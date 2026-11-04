@@ -33,8 +33,13 @@ and opens on the **X32 surface** (a preview): its faders and layers, the channel
 section and the X32's display, which takes touch (see the user guide's chapter *The X32
 surface*).
 
-**Coming next: more consoles.** After the X32 / M32 come Yamaha, Allen & Heath and
-DiGiCo, each an emulation on the same core. The plan is in
+**In progress: the Yamaha ProMix 01.** A ProMix 01 console (SETUP > SIDECAR > INTERFACE:
+PROMIX 01) has its channels, effects, dynamics processors, EQ and MIDI, and opens on the
+**ProMix surface** (a preview): its faders, its LCD with the function keys, the scene
+memory and the PARAMETER wheel (see the user guide's chapter *The ProMix 01 surface*).
+
+**Coming next: more consoles.** After the ProMix 01 come the Yamaha 02R, DM2000 and Midas
+PRO1, then Allen & Heath and DiGiCo, each an emulation on the same core. The plan is in
 [docs/UNIVERSAL_MIXER.md](docs/UNIVERSAL_MIXER.md).
 
 **Community:** questions, tips and feedback on the [Sidecar Discord server](https://discord.gg/TEE8q979x).
@@ -83,8 +88,8 @@ relying on it at a show (see [Known limitations](#known-limitations)).
 | **Recorder**: RECORD ALL CHANNELS | **Multitrack editor** (Ctrl+E) |
 | ![The Universal Mixer's MIXER view: a band on a 32-channel console, each strip with its pan, MUTE, SOLO, overview of its processing and fader](docs/images/universal-mixer.png) | ![The Universal Mixer's inspector: the lead vocal's chain with an extra EQ block, and the block's editor](docs/images/universal-inspector.png) |
 | **Universal Mixer** (preview): a console of any size | **Inspector**: a strip's chain, blocks and sends |
-| ![The X32 surface: the channel strip section and the X32's display along the top, 16 input faders, 8 DCAs and the main LR below](docs/images/x32-surface.png) | |
-| **X32 surface** (preview): an X32's faders, channel strip and display | |
+| ![The X32 surface: the channel strip section and the X32's display along the top, 16 input faders, 8 DCAs and the main LR below](docs/images/x32-surface.png) | ![The ProMix 01 surface: the LCD and its function keys along the top, the 16 channel faders, ST IN, RTN / SEND and ST OUT below](docs/images/promix-surface.png) |
+| **X32 surface** (preview): an X32's faders, channel strip and display | **ProMix 01 surface** (preview): its faders, LCD and scene memory |
 
 ## What it does
 

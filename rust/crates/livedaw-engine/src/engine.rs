@@ -745,6 +745,11 @@ impl Engine {
         self.console_text.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
+    /// The console's own state's version alone (cheap: no copy).
+    pub fn console_text_version(&self) -> u64 {
+        self.console_text.lock().unwrap_or_else(|e| e.into_inner()).1
+    }
+
     /// Sets the console's own state (a show load, a scene recall, the
     /// profile's own code); returns the new version.
     pub fn set_console_text(&self, text: &str) -> u64 {

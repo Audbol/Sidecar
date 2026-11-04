@@ -586,9 +586,9 @@ namespace
                                    juce::MessageManager::callAsync ([&c = ctx, m] { if (c.setConsoleModel) c.setConsoleModel (m); });
                                } };
         // INTERFACE (Sidecar's own): the WING surface, the Universal Mixer (a
-        // preview, docs/UNIVERSAL_MIXER.md) or the X32 surface (which offers to
-        // make the console an X32); the window changes at once.
-        ChoiceKeys interfaceKeys { { "WING", "UNIVERSAL", "X32" },
+        // preview, docs/UNIVERSAL_MIXER.md), the X32 surface or the ProMix 01
+        // surface (each offers to make the console its own); the window changes at once.
+        ChoiceKeys interfaceKeys { { "WING", "UNIVERSAL", "X32", "PROMIX 01" },
                                    [this] { return (int) ctx.interfaceKind; },
                                    [this] (int i)
                                    {

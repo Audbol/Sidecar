@@ -3,6 +3,7 @@
 #include "engine/AppPaths.h"
 #include "ui/MidiRemoteUi.h"
 #include "ui/RoutingGroups.h"
+#include "ui/ProMixSurface.h"
 #include "ui/X32Surface.h"
 #include "ui/PluginChainWindow.h"
 #include "ui/PluginOverviewWindow.h"
@@ -270,7 +271,11 @@ MainComponent::MainComponent (juce::AudioDeviceManager& dm, MixerEngine& e, Plug
     // the Universal Mixer, or the console isn't a WING).
     applyConsoleModel (look.model, false);
     const auto savedKind = settings.getValue (uiprefs::interfaceKind);
-    setInterface (savedKind == "universal" ? InterfaceKind::Universal : savedKind == "x32" ? InterfaceKind::X32 : InterfaceKind::Wing, false);
+    setInterface (savedKind == "universal" ? InterfaceKind::Universal
+                  : savedKind == "x32"     ? InterfaceKind::X32
+                  : savedKind == "promix"  ? InterfaceKind::ProMix
+                                           : InterfaceKind::Wing,
+                  false);
     setWantsKeyboardFocus (true);
     setSize (1680, 1000);
     refreshAll();
@@ -354,15 +359,17 @@ void MainComponent::refreshAll()
     }
 
     // A console that isn't a WING (a show of one was loaded): the X32 surface
-    // shows an X32, the Universal Mixer any other; an X32 surface without an X32
-    // gives way to the Universal Mixer.
-    const bool x32 = engine.getProfile() == ld::kProfileX32;
+    // shows an X32, the ProMix surface a ProMix 01, the Universal Mixer any
+    // other; a console's surface without its console gives way to the Universal Mixer.
+    const bool x32 = engine.getProfile() == ld::kProfileX32, promix = engine.getProfile() == ld::kProfileProMix01;
     if (ctx.interfaceKind == InterfaceKind::Wing && ! isWingConsole())
     {
-        log.info (x32 ? "This console is an X32: the X32 surface shows it" : "This console isn't a WING: the Universal Mixer shows it (SETUP > GENERAL > INTERFACE)");
-        setInterface (x32 ? InterfaceKind::X32 : InterfaceKind::Universal, false);
+        log.info (x32      ? "This console is an X32: the X32 surface shows it"
+                  : promix ? "This console is a ProMix 01: the ProMix surface shows it"
+                           : "This console isn't a WING: the Universal Mixer shows it (SETUP > GENERAL > INTERFACE)");
+        setInterface (x32 ? InterfaceKind::X32 : promix ? InterfaceKind::ProMix : InterfaceKind::Universal, false);
     }
-    else if (ctx.interfaceKind == InterfaceKind::X32 && ! x32)
+    else if ((ctx.interfaceKind == InterfaceKind::X32 && ! x32) || (ctx.interfaceKind == InterfaceKind::ProMix && ! promix))
         setInterface (InterfaceKind::Universal, false);
     syncRemotes();
     skin->refreshAll();
@@ -428,20 +435,43 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                          }, true);
         return;
     }
+    if (kind == InterfaceKind::ProMix && skin != nullptr && engine.getProfile() != ld::kProfileProMix01)
+    {
+        // Likewise the ProMix surface: a ProMix 01's 16 channels, 4 sends, 2 effects.
+        popups::confirm (skin->popupHost(), "PROMIX SURFACE",
+                         "This console isn't a ProMix 01. The ProMix surface shows a ProMix 01: clear the console and make it a fresh "
+                         "ProMix 01 (16 channels, ST IN, two effects and their returns, SEND1-4, ST OUT)?",
+                         "MAKE IT A PROMIX 01",
+                         [this, save]
+                         {
+                             closeAllPluginWindows();
+                             engine.configureProfile (ld::kProfileProMix01);
+                             setInterface (InterfaceKind::ProMix, save);
+                             refreshAll();
+                             log.info ("The console is a ProMix 01");
+                         }, true);
+        return;
+    }
     if (save)
-        settings.setValue (uiprefs::interfaceKind, kind == InterfaceKind::Universal ? "universal" : kind == InterfaceKind::X32 ? "x32" : "wing");
+        settings.setValue (uiprefs::interfaceKind, kind == InterfaceKind::Universal ? "universal"
+                                                   : kind == InterfaceKind::X32     ? "x32"
+                                                   : kind == InterfaceKind::ProMix  ? "promix"
+                                                                                    : "wing");
     if (skin != nullptr && kind == ctx.interfaceKind)
         return;
     ctx.interfaceKind = kind;
     if (skin != nullptr)
         removeChildComponent (skin.get());
     skin.reset();
-    if (kind == InterfaceKind::X32 && engine.getProfile() != ld::kProfileX32)
-        kind = ctx.interfaceKind = InterfaceKind::Universal; // the X32 surface shows an X32 only
+    if ((kind == InterfaceKind::X32 && engine.getProfile() != ld::kProfileX32)
+        || (kind == InterfaceKind::ProMix && engine.getProfile() != ld::kProfileProMix01))
+        kind = ctx.interfaceKind = InterfaceKind::Universal; // a console's surface shows that console only
     if (kind == InterfaceKind::Wing)
         skin = std::make_unique<WingSurface> (ctx);
     else if (kind == InterfaceKind::X32)
         skin = std::make_unique<X32Surface> (ctx);
+    else if (kind == InterfaceKind::ProMix)
+        skin = std::make_unique<ProMixSurface> (ctx);
     else
         skin = std::make_unique<UniversalSkin> (ctx);
     addChildComponent (*skin, 0); // under the editor and anything over the window
@@ -453,6 +483,7 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
         skin->refreshAll();
         log.info (kind == InterfaceKind::Universal ? "Interface: the Universal Mixer (preview)"
                   : kind == InterfaceKind::X32     ? "Interface: the X32 surface"
+                  : kind == InterfaceKind::ProMix  ? "Interface: the ProMix 01 surface"
                                                    : "Interface: the WING surface");
     }
 }

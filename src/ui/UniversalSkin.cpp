@@ -7,7 +7,10 @@ using namespace universal;
 
 UniversalSkin::UniversalSkin (UiContext& c)
     : ctx (c), theme (Theme::dark()),
-      wingKey (c.engine.getProfile() == ld::kProfileX32 ? "X32 SURFACE" : "WING SURFACE", theme.accent, theme), mixer (c, theme), routingView (c, theme), fxRack (c, theme),
+      wingKey (c.engine.getProfile() == ld::kProfileX32        ? "X32 SURFACE"
+               : c.engine.getProfile() == ld::kProfileProMix01 ? "PROMIX SURFACE"
+                                                               : "WING SURFACE",
+               theme.accent, theme), mixer (c, theme), routingView (c, theme), fxRack (c, theme),
       monitoring (c, theme), scenes (c, theme), recorder (c, theme), setup (c, theme), inspector (c, theme)
 {
     const std::pair<const char*, View> views[] = { { "MIXER", View::Mixer },           { "ROUTING", View::Routing }, { "FX RACK", View::Fx },
@@ -22,17 +25,19 @@ UniversalSkin::UniversalSkin (UiContext& c)
         viewKeys.push_back (std::move (key));
     }
     // Switching rebuilds the window's skin: let the click return first.
-    // (An X32 console's surface is the X32's.)
-    const bool x32 = ctx.engine.getProfile() == ld::kProfileX32;
-    wingKey.onClick = [&context = ctx, x32]
+    // (An X32 console's surface is the X32's, a ProMix 01's the ProMix's.)
+    const auto back = ctx.engine.getProfile() == ld::kProfileX32        ? InterfaceKind::X32
+                      : ctx.engine.getProfile() == ld::kProfileProMix01 ? InterfaceKind::ProMix
+                                                                        : InterfaceKind::Wing;
+    wingKey.onClick = [&context = ctx, back]
     {
-        juce::MessageManager::callAsync ([&context, x32]
+        juce::MessageManager::callAsync ([&context, back]
         {
             if (context.setInterface)
-                context.setInterface (x32 ? InterfaceKind::X32 : InterfaceKind::Wing);
+                context.setInterface (back);
         });
     };
-    wingKey.setTooltip (x32 ? "Back to the X32 surface" : "Back to the WING surface");
+    wingKey.setTooltip (back == InterfaceKind::X32 ? "Back to the X32 surface" : back == InterfaceKind::ProMix ? "Back to the ProMix 01 surface" : "Back to the WING surface");
     addAndMakeVisible (wingKey);
     addAndMakeVisible (mixer);
     addChildComponent (routingView);

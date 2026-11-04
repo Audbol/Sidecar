@@ -848,12 +848,31 @@ Three layers:
       without rebuilding the console. Not done: scene memories as bulk dumps
       (a request for scene n, a dump into it: they need the scene's mix without
       recalling it), the program and user libraries in the show.
-   7. **A ProMix skin**: the surface laid out as the ProMix 01, drawn in
-      Sidecar's style: 16 channel faders, ST IN, RTN / SEND and ST OUT with SEL
-      and ON, the LCD with its function keys (METER, PAN / PHASE, COMP, CUE,
-      SEND1-4, EQ LOW / MID / HIGH, LIBRARY, GROUP, PAIR, UTILITY, MIDI), scene
-      memory keys, the cursor keys and the PARAMETER wheel; the faders as send
-      levels while a SEND function is shown (p.25).
+   7. **A ProMix skin** (done): `ProMixSurface` (`src/ui/ProMixSurface.*`, a
+      `Skin`, `InterfaceKind::ProMix`, the setting `promix`; SETUP > INTERFACE
+      offers PROMIX 01 on every skin and makes the console a fresh ProMix 01,
+      asking first; the Universal Mixer's PROMIX SURFACE key comes back), the
+      ProMix's panel in Sidecar's style: 16 channel faders, ST IN, RTN / SEND (its
+      SEL steps through RTN1, RTN2, SEND3, SEND4) and ST OUT with SEL and ON, the
+      faders of the console's 128 steps and scale moving ProMix parameters (so
+      pairs and groups follow), the inputs' send levels while a SEND function is
+      shown (p.25); the LCD (`promix::Display`) with METER, PAN / PHASE, COMP (its
+      three processors, EDIT), CUE, SEND1-4 (program lists, EDIT, PRE / POST,
+      SEND3-4 pans), EQ LOW / MID / HIGH (the curve and nine values), LIBRARY, GROUP
+      (SEL adds and removes), PAIR, UTILITY and MIDI (MIDI SETUP); the cursor keys,
+      ENTER and the PARAMETER wheel, touch on the screen; SCENE MEMORY (the
+      number, STORE, RECALL, INC, DEC; 00 the initial data); the stereo LED meter.
+      `ld_promix_param_text`, `_label`, `ld_promix_value_text`,
+      `ld_promix_program_name`, `ld_promix_recall_eq` give the LCD its texts. A
+      screenshot test (`promix-surface.png`, `promix-display-comp.png`). Not
+      done: GAIN and PAD (analog on the console), Local OFF, the oscillator's
+      sound, METER's peak hold, the EQ LIBRARY's STORE and names (the user
+      programs are recalled, not edited, on the surface).
+
+   Phase 5 is complete (November 2026) as far as the User's Guide goes: what it
+   doesn't give (the fader table, the dumps' byte layout, the effects'
+   algorithms, the compressor's ratio steps) is Sidecar's reading, to be checked on
+   a console.
 
 Each emulation keeps the independent-project disclaimer: not affiliated with or
 endorsed by the console's maker, their trademarks used only to say what is emulated,

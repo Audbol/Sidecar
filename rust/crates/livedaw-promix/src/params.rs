@@ -268,6 +268,147 @@ pub fn set(c: &mut Console, n: u16, v: u16, origin: Origin) {
     }
 }
 
+/// A fader step as the LCD shows it: "-oo", "-66.0" ... "+6.0".
+pub fn level_text(step: u16) -> String {
+    if step == 0 {
+        return "-oo".into();
+    }
+    format!("{:+.1}", crate::console::step_db(step))
+}
+
+/// A pan position as the LCD shows it: L16 ... C ... R16.
+pub fn pan_text(v: u16) -> String {
+    match v.min(32) {
+        16 => "C".into(),
+        v if v < 16 => format!("L{}", 16 - v),
+        v => format!("R{}", v - 16),
+    }
+}
+
+/// Parameter `n`'s value as the LCD shows it ("+3dB", "2.0kHz", "L12", "ON",
+/// a program's name...); empty if it has none.
+pub fn text(c: &Console, n: u16) -> String {
+    match get(c, n) {
+        Some(v) => text_of(c, n, v),
+        // The Executes: what they do, not a value.
+        None => text_of(c, n, 0),
+    }
+}
+
+/// Parameter `n`'s value `v` as the LCD shows it (a choice not set yet: a
+/// patch, an Execute's option, a program to recall).
+pub fn text_of(c: &Console, n: u16, v: u16) -> String {
+    use crate::library::Library;
+    use livedaw_dsp::promix::{HIGH_FREQS, LOW_FREQS, MID_FREQS, Q_NAMES};
+    use Param::*;
+    let on_off = |v: u16| if v != 0 { "ON" } else { "OFF" }.to_string();
+    let v = v.min(steps(c, n).max(1) - 1);
+    let hz = |f: f32| if f >= 1000.0 { format!("{:.1}kHz", f / 1000.0) } else { format!("{f:.0}Hz") };
+    let name = |lib: &Library, n: usize, fx: bool| {
+        let name = if fx { lib.fx_program(n).map(|p| p.name) } else { lib.program(n).map(|p| p.name) };
+        format!("{:02} {}", n + 1, name.unwrap_or_default())
+    };
+    match param(n) {
+        Some(Level(_) | Send(..) | OscLevel | LocalFader(_)) => level_text(v),
+        Some(Pan(_) | StereoPan(..) | Send34Pan(_)) => pan_text(v),
+        Some(SendPre(_) | PatchPoint(_)) => if v == 0 { "PRE" } else { "POST" }.into(),
+        Some(Phase(_)) => if v == 0 { "N" } else { "R" }.into(),
+        Some(Eq(_, band, 0)) => hz([LOW_FREQS, MID_FREQS, HIGH_FREQS][band.min(2)].get(v as usize).copied().unwrap_or(0.0)),
+        Some(Eq(_, _, 1)) => format!("{:+}dB", v as i32 - 15),
+        Some(Eq(..)) => {
+            Q_NAMES.get(v as usize).map_or(String::new(), |q| if *q == "SHELF" { q.to_string() } else { format!("{q}oct") })
+        }
+        Some(FxType(_)) => name(c.library, v as usize, true),
+        Some(CompType(_)) => name(c.library, v as usize, false),
+        Some(FxParam(slot, k, _)) => {
+            let Some(fx) = c.engine.controls.fx.get(slot) else { return String::new() };
+            let models = c.engine.fx_models();
+            let spec = &models[fx.model_index_in(models).min(models.len() - 1)];
+            spec.params.get(k).map_or(String::new(), |ps| ps.display(crate::console::step_param(ps, v)))
+        }
+        Some(CompParam(i, k)) => {
+            let p = &c.state.processors[i];
+            let spec = &livedaw_dsp::promix::DYN_MODELS[p.model as usize];
+            spec.params.get(k).map_or(String::new(), |ps| ps.display(crate::console::step_param(ps, v)))
+        }
+        Some(CompPatch(_)) => crate::state::Patch::of_value(v).name(),
+        Some(CompKey(_)) => match crate::state::KeyIn::of_value(v) {
+            crate::state::KeyIn::SelfKey => "SELF".into(),
+            crate::state::KeyIn::Channel(ch) => format!("CH{}", ch + 1),
+            crate::state::KeyIn::Send3 => "SEND3".into(),
+            crate::state::KeyIn::Send4 => "SEND4".into(),
+            crate::state::KeyIn::StereoL => "ST-L".into(),
+            crate::state::KeyIn::StereoR => "ST-R".into(),
+        },
+        Some(CompIn(_)) => ["BOTH", "ODD", "EVEN"][v.min(2) as usize].into(),
+        Some(Send34Stereo) => if v != 0 { "STEREO" } else { "MONO" }.into(),
+        Some(PanIndividual) => if v != 0 { "INDIVIDUAL" } else { "GANG" }.into(),
+        Some(OscFreq) => ["100Hz", "1kHz", "10kHz", "PINK"][v.min(3) as usize].into(),
+        Some(CueMode) => ["MIX", "LAST CUE", "GROUP CUE", "ST FIX"][v.min(3) as usize].into(),
+        Some(Group(_)) => ["-", "A", "B", "C", "D"][v.min(4) as usize].into(),
+        Some(GroupSelect) => ["A", "B", "C", "D"][v.min(3) as usize].into(),
+        Some(PairExecute(_)) => ["MONO x2", "ST(1>2)", "ST(2>1)", "ST(RESET)"][v.min(3) as usize].into(),
+        Some(Send34Execute) => if v != 0 { "STEREO" } else { "MONO" }.into(),
+        _ => on_off(v),
+    }
+}
+
+/// Parameter `n`'s short label for the LCD: its strip ("CH3", "ST IN L",
+/// "RTN1") or what it is ("LOW F", "PATCH", a type's parameter: "THRESHOLD").
+pub fn label(c: &Console, n: u16) -> String {
+    use Param::*;
+    let strip = |s: PmStrip| match s {
+        PmStrip::Ch(ch) => format!("CH{}", ch + 1),
+        PmStrip::StIn => "ST IN".into(),
+        PmStrip::Rtn(r) => format!("RTN{}", r + 1),
+        PmStrip::Send(b) => format!("SEND{}", b + 1),
+        PmStrip::StOut => "ST OUT".into(),
+    };
+    const BANDS: [&str; 3] = ["LOW", "MID", "HIGH"];
+    const WHAT: [&str; 3] = ["F", "G", "Q"];
+    let Some(p) = param(n) else { return String::new() };
+    match p {
+        Level(s) | On(s) | Cue(s) | Phase(s) | EqOn(s) | Send(s, _) | Send34Pan(s) => strip(s),
+        Pan(PmStrip::Send(_)) => "SEND3-4".into(),
+        Pan(s) => strip(s),
+        StereoPan(i, side) => {
+            let s = if i == 0 { PmStrip::StIn } else { PmStrip::Rtn(i - 1) };
+            format!("{} {}", strip(s), ["L", "R"][side])
+        }
+        Eq(_, band, what) => format!("{} {}", BANDS[band], WHAT[what]),
+        SendPre(b) => format!("SEND{}", b + 1),
+        PairFlag(p) | PairExecute(p) => format!("CH{}/{}", 2 * p + 1, 2 * p + 2),
+        FxType(f) => format!("EFFECT{}", f + 1),
+        FxParam(slot, k, _) => {
+            let Some(fx) = c.engine.controls.fx.get(slot) else { return String::new() };
+            let models = c.engine.fx_models();
+            let spec = &models[fx.model_index_in(models).min(models.len() - 1)];
+            spec.params.get(k).map_or(String::new(), |ps| ps.label.to_string())
+        }
+        CompType(i) => format!("COMP{}", i + 1),
+        CompPatch(_) => "PATCH".into(),
+        CompKey(_) => "KEY IN".into(),
+        CompIn(_) => "IN".into(),
+        CompOn(_) => "ON/OFF".into(),
+        CompParam(i, k) => {
+            let model = c.state.processors[i].model as usize;
+            livedaw_dsp::promix::DYN_MODELS[model].params.get(k).map_or(String::new(), |ps| ps.label.to_string())
+        }
+        Send34Stereo | Send34Execute => "SEND3-4 MODE".into(),
+        OscOn => "OSC".into(),
+        OscLevel => "LEVEL".into(),
+        OscFreq => "FREQ".into(),
+        OscAssign(k) => ["SEND3", "SEND4", "ST OUT"][k].into(),
+        CueMode => "CUE MODE".into(),
+        Group(m) if m < CHANNELS => format!("CH{}", m + 1),
+        Group(_) => "ST IN".into(),
+        PanIndividual => "PAN MODE".into(),
+        GroupSelect => "GROUP".into(),
+        PatchPoint(k) => ["SEND3", "SEND4", "ST OUT"][k].into(),
+        LocalFader(f) => format!("FADER{}", f + 1),
+    }
+}
+
 /// Parameter `n`'s name, in the table's words ("Channel Input 3 Level").
 pub fn name(n: u16) -> String {
     use Param::*;
@@ -401,6 +542,18 @@ mod tests {
         ] {
             check(n, v);
         }
+        // The LCD's texts.
+        assert_eq!(
+            (text(&c, 3), text(&c, 50), text(&c, 235), text(&c, 335)),
+            ("+0.0".into(), "L12".into(), "1.0kHz".into(), "3oct".into())
+        );
+        assert_eq!((text(&c, 379), text(&c, 450), text(&c, 404)), ("SHELF".into(), "SEND3".into(), "01 Reverb Hall 1".into()));
+        assert_eq!((level_text(0), pan_text(16), pan_text(32)), ("-oo".into(), "C".into(), "R16".into()));
+        assert_eq!(
+            (text_of(&c, 449, 19), text_of(&c, 505, 3), text_of(&c, 446, 7)),
+            ("STEREO".into(), "ST(RESET)".into(), "08 Gate Slow".into())
+        );
+        assert_eq!((label(&c, 61), label(&c, 300), label(&c, 461)), ("ST IN R".into(), "MID G".into(), "THRESHOLD".into()));
         // Values beyond a parameter's range clamp to it.
         set(&mut c, 44, 99, Origin::Midi);
         assert_eq!(get(&c, 44), Some(32));

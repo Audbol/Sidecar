@@ -901,7 +901,8 @@ Show
 ## The UI
 
 The window (`MainComponent`) is a shell around one *skin* (`Skin.h`): the WING surface
-(`WingSurface`, the default), the X32 surface (`X32Surface`, while the console is an
+(`WingSurface`, the default), the ProMix 01 surface (`ProMixSurface`, while the console
+is a ProMix 01), the X32 surface (`X32Surface`, while the console is an
 X32) or the Universal Mixer (`UniversalSkin`, a preview while Phase 2 of
 `docs/UNIVERSAL_MIXER.md` builds it), chosen by the app setting
 `ui.interface` (SETUP > GENERAL > INTERFACE, `ctx.setInterface`) and switched live: the
@@ -1019,6 +1020,17 @@ console's emulation defines shows its name (`devices::wing`, drawn by
 blocks are its WING template's; extra blocks are the core's, untagged),
 `ChoiceBar::device` (the WING's model tables, lists and port groups), the FX tiles of
 built-in devices and the MIXER view's fader law.
+
+The ProMix 01 surface (`ProMixSurface.*`, Phase 5 step 7) lays the ProMix's panel out
+the same way: 19 `promix::Fader`s (128 steps on the console's law, each moving a ProMix
+parameter through `ProMix::set`, so a pair or a group follows as on the console; in a
+SEND function they move the send levels), SEL and ON keys, the function keys, the scene
+memory and the `promix::Display` LCD: each function a page of fields bound to ProMix
+parameters (values and labels from `ld_promix_param_text` / `_label`, a choice waiting
+for ENTER from `ld_promix_value_text`, the libraries' names from
+`ld_promix_program_name`), moved by the cursor keys, the wheel and touch. `ProMixSurface`
+is shown while the console is a ProMix 01 (`InterfaceKind::ProMix`, the setting
+`promix`); choosing it on another console makes the console a fresh ProMix 01 (asking first).
 
 The X32 surface (`X32Surface.*`) lays an X32's top panel out in the same style: its
 fader banks and layers (`x32::FaderStrip`), the channel strip section

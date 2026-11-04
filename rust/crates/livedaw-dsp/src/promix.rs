@@ -93,8 +93,8 @@ static EQ_PARAMS: [ParamSpec; 9] = [
 /// The 3-band EQ of the input channels, ST IN, RTN1-2 and ST OUT.
 pub static EQ: &[ModelSpec] = &[ModelSpec { token: "PMEQ", name: "3-Band PEQ", category: ModelCategory::Eq, params: &EQ_PARAMS }];
 
-/// The compressor's ratios (1:1 to oo:1; oo as 100:1): Sidecar's reading.
-pub const RATIOS: &[f32] = &[1.0, 1.1, 1.3, 1.5, 1.7, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 8.0, 10.0, 20.0, 100.0];
+/// The compressor's ratios (1:1 to oo:1, oo shown INF): Sidecar's reading.
+pub const RATIOS: &[f32] = &[1.0, 1.1, 1.3, 1.5, 1.7, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 8.0, 10.0, 20.0, 1000.0];
 
 /// The compressor's parameters (p.69), on program 1 TOTAL COMP's values
 /// (0 dB, 2:1, 50 ms, 3.0 s, +1 dB: p.78).

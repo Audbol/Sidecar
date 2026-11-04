@@ -221,6 +221,12 @@ Phase 5, the Yamaha ProMix 01 (`docs/UNIVERSAL_MIXER.md`), begins.
   console's state beyond its strips (the ProMix's pairs, groups, dynamics processors,
   SEND3-4 mode) is the engine's (`Engine::console_text`), stored by shows and scenes
   (`<ConsoleState>`). Program change 128 recalls scene 00, the console's initial data.
+- The ProMix 01 surface (a preview; SETUP > SIDECAR > INTERFACE: PROMIX 01, which makes the
+  console a fresh ProMix 01 after asking): its 19 faders with SEL and ON (the console's 128
+  steps; the inputs' send levels while a SEND function is shown; pairs and groups follow),
+  its LCD and function keys (METER, PAN / PHASE, COMP, CUE, SEND1-4, EQ LOW / MID / HIGH,
+  LIBRARY, GROUP, PAIR, UTILITY, MIDI), the cursor keys, ENTER and the PARAMETER wheel, the
+  screen taking touch, SCENE MEMORY (STORE, RECALL, INC, DEC) and the stereo LED meter.
 
 ## [0.2.0] - beta
 
