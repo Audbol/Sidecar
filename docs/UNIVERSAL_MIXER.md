@@ -638,8 +638,13 @@ Three layers:
         delay) and `/config/routing/OUT`, `AES50A|B`, `CARD` onto the output patch
         (buses as their post-fader direct outs, so one bus can feed several
         outputs).
-      - 10c, the display's ROUTING screen (home, out 1-16, aux out, P16, card,
-        AES50) and the scene files' outputs.
+      - 10c, the display's ROUTING screen: its home tab (done) sets the IN / PLAY
+        blocks and `routswitch` through the X32 map's text commands
+        (`WingRemote::runX32Text`, as OSC over SysEx does) and shows the interface
+        inputs each block takes; the channel strip's GAIN turns the head amp of
+        the strip's input (interface inputs 1-128), else the trim. To come with 10b:
+        its output tabs (out 1-16, aux out, P16, card, AES50) and the scene files'
+        outputs.
 
 Each emulation keeps the independent-project disclaimer: not affiliated with or
 endorsed by the console's maker, their trademarks used only to say what is emulated,

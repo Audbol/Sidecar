@@ -145,6 +145,10 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
   scene files. As on a freshly initialised X32 Compact, channels 17-32 now take AES50
   A 1-16 (interface inputs 33-48), aux in 1-6 the aux inputs (161-166) and aux in 7-8
   the USB player's left and right.
+- The X32 display's ROUTING screen sets the input blocks (encoders 1-5) and switches
+  between the recording and playback blocks (encoder 6), and shows which interface
+  inputs each block takes. The channel strip's GAIN knob turns the head amp of the
+  channel's input (-12 to +60 dB), or the digital trim for a channel without one.
 
 ## [0.2.0] - beta
 

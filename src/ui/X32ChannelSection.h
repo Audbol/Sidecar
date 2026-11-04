@@ -63,6 +63,7 @@ private:
     const universal::Theme& theme;
     Strip* strip = nullptr;
     int band = 0, sendBank = 0;
+    int boundInput = -2; // the input GAIN was bound for (a head amp's, or the trim)
 
     DisplayKnob gain, lowCut, gateThr, dynThr, dynRatio, eqType, eqFreq, eqGain, eqQ, pan, mcLevel;
     std::array<DisplayKnob, 4> sends;

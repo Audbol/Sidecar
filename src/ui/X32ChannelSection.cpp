@@ -136,7 +136,17 @@ void ChannelSection::bind()
         return;
     }
     auto& p = strip->params;
-    gain.setBinding (bindLinear ("GAIN", p.input.trimDb, -18.0f, 18.0f, " dB", 1, 0.0f));
+    // GAIN: the head amp of the input it takes (interface inputs 1-128, the
+    // X32's local and AES50 inputs: -12..+60 dB), else the digital trim.
+    boundInput = p.inputLeft.load();
+    if (auto* src = boundInput >= 0 && boundInput < 128 ? ctx.engine.getSource (boundInput) : nullptr)
+    {
+        auto b = bindLinear ("GAIN", src->gainDb, -12.0f, 60.0f, " dB", 1, 0.0f);
+        b.steps = 145.0f;
+        gain.setBinding (b);
+    }
+    else
+        gain.setBinding (bindLinear ("TRIM", p.input.trimDb, -18.0f, 18.0f, " dB", 1, 0.0f));
     lowCut.setBinding (bindFreq ("LOW CUT", p.filter().lowCutFreq, 20.0f, 400.0f, 20.0f));
     gateThr.setBinding (bindParam (models::Dynamics, p.gate().model.load(), p.gate().values, "thr", "THRESHOLD"));
     dynThr.setBinding (bindParam (models::Dynamics, p.dynamics().model.load(), p.dynamics().values, "thr", "THRESHOLD"));
@@ -183,6 +193,8 @@ DisplayKnob* ChannelSection::knob (const juce::String& section, const juce::Stri
 
 void ChannelSection::timerCallback()
 {
+    if (strip != nullptr && strip->params.inputLeft.load() != boundInput)
+        bind(); // patched elsewhere: GAIN follows the input
     for (auto* k : { &lowCutOn, &invert, &gateOn, &dynOn, &eqOn, &lrOn, &mcOn })
         k->refresh();
     for (auto* keys : { &bandKeys, &bankKeys })

@@ -3,6 +3,7 @@
 #include "engine/MidiPorts.h"
 #include "engine/Models.h"
 #include "engine/Show.h"
+#include "engine/WingRemote.h"
 #include "engine/X32Midi.h"
 #include "ui/MeterBank.h"
 
@@ -18,6 +19,14 @@ namespace
     const juce::Colour kAmber (0xfff0a020);
 
     constexpr int kStatus = 52, kTabs = 34, kEncoderRow = 66, kSideKeys = 112, kKnobs = 92;
+
+    // The routing blocks' choices (OSC document p.22), as livedaw-x32 names them.
+    const juce::StringArray kRoutingIn { "AN1-8", "AN9-16", "AN17-24", "AN25-32", "A1-8", "A9-16", "A17-24", "A25-32",
+                                         "A33-40", "A41-48", "B1-8", "B9-16", "B17-24", "B25-32", "B33-40", "B41-48",
+                                         "CARD1-8", "CARD9-16", "CARD17-24", "CARD25-32", "UIN1-8", "UIN9-16", "UIN17-24", "UIN25-32" };
+    const juce::StringArray kRoutingAux { "AUX1-4", "AN1-2", "AN1-4", "AN1-6", "A1-2", "A1-4", "A1-6", "B1-2",
+                                          "B1-4", "B1-6", "CARD1-2", "CARD1-4", "CARD1-6", "UIN1-2", "UIN1-4", "UIN1-6" };
+    const char* const kInBlocks[] = { "1-8", "9-16", "17-24", "25-32", "AUX" };
 
     const char* const kScreenNames[] = { "HOME", "METERS", "ROUTING", "SETUP", "LIBRARY", "EFFECTS", "MUTE GRP", "UTILITY" };
 
@@ -375,6 +384,10 @@ void Display::assignEncoders()
     {
         assignRemoteEncoders();
     }
+    else if (screen == Screen::Routing)
+    {
+        assignRoutingEncoders();
+    }
     else if (screen == Screen::Setup && getModel && setModel)
     {
         KnobBinding m;
@@ -429,6 +442,93 @@ void Display::assignEncoders()
     layerUp.setEnabled (numLayers() > 1);
     layerDown.setEnabled (numLayers() > 1);
     repaint();
+}
+
+juce::String Display::x32Value (const juce::String& address) const
+{
+    int set = 0;
+    const auto answer = ctx.engine.getWing().runX32Text (address, set);
+    return answer.fromFirstOccurrenceOf (" ", false, false).trim();
+}
+
+void Display::assignRoutingEncoders()
+{
+    // Encoders 1-5: what feeds inputs 1-8 .. 25-32 and aux 1-6; 6: the
+    // recording (IN) or playback (PLAY) blocks.
+    const auto group = [this] { return x32Value ("/config/routing/routswitch") == "PLAY" ? juce::String ("PLAY") : juce::String ("IN"); };
+    for (int b = 0; b < 5; ++b)
+    {
+        const auto& choices = b < 4 ? kRoutingIn : kRoutingAux;
+        const auto path = [group, b] { return "/config/routing/" + group() + "/" + kInBlocks[b]; };
+        KnobBinding k;
+        k.label = b < 4 ? "IN " + juce::String (kInBlocks[b]) : juce::String ("AUX 1-6");
+        const int n = choices.size();
+        k.get = [this, path, &choices, n] { return (float) juce::jmax (0, choices.indexOf (x32Value (path()))) / (float) (n - 1); };
+        k.set = [this, path, &choices, n] (float v)
+        {
+            int set = 0;
+            ctx.engine.getWing().runX32Text (path() + " " + choices[juce::roundToInt (v * (float) (n - 1))], set);
+            repaint();
+        };
+        k.text = [this, path] { return x32Value (path()); };
+        k.steps = (float) n;
+        encoders[(size_t) b] = encoder (k);
+    }
+    KnobBinding sw;
+    sw.label = "SOURCE";
+    sw.get = [group] { return group() == "PLAY" ? 1.0f : 0.0f; };
+    sw.set = [this] (float v)
+    {
+        int set = 0;
+        ctx.engine.getWing().runX32Text (v >= 0.5f ? "/config/routing/routswitch PLAY" : "/config/routing/routswitch REC", set);
+        repaint();
+    };
+    sw.text = [group] { return group() == "PLAY" ? juce::String ("PLAY") : juce::String ("REC"); };
+    sw.steps = 2.0f;
+    encoders[5] = encoder (sw, "REC / PLAY", [this, group]
+    {
+        int set = 0;
+        ctx.engine.getWing().runX32Text (group() == "PLAY" ? "/config/routing/routswitch REC" : "/config/routing/routswitch PLAY", set);
+        assignEncoders();
+    }, [group] { return group() == "PLAY"; });
+}
+
+void Display::paintRouting (juce::Graphics& g, juce::Rectangle<int> r)
+{
+    // What each block names, in the interface's numbering (Sidecar's ports).
+    auto ports = [] (const juce::String& choice) -> juce::String
+    {
+        const auto digits = choice.retainCharacters ("0123456789-");
+        const int first = digits.upToFirstOccurrenceOf ("-", false, false).getIntValue();
+        const int last = digits.fromFirstOccurrenceOf ("-", false, false).getIntValue();
+        int base = -1;
+        if (choice.startsWith ("AN"))
+            base = 0;
+        else if (choice.startsWith ("A"))
+            base = 32;
+        else if (choice.startsWith ("B"))
+            base = 80;
+        else if (choice.startsWith ("CARD"))
+            base = 128;
+        if (base < 0 || first <= 0)
+            return choice.startsWith ("UIN") ? "USER IN (NOT IN SIDECAR)" : juce::String();
+        return "INTERFACE " + juce::String (base + first) + "-" + juce::String (base + last);
+    };
+    const bool play = x32Value ("/config/routing/routswitch") == "PLAY";
+    const juce::String group = play ? "PLAY" : "IN";
+    juce::StringArray left, right;
+    for (int b = 0; b < 5; ++b)
+    {
+        const auto choice = x32Value ("/config/routing/" + group + "/" + kInBlocks[b]);
+        left.add (b < 4 ? "INPUTS " + juce::String (kInBlocks[b]) : juce::String ("AUX IN 1-6"));
+        const auto where = b < 4 ? ports (choice) : (choice == "AUX1-4" ? juce::String ("INTERFACE 161-166") : ports (choice) + ", THE REST AUX IN");
+        right.add (choice + (where.isNotEmpty() ? "  (" + where + ")" : juce::String()));
+    }
+    left.add ("USB L / R");
+    right.add ("USB PLAYER");
+    left.add ("BLOCKS IN USE");
+    right.add (play ? "PLAY (PLAYBACK)" : "IN (RECORDING)");
+    paintRows (g, r, left, right);
 }
 
 X32Midi* Display::x32Midi() const
@@ -944,22 +1044,8 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
             break;
         }
         case Screen::Routing:
-        {
-            juce::StringArray left, right;
-            auto& ch = ctx.engine.getChannels();
-            for (int b = 0; b < 4; ++b)
-            {
-                left.add ("CH " + juce::String (8 * b + 1) + "-" + juce::String (8 * b + 8));
-                const int first = (8 * b < (int) ch.size()) ? ch[(size_t) (8 * b)]->params.inputLeft.load() : -1;
-                right.add (first >= 0 ? "IN " + juce::String (first + 1) + "-" + juce::String (first + 8) : juce::String ("OFF"));
-            }
-            auto& aux = ctx.engine.getAux();
-            left.add ("AUX 1-8");
-            const int auxFirst = ! aux.empty() ? aux[0]->params.inputLeft.load() : -1;
-            right.add (auxFirst >= 0 ? "IN " + juce::String (auxFirst + 1) + "-" + juce::String (auxFirst + 8) : juce::String ("OFF"));
-            paintRows (g, r.reduced (12), left, right);
+            paintRouting (g, r.reduced (12));
             break;
-        }
         case Screen::Setup:
             if (tab == 1)
             {

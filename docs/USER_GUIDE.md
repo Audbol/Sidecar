@@ -984,8 +984,14 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
   aux in. As on a freshly initialised X32 Compact, channels 1-16 take local 1-16,
   channels 17-32 AES50 A 1-16 (interface inputs 33-48), aux in 1-6 the aux inputs and
   aux in 7-8 the USB player. X32 remote apps and scene files change it as on an X32:
-  the input routing blocks (its ROUTING screen), each channel's source, and
-  the head amps' gain and phantom power (on the interface's inputs, as SOURCE GAIN).
+  the input routing blocks, each channel's source, and the head amps' gain and
+  phantom power (on the interface's inputs, as SOURCE GAIN). On the display,
+  **ROUTING** sets the blocks: encoders 1-4 choose what feeds inputs 1-8 .. 25-32
+  (AN = local, A and B = AES50, CARD), encoder 5 aux in 1-6, and encoder 6 switches
+  between the recording blocks and the playback ones (as an X32's REC / PLAY); each
+  row says which interface inputs that is. The channel strip's **GAIN** turns the
+  head amp of the channel's input (-12 to +60 dB), or the digital TRIM when the
+  channel takes no interface input.
 
 Patching, the FX rack, show files and copy and paste are on the Universal Mixer for now.
 

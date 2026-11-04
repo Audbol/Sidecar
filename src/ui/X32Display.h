@@ -101,6 +101,12 @@ private:
     void paintMeters (juce::Graphics&, juce::Rectangle<int>);
     void paintSends (juce::Graphics&, juce::Rectangle<int>, Strip&);
     void paintRemote (juce::Graphics&, juce::Rectangle<int>);
+    void paintRouting (juce::Graphics&, juce::Rectangle<int>);
+    /** ROUTING > home (step 10c): the input blocks, through the X32 map's
+        text commands (`/config/routing/...`). */
+    void assignRoutingEncoders();
+    /** An X32 address's values as the console answers them ("AN1-8"), or empty. */
+    juce::String x32Value (const juce::String& address) const;
     /** SETUP > remote: the X32's MIDI (step 6b). */
     void assignRemoteEncoders();
     X32Midi* x32Midi() const;
