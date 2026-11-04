@@ -1,4 +1,5 @@
-//! ST-DL: the stereo delay.
+//! ST-DL: the stereo delay, and the X32's (X32DLY), the same design with a
+//! factor and a feedback per side and its own MIX.
 
 use super::XfadeTap;
 use crate::wing::fx::blocks::{DelayLine, Smoothed};
@@ -20,8 +21,10 @@ const PATTERNS: [(f32, f32); 9] = [
     (1.0, 4.0 / 3.0),
     (1.0, 1.5),
 ];
-/// TIME x FACTOR x PATTERN + OFFSET at their largest.
-const MAX_MS: f32 = 3000.0 * 2.0 * 1.5 + 50.0;
+/// The X32's FACTOR L / R choices: 1/4, 3/8, 1/2, 2/3, 1, 4/3, 3/2, 2, 3.
+const X32_FACTORS: [f32; 9] = [0.25, 0.375, 0.5, 2.0 / 3.0, 1.0, 4.0 / 3.0, 1.5, 2.0, 3.0];
+/// TIME x FACTOR x PATTERN + OFFSET at their largest (the X32's: 3 s x 3 + 100 ms).
+const MAX_MS: f32 = 3000.0 * 3.0 + 100.0;
 const FADE_MS: f32 = 50.0;
 
 const MODE_ST: usize = 0;
@@ -41,11 +44,19 @@ const MODE_X: usize = 1;
 /// through FEED LCUT / HCUT and a loop limiter (100 % holds the repeats
 /// without running away). Time changes crossfade to the new position; mode
 /// changes switch under a short fade.
+///
+/// The X32's (X32DLY) has a FACTOR per side instead of FACTOR and PATTERN,
+/// OFFSET L/R of +-100 (ms, taken as the WING's OFFSET: positive delays the
+/// right side, negative the left; to be measured on an X32), FEED LEFT /
+/// RIGHT (each loop its own, on the same square law) and MIX (the dry signal
+/// under the wet; 100 = wet only).
 pub(super) struct StereoDelay {
     sr: f32,
+    x32: bool,
     lines: [DelayLine; 2],
     taps: [XfadeTap; 2],
-    fb: Smoothed,
+    fb: [Smoothed; 2],
+    mix: Smoothed,
     fcut: CutFilter,
     cut: CutFilter,
     mode: usize,
@@ -60,9 +71,11 @@ impl StereoDelay {
         let len = ms(MAX_MS, sr) as usize + 4;
         Self {
             sr,
+            x32: false,
             lines: [DelayLine::new(len), DelayLine::new(len)],
             taps: [XfadeTap::new(FADE_MS, sr); 2],
-            fb: Smoothed::new(0.3, 30.0, sr),
+            fb: [Smoothed::new(0.3, 30.0, sr), Smoothed::new(0.3, 30.0, sr)],
+            mix: Smoothed::new(1.0, 20.0, sr),
             fcut: CutFilter::new(sr),
             cut: CutFilter::new(sr),
             mode: MODE_ST,
@@ -71,21 +84,40 @@ impl StereoDelay {
             primed: false,
         }
     }
+
+    /// The X32's Stereo Delay (X32DLY).
+    pub(super) fn x32(ctx: FxContext) -> Self {
+        Self { x32: true, ..Self::new(ctx) }
+    }
 }
 
 impl FxAlgo for StereoDelay {
     fn set_params(&mut self, p: &Params) {
         let sr = self.sr;
-        let base = p.f("time") * FACTORS.get(p.choice("fact")).copied().unwrap_or(1.0);
-        let (pl, pr) = PATTERNS.get(p.choice("pat")).copied().unwrap_or((1.0, 1.0));
         let max = self.lines[0].max_delay() - 1;
         // Taps are read before the new sample is written: index = delay - 1.
-        let tap = |t_ms: f32| (ms(t_ms, sr).round() as usize).saturating_sub(1).min(max);
-        self.taps[0].set(tap(base * pl));
-        self.taps[1].set(tap(base * pr + p.f("offs")));
-        self.fb.target = (p.f("feed") * 0.01).powi(2);
-        self.fcut.set(p.f("flc"), p.f("fhc"));
-        self.cut.set(p.f("lc"), p.f("hc"));
+        let tap = |t_ms: f32| (ms(t_ms.max(0.0), sr).round() as usize).saturating_sub(1).min(max);
+        let square = |feed: f32| (feed * 0.01).powi(2);
+        if self.x32 {
+            let factor = |id| X32_FACTORS.get(p.choice(id)).copied().unwrap_or(1.0);
+            let (time, offs) = (p.f("time"), p.f("offset_l_r"));
+            self.taps[0].set(tap(time * factor("factor_l") + (-offs).max(0.0)));
+            self.taps[1].set(tap(time * factor("factor_r") + offs.max(0.0)));
+            self.fb[0].target = square(p.f("feed_left"));
+            self.fb[1].target = square(p.f("feed_right"));
+            self.mix.target = p.f("mix") * 0.01;
+            self.fcut.set(p.f("feed_lo_cut"), p.f("feed_hi_cut"));
+            self.cut.set(p.f("lo_cut"), p.f("hi_cut"));
+        } else {
+            let base = p.f("time") * FACTORS.get(p.choice("fact")).copied().unwrap_or(1.0);
+            let (pl, pr) = PATTERNS.get(p.choice("pat")).copied().unwrap_or((1.0, 1.0));
+            self.taps[0].set(tap(base * pl));
+            self.taps[1].set(tap(base * pr + p.f("offs")));
+            let fb = square(p.f("feed"));
+            self.fb.iter_mut().for_each(|f| f.target = fb);
+            self.fcut.set(p.f("flc"), p.f("fhc"));
+            self.cut.set(p.f("lc"), p.f("hc"));
+        }
         self.next_mode = p.choice("mode").min(2);
         if !self.primed {
             self.primed = true;
@@ -93,7 +125,9 @@ impl FxAlgo for StereoDelay {
             for t in &mut self.taps {
                 t.snap();
             }
-            self.fb.snap(self.fb.target);
+            for s in self.fb.iter_mut().chain([&mut self.mix]) {
+                s.snap(s.target);
+            }
         } else if self.next_mode != self.mode {
             self.morph.request();
         }
@@ -104,13 +138,13 @@ impl FxAlgo for StereoDelay {
             if self.morph.tick() {
                 self.mode = self.next_mode;
             }
-            let fb = self.fb.tick();
-            let xl = self.cut.tick(0, *l);
-            let xr = self.cut.tick(1, *r);
+            let (dl, dr) = (*l, *r);
+            let xl = self.cut.tick(0, dl);
+            let xr = self.cut.tick(1, dr);
             let yl = self.taps[0].read(&self.lines[0]);
             let yr = self.taps[1].read(&self.lines[1]);
-            let fl = fb * self.fcut.tick(0, yl);
-            let fr = fb * self.fcut.tick(1, yr);
+            let fl = self.fb[0].tick() * self.fcut.tick(0, yl);
+            let fr = self.fb[1].tick() * self.fcut.tick(1, yr);
             let (il, ir) = match self.mode {
                 MODE_ST => (xl + fl, xr + fr),
                 MODE_X => (xl + fr, xr + fl),
@@ -122,8 +156,9 @@ impl FxAlgo for StereoDelay {
             self.lines[0].push(loop_limit(il));
             self.lines[1].push(loop_limit(ir));
             let g = self.morph.gain();
-            *l = yl * g;
-            *r = yr * g;
+            let mix = self.mix.tick();
+            *l = dl + (yl * g - dl) * mix;
+            *r = dr + (yr * g - dr) * mix;
         }
     }
 
@@ -138,7 +173,9 @@ impl FxAlgo for StereoDelay {
         self.cut.reset();
         self.mode = self.next_mode;
         self.morph.reset();
-        self.fb.snap(self.fb.target);
+        for s in self.fb.iter_mut().chain([&mut self.mix]) {
+            s.snap(s.target);
+        }
     }
 }
 
@@ -197,6 +234,34 @@ mod tests {
         let (l, r) = impulse(&mut dev, &v, 0.2);
         let t = (0.1 * SR) as usize;
         assert!(peak(&l, t - 50, t + 50).1 > 0.4 && peak(&r, t - 50, t + 50).1 > 0.4);
+    }
+
+    #[test]
+    fn the_x32s_has_a_factor_and_a_feedback_per_side_and_a_mix() {
+        // FACTOR L 1/2, R 3/2 of 200 ms, OFFSET +10 ms on the right; no feedback on the left.
+        let open = [("lo_cut", 10.0), ("hi_cut", 20_000.0), ("feed_lo_cut", 10.0), ("feed_hi_cut", 20_000.0)];
+        let settings = [
+            ("time", 200.0),
+            ("factor_l", 2.0),
+            ("factor_r", 6.0),
+            ("offset_l_r", 10.0),
+            ("feed_left", 1.0),
+            ("feed_right", 71.0),
+        ];
+        let (mut dev, v) = device("X32DLY", &[&open[..], &settings[..]].concat());
+        let (l, r) = impulse(&mut dev, &v, 1.0);
+        let ms = |t: f32| (t * 0.001 * SR) as usize;
+        assert!(peak(&l, 100, l.len()).0.abs_diff(ms(100.0)) <= 3, "L at 1/2");
+        assert!(peak(&r, 100, r.len()).0.abs_diff(ms(310.0)) <= 3, "R at 3/2 + 10 ms");
+        assert!(peak(&l, ms(150.0), l.len()).1 < 1e-3, "FEED LEFT 1: one repeat");
+        assert!(peak(&r, ms(400.0), ms(700.0)).1 > 0.3, "FEED RIGHT 71: a second repeat");
+        // MIX 0: the dry signal only; the factory mix (100) the wet only.
+        let (mut dev, v) = device("X32DLY", &[("mix", 0.0)]);
+        let (l, _) = impulse(&mut dev, &v, 0.5);
+        assert!((l[0] - 1.0).abs() < 1e-6 && peak(&l, 1, l.len()).1 < 1e-3);
+        let (mut dev, v) = device("X32DLY", &[]);
+        let (l, _) = impulse(&mut dev, &v, 0.5);
+        assert!(l[0].abs() < 1e-6 && peak(&l, 1, l.len()).1 > 0.4, "the factory 223 ms echo");
     }
 
     #[test]

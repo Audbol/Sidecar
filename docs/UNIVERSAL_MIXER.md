@@ -572,9 +572,16 @@ Three layers:
         (`sources::FX_RETURN_SOURCE_BASE + 2 * slot + side`), which the X32's FX return
         channels are patched to. Inserted on a strip, a send effect passes the signal
         through. `/fx/1..4/source/l|r` sets it (INS on either side makes an insert).
-      - 9d-9g, the algorithms in batches, each measured (decay, taps, curves,
-        gain reduction) since none can be compared by ear here: reverbs, delays and
-        modulation (the factory four first); the combos and pitch; EQs and dynamics
+      - 9d, the factory four (done): Hall, Vintage Room and Stereo Chorus run on the
+        WING's devices of the same design (`wing::fx::x32_voices`: the X32 model's
+        values mapped onto the WING device's controls over both ranges; Hall's LEVEL
+        an output gain, Vintage Room's SIZE at half); Stereo Delay is the WING's
+        (`delay::stereo`, X32DLY) with FACTOR L / R, FEED LEFT / RIGHT and MIX. Tests
+        hold each to the WING device's output sample for sample. The mappings where
+        the ranges differ are to be measured on the owner's X32.
+      - 9e-9g, the algorithms in batches, each measured (decay, taps, curves,
+        gain reduction) since none can be compared by ear here: the other reverbs,
+        delays and modulation; the combos and pitch; EQs and dynamics
         (GEQ, TruEQ, Xtec EQ1 / EQ5, de-esser, limiter, Combinator, Fair, Leisure and
         Ultimo comps, Wave Designer); enhancers, exciters, imagers, amps and drive.
         Until a model's algorithm lands it passes the signal through unprocessed

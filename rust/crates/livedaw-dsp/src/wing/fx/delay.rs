@@ -18,7 +18,7 @@ use super::blocks::DelayLine;
 use super::{FxAlgo, FxContext};
 
 /// The devices this module implements.
-pub(super) const TOKENS: &[&str] = &["ST-DL", "TAP-DL", "TAPE-DL", "OILCAN", "BBD-DL"];
+pub(super) const TOKENS: &[&str] = &["ST-DL", "TAP-DL", "TAPE-DL", "OILCAN", "BBD-DL", "X32DLY"];
 
 pub(super) fn create(token: &str, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
     if !TOKENS.contains(&token) {
@@ -30,6 +30,7 @@ pub(super) fn create(token: &str, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
         "TAPE-DL" => Box::new(tape::TapeDelay::new(ctx)),
         "OILCAN" => Box::new(oilcan::Oilcan::new(ctx)),
         "BBD-DL" => Box::new(bbd::Bbd::new(ctx)),
+        "X32DLY" => Box::new(stereo::StereoDelay::x32(ctx)),
         _ => return None,
     })
 }
@@ -92,7 +93,7 @@ impl XfadeTap {
 
 #[cfg(test)]
 mod tests {
-    use crate::wing::fx::{model_index, FxContext, FxDevice};
+    use crate::wing::fx::{FxContext, FxDevice};
     use crate::wing::{FX_MODELS, MAX_FX_PARAMS};
     use std::f32::consts::TAU;
 
@@ -105,17 +106,24 @@ mod tests {
 
     pub(super) const SR: f32 = 48_000.0;
 
+    /// The FX table of `token` (the X32's for its models) and its index there.
+    fn table_of(token: &str) -> (&'static [crate::model::ModelSpec], usize) {
+        let table = if token.starts_with("X32") { crate::x32::FX_MODELS } else { FX_MODELS };
+        (table, crate::model::model_index(table, token).unwrap())
+    }
+
     /// A device at 48 kHz with its defaults, plus `settings`.
     pub(super) fn device(token: &str, settings: &[(&str, f32)]) -> (FxDevice, [f32; MAX_FX_PARAMS]) {
-        let model = model_index(token).unwrap();
+        let (table, model) = table_of(token);
         let mut v = [0.0; MAX_FX_PARAMS];
-        FX_MODELS[model].defaults_into(&mut v);
+        table[model].defaults_into(&mut v);
         set(token, &mut v, settings);
-        (FxDevice::new(model, FxContext { sample_rate: SR, max_block: 256 }).unwrap(), v)
+        (FxDevice::new_in(table, model, FxContext { sample_rate: SR, max_block: 256 }).unwrap(), v)
     }
 
     pub(super) fn set(token: &str, v: &mut [f32; MAX_FX_PARAMS], settings: &[(&str, f32)]) {
-        let spec = &FX_MODELS[model_index(token).unwrap()];
+        let (table, model) = table_of(token);
+        let spec = &table[model];
         for (id, x) in settings {
             v[spec.param_index(id).unwrap()] = *x;
         }

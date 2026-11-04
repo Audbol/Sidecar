@@ -27,6 +27,7 @@ mod reverb;
 #[cfg(test)]
 mod time_audit;
 mod utility;
+mod x32_voices;
 
 use super::{ModelCategory, ModelSpec, Params, FX_MODELS, MAX_FX_PARAMS};
 use crate::model::ModelTables;
@@ -132,6 +133,7 @@ pub fn create(token: &str, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
         .or_else(|| utility::create(token, ctx))
         .or_else(|| eqfx::create(token, ctx))
         .or_else(|| amp::create(token, ctx))
+        .or_else(|| x32_voices::create(token, ctx))
         .or_else(|| crate::x32::fx::create(token, ctx))
 }
 
@@ -346,11 +348,13 @@ pub(crate) mod tests {
 
     /// The checks every device must pass (used by each family's tests).
     pub(crate) fn check_device(token: &str) {
-        let model = model_index(token).unwrap_or_else(|| panic!("{token}: not in FX_MODELS"));
-        let spec = &FX_MODELS[model];
+        // The X32's devices are in its own table.
+        let table = if token.starts_with("X32") { crate::x32::FX_MODELS } else { FX_MODELS };
+        let model = crate::model::model_index(table, token).unwrap_or_else(|| panic!("{token}: not in its FX table"));
+        let spec = &table[model];
         for sr in [44_100.0, 96_000.0] {
             let ctx = FxContext { sample_rate: sr, max_block: 512 };
-            let mut dev = FxDevice::new(model, ctx).unwrap_or_else(|| panic!("{token}: not implemented"));
+            let mut dev = FxDevice::new_in(table, model, ctx).unwrap_or_else(|| panic!("{token}: not implemented"));
             let mut rng = Rng(0x1234_5678 ^ model as u32);
             let mut defaults = [0.0; MAX_FX_PARAMS];
             spec.defaults_into(&mut defaults);

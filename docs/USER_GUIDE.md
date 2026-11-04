@@ -969,7 +969,8 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
   bus or M/C, or INS to use it as an insert) and come back on the FX return channels
   (FX RTN), ready to fade up.
   X32 remote apps and scene files see and set them. The models' sound is still being
-  built: for now the reverbs, delays and modulation effects are silent and the insert
+  built: the factory four (Vintage Room, Hall, Stereo Delay, Stereo Chorus) work; the
+  other reverbs, delays and modulation effects are silent for now and the insert
   effects pass the signal through unchanged.
 
 Patching, the FX rack, show files and copy and paste are on the Universal Mixer for now.

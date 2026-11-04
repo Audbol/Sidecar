@@ -172,6 +172,10 @@ mod tests {
         let ctx = FxContext { sample_rate: 48000.0, max_block: 64 };
         for m in &FX_MODELS[2..] {
             let mut dev = create(m.token, ctx).unwrap_or_else(|| panic!("{}", m.token));
+            if fx::BUILT.contains(&m.token) {
+                crate::wing::fx::tests::check_device(m.token);
+                continue;
+            }
             let (mut l, mut r) = ([0.5f32; 16], [0.5f32; 16]);
             dev.process(&mut l, &mut r);
             let passes = m.category == ModelCategory::FxStandard;

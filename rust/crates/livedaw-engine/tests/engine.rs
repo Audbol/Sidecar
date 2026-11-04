@@ -463,7 +463,7 @@ fn an_x32s_fx_1_to_4_take_buses_13_to_16_and_return_on_the_fx_returns() {
     };
     let p = peaks(&mut rig);
     assert!(p[0] > 0.1 && close(p[0], p[1], 1e-5), "FX 1 L and R: {p:?}");
-    assert!(p[2] == 0.0 && p[3] == 0.0, "FX 2 has nothing on bus 14: {p:?}");
+    assert!(p[2] < 1e-9 && p[3] < 1e-9, "FX 2 (a hall) has nothing on bus 14: {p:?}");
     // INS: an insert again; the returns go silent.
     rig.engine.controls.fx[0].source_left.store(-1, Relaxed);
     let p = peaks(&mut rig);

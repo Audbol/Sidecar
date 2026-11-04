@@ -111,6 +111,11 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
   the FX return channels (FX 1L/1R .. 4L/4R), one block late (C ABI 41). `/fx/1..4/source` on the
   X32 remote and in scene files sets them; show files keep them. The engine has a new
   source group for it, the FX returns (`FX_RETURN_SOURCE_BASE`).
+- The X32's factory four effects make sound: Hall Reverb, Vintage Room and Stereo
+  Chorus run on the WING's own Hall, Vintage Room and Chorus (the same designs, their
+  controls mapped across), and Stereo Delay is the WING's stereo delay with a factor
+  and a feedback per side and its own MIX. The other 57 X32 models still return
+  silence or pass the signal through.
 
 ## [0.2.0] - beta
 
