@@ -678,7 +678,7 @@ Three layers:
         SOLO, MUTE and SELECT stay the strips' (`FaderStrip::setSend`, the
         scribble strip's amber band); the sends follow the selection.
       - 12b, monitoring and talkback (done): `x32::MonitorSection`
-        (`src/ui/X32MonitorSection.*`), between the channel strip and the display:
+        (`src/ui/X32MonitorSection.*`), at the right of the display (as on an X32):
         MONITOR, PHONES, DIM, MONO, MUTE, TALK and TALK A / B (latching) on the
         engine's monitor and talk controls. Where talkback goes and which input
         it takes are set on the Universal Mixer for now.

@@ -360,10 +360,10 @@ void X32Surface::resized()
     // The upper half: the channel strip section and the display.
     auto upper = area.removeFromTop (juce::roundToInt (area.getHeight() * 0.44f));
     area.removeFromTop (sizes::kGapLarge);
-    displayArea = upper.removeFromRight (juce::roundToInt (upper.getWidth() * 0.39f)).reduced (10);
-    upper.removeFromRight (sizes::kGapLarge);
-    // Monitoring and talkback, beside the display.
+    // Monitoring and talkback at the right, beside the display (as on an X32).
     monitor.setBounds (upper.removeFromRight (150).reduced (0, 10));
+    upper.removeFromRight (sizes::kGapLarge);
+    displayArea = upper.removeFromRight (juce::roundToInt (upper.getWidth() * 0.415f)).reduced (10);
     upper.removeFromRight (sizes::kGapLarge);
     channelArea = upper;
     channel.setBounds (channelArea.reduced (12).withTrimmedTop (22 + 24 + sizes::kGap));

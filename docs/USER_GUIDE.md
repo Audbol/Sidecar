@@ -940,7 +940,7 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
 - **Channel strip.** The selected strip's CONFIG / PREAMP, GATE, DYNAMICS,
   EQUALIZER, BUS SENDS and MAIN BUS controls. Each section's **VIEW** key opens its tab
   on the display.
-- **Monitor and talkback.** Between the channel strip and the display: **MONITOR**
+- **Monitor and talkback.** At the right of the display: **MONITOR**
   and **PHONES** set the speakers' and the phones' level; **DIM**, **MONO** and
   **MUTE** act on the monitor; **TALK** sets the talkback level, and **TALK A** and
   **TALK B** switch talkback on and off (they latch). Which input is the talkback
