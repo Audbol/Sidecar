@@ -99,12 +99,12 @@ impl FaderLaw {
         }
     }
 
-    /// The position (0..1) of a level in dB; the lowest point and below are
-    /// the bottom.
+    /// The position (0..1) of a level in dB; below the lowest point is the
+    /// bottom (the lowest point is its own position: a ProMix 01's step 1).
     pub fn to_pos(&self, db: f32) -> f32 {
         let pts = self.points;
         // NaN too: the bottom.
-        if pts.is_empty() || db.is_nan() || db <= pts[0].1 {
+        if pts.is_empty() || db.is_nan() || db < pts[0].1 {
             return 0.0;
         }
         let pos =
@@ -116,7 +116,7 @@ impl FaderLaw {
     pub fn to_db(&self, pos: f32) -> f32 {
         let pts = self.points;
         let p = self.snap(pos.clamp(0.0, 1.0));
-        if pts.is_empty() || p <= pts[0].0 {
+        if pts.is_empty() || p <= 0.0 || p < pts[0].0 {
             return FADER_MIN;
         }
         pts.windows(2)
@@ -170,6 +170,8 @@ mod tests {
         // Every step is a level of its own, rising.
         assert!((1..128).all(|k| step(k) > step(k - 1)));
         assert_eq!((law.to_pos(0.0) * 127.0).round(), 115.0);
+        assert_eq!((law.to_pos(-66.0) * 127.0).round(), 1.0, "-66 dB is step 1");
+        assert_eq!(law.to_pos(-66.5), 0.0, "below it: -oo");
     }
 
     #[test]
