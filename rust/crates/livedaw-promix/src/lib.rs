@@ -20,6 +20,7 @@
 
 pub mod console;
 pub mod library;
+pub mod midi;
 pub mod params;
 pub mod state;
 

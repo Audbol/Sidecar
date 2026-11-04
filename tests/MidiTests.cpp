@@ -1,6 +1,7 @@
 #include "TestHelpers.h"
 #include "engine/MidiPorts.h"
 #include "engine/MidiRemote.h"
+#include "engine/ProMixMidi.h"
 #include "engine/X32Midi.h"
 #include "engine/Models.h"
 #include "engine/PluginHost.h"
@@ -248,7 +249,7 @@ private:
         engine.configure (nullptr);
         expect (engine.getProfile() == ld::kProfileWing);
 
-        beginTest ("A ProMix 01 (Phase 5 step 1): its counts, fader steps and names; no remote yet");
+        beginTest ("A ProMix 01 (Phase 5 step 1): its counts, fader steps and names");
         engine.configureProfile (ld::kProfileProMix01);
         expect (engine.getProfile() == ld::kProfileProMix01);
         expectEquals ((int) engine.getChannels().size(), 16);
@@ -256,7 +257,37 @@ private:
         expectEquals ((int) engine.getBuses().size(), 4);
         expectEquals ((int) engine.getMains().size(), 1);
         expect (engine.getMatrices().empty(), "no matrices");
-        expect (engine.getRemotes().midi == MidiProtocol::None, "its MIDI comes with step 5");
+        expect (engine.getRemotes().midi == MidiProtocol::ProMix01 && engine.getRemotes().network == 0u, "MIDI only");
+        {
+            // Its MIDI (step 5): the 531 parameters by CC, scenes by program change.
+            auto protocol = MidiProtocol::create (MidiProtocol::ProMix01, engine, show, false);
+            auto* p = dynamic_cast<ProMixMidi*> (protocol.get());
+            expect (p != nullptr && protocol->asWing() == nullptr);
+            std::vector<juce::MidiMessage> sent;
+            p->onSend = [&] (const juce::MidiMessage& m) { sent.push_back (m); };
+            p->sendFeedback();
+            expect (sent.empty(), "nothing at start");
+            // CH4's fader to 0 dB (bank 0, CC 3, step 115), not echoed.
+            p->handleMessage (0, juce::MidiMessage::controllerEvent (1, 3, 115));
+            expectWithinAbsoluteError (engine.getChannels()[3]->params.faderDb.load(), 0.0f, 1e-3f);
+            p->sendFeedback();
+            expect (sent.empty(), "not echoed");
+            // CH2 ON off on the console: bank 0, CC 23, 0.
+            engine.getChannels()[1]->params.mute.store (true);
+            p->sendFeedback();
+            expect (sent.size() == 1 && sent[0].isController() && sent[0].getControllerNumber() == 23
+                    && sent[0].getControllerValue() == 0 && sent[0].getChannel() == 1);
+            // Bank 5 on MIDI channel 6: CH5's group (488 = bank 5, CC 8) to B.
+            p->handleMessage (0, juce::MidiMessage::controllerEvent (6, 8, 64));
+            expectEquals (engine.getProMix().get (488), 2, "group B (5 values: 64 is the middle one)");
+            // An Edit Buffer request: a bulk dump of 408 bytes as hex digits.
+            sent.clear();
+            const uint8_t request[] = { 0xf0, 0x43, 0x20, 0x7e, 'L', 'M', ' ', ' ', '8', 'A', '4', '1', 'M', 0x7f, 0xf7 };
+            p->handleMessage (0, juce::MidiMessage (request, (int) sizeof (request)));
+            expect (sent.size() == 1 && sent[0].isSysEx() && sent[0].getRawDataSize() == 834);
+            expectEquals (ProMix::name (21), juce::String ("Stereo Output Level"));
+            expect (engine.getProMix().getSceneBytes().size() == 408);
+        }
         expectEquals (engine.getFaderLaw().steps, 128);
         expectEquals (engine.getAux()[1]->getName(), juce::String ("RTN1"));
         expectEquals (engine.getBuses()[3]->getName(), juce::String ("SEND4"));

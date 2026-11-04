@@ -101,6 +101,9 @@ pub enum MidiProtocol {
     /// The X32's fixed map: faders, mutes, pans and mute groups by CC on MIDI
     /// channels 1-3, scenes by program change.
     X32,
+    /// The ProMix 01's: its 531 parameters by CC (Channel or Register mode),
+    /// scenes by program change, Yamaha bulk dumps (`livedaw-promix`).
+    ProMix01,
 }
 
 /// A network protocol a console serves (`livedaw-wing`'s servers for the WING's).
@@ -679,7 +682,7 @@ static X32: ProfileSpec = ProfileSpec {
 /// and chains: channels phase, EQ, dynamics, fader; ST IN and the returns EQ
 /// and fader (as the X32's aux in); the sends and ST OUT (EQ, ST OUT only)
 /// the dynamics PRE or POST their fader (`chain::PROMIX01_OUTPUT_ORDERS`).
-/// It speaks no remote protocol until Phase 5 step 5.
+/// It speaks its MIDI (`livedaw-promix`), its only remote protocol.
 static PROMIX01: ProfileSpec = ProfileSpec {
     profile: Profile::ProMix01,
     name: "ProMix 01",
@@ -692,7 +695,7 @@ static PROMIX01: ProfileSpec = ProfileSpec {
     pan: PanLaw::WING,
     port_groups: PROMIX01_PORT_GROUPS,
     models: &livedaw_dsp::promix::MODELS,
-    remotes: Remotes { midi: None, network: &[] },
+    remotes: Remotes { midi: Some(MidiProtocol::ProMix01), network: &[] },
     palette: Palette::PROMIX01,
     labels: PROMIX01_LABELS,
     slots: &[
@@ -805,7 +808,7 @@ mod tests {
         assert_eq!(Profile::Wing.or_universal(&Counts::PROMIX01), Profile::Universal);
         assert_eq!((p.fader.steps, p.fader.max_db()), (128, 6.0));
         assert_eq!(p.port_groups, PROMIX01_PORT_GROUPS);
-        assert!(p.remotes.midi.is_none() && p.remotes.network.is_empty(), "no remote until step 5");
+        assert!(p.remotes.midi == Some(MidiProtocol::ProMix01) && p.remotes.network.is_empty(), "MIDI only");
         assert_eq!(p.label_at(StripKind::Aux, 0), ("ST IN", 1));
         assert_eq!(p.label_at(StripKind::Aux, 2), ("RTN", 2));
         assert_eq!((p.label(StripKind::Bus), p.label(StripKind::Main)), ("SEND", "ST OUT"));

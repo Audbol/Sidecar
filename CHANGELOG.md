@@ -210,6 +210,13 @@ Phase 5, the Yamaha ProMix 01 (`docs/UNIVERSAL_MIXER.md`), begins.
   parameters, on the WING's devices and a delay of Sidecar's own; its program
   libraries: the 30 preset effects programs, the dynamics presets and the 30 EQ
   presets, and the user programs.
+- The ProMix 01's MIDI, its only remote: its 531 parameters by control change on the
+  User's Guide's default map, in Channel or Register mode, with its value scaling and
+  14-bit effect parameters; scenes by program change through its table; Yamaha bulk
+  dumps and requests (the Edit Buffer, the program and control change tables, the
+  setup, the user programs; the bytes inside are Sidecar's layout) and Key Remote.
+  MIDI SETUP (channels, TX, RX, OMNI, ECHO) is kept in the app settings. C ABI 44:
+  `ld_promix_*`.
 
 ## [0.2.0] - beta
 

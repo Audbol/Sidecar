@@ -16,4 +16,5 @@ livedaw-dsp = { path = "../livedaw-dsp" }
 livedaw-session = { path = "../livedaw-session" }
 livedaw-wing = { path = "../livedaw-wing" }
 livedaw-x32 = { path = "../livedaw-x32" }
+livedaw-promix = { path = "../livedaw-promix" }
 livedaw-web = { path = "../livedaw-web" }

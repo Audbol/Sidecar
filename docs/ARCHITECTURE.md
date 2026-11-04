@@ -289,7 +289,13 @@ of any size, of which the WING is one configuration.
   `Console` (its panel's operations on the engine's strips: pairs linked, groups,
   a processor written onto the dynamics block of the strip it is patched into),
   `library` (its effects, dynamics and EQ programs) and `params` (its 531
-  parameters as internal values, what its control changes carry). Its effect
+  parameters as internal values, what its control changes carry), `midi` (its
+  MIDI: the control change and program change tables, Channel and Register modes,
+  the value scaling, bulk dumps and requests, Key Remote; `Midi::receive`, `poll`,
+  queued messages and events for the app). C ABI 44 `ld_promix_*`
+  (`livedaw-ffi/src/promix.rs`); the app's `ProMix` (`src/engine/ProMix.h`, held by
+  the MixerEngine) and `ProMixMidi` (`src/engine/ProMixMidi.*`, a `MidiProtocol`
+  over one port). Its effect
   types are `livedaw_dsp::promix::fx` (`FX_MODELS`, `PM...` tokens; the devices
   run the WING's in series and `Taps`, a delay of their own).
 - Laws (Phase 3 step 3): a `ProfileSpec` names its fader law (`FaderLaw`,
@@ -1471,7 +1477,8 @@ A screen mirror for browsers on the local network (SETUP > REMOTE > WEB REMOTE).
 messages in, feedback out, its ports; `MidiProtocol::create` makes the one the
 console's profile names, `ld_engine_remotes`; owned by `MainComponent`, which remakes
 it when the console's protocol changes, `syncRemotes`), `src/engine/MidiRemote.*` (the
-WING's protocol, `UiContext::midi` while the console speaks it) and
+WING's protocol, `UiContext::midi` while the console speaks it), `X32Midi` and
+`ProMixMidi` (the X32's and the ProMix 01's) and
 `src/engine/DawRemote.*` (the MCU / HUI protocols); `src/ui/MidiRemoteUi.*` connects
 them to the views, `src/ui/DawSurface.*` is the fader sections' DAW mode. Sources: the
 WING MIDI and DAW documentation (firmware 1.07), the DAW translation table, Patrick-

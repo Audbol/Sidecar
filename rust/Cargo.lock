@@ -20,6 +20,7 @@ version = "0.2.0"
 dependencies = [
  "livedaw-dsp",
  "livedaw-engine",
+ "livedaw-promix",
  "livedaw-session",
  "livedaw-web",
  "livedaw-wing",

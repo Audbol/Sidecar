@@ -7,6 +7,7 @@
 #include "engine/Recorder.h"
 #include "engine/UsbRecorder.h"
 #include "engine/Strip.h"
+#include "engine/ProMix.h"
 #include "engine/WingRemote.h"
 
 #include <juce_audio_devices/juce_audio_devices.h>
@@ -172,6 +173,10 @@ public:
 
     /** The WING remote protocols and WING snapshot files. */
     WingRemote& getWing() noexcept { return *wing; }
+
+    /** The ProMix 01's own state, program libraries and MIDI (Phase 5; inert
+        while the console isn't a ProMix 01). */
+    ProMix& getProMix() noexcept { return *promix; }
 
     /** The RTA, LR vector scope and LISTEN (BAND / KEY / XOVER SOLO) of the analysed strip. */
     Analysis getAnalysis() const noexcept { return Analysis (engine); }
@@ -578,6 +583,7 @@ private:
     std::unique_ptr<Recorder> recorder = std::make_unique<Recorder> (engine);
     std::unique_ptr<UsbRecorder> usbRecorder = std::make_unique<UsbRecorder> (engine);
     std::unique_ptr<WingRemote> wing = std::make_unique<WingRemote> (*this);
+    std::unique_ptr<ProMix> promix = std::make_unique<ProMix> (engine);
     std::vector<std::unique_ptr<Worker>> workers;
 
     std::array<StripList, kNumStripKinds> lists;

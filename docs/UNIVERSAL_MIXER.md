@@ -805,11 +805,34 @@ Three layers:
       EQ; the effects' parameters (404-445) read and set a slot's values by
       their steps. The guide's HUM REDUCE 60Hz preset puts LOW at 60 Hz, so the
       EQ's 1/6 octave step between 56 and 70 Hz is 60 Hz.
-   5. **ProMix MIDI** (`MidiProtocol::ProMix01`): the 531 parameters and the
-      default CC map, Channel and Register modes, the scaling, program changes
-      through the table, echo, and the SysEx: bulk dumps and requests with
-      Yamaha's checksum, Key Remote; Tx / Rx channels and per-kind TX, RX, OMNI
-      and ECHO in the app's settings.
+   5. **ProMix MIDI** (done; `MidiProtocol::ProMix01`, C ABI 44): the protocol in
+      Rust (`livedaw_promix::midi`), the app's `ProMixMidi` a thin port over it
+      (`src/engine/ProMixMidi.*`; the MixerEngine's `ProMix` holds the state,
+      `ld_promix_*`). Control changes: the 531 parameters on the default map
+      (`CcMap`: p / 96, p % 96; CUE ON and the CUE mode none; the guide's CC 23-27
+      for 321-325 taken as its misprint), in Channel mode (bank = MIDI channel
+      offset from the Tx / Rx channel) or Register mode (CC 98 the bank, one
+      channel); values scaled as Add-17 says (pan: `(x - 15) / 3`, the middle on
+      64; the effects' parameters in 14 bits over their high- and low-byte
+      parameters); a received value isn't echoed, a group isn't followed
+      (Add-17), the Executes act and the flags change alone; the console's
+      changes go out (a poll every 50 ms; nothing at start). Program changes
+      through the table (`PcTable`: 1-50 the scenes, 128 scene 00) recall the
+      show's scenes 1-50 (scene 00 with step 6); a scene recalled sends its
+      program change. MIDI SETUP's Tx / Rx channels and TX, RX, OMNI and ECHO per
+      kind (`promixmidi.setup` in the app settings; the page comes with the
+      skin). SysEx: Yamaha's bulk dumps and requests (`F0 43 0n 7E`, `F0 43 2n
+      7E`, header `LM  8A41`, data as hex digits, the two's complement
+      checksum) of the Edit Buffer (memory 127), the program change table, the
+      control change table (576 bank / controller pairs), the setup and the
+      effects, dynamics and EQ user programs, the All request, Memory Control
+      Change Out's (`Y`); Key Remote presses ON (CH1-16, ST IN, ST OUT), the
+      other buttons go to the app. The bytes inside the dumps are Sidecar's
+      layout (`midi::scene_bytes`: the Edit Buffer in the guide's 408 bytes,
+      the switches as bits, the groups two to a byte), since the guide gives
+      only the formats: a dump goes back into Sidecar, not into a ProMix 01.
+      Not done: the scene memories' dumps (step 6), Local OFF (the panel's,
+      step 7), the bulk interval, the Error report, the Backup Memory.
    6. **Scene memories**: 50 scenes and scene 00 (the console's initial data) over
       the show's scenes, recalled by program change, sent as bulk dumps.
    7. **A ProMix skin**: the surface laid out as the ProMix 01, drawn in

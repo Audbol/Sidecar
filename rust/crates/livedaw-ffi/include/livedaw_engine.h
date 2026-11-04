@@ -29,7 +29,7 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 43;
+constexpr int kAbiVersion = 44;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -924,7 +924,7 @@ struct SlotRangeC
 static_assert (sizeof (SlotRangeC) == 20);
 
 /** ABI 33: the remote protocols a console speaks (ld_engine_remotes): its MIDI
-    protocol (-1 none, 0 the WING's, 1 the X32's: MidiProtocol::Id) and its network protocols, a set
+    protocol (-1 none, 0 the WING's, 1 the X32's, 2 the ProMix 01's: MidiProtocol::Id) and its network protocols, a set
     of bits (1 WING discovery, 2 WING OSC, 4 WING native: the WING remote's servers). */
 struct RemotesC
 {
@@ -999,6 +999,7 @@ enum AudioFileFormat : int32_t
 };
 struct LdWing;    // opaque WING remote (servers + snapshot files), see ld_wing_*
 struct LdX32;     // ABI 38: opaque X32 OSC server, see ld_x32_*
+struct LdProMix;  // ABI 44: opaque ProMix 01 state and MIDI, see ld_promix_*
 struct LdWeb;     // opaque web remote (HTTP + WebSocket screen mirror), see ld_web_*
 
 /** An input event from a browser (ld_web_take_input). */
@@ -1782,6 +1783,51 @@ extern "C"
         framing stripped): the answer to a query (an address alone), else
         null; `set` gets how many values were set, -1 for an unknown address. */
     LdString* ld_x32_sysex (const LdX32*, const char* text, size_t len, int32_t* set);
+
+    // ABI 44: the ProMix 01 (livedaw-promix): its own state, program libraries and
+    // MIDI over the engine (message thread; destroy it before the engine). Every
+    // call does nothing (or answers none) while the engine isn't a ProMix 01.
+    LdProMix* ld_promix_create (const Engine*);
+    void ld_promix_destroy (LdProMix*);
+    /** One received MIDI message: a channel message, or a SysEx from F0 to F7. */
+    void ld_promix_midi_in (LdProMix*, const uint8_t* bytes, size_t len);
+    /** Queues the console's changes as control changes (the first call sends none). */
+    void ld_promix_midi_poll (LdProMix*);
+    /** The next poll sends every value. */
+    void ld_promix_midi_resend (LdProMix*);
+    /** Scene `scene` (0-50, 0 scene 00) was recalled: its program change goes out. */
+    void ld_promix_scene_recalled (LdProMix*, int32_t scene);
+    /** The next message to send: its length, 0 for none, minus its length if `max` is too small. */
+    int32_t ld_promix_midi_out (LdProMix*, uint8_t* out, size_t max);
+    struct LdProMixEvent
+    {
+        int32_t kind; // 0 recall scene `value` (0-50), 1 request for scene `value`'s dump,
+                      // 2 dump of scene `value` (`size` bytes), 3 Key Remote button `value`
+        int32_t value, data, size;
+    };
+    bool ld_promix_event (LdProMix*, LdProMixEvent* out, uint8_t* bytes, size_t max);
+    /** The Edit Buffer as scene bytes (408); how many were written. */
+    int32_t ld_promix_scene_bytes (LdProMix*, uint8_t* out, size_t max);
+    void ld_promix_load_scene_bytes (LdProMix*, const uint8_t* data, size_t len);
+    /** Queues a bulk dump of scene `scene` (1-50) holding `data`. */
+    void ld_promix_send_scene_dump (LdProMix*, int32_t scene, const uint8_t* data, size_t len);
+    struct LdProMixSetup
+    {
+        int32_t txChannel, rxChannel;  // 0-15
+        uint8_t switches[3][4];        // program, control, bulk: TX, RX, OMNI, ECHO
+        uint8_t registerMode, interval; // interval in 100 ms
+    };
+    void ld_promix_get_setup (const LdProMix*, LdProMixSetup* out);
+    void ld_promix_set_setup (LdProMix*, const LdProMixSetup*);
+    /** Parameter `n` (0-530, the CC table's): its internal value (-1 none), its
+        number of values, set as the panel does, its name (caller frees). */
+    int32_t ld_promix_param (LdProMix*, int32_t n);
+    int32_t ld_promix_param_steps (LdProMix*, int32_t n);
+    void ld_promix_set_param (LdProMix*, int32_t n, int32_t value);
+    LdString* ld_promix_param_name (int32_t n);
+    /** The console's own state as text (pairs, groups, processors...), and back. */
+    LdString* ld_promix_state_text (const LdProMix*);
+    void ld_promix_set_state_text (LdProMix*, const char* text, size_t len);
 
     // WING remote (message thread). Destroy it before the engine.
     LdWing* ld_wing_create (const Engine*);
