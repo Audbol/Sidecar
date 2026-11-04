@@ -505,6 +505,14 @@ fn an_x32_runs_its_own_chains_and_models() {
         let up = b.id() >= 12;
         assert_eq!(b.params.fader_db.load(), if up { 0.0 } else { livedaw_dsp::fader::FADER_MIN });
     }
+    // Its factory outputs: buses 1-14 on outputs 1-14, Main LR on 15-16 (as a
+    // full-size X32's); the main is heard here on the first two instead.
+    let patch = rig.engine.output_patch();
+    assert_eq!(patch.get(14), livedaw_engine::routing::strip_source_input(StripKind::Main, 0, 0));
+    patch.reset();
+    let main = &rig.engine.strips(StripKind::Main)[0].params;
+    main.output_left.store(0, Relaxed);
+    main.output_right.store(1, Relaxed);
     unity_console(&rig.engine);
     for ch in rig.engine.strips(StripKind::Channel) {
         ch.params.fader_db.store(0.0);

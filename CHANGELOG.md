@@ -142,9 +142,16 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
   `/config/routing/IN` and `PLAY` (the blocks of eight that feed inputs 1-32 and aux
   1-6), the channels' and aux ins' `config/source` and the head amps (`/headamp`, gain
   and phantom power on the interface's inputs; `/-ha`) work from X32 remote apps and
-  scene files. As on a freshly initialised X32 Compact, channels 17-32 now take AES50
-  A 1-16 (interface inputs 33-48), aux in 1-6 the aux inputs (161-166) and aux in 7-8
-  the USB player's left and right.
+  scene files. As on a full-size X32, channels 1-32 take interface inputs 1-32; aux in
+  1-6 now take the aux inputs (161-166) and aux in 7-8 the USB player's left and right.
+- The X32's outputs: the interface's outputs are numbered as an X32 numbers its own
+  (local 1-16, aux out 1-6, AES50 A and B 1-48, the card's 1-32, P16 1-16), and
+  `/outputs` (each output signal's source and tap) and the output routing blocks
+  (`/config/routing/OUT`, `AES50A`, `AES50B`, `CARD`) set them from X32 remote apps and
+  scene files. A new X32 console has a full-size X32's factory outputs: buses 1-14 on
+  outputs 1-14 and **Main LR on outputs 15-16** (no longer 1-2), the same on AES50 A
+  and B, and the local inputs on the card's outputs. The output patch can now play a
+  bus, main or matrix on several outputs at once.
 - The X32 display's ROUTING screen sets the input blocks (encoders 1-5) and switches
   between the recording and playback blocks (encoder 6), and shows which interface
   inputs each block takes. The channel strip's GAIN knob turns the head amp of the

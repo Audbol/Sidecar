@@ -952,8 +952,13 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
   X32's USB stick or X32-Edit) onto the console and keeps it as a new scene of the
   show; **EXPORT .scn** saves the console as one, which an X32 can load. The
   Universal Mixer's SCENES has the same two keys on an X32. What Sidecar doesn't
-  emulate yet (the outputs) is skipped, and the import
-  says how many lines that was.
+  emulate is skipped, and the import says how many lines that was.
+- **Outputs.** The interface's outputs are numbered as an X32 numbers its own: 1-16
+  the local outputs, 17-22 aux out, 33-80 AES50 A, 81-128 AES50 B, 129-160 the card,
+  161-176 P16. As on a full-size X32, outputs 1-14 play buses 1-14 and **15-16 the
+  main LR**, the same on AES50 A and B, and the card's outputs carry the local
+  inputs (for recording). X32 remote apps and scene files set what each output
+  plays (its source and tap) and the output routing blocks, as on an X32.
 - **Touch.** Unlike an X32's, the screen takes touch: tap a tab, drag up or down on
   an encoder's cell to turn it, tap the cell to push it, and drag the EQ's bands on
   its graph.
@@ -981,9 +986,9 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
 
 - **Inputs.** The audio interface's inputs are numbered as an X32 numbers its own:
   1-32 the local inputs, 33-80 AES50 A, 81-128 AES50 B, 129-160 the card, 161-166
-  aux in. As on a freshly initialised X32 Compact, channels 1-16 take local 1-16,
-  channels 17-32 AES50 A 1-16 (interface inputs 33-48), aux in 1-6 the aux inputs and
-  aux in 7-8 the USB player. X32 remote apps and scene files change it as on an X32:
+  aux in. As on a full-size X32, channels 1-32 take interface inputs 1-32, aux in 1-6
+  the aux inputs and aux in 7-8 the USB player. X32 remote apps and scene files
+  change it as on an X32:
   the input routing blocks, each channel's source, and the head amps' gain and
   phantom power (on the interface's inputs, as SOURCE GAIN). On the display,
   **ROUTING** sets the blocks: encoders 1-4 choose what feeds inputs 1-8 .. 25-32

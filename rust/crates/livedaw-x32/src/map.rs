@@ -17,6 +17,8 @@ use crate::value::{Fmt, Law, Ty, Val};
 use livedaw_dsp::delay::{delay_to_ms, ms_to_delay};
 use livedaw_dsp::fader::FADER_MIN;
 use livedaw_engine::params::DynSlotParams;
+use livedaw_engine::profile::{x32_output_signal, x32_ports, X32_FACTORY_OUTPUTS};
+use livedaw_engine::routing::DirectSource;
 use livedaw_engine::sends::send_mode;
 use livedaw_engine::strip::tap;
 use livedaw_engine::SendParams;
@@ -149,6 +151,11 @@ pub enum Bind {
     /// `/-ha/NN/index`: the head amp channel / aux in NN takes its signal from
     /// (-1 none; read only).
     HaIndex(usize),
+    /// What drives the interface outputs (step 10b), kept by the server and
+    /// applied to the engine's output patch on a change: the output routing
+    /// blocks (`/config/routing/OUT`, `AES50A`, `AES50B`, `CARD`) and the output
+    /// signals' source, tap and the rest (`/outputs/...`).
+    Outputs,
 }
 
 /// One address.
@@ -349,6 +356,12 @@ const ROUTING_OUT_B: Ty = Ty::Enum(&[
     "UIN21-24",
     "UIN29-32",
 ]);
+/// An output signal's source (0 OFF, 1-2 Main L / R, 3 M/C, 4-19 MixBus,
+/// 20-25 Matrix, 26-57 DirectOut Ch, 58-65 Aux, 66-73 FX 1L-4R, 74-75
+/// Monitor L / R, 76 Talkback) and its tap.
+const OUTPUT_SOURCE: Ty = Ty::Int(0, 76);
+const OUTPUT_TAP: Ty = Ty::Enum(&["IN/LC", "IN/LC+M", "<-EQ", "<-EQ+M", "EQ->", "EQ->+M", "PRE", "PRE+M", "POST"]);
+
 /// The head amps: 000-031 local, 032-079 AES50 A, 080-127 AES50 B.
 pub const NUM_HEADAMPS: usize = 128;
 const HA_GAIN: Ty = Ty::Float(Law::Lin(-12.0, 60.0, 145), num(1, true, 0));
@@ -586,7 +599,38 @@ fn build() -> Tree {
     config(&mut b);
     fx(&mut b);
     headamps(&mut b);
+    outputs(&mut b);
     b.t
+}
+
+/// `/outputs`: the X32's output signals (main 1-16, aux 1-6, P16 1-16, AES/EBU
+/// and the recorder's 1-2): source, tap, invert; the outputs' delays, P16's
+/// iQ settings (kept). Factory: main 1-14 MixBus 1-14, 15-16 Main L / R.
+fn outputs(b: &mut Builder) {
+    let t = Target::Config;
+    for (group, count) in [("main", 16), ("aux", 6), ("p16", 16), ("aes", 2), ("rec", 2)] {
+        for n in 0..count {
+            let p = format!("/outputs/{group}/{:02}", n + 1);
+            let src = if group == "main" { X32_FACTORY_OUTPUTS.get(n).copied().unwrap_or(0) } else { 0 };
+            b.leaf(&p, "src", t, OUTPUT_SOURCE, Bind::Outputs, int(src));
+            b.leaf(&p, "pos", t, OUTPUT_TAP, Bind::Outputs, int(8));
+            if matches!(group, "main" | "aux" | "p16") {
+                b.leaf(&p, "invert", t, ONOFF, Bind::State, int(0));
+            }
+            if group == "main" {
+                b.leaf(&format!("{p}/delay"), "on", t, ONOFF, Bind::State, int(0));
+                b.leaf(&format!("{p}/delay"), "time", t, DELAY, Bind::State, real(0.3));
+            }
+            if group == "p16" {
+                let iq = format!("{p}/iQ");
+                b.leaf(&iq, "group", t, Ty::Enum(&["OFF", "A", "B"]), Bind::State, int(0));
+                let speakers = Ty::Enum(&["none", "iQ8", "iQ10", "iQ12", "iQ15", "iQ15B", "iQ18B"]);
+                b.leaf(&iq, "speaker", t, speakers, Bind::State, int(0));
+                b.leaf(&iq, "eq", t, Ty::Enum(&["Linear", "Live", "Speech", "Playback", "User"]), Bind::State, int(0));
+                b.leaf(&iq, "model", t, Ty::Int(0, 7), Bind::State, int(0));
+            }
+        }
+    }
 }
 
 /// `/headamp/000..127` (gain -12..+60 dB, phantom) and `/-ha/00..39/index`.
@@ -684,27 +728,27 @@ fn fx_param_ty(p: &livedaw_dsp::model::ParamSpec) -> Ty {
 /// `/config`: the mute groups engaged and the odd/even links.
 fn config(b: &mut Builder) {
     let t = Target::Config;
-    // The routing blocks (OSC document p.22), as a freshly initialised X32
-    // Compact has them: inputs 17-32 from AES50 A 1-16 (its 16 local inputs).
-    // The IN / PLAY blocks feed the channels (step 10a); the output blocks are
-    // kept (10b).
+    // The routing blocks (OSC document p.22), as a full-size X32 has them
+    // (the owner's choice, November 2026; an X32 Compact, with 16 local
+    // inputs, takes 17-32 from AES50 A). The IN / PLAY blocks feed the
+    // channels (step 10a), the others the outputs (10b).
     b.leaf("/config/routing", "routswitch", t, Ty::Enum(&["REC", "PLAY"]), Bind::RoutSwitch, int(0));
     let blocks = ["1-8", "9-16", "17-24", "25-32"];
     for (k, name) in blocks.iter().enumerate() {
-        b.leaf("/config/routing/IN", name, t, ROUTING_IN, Bind::RoutingIn(k), int([0, 1, 4, 5][k]));
+        b.leaf("/config/routing/IN", name, t, ROUTING_IN, Bind::RoutingIn(k), int(k as i32));
     }
     b.leaf("/config/routing/IN", "AUX", t, ROUTING_AUX, Bind::RoutingIn(4), int(0));
     for (node, factory) in [("AES50A", [20, 21, 20, 21, 22, 23]), ("AES50B", [20, 21, 20, 21, 22, 23])] {
         for (k, name) in ["1-8", "9-16", "17-24", "25-32", "33-40", "41-48"].iter().enumerate() {
-            b.leaf(&format!("/config/routing/{node}"), name, t, ROUTING_NET, Bind::State, int(factory[k]));
+            b.leaf(&format!("/config/routing/{node}"), name, t, ROUTING_NET, Bind::Outputs, int(factory[k]));
         }
     }
     for (k, name) in blocks.iter().enumerate() {
-        b.leaf("/config/routing/CARD", name, t, ROUTING_NET, Bind::State, int([0, 1, 4, 5][k]));
+        b.leaf("/config/routing/CARD", name, t, ROUTING_NET, Bind::Outputs, int(k as i32));
     }
     for (k, name) in ["1-4", "5-8", "9-12", "13-16"].iter().enumerate() {
         let ty = if k % 2 == 0 { ROUTING_OUT_A } else { ROUTING_OUT_B };
-        b.leaf("/config/routing/OUT", name, t, ty, Bind::State, int(20 + (k / 2) as i32));
+        b.leaf("/config/routing/OUT", name, t, ty, Bind::Outputs, int(20 + (k / 2) as i32));
     }
     for (k, name) in blocks.iter().enumerate() {
         b.leaf("/config/routing/PLAY", name, t, ROUTING_IN, Bind::RoutingPlay(k), int(16 + k as i32));
@@ -1089,6 +1133,75 @@ impl<'a> Console<'a> {
         })
     }
 
+    /// A kept value by its address (its default if unknown).
+    fn value_at(&self, path: &str) -> i32 {
+        match self.tree.find(path) {
+            Some(Found::Leaf(k)) => self.get(k).int(),
+            _ => 0,
+        }
+    }
+
+    /// The engine source of output signal `n` (1-based) of `group` ("main",
+    /// "aux", "p16"): its source at its tap (-1 none).
+    fn output_signal(&self, group: &str, n: i32) -> i32 {
+        let p = format!("/outputs/{group}/{n:02}");
+        let (src, post) = (self.value_at(&format!("{p}/src")), self.value_at(&format!("{p}/pos")) == 8);
+        let direct = |kind, number| DirectSource { kind, number, side: 0, post }.code();
+        match src {
+            // A bus before its fader: its direct out.
+            4..=19 if !post => direct(StripKind::Bus, src - 3),
+            1..=25 => x32_output_signal(src),
+            26..=57 => direct(StripKind::Channel, src - 25),
+            58..=65 => direct(StripKind::Aux, src - 57),
+            66..=73 => direct(StripKind::Aux, src - 57), // FX returns: aux 9-16
+            _ => -1,                                     // OFF; the monitor and talkback (Sidecar's own outputs)
+        }
+    }
+
+    /// What a block choice of `list` (a list of the OSC document's, `four`:
+    /// blocks of 4, the second half when `upper`) puts on its port `offset`.
+    fn block_source(&self, choice: i32, offset: i32, four: Option<bool>) -> i32 {
+        let (size, shift) = (8, if four == Some(true) { 4 } else { 0 });
+        let at = |base: i32, first: i32| base + (choice - first) * size + shift + offset;
+        match choice {
+            0..=3 => at(ports::LOCAL, 0),
+            4..=9 => at(ports::AES50_A, 4),
+            10..=15 => at(ports::AES50_B, 10),
+            16..=19 => at(ports::CARD, 16),
+            20 | 21 => self.output_signal("main", (choice - 20) * size + shift + offset + 1),
+            22 | 23 => self.output_signal("p16", (choice - 22) * size + shift + offset + 1),
+            // AES50 / card blocks: the aux outputs' signals, the aux inputs.
+            24 if four.is_none() && offset < 6 => self.output_signal("aux", offset + 1),
+            25 if four.is_none() && offset < 6 => ports::AUX_IN + offset,
+            _ => -1, // the monitor, talkback and user routing (Sidecar's own)
+        }
+    }
+
+    /// Sets the engine's output patch from the output blocks and signals: the
+    /// local outputs 1-16, aux out 1-6, AES50 A and B, the card and P16, as
+    /// the X32 numbers them (`livedaw_engine::profile::x32_ports`).
+    fn apply_outputs(&self) {
+        use x32_ports::*;
+        let patch = self.engine.output_patch();
+        for k in 0..16 {
+            let choice = self.value_at(&format!("/config/routing/OUT/{}", ["1-4", "5-8", "9-12", "13-16"][(k / 4) as usize]));
+            patch.set(LOCAL_OUT + k, self.block_source(choice, k % 4, Some((k / 4) % 2 == 1)));
+            patch.set(P16 + k, self.output_signal("p16", k + 1));
+        }
+        for k in 0..6 {
+            patch.set(AUX_OUT + k, self.output_signal("aux", k + 1));
+        }
+        let names = ["1-8", "9-16", "17-24", "25-32", "33-40", "41-48"];
+        for (group, base, blocks) in [("AES50A", AES50_A, 6), ("AES50B", AES50_B, 6), ("CARD", CARD, 4)] {
+            for (b, name) in names.iter().enumerate().take(blocks) {
+                let choice = self.value_at(&format!("/config/routing/{group}/{name}"));
+                for k in 0..8 {
+                    patch.set(base + 8 * b as i32 + k, self.block_source(choice, k, None));
+                }
+            }
+        }
+    }
+
     /// The entries of the channels' and aux ins' `config/source`.
     fn source_entries(&self) -> impl Iterator<Item = usize> + '_ {
         self.tree.entries.iter().enumerate().filter(|(_, e)| e.bind == Bind::Source).map(|(k, _)| k)
@@ -1254,6 +1367,11 @@ impl<'a> Console<'a> {
                 return true;
             }
             Bind::HaIndex(_) => return true, // read only
+            Bind::Outputs => {
+                self.state.set(i, v.clone());
+                self.apply_outputs();
+                return true;
+            }
             Bind::DcaOn | Bind::DcaFader | Bind::DcaColour | Bind::DcaName => {
                 let (Some(d), Target::Dca(k)) = (self.dca(e.target), e.target) else { return false };
                 match e.bind {

@@ -75,8 +75,22 @@ fn a_factory_x32_writes_what_a_real_one_answers() {
     let state = State::default();
     let text = scn::write(&Console::new(&engine, &state), "", "");
     let (mut same, mut differ) = (0, Vec::new());
+    // Where a full-size X32 (Sidecar's factory) differs from the Compact the
+    // dump was read from: its 32 local inputs (the Compact takes 17-32 from
+    // AES50 A) and Main LR on outputs 15-16 (the Compact's on 7-8).
+    const FULL_SIZE: &[&str] = &[
+        "/config/routing/IN",
+        "/config/routing/CARD",
+        "/outputs/main/07",
+        "/outputs/main/08",
+        "/outputs/main/15",
+        "/outputs/main/16",
+    ];
     for line in text.lines().skip(1) {
         let path = line.split(' ').next().unwrap();
+        if FULL_SIZE.contains(&path) {
+            continue;
+        }
         match real.get(path) {
             Some(r) if r.trim_end() == line.trim_end() => same += 1,
             Some(r) => differ.push(format!("ours {line}\nreal {r}")),

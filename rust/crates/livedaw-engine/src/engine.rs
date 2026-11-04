@@ -464,10 +464,8 @@ impl Engine {
         st.next_channel_id = st.next_channel_id.max(id + 1);
 
         let strip = self.new_strip(st, StripKind::Channel, id);
-        // Input n, or the console's own (an X32's 17-32 from AES50 A).
-        let input = st.profile.spec().channel_input.map_or(index as i32, |f| f(index));
-        let patched = st.device.num_hw_inputs == 0 || input < st.device.num_hw_inputs as i32;
-        strip.params.input_left.store(if patched { input } else { -1 }, Relaxed);
+        let patched = st.device.num_hw_inputs == 0 || index < st.device.num_hw_inputs;
+        strip.params.input_left.store(if patched { index as i32 } else { -1 }, Relaxed);
         strip
     }
 
@@ -675,6 +673,15 @@ impl Engine {
         self.sources.reset();
         self.io_safes.clear();
         self.output_patch.reset();
+        // A console's own factory outputs (an X32's buses and mains), in place
+        // of main 1 on outputs 1-2.
+        if let Some(outputs) = st.profile.spec().factory_outputs {
+            for m in &st.mains {
+                m.params.output_left.store(-1, Relaxed);
+                m.params.output_right.store(-1, Relaxed);
+            }
+            outputs(&self.output_patch);
+        }
         let mut names = self.names.lock().unwrap_or_else(|e| e.into_inner());
         *names = GroupNames::default();
         // A console's own factory DCAs (an X32's "DCA 1"... at 0 dB).
@@ -2193,6 +2200,15 @@ impl Engine {
             if let Some(direct) = DirectSource::from_code(source) {
                 if let Some(signal) = direct_signal(topo, direct, n) {
                     add_to(port as i32, signal);
+                }
+            } else if let Some((kind, number, side)) = strip_source(source) {
+                // A bus, main or matrix (an X32's output signals): its output,
+                // on as many outputs as name it.
+                if let Some(s) = topo.by_number(kind, number as i32 + 1) {
+                    let d = s.dsp();
+                    if !d.idle() {
+                        add_to(port as i32, d.out(side.min(d.channels().saturating_sub(1)), n));
+                    }
                 }
             } else if let Some(p) = source_ptr(hw, internal, source) {
                 add_to(port as i32, std::slice::from_raw_parts(p, n));

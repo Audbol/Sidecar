@@ -308,7 +308,7 @@ private:
         // ROUTING (step 10c): the input blocks, as the X32 map answers them.
         display.showScreen (ui::x32::Display::Screen::Routing);
         expectEquals (display.getEncoder (0).turn.label, juce::String ("IN 1-8"));
-        expectEquals (display.getEncoder (2).turn.text(), juce::String ("A1-8"), "inputs 17-24 from AES50 A, as on a Compact");
+        expectEquals (display.getEncoder (2).turn.text(), juce::String ("AN17-24"), "inputs 17-24 local, as on a full-size X32");
         display.getEncoder (0).turn.set (10.0f / 23.0f); // B1-8
         expectEquals (channels[2]->params.inputLeft.load(), 82, "channel 3 from AES50 B 3 (interface input 83)");
         display.getEncoder (0).turn.set (0.0f); // AN1-8
@@ -355,12 +355,12 @@ private:
             expect (text.startsWith ("#2.7# "), text.substring (0, 40));
             expect (text.contains ("\n/ch/13/config \"Vox 1\" "), "the channel's name");
             text = text.replace ("/ch/13/config \"Vox 1\"", "/ch/13/config \"Lead\"").replace ("#2.7# \"", "#2.7# \"Encore");
-            text << "/outputs/main/01 4 POST OFF\n";
+            text << "/-prefs/remote/enable OFF\n";
             file.replaceWithText (text);
             const int scenes = rig.show.getNumScenes();
             const auto status = files.importFile (file);
             expect (status.startsWith ("Imported"), status);
-            expect (status.contains ("1 line(s)"), "the outputs aren't emulated yet: " + status);
+            expect (status.contains ("1 line(s)"), "preferences aren't part of a scene: " + status);
             expectEquals (rig.show.getNumScenes(), scenes + 1);
             expect (rig.show.getScene (scenes)->name.startsWith ("Encore"));
             expectEquals (channels[12]->getName(), juce::String ("Lead"));

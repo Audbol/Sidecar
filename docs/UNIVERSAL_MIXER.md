@@ -627,24 +627,37 @@ Three layers:
         (`map::ports`, `in_block_port`, `aux_port`; a block's change re-patches the
         strips on their sources); `/headamp/NNN` gain and phantom the sources'
         (interface input NNN); `/-ha/NN/index` the input a channel takes. The output
-        blocks (`OUT`, `AES50A|B`, `CARD`) are kept until 10b. The factory routing
-        is the Compact's (17-32 from AES50 A 1-16: `ProfileSpec::channel_input` patches channels
-        17-32 to inputs 33-48, `x32_factory` aux in 1-6 to 161-166, 7-8 to the USB player); a
+        blocks are 10b's. The factory routing is a full-size X32's (the owner's
+        choice, November 2026: inputs 1-32 local; a Compact takes 17-32 from AES50
+        A); `x32_factory` patches aux in 1-6 to 161-166, 7-8 to the USB player; a
         console's factory now runs after the WING's defaults (an X32's aux in 2
         isn't the WING's USB player). The routing pages still show the WING's port
         groups (10c). UIN (the user in routing) and AUX's AN1-2 ... are Sidecar's
         reading: the first two, four or six aux in from that group.
-      - 10b, the outputs: `/outputs/main|aux|p16|aes|rec` (source, tap, invert,
-        delay) and `/config/routing/OUT`, `AES50A|B`, `CARD` onto the output patch
-        (buses as their post-fader direct outs, so one bus can feed several
-        outputs).
+      - 10b, the outputs (done): the interface's outputs numbered as the X32's
+        (`livedaw_engine::profile::x32_ports`: local 1-16, aux out 1-6, AES50 A
+        33-80, AES50 B 81-128, card 129-160, P16 161-176). `/outputs/main|aux|p16`
+        (source and tap; invert, delay and P16's iQ kept), `aes|rec` (kept), and the
+        output blocks `/config/routing/OUT`, `AES50A|B`, `CARD` (`Bind::Outputs`):
+        a change sets the engine's output patch for all of them (`apply_outputs`,
+        so the X32's routing owns those outputs). An output signal is the
+        engine's: mains, buses and matrices as their strip signals (the output
+        patch now plays a bus, main or matrix on any number of outputs, after the
+        mix, in the same block), a bus before its fader and the direct outs as
+        `DirectSource`s (PRE for every tap but POST: Sidecar's reading); the
+        monitor and talkback signals and the user routing (UOUT / UIN) aren't
+        Sidecar's and play nothing. Factory (`ProfileSpec::factory_outputs`,
+        `X32_FACTORY_OUTPUTS`): outputs 1-14 MixBus 1-14, 15-16 Main L / R (the
+        owner's full-size X32; the Compact's are on 7-8), on the local outputs and
+        AES50 A and B; the card records the local inputs. The scene file test
+        skips the lines where the Compact's factory differs (`FULL_SIZE`).
       - 10c, the display's ROUTING screen: its home tab (done) sets the IN / PLAY
         blocks and `routswitch` through the X32 map's text commands
         (`WingRemote::runX32Text`, as OSC over SysEx does) and shows the interface
         inputs each block takes; the channel strip's GAIN turns the head amp of
-        the strip's input (interface inputs 1-128), else the trim. To come with 10b:
-        its output tabs (out 1-16, aux out, P16, card, AES50) and the scene files'
-        outputs.
+        the strip's input (interface inputs 1-128), else the trim. Still to come:
+        its output tabs (out 1-16, aux out, P16, card, AES50), and the Universal
+        Mixer's routing pages in the X32's port groups.
 
 Each emulation keeps the independent-project disclaimer: not affiliated with or
 endorsed by the console's maker, their trademarks used only to say what is emulated,

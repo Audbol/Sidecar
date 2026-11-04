@@ -593,9 +593,9 @@ fn the_routing_blocks_patch_the_channels_and_the_head_amps_are_the_sources() {
     let (engine, server) = start();
     let c = Client::new(&server);
     let input = |kind: StripKind, i: usize| engine.strips(kind)[i].params.input_left.load(Relaxed);
-    // As a freshly initialised X32 Compact: inputs 1-16 local, 17-32 AES50 A 1-16.
-    assert_eq!(c.node("config/routing/IN").trim_end(), "/config/routing/IN AN1-8 AN9-16 A1-8 A9-16 AUX1-4");
-    assert_eq!((input(StripKind::Channel, 0), input(StripKind::Channel, 16)), (0, 32));
+    // As a full-size X32: inputs 1-32 the local ones.
+    assert_eq!(c.node("config/routing/IN").trim_end(), "/config/routing/IN AN1-8 AN9-16 AN17-24 AN25-32 AUX1-4");
+    assert_eq!((input(StripKind::Channel, 0), input(StripKind::Channel, 16)), (0, 16));
     assert_eq!(c.get_i("/ch/17/config/source"), 17);
     // Aux in 1-6 the aux inputs, 7-8 the USB player.
     assert_eq!(input(StripKind::Aux, 0), 160);
@@ -606,8 +606,10 @@ fn the_routing_blocks_patch_the_channels_and_the_head_amps_are_the_sources() {
     assert_eq!(input(StripKind::Channel, 2), 82);
     assert_eq!(c.get_i("/ch/03/config/source"), 3);
     // A channel's source through the blocks; buses and FX returns are signals.
+    c.set_text("/config/routing/IN/17-24 A1-8");
     c.set("/ch/05/config/source", vec![Arg::Int(20)]);
     assert_eq!(input(StripKind::Channel, 4), 35, "In 20 is AES50 A 4");
+    assert_eq!(input(StripKind::Channel, 16), 32, "channel 17 follows its block");
     c.set("/ch/05/config/source", vec![Arg::Int(49)]);
     assert_eq!(c.get_i("/ch/05/config/source"), 49, "Bus 1");
     // PLAY: the playback blocks (the card) feed the inputs instead.
@@ -622,4 +624,47 @@ fn the_routing_blocks_patch_the_channels_and_the_head_amps_are_the_sources() {
     assert_eq!(c.node("headamp/080").trim_end(), "/headamp/080 +30.0 ON");
     assert_eq!(c.get_i("/-ha/00/index"), 80, "channel 1's head amp");
     assert_eq!(c.get_i("/-ha/04/index"), -1, "a bus has none");
+}
+
+#[test]
+fn the_outputs_are_the_x32s_signals_through_its_output_blocks() {
+    use livedaw_engine::profile::x32_ports::*;
+    use livedaw_engine::routing::{strip_source_input, DirectSource};
+    let (engine, server) = start();
+    let c = Client::new(&server);
+    let patch = |port: i32| engine.output_patch().get(port);
+    let bus = |k: usize| strip_source_input(StripKind::Bus, k, 0);
+    let main = |side: usize| strip_source_input(StripKind::Main, 0, side);
+    // A full-size X32's factory: outputs 1-14 MixBus 1-14, 15-16 Main L / R, on the
+    // local outputs and AES50 A and B; the card records the local inputs.
+    assert_eq!(c.node("outputs/main/15").trim_end(), "/outputs/main/15 1 POST OFF");
+    assert_eq!((patch(LOCAL_OUT), patch(LOCAL_OUT + 13)), (bus(0), bus(13)));
+    assert_eq!((patch(LOCAL_OUT + 14), patch(LOCAL_OUT + 15)), (main(0), main(1)));
+    assert_eq!((patch(AES50_A + 16), patch(AES50_B + 15)), (bus(0), main(1)));
+    assert_eq!((patch(CARD), patch(CARD + 31)), (0, 31));
+    let mains = &engine.strips(StripKind::Main)[0].params;
+    assert_eq!(mains.output_left.load(Relaxed), -1, "the main plays through the patch");
+    // The map's routing gives the engine's factory patch, port for port.
+    let factory: Vec<i32> = (0..176).map(patch).collect();
+    c.set_text("/config/routing/OUT/1-4 OUT1-4");
+    assert_eq!((0..176).map(patch).collect::<Vec<_>>(), factory);
+    // A signal: matrix 2; a channel's direct out before its fader; OFF.
+    c.set_text("/outputs/main/03 21 POST OFF");
+    assert_eq!(patch(LOCAL_OUT + 2), strip_source_input(StripKind::Matrix, 1, 0));
+    assert_eq!(patch(AES50_A + 2), patch(LOCAL_OUT + 2), "AES50 A 1-8 carry outputs 1-8 too");
+    c.set_text("/outputs/main/04 26 PRE OFF");
+    let ch1_pre = DirectSource { kind: StripKind::Channel, number: 1, side: 0, post: false }.code();
+    assert_eq!(patch(LOCAL_OUT + 3), ch1_pre);
+    c.set_text("/outputs/main/04 0");
+    assert_eq!(patch(LOCAL_OUT + 3), -1);
+    // A block: local outputs 5-8 take inputs 5-8 (AN5-8); the card AES50 B's.
+    c.set_text("/config/routing/OUT/5-8 AN5-8");
+    assert_eq!(patch(LOCAL_OUT + 4), 4);
+    c.set_text("/config/routing/CARD/1-8 B1-8");
+    assert_eq!(patch(CARD + 7), AES50_B + 7);
+    // Aux out and P16 take their own signals.
+    c.set_text("/outputs/aux/02 5 POST OFF");
+    c.set_text("/outputs/p16/01 2 POST OFF");
+    assert_eq!((patch(AUX_OUT + 1), patch(P16)), (bus(1), main(1)));
+    assert_eq!(patch(AES50_A + 32), main(1), "AES50 A 33-40 carry P16 1-8");
 }

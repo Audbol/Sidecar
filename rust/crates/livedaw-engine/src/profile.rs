@@ -268,9 +268,9 @@ pub struct ProfileSpec {
     pub factory: Option<fn(&crate::params::StripParams, StripKind, usize)>,
     /// A new strip's name (kind, slot): an X32's "MixBus 1", "USB L"...
     pub factory_name: Option<fn(StripKind, usize) -> Option<String>>,
-    /// The input a new channel (0-based index) takes, if not input `index`:
-    /// an X32's channels 17-32 take AES50 A 1-16 (interface inputs 33-48).
-    pub channel_input: Option<fn(usize) -> i32>,
+    /// A new console's output patch, if not main 1 on outputs 1-2 (an X32's
+    /// buses and mains on its outputs: `x32_factory_outputs`).
+    pub factory_outputs: Option<fn(&crate::routing::OutputPatch)>,
     /// A new console's DCAs: their names ("DCA 1") and fader (dB), if not the
     /// WING's (no name, faders down).
     pub dca_names: Option<&'static str>,
@@ -307,13 +307,49 @@ fn x32_name(kind: StripKind, slot: usize) -> Option<String> {
     }
 }
 
-/// An X32's channel inputs (`ProfileSpec::channel_input`): inputs 1-16 the
-/// local ones, 17-32 AES50 A 1-16 (`/config/routing/IN`, as the Compact has it).
-fn x32_channel_input(index: usize) -> i32 {
-    if index < 16 {
-        index as i32
-    } else {
-        32 + (index as i32 - 16)
+/// The X32's output signals (`/outputs/main/NN/src`, OSC document p.39) as
+/// the engine's sources, POST: 0 OFF, 1-2 Main L / R, 3 M/C, 4-19 MixBus 1-16,
+/// 20-25 Matrix 1-6 (direct outs and the monitor: `livedaw-x32`'s map).
+pub fn x32_output_signal(signal: i32) -> i32 {
+    use crate::routing::strip_source_input;
+    match signal {
+        1 | 2 => strip_source_input(StripKind::Main, 0, signal as usize - 1),
+        3 => strip_source_input(StripKind::Main, 1, 0),
+        4..=19 => strip_source_input(StripKind::Bus, signal as usize - 4, 0),
+        20..=25 => strip_source_input(StripKind::Matrix, signal as usize - 20, 0),
+        _ => -1,
+    }
+}
+
+/// The interface outputs as the X32 numbers its own: local 1-16, aux out
+/// 1-6, AES50 A 1-48, AES50 B 1-48, the card's 1-32, P16 1-16 (from 0).
+pub mod x32_ports {
+    pub const LOCAL_OUT: i32 = 0;
+    pub const AUX_OUT: i32 = 16;
+    pub const AES50_A: i32 = 32;
+    pub const AES50_B: i32 = 80;
+    pub const CARD: i32 = 128;
+    pub const P16: i32 = 160;
+}
+
+/// The output signals 1-16 of a new X32 (`/outputs/main/01..16/src`): MixBus
+/// 1-14, then Main L and R on 15-16, as a full-size X32 has them.
+pub const X32_FACTORY_OUTPUTS: [i32; 16] = [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 1, 2];
+
+/// A new X32's output patch (`ProfileSpec::factory_outputs`), as its factory
+/// routing blocks give it: local outputs 1-16 and AES50 A and B 1-16 and 17-32
+/// the output signals 1-16 (`OUT1-8`, `OUT9-16`); the card's 1-32 the local
+/// inputs 1-32 (`AN1-8` ...). P16 and the aux outputs start OFF.
+fn x32_factory_outputs(patch: &crate::routing::OutputPatch) {
+    use x32_ports::*;
+    for (k, &signal) in X32_FACTORY_OUTPUTS.iter().enumerate() {
+        let source = x32_output_signal(signal);
+        for port in [LOCAL_OUT, AES50_A, AES50_A + 16, AES50_B, AES50_B + 16] {
+            patch.set(port + k as i32, source);
+        }
+    }
+    for k in 0..32 {
+        patch.set(CARD + k, k);
     }
 }
 
@@ -456,7 +492,7 @@ static WING: ProfileSpec = ProfileSpec {
     tap_point: crate::params::DEFAULT_TAP,
     factory: None,
     factory_name: None,
-    channel_input: None,
+    factory_outputs: None,
     dca_names: None,
     dca_fader_db: livedaw_dsp::fader::FADER_MIN,
     fx_factory: &[],
@@ -490,7 +526,7 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
     tap_point: crate::params::DEFAULT_TAP,
     factory: None,
     factory_name: None,
-    channel_input: None,
+    factory_outputs: None,
     dca_names: None,
     dca_fader_db: livedaw_dsp::fader::FADER_MIN,
     fx_factory: &[],
@@ -533,7 +569,7 @@ static X32: ProfileSpec = ProfileSpec {
     tap_point: crate::strip::tap::PFL as i32,
     factory: Some(x32_factory),
     factory_name: Some(x32_name),
-    channel_input: Some(x32_channel_input),
+    factory_outputs: Some(x32_factory_outputs),
     dca_names: Some("DCA"),
     dca_fader_db: 0.0,
     fx_factory: &["X32VRM", "X32HALL", "X32DLY", "X32CRS", "X32GEQ2", "X32GEQ2", "X32GEQ2", "X32GEQ"],
