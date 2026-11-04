@@ -391,6 +391,30 @@ pub unsafe extern "C" fn ld_y02r_recall(p: *mut LdY02R, kind: i32, n: i32, strip
     .unwrap_or(false)
 }
 
+/// The console's own state value `what` number `i` (`livedaw_02r::panel::What`:
+/// pairs, groups, gangs, keys, recall safe, fade times, the oscillator...);
+/// -1 for none.
+///
+/// # Safety
+/// `p` is from `ld_y02r_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_y02r_state(p: *mut LdY02R, what: i32, i: i32) -> i32 {
+    let (Some(p), Some(what), Ok(i)) = (p.as_mut(), livedaw_02r::panel::What::of(what), usize::try_from(i)) else { return -1 };
+    guard(None, || p.with(|c, _, _| livedaw_02r::panel::get(c, what, i))).flatten().unwrap_or(-1)
+}
+
+/// Sets it as the console's panel does (making a pair copies its odd channel).
+///
+/// # Safety
+/// `p` is from `ld_y02r_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_y02r_set_state(p: *mut LdY02R, what: i32, i: i32, value: i32) {
+    let (Some(p), Some(what), Ok(i)) = (p.as_mut(), livedaw_02r::panel::What::of(what), usize::try_from(i)) else { return };
+    guard((), || {
+        p.with_mut(|c, _, _| livedaw_02r::panel::set(c, what, i, value));
+    });
+}
+
 /// Recalls scene 0, the console's initial data.
 ///
 /// # Safety

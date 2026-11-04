@@ -1091,8 +1091,20 @@ Three layers:
         dump bytes in Sidecar's layout
       - type 0 parameter change on Sidecar's address map, until the real one is
         known
-   6. **Scene memories**: 1-96 the show's scenes, keeping the console's state;
-      scene 0 the initial data.
+   6. **Scene memories** (done):
+      - Scenes 1-96 are the show's scenes 1-96. Program changes, SysEx recall
+        and store, and the surface reach them.
+      - A scene stored by SysEx, or received as a dump, grows the show to its
+        number.
+      - They keep the console's own state through the engine's console text
+        (`<ConsoleState profile="02r">`, as the ProMix 01's): pairs, groups,
+        gangs, the dynamics' keys, recall safe, fade times, the oscillator.
+      - Scene 0, the initial data, is a new 02R's edit buffer
+        (`params::initial_bytes`), recalled without rebuilding the console.
+      - `livedaw_02r::panel` numbers that state for the host (C ABI 46
+        `ld_y02r_state` / `ld_y02r_set_state`).
+      - Not done: fader recall safe and fade times are kept, not yet applied
+        to a recall.
    7. **An 02R skin**: `Yamaha02RSurface`, the panel in Sidecar's style:
       - 20 channel faders and STEREO, with FLIP to the tape returns
       - the encoders for TAPE 1-16 and EFF1-2

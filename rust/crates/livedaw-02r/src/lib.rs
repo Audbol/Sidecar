@@ -14,6 +14,7 @@
 //!   user programs.
 //! * [`params`]: its edit buffer as bytes (Sidecar's addresses): what its
 //!   parameter changes address and its scene dumps carry.
+//! * [`panel`]: its own state as numbered values, for the host's panel.
 //! * [`midi`]: its MIDI: program changes, control changes, SysEx parameter
 //!   changes, recall / store, fader remote, bulk dumps.
 //!
@@ -27,6 +28,7 @@
 pub mod console;
 pub mod library;
 pub mod midi;
+pub mod panel;
 pub mod params;
 pub mod state;
 

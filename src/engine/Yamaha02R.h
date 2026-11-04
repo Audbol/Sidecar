@@ -49,6 +49,32 @@ public:
     /** Recalls scene 0, the initial data. */
     void recallInitial() { ld::ld_y02r_recall_initial (handle); }
 
+    /** The console's own state as numbered values (livedaw_02r::panel::What):
+        pairs, groups, gangs, keys, recall safe, fade times, the oscillator. */
+    enum State
+    {
+        Pair = 0,
+        AuxPair,
+        BusPair,
+        Gang,
+        FaderGroup,
+        MuteGroup,
+        GroupOn,
+        Direct,
+        KeyIn,
+        StLink,
+        InMode,
+        RecallSafe,
+        RecallSafeOn,
+        FadeTime,
+        OscOn,
+        OscLevel,
+        OscWave,
+        OscAssign
+    };
+    int getState (State what, int i) const { return ld::ld_y02r_state (handle, (int) what, i); }
+    void setState (State what, int i, int value) { ld::ld_y02r_set_state (handle, (int) what, i, value); }
+
     /** The console's own state as text (a show keeps it), and back. */
     juce::String getStateText() const { return takeString (ld::ld_y02r_state_text (handle)); }
     void setStateText (const juce::String& text)

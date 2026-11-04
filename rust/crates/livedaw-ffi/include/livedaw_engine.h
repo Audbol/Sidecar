@@ -1895,6 +1895,13 @@ extern "C"
     bool ld_y02r_recall (LdY02R*, int32_t kind, int32_t n, int32_t strip);
     /** Recalls scene 0, the initial data. */
     void ld_y02r_recall_initial (LdY02R*);
+    /** The console's own state value `what` number `i` (livedaw_02r::panel::What:
+        0 pair, 1 aux pair, 2 bus pair, 3 gang, 4 fader group, 5 mute group, 6
+        group on, 7 direct, 8 key in, 9 ST link, 10 IN, 11 recall safe, 12 its
+        enable, 13 fade time, 14-17 the oscillator's on, level, wave, assign); -1
+        none. Set as the panel does. */
+    int32_t ld_y02r_state (LdY02R*, int32_t what, int32_t i);
+    void ld_y02r_set_state (LdY02R*, int32_t what, int32_t i, int32_t value);
     /** The console's own state as text (pairs, groups, keys...), and back. */
     LdString* ld_y02r_state_text (LdY02R*);
     void ld_y02r_set_state_text (LdY02R*, const char* text, size_t len);

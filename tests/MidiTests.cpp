@@ -362,6 +362,17 @@ private:
             p->handleMessage (0, juce::MidiMessage::programChange (1, scene));
             expectEquals (show.getCurrentSceneIndex(), scene);
             expectEquals (y.programName (Yamaha02R::Effects, 22), juce::String ("DELAY L-C-R 1"));
+
+            // Scene memories (step 6): the show's scenes keep its own state too.
+            y.setState (Yamaha02R::Pair, 8, 1); // TAPE 1/2
+            y.setState (Yamaha02R::MuteGroup, 3, 2);
+            const int paired = show.addScene ("PAIRED");
+            y.setState (Yamaha02R::Pair, 8, 0);
+            y.setState (Yamaha02R::MuteGroup, 3, 0);
+            expectEquals (y.getState (Yamaha02R::Pair, 8), 0);
+            p->handleMessage (0, juce::MidiMessage::programChange (1, paired));
+            expectEquals (y.getState (Yamaha02R::Pair, 8), 1, "the scene's pair is back");
+            expectEquals (y.getState (Yamaha02R::MuteGroup, 3), 2, "and its mute group");
         }
         expectEquals (engine.getFaderLaw().steps, 128);
         expectEquals (engine.getFaderLaw().maxDb(), 10.0f);

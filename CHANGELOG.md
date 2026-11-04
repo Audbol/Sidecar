@@ -307,6 +307,10 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
 - Fixed: a frequency or time of 1000 or more in a model's value list (the ProMix
   01's and the 02R's EQ frequencies of 1 kHz and up) showed as "INF"; only a ratio's
   infinity does.
+- The 02R's scene memories are the show's scenes (1-96; program changes and the
+  SysEx recall and store reach them). They keep the console's own state: pairs,
+  groups, gangs, keys, recall safe, fade times, the oscillator. Scene 0 is a new
+  02R's mix. C ABI 46: `ld_y02r_state` / `ld_y02r_set_state` for that state.
 - A new channel takes its console's factory settings, colour and name by its slot,
   not its id (a channel's id is 1-based and kept by shows).
 - Fixed: the X32 surface's UNIVERSAL MIXER key crashed the app when the Universal
