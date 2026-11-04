@@ -161,6 +161,7 @@ MainComponent::MainComponent (juce::AudioDeviceManager& dm, MixerEngine& e, Plug
     ctx.newShow = [this] { newShow(); };
     ctx.openShow = [this] { openShow(); };
     ctx.saveShow = [this] (bool saveAs) { saveShow (saveAs); };
+    ctx.getShowFile = [this] { return showFile; };
     ctx.openShowFile = [this] (const juce::File& file) { openShowFile (file); };
     ctx.saveShowTo = [this] (const juce::File& file) { saveShowTo (file); };
     ctx.showFileRenamed = [this] (const juce::File& from, const juce::File& to)

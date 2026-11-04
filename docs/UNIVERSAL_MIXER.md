@@ -693,7 +693,13 @@ Three layers:
         recorder and cues do nothing. Buttons are numbered 5-12 as on a full-size
         X32 (a Compact's 1-8 are the same codes). No editor for the codes on the
         display yet: they're set from X32 remote apps or scene files.
-      - Still to come: show files on LIBRARY, UTILITY (copy, paste, presets).
+      - 12d, show files and UTILITY (done): LIBRARY's show tab calls the app's
+        show actions (`UiContext::newShow`, `openShow`, `saveShow`, and
+        `getShowFile` for its rows); UTILITY's copy tab COPYs the selected strip
+        and PASTEs its chosen sections onto the selected one with the WING's
+        CHANNEL COPY (`copyStripSections`, `HomeScreens.h`). Not done: INIT (the
+        WING's defaults would give an X32 strip WING models) and the X32's channel
+        presets (`.chn` library files).
 
 Each emulation keeps the independent-project disclaimer: not affiliated with or
 endorsed by the console's maker, their trademarks used only to say what is emulated,

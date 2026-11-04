@@ -5,6 +5,7 @@
 #include "engine/Show.h"
 #include "engine/WingRemote.h"
 #include "engine/X32Midi.h"
+#include "ui/HomeScreens.h"
 #include "ui/MeterBank.h"
 
 namespace livedaw::ui::x32
@@ -201,10 +202,10 @@ juce::StringArray Display::getTabs() const
         case Screen::Meters:     return { "channel", "mix bus", "aux / fx", "in / out" };
         case Screen::Routing:    return { "home", "out 1-16", "aux out", "p16 out", "card out", "aes50-a", "aes50-b" };
         case Screen::Setup:      return { "global", "remote" };
-        case Screen::Library:    return { "scenes" };
+        case Screen::Library:    return { "scenes", "show" };
         case Screen::Effects:    return { "home", "fx1", "fx2", "fx3", "fx4", "fx5", "fx6", "fx7", "fx8" };
         case Screen::MuteGroups: return { "mute grp" };
-        case Screen::Utility:    return { "utility" };
+        case Screen::Utility:    return { "copy" };
     }
     return {};
 }
@@ -475,6 +476,53 @@ void Display::assignEncoders()
         m.text = [this] { return getModel() == 1 ? juce::String ("X32 COMPACT") : juce::String ("X32"); };
         m.steps = 2.0f;
         encoders[0] = encoder (m, "SWITCH", [this] { setModel (1 - getModel()); }, [] { return false; });
+    }
+    else if (screen == Screen::Library && tab == 1)
+    {
+        // The show file: NEW, OPEN, SAVE, SAVE AS (the app's, as on every skin).
+        auto call = [] (const std::function<void()>& f) { return [f] { if (f) f(); }; };
+        encoders[0] = encoder ({}, "NEW SHOW", call (ctx.newShow));
+        encoders[1] = encoder ({}, "OPEN", call (ctx.openShow));
+        encoders[2] = encoder ({}, "SAVE", [this] { if (ctx.saveShow) ctx.saveShow (false); });
+        encoders[3] = encoder ({}, "SAVE AS", [this] { if (ctx.saveShow) ctx.saveShow (true); });
+    }
+    else if (screen == Screen::Utility)
+    {
+        // COPY the selected strip, PASTE its chosen sections onto the selected one.
+        encoders[0] = encoder ({}, "COPY", [this]
+        {
+            copySource = selected();
+            utilityStatus = copySource != nullptr ? "Copied " + copySource->getLabel() : juce::String ("Select a strip to copy");
+            repaint();
+        });
+        encoders[1] = encoder ({}, "PASTE", [this]
+        {
+            auto* to = selected();
+            if (copySource == nullptr || ! isStrip (copySource))
+                utilityStatus = "Copy a strip first";
+            else if (to == nullptr || to == copySource)
+                utilityStatus = "Select the strip to paste onto";
+            else
+            {
+                copyStripSections (ctx.engine, *copySource, *to, copySections);
+                utilityStatus = "Pasted " + copySource->getLabel() + " onto " + to->getLabel();
+                refreshStrip();
+            }
+            repaint();
+        });
+        const std::pair<juce::uint32, const char*> parts[] = { { kCopyPreamp | kCopyGate, "PRE / GATE" },
+                                                               { kCopyDynamics, "DYN" },
+                                                               { kCopyEq, "EQ" },
+                                                               { kCopySends | kCopyMix, "SENDS / MIX" } };
+        for (int i = 0; i < 4; ++i)
+        {
+            const auto bits = parts[i].first;
+            encoders[(size_t) i + 2] = encoder ({}, parts[i].second, [this, bits]
+            {
+                copySections = (copySections & bits) == bits ? copySections & ~bits : copySections | bits;
+                repaint();
+            }, [this, bits] { return (copySections & bits) == bits; });
+        }
     }
     else if (screen == Screen::Library)
     {
@@ -871,6 +919,15 @@ void Display::paintRouting (juce::Graphics& g, juce::Rectangle<int> r)
     left.add ("BLOCKS IN USE");
     right.add (play ? "PLAY (PLAYBACK)" : "IN (RECORDING)");
     paintRows (g, r, left, right);
+}
+
+bool Display::isStrip (const Strip* s) const
+{
+    for (int k = 0; k < kNumStripKinds; ++k)
+        for (auto& strip : ctx.engine.getStrips (static_cast<StripKind> (k)))
+            if (strip.get() == s)
+                return true;
+    return false;
 }
 
 X32Midi* Display::x32Midi() const
@@ -1403,11 +1460,22 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
         case Screen::MuteGroups:
             break; // its keys
         case Screen::Utility:
-            g.setColour (kDim);
-            g.setFont (type::font (type::kLabel));
-            g.drawFittedText ("Copy, paste and presets: on the Universal Mixer for now (UNIVERSAL MIXER, top right).", r.reduced (24),
-                              juce::Justification::centred, 3);
+        {
+            const bool copied = copySource != nullptr && isStrip (copySource);
+            auto* sel = selected();
+            juce::StringArray right { copied ? copySource->getLabel() + "  " + copySource->getName() : juce::String ("-"),
+                                      sel != nullptr ? sel->getLabel() + "  " + sel->getName() : juce::String ("-") };
+            juce::StringArray what;
+            const std::pair<juce::uint32, const char*> names[] = { { kCopyPreamp, "PREAMP" }, { kCopyGate, "GATE" }, { kCopyDynamics, "DYN" },
+                                                                   { kCopyEq, "EQ" }, { kCopySends, "SENDS" }, { kCopyMix, "FADER / MUTE / PAN" } };
+            for (auto [bits, name] : names)
+                if ((copySections & bits) != 0)
+                    what.add (name);
+            right.add (what.isEmpty() ? juce::String ("NOTHING") : what.joinIntoString (", "));
+            right.add (utilityStatus);
+            paintRows (g, r.reduced (12), { "COPIED FROM", "PASTE ONTO (SELECTED)", "SECTIONS", "" }, right);
             break;
+        }
     }
 }
 

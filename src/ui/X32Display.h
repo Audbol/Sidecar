@@ -129,6 +129,11 @@ private:
     int tab = 0, layer = 0, sendBank = 0, eqBand = 0, selectedScene = 0;
     int selectedOutput = 0; // ROUTING's signal tabs: the output the encoders set
     int selectedFx = 0;     // EFFECTS > home: the slot the encoders set
+    // UTILITY: the strip COPY took and the sections PASTE copies (CopySection bits).
+    Strip* copySource = nullptr;
+    juce::uint32 copySections = 0x3f;
+    juce::String utilityStatus;
+    bool isStrip (const Strip*) const;
 
     std::array<Encoder, 6> encoders;
     std::array<DisplayKnob, 6> knobs;

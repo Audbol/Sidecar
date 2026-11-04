@@ -455,6 +455,31 @@ private:
             skin.selectionChanged();
         }
 
+        // LIBRARY > show and UTILITY (step 12d): the show file keys; COPY / PASTE.
+        {
+            display.showScreen (ui::x32::Display::Screen::Library, 1);
+            expectEquals (display.getEncoder (0).pushLabel, juce::String ("NEW SHOW"));
+            expectEquals (display.getEncoder (3).pushLabel, juce::String ("SAVE AS"));
+            display.showScreen (ui::x32::Display::Screen::Utility);
+            auto& eqFrom = channels[0]->params.eq();
+            const float was = channels[3]->params.eq().values[2].load();
+            eqFrom.values[2] = was + 3.0f; // band 1's gain
+            rig.selected = channels[0].get();
+            skin.selectionChanged();
+            display.pushEncoder (0); // COPY CH 1
+            rig.selected = channels[3].get();
+            skin.selectionChanged();
+            display.pushEncoder (1); // PASTE onto CH 4
+            expectWithinAbsoluteError (channels[3]->params.eq().values[2].load(), was + 3.0f, 1e-4f, "CH 1's EQ on CH 4");
+            display.pushEncoder (4); // EQ off the list
+            channels[3]->params.eq().values[2] = was;
+            display.pushEncoder (1);
+            expectWithinAbsoluteError (channels[3]->params.eq().values[2].load(), was, 1e-4f, "EQ not pasted");
+            eqFrom.values[2] = was;
+            rig.selected = channels[12].get();
+            skin.selectionChanged();
+        }
+
         // The X32 COMPACT: 8 input faders in eight layers, chosen on SETUP.
         display.showScreen (ui::x32::Display::Screen::Setup);
         expectEquals (display.getEncoder (0).turn.label, juce::String ("MODEL"));

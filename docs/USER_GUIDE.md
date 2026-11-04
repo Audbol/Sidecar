@@ -1026,7 +1026,12 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
   head amp of the channel's input (-12 to +60 dB), or the digital TRIM when the
   channel takes no interface input.
 
-Show files and copy and paste are on the Universal Mixer for now.
+- **Shows.** LIBRARY's **show** tab: **NEW SHOW**, **OPEN**, **SAVE** and **SAVE AS**
+  (encoders 1-4), the same as the menus of the other surfaces.
+- **Copy and paste.** UTILITY: select a strip and push **COPY**, select another and
+  push **PASTE**. Encoders 3-6 choose what is pasted: preamp and gate, dynamics, EQ,
+  sends and fader (all four at first). Resetting a strip and channel presets are on
+  the Universal Mixer for now.
 
 ## Multitrack recording
 

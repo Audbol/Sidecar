@@ -5754,6 +5754,24 @@ std::unique_ptr<OverlayScreen> makeFeedConfigScreen (UiContext& c, Strip& s)
     return std::make_unique<FeedConfigScreen> (c, s);
 }
 
+void copyStripSections (MixerEngine& engine, const Strip& src, const Strip& dst, juce::uint32 sections)
+{
+    auto bit = [] (int b) { return 1u << b; };
+    const std::pair<juce::uint32, juce::uint32> parts[] = {
+        { kCopyPreamp, bit (Config) | bit (In) | bit (FilterBit) | bit (DelayBit) },
+        { kCopyGate, bit (GateBit) },
+        { kCopyDynamics, bit (DynBit) },
+        { kCopyEq, bit (EqBit) },
+        { kCopySends, bit (Send) | bit (MainBit) },
+        { kCopyMix, bit (Fdr) | bit (MuteBit) | bit (PanBit) },
+    };
+    juce::uint32 scope = 0;
+    for (auto [section, bits] : parts)
+        if ((sections & section) != 0)
+            scope |= bits;
+    copyStripParams (engine, src, dst, scope);
+}
+
 std::unique_ptr<OverlayScreen> makeSettingsScreen (UiContext&, Strip& s, bool eqSettings)
 {
     // Docked at the right over the dimmed page, as EQ/RTA SETTINGS on the 3.1 screens.

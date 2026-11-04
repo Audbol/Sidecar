@@ -173,6 +173,10 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
   pan, a send, an FX parameter, the selected channel's dynamics, a mute, an insert, a
   scene, a page of the display, a MIDI message). The codes are the X32's
   (`/config/userctrl`), set from X32 remote apps and kept in scene files.
+- The X32 display's LIBRARY has a show tab (NEW SHOW, OPEN, SAVE, SAVE AS) and its
+  UTILITY screen copies a strip's settings onto another (COPY, PASTE, and which
+  sections: preamp and gate, dynamics, EQ, sends and fader). The X32 surface no
+  longer needs the Universal Mixer for shows.
 - The X32 display's ROUTING screen sets the input blocks (encoders 1-5) and switches
   between the recording and playback blocks (encoder 6), and shows which interface
   inputs each block takes. The channel strip's GAIN knob turns the head amp of the

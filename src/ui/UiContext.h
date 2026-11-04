@@ -141,6 +141,8 @@ struct UiContext
     // Show files
     std::function<void()> newShow, openShow;
     std::function<void (bool saveAs)> saveShow;
+    /** The open show's file (none until it's saved or opened). */
+    std::function<juce::File()> getShowFile;
     /** The LIBRARY's file list: open a show file, save the show as a file. */
     std::function<void (const juce::File&)> openShowFile, saveShowTo;
     /** A show file was renamed in the LIBRARY (the open show follows it). */

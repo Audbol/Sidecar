@@ -117,6 +117,21 @@ void layoutRow (juce::Rectangle<int>, std::initializer_list<juce::Component*>, i
 /** "CH 1 Kick", ... for every channel (key sources, matrix direct inputs). */
 juce::StringArray channelNames (MixerEngine&);
 
+/** CHANNEL COPY's copy of one strip's settings onto another, by section (the
+    X32 surface's UTILITY): `sections` bits from CopySection. Strips of
+    different kinds copy what they share, as on the WING. */
+enum CopySection : juce::uint32
+{
+    kCopyPreamp = 1u << 0, // config, input trim and polarity, filter, delay
+    kCopyGate = 1u << 1,
+    kCopyDynamics = 1u << 2,
+    kCopyEq = 1u << 3,
+    kCopySends = 1u << 4, // bus and main sends
+    kCopyMix = 1u << 5,   // fader, mute, pan
+    kCopyAll = (1u << 6) - 1
+};
+void copyStripSections (MixerEngine&, const Strip& src, const Strip& dst, juce::uint32 sections);
+
 /** The threshold-like parameter of a dynamics slot ("thr", else the first). */
 KnobBinding thresholdBinding (DynSlotParams&, const juce::String& label);
 
