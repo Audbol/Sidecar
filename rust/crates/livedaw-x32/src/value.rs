@@ -84,6 +84,12 @@ pub enum Fmt {
     Freq,
     /// Milliseconds on a log scale: "0.02", "50.2", "258", right-aligned in `width`.
     Time { width: u8 },
+    /// Three significant digits: "0.69", "1.94", "19.9", "223" (the FX
+    /// parameters on log scales).
+    Sig3,
+    /// An FX parameter's hertz: "97" below 1 kHz, "5k74" and "7k2" below
+    /// 10 kHz, "10k4" and "20k0" from there.
+    FxFreq,
 }
 
 /// A parameter's type, as the protocol document lists it.
@@ -253,6 +259,28 @@ fn float_text(law: Law, fmt: Fmt, v: f32) -> String {
                 // Cut, not rounded, as the console does (1977 Hz is "1k97").
                 let hundredths = (v / 10.0 + 1e-3).floor() as i64;
                 format!("{}k{:02}", hundredths / 100, hundredths % 100)
+            }
+        }
+        Fmt::Sig3 => {
+            let dec = if v.abs() < 9.995 {
+                2
+            } else if v.abs() < 99.95 {
+                1
+            } else {
+                0
+            };
+            fixed(v, dec, false)
+        }
+        Fmt::FxFreq => {
+            if v < 999.5 {
+                format!("{}", v.round() as i64)
+            } else if v < 9995.0 {
+                let hundredths = (v / 10.0).round() as i64;
+                let s = format!("{}k{:02}", hundredths / 100, hundredths % 100);
+                s.strip_suffix('0').map(str::to_owned).unwrap_or(s)
+            } else {
+                let tenths = (v / 100.0).round() as i64;
+                format!("{}k{}", tenths / 10, tenths % 10)
             }
         }
         Fmt::Time { width } => {

@@ -132,6 +132,7 @@ pub fn create(token: &str, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
         .or_else(|| utility::create(token, ctx))
         .or_else(|| eqfx::create(token, ctx))
         .or_else(|| amp::create(token, ctx))
+        .or_else(|| crate::x32::fx::create(token, ctx))
 }
 
 /// The devices whose screen graph is their measured frequency response.

@@ -35,6 +35,8 @@ pub enum Target {
     Mtx(usize),
     MainSt,
     MainM,
+    /// FX slot `n` (0-based).
+    Fx(usize),
     Dca(usize),
     Config,
 }
@@ -50,7 +52,7 @@ impl Target {
             Target::Mtx(i) => 64 + i,
             Target::MainSt => 70,
             Target::MainM => 71,
-            Target::Dca(_) | Target::Config => return None,
+            Target::Dca(_) | Target::Config | Target::Fx(_) => return None,
         })
     }
 
@@ -126,6 +128,10 @@ pub enum Bind {
     DcaColour,
     /// `/config/mute/n`: mute group n engaged.
     MuteGroup(usize),
+    /// FX slot `n`'s model (FX 1-4: the 61 models, FX 5-8: the 34 insert ones)
+    /// and its parameter `k` (0-based; its type is the model's).
+    FxType(usize),
+    FxPar(usize, usize),
 }
 
 /// One address.
@@ -283,7 +289,7 @@ impl Tree {
         let mut line = path.clone();
         for i in self.group(found) {
             line.push(' ');
-            line.push_str(&self.entries[i].ty.text(&c.get(i)));
+            line.push_str(&c.ty(i).text(&c.get(i)));
         }
         Some(line)
     }
@@ -373,7 +379,65 @@ fn build() -> Tree {
         b.leaf(&c, "color", t, COLOUR, Bind::DcaColour, int(7));
     }
     config(&mut b);
+    fx(&mut b);
     b.t
+}
+
+/// `/fx/1..8`: the model, its sources (FX 1-4; kept until 9c) and its 64
+/// parameters, typed by the model (`Console::ty`).
+fn fx(b: &mut Builder) {
+    const SOURCES: &[&str] = &[
+        "INS", "MIX1", "MIX2", "MIX3", "MIX4", "MIX5", "MIX6", "MIX7", "MIX8", "MIX9", "MIX10", "MIX11", "MIX12", "MIX13",
+        "MIX14", "MIX15", "MIX16", "M/C",
+    ];
+    for n in 0..8 {
+        let p = format!("/fx/{}", n + 1);
+        let t = Target::Fx(n);
+        let types: &'static [&'static str] = if n < 4 { &livedaw_dsp::x32::FX_CODES } else { &livedaw_dsp::x32::INSERT_ORDER };
+        // The factory rack: VRM, HALL, DLY, CRS, then the GEQs.
+        let factory = [7, 0, 10, 13, 0, 0, 0, 1][n];
+        b.leaf(&p, "type", t, Ty::Enum(types), Bind::FxType(n), int(factory));
+        if n < 4 {
+            let s = format!("{p}/source");
+            b.leaf(&s, "l", t, Ty::Enum(SOURCES), Bind::State, int(13 + n as i32));
+            b.leaf(&s, "r", t, Ty::Enum(SOURCES), Bind::State, int(13 + n as i32));
+        }
+        let par = format!("{p}/par");
+        for k in 0..64 {
+            b.leaf(&par, &format!("{:02}", k + 1), t, FX_UNUSED, Bind::FxPar(n, k), real(0.0));
+        }
+    }
+}
+
+/// An FX parameter beyond its model's (`/node` writes "0").
+const FX_UNUSED: Ty = Ty::Float(Law::Lin(0.0, 1.0, 2), Fmt::Num { dec: 0, sign: false, width: 0 });
+
+/// The X32 type of an FX model's parameter.
+fn fx_param_ty(p: &livedaw_dsp::model::ParamSpec) -> Ty {
+    use livedaw_dsp::model::ParamKind;
+    let steps = p.steps.max(2);
+    match p.kind {
+        ParamKind::Toggle => ONOFF,
+        ParamKind::Choice(items) => Ty::Enum(items),
+        // Audio frequencies as "97" and "10k4"; slow rates ("0.50" Hz) as numbers.
+        _ if p.unit == "Hz" && p.hi() >= 100.0 => {
+            let law = if p.kind == ParamKind::Log { Law::Log(p.min, p.max, steps) } else { Law::Lin(p.min, p.max, steps) };
+            Ty::Float(law, Fmt::FxFreq)
+        }
+        ParamKind::Log => Ty::Float(Law::Log(p.min, p.max, steps), Fmt::Sig3),
+        _ => {
+            // dB with a decimal ("0.0"), whole-number scales ("20", "223"), the rest "0.50".
+            let whole = (p.max - p.min).fract() == 0.0 && steps as f32 == (p.max - p.min).abs() + 1.0;
+            let dec = if p.unit == "dB" {
+                1
+            } else if whole {
+                0
+            } else {
+                2
+            };
+            Ty::Float(Law::Lin(p.min, p.max, steps), Fmt::Num { dec, sign: false, width: 0 })
+        }
+    }
 }
 
 /// `/config`: the mute groups engaged and the odd/even links.
@@ -636,8 +700,33 @@ impl<'a> Console<'a> {
             Target::Mtx(i) => self.mtx.get(i),
             Target::MainSt => self.main.first(),
             Target::MainM => self.main.get(1),
-            Target::Dca(_) | Target::Config => None,
+            Target::Dca(_) | Target::Config | Target::Fx(_) => None,
         }
+    }
+
+    /// Entry `i`'s type: its own, or for an FX parameter its slot's model's.
+    pub fn ty(&self, i: usize) -> Ty {
+        let e = &self.tree.entries[i];
+        match e.bind {
+            Bind::FxPar(n, k) => self.fx_param(n, k).map_or(FX_UNUSED, fx_param_ty),
+            _ => e.ty,
+        }
+    }
+
+    /// Parameter `k` of FX slot `n`'s model (None beyond its parameters).
+    fn fx_param(&self, n: usize, k: usize) -> Option<&'static livedaw_dsp::model::ParamSpec> {
+        let p = self.engine.controls.fx.get(n)?;
+        let table = self.engine.fx_models();
+        table[p.model_index_in(table)].params.get(k)
+    }
+
+    /// FX slot `n`'s model as its `type` counts (FX 1-4: the 61, FX 5-8: the insert ones).
+    fn fx_type(&self, n: usize) -> Option<i32> {
+        let p = self.engine.controls.fx.get(n)?;
+        let table = self.engine.fx_models();
+        let code = table[p.model_index_in(table)].token.strip_prefix("X32")?;
+        let list: &[&str] = if n < 4 { &livedaw_dsp::x32::FX_CODES } else { &livedaw_dsp::x32::INSERT_ORDER };
+        list.iter().position(|c| *c == code).map(|i| i as i32)
     }
 
     /// The value of entry `i`.
@@ -650,7 +739,7 @@ impl<'a> Console<'a> {
     /// partner for what the link shares; returns what it holds now.
     pub fn set(&self, i: usize, v: Val) -> Val {
         let e = &self.tree.entries[i];
-        let v = e.ty.normalise(v);
+        let v = self.ty(i).normalise(v);
         if let Some(partner) = self.linked_partner(&e.path) {
             self.set_one(partner, v.clone());
         }
@@ -734,6 +823,17 @@ impl<'a> Console<'a> {
             Bind::MuteGroup(g) => {
                 return (g < self.engine.num_mute_groups())
                     .then(|| Val::Int(i32::from(self.engine.controls.mute_groups.contains(g))))
+            }
+            Bind::FxType(n) => return self.fx_type(n).map(Val::Int),
+            Bind::FxPar(n, k) => {
+                let p = self.engine.controls.fx.get(n)?;
+                return Some(match self.fx_param(n, k) {
+                    Some(spec) if matches!(self.ty(i), Ty::Float(..)) => {
+                        Val::Real(p.values[k].load().clamp(spec.lo(), spec.hi()))
+                    }
+                    Some(_) => Val::Int(p.values[k].load().round() as i32),
+                    None => Val::Real(0.0),
+                });
             }
             _ => {}
         }
@@ -823,6 +923,20 @@ impl<'a> Console<'a> {
                     return false;
                 }
                 self.engine.controls.mute_groups.set(g, v.on());
+                return true;
+            }
+            Bind::FxType(n) => {
+                // A new model starts on its defaults, as on the console.
+                let list: &[&str] = if n < 4 { &livedaw_dsp::x32::FX_CODES } else { &livedaw_dsp::x32::INSERT_ORDER };
+                let Some(code) = usize::try_from(v.int()).ok().and_then(|t| list.get(t)) else { return false };
+                let table = self.engine.fx_models();
+                let Some(model) = livedaw_dsp::model::model_index(table, &format!("X32{code}")) else { return false };
+                let current = self.engine.controls.fx.get(n).map(|p| p.model_index_in(table));
+                return current == Some(model) || self.engine.set_fx_model(n, model, true);
+            }
+            Bind::FxPar(n, k) => {
+                let (Some(p), Some(_)) = (self.engine.controls.fx.get(n), self.fx_param(n, k)) else { return false };
+                p.values[k].store(v.real());
                 return true;
             }
             _ => {}

@@ -41,7 +41,7 @@ fn a_scene_file_reads_back_into_another_console() {
                    /fx/1 HALL\n\
                    /ch/05/automix 1 3.0\n";
     let read = scn::read(&ca, changes);
-    assert_eq!((read.name.as_str(), read.note.as_str(), read.applied, read.skipped), ("Gig", "", 4, 1));
+    assert_eq!((read.name.as_str(), read.note.as_str(), read.applied, read.skipped), ("Gig", "", 5, 0));
     let text = scn::write(&ca, "Gig", "");
     assert!(
         text.contains("/ch/01/config \"Kick\" 1 RD 1\n"),

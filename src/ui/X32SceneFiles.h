@@ -11,7 +11,7 @@ namespace livedaw::ui::x32
     the Universal Mixer's SCENES: IMPORT sets the console from one and keeps it
     as a new scene of the show (named as the file's header names it); EXPORT
     writes the console as one, an X32 can load it (what Sidecar doesn't emulate,
-    such as the FX slots, the outputs and the head amps, is left out). */
+    such as the outputs and the head amps, is left out). */
 class SceneFiles
 {
 public:

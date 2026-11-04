@@ -99,6 +99,11 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
   head amps) is skipped. C ABI 39: `ld_x32_scene_write`, `ld_x32_scene_read`.
 - The FX rack runs its console's own list of devices (on an X32, premium devices in FX
   1-4); a slot holds 64 parameters (C ABI 40).
+- The X32's effects: its 61 models with their parameters and its factory rack (Vintage
+  Room, Hall, Stereo Delay, Stereo Chorus, graphic EQs), on the X32 remote (`/fx/1..8`)
+  and in scene files. Their sound comes in the next steps: until then the reverbs,
+  delays and modulation effects return silence and the insert effects pass the signal
+  through.
 - An X32's sends to buses 9-16 now start POST, as a freshly initialised X32's do
   (they started EQ->).
 

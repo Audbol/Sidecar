@@ -420,13 +420,17 @@ fn solo_pfl_goes_to_the_monitor() {
 fn an_x32s_fx_rack_runs_its_table_and_takes_premium_devices_in_fx_1_to_4() {
     use livedaw_engine::Profile;
     let rig = Rig::new(1, 1, 2);
-    let hall = |e: &Engine| model_index(e.fx_models(), "HALL").unwrap();
+    // The WING's hall reverb, then the X32's.
+    let hall = |e: &Engine| model_index(e.fx_models(), "HALL").or_else(|| model_index(e.fx_models(), "X32HALL")).unwrap();
     // A WING: premium devices in FX 1-8.
     assert!(rig.engine.set_fx_model(7, hall(&rig.engine), true));
     assert!(!rig.engine.set_fx_model(8, hall(&rig.engine), true));
     rig.engine.configure(&ConsoleConfig { profile: Profile::X32, counts: Counts::X32 });
     let e = &rig.engine;
     assert!(std::ptr::eq(e.fx_models(), Profile::X32.spec().models.fx));
+    assert_eq!(e.fx_models()[hall(e)].token, "X32HALL", "its own models");
+    let geq = model_index(e.fx_models(), "X32GEQ2").unwrap();
+    assert!(e.set_fx_model(4, geq, true), "an insert model in FX 5");
     assert!(e.set_fx_model(3, hall(e), true));
     assert!(!e.set_fx_model(4, hall(e), true), "an X32's FX 5-8 are insert slots");
     assert_eq!(e.fx(3).unwrap().device_info().map(|(m, _)| m), Some(hall(e)));

@@ -1,0 +1,7279 @@
+[
+ {
+  "code": "HALL",
+  "title": "Hall Reverb",
+  "signature": "ffffffffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Pre Delay",
+    "type": "linf",
+    "min": 0,
+    "max": 200
+   },
+   {
+    "n": 2,
+    "name": "Decay",
+    "type": "logf",
+    "min": 0.2,
+    "max": 5
+   },
+   {
+    "n": 3,
+    "name": "Size",
+    "type": "linf",
+    "min": 2,
+    "max": 100
+   },
+   {
+    "n": 4,
+    "name": "Damping",
+    "type": "logf",
+    "min": 1000,
+    "max": 20000
+   },
+   {
+    "n": 5,
+    "name": "Diffuse",
+    "type": "linf",
+    "min": 1,
+    "max": 30
+   },
+   {
+    "n": 6,
+    "name": "Level",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 7,
+    "name": "Lo Cut",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 8,
+    "name": "Hi Cut",
+    "type": "logf",
+    "min": 200,
+    "max": 20000
+   },
+   {
+    "n": 9,
+    "name": "Bass Multi",
+    "type": "logf",
+    "min": 0.5,
+    "max": 2
+   },
+   {
+    "n": 10,
+    "name": "Spread",
+    "type": "linf",
+    "min": 0,
+    "max": 50
+   },
+   {
+    "n": 11,
+    "name": "Shape",
+    "type": "linf",
+    "min": 0,
+    "max": 250
+   },
+   {
+    "n": 12,
+    "name": "Mod Speed",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   }
+  ]
+ },
+ {
+  "code": "AMBI",
+  "title": "Ambiance Reverb",
+  "signature": "ffffffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Pre Delay",
+    "type": "linf",
+    "min": 0,
+    "max": 200
+   },
+   {
+    "n": 2,
+    "name": "Decay",
+    "type": "logf",
+    "min": 0.2,
+    "max": 7.3
+   },
+   {
+    "n": 3,
+    "name": "Size",
+    "type": "linf",
+    "min": 2,
+    "max": 100
+   },
+   {
+    "n": 4,
+    "name": "Damping",
+    "type": "logf",
+    "min": 1000,
+    "max": 20000
+   },
+   {
+    "n": 5,
+    "name": "Diffuse",
+    "type": "linf",
+    "min": 1,
+    "max": 30
+   },
+   {
+    "n": 6,
+    "name": "Level",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 7,
+    "name": "Lo Cut",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 8,
+    "name": "Hi Cut",
+    "type": "logf",
+    "min": 200,
+    "max": 20000
+   },
+   {
+    "n": 9,
+    "name": "Modulate",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 10,
+    "name": "Tail Gain",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   }
+  ]
+ },
+ {
+  "code": "RPLT",
+  "title": "Rich Plate Reverb",
+  "signature": "ffffffffffffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Pre Delay",
+    "type": "linf",
+    "min": 0,
+    "max": 200
+   },
+   {
+    "n": 2,
+    "name": "Decay",
+    "type": "logf",
+    "min": 0.3,
+    "max": 29
+   },
+   {
+    "n": 3,
+    "name": "Size",
+    "type": "linf",
+    "min": 4,
+    "max": 39
+   },
+   {
+    "n": 4,
+    "name": "Damping",
+    "type": "logf",
+    "min": 1000,
+    "max": 20000
+   },
+   {
+    "n": 5,
+    "name": "Diffuse",
+    "type": "linf",
+    "min": 1,
+    "max": 30
+   },
+   {
+    "n": 6,
+    "name": "Level",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 7,
+    "name": "Lo Cut",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 8,
+    "name": "Hi Cut",
+    "type": "logf",
+    "min": 200,
+    "max": 20000
+   },
+   {
+    "n": 9,
+    "name": "Bass Multi",
+    "type": "logf",
+    "min": 0.25,
+    "max": 4
+   },
+   {
+    "n": 10,
+    "name": "Spread",
+    "type": "linf",
+    "min": 0,
+    "max": 50
+   },
+   {
+    "n": 11,
+    "name": "Attack",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 12,
+    "name": "Spin",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 13,
+    "name": "Echo L",
+    "type": "linf",
+    "min": 0,
+    "max": 1200
+   },
+   {
+    "n": 14,
+    "name": "Echo R",
+    "type": "linf",
+    "min": 0,
+    "max": 1200
+   },
+   {
+    "n": 15,
+    "name": "Echo Feed L",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   },
+   {
+    "n": 16,
+    "name": "Echo Feed R",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   }
+  ],
+  "notes": "Document lists 'Echo Feed L' for both par 15 and par 16; par 16 corrected to 'Echo Feed R' (X32-Edit labels these EcFbL/EcFbR)."
+ },
+ {
+  "code": "ROOM",
+  "title": "Room Reverb",
+  "signature": "ffffffffffffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Pre Delay",
+    "type": "linf",
+    "min": 0,
+    "max": 200
+   },
+   {
+    "n": 2,
+    "name": "Decay",
+    "type": "logf",
+    "min": 0.3,
+    "max": 29
+   },
+   {
+    "n": 3,
+    "name": "Size",
+    "type": "linf",
+    "min": 4,
+    "max": 72
+   },
+   {
+    "n": 4,
+    "name": "Damping",
+    "type": "logf",
+    "min": 1000,
+    "max": 20000
+   },
+   {
+    "n": 5,
+    "name": "Diffuse",
+    "type": "linf",
+    "min": 1,
+    "max": 30
+   },
+   {
+    "n": 6,
+    "name": "Level",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 7,
+    "name": "Lo Cut",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 8,
+    "name": "Hi Cut",
+    "type": "logf",
+    "min": 200,
+    "max": 20000
+   },
+   {
+    "n": 9,
+    "name": "Bass Multi",
+    "type": "logf",
+    "min": 0.25,
+    "max": 4
+   },
+   {
+    "n": 10,
+    "name": "Spread",
+    "type": "linf",
+    "min": 0,
+    "max": 50
+   },
+   {
+    "n": 11,
+    "name": "Shape",
+    "type": "linf",
+    "min": 0,
+    "max": 250
+   },
+   {
+    "n": 12,
+    "name": "Spin",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 13,
+    "name": "Echo L",
+    "type": "linf",
+    "min": 0,
+    "max": 1200
+   },
+   {
+    "n": 14,
+    "name": "Echo R",
+    "type": "linf",
+    "min": 0,
+    "max": 1200
+   },
+   {
+    "n": 15,
+    "name": "Echo Feed L",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   },
+   {
+    "n": 16,
+    "name": "Echo Feed R",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   }
+  ],
+  "notes": "Document lists 'Echo Feed L' for both par 15 and par 16; par 16 corrected to 'Echo Feed R' (X32-Edit labels these EcFbL/EcFbR)."
+ },
+ {
+  "code": "CHAM",
+  "title": "Chamber Reverb",
+  "signature": "ffffffffffffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Pre Delay",
+    "type": "linf",
+    "min": 0,
+    "max": 200
+   },
+   {
+    "n": 2,
+    "name": "Decay",
+    "type": "logf",
+    "min": 0.3,
+    "max": 29
+   },
+   {
+    "n": 3,
+    "name": "Size",
+    "type": "linf",
+    "min": 4,
+    "max": 72
+   },
+   {
+    "n": 4,
+    "name": "Damping",
+    "type": "logf",
+    "min": 1000,
+    "max": 20000
+   },
+   {
+    "n": 5,
+    "name": "Diffuse",
+    "type": "linf",
+    "min": 1,
+    "max": 30
+   },
+   {
+    "n": 6,
+    "name": "Level",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 7,
+    "name": "Lo Cut",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 8,
+    "name": "Hi Cut",
+    "type": "logf",
+    "min": 200,
+    "max": 20000
+   },
+   {
+    "n": 9,
+    "name": "Bass Multi",
+    "type": "logf",
+    "min": 0.25,
+    "max": 4
+   },
+   {
+    "n": 10,
+    "name": "Spread",
+    "type": "linf",
+    "min": 0,
+    "max": 50
+   },
+   {
+    "n": 11,
+    "name": "Shape",
+    "type": "linf",
+    "min": 0,
+    "max": 250
+   },
+   {
+    "n": 12,
+    "name": "Spin",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 13,
+    "name": "Reflection L",
+    "type": "linf",
+    "min": 0,
+    "max": 500
+   },
+   {
+    "n": 14,
+    "name": "Reflection R",
+    "type": "linf",
+    "min": 0,
+    "max": 500
+   },
+   {
+    "n": 15,
+    "name": "Reflection Gain L",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 16,
+    "name": "Reflection Gain R",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   }
+  ],
+  "notes": "Document lists 'Reflection Gain L' for both par 15 and par 16; par 16 corrected to 'Reflection Gain R' (X32-Edit labels these ERLvlL/ERLvlR)."
+ },
+ {
+  "code": "PLAT",
+  "title": "Plate Reverb",
+  "signature": "ffffffffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Pre Delay",
+    "type": "linf",
+    "min": 0,
+    "max": 200
+   },
+   {
+    "n": 2,
+    "name": "Decay",
+    "type": "logf",
+    "min": 0.2,
+    "max": 10
+   },
+   {
+    "n": 3,
+    "name": "Size",
+    "type": "linf",
+    "min": 2,
+    "max": 100
+   },
+   {
+    "n": 4,
+    "name": "Damping",
+    "type": "logf",
+    "min": 1000,
+    "max": 20000
+   },
+   {
+    "n": 5,
+    "name": "Diffuse",
+    "type": "linf",
+    "min": 1,
+    "max": 30
+   },
+   {
+    "n": 6,
+    "name": "Level",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 7,
+    "name": "Lo Cut",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 8,
+    "name": "Hi Cut",
+    "type": "logf",
+    "min": 200,
+    "max": 20000
+   },
+   {
+    "n": 9,
+    "name": "Bass Multi",
+    "type": "logf",
+    "min": 0.5,
+    "max": 2
+   },
+   {
+    "n": 10,
+    "name": "Xover",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 11,
+    "name": "Mod",
+    "type": "linf",
+    "min": 0,
+    "max": 50
+   },
+   {
+    "n": 12,
+    "name": "Mod Speed",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   }
+  ]
+ },
+ {
+  "code": "VREV",
+  "title": "Vintage Reverb",
+  "signature": "fffiifffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Pre Delay",
+    "type": "linf",
+    "min": 0,
+    "max": 120
+   },
+   {
+    "n": 2,
+    "name": "Decay",
+    "type": "logf",
+    "min": 0.3,
+    "max": 4.5
+   },
+   {
+    "n": 3,
+    "name": "Modulate",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 4,
+    "name": "Vintage",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 5,
+    "name": "Position",
+    "type": "enum",
+    "items": [
+     "FRONT",
+     "REAR"
+    ]
+   },
+   {
+    "n": 6,
+    "name": "Level",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 7,
+    "name": "Lo Cut",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 8,
+    "name": "Hi Cut",
+    "type": "logf",
+    "min": 200,
+    "max": 20000
+   },
+   {
+    "n": 9,
+    "name": "Lo Multiply",
+    "type": "logf",
+    "min": 0.5,
+    "max": 2
+   },
+   {
+    "n": 10,
+    "name": "Hi Multiply",
+    "type": "logf",
+    "min": 0.25,
+    "max": 1
+   }
+  ]
+ },
+ {
+  "code": "VRM",
+  "title": "Vintage Room",
+  "signature": "ffffffffffffi",
+  "params": [
+   {
+    "n": 1,
+    "name": "Reverb Delay",
+    "type": "linf",
+    "min": 0,
+    "max": 20
+   },
+   {
+    "n": 2,
+    "name": "Decay",
+    "type": "logf",
+    "min": 0.1,
+    "max": 20
+   },
+   {
+    "n": 3,
+    "name": "Size",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 4,
+    "name": "Density",
+    "type": "linf",
+    "min": 1,
+    "max": 30
+   },
+   {
+    "n": 5,
+    "name": "ER Level",
+    "type": "linf",
+    "min": 0,
+    "max": 190
+   },
+   {
+    "n": 6,
+    "name": "Level",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 7,
+    "name": "Lo Multiply",
+    "type": "logf",
+    "min": 0.1,
+    "max": 10
+   },
+   {
+    "n": 8,
+    "name": "Hi Multiply",
+    "type": "logf",
+    "min": 0.1,
+    "max": 10
+   },
+   {
+    "n": 9,
+    "name": "Lo Cut",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 10,
+    "name": "Hi Cut",
+    "type": "logf",
+    "min": 200,
+    "max": 20000
+   },
+   {
+    "n": 11,
+    "name": "ER Left",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 12,
+    "name": "ER Right",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 13,
+    "name": "Freeze",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   }
+  ]
+ },
+ {
+  "code": "GATE",
+  "title": "Gated Reverb",
+  "signature": "ffffffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Pre Delay",
+    "type": "linf",
+    "min": 0,
+    "max": 200
+   },
+   {
+    "n": 2,
+    "name": "Decay",
+    "type": "logf",
+    "min": 140,
+    "max": 1000
+   },
+   {
+    "n": 3,
+    "name": "Attack",
+    "type": "linf",
+    "min": 0,
+    "max": 30
+   },
+   {
+    "n": 4,
+    "name": "Density",
+    "type": "linf",
+    "min": 1,
+    "max": 30
+   },
+   {
+    "n": 5,
+    "name": "Spread",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 6,
+    "name": "Level",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 7,
+    "name": "Lo Cut",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 8,
+    "name": "Hi Cut",
+    "type": "logf",
+    "min": 200,
+    "max": 20000
+   },
+   {
+    "n": 9,
+    "name": "Hi Shv Gain",
+    "type": "linf",
+    "min": -30,
+    "max": 0
+   },
+   {
+    "n": 10,
+    "name": "Diffuse",
+    "type": "linf",
+    "min": 1,
+    "max": 30
+   }
+  ]
+ },
+ {
+  "code": "RVRS",
+  "title": "Reverse Reverb",
+  "signature": "fffffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Pre Delay",
+    "type": "linf",
+    "min": 0,
+    "max": 200
+   },
+   {
+    "n": 2,
+    "name": "Decay",
+    "type": "logf",
+    "min": 140,
+    "max": 1000
+   },
+   {
+    "n": 3,
+    "name": "Rise",
+    "type": "linf",
+    "min": 0,
+    "max": 50
+   },
+   {
+    "n": 4,
+    "name": "Diffuse",
+    "type": "linf",
+    "min": 1,
+    "max": 30
+   },
+   {
+    "n": 5,
+    "name": "Spread",
+    "type": "linf",
+    "min": 1,
+    "max": 100
+   },
+   {
+    "n": 6,
+    "name": "Level",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 7,
+    "name": "Lo Cut",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 8,
+    "name": "Hi Cut",
+    "type": "logf",
+    "min": 200,
+    "max": 20000
+   },
+   {
+    "n": 9,
+    "name": "Hi Shv Gain",
+    "type": "linf",
+    "min": -30,
+    "max": 0
+   }
+  ]
+ },
+ {
+  "code": "DLY",
+  "title": "Stereo Delay",
+  "signature": "ffiiifffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Mix",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 2,
+    "name": "Time",
+    "type": "linf",
+    "min": 0,
+    "max": 3000
+   },
+   {
+    "n": 3,
+    "name": "Mode",
+    "type": "enum",
+    "items": [
+     "ST",
+     "X",
+     "M"
+    ]
+   },
+   {
+    "n": 4,
+    "name": "Factor L",
+    "type": "enum",
+    "items": [
+     "1/4",
+     "3/8",
+     "1/2",
+     "2/3",
+     "1",
+     "4/3",
+     "3/2",
+     "2",
+     "3"
+    ]
+   },
+   {
+    "n": 5,
+    "name": "Factor R",
+    "type": "enum",
+    "items": [
+     "1/4",
+     "3/8",
+     "1/2",
+     "2/3",
+     "1",
+     "4/3",
+     "3/2",
+     "2",
+     "3"
+    ]
+   },
+   {
+    "n": 6,
+    "name": "Offset L/R",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   },
+   {
+    "n": 7,
+    "name": "Lo Cut",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 8,
+    "name": "Hi Cut",
+    "type": "logf",
+    "min": 200,
+    "max": 20000
+   },
+   {
+    "n": 9,
+    "name": "Feed Lo Cut",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 10,
+    "name": "Feed Left",
+    "type": "linf",
+    "min": 1,
+    "max": 100
+   },
+   {
+    "n": 11,
+    "name": "Feed Right",
+    "type": "linf",
+    "min": 1,
+    "max": 100
+   },
+   {
+    "n": 12,
+    "name": "Feed Hi Cut",
+    "type": "logf",
+    "min": 200,
+    "max": 20000
+   }
+  ]
+ },
+ {
+  "code": "3TAP",
+  "title": "3-Tap Delay",
+  "signature": "ffffffiffiffiii",
+  "params": [
+   {
+    "n": 1,
+    "name": "Time",
+    "type": "linf",
+    "min": 0,
+    "max": 3000
+   },
+   {
+    "n": 2,
+    "name": "Gain Base",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 3,
+    "name": "Pan Base",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   },
+   {
+    "n": 4,
+    "name": "Feedback",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 5,
+    "name": "Lo Cut",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 6,
+    "name": "Hi Cut",
+    "type": "logf",
+    "min": 200,
+    "max": 20000
+   },
+   {
+    "n": 7,
+    "name": "Factor A",
+    "type": "enum",
+    "items": [
+     "1/4",
+     "3/8",
+     "1/2",
+     "2/3",
+     "1",
+     "4/3",
+     "3/2",
+     "2",
+     "3"
+    ]
+   },
+   {
+    "n": 8,
+    "name": "Gain A",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 9,
+    "name": "Pan A",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   },
+   {
+    "n": 10,
+    "name": "Factor B",
+    "type": "enum",
+    "items": [
+     "1/4",
+     "3/8",
+     "1/2",
+     "2/3",
+     "1",
+     "4/3",
+     "3/2",
+     "2",
+     "3"
+    ]
+   },
+   {
+    "n": 11,
+    "name": "Gain B",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 12,
+    "name": "Pan B",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   },
+   {
+    "n": 13,
+    "name": "Cross Feed",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 14,
+    "name": "Mono",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 15,
+    "name": "Dry",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   }
+  ]
+ },
+ {
+  "code": "4TAP",
+  "title": "4-Tap Delay",
+  "signature": "ffffffifififiii",
+  "params": [
+   {
+    "n": 1,
+    "name": "Time",
+    "type": "linf",
+    "min": 1,
+    "max": 3000
+   },
+   {
+    "n": 2,
+    "name": "Gain Base",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 3,
+    "name": "Feedback",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 4,
+    "name": "Lo Cut",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 5,
+    "name": "Hi Cut",
+    "type": "logf",
+    "min": 200,
+    "max": 20000
+   },
+   {
+    "n": 6,
+    "name": "Spread",
+    "type": "linf",
+    "min": 0,
+    "max": 6
+   },
+   {
+    "n": 7,
+    "name": "Factor A",
+    "type": "enum",
+    "items": [
+     "1/4",
+     "3/8",
+     "1/2",
+     "2/3",
+     "1",
+     "4/3",
+     "3/2",
+     "2",
+     "3"
+    ]
+   },
+   {
+    "n": 8,
+    "name": "Gain A",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 9,
+    "name": "Factor B",
+    "type": "enum",
+    "items": [
+     "1/4",
+     "3/8",
+     "1/2",
+     "2/3",
+     "1",
+     "4/3",
+     "3/2",
+     "2",
+     "3"
+    ]
+   },
+   {
+    "n": 10,
+    "name": "Gain B",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 11,
+    "name": "Factor C",
+    "type": "enum",
+    "items": [
+     "1/4",
+     "3/8",
+     "1/2",
+     "2/3",
+     "1",
+     "4/3",
+     "3/2",
+     "2",
+     "3"
+    ]
+   },
+   {
+    "n": 12,
+    "name": "Gain C",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 13,
+    "name": "Cross Feed",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 14,
+    "name": "Mono",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 15,
+    "name": "Dry",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   }
+  ]
+ },
+ {
+  "code": "CRS",
+  "title": "Stereo Chorus",
+  "signature": "fffffffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Speed",
+    "type": "logf",
+    "min": 0.05,
+    "max": 5
+   },
+   {
+    "n": 2,
+    "name": "Depth L",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 3,
+    "name": "Depth R",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 4,
+    "name": "Delay L",
+    "type": "logf",
+    "min": 0.5,
+    "max": 20
+   },
+   {
+    "n": 5,
+    "name": "Delay R",
+    "type": "logf",
+    "min": 0.5,
+    "max": 20
+   },
+   {
+    "n": 6,
+    "name": "Mix",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 7,
+    "name": "Lo Cut",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 8,
+    "name": "Hi Cut",
+    "type": "logf",
+    "min": 200,
+    "max": 20000
+   },
+   {
+    "n": 9,
+    "name": "Phase",
+    "type": "linf",
+    "min": 0,
+    "max": 180
+   },
+   {
+    "n": 10,
+    "name": "Wave",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 11,
+    "name": "Spread",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   }
+  ]
+ },
+ {
+  "code": "FLNG",
+  "title": "Stereo Flanger",
+  "signature": "ffffffffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Speed",
+    "type": "logf",
+    "min": 0.05,
+    "max": 5
+   },
+   {
+    "n": 2,
+    "name": "Depth L",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 3,
+    "name": "Depth R",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 4,
+    "name": "Delay L",
+    "type": "logf",
+    "min": 0.5,
+    "max": 20
+   },
+   {
+    "n": 5,
+    "name": "Delay R",
+    "type": "logf",
+    "min": 0.5,
+    "max": 20
+   },
+   {
+    "n": 6,
+    "name": "Mix",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 7,
+    "name": "Lo Cut",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 8,
+    "name": "Hi Cut",
+    "type": "logf",
+    "min": 200,
+    "max": 20000
+   },
+   {
+    "n": 9,
+    "name": "Phase",
+    "type": "linf",
+    "min": 0,
+    "max": 180
+   },
+   {
+    "n": 10,
+    "name": "Feed Lo Cut",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 11,
+    "name": "Feed Hi Cut",
+    "type": "logf",
+    "min": 200,
+    "max": 20000
+   },
+   {
+    "n": 12,
+    "name": "Feed",
+    "type": "linf",
+    "min": -90,
+    "max": 90
+   }
+  ]
+ },
+ {
+  "code": "PHAS",
+  "title": "Stereo Phaser",
+  "signature": "ffffffffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Speed",
+    "type": "logf",
+    "min": 0.05,
+    "max": 5
+   },
+   {
+    "n": 2,
+    "name": "Depth",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 3,
+    "name": "Resonance",
+    "type": "linf",
+    "min": 0,
+    "max": 80
+   },
+   {
+    "n": 4,
+    "name": "Base",
+    "type": "linf",
+    "min": 0,
+    "max": 50
+   },
+   {
+    "n": 5,
+    "name": "Stages",
+    "type": "linf",
+    "min": 2,
+    "max": 12
+   },
+   {
+    "n": 6,
+    "name": "Mix",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 7,
+    "name": "Wave",
+    "type": "linf",
+    "min": -50,
+    "max": 50
+   },
+   {
+    "n": 8,
+    "name": "Phase",
+    "type": "linf",
+    "min": 0,
+    "max": 180
+   },
+   {
+    "n": 9,
+    "name": "Env. Modulation",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   },
+   {
+    "n": 10,
+    "name": "Attack",
+    "type": "logf",
+    "min": 10,
+    "max": 1000
+   },
+   {
+    "n": 11,
+    "name": "Hold",
+    "type": "logf",
+    "min": 1,
+    "max": 2000
+   },
+   {
+    "n": 12,
+    "name": "Release",
+    "type": "logf",
+    "min": 10,
+    "max": 1000
+   }
+  ]
+ },
+ {
+  "code": "DIMC",
+  "title": "Dimensional Chorus",
+  "signature": "iiiiiii",
+  "params": [
+   {
+    "n": 1,
+    "name": "Active",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 2,
+    "name": "Mode",
+    "type": "enum",
+    "items": [
+     "M",
+     "ST"
+    ]
+   },
+   {
+    "n": 3,
+    "name": "Dry",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 4,
+    "name": "Mode 1",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 5,
+    "name": "Mode 2",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 6,
+    "name": "Mode 3",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 7,
+    "name": "Mode 4",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   }
+  ]
+ },
+ {
+  "code": "FILT",
+  "title": "Mood Filter",
+  "signature": "ffffififffffii",
+  "params": [
+   {
+    "n": 1,
+    "name": "Speed",
+    "type": "logf",
+    "min": 0.05,
+    "max": 20
+   },
+   {
+    "n": 2,
+    "name": "Depth",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 3,
+    "name": "Resonance",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 4,
+    "name": "Base",
+    "type": "logf",
+    "min": 10,
+    "max": 15000
+   },
+   {
+    "n": 5,
+    "name": "Mode",
+    "type": "enum",
+    "items": [
+     "LP",
+     "HP",
+     "BP",
+     "NO"
+    ]
+   },
+   {
+    "n": 6,
+    "name": "Mix",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 7,
+    "name": "Wave",
+    "type": "enum",
+    "items": [
+     "TRI",
+     "SIN",
+     "SAW",
+     "SAW-",
+     "RMP",
+     "SQU",
+     "RND"
+    ]
+   },
+   {
+    "n": 8,
+    "name": "Phase",
+    "type": "linf",
+    "min": 0,
+    "max": 180
+   },
+   {
+    "n": 9,
+    "name": "Env. Modulation",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   },
+   {
+    "n": 10,
+    "name": "Attack",
+    "type": "logf",
+    "min": 10,
+    "max": 250
+   },
+   {
+    "n": 11,
+    "name": "Release",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 12,
+    "name": "Drive",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 13,
+    "name": "4 Pole",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 14,
+    "name": "Side Chain",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   }
+  ],
+  "notes": "Document writes the Wave list as '... SQU. RND' (period instead of comma); split into 'SQU' and 'RND'."
+ },
+ {
+  "code": "ROTA",
+  "title": "Rotary Speaker",
+  "signature": "ffffffii",
+  "params": [
+   {
+    "n": 1,
+    "name": "Lo Speed",
+    "type": "logf",
+    "min": 0.1,
+    "max": 4
+   },
+   {
+    "n": 2,
+    "name": "Hi Speed",
+    "type": "logf",
+    "min": 2,
+    "max": 10
+   },
+   {
+    "n": 3,
+    "name": "Accelerate",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 4,
+    "name": "Distance",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 5,
+    "name": "Balance",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   },
+   {
+    "n": 6,
+    "name": "Mix",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 7,
+    "name": "Stop",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 8,
+    "name": "Slow",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   }
+  ]
+ },
+ {
+  "code": "PAN",
+  "title": "Tremolo / Panner",
+  "signature": "fffffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Speed",
+    "type": "logf",
+    "min": 0.05,
+    "max": 4
+   },
+   {
+    "n": 2,
+    "name": "Phase",
+    "type": "linf",
+    "min": 0,
+    "max": 180
+   },
+   {
+    "n": 3,
+    "name": "Wave",
+    "type": "linf",
+    "min": -50,
+    "max": 50
+   },
+   {
+    "n": 4,
+    "name": "Depth",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 5,
+    "name": "Env. Speed",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 6,
+    "name": "Env. Depth",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 7,
+    "name": "Attack",
+    "type": "logf",
+    "min": 10,
+    "max": 1000
+   },
+   {
+    "n": 8,
+    "name": "Hold",
+    "type": "logf",
+    "min": 1,
+    "max": 2000
+   },
+   {
+    "n": 9,
+    "name": "Release",
+    "type": "logf",
+    "min": 10,
+    "max": 1000
+   }
+  ]
+ },
+ {
+  "code": "SUB",
+  "title": "Suboctaver",
+  "signature": "iifffiifff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Active",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 2,
+    "name": "Range",
+    "type": "enum",
+    "items": [
+     "LO",
+     "MID",
+     "HI"
+    ]
+   },
+   {
+    "n": 3,
+    "name": "Dry",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 4,
+    "name": "Octave -1",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 5,
+    "name": "Octave -2",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 6,
+    "name": "Active",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 7,
+    "name": "Range",
+    "type": "enum",
+    "items": [
+     "LO",
+     "MID",
+     "HI"
+    ]
+   },
+   {
+    "n": 8,
+    "name": "Dry",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 9,
+    "name": "Octave -1",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 10,
+    "name": "Octave -2",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   }
+  ],
+  "notes": "Document gives the same five names for par 1-5 and par 6-10 (the two halves of the dual processor) with no A/B suffix; kept as written."
+ },
+ {
+  "code": "D/RV",
+  "title": "Delay / Chamber",
+  "signature": "fiffffffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Time",
+    "type": "linf",
+    "min": 1,
+    "max": 3000
+   },
+   {
+    "n": 2,
+    "name": "Pattern",
+    "type": "enum",
+    "items": [
+     "1/4",
+     "1/3",
+     "3/8",
+     "1/2",
+     "2/3",
+     "3/4",
+     "1",
+     "1/4X",
+     "1/3X",
+     "3/8X",
+     "1/2X",
+     "2/3X",
+     "3/4X",
+     "1X"
+    ]
+   },
+   {
+    "n": 3,
+    "name": "Feed Hi Cut",
+    "type": "logf",
+    "min": 1000,
+    "max": 20000
+   },
+   {
+    "n": 4,
+    "name": "Feedback",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 5,
+    "name": "Cross Feed",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 6,
+    "name": "Balance",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   },
+   {
+    "n": 7,
+    "name": "Pre Delay",
+    "type": "linf",
+    "min": 0,
+    "max": 200
+   },
+   {
+    "n": 8,
+    "name": "Decay",
+    "type": "logf",
+    "min": 0.1,
+    "max": 5
+   },
+   {
+    "n": 9,
+    "name": "Size",
+    "type": "linf",
+    "min": 2,
+    "max": 100
+   },
+   {
+    "n": 10,
+    "name": "Damping",
+    "type": "logf",
+    "min": 1000,
+    "max": 20000
+   },
+   {
+    "n": 11,
+    "name": "Lo Cut",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 12,
+    "name": "Mix",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   }
+  ],
+  "notes": "In the text extraction the Pattern enum wraps over two lines, which shifts every following range down one row against its name; paired here by par number and signature. Pattern list prints '3/4X,1X' without a space."
+ },
+ {
+  "code": "CR/R",
+  "title": "Chorus / Chamber",
+  "signature": "ffffffffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Speed",
+    "type": "logf",
+    "min": 0.05,
+    "max": 4
+   },
+   {
+    "n": 2,
+    "name": "Depth",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 3,
+    "name": "Delay",
+    "type": "logf",
+    "min": 0.5,
+    "max": 50
+   },
+   {
+    "n": 4,
+    "name": "Phase",
+    "type": "linf",
+    "min": 0,
+    "max": 180
+   },
+   {
+    "n": 5,
+    "name": "Wave",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 6,
+    "name": "Balance",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   },
+   {
+    "n": 7,
+    "name": "Pre Delay",
+    "type": "linf",
+    "min": 0,
+    "max": 200
+   },
+   {
+    "n": 8,
+    "name": "Decay",
+    "type": "logf",
+    "min": 0.1,
+    "max": 5
+   },
+   {
+    "n": 9,
+    "name": "Size",
+    "type": "linf",
+    "min": 2,
+    "max": 100
+   },
+   {
+    "n": 10,
+    "name": "Damping",
+    "type": "logf",
+    "min": 1000,
+    "max": 20000
+   },
+   {
+    "n": 11,
+    "name": "Lo Cut",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 12,
+    "name": "Mix",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   }
+  ]
+ },
+ {
+  "code": "FL/R",
+  "title": "Flanger / Chamber",
+  "signature": "ffffffffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Speed",
+    "type": "logf",
+    "min": 0.05,
+    "max": 4
+   },
+   {
+    "n": 2,
+    "name": "Depth",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 3,
+    "name": "Delay",
+    "type": "logf",
+    "min": 0.5,
+    "max": 20
+   },
+   {
+    "n": 4,
+    "name": "Phase",
+    "type": "linf",
+    "min": 0,
+    "max": 180
+   },
+   {
+    "n": 5,
+    "name": "Feed",
+    "type": "linf",
+    "min": -90,
+    "max": 90
+   },
+   {
+    "n": 6,
+    "name": "Balance",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   },
+   {
+    "n": 7,
+    "name": "Pre Delay",
+    "type": "linf",
+    "min": 0,
+    "max": 200
+   },
+   {
+    "n": 8,
+    "name": "Decay",
+    "type": "logf",
+    "min": 0.1,
+    "max": 5
+   },
+   {
+    "n": 9,
+    "name": "Size",
+    "type": "linf",
+    "min": 2,
+    "max": 100
+   },
+   {
+    "n": 10,
+    "name": "Damping",
+    "type": "logf",
+    "min": 1000,
+    "max": 20000
+   },
+   {
+    "n": 11,
+    "name": "Lo Cut",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 12,
+    "name": "Mix",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   }
+  ]
+ },
+ {
+  "code": "D/CR",
+  "title": "Delay / Chorus",
+  "signature": "fiffffffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Time",
+    "type": "linf",
+    "min": 1,
+    "max": 3000
+   },
+   {
+    "n": 2,
+    "name": "Pattern",
+    "type": "enum",
+    "items": [
+     "1/4",
+     "1/3",
+     "3/8",
+     "1/2",
+     "2/3",
+     "3/4",
+     "1",
+     "1/4X",
+     "1/3X",
+     "3/8X",
+     "1/2X",
+     "2/3X",
+     "3/4X",
+     "1X"
+    ]
+   },
+   {
+    "n": 3,
+    "name": "Feed Hi Cut",
+    "type": "logf",
+    "min": 1000,
+    "max": 20000
+   },
+   {
+    "n": 4,
+    "name": "Feedback",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 5,
+    "name": "Cross Feed",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 6,
+    "name": "Balance",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   },
+   {
+    "n": 7,
+    "name": "Speed",
+    "type": "logf",
+    "min": 0.05,
+    "max": 4
+   },
+   {
+    "n": 8,
+    "name": "Depth",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 9,
+    "name": "Delay",
+    "type": "logf",
+    "min": 0.5,
+    "max": 50
+   },
+   {
+    "n": 10,
+    "name": "Phase",
+    "type": "linf",
+    "min": 0,
+    "max": 180
+   },
+   {
+    "n": 11,
+    "name": "Wave",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 12,
+    "name": "Mix",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   }
+  ],
+  "notes": "In the text extraction the Pattern enum wraps over two lines, which shifts every following range down one row against its name; paired here by par number and signature. Pattern list prints '3/4X,1X' without a space."
+ },
+ {
+  "code": "D/FL",
+  "title": "Delay / Flanger",
+  "signature": "fiffffffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Time",
+    "type": "linf",
+    "min": 1,
+    "max": 3000
+   },
+   {
+    "n": 2,
+    "name": "Pattern",
+    "type": "enum",
+    "items": [
+     "1/4",
+     "1/3",
+     "3/8",
+     "1/2",
+     "2/3",
+     "3/4",
+     "1",
+     "1/4X",
+     "1/3X",
+     "3/8X",
+     "1/2X",
+     "2/3X",
+     "3/4X",
+     "1X"
+    ]
+   },
+   {
+    "n": 3,
+    "name": "Feed Hi Cut",
+    "type": "logf",
+    "min": 1000,
+    "max": 20000
+   },
+   {
+    "n": 4,
+    "name": "Feedback",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 5,
+    "name": "Cross Feed",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 6,
+    "name": "Balance",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   },
+   {
+    "n": 7,
+    "name": "Speed",
+    "type": "logf",
+    "min": 0.05,
+    "max": 4
+   },
+   {
+    "n": 8,
+    "name": "Depth",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 9,
+    "name": "Delay",
+    "type": "logf",
+    "min": 0.5,
+    "max": 20
+   },
+   {
+    "n": 10,
+    "name": "Phase",
+    "type": "linf",
+    "min": 0,
+    "max": 180
+   },
+   {
+    "n": 11,
+    "name": "Feed",
+    "type": "linf",
+    "min": -90,
+    "max": 90
+   },
+   {
+    "n": 12,
+    "name": "Mix",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   }
+  ],
+  "notes": "In the text extraction the Pattern enum wraps over two lines, which shifts every following range down one row against its name; paired here by par number and signature. Pattern list prints '3/4X,1X' without a space."
+ },
+ {
+  "code": "MODD",
+  "title": "Modulation Delay",
+  "signature": "fifffffiiffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Time",
+    "type": "linf",
+    "min": 1,
+    "max": 3000
+   },
+   {
+    "n": 2,
+    "name": "Delay",
+    "type": "enum",
+    "items": [
+     "1",
+     "1/2",
+     "2/3",
+     "3/2"
+    ]
+   },
+   {
+    "n": 3,
+    "name": "Feed",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 4,
+    "name": "Lo Cut",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 5,
+    "name": "Hi Cut",
+    "type": "logf",
+    "min": 200,
+    "max": 20000
+   },
+   {
+    "n": 6,
+    "name": "Depth Rate",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 7,
+    "name": "Rate",
+    "type": "logf",
+    "min": 0.05,
+    "max": 10
+   },
+   {
+    "n": 8,
+    "name": "Setup",
+    "type": "enum",
+    "items": [
+     "PAR",
+     "SER"
+    ]
+   },
+   {
+    "n": 9,
+    "name": "Type",
+    "type": "enum",
+    "items": [
+     "AMB",
+     "CLUB",
+     "HALL"
+    ]
+   },
+   {
+    "n": 10,
+    "name": "Decay",
+    "type": "linf",
+    "min": 1,
+    "max": 10
+   },
+   {
+    "n": 11,
+    "name": "Damping",
+    "type": "logf",
+    "min": 1000,
+    "max": 20000
+   },
+   {
+    "n": 12,
+    "name": "Balance",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   },
+   {
+    "n": 13,
+    "name": "Mix",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   }
+  ]
+ },
+ {
+  "code": "GEQ2",
+  "title": "Dual Graphic Equalizer",
+  "signature": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Band 1 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 2,
+    "name": "Band 2 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 3,
+    "name": "Band 3 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 4,
+    "name": "Band 4 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 5,
+    "name": "Band 5 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 6,
+    "name": "Band 6 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 7,
+    "name": "Band 7 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 8,
+    "name": "Band 8 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 9,
+    "name": "Band 9 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 10,
+    "name": "Band 10 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 11,
+    "name": "Band 11 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 12,
+    "name": "Band 12 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 13,
+    "name": "Band 13 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 14,
+    "name": "Band 14 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 15,
+    "name": "Band 15 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 16,
+    "name": "Band 16 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 17,
+    "name": "Band 17 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 18,
+    "name": "Band 18 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 19,
+    "name": "Band 19 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 20,
+    "name": "Band 20 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 21,
+    "name": "Band 21 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 22,
+    "name": "Band 22 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 23,
+    "name": "Band 23 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 24,
+    "name": "Band 24 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 25,
+    "name": "Band 25 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 26,
+    "name": "Band 26 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 27,
+    "name": "Band 27 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 28,
+    "name": "Band 28 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 29,
+    "name": "Band 29 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 30,
+    "name": "Band 30 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 31,
+    "name": "Band 31 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 32,
+    "name": "Master A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 33,
+    "name": "Band 1 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 34,
+    "name": "Band 2 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 35,
+    "name": "Band 3 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 36,
+    "name": "Band 4 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 37,
+    "name": "Band 5 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 38,
+    "name": "Band 6 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 39,
+    "name": "Band 7 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 40,
+    "name": "Band 8 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 41,
+    "name": "Band 9 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 42,
+    "name": "Band 10 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 43,
+    "name": "Band 11 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 44,
+    "name": "Band 12 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 45,
+    "name": "Band 13 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 46,
+    "name": "Band 14 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 47,
+    "name": "Band 15 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 48,
+    "name": "Band 16 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 49,
+    "name": "Band 17 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 50,
+    "name": "Band 18 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 51,
+    "name": "Band 19 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 52,
+    "name": "Band 20 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 53,
+    "name": "Band 21 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 54,
+    "name": "Band 22 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 55,
+    "name": "Band 23 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 56,
+    "name": "Band 24 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 57,
+    "name": "Band 25 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 58,
+    "name": "Band 26 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 59,
+    "name": "Band 27 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 60,
+    "name": "Band 28 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 61,
+    "name": "Band 29 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 62,
+    "name": "Band 30 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 63,
+    "name": "Band 31 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 64,
+    "name": "Master B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   }
+  ],
+  "notes": "Document gives one table for GEQ2 and TEQ2 ('31 x Eq Level A' par 1-31, 'Master Level A' 32, '31 x Eq Level B' 33-63, 'Master Level B' 64) and writes the signature as '64 f'; band names synthesized."
+ },
+ {
+  "code": "GEQ",
+  "title": "Graphic Equalizer",
+  "signature": "ffffffffffffffffffffffffffffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Band 1",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 2,
+    "name": "Band 2",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 3,
+    "name": "Band 3",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 4,
+    "name": "Band 4",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 5,
+    "name": "Band 5",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 6,
+    "name": "Band 6",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 7,
+    "name": "Band 7",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 8,
+    "name": "Band 8",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 9,
+    "name": "Band 9",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 10,
+    "name": "Band 10",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 11,
+    "name": "Band 11",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 12,
+    "name": "Band 12",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 13,
+    "name": "Band 13",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 14,
+    "name": "Band 14",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 15,
+    "name": "Band 15",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 16,
+    "name": "Band 16",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 17,
+    "name": "Band 17",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 18,
+    "name": "Band 18",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 19,
+    "name": "Band 19",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 20,
+    "name": "Band 20",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 21,
+    "name": "Band 21",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 22,
+    "name": "Band 22",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 23,
+    "name": "Band 23",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 24,
+    "name": "Band 24",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 25,
+    "name": "Band 25",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 26,
+    "name": "Band 26",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 27,
+    "name": "Band 27",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 28,
+    "name": "Band 28",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 29,
+    "name": "Band 29",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 30,
+    "name": "Band 30",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 31,
+    "name": "Band 31",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 32,
+    "name": "Master",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   }
+  ],
+  "notes": "Document gives one table for GEQ and TEQ ('31 x Eq Level L/R' par 1-31, 'Master Level L/R' 32) and writes the signature as '32 f'; band names synthesized."
+ },
+ {
+  "code": "TEQ2",
+  "title": "True Dual Graphic Equalizer",
+  "signature": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Band 1 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 2,
+    "name": "Band 2 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 3,
+    "name": "Band 3 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 4,
+    "name": "Band 4 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 5,
+    "name": "Band 5 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 6,
+    "name": "Band 6 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 7,
+    "name": "Band 7 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 8,
+    "name": "Band 8 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 9,
+    "name": "Band 9 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 10,
+    "name": "Band 10 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 11,
+    "name": "Band 11 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 12,
+    "name": "Band 12 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 13,
+    "name": "Band 13 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 14,
+    "name": "Band 14 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 15,
+    "name": "Band 15 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 16,
+    "name": "Band 16 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 17,
+    "name": "Band 17 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 18,
+    "name": "Band 18 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 19,
+    "name": "Band 19 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 20,
+    "name": "Band 20 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 21,
+    "name": "Band 21 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 22,
+    "name": "Band 22 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 23,
+    "name": "Band 23 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 24,
+    "name": "Band 24 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 25,
+    "name": "Band 25 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 26,
+    "name": "Band 26 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 27,
+    "name": "Band 27 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 28,
+    "name": "Band 28 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 29,
+    "name": "Band 29 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 30,
+    "name": "Band 30 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 31,
+    "name": "Band 31 A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 32,
+    "name": "Master A",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 33,
+    "name": "Band 1 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 34,
+    "name": "Band 2 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 35,
+    "name": "Band 3 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 36,
+    "name": "Band 4 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 37,
+    "name": "Band 5 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 38,
+    "name": "Band 6 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 39,
+    "name": "Band 7 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 40,
+    "name": "Band 8 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 41,
+    "name": "Band 9 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 42,
+    "name": "Band 10 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 43,
+    "name": "Band 11 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 44,
+    "name": "Band 12 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 45,
+    "name": "Band 13 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 46,
+    "name": "Band 14 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 47,
+    "name": "Band 15 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 48,
+    "name": "Band 16 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 49,
+    "name": "Band 17 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 50,
+    "name": "Band 18 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 51,
+    "name": "Band 19 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 52,
+    "name": "Band 20 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 53,
+    "name": "Band 21 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 54,
+    "name": "Band 22 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 55,
+    "name": "Band 23 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 56,
+    "name": "Band 24 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 57,
+    "name": "Band 25 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 58,
+    "name": "Band 26 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 59,
+    "name": "Band 27 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 60,
+    "name": "Band 28 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 61,
+    "name": "Band 29 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 62,
+    "name": "Band 30 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 63,
+    "name": "Band 31 B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 64,
+    "name": "Master B",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   }
+  ],
+  "notes": "Document gives one table for GEQ2 and TEQ2 ('31 x Eq Level A' par 1-31, 'Master Level A' 32, '31 x Eq Level B' 33-63, 'Master Level B' 64) and writes the signature as '64 f'; band names synthesized."
+ },
+ {
+  "code": "TEQ",
+  "title": "True Graphic Equalizer",
+  "signature": "ffffffffffffffffffffffffffffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Band 1",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 2,
+    "name": "Band 2",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 3,
+    "name": "Band 3",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 4,
+    "name": "Band 4",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 5,
+    "name": "Band 5",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 6,
+    "name": "Band 6",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 7,
+    "name": "Band 7",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 8,
+    "name": "Band 8",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 9,
+    "name": "Band 9",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 10,
+    "name": "Band 10",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 11,
+    "name": "Band 11",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 12,
+    "name": "Band 12",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 13,
+    "name": "Band 13",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 14,
+    "name": "Band 14",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 15,
+    "name": "Band 15",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 16,
+    "name": "Band 16",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 17,
+    "name": "Band 17",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 18,
+    "name": "Band 18",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 19,
+    "name": "Band 19",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 20,
+    "name": "Band 20",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 21,
+    "name": "Band 21",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 22,
+    "name": "Band 22",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 23,
+    "name": "Band 23",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 24,
+    "name": "Band 24",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 25,
+    "name": "Band 25",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 26,
+    "name": "Band 26",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 27,
+    "name": "Band 27",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 28,
+    "name": "Band 28",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 29,
+    "name": "Band 29",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 30,
+    "name": "Band 30",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 31,
+    "name": "Band 31",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   },
+   {
+    "n": 32,
+    "name": "Master",
+    "type": "linf",
+    "min": -15,
+    "max": 15
+   }
+  ],
+  "notes": "Document gives one table for GEQ and TEQ ('31 x Eq Level L/R' par 1-31, 'Master Level L/R' 32) and writes the signature as '32 f'; band names synthesized."
+ },
+ {
+  "code": "DES2",
+  "title": "Dual De-Esser",
+  "signature": "ffffii",
+  "params": [
+   {
+    "n": 1,
+    "name": "Lo Band A",
+    "type": "linf",
+    "min": 0,
+    "max": 50
+   },
+   {
+    "n": 2,
+    "name": "Hi Band A",
+    "type": "linf",
+    "min": 0,
+    "max": 50
+   },
+   {
+    "n": 3,
+    "name": "Lo Band B",
+    "type": "linf",
+    "min": 0,
+    "max": 50
+   },
+   {
+    "n": 4,
+    "name": "Hi Band B",
+    "type": "linf",
+    "min": 0,
+    "max": 50
+   },
+   {
+    "n": 5,
+    "name": "Voice A",
+    "type": "enum",
+    "items": [
+     "FEM",
+     "MALE"
+    ]
+   },
+   {
+    "n": 6,
+    "name": "Voice B",
+    "type": "enum",
+    "items": [
+     "FEM",
+     "MALE"
+    ]
+   }
+  ],
+  "notes": "Document separates the enum items with ' / ' rather than commas ('FEM / MALE')."
+ },
+ {
+  "code": "DES",
+  "title": "Stereo De-Esser",
+  "signature": "ffffii",
+  "params": [
+   {
+    "n": 1,
+    "name": "Lo Band L",
+    "type": "linf",
+    "min": 0,
+    "max": 50
+   },
+   {
+    "n": 2,
+    "name": "Hi Band L",
+    "type": "linf",
+    "min": 0,
+    "max": 50
+   },
+   {
+    "n": 3,
+    "name": "Lo Band R",
+    "type": "linf",
+    "min": 0,
+    "max": 50
+   },
+   {
+    "n": 4,
+    "name": "Hi Band R",
+    "type": "linf",
+    "min": 0,
+    "max": 50
+   },
+   {
+    "n": 5,
+    "name": "Voice",
+    "type": "enum",
+    "items": [
+     "FEM",
+     "MALE"
+    ]
+   },
+   {
+    "n": 6,
+    "name": "Mode",
+    "type": "enum",
+    "items": [
+     "ST",
+     "M/S"
+    ]
+   }
+  ],
+  "notes": "Document separates the enum items with ' / ' rather than commas ('FEM / MALE', 'ST / M/S')."
+ },
+ {
+  "code": "P1A",
+  "title": "Stereo Program EQ",
+  "signature": "iffifffifii",
+  "params": [
+   {
+    "n": 1,
+    "name": "Active",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 2,
+    "name": "Gain",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 3,
+    "name": "Lo Boost",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 4,
+    "name": "Lo Freq",
+    "type": "enum",
+    "items": [
+     "0",
+     "30",
+     "60",
+     "100"
+    ]
+   },
+   {
+    "n": 5,
+    "name": "Lo Atten",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 6,
+    "name": "Mid Width",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 7,
+    "name": "Mid Boost",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 8,
+    "name": "Mid Freq",
+    "type": "enum",
+    "items": [
+     "3k",
+     "4k",
+     "5k",
+     "8k",
+     "10k",
+     "12k",
+     "16k"
+    ]
+   },
+   {
+    "n": 9,
+    "name": "Hi Attenuation",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 10,
+    "name": "Hi Freq",
+    "type": "enum",
+    "items": [
+     "5k",
+     "10k",
+     "20k"
+    ]
+   },
+   {
+    "n": 11,
+    "name": "Transformer",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   }
+  ],
+  "notes": "Document's table lists 10 parameters per side but its signature has 11 letters per side ('iffifffifii'). The missing one is a low-frequency attenuation control: X32-Edit 4.4 labels the P1A controls On, Gain, LoBoost, LoFreq, LoAtten, HiWidth, HiBoost, HiFreq, HiAtten, HiAttenF, Transf, and placing LoAtten (f) after Lo Freq (i) is the only insertion that makes the listed types match the signature. 'Lo Atten' name and linf [0...10] range are INFERRED (by analogy with Lo Boost), not from the document; all later par numbers are therefore one higher than the document prints. Lo Freq enum '0, 30, 60, 100' kept as written (the hardware original is 20/30/60/100 Hz, so '0' may be a typo)."
+ },
+ {
+  "code": "P1A2",
+  "title": "Dual Program EQ",
+  "signature": "iffifffifiiiffifffifii",
+  "params": [
+   {
+    "n": 1,
+    "name": "Active A",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 2,
+    "name": "Gain A",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 3,
+    "name": "Lo Boost A",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 4,
+    "name": "Lo Freq A",
+    "type": "enum",
+    "items": [
+     "0",
+     "30",
+     "60",
+     "100"
+    ]
+   },
+   {
+    "n": 5,
+    "name": "Lo Atten A",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 6,
+    "name": "Mid Width A",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 7,
+    "name": "Mid Boost A",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 8,
+    "name": "Mid Freq A",
+    "type": "enum",
+    "items": [
+     "3k",
+     "4k",
+     "5k",
+     "8k",
+     "10k",
+     "12k",
+     "16k"
+    ]
+   },
+   {
+    "n": 9,
+    "name": "Hi Attenuation A",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 10,
+    "name": "Hi Freq A",
+    "type": "enum",
+    "items": [
+     "5k",
+     "10k",
+     "20k"
+    ]
+   },
+   {
+    "n": 11,
+    "name": "Transformer A",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 12,
+    "name": "Active B",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 13,
+    "name": "Gain B",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 14,
+    "name": "Lo Boost B",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 15,
+    "name": "Lo Freq B",
+    "type": "enum",
+    "items": [
+     "0",
+     "30",
+     "60",
+     "100"
+    ]
+   },
+   {
+    "n": 16,
+    "name": "Lo Atten B",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 17,
+    "name": "Mid Width B",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 18,
+    "name": "Mid Boost B",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 19,
+    "name": "Mid Freq B",
+    "type": "enum",
+    "items": [
+     "3k",
+     "4k",
+     "5k",
+     "8k",
+     "10k",
+     "12k",
+     "16k"
+    ]
+   },
+   {
+    "n": 20,
+    "name": "Hi Attenuation B",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 21,
+    "name": "Hi Freq B",
+    "type": "enum",
+    "items": [
+     "5k",
+     "10k",
+     "20k"
+    ]
+   },
+   {
+    "n": 22,
+    "name": "Transformer B",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   }
+  ],
+  "notes": "Document's table lists 10 parameters per side (20 total) but its signature has 11 letters per side ('iffifffifii'). The missing one is a low-frequency attenuation control: X32-Edit 4.4 labels the P1A controls On, Gain, LoBoost, LoFreq, LoAtten, HiWidth, HiBoost, HiFreq, HiAtten, HiAttenF, Transf, and placing LoAtten (f) after Lo Freq (i) is the only insertion that makes the listed types match the signature. 'Lo Atten' name and linf [0...10] range are INFERRED (by analogy with Lo Boost), not from the document; all later par numbers are therefore one higher than the document prints. Lo Freq enum '0, 30, 60, 100' kept as written (the hardware original is 20/30/60/100 Hz, so '0' may be a typo). Signature is printed over two lines ('iffifffifiiiffif' + 'ffifii')."
+ },
+ {
+  "code": "PQ5",
+  "title": "Stereo Midrange EQ",
+  "signature": "ififififi",
+  "params": [
+   {
+    "n": 1,
+    "name": "Active",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 2,
+    "name": "Gain",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 3,
+    "name": "Lo Freq",
+    "type": "enum",
+    "items": [
+     "200",
+     "300",
+     "500",
+     "700",
+     "1000"
+    ]
+   },
+   {
+    "n": 4,
+    "name": "Lo Boost",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 5,
+    "name": "Mid Freq",
+    "type": "enum",
+    "items": [
+     "200",
+     "300",
+     "500",
+     "700",
+     "1k",
+     "1k5",
+     "2k",
+     "3k",
+     "4k",
+     "5k",
+     "7k"
+    ]
+   },
+   {
+    "n": 6,
+    "name": "Mid Boost",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 7,
+    "name": "Hi Freq",
+    "type": "enum",
+    "items": [
+     "1k5",
+     "2k",
+     "3k",
+     "4k",
+     "5k"
+    ]
+   },
+   {
+    "n": 8,
+    "name": "Hi Boost",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 9,
+    "name": "Transformer",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   }
+  ]
+ },
+ {
+  "code": "PQ5S",
+  "title": "Dual Midrange EQ",
+  "signature": "ififififiififififi",
+  "params": [
+   {
+    "n": 1,
+    "name": "Active A",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 2,
+    "name": "Gain A",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 3,
+    "name": "Lo Freq A",
+    "type": "enum",
+    "items": [
+     "200",
+     "300",
+     "500",
+     "700",
+     "1000"
+    ]
+   },
+   {
+    "n": 4,
+    "name": "Lo Boost A",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 5,
+    "name": "Mid Freq A",
+    "type": "enum",
+    "items": [
+     "200",
+     "300",
+     "500",
+     "700",
+     "1k",
+     "1k5",
+     "2k",
+     "3k",
+     "4k",
+     "5k",
+     "7k"
+    ]
+   },
+   {
+    "n": 6,
+    "name": "Mid Boost A",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 7,
+    "name": "Hi Freq A",
+    "type": "enum",
+    "items": [
+     "1k5",
+     "2k",
+     "3k",
+     "4k",
+     "5k"
+    ]
+   },
+   {
+    "n": 8,
+    "name": "Hi Boost A",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 9,
+    "name": "Transformer A",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 10,
+    "name": "Active B",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 11,
+    "name": "Gain B",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 12,
+    "name": "Lo Freq B",
+    "type": "enum",
+    "items": [
+     "200",
+     "300",
+     "500",
+     "700",
+     "1000"
+    ]
+   },
+   {
+    "n": 13,
+    "name": "Lo Boost B",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 14,
+    "name": "Mid Freq B",
+    "type": "enum",
+    "items": [
+     "200",
+     "300",
+     "500",
+     "700",
+     "1k",
+     "1k5",
+     "2k",
+     "3k",
+     "4k",
+     "5k",
+     "7k"
+    ]
+   },
+   {
+    "n": 15,
+    "name": "Mid Boost B",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 16,
+    "name": "Hi Freq B",
+    "type": "enum",
+    "items": [
+     "1k5",
+     "2k",
+     "3k",
+     "4k",
+     "5k"
+    ]
+   },
+   {
+    "n": 17,
+    "name": "Hi Boost B",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 18,
+    "name": "Transformer B",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   }
+  ],
+  "notes": "The dual table has no code beside it in the extraction (PQ5S is printed beside the stereo table); assigned by layout and signature length."
+ },
+ {
+  "code": "WAVD",
+  "title": "Wave Designer",
+  "signature": "ffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Attack A",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   },
+   {
+    "n": 2,
+    "name": "Sustain A",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   },
+   {
+    "n": 3,
+    "name": "Gain A",
+    "type": "linf",
+    "min": -24,
+    "max": 24
+   },
+   {
+    "n": 4,
+    "name": "Attack B",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   },
+   {
+    "n": 5,
+    "name": "Sustain B",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   },
+   {
+    "n": 6,
+    "name": "Gain B",
+    "type": "linf",
+    "min": -24,
+    "max": 24
+   }
+  ],
+  "notes": "Document spells the code 'WAV'; the FX type enum spells it 'WAVD'."
+ },
+ {
+  "code": "LIM",
+  "title": "Precision Limiter",
+  "signature": "ffffffii",
+  "params": [
+   {
+    "n": 1,
+    "name": "Input Gain",
+    "type": "linf",
+    "min": 0,
+    "max": 18
+   },
+   {
+    "n": 2,
+    "name": "Out Gain",
+    "type": "linf",
+    "min": -18,
+    "max": 18
+   },
+   {
+    "n": 3,
+    "name": "Squeeze",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 4,
+    "name": "Knee",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 5,
+    "name": "Attack",
+    "type": "logf",
+    "min": 0.05,
+    "max": 1
+   },
+   {
+    "n": 6,
+    "name": "Release",
+    "type": "logf",
+    "min": 20,
+    "max": 2000
+   },
+   {
+    "n": 7,
+    "name": "Stereo Link",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 8,
+    "name": "Auto Gain",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   }
+  ],
+  "notes": "Document writes Attack as 'logf 0.05...1]' (missing opening bracket)."
+ },
+ {
+  "code": "CMB",
+  "title": "Stereo Combinator",
+  "signature": "iifffififiiffffiffiffiffiffii",
+  "params": [
+   {
+    "n": 1,
+    "name": "Active",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 2,
+    "name": "Band Solo",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "Bd1",
+     "Bd2",
+     "Bd3",
+     "Bd4",
+     "Bd5"
+    ]
+   },
+   {
+    "n": 3,
+    "name": "Mix",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 4,
+    "name": "Attack",
+    "type": "linf",
+    "min": 0,
+    "max": 19
+   },
+   {
+    "n": 5,
+    "name": "Release",
+    "type": "logf",
+    "min": 20,
+    "max": 3000
+   },
+   {
+    "n": 6,
+    "name": "Autorelease",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 7,
+    "name": "SBC speed",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 8,
+    "name": "SBC ON",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 9,
+    "name": "Xover",
+    "type": "linf",
+    "min": -50,
+    "max": 50
+   },
+   {
+    "n": 10,
+    "name": "Xover Slope",
+    "type": "enum",
+    "items": [
+     "12",
+     "48"
+    ]
+   },
+   {
+    "n": 11,
+    "name": "Ratio",
+    "type": "enum",
+    "items": [
+     "1.1",
+     "1.2",
+     "1.3",
+     "1.5",
+     "1.7",
+     "2",
+     "2.5",
+     "3",
+     "3.5",
+     "4",
+     "5",
+     "7",
+     "10",
+     "LIM"
+    ]
+   },
+   {
+    "n": 12,
+    "name": "Threshold",
+    "type": "linf",
+    "min": -40,
+    "max": 0
+   },
+   {
+    "n": 13,
+    "name": "Gain",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 14,
+    "name": "Band 1 Threshold",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 15,
+    "name": "Band 1 Gain",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 16,
+    "name": "Band 1 Lock",
+    "type": "enum",
+    "items": [
+     "0",
+     "1"
+    ]
+   },
+   {
+    "n": 17,
+    "name": "Band 2 Threshold",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 18,
+    "name": "Band 2 Gain",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 19,
+    "name": "Band 2 Lock",
+    "type": "enum",
+    "items": [
+     "0",
+     "1"
+    ]
+   },
+   {
+    "n": 20,
+    "name": "Band 3 Threshold",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 21,
+    "name": "Band 3 Gain",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 22,
+    "name": "Band 3 Lock",
+    "type": "enum",
+    "items": [
+     "0",
+     "1"
+    ]
+   },
+   {
+    "n": 23,
+    "name": "Band 4 Threshold",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 24,
+    "name": "Band 4 Gain",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 25,
+    "name": "Band 4 Lock",
+    "type": "enum",
+    "items": [
+     "0",
+     "1"
+    ]
+   },
+   {
+    "n": 26,
+    "name": "Band 5 Threshold",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 27,
+    "name": "Band 5 Gain",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 28,
+    "name": "Band 5 Lock",
+    "type": "enum",
+    "items": [
+     "0",
+     "1"
+    ]
+   },
+   {
+    "n": 29,
+    "name": "Meter Mode",
+    "type": "enum",
+    "items": [
+     "GR",
+     "SBC",
+     "PEAK"
+    ]
+   }
+  ],
+  "notes": "Names and ranges are misaligned in the text extraction (wrapped enum lists); paired by order, par number and signature. Signature printed over several lines."
+ },
+ {
+  "code": "CMB2",
+  "title": "Dual Combinator",
+  "signature": "iifffififiiffffiffiffiffiffiiiifffififiiffffiffiffiffiffii",
+  "params": [
+   {
+    "n": 1,
+    "name": "Active A",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 2,
+    "name": "Band Solo A",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "Bd1",
+     "Bd2",
+     "Bd3",
+     "Bd4",
+     "Bd5"
+    ]
+   },
+   {
+    "n": 3,
+    "name": "Mix A",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 4,
+    "name": "Attack A",
+    "type": "linf",
+    "min": 0,
+    "max": 19
+   },
+   {
+    "n": 5,
+    "name": "Release A",
+    "type": "logf",
+    "min": 20,
+    "max": 3000
+   },
+   {
+    "n": 6,
+    "name": "Autorelease A",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 7,
+    "name": "SBC speed A",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 8,
+    "name": "SBC ON A",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 9,
+    "name": "Xover A",
+    "type": "linf",
+    "min": -50,
+    "max": 50
+   },
+   {
+    "n": 10,
+    "name": "Xover Slope A",
+    "type": "enum",
+    "items": [
+     "12",
+     "48"
+    ]
+   },
+   {
+    "n": 11,
+    "name": "Ratio A",
+    "type": "enum",
+    "items": [
+     "1.1",
+     "1.2",
+     "1.3",
+     "1.5",
+     "1.7",
+     "2",
+     "2.5",
+     "3",
+     "3.5",
+     "4",
+     "5",
+     "7",
+     "10",
+     "LIM"
+    ]
+   },
+   {
+    "n": 12,
+    "name": "Threshold A",
+    "type": "linf",
+    "min": -40,
+    "max": 0
+   },
+   {
+    "n": 13,
+    "name": "Gain A",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 14,
+    "name": "Band 1 Threshold A",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 15,
+    "name": "Band 1 Gain A",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 16,
+    "name": "Band 1 Lock A",
+    "type": "enum",
+    "items": [
+     "0",
+     "1"
+    ]
+   },
+   {
+    "n": 17,
+    "name": "Band 2 Threshold A",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 18,
+    "name": "Band 2 Gain A",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 19,
+    "name": "Band 2 Lock A",
+    "type": "enum",
+    "items": [
+     "0",
+     "1"
+    ]
+   },
+   {
+    "n": 20,
+    "name": "Band 3 Threshold A",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 21,
+    "name": "Band 3 Gain A",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 22,
+    "name": "Band 3 Lock A",
+    "type": "enum",
+    "items": [
+     "0",
+     "1"
+    ]
+   },
+   {
+    "n": 23,
+    "name": "Band 4 Threshold A",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 24,
+    "name": "Band 4 Gain A",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 25,
+    "name": "Band 4 Lock A",
+    "type": "enum",
+    "items": [
+     "0",
+     "1"
+    ]
+   },
+   {
+    "n": 26,
+    "name": "Band 5 Threshold A",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 27,
+    "name": "Band 5 Gain A",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 28,
+    "name": "Band 5 Lock A",
+    "type": "enum",
+    "items": [
+     "0",
+     "1"
+    ]
+   },
+   {
+    "n": 29,
+    "name": "Meter Mode A",
+    "type": "enum",
+    "items": [
+     "GR",
+     "SBC",
+     "PEAK"
+    ]
+   },
+   {
+    "n": 30,
+    "name": "Active B",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 31,
+    "name": "Band Solo B",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "Bd1",
+     "Bd2",
+     "Bd3",
+     "Bd4",
+     "Bd5"
+    ]
+   },
+   {
+    "n": 32,
+    "name": "Mix B",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 33,
+    "name": "Attack B",
+    "type": "linf",
+    "min": 0,
+    "max": 19
+   },
+   {
+    "n": 34,
+    "name": "Release B",
+    "type": "logf",
+    "min": 20,
+    "max": 3000
+   },
+   {
+    "n": 35,
+    "name": "Autorelease B",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 36,
+    "name": "SBC speed B",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 37,
+    "name": "SBC ON B",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 38,
+    "name": "Xover B",
+    "type": "linf",
+    "min": -50,
+    "max": 50
+   },
+   {
+    "n": 39,
+    "name": "Xover Slope B",
+    "type": "enum",
+    "items": [
+     "12",
+     "48"
+    ]
+   },
+   {
+    "n": 40,
+    "name": "Ratio B",
+    "type": "enum",
+    "items": [
+     "1.1",
+     "1.2",
+     "1.3",
+     "1.5",
+     "1.7",
+     "2",
+     "2.5",
+     "3",
+     "3.5",
+     "4",
+     "5",
+     "7",
+     "10",
+     "LIM"
+    ]
+   },
+   {
+    "n": 41,
+    "name": "Threshold B",
+    "type": "linf",
+    "min": -40,
+    "max": 0
+   },
+   {
+    "n": 42,
+    "name": "Gain B",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 43,
+    "name": "Band 1 Threshold B",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 44,
+    "name": "Band 1 Gain B",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 45,
+    "name": "Band 1 Lock B",
+    "type": "enum",
+    "items": [
+     "0",
+     "1"
+    ]
+   },
+   {
+    "n": 46,
+    "name": "Band 2 Threshold B",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 47,
+    "name": "Band 2 Gain B",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 48,
+    "name": "Band 2 Lock B",
+    "type": "enum",
+    "items": [
+     "0",
+     "1"
+    ]
+   },
+   {
+    "n": 49,
+    "name": "Band 3 Threshold B",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 50,
+    "name": "Band 3 Gain B",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 51,
+    "name": "Band 3 Lock B",
+    "type": "enum",
+    "items": [
+     "0",
+     "1"
+    ]
+   },
+   {
+    "n": 52,
+    "name": "Band 4 Threshold B",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 53,
+    "name": "Band 4 Gain B",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 54,
+    "name": "Band 4 Lock B",
+    "type": "enum",
+    "items": [
+     "0",
+     "1"
+    ]
+   },
+   {
+    "n": 55,
+    "name": "Band 5 Threshold B",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 56,
+    "name": "Band 5 Gain B",
+    "type": "linf",
+    "min": -10,
+    "max": 10
+   },
+   {
+    "n": 57,
+    "name": "Band 5 Lock B",
+    "type": "enum",
+    "items": [
+     "0",
+     "1"
+    ]
+   },
+   {
+    "n": 58,
+    "name": "Meter Mode B",
+    "type": "enum",
+    "items": [
+     "GR",
+     "SBC",
+     "PEAK"
+    ]
+   }
+  ],
+  "notes": "Names and ranges are misaligned in the text extraction (wrapped enum lists); paired by order, par number and signature. Signature printed over several lines. Table spans two pages (par 46-58 on the second)."
+ },
+ {
+  "code": "FAC",
+  "title": "Stereo Fair Compressor",
+  "signature": "iffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Active",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 2,
+    "name": "Input Gain",
+    "type": "linf",
+    "min": -20,
+    "max": 20
+   },
+   {
+    "n": 3,
+    "name": "Threshold",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 4,
+    "name": "Time",
+    "type": "linf",
+    "min": 0,
+    "max": 6
+   },
+   {
+    "n": 5,
+    "name": "Bias",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 6,
+    "name": "Gain",
+    "type": "linf",
+    "min": -18,
+    "max": 6
+   },
+   {
+    "n": 7,
+    "name": "Balance",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   }
+  ]
+ },
+ {
+  "code": "FAC1M",
+  "title": "M/S Fair Compressor",
+  "signature": "iffffffiffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Active M",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 2,
+    "name": "Input Gain M",
+    "type": "linf",
+    "min": -20,
+    "max": 20
+   },
+   {
+    "n": 3,
+    "name": "Threshold M",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 4,
+    "name": "Time M",
+    "type": "linf",
+    "min": 0,
+    "max": 6
+   },
+   {
+    "n": 5,
+    "name": "Bias M",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 6,
+    "name": "Gain M",
+    "type": "linf",
+    "min": -18,
+    "max": 6
+   },
+   {
+    "n": 7,
+    "name": "Balance M",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   },
+   {
+    "n": 8,
+    "name": "Active S",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 9,
+    "name": "Input Gain S",
+    "type": "linf",
+    "min": -20,
+    "max": 20
+   },
+   {
+    "n": 10,
+    "name": "Threshold S",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 11,
+    "name": "Time S",
+    "type": "linf",
+    "min": 0,
+    "max": 6
+   },
+   {
+    "n": 12,
+    "name": "Bias S",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 13,
+    "name": "Gain S",
+    "type": "linf",
+    "min": -18,
+    "max": 6
+   },
+   {
+    "n": 14,
+    "name": "Balance S",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   }
+  ],
+  "notes": "Document gives one 14-parameter table for FAC2 and FAC1M (signature printed beside FAC2 only), repeating the 7 names without suffix; suffixes M/S added for uniqueness, following X32-Edit 4.4's labels (InGainM/InGainS, DCBiasM/DCBiasS, ...)."
+ },
+ {
+  "code": "FAC2",
+  "title": "Dual Fair Compressor",
+  "signature": "iffffffiffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Active A",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 2,
+    "name": "Input Gain A",
+    "type": "linf",
+    "min": -20,
+    "max": 20
+   },
+   {
+    "n": 3,
+    "name": "Threshold A",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 4,
+    "name": "Time A",
+    "type": "linf",
+    "min": 0,
+    "max": 6
+   },
+   {
+    "n": 5,
+    "name": "Bias A",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 6,
+    "name": "Gain A",
+    "type": "linf",
+    "min": -18,
+    "max": 6
+   },
+   {
+    "n": 7,
+    "name": "Balance A",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   },
+   {
+    "n": 8,
+    "name": "Active B",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 9,
+    "name": "Input Gain B",
+    "type": "linf",
+    "min": -20,
+    "max": 20
+   },
+   {
+    "n": 10,
+    "name": "Threshold B",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 11,
+    "name": "Time B",
+    "type": "linf",
+    "min": 0,
+    "max": 6
+   },
+   {
+    "n": 12,
+    "name": "Bias B",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 13,
+    "name": "Gain B",
+    "type": "linf",
+    "min": -18,
+    "max": 6
+   },
+   {
+    "n": 14,
+    "name": "Balance B",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   }
+  ],
+  "notes": "Document gives one 14-parameter table for FAC2 and FAC1M (signature printed beside FAC2 only), repeating the 7 names without suffix; suffixes A/B added for uniqueness, following X32-Edit 4.4's labels (DCBiasA/DCBiasB, ...)."
+ },
+ {
+  "code": "LEC",
+  "title": "Stereo Leisure Compressor",
+  "signature": "iffif",
+  "params": [
+   {
+    "n": 1,
+    "name": "Active",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 2,
+    "name": "Gain",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 3,
+    "name": "Peak",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 4,
+    "name": "Mode",
+    "type": "enum",
+    "items": [
+     "COMP",
+     "LIM"
+    ]
+   },
+   {
+    "n": 5,
+    "name": "Gain",
+    "type": "linf",
+    "min": -18,
+    "max": 6
+   }
+  ],
+  "notes": "Document names both par 2 (0...100) and par 5 (-18...6) 'Gain'; kept as written (par 5 is the output gain)."
+ },
+ {
+  "code": "LEC2",
+  "title": "Dual Leisure Compressor",
+  "signature": "iffififfif",
+  "params": [
+   {
+    "n": 1,
+    "name": "Active A",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 2,
+    "name": "Gain A",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 3,
+    "name": "Peak A",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 4,
+    "name": "Mode A",
+    "type": "enum",
+    "items": [
+     "COMP",
+     "LIM"
+    ]
+   },
+   {
+    "n": 5,
+    "name": "Gain A",
+    "type": "linf",
+    "min": -18,
+    "max": 6
+   },
+   {
+    "n": 6,
+    "name": "Active B",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 7,
+    "name": "Gain B",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 8,
+    "name": "Peak B",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 9,
+    "name": "Mode B",
+    "type": "enum",
+    "items": [
+     "COMP",
+     "LIM"
+    ]
+   },
+   {
+    "n": 10,
+    "name": "Gain B",
+    "type": "linf",
+    "min": -18,
+    "max": 6
+   }
+  ],
+  "notes": "Document names par 2 and par 5 both 'Gain A' (and par 7 and 10 both 'Gain B'); kept as written (par 5/10 are the output gains)."
+ },
+ {
+  "code": "ULC",
+  "title": "Stereo Ultimo Compressor",
+  "signature": "iffffi",
+  "params": [
+   {
+    "n": 1,
+    "name": "Active",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 2,
+    "name": "Input Gain",
+    "type": "linf",
+    "min": -48,
+    "max": 0
+   },
+   {
+    "n": 3,
+    "name": "Out Gain",
+    "type": "linf",
+    "min": -48,
+    "max": 0
+   },
+   {
+    "n": 4,
+    "name": "Attack",
+    "type": "linf",
+    "min": 1,
+    "max": 7
+   },
+   {
+    "n": 5,
+    "name": "Release",
+    "type": "linf",
+    "min": 1,
+    "max": 7
+   },
+   {
+    "n": 6,
+    "name": "Ratio",
+    "type": "enum",
+    "items": [
+     "4",
+     "8",
+     "12",
+     "20",
+     "ALL"
+    ]
+   }
+  ]
+ },
+ {
+  "code": "ULC2",
+  "title": "Dual Ultimo Compressor",
+  "signature": "iffffiiffffi",
+  "params": [
+   {
+    "n": 1,
+    "name": "Active A",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 2,
+    "name": "Input Gain A",
+    "type": "linf",
+    "min": -48,
+    "max": 0
+   },
+   {
+    "n": 3,
+    "name": "Out Gain A",
+    "type": "linf",
+    "min": -48,
+    "max": 0
+   },
+   {
+    "n": 4,
+    "name": "Attack A",
+    "type": "linf",
+    "min": 1,
+    "max": 7
+   },
+   {
+    "n": 5,
+    "name": "Release A",
+    "type": "linf",
+    "min": 1,
+    "max": 7
+   },
+   {
+    "n": 6,
+    "name": "Ratio A",
+    "type": "enum",
+    "items": [
+     "4",
+     "8",
+     "12",
+     "20",
+     "ALL"
+    ]
+   },
+   {
+    "n": 7,
+    "name": "Active B",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 8,
+    "name": "Input Gain B",
+    "type": "linf",
+    "min": -48,
+    "max": 0
+   },
+   {
+    "n": 9,
+    "name": "Out Gain B",
+    "type": "linf",
+    "min": -48,
+    "max": 0
+   },
+   {
+    "n": 10,
+    "name": "Attack B",
+    "type": "linf",
+    "min": 1,
+    "max": 7
+   },
+   {
+    "n": 11,
+    "name": "Release B",
+    "type": "linf",
+    "min": 1,
+    "max": 7
+   },
+   {
+    "n": 12,
+    "name": "Ratio B",
+    "type": "enum",
+    "items": [
+     "4",
+     "8",
+     "12",
+     "20",
+     "ALL"
+    ]
+   }
+  ]
+ },
+ {
+  "code": "ENH2",
+  "title": "Dual Enhancer",
+  "signature": "ffffffffiffffffffi",
+  "params": [
+   {
+    "n": 1,
+    "name": "Out Gain A",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 2,
+    "name": "Speed A",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 3,
+    "name": "Bass Gain A",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 4,
+    "name": "Bass Freq A",
+    "type": "linf",
+    "min": 1,
+    "max": 50
+   },
+   {
+    "n": 5,
+    "name": "Mid Gain A",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 6,
+    "name": "Mid Freq A",
+    "type": "linf",
+    "min": 1,
+    "max": 50
+   },
+   {
+    "n": 7,
+    "name": "Hi Gain A",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 8,
+    "name": "Hi Freq A",
+    "type": "linf",
+    "min": 1,
+    "max": 50
+   },
+   {
+    "n": 9,
+    "name": "Solo A",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 10,
+    "name": "Out Gain B",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 11,
+    "name": "Speed B",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 12,
+    "name": "Bass Gain B",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 13,
+    "name": "Bass Freq B",
+    "type": "linf",
+    "min": 1,
+    "max": 50
+   },
+   {
+    "n": 14,
+    "name": "Mid Gain B",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 15,
+    "name": "Mid Freq B",
+    "type": "linf",
+    "min": 1,
+    "max": 50
+   },
+   {
+    "n": 16,
+    "name": "Hi Gain B",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 17,
+    "name": "Hi Freq B",
+    "type": "linf",
+    "min": 1,
+    "max": 50
+   },
+   {
+    "n": 18,
+    "name": "Solo B",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   }
+  ],
+  "notes": "Signature printed over two lines ('ffffffffifffffff' + 'fi')."
+ },
+ {
+  "code": "ENH",
+  "title": "Stereo Enhancer",
+  "signature": "ffffffffi",
+  "params": [
+   {
+    "n": 1,
+    "name": "Out Gain",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 2,
+    "name": "Speed",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 3,
+    "name": "Bass Gain",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 4,
+    "name": "Bass Freq",
+    "type": "linf",
+    "min": 1,
+    "max": 50
+   },
+   {
+    "n": 5,
+    "name": "Mid Gain",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 6,
+    "name": "Mid Freq",
+    "type": "linf",
+    "min": 1,
+    "max": 50
+   },
+   {
+    "n": 7,
+    "name": "Hi Gain",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 8,
+    "name": "Hi Freq",
+    "type": "linf",
+    "min": 1,
+    "max": 50
+   },
+   {
+    "n": 9,
+    "name": "Solo",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   }
+  ]
+ },
+ {
+  "code": "EXC2",
+  "title": "Dual Exciter",
+  "signature": "ffffffiffffffi",
+  "params": [
+   {
+    "n": 1,
+    "name": "Tune A",
+    "type": "logf",
+    "min": 1000,
+    "max": 10000
+   },
+   {
+    "n": 2,
+    "name": "Peak A",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 3,
+    "name": "Zero Fill A",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 4,
+    "name": "Timbre A",
+    "type": "linf",
+    "min": -50,
+    "max": 50
+   },
+   {
+    "n": 5,
+    "name": "Harmonics A",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 6,
+    "name": "Mix A",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 7,
+    "name": "Solo A",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 8,
+    "name": "Tune B",
+    "type": "logf",
+    "min": 1000,
+    "max": 10000
+   },
+   {
+    "n": 9,
+    "name": "Peak B",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 10,
+    "name": "Zero Fill B",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 11,
+    "name": "Timbre B",
+    "type": "linf",
+    "min": -50,
+    "max": 50
+   },
+   {
+    "n": 12,
+    "name": "Harmonics B",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 13,
+    "name": "Mix B",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 14,
+    "name": "Solo B",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   }
+  ],
+  "notes": "Document writes Tune as 'logf 1k...10k]' (missing opening bracket)."
+ },
+ {
+  "code": "EXC",
+  "title": "Stereo Exciter",
+  "signature": "ffffffi",
+  "params": [
+   {
+    "n": 1,
+    "name": "Tune",
+    "type": "logf",
+    "min": 1000,
+    "max": 10000
+   },
+   {
+    "n": 2,
+    "name": "Peak",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 3,
+    "name": "Zero Fill",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 4,
+    "name": "Timbre",
+    "type": "linf",
+    "min": -50,
+    "max": 50
+   },
+   {
+    "n": 5,
+    "name": "Harmonics",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 6,
+    "name": "Mix",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 7,
+    "name": "Solo",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   }
+  ],
+  "notes": "Document writes Tune as 'logf 1k...10k]' (missing opening bracket)."
+ },
+ {
+  "code": "IMG",
+  "title": "Stereo Imager",
+  "signature": "fffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Balance",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   },
+   {
+    "n": 2,
+    "name": "Mono Pan",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   },
+   {
+    "n": 3,
+    "name": "Stereo Pan",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   },
+   {
+    "n": 4,
+    "name": "Shv Gain",
+    "type": "linf",
+    "min": 0,
+    "max": 12
+   },
+   {
+    "n": 5,
+    "name": "Shv Freq",
+    "type": "logf",
+    "min": 100,
+    "max": 1000
+   },
+   {
+    "n": 6,
+    "name": "Shv Q",
+    "type": "logf",
+    "min": 1,
+    "max": 10
+   },
+   {
+    "n": 7,
+    "name": "Out Gain",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   }
+  ]
+ },
+ {
+  "code": "EDI",
+  "title": "Edison EX1",
+  "signature": "iiifffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Active",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 2,
+    "name": "Stereo Input",
+    "type": "enum",
+    "items": [
+     "ST",
+     "M/S"
+    ]
+   },
+   {
+    "n": 3,
+    "name": "Stereo Output",
+    "type": "enum",
+    "items": [
+     "ST",
+     "M/S"
+    ]
+   },
+   {
+    "n": 4,
+    "name": "ST Spread",
+    "type": "linf",
+    "min": -50,
+    "max": 50
+   },
+   {
+    "n": 5,
+    "name": "LMF Spread",
+    "type": "linf",
+    "min": -50,
+    "max": 50
+   },
+   {
+    "n": 6,
+    "name": "Balance",
+    "type": "linf",
+    "min": -50,
+    "max": 50
+   },
+   {
+    "n": 7,
+    "name": "Center Distance",
+    "type": "linf",
+    "min": -50,
+    "max": 50
+   },
+   {
+    "n": 8,
+    "name": "Out Gain",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   }
+  ],
+  "notes": "Document separates the enum items with ' / ' rather than commas ('ST / M/S')."
+ },
+ {
+  "code": "SON",
+  "title": "Sound Maxer",
+  "signature": "ifffifff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Active A",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 2,
+    "name": "Lo Contour A",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 3,
+    "name": "Process A",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 4,
+    "name": "Out Gain A",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 5,
+    "name": "Active B",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 6,
+    "name": "Lo Contour B",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 7,
+    "name": "Process B",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 8,
+    "name": "Out Gain B",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   }
+  ]
+ },
+ {
+  "code": "AMP2",
+  "title": "Dual Guitar Amp",
+  "signature": "ffffffffiffffffffi",
+  "params": [
+   {
+    "n": 1,
+    "name": "Preamp A",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 2,
+    "name": "Buzz A",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 3,
+    "name": "Punch A",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 4,
+    "name": "Crunch A",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 5,
+    "name": "Drive A",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 6,
+    "name": "Low A",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 7,
+    "name": "High A",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 8,
+    "name": "Level A",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 9,
+    "name": "Cabinet A",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   },
+   {
+    "n": 10,
+    "name": "Preamp B",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 11,
+    "name": "Buzz B",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 12,
+    "name": "Punch B",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 13,
+    "name": "Crunch B",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 14,
+    "name": "Drive B",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 15,
+    "name": "Low B",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 16,
+    "name": "High B",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 17,
+    "name": "Level B",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 18,
+    "name": "Cabinet B",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   }
+  ]
+ },
+ {
+  "code": "AMP",
+  "title": "Stereo Guitar Amp",
+  "signature": "ffffffffi",
+  "params": [
+   {
+    "n": 1,
+    "name": "Preamp",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 2,
+    "name": "Buzz",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 3,
+    "name": "Punch",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 4,
+    "name": "Crunch",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 5,
+    "name": "Drive",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 6,
+    "name": "Low",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 7,
+    "name": "High",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 8,
+    "name": "Level",
+    "type": "linf",
+    "min": 0,
+    "max": 10
+   },
+   {
+    "n": 9,
+    "name": "Cabinet",
+    "type": "enum",
+    "items": [
+     "OFF",
+     "ON"
+    ]
+   }
+  ]
+ },
+ {
+  "code": "DRV2",
+  "title": "Dual Tube Stage",
+  "signature": "ffffffffffffffffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Drive A",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 2,
+    "name": "Even Ear A",
+    "type": "linf",
+    "min": 0,
+    "max": 50
+   },
+   {
+    "n": 3,
+    "name": "Odd Ear A",
+    "type": "linf",
+    "min": 0,
+    "max": 50
+   },
+   {
+    "n": 4,
+    "name": "Gain A",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 5,
+    "name": "Lo Cut A",
+    "type": "logf",
+    "min": 20,
+    "max": 200
+   },
+   {
+    "n": 6,
+    "name": "Hi Cut A",
+    "type": "logf",
+    "min": 4000,
+    "max": 20000
+   },
+   {
+    "n": 7,
+    "name": "Lo Gain A",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 8,
+    "name": "Lo Freq A",
+    "type": "logf",
+    "min": 50,
+    "max": 400
+   },
+   {
+    "n": 9,
+    "name": "Hi Gain A",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 10,
+    "name": "Hi Freq A",
+    "type": "logf",
+    "min": 1000,
+    "max": 10000
+   },
+   {
+    "n": 11,
+    "name": "Drive B",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 12,
+    "name": "Even Ear B",
+    "type": "linf",
+    "min": 0,
+    "max": 50
+   },
+   {
+    "n": 13,
+    "name": "Odd Ear B",
+    "type": "linf",
+    "min": 0,
+    "max": 50
+   },
+   {
+    "n": 14,
+    "name": "Gain B",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 15,
+    "name": "Lo Cut B",
+    "type": "logf",
+    "min": 20,
+    "max": 200
+   },
+   {
+    "n": 16,
+    "name": "Hi Cut B",
+    "type": "logf",
+    "min": 4000,
+    "max": 20000
+   },
+   {
+    "n": 17,
+    "name": "Lo Gain B",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 18,
+    "name": "Lo Freq B",
+    "type": "logf",
+    "min": 50,
+    "max": 400
+   },
+   {
+    "n": 19,
+    "name": "Hi Gain B",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 20,
+    "name": "Hi Freq B",
+    "type": "logf",
+    "min": 1000,
+    "max": 10000
+   }
+  ],
+  "notes": "Signature printed over two lines ('fffffffffffffffff' + 'fff')."
+ },
+ {
+  "code": "DRV",
+  "title": "Stereo Tube Stage",
+  "signature": "ffffffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Drive",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 2,
+    "name": "Even Ear",
+    "type": "linf",
+    "min": 0,
+    "max": 50
+   },
+   {
+    "n": 3,
+    "name": "Odd Ear",
+    "type": "linf",
+    "min": 0,
+    "max": 50
+   },
+   {
+    "n": 4,
+    "name": "Gain",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 5,
+    "name": "Lo Cut",
+    "type": "logf",
+    "min": 20,
+    "max": 200
+   },
+   {
+    "n": 6,
+    "name": "Hi Cut",
+    "type": "logf",
+    "min": 4000,
+    "max": 20000
+   },
+   {
+    "n": 7,
+    "name": "Lo Gain",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 8,
+    "name": "Lo Freq",
+    "type": "logf",
+    "min": 50,
+    "max": 400
+   },
+   {
+    "n": 9,
+    "name": "Hi Gain",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 10,
+    "name": "Hi Freq",
+    "type": "logf",
+    "min": 1000,
+    "max": 10000
+   }
+  ]
+ },
+ {
+  "code": "PIT2",
+  "title": "Dual Pitch Shifter",
+  "signature": "ffffffffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Semitone A",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 2,
+    "name": "Cent A",
+    "type": "linf",
+    "min": -50,
+    "max": 50
+   },
+   {
+    "n": 3,
+    "name": "Delay A",
+    "type": "logf",
+    "min": 1,
+    "max": 100
+   },
+   {
+    "n": 4,
+    "name": "Lo Cut A",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 5,
+    "name": "Hi Cut A",
+    "type": "logf",
+    "min": 2000,
+    "max": 20000
+   },
+   {
+    "n": 6,
+    "name": "Mix A",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
+    "n": 7,
+    "name": "Semitone B",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 8,
+    "name": "Cent B",
+    "type": "linf",
+    "min": -50,
+    "max": 50
+   },
+   {
+    "n": 9,
+    "name": "Delay B",
+    "type": "logf",
+    "min": 1,
+    "max": 100
+   },
+   {
+    "n": 10,
+    "name": "Lo Cut B",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 11,
+    "name": "Hi Cut B",
+    "type": "logf",
+    "min": 2000,
+    "max": 20000
+   },
+   {
+    "n": 12,
+    "name": "Mix B",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   }
+  ]
+ },
+ {
+  "code": "PIT",
+  "title": "Stereo Pitch Shifter",
+  "signature": "ffffff",
+  "params": [
+   {
+    "n": 1,
+    "name": "Semitone",
+    "type": "linf",
+    "min": -12,
+    "max": 12
+   },
+   {
+    "n": 2,
+    "name": "Cent",
+    "type": "linf",
+    "min": -50,
+    "max": 50
+   },
+   {
+    "n": 3,
+    "name": "Delay",
+    "type": "logf",
+    "min": 1,
+    "max": 100
+   },
+   {
+    "n": 4,
+    "name": "Lo Cut",
+    "type": "logf",
+    "min": 10,
+    "max": 500
+   },
+   {
+    "n": 5,
+    "name": "Hi Cut",
+    "type": "logf",
+    "min": 2000,
+    "max": 20000
+   },
+   {
+    "n": 6,
+    "name": "Mix",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   }
+  ]
+ }
+]

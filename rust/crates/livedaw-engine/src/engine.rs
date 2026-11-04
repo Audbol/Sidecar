@@ -695,6 +695,13 @@ impl Engine {
         let counts = self.set_config(config);
         self.set_num_channels(counts.channels);
         self.set_num_fx(counts.fx);
+        // The console's factory FX rack (an X32's), each device on its defaults.
+        let fx = self.fx_models();
+        for (i, token) in config.profile.spec().fx_factory.iter().enumerate() {
+            if let Some(model) = livedaw_dsp::model::model_index(fx, token) {
+                self.set_fx_model(i, model, true);
+            }
+        }
     }
 
     /// Message thread: makes this a fresh console of `config`'s structure

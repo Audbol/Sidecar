@@ -182,7 +182,7 @@ impl Shared {
     }
 
     fn snapshot(&self, c: &Console) -> Vec<Arg> {
-        c.tree.entries.iter().enumerate().map(|(i, e)| e.ty.to_arg(&c.get(i))).collect()
+        (0..c.tree.entries.len()).map(|i| c.ty(i).to_arg(&c.get(i))).collect()
     }
 
     /// Sets values for a client and tells the other `/xremote` clients.
@@ -195,7 +195,7 @@ impl Shared {
         let mut out = Vec::with_capacity(sets.len());
         for (i, v) in sets {
             let e = &c.tree.entries[i];
-            let arg = e.ty.to_arg(&c.set(i, v));
+            let arg = c.ty(i).to_arg(&c.set(i, v));
             if let Some(h) = heard.as_mut() {
                 h[i] = arg.clone();
             }
@@ -341,7 +341,7 @@ impl Shared {
                     .group(found)
                     .into_iter()
                     .zip(&f[1..])
-                    .filter_map(|(i, t)| Some((i, tree.entries[i].ty.parse(t)?)))
+                    .filter_map(|(i, t)| Some((i, self.console().ty(i).parse(t)?)))
                     .collect();
                 self.apply(Some(sock), sets, Some(from));
                 reply(msg);
@@ -353,15 +353,17 @@ impl Shared {
                     // A get; a node's address answers its first value (as an X32 does).
                     let Some(&i) = group.first() else { return };
                     let e = &tree.entries[i];
-                    reply(Message::new(e.path.clone(), vec![e.ty.to_arg(&self.console().get(i))]));
+                    let c = self.console();
+                    reply(Message::new(e.path.clone(), vec![c.ty(i).to_arg(&c.get(i))]));
                     return;
                 }
                 let sets: Vec<(usize, Val)> = match found {
-                    Found::Leaf(i) => tree.entries[i].ty.from_arg(&msg.args[0]).map(|v| (i, v)).into_iter().collect(),
+                    Found::Leaf(i) => self.console().ty(i).from_arg(&msg.args[0]).map(|v| (i, v)).into_iter().collect(),
                     // A node takes ints and floats only (strings to a node mean
                     // something else to an X32).
                     Found::Node(_) if msg.args.iter().all(|a| matches!(a, Arg::Int(_) | Arg::Float(_))) => {
-                        group.into_iter().zip(&msg.args).filter_map(|(i, a)| Some((i, tree.entries[i].ty.from_arg(a)?))).collect()
+                        let c = self.console();
+                        group.into_iter().zip(&msg.args).filter_map(|(i, a)| Some((i, c.ty(i).from_arg(a)?))).collect()
                     }
                     Found::Node(_) => Vec::new(),
                 };

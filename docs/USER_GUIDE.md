@@ -952,7 +952,7 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
   X32's USB stick or X32-Edit) onto the console and keeps it as a new scene of the
   show; **EXPORT .scn** saves the console as one, which an X32 can load. The
   Universal Mixer's SCENES has the same two keys on an X32. What Sidecar doesn't
-  emulate yet (the FX slots, the outputs, the head amps) is skipped, and the import
+  emulate yet (the outputs, the head amps) is skipped, and the import
   says how many lines that was.
 - **Touch.** Unlike an X32's, the screen takes touch: tap a tab, drag up or down on
   an encoder's cell to turn it, tap the cell to push it, and drag the EQ's bands on
@@ -960,6 +960,14 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
 - **X32 COMPACT.** SETUP's first encoder switches the surface between the X32 and the
   X32 COMPACT: 8 input faders, in the layers CH 1-8 .. CH 25-32, AUX IN / USB, FX RTN,
   BUS 1-8 and BUS 9-16. The console is the same.
+
+- **Effects.** An X32 console has the X32's effects rack: FX 1-4 take any of its 61
+  models (reverbs, delays, modulation, pitch and the insert models), FX 5-8 its 34
+  insert models (graphic EQs, dynamics, enhancers, amps), and a new X32 starts with
+  its factory rack (Vintage Room, Hall, Stereo Delay, Stereo Chorus, graphic EQs).
+  X32 remote apps and scene files see and set them. The models' sound is still being
+  built: for now the reverbs, delays and modulation effects are silent and the insert
+  effects pass the signal through unchanged.
 
 Patching, the FX rack, show files and copy and paste are on the Universal Mixer for now.
 

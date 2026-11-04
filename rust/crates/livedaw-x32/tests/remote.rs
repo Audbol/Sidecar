@@ -547,3 +547,33 @@ fn linked_pairs_share_what_the_link_config_says() {
     c.set("/ch/03/mix/fader", vec![Arg::Float(0.75)]);
     assert!(ch(3).params.fader_db.load() < -100.0);
 }
+
+#[test]
+fn the_fx_rack_answers_its_models_and_parameters() {
+    let (engine, server) = start();
+    let c = Client::new(&server);
+    let model = |slot: usize| {
+        let fx = engine.fx_models();
+        fx[engine.controls.fx[slot].model_index_in(fx)].token
+    };
+    // The factory rack: FX 1-4 VRM, HALL, DLY, CRS on buses 13-16, FX 5-8 the GEQs.
+    assert_eq!(c.node("fx/1").trim_end(), "/fx/1 VRM");
+    assert_eq!(c.node("fx/5").trim_end(), "/fx/5 GEQ2");
+    assert_eq!(c.get_i("/fx/2/type"), 0);
+    assert_eq!(c.get_i("/fx/8/type"), 1, "FX 5-8 count their own models");
+    // A type by number or name selects the model, on its defaults.
+    c.set("/fx/1/type", vec![Arg::Int(0)]);
+    assert_eq!(model(0), "X32HALL");
+    c.set("/fx/5/type", vec![s("LIM")]);
+    assert_eq!(model(4), "X32LIM");
+    c.set("/fx/5/type", vec![s("HALL")]);
+    assert_eq!(model(4), "X32LIM", "a reverb isn't an insert model: FX 5 keeps its own");
+    // Parameters take the model's ranges: HALL's decay is logf 0.2..5 s.
+    c.set("/fx/1/par/02", vec![Arg::Float(1.0)]);
+    assert!((engine.controls.fx[0].values[1].load() - 5.0).abs() < 1e-3);
+    c.set_text("/fx/1/par 50 2.50 60");
+    assert_eq!(engine.controls.fx[0].values[0].load(), 50.0);
+    assert!(c.node("fx/1/par").starts_with("/fx/1/par 50 2.50 60 "));
+    // Beyond the model's parameters: 0.
+    assert_eq!(c.get_f("/fx/1/par/40"), 0.0);
+}

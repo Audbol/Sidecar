@@ -12,7 +12,12 @@
 //! owner's X32 Compact shows on an untouched strip (firmware 4.09).
 
 use crate::model::{ModelCategory, ModelSpec, ModelTables, ParamKind, ParamSpec};
-use crate::wing::{FILTER_TOOLS, FX_MODELS};
+use crate::wing::FILTER_TOOLS;
+
+pub mod fx;
+#[rustfmt::skip]
+mod fx_models;
+pub use fx_models::{CODES as FX_CODES, FX_MODELS, INSERT_ORDER};
 
 /// A parameter, in `ParamSpec`'s field order.
 #[allow(clippy::too_many_arguments)]
@@ -124,8 +129,8 @@ pub static EQ_BUS: &[ModelSpec] =
     &[ModelSpec { token: "X32EQ6", name: "6-Band EQ", category: ModelCategory::Eq, params: &EQ6_PARAMS }];
 
 /// The X32's models, as its profile names them. Its aux in and FX returns have
-/// no dynamics; the filter tools and the FX rack are the WING's until the X32's
-/// own (Phase 4).
+/// no dynamics; the filter tools are the WING's. Its FX rack has its own 61
+/// models, the send / return ones (`FxPremium`) in FX 1-4 only.
 pub static MODELS: ModelTables = ModelTables {
     dynamics: DYN_MODELS,
     aux_dynamics: &[],
@@ -141,6 +146,38 @@ pub static MODELS: ModelTables = ModelTables {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_x32s_fx_rack() {
+        use crate::wing::fx::{allowed_in, create, FxContext};
+        // An empty slot, a plugin (as the WING's EXT), then the 61 models in the X32's order.
+        assert_eq!(FX_MODELS.len(), 63);
+        assert_eq!((FX_MODELS[0].token, FX_MODELS[1].token), ("NONE", "EXT"));
+        assert_eq!(FX_MODELS[1], crate::wing::FX_MODELS[1], "EXT's parameters are the engine's");
+        assert_eq!((FX_MODELS[2].token, FX_MODELS[9].token, FX_MODELS[62].token), ("X32HALL", "X32VRM", "X32PIT"));
+        assert!(FX_MODELS.iter().all(|m| m.params.len() <= crate::wing::MAX_FX_PARAMS));
+        assert_eq!(FX_MODELS.iter().map(|m| m.params.len()).max(), Some(64), "the dual GEQ");
+        // FX 5-8 take the 34 insert models, FX 1-4 everything.
+        let index = |code: &str| crate::model::model_index(FX_MODELS, &format!("X32{code}")).unwrap();
+        for code in INSERT_ORDER {
+            assert!(allowed_in(&MODELS, index(code), 7), "{code}");
+        }
+        assert!(!allowed_in(&MODELS, index("HALL"), 4) && allowed_in(&MODELS, index("HALL"), 3));
+        assert_eq!(FX_MODELS.iter().filter(|m| m.category == ModelCategory::FxStandard).count(), 34);
+        // The factory values of the owner's X32 Compact: VRM's decay, DLY's time.
+        let vrm = &FX_MODELS[index("VRM")];
+        assert_eq!((vrm.params[1].label, vrm.params[1].default), ("DECAY", 1.94));
+        assert_eq!(FX_MODELS[index("DLY")].params[1].default, 223.0);
+        // Every model has a device (silent or passing through until its algorithm lands).
+        let ctx = FxContext { sample_rate: 48000.0, max_block: 64 };
+        for m in &FX_MODELS[2..] {
+            let mut dev = create(m.token, ctx).unwrap_or_else(|| panic!("{}", m.token));
+            let (mut l, mut r) = ([0.5f32; 16], [0.5f32; 16]);
+            dev.process(&mut l, &mut r);
+            let passes = m.category == ModelCategory::FxStandard;
+            assert_eq!(l[0], if passes { 0.5 } else { 0.0 }, "{}", m.token);
+        }
+    }
 
     #[test]
     fn the_x32s_models() {

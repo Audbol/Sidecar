@@ -11,7 +11,7 @@
 //! Writing walks the tree as the server's `/node` answers it, `/config` first
 //! as an X32 writes it; reading sets each line's values as the server's `/`
 //! command does (a linked pair's partner too). What Sidecar doesn't emulate
-//! (FX slots, outputs, head amps...) is left out of a written file and skipped
+//! (outputs, head amps...) is left out of a written file and skipped
 //! in a read one.
 
 use crate::map::{Console, Found};
@@ -71,7 +71,7 @@ pub fn read(c: &Console, text: &str) -> Read {
         };
         // Values in the node's order; fewer than all set the first ones.
         for (i, t) in tree.group(found).into_iter().zip(&f[1..]) {
-            if let Some(v) = tree.entries[i].ty.parse(t) {
+            if let Some(v) = c.ty(i).parse(t) {
                 c.set(i, v);
             }
         }

@@ -272,6 +272,9 @@ pub struct ProfileSpec {
     /// WING's (no name, faders down).
     pub dca_names: Option<&'static str>,
     pub dca_fader_db: f32,
+    /// A new console's FX rack, slot by slot (tokens of `models.fx`, on their
+    /// defaults): an X32's VRM, HALL, DLY, CRS and GEQs. Empty: every slot empty.
+    pub fx_factory: &'static [&'static str],
 }
 
 /// The pan of a strip a new console links into a pair (odd left, even
@@ -426,6 +429,7 @@ static WING: ProfileSpec = ProfileSpec {
     factory_name: None,
     dca_names: None,
     dca_fader_db: livedaw_dsp::fader::FADER_MIN,
+    fx_factory: &[],
 };
 
 /// No console's limits. Its strips have the WING's blocks (a profile's own set
@@ -457,6 +461,7 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
     factory_name: None,
     dca_names: None,
     dca_fader_db: livedaw_dsp::fader::FADER_MIN,
+    fx_factory: &[],
 };
 
 /// The Behringer X32: its counts (`Counts::X32`), fader law, colours and
@@ -497,6 +502,7 @@ static X32: ProfileSpec = ProfileSpec {
     factory_name: Some(x32_name),
     dca_names: Some("DCA"),
     dca_fader_db: 0.0,
+    fx_factory: &["X32VRM", "X32HALL", "X32DLY", "X32CRS", "X32GEQ2", "X32GEQ2", "X32GEQ2", "X32GEQ"],
 };
 
 #[cfg(test)]
