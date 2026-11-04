@@ -1,0 +1,13 @@
+[package]
+name = "livedaw-02r"
+description = "Yamaha 02R emulation for Sidecar: the console's own state over the engine, its parameters and its MIDI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+livedaw-dsp = { path = "../livedaw-dsp" }
+livedaw-engine = { path = "../livedaw-engine" }
+# The Yamaha consoles' shared pieces: value steps, pans, bulk dump framing.
+livedaw-promix = { path = "../livedaw-promix" }

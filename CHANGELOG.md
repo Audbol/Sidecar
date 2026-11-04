@@ -262,6 +262,21 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   - BUS 1-8: dynamics and master
   - AUX 1-8: the master alone
   - STEREO: EQ, dynamics, fader
+- `livedaw-02r`: the 02R over the engine.
+  - Its own state: channel pairs (MIC and TAPE), aux and bus pairs, fader groups A-D
+    and mute groups E-H, pan gangs, the stereo strips' two pans, the direct outs, the
+    dynamics processors' KEY IN, ST.LINK and IN, fader recall safe and fade times, the
+    oscillator.
+  - Its panel's linked operations:
+    - a pair copies one side and moves together, its processors linked
+    - a fader group's faders move by as many steps
+    - a mute group's ON keys flip
+    - a gang's pans keep their offset
+    - an aux pair's sends follow
+  - Its values as the console has them: fader steps on the channels' and STEREO's
+    laws, pans, attenuation, delay in samples, aux sends with EFF1 only to AUX 8 and
+    EFF2 only to AUX 7, routing to BUS 1-8 and ST, EQ and dynamics steps, the
+    processors' keys.
 - A new channel takes its console's factory settings, colour and name by its slot,
   not its id (a channel's id is 1-based and kept by shows).
 - Fixed: the X32 surface's UNIVERSAL MIXER key crashed the app when the Universal

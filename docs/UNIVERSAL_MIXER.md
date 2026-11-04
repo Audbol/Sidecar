@@ -1004,8 +1004,26 @@ Three layers:
         - BUS 1-8: dynamics and fader
         - AUX 1-8: fader alone
         - STEREO: EQ, dynamics, fader
-   3. **The console's own state** (`livedaw-02r`, as `livedaw-promix` is the
-      ProMix 01's):
+   3. **The console's own state** (done; `livedaw-02r`, as `livedaw-promix` is the
+      ProMix 01's, whose value steps and pans it reuses). `State` holds what is
+      below, and `Console` (`Y2Strip`) works it on the engine's strips:
+      - a pair copies one side (V2 p.184's list: not the attenuator, phase or
+        pan) and moves together, its processors linked
+      - a fader group's faders move by as many steps from the panel; a group
+        that is off doesn't
+      - a mute group's ON keys flip, each from its own state
+      - a gang's pans keep their offset (MAN p.38's example)
+      - an aux pair's sends follow
+      - aux sends: EFF1 only to AUX 8, EFF2 only to AUX 7
+      - routing: a post-fader send at 0 dB following the pan for BUS 1-8; the
+        main send for ST
+      - KEY IN as the engine's `sc_source` / `sc_tap`: before the EQ (tap 1)
+        or after (2); LEFT the odd neighbour; AUX 1-2, BUS 1-8 and STEREO
+        their PFL; LEFT refused on MIC 1, TAPE 1, BUS 1 and STEREO
+      - the parameters the control changes and the type 26 remote reach come
+        with step 5
+
+      What `State` holds:
       - pairs, fader groups A-D, mute groups E-H, pan gang
       - routing to BUS 1-8, ST and DIRECT
       - aux pre / post and the aux and bus pairs

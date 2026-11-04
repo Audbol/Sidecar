@@ -310,6 +310,18 @@ of any size, of which the WING is one configuration.
   over one port). Its effect
   types are `livedaw_dsp::promix::fx` (`FX_MODELS`, `PM...` tokens; the devices
   run the WING's in series and `Taps`, a delay of their own).
+- `livedaw-02r` (Phase 6): the Yamaha 02R over the engine, as `livedaw-promix` is the
+  ProMix 01's (whose value steps and pans it reuses). `State`:
+  - pairs, aux and bus pairs, fader and mute groups, gangs
+  - the stereo strips' pans, direct outs
+  - the dynamics processors' keys, recall safe and fade times, the oscillator
+  - written and read as text
+
+  `Console` (`Y2Strip`, the strips by the engine's numbering) is its panel's
+  operations on the engine's strips:
+  - pairs linked, fader groups by steps, mute groups flipping, gangs by offset
+  - aux sends and routing
+  - EQ and dynamics steps, the keys as the engine's `sc_source` / `sc_tap`
 - Laws (Phase 3 step 3): a `ProfileSpec` names its fader law (`FaderLaw`,
   `livedaw-dsp/fader.rs`: (position, dB) breakpoints and an optional step count, so
   a 128 position fader fits) and its pan law (`PanLaw`, `util.rs`: the mono and
