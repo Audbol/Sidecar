@@ -155,6 +155,9 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
 - The X32 display's ROUTING screen has the X32's output tabs: out 1-16, aux out and P16
   out (each output's source, tap, invert and, for out 1-16, delay; LAYER: the local
   outputs' blocks), card out, AES50-A and AES50-B (what each block of eight plays).
+- On an X32, the Universal Mixer's routing pages and the channels' port labels use the
+  X32's port groups: LOCAL IN 1-32, AUX IN 1-6, AES50 A and B, CARD, LOCAL OUT 1-16, AUX
+  OUT 1-6 and P16, numbered as the X32 numbers them ("A 1" is interface input 33).
 - The X32 display's ROUTING screen sets the input blocks (encoders 1-5) and switches
   between the recording and playback blocks (encoder 6), and shows which interface
   inputs each block takes. The channel strip's GAIN knob turns the head amp of the

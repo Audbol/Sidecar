@@ -174,6 +174,27 @@ inline int outputAt (Group g, int index)
     return p.output != 0 && p.first >= 0 && index < p.maxSize ? p.first + index : -1;
 }
 
+/** The profile's group of interface ports (an engine index below the
+    internal sources) that holds `index`, as an input or an output; false if
+    none does. */
+inline bool hardwareGroupOf (int index, bool output, Group& group, int& number)
+{
+    const auto& groups = portGroups();
+    for (size_t i = 0; i < groups.size(); ++i)
+    {
+        const auto& p = groups[i];
+        if ((output ? p.output : p.input) == 0 || p.first < 0 || p.first >= 0x10000)
+            continue;
+        if (index >= p.first && index < p.first + juce::jmax (p.size, p.maxSize))
+        {
+            group = (Group) i;
+            number = index - p.first;
+            return true;
+        }
+    }
+    return false;
+}
+
 /** The input group a source belongs to. */
 inline Group groupOfSource (int source)
 {
@@ -189,6 +210,10 @@ inline Group groupOfSource (int source)
         return Group::WlivePlay;
     if (UsbRecorder::isPlayerSource (source))
         return Group::UsbPlayer;
+    Group g = Group::LocalIn;
+    int number = 0;
+    if (hardwareGroupOf (source, false, g, number))
+        return g;
     return source < kBlock ? Group::LocalIn : source < 2 * kBlock ? Group::Aes50B : Group::Aes50C;
 }
 
@@ -206,6 +231,9 @@ inline int numberInGroup (int source)
     if (const int n = Recorder::playbackChannelOf (source); n >= 0)
         return n;
     if (const int n = UsbRecorder::playerChannelOf (source); n >= 0)
+        return n;
+    Group g = Group::LocalIn;
+    if (int n = 0; hardwareGroupOf (source, false, g, n))
         return n;
     return source % kBlock;
 }
@@ -242,13 +270,24 @@ inline juce::String channelTileLabel (int left, int right, bool stereo)
 }
 
 /** An output port as its tile numbers it (1-based within its group). */
-inline int outputNumber (int port) { return (isRecorderPort (port) ? port - kRecorderPortBase : port % kBlock) + 1; }
+inline int outputNumber (int port)
+{
+    if (isRecorderPort (port))
+        return port - kRecorderPortBase + 1;
+    Group g = Group::LocalOut;
+    if (int n = 0; hardwareGroupOf (port, true, g, n))
+        return n + 1;
+    return port % kBlock + 1;
+}
 
 /** The output group a port belongs to. */
 inline Group groupOfOutput (int port)
 {
     if (isRecorderPort (port))
         return Group::Recorder;
+    Group g = Group::LocalOut;
+    if (int n = 0; hardwareGroupOf (port, true, g, n))
+        return g;
     return port < kBlock ? Group::LocalOut : port < 2 * kBlock ? Group::Aes50B : Group::Aes50C;
 }
 

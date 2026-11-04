@@ -24,17 +24,26 @@ juce::String outputPortName (int port)
 
 std::vector<int> outputPorts (MixerEngine& engine)
 {
-    using G = routing::Group;
+    // The profile's groups of interface outputs, in port order: the local
+    // outputs always, the others when the interface reaches them (the WING's
+    // AES50 B and C past 48 and 96; an X32's aux out, AES50, card and P16).
     const int outs = engine.getHardwareOutputNames().size();
-    std::vector<int> ports;
-    for (auto g : { G::LocalOut, G::Aes50B, G::Aes50C })
+    const auto& groups = routing::portGroups();
+    std::vector<std::pair<int, routing::Group>> found;
+    for (size_t i = 0; i < groups.size(); ++i)
     {
-        if ((g == G::Aes50B && outs <= routing::kBlock) || (g == G::Aes50C && outs <= 2 * routing::kBlock))
-            continue;
+        const auto& p = groups[i];
+        const auto g = (routing::Group) i;
+        if (p.output != 0 && p.first >= 0 && p.first < 0x10000 && g != routing::Group::Recorder
+            && (g == routing::Group::LocalOut || p.first < outs))
+            found.emplace_back (p.first, g);
+    }
+    std::sort (found.begin(), found.end());
+    std::vector<int> ports;
+    for (const auto& [first, g] : found)
         for (int i = 0; i < routing::tileCount (g, outs); ++i)
             if (const int port = routing::outputAt (g, i); port >= 0)
                 ports.push_back (port);
-    }
     return ports;
 }
 

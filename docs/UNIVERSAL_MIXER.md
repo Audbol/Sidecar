@@ -658,8 +658,12 @@ Three layers:
         the strip's input (interface inputs 1-128), else the trim. Its output tabs
         (done): out 1-16, aux out, P16 out (encoder 1 picks the output; source, tap,
         invert, out 1-16's delay; out 1-16's second layer the `OUT` blocks), card
-        out, AES50-A, AES50-B (their blocks). Still to come: the Universal Mixer's
-        routing pages in the X32's port groups.
+        out, AES50-A, AES50-B (their blocks). The Universal Mixer's routing pages
+        (done) show the X32's port groups (`ports::X32_PORT_GROUPS`, in the WING's
+        places so the menus keep their layout: CARD in AES50 C's, P16 in ST
+        CONNECT's); the app finds an interface port's group from the profile's
+        list (`routing::hardwareGroupOf`, `inputPortName`, `outputPorts`) instead
+        of the WING's blocks of 48.
 
 Each emulation keeps the independent-project disclaimer: not affiliated with or
 endorsed by the console's maker, their trademarks used only to say what is emulated,

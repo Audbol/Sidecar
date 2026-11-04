@@ -7,6 +7,7 @@
 #include "engine/Show.h"
 #include "ui/Icons.h"
 #include "ui/MeterBank.h"
+#include "ui/RoutingGroups.h"
 
 #include <juce_audio_devices/juce_audio_devices.h>
 #include <juce_gui_basics/juce_gui_basics.h>
@@ -426,7 +427,7 @@ juce::String describeStrip (const Strip&);
 /** The strip's name, or its label ("CH 3") when it has a default name. */
 juce::String stripName (const Strip&);
 
-/** A channel input index as the WING names its port: "LCL 3" for LOCAL IN
+/** A channel input index as the console names its port (the WING's here): "LCL 3" for LOCAL IN
     (the interface's inputs 1-48, the remote's AES50 A), "B 1" / "C 1" for
     AES50 B / C (inputs 49-96, 97-144), "IN 145" past them; "PLAY 5" for a
     multitrack playback channel, "PLAYER 1" for the USB player, "OSC 1" for an
@@ -458,12 +459,11 @@ inline juce::String inputPortName (int input, int pad = 0)
         }
         return prefix + juce::String (n / 2 + 1) + (n % 2 == 0 ? "L" : "R");
     }
-    constexpr int kBlock = 48; // ports per group (routing::kBlock)
-    if (input >= 0 && input < 3 * kBlock)
-    {
-        static const char* const prefixes[] = { "LCL ", "B ", "C " };
-        return prefixes[input / kBlock] + juce::String (input % kBlock + 1).paddedLeft ('0', pad);
-    }
+    // An interface input: its group of the console's (the WING's LOCAL IN, AES50 B
+    // and C by 48; an X32's local, AES50 A and B, card and aux in).
+    routing::Group group = routing::Group::LocalIn;
+    if (int n = 0; routing::hardwareGroupOf (input, false, group, n))
+        return juce::String (routing::info (group).prefix) + " " + juce::String (n + 1).paddedLeft ('0', pad);
     return "IN " + juce::String (input + 1).paddedLeft ('0', pad);
 }
 

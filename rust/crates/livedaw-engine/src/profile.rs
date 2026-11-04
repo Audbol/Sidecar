@@ -9,7 +9,7 @@
 use crate::chain::{self, Node};
 use crate::config::Counts;
 use crate::params::{StripKind, DEFAULT_COLOUR, WING_BUSES, WING_COLOURS, WING_COLOUR_GRID};
-use crate::ports::{PortGroup, WING_PORT_GROUPS};
+use crate::ports::{PortGroup, WING_PORT_GROUPS, X32_PORT_GROUPS};
 use livedaw_dsp::fader::FaderLaw;
 use livedaw_dsp::model::ModelTables;
 use livedaw_dsp::util::PanLaw;
@@ -551,7 +551,7 @@ static X32: ProfileSpec = ProfileSpec {
     output_order: b"EDI",
     fader: FaderLaw::X32,
     pan: PanLaw::WING,
-    port_groups: WING_PORT_GROUPS,
+    port_groups: X32_PORT_GROUPS,
     models: &livedaw_dsp::x32::MODELS,
     remotes: Remotes { midi: Some(MidiProtocol::X32), network: &[NetworkProtocol::X32Osc] },
     palette: Palette::X32,
@@ -707,7 +707,8 @@ mod tests {
             assert_eq!(s.fader.steps, if p == Profile::X32 { 1024 } else { 0 });
             assert_eq!(s.pan.gains(true, -1.0), livedaw_dsp::util::wing_mono_pan(-1.0));
             assert_eq!(s.pan.gains(false, 0.5), livedaw_dsp::util::stereo_balance(0.5));
-            assert_eq!(s.port_groups, WING_PORT_GROUPS);
+            let groups = if p == Profile::X32 { X32_PORT_GROUPS } else { WING_PORT_GROUPS };
+            assert_eq!(s.port_groups, groups);
         }
     }
 

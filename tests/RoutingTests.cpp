@@ -130,6 +130,19 @@ public:
             expect (! MixerEngine::sourceGainRange (MixerEngine::sourceIndex (MixerEngine::usrSource (0))).hasGain());
             expectEquals (MixerEngine::matrixDirectName (ld::kDirectSoloBus), juce::String ("MON.BUS"));
             expectEquals (MixerEngine::matrixDirectName (-1), juce::String ("OFF"));
+
+            // An X32's groups (Phase 4 step 10): its ports, named and numbered as an X32's.
+            routing::setProfile (ld::kProfileX32);
+            expectEquals (juce::String (routing::info (Group::Aes50C).name), juce::String ("CARD"));
+            expectEquals (inputPortName (32), juce::String ("A 1"));
+            expectEquals (inputPortName (128), juce::String ("CARD 1"));
+            expectEquals (inputPortName (161), juce::String ("AUX 2"));
+            expect (routing::groupOfOutput (17) == Group::AuxOut);
+            expectEquals (routing::outputNumber (17), 2);
+            expect (routing::groupOfOutput (160) == Group::StConnect, "P16");
+            expectEquals (juce::String (routing::info (Group::StConnect).name), juce::String ("P16"));
+            routing::setProfile (ld::kProfileWing);
+            expectEquals (inputPortName (50), juce::String ("B 3"), "the WING's again");
         }
 
         beginTest ("ROUTING > OUTPUTS: a source straight to an output; a bus as a channel's source");
