@@ -108,6 +108,12 @@ private:
     /** ROUTING's output tabs (out 1-16, aux out, P16 out, card out, AES50-A
         and -B): the output signals and the output blocks. */
     void assignOutputEncoders();
+    /** EFFECTS (step 11): home picks a slot, its model and (FX 1-4) its
+        source; fx1-fx8 turn the slot's parameters, six per layer. */
+    void assignEffectsEncoders();
+    void paintEffects (juce::Graphics&, juce::Rectangle<int>);
+    /** The X32 models slot `slot` (0-7) takes: FX 1-4 any, FX 5-8 the insert ones. */
+    std::vector<int> fxModelsFor (int slot) const;
     void paintOutputs (juce::Graphics&, juce::Rectangle<int>);
     /** An encoder that turns `path`'s value through `choices` (by name). */
     KnobBinding enumKnob (const juce::String& label, const juce::String& path, const juce::StringArray& choices);
@@ -122,6 +128,7 @@ private:
     Screen screen = Screen::Home;
     int tab = 0, layer = 0, sendBank = 0, eqBand = 0, selectedScene = 0;
     int selectedOutput = 0; // ROUTING's signal tabs: the output the encoders set
+    int selectedFx = 0;     // EFFECTS > home: the slot the encoders set
 
     std::array<Encoder, 6> encoders;
     std::array<DisplayKnob, 6> knobs;

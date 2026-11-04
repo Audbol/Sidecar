@@ -664,6 +664,12 @@ Three layers:
         CONNECT's); the app finds an interface port's group from the profile's
         list (`routing::hardwareGroupOf`, `inputPortName`, `outputPorts`) instead
         of the WING's blocks of 48.
+   11. **The X32 display's EFFECTS screen** (done): home (encoder 1 the slot, 2 its
+       model from the slot's list, `Display::fxModelsFor`: FX 5-8 not the
+       premium ones; its key EDIT; 3-4 FX 1-4's SOURCE L / R through the X32
+       map's text commands), fx1-fx8 (the slot's parameters, six per layer,
+       bound to the engine's `FxParams` by the model's table, every value listed
+       in two columns).
 
 Each emulation keeps the independent-project disclaimer: not affiliated with or
 endorsed by the console's maker, their trademarks used only to say what is emulated,

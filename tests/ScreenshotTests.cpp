@@ -349,6 +349,34 @@ private:
         display.getEncoder (0).turn.set (0.0f);
         expectEquals (engine.getOutputSource (128), 0);
 
+        // EFFECTS (step 11): home picks a slot and its model; fx1-fx8 its parameters.
+        {
+            auto& fx = engine.getFx();
+            display.showScreen (ui::x32::Display::Screen::Effects);
+            expectEquals (display.getEncoder (1).turn.text(), juce::String ("Vintage Room"), "FX 1's factory model");
+            display.getEncoder (0).turn.set (4.0f / 7.0f); // FX 5
+            display.getEncoder (1).turn.set (0.0f);
+            const auto first = models::model (models::Fx, fx.getModel (4));
+            expect (first.category != models::Category::FxPremium, "FX 5 takes the insert models only: " + first.name);
+            display.getEncoder (0).turn.set (0.0f); // FX 1
+            display.pushEncoder (1);                // EDIT
+            expectEquals (display.getTab(), 1);
+            expect (display.getEncoder (0).turn.label.isNotEmpty(), "FX 1's first parameter");
+            display.getEncoder (0).turn.set (0.0f);
+            const float low = fx.params (0).values[0].load();
+            display.getEncoder (0).turn.set (1.0f);
+            expect (fx.params (0).values[0].load() > low, "the encoder turns FX 1's parameter: " + juce::String (low));
+            display.getEncoder (0).turn.set (0.5f);
+            if (folder.isNotEmpty())
+            {
+                const auto shot = display.createComponentSnapshot (display.getLocalBounds(), true, 1.0f);
+                const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile ("x32-display-effects.png");
+                file.deleteFile();
+                juce::FileOutputStream out (file);
+                expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (shot, out), file.getFullPathName());
+            }
+        }
+
         // The X32 COMPACT: 8 input faders in eight layers, chosen on SETUP.
         display.showScreen (ui::x32::Display::Screen::Setup);
         expectEquals (display.getEncoder (0).turn.label, juce::String ("MODEL"));

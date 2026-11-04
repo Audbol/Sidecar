@@ -202,7 +202,7 @@ juce::StringArray Display::getTabs() const
         case Screen::Routing:    return { "home", "out 1-16", "aux out", "p16 out", "card out", "aes50-a", "aes50-b" };
         case Screen::Setup:      return { "global", "remote" };
         case Screen::Library:    return { "scenes" };
-        case Screen::Effects:    return { "home" };
+        case Screen::Effects:    return { "home", "fx1", "fx2", "fx3", "fx4", "fx5", "fx6", "fx7", "fx8" };
         case Screen::MuteGroups: return { "mute grp" };
         case Screen::Utility:    return { "utility" };
     }
@@ -215,6 +215,13 @@ int Display::numLayers() const
         return tab == 1 ? 2 : 1; // remote: the MIDI kinds, then SysEx
     if (screen == Screen::Routing)
         return tab == 1 ? 2 : 1; // out 1-16: the signals, then the local outputs' blocks
+    if (screen == Screen::Effects && tab > 0)
+    {
+        // A slot's parameters, six per layer.
+        const int m = ctx.engine.getFx().getModel (tab - 1);
+        const int n = m > ld::kFxExt ? (int) models::model (models::Fx, m).params.size() : 0;
+        return juce::jmax (1, (n + 5) / 6);
+    }
     if (screen != Screen::Home)
         return 1;
     // HOME's home, gate and dynamics tabs have a second layer of encoders.
@@ -450,6 +457,10 @@ void Display::assignEncoders()
     {
         assignRoutingEncoders();
     }
+    else if (screen == Screen::Effects)
+    {
+        assignEffectsEncoders();
+    }
     else if (screen == Screen::Setup && getModel && setModel)
     {
         KnobBinding m;
@@ -528,6 +539,142 @@ KnobBinding Display::enumKnob (const juce::String& label, const juce::String& pa
     k.text = [this, path] { return x32Value (path); };
     k.steps = (float) n;
     return k;
+}
+
+std::vector<int> Display::fxModelsFor (int slot) const
+{
+    std::vector<int> list;
+    const auto& table = models::table (models::Fx);
+    for (const auto& m : table)
+        if (m.token.startsWith ("X32") && (slot < 4 || m.category != models::Category::FxPremium))
+            list.push_back (m.index);
+    return list;
+}
+
+void Display::assignEffectsEncoders()
+{
+    auto& fx = ctx.engine.getFx();
+    auto run = [this] (const juce::String& text)
+    {
+        int set = 0;
+        ctx.engine.getWing().runX32Text (text, set);
+        repaint();
+    };
+    if (tab == 0)
+    {
+        // Encoder 1 the slot, 2 its model (push: edit it), 3-4 FX 1-4's SOURCE L / R.
+        KnobBinding pick;
+        pick.label = "FX";
+        pick.get = [this] { return (float) selectedFx / 7.0f; };
+        pick.set = [this] (float v)
+        {
+            selectedFx = juce::jlimit (0, 7, juce::roundToInt (v * 7.0f));
+            assignEncoders();
+        };
+        pick.text = [this] { return juce::String (selectedFx + 1); };
+        pick.steps = 8.0f;
+        encoders[0] = encoder (pick);
+
+        const int slot = selectedFx;
+        const auto list = fxModelsFor (slot);
+        KnobBinding type;
+        type.label = "TYPE";
+        const int n = (int) list.size();
+        type.get = [&fx, slot, list, n]
+        {
+            const auto at = std::find (list.begin(), list.end(), fx.getModel (slot));
+            return at == list.end() || n < 2 ? 0.0f : (float) (at - list.begin()) / (float) (n - 1);
+        };
+        type.set = [slot, list, n, run] (float v)
+        {
+            if (n == 0)
+                return;
+            const auto& m = models::model (models::Fx, list[(size_t) juce::roundToInt (v * (float) (n - 1))]);
+            run ("/fx/" + juce::String (slot + 1) + "/type " + m.token.fromFirstOccurrenceOf ("X32", false, false));
+        };
+        type.text = [&fx, slot]
+        {
+            const int m = fx.getModel (slot);
+            return m > ld::kFxExt ? models::model (models::Fx, m).name : juce::String ("-");
+        };
+        type.steps = (float) juce::jmax (2, n);
+        encoders[1] = encoder (type, "EDIT", [this, slot] { showScreen (Screen::Effects, slot + 1); }, [] { return false; });
+        if (slot < 4)
+        {
+            static const juce::StringArray sources { "INS", "MIX1", "MIX2", "MIX3", "MIX4", "MIX5", "MIX6", "MIX7", "MIX8", "MIX9",
+                                                     "MIX10", "MIX11", "MIX12", "MIX13", "MIX14", "MIX15", "MIX16", "M/C" };
+            const auto base = "/fx/" + juce::String (slot + 1) + "/source/";
+            encoders[2] = encoder (enumKnob ("SOURCE L", base + "l", sources));
+            encoders[3] = encoder (enumKnob ("SOURCE R", base + "r", sources));
+        }
+        return;
+    }
+    // fx1-fx8: the slot's parameters, six per layer.
+    const int slot = tab - 1;
+    const int m = fx.getModel (slot);
+    if (m <= ld::kFxExt)
+        return;
+    const auto& model = models::model (models::Fx, m);
+    auto& values = fx.params (slot).values;
+    layer = juce::jlimit (0, numLayers() - 1, layer); // a new model may have fewer
+    for (int e = 0; e < 6; ++e)
+    {
+        const int k = layer * 6 + e;
+        if (k < (int) model.params.size())
+            encoders[(size_t) e] = encoder (bindModelParam (values[k], model.params[(size_t) k]));
+    }
+}
+
+void Display::paintEffects (juce::Graphics& g, juce::Rectangle<int> r)
+{
+    auto& fx = ctx.engine.getFx();
+    const auto modelName = [&fx] (int slot)
+    {
+        const int m = fx.getModel (slot);
+        return m > ld::kFxExt ? models::model (models::Fx, m).name : juce::String ("-");
+    };
+    if (tab == 0)
+    {
+        juce::StringArray left, right;
+        for (int i = 0; i < juce::jmin (8, fx.getNumSlots()); ++i)
+        {
+            left.add ((i == selectedFx ? "> FX " : "FX ") + juce::String (i + 1));
+            auto text = modelName (i);
+            if (i < 4)
+            {
+                const auto l = x32Value ("/fx/" + juce::String (i + 1) + "/source/l");
+                const auto rr = x32Value ("/fx/" + juce::String (i + 1) + "/source/r");
+                text << "   " << (l == "INS" ? juce::String ("INSERT") : l == rr ? "FROM " + l : "FROM " + l + " / " + rr);
+            }
+            right.add (text);
+        }
+        paintRows (g, r, left, right);
+        return;
+    }
+    // A slot: its model, then every parameter in two columns, this layer's marked.
+    const int slot = tab - 1;
+    const int m = fx.getModel (slot);
+    g.setColour (theme.text);
+    g.setFont (type::font (type::kLabel, true));
+    g.drawText ("FX " + juce::String (slot + 1) + "   " + modelName (slot), r.removeFromTop (22), juce::Justification::centredLeft);
+    if (m <= ld::kFxExt)
+        return;
+    const auto& model = models::model (models::Fx, m);
+    auto& values = fx.params (slot).values;
+    const int n = (int) model.params.size();
+    const int perColumn = (n + 1) / 2;
+    for (int c = 0; c < 2; ++c)
+    {
+        auto area = r.removeFromLeft (c == 0 ? r.getWidth() / 2 : r.getWidth()).reduced (c == 0 ? 0 : 4, 0);
+        juce::StringArray left, right;
+        for (int k = c * perColumn; k < juce::jmin (n, (c + 1) * perColumn); ++k)
+        {
+            const auto& p = model.params[(size_t) k];
+            left.add ((k / 6 == layer ? "> " : "") + p.label);
+            right.add (p.display (values[k].load()));
+        }
+        paintRows (g, area, left, right);
+    }
 }
 
 void Display::assignOutputEncoders()
@@ -882,6 +1029,14 @@ void Display::timerCallback()
     if (auto* s = selected())
         now << juce::String::toHexString ((juce::pointer_sized_int) s) << s->params.gate().model.load() << "|" << s->params.dynamics().model.load()
             << "|" << s->params.eq().model.load() << "|" << s->params.processOrder.load();
+    if (screen == Screen::Effects)
+    {
+        // The FX slots' models: their parameters on the encoders follow a change.
+        auto& fx = ctx.engine.getFx();
+        for (int i = 0; i < juce::jmin (8, fx.getNumSlots()); ++i)
+            now << "|fx" << fx.getModel (i);
+        repaint(); // values set elsewhere
+    }
     if (now != shownStatus)
     {
         shownStatus = now;
@@ -1226,18 +1381,8 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
             break;
         }
         case Screen::Effects:
-        {
-            auto& fx = ctx.engine.getFx();
-            juce::StringArray left, right;
-            for (int i = 0; i < juce::jmin (8, fx.getNumSlots()); ++i)
-            {
-                left.add ("FX " + juce::String (i + 1));
-                const int m = fx.getModel (i);
-                right.add (m > ld::kFxExt ? models::model (models::Fx, m).name : juce::String ("-"));
-            }
-            paintRows (g, r.reduced (12), left, right);
+            paintEffects (g, r.reduced (12));
             break;
-        }
         case Screen::Routing:
             if (tab > 0)
                 paintOutputs (g, r.reduced (12));

@@ -986,6 +986,10 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
   As on an X32, FX 1-4 are fed from buses 13-16 (each effect's SOURCE can be any
   bus or M/C, or INS to use it as an insert) and come back on the FX return channels
   (FX RTN), ready to fade up.
+  On the display, **EFFECTS** has them: on home, encoder 1 picks a slot, encoder 2
+  its effect (FX 5-8 take the insert effects only) and its key **EDIT** opens the
+  slot's tab, and encoders 3-4 set FX 1-4's SOURCE; the tabs fx1-fx8 list a slot's
+  parameters and turn them six at a time (LAYER for the next six).
   X32 remote apps and scene files see and set them. Every one of the X32's effects
   works, most on the WING's devices of the same design; they haven't yet been measured against a real X32, so their
   sound may differ from the console's in detail.
@@ -1004,7 +1008,7 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
   head amp of the channel's input (-12 to +60 dB), or the digital TRIM when the
   channel takes no interface input.
 
-Patching, the FX rack, show files and copy and paste are on the Universal Mixer for now.
+Show files and copy and paste are on the Universal Mixer for now.
 
 ## Multitrack recording
 
