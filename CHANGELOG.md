@@ -118,9 +118,11 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
 - 15 more X32 effects make sound on the WING's devices of the same design: Ambiance,
   Room, Chamber, Plate, Rich Plate, Vintage Reverb, Gated and Reverse Reverb, Flanger,
   Phaser, Dimensional Chorus, Mood Filter, Rotary Speaker, Tremolo / Panner and Pitch
-  Shifter. Dimensional Chorus now starts with MODE 1 pressed. The X32's tap delays,
-  dual and combination effects and its insert effects still return silence or pass
-  the signal through.
+  Shifter. Dimensional Chorus now starts with MODE 1 pressed.
+- The rest of the X32's send effects make sound: 3-Tap and 4-Tap Delay, Dual Pitch,
+  Sub Octaver, the five combinations (Delay / Chamber, Chorus / Chamber, Flanger /
+  Chamber, Delay / Chorus, Delay / Flanger) and Modulation Delay. The X32's insert
+  effects (graphic EQs, dynamics, enhancers, amps) still pass the signal through.
 
 ## [0.2.0] - beta
 

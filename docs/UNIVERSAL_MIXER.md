@@ -584,10 +584,13 @@ Three layers:
         Gated, Reverse, Flanger, Phaser, Dimensional Chorus, Mood Filter, Rotary,
         Tremolo / Panner and Pitch Shifter run on the WING's devices, mapped over the
         WING device's ranges (`x32_voices` lists each mapping where the units
-        differ). Part 2: the dual effects (Sub Octaver, Dual Pitch: two WING devices,
-        one per side), the combinations (Delay / Chamber, Chorus / Chamber, Flanger /
-        Chamber, Delay / Chorus, Delay / Flanger: two in series or parallel),
-        Modulation Delay and the 3- and 4-tap delays.
+        differ). Part 2 (done): the dual effects (Sub Octaver, Dual Pitch: two WING
+        devices, one per side, `x32_voices::Dual`), the combinations (Delay /
+        Chamber, Chorus / Chamber, Flanger / Chamber, Delay / Chorus, Delay / Flanger:
+        two WING devices side by side, BALANCE and MIX; `x32_combos`), Modulation
+        Delay (delay into chorus, the reverb after or beside them) and the 3- and
+        4-tap delays (`delay::x32taps`). Their structure is Sidecar's reading of the
+        controls, to be measured on the owner's X32.
       - 9f-9g, the insert models in batches, each measured (curves, gain
         reduction) since none can be compared by ear here: EQs and dynamics
         (GEQ, TruEQ, Xtec EQ1 / EQ5, de-esser, limiter, Combinator, Fair, Leisure and

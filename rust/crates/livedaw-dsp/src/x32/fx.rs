@@ -5,8 +5,9 @@
 //!
 //! The algorithms land in batches (9d-9g); [`BUILT`] are the models with one
 //! (most reverbs and modulation effects run on the WING's devices of the
-//! same design, `wing::fx::x32_voices`; Stereo Delay is the WING's with a
-//! factor and a feedback per side). Until a model's does, its device holds its settings
+//! same design, `wing::fx::x32_voices`, the combinations on two or three of
+//! them, `wing::fx::x32_combos`; Stereo Delay is the WING's with a factor and
+//! a feedback per side; the tap delays are `wing::fx::delay::x32taps`). Until a model's does, its device holds its settings
 //! and keeps the signal as it was: an insert model (FX 5-8's) passes it
 //! through, a send / return model (reverbs, delays, modulation, pitch)
 //! returns silence, so a bus feeding it adds nothing.
@@ -17,7 +18,8 @@ use crate::wing::fx::{FxAlgo, FxContext};
 /// The models whose algorithm has landed (created before this module's placeholders).
 pub const BUILT: &[&str] = &[
     "X32HALL", "X32VRM", "X32DLY", "X32CRS", "X32AMBI", "X32ROOM", "X32CHAM", "X32PLAT", "X32RPLT", "X32VREV", "X32GATE",
-    "X32RVRS", "X32FLNG", "X32PHAS", "X32DIMC", "X32FILT", "X32ROTA", "X32PAN", "X32PIT",
+    "X32RVRS", "X32FLNG", "X32PHAS", "X32DIMC", "X32FILT", "X32ROTA", "X32PAN", "X32PIT", "X32PIT2", "X32SUB", "X323TAP",
+    "X324TAP", "X32D/RV", "X32CR/R", "X32FL/R", "X32D/CR", "X32D/FL", "X32MODD",
 ];
 
 /// Creates the placeholder device of X32 model `token` (`X32HALL`...); `None`

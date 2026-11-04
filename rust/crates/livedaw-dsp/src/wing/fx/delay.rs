@@ -13,12 +13,13 @@ mod oilcan;
 mod stereo;
 mod tape;
 mod ultratap;
+mod x32taps;
 
 use super::blocks::DelayLine;
 use super::{FxAlgo, FxContext};
 
 /// The devices this module implements.
-pub(super) const TOKENS: &[&str] = &["ST-DL", "TAP-DL", "TAPE-DL", "OILCAN", "BBD-DL", "X32DLY"];
+pub(super) const TOKENS: &[&str] = &["ST-DL", "TAP-DL", "TAPE-DL", "OILCAN", "BBD-DL", "X32DLY", "X323TAP", "X324TAP"];
 
 pub(super) fn create(token: &str, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
     if !TOKENS.contains(&token) {
@@ -31,6 +32,8 @@ pub(super) fn create(token: &str, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
         "OILCAN" => Box::new(oilcan::Oilcan::new(ctx)),
         "BBD-DL" => Box::new(bbd::Bbd::new(ctx)),
         "X32DLY" => Box::new(stereo::StereoDelay::x32(ctx)),
+        "X323TAP" => Box::new(x32taps::TapDelay::new(3, ctx)),
+        "X324TAP" => Box::new(x32taps::TapDelay::new(4, ctx)),
         _ => return None,
     })
 }

@@ -16,6 +16,11 @@
 //! MODULATE 0-10 the WING's 0-100; Phaser's BASE 0-50 the WING's RANGE at
 //! twice; Mood Filter's RESONANCE and DRIVE 0-100 the WING's 0-10. The X32's
 //! Plate is the WING's Blue Plate design, its Rich Plate the WING's Plate.
+//!
+//! The dual effects (Dual Pitch, Sub Octaver) run two WING devices, one per
+//! side ([`Dual`]): side A takes the left input, side B the right, each fed
+//! to its device in mono. Sub Octaver's DRY sets the direct signal's level
+//! under the sub (the WING's keeps it at unity); ACTIVE off passes the side.
 
 use super::{FxAlgo, FxContext, FX_READOUTS};
 use crate::model::{ModelCategory, ModelSpec, ParamKind, ParamSpec, Params};
@@ -25,12 +30,17 @@ use crate::wing::MAX_FX_PARAMS;
 /// The X32 models built on a WING device.
 pub(super) const TOKENS: &[&str] = &[
     "X32HALL", "X32VRM", "X32CRS", "X32AMBI", "X32ROOM", "X32CHAM", "X32PLAT", "X32RPLT", "X32VREV", "X32GATE", "X32RVRS",
-    "X32FLNG", "X32PHAS", "X32DIMC", "X32FILT", "X32ROTA", "X32PAN", "X32PIT",
+    "X32FLNG", "X32PHAS", "X32DIMC", "X32FILT", "X32ROTA", "X32PAN", "X32PIT", "X32PIT2", "X32SUB",
 ];
 
 pub(super) fn create(token: &str, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
     if !TOKENS.contains(&token) {
         return None;
+    }
+    match token {
+        "X32PIT2" => return Dual::boxed("PITCH", dual_pitch, ctx),
+        "X32SUB" => return Dual::boxed("SUB", dual_sub, ctx),
+        _ => {}
     }
     // The wide specs, or the WING device's own.
     let (wing, spec, map): (&str, Option<&'static ModelSpec>, Map) = match token {
@@ -281,6 +291,138 @@ impl FxAlgo for Bridge {
     }
 }
 
+/// Sets one side's WING controls (side 0 = A, 1 = B); returns whether the
+/// side runs and, for a device that adds to its input, the direct level.
+type SideMap = fn(&Params, usize, &mut dyn FnMut(&'static str, f32)) -> (bool, Option<f32>);
+
+/// Two WING devices, one per side, each fed its side in mono.
+struct Dual {
+    devs: [Box<dyn FxAlgo>; 2],
+    spec: &'static ModelSpec,
+    map: SideMap,
+    values: [[f32; MAX_FX_PARAMS]; 2],
+    run: [bool; 2],
+    /// The direct level under an adding device's output (None: its output as is).
+    dry: [Option<f32>; 2],
+    /// The device's second input, and the side's input as it came.
+    other: Vec<f32>,
+    input: Vec<f32>,
+}
+
+impl Dual {
+    fn boxed(wing: &str, map: SideMap, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
+        let spec = &crate::wing::FX_MODELS[super::model_index(wing)?];
+        let mut values = [0.0; MAX_FX_PARAMS];
+        spec.defaults_into(&mut values);
+        Some(Box::new(Self {
+            devs: [super::create(wing, ctx)?, super::create(wing, ctx)?],
+            spec,
+            map,
+            values: [values; 2],
+            run: [true; 2],
+            dry: [None; 2],
+            other: vec![0.0; ctx.max_block],
+            input: vec![0.0; ctx.max_block],
+        }))
+    }
+}
+
+impl FxAlgo for Dual {
+    fn set_params(&mut self, p: &Params) {
+        for side in 0..2 {
+            let (spec, values) = (self.spec, &mut self.values[side]);
+            let (run, dry) = (self.map)(p, side, &mut |id, v| {
+                if let Some(i) = spec.param_index(id) {
+                    values[i] = v;
+                }
+            });
+            if run && !self.run[side] {
+                self.devs[side].reset();
+            }
+            (self.run[side], self.dry[side]) = (run, dry);
+            self.devs[side].set_params(&Params::new(self.spec, &self.values[side]));
+        }
+    }
+
+    fn process(&mut self, left: &mut [f32], right: &mut [f32]) {
+        let n = left.len().min(self.other.len());
+        for (side, x) in [left, right].into_iter().enumerate() {
+            if !self.run[side] {
+                continue;
+            }
+            let x = &mut x[..n];
+            self.input[..n].copy_from_slice(x);
+            self.other[..n].copy_from_slice(x);
+            self.devs[side].process(x, &mut self.other[..n]);
+            if let Some(d) = self.dry[side] {
+                for (y, dry) in x.iter_mut().zip(&self.input[..n]) {
+                    *y += (d - 1.0) * dry;
+                }
+            }
+        }
+    }
+
+    fn reset(&mut self) {
+        for d in &mut self.devs {
+            d.reset();
+        }
+    }
+}
+
+fn dual_pitch(p: &Params, side: usize, set: &mut dyn FnMut(&'static str, f32)) -> (bool, Option<f32>) {
+    let ab = ["a", "b"][side];
+    for (wing, x32) in
+        [("semi", "semitone"), ("cent", "cent"), ("dly", "delay"), ("lc", "lo_cut"), ("hc", "hi_cut"), ("mix", "mix")]
+    {
+        set(wing, p.f(&format_id(x32, ab)));
+    }
+    (true, None)
+}
+
+fn dual_sub(p: &Params, side: usize, set: &mut dyn FnMut(&'static str, f32)) -> (bool, Option<f32>) {
+    // Side B's controls end in "_2".
+    let id = |x32: &str| if side == 0 { IdBuf::from(x32) } else { format_id(x32, "2") };
+    for (wing, x32) in [("rng", "range"), ("oct1", "octave_1"), ("oct2", "octave_2")] {
+        set(wing, p.f(&id(x32)));
+    }
+    (p.on(&id("active")), Some(0.01 * p.f(&id("dry"))))
+}
+
+/// A control id built on the audio thread without allocating ("semitone" + "a").
+struct IdBuf {
+    buf: [u8; 32],
+    len: usize,
+}
+
+impl IdBuf {
+    fn from(s: &str) -> Self {
+        let mut b = Self { buf: [0; 32], len: 0 };
+        b.push(s);
+        b
+    }
+
+    fn push(&mut self, s: &str) {
+        let n = s.len().min(self.buf.len() - self.len);
+        self.buf[self.len..self.len + n].copy_from_slice(&s.as_bytes()[..n]);
+        self.len += n;
+    }
+}
+
+impl std::ops::Deref for IdBuf {
+    type Target = str;
+    fn deref(&self) -> &str {
+        std::str::from_utf8(&self.buf[..self.len]).unwrap_or("")
+    }
+}
+
+/// `base` + "_" + `suffix` ("semitone_a", "dry_2").
+fn format_id(base: &str, suffix: &str) -> IdBuf {
+    let mut b = IdBuf::from(base);
+    b.push("_");
+    b.push(suffix);
+    b
+}
+
 /// A continuous control over `lo..hi` (the device reads values, not steps).
 const fn r(id: &'static str, lo: f32, hi: f32) -> ParamSpec {
     ParamSpec { id, label: id, unit: "", kind: ParamKind::Linear, min: lo, max: hi, steps: 0, default: lo }
@@ -415,6 +557,9 @@ mod tests {
         let ctx = FxContext { sample_rate: 48_000.0, max_block: 64 };
         for token in TOKENS {
             assert!(create(token, ctx).is_some(), "{token}");
+            if matches!(*token, "X32PIT2" | "X32SUB") {
+                continue; // two devices, each a side (the_dual_effects...)
+            }
             let x32 = &crate::x32::FX_MODELS[crate::model::model_index(crate::x32::FX_MODELS, token).unwrap()];
             let mut values = [0.0; MAX_FX_PARAMS];
             x32.defaults_into(&mut values);
@@ -532,6 +677,38 @@ mod tests {
         let wrest = [("lmult", 1.1), ("hmult", 0.69), ("lc", 97.0), ("hc", 10400.0), ("erl", 28.0), ("err", 34.0)];
         let (a, b) = (impulse(x32, "X32VRM", &vrm), impulse(wing, "V-ROOM", &[&wvrm[..], &wrest[..]].concat()));
         assert!(a.iter().zip(&b).all(|(a, b)| (a - b).abs() < 1e-6), "V-ROOM");
+    }
+
+    #[test]
+    fn the_dual_effects_run_a_device_per_side() {
+        let x32 = crate::x32::FX_MODELS;
+        // A sine on both inputs through the Sub Octaver.
+        let run = |edit: &[(&str, f32)]| {
+            let spec = &x32[crate::model::model_index(x32, "X32SUB").unwrap()];
+            let mut values = [0.0; MAX_FX_PARAMS];
+            spec.defaults_into(&mut values);
+            for (id, v) in edit {
+                values[spec.param_index(id).unwrap()] = *v;
+            }
+            let mut dev = create("X32SUB", FxContext { sample_rate: 48_000.0, max_block: 256 }).unwrap();
+            dev.set_params(&Params::new(spec, &values));
+            let input: Vec<f32> =
+                (0..48_000).map(|i| 0.5 * (std::f32::consts::TAU * 110.0 * i as f32 / 48_000.0).sin()).collect();
+            let (mut l, mut r) = (input.clone(), input.clone());
+            for (cl, cr) in l.chunks_mut(256).zip(r.chunks_mut(256)) {
+                dev.process(cl, cr);
+            }
+            (input, l, r)
+        };
+        // B off passes the right side as it came; A at DRY 0 is the sub alone.
+        let (x, l, r) = run(&[("active_2", 0.0), ("dry", 0.0)]);
+        assert!(r.iter().zip(&x).all(|(r, x)| r == x), "B off");
+        let diff: f32 = l.iter().zip(&x).map(|(l, x)| (l - x).abs()).sum::<f32>() / x.len() as f32;
+        assert!(diff > 0.05, "A differs from its input: {diff}");
+        // DRY 100 and no octaves: the input as it came.
+        let (x, l, _) = run(&[("dry", 100.0), ("octave_1", 0.0), ("octave_2", 0.0)]);
+        let err = l[24_000..].iter().zip(&x[24_000..]).fold(0.0f32, |m, (l, x)| m.max((l - x).abs()));
+        assert!(err < 1e-3, "{err}");
     }
 
     #[test]
