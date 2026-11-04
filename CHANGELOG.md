@@ -277,6 +277,20 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
     laws, pans, attenuation, delay in samples, aux sends with EFF1 only to AUX 8 and
     EFF2 only to AUX 7, routing to BUS 1-8 and ST, EQ and dynamics steps, the
     processors' keys.
+- The 02R's effects: its two internal effects, fed by AUX 7-8 and returning on
+  EFF1-2, at first REVERB HALL1 and DELAY L-C-R 1.
+  - 17 effect types with the guide's parameters and ranges:
+    - reverb, early reflections, gate and reverse gate reverbs
+    - L-C-R delay, echoes with cross feed, mono and stereo delays
+    - chorus, flange, symphonic, phasing, tremolo, auto pan, pitch change
+    - their combinations
+  - They run on the ProMix 01's algorithms where the types are the same, and the
+    WING's ambience, gated and reverse reverbs.
+- The 02R's libraries:
+  - the 40 EQ presets, the 40 dynamics presets and the 40 effects presets, with
+    their values
+  - user programs in the rest of each library's 128
+  - recalling one onto a strip or an effect, and storing one
 - A new channel takes its console's factory settings, colour and name by its slot,
   not its id (a channel's id is 1-based and kept by shows).
 - Fixed: the X32 surface's UNIVERSAL MIXER key crashed the app when the Universal

@@ -291,7 +291,9 @@ of any size, of which the WING is one configuration.
   `ld_engine_fader_law_of`), `Y02R_PORT_GROUPS`, `Palette::Y02R`, the strip slots
   of `profile::y02r`; C ABI 45 profile 4; its models in `livedaw_dsp::y02r`
   (`Y2EQ`, `Y2CMP`...; the compander a curve of its own, `Curve::Compand`), its
-  chains `chain::Y02R_*`). A strip's factory settings, colour
+  effect types `livedaw_dsp::y02r::fx` (`Y2...` tokens, on the ProMix 01's
+  `Stage` and `Taps` and the WING's AMBI, GATED and REVERSE), its chains
+  `chain::Y02R_*`). A strip's factory settings, colour
   and name come from its slot (`Strip::of_profile_in`): a bus's id is its slot, a
   channel's isn't. A profile's buses, mains
   and matrices may have several orders (`ProfileSpec::output_orders`, picked by the
@@ -317,8 +319,9 @@ of any size, of which the WING is one configuration.
   - the dynamics processors' keys, recall safe and fade times, the oscillator
   - written and read as text
 
-  `Console` (`Y2Strip`, the strips by the engine's numbering) is its panel's
-  operations on the engine's strips:
+  `library` holds its EQ, dynamics and effects programs (40 presets each,
+  user programs). `Console` (`Y2Strip`, the strips by the engine's numbering)
+  is its panel's operations on the engine's strips:
   - pairs linked, fader groups by steps, mute groups flipping, gangs by offset
   - aux sends and routing
   - EQ and dynamics steps, the keys as the engine's `sc_source` / `sc_tap`

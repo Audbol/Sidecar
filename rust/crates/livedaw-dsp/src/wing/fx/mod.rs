@@ -146,6 +146,7 @@ pub fn create(token: &str, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
         .or_else(|| x32_misc::create(token, ctx))
         .or_else(|| crate::x32::fx::create(token, ctx))
         .or_else(|| crate::promix::fx::create(token, ctx))
+        .or_else(|| crate::y02r::fx::create(token, ctx))
 }
 
 /// The devices whose screen graph is their measured frequency response.
@@ -364,6 +365,8 @@ pub(crate) mod tests {
             crate::x32::FX_MODELS
         } else if crate::promix::fx::is_promix(token) {
             &crate::promix::FX_MODELS
+        } else if crate::y02r::fx::is_02r(token) {
+            &crate::y02r::fx::FX_MODELS
         } else {
             FX_MODELS
         };

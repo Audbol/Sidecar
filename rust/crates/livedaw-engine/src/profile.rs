@@ -886,8 +886,9 @@ static Y02R: ProfileSpec = ProfileSpec {
     factory_outputs: Some(y02r_factory_outputs),
     dca_names: None,
     dca_fader_db: 0.0,
-    // Its effects come with step 4.
-    fx_factory: &[],
+    // REVERB HALL1 and DELAY L-C-R 1 (Sidecar's choice: the guides don't say
+    // what scene 0's effects are).
+    fx_factory: &["Y2REV", "Y2DLCR"],
     // AUX 7 feeds Effect 1, AUX 8 Effect 2 (MAN p.90).
     fx_send_buses: &[y02r::AUX + 6, y02r::AUX + 7],
 };

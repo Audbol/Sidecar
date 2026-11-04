@@ -277,15 +277,16 @@ pub fn is_promix(token: &str) -> bool {
     token.starts_with("PM") && FX_MODELS.iter().any(|m| m.token == token)
 }
 
-/// One of the WING's devices and its control values.
-struct Stage {
-    dev: Box<dyn FxAlgo>,
+/// One of the WING's devices and its control values (the 02R's effects run
+/// them too: `crate::y02r::fx`).
+pub(crate) struct Stage {
+    pub(crate) dev: Box<dyn FxAlgo>,
     spec: &'static ModelSpec,
     values: [f32; MAX_FX_PARAMS],
 }
 
 impl Stage {
-    fn new(wing: &str, ctx: FxContext) -> Option<Self> {
+    pub(crate) fn new(wing: &str, ctx: FxContext) -> Option<Self> {
         let spec = &crate::wing::FX_MODELS[crate::wing::fx::model_index(wing)?];
         let mut values = [0.0; MAX_FX_PARAMS];
         spec.defaults_into(&mut values);
@@ -296,14 +297,14 @@ impl Stage {
     }
 
     /// Sets a control, held within the device's range.
-    fn set(&mut self, id: &str, v: f32) {
+    pub(crate) fn set(&mut self, id: &str, v: f32) {
         if let Some(i) = self.spec.param_index(id) {
             let ps = &self.spec.params[i];
             self.values[i] = v.clamp(ps.lo(), ps.hi());
         }
     }
 
-    fn apply(&mut self) {
+    pub(crate) fn apply(&mut self) {
         self.dev.set_params(&Params::new(self.spec, &self.values));
     }
 }
@@ -316,7 +317,7 @@ pub fn damping_hz(ratio: f32) -> f32 {
 
 /// The delay types' structure.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum TapMode {
+pub(crate) enum TapMode {
     /// L, R and C taps of one line fed by the mono sum, a feedback tap.
     Lcr,
     /// One tap, fed back.
@@ -327,9 +328,10 @@ enum TapMode {
     Echo,
 }
 
-/// Sidecar's delay for the ProMix's delay types: up to 661 ms per line, a
-/// one-pole low-pass in the feedback (HIGH RATIO).
-struct Taps {
+/// Sidecar's delay for the ProMix's delay types: up to 661 ms per line (the
+/// 02R's: 1 s), a one-pole low-pass in the feedback (HIGH RATIO); Echo's two
+/// lines may also feed each other (the 02R's L->R and R->L).
+pub(crate) struct Taps {
     mode: TapMode,
     line: [Vec<f32>; 2],
     pos: usize,
@@ -340,11 +342,18 @@ struct Taps {
     fb: [f32; 2],
     lp_coef: f32,
     lp: [f32; 2],
+    /// Echo: L's feedback into R's line, R's into L's (0..1).
+    cross: [f32; 2],
 }
 
 impl Taps {
     fn new(mode: TapMode, ctx: FxContext) -> Self {
-        let len = (0.7 * ctx.sample_rate) as usize + ctx.max_block + 2;
+        Self::with_length(mode, ctx, 0.7)
+    }
+
+    /// Lines of `seconds`.
+    pub(crate) fn with_length(mode: TapMode, ctx: FxContext, seconds: f32) -> Self {
+        let len = (seconds * ctx.sample_rate) as usize + ctx.max_block + 2;
         Taps {
             mode,
             line: [vec![0.0; len], vec![0.0; len]],
@@ -355,6 +364,7 @@ impl Taps {
             fb: [0.0; 2],
             lp_coef: 0.0,
             lp: [0.0; 2],
+            cross: [0.0; 2],
         }
     }
 
@@ -362,11 +372,16 @@ impl Taps {
         ((ms * 0.001 * self.sr) as usize).clamp(1, self.line[0].len() - 1)
     }
 
-    fn set(&mut self, delays_ms: [f32; 4], level_c: f32, fb: [f32; 2], high_ratio: f32) {
+    pub(crate) fn set(&mut self, delays_ms: [f32; 4], level_c: f32, fb: [f32; 2], high_ratio: f32) {
         self.d = delays_ms.map(|ms| self.samples(ms));
         self.level_c = level_c;
         self.fb = fb.map(|g| (g * 0.01).clamp(-0.99, 0.99));
         self.lp_coef = (-2.0 * std::f32::consts::PI * damping_hz(high_ratio) / self.sr).exp();
+    }
+
+    /// Echo's cross feeds: L into R, R into L (0..1).
+    pub(crate) fn set_cross(&mut self, l_to_r: f32, r_to_l: f32) {
+        self.cross = [l_to_r.clamp(0.0, 1.0), r_to_l.clamp(0.0, 1.0)];
     }
 
     fn read(&self, ch: usize, d: usize) -> f32 {
@@ -374,7 +389,7 @@ impl Taps {
         self.line[ch][(self.pos + len - d) % len]
     }
 
-    fn process(&mut self, left: &mut [f32], right: &mut [f32]) {
+    pub(crate) fn process(&mut self, left: &mut [f32], right: &mut [f32]) {
         let len = self.line[0].len();
         for (l, r) in left.iter_mut().zip(right.iter_mut()) {
             let (inl, inr) = (*l, *r);
@@ -385,11 +400,14 @@ impl Taps {
             };
             match self.mode {
                 TapMode::Echo => {
-                    for (ch, input) in [(0, inl), (1, inr)] {
+                    let mut back = [0.0; 2];
+                    for (ch, b) in back.iter_mut().enumerate() {
                         let y = self.read(ch, self.d[ch]);
-                        let f = damp(&mut self.lp[ch], y, self.lp_coef);
-                        self.line[ch][self.pos] = input + self.fb[ch] * f;
+                        *b = self.fb[ch] * damp(&mut self.lp[ch], y, self.lp_coef);
                     }
+                    // Each line gets its own feedback, and the other's crossed over.
+                    self.line[0][self.pos] = inl + back[0] + self.cross[1] * back[1];
+                    self.line[1][self.pos] = inr + back[1] + self.cross[0] * back[0];
                     *l = self.read(0, self.d[0]);
                     *r = self.read(1, self.d[1]);
                 }
@@ -419,7 +437,7 @@ impl Taps {
         }
     }
 
-    fn reset(&mut self) {
+    pub(crate) fn reset(&mut self) {
         self.line.iter_mut().for_each(|b| b.fill(0.0));
         self.lp = [0.0; 2];
     }
@@ -438,7 +456,7 @@ struct PmFx {
 }
 
 /// Sets the WING ROOM's controls from a ProMix reverb's.
-fn reverb(stage: &mut Stage, p: &Params) {
+pub(crate) fn reverb(stage: &mut Stage, p: &Params) {
     let rt = p.f("rt");
     stage.set("dcy", rt);
     stage.set("size", 8.0 + 2.0 * rt);
@@ -450,7 +468,7 @@ fn reverb(stage: &mut Stage, p: &Params) {
 }
 
 /// Sets the WING CHORUS's controls (both sides alike, spread wide for SYMPHONIC).
-fn chorus(stage: &mut Stage, p: &Params, depth_id: &str, spread: f32) {
+pub(crate) fn chorus(stage: &mut Stage, p: &Params, depth_id: &str, spread: f32) {
     stage.set("spd", p.f("mf"));
     let d = p.f(depth_id);
     stage.set("depl", d);

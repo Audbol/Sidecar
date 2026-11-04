@@ -10,6 +10,8 @@
 //!   move several of the engine's values at once, and its values as the
 //!   console has them (fader steps 0-127, pans 0-32, attenuation in dB, EQ
 //!   and dynamics steps).
+//! * [`library`]: its EQ, dynamics and effects libraries, 40 presets each and
+//!   user programs.
 //!
 //! The console's strips are the engine's: MIC/LINE 1-16 channels 1-16, LINE
 //! 17/18-23/24 channels 17-20, TAPE 1-16 channels 21-36, EFF1-2 aux 1-2, BUS
@@ -19,7 +21,9 @@
 //! 2); no Yamaha firmware or software is used.
 
 pub mod console;
+pub mod library;
 pub mod state;
 
 pub use console::{Console, Origin, Y2Strip};
+pub use library::Library;
 pub use state::State;

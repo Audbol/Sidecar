@@ -522,7 +522,11 @@ fn an_02r_runs_its_tape_returns_aux_sends_and_stereo() {
     assert_eq!((e.num_strips(StripKind::Channel), e.num_strips(StripKind::Aux), e.num_strips(StripKind::Bus)), (36, 2, 16));
     assert_eq!((e.num_strips(StripKind::Main), e.num_strips(StripKind::Matrix)), (1, 0));
     assert_eq!((e.counts().dcas, e.counts().mute_groups, e.config().counts.fx), (0, 0, 2));
-    // AUX 7-8 feed FX 1-2; the effect returns take them.
+    // Its two effects on REVERB HALL1 and DELAY L-C-R 1, fed by AUX 7-8; the
+    // effect returns take them.
+    let models = e.fx_models();
+    let token = |slot: usize| models[e.controls.fx[slot].model_index_in(models)].token;
+    assert_eq!((token(0), token(1)), ("Y2REV", "Y2DLCR"));
     assert_eq!(e.controls.fx[0].source_left.load(Relaxed), livedaw_engine::routing::strip_source_input(StripKind::Bus, 14, 0));
     assert_eq!(rig.strip(StripKind::Aux, 1).params.input_left.load(Relaxed), livedaw_engine::sources::FX_RETURN_SOURCE_BASE + 2);
     // TAPE 1 (card slot 1's first input) at 0 dB reaches STEREO OUT and 2TR

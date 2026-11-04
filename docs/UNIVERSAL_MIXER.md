@@ -1033,10 +1033,41 @@ Three layers:
       - the parameters the control changes and the type 26 remote reach
 
       All of it is written and read as text for the show.
-   4. **Its effects**: the two slots with the 40 preset programs' types (reverb,
-      early reflections, gate reverb, delays, echoes, chorus, flange, symphonic,
-      phasing, auto pan, pitch change and their combinations), on the ProMix 01's
-      algorithms where the types are the same, with the 02R's ranges.
+   4. **Its effects** (done; `livedaw_dsp::y02r::fx`, `livedaw_02r::library`):
+      - The two slots: fed by AUX 7-8, at first REVERB HALL1 and DELAY L-C-R 1
+        (Sidecar's choice).
+      - The 40 preset programs' 17 types (MAN pp.98-111), each with the guide's
+        parameters and ranges, its defaults its first program's:
+        - reverb; chorus and flange into reverb
+        - early reflections; gate and reverse gate reverbs
+        - delay into early reflections
+        - L-C-R delay, alone and after a chorus
+        - mono delay into chorus; stereo initial-delay echo; echo with L->R and
+          R->L cross feed
+        - chorus (with AM, so tremolo too), flange, symphonic, auto pan,
+          phasing, pitch change
+      - The algorithms are Sidecar's:
+        - the ProMix 01's where the types are the same (its `Stage` and `Taps`,
+          now shared, the delay lines a second long, the echo's lines able to
+          cross-feed)
+        - the WING's AMBI for early reflections, GATED and REVERSE for the gate
+          reverbs
+      - Steps: 0.1 ms, 0.1 s and 0.05 Hz are Sidecar's reading.
+      - Unmodelled:
+        - the reverbs' DENSITY, REV DLY and REV BAL
+        - the early reflection patterns beyond a room size, and ER NUM
+        - the delays' filters and INI DLY
+        - the modulation types' EQ
+        - auto pan's F/R DEPTH and direction
+        - phasing's stages
+      - The libraries (`library`):
+        - the 40 EQ presets (pp.56-60)
+        - the 40 dynamics presets (pp.76-81; their 44.1 kHz times on the
+          nearest 48 kHz step)
+        - the 40 effects presets
+        - user programs up to 128 (EQ from 33, the others from 41: MAN p.211)
+        - `Console::recall_eq`, `recall_dyn`, `recall_fx`, `store_*`
+        - not done: the channel library
    5. **02R MIDI** (`MidiProtocol::Yamaha02R`):
       - program changes through the table
       - control changes through the CC map (the 02R preset, editable)

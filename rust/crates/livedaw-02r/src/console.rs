@@ -6,6 +6,7 @@
 //!
 //! The strips (`Y2Strip`) are the engine's (see the crate).
 
+use crate::library::{Kind, Library, Program};
 use crate::state::{self, DynSettings, KeyIn, State, CHANNELS, DYN_STRIPS, LINES, MEMBERS, MICS};
 use livedaw_dsp::fader::FaderLaw;
 use livedaw_dsp::y02r::DYN_MODELS;
@@ -741,6 +742,89 @@ impl<'a> Console<'a> {
     }
 }
 
+impl Console<'_> {
+    // ---- libraries (`crate::library`) -------------------------------------------
+
+    /// Recalls EQ program `n` (0-based) onto a strip (and its pair partner).
+    pub fn recall_eq(&mut self, lib: &Library, s: Y2Strip, n: usize) -> bool {
+        let Some(prog) = lib.get(Kind::Eq, n) else { return false };
+        for st in self.linked(s) {
+            let eq = st.params.eq();
+            if eq.model_spec().map(|m| m.token) != Some(prog.token) {
+                continue;
+            }
+            for (x, v) in eq.values.iter().zip(&prog.values) {
+                x.store(*v);
+            }
+        }
+        true
+    }
+
+    /// Recalls dynamics program `n` onto a strip's processor (its type and
+    /// values; a linked pair's both); KEY IN, ST.LINK and IN stay (MAN p.70).
+    pub fn recall_dyn(&mut self, lib: &Library, s: Y2Strip, n: usize) -> bool {
+        let Some(prog) = lib.get(Kind::Dynamics, n) else { return false };
+        if s.dyn_index().is_none() {
+            return false;
+        }
+        for st in self.dyn_linked(s) {
+            let d = st.params.dynamics();
+            let Some(model) = d.table().iter().position(|m| m.token == prog.token) else { continue };
+            if d.model_index() != model || d.model.load(Relaxed) < 0 {
+                d.set_model(model);
+            }
+            for (x, v) in d.values.iter().zip(&prog.values) {
+                x.store(*v);
+            }
+        }
+        self.apply_dyn(s);
+        true
+    }
+
+    /// Recalls effects program `n` into Effect `slot` (0-1).
+    pub fn recall_fx(&mut self, lib: &Library, slot: usize, n: usize) -> bool {
+        let Some(prog) = lib.get(Kind::Effects, n) else { return false };
+        let Some(fx) = self.engine.controls.fx.get(slot).filter(|_| slot < 2) else { return false };
+        let models = self.engine.fx_models();
+        let Some(model) = livedaw_dsp::model::model_index(models, prog.token) else { return false };
+        if fx.model_index_in(models) != model {
+            self.engine.set_fx_model(slot, model, true);
+        }
+        for (x, v) in fx.values.iter().zip(&prog.values) {
+            x.store(*v);
+        }
+        self.state.fx_programs[slot] = n.min(127) as u8;
+        true
+    }
+
+    /// Stores a strip's EQ as program `n` named `name`.
+    pub fn store_eq(&self, lib: &mut Library, s: Y2Strip, n: usize, name: &str) -> bool {
+        let Some(st) = self.strip(s) else { return false };
+        let eq = st.params.eq();
+        let Some(token) = eq.model_spec().map(|m| m.token) else { return false };
+        let values = eq.values.iter().take(eq.model_spec().map_or(0, |m| m.params.len())).map(|v| v.load()).collect();
+        lib.store(Kind::Eq, n, Program { name: name.into(), token, values })
+    }
+
+    /// Stores a strip's dynamics processor as program `n`.
+    pub fn store_dyn(&self, lib: &mut Library, s: Y2Strip, n: usize, name: &str) -> bool {
+        let Some(st) = self.strip(s).filter(|_| s.dyn_index().is_some()) else { return false };
+        let d = st.params.dynamics();
+        let Some(spec) = d.model_spec() else { return false };
+        let values = d.values.iter().take(spec.params.len()).map(|v| v.load()).collect();
+        lib.store(Kind::Dynamics, n, Program { name: name.into(), token: spec.token, values })
+    }
+
+    /// Stores Effect `slot` as program `n`.
+    pub fn store_fx(&self, lib: &mut Library, slot: usize, n: usize, name: &str) -> bool {
+        let Some(fx) = self.engine.controls.fx.get(slot).filter(|_| slot < 2) else { return false };
+        let models = self.engine.fx_models();
+        let Some(spec) = models.get(fx.model_index_in(models)).filter(|m| m.token.starts_with("Y2")) else { return false };
+        let values = fx.values.iter().take(spec.params.len()).map(|v| v.load()).collect();
+        lib.store(Kind::Effects, n, Program { name: name.into(), token: spec.token, values })
+    }
+}
+
 /// An EQ parameter of a strip as its step.
 fn eq_step(st: &Strip, id: &str) -> Option<u16> {
     let eq = st.params.eq();
@@ -943,6 +1027,35 @@ mod tests {
         // AUX and the effect returns have none.
         c.set_dyn_on(Y2Strip::Aux(0), true);
         assert!(!c.dyn_on(Y2Strip::Aux(0)));
+    }
+
+    #[test]
+    fn libraries_recall_and_store() {
+        let e = y02r();
+        let mut s = State::default();
+        let mut lib = Library::default();
+        let mut c = Console::new(&e, &mut s);
+        // EQ 9 E.Bass 1 onto MIC 1: LOW a shelf at 35 Hz, -7.5 dB.
+        assert!(c.recall_eq(&lib, Y2Strip::Mic(0), 8));
+        let st = e.channel_at(0).unwrap();
+        assert_eq!(st.params.eq().param("lg").unwrap().load(), -7.5);
+        assert_eq!(c.eq_value(Y2Strip::Mic(0), 0, 2), 41, "L.SHELF");
+        // Dynamics 7 A.Dr.SN gate onto BUS 2.
+        assert!(c.recall_dyn(&lib, Y2Strip::Bus(1), 6));
+        assert_eq!(c.dyn_type(Y2Strip::Bus(1)), 4);
+        assert!(!c.recall_dyn(&lib, Y2Strip::Aux(0), 6), "AUX has none");
+        // Effects 28 ECHO into Effect 2.
+        assert!(c.recall_fx(&lib, 1, 27));
+        assert_eq!(e.fx_models()[e.controls.fx[1].model_index_in(e.fx_models())].token, "Y2ECHO");
+        assert_eq!(c.state.fx_programs[1], 27);
+        // Stores: into the user range only.
+        c.set_eq_value(Y2Strip::Mic(0), 1, 1, 50);
+        assert!(!c.store_eq(&mut lib, Y2Strip::Mic(0), 5, "NOPE"));
+        assert!(c.store_eq(&mut lib, Y2Strip::Mic(0), 40, "MY BASS"));
+        assert!(c.recall_eq(&lib, Y2Strip::Mic(4), 40));
+        assert_eq!(c.eq_value(Y2Strip::Mic(4), 1, 1), 50);
+        assert!(c.store_dyn(&mut lib, Y2Strip::Bus(1), 41, "BUS GATE") && c.store_fx(&mut lib, 1, 100, "MY ECHO"));
+        assert_eq!(lib.get(Kind::Effects, 100).unwrap().token, "Y2ECHO");
     }
 
     #[test]

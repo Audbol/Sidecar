@@ -17,6 +17,8 @@
 use crate::model::{ModelCategory, ModelSpec, ModelTables, ParamKind, ParamSpec};
 use crate::wing::FILTER_TOOLS;
 
+pub mod fx;
+
 /// A parameter, in `ParamSpec`'s field order.
 #[allow(clippy::too_many_arguments)]
 const fn p(
@@ -236,14 +238,15 @@ pub static DYN_MODELS: &[ModelSpec] = &[
     ModelSpec { token: "Y2DUK", name: "Ducking", category: ModelCategory::Gate, params: &DUCK_PARAMS },
 ];
 
-/// The 02R's models, as its profile names them; its effects come with step 4.
+/// The 02R's models, as its profile names them; its two FX slots take its 17
+/// effect types (`fx`).
 pub static MODELS: ModelTables = ModelTables {
     dynamics: DYN_MODELS,
     aux_dynamics: &[],
     eq_channel: EQ,
     eq_bus: EQ,
     filter_tools: FILTER_TOOLS,
-    fx: crate::wing::FX_MODELS,
+    fx: &fx::FX_MODELS,
     fx_premium_slots: 2,
     gate_default: "Y2GAT",
     comp_default: "Y2CMP",
