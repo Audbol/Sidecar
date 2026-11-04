@@ -127,8 +127,10 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
   the Combinators, Enhancers, Exciters and Guitar Amps.
 - The X32's compressors work: Fair (stereo, dual and M/S), Leisure and Ultimo
   (stereo and dual) run on the WING's dynamics models of the same designs, as does
-  the Wave Designer. The program and midrange EQs, Tube Stage, Imager, Edison and
-  Sound Maxer still pass the signal through.
+  the Wave Designer.
+- Every X32 effect now has its algorithm: the Program and Midrange EQs run on the two
+  halves of the WING's PULSAR EQ, and Tube Stage, Stereo Imager, Edison EX1 and Sound
+  Maxer are new devices of Sidecar's own.
 
 ## [0.2.0] - beta
 

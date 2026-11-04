@@ -168,6 +168,10 @@ mod tests {
         let vrm = &FX_MODELS[index("VRM")];
         assert_eq!((vrm.params[1].label, vrm.params[1].default), ("DECAY", 1.94));
         assert_eq!(FX_MODELS[index("DLY")].params[1].default, 223.0);
+        // Every model has its algorithm (9g).
+        for m in &FX_MODELS[2..] {
+            assert!(fx::BUILT.contains(&m.token), "{} has no algorithm", m.token);
+        }
         // Every model has a device (silent or passing through until its algorithm lands).
         let ctx = FxContext { sample_rate: 48000.0, max_block: 64 };
         for m in &FX_MODELS[2..] {

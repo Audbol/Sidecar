@@ -969,11 +969,9 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
   bus or M/C, or INS to use it as an insert) and come back on the FX return channels
   (FX RTN), ready to fade up.
   X32 remote apps and scene files see and set them. The models' sound is still being
-  built: the reverbs, delays, modulation, pitch and combination effects work, and
-  of the insert effects the graphic EQs, de-essers, limiter, compressors,
-  combinators, enhancers, exciters, wave designer and guitar amps; the program and
-  midrange EQs, tube stage, imager, Edison and sound maxer pass the signal through
-  unchanged for now.
+  built: every one of the X32's effects works, most on the WING's devices of
+  the same design; they haven't yet been measured against a real X32, so their
+  sound may differ from the console's in detail.
 
 Patching, the FX rack, show files and copy and paste are on the Universal Mixer for now.
 

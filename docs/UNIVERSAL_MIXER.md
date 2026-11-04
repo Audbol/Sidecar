@@ -599,8 +599,14 @@ Three layers:
         WING's channel dynamics models of the same designs (F670, LA, 76LA, WAVE),
         run by its dynamics engine as an FX device (`wing::fx::x32_dynamics`:
         stereo linked, dual one unit per side, FAC1M on mid and side).
-      - 9g, the rest, each measured (curves, gain reduction) since none can be
-        compared by ear here: EQs and dynamics
+      - 9g, the rest (done): Program EQ and Midrange EQ on the WING's PULSAR EQ
+        model (its EQ1 and EQ5 halves, run by its EQ engine: `wing::fx::x32_eqs`);
+        Tube Stage, Stereo Imager, Edison EX1 and Sound Maxer as devices of
+        Sidecar's own from their controls (`wing::fx::x32_misc`). Every X32 model
+        now has its algorithm. Still to do, with the FX testing setup on the
+        owner's X32: measure each against the console (decay, taps, curves, gain
+        reduction) and correct the mappings marked as Sidecar's reading. The batches
+        were, in order: EQs and dynamics
         (GEQ, TruEQ, Xtec EQ1 / EQ5, de-esser, limiter, Combinator, Fair, Leisure and
         Ultimo comps, Wave Designer); enhancers, exciters, imagers, amps and drive.
         Until a model's algorithm lands it passes the signal through unprocessed

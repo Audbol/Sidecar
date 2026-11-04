@@ -3,14 +3,16 @@
 //! protocol document lists for each (pp. 85-115) and the factory values of a
 //! freshly initialised X32 Compact.
 //!
-//! The algorithms land in batches (9d-9g); [`BUILT`] are the models with one
-//! (most reverbs and modulation effects run on the WING's devices of the
-//! same design, `wing::fx::x32_voices`, the combinations on two or three of
-//! them, `wing::fx::x32_combos`; Stereo Delay is the WING's with a factor and
-//! a feedback per side; the tap delays are `wing::fx::delay::x32taps`). Until a model's does, its device holds its settings
-//! and keeps the signal as it was: an insert model (FX 5-8's) passes it
-//! through, a send / return model (reverbs, delays, modulation, pitch)
-//! returns silence, so a bus feeding it adds nothing.
+//! Every model has its algorithm (steps 9d-9g, listed in [`BUILT`]): most
+//! reverbs, modulation and pitch effects and many insert effects run on the
+//! WING's devices of the same design (`wing::fx::x32_voices`,
+//! `x32_inserts`), the combinations on two or three of them (`x32_combos`),
+//! the compressors on the WING's dynamics models (`x32_dynamics`) and the
+//! program / midrange EQs on its PULSAR EQ (`x32_eqs`); Stereo Delay is the
+//! WING's with a factor and a feedback per side, the tap delays
+//! `wing::fx::delay::x32taps` and the rest `wing::fx::x32_misc`. The devices
+//! here are the fallback for a model without one (none since 9g): an insert
+//! model passes the signal, a send / return model returns silence.
 
 use crate::model::{ModelCategory, Params};
 use crate::wing::fx::{FxAlgo, FxContext};
@@ -21,7 +23,8 @@ pub const BUILT: &[&str] = &[
     "X32RVRS", "X32FLNG", "X32PHAS", "X32DIMC", "X32FILT", "X32ROTA", "X32PAN", "X32PIT", "X32PIT2", "X32SUB", "X323TAP",
     "X324TAP", "X32D/RV", "X32CR/R", "X32FL/R", "X32D/CR", "X32D/FL", "X32MODD", "X32GEQ2", "X32GEQ", "X32TEQ2", "X32TEQ",
     "X32DES2", "X32DES", "X32LIM", "X32CMB", "X32CMB2", "X32ENH2", "X32ENH", "X32EXC2", "X32EXC", "X32AMP2", "X32AMP", "X32FAC",
-    "X32FAC2", "X32FAC1M", "X32LEC", "X32LEC2", "X32ULC", "X32ULC2", "X32WAVD",
+    "X32FAC2", "X32FAC1M", "X32LEC", "X32LEC2", "X32ULC", "X32ULC2", "X32WAVD", "X32P1A", "X32P1A2", "X32PQ5", "X32PQ5S",
+    "X32DRV", "X32DRV2", "X32IMG", "X32EDI", "X32SON",
 ];
 
 /// Creates the placeholder device of X32 model `token` (`X32HALL`...); `None`
