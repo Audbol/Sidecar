@@ -28,6 +28,7 @@ mod reverb;
 mod time_audit;
 mod utility;
 mod x32_combos;
+mod x32_inserts;
 mod x32_voices;
 
 use super::{ModelCategory, ModelSpec, Params, FX_MODELS, MAX_FX_PARAMS};
@@ -136,6 +137,7 @@ pub fn create(token: &str, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
         .or_else(|| amp::create(token, ctx))
         .or_else(|| x32_voices::create(token, ctx))
         .or_else(|| x32_combos::create(token, ctx))
+        .or_else(|| x32_inserts::create(token, ctx))
         .or_else(|| crate::x32::fx::create(token, ctx))
 }
 

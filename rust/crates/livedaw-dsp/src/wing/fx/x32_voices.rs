@@ -64,6 +64,11 @@ pub(super) fn create(token: &str, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
         "X32PIT" => ("PITCH", None, pitch),
         _ => return None,
     };
+    bridge(wing, spec, map, ctx)
+}
+
+/// WING device `wing` run by `map` over `spec` (None: the device's own controls).
+pub(super) fn bridge(wing: &str, spec: Option<&'static ModelSpec>, map: Map, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
     let spec = spec.or_else(|| Some(&crate::wing::FX_MODELS[super::model_index(wing)?]))?;
     let dev = super::create(wing, ctx)?;
     // Controls a mapping leaves alone keep the WING device's defaults.
@@ -232,7 +237,7 @@ fn pitch(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
 
 /// Writes the WING device's values (by its ids) from the X32 model's; returns
 /// an output gain in dB (0 when the WING device has the level itself).
-type Map = fn(&Params, &mut dyn FnMut(&'static str, f32)) -> f32;
+pub(super) type Map = fn(&Params, &mut dyn FnMut(&'static str, f32)) -> f32;
 
 struct Bridge {
     dev: Box<dyn FxAlgo>,
@@ -293,10 +298,10 @@ impl FxAlgo for Bridge {
 
 /// Sets one side's WING controls (side 0 = A, 1 = B); returns whether the
 /// side runs and, for a device that adds to its input, the direct level.
-type SideMap = fn(&Params, usize, &mut dyn FnMut(&'static str, f32)) -> (bool, Option<f32>);
+pub(super) type SideMap = fn(&Params, usize, &mut dyn FnMut(&'static str, f32)) -> (bool, Option<f32>);
 
 /// Two WING devices, one per side, each fed its side in mono.
-struct Dual {
+pub(super) struct Dual {
     devs: [Box<dyn FxAlgo>; 2],
     spec: &'static ModelSpec,
     map: SideMap,
@@ -310,7 +315,7 @@ struct Dual {
 }
 
 impl Dual {
-    fn boxed(wing: &str, map: SideMap, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
+    pub(super) fn boxed(wing: &str, map: SideMap, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
         let spec = &crate::wing::FX_MODELS[super::model_index(wing)?];
         let mut values = [0.0; MAX_FX_PARAMS];
         spec.defaults_into(&mut values);
@@ -389,22 +394,41 @@ fn dual_sub(p: &Params, side: usize, set: &mut dyn FnMut(&'static str, f32)) -> 
 }
 
 /// A control id built on the audio thread without allocating ("semitone" + "a").
-struct IdBuf {
+pub(super) struct IdBuf {
     buf: [u8; 32],
     len: usize,
 }
 
 impl IdBuf {
-    fn from(s: &str) -> Self {
+    pub(super) fn from(s: &str) -> Self {
         let mut b = Self { buf: [0; 32], len: 0 };
         b.push(s);
         b
     }
 
-    fn push(&mut self, s: &str) {
+    pub(super) fn push(&mut self, s: &str) {
         let n = s.len().min(self.buf.len() - self.len);
         self.buf[self.len..self.len + n].copy_from_slice(&s.as_bytes()[..n]);
         self.len += n;
+    }
+
+    /// Appends `n` in decimal ("band_" + 12).
+    pub(super) fn push_number(&mut self, n: usize) {
+        let mut digits = [0u8; 20];
+        let (mut n, mut k) = (n, digits.len());
+        loop {
+            k -= 1;
+            digits[k] = b'0' + (n % 10) as u8;
+            n /= 10;
+            if n == 0 {
+                break;
+            }
+        }
+        self.push(std::str::from_utf8(&digits[k..]).unwrap_or(""));
+    }
+
+    pub(super) fn truncate(&mut self, len: usize) {
+        self.len = self.len.min(len);
     }
 }
 
@@ -416,7 +440,7 @@ impl std::ops::Deref for IdBuf {
 }
 
 /// `base` + "_" + `suffix` ("semitone_a", "dry_2").
-fn format_id(base: &str, suffix: &str) -> IdBuf {
+pub(super) fn format_id(base: &str, suffix: &str) -> IdBuf {
     let mut b = IdBuf::from(base);
     b.push("_");
     b.push(suffix);

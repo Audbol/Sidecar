@@ -591,8 +591,14 @@ Three layers:
         Delay (delay into chorus, the reverb after or beside them) and the 3- and
         4-tap delays (`delay::x32taps`). Their structure is Sidecar's reading of the
         controls, to be measured on the owner's X32.
-      - 9f-9g, the insert models in batches, each measured (curves, gain
-        reduction) since none can be compared by ear here: EQs and dynamics
+      - 9f, the insert models (part 1 done): the graphic EQs (GEQ the WING GEQ's
+        STD type, TruEQ its TRU), de-essers, Precision Limiter, Combinators,
+        Enhancers, Exciters and Guitar Amps on the WING's FX devices
+        (`wing::fx::x32_inserts`; the dual models one device per side). Part 2: the
+        compressors (Fair, Leisure, Ultimo) and Wave Designer on the WING's
+        channel dynamics models of the same designs.
+      - 9g, the rest, each measured (curves, gain reduction) since none can be
+        compared by ear here: EQs and dynamics
         (GEQ, TruEQ, Xtec EQ1 / EQ5, de-esser, limiter, Combinator, Fair, Leisure and
         Ultimo comps, Wave Designer); enhancers, exciters, imagers, amps and drive.
         Until a model's algorithm lands it passes the signal through unprocessed

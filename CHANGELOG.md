@@ -121,8 +121,12 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
   Shifter. Dimensional Chorus now starts with MODE 1 pressed.
 - The rest of the X32's send effects make sound: 3-Tap and 4-Tap Delay, Dual Pitch,
   Sub Octaver, the five combinations (Delay / Chamber, Chorus / Chamber, Flanger /
-  Chamber, Delay / Chorus, Delay / Flanger) and Modulation Delay. The X32's insert
-  effects (graphic EQs, dynamics, enhancers, amps) still pass the signal through.
+  Chamber, Delay / Chorus, Delay / Flanger) and Modulation Delay.
+- 15 of the X32's insert effects work, on the WING's devices of the same design: the
+  graphic EQs (GEQ and TruEQ, stereo and dual), the de-essers, the Precision Limiter,
+  the Combinators, Enhancers, Exciters and Guitar Amps. The compressors, the program
+  and midrange EQs, Wave Designer, Tube Stage, Imager, Edison and Sound Maxer still
+  pass the signal through.
 
 ## [0.2.0] - beta
 

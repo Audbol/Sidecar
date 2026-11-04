@@ -19,7 +19,8 @@ use crate::wing::fx::{FxAlgo, FxContext};
 pub const BUILT: &[&str] = &[
     "X32HALL", "X32VRM", "X32DLY", "X32CRS", "X32AMBI", "X32ROOM", "X32CHAM", "X32PLAT", "X32RPLT", "X32VREV", "X32GATE",
     "X32RVRS", "X32FLNG", "X32PHAS", "X32DIMC", "X32FILT", "X32ROTA", "X32PAN", "X32PIT", "X32PIT2", "X32SUB", "X323TAP",
-    "X324TAP", "X32D/RV", "X32CR/R", "X32FL/R", "X32D/CR", "X32D/FL", "X32MODD",
+    "X324TAP", "X32D/RV", "X32CR/R", "X32FL/R", "X32D/CR", "X32D/FL", "X32MODD", "X32GEQ2", "X32GEQ", "X32TEQ2", "X32TEQ",
+    "X32DES2", "X32DES", "X32LIM", "X32CMB", "X32CMB2", "X32ENH2", "X32ENH", "X32EXC2", "X32EXC", "X32AMP2", "X32AMP",
 ];
 
 /// Creates the placeholder device of X32 model `token` (`X32HALL`...); `None`
