@@ -396,6 +396,18 @@ void Display::assignEncoders()
             if (juce::isPositiveAndBelow (selectedScene, show.getNumScenes()))
                 show.recallScene (selectedScene);
         });
+        // X32 scene files: IMPORT keeps one as a new scene, EXPORT writes the console.
+        const juce::Component::SafePointer<Display> safe (this);
+        auto said = [safe] (const juce::String& status)
+        {
+            if (safe == nullptr)
+                return;
+            safe->libraryStatus = status;
+            safe->selectedScene = juce::jmax (0, safe->ctx.show.getNumScenes() - 1);
+            safe->assignEncoders();
+        };
+        encoders[0] = encoder ({}, "IMPORT .scn", [this, said] { sceneFiles.importScene (said); });
+        encoders[1] = encoder ({}, "EXPORT .scn", [this, said] { sceneFiles.exportScene (said); });
     }
 
     for (int i = 0; i < 6; ++i)
@@ -740,7 +752,7 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
             const int n = show.getNumScenes();
             juce::StringArray left, right;
             // The rows that fit, around the scene the encoder points at.
-            const int rows = juce::jmax (1, (r.getHeight() - 24) / 26);
+            const int rows = juce::jmax (1, (r.getHeight() - 44) / 26);
             const int from = juce::jlimit (0, juce::jmax (0, n - rows), selectedScene - rows / 2);
             for (int i = from; i < juce::jmin (n, from + rows); ++i)
             {
@@ -753,7 +765,14 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
                 left.add ("No scenes");
                 right.add ({});
             }
-            paintRows (g, r.reduced (12), left, right);
+            auto list = r.reduced (12);
+            if (libraryStatus.isNotEmpty())
+            {
+                g.setColour (kAmber);
+                g.setFont (type::font (type::kCaption, true));
+                g.drawFittedText (libraryStatus, list.removeFromBottom (20), juce::Justification::centredLeft, 1, 0.8f);
+            }
+            paintRows (g, list, left, right);
             break;
         }
         case Screen::Effects:

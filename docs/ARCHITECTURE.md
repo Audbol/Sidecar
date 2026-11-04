@@ -445,7 +445,7 @@ views after a show load changes the console from Rust.
   blocks through pointers in its `StripParams`). C++ sees the same
   memory as `std::atomic<float/bool/int32_t>` structs, and the UI writes them directly
   with no FFI call. Both sides describe the layout; `ld::verifyLayout()` compares the
-  two at startup and in the tests (ABI version 38), and the app refuses to run if they
+  two at startup and in the tests (ABI version 39), and the app refuses to run if they
   differ.
 - **FX meters (ABI 23).** A device reports its screen's live values with
   `FxAlgo::readouts` (48 floats laid out per device, documented in each device's
@@ -1375,7 +1375,11 @@ dependencies beyond the other Sidecar crates.
   console name), with only the network protocols the console's profile names
   (`MixerEngine::getRemotes`, `WingRemote::refreshProtocols`): the WING's servers, or
   on an X32 the X32's OSC server (`livedaw-x32`, `livedaw-ffi/src/x32.rs`, `ld_x32_*`,
-  UDP 10023); LIBRARY > SHOW imports and exports files.
+  UDP 10023); LIBRARY > SHOW imports and exports files. X32 scene files (`.scn`,
+  `livedaw-x32::scn`, `ld_x32_scene_*`) are written and read through the same tree
+  as its `/node` and `/` commands; the values the engine has no place for come from
+  the running server's state, or the handle's own while it's stopped
+  (`WingRemote::writeX32Scene` / `readX32Scene`, `ui/X32SceneFiles`).
 - **Tests.** `tests/remote.rs` drives the servers over sockets, `tests/snapshot.rs`
   imports an authored fixture and round-trips exports, `tests/libwing.rs` runs
   libwing's own clients when `LIBWING_TOOLS` is set (`tools/wing/libwing_tools.sh`),

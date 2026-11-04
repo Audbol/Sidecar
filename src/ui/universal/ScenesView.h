@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui/UiContext.h"
+#include "ui/X32SceneFiles.h"
 #include "ui/universal/Widgets.h"
 
 #include <memory>
@@ -13,7 +14,8 @@ namespace livedaw::ui::universal
     selected scene, PREV / NEXT the show's previous / next one (as the WING's
     GO PREV / GO NEXT), ADD captures the console as a new scene after the
     selected one, STORE captures it into the selected one, RENAME, UP / DOWN
-    move it, REMOVE deletes it. STORE and REMOVE ask first. */
+    move it, REMOVE deletes it. STORE and REMOVE ask first. On an X32, IMPORT
+    .scn and EXPORT .scn read and write X32 scene files (`x32::SceneFiles`). */
 class ScenesView final : public juce::Component, private juce::Timer
 {
 public:
@@ -35,6 +37,7 @@ public:
     void rename (const juce::String&);
 
     ToggleKey goKey, prevKey, nextKey, addKey, storeKey, renameKey, upKey, downKey, removeKey;
+    ToggleKey importKey, exportKey;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -56,6 +59,9 @@ private:
 
     UiContext& ctx;
     const Theme& theme;
+    x32::SceneFiles sceneFiles { ctx };
+    juce::String fileStatus; // what the last IMPORT / EXPORT .scn did
+    juce::Rectangle<int> statusArea;
     std::vector<Row> rows;
     int selected = -1;
     std::unique_ptr<List> list;

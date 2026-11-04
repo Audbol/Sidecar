@@ -12,6 +12,7 @@
 #include "engine/PluginHost.h"
 #include "engine/Show.h"
 #include "ui/UniversalSkin.h"
+#include "ui/X32SceneFiles.h"
 #include "ui/X32Surface.h"
 
 using namespace livedaw;
@@ -311,6 +312,27 @@ private:
         }
         display.pushEncoder (0);
         expect (skin.getModel() == ui::X32Surface::Model::Full);
+
+        // X32 scene files: EXPORT writes the console, IMPORT keeps one as a new scene.
+        {
+            ui::x32::SceneFiles files (rig.ctx);
+            const auto file = juce::File::createTempFile (".scn");
+            expect (files.exportFile (file).startsWith ("Exported"));
+            auto text = file.loadFileAsString();
+            expect (text.startsWith ("#2.7# "), text.substring (0, 40));
+            expect (text.contains ("\n/ch/13/config \"Vox 1\" "), "the channel's name");
+            text = text.replace ("/ch/13/config \"Vox 1\"", "/ch/13/config \"Lead\"").replace ("#2.7# \"", "#2.7# \"Encore");
+            text << "/headamp/000 +0.0 OFF\n";
+            file.replaceWithText (text);
+            const int scenes = rig.show.getNumScenes();
+            const auto status = files.importFile (file);
+            expect (status.startsWith ("Imported"), status);
+            expect (status.contains ("1 line(s)"), "the head amp isn't emulated: " + status);
+            expectEquals (rig.show.getNumScenes(), scenes + 1);
+            expect (rig.show.getScene (scenes)->name.startsWith ("Encore"));
+            expectEquals (channels[12]->getName(), juce::String ("Lead"));
+            file.deleteFile();
+        }
         setShownProfile (ld::kProfileWing);
     }
 

@@ -2,6 +2,7 @@
 
 #include "ui/Knobs.h"
 #include "ui/UiContext.h"
+#include "ui/X32SceneFiles.h"
 #include "ui/universal/ValueControls.h"
 #include "ui/universal/Widgets.h"
 
@@ -102,6 +103,8 @@ private:
 
     std::array<Encoder, 6> encoders;
     std::array<DisplayKnob, 6> knobs;
+    SceneFiles sceneFiles { ctx };
+    juce::String libraryStatus; // what the last IMPORT / EXPORT .scn did
     std::vector<std::unique_ptr<universal::ToggleKey>> screenKeys, pushKeys, muteGroupKeys;
     universal::ToggleKey pagePrev, pageNext, layerUp, layerDown;
     universal::ResponseView eqView;

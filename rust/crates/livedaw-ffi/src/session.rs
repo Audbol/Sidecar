@@ -17,7 +17,7 @@ use std::path::PathBuf;
 
 // ---- strings -------------------------------------------------------------------------
 
-pub struct LdString(String);
+pub struct LdString(pub(crate) String);
 
 impl LdString {
     pub fn new(s: String) -> *mut LdString {

@@ -93,6 +93,12 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
   graphs, sends, meters, scenes and mute groups. Unlike an X32, its screen takes touch.
   The X32 COMPACT is a model of it (8 input faders, in eight layers). SETUP > SIDECAR >
   INTERFACE offers the X32 and makes the console a fresh X32, asking first.
+- X32 scene files: IMPORT .scn (on the X32 display's LIBRARY and the Universal Mixer's
+  SCENES) sets the console from an X32 scene file and keeps it as a new scene; EXPORT
+  .scn writes the console as one. What Sidecar doesn't emulate yet (FX slots, outputs,
+  head amps) is skipped. C ABI 39: `ld_x32_scene_write`, `ld_x32_scene_read`.
+- An X32's sends to buses 9-16 now start POST, as a freshly initialised X32's do
+  (they started EQ->).
 
 ## [0.2.0] - beta
 

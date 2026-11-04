@@ -948,6 +948,12 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
   gate, insert, the compressor's position, its threshold and pan; on gate, dyn and eq
   each block's own controls; on sends four sends at a time. LIBRARY recalls a scene
   (the sixth encoder, its key GO); MUTE GRP has the six mute groups.
+- **X32 scene files.** LIBRARY's **IMPORT .scn** loads an X32 scene file (from an
+  X32's USB stick or X32-Edit) onto the console and keeps it as a new scene of the
+  show; **EXPORT .scn** saves the console as one, which an X32 can load. The
+  Universal Mixer's SCENES has the same two keys on an X32. What Sidecar doesn't
+  emulate yet (the FX slots, the outputs, the head amps) is skipped, and the import
+  says how many lines that was.
 - **Touch.** Unlike an X32's, the screen takes touch: tap a tab, drag up or down on
   an encoder's cell to turn it, tap the cell to push it, and drag the EQ's bands on
   its graph.

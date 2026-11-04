@@ -109,7 +109,8 @@ impl SendParams {
 
 impl BankItem for SendParams {
     /// The WING's factory sends ([`default_mode`], off); an X32's inputs' are
-    /// on at -oo (its `sends_on`), PRE at its `send_tap`. (An X32's buses send
+    /// on at -oo (its `sends_on`), to buses 1-8 PRE at its `send_tap`, to buses
+    /// 9-16 POST (as a freshly initialised X32 has them). (An X32's buses send
     /// to its matrices only: their bus sends stay off.)
     fn factory(spec: &ProfileSpec, kind: StripKind, slot: usize, index: usize) -> Self {
         if !spec.sends_on || !kind.is_input() {
@@ -117,11 +118,12 @@ impl BankItem for SendParams {
         }
         // The X32's FX returns (aux slots of its "FX" range) send POST.
         let fx_return = spec.slot(kind, slot).is_some_and(|r| r.label == "FX");
-        let s = Self::with_mode(if fx_return { send_mode::POST } else { send_mode::PRE });
+        let post = fx_return || index >= 8;
+        let s = Self::with_mode(if post { send_mode::POST } else { send_mode::PRE });
         s.enabled.store(true, Ordering::Relaxed);
         s.pan_link.store(false, Ordering::Relaxed); // the X32's pan follow starts off
         s.pan.store(crate::profile::x32_pair_pan(kind, slot)); // a linked pair's sends too
-        if !fx_return {
+        if !post {
             s.tap.store(spec.send_tap, Ordering::Relaxed);
         }
         s

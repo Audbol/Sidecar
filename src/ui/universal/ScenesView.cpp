@@ -73,7 +73,7 @@ private:
 ScenesView::ScenesView (UiContext& c, const Theme& t)
     : goKey ("GO", t.accent, t), prevKey ("PREV", t.accent, t), nextKey ("NEXT", t.accent, t), addKey ("ADD", t.accent, t),
       storeKey ("STORE", t.accent, t), renameKey ("RENAME", t.accent, t), upKey ("UP", t.accent, t), downKey ("DOWN", t.accent, t),
-      removeKey ("REMOVE", t.mute, t), ctx (c), theme (t), list (std::make_unique<List> (*this))
+      removeKey ("REMOVE", t.mute, t), importKey ("IMPORT .scn", t.accent, t), exportKey ("EXPORT .scn", t.accent, t), ctx (c), theme (t), list (std::make_unique<List> (*this))
 {
     goKey.onClick = [this] { go(); };
     prevKey.onClick = [this]
@@ -115,6 +115,22 @@ ScenesView::ScenesView (UiContext& c, const Theme& t)
         if (selected >= 0)
             confirm ("REMOVE", "Remove scene " + juce::String (selected + 1) + " from the show?", [this] { remove(); });
     };
+
+    auto said = [safe = juce::Component::SafePointer<ScenesView> (this)] (const juce::String& status)
+    {
+        if (safe == nullptr)
+            return;
+        safe->fileStatus = status;
+        safe->refresh();
+        safe->selectScene (safe->ctx.show.getNumScenes() - 1);
+        safe->repaint();
+    };
+    importKey.onClick = [this, said] { sceneFiles.importScene (said); };
+    exportKey.onClick = [this, said] { sceneFiles.exportScene (said); };
+    importKey.setTooltip ("Import an X32 scene file as a new scene");
+    exportKey.setTooltip ("Export the console as an X32 scene file");
+    addChildComponent (importKey);
+    addChildComponent (exportKey);
 
     viewport.setViewedComponent (list.get(), false);
     viewport.setScrollBarsShown (true, false);
@@ -247,11 +263,24 @@ void ScenesView::refresh()
     }
     for (auto* k : { &goKey, &storeKey, &renameKey, &upKey, &downKey, &removeKey })
         k->setEnabled (selected >= 0);
+    const bool x32 = ctx.engine.getProfile() == ld::kProfileX32;
+    if (importKey.isVisible() != x32)
+    {
+        importKey.setVisible (x32);
+        exportKey.setVisible (x32);
+        resized();
+    }
 }
 
 void ScenesView::paint (juce::Graphics& g)
 {
     g.fillAll (theme.background);
+    if (fileStatus.isNotEmpty() && importKey.isVisible())
+    {
+        g.setColour (theme.textDim);
+        g.setFont (type::font (type::kCaption));
+        g.drawFittedText (fileStatus, statusArea, juce::Justification::centredLeft, 2, 0.8f);
+    }
     if (rows.empty())
     {
         g.setColour (theme.textDim);
@@ -269,6 +298,14 @@ void ScenesView::resized()
     {
         k->setBounds (keys.removeFromLeft (w));
         keys.removeFromLeft (sizes::kGapSmall);
+    }
+    if (importKey.isVisible())
+    {
+        // The X32's scene files at the right of the keys, what they did under them.
+        exportKey.setBounds (keys.removeFromRight (w + 30));
+        keys.removeFromRight (sizes::kGapSmall);
+        importKey.setBounds (keys.removeFromRight (w + 30));
+        statusArea = area.removeFromTop (22).withTrimmedLeft (keys.getX() - area.getX());
     }
     area.removeFromTop (sizes::kGap);
     viewport.setBounds (area);

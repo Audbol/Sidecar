@@ -6,15 +6,33 @@
 //! with: the host destroys it before the engine.
 
 use super::guard;
-use super::session::str_arg;
-use livedaw_engine::Engine;
+use super::session::{str_arg, LdString};
+use livedaw_engine::{Engine, Profile};
 use livedaw_wing::server::{EngineHandle, EnginePtr};
-use livedaw_x32::{Config, Identity, X32Server};
+use livedaw_x32::map::State;
+use livedaw_x32::{scn, Config, Console, Identity, X32Server};
 use std::sync::Arc;
 
 pub struct LdX32 {
     engine: *const Engine,
     server: Option<X32Server>,
+    /// What the X32 has and the engine doesn't (automix, key filters...)
+    /// while the server is stopped (scene files).
+    state: State,
+}
+
+impl LdX32 {
+    /// The console as an X32 (None if the engine isn't one): the running
+    /// server's values, or this handle's own.
+    fn with_console<R>(&self, f: impl FnOnce(&Console) -> R) -> Option<R> {
+        // SAFETY: the host keeps the engine alive while `self` is.
+        let engine = unsafe { self.engine.as_ref()? };
+        if engine.profile() != Profile::X32 {
+            return None;
+        }
+        let state = self.server.as_ref().map_or(&self.state, |s| &s.shared().state);
+        Some(f(&Console::new(engine, state)))
+    }
 }
 
 /// A stopped X32 server for engine `e` (null if `e` is).
@@ -26,7 +44,7 @@ pub unsafe extern "C" fn ld_x32_create(e: *const Engine) -> *mut LdX32 {
     if e.is_null() {
         return std::ptr::null_mut();
     }
-    guard(std::ptr::null_mut(), || Box::into_raw(Box::new(LdX32 { engine: e, server: None })))
+    guard(std::ptr::null_mut(), || Box::into_raw(Box::new(LdX32 { engine: e, server: None, state: State::default() })))
 }
 
 /// Stops the server and frees `x`.
@@ -94,6 +112,56 @@ pub unsafe extern "C" fn ld_x32_port(x: *const LdX32) -> i32 {
     x.as_ref().and_then(|x| x.server.as_ref()).and_then(|s| s.status().osc).map_or(-1, |a| i32::from(a.port()))
 }
 
+/// ABI 39: what reading a scene file did (`ld_x32_scene_read`); the strings
+/// are the caller's to free.
+#[repr(C)]
+pub struct LdX32SceneRead {
+    pub applied: i32,
+    pub skipped: i32,
+    pub name: *mut LdString,
+    pub note: *mut LdString,
+}
+
+/// ABI 39: the console as an X32 scene file (`.scn` text), or null if it
+/// isn't an X32.
+///
+/// # Safety
+/// `x` is from `ld_x32_create` (or null); the strings hold their lengths in UTF-8 bytes.
+#[no_mangle]
+pub unsafe extern "C" fn ld_x32_scene_write(
+    x: *const LdX32,
+    name: *const u8,
+    name_len: usize,
+    note: *const u8,
+    note_len: usize,
+) -> *mut LdString {
+    let Some(x) = x.as_ref() else { return std::ptr::null_mut() };
+    let (name, note) = (str_arg(name, name_len), str_arg(note, note_len));
+    guard(std::ptr::null_mut(), || x.with_console(|c| LdString::new(scn::write(c, &name, &note))).unwrap_or(std::ptr::null_mut()))
+}
+
+/// ABI 39: sets the console from an X32 scene file's text; false if it isn't an X32.
+///
+/// # Safety
+/// `x` is from `ld_x32_create` (or null); `text` holds `len` bytes; `out` is null or writable.
+#[no_mangle]
+pub unsafe extern "C" fn ld_x32_scene_read(x: *const LdX32, text: *const u8, len: usize, out: *mut LdX32SceneRead) -> bool {
+    let Some(x) = x.as_ref() else { return false };
+    let text = str_arg(text, len);
+    guard(false, || {
+        let Some(r) = x.with_console(|c| scn::read(c, &text)) else { return false };
+        if let Some(out) = out.as_mut() {
+            *out = LdX32SceneRead {
+                applied: i32::try_from(r.applied).unwrap_or(i32::MAX),
+                skipped: i32::try_from(r.skipped).unwrap_or(i32::MAX),
+                name: LdString::new(r.name),
+                note: LdString::new(r.note),
+            };
+        }
+        true
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -121,6 +189,27 @@ mod tests {
             assert!(buf[..n].windows(5).any(|w| w == b"STAGE"), "{:?}", String::from_utf8_lossy(&buf[..n]));
             ld_x32_stop(x);
             assert_eq!(ld_x32_port(x), -1);
+            ld_x32_destroy(x);
+        }
+    }
+
+    #[test]
+    fn a_scene_file_goes_out_and_back_in() {
+        let engine = Engine::new(0);
+        unsafe {
+            let x = ld_x32_create(&engine);
+            assert!(ld_x32_scene_write(x, std::ptr::null(), 0, std::ptr::null(), 0).is_null(), "a WING isn't an X32");
+            engine.configure(&ConsoleConfig { profile: Profile::X32, counts: Counts::X32 });
+            let line = "#2.7# \"Gig\" \"\" %000000000 1\n/ch/01/config \"Kick\" 1 RD 1\n/headamp/000 +0.0 OFF\n";
+            let mut read = LdX32SceneRead { applied: 0, skipped: 0, name: std::ptr::null_mut(), note: std::ptr::null_mut() };
+            assert!(ld_x32_scene_read(x, line.as_ptr(), line.len(), &mut read));
+            assert_eq!((read.applied, read.skipped), (1, 1));
+            assert_eq!(Box::from_raw(read.name).0, "Gig");
+            drop(Box::from_raw(read.note));
+            let name = "Gig";
+            let text = Box::from_raw(ld_x32_scene_write(x, name.as_ptr(), name.len(), std::ptr::null(), 0));
+            assert!(text.0.starts_with("#2.7# \"Gig\" \"\""));
+            assert!(text.0.contains("\n/ch/01/config \"Kick\" 1 RD 1\n"));
             ld_x32_destroy(x);
         }
     }

@@ -7,6 +7,7 @@
 //! * [`map`]: its parameter tree mapped onto the engine's strips; values
 //!   without an equivalent are kept by the server.
 //! * [`meters`]: the meter replies.
+//! * [`scn`]: scene files (`.scn`), written and read.
 //! * [`server`]: the server itself.
 //!
 //! The OSC codec and the engine handle are `livedaw-wing`'s.
@@ -17,6 +18,7 @@
 
 pub mod map;
 pub mod meters;
+pub mod scn;
 pub mod server;
 pub mod value;
 

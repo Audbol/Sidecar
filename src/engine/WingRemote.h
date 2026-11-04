@@ -60,6 +60,17 @@ public:
         is an X32 (its profile names that protocol), on UDP 10023. */
     bool isX32Running() const;
     static constexpr int x32Port = 10023;
+
+    /** X32 scene files (`.scn`, Phase 4 step 7): the console as one (empty if it
+        isn't an X32), and the console set from one's text. */
+    juce::String writeX32Scene (const juce::String& name, const juce::String& note) const;
+    struct X32SceneRead
+    {
+        bool ok = false; // false: the console isn't an X32
+        int applied = 0, skipped = 0;
+        juce::String name, note;
+    };
+    X32SceneRead readX32Scene (const juce::String& text);
     /** Renames the console at once (discovery and connected clients). */
     void setName (const juce::String&);
     /** The model the console reports (discovery, /? and /$syscfg/$cnsmdl), as

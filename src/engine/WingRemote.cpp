@@ -92,6 +92,28 @@ bool WingRemote::isX32Running() const
     return ld::ld_x32_port (x32) >= 0;
 }
 
+juce::String WingRemote::writeX32Scene (const juce::String& name, const juce::String& note) const
+{
+    const Utf8 n (name), t (note);
+    return takeString (ld::ld_x32_scene_write (x32, n.data, n.size, t.data, t.size));
+}
+
+WingRemote::X32SceneRead WingRemote::readX32Scene (const juce::String& text)
+{
+    const Utf8 t (text);
+    ld::LdX32SceneRead out {};
+    X32SceneRead r;
+    r.ok = ld::ld_x32_scene_read (x32, t.data, t.size, &out);
+    if (r.ok)
+    {
+        r.applied = out.applied;
+        r.skipped = out.skipped;
+        r.name = takeString (out.name);
+        r.note = takeString (out.note);
+    }
+    return r;
+}
+
 juce::StringArray WingRemote::applyWing (const Settings& s)
 {
     if (! s.enabled)

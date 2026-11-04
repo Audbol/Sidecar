@@ -475,8 +475,18 @@ Three layers:
         `x32midi.output`; the app's virtual port where the platform has them); the
         profile names it (C ABI `RemotesC::midi` 1). Still to come: OSC over SysEx,
         snippets and cues by program change, a settings page for the devices.
-   7. **Scenes and the interface**: `.scn` import and export; the Universal Mixer
-      shows the X32 (its strip kinds, blocks and colours from the profile).
+   7. **Scenes and the interface**: `.scn` import and export (done): `livedaw-x32::scn`
+      writes the console as the server's `/node` answers it (`/config` first, the
+      header `#2.7# "name" "note" %000000000 1`) and reads a file as its `/` command
+      sets values (a linked pair's partner too); what Sidecar doesn't emulate (FX
+      slots, outputs, head amps...) is left out of a written file and skipped in a
+      read one. C ABI 39 (`ld_x32_scene_write`, `ld_x32_scene_read`); the X32
+      display's LIBRARY and the Universal Mixer's SCENES have IMPORT .scn (a new
+      scene of the show) and EXPORT .scn (`x32::SceneFiles`). A factory console's
+      file matches a freshly initialised X32 Compact's `/node` answers line for line
+      (`tests/scn.rs`, with `LIVEDAW_X32_SNAPSHOT` naming the dump; that test found
+      the sends to buses 9-16 start POST, not EQ->). The Universal Mixer shows the
+      X32 (its strip kinds, blocks and colours from the profile).
    8. **An X32 skin** (the owner's choice, November 2026: "make it look good"): a
       surface laid out as an X32, the way the WING surface is the WING's skin, drawn
       in Sidecar's own style (no Behringer artwork). From the X32's manual: 16 input
