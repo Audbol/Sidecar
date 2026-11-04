@@ -292,6 +292,11 @@ mod tests {
         let p = Params::new(eq, &v[..eq.params.len()]);
         assert_eq!((p.f("lf"), p.text("lq"), p.f("lmf"), p.text("lmq"), p.f("hmf")), (125.0, "L.SHELF", 1000.0, "0.7", 4000.0));
         assert_eq!(p.text("hq"), "H.SHELF");
+        // A frequency of 1 kHz and more is a number, a ratio's 1000:1 INF.
+        let hf = eq.params.iter().find(|x| x.id == "hf").unwrap();
+        let text = hf.display(index(&FREQS, 4000.0));
+        assert!(text != "INF" && text.starts_with('4'), "{text}");
+        assert_eq!(CMP_PARAMS[1].display(15.0), "INF");
         assert!(eq.params.len() <= crate::wing::MAX_EQ_PARAMS);
         assert!(DYN_MODELS.iter().all(|m| m.params.len() <= crate::wing::MAX_DYN_PARAMS));
         // Scene 0's compressor is flat.

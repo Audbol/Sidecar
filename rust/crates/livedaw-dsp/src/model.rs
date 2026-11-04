@@ -110,7 +110,9 @@ impl ParamSpec {
             ParamKind::Choice(items) => items.get(v as usize).copied().unwrap_or("?").to_string(),
             ParamKind::Values(items) => {
                 let x = items.get(v as usize).copied().unwrap_or(0.0);
-                if x >= 999.0 {
+                // A ratio's infinity (999 or 1000:1); a frequency or a time of
+                // 1000 and more is a number.
+                if x >= 999.0 && self.unit.is_empty() {
                     "INF".into()
                 } else {
                     format_number(x, self.unit)
