@@ -38,7 +38,13 @@ PROMIX 01) has its channels, effects, dynamics processors, EQ and MIDI, and open
 **ProMix surface** (a preview): its faders, its LCD with the function keys, the scene
 memory and the PARAMETER wheel (see the user guide's chapter *The ProMix 01 surface*).
 
-**Coming next: more consoles.** After the ProMix 01 come the Yamaha 02R, DM2000 and Midas
+**In progress: the Yamaha 02R.** An 02R console (SETUP > SIDECAR > INTERFACE: 02R) has its
+40 input channels, effects, dynamics, EQ, libraries and MIDI, and opens on the **02R
+surface** (a preview): its faders and encoders, the display with its function keys, the
+SELECTED CHANNEL section and the scene memory (see the user guide's chapter *The 02R
+surface*).
+
+**Coming next: more consoles.** After the 02R come the Yamaha DM2000 and Midas
 PRO1, then Allen & Heath and DiGiCo, each an emulation on the same core. The plan is in
 [docs/UNIVERSAL_MIXER.md](docs/UNIVERSAL_MIXER.md).
 
@@ -90,6 +96,8 @@ relying on it at a show (see [Known limitations](#known-limitations)).
 | **Universal Mixer** (preview): a console of any size | **Inspector**: a strip's chain, blocks and sends |
 | ![The X32 surface: the channel strip section and the X32's display along the top, 16 input faders, 8 DCAs and the main LR below](docs/images/x32-surface.png) | ![The ProMix 01 surface: the LCD and its function keys along the top, the 16 channel faders, ST IN, RTN / SEND and ST OUT below](docs/images/promix-surface.png) |
 | **X32 surface** (preview): an X32's faders, channel strip and display | **ProMix 01 surface** (preview): its faders, LCD and scene memory |
+| ![The 02R surface: the display and its function keys, the SELECTED CHANNEL section and the scene memory along the top, the TAPE and EFF encoders, the 21 faders below](docs/images/y02r-surface.png) | |
+| **02R surface** (preview): its faders, encoders, display and SELECTED CHANNEL section | |
 
 ## What it does
 

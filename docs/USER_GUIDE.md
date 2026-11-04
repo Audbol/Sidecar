@@ -1089,6 +1089,96 @@ and PAD controls (the console's are analog; use the strip's trim on the Universa
 The fader's steps, the effects' algorithms and the compressor's ratio steps are Sidecar's
 reading of the User's Guide, not measured on a console.
 
+## The 02R surface (preview)
+
+Sidecar also emulates a Yamaha 02R (Version 2), the 1995 digital recording console
+controlled over MIDI. An 02R console has:
+
+- **Inputs:** MIC/LINE 1-16, LINE 17/18-23/24 as four stereo channels, and the 16 tape
+  returns (TAPE 1-16) as full channels.
+- **Effects:** its two internal effects, fed by AUX 7-8, returning on EFF1-2.
+- **Outputs:** BUS 1-8, AUX 1-8 and STEREO.
+- **Processing:** a 4-band EQ on every input, return and STEREO; a dynamics processor
+  (compressor, expander, compander, gate or ducking) on the inputs, BUS 1-8 and STEREO.
+- **Libraries:** 40 presets each of EQ, dynamics and effects.
+- **Faders:** 128 steps.
+- **Remote:** its MIDI.
+
+Sidecar isn't affiliated with Yamaha, and none of their artwork is used: the surface is
+drawn in Sidecar's own style.
+
+To make the console an 02R, choose **02R** in SETUP > SIDECAR > INTERFACE on the WING
+surface (SETUP > PREFERENCES > INTERFACE on the Universal Mixer). Sidecar asks first: the
+console is cleared and becomes a fresh 02R (scenes stay). A show of an 02R opens on the
+02R surface; its **UNIVERSAL MIXER** key switches to the Universal Mixer, whose **02R
+SURFACE** key comes back.
+
+![The 02R surface: the display and its function keys, the SELECTED CHANNEL section, the scene memory and the stereo meter along the top; the TAPE and EFF encoders; the 21 faders below](images/y02r-surface.png)
+
+- **Faders.** MIC/LINE 1-16, LINE 17/18-23/24 and STEREO, each with **SEL** and **ON**.
+  - They have the console's 128 steps and its scales: the channels +10 to -90 dB, STEREO
+    0 to -120 dB. Double-click a fader for 0 dB.
+  - **FLIP** puts TAPE 1-16 on faders 1-16 and MIC 1-16 on the encoders.
+  - While an **AUX** function is on the display, the faders are the inputs' sends to that
+    aux, and STEREO's fader is the aux master.
+  - A paired channel's fader moves its partner; a fader group moves together.
+- **Encoders.** TAPE 1-16 and EFF1-2, with **SEL** and **ON**: drag or scroll to turn them.
+- **The display** shows the function its key calls, for the channel SEL chose. The
+  CONFIGURATION keys:
+  - **SCENE MEMORY:** the channel's fade time and recall safe.
+  - **UTILITY:** the oscillator.
+  - **MIDI:** MIDI SETUP.
+  - **GROUP:** groups A-H, the channel's fader and mute group.
+  - **PAIR:** the channel's pair, the aux and bus pairs.
+
+  The MIXING keys:
+  - **METER:** every strip.
+  - **VIEW:** the channel at a glance.
+  - **ROUTING:** BUS 1-8, ST, DIRECT.
+  - **Ø / ATT, DELAY, PAN.**
+  - **EQ:** its curve, the four bands, HPF and LPF, and its library.
+  - **DYNAMICS:** the type and its values, KEY IN, ST.LINK and IN, and its library.
+
+  **AUX 1-8:** the channel's send level, ON and PRE / POST, and the aux master. AUX 7-8
+  also hold their effect's library.
+
+  The cursor keys move between the page's values, the wheel changes the one under the
+  cursor, and **ENTER** switches it or recalls the library program chosen. The screen
+  takes touch: tap a value to put the cursor on it, drag up or down to turn it.
+- **SELECTED CHANNEL**, for the channel SEL chose:
+  - **ROUTING:** 1-8, ST, DIRECT.
+  - **AUX:** an aux key picks the send, **SEND LEVEL** turns it, **ON** switches it.
+  - **PAN.**
+  - **EQUALIZER:** a band key picks the band for **Q**, **F** and **G**, and **EQ ON**.
+- **SCENE MEMORY.** ▲ and ▼ choose a number, STORE stores the console as that scene of the
+  show (a new scene at the end if the show has fewer), RECALL recalls it. 00 is the
+  console's initial data: RECALL resets the mix.
+- **MIDI.** The 02R's MIDI is its only remote:
+  - **Program changes** recall scenes (1-96; 97 is scene 0).
+  - **Control changes** follow the 02R preset map: the faders, ON keys, pans and AUX 7
+    sends.
+  - **SysEx:**
+    - parameter changes and requests
+    - recall and store of scenes and library programs
+    - the fader and encoder remote
+  - **Yamaha bulk dumps** of scenes, the tables, the setup and the library programs.
+
+  The MIDI page sets the channel and each kind's switches; the devices are in the app
+  settings (`y02rmidi.input`, `.output`). The parameter changes' addresses and the dumps'
+  bytes are Sidecar's layout (the 02R's own aren't published): they come back into
+  Sidecar, not into an 02R.
+
+Not there yet:
+- the analog controls (gain, pad, phantom power)
+- DIGITAL I/O, SETUP and AUTOMIX
+- solo and the monitor keys
+- the channel library
+- surround panning
+- fader recall safe and fade times taking effect on a recall
+
+The fader steps, part of the Q table, the dynamics' time tables and the effects'
+algorithms are Sidecar's reading of the User's Guides, not measured on a console.
+
 ## Multitrack recording
 
 Sidecar records up to 64 tracks and plays up to 64 tracks back into the console, like

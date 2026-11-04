@@ -406,11 +406,15 @@ impl<'a> Console<'a> {
     }
 
     /// Whether an input is routed to BUS `bus` (0-7): a post-fader send at 0
-    /// dB following its pan (MAN p.39).
+    /// dB following its pan (MAN p.39); a send left at -oo (as a new console's
+    /// are) isn't a route.
     pub fn bus_on(&self, s: Y2Strip, bus: usize) -> bool {
         s.member().is_some()
             && bus < 8
-            && self.strip(s).and_then(|st| st.sends.get_or_create(bus).map(|p| p.enabled.load(Relaxed))).unwrap_or(false)
+            && self
+                .strip(s)
+                .and_then(|st| st.sends.get_or_create(bus).map(|p| p.enabled.load(Relaxed) && p.level_db.load() > -100.0))
+                .unwrap_or(false)
     }
 
     pub fn set_bus_on(&mut self, s: Y2Strip, bus: usize, on: bool) {

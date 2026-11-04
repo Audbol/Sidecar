@@ -9,6 +9,7 @@ UniversalSkin::UniversalSkin (UiContext& c)
     : ctx (c), theme (Theme::dark()),
       wingKey (c.engine.getProfile() == ld::kProfileX32        ? "X32 SURFACE"
                : c.engine.getProfile() == ld::kProfileProMix01 ? "PROMIX SURFACE"
+               : c.engine.getProfile() == ld::kProfileYamaha02R ? "02R SURFACE"
                                                                : "WING SURFACE",
                theme.accent, theme), mixer (c, theme), routingView (c, theme), fxRack (c, theme),
       monitoring (c, theme), scenes (c, theme), recorder (c, theme), setup (c, theme), inspector (c, theme)
@@ -28,6 +29,7 @@ UniversalSkin::UniversalSkin (UiContext& c)
     // (An X32 console's surface is the X32's, a ProMix 01's the ProMix's.)
     const auto back = ctx.engine.getProfile() == ld::kProfileX32        ? InterfaceKind::X32
                       : ctx.engine.getProfile() == ld::kProfileProMix01 ? InterfaceKind::ProMix
+                      : ctx.engine.getProfile() == ld::kProfileYamaha02R ? InterfaceKind::Yamaha02R
                                                                         : InterfaceKind::Wing;
     wingKey.onClick = [&context = ctx, back]
     {

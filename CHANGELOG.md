@@ -311,6 +311,18 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   SysEx recall and store reach them). They keep the console's own state: pairs,
   groups, gangs, keys, recall safe, fade times, the oscillator. Scene 0 is a new
   02R's mix. C ABI 46: `ld_y02r_state` / `ld_y02r_set_state` for that state.
+- The 02R surface (a preview; SETUP > SIDECAR > INTERFACE: 02R, which makes the console
+  a fresh 02R after asking):
+  - its 21 faders with SEL and ON, on the console's 128 steps and scales; FLIP puts
+    TAPE 1-16 on faders 1-16; in an AUX function they are the sends to it
+  - the encoders of TAPE 1-16 and EFF1-2
+  - the display with its CONFIGURATION, MIXING and AUX function keys: VIEW, phase
+    / ATT, DELAY, PAN, ROUTING, EQ with its curve and library, DYNAMICS with its
+    keys and library, METER, GROUP, PAIR, SCENE MEMORY, UTILITY, MIDI, AUX 1-8
+    (AUX 7-8 with their effect's library)
+  - the cursor keys, ENTER and the wheel
+  - the SELECTED CHANNEL section: ROUTING, AUX and SEND LEVEL, PAN, EQ
+  - SCENE MEMORY and the stereo meter
 - A new channel takes its console's factory settings, colour and name by its slot,
   not its id (a channel's id is 1-based and kept by shows).
 - Fixed: the X32 surface's UNIVERSAL MIXER key crashed the app when the Universal

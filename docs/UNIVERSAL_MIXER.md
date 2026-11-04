@@ -1105,13 +1105,33 @@ Three layers:
         `ld_y02r_state` / `ld_y02r_set_state`).
       - Not done: fader recall safe and fade times are kept, not yet applied
         to a recall.
-   7. **An 02R skin**: `Yamaha02RSurface`, the panel in Sidecar's style:
+   7. **An 02R skin** (done): `Y02RSurface` (`src/ui/Y02RSurface.*`, a `Skin`,
+      `InterfaceKind::Yamaha02R`, the setting `02r`; SETUP > INTERFACE offers 02R
+      on every skin and makes the console a fresh 02R, asking first; the
+      Universal Mixer's 02R SURFACE key comes back). Its values are the edit
+      buffer's bytes (`ld_y02r_get` / `set`, the panel's groups and gangs
+      following) and the console's state values (`ld_y02r_state`). A
+      screenshot test (`y02r-surface.png`, `y02r-display-dynamics.png`). Not
+      done:
+      - the analog controls (gain, pad, phantom)
+      - DIGITAL I/O, SETUP, AUTOMIX
+      - solo, the monitor keys
+      - the channel library
+      - the libraries' STORE and titles on the surface
+
+      The panel in Sidecar's style:
       - 20 channel faders and STEREO, with FLIP to the tape returns
       - the encoders for TAPE 1-16 and EFF1-2
       - the display with its function keys
       - the SELECTED CHANNEL section (routing, aux, pan, EQ)
       - scene memory
       - the stereo meter
+
+   Phase 6 is complete (November 2026) as far as the User's Guides go. What they
+   don't give is Sidecar's reading, to be checked on a console:
+   - the fader tables, 8 of the Q values, the time tables
+   - the SysEx addresses and the dumps' byte layout
+   - the effects' algorithms
 
 Each emulation keeps the independent-project disclaimer: not affiliated with or
 endorsed by the console's maker, their trademarks used only to say what is emulated,

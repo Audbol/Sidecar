@@ -4,6 +4,7 @@
 #include "ui/MidiRemoteUi.h"
 #include "ui/RoutingGroups.h"
 #include "ui/ProMixSurface.h"
+#include "ui/Y02RSurface.h"
 #include "ui/X32Surface.h"
 #include "ui/PluginChainWindow.h"
 #include "ui/PluginOverviewWindow.h"
@@ -274,6 +275,7 @@ MainComponent::MainComponent (juce::AudioDeviceManager& dm, MixerEngine& e, Plug
     setInterface (savedKind == "universal" ? InterfaceKind::Universal
                   : savedKind == "x32"     ? InterfaceKind::X32
                   : savedKind == "promix"  ? InterfaceKind::ProMix
+                  : savedKind == "02r"     ? InterfaceKind::Yamaha02R
                                            : InterfaceKind::Wing,
                   false);
     setWantsKeyboardFocus (true);
@@ -361,15 +363,18 @@ void MainComponent::refreshAll()
     // A console that isn't a WING (a show of one was loaded): the X32 surface
     // shows an X32, the ProMix surface a ProMix 01, the Universal Mixer any
     // other; a console's surface without its console gives way to the Universal Mixer.
-    const bool x32 = engine.getProfile() == ld::kProfileX32, promix = engine.getProfile() == ld::kProfileProMix01;
+    const bool x32 = engine.getProfile() == ld::kProfileX32, promix = engine.getProfile() == ld::kProfileProMix01,
+               y02r = engine.getProfile() == ld::kProfileYamaha02R;
     if (ctx.interfaceKind == InterfaceKind::Wing && ! isWingConsole())
     {
         log.info (x32      ? "This console is an X32: the X32 surface shows it"
                   : promix ? "This console is a ProMix 01: the ProMix surface shows it"
+                  : y02r   ? "This console is an 02R: the 02R surface shows it"
                            : "This console isn't a WING: the Universal Mixer shows it (SETUP > GENERAL > INTERFACE)");
-        setInterface (x32 ? InterfaceKind::X32 : promix ? InterfaceKind::ProMix : InterfaceKind::Universal, false);
+        setInterface (x32 ? InterfaceKind::X32 : promix ? InterfaceKind::ProMix : y02r ? InterfaceKind::Yamaha02R : InterfaceKind::Universal, false);
     }
-    else if ((ctx.interfaceKind == InterfaceKind::X32 && ! x32) || (ctx.interfaceKind == InterfaceKind::ProMix && ! promix))
+    else if ((ctx.interfaceKind == InterfaceKind::X32 && ! x32) || (ctx.interfaceKind == InterfaceKind::ProMix && ! promix)
+             || (ctx.interfaceKind == InterfaceKind::Yamaha02R && ! y02r))
         setInterface (InterfaceKind::Universal, false);
     syncRemotes();
     skin->refreshAll();
@@ -452,10 +457,28 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                          }, true);
         return;
     }
+    if (kind == InterfaceKind::Yamaha02R && skin != nullptr && engine.getProfile() != ld::kProfileYamaha02R)
+    {
+        // Likewise the 02R surface: an 02R's 24 inputs, 16 tape returns, 8 buses, 8 aux.
+        popups::confirm (skin->popupHost(), "02R SURFACE",
+                         "This console isn't an 02R. The 02R surface shows an 02R: clear the console and make it a fresh "
+                         "02R (MIC/LINE 1-16, LINE 17-24, TAPE 1-16, two effects and their returns, BUS 1-8, AUX 1-8, STEREO)?",
+                         "MAKE IT AN 02R",
+                         [this, save]
+                         {
+                             closeAllPluginWindows();
+                             engine.configureProfile (ld::kProfileYamaha02R);
+                             setInterface (InterfaceKind::Yamaha02R, save);
+                             refreshAll();
+                             log.info ("The console is an 02R");
+                         }, true);
+        return;
+    }
     if (save)
         settings.setValue (uiprefs::interfaceKind, kind == InterfaceKind::Universal ? "universal"
                                                    : kind == InterfaceKind::X32     ? "x32"
                                                    : kind == InterfaceKind::ProMix  ? "promix"
+                                                   : kind == InterfaceKind::Yamaha02R ? "02r"
                                                                                     : "wing");
     if (skin != nullptr && kind == ctx.interfaceKind)
         return;
@@ -464,7 +487,8 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
         removeChildComponent (skin.get());
     skin.reset();
     if ((kind == InterfaceKind::X32 && engine.getProfile() != ld::kProfileX32)
-        || (kind == InterfaceKind::ProMix && engine.getProfile() != ld::kProfileProMix01))
+        || (kind == InterfaceKind::ProMix && engine.getProfile() != ld::kProfileProMix01)
+        || (kind == InterfaceKind::Yamaha02R && engine.getProfile() != ld::kProfileYamaha02R))
         kind = ctx.interfaceKind = InterfaceKind::Universal; // a console's surface shows that console only
     if (kind == InterfaceKind::Wing)
         skin = std::make_unique<WingSurface> (ctx);
@@ -472,6 +496,8 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
         skin = std::make_unique<X32Surface> (ctx);
     else if (kind == InterfaceKind::ProMix)
         skin = std::make_unique<ProMixSurface> (ctx);
+    else if (kind == InterfaceKind::Yamaha02R)
+        skin = std::make_unique<Y02RSurface> (ctx);
     else
         skin = std::make_unique<UniversalSkin> (ctx);
     addChildComponent (*skin, 0); // under the editor and anything over the window
@@ -484,6 +510,7 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
         log.info (kind == InterfaceKind::Universal ? "Interface: the Universal Mixer (preview)"
                   : kind == InterfaceKind::X32     ? "Interface: the X32 surface"
                   : kind == InterfaceKind::ProMix  ? "Interface: the ProMix 01 surface"
+                  : kind == InterfaceKind::Yamaha02R ? "Interface: the 02R surface"
                                                    : "Interface: the WING surface");
     }
 }

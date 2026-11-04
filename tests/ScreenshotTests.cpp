@@ -12,6 +12,8 @@
 #include "engine/PluginHost.h"
 #include "engine/Show.h"
 #include "ui/UniversalSkin.h"
+#include "ui/Y02RSurface.h"
+#include "engine/Yamaha02R.h"
 #include "ui/X32SceneFiles.h"
 #include "ui/ProMixSurface.h"
 #include "ui/X32Surface.h"
@@ -172,6 +174,89 @@ public:
         x32Surface();
         proMixSurface();
         universalOnEveryConsole();
+        y02rSurface();
+    }
+
+    /** The 02R surface (Phase 6 step 7) on an 02R, at 1920x1080. */
+    void y02rSurface()
+    {
+        beginTest ("The 02R surface, on an 02R");
+        MixerEngine engine (0);
+        engine.configureProfile (ld::kProfileYamaha02R);
+        ShotRig rig (engine);
+        setShownProfile (ld::kProfileYamaha02R);
+        auto& y = engine.getYamaha02R();
+        auto& channels = engine.getChannels();
+        for (int i = 0; i < 36; ++i)
+        {
+            y.set (i * Yamaha02R::perStrip, i % 5 == 0 ? 103 : 88 - 3 * (i % 4)); // levels on the console's steps
+            channels[(size_t) i]->meters.outputPeak[0] = 0.08f + 0.5f * (float) ((i * 37) % 11) / 10.0f;
+        }
+        y.set (54 * Yamaha02R::perStrip, 127); // STEREO at 0 dB
+        y.set (12 * Yamaha02R::perStrip + 1, 0); // CH 13 OFF
+        engine.getMains()[0]->meters.outputPeak[0] = 0.3f;
+        engine.getMains()[0]->meters.outputPeak[1] = 0.28f;
+        rig.meters.advance (0.01f);
+        rig.selected = channels[4].get();
+
+        ui::Y02RSurface skin (rig.ctx);
+        skin.setSize (1920, 1080);
+        skin.refreshAll();
+        using F = ui::y02r::Function;
+        // The faders: MIC 1-16, LINE, STEREO; FLIP puts TAPE 1-16 on them.
+        expectEquals (skin.getFader (0).getAddress(), 0);
+        expectEquals (skin.getFader (20).getAddress(), 54 * Yamaha02R::perStrip, "STEREO");
+        skin.setFlip (true);
+        expectEquals (skin.getFader (0).getAddress(), 20 * Yamaha02R::perStrip, "TAPE 1");
+        skin.setFlip (false);
+        // AUX 3: the faders are the inputs' sends to it, STEREO's the aux master.
+        skin.pressFunction (F::Aux3);
+        expectEquals (skin.getFader (2).getAddress(), ui::y02r::sendAddress (2, 2), "CH 3 to AUX 3");
+        expectEquals (skin.getFader (20).getAddress(), ui::y02r::address (ui::y02r::kAux + 2, 0), "AUX 3's master");
+        // A pair moves together from the surface.
+        y.setState (Yamaha02R::Pair, 3, 1); // MIC 7/8
+        skin.pressFunction (F::View);
+        y.set (6 * Yamaha02R::perStrip, 100);
+        expectEquals (y.get (7 * Yamaha02R::perStrip), 100, "CH 8 follows CH 7");
+        // The display on the selected channel (CH 5): the EQ's fields, LIBRARY by ENTER.
+        skin.selectionChanged();
+        auto& display = skin.getDisplay();
+        expectEquals (display.getStrip(), 4);
+        skin.pressFunction (F::Eq);
+        expectEquals (display.getFields()[0].label, juce::String ("EQ"));
+        y.set (ui::y02r::address (4, 5), y.get (ui::y02r::address (4, 5)) | (1 << 2)); // EQ ON
+        y.set (ui::y02r::address (4, 8 + 4), 60); // L-MID G +12 dB
+        const int library = (int) display.getFields().size() - 1;
+        expectEquals (display.getFields()[(size_t) library].label, juce::String ("LIBRARY"));
+        // SCENE MEMORY: STORE into scene 1, RECALL it.
+        skin.setMemory (1);
+        skin.store();
+        expectEquals (rig.show.getNumScenes(), 1);
+        y.set (0, 20);
+        skin.recall();
+        expectEquals (y.get (0), 103, "scene 1's CH 1");
+        skin.pressFunction (F::Dynamics);
+        expect (display.getFields().size() >= 8, "ON, TYPE, six parameters...");
+        skin.pressFunction (F::Eq);
+        skin.refreshAll();
+
+        const auto image = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
+        expect (image.isValid() && image.getWidth() == 1920);
+        const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {});
+        if (folder.isNotEmpty())
+        {
+            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile ("y02r-surface.png");
+            file.deleteFile();
+            juce::FileOutputStream out (file);
+            expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out), file.getFullPathName());
+            skin.pressFunction (F::Dynamics);
+            const auto lcd = display.createComponentSnapshot (display.getLocalBounds(), true, 1.0f);
+            const auto lcdFile = file.getSiblingFile ("y02r-display-dynamics.png");
+            lcdFile.deleteFile();
+            juce::FileOutputStream lcdOut (lcdFile);
+            expect (lcdOut.openedOk() && juce::PNGImageFormat().writeImageToStream (lcd, lcdOut), lcdFile.getFullPathName());
+        }
+        setShownProfile (ld::kProfileWing);
     }
 
     /** The Universal Mixer on each console's profile, every view drawn: the X32

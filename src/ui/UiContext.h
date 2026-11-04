@@ -68,7 +68,9 @@ enum class InterfaceKind
     /** The X32 surface (an X32 console's skin). */
     X32,
     /** The ProMix 01 surface (a ProMix 01 console's skin). */
-    ProMix
+    ProMix,
+    /** The 02R surface (an 02R console's skin). */
+    Yamaha02R
 };
 
 /** The HOME screen's tabs for the selected strip: the overview group
