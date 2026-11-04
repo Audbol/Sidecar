@@ -11,6 +11,7 @@ namespace
 {
     constexpr int kTopBar = 48;
     constexpr int kLayerColumn = 112;
+    constexpr int kAssignWidth = 150;
 
     /** An input layer: its key, the strips (0 channels, 1 aux, 2 buses) from the first. */
     struct InputLayerSpec
@@ -37,7 +38,7 @@ using x32::kScribble;
 //==============================================================================
 X32Surface::X32Surface (UiContext& c)
     : ctx (c), theme (Theme::dark()), universalKey ("UNIVERSAL MIXER", theme.accent, theme),
-      sendsOnFaderKey ("SENDS ON FADER", juce::Colour (0xfff0a020), theme), channel (c, theme), monitor (c, theme),
+      sendsOnFaderKey ("SENDS ON FADER", juce::Colour (0xfff0a020), theme), channel (c, theme), monitor (c, theme), assign (c, theme),
       display (c, theme)
 {
     for (auto& s : inputs)
@@ -88,6 +89,14 @@ X32Surface::X32Surface (UiContext& c)
 
     addAndMakeVisible (channel);
     addAndMakeVisible (monitor);
+    addAndMakeVisible (assign);
+    // An assign button's page jump: the display's screen and tab, a strip selected.
+    assign.onJump = [this] (int screen, int tab, Strip* strip)
+    {
+        if (strip != nullptr && ctx.selectStrip)
+            ctx.selectStrip (strip);
+        display.showScreen ((x32::Display::Screen) screen, tab);
+    };
     // A VIEW key opens its section's tab of the display's HOME screen.
     channel.onView = [this] (int section) { display.showScreen (x32::Display::Screen::Home, section + 1); };
     display.getModel = [this] { return (int) model; };
@@ -376,6 +385,9 @@ void X32Surface::resized()
             column.removeFromTop (sizes::kGapSmall);
         }
     };
+    // The assign section at the right, beside the main fader.
+    assign.setBounds (faders.removeFromRight (kAssignWidth).withTrimmedTop (kScribble + sizes::kGapSmall - 22));
+    faders.removeFromRight (sizes::kGapLarge);
     const int stripWidth = (faders.getWidth() - 2 * (kLayerColumn + sizes::kGap) - 3 * sizes::kGapLarge) / (getNumInputFaders() + 9);
     layerColumn (inputLayerKeys);
     for (int i = 0; i < getNumInputFaders(); ++i)

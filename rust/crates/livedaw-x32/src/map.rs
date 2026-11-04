@@ -207,6 +207,8 @@ pub const COLOURS: &[&str] =
     &["OFF", "RD", "GN", "YE", "BL", "MG", "CY", "WH", "OFFi", "RDi", "GNi", "YEi", "BLi", "MGi", "CYi", "WHi"];
 const COLOUR: Ty = Ty::Enum(COLOURS);
 const NAME: Ty = Ty::Str(12);
+/// An assign control's function code, up to 7 characters ("F05", "MC01064").
+const USER_CODE: Ty = Ty::Str(7);
 const ICON: Ty = Ty::Int(1, 74);
 /// OFF, In01-32, Aux 1-6, USB L/R, Fx 1L-4R, Bus 01-16.
 const SOURCE: Ty = Ty::Int(0, 64);
@@ -728,6 +730,19 @@ fn fx_param_ty(p: &livedaw_dsp::model::ParamSpec) -> Ty {
 /// `/config`: the mute groups engaged and the odd/even links.
 fn config(b: &mut Builder) {
     let t = Target::Config;
+    // The assign section's three sets (OSC document pp.116-121): a colour, four
+    // encoders and buttons 5-12, each a function code ("F05", "O80", "-" none),
+    // kept by the server; the surface acts on them (step 12c).
+    for (set, colour) in [("A", 6), ("B", 2), ("C", 3)] {
+        let p = format!("/config/userctrl/{set}");
+        b.leaf(&p, "color", t, COLOUR, Bind::State, int(colour));
+        for k in 1..=4 {
+            b.leaf(&format!("{p}/enc"), &k.to_string(), t, USER_CODE, Bind::State, Val::Text("-".into()));
+        }
+        for k in 5..=12 {
+            b.leaf(&format!("{p}/btn"), &k.to_string(), t, USER_CODE, Bind::State, Val::Text("-".into()));
+        }
+    }
     // The routing blocks (OSC document p.22), as a full-size X32 has them
     // (the owner's choice, November 2026; an X32 Compact, with 16 local
     // inputs, takes 17-32 from AES50 A). The IN / PLAY blocks feed the

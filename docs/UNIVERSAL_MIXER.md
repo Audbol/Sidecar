@@ -682,8 +682,18 @@ Three layers:
         MONITOR, PHONES, DIM, MONO, MUTE, TALK and TALK A / B (latching) on the
         engine's monitor and talk controls. Where talkback goes and which input
         it takes are set on the Universal Mixer for now.
-      - Still to come: the assignable controls (three sets of encoders and keys,
-        their MIDI), show files on LIBRARY, UTILITY (copy, paste, presets).
+      - 12c, the assign section (done): `/config/userctrl/A|B|C` (colour, enc
+        1-4, btn 5-12: the function codes of the OSC document pp.116-121, kept by
+        the map, factory "-"; the colours are the owner's console's) and
+        `x32::AssignSection` (`src/ui/X32AssignSection.*`, right of the main
+        fader): encoders F, P, S, X, D and M (CC, note, program change through
+        `X32Midi::sendUser`); buttons O (strips, DCAs, mute groups), I, X (an FX
+        parameter between its ends), M / m (MIDI push, toggle), S0 (scene), S9
+        (PREV, NEXT, GO), P (a page of the display). Remote, X-Live!, the USB
+        recorder and cues do nothing. Buttons are numbered 5-12 as on a full-size
+        X32 (a Compact's 1-8 are the same codes). No editor for the codes on the
+        display yet: they're set from X32 remote apps or scene files.
+      - Still to come: show files on LIBRARY, UTILITY (copy, paste, presets).
 
 Each emulation keeps the independent-project disclaimer: not affiliated with or
 endorsed by the console's maker, their trademarks used only to say what is emulated,

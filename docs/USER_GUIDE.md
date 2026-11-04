@@ -945,6 +945,13 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
   **MUTE** act on the monitor; **TALK** sets the talkback level, and **TALK A** and
   **TALK B** switch talkback on and off (they latch). Which input is the talkback
   microphone and where TALK A and B go are set on the Universal Mixer for now.
+- **Assign.** Right of the main fader, the X32's user controls: **SET A**, **SET B**
+  and **SET C** each hold four encoders and eight buttons (5-12). What each does is
+  its X32 function code, set from an X32 remote app (`/config/userctrl`) or a scene
+  file: an encoder can turn a fader, a pan, a send, an effect parameter, the selected
+  channel's fader or dynamics, or send MIDI; a button can mute a strip, DCA or mute
+  group, switch an insert, recall a scene (or PREV / NEXT / GO), open a page of the
+  display or send MIDI. Each control shows what it's set to.
 - **Sends on fader.** The **SENDS ON FADER** key (top right) turns faders into
   sends: select a bus (its SELECT on BUS 1-8 or BUS 9-16) and the input faders set
   each channel's send to it; select a channel and the BUS 1-8 / BUS 9-16 layers set

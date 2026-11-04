@@ -668,3 +668,14 @@ fn the_outputs_are_the_x32s_signals_through_its_output_blocks() {
     assert_eq!((patch(AUX_OUT + 1), patch(P16)), (bus(1), main(1)));
     assert_eq!(patch(AES50_A + 32), main(1), "AES50 A 33-40 carry P16 1-8");
 }
+
+#[test]
+fn the_assign_sections_sets_are_kept() {
+    let (_engine, server) = start();
+    let c = Client::new(&server);
+    assert_eq!(c.node("config/userctrl/A").trim_end(), "/config/userctrl/A CY");
+    c.set_text("/config/userctrl/C/btn/5 MN05003");
+    assert_eq!(c.node("config/userctrl/C/btn/5").trim_end(), "/config/userctrl/C/btn/5 \"MN05003\"");
+    c.set("/config/userctrl/B/enc/2", vec![s("F05")]);
+    assert!(c.node("config/userctrl/B/enc").contains("\"F05\""));
+}

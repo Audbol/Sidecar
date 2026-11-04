@@ -168,6 +168,11 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
 - The X32 surface's MONITOR / TALKBACK section, beside the display: the MONITOR and
   PHONES levels, DIM, MONO and MUTE, the TALK level and the TALK A and TALK B keys
   (latching). The channel strip's sections were re-proportioned to fit.
+- The X32 surface's ASSIGN section, right of the main fader: sets A, B and C of four
+  encoders and eight buttons, each doing what its X32 function code says (a fader, a
+  pan, a send, an FX parameter, the selected channel's dynamics, a mute, an insert, a
+  scene, a page of the display, a MIDI message). The codes are the X32's
+  (`/config/userctrl`), set from X32 remote apps and kept in scene files.
 - The X32 display's ROUTING screen sets the input blocks (encoders 1-5) and switches
   between the recording and playback blocks (encoder 6), and shows which interface
   inputs each block takes. The channel strip's GAIN knob turns the head amp of the

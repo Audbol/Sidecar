@@ -54,6 +54,10 @@ public:
     void sendFeedback() override;
     void resendAll() override;
 
+    /** Sends a message of the assign section's controls (their MIDI codes),
+        whatever the fixed map's Tx settings. */
+    void sendUser (const juce::MidiMessage& m) { send (m); }
+
     /** Every outgoing message (tests, monitors). */
     std::function<void (const juce::MidiMessage&)> onSend;
 

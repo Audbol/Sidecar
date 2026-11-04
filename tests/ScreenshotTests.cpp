@@ -423,6 +423,38 @@ private:
             expect (! engine.talk.paths[1].on.load());
         }
 
+        // ASSIGN (step 12c): codes kept by the X32 map, acted on by the surface.
+        {
+            auto& assign = skin.getAssignSection();
+            int set = 0;
+            auto& wing = engine.getWing();
+            wing.runX32Text ("/config/userctrl/A/enc/1 F05", set);  // CH 6's fader
+            wing.runX32Text ("/config/userctrl/A/btn/5 O80", set);  // mute group 1
+            wing.runX32Text ("/config/userctrl/A/btn/6 P0004", set); // CH 1's EQ page
+            assign.refreshCodes();
+            expectEquals (assign.getEncoder (0).getBinding().label, juce::String ("FDR CH 6"));
+            assign.getEncoder (0).getBinding().set (0.0f);
+            expect (channels[5]->params.faderDb.load() < -60.0f, "encoder 1 pulls CH 6's fader down: " + juce::String (channels[5]->params.faderDb.load()));
+            expectEquals (assign.getButton (0).getButtonText(), juce::String ("MUTE G1"));
+            assign.getButton (0).onClick();
+            expect (engine.muteGroups.contains (0));
+            assign.getButton (0).onClick();
+            expect (! engine.muteGroups.contains (0));
+            assign.getButton (1).onClick();
+            expect (display.getScreen() == ui::x32::Display::Screen::Home && display.getTab() == 4, "the page jump");
+            if (folder.isNotEmpty())
+            {
+                const auto shot = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
+                const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile ("x32-assign.png");
+                file.deleteFile();
+                juce::FileOutputStream out (file);
+                expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (shot, out), file.getFullPathName());
+            }
+            channels[5]->params.faderDb.store (0.0f);
+            rig.selected = channels[12].get();
+            skin.selectionChanged();
+        }
+
         // The X32 COMPACT: 8 input faders in eight layers, chosen on SETUP.
         display.showScreen (ui::x32::Display::Screen::Setup);
         expectEquals (display.getEncoder (0).turn.label, juce::String ("MODEL"));

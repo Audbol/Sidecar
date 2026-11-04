@@ -278,6 +278,7 @@ set(LIVEDAW_UI_SOURCES
     src/ui/UniversalSkin.cpp
     src/ui/X32ChannelSection.cpp
     src/ui/X32MonitorSection.cpp
+    src/ui/X32AssignSection.cpp
     src/ui/X32Display.cpp
     src/ui/X32SceneFiles.cpp
     src/ui/X32Surface.cpp
