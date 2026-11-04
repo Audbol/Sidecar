@@ -874,6 +874,140 @@ Three layers:
    algorithms, the compressor's ratio steps) is Sidecar's reading, to be checked on
    a console.
 
+6. **Fourth emulation: the Yamaha 02R** (1995), the ProMix 01's big brother, also
+   controlled over MIDI. From the owner's reference notes (kept outside the
+   repository: Yamaha's *02R User's Guide* (MAN) and its Version 2 guide (V2),
+   pages cited as printed, the V2 Control Change maps as CSVs). Sidecar emulates
+   Version 2, a superset of the first: it receives control changes (V2 p.164) and
+   has 96 scenes (V2 p.128). A digital recording console:
+   - **Inputs:** 24 inputs: MIC/LINE 1-16 mono, and LINE 17-24 as four stereo
+     channels (17/18 to 23/24) with one fader each.
+   - **Tape returns:** 16 (TAPE 1-16), full channels on encoders, or on the
+     faders with FLIP.
+   - **Effect returns:** two stereo (EFF1, EFF2) from its two internal effects.
+   - **Buses:** BUS 1-8.
+   - **Aux sends:** AUX 1-8, each pre or post fader per channel. AUX 7 feeds Effect
+     1 and AUX 8 Effect 2; EFF1 returns only to AUX 8 and EFF2 only to AUX 7.
+   - **Main:** one STEREO output.
+   - **Not on the console:** matrices, DCAs (MAN pp.192-197).
+   
+   Every input, tape return, effect return and STEREO has:
+   - an attenuator (0 to -96 dB; STEREO +12 to -96)
+   - a 4-band parametric EQ:
+     - LOW: peak, low shelf or 12 dB/oct HPF
+     - L-MID, H-MID: peak
+     - HIGH: peak, high shelf or LPF
+     - frequency 21 Hz-20.1 kHz in 1/12 octave steps, gain +-18 dB in 0.5 dB steps,
+       Q 10 to 0.1 in 41 steps (MAN p.50)
+   - a delay of 0-2600 samples (inputs and returns only)
+   - phase, except on STEREO
+
+   The inputs, tape returns, BUS 1-8 and STEREO each have one dynamics processor of
+   six types: compressor, expander, compander hard and soft, gate, ducking
+   (MAN pp.63-67).
+   
+   Other features:
+   - Pans have 33 positions.
+   - Fader groups A-D and mute groups E-H (MAN pp.148-149). A mute group flips its
+     members' ON keys.
+   - Pairs, which link most of a channel pair's settings (V2 p.184).
+   - 128-step 100 mm faders: +10 to -90 dB and -oo on the channels, 0 to -120 dB
+     and -oo on STEREO (MAN p.192).
+   - Scene memories 1-96 and the read-only scene 0 (V2 p.128).
+   - The EQ, dynamics, effects and channel libraries (40 presets each, the
+     channel library user-only).
+   
+   Its MIDI (MAN pp.141-146, pp.206-224; V2 pp.159-164, pp.255-287):
+   - Scenes by program change through a table.
+   - Up to 114 parameters on control changes through an assignable map (receive
+     only).
+   - Yamaha SysEx, model 3D:
+     - parameter change by address (type 0)
+     - library and scene recall and store (type 24)
+     - key remote (type 25)
+     - fader and encoder remote (type 26)
+     - the multiple-02R link (type 27)
+   - Bulk dumps and requests (header `LM  8A67`, data as nibbles).
+   
+   Not in either guide, so Sidecar's reading until measured on a console:
+   - the faders' step-to-dB tables
+   - the pan law
+   - 8 of the 41 Q values (the presets use 33)
+   - the release, decay and hold tables
+   - the type 0 address map and the key remote numbers
+   - the byte layouts inside scenes and library programs
+   - the effects' algorithms
+
+   Left out:
+   - surround panning (V2 pp.63-73)
+   - AUTOMIX (timecode automation)
+   - cascading
+   - the MIDI Remote pages
+   
+   The engine's strips:
+   - channels 1-16 are MIC/LINE 1-16, 17-20 LINE 17/18-23/24 (stereo), 21-36
+     TAPE 1-16
+   - aux 1-2 are EFF1-2
+   - buses 1-8 are BUS 1-8, 9-16 AUX 1-8
+   - main 1 is STEREO
+   - FX 1-2 are its effects, fed by AUX 7-8
+   
+   Steps, each with every check green and the WING, X32 and ProMix 01 unchanged:
+   1. **The 02R profile value**:
+      - `Profile::Yamaha02R`: show id `02r`, C ABI profile 4.
+      - Its counts (`Counts::Y02R`): 36 channels, 2 aux, 16 buses, 1 main, no
+        matrices, DCAs or mute groups, 2 FX slots.
+      - Its fader laws: the channels' `FaderLaw::Y02R`, and STEREO's own
+        (`FaderLaw::Y02R_STEREO`), so a profile's law can now depend on the
+        strip's kind.
+      - Its labels and slot ranges (CH, ST IN, TAPE, EFF, BUS, AUX, STEREO).
+      - Its port groups and palette.
+      - Its factory strip and output patch.
+   2. **Its processing**:
+      - The 4-band EQ.
+      - The six dynamics types. The compander is a new curve: compress above the
+        threshold, expand under it by WIDTH.
+      - The chains:
+        - inputs and tape returns: attenuator and phase, EQ, dynamics, delay,
+          fader
+        - effect returns: EQ, delay, fader
+        - BUS 1-8: dynamics and fader
+        - AUX 1-8: fader alone
+        - STEREO: EQ, dynamics, fader
+   3. **The console's own state** (`livedaw-02r`, as `livedaw-promix` is the
+      ProMix 01's):
+      - pairs, fader groups A-D, mute groups E-H, pan gang
+      - routing to BUS 1-8, ST and DIRECT
+      - aux pre / post and the aux and bus pairs
+      - the dynamics' KEY IN, ST.LINK and IN
+      - recall safe and fade time
+      - the oscillator
+      - the parameters the control changes and the type 26 remote reach
+
+      All of it is written and read as text for the show.
+   4. **Its effects**: the two slots with the 40 preset programs' types (reverb,
+      early reflections, gate reverb, delays, echoes, chorus, flange, symphonic,
+      phasing, auto pan, pitch change and their combinations), on the ProMix 01's
+      algorithms where the types are the same, with the 02R's ranges.
+   5. **02R MIDI** (`MidiProtocol::Yamaha02R`):
+      - program changes through the table
+      - control changes through the CC map (the 02R preset, editable)
+      - SysEx types 24 (recall / store), 26 (fader / encoder remote), 25 (key
+        remote, Sidecar's numbering)
+      - the bulk dumps and requests, sharing the ProMix 01's Yamaha framing; the
+        dump bytes in Sidecar's layout
+      - type 0 parameter change on Sidecar's address map, until the real one is
+        known
+   6. **Scene memories**: 1-96 the show's scenes, keeping the console's state;
+      scene 0 the initial data.
+   7. **An 02R skin**: `Yamaha02RSurface`, the panel in Sidecar's style:
+      - 20 channel faders and STEREO, with FLIP to the tape returns
+      - the encoders for TAPE 1-16 and EFF1-2
+      - the display with its function keys
+      - the SELECTED CHANNEL section (routing, aux, pan, EQ)
+      - scene memory
+      - the stereo meter
+
 Each emulation keeps the independent-project disclaimer: not affiliated with or
 endorsed by the console's maker, their trademarks used only to say what is emulated,
 none of their firmware, software, documents or artwork included.
