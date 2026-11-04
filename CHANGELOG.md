@@ -137,6 +137,14 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
   scene's snippets, a scene recalled on the console goes out as a program change, and
   OSC commands arrive as text in SysEx (`F0 00 20 32 32 <text> F7`; an address alone
   is answered with its values). C ABI 42: `ld_x32_sysex`.
+- The X32's input routing: the audio interface's inputs are numbered as an X32 numbers
+  its own (local 1-32, AES50 A 1-48, AES50 B 1-48, the card's 1-32, aux in 1-6), and
+  `/config/routing/IN` and `PLAY` (the blocks of eight that feed inputs 1-32 and aux
+  1-6), the channels' and aux ins' `config/source` and the head amps (`/headamp`, gain
+  and phantom power on the interface's inputs; `/-ha`) work from X32 remote apps and
+  scene files. As on a freshly initialised X32 Compact, channels 17-32 now take AES50
+  A 1-16 (interface inputs 33-48), aux in 1-6 the aux inputs (161-166) and aux in 7-8
+  the USB player's left and right.
 
 ## [0.2.0] - beta
 

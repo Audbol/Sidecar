@@ -134,6 +134,21 @@ pub enum Bind {
     FxPar(usize, usize),
     /// FX slot `n`'s SOURCE, side 0 = L / 1 = R (INS, MIX 1-16, M/C).
     FxSource(usize, usize),
+    /// A channel's or aux in's `config/source` (0 OFF, 1-32 In 1-32, 33-38
+    /// Aux 1-6, 39-40 USB L / R, 41-48 FX 1L-4R, 49-64 Bus 1-16), its input
+    /// through the routing blocks (step 10a).
+    Source,
+    /// `/config/routing`: `routswitch` and the IN / PLAY blocks that feed inputs
+    /// 1-32 (blocks 0-3) and aux 1-6 (block 4); the channels follow a change.
+    RoutSwitch,
+    RoutingIn(usize),
+    RoutingPlay(usize),
+    /// `/headamp/NNN`: the gain and phantom power of interface input NNN.
+    HeadampGain(usize),
+    HeadampPhantom(usize),
+    /// `/-ha/NN/index`: the head amp channel / aux in NN takes its signal from
+    /// (-1 none; read only).
+    HaIndex(usize),
 }
 
 /// One address.
@@ -188,6 +203,155 @@ const NAME: Ty = Ty::Str(12);
 const ICON: Ty = Ty::Int(1, 74);
 /// OFF, In01-32, Aux 1-6, USB L/R, Fx 1L-4R, Bus 01-16.
 const SOURCE: Ty = Ty::Int(0, 64);
+/// The routing blocks' choices (OSC document p.22): what feeds inputs 1-32
+/// eight at a time, aux 1-6, and the outputs.
+const ROUTING_IN: Ty = Ty::Enum(&[
+    "AN1-8",
+    "AN9-16",
+    "AN17-24",
+    "AN25-32",
+    "A1-8",
+    "A9-16",
+    "A17-24",
+    "A25-32",
+    "A33-40",
+    "A41-48",
+    "B1-8",
+    "B9-16",
+    "B17-24",
+    "B25-32",
+    "B33-40",
+    "B41-48",
+    "CARD1-8",
+    "CARD9-16",
+    "CARD17-24",
+    "CARD25-32",
+    "UIN1-8",
+    "UIN9-16",
+    "UIN17-24",
+    "UIN25-32",
+]);
+const ROUTING_AUX: Ty = Ty::Enum(&[
+    "AUX1-4", "AN1-2", "AN1-4", "AN1-6", "A1-2", "A1-4", "A1-6", "B1-2", "B1-4", "B1-6", "CARD1-2", "CARD1-4", "CARD1-6",
+    "UIN1-2", "UIN1-4", "UIN1-6",
+]);
+const ROUTING_NET: Ty = Ty::Enum(&[
+    "AN1-8",
+    "AN9-16",
+    "AN17-24",
+    "AN25-32",
+    "A1-8",
+    "A9-16",
+    "A17-24",
+    "A25-32",
+    "A33-40",
+    "A41-48",
+    "B1-8",
+    "B9-16",
+    "B17-24",
+    "B25-32",
+    "B33-40",
+    "B41-48",
+    "CARD1-8",
+    "CARD9-16",
+    "CARD17-24",
+    "CARD25-32",
+    "OUT1-8",
+    "OUT9-16",
+    "P161-8",
+    "P169-16",
+    "AUX1-6/Mon",
+    "AuxIN1-6/TB",
+    "UOUT1-8",
+    "UOUT9-16",
+    "UOUT17-24",
+    "UOUT25-32",
+    "UOUT33-40",
+    "UOUT41-48",
+    "UIN1-8",
+    "UIN9-16",
+    "UIN17-24",
+    "UIN25-32",
+]);
+const ROUTING_OUT_A: Ty = Ty::Enum(&[
+    "AN1-4",
+    "AN9-12",
+    "AN17-20",
+    "AN25-28",
+    "A1-4",
+    "A9-12",
+    "A17-20",
+    "A25-28",
+    "A33-36",
+    "A41-44",
+    "B1-4",
+    "B9-12",
+    "B17-20",
+    "B25-28",
+    "B33-36",
+    "B41-44",
+    "CARD1-4",
+    "CARD9-12",
+    "CARD17-20",
+    "CARD25-28",
+    "OUT1-4",
+    "OUT9-12",
+    "P161-4",
+    "P169-12",
+    "AUX/CR",
+    "AUX/TB",
+    "UOUT1-4",
+    "UOUT9-12",
+    "UOUT17-20",
+    "UOUT25-28",
+    "UOUT33-36",
+    "UOUT41-44",
+    "UIN1-4",
+    "UIN9-12",
+    "UIN17-20",
+    "UIN25-28",
+]);
+const ROUTING_OUT_B: Ty = Ty::Enum(&[
+    "AN5-8",
+    "AN13-16",
+    "AN21-24",
+    "AN29-32",
+    "A5-8",
+    "A13-16",
+    "A21-24",
+    "A29-32",
+    "A37-40",
+    "A45-48",
+    "B5-8",
+    "B13-16",
+    "B21-24",
+    "B29-32",
+    "B37-40",
+    "B45-48",
+    "CARD5-8",
+    "CARD13-16",
+    "CARD21-24",
+    "CARD29-32",
+    "OUT5-8",
+    "OUT13-16",
+    "P165-8",
+    "P1613-16",
+    "AUX/CR",
+    "AUX/TB",
+    "UOUT5-8",
+    "UOUT13-16",
+    "UOUT21-24",
+    "UOUT29-32",
+    "UOUT37-40",
+    "UOUT45-48",
+    "UIN5-8",
+    "UIN13-16",
+    "UIN21-24",
+    "UIN29-32",
+]);
+/// The head amps: 000-031 local, 032-079 AES50 A, 080-127 AES50 B.
+pub const NUM_HEADAMPS: usize = 128;
+const HA_GAIN: Ty = Ty::Float(Law::Lin(-12.0, 60.0, 145), num(1, true, 0));
 const FADER: Ty = Ty::Float(Law::Level(1024), Fmt::Level);
 const LEVEL: Ty = Ty::Float(Law::Level(161), Fmt::Level);
 const PAN: Ty = Ty::Float(Law::Lin(-100.0, 100.0, 101), num(0, true, 0));
@@ -241,6 +405,45 @@ const EQ_IDS: [[&str; 4]; 6] = [
     ["5t", "5f", "5g", "5q"],
     ["6t", "6f", "6g", "6q"],
 ];
+
+/// The interface ports as the X32 numbers its inputs (OSC document p.22, the
+/// head amps): local 1-32, AES50 A 1-48, AES50 B 1-48, the card's 1-32, aux in
+/// 1-6, from engine input 0 on (step 10a).
+pub mod ports {
+    pub const LOCAL: i32 = 0;
+    pub const AES50_A: i32 = 32;
+    pub const AES50_B: i32 = 80;
+    pub const CARD: i32 = 128;
+    pub const AUX_IN: i32 = 160;
+}
+
+/// Input `offset` (0-7) of an IN / PLAY block set to `choice`; None for the
+/// user inputs (UIN, the user in routing Sidecar doesn't have).
+fn in_block_port(choice: i32, offset: i32) -> Option<i32> {
+    let base = match choice {
+        0..=3 => ports::LOCAL + choice * 8,
+        4..=9 => ports::AES50_A + (choice - 4) * 8,
+        10..=15 => ports::AES50_B + (choice - 10) * 8,
+        16..=19 => ports::CARD + (choice - 16) * 8,
+        _ => return None,
+    };
+    Some(base + offset)
+}
+
+/// Aux in `k` (0-5) with the AUX block set to `choice`: its first 2, 4 or 6
+/// from the local, AES50 or card inputs (Sidecar's reading of AN1-2 ...), the
+/// rest the aux inputs.
+fn aux_port(choice: i32, k: i32) -> Option<i32> {
+    if choice <= 0 {
+        return Some(ports::AUX_IN + k);
+    }
+    let (group, count) = ((choice - 1) / 3, 2 * ((choice - 1) % 3 + 1));
+    if k >= count {
+        return Some(ports::AUX_IN + k);
+    }
+    let base = [ports::LOCAL, ports::AES50_A, ports::AES50_B, ports::CARD];
+    base.get(group as usize).map(|b| b + k)
+}
 
 // ---- the tree -----------------------------------------------------------------------------
 
@@ -382,7 +585,21 @@ fn build() -> Tree {
     }
     config(&mut b);
     fx(&mut b);
+    headamps(&mut b);
     b.t
+}
+
+/// `/headamp/000..127` (gain -12..+60 dB, phantom) and `/-ha/00..39/index`.
+fn headamps(b: &mut Builder) {
+    let t = Target::Config;
+    for n in 0..NUM_HEADAMPS {
+        let p = format!("/headamp/{n:03}");
+        b.leaf(&p, "gain", t, HA_GAIN, Bind::HeadampGain(n), real(0.0));
+        b.leaf(&p, "phantom", t, ONOFF, Bind::HeadampPhantom(n), int(0));
+    }
+    for n in 0..40 {
+        b.leaf(&format!("/-ha/{n:02}"), "index", t, Ty::Int(-1, 127), Bind::HaIndex(n), int(-1));
+    }
 }
 
 /// `/fx/1..8`: the model, its sources (FX 1-4: a bus feeds it, its outputs
@@ -467,6 +684,32 @@ fn fx_param_ty(p: &livedaw_dsp::model::ParamSpec) -> Ty {
 /// `/config`: the mute groups engaged and the odd/even links.
 fn config(b: &mut Builder) {
     let t = Target::Config;
+    // The routing blocks (OSC document p.22), as a freshly initialised X32
+    // Compact has them: inputs 17-32 from AES50 A 1-16 (its 16 local inputs).
+    // The IN / PLAY blocks feed the channels (step 10a); the output blocks are
+    // kept (10b).
+    b.leaf("/config/routing", "routswitch", t, Ty::Enum(&["REC", "PLAY"]), Bind::RoutSwitch, int(0));
+    let blocks = ["1-8", "9-16", "17-24", "25-32"];
+    for (k, name) in blocks.iter().enumerate() {
+        b.leaf("/config/routing/IN", name, t, ROUTING_IN, Bind::RoutingIn(k), int([0, 1, 4, 5][k]));
+    }
+    b.leaf("/config/routing/IN", "AUX", t, ROUTING_AUX, Bind::RoutingIn(4), int(0));
+    for (node, factory) in [("AES50A", [20, 21, 20, 21, 22, 23]), ("AES50B", [20, 21, 20, 21, 22, 23])] {
+        for (k, name) in ["1-8", "9-16", "17-24", "25-32", "33-40", "41-48"].iter().enumerate() {
+            b.leaf(&format!("/config/routing/{node}"), name, t, ROUTING_NET, Bind::State, int(factory[k]));
+        }
+    }
+    for (k, name) in blocks.iter().enumerate() {
+        b.leaf("/config/routing/CARD", name, t, ROUTING_NET, Bind::State, int([0, 1, 4, 5][k]));
+    }
+    for (k, name) in ["1-4", "5-8", "9-12", "13-16"].iter().enumerate() {
+        let ty = if k % 2 == 0 { ROUTING_OUT_A } else { ROUTING_OUT_B };
+        b.leaf("/config/routing/OUT", name, t, ty, Bind::State, int(20 + (k / 2) as i32));
+    }
+    for (k, name) in blocks.iter().enumerate() {
+        b.leaf("/config/routing/PLAY", name, t, ROUTING_IN, Bind::RoutingPlay(k), int(16 + k as i32));
+    }
+    b.leaf("/config/routing/PLAY", "AUX", t, ROUTING_AUX, Bind::RoutingPlay(4), int(0));
     for g in 0..6 {
         b.leaf("/config/mute", &(g + 1).to_string(), t, ONOFF, Bind::MuteGroup(g), int(0));
     }
@@ -530,7 +773,7 @@ fn strip(b: &mut Builder, p: &str, t: Target, kind: Kind) {
     b.leaf(&c, "icon", t, ICON, Bind::State, int(icon));
     b.leaf(&c, "color", t, COLOUR, Bind::Colour, int(colour));
     if let Some(s) = source {
-        b.leaf(&c, "source", t, SOURCE, Bind::State, int(s));
+        b.leaf(&c, "source", t, SOURCE, Bind::Source, int(s));
     }
     if kind == Kind::Ch {
         let d = format!("{p}/delay");
@@ -818,6 +1061,39 @@ impl<'a> Console<'a> {
         }
     }
 
+    /// The value of a routing block (0-4: IN / PLAY 1-8 .. 25-32, AUX), as
+    /// `routswitch` picks them.
+    fn routing_block(&self, block: usize) -> i32 {
+        let switch = self.tree.find("/config/routing/routswitch");
+        let play = matches!(switch, Some(Found::Leaf(k)) if self.get(k).int() == 1);
+        let group = if play { "PLAY" } else { "IN" };
+        let name = ["1-8", "9-16", "17-24", "25-32", "AUX"][block];
+        match self.tree.find(&format!("/config/routing/{group}/{name}")) {
+            Some(Found::Leaf(k)) => self.get(k).int(),
+            _ => 0,
+        }
+    }
+
+    /// The engine input of source `k` of a channel or aux in's `config/source`
+    /// (-1 for OFF or what Sidecar has no port for); None beyond the list.
+    pub fn source_input(&self, k: i32) -> Option<i32> {
+        use livedaw_engine::routing::strip_source_input;
+        Some(match k {
+            0 => -1,
+            1..=32 => in_block_port(self.routing_block((k as usize - 1) / 8), (k - 1) % 8).unwrap_or(-1),
+            33..=38 => aux_port(self.routing_block(4), k - 33).unwrap_or(-1),
+            39 | 40 => livedaw_engine::USB_PLAYER_SOURCE_BASE + (k - 39),
+            41..=48 => livedaw_engine::sources::FX_RETURN_SOURCE_BASE + (k - 41),
+            49..=64 => strip_source_input(StripKind::Bus, k as usize - 49, 0),
+            _ => return None,
+        })
+    }
+
+    /// The entries of the channels' and aux ins' `config/source`.
+    fn source_entries(&self) -> impl Iterator<Item = usize> + '_ {
+        self.tree.entries.iter().enumerate().filter(|(_, e)| e.bind == Bind::Source).map(|(k, _)| k)
+    }
+
     fn typed(e: &Entry, v: f32) -> Val {
         match e.ty {
             Ty::Float(..) => Val::Real(v),
@@ -849,6 +1125,22 @@ impl<'a> Console<'a> {
                     .then(|| Val::Int(i32::from(self.engine.controls.mute_groups.contains(g))))
             }
             Bind::FxType(n) => return self.fx_type(n).map(Val::Int),
+            Bind::Source => {
+                let input = self.strip(e.target)?.params.input_left.load(Relaxed);
+                // The source kept, if it still gives this input; else the first that does.
+                let kept = self.state.get(i).map(|v| v.int());
+                if let Some(k) = kept.filter(|&k| self.source_input(k) == Some(input)) {
+                    return Some(Val::Int(k));
+                }
+                return (0..=64).find(|&k| self.source_input(k) == Some(input)).map(Val::Int);
+            }
+            Bind::HeadampGain(n) => return Some(Val::Real(self.engine.sources().params().get(n)?.gain_db.load())),
+            Bind::HeadampPhantom(n) => return on(self.engine.sources().params().get(n)?.phantom.load(Relaxed)),
+            Bind::HaIndex(n) => {
+                let t = if n < 32 { Target::Ch(n) } else { Target::AuxIn(n - 32) };
+                let input = self.strip(t)?.params.input_left.load(Relaxed);
+                return Some(Val::Int(if (0..NUM_HEADAMPS as i32).contains(&input) { input } else { -1 }));
+            }
             Bind::FxSource(n, side) => {
                 let p = self.engine.controls.fx.get(n)?;
                 let input = if side == 0 { &p.source_left } else { &p.source_right };
@@ -937,6 +1229,31 @@ impl<'a> Console<'a> {
         };
         match e.bind {
             Bind::State => return false,
+            Bind::Source => {
+                let (Some(s), Some(input)) = (self.strip(e.target), self.source_input(v.int())) else { return false };
+                s.params.input_left.store(input, Relaxed);
+                self.state.set(i, v.clone());
+                return true;
+            }
+            Bind::RoutSwitch | Bind::RoutingIn(_) | Bind::RoutingPlay(_) => {
+                // The channels and aux in keep their sources, now through the new blocks.
+                let sources: Vec<(usize, Val)> = self.source_entries().map(|k| (k, self.get(k))).collect();
+                self.state.set(i, v.clone());
+                for (k, source) in sources {
+                    let e = &self.tree.entries[k];
+                    self.write_engine(k, e, &source);
+                }
+                return true;
+            }
+            Bind::HeadampGain(n) | Bind::HeadampPhantom(n) => {
+                let Some(p) = self.engine.sources().params().get(n) else { return false };
+                match e.bind {
+                    Bind::HeadampGain(_) => p.gain_db.store(v.real()),
+                    _ => p.phantom.store(v.on(), Relaxed),
+                }
+                return true;
+            }
+            Bind::HaIndex(_) => return true, // read only
             Bind::DcaOn | Bind::DcaFader | Bind::DcaColour | Bind::DcaName => {
                 let (Some(d), Target::Dca(k)) = (self.dca(e.target), e.target) else { return false };
                 match e.bind {

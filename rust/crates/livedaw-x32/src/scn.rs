@@ -11,7 +11,7 @@
 //! Writing walks the tree as the server's `/node` answers it, `/config` first
 //! as an X32 writes it; reading sets each line's values as the server's `/`
 //! command does (a linked pair's partner too). What Sidecar doesn't emulate
-//! (outputs, head amps...) is left out of a written file and skipped
+//! (the outputs...) is left out of a written file and skipped
 //! in a read one.
 
 use crate::map::{Console, Found};

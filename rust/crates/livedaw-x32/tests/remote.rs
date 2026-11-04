@@ -587,3 +587,39 @@ fn the_fx_rack_answers_its_models_and_parameters() {
     c.set_text("/fx/2/source/l MIX3");
     assert_eq!(c.node("fx/2/source").trim_end(), "/fx/2/source MIX3 M/C");
 }
+
+#[test]
+fn the_routing_blocks_patch_the_channels_and_the_head_amps_are_the_sources() {
+    let (engine, server) = start();
+    let c = Client::new(&server);
+    let input = |kind: StripKind, i: usize| engine.strips(kind)[i].params.input_left.load(Relaxed);
+    // As a freshly initialised X32 Compact: inputs 1-16 local, 17-32 AES50 A 1-16.
+    assert_eq!(c.node("config/routing/IN").trim_end(), "/config/routing/IN AN1-8 AN9-16 A1-8 A9-16 AUX1-4");
+    assert_eq!((input(StripKind::Channel, 0), input(StripKind::Channel, 16)), (0, 32));
+    assert_eq!(c.get_i("/ch/17/config/source"), 17);
+    // Aux in 1-6 the aux inputs, 7-8 the USB player.
+    assert_eq!(input(StripKind::Aux, 0), 160);
+    assert_eq!(input(StripKind::Aux, 6), livedaw_engine::USB_PLAYER_SOURCE_BASE);
+    assert_eq!(c.get_i("/auxin/01/config/source"), 33);
+    // A block moved: the channels keep their source, now from AES50 B 1-8.
+    c.set_text("/config/routing/IN/1-8 B1-8");
+    assert_eq!(input(StripKind::Channel, 2), 82);
+    assert_eq!(c.get_i("/ch/03/config/source"), 3);
+    // A channel's source through the blocks; buses and FX returns are signals.
+    c.set("/ch/05/config/source", vec![Arg::Int(20)]);
+    assert_eq!(input(StripKind::Channel, 4), 35, "In 20 is AES50 A 4");
+    c.set("/ch/05/config/source", vec![Arg::Int(49)]);
+    assert_eq!(c.get_i("/ch/05/config/source"), 49, "Bus 1");
+    // PLAY: the playback blocks (the card) feed the inputs instead.
+    c.set_text("/config/routing/routswitch PLAY");
+    assert_eq!(input(StripKind::Channel, 0), 128);
+    c.set_text("/config/routing/routswitch REC");
+    assert_eq!(input(StripKind::Channel, 0), 80);
+    // Head amps: the interface inputs' gain and phantom power.
+    c.set_text("/headamp/080 +30.0 ON");
+    let src = &engine.sources().params()[80];
+    assert!((src.gain_db.load() - 30.0).abs() < 1e-3 && src.phantom.load(Relaxed));
+    assert_eq!(c.node("headamp/080").trim_end(), "/headamp/080 +30.0 ON");
+    assert_eq!(c.get_i("/-ha/00/index"), 80, "channel 1's head amp");
+    assert_eq!(c.get_i("/-ha/04/index"), -1, "a bus has none");
+}

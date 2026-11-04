@@ -51,7 +51,7 @@ juce::String text()
            "custom controls, the LIBRARY, snippets and the remotes' settings are still on the WING surface.\n"
            "- The X32 (SETUP > SIDECAR > INTERFACE: X32) is a preview: an X32 console with its own surface "
            "and display. Its patching and show files are on the Universal Mixer for now, X32 scene files (.scn) "
-           "skip the outputs and head amps, and its processing and effects haven't been compared by ear or measured against a real X32.\n"
+           "skip the outputs, and its processing and effects haven't been compared by ear or measured against a real X32.\n"
            "\n"
            "## Community\n"
            "Questions, setup help and feedback: the " + kAppName + " Discord server, " + kDiscordUrl + " (the DISCORD key below "

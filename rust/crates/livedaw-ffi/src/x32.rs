@@ -233,7 +233,7 @@ mod tests {
             let x = ld_x32_create(&engine);
             assert!(ld_x32_scene_write(x, std::ptr::null(), 0, std::ptr::null(), 0).is_null(), "a WING isn't an X32");
             engine.configure(&ConsoleConfig { profile: Profile::X32, counts: Counts::X32 });
-            let line = "#2.7# \"Gig\" \"\" %000000000 1\n/ch/01/config \"Kick\" 1 RD 1\n/headamp/000 +0.0 OFF\n";
+            let line = "#2.7# \"Gig\" \"\" %000000000 1\n/ch/01/config \"Kick\" 1 RD 1\n/outputs/main/01 4 POST OFF\n";
             let mut read = LdX32SceneRead { applied: 0, skipped: 0, name: std::ptr::null_mut(), note: std::ptr::null_mut() };
             assert!(ld_x32_scene_read(x, line.as_ptr(), line.len(), &mut read));
             assert_eq!((read.applied, read.skipped), (1, 1));

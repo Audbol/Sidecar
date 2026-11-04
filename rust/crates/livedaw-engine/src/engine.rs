@@ -464,8 +464,10 @@ impl Engine {
         st.next_channel_id = st.next_channel_id.max(id + 1);
 
         let strip = self.new_strip(st, StripKind::Channel, id);
-        let patched = st.device.num_hw_inputs == 0 || index < st.device.num_hw_inputs;
-        strip.params.input_left.store(if patched { index as i32 } else { -1 }, Relaxed);
+        // Input n, or the console's own (an X32's 17-32 from AES50 A).
+        let input = st.profile.spec().channel_input.map_or(index as i32, |f| f(index));
+        let patched = st.device.num_hw_inputs == 0 || input < st.device.num_hw_inputs as i32;
+        strip.params.input_left.store(if patched { input } else { -1 }, Relaxed);
         strip
     }
 

@@ -1138,9 +1138,6 @@ impl StripParams {
             p.cust_link.store(false, Relaxed);
         }
         p.tap.store(spec.tap_point, Relaxed);
-        if let Some(factory) = spec.factory {
-            factory(&p, kind, index);
-        }
         if kind == StripKind::Bus && spec.buses_to_main.contains(&index) {
             p.colour.store(if index < 10 { 6 } else { 12 }, Relaxed);
             p.fader_db.store(0.0);
@@ -1149,6 +1146,11 @@ impl StripParams {
             p.stereo.store(true, Relaxed);
             p.input_left.store(livedaw_recorder::USB_PLAYER_SOURCE_BASE, Relaxed);
             p.input_right.store(livedaw_recorder::USB_PLAYER_SOURCE_BASE + 1, Relaxed);
+        }
+        // Last: a console's own factory has the final word (an X32's aux in 2
+        // isn't the WING's USB player).
+        if let Some(factory) = spec.factory {
+            factory(&p, kind, index);
         }
         p
     }

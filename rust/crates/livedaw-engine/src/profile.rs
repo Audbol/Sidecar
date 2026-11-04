@@ -268,6 +268,9 @@ pub struct ProfileSpec {
     pub factory: Option<fn(&crate::params::StripParams, StripKind, usize)>,
     /// A new strip's name (kind, slot): an X32's "MixBus 1", "USB L"...
     pub factory_name: Option<fn(StripKind, usize) -> Option<String>>,
+    /// The input a new channel (0-based index) takes, if not input `index`:
+    /// an X32's channels 17-32 take AES50 A 1-16 (interface inputs 33-48).
+    pub channel_input: Option<fn(usize) -> i32>,
     /// A new console's DCAs: their names ("DCA 1") and fader (dB), if not the
     /// WING's (no name, faders down).
     pub dca_names: Option<&'static str>,
@@ -304,6 +307,16 @@ fn x32_name(kind: StripKind, slot: usize) -> Option<String> {
     }
 }
 
+/// An X32's channel inputs (`ProfileSpec::channel_input`): inputs 1-16 the
+/// local ones, 17-32 AES50 A 1-16 (`/config/routing/IN`, as the Compact has it).
+fn x32_channel_input(index: usize) -> i32 {
+    if index < 16 {
+        index as i32
+    } else {
+        32 + (index as i32 - 16)
+    }
+}
+
 /// An X32's factory strip (`ProfileSpec::factory`), as a freshly initialised
 /// X32 Compact has it (its colours: `Palette::X32`): channels' low cut at
 /// 20 Hz; the FX returns at 0 dB, they and the USB playback (aux in 7-8)
@@ -319,6 +332,16 @@ fn x32_factory(p: &crate::params::StripParams, kind: StripKind, slot: usize) {
     }
     if kind == StripKind::Aux {
         p.pan.store(x32_pair_pan(kind, slot));
+        // Aux in 1-6 the aux inputs (interface inputs 161-166), 7-8 the USB
+        // player's L and R.
+        if slot < 8 {
+            p.stereo.store(false, Relaxed);
+            p.input_right.store(-1, Relaxed);
+            p.input_left.store(
+                if slot < 6 { 160 + slot as i32 } else { livedaw_recorder::USB_PLAYER_SOURCE_BASE + slot as i32 - 6 },
+                Relaxed,
+            );
+        }
         if slot >= 8 {
             // FX returns 1-8: FX 1 L, FX 1 R ... FX 4 R.
             p.fader_db.store(0.0);
@@ -433,6 +456,7 @@ static WING: ProfileSpec = ProfileSpec {
     tap_point: crate::params::DEFAULT_TAP,
     factory: None,
     factory_name: None,
+    channel_input: None,
     dca_names: None,
     dca_fader_db: livedaw_dsp::fader::FADER_MIN,
     fx_factory: &[],
@@ -466,6 +490,7 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
     tap_point: crate::params::DEFAULT_TAP,
     factory: None,
     factory_name: None,
+    channel_input: None,
     dca_names: None,
     dca_fader_db: livedaw_dsp::fader::FADER_MIN,
     fx_factory: &[],
@@ -508,6 +533,7 @@ static X32: ProfileSpec = ProfileSpec {
     tap_point: crate::strip::tap::PFL as i32,
     factory: Some(x32_factory),
     factory_name: Some(x32_name),
+    channel_input: Some(x32_channel_input),
     dca_names: Some("DCA"),
     dca_fader_db: 0.0,
     fx_factory: &["X32VRM", "X32HALL", "X32DLY", "X32CRS", "X32GEQ2", "X32GEQ2", "X32GEQ2", "X32GEQ"],

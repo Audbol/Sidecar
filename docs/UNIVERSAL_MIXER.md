@@ -616,6 +616,30 @@ Three layers:
         now has its algorithm. Still to do, with the FX testing setup on the
         owner's X32: measure each against the console (decay, taps, curves, gain
         reduction) and correct the mappings marked as Sidecar's reading.
+   10. **The X32's routing** (its patching, so it no longer needs the Universal
+       Mixer): the audio interface's ports numbered as the X32 numbers its own
+       (OSC document p.22, the `/headamp` and `/-ha` indexes): inputs 1-32 the
+       local inputs (AN), 33-80 AES50 A, 81-128 AES50 B, 129-160 the card, 161-166
+       aux in; the outputs likewise (local 1-16, aux 1-6, P16, AES50 A and B, card).
+      - 10a, the inputs (done): `/config/routing/IN` and `PLAY` (the blocks of
+        eight that feed inputs 1-32 and aux 1-6; `routswitch` picks which) and the
+        channels' and aux ins' `config/source` bound to their inputs through them
+        (`map::ports`, `in_block_port`, `aux_port`; a block's change re-patches the
+        strips on their sources); `/headamp/NNN` gain and phantom the sources'
+        (interface input NNN); `/-ha/NN/index` the input a channel takes. The output
+        blocks (`OUT`, `AES50A|B`, `CARD`) are kept until 10b. The factory routing
+        is the Compact's (17-32 from AES50 A 1-16: `ProfileSpec::channel_input` patches channels
+        17-32 to inputs 33-48, `x32_factory` aux in 1-6 to 161-166, 7-8 to the USB player); a
+        console's factory now runs after the WING's defaults (an X32's aux in 2
+        isn't the WING's USB player). The routing pages still show the WING's port
+        groups (10c). UIN (the user in routing) and AUX's AN1-2 ... are Sidecar's
+        reading: the first two, four or six aux in from that group.
+      - 10b, the outputs: `/outputs/main|aux|p16|aes|rec` (source, tap, invert,
+        delay) and `/config/routing/OUT`, `AES50A|B`, `CARD` onto the output patch
+        (buses as their post-fader direct outs, so one bus can feed several
+        outputs).
+      - 10c, the display's ROUTING screen (home, out 1-16, aux out, P16, card,
+        AES50) and the scene files' outputs.
 
 Each emulation keeps the independent-project disclaimer: not affiliated with or
 endorsed by the console's maker, their trademarks used only to say what is emulated,
