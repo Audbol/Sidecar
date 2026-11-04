@@ -701,6 +701,72 @@ Three layers:
         WING's defaults would give an X32 strip WING models) and the X32's channel
         presets (`.chn` library files).
 
+5. **Third emulation: the Yamaha ProMix 01** (1994), the first console controlled
+   only over MIDI. From the owner's reference notes (kept outside the repository:
+   Yamaha's *ProMix 01 User's Guide*, pages cited as printed, `Add-n` for its
+   Additions, and its Control Change table as a CSV). A small digital mixer:
+   16 mono input channels (odd / even pairs can be made stereo), a stereo input
+   (ST IN), two stereo effect returns (RTN1, RTN2) from its two internal
+   effects, four sends (SEND1-2 feed the effects and have no masters; SEND3-4
+   are outputs with a fader, ON and PRE / POST, usable as a stereo pair), one
+   stereo output (ST OUT); no buses besides, no matrices, DCAs or mute groups.
+   Every input, the returns and ST OUT have a 3-band fully parametric EQ (1/6
+   octave frequency steps, 1 dB gain steps, Q in octaves or shelf on the outer
+   bands, p.21); three stereo dynamics processors (compressor, gate or ducker)
+   are a pool patched into a channel, SEND3, SEND4 or ST OUT (pp.68-78); four
+   fader groups (linked faders, p.56); 50 scene memories and the read-only scene
+   00 (p.62). Faders have 128 steps from +6 dB to -66 dB and -oo, pans 33
+   positions (pp.25-26, p.105). Its MIDI (pp.80-87, Add-16 to Add-29): scenes by
+   program change through an assignable table; 531 parameters on control changes
+   in 16 banks of 96, in Channel mode (bank = MIDI channel offset) or Register
+   mode (NRPN LSB selects the bank), values scaled from the internal range onto
+   0-127 (the effects' parameters 14-bit); Yamaha bulk dumps and requests (scenes,
+   the Edit Buffer, the PC and CC tables, setup), Key Remote. Not in the guide,
+   so Sidecar's reading until measured on a console: the fader's position-to-dB
+   table, the byte map of a scene dump, the effects' algorithms. Steps, each
+   with every check green and the WING and X32 unchanged:
+   1. **The ProMix 01 profile value**: `Profile::ProMix01` (show id `promix01`,
+      C ABI profile 3) with its counts (`Counts::PROMIX01`: 16 channels; 3 aux,
+      ST IN and the two returns; 4 buses, SEND1-4; 1 main, ST OUT; no matrices,
+      DCAs or mute groups; 2 FX slots), its fader law (`FaderLaw::PROMIX01`, 128
+      steps), its labels and slot ranges (aux 1 "ST IN", 2-3 "RTN"; buses "SEND"),
+      its port groups (the 16 inputs, ST IN, 2TR IN; ST OUT, SEND3-4, REC OUT,
+      MONITOR, DIGITAL), a palette (the console has no strip colours: one per
+      kind), its factory strip (SEND1-2 POST, SEND3-4 PRE, the returns fed by the
+      effects); no remote yet. Consoles with no matrices, DCAs or mute groups.
+   2. **Its processing**: the 3-band EQ (`livedaw_dsp::promix`: the 1/6 octave
+      tables, the octave Qs and SHELF) on inputs, returns and ST OUT; the
+      dynamics models (Compressor and Limiter, Gate, Ducking with the guide's
+      ranges, p.69-71) on the dynamics DSP; its chains: phase, EQ, then the
+      dynamics post-EQ pre-fader on channels; on SEND3-4 and ST OUT the dynamics
+      PRE or POST fader (an output process order); no gate, filter or insert.
+   3. **The console's own state** (`livedaw-promix`, as `livedaw-x32`'s map): the
+      three dynamics processors (patch, key in, IN mode, the program on the
+      patched strip's dynamics block), the pairs (linked odd / even channels:
+      PHASE, EQ, COMP patch, ON, fader, CUE, sends), the fader groups A-D, SEND1-4
+      PRE / POST for all channels, SEND3-4 stereo (pans and balance, ST IN's L to
+      SEND3 and R to SEND4), ST IN summed to mono on the sends, the oscillator.
+   4. **Its effects**: the two slots fed by SEND1-2 and returning on RTN1-2; the
+      effect types of the 30 preset programs (reverbs, chorus / flange into
+      reverb, L-C-R and karaoke delays, delay and chorus combinations, pitch
+      change, chorus, symphonic, flange, phasing, tremolo, auto pan) on the
+      WING's devices of the same design, as the X32's are; the preset programs
+      (pp.37-44) and 10 user programs; the dynamics programs (10 presets, p.78)
+      and the EQ library (30 presets, pp.23-24).
+   5. **ProMix MIDI** (`MidiProtocol::ProMix01`): the 531 parameters and the
+      default CC map, Channel and Register modes, the scaling, program changes
+      through the table, echo, and the SysEx: bulk dumps and requests with
+      Yamaha's checksum, Key Remote; Tx / Rx channels and per-kind TX, RX, OMNI
+      and ECHO in the app's settings.
+   6. **Scene memories**: 50 scenes and scene 00 (the console's initial data) over
+      the show's scenes, recalled by program change, sent as bulk dumps.
+   7. **A ProMix skin**: the surface laid out as the ProMix 01, drawn in
+      Sidecar's style: 16 channel faders, ST IN, RTN / SEND and ST OUT with SEL
+      and ON, the LCD with its function keys (METER, PAN / PHASE, COMP, CUE,
+      SEND1-4, EQ LOW / MID / HIGH, LIBRARY, GROUP, PAIR, UTILITY, MIDI), scene
+      memory keys, the cursor keys and the PARAMETER wheel; the faders as send
+      levels while a SEND function is shown (p.25).
+
 Each emulation keeps the independent-project disclaimer: not affiliated with or
 endorsed by the console's maker, their trademarks used only to say what is emulated,
 none of their firmware, software, documents or artwork included.
