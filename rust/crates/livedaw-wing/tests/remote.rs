@@ -60,7 +60,8 @@ impl Osc {
     }
     fn get(&self, addr: &str) -> Message {
         self.send(&Message::new(addr, vec![]));
-        self.recv().unwrap_or_else(|| panic!("no reply for {addr}"))
+        // Up to 3 s: a reply can be slow while the machine builds alongside.
+        (0..6).find_map(|_| self.recv()).unwrap_or_else(|| panic!("no reply for {addr}"))
     }
 }
 
