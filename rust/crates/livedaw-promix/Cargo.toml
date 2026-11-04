@@ -1,0 +1,11 @@
+[package]
+name = "livedaw-promix"
+description = "Yamaha ProMix 01 emulation for Sidecar: the console's own state over the engine, its parameters and its MIDI"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+livedaw-dsp = { path = "../livedaw-dsp" }
+livedaw-engine = { path = "../livedaw-engine" }

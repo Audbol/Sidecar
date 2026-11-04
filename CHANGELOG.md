@@ -198,6 +198,12 @@ Phase 5, the Yamaha ProMix 01 (`docs/UNIVERSAL_MIXER.md`), begins.
   fader; on the sends and ST OUT the dynamics sit before or after the fader.
 - A stepped fader's lowest step is a level of its own (a ProMix 01's -66 dB), not
   silence.
+- `livedaw-promix`: the ProMix 01 over the engine. Its own state (the three dynamics
+  processors patched into strips, channel pairs, fader groups A-D, SEND3-4 as a stereo
+  pair, the oscillator), its panel's linked operations (a pair moves together, a
+  group's faders follow the panel, a processor runs on the strip it is patched into
+  with its key), its dynamics presets, and its 531 parameters as the User's Guide's
+  Control Change table numbers them.
 
 ## [0.2.0] - beta
 

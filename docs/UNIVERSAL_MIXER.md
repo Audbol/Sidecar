@@ -760,12 +760,30 @@ Three layers:
       guide's preset values fall on them), the shelves' slope. The dynamics
       block is off on every strip: the three processors (step 3) turn on the ones
       they are patched to.
-   3. **The console's own state** (`livedaw-promix`, as `livedaw-x32`'s map): the
-      three dynamics processors (patch, key in, IN mode, the program on the
-      patched strip's dynamics block), the pairs (linked odd / even channels:
-      PHASE, EQ, COMP patch, ON, fader, CUE, sends), the fader groups A-D, SEND1-4
-      PRE / POST for all channels, SEND3-4 stereo (pans and balance, ST IN's L to
-      SEND3 and R to SEND4), ST IN summed to mono on the sends, the oscillator.
+   3. **The console's own state** (done; `livedaw-promix`, as `livedaw-x32`'s map
+      is the X32's): `State` holds what the engine has no place for: the three
+      dynamics processors (ON, PATCH, KEY IN, IN, the program and its values), the
+      pairs, the fader groups A-D, GANG / INDIVIDUAL, SEND3-4 stereo, the stereo
+      strips' dual pans, the oscillator and the CUE mode, written and read as text
+      (`to_text`, `from_text`) for the show (step 6). `Console` is the console over
+      the engine, doing what its panel does: a pair links PHASE, EQ, ON, fader,
+      CUE and SEND1-4 (pp.58-59; ST 1->2, 2->1 and RESET copy or reset, pairing
+      leaves groups and cancels a processor's patch); a group's faders move by as
+      many steps from the panel, a control change moves its channel alone
+      (Add-17); a processor is patched into a channel (with its partner: IN
+      BOTH, ODD or EVEN), SEND3, SEND4 or ST OUT, writing its type, values and key
+      onto that strip's dynamics block and turning the others off (a patch in use
+      is refused); SEND1-4 PRE / POST for all the inputs; SEND3-4 stereo makes
+      SEND3's bus stereo and plays its right side on SEND4's output, the inputs'
+      SEND3-4 pans their sends' pans, pairs hard left and right; the output patch
+      points the strips' process orders. The dynamics library's 10 presets
+      (p.78, `library::DYN_PRESETS`) and 10 user programs. `params`: the 531
+      parameters (`param`, `steps`, `get`, `set`, `name`, `has_cc`), each an
+      internal value 0..N-1 as the CC table numbers them; the Execute
+      parameters act, the flags change only the flag. Sidecar's reading: a key
+      the engine can't take on that strip (a channel keyed by SEND3, ST-L / ST-R
+      apart) keys itself or both sides; the oscillator is kept, not heard yet.
+      The effects' parameters (404-445) come with step 4.
    4. **Its effects**: the two slots fed by SEND1-2 and returning on RTN1-2; the
       effect types of the 30 preset programs (reverbs, chorus / flange into
       reverb, L-C-R and karaoke delays, delay and chorus combinations, pitch

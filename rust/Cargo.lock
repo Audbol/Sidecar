@@ -27,6 +27,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "livedaw-promix"
+version = "0.2.0"
+dependencies = [
+ "livedaw-dsp",
+ "livedaw-engine",
+]
+
+[[package]]
 name = "livedaw-recorder"
 version = "0.2.0"
 

@@ -284,6 +284,12 @@ of any size, of which the WING is one configuration.
   `livedaw_dsp::promix`, its chains `chain::PROMIX01_*`). A profile's buses, mains
   and matrices may have several orders (`ProfileSpec::output_orders`, picked by the
   strip's process order: the ProMix's dynamics PRE or POST fader).
+- `livedaw-promix` (Phase 5): the ProMix 01 over the engine. `State` (its three
+  dynamics processors, pairs, groups, SEND3-4 stereo, oscillator; as text),
+  `Console` (its panel's operations on the engine's strips: pairs linked, groups,
+  a processor written onto the dynamics block of the strip it is patched into),
+  `library` (its programs) and `params` (its 531 parameters as internal values,
+  what its control changes carry).
 - Laws (Phase 3 step 3): a `ProfileSpec` names its fader law (`FaderLaw`,
   `livedaw-dsp/fader.rs`: (position, dB) breakpoints and an optional step count, so
   a 128 position fader fits) and its pan law (`PanLaw`, `util.rs`: the mono and
