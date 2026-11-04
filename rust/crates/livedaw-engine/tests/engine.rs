@@ -548,6 +548,57 @@ fn an_02r_runs_its_tape_returns_aux_sends_and_stereo() {
 }
 
 #[test]
+fn an_02rs_strips_run_its_eq_dynamics_and_delay() {
+    use livedaw_engine::Profile;
+    let mut rig = Rig::new(1, 1, 64);
+    rig.engine.configure(&ConsoleConfig { profile: Profile::Yamaha02R, counts: Counts::Y02R });
+    let ch = rig.ch(0);
+    // Its models in the blocks, the dynamics off (scene 0: MAN-GS p.55).
+    assert_eq!(ch.params.eq().model_spec().unwrap().token, "Y2EQ");
+    assert_eq!(ch.params.dynamics().model_spec().unwrap().token, "Y2CMP");
+    assert!(!ch.params.dynamics().on.load(Relaxed));
+    let st = rig.strip(StripKind::Main, 0);
+    assert_eq!(st.params.eq().model_spec().unwrap().token, "Y2EQ");
+    ch.params.input_left.store(0, Relaxed);
+    ch.params.fader_db.store(0.0);
+    ch.params.pan.store(-100.0);
+    st.params.fader_db.store(0.0);
+    // Low enough that +12 dB doesn't clip.
+    rig.set_input(0, 0.1);
+    rig.run(200);
+    let flat = rig.out(0);
+    assert!(flat > 0.05, "{flat}");
+    // The channel's EQ: LOW as a shelf at +12 dB lifts a DC-like input by 12 dB.
+    let eq = ch.params.eq();
+    eq.param("lg").unwrap().store(12.0);
+    eq.on.store(true, Relaxed);
+    rig.run(400);
+    assert!((rig.out(0) / flat - 3.98).abs() < 0.2, "+12 dB: {}", rig.out(0) / flat);
+    eq.on.store(false, Relaxed);
+    // A gate on STEREO closes on the channel under its threshold.
+    let dynamics = st.params.dynamics();
+    dynamics.set_model(livedaw_dsp::model::model_index(dynamics.table(), "Y2GAT").unwrap());
+    dynamics.param("thr").unwrap().store(-6.0);
+    dynamics.param("range").unwrap().store(-70.0);
+    dynamics.param("dcy").unwrap().store(0.0);
+    dynamics.on.store(true, Relaxed);
+    rig.run(400);
+    assert!(rig.out(0) < 1e-3, "gated: {}", rig.out(0));
+    dynamics.on.store(false, Relaxed);
+    // AUX 1 has no EQ or dynamics in its chain; BUS 1 has dynamics, no EQ.
+    let spec = rig.engine.profile().spec();
+    use livedaw_engine::chain::Node;
+    let aux1 = spec.template_at(StripKind::Bus, 8);
+    assert!(!aux1.contains(&Node::Eq) && !aux1.contains(&Node::Dynamics));
+    let bus1 = spec.template_at(StripKind::Bus, 0);
+    assert!(!bus1.contains(&Node::Eq) && bus1.contains(&Node::Dynamics));
+    assert!(spec.template_at(StripKind::Channel, 35).contains(&Node::Delay), "TAPE 16 has a delay");
+    assert!(!spec.template_at(StripKind::Aux, 0).contains(&Node::Dynamics), "the effect returns have none");
+    rig.run(400);
+    assert!((rig.out(0) - flat).abs() < 1e-3, "back to flat");
+}
+
+#[test]
 fn a_promix01s_st_out_runs_its_dynamics_pre_or_post_fader_and_its_channels_their_eq() {
     use livedaw_engine::Profile;
     let mut rig = Rig::new(1, 1, 2);

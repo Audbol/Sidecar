@@ -977,11 +977,27 @@ Three layers:
       - It still runs the WING's chains and models and has no remote.
       - A strip's factory settings, colour and name now come from its slot
         (`Strip::of_profile_in`), not from a channel's 1-based id.
-   2. **Its processing**:
-      - The 4-band EQ.
-      - The six dynamics types. The compander is a new curve: compress above the
-        threshold, expand under it by WIDTH.
-      - The chains:
+   2. **Its processing** (done; `livedaw_dsp::y02r`):
+      - The 4-band EQ (`Y2EQ`):
+        - frequencies: 120 in 1/12 octave steps, 1 kHz x 2^((n - 67) / 12); every
+          preset's frequency falls on them
+        - gain: +-18 dB in 0.5 dB steps
+        - Q: the 41 values, 8 of them Sidecar's reading
+        - LOW past its last Q: L.SHELF, then HPF; HIGH: H.SHELF, then LPF, 12
+          dB/oct, switched by `hpf` / `lpf` (the band's gain knob on the console)
+        - defaults: the EQ reset (L.SHELF 125 Hz, 1 kHz and 4 kHz Q 0.7, H.SHELF
+          10 kHz, flat; MAN p.51)
+      - The six dynamics types (`Y2CMP`, `Y2EXP`, `Y2CPH`, `Y2CPS`, `Y2GAT`,
+        `Y2DUK`), with the guides' ranges (MAN pp.63-67, p.194):
+        - the compressor's defaults are scene 0's (flat, off); the others' their
+          first preset's
+        - the compander is a new curve (`Curve::Compand`): compress above the
+          threshold, expand 5:1 (hard) or 1.5:1 (soft) under it by WIDTH
+        - Sidecar's reading: RELEASE / DECAY (160 points) and HOLD (216) evenly
+          spaced in log time between the guide's ends at 48 kHz; KNEE 2 dB a step;
+          the expander's and compander's range 96 dB
+      - The chains (`chain::Y02R_*`; the delay's place before the fader is
+        Sidecar's reading):
         - inputs and tape returns: attenuator and phase, EQ, dynamics, delay,
           fader
         - effect returns: EQ, delay, fader

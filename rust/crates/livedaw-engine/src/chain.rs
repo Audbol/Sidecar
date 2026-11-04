@@ -311,6 +311,128 @@ pub(crate) const PROMIX01_MAIN: &[Node] = &[
 /// block (`-`) leaves its slot empty.
 pub(crate) const PROMIX01_OUTPUT_ORDERS: &[&str] = &["-D", "D-"];
 
+/// The 02R's input channels and tape returns (MAN p.193): the attenuator and
+/// phase (INPUT), the 4-band EQ, the dynamics processor (keyed PRE or POST EQ:
+/// MAN p.70), the delay, then the fader. Sidecar's reading of where the delay
+/// sits (the guide's block diagram puts it before the fader). No filter, gate
+/// or insert.
+pub(crate) const Y02R_CHANNEL: &[Node] = &[
+    rta(rta_tap::IN),
+    Node::Input,
+    t(tap::IN),
+    rta(rta_tap::PRE_FILTER),
+    t(tap::FILT),
+    rta(rta_tap::POST_FILTER),
+    Node::Eq,
+    t(2),
+    Node::Dynamics,
+    t(3),
+    Node::Delay,
+    t(4),
+    Node::Pfl,
+    t(tap::PFL),
+    Node::Fader,
+    t(tap::AFL),
+    rta(rta_tap::POST_FADER),
+    t(TAP_INS2),
+    Node::Post,
+    t(tap::POST),
+];
+
+/// The 02R's effect returns EFF1-2: attenuator and phase, the EQ, the delay,
+/// the fader; no dynamics (MAN p.197).
+pub(crate) const Y02R_RETURN: &[Node] = &[
+    rta(rta_tap::IN),
+    Node::Input,
+    t(tap::IN),
+    rta(rta_tap::PRE_FILTER),
+    t(tap::FILT),
+    rta(rta_tap::POST_FILTER),
+    Node::Eq,
+    t(2),
+    t(3),
+    Node::Delay,
+    t(4),
+    Node::Pfl,
+    t(tap::PFL),
+    Node::Fader,
+    t(tap::AFL),
+    rta(rta_tap::POST_FADER),
+    t(TAP_INS2),
+    Node::Post,
+    t(tap::POST),
+];
+
+/// The 02R's BUS 1-8: the dynamics processor, then the master; no EQ (MAN p.197).
+pub(crate) const Y02R_BUS: &[Node] = &[
+    rta(rta_tap::IN),
+    Node::Input,
+    t(tap::IN),
+    rta(rta_tap::PRE_FILTER),
+    t(tap::FILT),
+    rta(rta_tap::POST_FILTER),
+    Node::Dynamics,
+    t(2),
+    t(3),
+    t(TAP_EQ_POST),
+    Node::Pfl,
+    t(tap::PFL),
+    Node::Fader,
+    t(tap::AFL),
+    rta(rta_tap::POST_FADER),
+    t(TAP_INS2),
+    Node::Post,
+    t(tap::POST),
+];
+
+/// The 02R's AUX 1-8: the master alone, no EQ or dynamics.
+pub(crate) const Y02R_AUX: &[Node] = &[
+    rta(rta_tap::IN),
+    Node::Input,
+    t(tap::IN),
+    rta(rta_tap::PRE_FILTER),
+    t(tap::FILT),
+    rta(rta_tap::POST_FILTER),
+    t(2),
+    t(3),
+    t(TAP_EQ_POST),
+    Node::Pfl,
+    t(tap::PFL),
+    Node::Fader,
+    t(tap::AFL),
+    rta(rta_tap::POST_FADER),
+    t(TAP_INS2),
+    Node::Post,
+    t(tap::POST),
+];
+
+/// The 02R's STEREO: its attenuator, the 4-band EQ, the dynamics processor, the
+/// fader (MAN p.197).
+pub(crate) const Y02R_STEREO: &[Node] = &[
+    rta(rta_tap::IN),
+    Node::Input,
+    t(tap::IN),
+    rta(rta_tap::PRE_FILTER),
+    t(tap::FILT),
+    rta(rta_tap::POST_FILTER),
+    Node::Eq,
+    t(2),
+    Node::Dynamics,
+    t(3),
+    t(TAP_EQ_POST),
+    Node::Pfl,
+    t(tap::PFL),
+    Node::Fader,
+    t(tap::AFL),
+    rta(rta_tap::POST_FADER),
+    t(TAP_INS2),
+    Node::Post,
+    t(tap::POST),
+];
+
+/// The 02R's strips have no process orders (one, unused).
+pub(crate) const Y02R_ORDERS: &[&str] = &["ED"];
+
 /// The WING's chain for a strip of `kind`.
 pub fn template(kind: StripKind) -> &'static [Node] {
     match kind {

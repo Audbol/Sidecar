@@ -15,5 +15,6 @@ pub mod promix;
 pub mod util;
 pub mod wing;
 pub mod x32;
+pub mod y02r;
 
 pub use biquad::{Biquad, BiquadCoeffs};

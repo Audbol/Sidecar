@@ -289,7 +289,9 @@ of any size, of which the WING is one configuration.
   6: `Counts::Y02R`, `FaderLaw::Y02R` and STEREO's `Y02R_STEREO` (a profile's mains
   may have their own law: `ProfileSpec::main_fader`, `fader_for`; C ABI 45
   `ld_engine_fader_law_of`), `Y02R_PORT_GROUPS`, `Palette::Y02R`, the strip slots
-  of `profile::y02r`; C ABI 45 profile 4). A strip's factory settings, colour
+  of `profile::y02r`; C ABI 45 profile 4; its models in `livedaw_dsp::y02r`
+  (`Y2EQ`, `Y2CMP`...; the compander a curve of its own, `Curve::Compand`), its
+  chains `chain::Y02R_*`). A strip's factory settings, colour
   and name come from its slot (`Strip::of_profile_in`): a bus's id is its slot, a
   channel's isn't. A profile's buses, mains
   and matrices may have several orders (`ProfileSpec::output_orders`, picked by the

@@ -178,6 +178,10 @@ const WING_RMS_MS: f32 = 5.0;
 const WING_LIN_DB: f32 = 10.0;
 /// Shortest ATTACK the envelope uses (ms): ATTACK 0 moves 20 dB/ms.
 const WING_MIN_ATTACK_MS: f32 = 0.5;
+
+/// How far the 02R's expander and compander turn a signal down at most (dB):
+/// its range (the guide gives none).
+const Y02R_RANGE_DB: f32 = 96.0;
 /// AUTO: the attack's time constant for small changes (ms) and the change (dB)
 /// that doubles its speed - 14 dB of reduction is 77 % done after 1 ms, the
 /// last dB takes about 20 ms, whatever ATTACK is set to.
@@ -274,6 +278,9 @@ enum Curve {
     /// Variable-mu: `r0`:1 at the threshold, the ratio growing with the level
     /// over it (`r0 * (1 + over / width)`), towards limiting.
     VarMu { thr: f32, r0: f32, width: f32, knee: f32 },
+    /// A compander (the 02R's): compressing over `thr`, and expanding at
+    /// `exp`:1 under `thr - width`.
+    Compand { thr: f32, slope: f32, width: f32, exp: f32 },
 }
 
 impl Curve {
@@ -285,6 +292,9 @@ impl Curve {
             Curve::VarMu { thr, r0, width, knee } => {
                 let e = knee_over(x - thr, knee);
                 (width / r0) * (e / width).ln_1p() - e
+            }
+            Curve::Compand { thr, slope, width, exp } => {
+                comp_curve(x, thr, slope, 0.0) + exp_curve(x, thr - width, exp, 0.0, Y02R_RANGE_DB)
             }
         }
     }
@@ -564,6 +574,29 @@ fn configure(spec: &ModelSpec, v: &[f32], sr: f32) -> Config {
         // the level the signal closes to (-80..0 dB), DECAY the release.
         "PMGATE" => Config::Gate(gate(p.f("thr"), -p.f("range"), 0.0, p.f("att"), p.f("hld"), p.f("dcy"))),
         "PMDUCK" => Config::Duck(gate(p.f("thr"), -p.f("range"), 0.0, p.f("att"), p.f("hld"), p.f("dcy"))),
+        // The 02R's (`livedaw_dsp::y02r`): RANGE the level the gate closes to
+        // (-70..0 dB), DECAY the release.
+        "Y2GAT" => Config::Gate(gate(p.f("thr"), -p.f("range"), 0.0, p.f("att"), p.f("hld"), p.f("dcy"))),
+        "Y2DUK" => Config::Duck(gate(p.f("thr"), -p.f("range"), 0.0, p.f("att"), p.f("hld"), p.f("dcy"))),
+        // Its compressor and expander: KNEE hard or 1-5 (Sidecar's reading: 2 dB
+        // of soft knee a step), OUT GAIN after; the compander expands 5:1
+        // (hard) or 1.5:1 (soft) under its WIDTH (MAN pp.63-66).
+        "Y2CMP" | "Y2EXP" | "Y2CPH" | "Y2CPS" => {
+            let att = p.f("att").max(WING_MIN_ATTACK_MS);
+            let (thr, ratio) = (p.f("thr"), p.f("ratio"));
+            let knee = if spec.token.starts_with("Y2C") && spec.token != "Y2CMP" { 0.0 } else { p.f("knee") * 2.0 };
+            let mut c = comp(thr, ratio, knee, att, p.f("rel"));
+            c.post_db = p.f("gain");
+            match spec.token {
+                "Y2EXP" => c.curve = Curve::Expand { thr, ratio, knee, range: Y02R_RANGE_DB },
+                "Y2CPH" | "Y2CPS" => {
+                    let exp = if spec.token == "Y2CPH" { 5.0 } else { 1.5 };
+                    c.curve = Curve::Compand { thr, slope: slope_of(ratio), width: p.f("width"), exp };
+                }
+                _ => {}
+            }
+            Config::Comp(c)
+        }
         // Its compressor: hard knee, RELEASE in seconds, OUT GAIN after it.
         "PMCOMP" => {
             let att = p.f("att").max(WING_MIN_ATTACK_MS);

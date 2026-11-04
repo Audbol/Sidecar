@@ -846,28 +846,32 @@ const Y02R_LABELS: [&str; 5] = ["CH", "EFF", "BUS", "STEREO", "MTX"];
 /// 128-step fader laws (the channels' +10 to -90 dB, STEREO's 0 to -120 dB),
 /// its labels and names (MIC/LINE 1-16, LINE 17/18-23/24, TAPE 1-16, EFF1-2,
 /// BUS 1-8, AUX 1-8, STEREO), its port groups, its factory strip and output
-/// patch. It runs the WING's chains and models and has no remote until the
-/// next steps.
+/// patch; its models (`livedaw_dsp::y02r`: the 4-band EQ, the six dynamics
+/// types) and chains: the inputs and tape returns attenuator and phase, EQ,
+/// dynamics, delay, fader; the effect returns no dynamics; BUS 1-8 dynamics and
+/// master, AUX 1-8 the master alone; STEREO EQ, dynamics and fader
+/// (`chain::Y02R_*`). It has no remote until step 5.
 static Y02R: ProfileSpec = ProfileSpec {
     profile: Profile::Yamaha02R,
     name: "02R",
     counts: Counts::Y02R,
-    templates: [chain::CHANNEL, chain::AUX, chain::OUTPUT],
-    process_orders: PROCESS_ORDERS,
-    aux_order: b"DEI",
+    templates: [chain::Y02R_CHANNEL, chain::Y02R_RETURN, chain::Y02R_BUS],
+    process_orders: chain::Y02R_ORDERS,
+    aux_order: b"",
     output_orders: &["DI"],
     fader: FaderLaw::Y02R,
     main_fader: Some(FaderLaw::Y02R_STEREO),
     pan: PanLaw::WING,
     port_groups: Y02R_PORT_GROUPS,
-    models: &WING_MODELS,
+    models: &livedaw_dsp::y02r::MODELS,
     remotes: Remotes { midi: None, network: &[] },
     palette: Palette::Y02R,
     labels: Y02R_LABELS,
     slots: &[
-        SlotRange { kind: StripKind::Channel, first: y02r::LINE, count: 4, chain: chain::CHANNEL, label: "LINE" },
-        SlotRange { kind: StripKind::Channel, first: y02r::TAPE, count: 16, chain: chain::CHANNEL, label: "TAPE" },
-        SlotRange { kind: StripKind::Bus, first: y02r::AUX, count: 8, chain: chain::OUTPUT, label: "AUX" },
+        SlotRange { kind: StripKind::Channel, first: y02r::LINE, count: 4, chain: chain::Y02R_CHANNEL, label: "LINE" },
+        SlotRange { kind: StripKind::Channel, first: y02r::TAPE, count: 16, chain: chain::Y02R_CHANNEL, label: "TAPE" },
+        SlotRange { kind: StripKind::Bus, first: y02r::AUX, count: 8, chain: chain::Y02R_AUX, label: "AUX" },
+        SlotRange { kind: StripKind::Main, first: 0, count: 1, chain: chain::Y02R_STEREO, label: "STEREO" },
     ],
     // BUS 1-8 and AUX 1-8 don't feed STEREO (MAN p.195).
     buses_to_main: 0..0,

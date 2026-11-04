@@ -62,6 +62,7 @@ pub fn design(spec: &ModelSpec, values: &[f32], sr: f64, gain_scale: f32) -> EqD
         "PIA" => design_pia(&p, sr, k, &mut d),
         "X32EQ4" | "X32EQ6" => design_x32(&p, sr, k, &mut d),
         "PMEQ" => design_promix(&p, sr, k, &mut d),
+        "Y2EQ" => design_02r(&p, sr, k, &mut d),
         _ => {}
     }
     d
@@ -246,6 +247,39 @@ fn design_promix(p: &Params, sr: f64, k: f32, d: &mut EqDesign) {
         push_gain(d, hg, || high_shelf(sr, hf, std::f32::consts::FRAC_1_SQRT_2, hg));
     } else {
         push_gain(d, hg, || peak(sr, hf, q("hq"), hg));
+    }
+}
+
+/// The 02R's 4 bands (`livedaw_dsp::y02r`): bells of its Q table; LOW a low
+/// shelf or a 12 dB/oct HPF past its last Q, HIGH a high shelf or an LPF, the
+/// filters switched by their own parameter (the band's gain knob, MAN p.50).
+fn design_02r(p: &Params, sr: f64, k: f32, d: &mut EqDesign) {
+    use crate::y02r::{FILTER, Q_VALUES, SHELF};
+    let q = |id: &str| Q_VALUES[p.choice(id).min(Q_VALUES.len() - 1)];
+    let (lf, lg) = (p.f("lf"), p.f("lg") * k);
+    match p.choice("lq") as f32 {
+        x if x == FILTER => {
+            if p.on("hpf") {
+                sec_cut(d, sr, lf, true);
+            }
+        }
+        x if x == SHELF => push_gain(d, lg, || low_shelf(sr, lf, std::f32::consts::FRAC_1_SQRT_2, lg)),
+        _ => push_gain(d, lg, || peak(sr, lf, q("lq"), lg)),
+    }
+    for band in ["lm", "hm"] {
+        let (f, g) = (p.f(&format!("{band}f")), p.f(&format!("{band}g")) * k);
+        let bq = q(&format!("{band}q"));
+        push_gain(d, g, || peak(sr, f, bq, g));
+    }
+    let (hf, hg) = (p.f("hf"), p.f("hg") * k);
+    match p.choice("hq") as f32 {
+        x if x == FILTER => {
+            if p.on("lpf") {
+                sec_cut(d, sr, hf, false);
+            }
+        }
+        x if x == SHELF => push_gain(d, hg, || high_shelf(sr, hf, std::f32::consts::FRAC_1_SQRT_2, hg)),
+        _ => push_gain(d, hg, || peak(sr, hf, q("hq"), hg)),
     }
 }
 

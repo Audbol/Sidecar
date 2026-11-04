@@ -248,6 +248,20 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
 
   A show stores it. Its processing, effects and MIDI come with the next steps. C ABI
   45: profile 4, and `ld_engine_fader_law_of` (a strip kind's fader law).
+- The 02R's processing:
+  - its 4-band parametric EQ: 120 frequencies in 1/12 octave steps, +-18 dB in
+    0.5 dB steps, Q 10 to 0.1 in 41 steps, LOW also a shelf or a 12 dB/oct HPF,
+    HIGH a shelf or an LPF
+  - its dynamics processor's six types: compressor, expander, compander hard and
+    soft, gate, ducking, with the guides' ranges; release, decay and hold on
+    Sidecar's reading of their tables
+
+  Its chains:
+  - the inputs and tape returns: attenuator and phase, EQ, dynamics, delay, fader
+  - the effect returns: no dynamics
+  - BUS 1-8: dynamics and master
+  - AUX 1-8: the master alone
+  - STEREO: EQ, dynamics, fader
 - A new channel takes its console's factory settings, colour and name by its slot,
   not its id (a channel's id is 1-based and kept by shows).
 - Fixed: the X32 surface's UNIVERSAL MIXER key crashed the app when the Universal
