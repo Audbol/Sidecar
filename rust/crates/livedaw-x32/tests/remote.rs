@@ -9,7 +9,7 @@ use livedaw_x32::{Config, Identity, X32Server};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 fn start_with(life: Duration) -> (Arc<Engine>, X32Server) {
     let engine = Arc::new(Engine::new(0));
@@ -381,8 +381,16 @@ fn xremote_pushes_changes_to_up_to_four_clients() {
     let b = Client::new(&server);
     a.send("/xremote", vec![]);
     b.send("/xremote", vec![]);
-    std::thread::sleep(Duration::from_millis(50));
-    assert_eq!(server.status().xremote.len(), 2);
+    let me = |c: &Client| c.sock.local_addr().unwrap();
+    // The server takes each request in its own time (slower under load).
+    let settled = |want: &dyn Fn(&[SocketAddr]) -> bool| {
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while !want(&server.status().xremote) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        server.status().xremote
+    };
+    assert_eq!(settled(&|s| s.len() == 2).len(), 2);
 
     // A client's change reaches the others, not itself, on the console's step
     // (0.5 is step 511).
@@ -408,10 +416,10 @@ fn xremote_pushes_changes_to_up_to_four_clients() {
         c.send("/xremote", vec![]);
         std::thread::sleep(Duration::from_millis(20));
     }
-    std::thread::sleep(Duration::from_millis(50));
-    let subs = server.status().xremote;
+    let last = me(&more[2]);
+    let subs = settled(&|s| s.contains(&last));
     assert_eq!(subs.len(), 4);
-    assert!(!subs.contains(&a.sock.local_addr().unwrap()), "the oldest made way");
+    assert!(!subs.contains(&me(&a)), "the oldest made way");
 
     // Without a renewal it ends.
     std::thread::sleep(Duration::from_millis(1800));
