@@ -57,6 +57,8 @@ public:
 
     static constexpr const char* inputKey = "y02rmidi.input";
     static constexpr const char* outputKey = "y02rmidi.output";
+    /** PROGRAM CHANGE ASSIGN's table (the console's `getPcText`). */
+    static constexpr const char* pcKey = "y02rmidi.pc";
     static constexpr const char* setupKey = "y02rmidi.setup";
 
 private:

@@ -506,6 +506,19 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   position; CONFIG the tracks and bits it records. ACCESS lights while it
   records or plays. SETUP's SCRIBBLE STRIP (the selected strip's colour and
   icon) and PREAMPS (four inputs at a time: gain, 48V) tabs (p.56-57).
+- More console pages:
+  - X32: the gate's and dynamics' keys on HOME's second layer (KEY FILTER,
+    KEY SOLO, KEY SRC: SELF, a channel, or an aux, bus, main or matrix);
+    METERS' RTA tab (the selected strip's bands and peaks, FREEZE); ASSIGN's
+    set tabs edit the controls (an encoder's FADER, PAN or SEND with its
+    target and bus; a key's MUTE, INSERT, MUTE GRP or SCENE GO).
+  - ProMix 01: PROGRAM CHANGE ASSIGN (MIDI's third page, p.82), METER's PEAK
+    HOLD (p.19), the effect returns' L and R meters beside a SEND's list.
+  - 02R: Program Change Assign (MIDI's second page, MAN p.144), AUX 7/8's
+    EFFECT EDIT (the effect's type and parameters).
+  - The Program Change tables are kept in the app settings. C ABI 47:
+    `ld_promix_pc_scene`, `ld_promix_set_pc_scene`, `ld_y02r_pc_scene`,
+    `ld_y02r_set_pc_scene`.
 
   `ui::hw` (`src/ui/HardwareLook.*`) draws them. Keys, faders and knobs take a
   console's look when its surface asks; the Universal Mixer and the WING are

@@ -46,6 +46,10 @@ public:
     std::function<void()> onView;
     /** What the shown set's encoders 1-4 and keys 5-12 do, one line each. */
     juce::StringArray describeSet() const;
+    /** Control `index` of the shown set (0-3 encoders 1-4, 4-11 keys 5-12): its
+        code ("F03", "O80", "-"), and setting it (the X32's /config/userctrl). */
+    juce::String getCode (int index) const { return shownCodes[(size_t) juce::jlimit (0, 11, index)]; }
+    void setCode (int index, const juce::String& code);
 
     /** A code's function as a short label ("FDR CH 6", "MUTE GRP 1"). */
     static juce::String describe (const juce::String& code, bool button);

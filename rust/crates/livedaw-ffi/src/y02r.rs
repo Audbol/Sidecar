@@ -431,6 +431,28 @@ pub unsafe extern "C" fn ld_y02r_set_library_text(p: *mut LdY02R, text: *const u
     }
 }
 
+/// Program Change Assign (MAN p.144): the scene program `pc` (0-127) recalls (-1 none).
+///
+/// # Safety
+/// `p` is from `ld_y02r_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_y02r_pc_scene(p: *const LdY02R, pc: i32) -> i32 {
+    let (Some(p), Ok(pc)) = (p.as_ref(), usize::try_from(pc)) else { return -1 };
+    p.midi.pc_table.scenes.get(pc).copied().flatten().map_or(-1, i32::from)
+}
+
+/// Sets it (`scene` -1: none; else 0-96).
+///
+/// # Safety
+/// `p` is from `ld_y02r_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_y02r_set_pc_scene(p: *mut LdY02R, pc: i32, scene: i32) {
+    let (Some(p), Ok(pc)) = (p.as_mut(), usize::try_from(pc)) else { return };
+    if let Some(s) = p.midi.pc_table.scenes.get_mut(pc) {
+        *s = u8::try_from(scene).ok().filter(|&x| x <= 96);
+    }
+}
+
 /// The console's own state value `what` number `i` (`livedaw_02r::panel::What`:
 /// pairs, groups, gangs, keys, recall safe, fade times, the oscillator...);
 /// -1 for none.

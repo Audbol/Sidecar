@@ -91,6 +91,17 @@ AssignSection::~AssignSection()
     stopTimer();
 }
 
+void AssignSection::setCode (int index, const juce::String& c)
+{
+    index = juce::jlimit (0, 11, index);
+    const bool button = index >= 4;
+    int applied = 0;
+    const auto address = juce::String ("/config/userctrl/") + kSets[set] + (button ? "/btn/" : "/enc/") + juce::String (button ? index + 1 : index + 1);
+    ctx.engine.getWing().runX32Text (address + " \"" + c + "\"", applied);
+    refreshCodes();
+    repaint();
+}
+
 juce::StringArray AssignSection::describeSet() const
 {
     juce::StringArray lines;

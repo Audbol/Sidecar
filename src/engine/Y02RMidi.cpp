@@ -27,6 +27,7 @@ Y02RMidi::~Y02RMidi()
 void Y02RMidi::loadSettings (juce::PropertiesFile& p)
 {
     setSetupText (p.getValue (setupKey));
+    console.setPcText (p.getValue (pcKey));
     ports.open ({ { true, p.getValue (inputKey, MidiPorts::virtualDevice), p.getValue (outputKey, MidiPorts::virtualDevice) } });
 }
 

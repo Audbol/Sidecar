@@ -57,6 +57,25 @@ public:
         return ld::ld_promix_store_program (handle, library, n, target, name.toRawUTF8(), name.getNumBytesAsUTF8());
     }
     juce::String getLibraryText() const { return takeString (ld::ld_promix_library_text (handle)); }
+    /** PROGRAM CHANGE ASSIGN: the scene program `pc` (0-127) recalls (-1 none), and setting it. */
+    int pcScene (int pc) const { return ld::ld_promix_pc_scene (handle, pc); }
+    void setPcScene (int pc, int scene) { ld::ld_promix_set_pc_scene (handle, pc, scene); }
+    /** The whole table as text (128 numbers, -1 for none), for the app settings, and back. */
+    juce::String getPcText() const
+    {
+        juce::StringArray v;
+        for (int pc = 0; pc < 128; ++pc)
+            v.add (juce::String (pcScene (pc)));
+        return v.joinIntoString (" ");
+    }
+    void setPcText (const juce::String& text)
+    {
+        juce::StringArray v;
+        v.addTokens (text, " ", "");
+        if (v.size() == 128)
+            for (int pc = 0; pc < 128; ++pc)
+                setPcScene (pc, v[pc].getIntValue());
+    }
     void setLibraryText (const juce::String& text) { ld::ld_promix_set_library_text (handle, text.toRawUTF8(), text.getNumBytesAsUTF8()); }
     /** Recalls scene 00, the initial data. */
     void recallInitial() { ld::ld_promix_recall_initial (handle); }

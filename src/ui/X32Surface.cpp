@@ -153,6 +153,8 @@ X32Surface::X32Surface (UiContext& c)
     monitor.onView = [this] (int tab) { display.showScreen (x32::Display::Screen::Monitor, tab); };
     assign.onView = [this] { display.showScreen (x32::Display::Screen::Assign, assign.getSet()); };
     display.assignLines = [this] { return assign.describeSet(); };
+    display.assignCode = [this] (int i) { return assign.getCode (i); };
+    display.setAssignCode = [this] (int i, const juce::String& c) { assign.setCode (i, c); };
     display.getAssignSet = [this] { return assign.getSet(); };
     display.setAssignSet = [this] (int s) { assign.setSet (s); };
     // A VIEW key opens its section's tab of the display's HOME screen.

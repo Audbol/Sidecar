@@ -1847,6 +1847,9 @@ extern "C"
         to keep (the console's memory, not a scene's), and back. */
     bool ld_promix_store_program (LdProMix*, int32_t kind, int32_t n, int32_t target, const char* name, size_t len);
     LdString* ld_promix_library_text (const LdProMix*);
+    /** ABI 47: PROGRAM CHANGE ASSIGN: the scene program `pc` (0-127) recalls (-1 none), and setting it. */
+    int32_t ld_promix_pc_scene (const LdProMix*, int32_t pc);
+    void ld_promix_set_pc_scene (LdProMix*, int32_t pc, int32_t scene);
     void ld_promix_set_library_text (LdProMix*, const char* text, size_t len);
     /** The console's own state as text (pairs, groups, processors...), and back. */
     LdString* ld_promix_state_text (LdProMix*);
@@ -1905,6 +1908,9 @@ extern "C"
         as text (the console's memory: the host keeps it), and back. */
     bool ld_y02r_store (LdY02R*, int32_t kind, int32_t n, int32_t strip, const char* name, size_t len);
     LdString* ld_y02r_library_text (const LdY02R*);
+    /** ABI 47: Program Change Assign: the scene program `pc` (0-127) recalls (-1 none), and setting it. */
+    int32_t ld_y02r_pc_scene (const LdY02R*, int32_t pc);
+    void ld_y02r_set_pc_scene (LdY02R*, int32_t pc, int32_t scene);
     void ld_y02r_set_library_text (LdY02R*, const char* text, size_t len);
     /** Recalls scene 0, the initial data. */
     void ld_y02r_recall_initial (LdY02R*);

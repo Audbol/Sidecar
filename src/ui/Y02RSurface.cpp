@@ -300,6 +300,7 @@ namespace y02r
             case Function::Scene:
             case Function::Meter:
                 return 3;
+            case Function::Midi:
             case Function::Group:
             case Function::Pair:
             case Function::Att:
@@ -307,7 +308,8 @@ namespace y02r
             case Function::Pan:
                 return 2;
             default:
-                return function >= Function::Aux1 && function <= Function::Aux8 ? 3 : 1;
+                // AUX 1-8: MIC/LINE, TAPE/EFF, the selected strip's; AUX 7-8 their effect's EDIT.
+                return function >= Function::Aux7 && function <= Function::Aux8 ? 4 : function >= Function::Aux1 && function <= Function::Aux8 ? 3 : 1;
         }
     }
 
@@ -707,6 +709,25 @@ namespace y02r
             }
             case Function::Midi:
             {
+                if (page == 1)
+                {
+                    // Program Change Assign (MAN p.144): a program picked, the scene it recalls; the next ones.
+                    fields.push_back ({ "PGM", [this] { return pcProgram; }, [this] (int v) { pcProgram = v; build(); },
+                                        [] (int v) { return juce::String (v + 1); }, 0, 127 });
+                    fields.push_back ({ "SCENE", [this] { return y.pcScene (pcProgram) + 1; },
+                                        [this] (int v)
+                                        {
+                                            y.setPcScene (pcProgram, v - 1);
+                                            ctx.settings.setValue (Y02RMidi::pcKey, y.getPcText());
+                                        },
+                                        [] (int v) { return v <= 0 ? juce::String ("--") : juce::String (v - 1).paddedLeft ('0', 2); }, 0, 97 });
+                    for (int k = 0; k < 14; ++k)
+                    {
+                        const int pc = (pcProgram + 1 + k) % 128;
+                        fixed ("PGM " + juce::String (pc + 1), y.pcScene (pc) < 0 ? juce::String ("--") : juce::String (y.pcScene (pc)).paddedLeft ('0', 2));
+                    }
+                    break;
+                }
                 auto* midi = dynamic_cast<Y02RMidi*> (ctx.consoleMidi);
                 if (midi == nullptr)
                     break;
@@ -739,6 +760,25 @@ namespace y02r
             {
                 // AUX 1-8: the strip's send, the aux master; AUX 7-8 their effect's library.
                 const int aux = (int) function - (int) Function::Aux1;
+                if (aux >= 6 && page == 3)
+                {
+                    // EFFECT EDIT (MAN pp.90-111): the effect's type and parameters.
+                    auto& fx = ctx.engine.getFx();
+                    const int slot = aux - 6, m = fx.getModel (slot);
+                    if (m <= ld::kFxExt)
+                        break;
+                    const auto& model = models::model (models::Fx, m);
+                    auto& values = fx.params (slot).values;
+                    fixed ("EFFECT " + juce::String (slot + 1), model.name);
+                    for (int k = 0; k < juce::jmin (23, (int) model.params.size()); ++k)
+                    {
+                        auto b = bindModelParam (values[k], model.params[(size_t) k]);
+                        const int hi = b.steps > 1.0f ? (int) b.steps - 1 : 100;
+                        fields.push_back ({ model.params[(size_t) k].label, [b, hi] { return juce::roundToInt (b.get() * (float) hi); },
+                                            [b, hi] (int v) { b.set ((float) v / (float) hi); }, [b] (int) { return b.text(); }, 0, hi });
+                    }
+                    break;
+                }
                 if (memberOf (s) >= 0)
                 {
                     const int a = sendAddress (memberOf (s), aux);

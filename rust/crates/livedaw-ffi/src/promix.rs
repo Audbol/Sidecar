@@ -465,6 +465,28 @@ pub unsafe extern "C" fn ld_promix_set_library_text(p: *mut LdProMix, text: *con
     }
 }
 
+/// PROGRAM CHANGE ASSIGN (p.82): the scene program `pc` (0-127) recalls (-1 none).
+///
+/// # Safety
+/// `p` is from `ld_promix_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_promix_pc_scene(p: *const LdProMix, pc: i32) -> i32 {
+    let (Some(p), Ok(pc)) = (p.as_ref(), usize::try_from(pc)) else { return -1 };
+    p.midi.pc_table.scenes.get(pc).copied().flatten().map_or(-1, i32::from)
+}
+
+/// Sets it (`scene` -1: none; else 0-50).
+///
+/// # Safety
+/// `p` is from `ld_promix_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_promix_set_pc_scene(p: *mut LdProMix, pc: i32, scene: i32) {
+    let (Some(p), Ok(pc)) = (p.as_mut(), usize::try_from(pc)) else { return };
+    if let Some(s) = p.midi.pc_table.scenes.get_mut(pc) {
+        *s = u8::try_from(scene).ok().filter(|&x| x <= 50);
+    }
+}
+
 /// Parameter `n`'s name (the Control Change table's words).
 #[no_mangle]
 pub extern "C" fn ld_promix_param_name(n: i32) -> *mut LdString {

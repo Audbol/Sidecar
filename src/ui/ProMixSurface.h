@@ -189,7 +189,10 @@ namespace promix
         int page = 0, processor = 0, eqStrip = 0, focus = 0;
         int numPages() const;
         /** TITLE EDIT: the memory and its eight characters (indexes into kTitleChars). */
-        int titleMemory = 0;
+        int titleMemory = 0, pcProgram = 0;
+        /** METER's PEAK HOLD (p.19), and the peaks it holds (cleared when the page goes). */
+        bool peakHold = false;
+        mutable std::array<int, 16> peaks {};
         std::array<int, 15> titleChars {};
         /** What TITLE EDIT names: a memory (-1), or a program of library 0-2 (its number, its target), and where it came from. */
         int nameLibrary = -1, nameProgram = 0, nameTarget = 0;

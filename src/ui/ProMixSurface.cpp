@@ -222,7 +222,7 @@ namespace promix
         switch (function)
         {
             case Function::Utility: return 4; // SEND3,4 / OUTPUT COMP, OSCILLATOR, MEMORY PROTECT, BATTERY CHECK
-            case Function::Midi:    return 2; // MIDI SETUP, BULK
+            case Function::Midi:    return 3; // MIDI SETUP, BULK, PROGRAM CHANGE ASSIGN
             case Function::Meter:
             case Function::Send1:
             case Function::Send2:
@@ -337,7 +337,18 @@ namespace promix
         switch (function)
         {
             case Function::Meter:
+            {
+                // PEAK HOLD: ENTER switches it.
+                Field f;
+                f.label = "PEAK HOLD";
+                f.get = [this] { return peakHold ? 1 : 0; };
+                f.steps = [] { return 2; };
+                f.set = [this] (int v) { peakHold = v != 0; peaks.fill (0); };
+                f.text = [this] { return juce::String (peakHold ? "ON" : "OFF"); };
+                f.box = { 0.8f, 0.0f, 0.2f, 0.13f };
+                fields.push_back (std::move (f));
                 break;
+            }
             case Function::Pan:
                 if (page == 0)
                 {
@@ -518,6 +529,44 @@ namespace promix
             }
             case Function::Midi:
             {
+                if (page == 2)
+                {
+                    // PROGRAM CHANGE ASSIGN (p.82): a program picked, the memory it recalls; the twelve from it.
+                    auto& p = pm;
+                    Field pgm;
+                    pgm.label = "PGM";
+                    pgm.get = [this] { return pcProgram; };
+                    pgm.steps = [] { return 128; };
+                    pgm.set = [this] (int v) { pcProgram = v; build(); };
+                    pgm.text = [this] { return juce::String (pcProgram + 1); };
+                    pgm.box = { 0.0f, 0.02f, 0.2f, 0.24f };
+                    fields.push_back (std::move (pgm));
+                    Field mem;
+                    mem.label = "MEMORY";
+                    mem.get = [this, &p] { return p.pcScene (pcProgram) + 1; };
+                    mem.steps = [] { return 52; };
+                    mem.set = [this, &p] (int v)
+                    {
+                        p.setPcScene (pcProgram, v - 1);
+                        ctx.settings.setValue (ProMixMidi::pcKey, p.getPcText());
+                    };
+                    mem.text = [this, &p] { const int s = p.pcScene (pcProgram); return s < 0 ? juce::String ("--") : juce::String (s).paddedLeft ('0', 2); };
+                    mem.box = { 0.22f, 0.02f, 0.2f, 0.24f };
+                    fields.push_back (std::move (mem));
+                    for (int k = 0; k < 12; ++k)
+                    {
+                        const int pc = (pcProgram + 1 + k) % 128;
+                        Field f;
+                        f.label = "PGM " + juce::String (pc + 1);
+                        f.get = [] { return 0; };
+                        f.steps = [] { return 1; };
+                        f.set = [] (int) {};
+                        f.text = [&p, pc] { const int s = p.pcScene (pc); return s < 0 ? juce::String ("--") : juce::String (s).paddedLeft ('0', 2); };
+                        f.box = { (float) (k % 6) / 6.0f, k < 6 ? 0.36f : 0.66f, 1.0f / 6.0f, 0.28f };
+                        fields.push_back (std::move (f));
+                    }
+                    break;
+                }
                 // MIDI SETUP (p.81): the protocol's own values, kept in the app settings.
                 auto* midi = dynamic_cast<ProMixMidi*> (ctx.consoleMidi);
                 if (midi == nullptr)
@@ -727,6 +776,8 @@ namespace promix
         }
         if (function == Function::Midi && page == 1)
             t = "BULK DUMP";
+        if (function == Function::Midi && page == 2)
+            t = "PROGRAM CHANGE ASSIGN";
         if (function == Function::Comp)
             t << " " << (processor + 1) << (page == 1 ? "  EDIT" : "");
         if ((function == Function::Send1 || function == Function::Send2) && page == 1)
@@ -832,6 +883,16 @@ namespace promix
         for (size_t i = 0; i < bars.size(); ++i)
         {
             auto col = juce::Rectangle<float> (area.getX() + w * (float) i, area.getY(), w, area.getHeight()).reduced (w * 0.18f, 0.0f);
+            // The segments lit now, and the highest held.
+            int litNow = 0;
+            {
+                const float db = juce::Decibels::gainToDecibels (bars[i].second, -100.0f);
+                for (int s = 0; s < 12; ++s)
+                    litNow += db >= marks[11 - s] ? 1 : 0;
+                if (i < peaks.size())
+                    peaks[i] = peakHold ? juce::jmax (peaks[i], litNow) : 0;
+            }
+            const int held = i < peaks.size() ? peaks[i] : 0;
             g.setColour (kPixelDim);
             g.setFont (lcdFont (type::kCaption, true));
             g.drawText (bars[i].first, col.removeFromBottom (16.0f), juce::Justification::centred);
@@ -839,7 +900,7 @@ namespace promix
             const float segH = col.getHeight() / 12.0f;
             for (int s = 0; s < 12; ++s)
             {
-                const bool lit = db >= marks[11 - s];
+                const bool lit = db >= marks[11 - s] || (peakHold && s == held - 1);
                 auto seg = juce::Rectangle<float> (col.getX(), col.getBottom() - segH * (float) (s + 1), col.getWidth(), segH).reduced (0.0f, 1.5f);
                 g.setColour (lit ? (s == 11 ? juce::Colour (0xffff6060) : kPixel) : kLcdFrame);
                 g.fillRect (seg);
@@ -933,8 +994,31 @@ namespace promix
         const auto area = pageArea();
         switch (function)
         {
+            case Function::Send1:
+            case Function::Send2:
+                if (page == 0)
+                {
+                    // The effect's return, RTN L and R, at the right (p.33).
+                    const auto& aux = ctx.engine.getAux();
+                    const int fx = function == Function::Send1 ? 1 : 2;
+                    auto* rtn = fx < (int) aux.size() ? aux[(size_t) fx].get() : nullptr;
+                    auto m = juce::Rectangle<float> (area.getRight() - area.getWidth() * 0.1f, area.getY(), area.getWidth() * 0.08f, area.getHeight() * 0.5f);
+                    for (int ch = 0; ch < 2; ++ch)
+                    {
+                        auto col = m.withWidth (m.getWidth() / 2.0f).withX (m.getX() + m.getWidth() / 2.0f * (float) ch).reduced (2.0f, 0.0f);
+                        g.setColour (kPixelDim);
+                        g.setFont (lcdFont (type::kCaption, true));
+                        g.drawText (ch == 0 ? "L" : "R", col.removeFromBottom (14.0f), juce::Justification::centred);
+                        const float db = juce::Decibels::gainToDecibels (rtn != nullptr ? ctx.meters.get (rtn, MeterPoint::Output, ch) : 0.0f, -60.0f);
+                        g.setColour (kLcdFrame);
+                        g.fillRect (col);
+                        g.setColour (kPixel);
+                        g.fillRect (col.withTop (col.getBottom() - col.getHeight() * (db + 60.0f) / 60.0f));
+                    }
+                }
+                break;
             case Function::Meter:
-                paintMeters (g, area);
+                paintMeters (g, area.withTrimmedTop (area.getHeight() * 0.15f)); // PEAK HOLD over them
                 break;
             case Function::EqLow:
             case Function::EqMid:
@@ -956,20 +1040,6 @@ namespace promix
                     g.setColour (pm.get (kPairFlag + p) == 1 ? kPixel : kPixelDim);
                     g.setFont (lcdFont (type::kValue, true));
                     g.drawText (pm.get (kPairFlag + p) == 1 ? "STEREO" : "MONO x2", box, juce::Justification::centred);
-                }
-                break;
-            case Function::Send1:
-            case Function::Send2:
-            case Function::Comp:
-                if (page == 0)
-                {
-                    // The selected item's details beside the list.
-                    auto info = area.withTrimmedLeft (area.getWidth() * 0.72f).withTrimmedTop (area.getHeight() * 0.3f).withTrimmedBottom (area.getHeight() * 0.25f);
-                    g.setColour (kPixelDim);
-                    g.setFont (lcdFont (type::kLabel));
-                    const juce::String what = function == Function::Comp ? "A program, PATCH and KEY IN: choose, then ENTER. EDIT: the cursor past the last value"
-                                                                         : "Recall: choose, then ENTER. EDIT: the key again";
-                    g.drawFittedText (what, info.reduced (6.0f).toNearestInt(), juce::Justification::topLeft, 4);
                 }
                 break;
             default:

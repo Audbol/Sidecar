@@ -13,6 +13,8 @@
 #include "engine/Show.h"
 #include "ui/UniversalSkin.h"
 #include "ui/Y02RSurface.h"
+#include "engine/ProMixMidi.h"
+#include "engine/Y02RMidi.h"
 #include "engine/Yamaha02R.h"
 #include "ui/X32SceneFiles.h"
 #include "ui/ProMixSurface.h"
@@ -239,6 +241,19 @@ public:
         expect (display.getFunction() == F::Eq);
         expect (y.programName (Yamaha02R::Eq, 32) != was && y.programName (Yamaha02R::Eq, 32).substring (1) == was.substring (1).trimEnd());
         expect (rig.settings.getValue (ui::Y02RSurface::libraryKey).contains ("eq.33="));
+        // MIDI's second page, Program Change Assign; AUX 7's fourth, its effect's EDIT.
+        skin.pressFunction (F::Midi);
+        skin.pressFunction (F::Midi);
+        expectEquals (display.getPage(), 1);
+        display.getFields()[1].set (11);
+        expectEquals (y.pcScene (0), 10);
+        expect (rig.settings.getValue (Y02RMidi::pcKey).startsWith ("10 "));
+        display.getFields()[1].set (2);
+        for (int k = 0; k < 4; ++k)
+            skin.pressFunction (F::Aux7);
+        expectEquals (display.getPage(), 3);
+        expect (display.getFields().size() > 2, "the effect's type and parameters");
+        skin.pressFunction (F::Eq);
         display.cursor (1);
         // SCENE MEMORY: STORE into scene 1, RECALL it.
         skin.setMemory (1);
@@ -438,6 +453,18 @@ private:
         expect (display.getFunction() == F::Library);
         expectEquals (pm.programName (ProMix::Eq, 30), juce::String ("Jnitial Data"));
         expect (rig.settings.getValue (ui::ProMixSurface::libraryKey).contains ("Jnitial Data"));
+        // MIDI's third page, PROGRAM CHANGE ASSIGN: PGM 1 to memory 04, kept in the settings.
+        skin.pressFunction (F::Midi);
+        skin.pressFunction (F::Midi);
+        skin.pressFunction (F::Midi);
+        expectEquals (display.getPage(), 2);
+        display.getFields()[1].set (5);
+        expectEquals (pm.pcScene (0), 4);
+        expect (rig.settings.getValue (ProMixMidi::pcKey).startsWith ("4 "));
+        display.getFields()[1].set (2);
+        // METER's PEAK HOLD.
+        skin.pressFunction (F::Meter);
+        expectEquals (display.getFields()[0].label, juce::String ("PEAK HOLD"));
         // Each page's look, for review (not the docs).
         if (const auto shots = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {}); shots.isNotEmpty())
         {
@@ -818,6 +845,21 @@ private:
             expect (rig.show.getGlobalSafe().sections != 0);
             display.pushEncoder (0);
             expect (rig.show.getGlobalSafe().sections == 0);
+            // HOME gate's second layer: the key's source; METERS' RTA; ASSIGN's codes.
+            display.showScreen (S::Home, 2);
+            display.setLayer (1);
+            expectEquals (display.getEncoder (5).turn.label, juce::String ("KEY SRC"));
+            expectEquals (display.getEncoder (4).pushLabel, juce::String ("KEY SOLO"));
+            display.setLayer (0);
+            display.showScreen (S::Meters, 4);
+            expectEquals (display.getEncoder (0).pushLabel, juce::String ("FREEZE"));
+            display.showScreen (S::Assign, 0);
+            display.getEncoder (1).turn.set (1.0f / 3.0f); // ENC 1: FADER
+            expect (skin.getAssignSection().getCode (0).startsWith ("F"), "a fader");
+            display.getEncoder (2).turn.set (3.0f / 71.0f); // CH 4
+            expectEquals (skin.getAssignSection().getCode (0), juce::String ("F03"));
+            display.getEncoder (1).turn.set (0.0f);
+            expectEquals (skin.getAssignSection().getCode (0), juce::String ("-"));
             // MONITOR: AFL on the fifth push; TALK A's bus.
             display.showScreen (S::Monitor);
             const bool afl = rig.engine.soloAfl.load();
@@ -828,7 +870,8 @@ private:
             {
                 const std::tuple<S, int, const char*> pages[] = { { S::Scenes, 0, "scenes" }, { S::Scenes, 1, "param-safe" }, { S::Monitor, 0, "monitor" },
                                                                   { S::Monitor, 1, "talk-a" }, { S::Monitor, 3, "osc" }, { S::Assign, 0, "assign" },
-                                                                  { S::Usb, 0, "usb" }, { S::Setup, 2, "scribble" }, { S::Setup, 3, "preamps" } };
+                                                                  { S::Usb, 0, "usb" }, { S::Setup, 2, "scribble" }, { S::Setup, 3, "preamps" },
+                                                                  { S::Meters, 4, "rta" } };
                 for (auto [screen, page, shot] : pages)
                 {
                     display.showScreen (screen, page);

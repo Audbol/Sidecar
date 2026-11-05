@@ -55,6 +55,9 @@ public:
     };
     /** The ASSIGN page's lines and set (the surface's assign section). */
     std::function<juce::StringArray()> assignLines;
+    /** The shown set's control codes (0-3 encoders, 4-11 keys), and setting one. */
+    std::function<juce::String (int)> assignCode;
+    std::function<void (int, const juce::String&)> setAssignCode;
     std::function<int()> getAssignSet;
     std::function<void (int)> setAssignSet;
 
@@ -145,6 +148,10 @@ private:
     int safeSection = 0, talkBus = 0, homeDca = 0, homeMuteGroup = 0;
     /** SETUP's preamps tab: the block of four inputs shown. */
     int preampBlock = 0;
+    /** ASSIGN's control being edited (0-3 encoders 1-4, 4-11 keys 5-12). */
+    int assignControl = 0;
+    /** METERS' RTA tab showed the selected strip's RTA (hidden again when it goes). */
+    bool rtaShown = false;
     int selectedOutput = 0; // ROUTING's signal tabs: the output the encoders set
     int selectedFx = 0;     // EFFECTS > home: the slot the encoders set
     // UTILITY: the strip COPY took and the sections PASTE copies (CopySection bits).

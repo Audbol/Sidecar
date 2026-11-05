@@ -1,5 +1,6 @@
 #include "ui/X32Display.h"
 
+#include "engine/Analysis.h"
 #include "engine/MidiPorts.h"
 #include "engine/UsbRecorder.h"
 #include "engine/Models.h"
@@ -9,6 +10,7 @@
 #include "ui/HardwareLook.h"
 #include "ui/HomeScreens.h"
 #include "ui/Icons.h"
+#include "ui/X32AssignSection.h"
 #include "ui/MeterBank.h"
 
 namespace livedaw::ui::x32
@@ -294,6 +296,8 @@ Display::Display (UiContext& c, const Theme& t)
 Display::~Display()
 {
     stopTimer();
+    if (rtaShown)
+        ctx.engine.getAnalysis().hideRta();
 }
 
 Strip* Display::selected() const
@@ -306,7 +310,7 @@ juce::StringArray Display::getTabs() const
     switch (screen)
     {
         case Screen::Home:       return { "home", "config", "gate", "dyn", "eq", "sends", "main" };
-        case Screen::Meters:     return { "channel", "mix bus", "aux / fx", "in / out" };
+        case Screen::Meters:     return { "channel", "mix bus", "aux / fx", "in / out", "rta" };
         case Screen::Routing:    return { "home", "out 1-16", "aux out", "p16 out", "card out", "aes50-a", "aes50-b" };
         case Screen::Setup:      return { "global", "remote", "scribble strip", "preamps" };
         case Screen::Library:    return { "scenes", "show" };
@@ -351,6 +355,20 @@ void Display::showTab (int t)
 {
     tab = juce::jlimit (0, getTabs().size() - 1, t);
     layer = 0;
+    // METERS' RTA: the selected strip's while the tab shows.
+    {
+        auto analysis = ctx.engine.getAnalysis();
+        if (screen == Screen::Meters && tab == 4)
+        {
+            analysis.showRta (selected(), ld::kRtaViewHome);
+            rtaShown = true;
+        }
+        else if (rtaShown)
+        {
+            analysis.hideRta();
+            rtaShown = false;
+        }
+    }
     if (screen == Screen::Assign && setAssignSet)
         setAssignSet (tab); // a set's tab shows (and picks) the set
     const bool home = screen == Screen::Home;
@@ -379,6 +397,8 @@ void Display::refreshStrip()
     gateView.bind (s != nullptr ? &s->params.gate() : nullptr);
     dynView.bind (s != nullptr ? &s->params.dynamics() : nullptr);
     eqView.refresh();
+    if (rtaShown)
+        ctx.engine.getAnalysis().showRta (s, ld::kRtaViewHome); // the RTA follows the selection
     assignEncoders();
     repaint();
 }
@@ -420,6 +440,35 @@ void Display::assignEncoders()
             return b;
         };
         auto gainOf = [&] { return bindLinear ("GAIN", p.input.trimDb, -18.0f, 18.0f, " dB", 1, 0.0f); };
+        // A dynamics slot's KEY SOURCE: SELF, a channel (an input's), or an
+        // aux, bus, main or matrix (an output's).
+        auto keySource = [&engine, s] (std::atomic<int32_t>& src)
+        {
+            const bool out = s->isOutput();
+            const int n = out ? MixerEngine::kNumOutputKeySources : (int) engine.getChannels().size();
+            KnobBinding b;
+            b.label = "KEY SRC";
+            b.steps = (float) (n + 1);
+            b.get = [&src, out, n]
+            {
+                const int v = src.load();
+                const int i = v < 0 ? 0 : 1 + (out ? MixerEngine::outputKeySourceIndex (v) : v);
+                return (float) juce::jlimit (0, n, i) / (float) n;
+            };
+            b.set = [&src, out, n] (float v)
+            {
+                const int i = juce::roundToInt (v * (float) n);
+                src = i == 0 ? -1 : out ? MixerEngine::outputKeySource (i - 1) : i - 1;
+            };
+            b.text = [&src] { return MixerEngine::keySourceName (src.load()); };
+            return b;
+        };
+        const auto keySolo = [&engine, s] (int mode)
+        {
+            return std::make_pair (std::function<void()> ([&engine, s, mode] { engine.getAnalysis().toggleListen (*s, mode); }),
+                                   std::function<bool()> ([&engine, s, mode] { return engine.getAnalysis().isListening (*s, mode); }));
+        };
+        const juce::StringArray keyFilters { "FLAT", "LOWPASS", "HIGHPASS", "BANDPASS", "NOTCH" };
         auto faderOf = [&] { return bindFader ("FADER", p.faderDb); };
         switch (tab)
         {
@@ -479,7 +528,12 @@ void Display::assignEncoders()
                 else
                 {
                     encoders[0] = encoder (bindParam (models::Dynamics, gate.model.load(), gate.values, "thr", "THRESHOLD"), "GATE", toggle (gate.on), isOn (gate.on));
+                    // The key (p.48): its filter, frequency, KEY SOLO and source.
+                    encoders[2] = encoder (bindChoice ("KEY FILTER", gate.scFilter, keyFilters));
                     encoders[3] = encoder (bindLog ("KEY FREQ", gate.scFreq, 20.0f, 20000.0f, " Hz", 1000.0f));
+                    const auto [solo, soloOn] = keySolo (ld::kListenGateKey);
+                    encoders[4] = encoder ({}, "KEY SOLO", solo, soloOn);
+                    encoders[5] = encoder (keySource (gate.scSource));
                 }
                 break;
             case 3: // dyn
@@ -510,6 +564,10 @@ void Display::assignEncoders()
                     encoders[1] = encoder (bindLinear ("MIX", dyn.mix, 0.0f, 100.0f, " %", 0, 100.0f));
                     encoders[2] = encoder (bindParam (models::Dynamics, dyn.model.load(), dyn.values, "knee", "KNEE"));
                     encoders[3] = encoder (orderBit (1, "POSITION"));
+                    // The key (p.48): its filter on the fifth (KEY SOLO its push), its source.
+                    const auto [solo, soloOn] = keySolo (ld::kListenDynKey);
+                    encoders[4] = encoder (bindChoice ("KEY FILTER", dyn.scFilter, keyFilters), "KEY SOLO", solo, soloOn);
+                    encoders[5] = encoder (keySource (dyn.scSource));
                 }
                 break;
             case 4: // eq
@@ -734,6 +792,11 @@ void Display::assignEncoders()
                 encoders[5] = encoder ({}, "OSC ON", [src] { src->mute = ! src->mute.load(); }, [src] { return ! src->mute.load(); });
         }
     }
+    else if (screen == Screen::Meters && tab == 4)
+    {
+        encoders[0] = encoder ({}, "FREEZE", [&engine] { auto a = engine.getAnalysis(); a.setFrozen (! a.isFrozen()); },
+                               [&engine] { return engine.getAnalysis().isFrozen(); });
+    }
     else if (screen == Screen::Scenes && tab == 0)
     {
         // SCENES (p.65): a scene picked by the first encoder, GO; PREV, NEXT,
@@ -778,12 +841,53 @@ void Display::assignEncoders()
             show.setGlobalSafe (safe);
         }, [this, &show] { return (show.getGlobalSafe().sections & (juce::uint32) state::sectionAt (safeSection)) != 0; });
     }
-    else if (screen == Screen::Assign)
+    else if (screen == Screen::Assign && assignCode && setAssignCode)
     {
-        // The sets: a push picks one.
-        for (int n = 0; n < 3; ++n)
-            encoders[(size_t) n] = encoder ({}, juce::String ("SET ") + juce::String::charToString ((juce::juce_wchar) ('A' + n)),
-                                            [this, n] { showTab (n); }, [this, n] { return getAssignSet && getAssignSet() == n; });
+        // A set's tab (p.64): the control, what kind of thing it does, its
+        // target (and a send's bus); a change writes the control's code.
+        const bool button = assignControl >= 4;
+        const juce::StringArray kinds = button ? juce::StringArray { "-", "MUTE", "INSERT", "MUTE GRP", "SCENE GO" } : juce::StringArray { "-", "FADER", "PAN", "SEND" };
+        const auto code = assignCode (assignControl);
+        const int xx = code.substring (1, 3).getIntValue();
+        const int kind = code == "-" || code.isEmpty() ? 0
+                       : button ? (code[0] == 'O' ? (xx >= 80 ? 3 : 1) : code[0] == 'I' ? 2 : code.startsWith ("S9") ? 4 : 0)
+                                : (code[0] == 'F' ? 1 : code[0] == 'P' ? 2 : code[0] == 'S' ? 3 : 0);
+        const int bus = code.length() >= 5 ? code.substring (3, 5).getIntValue() : 0;
+        const auto make = [button] (int k, int target, int b) -> juce::String
+        {
+            const auto two = [] (int v) { return juce::String (v).paddedLeft ('0', 2); };
+            if (button)
+                return k == 1 ? "O" + two (target) : k == 2 ? "I" + two (target) : k == 3 ? "O" + two (80 + juce::jlimit (0, 5, target)) : k == 4 ? juce::String ("S93") : juce::String ("-");
+            return k == 1 ? "F" + two (target) : k == 2 ? "P" + two (target) : k == 3 ? "S" + two (target) + two (b) : juce::String ("-");
+        };
+        const int target = kind == 3 && button ? xx - 80 : xx;
+        const auto picker = [] (const juce::String& label, int value, int count, std::function<juce::String (int)> text, std::function<void (int)> set)
+        {
+            KnobBinding b;
+            b.label = label;
+            b.get = [value, count] { return count > 1 ? (float) value / (float) (count - 1) : 0.0f; };
+            b.set = [count, set] (float v) { set (juce::roundToInt (v * (float) (count - 1))); };
+            b.text = [value, text] { return text (value); };
+            b.steps = (float) juce::jmax (2, count);
+            return b;
+        };
+        encoders[0] = encoder (picker ("CONTROL", assignControl, 12, [] (int v) { return v < 4 ? "ENC " + juce::String (v + 1) : "KEY " + juce::String (v + 1); },
+                                       [this] (int v) { assignControl = v; assignEncoders(); }));
+        encoders[1] = encoder (picker ("TYPE", kind, kinds.size(), [kinds] (int v) { return kinds[v]; },
+                                       [this, make, target, bus] (int v) { setAssignCode (assignControl, make (v, juce::jmax (0, target), bus)); assignEncoders(); }));
+        if (kind != 0 && ! (button && kind == 4))
+        {
+            const int count = button && kind == 3 ? 6 : 72;
+            encoders[2] = encoder (picker ("TARGET", juce::jlimit (0, count - 1, target), count,
+                                           [button, kind] (int v)
+                                           {
+                                               return button && kind == 3 ? "MUTE G" + juce::String (v + 1) : x32::AssignSection::describe (juce::String ("F") + juce::String (v).paddedLeft ('0', 2), false).fromFirstOccurrenceOf ("FDR ", false, false);
+                                           },
+                                           [this, make, kind, bus] (int v) { setAssignCode (assignControl, make (kind, v, bus)); assignEncoders(); }));
+        }
+        if (! button && kind == 3)
+            encoders[3] = encoder (picker ("BUS", bus, 16, [] (int v) { return juce::String (v + 1); },
+                                           [this, make, kind, target] (int v) { setAssignCode (assignControl, make (kind, target, v)); assignEncoders(); }));
     }
     else if (screen == Screen::Utility)
     {
@@ -1992,6 +2096,30 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
                 block (g, r.reduced (12, 6).toFloat(), tab == 2 ? "Gate" : tab == 3 ? "Dynamics" : "Equalizer");
             break;
         case Screen::Meters:
+            if (tab == 4)
+            {
+                // RTA: the selected strip's bands, their peaks over them.
+                Analysis::Bands bands;
+                ctx.engine.getAnalysis().read (bands);
+                auto area = r.reduced (16, 12).toFloat();
+                g.setColour (kWell);
+                g.fillRect (area);
+                const float w = area.getWidth() / (float) Analysis::numBands;
+                const auto yOf = [&area] (float db) { return area.getBottom() - area.getHeight() * juce::jlimit (0.0f, 1.0f, (db + 90.0f) / 90.0f); };
+                for (int k = 0; k < Analysis::numBands; ++k)
+                {
+                    const float x = area.getX() + w * (float) k;
+                    g.setColour (juce::Colour (0xffff9a1f));
+                    g.fillRect (juce::Rectangle<float> (x + 0.5f, yOf (bands.levels[(size_t) k]), juce::jmax (1.0f, w - 1.0f), area.getBottom() - yOf (bands.levels[(size_t) k])));
+                    g.setColour (kSky);
+                    g.fillRect (juce::Rectangle<float> (x + 0.5f, yOf (bands.peaks[(size_t) k]) - 1.0f, juce::jmax (1.0f, w - 1.0f), 2.0f));
+                }
+                g.setColour (kSky);
+                g.setFont (type::font (10.0f, true));
+                g.drawText (selected() != nullptr ? "RTA  " + selected()->getLabel() : juce::String ("RTA: select a strip"), area.reduced (6.0f, 4.0f),
+                            juce::Justification::topLeft);
+                break;
+            }
             paintMeters (g, r);
             break;
         case Screen::Library:

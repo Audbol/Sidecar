@@ -27,6 +27,7 @@ ProMixMidi::~ProMixMidi()
 void ProMixMidi::loadSettings (juce::PropertiesFile& p)
 {
     setSetupText (p.getValue (setupKey));
+    promix.setPcText (p.getValue (pcKey));
     ports.open ({ { true, p.getValue (inputKey, MidiPorts::virtualDevice), p.getValue (outputKey, MidiPorts::virtualDevice) } });
 }
 
