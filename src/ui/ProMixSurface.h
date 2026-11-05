@@ -85,9 +85,10 @@ namespace promix
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Fader)
     };
 
-    /** The ProMix 01's LCD (pp.12-16), in Sidecar's style: the FUNCTION area
-        (the function shown, the selected channel), the MEMORY area (the scene
-        last recalled, EDIT, MIDI), and the function's page: its parameters as
+    /** The ProMix 01's LCD (pp.12-16), laid out as a console's: down its left
+        the FUNCTION area (the function shown), the MEMORY area (the title of
+        the scene last recalled, the memory number, EDIT once it's changed) and
+        SEL CH; at the right the function's page: its parameters as
         fields, one with the cursor; the cursor keys move it, the PARAMETER
         wheel changes its value, ENTER switches, recalls or executes. Unlike
         the console's, the screen takes touch: a tap puts the cursor on a
@@ -130,8 +131,11 @@ namespace promix
         void mouseDrag (const juce::MouseEvent&) override;
         void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
-        /** What the memory area shows: the scene number and name last recalled. */
-        std::function<juce::String()> memoryText;
+        /** What the MEMORY area shows besides the number (`chosenMemory`): the
+            title of the scene last recalled, and whether the console has
+            changed since (its EDIT flag). */
+        std::function<juce::String()> memoryName;
+        std::function<bool()> memoryEdited;
         /** The scene memories, for STORE's and RECALL's lists: a memory's title
             (00 the initial data; empty: none stored), the chosen number (INC,
             DEC, the wheel), and what ENTER does there (the surface's STORE or
@@ -156,7 +160,7 @@ namespace promix
         std::function<int()> rtnSendShown;
         /** Where the legends beside the LCD sit, as fractions of its height:
             FUNCTION, MEMORY, SEL CH at the left, RTN 1 ... SEND 4 at the right. */
-        static constexpr float kLeftRows[] = { 0.26f, 0.5f, 0.74f }, kRightRows[] = { 0.22f, 0.41f, 0.6f, 0.79f };
+        static constexpr float kLeftRows[] = { 0.19f, 0.53f, 0.86f }, kRightRows[] = { 0.17f, 0.39f, 0.61f, 0.83f };
 
         /** A field of the page: a ProMix parameter, a program list, or a value of
             the app's (MIDI SETUP). */
@@ -176,6 +180,14 @@ namespace promix
             std::function<juce::String (int)> item;
             juce::Rectangle<float> box; // in the page's area, 0..1
             int pending = -1;
+            /** How it's drawn: a labelled box; its value alone (a cell of EQ's
+                table); "LABEL:VALUE" on a line; a key on the screen (STORE,
+                RECALL, EDIT); a pan knob (`span` 2: a pair's, over both boxes;
+                0: none, its partner's drawn). */
+            enum class Style { Box, Bare, Inline, Button, Knob } style = Style::Box;
+            int span = 1;
+            /** A list's rows (0: as many as fit). */
+            int rows = 0;
         };
 
         const std::vector<Field>& getFields() const noexcept { return fields; }
@@ -189,6 +201,12 @@ namespace promix
         juce::Rectangle<float> pageArea() const;
         juce::Rectangle<float> boxOf (const Field&) const;
         juce::String title() const;
+        /** The FUNCTION area's second line ("No.2", "EDIT", "CH1-16"). */
+        juce::String subtitle() const;
+        juce::Rectangle<float> leftColumn() const;
+        void paintLeftColumn (juce::Graphics&) const;
+        /** The link to METER's or PAN's other page (ST IN, CH): where it is. */
+        juce::Rectangle<float> pageLink() const;
         void paintField (juce::Graphics&, const Field&, bool focused) const;
         void paintMeters (juce::Graphics&, juce::Rectangle<float>) const;
         void paintEqCurve (juce::Graphics&, juce::Rectangle<float>) const;
@@ -306,6 +324,9 @@ private:
     std::vector<std::unique_ptr<universal::ToggleKey>> panelKeys; // STORE, RECALL, INC, DEC, cursors, ENTER
     std::unique_ptr<juce::Slider> wheel;
     int rtnSend = 0, memory = 1, lastBound = -1;
+    /** The Edit Buffer as the scene last recalled or stored left it (the LCD's EDIT). */
+    std::vector<uint8_t> recalledBytes;
+    int recalledIndex = -2;
     /** STORE and RECALL as the keys work them: the first press opens the list,
         the second (or ENTER) stores or recalls the chosen memory. */
     void pressStore();

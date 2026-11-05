@@ -184,6 +184,14 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
 
 Phase 5, the Yamaha ProMix 01 (`docs/UNIVERSAL_MIXER.md`), begins.
 
+- The ProMix surface checked against photos of a console: its LCD laid out as the
+  console's (FUNCTION, MEMORY with the scene's title, number and EDIT, and SEL CH down
+  the left; EQ's curve over its G / F / Q table; COMP's lines, three programs, STORE,
+  RECALL and EDIT, and its GR and OUT meters; PAN's knobs with a pair's over both; METER's
+  scale), the LCD's yellow-green, red SEL and ON LEDs, and the fader caps' colours (ST IN
+  light blue, RTN / SEND salmon, ST OUT dark grey). The dynamics presets are named in
+  capitals, EQ gains read "0dB", 10 kHz "10kHz", and scene 00's title is "InitData".
+
 - A ProMix 01 profile: a console can be configured as a ProMix 01 (16 channels; ST IN
   and the two effect returns; SEND1-4; ST OUT; no matrices, DCAs or mute groups; two
   FX slots), with its 128-step fader (+6 dB to -66 dB; the steps between are Sidecar's

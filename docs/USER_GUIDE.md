@@ -1058,13 +1058,19 @@ Universal Mixer, whose **PROMIX SURFACE** key comes back.
   levels to it, and RTN / SEND is the effect's return (SEND1-2) or the send's master
   (SEND3-4), as on the console. A paired channel's fader moves its partner; a grouped
   one moves its group.
-- **The LCD** shows the function its key calls: **METER** (the inputs; the cursor keys for
+- **The LCD** is laid out as the console's: down its left the function, the MEMORY area
+  (the title of the scene last recalled, the memory number, and **EDIT** once the console
+  has changed since it was recalled or stored) and the selected channel; the page at the
+  right shows the function its key calls: **METER** (the inputs; the cursor keys for
   ST IN, the returns and SEND3-4), **PAN / PHASE** (pressed again: the stereo strips'
   pans and balances, then PHASE), **COMP** (pressed again: the next of the three
-  processors; its ON, PATCH, KEY IN and IN, and its program list; the cursor past the last
-  field: its EDIT page), **CUE**, **SEND1-4** (SEND1-2: the effect's program list and PRE /
+  processors; its ON/OFF, PATCH, KEYIN and IN, three of its programs, and **STORE**,
+  **RECALL** (ENTER recalls the program chosen in the list) and **EDIT** (its EDIT page,
+  as is the cursor past the last field); at the right its gain reduction and output), **CUE**, **SEND1-4** (SEND1-2: the effect's program list and PRE /
   POST, then its EDIT page; SEND3-4: PRE / POST and, as a stereo pair, the pans), **EQ
-  LOW / MID / HIGH** (the selected strip's EQ, its curve and nine values), **LIBRARY** (the
+  LOW / MID / HIGH** (the selected strip's EQ: its curve, a dotted line at the band under
+  the cursor, and the G, F and Q of LOW, MID and HIGH; a band's key again steps through
+  them), **LIBRARY** (the
   EQ library's 50 programs), **GROUP**, **PAIR**, **UTILITY** (SEND3-4 as a stereo pair, the
   outputs' dynamics patch points, the oscillator) and **MIDI** (MIDI SETUP). The cursor
   keys move between the page's values, the **PARAMETER** wheel changes the one under the

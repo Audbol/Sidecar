@@ -70,7 +70,9 @@ impl FaderLaw {
     /// the steps between, so the breakpoints are where the panel prints its
     /// scale (6, 0, 5, 10, 20, 40, 60, measured on the drawing on p.2, the
     /// travel from 6 to -oo): 0 dB on step 100, -10 dB on 57, -20 dB on 36,
-    /// -40 dB on 14, -60 dB on 7; to be measured on a console. Every
+    /// -40 dB on 14, -60 dB on 7. A photo of a console's panel (November
+    /// 2026) prints its scale where the drawing does, within a step or two;
+    /// the steps' levels themselves are still to be measured. Every
     /// breakpoint sits on a step (`k / 127`).
     pub const PROMIX01: FaderLaw = FaderLaw {
         points: &[

@@ -34,18 +34,18 @@ const fn ratio(r: f32) -> f32 {
 }
 
 /// The preset programs 1-10 (p.78; HOLD and DECAY on their steps: 101 ms is
-/// step 38, 1.3 s step 15).
+/// step 38, 1.3 s step 15), named in capitals as a console's LCD lists them.
 pub const DYN_PRESETS: [(&str, u8, [f32; 5]); 10] = [
-    ("Total Comp", 0, [0.0, ratio(2.0), 50.0, 3.0, 1.0]),
-    ("Radio Comp", 0, [6.0, ratio(4.0), 18.0, 5.0, 3.0]),
-    ("Comp Fast", 0, [2.0, ratio(4.0), 5.0, 2.5, 3.0]),
-    ("Comp Slow", 0, [-2.0, ratio(4.0), 70.0, 5.0, 1.0]),
-    ("Comp Heavy1", 0, [-3.0, ratio(10.0), 14.0, 0.5, 2.0]),
-    ("Comp Heavy2", 0, [0.0, ratio(6.0), 18.0, 1.5, 3.0]),
-    ("Gate Fast", 1, [-6.0, 1.0, hold(38.0), 15.0 * 85.0, -20.0]),
-    ("Gate Slow", 1, [-2.0, 5.0, hold(118.0), 96.0 * 85.0, -25.0]),
-    ("Ducking", 2, [-8.0, 9.0, hold(111.0), 76.0 * 85.0, -9.0]),
-    ("BGM Ducking", 2, [-18.0, 9.0, hold(128.0), 128.0 * 85.0, -14.0]),
+    ("TOTAL COMP", 0, [0.0, ratio(2.0), 50.0, 3.0, 1.0]),
+    ("RADIO COMP", 0, [6.0, ratio(4.0), 18.0, 5.0, 3.0]),
+    ("COMP FAST", 0, [2.0, ratio(4.0), 5.0, 2.5, 3.0]),
+    ("COMP SLOW", 0, [-2.0, ratio(4.0), 70.0, 5.0, 1.0]),
+    ("COMP HEAVY1", 0, [-3.0, ratio(10.0), 14.0, 0.5, 2.0]),
+    ("COMP HEAVY2", 0, [0.0, ratio(6.0), 18.0, 1.5, 3.0]),
+    ("GATE FAST", 1, [-6.0, 1.0, hold(38.0), 15.0 * 85.0, -20.0]),
+    ("GATE SLOW", 1, [-2.0, 5.0, hold(118.0), 96.0 * 85.0, -25.0]),
+    ("DUCKING", 2, [-8.0, 9.0, hold(111.0), 76.0 * 85.0, -9.0]),
+    ("BGM DUCKING", 2, [-18.0, 9.0, hold(128.0), 128.0 * 85.0, -14.0]),
 ];
 
 /// An effects program: its name, its type (a token of

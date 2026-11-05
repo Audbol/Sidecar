@@ -73,9 +73,10 @@ const Look& Look::promix()
         l.capLine = c (0xff2a2722);
         l.knob = c (0xff1b1c1e);
         l.knobLine = c (0xffe8e8e8);
-        l.lcd = c (0xffb5cf63);
-        l.lcdPixel = c (0xff1f2b0c);
-        l.lcdDim = c (0xff56682a);
+        // Its LCD's yellow-green and dark green pixels (sampled from a console's).
+        l.lcd = c (0xffa2cc1e);
+        l.lcdPixel = c (0xff284d02);
+        l.lcdDim = c (0xff58801a);
         l.lcdBezel = c (0xff232527);
         l.keyRadius = 2.5f;
         l.ledWidth = l.ledHeight = 5.0f; // round, above the bar

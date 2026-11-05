@@ -738,7 +738,8 @@ Three layers:
       least (as on an X32); the console addresses two. Its port groups sit in the
       WING's places (`PROMIX01_PORT_GROUPS`); a new console plays ST OUT on outputs
       1-2, 5-6 and 9-10, SEND3-4 on 3-4. The fader's steps between +6 and -66 dB are
-      Sidecar's reading of the panel's scale (0 dB on step 100, measured on the User's Guide's drawing).
+      Sidecar's reading of the panel's scale (0 dB on step 100, measured on the User's Guide's drawing;
+      the owner's photos of a console's panel print the scale in the same places, within a step or two).
    2. **Its processing** (done): the 3-band EQ (`livedaw_dsp::promix`, token
       `PMEQ`: LOW 32 Hz-1 kHz, MID 32 Hz-18 kHz, HIGH 1-18 kHz in 1/6 octave steps
       named as the guide's presets name them; gain +-15 dB in 1 dB steps; Q 1/6 to
@@ -873,6 +874,18 @@ Three layers:
    doesn't give (the fader table, the dumps' byte layout, the effects'
    algorithms, the compressor's ratio steps) is Sidecar's reading, to be checked on
    a console.
+
+   The owner's photos of a ProMix 01 (November 2026, kept with the reference
+   notes) corrected the surface: the LCD laid out as the console's (FUNCTION,
+   MEMORY with the scene's title, its number and EDIT, and SEL CH down the left;
+   EQ's curve over its G / F / Q table; COMP's processor number, ON/OFF, PATCH and
+   KEYIN as lines over three programs and STORE, RECALL, EDIT, with GR and OUT
+   meters; PAN's knobs, a pair's one knob over both, and the selected channel's
+   pan under them; METER's scale and PEAK HOLD), the LCD's yellow-green, red SEL
+   and ON LEDs, and the fader caps (ST IN light blue, RTN / SEND salmon, ST OUT dark
+   grey). The LCD shows the dynamics presets in capitals ("TOTAL COMP"), EQ gains
+   as "0dB" and "-6dB", 10 kHz as "10kHz", and scene 00's title as "InitData". The
+   fader scale printed on the panel matches the one measured on the guide's drawing.
 
 6. **Fourth emulation: the Yamaha 02R** (1995), the ProMix 01's big brother, also
    controlled over MIDI. From the owner's reference notes (kept outside the

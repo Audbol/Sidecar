@@ -303,7 +303,16 @@ pub fn text_of(c: &Console, n: u16, v: u16) -> String {
     use Param::*;
     let on_off = |v: u16| if v != 0 { "ON" } else { "OFF" }.to_string();
     let v = v.min(steps(c, n).max(1) - 1);
-    let hz = |f: f32| if f >= 1000.0 { format!("{:.1}kHz", f / 1000.0) } else { format!("{f:.0}Hz") };
+    // "1.0kHz" and "2.5kHz", but "10kHz" (as a console's LCD shows it).
+    let hz = |f: f32| {
+        if f >= 10000.0 && f % 1000.0 == 0.0 {
+            format!("{:.0}kHz", f / 1000.0)
+        } else if f >= 1000.0 {
+            format!("{:.1}kHz", f / 1000.0)
+        } else {
+            format!("{f:.0}Hz")
+        }
+    };
     let name = |lib: &Library, n: usize, fx: bool| {
         let name = if fx { lib.fx_program(n).map(|p| p.name) } else { lib.program(n).map(|p| p.name) };
         format!("{:02} {}", n + 1, name.unwrap_or_default())
@@ -314,7 +323,10 @@ pub fn text_of(c: &Console, n: u16, v: u16) -> String {
         Some(SendPre(_) | PatchPoint(_)) => if v == 0 { "PRE" } else { "POST" }.into(),
         Some(Phase(_)) => if v == 0 { "N" } else { "R" }.into(),
         Some(Eq(_, band, 0)) => hz([LOW_FREQS, MID_FREQS, HIGH_FREQS][band.min(2)].get(v as usize).copied().unwrap_or(0.0)),
-        Some(Eq(_, _, 1)) => format!("{:+}dB", v as i32 - 15),
+        Some(Eq(_, _, 1)) => match v as i32 - 15 {
+            0 => "0dB".into(),
+            g => format!("{g:+}dB"),
+        },
         Some(Eq(..)) => {
             Q_NAMES.get(v as usize).map_or(String::new(), |q| if *q == "SHELF" { q.to_string() } else { format!("{q}oct") })
         }
@@ -551,7 +563,12 @@ mod tests {
         assert_eq!((level_text(0), pan_text(16), pan_text(32)), ("-oo".into(), "C".into(), "R16".into()));
         assert_eq!(
             (text_of(&c, 449, 19), text_of(&c, 505, 3), text_of(&c, 446, 7)),
-            ("STEREO".into(), "ST(RESET)".into(), "08 Gate Slow".into())
+            ("STEREO".into(), "ST(RESET)".into(), "08 GATE SLOW".into())
+        );
+        // As a console's LCD shows them: "0dB" unsigned, "10kHz" with no decimal.
+        assert_eq!(
+            (text_of(&c, 296, 15), text_of(&c, 296, 9), text_of(&c, 336, 20), text_of(&c, 336, 1)),
+            ("0dB".into(), "-6dB".into(), "10kHz".into(), "1.1kHz".into())
         );
         assert_eq!((label(&c, 61), label(&c, 300), label(&c, 461)), ("ST IN R".into(), "MID G".into(), "THRESHOLD".into()));
         // Values beyond a parameter's range clamp to it.
