@@ -366,6 +366,13 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   cell with its icon, value and push; the main and M/C meters (CLIP to -57) in
   the bezel beside the screen; the six encoders under it without rings
 
+  More of the X32: the SELECT keys blank with SELECT printed under them; the M/C
+  meter beside the screen shows the solo bus while anything is soloed; the
+  gate, dyn and eq graphs in the screen's look (orange curves on black, in a
+  light blue block); the screen keys lit in their own colours (HOME green,
+  METERS orange); a bus's meter has PRE in GATE's place, lit while an input
+  sends to it pre-fader
+
   `ui::hw` (`src/ui/HardwareLook.*`) draws them. Keys, faders and knobs take a
   console's look when its surface asks; the Universal Mixer and the WING are
   unchanged.

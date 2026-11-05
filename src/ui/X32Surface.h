@@ -41,10 +41,11 @@ namespace x32
 
     using namespace universal;
 
-    /** A channel's meter as on the X32's strips (MAN p.15): one column of LEDs
-        in a dark window, top to bottom COMP, CLIP, -6, -12, -18, -30, -60 and
-        GATE, the marks at their right; COMP and GATE light while the compressor
-        or the gate works (a bus's meter has no GATE). A stereo strip shows its
+    /** A channel's meter as on the X32's strips (MAN pp.15-16): one column of
+        LEDs in a dark window, top to bottom COMP, CLIP, -6, -12, -18, -30, -60
+        and GATE, the marks at their right; COMP and GATE light while the
+        compressor or the gate works. A bus's meter has PRE in GATE's place, lit
+        while an input sends to the bus pre-fader. A stereo strip shows its
         louder side. */
     class LedMeter final : public juce::Component
     {
@@ -53,8 +54,10 @@ namespace x32
         std::function<float (int channel)> level;
         void setChannels (int n) { channels = juce::jlimit (1, 2, n); repaint(); }
         /** The gate's and the compressor's gain reduction now (dB, 0 for none);
-            no `gate`: the strip has none (a bus). */
+            no `gate`: the strip has none. */
         std::function<float()> gate, comp;
+        /** A bus: whether any input sends to it pre-fader (the bottom LED is PRE). */
+        std::function<bool()> pre;
 
         void refresh()
         {
@@ -63,7 +66,7 @@ namespace x32
                 peak = juce::jmax (peak, level ? level (ch) : 0.0f);
             const int lit = litFor (juce::Decibels::gainToDecibels (peak, -144.0f));
             // The LEDs light from 0.5 dB of reduction.
-            const bool g = gate && std::abs (gate()) >= 0.5f, c = comp && std::abs (comp()) >= 0.5f;
+            const bool g = pre ? pre() : gate && std::abs (gate()) >= 0.5f, c = comp && std::abs (comp()) >= 0.5f;
             if (lit != shown || g != gateOn || c != compOn)
             {
                 shown = lit;
@@ -76,6 +79,7 @@ namespace x32
         void paint (juce::Graphics& g) override
         {
             static const char* const marks[] = { "COMP", "CLIP", "-6", "-12", "-18", "-30", "-60", "GATE" };
+            const auto mark = [this] (int k) { return k == kLeds - 1 && pre ? juce::String ("PRE") : juce::String (marks[k]); };
             auto area = getLocalBounds().toFloat();
             // The window at the left of centre, the marks to its right.
             auto window = juce::Rectangle<float> (16.0f, area.getHeight()).withX (area.getCentreX() - 18.0f);
@@ -87,10 +91,11 @@ namespace x32
             g.setFont (type::font (8.5f, true));
             for (int k = 0; k < kLeds; ++k)
             {
-                if (k == kLeds - 1 && ! gate)
+                if (k == kLeds - 1 && ! gate && ! pre)
                     continue;
                 const float y = window.getY() + 3.0f + rowH * (float) k;
-                const auto colour = k == 0 ? juce::Colour (0xffff9a3c) : k == 1 ? juce::Colour (0xffff3b30) : juce::Colour (0xff59f08a);
+                const auto colour = k == 0 ? juce::Colour (0xffff9a3c) : k == 1 ? juce::Colour (0xffff3b30)
+                                    : k == kLeds - 1 && pre ? juce::Colour (0xffffd02a) : juce::Colour (0xff59f08a);
                 const bool on = k == 0 ? compOn : k == kLeds - 1 ? gateOn : (kLeds - 2 - k) < shown;
                 const auto led = juce::Rectangle<float> (9.0f, juce::jmin (4.0f, rowH - 2.0f)).withCentre ({ window.getCentreX(), y + rowH * 0.5f });
                 if (on)
@@ -101,7 +106,7 @@ namespace x32
                 g.setColour (on ? colour.brighter (0.4f) : colour.withAlpha (0.12f));
                 g.fillRoundedRectangle (led, 2.0f);
                 g.setColour (juce::Colour (0xffe6e9e6));
-                g.drawText (marks[k], juce::Rectangle<float> (window.getRight() + 3.0f, y, area.getRight() - window.getRight() - 3.0f, rowH),
+                g.drawText (mark (k), juce::Rectangle<float> (window.getRight() + 3.0f, y, area.getRight() - window.getRight() - 3.0f, rowH),
                             juce::Justification::centredLeft);
             }
         }
@@ -130,7 +135,7 @@ namespace x32
     public:
         FaderStrip (UiContext& c, const Theme& t)
             : ctx (c), theme (t), fader (t), solo ("SOLO", t.solo, t), mute ("MUTE", t.mute, t),
-              select ("SELECT", t.accent, t)
+              select ({}, t.accent, t)
         {
             solo.onClick = [this]
             {
@@ -169,6 +174,7 @@ namespace x32
             meter.setChannels (s != nullptr && s->params.stereo.load() ? 2 : 1);
             meter.gate = s != nullptr && isInputKind (s->getKind()) ? std::function<float()> ([s] { return s->meters.gateReductionDb.load(); }) : nullptr;
             meter.comp = [this] { return strip != nullptr ? strip->meters.dynReductionDb.load() : 0.0f; };
+            meter.pre = s != nullptr && s->isBus() ? std::function<bool()> ([this, s] { return sendsPre (*s); }) : nullptr;
             meter.setVisible (s != nullptr);
             select.setEnabled (s != nullptr);
             solo.setEnabled (s != nullptr);
@@ -250,6 +256,12 @@ namespace x32
 
         void paint (juce::Graphics& g) override
         {
+            if (! selectLabel.isEmpty() && strip != nullptr)
+            {
+                g.setColour (juce::Colour (0xffe6e9e6));
+                g.setFont (type::font (10.0f, true));
+                g.drawText ("SELECT", selectLabel, juce::Justification::centred);
+            }
             auto area = scribbleArea().toFloat();
             if (isEmpty())
             {
@@ -291,8 +303,9 @@ namespace x32
         void resized() override
         {
             auto area = getLocalBounds();
-            select.setBounds (area.removeFromTop (kKeyHeight).reduced (2, 0));
-            area.removeFromTop (3);
+            // SELECT: a blank key, its name printed under it.
+            select.setBounds (area.removeFromTop (kKeyHeight - 6).reduced (8, 0));
+            selectLabel = area.removeFromTop (13);
             meter.setBounds (area.removeFromTop (kMeterHeight).reduced (2, 0));
             area.removeFromTop (3);
             solo.setBounds (area.removeFromTop (kKeyHeight).reduced (2, 0));
@@ -315,7 +328,18 @@ namespace x32
         FaderControl fader;
         LedMeter meter;
         ToggleKey solo, mute, select;
-        juce::Rectangle<int> scribble;
+        juce::Rectangle<int> scribble, selectLabel;
+
+        /** Whether an input channel sends to `bus` pre-fader (an enabled PRE send). */
+        bool sendsPre (const Strip& bus) const
+        {
+            const int index = bus.getNumber() - 1;
+            for (auto* list : { &ctx.engine.getChannels(), &ctx.engine.getAux() })
+                for (auto& each : *list)
+                    if (auto* send = each->sends.find (index); send != nullptr && send->enabled.load() && send->mode.load() == 0)
+                        return true;
+            return false;
+        }
         juce::String shown, sendTo;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FaderStrip)

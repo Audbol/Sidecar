@@ -128,6 +128,8 @@ private:
 
     UiContext& ctx;
     const universal::Theme& theme;
+    /** The graphs' look on the screen: black wells, orange curves, red gain reduction. */
+    const universal::Theme screenTheme;
     Screen screen = Screen::Home;
     int tab = 0, layer = 0, sendBank = 0, eqBand = 0, selectedScene = 0;
     int selectedOutput = 0; // ROUTING's signal tabs: the output the encoders set

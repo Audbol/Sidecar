@@ -23,6 +23,25 @@ namespace
     const juce::Colour kAmber (0xffffc21a), kWell (0xff111315), kCurve (0xffffa21f), kGr (0xffe5321e), kBox (0xfff4f4f2);
     const juce::Colour kDim (0xff6f9fd0);
 
+    /** The theme the screen's graphs (EQ, gate, dynamics) draw with. */
+    Theme screenThemeFrom (const Theme& t)
+    {
+        auto s = t;
+        s.well = kWell;
+        s.outline = juce::Colour (0xff3a4048);
+        s.textDim = kDeepText;
+        s.text = juce::Colours::white;
+        s.background = kNavy;
+        s.accent = kCurve;
+        s.meterMid = kGr;
+        return s;
+    }
+
+    /** The screen keys' colours when lit (HOME green, METERS orange, as on the console). */
+    const juce::Colour kScreenKeyColours[] = { juce::Colour (0xff3ddc5a), juce::Colour (0xffff9a1f), juce::Colour (0xff4fb3ff),
+                                               juce::Colour (0xffb98cff), juce::Colour (0xffffd02a), juce::Colour (0xffff6fb0),
+                                               juce::Colour (0xffff4b3e), juce::Colour (0xff3fe0d0) };
+
     constexpr int kStatus = 46, kTabs = 24, kEncoderRow = 74, kSideKeys = 104, kKnobs = 92, kBezelMeters = 64;
 
     /** A block of the screen: light blue, its darker edge, its title along the top. */
@@ -205,12 +224,12 @@ namespace
 } // namespace
 
 Display::Display (UiContext& c, const Theme& t)
-    : ctx (c), theme (t), pagePrev ("<", t.accent, t), pageNext (">", t.accent, t), layerUp ("LAYER ^", t.accent, t),
-      layerDown ("LAYER v", t.accent, t), eqView (t), gateView (t), dynView (t)
+    : ctx (c), theme (t), screenTheme (screenThemeFrom (t)), pagePrev ("<", t.accent, t), pageNext (">", t.accent, t),
+      layerUp ("LAYER ^", t.accent, t), layerDown ("LAYER v", t.accent, t), eqView (screenTheme), gateView (screenTheme), dynView (screenTheme)
 {
     for (int s = 0; s < 8; ++s)
     {
-        auto key = std::make_unique<ToggleKey> (kScreenNames[s], t.accent, t);
+        auto key = std::make_unique<ToggleKey> (kScreenNames[s], kScreenKeyColours[s], t);
         key->isOn = [this, s] { return (int) screen == s; };
         key->onClick = [this, s] { showScreen ((Screen) s); };
         addAndMakeVisible (*key);
@@ -1300,7 +1319,9 @@ void Display::paintBezelMeters (juce::Graphics& g, juce::Rectangle<int> area)
     };
     const float ledW = 8.0f;
     const float xMc = r.getX() + 2.0f, xL = r.getRight() - 2.0f * ledW - 5.0f, xR = r.getRight() - ledW - 1.0f;
-    const float dbs[] = { levelDb (1, 0), levelDb (0, 0), levelDb (0, 1) };
+    const bool solo = ctx.engine.anySoloActive.load();
+    const float mc = solo ? juce::Decibels::gainToDecibels (juce::jmax (ctx.meters.getMonitor (0), ctx.meters.getMonitor (1)), -144.0f) : levelDb (1, 0);
+    const float dbs[] = { mc, levelDb (0, 0), levelDb (0, 1) };
     const float xs[] = { xMc, xL, xR };
     g.setFont (type::font (8.0f, true));
     for (int k = 0; k < n; ++k)
@@ -1713,7 +1734,10 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
                              mc ? juce::String (s->mains[1].levelDb.load(), 1) + " dB" : juce::String ("-"),
                              juce::String (p.faderDb.load(), 1) + " dB" + (p.mute.load() ? "  MUTED" : "") });
             }
-            break; // gate, dyn and eq: their graphs (child components)
+            // gate, dyn and eq: their graphs (child components) in a block.
+            if (tab >= 2 && tab <= 4)
+                block (g, r.reduced (12, 6).toFloat(), tab == 2 ? "Gate" : tab == 3 ? "Dynamics" : "Equalizer");
+            break;
         case Screen::Meters:
             paintMeters (g, r);
             break;
@@ -1906,7 +1930,7 @@ void Display::resized()
     encoderRow = screenInner.removeFromBottom (kEncoderRow);
     contentArea = screenInner.reduced (0, 4);
     for (auto* v : std::initializer_list<juce::Component*> { &eqView, &gateView, &dynView })
-        v->setBounds (contentArea.reduced (12, 4));
+        v->setBounds (contentArea.reduced (12, 6).withTrimmedTop (14).reduced (4, 3));
     {
         auto grid = contentArea.reduced (40, 30);
         const int w = grid.getWidth() / 3, h = grid.getHeight() / 2;
