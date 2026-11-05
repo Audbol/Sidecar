@@ -16,8 +16,9 @@ class X32Midi;
 namespace livedaw::ui::x32
 {
 
-/** The X32 surface's display (Phase 4 step 8d): the X32's screen, drawn in
-    Sidecar's own style, the way the WING surface draws the WING's.
+/** The X32 surface's display (Phase 4 step 8d): the X32's screen, drawn the
+    way the X32 draws it (light blue blocks on black glass, yellow for what is
+    on), and the main / solo meters in its bezel.
 
     - Its global elements along the top: the selected channel (number, name,
       colour), the scene, the sample rate, the clock.
@@ -93,6 +94,8 @@ private:
     Strip* selected() const;
 
     void paintStatus (juce::Graphics&, juce::Rectangle<int>);
+    /** The main and solo meters in the bezel beside the screen. */
+    void paintBezelMeters (juce::Graphics&, juce::Rectangle<int>);
     void paintTabs (juce::Graphics&, juce::Rectangle<int>);
     void paintContent (juce::Graphics&, juce::Rectangle<int>);
     void paintEncoderRow (juce::Graphics&, juce::Rectangle<int>);
@@ -148,7 +151,7 @@ private:
     universal::ResponseView eqView;
     universal::TransferView gateView, dynView;
 
-    juce::Rectangle<int> screenArea, statusArea, tabsArea, contentArea, encoderRow;
+    juce::Rectangle<int> screenArea, statusArea, tabsArea, contentArea, encoderRow, bezelMeters;
     int dragEncoder = -1;
     float dragStartY = 0.0f, dragStartValue = 0.0f;
     bool dragged = false;

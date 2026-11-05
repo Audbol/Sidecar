@@ -15,11 +15,93 @@ using namespace universal;
 
 namespace
 {
-    // The screen's look: a dark glass, its text light, the X32's amber for what is on.
-    const juce::Colour kGlass (0xff0d1014), kPanel (0xff171b21), kLine (0xff2a3038), kDim (0xff8a93a0);
-    const juce::Colour kAmber (0xfff0a020);
+    // The screen's look, as the X32's: black glass, its blocks light blue with
+    // navy text and darker blue edges, yellow for what is on, the scene and the
+    // clock in amber.
+    const juce::Colour kGlass (0xff000000), kSky (0xff66c6f2), kSkyAlt (0xff52b4e4), kSkyLine (0xff2a6db5);
+    const juce::Colour kNavy (0xff0f2747), kDeep (0xff1c4687), kDeepText (0xffa9d2f5), kYellow (0xffffd02a);
+    const juce::Colour kAmber (0xffffc21a), kWell (0xff111315), kCurve (0xffffa21f), kGr (0xffe5321e), kBox (0xfff4f4f2);
+    const juce::Colour kDim (0xff6f9fd0);
 
-    constexpr int kStatus = 52, kTabs = 34, kEncoderRow = 66, kSideKeys = 112, kKnobs = 92;
+    constexpr int kStatus = 46, kTabs = 24, kEncoderRow = 74, kSideKeys = 104, kKnobs = 92, kBezelMeters = 64;
+
+    /** A block of the screen: light blue, its darker edge, its title along the top. */
+    juce::Rectangle<float> block (juce::Graphics& g, juce::Rectangle<float> r, const juce::String& title)
+    {
+        g.setColour (kSky);
+        g.fillRoundedRectangle (r, 4.0f);
+        g.setColour (kSkyLine);
+        g.drawRoundedRectangle (r.reduced (0.75f), 4.0f, 1.5f);
+        auto inner = r.reduced (3.0f, 2.0f);
+        if (title.isNotEmpty())
+        {
+            g.setColour (kNavy);
+            g.setFont (type::font (10.0f, true));
+            g.drawText (title, inner.removeFromTop (13.0f), juce::Justification::centred);
+        }
+        return inner;
+    }
+
+    /** A switch's chip: yellow while on, deep blue while off. */
+    void chip (juce::Graphics& g, juce::Rectangle<float> r, const juce::String& text, bool on)
+    {
+        g.setColour (on ? kYellow : kDeep);
+        g.fillRoundedRectangle (r, 2.5f);
+        g.setColour (on ? kNavy : kDeepText);
+        g.setFont (type::font (juce::jmin (10.5f, r.getHeight() * 0.8f), true));
+        g.drawFittedText (text, r.toNearestInt(), juce::Justification::centred, 1, 0.7f);
+    }
+
+    /** A value in its white box. */
+    void valueBox (juce::Graphics& g, juce::Rectangle<float> r, const juce::String& text)
+    {
+        g.setColour (kBox);
+        g.fillRect (r);
+        g.setColour (kNavy.withAlpha (0.6f));
+        g.drawRect (r, 1.0f);
+        g.setColour (kNavy);
+        g.setFont (type::font (juce::jmin (11.0f, r.getHeight() * 0.8f), true));
+        g.drawFittedText (text, r.toNearestInt(), juce::Justification::centred, 1, 0.7f);
+    }
+
+    /** A knob's icon: a navy ring, its value a yellow arc (from the top if centred). */
+    void knobIcon (juce::Graphics& g, juce::Point<float> c, float radius, float fraction, bool centred = false)
+    {
+        constexpr float span = juce::MathConstants<float>::pi * 5.0f / 3.0f;
+        fraction = juce::jlimit (0.0f, 1.0f, fraction);
+        const float a0 = centred ? 0.0f : -span * 0.5f, a1 = -span * 0.5f + span * fraction;
+        juce::Path arc;
+        arc.addCentredArc (c.x, c.y, radius + 2.0f, radius + 2.0f, 0.0f, juce::jmin (a0, a1), juce::jmax (a0, a1), true);
+        g.setColour (kYellow);
+        g.strokePath (arc, juce::PathStrokeType (3.0f));
+        g.setColour (kNavy);
+        g.drawEllipse (juce::Rectangle<float> (2.0f * radius, 2.0f * radius).withCentre (c), 1.5f);
+        g.drawLine (c.x + radius * 0.2f * std::sin (a1), c.y - radius * 0.2f * std::cos (a1), c.x + radius * std::sin (a1),
+                    c.y - radius * std::cos (a1), 1.5f);
+    }
+
+    /** A check box and its label. */
+    void checkBox (juce::Graphics& g, juce::Rectangle<float> r, const juce::String& label, bool on)
+    {
+        auto box = r.removeFromLeft (r.getHeight()).reduced (1.5f);
+        g.setColour (on ? kCurve : kBox);
+        g.fillRect (box);
+        g.setColour (kNavy);
+        g.drawRect (box, 1.0f);
+        g.setFont (type::font (juce::jmin (10.0f, r.getHeight()), false));
+        g.drawFittedText (label, r.withTrimmedLeft (3.0f).toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
+    }
+
+    /** A level meter in its dark well (linear level), from the bottom. */
+    void levelBar (juce::Graphics& g, juce::Rectangle<float> r, float level)
+    {
+        g.setColour (kWell);
+        g.fillRect (r);
+        const float pos = juce::jlimit (0.0f, 1.0f, fader::dbToPos (juce::Decibels::gainToDecibels (level, -144.0f)));
+        auto lit = r.reduced (1.0f).withTrimmedTop ((1.0f - pos) * (r.getHeight() - 2.0f));
+        g.setGradientFill (juce::ColourGradient (kGr, r.getX(), r.getY(), juce::Colour (0xff3ddc5a), r.getX(), r.getBottom(), false));
+        g.fillRect (lit);
+    }
 
     // The routing blocks' choices (OSC document p.22), as livedaw-x32 names them.
     const juce::StringArray kRoutingIn { "AN1-8", "AN9-16", "AN17-24", "AN25-32", "A1-8", "A9-16", "A17-24", "A25-32",
@@ -1112,6 +1194,7 @@ void Display::timerCallback()
         dynView.refresh();
     repaint (statusArea);
     repaint (encoderRow);
+    repaint (bezelMeters);
     if (screen == Screen::Meters || (screen == Screen::Home && (tab == 0 || tab == 5)))
         repaint (contentArea);
 }
@@ -1119,71 +1202,126 @@ void Display::timerCallback()
 //==============================================================================
 void Display::paint (juce::Graphics& g)
 {
-    // The bezel and the glass.
-    g.setColour (juce::Colour (0xff101215));
-    g.fillRoundedRectangle (screenArea.toFloat().expanded (6.0f), 8.0f);
+    // The bezel, the glass, and the main / solo meters in the bezel beside it.
+    g.setColour (juce::Colour (0xff141516));
+    g.fillRoundedRectangle (screenArea.getUnion (bezelMeters).toFloat().expanded (8.0f), 10.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.06f));
+    g.drawRoundedRectangle (screenArea.getUnion (bezelMeters).toFloat().expanded (7.5f), 10.0f, 1.0f);
     g.setColour (kGlass);
     g.fillRect (screenArea);
     paintStatus (g, statusArea);
     paintTabs (g, tabsArea);
     paintContent (g, contentArea);
     paintEncoderRow (g, encoderRow);
+    paintBezelMeters (g, bezelMeters);
 }
 
-void Display::paintStatus (juce::Graphics& g, juce::Rectangle<int> r)
+void Display::paintStatus (juce::Graphics& g, juce::Rectangle<int> area)
 {
-    g.setColour (kPanel);
-    g.fillRect (r);
-    g.setColour (kLine);
-    g.fillRect (r.removeFromBottom (1));
-    r.reduce (10, 4);
+    auto r = area.toFloat().reduced (4.0f, 3.0f);
 
-    // The selected channel: its colour, number, name.
+    // The selected channel's tile: its number and name, its colour along the right.
+    auto tile = r.removeFromLeft (118.0f);
+    g.setColour (kDeep);
+    g.fillRoundedRectangle (tile, 4.0f);
+    g.setColour (kSkyLine);
+    g.drawRoundedRectangle (tile.reduced (0.5f), 4.0f, 1.0f);
     if (auto* s = selected())
     {
-        auto chip = r.removeFromLeft (8).reduced (0, 2);
         g.setColour (consoleColour (s->getColourIndex()));
-        g.fillRect (chip);
-        r.removeFromLeft (8);
-        auto who = r.removeFromLeft (150);
-        g.setColour (theme.text);
-        g.setFont (type::font (type::kValue, true));
-        g.drawText (s->getLabel(), who.removeFromTop (who.getHeight() / 2), juce::Justification::bottomLeft);
-        g.setColour (kDim);
-        g.setFont (type::font (type::kLabel));
-        g.drawText (s->getName().isNotEmpty() ? s->getName() : juce::String ("-"), who, juce::Justification::topLeft);
+        g.fillRect (tile.removeFromRight (6.0f).reduced (0.0f, 3.0f));
+        auto text = tile.reduced (6.0f, 3.0f);
+        g.setColour (kDeepText);
+        g.setFont (type::font (10.0f, true));
+        g.drawText (s->getLabel(), text.removeFromTop (text.getHeight() * 0.42f), juce::Justification::centredLeft);
+        g.setColour (juce::Colours::white);
+        g.setFont (type::font (12.5f, true));
+        g.drawFittedText (s->getName().isNotEmpty() ? s->getName() : s->getLabel(), text.toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
     }
-    else
-        r.removeFromLeft (166);
+    r.removeFromLeft (8.0f);
 
-    // The scene: its number (amber) and name, the next one.
+    // The scene: its number large in amber, its name, the next one under it.
     auto& show = ctx.show;
     const int current = show.getCurrentSceneIndex();
-    auto scene = r.removeFromLeft (260);
+    auto scene = r.removeFromLeft (190.0f);
     g.setColour (kAmber);
-    g.setFont (type::font (type::kTitle, true));
-    g.drawText (current >= 0 ? juce::String (current + 1).paddedLeft ('0', 2) : juce::String ("--"), scene.removeFromLeft (44), juce::Justification::centredLeft);
+    g.setFont (type::font (27.0f, true));
+    g.drawText (current >= 0 ? juce::String (current + 1).paddedLeft ('0', 2) : juce::String ("--"), scene.removeFromLeft (40.0f),
+                juce::Justification::centredLeft);
     const auto nameOf = [&show] (int i)
     {
         const auto s = show.getScene (i);
         return s.has_value() ? s->name : juce::String();
     };
-    g.setColour (theme.text);
-    g.setFont (type::font (type::kLabel, true));
-    g.drawText (current >= 0 ? nameOf (current) : juce::String ("no scene"), scene.removeFromTop (scene.getHeight() / 2), juce::Justification::bottomLeft);
-    g.setColour (kDim);
-    g.setFont (type::font (type::kCaption));
+    g.setFont (type::font (12.5f, true));
+    g.drawFittedText (current >= 0 ? nameOf (current) : juce::String ("no scene"), scene.removeFromTop (scene.getHeight() * 0.55f).toNearestInt(),
+                      juce::Justification::bottomLeft, 1, 0.7f);
+    g.setColour (juce::Colour (0xff3f74c4));
+    g.setFont (type::font (10.5f, true));
     if (current + 1 < show.getNumScenes())
-        g.drawText ("next: " + nameOf (current + 1), scene, juce::Justification::topLeft);
+        g.drawFittedText (juce::String (current + 2).paddedLeft ('0', 2) + ": " + nameOf (current + 1), scene.toNearestInt(),
+                          juce::Justification::topLeft, 1, 0.7f);
 
-    // The clock and the sample rate, at the right.
-    g.setColour (theme.text);
-    g.setFont (type::font (type::kValue, true));
-    g.drawText (juce::Time::getCurrentTime().formatted ("%H:%M:%S"), r.removeFromRight (90), juce::Justification::centredRight);
-    g.setColour (kDim);
-    g.setFont (type::font (type::kLabel, true));
+    // The clock at the right, the seconds small; the sample rate in its box.
+    auto clock = r.removeFromRight (104.0f);
+    const auto now = juce::Time::getCurrentTime();
+    g.setColour (kAmber);
+    g.setFont (type::font (11.0f, true));
+    g.drawText (now.formatted (":%S"), clock.removeFromRight (22.0f).withTrimmedTop (8.0f), juce::Justification::centredLeft);
+    g.setFont (type::font (24.0f, true));
+    g.drawText (now.formatted ("%H:%M"), clock, juce::Justification::centredRight);
+    auto box = r.removeFromRight (70.0f).reduced (4.0f, 6.0f);
+    g.setColour (kDeep);
+    g.fillRoundedRectangle (box, 3.0f);
+    g.setColour (kSkyLine);
+    g.drawRoundedRectangle (box.reduced (0.5f), 3.0f, 1.0f);
     const double sr = ctx.engine.getSampleRate();
-    g.drawText (sr > 0 ? juce::String (juce::roundToInt (sr / 1000.0)) + "K" : juce::String ("48K"), r.removeFromRight (60), juce::Justification::centredRight);
+    g.setColour (kDeepText);
+    g.setFont (type::font (11.0f, true));
+    g.drawText (sr > 0 ? juce::String (juce::roundToInt (sr / 1000.0)) + "K" : juce::String ("48K"), box, juce::Justification::centred);
+}
+
+void Display::paintBezelMeters (juce::Graphics& g, juce::Rectangle<int> area)
+{
+    // The X32's main meters beside the screen: M/C (and the solo bus), the
+    // scale, L and R; a red CLIP, orange to -8 dB, then green.
+    static constexpr float marks[] = { 0.0f, -1.0f, -2.0f, -3.0f, -4.0f, -6.0f, -8.0f, -10.0f, -12.0f, -15.0f, -18.0f, -21.0f,
+                                       -24.0f, -27.0f, -30.0f, -33.0f, -36.0f, -39.0f, -42.0f, -45.0f, -48.0f, -51.0f, -54.0f, -57.0f };
+    constexpr int n = (int) std::size (marks);
+    auto r = area.toFloat();
+    auto names = r.removeFromBottom (22.0f);
+    const float rowH = r.getHeight() / (float) n;
+    const auto& mains = ctx.engine.getMains();
+    const auto levelDb = [this, &mains] (int main, int ch)
+    {
+        if (main >= (int) mains.size())
+            return -144.0f;
+        return juce::Decibels::gainToDecibels (ctx.meters.get (mains[(size_t) main].get(), MeterPoint::Output, ch), -144.0f);
+    };
+    const float ledW = 8.0f;
+    const float xMc = r.getX() + 2.0f, xL = r.getRight() - 2.0f * ledW - 5.0f, xR = r.getRight() - ledW - 1.0f;
+    const float dbs[] = { levelDb (1, 0), levelDb (0, 0), levelDb (0, 1) };
+    const float xs[] = { xMc, xL, xR };
+    g.setFont (type::font (8.0f, true));
+    for (int k = 0; k < n; ++k)
+    {
+        const float y = r.getY() + rowH * (float) k;
+        const auto colour = k == 0 ? juce::Colour (0xffff3b30) : k <= 6 ? juce::Colour (0xffff9a1f) : juce::Colour (0xff3ddc5a);
+        for (int m = 0; m < 3; ++m)
+        {
+            const bool on = dbs[m] >= marks[k] && dbs[m] > -90.0f;
+            g.setColour (on ? colour : colour.withAlpha (0.12f));
+            g.fillRoundedRectangle (juce::Rectangle<float> (xs[m], y + 1.0f, ledW, juce::jmax (2.0f, rowH - 2.5f)), 1.0f);
+        }
+        g.setColour (juce::Colour (0xffe8e8e8));
+        g.drawText (k == 0 ? juce::String ("CLIP") : juce::String ((int) marks[k]),
+                    juce::Rectangle<float> (xMc + ledW + 1.0f, y - 1.0f, xL - xMc - ledW - 3.0f, rowH + 2.0f), juce::Justification::centredRight);
+    }
+    g.setColour (juce::Colour (0xffe8e8e8));
+    g.setFont (type::font (8.5f, true));
+    g.drawFittedText ("M/C\nSOLO", names.withWidth (30.0f).toNearestInt(), juce::Justification::centredLeft, 2, 0.7f);
+    g.drawText ("L", juce::Rectangle<float> (xL, names.getY(), ledW, 12.0f), juce::Justification::centred);
+    g.drawText ("R", juce::Rectangle<float> (xR, names.getY(), ledW, 12.0f), juce::Justification::centred);
 }
 
 juce::Rectangle<int> Display::getTabBounds (int i) const
@@ -1200,17 +1338,24 @@ juce::Rectangle<int> Display::getEncoderCell (int i) const
 
 void Display::paintTabs (juce::Graphics& g, juce::Rectangle<int> r)
 {
+    // The tabs as folders along the top of the page: the shown one light blue.
     const auto tabs = getTabs();
-    g.setFont (type::font (type::kLabel, true));
+    g.setFont (type::font (12.0f, true));
     for (int i = 0; i < tabs.size(); ++i)
     {
-        auto cell = getTabBounds (i).reduced (1, 3);
+        auto cell = getTabBounds (i).toFloat().reduced (1.0f, 0.0f).withTrimmedTop (2.0f);
         const bool on = i == tab;
-        g.setColour (on ? theme.accent : kPanel);
-        g.fillRoundedRectangle (cell.toFloat(), 4.0f);
-        g.setColour (on ? theme.textOnAccent : kDim);
+        juce::Path folder;
+        folder.addRoundedRectangle (cell.getX(), cell.getY(), cell.getWidth(), cell.getHeight(), 6.0f, 6.0f, true, true, false, false);
+        g.setColour (on ? kSky : kDeep);
+        g.fillPath (folder);
+        g.setColour (kSkyLine);
+        g.strokePath (folder, juce::PathStrokeType (1.0f));
+        g.setColour (on ? kNavy : kDeepText);
         g.drawText (tabs[i], cell, juce::Justification::centred);
     }
+    g.setColour (kSky);
+    g.fillRect (r.removeFromBottom (2));
     r.removeFromLeft (getTabBounds (tabs.size()).getX() - r.getX());
     if (numLayers() > 1)
     {
@@ -1222,110 +1367,273 @@ void Display::paintTabs (juce::Graphics& g, juce::Rectangle<int> r)
 
 void Display::paintRows (juce::Graphics& g, juce::Rectangle<int> r, const juce::StringArray& left, const juce::StringArray& right)
 {
-    const int h = juce::jmin (30, r.getHeight() / juce::jmax (1, left.size()));
+    // A list page: light blue rows, the names and values in navy, the chosen one marked yellow.
+    const int h = juce::jmin (26, r.getHeight() / juce::jmax (1, left.size()));
+    g.setColour (kSkyLine);
+    g.fillRoundedRectangle (r.withHeight (h * left.size()).toFloat().expanded (1.5f), 4.0f);
     for (int i = 0; i < left.size(); ++i)
     {
         auto row = r.removeFromTop (h);
-        g.setColour (i % 2 == 0 ? kPanel : kGlass);
+        g.setColour (i % 2 == 0 ? kSky : kSkyAlt);
         g.fillRect (row);
-        g.setColour (kDim);
-        g.setFont (type::font (type::kLabel, true));
-        g.drawText (left[i], row.reduced (10, 0).removeFromLeft (row.getWidth() / 2), juce::Justification::centredLeft);
-        g.setColour (theme.text);
-        g.setFont (type::font (type::kLabel));
+        const bool marked = left[i].startsWith (">");
+        if (marked)
+        {
+            g.setColour (kYellow);
+            g.fillRect (row.withWidth (5));
+        }
+        g.setColour (kNavy);
+        g.setFont (type::font (11.5f, true));
+        g.drawText (marked ? left[i].substring (1).trimStart() : left[i], row.reduced (10, 0).removeFromLeft (row.getWidth() / 2),
+                    juce::Justification::centredLeft);
+        g.setFont (type::font (11.5f));
         g.drawText (right[i], row.reduced (10, 0), juce::Justification::centredRight);
     }
 }
 
-void Display::paintHomeFlow (juce::Graphics& g, juce::Rectangle<int> r, Strip& s)
+void Display::paintHomeFlow (juce::Graphics& g, juce::Rectangle<int> area, Strip& s)
 {
-    // The signal path as the X32's home tab draws it: input, gate, (insert),
-    // EQ and dynamics in their order, the output.
+    // The home tab as the X32 draws it: the channel's blocks in a row (In, Gate,
+    // Ins, EQ, Dynamics, Out, Busses), its DCAs and mute groups along the bottom.
     auto& p = s.params;
-    const int order = p.processOrder.load();
-    const bool dynPre = (order & 1) != 0, insPre = (order & 2) != 0;
-    struct Block
+    auto r = area.toFloat().reduced (4.0f, 2.0f);
+    auto groups = r.removeFromBottom (20.0f);
+    r.removeFromBottom (4.0f);
+    struct Part
     {
-        juce::String name, value;
-        bool on;
+        const char* name;
+        float weight;
     };
-    auto dbText = [] (float db) { return db <= -120.0f ? juce::String ("-oo") : juce::String (db, 1) + " dB"; };
-    const auto gateThr = [&] { const int i = models::model (models::Dynamics, p.gate().model.load()).find ("thr"); return i >= 0 ? p.gate().values[i].load() : 0.0f; };
-    const auto dynThr = [&] { const int i = models::model (models::Dynamics, p.dynamics().model.load()).find ("thr"); return i >= 0 ? p.dynamics().values[i].load() : 0.0f; };
-    std::vector<Block> blocks { { "INPUT", dbText (p.input.trimDb.load()), true }, { "LOW CUT", (formatHz (p.filter().lowCutFreq.load()) + " Hz"), p.filter().lowCut.load() } };
+    std::vector<Part> parts { { "In", 1.25f } };
     if (s.getKind() == StripKind::Channel)
-        blocks.push_back ({ "GATE", dbText (gateThr()), p.gate().on.load() });
-    const Block insert { "INSERT", p.preInsert().fx.load() >= 0 ? "FX " + juce::String (p.preInsert().fx.load() + 1) : juce::String ("-"), p.preInsert().on.load() };
-    const Block eq { "EQ", {}, p.eq().on.load() }, dyn { "DYN", dbText (dynThr()), p.dynamics().on.load() };
-    if (insPre)
-        blocks.push_back (insert);
-    blocks.push_back (dynPre ? dyn : eq);
-    blocks.push_back (dynPre ? eq : dyn);
-    if (! insPre)
-        blocks.push_back (insert);
-    blocks.push_back ({ "FADER", dbText (p.faderDb.load()), ! p.mute.load() });
+        parts.push_back ({ "Gate", 1.55f });
+    parts.push_back ({ "Ins", 0.55f });
+    parts.push_back ({ "EQ", 1.9f });
+    parts.push_back ({ "Dynamics", 1.55f });
+    parts.push_back ({ "Out", 1.15f });
+    if (s.isInput())
+        parts.push_back ({ "Busses", 1.5f });
+    float total = 0.0f;
+    for (auto& part : parts)
+        total += part.weight;
+    const float gap = 3.0f, unit = (r.getWidth() - gap * (float) (parts.size() - 1)) / total;
 
-    auto row = r.reduced (16, 0).withSizeKeepingCentre (r.getWidth() - 32, 96);
-    const int n = (int) blocks.size();
-    const int gap = 14, w = (row.getWidth() - (n - 1) * gap) / n;
-    for (int i = 0; i < n; ++i)
+    // A dynamics block's threshold and where it stands in its range.
+    const auto threshold = [] (DynSlotParams& d) -> std::pair<float, float>
     {
-        auto cell = row.removeFromLeft (w);
-        row.removeFromLeft (gap);
-        const auto& b = blocks[(size_t) i];
-        g.setColour (b.on ? kPanel.brighter (0.12f) : kPanel);
-        g.fillRoundedRectangle (cell.toFloat(), 6.0f);
-        g.setColour (b.on ? kAmber : kLine);
-        g.drawRoundedRectangle (cell.toFloat().reduced (0.5f), 6.0f, b.on ? 2.0f : 1.0f);
-        g.setColour (b.on ? theme.text : kDim);
-        g.setFont (type::font (type::kLabel, true));
-        g.drawText (b.name, cell.withHeight (cell.getHeight() / 2), juce::Justification::centredBottom);
-        g.setFont (type::font (type::kCaption));
-        g.drawText (b.value, cell.withTrimmedTop (cell.getHeight() / 2 + 4), juce::Justification::centredTop);
-        if (i + 1 < n)
+        const auto& m = models::model (models::Dynamics, d.model.load());
+        const int i = m.find ("thr");
+        if (i < 0)
+            return { 0.0f, 0.0f };
+        const auto& spec = m.params[(size_t) i];
+        const float v = d.values[i].load();
+        return { v, spec.max > spec.min ? (v - spec.min) / (spec.max - spec.min) : 0.0f };
+    };
+    // Its graph: the transfer curve in orange, the gain reduction's red bar.
+    const auto transfer = [&g] (juce::Rectangle<float> well, TransferView& view, bool bound, float grDb)
+    {
+        g.setColour (kWell);
+        g.fillRect (well);
+        auto gr = well.removeFromRight (7.0f);
+        if (bound)
         {
-            g.setColour (kLine.brighter (0.4f));
-            const float y = (float) cell.getCentreY(), x = (float) cell.getRight();
-            g.drawArrow ({ x + 2.0f, y, x + (float) gap - 2.0f, y }, 1.5f, 6.0f, 6.0f);
+            juce::Path curve;
+            for (int k = 0; k <= 40; ++k)
+            {
+                const float in = -60.0f + 60.0f * (float) k / 40.0f;
+                const float out = juce::jlimit (-60.0f, 0.0f, view.getCurveAt (in));
+                const juce::Point<float> pt (well.getX() + well.getWidth() * (float) k / 40.0f, well.getBottom() - well.getHeight() * (out + 60.0f) / 60.0f);
+                if (k == 0)
+                    curve.startNewSubPath (pt);
+                else
+                    curve.lineTo (pt);
+            }
+            g.setColour (kCurve);
+            g.strokePath (curve, juce::PathStrokeType (1.5f));
+        }
+        g.setColour (kGr);
+        g.fillRect (gr.withHeight (gr.getHeight() * juce::jlimit (0.0f, 1.0f, std::abs (grDb) / 30.0f)));
+    };
+    // A knob's icon, its name under it.
+    const auto knobWithName = [&g] (juce::Rectangle<float> in, const juce::String& name, float fraction, bool centred)
+    {
+        g.setColour (kNavy);
+        g.setFont (type::font (9.0f, true));
+        g.drawText (name, in.removeFromBottom (10.0f), juce::Justification::centred);
+        knobIcon (g, in.getCentre(), juce::jmin (8.0f, in.getHeight() * 0.32f), fraction, centred);
+    };
+
+    for (const auto& part : parts)
+    {
+        const juce::String name (part.name);
+        auto cell = r.removeFromLeft (unit * part.weight);
+        r.removeFromLeft (gap);
+        auto in = block (g, cell, name);
+        if (name == "In")
+        {
+            auto top = in.removeFromTop (in.getHeight() * 0.46f);
+            levelBar (g, top.removeFromLeft (9.0f).reduced (0.0f, 2.0f), ctx.meters.get (&s, MeterPoint::Trim, 0));
+            top.removeFromLeft (4.0f);
+            const int source = s.getInputLeft() >= 0 ? MixerEngine::sourceIndex (s.getInputLeft()) : -1;
+            const auto* src = ctx.engine.getSource (source);
+            const float rowH = top.getHeight() / 4.0f;
+            checkBox (g, top.removeFromTop (rowH), "48V", src != nullptr && src->phantom.load());
+            checkBox (g, top.removeFromTop (rowH), juce::String::fromUTF8 ("\xce\xa6"), p.input.invert.load());
+            checkBox (g, top.removeFromTop (rowH), "Delay", p.input.delayOn.load());
+            checkBox (g, top.removeFromTop (rowH), "Lo Cut", p.filter().lowCut.load());
+            in.removeFromTop (3.0f);
+            chip (g, in.removeFromTop (12.0f).reduced (4.0f, 0.0f), "Link", p.stereo.load());
+            in.removeFromTop (3.0f);
+            const float trim = p.input.trimDb.load();
+            valueBox (g, in.removeFromTop (13.0f).reduced (2.0f, 0.0f), (trim > 0.0f ? "+" : "") + juce::String (trim, 1));
+            knobWithName (in, "Gain", (trim + 18.0f) / 36.0f, true);
+        }
+        else if (name == "Gate" || name == "Dynamics")
+        {
+            const bool gate = name == "Gate";
+            auto& d = gate ? p.gate() : p.dynamics();
+            transfer (in.removeFromTop (in.getHeight() * 0.44f), gate ? gateView : dynView, d.model.load() > 0,
+                      gate ? s.meters.gateReductionDb.load() : s.meters.dynReductionDb.load());
+            in.removeFromTop (3.0f);
+            chip (g, in.removeFromTop (12.0f).reduced (6.0f, 0.0f), gate ? "Gate" : "Dyn", d.on.load());
+            in.removeFromTop (3.0f);
+            const auto [thr, frac] = threshold (d);
+            valueBox (g, in.removeFromTop (13.0f).reduced (6.0f, 0.0f), juce::String (thr, 1));
+            knobWithName (in, "Thresh", frac, false);
+        }
+        else if (name == "Ins")
+        {
+            g.setColour (kNavy.withAlpha (0.7f));
+            for (float y = in.getY(); y < in.getBottom(); y += 5.0f)
+                g.drawLine (in.getCentreX(), y, in.getCentreX(), juce::jmin (in.getBottom(), y + 2.5f), 1.0f);
+            chip (g, juce::Rectangle<float> (in.getWidth(), 13.0f).withCentre (in.getCentre()), "Ins",
+                  p.preInsert().on.load() && p.preInsert().fx.load() >= 0);
+        }
+        else if (name == "EQ")
+        {
+            auto well = in.removeFromTop (in.getHeight() * 0.64f);
+            g.setColour (kWell);
+            g.fillRect (well);
+            g.setColour (juce::Colours::white.withAlpha (0.12f));
+            g.drawHorizontalLine ((int) well.getCentreY(), well.getX(), well.getRight());
+            constexpr int pts = 48;
+            std::array<double, pts> freqs {}, db {};
+            for (int k = 0; k < pts; ++k)
+                freqs[(size_t) k] = 20.0 * std::pow (1000.0, (double) k / (pts - 1));
+            if (eqView.response && eqView.response (freqs.data(), db.data(), pts))
+            {
+                juce::Path curve;
+                for (int k = 0; k < pts; ++k)
+                {
+                    const float y = well.getCentreY() - (float) juce::jlimit (-18.0, 18.0, db[(size_t) k]) / 18.0f * well.getHeight() * 0.45f;
+                    const juce::Point<float> pt (well.getX() + well.getWidth() * (float) k / (pts - 1), y);
+                    if (k == 0)
+                        curve.startNewSubPath (pt);
+                    else
+                        curve.lineTo (pt);
+                }
+                g.setColour (p.eq().on.load() ? kCurve : kCurve.withAlpha (0.4f));
+                g.strokePath (curve, juce::PathStrokeType (2.0f));
+            }
+            in.removeFromTop (6.0f);
+            chip (g, in.removeFromTop (13.0f).withSizeKeepingCentre (juce::jmin (46.0f, in.getWidth()), 13.0f), "EQ", p.eq().on.load());
+        }
+        else if (name == "Out")
+        {
+            auto top = in.removeFromTop (in.getHeight() * 0.4f);
+            levelBar (g, top.removeFromRight (9.0f).reduced (0.0f, 2.0f), ctx.meters.get (&s, MeterPoint::Output, 0));
+            top.removeFromRight (3.0f);
+            const bool mc = ctx.engine.getMains().size() > 1 && s.mains[1].on.load();
+            checkBox (g, top.removeFromTop (top.getHeight() / 2.0f).reduced (0.0f, 2.0f), "Mono", mc);
+            checkBox (g, top.reduced (0.0f, 2.0f), "Mute", p.mute.load());
+            in.removeFromTop (3.0f);
+            chip (g, in.removeFromTop (12.0f).reduced (4.0f, 0.0f), "LR", s.mains[0].on.load());
+            in.removeFromTop (3.0f);
+            const int pan = juce::roundToInt (p.pan.load());
+            valueBox (g, in.removeFromTop (13.0f).reduced (2.0f, 0.0f), pan == 0 ? juce::String ("C") : (pan > 0 ? "+" : "") + juce::String (pan));
+            knobWithName (in, "Pan", (p.pan.load() + 100.0f) / 200.0f, true);
+        }
+        else if (name == "Busses")
+        {
+            const int buses = juce::jmin (16, (int) ctx.engine.getBuses().size());
+            const float rowH = in.getHeight() / 16.0f;
+            g.setFont (type::font (juce::jmin (8.5f, rowH), true));
+            for (int b = 0; b < buses; ++b)
+            {
+                auto row = in.removeFromTop (rowH).reduced (0.0f, 0.5f);
+                auto num = row.removeFromLeft (13.0f);
+                auto* send = s.sends.find (b);
+                const bool on = send != nullptr && send->enabled.load();
+                g.setColour (on ? kBox : kSkyAlt);
+                g.fillRect (num);
+                g.setColour (kNavy);
+                g.drawText (juce::String (b + 1), num, juce::Justification::centred);
+                row.removeFromLeft (2.0f);
+                g.setColour (kNavy.withAlpha (0.85f));
+                g.fillRect (row);
+                const float pos = send != nullptr ? fader::dbToPos (send->levelDb.load()) : 0.0f;
+                g.setColour (on ? kYellow : kDeepText.withAlpha (0.5f));
+                g.fillRect (row.reduced (1.0f).withWidth ((row.getWidth() - 2.0f) * pos));
+            }
         }
     }
-    // The output meter under the path.
-    const float level = ctx.meters.get (&s, MeterPoint::Output, 0);
-    auto bar = r.removeFromBottom (18).reduced (16, 4).toFloat();
-    g.setColour (kPanel);
-    g.fillRoundedRectangle (bar, 3.0f);
-    g.setColour (theme.meterLow);
-    g.fillRoundedRectangle (bar.withWidth (bar.getWidth() * juce::jlimit (0.0f, 1.0f, level)), 3.0f);
+
+    // DCA 1-8 and mute groups 1-6: the strip's memberships lit.
+    g.setColour (kSky);
+    g.fillRoundedRectangle (groups, 3.0f);
+    g.setColour (kSkyLine);
+    g.drawRoundedRectangle (groups.reduced (0.5f), 3.0f, 1.0f);
+    auto line = groups.reduced (6.0f, 3.0f);
+    const auto dcas = p.dcaMask.load(), mutes = p.muteGroupMask.load();
+    const auto row = [&g, &line] (const juce::String& title, float titleWidth, int count, uint64_t bits)
+    {
+        g.setColour (kNavy);
+        g.setFont (type::font (10.0f, true));
+        g.drawText (title, line.removeFromLeft (titleWidth), juce::Justification::centredLeft);
+        for (int k = 0; k < count; ++k)
+        {
+            auto box = line.removeFromLeft (16.0f).reduced (1.5f, 0.0f);
+            const bool on = ((bits >> k) & 1u) != 0;
+            g.setColour (on ? kYellow : kNavy);
+            g.fillRect (box);
+            g.setColour (on ? kNavy : kDeepText);
+            g.drawText (juce::String (k + 1), box, juce::Justification::centred);
+        }
+        line.removeFromLeft (14.0f);
+    };
+    row ("DCA", 30.0f, 8, dcas.words[0]);
+    row ("Mute Groups", 76.0f, 6, mutes.words[0]);
 }
 
-void Display::paintSends (juce::Graphics& g, juce::Rectangle<int> r, Strip& s)
+void Display::paintSends (juce::Graphics& g, juce::Rectangle<int> area, Strip& s)
 {
     const int buses = juce::jmin (16, (int) ctx.engine.getBuses().size());
     if (! s.isInput() || buses == 0)
     {
         g.setColour (kDim);
         g.setFont (type::font (type::kLabel));
-        g.drawText ("No bus sends on this strip", r, juce::Justification::centred);
+        g.drawText ("No bus sends on this strip", area, juce::Justification::centred);
         return;
     }
-    r.reduce (16, 12);
-    const int w = r.getWidth() / buses;
+    auto r = block (g, area.toFloat().reduced (8.0f, 4.0f), "Bus Sends").reduced (4.0f, 2.0f);
+    const float w = r.getWidth() / (float) buses;
     for (int i = 0; i < buses; ++i)
     {
-        auto col = r.removeFromLeft (w).reduced (3, 0);
+        auto col = r.removeFromLeft (w).reduced (3.0f, 0.0f);
         auto* send = s.sends.find (i);
         const bool on = send != nullptr && send->enabled.load();
-        const float db = send != nullptr ? send->levelDb.load() : -144.0f;
-        const float pos = fader::dbToPos (db);
+        const float pos = fader::dbToPos (send != nullptr ? send->levelDb.load() : -144.0f);
         const bool focused = i / 4 == sendBank;
-        auto label = col.removeFromBottom (22);
-        g.setColour (focused ? kAmber : kDim);
-        g.setFont (type::font (type::kCaption, true));
+        auto label = col.removeFromBottom (16.0f);
+        g.setColour (focused ? kYellow : kSkyAlt);
+        g.fillRect (label.reduced (0.0f, 1.0f));
+        g.setColour (kNavy);
+        g.setFont (type::font (10.0f, true));
         g.drawText (juce::String (i + 1), label, juce::Justification::centred);
-        g.setColour (kPanel);
-        g.fillRoundedRectangle (col.toFloat(), 3.0f);
-        g.setColour (on ? theme.accent : kLine);
-        g.fillRoundedRectangle (col.toFloat().withTop ((float) col.getBottom() - (float) col.getHeight() * pos), 3.0f);
+        g.setColour (kWell);
+        g.fillRect (col);
+        g.setColour (on ? kYellow : kDeepText.withAlpha (0.5f));
+        g.fillRect (col.reduced (1.0f).withTrimmedTop ((col.getHeight() - 2.0f) * (1.0f - pos)));
     }
 }
 
@@ -1353,15 +1661,16 @@ void Display::paintMeters (juce::Graphics& g, juce::Rectangle<int> r)
     {
         auto col = r.removeFromLeft (w).reduced (2, 0);
         auto label = col.removeFromBottom (18);
-        g.setColour (kDim);
+        g.setColour (kSky);
         g.setFont (type::font (10.0f, true));
         g.drawFittedText (juce::String (s->getNumber()), label, juce::Justification::centred, 1, 0.6f);
-        g.setColour (kPanel);
+        g.setColour (kWell);
         g.fillRect (col);
         const float level = juce::jlimit (0.0f, 1.0f, fader::dbToPos (juce::Decibels::gainToDecibels (ctx.meters.get (s, MeterPoint::Output, 0), -144.0f)));
         const int h = juce::roundToInt ((float) col.getHeight() * level);
         auto lit = col.removeFromBottom (h);
-        g.setColour (level > 0.75f ? theme.meterHigh : level > 0.6f ? theme.meterMid : theme.meterLow);
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xffff3b30), 0.0f, (float) col.getY(), juce::Colour (0xff3ddc5a), 0.0f,
+                                                 (float) col.getBottom(), false));
         g.fillRect (lit);
     }
 }
@@ -1479,52 +1788,36 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
     }
 }
 
-void Display::paintEncoderRow (juce::Graphics& g, juce::Rectangle<int> r)
+void Display::paintEncoderRow (juce::Graphics& g, juce::Rectangle<int>)
 {
-    g.setColour (kPanel);
-    g.fillRect (r);
-    g.setColour (kLine);
-    g.fillRect (r.removeFromTop (1));
-    const int w = r.getWidth() / 6;
+    // The six encoders' cells: what each turns (its icon, name and value), and
+    // along the bottom what a push does, yellow while on.
     for (int i = 0; i < 6; ++i)
     {
-        auto cell = r.removeFromLeft (w).reduced (4, 4);
+        auto cell = getEncoderCell (i).toFloat().reduced (2.0f, 3.0f);
         const auto& e = encoders[(size_t) i];
-        if (i > 0)
-        {
-            g.setColour (kLine);
-            g.fillRect (cell.getX() - 4, cell.getY(), 1, cell.getHeight());
-        }
         if (! e.turn.isValid() && ! e.push)
+        {
+            g.setColour (kDeep.withAlpha (0.45f));
+            g.fillRoundedRectangle (cell, 4.0f);
             continue;
-        auto top = cell.removeFromTop (cell.getHeight() / 2);
-        g.setFont (type::font (type::kCaption, true));
-        if (e.push)
-        {
-            // What a push does, lit while on; the turn's name beside it.
-            const bool on = e.pushOn && e.pushOn();
-            auto chip = top.removeFromRight (juce::jmin (90, top.getWidth() / 2)).reduced (0, 2).toFloat();
-            top.removeFromRight (4);
-            g.setColour (on ? kAmber : kLine);
-            g.fillRoundedRectangle (chip, 3.0f);
-            g.setColour (on ? juce::Colours::black : kDim);
-            g.drawFittedText (e.pushLabel, chip.toNearestInt(), juce::Justification::centred, 1, 0.7f);
         }
-        g.setColour (kDim);
-        if (e.turn.isValid() && e.turn.label != e.pushLabel)
-            g.drawFittedText (e.turn.label, top, juce::Justification::centredLeft, 1, 0.7f);
-        if (e.turn.isValid())
-        {
-            g.setColour (theme.text);
-            g.setFont (type::font (type::kValue, true));
-            g.drawFittedText (e.turn.text ? e.turn.text() : juce::String(), cell, juce::Justification::centredLeft, 1, 0.75f);
-            // How far it is turned.
-            auto bar = cell.removeFromBottom (3).toFloat();
-            g.setColour (kLine);
-            g.fillRect (bar);
-            g.setColour (theme.accent);
-            g.fillRect (bar.withWidth (bar.getWidth() * juce::jlimit (0.0f, 1.0f, e.turn.get())));
-        }
+        g.setColour (kSky);
+        g.fillRoundedRectangle (cell, 4.0f);
+        g.setColour (kSkyLine);
+        g.drawRoundedRectangle (cell.reduced (0.75f), 4.0f, 1.5f);
+        auto in = cell.reduced (3.0f, 3.0f);
+        auto band = in.removeFromBottom (15.0f);
+        chip (g, band, e.push ? e.pushLabel : juce::String(), e.push && e.pushOn && e.pushOn());
+        in.removeFromBottom (2.0f);
+        if (! e.turn.isValid())
+            continue;
+        auto icon = in.removeFromLeft (juce::jmin (in.getHeight(), 30.0f));
+        knobIcon (g, icon.getCentre(), juce::jmin (10.0f, icon.getWidth() * 0.32f), e.turn.get());
+        g.setColour (kNavy);
+        g.setFont (type::font (10.0f, true));
+        g.drawFittedText (e.turn.label, in.removeFromTop (in.getHeight() * 0.45f).toNearestInt(), juce::Justification::centred, 1, 0.7f);
+        valueBox (g, in.reduced (2.0f, 1.0f), e.turn.text ? e.turn.text() : juce::String());
     }
 }
 
@@ -1586,7 +1879,10 @@ void Display::resized()
     area.removeFromRight (sizes::kGap);
     auto knobsRow = area.removeFromBottom (kKnobs);
     area.removeFromBottom (sizes::kGapSmall);
-    screenArea = area.reduced (6);
+    area.reduce (8, 8);
+    bezelMeters = area.removeFromRight (kBezelMeters).reduced (4, 2);
+    area.removeFromRight (8);
+    screenArea = area;
 
     // Eight screen keys, PAGE < >, LAYER ^ and v.
     const int keyH = juce::jmin (36, (side.getHeight() - 10 * sizes::kGapSmall - sizes::kGap) / 11);
@@ -1606,7 +1902,7 @@ void Display::resized()
 
     auto screenInner = screenArea;
     statusArea = screenInner.removeFromTop (kStatus);
-    tabsArea = screenInner.removeFromTop (kTabs).reduced (8, 0);
+    tabsArea = screenInner.removeFromTop (kTabs).reduced (4, 0);
     encoderRow = screenInner.removeFromBottom (kEncoderRow);
     contentArea = screenInner.reduced (0, 4);
     for (auto* v : std::initializer_list<juce::Component*> { &eqView, &gateView, &dynView })

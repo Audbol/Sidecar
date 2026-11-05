@@ -357,6 +357,15 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
     rings (EQ Q, F and G green), the MIXING and AUX keys orange, CONFIGURATION's
     light grey, the dimpled data wheel
 
+  The X32's screen looks like the X32's (compared with photos of its screen):
+  black glass, light blue blocks with navy text and darker blue edges, yellow
+  for what is on; the selected channel's tile, the scene number and clock in
+  amber along the top, the tabs as folders; home's In, Gate, Ins, EQ,
+  Dynamics, Out and Busses blocks with their graphs, check boxes, chips, value
+  boxes and knob icons, the DCAs and mute groups under them; each encoder's
+  cell with its icon, value and push; the main and M/C meters (CLIP to -57) in
+  the bezel beside the screen; the six encoders under it without rings
+
   `ui::hw` (`src/ui/HardwareLook.*`) draws them. Keys, faders and knobs take a
   console's look when its surface asks; the Universal Mixer and the WING are
   unchanged.
