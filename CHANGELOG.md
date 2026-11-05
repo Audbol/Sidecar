@@ -570,6 +570,22 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   thousands to ones, the ms' tens, ones and tenths; underlined) and on to the
   next channel, the wheel moves the digit under the cursor, and a tap on a
   digit puts the cursor on it. In ms, the nearest sample.
+- Surround panning (`livedaw_dsp::surround`, for the 02R and later the
+  DM2000): the 2+2, 3+1 and 3+2+1 modes and their speakers' buses, a
+  constant-power law from a place on the pan graph (CSR splitting a front
+  sound between the centre and the sides; 0.5 all three alike), the
+  subwoofer's own level, and the seven trajectories. The guides give the
+  behaviour, not the law: this one is Sidecar's.
+- The 02R's SURROUND (V2 MAN pp.64-73): ROUTING 2/2 turns it on (always
+  asked) in 2+2, 3+1 or 3+2+1. It takes BUS 1-4 (3+2+1: 1-6), each input's
+  sends to them its speakers' gains, post fader; the channels' own routing to
+  those buses waits and comes back when it goes off. ROUTING 3/4: an input's
+  place (L / R, F / R), CSR, SW and whether it feeds the surround at all, on
+  a pan graph with its group's places and the mode's speakers. ROUTING 4/4:
+  a trajectory (left-right, front-rear, the two diagonals, the two
+  semicircles, a circle), its WIDTH, DEPTH and OFFSET, MOVE the place along
+  it, JUMP to a speaker. Kept in scenes with the console's state. Not yet:
+  ST LINK's patterns for stereo channels, FAST, the speakers' meters.
 - The console surfaces (X32, ProMix 01, 02R) are laid out at 1920 x 1080 and
   scaled to the window, in proportion and centred: on a bigger screen (a 4K
   monitor) they show the same panel larger instead of stretching the gaps

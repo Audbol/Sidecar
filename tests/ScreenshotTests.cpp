@@ -372,6 +372,50 @@ public:
         expectEquals (y.get (ui::y02r::address (ui::y02r::kStereo, 4)), 96, "not STEREO");
         for (int st = 0; st < ui::y02r::kBus; ++st)
             y.set (ui::y02r::address (st, 4), 96);
+        // SURROUND (V2 MAN pp.64-73): ROUTING 2/2 asks, then 3/4's pan graph and 4/4's trajectories.
+        {
+            skin.pressSel (4);
+            skin.pressFunction (F::Routing);
+            skin.pressFunction (F::Routing);
+            expectEquals (display.getPage(), 1);
+            expectEquals (display.getFields()[0].label, juce::String ("SURROUND"));
+            display.getFields()[1].set (3); // 3+2+1, before it's on
+            display.enter();
+            expect (display.isConfirming(), "always asked");
+            display.cursor (1);
+            display.enter();
+            expectEquals (y.getState (Yamaha02R::Surround, 0), 3);
+            expectEquals (display.numPages(), 4);
+            skin.pressFunction (F::Routing);
+            expectEquals (display.getPage(), 2);
+            expectEquals (display.getFields()[1].label, juce::String ("L / R"));
+            const int mic5Pan = 4 * Yamaha02R::kSurFields;
+            display.getFields()[1].set (10); // to the left
+            display.getFields()[2].set (16); // towards the rear
+            expectEquals (y.getState (Yamaha02R::SurroundPan, mic5Pan + Yamaha02R::SurX), 10);
+            const auto shot = [&display] (const char* page)
+            {
+                if (const auto shots = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {}); shots.isNotEmpty())
+                {
+                    const auto out = juce::File::getCurrentWorkingDirectory().getChildFile (shots).getChildFile (juce::String ("y02r-page-") + page + ".png");
+                    out.deleteFile();
+                    juce::FileOutputStream stream (out);
+                    juce::PNGImageFormat().writeImageToStream (display.createComponentSnapshot (display.getLocalBounds(), true, 1.0f), stream);
+                }
+            };
+            shot ("surround-pan");
+            skin.pressFunction (F::Routing);
+            expectEquals (display.getPage(), 3);
+            display.getFields()[0].set (6); // CIRCLE
+            display.getFields()[2].set (24);
+            display.getFields()[3].set (20);
+            display.getFields()[1].set (16); // a quarter round: the right
+            expectEquals (y.getState (Yamaha02R::SurroundPan, mic5Pan + Yamaha02R::SurX), 32 + 24);
+            shot ("surround-trajectory");
+            y.setState (Yamaha02R::Surround, 0, 0);
+            expectEquals (y.getState (Yamaha02R::Surround, 0), 0);
+            skin.pressFunction (F::Eq);
+        }
         // DELAY digit by digit (MAN p.35): MIC 1's samples' hundreds, then in ms the tenths.
         skin.pressFunction (F::Delay);
         expectEquals (display.getFields()[0].label, juce::String ("UNIT"));

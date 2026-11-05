@@ -325,6 +325,11 @@ namespace y02r
             go();
             return;
         }
+        ask (what, std::move (go));
+    }
+
+    void Display::ask (const juce::String& what, std::function<void()> go)
+    {
         confirmText = what;
         confirmGo = std::move (go);
         confirmChoice = 0;
@@ -359,6 +364,9 @@ namespace y02r
                 return 4; // SOLO, AUX OUTPUT SELECT, PREFERENCES 1 and 2
             case Function::Midi:
                 return 3; // MIDI SETUP, Program Change Assign, Control Change Assign
+            case Function::Routing:
+                // ROUTING, SURROUND on / off; with it on the pan graphs and the trajectories.
+                return y.getState (Yamaha02R::Surround, 0) > 0 ? 4 : 2;
             case Function::Group:
             case Function::Pair:
             case Function::View: // VIEW, the CHANNEL LIBRARY
@@ -693,6 +701,115 @@ namespace y02r
                                     2600 });
                 break;
             case Function::Routing:
+                if (page > 0)
+                {
+                    const int mode = y.getState (Yamaha02R::Surround, 0);
+                    if (page == 1)
+                    {
+                        // ROUTING 2/2 (V2 MAN p.65): SURROUND, asked; its mode.
+                        Field on;
+                        on.label = "SURROUND";
+                        on.get = [mode] { return mode > 0 ? 1 : 0; };
+                        on.text = onOff;
+                        on.lo = on.hi = 0;
+                        on.action = [this, mode]
+                        {
+                            ask (mode > 0 ? "SURROUND OFF?" : "SURROUND ON?", [this, mode]
+                            {
+                                y.setState (Yamaha02R::Surround, 0, mode > 0 ? 0 : surroundMode);
+                                build();
+                            });
+                        };
+                        fields.push_back (on);
+                        fields.push_back ({ "MODE", [this, mode] { return mode > 0 ? mode : surroundMode; },
+                                            [this, mode] (int v)
+                                            {
+                                                surroundMode = v;
+                                                if (mode > 0)
+                                                    y.setState (Yamaha02R::Surround, 0, v);
+                                            },
+                                            [] (int v) { const char* m[] = { "OFF", "2+2", "3+1", "3+2+1" }; return juce::String (m[juce::jlimit (0, 3, v)]); }, 1, 3 });
+                        fixed ("BUS 1-4", "SURROUND");
+                        fixed ("BUS 5-6", mode == 3 ? "SURROUND" : "ROUTING");
+                        break;
+                    }
+                    const int m = memberOf (s);
+                    if (m < 0)
+                    {
+                        fixed ("SURROUND", "INPUT CHANNELS ONLY");
+                        break;
+                    }
+                    auto sur = [this, m] (const juce::String& label, int field, int lo, int hi, std::function<juce::String (int)> text)
+                    {
+                        const int i = m * Yamaha02R::kSurFields + field;
+                        fields.push_back ({ label, [this, i] { return y.getState (Yamaha02R::SurroundPan, i); },
+                                            [this, i] (int v) { y.setState (Yamaha02R::SurroundPan, i, v); }, std::move (text), lo, hi });
+                    };
+                    const auto lr = [] (int v) { return v == 32 ? juce::String ("C") : (v < 32 ? "L" : "R") + juce::String (std::abs (v - 32)); };
+                    const auto fr = [] (int v) { return v == 32 ? juce::String ("0") : (v > 32 ? "FRONT " : "REAR ") + juce::String (std::abs (v - 32)); };
+                    const auto amount = [] (int v) { return juce::String (v); };
+                    if (page == 2)
+                    {
+                        // ROUTING 3/4 (V2 MAN pp.67-68): the place on the pan graph.
+                        sur ("SURR", Yamaha02R::SurOn, 0, 1, onOff);
+                        sur ("L / R", Yamaha02R::SurX, 0, 64, lr);
+                        sur ("F / R", Yamaha02R::SurY, 0, 64, fr);
+                        if (mode >= 2)
+                            sur ("CSR", Yamaha02R::SurCsr, 0, 10, [] (int v) { return juce::String (v / 10.0, 1); });
+                        if (mode == 3)
+                            sur ("SW", Yamaha02R::SurSub, 0, 60, [] (int v) { return v == 0 ? utf8 ("-\xe2\x88\x9e") : juce::String (v - 60) + " dB"; });
+                        Field traj;
+                        traj.label = "TRAJECTORY";
+                        traj.text = [] (int) { return juce::String ("4/4"); };
+                        traj.get = [] { return 0; };
+                        traj.lo = traj.hi = 0;
+                        traj.action = [this] { show (Function::Routing, 3); };
+                        fields.push_back (traj);
+                    }
+                    else
+                    {
+                        // ROUTING 4/4 (V2 MAN pp.69-71): a trajectory, its size and offset,
+                        // the place along it; a speaker's place by JUMP.
+                        sur ("TRAJECTORY", Yamaha02R::SurTraj, 0, 6,
+                             [] (int v) { const char* t[] = { "L <> R", "F <> R", "RL <> FR", "FL <> RR", "L<>R SEMI", "F<>R SEMI", "CIRCLE" }; return juce::String (t[juce::jlimit (0, 6, v)]); });
+                        sur ("MOVE", Yamaha02R::SurAlong, 0, 64, amount);
+                        sur ("WIDTH", Yamaha02R::SurWidth, 0, 32, amount);
+                        sur ("DEPTH", Yamaha02R::SurDepth, 0, 32, amount);
+                        sur ("OFFSET L/R", Yamaha02R::SurOffsetX, 0, 64, lr);
+                        sur ("OFFSET F/R", Yamaha02R::SurOffsetY, 0, 64, fr);
+                        if (mode >= 2)
+                            sur ("CSR", Yamaha02R::SurCsr, 0, 10, [] (int v) { return juce::String (v / 10.0, 1); });
+                        if (mode == 3)
+                            sur ("SW", Yamaha02R::SurSub, 0, 60, [] (int v) { return v == 0 ? utf8 ("-\xe2\x88\x9e") : juce::String (v - 60) + " dB"; });
+                        // JUMP: the wheel picks a speaker, ENTER puts the sound there.
+                        static const juce::StringArray speakers[] = { { "FL", "FR", "RL", "RR" }, { "L", "R", "C", "S" }, { "FL", "FR", "RL", "RR", "FC" } };
+                        static const int places[3][5][2] = { { { 0, 64 }, { 64, 64 }, { 0, 0 }, { 64, 0 } },
+                                                             { { 0, 64 }, { 64, 64 }, { 32, 64 }, { 32, 0 } },
+                                                             { { 0, 64 }, { 64, 64 }, { 0, 0 }, { 64, 0 }, { 32, 64 } } };
+                        const int k = juce::jlimit (1, 3, mode) - 1;
+                        Field jump;
+                        jump.label = "JUMP";
+                        jump.lo = 0;
+                        jump.hi = speakers[k].size() - 1;
+                        jump.onEnter = true;
+                        jump.get = [] { return 0; };
+                        jump.text = [k] (int v) { return speakers[k][v]; };
+                        jump.set = [this, m, k] (int v)
+                        {
+                            y.setState (Yamaha02R::SurroundPan, m * Yamaha02R::kSurFields + Yamaha02R::SurX, places[k][v][0]);
+                            y.setState (Yamaha02R::SurroundPan, m * Yamaha02R::kSurFields + Yamaha02R::SurY, places[k][v][1]);
+                        };
+                        fields.push_back (jump);
+                        Field exit;
+                        exit.label = "EXIT";
+                        exit.text = [] (int) { return juce::String ("3/4"); };
+                        exit.get = [] { return 0; };
+                        exit.lo = exit.hi = 0;
+                        exit.action = [this] { show (Function::Routing, 2); };
+                        fields.push_back (exit);
+                    }
+                    break;
+                }
                 if (memberOf (s) < 0)
                     break;
                 for (int b = 0; b < 8; ++b)
@@ -1086,6 +1203,11 @@ namespace y02r
         const int f = (int) function;
         if (function == Function::View && page == 1)
             return "CHANNEL LIBRARY  2/2";
+        if (function == Function::Routing && page > 0)
+        {
+            const char* pages[] = { "", "SURROUND", "SURROUND PAN", "TRAJECTORY" };
+            return "ROUTING " + juce::String (page + 1) + "/" + juce::String (numPages()) + "  " + pages[juce::jlimit (0, 3, page)];
+        }
         if (function == Function::Setup)
         {
             const char* setup[] = { "SOLO", "AUX OUTPUT SELECT", "PREFERENCES 1", "PREFERENCES 2" };
@@ -1222,8 +1344,11 @@ namespace y02r
         auto area = getLocalBounds().toFloat().reduced (14.0f).withTrimmedTop (40.0f).withTrimmedBottom (28.0f);
         if (function == Function::Meter || function == Function::Eq)
             area = area.withTrimmedRight (area.getWidth() * (function == Function::Eq ? 0.42f : 0.0f));
+        const bool graph = surroundGraph();
+        if (graph)
+            area = area.withTrimmedRight (area.getHeight() + 20.0f); // the square pan graph at the right
         const int n = (int) fields.size();
-        const int cols = function == Function::Eq || n <= 16 ? 4 : n <= 24 ? 6 : 8; // EQ beside its curve: four
+        const int cols = graph ? 3 : function == Function::Eq || n <= 16 ? 4 : n <= 24 ? 6 : 8; // EQ beside its curve: four
         const int rows = juce::jmax (4, (n + cols - 1) / cols);
         const float w = area.getWidth() / cols, h = juce::jmin (52.0f, area.getHeight() / (float) rows);
         return { area.getX() + w * (float) (i % cols), area.getY() + h * (float) (i / cols), w - 6.0f, h - 6.0f };
@@ -1250,6 +1375,11 @@ namespace y02r
         {
             g.setColour (kPixelDim);
             g.drawText (stripName (strip) + " has no " + title(), b, juce::Justification::centred);
+        }
+        if (surroundGraph())
+        {
+            const auto area = b.reduced (14.0f).withTrimmedTop (40.0f).withTrimmedBottom (28.0f);
+            paintSurround (g, area.withLeft (area.getRight() - area.getHeight()));
         }
         if (function == Function::View && page == 1 && fields.size() > 1)
             paintPrograms (g, b.reduced (14.0f).withTrimmedBottom (14.0f).withTop (fieldBox (0).getBottom() + 10.0f));
@@ -1309,6 +1439,97 @@ namespace y02r
                 g.setColour (k == confirmChoice ? kLcd : kPixel);
                 g.drawText (k == 0 ? "CANCEL" : "EXECUTE", key, juce::Justification::centred);
             }
+        }
+    }
+
+    bool Display::surroundGraph() const { return function == Function::Routing && page >= 2 && memberOf (strip) >= 0; }
+
+    void Display::paintSurround (juce::Graphics& g, juce::Rectangle<float> area) const
+    {
+        // The pan graph (V2 MAN p.67): front at the top; the mode's speakers
+        // around it; the places of the selected channel's group (MIC, LINE and
+        // the effect returns, or TAPE), the selected one filled; on 4/4 its
+        // trajectory.
+        const int mode = juce::jlimit (1, 3, y.getState (Yamaha02R::Surround, 0));
+        const auto graph = area.reduced (14.0f);
+        const auto at = [graph] (float x, float yy) { return juce::Point<float> (graph.getX() + (x + 1.0f) * 0.5f * graph.getWidth(), graph.getY() + (1.0f - yy) * 0.5f * graph.getHeight()); };
+        g.setColour (kLcdFrame);
+        g.fillRect (graph);
+        g.setColour (kPixelDim);
+        g.drawRect (graph, 1.0f);
+        g.drawLine (graph.getCentreX(), graph.getY(), graph.getCentreX(), graph.getBottom(), 0.5f);
+        g.drawLine (graph.getX(), graph.getCentreY(), graph.getRight(), graph.getCentreY(), 0.5f);
+        static const float places[3][5][2] = { { { -1, 1 }, { 1, 1 }, { -1, -1 }, { 1, -1 } },
+                                               { { -1, 1 }, { 1, 1 }, { 0, 1 }, { 0, -1 } },
+                                               { { -1, 1 }, { 1, 1 }, { -1, -1 }, { 1, -1 }, { 0, 1 } } };
+        static const char* names[3][5] = { { "FL", "FR", "RL", "RR" }, { "L", "R", "C", "S" }, { "FL", "FR", "RL", "RR", "FC" } };
+        g.setFont (type::font (9.0f, true));
+        for (int k = 0; k < (mode == 3 ? 5 : 4); ++k)
+        {
+            const auto p = at (places[mode - 1][k][0], places[mode - 1][k][1]);
+            const auto box = juce::Rectangle<float> (16.0f, 10.0f).withCentre ({ p.x, p.y + (places[mode - 1][k][1] > 0 ? -9.0f : 9.0f) });
+            g.setColour (kPixel);
+            g.fillRect (box);
+            g.setColour (kLcd);
+            g.drawText (names[mode - 1][k], box, juce::Justification::centred);
+        }
+        if (mode == 3)
+        {
+            g.setColour (kPixel);
+            g.drawText ("SW", juce::Rectangle<float> (24.0f, 10.0f).withCentre ({ graph.getCentreX(), area.getBottom() - 5.0f }), juce::Justification::centred);
+        }
+        const auto value = [this] (int member, int field) { return (float) (y.getState (Yamaha02R::SurroundPan, member * Yamaha02R::kSurFields + field) - 32) / 32.0f; };
+        const int sel = memberOf (strip);
+        if (page == 3)
+        {
+            // The trajectory, as `livedaw_dsp::surround::Trajectory::at`.
+            const int traj = y.getState (Yamaha02R::SurroundPan, sel * Yamaha02R::kSurFields + Yamaha02R::SurTraj);
+            const float w = (float) y.getState (Yamaha02R::SurroundPan, sel * Yamaha02R::kSurFields + Yamaha02R::SurWidth) / 32.0f;
+            const float d = (float) y.getState (Yamaha02R::SurroundPan, sel * Yamaha02R::kSurFields + Yamaha02R::SurDepth) / 32.0f;
+            const float ox = value (sel, Yamaha02R::SurOffsetX), oy = value (sel, Yamaha02R::SurOffsetY);
+            const float pi = juce::MathConstants<float>::pi;
+            juce::Path path;
+            for (int k = 0; k <= 64; ++k)
+            {
+                const float t = (float) k / 64.0f, s = 2.0f * t - 1.0f;
+                float x = 0.0f, yy = 0.0f;
+                switch (traj)
+                {
+                    case 0: x = s * w; break;
+                    case 1: yy = -s * d; break;
+                    case 2: x = s * w; yy = s * d; break;
+                    case 3: x = s * w; yy = -s * d; break;
+                    case 4: x = -std::cos (pi * t) * w; yy = std::sin (pi * t) * d; break;
+                    case 5: x = -std::sin (pi * t) * w; yy = std::cos (pi * t) * d; break;
+                    default: x = std::sin (2.0f * pi * t) * w; yy = std::cos (2.0f * pi * t) * d; break;
+                }
+                const auto p = at (juce::jlimit (-1.0f, 1.0f, x + ox), juce::jlimit (-1.0f, 1.0f, yy + oy));
+                k == 0 ? path.startNewSubPath (p) : path.lineTo (p);
+            }
+            g.setColour (kPixel);
+            g.strokePath (path, juce::PathStrokeType (1.0f, juce::PathStrokeType::curved), juce::AffineTransform());
+        }
+        // The group's places.
+        const int first = sel < 16 ? 0 : sel < kTape ? 16 : sel < kEff ? kTape : 16;
+        std::vector<int> group;
+        for (int m = first; m < (first == 16 ? kTape : first + 16); ++m)
+            group.push_back (m);
+        if (first == 16)
+            group.insert (group.end(), { kEff, kEff + 1 });
+        for (int m : group)
+        {
+            const auto p = at (value (m, Yamaha02R::SurX), value (m, Yamaha02R::SurY));
+            const bool selected = m == sel;
+            const float r = selected ? 7.0f : 5.0f;
+            g.setColour (kPixel);
+            if (selected)
+                g.fillEllipse (p.x - r, p.y - r, 2 * r, 2 * r);
+            else
+                g.drawEllipse (p.x - r, p.y - r, 2 * r, 2 * r, 1.0f);
+            if (! selected)
+                continue;
+            g.setFont (type::font (9.0f, true));
+            g.drawText (stripName (m), juce::Rectangle<float> (60.0f, 10.0f).withCentre ({ p.x, p.y + 13.0f }), juce::Justification::centred);
         }
     }
 

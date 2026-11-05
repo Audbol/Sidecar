@@ -8,7 +8,8 @@
 
 use crate::library::{ChannelProgram, Kind, Library, Program, CHANNEL_PROGRAMS};
 use crate::params;
-use crate::state::{self, DynSettings, KeyIn, State, CHANNELS, DYN_STRIPS, LINES, MEMBERS, MICS};
+use crate::state::{self, DynSettings, KeyIn, State, SurroundPan, CHANNELS, DYN_STRIPS, LINES, MEMBERS, MICS};
+use livedaw_dsp::surround;
 use livedaw_dsp::fader::FaderLaw;
 use livedaw_dsp::y02r::DYN_MODELS;
 use livedaw_engine::keytap::KeySource;
@@ -412,6 +413,10 @@ impl<'a> Console<'a> {
     /// dB following its pan (MAN p.39); a send left at -oo (as a new console's
     /// are) isn't a route.
     pub fn bus_on(&self, s: Y2Strip, bus: usize) -> bool {
+        // SURROUND has the first buses: the member's own routing waits.
+        if let Some(m) = s.member().filter(|_| bus < self.surround_buses()) {
+            return self.state.surround_routing[m] >> bus & 1 != 0;
+        }
         s.member().is_some()
             && bus < 8
             && self
@@ -422,6 +427,13 @@ impl<'a> Console<'a> {
 
     pub fn set_bus_on(&mut self, s: Y2Strip, bus: usize, on: bool) {
         if s.member().is_none() || bus >= 8 {
+            return;
+        }
+        if bus < self.surround_buses() {
+            for m in self.linked_members(s) {
+                let r = &mut self.state.surround_routing[m];
+                *r = if on { *r | 1 << bus } else { *r & !(1 << bus) };
+            }
             return;
         }
         for st in self.linked(s) {
@@ -694,6 +706,116 @@ impl<'a> Console<'a> {
             self.set_ms(pair, false);
         }
         self.apply_dyn(Y2Strip::channel(odd));
+    }
+
+    // ---- surround (V2 MAN pp.64-73) ------------------------------------------------------
+
+    /// SURROUND's mode, if it is on.
+    pub fn surround(&self) -> Option<surround::Mode> {
+        surround::Mode::ALL.get((self.state.surround as usize).checked_sub(1)?).copied()
+    }
+
+    /// The buses SURROUND takes (0 while it is off).
+    pub fn surround_buses(&self) -> usize {
+        self.surround().map_or(0, surround::Mode::buses)
+    }
+
+    /// The members `s` and its pair partner are.
+    fn linked_members(&self, s: Y2Strip) -> Vec<usize> {
+        let mut out: Vec<usize> = s.member().into_iter().collect();
+        out.extend(self.partner(s).and_then(Y2Strip::member));
+        out
+    }
+
+    /// Turns SURROUND on in `mode` (0 off, 1 2+2, 2 3+1, 3 3+2+1): the members'
+    /// routing to the buses it takes kept aside, given back when it goes off
+    /// (or a smaller mode leaves BUS 5-6).
+    pub fn set_surround(&mut self, mode: u8) {
+        let mode = mode.min(3);
+        let was = self.surround_buses();
+        // Give the buses back first...
+        for m in 0..MEMBERS {
+            let Some(s) = Y2Strip::of_member(m) else { continue };
+            let saved = self.state.surround_routing[m];
+            for bus in 0..was {
+                self.write_bus(s, bus, saved >> bus & 1 != 0);
+            }
+        }
+        self.state.surround = mode;
+        // ...then take the new mode's, keeping the members' own routing to them.
+        let now = self.surround_buses();
+        for m in 0..MEMBERS {
+            let Some(s) = Y2Strip::of_member(m) else { continue };
+            let mut bits = 0u8;
+            for bus in 0..now {
+                bits |= (self.bus_send_on(s, bus) as u8) << bus;
+            }
+            self.state.surround_routing[m] = bits;
+            self.apply_surround(m);
+        }
+    }
+
+    /// A member's surround pan.
+    pub fn surround_pan(&self, member: usize) -> Option<SurroundPan> {
+        self.state.surround_pans.get(member).copied()
+    }
+
+    /// Sets a member's surround pan and moves its sends to the surround buses;
+    /// a place along a trajectory puts it there.
+    pub fn set_surround_pan(&mut self, member: usize, pan: SurroundPan) {
+        let Some(p) = self.state.surround_pans.get_mut(member) else { return };
+        let moved = pan.along != p.along || pan.trajectory != p.trajectory;
+        let mut pan = pan;
+        if moved {
+            let t = surround::Trajectory::ALL[pan.trajectory.min(6) as usize];
+            let c = |v: u8| (v as f32 - 32.0) / 32.0;
+            let (x, y) = t.at(pan.along as f32 / 64.0, pan.width as f32 / 32.0, pan.depth as f32 / 32.0, c(pan.offset_x), c(pan.offset_y));
+            pan.x = (x * 32.0 + 32.0).round() as u8;
+            pan.y = (y * 32.0 + 32.0).round() as u8;
+        }
+        *p = pan;
+        self.apply_surround(member);
+    }
+
+    /// A member's sends to the surround buses from its pan (nothing while
+    /// SURROUND is off): post fader, each its speaker's gain.
+    fn apply_surround(&self, member: usize) {
+        let (Some(mode), Some(s)) = (self.surround(), Y2Strip::of_member(member)) else { return };
+        let Some(st) = self.strip(s) else { return };
+        let p = self.state.surround_pans[member];
+        let c = |v: u8| (v as f32 - 32.0) / 32.0;
+        let sub = if p.sub == 0 { 0.0 } else { livedaw_dsp::util::db_to_gain(p.sub as f32 - 60.0) };
+        let gains = surround::gains(mode, surround::Position { x: c(p.x), y: c(p.y), csr: p.csr as f32 / 10.0, sub });
+        // A centred send is the pan law's centre on each side: as much more,
+        // so each bus carries the speaker's gain.
+        let centre = (self.engine.profile().spec().pan.mono)(0.0).0.max(1e-6);
+        for (bus, g) in gains.iter().enumerate().take(mode.buses()) {
+            if let Some(send) = st.sends.get_or_create(bus) {
+                send.mode.store(send_mode::POST, Relaxed);
+                send.pan_link.store(false, Relaxed);
+                send.pan.store(0.0);
+                send.level_db.store(if *g > 0.0 { livedaw_dsp::util::gain_to_db(g / centre) } else { -144.0 });
+                send.enabled.store(p.on && *g > 0.0, Relaxed);
+            }
+        }
+    }
+
+    /// A send to bus `bus` routed (on, at its level) as ROUTING has it.
+    fn bus_send_on(&self, s: Y2Strip, bus: usize) -> bool {
+        self.strip(s)
+            .and_then(|st| st.sends.get_or_create(bus).map(|p| p.enabled.load(Relaxed) && p.level_db.load() > -100.0))
+            .unwrap_or(false)
+    }
+
+    /// Routes a member to bus `bus` as ROUTING does (0 dB, post, the channel's pan).
+    fn write_bus(&self, s: Y2Strip, bus: usize, on: bool) {
+        let Some(st) = self.strip(s) else { return };
+        if let Some(p) = st.sends.get_or_create(bus) {
+            p.level_db.store(0.0);
+            p.mode.store(send_mode::POST, Relaxed);
+            p.pan_link.store(true, Relaxed);
+            p.enabled.store(on, Relaxed);
+        }
     }
 
     /// The pair `s` decodes as MS, if it does.
@@ -1148,6 +1270,39 @@ mod tests {
         c.set_pair(9, false, true);
         c.set_level(Y2Strip::Tape(2), 10, Origin::Remote);
         assert_eq!(c.level(Y2Strip::Tape(3)), 90, "unpaired");
+    }
+
+    #[test]
+    fn surround_takes_the_buses_and_gives_them_back() {
+        let e = y02r();
+        let mut s = State::default();
+        let mut c = Console::new(&e, &mut s);
+        c.set_bus_on(Y2Strip::Mic(0), 0, true); // MIC 1 to BUS 1
+        c.set_bus_on(Y2Strip::Mic(0), 6, true); // and BUS 7
+        c.set_surround(1); // 2+2
+        let send = |c: &Console, bus| {
+            let st = c.strip(Y2Strip::Mic(0)).unwrap();
+            let p = st.sends.get_or_create(bus).unwrap();
+            (p.enabled.load(Relaxed), p.level_db.load())
+        };
+        // The front centre: FL and FR alike, the rear silent.
+        let (fl, fr, rl) = (send(&c, 0), send(&c, 1), send(&c, 2));
+        assert!(fl.0 && fr.0 && !rl.0 && (fl.1 - fr.1).abs() < 1e-4, "{fl:?} {fr:?} {rl:?}");
+        assert!(c.bus_on(Y2Strip::Mic(0), 0) && !c.bus_on(Y2Strip::Mic(0), 1), "ROUTING shows its own");
+        assert!(c.bus_on(Y2Strip::Mic(0), 6), "BUS 7 as it was");
+        // To the rear right.
+        let pan = SurroundPan { x: 64, y: 0, ..c.surround_pan(0).unwrap() };
+        c.set_surround_pan(0, pan);
+        assert!(!send(&c, 0).0 && send(&c, 3).0);
+        // Along a circle from the front: a quarter round is the right.
+        let pan = SurroundPan { trajectory: 6, along: 16, ..c.surround_pan(0).unwrap() };
+        c.set_surround_pan(0, pan);
+        assert_eq!((c.surround_pan(0).unwrap().x, c.surround_pan(0).unwrap().y), (64, 32));
+        // Off: BUS 1 back as routed, BUS 2 not.
+        c.set_surround(0);
+        assert!(send(&c, 0).0 && send(&c, 0).1 == 0.0 && !send(&c, 1).0);
+        let back = State::from_text(&c.state.to_text());
+        assert_eq!(back.surround_pans[0], c.state.surround_pans[0]);
     }
 
     #[test]

@@ -121,6 +121,73 @@ impl Default for Oscillator {
     }
 }
 
+/// A member's surround pan (V2 MAN pp.67-73), as the console's steps: the
+/// place `x` (0 left .. 32 centre .. 64 right) and `y` (0 rear .. 64 front),
+/// CSR (0-10: 0.0-1.0), the subwoofer's level (0 -oo, 1-60: -59 .. 0 dB),
+/// whether it feeds the surround buses at all, and ROUTING 4/4's trajectory
+/// (`livedaw_dsp::surround::Trajectory::ALL`), its WIDTH and DEPTH (0-32),
+/// OFFSET (0-64, 32 none) and the place along it (0-64).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SurroundPan {
+    pub x: u8,
+    pub y: u8,
+    pub csr: u8,
+    pub sub: u8,
+    pub on: bool,
+    pub trajectory: u8,
+    pub width: u8,
+    pub depth: u8,
+    pub offset_x: u8,
+    pub offset_y: u8,
+    pub along: u8,
+}
+
+impl Default for SurroundPan {
+    /// The front centre: the stereo image's place (Sidecar's choice).
+    fn default() -> Self {
+        SurroundPan { x: 32, y: 64, csr: 5, sub: 0, on: true, trajectory: 0, width: 32, depth: 32, offset_x: 32, offset_y: 32, along: 32 }
+    }
+}
+
+impl SurroundPan {
+    /// Its values in the order above (`x` 0 ... `along` 10).
+    pub const FIELDS: usize = 11;
+
+    /// Value `k` of `to_values`, and the pan with it set (clamped).
+    pub fn field(self, k: usize) -> Option<u8> {
+        self.to_values().get(k).copied()
+    }
+
+    pub fn with_field(self, k: usize, v: u32) -> SurroundPan {
+        let mut values: Vec<u32> = self.to_values().iter().map(|&x| x as u32).collect();
+        if let Some(x) = values.get_mut(k) {
+            *x = v;
+        }
+        SurroundPan::of_values(&values)
+    }
+
+    fn to_values(self) -> [u8; 11] {
+        [self.x, self.y, self.csr, self.sub, self.on as u8, self.trajectory, self.width, self.depth, self.offset_x, self.offset_y, self.along]
+    }
+
+    fn of_values(v: &[u32]) -> SurroundPan {
+        let at = |i: usize, max: u32| v.get(i).map_or(0, |&x| x.min(max) as u8);
+        SurroundPan {
+            x: at(0, 64),
+            y: at(1, 64),
+            csr: at(2, 10),
+            sub: at(3, 60),
+            on: at(4, 1) != 0,
+            trajectory: at(5, 6),
+            width: at(6, 32),
+            depth: at(7, 32),
+            offset_x: at(8, 64),
+            offset_y: at(9, 64),
+            along: at(10, 64),
+        }
+    }
+}
+
 /// The 02R's own state (see the module).
 #[derive(Clone, Debug, PartialEq)]
 pub struct State {
@@ -156,6 +223,13 @@ pub struct State {
     pub fx_programs: [u8; 2],
     /// The DELAY page's unit: samples (false) or ms.
     pub delay_ms: bool,
+    /// SURROUND (V2 MAN p.65): 0 off, 1 2+2, 2 3+1, 3 3+2+1.
+    pub surround: u8,
+    /// Each member's surround pan.
+    pub surround_pans: [SurroundPan; MEMBERS],
+    /// While SURROUND is on, the members' own routing to BUS 1-6 (a bit each),
+    /// which it gives back when it goes off.
+    pub surround_routing: [u8; MEMBERS],
 }
 
 impl Default for State {
@@ -183,6 +257,9 @@ impl Default for State {
             // REVERB HALL1 and DELAY L-C-R 1 (Sidecar's choice for scene 0).
             fx_programs: [0, 22],
             delay_ms: false,
+            surround: 0,
+            surround_pans: [SurroundPan::default(); MEMBERS],
+            surround_routing: [0; MEMBERS],
         }
     }
 }
@@ -258,6 +335,10 @@ impl State {
         put("osc", format!("{} {} {} {}", o.on as u8, o.level, o.wave, o.assign));
         put("fx_programs", list(&self.fx_programs));
         put("delay_ms", (self.delay_ms as u8).to_string());
+        put("surround", self.surround.to_string());
+        let pans: Vec<u8> = self.surround_pans.iter().flat_map(|p| p.to_values()).collect();
+        put("surround_pans", list(&pans));
+        put("surround_routing", list(&self.surround_routing));
         out
     }
 
@@ -315,6 +396,13 @@ impl State {
                 }
                 "fx_programs" => fill(&mut s.fx_programs, v, 127),
                 "delay_ms" => s.delay_ms = nums(v).first() == Some(&1),
+                "surround" => s.surround = nums(v).first().map_or(0, |&m| m.min(3) as u8),
+                "surround_pans" => {
+                    for (p, x) in s.surround_pans.iter_mut().zip(nums(v).chunks_exact(11)) {
+                        *p = SurroundPan::of_values(x);
+                    }
+                }
+                "surround_routing" => fill(&mut s.surround_routing, v, 63),
                 _ => {}
             }
         }

@@ -120,7 +120,25 @@ public:
         OscLevel,
         OscWave,
         OscAssign,
-        Ms // ABI 50: a channel pair's MS decoding (on pairs it)
+        Ms,         // ABI 50: a channel pair's MS decoding (on pairs it)
+        Surround,   // SURROUND: 0 off, 1 2+2, 2 3+1, 3 3+2+1
+        SurroundPan // member i / 11's surround value i % 11 (SurroundField)
+    };
+    /** A member's surround pan values (livedaw_02r::state::SurroundPan). */
+    enum SurroundField
+    {
+        SurX = 0,   // 0 left .. 32 .. 64 right
+        SurY,       // 0 rear .. 64 front
+        SurCsr,     // 0-10: 0.0-1.0
+        SurSub,     // 0 -oo, 1-60: -59 .. 0 dB
+        SurOn,      // feeds the surround buses
+        SurTraj,    // the trajectory, 0-6
+        SurWidth,   // 0-32
+        SurDepth,   // 0-32
+        SurOffsetX, // 0-64, 32 none
+        SurOffsetY,
+        SurAlong,   // the place along it, 0-64
+        kSurFields
     };
     int getState (State what, int i) const { return ld::ld_y02r_state (handle, (int) what, i); }
     void setState (State what, int i, int value) { ld::ld_y02r_set_state (handle, (int) what, i, value); }

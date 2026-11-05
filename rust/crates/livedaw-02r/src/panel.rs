@@ -4,7 +4,7 @@
 
 use crate::console::{Console, Y2Strip};
 use crate::params;
-use crate::state::{DynSettings, KeyIn, FADERS, MEMBERS, MICS, PAIRS};
+use crate::state::{DynSettings, KeyIn, SurroundPan, FADERS, MEMBERS, MICS, PAIRS};
 
 /// What a value is (`get` / `set`'s `what`), and what its index counts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -43,6 +43,12 @@ pub enum What {
     OscAssign = 17,
     /// Channel pair 0-15's MS decoding (V2 MAN p.186): on, it pairs them.
     Ms = 18,
+    /// SURROUND's mode (0 off, 1 2+2, 2 3+1, 3 3+2+1).
+    Surround = 19,
+    /// Member `i / 11`'s surround pan value `i % 11` (`SurroundPan::field`:
+    /// X, Y, CSR, SW, ON, trajectory, WIDTH, DEPTH, OFFSET X, OFFSET Y, the
+    /// place along it).
+    SurroundPan = 20,
 }
 
 impl What {
@@ -68,6 +74,8 @@ impl What {
             OscWave,
             OscAssign,
             Ms,
+            Surround,
+            SurroundPan,
         ]
         .into_iter()
         .find(|w| *w as i32 == n)
@@ -87,6 +95,8 @@ pub fn get(c: &Console, what: What, i: usize) -> Option<i32> {
         What::Pair => flag(&s.pairs)?,
         What::Ms if i < PAIRS => c.ms(i) as i32,
         What::Ms => return None,
+        What::Surround => s.surround as i32,
+        What::SurroundPan => c.surround_pan(i / SurroundPan::FIELDS)?.field(i % SurroundPan::FIELDS)? as i32,
         What::AuxPair => flag(&s.aux_pairs)?,
         What::BusPair => flag(&s.bus_pairs)?,
         What::Gang => flag(&s.gangs)?,
@@ -113,6 +123,12 @@ pub fn set(c: &mut Console, what: What, i: usize, v: i32) {
     match what {
         What::Pair if i < PAIRS => c.set_pair(i, on, true),
         What::Ms if i < PAIRS => c.set_ms(i, on),
+        What::Surround => c.set_surround(v.clamp(0, 3) as u8),
+        What::SurroundPan => {
+            if let Some(p) = c.surround_pan(i / SurroundPan::FIELDS) {
+                c.set_surround_pan(i / SurroundPan::FIELDS, p.with_field(i % SurroundPan::FIELDS, v.max(0) as u32));
+            }
+        }
         What::AuxPair => c.set_output_pair(true, i, on),
         What::BusPair => c.set_output_pair(false, i, on),
         What::Gang => c.set_gang(i, on),
@@ -158,10 +174,10 @@ mod tests {
         e.configure(&ConsoleConfig { profile: Profile::Yamaha02R, counts: Counts::Y02R });
         let mut s = State::default();
         let mut c = Console::new(&e, &mut s);
-        for n in 0..19 {
+        for n in 0..21 {
             assert_eq!(What::of(n).map(|w| w as i32), Some(n));
         }
-        assert_eq!(What::of(19), None);
+        assert_eq!(What::of(21), None);
         set(&mut c, What::Pair, 8, 1);
         assert_eq!((get(&c, What::Pair, 8), c.partner(Y2Strip::Tape(0))), (Some(1), Some(Y2Strip::Tape(1))));
         set(&mut c, What::FaderGroup, 37, 9);

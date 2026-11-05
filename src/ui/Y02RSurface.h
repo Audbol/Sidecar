@@ -171,6 +171,8 @@ namespace y02r
             done at once while the preference is off, else after EXECUTE on a
             dialog (CANCEL its default; ENTER on it, or ten seconds, cancels). */
         void confirm (bool store, const juce::String& what, std::function<void()> go);
+        /** The dialog, whatever the preferences (SURROUND's, V2 MAN p.65). */
+        void ask (const juce::String& what, std::function<void()> go);
         bool isConfirming() const noexcept { return confirmGo != nullptr; }
         /** The dialog's choice: 0 CANCEL, 1 EXECUTE. */
         int getConfirmChoice() const noexcept { return confirmChoice; }
@@ -231,6 +233,9 @@ namespace y02r
         void paintMeters (juce::Graphics&, juce::Rectangle<float>) const;
         void paintEq (juce::Graphics&, juce::Rectangle<float>) const;
         void paintPrograms (juce::Graphics&, juce::Rectangle<float>) const;
+        /** ROUTING 3/4 and 4/4's pan graph: the speakers, the group's places, the trajectory. */
+        void paintSurround (juce::Graphics&, juce::Rectangle<float>) const;
+        bool surroundGraph() const;
 
         UiContext& ctx;
         const Theme& theme;
@@ -243,6 +248,8 @@ namespace y02r
         /** The digit the cursor is on; DELAY's unit (false samples, true ms). */
         int digit = 0;
         bool delayMs = false;
+        /** ROUTING 2/2's MODE while SURROUND is off (1 2+2, 2 3+1, 3 3+2+1). */
+        int surroundMode = 1;
         /** Focus on field `i`, its digit the first (from the left) or the last. */
         void focusField (int i, bool firstDigit);
         /** METER's meter point: 0 PRE EQ (an output's PRE FADER), 1 POST EQ, 2 POST FADER. */
