@@ -540,6 +540,14 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   The config tab's SOURCE picks what feeds a channel or aux in (In 01-32, Aux
   1-6, USB L / R, the FX returns, the buses): turned, then patched by SELECT.
   C ABI 48: `ld_x32_follow_links`.
+- ProMix 01: GROUP's BAL ADJ (p.56): ENTER lets the group go so one fader can
+  be set alone, the group's [SEL] keys flash, and it ends when GROUP goes.
+  MIDI's LOCAL ON/OFF (p.86): with Local OFF and the page showing, the faders
+  go out as their control changes (shown in hex) and CH1-16 [SEL] as program
+  changes, moving nothing here. MEMORY CONTROL CHANGE OUT (p.87) picks its data
+  types (ON/OFF, LEVEL, EQ, COMP, PAN, SEND, EFFECT, OTHERS) from the Edit
+  Buffer. C ABI 48: `ld_promix_memory_cc_out`, `ld_promix_local_fader`,
+  `ld_promix_local_select`, `ld_promix_bal_adj`, `ld_promix_set_bal_adj`.
 
   `ui::hw` (`src/ui/HardwareLook.*`) draws them. Keys, faders and knobs take a
   console's look when its surface asks; the Universal Mixer and the WING are

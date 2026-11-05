@@ -61,6 +61,11 @@ namespace promix
         void setParam (int n);
         int getParam() const noexcept { return param; }
         void refresh();
+        /** LOCAL OFF (p.86): while `isLocal` says so the fader moves only itself and
+            `onLocal` gets its value (0-127); without `onLocal` it sits at the bottom
+            (ST IN, RTN / SEND, ST OUT). */
+        std::function<bool()> isLocal;
+        std::function<void (int)> onLocal;
 
         void paint (juce::Graphics&) override;
         void mouseDown (const juce::MouseEvent&) override;
@@ -75,7 +80,7 @@ namespace promix
 
         UiContext& ctx;
         const Theme& theme;
-        int param = -1, step = 0, dragStart = 0;
+        int param = -1, step = 0, dragStart = 0, localStep = 0;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Fader)
     };
@@ -110,6 +115,13 @@ namespace promix
         void cursor (int delta);
         void turn (int delta);
         void enter();
+
+        /** MIDI's LOCAL ON/OFF page with Local OFF (p.86): the faders and CH1-16
+            [SEL] control nothing here; a fader's move goes out as its control
+            change, a [SEL] as a program change. Only while the page shows. */
+        bool isLocalOff() const noexcept { return localOff && function == Function::Midi && page == 4; }
+        void localMoved (int fader, int value);
+        void localSelected (int ch);
 
         void refresh();
         void paint (juce::Graphics&) override;
@@ -190,6 +202,13 @@ namespace promix
         int numPages() const;
         /** TITLE EDIT: the memory and its eight characters (indexes into kTitleChars). */
         int titleMemory = 0, pcProgram = 0, ccParam = 0;
+        /** LOCAL ON/OFF (ON at power on), the faders' last values, what was sent last. */
+        bool localOff = false;
+        std::array<int, 16> localValues {};
+        juce::String localMessage;
+        /** MEMORY CONTROL CHANGE OUT's data types (bits), and its message. */
+        uint32_t ccOutMask = 0xff;
+        juce::String ccOutMessage;
         /** METER's PEAK HOLD (p.19), and the peaks it holds (cleared when the page goes). */
         bool peakHold = false;
         mutable std::array<int, 16> peaks {};

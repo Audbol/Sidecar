@@ -424,6 +424,23 @@ pub struct Midi {
     events: VecDeque<Event>,
 }
 
+/// MEMORY CONTROL CHANGE OUT's data types (p.87), in its order.
+pub const CC_OUT_CATEGORIES: [&str; 8] = ["ON/OFF", "LEVEL", "EQ", "COMP", "PAN", "SEND", "EFFECT", "OTHERS"];
+
+/// The parameters of each data type: its bit, a range.
+const CC_OUT_RANGES: [(u32, std::ops::RangeInclusive<u16>); 10] = [
+    (0, 22..=43),
+    (1, 0..=21),
+    (2, 196..=395),
+    (3, 446..=475),
+    (4, 44..=67),
+    (4, 140..=156),
+    (5, 68..=139),
+    (6, 404..=445),
+    (7, 179..=195),
+    (7, 484..=500),
+];
+
 impl Default for Midi {
     fn default() -> Self {
         Midi {
@@ -593,6 +610,47 @@ impl Midi {
         }
         if let Some(p) = self.pc_table.program_of(scene) {
             self.out.push_back(vec![0xc0 | self.setup.tx_channel, p]);
+        }
+    }
+
+    /// MEMORY CONTROL CHANGE OUT (p.87): the control changes of the parameters
+    /// of the categories in `mask` (bits of `CC_OUT_CATEGORIES`), with the pair
+    /// flags and SEND3,4's configuration flag; nothing while CONTROL Tx is off.
+    pub fn send_categories(&mut self, c: &Console, mask: u32) {
+        if !self.setup.control.tx {
+            return;
+        }
+        for n in 0..COUNT {
+            let always = (396..=403).contains(&n) || n == 476;
+            if !always && !CC_OUT_RANGES.iter().any(|&(bit, ref r)| mask & 1 << bit != 0 && r.contains(&n)) {
+                continue;
+            }
+            let Some(v) = params::get(c, n) else { continue };
+            self.last[n as usize] = Some(v);
+            match params::param(n) {
+                Some(Param::FxParam(_, _, true)) => {
+                    let m = to_midi(v, params::steps(c, n), 16383);
+                    self.send_cc(n, m >> 7);
+                    self.send_cc(n + 1, m & 0x7f);
+                }
+                Some(Param::FxParam(_, _, false)) => {}
+                _ => self.send_cc(n, to_midi(v, params::steps(c, n), 127)),
+            }
+        }
+    }
+
+    /// LOCAL OFF (p.86): fader `f` (0-15) moved to `value` (0-127) controls
+    /// nothing here and goes out as its control change (parameters 515-530).
+    pub fn local_fader(&mut self, f: u16, value: u8) {
+        if f < 16 && self.setup.control.tx {
+            self.send_cc(515 + f, value as u16);
+        }
+    }
+
+    /// LOCAL OFF: channel `ch`'s [SEL] (0-15) sends program change `ch`.
+    pub fn local_select(&mut self, ch: u8) {
+        if ch < 16 && self.setup.program.tx {
+            self.out.push_back(vec![0xc0 | self.setup.tx_channel, ch]);
         }
     }
 
@@ -897,6 +955,36 @@ mod tests {
         m.setup.program.echo = true;
         m.receive(&mut c, &[0xc0, 4]);
         assert_eq!(m.take_out(), Some(vec![0xc0, 4]), "ECHO");
+    }
+
+    #[test]
+    fn memory_cc_out_by_category_and_local_off() {
+        let e = promix();
+        let (mut s, lib) = (State::default(), Library::default());
+        let c = Console::new(&e, &mut s, &lib);
+        let mut m = Midi::default();
+        // LEVEL alone: the levels 0-21, with the pair flags and SEND3,4's.
+        m.send_categories(&c, 1 << 1);
+        let mut sent = Vec::new();
+        while let Some(msg) = m.take_out() {
+            let bank = ((msg[0] & 0xf) + 16 - m.setup.tx_channel) % 16;
+            sent.push(m.cc_map.lookup(bank, msg[1]).expect("a parameter's controller"));
+        }
+        assert!(sent.iter().all(|&n| n <= 21 || (396..=403).contains(&n) || n == 476), "{sent:?}");
+        assert!((0..=21).all(|n| sent.contains(&n)));
+        // CONTROL Tx off: nothing.
+        m.setup.control.tx = false;
+        m.send_categories(&c, 0xff);
+        m.local_fader(3, 64);
+        assert_eq!(m.take_out(), None);
+        // LOCAL OFF: a fader's control change (parameter 518), a [SEL]'s program change.
+        m.setup.control.tx = true;
+        m.local_fader(3, 64);
+        let msg = m.take_out().unwrap();
+        let bank = ((msg[0] & 0xf) + 16 - m.setup.tx_channel) % 16;
+        assert_eq!((m.cc_map.lookup(bank, msg[1]), msg[2]), (Some(518), 64));
+        m.local_select(5);
+        assert_eq!(m.take_out(), Some(vec![0xc0, 5]));
     }
 
     #[test]

@@ -92,7 +92,8 @@ namespace promix
 
     void Fader::refresh()
     {
-        const int now = param >= 0 ? juce::jmax (0, ctx.engine.getProMix().get (param)) : 0;
+        const bool local = isLocal && isLocal();
+        const int now = local ? (onLocal ? localStep : 0) : param >= 0 ? juce::jmax (0, ctx.engine.getProMix().get (param)) : 0;
         if (now != step)
         {
             step = now;
@@ -114,6 +115,16 @@ namespace promix
     void Fader::moveTo (int s)
     {
         s = juce::jlimit (0, 127, s);
+        if (isLocal && isLocal())
+        {
+            if (onLocal && s != localStep)
+            {
+                localStep = s;
+                onLocal (s);
+                refresh();
+            }
+            return;
+        }
         if (param < 0 || s == step)
             return;
         ctx.engine.getProMix().set (param, s);
@@ -210,6 +221,8 @@ namespace promix
         }
         else
         {
+            if (function == Function::Group)
+                pm.setBalAdj (false); // BAL ADJ is GROUP's
             function = f;
             page = 0;
         }
@@ -222,7 +235,7 @@ namespace promix
         switch (function)
         {
             case Function::Utility: return 4; // SEND3,4 / OUTPUT COMP, OSCILLATOR, MEMORY PROTECT, BATTERY CHECK
-            case Function::Midi:    return 5; // MIDI SETUP, BULK, PROGRAM CHANGE ASSIGN, CONTROL CHANGE ASSIGN, MEMORY CC OUT
+            case Function::Midi:    return 6; // MIDI SETUP, BULK, PROGRAM CHANGE ASSIGN, CONTROL CHANGE ASSIGN, LOCAL ON/OFF, MEMORY CC OUT
             case Function::Meter:
             case Function::Send1:
             case Function::Send2:
@@ -470,10 +483,21 @@ namespace promix
                 }
                 break;
             case Function::Group:
+            {
                 fields.push_back (paramField (kGroupSelect, { 0.0f, 0.0f, 0.2f, 0.18f }));
+                // BAL ADJ (p.56): ENTER lets the group go while one fader is set.
+                Field bal;
+                bal.label = "BAL ADJ";
+                bal.get = [this] { return pm.balAdj() ? 1 : 0; };
+                bal.steps = [] { return 2; };
+                bal.set = [this] (int v) { pm.setBalAdj (v != 0); };
+                bal.text = [this] { return juce::String (pm.balAdj() ? "ON" : "OFF"); };
+                bal.box = { 0.24f, 0.0f, 0.22f, 0.18f };
+                fields.push_back (std::move (bal));
                 for (int m = 0; m < 17; ++m)
                     fields.push_back (paramField (kGroup + m, { 0.06f + 0.94f * (float) m / 17.0f, 0.82f, 0.94f / 17.0f, 0.16f }));
                 break;
+            }
             case Function::Pair:
                 for (int p = 0; p < 8; ++p)
                     fields.push_back (paramField (kPairExecute + p, { 0.125f * (float) p, 0.45f, 0.125f, 0.3f }, true));
@@ -529,25 +553,84 @@ namespace promix
             }
             case Function::Midi:
             {
+                if (page == 5)
+                {
+                    // MEMORY CONTROL CHANGE OUT (p.87): the Edit Buffer's data types
+                    // chosen, out as control changes; ENTER on OUTPUT executes it.
+                    // (The console's other memories go out by recalling them first.)
+                    Field memory;
+                    memory.label = "MEMORY";
+                    memory.get = [] { return 0; };
+                    memory.steps = [] { return 1; };
+                    memory.set = [] (int) {};
+                    memory.text = [] { return juce::String ("EDIT BUFFER"); };
+                    memory.box = { 0.0f, 0.02f, 0.4f, 0.22f };
+                    fields.push_back (std::move (memory));
+                    const char* const types[] = { "ON/OFF", "LEVEL", "EQ", "COMP", "PAN", "SEND", "EFFECT", "OTHERS" };
+                    for (int k = 0; k < 8; ++k)
+                    {
+                        Field f;
+                        f.label = types[k];
+                        f.get = [this, k] { return (ccOutMask >> k & 1) != 0 ? 1 : 0; };
+                        f.steps = [] { return 2; };
+                        f.set = [this, k] (int v) { ccOutMask = v != 0 ? ccOutMask | 1u << k : ccOutMask & ~(1u << k); };
+                        f.text = [this, k] { return juce::String ((ccOutMask >> k & 1) != 0 ? "ON" : "OFF"); };
+                        f.box = { 0.25f * (float) (k % 4), k < 4 ? 0.28f : 0.52f, 0.25f, 0.22f };
+                        fields.push_back (std::move (f));
+                    }
+                    Field out;
+                    out.label = "OUTPUT";
+                    out.get = [] { return -1; };
+                    out.steps = [] { return 1; };
+                    out.text = [this] { return ccOutMessage.isEmpty() ? juce::String ("ENTER: EXECUTE") : ccOutMessage; };
+                    out.textOf = [] (int) { return juce::String ("EXECUTE"); };
+                    out.set = [this] (int)
+                    {
+                        if (ctx.consoleMidi == nullptr)
+                        {
+                            ccOutMessage = "MIDI IS OFF";
+                            return;
+                        }
+                        pm.memoryCcOut (ccOutMask);
+                        ccOutMessage = "....DONE";
+                    };
+                    out.onEnter = true;
+                    out.pending = 0;
+                    out.box = { 0.25f, 0.78f, 0.5f, 0.2f };
+                    fields.push_back (std::move (out));
+                    break;
+                }
                 if (page == 4)
                 {
-                    // MEMORY CONTROL CHANGE OUT (p.87): the edit buffer, every
-                    // category, out as control changes; ENTER executes it.
-                    Field f;
-                    f.label = "OUTPUT (EDIT BUFFER, ALL CATEGORIES)";
-                    f.get = [] { return -1; };
-                    f.steps = [] { return 1; };
-                    f.text = [] { return juce::String ("ENTER: EXECUTE"); };
-                    f.textOf = [] (int) { return juce::String ("EXECUTE"); };
-                    f.set = [this] (int)
+                    // LOCAL ON/OFF (p.86): with Local OFF the faders and CH1-16 [SEL]
+                    // control another device (control and program changes), only
+                    // while this page shows; the faders' values in hex.
+                    Field local;
+                    local.label = "LOCAL ON/OFF";
+                    local.get = [this] { return localOff ? 0 : 1; };
+                    local.steps = [] { return 2; };
+                    local.set = [this] (int v) { localOff = v == 0; localMessage.clear(); };
+                    local.text = [this] { return juce::String (localOff ? "OFF" : "ON"); };
+                    local.box = { 0.0f, 0.02f, 0.36f, 0.22f };
+                    fields.push_back (std::move (local));
+                    Field message;
+                    message.get = [] { return 0; };
+                    message.steps = [] { return 1; };
+                    message.set = [] (int) {};
+                    message.text = [this] { return localMessage; };
+                    message.box = { 0.4f, 0.02f, 0.6f, 0.22f };
+                    fields.push_back (std::move (message));
+                    for (int k = 0; k < 16; ++k)
                     {
-                        if (ctx.consoleMidi != nullptr)
-                            ctx.consoleMidi->resendAll();
-                    };
-                    f.onEnter = true;
-                    f.pending = 0;
-                    f.box = { 0.2f, 0.3f, 0.6f, 0.34f };
-                    fields.push_back (std::move (f));
+                        Field f;
+                        f.label = juce::String (k + 1);
+                        f.get = [] { return 0; };
+                        f.steps = [] { return 1; };
+                        f.set = [] (int) {};
+                        f.text = [this, k] { return juce::String::toHexString (localValues[(size_t) k]).paddedLeft ('0', 2).toUpperCase(); };
+                        f.box = { (float) (k % 8) / 8.0f, k < 8 ? 0.34f : 0.66f, 0.125f, 0.28f };
+                        fields.push_back (std::move (f));
+                    }
                     break;
                 }
                 if (page == 3)
@@ -806,6 +889,13 @@ namespace promix
             setFunction (Function::MemoryRecall);
             return;
         }
+        if (function == Function::Group)
+        {
+            // ENTER turns BAL ADJ on and off (p.56), wherever the cursor is.
+            pm.setBalAdj (! pm.balAdj());
+            build();
+            return;
+        }
         auto& f = fields[(size_t) focus];
         if (f.onEnter)
         {
@@ -822,6 +912,22 @@ namespace promix
             f.set (f.get() == 0 ? 1 : 0);
         }
         build(); // a type or a mode changes the page's fields
+    }
+
+    void Display::localMoved (int fader, int value)
+    {
+        localValues[(size_t) juce::jlimit (0, 15, fader)] = value;
+        if (ctx.consoleMidi != nullptr)
+            pm.localFader (fader, value);
+        repaint();
+    }
+
+    void Display::localSelected (int ch)
+    {
+        if (ctx.consoleMidi != nullptr)
+            pm.localSelect (ch);
+        localMessage = ctx.consoleMidi != nullptr ? "Program Change Transmitted" : "MIDI IS OFF";
+        repaint();
     }
 
     void Display::refresh()
@@ -857,6 +963,8 @@ namespace promix
         if (function == Function::Midi && page == 3)
             t = "CONTROL CHANGE ASSIGN";
         if (function == Function::Midi && page == 4)
+            t = "LOCAL ON/OFF";
+        if (function == Function::Midi && page == 5)
             t = "MEMORY CONTROL CHANGE OUT";
         if (function == Function::Comp)
             t << " " << (processor + 1) << (page == 1 ? "  EDIT" : "");
@@ -1208,6 +1316,9 @@ ProMixSurface::ProMixSurface (UiContext& c)
     for (int i = 0; i < kNumFaders; ++i)
     {
         faders[(size_t) i] = std::make_unique<promix::Fader> (ctx, theme);
+        faders[(size_t) i]->isLocal = [this] { return display.isLocalOff(); };
+        if (i < 16)
+            faders[(size_t) i]->onLocal = [this, i] (int v) { display.localMoved (i, v); };
         addAndMakeVisible (*faders[(size_t) i]);
         auto& sel = selKeys[(size_t) i];
         sel = std::make_unique<ToggleKey> ("SEL", kSelLed, theme);
@@ -1215,7 +1326,11 @@ ProMixSurface::ProMixSurface (UiContext& c)
         sel->isOn = [this, i]
         {
             if (display.getFunction() == Function::Group && i < 17)
-                return pm.get (kGroup + i) == pm.get (kGroupSelect) + 1;
+            {
+                // BAL ADJ: the group's [SEL] keys flash.
+                const bool in = pm.get (kGroup + i) == pm.get (kGroupSelect) + 1;
+                return in && (! pm.balAdj() || (juce::Time::getMillisecondCounter() / 300) % 2 == 0);
+            }
             if (display.getFunction() == Function::Cue)
                 return pm.get (cueParam (i)) == 1;
             if (i < 16)
@@ -1447,6 +1562,13 @@ void ProMixSurface::pressSel (int i)
 {
     using promix::Function;
     const auto f = display.getFunction();
+    if (display.isLocalOff())
+    {
+        // LOCAL OFF: CH1-16 [SEL] send program changes (p.86).
+        if (i < 16)
+            display.localSelected (i);
+        return;
+    }
     if (f == Function::Group && i < 17)
     {
         // A channel in or out of the group shown (p.56).

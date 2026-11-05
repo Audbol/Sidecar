@@ -1804,6 +1804,17 @@ extern "C"
     void ld_promix_midi_poll (LdProMix*);
     /** The next poll sends every value. */
     void ld_promix_midi_resend (LdProMix*);
+    /** ABI 48: MEMORY CONTROL CHANGE OUT: the Edit Buffer's control changes for the
+        data types in `mask` (bit 0 ON/OFF, 1 LEVEL, 2 EQ, 3 COMP, 4 PAN, 5 SEND,
+        6 EFFECT, 7 OTHERS), queued to send. */
+    void ld_promix_memory_cc_out (LdProMix*, uint32_t mask);
+    /** ABI 48: LOCAL OFF: a fader (0-15) moved to `value` (0-127) goes out as its
+        control change; a channel's [SEL] (0-15) as program change `ch`. */
+    void ld_promix_local_fader (LdProMix*, int32_t fader, int32_t value);
+    void ld_promix_local_select (LdProMix*, int32_t ch);
+    /** ABI 48: BAL ADJ: the fader groups let go while on. */
+    bool ld_promix_bal_adj (const LdProMix*);
+    void ld_promix_set_bal_adj (LdProMix*, bool on);
     /** Scene `scene` (0-50, 0 scene 00) was recalled: its program change goes out. */
     void ld_promix_scene_recalled (LdProMix*, int32_t scene);
     /** The next message to send: its length, 0 for none, minus its length if `max` is too small. */

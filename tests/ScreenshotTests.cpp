@@ -490,8 +490,32 @@ private:
         expectEquals (pm.ccCode (0) >> 8, 3);
         expect (rig.settings.getValue (ProMixMidi::ccKey).isNotEmpty());
         pm.setCcCode (0, cc0);
+        // LOCAL ON/OFF (the fifth): Local OFF lets the faders and [SEL] go, only
+        // while the page shows; MEMORY CC OUT (the sixth): its data types.
         skin.pressFunction (F::Midi);
-        expectEquals (display.getFields()[0].textOf (0), juce::String ("EXECUTE"));
+        expectEquals (display.getPage(), 4);
+        expect (! display.isLocalOff(), "ON at first");
+        display.getFields()[0].set (0);
+        expect (display.isLocalOff());
+        const int level3 = pm.get (3);
+        display.localMoved (3, 0x40);
+        expectEquals (pm.get (3), level3, "a fader moves nothing here");
+        expectEquals (display.getFields()[2 + 3].text(), juce::String ("40"));
+        skin.pressSel (3);
+        expect (display.getFields()[1].text().isNotEmpty(), "a [SEL]: its program change");
+        skin.pressFunction (F::Midi);
+        expectEquals (display.getPage(), 5);
+        expect (! display.isLocalOff(), "only while LOCAL ON/OFF shows");
+        expectEquals (display.getFields()[2].label, juce::String ("LEVEL"));
+        display.getFields()[2].set (0);
+        expectEquals (display.getFields()[2].text(), juce::String ("OFF"));
+        expectEquals (display.getFields().back().textOf (0), juce::String ("EXECUTE"));
+        // GROUP's BAL ADJ: ENTER, off again when GROUP goes.
+        skin.pressFunction (F::Group);
+        display.enter();
+        expect (pm.balAdj());
+        skin.pressFunction (F::Meter);
+        expect (! pm.balAdj());
         // METER's PEAK HOLD.
         skin.pressFunction (F::Meter);
         expectEquals (display.getFields()[0].label, juce::String ("PEAK HOLD"));
@@ -506,6 +530,15 @@ private:
                 juce::FileOutputStream stream (out);
                 juce::PNGImageFormat().writeImageToStream (lcd, stream);
             };
+            display.setFunction (F::Midi);
+            display.setPage (4);
+            save ("local");
+            display.setPage (5);
+            save ("cc-out");
+            display.setFunction (F::Group);
+            display.enter();
+            save ("group-bal-adj");
+            display.enter();
             display.setFunction (F::MemoryRecall);
             save ("recall");
             display.editTitle (2, "TCENE 02");

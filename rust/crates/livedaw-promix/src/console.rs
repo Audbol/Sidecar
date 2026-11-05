@@ -158,7 +158,7 @@ impl<'a> Console<'a> {
             PmStrip::StIn => Some(CHANNELS),
             _ => None,
         };
-        let Some(m) = member.filter(|_| origin == Origin::Panel) else { return };
+        let Some(m) = member.filter(|_| origin == Origin::Panel && !self.state.bal_adj) else { return };
         let group = self.state.groups[m];
         if group == 0 {
             return;
@@ -746,6 +746,11 @@ mod tests {
         assert_eq!((c.level(PmStrip::Ch(5)), c.level(PmStrip::StIn)), (100, 90));
         c.set_level(PmStrip::Ch(5), 50, Origin::Midi);
         assert_eq!((c.level(PmStrip::Ch(4)), c.level(PmStrip::StIn)), (110, 90));
+        // BAL ADJ: the group let go, the panel moves one fader alone.
+        c.state.bal_adj = true;
+        c.set_level(PmStrip::Ch(4), 100, Origin::Panel);
+        assert_eq!((c.level(PmStrip::Ch(5)), c.level(PmStrip::StIn)), (50, 90));
+        c.state.bal_adj = false;
         // Pairing takes channels out of their group.
         c.execute_pair(2, 1);
         assert_eq!((c.state.groups[4], c.state.groups[5]), (0, 0));

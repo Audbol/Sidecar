@@ -62,6 +62,15 @@ public:
     void setPcScene (int pc, int scene) { ld::ld_promix_set_pc_scene (handle, pc, scene); }
     /** CONTROL CHANGE ASSIGN: entry `n`'s code (parameter n: bank << 8 | cc, -1 none), and setting it; the whole table as text, and back. */
     int ccCode (int n) const { return ld::ld_promix_cc_of (handle, n); }
+    /** MEMORY CONTROL CHANGE OUT: the Edit Buffer's control changes for the data
+        types in `mask` (bit 0 ON/OFF ... 7 OTHERS), queued for ProMixMidi. */
+    void memoryCcOut (uint32_t mask) { ld::ld_promix_memory_cc_out (handle, mask); }
+    /** LOCAL OFF: a fader (0-15) out as its control change, a [SEL] (0-15) as a program change. */
+    void localFader (int fader, int value) { ld::ld_promix_local_fader (handle, fader, value); }
+    void localSelect (int ch) { ld::ld_promix_local_select (handle, ch); }
+    /** BAL ADJ: the fader groups let go while on. */
+    bool balAdj() const { return ld::ld_promix_bal_adj (handle); }
+    void setBalAdj (bool on) { ld::ld_promix_set_bal_adj (handle, on); }
     void setCcCode (int n, int code) { ld::ld_promix_set_cc (handle, n, code); }
     juce::String getCcText() const
     {

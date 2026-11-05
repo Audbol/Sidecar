@@ -41,7 +41,10 @@ impl LdProMix {
                 self.state = State::default();
                 self.version = engine.set_console_text(&self.state.to_text());
             } else {
+                // BAL ADJ isn't in the text: the panel's, kept.
+                let bal_adj = self.state.bal_adj;
                 self.state = State::from_text(&text);
+                self.state.bal_adj = bal_adj;
                 self.version = version;
             }
         }
@@ -128,6 +131,62 @@ pub unsafe extern "C" fn ld_promix_midi_poll(p: *mut LdProMix) {
 pub unsafe extern "C" fn ld_promix_midi_resend(p: *mut LdProMix) {
     if let Some(p) = p.as_mut() {
         p.midi.resend_all();
+    }
+}
+
+/// ABI 48: MEMORY CONTROL CHANGE OUT (p.87): the Edit Buffer's control changes
+/// for the data types in `mask` (bit 0 ON/OFF, 1 LEVEL, 2 EQ, 3 COMP, 4 PAN,
+/// 5 SEND, 6 EFFECT, 7 OTHERS), queued to send.
+///
+/// # Safety
+/// `p` is from `ld_promix_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_promix_memory_cc_out(p: *mut LdProMix, mask: u32) {
+    if let Some(p) = p.as_mut() {
+        guard((), || {
+            p.with(|c, m| m.send_categories(c, mask));
+        });
+    }
+}
+
+/// ABI 48: LOCAL OFF (p.86): fader `fader` (0-15) moved to `value` (0-127)
+/// goes out as its control change; it moves nothing here.
+///
+/// # Safety
+/// `p` is from `ld_promix_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_promix_local_fader(p: *mut LdProMix, fader: i32, value: i32) {
+    if let (Some(p), Ok(f)) = (p.as_mut(), u16::try_from(fader)) {
+        p.midi.local_fader(f, value.clamp(0, 127) as u8);
+    }
+}
+
+/// ABI 48: LOCAL OFF: channel `ch`'s [SEL] (0-15) sends program change `ch`.
+///
+/// # Safety
+/// `p` is from `ld_promix_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_promix_local_select(p: *mut LdProMix, ch: i32) {
+    if let (Some(p), Ok(ch)) = (p.as_mut(), u8::try_from(ch)) {
+        p.midi.local_select(ch);
+    }
+}
+
+/// ABI 48: BAL ADJ (p.56): the fader groups let go while on.
+///
+/// # Safety
+/// `p` is from `ld_promix_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_promix_bal_adj(p: *const LdProMix) -> bool {
+    p.as_ref().is_some_and(|p| p.state.bal_adj)
+}
+
+/// # Safety
+/// `p` is from `ld_promix_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_promix_set_bal_adj(p: *mut LdProMix, on: bool) {
+    if let Some(p) = p.as_mut() {
+        p.state.bal_adj = on;
     }
 }
 

@@ -170,6 +170,9 @@ pub struct State {
     pub cue_mode: u8,
     /// The effects programs last recalled into effects 1-2 (0-39).
     pub fx_programs: [u8; 2],
+    /// BAL ADJ (p.56): the groups let go for a while, a grouped fader moving
+    /// alone. Not kept: the panel's, while GROUP shows.
+    pub bal_adj: bool,
 }
 
 impl Default for State {
@@ -187,6 +190,7 @@ impl Default for State {
             cue_mode: 1,
             // REVERB HALL 1 and DELAY L-C-R (the factory rack: Sidecar's choice).
             fx_programs: [0, 13],
+            bal_adj: false,
         }
     }
 }
