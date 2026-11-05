@@ -609,6 +609,32 @@ impl<'a> Console<'a> {
         }
     }
 
+    /// The strip's EQ now as a program named `name` (STORE, p.22).
+    pub fn eq_program_of(&self, s: PmStrip, name: &str) -> crate::library::EqProgram {
+        use livedaw_dsp::promix::{HIGH_FREQS, LOW_FREQS, MID_FREQS};
+        let band = |b: usize| {
+            let table = [LOW_FREQS, MID_FREQS, HIGH_FREQS][b];
+            let f = table.get(self.eq_value(s, b, 0) as usize).copied().unwrap_or(table[0]);
+            (self.eq_value(s, b, 1) as f32 - 15.0, f, self.eq_value(s, b, 2) as u8)
+        };
+        crate::library::EqProgram { name: name.into(), bands: [band(0), band(1), band(2)] }
+    }
+
+    /// Processor `i` now as a dynamics program (p.77).
+    pub fn dyn_program_of(&self, i: usize, name: &str) -> Option<crate::library::DynProgram> {
+        let p = self.state.processors.get(i)?;
+        Some(crate::library::DynProgram { name: name.into(), model: p.model, values: p.values })
+    }
+
+    /// Effect `slot` now as an effects program (p.36).
+    pub fn fx_program_of(&self, slot: usize, name: &str) -> Option<crate::library::FxProgram> {
+        let fx = self.engine.controls.fx.get(slot)?;
+        let models = self.engine.fx_models();
+        let spec = models.get(fx.model_index_in(models))?;
+        let values = fx.values.iter().take(spec.params.len()).map(|v| v.load()).collect();
+        Some(crate::library::FxProgram { name: name.into(), token: spec.token, values })
+    }
+
     /// CUE (Sidecar's solo) of a strip.
     pub fn cue(&self, s: PmStrip) -> bool {
         self.strip(s).is_some_and(|st| st.params.solo.load(Relaxed))

@@ -48,6 +48,16 @@ public:
     juce::String programName (int library, int n) const { return takeString (ld::ld_promix_program_name (handle, library, n)); }
     /** Recalls EQ program `n` (0-49) onto EQ strip `strip` (0-15 CH, 16 ST IN, 17-18 RTN, 19 ST OUT). */
     void recallEq (int strip, int n) { ld::ld_promix_recall_eq (handle, strip, n); }
+    /** STORE: what's on `target` (an effect slot, a processor, an EQ strip) as user
+        program `n` of `library` (0-based: effects 30-39, dynamics 10-19, EQ
+        30-49), named; false for a preset. The user programs as text (the
+        console's memory: the app keeps it), and back. */
+    bool storeProgram (int library, int n, int target, const juce::String& name)
+    {
+        return ld::ld_promix_store_program (handle, library, n, target, name.toRawUTF8(), name.getNumBytesAsUTF8());
+    }
+    juce::String getLibraryText() const { return takeString (ld::ld_promix_library_text (handle)); }
+    void setLibraryText (const juce::String& text) { ld::ld_promix_set_library_text (handle, text.toRawUTF8(), text.getNumBytesAsUTF8()); }
     /** Recalls scene 00, the initial data. */
     void recallInitial() { ld::ld_promix_recall_initial (handle); }
 

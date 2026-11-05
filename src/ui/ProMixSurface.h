@@ -129,8 +129,13 @@ namespace promix
         std::function<void (int)> chooseMemory;
         std::function<void()> storeChosen, recallChosen;
         std::function<void (int memory, const juce::String&)> setMemoryTitle;
-        /** TITLE EDIT for memory `m` (its title now `title`), back to `after` when done. */
+        /** TITLE EDIT for memory `m` (its title now `title`). */
         void editTitle (int m, const juce::String& title);
+        /** A program's NAME (STORE on a library page, p.22): user program `n` of
+            `library`, from `target`; ENTER stores it. */
+        void editProgramName (int library, int n, int target);
+        /** A user program was stored (the surface keeps the library). */
+        std::function<void()> libraryChanged;
         /** MEMORY PROTECT (UTILITY, p.65): memories 01-25 and 26-50 (the app's settings). */
         std::function<bool (int half)> isProtected;
         std::function<void (int half, bool)> setProtected;
@@ -185,7 +190,12 @@ namespace promix
         int numPages() const;
         /** TITLE EDIT: the memory and its eight characters (indexes into kTitleChars). */
         int titleMemory = 0;
-        std::array<int, 8> titleChars {};
+        std::array<int, 15> titleChars {};
+        /** What TITLE EDIT names: a memory (-1), or a program of library 0-2 (its number, its target), and where it came from. */
+        int nameLibrary = -1, nameProgram = 0, nameTarget = 0;
+        Function nameFrom = Function::Meter;
+        /** A library page's STORE field: the user programs `first`.. `first + count - 1` of `library`, from `target`. */
+        Field storeField (int library, int first, int count, int target, juce::Rectangle<float> box);
         std::vector<Field> fields;
         juce::String shown;
         float dragY = 0.0f;
@@ -236,6 +246,9 @@ public:
     /** RTN / SEND's strip: 0 RTN1, 1 RTN2, 2 SEND3, 3 SEND4. */
     int getRtnSend() const noexcept { return rtnSend; }
     /** The scene memory number (0-50, 0 scene 00). */
+    /** The app settings' MEMORY PROTECT ("lo hi", 0 or 1 each) and user programs (ProMix::getLibraryText). */
+    static constexpr const char* protectKey = "promix.memoryProtect";
+    static constexpr const char* libraryKey = "promix.library";
     int getMemory() const noexcept { return memory; }
     void setMemory (int m) { memory = juce::jlimit (0, 50, m); repaint(); }
     void store();
@@ -271,7 +284,6 @@ private:
     void pressRecall();
     /** MEMORY PROTECT of memories 01-25 (`half` 0) or 26-50 (1). */
     bool isProtected (int half) const;
-    static constexpr const char* protectKey = "promix.memoryProtect"; // "lo hi", 0 or 1 each
     double wheelLast = 0.0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ProMixSurface)

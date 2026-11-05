@@ -225,11 +225,105 @@ impl Library {
             _ => self.eq_user.get(n - 30).cloned(),
         }
     }
+
+    /// Stores a user program (STORE, p.22, p.36, p.77): effects 31-40 (`n`
+    /// 30-39), dynamics 11-20 (10-19), EQ 31-50 (30-49); a preset can't be
+    /// overwritten. Whether it was stored.
+    pub fn store_fx(&mut self, n: usize, p: FxProgram) -> bool {
+        Self::put(&mut self.fx_user, n, 30, p)
+    }
+
+    pub fn store_dyn(&mut self, n: usize, p: DynProgram) -> bool {
+        Self::put(&mut self.dyn_user, n, 10, p)
+    }
+
+    pub fn store_eq(&mut self, n: usize, p: EqProgram) -> bool {
+        Self::put(&mut self.eq_user, n, 30, p)
+    }
+
+    fn put<T>(user: &mut [T], n: usize, first: usize, p: T) -> bool {
+        match n.checked_sub(first).and_then(|i| user.get_mut(i)) {
+            Some(slot) => {
+                *slot = p;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// The user programs as text (one per line: `fx.N`, `dyn.N` or `eq.N`,
+    /// the name, a tab, the values), for the host to keep: the console's
+    /// memory, not a scene's.
+    pub fn user_text(&self) -> String {
+        let clean = |s: &str| s.replace(['\t', '\n', '\r', '='], " ");
+        let nums = |v: &[f32]| v.iter().map(|x| format!("{x}")).collect::<Vec<_>>().join(" ");
+        let mut out = String::new();
+        for (i, p) in self.fx_user.iter().enumerate() {
+            out.push_str(&format!("fx.{}={}\t{} {}\n", i + 31, clean(&p.name), p.token, nums(&p.values)));
+        }
+        for (i, p) in self.dyn_user.iter().enumerate() {
+            out.push_str(&format!("dyn.{}={}\t{} {}\n", i + 11, clean(&p.name), p.model, nums(&p.values)));
+        }
+        for (i, p) in self.eq_user.iter().enumerate() {
+            let b: Vec<f32> = p.bands.iter().flat_map(|(g, f, q)| [*g, *f, *q as f32]).collect();
+            out.push_str(&format!("eq.{}={}\t{}\n", i + 31, clean(&p.name), nums(&b)));
+        }
+        out
+    }
+
+    /// Sets the user programs from `user_text` (lines it doesn't know: ignored).
+    pub fn apply_text(&mut self, text: &str) {
+        for line in text.lines() {
+            let Some((key, rest)) = line.split_once('=') else { continue };
+            let Some((kind, n)) = key.split_once('.') else { continue };
+            let Ok(n) = n.trim().parse::<usize>() else { continue };
+            let (name, values) = rest.split_once('\t').unwrap_or((rest, ""));
+            let mut words = values.split_whitespace();
+            let head = words.next().unwrap_or("");
+            let rest: Vec<f32> = words.filter_map(|x| x.parse().ok()).collect();
+            let name = name.trim().to_string();
+            match kind {
+                "fx" => {
+                    if let Some(&(_, token, _)) = FX_PRESETS.iter().find(|p| p.1 == head) {
+                        self.store_fx(n - 1, FxProgram { name, token, values: rest });
+                    }
+                }
+                "dyn" if rest.len() >= 5 => {
+                    if let Ok(model) = head.parse::<u8>() {
+                        self.store_dyn(n - 1, DynProgram { name, model, values: [rest[0], rest[1], rest[2], rest[3], rest[4]] });
+                    }
+                }
+                "eq" => {
+                    let all: Vec<f32> = std::iter::once(head).filter_map(|x| x.parse().ok()).chain(rest).collect();
+                    if all.len() >= 9 {
+                        let band = |k: usize| (all[3 * k], all[3 * k + 1], all[3 * k + 2] as u8);
+                        self.store_eq(n - 1, EqProgram { name, bands: [band(0), band(1), band(2)] });
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn user_programs_store_and_keep() {
+        let mut l = Library::default();
+        let eq = EqProgram { name: "My Vox".into(), bands: [(3.0, 100.0, 9), (-2.0, 2500.0, 4), (1.0, 10000.0, 9)] };
+        assert!(!l.store_eq(5, eq.clone()), "a preset stays");
+        assert!(l.store_eq(30, eq.clone()));
+        let dy = DynProgram { name: "Snappy".into(), model: 0, values: [-10.0, 3.0, 5.0, 2.0, 1.0] };
+        assert!(l.store_dyn(19, dy.clone()));
+        let fx = FxProgram { name: "Big Room".into(), ..Library::fx_preset(3) };
+        assert!(l.store_fx(39, fx.clone()));
+        let mut back = Library::default();
+        back.apply_text(&l.user_text());
+        assert_eq!((back.eq_program(30), back.program(19), back.fx_program(39)), (Some(eq), Some(dy), Some(fx)));
+    }
     use livedaw_dsp::promix::DYN_MODELS;
 
     #[test]

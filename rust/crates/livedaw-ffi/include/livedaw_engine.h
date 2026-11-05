@@ -29,7 +29,7 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 46;
+constexpr int kAbiVersion = 47;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -1841,6 +1841,13 @@ extern "C"
         `strip` (0-15 CH, 16 ST IN, 17-18 RTN, 19 ST OUT). */
     LdString* ld_promix_program_name (const LdProMix*, int32_t kind, int32_t n);
     void ld_promix_recall_eq (LdProMix*, int32_t strip, int32_t n);
+    /** ABI 47: STORE: what's on `target` (effect slot, processor, EQ strip) as user
+        program `n` of library `kind` (effects 30-39, dynamics 10-19, EQ 30-49),
+        named; whether it was stored. The user programs as text, for the host
+        to keep (the console's memory, not a scene's), and back. */
+    bool ld_promix_store_program (LdProMix*, int32_t kind, int32_t n, int32_t target, const char* name, size_t len);
+    LdString* ld_promix_library_text (const LdProMix*);
+    void ld_promix_set_library_text (LdProMix*, const char* text, size_t len);
     /** The console's own state as text (pairs, groups, processors...), and back. */
     LdString* ld_promix_state_text (LdProMix*);
     void ld_promix_set_state_text (LdProMix*, const char* text, size_t len);

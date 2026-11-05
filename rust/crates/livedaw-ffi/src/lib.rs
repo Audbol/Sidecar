@@ -104,7 +104,7 @@ use std::sync::Arc;
 // ABI 45 (Phase 6 step 1): the 02R profile (4); a strip kind's fader law
 // (ld_engine_fader_law_of: the 02R's STEREO has its own).
 // ABI 46 (Phase 6 step 5): the 02R's MIDI (ld_y02r_*, RemotesC::midi 3).
-pub const LD_ABI_VERSION: i32 = 46;
+pub const LD_ABI_VERSION: i32 = 47;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(default)

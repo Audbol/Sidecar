@@ -415,6 +415,17 @@ private:
         skin.pressFunction (F::Utility);
         skin.pressFunction (F::Utility);
         display.turn (-1);
+        // EQ LIBRARY's STORE: user program 31, named, kept in the settings.
+        skin.pressFunction (F::Library);
+        display.cursor (1);
+        expectEquals (display.getFields()[(size_t) display.getCursor()].label, juce::String ("STORE"));
+        display.enter();
+        expect (display.getFunction() == F::TitleEdit);
+        display.turn (1); // "Initial Data": I to J
+        display.enter();
+        expect (display.getFunction() == F::Library);
+        expectEquals (pm.programName (ProMix::Eq, 30), juce::String ("Jnitial Data"));
+        expect (rig.settings.getValue (ui::ProMixSurface::libraryKey).contains ("Jnitial Data"));
         // Each page's look, for review (not the docs).
         if (const auto shots = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {}); shots.isNotEmpty())
         {

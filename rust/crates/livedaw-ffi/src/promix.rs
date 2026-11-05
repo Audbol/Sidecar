@@ -411,6 +411,60 @@ pub unsafe extern "C" fn ld_promix_recall_eq(p: *mut LdProMix, strip: i32, n: i3
     });
 }
 
+/// Stores what's on `target` as user program `n` (0-based) of library `kind`
+/// (0 effects 31-40 from effect `target`; 1 dynamics 11-20 from processor
+/// `target`; 2 EQ 31-50 from EQ strip `target`), named `name`. Whether it was
+/// stored (a preset can't be overwritten).
+///
+/// # Safety
+/// `p` is from `ld_promix_create` (or null); `name` holds `len` bytes of UTF-8.
+#[no_mangle]
+pub unsafe extern "C" fn ld_promix_store_program(p: *mut LdProMix, kind: i32, n: i32, target: i32, name: *const u8, len: usize) -> bool {
+    let (Some(p), Ok(n), Ok(target)) = (p.as_mut(), usize::try_from(n), usize::try_from(target)) else { return false };
+    let name = str_arg(name, len);
+    guard(false, || {
+        enum Prog {
+            Fx(livedaw_promix::library::FxProgram),
+            Dyn(livedaw_promix::library::DynProgram),
+            Eq(livedaw_promix::library::EqProgram),
+        }
+        let prog = p
+            .with(|c, _| match kind {
+                0 => c.fx_program_of(target, &name).map(Prog::Fx),
+                1 => c.dyn_program_of(target, &name).map(Prog::Dyn),
+                _ => livedaw_promix::console::PmStrip::eq_strip(target).map(|s| Prog::Eq(c.eq_program_of(s, &name))),
+            })
+            .flatten();
+        match prog {
+            Some(Prog::Fx(x)) => p.library.store_fx(n, x),
+            Some(Prog::Dyn(x)) => p.library.store_dyn(n, x),
+            Some(Prog::Eq(x)) => p.library.store_eq(n, x),
+            None => false,
+        }
+    })
+}
+
+/// The user programs as text (`Library::user_text`), for the host to keep.
+///
+/// # Safety
+/// `p` is from `ld_promix_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_promix_library_text(p: *const LdProMix) -> *mut LdString {
+    p.as_ref().map_or(std::ptr::null_mut(), |p| LdString::new(p.library.user_text()))
+}
+
+/// Sets the user programs from `ld_promix_library_text`'s text.
+///
+/// # Safety
+/// `p` is from `ld_promix_create` (or null); `text` holds `len` bytes of UTF-8.
+#[no_mangle]
+pub unsafe extern "C" fn ld_promix_set_library_text(p: *mut LdProMix, text: *const u8, len: usize) {
+    if let Some(p) = p.as_mut() {
+        let text = str_arg(text, len);
+        p.library.apply_text(&text);
+    }
+}
+
 /// Parameter `n`'s name (the Control Change table's words).
 #[no_mangle]
 pub extern "C" fn ld_promix_param_name(n: i32) -> *mut LdString {

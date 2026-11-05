@@ -487,6 +487,14 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   bus); OSC (level, frequency, sine, pink or white, on). HOME's second layer
   (p.47): 48V of the strip's input, a DCA and a mute group picked and
   assigned by their pushes.
+- The ProMix 01's libraries store user programs (pp.22, 36, 77): EQ LIBRARY, a
+  SEND's effects list and COMP's list have a STORE field; the wheel picks a
+  user program (EQ 31-50, effects 31-40, dynamics 11-20), ENTER opens its NAME
+  (fifteen characters), ENTER again stores what's on the EQ strip, the effect
+  or the processor. The user programs are the console's memory: the app keeps
+  them in its settings, not in the show's scenes. C ABI 47:
+  `ld_promix_store_program`, `ld_promix_library_text`,
+  `ld_promix_set_library_text`.
 
   `ui::hw` (`src/ui/HardwareLook.*`) draws them. Keys, faders and knobs take a
   console's look when its surface asks; the Universal Mixer and the WING are

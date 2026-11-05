@@ -231,8 +231,39 @@ namespace promix
         }
     }
 
+    void Display::editProgramName (int library, int n, int target)
+    {
+        nameFrom = function;
+        nameLibrary = library;
+        nameProgram = n;
+        nameTarget = target;
+        const auto name = pm.programName (library, n);
+        for (int k = 0; k < 15; ++k)
+            titleChars[(size_t) k] = juce::jmax (0, kTitleChars.indexOfChar (k < name.length() ? name[k] : ' '));
+        function = Function::TitleEdit;
+        page = 0;
+        focus = 0;
+        build();
+    }
+
+    Display::Field Display::storeField (int library, int first, int count, int target, juce::Rectangle<float> box)
+    {
+        Field f;
+        f.label = "STORE";
+        f.get = [] { return -1; };
+        f.steps = [count] { return count; };
+        f.text = [] { return juce::String ("ENTER"); };
+        f.textOf = [this, library, first] (int v) { return juce::String (first + v + 1).paddedLeft ('0', 2) + " " + pm.programName (library, first + v); };
+        f.set = [this, library, first, target] (int v) { editProgramName (library, first + v, target); };
+        f.onEnter = true;
+        f.pending = 0;
+        f.box = box;
+        return f;
+    }
+
     void Display::editTitle (int m, const juce::String& title)
     {
+        nameLibrary = -1;
         titleMemory = m;
         for (int k = 0; k < 8; ++k)
             titleChars[(size_t) k] = juce::jmax (0, kTitleChars.indexOfChar (k < title.length() ? title[k] : ' '));
@@ -355,6 +386,8 @@ namespace promix
                 f.box = { 0.0f, 0.0f, 0.62f, 1.0f };
                 f.pending = 0;
                 fields.push_back (std::move (f));
+                fields.push_back (storeField (ProMix::Eq, 30, 20, eqStrip, { 0.0f, 0.0f, 0.0f, 0.0f }));
+                fields.back().box = { 0.64f, 0.0f, 0.36f, 0.2f };
                 break;
             }
             case Function::Send1:
@@ -365,6 +398,7 @@ namespace promix
                 {
                     fields.push_back (listField ("EFFECT " + juce::String (fx + 1), ProMix::Effects, 40, kFxType + fx, { 0.0f, 0.0f, 0.62f, 1.0f }));
                     fields.push_back (paramField (kSendPre + fx, { 0.66f, 0.80f, 0.34f, 0.18f }));
+                    fields.push_back (storeField (ProMix::Effects, 30, 10, fx, { 0.66f, 0.56f, 0.34f, 0.18f }));
                 }
                 else
                 {
@@ -401,6 +435,7 @@ namespace promix
                     fields.push_back (paramField (kCompKey + k, { 0.36f, 0.0f, 0.18f, 0.2f }, true));
                     fields.push_back (paramField (kCompIn + k, { 0.54f, 0.0f, 0.14f, 0.2f }));
                     fields.push_back (listField ("COMP " + juce::String (k + 1), ProMix::Dynamics, 20, kCompType + k, { 0.0f, 0.24f, 0.68f, 0.76f }));
+                    fields.push_back (storeField (ProMix::Dynamics, 10, 10, k, { 0.70f, 0.24f, 0.30f, 0.2f }));
                 }
                 else
                 {
@@ -558,19 +593,25 @@ namespace promix
                 break;
             }
             case Function::TitleEdit:
-                // Eight characters: the cursor keys choose one, the wheel changes it, ENTER keeps the title.
-                for (int k = 0; k < 8; ++k)
+            {
+                // A memory's eight characters, or a program's fifteen: the cursor keys
+                // choose one, the wheel changes it, ENTER keeps the title.
+                const int n = nameLibrary < 0 ? 8 : 15;
+                const float w = nameLibrary < 0 ? 0.1f : 0.06f;
+                for (int k = 0; k < n; ++k)
                 {
                     Field f;
-                    f.label = k == 0 ? "TITLE " + juce::String (titleMemory).paddedLeft ('0', 2) : juce::String();
+                    f.label = k == 0 ? (nameLibrary < 0 ? "TITLE " + juce::String (titleMemory).paddedLeft ('0', 2) : juce::String ("NAME ") + juce::String (nameProgram + 1))
+                                     : juce::String();
                     f.get = [this, k] { return titleChars[(size_t) k]; };
                     f.set = [this, k] (int v) { titleChars[(size_t) k] = v; };
                     f.steps = [] { return kTitleChars.length(); };
                     f.text = [this, k] { return juce::String::charToString (kTitleChars[titleChars[(size_t) k]]); };
-                    f.box = { 0.1f + 0.1f * (float) k, 0.3f, 0.1f, 0.34f };
+                    f.box = { 0.05f + w * (float) k, 0.3f, w, 0.34f };
                     fields.push_back (std::move (f));
                 }
                 break;
+            }
         }
         focus = juce::jlimit (0, juce::jmax (0, (int) fields.size() - 1), focus);
         repaint();
@@ -621,8 +662,20 @@ namespace promix
         if (function == Function::TitleEdit)
         {
             juce::String title;
-            for (int c : titleChars)
-                title << kTitleChars[c];
+            for (int k = 0; k < (nameLibrary < 0 ? 8 : 15); ++k)
+                title << kTitleChars[titleChars[(size_t) k]];
+            if (nameLibrary >= 0)
+            {
+                // The program stored under its name; back to its page.
+                pm.storeProgram (nameLibrary, nameProgram, nameTarget, title.trimEnd());
+                if (libraryChanged)
+                    libraryChanged();
+                nameLibrary = -1;
+                function = nameFrom;
+                focus = 0;
+                build();
+                return;
+            }
             if (setMemoryTitle)
                 setMemoryTitle (titleMemory, title.trimEnd());
             setFunction (Function::MemoryRecall);
@@ -662,6 +715,8 @@ namespace promix
         const char* names[] = { "METER", "PAN", "PHASE", "COMP", "CUE", "SEND1", "SEND2", "SEND3", "SEND4", "EQ LOW", "EQ MID", "EQ HIGH",
                                 "EQ LIBRARY", "GROUP", "PAIR", "UTILITY", "MIDI SETUP", "MEMORY STORE", "MEMORY RECALL", "TITLE EDIT" };
         juce::String t = names[(int) function];
+        if (function == Function::TitleEdit && nameLibrary >= 0)
+            t = juce::String (nameLibrary == ProMix::Eq ? "EQ" : nameLibrary == ProMix::Dynamics ? "COMP" : "EFFECT") + " PROGRAM NAME";
         if (function == Function::Utility)
         {
             const char* pages[] = { "  SEND3,4 / OUTPUT COMP", "  OSCILLATOR", "  MEMORY PROTECT", "  BATTERY CHECK" };
@@ -1122,6 +1177,9 @@ ProMixSurface::ProMixSurface (UiContext& c)
         ctx.settings.setValue (protectKey, v.joinIntoString (" "));
     };
     display.rtnSendShown = [this] { return rtnSend; };
+    // The user programs: the console's memory, kept in the app settings.
+    pm.setLibraryText (ctx.settings.getValue (libraryKey));
+    display.libraryChanged = [this] { ctx.settings.setValue (libraryKey, pm.getLibraryText()); };
     addAndMakeVisible (display);
 
     universalKey.onClick = [&context = ctx]
