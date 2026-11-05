@@ -354,6 +354,15 @@ public:
         expectEquals ((int) display.getFields().size(), 19);
         skin.pressFunction (F::Att);
         expectEquals (display.getPage(), 0, "and round");
+        // ENTER double-clicked: every channel's attenuation as MIC 1's, STEREO aside.
+        display.getFields()[0].set (90); // MIC 1 at -6 dB
+        display.enterAll();
+        expectEquals (y.get (ui::y02r::address (7, 4)), 90);
+        expectEquals (y.get (ui::y02r::address (19, 4)), 90, "LINE 23/24");
+        expectEquals (y.get (ui::y02r::address (ui::y02r::kTape + 3, 4)), 90, "TAPE 4, on the other page");
+        expectEquals (y.get (ui::y02r::address (ui::y02r::kStereo, 4)), 96, "not STEREO");
+        for (int st = 0; st < ui::y02r::kBus; ++st)
+            y.set (ui::y02r::address (st, 4), 96);
         skin.pressFunction (F::Scene);
         expectEquals (display.getFields()[0].text (0), rig.show.getScene (0)->name, "the titles");
         skin.pressFunction (F::DigitalIo);

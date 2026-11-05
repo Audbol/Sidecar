@@ -183,6 +183,9 @@ namespace y02r
         void cursor (int delta);
         void turn (int delta);
         void enter();
+        /** ENTER double-clicked (MAN pp.32, 34): PHASE / ATT's and DELAY's pages set
+            every channel (STEREO aside) to the one with the cursor. */
+        void enterAll();
         void refresh();
         /** The function's page (its key again steps to the next: SCENE MEMORY's
             titles, recall safe and fade times; the all-channel pages...). */
@@ -208,6 +211,8 @@ namespace y02r
             int pending = -1;
             /** What ENTER does on this field otherwise (a scene recalled, PRE / POST switched). */
             std::function<void()> action;
+            /** An all-channel page's strip (-1 none). */
+            int strip = -1;
         };
         const std::vector<Field>& getFields() const noexcept { return fields; }
         int getCursor() const noexcept { return focus; }
@@ -343,6 +348,7 @@ private:
     juce::Rectangle<int> routingBox, auxBox, panBox, eqBox, auxBar, panBar;
     std::array<juce::Rectangle<int>, 3> eqReadouts;
     int memory = 1, selAux = 0;
+    juce::uint32 lastEnter = 0;
     bool flip = false;
     double wheelLast = 0.0;
 

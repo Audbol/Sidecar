@@ -547,6 +547,9 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   NOMINAL (scene 0 puts the channel faders at 0 dB) and TOUCH SENSE SELECT
   (touching a fader or an encoder selects its channel). The hardware's (word
   clock, timecode, cards, automix) show as not emulated.
+- The 02R's ENTER double-clicked on PHASE / ATT or DELAY (MAN pp.32, 34):
+  every channel (MIC/LINE, TAPE, the effect returns; not STEREO) takes the
+  attenuation and phase, or the delay, of the one with the cursor.
 - The console surfaces (X32, ProMix 01, 02R) are laid out at 1920 x 1080 and
   scaled to the window, in proportion and centred: on a bigger screen (a 4K
   monitor) they show the same panel larger instead of stretching the gaps

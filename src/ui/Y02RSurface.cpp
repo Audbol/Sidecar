@@ -478,6 +478,7 @@ namespace y02r
             {
                 Field f;
                 f.label = shortName (st);
+                f.strip = st;
                 if (function == Function::Att)
                 {
                     // The attenuator; ENTER flips the phase.
@@ -1126,6 +1127,32 @@ namespace y02r
         repaint();
     }
 
+    void Display::enterAll()
+    {
+        if ((function != Function::Att && function != Function::Delay) || ! juce::isPositiveAndBelow (focus, (int) fields.size()))
+            return;
+        const auto& from = fields[(size_t) focus];
+        if (from.strip < 0 || from.strip == kStereo || ! from.get)
+            return;
+        const int v = from.get();
+        const int bit = function == Function::Att ? kPhase : kDelayOn;
+        const bool on = ((y.get (address (from.strip, kSwitches)) >> bit) & 1) != 0;
+        // Both pages' channels: MIC/LINE, TAPE and the effect returns.
+        for (int st = 0; st < kBus; ++st)
+        {
+            if (function == Function::Att)
+                y.set (address (st, kAtt), v);
+            else
+            {
+                y.set (address (st, kDelayHi), v >> 7);
+                y.set (address (st, kDelayLo), v & 0x7f);
+            }
+            const int sw = address (st, kSwitches), byte = juce::jmax (0, y.get (sw));
+            y.set (sw, on ? (byte | (1 << bit)) : (byte & ~(1 << bit)));
+        }
+        repaint();
+    }
+
     void Display::refresh()
     {
         // A dialog left alone cancels after about ten seconds (V2 MAN p.48).
@@ -1422,7 +1449,19 @@ Y02RSurface::Y02RSurface (UiContext& c)
         { utf8 ("\xe2\x96\xb2"), [this] { display.cursor (-4); } },
         { utf8 ("\xe2\x96\xbc"), [this] { display.cursor (4); } },
         { utf8 ("\xe2\x96\xb6"), [this] { display.cursor (1); } },
-        { "ENTER", [this] { display.enter(); } },
+        { "ENTER", [this]
+          {
+              // A double click: PHASE / ATT's and DELAY's all channels alike.
+              const auto now = juce::Time::getMillisecondCounter();
+              display.enter();
+              if (now - lastEnter < 400)
+              {
+                  display.enterAll();
+                  lastEnter = 0;
+              }
+              else
+                  lastEnter = now;
+          } },
     };
     for (auto& [name, action] : panel)
     {
