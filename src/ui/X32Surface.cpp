@@ -117,7 +117,7 @@ X32Surface::X32Surface (UiContext& c)
             const int current = show.getCurrentSceneIndex();
             if (k == 4)
             {
-                display.showScreen (x32::Display::Screen::Library);
+                display.showScreen (x32::Display::Screen::Scenes);
                 return;
             }
             const int to = k == 0 ? current - 1 : k == 1 ? current + 1 : k == 3 ? juce::jmax (0, current) : -1;

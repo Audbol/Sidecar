@@ -311,8 +311,9 @@ juce::StringArray Display::getTabs() const
         case Screen::Effects:    return { "home", "fx1", "fx2", "fx3", "fx4", "fx5", "fx6", "fx7", "fx8" };
         case Screen::MuteGroups: return { "mute grp" };
         case Screen::Utility:    return { "copy" };
-        case Screen::Monitor:    return { "monitor", "talkback" };
+        case Screen::Monitor:    return { "monitor", "talk a", "talk b", "osc" };
         case Screen::Assign:     return { "set a", "set b", "set c" };
+        case Screen::Scenes:     return { "home", "param safe" };
     }
     return {};
 }
@@ -431,7 +432,27 @@ void Display::assignEncoders()
                 }
                 else
                 {
+                    // 48V on the strip's input; a DCA and a mute group picked, PUSH
+                    // assigns the strip to it (p.47).
+                    const int input = p.inputLeft.load();
+                    if (auto* src = input >= 0 && input < 128 ? engine.getSource (input) : nullptr)
+                        encoders[0] = encoder ({}, "48V", toggle (src->phantom), isOn (src->phantom));
                     encoders[1] = encoder ({}, "POLARITY", toggle (p.input.invert), isOn (p.input.invert));
+                    const auto picker = [this] (const char* label, int& value, int count)
+                    {
+                        KnobBinding b;
+                        b.label = label;
+                        b.get = [&value, count] { return count > 1 ? (float) value / (float) (count - 1) : 0.0f; };
+                        b.set = [this, &value, count] (float v) { value = juce::roundToInt (v * (float) juce::jmax (0, count - 1)); assignEncoders(); };
+                        b.text = [&value] { return juce::String (value + 1); };
+                        b.steps = (float) juce::jmax (2, count);
+                        return b;
+                    };
+                    if (engine.getNumDcas() > 0)
+                        encoders[2] = encoder (picker ("DCA", homeDca, engine.getNumDcas()), "DCA", [&p, this] { p.dcaMask.toggle (homeDca); },
+                                               [&p, this] { return p.dcaMask.contains (homeDca); });
+                    encoders[3] = encoder (picker ("MUTE GRP", homeMuteGroup, 6), "MUTE GRP", [&p, this] { p.muteGroupMask.toggle (homeMuteGroup); },
+                                           [&p, this] { return p.muteGroupMask.contains (homeMuteGroup); });
                     encoders[4] = encoder ({}, "SOLO", toggle (p.solo), isOn (p.solo));
                     encoders[5] = encoder (faderOf(), "MUTE", toggle (p.mute), isOn (p.mute));
                 }
@@ -597,19 +618,92 @@ void Display::assignEncoders()
     }
     else if (screen == Screen::Monitor && tab == 0)
     {
-        // MONITOR: the speakers' and phones' levels, DIM and its depth, MONO.
+        // MONITOR (p.60): the speakers' and phones' levels, DIM and its depth,
+        // MONO, the channels' solo (PFL or AFL), and the source.
         encoders[0] = encoder (bindFader ("MONITOR", engine.monitorLevelDb));
         encoders[1] = encoder (bindFader ("PHONES", engine.phones.levelDb));
         encoders[2] = encoder (bindLinear ("DIM ATT", engine.monitorDimDb, 0.0f, 40.0f, " dB", 0, 20.0f), "DIM", toggle (engine.monitorDim),
                                isOn (engine.monitorDim));
         encoders[3] = encoder ({}, "MONO", toggle (engine.monitorMono), isOn (engine.monitorMono));
+        encoders[4] = encoder ({}, "AFL", toggle (engine.soloAfl), isOn (engine.soloAfl));
+        juce::StringArray sources;
+        for (int i = 0; i < ld::kNumMonitorSources; ++i)
+            sources.add (MixerEngine::monitorSourceName (i));
+        encoders[5] = encoder (bindChoice ("SOURCE", engine.speakers.source, sources));
+    }
+    else if (screen == Screen::Monitor && tab < 3)
+    {
+        // TALKBACK A or B (p.61): the talk level, the key, its auto-dim, and
+        // where it talks to (MAIN, a bus picked by the fifth encoder).
+        auto& path = engine.talk.paths[(size_t) (tab - 1)];
+        encoders[0] = encoder (bindFader ("TALK", engine.talk.levelDb));
+        encoders[1] = encoder ({}, tab == 1 ? "TALK A" : "TALK B", toggle (path.on), isOn (path.on));
+        encoders[2] = encoder (bindLinear ("AUTO DIM", path.monDimDb, 0.0f, 40.0f, " dB", 0, 20.0f));
+        encoders[3] = encoder ({}, "TO MAIN", [&path] { path.mains = path.mains.load() ^ 1u; }, [&path] { return (path.mains.load() & 1u) != 0; });
+        KnobBinding bus;
+        bus.label = "BUS";
+        bus.get = [this] { return (float) talkBus / 15.0f; };
+        bus.set = [this] (float v) { talkBus = juce::roundToInt (v * 15.0f); assignEncoders(); };
+        bus.text = [this] { return juce::String (talkBus + 1); };
+        bus.steps = 16.0f;
+        encoders[4] = encoder (bus, "TO BUS", [this, &path] { path.buses = path.buses.load() ^ (1u << talkBus); },
+                               [this, &path] { return (path.buses.load() & (1u << talkBus)) != 0; });
     }
     else if (screen == Screen::Monitor)
     {
-        // TALKBACK: its level, TALK A and TALK B.
-        encoders[0] = encoder (bindFader ("TALK", engine.talk.levelDb));
-        encoders[1] = encoder ({}, "TALK A", toggle (engine.talk.paths[0].on), isOn (engine.talk.paths[0].on));
-        encoders[2] = encoder ({}, "TALK B", toggle (engine.talk.paths[1].on), isOn (engine.talk.paths[1].on));
+        // OSCILLATOR (p.62): its level, frequency and kind; on, its source's mute off.
+        if (auto* osc = engine.getOscillator (0))
+        {
+            encoders[0] = encoder (bindLinear ("LEVEL", osc->levelDb, -96.0f, 0.0f, " dB", 1, -20.0f));
+            encoders[1] = encoder (bindFreq ("FREQ", osc->freqHz, 20.0f, 20000.0f, 1000.0f));
+            encoders[2] = encoder (bindChoice ("TYPE", osc->mode, { "SINE", "PINK", "WHITE" }));
+            if (auto* src = engine.getSource (MixerEngine::oscSource (0)))
+                encoders[5] = encoder ({}, "OSC ON", [src] { src->mute = ! src->mute.load(); }, [src] { return ! src->mute.load(); });
+        }
+    }
+    else if (screen == Screen::Scenes && tab == 0)
+    {
+        // SCENES (p.65): a scene picked by the first encoder, GO; PREV, NEXT,
+        // SAVE into it, SKIP it, a NEW one at the end.
+        auto& show = ctx.show;
+        KnobBinding scene;
+        scene.label = "SCENE";
+        scene.get = [this, &show] { return show.getNumScenes() > 1 ? (float) selectedScene / (float) (show.getNumScenes() - 1) : 0.0f; };
+        scene.set = [this, &show] (float v) { selectedScene = juce::roundToInt (v * (float) juce::jmax (0, show.getNumScenes() - 1)); repaint(); };
+        scene.text = [this] { return juce::String (selectedScene + 1).paddedLeft ('0', 2); };
+        scene.steps = (float) juce::jmax (2, show.getNumScenes());
+        const auto valid = [this, &show] { return juce::isPositiveAndBelow (selectedScene, show.getNumScenes()); };
+        encoders[0] = encoder (scene, "GO", [&show, this, valid] { if (valid()) show.recallScene (selectedScene); });
+        encoders[1] = encoder ({}, "PREV", [&show] { show.recallPrevious(); });
+        encoders[2] = encoder ({}, "NEXT", [&show] { show.recallNext(); });
+        encoders[3] = encoder ({}, "SAVE", [&show, this, valid] { if (valid()) show.storeScene (selectedScene); });
+        encoders[4] = encoder ({}, "SKIP", [&show, this, valid]
+        {
+            if (valid())
+                show.setSceneSkip (selectedScene, ! show.getScene (selectedScene)->skip);
+        }, [&show, this, valid] { return valid() && show.getScene (selectedScene)->skip; });
+        encoders[5] = encoder ({}, "NEW", [&show, this]
+        {
+            selectedScene = show.addScene ("Scene " + juce::String (show.getNumScenes() + 1).paddedLeft ('0', 2));
+            assignEncoders();
+        });
+    }
+    else if (screen == Screen::Scenes)
+    {
+        // PARAM SAFE (p.66): the sections a recall leaves alone.
+        KnobBinding section;
+        section.label = "SECTION";
+        section.get = [this] { return (float) safeSection / (float) (state::kNumSections - 1); };
+        section.set = [this] (float v) { safeSection = juce::roundToInt (v * (float) (state::kNumSections - 1)); repaint(); };
+        section.text = [this] { return juce::String (state::sectionName (state::sectionAt (safeSection))).toUpperCase(); };
+        section.steps = (float) state::kNumSections;
+        auto& show = ctx.show;
+        encoders[0] = encoder (section, "SAFE", [this, &show]
+        {
+            auto safe = show.getGlobalSafe();
+            safe.sections ^= (juce::uint32) state::sectionAt (safeSection);
+            show.setGlobalSafe (safe);
+        }, [this, &show] { return (show.getGlobalSafe().sections & (juce::uint32) state::sectionAt (safeSection)) != 0; });
     }
     else if (screen == Screen::Assign)
     {
@@ -1490,10 +1584,10 @@ void Display::paintRows (juce::Graphics& g, juce::Rectangle<int> r, const juce::
             g.fillRect (row.withWidth (5));
         }
         g.setColour (kNavy);
-        g.setFont (type::font (11.5f, true));
+        g.setFont (type::font (juce::jmin (11.5f, (float) h * 0.82f), true));
         g.drawText (marked ? left[i].substring (1).trimStart() : left[i], row.reduced (10, 0).removeFromLeft (row.getWidth() / 2),
                     juce::Justification::centredLeft);
-        g.setFont (type::font (11.5f));
+        g.setFont (type::font (juce::jmin (11.5f, (float) h * 0.82f)));
         g.drawText (right[i], row.reduced (10, 0), juce::Justification::centredRight);
     }
 }
@@ -1883,13 +1977,66 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
             auto& e = ctx.engine;
             const auto onOff = [] (bool on) { return on ? juce::String ("ON") : juce::String ("OFF"); };
             if (tab == 0)
-                paintRows (g, r.reduced (12), { "MONITOR LEVEL", "PHONES LEVEL", "DIM", "DIM ATTENUATION", "MONO", "SOURCE" },
+                paintRows (g, r.reduced (12), { "MONITOR LEVEL", "PHONES LEVEL", "DIM", "DIM ATTENUATION", "MONO", "CHANNEL SOLO", "SOURCE" },
                            { fader::text (e.monitorLevelDb.load()) + " dB", fader::text (e.phones.levelDb.load()) + " dB", onOff (e.monitorDim.load()),
-                             juce::String (e.monitorDimDb.load(), 0) + " dB", onOff (e.monitorMono.load()),
-                             e.anySoloActive.load() ? juce::String ("SOLO BUS") : juce::String ("MAIN") });
+                             juce::String (e.monitorDimDb.load(), 0) + " dB", onOff (e.monitorMono.load()), e.soloAfl.load() ? juce::String ("AFL") : juce::String ("PFL"),
+                             e.anySoloActive.load() ? juce::String ("SOLO BUS") : MixerEngine::monitorSourceName (e.speakers.source.load()) });
+            else if (tab < 3)
+            {
+                auto& path = e.talk.paths[(size_t) (tab - 1)];
+                juce::StringArray to;
+                if ((path.mains.load() & 1u) != 0)
+                    to.add ("MAIN");
+                for (int b = 0; b < 16; ++b)
+                    if ((path.buses.load() & (1u << b)) != 0)
+                        to.add ("BUS " + juce::String (b + 1));
+                paintRows (g, r.reduced (12), { "TALK LEVEL", tab == 1 ? "TALK A" : "TALK B", "AUTO DIM", "DESTINATIONS" },
+                           { fader::text (e.talk.levelDb.load()) + " dB", onOff (path.on.load()), juce::String (path.monDimDb.load(), 0) + " dB",
+                             to.isEmpty() ? juce::String ("NONE") : to.joinIntoString (", ") });
+            }
+            else if (auto* osc = e.getOscillator (0))
+            {
+                const char* kinds[] = { "SINE", "PINK", "WHITE" };
+                auto* src = e.getSource (MixerEngine::oscSource (0));
+                paintRows (g, r.reduced (12), { "OSCILLATOR", "LEVEL", "FREQUENCY", "TYPE" },
+                           { onOff (src != nullptr && ! src->mute.load()), juce::String (osc->levelDb.load(), 1) + " dB", formatHz (osc->freqHz.load()) + " Hz",
+                             kinds[juce::jlimit (0, 2, (int) osc->mode.load())] });
+            }
+            break;
+        }
+        case Screen::Scenes:
+        {
+            auto& show = ctx.show;
+            juce::StringArray left, right;
+            if (tab == 0)
+            {
+                // The scenes around the one the first encoder points at; the current one marked.
+                const int n = show.getNumScenes(), current = show.getCurrentSceneIndex();
+                const int rows = juce::jmax (1, (r.getHeight() - 24) / 26);
+                const int from = juce::jlimit (0, juce::jmax (0, n - rows), selectedScene - rows / 2);
+                for (int i = from; i < juce::jmin (n, from + rows); ++i)
+                {
+                    const auto scene = show.getScene (i);
+                    left.add ((i == selectedScene ? "> " : "  ") + juce::String (i + 1).paddedLeft ('0', 2) + (i == current ? "  *" : ""));
+                    right.add ((scene.has_value() ? scene->name : juce::String()) + (scene.has_value() && scene->skip ? "  (SKIP)" : ""));
+                }
+                if (n == 0)
+                {
+                    left.add ("No scenes");
+                    right.add ("NEW adds one");
+                }
+            }
             else
-                paintRows (g, r.reduced (12), { "TALK LEVEL", "TALK A", "TALK B" },
-                           { fader::text (e.talk.levelDb.load()) + " dB", onOff (e.talk.paths[0].on.load()), onOff (e.talk.paths[1].on.load()) });
+            {
+                const auto safe = show.getGlobalSafe().sections;
+                for (int k = 0; k < state::kNumSections; ++k)
+                {
+                    const auto section = state::sectionAt (k);
+                    left.add ((k == safeSection ? "> " : "  ") + juce::String (state::sectionName (section)).toUpperCase());
+                    right.add ((safe & (juce::uint32) section) != 0 ? "SAFE" : "-");
+                }
+            }
+            paintRows (g, r.reduced (12), left, right);
             break;
         }
         case Screen::Assign:

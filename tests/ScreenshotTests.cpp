@@ -781,6 +781,49 @@ private:
             rig.selected = channels[12].get();
             skin.selectionChanged();
         }
+        // SCENES: NEW, then GO; the param safes.
+        {
+            using S = ui::x32::Display::Screen;
+            display.showScreen (S::Scenes);
+            const int scenesBefore = rig.show.getNumScenes();
+            display.pushEncoder (5); // NEW
+            expectEquals (rig.show.getNumScenes(), scenesBefore + 1);
+            display.pushEncoder (0); // GO
+            expectEquals (rig.show.getCurrentSceneIndex(), scenesBefore);
+            display.showScreen (S::Scenes, 1);
+            display.pushEncoder (0); // the first section safe
+            expect (rig.show.getGlobalSafe().sections != 0);
+            display.pushEncoder (0);
+            expect (rig.show.getGlobalSafe().sections == 0);
+            // MONITOR: AFL on the fifth push; TALK A's bus.
+            display.showScreen (S::Monitor);
+            const bool afl = rig.engine.soloAfl.load();
+            display.pushEncoder (4);
+            expect (rig.engine.soloAfl.load() != afl);
+            display.pushEncoder (4);
+            if (folder.isNotEmpty())
+            {
+                const std::tuple<S, int, const char*> pages[] = { { S::Scenes, 0, "scenes" }, { S::Scenes, 1, "param-safe" }, { S::Monitor, 0, "monitor" },
+                                                                  { S::Monitor, 1, "talk-a" }, { S::Monitor, 3, "osc" }, { S::Assign, 0, "assign" } };
+                for (auto [screen, page, shot] : pages)
+                {
+                    display.showScreen (screen, page);
+                    const auto lcd = display.createComponentSnapshot (display.getLocalBounds(), true, 1.0f);
+                    const auto out = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile (juce::String ("x32-page-") + shot + ".png");
+                    out.deleteFile();
+                    juce::FileOutputStream stream (out);
+                    juce::PNGImageFormat().writeImageToStream (lcd, stream);
+                }
+                display.showScreen (S::Home, 0);
+                display.setLayer (1);
+                const auto lcd = display.createComponentSnapshot (display.getLocalBounds(), true, 1.0f);
+                const auto out = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile ("x32-page-home2.png");
+                out.deleteFile();
+                juce::FileOutputStream stream (out);
+                juce::PNGImageFormat().writeImageToStream (lcd, stream);
+                display.setLayer (0);
+            }
+        }
 
         // The X32 COMPACT: 8 input faders in eight layers, chosen on SETUP.
         display.showScreen (ui::x32::Display::Screen::Setup);

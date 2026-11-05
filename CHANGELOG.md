@@ -479,6 +479,14 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   MIDI's BULK page (the interval). CUE shows the selected channel at a glance
   (ON, group, phase, pan, EQ, fader, sends). GROUP pressed again steps A-D; an
   EQ band's key pressed again its F, G and Q.
+- The X32's SCENES screen (manual p.65-66, SCENES' VIEW key): the scene list
+  around the one the first encoder picks (the current one marked, skipped
+  ones shown), GO, PREV, NEXT, SAVE, SKIP and NEW; PARAM SAFE, the sections a
+  recall leaves alone. MONITOR's tabs (p.60-62): channel solo PFL or AFL and
+  the monitor source; TALK A and TALK B (the key, auto dim, talk to MAIN or a
+  bus); OSC (level, frequency, sine, pink or white, on). HOME's second layer
+  (p.47): 48V of the strip's input, a DCA and a mute group picked and
+  assigned by their pushes.
 
   `ui::hw` (`src/ui/HardwareLook.*`) draws them. Keys, faders and knobs take a
   console's look when its surface asks; the Universal Mixer and the WING are

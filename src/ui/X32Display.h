@@ -49,7 +49,8 @@ public:
         MuteGroups,
         Utility,
         Monitor, // the MONITOR and TALKBACK sections' VIEW
-        Assign   // ASSIGN's VIEW
+        Assign,  // ASSIGN's VIEW
+        Scenes   // SCENES' VIEW
     };
     /** The ASSIGN page's lines and set (the surface's assign section). */
     std::function<juce::StringArray()> assignLines;
@@ -138,6 +139,9 @@ private:
     const universal::Theme screenTheme;
     Screen screen = Screen::Home;
     int tab = 0, layer = 0, sendBank = 0, eqBand = 0, selectedScene = 0;
+    /** SCENES' safes tab: the section the first encoder points at; a talkback
+        tab's bus; HOME's DCA and mute group to assign. */
+    int safeSection = 0, talkBus = 0, homeDca = 0, homeMuteGroup = 0;
     int selectedOutput = 0; // ROUTING's signal tabs: the output the encoders set
     int selectedFx = 0;     // EFFECTS > home: the slot the encoders set
     // UTILITY: the strip COPY took and the sections PASTE copies (CopySection bits).
