@@ -222,7 +222,7 @@ namespace promix
         switch (function)
         {
             case Function::Utility: return 4; // SEND3,4 / OUTPUT COMP, OSCILLATOR, MEMORY PROTECT, BATTERY CHECK
-            case Function::Midi:    return 3; // MIDI SETUP, BULK, PROGRAM CHANGE ASSIGN
+            case Function::Midi:    return 5; // MIDI SETUP, BULK, PROGRAM CHANGE ASSIGN, CONTROL CHANGE ASSIGN, MEMORY CC OUT
             case Function::Meter:
             case Function::Send1:
             case Function::Send2:
@@ -529,6 +529,82 @@ namespace promix
             }
             case Function::Midi:
             {
+                if (page == 4)
+                {
+                    // MEMORY CONTROL CHANGE OUT (p.87): the edit buffer, every
+                    // category, out as control changes; ENTER executes it.
+                    Field f;
+                    f.label = "OUTPUT (EDIT BUFFER, ALL CATEGORIES)";
+                    f.get = [] { return -1; };
+                    f.steps = [] { return 1; };
+                    f.text = [] { return juce::String ("ENTER: EXECUTE"); };
+                    f.textOf = [] (int) { return juce::String ("EXECUTE"); };
+                    f.set = [this] (int)
+                    {
+                        if (ctx.consoleMidi != nullptr)
+                            ctx.consoleMidi->resendAll();
+                    };
+                    f.onEnter = true;
+                    f.pending = 0;
+                    f.box = { 0.2f, 0.3f, 0.6f, 0.34f };
+                    fields.push_back (std::move (f));
+                    break;
+                }
+                if (page == 3)
+                {
+                    // CONTROL CHANGE ASSIGN (p.83): a parameter picked, its bank and
+                    // controller (bank "--": none); the eight after it.
+                    auto& p = pm;
+                    const auto save = [this, &p] { ctx.settings.setValue (ProMixMidi::ccKey, p.getCcText()); };
+                    const auto ccText = [&p] (int n) { const int c = p.ccCode (n); return c < 0 ? juce::String ("--") : "B" + juce::String (c >> 8) + " CC" + juce::String (c & 0xff); };
+                    Field param;
+                    param.label = "PARAMETER";
+                    param.get = [this] { return ccParam; };
+                    param.steps = [] { return 531; };
+                    param.set = [this] (int v) { ccParam = v; build(); };
+                    param.text = [this] { return juce::String (ccParam).paddedLeft ('0', 3) + " " + ProMix::name (ccParam); };
+                    param.box = { 0.0f, 0.02f, 0.5f, 0.24f };
+                    fields.push_back (std::move (param));
+                    Field bank;
+                    bank.label = "BANK";
+                    bank.get = [this, &p] { const int c = p.ccCode (ccParam); return c < 0 ? 16 : c >> 8; };
+                    bank.steps = [] { return 17; };
+                    bank.set = [this, &p, save] (int v)
+                    {
+                        const int c = p.ccCode (ccParam);
+                        p.setCcCode (ccParam, v >= 16 ? -1 : v << 8 | (c < 0 ? 0 : c & 0xff));
+                        save();
+                    };
+                    bank.text = [this, &p] { const int c = p.ccCode (ccParam); return c < 0 ? juce::String ("--") : juce::String (c >> 8); };
+                    bank.box = { 0.52f, 0.02f, 0.2f, 0.24f };
+                    fields.push_back (std::move (bank));
+                    Field cc;
+                    cc.label = "CC";
+                    cc.get = [this, &p] { const int c = p.ccCode (ccParam); return c < 0 ? 0 : c & 0xff; };
+                    cc.steps = [] { return 96; };
+                    cc.set = [this, &p, save] (int v)
+                    {
+                        const int c = p.ccCode (ccParam);
+                        p.setCcCode (ccParam, (c < 0 ? 0 : c >> 8) << 8 | v);
+                        save();
+                    };
+                    cc.text = [this, &p] { const int c = p.ccCode (ccParam); return c < 0 ? juce::String ("--") : juce::String (c & 0xff); };
+                    cc.box = { 0.74f, 0.02f, 0.2f, 0.24f };
+                    fields.push_back (std::move (cc));
+                    for (int k = 0; k < 8; ++k)
+                    {
+                        const int n = (ccParam + 1 + k) % 531;
+                        Field f;
+                        f.label = juce::String (n).paddedLeft ('0', 3) + " " + ProMix::name (n);
+                        f.get = [] { return 0; };
+                        f.steps = [] { return 1; };
+                        f.set = [] (int) {};
+                        f.text = [ccText, n] { return ccText (n); };
+                        f.box = { (float) (k % 4) / 4.0f, k < 4 ? 0.36f : 0.66f, 0.25f, 0.28f };
+                        fields.push_back (std::move (f));
+                    }
+                    break;
+                }
                 if (page == 2)
                 {
                     // PROGRAM CHANGE ASSIGN (p.82): a program picked, the memory it recalls; the twelve from it.
@@ -778,6 +854,10 @@ namespace promix
             t = "BULK DUMP";
         if (function == Function::Midi && page == 2)
             t = "PROGRAM CHANGE ASSIGN";
+        if (function == Function::Midi && page == 3)
+            t = "CONTROL CHANGE ASSIGN";
+        if (function == Function::Midi && page == 4)
+            t = "MEMORY CONTROL CHANGE OUT";
         if (function == Function::Comp)
             t << " " << (processor + 1) << (page == 1 ? "  EDIT" : "");
         if ((function == Function::Send1 || function == Function::Send2) && page == 1)
@@ -994,6 +1074,26 @@ namespace promix
         const auto area = pageArea();
         switch (function)
         {
+            case Function::Comp:
+            {
+                // The processor's gain reduction, top down (p.72), on what it's patched to.
+                const int patch = pm.get (kCompPatch + processor);
+                auto& e = ctx.engine;
+                auto pick = [] (const MixerEngine::StripList& l, int k) -> Strip* { return juce::isPositiveAndBelow (k, (int) l.size()) ? l[(size_t) k].get() : nullptr; };
+                Strip* st = patch >= 1 && patch <= 16 ? pick (e.getChannels(), patch - 1) : patch == 17 ? pick (e.getBuses(), 2)
+                          : patch == 18 ? pick (e.getBuses(), 3) : patch == 19 ? pick (e.getMains(), 0) : nullptr;
+                const float gr = st != nullptr ? std::abs (st->meters.dynReductionDb.load()) : 0.0f;
+                auto m = juce::Rectangle<float> (area.getRight() - area.getWidth() * 0.06f, area.getY() + area.getHeight() * 0.5f, area.getWidth() * 0.04f,
+                                                 area.getHeight() * 0.5f);
+                g.setColour (kPixelDim);
+                g.setFont (lcdFont (type::kCaption, true));
+                g.drawText ("GR", m.removeFromBottom (14.0f), juce::Justification::centred);
+                g.setColour (kLcdFrame);
+                g.fillRect (m);
+                g.setColour (kPixel);
+                g.fillRect (m.withHeight (m.getHeight() * juce::jlimit (0.0f, 1.0f, gr / 30.0f)));
+                break;
+            }
             case Function::Send1:
             case Function::Send2:
                 if (page == 0)

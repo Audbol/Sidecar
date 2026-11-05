@@ -10,6 +10,7 @@
 #include "ui/HardwareLook.h"
 #include "ui/HomeScreens.h"
 #include "ui/Icons.h"
+#include "ui/ShowPanel.h"
 #include "ui/X32AssignSection.h"
 #include "ui/MeterBank.h"
 
@@ -313,7 +314,7 @@ juce::StringArray Display::getTabs() const
         case Screen::Meters:     return { "channel", "mix bus", "aux / fx", "in / out", "rta" };
         case Screen::Routing:    return { "home", "out 1-16", "aux out", "p16 out", "card out", "aes50-a", "aes50-b" };
         case Screen::Setup:      return { "global", "remote", "scribble strip", "preamps" };
-        case Screen::Library:    return { "scenes", "show" };
+        case Screen::Library:    return { "scenes", "show", "channel", "effects" };
         case Screen::Effects:    return { "home", "fx1", "fx2", "fx3", "fx4", "fx5", "fx6", "fx7", "fx8" };
         case Screen::MuteGroups: return { "mute grp" };
         case Screen::Utility:    return { "copy" };
@@ -738,6 +739,66 @@ void Display::assignEncoders()
         m.steps = 2.0f;
         encoders[0] = encoder (m, "SWITCH", [this] { setModel (1 - getModel()); }, [] { return false; });
     }
+    else if (screen == Screen::Library && tab >= 2)
+    {
+        // CHANNEL and EFFECTS (p.58): a preset picked, LOAD onto the selected
+        // strip (or an FX slot), SAVE the strip (the slot) as a new one; the
+        // library's presets, as the WING's library keeps them.
+        const bool channel = tab == 2;
+        const auto list = presets (channel ? Show::channelPresetExtension : Show::fxPresetExtension);
+        presetChoice = juce::jlimit (0, juce::jmax (0, list.size() - 1), presetChoice);
+        KnobBinding pick;
+        pick.label = "PRESET";
+        const int n = list.size();
+        pick.get = [this, n] { return n > 1 ? (float) presetChoice / (float) (n - 1) : 0.0f; };
+        pick.set = [this, n] (float v) { presetChoice = juce::roundToInt (v * (float) juce::jmax (0, n - 1)); repaint(); };
+        pick.text = [this, list] { return list.isEmpty() ? juce::String ("-") : juce::String (presetChoice + 1); };
+        pick.steps = (float) juce::jmax (2, n);
+        auto& show = ctx.show;
+        if (channel)
+        {
+            encoders[0] = encoder (pick, "LOAD", [this, list, &show]
+            {
+                if (auto* st = selected(); st != nullptr && juce::isPositiveAndBelow (presetChoice, list.size()))
+                    libraryStatus = show.loadChannelPreset (state::StripRef::of (*st), list[presetChoice]).wasOk() ? "Loaded " + list[presetChoice].getFileNameWithoutExtension() : juce::String ("Load failed");
+                refreshStrip();
+            });
+            encoders[1] = encoder ({}, "SAVE", [this, &show]
+            {
+                auto* st = selected();
+                if (st == nullptr)
+                    return;
+                const auto name = st->getName().isNotEmpty() ? st->getName() : st->getLabel();
+                const auto file = ShowPanel::libraryFolder().getNonexistentChildFile (juce::File::createLegalFileName (name), Show::channelPresetExtension);
+                const auto r = show.saveChannelPreset (state::StripRef::of (*st), state::AllSections & ~(juce::uint32) state::Routing, file, name);
+                libraryStatus = r.wasOk() ? "Saved " + file.getFileNameWithoutExtension() : r.getErrorMessage();
+                assignEncoders();
+            });
+        }
+        else
+        {
+            KnobBinding slot;
+            slot.label = "FX SLOT";
+            slot.get = [this] { return (float) presetSlot / 7.0f; };
+            slot.set = [this] (float v) { presetSlot = juce::roundToInt (v * 7.0f); repaint(); };
+            slot.text = [this] { return juce::String (presetSlot + 1); };
+            slot.steps = 8.0f;
+            encoders[0] = encoder (pick, "LOAD", [this, list, &show]
+            {
+                if (juce::isPositiveAndBelow (presetChoice, list.size()))
+                    libraryStatus = show.loadFxPreset (presetSlot, list[presetChoice]).wasOk() ? "Loaded " + list[presetChoice].getFileNameWithoutExtension() : juce::String ("Load failed");
+                repaint();
+            });
+            encoders[1] = encoder (slot, "SAVE", [this, &show]
+            {
+                const auto name = "FX" + juce::String (presetSlot + 1);
+                const auto file = ShowPanel::libraryFolder().getNonexistentChildFile (name, Show::fxPresetExtension);
+                const auto r = show.saveFxPreset (presetSlot, file, name);
+                libraryStatus = r.wasOk() ? "Saved " + file.getFileNameWithoutExtension() : r.getErrorMessage();
+                assignEncoders();
+            });
+        }
+    }
     else if (screen == Screen::Library && tab == 1)
     {
         // The show file: NEW, OPEN, SAVE, SAVE AS (the app's, as on every skin).
@@ -966,6 +1027,13 @@ void Display::assignEncoders()
     layerUp.setEnabled (numLayers() > 1);
     layerDown.setEnabled (numLayers() > 1);
     repaint();
+}
+
+juce::Array<juce::File> Display::presets (const char* extension)
+{
+    auto files = ShowPanel::libraryFolder().findChildFiles (juce::File::findFiles, false, juce::String ("*") + extension);
+    std::sort (files.begin(), files.end(), [] (const juce::File& a, const juce::File& b) { return a.getFileName().compareNatural (b.getFileName()) < 0; });
+    return files;
 }
 
 juce::String Display::x32Value (const juce::String& address) const
@@ -2124,6 +2192,33 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
             break;
         case Screen::Library:
         {
+            if (tab >= 2)
+            {
+                // The presets around the one picked.
+                const auto list = presets (tab == 2 ? Show::channelPresetExtension : Show::fxPresetExtension);
+                juce::StringArray left, right;
+                const int rows = juce::jmax (1, (r.getHeight() - 50) / 26);
+                const int from = juce::jlimit (0, juce::jmax (0, list.size() - rows), presetChoice - rows / 2);
+                for (int i = from; i < juce::jmin (list.size(), from + rows); ++i)
+                {
+                    left.add ((i == presetChoice ? "> " : "  ") + juce::String (i + 1).paddedLeft ('0', 2));
+                    right.add (list[i].getFileNameWithoutExtension());
+                }
+                if (list.isEmpty())
+                {
+                    left.add ("No presets");
+                    right.add (tab == 2 ? "SAVE stores the selected strip" : "SAVE stores the FX slot");
+                }
+                auto area = r.reduced (12);
+                if (libraryStatus.isNotEmpty())
+                {
+                    g.setColour (kSky);
+                    g.setFont (type::font (11.0f, true));
+                    g.drawText (libraryStatus, area.removeFromBottom (20), juce::Justification::centredLeft);
+                }
+                paintRows (g, area, left, right);
+                break;
+            }
             auto& show = ctx.show;
             const int n = show.getNumScenes();
             juce::StringArray left, right;

@@ -301,6 +301,7 @@ namespace y02r
             case Function::Meter:
                 return 3;
             case Function::Midi:
+                return 3; // MIDI SETUP, Program Change Assign, Control Change Assign
             case Function::Group:
             case Function::Pair:
             case Function::Att:
@@ -709,6 +710,51 @@ namespace y02r
             }
             case Function::Midi:
             {
+                if (page == 2)
+                {
+                    // Control Change Assign (V2 p.164): a controller picked (0-95,
+                    // 102-119), what it moves: FADER, ON, PAN or a SEND, of a strip.
+                    const auto save = [this] { ctx.settings.setValue (Y02RMidi::ccKey, y.getCcText()); };
+                    const auto describe = [] (int code)
+                    {
+                        const int kind = code & 7, extra = (code >> 3) & 7, st = code >> 8;
+                        const char* kinds[] = { "--", "FADER", "ON", "PAN", "SEND" };
+                        if (kind == 0 || kind > 4)
+                            return juce::String ("--");
+                        return juce::String (kinds[kind]) + " " + stripName (st) + (kind == 4 ? " AUX" + juce::String (extra + 1) : kind == 3 && extra > 0 ? " R" : "");
+                    };
+                    fields.push_back ({ "CC", [this] { return ccNumber; },
+                                        [this] (int v) { ccNumber = v >= 96 && v < 102 ? (v > ccNumber ? 102 : 95) : v; build(); },
+                                        [] (int v) { return juce::String (v); }, 0, 119 });
+                    const int code = y.ccCode (ccNumber);
+                    const auto setPart = [this, save] (int kind, int extra, int st)
+                    {
+                        y.setCcCode (ccNumber, kind == 0 ? 0 : kind | (extra << 3) | (st << 8));
+                        save();
+                        build();
+                    };
+                    const int kind = code & 7, extra = (code >> 3) & 7, st = code >> 8;
+                    fields.push_back ({ "MOVES", [kind] { return kind; }, [setPart, extra, st] (int v) { setPart (v, v == 4 || v == 3 ? extra : 0, st); },
+                                        [] (int v) { const char* k[] = { "--", "FADER", "ON", "PAN", "SEND" }; return juce::String (k[juce::jlimit (0, 4, v)]); }, 0, 4 });
+                    if (kind > 0)
+                    {
+                        fields.push_back ({ "STRIP", [st] { return st; }, [setPart, kind, extra] (int v) { setPart (kind, extra, v); },
+                                            [] (int v) { return stripName (v); }, 0, kStrips - 1 });
+                        if (kind == 3 || kind == 4)
+                            fields.push_back ({ kind == 4 ? "AUX" : "SIDE", [extra] { return extra; }, [setPart, kind, st] (int v) { setPart (kind, v, st); },
+                                                [kind] (int v) { return kind == 4 ? juce::String (v + 1) : juce::String (v == 0 ? "L" : "R"); }, 0, kind == 4 ? 7 : 1 });
+                    }
+                    for (int k = 1; k <= 12; ++k)
+                    {
+                        int cc = ccNumber + k;
+                        if (cc >= 96 && cc < 102)
+                            cc += 6;
+                        if (cc > 119)
+                            break;
+                        fixed ("CC " + juce::String (cc), describe (y.ccCode (cc)));
+                    }
+                    break;
+                }
                 if (page == 1)
                 {
                     // Program Change Assign (MAN p.144): a program picked, the scene it recalls; the next ones.
@@ -755,6 +801,16 @@ namespace y02r
                 break;
             }
             case Function::Meter:
+                // Where the meters read (MAN p.41): inputs PRE EQ, POST EQ or POST
+                // FADER; outputs PRE or POST FADER.
+                fields.push_back ({ "METER POINT", [this] { return meterPoint; }, [this] (int v) { meterPoint = v; },
+                                    [this] (int v)
+                                    {
+                                        const char* in[] = { "PRE EQ", "POST EQ", "POST FADER" };
+                                        const char* out[] = { "PRE FADER", "PRE FADER", "POST FADER" };
+                                        return juce::String (page == 2 ? out[v] : in[v]);
+                                    },
+                                    0, 2 });
                 break;
             default:
             {
@@ -895,10 +951,7 @@ namespace y02r
         g.drawHorizontalLine ((int) top.getBottom() + 2, b.getX() + 14.0f, b.getRight() - 14.0f);
 
         if (function == Function::Meter)
-        {
-            paintMeters (g, b.reduced (14.0f).withTrimmedTop (40.0f).withTrimmedBottom (24.0f));
-            return;
-        }
+            paintMeters (g, b.reduced (14.0f).withTrimmedTop (96.0f).withTrimmedBottom (24.0f)); // METER POINT over them
         if (function == Function::Eq)
             paintEq (g, b.reduced (14.0f).withTrimmedTop (40.0f).withTrimmedBottom (28.0f).withTrimmedLeft (b.getWidth() * 0.6f));
         if (fields.empty())
@@ -944,7 +997,8 @@ namespace y02r
                 st = pick (e.getBuses(), s - kBus);
             else
                 st = pick (e.getMains(), 0);
-            const float level = st != nullptr ? juce::Decibels::gainToDecibels (ctx.meters.get (st, MeterPoint::Output, 0), -60.0f) : -60.0f;
+            const auto point = meterPoint == 0 ? (s < kBus ? MeterPoint::Trim : MeterPoint::PreFader) : meterPoint == 1 ? MeterPoint::PreFader : MeterPoint::Output;
+            const float level = st != nullptr ? juce::Decibels::gainToDecibels (ctx.meters.get (st, point, 0), -60.0f) : -60.0f;
             auto bar = juce::Rectangle<float> (area.getX() + w * (float) (s - first) + 1.0f, area.getY(), juce::jmax (1.0f, w - 6.0f), area.getHeight() - 14.0f);
             g.setColour (kLcdFrame);
             g.fillRect (bar);

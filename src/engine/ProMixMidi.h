@@ -56,6 +56,7 @@ public:
     static constexpr const char* inputKey = "promixmidi.input";
     static constexpr const char* outputKey = "promixmidi.output";
     /** PROGRAM CHANGE ASSIGN's table (the console's `getPcText`). */
+    static constexpr const char* ccKey = "promixmidi.cc"; // CONTROL CHANGE ASSIGN's table
     static constexpr const char* pcKey = "promixmidi.pc";
     static constexpr const char* setupKey = "promixmidi.setup";
 

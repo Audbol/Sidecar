@@ -60,6 +60,24 @@ public:
     /** PROGRAM CHANGE ASSIGN: the scene program `pc` (0-127) recalls (-1 none), and setting it. */
     int pcScene (int pc) const { return ld::ld_promix_pc_scene (handle, pc); }
     void setPcScene (int pc, int scene) { ld::ld_promix_set_pc_scene (handle, pc, scene); }
+    /** CONTROL CHANGE ASSIGN: entry `n`'s code (parameter n: bank << 8 | cc, -1 none), and setting it; the whole table as text, and back. */
+    int ccCode (int n) const { return ld::ld_promix_cc_of (handle, n); }
+    void setCcCode (int n, int code) { ld::ld_promix_set_cc (handle, n, code); }
+    juce::String getCcText() const
+    {
+        juce::StringArray v;
+        for (int n = 0; n < 531; ++n)
+            v.add (juce::String (ccCode (n)));
+        return v.joinIntoString (" ");
+    }
+    void setCcText (const juce::String& text)
+    {
+        juce::StringArray v;
+        v.addTokens (text, " ", "");
+        if (v.size() == 531)
+            for (int n = 0; n < 531; ++n)
+                setCcCode (n, v[n].getIntValue());
+    }
     /** The whole table as text (128 numbers, -1 for none), for the app settings, and back. */
     juce::String getPcText() const
     {

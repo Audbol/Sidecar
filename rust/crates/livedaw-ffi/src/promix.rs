@@ -487,6 +487,30 @@ pub unsafe extern "C" fn ld_promix_set_pc_scene(p: *mut LdProMix, pc: i32, scene
     }
 }
 
+/// CONTROL CHANGE ASSIGN (p.83): parameter `n`'s controller as `bank << 8 | cc`
+/// (-1 none).
+///
+/// # Safety
+/// `p` is from `ld_promix_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_promix_cc_of(p: *const LdProMix, n: i32) -> i32 {
+    let (Some(p), Ok(n)) = (p.as_ref(), u16::try_from(n)) else { return -1 };
+    p.midi.cc_map.of(n).map_or(-1, |(bank, cc)| i32::from(bank) << 8 | i32::from(cc))
+}
+
+/// Sets it (`code` -1: none; bank 0-15, cc 0-95).
+///
+/// # Safety
+/// `p` is from `ld_promix_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_promix_set_cc(p: *mut LdProMix, n: i32, code: i32) {
+    let (Some(p), Ok(n)) = (p.as_mut(), usize::try_from(n)) else { return };
+    if let Some(m) = p.midi.cc_map.map.get_mut(n) {
+        let (bank, cc) = (code >> 8, code & 0xff);
+        *m = (code >= 0 && bank < 16 && cc < 96).then_some((bank as u8, cc as u8));
+    }
+}
+
 /// Parameter `n`'s name (the Control Change table's words).
 #[no_mangle]
 pub extern "C" fn ld_promix_param_name(n: i32) -> *mut LdString {

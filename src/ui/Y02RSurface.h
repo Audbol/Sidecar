@@ -194,7 +194,9 @@ namespace y02r
         int strip = 0, focus = 0, page = 0;
         /** A library page's STORE: the program chosen; TITLE EDIT's program, its
             target, its sixteen characters, and the function it came from. */
-        int storeChoice = -1, nameLibrary = 0, nameProgram = 0, nameTarget = 0, pcProgram = 0;
+        int storeChoice = -1, nameLibrary = 0, nameProgram = 0, nameTarget = 0, pcProgram = 0, ccNumber = 1;
+        /** METER's meter point: 0 PRE EQ (an output's PRE FADER), 1 POST EQ, 2 POST FADER. */
+        int meterPoint = 2;
         std::array<int, 16> nameChars {};
         Function nameFrom = Function::Eq;
         void editTitle (int library, int n, int target);

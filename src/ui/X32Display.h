@@ -150,6 +150,10 @@ private:
     int preampBlock = 0;
     /** ASSIGN's control being edited (0-3 encoders 1-4, 4-11 keys 5-12). */
     int assignControl = 0;
+    /** LIBRARY's channel and effects tabs: the preset picked, the FX slot. */
+    int presetChoice = 0, presetSlot = 0;
+    /** The library's presets of a kind (".lchn", ".lfx"), by name. */
+    static juce::Array<juce::File> presets (const char* extension);
     /** METERS' RTA tab showed the selected strip's RTA (hidden again when it goes). */
     bool rtaShown = false;
     int selectedOutput = 0; // ROUTING's signal tabs: the output the encoders set

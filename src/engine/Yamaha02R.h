@@ -56,6 +56,24 @@ public:
     /** PROGRAM CHANGE ASSIGN: the scene program `pc` (0-127) recalls (-1 none), and setting it. */
     int pcScene (int pc) const { return ld::ld_y02r_pc_scene (handle, pc); }
     void setPcScene (int pc, int scene) { ld::ld_y02r_set_pc_scene (handle, pc, scene); }
+    /** CONTROL CHANGE ASSIGN: entry `n`'s code (controller n: kind | extra << 3, strip << 8; 0 none), and setting it; the whole table as text, and back. */
+    int ccCode (int n) const { return ld::ld_y02r_cc_target (handle, n); }
+    void setCcCode (int n, int code) { ld::ld_y02r_set_cc_target (handle, n, code); }
+    juce::String getCcText() const
+    {
+        juce::StringArray v;
+        for (int n = 0; n < 128; ++n)
+            v.add (juce::String (ccCode (n)));
+        return v.joinIntoString (" ");
+    }
+    void setCcText (const juce::String& text)
+    {
+        juce::StringArray v;
+        v.addTokens (text, " ", "");
+        if (v.size() == 128)
+            for (int n = 0; n < 128; ++n)
+                setCcCode (n, v[n].getIntValue());
+    }
     /** The whole table as text (128 numbers, -1 for none), for the app settings, and back. */
     juce::String getPcText() const
     {

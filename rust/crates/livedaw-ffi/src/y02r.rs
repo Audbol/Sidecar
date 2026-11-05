@@ -453,6 +453,31 @@ pub unsafe extern "C" fn ld_y02r_set_pc_scene(p: *mut LdY02R, pc: i32, scene: i3
     }
 }
 
+/// Control Change Assign (V2 p.164): what controller `cc` (0-127) moves, as
+/// `CcTarget::to_bytes` (`b0 | b1 << 8`; 0 none).
+///
+/// # Safety
+/// `p` is from `ld_y02r_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_y02r_cc_target(p: *const LdY02R, cc: i32) -> i32 {
+    let (Some(p), Ok(cc)) = (p.as_ref(), usize::try_from(cc)) else { return 0 };
+    let t = p.midi.cc_map.map.get(cc).copied().flatten();
+    let b = livedaw_02r::midi::CcTarget::to_bytes(t);
+    i32::from(b[0]) | i32::from(b[1]) << 8
+}
+
+/// Sets it (0: none).
+///
+/// # Safety
+/// `p` is from `ld_y02r_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_y02r_set_cc_target(p: *mut LdY02R, cc: i32, code: i32) {
+    let (Some(p), Ok(cc)) = (p.as_mut(), usize::try_from(cc)) else { return };
+    if let Some(m) = p.midi.cc_map.map.get_mut(cc) {
+        *m = livedaw_02r::midi::CcTarget::of_bytes([(code & 0xff) as u8, ((code >> 8) & 0xff) as u8]);
+    }
+}
+
 /// The console's own state value `what` number `i` (`livedaw_02r::panel::What`:
 /// pairs, groups, gangs, keys, recall safe, fade times, the oscillator...);
 /// -1 for none.

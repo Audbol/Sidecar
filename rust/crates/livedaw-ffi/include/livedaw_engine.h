@@ -1850,6 +1850,9 @@ extern "C"
     /** ABI 47: PROGRAM CHANGE ASSIGN: the scene program `pc` (0-127) recalls (-1 none), and setting it. */
     int32_t ld_promix_pc_scene (const LdProMix*, int32_t pc);
     void ld_promix_set_pc_scene (LdProMix*, int32_t pc, int32_t scene);
+    /** ABI 47: CONTROL CHANGE ASSIGN: parameter `n`'s controller as bank << 8 | cc (-1 none), and setting it. */
+    int32_t ld_promix_cc_of (const LdProMix*, int32_t n);
+    void ld_promix_set_cc (LdProMix*, int32_t n, int32_t code);
     void ld_promix_set_library_text (LdProMix*, const char* text, size_t len);
     /** The console's own state as text (pairs, groups, processors...), and back. */
     LdString* ld_promix_state_text (LdProMix*);
@@ -1911,6 +1914,9 @@ extern "C"
     /** ABI 47: Program Change Assign: the scene program `pc` (0-127) recalls (-1 none), and setting it. */
     int32_t ld_y02r_pc_scene (const LdY02R*, int32_t pc);
     void ld_y02r_set_pc_scene (LdY02R*, int32_t pc, int32_t scene);
+    /** ABI 47: Control Change Assign: controller `cc`'s target (kind | extra << 3, strip << 8; 0 none), and setting it. */
+    int32_t ld_y02r_cc_target (const LdY02R*, int32_t cc);
+    void ld_y02r_set_cc_target (LdY02R*, int32_t cc, int32_t code);
     void ld_y02r_set_library_text (LdY02R*, const char* text, size_t len);
     /** Recalls scene 0, the initial data. */
     void ld_y02r_recall_initial (LdY02R*);

@@ -519,6 +519,16 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   - The Program Change tables are kept in the app settings. C ABI 47:
     `ld_promix_pc_scene`, `ld_promix_set_pc_scene`, `ld_y02r_pc_scene`,
     `ld_y02r_set_pc_scene`.
+- Control Change assign tables: the ProMix 01's CONTROL CHANGE ASSIGN (p.83,
+  MIDI's fourth page: a parameter's bank and controller) and the 02R's (V2
+  p.164, MIDI's third page: what a controller moves, FADER, ON, PAN or a SEND
+  of a strip), kept in the app settings. The ProMix 01's MEMORY CONTROL CHANGE
+  OUT (p.87: the edit buffer out as control changes) and its COMP page's gain
+  reduction meter; the 02R METER's meter point (PRE EQ, POST EQ, POST FADER).
+  The X32's LIBRARY has CHANNEL and EFFECTS tabs: the library's channel and FX
+  presets, LOAD onto the selected strip or a slot, SAVE as a new one. C ABI 47:
+  `ld_promix_cc_of`, `ld_promix_set_cc`, `ld_y02r_cc_target`,
+  `ld_y02r_set_cc_target`.
 
   `ui::hw` (`src/ui/HardwareLook.*`) draws them. Keys, faders and knobs take a
   console's look when its surface asks; the Universal Mixer and the WING are

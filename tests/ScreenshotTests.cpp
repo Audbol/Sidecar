@@ -249,6 +249,16 @@ public:
         expectEquals (y.pcScene (0), 10);
         expect (rig.settings.getValue (Y02RMidi::pcKey).startsWith ("10 "));
         display.getFields()[1].set (2);
+        // Control Change Assign (MIDI's third page): CC 1 moves MIC 1's fader, then its ON.
+        skin.pressFunction (F::Midi);
+        expectEquals (display.getPage(), 2);
+        expectEquals (y.ccCode (1) & 7, 1, "the preset map: a fader");
+        display.getFields()[1].set (2);
+        expectEquals (y.ccCode (1) & 7, 2, "ON");
+        display.getFields()[1].set (1);
+        expect (rig.settings.getValue (Y02RMidi::ccKey).isNotEmpty());
+        skin.pressFunction (F::Meter);
+        expectEquals (display.getFields()[0].label, juce::String ("METER POINT"));
         for (int k = 0; k < 4; ++k)
             skin.pressFunction (F::Aux7);
         expectEquals (display.getPage(), 3);
@@ -462,6 +472,16 @@ private:
         expectEquals (pm.pcScene (0), 4);
         expect (rig.settings.getValue (ProMixMidi::pcKey).startsWith ("4 "));
         display.getFields()[1].set (2);
+        // CONTROL CHANGE ASSIGN (the fourth page): parameter 0's bank; MEMORY CC OUT (the fifth).
+        skin.pressFunction (F::Midi);
+        expectEquals (display.getPage(), 3);
+        const int cc0 = pm.ccCode (0);
+        display.getFields()[1].set (3);
+        expectEquals (pm.ccCode (0) >> 8, 3);
+        expect (rig.settings.getValue (ProMixMidi::ccKey).isNotEmpty());
+        pm.setCcCode (0, cc0);
+        skin.pressFunction (F::Midi);
+        expectEquals (display.getFields()[0].textOf (0), juce::String ("EXECUTE"));
         // METER's PEAK HOLD.
         skin.pressFunction (F::Meter);
         expectEquals (display.getFields()[0].label, juce::String ("PEAK HOLD"));
@@ -853,6 +873,9 @@ private:
             display.setLayer (0);
             display.showScreen (S::Meters, 4);
             expectEquals (display.getEncoder (0).pushLabel, juce::String ("FREEZE"));
+            display.showScreen (S::Library, 2);
+            expectEquals (display.getEncoder (0).pushLabel, juce::String ("LOAD"));
+            expectEquals (display.getEncoder (1).pushLabel, juce::String ("SAVE"));
             display.showScreen (S::Assign, 0);
             display.getEncoder (1).turn.set (1.0f / 3.0f); // ENC 1: FADER
             expect (skin.getAssignSection().getCode (0).startsWith ("F"), "a fader");
