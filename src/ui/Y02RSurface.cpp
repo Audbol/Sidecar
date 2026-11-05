@@ -622,6 +622,8 @@ namespace y02r
                     stateField ("GANG", Yamaha02R::Gang, pairOf (s), 0, 1, onOff);
                 if (function == Function::Pan)
                     break;
+                if (pairOf (s) >= 0)
+                    stateField ("MS", Yamaha02R::Ms, pairOf (s), 0, 1, onOff);
                 if (memberOf (s) >= 0)
                 {
                     stateField ("FADER GRP", Yamaha02R::FaderGroup, memberOf (s), 0, 4, [] (int v) { return v == 0 ? juce::String ("-") : juce::String::charToString ('A' + v - 1); });
@@ -727,8 +729,13 @@ namespace y02r
                 if (page == 0)
                 {
                     // 1/2 the channel pairs: MIC 1/2 ... 15/16, TAPE 1/2 ... 15/16.
+                    // Each pair's MS beside it (V2 MAN p.186): M the odd channel, S the even.
                     for (int k = 0; k < 16; ++k)
-                        stateField ((k < 8 ? "" : "T") + juce::String (2 * (k % 8) + 1) + "/" + juce::String (2 * (k % 8) + 2), Yamaha02R::Pair, k, 0, 1, onOff);
+                    {
+                        const auto name = (k < 8 ? "" : "T") + juce::String (2 * (k % 8) + 1) + "/" + juce::String (2 * (k % 8) + 2);
+                        stateField (name, Yamaha02R::Pair, k, 0, 1, onOff);
+                        stateField (name + " MS", Yamaha02R::Ms, k, 0, 1, onOff);
+                    }
                     break;
                 }
                 for (int k = 0; k < 4; ++k)

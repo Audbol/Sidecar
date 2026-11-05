@@ -748,6 +748,10 @@ pub struct StripParams {
     /// in use instead of their own (`colour`, `icon` and the name stay the
     /// channel's own, used again when the link is off or there is no source).
     pub cust_link: AtomicBool,
+
+    /// ABI 50: MS decoding's S channel (an 02R pair, V2 MAN p.186): a mono
+    /// strip's right side panned with its polarity reversed (R = M - S).
+    pub ms_side: AtomicBool,
 }
 
 /// One band of the TAP EQ.
@@ -1106,6 +1110,7 @@ impl StripParams {
             tap_width: AtomicF32::new(100.0),
             tap_eq: TapEqParams::default(),
             cust_link: AtomicBool::new(kind.is_input()),
+            ms_side: AtomicBool::new(false),
         };
         // The WING's factory strips: the fader down, the EQ off.
         p.fader_db.store(livedaw_dsp::fader::FADER_MIN);

@@ -650,6 +650,9 @@ fn capture_strip(s: &Strip, sections: u32, slots: &[usize], mains: usize, matric
         put_f(o, "pan", &p.pan);
         put_f(o, "wid", &p.width);
         put_b(o, "mute", &p.mute);
+        if p.ms_side.load(Relaxed) {
+            o.set_bool("ms", true);
+        }
     }
     if sections & GROUPS != 0 {
         let g = e.add_new("Grp");
@@ -1292,6 +1295,7 @@ fn apply_strip(
         get_fadable(o, "pan", FadeParam::Pan(s.clone()), engine, fades);
         get_fadable(o, "wid", FadeParam::Width(s.clone()), engine, fades);
         get_b(o, "mute", &p.mute);
+        p.ms_side.store(o.bool_or("ms", false), Relaxed);
     }
     if let Some(g) = e.child("Grp").filter(|_| sections & GROUPS != 0) {
         get_groups(g, "dca", &p.dca_mask);

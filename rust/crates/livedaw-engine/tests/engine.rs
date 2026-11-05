@@ -156,6 +156,19 @@ fn channel_reaches_main_1_through_pan_law() {
 }
 
 #[test]
+fn ms_side_reverses_its_right_side() {
+    // An 02R pair decoding MS: M on channel 1, S on channel 2; L = M + S, R = M - S.
+    let mut rig = Rig::new(2, 4, 8);
+    set_channels(&rig.engine, 2);
+    rig.set_input(0, 0.5);
+    rig.set_input(1, 0.2);
+    rig.ch(1).params.ms_side.store(true, Relaxed);
+    rig.run(20);
+    assert!(close(rig.out(0), 0.7 * CENTRE, 1e-5), "{}", rig.out(0));
+    assert!(close(rig.out(1), 0.3 * CENTRE, 1e-5), "{}", rig.out(1));
+}
+
+#[test]
 fn mute_fader_dcas_and_mute_groups() {
     let mut rig = Rig::new(2, 2, 2);
     set_channels(&rig.engine, 1);

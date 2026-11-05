@@ -1490,7 +1490,11 @@ impl Strip {
         let pan = p.pan.load() / 100.0;
 
         let target = if nc == 1 || d.widened {
-            let (l, r) = (self.spec.pan.mono)(pan);
+            let (l, mut r) = (self.spec.pan.mono)(pan);
+            // MS decoding's S: its right side reversed.
+            if nc == 1 && p.ms_side.load(Relaxed) {
+                r = -r;
+            }
             d.pan_gains = [l, r];
             if nc == 1 {
                 [l, 0.0, r, 0.0]

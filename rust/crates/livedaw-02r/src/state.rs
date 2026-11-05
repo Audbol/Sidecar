@@ -126,6 +126,9 @@ impl Default for Oscillator {
 pub struct State {
     /// MIC 1/2 ... 15/16, then TAPE 1/2 ... 15/16 (V2 p.184).
     pub pairs: [bool; PAIRS],
+    /// MS decoding (V2 MAN p.186) of a pair: its odd channel M, its even S,
+    /// the faders apart.
+    pub ms: [bool; PAIRS],
     /// AUX 1/2 ... 7/8 and BUS 1/2 ... 7/8 (V2 p.185).
     pub aux_pairs: [bool; AUXES / 2],
     pub bus_pairs: [bool; BUSES / 2],
@@ -162,6 +165,7 @@ impl Default for State {
         dynamics[DYN_STRIPS - 1].key_in = KeyIn::SelfPreEq;
         State {
             pairs: [false; PAIRS],
+            ms: [false; PAIRS],
             aux_pairs: [false; AUXES / 2],
             bus_pairs: [false; BUSES / 2],
             gangs: [false; PAIRS],
@@ -236,6 +240,7 @@ impl State {
         let list = |v: &[u8]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>().join(" ");
         let bits = |v: &[bool]| list(&v.iter().map(|&b| b as u8).collect::<Vec<_>>());
         put("pairs", bits(&self.pairs));
+        put("ms", bits(&self.ms));
         put("aux_pairs", bits(&self.aux_pairs));
         put("bus_pairs", bits(&self.bus_pairs));
         put("gangs", bits(&self.gangs));
@@ -274,6 +279,7 @@ impl State {
             let Some((k, v)) = line.split_once('=') else { continue };
             match k.trim() {
                 "pairs" => flags(&mut s.pairs, v),
+                "ms" => flags(&mut s.ms, v),
                 "aux_pairs" => flags(&mut s.aux_pairs, v),
                 "bus_pairs" => flags(&mut s.bus_pairs, v),
                 "gangs" => flags(&mut s.gangs, v),

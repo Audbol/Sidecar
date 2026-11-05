@@ -550,6 +550,13 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
 - The 02R's ENTER double-clicked on PHASE / ATT or DELAY (MAN pp.32, 34):
   every channel (MIC/LINE, TAPE, the effect returns; not STEREO) takes the
   attenuation and phase, or the delay, of the one with the cursor.
+- The 02R's MS decoding (V2 MAN p.186): PAIR 1/2 has an MS switch beside each
+  channel pair, VIEW 1/2 one for the selected channel's. On, the channels
+  pair (if they weren't), the odd one is M and the even one S: L = M + S,
+  R = M - S, the faders apart and both pans set to the centre to start from.
+  Breaking the pair turns it off. In the engine, a strip's `ms_side` (a mono
+  strip's right side panned with its polarity reversed), kept in shows and
+  scenes. C ABI 50: `StripParams::msSide`; the 02R's state 18, `Ms`.
 - The console surfaces (X32, ProMix 01, 02R) are laid out at 1920 x 1080 and
   scaled to the window, in proportion and centred: on a bigger screen (a 4K
   monitor) they show the same panel larger instead of stretching the gaps

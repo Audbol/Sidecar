@@ -119,7 +119,8 @@ public:
         OscOn,
         OscLevel,
         OscWave,
-        OscAssign
+        OscAssign,
+        Ms // ABI 50: a channel pair's MS decoding (on pairs it)
     };
     int getState (State what, int i) const { return ld::ld_y02r_state (handle, (int) what, i); }
     void setState (State what, int i, int value) { ld::ld_y02r_set_state (handle, (int) what, i, value); }

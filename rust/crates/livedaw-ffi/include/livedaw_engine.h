@@ -29,7 +29,7 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 49;
+constexpr int kAbiVersion = 50;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -502,6 +502,7 @@ struct StripParams
     // ABI 12, input and aux channels: LINK CUSTOMIZATION TO SOURCE (show the
     // source's name, colour and icon instead of the strip's own).
     std::atomic<bool> custLink;
+    std::atomic<bool> msSide; // ABI 50: MS decoding's S channel (an 02R pair): its right side reversed
 };
 
 struct StripMeters

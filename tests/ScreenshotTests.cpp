@@ -220,6 +220,15 @@ public:
         skin.pressFunction (F::View);
         y.set (6 * Yamaha02R::perStrip, 100);
         expectEquals (y.get (7 * Yamaha02R::perStrip), 100, "CH 8 follows CH 7");
+        // MS decoding (PAIR 1/2's MS): the faders apart, CH 8 the S with its right side reversed.
+        y.setState (Yamaha02R::Ms, 3, 1);
+        expectEquals (y.getState (Yamaha02R::Ms, 3), 1);
+        y.set (6 * Yamaha02R::perStrip, 90);
+        expectEquals (y.get (7 * Yamaha02R::perStrip), 100, "CH 8's fader its own");
+        expect (engine.getChannels()[7]->params.msSide.load() && ! engine.getChannels()[6]->params.msSide.load());
+        y.setState (Yamaha02R::Ms, 3, 0);
+        expect (! engine.getChannels()[7]->params.msSide.load());
+        y.set (6 * Yamaha02R::perStrip, 100);
         // The display on the selected channel (CH 5): the EQ's fields, LIBRARY by ENTER.
         skin.selectionChanged();
         auto& display = skin.getDisplay();

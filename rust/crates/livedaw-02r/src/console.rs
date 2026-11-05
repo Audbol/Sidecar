@@ -191,12 +191,14 @@ impl<'a> Console<'a> {
     pub fn set_level(&mut self, s: Y2Strip, step: u16, origin: Origin) {
         let step = step.min(127);
         let before = self.level(s) as i32;
-        for st in self.linked(s) {
+        // MS decoding: M and S on faders of their own.
+        let ms = self.ms_pair(s).is_some();
+        for st in self.linked(s).into_iter().take(if ms { 1 } else { 2 }) {
             st.params.fader_db.store(step_db(s.law(), step));
         }
         let Some(m) = s.member().filter(|_| origin == Origin::Panel) else { return };
         let delta = step as i32 - before;
-        let skip = self.partner(s).and_then(Y2Strip::member);
+        let skip = self.partner(s).filter(|_| !ms).and_then(Y2Strip::member);
         for other in self.state.group_members(m, false) {
             if Some(other) == skip {
                 continue;
@@ -687,7 +689,45 @@ impl<'a> Console<'a> {
             s.dynamics[to].st_link = true;
         }
         self.state.pairs[pair] = on;
+        if !on {
+            // Breaking the pair turns MS off.
+            self.set_ms(pair, false);
+        }
         self.apply_dyn(Y2Strip::channel(odd));
+    }
+
+    /// The pair `s` decodes as MS, if it does.
+    pub fn ms_pair(&self, s: Y2Strip) -> Option<usize> {
+        let (StripKind::Channel, c) = s.engine_ref() else { return None };
+        state::pair_of(c).filter(|&p| self.state.pairs[p] && self.state.ms[p])
+    }
+
+    /// MS decoding of pair `pair` (V2 MAN p.186): on, the channels pair (if
+    /// they weren't), the odd one is M and the even one S: L = M + S, R = M -
+    /// S, both pans to the centre to start from; the faders move apart.
+    pub fn set_ms(&mut self, pair: usize, on: bool) {
+        if pair >= state::PAIRS {
+            return;
+        }
+        if on && !self.state.pairs[pair] {
+            self.set_pair(pair, true, true);
+        }
+        let was = self.state.ms[pair];
+        self.state.ms[pair] = on;
+        let odd = if pair < MICS / 2 { 2 * pair } else { y02r::TAPE + 2 * (pair - MICS / 2) };
+        for (c, side) in [(odd, false), (odd + 1, true)] {
+            if let Some(st) = self.strip(Y2Strip::channel(c)) {
+                st.params.ms_side.store(on && side, Relaxed);
+                if on && !was {
+                    st.params.pan.store(0.0);
+                }
+            }
+        }
+    }
+
+    /// Whether pair `pair` decodes as MS.
+    pub fn ms(&self, pair: usize) -> bool {
+        self.state.ms.get(pair).copied().unwrap_or(false) && self.state.pairs.get(pair).copied().unwrap_or(false)
     }
 
     /// Makes or breaks an aux pair (AUX 1/2 ... 7/8, `pair` 0-3) or a bus pair
@@ -1108,6 +1148,22 @@ mod tests {
         c.set_pair(9, false, true);
         c.set_level(Y2Strip::Tape(2), 10, Origin::Remote);
         assert_eq!(c.level(Y2Strip::Tape(3)), 90, "unpaired");
+    }
+
+    #[test]
+    fn ms_decoding_keeps_the_faders_apart() {
+        let e = y02r();
+        let mut s = State::default();
+        let mut c = Console::new(&e, &mut s);
+        c.set_ms(0, true);
+        assert!(c.state.pairs[0] && c.ms(0), "MS pairs the channels");
+        assert!(c.strip(Y2Strip::Mic(1)).unwrap().params.ms_side.load(Relaxed));
+        assert!(!c.strip(Y2Strip::Mic(0)).unwrap().params.ms_side.load(Relaxed), "M is the odd one");
+        c.set_level(Y2Strip::Mic(0), 100, Origin::Panel);
+        c.set_level(Y2Strip::Mic(1), 60, Origin::Panel);
+        assert_eq!((c.level(Y2Strip::Mic(0)), c.level(Y2Strip::Mic(1))), (100, 60));
+        c.set_pair(0, false, true);
+        assert!(!c.ms(0) && !c.strip(Y2Strip::Mic(1)).unwrap().params.ms_side.load(Relaxed), "breaking the pair ends MS");
     }
 
     #[test]

@@ -41,6 +41,8 @@ pub enum What {
     OscLevel = 15,
     OscWave = 16,
     OscAssign = 17,
+    /// Channel pair 0-15's MS decoding (V2 MAN p.186): on, it pairs them.
+    Ms = 18,
 }
 
 impl What {
@@ -65,6 +67,7 @@ impl What {
             OscLevel,
             OscWave,
             OscAssign,
+            Ms,
         ]
         .into_iter()
         .find(|w| *w as i32 == n)
@@ -82,6 +85,8 @@ pub fn get(c: &Console, what: What, i: usize) -> Option<i32> {
     let flag = |v: &[bool]| v.get(i).map(|&b| b as i32);
     Some(match what {
         What::Pair => flag(&s.pairs)?,
+        What::Ms if i < PAIRS => c.ms(i) as i32,
+        What::Ms => return None,
         What::AuxPair => flag(&s.aux_pairs)?,
         What::BusPair => flag(&s.bus_pairs)?,
         What::Gang => flag(&s.gangs)?,
@@ -107,6 +112,7 @@ pub fn set(c: &mut Console, what: What, i: usize, v: i32) {
     let on = v != 0;
     match what {
         What::Pair if i < PAIRS => c.set_pair(i, on, true),
+        What::Ms if i < PAIRS => c.set_ms(i, on),
         What::AuxPair => c.set_output_pair(true, i, on),
         What::BusPair => c.set_output_pair(false, i, on),
         What::Gang => c.set_gang(i, on),
@@ -152,10 +158,10 @@ mod tests {
         e.configure(&ConsoleConfig { profile: Profile::Yamaha02R, counts: Counts::Y02R });
         let mut s = State::default();
         let mut c = Console::new(&e, &mut s);
-        for n in 0..18 {
+        for n in 0..19 {
             assert_eq!(What::of(n).map(|w| w as i32), Some(n));
         }
-        assert_eq!(What::of(18), None);
+        assert_eq!(What::of(19), None);
         set(&mut c, What::Pair, 8, 1);
         assert_eq!((get(&c, What::Pair, 8), c.partner(Y2Strip::Tape(0))), (Some(1), Some(Y2Strip::Tape(1))));
         set(&mut c, What::FaderGroup, 37, 9);
