@@ -266,6 +266,12 @@ private:
     Strip* stripOf (int fader) const;
     juce::Rectangle<int> meterArea() const;
     juce::Rectangle<int> memoryArea() const;
+    /** The panel is laid out at 1920 x 1080 and scaled to the window, in
+        proportion and centred: it looks the same on any screen. */
+    static constexpr int kDesignWidth = 1920, kDesignHeight = 1080;
+    juce::AffineTransform design;
+    juce::Rectangle<int> designBounds() const noexcept { return { kDesignWidth, kDesignHeight }; }
+    void repaintDesign (juce::Rectangle<int> r) { repaint (r.toFloat().transformedBy (design).getSmallestIntegerContainer().expanded (2)); }
     /** The panel's analog row (PAD and GAIN, MONITOR OUT, PHONES: drawn, not
         controls), and the stereo meter's place, set by resized(). */
     juce::Rectangle<int> analogArea, meterRect, contrastKnob, grilleArea;

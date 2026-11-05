@@ -497,6 +497,12 @@ private:
     void assignBanks();
     void buildInputLayerKeys();
     juce::Rectangle<int> channelSectionArea() const;
+    /** The panel is laid out at 1920 x 1080 and scaled to the window, in
+        proportion and centred: it looks the same on any screen. */
+    static constexpr int kDesignWidth = 1920, kDesignHeight = 1080;
+    juce::AffineTransform design;
+    juce::Rectangle<int> designBounds() const noexcept { return { kDesignWidth, kDesignHeight }; }
+    void repaintDesign (juce::Rectangle<int> r) { repaint (r.toFloat().transformedBy (design).getSmallestIntegerContainer().expanded (2)); }
 
     UiContext& ctx;
     const universal::Theme& theme;

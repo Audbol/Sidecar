@@ -1301,7 +1301,7 @@ ProMixSurface::ProMixSurface (UiContext& c)
             display.turn (d);
             wheelLast = v;
         }
-        repaint (wheel->getBounds());
+        repaintDesign (wheel->getBounds());
     };
     wheel->setTitle ("PARAMETER");
     addAndMakeVisible (*wheel);
@@ -1556,8 +1556,8 @@ void ProMixSurface::timerCallback()
     for (auto& [f, key] : functionKeys)
         key->refresh();
     display.refresh();
-    repaint (meterArea());
-    repaint (memoryArea());
+    repaintDesign (meterArea());
+    repaintDesign (memoryArea());
 }
 
 juce::Rectangle<int> ProMixSurface::meterArea() const
@@ -1574,8 +1574,9 @@ juce::Rectangle<int> ProMixSurface::memoryArea() const
 void ProMixSurface::paint (juce::Graphics& g)
 {
     g.fillAll (theme.background);
+    g.addTransform (design);
     {
-        auto body = getLocalBounds().withTrimmedTop (kTopBar).toFloat();
+        auto body = designBounds().withTrimmedTop (kTopBar).toFloat();
         // The silver rack ears, then the panel.
         for (auto ear : { body.removeFromLeft (14.0f), body.removeFromRight (14.0f) })
         {
@@ -1617,7 +1618,7 @@ void ProMixSurface::paint (juce::Graphics& g)
         // The PARAMETER wheel: a big knurled knob.
         hw::knob (g, wheel->getBounds().toFloat(), (float) std::fmod (wheel->getValue() / 48.0 + 1.0e6, 1.0), look(), hw::Look::Knob::Wheel, {});
     }
-    auto top = getLocalBounds().removeFromTop (kTopBar);
+    auto top = designBounds().removeFromTop (kTopBar);
     g.setColour (theme.panel);
     g.fillRect (top);
     g.setColour (theme.text);
@@ -1829,7 +1830,16 @@ void ProMixSurface::paint (juce::Graphics& g)
 
 void ProMixSurface::resized()
 {
-    auto area = getLocalBounds();
+    // Laid out at the design size, then scaled to the window.
+    {
+        const float s = juce::jmin ((float) getWidth() / (float) kDesignWidth, (float) getHeight() / (float) kDesignHeight);
+        design = s > 0.0f ? juce::AffineTransform::scale (s).translated (((float) getWidth() - (float) kDesignWidth * s) * 0.5f,
+                                                                         ((float) getHeight() - (float) kDesignHeight * s) * 0.5f)
+                          : juce::AffineTransform();
+        for (auto* c : getChildren())
+            c->setTransform (design);
+    }
+    auto area = designBounds();
     auto top = area.removeFromTop (kTopBar);
     universalKey.setBounds (top.removeFromRight (190).reduced (sizes::kGap, 7));
 

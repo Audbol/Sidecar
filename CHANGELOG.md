@@ -529,6 +529,10 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   presets, LOAD onto the selected strip or a slot, SAVE as a new one. C ABI 47:
   `ld_promix_cc_of`, `ld_promix_set_cc`, `ld_y02r_cc_target`,
   `ld_y02r_set_cc_target`.
+- The console surfaces (X32, ProMix 01, 02R) are laid out at 1920 x 1080 and
+  scaled to the window, in proportion and centred: on a bigger screen (a 4K
+  monitor) they show the same panel larger instead of stretching the gaps
+  between fixed-size controls.
 
   `ui::hw` (`src/ui/HardwareLook.*`) draws them. Keys, faders and knobs take a
   console's look when its surface asks; the Universal Mixer and the WING are

@@ -373,7 +373,7 @@ void X32Surface::selectionChanged()
         applySendsOnFader(); // the sends follow the selection
     timerCallback(); // the SELECT keys
     display.refreshStrip();
-    repaint (channelArea);
+    repaintDesign (channelArea);
 }
 
 void X32Surface::timerCallback()
@@ -390,7 +390,7 @@ void X32Surface::timerCallback()
     for (auto& k : muteGroupKeys)
         k->refresh();
     // The main strip's COMP LED.
-    repaint (main->getBounds().withHeight (main->getMeterArea().getY() + 8));
+    repaintDesign (main->getBounds().withHeight (main->getMeterArea().getY() + 8));
 }
 
 void X32Surface::clearSolos()
@@ -411,14 +411,15 @@ juce::Rectangle<int> X32Surface::channelSectionArea() const
 
 void X32Surface::paint (juce::Graphics& g)
 {
-    // The console: its titanium frame, the sections on slate panels outlined in
+    // The console: its dark grey top, the sections on black panels, its
     // silkscreen (the X32's own look, drawn by Sidecar).
     g.fillAll (juce::Colour (0xff17191c));
+    g.addTransform (design);
     const auto& look = hw::Look::x32();
-    hw::panel (g, getLocalBounds().withTrimmedTop (kTopBar).toFloat(), look);
+    hw::panel (g, designBounds().withTrimmedTop (kTopBar).toFloat(), look);
 
     // The top bar: what this is.
-    auto bar = getLocalBounds().removeFromTop (kTopBar).reduced (sizes::kGapLarge, 0);
+    auto bar = designBounds().removeFromTop (kTopBar).reduced (sizes::kGapLarge, 0);
     if (g.clipRegionIntersects (bar))
     {
         g.setColour (theme.text);
@@ -531,7 +532,16 @@ void X32Surface::paint (juce::Graphics& g)
 
 void X32Surface::resized()
 {
-    auto area = getLocalBounds();
+    // Laid out at the design size, then scaled to the window.
+    {
+        const float s = juce::jmin ((float) getWidth() / (float) kDesignWidth, (float) getHeight() / (float) kDesignHeight);
+        design = s > 0.0f ? juce::AffineTransform::scale (s).translated (((float) getWidth() - (float) kDesignWidth * s) * 0.5f,
+                                                                         ((float) getHeight() - (float) kDesignHeight * s) * 0.5f)
+                          : juce::AffineTransform();
+        for (auto* c : getChildren())
+            c->setTransform (design);
+    }
+    auto area = designBounds();
     auto bar = area.removeFromTop (kTopBar).reduced (sizes::kGapLarge, 8);
     universalKey.setBounds (bar.removeFromRight (170));
     area.reduce (sizes::kGapLarge, 0);

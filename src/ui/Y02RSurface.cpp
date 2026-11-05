@@ -931,7 +931,7 @@ namespace y02r
         if (function == Function::Meter || function == Function::Eq)
             area = area.withTrimmedRight (area.getWidth() * (function == Function::Eq ? 0.42f : 0.0f));
         const int n = (int) fields.size();
-        const int cols = n <= 16 ? 4 : n <= 24 ? 6 : 8;
+        const int cols = function == Function::Eq || n <= 16 ? 4 : n <= 24 ? 6 : 8; // EQ beside its curve: four
         const int rows = juce::jmax (4, (n + cols - 1) / cols);
         const float w = area.getWidth() / cols, h = juce::jmin (52.0f, area.getHeight() / (float) rows);
         return { area.getX() + w * (float) (i % cols), area.getY() + h * (float) (i / cols), w - 6.0f, h - 6.0f };
@@ -1311,7 +1311,7 @@ Y02RSurface::Y02RSurface (UiContext& c)
             display.turn (d);
             wheelLast = v;
         }
-        repaint (wheel->getBounds());
+        repaintDesign (wheel->getBounds());
     };
     wheel->setTitle ("WHEEL");
     addAndMakeVisible (*wheel);
@@ -1585,8 +1585,8 @@ void Y02RSurface::timerCallback()
         e->refresh();
     eqQ->hi = display.band == 1 || display.band == 2 ? 40 : 42;
     display.refresh();
-    repaint (meterArea());
-    repaint (memoryArea());
+    repaintDesign (meterArea());
+    repaintDesign (memoryArea());
 }
 
 juce::Rectangle<int> Y02RSurface::meterArea() const
@@ -1602,11 +1602,12 @@ juce::Rectangle<int> Y02RSurface::memoryArea() const
 void Y02RSurface::paint (juce::Graphics& g)
 {
     g.fillAll (theme.background);
+    g.addTransform (design);
     // The 02R's panel between its wooden cheeks, its sections outlined in silkscreen.
-    auto body = getLocalBounds().withTrimmedTop (kTopBar).toFloat();
+    auto body = designBounds().withTrimmedTop (kTopBar).toFloat();
     hw::cheeks (g, body.removeFromLeft (14.0f), body.removeFromRight (14.0f));
     hw::panel (g, body, look());
-    auto top = getLocalBounds().removeFromTop (kTopBar);
+    auto top = designBounds().removeFromTop (kTopBar);
     g.setColour (theme.panel);
     g.fillRect (top);
     g.setColour (theme.text);
@@ -1933,7 +1934,16 @@ void Y02RSurface::resized()
     // CHANNEL, and the monitor column at the far right; the tape returns'
     // encoders above the fader columns; the faders; SCENE MEMORY, the wheel, the
     // cursor keys and ENTER at the bottom right.
-    auto area = getLocalBounds();
+    // Laid out at the design size, then scaled to the window.
+    {
+        const float s = juce::jmin ((float) getWidth() / (float) kDesignWidth, (float) getHeight() / (float) kDesignHeight);
+        design = s > 0.0f ? juce::AffineTransform::scale (s).translated (((float) getWidth() - (float) kDesignWidth * s) * 0.5f,
+                                                                         ((float) getHeight() - (float) kDesignHeight * s) * 0.5f)
+                          : juce::AffineTransform();
+        for (auto* c : getChildren())
+            c->setTransform (design);
+    }
+    auto area = designBounds();
     auto top = area.removeFromTop (kTopBar);
     universalKey.setBounds (top.removeFromRight (190).reduced (sizes::kGap, 7));
     area.removeFromLeft (14);

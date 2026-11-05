@@ -321,6 +321,16 @@ public:
             file.deleteFile();
             juce::FileOutputStream out (file);
             expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out), file.getFullPathName());
+            {
+                // On a bigger screen: the same panel, scaled.
+                skin.setSize (2560, 1440);
+                const auto big = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
+                const auto bigFile = file.getSiblingFile ("y02r-surface-1440.png");
+                bigFile.deleteFile();
+                juce::FileOutputStream bigOut (bigFile);
+                juce::PNGImageFormat().writeImageToStream (big, bigOut);
+                skin.setSize (1920, 1080);
+            }
             skin.pressFunction (F::Dynamics);
             const auto lcd = display.createComponentSnapshot (display.getLocalBounds(), true, 1.0f);
             const auto lcdFile = file.getSiblingFile ("y02r-display-dynamics.png");
@@ -531,6 +541,16 @@ private:
             file.deleteFile();
             juce::FileOutputStream out (file);
             expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out), file.getFullPathName());
+            {
+                // On a bigger screen: the same panel, scaled.
+                skin.setSize (2560, 1440);
+                const auto big = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
+                const auto bigFile = file.getSiblingFile ("promix-surface-1440.png");
+                bigFile.deleteFile();
+                juce::FileOutputStream bigOut (bigFile);
+                juce::PNGImageFormat().writeImageToStream (big, bigOut);
+                skin.setSize (1920, 1080);
+            }
             // The LCD's COMP function.
             skin.pressFunction (F::Comp);
             skin.pressFunction (F::Comp);
@@ -651,6 +671,15 @@ private:
             file.deleteFile();
             juce::FileOutputStream out (file);
             expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out), file.getFullPathName());
+            {
+                skin.setSize (2560, 1440);
+                const auto big = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
+                const auto bigFile = file.getSiblingFile ("x32-surface-1440.png");
+                bigFile.deleteFile();
+                juce::FileOutputStream bigOut (bigFile);
+                juce::PNGImageFormat().writeImageToStream (big, bigOut);
+                skin.setSize (1920, 1080);
+            }
 
             // The display's HOME tab: the signal path.
             display.showScreen (ui::x32::Display::Screen::Home, 0);
