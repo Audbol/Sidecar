@@ -2,6 +2,7 @@
 #include "ui/HardwareLook.h"
 
 #include "engine/Models.h"
+#include "engine/UsbRecorder.h"
 #include "ui/MeterBank.h"
 
 #include <tuple>
@@ -122,11 +123,7 @@ ChannelSection::ChannelSection (UiContext& c, const Theme& t)
     {
         auto key = std::make_unique<ToggleKey> ("VIEW", kKeyLit, t);
         key->onClick = [this, s] { if (onView) onView ((int) s); };
-        if (s == 6)
-        {
-            key->setEnabled (false); // no recorder
-            key->setTooltip ("Sidecar has no USB recorder");
-        }
+        // USB RECORDER's VIEW: the display's USB screen (section 6).
         addAndMakeVisible (*key);
         viewKeys.push_back (std::move (key));
     }
@@ -245,6 +242,7 @@ void ChannelSection::timerCallback()
     repaint (levelMeter);
     repaint (grMeter);
     repaint (typeLeds);
+    repaint (usbPort.expanded (30, 4)); // ACCESS
 }
 
 ld::SourceParams* ChannelSection::source() const
@@ -400,7 +398,10 @@ void ChannelSection::paint (juce::Graphics& g)
         g.fillRect (port.reduced (5.0f, port.getHeight() * 0.3f).withTrimmedBottom (port.getHeight() * 0.12f));
         hw::silk (g, port.withY (port.getBottom() + 2.0f).withHeight (11.0f).expanded (24.0f, 0.0f), "DATA / AUDIO", look, 8.0f);
         const auto led = juce::Rectangle<float> (7.0f, 4.0f).withCentre ({ port.getRight() + 18.0f, port.getCentreY() - 6.0f });
-        g.setColour (juce::Colour (0xff59f08a).withAlpha (0.14f));
+        // ACCESS: lit while Sidecar's USB recorder records or plays.
+        auto& usb = ctx.engine.getUsbRecorder();
+        const bool access = usb.isRecording() || usb.getPlayState() == UsbRecorder::PlayState::Playing;
+        g.setColour (juce::Colour (0xff59f08a).withAlpha (access ? 1.0f : 0.14f));
         g.fillRoundedRectangle (led, 1.0f);
         hw::silk (g, led.withY (led.getBottom() + 1.0f).withHeight (10.0f).expanded (16.0f, 0.0f), "ACCESS", look, 7.5f);
     }

@@ -156,7 +156,13 @@ X32Surface::X32Surface (UiContext& c)
     display.getAssignSet = [this] { return assign.getSet(); };
     display.setAssignSet = [this] (int s) { assign.setSet (s); };
     // A VIEW key opens its section's tab of the display's HOME screen.
-    channel.onView = [this] (int section) { display.showScreen (x32::Display::Screen::Home, section + 1); };
+    channel.onView = [this] (int section)
+    {
+        if (section == 6)
+            display.showScreen (x32::Display::Screen::Usb);
+        else
+            display.showScreen (x32::Display::Screen::Home, section + 1);
+    };
     display.getModel = [this] { return (int) model; };
     display.setModel = [this] (int m) { setModel (m == 1 ? Model::Compact : Model::Full); };
     addAndMakeVisible (display);

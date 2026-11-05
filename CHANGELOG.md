@@ -501,6 +501,11 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   ENTER opens its TITLE EDIT (sixteen characters), ENTER again stores what's
   on the strip or the effect. Kept in the app settings, as the ProMix 01's.
   C ABI 47: `ld_y02r_store`, `ld_y02r_library_text`, `ld_y02r_set_library_text`.
+- The X32's USB screen (manual p.62-63; USB RECORDER's VIEW): Sidecar's USB
+  recorder and player, PLAY, STOP, PREV, NEXT, REC, PAUSE REC, the file and the
+  position; CONFIG the tracks and bits it records. ACCESS lights while it
+  records or plays. SETUP's SCRIBBLE STRIP (the selected strip's colour and
+  icon) and PREAMPS (four inputs at a time: gain, 48V) tabs (p.56-57).
 
   `ui::hw` (`src/ui/HardwareLook.*`) draws them. Keys, faders and knobs take a
   console's look when its surface asks; the Universal Mixer and the WING are

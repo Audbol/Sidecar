@@ -1,12 +1,14 @@
 #include "ui/X32Display.h"
 
 #include "engine/MidiPorts.h"
+#include "engine/UsbRecorder.h"
 #include "engine/Models.h"
 #include "engine/Show.h"
 #include "engine/WingRemote.h"
 #include "engine/X32Midi.h"
 #include "ui/HardwareLook.h"
 #include "ui/HomeScreens.h"
+#include "ui/Icons.h"
 #include "ui/MeterBank.h"
 
 namespace livedaw::ui::x32
@@ -306,7 +308,7 @@ juce::StringArray Display::getTabs() const
         case Screen::Home:       return { "home", "config", "gate", "dyn", "eq", "sends", "main" };
         case Screen::Meters:     return { "channel", "mix bus", "aux / fx", "in / out" };
         case Screen::Routing:    return { "home", "out 1-16", "aux out", "p16 out", "card out", "aes50-a", "aes50-b" };
-        case Screen::Setup:      return { "global", "remote" };
+        case Screen::Setup:      return { "global", "remote", "scribble strip", "preamps" };
         case Screen::Library:    return { "scenes", "show" };
         case Screen::Effects:    return { "home", "fx1", "fx2", "fx3", "fx4", "fx5", "fx6", "fx7", "fx8" };
         case Screen::MuteGroups: return { "mute grp" };
@@ -314,6 +316,7 @@ juce::StringArray Display::getTabs() const
         case Screen::Monitor:    return { "monitor", "talk a", "talk b", "osc" };
         case Screen::Assign:     return { "set a", "set b", "set c" };
         case Screen::Scenes:     return { "home", "param safe" };
+        case Screen::Usb:        return { "home", "config" };
     }
     return {};
 }
@@ -580,6 +583,76 @@ void Display::assignEncoders()
                 break;
         }
     }
+    else if (screen == Screen::Setup && tab == 2)
+    {
+        // SCRIBBLE STRIP (p.56): the selected strip's colour and icon.
+        if (s != nullptr)
+        {
+            KnobBinding colour;
+            colour.label = "COLOR";
+            colour.get = [s] { return (float) (juce::jlimit (1, 16, s->getColourIndex()) - 1) / 15.0f; };
+            colour.set = [this, s] (float v) { s->setColourIndex (1 + juce::roundToInt (v * 15.0f)); repaint(); };
+            colour.text = [s] { return juce::String (juce::jlimit (1, 16, s->getColourIndex())); };
+            colour.steps = 16.0f;
+            encoders[1] = encoder (colour);
+            const auto icons = wingIconNumbers();
+            KnobBinding icon;
+            icon.label = "ICON";
+            icon.get = [s, icons]
+            {
+                const auto at = std::find (icons.begin(), icons.end(), s->params.icon.load());
+                return icons.size() > 1 && at != icons.end() ? (float) (at - icons.begin()) / (float) (icons.size() - 1) : 0.0f;
+            };
+            icon.set = [this, s, icons] (float v)
+            {
+                if (! icons.empty())
+                    s->params.icon = icons[(size_t) juce::roundToInt (v * (float) (icons.size() - 1))];
+                repaint();
+            };
+            icon.text = [s] { return juce::String (s->params.icon.load()); };
+            icon.steps = (float) juce::jmax (2, (int) icons.size());
+            encoders[2] = encoder (icon, "NO ICON", [this, s] { s->params.icon = 0; repaint(); });
+        }
+    }
+    else if (screen == Screen::Setup && tab == 3)
+    {
+        // PREAMPS (p.57): a block of four inputs, each its gain, PUSH its 48V.
+        KnobBinding block;
+        block.label = "INPUTS";
+        block.get = [this] { return (float) preampBlock / 7.0f; };
+        block.set = [this] (float v) { preampBlock = juce::roundToInt (v * 7.0f); assignEncoders(); };
+        block.text = [this] { return juce::String (4 * preampBlock + 1) + "-" + juce::String (4 * preampBlock + 4); };
+        block.steps = 8.0f;
+        encoders[0] = encoder (block);
+        for (int k = 0; k < 4; ++k)
+            if (auto* src = engine.getSource (4 * preampBlock + k))
+            {
+                auto b = bindLinear ("IN " + juce::String (4 * preampBlock + k + 1), src->gainDb, -12.0f, 60.0f, " dB", 1, 0.0f);
+                b.steps = 145.0f;
+                encoders[(size_t) (k + 1)] = encoder (b, "48V", toggle (src->phantom), isOn (src->phantom));
+            }
+    }
+    else if (screen == Screen::Usb && tab == 0)
+    {
+        // USB (p.62): the player's transport, and the recorder's.
+        auto& usb = engine.getUsbRecorder();
+        using P = UsbRecorder::PlayState;
+        using R = UsbRecorder::RecState;
+        encoders[0] = encoder ({}, "PLAY", [&usb] { usb.togglePlayPause(); }, [&usb] { return usb.getPlayState() == P::Playing; });
+        encoders[1] = encoder ({}, "STOP", [&usb] { usb.stop(); });
+        encoders[2] = encoder ({}, "PREV", [&usb] { usb.previous(); });
+        encoders[3] = encoder ({}, "NEXT", [&usb] { usb.next(); });
+        encoders[4] = encoder ({}, "REC", [&usb] { if (usb.isRecording()) usb.stopRecording(); else usb.record(); },
+                               [&usb] { return usb.getRecState() == R::Recording; });
+        encoders[5] = encoder ({}, "PAUSE REC", [&usb] { usb.toggleRecPause(); }, [&usb] { return usb.getRecState() == R::Paused; });
+    }
+    else if (screen == Screen::Usb)
+    {
+        // CONFIG: what it records.
+        auto& usb = engine.getUsbRecorder();
+        encoders[0] = encoder ({}, "4 TRACKS", [&usb] { usb.setRecChannels (usb.getRecChannels() == 4 ? 2 : 4); }, [&usb] { return usb.getRecChannels() == 4; });
+        encoders[1] = encoder ({}, "24 BIT", [&usb] { usb.setRecBits (usb.getRecBits() == 24 ? 16 : 24); }, [&usb] { return usb.getRecBits() == 24; });
+    }
     else if (screen == Screen::Setup && tab == 1)
     {
         assignRemoteEncoders();
@@ -592,7 +665,7 @@ void Display::assignEncoders()
     {
         assignEffectsEncoders();
     }
-    else if (screen == Screen::Setup && getModel && setModel)
+    else if (screen == Screen::Setup && tab == 0 && getModel && setModel)
     {
         KnobBinding m;
         m.label = "MODEL";
@@ -1965,6 +2038,26 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
                 paintRemote (g, r.reduced (12));
                 break;
             }
+            if (tab == 2)
+            {
+                paintRows (g, r.reduced (12), { "STRIP", "NAME", "COLOR", "ICON" },
+                           { s != nullptr ? s->getLabel() : juce::String ("-"), s != nullptr ? s->getName() : juce::String ("-"),
+                             s != nullptr ? juce::String (s->getColourIndex()) : juce::String ("-"),
+                             s != nullptr && s->params.icon.load() > 0 ? wingIconName (s->params.icon.load()) : juce::String ("NONE") });
+                break;
+            }
+            if (tab == 3)
+            {
+                juce::StringArray left, right;
+                for (int k = 0; k < 4; ++k)
+                    if (auto* src = ctx.engine.getSource (4 * preampBlock + k))
+                    {
+                        left.add ("INPUT " + juce::String (4 * preampBlock + k + 1));
+                        right.add (juce::String (src->gainDb.load(), 1) + " dB" + (src->phantom.load() ? "   48V" : ""));
+                    }
+                paintRows (g, r.reduced (12), left, right);
+                break;
+            }
             paintRows (g, r.reduced (12), { "CONSOLE", "SURFACE", "SAMPLE RATE", "CHANNELS", "BUSES / MATRICES" },
                        { "X32 (Sidecar)", getModel && getModel() == 1 ? "X32 COMPACT" : "X32", juce::String (juce::roundToInt (ctx.engine.getSampleRate())) + " Hz",
                          juce::String ((int) ctx.engine.getChannels().size()),
@@ -2002,6 +2095,31 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
                            { onOff (src != nullptr && ! src->mute.load()), juce::String (osc->levelDb.load(), 1) + " dB", formatHz (osc->freqHz.load()) + " Hz",
                              kinds[juce::jlimit (0, 2, (int) osc->mode.load())] });
             }
+            break;
+        }
+        case Screen::Usb:
+        {
+            auto& usb = ctx.engine.getUsbRecorder();
+            using P = UsbRecorder::PlayState;
+            using R = UsbRecorder::RecState;
+            const auto time = [] (int64_t samples, double rate)
+            {
+                const int s = rate > 0.0 ? (int) ((double) samples / rate) : 0;
+                return juce::String (s / 60).paddedLeft ('0', 2) + ":" + juce::String (s % 60).paddedLeft ('0', 2);
+            };
+            const double rate = juce::jmax (1.0, usb.getSampleRate());
+            const auto play = usb.getPlayState();
+            const auto rec = usb.getRecState();
+            if (tab == 0)
+                paintRows (g, r.reduced (12), { "PLAYER", "FILE", "POSITION", "RECORDER", "RECORDING" },
+                           { play == P::Playing ? "PLAYING" : play == P::Paused ? "PAUSED" : play == P::Error ? "ERROR" : "STOPPED",
+                             usb.getCurrentFile().getFileName().isEmpty() ? juce::String ("-") : usb.getCurrentFile().getFileName(),
+                             time (usb.getPosition(), rate) + " / " + time (usb.getLength(), rate),
+                             rec == R::Recording ? "RECORDING" : rec == R::Paused ? "PAUSED" : rec == R::Error ? "ERROR" : "STOPPED",
+                             usb.getRecFile().getFileName().isEmpty() ? juce::String ("-") : usb.getRecFile().getFileName() });
+            else
+                paintRows (g, r.reduced (12), { "TRACKS", "BITS", "FOLDER" },
+                           { juce::String (usb.getRecChannels()), juce::String (usb.getRecBits()), usb.getStorageFolder().getFullPathName() });
             break;
         }
         case Screen::Scenes:

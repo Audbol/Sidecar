@@ -79,7 +79,7 @@ private:
     juce::Rectangle<int> levelMeter, grMeter, typeLeds, usbPort;
     std::vector<std::unique_ptr<universal::ToggleKey>> bandKeys, bankKeys, viewKeys;
     /** CONFIG / PREAMP, GATE, DYNAMICS, EQUALIZER, BUS SENDS, MAIN BUS, and
-        USB RECORDER above MAIN BUS (drawn: Sidecar has no recorder; its VIEW is dark). */
+        USB RECORDER above MAIN BUS (its VIEW: the display's USB screen, the app's USB recorder). */
     std::array<Section, 7> sections;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChannelSection)
