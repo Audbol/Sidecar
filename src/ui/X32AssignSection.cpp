@@ -79,6 +79,10 @@ AssignSection::AssignSection (UiContext& c, const Theme& t) : ctx (c), theme (t)
         addAndMakeVisible (*key);
         setKeys.push_back (std::move (key));
     }
+    viewKey = std::make_unique<ToggleKey> ("VIEW", kLit, t);
+    viewKey->setEnabled (false);
+    viewKey->setTooltip ("Not on Sidecar's X32 screen yet");
+    addAndMakeVisible (*viewKey);
     refreshCodes();
     startTimerHz (5);
 }
@@ -421,8 +425,14 @@ void AssignSection::paint (juce::Graphics& g)
                               juce::Justification::centredLeft, 1, 0.6f);
     }
     if (! setKeys.empty())
+    {
         hw::silk (g, setKeys.front()->getBounds().toFloat().withX ((float) setKeys.front()->getX() - 30.0f).withWidth (28.0f).withHeight (24.0f), "SET",
                   look, 9.5f, juce::Justification::centredRight);
+        // The printed line joining A, B and C.
+        const float y = (float) setKeys.front()->getY() + 12.0f;
+        g.setColour (look.silkDim);
+        g.drawLine ((float) setKeys.front()->getX() - 2.0f, y, (float) setKeys.back()->getRight() + 2.0f, y, 1.0f);
+    }
 }
 
 void AssignSection::resized()
@@ -449,6 +459,7 @@ void AssignSection::resized()
         r.removeFromTop (6);
     }
     auto sets = r.removeFromTop (kKey).withTrimmedLeft (w);
+    viewKey->setBounds (sets.removeFromRight (40).withSizeKeepingCentre (34, kKey));
     const int sw = sets.getWidth() / 3;
     for (int s = 0; s < 3; ++s)
         setKeys[(size_t) s]->setBounds (juce::Rectangle<int> (sets.getX() + sw * s, sets.getY(), sw, kKey).withSizeKeepingCentre (30, kKey));

@@ -509,7 +509,7 @@ fn a_promix01_has_no_matrices_dcas_or_mute_groups_and_runs_its_sends_and_returns
     assert!(close(rig.out(2), 0.5, 1e-3), "SEND3 on output 3: {}", rig.out(2));
     assert_eq!(rig.out(3), 0.0, "SEND4 has nothing");
     // A fader on the console's steps.
-    assert_eq!(rig.engine.profile().spec().fader.to_pos(0.0), 115.0 / 127.0);
+    assert_eq!(rig.engine.profile().spec().fader.to_pos(0.0), 100.0 / 127.0);
 }
 
 #[test]
@@ -547,7 +547,7 @@ fn an_02r_runs_its_tape_returns_aux_sends_and_stereo() {
     assert_eq!(rig.out(3), 0.0, "AUX 2 has nothing");
     // Its channel faders and STEREO's run on their own laws.
     let spec = rig.engine.profile().spec();
-    assert_eq!(spec.fader.to_pos(0.0), 103.0 / 127.0);
+    assert_eq!(spec.fader.to_pos(0.0), 101.0 / 127.0);
     assert_eq!(spec.fader_for(StripKind::Main).to_pos(0.0), 1.0);
 }
 

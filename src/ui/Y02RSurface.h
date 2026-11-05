@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ui/Knobs.h"
 #include "ui/Skin.h"
 #include "ui/UiContext.h"
 #include "ui/universal/Widgets.h"
@@ -103,6 +104,9 @@ namespace y02r
         bool centred = false;
         /** Its cap's colour (the EQ's Q, F and G are green); transparent: the panel's grey. */
         juce::Colour cap;
+        /** Drawn as the panel has it: an endless knurled ring, no pointer; its
+            name printed under it (two lines: "TAPE" over the number), no value. */
+        bool endless = false, nameBelow = false, showValue = true;
         void setLabel (const juce::String& l) { label = l; repaint(); }
         void refresh();
 
@@ -255,9 +259,19 @@ private:
     std::vector<std::unique_ptr<universal::ToggleKey>> auxKeys;     // AUX 1-8, then ON
     std::vector<std::unique_ptr<universal::ToggleKey>> eqKeys;      // LOW, L-MID, H-MID, HIGH, EQ ON
     std::unique_ptr<y02r::Encoder> sendLevel, pan, eqQ, eqF, eqG;
+    /** PAN's L/ODD and R/EVEN (the side of a pair PAN turns); DISPLAY ACCESS's
+        keys Sidecar has no page for (DIGITAL I/O, SETUP, AUTOMIX: dark); the
+        monitor column (STUDIO, CONTROL ROOM, TALKBACK, SOLO). */
+    std::vector<std::unique_ptr<universal::ToggleKey>> panKeys, darkKeys, monitorKeys;
+    DisplayKnob crLevel;
+    int panSide = 0;
     std::unique_ptr<juce::Slider> wheel;
     /** The analog row (drawn), the LED readouts and the stereo meter's places, set by resized(). */
-    juce::Rectangle<int> analogArea, readoutArea, meterRect;
+    juce::Rectangle<int> analogArea, readoutArea, meterRect, bezelArea, contrastKnob, monitorArea;
+    /** DISPLAY ACCESS's three boxes, SELECTED CHANNEL's four (set by resized()). */
+    std::array<juce::Rectangle<int>, 3> accessBoxes;
+    juce::Rectangle<int> routingBox, auxBox, panBox, eqBox, auxBar, panBar;
+    std::array<juce::Rectangle<int>, 3> eqReadouts;
     int memory = 1, selAux = 0;
     bool flip = false;
     double wheelLast = 0.0;

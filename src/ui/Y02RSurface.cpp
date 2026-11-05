@@ -145,9 +145,11 @@ namespace y02r
             const float y = t.getBottom() - t.getHeight() * law.toPosition (db);
             hw::silk (g, juce::Rectangle<float> (0.0f, y - 7.0f, 20.0f, 14.0f), juce::String (std::abs ((int) db)), look(), 10.0f,
                       juce::Justification::centredRight, true);
-            g.setColour (look().silkDim.withAlpha (0.6f));
-            g.drawHorizontalLine ((int) y, cx - 12.0f, cx - 6.0f);
-            g.drawHorizontalLine ((int) y, cx + 6.0f, cx + 12.0f);
+            // The 0 tick bold (STEREO's at the top).
+            g.setColour (look().silkDim.withAlpha (db == 0.0f ? 0.95f : 0.6f));
+            const float h = db == 0.0f ? 2.0f : 1.0f;
+            g.fillRect (cx - 12.0f, y - h * 0.5f, 6.0f, h);
+            g.fillRect (cx + 6.0f, y - h * 0.5f, 6.0f, h);
         }
         hw::silk (g, juce::Rectangle<float> (0.0f, t.getBottom() - 7.0f, 20.0f, 14.0f), utf8 ("\xe2\x88\x9e"), look(), 10.0f,
                   juce::Justification::centredRight, true);
@@ -155,7 +157,7 @@ namespace y02r
         if (addr < 0)
             return;
         const float y = t.getBottom() - t.getHeight() * (float) step / 127.0f;
-        hw::faderCap (g, cx, y, 30.0f, look(), stereoLaw ? juce::Colour (0xffc8302a) : juce::Colour());
+        hw::faderCap (g, cx, y, 30.0f, look()); // STEREO's the same cap as the others
     }
 
     void Fader::mouseDown (const juce::MouseEvent&) { dragStart = step; }
@@ -168,7 +170,7 @@ namespace y02r
 
     void Fader::mouseDoubleClick (const juce::MouseEvent&)
     {
-        // 0 dB: the channels' step 103, STEREO's top.
+        // 0 dB: the channels' step 101, STEREO's top.
         const auto law = ctx.engine.getFaderLaw (stereoLaw ? (int) ld::kMain : (int) ld::kChannel);
         moveTo (juce::roundToInt (law.toPosition (0.0f) * 127.0f));
     }
@@ -201,6 +203,39 @@ namespace y02r
     void Encoder::paint (juce::Graphics& g)
     {
         auto b = getLocalBounds().toFloat();
+        if (endless)
+        {
+            // An endless encoder: a knurled black ring round a grey dome, no pointer.
+            if (nameBelow)
+            {
+                auto name = b.removeFromBottom (24.0f);
+                g.setColour (look().silk);
+                g.setFont (type::font (9.5f, true));
+                g.drawFittedText (label, name.toNearestInt(), juce::Justification::centred, 2);
+            }
+            else
+                hw::silk (g, b.removeFromTop (14.0f), label, look(), 10.5f);
+            const float size = juce::jmin (b.getWidth(), b.getHeight()) - 4.0f;
+            auto ring = juce::Rectangle<float> (size, size).withCentre (b.getCentre());
+            g.setColour (juce::Colours::black.withAlpha (0.5f));
+            g.fillEllipse (ring.translated (0.0f, 2.0f));
+            g.setColour (juce::Colour (0xff1c1d1f));
+            g.fillEllipse (ring);
+            g.setColour (juce::Colours::white.withAlpha (0.16f));
+            const auto c = ring.getCentre();
+            const float r = size * 0.5f, turn = (float) value * 0.15f;
+            for (int k = 0; k < 36; ++k)
+            {
+                const float a = juce::MathConstants<float>::twoPi * (float) k / 36.0f + turn;
+                g.drawLine (c.x + r * 0.8f * std::cos (a), c.y + r * 0.8f * std::sin (a), c.x + r * 0.97f * std::cos (a), c.y + r * 0.97f * std::sin (a), 1.0f);
+            }
+            auto dome = ring.reduced (size * 0.2f);
+            const auto base = cap.isTransparent() ? look().knob : cap;
+            g.setGradientFill (juce::ColourGradient (base.brighter (0.35f), dome.getX() + dome.getWidth() * 0.3f, dome.getY() + dome.getHeight() * 0.25f,
+                                                     base.darker (0.45f), dome.getRight(), dome.getBottom(), true));
+            g.fillEllipse (dome);
+            return;
+        }
         hw::silk (g, b.removeFromTop (14.0f), label, look(), 10.5f);
         auto textArea = b.removeFromBottom (14.0f);
         const float frac = hi > lo ? (float) (value - lo) / (float) (hi - lo) : 0.0f;
@@ -598,9 +633,6 @@ namespace y02r
             g.setFont (type::font (type::kLabel, true));
             g.drawText (f.text ? f.text (v) : juce::String (v), box.withTrimmedTop (box.getHeight() * 0.4f), juce::Justification::centred);
         }
-        g.setColour (kPixelDim);
-        g.setFont (type::font (type::kCaption));
-        g.drawText ("CURSOR / WHEEL / ENTER", b.reduced (14.0f, 6.0f).removeFromBottom (18.0f), juce::Justification::centredRight);
     }
 
     void Display::paintMeters (juce::Graphics& g, juce::Rectangle<float> area) const
@@ -737,6 +769,7 @@ Y02RSurface::Y02RSurface (UiContext& c)
             y.set (aux >= 0 && memberOf (s) >= 0 ? y02r::sendAddress (memberOf (s), aux) : y02r::address (s, kLevel), v);
         };
         enc->text = [] (int v) { return juce::String (v); };
+        enc->endless = enc->nameBelow = true;
         addAndMakeVisible (*enc);
         auto& sel = encSelKeys[(size_t) i];
         sel = std::make_unique<ToggleKey> ("SEL", kSelLed, theme);
@@ -858,12 +891,20 @@ Y02RSurface::Y02RSurface (UiContext& c)
     pan = std::make_unique<y02r::Encoder> ("PAN", theme);
     pan->hi = 32;
     pan->centred = true;
-    pan->get = [this] { return juce::jmax (0, y.get (y02r::address (display.getStrip(), kPanL))); };
-    pan->set = [this] (int v) { y.set (y02r::address (display.getStrip(), kPanL), v); };
+    pan->get = [this] { return juce::jmax (0, y.get (y02r::address (display.getStrip(), panSide == 0 ? kPanL : kPanR))); };
+    pan->set = [this] (int v) { y.set (y02r::address (display.getStrip(), panSide == 0 ? kPanL : kPanR), v); };
+    for (int k = 0; k < 2; ++k)
+    {
+        auto key = std::make_unique<ToggleKey> (k == 0 ? "L/ODD" : "R/EVEN", kSelLed, theme);
+        key->onClick = [this, k] { panSide = k; };
+        key->isOn = [this, k] { return panSide == k; };
+        addAndMakeVisible (*key);
+        panKeys.push_back (std::move (key));
+    }
     pan->text = panText;
     addAndMakeVisible (*pan);
     // EQUALIZER: the band keys, Q, F and G of the band, EQ ON.
-    const char* bands[] = { "LOW", "L-MID", "H-MID", "HIGH", "EQ ON" };
+    const char* bands[] = { "LOW/\nHPF", "L-MID", "H-MID", "HIGH/\nLPF", "EQ ON" };
     for (int k = 0; k < 5; ++k)
     {
         auto key = std::make_unique<ToggleKey> (bands[k], k < 4 ? kSelLed : onColour, theme);
@@ -930,6 +971,56 @@ Y02RSurface::Y02RSurface (UiContext& c)
     wheel->setTitle ("WHEEL");
     addAndMakeVisible (*wheel);
 
+    // DISPLAY ACCESS's keys Sidecar has no page for.
+    for (const char* name : { "DIGITAL I/O", "SETUP", "AUTOMIX" })
+    {
+        auto key = std::make_unique<ToggleKey> (name, kSelLed, theme);
+        key->setEnabled (false);
+        key->setTooltip ("Not in Sidecar's 02R");
+        addAndMakeVisible (*key);
+        darkKeys.push_back (std::move (key));
+    }
+    // The monitor column (MAN p.8): the sources dark (Sidecar's monitor follows
+    // the solo bus and the main), MONO and DIM the monitor's, SLATE and T/B the
+    // talkback paths, SOLO lit while anything is soloed (a press clears them),
+    // C-R LEVEL the monitor level.
+    {
+        auto& e = ctx.engine;
+        const char* names[] = { "C-R", "ST / AUX 5", "AUX 6", "2TR-D1", "2TR-A1", "2TR-D2", "2TR-A2", "2TR-D3", "ST / AUX 5", "AUX 6",
+                                "MONO", "DIM", "SLATE", "T/B", "SOLO" };
+        for (int k = 0; k < 15; ++k)
+        {
+            auto key = std::make_unique<ToggleKey> (names[k], kSelLed, theme);
+            if (k < 10)
+            {
+                key->setEnabled (false);
+                key->setTooltip ("Sidecar's monitor follows the solo bus and the main");
+            }
+            else if (k < 14)
+            {
+                auto& flag = k == 10 ? e.monitorMono : k == 11 ? e.monitorDim : e.talk.paths[(size_t) (k == 12 ? 1 : 0)].on;
+                key->onClick = [&flag] { flag = ! flag.load(); };
+                key->isOn = [&flag] { return flag.load(); };
+            }
+            else
+            {
+                key->isOn = [&e] { return e.anySoloActive.load(); };
+                key->onClick = [&e]
+                {
+                    for (auto* list : { &e.getChannels(), &e.getAux(), &e.getBuses(), &e.getMains(), &e.getMatrices() })
+                        for (auto& s : *list)
+                            s->params.solo = false;
+                };
+            }
+            addAndMakeVisible (*key);
+            monitorKeys.push_back (std::move (key));
+        }
+        crLevel.setBinding (bindFader ("C-R LEVEL", e.monitorLevelDb));
+        crLevel.setHardware (true);
+        crLevel.getSlider().setLookAndFeel (&hw::knobLookAndFeel (look(), false));
+        addAndMakeVisible (crLevel);
+    }
+
     display.memoryText = [this]
     {
         const int current = ctx.show.getCurrentSceneIndex();
@@ -956,7 +1047,44 @@ Y02RSurface::Y02RSurface (UiContext& c)
         if (auto* k = dynamic_cast<ToggleKey*> (child); k != nullptr && k != &universalKey)
             k->look = &look();
     for (auto& [f, key] : functionKeys)
+    {
         key->face = f <= y02r::Function::Pair ? juce::Colour (0xffc4c6c7) : juce::Colour (0xffd9762c);
+        // DISPLAY ACCESS: blank keys without LEDs, their names under them.
+        key->labelBelow = true;
+        key->showLed = false;
+        key->belowText = f == y02r::Function::Aux7 ? "AUX 7 EFF1" : f == y02r::Function::Aux8 ? "AUX 8 EFF2" : key->getButtonText();
+    }
+    for (auto& key : darkKeys)
+    {
+        key->face = juce::Colour (0xffc4c6c7);
+        key->labelBelow = true;
+        key->showLed = false;
+    }
+    // FLIP and SOLO: their names reversed out of a dark box, under them.
+    for (auto* key : { &flipKey, monitorKeys.back().get() })
+    {
+        key->labelBelow = true;
+        key->belowText = key->getButtonText();
+    }
+    for (auto& k : panelKeys)
+        k->showLed = false;
+    auxKeys[6]->setButtonText ("AUX 7 EFF1");
+    auxKeys[7]->setButtonText ("AUX 8 EFF2");
+    // SELECTED CHANNEL's encoders: endless rings, their values on the readouts and LEDs.
+    for (auto* e : { sendLevel.get(), pan.get(), eqQ.get(), eqF.get(), eqG.get() })
+    {
+        e->endless = true;
+        e->showValue = false;
+        if (e != sendLevel.get())
+            e->setLabel ({});
+    }
+    using Shape = ToggleKey::Shape;
+    panelKeys[4]->shape = Shape::Left;
+    panelKeys[5]->shape = Shape::Up;
+    panelKeys[6]->shape = Shape::Down;
+    panelKeys[7]->shape = Shape::Right;
+    for (int k : { 0, 1, 8 })
+        panelKeys[(size_t) k]->labelBelow = true;
     refreshAll();
     startTimerHz (30);
 }
@@ -1012,7 +1140,7 @@ void Y02RSurface::bind()
         faders[(size_t) i]->bind (a, s == y02r::kStereo);
     }
     for (int i = 0; i < kNumEncoders; ++i)
-        encoders[(size_t) i]->setLabel (y02r::stripName (encoderStrip (i)).replace ("TAPE ", "TAPE").replace ("CH ", "CH"));
+        encoders[(size_t) i]->setLabel (i < 16 ? "TAPE\n" + juce::String (i + 1) : "EFF" + juce::String (i - 15) + "\nRTN"); // as printed
     repaint();
 }
 
@@ -1099,7 +1227,7 @@ void Y02RSurface::timerCallback()
     }
     for (auto& [f, key] : functionKeys)
         key->refresh();
-    for (auto* list : { &routingKeys, &auxKeys, &eqKeys })
+    for (auto* list : { &routingKeys, &auxKeys, &eqKeys, &panKeys, &monitorKeys })
         for (auto& k : *list)
             k->refresh();
     flipKey.refresh();
@@ -1128,12 +1256,6 @@ void Y02RSurface::paint (juce::Graphics& g)
     auto body = getLocalBounds().withTrimmedTop (kTopBar).toFloat();
     hw::cheeks (g, body.removeFromLeft (14.0f), body.removeFromRight (14.0f));
     hw::panel (g, body, look());
-    const auto bounds = [] (const juce::Component& c) { return c.getBounds().toFloat(); };
-    if (! routingKeys.empty())
-        hw::section (g, bounds (*routingKeys.front()).getUnion (bounds (*routingKeys.back())).getUnion (bounds (*auxKeys.back())).getUnion (bounds (*eqKeys[1]))
-                            .getUnion (bounds (*eqG)).expanded (14.0f, 22.0f).withTrimmedTop (4.0f),
-                     "SELECTED CHANNEL   " + y02r::stripName (display.getStrip()), look());
-    hw::section (g, bounds (flipKey).getUnion (bounds (*encOnKeys.back())).getUnion (bounds (*encoders[0])).expanded (10.0f, 12.0f), "", look());
     auto top = getLocalBounds().removeFromTop (kTopBar);
     g.setColour (theme.panel);
     g.fillRect (top);
@@ -1145,85 +1267,301 @@ void Y02RSurface::paint (juce::Graphics& g)
     g.drawText ("Not affiliated with or endorsed by Yamaha; 02R is Yamaha's trademark, used only to say what is emulated.",
                 top.reduced (sizes::kGapLarge, 0).withTrimmedLeft (90).withTrimmedRight (200), juce::Justification::centredLeft);
 
-    // The display area's LED readouts (MAN p.6): SCENE MEMORY, the number
-    // STORE and RECALL act on; SELECTED CHANNEL, the strip SEL chose.
-    auto readouts = memoryArea().toFloat();
-    const auto ledReadout = [&g, this] (juce::Rectangle<float> r, const juce::String& title, const juce::String& value)
+    const auto red = juce::Colour (0xffff4a36), green = juce::Colour (0xff40d070), amber = juce::Colour (0xfff0c030);
+    // A row of LEDs (lit: `on` of each), round or square.
+    const auto led = [&g] (juce::Rectangle<float> r, juce::Colour c, bool on)
     {
-        hw::silk (g, r.removeFromTop (13.0f), title, look(), 9.5f, juce::Justification::centredLeft, true);
-        auto digits = r.removeFromLeft (76.0f);
-        g.setColour (juce::Colour (0xff1a0c0c));
-        g.fillRoundedRectangle (digits, 3.0f);
-        g.setColour (juce::Colour (0xffff5a40));
-        g.setFont (type::font (34.0f, true));
-        g.drawText (value, digits, juce::Justification::centred);
+        if (on)
+        {
+            g.setColour (c.withAlpha (0.35f));
+            g.fillEllipse (r.expanded (2.0f));
+        }
+        g.setColour (on ? c.brighter (0.2f) : c.withAlpha (0.16f));
+        g.fillEllipse (r);
     };
-    const int shown = display.getStrip();
-    const juce::String channel = shown < y02r::kTape ? juce::String (shown + 1) : shown < y02r::kEff ? juce::String (shown - y02r::kTape + 1) : juce::String ("--");
-    ledReadout (readouts.removeFromLeft (150.0f), "SCENE MEMORY", juce::String (memory).paddedLeft ('0', 2));
-    ledReadout (readouts, "SELECTED CHANNEL", channel.paddedLeft ('0', 2));
-
-    // The bottom right's SCENE MEMORY keys, the wheel's name.
+    // A red seven-segment readout in its dark window.
+    const auto readout = [&g, red] (juce::Rectangle<float> r, const juce::String& text, float size)
     {
-        const auto k = panelKeys[0]->getBounds().getUnion (panelKeys[3]->getBounds()).toFloat();
-        hw::section (g, k.expanded (10.0f, 12.0f).withTrimmedTop (-8.0f), "SCENE MEMORY", look());
-        const auto w = wheel->getBounds().toFloat();
-        hw::silk (g, w.withY (w.getBottom() + 2.0f).withHeight (12.0f), "DATA ENTRY", look(), 9.5f, juce::Justification::centred, true);
-    }
+        g.setColour (juce::Colour (0xff1a0c0c));
+        g.fillRoundedRectangle (r, 3.0f);
+        g.setColour (red.withAlpha (0.1f));
+        g.setFont (type::font (size, true));
+        g.drawText ("888", r.reduced (4.0f, 0.0f), juce::Justification::centredRight, false);
+        g.setColour (red);
+        g.drawText (text, r.reduced (4.0f, 0.0f), juce::Justification::centredRight, false);
+    };
+    const auto knobAt = [&g] (juce::Point<float> c, float size)
+    {
+        hw::knob (g, juce::Rectangle<float> (size, size).withCentre (c), 0.5f, look(), hw::Look::Knob::Plain, juce::Colour (0xff1c1d1f));
+    };
 
-    // The analog input row along the top (GAIN per input; LINE 17-24 two to a
-    // stereo channel): the console's preamps, drawn as on its panel, not
-    // Sidecar's controls.
+    // The analog input row along the top (MAN p.3): on MIC/LINE 1-8 the +48V
+    // and A/B switches, on 1-16 the 20dB pad, then GAIN, PEAK and SIGNAL, the
+    // number; LINE 17/18-23/24 one GAIN each. Drawn, not Sidecar's controls.
     if (! analogArea.isEmpty())
     {
         const auto row = analogArea.toFloat();
+        const auto slide = [&g] (juce::Rectangle<float> r, bool right)
+        {
+            g.setColour (juce::Colour (0xff101112));
+            g.fillRoundedRectangle (r, 2.0f);
+            g.setColour (juce::Colour (0xffc9cbcc));
+            g.fillRoundedRectangle (r.withWidth (r.getWidth() * 0.45f).withX (right ? r.getCentreX() : r.getX()).reduced (1.0f), 1.5f);
+        };
+        auto legend = juce::Rectangle<float> (row.getX() - 46.0f, row.getY(), 40.0f, row.getHeight());
+        hw::silk (g, legend.withY (row.getY() + 4.0f).withHeight (10.0f), "+48V  A/B", look(), 7.0f, juce::Justification::centredRight, true);
+        hw::silk (g, legend.withY (row.getY() + 17.0f).withHeight (10.0f), "20dB", look(), 7.5f, juce::Justification::centredRight, true);
+        hw::silk (g, legend.withY (row.getY() + 36.0f).withHeight (10.0f), "GAIN", look(), 8.0f, juce::Justification::centredRight, true);
         for (int i = 0; i < 20; ++i)
         {
             const float cx = (float) faders[(size_t) i]->getBounds().getCentreX() + 12.0f;
-            const int knobs = i < 16 ? 1 : 2;
-            for (int k = 0; k < knobs; ++k)
+            if (i < 8)
             {
-                const float x = knobs == 1 ? cx : cx - 14.0f + 28.0f * (float) k;
-                hw::knob (g, juce::Rectangle<float> (22.0f, 22.0f).withCentre ({ x, row.getY() + 20.0f }), 0.5f, look(), hw::Look::Knob::Plain,
-                          juce::Colour (0xff1c1d1f));
-                const int n = i < 16 ? i + 1 : 17 + 2 * (i - 16) + k;
-                hw::silk (g, juce::Rectangle<float> (28.0f, 11.0f).withCentre ({ x, row.getY() + 40.0f }), juce::String (n), look(), 9.0f, juce::Justification::centred, true);
+                slide (juce::Rectangle<float> (14.0f, 7.0f).withCentre ({ cx - 9.0f, row.getY() + 9.0f }), false);
+                slide (juce::Rectangle<float> (14.0f, 7.0f).withCentre ({ cx + 9.0f, row.getY() + 9.0f }), false);
+            }
+            if (i < 16)
+            {
+                const auto pad = juce::Rectangle<float> (18.0f, 8.0f).withCentre ({ cx, row.getY() + 22.0f });
+                g.setColour (juce::Colour (0xffd0c9b2));
+                g.fillRoundedRectangle (pad, 1.5f);
+            }
+            knobAt ({ cx, row.getY() + 42.0f }, 22.0f);
+            led (juce::Rectangle<float> (5.0f, 5.0f).withCentre ({ cx + 19.0f, row.getY() + 36.0f }), red, false);
+            led (juce::Rectangle<float> (5.0f, 5.0f).withCentre ({ cx + 19.0f, row.getY() + 47.0f }), green, false);
+            const juce::String n = i < 16 ? juce::String (i + 1) : juce::String (17 + 2 * (i - 16)) + "/" + juce::String (18 + 2 * (i - 16));
+            hw::silk (g, juce::Rectangle<float> (50.0f, 11.0f).withCentre ({ cx, row.getY() + 64.0f }), n, look(), 9.5f);
+        }
+        hw::silk (g, juce::Rectangle<float> (40.0f, 9.0f).withCentre ({ (float) faders[0]->getBounds().getCentreX() + 31.0f, row.getY() + 30.0f }), "PEAK",
+                  look(), 6.5f, juce::Justification::centred, true);
+        // The analog outputs at the right (MAN p.4): T/B LEVEL over the talkback
+        // mic, STUDIO LEVEL, PHONES LEVEL and the phones jack.
+        const auto outs = juce::Rectangle<float> ((float) monitorArea.getX() - 250.0f, row.getY(), 250.0f + (float) monitorArea.getWidth(), row.getHeight());
+        const char* names[] = { "T/B LEVEL", "STUDIO LEVEL", "PHONES LEVEL" };
+        for (int k = 0; k < 3; ++k)
+        {
+            const juce::Point<float> c (outs.getX() + 40.0f + 82.0f * (float) k, row.getY() + 30.0f);
+            knobAt (c, 30.0f);
+            hw::silk (g, juce::Rectangle<float> (80.0f, 10.0f).withCentre (c.translated (0.0f, 26.0f)), names[k], look(), 8.0f);
+            hw::silk (g, juce::Rectangle<float> (14.0f, 9.0f).withCentre (c.translated (-16.0f, 14.0f)), "0", look(), 7.0f, juce::Justification::centred, true);
+            hw::silk (g, juce::Rectangle<float> (14.0f, 9.0f).withCentre (c.translated (17.0f, 14.0f)), "10", look(), 7.0f, juce::Justification::centred, true);
+        }
+        {
+            // The talkback mic's grille, beside T/B LEVEL; the phones jack.
+            const juce::Point<float> mic (outs.getX() + 8.0f, row.getY() + 66.0f);
+            g.setColour (juce::Colours::black.withAlpha (0.6f));
+            for (int k = 0; k < 9; ++k)
+                g.fillEllipse (juce::Rectangle<float> (2.5f, 2.5f).withCentre (mic.translated ((float) (k % 3) * 4.0f, (float) (k / 3) * 4.0f)));
+            const juce::Point<float> jack (outs.getX() + 40.0f + 82.0f * 3.0f, row.getY() + 30.0f);
+            g.setColour (juce::Colour (0xffb9bcbe));
+            g.fillEllipse (juce::Rectangle<float> (22.0f, 22.0f).withCentre (jack));
+            g.setColour (juce::Colour (0xff0e0f10));
+            g.fillEllipse (juce::Rectangle<float> (10.0f, 10.0f).withCentre (jack));
+            hw::silk (g, juce::Rectangle<float> (60.0f, 10.0f).withCentre (jack.translated (0.0f, 26.0f)), "PHONES", look(), 8.0f);
+        }
+    }
+
+    // DISPLAY ACCESS: its banner, three boxes, each named in a dark bar under it.
+    {
+        const char* names[] = { "CONFIGURATION", "MIXING", "AUX" };
+        hw::silk (g, accessBoxes[0].toFloat().withY ((float) accessBoxes[0].getY() - 16.0f).withHeight (14.0f), "DISPLAY ACCESS", look(), 10.5f);
+        for (int b = 0; b < 3; ++b)
+        {
+            const auto box = accessBoxes[(size_t) b].toFloat();
+            g.setColour (look().sectionLine.withAlpha (0.55f));
+            g.drawRoundedRectangle (box, 3.0f, 1.0f);
+            auto bar = box.withTrimmedTop (box.getHeight() - 15.0f).reduced (1.0f, 1.0f);
+            g.setColour (juce::Colour (0xff1c1d1f));
+            g.fillRect (bar);
+            hw::silk (g, bar, names[b], look(), 9.0f);
+        }
+    }
+
+    // The display's bezel: the readouts at its left, the screen, the stereo meter.
+    {
+        const auto bz = bezelArea.toFloat();
+        g.setColour (juce::Colour (0xff1e1f21));
+        g.fillRoundedRectangle (bz, 8.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.07f));
+        g.drawRoundedRectangle (bz.reduced (0.5f), 8.0f, 1.0f);
+    }
+    // SCENE MEMORY (its decimal point the edit indicator), FADER STATUS, SELECTED
+    // CHANNEL with what kind of strip it is (MAN p.6).
+    {
+        auto r = readoutArea.toFloat();
+        hw::silk (g, r.removeFromTop (12.0f), "SCENE MEMORY", look(), 8.0f, juce::Justification::centredLeft, true);
+        auto scene = r.removeFromTop (40.0f).withWidth (70.0f);
+        readout (scene, juce::String (memory).paddedLeft ('0', 2), 32.0f);
+        led (juce::Rectangle<float> (4.0f, 4.0f).withCentre ({ scene.getRight() - 4.0f, scene.getBottom() - 6.0f }), red, false);
+        r.removeFromTop (14.0f);
+        hw::silk (g, r.removeFromTop (12.0f), "FADER STATUS", look(), 8.0f, juce::Justification::centredLeft, true);
+        const int aux = auxShown();
+        {
+            auto st = r.removeFromTop (44.0f);
+            auto kinds = st.removeFromLeft (40.0f);
+            led (juce::Rectangle<float> (7.0f, 7.0f).withCentre ({ kinds.getX() + 6.0f, kinds.getY() + 10.0f }), amber, aux < 0);
+            hw::silk (g, juce::Rectangle<float> (kinds.getX() + 12.0f, kinds.getY() + 4.0f, 30.0f, 12.0f), "INPUT", look(), 7.0f, juce::Justification::centredLeft, true);
+            juce::Path tri;
+            const juce::Point<float> c (kinds.getX() + 6.0f, kinds.getY() + 30.0f);
+            tri.addTriangle (c.x - 4.0f, c.y - 3.0f, c.x + 4.0f, c.y - 3.0f, c.x, c.y + 4.0f);
+            g.setColour (aux >= 0 ? amber : amber.withAlpha (0.16f));
+            g.fillPath (tri);
+            hw::silk (g, juce::Rectangle<float> (kinds.getX() + 12.0f, kinds.getY() + 24.0f, 30.0f, 12.0f), "AUX", look(), 7.0f, juce::Justification::centredLeft, true);
+            for (int n = 0; n < 8; ++n)
+            {
+                const auto cell = juce::Rectangle<float> (st.getX() + (float) (n % 4) * 15.0f, st.getY() + (float) (n / 4) * 20.0f, 15.0f, 18.0f);
+                g.setColour (aux == n ? amber : amber.withAlpha (0.18f));
+                g.setFont (type::font (12.0f, true));
+                g.drawText (juce::String (n + 1), cell, juce::Justification::centred);
             }
         }
-        hw::silk (g, row.withHeight (12.0f).translated (0.0f, row.getHeight() - 12.0f).withWidth (200.0f), "GAIN", look(), 9.0f,
-                  juce::Justification::centredLeft, true);
-    }
-
-    // The stereo meter (21 segments, MAN p.6).
-    auto m = meterArea().toFloat();
-    hw::silk (g, m.removeFromBottom (16.0f), "STEREO", look(), 10.5f);
-    const char* labels[] = { "CLIP", "-2", "-4", "-6", "-12", "-15", "-24", "-35", "-48", "-60", "-72" };
-    const float dbfs[] = { -0.1f, -2.0f, -4.0f, -6.0f, -12.0f, -15.0f, -24.0f, -35.0f, -48.0f, -60.0f, -72.0f };
-    auto* st = ctx.engine.getMains().empty() ? nullptr : ctx.engine.getMains()[0].get();
-    const float segH = m.getHeight() / 11.0f;
-    for (int s = 0; s < 11; ++s)
-    {
-        auto row = juce::Rectangle<float> (m.getX(), m.getY() + segH * (float) s, m.getWidth(), segH);
-        hw::silk (g, row.removeFromLeft (30.0f), labels[s], look(), 9.5f, juce::Justification::centredRight, true);
-        for (int ch = 0; ch < 2; ++ch)
+        r.removeFromTop (10.0f);
+        hw::silk (g, r.removeFromTop (12.0f), "SELECTED CHANNEL", look(), 8.0f, juce::Justification::centredLeft, true);
+        const int s = display.getStrip();
+        const int n = s < 16 ? s + 1 : s < y02r::kTape ? 17 + 2 * (s - 16) : s < y02r::kEff ? s - y02r::kTape + 1 : s < y02r::kBus ? s - y02r::kEff + 1
+                    : s < y02r::kAux ? s - y02r::kBus + 1 : s < y02r::kStereo ? s - y02r::kAux + 1 : -1;
+        readout (r.removeFromTop (40.0f).withWidth (70.0f), n < 0 ? juce::String ("--") : juce::String (n).paddedLeft ('0', 2), 32.0f);
+        r.removeFromTop (4.0f);
+        const char* kinds[] = { "MIC/LINE", "TAPE/RTN", "OUTPUT" };
+        const int kind = s < y02r::kTape ? 0 : s < y02r::kBus ? 1 : 2;
+        for (int k = 0; k < 3; ++k)
         {
-            const float level = st != nullptr ? juce::Decibels::gainToDecibels (ctx.meters.get (st, MeterPoint::Output, ch), -100.0f) : -100.0f;
-            auto led = row.removeFromLeft (row.getWidth() / (float) (2 - ch)).reduced (3.0f, 2.0f);
-            const auto colour = s == 0 ? juce::Colour (0xffff4040) : s < 4 ? juce::Colour (0xfff0c030) : juce::Colour (0xff40d070);
-            g.setColour (level >= dbfs[s] ? colour : colour.withAlpha (0.15f));
-            g.fillRect (led);
+            auto row = r.removeFromTop (14.0f);
+            juce::Path tri;
+            const juce::Point<float> c (row.getX() + 6.0f, row.getCentreY());
+            tri.addTriangle (c.x, c.y - 4.0f, c.x + 4.0f, c.y + 3.0f, c.x - 4.0f, c.y + 3.0f);
+            g.setColour (kind == k ? amber : amber.withAlpha (0.16f));
+            g.fillPath (tri);
+            hw::silk (g, row.withTrimmedLeft (14.0f), kinds[k], look(), 7.5f, juce::Justification::centredLeft, true);
         }
     }
 
-    // The SELECTED CHANNEL section's blocks, and the faders' names below them.
-    if (! routingKeys.empty())
+    // The stereo meter (MAN p.6): 21 LEDs a side, the scale between them, L STEREO R under.
     {
-        // The PARAMETER wheel: a big knurled knob.
+        auto m = meterArea().toFloat();
+        auto names = m.removeFromBottom (14.0f);
+        hw::silk (g, names, "L  STEREO  R", look(), 8.0f);
+        static constexpr float steps[] = { -0.1f, -1.0f, -2.0f, -3.0f, -4.0f, -5.0f, -6.0f, -8.0f, -10.0f, -12.0f, -15.0f,
+                                           -18.0f, -21.0f, -24.0f, -30.0f, -35.0f, -42.0f, -48.0f, -54.0f, -60.0f, -72.0f };
+        auto* st = ctx.engine.getMains().empty() ? nullptr : ctx.engine.getMains()[0].get();
+        const float segH = m.getHeight() / 21.0f;
+        for (int k = 0; k < 21; ++k)
+        {
+            auto row = juce::Rectangle<float> (m.getX(), m.getY() + segH * (float) k, m.getWidth(), segH);
+            const float db = steps[k];
+            const bool labelled = k == 0 || db == -2.0f || db == -4.0f || db == -6.0f || db == -12.0f || db == -15.0f || db == -24.0f || db == -35.0f
+                                  || db == -48.0f || db == -60.0f || db == -72.0f;
+            if (labelled)
+                hw::silk (g, row.reduced (12.0f, -2.0f), k == 0 ? juce::String ("CLIP") : juce::String ((int) db), look(), 7.0f, juce::Justification::centred, true);
+            for (int ch = 0; ch < 2; ++ch)
+            {
+                const float level = st != nullptr ? juce::Decibels::gainToDecibels (ctx.meters.get (st, MeterPoint::Output, ch), -100.0f) : -100.0f;
+                const auto seg = juce::Rectangle<float> (9.0f, juce::jmax (2.0f, segH - 3.0f)).withCentre ({ ch == 0 ? m.getX() + 5.0f : m.getRight() - 5.0f, row.getCentreY() });
+                const auto colour = k == 0 ? juce::Colour (0xffff4040) : k < 7 ? amber : green;
+                g.setColour (level >= db ? colour : colour.withAlpha (0.15f));
+                g.fillRect (seg);
+            }
+        }
+        // CONTRAST, under the meter.
+        const auto kn = contrastKnob.toFloat();
+        knobAt (kn.getCentre(), kn.getWidth());
+        hw::silk (g, kn.withY (kn.getBottom()).withHeight (10.0f).expanded (20.0f, 0.0f), "CONTRAST", look(), 7.0f, juce::Justification::centred, true);
+    }
+
+    // SELECTED CHANNEL: its four boxes.
+    {
+        const auto all = routingBox.getUnion (eqBox).getUnion (auxBox).getUnion (panBox).toFloat().expanded (8.0f, 8.0f).withTrimmedTop (-10.0f);
+        hw::section (g, all, "SELECTED CHANNEL", look());
+        hw::section (g, routingBox.toFloat(), "ROUTING", look());
+        hw::section (g, auxBox.toFloat(), "AUX", look());
+        hw::section (g, panBox.toFloat(), "PAN", look());
+        hw::section (g, eqBox.toFloat(), "EQUALIZER", look());
+        // AUX: the send level on a column of ten LEDs.
+        const int m = memberOf (display.getStrip());
+        const int level = m >= 0 ? juce::jmax (0, y.get (y02r::sendAddress (m, selAux))) : 0;
+        const int lit = juce::roundToInt ((float) level / 127.0f * 10.0f);
+        const auto bar = auxBar.toFloat();
+        for (int k = 0; k < 10; ++k)
+            led (juce::Rectangle<float> (6.0f, 6.0f).withCentre ({ bar.getCentreX(), bar.getBottom() - bar.getHeight() * ((float) k + 0.5f) / 10.0f }),
+                 k >= 8 ? amber : green, k < lit);
+        // PAN: a row of ten LEDs, lit where it points (the middle two at C).
+        const int p = juce::jmax (0, y.get (y02r::address (display.getStrip(), panSide == 0 ? kPanL : kPanR)));
+        const float at = (float) p / 32.0f * 9.0f;
+        const auto pb = panBar.toFloat();
+        for (int k = 0; k < 10; ++k)
+            led (juce::Rectangle<float> (6.0f, 6.0f).withCentre ({ pb.getX() + pb.getWidth() * ((float) k + 0.5f) / 10.0f, pb.getY() + 4.0f }), green,
+                 std::abs ((float) k - at) < 0.55f || (p == 16 && (k == 4 || k == 5)));
+        hw::silk (g, pb.withTrimmedTop (10.0f), juce::String::fromUTF8 ("L ODD  \xe2\x96\xb2  R EVEN"), look(), 7.5f, juce::Justification::centred, true);
+        // EQUALIZER: the band keys joined by a bar; Q, F, G on their readouts.
+        const auto first = eqKeys[0]->getBounds().toFloat(), last = eqKeys[3]->getBounds().toFloat();
+        g.setColour (look().silkDim.withAlpha (0.6f));
+        g.fillRect (juce::Rectangle<float> (first.getX() + 6.0f, first.getY() - 5.0f, last.getRight() - first.getX() - 12.0f, 2.0f));
+        const char* tags[] = { "Q", "F", "G" };
+        for (int k = 0; k < 3; ++k)
+        {
+            const auto r = eqReadouts[(size_t) k].toFloat();
+            auto* e = k == 0 ? eqQ.get() : k == 1 ? eqF.get() : eqG.get();
+            const int v = e->get ? e->get() : 0;
+            auto text = e->text ? e->text (v) : juce::String (v);
+            const bool khz = text.endsWith ("kHz"), hz = ! khz && text.endsWith ("Hz");
+            text = text.upToFirstOccurrenceOf (" ", false, false);
+            hw::silk (g, r.withWidth (14.0f).translated (-16.0f, 0.0f), tags[k], look(), 10.0f);
+            readout (r, text, 13.0f);
+            if (k == 1)
+            {
+                led (juce::Rectangle<float> (4.0f, 4.0f).withCentre ({ r.getRight() + 6.0f, r.getY() + 5.0f }), red, hz);
+                hw::silk (g, juce::Rectangle<float> (r.getRight() + 10.0f, r.getY(), 22.0f, 10.0f), "Hz", look(), 7.0f, juce::Justification::centredLeft, true);
+                led (juce::Rectangle<float> (4.0f, 4.0f).withCentre ({ r.getRight() + 6.0f, r.getBottom() - 5.0f }), red, khz);
+                hw::silk (g, juce::Rectangle<float> (r.getRight() + 10.0f, r.getBottom() - 10.0f, 22.0f, 10.0f), "kHz", look(), 7.0f, juce::Justification::centredLeft, true);
+            }
+            if (k == 2)
+                hw::silk (g, juce::Rectangle<float> (r.getRight() + 4.0f, r.getY(), 22.0f, r.getHeight()), "dB", look(), 7.5f, juce::Justification::centredLeft, true);
+        }
+    }
+
+    // The monitor column (MAN p.8).
+    if (! monitorArea.isEmpty() && monitorKeys.size() == 15)
+    {
+        const auto over = [&] (int from, int to, const char* title)
+        {
+            auto r = monitorKeys[(size_t) from]->getBounds().getUnion (monitorKeys[(size_t) to]->getBounds()).toFloat().expanded (4.0f, 4.0f).withTrimmedTop (-12.0f);
+            g.setColour (look().sectionLine.withAlpha (0.4f));
+            g.drawRoundedRectangle (r, 3.0f, 1.0f);
+            hw::silk (g, r.withHeight (13.0f), title, look(), 8.0f);
+        };
+        over (0, 2, "STUDIO");
+        over (3, 11, "CONTROL ROOM");
+        over (12, 13, "TALKBACK");
+        const auto k = crLevel.getBounds().toFloat();
+        hw::silk (g, k.withY (k.getBottom()).withHeight (11.0f).expanded (20.0f, 0.0f), "C-R LEVEL", look(), 8.0f);
+        hw::silk (g, juce::Rectangle<float> (14.0f, 9.0f).withCentre ({ k.getX() + 2.0f, k.getBottom() - 4.0f }), "0", look(), 7.0f, juce::Justification::centred, true);
+        hw::silk (g, juce::Rectangle<float> (14.0f, 9.0f).withCentre ({ k.getRight() - 2.0f, k.getBottom() - 4.0f }), "10", look(), 7.0f, juce::Justification::centred, true);
+    }
+
+    // The tape row's and the faders' scribble strips: blank grey strips to write on.
+    g.setColour (juce::Colour (0xffb7b9b4));
+    for (int i = 0; i < kNumEncoders; ++i)
+        g.fillRect (encOnKeys[(size_t) i]->getBounds().toFloat().withY ((float) encOnKeys[(size_t) i]->getBottom() + 3.0f).withHeight (9.0f).reduced (2.0f, 0.0f));
+    for (int i = 0; i < kNumFaders; ++i)
+        g.fillRect (onKeys[(size_t) i]->getBounds().toFloat().withY ((float) onKeys[(size_t) i]->getBottom() + 3.0f).withHeight (11.0f).reduced (2.0f, 0.0f));
+
+    // SCENE MEMORY and CURSOR printed under their keys; the cursor keys' oval.
+    {
+        const auto k = panelKeys[0]->getBounds().getUnion (panelKeys[1]->getBounds()).toFloat();
+        hw::silk (g, k.withY (k.getBottom() + 2.0f).withHeight (13.0f), "SCENE MEMORY", look(), 9.5f);
+        const auto c = panelKeys[4]->getBounds().getUnion (panelKeys[7]->getBounds()).getUnion (panelKeys[5]->getBounds()).getUnion (panelKeys[6]->getBounds())
+                           .toFloat().expanded (10.0f, 8.0f);
+        g.setColour (juce::Colour (0xff8d9093));
+        g.fillEllipse (c);
+        g.setColour (juce::Colours::black.withAlpha (0.35f));
+        g.drawEllipse (c.reduced (0.5f), 1.0f);
+        hw::silk (g, c.withY (c.getBottom() + 2.0f).withHeight (12.0f), "CURSOR", look(), 9.0f);
         const auto w = wheel->getBounds().toFloat();
         hw::knob (g, w, (float) std::fmod (wheel->getValue() / 48.0 + 1.0e6, 1.0), look(), hw::Look::Knob::Wheel, juce::Colour (0xff1c1d1f));
     }
+
+    // The faders' names below them.
     g.setFont (type::font (type::kLabel, true));
-    const int aux = auxShown();
     for (int i = 0; i < kNumFaders; ++i)
     {
         const auto f = faders[(size_t) i]->getBounds();
@@ -1233,33 +1571,18 @@ void Y02RSurface::paint (juce::Graphics& g)
                           : s < y02r::kEff  ? "T" + juce::String (s - y02r::kTape + 1)
                                             : y02r::stripName (s);
         hw::silk (g, f.withY (f.getBottom()).withHeight (20).toFloat(), name, look(), 12.0f);
-        if (aux >= 0)
-        {
-            g.setColour (kSelLed.withAlpha (0.8f));
-            g.fillRect (f.withY (f.getBottom() + 18).withHeight (2).reduced (16, 0));
-        }
-        if (i == 16 || i == 20)
-        {
-            g.setColour (look().silkDim.withAlpha (0.5f));
-            g.drawVerticalLine (f.getX() - 4, (float) f.getY(), (float) f.getBottom() + 20.0f);
-        }
-    }
-    if (aux >= 0)
-    {
-        const auto f = faders[0]->getBounds().toFloat();
-        hw::silk (g, f.withY (f.getY() - 16.0f).withHeight (14.0f).withWidth (300.0f), "FADERS: SENDS TO AUX " + juce::String (aux + 1), look(), 11.0f,
-                  juce::Justification::centredLeft);
     }
 }
 
 void Y02RSurface::resized()
 {
-    // The panel as the console has it (MAN pp.2-10): the analog row along the
-    // top; the middle band with the scene and channel readouts and the display
-    // access keys left of the display, the stereo meter beside it, the SELECTED
-    // CHANNEL section; the encoders of the tape and effect returns above their
-    // fader columns; the faders; SCENE MEMORY, the wheel, the cursor keys and
-    // ENTER at the bottom right.
+    // The panel as the console has it (MAN pp.2-10, Getting Started p.4): the
+    // analog inputs along the top and the analog outputs at their right; the
+    // middle band with DISPLAY ACCESS, the display in its bezel (the scene and
+    // channel readouts at its left, the stereo meter at its right), SELECTED
+    // CHANNEL, and the monitor column at the far right; the tape returns'
+    // encoders above the fader columns; the faders; SCENE MEMORY, the wheel, the
+    // cursor keys and ENTER at the bottom right.
     auto area = getLocalBounds();
     auto top = area.removeFromTop (kTopBar);
     universalKey.setBounds (top.removeFromRight (190).reduced (sizes::kGap, 7));
@@ -1267,102 +1590,196 @@ void Y02RSurface::resized()
     area.removeFromRight (14); // the wooden cheeks
 
     // The fader columns first: the rows above line up with them.
-    const int colW = 70, x0 = area.getX() + 20;
+    const int colW = 70, x0 = area.getX() + 50;
     auto colX = [x0, colW] (int i) { return x0 + i * colW + (i >= 16 ? 8 : 0) + (i >= 20 ? 8 : 0); };
-    analogArea = area.removeFromTop (60).withX (x0).withWidth (colX (20) - x0);
+    analogArea = area.removeFromTop (78).withX (x0).withWidth (colX (20) - x0);
+
+    // The monitor column at the far right, down the middle band and the encoder row.
+    auto monitorColumn = area.withTrimmedLeft (area.getWidth() - 132).withHeight (470).reduced (6, 10);
+    monitorArea = monitorColumn;
+    {
+        auto r = monitorColumn.withTrimmedTop (12);
+        const int kh = 30, half = r.getWidth() / 2;
+        auto rowOf = [&] (std::initializer_list<int> keys)
+        {
+            auto row = r.removeFromTop (kh);
+            int k = 0;
+            for (int i : keys)
+                monitorKeys[(size_t) i]->setBounds (juce::Rectangle<int> (row.getX() + half * k++, row.getY(), half, kh).reduced (2, 1));
+            r.removeFromTop (3);
+        };
+        rowOf ({ 0 });
+        rowOf ({ 1, 2 });
+        r.removeFromTop (18);
+        rowOf ({ 3, 4 });
+        rowOf ({ 5, 6 });
+        rowOf ({ 7 });
+        rowOf ({ 8, 9 });
+        rowOf ({ 10, 11 });
+        r.removeFromTop (18);
+        rowOf ({ 12, 13 });
+        r.removeFromTop (8);
+        monitorKeys[14]->setBounds (r.removeFromTop (kh + 12).withSizeKeepingCentre (56, kh + 12)); // SOLO
+        r.removeFromTop (8);
+        crLevel.setBounds (r.removeFromTop (60).withSizeKeepingCentre (54, 54));
+    }
+    area.removeFromRight (132);
 
     // The middle band.
-    auto middle = area.removeFromTop (338).reduced (14, 6);
-    auto left = middle.removeFromLeft (318);
-    readoutArea = left.removeFromTop (66).reduced (4, 4);
-    left.removeFromTop (6);
-    const int kw = left.getWidth() / 4, kh = kKey + 8;
-    int row = 0;
-    auto place = [&] (int first, int count)
+    auto middle = area.removeFromTop (340).reduced (14, 6);
     {
-        for (int k = 0; k < count; ++k)
-            functionKeys[(size_t) (first + k)].second->setBounds (left.getX() + (k % 4) * kw, left.getY() + (row + k / 4) * kh, kw - 4, kKey + 2);
-        row += (count + 3) / 4;
-    };
-    place (0, 5);  // CONFIGURATION: SCENE MEMORY, UTILITY, MIDI, GROUP, PAIR
-    left.removeFromTop (6);
-    place (5, 8);  // MIXING
-    left.removeFromTop (6);
-    place (13, 8); // AUX 1-8
-    middle.removeFromLeft (12);
-    display.setBounds (middle.removeFromLeft (600));
-    middle.removeFromLeft (8);
-    meterRect = middle.removeFromLeft (64).reduced (0, 6);
+        // DISPLAY ACCESS: CONFIGURATION, MIXING, AUX, eight keys each.
+        auto left = middle.removeFromLeft (300).withTrimmedTop (14);
+        const int boxH = (left.getHeight() - 12) / 3;
+        auto config = [this] (int k) -> ToggleKey& {
+            // SCENE MEMORY, DIGITAL I/O, SETUP, UTILITY / AUTOMIX, MIDI, GROUP, PAIR
+            switch (k)
+            {
+                case 0: return *functionKeys[0].second;
+                case 1: return *darkKeys[0];
+                case 2: return *darkKeys[1];
+                case 3: return *functionKeys[1].second;
+                case 4: return *darkKeys[2];
+                case 5: return *functionKeys[2].second;
+                case 6: return *functionKeys[3].second;
+                default: return *functionKeys[4].second;
+            }
+        };
+        // MIXING: phase / ATT, DELAY, PAN, ROUTING / METER, VIEW, EQ, DYNAMICS.
+        const int mixing[] = { 8, 9, 10, 7, 5, 6, 11, 12 };
+        for (int b = 0; b < 3; ++b)
+        {
+            auto box = left.removeFromTop (boxH);
+            left.removeFromTop (6);
+            accessBoxes[(size_t) b] = box;
+            auto keys = box.reduced (4, 4).withTrimmedBottom (14);
+            const int kw = keys.getWidth() / 4, kh = keys.getHeight() / 2;
+            for (int k = 0; k < 8; ++k)
+            {
+                auto& key = b == 0 ? config (k) : b == 1 ? *functionKeys[(size_t) mixing[k]].second : *functionKeys[(size_t) (13 + k)].second;
+                key.setBounds (juce::Rectangle<int> (keys.getX() + (k % 4) * kw, keys.getY() + (k / 4) * kh, kw, kh).reduced (3, 1));
+            }
+        }
+    }
     middle.removeFromLeft (14);
+    // The bezel: the readouts, the display, the meter and CONTRAST.
+    bezelArea = middle.removeFromLeft (800);
+    {
+        auto bz = bezelArea.reduced (10, 10);
+        readoutArea = bz.removeFromLeft (100);
+        bz.removeFromLeft (8);
+        auto meterColumn = bz.removeFromRight (62);
+        contrastKnob = meterColumn.removeFromBottom (50).withSizeKeepingCentre (26, 26).translated (0, -6);
+        meterRect = meterColumn.reduced (2, 2);
+        bz.removeFromRight (8);
+        display.setBounds (bz);
+    }
+    middle.removeFromLeft (16);
 
-    // SELECTED CHANNEL: ROUTING, AUX and SEND LEVEL, PAN, EQUALIZER.
-    auto sel = middle.reduced (14, 14).withTrimmedTop (10);
-    auto routing = sel.removeFromTop (kKey + 2);
-    const int rw = routing.getWidth() / 10;
-    for (auto& k : routingKeys)
-        k->setBounds (routing.removeFromLeft (rw).reduced (2, 0));
-    sel.removeFromTop (12);
-    auto auxRow = sel.removeFromTop (2 * kKey + 8);
-    auto levelArea = auxRow.removeFromRight (190);
-    for (int k = 0; k < 8; ++k)
-        auxKeys[(size_t) k]->setBounds (auxRow.getX() + (k % 4) * (auxRow.getWidth() / 4), auxRow.getY() + (k / 4) * (kKey + 8), auxRow.getWidth() / 4 - 4,
-                                        kKey + 2);
-    sendLevel->setBounds (levelArea.removeFromLeft (100));
-    auxKeys[8]->setBounds (levelArea.removeFromTop (kKey + 2).reduced (6, 0));
-    sel.removeFromTop (12);
-    auto eqRow = sel.removeFromTop (juce::jmin (118, sel.getHeight()));
-    pan->setBounds (eqRow.removeFromLeft (96));
-    eqRow.removeFromLeft (10);
-    for (auto* e : { eqQ.get(), eqF.get(), eqG.get() })
-        e->setBounds (eqRow.removeFromLeft (96));
-    auto eqKeysArea = eqRow.reduced (6, 0);
-    for (int k = 0; k < 5; ++k)
-        eqKeys[(size_t) k]->setBounds (eqKeysArea.getX() + (k % 2) * (eqKeysArea.getWidth() / 2), eqKeysArea.getY() + (k / 2) * (kKey + 6),
-                                       eqKeysArea.getWidth() / 2 - 4, kKey + 2);
+    // SELECTED CHANNEL: ROUTING down the left; AUX and PAN over EQUALIZER.
+    {
+        auto sel = middle.reduced (8, 4).withTrimmedTop (14);
+        routingBox = sel.removeFromLeft (112);
+        sel.removeFromLeft (8);
+        {
+            auto r = routingBox.reduced (8, 6).withTrimmedTop (14);
+            const int kh = r.getHeight() / 5, kw = r.getWidth() / 2;
+            for (int k = 0; k < 10; ++k)
+                routingKeys[(size_t) k]->setBounds (juce::Rectangle<int> (r.getX() + (k % 2) * kw, r.getY() + (k / 2) * kh, kw, kh).withSizeKeepingCentre (kw - 4, 28));
+        }
+        auto upperRow = sel.removeFromTop (sel.getHeight() / 2 + 6);
+        sel.removeFromTop (8);
+        eqBox = sel;
+        auxBox = upperRow.removeFromLeft (upperRow.getWidth() * 3 / 5);
+        upperRow.removeFromLeft (8);
+        panBox = upperRow;
+        {
+            // AUX 1-4 and 5-8 in two columns, the LED column, SEND LEVEL and ON.
+            auto r = auxBox.reduced (8, 6).withTrimmedTop (14);
+            auto keys = r.removeFromLeft (r.getWidth() / 2 + 20);
+            const int kh = keys.getHeight() / 4, kw = keys.getWidth() / 2;
+            for (int k = 0; k < 8; ++k)
+                auxKeys[(size_t) k]->setBounds (juce::Rectangle<int> (keys.getX() + (k / 4) * kw, keys.getY() + (k % 4) * kh, kw, kh).reduced (2, 2));
+            auxBar = r.removeFromLeft (16).reduced (0, 4);
+            r.removeFromLeft (4);
+            auxKeys[8]->setBounds (r.removeFromBottom (30).reduced (8, 0));
+            sendLevel->setBounds (r.withSizeKeepingCentre (juce::jmin (r.getWidth(), 76), juce::jmin (r.getHeight(), 76)));
+        }
+        {
+            // L/ODD and R/EVEN, the LED row, the encoder at the right.
+            auto r = panBox.reduced (8, 6).withTrimmedTop (14);
+            pan->setBounds (r.removeFromRight (56).withSizeKeepingCentre (56, 56));
+            auto keys = r.removeFromTop (32);
+            panKeys[0]->setBounds (keys.removeFromLeft (keys.getWidth() / 2).reduced (2, 0));
+            panKeys[1]->setBounds (keys.reduced (2, 0));
+            r.removeFromTop (12);
+            panBar = r.removeFromTop (24);
+        }
+        {
+            // The band keys in a row, EQ ON under L-MID; Q, F and G's readouts over their encoders.
+            auto r = eqBox.reduced (8, 6).withTrimmedTop (18);
+            auto keys = r.removeFromLeft (r.getWidth() / 2);
+            const int kw = keys.getWidth() / 4;
+            for (int k = 0; k < 4; ++k)
+                eqKeys[(size_t) k]->setBounds (juce::Rectangle<int> (keys.getX() + kw * k, keys.getY() + 6, kw, 34).reduced (1, 0));
+            eqKeys[4]->setBounds (juce::Rectangle<int> (keys.getX() + kw, keys.getY() + 52, kw, 30).reduced (2, 0));
+            r.removeFromLeft (10);
+            const int w = r.getWidth() / 3;
+            for (int k = 0; k < 3; ++k)
+            {
+                auto col = juce::Rectangle<int> (r.getX() + w * k, r.getY(), w, r.getHeight()).reduced (6, 0);
+                eqReadouts[(size_t) k] = col.removeFromTop (26).withTrimmedLeft (10).withTrimmedRight (k == 0 ? 0 : 14);
+                auto* e = k == 0 ? eqQ.get() : k == 1 ? eqF.get() : eqG.get();
+                e->setBounds (col.withSizeKeepingCentre (juce::jmin (col.getWidth(), 62), juce::jmin (col.getHeight(), 62)));
+            }
+        }
+    }
 
-    // The encoder row: TAPE 1-16 above faders 1-16, EFF1-2 above LINE 17/18 and
-    // 19/20, FLIP above 21/22.
-    auto encRow = area.removeFromTop (136).withTrimmedTop (8);
+    // The encoder row: TAPE 1-16 above faders 1-16, FLIP in the gap after them,
+    // then EFF1 and EFF2 RTN.
+    auto encRow = area.removeFromTop (132).withTrimmedTop (4);
     auto encoderColumn = [&] (int col) { return juce::Rectangle<int> (colX (col), encRow.getY(), colW, encRow.getHeight()).reduced (3, 0); };
     for (int i = 0; i < kNumEncoders; ++i)
     {
-        auto col = encoderColumn (i);
-        encOnKeys[(size_t) i]->setBounds (col.removeFromBottom (24).reduced (4, 0));
-        encSelKeys[(size_t) i]->setBounds (col.removeFromBottom (26).reduced (4, 2));
-        encoders[(size_t) i]->setBounds (col.reduced (0, 2));
+        auto col = encoderColumn (i < 16 ? i : i + 1);
+        col.removeFromBottom (12); // the scribble strip
+        encOnKeys[(size_t) i]->setBounds (col.removeFromBottom (26).reduced (4, 0));
+        encSelKeys[(size_t) i]->setBounds (col.removeFromBottom (27).reduced (4, 0).withTrimmedBottom (1));
+        encoders[(size_t) i]->setBounds (col.reduced (0, 1));
     }
-    flipKey.setBounds (encoderColumn (18).withSizeKeepingCentre (60, kKey + 2));
+    flipKey.setBounds (encoderColumn (16).removeFromBottom (12 + 48).removeFromTop (44).reduced (4, 0));
 
-    // The faders: SEL and ON above each, the name below.
-    auto faderArea = area.withTrimmedTop (6).withTrimmedBottom (4);
+    // The faders: SEL and ON above each, the scribble strip, the name below.
+    auto faderArea = area.withTrimmedTop (4).withTrimmedBottom (4);
     for (int i = 0; i < kNumFaders; ++i)
     {
         auto col = juce::Rectangle<int> (colX (i), faderArea.getY(), colW, faderArea.getHeight() - 22);
-        selKeys[(size_t) i]->setBounds (col.removeFromTop (30).reduced (6, 1));
+        selKeys[(size_t) i]->setBounds (col.removeFromTop (28).reduced (6, 1));
         col.removeFromTop (2);
-        onKeys[(size_t) i]->setBounds (col.removeFromTop (30).reduced (6, 1));
-        col.removeFromTop (4);
+        onKeys[(size_t) i]->setBounds (col.removeFromTop (28).reduced (6, 1));
+        col.removeFromTop (18); // the scribble strip
         faders[(size_t) i]->setBounds (col);
     }
 
-    // The bottom right: SCENE MEMORY's keys, the wheel, the cursor keys, ENTER.
-    auto right = faderArea.withLeft (colX (20) + colW + 24).withTrimmedRight (10);
-    auto memKeys = right.removeFromTop (2 * kKey + 34).withTrimmedTop (22);
-    const int mw = memKeys.getWidth() / 2;
-    panelKeys[0]->setBounds (memKeys.getX(), memKeys.getY(), mw - 6, kKey + 2);              // STORE
-    panelKeys[1]->setBounds (memKeys.getX() + mw, memKeys.getY(), mw - 6, kKey + 2);         // RECALL
-    panelKeys[2]->setBounds (memKeys.getX(), memKeys.getY() + kKey + 8, mw - 6, kKey + 2);   // up
-    panelKeys[3]->setBounds (memKeys.getX() + mw, memKeys.getY() + kKey + 8, mw - 6, kKey + 2); // down
-    right.removeFromTop (16);
-    auto wheelRow = right.removeFromTop (180);
-    wheel->setBounds (wheelRow.removeFromLeft (180).reduced (8));
-    const int cx = wheelRow.getX() + 6, cy = wheelRow.getCentreY() - (3 * kKey + 8) / 2;
-    panelKeys[5]->setBounds (cx + 40, cy, 40, kKey);                  // up
-    panelKeys[4]->setBounds (cx, cy + kKey + 4, 40, kKey);            // left
-    panelKeys[7]->setBounds (cx + 80, cy + kKey + 4, 40, kKey);       // right
-    panelKeys[6]->setBounds (cx + 40, cy + 2 * (kKey + 4), 40, kKey); // down
-    right.removeFromTop (8);
-    panelKeys[8]->setBounds (right.removeFromTop (kKey + 4).withWidth (120).translated (30, 0)); // ENTER
+    // The bottom right: SCENE MEMORY (STORE, up over down, RECALL), the wheel,
+    // the cursor keys right of it, ENTER below it.
+    auto right = faderArea.withLeft (colX (20) + colW + 30).withTrimmedRight (14);
+    auto memRow = right.removeFromTop (70).withTrimmedTop (10);
+    const int mw = memRow.getWidth() / 4;
+    panelKeys[0]->setBounds (juce::Rectangle<int> (memRow.getX(), memRow.getY(), mw, 44).reduced (4, 0));          // STORE
+    panelKeys[2]->setBounds (juce::Rectangle<int> (memRow.getX() + mw + mw / 4, memRow.getY(), mw, 21).reduced (6, 0)); // up
+    panelKeys[3]->setBounds (juce::Rectangle<int> (memRow.getX() + mw + mw / 4, memRow.getY() + 23, mw, 21).reduced (6, 0)); // down
+    panelKeys[1]->setBounds (juce::Rectangle<int> (memRow.getX() + 2 * mw + mw / 2, memRow.getY(), mw, 44).reduced (4, 0)); // RECALL
+    right.removeFromTop (24);
+    auto wheelRow = right.removeFromTop (172);
+    wheel->setBounds (wheelRow.removeFromLeft (172).reduced (6));
+    const int cx = wheelRow.getX() + 18, cy = wheelRow.getCentreY() - 52;
+    panelKeys[5]->setBounds (cx + 36, cy, 40, 32);       // up
+    panelKeys[4]->setBounds (cx, cy + 36, 34, 32);       // left
+    panelKeys[7]->setBounds (cx + 78, cy + 36, 34, 32);  // right
+    panelKeys[6]->setBounds (cx + 36, cy + 72, 40, 32);  // down
+    right.removeFromTop (4);
+    panelKeys[8]->setBounds (right.removeFromTop (46).withWidth (70)); // ENTER
 }
 
 } // namespace livedaw::ui

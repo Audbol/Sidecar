@@ -24,6 +24,8 @@ struct Look
     // The LCD: backlight and pixels.
     juce::Colour lcd, lcdPixel, lcdDim, lcdBezel;
     float keyRadius = 3.0f;
+    /** A key's LED (a look that isn't backlit): its size, round where they're equal. */
+    float ledWidth = 14.0f, ledHeight = 3.5f;
 
     /** A fader cap: a moulded block with grip ridges and a centre line (the
         Yamahas'), or a tall brushed-metal cap with a scooped face (the X32's). */
@@ -65,7 +67,7 @@ void silk (juce::Graphics&, juce::Rectangle<float> area, const juce::String& tex
            juce::Justification = juce::Justification::centred, bool dim = false);
 /** A rubber key: `lit` glows in `colour` (or lights its LED). */
 void key (juce::Graphics&, juce::Rectangle<float> area, const juce::String& text, bool lit, bool down, juce::Colour colour,
-          const Look&, juce::Colour face = {});
+          const Look&, juce::Colour face = {}, bool led = true);
 /** A fader's slot from `top` to `bottom` at `x`, and its cap centred on `y`
     (`colour`: a coloured cap, the ProMix's ST OUT; transparent: the look's). */
 void faderSlot (juce::Graphics&, float x, float top, float bottom, const Look&);

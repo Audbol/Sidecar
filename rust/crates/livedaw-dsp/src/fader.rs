@@ -67,18 +67,19 @@ impl FaderLaw {
 
     /// The Yamaha ProMix 01's: 128 steps, +6 dB at the top, -66 dB on the
     /// step above -oo (User's Guide p.25, p.105). The guide gives no table of
-    /// the steps between, so the breakpoints are Sidecar's reading of the
-    /// panel's scale (6, 0, 5, 10, 20, 40, 60): 0 dB on step 115, half a dB
-    /// a step down to -20 dB, then about 0.7 dB a step; to be measured on a
-    /// console. Every breakpoint sits on a step (`k / 127`).
+    /// the steps between, so the breakpoints are where the panel prints its
+    /// scale (6, 0, 5, 10, 20, 40, 60, measured on the drawing on p.2, the
+    /// travel from 6 to -oo): 0 dB on step 100, -10 dB on 57, -20 dB on 36,
+    /// -40 dB on 14, -60 dB on 7; to be measured on a console. Every
+    /// breakpoint sits on a step (`k / 127`).
     pub const PROMIX01: FaderLaw = FaderLaw {
         points: &[
             (1.0 / 127.0, -66.0),
-            (15.0 / 127.0, -60.0),
-            (45.0 / 127.0, -40.0),
-            (75.0 / 127.0, -20.0),
-            (95.0 / 127.0, -10.0),
-            (115.0 / 127.0, 0.0),
+            (7.0 / 127.0, -60.0),
+            (14.0 / 127.0, -40.0),
+            (36.0 / 127.0, -20.0),
+            (57.0 / 127.0, -10.0),
+            (100.0 / 127.0, 0.0),
             (1.0, 6.0),
         ],
         steps: 128,
@@ -86,35 +87,35 @@ impl FaderLaw {
 
     /// The Yamaha 02R's channel faders: 128 steps, +10 dB at the top, -90 dB
     /// on the step above -oo (02R User's Guide p.192). The guide gives no table
-    /// of the steps between, so the breakpoints are Sidecar's reading of the
-    /// panel's scale (10, 5, 0, 5, 10, 15, 20, 30, 40, 50): 0 dB on step 103,
-    /// half a dB a step down to -20 dB, then wider; to be measured on a console.
+    /// of the steps between, so the breakpoints are where the panel prints its
+    /// scale (10, 5, 0, 5, 10, 15, 20, 30, 40, 50, measured on the Getting
+    /// Started drawing, p.4): 0 dB on step 101; to be measured on a console.
     pub const Y02R: FaderLaw = FaderLaw {
         points: &[
             (1.0 / 127.0, -90.0),
-            (25.0 / 127.0, -50.0),
-            (35.0 / 127.0, -40.0),
-            (48.0 / 127.0, -30.0),
-            (63.0 / 127.0, -20.0),
-            (83.0 / 127.0, -10.0),
-            (103.0 / 127.0, 0.0),
+            (6.0 / 127.0, -50.0),
+            (12.0 / 127.0, -40.0),
+            (21.0 / 127.0, -30.0),
+            (39.0 / 127.0, -20.0),
+            (71.0 / 127.0, -10.0),
+            (101.0 / 127.0, 0.0),
             (1.0, 10.0),
         ],
         steps: 128,
     };
 
     /// The 02R's STEREO fader: 128 steps, 0 dB at the top, -120 dB on the step
-    /// above -oo (p.192); the steps between are Sidecar's reading of its scale
-    /// (0, 5, 10, 15, 20, 30, 40, 50, 60, 70): half a dB a step down to -20 dB.
+    /// above -oo (p.192); the steps between are where the panel prints its
+    /// scale (0, 5, 10, 15, 20, 30, 40, 50, 60, 70).
     pub const Y02R_STEREO: FaderLaw = FaderLaw {
         points: &[
             (1.0 / 127.0, -120.0),
-            (17.0 / 127.0, -70.0),
-            (27.0 / 127.0, -60.0),
-            (39.0 / 127.0, -50.0),
-            (53.0 / 127.0, -40.0),
-            (69.0 / 127.0, -30.0),
-            (87.0 / 127.0, -20.0),
+            (11.0 / 127.0, -70.0),
+            (15.0 / 127.0, -60.0),
+            (24.0 / 127.0, -50.0),
+            (36.0 / 127.0, -40.0),
+            (51.0 / 127.0, -30.0),
+            (72.0 / 127.0, -20.0),
             (1.0, 0.0),
         ],
         steps: 128,
@@ -201,18 +202,18 @@ mod tests {
         let step = |k: i32| law.to_db(k as f32 / 127.0);
         assert_eq!(step(0), FADER_MIN, "the bottom is -oo");
         assert!((step(1) + 66.0).abs() < 1e-4);
-        assert!(step(115).abs() < 1e-4, "0 dB");
-        assert!((step(114) + 0.5).abs() < 1e-3);
+        assert!(step(100).abs() < 1e-4, "0 dB");
+        assert!((step(57) + 10.0).abs() < 1e-3);
         // Every step is a level of its own, rising.
         assert!((1..128).all(|k| step(k) > step(k - 1)));
-        assert_eq!((law.to_pos(0.0) * 127.0).round(), 115.0);
+        assert_eq!((law.to_pos(0.0) * 127.0).round(), 100.0);
         assert_eq!((law.to_pos(-66.0) * 127.0).round(), 1.0, "-66 dB is step 1");
         assert_eq!(law.to_pos(-66.5), 0.0, "below it: -oo");
     }
 
     #[test]
     fn the_02rs_laws() {
-        for (law, top, bottom, zero) in [(FaderLaw::Y02R, 10.0, -90.0, 103.0), (FaderLaw::Y02R_STEREO, 0.0, -120.0, 127.0)] {
+        for (law, top, bottom, zero) in [(FaderLaw::Y02R, 10.0, -90.0, 101.0), (FaderLaw::Y02R_STEREO, 0.0, -120.0, 127.0)] {
             assert!(law.points.len() <= FaderLaw::MAX_POINTS);
             assert_eq!((law.steps, law.max_db()), (128, top));
             let step = |k: i32| law.to_db(k as f32 / 127.0);

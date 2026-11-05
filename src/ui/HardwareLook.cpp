@@ -75,6 +75,7 @@ const Look& Look::promix()
         l.lcdDim = c (0xff56682a);
         l.lcdBezel = c (0xff232527);
         l.keyRadius = 2.5f;
+        l.ledWidth = l.ledHeight = 5.0f; // round, above the bar
         return l;
     }();
     return look;
@@ -107,6 +108,8 @@ const Look& Look::y02r()
         l.lcdDim = c (0xff36507e);
         l.lcdBezel = c (0xff2a2c2e);
         l.keyRadius = 2.5f;
+        l.ledWidth = 8.0f; // a small oval at the top
+        l.ledHeight = 4.0f;
         return l;
     }();
     return look;
@@ -184,7 +187,7 @@ void silk (juce::Graphics& g, juce::Rectangle<float> area, const juce::String& t
 }
 
 void key (juce::Graphics& g, juce::Rectangle<float> a, const juce::String& text, bool lit, bool down, juce::Colour colour, const Look& l,
-          juce::Colour face)
+          juce::Colour face, bool withLed)
 {
     const float r = l.keyRadius;
     // Its shadow on the panel, then the rubber.
@@ -209,11 +212,17 @@ void key (juce::Graphics& g, juce::Rectangle<float> a, const juce::String& text,
     g.setColour (juce::Colours::black.withAlpha (0.3f));
     g.drawRoundedRectangle (body.reduced (0.5f), r, 1.0f);
     auto textArea = body;
-    if (! l.backlit)
+    if (! l.backlit && ! withLed && text.isEmpty())
+    {
+        // A blank key without an LED: the moulded bar across its face.
+        g.setColour (juce::Colours::black.withAlpha (0.35f));
+        g.drawRoundedRectangle (juce::Rectangle<float> (body.getWidth() * 0.5f, 3.0f).withCentre (body.getCentre().translated (0.0f, body.getHeight() * 0.18f)), 1.5f, 1.0f);
+    }
+    if (! l.backlit && withLed)
     {
         // A small LED above the text, lit or dark.
-        const float ledW = juce::jmin (14.0f, body.getWidth() * 0.4f);
-        auto led = juce::Rectangle<float> (ledW, 3.5f).withCentre ({ body.getCentreX(), body.getY() + 5.0f });
+        const float ledW = juce::jmin (l.ledWidth, body.getWidth() * 0.4f);
+        auto led = juce::Rectangle<float> (ledW, l.ledHeight).withCentre ({ body.getCentreX(), body.getY() + 3.0f + l.ledHeight * 0.5f });
         if (body.getHeight() < 22.0f)
             led = juce::Rectangle<float> (3.5f, 7.0f).withCentre ({ body.getX() + 6.0f, body.getCentreY() });
         if (lit)
@@ -222,9 +231,9 @@ void key (juce::Graphics& g, juce::Rectangle<float> a, const juce::String& text,
             g.fillRoundedRectangle (led.expanded (2.0f), 2.0f);
         }
         g.setColour (lit ? colour.brighter (0.3f) : juce::Colour (0xff3a2a26));
-        g.fillRoundedRectangle (led, 1.5f);
+        g.fillRoundedRectangle (led, juce::jmin (led.getWidth(), led.getHeight()) * 0.5f);
         if (body.getHeight() >= 22.0f)
-            textArea = body.withTrimmedTop (5.0f);
+            textArea = body.withTrimmedTop (l.ledHeight + 2.0f);
     }
     const bool dark = lit && l.backlit ? colour.getPerceivedBrightness() > 0.55f : (face.isTransparent() ? true : face.getPerceivedBrightness() > 0.5f);
     g.setColour (lit && l.backlit ? (dark ? juce::Colour (0xff101010) : juce::Colours::white) : (dark ? l.keyText : juce::Colours::white));

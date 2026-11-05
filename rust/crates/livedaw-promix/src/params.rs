@@ -518,7 +518,7 @@ mod tests {
             assert_eq!(get(&c, n), Some(v), "{} = {v}", name(n));
         };
         for (n, v) in [
-            (3, 115),  // CH4 at 0 dB
+            (3, 100),  // CH4 at 0 dB
             (21, 90),  // ST OUT
             (23, 0),   // CH2 OFF
             (50, 4),   // CH7 pan L12

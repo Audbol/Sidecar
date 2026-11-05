@@ -396,6 +396,46 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   fifth less CPU than before the surface's new look (measured with
   SidecarMonkey --idle); the new look doesn't change the audio's overruns
   (idle and active A/B runs, same seeds).
+- The console surfaces checked against their manuals' panel drawings:
+  - X32 (User Manual pp.13-17, Quick Start p.7): the USB RECORDER block over
+    MAIN BUS (its port, ACCESS LED, VIEW); REMOTE at the top of the input layer
+    keys; LAYER's up and down beside the sixth encoder, PAGE SELECT under the
+    screen keys; VIEW in MONITOR, TALKBACK and ASSIGN; the LAMP socket, MIN and
+    MAX on the pots, PHONES' "(JACKS IN SIDE CAPS)"; the GR meter across the
+    GATE and DYNAMICS boundary; EQUALIZER's type legend with each filter's
+    shape, MODE beside it, HIGH 2 and LOW 2 bracketing their keys; the group
+    strips' meters printed in every layer (PRE at the bottom, unlit on a DCA);
+    "AUX IN / USB FX RETURNS" and "MATRIX 1-6 MAIN C" on two lines; the fader
+    scale signed, with -50. The keys Sidecar has nothing behind (REMOTE, the
+    new VIEWs, the recorder's) are dark.
+  - ProMix 01 (User's Guide pp.2-4): the function and scene keys blank and
+    without LEDs, their names printed and underlined over them (SEND 1, 2, 3, 4;
+    EQ LOW, MID, HIGH; PAN/ø) in the panel's two dashed outlines; SEL and ON
+    with round LEDs; FUNCTION, MEMORY, SEL CH and RTN 1 ... SEND 4 beside the
+    LCD, its arrow at what the RTN/SEND strip is; the contrast knob; the meter's
+    two columns of round LEDs with the scale between and L R under; ENTER an
+    oval, the cursor keys triangles on the wheel's raised outline; each input's
+    20dB PAD, its GAIN in a ring of ticks from -16 to -60; CUE/2TR IN; the
+    outputs' 0, 10 and LEVEL; the vent over the faders; RTN/SEND named as
+    printed; the fader scale's unlabelled ticks.
+  - 02R (User's Guide pp.2-11, Getting Started p.4): DISPLAY ACCESS as its three
+    boxes (CONFIGURATION with DIGITAL I/O, SETUP and AUTOMIX, dark; MIXING in
+    the panel's order; AUX with EFF1 and EFF2), blank keys named under them; the
+    scene and channel readouts, FADER STATUS and the MIC/LINE, TAPE/RTN and
+    OUTPUT LEDs in the display's bezel; a 21 LED stereo meter, L STEREO R and
+    CONTRAST; SELECTED CHANNEL's ROUTING, AUX (with its send level's LED column),
+    PAN (L/ODD and R/EVEN choose the side it turns, an LED row) and EQUALIZER
+    (LOW/HPF ... HIGH/LPF, Q, F and G on red readouts) with endless encoders;
+    the monitor column (STUDIO, CONTROL ROOM, TALKBACK, SOLO, C-R LEVEL: MONO,
+    DIM, SLATE, T/B, SOLO and C-R LEVEL work, the sources are dark); the analog
+    inputs (+48V, A/B, 20dB, GAIN, PEAK, SIGNAL) and outputs (T/B, STUDIO and
+    PHONES LEVEL, the phones jack); the tape row's names under its encoders,
+    FLIP before EFF1 and EFF2 RTN; scribble strips; STEREO's cap like the
+    others; STORE, up over down, RECALL in a row, the cursor keys on their oval.
+  - The ProMix 01's and 02R's fader laws follow where their panels print the
+    scale (measured on the drawings): 0 dB is step 100 on a ProMix 01 (was 115)
+    and 101 on an 02R channel (was 103); STEREO's 0 dB stays at the top. Their
+    MIDI follows the same law.
 
   `ui::hw` (`src/ui/HardwareLook.*`) draws them. Keys, faders and knobs take a
   console's look when its surface asks; the Universal Mixer and the WING are

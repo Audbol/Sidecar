@@ -134,6 +134,14 @@ namespace promix
             g.drawHorizontalLine ((int) y, cx - 14.0f, cx - 6.0f);
             g.drawHorizontalLine ((int) y, cx + 6.0f, cx + 14.0f);
         }
+        // The unlabelled ticks between (3, 2.5, 7.5, 15 and 30 down).
+        g.setColour (look().silkDim.withAlpha (0.45f));
+        for (float db : { 3.0f, -2.5f, -7.5f, -15.0f, -30.0f })
+        {
+            const float y = t.getBottom() - t.getHeight() * law.toPosition (db);
+            g.drawHorizontalLine ((int) y, cx - 12.0f, cx - 6.0f);
+            g.drawHorizontalLine ((int) y, cx + 6.0f, cx + 12.0f);
+        }
         hw::silk (g, juce::Rectangle<float> (0.0f, t.getBottom() - 7.0f, 22.0f, 14.0f), juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x9e")), look(),
                   10.0f, juce::Justification::centredRight, true);
         hw::faderSlot (g, cx, t.getY(), t.getBottom(), look());
@@ -159,7 +167,7 @@ namespace promix
 
     void Fader::mouseDoubleClick (const juce::MouseEvent&)
     {
-        moveTo (115); // 0 dB
+        moveTo (juce::roundToInt (ctx.engine.getFaderLaw().toPosition (0.0f) * 127.0f)); // 0 dB
     }
 
     void Fader::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& w)
@@ -758,6 +766,16 @@ namespace promix
         }
         for (size_t i = 0; i < fields.size(); ++i)
             paintField (g, fields[i], (int) i == focus);
+        // At the right edge, the arrow at what the RTN / SEND strip is.
+        if (rtnSendShown)
+        {
+            const int k = juce::jlimit (0, 3, rtnSendShown());
+            const float y = b.getY() + b.getHeight() * kRightRows[k], x = b.getRight() - 12.0f;
+            juce::Path arrow;
+            arrow.addTriangle (x - 7.0f, y - 5.0f, x - 7.0f, y + 5.0f, x + 1.0f, y);
+            g.setColour (kPixel);
+            g.fillPath (arrow);
+        }
     }
 
     void Display::mouseDown (const juce::MouseEvent& e)
@@ -833,6 +851,12 @@ ProMixSurface::ProMixSurface (UiContext& c)
         auto key = std::make_unique<ToggleKey> (name, kSelLed, theme);
         // The panel's groups: METER ... CUE orange, SEND1-4 blue, EQ and LIBRARY green, the rest cream.
         const int n = (int) functionKeys.size();
+        // Blank keys without LEDs, their names printed over them (SEND 1, 2, 3, 4...).
+        static const char* const printed[] = { "METER", "PAN/\xc3\xb8", "COMP", "CUE", "SEND 1", "2", "3", "4",
+                                               "EQ LOW", "MID", "HIGH", "LIBRARY", "GROUP", "PAIR", "UTILITY", "MIDI" };
+        key->labelAbove = true;
+        key->showLed = false;
+        key->belowText = juce::String::fromUTF8 (printed[n]);
         key->face = n < 4 ? kOrangeKey : n < 8 ? kBlueKey : n < 12 ? kGreenKey : juce::Colour();
         key->onClick = [this, fn = f] { pressFunction (fn); };
         key->isOn = [this, fn = f]
@@ -859,6 +883,13 @@ ProMixSurface::ProMixSurface (UiContext& c)
     {
         auto key = std::make_unique<ToggleKey> (name, kSelLed, theme);
         key->onClick = action;
+        key->showLed = false;
+        // SCENE MEMORY's keys: blank, named over them; ENTER an oval, the cursor keys triangles.
+        const int n = (int) panelKeys.size();
+        using Shape = ToggleKey::Shape;
+        key->labelAbove = n < 4;
+        key->shape = n == 4 ? Shape::Left : n == 5 ? Shape::Up : n == 6 ? Shape::Down : n == 7 ? Shape::Right : n == 8 ? Shape::Oval : Shape::Rect;
+        key->setTitle (name);
         addAndMakeVisible (*key);
         panelKeys.push_back (std::move (key));
     }
@@ -892,6 +923,7 @@ ProMixSurface::ProMixSurface (UiContext& c)
         const auto now = current >= 0 && scene.has_value() ? juce::String (current + 1).paddedLeft ('0', 2) + " " + scene->name : juce::String ("00 Initial Data");
         return "MEMORY " + juce::String (memory).paddedLeft ('0', 2) + "   (" + now + ")";
     };
+    display.rtnSendShown = [this] { return rtnSend; };
     addAndMakeVisible (display);
 
     universalKey.onClick = [&context = ctx]
@@ -1100,12 +1132,35 @@ void ProMixSurface::paint (juce::Graphics& g)
             g.fillRect (ear);
         }
         hw::panel (g, body, look());
-        // The light label band across the strips, between their keys and faders.
-        if (onKeys[0] != nullptr)
+        // The vent above the faders: a grille of fine slots across the strips.
+        if (! grilleArea.isEmpty())
         {
-            const float y = (float) onKeys[0]->getBottom() + 3.0f;
-            g.setColour (juce::Colour (0xffbfc2c5));
-            g.fillRect (juce::Rectangle<float> ((float) selKeys[0]->getX() - 6.0f, y, (float) onKeys[kNumFaders - 1]->getRight() - (float) selKeys[0]->getX() + 12.0f, 12.0f));
+            const auto gr = grilleArea.toFloat();
+            g.setColour (juce::Colour (0xff2a2c2f));
+            g.fillRect (gr);
+            g.setColour (juce::Colours::black.withAlpha (0.55f));
+            for (float y = gr.getY() + 3.0f; y < gr.getBottom() - 2.0f; y += 4.0f)
+                g.fillRect (gr.getX() + 4.0f, y, gr.getWidth() - 8.0f, 2.0f);
+            g.setColour (juce::Colours::white.withAlpha (0.12f));
+            g.drawRect (gr, 1.0f);
+        }
+        // The raised outline the PARAMETER wheel and the cursor keys sit on,
+        // its lower left edge slanting down to the right.
+        {
+            const auto w = wheel->getBounds().toFloat().expanded (14.0f);
+            const auto k = panelKeys[4]->getBounds().getUnion (panelKeys[7]->getBounds()).toFloat();
+            juce::Path raised;
+            raised.startNewSubPath (k.getX() - 14.0f, w.getY());
+            raised.lineTo (w.getRight(), w.getY());
+            raised.lineTo (w.getRight(), w.getBottom() - 30.0f);
+            raised.lineTo (w.getCentreX(), (float) panelKeys[6]->getBottom() + 22.0f);
+            raised.lineTo (k.getX() - 14.0f, (float) panelKeys[6]->getBottom() + 22.0f);
+            raised.closeSubPath();
+            raised = raised.createPathWithRoundedCorners (16.0f);
+            g.setColour (juce::Colours::white.withAlpha (0.05f));
+            g.fillPath (raised);
+            g.setColour (look().silkDim.withAlpha (0.45f));
+            g.strokePath (raised, juce::PathStrokeType (1.2f));
         }
         // The PARAMETER wheel: a big knurled knob.
         hw::knob (g, wheel->getBounds().toFloat(), (float) std::fmod (wheel->getValue() / 48.0 + 1.0e6, 1.0), look(), hw::Look::Knob::Wheel, {});
@@ -1121,86 +1176,201 @@ void ProMixSurface::paint (juce::Graphics& g)
     g.drawText ("Not affiliated with or endorsed by Yamaha; ProMix is Yamaha's trademark, used only to say what is emulated.",
                 top.reduced (sizes::kGapLarge, 0).withTrimmedLeft (150).withTrimmedRight (200), juce::Justification::centredLeft);
 
-    // SCENE MEMORY over its four keys; the PARAMETER wheel's name.
+    // The dashed outlines: SCENE MEMORY's four keys, and the function keys
+    // with them; the PARAMETER wheel's name.
     if (panelKeys.size() > 3)
     {
-        const auto k = panelKeys[0]->getBounds().getUnion (panelKeys[2]->getBounds()).toFloat();
-        hw::silk (g, k.withY (k.getY() - 15.0f).withHeight (13.0f), "SCENE MEMORY", look(), 10.0f);
+        const auto dashed = [&g] (juce::Rectangle<float> r)
+        {
+            juce::Path p;
+            p.addRectangle (r);
+            juce::Path d;
+            const float dashes[] = { 6.0f, 4.0f };
+            juce::PathStrokeType (1.0f).createDashedStroke (d, p, dashes, 2);
+            g.setColour (look().silkDim.withAlpha (0.8f));
+            g.fillPath (d);
+        };
+        const auto scene = panelKeys[0]->getBounds().getUnion (panelKeys[3]->getBounds()).toFloat().expanded (4.0f, 4.0f).withTrimmedTop (-14.0f);
+        dashed (scene);
+        hw::silk (g, scene.withHeight (16.0f).withTrimmedTop (1.0f), "SCENE MEMORY", look(), 10.5f);
+        auto all = scene;
+        for (auto& [f, key] : functionKeys)
+            all = all.getUnion (key->getBounds().toFloat().expanded (4.0f, 4.0f));
+        juce::Path rest;
+        const float x0 = all.getX(), x1 = all.getRight(), y0 = all.getY(), y1 = all.getBottom(), sx = scene.getRight() + 3.0f, sy = scene.getBottom() + 3.0f;
+        rest.startNewSubPath (sx, y0);
+        rest.lineTo (x1, y0);
+        rest.lineTo (x1, y1);
+        rest.lineTo (x0, y1);
+        rest.lineTo (x0, sy);
+        rest.lineTo (sx, sy);
+        rest.closeSubPath();
+        juce::Path d;
+        const float dashes[] = { 6.0f, 4.0f };
+        juce::PathStrokeType (1.0f).createDashedStroke (d, rest, dashes, 2);
+        g.setColour (look().silkDim.withAlpha (0.8f));
+        g.fillPath (d);
         const auto w = wheel->getBounds().toFloat();
-        hw::silk (g, w.withY (w.getY() - 16.0f).withHeight (14.0f), "PARAMETER", look(), 10.5f);
+        hw::silk (g, w.withY (w.getY() - 30.0f).withHeight (14.0f), "PARAMETER", look(), 11.0f);
+        const auto enter = panelKeys[8]->getBounds().toFloat();
+        hw::silk (g, enter.withY (enter.getY() - 16.0f).withHeight (14.0f), "ENTER", look(), 11.0f);
     }
 
-    // The analog row along the top (PAD and GAIN per channel, MONITOR OUT and
-    // PHONES): the console's preamps and outputs, drawn as on its panel; they
-    // aren't Sidecar's controls.
+    // The legends beside the LCD: FUNCTION, MEMORY, SEL CH; RTN 1 ... SEND 4.
+    {
+        const auto lcd = display.getBounds().toFloat();
+        const char* left[] = { "FUNCTION", "MEMORY", "SEL CH" };
+        for (int k = 0; k < 3; ++k)
+            hw::silk (g, juce::Rectangle<float> (lcd.getX() - 76.0f, lcd.getY() + lcd.getHeight() * promix::Display::kLeftRows[k] - 7.0f, 70.0f, 14.0f), left[k],
+                      look(), 10.0f, juce::Justification::centredRight);
+        const char* right[] = { "RTN   1", "RTN   2", "SEND 3", "SEND 4" };
+        for (int k = 0; k < 4; ++k)
+            hw::silk (g, juce::Rectangle<float> (lcd.getRight() + 6.0f, lcd.getY() + lcd.getHeight() * promix::Display::kRightRows[k] - 7.0f, 60.0f, 14.0f), right[k],
+                      look(), 10.0f, juce::Justification::centredLeft);
+    }
+
+    // The analog row along the top, drawn as on the panel (they aren't Sidecar's
+    // controls): per channel its 20dB PAD switch, its GAIN knob in its ring of
+    // ticks from -16 to -60, the number; CUE/2TR IN, MONITOR OUT and PHONES.
     if (! analogArea.isEmpty())
     {
         const auto row = analogArea.toFloat();
+        const auto ticked = [&g] (juce::Point<float> c, float radius, int ticks)
+        {
+            g.setColour (look().silkDim.withAlpha (0.8f));
+            for (int k = 0; k < ticks; ++k)
+            {
+                const float a = juce::MathConstants<float>::pi * (1.25f - 1.5f * (float) k / (float) (ticks - 1));
+                const juce::Point<float> dir (std::cos (a), -std::sin (a));
+                g.drawLine (juce::Line<float> (c + dir * (radius + 2.0f), c + dir * (radius + 6.0f)), 1.0f);
+            }
+        };
+        const auto pad = [&g] (juce::Rectangle<float> r)
+        {
+            g.setColour (juce::Colour (0xff2a2c2f));
+            g.fillRect (r);
+            g.setColour (juce::Colour (0xffb9bcbe));
+            g.drawRect (r, 1.0f);
+            g.setColour (juce::Colour (0xffd8dadc));
+            g.fillRect (r.reduced (3.0f, 2.5f));
+        };
         for (int i = 0; i < 16; ++i)
         {
             const float cx = (float) faders[(size_t) i]->getBounds().getCentreX() + 12.0f;
-            auto pad = juce::Rectangle<float> (16.0f, 8.0f).withCentre ({ cx, row.getY() + 12.0f });
-            g.setColour (juce::Colour (0xffb9bcbe));
-            g.fillRoundedRectangle (pad, 1.5f);
-            hw::silk (g, pad.withX (pad.getX() - 26.0f).withWidth (24.0f), i == 0 ? "PAD" : "", look(), 8.5f, juce::Justification::centredRight, true);
-            hw::knob (g, juce::Rectangle<float> (24.0f, 24.0f).withCentre ({ cx, row.getY() + 36.0f }), 0.5f, look());
-            hw::silk (g, juce::Rectangle<float> (40.0f, 11.0f).withCentre ({ cx, row.getY() + 55.0f }), "GAIN", look(), 8.5f, juce::Justification::centred, true);
-            hw::silk (g, juce::Rectangle<float> (40.0f, 12.0f).withCentre ({ cx, row.getY() + 66.0f }), juce::String (i + 1), look(), 10.0f);
-            if (i > 0)
-            {
-                g.setColour (look().silkDim.withAlpha (0.35f));
-                g.drawVerticalLine ((int) (cx - (float) faders[0]->getWidth() * 0.5f), row.getY() + 2.0f, row.getBottom() - 4.0f);
-            }
+            const auto sw = juce::Rectangle<float> (24.0f, 13.0f).withCentre ({ cx, row.getY() + 12.0f });
+            pad (sw);
+            if (i == 0)
+                hw::silk (g, sw.withX (sw.getX() - 34.0f).withWidth (30.0f), "PAD", look(), 10.0f, juce::Justification::centredRight);
+            hw::silk (g, juce::Rectangle<float> (40.0f, 10.0f).withCentre ({ cx, row.getY() + 25.0f }), "20dB", look(), 8.0f);
+            const juce::Point<float> c (cx, row.getY() + 45.0f);
+            ticked (c, 10.0f, 11);
+            hw::knob (g, juce::Rectangle<float> (20.0f, 20.0f).withCentre (c), 0.5f, look());
+            hw::silk (g, juce::Rectangle<float> (20.0f, 9.0f).withCentre ({ cx - 9.0f, row.getY() + 63.0f }), "-16", look(), 7.5f, juce::Justification::centred, true);
+            hw::silk (g, juce::Rectangle<float> (20.0f, 9.0f).withCentre ({ cx + 9.0f, row.getY() + 63.0f }), "-60", look(), 7.5f, juce::Justification::centred, true);
+            hw::silk (g, juce::Rectangle<float> (40.0f, 11.0f).withCentre ({ cx, row.getY() + 74.0f }), "GAIN", look(), 9.0f);
+            hw::silk (g, juce::Rectangle<float> (40.0f, 12.0f).withCentre ({ cx, row.getY() + 88.0f }), juce::String (i + 1), look(), 10.5f);
+            g.setColour (look().silkDim.withAlpha (0.35f));
+            g.drawVerticalLine ((int) (cx + (float) faders[0]->getWidth() * 0.5f), row.getY() + 2.0f, row.getBottom() - 4.0f);
         }
-        const char* outs[] = { "MONITOR OUT", "PHONES" };
+        // CUE/2TR IN over the two output knobs, at the right end of the PAD row.
+        const float lx = (float) faders[17]->getBounds().getCentreX() + 12.0f, rx = (float) faders[18]->getBounds().getCentreX() + 12.0f;
+        const auto cue = juce::Rectangle<float> (26.0f, 13.0f).withCentre ({ rx, row.getY() + 12.0f });
+        pad (cue);
+        hw::silk (g, juce::Rectangle<float> (90.0f, 10.0f).withCentre ({ rx, row.getY() + 25.0f }), "CUE/ 2TR IN", look(), 8.0f);
+        const char* outs[] = { "MONITOR\nOUT", "PHONES" };
         for (int k = 0; k < 2; ++k)
         {
-            const float cx = (float) faders[(size_t) (17 + k)]->getBounds().getCentreX() + 12.0f;
-            hw::knob (g, juce::Rectangle<float> (30.0f, 30.0f).withCentre ({ cx, row.getY() + 30.0f }), 0.6f, look());
-            hw::silk (g, juce::Rectangle<float> (90.0f, 12.0f).withCentre ({ cx, row.getY() + 56.0f }), outs[k], look(), 8.5f, juce::Justification::centred, true);
+            const juce::Point<float> c (k == 0 ? lx : rx, row.getY() + 47.0f);
+            ticked (c, 13.0f, 11);
+            hw::knob (g, juce::Rectangle<float> (26.0f, 26.0f).withCentre (c), 0.6f, look());
+            hw::silk (g, juce::Rectangle<float> (12.0f, 9.0f).withCentre (c + juce::Point<float> (-12.0f, 18.0f)), "0", look(), 7.5f, juce::Justification::centred, true);
+            hw::silk (g, juce::Rectangle<float> (14.0f, 9.0f).withCentre (c + juce::Point<float> (13.0f, 18.0f)), "10", look(), 7.5f, juce::Justification::centred, true);
+            hw::silk (g, juce::Rectangle<float> (40.0f, 9.0f).withCentre (c + juce::Point<float> (0.0f, 27.0f)), "LEVEL", look(), 7.5f);
+            g.setColour (look().silk);
+            g.setFont (type::font (9.5f, true));
+            g.drawFittedText (outs[k], juce::Rectangle<float> (80.0f, 22.0f).withCentre (c + juce::Point<float> (0.0f, 43.0f)).toNearestInt(),
+                              juce::Justification::centredTop, 2);
         }
     }
 
-    // The stereo output's LED meter (p.19): CLIP, 15 ... 0 ... -40.
+    // The LCD's contrast knob, its half-moon mark beside it.
+    if (! contrastKnob.isEmpty())
+    {
+        const auto k = contrastKnob.toFloat();
+        g.setColour (juce::Colour (0xff1b1c1e));
+        g.fillEllipse (k);
+        g.setColour (look().silkDim.withAlpha (0.6f));
+        g.drawEllipse (k.reduced (0.5f), 1.0f);
+        g.drawEllipse (k.reduced (k.getWidth() * 0.32f), 1.0f);
+        auto mark = juce::Rectangle<float> (9.0f, 9.0f).withCentre ({ k.getRight() + 10.0f, k.getY() + 8.0f });
+        g.drawEllipse (mark, 1.0f);
+        juce::Path half;
+        half.addPieSegment (mark, 0.0f, juce::MathConstants<float>::pi, 0.0f);
+        g.fillPath (half);
+    }
+
+    // The stereo output's LED meter (pp.2, 4): two columns of 12 round LEDs,
+    // CLIP, 15 ... 0 ... -40 printed between them, L and R under them.
     auto m = meterArea().toFloat();
-    hw::silk (g, m.removeFromBottom (16.0f), "ST OUT", look(), 10.5f);
+    {
+        auto lr = m.removeFromBottom (18.0f);
+        const float lx = m.getX() + 7.0f, rx = m.getRight() - 7.0f;
+        g.setColour (look().silkDim);
+        g.drawLine (lx - 4.0f, lr.getY() + 3.0f, rx + 4.0f, lr.getY() + 3.0f, 1.0f);
+        g.drawLine (lx - 4.0f, lr.getY(), lx - 4.0f, lr.getY() + 3.0f, 1.0f);
+        g.drawLine (rx + 4.0f, lr.getY(), rx + 4.0f, lr.getY() + 3.0f, 1.0f);
+        hw::silk (g, juce::Rectangle<float> (16.0f, 12.0f).withCentre ({ lx, lr.getY() + 11.0f }), "L", look(), 10.0f);
+        hw::silk (g, juce::Rectangle<float> (16.0f, 12.0f).withCentre ({ rx, lr.getY() + 11.0f }), "R", look(), 10.0f);
+    }
     const char* labels[] = { "CLIP", "15", "12", "9", "6", "3", "0", "-6", "-12", "-18", "-24", "-40" };
     const float dbfs[] = { -0.1f, -5.0f, -8.0f, -11.0f, -14.0f, -17.0f, -20.0f, -26.0f, -32.0f, -38.0f, -44.0f, -60.0f };
     auto* st = ctx.engine.getMains().empty() ? nullptr : ctx.engine.getMains()[0].get();
     const float segH = m.getHeight() / 12.0f;
+    for (int ch = 0; ch < 2; ++ch)
+    {
+        // Each column in its rounded window.
+        const float x = ch == 0 ? m.getX() + 7.0f : m.getRight() - 7.0f;
+        g.setColour (juce::Colour (0xff1a1b1d));
+        g.fillRoundedRectangle (juce::Rectangle<float> (13.0f, m.getHeight() + 4.0f).withCentre ({ x, m.getCentreY() }), 6.5f);
+    }
     for (int s = 0; s < 12; ++s)
     {
         auto row = juce::Rectangle<float> (m.getX(), m.getY() + segH * (float) s, m.getWidth(), segH);
-        hw::silk (g, row.removeFromLeft (34.0f), labels[s], look(), 9.5f, juce::Justification::centredRight, true);
+        hw::silk (g, row.reduced (14.0f, 0.0f), labels[s], look(), 8.5f, juce::Justification::centred, true);
         for (int ch = 0; ch < 2; ++ch)
         {
             const float level = st != nullptr ? juce::Decibels::gainToDecibels (ctx.meters.get (st, MeterPoint::Output, ch), -100.0f) : -100.0f;
-            auto led = row.removeFromLeft (row.getWidth() / (float) (2 - ch)).reduced (3.0f, 2.0f);
+            const float x = ch == 0 ? m.getX() + 7.0f : m.getRight() - 7.0f;
+            const auto led = juce::Rectangle<float> (7.0f, 7.0f).withCentre ({ x, row.getCentreY() });
             const auto colour = s == 0 ? juce::Colour (0xffff4040) : s < 6 ? juce::Colour (0xfff0c030) : juce::Colour (0xff40d070);
             g.setColour (level >= dbfs[s] ? colour : colour.withAlpha (0.15f));
-            g.fillRect (led);
+            g.fillEllipse (led);
         }
     }
 
-    // The channel numbers over the SEL keys, as the panel prints them.
-    for (int i = 0; i < 16; ++i)
+    // The strips' names over the SEL keys, as the panel prints them.
+    for (int i = 0; i < kNumFaders; ++i)
     {
         const auto s = selKeys[(size_t) i]->getBounds().toFloat();
-        hw::silk (g, s.withY (s.getY() - 16.0f).withHeight (14.0f), juce::String (i + 1), look(), 12.0f);
+        const juce::String name = i < 16 ? juce::String (i + 1) : i == 16 ? juce::String ("ST IN") : i == 17 ? juce::String ("RTN/\nSEND") : juce::String ("ST OUT");
+        g.setColour (look().silk);
+        g.setFont (type::font (i < 16 ? 13.0f : 10.5f, true));
+        g.drawFittedText (name, s.withY (s.getY() - 26.0f).withHeight (24.0f).toNearestInt(), juce::Justification::centredBottom, 2);
     }
 
-    // The faders' labels below them.
-    g.setFont (type::font (type::kLabel, true));
+    // The faders' names under them; dividers between the strips.
     for (int i = 0; i < kNumFaders; ++i)
     {
         const auto f = faders[(size_t) i]->getBounds();
-        const char* rs[] = { "RTN1", "RTN2", "SEND3", "SEND4" };
-        const juce::String name = i < 16 ? juce::String (i + 1) : i == 16 ? juce::String ("ST IN") : i == 17 ? juce::String (rs[rtnSend]) : juce::String ("ST OUT");
-        hw::silk (g, f.withY (f.getBottom()).withHeight (22).toFloat(), name, look(), 12.0f);
-        if (i == 16 || i == 17)
+        const juce::String name = i < 16 ? juce::String (i + 1) : i == 16 ? juce::String ("ST IN") : i == 17 ? juce::String ("RTN/\nSEND") : juce::String ("ST OUT");
+        g.setColour (look().silk);
+        g.setFont (type::font (i < 16 ? 12.0f : 9.5f, true));
+        g.drawFittedText (name, f.withY (f.getBottom()).withHeight (24), juce::Justification::centredTop, 2);
+        if (i > 0)
         {
-            g.setColour (look().silkDim.withAlpha (0.5f));
-            g.drawVerticalLine (f.getX() - 4, (float) f.getY(), (float) f.getBottom() + 20.0f);
+            g.setColour (look().silkDim.withAlpha (0.35f));
+            const int x = f.getX() - (i == 16 || i == 17 ? 4 : 0);
+            g.drawVerticalLine (x, (float) selKeys[(size_t) i]->getY() - 26.0f, (float) f.getBottom() + 20.0f);
         }
     }
 }
@@ -1214,16 +1384,17 @@ void ProMixSurface::resized()
     // The panel as the console has it (User's Guide pp.2-4): the analog row
     // along the top; then the function keys in their block left of the LCD
     // (SCENE MEMORY's STORE, INC, RECALL, DEC with UTILITY, MIDI, GROUP, PAIR;
-    // the orange, blue and green rows), the LCD, its stereo meter, and ENTER, the
-    // cursor keys and the PARAMETER wheel at the right; the strips below.
+    // the orange, blue and green rows), the LCD with its legends, its contrast
+    // knob over the stereo meter, ENTER, the cursor keys and the PARAMETER wheel
+    // at the right; the strips below, the vent over their faders.
     area.removeFromLeft (14);
     area.removeFromRight (14); // the rack ears
-    analogArea = area.removeFromTop (80);
-    auto upper = area.removeFromTop (300).reduced (28, 10);
-    auto block = upper.removeFromLeft (440);
-    block.removeFromTop (18);
-    const int kw = block.getWidth() / 4, kh = juce::jmin (kKey + 14, block.getHeight() / 5);
-    auto cell = [&] (int row, int col) { return juce::Rectangle<int> (block.getX() + col * kw, block.getY() + row * kh, kw, kh).reduced (4, 5); };
+    analogArea = area.removeFromTop (100);
+    auto upper = area.removeFromTop (292).reduced (28, 8);
+    auto block = upper.removeFromLeft (420);
+    block.removeFromTop (12);
+    const int kw = block.getWidth() / 4, kh = juce::jmin (kKey + 18, block.getHeight() / 5);
+    auto cell = [&] (int row, int col) { return juce::Rectangle<int> (block.getX() + col * kw, block.getY() + row * kh, kw, kh).reduced (6, 3); };
     // Rows 1-2: STORE, INC, UTILITY, MIDI / RECALL, DEC, GROUP, PAIR.
     panelKeys[0]->setBounds (cell (0, 0));
     panelKeys[2]->setBounds (cell (0, 1));
@@ -1233,36 +1404,42 @@ void ProMixSurface::resized()
     functionKeys[15].second->setBounds (cell (0, 3)); // MIDI
     functionKeys[12].second->setBounds (cell (1, 2)); // GROUP
     functionKeys[13].second->setBounds (cell (1, 3)); // PAIR
-    for (int k = 0; k < 12; ++k) // METER ... CUE; SEND1-4; EQ LOW ... LIBRARY
+    for (int k = 0; k < 12; ++k) // METER ... CUE; SEND 1-4; EQ LOW ... LIBRARY
         functionKeys[(size_t) k].second->setBounds (cell (2 + k / 4, k % 4));
-    upper.removeFromLeft (20);
+    upper.removeFromLeft (96); // FUNCTION, MEMORY, SEL CH
     auto right = upper.removeFromRight (300);
-    meterRect = upper.removeFromRight (80).reduced (8, 6);
-    upper.removeFromRight (12);
-    display.setBounds (upper);
-    // ENTER and the cursor keys left of the PARAMETER wheel, as on the panel.
-    wheel->setBounds (right.removeFromRight (170).withSizeKeepingCentre (164, 164).withY (right.getY() + 22));
+    auto meterColumn = upper.removeFromRight (64);
+    contrastKnob = meterColumn.removeFromTop (54).withSizeKeepingCentre (38, 38).translated (-6, 0);
+    meterRect = meterColumn.reduced (8, 4);
+    upper.removeFromRight (74); // RTN 1 ... SEND 4
+    display.setBounds (upper.withTrimmedTop (14).withTrimmedBottom (14));
+    // ENTER, an oval, beside the PARAMETER wheel; the cursor keys in a diamond under it.
+    wheel->setBounds (right.removeFromRight (170).withSizeKeepingCentre (156, 156).withY (right.getY() + 36));
     right.removeFromRight (8);
-    panelKeys[8]->setBounds (right.getX() + 38, right.getY() + 22, 76, kKey); // ENTER
-    const int cx = right.getX() + 10, cy = right.getY() + 22 + kKey + 22;
-    panelKeys[5]->setBounds (cx + 44, cy, 44, kKey);                  // up
-    panelKeys[4]->setBounds (cx, cy + kKey + 4, 44, kKey);            // left
-    panelKeys[7]->setBounds (cx + 88, cy + kKey + 4, 44, kKey);       // right
-    panelKeys[6]->setBounds (cx + 44, cy + 2 * (kKey + 4), 44, kKey); // down
+    panelKeys[8]->setBounds (right.getX() + 20, right.getY() + 34, 92, 30); // ENTER
+    const int cx = right.getX() + 8, cy = right.getY() + 104;
+    panelKeys[5]->setBounds (cx + 42, cy, 44, 38);                // up
+    panelKeys[4]->setBounds (cx, cy + 40, 40, 44);                // left
+    panelKeys[7]->setBounds (cx + 88, cy + 40, 40, 44);           // right
+    panelKeys[6]->setBounds (cx + 42, cy + 86, 44, 38);           // down
 
-    // The faders: 19 strips, SEL and ON above each, its name below.
+    // The faders: 19 strips, the name and SEL and ON above each, the vent, the
+    // fader, its name below.
     auto lower = area.reduced (sizes::kGapLarge, sizes::kGap);
     const int w = juce::jmin (kStripWidth, lower.getWidth() / kNumFaders);
     int x = lower.getX() + (lower.getWidth() - w * kNumFaders - 16) / 2;
+    grilleArea = {};
     for (int i = 0; i < kNumFaders; ++i)
     {
         if (i == 16 || i == 17)
             x += 8;
-        auto col = juce::Rectangle<int> (x, lower.getY() + 16, w, lower.getHeight() - 40); // the number above
+        auto col = juce::Rectangle<int> (x, lower.getY() + 26, w, lower.getHeight() - 50); // the name above
         selKeys[(size_t) i]->setBounds (col.removeFromTop (kKey).reduced (6, 0));
         col.removeFromTop (6);
         onKeys[(size_t) i]->setBounds (col.removeFromTop (kKey).reduced (6, 0));
-        col.removeFromTop (6);
+        col.removeFromTop (8);
+        grilleArea = grilleArea.isEmpty() ? col.removeFromTop (46).reduced (2, 0) : grilleArea.getUnion (col.removeFromTop (46).reduced (2, 0));
+        col.removeFromTop (4);
         faders[(size_t) i]->setBounds (col);
         x += w;
     }

@@ -831,8 +831,8 @@ mod tests {
         // Channel mode, Rx channel 1: bank 2, CC 72 (parameter 264: CH9 LOW Q) on MIDI channel 3.
         m.receive(&mut c, &[0xb2, 72, 0]);
         assert_eq!(params::get(&c, 264), Some(0), "1/6 oct");
-        // CH4's fader (bank 0, CC 3) to 0 dB: step 115 is MIDI 115.
-        m.receive(&mut c, &[0xb0, 3, 115]);
+        // CH4's fader (bank 0, CC 3) to 0 dB: step 100 is MIDI 100.
+        m.receive(&mut c, &[0xb0, 3, 100]);
         assert!(c.strip(PmStrip::Ch(3)).unwrap().params.fader_db.load().abs() < 1e-4);
         m.poll(&c);
         assert!(m.take_out().is_none(), "received values don't echo");

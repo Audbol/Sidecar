@@ -738,7 +738,7 @@ Three layers:
       least (as on an X32); the console addresses two. Its port groups sit in the
       WING's places (`PROMIX01_PORT_GROUPS`); a new console plays ST OUT on outputs
       1-2, 5-6 and 9-10, SEND3-4 on 3-4. The fader's steps between +6 and -66 dB are
-      Sidecar's reading of the panel's scale (0 dB on step 115).
+      Sidecar's reading of the panel's scale (0 dB on step 100, measured on the User's Guide's drawing).
    2. **Its processing** (done): the 3-band EQ (`livedaw_dsp::promix`, token
       `PMEQ`: LOW 32 Hz-1 kHz, MID 32 Hz-18 kHz, HIGH 1-18 kHz in 1/6 octave steps
       named as the guide's presets name them; gain +-15 dB in 1 dB steps; Q 1/6 to
@@ -961,7 +961,7 @@ Three layers:
         (`FaderLaw::Y02R_STEREO`), so a profile's mains can now have their own law
         (`ProfileSpec::main_fader`, `fader_for`; scene fades use it; C ABI 45
         `ld_engine_fader_law_of`). The steps between the ends are Sidecar's
-        reading of the panels' scales: 0 dB on step 103 of the channels' faders,
+        reading of the panels' scales: 0 dB on step 101 of the channels' faders,
         on the top of STEREO's.
       - Its labels and slot ranges: CH 1-16, LINE 1-4, TAPE 1-16, EFF, BUS, AUX
         (bus slots 9-16), STEREO; the names TAPE 1, LINE 17/18, EFF1, AUX 8.

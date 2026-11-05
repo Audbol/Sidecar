@@ -14,7 +14,7 @@ namespace
 
 MonitorSection::MonitorSection (UiContext& c, const Theme& t)
     : ctx (c), theme (t), dim ("DIM", kLit, t), mono ("MONO", kLit, t), mute ("MUTE", t.mute, t), talkA ("TALK A", kLit, t),
-      talkB ("TALK B", kLit, t)
+      talkB ("TALK B", kLit, t), monitorView ("VIEW", kLit, t), talkView ("VIEW", kLit, t)
 {
     auto& controls = ctx.engine; // its monitor and talk controls
     monitor.setBinding (bindFader ("MONITOR", controls.monitorLevelDb));
@@ -40,6 +40,12 @@ MonitorSection::MonitorSection (UiContext& c, const Theme& t)
     for (auto* k : { &dim, &mono, &talkA, &talkB })
         addAndMakeVisible (*k);
     addChildComponent (mute); // not on the X32's panel
+    for (auto* k : { &monitorView, &talkView })
+    {
+        k->setEnabled (false);
+        k->setTooltip ("Not on Sidecar's X32 screen yet");
+        addAndMakeVisible (*k);
+    }
     startTimerHz (10);
 }
 
@@ -83,6 +89,32 @@ void MonitorSection::paint (juce::Graphics& g)
     name (monitor, "MONITOR LEVEL");
     name (phones, "PHONES LEVEL");
     name (talk, "TALK LEVEL");
+    hw::silk (g, phones.getBounds().toFloat().withY ((float) phones.getBottom() + 10.0f).withHeight (10.0f).expanded (24.0f, 0.0f), "(JACKS IN SIDE CAPS)",
+              look, 7.0f, juce::Justification::centred, true);
+    // The pots' MIN and MAX, at the ends of their travel.
+    for (auto* k : { &monitor, &phones, &talk })
+    {
+        const auto b = k->getBounds().toFloat();
+        hw::silk (g, juce::Rectangle<float> (b.getX() - 18.0f, b.getBottom() - 12.0f, 22.0f, 10.0f), "MIN", look, 7.0f, juce::Justification::centredRight, true);
+        hw::silk (g, juce::Rectangle<float> (b.getRight() - 4.0f, b.getBottom() - 12.0f, 22.0f, 10.0f), "MAX", look, 7.0f, juce::Justification::centredLeft, true);
+    }
+    // LAMP: a 4-pin socket for a desk lamp, drawn.
+    if (! lamp.isEmpty())
+    {
+        auto s = lamp.toFloat();
+        g.setColour (juce::Colour (0xff0e0f10));
+        g.fillEllipse (s);
+        g.setColour (juce::Colour (0xffb9bcbe));
+        g.drawEllipse (s.reduced (1.0f), 1.5f);
+        g.setColour (juce::Colour (0xff3a3d40));
+        for (int k = 0; k < 4; ++k)
+        {
+            const float a = juce::MathConstants<float>::halfPi * (float) k + juce::MathConstants<float>::pi * 0.25f;
+            g.fillEllipse (juce::Rectangle<float> (3.5f, 3.5f).withCentre (s.getCentre() + juce::Point<float> (std::cos (a), std::sin (a)) * s.getWidth() * 0.22f));
+        }
+        hw::silk (g, s.withX (s.getRight() + 4.0f).withWidth (40.0f).withTrimmedBottom (s.getHeight() / 2.0f), "LAMP", look, 8.5f, juce::Justification::centredLeft);
+        hw::silk (g, s.withX (s.getRight() + 4.0f).withWidth (40.0f).withTrimmedTop (s.getHeight() / 2.0f), "12V 5W", look, 7.0f, juce::Justification::centredLeft, true);
+    }
     // The socket: drawn, not a control.
     if (! socket.isEmpty())
     {
@@ -118,19 +150,26 @@ void MonitorSection::resized()
         const int size = juce::jmin (col.getWidth() - 10, 56);
         knobAt (monitor, col, size);
         knobAt (phones, col, size);
+        col.removeFromTop (8); // the jacks' note
         mono.setBounds (col.removeFromTop (kKey).withSizeKeepingCentre (48, kKey));
         col.removeFromTop (6);
-        dim.setBounds (col.removeFromTop (kKey).withSizeKeepingCentre (48, kKey));
+        auto row = col.removeFromTop (kKey);
+        dim.setBounds (row.removeFromLeft (row.getWidth() / 2).withSizeKeepingCentre (44, kKey));
+        monitorView.setBounds (row.withSizeKeepingCentre (36, kKey));
     }
     {
         auto col = column (talkArea);
         const int size = juce::jmin (col.getWidth() - 10, 56);
+        lamp = col.removeFromTop (26).withSizeKeepingCentre (22, 22).translated (-18, 0);
+        col.removeFromTop (8);
         socket = col.removeFromTop (size - 8).withSizeKeepingCentre (size - 12, size - 12);
         col.removeFromTop (18);
         knobAt (talk, col, size);
         talkA.setBounds (col.removeFromTop (kKey).withSizeKeepingCentre (48, kKey));
         col.removeFromTop (6);
-        talkB.setBounds (col.removeFromTop (kKey).withSizeKeepingCentre (48, kKey));
+        auto row = col.removeFromTop (kKey);
+        talkB.setBounds (row.removeFromLeft (row.getWidth() / 2).withSizeKeepingCentre (44, kKey));
+        talkView.setBounds (row.withSizeKeepingCentre (36, kKey));
     }
     mute.setBounds ({});
 }

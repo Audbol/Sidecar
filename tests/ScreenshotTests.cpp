@@ -1,4 +1,4 @@
-﻿// The Universal Mixer's screenshots for the docs (docs/images/universal-*.png).
+// The Universal Mixer's screenshots for the docs (docs/images/universal-*.png).
 // A category of its own, not run with the others:
 //
 //   LIVEDAW_SCREENSHOTS=docs/images build/LiveDAWTests_artefacts/Release/LiveDAWTests Screenshots
@@ -189,7 +189,7 @@ public:
         auto& channels = engine.getChannels();
         for (int i = 0; i < 36; ++i)
         {
-            y.set (i * Yamaha02R::perStrip, i % 5 == 0 ? 103 : 88 - 3 * (i % 4)); // levels on the console's steps
+            y.set (i * Yamaha02R::perStrip, i % 5 == 0 ? 101 : 88 - 3 * (i % 4)); // levels on the console's steps
             channels[(size_t) i]->meters.outputPeak[0] = 0.08f + 0.5f * (float) ((i * 37) % 11) / 10.0f;
         }
         y.set (54 * Yamaha02R::perStrip, 127); // STEREO at 0 dB
@@ -234,7 +234,7 @@ public:
         expectEquals (rig.show.getNumScenes(), 1);
         y.set (0, 20);
         skin.recall();
-        expectEquals (y.get (0), 103, "scene 1's CH 1");
+        expectEquals (y.get (0), 101, "scene 1's CH 1");
         skin.pressFunction (F::Dynamics);
         expect (display.getFields().size() >= 8, "ON, TYPE, six parameters...");
         skin.pressFunction (F::Eq);
@@ -300,12 +300,12 @@ private:
         auto& channels = engine.getChannels();
         for (int i = 0; i < 16; ++i)
         {
-            pm.set (i, i % 5 == 0 ? 115 : 95 - 4 * (i % 4)); // levels on the console's steps
+            pm.set (i, i % 5 == 0 ? 100 : 95 - 4 * (i % 4)); // levels on the console's steps
             channels[(size_t) i]->meters.inputPeak[0] = 0.08f + 0.5f * (float) ((i * 37) % 11) / 10.0f;
             channels[(size_t) i]->meters.outputPeak[0] = channels[(size_t) i]->meters.inputPeak[0].load();
         }
         pm.set (16, 107); // ST IN
-        pm.set (21, 115); // ST OUT
+        pm.set (21, 100); // ST OUT
         pm.set (22 + 12, 0); // CH13 OFF
         engine.getMains()[0]->meters.outputPeak[0] = 0.2f;
         engine.getMains()[0]->meters.outputPeak[1] = 0.18f;
@@ -354,7 +354,7 @@ private:
         expectEquals (rig.show.getNumScenes(), 1);
         pm.set (0, 20);
         skin.recall();
-        expectEquals (pm.get (0), 115, "scene 1's CH1");
+        expectEquals (pm.get (0), 100, "scene 1's CH1");
         // The EQ function on the selected channel (CH5), a bell on MID.
         skin.selectionChanged();
         expectEquals (display.getEqStrip(), 4);

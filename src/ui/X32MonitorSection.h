@@ -12,7 +12,8 @@ namespace livedaw::ui::x32
 
     - MONITOR (the speakers' level) and PHONES (the phones' level);
     - DIM, MONO and MUTE of the monitor (the solo bus's path);
-    - TALK (the talkback level) and the TALK A and TALK B keys, latching.
+    - TALK (the talkback level) and the TALK A and TALK B keys, latching;
+    - the EXT MIC and LAMP sockets, drawn, and each section's VIEW key.
 
     Each control is the engine's own (EngineControls: the monitor paths and
     the talk paths); where the talkback goes and which input it takes are set
@@ -39,8 +40,10 @@ private:
     const universal::Theme& theme;
     DisplayKnob monitor, phones, talk;
     /** MONITOR's and TALKBACK's sections, the EXT MIC socket (set by resized()). */
-    juce::Rectangle<int> monitorArea, talkArea, socket;
+    juce::Rectangle<int> monitorArea, talkArea, socket, lamp;
     universal::ToggleKey dim, mono, mute, talkA, talkB;
+    /** The sections' VIEW keys: Sidecar's X32 screen has no monitor or talkback page yet, so they're dark. */
+    universal::ToggleKey monitorView, talkView;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MonitorSection)
 };

@@ -673,8 +673,8 @@ mod tests {
 
     #[test]
     fn steps_and_pans() {
-        assert_eq!(db_step(step_db(115)), 115);
-        assert!(step_db(115).abs() < 1e-4);
+        assert_eq!(db_step(step_db(100)), 100);
+        assert!(step_db(100).abs() < 1e-4);
         assert_eq!(step_db(0), livedaw_dsp::fader::FADER_MIN);
         for v in 0..=32 {
             assert_eq!(pan_step(pan_of(v)), v);

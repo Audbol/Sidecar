@@ -270,8 +270,8 @@ private:
             p->onSend = [&] (const juce::MidiMessage& m) { sent.push_back (m); };
             p->sendFeedback();
             expect (sent.empty(), "nothing at start");
-            // CH4's fader to 0 dB (bank 0, CC 3, step 115), not echoed.
-            p->handleMessage (0, juce::MidiMessage::controllerEvent (1, 3, 115));
+            // CH4's fader to 0 dB (bank 0, CC 3, step 100), not echoed.
+            p->handleMessage (0, juce::MidiMessage::controllerEvent (1, 3, 100));
             expectWithinAbsoluteError (engine.getChannels()[3]->params.faderDb.load(), 0.0f, 1e-3f);
             p->sendFeedback();
             expect (sent.empty(), "not echoed");
@@ -334,8 +334,8 @@ private:
             p->onSend = [&] (const juce::MidiMessage& m) { sent.push_back (m); };
             p->sendFeedback();
             expect (sent.empty(), "nothing at start");
-            // CC 3 (the 02R map: MIC 3's fader) to step 103, 0 dB; not echoed.
-            p->handleMessage (0, juce::MidiMessage::controllerEvent (1, 3, 103));
+            // CC 3 (the 02R map: MIC 3's fader) to step 101, 0 dB; not echoed.
+            p->handleMessage (0, juce::MidiMessage::controllerEvent (1, 3, 101));
             expectWithinAbsoluteError (engine.getChannels()[2]->params.faderDb.load(), 0.0f, 1e-3f);
             p->sendFeedback();
             expect (sent.empty(), "not echoed");

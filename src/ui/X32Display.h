@@ -150,6 +150,8 @@ private:
     std::array<int, 2> midiPick { 0, 0 };
     std::vector<std::unique_ptr<universal::ToggleKey>> screenKeys, pushKeys, muteGroupKeys;
     universal::ToggleKey pagePrev, pageNext, layerUp, layerDown;
+    /** Where PAGE SELECT and LAYER are printed (set by resized()). */
+    juce::Rectangle<int> pageLabel, layerLabel;
     universal::ResponseView eqView;
     universal::TransferView gateView, dynView;
 

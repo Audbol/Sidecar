@@ -15,13 +15,18 @@ namespace
     constexpr int kRightPanel = 300;  // SCENES, ASSIGN, MUTE GROUPS
     const juce::Colour kLayerLit (0xff62f0a6), kKeyLit (0xffffc83a);
 
-    /** An input layer: its key, the strips (0 channels, 1 aux, 2 buses) from the first. */
+    /** An input layer: its key, the strips (0 channels, 1 aux, 2 buses) from the
+        first, and the name printed under its key where it isn't the key's. */
     struct InputLayerSpec
     {
         const char* name;
         int list, first;
+        const char* printed = nullptr;
     };
-    constexpr InputLayerSpec kFullLayers[] = { { "CH 1-16", 0, 0 }, { "CH 17-32", 0, 16 }, { "AUX / FX RTN", 1, 0 }, { "BUS MASTER", 2, 0 } };
+    constexpr InputLayerSpec kFullLayers[] = { { "CH 1-16", 0, 0 },
+                                               { "CH 17-32", 0, 16 },
+                                               { "AUX / FX RTN", 1, 0, "AUX IN / USB\nFX RETURNS" },
+                                               { "BUS MASTER", 2, 0 } };
     constexpr InputLayerSpec kCompactLayers[] = { { "CH 1-8", 0, 0 },        { "CH 9-16", 0, 8 }, { "CH 17-24", 0, 16 }, { "CH 25-32", 0, 24 },
                                                   { "AUX IN / USB", 1, 0 }, { "FX RTN", 1, 8 },  { "BUS 1-8", 2, 0 },   { "BUS 9-16", 2, 8 } };
 
@@ -40,7 +45,7 @@ using x32::kScribble;
 //==============================================================================
 X32Surface::X32Surface (UiContext& c)
     : ctx (c), theme (Theme::dark()), universalKey ("UNIVERSAL MIXER", theme.accent, theme),
-      sendsOnFaderKey ("SENDS ON FADER", kLayerLit, theme), clearSolo ("CLEAR SOLO", x32::kSoloLit, theme), channel (c, theme), monitor (c, theme),
+      sendsOnFaderKey ("SENDS ON FADER", kLayerLit, theme), clearSolo ("CLEAR SOLO", x32::kSoloLit, theme), remoteKey ("REMOTE", kLayerLit, theme), channel (c, theme), monitor (c, theme),
       assign (c, theme), display (c, theme)
 {
     for (auto& s : inputs)
@@ -51,6 +56,7 @@ X32Surface::X32Surface (UiContext& c)
     for (auto& s : groups)
     {
         s = std::make_unique<x32::FaderStrip> (ctx, theme);
+        s->setGroupBank();
         addAndMakeVisible (*s);
     }
     main = std::make_unique<x32::FaderStrip> (ctx, theme);
@@ -67,7 +73,7 @@ X32Surface::X32Surface (UiContext& c)
     for (auto [name, layer] : groupLayers)
     {
         auto key = std::make_unique<ToggleKey> (name, kLayerLit, theme);
-        key->belowText = layer == GroupLayer::Dca ? "GROUP DCA 1-8" : layer == GroupLayer::MatrixMain ? "MATRIX / MAIN C" : name;
+        key->belowText = layer == GroupLayer::Dca ? "GROUP DCA 1-8" : layer == GroupLayer::MatrixMain ? "MATRIX 1-6\nMAIN C" : name;
         key->isOn = [this, l = layer] { return groupLayer == l; };
         key->onClick = [this, l = layer] { setGroupLayer (l); };
         addAndMakeVisible (*key);
@@ -94,6 +100,9 @@ X32Surface::X32Surface (UiContext& c)
     clearSolo.isOn = [this] { return ctx.engine.anySoloActive.load(); };
     clearSolo.onClick = [this] { clearSolos(); };
     addAndMakeVisible (clearSolo);
+    remoteKey.setEnabled (false);
+    remoteKey.setTooltip ("DAW remote: Sidecar has none");
+    addAndMakeVisible (remoteKey);
     main->setMeterShown (false);
     // SCENES: PREV and NEXT recall the scene before or after, GO the current
     // again (Sidecar keeps no undo: UNDO does nothing), VIEW the library.
@@ -209,6 +218,8 @@ void X32Surface::buildInputLayerKeys()
         auto key = std::make_unique<ToggleKey> (layers[(size_t) i].name, kLayerLit, theme);
         key->look = &hw::Look::x32();
         key->labelBelow = true;
+        if (layers[(size_t) i].printed != nullptr)
+            key->belowText = layers[(size_t) i].printed;
         key->isOn = [this, i] { return inputLayer == i; };
         key->onClick = [this, i] { setInputLayer (i); };
         addAndMakeVisible (*key);
@@ -513,11 +524,12 @@ void X32Surface::resized()
         col.removeFromTop (inputs.front()->getMuteTop());
         const int pitch = juce::jmin (56, col.getHeight() / juce::jmax (1, (int) keys.size()));
         for (auto& k : keys)
-            k->setBounds (col.removeFromTop (pitch).removeFromTop (x32::kKeyHeight + 6).reduced (2, 0));
+            k->setBounds (col.removeFromTop (pitch).removeFromTop (x32::kKeyHeight + (k->belowText.containsChar ('\n') ? 16 : 6)).reduced (2, 0));
     };
     layerKeys (leftColumn, inputLayerKeys);
     layerKeys (midColumn, groupLayerKeys);
     sendsOnFaderKey.setBounds (midColumn.withHeight (x32::kKeyHeight + 6).reduced (2, 0));
+    remoteKey.setBounds (leftColumn.withHeight (x32::kKeyHeight + 6).reduced (2, 0));
 }
 
 } // namespace livedaw::ui

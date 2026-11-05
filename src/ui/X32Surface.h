@@ -60,6 +60,10 @@ namespace x32
         std::function<float()> gate, comp;
         /** A bus: whether any input sends to it pre-fader (the bottom LED is PRE). */
         std::function<bool()> pre;
+        /** The bottom LED's mark, printed whatever the strip: GATE on the input
+            bank, PRE on the group bank (null: none). */
+        const char* bottomMark = "GATE";
+        void setBottomMark (const char* mark) { bottomMark = mark; repaint(); }
 
         void refresh()
         {
@@ -83,7 +87,7 @@ namespace x32
             // The window, the marks and the unlit LEDs don't change: drawn once
             // into an image (again for a new size, or PRE / GATE / none at the
             // bottom); a meter change draws only the lit LEDs over it.
-            const int bottom = pre ? 2 : gate ? 1 : 0;
+            const int bottom = bottomMark == nullptr ? 0 : isPre() ? 2 : 1;
             const float scale = g.getInternalContext().getPhysicalPixelScaleFactor();
             if (! face.isValid() || faceKind != bottom || faceScale != scale || face.getWidth() != juce::roundToInt ((float) getWidth() * scale)
                 || face.getHeight() != juce::roundToInt ((float) getHeight() * scale))
@@ -119,18 +123,18 @@ namespace x32
             const float rowH = (window.getHeight() - 6.0f) / (float) kLeds;
             for (int k = 0; k < kLeds; ++k)
             {
-                if (k == kLeds - 1 && ! gate && ! pre)
+                if (k == kLeds - 1 && bottomMark == nullptr)
                     continue;
                 const float y = window.getY() + 3.0f + rowH * (float) k;
                 const auto colour = k == 0 ? juce::Colour (0xffff9a3c) : k == 1 ? juce::Colour (0xffff3b30)
-                                    : k == kLeds - 1 && pre ? juce::Colour (0xffffd02a) : juce::Colour (0xff59f08a);
+                                    : k == kLeds - 1 && isPre() ? juce::Colour (0xffffd02a) : juce::Colour (0xff59f08a);
                 const auto led = juce::Rectangle<float> (9.0f, juce::jmin (4.0f, rowH - 2.0f)).withCentre ({ window.getCentreX(), y + rowH * 0.5f });
                 if (! lit)
                 {
                     g.setColour (colour.withAlpha (0.12f));
                     g.fillRoundedRectangle (led, 2.0f);
                     g.setColour (juce::Colour (0xffe6e9e6));
-                    g.drawText (k == kLeds - 1 && pre ? juce::String ("PRE") : juce::String (marks[k]),
+                    g.drawText (k == kLeds - 1 ? juce::String (bottomMark) : juce::String (marks[k]),
                                 juce::Rectangle<float> (window.getRight() + 3.0f, y, area.getRight() - window.getRight() - 3.0f, rowH),
                                 juce::Justification::centredLeft);
                     continue;
@@ -144,6 +148,8 @@ namespace x32
                 g.fillRoundedRectangle (led, 2.0f);
             }
         }
+
+        bool isPre() const noexcept { return bottomMark != nullptr && juce::String (bottomMark) == "PRE"; }
 
         juce::Image face;
         int faceKind = -1;
@@ -166,7 +172,7 @@ namespace x32
 
     /** One fader of the X32 surface, top to bottom as on the console: SELECT,
         the meter, SOLO, the scribble strip, MUTE, and the fader; on a strip, or
-        on a DCA (no meter, no SELECT: an X32's DCAs can't be selected), or empty. */
+        on a DCA (its meter unlit, no SELECT: an X32's DCAs can't be selected), or empty. */
     class FaderStrip final : public juce::Component
     {
     public:
@@ -212,7 +218,7 @@ namespace x32
             meter.gate = s != nullptr && isInputKind (s->getKind()) ? std::function<float()> ([s] { return s->meters.gateReductionDb.load(); }) : nullptr;
             meter.comp = [this] { return strip != nullptr ? strip->meters.dynReductionDb.load() : 0.0f; };
             meter.pre = s != nullptr && s->isBus() ? std::function<bool()> ([this, s] { return sendsPre (*s); }) : nullptr;
-            meter.setVisible (s != nullptr && meterShown);
+            meter.setVisible (meterShown); // its legend is printed on the panel
             select.setEnabled (s != nullptr);
             solo.setEnabled (s != nullptr);
             mute.setEnabled (s != nullptr);
@@ -226,7 +232,10 @@ namespace x32
             dca = index;
             sendTo = {};
             fader.bind (&ctx.engine.getDca (index).faderDb);
-            meter.setVisible (false);
+            // A DCA has no meter of its own: the meter's legend, unlit.
+            meter.gate = nullptr;
+            meter.pre = nullptr;
+            meter.setVisible (meterShown);
             select.setEnabled (false);
             solo.setEnabled (true);
             mute.setEnabled (true);
@@ -369,8 +378,10 @@ namespace x32
         void setMeterShown (bool on)
         {
             meterShown = on;
-            meter.setVisible (on && strip != nullptr);
+            meter.setVisible (on);
         }
+        /** The group bank's: PRE at the bottom of the meter's legend, not GATE. */
+        void setGroupBank() { meter.setBottomMark ("PRE"); }
         /** Where the MUTE key's row starts (the layer keys line up with it). */
         int getMuteTop() const noexcept { return mute.getY(); }
 
@@ -489,6 +500,8 @@ private:
     UiContext& ctx;
     const universal::Theme& theme;
     universal::ToggleKey universalKey, sendsOnFaderKey, clearSolo;
+    /** REMOTE (DAW remote), at the top of the input layer keys: Sidecar has none, so it's dark. */
+    universal::ToggleKey remoteKey;
     std::vector<std::unique_ptr<universal::ToggleKey>> inputLayerKeys, groupLayerKeys;
     /** SCENES (PREV, NEXT, UNDO, GO, VIEW) and MUTE GROUPS 1-6, right of the main fader. */
     std::vector<std::unique_ptr<universal::ToggleKey>> sceneKeys, muteGroupKeys;

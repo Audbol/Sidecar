@@ -117,11 +117,16 @@ ChannelSection::ChannelSection (UiContext& c, const Theme& t)
         addAndMakeVisible (*key);
         bankKeys.push_back (std::move (key));
     }
-    sections = { { { "CONFIG / PREAMP", {} }, { "GATE", {} }, { "DYNAMICS", {} }, { "EQUALIZER", {} }, { "BUS SENDS", {} }, { "MAIN BUS", {} } } };
+    sections = { { { "CONFIG / PREAMP", {} }, { "GATE", {} }, { "DYNAMICS", {} }, { "EQUALIZER", {} }, { "BUS SENDS", {} }, { "MAIN BUS", {} }, { "USB RECORDER", {} } } };
     for (size_t s = 0; s < sections.size(); ++s)
     {
         auto key = std::make_unique<ToggleKey> ("VIEW", kKeyLit, t);
         key->onClick = [this, s] { if (onView) onView ((int) s); };
+        if (s == 6)
+        {
+            key->setEnabled (false); // no recorder
+            key->setTooltip ("Sidecar has no USB recorder");
+        }
         addAndMakeVisible (*key);
         viewKeys.push_back (std::move (key));
     }
@@ -289,6 +294,7 @@ void ChannelSection::paint (juce::Graphics& g)
                                         std::function<juce::Colour (int)> colourOf)
     {
         const float rowH = r.getHeight() / (float) marks.size();
+        const float ledH = juce::jmin (5.0f, rowH * 0.5f);
         g.setFont (universal::type::font (8.5f, true));
         for (int k = 0; k < marks.size(); ++k)
         {
@@ -296,7 +302,7 @@ void ChannelSection::paint (juce::Graphics& g)
             const bool on = fromTop ? k < lit : marks.size() - 1 - k < lit;
             const auto c = colourOf (k);
             g.setColour (on ? c : c.withAlpha (0.14f));
-            g.fillRoundedRectangle (juce::Rectangle<float> (r.getX(), y + rowH * 0.25f, 7.0f, rowH * 0.5f), 1.0f);
+            g.fillRoundedRectangle (juce::Rectangle<float> (r.getX(), y + rowH * 0.5f - ledH * 0.5f, 7.0f, ledH), 1.0f);
             g.setColour (look.silk);
             g.drawText (marks[k], juce::Rectangle<float> (r.getX() + 10.0f, y, r.getWidth() - 10.0f, rowH), juce::Justification::centredLeft);
         }
@@ -330,39 +336,87 @@ void ChannelSection::paint (juce::Graphics& g)
         ledColumn (r, { "COMP", "2", "4", "6", "10", "18", "30", "GATE" }, 0, true, [=] (int) { return orange; });
         // Lit: COMP while it compresses, the steps down, GATE while the gate closes.
         const float rowH = r.getHeight() / 8.0f;
+        const float ledH = juce::jmin (5.0f, rowH * 0.5f);
         for (int k = 0; k < 8; ++k)
         {
             const bool on = k == 0 ? dynGr >= 0.5f : k == 7 ? gateGr >= 0.5f : k <= lit;
             if (! on)
                 continue;
             g.setColour (k == 7 ? green : orange);
-            g.fillRoundedRectangle (juce::Rectangle<float> (r.getX(), r.getY() + rowH * (float) k + rowH * 0.25f, 7.0f, rowH * 0.5f), 1.0f);
+            g.fillRoundedRectangle (juce::Rectangle<float> (r.getX(), r.getY() + rowH * (float) k + rowH * 0.5f - ledH * 0.5f, 7.0f, ledH), 1.0f);
         }
     }
-    // EQUALIZER: the band's type, its LED lit; HIGH 2 and LOW 2 beside their keys.
+    // USB RECORDER: the port, its ACCESS LED (dark: Sidecar records nothing there).
+    if (! usbPort.isEmpty())
+    {
+        auto port = usbPort.toFloat();
+        g.setColour (juce::Colour (0xff0b0c0c));
+        g.fillRoundedRectangle (port, 2.0f);
+        g.setColour (juce::Colour (0xffb9bcbe));
+        g.drawRoundedRectangle (port.reduced (0.5f), 2.0f, 1.2f);
+        g.setColour (juce::Colour (0xff2c2f31));
+        g.fillRect (port.reduced (5.0f, port.getHeight() * 0.3f).withTrimmedBottom (port.getHeight() * 0.12f));
+        hw::silk (g, port.withY (port.getBottom() + 2.0f).withHeight (11.0f).expanded (24.0f, 0.0f), "DATA / AUDIO", look, 8.0f);
+        const auto led = juce::Rectangle<float> (7.0f, 4.0f).withCentre ({ port.getRight() + 18.0f, port.getCentreY() - 6.0f });
+        g.setColour (juce::Colour (0xff59f08a).withAlpha (0.14f));
+        g.fillRoundedRectangle (led, 1.0f);
+        hw::silk (g, led.withY (led.getBottom() + 1.0f).withHeight (10.0f).expanded (16.0f, 0.0f), "ACCESS", look, 7.5f);
+    }
+
+    // EQUALIZER: the band's type, its LED lit, each with its filter's shape;
+    // MODE joined to them; HIGH 2 and LOW 2 bracketing their keys.
     if (! typeLeds.isEmpty())
     {
         const int type = typeIndex();
         ledColumn (typeLeds.toFloat(), { "HCUT", "HSHV", "VEQ", "PEQ", "LSHV", "LCUT" }, 0, true, [=] (int) { return red; });
         const float rowH = (float) typeLeds.getHeight() / 6.0f;
+        const float ledH = juce::jmin (5.0f, rowH * 0.5f);
         if (type >= 0 && type < 6)
         {
             g.setColour (red);
-            g.fillRoundedRectangle (juce::Rectangle<float> ((float) typeLeds.getX(), (float) typeLeds.getY() + rowH * (float) (5 - type) + rowH * 0.25f, 7.0f,
-                                                            rowH * 0.5f),
+            g.fillRoundedRectangle (juce::Rectangle<float> ((float) typeLeds.getX(), (float) typeLeds.getY() + rowH * (float) (5 - type) + rowH * 0.5f - ledH * 0.5f, 7.0f,
+                                                            ledH),
                                     1.0f);
         }
         juce::ignoreUnused (kTypeNames);
-        if (numBands() == 6)
+        // The shapes, top to bottom: HCUT, HSHV, VEQ, PEQ, LSHV, LCUT.
+        g.setColour (look.silk);
+        for (int k = 0; k < 6; ++k)
         {
-            const auto beside = [&] (const juce::Component& k, const char* text)
+            const auto box = juce::Rectangle<float> ((float) typeLeds.getRight() - 16.0f, (float) typeLeds.getY() + rowH * (float) k + rowH * 0.5f - 4.0f, 14.0f, 8.0f);
+            const float x0 = box.getX(), x1 = box.getRight(), top = box.getY(), bot = box.getBottom(), mid = box.getCentreY(), cx = box.getCentreX();
+            juce::Path p;
+            switch (k)
             {
-                hw::silk (g, k.getBounds().toFloat().withX ((float) k.getX() - 52.0f).withWidth (48.0f).withHeight ((float) k.getHeight() - 10.0f), text, look,
-                          9.0f, juce::Justification::centredRight);
-            };
-            beside (*bandKeys[1], "HIGH 2");
-            beside (*bandKeys[2], "LOW 2");
+                case 0: p.startNewSubPath (x0, mid); p.lineTo (cx, mid); p.quadraticTo (x1 - 2.0f, mid, x1, bot); break;
+                case 1: p.startNewSubPath (x0, mid + 2.0f); p.lineTo (cx - 2.0f, mid + 2.0f); p.quadraticTo (cx + 2.0f, top, x1, top); break;
+                case 2: p.startNewSubPath (x0, bot - 1.0f); p.quadraticTo (cx - 1.0f, bot - 1.0f, cx, top); p.quadraticTo (cx + 1.0f, bot - 1.0f, x1, bot - 1.0f); break;
+                case 3: p.startNewSubPath (x0, bot - 1.0f); p.cubicTo (cx - 2.0f, bot - 1.0f, cx - 3.0f, top, cx, top); p.cubicTo (cx + 3.0f, top, cx + 2.0f, bot - 1.0f, x1, bot - 1.0f); break;
+                case 4: p.startNewSubPath (x0, top); p.quadraticTo (cx - 2.0f, top, cx + 2.0f, mid + 2.0f); p.lineTo (x1, mid + 2.0f); break;
+                default: p.startNewSubPath (x0, bot); p.quadraticTo (x0 + 2.0f, mid, cx, mid); p.lineTo (x1, mid); break;
+            }
+            g.strokePath (p, juce::PathStrokeType (1.2f));
         }
+        // MODE's lines to the legend.
+        {
+            const float x = (float) typeLeds.getRight() + 3.0f, y = (float) mode.getY() + (float) (mode.getHeight() - 10) * 0.5f;
+            g.setColour (look.silkDim);
+            g.drawLine (x, (float) typeLeds.getY() + rowH * 0.5f, x, (float) typeLeds.getBottom() - rowH * 0.5f, 1.0f);
+            g.drawLine (x, y, (float) mode.getX() + 2.0f, y, 1.0f);
+        }
+        // HIGH 2 over HIGH and HIGH MID, LOW 2 over LOW MID and LOW (a six-band bus's).
+        const auto bracket = [&] (const juce::Component& a, const juce::Component& b, const char* text)
+        {
+            const float x = (float) a.getX() - 3.0f, y0 = (float) a.getY() + 6.0f, y1 = (float) b.getBottom() - 16.0f;
+            g.setColour (look.silkDim);
+            g.drawLine (x, y0, x, y1, 1.0f);
+            g.drawLine (x, y0, x + 3.0f, y0, 1.0f);
+            g.drawLine (x, y1, x + 3.0f, y1, 1.0f);
+            hw::silk (g, juce::Rectangle<float> (x - 34.0f, (y0 + y1) * 0.5f - 6.0f, 32.0f, 12.0f), text, look, 8.0f, juce::Justification::centredRight,
+                      numBands() != 6);
+        };
+        bracket (*bandKeys[0], *bandKeys[1], "HIGH 2");
+        bracket (*bandKeys[2], *bandKeys[3], "LOW 2");
     }
 }
 
@@ -372,7 +426,7 @@ void ChannelSection::resized()
     const int gap = sizes::kGap;
     // As on the panel: CONFIG / PREAMP over GATE and DYNAMICS (the GR meter
     // between), then EQUALIZER, BUS SENDS and MAIN BUS, each the full height.
-    const float weights[] = { 3.2f, 3.4f, 1.75f, 1.3f };
+    const float weights[] = { 3.0f, 3.8f, 1.65f, 1.3f };
     const int width = area.getWidth() - gap * 3;
     float total = 0.0f;
     for (auto w : weights)
@@ -383,11 +437,16 @@ void ChannelSection::resized()
     area.removeFromLeft (gap);
     sections[4].area = area.removeFromLeft (juce::roundToInt ((float) width * weights[2] / total));
     area.removeFromLeft (gap);
+    // USB RECORDER over MAIN BUS.
+    sections[6].area = area.removeFromTop (juce::jlimit (84, 130, area.getHeight() - 290));
+    area.removeFromTop (gap);
     sections[5].area = area;
     sections[0].area = left.removeFromTop (left.getHeight() / 2 - gap / 2);
     left.removeFromTop (gap);
-    sections[1].area = left.removeFromLeft (left.getWidth() / 2 - 2);
-    left.removeFromLeft (4);
+    // GATE and DYNAMICS, the GR meter between them across their boundary.
+    const int grWidth = 44;
+    sections[1].area = left.removeFromLeft ((left.getWidth() - grWidth) / 2);
+    auto grColumn = left.removeFromLeft (grWidth);
     sections[2].area = left;
 
     const auto inside = [] (const Section& s) { return s.area.reduced (10, 8).withTrimmedTop (16); };
@@ -415,10 +474,9 @@ void ChannelSection::resized()
     }
     {
         // GATE and DYNAMICS: THRESHOLD, the key under it; the GR meter between them.
-        auto g = inside (sections[1]).withTrimmedRight (20);
+        auto g = inside (sections[1]).withTrimmedRight (36);
         auto d = inside (sections[2]).withTrimmedRight (36);
-        auto meterColumn = d.removeFromLeft (40);
-        grMeter = meterColumn.withTrimmedBottom (4);
+        grMeter = grColumn.withTop (g.getY()).withBottom (g.getBottom() - 4).withTrimmedLeft (4);
         for (auto [r, k, key] : { std::tuple { g, &gateThr, &gateOn }, std::tuple { d, &dynThr, &dynOn } })
         {
             auto keys = r.removeFromBottom (kKey);
@@ -429,20 +487,27 @@ void ChannelSection::resized()
     }
     {
         // EQUALIZER: the type LEDs and MODE at the left, Q over FREQ over GAIN, the band keys at the right, EQUALIZER under.
-        auto r = inside (sections[3]).withTrimmedRight (36);
-        auto keys = r.removeFromBottom (kKey);
-        keyAt (eqOn, { r.getX() + r.getWidth() / 2, keys.getCentreY() }, 70);
-        auto bands = r.removeFromRight (70);
+        // EQUALIZER: the type legend at the left, MODE beside it half way down;
+        // Q over FREQ over GAIN; the band keys at the right (HIGH 2 and LOW 2
+        // bracketing them), VIEW under them; EQUALIZER under GAIN.
+        auto r = inside (sections[3]);
+        auto bands = r.removeFromRight (52);
+        bands.removeFromBottom (34); // VIEW
         const int bh = bands.getHeight() / 4;
         for (int k = 0; k < 4; ++k)
             keyAt (*bandKeys[(size_t) k], { bands.getCentreX(), bands.getY() + bh * k + bh / 2 }, 44);
-        auto types = r.removeFromLeft (64);
-        typeLeds = types.removeFromTop (types.getHeight() * 3 / 5).reduced (0, 4);
-        keyAt (mode, { types.getCentreX(), types.getY() + kKey / 2 + 4 }, 40);
-        const int size = juce::jmin (62, r.getHeight() / 3 - 6);
-        knobAt (eqQ, { r.getCentreX() - 20, r.getY() + size / 2 + 2 }, size);
-        knobAt (eqFreq, { r.getCentreX() + 30, r.getCentreY() + 4 }, size);
-        knobAt (eqGain, { r.getCentreX() - 20, r.getBottom() - size / 2 - 12 }, size);
+        r.removeFromRight (40); // HIGH 2, LOW 2
+        auto keys = r.removeFromBottom (kKey);
+        auto types = r.removeFromLeft (60);
+        typeLeds = types.reduced (0, 4).withTrimmedBottom (types.getHeight() / 6);
+        r.removeFromLeft (8);
+        keyAt (mode, { r.getX() + 20, typeLeds.getCentreY() + 4 }, 40);
+        r.removeFromLeft (42);
+        const int size = juce::jmin (56, r.getHeight() / 3 - 4, r.getWidth() - 30);
+        knobAt (eqQ, { r.getX() + size / 2 + 2, r.getY() + size / 2 + 2 }, size);
+        knobAt (eqFreq, { r.getRight() - size / 2 - 2, r.getCentreY() + 2 }, size);
+        knobAt (eqGain, { r.getX() + size / 2 + 2, r.getBottom() - size / 2 - 12 }, size);
+        keyAt (eqOn, { eqGain.getBounds().getCentreX(), keys.getCentreY() }, 70);
     }
     {
         // BUS SENDS: four encoders down the section, their bank keys beside them.
@@ -455,6 +520,11 @@ void ChannelSection::resized()
             knobAt (sends[(size_t) i], { r.getX() + size / 2 + 4, r.getY() + h * i + h / 2 }, size);
             keyAt (*bankKeys[(size_t) i], { keys.getCentreX(), r.getY() + h * i + h / 2 }, 42);
         }
+    }
+    {
+        // USB RECORDER: the port, its ACCESS LED beside it.
+        auto u = inside (sections[6]).withTrimmedRight (36);
+        usbPort = juce::Rectangle<int> (34, 14).withCentre ({ u.getCentreX() - 6, u.getCentreY() - 4 });
     }
     {
         // MAIN BUS: LEVEL, MONO BUS, PAN / BAL, STEREO BUS, top to bottom.

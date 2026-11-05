@@ -5,6 +5,7 @@
 #include "engine/Show.h"
 #include "engine/WingRemote.h"
 #include "engine/X32Midi.h"
+#include "ui/HardwareLook.h"
 #include "ui/HomeScreens.h"
 #include "ui/MeterBank.h"
 
@@ -225,8 +226,9 @@ namespace
 } // namespace
 
 Display::Display (UiContext& c, const Theme& t)
-    : ctx (c), theme (t), screenTheme (screenThemeFrom (t)), pagePrev ("<", t.accent, t), pageNext (">", t.accent, t),
-      layerUp ("LAYER ^", t.accent, t), layerDown ("LAYER v", t.accent, t), eqView (screenTheme), gateView (screenTheme), dynView (screenTheme)
+    : ctx (c), theme (t), screenTheme (screenThemeFrom (t)), pagePrev (juce::String::fromUTF8 ("\xe2\x97\x80"), t.accent, t),
+      pageNext (juce::String::fromUTF8 ("\xe2\x96\xb6"), t.accent, t), layerUp (juce::String::fromUTF8 ("\xe2\x96\xb2"), t.accent, t),
+      layerDown (juce::String::fromUTF8 ("\xe2\x96\xbc"), t.accent, t), eqView (screenTheme), gateView (screenTheme), dynView (screenTheme)
 {
     for (int s = 0; s < 8; ++s)
     {
@@ -1269,6 +1271,12 @@ void Display::paint (juce::Graphics& g)
     g.drawRoundedRectangle (screenArea.getUnion (bezelMeters).toFloat().expanded (7.5f), 10.0f, 1.0f);
     g.setColour (kGlass);
     g.fillRect (screenArea);
+    // PAGE SELECT and LAYER, printed beside their keys.
+    if (g.clipRegionIntersects (pageLabel.getUnion (layerLabel)))
+    {
+        hw::silk (g, pageLabel.toFloat(), "PAGE SELECT", hw::Look::x32(), 8.5f);
+        hw::silk (g, layerLabel.toFloat(), "LAYER", hw::Look::x32(), 8.5f, juce::Justification::centredRight);
+    }
     // Only the parts being repainted (the clock and meters repaint often).
     if (g.clipRegionIntersects (statusArea))
         paintStatus (g, statusArea);
@@ -1955,21 +1963,28 @@ void Display::resized()
     area.removeFromRight (8);
     screenArea = area;
 
-    // Eight screen keys, PAGE < >, LAYER ^ and v.
-    const int keyH = juce::jmin (36, (side.getHeight() - 10 * sizes::kGapSmall - sizes::kGap) / 11);
+    // Eight screen keys, PAGE SELECT's left and right under them; LAYER's up
+    // over down at the bottom, beside the sixth encoder, its name to their left.
+    auto layers = side.removeFromBottom (kKnobs).reduced (0, 8);
+    {
+        auto keys = layers.removeFromRight (44);
+        const int lh = (keys.getHeight() - 6) / 2;
+        layerUp.setBounds (keys.removeFromTop (lh));
+        keys.removeFromTop (6);
+        layerDown.setBounds (keys.removeFromTop (lh));
+        layerLabel = layers.withTrimmedRight (4);
+    }
+    const int keyH = juce::jmin (36, (side.getHeight() - 8 * sizes::kGapSmall - sizes::kGap - 14) / 9);
     for (auto& k : screenKeys)
     {
         k->setBounds (side.removeFromTop (keyH));
         side.removeFromTop (sizes::kGapSmall);
     }
     side.removeFromTop (sizes::kGap);
+    pageLabel = side.removeFromTop (14);
     auto pages = side.removeFromTop (keyH);
-    pagePrev.setBounds (pages.removeFromLeft (pages.getWidth() / 2).reduced (1, 0));
-    pageNext.setBounds (pages.reduced (1, 0));
-    side.removeFromTop (sizes::kGapSmall);
-    layerUp.setBounds (side.removeFromTop (keyH));
-    side.removeFromTop (sizes::kGapSmall);
-    layerDown.setBounds (side.removeFromTop (keyH));
+    pagePrev.setBounds (pages.removeFromLeft (pages.getWidth() / 2).reduced (3, 0));
+    pageNext.setBounds (pages.reduced (3, 0));
 
     auto screenInner = screenArea;
     statusArea = screenInner.removeFromTop (kStatus);

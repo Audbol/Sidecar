@@ -905,7 +905,7 @@ mod tests {
                 assert_eq!(db_step(s.law(), step_db(s.law(), k)), k, "{s:?} {k}");
             }
         }
-        assert!(step_db(FaderLaw::Y02R, 103).abs() < 1e-4 && step_db(FaderLaw::Y02R_STEREO, 127).abs() < 1e-4);
+        assert!(step_db(FaderLaw::Y02R, 101).abs() < 1e-4 && step_db(FaderLaw::Y02R_STEREO, 127).abs() < 1e-4);
     }
 
     #[test]

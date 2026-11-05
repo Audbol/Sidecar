@@ -117,6 +117,12 @@ namespace promix
 
         /** What the memory area shows: the scene number and name last recalled. */
         std::function<juce::String()> memoryText;
+        /** What the RTN / SEND strip is (0 RTN 1 ... 3 SEND 4): the LCD's arrow
+            at its legend at the right. */
+        std::function<int()> rtnSendShown;
+        /** Where the legends beside the LCD sit, as fractions of its height:
+            FUNCTION, MEMORY, SEL CH at the left, RTN 1 ... SEND 4 at the right. */
+        static constexpr float kLeftRows[] = { 0.26f, 0.5f, 0.74f }, kRightRows[] = { 0.22f, 0.41f, 0.6f, 0.79f };
 
         /** A field of the page: a ProMix parameter, a program list, or a value of
             the app's (MIDI SETUP). */
@@ -225,7 +231,7 @@ private:
     juce::Rectangle<int> memoryArea() const;
     /** The panel's analog row (PAD and GAIN, MONITOR OUT, PHONES: drawn, not
         controls), and the stereo meter's place, set by resized(). */
-    juce::Rectangle<int> analogArea, meterRect;
+    juce::Rectangle<int> analogArea, meterRect, contrastKnob, grilleArea;
 
     UiContext& ctx;
     const universal::Theme& theme;

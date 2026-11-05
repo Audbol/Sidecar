@@ -62,6 +62,8 @@ private:
     int set = 0;
     std::array<DisplayKnob, 4> encoders;
     std::vector<std::unique_ptr<universal::ToggleKey>> buttons, setKeys;
+    /** VIEW, right of SET C: the X32 opens its assign page; Sidecar's screen has none yet, so it's dark. */
+    std::unique_ptr<universal::ToggleKey> viewKey;
     std::array<juce::String, 12> shownCodes;
     /** Each encoder's LCD (set by resized()). */
     std::array<juce::Rectangle<int>, 4> lcds;

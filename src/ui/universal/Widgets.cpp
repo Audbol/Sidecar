@@ -76,14 +76,16 @@ void FaderControl::paint (juce::Graphics& g)
     static constexpr float marks[] = { 10.0f, 5.0f, 0.0f, -5.0f, -10.0f, -20.0f, -30.0f, -40.0f, -60.0f, fader::kMinDb };
     if (look != nullptr)
     {
-        // A console's fader: its silkscreen scale, the slot, the moulded cap.
-        for (float db : marks)
+        // A console's fader: its silkscreen scale (the X32's: 10 to -60, signed,
+        // with -50), the slot, the moulded cap.
+        static constexpr float consoleMarks[] = { 10.0f, 5.0f, 0.0f, -5.0f, -10.0f, -20.0f, -30.0f, -40.0f, -50.0f, -60.0f, fader::kMinDb };
+        for (float db : consoleMarks)
         {
             if (db > fader::maxDb() + 0.01f)
                 continue;
             const float y = yAt (fader::dbToPos (db));
-            const auto label = db <= fader::kMinDb ? juce::String::fromUTF8 ("\xe2\x88\x9e") : juce::String (std::abs ((int) db));
-            hw::silk (g, juce::Rectangle<float> (0.0f, y - 7.0f, groove - 20.0f, 14.0f), label, *look, 10.0f, juce::Justification::centredRight,
+            const auto label = db <= fader::kMinDb ? juce::String::fromUTF8 ("-\xe2\x88\x9e") : juce::String ((int) db);
+            hw::silk (g, juce::Rectangle<float> (-2.0f, y - 7.0f, groove - 12.0f, 14.0f), label, *look, 9.0f, juce::Justification::centredRight,
                       db != 0.0f);
             g.setColour (look->silkDim.withAlpha (0.6f));
             g.fillRect (groove - 13.0f, y - 0.5f, 6.0f, 1.0f);
@@ -313,17 +315,63 @@ void ToggleKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
     if (look != nullptr)
     {
         auto area = getLocalBounds().toFloat();
+        if (shape != Shape::Rect)
+        {
+            // An oval or a triangle of rubber, lit by its colour's edge.
+            auto a = area.reduced (2.0f).translated (0.0f, down ? 1.0f : 0.0f);
+            juce::Path p;
+            if (shape == Shape::Oval)
+                p.addRoundedRectangle (a, a.getHeight() * 0.5f);
+            else
+            {
+                const auto c = a.getCentre();
+                const float x0 = a.getX(), x1 = a.getRight(), y0 = a.getY(), y1 = a.getBottom();
+                if (shape == Shape::Up)
+                    p.addTriangle (c.x, y0, x1, y1, x0, y1);
+                else if (shape == Shape::Down)
+                    p.addTriangle (x0, y0, x1, y0, c.x, y1);
+                else if (shape == Shape::Left)
+                    p.addTriangle (x0, c.y, x1, y0, x1, y1);
+                else
+                    p.addTriangle (x0, y0, x1, c.y, x0, y1);
+                p = p.createPathWithRoundedCorners (3.0f);
+            }
+            g.setColour (juce::Colours::black.withAlpha (0.45f));
+            g.fillPath (p, juce::AffineTransform::translation (0.0f, down ? 0.5f : 1.5f));
+            g.setGradientFill (juce::ColourGradient (look->keyTop, a.getX(), a.getY(), look->keyBottom, a.getX(), a.getBottom(), false));
+            g.fillPath (p);
+            g.setColour (lit ? colour : juce::Colours::black.withAlpha (0.35f));
+            g.strokePath (p, juce::PathStrokeType (1.0f));
+            return;
+        }
         if (labelBelow)
         {
-            const float h = juce::jlimit (9.0f, 12.0f, area.getHeight() * 0.3f);
-            auto label = area.removeFromBottom (h + 1.0f);
+            // The name under the key, on two lines where it has a line break.
+            const auto printed = belowText.isNotEmpty() ? belowText : getButtonText();
+            const int lines = printed.containsChar ('\n') ? 2 : 1;
+            const float h = juce::jlimit (9.0f, 12.0f, area.getHeight() * 0.3f / (float) lines);
+            auto label = area.removeFromBottom ((h - 1.0f) * (float) lines + 2.0f);
             g.setColour (look->silk);
             g.setFont (type::font (h - 1.0f, true));
-            g.drawFittedText (belowText.isNotEmpty() ? belowText : getButtonText(), label.toNearestInt(), juce::Justification::centred, 1, 0.6f);
+            g.drawFittedText (printed, label.toNearestInt(), juce::Justification::centred, lines, 0.6f);
             hw::key (g, area.reduced (2.0f, 1.0f), {}, lit || halfLit, down, colour, *look, face);
             return;
         }
-        hw::key (g, area.reduced (2.0f), getButtonText(), lit || halfLit, down, colour, *look, face);
+        if (labelAbove)
+        {
+            // The name over the key, underlined, as the panel prints it.
+            const auto printed = belowText.isNotEmpty() ? belowText : getButtonText();
+            auto label = area.removeFromTop (13.0f);
+            g.setColour (look->silk);
+            const auto font = type::font (11.0f);
+            g.setFont (font);
+            g.drawFittedText (printed, label.toNearestInt(), juce::Justification::centred, 1, 0.7f);
+            const float w = juce::jmin (label.getWidth() - 4.0f, juce::GlyphArrangement::getStringWidth (font, printed) + 2.0f);
+            g.fillRect (juce::Rectangle<float> (w, 1.0f).withCentre ({ label.getCentreX(), label.getBottom() - 0.5f }));
+            hw::key (g, area.reduced (3.0f, 2.0f), {}, lit || halfLit, down, colour, *look, face, showLed);
+            return;
+        }
+        hw::key (g, area.reduced (2.0f), getButtonText(), lit || halfLit, down, colour, *look, face, showLed);
         return;
     }
     const auto area = getLocalBounds().toFloat().reduced (1.5f);

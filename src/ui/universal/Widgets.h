@@ -145,6 +145,23 @@ public:
         X32's keys), `belowText` if set, else its text. */
     bool labelBelow = false;
     juce::String belowText;
+    /** With a look: the key blank, its name (`belowText` if set) printed and
+        underlined on the panel above it (the ProMix 01's function keys). */
+    bool labelAbove = false;
+    /** With a look whose keys have LEDs: false for a key without one. */
+    bool showLed = true;
+    /** With a look: the key's outline (the ProMix 01's oval ENTER, its
+        triangular cursor keys); its text isn't drawn on a shaped key. */
+    enum class Shape
+    {
+        Rect,
+        Oval,
+        Up,
+        Down,
+        Left,
+        Right
+    };
+    Shape shape = Shape::Rect;
     void refresh();
 
     void paintButton (juce::Graphics&, bool highlighted, bool down) override;

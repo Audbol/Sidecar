@@ -76,9 +76,11 @@ private:
     std::array<DisplayKnob, 4> sends;
     universal::ToggleKey lowCutOn, invert, phantom, mode, gateOn, dynOn, eqOn, lrOn, mcOn;
     /** Where the drawn meters and the EQ's type LEDs are (set by resized()). */
-    juce::Rectangle<int> levelMeter, grMeter, typeLeds;
+    juce::Rectangle<int> levelMeter, grMeter, typeLeds, usbPort;
     std::vector<std::unique_ptr<universal::ToggleKey>> bandKeys, bankKeys, viewKeys;
-    std::array<Section, 6> sections;
+    /** CONFIG / PREAMP, GATE, DYNAMICS, EQUALIZER, BUS SENDS, MAIN BUS, and
+        USB RECORDER above MAIN BUS (drawn: Sidecar has no recorder; its VIEW is dark). */
+    std::array<Section, 7> sections;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChannelSection)
 };
