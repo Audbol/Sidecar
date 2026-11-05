@@ -226,8 +226,20 @@ public:
         expectEquals (display.getFields()[0].label, juce::String ("EQ"));
         y.set (ui::y02r::address (4, 5), y.get (ui::y02r::address (4, 5)) | (1 << 2)); // EQ ON
         y.set (ui::y02r::address (4, 8 + 4), 60); // L-MID G +12 dB
-        const int library = (int) display.getFields().size() - 1;
+        const int library = (int) display.getFields().size() - 2;
         expectEquals (display.getFields()[(size_t) library].label, juce::String ("LIBRARY"));
+        // STORE (the last field): a user program titled, kept in the settings.
+        display.cursor (-1);
+        expectEquals (display.getFields()[(size_t) display.getCursor()].label, juce::String ("STORE"));
+        const auto was = y.programName (Yamaha02R::Eq, 32); // 33, the first a user may store into
+        display.enter();
+        expect (display.getFunction() == F::TitleEdit);
+        display.turn (1); // its title's first character, the next one
+        display.enter();
+        expect (display.getFunction() == F::Eq);
+        expect (y.programName (Yamaha02R::Eq, 32) != was && y.programName (Yamaha02R::Eq, 32).substring (1) == was.substring (1).trimEnd());
+        expect (rig.settings.getValue (ui::Y02RSurface::libraryKey).contains ("eq.33="));
+        display.cursor (1);
         // SCENE MEMORY: STORE into scene 1, RECALL it.
         skin.setMemory (1);
         skin.store();

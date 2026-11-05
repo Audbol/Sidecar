@@ -1900,6 +1900,12 @@ extern "C"
         or Effect `strip` (0-1); false if nothing was. */
     LdString* ld_y02r_program_name (const LdY02R*, int32_t kind, int32_t n);
     bool ld_y02r_recall (LdY02R*, int32_t kind, int32_t n, int32_t strip);
+    /** ABI 47: STORE what's on strip `strip` (or Effect `strip`) as program `n`
+        of library `kind`, titled; false for a read-only preset. The user programs
+        as text (the console's memory: the host keeps it), and back. */
+    bool ld_y02r_store (LdY02R*, int32_t kind, int32_t n, int32_t strip, const char* name, size_t len);
+    LdString* ld_y02r_library_text (const LdY02R*);
+    void ld_y02r_set_library_text (LdY02R*, const char* text, size_t len);
     /** Recalls scene 0, the initial data. */
     void ld_y02r_recall_initial (LdY02R*);
     /** The console's own state value `what` number `i` (livedaw_02r::panel::What:

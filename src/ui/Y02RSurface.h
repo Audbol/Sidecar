@@ -57,7 +57,8 @@ namespace y02r
         Aux8,
         DigitalIo, // CONFIGURATION's DIGITAL I/O, SETUP and AUTOMIX (read-only pages: Sidecar
         Setup,     // has no word clock, cards or automix; SETUP's solo listen points are real)
-        Automix
+        Automix,
+        TitleEdit // a program's title, before STORE stores it
     };
 
     /** A 100 mm motor fader of 128 steps on an edit buffer address (a strip's
@@ -154,6 +155,8 @@ namespace y02r
             titles, recall safe and fade times; the all-channel pages...). */
         int getPage() const noexcept { return page; }
         int numPages() const;
+        /** A user program was stored (the surface keeps the libraries). */
+        std::function<void()> libraryChanged;
 
         void paint (juce::Graphics&) override;
         void mouseDown (const juce::MouseEvent&) override;
@@ -189,6 +192,12 @@ namespace y02r
         Yamaha02R& y;
         Function function = Function::View;
         int strip = 0, focus = 0, page = 0;
+        /** A library page's STORE: the program chosen; TITLE EDIT's program, its
+            target, its sixteen characters, and the function it came from. */
+        int storeChoice = -1, nameLibrary = 0, nameProgram = 0, nameTarget = 0;
+        std::array<int, 16> nameChars {};
+        Function nameFrom = Function::Eq;
+        void editTitle (int library, int n, int target);
         std::vector<Field> fields;
         float dragY = 0.0f;
 
@@ -236,6 +245,8 @@ public:
     void pressSel (int strip);
     void setFlip (bool);
     bool isFlipped() const noexcept { return flip; }
+    /** The app settings' user programs (Yamaha02R::getLibraryText). */
+    static constexpr const char* libraryKey = "y02r.library";
     int getMemory() const noexcept { return memory; }
     void setMemory (int m) { memory = juce::jlimit (0, 96, m); repaint(); }
     void store();

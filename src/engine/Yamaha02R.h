@@ -46,6 +46,14 @@ public:
     juce::String programName (int library, int n) const { return takeString (ld::ld_y02r_program_name (handle, library, n)); }
     /** Recalls program `n` onto strip `strip` (the edit buffer's numbering) or Effect `strip`. */
     bool recall (int library, int n, int strip) { return ld::ld_y02r_recall (handle, library, n, strip); }
+    /** STORE onto program `n` what's on strip `strip` (or Effect `strip`), titled `name`;
+        false for a read-only preset. The user programs as text (the app keeps them), and back. */
+    bool store (int library, int n, int strip, const juce::String& name)
+    {
+        return ld::ld_y02r_store (handle, library, n, strip, name.toRawUTF8(), name.getNumBytesAsUTF8());
+    }
+    juce::String getLibraryText() const { return takeString (ld::ld_y02r_library_text (handle)); }
+    void setLibraryText (const juce::String& text) { ld::ld_y02r_set_library_text (handle, text.toRawUTF8(), text.getNumBytesAsUTF8()); }
     /** Recalls scene 0, the initial data. */
     void recallInitial() { ld::ld_y02r_recall_initial (handle); }
 

@@ -385,6 +385,42 @@ impl Library {
         list[n] = Some(Program { name: program.name.chars().take(16).collect(), ..program });
         true
     }
+
+    /// The programs a user may store into, as text (one per line: `eq.N`,
+    /// `dyn.N` or `fx.N`, the title, a tab, the model's token and the values),
+    /// for the host to keep: the console's memory, not a scene's.
+    pub fn user_text(&self) -> String {
+        let mut out = String::new();
+        for (kind, key) in [(Kind::Eq, "eq"), (Kind::Dynamics, "dyn"), (Kind::Effects, "fx")] {
+            for n in Self::first_user(kind)..PROGRAMS {
+                if let Some(p) = self.get(kind, n) {
+                    let name = p.name.replace(['\t', '\n', '\r', '='], " ");
+                    let values: Vec<String> = p.values.iter().map(|v| format!("{v}")).collect();
+                    out.push_str(&format!("{key}.{}={name}\t{} {}\n", n + 1, p.token, values.join(" ")));
+                }
+            }
+        }
+        out
+    }
+
+    /// Sets the user programs from `user_text` (lines it doesn't know: ignored).
+    pub fn apply_text(&mut self, text: &str) {
+        for line in text.lines() {
+            let Some((key, rest)) = line.split_once('=') else { continue };
+            let Some((kind, n)) = key.split_once('.') else { continue };
+            let (Ok(n), Some((name, data))) = (n.trim().parse::<usize>(), rest.split_once('\t')) else { continue };
+            let (kind, models): (Kind, &'static [ModelSpec]) = match kind {
+                "eq" => (Kind::Eq, EQ),
+                "dyn" => (Kind::Dynamics, DYN_MODELS),
+                "fx" => (Kind::Effects, &FX_MODELS),
+                _ => continue,
+            };
+            let mut words = data.split_whitespace();
+            let Some(spec) = words.next().and_then(|t| models.iter().find(|m| m.token == t)) else { continue };
+            let values = words.filter_map(|x| x.parse().ok()).collect();
+            self.store(kind, n.saturating_sub(1), Program { name: name.trim().into(), token: spec.token, values });
+        }
+    }
 }
 
 #[cfg(test)]
@@ -415,6 +451,18 @@ mod tests {
         let spec = FX_MODELS.iter().find(|m| m.token == "Y2ECHO").unwrap();
         assert_eq!(cross.values[spec.param_index("l2r").unwrap()], 100.0);
         assert_eq!(lib.get(Kind::Effects, 22).unwrap().name, "DELAY L-C-R 1");
+    }
+
+    #[test]
+    fn user_programs_keep_as_text() {
+        let mut lib = Library::default();
+        let eq = Program { name: "My Kick".into(), ..lib.get(Kind::Eq, 0).unwrap().clone() };
+        let fx = Program { name: "Long Hall".into(), ..lib.get(Kind::Effects, 2).unwrap().clone() };
+        assert!(lib.store(Kind::Eq, 50, eq.clone()) && lib.store(Kind::Effects, 127, fx.clone()));
+        let mut back = Library::default();
+        back.apply_text(&lib.user_text());
+        assert_eq!((back.get(Kind::Eq, 50), back.get(Kind::Effects, 127)), (Some(&eq), Some(&fx)));
+        assert_eq!(back, lib);
     }
 
     #[test]

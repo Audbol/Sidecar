@@ -40,6 +40,11 @@ namespace
 
     juce::String utf8 (const char* s) { return juce::String (juce::CharPointer_UTF8 (s)); }
 
+    // TITLE EDIT's characters.
+    const juce::String kTitleChars = " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!\"#$%&'()*+,-./:;<=>?@[]_";
+    /** The first program of each library (EQ, dynamics, effects) a user may store into (MAN p.211). */
+    constexpr int kFirstUser[] = { 32, 40, 40 };
+
     /** A model parameter's step as its value (livedaw_02r's step_param). */
     float stepValue (const models::Param& p, int step)
     {
@@ -258,8 +263,24 @@ namespace y02r
     //==========================================================================
     Display::Display (UiContext& c, const Theme& t) : ctx (c), theme (t), y (c.engine.getYamaha02R()) { build(); }
 
+    void Display::editTitle (int library, int n, int target)
+    {
+        nameFrom = function;
+        nameLibrary = library;
+        nameProgram = n;
+        nameTarget = target;
+        const auto name = y.programName (library, n);
+        for (int k = 0; k < 16; ++k)
+            nameChars[(size_t) k] = juce::jmax (0, kTitleChars.indexOfChar (k < name.length() ? name[k] : ' '));
+        function = Function::TitleEdit;
+        page = 0;
+        focus = 0;
+        build();
+    }
+
     void Display::setFunction (Function f)
     {
+        storeChoice = -1;
         // The function's key again: its next page.
         if (f == function)
             page = (page + 1) % numPages();
@@ -331,7 +352,26 @@ namespace y02r
             const float db = law.toDb ((float) step / 127.0f);
             return db <= law.minDb() - 0.5f ? utf8 ("-\xe2\x88\x9e") : juce::String (db, 1) + " dB";
         };
-        auto libraryField = [this] (const juce::String& label, int library, int target)
+        // STORE: the wheel picks a user program, ENTER opens its TITLE EDIT.
+        auto storeField = [this] (int library, int target)
+        {
+            if (storeChoice < kFirstUser[library])
+                storeChoice = kFirstUser[library];
+            Field f;
+            f.label = "STORE";
+            f.lo = kFirstUser[library];
+            f.hi = 127;
+            f.get = [this] { return storeChoice; };
+            f.set = [this] (int v) { storeChoice = v; };
+            f.text = [this, library] (int n)
+            {
+                const auto name = y.programName (library, n);
+                return juce::String (n + 1).paddedLeft ('0', 3) + " " + (name.isEmpty() ? juce::String ("(empty)") : name);
+            };
+            f.action = [this, library, target] { editTitle (library, storeChoice, target); };
+            fields.push_back (f);
+        };
+        auto libraryField = [this, storeField] (const juce::String& label, int library, int target)
         {
             Field f;
             f.label = label;
@@ -342,6 +382,7 @@ namespace y02r
             f.text = [this, library] (int n) { return juce::String (n + 1).paddedLeft ('0', 3) + " " + y.programName (library, n); };
             f.set = [this, library, target] (int n) { y.recall (library, n, target); };
             fields.push_back (f);
+            storeField (library, target);
         };
         const auto eqModel = models::findModel (models::ChannelEq, "Y2EQ");
         // A strip's short name on an all-channel page; the strips of page 1
@@ -631,6 +672,32 @@ namespace y02r
                 fixed ("SOLO SAFE", "NONE");
                 break;
             }
+            case Function::TitleEdit:
+                // Sixteen characters: the cursor keys choose one, the wheel changes it, ENTER stores the program.
+                for (int k = 0; k < 16; ++k)
+                {
+                    Field f;
+                    f.label = k == 0 ? "PROGRAM " + juce::String (nameProgram + 1) : juce::String();
+                    f.lo = 0;
+                    f.hi = kTitleChars.length() - 1;
+                    f.get = [this, k] { return nameChars[(size_t) k]; };
+                    f.set = [this, k] (int v) { nameChars[(size_t) k] = v; };
+                    f.text = [] (int v) { return juce::String::charToString (kTitleChars[v]); };
+                    f.action = [this]
+                    {
+                        juce::String title;
+                        for (int c : nameChars)
+                            title << kTitleChars[c];
+                        y.store (nameLibrary, nameProgram, nameTarget, title.trimEnd());
+                        if (libraryChanged)
+                            libraryChanged();
+                        function = nameFrom;
+                        focus = 0;
+                        build();
+                    };
+                    fields.push_back (f);
+                }
+                break;
             case Function::Automix:
                 // AUTOMIX (MAN pp.123-140): Sidecar has no timecode automation.
                 fixed ("TIME CODE", "INT");
@@ -702,7 +769,7 @@ namespace y02r
     {
         const char* names[] = { "SCENE MEMORY", "UTILITY", "MIDI", "GROUP", "PAIR", "PHASE / ATT", "DELAY", "PAN", "ROUTING", "METER", "VIEW",
                                 "EQ", "DYNAMICS", "AUX 1", "AUX 2", "AUX 3", "AUX 4", "AUX 5", "AUX 6", "AUX 7 (EFF1)", "AUX 8 (EFF2)" };
-        const char* more[] = { "DIGITAL I/O", "SETUP", "AUTOMIX" };
+        const char* more[] = { "DIGITAL I/O", "SETUP", "AUTOMIX", "TITLE EDIT" };
         const int f = (int) function;
         const juce::String name = f < (int) std::size (names) ? juce::String (names[f]) : juce::String (more[f - (int) std::size (names)]);
         return numPages() > 1 ? name + "  " + juce::String (page + 1) + "/" + juce::String (numPages()) : name;
@@ -1207,6 +1274,9 @@ Y02RSurface::Y02RSurface (UiContext& c)
         addAndMakeVisible (crLevel);
     }
 
+    // The user programs: the console's memory, kept in the app settings.
+    y.setLibraryText (ctx.settings.getValue (libraryKey));
+    display.libraryChanged = [this] { ctx.settings.setValue (libraryKey, y.getLibraryText()); };
     display.memoryText = [this]
     {
         const int current = ctx.show.getCurrentSceneIndex();

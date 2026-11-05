@@ -495,6 +495,12 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   them in its settings, not in the show's scenes. C ABI 47:
   `ld_promix_store_program`, `ld_promix_library_text`,
   `ld_promix_set_library_text`.
+- The 02R's libraries store user programs (MAN pp.52-60, 73-81, 95-111): EQ,
+  DYNAMICS and AUX 7/8's library pages have a STORE field; the wheel picks a
+  program a user may store into (EQ 33-128, dynamics and effects 41-128),
+  ENTER opens its TITLE EDIT (sixteen characters), ENTER again stores what's
+  on the strip or the effect. Kept in the app settings, as the ProMix 01's.
+  C ABI 47: `ld_y02r_store`, `ld_y02r_library_text`, `ld_y02r_set_library_text`.
 
   `ui::hw` (`src/ui/HardwareLook.*`) draws them. Keys, faders and knobs take a
   console's look when its surface asks; the Universal Mixer and the WING are

@@ -391,6 +391,46 @@ pub unsafe extern "C" fn ld_y02r_recall(p: *mut LdY02R, kind: i32, n: i32, strip
     .unwrap_or(false)
 }
 
+/// Stores what's on strip `strip` (or Effect `strip`) as program `n` of
+/// library `kind` (0 EQ, 1 dynamics, 2 effects), titled `name`; false for a
+/// read-only preset.
+///
+/// # Safety
+/// `p` is from `ld_y02r_create` (or null); `name` holds `len` bytes of UTF-8.
+#[no_mangle]
+pub unsafe extern "C" fn ld_y02r_store(p: *mut LdY02R, kind: i32, n: i32, strip: i32, name: *const u8, len: usize) -> bool {
+    let (Some(p), Ok(n), Ok(strip)) = (p.as_mut(), usize::try_from(n), usize::try_from(strip)) else { return false };
+    let name = str_arg(name, len);
+    guard(None, || {
+        p.with_mut(|c, lib, _| match kind {
+            0 => params::strip(strip).is_some_and(|s| c.store_eq(lib, s, n, &name)),
+            1 => params::strip(strip).is_some_and(|s| c.store_dyn(lib, s, n, &name)),
+            2 => c.store_fx(lib, strip, n, &name),
+            _ => false,
+        })
+    })
+    .unwrap_or(false)
+}
+
+/// The user programs as text (`Library::user_text`), for the host to keep, and back.
+///
+/// # Safety
+/// `p` is from `ld_y02r_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_y02r_library_text(p: *const LdY02R) -> *mut LdString {
+    p.as_ref().map_or(std::ptr::null_mut(), |p| LdString::new(p.library.user_text()))
+}
+
+/// # Safety
+/// `p` is from `ld_y02r_create` (or null); `text` holds `len` bytes of UTF-8.
+#[no_mangle]
+pub unsafe extern "C" fn ld_y02r_set_library_text(p: *mut LdY02R, text: *const u8, len: usize) {
+    if let Some(p) = p.as_mut() {
+        let text = str_arg(text, len);
+        p.library.apply_text(&text);
+    }
+}
+
 /// The console's own state value `what` number `i` (`livedaw_02r::panel::What`:
 /// pairs, groups, gangs, keys, recall safe, fade times, the oscillator...);
 /// -1 for none.

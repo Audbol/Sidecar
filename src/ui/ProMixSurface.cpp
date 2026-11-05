@@ -684,10 +684,13 @@ namespace promix
         auto& f = fields[(size_t) focus];
         if (f.onEnter)
         {
-            if (f.pending >= 0)
-                f.set (f.pending);
+            // What ENTER does may rebuild the page (TITLE EDIT): the field isn't touched after it.
+            const auto set = f.set;
+            const int pending = f.pending;
             if (! f.item)
                 f.pending = -1;
+            if (pending >= 0)
+                set (pending);
         }
         else if (f.steps() == 2)
         {
