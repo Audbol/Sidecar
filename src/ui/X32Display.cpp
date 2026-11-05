@@ -557,6 +557,38 @@ void Display::assignEncoders()
                 }
                 encoders[3] = encoder (bindLinear ("DELAY", p.input.delay, 0.3f, 500.0f, " ms", 1, 0.3f), "DELAY", toggle (p.input.delayOn), isOn (p.input.delayOn));
                 encoders[4] = encoder (orderBit (2, "INSERT POS"), "INSERT", toggle (p.preInsert().on), isOn (p.preInsert().on));
+                // The insert's slot (p.45): turned, then CONNECT (the push) puts it in.
+                if (address.startsWith ("/ch/") || address.startsWith ("/bus/") || address.startsWith ("/mtx/"))
+                {
+                    static const juce::StringArray inserts { "OFF",  "FX1L", "FX1R", "FX2L", "FX2R", "FX3L", "FX3R", "FX4L",
+                                                             "FX4R", "FX5L", "FX5R", "FX6L", "FX6R", "FX7L", "FX7R", "FX8L",
+                                                             "FX8R", "AUX1", "AUX2", "AUX3", "AUX4", "AUX5", "AUX6" };
+                    const auto path = address + "/insert/sel";
+                    const auto shown = [this, path, s]
+                    {
+                        return pendingInsert >= 0 && pendingSourceStrip == s ? pendingInsert : juce::jmax (0, inserts.indexOf (x32Value (path)));
+                    };
+                    KnobBinding slot;
+                    slot.label = "INSERT";
+                    slot.steps = (float) inserts.size();
+                    slot.get = [shown] { return (float) shown() / (float) (inserts.size() - 1); };
+                    slot.set = [this, s] (float v)
+                    {
+                        pendingInsert = juce::jlimit (0, inserts.size() - 1, juce::roundToInt (v * (float) (inserts.size() - 1)));
+                        pendingSourceStrip = s;
+                        repaint();
+                    };
+                    slot.text = [shown] { return inserts[shown()]; };
+                    encoders[5] = encoder (slot, "CONNECT", [this, path, s]
+                    {
+                        if (pendingInsert < 0 || pendingSourceStrip != s)
+                            return;
+                        int set = 0;
+                        ctx.engine.getWing().runX32Text (path + " " + inserts[pendingInsert], set);
+                        pendingInsert = -1;
+                        repaint();
+                    }, [this, s] { return pendingInsert >= 0 && pendingSourceStrip == s; });
+                }
                 break;
             }
             case 2: // gate

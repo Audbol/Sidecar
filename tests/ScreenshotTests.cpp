@@ -718,6 +718,13 @@ private:
         display.pushEncoder (2); // back to In 13
         display.pushEncoder (0);
         expect (! display.getEncoder (0).pushOn(), "unlinked again");
+        expectEquals (display.getEncoder (5).pushLabel, juce::String ("CONNECT"));
+        display.getEncoder (5).turn.set (9.0f / 22.0f);
+        expectEquals (display.getEncoder (5).turn.text(), juce::String ("FX5L"));
+        display.pushEncoder (5);
+        expectEquals (channels[12]->params.preInsert().fx.load(), 4, "CONNECT: FX 5 in the insert");
+        display.getEncoder (5).turn.set (0.0f);
+        display.pushEncoder (5);
         display.showScreen (ui::x32::Display::Screen::Home, 4);
         expectEquals (display.getEncoder (2).turn.label, juce::String ("GAIN"));
 

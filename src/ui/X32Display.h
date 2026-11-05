@@ -155,7 +155,7 @@ private:
         tab's bus; HOME's DCA and mute group to assign. */
     int safeSection = 0, talkBus = 0, homeDca = 0, homeMuteGroup = 0;
     /** HOME config's SOURCE turned and not yet selected (-1 none), and for which strip. */
-    int pendingSource = -1;
+    int pendingSource = -1, pendingInsert = -1; // and the insert's slot, CONNECT not yet pushed
     const Strip* pendingSourceStrip = nullptr;
     /** SETUP's preamps tab: the block of four inputs shown. */
     int preampBlock = 0;

@@ -539,6 +539,8 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   panel moves one of them; a pair just linked takes its odd strip's values.
   The config tab's SOURCE picks what feeds a channel or aux in (In 01-32, Aux
   1-6, USB L / R, the FX returns, the buses): turned, then patched by SELECT.
+  Its sixth encoder picks the insert's slot (FX 1L-8R, AUX 1-6), put in by
+  CONNECT.
   C ABI 48: `ld_x32_follow_links`.
 - ProMix 01: GROUP's BAL ADJ (p.56): ENTER lets the group go so one fader can
   be set alone, the group's [SEL] keys flash, and it ends when GROUP goes.
