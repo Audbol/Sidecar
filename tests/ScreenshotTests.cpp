@@ -282,6 +282,52 @@ public:
         display.getFields()[2].set (0); // CLEAR
         expect (y.programName (Yamaha02R::Channel, 0).isEmpty() && y.programName (Yamaha02R::Channel, 64) == "U:A");
         y.set (mic5, 101);
+        // SETUP 3/4, PREFERENCES 1: STORE CONFIRMATION asks; CANCEL (ENTER at once) doesn't store.
+        for (int k = 0; k < 3; ++k)
+            skin.pressFunction (F::Setup);
+        expectEquals (display.getPage(), 2);
+        expect (ui::y02r::pref (rig.settings, ui::y02r::AutoEq) && ! ui::y02r::pref (rig.settings, ui::y02r::StoreConfirm), "the factory settings");
+        display.getFields()[4].set (1); // STORE CONFIRM
+        expect (ui::y02r::pref (rig.settings, ui::y02r::StoreConfirm));
+        const int scenesBefore = rig.show.getNumScenes();
+        skin.setMemory (scenesBefore + 1);
+        skin.store();
+        expect (display.isConfirming() && display.getConfirmChoice() == 0);
+        display.enter();
+        expect (! display.isConfirming());
+        expectEquals (rig.show.getNumScenes(), scenesBefore, "cancelled");
+        skin.store();
+        display.cursor (1); // EXECUTE
+        if (const auto shots = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {}); shots.isNotEmpty())
+        {
+            const auto out = juce::File::getCurrentWorkingDirectory().getChildFile (shots).getChildFile ("y02r-page-confirm.png");
+            out.deleteFile();
+            juce::FileOutputStream stream (out);
+            juce::PNGImageFormat().writeImageToStream (display.createComponentSnapshot (display.getLocalBounds(), true, 1.0f), stream);
+        }
+        display.enter();
+        expectEquals (rig.show.getNumScenes(), scenesBefore + 1, "stored");
+        ui::y02r::setPref (rig.settings, ui::y02r::StoreConfirm, false);
+        // INITIAL DATA NOMINAL: scene 0 puts the channel faders at 0 dB.
+        ui::y02r::setPref (rig.settings, ui::y02r::InitialNominal, true);
+        const int memoryWas = skin.getMemory();
+        skin.setMemory (0);
+        skin.recall();
+        expectEquals (y.get (ui::y02r::address (2, 0)), 101);
+        ui::y02r::setPref (rig.settings, ui::y02r::InitialNominal, false);
+        skin.recall();
+        expectEquals (y.get (ui::y02r::address (2, 0)), 0, "-oo");
+        skin.setMemory (scenesBefore + 1);
+        skin.recall(); // the mix back
+        skin.setMemory (memoryWas);
+        // TOUCH SENSE SELECT: touching fader 4 selects MIC 4.
+        ui::y02r::setPref (rig.settings, ui::y02r::TouchSelect, true);
+        skin.getFader (3).onTouch();
+        expectEquals (display.getStrip(), 3);
+        ui::y02r::setPref (rig.settings, ui::y02r::TouchSelect, false);
+        skin.getFader (5).onTouch();
+        expectEquals (display.getStrip(), 3, "off");
+        skin.pressSel (4);
         skin.pressFunction (F::Meter);
         expectEquals (display.getFields()[0].label, juce::String ("METER POINT"));
         for (int k = 0; k < 4; ++k)
@@ -322,7 +368,8 @@ public:
                                                               { F::Att, 0, "att" }, { F::Delay, 1, "delay-tape" }, { F::Pan, 0, "pan" },
                                                               { F::Meter, 2, "meter-outputs" }, { F::Aux1, 0, "aux1" }, { F::Aux7, 2, "aux7" },
                                                               { F::Utility, 0, "utility" }, { F::DigitalIo, 0, "digital-io" }, { F::Setup, 0, "setup" },
-                                                              { F::Automix, 0, "automix" }, { F::View, 1, "channel-library" } };
+                                                              { F::Automix, 0, "automix" }, { F::View, 1, "channel-library" },
+                                                              { F::Setup, 2, "setup-prefs" } };
             for (auto [f, page, shot] : pages)
             {
                 skin.pressFunction (F::Eq);

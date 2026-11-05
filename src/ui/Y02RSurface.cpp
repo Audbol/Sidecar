@@ -31,6 +31,7 @@ namespace
     // The edit buffer's items (livedaw_02r::params).
     constexpr int kLevel = 0, kOn = 1, kPanL = 2, kPanR = 3, kAtt = 4, kSwitches = 5, kDelayHi = 6, kDelayLo = 7, kEq = 8;
     constexpr int kDynType = 20, kDynParam = 21, kRouting = 27;
+    constexpr int kNominal = 101; // a channel fader's 0 dB step
     // The switches' bits.
     constexpr int kPhase = 0, kDelayOn = 1, kEqOn = 2, kHpf = 3, kLpf = 4, kDynOn = 5, kSt = 6;
     constexpr int kSendsBase = 55 * 28;
@@ -165,7 +166,12 @@ namespace y02r
         hw::faderCap (g, cx, y, 30.0f, look()); // STEREO's the same cap as the others
     }
 
-    void Fader::mouseDown (const juce::MouseEvent&) { dragStart = step; }
+    void Fader::mouseDown (const juce::MouseEvent&)
+    {
+        dragStart = step;
+        if (onTouch)
+            onTouch();
+    }
 
     void Fader::mouseDrag (const juce::MouseEvent& e)
     {
@@ -180,7 +186,12 @@ namespace y02r
         moveTo (juce::roundToInt (law.toPosition (0.0f) * 127.0f));
     }
 
-    void Fader::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& w) { moveTo (step + (w.deltaY > 0 ? 1 : -1)); }
+    void Fader::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& w)
+    {
+        if (onTouch)
+            onTouch();
+        moveTo (step + (w.deltaY > 0 ? 1 : -1));
+    }
 
     //==========================================================================
     Encoder::Encoder (const juce::String& l, const Theme& t) : theme (t), label (l) {}
@@ -249,7 +260,12 @@ namespace y02r
         hw::silk (g, textArea, text ? text (value) : juce::String (value), look(), 10.5f, juce::Justification::centred, true);
     }
 
-    void Encoder::mouseDown (const juce::MouseEvent&) { dragStart = value; }
+    void Encoder::mouseDown (const juce::MouseEvent&)
+    {
+        dragStart = value;
+        if (onTouch)
+            onTouch();
+    }
 
     void Encoder::mouseDrag (const juce::MouseEvent& e)
     {
@@ -258,7 +274,20 @@ namespace y02r
         moveTo (dragStart - juce::roundToInt ((float) e.getDistanceFromDragStartY() / perStep));
     }
 
-    void Encoder::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& w) { moveTo (value + (w.deltaY > 0 ? 1 : -1)); }
+    void Encoder::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& w)
+    {
+        if (onTouch)
+            onTouch();
+        moveTo (value + (w.deltaY > 0 ? 1 : -1));
+    }
+
+    bool pref (juce::PropertiesFile& settings, Pref p) { return ((settings.getIntValue (prefsKey, kDefaultPrefs) >> (int) p) & 1) != 0; }
+
+    void setPref (juce::PropertiesFile& settings, Pref p, bool on)
+    {
+        const int was = settings.getIntValue (prefsKey, kDefaultPrefs);
+        settings.setValue (prefsKey, on ? (was | (1 << (int) p)) : (was & ~(1 << (int) p)));
+    }
 
     //==========================================================================
     Display::Display (UiContext& c, const Theme& t) : ctx (c), theme (t), y (c.engine.getYamaha02R()) { build(); }
@@ -278,8 +307,34 @@ namespace y02r
         build();
     }
 
+    void Display::show (Function f, int p)
+    {
+        if (function == f && page == p)
+            return;
+        storeChoice = -1;
+        function = f;
+        page = juce::jlimit (0, numPages() - 1, p);
+        focus = 0;
+        build();
+    }
+
+    void Display::confirm (bool store, const juce::String& what, std::function<void()> go)
+    {
+        if (! pref (ctx.settings, store ? StoreConfirm : RecallConfirm))
+        {
+            go();
+            return;
+        }
+        confirmText = what;
+        confirmGo = std::move (go);
+        confirmChoice = 0;
+        confirmSince = juce::Time::getMillisecondCounter();
+        repaint();
+    }
+
     void Display::setFunction (Function f)
     {
+        confirmGo = nullptr;
         storeChoice = -1;
         // The function's key again: its next page.
         if (f == function)
@@ -300,6 +355,8 @@ namespace y02r
             case Function::Scene:
             case Function::Meter:
                 return 3;
+            case Function::Setup:
+                return 4; // SOLO, AUX OUTPUT SELECT, PREFERENCES 1 and 2
             case Function::Midi:
                 return 3; // MIDI SETUP, Program Change Assign, Control Change Assign
             case Function::Group:
@@ -384,7 +441,10 @@ namespace y02r
             f.onEnter = true;
             f.get = [] { return 0; };
             f.text = [this, library] (int n) { return juce::String (n + 1).paddedLeft ('0', 3) + " " + y.programName (library, n); };
-            f.set = [this, library, target] (int n) { y.recall (library, n, target); };
+            f.set = [this, library, target] (int n)
+            {
+                confirm (false, "RECALL " + y.programName (library, n) + "?", [this, library, n, target] { y.recall (library, n, target); });
+            };
             fields.push_back (f);
             storeField (library, target);
         };
@@ -496,7 +556,10 @@ namespace y02r
                 recall.onEnter = true;
                 recall.get = [] { return 0; };
                 recall.text = programText;
-                recall.set = [this, s] (int n) { y.recall (Yamaha02R::Channel, n, s); };
+                recall.set = [this, s, programText] (int n)
+                {
+                    confirm (false, "RECALL " + programText (n) + "?", [this, n, s] { y.recall (Yamaha02R::Channel, n, s); });
+                };
                 fields.push_back (recall);
                 storeField (Yamaha02R::Channel, s);
                 Field clear;
@@ -506,10 +569,13 @@ namespace y02r
                 clear.onEnter = true;
                 clear.get = [] { return 0; };
                 clear.text = programText;
-                clear.set = [this] (int n)
+                clear.set = [this, programText] (int n)
                 {
-                    if (y.clearChannel (n) && libraryChanged)
-                        libraryChanged();
+                    confirm (true, "CLEAR " + programText (n) + "?", [this, n]
+                    {
+                        if (y.clearChannel (n) && libraryChanged)
+                            libraryChanged();
+                    });
                 };
                 fields.push_back (clear);
                 Field exit;
@@ -683,7 +749,7 @@ namespace y02r
                         f.get = [] { return 0; };
                         f.set = [] (int) {};
                         f.text = [name] (int) { return name; };
-                        f.action = [this, n] { ctx.show.recallScene (n); };
+                        f.action = [this, n] { confirm (false, "RECALL SCENE " + juce::String (n + 1) + "?", [this, n] { ctx.show.recallScene (n); }); };
                         fields.push_back (f);
                     }
                     if (fields.empty())
@@ -739,6 +805,41 @@ namespace y02r
             }
             case Function::Setup:
             {
+                if (page > 0)
+                {
+                    auto prefField = [this] (const juce::String& label, Pref p)
+                    {
+                        fields.push_back ({ label, [this, p] { return pref (ctx.settings, p) ? 1 : 0; }, [this, p] (int v) { setPref (ctx.settings, p, v != 0); },
+                                            [] (int v) { return juce::String (v != 0 ? "ON" : "OFF"); }, 0, 1 });
+                    };
+                    if (page == 1)
+                    {
+                        // AUX OUTPUT SELECT (V2 MAN p.203): the analog aux outs carry AUX 1-6.
+                        fixed ("AUX OUT 1-6", "AUX 1-6");
+                        fixed ("BUS 1-6", "NOT EMULATED");
+                    }
+                    else if (page == 2)
+                    {
+                        // PREFERENCES 1 (V2 MAN pp.198-200): what Sidecar acts on; the
+                        // rest are the hardware's (word clock, timecode, MB02, cards).
+                        prefField ("AUTO EQ DISP", AutoEq);
+                        prefField ("AUTO PAN DISP", AutoPan);
+                        prefField ("AUTO ROUTING", AutoRouting);
+                        prefField ("AUTO SOLO DISP", AutoSolo);
+                        prefField ("STORE CONFIRM", StoreConfirm);
+                        prefField ("RECALL CONFIRM", RecallConfirm);
+                        prefField ("INIT NOMINAL", InitialNominal);
+                        fixed ("OTHERS", "NOT EMULATED");
+                    }
+                    else
+                    {
+                        // PREFERENCES 2 (V2 MAN pp.201-202): the automix's aren't Sidecar's.
+                        prefField ("TOUCH SELECT", TouchSelect);
+                        fixed ("FLIP RCL SAFE", "ON");
+                        fixed ("AUTOMIX", "NOT EMULATED");
+                    }
+                    break;
+                }
                 // SETUP's solo (MAN p.160): where the channels and the outputs are heard.
                 auto& e = ctx.engine;
                 const auto listen = [] (int v) { return juce::String (v != 0 ? "AFTER PAN" : "PRE FADER"); };
@@ -764,9 +865,13 @@ namespace y02r
                         juce::String title;
                         for (int c : nameChars)
                             title << kTitleChars[c];
-                        y.store (nameLibrary, nameProgram, nameTarget, title.trimEnd());
-                        if (libraryChanged)
-                            libraryChanged();
+                        const auto stored = title.trimEnd();
+                        confirm (true, "STORE TO " + juce::String (nameProgram + 1) + "?", [this, stored, library = nameLibrary, n = nameProgram, target = nameTarget]
+                        {
+                            y.store (library, n, target, stored);
+                            if (libraryChanged)
+                                libraryChanged();
+                        });
                         function = nameFrom;
                         page = nameLibrary == Yamaha02R::Channel ? 1 : 0; // back to the CHANNEL LIBRARY
                         focus = 0;
@@ -943,12 +1048,23 @@ namespace y02r
         const int f = (int) function;
         if (function == Function::View && page == 1)
             return "CHANNEL LIBRARY  2/2";
+        if (function == Function::Setup)
+        {
+            const char* setup[] = { "SOLO", "AUX OUTPUT SELECT", "PREFERENCES 1", "PREFERENCES 2" };
+            return juce::String ("SETUP ") + juce::String (page + 1) + "/4  " + setup[juce::jlimit (0, 3, page)];
+        }
         const juce::String name = f < (int) std::size (names) ? juce::String (names[f]) : juce::String (more[f - (int) std::size (names)]);
         return numPages() > 1 ? name + "  " + juce::String (page + 1) + "/" + juce::String (numPages()) : name;
     }
 
     void Display::cursor (int delta)
     {
+        if (confirmGo != nullptr)
+        {
+            confirmChoice = delta > 0 ? 1 : 0; // CANCEL, EXECUTE
+            repaint();
+            return;
+        }
         if (fields.empty())
             return;
         focus = (focus + delta + (int) fields.size()) % (int) fields.size();
@@ -957,6 +1073,8 @@ namespace y02r
 
     void Display::turn (int delta)
     {
+        if (confirmGo != nullptr)
+            return;
         if (! juce::isPositiveAndBelow (focus, (int) fields.size()))
             return;
         auto& f = fields[(size_t) focus];
@@ -976,6 +1094,15 @@ namespace y02r
 
     void Display::enter()
     {
+        if (confirmGo != nullptr)
+        {
+            auto go = std::move (confirmGo);
+            confirmGo = nullptr;
+            if (confirmChoice == 1)
+                go();
+            build();
+            return;
+        }
         if (! juce::isPositiveAndBelow (focus, (int) fields.size()))
             return;
         auto& f = fields[(size_t) focus];
@@ -999,7 +1126,13 @@ namespace y02r
         repaint();
     }
 
-    void Display::refresh() { repaint(); }
+    void Display::refresh()
+    {
+        // A dialog left alone cancels after about ten seconds (V2 MAN p.48).
+        if (confirmGo != nullptr && juce::Time::getMillisecondCounter() - confirmSince > 10000)
+            confirmGo = nullptr;
+        repaint();
+    }
 
     juce::Rectangle<float> Display::fieldBox (int i) const
     {
@@ -1052,6 +1185,26 @@ namespace y02r
             g.setColour (ink);
             g.setFont (type::font (type::kLabel, true));
             g.drawText (f.text ? f.text (v) : juce::String (v), box.withTrimmedTop (box.getHeight() * 0.4f), juce::Justification::centred);
+        }
+        if (confirmGo != nullptr)
+        {
+            // The confirmation dialog over the page: its question, CANCEL and EXECUTE.
+            auto box = b.withSizeKeepingCentre (b.getWidth() * 0.6f, 120.0f);
+            g.setColour (kLcd.withAlpha (1.0f).brighter (0.08f)); // opaque: the page under it hidden
+            g.fillRect (box);
+            g.setColour (kPixel);
+            g.drawRect (box, 2.0f);
+            g.setFont (type::font (type::kLabel, true));
+            g.drawText (confirmText, box.removeFromTop (60.0f).reduced (10.0f, 0.0f), juce::Justification::centred);
+            auto row = box.reduced (20.0f, 14.0f);
+            for (int k = 0; k < 2; ++k)
+            {
+                const auto key = (k == 0 ? row.removeFromLeft (row.getWidth() * 0.5f) : row).reduced (10.0f, 0.0f);
+                g.setColour (k == confirmChoice ? kPixel : kLcdFrame);
+                g.fillRoundedRectangle (key, 3.0f);
+                g.setColour (k == confirmChoice ? kLcd : kPixel);
+                g.drawText (k == 0 ? "CANCEL" : "EXECUTE", key, juce::Justification::centred);
+            }
         }
     }
 
@@ -1194,6 +1347,12 @@ Y02RSurface::Y02RSurface (UiContext& c)
         sel = std::make_unique<ToggleKey> ("SEL", kSelLed, theme);
         sel->onClick = [this, i] { pressSel (faderStrip (i)); };
         sel->isOn = [this, i] { return display.getStrip() == faderStrip (i); };
+        faders[(size_t) i]->onTouch = [this, i]
+        {
+            // TOUCH SENSE SELECT; in an AUX function fader 21 is the aux master, not STEREO.
+            if (y02r::pref (ctx.settings, y02r::TouchSelect) && (auxShown() < 0 || i < kNumFaders - 1))
+                pressSel (faderStrip (i));
+        };
         addAndMakeVisible (*sel);
         auto& on = onKeys[(size_t) i];
         on = std::make_unique<ToggleKey> ("ON", onColour, theme);
@@ -1217,6 +1376,11 @@ Y02RSurface::Y02RSurface (UiContext& c)
         };
         enc->text = [] (int v) { return juce::String (v); };
         enc->endless = enc->nameBelow = true;
+        enc->onTouch = [this, i]
+        {
+            if (y02r::pref (ctx.settings, y02r::TouchSelect))
+                pressSel (encoderStrip (i));
+        };
         addAndMakeVisible (*enc);
         auto& sel = encSelKeys[(size_t) i];
         sel = std::make_unique<ToggleKey> ("SEL", kSelLed, theme);
@@ -1277,6 +1441,7 @@ Y02RSurface::Y02RSurface (UiContext& c)
             const int s = display.getStrip();
             if (memberOf (s) < 0)
                 return;
+            autoDisplay (y02r::AutoRouting, y02r::Function::Routing);
             if (k == 9)
             {
                 y.setState (Yamaha02R::Direct, s, y.getState (Yamaha02R::Direct, s) == 1 ? 0 : 1);
@@ -1340,10 +1505,15 @@ Y02RSurface::Y02RSurface (UiContext& c)
     pan->centred = true;
     pan->get = [this] { return juce::jmax (0, y.get (y02r::address (display.getStrip(), panSide == 0 ? kPanL : kPanR))); };
     pan->set = [this] (int v) { y.set (y02r::address (display.getStrip(), panSide == 0 ? kPanL : kPanR), v); };
+    pan->onTouch = [this] { autoDisplay (y02r::AutoPan, y02r::Function::Pan); };
     for (int k = 0; k < 2; ++k)
     {
         auto key = std::make_unique<ToggleKey> (k == 0 ? "L/ODD" : "R/EVEN", kSelLed, theme);
-        key->onClick = [this, k] { panSide = k; };
+        key->onClick = [this, k]
+        {
+            panSide = k;
+            autoDisplay (y02r::AutoPan, y02r::Function::Pan);
+        };
         key->isOn = [this, k] { return panSide == k; };
         addAndMakeVisible (*key);
         panKeys.push_back (std::move (key));
@@ -1357,7 +1527,11 @@ Y02RSurface::Y02RSurface (UiContext& c)
         auto key = std::make_unique<ToggleKey> (bands[k], k < 4 ? kSelLed : onColour, theme);
         if (k < 4)
         {
-            key->onClick = [this, k] { display.band = k; };
+            key->onClick = [this, k]
+            {
+                display.band = k;
+                autoDisplay (y02r::AutoEq, y02r::Function::Eq);
+            };
             key->isOn = [this, k] { return display.band == k; };
         }
         else
@@ -1366,6 +1540,7 @@ Y02RSurface::Y02RSurface (UiContext& c)
             {
                 const int a = y02r::address (display.getStrip(), kSwitches);
                 y.set (a, juce::jmax (0, y.get (a)) ^ (1 << kEqOn));
+                autoDisplay (y02r::AutoEq, y02r::Function::Eq);
             };
             key->isOn = [this] { return ((y.get (y02r::address (display.getStrip(), kSwitches)) >> kEqOn) & 1) != 0; };
         }
@@ -1389,6 +1564,7 @@ Y02RSurface::Y02RSurface (UiContext& c)
             return p.display (stepValue (p, v));
         };
         e->cap = juce::Colour (0xff5f9a62);
+        e->onTouch = [this] { autoDisplay (y02r::AutoEq, y02r::Function::Eq); };
         addAndMakeVisible (*e);
         return e;
     };
@@ -1454,11 +1630,13 @@ Y02RSurface::Y02RSurface (UiContext& c)
             else
             {
                 key->isOn = [&e] { return e.anySoloActive.load(); };
-                key->onClick = [&e]
+                key->onClick = [this, &e]
                 {
                     for (auto* list : { &e.getChannels(), &e.getAux(), &e.getBuses(), &e.getMains(), &e.getMatrices() })
                         for (auto& s : *list)
                             s->params.solo = false;
+                    if (y02r::pref (ctx.settings, y02r::AutoSolo))
+                        showFunction (y02r::Function::Setup, 0);
                 };
             }
             addAndMakeVisible (*key);
@@ -1621,21 +1799,46 @@ void Y02RSurface::store()
     // the show has fewer.
     if (memory < 1)
         return;
-    const int index = memory - 1;
-    if (index < ctx.show.getNumScenes())
-        ctx.show.storeScene (index);
-    else
-        ctx.show.addScene ("SCENE " + juce::String (memory).paddedLeft ('0', 2));
-    display.refresh();
+    display.confirm (true, "STORE SCENE " + juce::String (memory).paddedLeft ('0', 2) + "?", [this, index = memory - 1]
+    {
+        if (index < ctx.show.getNumScenes())
+            ctx.show.storeScene (index);
+        else
+            ctx.show.addScene ("SCENE " + juce::String (index + 1).paddedLeft ('0', 2));
+        display.refresh();
+    });
 }
 
 void Y02RSurface::recall()
 {
-    if (memory == 0)
-        y.recallInitial();
-    else if (memory - 1 < ctx.show.getNumScenes())
-        ctx.show.recallScene (memory - 1);
-    display.refresh();
+    if (memory > 0 && memory - 1 >= ctx.show.getNumScenes())
+        return;
+    display.confirm (false, "RECALL SCENE " + juce::String (memory).paddedLeft ('0', 2) + "?", [this, m = memory]
+    {
+        if (m == 0)
+        {
+            y.recallInitial();
+            // INITIAL DATA NOMINAL: the channel faders at 0 dB, not -oo (V2 MAN p.200).
+            if (y02r::pref (ctx.settings, y02r::InitialNominal))
+                for (int s = 0; s < y02r::kBus; ++s)
+                    y.set (y02r::address (s, kLevel), kNominal);
+        }
+        else
+            ctx.show.recallScene (m - 1);
+        display.refresh();
+    });
+}
+
+void Y02RSurface::autoDisplay (y02r::Pref p, y02r::Function f)
+{
+    if (y02r::pref (ctx.settings, p) && display.getFunction() != f && display.getFunction() != y02r::Function::TitleEdit)
+        showFunction (f, 0);
+}
+
+void Y02RSurface::showFunction (y02r::Function f, int page)
+{
+    display.show (f, page);
+    bind();
 }
 
 void Y02RSurface::refreshAll()

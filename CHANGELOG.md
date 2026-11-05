@@ -537,6 +537,16 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   UNDO ("U:"), which RECALL puts back. The programs are kept in the app
   settings with the other libraries. C ABI 49: library 3 of `ld_y02r_recall`,
   `ld_y02r_store` and `ld_y02r_program_name`; `ld_y02r_clear_channel`.
+- The 02R's SETUP has its four pages (V2 MAN pp.196-203): SOLO, AUX OUTPUT
+  SELECT, and PREFERENCES 1 and 2, kept in the app settings. The preferences
+  Sidecar acts on: AUTO EQ, PAN and ROUTING DISPLAY (the SELECTED CHANNEL's
+  controls show their page; EQ and PAN on from the factory), AUTO SOLO
+  DISPLAY ([SOLO] shows SETUP 1/4), STORE and RECALL CONFIRMATION (a scene's
+  or a library program's store, clear or recall asks CANCEL / EXECUTE;
+  CANCEL is the default, and a dialog left ten seconds cancels), INITIAL DATA
+  NOMINAL (scene 0 puts the channel faders at 0 dB) and TOUCH SENSE SELECT
+  (touching a fader or an encoder selects its channel). The hardware's (word
+  clock, timecode, cards, automix) show as not emulated.
 - The console surfaces (X32, ProMix 01, 02R) are laid out at 1920 x 1080 and
   scaled to the window, in proportion and centred: on a bigger screen (a 4K
   monitor) they show the same panel larger instead of stretching the gaps

@@ -61,6 +61,26 @@ namespace y02r
         TitleEdit // a program's title, before STORE stores it
     };
 
+    /** SETUP's preferences (V2 MAN pp.198-202) Sidecar acts on, kept in the app
+        settings (`prefsKey`) as the console's own setup, not a scene's. */
+    enum Pref
+    {
+        AutoEq,         // the SELECTED CHANNEL's EQUALIZER shows EQ
+        AutoPan,        // its PAN shows PAN
+        AutoRouting,    // its ROUTING shows ROUTING
+        AutoSolo,       // [SOLO] shows SETUP 1/4
+        StoreConfirm,   // a scene's or a program's STORE or CLEAR asks CANCEL / EXECUTE
+        RecallConfirm,  // a scene's or a program's RECALL asks
+        InitialNominal, // scene 0 puts the channel faders at nominal, not -oo
+        TouchSelect,    // touching a fader or an encoder selects its channel
+        kNumPrefs
+    };
+    constexpr const char* prefsKey = "y02r.prefs";
+    /** The factory settings: AUTO EQ and AUTO PAN DISPLAY on. */
+    constexpr int kDefaultPrefs = (1 << AutoEq) | (1 << AutoPan);
+    bool pref (juce::PropertiesFile&, Pref);
+    void setPref (juce::PropertiesFile&, Pref, bool);
+
     /** A 100 mm motor fader of 128 steps on an edit buffer address (a strip's
         level, or an input's send in an AUX function), its panel's scale beside it
         (the channels' 10 ... 50, STEREO's 0 ... 70). */
@@ -72,6 +92,8 @@ namespace y02r
         /** The address it moves (-1: none) and whether it is STEREO's (its own law). */
         void bind (int address, bool stereo);
         int getAddress() const noexcept { return addr; }
+        /** Touched (a press or the wheel): TOUCH SENSE SELECT. */
+        std::function<void()> onTouch;
         void refresh();
 
         void paint (juce::Graphics&) override;
@@ -113,6 +135,8 @@ namespace y02r
         bool endless = false, nameBelow = false, showValue = true;
         void setLabel (const juce::String& l) { label = l; repaint(); }
         void refresh();
+        /** Touched (a press or the wheel). */
+        std::function<void()> onTouch;
 
         void paint (juce::Graphics&) override;
         void mouseDown (const juce::MouseEvent&) override;
@@ -141,6 +165,15 @@ namespace y02r
 
         void setFunction (Function);
         Function getFunction() const noexcept { return function; }
+        /** A function's page shown (an AUTO DISPLAY preference), whatever showed. */
+        void show (Function, int page);
+        /** STORE CONFIRMATION or RECALL CONFIRMATION (`store` says which): `go`
+            done at once while the preference is off, else after EXECUTE on a
+            dialog (CANCEL its default; ENTER on it, or ten seconds, cancels). */
+        void confirm (bool store, const juce::String& what, std::function<void()> go);
+        bool isConfirming() const noexcept { return confirmGo != nullptr; }
+        /** The dialog's choice: 0 CANCEL, 1 EXECUTE. */
+        int getConfirmChoice() const noexcept { return confirmChoice; }
         /** The strip the page is for (the edit buffer's numbering). */
         void setStrip (int);
         int getStrip() const noexcept { return strip; }
@@ -199,6 +232,10 @@ namespace y02r
         /** METER's meter point: 0 PRE EQ (an output's PRE FADER), 1 POST EQ, 2 POST FADER. */
         int meterPoint = 2;
         std::array<int, 16> nameChars {};
+        std::function<void()> confirmGo;
+        juce::String confirmText;
+        int confirmChoice = 0;
+        juce::uint32 confirmSince = 0;
         Function nameFrom = Function::Eq;
         void editTitle (int library, int n, int target);
         std::vector<Field> fields;
@@ -254,10 +291,14 @@ public:
     void setMemory (int m) { memory = juce::jlimit (0, 96, m); repaint(); }
     void store();
     void recall();
+    /** A function's page shown without its key (the AUTO ... DISPLAY preferences). */
+    void showFunction (y02r::Function, int page);
 
 private:
     void timerCallback() override;
     void bind();
+    /** An AUTO ... DISPLAY preference: function `f` shown when it is on. */
+    void autoDisplay (y02r::Pref, y02r::Function f);
     /** The strip fader `i` (encoder `i`) works now. */
     int faderStrip (int i) const;
     int encoderStrip (int i) const;
