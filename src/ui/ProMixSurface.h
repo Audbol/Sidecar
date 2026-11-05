@@ -223,6 +223,9 @@ private:
     Strip* stripOf (int fader) const;
     juce::Rectangle<int> meterArea() const;
     juce::Rectangle<int> memoryArea() const;
+    /** The panel's analog row (PAD and GAIN, MONITOR OUT, PHONES: drawn, not
+        controls), and the stereo meter's place, set by resized(). */
+    juce::Rectangle<int> analogArea, meterRect;
 
     UiContext& ctx;
     const universal::Theme& theme;

@@ -886,9 +886,11 @@ ProMixSurface::ProMixSurface (UiContext& c)
 
     display.memoryText = [this]
     {
+        // The MEMORY area: the number STORE and RECALL act on, the scene last recalled.
         const int current = ctx.show.getCurrentSceneIndex();
         auto scene = current >= 0 ? ctx.show.getScene (current) : std::nullopt;
-        return current >= 0 && scene.has_value() ? juce::String (current + 1).paddedLeft ('0', 2) + " " + scene->name : juce::String ("00 Initial Data");
+        const auto now = current >= 0 && scene.has_value() ? juce::String (current + 1).paddedLeft ('0', 2) + " " + scene->name : juce::String ("00 Initial Data");
+        return "MEMORY " + juce::String (memory).paddedLeft ('0', 2) + "   (" + now + ")";
     };
     addAndMakeVisible (display);
 
@@ -1076,13 +1078,13 @@ void ProMixSurface::timerCallback()
 
 juce::Rectangle<int> ProMixSurface::meterArea() const
 {
-    return { getWidth() - 78, kTopBar + 16, 62, 400 };
+    return meterRect;
 }
 
 juce::Rectangle<int> ProMixSurface::memoryArea() const
 {
-    const int x = display.getRight() + sizes::kGapLarge;
-    return { x, kTopBar + 16, getWidth() - 90 - x, 84 };
+    // The scene number is on the LCD's MEMORY area.
+    return display.getBounds();
 }
 
 void ProMixSurface::paint (juce::Graphics& g)
@@ -1119,15 +1121,45 @@ void ProMixSurface::paint (juce::Graphics& g)
     g.drawText ("Not affiliated with or endorsed by Yamaha; ProMix is Yamaha's trademark, used only to say what is emulated.",
                 top.reduced (sizes::kGapLarge, 0).withTrimmedLeft (150).withTrimmedRight (200), juce::Justification::centredLeft);
 
-    // SCENE MEMORY: the number to store or recall, as the panel's two digits.
-    auto mem = memoryArea().toFloat();
-    hw::silk (g, mem.removeFromTop (16.0f), "SCENE MEMORY", look(), 11.0f, juce::Justification::centredLeft);
-    auto digits = mem.removeFromLeft (110.0f);
-    g.setColour (juce::Colour (0xff1a0c0c));
-    g.fillRoundedRectangle (digits, 4.0f);
-    g.setColour (juce::Colour (0xffff5a40));
-    g.setFont (type::font (48.0f, true));
-    g.drawText (juce::String (memory).paddedLeft ('0', 2), digits, juce::Justification::centred);
+    // SCENE MEMORY over its four keys; the PARAMETER wheel's name.
+    if (panelKeys.size() > 3)
+    {
+        const auto k = panelKeys[0]->getBounds().getUnion (panelKeys[2]->getBounds()).toFloat();
+        hw::silk (g, k.withY (k.getY() - 15.0f).withHeight (13.0f), "SCENE MEMORY", look(), 10.0f);
+        const auto w = wheel->getBounds().toFloat();
+        hw::silk (g, w.withY (w.getY() - 16.0f).withHeight (14.0f), "PARAMETER", look(), 10.5f);
+    }
+
+    // The analog row along the top (PAD and GAIN per channel, MONITOR OUT and
+    // PHONES): the console's preamps and outputs, drawn as on its panel; they
+    // aren't Sidecar's controls.
+    if (! analogArea.isEmpty())
+    {
+        const auto row = analogArea.toFloat();
+        for (int i = 0; i < 16; ++i)
+        {
+            const float cx = (float) faders[(size_t) i]->getBounds().getCentreX() + 12.0f;
+            auto pad = juce::Rectangle<float> (16.0f, 8.0f).withCentre ({ cx, row.getY() + 12.0f });
+            g.setColour (juce::Colour (0xffb9bcbe));
+            g.fillRoundedRectangle (pad, 1.5f);
+            hw::silk (g, pad.withX (pad.getX() - 26.0f).withWidth (24.0f), i == 0 ? "PAD" : "", look(), 8.5f, juce::Justification::centredRight, true);
+            hw::knob (g, juce::Rectangle<float> (24.0f, 24.0f).withCentre ({ cx, row.getY() + 36.0f }), 0.5f, look());
+            hw::silk (g, juce::Rectangle<float> (40.0f, 11.0f).withCentre ({ cx, row.getY() + 55.0f }), "GAIN", look(), 8.5f, juce::Justification::centred, true);
+            hw::silk (g, juce::Rectangle<float> (40.0f, 12.0f).withCentre ({ cx, row.getY() + 66.0f }), juce::String (i + 1), look(), 10.0f);
+            if (i > 0)
+            {
+                g.setColour (look().silkDim.withAlpha (0.35f));
+                g.drawVerticalLine ((int) (cx - (float) faders[0]->getWidth() * 0.5f), row.getY() + 2.0f, row.getBottom() - 4.0f);
+            }
+        }
+        const char* outs[] = { "MONITOR OUT", "PHONES" };
+        for (int k = 0; k < 2; ++k)
+        {
+            const float cx = (float) faders[(size_t) (17 + k)]->getBounds().getCentreX() + 12.0f;
+            hw::knob (g, juce::Rectangle<float> (30.0f, 30.0f).withCentre ({ cx, row.getY() + 30.0f }), 0.6f, look());
+            hw::silk (g, juce::Rectangle<float> (90.0f, 12.0f).withCentre ({ cx, row.getY() + 56.0f }), outs[k], look(), 8.5f, juce::Justification::centred, true);
+        }
+    }
 
     // The stereo output's LED meter (p.19): CLIP, 15 ... 0 ... -40.
     auto m = meterArea().toFloat();
@@ -1148,6 +1180,13 @@ void ProMixSurface::paint (juce::Graphics& g)
             g.setColour (level >= dbfs[s] ? colour : colour.withAlpha (0.15f));
             g.fillRect (led);
         }
+    }
+
+    // The channel numbers over the SEL keys, as the panel prints them.
+    for (int i = 0; i < 16; ++i)
+    {
+        const auto s = selKeys[(size_t) i]->getBounds().toFloat();
+        hw::silk (g, s.withY (s.getY() - 16.0f).withHeight (14.0f), juce::String (i + 1), look(), 12.0f);
     }
 
     // The faders' labels below them.
@@ -1172,37 +1211,44 @@ void ProMixSurface::resized()
     auto top = area.removeFromTop (kTopBar);
     universalKey.setBounds (top.removeFromRight (190).reduced (sizes::kGap, 7));
 
-    // The upper panel: the LCD, its function keys under it, the scene memory, the
-    // cursor keys, ENTER and the wheel beside it; the stereo meter at the right.
-    auto upper = area.removeFromTop (470).reduced (sizes::kGapLarge, sizes::kGapLarge);
-    auto lcdColumn = upper.removeFromLeft (1000);
-    display.setBounds (lcdColumn.removeFromTop (330));
-    lcdColumn.removeFromTop (sizes::kGap);
-    for (int r = 0; r < 2; ++r)
-    {
-        auto keyRow = lcdColumn.removeFromTop (kKey + 6);
-        const int w = keyRow.getWidth() / 8;
-        for (int k = 0; k < 8; ++k)
-            functionKeys[(size_t) (8 * r + k)].second->setBounds (keyRow.removeFromLeft (w).reduced (3, 3));
-    }
-    upper.removeFromLeft (sizes::kGapLarge);
-    upper.removeFromRight (90); // the meter
-    auto panelColumn = upper;
-    panelColumn.removeFromTop (92); // the memory digits
-    auto memKeys = panelColumn.removeFromTop (kKey * 2 + 12);
-    for (int k = 0; k < 4; ++k)
-        panelKeys[(size_t) k]->setBounds (juce::Rectangle<int> (memKeys.getX() + (k % 2) * 120, memKeys.getY() + (k / 2) * (kKey + 8), 112, kKey));
-    panelColumn.removeFromTop (sizes::kGapLarge);
-    // The cursor keys in a cross, ENTER beside, the wheel below.
-    auto cross = panelColumn.removeFromTop (3 * kKey + 8).withWidth (3 * 64);
-    const int cx = cross.getX(), cy = cross.getY();
-    panelKeys[4]->setBounds (cx, cy + kKey + 4, 60, kKey);            // left
-    panelKeys[5]->setBounds (cx + 64, cy, 60, kKey);                  // up
-    panelKeys[6]->setBounds (cx + 64, cy + 2 * (kKey + 4), 60, kKey); // down
-    panelKeys[7]->setBounds (cx + 128, cy + kKey + 4, 60, kKey);      // right
-    panelKeys[8]->setBounds (cross.getRight() + sizes::kGapLarge, cy + kKey + 4, 110, kKey);
-    panelColumn.removeFromTop (sizes::kGap);
-    wheel->setBounds (panelColumn.removeFromLeft (150).removeFromTop (150));
+    // The panel as the console has it (User's Guide pp.2-4): the analog row
+    // along the top; then the function keys in their block left of the LCD
+    // (SCENE MEMORY's STORE, INC, RECALL, DEC with UTILITY, MIDI, GROUP, PAIR;
+    // the orange, blue and green rows), the LCD, its stereo meter, and ENTER, the
+    // cursor keys and the PARAMETER wheel at the right; the strips below.
+    area.removeFromLeft (14);
+    area.removeFromRight (14); // the rack ears
+    analogArea = area.removeFromTop (80);
+    auto upper = area.removeFromTop (300).reduced (28, 10);
+    auto block = upper.removeFromLeft (440);
+    block.removeFromTop (18);
+    const int kw = block.getWidth() / 4, kh = juce::jmin (kKey + 14, block.getHeight() / 5);
+    auto cell = [&] (int row, int col) { return juce::Rectangle<int> (block.getX() + col * kw, block.getY() + row * kh, kw, kh).reduced (4, 5); };
+    // Rows 1-2: STORE, INC, UTILITY, MIDI / RECALL, DEC, GROUP, PAIR.
+    panelKeys[0]->setBounds (cell (0, 0));
+    panelKeys[2]->setBounds (cell (0, 1));
+    panelKeys[1]->setBounds (cell (1, 0));
+    panelKeys[3]->setBounds (cell (1, 1));
+    functionKeys[14].second->setBounds (cell (0, 2)); // UTILITY
+    functionKeys[15].second->setBounds (cell (0, 3)); // MIDI
+    functionKeys[12].second->setBounds (cell (1, 2)); // GROUP
+    functionKeys[13].second->setBounds (cell (1, 3)); // PAIR
+    for (int k = 0; k < 12; ++k) // METER ... CUE; SEND1-4; EQ LOW ... LIBRARY
+        functionKeys[(size_t) k].second->setBounds (cell (2 + k / 4, k % 4));
+    upper.removeFromLeft (20);
+    auto right = upper.removeFromRight (300);
+    meterRect = upper.removeFromRight (80).reduced (8, 6);
+    upper.removeFromRight (12);
+    display.setBounds (upper);
+    // ENTER and the cursor keys left of the PARAMETER wheel, as on the panel.
+    wheel->setBounds (right.removeFromRight (170).withSizeKeepingCentre (164, 164).withY (right.getY() + 22));
+    right.removeFromRight (8);
+    panelKeys[8]->setBounds (right.getX() + 38, right.getY() + 22, 76, kKey); // ENTER
+    const int cx = right.getX() + 10, cy = right.getY() + 22 + kKey + 22;
+    panelKeys[5]->setBounds (cx + 44, cy, 44, kKey);                  // up
+    panelKeys[4]->setBounds (cx, cy + kKey + 4, 44, kKey);            // left
+    panelKeys[7]->setBounds (cx + 88, cy + kKey + 4, 44, kKey);       // right
+    panelKeys[6]->setBounds (cx + 44, cy + 2 * (kKey + 4), 44, kKey); // down
 
     // The faders: 19 strips, SEL and ON above each, its name below.
     auto lower = area.reduced (sizes::kGapLarge, sizes::kGap);
@@ -1212,7 +1258,7 @@ void ProMixSurface::resized()
     {
         if (i == 16 || i == 17)
             x += 8;
-        auto col = juce::Rectangle<int> (x, lower.getY(), w, lower.getHeight() - 24);
+        auto col = juce::Rectangle<int> (x, lower.getY() + 16, w, lower.getHeight() - 40); // the number above
         selKeys[(size_t) i]->setBounds (col.removeFromTop (kKey).reduced (6, 0));
         col.removeFromTop (6);
         onKeys[(size_t) i]->setBounds (col.removeFromTop (kKey).reduced (6, 0));

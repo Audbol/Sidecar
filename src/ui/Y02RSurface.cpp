@@ -1111,12 +1111,12 @@ void Y02RSurface::timerCallback()
 
 juce::Rectangle<int> Y02RSurface::meterArea() const
 {
-    return { getWidth() - 74, kTopBar + 14, 60, 380 };
+    return meterRect;
 }
 
 juce::Rectangle<int> Y02RSurface::memoryArea() const
 {
-    return { getWidth() - 74 - 250, kTopBar + 14, 236, 80 };
+    return readoutArea;
 }
 
 void Y02RSurface::paint (juce::Graphics& g)
@@ -1128,7 +1128,8 @@ void Y02RSurface::paint (juce::Graphics& g)
     hw::panel (g, body, look());
     const auto bounds = [] (const juce::Component& c) { return c.getBounds().toFloat(); };
     if (! routingKeys.empty())
-        hw::section (g, bounds (*routingKeys[0]).getUnion (bounds (*eqKeys.back())).getUnion (bounds (*eqG)).expanded (12.0f, 22.0f).withTrimmedTop (4.0f),
+        hw::section (g, bounds (*routingKeys.front()).getUnion (bounds (*routingKeys.back())).getUnion (bounds (*auxKeys.back())).getUnion (bounds (*eqKeys[1]))
+                            .getUnion (bounds (*eqG)).expanded (14.0f, 22.0f).withTrimmedTop (4.0f),
                      "SELECTED CHANNEL   " + y02r::stripName (display.getStrip()), look());
     hw::section (g, bounds (flipKey).getUnion (bounds (*encOnKeys.back())).getUnion (bounds (*encoders[0])).expanded (10.0f, 12.0f), "", look());
     auto top = getLocalBounds().removeFromTop (kTopBar);
@@ -1142,16 +1143,53 @@ void Y02RSurface::paint (juce::Graphics& g)
     g.drawText ("Not affiliated with or endorsed by Yamaha; 02R is Yamaha's trademark, used only to say what is emulated.",
                 top.reduced (sizes::kGapLarge, 0).withTrimmedLeft (90).withTrimmedRight (200), juce::Justification::centredLeft);
 
-    // SCENE MEMORY: the number to store or recall, as the panel's two digits.
-    auto mem = memoryArea().toFloat();
-    hw::section (g, mem.expanded (8.0f, 10.0f).withHeight (mem.getHeight() + 2.0f * kKey + 40.0f), "SCENE MEMORY", look());
-    mem.removeFromTop (16.0f);
-    auto digits = mem.removeFromLeft (100.0f);
-    g.setColour (juce::Colour (0xff1a0c0c));
-    g.fillRoundedRectangle (digits, 4.0f);
-    g.setColour (juce::Colour (0xffff5a40));
-    g.setFont (type::font (44.0f, true));
-    g.drawText (juce::String (memory).paddedLeft ('0', 2), digits, juce::Justification::centred);
+    // The display area's LED readouts (MAN p.6): SCENE MEMORY, the number
+    // STORE and RECALL act on; SELECTED CHANNEL, the strip SEL chose.
+    auto readouts = memoryArea().toFloat();
+    const auto ledReadout = [&g, this] (juce::Rectangle<float> r, const juce::String& title, const juce::String& value)
+    {
+        hw::silk (g, r.removeFromTop (13.0f), title, look(), 9.5f, juce::Justification::centredLeft, true);
+        auto digits = r.removeFromLeft (76.0f);
+        g.setColour (juce::Colour (0xff1a0c0c));
+        g.fillRoundedRectangle (digits, 3.0f);
+        g.setColour (juce::Colour (0xffff5a40));
+        g.setFont (type::font (34.0f, true));
+        g.drawText (value, digits, juce::Justification::centred);
+    };
+    const int shown = display.getStrip();
+    const juce::String channel = shown < y02r::kTape ? juce::String (shown + 1) : shown < y02r::kEff ? juce::String (shown - y02r::kTape + 1) : juce::String ("--");
+    ledReadout (readouts.removeFromLeft (150.0f), "SCENE MEMORY", juce::String (memory).paddedLeft ('0', 2));
+    ledReadout (readouts, "SELECTED CHANNEL", channel.paddedLeft ('0', 2));
+
+    // The bottom right's SCENE MEMORY keys, the wheel's name.
+    {
+        const auto k = panelKeys[0]->getBounds().getUnion (panelKeys[3]->getBounds()).toFloat();
+        hw::section (g, k.expanded (10.0f, 12.0f).withTrimmedTop (-8.0f), "SCENE MEMORY", look());
+        const auto w = wheel->getBounds().toFloat();
+        hw::silk (g, w.withY (w.getBottom() + 2.0f).withHeight (12.0f), "DATA ENTRY", look(), 9.5f, juce::Justification::centred, true);
+    }
+
+    // The analog input row along the top (GAIN per input; LINE 17-24 two to a
+    // stereo channel): the console's preamps, drawn as on its panel, not
+    // Sidecar's controls.
+    if (! analogArea.isEmpty())
+    {
+        const auto row = analogArea.toFloat();
+        for (int i = 0; i < 20; ++i)
+        {
+            const float cx = (float) faders[(size_t) i]->getBounds().getCentreX() + 12.0f;
+            const int knobs = i < 16 ? 1 : 2;
+            for (int k = 0; k < knobs; ++k)
+            {
+                const float x = knobs == 1 ? cx : cx - 14.0f + 28.0f * (float) k;
+                hw::knob (g, juce::Rectangle<float> (22.0f, 22.0f).withCentre ({ x, row.getY() + 20.0f }), 0.5f, look());
+                const int n = i < 16 ? i + 1 : 17 + 2 * (i - 16) + k;
+                hw::silk (g, juce::Rectangle<float> (28.0f, 11.0f).withCentre ({ x, row.getY() + 40.0f }), juce::String (n), look(), 9.0f, juce::Justification::centred, true);
+            }
+        }
+        hw::silk (g, row.withHeight (12.0f).translated (0.0f, row.getHeight() - 12.0f).withWidth (200.0f), "GAIN", look(), 9.0f,
+                  juce::Justification::centredLeft, true);
+    }
 
     // The stereo meter (21 segments, MAN p.6).
     auto m = meterArea().toFloat();
@@ -1213,99 +1251,115 @@ void Y02RSurface::paint (juce::Graphics& g)
 
 void Y02RSurface::resized()
 {
+    // The panel as the console has it (MAN pp.2-10): the analog row along the
+    // top; the middle band with the scene and channel readouts and the display
+    // access keys left of the display, the stereo meter beside it, the SELECTED
+    // CHANNEL section; the encoders of the tape and effect returns above their
+    // fader columns; the faders; SCENE MEMORY, the wheel, the cursor keys and
+    // ENTER at the bottom right.
     auto area = getLocalBounds();
     auto top = area.removeFromTop (kTopBar);
     universalKey.setBounds (top.removeFromRight (190).reduced (sizes::kGap, 7));
+    area.removeFromLeft (14);
+    area.removeFromRight (14); // the wooden cheeks
 
-    // The upper panel: the display and its function keys, the SELECTED CHANNEL
-    // section, the scene memory, the cursor keys and wheel, the stereo meter.
-    auto upper = area.removeFromTop (420).reduced (sizes::kGapLarge, sizes::kGap);
-    auto lcdColumn = upper.removeFromLeft (860);
-    display.setBounds (lcdColumn.removeFromTop (270));
-    lcdColumn.removeFromTop (sizes::kGap);
-    const int perRow = 7;
-    for (int r = 0; r < 3; ++r)
+    // The fader columns first: the rows above line up with them.
+    const int colW = 70, x0 = area.getX() + 20;
+    auto colX = [x0, colW] (int i) { return x0 + i * colW + (i >= 16 ? 8 : 0) + (i >= 20 ? 8 : 0); };
+    analogArea = area.removeFromTop (60).withX (x0).withWidth (colX (20) - x0);
+
+    // The middle band.
+    auto middle = area.removeFromTop (338).reduced (14, 6);
+    auto left = middle.removeFromLeft (318);
+    readoutArea = left.removeFromTop (66).reduced (4, 4);
+    left.removeFromTop (6);
+    const int kw = left.getWidth() / 4, kh = kKey + 8;
+    int row = 0;
+    auto place = [&] (int first, int count)
     {
-        auto keyRow = lcdColumn.removeFromTop (kKey + 6);
-        const int w = keyRow.getWidth() / perRow;
-        for (int k = 0; k < perRow; ++k)
-            if (const int n = r * perRow + k; n < (int) functionKeys.size())
-                functionKeys[(size_t) n].second->setBounds (keyRow.removeFromLeft (w).reduced (3, 3));
-    }
-    upper.removeFromLeft (sizes::kGapLarge);
-    upper.removeFromRight (330); // the scene memory and the meter
+        for (int k = 0; k < count; ++k)
+            functionKeys[(size_t) (first + k)].second->setBounds (left.getX() + (k % 4) * kw, left.getY() + (row + k / 4) * kh, kw - 4, kKey + 2);
+        row += (count + 3) / 4;
+    };
+    place (0, 5);  // CONFIGURATION: SCENE MEMORY, UTILITY, MIDI, GROUP, PAIR
+    left.removeFromTop (6);
+    place (5, 8);  // MIXING
+    left.removeFromTop (6);
+    place (13, 8); // AUX 1-8
+    middle.removeFromLeft (12);
+    display.setBounds (middle.removeFromLeft (600));
+    middle.removeFromLeft (8);
+    meterRect = middle.removeFromLeft (64).reduced (0, 6);
+    middle.removeFromLeft (14);
 
-    // SELECTED CHANNEL: ROUTING, AUX, PAN, EQUALIZER.
-    auto sel = upper;
-    sel.removeFromTop (20);
-    auto routing = sel.removeFromTop (kKey);
+    // SELECTED CHANNEL: ROUTING, AUX and SEND LEVEL, PAN, EQUALIZER.
+    auto sel = middle.reduced (14, 14).withTrimmedTop (10);
+    auto routing = sel.removeFromTop (kKey + 2);
     const int rw = routing.getWidth() / 10;
     for (auto& k : routingKeys)
         k->setBounds (routing.removeFromLeft (rw).reduced (2, 0));
-    sel.removeFromTop (sizes::kGap);
-    auto auxRow = sel.removeFromTop (2 * kKey + 6);
-    auto auxKeysArea = auxRow.removeFromLeft (auxRow.getWidth() - 200);
+    sel.removeFromTop (12);
+    auto auxRow = sel.removeFromTop (2 * kKey + 8);
+    auto levelArea = auxRow.removeFromRight (190);
     for (int k = 0; k < 8; ++k)
-        auxKeys[(size_t) k]->setBounds (auxKeysArea.getX() + (k % 4) * (auxKeysArea.getWidth() / 4), auxKeysArea.getY() + (k / 4) * (kKey + 6),
-                                        auxKeysArea.getWidth() / 4 - 4, kKey);
-    sendLevel->setBounds (auxRow.removeFromLeft (110));
-    auxKeys[8]->setBounds (auxRow.removeFromTop (kKey).reduced (4, 0));
-    sel.removeFromTop (sizes::kGap);
-    auto eqRow = sel.removeFromTop (110);
-    pan->setBounds (eqRow.removeFromLeft (100));
-    eqRow.removeFromLeft (sizes::kGap);
+        auxKeys[(size_t) k]->setBounds (auxRow.getX() + (k % 4) * (auxRow.getWidth() / 4), auxRow.getY() + (k / 4) * (kKey + 8), auxRow.getWidth() / 4 - 4,
+                                        kKey + 2);
+    sendLevel->setBounds (levelArea.removeFromLeft (100));
+    auxKeys[8]->setBounds (levelArea.removeFromTop (kKey + 2).reduced (6, 0));
+    sel.removeFromTop (12);
+    auto eqRow = sel.removeFromTop (juce::jmin (118, sel.getHeight()));
+    pan->setBounds (eqRow.removeFromLeft (96));
+    eqRow.removeFromLeft (10);
     for (auto* e : { eqQ.get(), eqF.get(), eqG.get() })
-        e->setBounds (eqRow.removeFromLeft (100));
-    auto eqKeysArea = eqRow.reduced (4, 0);
+        e->setBounds (eqRow.removeFromLeft (96));
+    auto eqKeysArea = eqRow.reduced (6, 0);
     for (int k = 0; k < 5; ++k)
-        eqKeys[(size_t) k]->setBounds (eqKeysArea.getX() + (k % 2) * (eqKeysArea.getWidth() / 2), eqKeysArea.getY() + (k / 2) * (kKey + 4),
-                                       eqKeysArea.getWidth() / 2 - 4, kKey);
-    sel.removeFromTop (sizes::kGap);
-    // The cursor keys in a cross, ENTER beside, the wheel.
-    auto controls = sel;
-    auto cross = controls.removeFromLeft (3 * 60 + 8);
-    const int cx = cross.getX(), cy = cross.getY();
-    panelKeys[4]->setBounds (cx, cy + kKey + 4, 56, kKey);
-    panelKeys[5]->setBounds (cx + 60, cy, 56, kKey);
-    panelKeys[6]->setBounds (cx + 60, cy + 2 * (kKey + 4), 56, kKey);
-    panelKeys[7]->setBounds (cx + 120, cy + kKey + 4, 56, kKey);
-    panelKeys[8]->setBounds (controls.removeFromLeft (110).withHeight (kKey).withY (cy + kKey + 4).reduced (4, 0));
-    wheel->setBounds (controls.removeFromLeft (120).withHeight (120));
+        eqKeys[(size_t) k]->setBounds (eqKeysArea.getX() + (k % 2) * (eqKeysArea.getWidth() / 2), eqKeysArea.getY() + (k / 2) * (kKey + 6),
+                                       eqKeysArea.getWidth() / 2 - 4, kKey + 2);
 
-    // The scene memory's keys under its digits.
-    const auto mem = memoryArea();
-    for (int k = 0; k < 4; ++k)
-        panelKeys[(size_t) k]->setBounds (mem.getX() + (k % 2) * 118, mem.getBottom() + 8 + (k / 2) * (kKey + 6), 110, kKey);
-
-    // The encoder row: TAPE 1-16 and EFF1-2, SEL and ON under each, FLIP at the left.
-    auto lower = area.reduced (sizes::kGapLarge, 0);
-    auto encRow = lower.removeFromTop (142);
-    flipKey.setBounds (encRow.removeFromLeft (70).withSizeKeepingCentre (64, kKey));
-    const int ew = encRow.getWidth() / kNumEncoders;
+    // The encoder row: TAPE 1-16 above faders 1-16, EFF1-2 above LINE 17/18 and
+    // 19/20, FLIP above 21/22.
+    auto encRow = area.removeFromTop (136).withTrimmedTop (8);
+    auto encoderColumn = [&] (int col) { return juce::Rectangle<int> (colX (col), encRow.getY(), colW, encRow.getHeight()).reduced (3, 0); };
     for (int i = 0; i < kNumEncoders; ++i)
     {
-        auto col = encRow.removeFromLeft (ew).reduced (2, 0);
+        auto col = encoderColumn (i);
         encOnKeys[(size_t) i]->setBounds (col.removeFromBottom (24).reduced (4, 0));
-        encSelKeys[(size_t) i]->setBounds (col.removeFromBottom (24).reduced (4, 0).translated (0, -2));
+        encSelKeys[(size_t) i]->setBounds (col.removeFromBottom (26).reduced (4, 2));
         encoders[(size_t) i]->setBounds (col.reduced (0, 2));
     }
+    flipKey.setBounds (encoderColumn (18).withSizeKeepingCentre (60, kKey + 2));
 
-    // The faders: 21 strips, SEL and ON above each, its name below.
-    lower.removeFromTop (sizes::kGap);
-    const int w = juce::jmin (88, lower.getWidth() / kNumFaders);
-    int x = lower.getX() + (lower.getWidth() - w * kNumFaders - 16) / 2;
+    // The faders: SEL and ON above each, the name below.
+    auto faderArea = area.withTrimmedTop (6).withTrimmedBottom (4);
     for (int i = 0; i < kNumFaders; ++i)
     {
-        if (i == 16 || i == 20)
-            x += 8;
-        auto col = juce::Rectangle<int> (x, lower.getY() + 18, w, lower.getHeight() - 42);
-        selKeys[(size_t) i]->setBounds (col.removeFromTop (28).reduced (6, 0));
-        col.removeFromTop (4);
-        onKeys[(size_t) i]->setBounds (col.removeFromTop (28).reduced (6, 0));
+        auto col = juce::Rectangle<int> (colX (i), faderArea.getY(), colW, faderArea.getHeight() - 22);
+        selKeys[(size_t) i]->setBounds (col.removeFromTop (30).reduced (6, 1));
+        col.removeFromTop (2);
+        onKeys[(size_t) i]->setBounds (col.removeFromTop (30).reduced (6, 1));
         col.removeFromTop (4);
         faders[(size_t) i]->setBounds (col);
-        x += w;
     }
+
+    // The bottom right: SCENE MEMORY's keys, the wheel, the cursor keys, ENTER.
+    auto right = faderArea.withLeft (colX (20) + colW + 24).withTrimmedRight (10);
+    auto memKeys = right.removeFromTop (2 * kKey + 34).withTrimmedTop (22);
+    const int mw = memKeys.getWidth() / 2;
+    panelKeys[0]->setBounds (memKeys.getX(), memKeys.getY(), mw - 6, kKey + 2);              // STORE
+    panelKeys[1]->setBounds (memKeys.getX() + mw, memKeys.getY(), mw - 6, kKey + 2);         // RECALL
+    panelKeys[2]->setBounds (memKeys.getX(), memKeys.getY() + kKey + 8, mw - 6, kKey + 2);   // up
+    panelKeys[3]->setBounds (memKeys.getX() + mw, memKeys.getY() + kKey + 8, mw - 6, kKey + 2); // down
+    right.removeFromTop (16);
+    auto wheelRow = right.removeFromTop (180);
+    wheel->setBounds (wheelRow.removeFromLeft (180).reduced (8));
+    const int cx = wheelRow.getX() + 6, cy = wheelRow.getCentreY() - (3 * kKey + 8) / 2;
+    panelKeys[5]->setBounds (cx + 40, cy, 40, kKey);                  // up
+    panelKeys[4]->setBounds (cx, cy + kKey + 4, 40, kKey);            // left
+    panelKeys[7]->setBounds (cx + 80, cy + kKey + 4, 40, kKey);       // right
+    panelKeys[6]->setBounds (cx + 40, cy + 2 * (kKey + 4), 40, kKey); // down
+    right.removeFromTop (8);
+    panelKeys[8]->setBounds (right.removeFromTop (kKey + 4).withWidth (120).translated (30, 0)); // ENTER
 }
 
 } // namespace livedaw::ui

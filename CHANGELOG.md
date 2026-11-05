@@ -333,6 +333,18 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   - the 02R: its dark grey panel between wooden cheeks, the blue LCD, cream keys
     with LEDs, ivory caps and STEREO's red, encoders with LED rings, the big wheel
 
+  Their controls sit where the consoles have them:
+  - the ProMix 01: the function keys in its 4x5 block left of the LCD (SCENE
+    MEMORY's keys among them), the scene number on the LCD, the meter beside it,
+    ENTER, the cursor keys and the PARAMETER wheel at the top right, the channel
+    numbers above SEL
+  - the 02R: the SCENE MEMORY and SELECTED CHANNEL readouts over the display
+    access keys left of the display, the meter beside it, the SELECTED CHANNEL
+    section, the TAPE and EFF encoders above their fader columns, SCENE MEMORY,
+    the wheel, the cursor keys and ENTER at the bottom right
+  - both: their analog rows (PAD, GAIN, MONITOR OUT, PHONES) along the top, drawn as
+    on the panel; they aren't controls
+
   `ui::hw` (`src/ui/HardwareLook.*`) draws them. Keys, faders and knobs take a
   console's look when its surface asks; the Universal Mixer and the WING are
   unchanged.

@@ -254,6 +254,8 @@ private:
     std::vector<std::unique_ptr<universal::ToggleKey>> eqKeys;      // LOW, L-MID, H-MID, HIGH, EQ ON
     std::unique_ptr<y02r::Encoder> sendLevel, pan, eqQ, eqF, eqG;
     std::unique_ptr<juce::Slider> wheel;
+    /** The analog row (drawn), the LED readouts and the stereo meter's places, set by resized(). */
+    juce::Rectangle<int> analogArea, readoutArea, meterRect;
     int memory = 1, selAux = 0;
     bool flip = false;
     double wheelLast = 0.0;
