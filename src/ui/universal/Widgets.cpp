@@ -1,4 +1,5 @@
 #include "ui/universal/Widgets.h"
+#include "ui/HardwareLook.h"
 
 #include "dsp/DspUtils.h"
 #include "ui/Knobs.h"
@@ -73,6 +74,25 @@ void FaderControl::paint (juce::Graphics& g)
     const auto yAt = [&t] (float pos) { return t.getBottom() - t.getHeight() * pos; };
 
     static constexpr float marks[] = { 10.0f, 5.0f, 0.0f, -5.0f, -10.0f, -20.0f, -30.0f, -40.0f, -60.0f, fader::kMinDb };
+    if (look != nullptr)
+    {
+        // A console's fader: its silkscreen scale, the slot, the moulded cap.
+        for (float db : marks)
+        {
+            if (db > fader::maxDb() + 0.01f)
+                continue;
+            const float y = yAt (fader::dbToPos (db));
+            const auto label = db <= fader::kMinDb ? juce::String::fromUTF8 ("â") : juce::String (std::abs ((int) db));
+            hw::silk (g, juce::Rectangle<float> (0.0f, y - 7.0f, groove - 20.0f, 14.0f), label, *look, 10.0f, juce::Justification::centredRight,
+                      db != 0.0f);
+            g.setColour (look->silkDim.withAlpha (0.6f));
+            g.fillRect (groove - 13.0f, y - 0.5f, 6.0f, 1.0f);
+        }
+        hw::faderSlot (g, groove, t.getY(), t.getBottom(), *look);
+        if (isEnabled())
+            hw::faderCap (g, groove, yAt ((float) position), 28.0f, *look);
+        return;
+    }
     g.setFont (type::font (type::kCaption));
     for (float db : marks)
     {
@@ -290,6 +310,11 @@ void ToggleKey::refresh()
 
 void ToggleKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
 {
+    if (look != nullptr)
+    {
+        hw::key (g, getLocalBounds().toFloat().reduced (2.0f), getButtonText(), lit || halfLit, down, colour, *look, face);
+        return;
+    }
     const auto area = getLocalBounds().toFloat().reduced (1.5f);
     g.setColour (lit ? colour : (down ? theme.raised.brighter (0.2f) : theme.raised));
     g.fillRoundedRectangle (area, sizes::kRadius);

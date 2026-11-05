@@ -1,4 +1,5 @@
 #include "ui/X32Surface.h"
+#include "ui/HardwareLook.h"
 
 #include "ui/MeterBank.h"
 
@@ -102,6 +103,9 @@ X32Surface::X32Surface (UiContext& c)
     display.getModel = [this] { return (int) model; };
     display.setModel = [this] (int m) { setModel (m == 1 ? Model::Compact : Model::Full); };
     addAndMakeVisible (display);
+    // The panel's keys, faders and knobs are the X32's: light rubber keys lit
+    // in their colours, moulded caps, knurled knobs.
+    hw::applyTo (*this, hw::Look::x32(), &universalKey);
     refreshAll();
     startTimerHz (30);
 }
@@ -297,21 +301,12 @@ juce::Rectangle<int> X32Surface::channelSectionArea() const
 
 void X32Surface::paint (juce::Graphics& g)
 {
-    // The console: a dark body, its sections as raised panels.
+    // The console: its titanium frame, the sections on slate panels outlined in
+    // silkscreen (the X32's own look, drawn by Sidecar).
     g.fillAll (juce::Colour (0xff17191c));
-    auto panel = [&g] (juce::Rectangle<int> r, const juce::String& title)
-    {
-        g.setColour (juce::Colour (0xff22252a));
-        g.fillRoundedRectangle (r.toFloat(), 8.0f);
-        g.setColour (juce::Colour (0xff30343a));
-        g.drawRoundedRectangle (r.toFloat().reduced (0.5f), 8.0f, 1.0f);
-        if (title.isNotEmpty())
-        {
-            g.setColour (juce::Colour (0xff8b9099));
-            g.setFont (type::font (type::kCaption, true));
-            g.drawText (title, r.reduced (12, 6).removeFromTop (16), juce::Justification::centredLeft);
-        }
-    };
+    const auto& look = hw::Look::x32();
+    hw::panel (g, getLocalBounds().withTrimmedTop (kTopBar).toFloat(), look);
+    auto panel = [&g, &look] (juce::Rectangle<int> r, const juce::String& title) { hw::section (g, r.toFloat(), title, look); };
 
     // The top bar: what this is.
     auto bar = getLocalBounds().removeFromTop (kTopBar).reduced (sizes::kGapLarge, 0);

@@ -1,4 +1,5 @@
 #include "ui/X32AssignSection.h"
+#include "ui/HardwareLook.h"
 
 #include "engine/Models.h"
 #include "engine/Show.h"
@@ -383,11 +384,7 @@ bool AssignSection::buttonLit (const juce::String& c, int index) const
 
 void AssignSection::paint (juce::Graphics& g)
 {
-    g.setColour (juce::Colour (0xff1b1d21));
-    g.fillRoundedRectangle (getLocalBounds().toFloat(), 6.0f);
-    g.setColour (juce::Colour (0xff8b9099));
-    g.setFont (type::font (type::kCaption, true));
-    g.drawText ("ASSIGN", getLocalBounds().reduced (8, 6).removeFromTop (16), juce::Justification::centredLeft);
+    hw::section (g, getLocalBounds().toFloat().reduced (1.0f).withTrimmedTop (6.0f), "ASSIGN", hw::Look::x32());
 }
 
 void AssignSection::resized()

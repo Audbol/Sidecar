@@ -5,6 +5,7 @@
 #include "engine/Show.h"
 #include "engine/Y02RMidi.h"
 #include "engine/Yamaha02R.h"
+#include "ui/HardwareLook.h"
 #include "ui/MeterBank.h"
 
 #include <cmath>
@@ -19,8 +20,13 @@ namespace
     constexpr int kTopBar = 48;
     constexpr int kKey = 32;
 
-    // The display's colours: a backlit panel, light pixels, the cursor inverted.
-    const juce::Colour kLcd (0xff10202a), kLcdFrame (0xff2c4656), kPixel (0xffb4e0f0), kPixelDim (0xff5f8798);
+    // The 02R's hardware look (its panel, keys, faders; its blue LCD with dark
+    // pixels, the cursor inverted).
+    const hw::Look& look() { return hw::Look::y02r(); }
+    const juce::Colour kLcd = hw::Look::y02r().lcd, kLcdFrame = hw::Look::y02r().lcd.darker (0.18f),
+                       kPixel = hw::Look::y02r().lcdPixel, kPixelDim = hw::Look::y02r().lcdDim;
+    // Its LEDs: SEL orange, ON green, the function keys orange.
+    const juce::Colour kSelLed (0xffffa030), kOnLed (0xff4cd964), kRing (0xffff7a2a);
 
     // The edit buffer's items (livedaw_02r::params).
     constexpr int kLevel = 0, kOn = 1, kPanL = 2, kPanR = 3, kAtt = 4, kSwitches = 5, kDelayHi = 6, kDelayLo = 7, kEq = 8;
@@ -134,28 +140,22 @@ namespace y02r
         const auto law = ctx.engine.getFaderLaw (stereoLaw ? (int) ld::kMain : (int) ld::kChannel);
         const float channel[] = { 10, 5, 0, -5, -10, -15, -20, -30, -40, -50 };
         const float stereo[] = { 0, -5, -10, -15, -20, -30, -40, -50, -60, -70 };
-        g.setFont (type::font (type::kCaption));
         for (float db : stereoLaw ? stereo : channel)
         {
             const float y = t.getBottom() - t.getHeight() * law.toPosition (db);
-            g.setColour (theme.textDim);
-            g.drawText (juce::String (std::abs ((int) db)), juce::Rectangle<float> (0.0f, y - 7.0f, 20.0f, 14.0f),
-                        juce::Justification::centredRight);
-            g.setColour (theme.outline);
-            g.drawHorizontalLine ((int) y, cx - 12.0f, cx + 12.0f);
+            hw::silk (g, juce::Rectangle<float> (0.0f, y - 7.0f, 20.0f, 14.0f), juce::String (std::abs ((int) db)), look(), 10.0f,
+                      juce::Justification::centredRight, true);
+            g.setColour (look().silkDim.withAlpha (0.6f));
+            g.drawHorizontalLine ((int) y, cx - 12.0f, cx - 6.0f);
+            g.drawHorizontalLine ((int) y, cx + 6.0f, cx + 12.0f);
         }
-        g.setColour (theme.textDim);
-        g.drawText (utf8 ("\xe2\x88\x9e"), juce::Rectangle<float> (0.0f, t.getBottom() - 7.0f, 20.0f, 14.0f), juce::Justification::centredRight);
-        g.setColour (theme.well);
-        g.fillRoundedRectangle (juce::Rectangle<float> (cx - 3.0f, t.getY(), 6.0f, t.getHeight()), 3.0f);
+        hw::silk (g, juce::Rectangle<float> (0.0f, t.getBottom() - 7.0f, 20.0f, 14.0f), utf8 ("\xe2\x88\x9e"), look(), 10.0f,
+                  juce::Justification::centredRight, true);
+        hw::faderSlot (g, cx, t.getY(), t.getBottom(), look());
         if (addr < 0)
             return;
         const float y = t.getBottom() - t.getHeight() * (float) step / 127.0f;
-        auto cap = juce::Rectangle<float> (cx - 15.0f, y - 11.0f, 30.0f, 22.0f);
-        g.setColour (juce::Colour (0xffd9dcdf));
-        g.fillRoundedRectangle (cap, 3.0f);
-        g.setColour (juce::Colour (0xff3a3d42));
-        g.drawHorizontalLine ((int) y, cap.getX() + 3.0f, cap.getRight() - 3.0f);
+        hw::faderCap (g, cx, y, 30.0f, look(), stereoLaw ? juce::Colour (0xffc8302a) : juce::Colour());
     }
 
     void Fader::mouseDown (const juce::MouseEvent&) { dragStart = step; }
@@ -201,34 +201,11 @@ namespace y02r
     void Encoder::paint (juce::Graphics& g)
     {
         auto b = getLocalBounds().toFloat();
-        g.setColour (theme.textDim);
-        g.setFont (type::font (type::kCaption, true));
-        g.drawText (label, b.removeFromTop (14.0f), juce::Justification::centred);
+        hw::silk (g, b.removeFromTop (14.0f), label, look(), 10.5f);
         auto textArea = b.removeFromBottom (14.0f);
-        const float d = juce::jmin (b.getWidth(), b.getHeight()) - 4.0f;
-        auto knob = juce::Rectangle<float> (d, d).withCentre (b.getCentre());
-        // The LED ring: lit up to the value (from the centre for a pan).
-        constexpr float start = juce::MathConstants<float>::pi * 1.25f, span = juce::MathConstants<float>::pi * 1.5f;
         const float frac = hi > lo ? (float) (value - lo) / (float) (hi - lo) : 0.0f;
-        juce::Path ring;
-        ring.addCentredArc (knob.getCentreX(), knob.getCentreY(), d * 0.5f, d * 0.5f, 0.0f, -span * 0.5f, span * 0.5f, true);
-        g.setColour (theme.well);
-        g.strokePath (ring, juce::PathStrokeType (3.0f));
-        juce::Path lit;
-        const float a0 = centred ? 0.0f : -span * 0.5f, a1 = -span * 0.5f + span * frac;
-        lit.addCentredArc (knob.getCentreX(), knob.getCentreY(), d * 0.5f, d * 0.5f, 0.0f, juce::jmin (a0, a1), juce::jmax (a0, a1), true);
-        g.setColour (theme.accent);
-        g.strokePath (lit, juce::PathStrokeType (3.0f));
-        juce::ignoreUnused (start);
-        g.setColour (theme.panel.brighter (0.15f));
-        g.fillEllipse (knob.reduced (6.0f));
-        const float a = -span * 0.5f + span * frac - juce::MathConstants<float>::halfPi;
-        const auto c = knob.getCentre();
-        g.setColour (theme.text);
-        g.drawLine (c.x, c.y, c.x + std::cos (a) * (d * 0.5f - 8.0f), c.y + std::sin (a) * (d * 0.5f - 8.0f), 2.0f);
-        g.setColour (theme.text);
-        g.setFont (type::font (type::kCaption));
-        g.drawText (text ? text (value) : juce::String (value), textArea, juce::Justification::centred);
+        hw::knob (g, b, frac, look(), kRing, centred);
+        hw::silk (g, textArea, text ? text (value) : juce::String (value), look(), 10.5f, juce::Justification::centred, true);
     }
 
     void Encoder::mouseDown (const juce::MouseEvent&) { dragStart = value; }
@@ -582,11 +559,8 @@ namespace y02r
     void Display::paint (juce::Graphics& g)
     {
         auto b = getLocalBounds().toFloat();
-        g.setColour (kLcd);
-        g.fillRoundedRectangle (b, 6.0f);
-        g.setColour (kLcdFrame);
-        g.drawRoundedRectangle (b.reduced (1.0f), 6.0f, 2.0f);
-        auto top = b.reduced (14.0f, 8.0f).removeFromTop (28.0f);
+        hw::lcd (g, b, look());
+        auto top = b.reduced (16.0f, 12.0f).removeFromTop (26.0f);
         g.setFont (type::font (type::kLabel, true));
         g.setColour (kPixel);
         g.drawText (title(), top, juce::Justification::centredLeft);
@@ -728,7 +702,7 @@ namespace y02r
 //==============================================================================
 Y02RSurface::Y02RSurface (UiContext& c)
     : ctx (c), theme (Theme::dark()), y (c.engine.getYamaha02R()), universalKey ("UNIVERSAL MIXER", theme.accent, theme),
-      flipKey ("FLIP", theme.accent, theme), display (c, theme)
+      flipKey ("FLIP", kSelLed, theme), display (c, theme)
 {
     using y02r::Function;
     const auto onColour = juce::Colour (0xff40c060);
@@ -737,7 +711,7 @@ Y02RSurface::Y02RSurface (UiContext& c)
         faders[(size_t) i] = std::make_unique<y02r::Fader> (ctx, theme);
         addAndMakeVisible (*faders[(size_t) i]);
         auto& sel = selKeys[(size_t) i];
-        sel = std::make_unique<ToggleKey> ("SEL", theme.accent, theme);
+        sel = std::make_unique<ToggleKey> ("SEL", kSelLed, theme);
         sel->onClick = [this, i] { pressSel (faderStrip (i)); };
         sel->isOn = [this, i] { return display.getStrip() == faderStrip (i); };
         addAndMakeVisible (*sel);
@@ -764,7 +738,7 @@ Y02RSurface::Y02RSurface (UiContext& c)
         enc->text = [] (int v) { return juce::String (v); };
         addAndMakeVisible (*enc);
         auto& sel = encSelKeys[(size_t) i];
-        sel = std::make_unique<ToggleKey> ("SEL", theme.accent, theme);
+        sel = std::make_unique<ToggleKey> ("SEL", kSelLed, theme);
         sel->onClick = [this, i] { pressSel (encoderStrip (i)); };
         sel->isOn = [this, i] { return display.getStrip() == encoderStrip (i); };
         addAndMakeVisible (*sel);
@@ -788,7 +762,7 @@ Y02RSurface::Y02RSurface (UiContext& c)
     };
     for (auto [name, f] : keys)
     {
-        auto key = std::make_unique<ToggleKey> (utf8 (name), theme.accent, theme);
+        auto key = std::make_unique<ToggleKey> (utf8 (name), kSelLed, theme);
         key->onClick = [this, fn = f] { pressFunction (fn); };
         key->isOn = [this, fn = f] { return display.getFunction() == fn; };
         addAndMakeVisible (*key);
@@ -807,7 +781,7 @@ Y02RSurface::Y02RSurface (UiContext& c)
     };
     for (auto& [name, action] : panel)
     {
-        auto key = std::make_unique<ToggleKey> (name, theme.accent, theme);
+        auto key = std::make_unique<ToggleKey> (name, kSelLed, theme);
         key->onClick = action;
         addAndMakeVisible (*key);
         panelKeys.push_back (std::move (key));
@@ -816,7 +790,7 @@ Y02RSurface::Y02RSurface (UiContext& c)
     // SELECTED CHANNEL: ROUTING 1-8, ST, DIRECT.
     for (int k = 0; k < 10; ++k)
     {
-        auto key = std::make_unique<ToggleKey> (k < 8 ? juce::String (k + 1) : k == 8 ? juce::String ("ST") : juce::String ("DIRECT"), theme.accent, theme);
+        auto key = std::make_unique<ToggleKey> (k < 8 ? juce::String (k + 1) : k == 8 ? juce::String ("ST") : juce::String ("DIRECT"), kSelLed, theme);
         key->onClick = [this, k]
         {
             const int s = display.getStrip();
@@ -845,7 +819,7 @@ Y02RSurface::Y02RSurface (UiContext& c)
     // AUX 1-8 (the send the SEND LEVEL encoder works) and its ON.
     for (int k = 0; k < 9; ++k)
     {
-        auto key = std::make_unique<ToggleKey> (k < 8 ? "AUX " + juce::String (k + 1) : juce::String ("ON"), k < 8 ? theme.accent : onColour, theme);
+        auto key = std::make_unique<ToggleKey> (k < 8 ? "AUX " + juce::String (k + 1) : juce::String ("ON"), k < 8 ? kSelLed : onColour, theme);
         if (k < 8)
         {
             key->onClick = [this, k] { selAux = k; };
@@ -891,7 +865,7 @@ Y02RSurface::Y02RSurface (UiContext& c)
     const char* bands[] = { "LOW", "L-MID", "H-MID", "HIGH", "EQ ON" };
     for (int k = 0; k < 5; ++k)
     {
-        auto key = std::make_unique<ToggleKey> (bands[k], k < 4 ? theme.accent : onColour, theme);
+        auto key = std::make_unique<ToggleKey> (bands[k], k < 4 ? kSelLed : onColour, theme);
         if (k < 4)
         {
             key->onClick = [this, k] { display.band = k; };
@@ -937,7 +911,9 @@ Y02RSurface::Y02RSurface (UiContext& c)
     wheel->setRange (-1.0e6, 1.0e6, 1.0);
     wheel->setRotaryParameters (0.0f, juce::MathConstants<float>::twoPi * 40.0f, false);
     wheel->setMouseDragSensitivity (240);
-    wheel->setColour (juce::Slider::rotarySliderFillColourId, theme.accent);
+    // Drawn by the surface (paint): the slider itself is only its touch.
+    for (auto id : { juce::Slider::rotarySliderFillColourId, juce::Slider::rotarySliderOutlineColourId, juce::Slider::thumbColourId })
+        wheel->setColour (id, juce::Colours::transparentBlack);
     wheel->onValueChange = [this]
     {
         const double v = wheel->getValue();
@@ -947,6 +923,7 @@ Y02RSurface::Y02RSurface (UiContext& c)
             display.turn (d);
             wheelLast = v;
         }
+        repaint (wheel->getBounds());
     };
     wheel->setTitle ("WHEEL");
     addAndMakeVisible (*wheel);
@@ -970,6 +947,14 @@ Y02RSurface::Y02RSurface (UiContext& c)
     };
     universalKey.setTooltip ("The Universal Mixer");
     addAndMakeVisible (universalKey);
+
+    // The panel's keys are the 02R's: cream rubber with an LED (SEL orange, ON
+    // green), the function keys grey.
+    for (auto* child : getChildren())
+        if (auto* k = dynamic_cast<ToggleKey*> (child); k != nullptr && k != &universalKey)
+            k->look = &look();
+    for (auto& [f, key] : functionKeys)
+        key->face = juce::Colour (0xff8f9295);
     refreshAll();
     startTimerHz (30);
 }
@@ -1137,6 +1122,15 @@ juce::Rectangle<int> Y02RSurface::memoryArea() const
 void Y02RSurface::paint (juce::Graphics& g)
 {
     g.fillAll (theme.background);
+    // The 02R's panel between its wooden cheeks, its sections outlined in silkscreen.
+    auto body = getLocalBounds().withTrimmedTop (kTopBar).toFloat();
+    hw::cheeks (g, body.removeFromLeft (14.0f), body.removeFromRight (14.0f));
+    hw::panel (g, body, look());
+    const auto bounds = [] (const juce::Component& c) { return c.getBounds().toFloat(); };
+    if (! routingKeys.empty())
+        hw::section (g, bounds (*routingKeys[0]).getUnion (bounds (*eqKeys.back())).getUnion (bounds (*eqG)).expanded (12.0f, 22.0f).withTrimmedTop (4.0f),
+                     "SELECTED CHANNEL   " + y02r::stripName (display.getStrip()), look());
+    hw::section (g, bounds (flipKey).getUnion (bounds (*encOnKeys.back())).getUnion (bounds (*encoders[0])).expanded (10.0f, 12.0f), "", look());
     auto top = getLocalBounds().removeFromTop (kTopBar);
     g.setColour (theme.panel);
     g.fillRect (top);
@@ -1150,9 +1144,8 @@ void Y02RSurface::paint (juce::Graphics& g)
 
     // SCENE MEMORY: the number to store or recall, as the panel's two digits.
     auto mem = memoryArea().toFloat();
-    g.setColour (theme.textDim);
-    g.setFont (type::font (type::kCaption, true));
-    g.drawText ("SCENE MEMORY", mem.removeFromTop (16.0f), juce::Justification::centredLeft);
+    hw::section (g, mem.expanded (8.0f, 10.0f).withHeight (mem.getHeight() + 2.0f * kKey + 40.0f), "SCENE MEMORY", look());
+    mem.removeFromTop (16.0f);
     auto digits = mem.removeFromLeft (100.0f);
     g.setColour (juce::Colour (0xff1a0c0c));
     g.fillRoundedRectangle (digits, 4.0f);
@@ -1162,9 +1155,7 @@ void Y02RSurface::paint (juce::Graphics& g)
 
     // The stereo meter (21 segments, MAN p.6).
     auto m = meterArea().toFloat();
-    g.setColour (theme.textDim);
-    g.setFont (type::font (type::kCaption, true));
-    g.drawText ("STEREO", m.removeFromBottom (16.0f), juce::Justification::centred);
+    hw::silk (g, m.removeFromBottom (16.0f), "STEREO", look(), 10.5f);
     const char* labels[] = { "CLIP", "-2", "-4", "-6", "-12", "-15", "-24", "-35", "-48", "-60", "-72" };
     const float dbfs[] = { -0.1f, -2.0f, -4.0f, -6.0f, -12.0f, -15.0f, -24.0f, -35.0f, -48.0f, -60.0f, -72.0f };
     auto* st = ctx.engine.getMains().empty() ? nullptr : ctx.engine.getMains()[0].get();
@@ -1172,8 +1163,7 @@ void Y02RSurface::paint (juce::Graphics& g)
     for (int s = 0; s < 11; ++s)
     {
         auto row = juce::Rectangle<float> (m.getX(), m.getY() + segH * (float) s, m.getWidth(), segH);
-        g.setColour (theme.textDim);
-        g.drawText (labels[s], row.removeFromLeft (30.0f), juce::Justification::centredRight);
+        hw::silk (g, row.removeFromLeft (30.0f), labels[s], look(), 9.5f, juce::Justification::centredRight, true);
         for (int ch = 0; ch < 2; ++ch)
         {
             const float level = st != nullptr ? juce::Decibels::gainToDecibels (ctx.meters.get (st, MeterPoint::Output, ch), -100.0f) : -100.0f;
@@ -1185,13 +1175,11 @@ void Y02RSurface::paint (juce::Graphics& g)
     }
 
     // The SELECTED CHANNEL section's blocks, and the faders' names below them.
-    g.setFont (type::font (type::kCaption, true));
-    g.setColour (theme.textDim);
     if (! routingKeys.empty())
     {
-        const auto r = routingKeys[0]->getBounds();
-        g.drawText ("SELECTED CHANNEL  " + y02r::stripName (display.getStrip()), r.withY (r.getY() - 18).withHeight (16).withWidth (400),
-                    juce::Justification::centredLeft);
+        // The PARAMETER wheel: a big knurled knob.
+        const auto w = wheel->getBounds().toFloat();
+        hw::knob (g, w, (float) std::fmod (wheel->getValue() / 48.0 + 1.0e6, 1.0), look());
     }
     g.setFont (type::font (type::kLabel, true));
     const int aux = auxShown();
@@ -1203,21 +1191,23 @@ void Y02RSurface::paint (juce::Graphics& g)
                           : s < y02r::kTape ? juce::String (17 + 2 * (s - 16)) + "/" + juce::String (18 + 2 * (s - 16))
                           : s < y02r::kEff  ? "T" + juce::String (s - y02r::kTape + 1)
                                             : y02r::stripName (s);
-        g.setColour (aux >= 0 ? theme.accent : theme.text);
-        g.drawText (name, f.withY (f.getBottom()).withHeight (20), juce::Justification::centred);
+        hw::silk (g, f.withY (f.getBottom()).withHeight (20).toFloat(), name, look(), 12.0f);
+        if (aux >= 0)
+        {
+            g.setColour (kSelLed.withAlpha (0.8f));
+            g.fillRect (f.withY (f.getBottom() + 18).withHeight (2).reduced (16, 0));
+        }
         if (i == 16 || i == 20)
         {
-            g.setColour (theme.outline);
+            g.setColour (look().silkDim.withAlpha (0.5f));
             g.drawVerticalLine (f.getX() - 4, (float) f.getY(), (float) f.getBottom() + 20.0f);
         }
     }
     if (aux >= 0)
     {
-        g.setColour (theme.accent);
-        g.setFont (type::font (type::kCaption, true));
-        const auto f = faders[0]->getBounds();
-        g.drawText ("FADERS: SENDS TO AUX " + juce::String (aux + 1), f.withY (f.getY() - 18).withHeight (16).withWidth (300),
-                    juce::Justification::centredLeft);
+        const auto f = faders[0]->getBounds().toFloat();
+        hw::silk (g, f.withY (f.getY() - 16.0f).withHeight (14.0f).withWidth (300.0f), "FADERS: SENDS TO AUX " + juce::String (aux + 1), look(), 11.0f,
+                  juce::Justification::centredLeft);
     }
 }
 

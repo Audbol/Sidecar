@@ -6,6 +6,11 @@
 #include <atomic>
 #include <functional>
 
+namespace livedaw::ui::hw
+{
+struct Look;
+}
+
 namespace livedaw::ui::universal
 {
 
@@ -57,6 +62,10 @@ public:
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+
+    /** Drawn as a console's fader (a console surface's hardware look: its slot,
+        its moulded cap, its silkscreen scale); null: the Universal Mixer's. */
+    const hw::Look* look = nullptr;
 
 private:
     juce::Rectangle<float> track() const noexcept;
@@ -128,6 +137,10 @@ public:
     std::function<bool()> isOn, isHalfOn;
     /** The console the key's page comes from (devices::wing), as a tag in its corner. */
     juce::String device;
+    /** Drawn as a console's rubber key (a console surface's hardware look), on
+        `face` if it has its own colour; null: the Universal Mixer's flat key. */
+    const hw::Look* look = nullptr;
+    juce::Colour face;
     void refresh();
 
     void paintButton (juce::Graphics&, bool highlighted, bool down) override;

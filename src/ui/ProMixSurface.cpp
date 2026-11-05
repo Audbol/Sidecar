@@ -4,6 +4,7 @@
 #include "engine/ProMix.h"
 #include "engine/ProMixMidi.h"
 #include "engine/Show.h"
+#include "ui/HardwareLook.h"
 #include "ui/MeterBank.h"
 
 #include <cmath>
@@ -22,7 +23,13 @@ namespace
     constexpr int kStripWidth = 92;
 
     // The LCD's colours: a backlit panel, light pixels, the cursor inverted.
-    const juce::Colour kLcd (0xff0e221d), kLcdFrame (0xff2b4a40), kPixel (0xffa6eccd), kPixelDim (0xff5c8f7a);
+    // The ProMix 01's hardware look: its yellow-green LCD with dark pixels.
+    const hw::Look& look() { return hw::Look::promix(); }
+    const juce::Colour kLcd = hw::Look::promix().lcd, kLcdFrame = hw::Look::promix().lcd.darker (0.2f),
+                       kPixel = hw::Look::promix().lcdPixel, kPixelDim = hw::Look::promix().lcdDim;
+    // Its LEDs: SEL amber, ON green; its function keys' colours.
+    const juce::Colour kSelLed (0xffffb030), kOnLed (0xff4cd964), kOrangeKey (0xffd9762c), kBlueKey (0xff7f96bf),
+                       kGreenKey (0xff6aa676);
 
     // Parameter numbers (User's Guide, Add-5 to Add-15).
     constexpr int kChOn = 22, kChPan = 44, kSendLevel = 68, kSendPre = 136, kSend34Pan = 140, kCue = 157, kPhase = 179;
@@ -122,25 +129,21 @@ namespace promix
         for (auto [db, text] : scale)
         {
             const float y = t.getBottom() - t.getHeight() * law.toPosition (db);
-            g.setColour (theme.textDim);
-            g.drawText (text, juce::Rectangle<float> (0.0f, y - 7.0f, 22.0f, 14.0f), juce::Justification::centredRight);
-            g.setColour (theme.outline);
-            g.drawHorizontalLine ((int) y, cx - 14.0f, cx + 14.0f);
+            hw::silk (g, juce::Rectangle<float> (0.0f, y - 7.0f, 22.0f, 14.0f), text, look(), 10.0f, juce::Justification::centredRight, true);
+            g.setColour (look().silkDim.withAlpha (0.6f));
+            g.drawHorizontalLine ((int) y, cx - 14.0f, cx - 6.0f);
+            g.drawHorizontalLine ((int) y, cx + 6.0f, cx + 14.0f);
         }
-        g.setColour (theme.textDim);
-        g.drawText (juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x9e")), juce::Rectangle<float> (0.0f, t.getBottom() - 7.0f, 22.0f, 14.0f),
-                    juce::Justification::centredRight);
-        // The slot, then the cap.
-        g.setColour (theme.well);
-        g.fillRoundedRectangle (juce::Rectangle<float> (cx - 3.0f, t.getY(), 6.0f, t.getHeight()), 3.0f);
+        hw::silk (g, juce::Rectangle<float> (0.0f, t.getBottom() - 7.0f, 22.0f, 14.0f), juce::String (juce::CharPointer_UTF8 ("\xe2\x88\x9e")), look(),
+                  10.0f, juce::Justification::centredRight, true);
+        hw::faderSlot (g, cx, t.getY(), t.getBottom(), look());
         if (param < 0)
             return;
-        const float y = yOf (step);
-        auto cap = juce::Rectangle<float> (cx - 16.0f, y - 12.0f, 32.0f, 24.0f);
-        g.setColour (juce::Colour (0xffd9dcdf));
-        g.fillRoundedRectangle (cap, 3.0f);
-        g.setColour (juce::Colour (0xff3a3d42));
-        g.drawHorizontalLine ((int) y, cap.getX() + 3.0f, cap.getRight() - 3.0f);
+        // ST IN's cap black, RTN / SEND's blue-grey, ST OUT's red (the console's).
+        const auto capColour = param == 16 ? juce::Colour (0xff222325)
+                             : param >= 17 && param <= 20 ? juce::Colour (0xff8ea0b6)
+                             : param == 21 ? juce::Colour (0xffc8302a) : juce::Colour();
+        hw::faderCap (g, cx, yOf (step), 32.0f, look(), capColour);
     }
 
     void Fader::mouseDown (const juce::MouseEvent&)
@@ -696,12 +699,9 @@ namespace promix
     void Display::paint (juce::Graphics& g)
     {
         auto b = getLocalBounds().toFloat();
-        g.setColour (kLcd);
-        g.fillRoundedRectangle (b, 6.0f);
-        g.setColour (kLcdFrame);
-        g.drawRoundedRectangle (b.reduced (0.5f), 6.0f, 1.5f);
+        hw::lcd (g, b, look());
         // The FUNCTION and MEMORY areas along the top.
-        auto top = b.reduced (14.0f, 8.0f).removeFromTop (28.0f);
+        auto top = b.reduced (16.0f, 12.0f).removeFromTop (26.0f);
         g.setColour (kPixel);
         g.setFont (lcdFont (type::kValue, true));
         g.drawText (title(), top, juce::Justification::centredLeft);
@@ -801,7 +801,7 @@ ProMixSurface::ProMixSurface (UiContext& c)
         faders[(size_t) i] = std::make_unique<promix::Fader> (ctx, theme);
         addAndMakeVisible (*faders[(size_t) i]);
         auto& sel = selKeys[(size_t) i];
-        sel = std::make_unique<ToggleKey> ("SEL", theme.accent, theme);
+        sel = std::make_unique<ToggleKey> ("SEL", kSelLed, theme);
         sel->onClick = [this, i] { pressSel (i); };
         sel->isOn = [this, i]
         {
@@ -830,7 +830,10 @@ ProMixSurface::ProMixSurface (UiContext& c)
                                                       { "UTILITY", Function::Utility }, { "MIDI", Function::Midi } };
     for (auto [name, f] : keys)
     {
-        auto key = std::make_unique<ToggleKey> (name, theme.accent, theme);
+        auto key = std::make_unique<ToggleKey> (name, kSelLed, theme);
+        // The panel's groups: METER ... CUE orange, SEND1-4 blue, EQ and LIBRARY green, the rest cream.
+        const int n = (int) functionKeys.size();
+        key->face = n < 4 ? kOrangeKey : n < 8 ? kBlueKey : n < 12 ? kGreenKey : juce::Colour();
         key->onClick = [this, fn = f] { pressFunction (fn); };
         key->isOn = [this, fn = f]
         {
@@ -854,7 +857,7 @@ ProMixSurface::ProMixSurface (UiContext& c)
     };
     for (auto& [name, action] : panel)
     {
-        auto key = std::make_unique<ToggleKey> (name, theme.accent, theme);
+        auto key = std::make_unique<ToggleKey> (name, kSelLed, theme);
         key->onClick = action;
         addAndMakeVisible (*key);
         panelKeys.push_back (std::move (key));
@@ -864,7 +867,9 @@ ProMixSurface::ProMixSurface (UiContext& c)
     wheel->setRange (-1.0e6, 1.0e6, 1.0);
     wheel->setRotaryParameters (0.0f, juce::MathConstants<float>::twoPi * 40.0f, false);
     wheel->setMouseDragSensitivity (240);
-    wheel->setColour (juce::Slider::rotarySliderFillColourId, theme.accent);
+    // Drawn by the surface (paint): the slider itself is only its touch.
+    for (auto id : { juce::Slider::rotarySliderFillColourId, juce::Slider::rotarySliderOutlineColourId, juce::Slider::thumbColourId })
+        wheel->setColour (id, juce::Colours::transparentBlack);
     wheel->onValueChange = [this]
     {
         const double v = wheel->getValue();
@@ -874,6 +879,7 @@ ProMixSurface::ProMixSurface (UiContext& c)
             display.turn (d);
             wheelLast = v;
         }
+        repaint (wheel->getBounds());
     };
     wheel->setTitle ("PARAMETER");
     addAndMakeVisible (*wheel);
@@ -897,6 +903,10 @@ ProMixSurface::ProMixSurface (UiContext& c)
     };
     universalKey.setTooltip ("The Universal Mixer");
     addAndMakeVisible (universalKey);
+    // The panel's keys are the ProMix's: rubber with an LED.
+    for (auto* child : getChildren())
+        if (auto* k = dynamic_cast<ToggleKey*> (child); k != nullptr && k != &universalKey)
+            k->look = &look();
     refreshAll();
     startTimerHz (30);
 }
@@ -1078,6 +1088,26 @@ juce::Rectangle<int> ProMixSurface::memoryArea() const
 void ProMixSurface::paint (juce::Graphics& g)
 {
     g.fillAll (theme.background);
+    {
+        auto body = getLocalBounds().withTrimmedTop (kTopBar).toFloat();
+        // The silver rack ears, then the panel.
+        for (auto ear : { body.removeFromLeft (14.0f), body.removeFromRight (14.0f) })
+        {
+            g.setGradientFill (juce::ColourGradient (juce::Colour (0xffd2d5d8), ear.getX(), ear.getY(), juce::Colour (0xff8f9396), ear.getRight(),
+                                                     ear.getY(), false));
+            g.fillRect (ear);
+        }
+        hw::panel (g, body, look());
+        // The light label band across the strips, between their keys and faders.
+        if (onKeys[0] != nullptr)
+        {
+            const float y = (float) onKeys[0]->getBottom() + 3.0f;
+            g.setColour (juce::Colour (0xffbfc2c5));
+            g.fillRect (juce::Rectangle<float> ((float) selKeys[0]->getX() - 6.0f, y, (float) onKeys[kNumFaders - 1]->getRight() - (float) selKeys[0]->getX() + 12.0f, 12.0f));
+        }
+        // The PARAMETER wheel: a big knurled knob.
+        hw::knob (g, wheel->getBounds().toFloat(), (float) std::fmod (wheel->getValue() / 48.0 + 1.0e6, 1.0), look());
+    }
     auto top = getLocalBounds().removeFromTop (kTopBar);
     g.setColour (theme.panel);
     g.fillRect (top);
@@ -1091,9 +1121,7 @@ void ProMixSurface::paint (juce::Graphics& g)
 
     // SCENE MEMORY: the number to store or recall, as the panel's two digits.
     auto mem = memoryArea().toFloat();
-    g.setColour (theme.textDim);
-    g.setFont (type::font (type::kCaption, true));
-    g.drawText ("SCENE MEMORY", mem.removeFromTop (16.0f), juce::Justification::centredLeft);
+    hw::silk (g, mem.removeFromTop (16.0f), "SCENE MEMORY", look(), 11.0f, juce::Justification::centredLeft);
     auto digits = mem.removeFromLeft (110.0f);
     g.setColour (juce::Colour (0xff1a0c0c));
     g.fillRoundedRectangle (digits, 4.0f);
@@ -1103,9 +1131,7 @@ void ProMixSurface::paint (juce::Graphics& g)
 
     // The stereo output's LED meter (p.19): CLIP, 15 ... 0 ... -40.
     auto m = meterArea().toFloat();
-    g.setColour (theme.textDim);
-    g.setFont (type::font (type::kCaption, true));
-    g.drawText ("ST OUT", m.removeFromBottom (16.0f), juce::Justification::centred);
+    hw::silk (g, m.removeFromBottom (16.0f), "ST OUT", look(), 10.5f);
     const char* labels[] = { "CLIP", "15", "12", "9", "6", "3", "0", "-6", "-12", "-18", "-24", "-40" };
     const float dbfs[] = { -0.1f, -5.0f, -8.0f, -11.0f, -14.0f, -17.0f, -20.0f, -26.0f, -32.0f, -38.0f, -44.0f, -60.0f };
     auto* st = ctx.engine.getMains().empty() ? nullptr : ctx.engine.getMains()[0].get();
@@ -1113,8 +1139,7 @@ void ProMixSurface::paint (juce::Graphics& g)
     for (int s = 0; s < 12; ++s)
     {
         auto row = juce::Rectangle<float> (m.getX(), m.getY() + segH * (float) s, m.getWidth(), segH);
-        g.setColour (theme.textDim);
-        g.drawText (labels[s], row.removeFromLeft (34.0f), juce::Justification::centredRight);
+        hw::silk (g, row.removeFromLeft (34.0f), labels[s], look(), 9.5f, juce::Justification::centredRight, true);
         for (int ch = 0; ch < 2; ++ch)
         {
             const float level = st != nullptr ? juce::Decibels::gainToDecibels (ctx.meters.get (st, MeterPoint::Output, ch), -100.0f) : -100.0f;
@@ -1132,11 +1157,10 @@ void ProMixSurface::paint (juce::Graphics& g)
         const auto f = faders[(size_t) i]->getBounds();
         const char* rs[] = { "RTN1", "RTN2", "SEND3", "SEND4" };
         const juce::String name = i < 16 ? juce::String (i + 1) : i == 16 ? juce::String ("ST IN") : i == 17 ? juce::String (rs[rtnSend]) : juce::String ("ST OUT");
-        g.setColour (i == 17 ? theme.accent : theme.text);
-        g.drawText (name, f.withY (f.getBottom()).withHeight (22), juce::Justification::centred);
+        hw::silk (g, f.withY (f.getBottom()).withHeight (22).toFloat(), name, look(), 12.0f);
         if (i == 16 || i == 17)
         {
-            g.setColour (theme.outline);
+            g.setColour (look().silkDim.withAlpha (0.5f));
             g.drawVerticalLine (f.getX() - 4, (float) f.getY(), (float) f.getBottom() + 20.0f);
         }
     }

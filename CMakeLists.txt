@@ -286,6 +286,7 @@ set(LIVEDAW_UI_SOURCES
     src/ui/X32Surface.cpp
     src/ui/ProMixSurface.cpp
     src/ui/Y02RSurface.cpp
+    src/ui/HardwareLook.cpp
     src/ui/universal/Theme.cpp
     src/ui/universal/Widgets.cpp
     src/ui/universal/MixerView.cpp

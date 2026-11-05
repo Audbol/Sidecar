@@ -323,6 +323,19 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   - the cursor keys, ENTER and the wheel
   - the SELECTED CHANNEL section: ROUTING, AUX and SEND LEVEL, PAN, EQ
   - SCENE MEMORY and the stereo meter
+- The X32, ProMix 01 and 02R surfaces look like their consoles (compared with photos
+  of the real ones; drawn by Sidecar, no maker's artwork):
+  - the X32: its titanium frame, slate sections outlined in silkscreen, light rubber
+    keys lit in their colours, knurled knobs, moulded fader caps
+  - the ProMix 01: its charcoal panel between silver rack ears, the yellow-green LCD
+    with dark pixels, cream keys with LEDs, the function keys in their colour groups,
+    ivory caps (ST IN black, RTN / SEND blue-grey, ST OUT red)
+  - the 02R: its dark grey panel between wooden cheeks, the blue LCD, cream keys
+    with LEDs, ivory caps and STEREO's red, encoders with LED rings, the big wheel
+
+  `ui::hw` (`src/ui/HardwareLook.*`) draws them. Keys, faders and knobs take a
+  console's look when its surface asks; the Universal Mixer and the WING are
+  unchanged.
 - A new channel takes its console's factory settings, colour and name by its slot,
   not its id (a channel's id is 1-based and kept by shows).
 - Fixed: the X32 surface's UNIVERSAL MIXER key crashed the app when the Universal

@@ -1,4 +1,5 @@
 #include "ui/X32ChannelSection.h"
+#include "ui/HardwareLook.h"
 
 #include "engine/Models.h"
 
@@ -207,14 +208,9 @@ void ChannelSection::timerCallback()
 
 void ChannelSection::paint (juce::Graphics& g)
 {
+    // Each section on its slate panel, outlined in silkscreen, its title in the outline.
     for (auto& s : sections)
-    {
-        g.setColour (juce::Colour (0xff1b1d21));
-        g.fillRoundedRectangle (s.area.toFloat(), 6.0f);
-        g.setColour (juce::Colour (0xff8b9099));
-        g.setFont (type::font (type::kCaption, true));
-        g.drawText (s.title, s.area.reduced (8, 6).removeFromTop (16), juce::Justification::centredLeft);
-    }
+        hw::section (g, s.area.toFloat().withTrimmedTop (6.0f), s.title, hw::Look::x32());
     // GATE and DYNAMICS: their gain reduction, as the X32's LED bars.
     auto reduction = [&g, this] (const Section& s, float db)
     {

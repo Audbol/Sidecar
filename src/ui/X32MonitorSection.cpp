@@ -1,4 +1,5 @@
 #include "ui/X32MonitorSection.h"
+#include "ui/HardwareLook.h"
 
 namespace livedaw::ui::x32
 {
@@ -68,12 +69,9 @@ void MonitorSection::timerCallback()
 
 void MonitorSection::paint (juce::Graphics& g)
 {
-    g.setColour (juce::Colour (0xff1b1d21));
-    g.fillRoundedRectangle (getLocalBounds().toFloat(), 6.0f);
-    g.setColour (juce::Colour (0xff8b9099));
+    hw::section (g, getLocalBounds().toFloat().reduced (1.0f).withTrimmedTop (6.0f), "MONITOR", hw::Look::x32());
+    g.setColour (hw::Look::x32().silk);
     g.setFont (type::font (type::kCaption, true));
-    auto r = getLocalBounds().reduced (8, 6);
-    g.drawText ("MONITOR", r.removeFromTop (16), juce::Justification::centredLeft);
     // TALKBACK's caption above its knob (the lower half).
     const auto lower = getLocalBounds().reduced (8).withTrimmedTop (getHeight() / 2);
     g.drawText ("TALKBACK", lower.withHeight (16), juce::Justification::centredLeft);
