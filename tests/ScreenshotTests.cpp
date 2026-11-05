@@ -659,6 +659,32 @@ private:
         touch (cell, cell);
         expect (! gate.on.load(), "a tap on the encoder row is its push");
         gate.on = true;
+
+        // HOME config (p.45): LINK on encoder 1's push, the pair then kept alike;
+        // SOURCE turned through the X32's list, patched by SELECT.
+        display.showScreen (ui::x32::Display::Screen::Home, 1);
+        expectEquals (display.getEncoder (0).pushLabel, juce::String ("LINK"));
+        expect (! display.getEncoder (0).pushOn());
+        channels[12]->params.faderDb = -12.0f;
+        display.pushEncoder (0);
+        expect (display.getEncoder (0).pushOn(), "13-14 linked");
+        expectWithinAbsoluteError (channels[13]->params.faderDb.load(), -12.0f, 0.2f, "linking: 14 takes 13's fader");
+        channels[13]->params.faderDb = -6.0f;
+        engine.getWing().followX32Links();
+        expectWithinAbsoluteError (channels[12]->params.faderDb.load(), -6.0f, 0.2f, "a move on 14 reaches 13");
+        expectEquals (display.getEncoder (2).turn.label, juce::String ("SOURCE"));
+        const int inputBefore = channels[12]->params.inputLeft.load();
+        display.getEncoder (2).turn.set (40.0f / 64.0f);
+        expectEquals (display.getEncoder (2).turn.text(), juce::String ("USB R"));
+        expectEquals (channels[12]->params.inputLeft.load(), inputBefore, "turning alone patches nothing");
+        expect (display.getEncoder (2).pushOn());
+        display.pushEncoder (2);
+        expect (! display.getEncoder (2).pushOn());
+        expect (channels[12]->params.inputLeft.load() != inputBefore, "SELECT patches the USB player's R");
+        display.getEncoder (2).turn.set (13.0f / 64.0f);
+        display.pushEncoder (2); // back to In 13
+        display.pushEncoder (0);
+        expect (! display.getEncoder (0).pushOn(), "unlinked again");
         display.showScreen (ui::x32::Display::Screen::Home, 4);
         expectEquals (display.getEncoder (2).turn.label, juce::String ("GAIN"));
 
@@ -923,7 +949,7 @@ private:
                 const std::tuple<S, int, const char*> pages[] = { { S::Scenes, 0, "scenes" }, { S::Scenes, 1, "param-safe" }, { S::Monitor, 0, "monitor" },
                                                                   { S::Monitor, 1, "talk-a" }, { S::Monitor, 3, "osc" }, { S::Assign, 0, "assign" },
                                                                   { S::Usb, 0, "usb" }, { S::Setup, 2, "scribble" }, { S::Setup, 3, "preamps" },
-                                                                  { S::Meters, 4, "rta" } };
+                                                                  { S::Meters, 4, "rta" }, { S::Home, 1, "config" } };
                 for (auto [screen, page, shot] : pages)
                 {
                     display.showScreen (screen, page);

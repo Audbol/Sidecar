@@ -76,6 +76,9 @@ public:
         to a query (an address alone), else empty; `set` gets how many values
         were set, -1 for an unknown address or a console that isn't an X32. */
     juce::String runX32Text (const juce::String& text, int& set);
+    /** Linked X32 pairs kept alike after the panel changed one side (called on
+        the X32 surface's timer). */
+    void followX32Links() { ld::ld_x32_follow_links (x32); }
     /** Renames the console at once (discovery and connected clients). */
     void setName (const juce::String&);
     /** The model the console reports (discovery, /? and /$syscfg/$cnsmdl), as

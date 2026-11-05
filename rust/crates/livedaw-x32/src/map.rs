@@ -180,6 +180,15 @@ pub struct Node {
     pub children: Vec<usize>,
 }
 
+/// What `Console::follow_links` saw last: the pairs linked, their odd strips' values.
+#[derive(Debug, Default)]
+pub struct LinkFollower {
+    linked: std::collections::HashSet<String>,
+    last: HashMap<usize, Val>,
+    /// Where each odd strip's entries begin.
+    first: HashMap<String, usize>,
+}
+
 /// The whole tree.
 #[derive(Debug, Default)]
 pub struct Tree {
@@ -1117,6 +1126,47 @@ impl<'a> Console<'a> {
         match self.tree.find(&format!("/{kind}/{other:0w$}/{rest}", w = n.len())) {
             Some(Found::Leaf(i)) => Some(i),
             _ => None,
+        }
+    }
+
+    /// Linked pairs kept alike when the engine's values were changed around the
+    /// server (the app's own panel): what changed on one side since the last
+    /// call goes to the other, for what the link shares. A pair just linked
+    /// takes its odd strip's values.
+    pub fn follow_links(&self, links: &mut LinkFollower) {
+        for (kind, link, pairs) in [("ch", "chlink", 16), ("auxin", "auxlink", 4), ("fxrtn", "fxlink", 4), ("bus", "buslink", 8), ("mtx", "mtxlink", 3)] {
+            for k in 0..pairs {
+                let linked = self.value_at(&format!("/config/{link}/{}-{}", 2 * k + 1, 2 * k + 2)) != 0;
+                let key = format!("{kind}{k}");
+                let fresh = linked && links.linked.insert(key.clone());
+                if !linked {
+                    links.linked.remove(&key);
+                    continue;
+                }
+                let prefix = format!("/{kind}/{:02}/", 2 * k + 1);
+                // A strip's entries are built together, one after the other.
+                let first = *links.first.entry(prefix.clone()).or_insert_with(|| {
+                    self.tree.entries.iter().position(|e| e.path.starts_with(&prefix)).unwrap_or(usize::MAX)
+                });
+                for i in first.min(self.tree.entries.len())..self.tree.entries.len() {
+                    let path = &self.tree.entries[i].path;
+                    if !path.starts_with(&prefix) {
+                        break;
+                    }
+                    let Some(j) = self.linked_partner(path) else { continue };
+                    let (a, b) = (self.get(i), self.get(j));
+                    if a != b {
+                        // The odd strip's value unless only the even one changed.
+                        let even = !fresh && links.last.get(&i) == Some(&a);
+                        if even {
+                            self.set_one(i, b);
+                        } else {
+                            self.set_one(j, a);
+                        }
+                    }
+                    links.last.insert(i, self.get(i));
+                }
+            }
         }
     }
 

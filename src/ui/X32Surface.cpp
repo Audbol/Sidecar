@@ -378,6 +378,7 @@ void X32Surface::selectionChanged()
 
 void X32Surface::timerCallback()
 {
+    ctx.engine.getWing().followX32Links(); // LINK: the panel's changes reach the pair's other strip
     if (isCovered())
         return;
     for (int i = 0; i < getNumInputFaders(); ++i)

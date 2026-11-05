@@ -133,6 +133,14 @@ private:
     KnobBinding enumKnob (const juce::String& label, const juce::String& path, const juce::StringArray& choices);
     /** An X32 address's values as the console answers them ("AN1-8"), or empty. */
     juce::String x32Value (const juce::String& address) const;
+    /** A strip's X32 address ("/ch/05", "/auxin/02", "/fxrtn/01", "/bus/03",
+        "/mtx/01"; empty for the mains), and its pair's link ("/config/chlink/5-6";
+        empty for a strip that has none). */
+    juce::String x32Address (const Strip&) const;
+    juce::String linkAddress (const Strip&) const;
+    /** A `config/source` value as the X32 names it (0 OFF, In 01-32, Aux 1-6,
+        USB L / R, Fx 1L-4R, Bus 01-16). */
+    static juce::String sourceName (int);
     /** SETUP > remote: the X32's MIDI (step 6b). */
     void assignRemoteEncoders();
     X32Midi* x32Midi() const;
@@ -146,6 +154,9 @@ private:
     /** SCENES' safes tab: the section the first encoder points at; a talkback
         tab's bus; HOME's DCA and mute group to assign. */
     int safeSection = 0, talkBus = 0, homeDca = 0, homeMuteGroup = 0;
+    /** HOME config's SOURCE turned and not yet selected (-1 none), and for which strip. */
+    int pendingSource = -1;
+    const Strip* pendingSourceStrip = nullptr;
     /** SETUP's preamps tab: the block of four inputs shown. */
     int preampBlock = 0;
     /** ASSIGN's control being edited (0-3 encoders 1-4, 4-11 keys 5-12). */

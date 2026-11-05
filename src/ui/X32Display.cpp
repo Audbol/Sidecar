@@ -471,12 +471,26 @@ void Display::assignEncoders()
         };
         const juce::StringArray keyFilters { "FLAT", "LOWPASS", "HIGHPASS", "BANDPASS", "NOTCH" };
         auto faderOf = [&] { return bindFader ("FADER", p.faderDb); };
+        // LINK (encoder 1's push, p.45): the strip's odd / even pair linked.
+        std::function<void()> linkPush;
+        std::function<bool()> linkOn;
+        if (const auto path = linkAddress (*s); path.isNotEmpty())
+        {
+            linkOn = [this, path] { return x32Value (path) == "ON"; };
+            linkPush = [this, path, linkOn]
+            {
+                int set = 0;
+                ctx.engine.getWing().runX32Text (path + (linkOn() ? " OFF" : " ON"), set);
+                ctx.engine.getWing().followX32Links(); // the even strip takes the odd one's values now
+                repaint();
+            };
+        }
         switch (tab)
         {
             case 0: // home
                 if (layer == 0)
                 {
-                    encoders[0] = encoder (gainOf());
+                    encoders[0] = encoder (gainOf(), linkPush ? "LINK" : "", linkPush, linkOn);
                     encoders[1] = encoder (bindParam (models::Dynamics, gate.model.load(), gate.values, "thr", "GATE"), "GATE", toggle (gate.on), isOn (gate.on));
                     encoders[2] = encoder (orderBit (2, "INSERT"), "INSERT", toggle (p.preInsert().on), isOn (p.preInsert().on));
                     encoders[3] = encoder (orderBit (1, "DYN POS"), "EQ", toggle (eq.on), isOn (eq.on));
@@ -511,11 +525,40 @@ void Display::assignEncoders()
                 }
                 break;
             case 1: // config
-                encoders[0] = encoder (gainOf());
+            {
+                encoders[0] = encoder (gainOf(), linkPush ? "LINK" : "", linkPush, linkOn);
                 encoders[1] = encoder (bindFreq ("LOW CUT", p.filter().lowCutFreq, 20.0f, 400.0f, 20.0f), "LOW CUT", toggle (p.filter().lowCut), isOn (p.filter().lowCut));
+                // SOURCE (p.45): turned through the X32's list, SELECT (the push) patches it.
+                const auto address = x32Address (*s);
+                if (address.startsWith ("/ch/") || address.startsWith ("/auxin/"))
+                {
+                    const auto path = address + "/config/source";
+                    const auto shown = [this, path, s] { return pendingSource >= 0 && pendingSourceStrip == s ? pendingSource : x32Value (path).getIntValue(); };
+                    KnobBinding source;
+                    source.label = "SOURCE";
+                    source.steps = 65.0f;
+                    source.get = [shown] { return (float) shown() / 64.0f; };
+                    source.set = [this, s] (float v)
+                    {
+                        pendingSource = juce::jlimit (0, 64, juce::roundToInt (v * 64.0f));
+                        pendingSourceStrip = s;
+                        repaint();
+                    };
+                    source.text = [shown] { return sourceName (shown()); };
+                    encoders[2] = encoder (source, "SELECT", [this, path, s]
+                    {
+                        if (pendingSource < 0 || pendingSourceStrip != s)
+                            return;
+                        int set = 0;
+                        ctx.engine.getWing().runX32Text (path + " " + juce::String (pendingSource), set);
+                        pendingSource = -1;
+                        repaint();
+                    }, [this, s] { return pendingSource >= 0 && pendingSourceStrip == s; });
+                }
                 encoders[3] = encoder (bindLinear ("DELAY", p.input.delay, 0.3f, 500.0f, " ms", 1, 0.3f), "DELAY", toggle (p.input.delayOn), isOn (p.input.delayOn));
                 encoders[4] = encoder (orderBit (2, "INSERT POS"), "INSERT", toggle (p.preInsert().on), isOn (p.preInsert().on));
                 break;
+            }
             case 2: // gate
                 if (layer == 0)
                 {
@@ -1034,6 +1077,56 @@ juce::Array<juce::File> Display::presets (const char* extension)
     auto files = ShowPanel::libraryFolder().findChildFiles (juce::File::findFiles, false, juce::String ("*") + extension);
     std::sort (files.begin(), files.end(), [] (const juce::File& a, const juce::File& b) { return a.getFileName().compareNatural (b.getFileName()) < 0; });
     return files;
+}
+
+juce::String Display::x32Address (const Strip& s) const
+{
+    auto& e = ctx.engine;
+    const auto at = [&s] (const MixerEngine::StripList& list)
+    {
+        for (size_t i = 0; i < list.size(); ++i)
+            if (list[i].get() == &s)
+                return (int) i;
+        return -1;
+    };
+    const auto two = [] (int n) { return juce::String (n).paddedLeft ('0', 2); };
+    if (const int i = at (e.getChannels()); i >= 0)
+        return "/ch/" + two (i + 1);
+    if (const int i = at (e.getAux()); i >= 0)
+        return i < 8 ? "/auxin/" + two (i + 1) : "/fxrtn/" + two (i - 7);
+    if (at (e.getBuses()) >= 0)
+        return "/bus/" + two (s.getId() + 1);
+    if (const int i = at (e.getMatrices()); i >= 0)
+        return "/mtx/" + two (i + 1);
+    return {};
+}
+
+juce::String Display::linkAddress (const Strip& s) const
+{
+    const auto address = x32Address (s);
+    const auto kind = address.fromFirstOccurrenceOf ("/", false, false).upToFirstOccurrenceOf ("/", false, false);
+    const int n = address.fromLastOccurrenceOf ("/", false, false).getIntValue();
+    const juce::String node = kind == "ch" ? "chlink" : kind == "auxin" ? "auxlink" : kind == "fxrtn" ? "fxlink" : kind == "bus" ? "buslink" : kind == "mtx" ? "mtxlink" : "";
+    if (n < 1 || node.isEmpty())
+        return {};
+    const int odd = (n - 1) / 2 * 2 + 1;
+    return "/config/" + node + "/" + juce::String (odd) + "-" + juce::String (odd + 1);
+}
+
+juce::String Display::sourceName (int k)
+{
+    const auto two = [] (int n) { return juce::String (n).paddedLeft ('0', 2); };
+    if (k >= 1 && k <= 32)
+        return "In " + two (k);
+    if (k >= 33 && k <= 38)
+        return "Aux " + juce::String (k - 32);
+    if (k == 39 || k == 40)
+        return k == 39 ? "USB L" : "USB R";
+    if (k >= 41 && k <= 48)
+        return "Fx " + juce::String ((k - 41) / 2 + 1) + ((k - 41) % 2 == 0 ? "L" : "R");
+    if (k >= 49 && k <= 64)
+        return "Bus " + two (k - 48);
+    return "OFF";
 }
 
 juce::String Display::x32Value (const juce::String& address) const
@@ -1928,7 +2021,8 @@ void Display::paintHomeFlow (juce::Graphics& g, juce::Rectangle<int> area, Strip
             checkBox (g, top.removeFromTop (rowH), "Delay", p.input.delayOn.load());
             checkBox (g, top.removeFromTop (rowH), "Lo Cut", p.filter().lowCut.load());
             in.removeFromTop (3.0f);
-            chip (g, in.removeFromTop (12.0f).reduced (4.0f, 0.0f), "Link", p.stereo.load());
+            const auto link = linkAddress (s);
+            chip (g, in.removeFromTop (12.0f).reduced (4.0f, 0.0f), "Link", link.isNotEmpty() && x32Value (link) == "ON");
             in.removeFromTop (3.0f);
             const float trim = p.input.trimDb.load();
             valueBox (g, in.removeFromTop (13.0f).reduced (2.0f, 0.0f), (trim > 0.0f ? "+" : "") + juce::String (trim, 1));
@@ -2139,8 +2233,13 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
             else if (tab == 1)
             {
                 auto& p = s->params;
-                paintRows (g, r.reduced (12), { "SOURCE", "GAIN", "LOW CUT", "DELAY", "INSERT" },
-                           { p.inputLeft.load() >= 0 ? "IN " + juce::String (p.inputLeft.load() + 1) : juce::String ("OFF"),
+                const auto address = x32Address (*s), link = linkAddress (*s);
+                juce::String source = p.inputLeft.load() >= 0 ? "IN " + juce::String (p.inputLeft.load() + 1) : juce::String ("OFF");
+                if (address.startsWith ("/ch/") || address.startsWith ("/auxin/"))
+                    source = sourceName (x32Value (address + "/config/source").getIntValue())
+                             + (pendingSource >= 0 && pendingSourceStrip == s ? "  >  " + sourceName (pendingSource) + " (SELECT)" : juce::String());
+                paintRows (g, r.reduced (12), { "SOURCE", "LINK", "GAIN", "LOW CUT", "DELAY", "INSERT" },
+                           { source, link.isEmpty() ? juce::String ("-") : x32Value (link) + "  (" + link.fromLastOccurrenceOf ("/", false, false) + ")",
                              juce::String (p.input.trimDb.load(), 1) + " dB",
                              (p.filter().lowCut.load() ? "ON  " : "OFF  ") + (formatHz (p.filter().lowCutFreq.load()) + " Hz"),
                              (p.input.delayOn.load() ? "ON  " : "OFF  ") + juce::String (p.input.delay.load(), 1),

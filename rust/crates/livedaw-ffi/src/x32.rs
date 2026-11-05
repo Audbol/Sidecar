@@ -11,7 +11,7 @@ use livedaw_engine::{Engine, Profile};
 use livedaw_wing::server::{EngineHandle, EnginePtr};
 use livedaw_x32::map::State;
 use livedaw_x32::sysex::{self, Done};
-use livedaw_x32::{scn, Config, Console, Identity, X32Server};
+use livedaw_x32::{scn, Config, Console, Identity, LinkFollower, X32Server};
 use std::sync::Arc;
 
 pub struct LdX32 {
@@ -20,6 +20,8 @@ pub struct LdX32 {
     /// What the X32 has and the engine doesn't (automix, key filters...)
     /// while the server is stopped (scene files).
     state: State,
+    /// What the panel's link follower saw last (`ld_x32_follow_links`).
+    links: LinkFollower,
 }
 
 impl LdX32 {
@@ -45,7 +47,7 @@ pub unsafe extern "C" fn ld_x32_create(e: *const Engine) -> *mut LdX32 {
     if e.is_null() {
         return std::ptr::null_mut();
     }
-    guard(std::ptr::null_mut(), || Box::into_raw(Box::new(LdX32 { engine: e, server: None, state: State::default() })))
+    guard(std::ptr::null_mut(), || Box::into_raw(Box::new(LdX32 { engine: e, server: None, state: State::default(), links: LinkFollower::default() })))
 }
 
 /// Stops the server and frees `x`.
@@ -193,6 +195,22 @@ pub unsafe extern "C" fn ld_x32_sysex(x: *const LdX32, text: *const u8, len: usi
         Done::Answer(line) => LdString::new(line),
         _ => std::ptr::null_mut(),
     }
+}
+
+/// ABI 48: keeps linked pairs alike after the app changed the engine's values
+/// itself (its panel): what changed on one side goes to the other, for what
+/// `/config/linkcfg` shares; a pair just linked takes its odd strip's values.
+///
+/// # Safety
+/// `x` is from `ld_x32_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_x32_follow_links(x: *mut LdX32) {
+    let Some(x) = x.as_mut() else { return };
+    let mut links = std::mem::take(&mut x.links);
+    guard((), || {
+        x.with_console(|c| c.follow_links(&mut links));
+    });
+    x.links = links;
 }
 
 #[cfg(test)]

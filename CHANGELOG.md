@@ -533,6 +533,13 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   scaled to the window, in proportion and centred: on a bigger screen (a 4K
   monitor) they show the same panel larger instead of stretching the gaps
   between fixed-size controls.
+- X32: LINK, encoder 1's push on HOME's home and config tabs (p.45), links
+  the selected strip's odd / even pair (`/config/chlink` and the others).
+  Linked strips stay alike for what `/config/linkcfg` shares, also when the
+  panel moves one of them; a pair just linked takes its odd strip's values.
+  The config tab's SOURCE picks what feeds a channel or aux in (In 01-32, Aux
+  1-6, USB L / R, the FX returns, the buses): turned, then patched by SELECT.
+  C ABI 48: `ld_x32_follow_links`.
 
   `ui::hw` (`src/ui/HardwareLook.*`) draws them. Keys, faders and knobs take a
   console's look when its surface asks; the Universal Mixer and the WING are

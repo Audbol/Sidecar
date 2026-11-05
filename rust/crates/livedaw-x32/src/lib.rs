@@ -24,6 +24,6 @@ pub mod server;
 pub mod sysex;
 pub mod value;
 
-pub use map::{Console, Found, Target, Tree};
+pub use map::{Console, Found, LinkFollower, Target, Tree};
 pub use server::{Config, Identity, Status, X32Server, OSC_PORT};
 pub use value::{Fmt, Law, Ty, Val};

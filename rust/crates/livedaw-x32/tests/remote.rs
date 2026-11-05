@@ -557,6 +557,30 @@ fn linked_pairs_share_what_the_link_config_says() {
 }
 
 #[test]
+fn linked_pairs_follow_changes_made_around_the_server() {
+    let (engine, server) = start();
+    let c = Client::new(&server);
+    let ch = |i: usize| engine.strip_at(StripKind::Channel, i).unwrap();
+    let mut links = livedaw_x32::LinkFollower::default();
+    ch(2).params.fader_db.store(-10.0);
+    server.shared().console().follow_links(&mut links);
+    assert!(ch(3).params.fader_db.load() < -100.0, "3-4 not linked");
+    // Linking 3-4: channel 4 takes channel 3's values.
+    c.set("/config/chlink/3-4", vec![Arg::Int(1)]);
+    server.shared().console().follow_links(&mut links);
+    assert!((ch(3).params.fader_db.load() + 10.0).abs() < 0.05);
+    // Then a change on either side goes to the other; the pan stays its own.
+    ch(3).params.fader_db.store(-20.0);
+    ch(3).params.pan.store(50.0);
+    server.shared().console().follow_links(&mut links);
+    assert!((ch(2).params.fader_db.load() + 20.0).abs() < 0.05);
+    assert_ne!(ch(2).params.pan.load(), 50.0);
+    ch(2).params.fader_db.store(-30.0);
+    server.shared().console().follow_links(&mut links);
+    assert!((ch(3).params.fader_db.load() + 30.0).abs() < 0.05);
+}
+
+#[test]
 fn the_fx_rack_answers_its_models_and_parameters() {
     let (engine, server) = start();
     let c = Client::new(&server);
