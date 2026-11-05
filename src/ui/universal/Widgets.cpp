@@ -92,7 +92,7 @@ void FaderControl::paint (juce::Graphics& g)
         }
         hw::faderSlot (g, groove, t.getY(), t.getBottom(), *look);
         if (isEnabled())
-            hw::faderCap (g, groove, yAt ((float) position), look->cap == hw::Look::Cap::Metal ? 22.0f : 28.0f, *look); // the X32's: narrow and tall
+            hw::faderCap (g, groove, yAt ((float) position), look->cap == hw::Look::Cap::Metal ? 26.0f : 28.0f, *look); // the X32's: narrow and tall
         return;
     }
     g.setFont (type::font (type::kCaption));
@@ -344,6 +344,26 @@ void ToggleKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
             g.strokePath (p, juce::PathStrokeType (1.0f));
             return;
         }
+        if (textLit)
+        {
+            auto a = area.reduced (2.0f).translated (0.0f, down ? 1.0f : 0.0f);
+            g.setColour (juce::Colours::black.withAlpha (0.5f));
+            g.fillRoundedRectangle (a.translated (0.0f, 1.5f), 4.0f);
+            g.setGradientFill (juce::ColourGradient (juce::Colour (0xff2a2b2c), a.getX(), a.getY(), juce::Colour (0xff141515), a.getX(), a.getBottom(), false));
+            g.fillRoundedRectangle (a, 4.0f);
+            g.setColour (juce::Colour (0xff5a5c5e));
+            g.drawRoundedRectangle (a.reduced (0.5f), 4.0f, 1.0f);
+            const bool on = lit || halfLit;
+            g.setFont (type::font (juce::jlimit (10.0f, 13.5f, a.getHeight() * 0.48f), true));
+            if (on)
+            {
+                g.setColour (colour.withAlpha (0.35f));
+                g.drawText (getButtonText(), a.translated (0.0f, 0.5f).expanded (0.5f), juce::Justification::centred);
+            }
+            g.setColour (on ? colour.brighter (0.25f) : colour.withMultipliedBrightness (0.8f));
+            g.drawText (getButtonText(), a, juce::Justification::centred);
+            return;
+        }
         if (labelBelow)
         {
             // The name under the key, on two lines where it has a line break.
@@ -367,7 +387,11 @@ void ToggleKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
             g.setFont (font);
             g.drawFittedText (printed, label.toNearestInt(), juce::Justification::centred, 1, 0.7f);
             const float w = juce::jmin (label.getWidth() - 4.0f, juce::GlyphArrangement::getStringWidth (font, printed) + 2.0f);
-            g.fillRect (juce::Rectangle<float> (w, 1.0f).withCentre ({ label.getCentreX(), label.getBottom() - 0.5f }));
+            if (look->backlit)
+                // The X32's: the name in a small outlined box.
+                g.drawRoundedRectangle (juce::Rectangle<float> (w + 4.0f, label.getHeight() - 1.0f).withCentre (label.getCentre()), 2.0f, 1.0f);
+            else
+                g.fillRect (juce::Rectangle<float> (w, 1.0f).withCentre ({ label.getCentreX(), label.getBottom() - 0.5f }));
             hw::key (g, area.reduced (3.0f, 2.0f), {}, lit || halfLit, down, colour, *look, face, showLed);
             return;
         }

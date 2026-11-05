@@ -72,7 +72,7 @@ AssignSection::AssignSection (UiContext& c, const Theme& t) : ctx (c), theme (t)
     }
     for (int s = 0; s < 3; ++s)
     {
-        auto key = std::make_unique<ToggleKey> (juce::String ("SET ") + kSets[s], juce::Colour (0xffff4b3e), t);
+        auto key = std::make_unique<ToggleKey> (juce::String ("SET ") + kSets[s], juce::Colour (0xffff7470), t);
         key->belowText = kSets[s];
         key->onClick = [this, s] { setSet (s); };
         key->isOn = [this, s] { return set == s; };

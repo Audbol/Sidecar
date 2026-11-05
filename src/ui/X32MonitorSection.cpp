@@ -81,7 +81,9 @@ void MonitorSection::paint (juce::Graphics& g)
     // Two sections, as on the panel: MONITOR, and TALKBACK with the EXT MIC socket.
     const auto& look = hw::Look::x32();
     hw::section (g, monitorArea.toFloat().withTrimmedTop (6.0f), "MONITOR", look);
-    hw::section (g, talkArea.toFloat().withTrimmedTop (6.0f), "TALKBACK", look);
+    // TALKBACK's name under the LAMP socket, over EXT MIC.
+    hw::section (g, talkArea.toFloat().withTrimmedTop (6.0f), {}, look);
+    hw::silk (g, juce::Rectangle<float> ((float) talkArea.getX(), (float) socket.getY() - 18.0f, (float) talkArea.getWidth(), 14.0f), "TALKBACK", look, 11.0f);
     const auto name = [&g, &look] (const juce::Component& k, const juce::String& text)
     {
         hw::silk (g, k.getBounds().toFloat().withY ((float) k.getBottom()).withHeight (12.0f).expanded (20.0f, 0.0f), text, look, 8.5f);
@@ -160,8 +162,9 @@ void MonitorSection::resized()
     {
         auto col = column (talkArea);
         const int size = juce::jmin (col.getWidth() - 10, 56);
-        lamp = col.removeFromTop (26).withSizeKeepingCentre (22, 22).translated (-18, 0);
-        col.removeFromTop (8);
+        col.setTop (talkArea.getY() + 10);
+        lamp = col.removeFromTop (30).withSizeKeepingCentre (24, 24).translated (-16, 0);
+        col.removeFromTop (20); // TALKBACK
         socket = col.removeFromTop (size - 8).withSizeKeepingCentre (size - 12, size - 12);
         col.removeFromTop (18);
         knobAt (talk, col, size);

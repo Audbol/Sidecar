@@ -100,6 +100,7 @@ X32Surface::X32Surface (UiContext& c)
     clearSolo.isOn = [this] { return ctx.engine.anySoloActive.load(); };
     clearSolo.onClick = [this] { clearSolos(); };
     addAndMakeVisible (clearSolo);
+    remoteKey.belowText = "DAW\nREMOTE";
     remoteKey.setEnabled (false);
     remoteKey.setTooltip ("DAW remote: Sidecar has none");
     addAndMakeVisible (remoteKey);
@@ -164,7 +165,12 @@ X32Surface::X32Surface (UiContext& c)
             if (child == &display || child == &universalKey)
                 continue;
             if (auto* k = dynamic_cast<ToggleKey*> (child))
-                k->labelBelow = true;
+            {
+                // VIEW keys have their name in a small box over them.
+                const bool view = k->getButtonText() == "VIEW";
+                k->labelBelow = ! view;
+                k->labelAbove = view;
+            }
             namesBelow (*child);
         }
     };
@@ -415,18 +421,33 @@ void X32Surface::paint (juce::Graphics& g)
     g.setColour (juce::Colours::white.withAlpha (0.08f));
     g.drawRoundedRectangle (displayArea.toFloat().expanded (9.5f), 14.0f, 1.0f);
 
-    // The fader panel: the strips' columns as darker bands, the layer columns.
-    hw::section (g, fadersArea.toFloat(), {}, look);
+    // The fader panel: each strip and layer column on its own black band, the
+    // panel's grey between them.
     const auto column = [&g] (juce::Rectangle<int> r)
     {
-        g.setColour (juce::Colour (0xff2a2d2e));
-        g.fillRoundedRectangle (r.toFloat(), 4.0f);
+        g.setColour (juce::Colour (0xff141516));
+        g.fillRoundedRectangle (r.toFloat(), 5.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.05f));
+        g.drawRoundedRectangle (r.toFloat().reduced (0.5f), 5.0f, 1.0f);
     };
+    const int top = inputs.front()->getY() - 6, bottom = inputs.front()->getBottom() + 18;
+    const auto band = [&] (const juce::Component& c) { column (juce::Rectangle<int> (c.getX() + 2, top, c.getWidth() - 4, bottom - top)); };
     for (int i = 0; i < getNumInputFaders(); ++i)
-        column (inputs[(size_t) i]->getBounds().reduced (2, 0));
+        band (*inputs[(size_t) i]);
     for (auto& s : groups)
-        column (s->getBounds().reduced (2, 0));
-    column (main->getBounds().reduced (2, 0));
+        band (*s);
+    band (*main);
+    for (auto* keys : { &inputLayerKeys, &groupLayerKeys })
+        if (! keys->empty())
+            column (juce::Rectangle<int> (keys->front()->getX() - 2, top, keys->front()->getWidth() + 4, bottom - top));
+    // The display housing's MIC, at its bottom left.
+    {
+        auto mic = juce::Rectangle<float> ((float) displayArea.getX() - 2.0f, (float) displayArea.getBottom() - 2.0f, 60.0f, 12.0f);
+        g.setColour (juce::Colour (0xff3a3b3c));
+        for (int k = 0; k < 3; ++k)
+            g.fillRect (mic.getX() + 2.0f + 4.0f * (float) k, mic.getY() + 2.0f, 2.0f, 8.0f);
+        hw::silk (g, mic.withTrimmedLeft (16.0f), "MIC", look, 8.5f, juce::Justification::centredLeft);
+    }
 
     // The main strip: its COMP LED where the others have their meters.
     {
@@ -437,11 +458,17 @@ void X32Surface::paint (juce::Graphics& g)
         g.setColour (comp ? juce::Colour (0xffff9a3c) : juce::Colour (0xffff9a3c).withAlpha (0.15f));
         g.fillRoundedRectangle (led, 1.0f);
         hw::silk (g, led.withX (led.getRight() + 3.0f).withWidth (40.0f).expanded (0.0f, 4.0f), "COMP", look, 9.0f, juce::Justification::centredLeft);
-        hw::silk (g, main->getBounds().toFloat().removeFromBottom (14.0f).translated (0.0f, 12.0f), "MAIN", look, 9.5f);
+        auto name = main->getBounds().toFloat().removeFromBottom (14.0f).translated (0.0f, 12.0f).withSizeKeepingCentre (40.0f, 13.0f);
+        g.setColour (look.silkDim);
+        g.drawRoundedRectangle (name, 2.0f, 1.0f);
+        hw::silk (g, name, "MAIN", look, 9.0f);
     }
 
     // SCENES and MUTE GROUPS, and the palm rest beside them.
     hw::section (g, scenesArea.toFloat().withTrimmedTop (6.0f), "SCENES", look);
+    // GO in its printed frame.
+    g.setColour (look.silkDim);
+    g.drawRoundedRectangle (sceneKeys[3]->getBounds().toFloat().expanded (5.0f, 3.0f).withTrimmedBottom (16.0f), 2.0f, 1.2f);
     hw::section (g, muteGroupsArea.toFloat().withTrimmedTop (6.0f), "MUTE GROUPS", look);
     if (! palmRest.isEmpty() && g.clipRegionIntersects (palmRest))
     {
@@ -529,7 +556,7 @@ void X32Surface::resized()
     layerKeys (leftColumn, inputLayerKeys);
     layerKeys (midColumn, groupLayerKeys);
     sendsOnFaderKey.setBounds (midColumn.withHeight (x32::kKeyHeight + 6).reduced (2, 0));
-    remoteKey.setBounds (leftColumn.withHeight (x32::kKeyHeight + 6).reduced (2, 0));
+    remoteKey.setBounds (leftColumn.withHeight (x32::kKeyHeight + 16).reduced (2, 0));
 }
 
 } // namespace livedaw::ui

@@ -162,6 +162,9 @@ public:
         Right
     };
     Shape shape = Shape::Rect;
+    /** With a look: a black key whose name glows in its colour (the X32's
+        screen keys), brighter while on. */
+    bool textLit = false;
     void refresh();
 
     void paintButton (juce::Graphics&, bool highlighted, bool down) override;

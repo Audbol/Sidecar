@@ -436,6 +436,16 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
     scale (measured on the drawings): 0 dB is step 100 on a ProMix 01 (was 115)
     and 101 on an 02R channel (was 103); STEREO's 0 dB stays at the top. Their
     MIDI follows the same law.
+- The X32 surface's colours and keys checked against the photo of the whole
+  console: a neutral dark grey top, its sections on black panels with their
+  titles centred over them (GATE and DYNAMICS on one), each fader strip and
+  layer column on its own black band; the keys mid-grey rubber (MUTE lit
+  salmon, SET A and the mute groups the same); the encoders' rings red-orange;
+  the screen keys black with their names in their colours; VIEW named in a
+  small box over its key; DAW REMOTE; TALKBACK named under the LAMP socket;
+  NO and YES under PAGE SELECT; MIC on the display's housing; EQUALIZER's
+  printed loop joining Q, FREQ, GAIN and MODE; GO in its frame; MAIN boxed; a
+  wider fader cap.
 
   `ui::hw` (`src/ui/HardwareLook.*`) draws them. Keys, faders and knobs take a
   console's look when its surface asks; the Universal Mixer and the WING are

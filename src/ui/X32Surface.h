@@ -19,7 +19,7 @@ namespace x32
     constexpr int kScribble = 42;  // the scribble strip's LCD
     constexpr int kKeyHeight = 34; // a key and its name printed under it
     // The X32's lit keys: SELECT mint, SOLO yellow, MUTE red.
-    const juce::Colour kSelectLit (0xff62f0a6), kSoloLit (0xffffd23c), kMuteLit (0xffff5a52);
+    const juce::Colour kSelectLit (0xff62f0a6), kSoloLit (0xffffd23c), kMuteLit (0xffff7470);
 
     /** The X32's scribble colours (`Palette::X32`, indexes 1-16): OFF and seven
         colours lit behind dark text, then the same eight inverted (coloured
@@ -302,12 +302,6 @@ namespace x32
 
         void paint (juce::Graphics& g) override
         {
-            // The fader's bay: a darker recess down the strip.
-            const auto bay = fader.getBounds().toFloat().expanded (1.0f, 6.0f);
-            g.setColour (juce::Colour (0xff1d2021));
-            g.fillRoundedRectangle (bay, 4.0f);
-            g.setColour (juce::Colours::black.withAlpha (0.45f));
-            g.drawRoundedRectangle (bay.reduced (0.5f), 4.0f, 1.0f);
             auto area = scribbleArea().toFloat();
             if (isEmpty())
             {

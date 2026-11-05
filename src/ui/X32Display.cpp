@@ -233,6 +233,7 @@ Display::Display (UiContext& c, const Theme& t)
     for (int s = 0; s < 8; ++s)
     {
         auto key = std::make_unique<ToggleKey> (kScreenNames[s], kScreenKeyColours[s], t);
+        key->textLit = true; // black keys, their names in their colours
         key->isOn = [this, s] { return (int) screen == s; };
         key->onClick = [this, s] { showScreen ((Screen) s); };
         addAndMakeVisible (*key);
@@ -1272,10 +1273,13 @@ void Display::paint (juce::Graphics& g)
     g.setColour (kGlass);
     g.fillRect (screenArea);
     // PAGE SELECT and LAYER, printed beside their keys.
-    if (g.clipRegionIntersects (pageLabel.getUnion (layerLabel)))
+    if (g.clipRegionIntersects (pageLabel.getUnion (layerLabel).getUnion (pagePrev.getBounds().getUnion (pageNext.getBounds()).withHeight (pagePrev.getHeight() + 14))))
     {
         hw::silk (g, pageLabel.toFloat(), "PAGE SELECT", hw::Look::x32(), 8.5f);
         hw::silk (g, layerLabel.toFloat(), "LAYER", hw::Look::x32(), 8.5f, juce::Justification::centredRight);
+        // NO and YES under PAGE SELECT's keys.
+        hw::silk (g, pagePrev.getBounds().toFloat().withY ((float) pagePrev.getBottom() + 1.0f).withHeight (11.0f), "NO", hw::Look::x32(), 8.0f);
+        hw::silk (g, pageNext.getBounds().toFloat().withY ((float) pageNext.getBottom() + 1.0f).withHeight (11.0f), "YES", hw::Look::x32(), 8.0f);
     }
     // Only the parts being repainted (the clock and meters repaint often).
     if (g.clipRegionIntersects (statusArea))
@@ -1982,7 +1986,7 @@ void Display::resized()
     }
     side.removeFromTop (sizes::kGap);
     pageLabel = side.removeFromTop (14);
-    auto pages = side.removeFromTop (keyH);
+    auto pages = side.removeFromTop (keyH - 4);
     pagePrev.setBounds (pages.removeFromLeft (pages.getWidth() / 2).reduced (3, 0));
     pageNext.setBounds (pages.reduced (3, 0));
 

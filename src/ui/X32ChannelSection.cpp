@@ -264,9 +264,32 @@ int ChannelSection::typeIndex() const
 void ChannelSection::paint (juce::Graphics& g)
 {
     const auto& look = hw::Look::x32();
-    // Each section on its slate panel, outlined in silkscreen, its title in the outline.
-    for (auto& s : sections)
-        hw::section (g, s.area.toFloat().withTrimmedTop (6.0f), s.title, look);
+    // Each section on its black panel, its title over it; GATE and DYNAMICS
+    // share one, the GR meter between them.
+    for (size_t i = 0; i < sections.size(); ++i)
+    {
+        const auto& s = sections[i];
+        if (i == 1)
+        {
+            const auto both = s.area.getUnion (sections[2].area).toFloat().withTrimmedTop (6.0f);
+            hw::section (g, both, {}, look);
+            for (size_t k : { (size_t) 1, (size_t) 2 })
+                hw::silk (g, sections[k].area.toFloat().withTrimmedTop (8.0f).withHeight (20.0f), sections[k].title, look, 11.0f);
+            continue;
+        }
+        if (i != 2)
+            hw::section (g, s.area.toFloat().withTrimmedTop (6.0f), s.title, look);
+    }
+    // EQUALIZER's printed lines: Q, FREQ, GAIN and MODE on one loop.
+    if (eqQ.isVisible())
+    {
+        juce::Path loop;
+        const float l = (float) mode.getBounds().getCentreX(), r = (float) eqFreq.getBounds().getCentreX();
+        const float t = (float) eqQ.getBounds().getCentreY(), b = (float) eqGain.getBounds().getCentreY();
+        loop.addRoundedRectangle (l, t, r - l, b - t, 8.0f);
+        g.setColour (look.silkDim.withAlpha (0.7f));
+        g.strokePath (loop, juce::PathStrokeType (1.2f));
+    }
 
     // The encoders' names, printed under them.
     const auto name = [&g, &look] (const juce::Component& k, const juce::String& text)

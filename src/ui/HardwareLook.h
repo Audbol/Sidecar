@@ -24,6 +24,10 @@ struct Look
     // The LCD: backlight and pixels.
     juce::Colour lcd, lcdPixel, lcdDim, lcdBezel;
     float keyRadius = 3.0f;
+    /** Sections as plain black panels, their titles centred over them, no
+        outline (the X32's); else a panel outlined in silkscreen, the title in
+        the outline's top left. */
+    bool blackSections = false;
     /** A key's LED (a look that isn't backlit): its size, round where they're equal. */
     float ledWidth = 14.0f, ledHeight = 3.5f;
 

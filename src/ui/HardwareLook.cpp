@@ -20,16 +20,19 @@ const Look& Look::x32()
 {
     static const Look look = [] {
         Look l;
-        l.panelTop = c (0xff6b6760);
-        l.panelBottom = c (0xff4f4c47);
-        l.frame = c (0xff2c2b29);
-        l.section = c (0xff28312f);
-        l.sectionLine = c (0xffc9d0cc);
-        l.silk = c (0xffe6e9e6);
-        l.silkDim = c (0xffa3aaa6);
-        l.keyTop = c (0xffdcdedd);
-        l.keyBottom = c (0xffbfc2c1);
+        // As the console photographs: a neutral dark grey top, its sections and
+        // the faders' strips on black, white silkscreen, mid-grey rubber keys.
+        l.panelTop = c (0xff4a4b4c);
+        l.panelBottom = c (0xff3a3b3c);
+        l.frame = c (0xff1e1f20);
+        l.section = c (0xff161718);
+        l.sectionLine = c (0xff9a9c9e);
+        l.silk = c (0xfff2f2f2);
+        l.silkDim = c (0xffa8aaac);
+        l.keyTop = c (0xff9c9e9f);
+        l.keyBottom = c (0xff7a7c7d);
         l.keyText = c (0xff1c1e1e);
+        l.blackSections = true;
         l.backlit = true;
         l.slot = c (0xff0d0e0e);
         l.capTop = c (0xffd7d9d8);
@@ -42,7 +45,7 @@ const Look& Look::x32()
         l.lcdDim = c (0xff8b959c);
         l.lcdBezel = c (0xff222423);
         l.cap = Cap::Metal;
-        l.knobRing = c (0xffff9d2e);
+        l.knobRing = c (0xffff5a2a); // red-orange LEDs
         l.keyRadius = 3.0f;
         return l;
     }();
@@ -156,6 +159,21 @@ void section (juce::Graphics& g, juce::Rectangle<float> area, const juce::String
 {
     if (! g.clipRegionIntersects (area.toNearestInt().expanded (2)))
         return;
+    if (l.blackSections)
+    {
+        // A black panel, the title centred along its top.
+        g.setColour (l.section);
+        g.fillRoundedRectangle (area, 6.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.05f));
+        g.drawRoundedRectangle (area.reduced (0.5f), 6.0f, 1.0f);
+        if (title.isNotEmpty())
+        {
+            g.setColour (l.silk);
+            g.setFont (universal::type::font (11.0f, true));
+            g.drawText (title, area.withHeight (20.0f).translated (0.0f, 2.0f), juce::Justification::centred);
+        }
+        return;
+    }
     g.setColour (l.section);
     g.fillRoundedRectangle (area, 5.0f);
     g.setColour (juce::Colours::black.withAlpha (0.35f));
