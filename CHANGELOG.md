@@ -373,6 +373,23 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   METERS orange); a bus's meter has PRE in GATE's place, lit while an input
   sends to it pre-fader
 
+  The X32 surface laid out after a photo of the whole console:
+  - the keys blank with their names printed under them (the screen keys keep
+    theirs); SELECT lit mint, SOLO yellow, MUTE red, the layer keys mint
+  - CONFIG / PREAMP (GAIN, the LEVEL meter, FREQUENCY, 48V, polarity, LOW CUT)
+    over GATE and DYNAMICS (THRESHOLD, GATE / DUCKER, COMP / EXP, the GR meter
+    between); EQUALIZER (Q, FREQ, GAIN, MODE with the type LEDs HCUT ... LCUT,
+    HIGH, HIGH MID, LOW MID, LOW, a second press for HIGH 2 / LOW 2 on a bus);
+    BUS SENDS (four encoders, the bank keys beside them); MAIN BUS (LEVEL, MONO
+    BUS, PAN / BAL, STEREO BUS); RATIO and TYPE are the screen's now
+  - the display in its black housing, MONITOR and TALKBACK as two columns
+  - the input layer keys down the left of the faders, SENDS ON FADER and the
+    group layer keys between the banks, the strips' scribble strips as backlit
+    LCDs and their faders in darker bays, the main's COMP LED and CLEAR SOLO
+  - SCENES (PREV, NEXT, UNDO, GO, VIEW), ASSIGN (four encoders in a row, their
+    LCDs, keys 5-12, SET A B C), MUTE GROUPS 1-6 and the palm rest at the right
+- Fixed: the console surfaces' fader scales showed a garbled character for -inf.
+
   `ui::hw` (`src/ui/HardwareLook.*`) draws them. Keys, faders and knobs take a
   console's look when its surface asks; the Universal Mixer and the WING are
   unchanged.

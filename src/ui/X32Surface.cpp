@@ -11,8 +11,9 @@ using namespace universal;
 namespace
 {
     constexpr int kTopBar = 48;
-    constexpr int kLayerColumn = 112;
-    constexpr int kAssignWidth = 150;
+    constexpr int kLayerColumn = 58;  // the layer keys' columns
+    constexpr int kRightPanel = 300;  // SCENES, ASSIGN, MUTE GROUPS
+    const juce::Colour kLayerLit (0xff62f0a6), kKeyLit (0xffffc83a);
 
     /** An input layer: its key, the strips (0 channels, 1 aux, 2 buses) from the first. */
     struct InputLayerSpec
@@ -39,8 +40,8 @@ using x32::kScribble;
 //==============================================================================
 X32Surface::X32Surface (UiContext& c)
     : ctx (c), theme (Theme::dark()), universalKey ("UNIVERSAL MIXER", theme.accent, theme),
-      sendsOnFaderKey ("SENDS ON FADER", juce::Colour (0xfff0a020), theme), channel (c, theme), monitor (c, theme), assign (c, theme),
-      display (c, theme)
+      sendsOnFaderKey ("SENDS ON FADER", kLayerLit, theme), clearSolo ("CLEAR SOLO", x32::kSoloLit, theme), channel (c, theme), monitor (c, theme),
+      assign (c, theme), display (c, theme)
 {
     for (auto& s : inputs)
     {
@@ -65,7 +66,8 @@ X32Surface::X32Surface (UiContext& c)
                                                                { "MTX 1-6 / M/C", GroupLayer::MatrixMain } };
     for (auto [name, layer] : groupLayers)
     {
-        auto key = std::make_unique<ToggleKey> (name, theme.accent, theme);
+        auto key = std::make_unique<ToggleKey> (name, kLayerLit, theme);
+        key->belowText = layer == GroupLayer::Dca ? "GROUP DCA 1-8" : layer == GroupLayer::MatrixMain ? "MATRIX / MAIN C" : name;
         key->isOn = [this, l = layer] { return groupLayer == l; };
         key->onClick = [this, l = layer] { setGroupLayer (l); };
         addAndMakeVisible (*key);
@@ -88,6 +90,45 @@ X32Surface::X32Surface (UiContext& c)
     sendsOnFaderKey.setTooltip ("Sends on fader: select a bus for the inputs' sends to it, or a channel for its sends to the buses");
     addAndMakeVisible (sendsOnFaderKey);
 
+    // CLEAR SOLO, lit while anything is soloed.
+    clearSolo.isOn = [this] { return ctx.engine.anySoloActive.load(); };
+    clearSolo.onClick = [this] { clearSolos(); };
+    addAndMakeVisible (clearSolo);
+    main->setMeterShown (false);
+    // SCENES: PREV and NEXT recall the scene before or after, GO the current
+    // again (Sidecar keeps no undo: UNDO does nothing), VIEW the library.
+    const char* const sceneNames[] = { "PREV", "NEXT", "UNDO", "GO", "VIEW" };
+    for (int k = 0; k < 5; ++k)
+    {
+        auto key = std::make_unique<ToggleKey> (sceneNames[k], kKeyLit, theme);
+        key->onClick = [this, k]
+        {
+            auto& show = ctx.show;
+            const int current = show.getCurrentSceneIndex();
+            if (k == 4)
+            {
+                display.showScreen (x32::Display::Screen::Library);
+                return;
+            }
+            const int to = k == 0 ? current - 1 : k == 1 ? current + 1 : k == 3 ? juce::jmax (0, current) : -1;
+            if (juce::isPositiveAndBelow (to, show.getNumScenes()))
+                show.recallScene (to);
+        };
+        key->setEnabled (k != 2);
+        addAndMakeVisible (*key);
+        sceneKeys.push_back (std::move (key));
+    }
+    // MUTE GROUPS 1-6.
+    for (int m = 0; m < 6; ++m)
+    {
+        auto key = std::make_unique<ToggleKey> ("MUTE GROUP " + juce::String (m + 1), x32::kMuteLit, theme);
+        key->belowText = juce::String (m + 1);
+        key->isOn = [this, m] { return ctx.engine.muteGroups.contains (m); };
+        key->onClick = [this, m] { ctx.engine.muteGroups.set (m, ! ctx.engine.muteGroups.contains (m)); };
+        addAndMakeVisible (*key);
+        muteGroupKeys.push_back (std::move (key));
+    }
+
     addAndMakeVisible (channel);
     addAndMakeVisible (monitor);
     addAndMakeVisible (assign);
@@ -106,6 +147,19 @@ X32Surface::X32Surface (UiContext& c)
     // The panel's keys, faders and knobs are the X32's: light rubber keys lit
     // in their colours, moulded caps, knurled knobs.
     hw::applyTo (*this, hw::Look::x32(), &universalKey);
+    // Its keys are blank, their names printed under them (not the display's).
+    std::function<void (juce::Component&)> namesBelow = [&] (juce::Component& c)
+    {
+        for (auto* child : c.getChildren())
+        {
+            if (child == &display || child == &universalKey)
+                continue;
+            if (auto* k = dynamic_cast<ToggleKey*> (child))
+                k->labelBelow = true;
+            namesBelow (*child);
+        }
+    };
+    namesBelow (*this);
     // The encoders turn endlessly in their LED rings; MONITOR, PHONES and TALK
     // are pots, and the six under the screen have no rings.
     for (const char* pot : { "MONITOR", "PHONES", "TALK" })
@@ -152,7 +206,9 @@ void X32Surface::buildInputLayerKeys()
     const auto layers = layersOf (model);
     for (int i = 0; i < (int) layers.size(); ++i)
     {
-        auto key = std::make_unique<ToggleKey> (layers[(size_t) i].name, theme.accent, theme);
+        auto key = std::make_unique<ToggleKey> (layers[(size_t) i].name, kLayerLit, theme);
+        key->look = &hw::Look::x32();
+        key->labelBelow = true;
         key->isOn = [this, i] { return inputLayer == i; };
         key->onClick = [this, i] { setInputLayer (i); };
         addAndMakeVisible (*key);
@@ -299,6 +355,21 @@ void X32Surface::timerCallback()
         s->refresh();
     main->refresh();
     sendsOnFaderKey.refresh();
+    clearSolo.refresh();
+    for (auto& k : muteGroupKeys)
+        k->refresh();
+    // The main strip's COMP LED.
+    repaint (main->getBounds().withHeight (main->getMeterArea().getY() + 8));
+}
+
+void X32Surface::clearSolos()
+{
+    auto& e = ctx.engine;
+    for (auto* list : { &e.getChannels(), &e.getAux(), &e.getBuses(), &e.getMains(), &e.getMatrices() })
+        for (auto& s : *list)
+            s->params.solo = false;
+    for (int d = 0; d < e.getNumDcas(); ++d)
+        e.getDca (d).solo = false;
 }
 
 //==============================================================================
@@ -314,7 +385,6 @@ void X32Surface::paint (juce::Graphics& g)
     g.fillAll (juce::Colour (0xff17191c));
     const auto& look = hw::Look::x32();
     hw::panel (g, getLocalBounds().withTrimmedTop (kTopBar).toFloat(), look);
-    auto panel = [&g, &look] (juce::Rectangle<int> r, const juce::String& title) { hw::section (g, r.toFloat(), title, look); };
 
     // The top bar: what this is.
     auto bar = getLocalBounds().removeFromTop (kTopBar).reduced (sizes::kGapLarge, 0);
@@ -325,29 +395,51 @@ void X32Surface::paint (juce::Graphics& g)
     g.setFont (type::font (type::kLabel));
     g.drawText ("Sidecar's X32 surface  -  not affiliated with Behringer", bar.removeFromLeft (420), juce::Justification::centredLeft);
 
-    panel (channelArea, "CHANNEL STRIP");
-    panel (displayArea.expanded (10), {});
-    panel (fadersArea, {});
+    // The display's housing: a raised black bezel.
+    g.setColour (juce::Colour (0xff1a1b1c));
+    g.fillRoundedRectangle (displayArea.toFloat().expanded (10.0f), 14.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.08f));
+    g.drawRoundedRectangle (displayArea.toFloat().expanded (9.5f), 14.0f, 1.0f);
 
-    // The channel strip section (step 8c): its sections, for the selected strip.
-    auto* selected = ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr;
-    auto inner = channelArea.reduced (12).withTrimmedTop (22);
-    g.setColour (theme.text);
-    g.setFont (type::font (type::kValue, true));
-    g.drawText (selected != nullptr ? selected->getLabel() + "   " + selected->getName() : "No strip selected", inner.removeFromTop (24),
-                juce::Justification::centredLeft);
-
-    // The bank labels.
-    g.setColour (juce::Colour (0xff8b9099));
-    g.setFont (type::font (type::kCaption, true));
-    auto label = [&g] (juce::Component& first, juce::Component& last, const juce::String& text)
+    // The fader panel: the strips' columns as darker bands, the layer columns.
+    hw::section (g, fadersArea.toFloat(), {}, look);
+    const auto column = [&g] (juce::Rectangle<int> r)
     {
-        const auto r = first.getBounds().getUnion (last.getBounds());
-        g.drawText (text, r.withY (first.getY() - 18).withHeight (16), juce::Justification::centredLeft);
+        g.setColour (juce::Colour (0xff2a2d2e));
+        g.fillRoundedRectangle (r.toFloat(), 4.0f);
     };
-    label (*inputs.front(), *inputs[(size_t) getNumInputFaders() - 1], "INPUT CHANNELS");
-    label (*groups.front(), *groups.back(), "GROUPS / BUSES / DCA");
-    label (*main, *main, "MAIN");
+    for (int i = 0; i < getNumInputFaders(); ++i)
+        column (inputs[(size_t) i]->getBounds().reduced (2, 0));
+    for (auto& s : groups)
+        column (s->getBounds().reduced (2, 0));
+    column (main->getBounds().reduced (2, 0));
+
+    // The main strip: its COMP LED where the others have their meters.
+    {
+        auto* m = main->getStrip();
+        const bool comp = m != nullptr && std::abs (m->meters.dynReductionDb.load()) >= 0.5f;
+        const auto r = main->getBounds().getY() + main->getMeterArea().getY();
+        auto led = juce::Rectangle<float> ((float) main->getX() + 10.0f, (float) r + 2.0f, 8.0f, 4.0f);
+        g.setColour (comp ? juce::Colour (0xffff9a3c) : juce::Colour (0xffff9a3c).withAlpha (0.15f));
+        g.fillRoundedRectangle (led, 1.0f);
+        hw::silk (g, led.withX (led.getRight() + 3.0f).withWidth (40.0f).expanded (0.0f, 4.0f), "COMP", look, 9.0f, juce::Justification::centredLeft);
+        hw::silk (g, main->getBounds().toFloat().removeFromBottom (14.0f).translated (0.0f, 12.0f), "MAIN", look, 9.5f);
+    }
+
+    // SCENES and MUTE GROUPS, and the palm rest beside them.
+    hw::section (g, scenesArea.toFloat().withTrimmedTop (6.0f), "SCENES", look);
+    hw::section (g, muteGroupsArea.toFloat().withTrimmedTop (6.0f), "MUTE GROUPS", look);
+    if (! palmRest.isEmpty())
+    {
+        auto rest = palmRest.toFloat();
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff2b2d2f), rest.getX(), rest.getY(), juce::Colour (0xff151617), rest.getX(), rest.getBottom(), false));
+        g.fillRoundedRectangle (rest, 16.0f);
+        g.setColour (juce::Colours::black.withAlpha (0.5f));
+        g.drawRoundedRectangle (rest.reduced (0.5f), 16.0f, 1.5f);
+        g.setColour (juce::Colours::white.withAlpha (0.05f));
+        for (float y = rest.getY() + 14.0f; y < rest.getBottom() - 10.0f; y += 3.0f)
+            g.drawHorizontalLine ((int) y, rest.getX() + 10.0f, rest.getRight() - 10.0f);
+    }
 }
 
 void X32Surface::resized()
@@ -355,52 +447,74 @@ void X32Surface::resized()
     auto area = getLocalBounds();
     auto bar = area.removeFromTop (kTopBar).reduced (sizes::kGapLarge, 8);
     universalKey.setBounds (bar.removeFromRight (170));
-    bar.removeFromRight (sizes::kGap);
-    sendsOnFaderKey.setBounds (bar.removeFromRight (170));
     area.reduce (sizes::kGapLarge, 0);
     area.removeFromBottom (sizes::kGapLarge);
 
-    // The upper half: the channel strip section and the display.
-    auto upper = area.removeFromTop (juce::roundToInt (area.getHeight() * 0.44f));
+    // The upper panel as on the X32: the channel strip section, the display in
+    // its housing, MONITOR and TALKBACK.
+    auto upper = area.removeFromTop (juce::roundToInt (area.getHeight() * 0.42f));
     area.removeFromTop (sizes::kGapLarge);
-    // Monitoring and talkback at the right, beside the display (as on an X32).
-    monitor.setBounds (upper.removeFromRight (150).reduced (0, 10));
-    upper.removeFromRight (sizes::kGapLarge);
+    monitor.setBounds (upper.removeFromRight (226).reduced (0, 4));
+    upper.removeFromRight (sizes::kGapLarge + 4);
     displayArea = upper.removeFromRight (juce::roundToInt (upper.getWidth() * 0.415f)).reduced (10);
-    upper.removeFromRight (sizes::kGapLarge);
-    channelArea = upper;
-    channel.setBounds (channelArea.reduced (12).withTrimmedTop (22 + 24 + sizes::kGap));
-
+    upper.removeFromRight (sizes::kGapLarge + 4);
+    channelArea = upper.reduced (0, 4);
+    channel.setBounds (channelArea);
     display.setBounds (displayArea);
 
-    // The faders: input bank, its layer keys, group bank, its layer keys, main.
+    // The faders: the input layer keys, the inputs, SENDS ON FADER and the group
+    // layer keys, the groups, the main; SCENES, ASSIGN and MUTE GROUPS at the right.
     fadersArea = area;
-    auto faders = area.reduced (12).withTrimmedTop (22);
-    auto layerColumn = [&] (std::vector<std::unique_ptr<ToggleKey>>& keyList)
+    auto faders = area.reduced (8, 10);
+    auto right = faders.removeFromRight (kRightPanel);
+    faders.removeFromRight (sizes::kGap);
+    scenesArea = right.removeFromTop (92);
+    right.removeFromTop (sizes::kGap);
+    auto lower = right.removeFromBottom (juce::jmin (200, right.getHeight() / 3));
+    right.removeFromBottom (sizes::kGap);
+    assign.setBounds (right);
+    muteGroupsArea = lower.removeFromLeft (128);
+    lower.removeFromLeft (sizes::kGap);
+    palmRest = lower.reduced (4, 2);
     {
-        auto column = faders.removeFromLeft (kLayerColumn);
-        faders.removeFromLeft (sizes::kGap);
-        column.removeFromTop (kScribble + sizes::kGapSmall);
-        const int keyHeight = juce::jmin (40, column.getHeight() / juce::jmax (1, (int) keyList.size()) - sizes::kGapSmall);
-        for (auto& k : keyList)
-        {
-            k->setBounds (column.removeFromTop (keyHeight));
-            column.removeFromTop (sizes::kGapSmall);
-        }
-    };
-    // The assign section at the right, beside the main fader.
-    assign.setBounds (faders.removeFromRight (kAssignWidth).withTrimmedTop (kScribble + sizes::kGapSmall - 22));
-    faders.removeFromRight (sizes::kGapLarge);
-    const int stripWidth = (faders.getWidth() - 2 * (kLayerColumn + sizes::kGap) - 3 * sizes::kGapLarge) / (getNumInputFaders() + 9);
-    layerColumn (inputLayerKeys);
+        auto r = scenesArea.reduced (10, 8).withTrimmedTop (16);
+        auto view = r.removeFromRight (40);
+        sceneKeys[4]->setBounds (view.withSizeKeepingCentre (34, x32::kKeyHeight));
+        const int w = r.getWidth() / 4;
+        for (int k = 0; k < 4; ++k)
+            sceneKeys[(size_t) k]->setBounds (juce::Rectangle<int> (r.getX() + w * k, r.getY(), w, r.getHeight())
+                                                  .withSizeKeepingCentre (k == 3 ? 52 : 36, k == 3 ? x32::kKeyHeight + 10 : x32::kKeyHeight));
+    }
+    {
+        auto r = muteGroupsArea.reduced (14, 8).withTrimmedTop (18);
+        const int h = r.getHeight() / 3, w = r.getWidth() / 2;
+        for (int m = 0; m < 6; ++m)
+            muteGroupKeys[(size_t) m]->setBounds (
+                juce::Rectangle<int> (r.getX() + (m % 2) * w, r.getY() + (m / 2) * h, w, h).withSizeKeepingCentre (40, x32::kKeyHeight));
+    }
+
+    const int stripWidth = (faders.getWidth() - 2 * kLayerColumn - 2 * sizes::kGap) / (getNumInputFaders() + 9);
+    auto leftColumn = faders.removeFromLeft (kLayerColumn);
     for (int i = 0; i < getNumInputFaders(); ++i)
         inputs[(size_t) i]->setBounds (faders.removeFromLeft (stripWidth));
-    faders.removeFromLeft (sizes::kGapLarge);
-    layerColumn (groupLayerKeys);
+    auto midColumn = faders.removeFromLeft (kLayerColumn);
     for (auto& s : groups)
         s->setBounds (faders.removeFromLeft (stripWidth));
-    faders.removeFromLeft (2 * sizes::kGapLarge);
+    faders.removeFromLeft (2 * sizes::kGap);
     main->setBounds (faders.removeFromLeft (stripWidth));
+    clearSolo.setBounds (main->getBounds().getX() + 8, main->getY() + main->getMeterArea().getY() + 22, stripWidth - 16, x32::kKeyHeight);
+
+    // The layer keys down their columns from the MUTE keys' row; SENDS ON FADER at the top of the middle one.
+    const auto layerKeys = [&] (juce::Rectangle<int> col, std::vector<std::unique_ptr<ToggleKey>>& keys)
+    {
+        col.removeFromTop (inputs.front()->getMuteTop());
+        const int pitch = juce::jmin (56, col.getHeight() / juce::jmax (1, (int) keys.size()));
+        for (auto& k : keys)
+            k->setBounds (col.removeFromTop (pitch).removeFromTop (x32::kKeyHeight + 6).reduced (2, 0));
+    };
+    layerKeys (leftColumn, inputLayerKeys);
+    layerKeys (midColumn, groupLayerKeys);
+    sendsOnFaderKey.setBounds (midColumn.withHeight (x32::kKeyHeight + 6).reduced (2, 0));
 }
 
 } // namespace livedaw::ui

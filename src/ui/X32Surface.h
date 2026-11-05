@@ -16,8 +16,10 @@ namespace livedaw::ui
 
 namespace x32
 {
-    constexpr int kScribble = 66;
-    constexpr int kKeyHeight = 30;
+    constexpr int kScribble = 42;  // the scribble strip's LCD
+    constexpr int kKeyHeight = 34; // a key and its name printed under it
+    // The X32's lit keys: SELECT mint, SOLO yellow, MUTE red.
+    const juce::Colour kSelectLit (0xff62f0a6), kSoloLit (0xffffd23c), kMuteLit (0xffff5a52);
 
     /** The X32's scribble colours (`Palette::X32`, indexes 1-16): OFF and seven
         colours lit behind dark text, then the same eight inverted (coloured
@@ -134,8 +136,8 @@ namespace x32
     {
     public:
         FaderStrip (UiContext& c, const Theme& t)
-            : ctx (c), theme (t), fader (t), solo ("SOLO", t.solo, t), mute ("MUTE", t.mute, t),
-              select ({}, t.accent, t)
+            : ctx (c), theme (t), fader (t), solo ("SOLO", kSoloLit, t), mute ("MUTE", kMuteLit, t),
+              select ("SELECT", kSelectLit, t)
         {
             solo.onClick = [this]
             {
@@ -175,7 +177,7 @@ namespace x32
             meter.gate = s != nullptr && isInputKind (s->getKind()) ? std::function<float()> ([s] { return s->meters.gateReductionDb.load(); }) : nullptr;
             meter.comp = [this] { return strip != nullptr ? strip->meters.dynReductionDb.load() : 0.0f; };
             meter.pre = s != nullptr && s->isBus() ? std::function<bool()> ([this, s] { return sendsPre (*s); }) : nullptr;
-            meter.setVisible (s != nullptr);
+            meter.setVisible (s != nullptr && meterShown);
             select.setEnabled (s != nullptr);
             solo.setEnabled (s != nullptr);
             mute.setEnabled (s != nullptr);
@@ -256,12 +258,12 @@ namespace x32
 
         void paint (juce::Graphics& g) override
         {
-            if (! selectLabel.isEmpty() && strip != nullptr)
-            {
-                g.setColour (juce::Colour (0xffe6e9e6));
-                g.setFont (type::font (10.0f, true));
-                g.drawText ("SELECT", selectLabel, juce::Justification::centred);
-            }
+            // The fader's bay: a darker recess down the strip.
+            const auto bay = fader.getBounds().toFloat().expanded (1.0f, 6.0f);
+            g.setColour (juce::Colour (0xff1d2021));
+            g.fillRoundedRectangle (bay, 4.0f);
+            g.setColour (juce::Colours::black.withAlpha (0.45f));
+            g.drawRoundedRectangle (bay.reduced (0.5f), 4.0f, 1.0f);
             auto area = scribbleArea().toFloat();
             if (isEmpty())
             {
@@ -270,10 +272,14 @@ namespace x32
                 return;
             }
             const auto look = scribbleLook (getColourIndex());
-            g.setColour (look.background);
-            g.fillRoundedRectangle (area, 3.0f);
-            g.setColour (look.frame);
-            g.drawRoundedRectangle (area.reduced (0.5f), 3.0f, 1.0f);
+            // The LCD in its black bezel, lit from behind in the strip's colour.
+            g.setColour (juce::Colour (0xff070808));
+            g.fillRoundedRectangle (area.expanded (2.0f), 3.0f);
+            g.setGradientFill (juce::ColourGradient (look.background.brighter (0.18f), area.getX(), area.getY(), look.background.darker (0.3f), area.getX(),
+                                                     area.getBottom(), false));
+            g.fillRect (area);
+            g.setColour (juce::Colours::white.withAlpha (0.1f));
+            g.drawHorizontalLine ((int) area.getY() + 1, area.getX() + 1.0f, area.getRight() - 1.0f);
             if (sendTo.isNotEmpty())
             {
                 // Sends on fader: the send's destination along the bottom, in amber.
@@ -284,42 +290,58 @@ namespace x32
                 g.setFont (type::font (type::kCaption, true));
                 g.drawText ("> " + sendTo, band, juce::Justification::centred);
             }
-            auto text = area.reduced (4.0f, 3.0f);
+            auto text = area.reduced (3.0f, 2.0f);
             g.setColour (look.text);
             const auto name = getName(), label = getLabel();
             if (name.isEmpty() || name == label)
             {
                 // No name of its own: the label, large.
-                g.setFont (type::font (type::kValue, true));
+                g.setFont (type::font (13.0f, true));
                 g.drawFittedText (label, text.toNearestInt(), juce::Justification::centred, 1, 0.7f);
                 return;
             }
-            g.setFont (type::font (type::kCaption, true));
-            g.drawText (label, text.removeFromTop (16.0f), juce::Justification::centred);
-            g.setFont (type::font (type::kLabel, true));
-            g.drawFittedText (name, text.toNearestInt(), juce::Justification::centred, 2, 0.7f);
+            g.setFont (type::font (10.0f, true));
+            g.drawText (label, text.removeFromTop (13.0f), juce::Justification::centredLeft);
+            g.setFont (type::font (12.0f, true));
+            g.drawFittedText (name, text.toNearestInt(), juce::Justification::centredLeft, 1, 0.65f);
         }
 
         void resized() override
         {
             auto area = getLocalBounds();
-            // SELECT: a blank key, its name printed under it.
-            select.setBounds (area.removeFromTop (kKeyHeight - 6).reduced (8, 0));
-            selectLabel = area.removeFromTop (13);
-            meter.setBounds (area.removeFromTop (kMeterHeight).reduced (2, 0));
-            area.removeFromTop (3);
-            solo.setBounds (area.removeFromTop (kKeyHeight).reduced (2, 0));
-            area.removeFromTop (3);
-            scribble = area.removeFromTop (kScribble).reduced (2, 0);
-            area.removeFromTop (3);
-            mute.setBounds (area.removeFromTop (kKeyHeight).reduced (2, 0));
-            area.removeFromTop (sizes::kGapSmall);
-            fader.setBounds (area.reduced (2, 0));
+            // As on the panel, the keys blank with their names under them.
+            select.setBounds (area.removeFromTop (kKeyHeight).reduced (8, 0));
+            area.removeFromTop (4);
+            meterArea = area.removeFromTop (kMeterHeight);
+            meter.setBounds (meterArea.reduced (2, 0));
+            area.removeFromTop (4);
+            solo.setBounds (area.removeFromTop (kKeyHeight).reduced (8, 0));
+            area.removeFromTop (6);
+            scribble = area.removeFromTop (kScribble).reduced (5, 0);
+            area.removeFromTop (6);
+            mute.setBounds (area.removeFromTop (kKeyHeight).reduced (8, 0));
+            area.removeFromTop (12);
+            fader.setBounds (area.reduced (2, 6));
         }
 
     private:
-        static constexpr int kMeterHeight = 76;
+        static constexpr int kMeterHeight = 70;
         juce::Rectangle<int> scribbleArea() const { return scribble; }
+
+    public:
+        /** Where the meter is (the main strip has CLEAR SOLO there instead), and showing it. */
+        juce::Rectangle<int> getMeterArea() const noexcept { return meterArea; }
+        void setMeterShown (bool on)
+        {
+            meterShown = on;
+            meter.setVisible (on && strip != nullptr);
+        }
+        /** Where the MUTE key's row starts (the layer keys line up with it). */
+        int getMuteTop() const noexcept { return mute.getY(); }
+
+    private:
+        bool meterShown = true;
+        juce::Rectangle<int> meterArea;
 
         UiContext& ctx;
         const Theme& theme;
@@ -328,7 +350,7 @@ namespace x32
         FaderControl fader;
         LedMeter meter;
         ToggleKey solo, mute, select;
-        juce::Rectangle<int> scribble, selectLabel;
+        juce::Rectangle<int> scribble;
 
         /** Whether an input channel sends to `bus` pre-fader (an enabled PRE send). */
         bool sendsPre (const Strip& bus) const
@@ -431,8 +453,12 @@ private:
 
     UiContext& ctx;
     const universal::Theme& theme;
-    universal::ToggleKey universalKey, sendsOnFaderKey;
+    universal::ToggleKey universalKey, sendsOnFaderKey, clearSolo;
     std::vector<std::unique_ptr<universal::ToggleKey>> inputLayerKeys, groupLayerKeys;
+    /** SCENES (PREV, NEXT, UNDO, GO, VIEW) and MUTE GROUPS 1-6, right of the main fader. */
+    std::vector<std::unique_ptr<universal::ToggleKey>> sceneKeys, muteGroupKeys;
+    /** Clears every solo (CLEAR SOLO, on the main strip). */
+    void clearSolos();
     std::array<std::unique_ptr<x32::FaderStrip>, 16> inputs;
     std::array<std::unique_ptr<x32::FaderStrip>, 8> groups;
     std::unique_ptr<x32::FaderStrip> main;
@@ -448,7 +474,7 @@ private:
     Strip* sofShown = nullptr; // the selected strip the sends were laid out for
 
 
-    juce::Rectangle<int> displayArea, channelArea, fadersArea;
+    juce::Rectangle<int> displayArea, channelArea, fadersArea, scenesArea, muteGroupsArea, palmRest;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (X32Surface)
 };

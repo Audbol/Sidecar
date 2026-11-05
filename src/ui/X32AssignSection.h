@@ -63,6 +63,8 @@ private:
     std::array<DisplayKnob, 4> encoders;
     std::vector<std::unique_ptr<universal::ToggleKey>> buttons, setKeys;
     std::array<juce::String, 12> shownCodes;
+    /** Each encoder's LCD (set by resized()). */
+    std::array<juce::Rectangle<int>, 4> lcds;
     Strip* shownSelected = nullptr;
     std::array<float, 4> midiEncoder {};  // an encoder sending MIDI: its value (0..1)
     std::array<bool, 8> midiToggle {};    // a MIDI toggle button: on

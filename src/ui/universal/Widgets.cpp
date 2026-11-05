@@ -82,7 +82,7 @@ void FaderControl::paint (juce::Graphics& g)
             if (db > fader::maxDb() + 0.01f)
                 continue;
             const float y = yAt (fader::dbToPos (db));
-            const auto label = db <= fader::kMinDb ? juce::String::fromUTF8 ("â") : juce::String (std::abs ((int) db));
+            const auto label = db <= fader::kMinDb ? juce::String::fromUTF8 ("\xe2\x88\x9e") : juce::String (std::abs ((int) db));
             hw::silk (g, juce::Rectangle<float> (0.0f, y - 7.0f, groove - 20.0f, 14.0f), label, *look, 10.0f, juce::Justification::centredRight,
                       db != 0.0f);
             g.setColour (look->silkDim.withAlpha (0.6f));
@@ -312,7 +312,18 @@ void ToggleKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
 {
     if (look != nullptr)
     {
-        hw::key (g, getLocalBounds().toFloat().reduced (2.0f), getButtonText(), lit || halfLit, down, colour, *look, face);
+        auto area = getLocalBounds().toFloat();
+        if (labelBelow)
+        {
+            const float h = juce::jlimit (9.0f, 12.0f, area.getHeight() * 0.3f);
+            auto label = area.removeFromBottom (h + 1.0f);
+            g.setColour (look->silk);
+            g.setFont (type::font (h - 1.0f, true));
+            g.drawFittedText (belowText.isNotEmpty() ? belowText : getButtonText(), label.toNearestInt(), juce::Justification::centred, 1, 0.6f);
+            hw::key (g, area.reduced (2.0f, 1.0f), {}, lit || halfLit, down, colour, *look, face);
+            return;
+        }
+        hw::key (g, area.reduced (2.0f), getButtonText(), lit || halfLit, down, colour, *look, face);
         return;
     }
     const auto area = getLocalBounds().toFloat().reduced (1.5f);

@@ -37,10 +37,11 @@ namespace
         return s;
     }
 
-    /** The screen keys' colours when lit (HOME green, METERS orange, as on the console). */
-    const juce::Colour kScreenKeyColours[] = { juce::Colour (0xff3ddc5a), juce::Colour (0xffff9a1f), juce::Colour (0xff4fb3ff),
-                                               juce::Colour (0xffb98cff), juce::Colour (0xffffd02a), juce::Colour (0xffff6fb0),
-                                               juce::Colour (0xffff4b3e), juce::Colour (0xff3fe0d0) };
+    /** The screen keys' colours when lit, as on the console: HOME green, METERS
+        amber, MUTE GRP red, UTILITY green, the others white. */
+    const juce::Colour kScreenKeyColours[] = { juce::Colour (0xff3ddc5a), juce::Colour (0xffffb21f), juce::Colour (0xffeef2f4),
+                                               juce::Colour (0xffeef2f4), juce::Colour (0xffeef2f4), juce::Colour (0xffeef2f4),
+                                               juce::Colour (0xffff4b3e), juce::Colour (0xff3ddc5a) };
 
     constexpr int kStatus = 46, kTabs = 24, kEncoderRow = 74, kSideKeys = 104, kKnobs = 92, kBezelMeters = 64;
 

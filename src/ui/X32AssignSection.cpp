@@ -13,7 +13,8 @@ using namespace universal;
 
 namespace
 {
-    constexpr int kKey = 28;
+    constexpr int kKey = 34; // a key and its name under it
+    const juce::Colour kLit (0xffffc83a);
     const char* const kSets[] = { "A", "B", "C" };
 
     /** What strip number `xx` (0-79) names, as a short label. */
@@ -54,14 +55,16 @@ namespace
 
 AssignSection::AssignSection (UiContext& c, const Theme& t) : ctx (c), theme (t)
 {
+    // Encoders in their LED rings; what they and the keys do is on the LCDs.
     for (auto& k : encoders)
     {
-        k.setCompact (true);
+        k.setHardware (true);
         addAndMakeVisible (k);
     }
     for (int i = 0; i < 8; ++i)
     {
-        auto key = std::make_unique<ToggleKey> (juce::String (i + 5), t.accent, t);
+        auto key = std::make_unique<ToggleKey> (juce::String (i + 5), kLit, t);
+        key->belowText = juce::String (i + 5);
         key->onClick = [this, i] { pressButton (shownCodes[(size_t) (4 + i)], i); };
         key->isOn = [this, i] { return buttonLit (shownCodes[(size_t) (4 + i)], i); };
         addAndMakeVisible (*key);
@@ -69,7 +72,8 @@ AssignSection::AssignSection (UiContext& c, const Theme& t) : ctx (c), theme (t)
     }
     for (int s = 0; s < 3; ++s)
     {
-        auto key = std::make_unique<ToggleKey> (juce::String ("SET ") + kSets[s], t.accent, t);
+        auto key = std::make_unique<ToggleKey> (juce::String ("SET ") + kSets[s], juce::Colour (0xffff4b3e), t);
+        key->belowText = kSets[s];
         key->onClick = [this, s] { setSet (s); };
         key->isOn = [this, s] { return set == s; };
         addAndMakeVisible (*key);
@@ -127,8 +131,9 @@ void AssignSection::timerCallback()
         changed = shownCodes[(size_t) i] != code (i >= 4, i + 1); // encoders 1-4, buttons 5-12
     if (changed)
         refreshCodes();
-    for (auto& b : buttons)
-        b->refresh();
+    for (auto* keys : { &buttons, &setKeys })
+        for (auto& k : *keys)
+            k->refresh();
 }
 
 Strip* AssignSection::stripAt (int xx) const
@@ -384,30 +389,69 @@ bool AssignSection::buttonLit (const juce::String& c, int index) const
 
 void AssignSection::paint (juce::Graphics& g)
 {
-    hw::section (g, getLocalBounds().toFloat().reduced (1.0f).withTrimmedTop (6.0f), "ASSIGN", hw::Look::x32());
+    const auto& look = hw::Look::x32();
+    hw::section (g, getLocalBounds().toFloat().reduced (1.0f).withTrimmedTop (6.0f), "ASSIGN", look);
+    for (int i = 0; i < 4; ++i)
+        hw::silk (g, encoders[(size_t) i].getBounds().toFloat().withY ((float) encoders[(size_t) i].getBottom()).withHeight (11.0f), juce::String (i + 1),
+                  look, 9.0f);
+    // Each encoder's LCD: what it turns and what the two keys under it do (n, n + 4, n + 8).
+    for (int i = 0; i < 4; ++i)
+    {
+        auto lcd = lcds[(size_t) i].toFloat();
+        if (lcd.isEmpty())
+            continue;
+        g.setColour (juce::Colour (0xff0b0c0c));
+        g.fillRoundedRectangle (lcd.expanded (2.0f), 3.0f);
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff4fe06a), lcd.getX(), lcd.getY(), juce::Colour (0xff2fae48), lcd.getX(), lcd.getBottom(), false));
+        g.fillRect (lcd);
+        const auto& enc = encoders[(size_t) i].getBinding();
+        // An unassigned key shows its number as its text: "-" on the LCD.
+        const auto what = [this] (int b)
+        {
+            const auto text = buttons[(size_t) b]->getButtonText();
+            return text == juce::String (b + 5) ? juce::String ("-") : text;
+        };
+        const juce::String lines[] = { juce::String (i + 1) + " " + (enc.isValid() ? enc.label : juce::String ("-")), juce::String (i + 5) + " " + what (i),
+                                       juce::String (i + 9) + " " + what (4 + i) };
+        const float h = lcd.getHeight() / 3.0f;
+        g.setColour (juce::Colour (0xff0c2a12));
+        g.setFont (universal::type::font (juce::jmin (9.5f, h * 0.9f), true));
+        for (int k = 0; k < 3; ++k)
+            g.drawFittedText (lines[k], lcd.withY (lcd.getY() + h * (float) k).withHeight (h).reduced (2.0f, 0.0f).toNearestInt(),
+                              juce::Justification::centredLeft, 1, 0.6f);
+    }
+    if (! setKeys.empty())
+        hw::silk (g, setKeys.front()->getBounds().toFloat().withX ((float) setKeys.front()->getX() - 30.0f).withWidth (28.0f).withHeight (24.0f), "SET",
+                  look, 9.5f, juce::Justification::centredRight);
 }
 
 void AssignSection::resized()
 {
-    auto r = getLocalBounds().reduced (6);
-    r.removeFromTop (20);
-    // The set keys along the bottom, the buttons above them, the encoders on top.
-    auto sets = r.removeFromBottom (kKey);
-    const int sw = sets.getWidth() / 3;
-    for (auto& k : setKeys)
-        k->setBounds (sets.removeFromLeft (sw).reduced (1, 0));
-    r.removeFromBottom (6);
-    auto keys = r.removeFromBottom (4 * (kKey + 3));
-    for (int i = 0; i < 8; ++i)
-    {
-        auto row = keys.withHeight (kKey).translated (0, (i / 2) * (kKey + 3));
-        const int w = row.getWidth() / 2;
-        buttons[(size_t) i]->setBounds (row.withWidth (w).translated ((i % 2) * w, 0).reduced (1, 0));
-    }
-    r.removeFromBottom (6);
-    const int h = r.getHeight() / 2, w = r.getWidth() / 2;
+    // As on the panel: the four encoders in a row, their LCDs under them, the
+    // keys 5-8 and 9-12, SET A, B, C along the bottom.
+    auto r = getLocalBounds().reduced (8, 6);
+    r.removeFromTop (18);
+    const int w = r.getWidth() / 4;
+    const int size = juce::jmin (w - 4, 56);
+    auto encRow = r.removeFromTop (size + 12);
     for (int i = 0; i < 4; ++i)
-        encoders[(size_t) i].setBounds (juce::Rectangle<int> (r.getX() + (i % 2) * w, r.getY() + (i / 2) * h, w, h).reduced (1));
+        encoders[(size_t) i].setBounds (juce::Rectangle<int> (encRow.getX() + w * i, encRow.getY(), w, size).withSizeKeepingCentre (size, size));
+    r.removeFromTop (4);
+    auto lcdRow = r.removeFromTop (42);
+    for (int i = 0; i < 4; ++i)
+        lcds[(size_t) i] = juce::Rectangle<int> (lcdRow.getX() + w * i, lcdRow.getY(), w, lcdRow.getHeight()).reduced (4, 2);
+    r.removeFromTop (8);
+    for (int row = 0; row < 2; ++row)
+    {
+        auto keys = r.removeFromTop (kKey);
+        for (int i = 0; i < 4; ++i)
+            buttons[(size_t) (row * 4 + i)]->setBounds (juce::Rectangle<int> (keys.getX() + w * i, keys.getY(), w, kKey).withSizeKeepingCentre (40, kKey));
+        r.removeFromTop (6);
+    }
+    auto sets = r.removeFromTop (kKey).withTrimmedLeft (w);
+    const int sw = sets.getWidth() / 3;
+    for (int s = 0; s < 3; ++s)
+        setKeys[(size_t) s]->setBounds (juce::Rectangle<int> (sets.getX() + sw * s, sets.getY(), sw, kKey).withSizeKeepingCentre (30, kKey));
 }
 
 } // namespace livedaw::ui::x32

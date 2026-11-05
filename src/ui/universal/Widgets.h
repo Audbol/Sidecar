@@ -141,6 +141,10 @@ public:
         `face` if it has its own colour; null: the Universal Mixer's flat key. */
     const hw::Look* look = nullptr;
     juce::Colour face;
+    /** With a look: the key blank, its name printed on the panel under it (the
+        X32's keys), `belowText` if set, else its text. */
+    bool labelBelow = false;
+    juce::String belowText;
     void refresh();
 
     void paintButton (juce::Graphics&, bool highlighted, bool down) override;

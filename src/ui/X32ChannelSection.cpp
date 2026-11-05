@@ -2,6 +2,9 @@
 #include "ui/HardwareLook.h"
 
 #include "engine/Models.h"
+#include "ui/MeterBank.h"
+
+#include <tuple>
 
 namespace livedaw::ui::x32
 {
@@ -10,9 +13,14 @@ using namespace universal;
 
 namespace
 {
-    const char* const kBandNames4[] = { "LOW", "LO MID", "HI MID", "HIGH" };
-    const char* const kBandNames6[] = { "LOW", "LOW 2", "LO MID", "HI MID", "HIGH 2", "HIGH" };
-    constexpr int kKey = 30;
+    // The band keys top to bottom, and the band each selects (four bands; six: a
+    // second press of HIGH or LOW for HIGH 2 or LOW 2).
+    const char* const kBandKeys[] = { "HIGH", "HIGH MID", "LOW MID", "LOW" };
+    constexpr int kBand4[] = { 3, 2, 1, 0 }, kBand6[] = { 5, 3, 2, 0 };
+    constexpr int kKey = 34; // a key and its name under it
+    const juce::Colour kKeyLit (0xffffc83a);
+    // The EQ types' LEDs, top to bottom (types 5 ... 0: X32 EQ_TYPES).
+    const char* const kTypeNames[] = { "HCUT", "HSHV", "VEQ", "PEQ", "LSHV", "LCUT" };
 
     /** A parameter of a model held by a block (`values` its values), as a knob. */
     KnobBinding bindParam (models::Table table, int model, std::atomic<float>* values, const juce::String& id, const juce::String& label)
@@ -28,19 +36,35 @@ namespace
 } // namespace
 
 ChannelSection::ChannelSection (UiContext& c, const Theme& t)
-    : ctx (c), theme (t), lowCutOn ("LOW CUT", t.accent, t), invert (juce::String::fromUTF8 ("\xc3\x98"), t.accent, t), gateOn ("GATE", t.accent, t),
-      dynOn ("COMP", t.accent, t), eqOn ("EQ", t.accent, t), lrOn ("LR", t.accent, t), mcOn ("M/C", t.accent, t)
+    : ctx (c), theme (t), lowCutOn ("LOW CUT", kKeyLit, t), invert (juce::String::fromUTF8 ("\xc3\x98"), kKeyLit, t), phantom ("48V", kKeyLit, t),
+      mode ("MODE", kKeyLit, t), gateOn ("GATE / DUCKER", kKeyLit, t), dynOn ("COMP / EXP", kKeyLit, t), eqOn ("EQUALIZER", kKeyLit, t),
+      lrOn ("STEREO BUS", kKeyLit, t), mcOn ("MONO BUS", kKeyLit, t)
 {
-    for (auto* k : { &gain, &lowCut, &gateThr, &dynThr, &dynRatio, &eqType, &eqFreq, &eqGain, &eqQ, &pan, &mcLevel })
+    // The X32's encoders: their names and scales are printed on the panel.
+    for (auto* k : { &gain, &lowCut, &gateThr, &dynThr, &eqFreq, &eqGain, &eqQ, &pan, &mcLevel })
     {
-        k->setCompact (true);
+        k->setHardware (true);
         addAndMakeVisible (*k);
     }
     for (auto& k : sends)
     {
-        k.setCompact (true);
+        k.setHardware (true);
         addAndMakeVisible (k);
     }
+    // RATIO and TYPE aren't on the panel (the screen's); TYPE steps by MODE.
+    addChildComponent (dynRatio);
+    addChildComponent (eqType);
+    phantom.onClick = [this] { if (auto* s = source()) s->phantom = ! s->phantom.load(); };
+    phantom.isOn = [this] { auto* s = source(); return s != nullptr && s->phantom.load(); };
+    mode.onClick = [this]
+    {
+        const auto& b = eqType.getBinding();
+        if (! b.isValid() || b.steps < 2.0f)
+            return;
+        const int n = (int) b.steps;
+        b.set ((float) ((typeIndex() + 1) % n) / (float) (n - 1));
+    };
+    mode.isOn = [] { return false; };
     // The section keys switch a block (or a send) on and off.
     lowCutOn.onClick = [this] { if (strip != nullptr) strip->params.filter().lowCut = ! strip->params.filter().lowCut.load(); };
     lowCutOn.isOn = [this] { return strip != nullptr && strip->params.filter().lowCut.load(); };
@@ -56,20 +80,38 @@ ChannelSection::ChannelSection (UiContext& c, const Theme& t)
     lrOn.isOn = [this] { return strip != nullptr && strip->mains[0].on.load(); };
     mcOn.onClick = [this] { if (strip != nullptr && ctx.engine.getMains().size() > 1) strip->mains[1].on = ! strip->mains[1].on.load(); };
     mcOn.isOn = [this] { return strip != nullptr && ctx.engine.getMains().size() > 1 && strip->mains[1].on.load(); };
-    for (auto* k : { &lowCutOn, &invert, &gateOn, &dynOn, &eqOn, &lrOn, &mcOn })
+    for (auto* k : { &lowCutOn, &invert, &phantom, &mode, &gateOn, &dynOn, &eqOn, &lrOn, &mcOn })
         addAndMakeVisible (*k);
 
-    for (int b = 0; b < 6; ++b)
+    for (int k = 0; k < 4; ++k)
     {
-        auto key = std::make_unique<ToggleKey> (kBandNames6[b], t.accent, t);
-        key->isOn = [this, b] { return band == b; };
-        key->onClick = [this, b] { setBand (b); };
+        auto key = std::make_unique<ToggleKey> (kBandKeys[k], kKeyLit, t);
+        key->isOn = [this, k]
+        {
+            const bool six = numBands() == 6;
+            return band == (six ? kBand6[k] : kBand4[k]) || (six && ((k == 0 && band == 4) || (k == 3 && band == 1)));
+        };
+        key->onClick = [this, k]
+        {
+            if (numBands() == 6)
+            {
+                // HIGH and LOW: again for HIGH 2 and LOW 2.
+                if (k == 0)
+                    setBand (band == 5 ? 4 : 5);
+                else if (k == 3)
+                    setBand (band == 0 ? 1 : 0);
+                else
+                    setBand (kBand6[k]);
+            }
+            else
+                setBand (kBand4[k]);
+        };
         addAndMakeVisible (*key);
         bandKeys.push_back (std::move (key));
     }
     for (int b = 0; b < 4; ++b)
     {
-        auto key = std::make_unique<ToggleKey> (juce::String (4 * b + 1) + "-" + juce::String (4 * b + 4), t.accent, t);
+        auto key = std::make_unique<ToggleKey> (juce::String (4 * b + 1) + "-" + juce::String (4 * b + 4), kKeyLit, t);
         key->isOn = [this, b] { return sendBank == b; };
         key->onClick = [this, b] { setSendBank (b); };
         addAndMakeVisible (*key);
@@ -78,7 +120,7 @@ ChannelSection::ChannelSection (UiContext& c, const Theme& t)
     sections = { { { "CONFIG / PREAMP", {} }, { "GATE", {} }, { "DYNAMICS", {} }, { "EQUALIZER", {} }, { "BUS SENDS", {} }, { "MAIN BUS", {} } } };
     for (size_t s = 0; s < sections.size(); ++s)
     {
-        auto key = std::make_unique<ToggleKey> ("VIEW", t.accent, t);
+        auto key = std::make_unique<ToggleKey> ("VIEW", kKeyLit, t);
         key->onClick = [this, s] { if (onView) onView ((int) s); };
         addAndMakeVisible (*key);
         viewKeys.push_back (std::move (key));
@@ -101,13 +143,6 @@ void ChannelSection::setStrip (Strip* s)
 {
     strip = s;
     band = juce::jmin (band, numBands() - 1);
-    // Bands are named by how many the EQ has.
-    for (int b = 0; b < 6; ++b)
-    {
-        auto& key = *bandKeys[(size_t) b];
-        key.setVisible (b < numBands());
-        key.setButtonText (numBands() == 4 ? (b < 4 ? kBandNames4[b] : "") : kBandNames6[b]);
-    }
     bind();
     resized();
     repaint();
@@ -196,129 +231,246 @@ void ChannelSection::timerCallback()
 {
     if (strip != nullptr && strip->params.inputLeft.load() != boundInput)
         bind(); // patched elsewhere: GAIN follows the input
-    for (auto* k : { &lowCutOn, &invert, &gateOn, &dynOn, &eqOn, &lrOn, &mcOn })
+    for (auto* k : { &lowCutOn, &invert, &phantom, &mode, &gateOn, &dynOn, &eqOn, &lrOn, &mcOn })
         k->refresh();
     for (auto* keys : { &bandKeys, &bankKeys })
         for (auto& k : *keys)
             k->refresh();
-    // The gain reduction bars.
-    repaint (sections[1].area);
-    repaint (sections[2].area);
+    // The meters and the type LEDs.
+    repaint (levelMeter);
+    repaint (grMeter);
+    repaint (typeLeds);
+}
+
+ld::SourceParams* ChannelSection::source() const
+{
+    const int input = strip != nullptr ? strip->params.inputLeft.load() : -1;
+    return input >= 0 && input < 128 ? ctx.engine.getSource (input) : nullptr;
+}
+
+int ChannelSection::typeIndex() const
+{
+    const auto& b = eqType.getBinding();
+    if (! b.isValid() || b.steps < 2.0f)
+        return -1;
+    return juce::roundToInt (b.get() * (b.steps - 1.0f));
 }
 
 void ChannelSection::paint (juce::Graphics& g)
 {
+    const auto& look = hw::Look::x32();
     // Each section on its slate panel, outlined in silkscreen, its title in the outline.
     for (auto& s : sections)
-        hw::section (g, s.area.toFloat().withTrimmedTop (6.0f), s.title, hw::Look::x32());
-    // GATE and DYNAMICS: their gain reduction, as the X32's LED bars.
-    auto reduction = [&g, this] (const Section& s, float db)
+        hw::section (g, s.area.toFloat().withTrimmedTop (6.0f), s.title, look);
+
+    // The encoders' names, printed under them.
+    const auto name = [&g, &look] (const juce::Component& k, const juce::String& text)
     {
-        auto bar = s.area.reduced (10).removeFromBottom (14).toFloat();
-        g.setColour (juce::Colour (0xff101113));
-        g.fillRoundedRectangle (bar, 3.0f);
-        const float amount = juce::jlimit (0.0f, 1.0f, db / 30.0f);
-        g.setColour (theme.solo);
-        g.fillRoundedRectangle (bar.removeFromRight (bar.getWidth() * amount), 3.0f);
-        g.setColour (juce::Colour (0xff8b9099));
-        g.setFont (type::font (type::kCaption));
-        g.drawText ("GR", bar.withX ((float) s.area.getX() + 10.0f).withWidth (24.0f), juce::Justification::centredLeft);
+        if (k.isVisible())
+            hw::silk (g, k.getBounds().toFloat().withY ((float) k.getBottom() - 2.0f).withHeight (12.0f).expanded (30.0f, 0.0f), text, look, 9.5f);
     };
-    const float gateGr = strip != nullptr ? strip->meters.gateReductionDb.load() : 0.0f;
-    const float dynGr = strip != nullptr ? strip->meters.dynReductionDb.load() : 0.0f;
-    reduction (sections[1], std::abs (gateGr));
-    reduction (sections[2], std::abs (dynGr));
+    name (gain, "GAIN");
+    name (lowCut, "FREQUENCY");
+    name (gateThr, "THRESHOLD");
+    name (dynThr, "THRESHOLD");
+    name (eqQ, "Q");
+    name (eqFreq, "FREQ");
+    name (eqGain, "GAIN");
+    name (mcLevel, "LEVEL");
+    name (pan, "PAN / BAL");
+    for (int i = 0; i < 4; ++i)
+    {
+        const auto& k = sends[(size_t) i];
+        hw::silk (g, juce::Rectangle<float> ((float) k.getRight(), (float) k.getY(), 16.0f, (float) k.getHeight()), juce::String (i + 1), look, 10.0f);
+    }
+
+    // An LED column with its marks at the right: `lit` how many from the bottom.
+    const auto ledColumn = [&g, &look] (juce::Rectangle<float> r, const juce::StringArray& marks, int lit, bool fromTop,
+                                        std::function<juce::Colour (int)> colourOf)
+    {
+        const float rowH = r.getHeight() / (float) marks.size();
+        g.setFont (universal::type::font (8.5f, true));
+        for (int k = 0; k < marks.size(); ++k)
+        {
+            const float y = r.getY() + rowH * (float) k;
+            const bool on = fromTop ? k < lit : marks.size() - 1 - k < lit;
+            const auto c = colourOf (k);
+            g.setColour (on ? c : c.withAlpha (0.14f));
+            g.fillRoundedRectangle (juce::Rectangle<float> (r.getX(), y + rowH * 0.25f, 7.0f, rowH * 0.5f), 1.0f);
+            g.setColour (look.silk);
+            g.drawText (marks[k], juce::Rectangle<float> (r.getX() + 10.0f, y, r.getWidth() - 10.0f, rowH), juce::Justification::centredLeft);
+        }
+    };
+    const auto green = juce::Colour (0xff3ddc5a), red = juce::Colour (0xffff3b30), orange = juce::Colour (0xffff9a1f);
+
+    // CONFIG / PREAMP's LEVEL: the input after the trim.
+    if (! levelMeter.isEmpty())
+    {
+        const float db = strip != nullptr ? juce::Decibels::gainToDecibels (ctx.meters.get (strip, MeterPoint::Trim, 0), -144.0f) : -144.0f;
+        static constexpr float steps[] = { -60.0f, -30.0f, -18.0f, -12.0f, -9.0f, -6.0f, -3.0f, 0.0f };
+        int lit = 0;
+        for (float s : steps)
+            lit += db >= s ? 1 : 0;
+        auto r = levelMeter.toFloat();
+        hw::silk (g, r.removeFromBottom (12.0f), "LEVEL / dB", look, 8.5f);
+        ledColumn (r, { "CLIP", "-3", "-6", "-9", "-12", "-18", "-30", "SIG" }, lit, false,
+                   [=] (int k) { return k == 0 ? red : k < 3 ? orange : green; });
+    }
+    // The GR meter between GATE and DYNAMICS: the compressor's from the top, the gate's below.
+    if (! grMeter.isEmpty())
+    {
+        const float dynGr = strip != nullptr ? std::abs (strip->meters.dynReductionDb.load()) : 0.0f;
+        const float gateGr = strip != nullptr ? std::abs (strip->meters.gateReductionDb.load()) : 0.0f;
+        static constexpr float steps[] = { 2.0f, 4.0f, 6.0f, 10.0f, 18.0f, 30.0f };
+        int lit = 0;
+        for (float s : steps)
+            lit += dynGr >= s ? 1 : 0;
+        auto r = grMeter.toFloat();
+        hw::silk (g, r.removeFromBottom (12.0f), "GR / dB", look, 8.5f);
+        ledColumn (r, { "COMP", "2", "4", "6", "10", "18", "30", "GATE" }, 0, true, [=] (int) { return orange; });
+        // Lit: COMP while it compresses, the steps down, GATE while the gate closes.
+        const float rowH = r.getHeight() / 8.0f;
+        for (int k = 0; k < 8; ++k)
+        {
+            const bool on = k == 0 ? dynGr >= 0.5f : k == 7 ? gateGr >= 0.5f : k <= lit;
+            if (! on)
+                continue;
+            g.setColour (k == 7 ? green : orange);
+            g.fillRoundedRectangle (juce::Rectangle<float> (r.getX(), r.getY() + rowH * (float) k + rowH * 0.25f, 7.0f, rowH * 0.5f), 1.0f);
+        }
+    }
+    // EQUALIZER: the band's type, its LED lit; HIGH 2 and LOW 2 beside their keys.
+    if (! typeLeds.isEmpty())
+    {
+        const int type = typeIndex();
+        ledColumn (typeLeds.toFloat(), { "HCUT", "HSHV", "VEQ", "PEQ", "LSHV", "LCUT" }, 0, true, [=] (int) { return red; });
+        const float rowH = (float) typeLeds.getHeight() / 6.0f;
+        if (type >= 0 && type < 6)
+        {
+            g.setColour (red);
+            g.fillRoundedRectangle (juce::Rectangle<float> ((float) typeLeds.getX(), (float) typeLeds.getY() + rowH * (float) (5 - type) + rowH * 0.25f, 7.0f,
+                                                            rowH * 0.5f),
+                                    1.0f);
+        }
+        juce::ignoreUnused (kTypeNames);
+        if (numBands() == 6)
+        {
+            const auto beside = [&] (const juce::Component& k, const char* text)
+            {
+                hw::silk (g, k.getBounds().toFloat().withX ((float) k.getX() - 52.0f).withWidth (48.0f).withHeight ((float) k.getHeight() - 10.0f), text, look,
+                          9.0f, juce::Justification::centredRight);
+            };
+            beside (*bandKeys[1], "HIGH 2");
+            beside (*bandKeys[2], "LOW 2");
+        }
+    }
 }
 
 void ChannelSection::resized()
 {
     auto area = getLocalBounds();
-    // Six sections: the EQ wider (its band keys and four knobs).
-    const float weights[] = { 1.2f, 0.75f, 0.9f, 2.0f, 1.75f, 0.8f };
+    const int gap = sizes::kGap;
+    // As on the panel: CONFIG / PREAMP over GATE and DYNAMICS (the GR meter
+    // between), then EQUALIZER, BUS SENDS and MAIN BUS, each the full height.
+    const float weights[] = { 3.2f, 3.4f, 1.75f, 1.3f };
+    const int width = area.getWidth() - gap * 3;
     float total = 0.0f;
     for (auto w : weights)
         total += w;
-    const int gap = sizes::kGap;
-    const int width = area.getWidth() - gap * 5;
-    for (size_t s = 0; s < sections.size(); ++s)
-    {
-        sections[s].area = area.removeFromLeft (juce::roundToInt ((float) width * weights[s] / total));
-        area.removeFromLeft (gap);
-    }
+    auto left = area.removeFromLeft (juce::roundToInt ((float) width * weights[0] / total));
+    area.removeFromLeft (gap);
+    sections[3].area = area.removeFromLeft (juce::roundToInt ((float) width * weights[1] / total));
+    area.removeFromLeft (gap);
+    sections[4].area = area.removeFromLeft (juce::roundToInt ((float) width * weights[2] / total));
+    area.removeFromLeft (gap);
+    sections[5].area = area;
+    sections[0].area = left.removeFromTop (left.getHeight() / 2 - gap / 2);
+    left.removeFromTop (gap);
+    sections[1].area = left.removeFromLeft (left.getWidth() / 2 - 2);
+    left.removeFromLeft (4);
+    sections[2].area = left;
 
-    auto inside = [] (const Section& s) { return s.area.reduced (8).withTrimmedTop (20); };
-    auto keysRow = [] (juce::Rectangle<int>& r) { return r.removeFromBottom (kKey); };
-    auto placeKnobs = [] (juce::Rectangle<int> r, std::initializer_list<DisplayKnob*> knobs, int perRow)
-    {
-        const int rows = ((int) knobs.size() + perRow - 1) / perRow;
-        const int h = r.getHeight() / juce::jmax (1, rows);
-        int i = 0;
-        for (auto* k : knobs)
-        {
-            auto row = r.withHeight (h).translated (0, h * (i / perRow));
-            const int w = row.getWidth() / perRow;
-            k->setBounds (row.withWidth (w).translated (w * (i % perRow), 0).reduced (2));
-            ++i;
-        }
-    };
-
+    const auto inside = [] (const Section& s) { return s.area.reduced (10, 8).withTrimmedTop (16); };
+    // VIEW: a small key at the section's bottom right.
     for (size_t s = 0; s < sections.size(); ++s)
     {
         auto r = inside (sections[s]);
-        viewKeys[s]->setBounds (r.removeFromTop (kKey).removeFromRight (64));
+        viewKeys[s]->setBounds (r.removeFromRight (34).removeFromBottom (30));
+    }
+    const auto knobAt = [] (DisplayKnob& k, juce::Point<int> centre, int size) { k.setBounds (juce::Rectangle<int> (size, size).withCentre (centre)); };
+    const auto keyAt = [] (juce::Component& k, juce::Point<int> centre, int w) { k.setBounds (juce::Rectangle<int> (w, kKey).withCentre (centre)); };
+
+    {
+        // CONFIG / PREAMP: GAIN, the LEVEL meter, FREQUENCY; 48V, polarity, LOW CUT under them.
+        auto r = inside (sections[0]).withTrimmedRight (38);
+        auto keys = r.removeFromBottom (kKey);
+        const int size = juce::jmin (64, r.getHeight() - 14);
+        const int w = r.getWidth() / 3;
+        knobAt (gain, { r.getX() + w / 2, r.getY() + size / 2 + 2 }, size);
+        levelMeter = juce::Rectangle<int> (r.getX() + w + 4, r.getY(), w - 8, r.getHeight());
+        knobAt (lowCut, { r.getX() + 2 * w + w / 2, r.getY() + size / 2 + 2 }, size);
+        keyAt (phantom, { r.getX() + w / 4, keys.getCentreY() }, 40);
+        keyAt (invert, { r.getX() + w - w / 6, keys.getCentreY() }, 40);
+        keyAt (lowCutOn, { r.getX() + 2 * w + w / 2, keys.getCentreY() }, 56);
     }
     {
-        auto r = inside (sections[0]);
-        r.removeFromTop (kKey + 4);
-        auto keys = keysRow (r);
-        invert.setBounds (keys.removeFromRight (40).reduced (2, 0)); // polarity
-        lowCutOn.setBounds (keys.reduced (2, 0));
-        placeKnobs (r, { &gain, &lowCut }, 1);
+        // GATE and DYNAMICS: THRESHOLD, the key under it; the GR meter between them.
+        auto g = inside (sections[1]).withTrimmedRight (20);
+        auto d = inside (sections[2]).withTrimmedRight (36);
+        auto meterColumn = d.removeFromLeft (40);
+        grMeter = meterColumn.withTrimmedBottom (4);
+        for (auto [r, k, key] : { std::tuple { g, &gateThr, &gateOn }, std::tuple { d, &dynThr, &dynOn } })
+        {
+            auto keys = r.removeFromBottom (kKey);
+            const int size = juce::jmin (60, r.getHeight() - 14, r.getWidth());
+            knobAt (*k, { r.getCentreX(), r.getY() + size / 2 + 2 }, size);
+            keyAt (*key, { r.getCentreX(), keys.getCentreY() }, juce::jmin (70, r.getWidth()));
+        }
     }
     {
-        auto r = inside (sections[1]);
-        r.removeFromTop (kKey + 4);
-        r.removeFromBottom (22); // the GR bar
-        gateOn.setBounds (keysRow (r).reduced (2, 0));
-        placeKnobs (r, { &gateThr }, 1);
+        // EQUALIZER: the type LEDs and MODE at the left, Q over FREQ over GAIN, the band keys at the right, EQUALIZER under.
+        auto r = inside (sections[3]).withTrimmedRight (36);
+        auto keys = r.removeFromBottom (kKey);
+        keyAt (eqOn, { r.getX() + r.getWidth() / 2, keys.getCentreY() }, 70);
+        auto bands = r.removeFromRight (70);
+        const int bh = bands.getHeight() / 4;
+        for (int k = 0; k < 4; ++k)
+            keyAt (*bandKeys[(size_t) k], { bands.getCentreX(), bands.getY() + bh * k + bh / 2 }, 44);
+        auto types = r.removeFromLeft (64);
+        typeLeds = types.removeFromTop (types.getHeight() * 3 / 5).reduced (0, 4);
+        keyAt (mode, { types.getCentreX(), types.getY() + kKey / 2 + 4 }, 40);
+        const int size = juce::jmin (62, r.getHeight() / 3 - 6);
+        knobAt (eqQ, { r.getCentreX() - 20, r.getY() + size / 2 + 2 }, size);
+        knobAt (eqFreq, { r.getCentreX() + 30, r.getCentreY() + 4 }, size);
+        knobAt (eqGain, { r.getCentreX() - 20, r.getBottom() - size / 2 - 12 }, size);
     }
     {
-        auto r = inside (sections[2]);
-        r.removeFromTop (kKey + 4);
-        r.removeFromBottom (22);
-        dynOn.setBounds (keysRow (r).reduced (2, 0));
-        placeKnobs (r, { &dynThr, &dynRatio }, 1);
+        // BUS SENDS: four encoders down the section, their bank keys beside them.
+        auto r = inside (sections[4]).withTrimmedBottom (32);
+        auto keys = r.removeFromRight (48);
+        const int h = r.getHeight() / 4;
+        const int size = juce::jmin (h - 8, r.getWidth() - 20, 60);
+        for (int i = 0; i < 4; ++i)
+        {
+            knobAt (sends[(size_t) i], { r.getX() + size / 2 + 4, r.getY() + h * i + h / 2 }, size);
+            keyAt (*bankKeys[(size_t) i], { keys.getCentreX(), r.getY() + h * i + h / 2 }, 42);
+        }
     }
     {
-        auto r = inside (sections[3]);
-        r.removeFromTop (kKey + 4);
-        eqOn.setBounds (keysRow (r).removeFromRight (80).reduced (2, 0));
-        auto bands = r.removeFromTop (kKey);
-        const int n = numBands();
-        const int w = bands.getWidth() / juce::jmax (1, n);
-        for (int b = 0; b < 6; ++b)
-            if (b < n)
-                bandKeys[(size_t) b]->setBounds (bands.removeFromLeft (w).reduced (2, 0));
-        r.removeFromTop (4);
-        placeKnobs (r, { &eqType, &eqFreq, &eqGain, &eqQ }, 2);
+        // MAIN BUS: LEVEL, MONO BUS, PAN / BAL, STEREO BUS, top to bottom.
+        auto r = inside (sections[5]).withTrimmedBottom (28);
+        const int h = r.getHeight() / 2;
+        auto top = r.removeFromTop (h);
+        for (auto [part, k, key] : { std::tuple { top, &mcLevel, &mcOn }, std::tuple { r, &pan, &lrOn } })
+        {
+            auto keys = part.removeFromBottom (kKey);
+            const int size = juce::jmin (60, part.getHeight() - 14, part.getWidth());
+            knobAt (*k, { part.getCentreX(), part.getY() + size / 2 + 2 }, size);
+            keyAt (*key, { part.getCentreX(), keys.getCentreY() }, 70);
+        }
     }
-    {
-        auto r = inside (sections[4]);
-        r.removeFromTop (kKey + 4);
-        auto banks = r.removeFromBottom (kKey);
-        const int w = banks.getWidth() / 4;
-        for (auto& k : bankKeys)
-            k->setBounds (banks.removeFromLeft (w).reduced (2, 0));
-        placeKnobs (r, { &sends[0], &sends[1], &sends[2], &sends[3] }, 2);
-    }
-    {
-        auto r = inside (sections[5]);
-        r.removeFromTop (kKey + 4);
-        auto keys = keysRow (r);
-        lrOn.setBounds (keys.removeFromLeft (keys.getWidth() / 2).reduced (2, 0));
-        mcOn.setBounds (keys.reduced (2, 0));
-        placeKnobs (r, { &pan, &mcLevel }, 1);
-    }
+    eqType.setBounds ({});
+    dynRatio.setBounds ({});
 }
 
 } // namespace livedaw::ui::x32

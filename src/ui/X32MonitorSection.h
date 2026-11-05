@@ -38,6 +38,8 @@ private:
     UiContext& ctx;
     const universal::Theme& theme;
     DisplayKnob monitor, phones, talk;
+    /** MONITOR's and TALKBACK's sections, the EXT MIC socket (set by resized()). */
+    juce::Rectangle<int> monitorArea, talkArea, socket;
     universal::ToggleKey dim, mono, mute, talkA, talkB;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MonitorSection)

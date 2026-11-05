@@ -8,16 +8,18 @@ namespace livedaw::ui::x32
 {
 
 /** The X32 surface's channel strip section (Phase 4 step 8c): the selected
-    strip's most used controls, as the X32 groups them over its panel:
+    strip's most used controls, laid out as on the X32's panel (encoders in
+    LED rings, keys with their names printed under them):
 
-    - CONFIG / PREAMP: GAIN (trim), LOW CUT (frequency, on), polarity (the
-      X32's key reads a slashed O);
-    - GATE: THRESHOLD, on, the gain reduction;
-    - DYNAMICS: THRESHOLD, RATIO, on, the gain reduction;
-    - EQUALIZER: the band keys (LOW... HIGH: 4 on inputs, 6 on buses, mains
-      and matrices), the band's TYPE, FREQ, GAIN and Q, on;
-    - BUS SENDS: four sends at a time (the bank keys: 1-4... 13-16);
-    - MAIN BUS: PAN, LR and M/C on, the M/C level.
+    - CONFIG / PREAMP: GAIN, the LEVEL meter, FREQUENCY (low cut), 48V, the
+      polarity key (a slashed O), LOW CUT;
+    - GATE and DYNAMICS side by side under it: THRESHOLD, GATE / DUCKER and
+      COMP / EXP (on), the GR meter between them;
+    - EQUALIZER: Q, FREQ and GAIN, MODE (the band's type, its LED lit: HCUT
+      ... LCUT), the band keys HIGH, HIGH MID, LOW MID, LOW (a second press of
+      HIGH or LOW: HIGH 2, LOW 2 on a bus's six bands), EQUALIZER (on);
+    - BUS SENDS: four sends at a time, the bank keys 1-4 ... 13-16 beside them;
+    - MAIN BUS: LEVEL (the M/C send), MONO BUS, PAN / BAL, STEREO BUS.
 
     Each section's VIEW key asks for the display's page of the strip. Knobs
     bind to the strip's own blocks through the console's models, so they turn
@@ -65,9 +67,16 @@ private:
     int band = 0, sendBank = 0;
     int boundInput = -2; // the input GAIN was bound for (a head amp's, or the trim)
 
+    /** The selected strip's source's settings (48V), or nullptr. */
+    ld::SourceParams* source() const;
+    /** The band's type: its index, and how many there are (MODE steps through them). */
+    int typeIndex() const;
+
     DisplayKnob gain, lowCut, gateThr, dynThr, dynRatio, eqType, eqFreq, eqGain, eqQ, pan, mcLevel;
     std::array<DisplayKnob, 4> sends;
-    universal::ToggleKey lowCutOn, invert, gateOn, dynOn, eqOn, lrOn, mcOn;
+    universal::ToggleKey lowCutOn, invert, phantom, mode, gateOn, dynOn, eqOn, lrOn, mcOn;
+    /** Where the drawn meters and the EQ's type LEDs are (set by resized()). */
+    juce::Rectangle<int> levelMeter, grMeter, typeLeds;
     std::vector<std::unique_ptr<universal::ToggleKey>> bandKeys, bankKeys, viewKeys;
     std::array<Section, 6> sections;
 
