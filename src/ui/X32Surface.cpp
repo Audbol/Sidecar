@@ -106,6 +106,10 @@ X32Surface::X32Surface (UiContext& c)
     // The panel's keys, faders and knobs are the X32's: light rubber keys lit
     // in their colours, moulded caps, knurled knobs.
     hw::applyTo (*this, hw::Look::x32(), &universalKey);
+    // The encoders turn endlessly in their LED rings; MONITOR, PHONES and TALK are pots.
+    for (const char* pot : { "MONITOR", "PHONES", "TALK" })
+        if (auto* k = monitor.knob (pot))
+            k->getSlider().setLookAndFeel (&hw::knobLookAndFeel (hw::Look::x32(), false));
     refreshAll();
     startTimerHz (30);
 }

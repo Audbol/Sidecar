@@ -41,6 +41,8 @@ const Look& Look::x32()
         l.lcdPixel = c (0xffe8eef2);
         l.lcdDim = c (0xff8b959c);
         l.lcdBezel = c (0xff222423);
+        l.cap = Cap::Metal;
+        l.knobRing = c (0xffff9d2e);
         l.keyRadius = 3.0f;
         return l;
     }();
@@ -82,10 +84,10 @@ const Look& Look::y02r()
 {
     static const Look look = [] {
         Look l;
-        l.panelTop = c (0xff4e5053);
-        l.panelBottom = c (0xff3c3e41);
+        l.panelTop = c (0xff404245);
+        l.panelBottom = c (0xff2f3134);
         l.frame = c (0xff6a4428); // the wooden cheeks
-        l.section = c (0xff434548);
+        l.section = c (0xff36383b);
         l.sectionLine = c (0xffc4c7ca);
         l.silk = c (0xffeceeef);
         l.silkDim = c (0xffa9adb1);
@@ -94,11 +96,12 @@ const Look& Look::y02r()
         l.keyText = c (0xff2a2723);
         l.backlit = false;
         l.slot = c (0xff151617);
-        l.capTop = c (0xfff1ebd8);
-        l.capBottom = c (0xffc8c0a8);
+        l.capTop = c (0xffe2e2dd);
+        l.capBottom = c (0xffa9a9a3);
         l.capLine = c (0xff2a2723);
-        l.knob = c (0xff1c1d1f);
         l.knobLine = c (0xffe6e6e6);
+        l.knobStyle = Knob::Dome;
+        l.knob = c (0xffc9cbcc);
         l.lcd = c (0xff7fa8e0);
         l.lcdPixel = c (0xff0d1a3a);
         l.lcdDim = c (0xff36507e);
@@ -232,24 +235,70 @@ void faderSlot (juce::Graphics& g, float x, float top, float bottom, const Look&
 
 void faderCap (juce::Graphics& g, float x, float y, float width, const Look& l, juce::Colour colour)
 {
-    const float h = width * 0.78f;
+    if (l.cap == Look::Cap::Metal)
+    {
+        // The X32's: a tall brushed-aluminium cap (tinted if coloured), its face
+        // scooped: lit above the hollow, shaded in it, a lit lip at the bottom.
+        const float h = width * 1.3f;
+        auto cap = juce::Rectangle<float> (width, h).withCentre ({ x, y });
+        g.setColour (juce::Colours::black.withAlpha (0.55f));
+        g.fillRoundedRectangle (cap.translated (0.0f, 3.0f), 4.0f);
+        const auto tint = [&colour] (juce::Colour m) { return colour.isTransparent() ? m : m.interpolatedWith (colour, 0.6f); };
+        juce::ColourGradient metal (tint (c (0xffeef0f1)), cap.getX(), cap.getY(), tint (c (0xffa3a8ac)), cap.getX(), cap.getBottom(), false);
+        metal.addColour (0.42, tint (c (0xffd0d4d7)));
+        metal.addColour (0.5, tint (c (0xff8b9094)));
+        metal.addColour (0.82, tint (c (0xffb9bec2)));
+        g.setGradientFill (metal);
+        g.fillRoundedRectangle (cap, 4.0f);
+        // The brushing: faint vertical lines.
+        juce::Random rng (3);
+        for (float lx = cap.getX() + 2.0f; lx < cap.getRight() - 2.0f; lx += 1.5f)
+        {
+            g.setColour (juce::Colours::white.withAlpha (0.04f + 0.06f * rng.nextFloat()));
+            g.drawVerticalLine ((int) lx, cap.getY() + 2.0f, cap.getBottom() - 2.0f);
+        }
+        // The line across at the fader's position, the edges' highlights.
+        g.setColour (l.capLine);
+        g.fillRect (juce::Rectangle<float> (cap.getX() + 2.0f, y - 1.0f, cap.getWidth() - 4.0f, 2.0f));
+        g.setColour (juce::Colours::white.withAlpha (0.6f));
+        g.drawHorizontalLine ((int) cap.getY() + 1, cap.getX() + 3.0f, cap.getRight() - 3.0f);
+        g.drawHorizontalLine ((int) cap.getBottom() - 2, cap.getX() + 3.0f, cap.getRight() - 3.0f);
+        g.setColour (juce::Colours::black.withAlpha (0.4f));
+        g.drawRoundedRectangle (cap.reduced (0.5f), 4.0f, 1.0f);
+        return;
+    }
+    // A moulded block: lit from above, bevelled sides, grip ridges, a groove
+    // across the middle with the line in it.
+    const float h = width * 0.8f;
     auto cap = juce::Rectangle<float> (width, h).withCentre ({ x, y });
     g.setColour (juce::Colours::black.withAlpha (0.5f));
-    g.fillRoundedRectangle (cap.translated (0.0f, 3.0f), 3.0f);
+    g.fillRoundedRectangle (cap.translated (0.0f, 3.0f), 2.5f);
     const auto top = colour.isTransparent() ? l.capTop : colour.brighter (0.25f), bottom = colour.isTransparent() ? l.capBottom : colour.darker (0.3f);
-    // A moulded cap: lit from above, ridged across.
-    g.setGradientFill (juce::ColourGradient (top, cap.getX(), cap.getY(), bottom, cap.getX(), cap.getBottom(), false));
-    g.fillRoundedRectangle (cap, 3.0f);
-    g.setColour (juce::Colours::black.withAlpha (0.18f));
-    for (float k = 0.22f; k < 0.95f; k += 0.14f)
+    juce::ColourGradient body (top, cap.getX(), cap.getY(), bottom, cap.getX(), cap.getBottom(), false);
+    body.addColour (0.5, top.interpolatedWith (bottom, 0.35f));
+    g.setGradientFill (body);
+    g.fillRoundedRectangle (cap, 2.5f);
+    g.setColour (juce::Colours::black.withAlpha (0.12f));
+    g.fillRect (cap.withWidth (2.5f));
+    g.fillRect (cap.withLeft (cap.getRight() - 2.5f));
+    g.setColour (juce::Colours::black.withAlpha (0.16f));
+    for (float k : { 0.2f, 0.32f, 0.68f, 0.8f })
         g.drawHorizontalLine ((int) (cap.getY() + cap.getHeight() * k), cap.getX() + 3.0f, cap.getRight() - 3.0f);
+    g.setColour (juce::Colours::black.withAlpha (0.25f));
+    g.fillRect (juce::Rectangle<float> (cap.getX() + 1.5f, y - 2.5f, cap.getWidth() - 3.0f, 5.0f));
     g.setColour (colour.isTransparent() ? l.capLine : (colour.getPerceivedBrightness() > 0.5f ? l.capLine : juce::Colours::white));
     g.fillRect (juce::Rectangle<float> (cap.getX() + 2.0f, y - 1.0f, cap.getWidth() - 4.0f, 2.0f));
-    g.setColour (juce::Colours::white.withAlpha (0.45f));
+    g.setColour (juce::Colours::white.withAlpha (0.5f));
     g.drawHorizontalLine ((int) cap.getY() + 1, cap.getX() + 3.0f, cap.getRight() - 3.0f);
 }
 
 void knob (juce::Graphics& g, juce::Rectangle<float> area, float fraction, const Look& l, juce::Colour ring, bool centred)
+{
+    knob (g, area, fraction, l, l.knobStyle, {}, ring, centred);
+}
+
+void knob (juce::Graphics& g, juce::Rectangle<float> area, float fraction, const Look& l, Look::Knob style, juce::Colour colour,
+           juce::Colour ring, bool centred)
 {
     const float d = juce::jmin (area.getWidth(), area.getHeight());
     auto outer = juce::Rectangle<float> (d, d).withCentre (area.getCentre());
@@ -271,27 +320,72 @@ void knob (juce::Graphics& g, juce::Rectangle<float> area, float fraction, const
         }
         outer = outer.reduced (8.0f);
     }
-    // The cap: a shadow, a knurled skirt, a lighter top.
-    g.setColour (juce::Colours::black.withAlpha (0.5f));
-    g.fillEllipse (outer.translated (0.0f, 2.0f));
-    g.setColour (l.knob);
-    g.fillEllipse (outer);
-    g.setColour (juce::Colours::white.withAlpha (0.07f));
-    for (int k = 0; k < 24; ++k)
+    const auto base = colour.isTransparent() ? l.knob : colour;
+    const float angle = start + span * fraction - juce::MathConstants<float>::halfPi;
+    const auto cc = outer.getCentre();
+    const float radius = outer.getWidth() * 0.5f;
+    const auto pointer = [&g, cc, angle] (float r0, float r1, float thickness, juce::Colour col)
     {
-        const float a = juce::MathConstants<float>::twoPi * (float) k / 24.0f;
-        const auto cc = outer.getCentre();
-        const float r0 = outer.getWidth() * 0.4f, r1 = outer.getWidth() * 0.5f;
-        g.drawLine (cc.x + r0 * std::cos (a), cc.y + r0 * std::sin (a), cc.x + r1 * std::cos (a), cc.y + r1 * std::sin (a), 1.0f);
+        g.setColour (col);
+        g.drawLine (cc.x + r0 * std::cos (angle), cc.y + r0 * std::sin (angle), cc.x + r1 * std::cos (angle), cc.y + r1 * std::sin (angle), thickness);
+    };
+    const auto knurl = [&g, cc, radius] (int count, float inner, float alpha, float thickness)
+    {
+        g.setColour (juce::Colours::white.withAlpha (alpha));
+        for (int k = 0; k < count; ++k)
+        {
+            const float a = juce::MathConstants<float>::twoPi * (float) k / (float) count;
+            g.drawLine (cc.x + radius * inner * std::cos (a), cc.y + radius * inner * std::sin (a), cc.x + radius * std::cos (a),
+                        cc.y + radius * std::sin (a), thickness);
+        }
+    };
+    // Its shadow on the panel.
+    g.setColour (juce::Colours::black.withAlpha (0.5f));
+    g.fillEllipse (outer.translated (0.0f, 2.5f));
+    switch (style)
+    {
+        case Look::Knob::Dome:
+        {
+            // The 02R's: a smooth dome, lit from the top left, a dark pointer.
+            g.setGradientFill (juce::ColourGradient (base.brighter (0.4f), outer.getX() + d * 0.3f, outer.getY() + d * 0.25f, base.darker (0.5f),
+                                                     outer.getRight(), outer.getBottom(), true));
+            g.fillEllipse (outer);
+            g.setColour (juce::Colours::black.withAlpha (0.35f));
+            g.drawEllipse (outer.reduced (0.5f), 1.0f);
+            pointer (radius * 0.3f, radius * 0.92f, 2.2f, base.getPerceivedBrightness() > 0.5f ? c (0xff202020) : juce::Colours::white);
+            break;
+        }
+        case Look::Knob::Wheel:
+        {
+            // A data wheel: a knurled rim, a dished top, a finger dimple.
+            g.setColour (base);
+            g.fillEllipse (outer);
+            knurl (64, 0.88f, 0.08f, 1.2f);
+            auto dish = outer.reduced (outer.getWidth() * 0.08f);
+            g.setGradientFill (juce::ColourGradient (base.darker (0.3f), dish.getX(), dish.getY(), base.brighter (0.35f), dish.getX(), dish.getBottom(), false));
+            g.fillEllipse (dish);
+            const float rr = dish.getWidth() * 0.3f, dr = dish.getWidth() * 0.1f;
+            auto dimple = juce::Rectangle<float> (2.0f * dr, 2.0f * dr).withCentre ({ cc.x + rr * std::cos (angle), cc.y + rr * std::sin (angle) });
+            g.setGradientFill (juce::ColourGradient (base.darker (0.6f), dimple.getX(), dimple.getY(), base.brighter (0.45f), dimple.getX(), dimple.getBottom(), false));
+            g.fillEllipse (dimple);
+            break;
+        }
+        case Look::Knob::Plain:
+        default:
+        {
+            // A plain cap: a knurled skirt, a lighter top, a pointer line.
+            g.setColour (base);
+            g.fillEllipse (outer);
+            knurl (24, 0.8f, 0.07f, 1.0f);
+            auto top = outer.reduced (outer.getWidth() * 0.14f);
+            g.setGradientFill (juce::ColourGradient (base.brighter (0.5f), top.getX(), top.getY(), base, top.getX(), top.getBottom(), false));
+            g.fillEllipse (top);
+            // An endless encoder's value is its ring: only a pot has a pointer.
+            if (ring.isTransparent())
+                pointer (top.getWidth() * 0.15f, top.getWidth() * 0.47f, 2.2f, l.knobLine);
+            break;
+        }
     }
-    auto top = outer.reduced (outer.getWidth() * 0.14f);
-    g.setGradientFill (juce::ColourGradient (l.knob.brighter (0.5f), top.getX(), top.getY(), l.knob, top.getX(), top.getBottom(), false));
-    g.fillEllipse (top);
-    const float a = start + span * fraction - juce::MathConstants<float>::halfPi;
-    const auto cc = top.getCentre();
-    const float rr = top.getWidth() * 0.5f;
-    g.setColour (l.knobLine);
-    g.drawLine (cc.x + rr * 0.3f * std::cos (a), cc.y + rr * 0.3f * std::sin (a), cc.x + rr * 0.95f * std::cos (a), cc.y + rr * 0.95f * std::sin (a), 2.2f);
 }
 
 juce::Rectangle<float> lcd (juce::Graphics& g, juce::Rectangle<float> area, const Look& l)
@@ -313,23 +407,25 @@ namespace
     class KnobLookAndFeel final : public juce::LookAndFeel_V4
     {
     public:
-        explicit KnobLookAndFeel (const Look& l) : look (l) {}
-        void drawRotarySlider (juce::Graphics& g, int x, int y, int w, int h, float pos, float, float, juce::Slider&) override
+        KnobLookAndFeel (const Look& l, bool r) : look (l), ring (r) {}
+        void drawRotarySlider (juce::Graphics& g, int x, int y, int w, int h, float pos, float, float, juce::Slider& s) override
         {
-            knob (g, juce::Rectangle<int> (x, y, w, h).toFloat().reduced (2.0f), pos, look);
+            const bool centred = s.getMinimum() < 0.0 && std::abs (s.getMinimum() + s.getMaximum()) < 1.0e-6;
+            knob (g, juce::Rectangle<int> (x, y, w, h).toFloat().reduced (2.0f), pos, look, ring ? look.knobRing : juce::Colour(), centred);
         }
 
     private:
         const Look& look;
+        const bool ring;
     };
 } // namespace
 
-juce::LookAndFeel& knobLookAndFeel (const Look& l)
+juce::LookAndFeel& knobLookAndFeel (const Look& l, bool ring)
 {
-    static std::map<const Look*, std::unique_ptr<KnobLookAndFeel>> lafs;
-    auto& laf = lafs[&l];
+    static std::map<std::pair<const Look*, bool>, std::unique_ptr<KnobLookAndFeel>> lafs;
+    auto& laf = lafs[{ &l, ring }];
     if (laf == nullptr)
-        laf = std::make_unique<KnobLookAndFeel> (l);
+        laf = std::make_unique<KnobLookAndFeel> (l, ring);
     return *laf;
 }
 

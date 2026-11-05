@@ -345,6 +345,18 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   - both: their analog rows (PAD, GAIN, MONITOR OUT, PHONES) along the top, drawn as
     on the panel; they aren't controls
 
+  Their faders and knobs are the consoles' own:
+  - the X32: tall brushed-aluminium caps; endless encoders in amber LED rings (lit
+    from the centre for pan), MONITOR, PHONES and TALK pots with pointers; each
+    strip top to bottom as on the console (SELECT, the meter, SOLO, the scribble
+    strip, MUTE, the fader), its meter one LED column in a dark window: COMP,
+    CLIP, -6 ... -60, GATE (COMP and GATE lit while the compressor or gate works)
+  - the ProMix 01: moulded ivory block caps with the centre groove, the PARAMETER
+    wheel knurled with its finger dimple
+  - the 02R: a darker panel, light grey caps, its encoders smooth domes without
+    rings (EQ Q, F and G green), the MIXING and AUX keys orange, CONFIGURATION's
+    light grey, the dimpled data wheel
+
   `ui::hw` (`src/ui/HardwareLook.*`) draws them. Keys, faders and knobs take a
   console's look when its surface asks; the Universal Mixer and the WING are
   unchanged.

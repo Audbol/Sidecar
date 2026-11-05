@@ -26,7 +26,7 @@ namespace
     const juce::Colour kLcd = hw::Look::y02r().lcd, kLcdFrame = hw::Look::y02r().lcd.darker (0.18f),
                        kPixel = hw::Look::y02r().lcdPixel, kPixelDim = hw::Look::y02r().lcdDim;
     // Its LEDs: SEL orange, ON green, the function keys orange.
-    const juce::Colour kSelLed (0xffffa030), kOnLed (0xff4cd964), kRing (0xffff7a2a);
+    const juce::Colour kSelLed (0xffffa030), kOnLed (0xff4cd964);
 
     // The edit buffer's items (livedaw_02r::params).
     constexpr int kLevel = 0, kOn = 1, kPanL = 2, kPanR = 3, kAtt = 4, kSwitches = 5, kDelayHi = 6, kDelayLo = 7, kEq = 8;
@@ -204,7 +204,8 @@ namespace y02r
         hw::silk (g, b.removeFromTop (14.0f), label, look(), 10.5f);
         auto textArea = b.removeFromBottom (14.0f);
         const float frac = hi > lo ? (float) (value - lo) / (float) (hi - lo) : 0.0f;
-        hw::knob (g, b, frac, look(), kRing, centred);
+        // The 02R's encoders have no LED rings: the dome's pointer and the value below.
+        hw::knob (g, b.reduced (3.0f), frac, look(), hw::Look::Knob::Dome, cap);
         hw::silk (g, textArea, text ? text (value) : juce::String (value), look(), 10.5f, juce::Justification::centred, true);
     }
 
@@ -899,6 +900,7 @@ Y02RSurface::Y02RSurface (UiContext& c)
             const auto& p = models::model (models::ChannelEq, m).params[(size_t) (3 * display.band + what)];
             return p.display (stepValue (p, v));
         };
+        e->cap = juce::Colour (0xff5f9a62);
         addAndMakeVisible (*e);
         return e;
     };
@@ -949,12 +951,12 @@ Y02RSurface::Y02RSurface (UiContext& c)
     addAndMakeVisible (universalKey);
 
     // The panel's keys are the 02R's: cream rubber with an LED (SEL orange, ON
-    // green), the function keys grey.
+    // green); the function keys orange (MIXING, AUX) and light grey (CONFIGURATION).
     for (auto* child : getChildren())
         if (auto* k = dynamic_cast<ToggleKey*> (child); k != nullptr && k != &universalKey)
             k->look = &look();
     for (auto& [f, key] : functionKeys)
-        key->face = juce::Colour (0xff8f9295);
+        key->face = f <= y02r::Function::Pair ? juce::Colour (0xffc4c6c7) : juce::Colour (0xffd9762c);
     refreshAll();
     startTimerHz (30);
 }
@@ -1182,7 +1184,8 @@ void Y02RSurface::paint (juce::Graphics& g)
             for (int k = 0; k < knobs; ++k)
             {
                 const float x = knobs == 1 ? cx : cx - 14.0f + 28.0f * (float) k;
-                hw::knob (g, juce::Rectangle<float> (22.0f, 22.0f).withCentre ({ x, row.getY() + 20.0f }), 0.5f, look());
+                hw::knob (g, juce::Rectangle<float> (22.0f, 22.0f).withCentre ({ x, row.getY() + 20.0f }), 0.5f, look(), hw::Look::Knob::Plain,
+                          juce::Colour (0xff1c1d1f));
                 const int n = i < 16 ? i + 1 : 17 + 2 * (i - 16) + k;
                 hw::silk (g, juce::Rectangle<float> (28.0f, 11.0f).withCentre ({ x, row.getY() + 40.0f }), juce::String (n), look(), 9.0f, juce::Justification::centred, true);
             }
@@ -1217,7 +1220,7 @@ void Y02RSurface::paint (juce::Graphics& g)
     {
         // The PARAMETER wheel: a big knurled knob.
         const auto w = wheel->getBounds().toFloat();
-        hw::knob (g, w, (float) std::fmod (wheel->getValue() / 48.0 + 1.0e6, 1.0), look());
+        hw::knob (g, w, (float) std::fmod (wheel->getValue() / 48.0 + 1.0e6, 1.0), look(), hw::Look::Knob::Wheel, juce::Colour (0xff1c1d1f));
     }
     g.setFont (type::font (type::kLabel, true));
     const int aux = auxShown();

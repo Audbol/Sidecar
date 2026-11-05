@@ -90,7 +90,7 @@ void FaderControl::paint (juce::Graphics& g)
         }
         hw::faderSlot (g, groove, t.getY(), t.getBottom(), *look);
         if (isEnabled())
-            hw::faderCap (g, groove, yAt ((float) position), 28.0f, *look);
+            hw::faderCap (g, groove, yAt ((float) position), look->cap == hw::Look::Cap::Metal ? 22.0f : 28.0f, *look); // the X32's: narrow and tall
         return;
     }
     g.setFont (type::font (type::kCaption));

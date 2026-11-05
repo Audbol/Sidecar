@@ -87,7 +87,7 @@ namespace y02r
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Fader)
     };
 
-    /** A rotary encoder with its LED ring (the tape returns', the SELECTED
+    /** A rotary encoder, a smooth dome cap (the tape returns', the SELECTED
         CHANNEL section's): a value from `get` within `lo`..`hi`, moved by drag or
         wheel through `set`, its text below. */
     class Encoder final : public juce::Component
@@ -99,8 +99,10 @@ namespace y02r
         std::function<void (int)> set;
         std::function<juce::String (int)> text;
         int lo = 0, hi = 127;
-        /** A pan's ring lights from the centre. */
+        /** A pan's pointer starts from the centre. */
         bool centred = false;
+        /** Its cap's colour (the EQ's Q, F and G are green); transparent: the panel's grey. */
+        juce::Colour cap;
         void setLabel (const juce::String& l) { label = l; repaint(); }
         void refresh();
 

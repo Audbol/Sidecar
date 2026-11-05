@@ -1108,7 +1108,7 @@ void ProMixSurface::paint (juce::Graphics& g)
             g.fillRect (juce::Rectangle<float> ((float) selKeys[0]->getX() - 6.0f, y, (float) onKeys[kNumFaders - 1]->getRight() - (float) selKeys[0]->getX() + 12.0f, 12.0f));
         }
         // The PARAMETER wheel: a big knurled knob.
-        hw::knob (g, wheel->getBounds().toFloat(), (float) std::fmod (wheel->getValue() / 48.0 + 1.0e6, 1.0), look());
+        hw::knob (g, wheel->getBounds().toFloat(), (float) std::fmod (wheel->getValue() / 48.0 + 1.0e6, 1.0), look(), hw::Look::Knob::Wheel, {});
     }
     auto top = getLocalBounds().removeFromTop (kTopBar);
     g.setColour (theme.panel);

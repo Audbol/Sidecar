@@ -18,11 +18,31 @@ struct Look
     // (`backlit`) or show a small LED above their text.
     juce::Colour keyTop, keyBottom, keyText;
     bool backlit = true;
-    // Faders: the slot, the cap and its line; knobs: the cap.
-    juce::Colour slot, capTop, capBottom, capLine, knob, knobLine;
+    // Faders: the slot, the cap and its line; knobs: the cap, and the LED ring
+    // of a console whose knobs are endless encoders (the X32's; transparent: none).
+    juce::Colour slot, capTop, capBottom, capLine, knob, knobLine, knobRing;
     // The LCD: backlight and pixels.
     juce::Colour lcd, lcdPixel, lcdDim, lcdBezel;
     float keyRadius = 3.0f;
+
+    /** A fader cap: a moulded block with grip ridges and a centre line (the
+        Yamahas'), or a tall brushed-metal cap with a scooped face (the X32's). */
+    enum class Cap
+    {
+        Block,
+        Metal
+    };
+    Cap cap = Cap::Block;
+
+    /** A knob: a plain knurled cap with a pointer line, a dome (the 02R's
+        encoders), a big dimpled wheel. */
+    enum class Knob
+    {
+        Plain,
+        Dome,
+        Wheel
+    };
+    Knob knobStyle = Knob::Plain;
 
     /** The Behringer X32's titanium frame, slate sections, light rubber keys. */
     static const Look& x32();
@@ -53,11 +73,16 @@ void faderCap (juce::Graphics&, float x, float y, float width, const Look&, juce
 /** A knob cap in `area` turned to `fraction` (0..1 over 300 degrees), with an
     LED ring of `ring` around it if it isn't transparent (from the centre if `centred`). */
 void knob (juce::Graphics&, juce::Rectangle<float> area, float fraction, const Look&, juce::Colour ring = {}, bool centred = false);
+/** A knob of a style other than the look's own, its cap in `colour` (transparent: the look's). */
+void knob (juce::Graphics&, juce::Rectangle<float> area, float fraction, const Look&, Look::Knob style, juce::Colour colour,
+           juce::Colour ring = {}, bool centred = false);
 /** An LCD's bezel and backlight over `area`; returns the screen inside. */
 juce::Rectangle<float> lcd (juce::Graphics&, juce::Rectangle<float> area, const Look&);
 
-/** A look-and-feel drawing rotary sliders as the look's knob caps (one per look). */
-juce::LookAndFeel& knobLookAndFeel (const Look&);
+/** A look-and-feel drawing rotary sliders as the look's knob caps, with its
+    LED ring (lit from the centre for a range around zero) unless `ring` is false:
+    a console's analog pots (the X32's MONITOR, PHONES, TALK). One per look. */
+juce::LookAndFeel& knobLookAndFeel (const Look&, bool ring = true);
 
 /** Gives every console key (universal::ToggleKey), fader (FaderControl) and
     knob (DisplayKnob) under `root` the look, but `except`. */

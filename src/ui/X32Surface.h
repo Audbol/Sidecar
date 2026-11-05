@@ -41,14 +41,95 @@ namespace x32
 
     using namespace universal;
 
-    /** One fader of the X32 surface: its scribble strip, a meter, SOLO, MUTE and
-        SELECT, and the fader; on a strip, or on a DCA (no meter, no SELECT: an
-        X32's DCAs can't be selected), or empty. */
+    /** A channel's meter as on the X32's strips (MAN p.15): one column of LEDs
+        in a dark window, top to bottom COMP, CLIP, -6, -12, -18, -30, -60 and
+        GATE, the marks at their right; COMP and GATE light while the compressor
+        or the gate works (a bus's meter has no GATE). A stereo strip shows its
+        louder side. */
+    class LedMeter final : public juce::Component
+    {
+    public:
+        /** The level of side `channel` (linear). */
+        std::function<float (int channel)> level;
+        void setChannels (int n) { channels = juce::jlimit (1, 2, n); repaint(); }
+        /** The gate's and the compressor's gain reduction now (dB, 0 for none);
+            no `gate`: the strip has none (a bus). */
+        std::function<float()> gate, comp;
+
+        void refresh()
+        {
+            float peak = 0.0f;
+            for (int ch = 0; ch < channels; ++ch)
+                peak = juce::jmax (peak, level ? level (ch) : 0.0f);
+            const int lit = litFor (juce::Decibels::gainToDecibels (peak, -144.0f));
+            // The LEDs light from 0.5 dB of reduction.
+            const bool g = gate && std::abs (gate()) >= 0.5f, c = comp && std::abs (comp()) >= 0.5f;
+            if (lit != shown || g != gateOn || c != compOn)
+            {
+                shown = lit;
+                gateOn = g;
+                compOn = c;
+                repaint();
+            }
+        }
+
+        void paint (juce::Graphics& g) override
+        {
+            static const char* const marks[] = { "COMP", "CLIP", "-6", "-12", "-18", "-30", "-60", "GATE" };
+            auto area = getLocalBounds().toFloat();
+            // The window at the left of centre, the marks to its right.
+            auto window = juce::Rectangle<float> (16.0f, area.getHeight()).withX (area.getCentreX() - 18.0f);
+            g.setColour (juce::Colour (0xff0b0c0c));
+            g.fillRoundedRectangle (window, 4.0f);
+            g.setColour (juce::Colours::black.withAlpha (0.5f));
+            g.drawRoundedRectangle (window.reduced (0.5f), 4.0f, 1.0f);
+            const float rowH = (window.getHeight() - 6.0f) / (float) kLeds;
+            g.setFont (type::font (8.5f, true));
+            for (int k = 0; k < kLeds; ++k)
+            {
+                if (k == kLeds - 1 && ! gate)
+                    continue;
+                const float y = window.getY() + 3.0f + rowH * (float) k;
+                const auto colour = k == 0 ? juce::Colour (0xffff9a3c) : k == 1 ? juce::Colour (0xffff3b30) : juce::Colour (0xff59f08a);
+                const bool on = k == 0 ? compOn : k == kLeds - 1 ? gateOn : (kLeds - 2 - k) < shown;
+                const auto led = juce::Rectangle<float> (9.0f, juce::jmin (4.0f, rowH - 2.0f)).withCentre ({ window.getCentreX(), y + rowH * 0.5f });
+                if (on)
+                {
+                    g.setColour (colour.withAlpha (0.3f));
+                    g.fillRoundedRectangle (led.expanded (2.0f), 3.0f);
+                }
+                g.setColour (on ? colour.brighter (0.4f) : colour.withAlpha (0.12f));
+                g.fillRoundedRectangle (led, 2.0f);
+                g.setColour (juce::Colour (0xffe6e9e6));
+                g.drawText (marks[k], juce::Rectangle<float> (window.getRight() + 3.0f, y, area.getRight() - window.getRight() - 3.0f, rowH),
+                            juce::Justification::centredLeft);
+            }
+        }
+
+    private:
+        static constexpr int kLeds = 8;
+        /** How many level LEDs light from the bottom (-60) for a level. */
+        static int litFor (float db)
+        {
+            static constexpr float thresholds[] = { -60.0f, -30.0f, -18.0f, -12.0f, -6.0f, 0.0f };
+            int n = 0;
+            for (float th : thresholds)
+                n += db >= th ? 1 : 0;
+            return n;
+        }
+
+        int channels = 1, shown = 0;
+        bool gateOn = false, compOn = false;
+    };
+
+    /** One fader of the X32 surface, top to bottom as on the console: SELECT,
+        the meter, SOLO, the scribble strip, MUTE, and the fader; on a strip, or
+        on a DCA (no meter, no SELECT: an X32's DCAs can't be selected), or empty. */
     class FaderStrip final : public juce::Component
     {
     public:
         FaderStrip (UiContext& c, const Theme& t)
-            : ctx (c), theme (t), fader (t), meter (t), solo ("SOLO", t.solo, t), mute ("MUTE", t.mute, t),
+            : ctx (c), theme (t), fader (t), solo ("SOLO", t.solo, t), mute ("MUTE", t.mute, t),
               select ("SELECT", t.accent, t)
         {
             solo.onClick = [this]
@@ -86,6 +167,8 @@ namespace x32
             sendTo = {};
             fader.bind (s != nullptr ? &s->params.faderDb : nullptr);
             meter.setChannels (s != nullptr && s->params.stereo.load() ? 2 : 1);
+            meter.gate = s != nullptr && isInputKind (s->getKind()) ? std::function<float()> ([s] { return s->meters.gateReductionDb.load(); }) : nullptr;
+            meter.comp = [this] { return strip != nullptr ? strip->meters.dynReductionDb.load() : 0.0f; };
             meter.setVisible (s != nullptr);
             select.setEnabled (s != nullptr);
             solo.setEnabled (s != nullptr);
@@ -208,28 +291,31 @@ namespace x32
         void resized() override
         {
             auto area = getLocalBounds();
-            area.removeFromTop (kScribble + sizes::kGapSmall);
-            for (auto* key : { &select, &solo, &mute })
-            {
-                key->setBounds (area.removeFromTop (kKeyHeight).reduced (2, 0));
-                area.removeFromTop (3);
-            }
+            select.setBounds (area.removeFromTop (kKeyHeight).reduced (2, 0));
+            area.removeFromTop (3);
+            meter.setBounds (area.removeFromTop (kMeterHeight).reduced (2, 0));
+            area.removeFromTop (3);
+            solo.setBounds (area.removeFromTop (kKeyHeight).reduced (2, 0));
+            area.removeFromTop (3);
+            scribble = area.removeFromTop (kScribble).reduced (2, 0);
+            area.removeFromTop (3);
+            mute.setBounds (area.removeFromTop (kKeyHeight).reduced (2, 0));
             area.removeFromTop (sizes::kGapSmall);
-            const int meterWidth = 12;
-            meter.setBounds (area.removeFromRight (meterWidth));
             fader.setBounds (area.reduced (2, 0));
         }
 
     private:
-        juce::Rectangle<int> scribbleArea() const { return getLocalBounds().removeFromTop (kScribble).reduced (2, 0); }
+        static constexpr int kMeterHeight = 76;
+        juce::Rectangle<int> scribbleArea() const { return scribble; }
 
         UiContext& ctx;
         const Theme& theme;
         Strip* strip = nullptr;
         int dca = -1;
         FaderControl fader;
-        MeterControl meter;
+        LedMeter meter;
         ToggleKey solo, mute, select;
+        juce::Rectangle<int> scribble;
         juce::String shown, sendTo;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FaderStrip)
