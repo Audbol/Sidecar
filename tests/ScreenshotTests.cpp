@@ -237,8 +237,43 @@ public:
         expectEquals (y.get (0), 101, "scene 1's CH 1");
         skin.pressFunction (F::Dynamics);
         expect (display.getFields().size() >= 8, "ON, TYPE, six parameters...");
+        // The pages: a function's key again steps them; the all-channel pages.
+        skin.pressFunction (F::Att);
+        expectEquals (display.getPage(), 0);
+        expectEquals ((int) display.getFields().size(), 20, "MIC 1-16, LINE 17/18-23/24");
+        skin.pressFunction (F::Att);
+        expectEquals (display.getPage(), 1, "TAPE, EFF and STEREO");
+        expectEquals ((int) display.getFields().size(), 19);
+        skin.pressFunction (F::Att);
+        expectEquals (display.getPage(), 0, "and round");
+        skin.pressFunction (F::Scene);
+        expectEquals (display.getFields()[0].text (0), rig.show.getScene (0)->name, "the titles");
+        skin.pressFunction (F::DigitalIo);
+        expectEquals (display.getFields()[0].label, juce::String ("WORD CLOCK"));
         skin.pressFunction (F::Eq);
         skin.refreshAll();
+        // Each page's look, for review (not the docs).
+        if (const auto shots = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {}); shots.isNotEmpty())
+        {
+            const std::tuple<F, int, const char*> pages[] = { { F::Scene, 0, "scene-titles" }, { F::Scene, 1, "scene-safe" }, { F::Scene, 2, "scene-fade" },
+                                                              { F::Group, 0, "group-fader" }, { F::Group, 1, "group-mute" }, { F::Pair, 0, "pair" },
+                                                              { F::Att, 0, "att" }, { F::Delay, 1, "delay-tape" }, { F::Pan, 0, "pan" },
+                                                              { F::Meter, 2, "meter-outputs" }, { F::Aux1, 0, "aux1" }, { F::Aux7, 2, "aux7" },
+                                                              { F::Utility, 0, "utility" }, { F::DigitalIo, 0, "digital-io" }, { F::Setup, 0, "setup" },
+                                                              { F::Automix, 0, "automix" } };
+            for (auto [f, page, shot] : pages)
+            {
+                skin.pressFunction (F::Eq);
+                for (int k = 0; k <= page; ++k)
+                    skin.pressFunction (f);
+                const auto lcd = display.createComponentSnapshot (display.getLocalBounds(), true, 1.0f);
+                const auto out = juce::File::getCurrentWorkingDirectory().getChildFile (shots).getChildFile (juce::String ("y02r-page-") + shot + ".png");
+                out.deleteFile();
+                juce::FileOutputStream stream (out);
+                juce::PNGImageFormat().writeImageToStream (lcd, stream);
+            }
+            skin.pressFunction (F::Eq);
+        }
 
         const auto image = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
         expect (image.isValid() && image.getWidth() == 1920);

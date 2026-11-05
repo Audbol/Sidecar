@@ -260,9 +260,34 @@ namespace y02r
 
     void Display::setFunction (Function f)
     {
-        function = f;
+        // The function's key again: its next page.
+        if (f == function)
+            page = (page + 1) % numPages();
+        else
+        {
+            function = f;
+            page = 0;
+        }
         focus = 0;
         build();
+    }
+
+    int Display::numPages() const
+    {
+        switch (function)
+        {
+            case Function::Scene:
+            case Function::Meter:
+                return 3;
+            case Function::Group:
+            case Function::Pair:
+            case Function::Att:
+            case Function::Delay:
+            case Function::Pan:
+                return 2;
+            default:
+                return function >= Function::Aux1 && function <= Function::Aux8 ? 3 : 1;
+        }
     }
 
     void Display::setStrip (int s)
@@ -319,6 +344,87 @@ namespace y02r
             fields.push_back (f);
         };
         const auto eqModel = models::findModel (models::ChannelEq, "Y2EQ");
+        // A strip's short name on an all-channel page; the strips of page 1
+        // (MIC/LINE) and page 2 (TAPE, EFF and STEREO).
+        const auto shortName = [] (int st)
+        {
+            return st < 16 ? juce::String (st + 1)
+                 : st < kTape ? juce::String (17 + 2 * (st - 16)) + "/" + juce::String (18 + 2 * (st - 16))
+                 : st < kEff ? "T" + juce::String (st - kTape + 1)
+                 : st < kBus ? "EFF" + juce::String (st - kEff + 1)
+                 : st < kAux ? "BUS" + juce::String (st - kBus + 1)
+                 : st < kStereo ? "AUX" + juce::String (st - kAux + 1) : juce::String ("ST");
+        };
+        std::vector<int> pageStrips;
+        for (int st = page == 0 ? 0 : kTape; st < (page == 0 ? kTape : kBus); ++st)
+            pageStrips.push_back (st);
+        if (page == 1)
+            pageStrips.push_back (kStereo);
+        const auto fixed = [this] (const juce::String& label, const juce::String& value)
+        {
+            fields.push_back ({ label, [] { return 0; }, [] (int) {}, [value] (int) { return value; }, 0, 0 });
+        };
+        const bool allChannels = (function == Function::Att || function == Function::Delay || function == Function::Pan)
+                                 || (function >= Function::Aux1 && function <= Function::Aux8 && page < 2);
+        if (allChannels)
+        {
+            const int aux = (int) function - (int) Function::Aux1;
+            for (int st : pageStrips)
+            {
+                Field f;
+                f.label = shortName (st);
+                if (function == Function::Att)
+                {
+                    // The attenuator; ENTER flips the phase.
+                    const int a = address (st, kAtt), sw = address (st, kSwitches);
+                    f.get = [this, a] { return y.get (a); };
+                    f.set = [this, a] (int v) { y.set (a, v); };
+                    f.hi = st == kStereo ? 108 : 96;
+                    f.text = [this, sw, st] (int v) { return juce::String (v - 96) + "dB" + (st != kStereo && ((y.get (sw) >> kPhase) & 1) != 0 ? utf8 (" \xc3\x98") : juce::String()); };
+                    if (st != kStereo)
+                        f.action = [this, sw] { y.set (sw, juce::jmax (0, y.get (sw)) ^ (1 << kPhase)); };
+                }
+                else if (function == Function::Delay)
+                {
+                    if (memberOf (st) < 0)
+                        continue;
+                    // The time in samples; ENTER switches the delay on or off.
+                    const int hi = address (st, kDelayHi), lo = address (st, kDelayLo), sw = address (st, kSwitches);
+                    f.get = [this, hi, lo] { return (juce::jmax (0, y.get (hi)) << 7) | juce::jmax (0, y.get (lo)); };
+                    f.set = [this, hi, lo] (int v) { y.set (hi, v >> 7); y.set (lo, v & 0x7f); };
+                    f.hi = 2600;
+                    f.text = [this, sw] (int v) { return juce::String (v) + (((y.get (sw) >> kDelayOn) & 1) != 0 ? "" : " off"); };
+                    f.action = [this, sw] { y.set (sw, juce::jmax (0, y.get (sw)) ^ (1 << kDelayOn)); };
+                }
+                else if (function == Function::Pan)
+                {
+                    const int a = address (st, kPanL);
+                    f.get = [this, a] { return y.get (a); };
+                    f.set = [this, a] (int v) { y.set (a, v); };
+                    f.hi = 32;
+                    f.text = panText;
+                }
+                else
+                {
+                    if (memberOf (st) < 0)
+                        continue;
+                    // The send's level; ENTER switches PRE and POST.
+                    const int a = sendAddress (memberOf (st), aux), on = sendAddress (memberOf (st), 8), pre = sendAddress (memberOf (st), 9);
+                    f.get = [this, a] { return y.get (a); };
+                    f.set = [this, a] (int v) { y.set (a, v); };
+                    f.hi = 127;
+                    f.text = [this, on, pre, aux, levelText] (int v)
+                    {
+                        return levelText (v) + (((y.get (pre) >> aux) & 1) != 0 ? " PRE" : "") + (((y.get (on) >> aux) & 1) != 0 ? "" : " OFF");
+                    };
+                    f.action = [this, pre, aux] { y.set (pre, juce::jmax (0, y.get (pre)) ^ (1 << aux)); };
+                }
+                fields.push_back (f);
+            }
+            focus = juce::jlimit (0, juce::jmax (0, (int) fields.size() - 1), focus);
+            repaint();
+            return;
+        }
         switch (function)
         {
             case Function::View:
@@ -422,29 +528,62 @@ namespace y02r
                 break;
             }
             case Function::Group:
-                for (int g = 0; g < 8; ++g)
-                    stateField ("GROUP " + juce::String::charToString ('A' + g), Yamaha02R::GroupOn, g, 0, 1, onOff);
-                if (memberOf (s) >= 0)
-                {
-                    stateField ("FADER GRP", Yamaha02R::FaderGroup, memberOf (s), 0, 4, [] (int v) { return v == 0 ? juce::String ("-") : juce::String::charToString ('A' + v - 1); });
-                    stateField ("MUTE GRP", Yamaha02R::MuteGroup, memberOf (s), 0, 4, [] (int v) { return v == 0 ? juce::String ("-") : juce::String::charToString ('E' + v - 1); });
-                }
+            {
+                // 1/2 the fader groups A-D, 2/2 the mute groups E-H: each group on,
+                // and every channel's group.
+                const bool mute = page == 1;
+                for (int g = 0; g < 4; ++g)
+                    stateField ("GRP " + juce::String::charToString ((mute ? 'E' : 'A') + g), Yamaha02R::GroupOn, (mute ? 4 : 0) + g, 0, 1, onOff);
+                for (int st = 0; st < kBus; ++st)
+                    stateField (shortName (st), mute ? Yamaha02R::MuteGroup : Yamaha02R::FaderGroup, memberOf (st), 0, 4, [mute] (int v)
+                                { return v == 0 ? juce::String ("-") : juce::String::charToString ((mute ? 'E' : 'A') + v - 1); });
                 break;
+            }
             case Function::Pair:
-                if (pairOf (s) >= 0)
-                    stateField ("PAIR", Yamaha02R::Pair, pairOf (s), 0, 1, onOff);
+                if (page == 0)
+                {
+                    // 1/2 the channel pairs: MIC 1/2 ... 15/16, TAPE 1/2 ... 15/16.
+                    for (int k = 0; k < 16; ++k)
+                        stateField ((k < 8 ? "" : "T") + juce::String (2 * (k % 8) + 1) + "/" + juce::String (2 * (k % 8) + 2), Yamaha02R::Pair, k, 0, 1, onOff);
+                    break;
+                }
                 for (int k = 0; k < 4; ++k)
                     stateField ("AUX " + juce::String (2 * k + 1) + "/" + juce::String (2 * k + 2), Yamaha02R::AuxPair, k, 0, 1, onOff);
                 for (int k = 0; k < 4; ++k)
                     stateField ("BUS " + juce::String (2 * k + 1) + "/" + juce::String (2 * k + 2), Yamaha02R::BusPair, k, 0, 1, onOff);
                 break;
             case Function::Scene:
-                if (faderIndexOf (s) >= 0)
+                if (page == 0)
                 {
-                    stateField ("FADE TIME", Yamaha02R::FadeTime, faderIndexOf (s), 0, 100, [] (int v) { return juce::String (v / 10.0, 1) + " s"; });
-                    stateField ("RECALL SAFE", Yamaha02R::RecallSafe, faderIndexOf (s), 0, 1, onOff);
+                    // The scenes' titles: ENTER recalls one.
+                    auto& show = ctx.show;
+                    for (int n = 0; n < juce::jmin (24, show.getNumScenes()); ++n)
+                    {
+                        auto scene = show.getScene (n);
+                        Field f;
+                        f.label = juce::String (n + 1).paddedLeft ('0', 2);
+                        const auto name = scene.has_value() ? scene->name : juce::String();
+                        f.get = [] { return 0; };
+                        f.set = [] (int) {};
+                        f.text = [name] (int) { return name; };
+                        f.action = [this, n] { ctx.show.recallScene (n); };
+                        fields.push_back (f);
+                    }
+                    if (fields.empty())
+                        fixed ("SCENES", "NONE STORED");
+                    break;
                 }
-                stateField ("SAFE ENABLE", Yamaha02R::RecallSafeOn, 0, 0, 1, onOff);
+                // Recall safe (with its ENABLE), or the fade times, of every fader.
+                if (page == 1)
+                    stateField ("ENABLE", Yamaha02R::RecallSafeOn, 0, 0, 1, onOff);
+                for (int st = 0; st <= kBus; ++st)
+                {
+                    const int strip_ = st == kBus ? kStereo : st;
+                    if (page == 1)
+                        stateField (shortName (strip_), Yamaha02R::RecallSafe, faderIndexOf (strip_), 0, 1, onOff);
+                    else
+                        stateField (shortName (strip_), Yamaha02R::FadeTime, faderIndexOf (strip_), 0, 100, [] (int v) { return juce::String (v / 10.0, 1) + "s"; });
+                }
                 break;
             case Function::Utility:
             {
@@ -454,16 +593,49 @@ namespace y02r
                     const char* w[] = { "100 Hz", "1 kHz", "10 kHz", "NOISE" };
                     return juce::String (w[juce::jlimit (0, 3, v)]);
                 });
-                fields.push_back ({ "TO ST",
-                                    [this] { return (y.getState (Yamaha02R::OscAssign, 0) >> 8) & 1; },
-                                    [this] (int v)
-                                    {
-                                        const int a = juce::jmax (0, y.getState (Yamaha02R::OscAssign, 0));
-                                        y.setState (Yamaha02R::OscAssign, 0, v != 0 ? (a | 0x100) : (a & ~0x100));
-                                    },
-                                    onOff,
-                                    0,
-                                    1 });
+                // Where it plays: BUS 1-8 (bits 0-7), STEREO (8), AUX 1-8 (9-16).
+                for (int bit = 0; bit < 17; ++bit)
+                    fields.push_back ({ bit < 8 ? "BUS " + juce::String (bit + 1) : bit == 8 ? juce::String ("STEREO") : "AUX " + juce::String (bit - 8),
+                                        [this, bit] { return (y.getState (Yamaha02R::OscAssign, 0) >> bit) & 1; },
+                                        [this, bit] (int v)
+                                        {
+                                            const int a = juce::jmax (0, y.getState (Yamaha02R::OscAssign, 0));
+                                            y.setState (Yamaha02R::OscAssign, 0, v != 0 ? (a | (1 << bit)) : (a & ~(1 << bit)));
+                                        },
+                                        onOff,
+                                        0,
+                                        1 });
+                break;
+            case Function::DigitalIo:
+            {
+                // DIGITAL I/O (MAN pp.154-159): Sidecar's clock and inputs are
+                // its audio interface's, so the page shows them as fixed.
+                fixed ("WORD CLOCK", "INT " + juce::String (ctx.engine.getSampleRate() / 1000.0, 1) + "k");
+                fixed ("MIC 1-8", "ANALOG");
+                fixed ("MIC 9-16", "ANALOG");
+                fixed ("LINE 17/18", "ANALOG");
+                fixed ("LINE 19/20", "ANALOG");
+                fixed ("CASCADE", "NONE");
+                fixed ("SLOT 1-4", "NONE");
+                fixed ("DITHER", "OFF");
+                break;
+            }
+            case Function::Setup:
+            {
+                // SETUP's solo (MAN p.160): where the channels and the outputs are heard.
+                auto& e = ctx.engine;
+                const auto listen = [] (int v) { return juce::String (v != 0 ? "AFTER PAN" : "PRE FADER"); };
+                fields.push_back ({ "SOLO CH", [&e] { return e.soloAfl.load() ? 1 : 0; }, [&e] (int v) { e.soloAfl = v != 0; }, listen, 0, 1 });
+                fields.push_back ({ "SOLO OUT", [&e] { return e.busSoloAfl.load() ? 1 : 0; }, [&e] (int v) { e.busSoloAfl = v != 0; }, listen, 0, 1 });
+                fixed ("SOLO MODE", "MIXDOWN");
+                fixed ("SOLO SAFE", "NONE");
+                break;
+            }
+            case Function::Automix:
+                // AUTOMIX (MAN pp.123-140): Sidecar has no timecode automation.
+                fixed ("TIME CODE", "INT");
+                fixed ("POSITION", "00:00:00.00");
+                fixed ("AUTOMIX", "NOT EMULATED");
                 break;
             }
             case Function::Midi:
@@ -530,7 +702,10 @@ namespace y02r
     {
         const char* names[] = { "SCENE MEMORY", "UTILITY", "MIDI", "GROUP", "PAIR", "PHASE / ATT", "DELAY", "PAN", "ROUTING", "METER", "VIEW",
                                 "EQ", "DYNAMICS", "AUX 1", "AUX 2", "AUX 3", "AUX 4", "AUX 5", "AUX 6", "AUX 7 (EFF1)", "AUX 8 (EFF2)" };
-        return names[(int) function];
+        const char* more[] = { "DIGITAL I/O", "SETUP", "AUTOMIX" };
+        const int f = (int) function;
+        const juce::String name = f < (int) std::size (names) ? juce::String (names[f]) : juce::String (more[f - (int) std::size (names)]);
+        return numPages() > 1 ? name + "  " + juce::String (page + 1) + "/" + juce::String (numPages()) : name;
     }
 
     void Display::cursor (int delta)
@@ -565,6 +740,12 @@ namespace y02r
         if (! juce::isPositiveAndBelow (focus, (int) fields.size()))
             return;
         auto& f = fields[(size_t) focus];
+        if (f.action)
+        {
+            f.action();
+            repaint();
+            return;
+        }
         if (f.onEnter)
         {
             if (f.pending >= 0 && f.set)
@@ -583,13 +764,14 @@ namespace y02r
 
     juce::Rectangle<float> Display::fieldBox (int i) const
     {
-        auto page = getLocalBounds().toFloat().reduced (14.0f).withTrimmedTop (40.0f).withTrimmedBottom (28.0f);
+        auto area = getLocalBounds().toFloat().reduced (14.0f).withTrimmedTop (40.0f).withTrimmedBottom (28.0f);
         if (function == Function::Meter || function == Function::Eq)
-            page = page.withTrimmedRight (page.getWidth() * (function == Function::Eq ? 0.42f : 0.0f));
-        constexpr int cols = 4;
-        const int rows = juce::jmax (4, ((int) fields.size() + cols - 1) / cols);
-        const float w = page.getWidth() / cols, h = juce::jmin (52.0f, page.getHeight() / (float) rows);
-        return { page.getX() + w * (float) (i % cols), page.getY() + h * (float) (i / cols), w - 6.0f, h - 6.0f };
+            area = area.withTrimmedRight (area.getWidth() * (function == Function::Eq ? 0.42f : 0.0f));
+        const int n = (int) fields.size();
+        const int cols = n <= 16 ? 4 : n <= 24 ? 6 : 8;
+        const int rows = juce::jmax (4, (n + cols - 1) / cols);
+        const float w = area.getWidth() / cols, h = juce::jmin (52.0f, area.getHeight() / (float) rows);
+        return { area.getX() + w * (float) (i % cols), area.getY() + h * (float) (i / cols), w - 6.0f, h - 6.0f };
     }
 
     void Display::paint (juce::Graphics& g)
@@ -637,10 +819,12 @@ namespace y02r
 
     void Display::paintMeters (juce::Graphics& g, juce::Rectangle<float> area) const
     {
-        // METER: the inputs and returns, then the outputs (MAN pp.41-42).
-        const int n = kStrips;
+        // METER (MAN pp.41-43): 1/3 the inputs (MIC/LINE), 2/3 the returns
+        // (TAPE, EFF), 3/3 the outputs (BUS, AUX, STEREO).
+        const int first = page == 0 ? 0 : page == 1 ? kTape : kBus, last = page == 0 ? kTape : page == 1 ? kBus : kStrips;
+        const int n = last - first;
         const float w = area.getWidth() / (float) n;
-        for (int s = 0; s < n; ++s)
+        for (int s = first; s < last; ++s)
         {
             Strip* st = nullptr;
             auto& e = ctx.engine;
@@ -654,17 +838,17 @@ namespace y02r
             else
                 st = pick (e.getMains(), 0);
             const float level = st != nullptr ? juce::Decibels::gainToDecibels (ctx.meters.get (st, MeterPoint::Output, 0), -60.0f) : -60.0f;
-            auto bar = juce::Rectangle<float> (area.getX() + w * (float) s + 1.0f, area.getY(), juce::jmax (1.0f, w - 2.0f), area.getHeight() - 14.0f);
+            auto bar = juce::Rectangle<float> (area.getX() + w * (float) (s - first) + 1.0f, area.getY(), juce::jmax (1.0f, w - 6.0f), area.getHeight() - 14.0f);
             g.setColour (kLcdFrame);
             g.fillRect (bar);
             g.setColour (kPixel);
             g.fillRect (bar.withTop (bar.getBottom() - bar.getHeight() * (level + 60.0f) / 60.0f));
-            if (s == 0 || s == 16 || s == kTape || s == kEff || s == kBus || s == kAux || s == kStereo)
-            {
-                g.setFont (type::font (9.0f));
-                g.drawText (stripName (s).upToFirstOccurrenceOf (" ", false, false), juce::Rectangle<float> (bar.getX(), bar.getBottom() + 1.0f, 40.0f, 12.0f),
-                            juce::Justification::centredLeft);
-            }
+            // Each bar's number under it.
+            g.setFont (type::font (9.0f));
+            const juce::String name = s < 16 ? juce::String (s + 1) : s < kTape ? juce::String (17 + 2 * (s - 16)) : s < kEff ? juce::String (s - kTape + 1)
+                                    : s < kBus ? "E" + juce::String (s - kEff + 1) : s < kAux ? "B" + juce::String (s - kBus + 1)
+                                    : s < kStereo ? "A" + juce::String (s - kAux + 1) : juce::String ("ST");
+            g.drawText (name, juce::Rectangle<float> (bar.getX() - 4.0f, bar.getBottom() + 1.0f, bar.getWidth() + 8.0f, 12.0f), juce::Justification::centred);
         }
     }
 
@@ -972,11 +1156,13 @@ Y02RSurface::Y02RSurface (UiContext& c)
     addAndMakeVisible (*wheel);
 
     // DISPLAY ACCESS's keys Sidecar has no page for.
-    for (const char* name : { "DIGITAL I/O", "SETUP", "AUTOMIX" })
+    // DIGITAL I/O, SETUP and AUTOMIX: their pages.
+    const std::pair<const char*, Function> config[] = { { "DIGITAL I/O", Function::DigitalIo }, { "SETUP", Function::Setup }, { "AUTOMIX", Function::Automix } };
+    for (auto [name, f] : config)
     {
         auto key = std::make_unique<ToggleKey> (name, kSelLed, theme);
-        key->setEnabled (false);
-        key->setTooltip ("Not in Sidecar's 02R");
+        key->onClick = [this, fn = f] { pressFunction (fn); };
+        key->isOn = [this, fn = f] { return display.getFunction() == fn; };
         addAndMakeVisible (*key);
         darkKeys.push_back (std::move (key));
     }
@@ -1097,7 +1283,7 @@ Y02RSurface::~Y02RSurface()
 int Y02RSurface::auxShown() const
 {
     const int f = (int) display.getFunction(), a = (int) y02r::Function::Aux1;
-    return f >= a ? f - a : -1;
+    return f >= a && f <= (int) y02r::Function::Aux8 ? f - a : -1;
 }
 
 int Y02RSurface::faderStrip (int i) const

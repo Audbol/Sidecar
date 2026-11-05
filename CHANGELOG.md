@@ -457,6 +457,18 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   for SET A, B, C).
 - The ProMix 01's LCD shows its 240 x 64 dot matrix; the 02R's STEREO strip is
   twice as wide as a channel's.
+- The 02R display's pages (MAN chs. 8-12): a function's key again steps its
+  pages, "n/N" in the title. SCENE MEMORY: the scenes' titles (ENTER recalls
+  one), recall safe and fade times of every fader; GROUP: the fader groups
+  A-D and the mute groups E-H, each on, and every channel's; PAIR: the
+  channel pairs, then the aux and bus pairs; PHASE / ATT, DELAY, PAN and AUX
+  1-8 for all channels (MIC/LINE, then TAPE, EFF and STEREO; ENTER flips the
+  phase, the delay, PRE/POST), AUX's third page the selected strip's send,
+  master and effect; METER's inputs, returns and outputs; the oscillator's
+  assign to BUS 1-8, STEREO and AUX 1-8. DIGITAL I/O, SETUP and AUTOMIX open
+  pages: SETUP's solo listen points (pre fader or after pan) are the engine's;
+  DIGITAL I/O shows Sidecar's own clock and inputs, AUTOMIX that it isn't
+  emulated.
 
   `ui::hw` (`src/ui/HardwareLook.*`) draws them. Keys, faders and knobs take a
   console's look when its surface asks; the Universal Mixer and the WING are

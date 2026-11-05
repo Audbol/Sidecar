@@ -54,7 +54,10 @@ namespace y02r
         Aux5,
         Aux6,
         Aux7,
-        Aux8
+        Aux8,
+        DigitalIo, // CONFIGURATION's DIGITAL I/O, SETUP and AUTOMIX (read-only pages: Sidecar
+        Setup,     // has no word clock, cards or automix; SETUP's solo listen points are real)
+        Automix
     };
 
     /** A 100 mm motor fader of 128 steps on an edit buffer address (a strip's
@@ -147,6 +150,10 @@ namespace y02r
         void turn (int delta);
         void enter();
         void refresh();
+        /** The function's page (its key again steps to the next: SCENE MEMORY's
+            titles, recall safe and fade times; the all-channel pages...). */
+        int getPage() const noexcept { return page; }
+        int numPages() const;
 
         void paint (juce::Graphics&) override;
         void mouseDown (const juce::MouseEvent&) override;
@@ -163,6 +170,8 @@ namespace y02r
             /** ENTER does it (a library program recalled); the wheel only chooses. */
             bool onEnter = false;
             int pending = -1;
+            /** What ENTER does on this field otherwise (a scene recalled, PRE / POST switched). */
+            std::function<void()> action;
         };
         const std::vector<Field>& getFields() const noexcept { return fields; }
         int getCursor() const noexcept { return focus; }
@@ -179,7 +188,7 @@ namespace y02r
         const Theme& theme;
         Yamaha02R& y;
         Function function = Function::View;
-        int strip = 0, focus = 0;
+        int strip = 0, focus = 0, page = 0;
         std::vector<Field> fields;
         float dragY = 0.0f;
 
