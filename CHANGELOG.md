@@ -446,6 +446,17 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   NO and YES under PAGE SELECT; MIC on the display's housing; EQUALIZER's
   printed loop joining Q, FREQ, GAIN and MODE; GO in its frame; MAIN boxed; a
   wider fader cap.
+- More of the X32's panel: the scales printed round FREQUENCY and the EQ's FREQ,
+  the dot scales round MONITOR, PHONES and TALK, the headphone sockets' marks
+  and the speaker grille; the scribble strips laid out as the X32's (the number
+  top left, the name along the bottom, the strip's icon at the right, the text
+  smaller beside an icon); ASSIGN's numbers at its LCDs' left. MONITOR's and
+  TALKBACK's VIEW open a MONITOR page on the display (the monitor and phones
+  levels, DIM and its depth, MONO; the talkback level, TALK A, TALK B), and
+  ASSIGN's VIEW an ASSIGN page (the set's encoders and keys, a push or a tab
+  for SET A, B, C).
+- The ProMix 01's LCD shows its 240 x 64 dot matrix; the 02R's STEREO strip is
+  twice as wide as a channel's.
 
   `ui::hw` (`src/ui/HardwareLook.*`) draws them. Keys, faders and knobs take a
   console's look when its surface asks; the Universal Mixer and the WING are

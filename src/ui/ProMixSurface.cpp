@@ -766,6 +766,16 @@ namespace promix
         }
         for (size_t i = 0; i < fields.size(); ++i)
             paintField (g, fields[i], (int) i == focus);
+        // The LCD's dot matrix: 240 x 64 dots, the gaps between them in the backlight.
+        {
+            const auto screen = b.reduced (6.0f);
+            const float pitchX = screen.getWidth() / 240.0f, pitchY = screen.getHeight() / 64.0f;
+            g.setColour (kLcd.withAlpha (0.42f));
+            for (int x = 1; x < 240; ++x)
+                g.fillRect (screen.getX() + pitchX * (float) x - 0.35f, screen.getY(), 0.7f, screen.getHeight());
+            for (int y = 1; y < 64; ++y)
+                g.fillRect (screen.getX(), screen.getY() + pitchY * (float) y - 0.35f, screen.getWidth(), 0.7f);
+        }
         // At the right edge, the arrow at what the RTN / SEND strip is.
         if (rtnSendShown)
         {

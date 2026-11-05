@@ -25,6 +25,9 @@ public:
     MonitorSection (UiContext&, const universal::Theme&);
     ~MonitorSection() override;
 
+    /** A VIEW key: the display's MONITOR page (0) or its TALKBACK tab (1); set by the surface. */
+    std::function<void (int)> onView;
+
     /** For tests: a knob by its label ("MONITOR", "PHONES", "TALK"), or nullptr. */
     DisplayKnob* knob (const juce::String& label);
     /** For tests: a key by its text ("DIM", "MONO", "MUTE", "TALK A", "TALK B"), or nullptr. */
@@ -42,7 +45,7 @@ private:
     /** MONITOR's and TALKBACK's sections, the EXT MIC socket (set by resized()). */
     juce::Rectangle<int> monitorArea, talkArea, socket, lamp;
     universal::ToggleKey dim, mono, mute, talkA, talkB;
-    /** The sections' VIEW keys: Sidecar's X32 screen has no monitor or talkback page yet, so they're dark. */
+    /** The sections' VIEW keys: the display's monitor and talkback pages. */
     universal::ToggleKey monitorView, talkView;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MonitorSection)

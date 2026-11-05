@@ -42,6 +42,11 @@ public:
     /** Reads the set's codes again and rebinds (a code changed). */
     void refreshCodes();
 
+    /** VIEW: the display's ASSIGN page (set by the surface). */
+    std::function<void()> onView;
+    /** What the shown set's encoders 1-4 and keys 5-12 do, one line each. */
+    juce::StringArray describeSet() const;
+
     /** A code's function as a short label ("FDR CH 6", "MUTE GRP 1"). */
     static juce::String describe (const juce::String& code, bool button);
 
@@ -62,7 +67,7 @@ private:
     int set = 0;
     std::array<DisplayKnob, 4> encoders;
     std::vector<std::unique_ptr<universal::ToggleKey>> buttons, setKeys;
-    /** VIEW, right of SET C: the X32 opens its assign page; Sidecar's screen has none yet, so it's dark. */
+    /** VIEW, right of SET C: the display's ASSIGN page. */
     std::unique_ptr<universal::ToggleKey> viewKey;
     std::array<juce::String, 12> shownCodes;
     /** Each encoder's LCD (set by resized()). */

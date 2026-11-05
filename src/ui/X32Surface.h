@@ -3,6 +3,7 @@
 #include "ui/Skin.h"
 #include "ui/UiContext.h"
 #include "ui/universal/Widgets.h"
+#include "ui/Icons.h"
 #include "ui/MeterBank.h"
 #include "ui/X32ChannelSection.h"
 #include "ui/X32Display.h"
@@ -328,20 +329,26 @@ namespace x32
                 g.setFont (type::font (type::kCaption, true));
                 g.drawText ("> " + sendTo, band, juce::Justification::centred);
             }
+            // As the X32 lays it out: the number at the top left, the name along
+            // the bottom, the icon at the right (the text smaller beside an icon).
             auto text = area.reduced (3.0f, 2.0f);
+            const int icon = strip != nullptr ? strip->getIcon() : 0;
+            if (icon > 0)
+                drawWingIcon (g, icon, text.removeFromRight (text.getHeight() * 0.8f).reduced (1.0f), look.text);
             g.setColour (look.text);
             const auto name = getName(), label = getLabel();
+            const float big = icon > 0 ? 10.5f : 13.0f, small = icon > 0 ? 8.5f : 10.0f;
             if (name.isEmpty() || name == label)
             {
-                // No name of its own: the label, large.
-                g.setFont (type::font (13.0f, true));
-                g.drawFittedText (label, text.toNearestInt(), juce::Justification::centred, 1, 0.7f);
+                // No name of its own: the label.
+                g.setFont (type::font (big, true));
+                g.drawFittedText (label, text.toNearestInt(), icon > 0 ? juce::Justification::centredLeft : juce::Justification::centred, 1, 0.7f);
                 return;
             }
-            g.setFont (type::font (10.0f, true));
-            g.drawText (label, text.removeFromTop (13.0f), juce::Justification::centredLeft);
-            g.setFont (type::font (12.0f, true));
-            g.drawFittedText (name, text.toNearestInt(), juce::Justification::centredLeft, 1, 0.65f);
+            g.setFont (type::font (small, true));
+            g.drawText (label, text.removeFromTop (small + 3.0f), juce::Justification::centredLeft);
+            g.setFont (type::font (big, true));
+            g.drawFittedText (name, text.toNearestInt(), juce::Justification::bottomLeft, 1, 0.65f);
         }
 
         void resized() override
@@ -516,7 +523,7 @@ private:
     Strip* sofShown = nullptr; // the selected strip the sends were laid out for
 
 
-    juce::Rectangle<int> displayArea, channelArea, fadersArea, scenesArea, muteGroupsArea, palmRest;
+    juce::Rectangle<int> displayArea, channelArea, fadersArea, scenesArea, muteGroupsArea, palmRest, grille;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (X32Surface)
 };

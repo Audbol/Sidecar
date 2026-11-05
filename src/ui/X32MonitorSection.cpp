@@ -40,12 +40,10 @@ MonitorSection::MonitorSection (UiContext& c, const Theme& t)
     for (auto* k : { &dim, &mono, &talkA, &talkB })
         addAndMakeVisible (*k);
     addChildComponent (mute); // not on the X32's panel
+    monitorView.onClick = [this] { if (onView) onView (0); };
+    talkView.onClick = [this] { if (onView) onView (1); };
     for (auto* k : { &monitorView, &talkView })
-    {
-        k->setEnabled (false);
-        k->setTooltip ("Not on Sidecar's X32 screen yet");
         addAndMakeVisible (*k);
-    }
     startTimerHz (10);
 }
 
@@ -93,10 +91,18 @@ void MonitorSection::paint (juce::Graphics& g)
     name (talk, "TALK LEVEL");
     hw::silk (g, phones.getBounds().toFloat().withY ((float) phones.getBottom() + 10.0f).withHeight (10.0f).expanded (24.0f, 0.0f), "(JACKS IN SIDE CAPS)",
               look, 7.0f, juce::Justification::centred, true);
-    // The pots' MIN and MAX, at the ends of their travel.
+    // The pots' MIN and MAX, at the ends of their travel, and their scale of dots.
     for (auto* k : { &monitor, &phones, &talk })
     {
         const auto b = k->getBounds().toFloat();
+        const auto c = b.getCentre();
+        const float r = b.getWidth() * 0.5f + 4.0f;
+        g.setColour (look.silk);
+        for (int d = 0; d < 11; ++d)
+        {
+            const float a = juce::degreesToRadians (-150.0f + 30.0f * (float) d);
+            g.fillEllipse (juce::Rectangle<float> (2.6f, 2.6f).withCentre ({ c.x + r * std::sin (a), c.y - r * std::cos (a) }));
+        }
         hw::silk (g, juce::Rectangle<float> (b.getX() - 18.0f, b.getBottom() - 12.0f, 22.0f, 10.0f), "MIN", look, 7.0f, juce::Justification::centredRight, true);
         hw::silk (g, juce::Rectangle<float> (b.getRight() - 4.0f, b.getBottom() - 12.0f, 22.0f, 10.0f), "MAX", look, 7.0f, juce::Justification::centredLeft, true);
     }

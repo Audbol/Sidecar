@@ -80,8 +80,7 @@ AssignSection::AssignSection (UiContext& c, const Theme& t) : ctx (c), theme (t)
         setKeys.push_back (std::move (key));
     }
     viewKey = std::make_unique<ToggleKey> ("VIEW", kLit, t);
-    viewKey->setEnabled (false);
-    viewKey->setTooltip ("Not on Sidecar's X32 screen yet");
+    viewKey->onClick = [this] { if (onView) onView(); };
     addAndMakeVisible (*viewKey);
     refreshCodes();
     startTimerHz (5);
@@ -90,6 +89,18 @@ AssignSection::AssignSection (UiContext& c, const Theme& t) : ctx (c), theme (t)
 AssignSection::~AssignSection()
 {
     stopTimer();
+}
+
+juce::StringArray AssignSection::describeSet() const
+{
+    juce::StringArray lines;
+    for (int i = 0; i < 12; ++i)
+    {
+        const auto& c = shownCodes[(size_t) i];
+        const auto what = c.isEmpty() ? juce::String ("-") : describe (c, i >= 4);
+        lines.add ((i < 4 ? "ENCODER " : "KEY ") + juce::String (i + 1) + "  " + (what.isEmpty() ? juce::String ("-") : what));
+    }
+    return lines;
 }
 
 void AssignSection::setSet (int s)
@@ -415,9 +426,12 @@ void AssignSection::paint (juce::Graphics& g)
             const auto text = buttons[(size_t) b]->getButtonText();
             return text == juce::String (b + 5) ? juce::String ("-") : text;
         };
-        const juce::String lines[] = { juce::String (i + 1) + " " + (enc.isValid() ? enc.label : juce::String ("-")), juce::String (i + 5) + " " + what (i),
-                                       juce::String (i + 9) + " " + what (4 + i) };
+        const juce::String lines[] = { enc.isValid() ? enc.label : juce::String ("-"), what (i), what (4 + i) };
         const float h = lcd.getHeight() / 3.0f;
+        // The numbers each line belongs to, printed on the panel at the LCD's left.
+        for (int k = 0; k < 3; ++k)
+            hw::silk (g, juce::Rectangle<float> (lcd.getX() - 13.0f, lcd.getY() + h * (float) k, 10.0f, h), juce::String (i + 1 + 4 * k), look, 7.5f,
+                      juce::Justification::centredRight);
         g.setColour (juce::Colour (0xff0c2a12));
         g.setFont (universal::type::font (juce::jmin (9.5f, h * 0.9f), true));
         for (int k = 0; k < 3; ++k)
@@ -449,7 +463,7 @@ void AssignSection::resized()
     r.removeFromTop (4);
     auto lcdRow = r.removeFromTop (42);
     for (int i = 0; i < 4; ++i)
-        lcds[(size_t) i] = juce::Rectangle<int> (lcdRow.getX() + w * i, lcdRow.getY(), w, lcdRow.getHeight()).reduced (4, 2);
+        lcds[(size_t) i] = juce::Rectangle<int> (lcdRow.getX() + w * i, lcdRow.getY(), w, lcdRow.getHeight()).reduced (4, 2).withTrimmedLeft (12);
     r.removeFromTop (8);
     for (int row = 0; row < 2; ++row)
     {

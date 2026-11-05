@@ -149,6 +149,12 @@ X32Surface::X32Surface (UiContext& c)
             ctx.selectStrip (strip);
         display.showScreen ((x32::Display::Screen) screen, tab);
     };
+    // MONITOR's and TALKBACK's VIEW: the display's MONITOR page; ASSIGN's its page.
+    monitor.onView = [this] (int tab) { display.showScreen (x32::Display::Screen::Monitor, tab); };
+    assign.onView = [this] { display.showScreen (x32::Display::Screen::Assign, assign.getSet()); };
+    display.assignLines = [this] { return assign.describeSet(); };
+    display.getAssignSet = [this] { return assign.getSet(); };
+    display.setAssignSet = [this] (int s) { assign.setSet (s); };
     // A VIEW key opens its section's tab of the display's HOME screen.
     channel.onView = [this] (int section) { display.showScreen (x32::Display::Screen::Home, section + 1); };
     display.getModel = [this] { return (int) model; };
@@ -440,6 +446,38 @@ void X32Surface::paint (juce::Graphics& g)
     for (auto* keys : { &inputLayerKeys, &groupLayerKeys })
         if (! keys->empty())
             column (juce::Rectangle<int> (keys->front()->getX() - 2, top, keys->front()->getWidth() + 4, bottom - top));
+    // The grille: two fields of fine holes.
+    if (g.clipRegionIntersects (grille))
+    {
+        g.setColour (juce::Colour (0xff1a1b1c));
+        const float gap = 180.0f, half = ((float) grille.getWidth() - gap) / 2.0f;
+        for (int side = 0; side < 2; ++side)
+        {
+            const float x0 = (float) grille.getX() + (half + gap) * (float) side;
+            for (float y = (float) grille.getY(); y < (float) grille.getBottom(); y += 3.0f)
+                for (float x = x0 + (std::fmod (y, 6.0f) < 1.0f ? 0.0f : 1.5f); x < x0 + half; x += 3.0f)
+                    g.fillRect (x, y, 1.6f, 1.6f);
+        }
+    }
+    // The headphone sockets' marks at the panel's sides, between the upper panel and the faders.
+    {
+        const auto phones = [&g, &look] (juce::Point<float> c, bool left)
+        {
+            g.setColour (look.silk);
+            juce::Path p;
+            p.addCentredArc (c.x, c.y, 5.0f, 5.0f, 0.0f, -juce::MathConstants<float>::halfPi, juce::MathConstants<float>::halfPi, true);
+            g.strokePath (p, juce::PathStrokeType (1.4f));
+            g.fillRoundedRectangle (c.x - 6.5f, c.y - 1.0f, 3.0f, 5.0f, 1.0f);
+            g.fillRoundedRectangle (c.x + 3.5f, c.y - 1.0f, 3.0f, 5.0f, 1.0f);
+            juce::Path arrow;
+            const float ax = left ? c.x - 10.0f : c.x + 10.0f;
+            arrow.addTriangle (ax, c.y, ax + (left ? 4.0f : -4.0f), c.y - 3.0f, ax + (left ? 4.0f : -4.0f), c.y + 3.0f);
+            g.fillPath (arrow);
+        };
+        const float y = (float) fadersArea.getY() - 7.0f;
+        phones ({ (float) fadersArea.getX() + 22.0f, y }, true);
+        phones ({ (float) fadersArea.getRight() - 22.0f, y }, false);
+    }
     // The display housing's MIC, at its bottom left.
     {
         auto mic = juce::Rectangle<float> ((float) displayArea.getX() - 2.0f, (float) displayArea.getBottom() - 2.0f, 60.0f, 12.0f);
@@ -493,6 +531,8 @@ void X32Surface::resized()
 
     // The upper panel as on the X32: the channel strip section, the display in
     // its housing, MONITOR and TALKBACK.
+    // The speaker grille along the console's top edge.
+    grille = area.removeFromTop (12).reduced (220, 3);
     auto upper = area.removeFromTop (juce::roundToInt (area.getHeight() * 0.42f));
     area.removeFromTop (sizes::kGapLarge);
     monitor.setBounds (upper.removeFromRight (226).reduced (0, 4));

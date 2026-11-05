@@ -1590,7 +1590,8 @@ void Y02RSurface::resized()
     area.removeFromRight (14); // the wooden cheeks
 
     // The fader columns first: the rows above line up with them.
-    const int colW = 70, x0 = area.getX() + 50;
+    // STEREO's strip is twice as wide as a channel's.
+    const int colW = 66, x0 = area.getX() + 50;
     auto colX = [x0, colW] (int i) { return x0 + i * colW + (i >= 16 ? 8 : 0) + (i >= 20 ? 8 : 0); };
     analogArea = area.removeFromTop (78).withX (x0).withWidth (colX (20) - x0);
 
@@ -1753,17 +1754,17 @@ void Y02RSurface::resized()
     auto faderArea = area.withTrimmedTop (4).withTrimmedBottom (4);
     for (int i = 0; i < kNumFaders; ++i)
     {
-        auto col = juce::Rectangle<int> (colX (i), faderArea.getY(), colW, faderArea.getHeight() - 22);
-        selKeys[(size_t) i]->setBounds (col.removeFromTop (28).reduced (6, 1));
+        auto col = juce::Rectangle<int> (colX (i), faderArea.getY(), i == 20 ? 2 * colW : colW, faderArea.getHeight() - 22);
+        selKeys[(size_t) i]->setBounds (col.removeFromTop (28).reduced (6 + (i == 20 ? colW / 2 : 0), 1));
         col.removeFromTop (2);
-        onKeys[(size_t) i]->setBounds (col.removeFromTop (28).reduced (6, 1));
+        onKeys[(size_t) i]->setBounds (col.removeFromTop (28).reduced (6 + (i == 20 ? colW / 2 : 0), 1));
         col.removeFromTop (18); // the scribble strip
         faders[(size_t) i]->setBounds (col);
     }
 
     // The bottom right: SCENE MEMORY (STORE, up over down, RECALL), the wheel,
     // the cursor keys right of it, ENTER below it.
-    auto right = faderArea.withLeft (colX (20) + colW + 30).withTrimmedRight (14);
+    auto right = faderArea.withLeft (colX (20) + 2 * colW + 26).withTrimmedRight (14);
     auto memRow = right.removeFromTop (70).withTrimmedTop (10);
     const int mw = memRow.getWidth() / 4;
     panelKeys[0]->setBounds (juce::Rectangle<int> (memRow.getX(), memRow.getY(), mw, 44).reduced (4, 0));          // STORE

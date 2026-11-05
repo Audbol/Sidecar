@@ -47,8 +47,14 @@ public:
         Library,
         Effects,
         MuteGroups,
-        Utility
+        Utility,
+        Monitor, // the MONITOR and TALKBACK sections' VIEW
+        Assign   // ASSIGN's VIEW
     };
+    /** The ASSIGN page's lines and set (the surface's assign section). */
+    std::function<juce::StringArray()> assignLines;
+    std::function<int()> getAssignSet;
+    std::function<void (int)> setAssignSet;
 
     void showScreen (Screen, int tab = 0);
     void showTab (int);

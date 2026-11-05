@@ -311,6 +311,8 @@ juce::StringArray Display::getTabs() const
         case Screen::Effects:    return { "home", "fx1", "fx2", "fx3", "fx4", "fx5", "fx6", "fx7", "fx8" };
         case Screen::MuteGroups: return { "mute grp" };
         case Screen::Utility:    return { "copy" };
+        case Screen::Monitor:    return { "monitor", "talkback" };
+        case Screen::Assign:     return { "set a", "set b", "set c" };
     }
     return {};
 }
@@ -345,6 +347,8 @@ void Display::showTab (int t)
 {
     tab = juce::jlimit (0, getTabs().size() - 1, t);
     layer = 0;
+    if (screen == Screen::Assign && setAssignSet)
+        setAssignSet (tab); // a set's tab shows (and picks) the set
     const bool home = screen == Screen::Home;
     eqView.setVisible (home && tab == 4);
     gateView.setVisible (home && tab == 2);
@@ -590,6 +594,29 @@ void Display::assignEncoders()
         encoders[1] = encoder ({}, "OPEN", call (ctx.openShow));
         encoders[2] = encoder ({}, "SAVE", [this] { if (ctx.saveShow) ctx.saveShow (false); });
         encoders[3] = encoder ({}, "SAVE AS", [this] { if (ctx.saveShow) ctx.saveShow (true); });
+    }
+    else if (screen == Screen::Monitor && tab == 0)
+    {
+        // MONITOR: the speakers' and phones' levels, DIM and its depth, MONO.
+        encoders[0] = encoder (bindFader ("MONITOR", engine.monitorLevelDb));
+        encoders[1] = encoder (bindFader ("PHONES", engine.phones.levelDb));
+        encoders[2] = encoder (bindLinear ("DIM ATT", engine.monitorDimDb, 0.0f, 40.0f, " dB", 0, 20.0f), "DIM", toggle (engine.monitorDim),
+                               isOn (engine.monitorDim));
+        encoders[3] = encoder ({}, "MONO", toggle (engine.monitorMono), isOn (engine.monitorMono));
+    }
+    else if (screen == Screen::Monitor)
+    {
+        // TALKBACK: its level, TALK A and TALK B.
+        encoders[0] = encoder (bindFader ("TALK", engine.talk.levelDb));
+        encoders[1] = encoder ({}, "TALK A", toggle (engine.talk.paths[0].on), isOn (engine.talk.paths[0].on));
+        encoders[2] = encoder ({}, "TALK B", toggle (engine.talk.paths[1].on), isOn (engine.talk.paths[1].on));
+    }
+    else if (screen == Screen::Assign)
+    {
+        // The sets: a push picks one.
+        for (int n = 0; n < 3; ++n)
+            encoders[(size_t) n] = encoder ({}, juce::String ("SET ") + juce::String::charToString ((juce::juce_wchar) ('A' + n)),
+                                            [this, n] { showTab (n); }, [this, n] { return getAssignSet && getAssignSet() == n; });
     }
     else if (screen == Screen::Utility)
     {
@@ -1851,6 +1878,32 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
             break;
         case Screen::MuteGroups:
             break; // its keys
+        case Screen::Monitor:
+        {
+            auto& e = ctx.engine;
+            const auto onOff = [] (bool on) { return on ? juce::String ("ON") : juce::String ("OFF"); };
+            if (tab == 0)
+                paintRows (g, r.reduced (12), { "MONITOR LEVEL", "PHONES LEVEL", "DIM", "DIM ATTENUATION", "MONO", "SOURCE" },
+                           { fader::text (e.monitorLevelDb.load()) + " dB", fader::text (e.phones.levelDb.load()) + " dB", onOff (e.monitorDim.load()),
+                             juce::String (e.monitorDimDb.load(), 0) + " dB", onOff (e.monitorMono.load()),
+                             e.anySoloActive.load() ? juce::String ("SOLO BUS") : juce::String ("MAIN") });
+            else
+                paintRows (g, r.reduced (12), { "TALK LEVEL", "TALK A", "TALK B" },
+                           { fader::text (e.talk.levelDb.load()) + " dB", onOff (e.talk.paths[0].on.load()), onOff (e.talk.paths[1].on.load()) });
+            break;
+        }
+        case Screen::Assign:
+        {
+            const auto lines = assignLines ? assignLines() : juce::StringArray();
+            juce::StringArray left, right;
+            for (auto& l : lines)
+            {
+                left.add (l.upToFirstOccurrenceOf ("  ", false, false));
+                right.add (l.fromFirstOccurrenceOf ("  ", false, false));
+            }
+            paintRows (g, r.reduced (12), left, right);
+            break;
+        }
         case Screen::Utility:
         {
             const bool copied = copySource != nullptr && isStrip (copySource);

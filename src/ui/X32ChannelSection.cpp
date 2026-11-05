@@ -306,6 +306,25 @@ void ChannelSection::paint (juce::Graphics& g)
     name (eqGain, "GAIN");
     name (mcLevel, "LEVEL");
     name (pan, "PAN / BAL");
+    // The scales printed round FREQUENCY (LOW CUT, 20-400 Hz) and the EQ's FREQ
+    // (20 Hz-20 kHz), at their places on the knobs' 300 degree travel.
+    const auto scale = [&g, &look] (const juce::Component& k, float lo, float hi, std::initializer_list<std::pair<float, const char*>> marks)
+    {
+        if (! k.isVisible())
+            return;
+        const auto b = k.getBounds().toFloat();
+        const auto c = b.getCentre();
+        const float r = b.getWidth() * 0.5f + 7.0f;
+        for (auto [hz, text] : marks)
+        {
+            const float f = std::log (hz / lo) / std::log (hi / lo);
+            const float a = juce::degreesToRadians (-150.0f + 300.0f * f);
+            const juce::Point<float> at (c.x + r * std::sin (a), c.y - r * std::cos (a));
+            hw::silk (g, juce::Rectangle<float> (26.0f, 10.0f).withCentre (at), text, look, 7.5f, juce::Justification::centred, true);
+        }
+    };
+    scale (lowCut, 20.0f, 400.0f, { { 35.0f, "35" }, { 55.0f, "55" }, { 90.0f, "90" }, { 140.0f, "140" }, { 230.0f, "230" } });
+    scale (eqFreq, 20.0f, 20000.0f, { { 40.0f, "40" }, { 120.0f, "120" }, { 240.0f, "240" }, { 1000.0f, "1k" }, { 3300.0f, "3k3" }, { 10000.0f, "10k" } });
     for (int i = 0; i < 4; ++i)
     {
         const auto& k = sends[(size_t) i];
@@ -486,11 +505,11 @@ void ChannelSection::resized()
         // CONFIG / PREAMP: GAIN, the LEVEL meter, FREQUENCY; 48V, polarity, LOW CUT under them.
         auto r = inside (sections[0]).withTrimmedRight (38);
         auto keys = r.removeFromBottom (kKey);
-        const int size = juce::jmin (64, r.getHeight() - 14);
+        const int size = juce::jmin (56, r.getHeight() - 26);
         const int w = r.getWidth() / 3;
-        knobAt (gain, { r.getX() + w / 2, r.getY() + size / 2 + 2 }, size);
+        knobAt (gain, { r.getX() + w / 2, r.getY() + size / 2 + 10 }, size);
         levelMeter = juce::Rectangle<int> (r.getX() + w + 4, r.getY(), w - 8, r.getHeight());
-        knobAt (lowCut, { r.getX() + 2 * w + w / 2, r.getY() + size / 2 + 2 }, size);
+        knobAt (lowCut, { r.getX() + 2 * w + w / 2, r.getY() + size / 2 + 10 }, size);
         keyAt (phantom, { r.getX() + w / 4, keys.getCentreY() }, 40);
         keyAt (invert, { r.getX() + w - w / 6, keys.getCentreY() }, 40);
         keyAt (lowCutOn, { r.getX() + 2 * w + w / 2, keys.getCentreY() }, 56);
