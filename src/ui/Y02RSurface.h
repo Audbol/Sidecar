@@ -186,6 +186,7 @@ namespace y02r
         juce::String title() const;
         void paintMeters (juce::Graphics&, juce::Rectangle<float>) const;
         void paintEq (juce::Graphics&, juce::Rectangle<float>) const;
+        void paintPrograms (juce::Graphics&, juce::Rectangle<float>) const;
 
         UiContext& ctx;
         const Theme& theme;

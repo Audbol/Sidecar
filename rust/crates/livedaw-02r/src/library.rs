@@ -318,12 +318,27 @@ fn fx_program(name: &str, token: &str, set: &[(&str, f32)]) -> Program {
     Program::of(spec, name, set)
 }
 
-/// The three libraries (`None`: an empty user program).
+/// The channel library's programs (V2 MAN pp.48-50): 64, all a user's.
+pub const CHANNEL_PROGRAMS: usize = 64;
+
+/// A channel program: its title and an input strip's settings as the edit
+/// buffer has them (`params::channel_bytes`: its 28 bytes, then its sends' 10).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ChannelProgram {
+    pub name: String,
+    pub bytes: Vec<u8>,
+}
+
+/// The libraries (`None`: an empty user program).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Library {
     pub eq: Vec<Option<Program>>,
     pub dynamics: Vec<Option<Program>>,
     pub effects: Vec<Option<Program>>,
+    pub channel: Vec<Option<ChannelProgram>>,
+    /// The channel library's UNDO ("U"): the channel's settings before the
+    /// last recall, or the program the last store or clear overwrote. Not kept.
+    pub channel_undo: Option<ChannelProgram>,
 }
 
 impl Default for Library {
@@ -337,6 +352,8 @@ impl Default for Library {
             eq: fill(EQ_PRESETS.iter().map(|(n, b)| eq_program(n, b)).collect()),
             dynamics: fill(DYN_PRESETS.iter().map(|(n, t, v)| dyn_program(n, t, v)).collect()),
             effects: fill(FX_PRESETS.iter().map(|(n, t, s)| fx_program(n, t, s)).collect()),
+            channel: vec![None; CHANNEL_PROGRAMS],
+            channel_undo: None,
         }
     }
 }
@@ -386,6 +403,13 @@ impl Library {
         true
     }
 
+    /// Clears channel program `n` (0-63) into the UNDO (V2 MAN p.49).
+    pub fn clear_channel(&mut self, n: usize) -> bool {
+        let Some(old) = self.channel.get_mut(n).and_then(Option::take) else { return false };
+        self.channel_undo = Some(old);
+        true
+    }
+
     /// The programs a user may store into, as text (one per line: `eq.N`,
     /// `dyn.N` or `fx.N`, the title, a tab, the model's token and the values),
     /// for the host to keep: the console's memory, not a scene's.
@@ -400,6 +424,13 @@ impl Library {
                 }
             }
         }
+        for (n, p) in self.channel.iter().enumerate() {
+            if let Some(p) = p {
+                let name = p.name.replace(['\t', '\n', '\r', '='], " ");
+                let hex: String = p.bytes.iter().map(|b| format!("{b:02x}")).collect();
+                out.push_str(&format!("ch.{}={name}\t{hex}\n", n + 1));
+            }
+        }
         out
     }
 
@@ -409,6 +440,15 @@ impl Library {
             let Some((key, rest)) = line.split_once('=') else { continue };
             let Some((kind, n)) = key.split_once('.') else { continue };
             let (Ok(n), Some((name, data))) = (n.trim().parse::<usize>(), rest.split_once('\t')) else { continue };
+            if kind == "ch" {
+                let data = data.trim();
+                let bytes: Option<Vec<u8>> =
+                    (0..data.len() / 2).map(|i| data.get(i * 2..i * 2 + 2).and_then(|h| u8::from_str_radix(h, 16).ok())).collect();
+                if let (Some(bytes), Some(slot)) = (bytes, self.channel.get_mut(n.wrapping_sub(1))) {
+                    *slot = Some(ChannelProgram { name: name.trim().chars().take(16).collect(), bytes });
+                }
+                continue;
+            }
             let (kind, models): (Kind, &'static [ModelSpec]) = match kind {
                 "eq" => (Kind::Eq, EQ),
                 "dyn" => (Kind::Dynamics, DYN_MODELS),
@@ -463,6 +503,16 @@ mod tests {
         back.apply_text(&lib.user_text());
         assert_eq!((back.get(Kind::Eq, 50), back.get(Kind::Effects, 127)), (Some(&eq), Some(&fx)));
         assert_eq!(back, lib);
+    }
+
+    #[test]
+    fn channel_programs_keep_as_text() {
+        let mut lib = Library::default();
+        lib.channel[0] = Some(ChannelProgram { name: "Lead Vox".into(), bytes: vec![100, 1, 16, 0, 255] });
+        lib.channel[63] = Some(ChannelProgram { name: "Kick".into(), bytes: vec![0; 38] });
+        let mut back = Library::default();
+        back.apply_text(&lib.user_text());
+        assert_eq!(back.channel, lib.channel);
     }
 
     #[test]

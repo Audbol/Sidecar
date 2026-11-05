@@ -41,7 +41,9 @@ public:
     {
         Eq = 0,
         Dynamics = 1,
-        Effects = 2
+        Effects = 2,
+        /** The channel library (V2 MAN pp.48-50): programs 0-63 and 64 its UNDO, an input strip's settings. */
+        Channel = 3
     };
     juce::String programName (int library, int n) const { return takeString (ld::ld_y02r_program_name (handle, library, n)); }
     /** Recalls program `n` onto strip `strip` (the edit buffer's numbering) or Effect `strip`. */
@@ -52,6 +54,8 @@ public:
     {
         return ld::ld_y02r_store (handle, library, n, strip, name.toRawUTF8(), name.getNumBytesAsUTF8());
     }
+    /** CLEAR a channel program (into its UNDO); false if it held none. */
+    bool clearChannel (int n) { return ld::ld_y02r_clear_channel (handle, n); }
     juce::String getLibraryText() const { return takeString (ld::ld_y02r_library_text (handle)); }
     /** PROGRAM CHANGE ASSIGN: the scene program `pc` (0-127) recalls (-1 none), and setting it. */
     int pcScene (int pc) const { return ld::ld_y02r_pc_scene (handle, pc); }

@@ -29,7 +29,7 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 48;
+constexpr int kAbiVersion = 49;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -1926,6 +1926,10 @@ extern "C"
         as text (the console's memory: the host keeps it), and back. */
     bool ld_y02r_store (LdY02R*, int32_t kind, int32_t n, int32_t strip, const char* name, size_t len);
     LdString* ld_y02r_library_text (const LdY02R*);
+    /** ABI 49: library `kind` 3 is the channel library (programs 0-63, 64 its UNDO,
+        named "U:..."): recall and store work an input strip's settings. Clearing a
+        channel program puts it in the UNDO; false if it held none. */
+    bool ld_y02r_clear_channel (LdY02R*, int32_t n);
     /** ABI 47: Program Change Assign: the scene program `pc` (0-127) recalls (-1 none), and setting it. */
     int32_t ld_y02r_pc_scene (const LdY02R*, int32_t pc);
     void ld_y02r_set_pc_scene (LdY02R*, int32_t pc, int32_t scene);

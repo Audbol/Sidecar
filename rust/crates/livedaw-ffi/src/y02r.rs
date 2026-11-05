@@ -12,7 +12,7 @@
 
 use super::guard;
 use super::session::{str_arg, LdString};
-use livedaw_02r::library::{Kind, Library};
+use livedaw_02r::library::{Kind, Library, CHANNEL_PROGRAMS};
 use livedaw_02r::midi::{Event, Midi, Setup};
 use livedaw_02r::{params, Console, State, Y2Strip};
 use livedaw_engine::{Engine, Profile};
@@ -357,14 +357,22 @@ pub unsafe extern "C" fn ld_y02r_address_name(a: i32) -> *mut LdString {
     LdString::new(usize::try_from(a).map(params::name).unwrap_or_default())
 }
 
-/// Program `n` (0-127) of library `kind` (0 EQ, 1 dynamics, 2 effects): its
-/// title ("" for an empty one).
+/// Program `n` (0-127) of library `kind` (0 EQ, 1 dynamics, 2 effects; ABI
+/// 49: 3 the channel library, 0-63 and 64 its UNDO): its title ("" for an
+/// empty one; the UNDO's "U:" while it holds one).
 ///
 /// # Safety
 /// `p` is from `ld_y02r_create` (or null); the result is freed with `ld_string_free`.
 #[no_mangle]
 pub unsafe extern "C" fn ld_y02r_program_name(p: *const LdY02R, kind: i32, n: i32) -> *mut LdString {
     let name = p.as_ref().and_then(|p| {
+        if kind == 3 {
+            let n = usize::try_from(n).ok()?;
+            if n == CHANNEL_PROGRAMS {
+                return p.library.channel_undo.as_ref().map(|u| format!("U:{}", u.name));
+            }
+            return Some(p.library.channel.get(n)?.as_ref()?.name.clone());
+        }
         let kind = [Kind::Eq, Kind::Dynamics, Kind::Effects].get(usize::try_from(kind).ok()?)?;
         Some(p.library.get(*kind, usize::try_from(n).ok()?)?.name.clone())
     });
@@ -385,6 +393,7 @@ pub unsafe extern "C" fn ld_y02r_recall(p: *mut LdY02R, kind: i32, n: i32, strip
             0 => params::strip(strip).is_some_and(|s| c.recall_eq(lib, s, n)),
             1 => params::strip(strip).is_some_and(|s| c.recall_dyn(lib, s, n)),
             2 => c.recall_fx(lib, strip, n),
+            3 => params::strip(strip).is_some_and(|s| c.recall_channel(lib, s, n)),
             _ => false,
         })
     })
@@ -406,10 +415,22 @@ pub unsafe extern "C" fn ld_y02r_store(p: *mut LdY02R, kind: i32, n: i32, strip:
             0 => params::strip(strip).is_some_and(|s| c.store_eq(lib, s, n, &name)),
             1 => params::strip(strip).is_some_and(|s| c.store_dyn(lib, s, n, &name)),
             2 => c.store_fx(lib, strip, n, &name),
+            3 => params::strip(strip).is_some_and(|s| c.store_channel(lib, s, n, &name)),
             _ => false,
         })
     })
     .unwrap_or(false)
+}
+
+/// ABI 49: clears channel program `n` (0-63) into its UNDO (V2 MAN p.49);
+/// false if it held none.
+///
+/// # Safety
+/// `p` is from `ld_y02r_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_y02r_clear_channel(p: *mut LdY02R, n: i32) -> bool {
+    let (Some(p), Ok(n)) = (p.as_mut(), usize::try_from(n)) else { return false };
+    p.library.clear_channel(n)
 }
 
 /// The user programs as text (`Library::user_text`), for the host to keep, and back.

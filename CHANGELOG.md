@@ -529,6 +529,14 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   presets, LOAD onto the selected strip or a slot, SAVE as a new one. C ABI 47:
   `ld_promix_cc_of`, `ld_promix_set_cc`, `ld_y02r_cc_target`,
   `ld_y02r_set_cc_target`.
+- The 02R's CHANNEL LIBRARY (V2 MAN pp.48-50): VIEW's second page (VIEW
+  again, or ENTER on VIEW's LIB): 64 programs of an input strip's settings
+  (fader, ON, pan, attenuator, phase, delay, EQ, dynamics, routing, the AUX
+  sends) in a scrolling list; RECALL onto the selected strip, STORE (its TITLE
+  EDIT), CLEAR, EXIT. A recall, store or clear keeps what it replaced in the
+  UNDO ("U:"), which RECALL puts back. The programs are kept in the app
+  settings with the other libraries. C ABI 49: library 3 of `ld_y02r_recall`,
+  `ld_y02r_store` and `ld_y02r_program_name`; `ld_y02r_clear_channel`.
 - The console surfaces (X32, ProMix 01, 02R) are laid out at 1920 x 1080 and
   scaled to the window, in proportion and centred: on a bigger screen (a 4K
   monitor) they show the same panel larger instead of stretching the gaps

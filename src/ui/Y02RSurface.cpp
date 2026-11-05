@@ -43,7 +43,7 @@ namespace
     // TITLE EDIT's characters.
     const juce::String kTitleChars = " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!\"#$%&'()*+,-./:;<=>?@[]_";
     /** The first program of each library (EQ, dynamics, effects) a user may store into (MAN p.211). */
-    constexpr int kFirstUser[] = { 32, 40, 40 };
+    constexpr int kFirstUser[] = { 32, 40, 40, 0 };
 
     /** A model parameter's step as its value (livedaw_02r's step_param). */
     float stepValue (const models::Param& p, int step)
@@ -304,6 +304,7 @@ namespace y02r
                 return 3; // MIDI SETUP, Program Change Assign, Control Change Assign
             case Function::Group:
             case Function::Pair:
+            case Function::View: // VIEW, the CHANNEL LIBRARY
             case Function::Att:
             case Function::Delay:
             case Function::Pan:
@@ -363,13 +364,13 @@ namespace y02r
             Field f;
             f.label = "STORE";
             f.lo = kFirstUser[library];
-            f.hi = 127;
+            f.hi = library == Yamaha02R::Channel ? 63 : 127;
             f.get = [this] { return storeChoice; };
             f.set = [this] (int v) { storeChoice = v; };
             f.text = [this, library] (int n)
             {
                 const auto name = y.programName (library, n);
-                return juce::String (n + 1).paddedLeft ('0', 3) + " " + (name.isEmpty() ? juce::String ("(empty)") : name);
+                return juce::String (n + 1).paddedLeft ('0', library == Yamaha02R::Channel ? 2 : 3) + " " + (name.isEmpty() ? juce::String ("(empty)") : name);
             };
             f.action = [this, library, target] { editTitle (library, storeChoice, target); };
             fields.push_back (f);
@@ -469,6 +470,65 @@ namespace y02r
             repaint();
             return;
         }
+        if (function == Function::View && page == 1)
+        {
+            // VIEW 2/2, the CHANNEL LIBRARY (V2 MAN pp.48-50): 64 programs of an
+            // input strip's settings and the UNDO ("U"); RECALL, STORE (its
+            // TITLE EDIT), CLEAR (into the UNDO), EXIT back to VIEW 1/2.
+            if (memberOf (s) < 0)
+                fixed ("LIBRARY", "INPUT CHANNELS ONLY");
+            else
+            {
+                const auto programText = [this] (int n)
+                {
+                    if (n == 64)
+                    {
+                        const auto undo = y.programName (Yamaha02R::Channel, 64);
+                        return undo.isEmpty() ? juce::String ("U: (empty)") : undo;
+                    }
+                    const auto name = y.programName (Yamaha02R::Channel, n);
+                    return juce::String (n + 1).paddedLeft ('0', 2) + " " + (name.isEmpty() ? juce::String ("(empty)") : name);
+                };
+                Field recall;
+                recall.label = "RECALL";
+                recall.lo = 0;
+                recall.hi = 64;
+                recall.onEnter = true;
+                recall.get = [] { return 0; };
+                recall.text = programText;
+                recall.set = [this, s] (int n) { y.recall (Yamaha02R::Channel, n, s); };
+                fields.push_back (recall);
+                storeField (Yamaha02R::Channel, s);
+                Field clear;
+                clear.label = "CLEAR";
+                clear.lo = 0;
+                clear.hi = 63;
+                clear.onEnter = true;
+                clear.get = [] { return 0; };
+                clear.text = programText;
+                clear.set = [this] (int n)
+                {
+                    if (y.clearChannel (n) && libraryChanged)
+                        libraryChanged();
+                };
+                fields.push_back (clear);
+                Field exit;
+                exit.label = "EXIT";
+                exit.text = [] (int) { return juce::String ("VIEW 1/2"); };
+                exit.get = [] { return 0; };
+                exit.lo = exit.hi = 0;
+                exit.action = [this]
+                {
+                    page = 0;
+                    focus = 0;
+                    build();
+                };
+                fields.push_back (exit);
+            }
+            focus = juce::jlimit (0, juce::jmax (0, (int) fields.size() - 1), focus);
+            repaint();
+            return;
+        }
         switch (function)
         {
             case Function::View:
@@ -499,6 +559,19 @@ namespace y02r
                 {
                     stateField ("FADER GRP", Yamaha02R::FaderGroup, memberOf (s), 0, 4, [] (int v) { return v == 0 ? juce::String ("-") : juce::String::charToString ('A' + v - 1); });
                     stateField ("MUTE GRP", Yamaha02R::MuteGroup, memberOf (s), 0, 4, [] (int v) { return v == 0 ? juce::String ("-") : juce::String::charToString ('E' + v - 1); });
+                    // LIB: ENTER opens the CHANNEL LIBRARY (VIEW 2/2), as VIEW again does.
+                    Field lib;
+                    lib.label = "LIB";
+                    lib.text = [] (int) { return juce::String ("CHANNEL LIBRARY"); };
+                    lib.get = [] { return 0; };
+                    lib.lo = lib.hi = 0;
+                    lib.action = [this]
+                    {
+                        page = 1;
+                        focus = 0;
+                        build();
+                    };
+                    fields.push_back (lib);
                 }
                 break;
             case Function::Delay:
@@ -695,6 +768,7 @@ namespace y02r
                         if (libraryChanged)
                             libraryChanged();
                         function = nameFrom;
+                        page = nameLibrary == Yamaha02R::Channel ? 1 : 0; // back to the CHANNEL LIBRARY
                         focus = 0;
                         build();
                     };
@@ -867,6 +941,8 @@ namespace y02r
                                 "EQ", "DYNAMICS", "AUX 1", "AUX 2", "AUX 3", "AUX 4", "AUX 5", "AUX 6", "AUX 7 (EFF1)", "AUX 8 (EFF2)" };
         const char* more[] = { "DIGITAL I/O", "SETUP", "AUTOMIX", "TITLE EDIT" };
         const int f = (int) function;
+        if (function == Function::View && page == 1)
+            return "CHANNEL LIBRARY  2/2";
         const juce::String name = f < (int) std::size (names) ? juce::String (names[f]) : juce::String (more[f - (int) std::size (names)]);
         return numPages() > 1 ? name + "  " + juce::String (page + 1) + "/" + juce::String (numPages()) : name;
     }
@@ -959,6 +1035,8 @@ namespace y02r
             g.setColour (kPixelDim);
             g.drawText (stripName (strip) + " has no " + title(), b, juce::Justification::centred);
         }
+        if (function == Function::View && page == 1 && fields.size() > 1)
+            paintPrograms (g, b.reduced (14.0f).withTrimmedBottom (14.0f).withTop (fieldBox (0).getBottom() + 10.0f));
         for (int i = 0; i < (int) fields.size(); ++i)
         {
             const auto& f = fields[(size_t) i];
@@ -974,6 +1052,30 @@ namespace y02r
             g.setColour (ink);
             g.setFont (type::font (type::kLabel, true));
             g.drawText (f.text ? f.text (v) : juce::String (v), box.withTrimmedTop (box.getHeight() * 0.4f), juce::Justification::centred);
+        }
+    }
+
+    void Display::paintPrograms (juce::Graphics& g, juce::Rectangle<float> area) const
+    {
+        // The CHANNEL LIBRARY's scrolling list (V2 MAN p.48): the programs around
+        // the one RECALL, STORE or CLEAR has chosen (RECALL's past 64 the UNDO).
+        const auto& f = fields[(size_t) juce::jlimit (0, 2, focus)];
+        const int chosen = f.pending >= 0 ? f.pending : f.get ? f.get() : 0;
+        constexpr int kLines = 7;
+        const float h = area.getHeight() / (float) kLines;
+        const int first = juce::jlimit (0, juce::jmax (0, f.hi - kLines + 1), chosen - kLines / 2);
+        g.setFont (type::font (type::kLabel, true));
+        for (int k = 0; k < kLines && first + k <= f.hi; ++k)
+        {
+            const int n = first + k;
+            const auto line = juce::Rectangle<float> (area.getX(), area.getY() + h * (float) k, area.getWidth(), h - 2.0f);
+            if (n == chosen)
+            {
+                g.setColour (kPixel);
+                g.fillRect (line);
+            }
+            g.setColour (n == chosen ? kLcd : kPixel);
+            g.drawText (f.text ? f.text (n) : juce::String (n + 1), line.reduced (10.0f, 0.0f), juce::Justification::centredLeft);
         }
     }
 

@@ -145,6 +145,26 @@ fn set_strip_byte(c: &mut Console, s: Y2Strip, item: usize, v: u8) {
     }
 }
 
+/// An input strip's settings as a channel program keeps them (V2 MAN p.48):
+/// its 28 bytes, then its sends' 10; None for an output.
+pub fn channel_bytes(c: &Console, s: Y2Strip) -> Option<Vec<u8>> {
+    let m = s.member()?;
+    let at = index_of(s) * PER_STRIP;
+    let sends = SENDS + m * PER_SEND_BLOCK;
+    Some((at..at + PER_STRIP).chain(sends..sends + PER_SEND_BLOCK).map(|a| get(c, a)).collect())
+}
+
+/// Puts `channel_bytes` onto input strip `s` (false for an output).
+pub fn set_channel_bytes(c: &mut Console, s: Y2Strip, bytes: &[u8]) -> bool {
+    let Some(m) = s.member() else { return false };
+    let at = index_of(s) * PER_STRIP;
+    let sends = SENDS + m * PER_SEND_BLOCK;
+    for (a, &v) in (at..at + PER_STRIP).chain(sends..sends + PER_SEND_BLOCK).zip(bytes) {
+        set(c, a, v);
+    }
+    true
+}
+
 /// The whole edit buffer (`SIZE` bytes).
 pub fn bytes(c: &Console) -> Vec<u8> {
     (0..SIZE).map(|a| get(c, a)).collect()

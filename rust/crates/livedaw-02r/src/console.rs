@@ -6,7 +6,8 @@
 //!
 //! The strips (`Y2Strip`) are the engine's (see the crate).
 
-use crate::library::{Kind, Library, Program};
+use crate::library::{ChannelProgram, Kind, Library, Program, CHANNEL_PROGRAMS};
+use crate::params;
 use crate::state::{self, DynSettings, KeyIn, State, CHANNELS, DYN_STRIPS, LINES, MEMBERS, MICS};
 use livedaw_dsp::fader::FaderLaw;
 use livedaw_dsp::y02r::DYN_MODELS;
@@ -819,6 +820,28 @@ impl Console<'_> {
         lib.store(Kind::Dynamics, n, Program { name: name.into(), token: spec.token, values })
     }
 
+    /// Recalls channel program `n` (0-63; 64 the UNDO) onto input strip `s`
+    /// (V2 MAN p.49); what the strip had goes to the UNDO.
+    pub fn recall_channel(&mut self, lib: &mut Library, s: Y2Strip, n: usize) -> bool {
+        let Some(before) = params::channel_bytes(self, s) else { return false };
+        let prog = if n == CHANNEL_PROGRAMS { lib.channel_undo.clone() } else { lib.channel.get(n).cloned().flatten() };
+        let Some(prog) = prog else { return false };
+        params::set_channel_bytes(self, s, &prog.bytes);
+        lib.channel_undo = Some(ChannelProgram { name: prog.name, bytes: before });
+        true
+    }
+
+    /// Stores input strip `s` as channel program `n` (0-63), titled `name`;
+    /// what `n` held goes to the UNDO.
+    pub fn store_channel(&self, lib: &mut Library, s: Y2Strip, n: usize, name: &str) -> bool {
+        let (Some(bytes), true) = (params::channel_bytes(self, s), n < CHANNEL_PROGRAMS) else { return false };
+        let old = lib.channel[n].replace(ChannelProgram { name: name.chars().take(16).collect(), bytes });
+        if old.is_some() {
+            lib.channel_undo = old;
+        }
+        true
+    }
+
     /// Stores Effect `slot` as program `n`.
     pub fn store_fx(&self, lib: &mut Library, slot: usize, n: usize, name: &str) -> bool {
         let Some(fx) = self.engine.controls.fx.get(slot).filter(|_| slot < 2) else { return false };
@@ -1085,5 +1108,29 @@ mod tests {
         c.set_pair(9, false, true);
         c.set_level(Y2Strip::Tape(2), 10, Origin::Remote);
         assert_eq!(c.level(Y2Strip::Tape(3)), 90, "unpaired");
+    }
+
+    #[test]
+    fn channel_library_stores_recalls_and_undoes() {
+        let e = y02r();
+        let mut s = State::default();
+        let mut c = Console::new(&e, &mut s);
+        let mut lib = Library::default();
+        c.set_level(Y2Strip::Mic(0), 90, Origin::Remote);
+        c.set_aux_level(Y2Strip::Mic(0), 2, 70);
+        c.set_on(Y2Strip::Mic(0), false, Origin::Remote);
+        assert!(c.store_channel(&mut lib, Y2Strip::Mic(0), 4, "Lead Vox"));
+        assert!(!c.store_channel(&mut lib, Y2Strip::Bus(0), 5, "x"), "an output");
+        // Onto MIC 3: its settings, its old ones to the UNDO.
+        let before = params::channel_bytes(&c, Y2Strip::Mic(2)).unwrap();
+        assert!(c.recall_channel(&mut lib, Y2Strip::Mic(2), 4));
+        assert_eq!((c.level(Y2Strip::Mic(2)), c.aux_level(Y2Strip::Mic(2), 2), c.on(Y2Strip::Mic(2))), (90, 70, false));
+        assert!(!c.recall_channel(&mut lib, Y2Strip::Mic(2), 5), "empty");
+        // UNDO puts them back (and holds the program's, again).
+        assert!(c.recall_channel(&mut lib, Y2Strip::Mic(2), CHANNEL_PROGRAMS));
+        assert_eq!(params::channel_bytes(&c, Y2Strip::Mic(2)).unwrap(), before);
+        // A clear goes to the UNDO too.
+        assert!(lib.clear_channel(4) && lib.channel[4].is_none());
+        assert_eq!(lib.channel_undo.as_ref().unwrap().name, "Lead Vox");
     }
 }

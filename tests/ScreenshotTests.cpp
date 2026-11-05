@@ -257,6 +257,31 @@ public:
         expectEquals (y.ccCode (1) & 7, 2, "ON");
         display.getFields()[1].set (1);
         expect (rig.settings.getValue (Y02RMidi::ccKey).isNotEmpty());
+        // VIEW's LIB opens the CHANNEL LIBRARY (VIEW 2/2): MIC 5 stored as program 1, recalled, cleared.
+        skin.pressFunction (F::View);
+        display.cursor (-1);
+        expectEquals (display.getFields()[(size_t) display.getCursor()].label, juce::String ("LIB"));
+        display.enter();
+        expectEquals (display.getPage(), 1);
+        expectEquals (display.getFields()[0].label, juce::String ("RECALL"));
+        const int mic5 = ui::y02r::address (4, 0);
+        y.set (mic5, 77);
+        display.cursor (1);
+        display.enter(); // STORE: its TITLE EDIT
+        expect (display.getFunction() == F::TitleEdit);
+        display.turn (1);
+        display.enter();
+        expect (display.getFunction() == F::View && display.getPage() == 1, "back in the library");
+        expectEquals (y.programName (Yamaha02R::Channel, 0), juce::String ("A"));
+        expect (rig.settings.getValue (ui::Y02RSurface::libraryKey).contains ("ch.1=A"));
+        y.set (mic5, 20);
+        display.getFields()[0].set (0); // RECALL program 1
+        expectEquals (y.get (mic5), 77);
+        display.getFields()[0].set (64); // the UNDO
+        expectEquals (y.get (mic5), 20);
+        display.getFields()[2].set (0); // CLEAR
+        expect (y.programName (Yamaha02R::Channel, 0).isEmpty() && y.programName (Yamaha02R::Channel, 64) == "U:A");
+        y.set (mic5, 101);
         skin.pressFunction (F::Meter);
         expectEquals (display.getFields()[0].label, juce::String ("METER POINT"));
         for (int k = 0; k < 4; ++k)
@@ -297,7 +322,7 @@ public:
                                                               { F::Att, 0, "att" }, { F::Delay, 1, "delay-tape" }, { F::Pan, 0, "pan" },
                                                               { F::Meter, 2, "meter-outputs" }, { F::Aux1, 0, "aux1" }, { F::Aux7, 2, "aux7" },
                                                               { F::Utility, 0, "utility" }, { F::DigitalIo, 0, "digital-io" }, { F::Setup, 0, "setup" },
-                                                              { F::Automix, 0, "automix" } };
+                                                              { F::Automix, 0, "automix" }, { F::View, 1, "channel-library" } };
             for (auto [f, page, shot] : pages)
             {
                 skin.pressFunction (F::Eq);
