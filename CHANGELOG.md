@@ -469,6 +469,16 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   pages: SETUP's solo listen points (pre fader or after pan) are the engine's;
   DIGITAL I/O shows Sidecar's own clock and inputs, AUTOMIX that it isn't
   emulated.
+- The ProMix 01's memory pages (pp.63-65): STORE and RECALL open the memory
+  list (00-50, the current one marked "=", the chosen one moved by INC, DEC or
+  the wheel); the key again or ENTER stores or recalls it, and a store opens
+  TITLE EDIT (eight characters: the cursor keys choose one, the wheel changes
+  it, ENTER keeps the title). UTILITY's pages: SEND3,4 CONFIGURATION and OUTPUT
+  COMP PATCH POINT, OSCILLATOR, MEMORY PROTECT (memories 01-25 and 26-50; STORE
+  refuses a protected one, "PROTECT" in the memory area) and BATTERY CHECK.
+  MIDI's BULK page (the interval). CUE shows the selected channel at a glance
+  (ON, group, phase, pan, EQ, fader, sends). GROUP pressed again steps A-D; an
+  EQ band's key pressed again its F, G and Q.
 
   `ui::hw` (`src/ui/HardwareLook.*`) draws them. Keys, faders and knobs take a
   console's look when its surface asks; the Universal Mixer and the WING are

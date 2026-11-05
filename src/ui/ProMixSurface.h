@@ -41,7 +41,10 @@ namespace promix
         Group,
         Pair,
         Utility,
-        Midi
+        Midi,
+        MemoryStore,  // STORE's and RECALL's scene lists (p.63-64), and the
+        MemoryRecall, // title a stored scene takes (TITLE EDIT)
+        TitleEdit
     };
 
     /** A ProMix fader: 128 steps on the console's law (+6 dB to -66 dB, -oo),
@@ -117,6 +120,20 @@ namespace promix
 
         /** What the memory area shows: the scene number and name last recalled. */
         std::function<juce::String()> memoryText;
+        /** The scene memories, for STORE's and RECALL's lists: a memory's title
+            (00 the initial data; empty: none stored), the chosen number (INC,
+            DEC, the wheel), and what ENTER does there (the surface's STORE or
+            RECALL); a stored memory's title (TITLE EDIT). */
+        std::function<juce::String (int memory)> memoryTitle;
+        std::function<int()> chosenMemory;
+        std::function<void (int)> chooseMemory;
+        std::function<void()> storeChosen, recallChosen;
+        std::function<void (int memory, const juce::String&)> setMemoryTitle;
+        /** TITLE EDIT for memory `m` (its title now `title`), back to `after` when done. */
+        void editTitle (int m, const juce::String& title);
+        /** MEMORY PROTECT (UTILITY, p.65): memories 01-25 and 26-50 (the app's settings). */
+        std::function<bool (int half)> isProtected;
+        std::function<void (int half, bool)> setProtected;
         /** What the RTN / SEND strip is (0 RTN 1 ... 3 SEND 4): the LCD's arrow
             at its legend at the right. */
         std::function<int()> rtnSendShown;
@@ -165,6 +182,10 @@ namespace promix
         ProMix& pm;
         Function function = Function::Meter;
         int page = 0, processor = 0, eqStrip = 0, focus = 0;
+        int numPages() const;
+        /** TITLE EDIT: the memory and its eight characters (indexes into kTitleChars). */
+        int titleMemory = 0;
+        std::array<int, 8> titleChars {};
         std::vector<Field> fields;
         juce::String shown;
         float dragY = 0.0f;
@@ -244,6 +265,13 @@ private:
     std::vector<std::unique_ptr<universal::ToggleKey>> panelKeys; // STORE, RECALL, INC, DEC, cursors, ENTER
     std::unique_ptr<juce::Slider> wheel;
     int rtnSend = 0, memory = 1, lastBound = -1;
+    /** STORE and RECALL as the keys work them: the first press opens the list,
+        the second (or ENTER) stores or recalls the chosen memory. */
+    void pressStore();
+    void pressRecall();
+    /** MEMORY PROTECT of memories 01-25 (`half` 0) or 26-50 (1). */
+    bool isProtected (int half) const;
+    static constexpr const char* protectKey = "promix.memoryProtect"; // "lo hi", 0 or 1 each
     double wheelLast = 0.0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ProMixSurface)

@@ -39,6 +39,9 @@ namespace
 
     juce::Font lcdFont (float size, bool bold = false) { return type::font (size, bold); }
 
+    // TITLE EDIT's characters (the console's set, as far as Sidecar's fonts draw them).
+    const juce::String kTitleChars = " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!\"#$%&'()*+,-./:;<=>?@[]_";
+
     /** The RBJ biquad magnitude (dB) at `f` of a bell or shelf (the ProMix EQ's
         bands as livedaw_dsp designs them), for the EQ function's curve. */
     double bandDb (double f, double fc, double gainDb, double q, int shape) // 0 bell, 1 low shelf, 2 high shelf
@@ -187,13 +190,23 @@ namespace promix
     {
         if (f == function)
         {
-            // Pressed again: the function's next page (PAN, then PHASE: p.20).
+            // Pressed again: the function's next page (PAN, then PHASE: p.20);
+            // GROUP the next group (p.56); an EQ band's key its next value.
             if (f == Function::Pan)
                 function = Function::Phase;
             else if (f == Function::Phase)
                 function = Function::Pan;
+            else if (f == Function::Group)
+                pm.set (kGroupSelect, (juce::jmax (0, pm.get (kGroupSelect)) + 1) % 4);
+            else if (f == Function::EqLow || f == Function::EqMid || f == Function::EqHigh)
+            {
+                const int band = f == Function::EqLow ? 0 : f == Function::EqMid ? 1 : 2;
+                focus = 3 * band + ((focus / 3 == band ? focus % 3 : -1) + 1) % 3;
+                repaint();
+                return;
+            }
             else
-                page = (page + 1) % 2;
+                page = (page + 1) % numPages();
         }
         else
         {
@@ -204,9 +217,34 @@ namespace promix
         build();
     }
 
+    int Display::numPages() const
+    {
+        switch (function)
+        {
+            case Function::Utility: return 4; // SEND3,4 / OUTPUT COMP, OSCILLATOR, MEMORY PROTECT, BATTERY CHECK
+            case Function::Midi:    return 2; // MIDI SETUP, BULK
+            case Function::Meter:
+            case Function::Send1:
+            case Function::Send2:
+            case Function::Comp:    return 2;
+            default:                return 1;
+        }
+    }
+
+    void Display::editTitle (int m, const juce::String& title)
+    {
+        titleMemory = m;
+        for (int k = 0; k < 8; ++k)
+            titleChars[(size_t) k] = juce::jmax (0, kTitleChars.indexOfChar (k < title.length() ? title[k] : ' '));
+        function = Function::TitleEdit;
+        page = 0;
+        focus = 0;
+        build();
+    }
+
     void Display::setPage (int p)
     {
-        page = juce::jlimit (0, 1, p);
+        page = juce::jlimit (0, numPages() - 1, p);
         focus = 0;
         build();
     }
@@ -373,7 +411,17 @@ namespace promix
                 break;
             }
             case Function::Cue:
-                fields.push_back (paramField (kCueMode, { 0.3f, 0.3f, 0.4f, 0.3f }, true));
+                fields.push_back (paramField (kCueMode, { 0.0f, 0.0f, 0.3f, 0.24f }, true));
+                if (e < 16)
+                {
+                    // The selected channel at a glance (p.52): ON, group, phase,
+                    // pan, EQ, its fader and its sends.
+                    row ({ kChOn + e, kGroup + e, kPhase + e, kChPan + e, kEqOn + e }, 0.3f, 0.3f, 0.0f, 1.0f);
+                    row ({ e, kSendLevel + e, kSendLevel + 17 + e, kSendLevel + 34 + e, kSendLevel + 51 + e }, 0.64f, 0.3f, 0.0f, 1.0f);
+                    const char* names[] = { "ON", "GROUP", "PHASE", "PAN", "EQ", "FADER", "SEND1", "SEND2", "SEND3", "SEND4" };
+                    for (size_t k = 0; k < 10 && k + 1 < fields.size(); ++k)
+                        fields[k + 1].label = names[k];
+                }
                 break;
             case Function::Group:
                 fields.push_back (paramField (kGroupSelect, { 0.0f, 0.0f, 0.2f, 0.18f }));
@@ -386,16 +434,51 @@ namespace promix
                 break;
             case Function::Utility:
             {
-                // SEND3-4 MODE: the flag shown, the Execute set by ENTER (p.46).
-                auto mode = paramField (kSend34Exec, { 0.0f, 0.05f, 0.3f, 0.2f }, true);
-                auto& p = pm;
-                mode.text = [&p] { return p.text (kSend34Flag); };
-                mode.get = [&p] { return p.get (kSend34Flag); };
-                fields.push_back (std::move (mode));
-                row ({ 512, 513, kPatchPointSt }, 0.05f, 0.2f, 0.34f, 1.0f);
-                row ({ kOsc, kOsc + 1, kOsc + 2 }, 0.45f, 0.2f, 0.0f, 0.6f);
-                row ({ 480, 481, 482 }, 0.72f, 0.2f, 0.0f, 0.6f);
-                fields.push_back (paramField (kPanMode, { 0.66f, 0.45f, 0.34f, 0.2f }));
+                if (page == 0)
+                {
+                    // SEND3,4 CONFIGURATION: the flag shown, the Execute set by ENTER
+                    // (p.46); OUTPUT COMP PATCH POINT (p.75); PAN's GANG.
+                    auto mode = paramField (kSend34Exec, { 0.0f, 0.1f, 0.3f, 0.3f }, true);
+                    auto& p = pm;
+                    mode.text = [&p] { return p.text (kSend34Flag); };
+                    mode.get = [&p] { return p.get (kSend34Flag); };
+                    fields.push_back (std::move (mode));
+                    row ({ 512, 513, kPatchPointSt }, 0.1f, 0.3f, 0.34f, 1.0f);
+                    fields.push_back (paramField (kPanMode, { 0.0f, 0.55f, 0.3f, 0.3f }));
+                }
+                else if (page == 1)
+                {
+                    // OSCILLATOR (p.90): ON, LEVEL, FREQ, and where it goes.
+                    row ({ kOsc, kOsc + 1, kOsc + 2 }, 0.1f, 0.34f, 0.0f, 0.75f);
+                    row ({ 480, 481, 482 }, 0.55f, 0.34f, 0.0f, 0.75f);
+                }
+                else if (page == 2)
+                {
+                    // MEMORY PROTECT (p.65): STORE refuses a protected memory.
+                    for (int half = 0; half < 2; ++half)
+                    {
+                        Field f;
+                        f.label = half == 0 ? "MEMORY 01-25" : "MEMORY 26-50";
+                        f.get = [this, half] { return isProtected && isProtected (half) ? 1 : 0; };
+                        f.set = [this, half] (int v) { if (setProtected) setProtected (half, v != 0); };
+                        f.steps = [] { return 2; };
+                        f.text = [this, half] { return juce::String (isProtected && isProtected (half) ? "PROTECT ON" : "PROTECT OFF"); };
+                        f.box = { 0.1f + 0.42f * (float) half, 0.3f, 0.38f, 0.34f };
+                        fields.push_back (std::move (f));
+                    }
+                }
+                else
+                {
+                    // BATTERY CHECK (p.91): the memory's backup battery.
+                    Field f;
+                    f.label = "BATTERY CHECK";
+                    f.get = [] { return 0; };
+                    f.set = [] (int) {};
+                    f.steps = [] { return 1; };
+                    f.text = [] { return juce::String ("Battery is OK!!"); };
+                    f.box = { 0.25f, 0.3f, 0.5f, 0.34f };
+                    fields.push_back (std::move (f));
+                }
                 break;
             }
             case Function::Midi:
@@ -426,6 +509,12 @@ namespace promix
                 };
                 auto number = [] (int x) { return juce::String (x); };
                 auto onOff = [] (int x) { return juce::String (x != 0 ? "ON" : "OFF"); };
+                if (page == 1)
+                {
+                    // BULK (p.85): the interval between two dumps' messages.
+                    field ("INTERVAL", 15, 11, 0, { 0.3f, 0.3f, 0.4f, 0.3f }, [] (int x) { return juce::String (x * 100) + " ms"; });
+                    break;
+                }
                 field ("Tx CH", 0, 16, 1, { 0.0f, 0.02f, 0.2f, 0.2f }, number);
                 field ("Rx CH", 1, 16, 1, { 0.2f, 0.02f, 0.2f, 0.2f }, number);
                 field ("MODE", 14, 2, 0, { 0.45f, 0.02f, 0.3f, 0.2f }, [] (int x) { return juce::String (x != 0 ? "REGISTER" : "CHANNEL"); });
@@ -437,6 +526,51 @@ namespace promix
                                { 0.25f * (float) s, 0.3f + 0.23f * (float) k, 0.25f, 0.21f }, onOff);
                 break;
             }
+            case Function::MemoryStore:
+            case Function::MemoryRecall:
+            {
+                // The memories 00-50, the current one "=", the chosen one in the
+                // middle (INC, DEC, the wheel); ENTER (or the key again) stores
+                // or recalls it.
+                const bool store = function == Function::MemoryStore;
+                Field f;
+                f.label = store ? "MEMORY STORE" : "MEMORY RECALL";
+                f.get = [this] { return ctx.show.getCurrentSceneIndex() + 1; };
+                f.steps = [] { return 51; };
+                f.text = [] { return juce::String(); };
+                f.item = [this] (int m)
+                {
+                    const auto t = memoryTitle ? memoryTitle (m) : juce::String();
+                    return juce::String (m).paddedLeft ('0', 2) + " " + (t.isEmpty() ? juce::String ("--------") : t)
+                         + (m > 0 && isProtected && isProtected (m <= 25 ? 0 : 1) ? "  PROTECT" : "");
+                };
+                f.set = [this, store] (int m)
+                {
+                    if (chooseMemory)
+                        chooseMemory (m);
+                    if (store ? (bool) storeChosen : (bool) recallChosen)
+                        (store ? storeChosen : recallChosen)();
+                };
+                f.onEnter = true;
+                f.pending = chosenMemory ? chosenMemory() : 1;
+                f.box = { 0.0f, 0.0f, 0.62f, 1.0f };
+                fields.push_back (std::move (f));
+                break;
+            }
+            case Function::TitleEdit:
+                // Eight characters: the cursor keys choose one, the wheel changes it, ENTER keeps the title.
+                for (int k = 0; k < 8; ++k)
+                {
+                    Field f;
+                    f.label = k == 0 ? "TITLE " + juce::String (titleMemory).paddedLeft ('0', 2) : juce::String();
+                    f.get = [this, k] { return titleChars[(size_t) k]; };
+                    f.set = [this, k] (int v) { titleChars[(size_t) k] = v; };
+                    f.steps = [] { return kTitleChars.length(); };
+                    f.text = [this, k] { return juce::String::charToString (kTitleChars[titleChars[(size_t) k]]); };
+                    f.box = { 0.1f + 0.1f * (float) k, 0.3f, 0.1f, 0.34f };
+                    fields.push_back (std::move (f));
+                }
+                break;
         }
         focus = juce::jlimit (0, juce::jmax (0, (int) fields.size() - 1), focus);
         repaint();
@@ -470,6 +604,8 @@ namespace promix
         {
             const int from = f.pending >= 0 ? f.pending : juce::jmax (0, f.get());
             f.pending = juce::jlimit (0, n - 1, from + delta);
+            if ((function == Function::MemoryStore || function == Function::MemoryRecall) && chooseMemory)
+                chooseMemory (f.pending);
         }
         else
         {
@@ -482,6 +618,16 @@ namespace promix
     {
         if (fields.empty())
             return;
+        if (function == Function::TitleEdit)
+        {
+            juce::String title;
+            for (int c : titleChars)
+                title << kTitleChars[c];
+            if (setMemoryTitle)
+                setMemoryTitle (titleMemory, title.trimEnd());
+            setFunction (Function::MemoryRecall);
+            return;
+        }
         auto& f = fields[(size_t) focus];
         if (f.onEnter)
         {
@@ -514,8 +660,15 @@ namespace promix
     juce::String Display::title() const
     {
         const char* names[] = { "METER", "PAN", "PHASE", "COMP", "CUE", "SEND1", "SEND2", "SEND3", "SEND4", "EQ LOW", "EQ MID", "EQ HIGH",
-                                "EQ LIBRARY", "GROUP", "PAIR", "UTILITY", "MIDI SETUP" };
+                                "EQ LIBRARY", "GROUP", "PAIR", "UTILITY", "MIDI SETUP", "MEMORY STORE", "MEMORY RECALL", "TITLE EDIT" };
         juce::String t = names[(int) function];
+        if (function == Function::Utility)
+        {
+            const char* pages[] = { "  SEND3,4 / OUTPUT COMP", "  OSCILLATOR", "  MEMORY PROTECT", "  BATTERY CHECK" };
+            t << pages[juce::jlimit (0, 3, page)];
+        }
+        if (function == Function::Midi && page == 1)
+            t = "BULK DUMP";
         if (function == Function::Comp)
             t << " " << (processor + 1) << (page == 1 ? "  EDIT" : "");
         if ((function == Function::Send1 || function == Function::Send2) && page == 1)
@@ -879,10 +1032,10 @@ ProMixSurface::ProMixSurface (UiContext& c)
     }
     auto utf8 = [] (const char* s) { return juce::String (juce::CharPointer_UTF8 (s)); };
     const std::pair<juce::String, std::function<void()>> panel[] = {
-        { "STORE", [this] { store(); } },
-        { "RECALL", [this] { recall(); } },
-        { "INC +", [this] { setMemory (memory + 1); } },
-        { "DEC -", [this] { setMemory (memory - 1); } },
+        { "STORE", [this] { pressStore(); } },
+        { "RECALL", [this] { pressRecall(); } },
+        { "INC +", [this] { setMemory (memory + 1); if (display.getFunction() >= promix::Function::MemoryStore) display.setPage (0); } },
+        { "DEC -", [this] { setMemory (memory - 1); if (display.getFunction() >= promix::Function::MemoryStore) display.setPage (0); } },
         { utf8 ("\xe2\x97\x80"), [this] { display.cursor (-1); } },
         { utf8 ("\xe2\x96\xb2"), [this] { display.cursor (-1); } },
         { utf8 ("\xe2\x96\xbc"), [this] { display.cursor (1); } },
@@ -931,7 +1084,42 @@ ProMixSurface::ProMixSurface (UiContext& c)
         const int current = ctx.show.getCurrentSceneIndex();
         auto scene = current >= 0 ? ctx.show.getScene (current) : std::nullopt;
         const auto now = current >= 0 && scene.has_value() ? juce::String (current + 1).paddedLeft ('0', 2) + " " + scene->name : juce::String ("00 Initial Data");
-        return "MEMORY " + juce::String (memory).paddedLeft ('0', 2) + "   (" + now + ")";
+        return "MEMORY " + juce::String (memory).paddedLeft ('0', 2) + (memory > 0 && isProtected (memory <= 25 ? 0 : 1) ? " PROTECT" : "") + "   (" + now + ")";
+    };
+    // STORE's and RECALL's lists, TITLE EDIT, MEMORY PROTECT.
+    display.memoryTitle = [this] (int m) -> juce::String
+    {
+        if (m == 0)
+            return "Initial Data";
+        auto scene = m - 1 < ctx.show.getNumScenes() ? ctx.show.getScene (m - 1) : std::nullopt;
+        return scene.has_value() ? scene->name : juce::String();
+    };
+    display.chosenMemory = [this] { return memory; };
+    display.chooseMemory = [this] (int m) { setMemory (m); };
+    display.storeChosen = [this]
+    {
+        if (memory < 1 || isProtected (memory <= 25 ? 0 : 1))
+            return; // 00 is read-only; a protected memory refuses STORE (p.65)
+        const int index = juce::jmin (memory - 1, ctx.show.getNumScenes());
+        store();
+        auto scene = ctx.show.getScene (index);
+        display.editTitle (index + 1, scene.has_value() ? scene->name : juce::String());
+    };
+    display.recallChosen = [this] { recall(); };
+    display.setMemoryTitle = [this] (int m, const juce::String& title)
+    {
+        if (juce::isPositiveAndBelow (m - 1, ctx.show.getNumScenes()))
+            ctx.show.setSceneName (m - 1, title);
+    };
+    display.isProtected = [this] (int half) { return isProtected (half); };
+    display.setProtected = [this] (int half, bool on)
+    {
+        juce::StringArray v;
+        v.addTokens (ctx.settings.getValue (protectKey, "0 0"), " ", "");
+        while (v.size() < 2)
+            v.add ("0");
+        v.set (half, on ? "1" : "0");
+        ctx.settings.setValue (protectKey, v.joinIntoString (" "));
     };
     display.rtnSendShown = [this] { return rtnSend; };
     addAndMakeVisible (display);
@@ -1054,6 +1242,29 @@ void ProMixSurface::pressSel (int i)
     }
     if (auto* s = stripOf (i); s != nullptr && ctx.selectStrip)
         ctx.selectStrip (s);
+}
+
+bool ProMixSurface::isProtected (int half) const
+{
+    juce::StringArray v;
+    v.addTokens (ctx.settings.getValue (protectKey, "0 0"), " ", "");
+    return v[juce::jlimit (0, 1, half)] == "1";
+}
+
+void ProMixSurface::pressStore()
+{
+    if (display.getFunction() == promix::Function::MemoryStore)
+        display.enter();
+    else
+        display.setFunction (promix::Function::MemoryStore);
+}
+
+void ProMixSurface::pressRecall()
+{
+    if (display.getFunction() == promix::Function::MemoryRecall)
+        display.enter();
+    else
+        display.setFunction (promix::Function::MemoryRecall);
 }
 
 void ProMixSurface::store()

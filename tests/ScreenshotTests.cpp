@@ -390,6 +390,59 @@ private:
         pm.set (0, 20);
         skin.recall();
         expectEquals (pm.get (0), 100, "scene 1's CH1");
+        // STORE's list (the chosen memory), then TITLE EDIT of what it stored.
+        skin.setMemory (2);
+        display.setFunction (F::MemoryStore);
+        expectEquals (display.getFields()[0].pending, 2);
+        display.enter();
+        expectEquals (rig.show.getNumScenes(), 2);
+        expect (display.getFunction() == F::TitleEdit);
+        display.turn (1); // "SCENE 02": S to T
+        display.enter();
+        expect (display.getFunction() == F::MemoryRecall);
+        expectEquals (rig.show.getScene (1)->name, juce::String ("TCENE 02"));
+        // MEMORY PROTECT (UTILITY's third page): STORE refuses a protected memory.
+        skin.pressFunction (F::Utility);
+        skin.pressFunction (F::Utility);
+        skin.pressFunction (F::Utility);
+        expectEquals (display.getPage(), 2);
+        display.turn (1);
+        skin.setMemory (3);
+        display.setFunction (F::MemoryStore);
+        display.enter();
+        expectEquals (rig.show.getNumScenes(), 2, "protected");
+        skin.pressFunction (F::Utility);
+        skin.pressFunction (F::Utility);
+        skin.pressFunction (F::Utility);
+        display.turn (-1);
+        // Each page's look, for review (not the docs).
+        if (const auto shots = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {}); shots.isNotEmpty())
+        {
+            const auto save = [&] (const char* shot)
+            {
+                const auto lcd = display.createComponentSnapshot (display.getLocalBounds(), true, 1.0f);
+                const auto out = juce::File::getCurrentWorkingDirectory().getChildFile (shots).getChildFile (juce::String ("promix-page-") + shot + ".png");
+                out.deleteFile();
+                juce::FileOutputStream stream (out);
+                juce::PNGImageFormat().writeImageToStream (lcd, stream);
+            };
+            display.setFunction (F::MemoryRecall);
+            save ("recall");
+            display.editTitle (2, "TCENE 02");
+            save ("title");
+            for (int k = 0; k < 4; ++k)
+            {
+                skin.pressFunction (F::Meter);
+                for (int p = 0; p <= k; ++p)
+                    skin.pressFunction (F::Utility);
+                save ((juce::String ("utility") + juce::String (k)).toRawUTF8());
+            }
+            skin.pressFunction (F::Cue);
+            save ("cue");
+            skin.pressFunction (F::Midi);
+            skin.pressFunction (F::Midi);
+            save ("bulk");
+        }
         // The EQ function on the selected channel (CH5), a bell on MID.
         skin.selectionChanged();
         expectEquals (display.getEqStrip(), 4);
