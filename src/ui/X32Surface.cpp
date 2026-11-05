@@ -388,12 +388,15 @@ void X32Surface::paint (juce::Graphics& g)
 
     // The top bar: what this is.
     auto bar = getLocalBounds().removeFromTop (kTopBar).reduced (sizes::kGapLarge, 0);
-    g.setColour (theme.text);
-    g.setFont (type::font (type::kTitle, true));
-    g.drawText ("X32", bar.removeFromLeft (60), juce::Justification::centredLeft);
-    g.setColour (theme.textDim);
-    g.setFont (type::font (type::kLabel));
-    g.drawText ("Sidecar's X32 surface  -  not affiliated with Behringer", bar.removeFromLeft (420), juce::Justification::centredLeft);
+    if (g.clipRegionIntersects (bar))
+    {
+        g.setColour (theme.text);
+        g.setFont (type::font (type::kTitle, true));
+        g.drawText ("X32", bar.removeFromLeft (60), juce::Justification::centredLeft);
+        g.setColour (theme.textDim);
+        g.setFont (type::font (type::kLabel));
+        g.drawText ("Sidecar's X32 surface  -  not affiliated with Behringer", bar.removeFromLeft (420), juce::Justification::centredLeft);
+    }
 
     // The display's housing: a raised black bezel.
     g.setColour (juce::Colour (0xff1a1b1c));
@@ -429,7 +432,7 @@ void X32Surface::paint (juce::Graphics& g)
     // SCENES and MUTE GROUPS, and the palm rest beside them.
     hw::section (g, scenesArea.toFloat().withTrimmedTop (6.0f), "SCENES", look);
     hw::section (g, muteGroupsArea.toFloat().withTrimmedTop (6.0f), "MUTE GROUPS", look);
-    if (! palmRest.isEmpty())
+    if (! palmRest.isEmpty() && g.clipRegionIntersects (palmRest))
     {
         auto rest = palmRest.toFloat();
         g.setGradientFill (juce::ColourGradient (juce::Colour (0xff2b2d2f), rest.getX(), rest.getY(), juce::Colour (0xff151617), rest.getX(), rest.getBottom(), false));

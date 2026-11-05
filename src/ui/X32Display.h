@@ -158,6 +158,8 @@ private:
     float dragStartY = 0.0f, dragStartValue = 0.0f;
     bool dragged = false;
     juce::String shownStatus;
+    // What the status bar, the encoder row and the bezel meters last showed (repainted on a change).
+    juce::String shownStatusBar, shownEncoderRow, shownBezel;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Display)
 };

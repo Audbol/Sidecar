@@ -389,6 +389,13 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   - SCENES (PREV, NEXT, UNDO, GO, VIEW), ASSIGN (four encoders in a row, their
     LCDs, keys 5-12, SET A B C), MUTE GROUPS 1-6 and the palm rest at the right
 - Fixed: the console surfaces' fader scales showed a garbled character for -inf.
+- The X32 surface draws less: the display repaints its status bar, encoder row
+  and bezel meters only when what they show changes, the meters keep their
+  marks in an image, and the panel's texture, sections and silkscreen are
+  drawn only where a repaint reaches. Idle on the X32 the app takes about a
+  fifth less CPU than before the surface's new look (measured with
+  SidecarMonkey --idle); the new look doesn't change the audio's overruns
+  (idle and active A/B runs, same seeds).
 
   `ui::hw` (`src/ui/HardwareLook.*`) draws them. Keys, faders and knobs take a
   console's look when its surface asks; the Universal Mixer and the WING are

@@ -116,12 +116,16 @@ void panel (juce::Graphics& g, juce::Rectangle<float> area, const Look& l)
 {
     g.setGradientFill (juce::ColourGradient (l.panelTop, area.getX(), area.getY(), l.panelBottom, area.getX(), area.getBottom(), false));
     g.fillRect (area);
-    // A fine brushed texture: faint horizontal lines.
-    juce::Random rng (7);
-    for (float y = area.getY(); y < area.getBottom(); y += 2.0f)
+    // A fine brushed texture: faint horizontal lines, each its own shade (the
+    // same at every repaint), only those in the area being painted.
+    const auto clip = g.getClipBounds().toFloat().getIntersection (area);
+    const float first = area.getY() + 2.0f * std::floor ((clip.getY() - area.getY()) / 2.0f);
+    for (float y = juce::jmax (area.getY(), first); y < clip.getBottom(); y += 2.0f)
     {
-        g.setColour (juce::Colours::white.withAlpha (0.012f + 0.02f * rng.nextFloat()));
-        g.drawHorizontalLine ((int) y, area.getX(), area.getRight());
+        const auto row = (juce::uint32) ((y - area.getY()) / 2.0f);
+        const float shade = (float) ((row * 2654435761u) >> 24) / 255.0f;
+        g.setColour (juce::Colours::white.withAlpha (0.012f + 0.02f * shade));
+        g.drawHorizontalLine ((int) y, clip.getX(), clip.getRight());
     }
     g.setColour (juce::Colours::white.withAlpha (0.12f));
     g.drawHorizontalLine ((int) area.getY(), area.getX(), area.getRight());
@@ -147,6 +151,8 @@ void cheeks (juce::Graphics& g, juce::Rectangle<float> left, juce::Rectangle<flo
 
 void section (juce::Graphics& g, juce::Rectangle<float> area, const juce::String& title, const Look& l)
 {
+    if (! g.clipRegionIntersects (area.toNearestInt().expanded (2)))
+        return;
     g.setColour (l.section);
     g.fillRoundedRectangle (area, 5.0f);
     g.setColour (juce::Colours::black.withAlpha (0.35f));
@@ -170,6 +176,8 @@ void section (juce::Graphics& g, juce::Rectangle<float> area, const juce::String
 
 void silk (juce::Graphics& g, juce::Rectangle<float> area, const juce::String& text, const Look& l, float size, juce::Justification j, bool dim)
 {
+    if (text.isEmpty() || ! g.clipRegionIntersects (area.toNearestInt().expanded (2)))
+        return;
     g.setColour (dim ? l.silkDim : l.silk);
     g.setFont (universal::type::font (size, true));
     g.drawText (text, area, j);

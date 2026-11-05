@@ -1212,9 +1212,49 @@ void Display::timerCallback()
         gateView.refresh();
     if (dynView.isVisible())
         dynView.refresh();
-    repaint (statusArea);
-    repaint (encoderRow);
-    repaint (bezelMeters);
+    // The status bar, the encoder row and the bezel meters only when what they show changed.
+    {
+        juce::String status = juce::Time::getCurrentTime().formatted ("%H:%M:%S");
+        const int current = ctx.show.getCurrentSceneIndex();
+        status << "|" << current << "|" << ctx.show.getNumScenes();
+        for (int i : { current, current + 1 })
+            if (const auto scene = ctx.show.getScene (i); scene.has_value())
+                status << "|" << scene->name;
+        if (auto* s = selected())
+            status << "|" << s->getLabel() << "|" << s->getName() << "|" << s->getColourIndex();
+        status << "|" << ctx.engine.getSampleRate();
+        if (status != shownStatusBar)
+        {
+            shownStatusBar = status;
+            repaint (statusArea);
+        }
+        juce::String row;
+        for (auto& e : encoders)
+        {
+            if (e.turn.isValid())
+                row << (e.turn.text ? e.turn.text() : juce::String()) << "@" << juce::roundToInt (e.turn.get() * 200.0f);
+            row << (e.pushOn && e.pushOn() ? "+" : "-") << ";";
+        }
+        if (row != shownEncoderRow)
+        {
+            shownEncoderRow = row;
+            repaint (encoderRow);
+        }
+        // The bezel meters: which LED each column lights (a dB each).
+        const auto& mains = ctx.engine.getMains();
+        juce::String leds;
+        leds << (int) ctx.engine.anySoloActive.load();
+        for (int ch = 0; ch < 2; ++ch)
+            leds << "|" << juce::roundToInt (ctx.meters.getMonitor (ch) * 1000.0f);
+        for (size_t m = 0; m < juce::jmin ((size_t) 2, mains.size()); ++m)
+            for (int ch = 0; ch < 2; ++ch)
+                leds << "|" << juce::roundToInt (juce::Decibels::gainToDecibels (ctx.meters.get (mains[m].get(), MeterPoint::Output, ch), -144.0f));
+        if (leds != shownBezel)
+        {
+            shownBezel = leds;
+            repaint (bezelMeters);
+        }
+    }
     if (screen == Screen::Meters || (screen == Screen::Home && (tab == 0 || tab == 5)))
         repaint (contentArea);
 }
@@ -1229,11 +1269,17 @@ void Display::paint (juce::Graphics& g)
     g.drawRoundedRectangle (screenArea.getUnion (bezelMeters).toFloat().expanded (7.5f), 10.0f, 1.0f);
     g.setColour (kGlass);
     g.fillRect (screenArea);
-    paintStatus (g, statusArea);
-    paintTabs (g, tabsArea);
-    paintContent (g, contentArea);
-    paintEncoderRow (g, encoderRow);
-    paintBezelMeters (g, bezelMeters);
+    // Only the parts being repainted (the clock and meters repaint often).
+    if (g.clipRegionIntersects (statusArea))
+        paintStatus (g, statusArea);
+    if (g.clipRegionIntersects (tabsArea))
+        paintTabs (g, tabsArea);
+    if (g.clipRegionIntersects (contentArea))
+        paintContent (g, contentArea);
+    if (g.clipRegionIntersects (encoderRow))
+        paintEncoderRow (g, encoderRow);
+    if (g.clipRegionIntersects (bezelMeters))
+        paintBezelMeters (g, bezelMeters);
 }
 
 void Display::paintStatus (juce::Graphics& g, juce::Rectangle<int> area)

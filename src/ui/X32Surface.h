@@ -80,17 +80,43 @@ namespace x32
 
         void paint (juce::Graphics& g) override
         {
+            // The window, the marks and the unlit LEDs don't change: drawn once
+            // into an image (again for a new size, or PRE / GATE / none at the
+            // bottom); a meter change draws only the lit LEDs over it.
+            const int bottom = pre ? 2 : gate ? 1 : 0;
+            const float scale = g.getInternalContext().getPhysicalPixelScaleFactor();
+            if (! face.isValid() || faceKind != bottom || faceScale != scale || face.getWidth() != juce::roundToInt ((float) getWidth() * scale)
+                || face.getHeight() != juce::roundToInt ((float) getHeight() * scale))
+            {
+                face = juce::Image (juce::Image::ARGB, juce::jmax (1, juce::roundToInt ((float) getWidth() * scale)),
+                                    juce::jmax (1, juce::roundToInt ((float) getHeight() * scale)), true);
+                juce::Graphics fg (face);
+                fg.addTransform (juce::AffineTransform::scale (scale));
+                paintLeds (fg, false);
+                faceKind = bottom;
+                faceScale = scale;
+            }
+            g.drawImage (face, getLocalBounds().toFloat());
+            paintLeds (g, true);
+        }
+
+    private:
+        /** The meter's face (`lit` false: the window, marks and unlit LEDs), or its lit LEDs. */
+        void paintLeds (juce::Graphics& g, bool lit) const
+        {
             static const char* const marks[] = { "COMP", "CLIP", "-6", "-12", "-18", "-30", "-60", "GATE" };
-            const auto mark = [this] (int k) { return k == kLeds - 1 && pre ? juce::String ("PRE") : juce::String (marks[k]); };
             auto area = getLocalBounds().toFloat();
             // The window at the left of centre, the marks to its right.
             auto window = juce::Rectangle<float> (16.0f, area.getHeight()).withX (area.getCentreX() - 18.0f);
-            g.setColour (juce::Colour (0xff0b0c0c));
-            g.fillRoundedRectangle (window, 4.0f);
-            g.setColour (juce::Colours::black.withAlpha (0.5f));
-            g.drawRoundedRectangle (window.reduced (0.5f), 4.0f, 1.0f);
+            if (! lit)
+            {
+                g.setColour (juce::Colour (0xff0b0c0c));
+                g.fillRoundedRectangle (window, 4.0f);
+                g.setColour (juce::Colours::black.withAlpha (0.5f));
+                g.drawRoundedRectangle (window.reduced (0.5f), 4.0f, 1.0f);
+                g.setFont (type::font (8.5f, true));
+            }
             const float rowH = (window.getHeight() - 6.0f) / (float) kLeds;
-            g.setFont (type::font (8.5f, true));
             for (int k = 0; k < kLeds; ++k)
             {
                 if (k == kLeds - 1 && ! gate && ! pre)
@@ -98,22 +124,31 @@ namespace x32
                 const float y = window.getY() + 3.0f + rowH * (float) k;
                 const auto colour = k == 0 ? juce::Colour (0xffff9a3c) : k == 1 ? juce::Colour (0xffff3b30)
                                     : k == kLeds - 1 && pre ? juce::Colour (0xffffd02a) : juce::Colour (0xff59f08a);
-                const bool on = k == 0 ? compOn : k == kLeds - 1 ? gateOn : (kLeds - 2 - k) < shown;
                 const auto led = juce::Rectangle<float> (9.0f, juce::jmin (4.0f, rowH - 2.0f)).withCentre ({ window.getCentreX(), y + rowH * 0.5f });
-                if (on)
+                if (! lit)
                 {
-                    g.setColour (colour.withAlpha (0.3f));
-                    g.fillRoundedRectangle (led.expanded (2.0f), 3.0f);
+                    g.setColour (colour.withAlpha (0.12f));
+                    g.fillRoundedRectangle (led, 2.0f);
+                    g.setColour (juce::Colour (0xffe6e9e6));
+                    g.drawText (k == kLeds - 1 && pre ? juce::String ("PRE") : juce::String (marks[k]),
+                                juce::Rectangle<float> (window.getRight() + 3.0f, y, area.getRight() - window.getRight() - 3.0f, rowH),
+                                juce::Justification::centredLeft);
+                    continue;
                 }
-                g.setColour (on ? colour.brighter (0.4f) : colour.withAlpha (0.12f));
+                const bool on = k == 0 ? compOn : k == kLeds - 1 ? gateOn : (kLeds - 2 - k) < shown;
+                if (! on)
+                    continue;
+                g.setColour (colour.withAlpha (0.3f));
+                g.fillRoundedRectangle (led.expanded (2.0f), 3.0f);
+                g.setColour (colour.brighter (0.4f));
                 g.fillRoundedRectangle (led, 2.0f);
-                g.setColour (juce::Colour (0xffe6e9e6));
-                g.drawText (mark (k), juce::Rectangle<float> (window.getRight() + 3.0f, y, area.getRight() - window.getRight() - 3.0f, rowH),
-                            juce::Justification::centredLeft);
             }
         }
 
-    private:
+        juce::Image face;
+        int faceKind = -1;
+        float faceScale = 0.0f;
+
         static constexpr int kLeds = 8;
         /** How many level LEDs light from the bottom (-60) for a level. */
         static int litFor (float db)
