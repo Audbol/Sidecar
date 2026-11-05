@@ -557,6 +557,11 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   Breaking the pair turns it off. In the engine, a strip's `ms_side` (a mono
   strip's right side panned with its polarity reversed), kept in shows and
   scenes. C ABI 50: `StripParams::msSide`; the 02R's state 18, `Ms`.
+- The 02R's DELAY digit by digit (MAN pp.34-35): a UNIT field picks [Smpl] or
+  [mSEC]; the cursor keys step through a channel's digits (the samples'
+  thousands to ones, the ms' tens, ones and tenths; underlined) and on to the
+  next channel, the wheel moves the digit under the cursor, and a tap on a
+  digit puts the cursor on it. In ms, the nearest sample.
 - The console surfaces (X32, ProMix 01, 02R) are laid out at 1920 x 1080 and
   scaled to the window, in proportion and centred: on a bigger screen (a 4K
   monitor) they show the same panel larger instead of stretching the gaps

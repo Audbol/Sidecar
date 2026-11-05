@@ -474,6 +474,13 @@ namespace y02r
         if (allChannels)
         {
             const int aux = (int) function - (int) Function::Aux1;
+            const double rate = ctx.engine.getSampleRate() > 0.0 ? ctx.engine.getSampleRate() : 48000.0; // 48 kHz before the device runs
+            if (function == Function::Delay)
+            {
+                // [Smpl] or [mSEC] (MAN p.34): the unit the channels show and the wheel moves.
+                fields.push_back ({ "UNIT", [this] { return delayMs ? 1 : 0; }, [this] (int v) { delayMs = v != 0; build(); },
+                                    [] (int v) { return juce::String (v != 0 ? "mSEC" : "Smpl"); }, 0, 1 });
+            }
             for (int st : pageStrips)
             {
                 Field f;
@@ -495,11 +502,33 @@ namespace y02r
                     if (memberOf (st) < 0)
                         continue;
                     // The time in samples; ENTER switches the delay on or off.
+                    // Digit by digit (MAN p.35): samples' thousands to ones, or ms' tens, ones and tenths.
                     const int hi = address (st, kDelayHi), lo = address (st, kDelayLo), sw = address (st, kSwitches);
-                    f.get = [this, hi, lo] { return (juce::jmax (0, y.get (hi)) << 7) | juce::jmax (0, y.get (lo)); };
-                    f.set = [this, hi, lo] (int v) { y.set (hi, v >> 7); y.set (lo, v & 0x7f); };
-                    f.hi = 2600;
-                    f.text = [this, sw] (int v) { return juce::String (v) + (((y.get (sw) >> kDelayOn) & 1) != 0 ? "" : " off"); };
+                    const auto samples = [this, hi, lo] { return (juce::jmax (0, y.get (hi)) << 7) | juce::jmax (0, y.get (lo)); };
+                    const auto setSamples = [this, hi, lo] (int v)
+                    {
+                        v = juce::jlimit (0, 2600, v);
+                        y.set (hi, v >> 7);
+                        y.set (lo, v & 0x7f);
+                    };
+                    const auto off = [this, sw] { return ((y.get (sw) >> kDelayOn) & 1) != 0 ? juce::String() : juce::String (" off"); };
+                    if (delayMs)
+                    {
+                        // Tenths of a ms; a sample's step is finer, so the nearest sample.
+                        f.get = [samples, rate] { return juce::roundToInt (samples() * 10000.0 / rate); };
+                        f.set = [setSamples, rate] (int v) { setSamples (juce::roundToInt (v * rate / 10000.0)); };
+                        f.hi = juce::roundToInt (2600 * 10000.0 / rate);
+                        f.digits = 3;
+                        f.text = [off] (int v) { return juce::String (v / 10).paddedLeft ('0', 2) + "." + juce::String (v % 10) + off(); };
+                    }
+                    else
+                    {
+                        f.get = samples;
+                        f.set = setSamples;
+                        f.hi = 2600;
+                        f.digits = 4;
+                        f.text = [off] (int v) { return juce::String (v).paddedLeft ('0', 4) + off(); };
+                    }
                     f.action = [this, sw] { y.set (sw, juce::jmax (0, y.get (sw)) ^ (1 << kDelayOn)); };
                 }
                 else if (function == Function::Pan)
@@ -528,6 +557,7 @@ namespace y02r
                 fields.push_back (f);
             }
             focus = juce::jlimit (0, juce::jmax (0, (int) fields.size() - 1), focus);
+            digit = juce::jlimit (0, juce::jmax (0, fields.empty() ? 0 : fields[(size_t) focus].digits - 1), digit);
             repaint();
             return;
         }
@@ -1075,8 +1105,24 @@ namespace y02r
         }
         if (fields.empty())
             return;
-        focus = (focus + delta + (int) fields.size()) % (int) fields.size();
+        // Left and right step through a field's digits first.
+        const int n = (int) fields.size();
+        const auto& f = fields[(size_t) juce::jlimit (0, n - 1, focus)];
+        if ((delta == 1 || delta == -1) && f.digits > 0 && juce::isPositiveAndBelow (digit + delta, f.digits))
+        {
+            digit += delta;
+            repaint();
+            return;
+        }
+        focusField ((focus + delta + n) % n, delta > 0);
         repaint();
+    }
+
+    void Display::focusField (int i, bool firstDigit)
+    {
+        focus = i;
+        const int d = juce::isPositiveAndBelow (i, (int) fields.size()) ? fields[(size_t) i].digits : 0;
+        digit = d > 0 ? (firstDigit ? 0 : d - 1) : 0;
     }
 
     void Display::turn (int delta)
@@ -1092,6 +1138,9 @@ namespace y02r
             repaint();
             return;
         }
+        if (f.digits > 0)
+            for (int k = digit; k < f.digits - 1; ++k)
+                delta *= 10;
         if (f.get && f.set)
             f.set (juce::jlimit (f.lo, f.hi, f.get() + delta));
         // The dynamics' parameters follow a new type.
@@ -1218,7 +1267,28 @@ namespace y02r
             const int v = f.pending >= 0 ? f.pending : f.get ? f.get() : 0;
             g.setColour (ink);
             g.setFont (type::font (type::kLabel, true));
-            g.drawText (f.text ? f.text (v) : juce::String (v), box.withTrimmedTop (box.getHeight() * 0.4f), juce::Justification::centred);
+            const auto text = f.text ? f.text (v) : juce::String (v);
+            const auto valueBox = box.withTrimmedTop (box.getHeight() * 0.4f);
+            g.drawText (text, valueBox, juce::Justification::centred);
+            if (focused && f.digits > 0)
+            {
+                // The digit the wheel moves, underlined: the `digit`th of the text's first digits.
+                const auto font = type::font (type::kLabel, true);
+                int at = -1;
+                for (int c = 0, seen = 0; c < text.length(); ++c)
+                    if (juce::CharacterFunctions::isDigit (text[c]) && seen++ == digit)
+                    {
+                        at = c;
+                        break;
+                    }
+                if (at >= 0)
+                {
+                    const float x0 = valueBox.getCentreX() - juce::GlyphArrangement::getStringWidth (font, text) * 0.5f;
+                    const float x = x0 + juce::GlyphArrangement::getStringWidth (font, text.substring (0, at));
+                    const float w = juce::GlyphArrangement::getStringWidth (font, text.substring (at, at + 1));
+                    g.fillRect (juce::Rectangle<float> (x, valueBox.getCentreY() + font.getHeight() * 0.5f, w, 2.0f));
+                }
+            }
         }
         if (confirmGo != nullptr)
         {
@@ -1344,7 +1414,25 @@ namespace y02r
         for (int i = 0; i < (int) fields.size(); ++i)
             if (fieldBox (i).contains (e.position))
             {
-                focus = i;
+                focusField (i, false);
+                // A tap on a digit puts the cursor on it.
+                if (const auto& f = fields[(size_t) i]; f.digits > 0 && f.get)
+                {
+                    const auto text = f.text ? f.text (f.get()) : juce::String (f.get());
+                    const auto font = type::font (type::kLabel, true);
+                    float x = fieldBox (i).getCentreX() - juce::GlyphArrangement::getStringWidth (font, text) * 0.5f;
+                    for (int c = 0, seen = 0; c < text.length() && seen < f.digits; ++c)
+                    {
+                        const float w = juce::GlyphArrangement::getStringWidth (font, text.substring (c, c + 1));
+                        if (juce::CharacterFunctions::isDigit (text[c]))
+                        {
+                            if (e.position.x >= x - 1.0f)
+                                digit = seen;
+                            ++seen;
+                        }
+                        x += w;
+                    }
+                }
                 if (e.getNumberOfClicks() > 1)
                     enter();
                 repaint();

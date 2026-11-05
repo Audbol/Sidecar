@@ -372,6 +372,37 @@ public:
         expectEquals (y.get (ui::y02r::address (ui::y02r::kStereo, 4)), 96, "not STEREO");
         for (int st = 0; st < ui::y02r::kBus; ++st)
             y.set (ui::y02r::address (st, 4), 96);
+        // DELAY digit by digit (MAN p.35): MIC 1's samples' hundreds, then in ms the tenths.
+        skin.pressFunction (F::Delay);
+        expectEquals (display.getFields()[0].label, juce::String ("UNIT"));
+        display.cursor (1); // MIC 1, at its thousands
+        expectEquals (display.getDigit(), 0);
+        display.cursor (1); // its hundreds
+        display.turn (2);
+        const int mic1Delay = ui::y02r::address (0, 6);
+        expectEquals ((y.get (mic1Delay) << 7) | y.get (mic1Delay + 1), 200);
+        display.cursor (1);
+        display.cursor (1);
+        display.turn (-1); // ones
+        expectEquals ((y.get (mic1Delay) << 7) | y.get (mic1Delay + 1), 199);
+        display.cursor (1); // the next channel, at its thousands
+        expectEquals (display.getCursor(), 2);
+        expectEquals (display.getDigit(), 0);
+        display.cursor (-1); // back: MIC 1's ones
+        expectEquals (display.getDigit(), 3);
+        display.getFields()[0].set (1); // mSEC
+        expectEquals (display.getFields()[1].text (display.getFields()[1].get()).substring (0, 4), juce::String ("04.1"), "199 samples at 48 kHz");
+        display.turn (1); // the tenths: 4.2 ms, 202 samples
+        expectEquals ((y.get (mic1Delay) << 7) | y.get (mic1Delay + 1), 202);
+        if (const auto shots = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {}); shots.isNotEmpty())
+        {
+            const auto out = juce::File::getCurrentWorkingDirectory().getChildFile (shots).getChildFile ("y02r-page-delay-digits.png");
+            out.deleteFile();
+            juce::FileOutputStream stream (out);
+            juce::PNGImageFormat().writeImageToStream (display.createComponentSnapshot (display.getLocalBounds(), true, 1.0f), stream);
+        }
+        display.getFields()[1].set (0);
+        display.getFields()[0].set (0);
         skin.pressFunction (F::Scene);
         expectEquals (display.getFields()[0].text (0), rig.show.getScene (0)->name, "the titles");
         skin.pressFunction (F::DigitalIo);

@@ -213,9 +213,15 @@ namespace y02r
             std::function<void()> action;
             /** An all-channel page's strip (-1 none). */
             int strip = -1;
+            /** Its value's digits the cursor steps through (DELAY's, MAN p.35):
+                the wheel then moves the one under it (0 the most significant;
+                the text's first run of digits shows them). */
+            int digits = 0;
         };
         const std::vector<Field>& getFields() const noexcept { return fields; }
         int getCursor() const noexcept { return focus; }
+        /** The digit under the cursor in a field that has them (0 the most significant). */
+        int getDigit() const noexcept { return digit; }
         std::function<juce::String()> memoryText;
 
     private:
@@ -234,6 +240,11 @@ namespace y02r
         /** A library page's STORE: the program chosen; TITLE EDIT's program, its
             target, its sixteen characters, and the function it came from. */
         int storeChoice = -1, nameLibrary = 0, nameProgram = 0, nameTarget = 0, pcProgram = 0, ccNumber = 1;
+        /** The digit the cursor is on; DELAY's unit (false samples, true ms). */
+        int digit = 0;
+        bool delayMs = false;
+        /** Focus on field `i`, its digit the first (from the left) or the last. */
+        void focusField (int i, bool firstDigit);
         /** METER's meter point: 0 PRE EQ (an output's PRE FADER), 1 POST EQ, 2 POST FADER. */
         int meterPoint = 2;
         std::array<int, 16> nameChars {};
