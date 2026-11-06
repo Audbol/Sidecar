@@ -184,6 +184,12 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
 
 Phase 5, the Yamaha ProMix 01 (`docs/UNIVERSAL_MIXER.md`), begins.
 
+- 02R title bar and values as the V2 manual: the functions named SCENE, Φ/ATT, AUX 7 and
+  VIEW 2/2, the MIC / TAPE halves not counted as pages (ATT 1/1, AUX 7 1/3, its effect
+  EDIT 2/3), the channel box "MIC 1" and "EFF1 RTN", the scene box unpadded ("1 SCENE 01",
+  "0 Initial Data"); the confirmation "Please Confirm." over "Store to Scene 1?"; values
+  as the display prints them ("0dB", "5ms", "1:1", "hard", "L.SHLF", "H.SHLF"); METER's
+  "PRE FAD" / "POST FAD"; an aux send that's off reads OFF.
 - ProMix CUE for every strip as pp.52-54 (a channel, ST IN with its dual pan and sends,
   RTN1-2 and ST OUT with their balance): the groups A-D as squares, PHASE and PAN as
   headings, COMPn:ON when a processor is patched, the meters captioned with the strip

@@ -54,6 +54,25 @@ namespace
     constexpr int kFirstUser[] = { 32, 40, 40, 0 };
 
     /** A model parameter's step as its value (livedaw_02r's step_param). */
+    /** A value as the display prints it (V2 MAN pp.50, 81): no space before
+        the unit and no ".0" ("0dB", "5ms", "-23dB", "3.5dB"), a ratio as
+        "1:1", the knee "hard", the shelves "L.SHLF" and "H.SHLF". */
+    juce::String displayText (const models::Param& p, float value)
+    {
+        auto t = p.display (value);
+        if (t == "L.SHELF" || t == "H.SHELF")
+            return t.substring (0, 2) + "SHLF";
+        if (t == "HARD")
+            return "hard";
+        if (p.label == "RATIO")
+            return t == "INF" ? t : t.trimCharactersAtEnd ("0").trimCharactersAtEnd (".") + ":1";
+        t = t.removeCharacters (" ");
+        for (const char* unit : { "dB", "ms", "Hz", "s" })
+            if (t.endsWith (unit) && t.dropLastCharacters ((int) strlen (unit)).endsWith (".0"))
+                return t.dropLastCharacters ((int) strlen (unit) + 2) + unit;
+        return t;
+    }
+
     float stepValue (const models::Param& p, int step)
     {
         if (p.isContinuous() && p.steps > 1)
@@ -103,8 +122,9 @@ namespace y02r
 
     juce::String stripName (int s)
     {
+        // As the display's channel box names them (V2 MAN p.19): MIC 1, LINE 17/18, TAPE 1, EFF1, BUS 1, AUX 1, STEREO.
         if (s < 16)
-            return "CH " + juce::String (s + 1);
+            return "MIC " + juce::String (s + 1);
         if (s < kTape)
             return "LINE " + juce::String (17 + 2 * (s - 16)) + "/" + juce::String (18 + 2 * (s - 16));
         if (s < kEff)
@@ -470,7 +490,7 @@ namespace y02r
             f.text = [this, library] (int n) { return juce::String (n + 1).paddedLeft ('0', 3) + " " + y.programName (library, n); };
             f.set = [this, library, target] (int n)
             {
-                confirm (false, "RECALL " + y.programName (library, n) + "?", [this, library, n, target] { y.recall (library, n, target); });
+                confirm (false, "Recall " + y.programName (library, n) + "?", [this, library, n, target] { y.recall (library, n, target); });
             };
             fields.push_back (f);
             storeField (library, target);
@@ -596,7 +616,7 @@ namespace y02r
                     f.get = [this, a] { return y.get (a); };
                     f.set = [this, a] (int v) { y.set (a, v); };
                     f.hi = 127;
-                    f.text = [this, on, aux, levelText] (int v) { return levelText (v) + (((y.get (on) >> aux) & 1) != 0 ? "" : " OFF"); };
+                    f.text = [this, on, aux, levelText] (int v) { return ((y.get (on) >> aux) & 1) != 0 ? levelText (v) : juce::String ("OFF"); }; // OFF in the level's place (p.98)
                     f.action = [this, pre, aux] { y.set (pre, juce::jmax (0, y.get (pre)) ^ (1 << aux)); };
                     // PRE or POST under the value (V2 MAN p.107), PRE lit.
                     f.tagOn = [this, pre, aux] { return ((y.get (pre) >> aux) & 1) != 0; };
@@ -641,7 +661,7 @@ namespace y02r
                 recall.text = programText;
                 recall.set = [this, s, programText] (int n)
                 {
-                    confirm (false, "RECALL " + programText (n) + "?", [this, n, s] { y.recall (Yamaha02R::Channel, n, s); });
+                    confirm (false, "Recall " + programText (n) + "?", [this, n, s] { y.recall (Yamaha02R::Channel, n, s); });
                 };
                 fields.push_back (recall);
                 storeField (Yamaha02R::Channel, s);
@@ -654,7 +674,7 @@ namespace y02r
                 clear.text = programText;
                 clear.set = [this, programText] (int n)
                 {
-                    confirm (true, "CLEAR " + programText (n) + "?", [this, n]
+                    confirm (true, "Clear " + programText (n) + "?", [this, n]
                     {
                         if (y.clearChannel (n) && libraryChanged)
                             libraryChanged();
@@ -760,7 +780,7 @@ namespace y02r
                         on.lo = on.hi = 0;
                         on.action = [this, mode]
                         {
-                            ask (mode > 0 ? "SURROUND OFF?" : "SURROUND ON?", [this, mode]
+                            ask (mode > 0 ? "Surround Off?" : "Surround On?", [this, mode]
                             {
                                 y.setState (Yamaha02R::Surround, 0, mode > 0 ? 0 : surroundMode);
                                 build();
@@ -932,7 +952,7 @@ namespace y02r
                 {
                     const auto p = m.params[(size_t) k];
                     byteField (juce::String (bands[k / 3]) + " " + what[k % 3], address (s, kEq + k), 0, juce::jmax (1, p.steps) - 1,
-                               [p, k] (int v) { return k % 3 == 0 ? freqText (v) : p.display (stepValue (p, v)); });
+                               [p, k] (int v) { return k % 3 == 0 ? freqText (v) : displayText (p, stepValue (p, v)); });
                 }
                 bitField ("HPF", address (s, kSwitches), kHpf);
                 bitField ("LPF", address (s, kSwitches), kLpf);
@@ -953,7 +973,7 @@ namespace y02r
                 for (int k = 0; k < 6 && k < (int) m.params.size(); ++k)
                 {
                     const auto p = m.params[(size_t) k];
-                    byteField (p.label, address (s, kDynParam + k), 0, juce::jmax (1, p.steps) - 1, [p] (int v) { return p.display (stepValue (p, v)); });
+                    byteField (p.label, address (s, kDynParam + k), 0, juce::jmax (1, p.steps) - 1, [p] (int v) { return displayText (p, stepValue (p, v)); });
                 }
                 const char* keys[] = { "SELF-POST EQ", "SELF-PRE EQ", "LEFT-POST EQ", "LEFT-PRE EQ", "AUX 1", "AUX 2", "BUS 1", "BUS 2", "BUS 3", "BUS 4", "BUS 5", "BUS 6", "BUS 7", "BUS 8", "STEREO" };
                 stateField ("KEY IN", Yamaha02R::KeyIn, s, 0, s >= kBus ? 14 : 5, [keys] (int v) { return juce::String (keys[juce::jlimit (0, 14, v)]); });
@@ -1098,7 +1118,7 @@ namespace y02r
                         f.get = [] { return 0; };
                         f.set = [] (int) {};
                         f.text = [name] (int) { return name; };
-                        f.action = [this, n] { confirm (false, "RECALL SCENE " + juce::String (n + 1) + "?", [this, n] { ctx.show.recallScene (n); }); };
+                        f.action = [this, n] { confirm (false, "Recall Scene " + juce::String (n + 1) + "?", [this, n] { ctx.show.recallScene (n); }); };
                         fields.push_back (f);
                     }
                     if (fields.empty())
@@ -1226,7 +1246,7 @@ namespace y02r
                         for (int c : nameChars)
                             title << kTitleChars[c];
                         const auto stored = title.trimEnd();
-                        confirm (true, "STORE TO " + juce::String (nameProgram + 1) + "?", [this, stored, library = nameLibrary, n = nameProgram, target = nameTarget]
+                        confirm (true, "Store to " + juce::String (nameProgram + 1) + "?", [this, stored, library = nameLibrary, n = nameProgram, target = nameTarget]
                         {
                             y.store (library, n, target, stored);
                             if (libraryChanged)
@@ -1345,8 +1365,8 @@ namespace y02r
                 fields.push_back ({ "METER POINT", [this] { return meterPoint; }, [this] (int v) { meterPoint = v; },
                                     [this] (int v)
                                     {
-                                        const char* in[] = { "PRE EQ", "POST EQ", "POST FADER" };
-                                        const char* out[] = { "PRE FADER", "PRE FADER", "POST FADER" };
+                                        const char* in[] = { "PRE EQ", "POST EQ", "POST FAD" }; // as p.40 abbreviates them
+                                        const char* out[] = { "PRE FAD", "PRE FAD", "POST FAD" };
                                         return juce::String (page == 2 ? out[v] : in[v]);
                                     },
                                     0, 2 });
@@ -1405,24 +1425,23 @@ namespace y02r
 
     juce::String Display::title() const
     {
-        const char* names[] = { "SCENE MEMORY", "UTILITY", "MIDI", "GROUP", "PAIR", "PHASE / ATT", "DELAY", "PAN", "ROUTING", "METER", "VIEW",
-                                "EQ", "DYNAMICS", "AUX 1", "AUX 2", "AUX 3", "AUX 4", "AUX 5", "AUX 6", "AUX 7 (EFF1)", "AUX 8 (EFF2)" };
+        // The function's name and its page as the manual's title bar has them
+        // (V2 MAN pp.19, 32-37, 97, 104): a strip's MIC and TAPE halves aren't
+        // pages (ATT 1/1, AUX 1 1/1), nor is the selected strip's AUX page;
+        // AUX 7/8's effect EDIT is 2/3.
+        const char* names[] = { "SCENE", "UTILITY", "MIDI", "GROUP", "PAIR", "\xce\xa6/ATT", "DELAY", "PAN", "ROUTING", "METER", "VIEW",
+                                "EQ", "DYNAMICS", "AUX 1", "AUX 2", "AUX 3", "AUX 4", "AUX 5", "AUX 6", "AUX 7", "AUX 8" };
         const char* more[] = { "DIGITAL I/O", "SETUP", "AUTOMIX", "TITLE EDIT" };
         const int f = (int) function;
-        if (function == Function::View && page == 1)
-            return "CHANNEL LIBRARY  2/2";
-        if (function == Function::Routing && page > 0)
-        {
-            const char* pages[] = { "", "SURROUND", "SURROUND PAN", "TRAJECTORY" };
-            return "ROUTING " + juce::String (page + 1) + "/" + juce::String (numPages()) + "  " + pages[juce::jlimit (0, 3, page)];
-        }
-        if (function == Function::Setup)
-        {
-            const char* setup[] = { "SOLO", "AUX OUTPUT SELECT", "PREFERENCES 1", "PREFERENCES 2" };
-            return juce::String ("SETUP ") + juce::String (page + 1) + "/4  " + setup[juce::jlimit (0, 3, page)];
-        }
-        const juce::String name = f < (int) std::size (names) ? juce::String (names[f]) : juce::String (more[f - (int) std::size (names)]);
-        return numPages() > 1 ? name + "  " + juce::String (page + 1) + "/" + juce::String (numPages()) : name;
+        const juce::String name = juce::String::fromUTF8 (f < (int) std::size (names) ? names[f] : more[f - (int) std::size (names)]);
+        auto counted = [&name] (int at, int of) { return name + "  " + juce::String (at) + "/" + juce::String (of); };
+        const bool aux = function >= Function::Aux1 && function <= Function::Aux8;
+        const bool effectAux = function >= Function::Aux7 && function <= Function::Aux8;
+        if (function == Function::Att || function == Function::Delay || function == Function::Pan)
+            return counted (1, 1);
+        if (aux)
+            return effectAux ? counted (page == 3 ? 2 : 1, 3) : counted (1, 1);
+        return numPages() > 1 ? counted (page + 1, numPages()) : name;
     }
 
     void Display::cursor (int delta)
@@ -2384,7 +2403,7 @@ namespace y02r
         g.setFont (type::font (type::kLabel, true));
         const auto channel = top.removeFromRight (juce::jmax (90.0f, top.getWidth() * 0.16f));
         g.drawRect (channel, 1.5f);
-        g.drawText (stripName (strip), channel, juce::Justification::centred);
+        g.drawText (strip >= kEff && strip < kBus ? stripName (strip) + " RTN" : stripName (strip), channel, juce::Justification::centred); // "EFF1 RTN" (p.206)
         const auto name = title();
         const auto titleBox = top.removeFromRight (juce::jmax (150.0f, juce::GlyphArrangement::getStringWidth (type::font (type::kLabel, true), name) + 24.0f));
         g.drawRect (titleBox, 1.5f);
@@ -2468,14 +2487,17 @@ namespace y02r
             paintField (g, i);
         if (confirmGo != nullptr)
         {
-            // The confirmation dialog over the page: its question, CANCEL and EXECUTE.
-            auto box = b.withSizeKeepingCentre (b.getWidth() * 0.6f, 120.0f);
+            // The confirmation dialog over the page (V2 MAN p.126): "Please Confirm."
+            // over its question ("Store to Scene 1?"), CANCEL and EXECUTE.
+            auto box = b.withSizeKeepingCentre (b.getWidth() * 0.6f, 140.0f);
             g.setColour (kLcd.withAlpha (1.0f).brighter (0.08f)); // opaque: the page under it hidden
             g.fillRect (box);
             g.setColour (kPixel);
             g.drawRect (box, 2.0f);
+            g.setFont (type::font (type::kLabel + 2.0f, true));
+            g.drawText ("Please Confirm.", box.removeFromTop (40.0f).reduced (10.0f, 0.0f), juce::Justification::centred);
             g.setFont (type::font (type::kLabel, true));
-            g.drawText (confirmText, box.removeFromTop (60.0f).reduced (10.0f, 0.0f), juce::Justification::centred);
+            g.drawText (confirmText, box.removeFromTop (40.0f).reduced (10.0f, 0.0f), juce::Justification::centred);
             auto row = box.reduced (20.0f, 14.0f);
             for (int k = 0; k < 2; ++k)
             {
@@ -3036,7 +3058,7 @@ Y02RSurface::Y02RSurface (UiContext& c)
             if (m < 0)
                 return juce::String (v);
             const auto& p = models::model (models::ChannelEq, m).params[(size_t) (3 * display.band + what)];
-            return p.display (stepValue (p, v));
+            return displayText (p, stepValue (p, v));
         };
         e->cap = juce::Colour (0xff5f9a62);
         e->onTouch = [this] { autoDisplay (y02r::AutoEq, y02r::Function::Eq); };
@@ -3130,7 +3152,7 @@ Y02RSurface::Y02RSurface (UiContext& c)
     {
         const int current = ctx.show.getCurrentSceneIndex();
         auto scene = current >= 0 ? ctx.show.getScene (current) : std::nullopt;
-        return current >= 0 && scene.has_value() ? juce::String (current + 1).paddedLeft ('0', 2) + " " + scene->name : juce::String ("00 Initial Data");
+        return current >= 0 && scene.has_value() ? juce::String (current + 1) + " " + scene->name : juce::String ("0 Initial Data"); // unpadded, as p.19
     };
     addAndMakeVisible (display);
 
@@ -3274,7 +3296,7 @@ void Y02RSurface::store()
     // the show has fewer.
     if (memory < 1)
         return;
-    display.confirm (true, "STORE SCENE " + juce::String (memory).paddedLeft ('0', 2) + "?", [this, index = memory - 1]
+    display.confirm (true, "Store to Scene " + juce::String (memory) + "?", [this, index = memory - 1]
     {
         if (index < ctx.show.getNumScenes())
             ctx.show.storeScene (index);
@@ -3288,7 +3310,7 @@ void Y02RSurface::recall()
 {
     if (memory > 0 && memory - 1 >= ctx.show.getNumScenes())
         return;
-    display.confirm (false, "RECALL SCENE " + juce::String (memory).paddedLeft ('0', 2) + "?", [this, m = memory]
+    display.confirm (false, "Recall Scene " + juce::String (memory) + "?", [this, m = memory]
     {
         if (m == 0)
         {
