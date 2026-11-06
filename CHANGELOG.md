@@ -595,6 +595,16 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   beside it. The surround buses sum to mono while SURROUND has them, so both
   sides of a stereo channel reach their speakers. A stereo channel with ST
   LINK off has both sides at one place.
+- X32 SCENES in the manual's six tabs (p.65-67): HOME (GO, SKIP a scene, NEW, a
+  snippet of the current scene GO; PREV and NEXT on encoders 4 and 6, as Sidecar
+  has no UNDO), SCENES (LOAD; SAVE into a slot with its name and note; EDIT a
+  scene's name and note; IMPORT a library scene file, EXPORT one; save safes that
+  leave sections out of a SAVE), SNIPPETS, PARAM SAFE as four columns of check
+  boxes and CHAN SAFE as six (channels 1-16 and 17-32, aux and FX returns, mix
+  buses, matrices, mains and DCAs, FX slots), an encoder each, and MIDI (a
+  program change, control change or note sent when the scene is recalled).
+  Sidecar's parameter safes hold for inputs and buses alike, so PARAM SAFE's third
+  column holds the mute groups instead of the X32's mix buses.
 - X32 SETUP > scribble strip and preamps as the manual's pictures (p.56): the
   scribble strip's five columns (channel, colour, icon, a list of names, the name),
   an encoder each, the list's name given by its push and the name typed with EDIT;

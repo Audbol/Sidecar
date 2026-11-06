@@ -101,6 +101,34 @@ public:
     /** The strips CHAN SAFE lists. */
     std::vector<Strip*> recallStrips() const;
 
+    /** A SCENES safe tab's check box: its name, whether it's on, and flipping it. */
+    struct SafeItem
+    {
+        juce::String label;
+        std::function<bool()> on;
+        std::function<void()> flip;
+    };
+    struct SafeColumn
+    {
+        juce::String title;
+        std::vector<SafeItem> items;
+    };
+    /** PARAM SAFE's four columns (p.66) and CHAN SAFE's six, an encoder each. */
+    std::vector<SafeColumn> paramSafeColumns();
+    std::vector<SafeColumn> chanSafeColumns();
+    /** SCENES > scenes' SAVE: the console into scene `slot` (a new one past the
+        end), without the save safes' sections, named. Returns its index. */
+    int saveScene (int slot, const juce::String& name, const juce::String& notes);
+    /** A scene's SEND MIDI as SCENES > MIDI sets it: kind (0 none, 1 program
+        change, 2 control change, 3 note, -1 something else), channel 1-16,
+        number and value 0-127. */
+    struct SceneMidi
+    {
+        int kind = 0, channel = 1, number = 0, value = 127;
+    };
+    static SceneMidi parseSceneMidi (const juce::String&);
+    static juce::String sceneMidiText (const SceneMidi&);
+
     /** SETUP > scribble strip's Snippets: names to give a strip. */
     static const juce::StringArray& scribbleNames();
     /** Asks for the strip's name (Name's EDIT). */
@@ -136,6 +164,9 @@ private:
     void paintRemote (juce::Graphics&, juce::Rectangle<int>);
     void paintScribble (juce::Graphics&, juce::Rectangle<float>, Strip*);
     void paintPreamps (juce::Graphics&, juce::Rectangle<float>);
+    void paintSafeColumns (juce::Graphics&, juce::Rectangle<float>, const std::vector<SafeColumn>&, const int* rows, const juce::String& footer);
+    void paintScenes (juce::Graphics&, juce::Rectangle<int>);
+    void assignScenesEncoders();
     void paintRouting (juce::Graphics&, juce::Rectangle<int>);
     /** ROUTING > home (step 10c): the input blocks, through the X32 map's
         text commands (`/config/routing/...`). */
@@ -172,11 +203,16 @@ private:
     const universal::Theme screenTheme;
     Screen screen = Screen::Home;
     int tab = 0, layer = 0, sendBank = 0, eqBand = 0, selectedScene = 0;
-    /** SCENES' safes tab: the section the first encoder points at; a talkback
-        tab's bus; HOME's DCA and mute group to assign. */
-    int safeSection = 0, talkBus = 0, homeDca = 0, homeMuteGroup = 0;
-    /** SCENES' SNIPPETS: the snippet of the selected scene; CHAN SAFE: the strip. */
-    int selectedSnippet = 0, safeStrip = 0;
+    /** A talkback tab's bus; HOME's DCA and mute group to assign. */
+    int talkBus = 0, homeDca = 0, homeMuteGroup = 0;
+    /** SCENES' SNIPPETS: the snippet of the selected scene. */
+    int selectedSnippet = 0;
+    /** SCENES: home's scene to skip and snippet; scenes' slot to save, scene to
+        edit, library file to import and save safe; each safe column's check box. */
+    int skipScene = 0, homeSnippet = 0, sceneSlot = 0, editScene = 0, importFile = 0, saveSafeRow = 0;
+    juce::uint32 saveSafes = 0;
+    std::array<int, 10> safeRows {}; // PARAM SAFE's columns, then CHAN SAFE's
+    juce::String sceneStatus;
     /** SETUP > config: the preference, the link preference and the bus scheme the encoders point at. */
     int configPref = 0, configLink = 0, configBus = 0;
     /** HOME config's SOURCE turned and not yet selected (-1 none), and for which strip. */

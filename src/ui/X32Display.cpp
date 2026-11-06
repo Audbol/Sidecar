@@ -320,10 +320,523 @@ juce::StringArray Display::getTabs() const
         case Screen::Utility:    return { "copy" };
         case Screen::Monitor:    return { "monitor", "talk a", "talk b", "osc" };
         case Screen::Assign:     return { "set a", "set b", "set c" };
-        case Screen::Scenes:     return { "home", "snippets", "param safe", "chan safe" };
+        case Screen::Scenes:     return { "home", "scenes", "snippets", "param safe", "chan safe", "MIDI" };
         case Screen::Usb:        return { "home", "config" };
     }
     return {};
+}
+
+//==============================================================================
+// SCENES (p.65-67)
+
+namespace
+{
+    /** A list encoder over `n` entries, its index in `at`. */
+    KnobBinding pickKnob (const juce::String& label, int& at, int n, std::function<juce::String()> text, std::function<void()> changed)
+    {
+        at = juce::jlimit (0, juce::jmax (0, n - 1), at);
+        KnobBinding k;
+        k.label = label;
+        k.get = [&at, n] { return n > 1 ? (float) at / (float) (n - 1) : 0.0f; };
+        k.set = [&at, n, changed] (float v) { at = juce::roundToInt (v * (float) juce::jmax (0, n - 1)); changed(); };
+        k.text = std::move (text);
+        k.steps = (float) juce::jmax (2, n);
+        return k;
+    }
+
+    juce::String two (int v) { return juce::String (v).paddedLeft ('0', 2); }
+}
+
+void Display::assignScenesEncoders()
+{
+    auto& show = ctx.show;
+    const int n = show.getNumScenes();
+    const auto sceneName = [&show] (int i)
+    {
+        const auto sc = show.getScene (i);
+        return sc.has_value() ? two (i + 1) + " " + sc->name : juce::String ("-");
+    };
+    const auto refresh = [this] { assignEncoders(); repaint(); };
+    const auto valid = [&show] (int i) { return juce::isPositiveAndBelow (i, show.getNumScenes()); };
+
+    if (tab == 0)
+    {
+        // HOME (p.65): GO the scene picked; SKIP one; NEW (the X32's cue); a
+        // snippet of the current scene, GO; PREV and NEXT on 4 and 6 (no UNDO).
+        encoders[0] = encoder (pickKnob ("SCENE", selectedScene, n, [this, sceneName] { return sceneName (selectedScene); }, refresh), "GO",
+                               [this, &show, valid] { if (valid (selectedScene)) show.recallScene (selectedScene); repaint(); });
+        encoders[1] = encoder (pickKnob ("SKIP", skipScene, n, [this, sceneName] { return sceneName (skipScene); }, refresh), "SKIP",
+                               [this, &show, valid] { if (valid (skipScene)) show.setSceneSkip (skipScene, ! show.getScene (skipScene)->skip); repaint(); },
+                               [this, &show, valid] { return valid (skipScene) && show.getScene (skipScene)->skip; });
+        encoders[2] = encoder ({}, "NEW", [this, &show]
+        {
+            selectedScene = show.addScene ("Scene " + two (show.getNumScenes() + 1));
+            assignEncoders();
+        });
+        encoders[3] = encoder ({}, "PREV", [this, &show] { show.recallPrevious(); repaint(); });
+        const int current = show.getCurrentSceneIndex();
+        const auto scene = show.getScene (current);
+        const int snippets = scene.has_value() ? scene->numSnippets : 0;
+        encoders[4] = encoder (pickKnob ("SNIPPET", homeSnippet, snippets, [this, &show, current, snippets]
+                               {
+                                   const auto s = show.getSnippet (current, homeSnippet);
+                                   return snippets > 0 && s.has_value() ? two (homeSnippet + 1) + " " + s->name : juce::String ("-");
+                               }, refresh), "GO",
+                               [this, &show, current, snippets] { if (homeSnippet < snippets) show.recallSnippet (current, homeSnippet); repaint(); });
+        encoders[5] = encoder ({}, "NEXT", [this, &show] { show.recallNext(); repaint(); });
+    }
+    else if (tab == 1)
+    {
+        // SCENES (p.65): LOAD a scene; SAVE into a slot (asks its name and
+        // note); EDIT one's name and note; IMPORT a library scene file, EXPORT
+        // the loaded one's; the save safes (sections left out of a SAVE).
+        encoders[0] = encoder (pickKnob ("SCENE", selectedScene, n, [this, sceneName] { return sceneName (selectedScene); }, refresh), "LOAD",
+                               [this, &show, valid] { if (valid (selectedScene)) show.recallScene (selectedScene); repaint(); });
+        encoders[1] = encoder (pickKnob ("SLOT", sceneSlot, n + 1, [this, n, sceneName] { return sceneSlot >= n ? two (sceneSlot + 1) + " (NEW)" : sceneName (sceneSlot); }, refresh),
+                               "SAVE", [this, &show]
+        {
+            const auto sc = show.getScene (sceneSlot);
+            auto* w = new juce::AlertWindow ("SAVE SCENE", "Scene " + two (sceneSlot + 1) + ":", juce::MessageBoxIconType::NoIcon, this);
+            w->addTextEditor ("name", sc.has_value() ? sc->name : "Scene " + two (sceneSlot + 1), "Name:");
+            w->addTextEditor ("notes", sc.has_value() ? sc->notes : juce::String(), "Note:");
+            w->addButton ("SAVE", 1, juce::KeyPress (juce::KeyPress::returnKey));
+            w->addButton ("CANCEL", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+            juce::Component::SafePointer<Display> safe (this);
+            const int slot = sceneSlot;
+            w->enterModalState (true, juce::ModalCallbackFunction::create ([safe, w, slot] (int result)
+            {
+                if (result != 0 && safe != nullptr)
+                    safe->saveScene (slot, w->getTextEditorContents ("name").trim(), w->getTextEditorContents ("notes"));
+            }), true);
+        });
+        encoders[2] = encoder (pickKnob ("EDIT", editScene, n, [this, sceneName] { return sceneName (editScene); }, refresh), "EDIT", [this, &show, valid]
+        {
+            const auto sc = show.getScene (editScene);
+            if (! sc.has_value())
+                return;
+            auto* w = new juce::AlertWindow ("EDIT SCENE", "Scene " + two (editScene + 1) + ":", juce::MessageBoxIconType::NoIcon, this);
+            w->addTextEditor ("name", sc->name, "Name:");
+            w->addTextEditor ("notes", sc->notes, "Note:");
+            w->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
+            w->addButton ("CANCEL", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+            juce::Component::SafePointer<Display> safe (this);
+            const int index = editScene;
+            auto* showPtr = &show;
+            w->enterModalState (true, juce::ModalCallbackFunction::create ([safe, w, index, showPtr] (int result)
+            {
+                if (result != 0 && safe != nullptr)
+                {
+                    showPtr->setSceneName (index, w->getTextEditorContents ("name").trim());
+                    showPtr->setSceneNotes (index, w->getTextEditorContents ("notes"));
+                    safe->assignEncoders();
+                    safe->repaint();
+                }
+            }), true);
+        });
+        const auto files = presets (Show::sceneFileExtension);
+        encoders[3] = encoder (pickKnob ("FILE", importFile, files.size(), [this, files]
+                               { return juce::isPositiveAndBelow (importFile, files.size()) ? files[importFile].getFileNameWithoutExtension() : juce::String ("NONE"); }, refresh),
+                               "IMPORT", [this, &show, files]
+        {
+            if (! juce::isPositiveAndBelow (importFile, files.size()))
+                return;
+            juce::String error;
+            const int at = show.importScene (files[importFile], -1, error);
+            sceneStatus = at >= 0 ? "Imported " + files[importFile].getFileName() + " as scene " + two (at + 1) : error;
+            assignEncoders();
+            repaint();
+        });
+        encoders[4] = encoder ({}, "EXPORT", [this, &show, valid]
+        {
+            if (! valid (selectedScene))
+                return;
+            const auto name = juce::File::createLegalFileName (show.getScene (selectedScene)->name);
+            const auto file = ShowPanel::libraryFolder().getNonexistentChildFile (name.isEmpty() ? juce::String ("Scene") : name, Show::sceneFileExtension, false);
+            const auto result = show.exportScene (selectedScene, file);
+            sceneStatus = result.wasOk() ? "Exported to " + file.getFileName() : result.getErrorMessage();
+            assignEncoders();
+            repaint();
+        });
+        encoders[5] = encoder (pickKnob ("SAVE SAFE", saveSafeRow, state::kNumSections,
+                               [this] { return juce::String (state::sectionName (state::sectionAt (saveSafeRow))).toUpperCase(); }, refresh),
+                               "SAFE", [this] { saveSafes ^= (juce::uint32) state::sectionAt (saveSafeRow); repaint(); },
+                               [this] { return (saveSafes & (juce::uint32) state::sectionAt (saveSafeRow)) != 0; });
+    }
+    else if (tab == 2)
+    {
+        // SNIPPETS (p.66): the selected scene's (an X32's belong to the show,
+        // Sidecar's to a scene): one picked, GO recalls it, SAVE stores the
+        // console into it, NEW makes one of the selected strip, FIRE recalls it
+        // with its scene, DELETE.
+        const auto scene = show.getScene (selectedScene);
+        const int snippets = scene.has_value() ? scene->numSnippets : 0;
+        const auto ok = [this, &show]
+        {
+            const auto sc = show.getScene (selectedScene);
+            return sc.has_value() && juce::isPositiveAndBelow (selectedSnippet, sc->numSnippets);
+        };
+        encoders[0] = encoder (pickKnob ("SNIPPET", selectedSnippet, snippets, [this, snippets] { return snippets == 0 ? juce::String ("-") : two (selectedSnippet + 1); }, refresh),
+                               "GO", [this, &show, ok] { if (ok()) show.recallSnippet (selectedScene, selectedSnippet); });
+        encoders[1] = encoder ({}, "SAVE", [this, &show, ok] { if (ok()) show.storeSnippet (selectedScene, selectedSnippet); repaint(); });
+        encoders[2] = encoder ({}, "NEW", [this, &show, valid]
+        {
+            auto* st = selected();
+            if (st == nullptr || ! valid (selectedScene))
+                return;
+            selectedSnippet = show.addSnippet (selectedScene, st->getLabel(), state::AllSections & ~(juce::uint32) state::Routing, { state::StripRef::of (*st) });
+            assignEncoders();
+        });
+        encoders[3] = encoder ({}, "FIRE", [this, &show, ok]
+        {
+            if (ok())
+                show.setSnippetFireWithScene (selectedScene, selectedSnippet, ! show.getSnippet (selectedScene, selectedSnippet)->fireWithScene);
+            repaint();
+        }, [this, &show, ok] { return ok() && show.getSnippet (selectedScene, selectedSnippet)->fireWithScene; });
+        encoders[5] = encoder ({}, "DELETE", [this, &show, ok]
+        {
+            if (ok())
+                show.removeSnippet (selectedScene, selectedSnippet);
+            assignEncoders();
+        });
+    }
+    else if (tab == 3 || tab == 4)
+    {
+        // PARAM SAFE (p.66): four columns, CHAN SAFE six; each encoder moves
+        // through its column, pushed to check the box.
+        const auto columns = tab == 3 ? paramSafeColumns() : chanSafeColumns();
+        for (size_t c = 0; c < columns.size() && c < encoders.size(); ++c)
+        {
+            const auto items = columns[c].items;
+            if (items.empty())
+                continue;
+            int& row = safeRows[(tab == 3 ? 0 : 4) + c];
+            encoders[c] = encoder (pickKnob ("SELECT", row, (int) items.size(), [&row, items] { return items[(size_t) row].label; }, [this] { repaint(); }),
+                                   "SAFE", [this, &row, items] { items[(size_t) row].flip(); repaint(); },
+                                   [&row, items] { return items[(size_t) row].on(); });
+        }
+    }
+    else
+    {
+        // MIDI (p.67): a scene, then what its recall sends: a program change,
+        // a control change or a note, its channel, number and value.
+        encoders[0] = encoder (pickKnob ("SCENE", selectedScene, n, [this, sceneName] { return sceneName (selectedScene); }, refresh));
+        if (! valid (selectedScene))
+            return;
+        const auto midi = [this, &show] { return parseSceneMidi (show.getScene (selectedScene)->midi); };
+        const auto set = [this, &show] (const SceneMidi& m) { show.setSceneMidi (selectedScene, sceneMidiText (m)); repaint(); };
+        static const juce::StringArray kinds { "OFF", "PRG CHANGE", "CTRL CHANGE", "NOTE" };
+        KnobBinding kind;
+        kind.label = "TYPE";
+        kind.get = [midi] { return (float) juce::jmax (0, midi().kind) / 3.0f; };
+        kind.set = [midi, set, this] (float v) { auto m = midi(); m.kind = juce::roundToInt (v * 3.0f); set (m); assignEncoders(); };
+        kind.text = [midi] { const int k = midi().kind; return k < 0 ? juce::String ("CUSTOM") : kinds[k]; };
+        kind.steps = 4.0f;
+        encoders[1] = encoder (kind);
+        const int k = midi().kind;
+        if (k <= 0)
+            return;
+        const auto field = [midi, set] (const char* label, int SceneMidi::*member, int lo, int hi)
+        {
+            KnobBinding b;
+            b.label = label;
+            b.get = [midi, member, lo, hi] { return (float) (midi().*member - lo) / (float) (hi - lo); };
+            b.set = [midi, set, member, lo, hi] (float v) { auto m = midi(); m.*member = lo + juce::roundToInt (v * (float) (hi - lo)); set (m); };
+            b.text = [midi, member] { return juce::String (midi().*member); };
+            b.steps = (float) (hi - lo + 1);
+            return b;
+        };
+        encoders[2] = encoder (field ("CHANNEL", &SceneMidi::channel, 1, 16));
+        encoders[3] = encoder (field (k == 1 ? "PROGRAM" : k == 2 ? "CONTROL" : "NOTE", &SceneMidi::number, 0, 127));
+        if (k > 1)
+            encoders[4] = encoder (field (k == 2 ? "VALUE" : "VELOCITY", &SceneMidi::value, 0, 127));
+    }
+}
+
+int Display::saveScene (int slot, const juce::String& name, const juce::String& notes)
+{
+    auto& show = ctx.show;
+    int index = slot;
+    if (slot >= show.getNumScenes())
+        index = show.addScene (name);
+    else
+        show.storeScene (slot);
+    show.setSceneScope (index, state::AllSections & ~saveSafes);
+    show.setSceneName (index, name);
+    show.setSceneNotes (index, notes);
+    sceneStatus = "Saved scene " + two (index + 1);
+    assignEncoders();
+    repaint();
+    return index;
+}
+
+Display::SceneMidi Display::parseSceneMidi (const juce::String& text)
+{
+    // One message of hexadecimal bytes ("C005", "B0 07 64", "90,3C,7F"); else -1.
+    SceneMidi m;
+    const auto hex = text.retainCharacters ("0123456789abcdefABCDEF");
+    if (text.trim().isEmpty())
+        return m;
+    if (hex.length() != text.removeCharacters (" ,").length() || hex.length() % 2 != 0)
+        return { -1 };
+    juce::Array<int> bytes;
+    for (int i = 0; i < hex.length(); i += 2)
+        bytes.add (hex.substring (i, i + 2).getHexValue32());
+    const int status = bytes[0] & 0xf0;
+    m.channel = (bytes[0] & 0x0f) + 1;
+    if (status == 0xc0 && bytes.size() == 2)
+        m.kind = 1;
+    else if (status == 0xb0 && bytes.size() == 3)
+        m.kind = 2;
+    else if (status == 0x90 && bytes.size() == 3)
+        m.kind = 3;
+    else
+        return { -1 };
+    m.number = bytes[1] & 0x7f;
+    if (bytes.size() > 2)
+        m.value = bytes[2] & 0x7f;
+    return m;
+}
+
+juce::String Display::sceneMidiText (const SceneMidi& m)
+{
+    if (m.kind <= 0)
+        return {};
+    const auto byte = [] (int v) { return juce::String::toHexString (v & 0xff).paddedLeft ('0', 2).toUpperCase(); };
+    const int status = (m.kind == 1 ? 0xc0 : m.kind == 2 ? 0xb0 : 0x90) | (juce::jlimit (1, 16, m.channel) - 1);
+    auto t = byte (status) + " " + byte (m.number);
+    if (m.kind > 1)
+        t << " " << byte (m.value);
+    return t;
+}
+
+std::vector<Display::SafeColumn> Display::paramSafeColumns()
+{
+    // The X32's four columns over Sidecar's safes, which hold for every strip
+    // (inputs and buses alike): the strips' sections, their sends, the mute
+    // groups, and the console's settings and routing.
+    auto& show = ctx.show;
+    const auto section = [&show] (const juce::String& label, juce::uint32 bits) -> SafeItem
+    {
+        return { label, [&show, bits] { return (show.getGlobalSafe().sections & bits) == bits; },
+                 [&show, bits]
+                 {
+                     auto s = show.getGlobalSafe();
+                     s.sections = (s.sections & bits) == bits ? s.sections & ~bits : s.sections | bits;
+                     show.setGlobalSafe (s);
+                 } };
+    };
+    using namespace state;
+    std::vector<SafeColumn> columns {
+        { "Input Channels", { section ("HA", Preamp), section ("Configuration", Name), section ("Gate", Gate), section ("Equalizer", Eq),
+                              section ("Compressor", Dynamics), section ("Insert", Inserts), section ("Groups", Groups),
+                              section ("Fader, Pan, Mute", Fader) } },
+        { "Mix Sends", { section ("Mix Sends 1-16", Sends) } },
+        { "Mute Groups", {} },
+        { "Console", {} },
+    };
+    columns[2].items.push_back ({ "Mute Groups 1-6", [&show] { return (show.getGlobalSafe().muteGroups.low() & 0x3fu) == 0x3fu; }, [&show]
+    {
+        auto s = show.getGlobalSafe();
+        const bool on = (s.muteGroups.low() & 0x3fu) == 0x3fu;
+        s.muteGroups = on ? (s.muteGroups & ~GroupBits::mask (0x3fu)) : (s.muteGroups | GroupBits::mask (0x3fu));
+        show.setGlobalSafe (s);
+    } });
+    columns[3].items.push_back ({ "Configuration, Solo", [&show] { return show.getGlobalSafe().console; }, [&show]
+    {
+        auto s = show.getGlobalSafe();
+        s.console = ! s.console;
+        show.setGlobalSafe (s);
+    } });
+    columns[3].items.push_back (section ("Routing, Output Patch", Routing));
+    return columns;
+}
+
+std::vector<Display::SafeColumn> Display::chanSafeColumns()
+{
+    // Channels 1-16 and 17-32, aux and FX returns, mix buses, matrices, mains
+    // and DCAs, FX slots: a strip's recall safe, a DCA's or FX slot's global safe.
+    auto& e = ctx.engine;
+    auto& show = ctx.show;
+    const auto strip = [] (Strip* s) -> SafeItem
+    {
+        return { s->getLabel(), [s] { return s->params.recallSafe.load(); }, [s] { s->params.recallSafe = ! s->params.recallSafe.load(); } };
+    };
+    std::vector<SafeColumn> columns { { "Channels", {} }, { "Channels", {} }, { "Aux / FX Returns", {} }, { "Mix Buses", {} }, { "Main / Matrix / DCA", {} }, { "Effects", {} } };
+    const auto& channels = e.getChannels();
+    for (size_t i = 0; i < channels.size(); ++i)
+        columns[i < 16 ? 0 : 1].items.push_back (strip (channels[i].get()));
+    for (auto& s : e.getAux())
+        columns[2].items.push_back (strip (s.get()));
+    for (auto& s : e.getBuses())
+        columns[3].items.push_back (strip (s.get()));
+    for (auto& s : e.getMatrices())
+        columns[4].items.push_back (strip (s.get()));
+    for (auto& s : e.getMains())
+        columns[4].items.push_back (strip (s.get()));
+    for (int d = 0; d < 8; ++d)
+        columns[4].items.push_back ({ "DCA " + juce::String (d + 1), [&show, d] { return (show.getGlobalSafe().dcas.low() & (1u << d)) != 0; }, [&show, d]
+        {
+            auto s = show.getGlobalSafe();
+            const auto bit = GroupBits::mask (1u << d);
+            s.dcas = (s.dcas.low() & (1u << d)) != 0 ? (s.dcas & ~bit) : (s.dcas | bit);
+            show.setGlobalSafe (s);
+        } });
+    for (int f = 0; f < 8; ++f)
+        columns[5].items.push_back ({ "FX " + juce::String (f + 1), [&show, f] { return (show.getGlobalSafe().fx & (juce::uint64 (1) << f)) != 0; }, [&show, f]
+        {
+            auto s = show.getGlobalSafe();
+            s.fx ^= juce::uint64 (1) << f;
+            show.setGlobalSafe (s);
+        } });
+    return columns;
+}
+
+void Display::paintSafeColumns (juce::Graphics& g, juce::Rectangle<float> r, const std::vector<SafeColumn>& columns, const int* cursor, const juce::String& footer)
+{
+    // A column of check boxes per encoder, the one it points at marked.
+    if (footer.isNotEmpty())
+    {
+        g.setColour (kDeepText);
+        g.setFont (type::font (10.0f));
+        g.drawFittedText (footer, r.removeFromBottom (14.0f).toNearestInt(), juce::Justification::centredLeft, 1, 0.8f);
+        r.removeFromBottom (2.0f);
+    }
+    const float w = r.getWidth() / (float) columns.size();
+    size_t most = 1;
+    for (auto& c : columns)
+        most = std::max (most, c.items.size());
+    for (size_t c = 0; c < columns.size(); ++c)
+    {
+        auto col = block (g, r.removeFromLeft (w).reduced (2.0f, 0.0f), columns[c].title).reduced (2.0f, 1.0f);
+        const auto& items = columns[c].items;
+        // Every box when they fit at 9 px or more; else scrolled at 14.
+        const float fit = col.getHeight() / (float) most;
+        const float rowH = fit >= 9.0f ? juce::jmin (14.0f, fit) : 14.0f;
+        const int rows = juce::jmax (1, (int) (col.getHeight() / rowH));
+        const int at = cursor[c];
+        const int n = (int) items.size();
+        const int from = juce::jlimit (0, juce::jmax (0, n - rows), at - rows / 2);
+        for (int i = from; i < juce::jmin (n, from + rows); ++i)
+        {
+            auto row = col.removeFromTop (rowH);
+            if (i == at)
+            {
+                g.setColour (kDeep.withAlpha (0.35f));
+                g.fillRect (row);
+            }
+            checkBox (g, row.reduced (1.0f), items[(size_t) i].label, items[(size_t) i].on());
+        }
+    }
+}
+
+void Display::paintScenes (juce::Graphics& g, juce::Rectangle<int> r)
+{
+    auto& show = ctx.show;
+    juce::StringArray left, right;
+    if (tab == 0 || tab == 1)
+    {
+        // The scenes around the one picked; the current one starred, the
+        // others' encoders' picks named.
+        const int n = show.getNumScenes(), current = show.getCurrentSceneIndex();
+        auto area = r.reduced (12);
+        if (tab == 1)
+        {
+            // The save safes beside the list, the import file and status below.
+            auto side = area.removeFromRight (area.getWidth() / 3).toFloat();
+            area.removeFromRight (8);
+            auto box = block (g, side, "SAVE SAFES").reduced (3.0f, 1.0f);
+            const float rowH = juce::jmin (14.0f, box.getHeight() / (float) state::kNumSections);
+            for (int k = 0; k < state::kNumSections; ++k)
+            {
+                auto row = box.removeFromTop (rowH);
+                if (k == saveSafeRow)
+                {
+                    g.setColour (kDeep.withAlpha (0.35f));
+                    g.fillRect (row);
+                }
+                checkBox (g, row.reduced (1.0f), juce::String (state::sectionName (state::sectionAt (k))), (saveSafes & (juce::uint32) state::sectionAt (k)) != 0);
+            }
+            if (sceneStatus.isNotEmpty())
+            {
+                g.setColour (kDeepText);
+                g.setFont (type::font (10.0f));
+                g.drawFittedText (sceneStatus, area.removeFromBottom (14), juce::Justification::centredLeft, 1, 0.8f);
+            }
+        }
+        const int rows = juce::jmax (1, (area.getHeight() - 4) / 22);
+        const int from = juce::jlimit (0, juce::jmax (0, n + (tab == 1 ? 1 : 0) - rows), selectedScene - rows / 2);
+        for (int i = from; i < juce::jmin (n + (tab == 1 ? 1 : 0), from + rows); ++i)
+        {
+            const auto scene = show.getScene (i);
+            juce::StringArray marks;
+            if (tab == 0 && i == skipScene)
+                marks.add ("SKIP?");
+            if (tab == 1 && i == sceneSlot)
+                marks.add ("SAVE");
+            if (tab == 1 && i == editScene)
+                marks.add ("EDIT");
+            left.add ((i == selectedScene ? "> " : "  ") + two (i + 1) + (i == current ? "  *" : "") + "  " + (scene.has_value() ? scene->name : juce::String ("(empty)")));
+            right.add ((scene.has_value() && scene->skip ? "SKIPPED  " : "") + marks.joinIntoString (" "));
+        }
+        if (left.isEmpty())
+        {
+            left.add ("No scenes");
+            right.add (tab == 0 ? "NEW adds one" : "SAVE into 01");
+        }
+        paintRows (g, area, left, right);
+        return;
+    }
+    if (tab == 2)
+    {
+        // The selected scene's snippets; FIRE marks those recalled with it.
+        const auto scene = show.getScene (selectedScene);
+        left.add ("SCENE " + two (selectedScene + 1));
+        right.add (scene.has_value() ? scene->name : juce::String ("-"));
+        const int n = scene.has_value() ? scene->numSnippets : 0;
+        for (int k = 0; k < n; ++k)
+            if (const auto snip = show.getSnippet (selectedScene, k))
+            {
+                left.add ((k == selectedSnippet ? "> " : "  ") + two (k + 1) + (snip->fireWithScene ? "  FIRE" : ""));
+                right.add (snip->name);
+            }
+        if (n == 0)
+        {
+            left.add ("No snippets");
+            right.add ("NEW makes one of the selected strip");
+        }
+        paintRows (g, r.reduced (12), left, right);
+        return;
+    }
+    if (tab == 3)
+    {
+        paintSafeColumns (g, r.reduced (10).toFloat(), paramSafeColumns(), safeRows.data(), "Sidecar's parameter safes hold for inputs and buses alike.");
+        return;
+    }
+    if (tab == 4)
+    {
+        paintSafeColumns (g, r.reduced (10).toFloat(), chanSafeColumns(), safeRows.data() + 4, {});
+        return;
+    }
+    // MIDI: each scene and what its recall sends.
+    const int n = show.getNumScenes();
+    const int rows = juce::jmax (1, (r.getHeight() - 24) / 24);
+    const int from = juce::jlimit (0, juce::jmax (0, n - rows), selectedScene - rows / 2);
+    for (int i = from; i < juce::jmin (n, from + rows); ++i)
+    {
+        const auto scene = show.getScene (i);
+        const auto m = parseSceneMidi (scene->midi);
+        left.add ((i == selectedScene ? "> " : "  ") + two (i + 1) + "  " + scene->name);
+        right.add (m.kind < 0 ? scene->midi
+                   : m.kind == 0 ? juce::String ("-")
+                   : (m.kind == 1 ? "PRG " : m.kind == 2 ? "CC " : "NOTE ") + juce::String (m.number) + (m.kind > 1 ? " / " + juce::String (m.value) : juce::String())
+                         + "  CH " + juce::String (m.channel));
+    }
+    if (n == 0)
+    {
+        left.add ("No scenes");
+        right.add ("-");
+    }
+    paintRows (g, r.reduced (12), left, right);
 }
 
 const juce::StringArray& Display::scribbleNames()
@@ -1226,115 +1739,9 @@ void Display::assignEncoders()
         encoders[0] = encoder ({}, "FREEZE", [&engine] { auto a = engine.getAnalysis(); a.setFrozen (! a.isFrozen()); },
                                [&engine] { return engine.getAnalysis().isFrozen(); });
     }
-    else if (screen == Screen::Scenes && tab == 0)
-    {
-        // SCENES (p.65): a scene picked by the first encoder, GO; PREV, NEXT,
-        // SAVE into it, SKIP it, a NEW one at the end.
-        auto& show = ctx.show;
-        KnobBinding scene;
-        scene.label = "SCENE";
-        scene.get = [this, &show] { return show.getNumScenes() > 1 ? (float) selectedScene / (float) (show.getNumScenes() - 1) : 0.0f; };
-        scene.set = [this, &show] (float v) { selectedScene = juce::roundToInt (v * (float) juce::jmax (0, show.getNumScenes() - 1)); repaint(); };
-        scene.text = [this] { return juce::String (selectedScene + 1).paddedLeft ('0', 2); };
-        scene.steps = (float) juce::jmax (2, show.getNumScenes());
-        const auto valid = [this, &show] { return juce::isPositiveAndBelow (selectedScene, show.getNumScenes()); };
-        encoders[0] = encoder (scene, "GO", [&show, this, valid] { if (valid()) show.recallScene (selectedScene); });
-        encoders[1] = encoder ({}, "PREV", [&show] { show.recallPrevious(); });
-        encoders[2] = encoder ({}, "NEXT", [&show] { show.recallNext(); });
-        encoders[3] = encoder ({}, "SAVE", [&show, this, valid] { if (valid()) show.storeScene (selectedScene); });
-        encoders[4] = encoder ({}, "SKIP", [&show, this, valid]
-        {
-            if (valid())
-                show.setSceneSkip (selectedScene, ! show.getScene (selectedScene)->skip);
-        }, [&show, this, valid] { return valid() && show.getScene (selectedScene)->skip; });
-        encoders[5] = encoder ({}, "NEW", [&show, this]
-        {
-            selectedScene = show.addScene ("Scene " + juce::String (show.getNumScenes() + 1).paddedLeft ('0', 2));
-            assignEncoders();
-        });
-    }
-    else if (screen == Screen::Scenes && tab == 1)
-    {
-        // SNIPPETS (p.66): the selected scene's (an X32's belong to the show,
-        // Sidecar's to a scene): one picked, GO recalls it, SAVE stores the
-        // console into it, NEW makes one of the selected strip, FIRE recalls it
-        // with its scene, DELETE.
-        auto& show = ctx.show;
-        const auto scene = show.getScene (selectedScene);
-        const int n = scene.has_value() ? scene->numSnippets : 0;
-        selectedSnippet = juce::jlimit (0, juce::jmax (0, n - 1), selectedSnippet);
-        const auto valid = [this, &show]
-        {
-            const auto sc = show.getScene (selectedScene);
-            return sc.has_value() && juce::isPositiveAndBelow (selectedSnippet, sc->numSnippets);
-        };
-        KnobBinding pick;
-        pick.label = "SNIPPET";
-        pick.get = [this, n] { return n > 1 ? (float) selectedSnippet / (float) (n - 1) : 0.0f; };
-        pick.set = [this, n] (float v) { selectedSnippet = juce::roundToInt (v * (float) juce::jmax (0, n - 1)); repaint(); };
-        pick.text = [this, n] { return n == 0 ? juce::String ("-") : juce::String (selectedSnippet + 1).paddedLeft ('0', 2); };
-        pick.steps = (float) juce::jmax (2, n);
-        encoders[0] = encoder (pick, "GO", [this, &show, valid] { if (valid()) show.recallSnippet (selectedScene, selectedSnippet); });
-        encoders[1] = encoder ({}, "SAVE", [this, &show, valid] { if (valid()) show.storeSnippet (selectedScene, selectedSnippet); repaint(); });
-        encoders[2] = encoder ({}, "NEW", [this, &show]
-        {
-            auto* st = selected();
-            if (st == nullptr || ! juce::isPositiveAndBelow (selectedScene, show.getNumScenes()))
-                return;
-            selectedSnippet = show.addSnippet (selectedScene, st->getLabel(), state::AllSections & ~(juce::uint32) state::Routing, { state::StripRef::of (*st) });
-            assignEncoders();
-        });
-        encoders[3] = encoder ({}, "FIRE", [this, &show, valid]
-        {
-            if (valid())
-                show.setSnippetFireWithScene (selectedScene, selectedSnippet, ! show.getSnippet (selectedScene, selectedSnippet)->fireWithScene);
-            repaint();
-        }, [this, &show, valid] { return valid() && show.getSnippet (selectedScene, selectedSnippet)->fireWithScene; });
-        encoders[5] = encoder ({}, "DELETE", [this, &show, valid]
-        {
-            if (valid())
-                show.removeSnippet (selectedScene, selectedSnippet);
-            assignEncoders();
-        });
-    }
-    else if (screen == Screen::Scenes && tab == 3)
-    {
-        // CHAN SAFE (p.66): the strips a scene recall leaves alone.
-        const auto strips = recallStrips();
-        const int n = (int) strips.size();
-        safeStrip = juce::jlimit (0, juce::jmax (0, n - 1), safeStrip);
-        KnobBinding pick;
-        pick.label = "CHANNEL";
-        pick.get = [this, n] { return n > 1 ? (float) safeStrip / (float) (n - 1) : 0.0f; };
-        pick.set = [this, n] (float v) { safeStrip = juce::roundToInt (v * (float) juce::jmax (0, n - 1)); assignEncoders(); };
-        pick.text = [this, strips] { return juce::isPositiveAndBelow (safeStrip, (int) strips.size()) ? strips[(size_t) safeStrip]->getLabel() : juce::String ("-"); };
-        pick.steps = (float) juce::jmax (2, n);
-        Strip* st = juce::isPositiveAndBelow (safeStrip, n) ? strips[(size_t) safeStrip] : nullptr;
-        encoders[0] = encoder (pick, "SAFE", [this, st] { if (st != nullptr) st->params.recallSafe = ! st->params.recallSafe.load(); repaint(); },
-                               [st] { return st != nullptr && st->params.recallSafe.load(); });
-        encoders[5] = encoder ({}, "CLEAR ALL", [this, strips]
-        {
-            for (auto* s : strips)
-                s->params.recallSafe = false;
-            repaint();
-        });
-    }
     else if (screen == Screen::Scenes)
     {
-        // PARAM SAFE (p.66): the sections a recall leaves alone.
-        KnobBinding section;
-        section.label = "SECTION";
-        section.get = [this] { return (float) safeSection / (float) (state::kNumSections - 1); };
-        section.set = [this] (float v) { safeSection = juce::roundToInt (v * (float) (state::kNumSections - 1)); repaint(); };
-        section.text = [this] { return juce::String (state::sectionName (state::sectionAt (safeSection))).toUpperCase(); };
-        section.steps = (float) state::kNumSections;
-        auto& show = ctx.show;
-        encoders[0] = encoder (section, "SAFE", [this, &show]
-        {
-            auto safe = show.getGlobalSafe();
-            safe.sections ^= (juce::uint32) state::sectionAt (safeSection);
-            show.setGlobalSafe (safe);
-        }, [this, &show] { return (show.getGlobalSafe().sections & (juce::uint32) state::sectionAt (safeSection)) != 0; });
+        assignScenesEncoders();
     }
     else if (screen == Screen::Assign && assignCode && setAssignCode)
     {
@@ -2872,72 +3279,8 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
             break;
         }
         case Screen::Scenes:
-        {
-            auto& show = ctx.show;
-            juce::StringArray left, right;
-            if (tab == 0)
-            {
-                // The scenes around the one the first encoder points at; the current one marked.
-                const int n = show.getNumScenes(), current = show.getCurrentSceneIndex();
-                const int rows = juce::jmax (1, (r.getHeight() - 24) / 26);
-                const int from = juce::jlimit (0, juce::jmax (0, n - rows), selectedScene - rows / 2);
-                for (int i = from; i < juce::jmin (n, from + rows); ++i)
-                {
-                    const auto scene = show.getScene (i);
-                    left.add ((i == selectedScene ? "> " : "  ") + juce::String (i + 1).paddedLeft ('0', 2) + (i == current ? "  *" : ""));
-                    right.add ((scene.has_value() ? scene->name : juce::String()) + (scene.has_value() && scene->skip ? "  (SKIP)" : ""));
-                }
-                if (n == 0)
-                {
-                    left.add ("No scenes");
-                    right.add ("NEW adds one");
-                }
-            }
-            else if (tab == 1)
-            {
-                // The selected scene's snippets; FIRE marks those recalled with it.
-                const auto scene = show.getScene (selectedScene);
-                left.add ("SCENE " + juce::String (selectedScene + 1).paddedLeft ('0', 2));
-                right.add (scene.has_value() ? scene->name : juce::String ("-"));
-                const int n = scene.has_value() ? scene->numSnippets : 0;
-                for (int k = 0; k < n; ++k)
-                    if (const auto snip = show.getSnippet (selectedScene, k))
-                    {
-                        left.add ((k == selectedSnippet ? "> " : "  ") + juce::String (k + 1).paddedLeft ('0', 2) + (snip->fireWithScene ? "  FIRE" : ""));
-                        right.add (snip->name);
-                    }
-                if (n == 0)
-                {
-                    left.add ("No snippets");
-                    right.add ("NEW makes one of the selected strip");
-                }
-            }
-            else if (tab == 3)
-            {
-                // The strips around the one picked, SAFE those a recall leaves alone.
-                const auto strips = recallStrips();
-                const int n = (int) strips.size();
-                const int rows = juce::jmax (1, (r.getHeight() - 24) / 26);
-                const int from = juce::jlimit (0, juce::jmax (0, n - rows), safeStrip - rows / 2);
-                for (int i = from; i < juce::jmin (n, from + rows); ++i)
-                {
-                    left.add ((i == safeStrip ? "> " : "  ") + strips[(size_t) i]->getLabel() + "  " + strips[(size_t) i]->getName());
-                    right.add (strips[(size_t) i]->params.recallSafe.load() ? "SAFE" : "-");
-                }
-            }
-            else
-            {
-                const auto safe = show.getGlobalSafe().sections;
-                for (int k = 0; k < state::kNumSections; ++k)
-                {
-                    const auto section = state::sectionAt (k);
-                    left.add ((k == safeSection ? "> " : "  ") + juce::String (state::sectionName (section)).toUpperCase());
-                    right.add ((safe & (juce::uint32) section) != 0 ? "SAFE" : "-");
-                }
-            }
-            paintRows (g, r.reduced (12), left, right);
+            paintScenes (g, r);
             break;
-        }
         case Screen::Assign:
         {
             const auto lines = assignLines ? assignLines() : juce::StringArray();

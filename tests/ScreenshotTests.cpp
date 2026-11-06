@@ -1144,12 +1144,37 @@ private:
             using S = ui::x32::Display::Screen;
             display.showScreen (S::Scenes);
             const int scenesBefore = rig.show.getNumScenes();
-            display.pushEncoder (5); // NEW
+            display.pushEncoder (2); // NEW
             expectEquals (rig.show.getNumScenes(), scenesBefore + 1);
             display.pushEncoder (0); // GO
             expectEquals (rig.show.getCurrentSceneIndex(), scenesBefore);
             // SNIPPETS: NEW of the selected strip, FIRE with its scene, GO, DELETE.
+            // SCENES: SAVE into a new slot without the EQ (a save safe); EXPORT, IMPORT.
             display.showScreen (S::Scenes, 1);
+            display.getEncoder (5).turn.set ((float) [] { for (int k = 0; k < state::kNumSections; ++k) if (state::sectionAt (k) == state::Eq) return k; return 0; }()
+                                             / (float) (state::kNumSections - 1));
+            display.pushEncoder (5); // EQ safe
+            const int saved = display.saveScene (rig.show.getNumScenes(), "Saved", "a note");
+            expectEquals (rig.show.getScene (saved)->name, juce::String ("Saved"));
+            expectEquals (rig.show.getScene (saved)->notes, juce::String ("a note"));
+            expect ((rig.show.getScene (saved)->scope & (juce::uint32) state::Eq) == 0, "EQ left out");
+            display.pushEncoder (5);
+            rig.show.removeScene (saved);
+            // MIDI: a program change on channel 3.
+            display.showScreen (S::Scenes, 5);
+            display.getEncoder (1).turn.set (1.0f / 3.0f);
+            expectEquals (display.getEncoder (1).turn.text(), juce::String ("PRG CHANGE"));
+            display.getEncoder (2).turn.set (2.0f / 15.0f);
+            display.getEncoder (3).turn.set (5.0f / 127.0f);
+            expectEquals (rig.show.getScene (scenesBefore)->midi, juce::String ("C2 05"));
+            {
+                const auto m = ui::x32::Display::parseSceneMidi ("B0,07,64");
+                expect (m.kind == 2 && m.channel == 1 && m.number == 7 && m.value == 100);
+                expectEquals (ui::x32::Display::parseSceneMidi ("U:C005").kind, -1);
+            }
+            display.getEncoder (1).turn.set (0.0f);
+            expect (rig.show.getScene (scenesBefore)->midi.isEmpty());
+            display.showScreen (S::Scenes, 2);
             display.pushEncoder (2); // NEW
             expectEquals (rig.show.getScene (scenesBefore)->numSnippets, 1);
             display.pushEncoder (3); // FIRE
@@ -1159,19 +1184,29 @@ private:
             expectEquals (rig.show.getScene (scenesBefore)->numSnippets, 2);
             display.pushEncoder (5); // DELETE the second
             expectEquals (rig.show.getScene (scenesBefore)->numSnippets, 1);
-            display.showScreen (S::Scenes, 2);
-            display.pushEncoder (0); // the first section safe
-            expect (rig.show.getGlobalSafe().sections != 0);
+            // PARAM SAFE: HA (the preamp) safe; the console's column.
+            display.showScreen (S::Scenes, 3);
+            display.pushEncoder (0);
+            expect (rig.show.getGlobalSafe().sections == (juce::uint32) state::Preamp);
             display.pushEncoder (0);
             expect (rig.show.getGlobalSafe().sections == 0);
-            // CHAN SAFE: CH 2 safe, then all clear.
-            display.showScreen (S::Scenes, 3);
-            display.getEncoder (0).turn.set (1.0f / (float) (display.recallStrips().size() - 1));
+            display.pushEncoder (3);
+            expect (rig.show.getGlobalSafe().console);
+            display.pushEncoder (3);
+            expect (! rig.show.getGlobalSafe().console);
+            // CHAN SAFE: CH 2 in column 1, FX 3 in column 6.
+            display.showScreen (S::Scenes, 4);
+            display.getEncoder (0).turn.set (1.0f / 15.0f);
             expectEquals (display.getEncoder (0).turn.text(), channels[1]->getLabel());
             display.pushEncoder (0);
             expect (channels[1]->params.recallSafe.load());
-            display.pushEncoder (5);
+            display.pushEncoder (0);
             expect (! channels[1]->params.recallSafe.load());
+            display.getEncoder (5).turn.set (2.0f / 7.0f);
+            display.pushEncoder (5);
+            expect (rig.show.getGlobalSafe().fx == 4u);
+            display.pushEncoder (5);
+            expect (rig.show.getGlobalSafe().fx == 0u);
             // HOME gate's second layer: the key's source; METERS' RTA; ASSIGN's codes.
             display.showScreen (S::Home, 2);
             display.setLayer (1);
@@ -1198,7 +1233,8 @@ private:
             display.pushEncoder (4);
             if (folder.isNotEmpty())
             {
-                const std::tuple<S, int, const char*> pages[] = { { S::Scenes, 0, "scenes" }, { S::Scenes, 1, "snippets" }, { S::Scenes, 2, "param-safe" }, { S::Scenes, 3, "chan-safe" }, { S::Monitor, 0, "monitor" },
+                const std::tuple<S, int, const char*> pages[] = { { S::Scenes, 0, "scenes" }, { S::Scenes, 1, "scenes-tab" }, { S::Scenes, 2, "snippets" }, { S::Scenes, 3, "param-safe" },
+                                                                  { S::Scenes, 4, "chan-safe" }, { S::Scenes, 5, "scenes-midi" }, { S::Monitor, 0, "monitor" },
                                                                   { S::Monitor, 1, "talk-a" }, { S::Monitor, 3, "osc" }, { S::Assign, 0, "assign" },
                                                                   { S::Usb, 0, "usb" }, { S::Setup, 4, "scribble" }, { S::Setup, 5, "preamps" }, { S::Setup, 1, "setup-config" },
                                                                   { S::Setup, 3, "network" }, { S::Setup, 6, "card" },
