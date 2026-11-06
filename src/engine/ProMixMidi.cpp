@@ -34,32 +34,12 @@ void ProMixMidi::loadSettings (juce::PropertiesFile& p)
 
 juce::String ProMixMidi::getSetupText() const
 {
-    ld::LdProMixSetup s {};
-    ld::ld_promix_get_setup (promix.getHandle(), &s);
-    juce::StringArray v { juce::String (s.txChannel + 1), juce::String (s.rxChannel + 1) };
-    for (const auto& kind : s.switches)
-        for (auto x : kind)
-            v.add (juce::String ((int) x));
-    v.add (juce::String ((int) s.registerMode));
-    v.add (juce::String ((int) s.interval));
-    return v.joinIntoString (" ");
+    return promix.getSetupText();
 }
 
 void ProMixMidi::setSetupText (const juce::String& text)
 {
-    juce::StringArray v;
-    v.addTokens (text, " ", "");
-    v.removeEmptyStrings();
-    if (v.size() < 16)
-        return; // the defaults: channel 1, everything on, Channel mode
-    ld::LdProMixSetup s {};
-    s.txChannel = v[0].getIntValue() - 1;
-    s.rxChannel = v[1].getIntValue() - 1;
-    for (int k = 0; k < 12; ++k)
-        s.switches[k / 4][k % 4] = (uint8_t) (v[2 + k].getIntValue() != 0);
-    s.registerMode = (uint8_t) (v[14].getIntValue() != 0);
-    s.interval = (uint8_t) juce::jlimit (0, 10, v[15].getIntValue());
-    ld::ld_promix_set_setup (promix.getHandle(), &s);
+    promix.setSetupText (text);
 }
 
 void ProMixMidi::handleMessage (int port, const juce::MidiMessage& m)

@@ -122,7 +122,7 @@ namespace promix
         /** MIDI's LOCAL ON/OFF page with Local OFF (p.86): the faders and CH1-16
             [SEL] control nothing here; a fader's move goes out as its control
             change, a [SEL] as a program change. Only while the page shows. */
-        bool isLocalOff() const noexcept { return localOff && function == Function::Midi && page == 4; }
+        bool isLocalOff() const noexcept { return localOff && function == Function::Midi && page == 5; } // LOCAL ON/OFF, the MIDI menu's fifth item
         void localMoved (int fader, int value);
         void localSelected (int ch);
 
@@ -201,6 +201,8 @@ namespace promix
             int rows = 0;
             /** Its row in the page's scrolling list (`scrollArea`; -1: none). */
             int scroll = -1;
+            /** A list that goes round (the scene memories: 50, 00, 01...). */
+            bool wrap = false;
         };
 
         const std::vector<Field>& getFields() const noexcept { return fields; }
@@ -211,6 +213,9 @@ namespace promix
         Field paramField (int n, juce::Rectangle<float> box, bool onEnter = false);
         /** EXIT: the function's first page again. */
         Field exitField (juce::Rectangle<float> box);
+        /** A menu's list (UTILITY's, MIDI's); MIDI's item as its page's build index (-1: the menu). */
+        void menu (const char* const* items, int count);
+        int midiPage() const;
         /** An EDIT page's program line and rule; COMP EDIT's gain curve. */
         void paintEditHeader (juce::Graphics&, juce::Rectangle<float> area, const juce::String& name, float width) const;
         void paintGainCurve (juce::Graphics&, juce::Rectangle<float>) const;
@@ -235,6 +240,8 @@ namespace promix
         ProMix& pm;
         Function function = Function::Meter;
         int page = 0, processor = 0, eqStrip = 0, focus = 0;
+        /** The menu's item last opened (UTILITY, MIDI). */
+        int menuChoice = 0;
         /** An EDIT page's scrolling list: where it is (0..1 of the page), how
             many rows show, and the first one shown (follows the cursor). */
         juce::Rectangle<float> scrollArea;

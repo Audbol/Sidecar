@@ -197,6 +197,11 @@ namespace promix
 
     Display::~Display() = default;
 
+    /** The UTILITY and MIDI menus, as p.96's map lists them. */
+    const char* const kUtilityItems[] = { "OSCILLATOR", "SEND3,4 CONFIGURATION", "OUTPUT COMP PATCH POINT", "MEMORY PROTECT", "BATTERY CHECK" };
+    const char* const kMidiItems[] = { "MIDI SETUP", "PROGRAM CHANGE ASSIGN", "CONTROL CHANGE ASSIGN", "BULK DUMP/REQUEST", "LOCAL ON/OFF",
+                                       "MEMORY CONTROL CHANGE OUT" };
+
     void Display::setFunction (Function f)
     {
         if (f == function)
@@ -209,6 +214,8 @@ namespace promix
                 function = Function::Pan;
             else if (f == Function::Group)
                 pm.set (kGroupSelect, (juce::jmax (0, pm.get (kGroupSelect)) + 1) % 4);
+            else if (f == Function::Utility || f == Function::Midi)
+                page = 0; // its key again: the menu (pp.65, 81)
             else if (f == Function::EqLow || f == Function::EqMid || f == Function::EqHigh)
             {
                 const int band = f == Function::EqLow ? 0 : f == Function::EqMid ? 1 : 2;
@@ -234,8 +241,9 @@ namespace promix
     {
         switch (function)
         {
-            case Function::Utility: return 4; // SEND3,4 / OUTPUT COMP, OSCILLATOR, MEMORY PROTECT, BATTERY CHECK
-            case Function::Midi:    return 6; // MIDI SETUP, BULK, PROGRAM CHANGE ASSIGN, CONTROL CHANGE ASSIGN, LOCAL ON/OFF, MEMORY CC OUT
+            // The menu (page 0), then its items in the map's order (p.96).
+            case Function::Utility: return 1 + (int) std::size (kUtilityItems);
+            case Function::Midi:    return 1 + (int) std::size (kMidiItems);
             case Function::Meter:
             case Function::Send1:
             case Function::Send2:
@@ -746,23 +754,38 @@ namespace promix
             {
                 if (page == 0)
                 {
-                    // SEND3,4 CONFIGURATION: the flag shown, the Execute set by ENTER
-                    // (p.46); OUTPUT COMP PATCH POINT (p.75); PAN's GANG.
-                    auto mode = paramField (kSend34Exec, { 0.1f, 0.26f, 0.7f, 0.16f }, true);
+                    menu (kUtilityItems, (int) std::size (kUtilityItems));
+                    break;
+                }
+                const int item = page - 1;
+                if (item == 1)
+                {
+                    // SEND3,4 CONFIGURATION (p.46): the flag shown, the Execute set by ENTER.
+                    auto mode = paramField (kSend34Exec, { 0.1f, 0.4f, 0.7f, 0.16f }, true);
                     auto& p = pm;
                     mode.text = [&p] { return p.text (kSend34Flag); };
                     mode.get = [&p] { return p.get (kSend34Flag); };
-                    mode.label = "SEND3,4 MODE";
+                    mode.label = "MODE";
                     mode.style = Field::Style::Inline;
                     fields.push_back (std::move (mode));
-                    // OUTPUT COMP PATCH POINT's three, and PAN's mode, on lines under it.
-                    row ({ 512, 513, kPatchPointSt }, 0.52f, 0.16f, 0.0f, 0.9f);
-                    for (size_t k = 1; k < 4; ++k)
-                        fields[k].style = Field::Style::Inline;
-                    fields.push_back (paramField (kPanMode, { 0.0f, 0.74f, 0.5f, 0.16f }));
-                    fields.back().style = Field::Style::Inline;
                 }
-                else if (page == 1)
+                else if (item == 2)
+                {
+                    // OUTPUT COMP PATCH POINT (p.74): SEND3, SEND4 and STEREO, PRE or POST FADER.
+                    const std::pair<int, const char*> points[] = { { 512, "SEND3" }, { 513, "SEND4" }, { kPatchPointSt, "STEREO" } };
+                    float y = 0.34f;
+                    for (auto [n, name] : points)
+                    {
+                        auto f = paramField (n, { 0.1f, y, 0.7f, 0.15f });
+                        auto& p = pm;
+                        f.text = [&p, n] { return p.text (n) + " FADER"; };
+                        f.label = name;
+                        f.style = Field::Style::Inline;
+                        fields.push_back (std::move (f));
+                        y += 0.15f;
+                    }
+                }
+                else if (item == 0)
                 {
                     // OSCILLATOR (p.90): ON, LEVEL, FREQ, and where it goes.
                     // As p.90's picture: ASSIGN's three, OSC: and FREQ: down the left;
@@ -779,13 +802,12 @@ namespace promix
                         fields[k].style = k == 1 ? Field::Style::Fader : Field::Style::Inline;
                     }
                 }
-                else if (page == 2)
+                else if (item == 3)
                 {
                     // MEMORY PROTECT (p.65): STORE refuses a protected memory.
                     for (int half = 0; half < 2; ++half)
                     {
                         Field f;
-                        f.label = half == 0 ? "MEMORY 01-25" : "MEMORY 26-50";
                         f.get = [this, half] { return isProtected && isProtected (half) ? 1 : 0; };
                         f.set = [this, half] (int v) { if (setProtected) setProtected (half, v != 0); };
                         f.steps = [] { return 2; };
@@ -800,12 +822,10 @@ namespace promix
                 {
                     // BATTERY CHECK (p.91): the memory's backup battery.
                     Field f;
-                    f.label = "BATTERY CHECK";
                     f.get = [] { return 0; };
                     f.set = [] (int) {};
                     f.steps = [] { return 1; };
                     f.text = [] { return juce::String ("Battery is OK!!"); };
-                    f.label = {};
                     f.style = Field::Style::Text;
                     f.box = { 0.04f, 0.42f, 0.9f, 0.18f };
                     fields.push_back (std::move (f));
@@ -814,7 +834,13 @@ namespace promix
             }
             case Function::Midi:
             {
-                if (page == 5)
+                if (page == 0)
+                {
+                    menu (kMidiItems, (int) std::size (kMidiItems));
+                    break;
+                }
+                const int mp = midiPage();
+                if (mp == 5)
                 {
                     // MEMORY CONTROL CHANGE OUT (p.87): the Edit Buffer's data types
                     // chosen, out as control changes; ENTER on OUTPUT executes it.
@@ -864,7 +890,7 @@ namespace promix
                     fields.push_back (std::move (out));
                     break;
                 }
-                if (page == 4)
+                if (mp == 4)
                 {
                     // LOCAL ON/OFF (p.86): with Local OFF the faders and CH1-16 [SEL]
                     // control another device (control and program changes), only
@@ -900,7 +926,7 @@ namespace promix
                     }
                     break;
                 }
-                if (page == 3)
+                if (mp == 3)
                 {
                     // CONTROL CHANGE ASSIGN (p.83): a parameter picked, its bank and
                     // controller (bank "--": none); the eight after it.
@@ -960,7 +986,7 @@ namespace promix
                     }
                     break;
                 }
-                if (page == 2)
+                if (mp == 2)
                 {
                     // PROGRAM CHANGE ASSIGN (p.82): a program picked, the memory it recalls; the twelve from it.
                     auto& p = pm;
@@ -1002,18 +1028,17 @@ namespace promix
                     }
                     break;
                 }
-                // MIDI SETUP (p.81): the protocol's own values, kept in the app settings.
-                auto* midi = dynamic_cast<ProMixMidi*> (ctx.consoleMidi);
-                if (midi == nullptr)
-                    break;
-                auto value = [midi] (int i) { juce::StringArray v; v.addTokens (midi->getSetupText(), " ", ""); return v[i].getIntValue(); };
-                auto setValue = [this, midi] (int i, int x)
+                // MIDI SETUP (p.81): the protocol's own values (the console's, with
+                // or without MIDI running), kept in the app settings.
+                auto& p = pm;
+                auto value = [&p] (int i) { juce::StringArray v; v.addTokens (p.getSetupText(), " ", ""); return v[i].getIntValue(); };
+                auto setValue = [this, &p] (int i, int x)
                 {
                     juce::StringArray v;
-                    v.addTokens (midi->getSetupText(), " ", "");
+                    v.addTokens (p.getSetupText(), " ", "");
                     v.set (i, juce::String (x));
-                    midi->setSetupText (v.joinIntoString (" "));
-                    ctx.settings.setValue (ProMixMidi::setupKey, midi->getSetupText());
+                    p.setSetupText (v.joinIntoString (" "));
+                    ctx.settings.setValue (ProMixMidi::setupKey, p.getSetupText());
                 };
                 auto field = [&] (const juce::String& label, int i, int steps, int offset, juce::Rectangle<float> box, std::function<juce::String (int)> text)
                 {
@@ -1028,7 +1053,7 @@ namespace promix
                 };
                 auto number = [] (int x) { return juce::String (x); };
                 auto onOff = [] (int x) { return juce::String (x != 0 ? "ON" : "OFF"); };
-                if (page == 1)
+                if (mp == 1)
                 {
                     // BULK (p.85): the interval between two dumps' messages.
                     field ("INTERVAL TIME", 15, 11, 0, { 0.04f, 0.76f, 0.7f, 0.16f }, [] (int x) { return juce::String (x * 100) + "ms"; });
@@ -1059,18 +1084,21 @@ namespace promix
                 // The memories 00-50, the current one "=", the chosen one in the
                 // middle (INC, DEC, the wheel); ENTER (or the key again) stores
                 // or recalls it.
+                // As pp.63-65: five memories, the list going round ("50.MEMORY50",
+                // "00.InitData", "01=InitData"), an empty one named MEMORYnn.
                 const bool store = function == Function::MemoryStore;
                 Field f;
-                f.label = store ? "MEMORY STORE" : "MEMORY RECALL";
                 f.get = [this] { return ctx.show.getCurrentSceneIndex() + 1; };
                 f.steps = [] { return 51; };
                 f.text = [] { return juce::String(); };
                 f.item = [this] (int m)
                 {
                     const auto t = memoryTitle ? memoryTitle (m) : juce::String();
-                    return juce::String (m).paddedLeft ('0', 2) + " " + (t.isEmpty() ? juce::String ("--------") : t)
-                         + (m > 0 && isProtected && isProtected (m <= 25 ? 0 : 1) ? "  PROTECT" : "");
+                    const auto nn = juce::String (m).paddedLeft ('0', 2);
+                    return nn + "." + (t.isEmpty() ? "MEMORY" + nn : t);
                 };
+                f.rows = 5;
+                f.wrap = true;
                 f.set = [this, store] (int m)
                 {
                     if (chooseMemory)
@@ -1080,33 +1108,70 @@ namespace promix
                 };
                 f.onEnter = true;
                 f.pending = chosenMemory ? chosenMemory() : 1;
-                f.box = { 0.0f, 0.0f, 0.62f, 1.0f };
+                f.box = { 0.02f, 0.22f, 0.44f, 0.78f };
                 fields.push_back (std::move (f));
                 break;
             }
             case Function::TitleEdit:
             {
-                // A memory's eight characters, or a program's fifteen: the cursor keys
-                // choose one, the wheel changes it, ENTER keeps the title.
+                // As pp.22 and 63: the name's characters on a line after its number
+                // ("31. USER LIBRARY 1", "01.InitData"), the cursor's inverted; the
+                // characters around it scroll in the box above; ENTER keeps the
+                // name, CANCEL leaves it.
                 const int n = nameLibrary < 0 ? 8 : 15;
-                const float w = nameLibrary < 0 ? 0.1f : 0.06f;
+                const float w = 0.026f;
                 for (int k = 0; k < n; ++k)
                 {
                     Field f;
-                    f.label = k == 0 ? (nameLibrary < 0 ? "TITLE " + juce::String (titleMemory).paddedLeft ('0', 2) : juce::String ("NAME ") + juce::String (nameProgram + 1))
-                                     : juce::String();
                     f.get = [this, k] { return titleChars[(size_t) k]; };
                     f.set = [this, k] (int v) { titleChars[(size_t) k] = v; };
                     f.steps = [] { return kTitleChars.length(); };
                     f.text = [this, k] { return juce::String::charToString (kTitleChars[titleChars[(size_t) k]]); };
-                    f.box = { 0.05f + w * (float) k, 0.3f, w, 0.34f };
+                    f.box = { 0.3f + w * (float) k, 0.5f, w, 0.2f };
+                    f.style = Field::Style::Bare;
                     fields.push_back (std::move (f));
                 }
+                Field cancel;
+                cancel.label = "CANCEL";
+                cancel.style = Field::Style::Button;
+                cancel.get = [] { return -1; };
+                cancel.steps = [] { return 1; };
+                cancel.text = [] { return juce::String(); };
+                cancel.set = [] (int) {};
+                cancel.box = { 0.78f, 0.8f, 0.2f, 0.2f };
+                fields.push_back (cancel);
                 break;
             }
         }
+        if ((function == Function::Utility || function == Function::Midi) && page > 0)
+            fields.push_back (exitField ({ 0.84f, 0.8f, 0.14f, 0.2f })); // back to the menu (pp.65, 81)
         focus = juce::jlimit (0, juce::jmax (0, (int) fields.size() - 1), focus);
         repaint();
+    }
+
+    void Display::menu (const char* const* items, int count)
+    {
+        // The UTILITY or MIDI menu (p.96's map; Sidecar's drawing): its items
+        // listed, ENTER opens the one chosen.
+        Field f;
+        f.get = [] { return -1; };
+        f.steps = [count] { return count; };
+        f.text = [] { return juce::String(); };
+        f.item = [items] (int i) { return juce::String (i + 1) + "." + items[i]; };
+        f.set = [this] (int i) { menuChoice = i; setPage (i + 1); };
+        f.onEnter = true;
+        f.pending = juce::jlimit (0, count - 1, menuChoice);
+        f.rows = 6;
+        f.box = { 0.02f, 0.18f, 0.8f, 0.82f };
+        fields.push_back (std::move (f));
+    }
+
+    int Display::midiPage() const
+    {
+        // MIDI's items in the menu's order, as the pages they were built as:
+        // 0 SETUP, 1 BULK, 2 PROGRAM CHANGE, 3 CONTROL CHANGE, 4 LOCAL, 5 MEMORY CC OUT.
+        static constexpr int pages[] = { 0, 2, 3, 1, 4, 5 };
+        return function == Function::Midi && page > 0 ? pages[juce::jlimit (0, 5, page - 1)] : -1;
     }
 
     void Display::cursor (int delta)
@@ -1151,6 +1216,20 @@ namespace promix
     {
         if (fields.empty())
             return;
+        if (function == Function::TitleEdit && fields[(size_t) focus].label == "CANCEL")
+        {
+            // CANCEL: back without the name (a memory already stored keeps its old one).
+            if (nameLibrary >= 0)
+            {
+                nameLibrary = -1;
+                function = nameFrom;
+                focus = 0;
+                build();
+            }
+            else
+                setFunction (Function::MemoryRecall);
+            return;
+        }
         if (function == Function::TitleEdit)
         {
             juce::String title;
@@ -1235,7 +1314,13 @@ namespace promix
         const char* names[] = { "METER", "PAN/\xc3\xb8", "PAN/\xc3\xb8", "COMP", "CUE", "SEND1", "SEND2", "SEND3", "SEND4", "EQ", "EQ", "EQ",
                                 "LIBRARY", "GROUP", "PAIR", "UTILITY", "MIDI", "STORE", "RECALL", "TITLE" };
         if (function == Function::TitleEdit && nameLibrary >= 0)
-            return "NAME";
+        {
+            // A program's name page keeps its function's name (pp.22, 36, 77).
+            const int from = (int) nameFrom;
+            return juce::String::fromUTF8 (names[juce::jlimit (0, (int) std::size (names) - 1, from)]);
+        }
+        if (function == Function::MemoryStore || function == Function::MemoryRecall || function == Function::TitleEdit)
+            return "SCENE MEMORY";
         return juce::String::fromUTF8 (names[(int) function]);
     }
 
@@ -1257,7 +1342,7 @@ namespace promix
             case Function::Midi:
                 return {}; // the page's name is its banner
             case Function::TitleEdit:
-                return nameLibrary < 0 ? "EDIT" : nameLibrary == ProMix::Eq ? "EQ PROGRAM" : nameLibrary == ProMix::Dynamics ? "COMP PROGRAM" : "EFFECT PROGRAM";
+                return nameLibrary == ProMix::Eq ? "EQ" : nameLibrary == ProMix::Dynamics ? "NO." + juce::String (nameTarget + 1) : juce::String();
             default: return {};
         }
     }
@@ -1324,9 +1409,10 @@ namespace promix
             }
             const float rowH = f.rows > 0 ? box.getHeight() / (float) f.rows : 22.0f;
             const int rows = f.rows > 0 ? f.rows : juce::jmax (1, (int) (box.getHeight() / rowH));
-            const int first = juce::jlimit (0, juce::jmax (0, count - rows), chosen - rows / 2);
-            for (int i = first; i < juce::jmin (count, first + rows); ++i)
+            const int first = f.wrap ? chosen - rows / 2 : juce::jlimit (0, juce::jmax (0, count - rows), chosen - rows / 2);
+            for (int j = first; j < (f.wrap ? first + rows : juce::jmin (count, first + rows)); ++j)
             {
+                const int i = count > 0 ? (j % count + count) % count : j;
                 auto r = box.removeFromTop (rowH);
                 const bool sel = i == chosen;
                 // The chosen one inverted under the cursor (pp.22, 32); a short
@@ -1758,7 +1844,7 @@ namespace promix
         auto fn = juce::Rectangle<float> (col.getX(), col.getY(), col.getWidth(), y1 - col.getY()).reduced (4.0f, 2.0f);
         const auto sub = subtitle();
         g.setFont (lcdFont (30.0f, true));
-        g.drawFittedText (title(), fn.removeFromTop (fn.getHeight() * (sub.isEmpty() ? 1.0f : 0.6f)).toNearestInt(), juce::Justification::centred, 1, 0.5f);
+        g.drawFittedText (title(), fn.removeFromTop (fn.getHeight() * (sub.isEmpty() ? 1.0f : 0.6f)).toNearestInt(), juce::Justification::centred, 2, 0.7f); // SCENE over MEMORY
         if (sub.isNotEmpty())
         {
             g.setFont (lcdFont (type::kLabel, true));
@@ -2084,9 +2170,9 @@ namespace promix
             case Function::Midi:
             {
                 // The page's name in a banner, hatched both sides (pp.81-91).
-                const char* utility[] = { "SEND3,4 CONFIGURATION", "OSCILLATOR", "MEMORY PROTECT", "BATTERY CHECK" };
-                const char* midi[] = { "MIDI SETUP", "BULK DUMP/REQUEST", "PROGRAM CHANGE ASSIGN", "CONTROL CHANGE ASSIGN", "LOCAL ON/OFF", "MEMORY CONTROL CHANGE OUT" };
-                const juce::String name = function == Function::Utility ? utility[juce::jlimit (0, 3, page)] : midi[juce::jlimit (0, 5, page)];
+
+
+                const juce::String name = page == 0 ? juce::String (function == Function::Utility ? "UTILITY MENU" : "MIDI MENU") : juce::String (function == Function::Utility ? kUtilityItems[juce::jlimit (0, 4, page - 1)] : kMidiItems[juce::jlimit (0, 5, page - 1)]);
                 auto banner = area.withHeight (area.getHeight() * 0.15f);
                 g.setFont (lcdFont (banner.getHeight() * 0.85f, true));
                 const float w = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), name) + 16.0f;
@@ -2130,7 +2216,7 @@ namespace promix
                     g.drawText ("34", labels.withWidth (bw * 2.0f).withX (m.getX()), juce::Justification::centred);
                     g.drawText ("ST", labels.withWidth (bw * 2.0f).withX (m.getX() + bw * 2.0f), juce::Justification::centred);
                 }
-                if (function == Function::Midi && page == 0 && fields.size() > 3)
+                if (midiPage() == 0 && fields.size() > 3)
                 {
                     // The table's heads and its kinds, ruled.
                     const char* heads[] = { "TX", "RX", "OMNI", "ECHO" };
@@ -2152,7 +2238,7 @@ namespace promix
                     }
                     g.drawRect (juce::Rectangle<float> (area.getX() + area.getWidth() * 0.22f, area.getY() + area.getHeight() * 0.42f, area.getWidth() * 0.6f, area.getHeight() * 0.42f), 1.5f);
                 }
-                if (function == Function::Midi && page == 2)
+                if (midiPage() == 2)
                 {
                     // PGM | MEM heads over the table's frame.
                     g.setFont (lcdFont (type::kValue + 1.0f, true));
@@ -2161,7 +2247,7 @@ namespace promix
                                                                          area.getWidth() * 0.25f, area.getHeight() * 0.11f), juce::Justification::centredLeft);
                     g.drawRect (juce::Rectangle<float> (area.getX() + area.getWidth() * 0.05f, area.getY() + area.getHeight() * 0.49f, area.getWidth() * 0.82f, area.getHeight() * 0.5f), 1.5f);
                 }
-                if (function == Function::Midi && page == 3)
+                if (midiPage() == 3)
                 {
                     // NO. NAME BANK NO. over the table's frame.
                     g.setFont (lcdFont (type::kValue + 1.0f, true));
@@ -2237,6 +2323,68 @@ namespace promix
                     lit += db >= mark ? 1 : 0;
                 g.setColour (kPixel);
                 g.fillRect (bar.withTop (bar.getBottom() - bar.getHeight() * (float) lit / 12.0f));
+                break;
+            }
+            case Function::MemoryStore:
+            case Function::MemoryRecall:
+            case Function::TitleEdit:
+            {
+                // ≡Press "RECALL" to recall.≡ (pp.63-65, 22): the line, its three bars both sides.
+                auto press = [&g] (juce::Rectangle<float> r, const juce::String& text)
+                {
+                    g.setColour (kPixel);
+                    g.setFont (lcdFont (type::kValue + 2.0f, true));
+                    const float w = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), text) + 12.0f;
+                    g.drawText (text, r.withSizeKeepingCentre (w, r.getHeight()), juce::Justification::centred);
+                    for (const float x : { r.getCentreX() - w * 0.5f - 14.0f, r.getCentreX() + w * 0.5f + 2.0f })
+                        for (int k = 0; k < 3; ++k)
+                            g.fillRect (x, r.getCentreY() - 5.0f + 4.0f * (float) k, 12.0f, 1.5f);
+                };
+                const bool title = function == Function::TitleEdit;
+                const auto top = area.withHeight (area.getHeight() * 0.18f);
+                if (! title)
+                {
+                    const bool store = function == Function::MemoryStore;
+                    press (top, store ? "Press \"STORE\" to store." : "Press \"RECALL\" to recall.");
+                    // The list's rule at its right; PROTECT over it when the chosen memory's group is protected.
+                    g.fillRect (area.getX() + area.getWidth() * 0.48f, area.getY() + area.getHeight() * 0.22f, 1.5f, area.getHeight() * 0.78f);
+                    const int m = chosenMemory ? chosenMemory() : 0;
+                    if (m > 0 && isProtected && isProtected (m <= 25 ? 0 : 1))
+                    {
+                        auto badge = juce::Rectangle<float> (area.getX() + area.getWidth() * 0.06f, area.getY() + area.getHeight() * 0.19f, area.getWidth() * 0.22f, 15.0f);
+                        g.fillRect (badge);
+                        g.setColour (kLcd);
+                        g.setFont (lcdFont (type::kCaption, true));
+                        g.drawText ("PROTECT", badge, juce::Justification::centred);
+                    }
+                    break;
+                }
+                press (top, "Press \"ENTER\" to store.");
+                // The characters around the cursor's, scrolling in a box (its own inverted).
+                const int at = juce::isPositiveAndBelow (focus, (int) fields.size()) && fields[(size_t) focus].label.isEmpty() ? fields[(size_t) focus].get() : -1;
+                auto strip = juce::Rectangle<float> (area.getX() + area.getWidth() * 0.3f, area.getY() + area.getHeight() * 0.24f, area.getWidth() * 0.46f, area.getHeight() * 0.2f);
+                g.setColour (kPixel);
+                g.drawRect (strip, 1.5f);
+                const int span = 15;
+                const float cw = strip.getWidth() / (float) span;
+                g.setFont (lcdFont (type::kValue + 2.0f, true));
+                for (int k = 0; k < span; ++k)
+                {
+                    const int c = at < 0 ? k : at - span / 2 + k;
+                    if (c < 0 || c >= kTitleChars.length())
+                        continue;
+                    auto cell = juce::Rectangle<float> (strip.getX() + cw * (float) k, strip.getY(), cw, strip.getHeight()).reduced (0.0f, 3.0f);
+                    g.setColour (kPixel);
+                    if (c == at)
+                        g.fillRect (cell);
+                    g.setColour (c == at ? kLcd : kPixel);
+                    g.drawText (juce::String::charToString (kTitleChars[c]), cell, juce::Justification::centred);
+                }
+                // The number before the name: "31. " (a program), "01." (a memory).
+                g.setColour (kPixel);
+                const auto number = nameLibrary >= 0 ? juce::String (nameProgram + 1) + ". " : juce::String (titleMemory).paddedLeft ('0', 2) + ".";
+                g.drawText (number, juce::Rectangle<float> (area.getX(), area.getY() + area.getHeight() * 0.5f, area.getWidth() * 0.3f - 2.0f, area.getHeight() * 0.2f),
+                            juce::Justification::centredRight);
                 break;
             }
             default:

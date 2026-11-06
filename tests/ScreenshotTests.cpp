@@ -659,20 +659,25 @@ private:
         display.enter();
         expect (display.getFunction() == F::MemoryRecall);
         expectEquals (rig.show.getScene (1)->name, juce::String ("TCENE 02"));
-        // MEMORY PROTECT (UTILITY's third page): STORE refuses a protected memory.
+        // MEMORY PROTECT, the UTILITY menu's fourth item (p.96): STORE refuses a
+        // protected memory. EXIT and the key again: the menu.
         skin.pressFunction (F::Utility);
-        skin.pressFunction (F::Utility);
-        skin.pressFunction (F::Utility);
-        expectEquals (display.getPage(), 2);
+        expectEquals (display.getPage(), 0, "the menu");
+        display.turn (3);
+        display.enter();
+        expectEquals (display.getPage(), 4);
         display.turn (1);
         skin.setMemory (3);
         display.setFunction (F::MemoryStore);
         display.enter();
         expectEquals (rig.show.getNumScenes(), 2, "protected");
         skin.pressFunction (F::Utility);
-        skin.pressFunction (F::Utility);
-        skin.pressFunction (F::Utility);
+        display.setPage (4);
         display.turn (-1);
+        display.cursor (-1);
+        expectEquals (display.getFields()[(size_t) display.getCursor()].label, juce::String ("EXIT"));
+        display.enter();
+        expectEquals (display.getPage(), 0, "EXIT: the menu");
         // EQ LIBRARY's STORE: user program 31, named, kept in the settings.
         skin.pressFunction (F::Library);
         display.cursor (1);
@@ -684,27 +689,23 @@ private:
         expect (display.getFunction() == F::Library);
         expectEquals (pm.programName (ProMix::Eq, 30), juce::String ("VSER LIBRARY 1"));
         expect (rig.settings.getValue (ui::ProMixSurface::libraryKey).contains ("VSER LIBRARY 1"));
-        // MIDI's third page, PROGRAM CHANGE ASSIGN: PGM 1 to memory 04, kept in the settings.
+        // PROGRAM CHANGE ASSIGN, the MIDI menu's second item: PGM 1 to memory 04, kept in the settings.
         skin.pressFunction (F::Midi);
-        skin.pressFunction (F::Midi);
-        skin.pressFunction (F::Midi);
-        expectEquals (display.getPage(), 2);
+        display.setPage (2);
         display.getFields()[1].set (5);
         expectEquals (pm.pcScene (0), 4);
         expect (rig.settings.getValue (ProMixMidi::pcKey).startsWith ("4 "));
         display.getFields()[1].set (2);
-        // CONTROL CHANGE ASSIGN (the fourth page): parameter 0's bank; MEMORY CC OUT (the fifth).
-        skin.pressFunction (F::Midi);
-        expectEquals (display.getPage(), 3);
+        // CONTROL CHANGE ASSIGN (the third item): parameter 0's bank.
+        display.setPage (3);
         const int cc0 = pm.ccCode (0);
         display.getFields()[1].set (3);
         expectEquals (pm.ccCode (0) >> 8, 3);
         expect (rig.settings.getValue (ProMixMidi::ccKey).isNotEmpty());
         pm.setCcCode (0, cc0);
-        // LOCAL ON/OFF (the fifth): Local OFF lets the faders and [SEL] go, only
+        // LOCAL ON/OFF (the fifth item): Local OFF lets the faders and [SEL] go, only
         // while the page shows; MEMORY CC OUT (the sixth): its data types.
-        skin.pressFunction (F::Midi);
-        expectEquals (display.getPage(), 4);
+        display.setPage (5);
         expect (! display.isLocalOff(), "ON at first");
         display.getFields()[0].set (0);
         expect (display.isLocalOff());
@@ -714,13 +715,12 @@ private:
         expectEquals (display.getFields()[2 + 3].text(), juce::String ("40"));
         skin.pressSel (3);
         expect (display.getFields()[1].text().isNotEmpty(), "a [SEL]: its program change");
-        skin.pressFunction (F::Midi);
-        expectEquals (display.getPage(), 5);
+        display.setPage (6);
         expect (! display.isLocalOff(), "only while LOCAL ON/OFF shows");
         expectEquals (display.getFields()[2].label, juce::String ("LEVEL"));
         display.getFields()[2].set (0);
         expectEquals (display.getFields()[2].text(), juce::String ("OFF"));
-        expectEquals (display.getFields().back().textOf (0), juce::String ("EXECUTE"));
+        expectEquals (display.getFields()[9].textOf (0), juce::String ("EXECUTE"));
         // GROUP's BAL ADJ: ENTER, off again when GROUP goes.
         skin.pressFunction (F::Group);
         display.enter();
@@ -742,9 +742,9 @@ private:
                 juce::PNGImageFormat().writeImageToStream (lcd, stream);
             };
             display.setFunction (F::Midi);
-            display.setPage (4);
-            save ("local");
             display.setPage (5);
+            save ("local");
+            display.setPage (6);
             save ("cc-out");
             display.setFunction (F::Group);
             display.enter();
@@ -756,15 +756,14 @@ private:
             save ("title");
             for (int k = 0; k < 4; ++k)
             {
-                skin.pressFunction (F::Meter);
-                for (int p = 0; p <= k; ++p)
-                    skin.pressFunction (F::Utility);
+                skin.pressFunction (F::Utility);
+                display.setPage (k + 1);
                 save ((juce::String ("utility") + juce::String (k)).toRawUTF8());
             }
             skin.pressFunction (F::Cue);
             save ("cue");
             skin.pressFunction (F::Midi);
-            skin.pressFunction (F::Midi);
+            display.setPage (4);
             save ("bulk");
             // Every function's every page, to set beside the manual's pictures.
             const std::pair<F, const char*> all[] = { { F::Meter, "meter" }, { F::Pan, "pan" }, { F::Phase, "phase" }, { F::Comp, "comp" },
