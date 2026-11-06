@@ -279,6 +279,7 @@ public:
             ui::cc::Assignments assignments (rig.show);
             ui::CustomControlsPage page (rig.ctx, assignments, 0);
             page.setSize (1280, 720);
+            page.setVisible (true); // shown, as on the display (a hidden component takes no press)
             const auto press = [&page] (juce::Point<int> p)
             {
                 page.mouseDown (mouseAt (page, p));
@@ -288,6 +289,13 @@ public:
             expect (bar.rows > bar.visible && bar.visible > 0, "FUNCTION has more rows than it shows");
             expectEquals (bar.scroll, 0);
             expect (! bar.up.isEmpty() && ! bar.down.isEmpty() && ! bar.well.isEmpty() && ! bar.thumb.isEmpty());
+            // The presses reach the page: nothing on it takes them first.
+            for (auto p : { bar.up.getCentre(), bar.down.getCentre(), bar.well.getCentre() })
+            {
+                auto* at = page.getComponentAt (p);
+                expect (at == &page, "a press on the scroll bar reaches the page, not " + juce::String (at != nullptr ? typeid (*at).name() : "nothing") + " "
+                                         + (at != nullptr ? at->getBounds().toString() : juce::String()) + " at " + p.toString());
+            }
 
             press (bar.down.getCentre());
             expectEquals (page.getScrollBar (0).scroll, 1, "the ▼ a row down");
