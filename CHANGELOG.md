@@ -604,6 +604,10 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   side against BUS 1-8, S and D (it was the selected channel's alone); GROUP's grids
   with ENABLE; PAIR's MS and hearts; SCENE MEMORY's framed fader recall safe and the
   fade time table; METER's scaled groups with the meter point as its three buttons.
+  EQ as its picture (p.51): the library at the top left, the curve with 100, 1K and
+  10K beside the channel's meter, ATT and EQ ON, each band's Q, F and G knobs framed
+  (HPF and LPF in LOW's and HIGH's); DYNAMICS (p.83): its settings framed, the
+  transfer curve, the meter with GR, the processor's knobs framed with its type.
   The cursor's up and down move to the nearest field above or below. The other
   pages keep their tiles under the new title bar.
 - X32 LIBRARY as the manual has it (p.58): CHANNEL's encoder 1 the elements a load

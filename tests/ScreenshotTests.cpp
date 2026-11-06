@@ -505,7 +505,7 @@ public:
             const std::tuple<F, int, const char*> pages[] = { { F::Scene, 0, "scene-titles" }, { F::Scene, 1, "scene-safe" }, { F::Scene, 2, "scene-fade" },
                                                               { F::Group, 0, "group-fader" }, { F::Group, 1, "group-mute" }, { F::Pair, 0, "pair" },
                                                               { F::Att, 0, "att" }, { F::Delay, 1, "delay-tape" }, { F::Pan, 0, "pan" }, { F::Routing, 0, "routing" },
-                                                              { F::Meter, 2, "meter-outputs" }, { F::Meter, 0, "meter-inputs" }, { F::Pair, 1, "pair-aux" }, { F::Aux1, 0, "aux1" }, { F::Aux7, 2, "aux7" },
+                                                              { F::Meter, 2, "meter-outputs" }, { F::Meter, 0, "meter-inputs" }, { F::Eq, 0, "eq" }, { F::Dynamics, 0, "dynamics" }, { F::Pair, 1, "pair-aux" }, { F::Aux1, 0, "aux1" }, { F::Aux7, 2, "aux7" },
                                                               { F::Utility, 0, "utility" }, { F::DigitalIo, 0, "digital-io" }, { F::Setup, 0, "setup" },
                                                               { F::Automix, 0, "automix" }, { F::View, 1, "channel-library" },
                                                               { F::Setup, 2, "setup-prefs" } };

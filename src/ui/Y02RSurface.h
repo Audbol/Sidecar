@@ -260,6 +260,15 @@ namespace y02r
         /** SCENE MEMORY's fader recall safe and fade times as the pictures (V2 MAN pp.135-136). */
         void layoutRecallSafe();
         void layoutFadeTimes();
+        /** EQ and DYNAMICS as the pictures (V2 MAN pp.51, 83): the library at the
+            top left, the curve and the channel's meter beside it, the knobs under. */
+        void layoutEq();
+        void layoutDynamics();
+        /** The selected channel's meter (both sides of a stereo one) on its scale;
+            DYNAMICS' gain reduction beside it. */
+        void paintChannelMeter (juce::Graphics&, juce::Rectangle<float>, bool reduction) const;
+        /** DYNAMICS' transfer curve (input across, output up, -60 to 0 dB). */
+        void paintTransfer (juce::Graphics&, juce::Rectangle<float>) const;
         /** A picture's lines, frames and words, in the page area's units (0-1). */
         struct Mark
         {

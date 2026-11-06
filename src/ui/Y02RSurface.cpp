@@ -5,6 +5,7 @@
 #include "engine/Show.h"
 #include "engine/Y02RMidi.h"
 #include "engine/Yamaha02R.h"
+#include "ui/DynamicsGraph.h"
 #include "ui/HardwareLook.h"
 #include "ui/MeterBank.h"
 
@@ -923,7 +924,10 @@ namespace y02r
                 }
                 bitField ("HPF", address (s, kSwitches), kHpf);
                 bitField ("LPF", address (s, kSwitches), kLpf);
+                // ATT at the left of the knobs, as the picture has it.
+                byteField ("ATT", address (s, kAtt), 0, s == kStereo ? 108 : 96, [] (int v) { return juce::String (v - 96) + "dB"; });
                 libraryField ("LIBRARY", Yamaha02R::Eq, s);
+                layoutEq();
                 break;
             }
             case Function::Dynamics:
@@ -947,6 +951,7 @@ namespace y02r
                     stateField ("IN", Yamaha02R::InMode, s, 0, 2, [] (int v) { return juce::String (v == 0 ? "BOTH" : v == 1 ? "L" : "R"); });
                 }
                 libraryField ("LIBRARY", Yamaha02R::Dynamics, s);
+                layoutDynamics();
                 break;
             }
             case Function::Group:
@@ -1605,6 +1610,161 @@ namespace y02r
         marks.push_back ({ Mark::Frame, { 0.0f, 1.0f / rows, 1.0f, 1.0f - 1.0f / rows }, {} });
     }
 
+    void Display::layoutEq()
+    {
+        // The LIBRARY and STORE at the top left; ATT and EQ ON at the bottom left;
+        // a frame per band, its Q, F and G knobs down it (Q F G at the left), HPF
+        // in LOW's and LPF in HIGH's top corner.
+        const char* bands[] = { "LOW", "L-MID", "H-MID", "HIGH" };
+        constexpr float top = 0.44f, rowH = 0.165f, left = 0.2f, bandW = 0.2f;
+        for (auto& f : fields)
+        {
+            juce::Rectangle<float> at;
+            if (f.label == "LIBRARY" || f.label == "STORE")
+                at = { 0.0f, f.label == "LIBRARY" ? 0.02f : 0.21f, 0.19f, 0.17f };
+            else if (f.label == "EQ")
+            {
+                f.look = Field::Look::Button;
+                at = { 0.04f, 0.83f, 0.1f, 0.08f };
+            }
+            else if (f.label == "ATT")
+            {
+                f.look = Field::Look::Knob;
+                at = { 0.02f, top + 0.02f, 0.14f, 0.34f };
+            }
+            else if (f.label == "HPF" || f.label == "LPF")
+            {
+                f.look = Field::Look::Button;
+                f.text = [name = f.label] (int) { return name; };
+                at = { left + bandW * (f.label == "HPF" ? 0.0f : 3.0f) + bandW * 0.7f, top + 3.0f * rowH - 0.075f, bandW * 0.27f, 0.065f };
+            }
+            else
+            {
+                int which = 0;
+                for (int k = 0; k < 4; ++k)
+                    if (f.label.startsWith (juce::String (bands[k]) + " "))
+                        which = k;
+                const int row = f.label.endsWith ("Q") ? 0 : f.label.endsWith ("F") ? 1 : 2;
+                f.look = Field::Look::Knob;
+                f.noNumber = true;
+                at = { left + bandW * (float) which, top + rowH * (float) row, bandW, rowH };
+            }
+            spots.push_back (at);
+        }
+        for (int k = 0; k < 4; ++k)
+            marks.push_back ({ Mark::Frame, { left + bandW * (float) k + 0.004f, top, bandW - 0.008f, 1.0f - top - 0.01f }, bands[k] });
+        const char* rowNames[] = { "Q", "F", "G" };
+        for (int r = 0; r < 3; ++r)
+            marks.push_back ({ Mark::Caption, { left - 0.03f, top + rowH * (float) r, 0.03f, rowH * 0.6f }, rowNames[r] });
+        marks.push_back ({ Mark::Caption, { 0.02f, 0.91f, 0.14f, 0.06f }, "EQ ON" });
+        marks.push_back ({ Mark::Frame, { 0.0f, top, left - 0.035f, 1.0f - top - 0.01f }, {} });
+    }
+
+    void Display::layoutDynamics()
+    {
+        // The LIBRARY and STORE at the top left; ON, TYPE, KEY IN, ST.LINK and IN
+        // in a frame beside them; the processor's knobs along the bottom, framed
+        // with its type's name.
+        const int type = juce::jlimit (0, 5, y.get (address (strip, kDynType)));
+        int row = 0, knob = 0;
+        int knobs = 0;
+        for (const auto& f : fields)
+            if (f.label != "LIBRARY" && f.label != "STORE" && f.label != "DYNAMICS" && f.label != "TYPE" && f.label != "KEY IN" && f.label != "ST.LINK" && f.label != "IN")
+                ++knobs;
+        for (auto& f : fields)
+        {
+            juce::Rectangle<float> at;
+            if (f.label == "LIBRARY" || f.label == "STORE")
+                at = { 0.0f, f.label == "LIBRARY" ? 0.02f : 0.21f, 0.19f, 0.17f };
+            else if (f.label == "DYNAMICS" || f.label == "TYPE" || f.label == "KEY IN" || f.label == "ST.LINK" || f.label == "IN")
+            {
+                f.look = Field::Look::Row;
+                at = { 0.21f, 0.03f + 0.07f * (float) row++, 0.27f, 0.07f };
+            }
+            else
+            {
+                f.look = Field::Look::Knob;
+                at = { (float) knob++ / (float) juce::jmax (1, knobs), 0.46f, 1.0f / (float) juce::jmax (1, knobs), 0.52f };
+            }
+            spots.push_back (at);
+        }
+        marks.push_back ({ Mark::Frame, { 0.205f, 0.02f, 0.28f, 0.36f }, {} });
+        marks.push_back ({ Mark::Frame, { 0.0f, 0.44f, 1.0f, 0.55f }, kDynNames[type] });
+    }
+
+    void Display::paintChannelMeter (juce::Graphics& g, juce::Rectangle<float> r, bool reduction) const
+    {
+        auto& e = ctx.engine;
+        auto pick = [] (const MixerEngine::StripList& l, int k) -> Strip* { return juce::isPositiveAndBelow (k, (int) l.size()) ? l[(size_t) k].get() : nullptr; };
+        const int s = strip;
+        Strip* st = s < kEff ? pick (e.getChannels(), s) : s < kBus ? pick (e.getAux(), s - kEff) : s < kStereo ? pick (e.getBuses(), s - kBus) : pick (e.getMains(), 0);
+        const bool stereo = isStereoStrip (s) || s == kStereo;
+        g.setFont (type::font (8.5f, true));
+        const float marksDb[] = { 0.0f, -6.0f, -12.0f, -18.0f, -30.0f, -48.0f };
+        const char* names[] = { "CLIP", "-6", "-12", "-18", "-30", "-48" };
+        const auto scale = r.reduced (0.0f, 4.0f).withTrimmedBottom (10.0f);
+        const auto yOf = [&scale] (float db) { return scale.getY() + scale.getHeight() * (-db / 48.0f); };
+        const auto bars = scale.withTrimmedRight (30.0f).withTrimmedLeft (reduction ? 30.0f : 4.0f);
+        for (int k = 0; k < 6; ++k)
+        {
+            const float yy = yOf (marksDb[k]);
+            g.setColour (kPixel);
+            g.drawText (names[k], juce::Rectangle<float> (scale.getRight() - 28.0f, yy - 5.0f, 28.0f, 10.0f), juce::Justification::centredRight);
+            g.setColour (kPixelDim);
+            for (float x = bars.getX(); x < bars.getRight(); x += 4.0f)
+                g.fillRect (x, yy, 1.0f, 1.0f);
+        }
+        const int n = stereo ? 2 : 1;
+        const float w = bars.getWidth() / (float) n;
+        for (int c = 0; c < n; ++c)
+        {
+            const float db = st != nullptr ? juce::Decibels::gainToDecibels (ctx.meters.get (st, MeterPoint::PreFader, c), -48.0f) : -48.0f;
+            const auto bar = juce::Rectangle<float> (bars.getX() + w * (float) c, scale.getY(), w, scale.getHeight()).withSizeKeepingCentre (juce::jmin (10.0f, w * 0.5f), scale.getHeight());
+            g.setColour (kPixel);
+            g.drawRect (bar, 0.5f);
+            g.fillRect (bar.withTop (yOf (juce::jmax (-48.0f, db))));
+            g.drawText (juce::String (c + 1), bar.withY (scale.getBottom()).withHeight (10.0f).expanded (6.0f, 0.0f), juce::Justification::centred);
+        }
+        if (reduction)
+        {
+            // GR: down from the top, 0 to -18 dB.
+            const float gr = st != nullptr ? std::abs (st->meters.dynReductionDb.load()) : 0.0f;
+            const auto bar = juce::Rectangle<float> (scale.getX() + 8.0f, scale.getY(), 10.0f, scale.getHeight());
+            g.setColour (kPixel);
+            g.drawRect (bar, 0.5f);
+            g.fillRect (bar.withHeight (bar.getHeight() * juce::jlimit (0.0f, 1.0f, gr / 18.0f)));
+            g.drawText ("GR", bar.withY (scale.getBottom()).withHeight (10.0f).expanded (6.0f, 0.0f), juce::Justification::centred);
+        }
+    }
+
+    void Display::paintTransfer (juce::Graphics& g, juce::Rectangle<float> r) const
+    {
+        const auto box = r.withSizeKeepingCentre (juce::jmin (r.getWidth(), r.getHeight()), juce::jmin (r.getWidth(), r.getHeight()));
+        g.setColour (kPixel);
+        g.drawRect (box, 1.0f);
+        const int type = juce::jlimit (0, 5, y.get (address (strip, kDynType)));
+        const int model = models::findModel (models::Dynamics, kDynTokens[type]);
+        if (model < 0)
+            return;
+        const auto& m = models::model (models::Dynamics, model);
+        std::vector<float> values;
+        for (int k = 0; k < (int) m.params.size(); ++k)
+            values.push_back (stepValue (m.params[(size_t) k], juce::jmax (0, k < 6 ? y.get (address (strip, kDynParam + k)) : 0)));
+        constexpr int n = 48;
+        const auto curve = transferCurve (model, values.data(), n);
+        if ((int) curve.size() < n)
+            return;
+        const float range = transferRangeDb (model);
+        juce::Path p;
+        for (int k = 0; k < n; ++k)
+        {
+            const float x = box.getX() + box.getWidth() * (float) k / (float) (n - 1);
+            const float yy = box.getBottom() - box.getHeight() * (juce::jlimit (-range, 0.0f, curve[(size_t) k]) + range) / range;
+            k == 0 ? p.startNewSubPath (x, yy) : p.lineTo (x, yy);
+        }
+        g.strokePath (p, juce::PathStrokeType (1.5f));
+    }
+
     void Display::focusField (int i, bool firstDigit)
     {
         focus = i;
@@ -1720,8 +1880,6 @@ namespace y02r
         if (juce::isPositiveAndBelow (i, (int) spots.size()))
             return toPage (spots[(size_t) i]).reduced (1.0f);
         auto area = pageArea();
-        if (function == Function::Meter || function == Function::Eq)
-            area = area.withTrimmedRight (area.getWidth() * (function == Function::Eq ? 0.42f : 0.0f));
         const bool graph = surroundGraph();
         if (graph)
             area = area.withTrimmedRight (area.getHeight() + 20.0f); // the square pan graph at the right
@@ -1782,7 +1940,8 @@ namespace y02r
         {
             case Field::Look::Knob:
             {
-                r.removeFromBottom (kNumberH);
+                if (! f.noNumber || f.strip >= 0) // a stereo channel's pans keep the row for their shared number
+                    r.removeFromBottom (kNumberH);
                 if (f.tag && ! f.tagAbove)
                     r.removeFromBottom (kTagH);
                 return r.removeFromBottom (kValueH);
@@ -1832,9 +1991,10 @@ namespace y02r
                 auto r = box;
                 if (f.tag && f.tagAbove)
                     chip (g, fitted (r.removeFromTop (kTagH), "REV"), f.tag(), f.tagOn && f.tagOn());
-                const auto numberRow = r.removeFromBottom (kNumberH).reduced (0.0f, 1.0f);
                 if (! f.noNumber)
-                    chip (g, fitted (numberRow, f.label), f.label, focused);
+                    chip (g, fitted (r.removeFromBottom (kNumberH).reduced (0.0f, 1.0f), f.label), f.label, focused);
+                else if (f.strip >= 0)
+                    r.removeFromBottom (kNumberH);
                 if (f.tag && ! f.tagAbove)
                     chip (g, fitted (r.removeFromBottom (kTagH).reduced (0.0f, 1.0f), "POST"), f.tag(), f.tagOn && f.tagOn());
                 r.removeFromBottom (kValueH);
@@ -2040,8 +2200,16 @@ namespace y02r
 
         if (function == Function::Meter)
             paintMeters (g, pageArea());
-        if (function == Function::Eq)
-            paintEq (g, pageArea().withTrimmedLeft (b.getWidth() * 0.6f));
+        if (function == Function::Eq && ! spots.empty())
+        {
+            paintEq (g, toPage ({ 0.21f, 0.02f, 0.53f, 0.36f }));
+            paintChannelMeter (g, toPage ({ 0.77f, 0.02f, 0.23f, 0.36f }), false);
+        }
+        if (function == Function::Dynamics && ! spots.empty())
+        {
+            paintTransfer (g, toPage ({ 0.5f, 0.02f, 0.2f, 0.36f }));
+            paintChannelMeter (g, toPage ({ 0.74f, 0.02f, 0.26f, 0.36f }), true);
+        }
         if (fields.empty())
         {
             g.setColour (kPixelDim);
@@ -2297,8 +2465,18 @@ namespace y02r
     {
         // The curve of the strip's four bands (bells and shelves as the DSP's;
         // a filter as a 12 dB/oct slope).
-        g.setColour (kLcdFrame);
-        g.drawRect (area);
+        g.setColour (kPixel);
+        g.drawRect (area, 1.0f);
+        g.setFont (type::font (8.5f, true));
+        for (const auto& [hz, name] : { std::pair<float, const char*> { 100.0f, "100" }, { 1000.0f, "1.0K" }, { 10000.0f, "10K" } })
+        {
+            const float x = area.getX() + area.getWidth() * std::log10 (hz / 20.0f) / 3.0f;
+            g.setColour (kPixelDim);
+            for (float yy = area.getY() + 2.0f; yy < area.getBottom() - 10.0f; yy += 3.0f)
+                g.fillRect (x, yy, 1.0f, 1.0f);
+            g.setColour (kPixel);
+            g.drawText (name, juce::Rectangle<float> (x - 15.0f, area.getBottom() - 10.0f, 30.0f, 9.0f), juce::Justification::centred);
+        }
         const int eqModel = models::findModel (models::ChannelEq, "Y2EQ");
         if (eqModel < 0)
             return;
