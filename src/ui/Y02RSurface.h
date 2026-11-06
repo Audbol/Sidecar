@@ -212,7 +212,7 @@ namespace y02r
             bool onEnter = false;
             int pending = -1;
             /** What ENTER does on this field otherwise (a scene recalled, PRE / POST switched). */
-            std::function<void()> action;
+            std::function<void()> action {};
             /** An all-channel page's strip (-1 none). */
             int strip = -1;
             /** Its value's digits the cursor steps through (DELAY's, MAN p.35):
@@ -230,16 +230,16 @@ namespace y02r
             Look look = Look::Tile;
             /** A knob's or row's switch (ATT's NOR / REV, AUX's PRE / POST,
                 DELAY's ON): its word, lit when on; over the knob or under its value. */
-            std::function<juce::String()> tag;
-            std::function<bool()> tagOn;
+            std::function<juce::String()> tag {};
+            std::function<bool()> tagOn {};
             bool tagAbove = false;
             /** A row's second reading (DELAY's other unit), before the value or after. */
-            std::function<juce::String()> note;
+            std::function<juce::String()> note {};
             bool noteFirst = false;
             /** A knob without its number (a stereo channel's two pans share one). */
             bool noNumber = false;
             /** Choices' names (its values lo, lo + 1 ...). */
-            juce::StringArray choices;
+            juce::StringArray choices {};
         };
         const std::vector<Field>& getFields() const noexcept { return fields; }
         int getCursor() const noexcept { return focus; }

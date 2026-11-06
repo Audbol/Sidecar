@@ -248,8 +248,22 @@ namespace promix
             case Function::Send1:
             case Function::Send2:
             case Function::Comp:    return 2;
-            default:                return 1;
+            case Function::Pan:
+            case Function::Phase:
+            case Function::Cue:
+            case Function::Send3:
+            case Function::Send4:
+            case Function::EqLow:
+            case Function::EqMid:
+            case Function::EqHigh:
+            case Function::Library:
+            case Function::Group:
+            case Function::Pair:
+            case Function::MemoryStore:
+            case Function::MemoryRecall:
+            case Function::TitleEdit: return 1;
         }
+        return 1;
     }
 
     void Display::editProgramName (int library, int n, int target)
@@ -1377,8 +1391,15 @@ namespace promix
                 return {}; // the page's name is its banner
             case Function::TitleEdit:
                 return nameLibrary == ProMix::Eq ? "EQ" : nameLibrary == ProMix::Dynamics ? "NO." + juce::String (nameTarget + 1) : juce::String();
-            default: return {};
+            case Function::Send3:
+            case Function::Send4:
+            case Function::EqLow:
+            case Function::EqMid:
+            case Function::EqHigh:
+            case Function::MemoryStore:
+            case Function::MemoryRecall: return {};
         }
+        return {};
     }
 
     juce::Rectangle<float> Display::leftColumn() const
@@ -2955,7 +2976,8 @@ void ProMixSurface::selectionChanged()
         case StripKind::Channel: display.setEqStrip (juce::jlimit (0, 15, n)); break;
         case StripKind::Aux: display.setEqStrip (n == 0 ? 16 : juce::jlimit (17, 18, 16 + n)); break;
         case StripKind::Main: display.setEqStrip (19); break;
-        default: break;
+        case StripKind::Bus:
+        case StripKind::Matrix: break;
     }
 }
 

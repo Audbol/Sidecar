@@ -154,7 +154,7 @@ X32Surface::X32Surface (UiContext& c)
     assign.onView = [this] { display.showScreen (x32::Display::Screen::Assign, assign.getSet()); };
     display.assignLines = [this] { return assign.describeSet(); };
     display.assignCode = [this] (int i) { return assign.getCode (i); };
-    display.setAssignCode = [this] (int i, const juce::String& c) { assign.setCode (i, c); };
+    display.setAssignCode = [this] (int i, const juce::String& code) { assign.setCode (i, code); };
     display.getAssignSet = [this] { return assign.getSet(); };
     display.setAssignSet = [this] (int s) { assign.setSet (s); };
     // A VIEW key opens its section's tab of the display's HOME screen.
@@ -172,9 +172,9 @@ X32Surface::X32Surface (UiContext& c)
     // in their colours, moulded caps, knurled knobs.
     hw::applyTo (*this, hw::Look::x32(), &universalKey);
     // Its keys are blank, their names printed under them (not the display's).
-    std::function<void (juce::Component&)> namesBelow = [&] (juce::Component& c)
+    std::function<void (juce::Component&)> namesBelow = [&] (juce::Component& parent)
     {
-        for (auto* child : c.getChildren())
+        for (auto* child : parent.getChildren())
         {
             if (child == &display || child == &universalKey)
                 continue;

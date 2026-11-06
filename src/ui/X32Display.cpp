@@ -1872,8 +1872,8 @@ void Display::assignEncoders()
             icon.label = "SELECT";
             icon.get = [s, icons]
             {
-                const auto at = std::find (icons.begin(), icons.end(), s->params.icon.load());
-                return icons.size() > 1 && at != icons.end() ? (float) (at - icons.begin()) / (float) (icons.size() - 1) : 0.0f;
+                const auto found = std::find (icons.begin(), icons.end(), s->params.icon.load());
+                return icons.size() > 1 && found != icons.end() ? (float) (found - icons.begin()) / (float) (icons.size() - 1) : 0.0f;
             };
             icon.set = [this, s, icons] (float v)
             {
@@ -1881,7 +1881,7 @@ void Display::assignEncoders()
                     s->params.icon = icons[(size_t) juce::roundToInt (v * (float) (icons.size() - 1))];
                 repaint();
             };
-            icon.text = [s] { const auto n = wingIconName (s->params.icon.load()); return n.isNotEmpty() ? n.toUpperCase() : juce::String ("NONE"); };
+            icon.text = [s] { const auto iconName = wingIconName (s->params.icon.load()); return iconName.isNotEmpty() ? iconName.toUpperCase() : juce::String ("NONE"); };
             icon.steps = (float) juce::jmax (2, (int) icons.size());
             encoders[2] = encoder (icon);
             const auto& names = scribbleNames();
@@ -3698,8 +3698,8 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
             using R = UsbRecorder::RecState;
             const auto time = [] (int64_t samples, double rate)
             {
-                const int s = rate > 0.0 ? (int) ((double) samples / rate) : 0;
-                return juce::String (s / 60).paddedLeft ('0', 2) + ":" + juce::String (s % 60).paddedLeft ('0', 2);
+                const int secs = rate > 0.0 ? (int) ((double) samples / rate) : 0;
+                return juce::String (secs / 60).paddedLeft ('0', 2) + ":" + juce::String (secs % 60).paddedLeft ('0', 2);
             };
             const double rate = juce::jmax (1.0, usb.getSampleRate());
             const auto play = usb.getPlayState();

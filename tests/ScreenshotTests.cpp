@@ -794,7 +794,7 @@ private:
         pm.set (296 + 4, 24); // MID G +9 dB
         pm.set (196 + 4, 1);  // EQ ON
         skin.pressFunction (F::EqMid);
-        expectEquals (display.getFields()[display.getCursor()].label, juce::String ("MID G"));
+        expectEquals (display.getFields()[(size_t) display.getCursor()].label, juce::String ("MID G"));
         skin.refreshAll();
 
         const auto image = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);

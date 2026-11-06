@@ -241,7 +241,7 @@ MainComponent::MainComponent (juce::AudioDeviceManager& dm, MixerEngine& e, Plug
     // ... the selection and the MIDI keys' and knobs' values, which a WING reports to
     // clients (issues #19, #21) ...
     engine.getWing().setConsoleCallbacks ([this] { return getSelectedStrip(); },
-                                          [this] (Strip& s) { selectStrip (&s); },
+                                          [this] (Strip& strip) { selectStrip (&strip); },
                                           [this] (juce::uint8* cc, juce::uint8* notes)
                                           {
                                               if (ctx.midi != nullptr)

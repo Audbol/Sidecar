@@ -410,10 +410,25 @@ namespace y02r
             case Function::Delay:
             case Function::Pan:
                 return 2;
-            default:
+            case Function::Aux1:
+            case Function::Aux2:
+            case Function::Aux3:
+            case Function::Aux4:
+            case Function::Aux5:
+            case Function::Aux6:
+            case Function::Aux7:
+            case Function::Aux8:
                 // AUX 1-8: MIC/LINE, TAPE/EFF, the selected strip's; AUX 7-8 their effect's EDIT.
-                return function >= Function::Aux7 && function <= Function::Aux8 ? 4 : function >= Function::Aux1 && function <= Function::Aux8 ? 3 : 1;
+                return function >= Function::Aux7 ? 4 : 3;
+            case Function::Eq:
+            case Function::Dynamics:
+            case Function::DigitalIo:
+            case Function::Automix:
+            case Function::Utility:
+            case Function::TitleEdit:
+                return 1;
         }
+        return 1;
     }
 
     void Display::setStrip (int s)
@@ -1154,16 +1169,20 @@ namespace y02r
                 });
                 // Where it plays: BUS 1-8 (bits 0-7), STEREO (8), AUX 1-8 (9-16).
                 for (int bit = 0; bit < 17; ++bit)
-                    fields.push_back ({ bit < 8 ? "BUS " + juce::String (bit + 1) : bit == 8 ? juce::String ("STEREO") : "AUX " + juce::String (bit - 8),
-                                        [this, bit] { return (y.getState (Yamaha02R::OscAssign, 0) >> bit) & 1; },
-                                        [this, bit] (int v)
-                                        {
-                                            const int a = juce::jmax (0, y.getState (Yamaha02R::OscAssign, 0));
-                                            y.setState (Yamaha02R::OscAssign, 0, v != 0 ? (a | (1 << bit)) : (a & ~(1 << bit)));
-                                        },
-                                        onOff,
-                                        0,
-                                        1 });
+                {
+                    Field f;
+                    f.label = bit < 8 ? "BUS " + juce::String (bit + 1) : bit == 8 ? juce::String ("STEREO") : "AUX " + juce::String (bit - 8);
+                    f.get = [this, bit] { return (y.getState (Yamaha02R::OscAssign, 0) >> bit) & 1; };
+                    f.set = [this, bit] (int v)
+                    {
+                        const int a = juce::jmax (0, y.getState (Yamaha02R::OscAssign, 0));
+                        y.setState (Yamaha02R::OscAssign, 0, v != 0 ? (a | (1 << bit)) : (a & ~(1 << bit)));
+                    };
+                    f.text = onOff;
+                    f.lo = 0;
+                    f.hi = 1;
+                    fields.push_back (std::move (f));
+                }
                 layoutUtility();
                 break;
             case Function::DigitalIo:
@@ -1374,7 +1393,14 @@ namespace y02r
                 fields.back().look = Field::Look::Radio;
                 spots.push_back (page == 2 ? juce::Rectangle<float> (0.5f, 0.88f, 0.34f, 0.1f) : juce::Rectangle<float> (0.6f, 0.62f, 0.18f, 0.33f));
                 break;
-            default:
+            case Function::Aux1:
+            case Function::Aux2:
+            case Function::Aux3:
+            case Function::Aux4:
+            case Function::Aux5:
+            case Function::Aux6:
+            case Function::Aux7:
+            case Function::Aux8:
             {
                 // AUX 1-8: the strip's send, the aux master; AUX 7-8 their effect's library.
                 const int aux = (int) function - (int) Function::Aux1;
@@ -3359,7 +3385,7 @@ void Y02RSurface::selectionChanged()
         case StripKind::Aux: display.setStrip (y02r::kEff + juce::jlimit (0, 1, n)); break;
         case StripKind::Bus: display.setStrip (y02r::kBus + juce::jlimit (0, 15, n)); break;
         case StripKind::Main: display.setStrip (y02r::kStereo); break;
-        default: break;
+        case StripKind::Matrix: break;
     }
 }
 
