@@ -7,6 +7,7 @@
 #include "engine/PluginHost.h"
 #include "engine/Show.h"
 #include "ui/ChainSummary.h"
+#include "ui/CustomControlsPage.h"
 #include "ui/HomePage.h"
 #include "ui/InterfacePage.h"
 #include "ui/RoutingGroups.h"
@@ -84,6 +85,14 @@ juce::MouseEvent mouseAt (juce::Component& c, juce::Point<int> p)
     auto source = juce::Desktop::getInstance().getMainMouseSource();
     const auto now = juce::Time::getCurrentTime();
     return { source, p.toFloat(), {}, juce::MouseInputSource::defaultPressure, 0.0f, 0.0f, 0.0f, 0.0f, &c, &c, now, p.toFloat(), now, 1, false };
+}
+
+/** A press at `down` dragged to `at`. */
+juce::MouseEvent dragTo (juce::Component& c, juce::Point<int> down, juce::Point<int> at)
+{
+    auto source = juce::Desktop::getInstance().getMainMouseSource();
+    const auto now = juce::Time::getCurrentTime();
+    return { source, at.toFloat(), juce::ModifierKeys::leftButtonModifier, juce::MouseInputSource::defaultPressure, 0.0f, 0.0f, 0.0f, 0.0f, &c, &c, now, down.toFloat(), now, 1, true };
 }
 } // namespace
 
@@ -261,6 +270,50 @@ public:
             expectWithinAbsoluteError (rig.outputs[0].back(), 0.0f, 0.001f, "output 1 plays nothing now");
             runDevice (0, 0.5f);
             expectWithinAbsoluteError (rig.outputs[3].back(), 0.0f, 0.001f, "input 1 feeds nothing now");
+        }
+
+        beginTest ("Custom controls: the FUNCTION list's scroll bar scrolls by its arrows, its well and its thumb (issue #20)");
+        {
+            MixerEngine engine (0);
+            WingRig rig (engine);
+            ui::cc::Assignments assignments (rig.show);
+            ui::CustomControlsPage page (rig.ctx, assignments, 0);
+            page.setSize (1280, 720);
+            const auto press = [&page] (juce::Point<int> p)
+            {
+                page.mouseDown (mouseAt (page, p));
+                page.mouseUp (mouseAt (page, p));
+            };
+            auto bar = page.getScrollBar (0);
+            expect (bar.rows > bar.visible && bar.visible > 0, "FUNCTION has more rows than it shows");
+            expectEquals (bar.scroll, 0);
+            expect (! bar.up.isEmpty() && ! bar.down.isEmpty() && ! bar.well.isEmpty() && ! bar.thumb.isEmpty());
+
+            press (bar.down.getCentre());
+            expectEquals (page.getScrollBar (0).scroll, 1, "the ▼ a row down");
+            press (bar.up.getCentre());
+            expectEquals (page.getScrollBar (0).scroll, 0, "the ▲ a row up");
+            press (bar.up.getCentre());
+            expectEquals (page.getScrollBar (0).scroll, 0, "not above the first row");
+
+            // The well under the thumb: a page down.
+            press ({ bar.well.getCentreX(), bar.well.getBottom() - 2 });
+            expectEquals (page.getScrollBar (0).scroll, juce::jmin (bar.visible, bar.rows - bar.visible), "the well a page down");
+            press ({ bar.well.getCentreX(), bar.well.getY() + 1 });
+            expectEquals (page.getScrollBar (0).scroll, 0, "and a page up");
+
+            // The thumb dragged to the bottom: the last rows, and no row chosen on the release.
+            const auto targetRows = page.getScrollBar (1).rows;
+            bar = page.getScrollBar (0);
+            const auto from = bar.thumb.getCentre().roundToInt();
+            const juce::Point<int> to { from.x, bar.well.getBottom() + 200 };
+            page.mouseDown (mouseAt (page, from));
+            page.mouseDrag (dragTo (page, from, to));
+            page.mouseUp (dragTo (page, from, to));
+            expectEquals (page.getScrollBar (0).scroll, bar.rows - bar.visible, "the thumb dragged to the end");
+            expectEquals (page.getScrollBar (1).rows, targetRows, "the function is unchanged");
+            page.mouseDrag (dragTo (page, from, from)); // no drag after the release
+            expectEquals (page.getScrollBar (0).scroll, bar.rows - bar.visible);
         }
 
         beginTest ("ROUTING's interface page: named by the driver, patches a row and keeps the patch per device in the settings");

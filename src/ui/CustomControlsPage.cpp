@@ -1543,6 +1543,11 @@ void CustomControlsPage::layoutList (ListColumn& l, juce::Rectangle<int> area)
     const int pad = juce::roundToInt (wingPx (8.0f));
     auto rows = area.reduced (pad, pad);
     rows.removeFromRight (juce::roundToInt (wingPx (40.0f))); // the scroll bar
+    // A ▲ over the scroll well and a ▼ under it.
+    auto bar = area.reduced (pad).removeFromRight (juce::roundToInt (wingPx (32.0f)));
+    l.barUp = bar.removeFromTop (juce::roundToInt (wingPx (28.0f)));
+    l.barDown = bar.removeFromBottom (juce::roundToInt (wingPx (28.0f)));
+    l.well = bar;
     const int rowH = juce::jmax (18, juce::roundToInt (wingPx (64.0f))), rowGap = juce::roundToInt (wingPx (8.0f));
     const int visible = juce::jmax (1, (rows.getHeight() + rowGap) / (rowH + rowGap));
     l.scroll = juce::jlimit (0, juce::jmax (0, l.rows.size() - visible), l.scroll);
@@ -1675,11 +1680,9 @@ void CustomControlsPage::paintList (juce::Graphics& g, ListColumn& l, bool focus
     }
 
     // The scroll bar and the ▲ ▼ page keys.
-    // A ▲ over the scroll well and a ▼ under it.
-    auto bar = l.body.reduced (juce::roundToInt (wingPx (8.0f))).removeFromRight (juce::roundToInt (wingPx (32.0f)));
     for (bool up : { true, false })
     {
-        auto end = up ? bar.removeFromTop (juce::roundToInt (wingPx (28.0f))) : bar.removeFromBottom (juce::roundToInt (wingPx (28.0f)));
+        const auto end = up ? l.barUp : l.barDown;
         const auto c = end.getCentre().toFloat();
         const float a = (float) end.getWidth() * 0.45f, h = a * 0.55f;
         juce::Path tri;
@@ -1691,12 +1694,10 @@ void CustomControlsPage::paintList (juce::Graphics& g, ListColumn& l, bool focus
         g.fillPath (tri);
     }
     g.setColour (juce::Colours::black);
-    g.fillRect (bar);
-    if (l.rows.size() > (int) l.rowAreas.size() && ! l.rows.isEmpty())
+    g.fillRect (l.well);
+    const auto thumb = thumbOf (l);
+    if (! thumb.isEmpty())
     {
-        const float total = (float) l.rows.size();
-        auto thumb = bar.toFloat().withTrimmedTop (bar.getHeight() * (float) l.scroll / total)
-                         .withHeight (bar.getHeight() * (float) l.rowAreas.size() / total);
         g.setColour (Dark::textDim);
         g.fillRect (thumb.reduced (3.0f, 1.0f));
     }
@@ -1823,8 +1824,72 @@ void CustomControlsPage::paint (juce::Graphics& g)
     outlinedKey (g, nameKey, Icon::Edit, "NAME");
 }
 
+juce::Rectangle<float> CustomControlsPage::thumbOf (const ListColumn& l) const
+{
+    if (l.rows.size() <= (int) l.rowAreas.size() || l.rows.isEmpty())
+        return {};
+    const float total = (float) l.rows.size(), h = (float) l.well.getHeight();
+    return l.well.toFloat().withTrimmedTop (h * (float) l.scroll / total).withHeight (h * (float) l.rowAreas.size() / total);
+}
+
+CustomControlsPage::ScrollBarView CustomControlsPage::getScrollBar (int list) const
+{
+    const auto& l = lists[juce::jlimit (0, 2, list)];
+    return { l.barUp, l.barDown, l.well, thumbOf (l), l.scroll, l.rows.size(), (int) l.rowAreas.size() };
+}
+
+void CustomControlsPage::scrollList (int list, int scroll)
+{
+    lists[list].scroll = juce::jmax (0, scroll);
+    focusedList = list;
+    resized(); // clamps the scroll to the rows
+    repaint();
+}
+
+void CustomControlsPage::mouseDown (const juce::MouseEvent& e)
+{
+    // The scroll bar: ▲ ▼ a row, the well above or below the thumb a page,
+    // the thumb dragged.
+    const auto pos = e.getPosition();
+    for (int i = 0; i < 3; ++i)
+    {
+        auto& l = lists[i];
+        const int page = juce::jmax (1, (int) l.rowAreas.size());
+        if (l.barUp.contains (pos) || l.barDown.contains (pos))
+            scrollList (i, l.scroll + (l.barDown.contains (pos) ? 1 : -1));
+        else if (l.well.contains (pos))
+        {
+            const auto thumb = thumbOf (l);
+            if (thumb.contains (pos.toFloat()))
+                dragList = i, dragScroll = l.scroll;
+            else if (! thumb.isEmpty())
+                scrollList (i, l.scroll + ((float) pos.y > thumb.getCentreY() ? page : -page));
+        }
+        else
+            continue;
+        barPressed = true;
+        return;
+    }
+}
+
+void CustomControlsPage::mouseDrag (const juce::MouseEvent& e)
+{
+    if (dragList < 0)
+        return;
+    const auto& l = lists[dragList];
+    const float rowsPerPixel = (float) l.rows.size() / (float) juce::jmax (1, l.well.getHeight());
+    const int scroll = dragScroll + juce::roundToInt ((float) e.getDistanceFromDragStartY() * rowsPerPixel);
+    if (scroll != l.scroll)
+        scrollList (dragList, scroll);
+}
+
 void CustomControlsPage::mouseUp (const juce::MouseEvent& e)
 {
+    if (std::exchange (barPressed, false))
+    {
+        dragList = -1;
+        return;
+    }
     const auto pos = e.getPosition();
     if (prevKey.contains (pos) || nextKey.contains (pos))
     {

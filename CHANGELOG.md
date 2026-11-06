@@ -8,6 +8,8 @@ All notable changes to Sidecar are listed here. Versions follow
 - The audio thread no longer allocates on its first block: the engine reads
   `LIVEDAW_TRACE_SLOW` when it is made, not when the first block asks (the WING
   soak test's audio-thread allocation check failed on it).
+- CUSTOM CONTROLS: the lists' scroll bars work: their arrows move a row, the well
+  above or below the thumb a page, and the thumb drags (#20).
 
 Phase 3, the WING as a profile (`docs/UNIVERSAL_MIXER.md`), begins.
 

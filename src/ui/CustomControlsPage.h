@@ -250,8 +250,19 @@ public:
     StatusTitle getStatusTitle() override;
     void paint (juce::Graphics&) override;
     void resized() override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+
+    /** A list's scroll bar as it is laid out (FUNCTION 0, its targets 1 and options 2). */
+    struct ScrollBarView
+    {
+        juce::Rectangle<int> up, down, well;
+        juce::Rectangle<float> thumb;
+        int scroll = 0, rows = 0, visible = 0;
+    };
+    ScrollBarView getScrollBar (int list) const;
 
 private:
     /** A list column: its header, rows and the ▲ ▼ keys under it. */
@@ -263,7 +274,8 @@ private:
         std::vector<juce::Colour> fills;    // the row's background (FUNCTION)
         std::vector<bool> enabled;
         int selected = -1, scroll = 0;
-        juce::Rectangle<int> header, body, upKey, downKey;
+        // The scroll bar: its ▲ and ▼ and the well between them.
+        juce::Rectangle<int> header, body, upKey, downKey, barUp, barDown, well;
         std::vector<juce::Rectangle<int>> rowAreas;
     };
 
@@ -272,6 +284,9 @@ private:
     /** Scrolls each list to its selected row (touching a control). */
     void revealSelection();
     void layoutList (ListColumn&, juce::Rectangle<int> area);
+    /** The thumb of list l's scroll bar (empty: all its rows show). */
+    juce::Rectangle<float> thumbOf (const ListColumn&) const;
+    void scrollList (int list, int scroll);
     void paintList (juce::Graphics&, ListColumn&, bool focused);
     void paintLayer (juce::Graphics&);
     void choose (int list, int row);
@@ -290,6 +305,10 @@ private:
     cc::Slot slot = cc::Slot::Encoder;
     int focusedList = 0;
     ListColumn lists[3];
+    // A press on a scroll bar (handled on the press, not the release), and the
+    // list whose thumb is dragged with the scroll it started from.
+    bool barPressed = false;
+    int dragList = -1, dragScroll = 0;
     juce::Rectangle<int> header, prevKey, nextKey, userKey, gpioKey, title, layerHeader, layerBody, settingsHeader, controlHeader, colourKey, clearKey, nameKey,
         colourBox, clearBox, nameBox;
     struct Element
