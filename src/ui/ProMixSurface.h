@@ -191,13 +191,16 @@ namespace promix
                 name (CUE's); a number alone (GROUP's channels); a value boxed
                 under its name (EQ's ON/OFF); a line of text, its name then its
                 value (BATTERY CHECK's, PROGRAM CHANGE ASSIGN's "1= 01"); a cell
-                of a ruled table, its name over its value (LOCAL ON/OFF's). */
-            enum class Style { Box, Bare, Inline, Button, Knob, Circle, PairBox, Fader, Number, Value, Text, Grid } style = Style::Box;
+                of a ruled table, its name over its value (LOCAL ON/OFF's); a row
+                of a scrolling list, "Name=" then its value (an EDIT page's). */
+            enum class Style { Box, Bare, Inline, Button, Knob, Circle, PairBox, Fader, Number, Value, Text, Grid, Row } style = Style::Box;
             /** What it stands for, where the style needs it (PAIR's pair). */
             int index = -1;
             int span = 1;
             /** A list's rows (0: as many as fit). */
             int rows = 0;
+            /** Its row in the page's scrolling list (`scrollArea`; -1: none). */
+            int scroll = -1;
         };
 
         const std::vector<Field>& getFields() const noexcept { return fields; }
@@ -206,6 +209,11 @@ namespace promix
     private:
         void build();
         Field paramField (int n, juce::Rectangle<float> box, bool onEnter = false);
+        /** EXIT: the function's first page again. */
+        Field exitField (juce::Rectangle<float> box);
+        /** An EDIT page's program line and rule; COMP EDIT's gain curve. */
+        void paintEditHeader (juce::Graphics&, juce::Rectangle<float> area, const juce::String& name, float width) const;
+        void paintGainCurve (juce::Graphics&, juce::Rectangle<float>) const;
         Field listField (const juce::String& label, int library, int count, int param, juce::Rectangle<float> box);
         void row (std::initializer_list<int> params, float y, float h, float x0 = 0.0f, float x1 = 1.0f, bool onEnter = false);
         juce::Rectangle<float> pageArea() const;
@@ -227,6 +235,11 @@ namespace promix
         ProMix& pm;
         Function function = Function::Meter;
         int page = 0, processor = 0, eqStrip = 0, focus = 0;
+        /** An EDIT page's scrolling list: where it is (0..1 of the page), how
+            many rows show, and the first one shown (follows the cursor). */
+        juce::Rectangle<float> scrollArea;
+        int scrollRows = 3;
+        mutable int scrollFirst = 0;
         /** TITLE EDIT: the memory and its eight characters (indexes into kTitleChars). */
         int titleMemory = 0, pcProgram = 0, ccParam = 0;
         /** LOCAL ON/OFF (ON at power on), the faders' last values, what was sent last. */

@@ -184,6 +184,15 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
 
 Phase 5, the Yamaha ProMix 01 (`docs/UNIVERSAL_MIXER.md`), begins.
 
+- ProMix LCD pages checked against the manual's pictures: COMP EDIT and EFFECT EDIT as
+  lists ("Threshold= 0dB", "Ratio= 2:1", "[1]Rev.Time= 2.8s") under the program's name,
+  COMP's with its gain curve, ON/OFF and PATCH, both with EXIT; SEND1-2's return meter on
+  the CLIP ... -40 scale with "RTN1 L R"; LIBRARY's four programs ("1.RESET") with STORE
+  and RECALL; a list's chosen program inverted under the cursor. The effects programs
+  are named in capitals ("REVERB HALL 1"), the user programs "USER LIBRARY n" at first,
+  PAIR's choices "MONO x 2", "ST (1->2)", "ST (2->1)", "ST (RESET)"; COMP's processor
+  "NO.1".
+
 - X32 ROUTING's out 1-16, aux out and P16 out tabs on the manual's encoders (pp.52-53):
   the output, the source's category (OFF, MAIN, MIX BUS, MATRIX, DIRECT OUT, MONITOR),
   the signal in it (push: ASSIGN), the tap point and an analog output's delay (push:

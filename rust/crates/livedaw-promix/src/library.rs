@@ -78,38 +78,39 @@ const fn index(table: &[f32], v: f32) -> f32 {
     panic!("not in the table");
 }
 
-/// The preset effects programs 1-30 (pp.37-44): name, type, values.
+/// The preset effects programs 1-30 (pp.37-44): name (in capitals, as the
+/// LCD lists them, p.32), type, values.
 pub const FX_PRESETS: [(&str, &str, &[f32]); 30] = [
-    ("Reverb Hall 1", "PMREV", &[2.8, 0.8, 6.0, 40.0, lpf(7000.0), THRU_HPF]),
-    ("Reverb Hall 2", "PMREV", &[3.2, 0.7, 8.0, 38.0, lpf(6300.0), THRU_HPF]),
-    ("Reverb Room 1", "PMREV", &[1.4, 0.8, 7.0, 5.0, THRU_LPF, hpf(280.0)]),
-    ("Reverb Room 2", "PMREV", &[1.8, 0.6, 6.0, 17.0, lpf(9000.0), hpf(80.0)]),
-    ("Reverb Stage", "PMREV", &[3.4, 0.9, 8.0, 45.0, THRU_LPF, hpf(70.0)]),
-    ("Reverb Plate", "PMREV", &[2.4, 0.7, 8.0, 16.0, lpf(8000.0), THRU_HPF]),
-    ("Rev Ambience 1", "PMREV", &[1.2, 1.0, 8.0, 19.0, lpf(9000.0), hpf(45.0)]),
-    ("Rev Ambience 2", "PMREV", &[0.8, 0.6, 8.0, 0.1, THRU_LPF, hpf(56.0)]),
-    ("Rev Live Room 1", "PMREV", &[2.4, 0.8, 7.0, 0.1, lpf(7000.0), THRU_HPF]),
-    ("Rev Live Room 2", "PMREV", &[2.2, 0.5, 6.0, 12.0, lpf(4000.0), THRU_HPF]),
-    ("Reverb Vocal", "PMREV", &[1.9, 0.5, 6.0, 16.0, lpf(12000.0), hpf(100.0)]),
-    ("Chorus->Reverb", "PMCHREV", &[0.8, 40.0, 1.3, 2.4, 0.7, 7.0, 30.0, lpf(6300.0), THRU_HPF, 24.0]),
-    ("Flange->Reverb", "PMFLREV", &[1.4, 22.0, 45.0, 13.0, 2.4, 8.0, 26.0, lpf(4500.0), hpf(45.0), 30.0]),
-    ("Delay L-C-R", "PMDLCR", &[250.0, 500.0, 125.0, 70.0, 500.0, 40.0, 0.8]),
-    ("MonoDly->Chorus", "PMMDCHO", &[400.0, 32.0, 0.6, 0.4, 10.0, 0.1]),
-    ("Chorus->Dly LCR", "PMCHDLY", &[0.8, 24.0, 5.9, 26.4, 33.2, 13.1, 60.0, 40.5, -48.0, 0.1]),
-    ("Delay->Chorus", "PMDLCHO", &[250.0, 500.0, 500.0, 33.0, 0.7, 1.2, 25.0, 10.0]),
-    ("Karaoke Echo 1", "PMECHO", &[220.0, 40.0, 223.0, 40.0, 0.4]),
-    ("Karaoke Echo 2", "PMECHO", &[220.0, 44.0, 180.0, -55.0, 0.2]),
-    ("St.Pitch Change", "PMPITCH", &[0.0, 10.0, -10.0, 100.0, 100.0, -100.0, 100.0, 28.0, -28.0, 25.0]),
-    ("Vocal Doubler", "PMPITCH", &[0.0, 8.0, -8.0, 100.0, 100.0, -6.0, 6.0, 20.0, -20.0, 50.0]),
-    ("Funny Pitch", "PMPITCH", &[-2.0, 8.0, -8.0, 100.0, 100.0, -90.0, 90.0, 90.0, -90.0, 4.0]),
-    ("Chorus", "PMCHO", &[0.6, 49.0, 35.0, 12.1]),
-    ("Broad Chorus", "PMCHO", &[0.5, 64.0, 90.0, 38.0]),
-    ("Symphonic", "PMSYMP", &[0.6, 8.0, 2.4]),
-    ("Flange", "PMFLG", &[1.2, 25.0, 45.0, 14.6]),
-    ("Super Flange", "PMFLG", &[0.2, 80.0, 83.0, 0.4]),
-    ("Phasing", "PMPHAS", &[0.5, 58.0, 47.0, 24.0]),
-    ("Tremolo", "PMTREM", &[2.8, 86.0, 0.0]),
-    ("Auto Pan", "PMAPAN", &[0.8, 98.0, 15.0, 0.0]),
+    ("REVERB HALL 1", "PMREV", &[2.8, 0.8, 6.0, 40.0, lpf(7000.0), THRU_HPF]),
+    ("REVERB HALL 2", "PMREV", &[3.2, 0.7, 8.0, 38.0, lpf(6300.0), THRU_HPF]),
+    ("REVERB ROOM 1", "PMREV", &[1.4, 0.8, 7.0, 5.0, THRU_LPF, hpf(280.0)]),
+    ("REVERB ROOM 2", "PMREV", &[1.8, 0.6, 6.0, 17.0, lpf(9000.0), hpf(80.0)]),
+    ("REVERB STAGE", "PMREV", &[3.4, 0.9, 8.0, 45.0, THRU_LPF, hpf(70.0)]),
+    ("REVERB PLATE", "PMREV", &[2.4, 0.7, 8.0, 16.0, lpf(8000.0), THRU_HPF]),
+    ("REV AMBIENCE 1", "PMREV", &[1.2, 1.0, 8.0, 19.0, lpf(9000.0), hpf(45.0)]),
+    ("REV AMBIENCE 2", "PMREV", &[0.8, 0.6, 8.0, 0.1, THRU_LPF, hpf(56.0)]),
+    ("REV LIVE ROOM 1", "PMREV", &[2.4, 0.8, 7.0, 0.1, lpf(7000.0), THRU_HPF]),
+    ("REV LIVE ROOM 2", "PMREV", &[2.2, 0.5, 6.0, 12.0, lpf(4000.0), THRU_HPF]),
+    ("REVERB VOCAL", "PMREV", &[1.9, 0.5, 6.0, 16.0, lpf(12000.0), hpf(100.0)]),
+    ("CHORUS->REVERB", "PMCHREV", &[0.8, 40.0, 1.3, 2.4, 0.7, 7.0, 30.0, lpf(6300.0), THRU_HPF, 24.0]),
+    ("FLANGE->REVERB", "PMFLREV", &[1.4, 22.0, 45.0, 13.0, 2.4, 8.0, 26.0, lpf(4500.0), hpf(45.0), 30.0]),
+    ("DELAY L-C-R", "PMDLCR", &[250.0, 500.0, 125.0, 70.0, 500.0, 40.0, 0.8]),
+    ("MONODLY->CHORUS", "PMMDCHO", &[400.0, 32.0, 0.6, 0.4, 10.0, 0.1]),
+    ("CHORUS->DLY LCR", "PMCHDLY", &[0.8, 24.0, 5.9, 26.4, 33.2, 13.1, 60.0, 40.5, -48.0, 0.1]),
+    ("DELAY->CHORUS", "PMDLCHO", &[250.0, 500.0, 500.0, 33.0, 0.7, 1.2, 25.0, 10.0]),
+    ("KARAOKE ECHO 1", "PMECHO", &[220.0, 40.0, 223.0, 40.0, 0.4]),
+    ("KARAOKE ECHO 2", "PMECHO", &[220.0, 44.0, 180.0, -55.0, 0.2]),
+    ("ST.PITCH CHANGE", "PMPITCH", &[0.0, 10.0, -10.0, 100.0, 100.0, -100.0, 100.0, 28.0, -28.0, 25.0]),
+    ("VOCAL DOUBLER", "PMPITCH", &[0.0, 8.0, -8.0, 100.0, 100.0, -6.0, 6.0, 20.0, -20.0, 50.0]),
+    ("FUNNY PITCH", "PMPITCH", &[-2.0, 8.0, -8.0, 100.0, 100.0, -90.0, 90.0, 90.0, -90.0, 4.0]),
+    ("CHORUS", "PMCHO", &[0.6, 49.0, 35.0, 12.1]),
+    ("BROAD CHORUS", "PMCHO", &[0.5, 64.0, 90.0, 38.0]),
+    ("SYMPHONIC", "PMSYMP", &[0.6, 8.0, 2.4]),
+    ("FLANGE", "PMFLG", &[1.2, 25.0, 45.0, 14.6]),
+    ("SUPER FLANGE", "PMFLG", &[0.2, 80.0, 83.0, 0.4]),
+    ("PHASING", "PMPHAS", &[0.5, 58.0, 47.0, 24.0]),
+    ("TREMOLO", "PMTREM", &[2.8, 86.0, 0.0]),
+    ("AUTO PAN", "PMAPAN", &[0.8, 98.0, 15.0, 0.0]),
 ];
 
 /// An EQ band: gain (dB), frequency (Hz), Q (0-8 the octave values, 9 SHELF).
@@ -171,7 +172,8 @@ pub const EQ_PRESETS: [(&str, [EqBand; 3]); 30] = [
 
 /// The libraries the console keeps (its backup memory, not a scene's): the
 /// user programs of the effects (31-40), the dynamics (11-20) and the EQ
-/// (31-50). A user program starts as "Initial Data": the first preset.
+/// (31-50). A user program starts as the first preset named "USER LIBRARY n"
+/// (n counting the library's user programs from 1, as p.22 shows).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Library {
     pub fx_user: Vec<FxProgram>,
@@ -181,14 +183,13 @@ pub struct Library {
 
 impl Default for Library {
     fn default() -> Self {
-        let named = |p: &FxProgram| FxProgram { name: "Initial Data".into(), ..p.clone() };
-        let fx = named(&Self::fx_preset(0));
+        let user = |n: usize| format!("USER LIBRARY {}", n + 1);
+        let fx = Self::fx_preset(0);
         let (_, model, values) = DYN_PRESETS[0];
-        let eq = EqProgram { name: "Initial Data".into(), bands: EQ_PRESETS[0].1 };
         Library {
-            fx_user: vec![fx; 10],
-            dyn_user: vec![DynProgram { name: "Initial Data".into(), model, values }; 10],
-            eq_user: vec![eq; 20],
+            fx_user: (0..10).map(|n| FxProgram { name: user(n), ..fx.clone() }).collect(),
+            dyn_user: (0..10).map(|n| DynProgram { name: user(n), model, values }).collect(),
+            eq_user: (0..20).map(|n| EqProgram { name: user(n), bands: EQ_PRESETS[0].1 }).collect(),
         }
     }
 }

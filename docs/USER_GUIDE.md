@@ -1079,12 +1079,17 @@ Universal Mixer, whose **PROMIX SURFACE** key comes back.
   pans and balances, then PHASE), **COMP** (pressed again: the next of the three
   processors; its ON/OFF, PATCH, KEYIN and IN, three of its programs, and **STORE**,
   **RECALL** (ENTER recalls the program chosen in the list) and **EDIT** (its EDIT page,
-  as is the cursor past the last field); at the right its gain reduction and output), **CUE**, **SEND1-4** (SEND1-2: the effect's program list and PRE /
-  POST, then its EDIT page; SEND3-4: PRE / POST and, as a stereo pair, the pans), **EQ
+  as is the cursor past the last field: the program's name, its parameters as a list,
+  "Threshold= 0dB", beside the gain curve, ON/OFF and PATCH, and **EXIT**); at the right
+  its gain reduction and output), **CUE**, **SEND1-4** (SEND1-2: the effect's program list,
+  PRE / POST and its return's meter, then its EDIT page: the program's name, its
+  parameters as a list, "[1]Rev.Time= 2.8s", and **EXIT**; SEND3-4: PRE / POST and, as a
+  stereo pair, the pans), **EQ
   LOW / MID / HIGH** (the selected strip's EQ: its curve, a dotted line at the band under
   the cursor, and the G, F and Q of LOW, MID and HIGH; a band's key again steps through
   them), **LIBRARY** (the
-  EQ library's 50 programs), **GROUP**, **PAIR**, **UTILITY** (SEND3-4 as a stereo pair, the
+  EQ library's 50 programs, four at a time, the curve at the right, **STORE** and
+  **RECALL**), **GROUP**, **PAIR**, **UTILITY** (SEND3-4 as a stereo pair, the
   outputs' dynamics patch points, the oscillator) and **MIDI** (MIDI SETUP). The cursor
   keys move between the page's values, the **PARAMETER** wheel changes the one under the
   cursor, **ENTER** switches it, or sets a choice that waits for it (a program to recall, a

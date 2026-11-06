@@ -259,6 +259,22 @@ namespace promix
         build();
     }
 
+    Display::Field Display::exitField (juce::Rectangle<float> box)
+    {
+        // EXIT: back to the function's first page (an EDIT page's, pp.35, 76).
+        Field f;
+        f.label = "EXIT";
+        f.style = Field::Style::Button;
+        f.get = [] { return -1; };
+        f.steps = [] { return 1; };
+        f.text = [] { return juce::String(); };
+        f.set = [this] (int) { setPage (0); };
+        f.onEnter = true;
+        f.pending = 0;
+        f.box = box;
+        return f;
+    }
+
     Display::Field Display::storeField (int library, int first, int count, int target, juce::Rectangle<float> box)
     {
         Field f;
@@ -307,6 +323,45 @@ namespace promix
         build();
     }
 
+    namespace
+    {
+        /** A parameter's name as an EDIT page lists it (pp.35, 37-44, 76): the
+            manual's own spellings ("Rev.time" as the LCD prints it, "Ini.Dly",
+            "FB.Gain"), the rest in words with capitals ("Threshold", "Dly L"). */
+        juce::String editName (const juce::String& label)
+        {
+            static const std::pair<const char*, const char*> names[] = {
+                { "REV TIME", "Rev.Time" }, { "INI DLY", "Ini.Dly" }, { "MOD FREQ", "Mod.Freq" }, { "MOD DLY", "Mod.Dly" },
+                { "MOD DEPTH", "Mod.Depth" }, { "REV DEPTH", "Rev.Depth" }, { "FB GAIN", "FB.Gain" }, { "FB DLY", "FB.Dly" },
+                { "AM DEPTH", "AM Depth" }, { "PM DEPTH", "PM Depth" }, { "LPF", "LPF" }, { "HPF", "HPF" }, { "L/R DEPTH", "L/R Depth" },
+                { "F/R DEPTH", "F/R Depth" } };
+            for (auto [from, to] : names)
+                if (label == from)
+                    return to;
+            juce::StringArray words;
+            words.addTokens (label, " ", "");
+            for (auto& w : words)
+                w = w.length() <= 1 ? w : w.substring (0, 1) + w.substring (1).toLowerCase();
+            return words.joinIntoString (" ");
+        }
+
+        /** A value as an EDIT page shows it: no space before the unit ("2.8s",
+            "10ms", "0dB"), a ratio as "2:1". */
+        juce::String editValue (const juce::String& label, juce::String text)
+        {
+            text = text.removeCharacters (" ");
+            if (label == "RATIO" && text != "INF")
+            {
+                if (text.containsChar ('.'))
+                    text = text.trimCharactersAtEnd ("0").trimCharactersAtEnd (".");
+                return text + ":1";
+            }
+            if (text.startsWith ("+0") && text.removeCharacters ("+0.dB").isEmpty())
+                return "0dB";
+            return text;
+        }
+    }
+
     Display::Field Display::paramField (int n, juce::Rectangle<float> box, bool enter)
     {
         Field f;
@@ -346,6 +401,7 @@ namespace promix
     void Display::build()
     {
         fields.clear();
+        scrollFirst = 0;
         const int e = eqStrip;
         switch (function)
         {
@@ -421,20 +477,39 @@ namespace promix
             }
             case Function::Library:
             {
+                // As p.22's picture: four programs ("1.RESET"), the curve at the
+                // right; STORE and RECALL along the bottom.
                 Field f;
-                f.label = "EQ LIBRARY";
                 auto& p = pm;
                 f.text = [] { return juce::String(); };
                 f.get = [] { return -1; };
                 f.steps = [] { return 50; };
                 f.set = [&p, this] (int n) { p.recallEq (eqStrip, n); };
                 f.onEnter = true;
-                f.item = [&p] (int i) { return juce::String (i + 1).paddedLeft ('0', 2) + " " + p.programName (ProMix::Eq, i); };
-                f.box = { 0.0f, 0.0f, 0.62f, 1.0f };
+                f.item = [&p] (int i) { return juce::String (i + 1) + "." + p.programName (ProMix::Eq, i); };
+                f.box = { 0.0f, 0.0f, 0.64f, 0.76f };
+                f.rows = 4;
                 f.pending = 0;
+                const int list = (int) fields.size();
                 fields.push_back (std::move (f));
-                fields.push_back (storeField (ProMix::Eq, 30, 20, eqStrip, { 0.0f, 0.0f, 0.0f, 0.0f }));
-                fields.back().box = { 0.64f, 0.0f, 0.36f, 0.2f };
+                fields.push_back (storeField (ProMix::Eq, 30, 20, eqStrip, { 0.0f, 0.8f, 0.18f, 0.2f }));
+                fields.back().style = Field::Style::Button;
+                Field recall;
+                recall.label = "RECALL";
+                recall.style = Field::Style::Button;
+                recall.get = [] { return -1; };
+                recall.steps = [] { return 1; };
+                recall.text = [] { return juce::String(); };
+                recall.set = [this, list] (int)
+                {
+                    auto& l = fields[(size_t) list];
+                    if (l.pending >= 0)
+                        l.set (l.pending);
+                };
+                recall.onEnter = true;
+                recall.pending = 0;
+                recall.box = { 0.2f, 0.8f, 0.2f, 0.2f };
+                fields.push_back (recall);
                 break;
             }
             case Function::Send1:
@@ -483,13 +558,25 @@ namespace promix
                 }
                 else
                 {
+                    // EFFECT EDIT (p.35): the parameters as a list, "[1]Rev.Time= 2.8s",
+                    // three at a time under the program's name; EXIT at the bottom right.
+                    scrollArea = { 0.02f, 0.2f, 0.72f, 0.48f };
+                    scrollRows = 3;
                     for (int k = 0; k < 10; ++k)
                     {
                         const int n = kFxParam + 20 * fx + 2 * k;
-                        if (pm.label (n).isEmpty())
+                        const auto name = pm.label (n);
+                        if (name.isEmpty())
                             break;
-                        fields.push_back (paramField (n, { 0.2f * (float) (k % 5), k < 5 ? 0.12f : 0.56f, 0.2f, 0.34f }));
+                        auto f = paramField (n, {});
+                        f.label = "[" + juce::String (k + 1) + "]" + editName (name) + "=";
+                        auto& p = pm;
+                        f.text = [&p, n, name] { return editValue (name, p.text (n)); };
+                        f.style = Field::Style::Row;
+                        f.scroll = k;
+                        fields.push_back (std::move (f));
                     }
+                    fields.push_back (exitField ({ 0.84f, 0.8f, 0.14f, 0.2f }));
                 }
                 break;
             }
@@ -556,9 +643,30 @@ namespace promix
                 }
                 else
                 {
+                    // COMP EDIT (p.76): the program's name, its parameters as a list
+                    // ("Threshold= 0dB", four at a time) beside the gain curve; ON/OFF
+                    // and PATCH along the bottom, EXIT at the right.
+                    scrollArea = { 0.02f, 0.2f, 0.46f, 0.58f };
+                    scrollRows = 4;
                     for (int i = 0; i < 5; ++i)
-                        fields.push_back (paramField (kCompParam + 5 * k + i, { 0.2f * (float) i, 0.2f, 0.2f, 0.4f }));
-                    fields.push_back (paramField (kCompOn + k, { 0.0f, 0.75f, 0.2f, 0.22f }));
+                    {
+                        const int n = kCompParam + 5 * k + i;
+                        const auto name = pm.label (n);
+                        if (name.isEmpty())
+                            break;
+                        auto f = paramField (n, {});
+                        f.label = editName (name) + "=";
+                        auto& p = pm;
+                        f.text = [&p, n, name] { return editValue (name, p.text (n)); };
+                        f.style = Field::Style::Row;
+                        f.scroll = i;
+                        fields.push_back (std::move (f));
+                    }
+                    auto on = paramField (kCompOn + k, { 0.0f, 0.8f, 0.3f, 0.2f });
+                    on.label = "ON/OFF";
+                    on.style = Field::Style::Inline;
+                    fields.push_back (std::move (on));
+                    fields.push_back (exitField ({ 0.84f, 0.8f, 0.14f, 0.2f }));
                 }
                 break;
             }
@@ -1139,9 +1247,9 @@ namespace promix
             case Function::Group: return "FADER";
             case Function::Pair: return "STEREO";
             case Function::Cue: return "CH VIEW";
-            case Function::Comp: return "No." + juce::String (processor + 1) + (page == 1 ? " EDIT" : "");
+            case Function::Comp: return "NO." + juce::String (processor + 1); // as the photo and p.76: no EDIT
             case Function::Send1:
-            case Function::Send2: return page == 1 ? "EFFECT EDIT" : "";
+            case Function::Send2: return {}; // EFFECT EDIT too (p.35)
             case Function::Library: return "EQ";
             case Function::Pan:
             case Function::Meter: return page == 0 ? "" : "ST IN / RTN";
@@ -1179,8 +1287,23 @@ namespace promix
     juce::Rectangle<float> Display::boxOf (const Field& f) const
     {
         const auto a = pageArea();
-        return { a.getX() + f.box.getX() * a.getWidth(), a.getY() + f.box.getY() * a.getHeight(), f.box.getWidth() * a.getWidth(),
-                 f.box.getHeight() * a.getHeight() };
+        auto box = f.box;
+        if (f.scroll >= 0)
+        {
+            // A row of the scrolling list, if it's among the rows shown (the
+            // cursor's row kept in view); else nowhere.
+            if (juce::isPositiveAndBelow (focus, (int) fields.size()) && fields[(size_t) focus].scroll >= 0)
+            {
+                const int at = fields[(size_t) focus].scroll;
+                scrollFirst = juce::jlimit (at - scrollRows + 1, at, scrollFirst);
+            }
+            const int row = f.scroll - scrollFirst;
+            if (row < 0 || row >= scrollRows)
+                return {};
+            const float h = scrollArea.getHeight() / (float) scrollRows;
+            box = { scrollArea.getX(), scrollArea.getY() + h * (float) row, scrollArea.getWidth(), h };
+        }
+        return { a.getX() + box.getX() * a.getWidth(), a.getY() + box.getY() * a.getHeight(), box.getWidth() * a.getWidth(), box.getHeight() * a.getHeight() };
     }
 
     void Display::resized() {}
@@ -1206,16 +1329,14 @@ namespace promix
             {
                 auto r = box.removeFromTop (rowH);
                 const bool sel = i == chosen;
+                // The chosen one inverted under the cursor (pp.22, 32); a short
+                // list's framed when the cursor is elsewhere (the COMP photo).
+                g.setColour (kPixel);
                 if (sel && focused)
-                {
-                    // The chosen one framed (COMP's list) or inverted.
-                    g.setColour (kPixel);
-                    if (f.rows > 0)
-                        g.drawRect (r.reduced (0.0f, 1.0f), 2.0f);
-                    else
-                        g.fillRect (r);
-                }
-                g.setColour (sel && focused && f.rows == 0 ? kLcd : i == current || f.rows > 0 ? kPixel : kPixelDim);
+                    g.fillRect (r);
+                else if (sel && f.rows > 0)
+                    g.drawRect (r.reduced (0.0f, 1.0f), 2.0f);
+                g.setColour (sel && focused ? kLcd : i == current || f.rows > 0 ? kPixel : kPixelDim);
                 g.setFont (lcdFont (f.rows > 0 ? type::kValue + 2.0f : type::kLabel, i == current));
                 auto text = f.item (i);
                 if (i == current)
@@ -1258,6 +1379,22 @@ namespace promix
                 g.setColour (kLcd);
             }
             g.drawFittedText (value, v.toNearestInt(), juce::Justification::centred, 1, 0.6f);
+            return;
+        }
+        if (f.style == Style::Row)
+        {
+            // "Name=" then the value at the right, the value inverted under the cursor (pp.35, 76).
+            g.setFont (lcdFont (type::kValue + 1.0f, true));
+            g.setColour (kPixel);
+            g.drawText (f.label, box, juce::Justification::centredLeft);
+            const auto value = f.text();
+            auto v = box.removeFromRight (juce::jmin (box.getWidth() * 0.45f, juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), value) + 10.0f));
+            if (focused)
+            {
+                g.fillRect (v);
+                g.setColour (kLcd);
+            }
+            g.drawFittedText (value, v.toNearestInt(), juce::Justification::centredRight, 1, 0.6f);
             return;
         }
         if (f.style == Style::Button)
@@ -1654,6 +1791,44 @@ namespace promix
                           juce::Justification::centredLeft, 1, 0.6f);
     }
 
+    void Display::paintEditHeader (juce::Graphics& g, juce::Rectangle<float> area, const juce::String& name, float width) const
+    {
+        // An EDIT page's top line: the program's number and name, a rule under it.
+        g.setColour (kPixel);
+        g.setFont (lcdFont (type::kValue + 2.0f, true));
+        g.drawText (name, juce::Rectangle<float> (area.getX() + 8.0f, area.getY(), area.getWidth() * width - 8.0f, area.getHeight() * 0.18f),
+                    juce::Justification::centredLeft);
+        g.fillRect (area.getX(), area.getY() + area.getHeight() * 0.18f, area.getWidth() * width, 1.5f);
+    }
+
+    void Display::paintGainCurve (juce::Graphics& g, juce::Rectangle<float> r) const
+    {
+        // The processor's output level against its input (p.76), from -60 to
+        // +18 dB both ways: 1:1 below the threshold, the ratio above it; a
+        // gate's or a ducker's the line alone (Sidecar's drawing).
+        const int base = kCompParam + 5 * processor;
+        const bool comp = pm.label (base) == "THRESHOLD" && pm.label (base + 1) == "RATIO";
+        g.setColour (kPixel);
+        g.drawLine (r.getX(), r.getBottom(), r.getX(), r.getY(), 1.0f);
+        g.drawLine (r.getX(), r.getBottom(), r.getRight(), r.getBottom(), 1.0f);
+        float thr = 18.0f, ratio = 1.0f;
+        if (comp)
+        {
+            thr = pm.text (base).removeCharacters ("dB +").getFloatValue();
+            const auto rt = pm.text (base + 1);
+            ratio = rt == "INF" ? 1000.0f : juce::jmax (1.0f, rt.getFloatValue());
+        }
+        const auto at = [r] (float in, float out)
+        {
+            return juce::Point<float> (r.getX() + r.getWidth() * (in + 60.0f) / 78.0f, r.getBottom() - r.getHeight() * juce::jlimit (0.0f, 1.0f, (out + 60.0f) / 78.0f));
+        };
+        juce::Path p;
+        p.startNewSubPath (at (-60.0f, -60.0f));
+        p.lineTo (at (thr, thr));
+        p.lineTo (at (18.0f, thr + (18.0f - thr) / ratio));
+        g.strokePath (p, juce::PathStrokeType (1.5f));
+    }
+
     void Display::paint (juce::Graphics& g)
     {
         auto b = getLocalBounds().toFloat();
@@ -1698,7 +1873,21 @@ namespace promix
             case Function::Comp:
             {
                 if (page != 0)
-                    break; // EDIT: the type's parameters across the page
+                {
+                    // EDIT (p.76): the program's name over a rule; the gain curve
+                    // beside the list; a rule over ON/OFF and PATCH.
+                    const int prog = juce::jmax (0, pm.get (kCompType + processor));
+                    paintEditHeader (g, area, juce::String (prog + 1) + "." + pm.programName (ProMix::Dynamics, prog), 0.78f);
+                    g.fillRect (area.getX(), area.getY() + area.getHeight() * 0.79f, area.getWidth() * 0.8f, 1.5f);
+                    g.setFont (lcdFont (type::kValue + 1.0f, true));
+                    g.drawText ("PATCH:" + pm.text (kCompPatch + processor),
+                                juce::Rectangle<float> (area.getX() + area.getWidth() * 0.34f, area.getY() + area.getHeight() * 0.8f, area.getWidth() * 0.4f,
+                                                        area.getHeight() * 0.2f),
+                                juce::Justification::centredLeft);
+                    paintGainCurve (g, juce::Rectangle<float> (area.getX() + area.getWidth() * 0.5f, area.getY() + area.getHeight() * 0.2f,
+                                                               area.getWidth() * 0.26f, area.getHeight() * 0.56f));
+                }
+                else
                 {
                     // COMP and the processor's number, big and inverted; the rules under the setup and the list.
                     auto num = juce::Rectangle<float> (area.getX(), area.getY(), area.getWidth() * 0.18f, area.getHeight() * 0.34f).reduced (4.0f, 2.0f);
@@ -1784,12 +1973,22 @@ namespace promix
                 break;
             case Function::Send1:
             case Function::Send2:
+                if (page != 0)
+                {
+                    // EFFECT EDIT (p.35): the program's name over a rule, "(FADER = SEND1)"
+                    // under the list.
+                    const int prog = juce::jmax (0, pm.get (kFxType + (function == Function::Send1 ? 0 : 1)));
+                    paintEditHeader (g, area, juce::String (prog + 1) + "." + pm.programName (ProMix::Effects, prog), 0.76f);
+                    g.setFont (lcdFont (type::kValue + 1.0f, true));
+                    g.drawText (function == Function::Send1 ? "(FADER = SEND1)" : "(FADER = SEND2)",
+                                juce::Rectangle<float> (area.getX(), area.getY() + area.getHeight() * 0.78f, area.getWidth() * 0.76f, area.getHeight() * 0.2f),
+                                juce::Justification::centred);
+                }
                 if (page == 0)
                 {
                     // "(FADER = SEND1)" under the list, the rules; STORE's choice waiting for ENTER.
                     g.setColour (kPixel);
                     g.fillRect (area.getX(), area.getY() + area.getHeight() * 0.62f, area.getWidth() * 0.76f, 1.5f);
-                    g.fillRect (area.getX() + area.getWidth() * 0.77f, area.getY(), 1.5f, area.getHeight() * 0.76f);
                     g.fillRect (area.getX(), area.getY() + area.getHeight() * 0.77f, area.getWidth(), 1.5f);
                     g.setFont (lcdFont (type::kValue + 1.0f, true));
                     g.drawText (function == Function::Send1 ? "(FADER = SEND1)" : "(FADER = SEND2)",
@@ -1803,22 +2002,32 @@ namespace promix
                                               juce::Rectangle<float> (area.getX(), area.getY() + area.getHeight() * 0.62f, area.getWidth() * 0.76f, area.getHeight() * 0.15f).toNearestInt(),
                                               juce::Justification::centredRight, 1, 0.6f);
                     }
-                    // The effect's return, RTN L and R, at the right (p.33).
+                }
+                {
+                    // The effect's return at the right (pp.32, 35): the CLIP ... -40
+                    // scale, the L and R meters on its segments, "RTN1 L R" under them.
                     const auto& aux = ctx.engine.getAux();
                     const int fx = function == Function::Send1 ? 1 : 2;
                     auto* rtn = fx < (int) aux.size() ? aux[(size_t) fx].get() : nullptr;
-                    auto m = juce::Rectangle<float> (area.getRight() - area.getWidth() * 0.1f, area.getY(), area.getWidth() * 0.08f, area.getHeight() * 0.5f);
+                    auto m = juce::Rectangle<float> (area.getX() + area.getWidth() * 0.8f, area.getY(), area.getWidth() * 0.2f, area.getHeight() * 0.76f);
+                    g.setColour (kPixel);
+                    g.fillRect (m.getX() - 4.0f, m.getY(), 1.5f, m.getHeight());
+                    auto labels = m.removeFromBottom (18.0f);
+                    auto bars = m.withTrimmedLeft (m.getWidth() * 0.42f).reduced (2.0f, 4.0f);
+                    paintScale (m.withWidth (m.getWidth() * 0.4f).withTrimmedTop (4.0f).withTrimmedBottom (4.0f), bars);
+                    g.setColour (kPixel);
+                    g.setFont (lcdFont (type::kLabel, true));
+                    g.drawText (fx == 1 ? "RTN1 L R" : "RTN2 L R", labels, juce::Justification::centredRight);
+                    // On the scale's segments (0 at -20 dBFS: METER's).
+                    const float marks[] = { -60.0f, -44.0f, -38.0f, -32.0f, -26.0f, -20.0f, -17.0f, -14.0f, -11.0f, -8.0f, -5.0f, 0.0f };
                     for (int ch = 0; ch < 2; ++ch)
                     {
-                        auto col = m.withWidth (m.getWidth() / 2.0f).withX (m.getX() + m.getWidth() / 2.0f * (float) ch).reduced (2.0f, 0.0f);
-                        g.setColour (kPixelDim);
-                        g.setFont (lcdFont (type::kCaption, true));
-                        g.drawText (ch == 0 ? "L" : "R", col.removeFromBottom (14.0f), juce::Justification::centred);
-                        const float db = juce::Decibels::gainToDecibels (rtn != nullptr ? ctx.meters.get (rtn, MeterPoint::Output, ch) : 0.0f, -60.0f);
-                        g.setColour (kLcdFrame);
-                        g.fillRect (col);
-                        g.setColour (kPixel);
-                        g.fillRect (col.withTop (col.getBottom() - col.getHeight() * (db + 60.0f) / 60.0f));
+                        auto col = bars.withWidth (bars.getWidth() / 2.0f).withX (bars.getX() + bars.getWidth() / 2.0f * (float) ch).reduced (bars.getWidth() * 0.08f, 0.0f);
+                        const float db = juce::Decibels::gainToDecibels (rtn != nullptr ? ctx.meters.get (rtn, MeterPoint::Output, ch) : 0.0f, -100.0f);
+                        int lit = 0;
+                        for (float mark : marks)
+                            lit += db >= mark ? 1 : 0;
+                        g.fillRect (col.withTop (col.getBottom() - col.getHeight() * (float) lit / 12.0f));
                     }
                 }
                 break;
@@ -1865,7 +2074,11 @@ namespace promix
                 break;
             }
             case Function::Library:
-                paintEqCurve (g, area.withWidth (area.getWidth() * 0.34f).withX (area.getRight() - area.getWidth() * 0.34f));
+                // The curve at the right, framed; the rule over STORE and RECALL.
+                paintEqCurve (g, juce::Rectangle<float> (area.getX() + area.getWidth() * 0.66f, area.getY(), area.getWidth() * 0.34f, area.getHeight() * 0.74f));
+                g.setColour (kPixel);
+                g.drawRect (juce::Rectangle<float> (area.getX() + area.getWidth() * 0.66f, area.getY(), area.getWidth() * 0.34f, area.getHeight() * 0.74f), 1.5f);
+                g.fillRect (area.getX(), area.getY() + area.getHeight() * 0.77f, area.getWidth(), 1.5f);
                 break;
             case Function::Utility:
             case Function::Midi:
@@ -2030,7 +2243,8 @@ namespace promix
                 break;
         }
         for (size_t i = 0; i < fields.size(); ++i)
-            paintField (g, fields[i], (int) i == focus);
+            if (! boxOf (fields[i]).isEmpty())
+                paintField (g, fields[i], (int) i == focus);
         // The LCD's dot matrix: 240 x 64 dots, the gaps between them in the backlight.
         {
             const auto screen = b.reduced (6.0f);

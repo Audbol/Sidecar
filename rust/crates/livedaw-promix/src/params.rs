@@ -359,7 +359,7 @@ pub fn text_of(c: &Console, n: u16, v: u16) -> String {
         Some(CueMode) => ["MIX", "LAST CUE", "GROUP CUE", "ST FIX"][v.min(3) as usize].into(),
         Some(Group(_)) => ["-", "A", "B", "C", "D"][v.min(4) as usize].into(),
         Some(GroupSelect) => ["A", "B", "C", "D"][v.min(3) as usize].into(),
-        Some(PairExecute(_)) => ["MONO x2", "ST(1>2)", "ST(2>1)", "ST(RESET)"][v.min(3) as usize].into(),
+        Some(PairExecute(_)) => ["MONO x 2", "ST (1->2)", "ST (2->1)", "ST (RESET)"][v.min(3) as usize].into(),
         Some(Send34Execute) => if v != 0 { "STEREO" } else { "MONO" }.into(),
         _ => on_off(v),
     }
@@ -559,11 +559,11 @@ mod tests {
             (text(&c, 3), text(&c, 50), text(&c, 235), text(&c, 335)),
             ("+0.0".into(), "L12".into(), "1.0kHz".into(), "3oct".into())
         );
-        assert_eq!((text(&c, 379), text(&c, 450), text(&c, 404)), ("SHELF".into(), "SEND3".into(), "01 Reverb Hall 1".into()));
+        assert_eq!((text(&c, 379), text(&c, 450), text(&c, 404)), ("SHELF".into(), "SEND3".into(), "01 REVERB HALL 1".into()));
         assert_eq!((level_text(0), pan_text(16), pan_text(32)), ("-oo".into(), "C".into(), "R16".into()));
         assert_eq!(
             (text_of(&c, 449, 19), text_of(&c, 505, 3), text_of(&c, 446, 7)),
-            ("STEREO".into(), "ST(RESET)".into(), "08 GATE SLOW".into())
+            ("STEREO".into(), "ST (RESET)".into(), "08 GATE SLOW".into())
         );
         // As a console's LCD shows them: "0dB" unsigned, "10kHz" with no decimal.
         assert_eq!(

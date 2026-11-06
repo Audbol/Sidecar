@@ -679,11 +679,11 @@ private:
         expectEquals (display.getFields()[(size_t) display.getCursor()].label, juce::String ("STORE"));
         display.enter();
         expect (display.getFunction() == F::TitleEdit);
-        display.turn (1); // "Initial Data": I to J
+        display.turn (1); // "USER LIBRARY 1": U to V
         display.enter();
         expect (display.getFunction() == F::Library);
-        expectEquals (pm.programName (ProMix::Eq, 30), juce::String ("Jnitial Data"));
-        expect (rig.settings.getValue (ui::ProMixSurface::libraryKey).contains ("Jnitial Data"));
+        expectEquals (pm.programName (ProMix::Eq, 30), juce::String ("VSER LIBRARY 1"));
+        expect (rig.settings.getValue (ui::ProMixSurface::libraryKey).contains ("VSER LIBRARY 1"));
         // MIDI's third page, PROGRAM CHANGE ASSIGN: PGM 1 to memory 04, kept in the settings.
         skin.pressFunction (F::Midi);
         skin.pressFunction (F::Midi);
