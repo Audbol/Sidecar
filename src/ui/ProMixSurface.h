@@ -189,8 +189,10 @@ namespace promix
                 filled) over its number; PAIR's box of two channels (the stereo
                 mark between them when paired); a fader's slot and knob over its
                 name (CUE's); a number alone (GROUP's channels); a value boxed
-                under its name (EQ's ON/OFF). */
-            enum class Style { Box, Bare, Inline, Button, Knob, Circle, PairBox, Fader, Number, Value } style = Style::Box;
+                under its name (EQ's ON/OFF); a line of text, its name then its
+                value (BATTERY CHECK's, PROGRAM CHANGE ASSIGN's "1= 01"); a cell
+                of a ruled table, its name over its value (LOCAL ON/OFF's). */
+            enum class Style { Box, Bare, Inline, Button, Knob, Circle, PairBox, Fader, Number, Value, Text, Grid } style = Style::Box;
             /** What it stands for, where the style needs it (PAIR's pair). */
             int index = -1;
             int span = 1;

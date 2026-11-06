@@ -31,6 +31,7 @@ namespace
     constexpr float kRowSamples = 0.2f, kRowMs = 0.5f, kRowOn = 0.8f;
     /** A row of a number and one value: where the value starts. */
     constexpr float kRowCompact = 0.4f;
+    constexpr float kSmall = 10.0f;
     // Its LEDs: SEL orange, ON green, the function keys orange.
     const juce::Colour kSelLed (0xffffa030), kOnLed (0xff4cd964);
 
@@ -88,6 +89,15 @@ namespace
 
 namespace y02r
 {
+    namespace
+    {
+        /** The pictures' marks (drawn further on): a word boxed, lit or outlined; a
+            box as wide as its word; a knob with its pointer at `frac` of its travel. */
+        void chip (juce::Graphics&, juce::Rectangle<float>, const juce::String&, bool lit);
+        juce::Rectangle<float> fitted (juce::Rectangle<float>, const juce::String&, float margin = 8.0f);
+        void knob (juce::Graphics&, juce::Rectangle<float>, float frac, float thickness = 1.4f);
+    } // namespace
+
     int address (int strip, int item) { return strip * 28 + item; }
     int sendAddress (int member, int aux) { return kSendsBase + member * 10 + aux; }
 
@@ -714,6 +724,8 @@ namespace y02r
                     };
                     fields.push_back (lib);
                 }
+                if (function == Function::View)
+                    layoutView();
                 break;
             case Function::Delay:
                 if (memberOf (s) < 0)
@@ -1132,6 +1144,7 @@ namespace y02r
                                         onOff,
                                         0,
                                         1 });
+                layoutUtility();
                 break;
             case Function::DigitalIo:
             {
@@ -1145,6 +1158,7 @@ namespace y02r
                 fixed ("CASCADE", "NONE");
                 fixed ("SLOT 1-4", "NONE");
                 fixed ("DITHER", "OFF");
+                layoutDigitalIo();
                 break;
             }
             case Function::Setup:
@@ -1182,6 +1196,7 @@ namespace y02r
                         fixed ("FLIP RCL SAFE", "ON");
                         fixed ("AUTOMIX", "NOT EMULATED");
                     }
+                    layoutSetup();
                     break;
                 }
                 // SETUP's solo (MAN p.160): where the channels and the outputs are heard.
@@ -1191,6 +1206,7 @@ namespace y02r
                 fields.push_back ({ "SOLO OUT", [&e] { return e.busSoloAfl.load() ? 1 : 0; }, [&e] (int v) { e.busSoloAfl = v != 0; }, listen, 0, 1 });
                 fixed ("SOLO MODE", "MIXDOWN");
                 fixed ("SOLO SAFE", "NONE");
+                layoutSetup();
                 break;
             }
             case Function::TitleEdit:
@@ -1692,6 +1708,189 @@ namespace y02r
         marks.push_back ({ Mark::Frame, { 0.0f, 0.44f, 1.0f, 0.55f }, kDynNames[type] });
     }
 
+    void Display::layoutSetup()
+    {
+        if (page == 0)
+        {
+            // Solo (V2 MAN p.196): Status (Sidecar mixes down), Listen, the outputs'
+            // listen; the solo safes aren't Sidecar's.
+            marks.push_back ({ Mark::Caption, { 0.0f, 0.0f, 1.0f, 0.08f }, "Solo" });
+            const juce::Rectangle<float> frames[] = { { 0.02f, 0.14f, 0.46f, 0.12f }, { 0.52f, 0.14f, 0.46f, 0.12f }, { 0.02f, 0.36f, 0.46f, 0.12f } };
+            const char* names[] = { "Listen", "Out Listen", "Status" };
+            for (int k = 0; k < 3; ++k)
+                marks.push_back ({ Mark::Frame, frames[k], names[k] });
+            marks.push_back ({ Mark::Frame, { 0.02f, 0.58f, 0.96f, 0.36f }, "Solo Safe" });
+            marks.push_back ({ Mark::Caption, { 0.02f, 0.68f, 0.96f, 0.16f }, "Not emulated: every channel's solo is heard" });
+            for (size_t k = 0; k < fields.size(); ++k)
+            {
+                auto& f = fields[k];
+                if (k < 2)
+                {
+                    f.look = Field::Look::Choices;
+                    f.choices = { "Pre Fader", "After Pan" };
+                    spots.push_back (frames[k].reduced (0.01f, 0.02f));
+                }
+                else if (k == 2)
+                {
+                    f.look = Field::Look::Choices;
+                    f.choices = { "Recording", "Mixdown" };
+                    f.get = [] { return 1; };
+                    f.lo = f.hi = 0;
+                    spots.push_back (frames[2].reduced (0.01f, 0.02f));
+                }
+                else
+                    spots.push_back ({ 0.0f, 0.0f, 0.0f, 0.0f }); // SOLO SAFE: the caption says it
+            }
+            return;
+        }
+        // PREFERENCES and AUX OUTPUT SELECT: a check box a line, two columns.
+        const char* titles[] = { "", "Aux Output Select", "Preferences 1", "Preferences 2" };
+        marks.push_back ({ Mark::Caption, { 0.0f, 0.0f, 1.0f, 0.08f }, titles[juce::jlimit (0, 3, page)] });
+        int row = 0;
+        for (auto& f : fields)
+        {
+            const bool fixedOne = f.lo == f.hi;
+            const int col = row / 6, line = row % 6;
+            if (fixedOne)
+            {
+                // A fixed value: its line as words, not a box to tick.
+                f.look = Field::Look::Row;
+                spots.push_back ({ 0.02f + 0.5f * (float) col, 0.12f + 0.13f * (float) line, 0.46f, 0.12f });
+            }
+            else
+            {
+                f.look = Field::Look::Check;
+                spots.push_back ({ 0.02f + 0.5f * (float) col, 0.12f + 0.13f * (float) line, 0.46f, 0.12f });
+            }
+            ++row;
+        }
+        marks.push_back ({ Mark::Frame, { 0.0f, 0.1f, 1.0f, 0.88f }, {} });
+    }
+
+    void Display::layoutUtility()
+    {
+        // Oscillator (V2 MAN p.209): On/Off, Level, Wave Form, BUS, Stereo and Aux Assign, framed.
+        marks.push_back ({ Mark::Caption, { 0.0f, 0.0f, 1.0f, 0.08f }, "Oscillator" });
+        marks.push_back ({ Mark::Frame, { 0.04f, 0.14f, 0.2f, 0.16f }, "On/Off" });
+        marks.push_back ({ Mark::Frame, { 0.34f, 0.14f, 0.24f, 0.16f }, "Level" });
+        marks.push_back ({ Mark::Frame, { 0.04f, 0.38f, 0.8f, 0.12f }, "Wave Form" });
+        marks.push_back ({ Mark::Frame, { 0.04f, 0.58f, 0.46f, 0.12f }, "BUS Assign" });
+        marks.push_back ({ Mark::Frame, { 0.54f, 0.58f, 0.3f, 0.12f }, "Stereo Assign" });
+        marks.push_back ({ Mark::Frame, { 0.04f, 0.8f, 0.46f, 0.12f }, "Aux Assign" });
+        for (size_t k = 0; k < fields.size(); ++k)
+        {
+            auto& f = fields[k];
+            if (k == 0)
+            {
+                f.look = Field::Look::Button;
+                spots.push_back ({ 0.08f, 0.17f, 0.12f, 0.1f });
+            }
+            else if (k == 1)
+            {
+                f.look = Field::Look::Row;
+                spots.push_back ({ 0.35f, 0.16f, 0.22f, 0.12f });
+            }
+            else if (k == 2)
+            {
+                f.look = Field::Look::Radio;
+                spots.push_back ({ 0.05f, 0.39f, 0.78f, 0.1f });
+            }
+            else
+            {
+                const int bit = (int) k - 3;
+                f.look = Field::Look::Cell;
+                if (bit < 8)
+                    f.label = juce::String (bit + 1), spots.push_back ({ 0.06f + 0.055f * (float) bit, 0.6f, 0.05f, 0.08f });
+                else if (bit == 8)
+                    spots.push_back ({ 0.62f, 0.6f, 0.14f, 0.08f });
+                else
+                    f.label = juce::String (bit - 8), spots.push_back ({ 0.06f + 0.055f * (float) (bit - 9), 0.82f, 0.05f, 0.08f });
+            }
+        }
+    }
+
+    void Display::layoutView()
+    {
+        for (auto& f : fields)
+        {
+            juce::Rectangle<float> at;
+            const auto& l = f.label;
+            if (l == "ATT")
+                f.look = Field::Look::Knob, f.noNumber = false, at = { 0.0f, 0.1f, 0.14f, 0.34f };
+            else if (l.endsWith ("PHASE"))
+            {
+                f.look = Field::Look::Button;
+                f.text = [] (int v) { return juce::String (v != 0 ? "REV" : "NOR"); };
+                at = { 0.03f, 0.0f, 0.08f, 0.09f };
+            }
+            else if (l == "PAN" || l == "BALANCE" || l == "PAN L")
+                f.look = Field::Look::Knob, at = { 0.0f, 0.46f, l == "PAN L" ? 0.07f : 0.14f, 0.3f };
+            else if (l == "PAN R")
+                f.look = Field::Look::Knob, at = { 0.07f, 0.46f, 0.07f, 0.3f };
+            else if (l == "GANG" || l == "MS")
+                f.look = Field::Look::Check, at = { 0.0f, l == "GANG" ? 0.78f : 0.88f, 0.15f, 0.1f };
+            else if (l == "FADER")
+                f.look = Field::Look::Row, at = { 0.16f, 0.55f, 0.18f, 0.1f };
+            else if (l == "ON")
+                f.look = Field::Look::Button, at = { 0.2f, 0.66f, 0.1f, 0.09f };
+            else if (l == "FADER GRP" || l == "MUTE GRP")
+            {
+                at = { 0.16f, l == "FADER GRP" ? 0.77f : 0.88f, 0.18f, 0.1f };
+                f.look = Field::Look::Row;
+                f.label = l == "FADER GRP" ? "F GRP" : "M GRP"; // the picture's F and M
+            }
+            else if (l == "LIB")
+            {
+                f.look = Field::Look::Button;
+                f.text = [] (int) { return juce::String ("LIB"); };
+                at = { 0.86f, 0.84f, 0.12f, 0.12f };
+            }
+            spots.push_back (at);
+        }
+        marks.push_back ({ Mark::Caption, { 0.67f, 0.0f, 0.32f, 0.06f }, "EQ" });
+        marks.push_back ({ Mark::Caption, { 0.67f, 0.41f, 0.32f, 0.06f }, "DYNAMICS" });
+        for (float x : { 0.15f, 0.35f, 0.655f })
+            marks.push_back ({ Mark::Rule, { x, 0.0f, 0.0f, 1.0f }, {} });
+        marks.push_back ({ Mark::Frame, { 0.0f, 0.0f, 1.0f, 1.0f }, {} });
+    }
+
+    void Display::paintViewSends (juce::Graphics& g, juce::Rectangle<float> r) const
+    {
+        // AUX 1-8: each send's knob, PRE or POST, its name (two columns of four).
+        const int m = memberOf (strip);
+        if (m < 0)
+            return;
+        for (int aux = 0; aux < 8; ++aux)
+        {
+            const auto cell = juce::Rectangle<float> (r.getX() + r.getWidth() * 0.5f * (float) (aux % 2), r.getY() + r.getHeight() * 0.25f * (float) (aux / 2),
+                                                      r.getWidth() * 0.5f, r.getHeight() * 0.25f).reduced (2.0f);
+            auto c = cell;
+            g.setColour (kPixel);
+            g.setFont (type::font (kSmall, true));
+            g.drawText ("AUX" + juce::String (aux + 1), c.removeFromBottom (12.0f), juce::Justification::centred);
+            const bool pre = ((y.get (sendAddress (m, 9)) >> aux) & 1) != 0, on = ((y.get (sendAddress (m, 8)) >> aux) & 1) != 0;
+            chip (g, fitted (c.removeFromBottom (12.0f), "POST"), pre ? "PRE" : "POST", pre);
+            knob (g, c.reduced (2.0f), (float) juce::jmax (0, y.get (sendAddress (m, aux))) / 127.0f);
+            if (! on)
+                g.drawText ("OFF", c.removeFromRight (c.getWidth() * 0.3f), juce::Justification::centred);
+        }
+    }
+
+    void Display::layoutDigitalIo()
+    {
+        // Word clock and inputs (V2 MAN pp.188-190): Sidecar's are its audio
+        // interface's, so each is a line of words, framed.
+        marks.push_back ({ Mark::Caption, { 0.0f, 0.0f, 1.0f, 0.08f }, "Word Clock Select" });
+        int row = 0;
+        for (auto& f : fields)
+        {
+            f.look = Field::Look::Row;
+            spots.push_back ({ 0.04f + 0.48f * (float) (row / 4), 0.14f + 0.18f * (float) (row % 4), 0.44f, 0.15f });
+            ++row;
+        }
+        marks.push_back ({ Mark::Frame, { 0.0f, 0.1f, 1.0f, 0.86f }, {} });
+    }
+
     void Display::paintChannelMeter (juce::Graphics& g, juce::Rectangle<float> r, bool reduction) const
     {
         auto& e = ctx.engine;
@@ -1892,7 +2091,6 @@ namespace y02r
 
     namespace
     {
-        constexpr float kSmall = 10.0f;
         constexpr float kTagH = 12.0f, kNumberH = 13.0f, kValueH = 12.0f;
 
         /** A word in a box: lit (inverted) or outlined. */
@@ -1914,14 +2112,14 @@ namespace y02r
         }
 
         /** A box as wide as its word (and a margin), centred in `r`. */
-        juce::Rectangle<float> fitted (juce::Rectangle<float> r, const juce::String& text, float margin = 8.0f)
+        juce::Rectangle<float> fitted (juce::Rectangle<float> r, const juce::String& text, float margin)
         {
             const float w = juce::GlyphArrangement::getStringWidth (type::font (kSmall, true), text) + margin;
             return r.withSizeKeepingCentre (juce::jmin (r.getWidth(), juce::jmax (w, r.getHeight() + 2.0f)), r.getHeight());
         }
 
         /** A rotary knob: its circle and the pointer at `frac` of its travel (7 o'clock to 5). */
-        void knob (juce::Graphics& g, juce::Rectangle<float> r, float frac, float thickness = 1.4f)
+        void knob (juce::Graphics& g, juce::Rectangle<float> r, float frac, float thickness)
         {
             const float d = juce::jmin (r.getWidth(), r.getHeight(), 30.0f);
             const auto c = r.getCentre();
@@ -1961,6 +2159,8 @@ namespace y02r
             case Field::Look::Button:
             case Field::Look::Heart:
             case Field::Look::Radio:
+            case Field::Look::Check:
+            case Field::Look::Choices:
                 break;
         }
         return r;
@@ -2053,6 +2253,39 @@ namespace y02r
                 {
                     g.setColour (kPixel);
                     g.drawRect (box.reduced (1.0f), 1.5f);
+                }
+                return;
+            }
+            case Field::Look::Check:
+            case Field::Look::Choices:
+            {
+                // A box crossed when on (or the chosen one of a row of them), its name after it.
+                const auto mark = [&g] (juce::Rectangle<float> r, const juce::String& name, bool on, bool lit)
+                {
+                    const auto b = juce::Rectangle<float> (r.getX() + 2.0f, r.getCentreY() - 5.0f, 10.0f, 10.0f);
+                    g.setColour (kPixel);
+                    g.drawRect (b, 1.0f);
+                    if (on)
+                    {
+                        g.drawLine (b.getX() + 2.0f, b.getY() + 2.0f, b.getRight() - 2.0f, b.getBottom() - 2.0f, 1.4f);
+                        g.drawLine (b.getRight() - 2.0f, b.getY() + 2.0f, b.getX() + 2.0f, b.getBottom() - 2.0f, 1.4f);
+                    }
+                    g.setFont (type::font (kSmall + 1.0f, true));
+                    const auto t = r.withTrimmedLeft (16.0f).withWidth (juce::jmin (r.getWidth() - 16.0f, juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), name) + 6.0f));
+                    if (lit)
+                    {
+                        g.fillRect (t);
+                        g.setColour (kLcd);
+                    }
+                    g.drawText (name, t, juce::Justification::centred);
+                };
+                if (f.look == Field::Look::Check)
+                    mark (box, f.label, v != 0, focused);
+                else
+                {
+                    const int n = juce::jmax (1, f.choices.size());
+                    for (int k = 0; k < n; ++k)
+                        mark (box.withWidth (box.getWidth() / (float) n).translated (box.getWidth() / (float) n * (float) k, 0.0f), f.choices[k], v - f.lo == k, focused && v - f.lo == k);
                 }
                 return;
             }
@@ -2204,6 +2437,15 @@ namespace y02r
         {
             paintEq (g, toPage ({ 0.21f, 0.02f, 0.53f, 0.36f }));
             paintChannelMeter (g, toPage ({ 0.77f, 0.02f, 0.23f, 0.36f }), false);
+        }
+        if (function == Function::View && page == 0 && ! spots.empty())
+        {
+            paintChannelMeter (g, toPage ({ 0.16f, 0.0f, 0.18f, 0.52f }), false);
+            paintViewSends (g, toPage ({ 0.36f, 0.0f, 0.28f, 1.0f }));
+            if (hasEq (strip))
+                paintEq (g, toPage ({ 0.67f, 0.06f, 0.32f, 0.34f }));
+            if (hasDynamics (strip))
+                paintTransfer (g, toPage ({ 0.67f, 0.48f, 0.16f, 0.32f }));
         }
         if (function == Function::Dynamics && ! spots.empty())
         {

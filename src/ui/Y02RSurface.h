@@ -223,8 +223,10 @@ namespace y02r
                 not drawn as its picture), a knob over its value and its channel's
                 number, a row of a table (DELAY's), a cell (a box lit when on),
                 a button, PAIR's heart (whole when paired, broken when not), a
-                column of choices with the one chosen lit (METER's meter point). */
-            enum class Look { Tile, Knob, Row, Cell, Button, Heart, Radio };
+                column of choices with the one chosen lit (METER's meter point); a
+                check box and its name (PREFERENCES'); check boxes in a row, the
+                chosen one crossed (SOLO's Listen). */
+            enum class Look { Tile, Knob, Row, Cell, Button, Heart, Radio, Check, Choices };
             Look look = Look::Tile;
             /** A knob's or row's switch (ATT's NOR / REV, AUX's PRE / POST,
                 DELAY's ON): its word, lit when on; over the knob or under its value. */
@@ -236,6 +238,8 @@ namespace y02r
             bool noteFirst = false;
             /** A knob without its number (a stereo channel's two pans share one). */
             bool noNumber = false;
+            /** Choices' names (its values lo, lo + 1 ...). */
+            juce::StringArray choices;
         };
         const std::vector<Field>& getFields() const noexcept { return fields; }
         int getCursor() const noexcept { return focus; }
@@ -264,6 +268,14 @@ namespace y02r
             top left, the curve and the channel's meter beside it, the knobs under. */
         void layoutEq();
         void layoutDynamics();
+        /** SETUP, UTILITY and DIGITAL I/O as the pictures (V2 MAN pp.188, 196-201, 209). */
+        void layoutSetup();
+        void layoutUtility();
+        void layoutDigitalIo();
+        /** VIEW 1/2 as the picture (V2 MAN p.44): ATT and PAN at the left, the
+            meter and fader, the sends, the EQ and dynamics thumbnails, LIB. */
+        void layoutView();
+        void paintViewSends (juce::Graphics&, juce::Rectangle<float>) const;
         /** The selected channel's meter (both sides of a stereo one) on its scale;
             DYNAMICS' gain reduction beside it. */
         void paintChannelMeter (juce::Graphics&, juce::Rectangle<float>, bool reduction) const;

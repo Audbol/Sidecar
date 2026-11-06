@@ -603,7 +603,11 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   shown group's row inverted, the channels' numbers over it, BAL ADJ and SEL = GROUP
   (p.56); PAIR's boxes with the stereo mark and "CH1-2 :MONO x2" (p.58); EQ's ON/OFF
   boxed (p.21). The FUNCTION area's second line names GROUP's FADER, PAIR's STEREO
-  and CUE's CH VIEW.
+  and CUE's CH VIEW. UTILITY's and MIDI's pages (pp.81-91) as their pictures: the
+  page's name in a hatched banner, SEND3,4 MODE:, the oscillator's ASSIGN lines, LEVEL
+  fader and meters, MEMORY PROTECT's two lines, BATTERY CHECK's line, MIDI SETUP's
+  table, PROGRAM CHANGE ASSIGN's "1= 01" table, CONTROL CHANGE ASSIGN's NO. NAME BANK
+  NO. table, LOCAL ON/OFF's ruled cells, MEMORY CONTROL CHANGE OUT's lines.
 - The 02R display drawn as the manual's pictures (V2 MAN pp.33-43, 107, 135-136,
   182-186): the title bar (the scene memory, the page boxed, the channel boxed) and
   the row of the 16 encoders and E1, E2 under every page; PHASE / ATT, PAN and AUX
@@ -613,6 +617,12 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   side against BUS 1-8, S and D (it was the selected channel's alone); GROUP's grids
   with ENABLE; PAIR's MS and hearts; SCENE MEMORY's framed fader recall safe and the
   fade time table; METER's scaled groups with the meter point as its three buttons.
+  VIEW 1/2 (p.44): ATT with NOR / REV, PAN, GANG and MS at the left, the meter,
+  fader, ON and groups, the eight sends' knobs, the EQ and dynamics thumbnails, LIB.
+  SETUP's Solo (p.196) as its framed check boxes (Listen, the outputs' listen,
+  Status; the solo safes said not emulated), PREFERENCES as their check-box lists,
+  UTILITY's oscillator framed (p.209: On/Off, Level, Wave Form, BUS, Stereo and Aux
+  Assign), DIGITAL I/O's fixed lines framed.
   EQ as its picture (p.51): the library at the top left, the curve with 100, 1K and
   10K beside the channel's meter, ATT and EQ ON, each band's Q, F and G knobs framed
   (HPF and LPF in LOW's and HIGH's); DYNAMICS (p.83): its settings framed, the

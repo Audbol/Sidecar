@@ -640,19 +640,36 @@ namespace promix
                 {
                     // SEND3,4 CONFIGURATION: the flag shown, the Execute set by ENTER
                     // (p.46); OUTPUT COMP PATCH POINT (p.75); PAN's GANG.
-                    auto mode = paramField (kSend34Exec, { 0.0f, 0.1f, 0.3f, 0.3f }, true);
+                    auto mode = paramField (kSend34Exec, { 0.1f, 0.26f, 0.7f, 0.16f }, true);
                     auto& p = pm;
                     mode.text = [&p] { return p.text (kSend34Flag); };
                     mode.get = [&p] { return p.get (kSend34Flag); };
+                    mode.label = "SEND3,4 MODE";
+                    mode.style = Field::Style::Inline;
                     fields.push_back (std::move (mode));
-                    row ({ 512, 513, kPatchPointSt }, 0.1f, 0.3f, 0.34f, 1.0f);
-                    fields.push_back (paramField (kPanMode, { 0.0f, 0.55f, 0.3f, 0.3f }));
+                    // OUTPUT COMP PATCH POINT's three, and PAN's mode, on lines under it.
+                    row ({ 512, 513, kPatchPointSt }, 0.52f, 0.16f, 0.0f, 0.9f);
+                    for (size_t k = 1; k < 4; ++k)
+                        fields[k].style = Field::Style::Inline;
+                    fields.push_back (paramField (kPanMode, { 0.0f, 0.74f, 0.5f, 0.16f }));
+                    fields.back().style = Field::Style::Inline;
                 }
                 else if (page == 1)
                 {
                     // OSCILLATOR (p.90): ON, LEVEL, FREQ, and where it goes.
+                    // As p.90's picture: ASSIGN's three, OSC: and FREQ: down the left;
+                    // the LEVEL fader; the meters of SEND3, SEND4 and ST.
                     row ({ kOsc, kOsc + 1, kOsc + 2 }, 0.1f, 0.34f, 0.0f, 0.75f);
                     row ({ 480, 481, 482 }, 0.55f, 0.34f, 0.0f, 0.75f);
+                    const juce::Rectangle<float> boxes[] = { { 0.0f, 0.68f, 0.34f, 0.15f }, { 0.38f, 0.18f, 0.1f, 0.82f }, { 0.0f, 0.84f, 0.34f, 0.15f },
+                                                             { 0.04f, 0.29f, 0.32f, 0.13f }, { 0.04f, 0.42f, 0.32f, 0.13f }, { 0.04f, 0.55f, 0.32f, 0.13f } };
+                    const char* names[] = { "OSC", "LEVEL", "FREQ", "SEND3", "SEND4", "ST OUT" };
+                    for (size_t k = 0; k < 6 && k < fields.size(); ++k)
+                    {
+                        fields[k].box = boxes[k];
+                        fields[k].label = names[k];
+                        fields[k].style = k == 1 ? Field::Style::Fader : Field::Style::Inline;
+                    }
                 }
                 else if (page == 2)
                 {
@@ -664,8 +681,10 @@ namespace promix
                         f.get = [this, half] { return isProtected && isProtected (half) ? 1 : 0; };
                         f.set = [this, half] (int v) { if (setProtected) setProtected (half, v != 0); };
                         f.steps = [] { return 2; };
-                        f.text = [this, half] { return juce::String (isProtected && isProtected (half) ? "PROTECT ON" : "PROTECT OFF"); };
-                        f.box = { 0.1f + 0.42f * (float) half, 0.3f, 0.38f, 0.34f };
+                        f.text = [this, half] { return juce::String (isProtected && isProtected (half) ? "ON" : "OFF"); };
+                        f.label = half == 0 ? "Scene memory No.01-No.25" : "Scene memory No.26-No.50";
+                        f.style = Field::Style::Inline;
+                        f.box = { 0.04f, 0.36f + 0.16f * (float) half, 0.9f, 0.16f };
                         fields.push_back (std::move (f));
                     }
                 }
@@ -678,7 +697,9 @@ namespace promix
                     f.set = [] (int) {};
                     f.steps = [] { return 1; };
                     f.text = [] { return juce::String ("Battery is OK!!"); };
-                    f.box = { 0.25f, 0.3f, 0.5f, 0.34f };
+                    f.label = {};
+                    f.style = Field::Style::Text;
+                    f.box = { 0.04f, 0.42f, 0.9f, 0.18f };
                     fields.push_back (std::move (f));
                 }
                 break;
@@ -696,7 +717,8 @@ namespace promix
                     memory.steps = [] { return 1; };
                     memory.set = [] (int) {};
                     memory.text = [] { return juce::String ("EDIT BUFFER"); };
-                    memory.box = { 0.0f, 0.02f, 0.4f, 0.22f };
+                    memory.style = Field::Style::Inline;
+                    memory.box = { 0.0f, 0.31f, 0.6f, 0.13f };
                     fields.push_back (std::move (memory));
                     const char* const types[] = { "ON/OFF", "LEVEL", "EQ", "COMP", "PAN", "SEND", "EFFECT", "OTHERS" };
                     for (int k = 0; k < 8; ++k)
@@ -707,7 +729,8 @@ namespace promix
                         f.steps = [] { return 2; };
                         f.set = [this, k] (int v) { ccOutMask = v != 0 ? ccOutMask | 1u << k : ccOutMask & ~(1u << k); };
                         f.text = [this, k] { return juce::String ((ccOutMask >> k & 1) != 0 ? "ON" : "OFF"); };
-                        f.box = { 0.25f * (float) (k % 4), k < 4 ? 0.28f : 0.52f, 0.25f, 0.22f };
+                        f.style = Field::Style::Inline;
+                        f.box = { k < 4 ? 0.0f : 0.4f, 0.44f + 0.14f * (float) (k % 4), 0.38f, 0.14f };
                         fields.push_back (std::move (f));
                     }
                     Field out;
@@ -728,7 +751,8 @@ namespace promix
                     };
                     out.onEnter = true;
                     out.pending = 0;
-                    out.box = { 0.25f, 0.78f, 0.5f, 0.2f };
+                    out.style = Field::Style::Inline;
+                    out.box = { 0.0f, 0.17f, 0.6f, 0.14f };
                     fields.push_back (std::move (out));
                     break;
                 }
@@ -743,14 +767,16 @@ namespace promix
                     local.steps = [] { return 2; };
                     local.set = [this] (int v) { localOff = v == 0; localMessage.clear(); };
                     local.text = [this] { return juce::String (localOff ? "OFF" : "ON"); };
-                    local.box = { 0.0f, 0.02f, 0.36f, 0.22f };
+                    local.style = Field::Style::Inline;
+                    local.box = { 0.0f, 0.2f, 0.5f, 0.16f };
                     fields.push_back (std::move (local));
                     Field message;
                     message.get = [] { return 0; };
                     message.steps = [] { return 1; };
                     message.set = [] (int) {};
                     message.text = [this] { return localMessage; };
-                    message.box = { 0.4f, 0.02f, 0.6f, 0.22f };
+                    message.style = Field::Style::Text;
+                    message.box = { 0.5f, 0.2f, 0.5f, 0.16f };
                     fields.push_back (std::move (message));
                     for (int k = 0; k < 16; ++k)
                     {
@@ -760,7 +786,8 @@ namespace promix
                         f.steps = [] { return 1; };
                         f.set = [] (int) {};
                         f.text = [this, k] { return juce::String::toHexString (localValues[(size_t) k]).paddedLeft ('0', 2).toUpperCase(); };
-                        f.box = { (float) (k % 8) / 8.0f, k < 8 ? 0.34f : 0.66f, 0.125f, 0.28f };
+                        f.style = Field::Style::Grid;
+                        f.box = { 0.02f + 0.1f * (float) (k % 8), k < 8 ? 0.44f : 0.72f, 0.1f, 0.28f };
                         fields.push_back (std::move (f));
                     }
                     break;
@@ -778,7 +805,9 @@ namespace promix
                     param.steps = [] { return 531; };
                     param.set = [this] (int v) { ccParam = v; build(); };
                     param.text = [this] { return juce::String (ccParam).paddedLeft ('0', 3) + " " + ProMix::name (ccParam); };
-                    param.box = { 0.0f, 0.02f, 0.5f, 0.24f };
+                    param.style = Field::Style::Text;
+                    param.label = {}; // the number and name alone, under NO. and NAME
+                    param.box = { 0.01f, 0.3f, 0.64f, 0.15f };
                     fields.push_back (std::move (param));
                     Field bank;
                     bank.label = "BANK";
@@ -791,7 +820,8 @@ namespace promix
                         save();
                     };
                     bank.text = [this, &p] { const int c = p.ccCode (ccParam); return c < 0 ? juce::String ("--") : juce::String (c >> 8); };
-                    bank.box = { 0.52f, 0.02f, 0.2f, 0.24f };
+                    bank.style = Field::Style::Bare;
+                    bank.box = { 0.66f, 0.3f, 0.15f, 0.15f };
                     fields.push_back (std::move (bank));
                     Field cc;
                     cc.label = "CC";
@@ -804,9 +834,10 @@ namespace promix
                         save();
                     };
                     cc.text = [this, &p] { const int c = p.ccCode (ccParam); return c < 0 ? juce::String ("--") : juce::String (c & 0xff); };
-                    cc.box = { 0.74f, 0.02f, 0.2f, 0.24f };
+                    cc.style = Field::Style::Bare;
+                    cc.box = { 0.81f, 0.3f, 0.15f, 0.15f };
                     fields.push_back (std::move (cc));
-                    for (int k = 0; k < 8; ++k)
+                    for (int k = 0; k < 3; ++k)
                     {
                         const int n = (ccParam + 1 + k) % 531;
                         Field f;
@@ -815,7 +846,8 @@ namespace promix
                         f.steps = [] { return 1; };
                         f.set = [] (int) {};
                         f.text = [ccText, n] { return ccText (n); };
-                        f.box = { (float) (k % 4) / 4.0f, k < 4 ? 0.36f : 0.66f, 0.25f, 0.28f };
+                        f.style = Field::Style::Text;
+                        f.box = { 0.0f, 0.45f + 0.15f * (float) k, 0.96f, 0.15f };
                         fields.push_back (std::move (f));
                     }
                     break;
@@ -830,7 +862,8 @@ namespace promix
                     pgm.steps = [] { return 128; };
                     pgm.set = [this] (int v) { pcProgram = v; build(); };
                     pgm.text = [this] { return juce::String (pcProgram + 1); };
-                    pgm.box = { 0.0f, 0.02f, 0.2f, 0.24f };
+                    pgm.style = Field::Style::Inline;
+                    pgm.box = { 0.04f, 0.2f, 0.26f, 0.15f };
                     fields.push_back (std::move (pgm));
                     Field mem;
                     mem.label = "MEMORY";
@@ -842,18 +875,21 @@ namespace promix
                         ctx.settings.setValue (ProMixMidi::pcKey, p.getPcText());
                     };
                     mem.text = [this, &p] { const int s = p.pcScene (pcProgram); return s < 0 ? juce::String ("--") : juce::String (s).paddedLeft ('0', 2); };
-                    mem.box = { 0.22f, 0.02f, 0.2f, 0.24f };
+                    mem.label = "MEM";
+                    mem.style = Field::Style::Inline;
+                    mem.box = { 0.34f, 0.2f, 0.26f, 0.15f };
                     fields.push_back (std::move (mem));
-                    for (int k = 0; k < 12; ++k)
+                    for (int k = 0; k < 9; ++k)
                     {
                         const int pc = (pcProgram + 1 + k) % 128;
                         Field f;
-                        f.label = "PGM " + juce::String (pc + 1);
+                        f.label = juce::String (pc + 1) + "= ";
+                        f.style = Field::Style::Text;
                         f.get = [] { return 0; };
                         f.steps = [] { return 1; };
                         f.set = [] (int) {};
                         f.text = [&p, pc] { const int s = p.pcScene (pc); return s < 0 ? juce::String ("--") : juce::String (s).paddedLeft ('0', 2); };
-                        f.box = { (float) (k % 6) / 6.0f, k < 6 ? 0.36f : 0.66f, 1.0f / 6.0f, 0.28f };
+                        f.box = { 0.08f + 0.27f * (float) (k % 3), 0.5f + 0.16f * (float) (k / 3), 0.25f, 0.16f };
                         fields.push_back (std::move (f));
                     }
                     break;
@@ -887,18 +923,26 @@ namespace promix
                 if (page == 1)
                 {
                     // BULK (p.85): the interval between two dumps' messages.
-                    field ("INTERVAL", 15, 11, 0, { 0.3f, 0.3f, 0.4f, 0.3f }, [] (int x) { return juce::String (x * 100) + " ms"; });
+                    field ("INTERVAL TIME", 15, 11, 0, { 0.04f, 0.76f, 0.7f, 0.16f }, [] (int x) { return juce::String (x * 100) + "ms"; });
+                    fields.back().style = Field::Style::Inline;
                     break;
                 }
-                field ("Tx CH", 0, 16, 1, { 0.0f, 0.02f, 0.2f, 0.2f }, number);
-                field ("Rx CH", 1, 16, 1, { 0.2f, 0.02f, 0.2f, 0.2f }, number);
-                field ("MODE", 14, 2, 0, { 0.45f, 0.02f, 0.3f, 0.2f }, [] (int x) { return juce::String (x != 0 ? "REGISTER" : "CHANNEL"); });
+                // As p.81's picture: Tx Ch: and Rx Ch: over the table of PROGRAM,
+                // CONTROL and BULK against TX, RX, OMNI and ECHO; MODE: under it.
+                field ("Tx Ch", 0, 16, 1, { 0.14f, 0.16f, 0.3f, 0.14f }, number);
+                field ("Rx Ch", 1, 16, 1, { 0.5f, 0.16f, 0.3f, 0.14f }, number);
+                field ("MODE", 14, 2, 0, { 0.0f, 0.86f, 0.6f, 0.14f }, [] (int x) { return juce::String (x != 0 ? "REGISTER" : "CHANNEL"); });
+                for (auto& f : fields)
+                    f.style = Field::Style::Inline;
                 const char* kinds[] = { "PROGRAM", "CONTROL", "BULK" };
                 const char* switches[] = { "Tx", "Rx", "OMNI", "ECHO" };
                 for (int k = 0; k < 3; ++k)
                     for (int s = 0; s < 4; ++s)
+                    {
                         field (juce::String (kinds[k]) + " " + switches[s], 2 + 4 * k + s, 2, 0,
-                               { 0.25f * (float) s, 0.3f + 0.23f * (float) k, 0.25f, 0.21f }, onOff);
+                               { 0.22f + 0.15f * (float) s, 0.42f + 0.14f * (float) k, 0.15f, 0.14f }, onOff);
+                        fields.back().style = Field::Style::Bare;
+                    }
                 break;
             }
             case Function::MemoryStore:
@@ -1102,15 +1146,8 @@ namespace promix
             case Function::Pan:
             case Function::Meter: return page == 0 ? "" : "ST IN / RTN";
             case Function::Utility:
-            {
-                const char* pages[] = { "SEND3,4 / OUT COMP", "OSCILLATOR", "MEMORY PROTECT", "BATTERY CHECK" };
-                return pages[juce::jlimit (0, 3, page)];
-            }
             case Function::Midi:
-            {
-                const char* pages[] = { "SETUP", "BULK DUMP", "PGM CHANGE ASSIGN", "CTRL CHANGE ASSIGN", "LOCAL ON/OFF", "MEMORY CC OUT" };
-                return pages[juce::jlimit (0, 5, page)];
-            }
+                return {}; // the page's name is its banner
             case Function::TitleEdit:
                 return nameLibrary < 0 ? "EDIT" : nameLibrary == ProMix::Eq ? "EQ PROGRAM" : nameLibrary == ProMix::Dynamics ? "COMP PROGRAM" : "EFFECT PROGRAM";
             default: return {};
@@ -1348,6 +1385,37 @@ namespace promix
         if (f.style == Style::Number)
         {
             word (box, f.label, type::kValue + 1.0f);
+            return;
+        }
+        if (f.style == Style::Text)
+        {
+            // Its name and value on a line, the value inverted under the cursor.
+            g.setFont (lcdFont (type::kValue + 2.0f, false));
+            g.setColour (kPixel);
+            const float nameW = f.label.isEmpty() ? 0.0f : juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), f.label);
+            g.drawText (f.label, box.removeFromLeft (nameW + 2.0f), juce::Justification::centredLeft);
+            auto v = box.withWidth (juce::jmin (box.getWidth(), juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), f.text()) + 8.0f));
+            if (focused && f.steps() > 1)
+            {
+                g.fillRect (v);
+                g.setColour (kLcd);
+            }
+            g.drawFittedText (f.text(), v.toNearestInt(), juce::Justification::centredLeft, 1, 0.6f);
+            return;
+        }
+        if (f.style == Style::Grid)
+        {
+            // A ruled cell: its name over its value.
+            g.setColour (kPixel);
+            g.drawRect (box.expanded (3.0f, 3.0f), 1.5f);
+            g.setFont (lcdFont (type::kValue + 2.0f, true));
+            g.drawText (f.label, box.removeFromTop (box.getHeight() * 0.5f), juce::Justification::centred);
+            if (focused)
+            {
+                g.fillRect (box);
+                g.setColour (kLcd);
+            }
+            g.drawText (f.text(), box, juce::Justification::centred);
             return;
         }
         if (f.style == Style::Value)
@@ -1799,6 +1867,99 @@ namespace promix
             case Function::Library:
                 paintEqCurve (g, area.withWidth (area.getWidth() * 0.34f).withX (area.getRight() - area.getWidth() * 0.34f));
                 break;
+            case Function::Utility:
+            case Function::Midi:
+            {
+                // The page's name in a banner, hatched both sides (pp.81-91).
+                const char* utility[] = { "SEND3,4 CONFIGURATION", "OSCILLATOR", "MEMORY PROTECT", "BATTERY CHECK" };
+                const char* midi[] = { "MIDI SETUP", "BULK DUMP/REQUEST", "PROGRAM CHANGE ASSIGN", "CONTROL CHANGE ASSIGN", "LOCAL ON/OFF", "MEMORY CONTROL CHANGE OUT" };
+                const juce::String name = function == Function::Utility ? utility[juce::jlimit (0, 3, page)] : midi[juce::jlimit (0, 5, page)];
+                auto banner = area.withHeight (area.getHeight() * 0.15f);
+                g.setFont (lcdFont (banner.getHeight() * 0.85f, true));
+                const float w = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), name) + 16.0f;
+                g.setColour (kPixel);
+                g.drawText (name, banner.withSizeKeepingCentre (w, banner.getHeight()), juce::Justification::centred);
+                for (const auto& side : { banner.withWidth ((banner.getWidth() - w) * 0.5f), banner.withTrimmedLeft ((banner.getWidth() + w) * 0.5f) })
+                {
+                    const auto hatch = side.reduced (0.0f, banner.getHeight() * 0.22f);
+                    for (float x = hatch.getX(); x < hatch.getRight(); x += 3.0f)
+                        for (float yy = hatch.getY() + std::fmod (x, 6.0f) * 0.5f; yy < hatch.getBottom(); yy += 3.0f)
+                            g.fillRect (x, yy, 1.5f, 1.5f);
+                }
+                g.setFont (lcdFont (type::kValue + 2.0f, false));
+                if (function == Function::Utility && page == 1)
+                {
+                    // ASSIGN over its three; the meters of SEND3, SEND4 and ST OUT.
+                    g.drawText ("ASSIGN", juce::Rectangle<float> (area.getX(), area.getY() + area.getHeight() * 0.17f, area.getWidth() * 0.3f, area.getHeight() * 0.12f),
+                                juce::Justification::centredLeft);
+                    auto m = juce::Rectangle<float> (area.getX() + area.getWidth() * 0.52f, area.getY() + area.getHeight() * 0.2f, area.getWidth() * 0.36f, area.getHeight() * 0.8f);
+                    auto labels = m.removeFromBottom (16.0f);
+                    auto scale = m.removeFromLeft (m.getWidth() * 0.3f);
+                    paintScale (scale, m);
+                    auto& e = ctx.engine;
+                    const auto& buses = e.getBuses();
+                    const auto& mains = e.getMains();
+                    Strip* strips[] = { buses.size() > 2 ? buses[2].get() : nullptr, buses.size() > 3 ? buses[3].get() : nullptr,
+                                        mains.empty() ? nullptr : mains[0].get(), mains.empty() ? nullptr : mains[0].get() };
+                    const float marks[] = { -60.0f, -44.0f, -38.0f, -32.0f, -26.0f, -20.0f, -17.0f, -14.0f, -11.0f, -8.0f, -5.0f, 0.0f };
+                    const float bw = m.getWidth() / 4.0f;
+                    for (int k = 0; k < 4; ++k)
+                    {
+                        const float db = juce::Decibels::gainToDecibels (strips[k] != nullptr ? ctx.meters.get (strips[k], MeterPoint::Output, k == 3 ? 1 : 0) : 0.0f, -100.0f);
+                        int lit = 0;
+                        for (float mark : marks)
+                            lit += db >= mark ? 1 : 0;
+                        auto bar = juce::Rectangle<float> (m.getX() + bw * (float) k, m.getY(), bw, m.getHeight()).reduced (bw * 0.2f, 0.0f);
+                        g.setColour (kPixel);
+                        g.fillRect (bar.withTop (bar.getBottom() - bar.getHeight() * (float) lit / 12.0f));
+                    }
+                    g.setFont (lcdFont (type::kValue + 1.0f, true));
+                    g.drawText ("34", labels.withWidth (bw * 2.0f).withX (m.getX()), juce::Justification::centred);
+                    g.drawText ("ST", labels.withWidth (bw * 2.0f).withX (m.getX() + bw * 2.0f), juce::Justification::centred);
+                }
+                if (function == Function::Midi && page == 0 && fields.size() > 3)
+                {
+                    // The table's heads and its kinds, ruled.
+                    const char* heads[] = { "TX", "RX", "OMNI", "ECHO" };
+                    const char* kinds[] = { "PROGRAM", "CONTROL", "BULK" };
+                    g.setFont (lcdFont (type::kValue + 1.0f, true));
+                    for (int s = 0; s < 4; ++s)
+                    {
+                        const auto r = juce::Rectangle<float> (area.getX() + area.getWidth() * (0.22f + 0.15f * (float) s), area.getY() + area.getHeight() * 0.31f,
+                                                               area.getWidth() * 0.15f, area.getHeight() * 0.11f);
+                        g.drawRect (r, 1.0f);
+                        g.drawText (heads[s], r, juce::Justification::centred);
+                    }
+                    for (int k = 0; k < 3; ++k)
+                    {
+                        const auto r = juce::Rectangle<float> (area.getX() + area.getWidth() * 0.02f, area.getY() + area.getHeight() * (0.43f + 0.14f * (float) k),
+                                                               area.getWidth() * 0.19f, area.getHeight() * 0.12f);
+                        g.drawRect (r, 1.5f);
+                        g.drawText (kinds[k], r, juce::Justification::centred);
+                    }
+                    g.drawRect (juce::Rectangle<float> (area.getX() + area.getWidth() * 0.22f, area.getY() + area.getHeight() * 0.42f, area.getWidth() * 0.6f, area.getHeight() * 0.42f), 1.5f);
+                }
+                if (function == Function::Midi && page == 2)
+                {
+                    // PGM | MEM heads over the table's frame.
+                    g.setFont (lcdFont (type::kValue + 1.0f, true));
+                    for (int c = 0; c < 3; ++c)
+                        g.drawText ("PGM | MEM", juce::Rectangle<float> (area.getX() + area.getWidth() * (0.08f + 0.27f * (float) c), area.getY() + area.getHeight() * 0.38f,
+                                                                         area.getWidth() * 0.25f, area.getHeight() * 0.11f), juce::Justification::centredLeft);
+                    g.drawRect (juce::Rectangle<float> (area.getX() + area.getWidth() * 0.05f, area.getY() + area.getHeight() * 0.49f, area.getWidth() * 0.82f, area.getHeight() * 0.5f), 1.5f);
+                }
+                if (function == Function::Midi && page == 3)
+                {
+                    // NO. NAME BANK NO. over the table's frame.
+                    g.setFont (lcdFont (type::kValue + 1.0f, true));
+                    const std::pair<float, const char*> heads[] = { { 0.0f, "NO." }, { 0.2f, "NAME" }, { 0.66f, "BANK" }, { 0.81f, "NO." } };
+                    for (auto [x, text] : heads)
+                        g.drawText (text, juce::Rectangle<float> (area.getX() + area.getWidth() * x, area.getY() + area.getHeight() * 0.18f, area.getWidth() * 0.15f,
+                                                                  area.getHeight() * 0.11f), juce::Justification::centred);
+                    g.drawRect (juce::Rectangle<float> (area.getX(), area.getY() + area.getHeight() * 0.29f, area.getWidth() * 0.97f, area.getHeight() * 0.7f), 1.5f);
+                }
+                break;
+            }
             case Function::Group:
             {
                 g.setColour (kPixel);

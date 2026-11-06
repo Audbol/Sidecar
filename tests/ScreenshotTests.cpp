@@ -508,7 +508,7 @@ public:
                                                               { F::Meter, 2, "meter-outputs" }, { F::Meter, 0, "meter-inputs" }, { F::Eq, 0, "eq" }, { F::Dynamics, 0, "dynamics" }, { F::Pair, 1, "pair-aux" }, { F::Aux1, 0, "aux1" }, { F::Aux7, 2, "aux7" },
                                                               { F::Utility, 0, "utility" }, { F::DigitalIo, 0, "digital-io" }, { F::Setup, 0, "setup" },
                                                               { F::Automix, 0, "automix" }, { F::View, 1, "channel-library" },
-                                                              { F::Setup, 2, "setup-prefs" } };
+                                                              { F::Setup, 2, "setup-prefs" }, { F::Setup, 3, "setup-prefs2" }, { F::View, 0, "view" } };
             for (auto [f, page, shot] : pages)
             {
                 skin.pressFunction (F::Eq);
