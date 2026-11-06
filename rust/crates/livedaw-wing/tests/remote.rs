@@ -387,6 +387,27 @@ fn osc_surface_layers_and_custom_controls() {
         }
     }
     assert_eq!(seen, [true; 2], "console changes not pushed");
+
+    // A MIDI CC toggle key pressed on the console and the strip selected there
+    // reach subscribers as on a WING (issues #19, #21).
+    custom.control_mut(0, 0).unwrap().upper = livedaw_session::custom::CcFunction { category: 14, target: 0, option: 5 };
+    sync(&mut layers, &mut custom);
+    let mut midi = vec![0u8; surface::MIDI_VALUES];
+    midi[5] = 127; // CC 5 on channel 1: the toggle on
+    state.set_midi_values(&midi);
+    state.set_selection(Some(livedaw_session::refs::StripRef::of(&engine.strips(StripKind::Channel)[2])));
+    let want =
+        [Message::new("/$ctl/user/1/1/bu/val", vec![Arg::Int(127)]), Message::new("/$ctl/$stat/selidx", vec![Arg::Int(3)])];
+    let mut seen = [false; 2];
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while Instant::now() < deadline && !seen.iter().all(|s| *s) {
+        if let Some(m) = c.recv() {
+            for (s, w) in seen.iter_mut().zip(&want) {
+                *s |= m == *w;
+            }
+        }
+    }
+    assert_eq!(seen, [true; 2], "MIDI key value and selection not pushed");
 }
 
 // ---- Native ------------------------------------------------------------------------

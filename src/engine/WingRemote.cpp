@@ -1,9 +1,12 @@
 #include "engine/WingRemote.h"
 #include "engine/AppPaths.h"
+#include "engine/ConsoleState.h"
 
 #include "engine/MixerEngine.h"
 #include "engine/RustStrings.h"
 #include "engine/Show.h"
+
+#include <array>
 
 namespace livedaw
 {
@@ -277,6 +280,7 @@ void WingRemote::timerCallback()
 void WingRemote::pump()
 {
     pumpHostSettings();
+    pumpConsole();
     if (libraryShow == nullptr)
         return;
     pumpSafes();
@@ -333,6 +337,39 @@ void WingRemote::syncSurface()
     const auto changes = libraryShow->syncWingSurface (handle, surfaceBank ? surfaceBank() : 0, bank);
     if ((changes != 0 || bank >= 0) && onSurfaceChanged)
         onSurfaceChanged ((int) changes, bank);
+}
+
+void WingRemote::setConsoleCallbacks (std::function<Strip*()> selected, std::function<void (Strip&)> select,
+                                      std::function<void (juce::uint8*, juce::uint8*)> values)
+{
+    selectedStrip = std::move (selected);
+    onSelect = std::move (select);
+    midiValues = std::move (values);
+    if (! selectedStrip)
+        ld::ld_wing_set_selection (handle, { -1, 0 });
+    if (! midiValues)
+        ld::ld_wing_set_midi_values (handle, nullptr, nullptr);
+    pumpConsole();
+}
+
+void WingRemote::pumpConsole()
+{
+    // A client's choice first, so that the selection published is the new one.
+    ld::StripRefC chosen {};
+    if (ld::ld_wing_take_selection (handle, &chosen) && onSelect)
+        if (auto* strip = state::findStrip (engine, state::StripRef::fromC (chosen)))
+            onSelect (*strip);
+    if (selectedStrip)
+    {
+        auto* strip = selectedStrip();
+        ld::ld_wing_set_selection (handle, strip != nullptr ? state::StripRef::of (*strip).toC() : ld::StripRefC { -1, 0 });
+    }
+    if (midiValues)
+    {
+        std::array<juce::uint8, 16 * 128> cc {}, notes {};
+        midiValues (cc.data(), notes.data());
+        ld::ld_wing_set_midi_values (handle, cc.data(), notes.data());
+    }
 }
 
 void WingRemote::setHostSettings (juce::PropertiesFile* settings, std::function<void (const juce::StringArray&)> changed)

@@ -470,6 +470,38 @@ pub unsafe extern "C" fn ld_wing_take_host_setting(w: *mut LdWing, key: *mut *mu
     true
 }
 
+/// The strip the host selected (`/$ctl/$stat/selidx`; a kind < 0: none).
+#[no_mangle]
+pub unsafe extern "C" fn ld_wing_set_selection(w: *mut LdWing, strip: crate::session::LdStripRef) {
+    if let Some(w) = wing(w) {
+        guard((), || w.state.set_selection((strip.kind >= 0).then(|| strip.to_ref())));
+    }
+}
+
+/// The strip a client selected: true with it in `out`, once.
+#[no_mangle]
+pub unsafe extern "C" fn ld_wing_take_selection(w: *mut LdWing, out: *mut crate::session::LdStripRef) -> bool {
+    let Some(w) = wing(w) else { return false };
+    let Some(strip) = guard(None, || w.state.take_selection_request()) else { return false };
+    if let Some(out) = out.as_mut() {
+        *out = strip.into();
+    }
+    true
+}
+
+/// The MIDI keys' and knobs' values for their VALUE nodes (`/$ctl/user/.../val`):
+/// `cc` and `notes` each 16 channels of 128 (127 on, 0 off for notes); null: none.
+#[no_mangle]
+pub unsafe extern "C" fn ld_wing_set_midi_values(w: *mut LdWing, cc: *const u8, notes: *const u8) {
+    let Some(w) = wing(w) else { return };
+    let mut values = Vec::new();
+    if !cc.is_null() && !notes.is_null() {
+        values.extend_from_slice(std::slice::from_raw_parts(cc, 16 * 128));
+        values.extend_from_slice(std::slice::from_raw_parts(notes, 16 * 128));
+    }
+    guard((), || w.state.set_midi_values(&values));
+}
+
 /// No host for the settings any more (they read Sidecar's defaults again).
 #[no_mangle]
 pub unsafe extern "C" fn ld_wing_clear_host_settings(w: *mut LdWing) {

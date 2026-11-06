@@ -875,6 +875,16 @@ void MidiRemote::setExternalToggle (int channel, int number, bool isNote, bool o
         externalToggles[(size_t) (channel - 1)][(size_t) (number + (isNote ? 128 : 0))] = on;
 }
 
+void MidiRemote::getExternalValues (juce::uint8* cc, juce::uint8* notes) const noexcept
+{
+    for (size_t ch = 0; ch < 16; ++ch)
+        for (size_t n = 0; n < 128; ++n)
+        {
+            cc[ch * 128 + n] = externalCc[ch][n];
+            notes[ch * 128 + n] = externalToggles[ch][n + 128] ? 127 : 0;
+        }
+}
+
 void MidiRemote::handleExternal (const juce::MidiMessage& m)
 {
     // A device's own state comes back: the MIDI keys and encoders follow it.

@@ -2020,6 +2020,13 @@ extern "C"
     void ld_wing_set_host_setting (LdWing*, const char* key, size_t keyLen, const char* value, size_t valueLen);
     bool ld_wing_take_host_setting (LdWing*, LdString** key, LdString** value);
     void ld_wing_clear_host_settings (LdWing*);
+    /** The strip the host selected, for /$ctl/$stat/selidx (kind < 0: none); the strip a
+        client selected there, once (true with it in *out). */
+    void ld_wing_set_selection (LdWing*, StripRefC strip);
+    bool ld_wing_take_selection (LdWing*, StripRefC* out);
+    /** The MIDI keys' and knobs' values for their VALUE nodes (/$ctl/user/.../val): cc and
+        notes each 16 channels of 128 (notes 127 on, 0 off); null: none. */
+    void ld_wing_set_midi_values (LdWing*, const uint8_t* cc, const uint8_t* notes);
     /** Surface control (/$ctl/layer, /$ctl/user): applies the layer and custom control changes
         clients made to the show, then publishes its layers and custom controls with the upper
         custom control layer ccBank (0-15). Returns kWingSurface* flags; *requestedBank is the

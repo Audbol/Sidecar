@@ -10,6 +10,13 @@ All notable changes to Sidecar are listed here. Versions follow
   soak test's audio-thread allocation check failed on it).
 - CUSTOM CONTROLS: the lists' scroll bars work: their arrows move a row, the well
   above or below the thumb a page, and the thumb drags (#20).
+- WING remote: clients see what is pressed and selected on the console, as on a
+  WING. Selecting a strip sets `/$ctl/$stat/selidx` (1-76: channels, aux, buses,
+  mains, matrices), and a client setting it selects the strip (#21). A MIDI key's
+  or knob's VALUE (`/$ctl/user/.../val`) follows what it sent or received (a CC
+  toggle 127 or 0, a push while held, a knob its CC's value), so subscribed OSC
+  and Native clients get the event (#19). C ABI: `ld_wing_set_selection`,
+  `ld_wing_take_selection`, `ld_wing_set_midi_values`.
 
 Phase 3, the WING as a profile (`docs/UNIVERSAL_MIXER.md`), begins.
 

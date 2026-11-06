@@ -175,6 +175,9 @@ public:
     /** The state of an external toggle (MIDI CC / NOTE toggles), as last sent or received. */
     bool getExternalToggle (int channel, int number, bool isNote) const noexcept;
     void setExternalToggle (int channel, int number, bool isNote, bool on) noexcept;
+    /** The external values as the WING shows its MIDI keys' and knobs' VALUE: the
+        16 x 128 CCs, then the 16 x 128 notes (127 on, 0 off), channel by channel. */
+    void getExternalValues (juce::uint8* cc, juce::uint8* notes) const noexcept;
 
     /** CUSTOM CONTROLS (RX ONLY): encoder `control` of layer `layer` (0-15)
         set to `value` (0-127), or one of its keys (0-3 upper, 4-7 lower)

@@ -141,7 +141,7 @@ impl From<StripRef> for LdStripRef {
 }
 
 impl LdStripRef {
-    fn to_ref(self) -> StripRef {
+    pub(crate) fn to_ref(self) -> StripRef {
         StripRef::new(StripKind::from_i32(self.kind).unwrap_or(StripKind::Channel), self.id)
     }
 }

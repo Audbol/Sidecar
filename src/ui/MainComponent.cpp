@@ -238,6 +238,15 @@ MainComponent::MainComponent (juce::AudioDeviceManager& dm, MixerEngine& e, Plug
                                           });
     engine.getWing().attachShow (&show, [this] (const juce::String& what, const state::ApplyResult& r)
                                  { logRecall (ctx, what, r); });
+    // ... the selection and the MIDI keys' and knobs' values, which a WING reports to
+    // clients (issues #19, #21) ...
+    engine.getWing().setConsoleCallbacks ([this] { return getSelectedStrip(); },
+                                          [this] (Strip& s) { selectStrip (&s); },
+                                          [this] (juce::uint8* cc, juce::uint8* notes)
+                                          {
+                                              if (ctx.midi != nullptr)
+                                                  ctx.midi->getExternalValues (cc, notes);
+                                          });
     // ... and SETUP's options that are WING parameters (metering, surface, solo, MIDI, DAW).
     engine.getWing().setHostSettings (&settings,
                                       [this] (const juce::StringArray& keys)
@@ -293,6 +302,7 @@ MainComponent::~MainComponent()
     // MIDI and the WING remote's scene and surface control go first: their callbacks reach the views.
     engine.getWing().attachShow (nullptr);
     engine.getWing().setSurfaceCallbacks ({}, {});
+    engine.getWing().setConsoleCallbacks ({}, {}, {});
     engine.getWing().setHostSettings (nullptr);
     ctx.midi = nullptr;
     midi.reset();

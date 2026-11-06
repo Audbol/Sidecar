@@ -13,6 +13,7 @@ namespace livedaw
 
 class MixerEngine;
 class Show;
+class Strip;
 
 namespace state
 {
@@ -148,6 +149,17 @@ public:
     /** Runs the surface exchange now (the timer does it with a show attached). */
     void syncSurface();
 
+    /** The console's selection and its MIDI keys' and knobs' values for
+        clients, 10 times a second as on a WING: `selected` is the selected
+        strip (/$ctl/$stat/selidx; nullptr none), `onSelect` selects the strip
+        a client chose there, and `midiValues` fills the values of the 16 x 128
+        CCs and of the 16 x 128 notes (127 on, 0 off) that the MIDI keys' and
+        knobs' VALUE (/$ctl/user/.../val) shows. Empty functions detach. */
+    void setConsoleCallbacks (std::function<Strip*()> selected, std::function<void (Strip&)> onSelect,
+                              std::function<void (juce::uint8* cc, juce::uint8* notes)> midiValues);
+    /** Runs the selection and MIDI value exchange now (the timer does it). */
+    void pumpConsole();
+
     /** The app settings that are WING parameters (SETUP's surface, metering,
         solo, MIDI and DAW options: /$ctl/cfg, /$ctl/$globals, /$ctl/midi,
         /$ctl/daw, /cfg/mtr): clients read them from `settings` and their
@@ -189,6 +201,9 @@ private:
     juce::PropertiesFile* hostSettings = nullptr;
     juce::StringArray hostSettingKeys;
     std::function<void (const juce::StringArray&)> onHostSettingsChanged;
+    std::function<Strip*()> selectedStrip;
+    std::function<void (Strip&)> onSelect;
+    std::function<void (juce::uint8*, juce::uint8*)> midiValues;
 
     JUCE_DECLARE_NON_COPYABLE (WingRemote)
 };

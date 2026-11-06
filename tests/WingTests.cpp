@@ -355,6 +355,31 @@ public:
             expect (! ask (sock, port, oscGet ("/$ctl/layer/R/6/name")).contains ("Drums"), "shadow without a show");
         }
 
+        beginTest ("OSC clients see the selected strip (/$ctl/$stat/selidx) and select one there (issue #21)");
+        {
+            MixerEngine engine (0);
+            test::setChannels (engine, 40);
+            auto& wing = engine.getWing();
+            WingRemote::Settings s;
+            s.enabled = true;
+            s.discoveryPort = s.oscPort = s.nativePort = 0;
+            expect (wing.apply (s).isEmpty());
+            const int port = wing.getStatus().oscPort;
+            Strip* selected = engine.getChannels()[4].get();
+            wing.setConsoleCallbacks ([&] { return selected; }, [&] (Strip& strip) { selected = &strip; },
+                                      [] (juce::uint8* cc, juce::uint8*) { cc[5] = 127; });
+            juce::DatagramSocket sock;
+            expect (sock.bindToPort (0, "127.0.0.1"));
+            auto send = [&] (const juce::MemoryBlock& m) { sock.write ("127.0.0.1", port, m.getData(), (int) m.getSize()); };
+            expect (ask (sock, port, oscGet ("/$ctl/$stat/selidx")).contains ("5"), "channel 5 selected");
+            send (oscInt ("/$ctl/$stat/selidx", 12));
+            expect (ask (sock, port, oscGet ("/$ctl/$stat/selidx")).contains ("12"));
+            wing.pumpConsole();
+            expect (selected == engine.getChannels()[11].get(), "the client's choice selected on the console");
+            expect (ask (sock, port, oscGet ("/$ctl/$stat/selidx")).contains ("12"), "and stays");
+            wing.setConsoleCallbacks ({}, {}, {});
+        }
+
         beginTest ("The coverage report counts the mapped tree");
         expect (WingRemote::coverageReport().startsWith ("WING tree coverage"));
     }

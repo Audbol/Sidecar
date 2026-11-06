@@ -37,6 +37,7 @@ use livedaw_engine::sources::{self, source_mode, SourceParams};
 use livedaw_engine::talk::TALK_OFF;
 use livedaw_engine::GroupSet;
 use livedaw_engine::{Engine, Strip, StripKind, PLAYBACK_SOURCE_BASE};
+use livedaw_session::refs::StripRef;
 use livedaw_session::ConsoleModel;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::path::Path;
@@ -213,6 +214,12 @@ pub struct WingState {
     /// The show's layers and custom controls as the host published them.
     pub(crate) surface: Mutex<Surface>,
     pub(crate) surface_edits: Mutex<VecDeque<SurfaceEdit>>,
+    /// The host's selected strip (`/$ctl/$stat/selidx`); `.1`: a client's
+    /// choice, for the host to take.
+    pub(crate) selection: Mutex<(Option<StripRef>, Option<StripRef>)>,
+    /// The MIDI keys' and knobs' values the host published (see
+    /// [`surface::MIDI_VALUES`]; empty: none).
+    pub(crate) midi_values: Mutex<Vec<u8>>,
     /// The host's settings that are WING parameters (see [`crate::host`]).
     pub(crate) host: Mutex<crate::host::HostValues>,
     /// The console model and whether the full-size console is black (the
@@ -223,6 +230,27 @@ pub struct WingState {
 impl WingState {
     pub fn new(identity: Identity) -> Self {
         Self { identity: Mutex::new(identity), ..Self::default() }
+    }
+
+    /// Host: the strip it has selected (None: none).
+    pub fn set_selection(&self, strip: Option<StripRef>) {
+        self.selection.lock().unwrap_or_else(|e| e.into_inner()).0 = strip;
+    }
+
+    /// Host: the strip a client selected, once.
+    pub fn take_selection_request(&self) -> Option<StripRef> {
+        self.selection.lock().unwrap_or_else(|e| e.into_inner()).1.take()
+    }
+
+    /// Host: the MIDI keys' and knobs' values ([`surface::MIDI_VALUES`] of
+    /// them; anything else: none).
+    pub fn set_midi_values(&self, values: &[u8]) {
+        let mut m = self.midi_values.lock().unwrap_or_else(|e| e.into_inner());
+        if values.len() != surface::MIDI_VALUES {
+            m.clear();
+        } else if m.as_slice() != values {
+            *m = values.to_vec();
+        }
     }
 
     pub fn library(&self) -> Library {
@@ -646,6 +674,8 @@ pub enum CtlF {
     SourceSoloOn,
     SourceSoloGroup,
     SourceSoloIn,
+    /// `/$ctl/$stat/selidx`: the selected strip (1-76).
+    SelectedStrip,
 }
 
 /// `/cfg/talk/assign`, `lvl`.
@@ -1201,6 +1231,7 @@ pub fn bind(parts: &[&str]) -> Binding {
         ["cfg", "solo", "$srcsin"] => Binding::Ctl(CtlF::SourceSoloIn),
         ["$ctl", "cfg", "muteovr"] => Binding::Ctl(CtlF::MuteOverride),
         ["$stat", "sip"] => Binding::Ctl(CtlF::SipActive),
+        ["$ctl", "$stat", "selidx"] => Binding::Ctl(CtlF::SelectedStrip),
         ["cfg", "rta", f] => {
             let (eq, rest) = match (f.strip_prefix("rta"), f.strip_prefix("eq")) {
                 (Some(r), _) => (false, r),
@@ -2074,7 +2105,8 @@ impl<'a> Console<'a> {
                 Some((l, c, cs)) => {
                     let sf = self.state.surface();
                     if sf.attached {
-                        sf.get_cc_param(l, c, cs, index).and_then(|v| value::coerce(def, &v))
+                        let midi = self.state.midi_values.lock().unwrap_or_else(|e| e.into_inner());
+                        sf.get_cc_param(l, c, cs, index, &midi).and_then(|v| value::coerce(def, &v))
                     } else {
                         None
                     }
@@ -2175,6 +2207,7 @@ impl<'a> Console<'a> {
                 CtlF::MonitorMute => b(&c.monitor_mute),
                 CtlF::MuteOverride => b(&c.mute_override),
                 CtlF::SipActive => b(&c.sip_active),
+                CtlF::SelectedStrip => Value::Int(surface::selected_number(self.state, e)),
                 CtlF::SourceSolo => item(def, c.monitor.source_solo.load(Relaxed)),
                 CtlF::SourceSoloOn => Value::bool(self.source_solo_on()),
                 CtlF::SourceSoloGroup | CtlF::SourceSoloIn => {
@@ -3040,6 +3073,7 @@ impl<'a> Console<'a> {
                 CtlF::InputSelectOverride => set_b(&c.input_select_override, v),
                 CtlF::StartupMainMute => set_b(&c.startup_main_mute, v),
                 CtlF::AnySolo | CtlF::SipActive => return Err(SetError::ReadOnly),
+                CtlF::SelectedStrip => surface::select_number(self.state, e, v.as_i32().unwrap_or(1))?,
                 CtlF::SoloMode => set_item(&c.solo_mode, def, v),
                 CtlF::SoloBus => {
                     set_item(&c.solo_bus, def, v);
@@ -5078,6 +5112,37 @@ mod tests {
     }
 
     #[test]
+    fn the_selected_strip_is_selidx() {
+        // `/$ctl/$stat/selidx` (issue #21): the WING's strip number, 1-40
+        // channels, 41-48 aux, 49-64 buses, 65-68 mains, 69-76 matrices.
+        let e = engine();
+        let st = WingState::default();
+        let c = Console::new(&e, &st);
+        let selidx = node(&c, "/$ctl/$stat/selidx");
+        assert!(c.is_mapped(selidx));
+        assert_eq!(c.get(selidx), Some(Value::Int(1)), "nothing selected");
+        let strip = |kind, i: usize| StripRef::of(&e.strips(kind)[i]);
+        for (kind, i, n) in
+            [(StripKind::Channel, 4, 5), (StripKind::Aux, 1, 42), (StripKind::Main, 0, 65), (StripKind::Matrix, 7, 76)]
+        {
+            st.set_selection(Some(strip(kind, i)));
+            assert_eq!(c.get(selidx), Some(Value::Int(n)), "{kind:?} {i}");
+        }
+        let bus3 = e.strips(StripKind::Bus).into_iter().find(|b| b.id() == 2).unwrap();
+        st.set_selection(Some(StripRef::of(&bus3)));
+        assert_eq!(c.get(selidx), Some(Value::Int(51)), "bus 3");
+        assert_eq!(st.take_selection_request(), None, "the host's own selection isn't a request");
+
+        // A client selects: at once, and the host takes it once.
+        c.set(selidx, &Value::Int(12)).unwrap();
+        assert_eq!(c.get(selidx), Some(Value::Int(12)));
+        assert_eq!(st.take_selection_request(), Some(strip(StripKind::Channel, 11)));
+        assert_eq!(st.take_selection_request(), None);
+        c.set(selidx, &Value::Int(200)).unwrap();
+        assert_eq!(c.get(selidx), Some(Value::Int(76)), "clamped to the range: matrix 8");
+    }
+
+    #[test]
     fn surface_custom_controls_both_ways() {
         use livedaw_session::custom::{CcFunction, CustomControls};
         use livedaw_session::layers::LayerSet;
@@ -5107,6 +5172,21 @@ mod tests {
         assert_eq!(get("/$ctl/user/5/2/enc/name"), Value::str("Synth"));
         assert_eq!(get("/$ctl/user/5/2/col"), Value::Int(6));
         assert_eq!(get("/$ctl/user/daw2/4/bu/mode"), Value::str("DAWBTN"));
+
+        // A MIDI knob's and key's VALUE: what it last sent or received
+        // (issue #19), 127 before the host publishes any.
+        assert_eq!(get("/$ctl/user/5/2/bd/val"), Value::Int(127));
+        let mut midi = vec![0u8; surface::MIDI_VALUES];
+        midi[7] = 64; // CC 7, channel 1
+        midi[16 * 128 + 2 * 128 + 60] = 127; // note 60, channel 3
+        st.set_midi_values(&midi);
+        assert_eq!(get("/$ctl/user/5/2/enc/val"), Value::Int(64));
+        assert_eq!(get("/$ctl/user/5/2/bd/val"), Value::Int(127));
+        midi[16 * 128 + 2 * 128 + 60] = 0;
+        st.set_midi_values(&midi);
+        assert_eq!(get("/$ctl/user/5/2/bd/val"), Value::Int(0), "the note off");
+        assert_eq!(get("/$ctl/user/5/2/bd/ch"), Value::Int(3));
+        assert_eq!(get("/$ctl/user/5/2/bd/note"), Value::Int(60));
 
         // A client assigns: a new function starts at its first target.
         let f = |p: &str, v: Value| c.set(node(&c, p), &v);
@@ -5521,7 +5601,7 @@ mod tests {
         assert_eq!(cov.mapped, 79325, "{}", cov.report());
         // 89 settings: the COMPACT's mfdr, cscmode, autosel_CMPCT, mfdrkeep, busspill, mainspill,
         // mtxspill and dcacc and the surface lock (cnslock) among them.
-        assert_eq!((cov.settings, cov.stored), (89, 5424), "{}", cov.report());
+        assert_eq!((cov.settings, cov.stored), (89, 5423), "{}", cov.report());
         for (g, (m, t)) in &cov.by_group {
             assert!(m == t || g == "/$ctl/daw", "{g}: {m} of {t}");
         }
@@ -5529,7 +5609,7 @@ mod tests {
         // The engine-backed share: everything but the settings and the stored values.
         // (The COMPACT's key sets count here on either model; the routing: every
         // bus to every other bus, USR 1-56 and their user/..., the matrices' dir/in.)
-        assert_eq!(cov.mapped - cov.settings - cov.stored, 73812);
+        assert_eq!(cov.mapped - cov.settings - cov.stored, 73813);
         let b = bindings();
         let row = |p: &str| match schema().resolve(p, &NoModels) {
             Some(Node::Row(r)) => r as usize,

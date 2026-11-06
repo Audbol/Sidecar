@@ -148,6 +148,7 @@ void pressMidiKey (UiContext& ctx, int target, int option, bool down)
             break;
         case CcPush:
             midi.setExternalToggle (channel, number, false, down);
+            midi.setExternalCc (channel, number, down ? 127 : 0);
             midi.sendExternal (juce::MidiMessage::controllerEvent (channel, number, down ? 127 : 0));
             break;
         case NoteToggle:

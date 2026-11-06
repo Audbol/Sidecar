@@ -665,11 +665,17 @@ impl Surface {
 impl Surface {
     /// A custom control function node's value: position `index` (1-based)
     /// of the mode of `slot` of control `c` of layer `l` (None: one Sidecar
-    /// has no equivalent for).
-    pub fn get_cc_param(&self, l: u8, c: u8, slot: CcSlot, index: u8) -> Option<Value> {
+    /// has no equivalent for). A MIDI key's or knob's VALUE (position 3) is
+    /// what it last sent or received, from `midi` (see [`MIDI_VALUES`]).
+    pub fn get_cc_param(&self, l: u8, c: u8, slot: CcSlot, index: u8, midi: &[u8]) -> Option<Value> {
         let control = self.controls.get(l as usize)?.get(c as usize)?;
         let i = cc_slot_index(slot);
         let (mode, f) = (control.modes[i], control.functions[i]);
+        if index == 3 {
+            if let Some(v) = midi_value(mode, &f, midi) {
+                return Some(v);
+            }
+        }
         if slot == CcSlot::Enc {
             encoder_param(&self.num, mode, &f, index)
         } else {
@@ -693,6 +699,40 @@ impl Surface {
 }
 
 // ---- custom control function nodes -----------------------------------------------------
+
+/// The MIDI values the host publishes for the MIDI keys' and knobs' VALUE
+/// (`/$ctl/user/.../val`): 16 channels of 128 CCs, then 16 of 128 notes
+/// (127 on, 0 off).
+pub const MIDI_VALUES: usize = 2 * 16 * 128;
+
+/// A MIDI key's or knob's value: its CC's or note's in `midi` (None: not a
+/// MIDI function, or no values published).
+fn midi_value(mode: &str, f: &CcFunction, midi: &[u8]) -> Option<Value> {
+    // A key's target is its type * 16 + the channel (0-15), a knob's the channel.
+    let (note, channel) = match mode {
+        "MIDICCT" | "MIDICCP" => (false, f.target % 16),
+        "MIDINT" | "MIDINP" => (true, f.target % 16),
+        "MIDICC" => (false, f.target),
+        _ => return None,
+    };
+    let i = usize::from(note) * 16 * 128 + channel.clamp(0, 15) as usize * 128 + f.option.clamp(0, 127) as usize;
+    midi.get(i).map(|&v| Value::Int(i32::from(v)))
+}
+
+/// The selected strip's WING number (`/$ctl/$stat/selidx`, 1-76; 1 when
+/// the host selected none or one beyond the WING's strips).
+pub fn selected_number(state: &WingState, engine: &Engine) -> i32 {
+    let selected = state.selection.lock().unwrap_or_else(|e| e.into_inner()).0;
+    selected.and_then(|s| Numbering::of(engine).number(&s)).unwrap_or(1)
+}
+
+/// A client selects strip `n` (its WING number): selected at once, and the
+/// host takes the choice ([`WingState::take_selection_request`]).
+pub fn select_number(state: &WingState, engine: &Engine, n: i32) -> Result<(), SetError> {
+    let strip = Numbering::of(engine).strip(n).ok_or_else(|| SetError::Unsupported(format!("no strip {n} here")))?;
+    *state.selection.lock().unwrap_or_else(|e| e.into_inner()) = (Some(strip), Some(strip));
+    Ok(())
+}
 
 fn text(v: &Value) -> String {
     match v {
