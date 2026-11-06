@@ -201,6 +201,12 @@ private:
     KnobBinding enumKnob (const juce::String& label, const juce::String& path, const juce::StringArray& choices);
     /** An X32 value's text as a level (dB, "-oo" the bottom) and as hertz ("1k97"). */
     static float x32Level (const juce::String& text);
+    /** A `%0101...` bit field's value. */
+    static int x32Bits (const juce::String& text);
+    /** MONITOR's solo options, whether one is on, and switching it. */
+    static const juce::StringArray& soloOptions();
+    bool soloOptionOn (int option) const;
+    void toggleSoloOption (int option);
     static float x32Hz (const juce::String& text);
     /** The oscillator's destination 0-25 by name. */
     static juce::String x32OscDestination (int dest);
@@ -225,7 +231,7 @@ private:
     Screen screen = Screen::Home;
     int tab = 0, layer = 0, sendBank = 0, eqBand = 0, selectedScene = 0;
     /** A talkback tab's bus; HOME's DCA and mute group to assign. */
-    int talkBus = 0, homeDca = 0, homeMuteGroup = 0;
+    int talkBus = 0, homeDca = 0, homeMuteGroup = 0, soloOption = 0;
     /** SCENES' SNIPPETS: the snippet of the selected scene. */
     int selectedSnippet = 0;
     /** SCENES: home's scene to skip and snippet; scenes' slot to save, scene to
@@ -252,6 +258,7 @@ private:
     /** METERS' RTA tab showed the selected strip's RTA (hidden again when it goes). */
     bool rtaShown = false;
     int selectedOutput = 0; // ROUTING's signal tabs: the output the encoders set
+    int usbTrack = 0;       // USB > home: the track the sixth encoder shows
     int selectedFx = 0;     // EFFECTS > home: the slot the encoders set
     // UTILITY: the strip COPY took and the sections PASTE copies (CopySection bits).
     Strip* copySource = nullptr;

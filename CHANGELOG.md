@@ -184,6 +184,12 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
 
 Phase 5, the Yamaha ProMix 01 (`docs/UNIVERSAL_MIXER.md`), begins.
 
+- X32 MONITOR, talkback, oscillator and USB tabs on the manual's encoders (pp.60-62):
+  the solo options, monitor delay and source trim; talkback's microphone, auto-dim,
+  destinations (MIX BUS 1-16, LR, C/M) and latch, with `/config/talk` (A / B dim,
+  latch and destinations on the engine's talk paths); one push switching the
+  oscillator's F1 / F2; USB's STOP, PLAY, rewind, fast forward, REC and track list.
+
 - Console oscillators play: the engine has a console's own oscillator, a tone or noise
   switched straight onto buses, mains and matrices (not a source patched to a channel,
   as the WING's OSC 1 and 2 are). The ProMix 01's (SEND3, SEND4, ST OUT), the 02R's

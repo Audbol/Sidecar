@@ -1302,9 +1302,25 @@ private:
             // MONITOR: AFL on the fifth push; TALK A's bus.
             display.showScreen (S::Monitor);
             const bool afl = rig.engine.soloAfl.load();
-            display.pushEncoder (4);
+            display.getEncoder (1).turn.set (3.0f / 6.0f); // the solo options: CHANNEL AFL
+            expectEquals (display.getEncoder (1).turn.text(), juce::String ("CHANNEL AFL"));
+            display.pushEncoder (1);
             expect (rig.engine.soloAfl.load() != afl);
-            display.pushEncoder (4);
+            display.pushEncoder (1);
+            expect (rig.engine.soloAfl.load() == afl);
+            // TALK A: the destination list's LR, assigned with the fourth push.
+            {
+                int set = 0;
+                auto& wing = rig.engine.getWing();
+                display.showScreen (S::Monitor, 1);
+                display.getEncoder (3).turn.set (16.0f / 17.0f);
+                expectEquals (display.getEncoder (3).turn.text(), juce::String ("LR"));
+                display.pushEncoder (3);
+                expect ((rig.engine.talk.paths[0].mains.load() & 1u) != 0, "LR");
+                expectEquals (wing.runX32Text ("/config/talk/A/destmap", set), juce::String ("/config/talk/A/destmap %010000000000000000"));
+                display.pushEncoder (3);
+                expect ((rig.engine.talk.paths[0].mains.load() & 1u) == 0);
+            }
             // OSCILLATOR: the first push switches it on, the sixth encoder its destination.
             {
                 int set = 0;

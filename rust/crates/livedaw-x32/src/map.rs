@@ -160,6 +160,12 @@ pub enum Bind {
     /// level, 2 F1, 3 F2, 4 FSEL, 5 type, 6 dest), kept in the engine's
     /// console text and played by its console oscillator.
     Osc(usize),
+    /// Talkback path `n` (A, B): its auto-dim on (the engine's MON DIM at the
+    /// solo's `dimatt`, else 0), its latch (LATCH, else PUSH) and its
+    /// destinations (bits: bus 1-16, LR, M/C).
+    TalkDim(usize),
+    TalkLatch(usize),
+    TalkDest(usize),
 }
 
 /// One address.
@@ -825,6 +831,18 @@ fn config(b: &mut Builder) {
     for name in LINK_SHARES {
         b.leaf("/config/linkcfg", name, t, ONOFF, Bind::State, int(1));
     }
+    // Talkback (OSC document p.21; MAN p.61): on and the microphone (kept), each
+    // path's level (kept: the engine's TALK LEVEL is one), auto-dim, latch and
+    // destinations. Factory values as a real X32 Compact answered.
+    b.leaf("/config/talk", "enable", t, ONOFF, Bind::State, int(1));
+    b.leaf("/config/talk", "source", t, Ty::Enum(&["INT", "EXT"]), Bind::State, int(1));
+    for (k, path) in ["A", "B"].iter().enumerate() {
+        let p = format!("/config/talk/{path}");
+        b.leaf(&p, "level", t, LEVEL, Bind::State, real(-12.0));
+        b.leaf(&p, "dim", t, ONOFF, Bind::TalkDim(k), int(0));
+        b.leaf(&p, "latch", t, ONOFF, Bind::TalkLatch(k), int(k as i32));
+        b.leaf(&p, "destmap", t, Ty::Bits(18), Bind::TalkDest(k), int(0));
+    }
     // The oscillator (OSC document pp.21-22, p.64; MAN p.62).
     let d = crate::oscillator::Oscillator::default();
     let osc_freq = Ty::Float(Law::Log(20.0, 20000.0, 121), Fmt::Freq);
@@ -1312,6 +1330,14 @@ impl<'a> Console<'a> {
                 let v = crate::oscillator::Oscillator::from_text(&self.engine.console_text().0).field(k);
                 return Some(Self::typed(e, v));
             }
+            Bind::TalkDim(k) | Bind::TalkLatch(k) | Bind::TalkDest(k) => {
+                let p = self.engine.controls.talk.paths.get(k)?;
+                return Some(Val::Int(match e.bind {
+                    Bind::TalkDim(_) => i32::from(p.mon_dim_db.load() > 0.0),
+                    Bind::TalkLatch(_) => i32::from(p.mode.load(Relaxed) == livedaw_engine::talk::talk_mode::LATCH),
+                    _ => (p.buses.load(Relaxed) & 0xffff) as i32 | ((p.mains.load(Relaxed) & 3) << 16) as i32,
+                }));
+            }
             Bind::DcaOn => return on(!self.dca(e.target)?.mute.load(Relaxed)),
             Bind::DcaFader => return Some(Val::Real(self.dca(e.target)?.fader_db.load())),
             Bind::DcaColour => return Some(Val::Int(self.dca(e.target)?.colour.load(Relaxed) - 1)),
@@ -1429,6 +1455,29 @@ impl<'a> Console<'a> {
         };
         match e.bind {
             Bind::State => return false,
+            Bind::TalkDim(k) | Bind::TalkLatch(k) | Bind::TalkDest(k) => {
+                let Some(p) = self.engine.controls.talk.paths.get(k) else { return false };
+                match e.bind {
+                    Bind::TalkDim(_) => {
+                        // The depth is the solo's DIM ATT (-40..0 dB).
+                        let att = match self.tree.find("/config/solo/dimatt") {
+                            Some(Found::Leaf(i)) => self.get(i).real(),
+                            _ => -20.0,
+                        };
+                        p.mon_dim_db.store(if v.on() { (-att).max(0.0) } else { 0.0 });
+                    }
+                    Bind::TalkLatch(_) => {
+                        use livedaw_engine::talk::talk_mode;
+                        p.mode.store(if v.on() { talk_mode::LATCH } else { talk_mode::PUSH }, Relaxed);
+                    }
+                    _ => {
+                        let bits = v.int() as u32;
+                        p.buses.store((p.buses.load(Relaxed) & !0xffff) | (bits & 0xffff), Relaxed);
+                        p.mains.store((p.mains.load(Relaxed) & !3) | ((bits >> 16) & 3), Relaxed);
+                    }
+                }
+                return true;
+            }
             Bind::Osc(k) => {
                 let text = self.engine.console_text().0;
                 let mut o = crate::oscillator::Oscillator::from_text(&text);

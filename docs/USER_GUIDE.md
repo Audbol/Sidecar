@@ -944,12 +944,19 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
   and **PHONES** set the speakers' and the phones' level; **DIM**, **MONO** and
   **MUTE** act on the monitor; **TALK** sets the talkback level, and **TALK A** and
   **TALK B** switch talkback on and off (they latch). Which input is the talkback
-  microphone and where TALK A and B go are set on the Universal Mixer for now. The
-  MONITOR screen's **OSCILLATOR** tab is the X32's: its level (push: on / off), F1 and
-  F2 (push: the one that plays), SINE, PINK or WHITE, and one destination (mix bus
+  microphone is set on the Universal Mixer. The MONITOR screen's tabs follow the
+  manual's encoders: **monitor** the monitor gain, the solo options (EXCLUSIVE, SOLO
+  FOLLOWS SEL, SEL FOLLOWS SOLO, CHANNEL AFL, MIX BUS AFL, DCA AFL, USE MASTER FADER;
+  push to switch the one shown), the monitor delay (push on), the dim depth (push DIM),
+  the source trim (push MONO) and the source; **talk a / talk b** push TALK, push EXT
+  MIC, the talk gain (push AUTO DIM), the destinations (MIX BUS 1-16, LR, C/M; push to
+  assign the one shown) and push LATCH (`/config/talk`); **osc** the X32's
+  oscillator: its level (push: on / off), F1, F2 (push: switch between them),
+  SINE, PINK or WHITE, and one destination (mix bus
   1-16, main L, R, L+R, M/C, matrix 1-6), as `/config/osc` and `/-stat/osc/on`; it plays
   straight onto that destination and the show keeps it. (The WING's OSC 1 and OSC 2
-  sources stay for routing.)
+  sources stay for routing.) The USB screen's home tab: STOP, PLAY, rewind and fast
+  forward (five seconds), REC, and the tracks (push to play the one shown).
 - **Assign.** Right of the main fader, the X32's user controls: **SET A**, **SET B**
   and **SET C** each hold four encoders and eight buttons (5-12). What each does is
   its X32 function code, set from an X32 remote app (`/config/userctrl`) or a scene

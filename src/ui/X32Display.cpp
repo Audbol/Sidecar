@@ -1879,17 +1879,39 @@ void Display::assignEncoders()
     }
     else if (screen == Screen::Usb && tab == 0)
     {
-        // USB (p.62): the player's transport, and the recorder's.
+        // USB (p.62): 1 STOP, 2 PLAY / PAUSE, 3 rewind, 4 fast forward (five
+        // seconds a push), 5 REC; 6 the tracks, push to play the one shown.
         auto& usb = engine.getUsbRecorder();
         using P = UsbRecorder::PlayState;
         using R = UsbRecorder::RecState;
-        encoders[0] = encoder ({}, "PLAY", [&usb] { usb.togglePlayPause(); }, [&usb] { return usb.getPlayState() == P::Playing; });
-        encoders[1] = encoder ({}, "STOP", [&usb] { usb.stop(); });
-        encoders[2] = encoder ({}, "PREV", [&usb] { usb.previous(); });
-        encoders[3] = encoder ({}, "NEXT", [&usb] { usb.next(); });
+        const auto jump = [&usb] (double seconds)
+        {
+            const auto step = (int64_t) (seconds * juce::jmax (1.0, usb.getSampleRate()));
+            usb.seek (juce::jlimit ((int64_t) 0, juce::jmax ((int64_t) 0, usb.getLength()), usb.getPosition() + step));
+        };
+        encoders[0] = encoder ({}, "STOP", [&usb] { usb.stop(); });
+        encoders[1] = encoder ({}, "PLAY", [&usb] { usb.togglePlayPause(); }, [&usb] { return usb.getPlayState() == P::Playing; });
+        encoders[2] = encoder ({}, "REW", [jump] { jump (-5.0); });
+        encoders[3] = encoder ({}, "FFWD", [jump] { jump (5.0); });
         encoders[4] = encoder ({}, "REC", [&usb] { if (usb.isRecording()) usb.stopRecording(); else usb.record(); },
                                [&usb] { return usb.getRecState() == R::Recording; });
-        encoders[5] = encoder ({}, "PAUSE REC", [&usb] { usb.toggleRecPause(); }, [&usb] { return usb.getRecState() == R::Paused; });
+        const int tracks = (int) usb.getQueue().size();
+        KnobBinding track;
+        track.label = "TRACK";
+        track.get = [this, tracks] { return tracks > 1 ? (float) usbTrack / (float) (tracks - 1) : 0.0f; };
+        track.set = [this, tracks] (float v) { usbTrack = juce::roundToInt (v * (float) juce::jmax (0, tracks - 1)); repaint(); };
+        track.text = [this, &usb]
+        {
+            const auto queue = usb.getQueue();
+            return juce::isPositiveAndBelow (usbTrack, (int) queue.size()) ? queue[(size_t) usbTrack].file.getFileNameWithoutExtension() : juce::String ("-");
+        };
+        track.steps = (float) juce::jmax (2, tracks);
+        encoders[5] = encoder (track, "PLAY", [this, &usb]
+        {
+            const auto queue = usb.getQueue();
+            if (juce::isPositiveAndBelow (usbTrack, (int) queue.size()))
+                usb.playEntry (queue[(size_t) usbTrack].id);
+        });
     }
     else if (screen == Screen::Usb)
     {
@@ -1925,14 +1947,36 @@ void Display::assignEncoders()
     }
     else if (screen == Screen::Monitor && tab == 0)
     {
-        // MONITOR (p.60): the speakers' and phones' levels, DIM and its depth,
-        // MONO, the channels' solo (PFL or AFL), and the source.
+        // MONITOR (p.60-61): 1 the monitor's gain; 2 the solo options, push to
+        // switch the one shown; 3 the monitor delay, push on; 4 the dim depth,
+        // push DIM; 5 the source's trim, push MONO; 6 the source. (PHONES is the
+        // panel's knob.) What the engine doesn't do is kept as `/config/solo`.
+        const auto run = [this] (const juce::String& text) { int set = 0; ctx.engine.getWing().runX32Text (text, set); repaint(); };
         encoders[0] = encoder (bindFader ("MONITOR", engine.monitorLevelDb));
-        encoders[1] = encoder (bindFader ("PHONES", engine.phones.levelDb));
-        encoders[2] = encoder (bindLinear ("DIM ATT", engine.monitorDimDb, 0.0f, 40.0f, " dB", 0, 20.0f), "DIM", toggle (engine.monitorDim),
+        KnobBinding solo;
+        solo.label = "SOLO";
+        solo.get = [this] { return (float) soloOption / (float) (soloOptions().size() - 1); };
+        solo.set = [this] (float v) { soloOption = juce::roundToInt (v * (float) (soloOptions().size() - 1)); assignEncoders(); repaint(); };
+        solo.text = [this] { return soloOptions()[soloOption]; };
+        solo.steps = (float) soloOptions().size();
+        encoders[1] = encoder (solo, "APPLY", [this] { toggleSoloOption (soloOption); }, [this] { return soloOptionOn (soloOption); });
+        KnobBinding delay;
+        delay.label = "DELAY";
+        delay.get = [this] { return (x32Value ("/config/solo/delaytime").getFloatValue() - 0.3f) / 499.7f; };
+        delay.set = [run] (float v) { run ("/config/solo/delaytime " + juce::String (0.3f + v * 499.7f, 1)); };
+        delay.text = [this] { return x32Value ("/config/solo/delaytime") + " ms"; };
+        delay.steps = 4998.0f;
+        encoders[2] = encoder (delay, "DELAY", [this, run] { run (juce::String ("/config/solo/delay ") + (x32Value ("/config/solo/delay") == "ON" ? "OFF" : "ON")); },
+                               [this] { return x32Value ("/config/solo/delay") == "ON"; });
+        encoders[3] = encoder (bindLinear ("DIM ATT", engine.monitorDimDb, 0.0f, 40.0f, " dB", 0, 20.0f), "DIM", toggle (engine.monitorDim),
                                isOn (engine.monitorDim));
-        encoders[3] = encoder ({}, "MONO", toggle (engine.monitorMono), isOn (engine.monitorMono));
-        encoders[4] = encoder ({}, "AFL", toggle (engine.soloAfl), isOn (engine.soloAfl));
+        KnobBinding trim;
+        trim.label = "TRIM";
+        trim.get = [this] { return (x32Value ("/config/solo/sourcetrim").getFloatValue() + 18.0f) / 36.0f; };
+        trim.set = [run] (float v) { run ("/config/solo/sourcetrim " + juce::String (-18.0f + v * 36.0f, 1)); };
+        trim.text = [this] { return x32Value ("/config/solo/sourcetrim") + " dB"; };
+        trim.steps = 73.0f;
+        encoders[4] = encoder (trim, "MONO", toggle (engine.monitorMono), isOn (engine.monitorMono));
         juce::StringArray sources;
         for (int i = 0; i < ld::kNumMonitorSources; ++i)
             sources.add (MixerEngine::monitorSourceName (i));
@@ -1940,27 +1984,36 @@ void Display::assignEncoders()
     }
     else if (screen == Screen::Monitor && tab < 3)
     {
-        // TALKBACK A or B (p.61): the talk level, the key, its auto-dim, and
-        // where it talks to (MAIN, a bus picked by the fifth encoder).
+        // TALKBACK A or B (p.61): 1 push talk; 2 push the external microphone;
+        // 3 the talk gain, push AUTO DIM; 4 the destinations (MIX BUS 1-16, LR,
+        // C/M), push to switch the one shown; 5 push LATCH. (6, the lamp, is the
+        // console's lamp socket: none here.) `/config/talk`.
+        const auto run = [this] (const juce::String& text) { int set = 0; ctx.engine.getWing().runX32Text (text, set); repaint(); };
+        const juce::String node = tab == 1 ? "/config/talk/A" : "/config/talk/B";
         auto& path = engine.talk.paths[(size_t) (tab - 1)];
-        encoders[0] = encoder (bindFader ("TALK", engine.talk.levelDb));
-        encoders[1] = encoder ({}, tab == 1 ? "TALK A" : "TALK B", toggle (path.on), isOn (path.on));
-        encoders[2] = encoder (bindLinear ("AUTO DIM", path.monDimDb, 0.0f, 40.0f, " dB", 0, 20.0f));
-        encoders[3] = encoder ({}, "TO MAIN", [&path] { path.mains = path.mains.load() ^ 1u; }, [&path] { return (path.mains.load() & 1u) != 0; });
-        KnobBinding bus;
-        bus.label = "BUS";
-        bus.get = [this] { return (float) talkBus / 15.0f; };
-        bus.set = [this] (float v) { talkBus = juce::roundToInt (v * 15.0f); assignEncoders(); };
-        bus.text = [this] { return juce::String (talkBus + 1); };
-        bus.steps = 16.0f;
-        encoders[4] = encoder (bus, "TO BUS", [this, &path] { path.buses = path.buses.load() ^ (1u << talkBus); },
-                               [this, &path] { return (path.buses.load() & (1u << talkBus)) != 0; });
+        const auto flip = [this, run] (const juce::String& address) { run (address + (x32Value (address) == "ON" ? " OFF" : " ON")); };
+        const auto on = [this] (const juce::String& address) { return [this, address] { return x32Value (address) == "ON"; }; };
+        encoders[0] = encoder ({}, tab == 1 ? "TALK A" : "TALK B", toggle (path.on), isOn (path.on));
+        encoders[1] = encoder ({}, "EXT MIC", [this, run] { run (juce::String ("/config/talk/source ") + (x32Value ("/config/talk/source") == "EXT" ? "INT" : "EXT")); },
+                               [this] { return x32Value ("/config/talk/source") == "EXT"; });
+        encoders[2] = encoder (bindFader ("TALK", engine.talk.levelDb), "AUTO DIM", [flip, node] { flip (node + "/dim"); }, on (node + "/dim"));
+        KnobBinding dest;
+        dest.label = "DEST";
+        dest.get = [this] { return (float) talkBus / 17.0f; };
+        dest.set = [this] (float v) { talkBus = juce::roundToInt (v * 17.0f); assignEncoders(); };
+        dest.text = [this] { return talkBus < 16 ? "BUS " + juce::String (talkBus + 1) : juce::String (talkBus == 16 ? "LR" : "C/M"); };
+        dest.steps = 18.0f;
+        const auto bit = [this] { return 1 << talkBus; };
+        encoders[3] = encoder (dest, "ASSIGN",
+                               [this, run, node, bit] { run (node + "/destmap " + juce::String (x32Bits (x32Value (node + "/destmap")) ^ bit())); },
+                               [this, node, bit] { return (x32Bits (x32Value (node + "/destmap")) & bit()) != 0; });
+        encoders[4] = encoder ({}, "LATCH", [flip, node] { flip (node + "/latch"); }, on (node + "/latch"));
     }
     else if (screen == Screen::Monitor)
     {
-        // OSCILLATOR (p.62): its level (push: on / off), F1, F2 (push: which one
-        // plays), its type and its destination; `/config/osc` and `/-stat/osc/on`,
-        // which the engine's console oscillator plays.
+        // OSCILLATOR (p.62): its level (push: on / off), F1, F2 (push: switch
+        // between the two), its type and its destination; `/config/osc` and
+        // `/-stat/osc/on`, which the engine's console oscillator plays.
         const auto run = [this] (const juce::String& text) { int set = 0; ctx.engine.getWing().runX32Text (text, set); repaint(); };
         const auto on = [this] { return x32Value ("/-stat/osc/on") == "ON"; };
         KnobBinding level;
@@ -1979,8 +2032,11 @@ void Display::assignEncoders()
             f.set = [run, path] (float v) { run (path + " " + juce::String (20.0f * std::pow (1000.0f, v), 1)); };
             f.text = [this, path] { return x32Value (path) + " Hz"; };
             f.steps = 121.0f;
-            const auto selected = [this, k] { return x32Value ("/config/osc/fsel") == (k == 0 ? "F1" : "F2"); };
-            encoders[(size_t) (1 + k)] = encoder (f, k == 0 ? "USE F1" : "USE F2", [run, k] { run (k == 0 ? "/config/osc/fsel F1" : "/config/osc/fsel F2"); }, selected);
+            if (k == 0)
+                encoders[1] = encoder (f);
+            else
+                encoders[2] = encoder (f, "F1 / F2", [this, run] { run (x32Value ("/config/osc/fsel") == "F1" ? "/config/osc/fsel F2" : "/config/osc/fsel F1"); },
+                                       [this] { return x32Value ("/config/osc/fsel") == "F2"; });
         }
         static const juce::StringArray types { "SINE", "PINK", "WHITE" };
         encoders[3] = encoder (enumKnob ("TYPE", "/config/osc/type", types));
@@ -2183,6 +2239,56 @@ juce::String Display::sourceName (int k)
     if (k >= 49 && k <= 64)
         return "Bus " + two (k - 48);
     return "OFF";
+}
+
+int Display::x32Bits (const juce::String& text)
+{
+    // "%000000000000000101": the last digit bit 0.
+    int bits = 0;
+    for (auto c : text.trimCharactersAtStart ("%"))
+        bits = (bits << 1) | (c == '1' ? 1 : 0);
+    return bits;
+}
+
+const juce::StringArray& Display::soloOptions()
+{
+    // MONITOR's solo options (p.60-61), in the manual's order.
+    static const juce::StringArray options { "EXCLUSIVE", "SOLO FOLLOWS SEL", "SEL FOLLOWS SOLO", "CHANNEL AFL", "MIX BUS AFL", "DCA AFL", "USE MASTER FADER" };
+    return options;
+}
+
+bool Display::soloOptionOn (int k) const
+{
+    switch (k)
+    {
+        case 0:  return x32Value ("/config/solo/exclusive") == "ON";
+        case 1:  return x32Value ("/config/solo/followsel") == "ON";
+        case 2:  return x32Value ("/config/solo/followsolo") == "ON";
+        case 3:  return ctx.engine.soloAfl.load();
+        case 4:  return x32Value ("/config/solo/busmode") == "AFL";
+        case 5:  return x32Value ("/config/solo/dcamode") == "AFL";
+        default: return x32Value ("/config/solo/masterctrl") == "ON";
+    }
+}
+
+void Display::toggleSoloOption (int k)
+{
+    // CHANNEL AFL is the engine's solo; the rest are kept as `/config/solo`.
+    int set = 0;
+    auto& wing = ctx.engine.getWing();
+    const bool on = ! soloOptionOn (k);
+    const juce::String onOff = on ? "ON" : "OFF", mode = on ? "AFL" : "PFL";
+    switch (k)
+    {
+        case 0:  wing.runX32Text ("/config/solo/exclusive " + onOff, set); break;
+        case 1:  wing.runX32Text ("/config/solo/followsel " + onOff, set); break;
+        case 2:  wing.runX32Text ("/config/solo/followsolo " + onOff, set); break;
+        case 3:  ctx.engine.soloAfl = on; wing.runX32Text ("/config/solo/chmode " + mode, set); break;
+        case 4:  wing.runX32Text ("/config/solo/busmode " + mode, set); break;
+        case 5:  wing.runX32Text ("/config/solo/dcamode " + mode, set); break;
+        default: wing.runX32Text ("/config/solo/masterctrl " + onOff, set); break;
+    }
+    repaint();
 }
 
 float Display::x32Level (const juce::String& text)
@@ -3491,22 +3597,34 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
             auto& e = ctx.engine;
             const auto onOff = [] (bool on) { return on ? juce::String ("ON") : juce::String ("OFF"); };
             if (tab == 0)
-                paintRows (g, r.reduced (12), { "MONITOR LEVEL", "PHONES LEVEL", "DIM", "DIM ATTENUATION", "MONO", "CHANNEL SOLO", "SOURCE" },
-                           { fader::text (e.monitorLevelDb.load()) + " dB", fader::text (e.phones.levelDb.load()) + " dB", onOff (e.monitorDim.load()),
-                             juce::String (e.monitorDimDb.load(), 0) + " dB", onOff (e.monitorMono.load()), e.soloAfl.load() ? juce::String ("AFL") : juce::String ("PFL"),
+            {
+                // The solo options ticked, and the delay in feet, metres and ms.
+                juce::StringArray ticked;
+                for (int k = 0; k < soloOptions().size(); ++k)
+                    if (soloOptionOn (k))
+                        ticked.add (soloOptions()[k]);
+                const float ms = x32Value ("/config/solo/delaytime").getFloatValue();
+                paintRows (g, r.reduced (12), { "MONITOR LEVEL", "SOLO", "DELAY", "DIM", "DIM ATTENUATION", "TRIM", "MONO", "SOURCE" },
+                           { fader::text (e.monitorLevelDb.load()) + " dB", ticked.isEmpty() ? juce::String ("-") : ticked.joinIntoString (", "),
+                             x32Value ("/config/solo/delay") + "  " + juce::String (ms * 1.125f, 1) + " ft  " + juce::String (ms * 0.343f, 2) + " m  "
+                                 + juce::String (ms, 1) + " ms",
+                             onOff (e.monitorDim.load()), juce::String (e.monitorDimDb.load(), 0) + " dB", x32Value ("/config/solo/sourcetrim") + " dB",
+                             onOff (e.monitorMono.load()),
                              e.anySoloActive.load() ? juce::String ("SOLO BUS") : MixerEngine::monitorSourceName (e.speakers.source.load()) });
+            }
             else if (tab < 3)
             {
+                const juce::String node = tab == 1 ? "/config/talk/A" : "/config/talk/B";
                 auto& path = e.talk.paths[(size_t) (tab - 1)];
+                const int bits = x32Bits (x32Value (node + "/destmap"));
                 juce::StringArray to;
-                if ((path.mains.load() & 1u) != 0)
-                    to.add ("MAIN");
-                for (int b = 0; b < 16; ++b)
-                    if ((path.buses.load() & (1u << b)) != 0)
-                        to.add ("BUS " + juce::String (b + 1));
-                paintRows (g, r.reduced (12), { "TALK LEVEL", tab == 1 ? "TALK A" : "TALK B", "AUTO DIM", "DESTINATIONS" },
-                           { fader::text (e.talk.levelDb.load()) + " dB", onOff (path.on.load()), juce::String (path.monDimDb.load(), 0) + " dB",
-                             to.isEmpty() ? juce::String ("NONE") : to.joinIntoString (", ") });
+                for (int b = 0; b < 18; ++b)
+                    if ((bits & (1 << b)) != 0)
+                        to.add (b < 16 ? "BUS " + juce::String (b + 1) : juce::String (b == 16 ? "LR" : "C/M"));
+                paintRows (g, r.reduced (12), { tab == 1 ? "TALK A" : "TALK B", "MICROPHONE", "TALK LEVEL", "AUTO DIM", "DESTINATIONS", "LATCH" },
+                           { onOff (path.on.load()), x32Value ("/config/talk/source") == "EXT" ? juce::String ("EXTERNAL") : juce::String ("INTERNAL"),
+                             fader::text (e.talk.levelDb.load()) + " dB", x32Value (node + "/dim"),
+                             to.isEmpty() ? juce::String ("NONE") : to.joinIntoString (", "), x32Value (node + "/latch") });
             }
             else
                 paintRows (g, r.reduced (12), { "OSCILLATOR", "LEVEL", "F1", "F2", "PLAYING", "TYPE", "DESTINATION" },
