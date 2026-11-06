@@ -1148,11 +1148,30 @@ private:
             expectEquals (rig.show.getNumScenes(), scenesBefore + 1);
             display.pushEncoder (0); // GO
             expectEquals (rig.show.getCurrentSceneIndex(), scenesBefore);
+            // SNIPPETS: NEW of the selected strip, FIRE with its scene, GO, DELETE.
             display.showScreen (S::Scenes, 1);
+            display.pushEncoder (2); // NEW
+            expectEquals (rig.show.getScene (scenesBefore)->numSnippets, 1);
+            display.pushEncoder (3); // FIRE
+            expect (rig.show.getSnippet (scenesBefore, 0)->fireWithScene);
+            display.pushEncoder (0); // GO
+            display.pushEncoder (2);
+            expectEquals (rig.show.getScene (scenesBefore)->numSnippets, 2);
+            display.pushEncoder (5); // DELETE the second
+            expectEquals (rig.show.getScene (scenesBefore)->numSnippets, 1);
+            display.showScreen (S::Scenes, 2);
             display.pushEncoder (0); // the first section safe
             expect (rig.show.getGlobalSafe().sections != 0);
             display.pushEncoder (0);
             expect (rig.show.getGlobalSafe().sections == 0);
+            // CHAN SAFE: CH 2 safe, then all clear.
+            display.showScreen (S::Scenes, 3);
+            display.getEncoder (0).turn.set (1.0f / (float) (display.recallStrips().size() - 1));
+            expectEquals (display.getEncoder (0).turn.text(), channels[1]->getLabel());
+            display.pushEncoder (0);
+            expect (channels[1]->params.recallSafe.load());
+            display.pushEncoder (5);
+            expect (! channels[1]->params.recallSafe.load());
             // HOME gate's second layer: the key's source; METERS' RTA; ASSIGN's codes.
             display.showScreen (S::Home, 2);
             display.setLayer (1);
@@ -1179,7 +1198,7 @@ private:
             display.pushEncoder (4);
             if (folder.isNotEmpty())
             {
-                const std::tuple<S, int, const char*> pages[] = { { S::Scenes, 0, "scenes" }, { S::Scenes, 1, "param-safe" }, { S::Monitor, 0, "monitor" },
+                const std::tuple<S, int, const char*> pages[] = { { S::Scenes, 0, "scenes" }, { S::Scenes, 1, "snippets" }, { S::Scenes, 2, "param-safe" }, { S::Scenes, 3, "chan-safe" }, { S::Monitor, 0, "monitor" },
                                                                   { S::Monitor, 1, "talk-a" }, { S::Monitor, 3, "osc" }, { S::Assign, 0, "assign" },
                                                                   { S::Usb, 0, "usb" }, { S::Setup, 2, "scribble" }, { S::Setup, 3, "preamps" },
                                                                   { S::Meters, 4, "rta" }, { S::Home, 1, "config" } };

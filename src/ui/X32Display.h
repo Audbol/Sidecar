@@ -98,6 +98,9 @@ public:
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
 
+    /** The strips CHAN SAFE lists. */
+    std::vector<Strip*> recallStrips() const;
+
 private:
     void timerCallback() override;
     void assignEncoders();
@@ -154,6 +157,8 @@ private:
     /** SCENES' safes tab: the section the first encoder points at; a talkback
         tab's bus; HOME's DCA and mute group to assign. */
     int safeSection = 0, talkBus = 0, homeDca = 0, homeMuteGroup = 0;
+    /** SCENES' SNIPPETS: the snippet of the selected scene; CHAN SAFE: the strip. */
+    int selectedSnippet = 0, safeStrip = 0;
     /** HOME config's SOURCE turned and not yet selected (-1 none), and for which strip. */
     int pendingSource = -1, pendingInsert = -1; // and the insert's slot, CONNECT not yet pushed
     const Strip* pendingSourceStrip = nullptr;

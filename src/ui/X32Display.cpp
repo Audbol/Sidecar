@@ -320,10 +320,21 @@ juce::StringArray Display::getTabs() const
         case Screen::Utility:    return { "copy" };
         case Screen::Monitor:    return { "monitor", "talk a", "talk b", "osc" };
         case Screen::Assign:     return { "set a", "set b", "set c" };
-        case Screen::Scenes:     return { "home", "param safe" };
+        case Screen::Scenes:     return { "home", "snippets", "param safe", "chan safe" };
         case Screen::Usb:        return { "home", "config" };
     }
     return {};
+}
+
+std::vector<Strip*> Display::recallStrips() const
+{
+    // The console's strips in the X32's order: channels, aux and FX returns, buses, matrices, mains.
+    std::vector<Strip*> out;
+    auto& e = ctx.engine;
+    for (const auto* list : { &e.getChannels(), &e.getAux(), &e.getBuses(), &e.getMatrices(), &e.getMains() })
+        for (const auto& s : *list)
+            out.push_back (s.get());
+    return out;
 }
 
 int Display::numLayers() const
@@ -958,6 +969,72 @@ void Display::assignEncoders()
         {
             selectedScene = show.addScene ("Scene " + juce::String (show.getNumScenes() + 1).paddedLeft ('0', 2));
             assignEncoders();
+        });
+    }
+    else if (screen == Screen::Scenes && tab == 1)
+    {
+        // SNIPPETS (p.66): the selected scene's (an X32's belong to the show,
+        // Sidecar's to a scene): one picked, GO recalls it, SAVE stores the
+        // console into it, NEW makes one of the selected strip, FIRE recalls it
+        // with its scene, DELETE.
+        auto& show = ctx.show;
+        const auto scene = show.getScene (selectedScene);
+        const int n = scene.has_value() ? scene->numSnippets : 0;
+        selectedSnippet = juce::jlimit (0, juce::jmax (0, n - 1), selectedSnippet);
+        const auto valid = [this, &show]
+        {
+            const auto sc = show.getScene (selectedScene);
+            return sc.has_value() && juce::isPositiveAndBelow (selectedSnippet, sc->numSnippets);
+        };
+        KnobBinding pick;
+        pick.label = "SNIPPET";
+        pick.get = [this, n] { return n > 1 ? (float) selectedSnippet / (float) (n - 1) : 0.0f; };
+        pick.set = [this, n] (float v) { selectedSnippet = juce::roundToInt (v * (float) juce::jmax (0, n - 1)); repaint(); };
+        pick.text = [this, n] { return n == 0 ? juce::String ("-") : juce::String (selectedSnippet + 1).paddedLeft ('0', 2); };
+        pick.steps = (float) juce::jmax (2, n);
+        encoders[0] = encoder (pick, "GO", [this, &show, valid] { if (valid()) show.recallSnippet (selectedScene, selectedSnippet); });
+        encoders[1] = encoder ({}, "SAVE", [this, &show, valid] { if (valid()) show.storeSnippet (selectedScene, selectedSnippet); repaint(); });
+        encoders[2] = encoder ({}, "NEW", [this, &show]
+        {
+            auto* st = selected();
+            if (st == nullptr || ! juce::isPositiveAndBelow (selectedScene, show.getNumScenes()))
+                return;
+            selectedSnippet = show.addSnippet (selectedScene, st->getLabel(), state::AllSections & ~(juce::uint32) state::Routing, { state::StripRef::of (*st) });
+            assignEncoders();
+        });
+        encoders[3] = encoder ({}, "FIRE", [this, &show, valid]
+        {
+            if (valid())
+                show.setSnippetFireWithScene (selectedScene, selectedSnippet, ! show.getSnippet (selectedScene, selectedSnippet)->fireWithScene);
+            repaint();
+        }, [this, &show, valid] { return valid() && show.getSnippet (selectedScene, selectedSnippet)->fireWithScene; });
+        encoders[5] = encoder ({}, "DELETE", [this, &show, valid]
+        {
+            if (valid())
+                show.removeSnippet (selectedScene, selectedSnippet);
+            assignEncoders();
+        });
+    }
+    else if (screen == Screen::Scenes && tab == 3)
+    {
+        // CHAN SAFE (p.66): the strips a scene recall leaves alone.
+        const auto strips = recallStrips();
+        const int n = (int) strips.size();
+        safeStrip = juce::jlimit (0, juce::jmax (0, n - 1), safeStrip);
+        KnobBinding pick;
+        pick.label = "CHANNEL";
+        pick.get = [this, n] { return n > 1 ? (float) safeStrip / (float) (n - 1) : 0.0f; };
+        pick.set = [this, n] (float v) { safeStrip = juce::roundToInt (v * (float) juce::jmax (0, n - 1)); assignEncoders(); };
+        pick.text = [this, strips] { return juce::isPositiveAndBelow (safeStrip, (int) strips.size()) ? strips[(size_t) safeStrip]->getLabel() : juce::String ("-"); };
+        pick.steps = (float) juce::jmax (2, n);
+        Strip* st = juce::isPositiveAndBelow (safeStrip, n) ? strips[(size_t) safeStrip] : nullptr;
+        encoders[0] = encoder (pick, "SAFE", [this, st] { if (st != nullptr) st->params.recallSafe = ! st->params.recallSafe.load(); repaint(); },
+                               [st] { return st != nullptr && st->params.recallSafe.load(); });
+        encoders[5] = encoder ({}, "CLEAR ALL", [this, strips]
+        {
+            for (auto* s : strips)
+                s->params.recallSafe = false;
+            repaint();
         });
     }
     else if (screen == Screen::Scenes)
@@ -2496,6 +2573,38 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
                 {
                     left.add ("No scenes");
                     right.add ("NEW adds one");
+                }
+            }
+            else if (tab == 1)
+            {
+                // The selected scene's snippets; FIRE marks those recalled with it.
+                const auto scene = show.getScene (selectedScene);
+                left.add ("SCENE " + juce::String (selectedScene + 1).paddedLeft ('0', 2));
+                right.add (scene.has_value() ? scene->name : juce::String ("-"));
+                const int n = scene.has_value() ? scene->numSnippets : 0;
+                for (int k = 0; k < n; ++k)
+                    if (const auto snip = show.getSnippet (selectedScene, k))
+                    {
+                        left.add ((k == selectedSnippet ? "> " : "  ") + juce::String (k + 1).paddedLeft ('0', 2) + (snip->fireWithScene ? "  FIRE" : ""));
+                        right.add (snip->name);
+                    }
+                if (n == 0)
+                {
+                    left.add ("No snippets");
+                    right.add ("NEW makes one of the selected strip");
+                }
+            }
+            else if (tab == 3)
+            {
+                // The strips around the one picked, SAFE those a recall leaves alone.
+                const auto strips = recallStrips();
+                const int n = (int) strips.size();
+                const int rows = juce::jmax (1, (r.getHeight() - 24) / 26);
+                const int from = juce::jlimit (0, juce::jmax (0, n - rows), safeStrip - rows / 2);
+                for (int i = from; i < juce::jmin (n, from + rows); ++i)
+                {
+                    left.add ((i == safeStrip ? "> " : "  ") + strips[(size_t) i]->getLabel() + "  " + strips[(size_t) i]->getName());
+                    right.add (strips[(size_t) i]->params.recallSafe.load() ? "SAFE" : "-");
                 }
             }
             else

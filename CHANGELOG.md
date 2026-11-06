@@ -594,6 +594,9 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   beside it. The surround buses sum to mono while SURROUND has them, so both
   sides of a stereo channel reach their speakers. A stereo channel with ST
   LINK off has both sides at one place.
+- X32 SCENES: SNIPPETS (the selected scene's snippets: GO, SAVE, NEW of the
+  selected strip, FIRE with the scene, DELETE) and CHAN SAFE (each strip's
+  recall safe, CLEAR ALL) beside HOME and PARAM SAFE.
 - Dropout diagnostics: `LIVEDAW_TRACE_SLOW=<file>` logs every block that takes
   longer than it lasts (each stage's time and CPU cycles, the parallel stages'
   longest task and the wait for the workers); `LIVEDAW_WORKERS` sets the
