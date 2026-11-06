@@ -101,6 +101,11 @@ public:
     /** The strips CHAN SAFE lists. */
     std::vector<Strip*> recallStrips() const;
 
+    /** SETUP > scribble strip's Snippets: names to give a strip. */
+    static const juce::StringArray& scribbleNames();
+    /** Asks for the strip's name (Name's EDIT). */
+    void editStripName (Strip&);
+
     /** A SETUP > config entry: its name, its X32 address and its on and off values. */
     struct ConfigItem
     {
@@ -129,6 +134,8 @@ private:
     void paintMeters (juce::Graphics&, juce::Rectangle<int>);
     void paintSends (juce::Graphics&, juce::Rectangle<int>, Strip&);
     void paintRemote (juce::Graphics&, juce::Rectangle<int>);
+    void paintScribble (juce::Graphics&, juce::Rectangle<float>, Strip*);
+    void paintPreamps (juce::Graphics&, juce::Rectangle<float>);
     void paintRouting (juce::Graphics&, juce::Rectangle<int>);
     /** ROUTING > home (step 10c): the input blocks, through the X32 map's
         text commands (`/config/routing/...`). */
@@ -175,8 +182,10 @@ private:
     /** HOME config's SOURCE turned and not yet selected (-1 none), and for which strip. */
     int pendingSource = -1, pendingInsert = -1; // and the insert's slot, CONNECT not yet pushed
     const Strip* pendingSourceStrip = nullptr;
-    /** SETUP's preamps tab: the block of four inputs shown. */
+    /** SETUP's preamps tab: the block of eight inputs shown (its layers the top and bottom four). */
     int preampBlock = 0;
+    /** SETUP's scribble strip tab: the name the Snippets column points at. */
+    int scribbleName = 0;
     /** ASSIGN's control being edited (0-3 encoders 1-4, 4-11 keys 5-12). */
     int assignControl = 0;
     /** LIBRARY's channel and effects tabs: the preset picked, the FX slot. */

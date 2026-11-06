@@ -326,6 +326,191 @@ juce::StringArray Display::getTabs() const
     return {};
 }
 
+const juce::StringArray& Display::scribbleNames()
+{
+    // Names for the usual sources, the drums first (Sidecar's list).
+    static const juce::StringArray names { "Kick", "Kick In", "Kick Out", "Snare", "Snare Top", "Snare Bot", "Hi-Hat", "Tom 1", "Tom 2",
+                                           "Floor Tom", "OH L", "OH R", "Ride", "Bass", "Bass DI", "Gtr 1", "Gtr 2", "Ac Gtr", "Keys L",
+                                           "Keys R", "Piano", "Organ", "Synth", "Lead Vox", "Vox 1", "Vox 2", "Vox 3", "BGV", "Choir", "Talk",
+                                           "Brass", "Sax", "Trumpet", "Strings", "Violin", "Cello", "Perc", "Click", "Playback", "Ambience" };
+    return names;
+}
+
+void Display::editStripName (Strip& strip)
+{
+    auto* w = new juce::AlertWindow ("NAME", strip.getLabel() + ":", juce::MessageBoxIconType::NoIcon, this);
+    w->addTextEditor ("name", strip.getName());
+    w->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    w->addButton ("CANCEL", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    juce::Component::SafePointer<Display> safe (this);
+    Strip* target = &strip;
+    w->enterModalState (true, juce::ModalCallbackFunction::create ([safe, w, target] (int result)
+    {
+        if (result != 0 && safe != nullptr)
+        {
+            target->setName (w->getTextEditorContents ("name").trim().substring (0, 12));
+            safe->repaint();
+        }
+    }), true);
+}
+
+void Display::paintScribble (juce::Graphics& g, juce::Rectangle<float> r, Strip* s)
+{
+    // Scribble Strip Setup: Channel, Color, Icon, Snippets and Name, each a
+    // column of its encoder's choices around the chosen one.
+    auto area = block (g, r, "SCRIBBLE STRIP SETUP").reduced (6.0f, 4.0f);
+    const float w = area.getWidth() / 5.0f;
+    const float rowH = 14.0f;
+    const int rows = juce::jlimit (3, 11, (int) ((area.getHeight() - 16.0f) / rowH)) | 1; // odd, the chosen one in the middle
+    const auto column = [&] (const juce::String& title)
+    {
+        auto c = area.removeFromLeft (w).reduced (5.0f, 0.0f);
+        g.setColour (kNavy);
+        g.setFont (type::font (10.5f, true));
+        g.drawText (title, c.removeFromTop (16.0f), juce::Justification::centred);
+        return c.withHeight (rowH * (float) rows);
+    };
+    // A list of n entries, `at` chosen, scrolled to show it.
+    const auto list = [&] (juce::Rectangle<float> c, int n, int at, const std::function<void (juce::Rectangle<float>, int, bool)>& paintEntry)
+    {
+        g.setColour (kNavy);
+        g.drawRect (c.expanded (1.0f), 1.0f);
+        const int from = juce::jlimit (0, juce::jmax (0, n - rows), at - rows / 2);
+        for (int i = from; i < juce::jmin (n, from + rows); ++i)
+            paintEntry (c.removeFromTop (rowH), i, i == at);
+    };
+    const auto text = [&g] (juce::Rectangle<float> row, const juce::String& t, bool chosen)
+    {
+        g.setColour (chosen ? kDeep : kBox);
+        g.fillRect (row);
+        g.setColour (chosen ? juce::Colours::white : kNavy);
+        g.setFont (type::font (juce::jmin (11.0f, row.getHeight() * 0.8f), chosen));
+        g.drawFittedText (t, row.reduced (3.0f, 0.0f).toNearestInt(), juce::Justification::centred, 1, 0.7f);
+    };
+
+    const auto strips = recallStrips();
+    const int at = (int) (std::find (strips.begin(), strips.end(), s) - strips.begin());
+    list (column ("Channel"), (int) strips.size(), at, [&] (juce::Rectangle<float> row, int i, bool chosen) { text (row, strips[(size_t) i]->getLabel(), chosen); });
+    const int colour = s != nullptr ? juce::jlimit (1, 16, s->getColourIndex()) : 0;
+    list (column ("Color"), 16, colour - 1, [&] (juce::Rectangle<float> row, int i, bool chosen)
+    {
+        g.setColour (consoleColour (i + 1));
+        g.fillRect (row.reduced (0.0f, 0.5f));
+        if (chosen)
+        {
+            g.setColour (juce::Colours::white);
+            g.drawRect (row, 2.0f);
+        }
+    });
+    const auto icons = wingIconNumbers();
+    const auto found = s != nullptr ? std::find (icons.begin(), icons.end(), s->params.icon.load()) : icons.end();
+    const int icon = found != icons.end() ? (int) (found - icons.begin()) : -1;
+    {
+        // Icon: the chosen one large, its neighbours either side.
+        auto c = column ("Icon");
+        g.setColour (kSkyLine);
+        g.fillRect (c);
+        const auto label = c.removeFromBottom (14.0f);
+        const float side = juce::jmin (c.getWidth() / 3.0f, c.getHeight());
+        for (int d = -1; d <= 1; ++d)
+        {
+            const int i = icon + d;
+            if (icon < 0 && d != 0)
+                continue;
+            auto box = juce::Rectangle<float> (side, side).withCentre ({ c.getCentreX() + (float) d * side, c.getCentreY() });
+            if (d == 0)
+            {
+                g.setColour (kDeep);
+                g.fillRect (box);
+            }
+            if (juce::isPositiveAndBelow (i, (int) icons.size()))
+                drawWingIcon (g, icons[(size_t) i], box.reduced (side * 0.15f), d == 0 ? juce::Colours::white : kNavy);
+        }
+        g.setColour (kNavy);
+        g.setFont (type::font (10.0f, true));
+        g.drawFittedText (juce::isPositiveAndBelow (icon, (int) icons.size()) ? wingIconName (icons[(size_t) icon]) : juce::String ("NO ICON"),
+                          label.toNearestInt(), juce::Justification::centred, 1, 0.7f);
+    }
+    const auto& names = scribbleNames();
+    list (column ("Snippets"), names.size(), scribbleName, [&] (juce::Rectangle<float> row, int i, bool chosen) { text (row, names[i], chosen); });
+    auto name = column ("Name");
+    valueBox (g, name.removeFromTop (rowH + 2.0f), s != nullptr ? s->getName() : juce::String ("-"));
+}
+
+void Display::paintPreamps (juce::Graphics& g, juce::Rectangle<float> r)
+{
+    // The preamp blocks, the chosen block's eight preamps in two rows of four
+    // (this layer's row marked), and the devices connected (none on AES50).
+    const float side = juce::jmax (96.0f, r.getWidth() * 0.17f);
+    auto blocks = block (g, r.removeFromLeft (side), "PREAMP BLOCKS").reduced (3.0f, 2.0f);
+    r.removeFromLeft (6.0f);
+    auto devices = block (g, r.removeFromRight (side), "CONNECTED DEVICES").reduced (3.0f, 2.0f);
+    r.removeFromRight (6.0f);
+    auto controls = block (g, r, "PREAMP CONTROLS").reduced (6.0f, 4.0f);
+
+    for (int b = 0; b < 4; ++b)
+    {
+        auto row = blocks.removeFromTop (18.0f);
+        g.setColour (b == preampBlock ? kDeep : kBox);
+        g.fillRect (row.reduced (0.0f, 1.0f));
+        g.setColour (b == preampBlock ? juce::Colours::white : kNavy);
+        g.setFont (type::font (11.0f, b == preampBlock));
+        g.drawText ("Local " + juce::String (8 * b + 1) + "-" + juce::String (8 * b + 8), row, juce::Justification::centred);
+    }
+
+    g.setColour (kNavy);
+    g.setFont (type::font (10.5f, true));
+    for (const char* bus : { "AES50 A", "AES50 B" })
+    {
+        auto d = devices.removeFromTop (devices.getHeight() * (bus[6] == 'A' ? 0.5f : 1.0f));
+        g.drawText (bus, d.removeFromTop (16.0f), juce::Justification::centredLeft);
+        g.setFont (type::font (10.0f));
+        g.drawText ("none", d.removeFromTop (14.0f), juce::Justification::centredLeft);
+        g.setFont (type::font (10.5f, true));
+    }
+
+    const float rowH = controls.getHeight() / 2.0f;
+    for (int half = 0; half < 2; ++half)
+    {
+        auto row = controls.removeFromTop (rowH).reduced (0.0f, 3.0f);
+        if (half == layer)
+        {
+            g.setColour (kYellow);
+            g.fillRect (row.withWidth (4.0f));
+        }
+        row.removeFromLeft (8.0f);
+        const float w = row.getWidth() / 4.0f;
+        for (int k = 0; k < 4; ++k)
+        {
+            const int input = 8 * preampBlock + 4 * half + k;
+            auto tile = row.removeFromLeft (w).reduced (6.0f, 0.0f);
+            g.setColour (kSkyLine);
+            g.drawRoundedRectangle (tile, 3.0f, 1.0f);
+            auto* src = ctx.engine.getSource (input);
+            auto top = tile.removeFromTop (18.0f).reduced (2.0f);
+            g.setColour (kNavy);
+            g.setFont (type::font (10.0f, true));
+            g.drawText (juce::String (input + 1), top.removeFromLeft (16.0f), juce::Justification::centred);
+            if (src == nullptr)
+            {
+                g.setFont (type::font (10.0f));
+                g.drawFittedText ("(no preamp)", tile.toNearestInt(), juce::Justification::centred, 1, 0.7f);
+                continue;
+            }
+            // Its gain, then its knob and A/D-Gain when there's room, +48V along the bottom.
+            valueBox (g, top, juce::String (src->gainDb.load(), 1));
+            chip (g, tile.removeFromBottom (16.0f).reduced (6.0f, 1.0f), "+48V", src->phantom.load());
+            if (tile.getHeight() >= 34.0f)
+            {
+                g.setColour (kNavy);
+                g.setFont (type::font (9.5f));
+                g.drawText ("A/D-Gain", tile.removeFromBottom (12.0f), juce::Justification::centred);
+                knobIcon (g, tile.getCentre(), juce::jmin (12.0f, tile.getHeight() * 0.38f), (src->gainDb.load() + 12.0f) / 72.0f);
+            }
+        }
+    }
+}
+
 const std::vector<Display::ConfigItem>& Display::configPrefs()
 {
     // SETUP > config's preferences that Sidecar acts on: the solo's and the mono bus's.
@@ -366,7 +551,7 @@ std::vector<Strip*> Display::recallStrips() const
 int Display::numLayers() const
 {
     if (screen == Screen::Setup)
-        return tab == 2 ? 2 : 1; // remote: the MIDI kinds, then SysEx
+        return tab == 2 || tab == 5 ? 2 : 1; // remote: the MIDI kinds, then SysEx; preamps: the top four, the bottom four
     if (screen == Screen::Routing)
         return 1; // none of its tabs has a second layer (p.51)
     if (screen == Screen::Effects && tab > 0)
@@ -799,11 +984,28 @@ void Display::assignEncoders()
     }
     else if (screen == Screen::Setup && tab == 4)
     {
-        // SCRIBBLE STRIP (p.56): the selected strip's colour and icon.
+        // SCRIBBLE STRIP (p.56): five columns, an encoder each: the strip, its
+        // colour, its icon, a name from the list (pushed to give it), its name
+        // (EDIT asks for it).
+        const auto strips = recallStrips();
+        const int n = (int) strips.size();
+        const int at = (int) (std::find (strips.begin(), strips.end(), s) - strips.begin());
+        KnobBinding pick;
+        pick.label = "SELECT";
+        pick.get = [n, at] { return n > 1 && at < n ? (float) at / (float) (n - 1) : 0.0f; };
+        pick.set = [this, strips, n] (float v)
+        {
+            if (n > 0 && ctx.selectStrip)
+                ctx.selectStrip (strips[(size_t) juce::roundToInt (v * (float) (n - 1))]);
+            assignEncoders();
+        };
+        pick.text = [s] { return s != nullptr ? s->getLabel() : juce::String ("-"); };
+        pick.steps = (float) juce::jmax (2, n);
+        encoders[0] = encoder (pick);
         if (s != nullptr)
         {
             KnobBinding colour;
-            colour.label = "COLOR";
+            colour.label = "SELECT";
             colour.get = [s] { return (float) (juce::jlimit (1, 16, s->getColourIndex()) - 1) / 15.0f; };
             colour.set = [this, s] (float v) { s->setColourIndex (1 + juce::roundToInt (v * 15.0f)); repaint(); };
             colour.text = [s] { return juce::String (juce::jlimit (1, 16, s->getColourIndex())); };
@@ -811,7 +1013,7 @@ void Display::assignEncoders()
             encoders[1] = encoder (colour);
             const auto icons = wingIconNumbers();
             KnobBinding icon;
-            icon.label = "ICON";
+            icon.label = "SELECT";
             icon.get = [s, icons]
             {
                 const auto at = std::find (icons.begin(), icons.end(), s->params.icon.load());
@@ -823,27 +1025,38 @@ void Display::assignEncoders()
                     s->params.icon = icons[(size_t) juce::roundToInt (v * (float) (icons.size() - 1))];
                 repaint();
             };
-            icon.text = [s] { return juce::String (s->params.icon.load()); };
+            icon.text = [s] { const auto n = wingIconName (s->params.icon.load()); return n.isNotEmpty() ? n.toUpperCase() : juce::String ("NONE"); };
             icon.steps = (float) juce::jmax (2, (int) icons.size());
-            encoders[2] = encoder (icon, "NO ICON", [this, s] { s->params.icon = 0; repaint(); });
+            encoders[2] = encoder (icon);
+            const auto& names = scribbleNames();
+            scribbleName = juce::jlimit (0, names.size() - 1, scribbleName);
+            KnobBinding name;
+            name.label = "SELECT";
+            name.get = [this, &names] { return (float) scribbleName / (float) (names.size() - 1); };
+            name.set = [this, &names] (float v) { scribbleName = juce::roundToInt (v * (float) (names.size() - 1)); repaint(); };
+            name.text = [this, &names] { return names[scribbleName]; };
+            name.steps = (float) names.size();
+            encoders[3] = encoder (name, "SELECT", [this, s, &names] { s->setName (names[scribbleName]); repaint(); });
+            encoders[4] = encoder ({}, "EDIT", [this, s] { editStripName (*s); });
         }
     }
     else if (screen == Screen::Setup && tab == 5)
     {
-        // PREAMPS (p.57): a block of four inputs, each its gain, PUSH its 48V.
+        // PREAMPS (p.56-57): encoder 1 the block of eight inputs, 2-5 the gains
+        // of its top four (layer 1) or bottom four (layer 2), pushed for 48V.
         KnobBinding block;
-        block.label = "INPUTS";
-        block.get = [this] { return (float) preampBlock / 7.0f; };
-        block.set = [this] (float v) { preampBlock = juce::roundToInt (v * 7.0f); assignEncoders(); };
-        block.text = [this] { return juce::String (4 * preampBlock + 1) + "-" + juce::String (4 * preampBlock + 4); };
-        block.steps = 8.0f;
+        block.label = "SELECT";
+        block.get = [this] { return (float) preampBlock / 3.0f; };
+        block.set = [this] (float v) { preampBlock = juce::roundToInt (v * 3.0f); assignEncoders(); };
+        block.text = [this] { return juce::String (8 * preampBlock + 1) + "-" + juce::String (8 * preampBlock + 8); };
+        block.steps = 4.0f;
         encoders[0] = encoder (block);
         for (int k = 0; k < 4; ++k)
-            if (auto* src = engine.getSource (4 * preampBlock + k))
+            if (auto* src = engine.getSource (8 * preampBlock + 4 * layer + k))
             {
-                auto b = bindLinear ("IN " + juce::String (4 * preampBlock + k + 1), src->gainDb, -12.0f, 60.0f, " dB", 1, 0.0f);
+                auto b = bindLinear ("GAIN " + juce::String (8 * preampBlock + 4 * layer + k + 1), src->gainDb, -12.0f, 60.0f, " dB", 1, 0.0f);
                 b.steps = 145.0f;
-                encoders[(size_t) (k + 1)] = encoder (b, "48V", toggle (src->phantom), isOn (src->phantom));
+                encoders[(size_t) (k + 1)] = encoder (b, "+48V", toggle (src->phantom), isOn (src->phantom));
             }
     }
     else if (screen == Screen::Usb && tab == 0)
@@ -2586,22 +2799,12 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
             }
             if (tab == 4)
             {
-                paintRows (g, r.reduced (12), { "STRIP", "NAME", "COLOR", "ICON" },
-                           { s != nullptr ? s->getLabel() : juce::String ("-"), s != nullptr ? s->getName() : juce::String ("-"),
-                             s != nullptr ? juce::String (s->getColourIndex()) : juce::String ("-"),
-                             s != nullptr && s->params.icon.load() > 0 ? wingIconName (s->params.icon.load()) : juce::String ("NONE") });
+                paintScribble (g, r.reduced (12).toFloat(), s);
                 break;
             }
             if (tab == 5)
             {
-                juce::StringArray left, right;
-                for (int k = 0; k < 4; ++k)
-                    if (auto* src = ctx.engine.getSource (4 * preampBlock + k))
-                    {
-                        left.add ("INPUT " + juce::String (4 * preampBlock + k + 1));
-                        right.add (juce::String (src->gainDb.load(), 1) + " dB" + (src->phantom.load() ? "   48V" : ""));
-                    }
-                paintRows (g, r.reduced (12), left, right);
+                paintPreamps (g, r.reduced (12).toFloat());
                 break;
             }
             paintRows (g, r.reduced (12), { "CONSOLE", "SURFACE", "SAMPLE RATE", "CHANNELS", "BUSES / MATRICES" },

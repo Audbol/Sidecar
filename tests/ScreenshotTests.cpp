@@ -1243,6 +1243,29 @@ private:
             display.pushEncoder (4);
             expect (engine.getWing().runX32Text ("/ch/05/mix/03/type", set).endsWith ("POST"));
         }
+        // SCRIBBLE STRIP: a name from the Snippets list, given by its push.
+        display.showScreen (ui::x32::Display::Screen::Setup, 4);
+        if (display.getEncoder (3).push)
+        {
+            auto* strip = rig.selected;
+            const auto was = strip != nullptr ? strip->getName() : juce::String();
+            display.getEncoder (3).turn.set (0.0f);
+            display.pushEncoder (3);
+            if (strip != nullptr)
+            {
+                expectEquals (strip->getName(), ui::x32::Display::scribbleNames()[0]);
+                strip->setName (was);
+            }
+        }
+        // PREAMPS: layer 2 holds the block's bottom four.
+        display.showScreen (ui::x32::Display::Screen::Setup, 5);
+        expectEquals (display.getEncoder (1).turn.label, juce::String ("GAIN 1"));
+        display.setLayer (1);
+        expectEquals (display.getEncoder (1).turn.label, juce::String ("GAIN 5"));
+        display.getEncoder (0).turn.set (1.0f);
+        expectEquals (display.getEncoder (0).turn.text(), juce::String ("25-32"));
+        expectEquals (display.getEncoder (1).turn.label, juce::String ("GAIN 29"));
+        display.setLayer (0);
         // The X32 COMPACT: 8 input faders in eight layers, chosen on SETUP.
         display.showScreen (ui::x32::Display::Screen::Setup);
         expectEquals (display.getEncoder (0).turn.label, juce::String ("MODEL"));

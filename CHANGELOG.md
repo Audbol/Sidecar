@@ -595,6 +595,11 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   beside it. The surround buses sum to mono while SURROUND has them, so both
   sides of a stereo channel reach their speakers. A stereo channel with ST
   LINK off has both sides at one place.
+- X32 SETUP > scribble strip and preamps as the manual's pictures (p.56): the
+  scribble strip's five columns (channel, colour, icon, a list of names, the name),
+  an encoder each, the list's name given by its push and the name typed with EDIT;
+  the preamps' blocks of eight (Local 1-8 to 25-32), their gains in two rows of four,
+  layer 1 the top row and layer 2 the bottom on encoders 2-5, pushed for +48V.
 - X32 ROUTING: XLR OUT (the rear XLR outputs' blocks of four, p.54), formerly out 1-16's second layer; SETUP > config as the manual has it: encoder 1 the preferences (the solo's and the mono bus's), 4 what a link shares, 5 a scheme for the inputs' bus sends (all post, all pre, 1-8 or 9-16 pre; the schemes are Sidecar's).
 - X32 SETUP in the console's tab order: CONFIG (the sample rate and sync, what a
   channel link shares: HA and delay, EQ, dynamics, fader and mute, as
