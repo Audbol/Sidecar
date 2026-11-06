@@ -952,11 +952,11 @@ std::vector<Display::SafeColumn> Display::chanSafeColumns()
     for (auto& s : e.getMains())
         columns[4].items.push_back (strip (s.get()));
     for (int d = 0; d < 8; ++d)
-        columns[4].items.push_back ({ "DCA " + juce::String (d + 1), [&show, d] { return (show.getGlobalSafe().dcas.low() & (1u << d)) != 0; }, [&show, d]
+        columns[4].items.push_back ({ "DCA " + juce::String (d + 1), [&show, d] { return (show.getGlobalSafe().dcas.low() & (juce::uint64 (1) << d)) != 0; }, [&show, d]
         {
             auto s = show.getGlobalSafe();
-            const auto bit = GroupBits::mask (1u << d);
-            s.dcas = (s.dcas.low() & (1u << d)) != 0 ? (s.dcas & ~bit) : (s.dcas | bit);
+            const auto bit = GroupBits::mask (juce::uint64 (1) << d);
+            s.dcas = (s.dcas.low() & (juce::uint64 (1) << d)) != 0 ? (s.dcas & ~bit) : (s.dcas | bit);
             show.setGlobalSafe (s);
         } });
     for (int f = 0; f < 8; ++f)
@@ -969,7 +969,7 @@ std::vector<Display::SafeColumn> Display::chanSafeColumns()
     return columns;
 }
 
-void Display::paintSafeColumns (juce::Graphics& g, juce::Rectangle<float> r, const std::vector<SafeColumn>& columns, const int* cursor, const juce::String& footer)
+void Display::paintSafeColumns (juce::Graphics& g, juce::Rectangle<float> r, const std::vector<SafeColumn>& columns, const int* pointed, const juce::String& footer)
 {
     // A column of check boxes per encoder, the one it points at marked.
     if (footer.isNotEmpty())
@@ -991,7 +991,7 @@ void Display::paintSafeColumns (juce::Graphics& g, juce::Rectangle<float> r, con
         const float fit = col.getHeight() / (float) most;
         const float rowH = fit >= 9.0f ? juce::jmin (14.0f, fit) : 14.0f;
         const int rows = juce::jmax (1, (int) (col.getHeight() / rowH));
-        const int at = cursor[c];
+        const int at = pointed[c];
         const int n = (int) items.size();
         const int from = juce::jlimit (0, juce::jmax (0, n - rows), at - rows / 2);
         for (int i = from; i < juce::jmin (n, from + rows); ++i)

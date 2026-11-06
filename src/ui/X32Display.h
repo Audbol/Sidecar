@@ -175,7 +175,7 @@ private:
     void paintRemote (juce::Graphics&, juce::Rectangle<int>);
     void paintScribble (juce::Graphics&, juce::Rectangle<float>, Strip*);
     void paintPreamps (juce::Graphics&, juce::Rectangle<float>);
-    void paintSafeColumns (juce::Graphics&, juce::Rectangle<float>, const std::vector<SafeColumn>&, const int* rows, const juce::String& footer);
+    void paintSafeColumns (juce::Graphics&, juce::Rectangle<float>, const std::vector<SafeColumn>&, const int* pointed, const juce::String& footer);
     void paintScenes (juce::Graphics&, juce::Rectangle<int>);
     void assignScenesEncoders();
     void assignLibraryPresetEncoders();
