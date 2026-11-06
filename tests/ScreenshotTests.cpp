@@ -1018,13 +1018,19 @@ private:
 
         // ROUTING's output tabs: out 1-16's signals (Main LR on 15-16), then its blocks.
         display.showScreen (ui::x32::Display::Screen::Routing, 1);
-        expectEquals (display.getEncoder (1).turn.label, juce::String ("SOURCE"));
+        // The manual's encoders (p.52): 3 the category, 4 the signal, pushed to assign.
+        expectEquals (display.getEncoder (3).turn.label, juce::String ("SIGNAL"));
         display.getEncoder (0).turn.set (14.0f / 15.0f); // OUT 15
-        expectEquals (display.getEncoder (1).turn.text(), juce::String ("MAIN L"));
+        expectEquals (display.getEncoder (3).turn.text(), juce::String ("MAIN L"));
+        expectEquals (display.getEncoder (2).turn.text(), juce::String ("MAIN"));
         const int mainL = engine.getOutputSource (14);
-        display.getEncoder (1).turn.set (4.0f / 76.0f); // MIXBUS 01
+        display.getEncoder (2).turn.set (2.0f / 5.0f); // MIX BUS
+        expectEquals (display.getEncoder (3).turn.text(), juce::String ("MIXBUS 01"));
+        expectEquals (engine.getOutputSource (14), mainL, "not until ASSIGN");
+        display.pushEncoder (3);
         expect (engine.getOutputSource (14) == engine.getOutputSource (0) && engine.getOutputSource (14) != mainL, "output 15 plays bus 1");
-        display.getEncoder (1).turn.set (1.0f / 76.0f); // MAIN L again
+        display.getEncoder (2).turn.set (1.0f / 5.0f); // MAIN: MAIN L
+        display.pushEncoder (3);
         expectEquals (engine.getOutputSource (14), mainL);
         if (folder.isNotEmpty())
         {

@@ -989,7 +989,8 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
   main LR**, the same on AES50 A and B, and the card's outputs carry the local
   inputs (for recording). On the display, ROUTING's tabs set them as on an X32:
   **out 1-16**, **aux out** and **p16 out** choose an output (encoder 1) and what it
-  plays (SOURCE: a main, bus, matrix or direct out; TAP; INVERT; out 1-16's DELAY),
+  plays (encoder 3 the category, 4 the signal, pushed to ASSIGN; 5 the TAP; out 1-16's
+  DELAY on 6, pushed on or off),
   **card out**, **aes50-a** and **aes50-b** what each block of eight outputs
   plays, and **xlr out** which output signals the rear XLR outputs play, four at a
   time. X32 remote apps and scene files set the same, and the Universal Mixer's

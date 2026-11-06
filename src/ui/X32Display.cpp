@@ -179,6 +179,23 @@ namespace
         return names;
     }
 
+    /** The output sources' categories (p.52): their names and ranges in `outputSources()`. */
+    struct SourceCategory
+    {
+        const char* name;
+        int first, last;
+    };
+    const SourceCategory kSourceCategories[] = { { "OFF", 0, 0 }, { "MAIN", 1, 3 }, { "MIX BUS", 4, 19 }, { "MATRIX", 20, 25 },
+                                                 { "DIRECT OUT", 26, 73 }, { "MONITOR", 74, 76 } };
+
+    int categoryOf (int source)
+    {
+        for (int c = 0; c < 6; ++c)
+            if (source >= kSourceCategories[c].first && source <= kSourceCategories[c].last)
+                return c;
+        return 0;
+    }
+
     /** ROUTING's signal tabs: the `/outputs` group and its count (tabs 1-3). */
     struct SignalTab
     {
@@ -1437,6 +1454,23 @@ void Display::assignEncoders()
             return b;
         };
         auto gainOf = [&] { return bindLinear ("GAIN", p.input.trimDb, -18.0f, 18.0f, " dB", 1, 0.0f); };
+        // A key filter's frequency, its push switching the filter on (the last
+        // type, BANDPASS at first) and off (p.47-48).
+        auto keyFreq = [this] (auto& slot)
+        {
+            return encoder (bindLog ("KEY FREQ", slot.scFreq, 20.0f, 20000.0f, " Hz", 1000.0f), "FILTER",
+                            [this, &slot]
+                            {
+                                if (slot.scFilter.load() != 0)
+                                {
+                                    lastKeyFilter = slot.scFilter.load();
+                                    slot.scFilter = 0;
+                                }
+                                else
+                                    slot.scFilter = juce::jmax (1, lastKeyFilter);
+                            },
+                            [&slot] { return slot.scFilter.load() != 0; });
+        };
         // A dynamics slot's KEY SOURCE: SELF, a channel (an input's), or an
         // aux, bus, main or matrix (an output's).
         auto keySource = [&engine, s] (std::atomic<int32_t>& src)
@@ -1599,12 +1633,13 @@ void Display::assignEncoders()
                 }
                 else
                 {
+                    // Page 2 (p.47): 1 and 2 as page 1; 4 the key filter's frequency
+                    // (push: FILTER), 5 its type (push: KEY SOLO), 6 the key source.
                     encoders[0] = encoder (bindParam (models::Dynamics, gate.model.load(), gate.values, "thr", "THRESHOLD"), "GATE", toggle (gate.on), isOn (gate.on));
-                    // The key (p.48): its filter, frequency, KEY SOLO and source.
-                    encoders[2] = encoder (bindChoice ("KEY FILTER", gate.scFilter, keyFilters));
-                    encoders[3] = encoder (bindLog ("KEY FREQ", gate.scFreq, 20.0f, 20000.0f, " Hz", 1000.0f));
+                    encoders[1] = encoder (bindChoice ("MODE", gate.model, { "EXP2", "EXP3", "EXP4", "GATE", "DUCK" }, 3));
+                    encoders[3] = keyFreq (gate);
                     const auto [solo, soloOn] = keySolo (ld::kListenGateKey);
-                    encoders[4] = encoder ({}, "KEY SOLO", solo, soloOn);
+                    encoders[4] = encoder (bindChoice ("FILTER", gate.scFilter, keyFilters), "KEY SOLO", solo, soloOn);
                     encoders[5] = encoder (keySource (gate.scSource));
                 }
                 break;
@@ -1633,12 +1668,15 @@ void Display::assignEncoders()
                 else
                 {
                     encoders[0] = encoder (bindParam (models::Dynamics, dyn.model.load(), dyn.values, "thr", "THRESHOLD"), "COMP", toggle (dyn.on), isOn (dyn.on));
+                    // Page 2 (p.48): 2 MIX; 3 KNEE (push: before / after the EQ); 4 the
+                    // key filter's frequency (push: FILTER); 5 its type (push: KEY
+                    // SOLO); 6 the key source.
                     encoders[1] = encoder (bindLinear ("MIX", dyn.mix, 0.0f, 100.0f, " %", 0, 100.0f));
-                    encoders[2] = encoder (bindParam (models::Dynamics, dyn.model.load(), dyn.values, "knee", "KNEE"));
-                    encoders[3] = encoder (orderBit (1, "POSITION"));
-                    // The key (p.48): its filter on the fifth (KEY SOLO its push), its source.
+                    encoders[2] = encoder (bindParam (models::Dynamics, dyn.model.load(), dyn.values, "knee", "KNEE"), "PRE EQ",
+                                           [&p] { p.processOrder = p.processOrder.load() ^ 1; }, [&p] { return (p.processOrder.load() & 1) != 0; });
+                    encoders[3] = keyFreq (dyn);
                     const auto [solo, soloOn] = keySolo (ld::kListenDynKey);
-                    encoders[4] = encoder (bindChoice ("KEY FILTER", dyn.scFilter, keyFilters), "KEY SOLO", solo, soloOn);
+                    encoders[4] = encoder (bindChoice ("FILTER", dyn.scFilter, keyFilters), "KEY SOLO", solo, soloOn);
                     encoders[5] = encoder (keySource (dyn.scSource));
                 }
                 break;
@@ -2508,24 +2546,44 @@ void Display::assignOutputEncoders()
     pick.set = [this, t] (float v)
     {
         selectedOutput = juce::roundToInt (v * (float) (t.count - 1));
+        pendingOutputSource = -1;
         assignEncoders();
     };
     pick.text = [this] { return juce::String (selectedOutput + 1); };
     pick.steps = (float) t.count;
     encoders[0] = encoder (pick);
 
+    // 3 the source's category, 4 the source in it (push: ASSIGN), 5 the tap
+    // point, 6 the delay of an analog output (push: on) (pp.52-53).
     const auto p = path (selectedOutput);
-    KnobBinding src;
-    src.label = "SOURCE";
-    const int n = outputSources().size();
-    src.get = [this, p, n] { return (float) x32Value (p + "/src").getIntValue() / (float) (n - 1); };
-    src.set = [p, n, run] (float v) { run (p + "/src " + juce::String (juce::roundToInt (v * (float) (n - 1)))); };
-    src.text = [this, p] { return outputSources()[x32Value (p + "/src").getIntValue()]; };
-    src.steps = (float) n;
-    encoders[1] = encoder (src);
-    encoders[2] = encoder (enumKnob ("TAP", p + "/pos", kOutputTaps));
-    const auto inverted = [this, p] { return x32Value (p + "/invert") == "ON"; };
-    encoders[3] = encoder ({}, "INVERT", [inverted, run, p] { run (p + "/invert " + (inverted() ? "OFF" : "ON")); }, inverted);
+    const auto shown = [this, p] { return pendingOutputSource >= 0 ? pendingOutputSource : x32Value (p + "/src").getIntValue(); };
+    KnobBinding category;
+    category.label = "CATEGORY";
+    category.get = [shown] { return (float) categoryOf (shown()) / 5.0f; };
+    category.set = [this] (float v)
+    {
+        pendingOutputSource = kSourceCategories[juce::roundToInt (juce::jlimit (0.0f, 1.0f, v) * 5.0f)].first;
+        assignEncoders();
+        repaint();
+    };
+    category.text = [shown] { return juce::String (kSourceCategories[categoryOf (shown())].name); };
+    category.steps = 6.0f;
+    encoders[2] = encoder (category);
+    const auto& c = kSourceCategories[categoryOf (shown())];
+    const int span = c.last - c.first;
+    KnobBinding signal;
+    signal.label = "SIGNAL";
+    signal.get = [shown, c, span] { return span > 0 ? (float) (shown() - c.first) / (float) span : 0.0f; };
+    signal.set = [this, c, span] (float v) { pendingOutputSource = c.first + juce::roundToInt (juce::jlimit (0.0f, 1.0f, v) * (float) span); repaint(); };
+    signal.text = [shown] { return outputSources()[shown()]; };
+    signal.steps = (float) (span + 1);
+    encoders[3] = encoder (signal, "ASSIGN", [this, run, p]
+    {
+        if (pendingOutputSource >= 0)
+            run (p + "/src " + juce::String (pendingOutputSource));
+        pendingOutputSource = -1;
+    }, [this, p] { return pendingOutputSource >= 0 && pendingOutputSource != x32Value (p + "/src").getIntValue(); });
+    encoders[4] = encoder (enumKnob ("TAP", p + "/pos", kOutputTaps));
     if (juce::String (t.group) == "main")
     {
         // The output's delay, 0.3 to 500 ms.
@@ -2536,7 +2594,7 @@ void Display::assignOutputEncoders()
         delay.set = [run, p] (float v) { run (p + "/delay/time " + juce::String (0.3f + juce::jlimit (0.0f, 1.0f, v) * 499.7f, 1)); };
         delay.text = [time] { return juce::String (time(), 1) + " ms"; };
         const auto on = [this, p] { return x32Value (p + "/delay/on") == "ON"; };
-        encoders[4] = encoder (delay, "DELAY", [on, run, p] { run (p + "/delay/on " + (on() ? "OFF" : "ON")); }, on);
+        encoders[5] = encoder (delay, "DELAY", [on, run, p] { run (p + "/delay/on " + (on() ? "OFF" : "ON")); }, on);
     }
 }
 

@@ -184,6 +184,11 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
 
 Phase 5, the Yamaha ProMix 01 (`docs/UNIVERSAL_MIXER.md`), begins.
 
+- X32 ROUTING's out 1-16, aux out and P16 out tabs on the manual's encoders (pp.52-53):
+  the output, the source's category (OFF, MAIN, MIX BUS, MATRIX, DIRECT OUT, MONITOR),
+  the signal in it (push: ASSIGN), the tap point and an analog output's delay (push:
+  on). HOME's gate and dyn second pages likewise (pp.47-48): the key filter's frequency
+  (push: FILTER), its type (push: KEY SOLO), the source; dyn's KNEE pushed for PRE EQ.
 - X32 MONITOR, talkback, oscillator and USB tabs on the manual's encoders (pp.60-62):
   the solo options, monitor delay and source trim; talkback's microphone, auto-dim,
   destinations (MIX BUS 1-16, LR, C/M) and latch, with `/config/talk` (A / B dim,

@@ -258,7 +258,9 @@ private:
     /** METERS' RTA tab showed the selected strip's RTA (hidden again when it goes). */
     bool rtaShown = false;
     int selectedOutput = 0; // ROUTING's signal tabs: the output the encoders set
+    int lastKeyFilter = 3;  // a key filter switched off: its type, for switching it on again
     int usbTrack = 0;       // USB > home: the track the sixth encoder shows
+    int pendingOutputSource = -1; // ROUTING outputs: the source chosen, not yet assigned (-1 none)
     int selectedFx = 0;     // EFFECTS > home: the slot the encoders set
     // UTILITY: the strip COPY took and the sections PASTE copies (CopySection bits).
     Strip* copySource = nullptr;
