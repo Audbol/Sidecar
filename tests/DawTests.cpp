@@ -491,6 +491,42 @@ private:
             expect (m.load (moved.getChildFile ("Live 2026.ldproj")).wasOk());
             expect (m.resolve (m.getClip (clipId)->file) == moved.getChildFile ("Audio/vox.wav"));
         }
+
+        beginTest ("An unchanged project isn't written again (autosave)");
+        {
+            TempFolder temp;
+            Project p;
+            p.clear (48000.0);
+            p.addTrack();
+            expect (p.saveAs (temp.folder.getChildFile ("Gig")).wasOk());
+            const auto autosave = Session::autosaveFileFor (p.getFile());
+            const auto backup = autosave.getSiblingFile (autosave.getFileName() + ".bak");
+            const auto hourAgo = [] { return juce::Time::getCurrentTime() - juce::RelativeTime::hours (1); };
+            const auto rewritten = [] (const juce::File& f) { return f.getLastModificationTime() > juce::Time::getCurrentTime() - juce::RelativeTime::minutes (30); };
+
+            // Unsaved changes: the first autosave writes them, the next ones (nothing new) don't.
+            p.setTempo (100.0);
+            expect (p.writeTo (autosave).wasOk());
+            const auto first = autosave.loadFileAsString();
+            expect (autosave.setLastModificationTime (hourAgo()));
+            expect (p.writeTo (autosave).wasOk());
+            expect (! rewritten (autosave));
+            expect (! backup.exists());
+
+            // A new change is written, the previous autosave kept as the backup.
+            p.setTempo (110.0);
+            expect (p.writeTo (autosave).wasOk());
+            expect (rewritten (autosave));
+            expectEquals (backup.loadFileAsString(), first);
+            expect (autosave.loadFileAsString() != first);
+
+            // SAVE of an unchanged project leaves the project file alone too.
+            expect (p.save().wasOk());
+            expect (p.getFile().setLastModificationTime (hourAgo()));
+            expect (p.save().wasOk());
+            expect (! p.isDirty());
+            expect (! rewritten (p.getFile()));
+        }
     }
 
     void testTakes()
