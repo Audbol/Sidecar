@@ -184,6 +184,12 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
 
 Phase 5, the Yamaha ProMix 01 (`docs/UNIVERSAL_MIXER.md`), begins.
 
+- ProMix UTILITY and MIDI as menus (p.96's map: ENTER opens an item, EXIT or the key
+  again comes back), UTILITY's SEND3,4 CONFIGURATION and OUTPUT COMP PATCH POINT ("POST
+  FADER", STEREO) apart; MIDI SETUP drawn whether MIDI runs or not. SCENE MEMORY as
+  pp.63-65: five memories going round, "01=InitData", MEMORY02 for an empty one, the
+  Press "STORE" / "RECALL" banner, PROTECT; name pages keep their function's title, the
+  character box over the name's line, CANCEL.
 - ProMix LCD pages checked against the manual's pictures: COMP EDIT and EFFECT EDIT as
   lists ("Threshold= 0dB", "Ratio= 2:1", "[1]Rev.Time= 2.8s") under the program's name,
   COMP's with its gain curve, ON/OFF and PATCH, both with EXIT; SEND1-2's return meter on

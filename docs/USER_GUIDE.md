@@ -1089,8 +1089,15 @@ Universal Mixer, whose **PROMIX SURFACE** key comes back.
   the cursor, and the G, F and Q of LOW, MID and HIGH; a band's key again steps through
   them), **LIBRARY** (the
   EQ library's 50 programs, four at a time, the curve at the right, **STORE** and
-  **RECALL**), **GROUP**, **PAIR**, **UTILITY** (SEND3-4 as a stereo pair, the
-  outputs' dynamics patch points, the oscillator) and **MIDI** (MIDI SETUP). The cursor
+  **RECALL**), **GROUP**, **PAIR**, **UTILITY** and **MIDI** (each a menu, as p.96's map
+  lists it: ENTER opens the item chosen, **EXIT** or the key again comes back; UTILITY's
+  OSCILLATOR, SEND3,4 CONFIGURATION, OUTPUT COMP PATCH POINT, MEMORY PROTECT and
+  BATTERY CHECK; MIDI's MIDI SETUP, PROGRAM CHANGE ASSIGN, CONTROL CHANGE ASSIGN, BULK
+  DUMP/REQUEST, LOCAL ON/OFF and MEMORY CONTROL CHANGE OUT). STORE and RECALL show
+  **SCENE MEMORY**: five memories, the list going round ("01=InitData", an empty one
+  "MEMORY02"), under ≡Press "RECALL" to recall.≡, PROTECT over a protected one; a name
+  is edited on its line, the characters around the cursor's scrolling above it, ENTER
+  keeps it and **CANCEL** leaves it. The cursor
   keys move between the page's values, the **PARAMETER** wheel changes the one under the
   cursor, **ENTER** switches it, or sets a choice that waits for it (a program to recall, a
   processor's PATCH and KEY IN, a pair's option). The screen also takes touch: tap a
