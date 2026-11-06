@@ -783,7 +783,11 @@ Three layers:
       internal value 0..N-1 as the CC table numbers them; the Execute
       parameters act, the flags change only the flag. Sidecar's reading: a key
       the engine can't take on that strip (a channel keyed by SEND3, ST-L / ST-R
-      apart) keys itself or both sides; the oscillator is kept, not heard yet.
+      apart) keys itself or both sides. The oscillator plays (November 2026)
+      through the engine's console oscillator (straight onto SEND3, SEND4 and ST
+      OUT; SEND3-4 stereo: its bus's left and right): its level a fader
+      position, the fader's dB as dBFS (Sidecar's reading), FREQ 100 Hz, 1 kHz,
+      10 kHz or pink noise.
       The effects' parameters (404-445) come with step 4.
    4. **Its effects** (done): the two slots fed by SEND1-2 and returning on
       RTN1-2, at first REVERB HALL 1 and DELAY L-C-R (Sidecar's choice: the guide
@@ -873,8 +877,7 @@ Three layers:
       `ld_promix_param_text`, `_label`, `ld_promix_value_text`,
       `ld_promix_program_name`, `ld_promix_recall_eq` give the LCD its texts. A
       screenshot test (`promix-surface.png`, `promix-display-comp.png`). Not
-      done: GAIN and PAD (analog on the console), Local OFF, the oscillator's
-      sound, METER's peak hold, the EQ LIBRARY's STORE and names (the user
+      done: GAIN and PAD (analog on the console), Local OFF, METER's peak hold, the EQ LIBRARY's STORE and names (the user
       programs are recalled, not edited, on the surface).
 
    Phase 5 is complete (November 2026) as far as the User's Guide goes: what it
@@ -1049,7 +1052,8 @@ Three layers:
       - aux pre / post and the aux and bus pairs
       - the dynamics' KEY IN, ST.LINK and IN
       - recall safe and fade time
-      - the oscillator
+      - the oscillator (heard through the engine's console oscillator: BUS
+        1-8, STEREO and AUX 1-8; its noise pink, Sidecar's reading)
       - the parameters the control changes and the type 26 remote reach
 
       All of it is written and read as text for the show.

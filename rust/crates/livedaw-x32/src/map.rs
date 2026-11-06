@@ -156,6 +156,10 @@ pub enum Bind {
     /// blocks (`/config/routing/OUT`, `AES50A`, `AES50B`, `CARD`) and the output
     /// signals' source, tap and the rest (`/outputs/...`).
     Outputs,
+    /// The oscillator's field `n` (`oscillator::Oscillator::field`: 0 ON, 1
+    /// level, 2 F1, 3 F2, 4 FSEL, 5 type, 6 dest), kept in the engine's
+    /// console text and played by its console oscillator.
+    Osc(usize),
 }
 
 /// One address.
@@ -821,6 +825,17 @@ fn config(b: &mut Builder) {
     for name in LINK_SHARES {
         b.leaf("/config/linkcfg", name, t, ONOFF, Bind::State, int(1));
     }
+    // The oscillator (OSC document pp.21-22, p.64; MAN p.62).
+    let d = crate::oscillator::Oscillator::default();
+    let osc_freq = Ty::Float(Law::Log(20.0, 20000.0, 121), Fmt::Freq);
+    b.leaf("/config/osc", "level", t, LEVEL, Bind::Osc(1), real(d.level_db));
+    b.leaf("/config/osc", "f1", t, osc_freq, Bind::Osc(2), real(d.f1));
+    b.leaf("/config/osc", "f2", t, osc_freq, Bind::Osc(3), real(d.f2));
+    b.leaf("/config/osc", "fsel", t, Ty::Enum(&["F1", "F2"]), Bind::Osc(4), int(0));
+    b.leaf("/config/osc", "type", t, Ty::Enum(&["SINE", "PINK", "WHITE"]), Bind::Osc(5), int(d.kind as i32));
+    // dest 0-25 (`oscillator::DESTINATIONS`), a number as a real X32 answers it.
+    b.leaf("/config/osc", "dest", t, Ty::Int(0, 25), Bind::Osc(6), int(0));
+    b.leaf("/-stat/osc", "on", t, ONOFF, Bind::Osc(0), int(0));
 }
 
 fn strip(b: &mut Builder, p: &str, t: Target, kind: Kind) {
@@ -1293,6 +1308,10 @@ impl<'a> Console<'a> {
         let on = |b: bool| Some(Val::Int(i32::from(b)));
         match e.bind {
             Bind::State => return None,
+            Bind::Osc(k) => {
+                let v = crate::oscillator::Oscillator::from_text(&self.engine.console_text().0).field(k);
+                return Some(Self::typed(e, v));
+            }
             Bind::DcaOn => return on(!self.dca(e.target)?.mute.load(Relaxed)),
             Bind::DcaFader => return Some(Val::Real(self.dca(e.target)?.fader_db.load())),
             Bind::DcaColour => return Some(Val::Int(self.dca(e.target)?.colour.load(Relaxed) - 1)),
@@ -1410,6 +1429,13 @@ impl<'a> Console<'a> {
         };
         match e.bind {
             Bind::State => return false,
+            Bind::Osc(k) => {
+                let text = self.engine.console_text().0;
+                let mut o = crate::oscillator::Oscillator::from_text(&text);
+                o.set_field(k, if matches!(e.ty, Ty::Float(..)) { v.real() } else { v.int() as f32 });
+                self.engine.set_console_text(&o.write_into(&text));
+                return true;
+            }
             Bind::Source => {
                 let (Some(s), Some(input)) = (self.strip(e.target), self.source_input(v.int())) else { return false };
                 s.params.input_left.store(input, Relaxed);

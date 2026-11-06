@@ -205,6 +205,17 @@ that chain, so everything below describes the WING as it runs on that core.
   uncorrelated). LEVEL is the sine's peak; the noises have the same RMS. The
   settings (`OscParams`: MODE, LEVEL, FREQ; `ld_engine_oscillators`) are atomics,
   saved with the sources in shows and mapped to `/io/in/OSC/n/osc/*`.
+- **Console oscillator** (`oscillator.rs`, `Engine::oscillator`): a console's own
+  oscillator, switched straight onto buses, mains and matrices rather than patched to
+  a channel (the ProMix 01's, the 02R's, the X32's). One `SignalGenerator` runs once a
+  block before the buses (`process_peak`: its level in dBFS up to 0, not the WING's
+  LEVEL range); each bus, main and matrix task adds it after its sum and talkback,
+  each side at its own gain, ramped over a block. The consoles set it from their own
+  state: the engine calls a hook with the console text whenever it changes
+  (`Engine::set_console_hook`; the host's `ld_engine_create` sets
+  `livedaw-ffi::console_hook`, which hands the text to `livedaw-promix`,
+  `livedaw-02r` or `livedaw-x32` by profile), so the panel, MIDI, OSC, shows and
+  scenes all reach it. A reset clears it.
 - **SOURCE SOLO** (`monitor.rs`, `MonitorControls`): with SOURCE SOLO on CH39 or
   AUX7, a soloed source (`source_solo_port`; ROUTING > SOURCES' SRC SOLO, the
   WING's `$srcsolo`, or the host's own SOLO) is patched to that channel for the

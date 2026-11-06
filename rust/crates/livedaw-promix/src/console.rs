@@ -17,6 +17,36 @@ use livedaw_engine::{Engine, Strip, StripKind};
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 
+/// The oscillator's FREQ steps (p.90): 100 Hz, 1 kHz, 10 kHz, pink noise.
+pub const OSC_FREQS: [f32; 3] = [100.0, 1000.0, 10000.0];
+
+/// Sets the engine's console oscillator from the ProMix's (p.90): its ON, its
+/// level (a fader position: the fader's dB as dBFS, at most 0; position 0
+/// off, Sidecar's reading), its FREQ, and SEND3, SEND4 and ST OUT. With
+/// SEND3-4 a stereo pair, SEND3 and SEND4 are its bus's left and right.
+pub fn apply_oscillator(engine: &Engine, s: &State) {
+    use livedaw_dsp::generator::generator_mode;
+    let o = &s.oscillator;
+    let level = FaderLaw::PROMIX01.to_db(o.level.min(127) as f32 / 127.0);
+    let (mode, freq) = match OSC_FREQS.get(o.freq as usize) {
+        Some(&f) => (generator_mode::SINE, f),
+        None => (generator_mode::PINK, 1000.0),
+    };
+    let osc = &engine.oscillator;
+    let side = |on: bool| if on { 1.0 } else { 0.0 };
+    for b in 0..4 {
+        osc.assign(StripKind::Bus, b, [0.0; 2]);
+    }
+    if s.send34_stereo {
+        osc.assign(StripKind::Bus, 2, [side(o.to_send3), side(o.to_send4)]);
+    } else {
+        osc.assign(StripKind::Bus, 2, [side(o.to_send3); 2]);
+        osc.assign(StripKind::Bus, 3, [side(o.to_send4); 2]);
+    }
+    osc.assign(StripKind::Main, 0, [side(o.to_stereo); 2]);
+    osc.set(o.on && o.level > 0, mode, freq, level.min(0.0));
+}
+
 /// A ProMix 01 strip.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PmStrip {

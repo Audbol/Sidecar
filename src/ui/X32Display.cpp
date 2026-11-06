@@ -1958,15 +1958,39 @@ void Display::assignEncoders()
     }
     else if (screen == Screen::Monitor)
     {
-        // OSCILLATOR (p.62): its level, frequency and kind; on, its source's mute off.
-        if (auto* osc = engine.getOscillator (0))
+        // OSCILLATOR (p.62): its level (push: on / off), F1, F2 (push: which one
+        // plays), its type and its destination; `/config/osc` and `/-stat/osc/on`,
+        // which the engine's console oscillator plays.
+        const auto run = [this] (const juce::String& text) { int set = 0; ctx.engine.getWing().runX32Text (text, set); repaint(); };
+        const auto on = [this] { return x32Value ("/-stat/osc/on") == "ON"; };
+        KnobBinding level;
+        level.label = "LEVEL";
+        level.get = [this] { return fader::dbToPos (x32Level (x32Value ("/config/osc/level"))); };
+        level.set = [run] (float v) { run ("/config/osc/level " + juce::String (fader::posToDb (v), 1)); };
+        level.text = [this] { return x32Value ("/config/osc/level") + " dB"; };
+        level.steps = 161.0f;
+        encoders[0] = encoder (level, "OSC ON", [run, on] { run (juce::String ("/-stat/osc/on ") + (on() ? "OFF" : "ON")); }, on);
+        for (int k = 0; k < 2; ++k)
         {
-            encoders[0] = encoder (bindLinear ("LEVEL", osc->levelDb, -96.0f, 0.0f, " dB", 1, -20.0f));
-            encoders[1] = encoder (bindFreq ("FREQ", osc->freqHz, 20.0f, 20000.0f, 1000.0f));
-            encoders[2] = encoder (bindChoice ("TYPE", osc->mode, { "SINE", "PINK", "WHITE" }));
-            if (auto* src = engine.getSource (MixerEngine::oscSource (0)))
-                encoders[5] = encoder ({}, "OSC ON", [src] { src->mute = ! src->mute.load(); }, [src] { return ! src->mute.load(); });
+            const juce::String path = k == 0 ? "/config/osc/f1" : "/config/osc/f2";
+            KnobBinding f;
+            f.label = k == 0 ? "F1" : "F2";
+            f.get = [this, path] { return std::log (x32Hz (x32Value (path)) / 20.0f) / std::log (1000.0f); };
+            f.set = [run, path] (float v) { run (path + " " + juce::String (20.0f * std::pow (1000.0f, v), 1)); };
+            f.text = [this, path] { return x32Value (path) + " Hz"; };
+            f.steps = 121.0f;
+            const auto selected = [this, k] { return x32Value ("/config/osc/fsel") == (k == 0 ? "F1" : "F2"); };
+            encoders[(size_t) (1 + k)] = encoder (f, k == 0 ? "USE F1" : "USE F2", [run, k] { run (k == 0 ? "/config/osc/fsel F1" : "/config/osc/fsel F2"); }, selected);
         }
+        static const juce::StringArray types { "SINE", "PINK", "WHITE" };
+        encoders[3] = encoder (enumKnob ("TYPE", "/config/osc/type", types));
+        KnobBinding dest;
+        dest.label = "DEST";
+        dest.get = [this] { return (float) x32Value ("/config/osc/dest").getIntValue() / 25.0f; };
+        dest.set = [run] (float v) { run ("/config/osc/dest " + juce::String (juce::roundToInt (v * 25.0f))); };
+        dest.text = [this] { return x32OscDestination (x32Value ("/config/osc/dest").getIntValue()); };
+        dest.steps = 26.0f;
+        encoders[5] = encoder (dest);
     }
     else if (screen == Screen::Meters && tab == 4)
     {
@@ -2159,6 +2183,28 @@ juce::String Display::sourceName (int k)
     if (k >= 49 && k <= 64)
         return "Bus " + two (k - 48);
     return "OFF";
+}
+
+float Display::x32Level (const juce::String& text)
+{
+    // "-oo" at the bottom, else dB.
+    return text.startsWith ("-oo") ? fader::kMinDb : text.getFloatValue();
+}
+
+float Display::x32Hz (const juce::String& text)
+{
+    // "124.7", "1k97", "10k02": the k in place of the point, in kHz.
+    return juce::jlimit (20.0f, 20000.0f, text.containsChar ('k') ? text.replaceCharacter ('k', '.').getFloatValue() * 1000.0f : text.getFloatValue());
+}
+
+juce::String Display::x32OscDestination (int dest)
+{
+    // The X32's choices (MAN p.62): Mix Bus 1-16, Main L, R, L+R, M/C, Matrix 1-6.
+    if (dest < 16)
+        return "MIX BUS " + juce::String (juce::jmax (0, dest) + 1);
+    if (dest < 20)
+        return juce::StringArray { "MAIN L", "MAIN R", "MAIN L+R", "MAIN M/C" }[dest - 16];
+    return "MATRIX " + juce::String (juce::jmin (25, dest) - 19);
 }
 
 juce::String Display::x32Value (const juce::String& address) const
@@ -3462,14 +3508,11 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
                            { fader::text (e.talk.levelDb.load()) + " dB", onOff (path.on.load()), juce::String (path.monDimDb.load(), 0) + " dB",
                              to.isEmpty() ? juce::String ("NONE") : to.joinIntoString (", ") });
             }
-            else if (auto* osc = e.getOscillator (0))
-            {
-                const char* kinds[] = { "SINE", "PINK", "WHITE" };
-                auto* src = e.getSource (MixerEngine::oscSource (0));
-                paintRows (g, r.reduced (12), { "OSCILLATOR", "LEVEL", "FREQUENCY", "TYPE" },
-                           { onOff (src != nullptr && ! src->mute.load()), juce::String (osc->levelDb.load(), 1) + " dB", formatHz (osc->freqHz.load()) + " Hz",
-                             kinds[juce::jlimit (0, 2, (int) osc->mode.load())] });
-            }
+            else
+                paintRows (g, r.reduced (12), { "OSCILLATOR", "LEVEL", "F1", "F2", "PLAYING", "TYPE", "DESTINATION" },
+                           { x32Value ("/-stat/osc/on"), x32Value ("/config/osc/level") + " dB", x32Value ("/config/osc/f1") + " Hz",
+                             x32Value ("/config/osc/f2") + " Hz", x32Value ("/config/osc/fsel"), x32Value ("/config/osc/type"),
+                             x32OscDestination (x32Value ("/config/osc/dest").getIntValue()) });
             break;
         }
         case Screen::Usb:

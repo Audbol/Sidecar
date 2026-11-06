@@ -19,6 +19,7 @@ pub mod iosafes;
 pub mod keytap;
 pub mod listen;
 pub mod monitor;
+pub mod oscillator;
 pub mod params;
 pub mod pdc;
 pub mod pool;

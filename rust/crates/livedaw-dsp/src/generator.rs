@@ -134,10 +134,15 @@ impl SignalGenerator {
     /// The amplitude ramps from the last block's; the sine's phase runs on
     /// across blocks and frequency changes.
     pub fn process(&mut self, out: &mut [f32], mode: i32, freq_hz: f32, level_db: f32) {
+        self.process_peak(out, mode, freq_hz, db_to_gain(level_db.clamp(GENERATOR_LEVEL_MIN_DB, GENERATOR_LEVEL_MAX_DB)));
+    }
+
+    /// As `process`, at the sine's peak `peak` (a gain; the noises at its RMS)
+    /// without the WING's LEVEL range: a console oscillator's own.
+    pub fn process_peak(&mut self, out: &mut [f32], mode: i32, freq_hz: f32, peak: f32) {
         if out.is_empty() {
             return;
         }
-        let peak = db_to_gain(level_db.clamp(GENERATOR_LEVEL_MIN_DB, GENERATOR_LEVEL_MAX_DB));
         // The noises at the sine's RMS (peak / sqrt 2); uniform noise's RMS is 1 / sqrt 3.
         let target = match mode {
             generator_mode::PINK | generator_mode::WHITE => peak * (1.5f32).sqrt(),

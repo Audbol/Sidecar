@@ -61,6 +61,7 @@ use crate::groups::{AtomicGroupSet, GroupSet};
 use crate::iosafes::IoSafes;
 use crate::keytap::{key_sources, key_tap, KeySchedule, KeySource};
 use crate::monitor::{direct_source, MonitorPathDsp, SoloPatch, BAND_SOLO_MAX_DB};
+use crate::oscillator::ConsoleOscillator;
 use crate::params::*;
 use crate::pdc::{pdc_tap, PdcState, MAX_PDC};
 use crate::pool::WorkerPool;
@@ -259,11 +260,20 @@ impl SharedPtrs<'_> {
     }
 }
 
+/// What the host runs on the console text whenever it changes
+/// (`Engine::set_console_hook`).
+pub type ConsoleHook = fn(&Engine, &str);
+
 pub struct Engine {
     /// A console's own state beyond its strips (a ProMix 01's pairs, groups,
     /// dynamics processors...: its profile's text), and how often it was set.
     /// Shows and scenes keep it (`<ConsoleState>`); a reset clears it.
     console_text: Mutex<(String, u64)>,
+    /// Called with the console text whenever it changes (the host's: the
+    /// console crates set the engine from their state, the oscillator's).
+    console_hook: Mutex<Option<ConsoleHook>>,
+    /// A console's own oscillator (`oscillator.rs`: the ProMix 01's, the 02R's).
+    pub oscillator: ConsoleOscillator,
     garbage: Garbage,
     pool: WorkerPool,
     topology: AtomicPtr<Topology>,
@@ -331,6 +341,8 @@ impl Engine {
         let device = DeviceConfig { sample_rate: DEFAULT_SAMPLE_RATE, block_size: DEFAULT_BLOCK, num_hw_inputs: 0 };
         let engine = Self {
             console_text: Mutex::new((String::new(), 0)),
+            console_hook: Mutex::new(None),
+            oscillator: ConsoleOscillator::default(),
             garbage: Garbage::default(),
             pool: WorkerPool::new(num_workers),
             topology: AtomicPtr::new(std::ptr::null_mut()),
@@ -674,6 +686,7 @@ impl Engine {
     /// Back to a fresh console: no channels, default aux/buses/mains/matrices,
     /// DCAs, mute groups and FX settings.
     pub fn reset(&self) {
+        self.oscillator.clear();
         self.set_console_text("");
         let mut st = self.lock();
         st.channels.clear();
@@ -765,12 +778,31 @@ impl Engine {
     /// Sets the console's own state (a show load, a scene recall, the
     /// profile's own code); returns the new version.
     pub fn set_console_text(&self, text: &str) -> u64 {
-        let mut t = self.console_text.lock().unwrap_or_else(|e| e.into_inner());
-        if t.0 != text {
-            t.0 = text.to_string();
-            t.1 += 1;
+        let (version, changed) = {
+            let mut t = self.console_text.lock().unwrap_or_else(|e| e.into_inner());
+            let changed = t.0 != text;
+            if changed {
+                t.0 = text.to_string();
+                t.1 += 1;
+            }
+            (t.1, changed)
+        };
+        if changed {
+            let hook = *self.console_hook.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(hook) = hook {
+                hook(self, text);
+            }
         }
-        t.1
+        version
+    }
+
+    /// Sets what is called with the console text whenever it changes (and
+    /// calls it with the current one).
+    pub fn set_console_hook(&self, hook: Option<ConsoleHook>) {
+        *self.console_hook.lock().unwrap_or_else(|e| e.into_inner()) = hook;
+        if let Some(hook) = hook {
+            hook(self, &self.console_text().0);
+        }
     }
 
     /// The configuration of the console (`configure`; its profile is the
@@ -1500,6 +1532,7 @@ impl Engine {
             d.prepare(sample_rate, block_size);
         }
         a.sources.prepare(in_map.len(), block_size, sample_rate);
+        self.oscillator.prepare(sample_rate, block_size);
         a.returns = ReturnClock::new(block_size);
         a.monitor_returns = ReturnRing::new(6, block_size);
         a.monitor_returns_live = [false; 3];
@@ -1720,6 +1753,10 @@ impl Engine {
         }
         crate::trace::mark("automix+pdc");
 
+        // A console's own oscillator, for the buses and mains it plays on.
+        self.oscillator.generate(n);
+        let osc = &self.oscillator;
+
         // 3./4. Buses, in waves: a bus runs after the buses sending to it
         // (a send that closes a loop reads its source's previous block).
         let ramps = &self.talk_ramps;
@@ -1731,6 +1768,7 @@ impl Engine {
                 let bus = &topo.bus_list[index];
                 sum_bus(bus, index, topo, schedule, pos, block, n);
                 add_talk(bus, talk.bus(bus.id() as usize), ramps.get(StripKind::Bus, bus.id() as usize), talk, n);
+                osc.add_to(bus, StripKind::Bus, bus.id() as usize, n);
                 bus.process(&ctx_of(hw.get(), None), n);
                 bus.write_pdc(n);
                 bus.write_returns(pos, n);
@@ -1743,6 +1781,7 @@ impl Engine {
             let main = &topo.mains[i];
             sum_main(main, i, topo.active().iter().chain(topo.buses()), block, n);
             add_talk(main, talk.main(i), ramps.get(StripKind::Main, i), talk, n);
+            osc.add_to(main, StripKind::Main, i, n);
             main.process(&ctx_of(hw.get(), None), n);
             main.write_pdc(n);
             main.write_returns(pos, n);
@@ -1762,6 +1801,7 @@ impl Engine {
             let mtx = &topo.matrices[i];
             sum_matrix(mtx, i, topo, monitor_direct.get(), block, n);
             add_talk(mtx, talk.matrix(i), ramps.get(StripKind::Matrix, i), talk, n);
+            osc.add_to(mtx, StripKind::Matrix, i, n);
             mtx.process(&ctx_of(hw.get(), None), n);
             mtx.write_pdc(n);
             mtx.write_returns(pos, n);

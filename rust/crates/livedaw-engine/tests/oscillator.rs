@@ -123,3 +123,53 @@ fn osc_sources_have_source_settings_and_initialize_resets_the_oscillator() {
     assert_eq!(src.name(index), "");
     assert!(source_index(OSC_SOURCE_BASE + 2).is_none());
 }
+
+/// A console's own oscillator (the ProMix 01's, the 02R's), switched onto a
+/// main and buses rather than patched to a channel.
+#[test]
+fn a_console_oscillator_plays_on_the_mains_and_buses_it_is_assigned_to() {
+    use livedaw_engine::StripKind;
+    let mut rig = Rig::new();
+    let engine = rig.engine.clone();
+    let osc = &engine.oscillator;
+    osc.set(true, generator_mode::SINE, 440.0, -12.0);
+    // Assigned nowhere: silence.
+    let [l, r] = rig.run(4800);
+    assert_eq!((peak(&l), peak(&r)), (0.0, 0.0));
+
+    osc.assign(StripKind::Main, 0, [1.0, 1.0]);
+    let [l, r] = rig.run(SR as usize / 2);
+    let tail = &l[4800..];
+    assert!((20.0 * peak(tail).log10() - -12.0).abs() < 0.1, "peak {}", peak(tail));
+    assert!((peak(&r[4800..]) - peak(tail)).abs() < 1e-4, "both sides");
+    let crossings = l.windows(2).filter(|w| w[0] < 0.0 && w[1] >= 0.0).count();
+    assert!((crossings as i32 - 220).abs() <= 1, "{crossings} cycles in half a second");
+
+    // One side only; the noises at the sine's RMS (-15 dB).
+    osc.assign(StripKind::Main, 0, [0.0, 1.0]);
+    osc.set(true, generator_mode::PINK, 440.0, -12.0);
+    let [l, r] = rig.run(SR as usize);
+    assert!(peak(&l[4800..]) < 1e-6, "the left side let go");
+    assert!((rms_db(&r[4800..]) - -15.0).abs() < 1.0, "pink at {} dB RMS", rms_db(&r[4800..]));
+
+    // Off: it ramps out within a block.
+    osc.set(false, generator_mode::SINE, 440.0, -12.0);
+    let [_, r] = rig.run(4800);
+    assert!(peak(&r[BLOCK..]) < 1e-6);
+
+    // A bus takes it by its number (the bus list's ids are the numbers).
+    for i in 0..engine.num_strips(StripKind::Bus) {
+        assert_eq!(engine.strip_at(StripKind::Bus, i).unwrap().id() as usize, i);
+    }
+    let bus = engine.strip_at(StripKind::Bus, 1).unwrap();
+    osc.assign(StripKind::Main, 0, [0.0, 0.0]);
+    osc.assign(StripKind::Bus, 1, [1.0, 1.0]);
+    osc.set(true, generator_mode::SINE, 1000.0, -20.0);
+    rig.run(4800);
+    let m = bus.meters.output_peak[0].load();
+    assert!(m > 0.05, "bus 2 meters it ({m})");
+    // A reset switches it off and unassigns it.
+    engine.reset();
+    assert!(!osc.on.load(Relaxed));
+    assert_eq!(osc.assigned(StripKind::Bus, 1), [0.0, 0.0]);
+}

@@ -788,6 +788,43 @@ mod tests {
     }
 
     #[test]
+    fn the_oscillator_follows_the_console_state() {
+        use livedaw_engine::StripKind;
+        let e = Engine::new(0);
+        e.set_console_hook(Some(crate::console_hook));
+        e.configure(&ConsoleConfig { profile: Profile::ProMix01, counts: Counts::PROMIX01 });
+        let osc = &e.oscillator;
+        unsafe {
+            let p = ld_promix_create(&e);
+            ld_promix_set_param(p, 478, 100); // level: 0 dB on step 100
+            ld_promix_set_param(p, 479, 3); // PINK
+            ld_promix_set_param(p, 480, 1); // SEND3
+            ld_promix_set_param(p, 482, 1); // ST OUT
+            assert!(!osc.on.load(std::sync::atomic::Ordering::Relaxed), "not on yet");
+            ld_promix_set_param(p, 477, 1);
+            assert!(osc.on.load(std::sync::atomic::Ordering::Relaxed));
+            assert!(osc.level_db.load().abs() < 0.5, "{}", osc.level_db.load());
+            assert_eq!(osc.mode.load(std::sync::atomic::Ordering::Relaxed), livedaw_dsp::generator::generator_mode::PINK);
+            assert_eq!(osc.assigned(StripKind::Bus, 2), [1.0, 1.0]);
+            assert_eq!(osc.assigned(StripKind::Bus, 3), [0.0, 0.0]);
+            assert_eq!(osc.assigned(StripKind::Main, 0), [1.0, 1.0]);
+            // SEND3-4 stereo: SEND3 is its bus's left side.
+            let t = b"send34_stereo=1\nosc=1 100 1 1 0 0\n";
+            ld_promix_set_state_text(p, t.as_ptr(), t.len());
+            let text = e.console_text().0;
+            let st = State::from_text(&text);
+            assert!(st.send34_stereo, "{text}");
+            assert_eq!(osc.assigned(StripKind::Bus, 2), [1.0, 0.0], "SEND3: the left side");
+            assert_eq!(osc.mode.load(std::sync::atomic::Ordering::Relaxed), livedaw_dsp::generator::generator_mode::SINE);
+            // A scene or show setting the text sets it too; a reset clears it.
+            e.reset();
+            assert!(!osc.on.load(std::sync::atomic::Ordering::Relaxed));
+            assert_eq!(osc.assigned(StripKind::Main, 0), [0.0, 0.0]);
+            ld_promix_destroy(p);
+        }
+    }
+
+    #[test]
     fn scene_memories_are_read_and_written_without_a_recall() {
         use crate::session::{ld_show_add_scene, ld_show_create, ld_show_destroy, ld_show_recall_scene};
         let e = Engine::new(0);

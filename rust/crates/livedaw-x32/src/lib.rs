@@ -7,6 +7,7 @@
 //! * [`map`]: its parameter tree mapped onto the engine's strips; values
 //!   without an equivalent are kept by the server.
 //! * [`meters`]: the meter replies.
+//! * [`oscillator`]: its oscillator, on the engine's console oscillator.
 //! * [`scn`]: scene files (`.scn`), written and read.
 //! * [`sysex`]: OSC commands as text in MIDI SysEx.
 //! * [`server`]: the server itself.
@@ -19,6 +20,7 @@
 
 pub mod map;
 pub mod meters;
+pub mod oscillator;
 pub mod scn;
 pub mod server;
 pub mod sysex;

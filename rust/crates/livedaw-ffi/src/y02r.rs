@@ -572,6 +572,36 @@ mod tests {
     use livedaw_engine::{ConsoleConfig, Counts};
 
     #[test]
+    fn the_oscillator_follows_the_console_state() {
+        use livedaw_engine::StripKind;
+        use std::sync::atomic::Ordering::Relaxed;
+        let e = Engine::new(0);
+        e.set_console_hook(Some(crate::console_hook));
+        e.configure(&ConsoleConfig { profile: Profile::Yamaha02R, counts: Counts::Y02R });
+        let osc = &e.oscillator;
+        unsafe {
+            let p = ld_y02r_create(&e);
+            ld_y02r_set_state(p, 15, 0, 12); // -12 dB
+            ld_y02r_set_state(p, 16, 0, 0); // 100 Hz
+            ld_y02r_set_state(p, 17, 0, 1 << 2 | 1 << 8 | 1 << 9); // BUS 3, STEREO, AUX 1
+            assert!(!osc.on.load(Relaxed));
+            ld_y02r_set_state(p, 14, 0, 1);
+            assert!(osc.on.load(Relaxed));
+            assert_eq!((osc.level_db.load(), osc.freq_hz.load()), (-12.0, 100.0));
+            assert_eq!(osc.assigned(StripKind::Bus, 2), [1.0, 1.0]);
+            assert_eq!(osc.assigned(StripKind::Bus, Y2Strip::Aux(0).engine_ref().1), [1.0, 1.0]);
+            assert_eq!(osc.assigned(StripKind::Bus, 0), [0.0, 0.0]);
+            assert_eq!(osc.assigned(StripKind::Main, 0), [1.0, 1.0]);
+            ld_y02r_set_state(p, 16, 0, 3); // noise
+            assert_eq!(osc.mode.load(Relaxed), livedaw_dsp::generator::generator_mode::PINK);
+            // A WING: the console's oscillator goes.
+            e.configure(&ConsoleConfig::wing());
+            assert!(!osc.on.load(Relaxed));
+            ld_y02r_destroy(p);
+        }
+    }
+
+    #[test]
     fn the_handle_speaks_midi_for_an_02r_only() {
         let e = Engine::new(0);
         let p = unsafe { ld_y02r_create(&e) };

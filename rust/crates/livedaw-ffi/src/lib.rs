@@ -359,8 +359,22 @@ pub unsafe extern "C" fn ld_layout_info(out: *mut LdLayoutInfo) {
 pub extern "C" fn ld_engine_create(num_workers: i32) -> *mut Engine {
     guard(std::ptr::null_mut(), || {
         let n = if num_workers < 0 { Engine::default_num_workers() } else { num_workers as usize };
-        Box::into_raw(Box::new(Engine::new(n)))
+        let e = Engine::new(n);
+        e.set_console_hook(Some(console_hook));
+        Box::into_raw(Box::new(e))
     })
+}
+
+/// The console text's hook (`Engine::set_console_hook`): a ProMix 01's, an
+/// 02R's or an X32's own state sets what the engine plays for it (its
+/// oscillator), however the text changed (the panel, MIDI, OSC, a show, a scene).
+pub fn console_hook(e: &Engine, text: &str) {
+    match e.profile() {
+        Profile::X32 => livedaw_x32::oscillator::apply(e, text),
+        Profile::ProMix01 => livedaw_promix::console::apply_oscillator(e, &livedaw_promix::State::from_text(text)),
+        Profile::Yamaha02R => livedaw_02r::console::apply_oscillator(e, &livedaw_02r::State::from_text(text)),
+        _ => e.oscillator.clear(),
+    }
 }
 
 /// Destroys the engine. Worker threads must have returned from `ld_engine_run_worker`.

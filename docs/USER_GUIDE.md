@@ -944,7 +944,12 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
   and **PHONES** set the speakers' and the phones' level; **DIM**, **MONO** and
   **MUTE** act on the monitor; **TALK** sets the talkback level, and **TALK A** and
   **TALK B** switch talkback on and off (they latch). Which input is the talkback
-  microphone and where TALK A and B go are set on the Universal Mixer for now.
+  microphone and where TALK A and B go are set on the Universal Mixer for now. The
+  MONITOR screen's **OSCILLATOR** tab is the X32's: its level (push: on / off), F1 and
+  F2 (push: the one that plays), SINE, PINK or WHITE, and one destination (mix bus
+  1-16, main L, R, L+R, M/C, matrix 1-6), as `/config/osc` and `/-stat/osc/on`; it plays
+  straight onto that destination and the show keeps it. (The WING's OSC 1 and OSC 2
+  sources stay for routing.)
 - **Assign.** Right of the main fader, the X32's user controls: **SET A**, **SET B**
   and **SET C** each hold four encoders and eight buttons (5-12). What each does is
   its X32 function code, set from an X32 remote app (`/config/userctrl`) or a scene
@@ -1093,7 +1098,11 @@ Universal Mixer, whose **PROMIX SURFACE** key comes back.
   them). A dump's bytes are Sidecar's layout: dumps come back into Sidecar, not into a
   ProMix 01.
 
-Not there yet: the oscillator's sound, Local OFF, the GAIN
+The UTILITY page's oscillator plays: ON, its level (the fader's scale, as dBFS), 100 Hz,
+1 kHz, 10 kHz or pink noise, onto SEND3, SEND4 (with SEND3-4 a stereo pair, the left
+and right of its bus) and ST OUT.
+
+Not there yet: Local OFF, the GAIN
 and PAD controls (the console's are analog; use the strip's trim on the Universal Mixer).
 The fader's steps, the effects' algorithms and the compressor's ratio steps are Sidecar's
 reading of the User's Guide, not measured on a console.
@@ -1135,7 +1144,8 @@ SURFACE** key comes back.
 - **The display** shows the function its key calls, for the channel SEL chose. The
   CONFIGURATION keys:
   - **SCENE MEMORY:** the channel's fade time and recall safe.
-  - **UTILITY:** the oscillator.
+  - **UTILITY:** the oscillator, which plays: its level (dB below 0 as dBFS), a 100 Hz,
+    1 kHz or 10 kHz sine or pink noise, onto BUS 1-8, STEREO and AUX 1-8.
   - **MIDI:** MIDI SETUP.
   - **GROUP:** groups A-H, the channel's fader and mute group.
   - **PAIR:** the channel's pair, the aux and bus pairs.

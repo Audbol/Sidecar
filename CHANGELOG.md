@@ -184,6 +184,14 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
 
 Phase 5, the Yamaha ProMix 01 (`docs/UNIVERSAL_MIXER.md`), begins.
 
+- Console oscillators play: the engine has a console's own oscillator, a tone or noise
+  switched straight onto buses, mains and matrices (not a source patched to a channel,
+  as the WING's OSC 1 and 2 are). The ProMix 01's (SEND3, SEND4, ST OUT), the 02R's
+  (BUS 1-8, STEREO, AUX 1-8) and the X32's (`/config/osc` and `/-stat/osc/on`: level,
+  F1 / F2, type and one destination, mix bus 1-16, L, R, L+R, M/C or matrix 1-6; the
+  X32 screen's OSCILLATOR tab now drives it) follow their consoles' state through the
+  panel, MIDI, OSC, shows and scenes.
+
 - ProMix 01 scene memories by bulk dump: a request for scene 1-50 answers with the show's
   scene as it is stored, and a dump into one stores it there, neither recalling it (a
   dump past the show's last scene adds scenes up to it, "SCENE nn"; the scene's plugins

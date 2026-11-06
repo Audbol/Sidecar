@@ -20,6 +20,30 @@ pub use livedaw_promix::console::{pan_of, pan_step, param_step, step_param};
 use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 
+/// The oscillator's waves (MAN p.165): sines of 100 Hz, 1 kHz and 10 kHz,
+/// then noise (pink, Sidecar's reading).
+pub const OSC_FREQS: [f32; 3] = [100.0, 1000.0, 10000.0];
+
+/// Sets the engine's console oscillator from the 02R's (MAN p.165): ON, its
+/// level (dB below 0 as dBFS), its wave and where it plays (BUS 1-8, STEREO,
+/// AUX 1-8).
+pub fn apply_oscillator(engine: &Engine, s: &State) {
+    use livedaw_dsp::generator::generator_mode;
+    let o = &s.oscillator;
+    let (mode, freq) = match OSC_FREQS.get(o.wave as usize) {
+        Some(&f) => (generator_mode::SINE, f),
+        None => (generator_mode::PINK, 1000.0),
+    };
+    let osc = &engine.oscillator;
+    let to = |bit: u32| if o.assign & 1 << bit != 0 { [1.0; 2] } else { [0.0; 2] };
+    for b in 0..8 {
+        osc.assign(StripKind::Bus, Y2Strip::Bus(b).engine_ref().1, to(b as u32));
+        osc.assign(StripKind::Bus, Y2Strip::Aux(b).engine_ref().1, to(9 + b as u32));
+    }
+    osc.assign(StripKind::Main, 0, to(8));
+    osc.set(o.on, mode, freq, -(o.level as f32));
+}
+
 /// An 02R strip.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Y2Strip {

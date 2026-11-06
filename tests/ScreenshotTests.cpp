@@ -1305,6 +1305,19 @@ private:
             display.pushEncoder (4);
             expect (rig.engine.soloAfl.load() != afl);
             display.pushEncoder (4);
+            // OSCILLATOR: the first push switches it on, the sixth encoder its destination.
+            {
+                int set = 0;
+                auto& wing = rig.engine.getWing();
+                display.showScreen (S::Monitor, 3);
+                display.pushEncoder (0);
+                expectEquals (wing.runX32Text ("/-stat/osc/on", set), juce::String ("/-stat/osc/on ON"));
+                display.getEncoder (5).turn.set (18.0f / 25.0f); // MAIN L+R
+                expectEquals (wing.runX32Text ("/config/osc/dest", set), juce::String ("/config/osc/dest 18"));
+                expectEquals (display.getEncoder (5).turn.text(), juce::String ("MAIN L+R"));
+                display.pushEncoder (0);
+                expectEquals (wing.runX32Text ("/-stat/osc/on", set), juce::String ("/-stat/osc/on OFF"));
+            }
             if (folder.isNotEmpty())
             {
                 const std::tuple<S, int, const char*> pages[] = { { S::Scenes, 0, "scenes" }, { S::Scenes, 1, "scenes-tab" }, { S::Scenes, 2, "snippets" }, { S::Scenes, 3, "param-safe" },

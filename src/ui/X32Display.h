@@ -199,6 +199,11 @@ private:
     void paintOutputs (juce::Graphics&, juce::Rectangle<int>);
     /** An encoder that turns `path`'s value through `choices` (by name). */
     KnobBinding enumKnob (const juce::String& label, const juce::String& path, const juce::StringArray& choices);
+    /** An X32 value's text as a level (dB, "-oo" the bottom) and as hertz ("1k97"). */
+    static float x32Level (const juce::String& text);
+    static float x32Hz (const juce::String& text);
+    /** The oscillator's destination 0-25 by name. */
+    static juce::String x32OscDestination (int dest);
     /** An X32 address's values as the console answers them ("AN1-8"), or empty. */
     juce::String x32Value (const juce::String& address) const;
     /** A strip's X32 address ("/ch/05", "/auxin/02", "/fxrtn/01", "/bus/03",
