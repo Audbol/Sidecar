@@ -314,7 +314,7 @@ juce::StringArray Display::getTabs() const
         case Screen::Meters:     return { "channel", "mix bus", "aux / fx", "in / out", "rta" };
         case Screen::Routing:    return { "home", "out 1-16", "aux out", "p16 out", "card out", "aes50-a", "aes50-b", "xlr out" };
         case Screen::Setup:      return { "global", "config", "remote", "network", "scribble strip", "preamps", "card" };
-        case Screen::Library:    return { "scenes", "show", "channel", "effects" };
+        case Screen::Library:    return { "scenes", "show", "channel", "effects", "routing" };
         case Screen::Effects:    return { "home", "fx1", "fx2", "fx3", "fx4", "fx5", "fx6", "fx7", "fx8" };
         case Screen::MuteGroups: return { "mute grp" };
         case Screen::Utility:    return { "copy" };
@@ -324,6 +324,267 @@ juce::StringArray Display::getTabs() const
         case Screen::Usb:        return { "home", "config" };
     }
     return {};
+}
+
+//==============================================================================
+// LIBRARY's presets (p.58): channel, effects and routing
+
+namespace
+{
+    const char* presetExtensionFor (int libraryTab)
+    {
+        return libraryTab == 2 ? Show::channelPresetExtension : libraryTab == 3 ? Show::fxPresetExtension : Display::routingPresetExtension;
+    }
+
+    /** The channel elements' sections, in channelElements()'s order. */
+    const juce::uint32 kChannelElementSections[] = { state::Preamp, state::Name, state::Gate, state::Dynamics, state::Eq, state::Sends };
+}
+
+const juce::StringArray& Display::channelElements()
+{
+    static const juce::StringArray names { "Head Amp", "Configuration", "Gate", "Compressor", "Equalizer", "Sends" };
+    return names;
+}
+
+const juce::StringArray& Display::routingElements()
+{
+    static const juce::StringArray names { "Channel Inputs", "Analog Out", "Auxiliary Out", "P16 Out", "Card Out", "AES50 Out", "XLR Out" };
+    return names;
+}
+
+juce::StringArray Display::routingPresetLines() const
+{
+    // Each element's X32 addresses and their values now (those the map answers).
+    juce::StringArray lines;
+    const auto add = [this, &lines] (int element, const juce::String& address)
+    {
+        const auto v = x32Value (address);
+        if (v.isNotEmpty())
+            lines.add (juce::String (element) + " " + address + " " + v);
+    };
+    for (const char* group : { "IN", "PLAY" })
+        for (auto* b : kInBlocks)
+            add (0, "/config/routing/" + juce::String (group) + "/" + b);
+    add (0, "/config/routing/routswitch");
+    for (int k = 0; k < 3; ++k)
+        for (int i = 1; i <= kSignalTabs[k].count; ++i)
+        {
+            const auto p = "/outputs/" + juce::String (kSignalTabs[k].group) + "/" + juce::String (i).paddedLeft ('0', 2);
+            add (1 + k, p + "/src");
+            add (1 + k, p + "/pos");
+        }
+    for (int k = 0; k < 3; ++k)
+        for (int b = 0; b < kBlockTabs[k].blocks; ++b)
+            add (k == 0 ? 4 : 5, "/config/routing/" + juce::String (kBlockTabs[k].node) + "/" + kNetBlocks[b]);
+    for (auto* b : kOutBlocks)
+        add (6, "/config/routing/OUT/" + juce::String (b));
+    return lines;
+}
+
+juce::Result Display::savePreset (int libraryTab, const juce::String& name)
+{
+    auto& show = ctx.show;
+    const auto legal = juce::File::createLegalFileName (name.isEmpty() ? juce::String ("Preset") : name);
+    const auto file = ShowPanel::libraryFolder().getNonexistentChildFile (legal, presetExtensionFor (libraryTab), false);
+    juce::Result r = juce::Result::ok();
+    if (libraryTab == 2)
+    {
+        auto* st = selected();
+        if (st == nullptr)
+            return juce::Result::fail ("Select a strip");
+        r = show.saveChannelPreset (state::StripRef::of (*st), state::AllSections & ~(juce::uint32) state::Routing, file, name);
+    }
+    else if (libraryTab == 3)
+        r = show.saveFxPreset (presetSlot, file, name);
+    else if (! ShowPanel::libraryFolder().createDirectory().wasOk() || ! file.replaceWithText (routingPresetLines().joinIntoString ("\n") + "\n"))
+        r = juce::Result::fail ("Couldn't write " + file.getFullPathName());
+    libraryStatus = r.wasOk() ? "Saved " + file.getFileNameWithoutExtension() : r.getErrorMessage();
+    const auto list = presets (presetExtensionFor (libraryTab));
+    presetChoice = juce::jmax (0, list.indexOf (file));
+    assignEncoders();
+    repaint();
+    return r;
+}
+
+void Display::assignLibraryPresetEncoders()
+{
+    // CHANNEL (p.58): encoder 1 the elements a load recalls, each pushed on or
+    // off; 2 a preset, LOAD onto the selected strip; 3 SAVE the strip as a
+    // preset (asks its name); 4 DELETE the preset. EFFECTS: encoder 1 the FX
+    // slot instead. ROUTING: the routing's elements, LOAD, SAVE and DELETE
+    // the same way.
+    auto& show = ctx.show;
+    const int libraryTab = tab;
+    const auto list = presets (presetExtensionFor (tab));
+    const int n = list.size();
+    presetChoice = juce::jlimit (0, juce::jmax (0, n - 1), presetChoice);
+    if (tab == 3)
+    {
+        auto& fx = ctx.engine.getFx();
+        KnobBinding slot;
+        slot.label = "FX SLOT";
+        slot.get = [this] { return (float) presetSlot / 7.0f; };
+        slot.set = [this] (float v) { presetSlot = juce::roundToInt (v * 7.0f); repaint(); };
+        slot.text = [this, &fx]
+        {
+            const int m = fx.getModel (presetSlot);
+            return "FX" + juce::String (presetSlot + 1) + (m > ld::kFxExt ? " " + models::model (models::Fx, m).name : juce::String());
+        };
+        slot.steps = 8.0f;
+        encoders[0] = encoder (slot);
+    }
+    else
+    {
+        const auto& names = tab == 2 ? channelElements() : routingElements();
+        auto& mask = tab == 2 ? channelRecall : routingRecall;
+        const int count = names.size();
+        libraryElement = juce::jlimit (0, count - 1, libraryElement);
+        KnobBinding element;
+        element.label = "RECALL";
+        element.get = [this, count] { return (float) libraryElement / (float) (count - 1); };
+        element.set = [this, count] (float v) { libraryElement = juce::roundToInt (v * (float) (count - 1)); repaint(); };
+        element.text = [this, &names] { return names[libraryElement]; };
+        element.steps = (float) count;
+        encoders[0] = encoder (element, "ON / OFF", [this, &mask] { mask ^= 1u << libraryElement; repaint(); },
+                               [this, &mask] { return (mask & (1u << libraryElement)) != 0; });
+    }
+    KnobBinding pick;
+    pick.label = "PRESET";
+    pick.get = [this, n] { return n > 1 ? (float) presetChoice / (float) (n - 1) : 0.0f; };
+    pick.set = [this, n] (float v) { presetChoice = juce::roundToInt (v * (float) juce::jmax (0, n - 1)); repaint(); };
+    pick.text = [this, list] { return list.isEmpty() ? juce::String ("-") : list[presetChoice].getFileNameWithoutExtension(); };
+    pick.steps = (float) juce::jmax (2, n);
+    encoders[1] = encoder (pick, "LOAD", [this, list, &show, libraryTab]
+    {
+        if (! juce::isPositiveAndBelow (presetChoice, list.size()))
+            return;
+        const auto& file = list[presetChoice];
+        juce::Result r = juce::Result::ok();
+        if (libraryTab == 2)
+        {
+            auto* st = selected();
+            if (st == nullptr)
+                return;
+            juce::uint32 scope = 0;
+            for (int k = 0; k < channelElements().size(); ++k)
+                if ((channelRecall & (1u << k)) != 0)
+                    scope |= kChannelElementSections[k];
+            r = show.loadChannelPreset (state::StripRef::of (*st), file, scope);
+            refreshStrip();
+        }
+        else if (libraryTab == 3)
+            r = show.loadFxPreset (presetSlot, file);
+        else
+        {
+            // Each line's address set to its value, when its element is recalled.
+            juce::StringArray lines;
+            lines.addLines (file.loadFileAsString());
+            for (auto& line : lines)
+            {
+                const int element = line.upToFirstOccurrenceOf (" ", false, false).getIntValue();
+                const auto command = line.fromFirstOccurrenceOf (" ", false, false).trim();
+                if (command.isNotEmpty() && (routingRecall & (1u << element)) != 0)
+                {
+                    int set = 0;
+                    ctx.engine.getWing().runX32Text (command, set);
+                }
+            }
+        }
+        libraryStatus = r.wasOk() ? "Loaded " + file.getFileNameWithoutExtension() : r.getErrorMessage();
+        repaint();
+    });
+    encoders[2] = encoder ({}, "SAVE", [this, libraryTab]
+    {
+        auto* st = selected();
+        const auto suggested = libraryTab == 2 && st != nullptr ? (st->getName().isNotEmpty() ? st->getName() : st->getLabel())
+                             : libraryTab == 3 ? "FX" + juce::String (presetSlot + 1) : juce::String ("Routing");
+        auto* w = new juce::AlertWindow ("SAVE PRESET", "Name:", juce::MessageBoxIconType::NoIcon, this);
+        w->addTextEditor ("name", suggested);
+        w->addButton ("SAVE", 1, juce::KeyPress (juce::KeyPress::returnKey));
+        w->addButton ("CANCEL", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+        juce::Component::SafePointer<Display> safe (this);
+        w->enterModalState (true, juce::ModalCallbackFunction::create ([safe, w, libraryTab] (int result)
+        {
+            if (result != 0 && safe != nullptr)
+                safe->savePreset (libraryTab, w->getTextEditorContents ("name").trim());
+        }), true);
+    });
+    encoders[3] = encoder ({}, "DELETE", [this, list]
+    {
+        if (! juce::isPositiveAndBelow (presetChoice, list.size()))
+            return;
+        const auto& file = list[presetChoice];
+        libraryStatus = file.moveToTrash() || file.deleteFile() ? "Deleted " + file.getFileNameWithoutExtension() : "Couldn't delete " + file.getFileName();
+        assignEncoders();
+        repaint();
+    });
+}
+
+void Display::paintLibraryPresets (juce::Graphics& g, juce::Rectangle<int> r)
+{
+    // The presets around the one picked; beside them the elements a load
+    // recalls (channel, routing) or the FX slots (effects).
+    const auto list = presets (presetExtensionFor (tab));
+    auto area = r.reduced (12);
+    if (libraryStatus.isNotEmpty())
+    {
+        g.setColour (kSky);
+        g.setFont (type::font (11.0f, true));
+        g.drawFittedText (libraryStatus, area.removeFromBottom (18), juce::Justification::centredLeft, 1, 0.8f);
+    }
+    auto side = area.removeFromRight (area.getWidth() / 3).toFloat();
+    area.removeFromRight (8);
+    if (tab == 3)
+    {
+        auto& fx = ctx.engine.getFx();
+        auto box = block (g, side, "FX SLOTS").reduced (3.0f, 1.0f);
+        const float rowH = juce::jmin (14.0f, box.getHeight() / 8.0f);
+        for (int s = 0; s < 8; ++s)
+        {
+            auto row = box.removeFromTop (rowH);
+            if (s == presetSlot)
+            {
+                g.setColour (kDeep);
+                g.fillRect (row);
+            }
+            const int m = fx.getModel (s);
+            g.setColour (s == presetSlot ? juce::Colours::white : kNavy);
+            g.setFont (type::font (juce::jmin (10.5f, rowH * 0.85f), s == presetSlot));
+            g.drawFittedText ("FX" + juce::String (s + 1) + "  " + (m > ld::kFxExt ? models::model (models::Fx, m).name : juce::String ("-")),
+                              row.reduced (3.0f, 0.0f).toNearestInt(), juce::Justification::centredLeft, 1, 0.8f);
+        }
+    }
+    else
+    {
+        const auto& names = tab == 2 ? channelElements() : routingElements();
+        const auto mask = tab == 2 ? channelRecall : routingRecall;
+        auto box = block (g, side, "RECALL").reduced (3.0f, 1.0f);
+        const float rowH = juce::jmin (14.0f, box.getHeight() / (float) names.size());
+        for (int k = 0; k < names.size(); ++k)
+        {
+            auto row = box.removeFromTop (rowH);
+            if (k == libraryElement)
+            {
+                g.setColour (kDeep.withAlpha (0.35f));
+                g.fillRect (row);
+            }
+            checkBox (g, row.reduced (1.0f), names[k], (mask & (1u << k)) != 0);
+        }
+    }
+    juce::StringArray left, right;
+    const int rows = juce::jmax (1, area.getHeight() / 24);
+    const int from = juce::jlimit (0, juce::jmax (0, list.size() - rows), presetChoice - rows / 2);
+    for (int i = from; i < juce::jmin (list.size(), from + rows); ++i)
+    {
+        left.add ((i == presetChoice ? "> " : "  ") + juce::String (i + 1).paddedLeft ('0', 2));
+        right.add (list[i].getFileNameWithoutExtension());
+    }
+    if (list.isEmpty())
+    {
+        left.add ("No presets");
+        right.add (tab == 2 ? "SAVE stores the selected strip" : tab == 3 ? "SAVE stores the FX slot" : "SAVE stores the routing");
+    }
+    paintRows (g, area, left, right);
 }
 
 //==============================================================================
@@ -1452,6 +1713,50 @@ void Display::assignEncoders()
                 break;
         }
     }
+    else if (screen == Screen::Setup && tab == 0)
+    {
+        // GLOBAL (p.55): encoder 2 the sample rate, pushed to confirm (the audio
+        // interface's rates; it is the clock). The system controls, initialize
+        // and the brightness are the console's own, the time and date the computer's.
+        // Encoder 1 is Sidecar's: the surface, an X32 or an X32 COMPACT.
+        if (getModel && setModel)
+        {
+            KnobBinding m;
+            m.label = "MODEL";
+            m.get = [this] { return (float) getModel(); };
+            m.set = [this] (float v)
+            {
+                const int to = v < 0.5f ? 0 : 1;
+                if (to != getModel())
+                    setModel (to);
+            };
+            m.text = [this] { return getModel() == 1 ? juce::String ("X32 COMPACT") : juce::String ("X32"); };
+            m.steps = 2.0f;
+            encoders[0] = encoder (m, "SWITCH", [this] { setModel (1 - getModel()); }, [] { return false; });
+        }
+        auto* device = ctx.deviceManager.getCurrentAudioDevice();
+        const auto rates = device != nullptr ? device->getAvailableSampleRates() : juce::Array<double>();
+        if (! rates.isEmpty())
+        {
+            const int n = rates.size();
+            if (! juce::isPositiveAndBelow (globalRate, n))
+                globalRate = juce::jmax (0, rates.indexOf (device->getCurrentSampleRate()));
+            KnobBinding rate;
+            rate.label = "SAMPLE RATE";
+            rate.get = [this, n] { return n > 1 ? (float) globalRate / (float) (n - 1) : 0.0f; };
+            rate.set = [this, n] (float v) { globalRate = juce::roundToInt (v * (float) (n - 1)); repaint(); };
+            rate.text = [this, rates] { return juce::String (juce::roundToInt (rates[globalRate])); };
+            rate.steps = (float) juce::jmax (2, n);
+            encoders[1] = encoder (rate, "CONFIRM", [this, rates]
+            {
+                auto setup = ctx.deviceManager.getAudioDeviceSetup();
+                setup.sampleRate = rates[globalRate];
+                ctx.deviceManager.setAudioDeviceSetup (setup, true);
+                assignEncoders();
+                repaint();
+            }, [this, rates] { auto* d = ctx.deviceManager.getCurrentAudioDevice(); return d != nullptr && d->getCurrentSampleRate() == rates[globalRate]; });
+        }
+    }
     else if (screen == Screen::Setup && tab == 1)
     {
         // CONFIG (p.55): encoder 1 the preferences, 4 the link preferences
@@ -1605,80 +1910,9 @@ void Display::assignEncoders()
     {
         assignEffectsEncoders();
     }
-    else if (screen == Screen::Setup && tab == 0 && getModel && setModel)
-    {
-        KnobBinding m;
-        m.label = "MODEL";
-        m.get = [this] { return (float) getModel(); };
-        m.set = [this] (float v)
-        {
-            const int to = v < 0.5f ? 0 : 1;
-            if (to != getModel())
-                setModel (to);
-        };
-        m.text = [this] { return getModel() == 1 ? juce::String ("X32 COMPACT") : juce::String ("X32"); };
-        m.steps = 2.0f;
-        encoders[0] = encoder (m, "SWITCH", [this] { setModel (1 - getModel()); }, [] { return false; });
-    }
     else if (screen == Screen::Library && tab >= 2)
     {
-        // CHANNEL and EFFECTS (p.58): a preset picked, LOAD onto the selected
-        // strip (or an FX slot), SAVE the strip (the slot) as a new one; the
-        // library's presets, as the WING's library keeps them.
-        const bool channel = tab == 2;
-        const auto list = presets (channel ? Show::channelPresetExtension : Show::fxPresetExtension);
-        presetChoice = juce::jlimit (0, juce::jmax (0, list.size() - 1), presetChoice);
-        KnobBinding pick;
-        pick.label = "PRESET";
-        const int n = list.size();
-        pick.get = [this, n] { return n > 1 ? (float) presetChoice / (float) (n - 1) : 0.0f; };
-        pick.set = [this, n] (float v) { presetChoice = juce::roundToInt (v * (float) juce::jmax (0, n - 1)); repaint(); };
-        pick.text = [this, list] { return list.isEmpty() ? juce::String ("-") : juce::String (presetChoice + 1); };
-        pick.steps = (float) juce::jmax (2, n);
-        auto& show = ctx.show;
-        if (channel)
-        {
-            encoders[0] = encoder (pick, "LOAD", [this, list, &show]
-            {
-                if (auto* st = selected(); st != nullptr && juce::isPositiveAndBelow (presetChoice, list.size()))
-                    libraryStatus = show.loadChannelPreset (state::StripRef::of (*st), list[presetChoice]).wasOk() ? "Loaded " + list[presetChoice].getFileNameWithoutExtension() : juce::String ("Load failed");
-                refreshStrip();
-            });
-            encoders[1] = encoder ({}, "SAVE", [this, &show]
-            {
-                auto* st = selected();
-                if (st == nullptr)
-                    return;
-                const auto name = st->getName().isNotEmpty() ? st->getName() : st->getLabel();
-                const auto file = ShowPanel::libraryFolder().getNonexistentChildFile (juce::File::createLegalFileName (name), Show::channelPresetExtension);
-                const auto r = show.saveChannelPreset (state::StripRef::of (*st), state::AllSections & ~(juce::uint32) state::Routing, file, name);
-                libraryStatus = r.wasOk() ? "Saved " + file.getFileNameWithoutExtension() : r.getErrorMessage();
-                assignEncoders();
-            });
-        }
-        else
-        {
-            KnobBinding slot;
-            slot.label = "FX SLOT";
-            slot.get = [this] { return (float) presetSlot / 7.0f; };
-            slot.set = [this] (float v) { presetSlot = juce::roundToInt (v * 7.0f); repaint(); };
-            slot.text = [this] { return juce::String (presetSlot + 1); };
-            slot.steps = 8.0f;
-            encoders[0] = encoder (pick, "LOAD", [this, list, &show]
-            {
-                if (juce::isPositiveAndBelow (presetChoice, list.size()))
-                    libraryStatus = show.loadFxPreset (presetSlot, list[presetChoice]).wasOk() ? "Loaded " + list[presetChoice].getFileNameWithoutExtension() : juce::String ("Load failed");
-                repaint();
-            });
-            encoders[1] = encoder (slot, "SAVE", [this, &show]
-            {
-                const auto name = "FX" + juce::String (presetSlot + 1);
-                const auto file = ShowPanel::libraryFolder().getNonexistentChildFile (name, Show::fxPresetExtension);
-                const auto r = show.saveFxPreset (presetSlot, file, name);
-                libraryStatus = r.wasOk() ? "Saved " + file.getFileNameWithoutExtension() : r.getErrorMessage();
-                assignEncoders();
-            });
-        }
+        assignLibraryPresetEncoders();
     }
     else if (screen == Screen::Library && tab == 1)
     {
@@ -3091,29 +3325,7 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
         {
             if (tab >= 2)
             {
-                // The presets around the one picked.
-                const auto list = presets (tab == 2 ? Show::channelPresetExtension : Show::fxPresetExtension);
-                juce::StringArray left, right;
-                const int rows = juce::jmax (1, (r.getHeight() - 50) / 26);
-                const int from = juce::jlimit (0, juce::jmax (0, list.size() - rows), presetChoice - rows / 2);
-                for (int i = from; i < juce::jmin (list.size(), from + rows); ++i)
-                {
-                    left.add ((i == presetChoice ? "> " : "  ") + juce::String (i + 1).paddedLeft ('0', 2));
-                    right.add (list[i].getFileNameWithoutExtension());
-                }
-                if (list.isEmpty())
-                {
-                    left.add ("No presets");
-                    right.add (tab == 2 ? "SAVE stores the selected strip" : "SAVE stores the FX slot");
-                }
-                auto area = r.reduced (12);
-                if (libraryStatus.isNotEmpty())
-                {
-                    g.setColour (kSky);
-                    g.setFont (type::font (11.0f, true));
-                    g.drawText (libraryStatus, area.removeFromBottom (20), juce::Justification::centredLeft);
-                }
-                paintRows (g, area, left, right);
+                paintLibraryPresets (g, r);
                 break;
             }
             auto& show = ctx.show;
@@ -3214,10 +3426,17 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
                 paintPreamps (g, r.reduced (12).toFloat());
                 break;
             }
-            paintRows (g, r.reduced (12), { "CONSOLE", "SURFACE", "SAMPLE RATE", "CHANNELS", "BUSES / MATRICES" },
+        {
+            // GLOBAL: the console, the clock (the audio interface's), the time and date.
+            auto* device = ctx.deviceManager.getCurrentAudioDevice();
+            const auto now = juce::Time::getCurrentTime();
+            paintRows (g, r.reduced (12), { "CONSOLE", "SURFACE", "SAMPLE RATE", "SYNCHRONIZATION", "CHANNELS", "BUSES / MATRICES", "TIME / DATE" },
                        { "X32 (Sidecar)", getModel && getModel() == 1 ? "X32 COMPACT" : "X32", juce::String (juce::roundToInt (ctx.engine.getSampleRate())) + " Hz",
+                         device != nullptr ? "INTERNAL (" + device->getName() + ")" : juce::String ("NO AUDIO INTERFACE"),
                          juce::String ((int) ctx.engine.getChannels().size()),
-                         juce::String ((int) ctx.engine.getBuses().size()) + " / " + juce::String ((int) ctx.engine.getMatrices().size()) });
+                         juce::String ((int) ctx.engine.getBuses().size()) + " / " + juce::String ((int) ctx.engine.getMatrices().size()),
+                         now.formatted ("%H:%M  %d.%m.%Y") + " (THE COMPUTER'S)" });
+        }
             break;
         case Screen::MuteGroups:
             break; // its keys

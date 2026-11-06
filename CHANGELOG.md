@@ -595,6 +595,13 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   beside it. The surround buses sum to mono while SURROUND has them, so both
   sides of a stereo channel reach their speakers. A stereo channel with ST
   LINK off has both sides at one place.
+- X32 LIBRARY as the manual has it (p.58): CHANNEL's encoder 1 the elements a load
+  recalls (head amp, configuration, gate, compressor, equalizer, sends), 2 a preset
+  and LOAD, 3 SAVE (asks its name), 4 DELETE; EFFECTS the same with the FX slot on
+  encoder 1; a new ROUTING tab saving and loading the routing (channel inputs,
+  analog, aux, P16, card, AES50 and XLR outs, each on or off the recall list) as
+  .lroute files in the library. SETUP > global: the sample rate (the audio
+  interface's, pushed to confirm), the clock and the computer's time and date.
 - X32 SCENES in the manual's six tabs (p.65-67): HOME (GO, SKIP a scene, NEW, a
   snippet of the current scene GO; PREV and NEXT on encoders 4 and 6, as Sidecar
   has no UNDO), SCENES (LOAD; SAVE into a slot with its name and note; EDIT a

@@ -116,6 +116,17 @@ public:
     /** PARAM SAFE's four columns (p.66) and CHAN SAFE's six, an encoder each. */
     std::vector<SafeColumn> paramSafeColumns();
     std::vector<SafeColumn> chanSafeColumns();
+    /** LIBRARY's channel, effects and routing tabs (2-4): the elements a load
+        recalls, as names (channel and routing), and SAVE under `name`. */
+    static const juce::StringArray& channelElements();
+    static const juce::StringArray& routingElements();
+    juce::Result savePreset (int libraryTab, const juce::String& name);
+    /** A routing preset's lines ("<element> <address> <value>") of the console now. */
+    juce::StringArray routingPresetLines() const;
+    /** LIBRARY's elements a load recalls (bit n: element n). */
+    juce::uint32 channelRecall = 0x3f, routingRecall = 0x7f;
+    static constexpr const char* routingPresetExtension = ".lroute";
+
     /** SCENES > scenes' SAVE: the console into scene `slot` (a new one past the
         end), without the save safes' sections, named. Returns its index. */
     int saveScene (int slot, const juce::String& name, const juce::String& notes);
@@ -167,6 +178,11 @@ private:
     void paintSafeColumns (juce::Graphics&, juce::Rectangle<float>, const std::vector<SafeColumn>&, const int* rows, const juce::String& footer);
     void paintScenes (juce::Graphics&, juce::Rectangle<int>);
     void assignScenesEncoders();
+    void assignLibraryPresetEncoders();
+    void paintLibraryPresets (juce::Graphics&, juce::Rectangle<int>);
+    int libraryElement = 0;
+    /** SETUP > global: the sample rate the second encoder points at (-1: the current one). */
+    int globalRate = -1;
     void paintRouting (juce::Graphics&, juce::Rectangle<int>);
     /** ROUTING > home (step 10c): the input blocks, through the X32 map's
         text commands (`/config/routing/...`). */

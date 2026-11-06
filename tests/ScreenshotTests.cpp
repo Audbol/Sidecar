@@ -1216,8 +1216,48 @@ private:
             display.showScreen (S::Meters, 4);
             expectEquals (display.getEncoder (0).pushLabel, juce::String ("FREEZE"));
             display.showScreen (S::Library, 2);
-            expectEquals (display.getEncoder (0).pushLabel, juce::String ("LOAD"));
-            expectEquals (display.getEncoder (1).pushLabel, juce::String ("SAVE"));
+            expectEquals (display.getEncoder (0).pushLabel, juce::String ("ON / OFF"));
+            expectEquals (display.getEncoder (1).pushLabel, juce::String ("LOAD"));
+            expectEquals (display.getEncoder (2).pushLabel, juce::String ("SAVE"));
+            expectEquals (display.getEncoder (3).pushLabel, juce::String ("DELETE"));
+            // LIBRARY > routing: SAVE the routing, change XLR 1-4, LOAD it back;
+            // with XLR Out off the recall list, LOAD leaves it. (In a library
+            // folder of the test's own.)
+            {
+                const auto home = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("sidecar-x32-library-test");
+                home.deleteRecursively();
+                home.createDirectory();
+               #if JUCE_WINDOWS
+                _putenv_s ("SIDECAR_HOME", home.getFullPathName().toRawUTF8());
+               #else
+                setenv ("SIDECAR_HOME", home.getFullPathName().toRawUTF8(), 1);
+               #endif
+                int set = 0;
+                auto& wing = rig.engine.getWing();
+                const auto xlr = [&wing, &set] { return wing.runX32Text ("/config/routing/OUT/1-4", set); };
+                const auto before = xlr();
+                const juce::String other = before.endsWith ("AN9-12") ? "AN1-4" : "AN9-12";
+                display.showScreen (S::Library, 4);
+                expect (display.savePreset (4, "Test routing").wasOk());
+                expectEquals (display.getEncoder (1).turn.text(), juce::String ("Test routing"));
+                wing.runX32Text ("/config/routing/OUT/1-4 " + other, set);
+                expect (xlr() != before);
+                display.pushEncoder (1); // LOAD
+                expectEquals (xlr(), before);
+                display.getEncoder (0).turn.set (1.0f); // XLR Out
+                display.pushEncoder (0);                 // off the recall list
+                wing.runX32Text ("/config/routing/OUT/1-4 " + other, set);
+                display.pushEncoder (1);
+                expect (xlr().endsWith (other));
+                display.pushEncoder (0);
+                wing.runX32Text ("/config/routing/OUT/1-4 " + before.fromLastOccurrenceOf (" ", false, false), set);
+               #if JUCE_WINDOWS
+                _putenv_s ("SIDECAR_HOME", "");
+               #else
+                unsetenv ("SIDECAR_HOME");
+               #endif
+                home.deleteRecursively();
+            }
             display.showScreen (S::Assign, 0);
             display.getEncoder (1).turn.set (1.0f / 3.0f); // ENC 1: FADER
             expect (skin.getAssignSection().getCode (0).startsWith ("F"), "a fader");
@@ -1234,7 +1274,7 @@ private:
             if (folder.isNotEmpty())
             {
                 const std::tuple<S, int, const char*> pages[] = { { S::Scenes, 0, "scenes" }, { S::Scenes, 1, "scenes-tab" }, { S::Scenes, 2, "snippets" }, { S::Scenes, 3, "param-safe" },
-                                                                  { S::Scenes, 4, "chan-safe" }, { S::Scenes, 5, "scenes-midi" }, { S::Monitor, 0, "monitor" },
+                                                                  { S::Scenes, 4, "chan-safe" }, { S::Scenes, 5, "scenes-midi" }, { S::Library, 2, "library-channel" }, { S::Library, 4, "library-routing" }, { S::Setup, 0, "setup-global" }, { S::Monitor, 0, "monitor" },
                                                                   { S::Monitor, 1, "talk-a" }, { S::Monitor, 3, "osc" }, { S::Assign, 0, "assign" },
                                                                   { S::Usb, 0, "usb" }, { S::Setup, 4, "scribble" }, { S::Setup, 5, "preamps" }, { S::Setup, 1, "setup-config" },
                                                                   { S::Setup, 3, "network" }, { S::Setup, 6, "card" },
