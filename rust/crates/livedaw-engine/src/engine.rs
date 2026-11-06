@@ -396,6 +396,9 @@ impl Engine {
 
     /// Recommended worker count: leave a core for the audio thread and one for the UI/OS.
     pub fn default_num_workers() -> usize {
+        if let Some(n) = std::env::var("LIVEDAW_WORKERS").ok().and_then(|v| v.parse().ok()) {
+            return n; // diagnostics: a worker count of one's own
+        }
         std::thread::available_parallelism().map_or(0, |n| n.get().saturating_sub(2))
     }
 
@@ -1563,6 +1566,7 @@ impl Engine {
         let _ftz = ScopedNoDenormals::new();
         self.garbage.callback_started();
         let start = Instant::now();
+        crate::trace::begin();
 
         for &o in outs {
             if !o.is_null() {
@@ -1584,6 +1588,8 @@ impl Engine {
         self.garbage.callback_finished();
 
         let a = &*self.audio.get();
+        crate::trace::mark("finish");
+        crate::trace::end((1.0e9 * num_samples as f64 / a.sample_rate.max(1.0)) as u64);
         let load = (start.elapsed().as_secs_f64() * a.sample_rate / num_samples.max(1) as f64) as f32;
         self.controls.dsp_load.store(0.9 * self.controls.dsp_load.load() + 0.1 * load);
     }
@@ -1641,6 +1647,7 @@ impl Engine {
         let streams = rec.record_streams();
         // Record hardware inputs (and playback channels) as they arrive.
         self.record_inputs(streams, a.sources.hw_ptrs(), a.sources.playback_ptrs(), n);
+        crate::trace::mark("sources");
 
         // Talkback and the console's solos and mutes for this block.
         let talk = TalkBlock::new(&self.controls.talk, |kind, i| topo.by_number(kind, i as i32 + 1).map(|s| s.as_ref()));
@@ -1655,6 +1662,7 @@ impl Engine {
         self.plan_returns(topo, a, n, source_solo.map(|(_, p)| p));
         // The send effects, on the buses' last block, for the FX return channels.
         self.send_effects(a, n);
+        crate::trace::mark("plan+sendfx");
 
         let hw = SharedPtrs(a.sources.hw_ptrs());
         let hw = &hw;
@@ -1671,6 +1679,7 @@ impl Engine {
         // The analysed and listened strips of this chunk (analyser.rs).
         let probes = self.analysis.begin_block(topo.all());
         let probes = &probes;
+        crate::trace::mark("probes");
 
         // 1. Channels and aux channels (parallel), in waves: a strip keyed
         // from another channel runs after it (keytap.rs).
@@ -1689,6 +1698,7 @@ impl Engine {
             self.pool.parallel_for(strips.len(), &|j| {
                 stage1(strips.get(j)).process(&ctx_of(hw.get(), Some(w as u8)), n);
             });
+            crate::trace::mark("channels");
         }
 
         // Only inputs with signal feed the buses (unused channels cost nothing below).
@@ -1708,6 +1718,7 @@ impl Engine {
         for s in topo.inputs() {
             s.write_pdc(n);
         }
+        crate::trace::mark("automix+pdc");
 
         // 3./4. Buses, in waves: a bus runs after the buses sending to it
         // (a send that closes a loop reads its source's previous block).
@@ -1724,6 +1735,7 @@ impl Engine {
                 bus.write_pdc(n);
                 bus.write_returns(pos, n);
             });
+            crate::trace::mark("buses");
         }
 
         // 5. Mains
@@ -1735,6 +1747,7 @@ impl Engine {
             main.write_pdc(n);
             main.write_returns(pos, n);
         });
+        crate::trace::mark("mains");
 
         // 6. Matrices (DIRECT IN: the monitor paths of the previous block)
         let monitor_direct = MonitorReturns(std::array::from_fn(|ch| {
@@ -1753,6 +1766,7 @@ impl Engine {
             mtx.write_pdc(n);
             mtx.write_returns(pos, n);
         });
+        crate::trace::mark("matrices");
 
         // The user signals, now that every strip has run (outputs take them now).
         self.user_signals(topo, a, n);
@@ -1760,14 +1774,17 @@ impl Engine {
         // Record strip taps, now that every strip has run.
         self.record_strips(topo, streams, n);
         self.record_usb(topo, a, n);
+        crate::trace::mark("user+record");
 
         // 7. Solo / monitor
         self.build_monitor(topo, a, n, solo, talk, probes);
+        crate::trace::mark("monitor");
 
         // 8. Outputs, then the safety clip
         self.write_outputs(topo, a, n);
         self.protect_outputs(a, n);
         a.returns.advance(n);
+        crate::trace::mark("outputs");
     }
 
     /// Before the stages: which bus, main and matrix signals are read a

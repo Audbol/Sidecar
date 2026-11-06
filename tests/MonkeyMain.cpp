@@ -14,13 +14,15 @@
 // native file dialogs are cancelled.
 //
 //   SidecarMonkey [--seed N] [--seconds S] [--buffer SAMPLES] [--home DIR] [--idle] [--interface wing|universal|x32|promix|02r]
-//                 [--press "KEY TEXT"]
+//                 [--press "KEY TEXT"] [--cpus MASK]
 //
 // --idle sends no input: a baseline of what the audio does with the app just running.
 // --interface x32 / promix / 02r starts on that console and its surface; --press clicks the
 // key whose text it gives two seconds in (a user's report replayed: the X32 surface's
 // UNIVERSAL MIXER key).
 // --interface universal starts on the Universal Mixer instead of the WING surface.
+// --cpus runs it on the processors in the hex mask (Windows): a machine whose own cores
+// stall (the test server's second socket pauses for up to 4 ms) would fail it on those.
 //
 // It also watches for dropouts: blocks that take longer to process than they
 // last (overruns), callbacks the device runs late, blocks the engine silences
@@ -705,6 +707,10 @@ public:
         };
         const juce::int64 seed = option ("--seed", juce::String (juce::Time::currentTimeMillis() % 1000000)).getLargeIntValue();
         const int seconds = juce::jlimit (1, 24 * 3600, option ("--seconds", "120").getIntValue());
+       #if JUCE_WINDOWS
+        if (const auto cpus = option ("--cpus", {}); cpus.isNotEmpty())
+            SetProcessAffinityMask (GetCurrentProcess(), (DWORD_PTR) cpus.getHexValue64());
+       #endif
         home = juce::File (option ("--home", juce::File::getSpecialLocation (juce::File::tempDirectory)
                                                  .getChildFile ("SidecarMonkey-" + juce::String (seed)).getFullPathName()));
 

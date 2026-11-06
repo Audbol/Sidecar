@@ -594,6 +594,13 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   beside it. The surround buses sum to mono while SURROUND has them, so both
   sides of a stereo channel reach their speakers. A stereo channel with ST
   LINK off has both sides at one place.
+- Dropout diagnostics: `LIVEDAW_TRACE_SLOW=<file>` logs every block that takes
+  longer than it lasts (each stage's time and CPU cycles, the parallel stages'
+  longest task and the wait for the workers); `LIVEDAW_WORKERS` sets the
+  engine's worker count; SidecarMonkey `--cpus MASK` runs it on chosen
+  processors. They found the monkey's dropouts on the Windows test server to
+  be the machine's: the second socket's cores pause for up to 4 ms with
+  nothing of Sidecar's running; on the first socket the monkey runs clean.
 - The console surfaces (X32, ProMix 01, 02R) are laid out at 1920 x 1080 and
   scaled to the window, in proportion and centred: on a bigger screen (a 4K
   monitor) they show the same panel larger instead of stretching the gaps

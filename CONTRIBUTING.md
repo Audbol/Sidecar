@@ -54,6 +54,16 @@ seed (`--seed`) replays a run. On Windows a crash's entry names the exception, o
 an abort, an uncaught exception or another C runtime fail-fast, the stack (the
 monkey is built with symbols).
 
+A dropout's cause: set `LIVEDAW_TRACE_SLOW` to a file and every block that takes
+longer than it lasts appends a line there, with each stage's time and the audio
+thread's CPU cycles, and for the parallel stages the longest task (its time, cycles,
+page faults and the worker that ran it) and the audio thread's wait for the workers.
+A stage that took milliseconds of cycles for microseconds of work is the machine, not
+the code: on the Windows test server (two Xeon E5-2650 v2), the cores of the second
+socket (CPUs 16-31) pause for up to 4 ms at a time, with nothing of Sidecar's running
+(both hyperthreads of a core together). Run the monkey on the first socket there:
+`--cpus FFFF`. `LIVEDAW_WORKERS` sets the engine's worker count.
+
 **Screenshots.** The Universal Mixer's pictures in `docs/images` (`universal-*.png`)
 are rendered by a test category of their own, on a demo console
 (`tests/ScreenshotTests.cpp`). After changing its views, render them again from the

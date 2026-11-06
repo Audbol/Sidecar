@@ -106,7 +106,7 @@ impl WorkerPool {
             if self.should_exit.load(Acquire) {
                 break;
             }
-            self.run_tasks();
+            self.run_tasks(index);
         }
     }
 
@@ -121,7 +121,8 @@ impl WorkerPool {
         }
     }
 
-    fn run_tasks(&self) {
+    fn run_tasks(&self, who: usize) {
+        let traced = crate::trace::enabled();
         loop {
             let w = self.work.load(Acquire);
             let index = (w & 0xffff) as usize;
@@ -142,8 +143,17 @@ impl WorkerPool {
             // SAFETY: `task` was stored from a `TaskFn` in parallel_for and `ctx` is
             // kept alive by the caller until `remaining` reaches zero.
             let task: TaskFn = unsafe { std::mem::transmute::<usize, TaskFn>(task) };
+            let (t0, c0, f0) = if traced {
+                (Some(Instant::now()), crate::trace::thread_cycles(), crate::trace::page_faults())
+            } else {
+                (None, 0, 0)
+            };
             if catch_unwind(AssertUnwindSafe(|| unsafe { task(ctx as *const (), index) })).is_err() {
                 self.panicked_tasks.fetch_add(1, Relaxed);
+            }
+            if let Some(t0) = t0 {
+                let faults = crate::trace::page_faults().wrapping_sub(f0);
+                crate::trace::POOL.task(t0.elapsed().as_nanos() as u64, crate::trace::thread_cycles().wrapping_sub(c0), faults, who);
             }
             // Always count the task as done, even if it panicked: the audio
             // thread must never wait forever.
@@ -196,11 +206,15 @@ impl WorkerPool {
             }
         }
 
-        self.run_tasks();
+        self.run_tasks(usize::MAX);
 
+        let waited = crate::trace::enabled().then(Instant::now);
         while self.remaining.load(Acquire) > 0 {
             std::hint::spin_loop();
             std::thread::yield_now();
+        }
+        if let Some(t) = waited {
+            crate::trace::POOL.wait_ns.fetch_max(t.elapsed().as_nanos() as u64, Relaxed);
         }
     }
 }
