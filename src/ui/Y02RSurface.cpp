@@ -25,6 +25,11 @@ namespace
     const hw::Look& look() { return hw::Look::y02r(); }
     const juce::Colour kLcd = hw::Look::y02r().lcd, kLcdFrame = hw::Look::y02r().lcd.darker (0.18f),
                        kPixel = hw::Look::y02r().lcdPixel, kPixelDim = hw::Look::y02r().lcdDim;
+    /** A table row's columns (DELAY's), as fractions of its width: the number,
+        Smpl, mSEC, ON. */
+    constexpr float kRowSamples = 0.2f, kRowMs = 0.5f, kRowOn = 0.8f;
+    /** A row of a number and one value: where the value starts. */
+    constexpr float kRowCompact = 0.4f;
     // Its LEDs: SEL orange, ON green, the function keys orange.
     const juce::Colour kSelLed (0xffffa030), kOnLed (0xff4cd964);
 
@@ -389,6 +394,9 @@ namespace y02r
     void Display::build()
     {
         fields.clear();
+        spots.clear();
+        marks.clear();
+        arrowAt = { 1.0f, 1.0f };
         const int s = strip;
         auto byteField = [this] (const juce::String& label, int a, int lo, int hi, std::function<juce::String (int)> text)
         {
@@ -501,9 +509,15 @@ namespace y02r
                     f.get = [this, a] { return y.get (a); };
                     f.set = [this, a] (int v) { y.set (a, v); };
                     f.hi = st == kStereo ? 108 : 96;
-                    f.text = [this, sw, st] (int v) { return juce::String (v - 96) + "dB" + (st != kStereo && ((y.get (sw) >> kPhase) & 1) != 0 ? utf8 (" \xc3\x98") : juce::String()); };
+                    f.text = [] (int v) { return juce::String (v - 96) + "dB"; };
                     if (st != kStereo)
+                    {
+                        // The phase over the knob: NOR, or REV lit.
                         f.action = [this, sw] { y.set (sw, juce::jmax (0, y.get (sw)) ^ (1 << kPhase)); };
+                        f.tagOn = [this, sw] { return ((y.get (sw) >> kPhase) & 1) != 0; };
+                        f.tag = [on = f.tagOn] { return juce::String (on() ? "REV" : "NOR"); };
+                        f.tagAbove = true;
+                    }
                 }
                 else if (function == Function::Delay)
                 {
@@ -519,7 +533,10 @@ namespace y02r
                         y.set (hi, v >> 7);
                         y.set (lo, v & 0x7f);
                     };
-                    const auto off = [this, sw] { return ((y.get (sw) >> kDelayOn) & 1) != 0 ? juce::String() : juce::String (" off"); };
+                    // ON at the row's end; the unit the wheel doesn't move beside it.
+                    f.tagOn = [this, sw] { return ((y.get (sw) >> kDelayOn) & 1) != 0; };
+                    f.tag = [on = f.tagOn] { return juce::String (on() ? "ON" : "OFF"); };
+                    const auto msText = [] (int v) { return juce::String (v / 10).paddedLeft ('0', 2) + "." + juce::String (v % 10); };
                     if (delayMs)
                     {
                         // Tenths of a ms; a sample's step is finer, so the nearest sample.
@@ -527,7 +544,9 @@ namespace y02r
                         f.set = [setSamples, rate] (int v) { setSamples (juce::roundToInt (v * rate / 10000.0)); };
                         f.hi = juce::roundToInt (2600 * 10000.0 / rate);
                         f.digits = 3;
-                        f.text = [off] (int v) { return juce::String (v / 10).paddedLeft ('0', 2) + "." + juce::String (v % 10) + off(); };
+                        f.text = msText;
+                        f.note = [samples] { return juce::String (samples()); };
+                        f.noteFirst = true;
                     }
                     else
                     {
@@ -535,7 +554,8 @@ namespace y02r
                         f.set = setSamples;
                         f.hi = 2600;
                         f.digits = 4;
-                        f.text = [off] (int v) { return juce::String (v).paddedLeft ('0', 4) + off(); };
+                        f.text = [] (int v) { return juce::String (v).paddedLeft ('0', 4); };
+                        f.note = [samples, rate, msText] { return msText (juce::roundToInt (samples() * 10000.0 / rate)); };
                     }
                     f.action = [this, sw] { y.set (sw, juce::jmax (0, y.get (sw)) ^ (1 << kDelayOn)); };
                 }
@@ -546,6 +566,15 @@ namespace y02r
                     f.set = [this, a] (int v) { y.set (a, v); };
                     f.hi = 32;
                     f.text = panText;
+                    if (isStereoStrip (st))
+                    {
+                        // Its two pans (V2 MAN p.36): L, and R after it.
+                        f.noNumber = true;
+                        fields.push_back (f);
+                        const int r = address (st, kPanR);
+                        f.get = [this, r] { return y.get (r); };
+                        f.set = [this, r] (int v) { y.set (r, v); };
+                    }
                 }
                 else
                 {
@@ -556,14 +585,18 @@ namespace y02r
                     f.get = [this, a] { return y.get (a); };
                     f.set = [this, a] (int v) { y.set (a, v); };
                     f.hi = 127;
-                    f.text = [this, on, pre, aux, levelText] (int v)
-                    {
-                        return levelText (v) + (((y.get (pre) >> aux) & 1) != 0 ? " PRE" : "") + (((y.get (on) >> aux) & 1) != 0 ? "" : " OFF");
-                    };
+                    f.text = [this, on, aux, levelText] (int v) { return levelText (v) + (((y.get (on) >> aux) & 1) != 0 ? "" : " OFF"); };
                     f.action = [this, pre, aux] { y.set (pre, juce::jmax (0, y.get (pre)) ^ (1 << aux)); };
+                    // PRE or POST under the value (V2 MAN p.107), PRE lit.
+                    f.tagOn = [this, pre, aux] { return ((y.get (pre) >> aux) & 1) != 0; };
+                    f.tag = [on = f.tagOn] { return juce::String (on() ? "PRE" : "POST"); };
                 }
                 fields.push_back (f);
             }
+            if (function == Function::Delay)
+                layoutDelay();
+            else
+                layoutChannels();
             focus = juce::jlimit (0, juce::jmax (0, (int) fields.size() - 1), focus);
             digit = juce::jlimit (0, juce::jmax (0, fields.empty() ? 0 : fields[(size_t) focus].digits - 1), digit);
             repaint();
@@ -829,14 +862,51 @@ namespace y02r
                     }
                     break;
                 }
-                if (memberOf (s) < 0)
-                    break;
-                for (int b = 0; b < 8; ++b)
-                    bitField ("BUS " + juce::String (b + 1), address (s, kRouting), b);
-                bitField ("ST", address (s, kSwitches), kSt);
-                if (s < 16)
-                    stateField ("DIRECT", Yamaha02R::Direct, s, 0, 1, onOff);
+            {
+                // ROUTING 1/2 (V2 MAN pp.39-40): every channel of the selected one's
+                // side, MIC 1-16 and LINE 17/18-23/24 or TAPE 1-16 and EFF 1-2, a
+                // column each; a row for each bus, S (STEREO), D (the direct out,
+                // MIC 1-16); their numbers over and under them.
+                const bool tape = s >= kTape && s < kBus;
+                std::vector<int> columns;
+                for (int k = 0; k < 16; ++k)
+                    columns.push_back ((tape ? kTape : 0) + k);
+                for (int k = 0; k < (tape ? 2 : 4); ++k)
+                    columns.push_back ((tape ? kEff : 16) + k);
+                const float units = (float) columns.size() + 0.6f, rows = 12.4f;
+                const auto x = [units] (int c) { return ((float) c + (c >= 16 ? 0.6f : 0.0f)) / units; };
+                const auto rowY = [rows] (int r) { return ((float) r + 1.0f + (r >= 8 ? 0.4f : 0.0f)) / rows; };
+                for (int r = 0; r < 10; ++r)
+                    for (int c = 0; c < (int) columns.size(); ++c)
+                    {
+                        const int st = columns[(size_t) c];
+                        if (r == 9 && (tape || st >= 16))
+                            continue;
+                        const juce::String label = r < 8 ? juce::String (r + 1) : r == 8 ? juce::String ("S") : juce::String ("D");
+                        const auto before = fields.size();
+                        if (r < 8)
+                            bitField (label, address (st, kRouting), r);
+                        else if (r == 8)
+                            bitField (label, address (st, kSwitches), kSt);
+                        else
+                            stateField (label, Yamaha02R::Direct, st, 0, 1, onOff);
+                        if (fields.size() == before)
+                            continue;
+                        fields.back().look = Field::Look::Cell;
+                        fields.back().strip = st;
+                        spots.push_back ({ x (c), rowY (r), 1.0f / units, 1.0f / rows });
+                    }
+                for (int c = 0; c < (int) columns.size(); ++c)
+                {
+                    const int st = columns[(size_t) c];
+                    const juce::String over = st >= kEff ? "E" + juce::String (st - kEff + 1) : st >= kTape ? juce::String (st - kTape + 1) : st >= 16 ? juce::String (17 + 2 * (st - 16)) : juce::String (st + 1);
+                    const juce::String under = st >= 16 && st < kTape ? juce::String (18 + 2 * (st - 16)) : over;
+                    marks.push_back ({ Mark::Box, { x (c), 0.0f, 1.0f / units, 1.0f / rows }, over, st == s });
+                    marks.push_back ({ Mark::Box, { x (c), (rows - 1.0f) / rows, 1.0f / units, 1.0f / rows }, under, st == s });
+                }
+                arrowAt = { 1.0f, rowY (9) + 1.0f / rows };
                 break;
+            }
             case Function::Eq:
             {
                 if (! hasEq (s) || eqModel < 0)
@@ -883,32 +953,120 @@ namespace y02r
             {
                 // 1/2 the fader groups A-D, 2/2 the mute groups E-H: each group on,
                 // and every channel's group.
+                // As the pictures (V2 MAN pp.182-183): TAPE 1-16 and EFF 1-2, then
+                // MIC 1-16 and LINE 17/18-23/24, a column each; a row per group,
+                // a channel's group lit; each group's ENABLE at the right.
                 const bool mute = page == 1;
+                const auto groupWhat = mute ? Yamaha02R::MuteGroup : Yamaha02R::FaderGroup;
+                const float units = 22.6f, rows = 12.0f;
                 for (int g = 0; g < 4; ++g)
-                    stateField ("GRP " + juce::String::charToString ((mute ? 'E' : 'A') + g), Yamaha02R::GroupOn, (mute ? 4 : 0) + g, 0, 1, onOff);
-                for (int st = 0; st < kBus; ++st)
-                    stateField (shortName (st), mute ? Yamaha02R::MuteGroup : Yamaha02R::FaderGroup, memberOf (st), 0, 4, [mute] (int v)
-                                { return v == 0 ? juce::String ("-") : juce::String::charToString ((mute ? 'E' : 'A') + v - 1); });
+                {
+                    const auto letter = juce::String::charToString ((mute ? 'E' : 'A') + g);
+                    const auto before = fields.size();
+                    stateField ("GRP " + letter, Yamaha02R::GroupOn, (mute ? 4 : 0) + g, 0, 1, onOff);
+                    if (fields.size() == before)
+                        continue;
+                    fields.back().look = Field::Look::Button;
+                    fields.back().text = [letter] (int) { return letter; };
+                    spots.push_back ({ 20.9f / units, (float) (2 + g) / rows, 1.2f / units, 1.0f / rows });
+                }
+                marks.push_back ({ Mark::Caption, { 20.4f / units, 1.0f / rows, 2.2f / units, 1.0f / rows }, "Enable" });
+                marks.push_back ({ Mark::Frame, { 20.6f / units, 1.9f / rows, 1.8f / units, 4.2f / rows }, {} });
+                marks.push_back ({ Mark::Caption, { 0.0f, 0.0f, 1.0f, 1.0f / rows }, mute ? "Mute  Group" : "Fader  Group" });
+                for (int side = 0; side < 2; ++side)
+                {
+                    // TAPE (and EFF) over MIC (and LINE).
+                    std::vector<int> columns;
+                    for (int k = 0; k < 16; ++k)
+                        columns.push_back ((side == 0 ? kTape : 0) + k);
+                    for (int k = 0; k < (side == 0 ? 2 : 4); ++k)
+                        columns.push_back ((side == 0 ? kEff : 16) + k);
+                    const float top = side == 0 ? 1.0f : 7.0f;
+                    marks.push_back ({ Mark::Caption, { 0.0f, (top - 1.0f) / rows, 2.0f / units, 1.0f / rows }, side == 0 ? "Tape" : "Mic" });
+                    for (int g = 0; g < 4; ++g)
+                        for (int c = 0; c < (int) columns.size(); ++c)
+                        {
+                            const int st = columns[(size_t) c], m = memberOf (st);
+                            if (y.getState (groupWhat, m) < 0)
+                                continue;
+                            Field f;
+                            f.label = juce::String::charToString ((mute ? 'E' : 'A') + g);
+                            f.strip = st;
+                            f.look = Field::Look::Cell;
+                            f.lo = 0;
+                            f.hi = 1;
+                            f.get = [this, groupWhat, m, g] { return y.getState (groupWhat, m) == g + 1 ? 1 : 0; };
+                            f.set = [this, groupWhat, m, g] (int v)
+                            {
+                                if (v != 0)
+                                    y.setState (groupWhat, m, g + 1);
+                                else if (y.getState (groupWhat, m) == g + 1)
+                                    y.setState (groupWhat, m, 0);
+                            };
+                            f.text = onOff;
+                            fields.push_back (f);
+                            spots.push_back ({ (float) c / units, (top + 1.0f + (float) g) / rows, 1.0f / units, 1.0f / rows });
+                        }
+                    for (int c = 0; c < (int) columns.size(); ++c)
+                    {
+                        const int st = columns[(size_t) c];
+                        const juce::String number = st >= kEff ? "E" + juce::String (st - kEff + 1) : st >= kTape ? juce::String (st - kTape + 1)
+                                                  : st >= 16 ? juce::String (17 + 2 * (st - 16)) : juce::String (st + 1);
+                        marks.push_back ({ Mark::Box, { (float) c / units, top / rows, 1.0f / units, 1.0f / rows }, number, st == s });
+                    }
+                }
                 break;
             }
             case Function::Pair:
+            {
+                // As the pictures (V2 MAN pp.184-186): each pair's numbers, its MS
+                // (M the odd channel, S the even) and its heart; TAPE over MIC, or
+                // AUX over BUS.
+                const float rows = 12.0f;
+                const auto pairRow = [&] (const juce::String& side, const juce::String& prefix, Yamaha02R::State what, int first, int n, float top, bool ms)
+                {
+                    const float left = 0.22f, w = (1.0f - left - 0.06f) / (float) (2 * n);
+                    marks.push_back ({ Mark::Caption, { 0.0f, (top + 1.5f) / rows, left - 0.02f, 1.0f / rows }, side });
+                    marks.push_back ({ Mark::Frame, { left, top / rows, w * (float) (2 * n), (ms ? 4.0f : 3.0f) / rows }, {} });
+                    for (int k = 0; k < n; ++k)
+                    {
+                        const float x = left + w * (float) (2 * k);
+                        marks.push_back ({ Mark::Caption, { x, top / rows, w, 1.0f / rows }, juce::String (2 * k + 1) });
+                        marks.push_back ({ Mark::Caption, { x + w, top / rows, w, 1.0f / rows }, juce::String (2 * k + 2) });
+                        const auto name = prefix + juce::String (2 * k + 1) + "/" + juce::String (2 * k + 2);
+                        auto before = fields.size();
+                        stateField (name, what, first + k, 0, 1, onOff);
+                        if (fields.size() > before)
+                        {
+                            fields.back().look = Field::Look::Heart;
+                            spots.push_back ({ x, (top + (ms ? 2.0f : 1.0f)) / rows, 2.0f * w, 2.0f / rows });
+                        }
+                        if (! ms)
+                            continue;
+                        before = fields.size();
+                        stateField (name + " MS", Yamaha02R::Ms, first + k, 0, 1, onOff);
+                        if (fields.size() > before)
+                        {
+                            fields.back().look = Field::Look::Button;
+                            fields.back().text = [] (int) { return juce::String ("M  S"); };
+                            spots.push_back ({ x, (top + 1.0f) / rows, 2.0f * w, 1.0f / rows });
+                        }
+                    }
+                };
                 if (page == 0)
                 {
-                    // 1/2 the channel pairs: MIC 1/2 ... 15/16, TAPE 1/2 ... 15/16.
-                    // Each pair's MS beside it (V2 MAN p.186): M the odd channel, S the even.
-                    for (int k = 0; k < 16; ++k)
-                    {
-                        const auto name = (k < 8 ? "" : "T") + juce::String (2 * (k % 8) + 1) + "/" + juce::String (2 * (k % 8) + 2);
-                        stateField (name, Yamaha02R::Pair, k, 0, 1, onOff);
-                        stateField (name + " MS", Yamaha02R::Ms, k, 0, 1, onOff);
-                    }
+                    // MIC first in the fields (pairs 0-7), drawn under TAPE.
+                    marks.push_back ({ Mark::Caption, { 0.0f, 0.0f, 1.0f, 1.0f / rows }, "Pair / MS decoding" });
+                    pairRow ("Mic", "", Yamaha02R::Pair, 0, 8, 7.0f, true);
+                    pairRow ("Tape", "T", Yamaha02R::Pair, 8, 8, 1.5f, true);
                     break;
                 }
-                for (int k = 0; k < 4; ++k)
-                    stateField ("AUX " + juce::String (2 * k + 1) + "/" + juce::String (2 * k + 2), Yamaha02R::AuxPair, k, 0, 1, onOff);
-                for (int k = 0; k < 4; ++k)
-                    stateField ("BUS " + juce::String (2 * k + 1) + "/" + juce::String (2 * k + 2), Yamaha02R::BusPair, k, 0, 1, onOff);
+                marks.push_back ({ Mark::Caption, { 0.0f, 0.0f, 1.0f, 1.0f / rows }, "Aux Pair" });
+                pairRow ("Aux", "AUX ", Yamaha02R::AuxPair, 0, 4, 1.5f, false);
+                marks.push_back ({ Mark::Caption, { 0.0f, 6.0f / rows, 1.0f, 1.0f / rows }, "Bus Pair" });
+                pairRow ("Bus", "BUS ", Yamaha02R::BusPair, 0, 4, 7.5f, false);
                 break;
+            }
             case Function::Scene:
                 if (page == 0)
                 {
@@ -936,11 +1094,18 @@ namespace y02r
                 for (int st = 0; st <= kBus; ++st)
                 {
                     const int strip_ = st == kBus ? kStereo : st;
+                    const auto before = fields.size();
                     if (page == 1)
                         stateField (shortName (strip_), Yamaha02R::RecallSafe, faderIndexOf (strip_), 0, 1, onOff);
                     else
-                        stateField (shortName (strip_), Yamaha02R::FadeTime, faderIndexOf (strip_), 0, 100, [] (int v) { return juce::String (v / 10.0, 1) + "s"; });
+                        stateField (shortName (strip_), Yamaha02R::FadeTime, faderIndexOf (strip_), 0, 100, [] (int v) { return juce::String (v / 10.0, 1); });
+                    if (fields.size() > before)
+                        fields.back().strip = strip_;
                 }
+                if (page == 1)
+                    layoutRecallSafe();
+                else
+                    layoutFadeTimes();
                 break;
             case Function::Utility:
             {
@@ -1164,6 +1329,9 @@ namespace y02r
                                         return juce::String (page == 2 ? out[v] : in[v]);
                                     },
                                     0, 2 });
+                // Its choices at the right of the lower meters (V2 MAN pp.41-43), or under the outputs'.
+                fields.back().look = Field::Look::Radio;
+                spots.push_back (page == 2 ? juce::Rectangle<float> (0.5f, 0.88f, 0.34f, 0.1f) : juce::Rectangle<float> (0.6f, 0.62f, 0.18f, 0.33f));
                 break;
             default:
             {
@@ -1255,8 +1423,186 @@ namespace y02r
             repaint();
             return;
         }
+        if (! spots.empty() && std::abs (delta) > 1)
+        {
+            const auto from = fieldBox (focus).getCentre();
+            int best = -1;
+            float bestCost = 0.0f;
+            for (int j = 0; j < n; ++j)
+            {
+                const auto to = fieldBox (j).getCentre();
+                const float dy = (to.y - from.y) * (delta > 0 ? 1.0f : -1.0f);
+                if (j == focus || dy < 2.0f)
+                    continue;
+                const float cost = dy + 3.0f * std::abs (to.x - from.x);
+                if (best < 0 || cost < bestCost)
+                    best = j, bestCost = cost;
+            }
+            if (best >= 0)
+                focusField (best, delta > 0);
+            repaint();
+            return;
+        }
         focusField ((focus + delta + n) % n, delta > 0);
         repaint();
+    }
+
+    void Display::layoutChannels()
+    {
+        // Eight columns, three rows (V2 MAN pp.33, 36, 107): MIC 1-8 and 9-16 (or
+        // TAPE), then LINE 17/18-23/24 two columns each (or EFF 1, EFF 2, STEREO);
+        // ruled in pairs.
+        for (auto& f : fields)
+        {
+            f.look = Field::Look::Knob;
+            const int st = f.strip;
+            const int base = st >= kTape && st < kEff ? st - kTape : st;
+            const bool second = ! spots.empty() && fields[spots.size() - 1].strip == st;
+            int col = 0, row = 2, span = 2;
+            if (base < 16)
+                col = base % 8, row = base / 8, span = 1;
+            else if (st < kTape)
+                col = 2 * (st - 16);
+            else if (st < kBus)
+                col = 2 * (st - kEff);
+            else
+                col = 6;
+            // A stereo channel's two pans: L, then R in the right column, one number under both.
+            if (f.noNumber)
+            {
+                span = 1;
+                if (second)
+                    ++col;
+                else
+                    marks.push_back ({ Mark::Box, { (float) col / 8.0f, (float) (row + 1) / 3.0f - 0.062f, 2.0f / 8.0f, 0.055f }, f.label });
+            }
+            spots.push_back ({ (float) col / 8.0f, (float) row / 3.0f, (float) span / 8.0f, 1.0f / 3.0f });
+        }
+        for (int k = 1; k < 4; ++k)
+            marks.push_back ({ Mark::Rule, { (float) k / 4.0f, 0.0f, 0.0f, 1.0f }, {} });
+        for (int k = 1; k < 3; ++k)
+            marks.push_back ({ Mark::Rule, { 0.0f, (float) k / 3.0f, 1.0f, 0.0f }, {} });
+        marks.push_back ({ Mark::Frame, { 0.0f, 0.0f, 1.0f, 1.0f }, {} });
+    }
+
+    void Display::layoutDelay()
+    {
+        // Three columns of rows (V2 MAN p.34): 1-8, 9-16 (or TAPE), then the
+        // stereo channels two rows each (or EFF); "Smpl mSEC" over each; the
+        // unit the wheel moves first.
+        constexpr float rows = 9.0f, w = 1.0f / 3.0f;
+        for (auto& f : fields)
+        {
+            if (f.strip < 0)
+            {
+                spots.push_back ({ 0.0f, 0.0f, w * kRowSamples, 1.0f / rows });
+                continue;
+            }
+            f.look = Field::Look::Row;
+            const int st = f.strip;
+            const int base = st >= kTape && st < kEff ? st - kTape : st;
+            if (base < 16)
+                spots.push_back ({ (float) (base / 8) * w, (float) (1 + base % 8) / rows, w, 1.0f / rows });
+            else
+            {
+                const int k = st < kTape ? st - 16 : st - kEff;
+                spots.push_back ({ 2.0f * w, (float) (1 + 2 * k) / rows, w, 2.0f / rows });
+            }
+        }
+        if (! fields.empty())
+            fields[0].look = Field::Look::Button;
+        for (int c = 0; c < 3; ++c)
+        {
+            marks.push_back ({ Mark::Caption, { (c + kRowSamples) * w, 0.0f, (kRowMs - kRowSamples) * w, 1.0f / rows }, "Smpl" });
+            marks.push_back ({ Mark::Caption, { (c + kRowMs) * w, 0.0f, (kRowOn - kRowMs) * w, 1.0f / rows }, "mSEC" });
+        }
+        for (int k = 1; k < 3; ++k)
+            marks.push_back ({ Mark::Rule, { (float) k * w, 0.0f, 0.0f, 1.0f }, {} });
+        for (int k = 1; k < 5; ++k)
+            marks.push_back ({ Mark::Rule, { 0.0f, (1.0f + 2.0f * (float) k) / rows, 1.0f, 0.0f }, {} });
+        marks.push_back ({ Mark::Rule, { 0.0f, 1.0f / rows, 1.0f, 0.0f }, {} });
+        marks.push_back ({ Mark::Frame, { 0.0f, 0.0f, 1.0f, 1.0f }, {} });
+    }
+
+    void Display::layoutRecallSafe()
+    {
+        // ENABLE and STEREO side by side; TAPE 1-16, MIC 1-16, LINE 17/18-23/24
+        // and EFF 1-2, each framed; a channel's number lit when it's safe.
+        constexpr float rows = 12.0f;
+        const auto frame = [this] (const juce::String& name, float x, float top, float w)
+        {
+            marks.push_back ({ Mark::Frame, { x, top / rows, w, 1.6f / rows }, name });
+        };
+        marks.push_back ({ Mark::Caption, { 0.0f, 0.0f, 1.0f, 1.0f / rows }, "Fader Recall Safe" });
+        frame ("Enable/Disable", 0.02f, 1.5f, 0.36f);
+        frame ("Stereo Mas. Recall Safe", 0.44f, 1.5f, 0.54f);
+        frame ("Tape Recall Safe", 0.02f, 4.0f, 0.96f);
+        frame ("Mic Recall Safe", 0.02f, 6.5f, 0.96f);
+        frame ("Line Recall Safe", 0.02f, 9.0f, 0.5f);
+        frame ("Eff. Recall Safe", 0.58f, 9.0f, 0.4f);
+        const float cell = 0.94f / 16.0f, h = 1.0f / rows;
+        for (auto& f : fields)
+        {
+            f.look = Field::Look::Button;
+            const int st = f.strip;
+            juce::String name;
+            juce::Rectangle<float> at;
+            if (st < 0)
+                name = "ENABLE", at = { 0.12f, 1.8f / rows, 0.16f, h };
+            else if (st == kStereo)
+                name = "STEREO", at = { 0.63f, 1.8f / rows, 0.16f, h };
+            else if (st < 16 || (st >= kTape && st < kEff))
+            {
+                const int k = st < 16 ? st : st - kTape;
+                name = juce::String (k + 1);
+                at = { 0.03f + cell * (float) k, (st < 16 ? 6.8f : 4.3f) / rows, cell, h };
+            }
+            else if (st < kTape)
+                name = juce::String (17 + 2 * (st - 16)) + "/" + juce::String (18 + 2 * (st - 16)), at = { 0.04f + 0.115f * (float) (st - 16), 9.3f / rows, 0.11f, h };
+            else
+                name = juce::String (st - kEff + 1), at = { 0.66f + 0.2f * (float) (st - kEff), 9.3f / rows, 0.06f, h };
+            f.text = [name] (int) { return name; };
+            spots.push_back (at);
+        }
+    }
+
+    void Display::layoutFadeTimes()
+    {
+        // Three columns (V2 MAN p.136): MIC 1-8 beside 9-16, TAPE likewise, then
+        // LINE 17/18-23/24 two rows each beside EFF 1, EFF 2 and ST; seconds.
+        constexpr float rows = 10.0f, third = 1.0f / 3.0f, half = third / 2.0f;
+        marks.push_back ({ Mark::Caption, { 0.0f, 0.0f, 1.0f, 1.0f / rows }, "Fade Time" });
+        marks.push_back ({ Mark::Caption, { 2.0f * third, 0.0f, third, 1.0f / rows }, "[SEC]" });
+        const char* heads[] = { "Mic", "Tape", "Line/Rtn/ST" };
+        for (int c = 0; c < 3; ++c)
+            marks.push_back ({ Mark::Caption, { c * third, 1.0f / rows, third, 1.0f / rows }, heads[c] });
+        for (auto& f : fields)
+        {
+            f.look = Field::Look::Row;
+            const int st = f.strip;
+            if (st < 16 || (st >= kTape && st < kEff))
+            {
+                const int k = st < 16 ? st : st - kTape;
+                f.label = juce::String (k + 1);
+                spots.push_back ({ (st < 16 ? 0.0f : third) + (float) (k / 8) * half, (float) (2 + k % 8) / rows, half, 1.0f / rows });
+            }
+            else if (st < kTape)
+            {
+                f.label = juce::String (17 + 2 * (st - 16)) + "/" + juce::String (18 + 2 * (st - 16));
+                spots.push_back ({ 2.0f * third, (float) (2 + 2 * (st - 16)) / rows, half, 2.0f / rows });
+            }
+            else
+            {
+                const int k = st == kStereo ? 3 : st - kEff;
+                f.label = st == kStereo ? juce::String ("ST") : "E" + juce::String (k + 1);
+                spots.push_back ({ 2.0f * third + half, (float) (2 + 2 * k) / rows, half, 2.0f / rows });
+            }
+        }
+        for (int k = 1; k < 3; ++k)
+            marks.push_back ({ Mark::Rule, { (float) k * third, 1.0f / rows, 0.0f, 1.0f - 1.0f / rows }, {} });
+        for (int k = 0; k < 4; ++k)
+            marks.push_back ({ Mark::Rule, { 0.0f, (2.0f + 2.0f * (float) k) / rows, 1.0f, 0.0f }, {} });
+        marks.push_back ({ Mark::Frame, { 0.0f, 1.0f / rows, 1.0f, 1.0f - 1.0f / rows }, {} });
     }
 
     void Display::focusField (int i, bool firstDigit)
@@ -1358,9 +1704,22 @@ namespace y02r
         repaint();
     }
 
+    juce::Rectangle<float> Display::pageArea() const
+    {
+        return getLocalBounds().toFloat().reduced (14.0f).withTrimmedTop (30.0f).withTrimmedBottom (26.0f);
+    }
+
+    juce::Rectangle<float> Display::toPage (juce::Rectangle<float> unit) const
+    {
+        const auto a = pageArea();
+        return { a.getX() + unit.getX() * a.getWidth(), a.getY() + unit.getY() * a.getHeight(), unit.getWidth() * a.getWidth(), unit.getHeight() * a.getHeight() };
+    }
+
     juce::Rectangle<float> Display::fieldBox (int i) const
     {
-        auto area = getLocalBounds().toFloat().reduced (14.0f).withTrimmedTop (40.0f).withTrimmedBottom (28.0f);
+        if (juce::isPositiveAndBelow (i, (int) spots.size()))
+            return toPage (spots[(size_t) i]).reduced (1.0f);
+        auto area = pageArea();
         if (function == Function::Meter || function == Function::Eq)
             area = area.withTrimmedRight (area.getWidth() * (function == Function::Eq ? 0.42f : 0.0f));
         const bool graph = surroundGraph();
@@ -1373,23 +1732,316 @@ namespace y02r
         return { area.getX() + w * (float) (i % cols), area.getY() + h * (float) (i / cols), w - 6.0f, h - 6.0f };
     }
 
+    namespace
+    {
+        constexpr float kSmall = 10.0f;
+        constexpr float kTagH = 12.0f, kNumberH = 13.0f, kValueH = 12.0f;
+
+        /** A word in a box: lit (inverted) or outlined. */
+        void chip (juce::Graphics& g, juce::Rectangle<float> r, const juce::String& text, bool lit)
+        {
+            if (lit)
+            {
+                g.setColour (kPixel);
+                g.fillRect (r);
+            }
+            else
+            {
+                g.setColour (kPixel);
+                g.drawRect (r, 1.0f);
+            }
+            g.setColour (lit ? kLcd : kPixel);
+            g.setFont (type::font (kSmall, true));
+            g.drawFittedText (text, r.toNearestInt(), juce::Justification::centred, 1, 0.8f);
+        }
+
+        /** A box as wide as its word (and a margin), centred in `r`. */
+        juce::Rectangle<float> fitted (juce::Rectangle<float> r, const juce::String& text, float margin = 8.0f)
+        {
+            const float w = juce::GlyphArrangement::getStringWidth (type::font (kSmall, true), text) + margin;
+            return r.withSizeKeepingCentre (juce::jmin (r.getWidth(), juce::jmax (w, r.getHeight() + 2.0f)), r.getHeight());
+        }
+
+        /** A rotary knob: its circle and the pointer at `frac` of its travel (7 o'clock to 5). */
+        void knob (juce::Graphics& g, juce::Rectangle<float> r, float frac, float thickness = 1.4f)
+        {
+            const float d = juce::jmin (r.getWidth(), r.getHeight(), 30.0f);
+            const auto c = r.getCentre();
+            g.setColour (kPixel);
+            g.drawEllipse (juce::Rectangle<float> (d, d).withCentre (c), thickness);
+            const float a = (-0.75f + 1.5f * juce::jlimit (0.0f, 1.0f, frac)) * juce::MathConstants<float>::pi;
+            g.drawLine (c.x, c.y, c.x + std::sin (a) * d * 0.5f, c.y - std::cos (a) * d * 0.5f, thickness + 0.4f);
+        }
+    } // namespace
+
+    juce::Rectangle<float> Display::valueBox (int i) const
+    {
+        const auto& f = fields[(size_t) i];
+        auto r = fieldBox (i);
+        switch (f.look)
+        {
+            case Field::Look::Knob:
+            {
+                r.removeFromBottom (kNumberH);
+                if (f.tag && ! f.tagAbove)
+                    r.removeFromBottom (kTagH);
+                return r.removeFromBottom (kValueH);
+            }
+            case Field::Look::Row:
+            {
+                const float w = r.getWidth();
+                r = r.withHeight (juce::jmin (r.getHeight(), 22.0f));
+                const auto at = [&r, w] (float from, float to) { return r.withX (r.getX() + from * w).withWidth ((to - from) * w); };
+                if (! f.note && ! f.tag)
+                    return at (kRowCompact, 1.0f); // a number and its value (FADE TIME's)
+                return f.noteFirst ? at (kRowMs, kRowOn) : at (kRowSamples, kRowMs);
+            }
+            case Field::Look::Tile:
+                return r.withTrimmedTop (r.getHeight() * 0.4f);
+            case Field::Look::Cell:
+            case Field::Look::Button:
+            case Field::Look::Heart:
+            case Field::Look::Radio:
+                break;
+        }
+        return r;
+    }
+
+    void Display::paintField (juce::Graphics& g, int i) const
+    {
+        const auto& f = fields[(size_t) i];
+        const auto box = fieldBox (i);
+        const bool focused = i == focus;
+        const int v = f.pending >= 0 ? f.pending : f.get ? f.get() : 0;
+        const auto text = f.text ? f.text (v) : juce::String (v);
+        const auto value = valueBox (i);
+        bool invertValue = false;
+        switch (f.look)
+        {
+            case Field::Look::Tile:
+                g.setColour (focused ? kPixel : kLcdFrame);
+                g.fillRoundedRectangle (box, 3.0f);
+                g.setColour (focused ? kLcd : kPixelDim);
+                g.setFont (type::font (type::kCaption, true));
+                g.drawText (f.label, box.withHeight (box.getHeight() * 0.42f), juce::Justification::centred);
+                invertValue = focused;
+                break;
+            case Field::Look::Knob:
+            {
+                // Its switch, knob, value and number (the number lit under the cursor).
+                auto r = box;
+                if (f.tag && f.tagAbove)
+                    chip (g, fitted (r.removeFromTop (kTagH), "REV"), f.tag(), f.tagOn && f.tagOn());
+                const auto numberRow = r.removeFromBottom (kNumberH).reduced (0.0f, 1.0f);
+                if (! f.noNumber)
+                    chip (g, fitted (numberRow, f.label), f.label, focused);
+                if (f.tag && ! f.tagAbove)
+                    chip (g, fitted (r.removeFromBottom (kTagH).reduced (0.0f, 1.0f), "POST"), f.tag(), f.tagOn && f.tagOn());
+                r.removeFromBottom (kValueH);
+                const float span = (float) juce::jmax (1, f.hi - f.lo);
+                knob (g, r.reduced (0.0f, 2.0f), (float) (v - f.lo) / span);
+                invertValue = focused && f.noNumber;
+                break;
+            }
+            case Field::Look::Row:
+            {
+                // Its number (a stereo pair's as tall as its two rows), the two readings, ON.
+                const float w = box.getWidth();
+                const auto line = box.withHeight (juce::jmin (box.getHeight(), 22.0f));
+                const auto at = [&line, w] (float from, float to) { return line.withX (line.getX() + from * w).withWidth ((to - from) * w); };
+                auto number = box.withWidth (w * (! f.note && ! f.tag ? kRowCompact : kRowSamples)).reduced (3.0f, 3.0f);
+                number = number.withSizeKeepingCentre (juce::jmin (number.getWidth(), juce::GlyphArrangement::getStringWidth (type::font (kSmall, true), f.label) + 8.0f),
+                                                        juce::jmin (number.getHeight(), box.getHeight() > 30.0f ? 34.0f : 15.0f))
+                             .withX (number.getX());
+                chip (g, number, f.label, focused);
+                if (f.tag)
+                    chip (g, at (kRowOn, 1.0f).reduced (3.0f, 4.0f), f.tag(), f.tagOn && f.tagOn());
+                if (f.note)
+                {
+                    g.setColour (kPixelDim);
+                    g.setFont (type::font (kSmall + 1.0f, true));
+                    g.drawText (f.note(), f.noteFirst ? at (kRowSamples, kRowMs) : at (kRowMs, kRowOn), juce::Justification::centred);
+                }
+                break;
+            }
+            case Field::Look::Heart:
+            {
+                // Whole (filled) when paired, broken when not.
+                const float d = juce::jmin (box.getWidth() * 0.6f, box.getHeight() * 0.9f);
+                const auto h = juce::Rectangle<float> (d, d * 0.9f).withCentre (box.getCentre());
+                juce::Path p;
+                p.startNewSubPath (h.getCentreX(), h.getBottom());
+                p.cubicTo (h.getX() - d * 0.1f, h.getY() + d * 0.5f, h.getX() + d * 0.05f, h.getY() - d * 0.1f, h.getCentreX(), h.getY() + d * 0.22f);
+                p.cubicTo (h.getRight() - d * 0.05f, h.getY() - d * 0.1f, h.getRight() + d * 0.1f, h.getY() + d * 0.5f, h.getCentreX(), h.getBottom());
+                p.closeSubPath();
+                g.setColour (kPixel);
+                g.fillPath (p);
+                if (v == 0)
+                {
+                    // The crack down its middle.
+                    juce::Path crack;
+                    const float cx = h.getCentreX();
+                    crack.startNewSubPath (cx, h.getY() + d * 0.2f);
+                    crack.lineTo (cx - d * 0.12f, h.getY() + d * 0.4f);
+                    crack.lineTo (cx + d * 0.1f, h.getY() + d * 0.58f);
+                    crack.lineTo (cx - d * 0.06f, h.getY() + d * 0.75f);
+                    crack.lineTo (cx, h.getBottom());
+                    g.setColour (kLcd);
+                    g.strokePath (crack, juce::PathStrokeType (2.5f));
+                }
+                if (focused)
+                {
+                    g.setColour (kPixel);
+                    g.drawRect (box.reduced (1.0f), 1.5f);
+                }
+                return;
+            }
+            case Field::Look::Radio:
+            {
+                // Each different choice a box, in a column (or a row, when wide); the chosen lit.
+                juce::StringArray choices;
+                for (int k = f.lo; k <= f.hi; ++k)
+                    choices.addIfNotAlreadyThere (f.text (k));
+                const bool across = box.getWidth() > box.getHeight() * 3.0f;
+                const int n = choices.size();
+                for (int k = 0; k < n; ++k)
+                {
+                    const auto r = across ? box.withWidth (box.getWidth() / (float) n).translated (box.getWidth() / (float) n * (float) k, 0.0f)
+                                          : box.withHeight (box.getHeight() / (float) n).translated (0.0f, box.getHeight() / (float) n * (float) k);
+                    chip (g, r.reduced (3.0f, 2.0f), choices[k], choices[k] == text);
+                }
+                if (focused)
+                {
+                    g.setColour (kPixel);
+                    g.drawRect (box.expanded (1.0f), 1.5f);
+                }
+                return;
+            }
+            case Field::Look::Cell:
+            case Field::Look::Button:
+            {
+                // A box lit when on; the cursor's a double line round it.
+                const bool on = v != 0;
+                chip (g, box.reduced (1.0f), f.look == Field::Look::Cell ? f.label : text, on);
+                if (focused)
+                {
+                    g.setColour (kPixel);
+                    g.drawRect (box.expanded (1.0f), 1.5f);
+                }
+                return;
+            }
+        }
+        if (invertValue)
+        {
+            g.setColour (kPixel);
+            g.fillRect (f.look == Field::Look::Tile ? value : fitted (value, text, 6.0f));
+        }
+        g.setColour (invertValue ? kLcd : kPixel);
+        const auto font = f.look == Field::Look::Tile ? type::font (type::kLabel, true) : type::font (kSmall + 1.0f, true);
+        g.setFont (font);
+        g.drawText (text, value, juce::Justification::centred);
+        if (focused && f.digits > 0)
+        {
+            // The digit the wheel moves, underlined: the `digit`th of the text's first digits.
+            int at = -1;
+            for (int c = 0, seen = 0; c < text.length(); ++c)
+                if (juce::CharacterFunctions::isDigit (text[c]) && seen++ == digit)
+                {
+                    at = c;
+                    break;
+                }
+            if (at >= 0)
+            {
+                const float x0 = value.getCentreX() - juce::GlyphArrangement::getStringWidth (font, text) * 0.5f;
+                const float x = x0 + juce::GlyphArrangement::getStringWidth (font, text.substring (0, at));
+                const float w = juce::GlyphArrangement::getStringWidth (font, text.substring (at, at + 1));
+                g.setColour (invertValue ? kLcd : kPixel);
+                g.fillRect (juce::Rectangle<float> (x, value.getCentreY() + font.getHeight() * 0.5f, w, 2.0f));
+            }
+        }
+    }
+
+    void Display::paintEncoderRow (juce::Graphics& g, juce::Rectangle<float> row) const
+    {
+        // Sixteen knobs numbered under them, a gap, E1 and E2: the encoders over the faders.
+        g.setColour (kPixel);
+        g.drawRect (row, 1.0f);
+        auto r = row.reduced (6.0f, 2.0f);
+        const float cell = r.getWidth() / 19.0f;
+        g.setFont (type::font (8.5f, true));
+        for (int k = 0; k < 18; ++k)
+        {
+            const float x = r.getX() + cell * (float) (k < 16 ? k : k + 1);
+            const auto c = juce::Rectangle<float> (x, r.getY(), cell, r.getHeight());
+            const float d = juce::jmin (cell - 6.0f, r.getHeight() - 9.0f);
+            knob (g, juce::Rectangle<float> (d, d).withCentre ({ c.getCentreX(), c.getY() + d * 0.5f + 1.0f }), 0.5f, 1.0f);
+            g.drawText (k < 16 ? juce::String (k + 1) : "E" + juce::String (k - 15), c.withTrimmedTop (d + 1.0f), juce::Justification::centred);
+        }
+    }
+
     void Display::paint (juce::Graphics& g)
     {
         auto b = getLocalBounds().toFloat();
         hw::lcd (g, b, look());
-        auto top = b.reduced (16.0f, 12.0f).removeFromTop (26.0f);
-        g.setFont (type::font (type::kLabel, true));
+        // The title bar (V2 MAN p.20): the scene memory at the left, the page's
+        // name and number boxed, the channel boxed at the right.
+        auto top = b.reduced (14.0f, 0.0f).withTrimmedTop (12.0f).removeFromTop (22.0f);
         g.setColour (kPixel);
-        g.drawText (title(), top, juce::Justification::centredLeft);
-        g.drawText (stripName (strip), top, juce::Justification::centred);
-        g.setColour (kPixelDim);
-        g.drawText (memoryText ? memoryText() : juce::String(), top, juce::Justification::centredRight);
-        g.drawHorizontalLine ((int) top.getBottom() + 2, b.getX() + 14.0f, b.getRight() - 14.0f);
+        g.drawRect (top, 1.0f);
+        g.setFont (type::font (type::kLabel, true));
+        const auto channel = top.removeFromRight (juce::jmax (90.0f, top.getWidth() * 0.16f));
+        g.drawRect (channel, 1.5f);
+        g.drawText (stripName (strip), channel, juce::Justification::centred);
+        const auto name = title();
+        const auto titleBox = top.removeFromRight (juce::jmax (150.0f, juce::GlyphArrangement::getStringWidth (type::font (type::kLabel, true), name) + 24.0f));
+        g.drawRect (titleBox, 1.5f);
+        g.drawText (name, titleBox, juce::Justification::centred);
+        g.drawText (memoryText ? memoryText() : juce::String(), top.reduced (10.0f, 0.0f), juce::Justification::centredLeft);
+        paintEncoderRow (g, b.reduced (14.0f, 0.0f).withTrimmedBottom (6.0f).removeFromBottom (28.0f));
+
+        // A picture's lines, frames and words.
+        for (const auto& m : marks)
+        {
+            const auto r = toPage (m.at);
+            g.setColour (kPixel);
+            if (m.kind == Mark::Rule)
+                g.drawLine (r.getX(), r.getY(), r.getRight(), r.getBottom(), 1.0f);
+            else if (m.kind == Mark::Frame)
+            {
+                g.drawRect (r, 1.0f);
+                if (m.text.isNotEmpty())
+                {
+                    // Its title on its top line.
+                    g.setFont (type::font (kSmall, true));
+                    const auto cap = fitted (juce::Rectangle<float> (r.getX(), r.getY() - 6.0f, r.getWidth(), 12.0f), m.text, 10.0f);
+                    g.setColour (kLcd);
+                    g.fillRect (cap);
+                    g.setColour (kPixel);
+                    g.drawText (m.text, cap, juce::Justification::centred);
+                }
+            }
+            else if (m.kind == Mark::Box)
+                chip (g, fitted (r.reduced (1.0f), m.text, 4.0f), m.text, m.lit);
+            else
+            {
+                g.setFont (type::font (kSmall, true));
+                g.drawText (m.text, r, juce::Justification::centred);
+            }
+        }
+        if (! spots.empty() && numPages() > 1)
+        {
+            // The page arrows: the next at the bottom right, the one before at the left.
+            const auto a = toPage ({ arrowAt.x, arrowAt.y, 0.0f, 0.0f }).getPosition();
+            if (page < numPages() - 1)
+                chip (g, juce::Rectangle<float> (a.x - 16.0f, a.y - 13.0f, 16.0f, 13.0f), utf8 ("\xe2\x96\xb6"), false);
+            if (page > 0)
+                chip (g, juce::Rectangle<float> (a.x - 36.0f, a.y - 13.0f, 16.0f, 13.0f), utf8 ("\xe2\x97\x80"), false);
+        }
 
         if (function == Function::Meter)
-            paintMeters (g, b.reduced (14.0f).withTrimmedTop (96.0f).withTrimmedBottom (24.0f)); // METER POINT over them
+            paintMeters (g, pageArea());
         if (function == Function::Eq)
-            paintEq (g, b.reduced (14.0f).withTrimmedTop (40.0f).withTrimmedBottom (28.0f).withTrimmedLeft (b.getWidth() * 0.6f));
+            paintEq (g, pageArea().withTrimmedLeft (b.getWidth() * 0.6f));
         if (fields.empty())
         {
             g.setColour (kPixelDim);
@@ -1397,48 +2049,13 @@ namespace y02r
         }
         if (surroundGraph())
         {
-            const auto area = b.reduced (14.0f).withTrimmedTop (40.0f).withTrimmedBottom (28.0f);
+            const auto area = pageArea();
             paintSurround (g, area.withLeft (area.getRight() - area.getHeight()));
         }
         if (function == Function::View && page == 1 && fields.size() > 1)
-            paintPrograms (g, b.reduced (14.0f).withTrimmedBottom (14.0f).withTop (fieldBox (0).getBottom() + 10.0f));
+            paintPrograms (g, pageArea().withTop (fieldBox (0).getBottom() + 10.0f));
         for (int i = 0; i < (int) fields.size(); ++i)
-        {
-            const auto& f = fields[(size_t) i];
-            const auto box = fieldBox (i);
-            const bool focused = i == focus;
-            g.setColour (focused ? kPixel : kLcdFrame);
-            g.fillRoundedRectangle (box, 3.0f);
-            const auto ink = focused ? kLcd : kPixel;
-            g.setColour (focused ? kLcd : kPixelDim);
-            g.setFont (type::font (type::kCaption, true));
-            g.drawText (f.label, box.withHeight (box.getHeight() * 0.42f), juce::Justification::centred);
-            const int v = f.pending >= 0 ? f.pending : f.get ? f.get() : 0;
-            g.setColour (ink);
-            g.setFont (type::font (type::kLabel, true));
-            const auto text = f.text ? f.text (v) : juce::String (v);
-            const auto valueBox = box.withTrimmedTop (box.getHeight() * 0.4f);
-            g.drawText (text, valueBox, juce::Justification::centred);
-            if (focused && f.digits > 0)
-            {
-                // The digit the wheel moves, underlined: the `digit`th of the text's first digits.
-                const auto font = type::font (type::kLabel, true);
-                int at = -1;
-                for (int c = 0, seen = 0; c < text.length(); ++c)
-                    if (juce::CharacterFunctions::isDigit (text[c]) && seen++ == digit)
-                    {
-                        at = c;
-                        break;
-                    }
-                if (at >= 0)
-                {
-                    const float x0 = valueBox.getCentreX() - juce::GlyphArrangement::getStringWidth (font, text) * 0.5f;
-                    const float x = x0 + juce::GlyphArrangement::getStringWidth (font, text.substring (0, at));
-                    const float w = juce::GlyphArrangement::getStringWidth (font, text.substring (at, at + 1));
-                    g.fillRect (juce::Rectangle<float> (x, valueBox.getCentreY() + font.getHeight() * 0.5f, w, 2.0f));
-                }
-            }
-        }
+            paintField (g, i);
         if (confirmGo != nullptr)
         {
             // The confirmation dialog over the page: its question, CANCEL and EXECUTE.
@@ -1597,38 +2214,83 @@ namespace y02r
 
     void Display::paintMeters (juce::Graphics& g, juce::Rectangle<float> area) const
     {
-        // METER (MAN pp.41-43): 1/3 the inputs (MIC/LINE), 2/3 the returns
-        // (TAPE, EFF), 3/3 the outputs (BUS, AUX, STEREO).
-        const int first = page == 0 ? 0 : page == 1 ? kTape : kBus, last = page == 0 ? kTape : page == 1 ? kBus : kStrips;
-        const int n = last - first;
-        const float w = area.getWidth() / (float) n;
-        for (int s = first; s < last; ++s)
+        // METER (V2 MAN pp.41-43): 1/3 MIC 1-16 over LINE 17/18-23/24, 2/3 TAPE
+        // 1-16 over EFF 1-2, 3/3 BUS, AUX and STEREO; each group on a scale from
+        // CLIP to -48 dB, its numbers under it.
+        const auto levelOf = [this] (int s)
         {
-            Strip* st = nullptr;
             auto& e = ctx.engine;
             auto pick = [] (const MixerEngine::StripList& l, int k) -> Strip* { return juce::isPositiveAndBelow (k, (int) l.size()) ? l[(size_t) k].get() : nullptr; };
-            if (s < kEff)
-                st = pick (e.getChannels(), s);
-            else if (s < kBus)
-                st = pick (e.getAux(), s - kEff);
-            else if (s < kStereo)
-                st = pick (e.getBuses(), s - kBus);
-            else
-                st = pick (e.getMains(), 0);
+            Strip* st = s < kEff ? pick (e.getChannels(), s) : s < kBus ? pick (e.getAux(), s - kEff) : s < kStereo ? pick (e.getBuses(), s - kBus) : pick (e.getMains(), 0);
             const auto point = meterPoint == 0 ? (s < kBus ? MeterPoint::Trim : MeterPoint::PreFader) : meterPoint == 1 ? MeterPoint::PreFader : MeterPoint::Output;
-            const float level = st != nullptr ? juce::Decibels::gainToDecibels (ctx.meters.get (st, point, 0), -60.0f) : -60.0f;
-            auto bar = juce::Rectangle<float> (area.getX() + w * (float) (s - first) + 1.0f, area.getY(), juce::jmax (1.0f, w - 6.0f), area.getHeight() - 14.0f);
-            g.setColour (kLcdFrame);
-            g.fillRect (bar);
-            g.setColour (kPixel);
-            g.fillRect (bar.withTop (bar.getBottom() - bar.getHeight() * (level + 60.0f) / 60.0f));
-            // Each bar's number under it.
-            g.setFont (type::font (9.0f));
-            const juce::String name = s < 16 ? juce::String (s + 1) : s < kTape ? juce::String (17 + 2 * (s - 16)) : s < kEff ? juce::String (s - kTape + 1)
-                                    : s < kBus ? "E" + juce::String (s - kEff + 1) : s < kAux ? "B" + juce::String (s - kBus + 1)
-                                    : s < kStereo ? "A" + juce::String (s - kAux + 1) : juce::String ("ST");
-            g.drawText (name, juce::Rectangle<float> (bar.getX() - 4.0f, bar.getBottom() + 1.0f, bar.getWidth() + 8.0f, 12.0f), juce::Justification::centred);
+            return st != nullptr ? juce::Decibels::gainToDecibels (ctx.meters.get (st, point, 0), -48.0f) : -48.0f;
+        };
+        const auto numberOf = [] (int s)
+        {
+            return s < 16 ? juce::String (s + 1) : s < kTape ? juce::String (17 + 2 * (s - 16)) + "/" + juce::String (18 + 2 * (s - 16))
+                 : s < kEff ? juce::String (s - kTape + 1) : s < kBus ? "EFF" + juce::String (s - kEff + 1)
+                 : s < kAux ? juce::String (s - kBus + 1) : s < kStereo ? juce::String (s - kAux + 1) : juce::String ("ST");
+        };
+        const auto group = [&] (juce::Rectangle<float> r, const std::vector<int>& strips, const juce::StringArray& captions, const std::vector<int>& splits)
+        {
+            // The scale both sides, a dotted line at each mark; the bars; their numbers; the captions under brackets.
+            g.setFont (type::font (8.5f, true));
+            const auto scale = r.withTrimmedBottom (30.0f);
+            const auto bars = scale.reduced (30.0f, 0.0f);
+            const float marksDb[] = { 0.0f, -6.0f, -12.0f, -18.0f, -30.0f, -48.0f };
+            const char* names[] = { "CLIP", "-6", "-12", "-18", "-30", "-48" };
+            const auto yOf = [&scale] (float db) { return scale.getY() + 4.0f + (scale.getHeight() - 8.0f) * (-db / 48.0f); };
+            for (int k = 0; k < 6; ++k)
+            {
+                const float yy = yOf (marksDb[k]);
+                g.setColour (kPixel);
+                g.drawText (names[k], juce::Rectangle<float> (scale.getX(), yy - 5.0f, 28.0f, 10.0f), juce::Justification::centredLeft);
+                g.drawText (names[k], juce::Rectangle<float> (scale.getRight() - 28.0f, yy - 5.0f, 28.0f, 10.0f), juce::Justification::centredRight);
+                g.setColour (kPixelDim);
+                for (float x = bars.getX(); x < bars.getRight(); x += 4.0f)
+                    g.fillRect (x, yy, 1.0f, 1.0f);
+            }
+            const int n = (int) strips.size();
+            const float w = bars.getWidth() / (float) n;
+            for (int k = 0; k < n; ++k)
+            {
+                const float level = levelOf (strips[(size_t) k]);
+                const auto cell = juce::Rectangle<float> (bars.getX() + w * (float) k, yOf (0.0f), w, yOf (-48.0f) - yOf (0.0f));
+                const auto bar = cell.withSizeKeepingCentre (juce::jmax (2.0f, w * 0.45f), cell.getHeight());
+                g.setColour (kPixel);
+                g.fillRect (bar.withTop (yOf (juce::jmax (-48.0f, level))));
+                chip (g, fitted (juce::Rectangle<float> (cell.getX(), scale.getBottom() + 2.0f, w, 12.0f).reduced (1.0f, 0.0f), numberOf (strips[(size_t) k]), 4.0f),
+                      numberOf (strips[(size_t) k]), strips[(size_t) k] == strip);
+            }
+            for (int c = 0; c < captions.size(); ++c)
+            {
+                const float x0 = bars.getX() + w * (float) splits[(size_t) c] + 2.0f, x1 = bars.getX() + w * (float) splits[(size_t) c + 1] - 2.0f;
+                const float yy = scale.getBottom() + 18.0f;
+                g.setColour (kPixel);
+                g.drawLine (x0, yy, x1, yy, 1.0f);
+                g.drawLine (x0, yy - 3.0f, x0, yy, 1.0f);
+                g.drawLine (x1, yy - 3.0f, x1, yy, 1.0f);
+                const auto cap = fitted (juce::Rectangle<float> (x0, yy - 1.0f, x1 - x0, 11.0f), captions[c], 10.0f);
+                g.setColour (kLcd);
+                g.fillRect (cap);
+                g.setColour (kPixel);
+                g.drawText (captions[c], cap, juce::Justification::centred);
+            }
+        };
+        std::vector<int> top, bottom;
+        if (page == 2)
+        {
+            for (int s = kBus; s <= kStereo; ++s)
+                top.push_back (s);
+            group (area.withTrimmedBottom (area.getHeight() * 0.14f), top, { "BUS", "AUX", "ST" }, { 0, 8, 16, 17 });
+            return;
         }
+        for (int k = 0; k < 16; ++k)
+            top.push_back ((page == 0 ? 0 : kTape) + k);
+        for (int k = 0; k < (page == 0 ? 4 : 2); ++k)
+            bottom.push_back ((page == 0 ? 16 : kEff) + k);
+        group (area.withHeight (area.getHeight() * 0.56f), top, { page == 0 ? "MIC" : "TAPE" }, { 0, 16 });
+        group (area.withTrimmedTop (area.getHeight() * 0.6f).withWidth (area.getWidth() * (page == 0 ? 0.48f : 0.3f)), bottom, {}, {});
     }
 
     void Display::paintEq (juce::Graphics& g, juce::Rectangle<float> area) const
@@ -1678,8 +2340,8 @@ namespace y02r
                 if (const auto& f = fields[(size_t) i]; f.digits > 0 && f.get)
                 {
                     const auto text = f.text ? f.text (f.get()) : juce::String (f.get());
-                    const auto font = type::font (type::kLabel, true);
-                    float x = fieldBox (i).getCentreX() - juce::GlyphArrangement::getStringWidth (font, text) * 0.5f;
+                    const auto font = f.look == Field::Look::Tile ? type::font (type::kLabel, true) : type::font (kSmall + 1.0f, true);
+                    float x = valueBox (i).getCentreX() - juce::GlyphArrangement::getStringWidth (font, text) * 0.5f;
                     for (int c = 0, seen = 0; c < text.length() && seen < f.digits; ++c)
                     {
                         const float w = juce::GlyphArrangement::getStringWidth (font, text.substring (c, c + 1));

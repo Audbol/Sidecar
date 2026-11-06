@@ -444,6 +444,24 @@ public:
             expectEquals (y.getState (Yamaha02R::Surround, 0), 0);
             skin.pressFunction (F::Eq);
         }
+        // ROUTING 1/2 (V2 MAN pp.39-40): the selected channel's side, every channel
+        // against BUS 1-8 and S; D under MIC 1-16.
+        skin.pressFunction (F::Routing);
+        expectEquals (display.getPage(), 0);
+        expectEquals ((int) display.getFields().size(), 20 * 9 + 16);
+        {
+            const auto& cell = display.getFields()[2 * 20 + 4];
+            expectEquals (cell.label, juce::String ("3"), "BUS 3");
+            expectEquals (cell.strip, 4, "MIC 5");
+            const int routed = cell.get();
+            cell.set (1 - routed);
+            expectEquals (cell.get(), 1 - routed);
+            cell.set (routed);
+            display.cursor (4); // down: BUS 2 of MIC 1
+            expectEquals (display.getFields()[(size_t) display.getCursor()].label, juce::String ("2"));
+            expectEquals (display.getFields()[(size_t) display.getCursor()].strip, 0);
+        }
+        skin.pressFunction (F::Eq);
         // DELAY digit by digit (MAN p.35): MIC 1's samples' hundreds, then in ms the tenths.
         skin.pressFunction (F::Delay);
         expectEquals (display.getFields()[0].label, juce::String ("UNIT"));
@@ -486,8 +504,8 @@ public:
         {
             const std::tuple<F, int, const char*> pages[] = { { F::Scene, 0, "scene-titles" }, { F::Scene, 1, "scene-safe" }, { F::Scene, 2, "scene-fade" },
                                                               { F::Group, 0, "group-fader" }, { F::Group, 1, "group-mute" }, { F::Pair, 0, "pair" },
-                                                              { F::Att, 0, "att" }, { F::Delay, 1, "delay-tape" }, { F::Pan, 0, "pan" },
-                                                              { F::Meter, 2, "meter-outputs" }, { F::Aux1, 0, "aux1" }, { F::Aux7, 2, "aux7" },
+                                                              { F::Att, 0, "att" }, { F::Delay, 1, "delay-tape" }, { F::Pan, 0, "pan" }, { F::Routing, 0, "routing" },
+                                                              { F::Meter, 2, "meter-outputs" }, { F::Meter, 0, "meter-inputs" }, { F::Pair, 1, "pair-aux" }, { F::Aux1, 0, "aux1" }, { F::Aux7, 2, "aux7" },
                                                               { F::Utility, 0, "utility" }, { F::DigitalIo, 0, "digital-io" }, { F::Setup, 0, "setup" },
                                                               { F::Automix, 0, "automix" }, { F::View, 1, "channel-library" },
                                                               { F::Setup, 2, "setup-prefs" } };
@@ -1235,22 +1253,22 @@ private:
                 int set = 0;
                 auto& wing = rig.engine.getWing();
                 const auto xlr = [&wing, &set] { return wing.runX32Text ("/config/routing/OUT/1-4", set); };
-                const auto before = xlr();
-                const juce::String other = before.endsWith ("AN9-12") ? "AN1-4" : "AN9-12";
+                const auto xlrBefore = xlr();
+                const juce::String other = xlrBefore.endsWith ("AN9-12") ? "AN1-4" : "AN9-12";
                 display.showScreen (S::Library, 4);
                 expect (display.savePreset (4, "Test routing").wasOk());
                 expectEquals (display.getEncoder (1).turn.text(), juce::String ("Test routing"));
                 wing.runX32Text ("/config/routing/OUT/1-4 " + other, set);
-                expect (xlr() != before);
+                expect (xlr() != xlrBefore);
                 display.pushEncoder (1); // LOAD
-                expectEquals (xlr(), before);
+                expectEquals (xlr(), xlrBefore);
                 display.getEncoder (0).turn.set (1.0f); // XLR Out
                 display.pushEncoder (0);                 // off the recall list
                 wing.runX32Text ("/config/routing/OUT/1-4 " + other, set);
                 display.pushEncoder (1);
                 expect (xlr().endsWith (other));
                 display.pushEncoder (0);
-                wing.runX32Text ("/config/routing/OUT/1-4 " + before.fromLastOccurrenceOf (" ", false, false), set);
+                wing.runX32Text ("/config/routing/OUT/1-4 " + xlrBefore.fromLastOccurrenceOf (" ", false, false), set);
                #if JUCE_WINDOWS
                 _putenv_s ("SIDECAR_HOME", "");
                #else

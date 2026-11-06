@@ -595,6 +595,17 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   beside it. The surround buses sum to mono while SURROUND has them, so both
   sides of a stereo channel reach their speakers. A stereo channel with ST
   LINK off has both sides at one place.
+- The 02R display drawn as the manual's pictures (V2 MAN pp.33-43, 107, 135-136,
+  182-186): the title bar (the scene memory, the page boxed, the channel boxed) and
+  the row of the 16 encoders and E1, E2 under every page; PHASE / ATT, PAN and AUX
+  as knobs over their values and channel numbers (NOR / REV over ATT's, PRE / POST
+  under AUX's; a stereo channel's two pans); DELAY as its table (Smpl and mSEC side
+  by side, ON); ROUTING 1/2 as the matrix of every channel of the selected one's
+  side against BUS 1-8, S and D (it was the selected channel's alone); GROUP's grids
+  with ENABLE; PAIR's MS and hearts; SCENE MEMORY's framed fader recall safe and the
+  fade time table; METER's scaled groups with the meter point as its three buttons.
+  The cursor's up and down move to the nearest field above or below. The other
+  pages keep their tiles under the new title bar.
 - X32 LIBRARY as the manual has it (p.58): CHANNEL's encoder 1 the elements a load
   recalls (head amp, configuration, gate, compressor, equalizer, sends), 2 a preset
   and LOAD, 3 SAVE (asks its name), 4 DELETE; EFFECTS the same with the FX slot on

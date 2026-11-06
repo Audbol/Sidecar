@@ -219,6 +219,23 @@ namespace y02r
                 the wheel then moves the one under it (0 the most significant;
                 the text's first run of digits shows them). */
             int digits = 0;
+            /** How the page's picture draws it (V2 MAN pp.33-44): a tile (a page
+                not drawn as its picture), a knob over its value and its channel's
+                number, a row of a table (DELAY's), a cell (a box lit when on),
+                a button, PAIR's heart (whole when paired, broken when not), a
+                column of choices with the one chosen lit (METER's meter point). */
+            enum class Look { Tile, Knob, Row, Cell, Button, Heart, Radio };
+            Look look = Look::Tile;
+            /** A knob's or row's switch (ATT's NOR / REV, AUX's PRE / POST,
+                DELAY's ON): its word, lit when on; over the knob or under its value. */
+            std::function<juce::String()> tag;
+            std::function<bool()> tagOn;
+            bool tagAbove = false;
+            /** A row's second reading (DELAY's other unit), before the value or after. */
+            std::function<juce::String()> note;
+            bool noteFirst = false;
+            /** A knob without its number (a stereo channel's two pans share one). */
+            bool noNumber = false;
         };
         const std::vector<Field>& getFields() const noexcept { return fields; }
         int getCursor() const noexcept { return focus; }
@@ -229,6 +246,36 @@ namespace y02r
     private:
         void build();
         juce::Rectangle<float> fieldBox (int i) const;
+        /** Where field `i`'s value is drawn (and its digits tapped). */
+        juce::Rectangle<float> valueBox (int i) const;
+        /** The page under the title bar and over the encoders' row. */
+        juce::Rectangle<float> pageArea() const;
+        void paintField (juce::Graphics&, int i) const;
+        /** The 16 encoders and E1, E2 under every page (V2 MAN p.20). */
+        void paintEncoderRow (juce::Graphics&, juce::Rectangle<float>) const;
+        /** The all-channel knob pages (PHASE / ATT, PAN, AUX) and DELAY's table
+            as the pictures (V2 MAN pp.33-38, 107): each field's place. */
+        void layoutChannels();
+        void layoutDelay();
+        /** SCENE MEMORY's fader recall safe and fade times as the pictures (V2 MAN pp.135-136). */
+        void layoutRecallSafe();
+        void layoutFadeTimes();
+        /** A picture's lines, frames and words, in the page area's units (0-1). */
+        struct Mark
+        {
+            enum Kind { Rule, Frame, Caption, Box };
+            Kind kind;
+            juce::Rectangle<float> at;
+            juce::String text;
+            /** A box lit (the selected channel's number). */
+            bool lit = false;
+        };
+        std::vector<Mark> marks;
+        /** Each field's place in the page area (0-1); empty, the tiles' grid. */
+        std::vector<juce::Rectangle<float>> spots;
+        juce::Rectangle<float> toPage (juce::Rectangle<float> unit) const;
+        /** Where the page arrows go (their bottom right, in the page area's units). */
+        juce::Point<float> arrowAt { 1.0f, 1.0f };
         juce::String title() const;
         void paintMeters (juce::Graphics&, juce::Rectangle<float>) const;
         void paintEq (juce::Graphics&, juce::Rectangle<float>) const;
