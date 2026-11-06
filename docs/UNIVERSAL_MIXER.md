@@ -657,8 +657,8 @@ Three layers:
         inputs each block takes; the channel strip's GAIN turns the head amp of
         the strip's input (interface inputs 1-128), else the trim. Its output tabs
         (done): out 1-16, aux out, P16 out (encoder 1 picks the output; source, tap,
-        invert, out 1-16's delay; out 1-16's second layer the `OUT` blocks), card
-        out, AES50-A, AES50-B (their blocks). The Universal Mixer's routing pages
+        invert, out 1-16's delay), card out, AES50-A, AES50-B (their blocks), xlr
+        out (the `OUT` blocks, as the manual's XLR out tab, p.54). The Universal Mixer's routing pages
         (done) show the X32's port groups (`ports::X32_PORT_GROUPS`, in the WING's
         places so the menus keep their layout: CARD in AES50 C's, P16 in ST
         CONNECT's); the app finds an interface port's group from the profile's

@@ -978,9 +978,9 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
   inputs (for recording). On the display, ROUTING's tabs set them as on an X32:
   **out 1-16**, **aux out** and **p16 out** choose an output (encoder 1) and what it
   plays (SOURCE: a main, bus, matrix or direct out; TAP; INVERT; out 1-16's DELAY),
-  and out 1-16's second LAYER which outputs signals feed the local outputs, four at a
-  time; **card out**, **aes50-a** and **aes50-b** what each block of eight outputs
-  plays. X32 remote apps and scene files set the same, and the Universal Mixer's
+  **card out**, **aes50-a** and **aes50-b** what each block of eight outputs
+  plays, and **xlr out** which output signals the rear XLR outputs play, four at a
+  time. X32 remote apps and scene files set the same, and the Universal Mixer's
   routing pages show the same groups (LOCAL IN, AUX IN, AES50 A and B, CARD, LOCAL
   OUT, AUX OUT, P16) on an X32.
 - **Touch.** Unlike an X32's, the screen takes touch: tap a tab, drag up or down on

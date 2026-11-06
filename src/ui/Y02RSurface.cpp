@@ -796,7 +796,7 @@ namespace y02r
                             sur ("ST LINK", Yamaha02R::SurLink, 0, 1, onOff);
                             sur ("PATTERN", Yamaha02R::SurPattern, 0, 7, [] (int v)
                                  {
-                                     const char* p[] = { "MIRROR L-R", "MIRROR F-R", "OPPOSITE", "SAME", "MIRROR /", "MIRROR \\", "TURN CW", "TURN CCW" };
+                                     const char* p[] = { "SAME", "MIRROR F-R", "MIRROR L-R", "MIRROR /", "MIRROR \\", "OPPOSITE", "TURN CW", "TURN CCW" };
                                      return juce::String (p[juce::jlimit (0, 7, v)]);
                                  });
                         }

@@ -1000,7 +1000,7 @@ private:
             juce::FileOutputStream out (file);
             expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (outs, out), file.getFullPathName());
         }
-        display.setLayer (1);
+        display.showScreen (ui::x32::Display::Screen::Routing, 7); // xlr out
         expectEquals (display.getEncoder (3).turn.text(), juce::String ("OUT13-16"));
         display.showScreen (ui::x32::Display::Screen::Routing, 4); // card out
         expectEquals (display.getEncoder (0).turn.text(), juce::String ("AN1-8"));
@@ -1225,11 +1225,24 @@ private:
 
         // SETUP > config: what a link shares, as /config/linkcfg.
         display.showScreen (ui::x32::Display::Screen::Setup, 1);
-        expectEquals (display.getEncoder (1).turn.label, juce::String ("EQ"));
-        display.getEncoder (1).turn.set (0.0f);
-        expectEquals (display.getEncoder (1).turn.text(), juce::String ("OFF"));
-        display.getEncoder (1).turn.set (1.0f);
-        expectEquals (display.getEncoder (1).turn.text(), juce::String ("ON"));
+        expectEquals (display.getEncoder (3).turn.label, juce::String ("LINK"));
+        display.getEncoder (3).turn.set (1.0f / 3.0f); // LINK EQ
+        expectEquals (display.getEncoder (3).turn.text(), juce::String ("LINK EQ"));
+        expect (display.getEncoder (3).pushOn(), "on by default");
+        display.pushEncoder (3);
+        expect (! display.getEncoder (3).pushOn());
+        display.pushEncoder (3);
+        expect (display.getEncoder (3).pushOn());
+        // The bus scheme: every input's sends pre fader, then post again.
+        {
+            int set = 0;
+            display.getEncoder (4).turn.set (1.0f / 3.0f); // ALL PRE
+            display.pushEncoder (4);
+            expect (engine.getWing().runX32Text ("/ch/05/mix/03/type", set).endsWith ("PRE"));
+            display.getEncoder (4).turn.set (0.0f); // ALL POST
+            display.pushEncoder (4);
+            expect (engine.getWing().runX32Text ("/ch/05/mix/03/type", set).endsWith ("POST"));
+        }
         // The X32 COMPACT: 8 input faders in eight layers, chosen on SETUP.
         display.showScreen (ui::x32::Display::Screen::Setup);
         expectEquals (display.getEncoder (0).turn.label, juce::String ("MODEL"));

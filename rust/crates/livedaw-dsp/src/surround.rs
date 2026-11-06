@@ -166,34 +166,39 @@ impl Trajectory {
 }
 
 /// ST LINK's patterns (V2 MAN p.72): where a stereo channel's right side
-/// (or a pair's even channel) sits for its left side's place. The guide draws
-/// its eight without naming them; these are Sidecar's: the square's mirrors
-/// and quarter turns.
+/// (or a pair's even channel) sits for its left side's place, in the guide's
+/// order. Its chart draws them (unnamed) against each trajectory: the same
+/// way, mirrored front / rear, mirrored left / right, mirrored across either
+/// diagonal, opposite, a quarter turn either way.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Pattern {
-    MirrorLeftRight,
-    MirrorFrontRear,
-    Opposite,
     Same,
-    /// Mirrored across the FR - RL diagonal.
+    MirrorFrontRear,
+    MirrorLeftRight,
+    /// Mirrored across the RL - FR diagonal.
     MirrorDiagonal,
     /// Mirrored across the FL - RR diagonal.
     MirrorAntiDiagonal,
+    Opposite,
     Clockwise,
     Anticlockwise,
 }
 
 impl Pattern {
     pub const ALL: [Pattern; 8] = [
-        Pattern::MirrorLeftRight,
-        Pattern::MirrorFrontRear,
-        Pattern::Opposite,
         Pattern::Same,
+        Pattern::MirrorFrontRear,
+        Pattern::MirrorLeftRight,
         Pattern::MirrorDiagonal,
         Pattern::MirrorAntiDiagonal,
+        Pattern::Opposite,
         Pattern::Clockwise,
         Pattern::Anticlockwise,
     ];
+
+    /// The pattern a new stereo channel starts on: left and right mirrored
+    /// (Sidecar's choice; the guide doesn't give one).
+    pub const DEFAULT: u8 = 2;
 
     pub fn name(self) -> &'static str {
         match self {

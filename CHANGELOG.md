@@ -587,13 +587,15 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   it, JUMP to a speaker. Kept in scenes with the console's state.
 - The 02R's ST LINK (V2 MAN p.72) on ROUTING 4/4: a stereo channel's right
   side (LINE 17/18-23/24, the effect returns) or a made pair's other channel
-  moves with it by one of eight patterns (the square's mirrors and quarter
-  turns; the guide draws its eight unnamed, so these are Sidecar's), each
-  channel keeping its CSR and subwoofer level; on by default. FAST moves four
+  moves with it by one of the guide's eight patterns, in its order (the same
+  way, mirrored front / rear, left / right or across either diagonal,
+  opposite, a quarter turn either way; MIRROR L-R to start, Sidecar's
+  choice), each channel keeping its CSR and subwoofer level; on by default. FAST moves four
   steps a click and isn't kept. Each speaker has its bus's output meter
   beside it. The surround buses sum to mono while SURROUND has them, so both
   sides of a stereo channel reach their speakers. A stereo channel with ST
   LINK off has both sides at one place.
+- X32 ROUTING: XLR OUT (the rear XLR outputs' blocks of four, p.54), formerly out 1-16's second layer; SETUP > config as the manual has it: encoder 1 the preferences (the solo's and the mono bus's), 4 what a link shares, 5 a scheme for the inputs' bus sends (all post, all pre, 1-8 or 9-16 pre; the schemes are Sidecar's).
 - X32 SETUP in the console's tab order: CONFIG (the sample rate and sync, what a
   channel link shares: HA and delay, EQ, dynamics, fader and mute, as
   `/config/linkcfg`), NETWORK (this computer's addresses and the X32 OSC port)

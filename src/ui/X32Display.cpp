@@ -312,7 +312,7 @@ juce::StringArray Display::getTabs() const
     {
         case Screen::Home:       return { "home", "config", "gate", "dyn", "eq", "sends", "main" };
         case Screen::Meters:     return { "channel", "mix bus", "aux / fx", "in / out", "rta" };
-        case Screen::Routing:    return { "home", "out 1-16", "aux out", "p16 out", "card out", "aes50-a", "aes50-b" };
+        case Screen::Routing:    return { "home", "out 1-16", "aux out", "p16 out", "card out", "aes50-a", "aes50-b", "xlr out" };
         case Screen::Setup:      return { "global", "config", "remote", "network", "scribble strip", "preamps", "card" };
         case Screen::Library:    return { "scenes", "show", "channel", "effects" };
         case Screen::Effects:    return { "home", "fx1", "fx2", "fx3", "fx4", "fx5", "fx6", "fx7", "fx8" };
@@ -324,6 +324,32 @@ juce::StringArray Display::getTabs() const
         case Screen::Usb:        return { "home", "config" };
     }
     return {};
+}
+
+const std::vector<Display::ConfigItem>& Display::configPrefs()
+{
+    // SETUP > config's preferences that Sidecar acts on: the solo's and the mono bus's.
+    static const std::vector<ConfigItem> items {
+        { "EXCLUSIVE SOLO", "/config/solo/exclusive", "ON", "OFF" },
+        { "SOLO FOLLOWS SELECT", "/config/solo/followsel", "ON", "OFF" },
+        { "SELECT FOLLOWS SOLO", "/config/solo/followsolo", "ON", "OFF" },
+        { "DIM ON PFL", "/config/solo/dimpfl", "ON", "OFF" },
+        { "MONO LINKED TO LR", "/config/mono/link", "ON", "OFF" },
+        { "MONO AS CENTER (LCR)", "/config/mono/mode", "LCR", "LR+M" },
+    };
+    return items;
+}
+
+const std::vector<Display::ConfigItem>& Display::configLinks()
+{
+    // What a channel link shares (`/config/linkcfg`).
+    static const std::vector<ConfigItem> items {
+        { "LINK HA + DELAY", "/config/linkcfg/hadly", "ON", "OFF" },
+        { "LINK EQ", "/config/linkcfg/eq", "ON", "OFF" },
+        { "LINK DYNAMICS", "/config/linkcfg/dyn", "ON", "OFF" },
+        { "LINK FADER + MUTE", "/config/linkcfg/fdrmute", "ON", "OFF" },
+    };
+    return items;
 }
 
 std::vector<Strip*> Display::recallStrips() const
@@ -342,7 +368,7 @@ int Display::numLayers() const
     if (screen == Screen::Setup)
         return tab == 2 ? 2 : 1; // remote: the MIDI kinds, then SysEx
     if (screen == Screen::Routing)
-        return tab == 1 ? 2 : 1; // out 1-16: the signals, then the local outputs' blocks
+        return 1; // none of its tabs has a second layer (p.51)
     if (screen == Screen::Effects && tab > 0)
     {
         // A slot's parameters, six per layer.
@@ -730,13 +756,46 @@ void Display::assignEncoders()
     }
     else if (screen == Screen::Setup && tab == 1)
     {
-        // CONFIG (p.55): what a channel link shares (`/config/linkcfg`): the
-        // preamp and delay, the EQ, the dynamics, the fader and mute.
-        static const juce::StringArray onOff { "OFF", "ON" };
-        encoders[0] = encoder (enumKnob ("HA+DLY", "/config/linkcfg/hadly", onOff));
-        encoders[1] = encoder (enumKnob ("EQ", "/config/linkcfg/eq", onOff));
-        encoders[2] = encoder (enumKnob ("DYNAMICS", "/config/linkcfg/dyn", onOff));
-        encoders[3] = encoder (enumKnob ("FDR+MUTE", "/config/linkcfg/fdrmute", onOff));
+        // CONFIG (p.55): encoder 1 the preferences, 4 the link preferences
+        // (what a channel link shares), each pushed on or off; 5 a scheme for
+        // the inputs' bus sends, pushed to apply (the schemes are Sidecar's).
+        auto run = [this] (const juce::String& text) { int set = 0; ctx.engine.getWing().runX32Text (text, set); repaint(); };
+        const auto list = [this, run] (const char* label, int& index, const std::vector<ConfigItem>& items)
+        {
+            const int n = (int) items.size();
+            index = juce::jlimit (0, n - 1, index);
+            KnobBinding k;
+            k.label = label;
+            k.get = [&index, n] { return (float) index / (float) (n - 1); };
+            k.set = [this, &index, n] (float v) { index = juce::roundToInt (v * (float) (n - 1)); assignEncoders(); };
+            k.text = [&index, &items] { return juce::String (items[(size_t) index].name); };
+            k.steps = (float) n;
+            const auto item = items[(size_t) index];
+            const auto isOn = [this, item] { return x32Value (item.path) == item.on; };
+            return encoder (k, "TOGGLE", [isOn, run, item] { run (juce::String (item.path) + " " + (isOn() ? item.off : item.on)); }, isOn);
+        };
+        encoders[0] = list ("PREFERENCE", configPref, configPrefs());
+        encoders[3] = list ("LINK", configLink, configLinks());
+        static const juce::StringArray schemes { "ALL POST", "ALL PRE", "1-8 PRE", "9-16 PRE" };
+        KnobBinding bus;
+        bus.label = "BUS CONFIG";
+        bus.get = [this] { return (float) configBus / 3.0f; };
+        bus.set = [this] (float v) { configBus = juce::roundToInt (v * 3.0f); repaint(); };
+        bus.text = [this] { return schemes[configBus]; };
+        bus.steps = 4.0f;
+        encoders[4] = encoder (bus, "APPLY", [this, run]
+        {
+            // Every input's (channels, aux in, FX returns) send pairs' tap.
+            const std::pair<const char*, int> inputs[] = { { "ch", 32 }, { "auxin", 8 }, { "fxrtn", 8 } };
+            for (const auto& [node, count] : inputs)
+                for (int i = 1; i <= count; ++i)
+                    for (int send = 1; send <= 16; send += 2)
+                    {
+                        const bool pre = configBus == 1 || (configBus == 2 && send <= 8) || (configBus == 3 && send > 8);
+                        run ("/" + juce::String (node) + "/" + juce::String (i).paddedLeft ('0', 2) + "/mix/" + juce::String (send).paddedLeft ('0', 2)
+                             + "/type " + (pre ? "PRE" : "POST"));
+                    }
+        });
     }
     else if (screen == Screen::Setup && tab == 4)
     {
@@ -1416,7 +1475,7 @@ void Display::assignOutputEncoders()
         ctx.engine.getWing().runX32Text (text, set);
         repaint();
     };
-    if (tab >= 4)
+    if (tab >= 4 && tab < 7)
     {
         // card out, AES50-A, AES50-B: what each block of eight outputs plays.
         const auto& t = kBlockTabs[tab - 4];
@@ -1425,11 +1484,11 @@ void Display::assignOutputEncoders()
                                                       "/config/routing/" + juce::String (t.node) + "/" + kNetBlocks[b], kRoutingNet));
         return;
     }
-    if (tab == 1 && layer == 1)
+    if (tab == 7)
     {
-        // The local outputs 1-16, four at a time.
+        // XLR OUT (p.54): the rear panel's XLR outputs 1-16, four at a time.
         for (int b = 0; b < 4; ++b)
-            encoders[(size_t) b] = encoder (enumKnob ("LOCAL " + juce::String (kOutBlocks[b]), "/config/routing/OUT/" + juce::String (kOutBlocks[b]),
+            encoders[(size_t) b] = encoder (enumKnob ("XLR " + juce::String (kOutBlocks[b]), "/config/routing/OUT/" + juce::String (kOutBlocks[b]),
                                                       b % 2 == 0 ? kRoutingOutA : kRoutingOutB));
         return;
     }
@@ -1477,7 +1536,7 @@ void Display::assignOutputEncoders()
 
 void Display::paintOutputs (juce::Graphics& g, juce::Rectangle<int> r)
 {
-    if (tab >= 4)
+    if (tab >= 4 && tab < 7)
     {
         const auto& t = kBlockTabs[tab - 4];
         juce::StringArray left, right;
@@ -1490,12 +1549,12 @@ void Display::paintOutputs (juce::Graphics& g, juce::Rectangle<int> r)
         paintRows (g, r, left, right);
         return;
     }
-    if (tab == 1 && layer == 1)
+    if (tab == 7)
     {
         juce::StringArray left, right;
         for (int b = 0; b < 4; ++b)
         {
-            left.add ("LOCAL OUTPUTS " + juce::String (kOutBlocks[b]) + "  (INTERFACE " + kOutBlocks[b] + ")");
+            left.add ("XLR OUTPUTS " + juce::String (kOutBlocks[b]) + "  (INTERFACE " + kOutBlocks[b] + ")");
             right.add (x32Value ("/config/routing/OUT/" + juce::String (kOutBlocks[b])));
         }
         paintRows (g, r, left, right);
@@ -2476,11 +2535,20 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
         case Screen::Setup:
             if (tab == 1)
             {
-                // CONFIG: the clock is the audio interface's; what links share.
-                const auto value = [this] (const char* path) { return x32Value (path); };
-                paintRows (g, r.reduced (12), { "SAMPLE RATE", "SYNCHRONIZATION", "LINK: HA + DELAY", "LINK: EQ", "LINK: DYNAMICS", "LINK: FADER + MUTE" },
-                           { juce::String (juce::roundToInt (ctx.engine.getSampleRate())) + " Hz", "INTERNAL (THE AUDIO INTERFACE)", value ("/config/linkcfg/hadly"),
-                             value ("/config/linkcfg/eq"), value ("/config/linkcfg/dyn"), value ("/config/linkcfg/fdrmute") });
+                // CONFIG: the preferences, then the link preferences; the ones the
+                // encoders point at marked.
+                juce::StringArray left, right;
+                const auto rows = [this, &left, &right] (const std::vector<ConfigItem>& items, int at)
+                {
+                    for (int k = 0; k < (int) items.size(); ++k)
+                    {
+                        left.add ((k == at ? "> " : "  ") + juce::String (items[(size_t) k].name));
+                        right.add (x32Value (items[(size_t) k].path));
+                    }
+                };
+                rows (configPrefs(), configPref);
+                rows (configLinks(), configLink);
+                paintRows (g, r.reduced (12), left, right);
                 break;
             }
             if (tab == 2)

@@ -1369,7 +1369,7 @@ mod tests {
         c.set_surround_pan(0, pan);
         let q = c.surround_pan(1).unwrap();
         assert_eq!((q.x, q.y), (64, 64));
-        // A quarter turn clockwise, moved from MIC 2: MIC 1 turned back.
+        // A quarter turn clockwise (pattern 7), moved from MIC 2: MIC 1 turned back.
         let pan = SurroundPan { x: 64, y: 32, pattern: 6, ..c.surround_pan(1).unwrap() };
         c.set_surround_pan(1, pan);
         let p = c.surround_pan(0).unwrap();

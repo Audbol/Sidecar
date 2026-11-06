@@ -101,6 +101,17 @@ public:
     /** The strips CHAN SAFE lists. */
     std::vector<Strip*> recallStrips() const;
 
+    /** A SETUP > config entry: its name, its X32 address and its on and off values. */
+    struct ConfigItem
+    {
+        const char* name;
+        const char* path;
+        const char* on;
+        const char* off;
+    };
+    static const std::vector<ConfigItem>& configPrefs();
+    static const std::vector<ConfigItem>& configLinks();
+
 private:
     void timerCallback() override;
     void assignEncoders();
@@ -159,6 +170,8 @@ private:
     int safeSection = 0, talkBus = 0, homeDca = 0, homeMuteGroup = 0;
     /** SCENES' SNIPPETS: the snippet of the selected scene; CHAN SAFE: the strip. */
     int selectedSnippet = 0, safeStrip = 0;
+    /** SETUP > config: the preference, the link preference and the bus scheme the encoders point at. */
+    int configPref = 0, configLink = 0, configBus = 0;
     /** HOME config's SOURCE turned and not yet selected (-1 none), and for which strip. */
     int pendingSource = -1, pendingInsert = -1; // and the insert's slot, CONNECT not yet pushed
     const Strip* pendingSourceStrip = nullptr;
