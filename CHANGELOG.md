@@ -184,6 +184,12 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
 
 Phase 5, the Yamaha ProMix 01 (`docs/UNIVERSAL_MIXER.md`), begins.
 
+- ProMix CUE for every strip as pp.52-54 (a channel, ST IN with its dual pan and sends,
+  RTN1-2 and ST OUT with their balance): the groups A-D as squares, PHASE and PAN as
+  headings, COMPn:ON when a processor is patched, the meters captioned with the strip
+  (GRn beside them). SEND3 / SEND4 as p.45: "(FADER = SEND3)", the send's meter on the
+  CLIP ... -40 scale, SEND: PRE at the bottom right; as a stereo pair "SEND 3-4", the
+  pans as knobs and its balance.
 - ProMix UTILITY and MIDI as menus (p.96's map: ENTER opens an item, EXIT or the key
   again comes back), UTILITY's SEND3,4 CONFIGURATION and OUTPUT COMP PATCH POINT ("POST
   FADER", STEREO) apart; MIDI SETUP drawn whether MIDI runs or not. SCENE MEMORY as

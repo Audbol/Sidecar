@@ -762,6 +762,12 @@ private:
             }
             skin.pressFunction (F::Cue);
             save ("cue");
+            // CUE on ST IN and ST OUT (pp.53-54).
+            display.setEqStrip (16);
+            save ("cue-stin");
+            display.setEqStrip (19);
+            save ("cue-stout");
+            display.setEqStrip (4);
             skin.pressFunction (F::Midi);
             display.setPage (4);
             save ("bulk");

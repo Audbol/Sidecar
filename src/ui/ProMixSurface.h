@@ -192,8 +192,9 @@ namespace promix
                 under its name (EQ's ON/OFF); a line of text, its name then its
                 value (BATTERY CHECK's, PROGRAM CHANGE ASSIGN's "1= 01"); a cell
                 of a ruled table, its name over its value (LOCAL ON/OFF's); a row
-                of a scrolling list, "Name=" then its value (an EDIT page's). */
-            enum class Style { Box, Bare, Inline, Button, Knob, Circle, PairBox, Fader, Number, Value, Text, Grid, Row } style = Style::Box;
+                of a scrolling list, "Name=" then its value (an EDIT page's); the
+                groups A-D as four squares, the strip's filled (CUE's). */
+            enum class Style { Box, Bare, Inline, Button, Knob, Circle, PairBox, Fader, Number, Value, Text, Grid, Row, Groups } style = Style::Box;
             /** What it stands for, where the style needs it (PAIR's pair). */
             int index = -1;
             int span = 1;

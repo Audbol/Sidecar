@@ -591,13 +591,27 @@ namespace promix
             case Function::Send3:
             case Function::Send4:
             {
+                // As p.45: "(FADER = SEND3)", the send's meter at the right, SEND: PRE /
+                // POST at the bottom right; as a stereo pair (p.47) the channels' and
+                // ST IN's SEND3-4 pans above, the pair's balance.
                 const int send = function == Function::Send3 ? 2 : 3;
-                fields.push_back (paramField (kSendPre + send, { 0.0f, 0.02f, 0.25f, 0.18f }));
+                auto pre = paramField (kSendPre + send, { 0.56f, 0.8f, 0.42f, 0.2f });
+                pre.label = "SEND";
+                pre.style = Field::Style::Inline;
+                fields.push_back (std::move (pre));
                 if (pm.get (kSend34Flag) == 1)
                 {
                     for (int i = 0; i < 17; ++i)
-                        fields.push_back (paramField (kSend34Pan + i, { (float) (i % 9) / 9.0f, i < 9 ? 0.26f : 0.6f, 1.0f / 9.0f, 0.3f }));
-                    fields.push_back (paramField (66, { 0.8f, 0.02f, 0.2f, 0.18f }));
+                    {
+                        auto f = paramField (kSend34Pan + i, { 0.08f * (float) (i % 9), i < 9 ? 0.0f : 0.3f, 0.08f, 0.3f });
+                        f.style = Field::Style::Knob;
+                        f.label = i < 16 ? juce::String (i + 1) : juce::String ("STIN");
+                        fields.push_back (std::move (f));
+                    }
+                    auto bal = paramField (66, { 0.0f, 0.8f, 0.4f, 0.2f });
+                    bal.label = "BAL";
+                    bal.style = Field::Style::Inline;
+                    fields.push_back (std::move (bal));
                 }
                 break;
             }
@@ -679,42 +693,59 @@ namespace promix
                 break;
             }
             case Function::Cue:
-                fields.push_back (paramField (kCueMode, { 0.0f, 0.0f, 0.3f, 0.24f }, true));
-                if (e < 16)
+            {
+                // The selected strip at a glance (pp.52-54): CUE: along the top; an
+                // input's group, PHASE and PAN (ST IN's dual pan), a return's or ST
+                // OUT's balance; its fader with ON over it (an input's sends beside
+                // it, PRE / POST over them), the EQ curve and EQ:.
+                using S = Field::Style;
+                auto cue = paramField (kCueMode, { 0.36f, 0.0f, 0.36f, 0.16f }, true);
+                cue.style = S::Inline;
+                cue.label = "CUE";
+                fields.push_back (std::move (cue));
+                const bool input = e <= 16, stOut = e == 19;
+                const int level = stOut ? 21 : e; // CH1-16, ST IN, RTN1-2 are their own levels' numbers
+                auto on = paramField (kChOn + level, { 0.0f, 0.3f, 0.08f, 0.12f });
+                on.style = S::Value;
+                on.label = {};
+                fields.push_back (std::move (on));
+                auto fader = paramField (level, { 0.0f, 0.42f, 0.08f, 0.58f });
+                fader.style = S::Fader;
+                fader.label = e < 16 ? "CH" : e == 16 ? "STIN" : stOut ? "STOUT" : "RTN";
+                fields.push_back (std::move (fader));
+                if (input)
                 {
-                    // The selected channel at a glance (p.52): ON, group, phase,
-                    // pan, EQ, its fader and its sends.
-                    row ({ kChOn + e, kGroup + e, kPhase + e, kChPan + e, kEqOn + e }, 0.3f, 0.3f, 0.0f, 1.0f);
-                    row ({ e, kSendLevel + e, kSendLevel + 17 + e, kSendLevel + 34 + e, kSendLevel + 51 + e }, 0.64f, 0.3f, 0.0f, 1.0f);
-                    const char* names[] = { "ON", "GROUP", "PHASE", "PAN", "EQ", "CH", "S1", "S2", "S3", "S4" };
-                    for (size_t k = 0; k < 10 && k + 1 < fields.size(); ++k)
-                        fields[k + 1].label = names[k];
-                    // As p.52's picture: the group, PHASE, PAN and CUE: along the top;
-                    // the fader and the sends as faders (ON and PRE / POST over them);
-                    // the EQ curve and EQ: beside them.
-                    using S = Field::Style;
-                    const std::pair<S, juce::Rectangle<float>> look[] = {
-                        { S::Value, { 0.0f, 0.3f, 0.07f, 0.12f } },   // ON, over CH
-                        { S::Value, { 0.0f, 0.0f, 0.1f, 0.3f } },     // GROUP
-                        { S::Circle, { 0.11f, 0.0f, 0.1f, 0.3f } },   // PHASE
-                        { S::Knob, { 0.22f, 0.0f, 0.1f, 0.3f } },     // PAN
-                        { S::Inline, { 0.36f, 0.84f, 0.3f, 0.16f } }, // EQ
-                        { S::Fader, { 0.0f, 0.42f, 0.07f, 0.58f } },  // CH
-                    };
-                    for (size_t k = 0; k < 10 && k + 1 < fields.size(); ++k)
+                    for (int k = 0; k < 4; ++k)
                     {
-                        auto& f = fields[k + 1];
-                        if (k < 6)
-                            f.style = look[k].first, f.box = look[k].second;
-                        else
-                            f.style = S::Fader, f.box = { 0.07f * (float) (k - 5), 0.42f, 0.07f, 0.58f };
+                        auto s = paramField (kSendLevel + 17 * k + e, { 0.08f + 0.07f * (float) k, 0.42f, 0.07f, 0.58f });
+                        s.style = S::Fader;
+                        s.label = "S" + juce::String (k + 1);
+                        fields.push_back (std::move (s));
                     }
-                    fields[1].label = {}; // ON: its value alone, over CH
-                    fields[0].style = S::Inline;
-                    fields[0].label = "CUE";
-                    fields[0].box = { 0.36f, 0.0f, 0.36f, 0.16f };
+                    auto group = paramField (kGroup + e, { 0.0f, 0.0f, 0.1f, 0.29f });
+                    group.style = S::Groups;
+                    group.label = {};
+                    fields.push_back (std::move (group));
+                    auto phase = paramField (kPhase + e, { 0.11f, 0.07f, 0.1f, 0.22f }); // under its heading
+                    phase.style = S::Circle;
+                    phase.label = {};
+                    fields.push_back (std::move (phase));
+                }
+                // PAN: a channel's knob; ST IN's and a return's dual pan (L, R); ST OUT's balance.
+                const int pan = e < 16 ? kChPan + e : e == 16 ? 60 : e <= 18 ? 62 + 2 * (e - 17) : 67;
+                auto knob = paramField (pan, { 0.22f, 0.07f, 0.1f, 0.22f });
+                knob.style = S::Knob;
+                knob.label = {};
+                fields.push_back (std::move (knob));
+                if (e < 20)
+                {
+                    auto eq = paramField (kEqOn + e, { 0.36f, 0.84f, 0.3f, 0.16f });
+                    eq.style = S::Inline;
+                    eq.label = "EQ";
+                    fields.push_back (std::move (eq));
                 }
                 break;
+            }
             case Function::Group:
             {
                 // As p.56's picture: the channels' numbers over the dots, the group
@@ -1299,7 +1330,8 @@ namespace promix
                            + juce::String (chosenMemory ? chosenMemory() : 0) + (memoryEdited && memoryEdited() ? "E" : "");
         for (auto& f : fields)
             now << "|" << f.text() << f.pending;
-        if (function == Function::Meter || function == Function::Send1 || function == Function::Send2 || function == Function::Comp)
+        if (function == Function::Meter || function == Function::Send1 || function == Function::Send2 || function == Function::Send3
+            || function == Function::Send4 || function == Function::Comp)
             now << juce::String (juce::Time::getMillisecondCounter() / 100); // meters move
         if (now != shown)
         {
@@ -1321,6 +1353,8 @@ namespace promix
         }
         if (function == Function::MemoryStore || function == Function::MemoryRecall || function == Function::TitleEdit)
             return "SCENE MEMORY";
+        if ((function == Function::Send3 || function == Function::Send4) && pm.get (kSend34Flag) == 1)
+            return "SEND 3-4"; // a stereo pair (p.47)
         return juce::String::fromUTF8 (names[(int) function]);
     }
 
@@ -1624,6 +1658,37 @@ namespace promix
                 g.setColour (kLcd);
             }
             g.drawFittedText (f.text(), v.toNearestInt(), juce::Justification::centredLeft, 1, 0.6f);
+            return;
+        }
+        if (f.style == Style::Groups)
+        {
+            // A B over C D (p.52): the strip's group filled with its letter, the
+            // others dotted; framed under the cursor.
+            const int group = f.get(); // 0 none, 1-4 A-D
+            const float s = juce::jmin (box.getWidth(), box.getHeight()) * 0.46f;
+            g.setFont (lcdFont (s * 0.85f, true));
+            for (int k = 0; k < 4; ++k)
+            {
+                auto sq = juce::Rectangle<float> (box.getCentreX() - s + s * (float) (k % 2), box.getCentreY() - s + s * (float) (k / 2), s, s).reduced (2.0f);
+                g.setColour (kPixel);
+                if (k + 1 == group)
+                {
+                    g.fillRect (sq);
+                    g.setColour (kLcd);
+                    g.drawText (juce::String::charToString ((juce::juce_wchar) ('A' + k)), sq, juce::Justification::centred);
+                }
+                else
+                    for (float x = sq.getX(); x < sq.getRight(); x += 3.0f)
+                    {
+                        g.fillRect (x, sq.getY(), 1.0f, 1.0f);
+                        g.fillRect (x, sq.getBottom() - 1.0f, 1.0f, 1.0f);
+                    }
+            }
+            if (focused)
+            {
+                g.setColour (kPixel);
+                g.drawRect (box, 1.5f);
+            }
             return;
         }
         if (f.style == Style::Grid)
@@ -2117,6 +2182,43 @@ namespace promix
                     }
                 }
                 break;
+            case Function::Send3:
+            case Function::Send4:
+            {
+                // "(FADER = SEND3)" over a rule (p.45); the send's level at the right
+                // on the CLIP ... -40 scale, its name under it (both, as a stereo pair).
+                const bool stereo = pm.get (kSend34Flag) == 1;
+                const int send = function == Function::Send3 ? 2 : 3;
+                g.setColour (kPixel);
+                g.setFont (lcdFont (type::kValue + 1.0f, true));
+                g.drawText (stereo ? "(FADER = SEND3-4)" : function == Function::Send3 ? "(FADER = SEND3)" : "(FADER = SEND4)",
+                            juce::Rectangle<float> (area.getX(), area.getY() + area.getHeight() * 0.62f, area.getWidth() * 0.76f, area.getHeight() * 0.15f),
+                            juce::Justification::centred);
+                g.fillRect (area.getX(), area.getY() + area.getHeight() * 0.77f, area.getWidth(), 1.5f);
+                auto m = juce::Rectangle<float> (area.getX() + area.getWidth() * 0.8f, area.getY(), area.getWidth() * 0.2f, area.getHeight() * 0.76f);
+                g.fillRect (m.getX() - 4.0f, m.getY(), 1.5f, m.getHeight());
+                auto labels = m.removeFromBottom (18.0f);
+                auto bars = m.withTrimmedLeft (m.getWidth() * 0.42f).reduced (2.0f, 4.0f);
+                paintScale (m.withWidth (m.getWidth() * 0.4f).withTrimmedTop (4.0f).withTrimmedBottom (4.0f), bars);
+                g.setColour (kPixel);
+                g.setFont (lcdFont (type::kLabel, true));
+                g.drawText (stereo ? "SEND3-4" : send == 2 ? "SEND3" : "SEND4", labels, juce::Justification::centredRight);
+                const auto& buses = ctx.engine.getBuses();
+                auto* bus = juce::isPositiveAndBelow (stereo ? 2 : send, (int) buses.size()) ? buses[(size_t) (stereo ? 2 : send)].get() : nullptr;
+                const float marks[] = { -60.0f, -44.0f, -38.0f, -32.0f, -26.0f, -20.0f, -17.0f, -14.0f, -11.0f, -8.0f, -5.0f, 0.0f };
+                const int sides = stereo ? 2 : 1;
+                for (int ch = 0; ch < sides; ++ch)
+                {
+                    auto col = bars.withWidth (bars.getWidth() / (float) sides).withX (bars.getX() + bars.getWidth() / (float) sides * (float) ch)
+                                   .reduced (bars.getWidth() * 0.08f, 0.0f);
+                    const float db = juce::Decibels::gainToDecibels (bus != nullptr ? ctx.meters.get (bus, MeterPoint::Output, ch) : 0.0f, -100.0f);
+                    int lit = 0;
+                    for (float mark : marks)
+                        lit += db >= mark ? 1 : 0;
+                    g.fillRect (col.withTop (col.getBottom() - col.getHeight() * (float) lit / 12.0f));
+                }
+                break;
+            }
             case Function::Meter:
             {
                 // The scale at the left, the meters, the other page's link; PEAK HOLD under them.
@@ -2299,37 +2401,75 @@ namespace promix
             }
             case Function::Cue:
             {
-                if (eqStrip >= 16)
-                    break;
-                // PRE / POST over the sends, the EQ curve, the channel's meter; the rules.
+                const int e = eqStrip;
+                const bool input = e <= 16, stOut = e == 19;
                 g.setColour (kPixel);
                 g.setFont (lcdFont (type::kValue, true));
-                for (int k = 0; k < 4; ++k)
-                    g.drawText (pm.text (kSendPre + k), juce::Rectangle<float> (area.getX() + area.getWidth() * 0.07f * (float) (k + 1), area.getY() + area.getHeight() * 0.3f,
-                                                                               area.getWidth() * 0.07f, area.getHeight() * 0.12f), juce::Justification::centred);
+                // PHASE and PAN (BAL on ST OUT) as headings over their icons; an
+                // input's PRE / POST over its sends.
+                if (input)
+                    g.drawText ("PHASE", juce::Rectangle<float> (area.getX() + area.getWidth() * 0.11f, area.getY(), area.getWidth() * 0.1f, 14.0f), juce::Justification::centred);
+                g.drawText (stOut ? "BAL" : "PAN", juce::Rectangle<float> (area.getX() + area.getWidth() * 0.22f, area.getY(), area.getWidth() * 0.1f, 14.0f),
+                            juce::Justification::centred);
+                if (input)
+                    for (int k = 0; k < 4; ++k)
+                        g.drawText (pm.text (kSendPre + k), juce::Rectangle<float> (area.getX() + area.getWidth() * (0.08f + 0.07f * (float) k), area.getY() + area.getHeight() * 0.3f,
+                                                                                   area.getWidth() * 0.07f, area.getHeight() * 0.12f), juce::Justification::centred);
+                // COMPn:ON under CUE: when a processor is patched to the strip.
+                const int patchOf = e < 16 ? e + 1 : stOut ? 19 : -1;
+                int patched = -1;
+                for (int k = 0; k < 3; ++k)
+                    if (patchOf > 0 && pm.get (kCompPatch + k) == patchOf)
+                        patched = k;
+                if (patched >= 0)
+                    g.drawText ("COMP" + juce::String (patched + 1) + ":" + pm.text (kCompOn + patched),
+                                juce::Rectangle<float> (area.getX() + area.getWidth() * 0.36f, area.getY() + area.getHeight() * 0.15f, area.getWidth() * 0.4f, area.getHeight() * 0.14f),
+                                juce::Justification::centredLeft);
                 g.fillRect (area.getX(), area.getY() + area.getHeight() * 0.29f, area.getWidth() * 0.82f, 1.5f);
                 g.fillRect (area.getX() + area.getWidth() * 0.345f, area.getY() + area.getHeight() * 0.3f, 1.5f, area.getHeight() * 0.7f);
                 g.fillRect (area.getX() + area.getWidth() * 0.82f, area.getY(), 1.5f, area.getHeight());
-                paintEqCurve (g, juce::Rectangle<float> (area.getX() + area.getWidth() * 0.36f, area.getY() + area.getHeight() * 0.32f, area.getWidth() * 0.44f, area.getHeight() * 0.5f));
-                const auto& chs = ctx.engine.getChannels();
-                auto* st = eqStrip < (int) chs.size() ? chs[(size_t) eqStrip].get() : nullptr;
+                if (e < 20)
+                    paintEqCurve (g, juce::Rectangle<float> (area.getX() + area.getWidth() * 0.36f, area.getY() + area.getHeight() * 0.32f, area.getWidth() * 0.44f, area.getHeight() * 0.5f));
+                // The meters at the right: the strip's (ST IN's and ST OUT's two), a
+                // patched processor's GR beside them; the strip's name under them.
+                auto& eng = ctx.engine;
+                auto pick = [] (const MixerEngine::StripList& l, int k) -> Strip* { return juce::isPositiveAndBelow (k, (int) l.size()) ? l[(size_t) k].get() : nullptr; };
+                Strip* st = e < 16 ? pick (eng.getChannels(), e) : e <= 18 ? pick (eng.getAux(), e - 16) : pick (eng.getMains(), 0);
+                const int sides = e == 16 || stOut ? 2 : 1;
                 auto m = juce::Rectangle<float> (area.getX() + area.getWidth() * 0.84f, area.getY(), area.getWidth() * 0.16f, area.getHeight() * 0.8f);
-                auto bar = m.withTrimmedLeft (m.getWidth() * 0.6f).reduced (3.0f, 4.0f);
-                paintScale (m.withWidth (m.getWidth() * 0.55f).withTrimmedTop (4.0f).withTrimmedBottom (4.0f), bar);
-                const float db = juce::Decibels::gainToDecibels (st != nullptr ? ctx.meters.get (st, MeterPoint::Input, 0) : 0.0f, -100.0f);
+                auto caption = m.removeFromBottom (16.0f);
+                auto bars = m.withTrimmedLeft (m.getWidth() * 0.5f).reduced (2.0f, 4.0f);
+                paintScale (m.withWidth (m.getWidth() * 0.48f).withTrimmedTop (4.0f).withTrimmedBottom (4.0f), bars);
                 const float marks[] = { -60.0f, -44.0f, -38.0f, -32.0f, -26.0f, -20.0f, -17.0f, -14.0f, -11.0f, -8.0f, -5.0f, 0.0f };
-                int lit = 0;
-                for (float mark : marks)
-                    lit += db >= mark ? 1 : 0;
+                const int cols = sides + (patched >= 0 ? 1 : 0);
                 g.setColour (kPixel);
-                g.fillRect (bar.withTop (bar.getBottom() - bar.getHeight() * (float) lit / 12.0f));
+                for (int c = 0; c < cols; ++c)
+                {
+                    auto col = bars.withWidth (bars.getWidth() / (float) cols).withX (bars.getX() + bars.getWidth() / (float) cols * (float) c).reduced (1.5f, 0.0f);
+                    if (patched >= 0 && c == 0)
+                    {
+                        // GR, from the top (p.72).
+                        const float gr = st != nullptr ? std::abs (st->meters.dynReductionDb.load()) : 0.0f;
+                        g.fillRect (col.withHeight (col.getHeight() * juce::jlimit (0.0f, 1.0f, gr / 30.0f)));
+                        continue;
+                    }
+                    const int ch = c - (patched >= 0 ? 1 : 0);
+                    const float db = juce::Decibels::gainToDecibels (st != nullptr ? ctx.meters.get (st, input ? MeterPoint::Input : MeterPoint::Output, ch) : 0.0f, -100.0f);
+                    int lit = 0;
+                    for (float mark : marks)
+                        lit += db >= mark ? 1 : 0;
+                    g.fillRect (col.withTop (col.getBottom() - col.getHeight() * (float) lit / 12.0f));
+                }
+                const juce::String name = e < 16 ? juce::String (e + 1) : e == 16 ? juce::String ("STIN") : e <= 18 ? "RTN" + juce::String (e - 16) : juce::String ("L R");
+                g.setFont (lcdFont (type::kLabel, true));
+                g.drawText ((patched >= 0 ? "GR" + juce::String (patched + 1) + " " : juce::String()) + name, caption, juce::Justification::centredRight);
                 break;
             }
             case Function::MemoryStore:
             case Function::MemoryRecall:
             case Function::TitleEdit:
             {
-                // ≡Press "RECALL" to recall.≡ (pp.63-65, 22): the line, its three bars both sides.
+                // The "Press RECALL to recall." line (pp.63-65, 22), its three bars both sides.
                 auto press = [&g] (juce::Rectangle<float> r, const juce::String& text)
                 {
                     g.setColour (kPixel);
