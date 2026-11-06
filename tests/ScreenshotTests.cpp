@@ -950,7 +950,7 @@ private:
         }
 
         // SETUP > remote (step 6b): the X32's MIDI devices and what goes in and out.
-        display.showScreen (ui::x32::Display::Screen::Setup, 1);
+        display.showScreen (ui::x32::Display::Screen::Setup, 2);
         expectEquals (display.getEncoder (0).turn.label, juce::String ("MIDI IN"));
         expectEquals (display.getEncoder (2).turn.label, juce::String ("PROGRAM"));
         display.setLayer (1);
@@ -1200,7 +1200,8 @@ private:
             {
                 const std::tuple<S, int, const char*> pages[] = { { S::Scenes, 0, "scenes" }, { S::Scenes, 1, "snippets" }, { S::Scenes, 2, "param-safe" }, { S::Scenes, 3, "chan-safe" }, { S::Monitor, 0, "monitor" },
                                                                   { S::Monitor, 1, "talk-a" }, { S::Monitor, 3, "osc" }, { S::Assign, 0, "assign" },
-                                                                  { S::Usb, 0, "usb" }, { S::Setup, 2, "scribble" }, { S::Setup, 3, "preamps" },
+                                                                  { S::Usb, 0, "usb" }, { S::Setup, 4, "scribble" }, { S::Setup, 5, "preamps" }, { S::Setup, 1, "setup-config" },
+                                                                  { S::Setup, 3, "network" }, { S::Setup, 6, "card" },
                                                                   { S::Meters, 4, "rta" }, { S::Home, 1, "config" } };
                 for (auto [screen, page, shot] : pages)
                 {
@@ -1222,6 +1223,13 @@ private:
             }
         }
 
+        // SETUP > config: what a link shares, as /config/linkcfg.
+        display.showScreen (ui::x32::Display::Screen::Setup, 1);
+        expectEquals (display.getEncoder (1).turn.label, juce::String ("EQ"));
+        display.getEncoder (1).turn.set (0.0f);
+        expectEquals (display.getEncoder (1).turn.text(), juce::String ("OFF"));
+        display.getEncoder (1).turn.set (1.0f);
+        expectEquals (display.getEncoder (1).turn.text(), juce::String ("ON"));
         // The X32 COMPACT: 8 input faders in eight layers, chosen on SETUP.
         display.showScreen (ui::x32::Display::Screen::Setup);
         expectEquals (display.getEncoder (0).turn.label, juce::String ("MODEL"));

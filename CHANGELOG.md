@@ -594,6 +594,10 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   beside it. The surround buses sum to mono while SURROUND has them, so both
   sides of a stereo channel reach their speakers. A stereo channel with ST
   LINK off has both sides at one place.
+- X32 SETUP in the console's tab order: CONFIG (the sample rate and sync, what a
+  channel link shares: HA and delay, EQ, dynamics, fader and mute, as
+  `/config/linkcfg`), NETWORK (this computer's addresses and the X32 OSC port)
+  and CARD (the audio interface in the expansion card's place).
 - X32 SCENES: SNIPPETS (the selected scene's snippets: GO, SAVE, NEW of the
   selected strip, FIRE with the scene, DELETE) and CHAN SAFE (each strip's
   recall safe, CLEAR ALL) beside HOME and PARAM SAFE.

@@ -313,7 +313,7 @@ juce::StringArray Display::getTabs() const
         case Screen::Home:       return { "home", "config", "gate", "dyn", "eq", "sends", "main" };
         case Screen::Meters:     return { "channel", "mix bus", "aux / fx", "in / out", "rta" };
         case Screen::Routing:    return { "home", "out 1-16", "aux out", "p16 out", "card out", "aes50-a", "aes50-b" };
-        case Screen::Setup:      return { "global", "remote", "scribble strip", "preamps" };
+        case Screen::Setup:      return { "global", "config", "remote", "network", "scribble strip", "preamps", "card" };
         case Screen::Library:    return { "scenes", "show", "channel", "effects" };
         case Screen::Effects:    return { "home", "fx1", "fx2", "fx3", "fx4", "fx5", "fx6", "fx7", "fx8" };
         case Screen::MuteGroups: return { "mute grp" };
@@ -340,7 +340,7 @@ std::vector<Strip*> Display::recallStrips() const
 int Display::numLayers() const
 {
     if (screen == Screen::Setup)
-        return tab == 1 ? 2 : 1; // remote: the MIDI kinds, then SysEx
+        return tab == 2 ? 2 : 1; // remote: the MIDI kinds, then SysEx
     if (screen == Screen::Routing)
         return tab == 1 ? 2 : 1; // out 1-16: the signals, then the local outputs' blocks
     if (screen == Screen::Effects && tab > 0)
@@ -728,7 +728,17 @@ void Display::assignEncoders()
                 break;
         }
     }
-    else if (screen == Screen::Setup && tab == 2)
+    else if (screen == Screen::Setup && tab == 1)
+    {
+        // CONFIG (p.55): what a channel link shares (`/config/linkcfg`): the
+        // preamp and delay, the EQ, the dynamics, the fader and mute.
+        static const juce::StringArray onOff { "OFF", "ON" };
+        encoders[0] = encoder (enumKnob ("HA+DLY", "/config/linkcfg/hadly", onOff));
+        encoders[1] = encoder (enumKnob ("EQ", "/config/linkcfg/eq", onOff));
+        encoders[2] = encoder (enumKnob ("DYNAMICS", "/config/linkcfg/dyn", onOff));
+        encoders[3] = encoder (enumKnob ("FDR+MUTE", "/config/linkcfg/fdrmute", onOff));
+    }
+    else if (screen == Screen::Setup && tab == 4)
     {
         // SCRIBBLE STRIP (p.56): the selected strip's colour and icon.
         if (s != nullptr)
@@ -759,7 +769,7 @@ void Display::assignEncoders()
             encoders[2] = encoder (icon, "NO ICON", [this, s] { s->params.icon = 0; repaint(); });
         }
     }
-    else if (screen == Screen::Setup && tab == 3)
+    else if (screen == Screen::Setup && tab == 5)
     {
         // PREAMPS (p.57): a block of four inputs, each its gain, PUSH its 48V.
         KnobBinding block;
@@ -798,7 +808,7 @@ void Display::assignEncoders()
         encoders[0] = encoder ({}, "4 TRACKS", [&usb] { usb.setRecChannels (usb.getRecChannels() == 4 ? 2 : 4); }, [&usb] { return usb.getRecChannels() == 4; });
         encoders[1] = encoder ({}, "24 BIT", [&usb] { usb.setRecBits (usb.getRecBits() == 24 ? 16 : 24); }, [&usb] { return usb.getRecBits() == 24; });
     }
-    else if (screen == Screen::Setup && tab == 1)
+    else if (screen == Screen::Setup && tab == 2)
     {
         assignRemoteEncoders();
     }
@@ -1752,7 +1762,7 @@ void Display::timerCallback()
 {
     if (! isShowing())
         return;
-    if (screen == Screen::Setup && tab == 1)
+    if (screen == Screen::Setup && tab == 2)
         repaint(); // the messages counted
     // A model, an order or a strip changed under the encoders: map them anew.
     juce::String now;
@@ -2466,10 +2476,47 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
         case Screen::Setup:
             if (tab == 1)
             {
-                paintRemote (g, r.reduced (12));
+                // CONFIG: the clock is the audio interface's; what links share.
+                const auto value = [this] (const char* path) { return x32Value (path); };
+                paintRows (g, r.reduced (12), { "SAMPLE RATE", "SYNCHRONIZATION", "LINK: HA + DELAY", "LINK: EQ", "LINK: DYNAMICS", "LINK: FADER + MUTE" },
+                           { juce::String (juce::roundToInt (ctx.engine.getSampleRate())) + " Hz", "INTERNAL (THE AUDIO INTERFACE)", value ("/config/linkcfg/hadly"),
+                             value ("/config/linkcfg/eq"), value ("/config/linkcfg/dyn"), value ("/config/linkcfg/fdrmute") });
                 break;
             }
             if (tab == 2)
+            {
+                paintRemote (g, r.reduced (12));
+                break;
+            }
+            if (tab == 3)
+            {
+                // NETWORK: where X32 remotes (X32-Edit, apps) reach Sidecar: this
+                // computer's addresses, the X32's OSC port.
+                juce::StringArray addresses;
+                // The computer's own IPv4 addresses (not loopback, multicast or link-local).
+                for (auto& a : juce::IPAddress::getAllAddresses (false))
+                    if (a.address[0] != 127 && (a.address[0] < 224 || a.address[0] > 239) && ! (a.address[0] == 169 && a.address[1] == 254)
+                        && ! a.isNull() && addresses.size() < 3)
+                        addresses.add (a.toString());
+                auto& wing = ctx.engine.getWing();
+                paintRows (g, r.reduced (12), { "HOST NAME", "IP ADDRESS", "X32 OSC", "OSC PORT" },
+                           { juce::SystemStats::getComputerName(), addresses.isEmpty() ? juce::String ("NONE") : addresses.joinIntoString (", "),
+                             wing.isX32Running() ? juce::String ("RUNNING") : juce::String ("OFF (SETUP > REMOTE CONTROL)"),
+                             juce::String (WingRemote::x32Port) + " UDP" });
+                break;
+            }
+            if (tab == 6)
+            {
+                // CARD: the expansion card's place is Sidecar's audio interface.
+                auto* device = ctx.deviceManager.getCurrentAudioDevice();
+                paintRows (g, r.reduced (12), { "CARD", "DEVICE", "INPUTS / OUTPUTS", "BUFFER", "LATENCY IN / OUT" },
+                           { "AUDIO INTERFACE", device != nullptr ? device->getName() : juce::String ("NONE"),
+                             device != nullptr ? juce::String (device->getActiveInputChannels().countNumberOfSetBits()) + " / " + juce::String (device->getActiveOutputChannels().countNumberOfSetBits()) : juce::String ("-"),
+                             device != nullptr ? juce::String (device->getCurrentBufferSizeSamples()) + " SAMPLES" : juce::String ("-"),
+                             device != nullptr ? juce::String (device->getInputLatencyInSamples()) + " / " + juce::String (device->getOutputLatencyInSamples()) + " SAMPLES" : juce::String ("-") });
+                break;
+            }
+            if (tab == 4)
             {
                 paintRows (g, r.reduced (12), { "STRIP", "NAME", "COLOR", "ICON" },
                            { s != nullptr ? s->getLabel() : juce::String ("-"), s != nullptr ? s->getName() : juce::String ("-"),
@@ -2477,7 +2524,7 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
                              s != nullptr && s->params.icon.load() > 0 ? wingIconName (s->params.icon.load()) : juce::String ("NONE") });
                 break;
             }
-            if (tab == 3)
+            if (tab == 5)
             {
                 juce::StringArray left, right;
                 for (int k = 0; k < 4; ++k)
