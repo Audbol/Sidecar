@@ -584,8 +584,16 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   a pan graph with its group's places and the mode's speakers. ROUTING 4/4:
   a trajectory (left-right, front-rear, the two diagonals, the two
   semicircles, a circle), its WIDTH, DEPTH and OFFSET, MOVE the place along
-  it, JUMP to a speaker. Kept in scenes with the console's state. Not yet:
-  ST LINK's patterns for stereo channels, FAST, the speakers' meters.
+  it, JUMP to a speaker. Kept in scenes with the console's state.
+- The 02R's ST LINK (V2 MAN p.72) on ROUTING 4/4: a stereo channel's right
+  side (LINE 17/18-23/24, the effect returns) or a made pair's other channel
+  moves with it by one of eight patterns (the square's mirrors and quarter
+  turns; the guide draws its eight unnamed, so these are Sidecar's), each
+  channel keeping its CSR and subwoofer level; on by default. FAST moves four
+  steps a click and isn't kept. Each speaker has its bus's output meter
+  beside it. The surround buses sum to mono while SURROUND has them, so both
+  sides of a stereo channel reach their speakers. A stereo channel with ST
+  LINK off has both sides at one place.
 - The console surfaces (X32, ProMix 01, 02R) are laid out at 1920 x 1080 and
   scaled to the window, in proportion and centred: on a bigger screen (a 4K
   monitor) they show the same panel larger instead of stretching the gaps

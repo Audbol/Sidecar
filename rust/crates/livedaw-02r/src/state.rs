@@ -126,7 +126,9 @@ impl Default for Oscillator {
 /// CSR (0-10: 0.0-1.0), the subwoofer's level (0 -oo, 1-60: -59 .. 0 dB),
 /// whether it feeds the surround buses at all, and ROUTING 4/4's trajectory
 /// (`livedaw_dsp::surround::Trajectory::ALL`), its WIDTH and DEPTH (0-32),
-/// OFFSET (0-64, 32 none) and the place along it (0-64).
+/// OFFSET (0-64, 32 none) and the place along it (0-64); ST LINK (p.72) and
+/// its pattern (`livedaw_dsp::surround::Pattern::ALL`), for a stereo channel's
+/// right side or a pair's other channel.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct SurroundPan {
     pub x: u8,
@@ -140,18 +142,20 @@ pub struct SurroundPan {
     pub offset_x: u8,
     pub offset_y: u8,
     pub along: u8,
+    pub link: bool,
+    pub pattern: u8,
 }
 
 impl Default for SurroundPan {
     /// The front centre: the stereo image's place (Sidecar's choice).
     fn default() -> Self {
-        SurroundPan { x: 32, y: 64, csr: 5, sub: 0, on: true, trajectory: 0, width: 32, depth: 32, offset_x: 32, offset_y: 32, along: 32 }
+        SurroundPan { x: 32, y: 64, csr: 5, sub: 0, on: true, trajectory: 0, width: 32, depth: 32, offset_x: 32, offset_y: 32, along: 32, link: true, pattern: 0 }
     }
 }
 
 impl SurroundPan {
-    /// Its values in the order above (`x` 0 ... `along` 10).
-    pub const FIELDS: usize = 11;
+    /// Its values in the order above (`x` 0 ... `pattern` 12).
+    pub const FIELDS: usize = 13;
 
     /// Value `k` of `to_values`, and the pan with it set (clamped).
     pub fn field(self, k: usize) -> Option<u8> {
@@ -166,12 +170,15 @@ impl SurroundPan {
         SurroundPan::of_values(&values)
     }
 
-    fn to_values(self) -> [u8; 11] {
-        [self.x, self.y, self.csr, self.sub, self.on as u8, self.trajectory, self.width, self.depth, self.offset_x, self.offset_y, self.along]
+    fn to_values(self) -> [u8; 13] {
+        let p = self;
+        [p.x, p.y, p.csr, p.sub, p.on as u8, p.trajectory, p.width, p.depth, p.offset_x, p.offset_y, p.along, p.link as u8, p.pattern]
     }
 
+    /// Reads `to_values`; a missing value keeps its default.
     fn of_values(v: &[u32]) -> SurroundPan {
-        let at = |i: usize, max: u32| v.get(i).map_or(0, |&x| x.min(max) as u8);
+        let d = SurroundPan::default().to_values();
+        let at = |i: usize, max: u32| v.get(i).map_or(d[i], |&x| x.min(max) as u8);
         SurroundPan {
             x: at(0, 64),
             y: at(1, 64),
@@ -184,6 +191,8 @@ impl SurroundPan {
             offset_x: at(8, 64),
             offset_y: at(9, 64),
             along: at(10, 64),
+            link: at(11, 1) != 0,
+            pattern: at(12, 7),
         }
     }
 }
@@ -398,7 +407,10 @@ impl State {
                 "delay_ms" => s.delay_ms = nums(v).first() == Some(&1),
                 "surround" => s.surround = nums(v).first().map_or(0, |&m| m.min(3) as u8),
                 "surround_pans" => {
-                    for (p, x) in s.surround_pans.iter_mut().zip(nums(v).chunks_exact(11)) {
+                    // Before ST LINK, 11 values each.
+                    let n = nums(v);
+                    let each = if n.len() == MEMBERS * 11 { 11 } else { SurroundPan::FIELDS };
+                    for (p, x) in s.surround_pans.iter_mut().zip(n.chunks_exact(each)) {
                         *p = SurroundPan::of_values(x);
                     }
                 }

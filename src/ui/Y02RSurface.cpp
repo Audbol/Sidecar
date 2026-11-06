@@ -768,11 +768,20 @@ namespace y02r
                     }
                     else
                     {
-                        // ROUTING 4/4 (V2 MAN pp.69-71): a trajectory, its size and offset,
-                        // the place along it; a speaker's place by JUMP.
+                        // ROUTING 4/4 (V2 MAN pp.69-73): a trajectory, its size and offset,
+                        // the place along it (FAST four steps a click); ST LINK and its
+                        // pattern; a speaker's place by JUMP.
                         sur ("TRAJECTORY", Yamaha02R::SurTraj, 0, 6,
                              [] (int v) { const char* t[] = { "L <> R", "F <> R", "RL <> FR", "FL <> RR", "L<>R SEMI", "F<>R SEMI", "CIRCLE" }; return juce::String (t[juce::jlimit (0, 6, v)]); });
-                        sur ("MOVE", Yamaha02R::SurAlong, 0, 64, amount);
+                        const int along = m * Yamaha02R::kSurFields + Yamaha02R::SurAlong;
+                        fields.push_back ({ "MOVE", [this, along] { return y.getState (Yamaha02R::SurroundPan, along); },
+                                            [this, along] (int v)
+                                            {
+                                                const int was = y.getState (Yamaha02R::SurroundPan, along);
+                                                y.setState (Yamaha02R::SurroundPan, along, surroundFast ? juce::jlimit (0, 64, was + (v - was) * 4) : v);
+                                            },
+                                            amount, 0, 64 });
+                        fields.push_back ({ "FAST", [this] { return surroundFast ? 1 : 0; }, [this] (int v) { surroundFast = v != 0; }, onOff, 0, 1 });
                         sur ("WIDTH", Yamaha02R::SurWidth, 0, 32, amount);
                         sur ("DEPTH", Yamaha02R::SurDepth, 0, 32, amount);
                         sur ("OFFSET L/R", Yamaha02R::SurOffsetX, 0, 64, lr);
@@ -781,6 +790,16 @@ namespace y02r
                             sur ("CSR", Yamaha02R::SurCsr, 0, 10, [] (int v) { return juce::String (v / 10.0, 1); });
                         if (mode == 3)
                             sur ("SW", Yamaha02R::SurSub, 0, 60, [] (int v) { return v == 0 ? utf8 ("-\xe2\x88\x9e") : juce::String (v - 60) + " dB"; });
+                        // ST LINK (p.72): a stereo channel's sides, or a made pair's channels, together.
+                        if (isStereoStrip (s) || (pairOf (s) >= 0 && y.getState (Yamaha02R::Pair, pairOf (s)) != 0))
+                        {
+                            sur ("ST LINK", Yamaha02R::SurLink, 0, 1, onOff);
+                            sur ("PATTERN", Yamaha02R::SurPattern, 0, 7, [] (int v)
+                                 {
+                                     const char* p[] = { "MIRROR L-R", "MIRROR F-R", "OPPOSITE", "SAME", "MIRROR /", "MIRROR \\", "TURN CW", "TURN CCW" };
+                                     return juce::String (p[juce::jlimit (0, 7, v)]);
+                                 });
+                        }
                         // JUMP: the wheel picks a speaker, ENTER puts the sound there.
                         static const juce::StringArray speakers[] = { { "FL", "FR", "RL", "RR" }, { "L", "R", "C", "S" }, { "FL", "FR", "RL", "RR", "FC" } };
                         static const int places[3][5][2] = { { { 0, 64 }, { 64, 64 }, { 0, 0 }, { 64, 0 } },
@@ -1472,11 +1491,17 @@ namespace y02r
             g.fillRect (box);
             g.setColour (kLcd);
             g.drawText (names[mode - 1][k], box, juce::Justification::centred);
+            // 4/4: each speaker's bus out level beside it (V2 MAN p.69), inwards.
+            if (page == 3)
+                speakerMeter (g, places[mode - 1][k][0] > 0 ? box.translated (-30.0f, 0.0f).withWidth (26.0f) : box.withX (box.getRight() + 4.0f).withWidth (26.0f), k);
         }
         if (mode == 3)
         {
             g.setColour (kPixel);
-            g.drawText ("SW", juce::Rectangle<float> (24.0f, 10.0f).withCentre ({ graph.getCentreX(), area.getBottom() - 5.0f }), juce::Justification::centred);
+            const auto sw = juce::Rectangle<float> (24.0f, 10.0f).withCentre ({ graph.getCentreX(), area.getBottom() - 5.0f });
+            g.drawText ("SW", sw, juce::Justification::centred);
+            if (page == 3)
+                speakerMeter (g, sw.withX (sw.getRight() + 2.0f).withWidth (26.0f), 5);
         }
         const auto value = [this] (int member, int field) { return (float) (y.getState (Yamaha02R::SurroundPan, member * Yamaha02R::kSurFields + field) - 32) / 32.0f; };
         const int sel = memberOf (strip);
@@ -1531,6 +1556,19 @@ namespace y02r
             g.setFont (type::font (9.0f, true));
             g.drawText (stripName (m), juce::Rectangle<float> (60.0f, 10.0f).withCentre ({ p.x, p.y + 13.0f }), juce::Justification::centred);
         }
+    }
+
+    void Display::speakerMeter (juce::Graphics& g, juce::Rectangle<float> box, int bus) const
+    {
+        // A short bar, -60 dB to 0, of the bus's output.
+        const auto& buses = ctx.engine.getBuses();
+        Strip* st = juce::isPositiveAndBelow (bus, (int) buses.size()) ? buses[(size_t) bus].get() : nullptr;
+        const float level = st != nullptr ? juce::Decibels::gainToDecibels (ctx.meters.get (st, MeterPoint::Output, 0), -60.0f) : -60.0f;
+        const auto bar = box.withSizeKeepingCentre (box.getWidth(), 4.0f);
+        g.setColour (kPixelDim);
+        g.drawRect (bar, 0.5f);
+        g.setColour (kPixel);
+        g.fillRect (bar.withWidth (bar.getWidth() * (level + 60.0f) / 60.0f));
     }
 
     void Display::paintPrograms (juce::Graphics& g, juce::Rectangle<float> area) const

@@ -407,11 +407,39 @@ public:
             skin.pressFunction (F::Routing);
             expectEquals (display.getPage(), 3);
             display.getFields()[0].set (6); // CIRCLE
-            display.getFields()[2].set (24);
-            display.getFields()[3].set (20);
+            expectEquals (display.getFields()[3].label, juce::String ("WIDTH"));
+            display.getFields()[3].set (24);
+            display.getFields()[4].set (20);
             display.getFields()[1].set (16); // a quarter round: the right
             expectEquals (y.getState (Yamaha02R::SurroundPan, mic5Pan + Yamaha02R::SurX), 32 + 24);
             shot ("surround-trajectory");
+            // FAST: MOVE four steps a click.
+            expectEquals (display.getFields()[2].label, juce::String ("FAST"));
+            display.getFields()[2].set (1);
+            display.getFields()[1].set (17);
+            expectEquals (y.getState (Yamaha02R::SurroundPan, mic5Pan + Yamaha02R::SurAlong), 20);
+            display.getFields()[2].set (0);
+            // ST LINK on a made pair: MIC 6 mirrors MIC 5 (MIRROR L-R).
+            const auto has = [&display] (const char* label)
+            {
+                for (const auto& f : display.getFields())
+                    if (f.label == label)
+                        return true;
+                return false;
+            };
+            expect (! has ("ST LINK"), "MIC 5 unpaired");
+            y.setState (Yamaha02R::Pair, 2, 1);
+            skin.pressSel (4);
+            expectEquals (display.getPage(), 3);
+            expect (has ("ST LINK") && has ("PATTERN"));
+            display.getFields()[1].set (8); // an eighth round: the front right
+            const int mic6Pan = 5 * Yamaha02R::kSurFields;
+            expectEquals (y.getState (Yamaha02R::SurroundPan, mic6Pan + Yamaha02R::SurX),
+                          64 - y.getState (Yamaha02R::SurroundPan, mic5Pan + Yamaha02R::SurX));
+            expectEquals (y.getState (Yamaha02R::SurroundPan, mic6Pan + Yamaha02R::SurY),
+                          y.getState (Yamaha02R::SurroundPan, mic5Pan + Yamaha02R::SurY));
+            shot ("surround-stlink");
+            y.setState (Yamaha02R::Pair, 2, 0);
             y.setState (Yamaha02R::Surround, 0, 0);
             expectEquals (y.getState (Yamaha02R::Surround, 0), 0);
             skin.pressFunction (F::Eq);

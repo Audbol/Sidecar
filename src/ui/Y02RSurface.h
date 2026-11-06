@@ -250,8 +250,12 @@ namespace y02r
         bool delayMs = false;
         /** ROUTING 2/2's MODE while SURROUND is off (1 2+2, 2 3+1, 3 3+2+1). */
         int surroundMode = 1;
+        /** ROUTING 4/4's FAST: MOVE four steps a click (not kept, V2 MAN p.73). */
+        bool surroundFast = false;
         /** Focus on field `i`, its digit the first (from the left) or the last. */
         void focusField (int i, bool firstDigit);
+        /** Bus `bus`'s output level as a bar in `box` (ROUTING 4/4's speakers). */
+        void speakerMeter (juce::Graphics& g, juce::Rectangle<float> box, int bus) const;
         /** METER's meter point: 0 PRE EQ (an output's PRE FADER), 1 POST EQ, 2 POST FADER. */
         int meterPoint = 2;
         std::array<int, 16> nameChars {};

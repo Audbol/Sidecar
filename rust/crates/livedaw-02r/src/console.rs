@@ -744,6 +744,13 @@ impl<'a> Console<'a> {
         self.state.surround = mode;
         // ...then take the new mode's, keeping the members' own routing to them.
         let now = self.surround_buses();
+        // The buses sum to mono while SURROUND has them, so each side of a
+        // stereo channel reaches its speakers (a bus's output is its left side).
+        for bus in 0..now.max(was) {
+            if let Some(b) = self.strip(Y2Strip::Bus(bus)) {
+                b.params.mono.store(bus < now, Relaxed);
+            }
+        }
         for m in 0..MEMBERS {
             let Some(s) = Y2Strip::of_member(m) else { continue };
             let mut bits = 0u8;
@@ -768,34 +775,63 @@ impl<'a> Console<'a> {
         let mut pan = pan;
         if moved {
             let t = surround::Trajectory::ALL[pan.trajectory.min(6) as usize];
-            let c = |v: u8| (v as f32 - 32.0) / 32.0;
-            let (x, y) = t.at(pan.along as f32 / 64.0, pan.width as f32 / 32.0, pan.depth as f32 / 32.0, c(pan.offset_x), c(pan.offset_y));
-            pan.x = (x * 32.0 + 32.0).round() as u8;
-            pan.y = (y * 32.0 + 32.0).round() as u8;
+            let (x, y) = t.at(pan.along as f32 / 64.0, pan.width as f32 / 32.0, pan.depth as f32 / 32.0, place(pan.offset_x), place(pan.offset_y));
+            (pan.x, pan.y) = (step(x), step(y));
         }
         *p = pan;
         self.apply_surround(member);
+        // ST LINK (V2 MAN p.72): a pair's other channel moves by the pattern
+        // (its place only; its CSR and subwoofer stay its own).
+        let other = Y2Strip::of_member(member).and_then(|s| self.partner(s)).and_then(Y2Strip::member);
+        if let Some(other) = other {
+            let pattern = pattern_of(pan);
+            let pattern = if member < other { pattern } else { pattern.inverse() };
+            let q = &mut self.state.surround_pans[other];
+            (q.link, q.pattern) = (pan.link, pan.pattern);
+            if pan.link {
+                let (x, y) = pattern.place(place(pan.x), place(pan.y));
+                (q.x, q.y) = (step(x), step(y));
+            }
+            self.apply_surround(other);
+        }
     }
 
     /// A member's sends to the surround buses from its pan (nothing while
-    /// SURROUND is off): post fader, each its speaker's gain.
+    /// SURROUND is off): post fader, each its speaker's gain. A stereo
+    /// channel's right side sits by ST LINK's pattern (else with the left).
     fn apply_surround(&self, member: usize) {
         let (Some(mode), Some(s)) = (self.surround(), Y2Strip::of_member(member)) else { return };
         let Some(st) = self.strip(s) else { return };
         let p = self.state.surround_pans[member];
-        let c = |v: u8| (v as f32 - 32.0) / 32.0;
         let sub = if p.sub == 0 { 0.0 } else { livedaw_dsp::util::db_to_gain(p.sub as f32 - 60.0) };
-        let gains = surround::gains(mode, surround::Position { x: c(p.x), y: c(p.y), csr: p.csr as f32 / 10.0, sub });
-        // A centred send is the pan law's centre on each side: as much more,
-        // so each bus carries the speaker's gain.
+        let at = |(x, y)| surround::gains(mode, surround::Position { x, y, csr: p.csr as f32 / 10.0, sub });
+        let left = at((place(p.x), place(p.y)));
+        let stereo = st.params.stereo.load(Relaxed);
+        let right = if stereo && p.link { at(pattern_of(p).place(place(p.x), place(p.y))) } else { left };
+        // The buses sum to mono (`set_surround`): a centred mono send is the
+        // pan law's centre on both sides, as much more; a stereo one's sides
+        // are balanced to their gains, twice them for the mono's half.
         let centre = (self.engine.profile().spec().pan.mono)(0.0).0.max(1e-6);
-        for (bus, g) in gains.iter().enumerate().take(mode.buses()) {
+        for bus in 0..mode.buses() {
+            let (level, balance) = if stereo {
+                let (a, b) = (left[bus], right[bus]);
+                let balance = if a <= 0.0 && b <= 0.0 {
+                    0.0
+                } else if a >= b {
+                    b / a - 1.0
+                } else {
+                    1.0 - a / b
+                };
+                (2.0 * a.max(b), balance)
+            } else {
+                (left[bus] / centre, 0.0)
+            };
             if let Some(send) = st.sends.get_or_create(bus) {
                 send.mode.store(send_mode::POST, Relaxed);
                 send.pan_link.store(false, Relaxed);
-                send.pan.store(0.0);
-                send.level_db.store(if *g > 0.0 { livedaw_dsp::util::gain_to_db(g / centre) } else { -144.0 });
-                send.enabled.store(p.on && *g > 0.0, Relaxed);
+                send.pan.store(balance * 100.0);
+                send.level_db.store(if level > 0.0 { livedaw_dsp::util::gain_to_db(level) } else { -144.0 });
+                send.enabled.store(p.on && level > 0.0, Relaxed);
             }
         }
     }
@@ -1062,6 +1098,20 @@ fn copy_channel(from: &Strip, to: &Strip) {
     }
 }
 
+/// A surround pan step (0-64, 32 the centre) on the pan graph (-1 .. 1), and back.
+fn place(v: u8) -> f32 {
+    (v as f32 - 32.0) / 32.0
+}
+
+fn step(v: f32) -> u8 {
+    (v * 32.0 + 32.0).round().clamp(0.0, 64.0) as u8
+}
+
+/// A pan's ST LINK pattern.
+fn pattern_of(p: SurroundPan) -> surround::Pattern {
+    surround::Pattern::ALL[p.pattern.min(7) as usize]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1303,6 +1353,48 @@ mod tests {
         assert!(send(&c, 0).0 && send(&c, 0).1 == 0.0 && !send(&c, 1).0);
         let back = State::from_text(&c.state.to_text());
         assert_eq!(back.surround_pans[0], c.state.surround_pans[0]);
+    }
+
+    #[test]
+    fn st_link_moves_the_other_side_by_its_pattern() {
+        let e = y02r();
+        let mut s = State::default();
+        let mut c = Console::new(&e, &mut s);
+        c.set_surround(1); // 2+2
+        let bus = |c: &Console, b| c.strip(Y2Strip::Bus(b)).unwrap().params.mono.load(Relaxed);
+        assert!(bus(&c, 0) && bus(&c, 3) && !bus(&c, 4), "the surround buses sum to mono");
+        // MIC 1/2 paired: MIC 1 to the front left, MIC 2 mirrored to the front right.
+        c.set_pair(0, true, true);
+        let pan = SurroundPan { x: 0, y: 64, ..c.surround_pan(0).unwrap() };
+        c.set_surround_pan(0, pan);
+        let q = c.surround_pan(1).unwrap();
+        assert_eq!((q.x, q.y), (64, 64));
+        // A quarter turn clockwise, moved from MIC 2: MIC 1 turned back.
+        let pan = SurroundPan { x: 64, y: 32, pattern: 6, ..c.surround_pan(1).unwrap() };
+        c.set_surround_pan(1, pan);
+        let p = c.surround_pan(0).unwrap();
+        assert_eq!((p.x, p.y, p.pattern), (32, 64, 6), "to the front");
+        // ST LINK off: MIC 2 stays.
+        let pan = SurroundPan { link: false, x: 0, y: 0, ..c.surround_pan(0).unwrap() };
+        c.set_surround_pan(0, pan);
+        assert_eq!((c.surround_pan(1).unwrap().x, c.surround_pan(1).unwrap().link), (64, false));
+        // LINE 17/18 to the front left: its right side mirrored to the front
+        // right, so its left side alone feeds FL, its right alone FR.
+        let line = Y2Strip::Line(0).member().unwrap();
+        let pan = SurroundPan { x: 0, y: 64, ..c.surround_pan(line).unwrap() };
+        c.set_surround_pan(line, pan);
+        let st = c.strip(Y2Strip::Line(0)).unwrap();
+        let send = |b| {
+            let p = st.sends.get_or_create(b).unwrap();
+            (p.enabled.load(Relaxed), p.pan.load(), p.level_db.load())
+        };
+        let (fl, fr) = (send(0), send(1));
+        assert!(fl.0 && fl.1 == -100.0 && (fl.2 - 6.0206).abs() < 1e-3, "{fl:?}");
+        assert!(fr.0 && fr.1 == 100.0, "{fr:?}");
+        assert!(!send(2).0 && !send(3).0, "the rear silent");
+        // Off again: the buses no longer mono.
+        c.set_surround(0);
+        assert!(!bus(&c, 0));
     }
 
     #[test]

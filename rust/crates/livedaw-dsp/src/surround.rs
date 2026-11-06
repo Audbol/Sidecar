@@ -165,6 +165,73 @@ impl Trajectory {
     }
 }
 
+/// ST LINK's patterns (V2 MAN p.72): where a stereo channel's right side
+/// (or a pair's even channel) sits for its left side's place. The guide draws
+/// its eight without naming them; these are Sidecar's: the square's mirrors
+/// and quarter turns.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Pattern {
+    MirrorLeftRight,
+    MirrorFrontRear,
+    Opposite,
+    Same,
+    /// Mirrored across the FR - RL diagonal.
+    MirrorDiagonal,
+    /// Mirrored across the FL - RR diagonal.
+    MirrorAntiDiagonal,
+    Clockwise,
+    Anticlockwise,
+}
+
+impl Pattern {
+    pub const ALL: [Pattern; 8] = [
+        Pattern::MirrorLeftRight,
+        Pattern::MirrorFrontRear,
+        Pattern::Opposite,
+        Pattern::Same,
+        Pattern::MirrorDiagonal,
+        Pattern::MirrorAntiDiagonal,
+        Pattern::Clockwise,
+        Pattern::Anticlockwise,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Pattern::MirrorLeftRight => "MIRROR L-R",
+            Pattern::MirrorFrontRear => "MIRROR F-R",
+            Pattern::Opposite => "OPPOSITE",
+            Pattern::Same => "SAME",
+            Pattern::MirrorDiagonal => "MIRROR /",
+            Pattern::MirrorAntiDiagonal => "MIRROR \\",
+            Pattern::Clockwise => "TURN CW",
+            Pattern::Anticlockwise => "TURN CCW",
+        }
+    }
+
+    /// The second side's place for the first's (`x`, `y`).
+    pub fn place(self, x: f32, y: f32) -> (f32, f32) {
+        match self {
+            Pattern::MirrorLeftRight => (-x, y),
+            Pattern::MirrorFrontRear => (x, -y),
+            Pattern::Opposite => (-x, -y),
+            Pattern::Same => (x, y),
+            Pattern::MirrorDiagonal => (y, x),
+            Pattern::MirrorAntiDiagonal => (-y, -x),
+            Pattern::Clockwise => (y, -x),
+            Pattern::Anticlockwise => (-y, x),
+        }
+    }
+
+    /// The pattern back from the second side to the first.
+    pub fn inverse(self) -> Pattern {
+        match self {
+            Pattern::Clockwise => Pattern::Anticlockwise,
+            Pattern::Anticlockwise => Pattern::Clockwise,
+            p => p,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -200,6 +267,17 @@ mod tests {
         // At the rear, S alone; the subwoofer at its level.
         assert!((at(Mode::ThreeOne, 0.4, -1.0, 0.5)[3] - 1.0).abs() < 1e-6);
         assert_eq!(gains(Mode::ThreeTwoOne, Position { x: 0.0, y: 0.0, csr: 0.5, sub: 0.5 })[5], 0.5);
+    }
+
+    #[test]
+    fn patterns_and_their_inverses() {
+        for p in Pattern::ALL {
+            let (x, y) = p.place(0.25, -0.75);
+            assert_eq!(p.inverse().place(x, y), (0.25, -0.75), "{p:?}");
+        }
+        // A quarter turn clockwise takes the front to the right.
+        assert_eq!(Pattern::Clockwise.place(0.0, 1.0), (1.0, -0.0));
+        assert_eq!(Pattern::MirrorLeftRight.place(-1.0, 1.0), (1.0, 1.0));
     }
 
     #[test]

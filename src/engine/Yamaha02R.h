@@ -138,6 +138,8 @@ public:
         SurOffsetX, // 0-64, 32 none
         SurOffsetY,
         SurAlong,   // the place along it, 0-64
+        SurLink,    // ST LINK: a stereo channel's right side, a pair's other channel
+        SurPattern, // its pattern, 0-7 (livedaw_dsp::surround::Pattern)
         kSurFields
     };
     int getState (State what, int i) const { return ld::ld_y02r_state (handle, (int) what, i); }
