@@ -1084,13 +1084,16 @@ Universal Mixer, whose **PROMIX SURFACE** key comes back.
   console's initial data: RECALL resets the mix. The LCD shows the scene last recalled.
 - **MIDI.** The ProMix 01's MIDI is its only remote: its 531 parameters by control change
   (Channel or Register mode), scenes by program change (1-50, 128 for scene 00), Yamaha
-  bulk dumps of the Edit Buffer, the tables and the setup. The MIDI page sets the Tx and Rx
+  bulk dumps of the Edit Buffer, the scene memories, the tables and the setup (a request
+  for scene n answers with the show's scene n as it is stored, and a dump into scene n
+  stores it there, neither recalling it; a dump past the show's last scene adds scenes up
+  to it, named "SCENE nn"). The MIDI page sets the Tx and Rx
   channels, the mode and each kind's TX, RX, OMNI and ECHO; the devices are in the app
   settings (`promixmidi.input`, `.output`; the app's virtual port where the system has
   them). A dump's bytes are Sidecar's layout: dumps come back into Sidecar, not into a
   ProMix 01.
 
-Not there yet: the oscillator's sound, Local OFF, scene memories by bulk dump, the GAIN
+Not there yet: the oscillator's sound, Local OFF, the GAIN
 and PAD controls (the console's are analog; use the strip's trim on the Universal Mixer).
 The fader's steps, the effects' algorithms and the compressor's ratio steps are Sidecar's
 reading of the User's Guide, not measured on a console.

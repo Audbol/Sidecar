@@ -21,8 +21,9 @@ class ProMix;
       (NRPN LSB, CC 98, names the bank); the effects' parameters in 14 bits.
     - Program changes recall scenes through its table (1-50 the scenes, 128
       scene 00); a scene recalled on the console sends its program change.
-    - Yamaha bulk dumps and requests (the Edit Buffer, the tables, the setup,
-      the user programs; their bytes Sidecar's layout), Key Remote.
+    - Yamaha bulk dumps and requests (the Edit Buffer, the scene memories 1-50
+      as the show's scenes, read and written without a recall, the tables, the
+      setup, the user programs; their bytes Sidecar's layout), Key Remote.
 
     MIDI SETUP (Tx / Rx channels, TX, RX, OMNI, ECHO per kind, the mode) is
     kept in the app settings (`promixmidi.setup`), the devices in

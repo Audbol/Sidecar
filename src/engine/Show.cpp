@@ -382,6 +382,21 @@ void Show::storeScene (int index)
     changed();
 }
 
+std::vector<uint8_t> Show::getProMixSceneBytes (ld::LdProMix* promix, int memory) const
+{
+    std::vector<uint8_t> bytes (512);
+    bytes.resize ((size_t) juce::jmax (0, ld::ld_promix_show_scene_bytes (promix, handle, memory, bytes.data(), bytes.size())));
+    return bytes;
+}
+
+bool Show::storeProMixSceneBytes (ld::LdProMix* promix, int memory, const std::vector<uint8_t>& bytes)
+{
+    const bool stored = ld::ld_promix_store_scene_bytes (promix, handle, memory, bytes.data(), bytes.size());
+    if (stored)
+        changed();
+    return stored;
+}
+
 void Show::removeScene (int index)
 {
     ld::ld_show_remove_scene (handle, index);

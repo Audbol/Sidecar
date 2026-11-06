@@ -71,8 +71,8 @@ void ProMixMidi::handleMessage (int port, const juce::MidiMessage& m)
 
 void ProMixMidi::flush()
 {
-    // What the protocol asks of the app: scenes (the show's scenes 1-50; scene 00
-    // and the scene memories' dumps come with Phase 5 step 6).
+    // What the protocol asks of the app: the show's scenes 1-50 recalled, read
+    // (a bulk request) and written (a bulk dump), neither recalling them.
     ld::LdProMixEvent ev {};
     std::vector<uint8_t> bytes (512);
     while (ld::ld_promix_event (promix.getHandle(), &ev, bytes.data(), bytes.size()))
@@ -81,6 +81,15 @@ void ProMixMidi::flush()
         {
             show.recallScene (ev.value - 1);
             lastScene = show.getCurrentSceneIndex(); // not sent back
+        }
+        else if (ev.kind == 1)
+        {
+            if (const auto scene = show.getProMixSceneBytes (promix.getHandle(), ev.value); ! scene.empty())
+                ld::ld_promix_send_scene_dump (promix.getHandle(), ev.value, scene.data(), scene.size());
+        }
+        else if (ev.kind == 2)
+        {
+            show.storeProMixSceneBytes (promix.getHandle(), ev.value, { bytes.begin(), bytes.begin() + ev.size });
         }
     }
     std::vector<uint8_t> out (4096);

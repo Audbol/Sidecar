@@ -832,8 +832,8 @@ Three layers:
       layout (`midi::scene_bytes`: the Edit Buffer in the guide's 408 bytes,
       the switches as bits, the groups two to a byte), since the guide gives
       only the formats: a dump goes back into Sidecar, not into a ProMix 01.
-      Not done: the scene memories' dumps (step 6), Local OFF (the panel's,
-      step 7), the bulk interval, the Error report, the Backup Memory.
+      Not done: Local OFF (the panel's, step 7), the bulk interval, the Error
+      report, the Backup Memory. (The scene memories' dumps came after step 6.)
    6. **Scene memories** (done): scenes 1-50 are the show's scenes 1-50 (program
       changes through the table recall them; a recall on the console sends its
       program change), and they keep the console's own state: the engine holds a
@@ -846,9 +846,16 @@ Three layers:
       its pairs, groups, processors and SEND3-4 mode. Scene 00, the initial data
       (p.62), is the mix of a new ProMix 01 (`midi::initial_bytes`, its scene
       bytes), recalled by program change 128 or `ld_promix_recall_initial`
-      without rebuilding the console. Not done: scene memories as bulk dumps
-      (a request for scene n, a dump into it: they need the scene's mix without
-      recalling it), the program and user libraries in the show.
+      without rebuilding the console. Scene memories as bulk dumps (November
+      2026): a request for scene n answers with the show's scene n's bytes and a
+      dump into it stores them there, neither recalling it
+      (`ld_promix_show_scene_bytes`, `ld_promix_store_scene_bytes`): a scratch
+      ProMix engine, without audio, takes the live mix and then the scene, and
+      gives its bytes or takes the dump's and is captured back into the scene
+      (the scene's sections; its plugins' descriptions and states kept, since
+      the scratch engine hosts none). A dump past the show's last scene adds
+      scenes up to it ("SCENE nn", the ones between empty). Not done: the
+      program and user libraries in the show.
    7. **A ProMix skin** (done): `ProMixSurface` (`src/ui/ProMixSurface.*`, a
       `Skin`, `InterfaceKind::ProMix`, the setting `promix`; SETUP > INTERFACE
       offers PROMIX 01 on every skin and makes the console a fresh ProMix 01,

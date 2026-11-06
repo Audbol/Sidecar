@@ -306,7 +306,9 @@ of any size, of which the WING is one configuration.
   parameters as internal values, what its control changes carry), `midi` (its
   MIDI: the control change and program change tables, Channel and Register modes,
   the value scaling, bulk dumps and requests, Key Remote; `Midi::receive`, `poll`,
-  queued messages and events for the app). C ABI 44 `ld_promix_*`
+  queued messages and events for the app; a show's scene memory read or written
+  without a recall through a scratch engine, `ld_promix_show_scene_bytes` /
+  `_store_scene_bytes`). C ABI 44 `ld_promix_*`
   (`livedaw-ffi/src/promix.rs`); the app's `ProMix` (`src/engine/ProMix.h`, held by
   the MixerEngine) and `ProMixMidi` (`src/engine/ProMixMidi.*`, a `MidiProtocol`
   over one port). Its effect

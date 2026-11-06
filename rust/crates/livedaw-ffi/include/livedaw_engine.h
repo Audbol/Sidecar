@@ -1832,6 +1832,12 @@ extern "C"
     void ld_promix_load_scene_bytes (LdProMix*, const uint8_t* data, size_t len);
     /** Queues a bulk dump of scene `scene` (1-50) holding `data`. */
     void ld_promix_send_scene_dump (LdProMix*, int32_t scene, const uint8_t* data, size_t len);
+    /** ABI 50: scene memory `scene` (1-50, the show's scene `scene - 1`) as scene bytes,
+        without recalling it; how many were written (0: no such scene, or no mix in it). */
+    int32_t ld_promix_show_scene_bytes (LdProMix*, Show*, int32_t scene, uint8_t* out, size_t max);
+    /** ABI 50: stores scene bytes into scene memory `scene` without recalling it (its
+        plugins kept; missing scenes up to it added as "SCENE nn"). */
+    bool ld_promix_store_scene_bytes (LdProMix*, Show*, int32_t scene, const uint8_t* data, size_t len);
     struct LdProMixSetup
     {
         int32_t txChannel, rxChannel;  // 0-15

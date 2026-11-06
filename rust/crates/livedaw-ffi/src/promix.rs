@@ -8,12 +8,14 @@
 //! engine isn't a ProMix 01.
 
 use super::guard;
-use super::session::{str_arg, LdString};
-use livedaw_engine::{Engine, Profile};
+use super::session::{str_arg, LdShow, LdString};
+use livedaw_engine::{ConsoleConfig, Counts, Engine, Profile};
 use livedaw_promix::console::{Console, Origin};
 use livedaw_promix::library::Library;
 use livedaw_promix::midi::{Event, Midi, Setup, Switches};
 use livedaw_promix::{params, State};
+use livedaw_session::xml::{Element, Node};
+use livedaw_session::{console as session_console, section, NoPlugins, Scene};
 
 pub struct LdProMix {
     engine: *const Engine,
@@ -309,6 +311,119 @@ pub unsafe extern "C" fn ld_promix_send_scene_dump(p: *mut LdProMix, scene: i32,
     let data = std::slice::from_raw_parts(data, len);
     let msg = livedaw_promix::midi::dump(p.midi.setup.tx_channel, b'M', scene as u8, data);
     p.midi.push_out(msg);
+}
+
+/// A scratch ProMix 01 (no audio) holding the live console's mix, then the
+/// show's scene `index` over it: a scene memory read or written without
+/// recalling it. None if the scene holds no mix (an item, or none stored).
+fn scene_engine(live: &Engine, show: &livedaw_session::Show, index: i32) -> Option<Engine> {
+    let state = show.scene(index).filter(|s| s.item.is_none())?.state.as_ref()?;
+    let e = Engine::new(0);
+    e.configure(&ConsoleConfig { profile: Profile::ProMix01, counts: Counts::PROMIX01 });
+    let live_state = session_console::capture(live, section::ALL, None, &mut NoPlugins);
+    session_console::apply(&e, &live_state, section::ALL, None, false, None, &mut NoPlugins);
+    session_console::apply(&e, state, section::ALL, None, false, None, &mut NoPlugins);
+    Some(e)
+}
+
+/// Keeps `old`'s plugins in `new` (a capture without plugin hosting): each
+/// EXT slot's description and state.
+fn keep_plugins(new: &mut Element, old: &Element) {
+    let (Some(old_fx), Some(Node::Element(new_fx))) =
+        (old.child("Fx"), new.children.iter_mut().find(|n| matches!(n, Node::Element(e) if e.name == "Fx")))
+    else {
+        return;
+    };
+    for slot in new_fx.children.iter_mut() {
+        let Node::Element(slot) = slot else { continue };
+        let i = slot.str_or("i", "").to_string();
+        if let Some(o) =
+            old_fx.children_named("Slot").find(|o| o.str_or("i", "") == i && o.str_or("mdl", "") == slot.str_or("mdl", ""))
+        {
+            for c in o.elements() {
+                slot.add(c.clone());
+            }
+        }
+    }
+}
+
+/// ABI 50: scene memory `scene` (1-50, the show's scene `scene - 1`) as scene
+/// bytes (408) into `out`, without recalling it; how many were written (0: no
+/// such scene, or it holds no mix).
+///
+/// # Safety
+/// `p` is from `ld_promix_create`, `s` a show (or null); `out` holds `max` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn ld_promix_show_scene_bytes(
+    p: *mut LdProMix,
+    s: *mut LdShow,
+    scene: i32,
+    out: *mut u8,
+    max: usize,
+) -> i32 {
+    let (Some(p), Some(s)) = (p.as_mut(), s.as_mut()) else { return 0 };
+    let Some(live) = p.engine.as_ref().filter(|e| e.profile() == Profile::ProMix01) else { return 0 };
+    if !(1..=50).contains(&scene) {
+        return 0;
+    }
+    let bytes = guard(Vec::new(), || {
+        let Some(e) = scene_engine(live, &s.show, scene - 1) else { return Vec::new() };
+        let mut state = State::from_text(&e.console_text().0);
+        livedaw_promix::midi::scene_bytes(&Console::new(&e, &mut state, &p.library))
+    });
+    let n = bytes.len().min(max);
+    if !out.is_null() {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), out, n);
+    }
+    n as i32
+}
+
+/// ABI 50: stores scene bytes into scene memory `scene` (1-50, the show's scene
+/// `scene - 1`) without recalling it: the scene's mix with the bytes over it
+/// (its plugins kept). Missing scenes up to it are added ("SCENE nn", the
+/// ones before it empty). False if the scene is an item or not a ProMix's.
+///
+/// # Safety
+/// `p` is from `ld_promix_create`, `s` a show (or null); `data` holds `len` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn ld_promix_store_scene_bytes(
+    p: *mut LdProMix,
+    s: *mut LdShow,
+    scene: i32,
+    data: *const u8,
+    len: usize,
+) -> bool {
+    let (Some(p), Some(s)) = (p.as_mut(), s.as_mut()) else { return false };
+    let Some(live) = p.engine.as_ref().filter(|e| e.profile() == Profile::ProMix01) else { return false };
+    if data.is_null() || !(1..=50).contains(&scene) {
+        return false;
+    }
+    let data = std::slice::from_raw_parts(data, len).to_vec();
+    guard(false, || {
+        let index = scene - 1;
+        let name = |n: i32| format!("SCENE {n:02}");
+        while s.show.scenes().len() as i32 <= index {
+            let n = s.show.scenes().len() as i32 + 1;
+            s.show.insert_scene(Scene { name: name(n), ..Scene::default() }, n - 1);
+        }
+        let target = s.show.scene_mut(index).expect("added above");
+        if target.item.is_some() {
+            return false;
+        }
+        // A scene without a mix starts from the live console's.
+        let old = target.state.get_or_insert_with(|| session_console::capture(live, section::ALL, None, &mut NoPlugins)).clone();
+        let Some(e) = scene_engine(live, &s.show, index) else { return false };
+        let mut state = State::from_text(&e.console_text().0);
+        livedaw_promix::midi::load_scene_bytes(&mut Console::new(&e, &mut state, &p.library), &data);
+        e.set_console_text(&state.to_text());
+        let sections = old.int_or("sections", section::ALL as i32) as u32;
+        let mut new = session_console::capture(&e, sections, None, &mut NoPlugins);
+        keep_plugins(&mut new, &old);
+        if let Some(t) = s.show.scene_mut(index) {
+            t.state = Some(new);
+        }
+        true
+    })
 }
 
 /// ABI 44: MIDI SETUP (`livedaw_promix::midi::Setup`): channels 0-15; per
@@ -668,6 +783,55 @@ mod tests {
             ld_promix_set_param(p, 3, 20);
             ld_promix_recall_initial(p);
             assert_eq!((ld_promix_param(p, 3), ld_promix_param(p, 397)), (0, 0));
+            ld_promix_destroy(p);
+        }
+    }
+
+    #[test]
+    fn scene_memories_are_read_and_written_without_a_recall() {
+        use crate::session::{ld_show_add_scene, ld_show_create, ld_show_destroy, ld_show_recall_scene};
+        let e = Engine::new(0);
+        e.configure(&ConsoleConfig { profile: Profile::ProMix01, counts: Counts::PROMIX01 });
+        unsafe {
+            let p = ld_promix_create(&e);
+            let s = ld_show_create(std::ptr::null());
+            // Scene 1: CH4 at 90, CH1/2 paired.
+            ld_promix_set_param(p, 3, 90);
+            ld_promix_set_param(p, 503, 3);
+            assert_eq!(ld_show_add_scene(s, &e, b"A".as_ptr(), 1, -1), 0);
+            let mut stored = vec![0u8; 408];
+            assert_eq!(ld_promix_scene_bytes(p, stored.as_mut_ptr(), 408), 408);
+            // The console moves on; scene 1 reads as it was stored.
+            ld_promix_set_param(p, 3, 20);
+            ld_promix_set_param(p, 503, 0);
+            let mut read = vec![0u8; 408];
+            assert_eq!(ld_promix_show_scene_bytes(p, s, 1, read.as_mut_ptr(), 408), 408);
+            assert_eq!(read, stored);
+            assert_eq!((ld_promix_param(p, 3), ld_promix_param(p, 396)), (20, 0), "not recalled");
+            // No scene 3 yet: nothing to read.
+            assert_eq!(ld_promix_show_scene_bytes(p, s, 3, read.as_mut_ptr(), 408), 0);
+            // A dump into scene 3 adds scenes 2 and 3 and stores it there.
+            assert!(ld_promix_store_scene_bytes(p, s, 3, stored.as_ptr(), stored.len()));
+            let sh = &(*s).show;
+            assert_eq!(sh.scenes().len(), 3);
+            assert_eq!((sh.scenes()[1].name.as_str(), sh.scenes()[2].name.as_str()), ("SCENE 02", "SCENE 03"));
+            assert!(sh.scenes()[1].state.is_none());
+            assert_eq!(ld_promix_param(p, 3), 20, "not recalled");
+            assert_eq!(ld_promix_show_scene_bytes(p, s, 3, read.as_mut_ptr(), 408), 408);
+            assert_eq!(read, stored);
+            // Recalling it brings the dumped mix back.
+            ld_show_recall_scene(s, &e, 0, 2, std::ptr::null_mut());
+            assert_eq!((ld_promix_param(p, 3), ld_promix_param(p, 396)), (90, 1));
+            // A dump into an existing scene changes only that scene.
+            ld_promix_set_param(p, 3, 50);
+            let mut other = vec![0u8; 408];
+            ld_promix_scene_bytes(p, other.as_mut_ptr(), 408);
+            assert!(ld_promix_store_scene_bytes(p, s, 1, other.as_ptr(), other.len()));
+            ld_promix_show_scene_bytes(p, s, 1, read.as_mut_ptr(), 408);
+            assert_eq!(read, other);
+            ld_promix_show_scene_bytes(p, s, 3, read.as_mut_ptr(), 408);
+            assert_eq!(read, stored);
+            ld_show_destroy(s);
             ld_promix_destroy(p);
         }
     }

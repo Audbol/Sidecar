@@ -184,6 +184,11 @@ Phase 4, the X32 (`docs/UNIVERSAL_MIXER.md`), begins.
 
 Phase 5, the Yamaha ProMix 01 (`docs/UNIVERSAL_MIXER.md`), begins.
 
+- ProMix 01 scene memories by bulk dump: a request for scene 1-50 answers with the show's
+  scene as it is stored, and a dump into one stores it there, neither recalling it (a
+  dump past the show's last scene adds scenes up to it, "SCENE nn"; the scene's plugins
+  are kept).
+
 - The ProMix surface checked against photos of a console: its LCD laid out as the
   console's (FUNCTION, MEMORY with the scene's title, number and EDIT, and SEL CH down
   the left; EQ's curve over its G / F / Q table; COMP's lines, three programs, STORE,

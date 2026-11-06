@@ -119,6 +119,11 @@ public:
     /** Captures the current console as a new scene (appended, or inserted at `index`). */
     int addScene (const juce::String& sceneName, int index = -1);
     void storeScene (int index);
+    /** A ProMix 01's scene memory `memory` (1-50, scene `memory - 1`) as scene bytes,
+        without recalling it (empty: no such scene, or no mix in it). */
+    std::vector<uint8_t> getProMixSceneBytes (ld::LdProMix*, int memory) const;
+    /** Stores scene bytes (a bulk dump) into scene memory `memory` without recalling it. */
+    bool storeProMixSceneBytes (ld::LdProMix*, int memory, const std::vector<uint8_t>& bytes);
     void removeScene (int index);
     void moveScene (int from, int to);
 
