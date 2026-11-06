@@ -3,7 +3,8 @@
 //! appends a line: each stage's wall time and the audio thread's CPU cycles,
 //! and for each parallel stage the longest task (wall and cycles, who ran it)
 //! and how long the audio thread waited for the workers after its own tasks.
-//! Off, each call is a check of a flag read once. On, a slow block's line is
+//! Off, each call is a check of a flag read once (by `Engine::new`, off the
+//! audio thread). On, a slow block's line is
 //! written from the audio thread (a diagnostic run, not a show).
 
 use std::cell::UnsafeCell;

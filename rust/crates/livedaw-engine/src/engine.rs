@@ -338,6 +338,9 @@ pub fn monitor_dca_paths(name: &str) -> u32 {
 
 impl Engine {
     pub fn new(num_workers: usize) -> Self {
+        // Read LIVEDAW_TRACE_SLOW here: reading it allocates, and the audio
+        // thread asks for it on its first block.
+        crate::trace::enabled();
         let device = DeviceConfig { sample_rate: DEFAULT_SAMPLE_RATE, block_size: DEFAULT_BLOCK, num_hw_inputs: 0 };
         let engine = Self {
             console_text: Mutex::new((String::new(), 0)),

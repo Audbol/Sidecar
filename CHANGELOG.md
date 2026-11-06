@@ -5,6 +5,10 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+- The audio thread no longer allocates on its first block: the engine reads
+  `LIVEDAW_TRACE_SLOW` when it is made, not when the first block asks (the WING
+  soak test's audio-thread allocation check failed on it).
+
 Phase 3, the WING as a profile (`docs/UNIVERSAL_MIXER.md`), begins.
 
 - The console's profile (the console it emulates: the WING, or the Universal for a
