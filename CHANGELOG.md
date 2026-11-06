@@ -595,6 +595,15 @@ Phase 6, the Yamaha 02R (`docs/UNIVERSAL_MIXER.md`), begins.
   beside it. The surround buses sum to mono while SURROUND has them, so both
   sides of a stereo channel reach their speakers. A stereo channel with ST
   LINK off has both sides at one place.
+- The ProMix 01's LCD pages closer to the manual's pictures: PHASE as N / R rings
+  (R filled) beside the PAN link with the legend under them (p.20); SEND1 and SEND2's
+  three programs, "(FADER = SEND1)", STORE, RECALL, EDIT and SEND: PRE / POST (p.33);
+  CUE's channel view (p.52): the group, PHASE, PAN, CUE:, the fader and sends as
+  faders under ON and PRE / POST, the EQ curve, the meter; GROUP's dot grid with the
+  shown group's row inverted, the channels' numbers over it, BAL ADJ and SEL = GROUP
+  (p.56); PAIR's boxes with the stereo mark and "CH1-2 :MONO x2" (p.58); EQ's ON/OFF
+  boxed (p.21). The FUNCTION area's second line names GROUP's FADER, PAIR's STEREO
+  and CUE's CH VIEW.
 - The 02R display drawn as the manual's pictures (V2 MAN pp.33-43, 107, 135-136,
   182-186): the title bar (the scene memory, the page boxed, the channel boxed) and
   the row of the 16 encoders and E1, E2 under every page; PHASE / ATT, PAN and AUX

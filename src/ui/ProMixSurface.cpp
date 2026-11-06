@@ -387,8 +387,15 @@ namespace promix
                 }
                 break;
             case Function::Phase:
+                // As p.20's picture: 1-8 beside the PAN link, 9-16 and ST IN under them;
+                // the legend under the rule.
                 for (int i = 0; i < 17; ++i)
-                    fields.push_back (paramField (kPhase + i, { (float) (i % 9) / 9.0f, i < 9 ? 0.15f : 0.55f, 1.0f / 9.0f, 0.3f }));
+                {
+                    auto f = paramField (kPhase + i, { 0.12f + 0.095f * (float) (i < 8 ? i : i - 8), i < 8 ? 0.0f : 0.38f, 0.095f, 0.38f });
+                    f.style = Field::Style::Circle;
+                    f.label = i < 16 ? juce::String (i + 1) : juce::String ("STIN");
+                    fields.push_back (std::move (f));
+                }
                 break;
             case Function::EqLow:
             case Function::EqMid:
@@ -405,7 +412,8 @@ namespace promix
                     }
                 {
                     auto on = paramField (kEqOn + e, { 0.0f, 0.62f, 0.15f, 0.38f });
-                    on.label = "ON/OFF";
+                    on.label = "ON/OFF:";
+                    on.style = Field::Style::Value;
                     fields.push_back (std::move (on));
                 }
                 focus = juce::jlimit (0, (int) fields.size() - 1, focus == 0 ? 3 * focusBand : focus);
@@ -435,9 +443,43 @@ namespace promix
                 const int fx = function == Function::Send1 ? 0 : 1;
                 if (page == 0)
                 {
-                    fields.push_back (listField ("EFFECT " + juce::String (fx + 1), ProMix::Effects, 40, kFxType + fx, { 0.0f, 0.0f, 0.62f, 1.0f }));
-                    fields.push_back (paramField (kSendPre + fx, { 0.66f, 0.80f, 0.34f, 0.18f }));
-                    fields.push_back (storeField (ProMix::Effects, 30, 10, fx, { 0.66f, 0.56f, 0.34f, 0.18f }));
+                    // As p.33's picture: three programs, "(FADER = SEND1)" under them;
+                    // STORE, RECALL, EDIT and SEND: PRE / POST along the bottom.
+                    const int list = (int) fields.size();
+                    {
+                        auto f = listField ({}, ProMix::Effects, 40, kFxType + fx, { 0.0f, 0.0f, 0.74f, 0.6f });
+                        auto& p = pm;
+                        f.item = [&p] (int i) { return juce::String (i + 1) + "." + p.programName (ProMix::Effects, i); };
+                        f.rows = 3;
+                        fields.push_back (std::move (f));
+                    }
+                    fields.push_back (storeField (ProMix::Effects, 30, 10, fx, { 0.0f, 0.8f, 0.18f, 0.2f }));
+                    fields.back().style = Field::Style::Button;
+                    Field recall;
+                    recall.label = "RECALL";
+                    recall.style = Field::Style::Button;
+                    recall.get = [] { return -1; };
+                    recall.steps = [] { return 1; };
+                    recall.text = [] { return juce::String(); };
+                    recall.set = [this, list] (int)
+                    {
+                        auto& l = fields[(size_t) list];
+                        if (l.pending >= 0)
+                            l.set (l.pending);
+                    };
+                    recall.onEnter = true;
+                    recall.pending = 0;
+                    recall.box = { 0.2f, 0.8f, 0.2f, 0.2f };
+                    fields.push_back (recall);
+                    Field edit = recall;
+                    edit.label = "EDIT";
+                    edit.set = [this] (int) { setPage (1); };
+                    edit.box = { 0.42f, 0.8f, 0.15f, 0.2f };
+                    fields.push_back (edit);
+                    auto send = paramField (kSendPre + fx, { 0.6f, 0.8f, 0.38f, 0.2f });
+                    send.label = "SEND";
+                    send.style = Field::Style::Inline;
+                    fields.push_back (std::move (send));
                 }
                 else
                 {
@@ -528,14 +570,42 @@ namespace promix
                     // pan, EQ, its fader and its sends.
                     row ({ kChOn + e, kGroup + e, kPhase + e, kChPan + e, kEqOn + e }, 0.3f, 0.3f, 0.0f, 1.0f);
                     row ({ e, kSendLevel + e, kSendLevel + 17 + e, kSendLevel + 34 + e, kSendLevel + 51 + e }, 0.64f, 0.3f, 0.0f, 1.0f);
-                    const char* names[] = { "ON", "GROUP", "PHASE", "PAN", "EQ", "FADER", "SEND1", "SEND2", "SEND3", "SEND4" };
+                    const char* names[] = { "ON", "GROUP", "PHASE", "PAN", "EQ", "CH", "S1", "S2", "S3", "S4" };
                     for (size_t k = 0; k < 10 && k + 1 < fields.size(); ++k)
                         fields[k + 1].label = names[k];
+                    // As p.52's picture: the group, PHASE, PAN and CUE: along the top;
+                    // the fader and the sends as faders (ON and PRE / POST over them);
+                    // the EQ curve and EQ: beside them.
+                    using S = Field::Style;
+                    const std::pair<S, juce::Rectangle<float>> look[] = {
+                        { S::Value, { 0.0f, 0.3f, 0.07f, 0.12f } },   // ON, over CH
+                        { S::Value, { 0.0f, 0.0f, 0.1f, 0.3f } },     // GROUP
+                        { S::Circle, { 0.11f, 0.0f, 0.1f, 0.3f } },   // PHASE
+                        { S::Knob, { 0.22f, 0.0f, 0.1f, 0.3f } },     // PAN
+                        { S::Inline, { 0.36f, 0.84f, 0.3f, 0.16f } }, // EQ
+                        { S::Fader, { 0.0f, 0.42f, 0.07f, 0.58f } },  // CH
+                    };
+                    for (size_t k = 0; k < 10 && k + 1 < fields.size(); ++k)
+                    {
+                        auto& f = fields[k + 1];
+                        if (k < 6)
+                            f.style = look[k].first, f.box = look[k].second;
+                        else
+                            f.style = S::Fader, f.box = { 0.07f * (float) (k - 5), 0.42f, 0.07f, 0.58f };
+                    }
+                    fields[1].label = {}; // ON: its value alone, over CH
+                    fields[0].style = S::Inline;
+                    fields[0].label = "CUE";
+                    fields[0].box = { 0.36f, 0.0f, 0.36f, 0.16f };
                 }
                 break;
             case Function::Group:
             {
-                fields.push_back (paramField (kGroupSelect, { 0.0f, 0.0f, 0.2f, 0.18f }));
+                // As p.56's picture: the channels' numbers over the dots, the group
+                // shown inverted; BAL ADJ at the right; SEL = GROUP under them.
+                fields.push_back (paramField (kGroupSelect, { 0.2f, 0.84f, 0.5f, 0.16f }));
+                fields.back().label = "SEL = GROUP";
+                fields.back().style = Field::Style::Inline;
                 // BAL ADJ (p.56): ENTER lets the group go while one fader is set.
                 Field bal;
                 bal.label = "BAL ADJ";
@@ -543,15 +613,26 @@ namespace promix
                 bal.steps = [] { return 2; };
                 bal.set = [this] (int v) { pm.setBalAdj (v != 0); };
                 bal.text = [this] { return juce::String (pm.balAdj() ? "ON" : "OFF"); };
-                bal.box = { 0.24f, 0.0f, 0.22f, 0.18f };
+                bal.box = { 0.8f, 0.3f, 0.2f, 0.2f };
+                bal.style = Field::Style::Inline;
                 fields.push_back (std::move (bal));
                 for (int m = 0; m < 17; ++m)
-                    fields.push_back (paramField (kGroup + m, { 0.06f + 0.94f * (float) m / 17.0f, 0.82f, 0.94f / 17.0f, 0.16f }));
+                {
+                    fields.push_back (paramField (kGroup + m, { 0.08f + 0.7f * (float) m / 17.0f, 0.0f, 0.7f / 17.0f, 0.16f }));
+                    fields.back().label = m < 16 ? juce::String (m + 1) : juce::String ("St");
+                    fields.back().style = Field::Style::Number;
+                }
                 break;
             }
             case Function::Pair:
+                // As p.58's picture: the eight pairs' boxes in two rows; the one
+                // under the cursor's setting under them.
                 for (int p = 0; p < 8; ++p)
-                    fields.push_back (paramField (kPairExecute + p, { 0.125f * (float) p, 0.45f, 0.125f, 0.3f }, true));
+                {
+                    fields.push_back (paramField (kPairExecute + p, { 0.03f + 0.24f * (float) (p % 4), p < 4 ? 0.04f : 0.34f, 0.22f, 0.26f }, true));
+                    fields.back().style = Field::Style::PairBox;
+                    fields.back().index = p;
+                }
                 break;
             case Function::Utility:
             {
@@ -1011,6 +1092,9 @@ namespace promix
         switch (function)
         {
             case Function::Phase: return "PHASE";
+            case Function::Group: return "FADER";
+            case Function::Pair: return "STEREO";
+            case Function::Cue: return "CH VIEW";
             case Function::Comp: return "No." + juce::String (processor + 1) + (page == 1 ? " EDIT" : "");
             case Function::Send1:
             case Function::Send2: return page == 1 ? "EFFECT EDIT" : "";
@@ -1049,6 +1133,8 @@ namespace promix
     juce::Rectangle<float> Display::pageLink() const
     {
         const auto a = pageArea();
+        if (function == Function::Phase)
+            return { a.getX(), a.getY(), a.getWidth() * 0.1f, a.getHeight() * 0.38f };
         return function == Function::Pan ? juce::Rectangle<float> (a.getX() + a.getWidth() * 0.84f, a.getY() + a.getHeight() * 0.4f, a.getWidth() * 0.13f, a.getHeight() * 0.32f)
                                          : juce::Rectangle<float> (a.getX() + a.getWidth() * 0.88f, a.getY() + a.getHeight() * 0.42f, a.getWidth() * 0.11f, a.getHeight() * 0.32f);
     }
@@ -1158,7 +1244,8 @@ namespace promix
             // A pan knob: its pointer from L16 (down left) to R16 (down right),
             // the channel's number under it (inverted under the cursor).
             auto num = box.removeFromBottom (juce::jmin (20.0f, box.getHeight() * 0.32f));
-            auto numBox = num.withSizeKeepingCentre (juce::jmin (num.getWidth(), 26.0f), num.getHeight());
+            g.setFont (lcdFont (type::kValue, true));
+            auto numBox = num.withSizeKeepingCentre (juce::jmin (num.getWidth(), juce::jmax (26.0f, juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), f.label) + 8.0f)), num.getHeight());
             if (focused)
             {
                 g.setColour (kPixel);
@@ -1181,6 +1268,106 @@ namespace promix
             const float a = juce::MathConstants<float>::pi * (-0.75f + 1.5f * t); // 0 = up
             const juce::Point<float> dir (std::sin (a), -std::cos (a));
             g.drawLine (juce::Line<float> (c + dir * (r * 0.2f), c + dir * (r * 0.95f)), 2.5f);
+            return;
+        }
+        // A word, inverted under the cursor.
+        const auto word = [&g, focused] (juce::Rectangle<float> r, const juce::String& text, float size)
+        {
+            g.setFont (lcdFont (size, true));
+            auto w = r.withSizeKeepingCentre (juce::jmin (r.getWidth(), juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), text) + 8.0f), r.getHeight());
+            g.setColour (kPixel);
+            if (focused)
+            {
+                g.fillRect (w);
+                g.setColour (kLcd);
+            }
+            g.drawFittedText (text, w.toNearestInt(), juce::Justification::centred, 1, 0.6f);
+        };
+        if (f.style == Style::Circle)
+        {
+            // N in a ring, R in a filled one; the number under it.
+            word (box.removeFromBottom (juce::jmin (20.0f, box.getHeight() * 0.34f)), f.label, type::kValue + 1.0f);
+            const float r = juce::jmin (box.getWidth(), box.getHeight()) * 0.42f;
+            const auto ring = juce::Rectangle<float> (2.0f * r, 2.0f * r).withCentre (box.getCentre());
+            const auto letter = f.text().substring (0, 1);
+            const bool rev = letter == "R";
+            g.setColour (kPixel);
+            if (rev)
+                g.fillEllipse (ring);
+            else
+                g.drawEllipse (ring, 2.0f);
+            g.setColour (rev ? kLcd : kPixel);
+            g.setFont (lcdFont (r * 1.3f, true));
+            g.drawText (letter, ring, juce::Justification::centred);
+            return;
+        }
+        if (f.style == Style::PairBox)
+        {
+            // The two channels at its ends; between them the stereo mark when paired.
+            const bool paired = pm.get (kPairFlag + f.index) == 1;
+            const auto r = box.reduced (2.0f, box.getHeight() * 0.12f);
+            g.setColour (kPixel);
+            if (focused)
+                g.fillRect (r);
+            else
+            {
+                g.drawRect (r, 2.0f);
+                g.drawRect (r.reduced (3.0f), 1.0f);
+            }
+            g.setColour (focused ? kLcd : kPixel);
+            g.setFont (lcdFont (r.getHeight() * 0.62f, false));
+            auto in = r.reduced (8.0f, 0.0f);
+            g.drawText (juce::String (2 * f.index + 1), in, juce::Justification::centredLeft);
+            g.drawText (juce::String (2 * f.index + 2), in, juce::Justification::centredRight);
+            if (paired)
+            {
+                const auto c = r.getCentre();
+                const float s = r.getHeight() * 0.2f;
+                juce::Path mark;
+                mark.addTriangle (c.x - 1.5f * s, c.y, c.x - 0.3f * s, c.y - s, c.x - 0.3f * s, c.y + s);
+                mark.addTriangle (c.x + 1.5f * s, c.y, c.x + 0.3f * s, c.y - s, c.x + 0.3f * s, c.y + s);
+                mark.addRectangle (c.x - 2.1f * s, c.y - s, 1.5f, 2.0f * s);
+                mark.addRectangle (c.x + 2.1f * s - 1.5f, c.y - s, 1.5f, 2.0f * s);
+                g.fillPath (mark);
+            }
+            return;
+        }
+        if (f.style == Style::Fader)
+        {
+            // Its slot and knob at the level; its name under it.
+            word (box.removeFromBottom (18.0f), f.label, type::kValue + 1.0f);
+            const auto slot = box.reduced (0.0f, 6.0f);
+            g.setColour (kPixel);
+            g.fillRect (juce::Rectangle<float> (3.0f, slot.getHeight()).withCentre (slot.getCentre()));
+            const int steps = juce::jmax (2, f.steps());
+            const float t = (float) juce::jlimit (0, steps - 1, f.get()) / (float) (steps - 1);
+            const auto knobAt = juce::Rectangle<float> (juce::jmin (16.0f, box.getWidth() * 0.6f), 6.0f).withCentre ({ slot.getCentreX(), slot.getBottom() - t * slot.getHeight() });
+            g.fillRect (knobAt);
+            return;
+        }
+        if (f.style == Style::Number)
+        {
+            word (box, f.label, type::kValue + 1.0f);
+            return;
+        }
+        if (f.style == Style::Value)
+        {
+            // Its name, and the value boxed under it.
+            if (f.label.isNotEmpty())
+            {
+                g.setColour (kPixel);
+                g.setFont (lcdFont (type::kValue, true));
+                g.drawFittedText (f.label, box.removeFromTop (box.getHeight() * 0.4f).toNearestInt(), juce::Justification::centredLeft, 2, 0.6f);
+            }
+            const auto v = box.reduced (2.0f, 2.0f);
+            g.setColour (kPixel);
+            if (focused)
+                g.fillRect (v);
+            else
+                g.drawRect (v, 2.0f);
+            g.setColour (focused ? kLcd : kPixel);
+            g.setFont (lcdFont (juce::jmin (v.getHeight() * 0.7f, 26.0f), true));
+            g.drawFittedText (f.text(), v.toNearestInt(), juce::Justification::centred, 1, 0.6f);
             return;
         }
         if (focused)
@@ -1323,26 +1510,29 @@ namespace promix
     void Display::paintGroups (juce::Graphics& g, juce::Rectangle<float> area) const
     {
         // The FADER GROUP display (p.56): groups A-D down the side, the channels
-        // across, a dot where a channel is in the group.
+        // across (their numbers over them, the fields), the shown group's row
+        // inverted; a big dot where a channel is in the group, a small one where not.
         const int shownGroup = juce::jmax (0, pm.get (kGroupSelect));
-        const float rowH = area.getHeight() / 4.0f, colW = (area.getWidth() - area.getWidth() * 0.06f) / 17.0f;
+        const float rowH = area.getHeight() / 4.0f, labelW = area.getWidth() * 0.1f, colW = (area.getWidth() - labelW) / 17.0f;
         for (int grp = 0; grp < 4; ++grp)
         {
             auto r = area.withY (area.getY() + rowH * (float) grp).withHeight (rowH);
-            g.setColour (grp == shownGroup ? kPixel : kPixelDim);
-            g.setFont (lcdFont (type::kLabel, grp == shownGroup));
-            g.drawText (juce::String::charToString ((juce::juce_wchar) ('A' + grp)), r.removeFromLeft (area.getWidth() * 0.06f), juce::Justification::centred);
+            const bool inverted = grp == shownGroup;
+            if (inverted)
+            {
+                g.setColour (kPixel);
+                g.fillRect (r.reduced (0.0f, 1.0f));
+            }
+            const auto ink = inverted ? kLcd : kPixel;
+            g.setColour (ink);
+            g.setFont (lcdFont (type::kValue + 2.0f, true));
+            const auto letter = juce::String::charToString ((juce::juce_wchar) ('A' + grp));
+            g.drawText (inverted ? "[" + letter + "]" : letter, r.removeFromLeft (labelW), juce::Justification::centredLeft);
             for (int m = 0; m < 17; ++m)
             {
-                const auto cell = juce::Rectangle<float> (r.getX() + colW * (float) m, r.getY(), colW, rowH).reduced (colW * 0.3f, rowH * 0.3f);
-                if (pm.get (kGroup + m) == grp + 1)
-                    g.fillEllipse (cell);
-                else
-                {
-                    g.setColour (kLcdFrame);
-                    g.drawEllipse (cell, 1.0f);
-                    g.setColour (grp == shownGroup ? kPixel : kPixelDim);
-                }
+                const auto c = juce::Rectangle<float> (r.getX() + colW * (float) m, r.getY(), colW, rowH).getCentre();
+                const float d = pm.get (kGroup + m) == grp + 1 ? juce::jmin (colW, rowH) * 0.6f : 3.0f;
+                g.fillEllipse (juce::Rectangle<float> (d, d).withCentre (c));
             }
         }
     }
@@ -1528,6 +1718,23 @@ namespace promix
             case Function::Send2:
                 if (page == 0)
                 {
+                    // "(FADER = SEND1)" under the list, the rules; STORE's choice waiting for ENTER.
+                    g.setColour (kPixel);
+                    g.fillRect (area.getX(), area.getY() + area.getHeight() * 0.62f, area.getWidth() * 0.76f, 1.5f);
+                    g.fillRect (area.getX() + area.getWidth() * 0.77f, area.getY(), 1.5f, area.getHeight() * 0.76f);
+                    g.fillRect (area.getX(), area.getY() + area.getHeight() * 0.77f, area.getWidth(), 1.5f);
+                    g.setFont (lcdFont (type::kValue + 1.0f, true));
+                    g.drawText (function == Function::Send1 ? "(FADER = SEND1)" : "(FADER = SEND2)",
+                                juce::Rectangle<float> (area.getX(), area.getY() + area.getHeight() * 0.62f, area.getWidth() * 0.76f, area.getHeight() * 0.15f),
+                                juce::Justification::centred);
+                    if (juce::isPositiveAndBelow (focus, (int) fields.size()))
+                    {
+                        const auto& f = fields[(size_t) focus];
+                        if (f.style == Field::Style::Button && f.textOf && f.pending >= 0)
+                            g.drawFittedText ("> " + f.textOf (f.pending),
+                                              juce::Rectangle<float> (area.getX(), area.getY() + area.getHeight() * 0.62f, area.getWidth() * 0.76f, area.getHeight() * 0.15f).toNearestInt(),
+                                              juce::Justification::centredRight, 1, 0.6f);
+                    }
                     // The effect's return, RTN L and R, at the right (p.33).
                     const auto& aux = ctx.engine.getAux();
                     const int fx = function == Function::Send1 ? 1 : 2;
@@ -1593,20 +1800,71 @@ namespace promix
                 paintEqCurve (g, area.withWidth (area.getWidth() * 0.34f).withX (area.getRight() - area.getWidth() * 0.34f));
                 break;
             case Function::Group:
-                paintGroups (g, area.withTrimmedTop (area.getHeight() * 0.2f).withTrimmedBottom (area.getHeight() * 0.2f));
+            {
+                g.setColour (kPixel);
+                g.setFont (lcdFont (type::kValue + 1.0f, true));
+                g.drawText ("GRP", juce::Rectangle<float> (area.getX(), area.getY(), area.getWidth() * 0.08f, area.getHeight() * 0.16f), juce::Justification::centredLeft);
+                paintGroups (g, juce::Rectangle<float> (area.getX(), area.getY() + area.getHeight() * 0.17f, area.getWidth() * 0.78f, area.getHeight() * 0.62f));
+                g.fillRect (area.getX(), area.getY() + area.getHeight() * 0.81f, area.getWidth(), 1.5f);
+                g.fillRect (area.getX() + area.getWidth() * 0.79f, area.getY(), 1.5f, area.getHeight() * 0.81f);
                 break;
+            }
             case Function::Pair:
-                for (int p = 0; p < 8; ++p)
+                if (juce::isPositiveAndBelow (focus, (int) fields.size()))
                 {
-                    auto box = juce::Rectangle<float> (area.getX() + area.getWidth() * 0.125f * (float) p, area.getY() + area.getHeight() * 0.1f,
-                                                       area.getWidth() * 0.125f, area.getHeight() * 0.3f).reduced (6.0f);
-                    g.setColour (kLcdFrame);
-                    g.drawRoundedRectangle (box, 4.0f, 1.5f);
-                    g.setColour (pm.get (kPairFlag + p) == 1 ? kPixel : kPixelDim);
-                    g.setFont (lcdFont (type::kValue, true));
-                    g.drawText (pm.get (kPairFlag + p) == 1 ? "STEREO" : "MONO x2", box, juce::Justification::centred);
+                    // "CH1-2 :MONO x 2", the setting inverted.
+                    const auto& f = fields[(size_t) focus];
+                    const auto value = f.pending >= 0 && f.textOf ? f.textOf (f.pending) : f.text();
+                    auto line = juce::Rectangle<float> (area.getX() + area.getWidth() * 0.2f, area.getY() + area.getHeight() * 0.7f, area.getWidth() * 0.7f, area.getHeight() * 0.24f);
+                    g.setColour (kPixel);
+                    g.setFont (lcdFont (type::kValue + 4.0f, false));
+                    const auto name = "CH" + juce::String (2 * f.index + 1) + "-" + juce::String (2 * f.index + 2) + "  :";
+                    g.drawText (name, line.removeFromLeft (line.getWidth() * 0.4f), juce::Justification::centredRight);
+                    auto v = line.withWidth (juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), value) + 14.0f);
+                    g.fillRect (v);
+                    g.setColour (kLcd);
+                    g.drawText (value, v, juce::Justification::centred);
                 }
                 break;
+            case Function::Phase:
+            {
+                paintLink ("PAN");
+                g.setColour (kPixel);
+                g.fillRect (area.getX(), area.getY() + area.getHeight() * 0.78f, area.getWidth(), 1.5f);
+                g.setFont (lcdFont (type::kValue + 2.0f, false));
+                auto legend = juce::Rectangle<float> (area.getX(), area.getY() + area.getHeight() * 0.79f, area.getWidth(), area.getHeight() * 0.21f);
+                g.drawText ("N=Normal Phase", legend.removeFromTop (legend.getHeight() * 0.5f), juce::Justification::centred);
+                g.drawText ("R=Reverse Phase", legend, juce::Justification::centred);
+                break;
+            }
+            case Function::Cue:
+            {
+                if (eqStrip >= 16)
+                    break;
+                // PRE / POST over the sends, the EQ curve, the channel's meter; the rules.
+                g.setColour (kPixel);
+                g.setFont (lcdFont (type::kValue, true));
+                for (int k = 0; k < 4; ++k)
+                    g.drawText (pm.text (kSendPre + k), juce::Rectangle<float> (area.getX() + area.getWidth() * 0.07f * (float) (k + 1), area.getY() + area.getHeight() * 0.3f,
+                                                                               area.getWidth() * 0.07f, area.getHeight() * 0.12f), juce::Justification::centred);
+                g.fillRect (area.getX(), area.getY() + area.getHeight() * 0.29f, area.getWidth() * 0.82f, 1.5f);
+                g.fillRect (area.getX() + area.getWidth() * 0.345f, area.getY() + area.getHeight() * 0.3f, 1.5f, area.getHeight() * 0.7f);
+                g.fillRect (area.getX() + area.getWidth() * 0.82f, area.getY(), 1.5f, area.getHeight());
+                paintEqCurve (g, juce::Rectangle<float> (area.getX() + area.getWidth() * 0.36f, area.getY() + area.getHeight() * 0.32f, area.getWidth() * 0.44f, area.getHeight() * 0.5f));
+                const auto& chs = ctx.engine.getChannels();
+                auto* st = eqStrip < (int) chs.size() ? chs[(size_t) eqStrip].get() : nullptr;
+                auto m = juce::Rectangle<float> (area.getX() + area.getWidth() * 0.84f, area.getY(), area.getWidth() * 0.16f, area.getHeight() * 0.8f);
+                auto bar = m.withTrimmedLeft (m.getWidth() * 0.6f).reduced (3.0f, 4.0f);
+                paintScale (m.withWidth (m.getWidth() * 0.55f).withTrimmedTop (4.0f).withTrimmedBottom (4.0f), bar);
+                const float db = juce::Decibels::gainToDecibels (st != nullptr ? ctx.meters.get (st, MeterPoint::Input, 0) : 0.0f, -100.0f);
+                const float marks[] = { -60.0f, -44.0f, -38.0f, -32.0f, -26.0f, -20.0f, -17.0f, -14.0f, -11.0f, -8.0f, -5.0f, 0.0f };
+                int lit = 0;
+                for (float mark : marks)
+                    lit += db >= mark ? 1 : 0;
+                g.setColour (kPixel);
+                g.fillRect (bar.withTop (bar.getBottom() - bar.getHeight() * (float) lit / 12.0f));
+                break;
+            }
             default:
                 break;
         }

@@ -105,6 +105,8 @@ namespace promix
             EDIT, COMP's setup and EDIT, METER's two). */
         int getPage() const noexcept { return page; }
         void setPage (int);
+        /** How many pages the function has. */
+        int numPages() const;
         /** The processor COMP shows (0-2). */
         int getProcessor() const noexcept { return processor; }
         void setProcessor (int p);
@@ -183,8 +185,14 @@ namespace promix
             /** How it's drawn: a labelled box; its value alone (a cell of EQ's
                 table); "LABEL:VALUE" on a line; a key on the screen (STORE,
                 RECALL, EDIT); a pan knob (`span` 2: a pair's, over both boxes;
-                0: none, its partner's drawn). */
-            enum class Style { Box, Bare, Inline, Button, Knob } style = Style::Box;
+                0: none, its partner's drawn); PHASE's N or R in a circle (R
+                filled) over its number; PAIR's box of two channels (the stereo
+                mark between them when paired); a fader's slot and knob over its
+                name (CUE's); a number alone (GROUP's channels); a value boxed
+                under its name (EQ's ON/OFF). */
+            enum class Style { Box, Bare, Inline, Button, Knob, Circle, PairBox, Fader, Number, Value } style = Style::Box;
+            /** What it stands for, where the style needs it (PAIR's pair). */
+            int index = -1;
             int span = 1;
             /** A list's rows (0: as many as fit). */
             int rows = 0;
@@ -217,7 +225,6 @@ namespace promix
         ProMix& pm;
         Function function = Function::Meter;
         int page = 0, processor = 0, eqStrip = 0, focus = 0;
-        int numPages() const;
         /** TITLE EDIT: the memory and its eight characters (indexes into kTitleChars). */
         int titleMemory = 0, pcProgram = 0, ccParam = 0;
         /** LOCAL ON/OFF (ON at power on), the faders' last values, what was sent last. */

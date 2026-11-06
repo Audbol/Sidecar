@@ -766,6 +766,22 @@ private:
             skin.pressFunction (F::Midi);
             skin.pressFunction (F::Midi);
             save ("bulk");
+            // Every function's every page, to set beside the manual's pictures.
+            const std::pair<F, const char*> all[] = { { F::Meter, "meter" }, { F::Pan, "pan" }, { F::Phase, "phase" }, { F::Comp, "comp" },
+                                                      { F::Cue, "cue" }, { F::Send1, "send1" }, { F::Send3, "send3" }, { F::EqMid, "eq" },
+                                                      { F::Library, "library" }, { F::Group, "group" }, { F::Pair, "pair" }, { F::Utility, "utility" },
+                                                      { F::Midi, "midi" }, { F::MemoryStore, "store" } };
+            for (auto [f, fn] : all)
+            {
+                display.setFunction (f == F::Meter ? F::Pan : F::Meter);
+                display.setFunction (f);
+                for (int p = 0; p < display.numPages(); ++p)
+                {
+                    display.setPage (p);
+                    save ((juce::String ("all-") + fn + "-" + juce::String (p)).toRawUTF8());
+                }
+            }
+            display.setFunction (F::Meter);
         }
         // The EQ function on the selected channel (CH5), a bell on MID.
         skin.selectionChanged();
