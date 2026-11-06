@@ -9,8 +9,8 @@
 use crate::library::{ChannelProgram, Kind, Library, Program, CHANNEL_PROGRAMS};
 use crate::params;
 use crate::state::{self, DynSettings, KeyIn, State, SurroundPan, CHANNELS, DYN_STRIPS, LINES, MEMBERS, MICS};
-use livedaw_dsp::surround;
 use livedaw_dsp::fader::FaderLaw;
+use livedaw_dsp::surround;
 use livedaw_dsp::y02r::DYN_MODELS;
 use livedaw_engine::keytap::KeySource;
 use livedaw_engine::profile::y02r;
@@ -775,7 +775,13 @@ impl<'a> Console<'a> {
         let mut pan = pan;
         if moved {
             let t = surround::Trajectory::ALL[pan.trajectory.min(6) as usize];
-            let (x, y) = t.at(pan.along as f32 / 64.0, pan.width as f32 / 32.0, pan.depth as f32 / 32.0, place(pan.offset_x), place(pan.offset_y));
+            let (x, y) = t.at(
+                pan.along as f32 / 64.0,
+                pan.width as f32 / 32.0,
+                pan.depth as f32 / 32.0,
+                place(pan.offset_x),
+                place(pan.offset_y),
+            );
             (pan.x, pan.y) = (step(x), step(y));
         }
         *p = pan;

@@ -1134,7 +1134,9 @@ impl<'a> Console<'a> {
     /// call goes to the other, for what the link shares. A pair just linked
     /// takes its odd strip's values.
     pub fn follow_links(&self, links: &mut LinkFollower) {
-        for (kind, link, pairs) in [("ch", "chlink", 16), ("auxin", "auxlink", 4), ("fxrtn", "fxlink", 4), ("bus", "buslink", 8), ("mtx", "mtxlink", 3)] {
+        for (kind, link, pairs) in
+            [("ch", "chlink", 16), ("auxin", "auxlink", 4), ("fxrtn", "fxlink", 4), ("bus", "buslink", 8), ("mtx", "mtxlink", 3)]
+        {
             for k in 0..pairs {
                 let linked = self.value_at(&format!("/config/{link}/{}-{}", 2 * k + 1, 2 * k + 2)) != 0;
                 let key = format!("{kind}{k}");
@@ -1145,9 +1147,10 @@ impl<'a> Console<'a> {
                 }
                 let prefix = format!("/{kind}/{:02}/", 2 * k + 1);
                 // A strip's entries are built together, one after the other.
-                let first = *links.first.entry(prefix.clone()).or_insert_with(|| {
-                    self.tree.entries.iter().position(|e| e.path.starts_with(&prefix)).unwrap_or(usize::MAX)
-                });
+                let first = *links
+                    .first
+                    .entry(prefix.clone())
+                    .or_insert_with(|| self.tree.entries.iter().position(|e| e.path.starts_with(&prefix)).unwrap_or(usize::MAX));
                 for i in first.min(self.tree.entries.len())..self.tree.entries.len() {
                     let path = &self.tree.entries[i].path;
                     if !path.starts_with(&prefix) {

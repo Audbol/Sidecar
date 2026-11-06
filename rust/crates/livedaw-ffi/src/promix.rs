@@ -478,7 +478,14 @@ pub unsafe extern "C" fn ld_promix_recall_eq(p: *mut LdProMix, strip: i32, n: i3
 /// # Safety
 /// `p` is from `ld_promix_create` (or null); `name` holds `len` bytes of UTF-8.
 #[no_mangle]
-pub unsafe extern "C" fn ld_promix_store_program(p: *mut LdProMix, kind: i32, n: i32, target: i32, name: *const u8, len: usize) -> bool {
+pub unsafe extern "C" fn ld_promix_store_program(
+    p: *mut LdProMix,
+    kind: i32,
+    n: i32,
+    target: i32,
+    name: *const u8,
+    len: usize,
+) -> bool {
     let (Some(p), Ok(n), Ok(target)) = (p.as_mut(), usize::try_from(n), usize::try_from(target)) else { return false };
     let name = str_arg(name, len);
     guard(false, || {

@@ -47,7 +47,9 @@ pub unsafe extern "C" fn ld_x32_create(e: *const Engine) -> *mut LdX32 {
     if e.is_null() {
         return std::ptr::null_mut();
     }
-    guard(std::ptr::null_mut(), || Box::into_raw(Box::new(LdX32 { engine: e, server: None, state: State::default(), links: LinkFollower::default() })))
+    guard(std::ptr::null_mut(), || {
+        Box::into_raw(Box::new(LdX32 { engine: e, server: None, state: State::default(), links: LinkFollower::default() }))
+    })
 }
 
 /// Stops the server and frees `x`.

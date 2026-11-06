@@ -149,7 +149,21 @@ pub struct SurroundPan {
 impl Default for SurroundPan {
     /// The front centre: the stereo image's place (Sidecar's choice).
     fn default() -> Self {
-        SurroundPan { x: 32, y: 64, csr: 5, sub: 0, on: true, trajectory: 0, width: 32, depth: 32, offset_x: 32, offset_y: 32, along: 32, link: true, pattern: livedaw_dsp::surround::Pattern::DEFAULT }
+        SurroundPan {
+            x: 32,
+            y: 64,
+            csr: 5,
+            sub: 0,
+            on: true,
+            trajectory: 0,
+            width: 32,
+            depth: 32,
+            offset_x: 32,
+            offset_y: 32,
+            along: 32,
+            link: true,
+            pattern: livedaw_dsp::surround::Pattern::DEFAULT,
+        }
     }
 }
 
@@ -172,7 +186,21 @@ impl SurroundPan {
 
     fn to_values(self) -> [u8; 13] {
         let p = self;
-        [p.x, p.y, p.csr, p.sub, p.on as u8, p.trajectory, p.width, p.depth, p.offset_x, p.offset_y, p.along, p.link as u8, p.pattern]
+        [
+            p.x,
+            p.y,
+            p.csr,
+            p.sub,
+            p.on as u8,
+            p.trajectory,
+            p.width,
+            p.depth,
+            p.offset_x,
+            p.offset_y,
+            p.along,
+            p.link as u8,
+            p.pattern,
+        ]
     }
 
     /// Reads `to_values`; a missing value keeps its default.

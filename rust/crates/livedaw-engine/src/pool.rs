@@ -153,7 +153,12 @@ impl WorkerPool {
             }
             if let Some(t0) = t0 {
                 let faults = crate::trace::page_faults().wrapping_sub(f0);
-                crate::trace::POOL.task(t0.elapsed().as_nanos() as u64, crate::trace::thread_cycles().wrapping_sub(c0), faults, who);
+                crate::trace::POOL.task(
+                    t0.elapsed().as_nanos() as u64,
+                    crate::trace::thread_cycles().wrapping_sub(c0),
+                    faults,
+                    who,
+                );
             }
             // Always count the task as done, even if it panicked: the audio
             // thread must never wait forever.

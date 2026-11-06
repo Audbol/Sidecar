@@ -442,8 +442,9 @@ impl Library {
             let (Ok(n), Some((name, data))) = (n.trim().parse::<usize>(), rest.split_once('\t')) else { continue };
             if kind == "ch" {
                 let data = data.trim();
-                let bytes: Option<Vec<u8>> =
-                    (0..data.len() / 2).map(|i| data.get(i * 2..i * 2 + 2).and_then(|h| u8::from_str_radix(h, 16).ok())).collect();
+                let bytes: Option<Vec<u8>> = (0..data.len() / 2)
+                    .map(|i| data.get(i * 2..i * 2 + 2).and_then(|h| u8::from_str_radix(h, 16).ok()))
+                    .collect();
                 if let (Some(bytes), Some(slot)) = (bytes, self.channel.get_mut(n.wrapping_sub(1))) {
                     *slot = Some(ChannelProgram { name: name.trim().chars().take(16).collect(), bytes });
                 }

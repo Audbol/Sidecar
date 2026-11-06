@@ -90,7 +90,15 @@ unsafe impl Sync for Trace {}
 static TRACE: OnceLock<Trace> = OnceLock::new();
 
 fn get() -> &'static Trace {
-    TRACE.get_or_init(|| Trace(UnsafeCell::new(Inner { start: None, last: None, last_cycles: 0, last_faults: 0, marks: Vec::with_capacity(MARKS) })))
+    TRACE.get_or_init(|| {
+        Trace(UnsafeCell::new(Inner {
+            start: None,
+            last: None,
+            last_cycles: 0,
+            last_faults: 0,
+            marks: Vec::with_capacity(MARKS),
+        }))
+    })
 }
 
 /// The pool's stats of the current parallel stage (any thread writes them).
