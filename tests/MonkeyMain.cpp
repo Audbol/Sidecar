@@ -796,6 +796,7 @@ public:
         window->setResizable (true, false);
         window->centreWithSize (1600, 900);
         window->setVisible (true);
+        main->showMixerChooser (true, nullptr, nullptr);
 
         monkey = std::make_unique<Monkey> (seed, seconds, *window, *callback);
         monkey->idle = args.contains ("--idle");

@@ -7,7 +7,9 @@
 #include "engine/Recorder.h"
 #include "ui/Knobs.h"
 #include "ui/RoutingGroups.h"
+#include "ui/MixerChooser.h"
 #include "ui/UniversalSkin.h"
+#include "ui/universal/Widgets.h"
 
 #include <optional>
 
@@ -251,6 +253,98 @@ public:
             expect (near (image.getPixelAt (sizes::kGapLarge / 2, 4), t.panel), "the top bar");
             expect (near (image.getPixelAt (1500, sizes::kTopBar + sizes::kFilterBar / 2), t.background), "the filter row, right of its keys");
             expect (keepPicture (image, "universal-mixer.png"));
+        }
+
+        beginTest ("The start-up window offers to continue, and says how finished each mixer is");
+        {
+            expectEquals (ui::mixerChooser::label (ui::InterfaceKind::Wing), juce::String ("WING (experimental)"));
+            expectEquals (ui::mixerChooser::label (ui::InterfaceKind::X32), juce::String ("X32 (very experimental)"));
+            expectEquals (ui::mixerChooser::label (ui::InterfaceKind::ProMix), juce::String ("PROMIX 01 (very experimental)"));
+            expectEquals (ui::mixerChooser::label (ui::InterfaceKind::Yamaha02R), juce::String ("02R (very experimental)"));
+            expectEquals (ui::mixerChooser::label (ui::InterfaceKind::Universal), juce::String ("UNIVERSAL"));
+            // The SETUP keys are in ui::InterfaceKind's order: a key's index is its kind.
+            const auto keys = ui::mixerChooser::keyLabels();
+            for (int i = 0; i < (int) ui::mixerChooser::mixers().size(); ++i)
+            {
+                expect (ui::mixerChooser::mixers()[(size_t) i].kind == static_cast<ui::InterfaceKind> (i));
+                expect (keys[i].startsWith (ui::mixerChooser::mixers()[(size_t) i].name));
+            }
+
+            int kept = 0;
+            std::optional<ui::InterfaceKind> chosen;
+            const auto open = [&] (const juce::String& continueText)
+            {
+                ui::mixerChooser::Options options;
+                options.continueText = continueText;
+                options.onContinue = [&] { ++kept; };
+                options.onMixer = [&] (ui::InterfaceKind k) { chosen = k; };
+                auto window = ui::mixerChooser::create (std::move (options));
+                window->setSize (1600, 900);
+                return window;
+            };
+            const auto keyNamed = [] (juce::Component& window, const juce::String& text) -> juce::Button*
+            {
+                for (auto* child : window.getChildren())
+                    if (auto* b = dynamic_cast<juce::Button*> (child); b != nullptr && b->getButtonText().startsWith (text))
+                        return b;
+                return nullptr;
+            };
+
+            auto first = open ({}); // nothing to continue
+            expect (keyNamed (*first, "CONTINUE") == nullptr);
+            expectEquals (first->getNumChildComponents(), 5);
+
+            auto later = open ("02R (very experimental)");
+            expectEquals (later->getNumChildComponents(), 6);
+            keyNamed (*later, "CONTINUE")->onClick();
+            expectEquals (kept, 1);
+            later->keyPressed (juce::KeyPress (juce::KeyPress::escapeKey));
+            expectEquals (kept, 2, "Esc keeps the console");
+            expect (! chosen.has_value());
+            keyNamed (*later, "PROMIX 01 (very experimental)")->onClick();
+            expect (chosen == ui::InterfaceKind::ProMix);
+        }
+
+        beginTest ("A data wheel turns a step per few pixels of a drag and per click of the mouse wheel");
+        {
+            DataWheel wheel;
+            wheel.setBounds (0, 0, 156, 156);
+            int turned = 0;
+            double last = wheel.getValue();
+            wheel.onValueChange = [&]
+            {
+                turned += (int) (wheel.getValue() - last);
+                last = wheel.getValue();
+            };
+            const juce::Point<float> from (78.0f, 100.0f);
+            const auto left = juce::ModifierKeys::leftButtonModifier;
+            const auto dragBy = [&] (float pixels)
+            {
+                turned = 0;
+                wheel.mouseDown (mouseEvent (wheel, from, from, left));
+                wheel.mouseDrag (mouseEvent (wheel, from.translated (0.0f, -pixels), from, left));
+                wheel.mouseUp (mouseEvent (wheel, from.translated (0.0f, -pixels), from));
+                return turned;
+            };
+            expectEquals (dragBy ((float) DataWheel::kPixelsPerStep), 1, "one step's drag");
+            expectEquals (dragBy (40.0f * DataWheel::kPixelsPerStep), 40, "up");
+            expectEquals (dragBy (-40.0f * DataWheel::kPixelsPerStep), -40, "down");
+            // Far past what used to wrap it round to the other end of its range.
+            expectEquals (dragBy (500.0f * DataWheel::kPixelsPerStep), 500, "a long drag");
+
+            const auto scroll = [&] (float deltaY, bool reversed)
+            {
+                turned = 0;
+                juce::MouseWheelDetails details {};
+                details.deltaY = deltaY;
+                details.isReversed = reversed;
+                wheel.mouseWheelMove (mouseEvent (wheel, from, from), details);
+                return turned;
+            };
+            expectEquals (scroll (0.25f, false), 1, "a click up");
+            expectEquals (scroll (-0.25f, false), -1, "a click down");
+            expectEquals (scroll (0.25f, true), -1, "reversed");
+            expectEquals (scroll (0.0f, false), 0, "no movement");
         }
 
         beginTest ("Value bars and choice lists write their values");

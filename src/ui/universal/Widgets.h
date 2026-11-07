@@ -177,4 +177,23 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ToggleKey)
 };
 
+//==============================================================================
+/** A console's data wheel (the ProMix 01's PARAMETER wheel, the 02R's wheel): an
+    endless rotary that counts steps. Its value only says how far it has turned;
+    the surface takes the difference (onValueChange) and draws it (paint): the
+    slider itself is only its touch. A drag turns it a step per `kPixelsPerStep`,
+    a click of the mouse wheel a step. */
+class DataWheel final : public juce::Slider
+{
+public:
+    static constexpr int kPixelsPerStep = 4;
+
+    DataWheel();
+
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+
+private:
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (DataWheel)
+};
+
 } // namespace livedaw::ui::universal

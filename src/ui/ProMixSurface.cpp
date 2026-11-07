@@ -2699,13 +2699,7 @@ ProMixSurface::ProMixSurface (UiContext& c)
         panelKeys.push_back (std::move (key));
     }
     // The PARAMETER wheel: an endless rotary; each detent a step.
-    wheel = std::make_unique<juce::Slider> (juce::Slider::RotaryVerticalDrag, juce::Slider::NoTextBox);
-    wheel->setRange (-1.0e6, 1.0e6, 1.0);
-    wheel->setRotaryParameters (0.0f, juce::MathConstants<float>::twoPi * 40.0f, false);
-    wheel->setMouseDragSensitivity (240);
-    // Drawn by the surface (paint): the slider itself is only its touch.
-    for (auto id : { juce::Slider::rotarySliderFillColourId, juce::Slider::rotarySliderOutlineColourId, juce::Slider::thumbColourId })
-        wheel->setColour (id, juce::Colours::transparentBlack);
+    wheel = std::make_unique<universal::DataWheel>();
     wheel->onValueChange = [this]
     {
         const double v = wheel->getValue();

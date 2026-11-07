@@ -430,7 +430,7 @@ private:
     std::vector<std::unique_ptr<universal::ToggleKey>> panKeys, darkKeys, monitorKeys;
     DisplayKnob crLevel;
     int panSide = 0;
-    std::unique_ptr<juce::Slider> wheel;
+    std::unique_ptr<universal::DataWheel> wheel;
     /** The analog row (drawn), the LED readouts and the stereo meter's places, set by resized(). */
     juce::Rectangle<int> analogArea, readoutArea, meterRect, bezelArea, contrastKnob, monitorArea;
     /** DISPLAY ACCESS's three boxes, SELECTED CHANNEL's four (set by resized()). */

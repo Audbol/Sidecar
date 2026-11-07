@@ -270,6 +270,7 @@ set(LIVEDAW_UI_SOURCES
     src/ui/UsbRecorderPage.cpp
     src/ui/WingPopups.cpp
     src/ui/StartupNotice.cpp
+    src/ui/MixerChooser.cpp
     src/ui/CustomControlsPage.cpp
     src/ui/MonitorsPage.cpp
     src/ui/FourChannelSection.cpp

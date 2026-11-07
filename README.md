@@ -48,6 +48,9 @@ surface*).
 PRO1, then Allen & Heath and DiGiCo, each an emulation on the same core. The plan is in
 [docs/UNIVERSAL_MIXER.md](docs/UNIVERSAL_MIXER.md).
 
+Sidecar opens by asking whether to continue where you left off or start a new mixer. The
+WING is experimental; the X32, ProMix 01 and 02R are very experimental.
+
 **Community:** questions, tips and feedback on the [Sidecar Discord server](https://discord.gg/TEE8q979x).
 
 ![The full-size console: the HOME screen of a channel, the channel strip, fader sections with the input list on the left and DCAs in the middle, all metering a signal](docs/images/console.png)
@@ -167,7 +170,7 @@ The [user guide](docs/USER_GUIDE.md) describes every part in detail.
 ## Download and install
 
 Builds for all three platforms are attached to each release on the
-[releases page](https://github.com/Audbol/Live-Daw/releases). See the release page
+[releases page](https://github.com/Audbol/Sidecar/releases). See the release page
 for the files of each version.
 
 - **Windows:** download the zip, extract it anywhere and run `Sidecar.exe` (no
@@ -295,7 +298,7 @@ This list matches the notice Sidecar shows at start-up.
 
 ## Reporting problems
 
-Please open an [issue](https://github.com/Audbol/Live-Daw/issues/new/choose) with
+Please open an [issue](https://github.com/Audbol/Sidecar/issues/new/choose) with
 your operating system, audio interface and driver, buffer size and sample rate, and
 what happened. The event log (**SETUP > SIDECAR > LOG** or **UTILITY**) shows device restarts,
 plugin faults and errors; a screenshot of it helps. When Sidecar is started from a
@@ -438,7 +441,7 @@ Software Foundation. It is distributed in the hope that it will be useful, but
 WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
 FITNESS FOR A PARTICULAR PURPOSE. See [LICENSE](LICENSE) for the full text.
 
-The source code is at <https://github.com/Audbol/Live-Daw>. If you distribute
+The source code is at <https://github.com/Audbol/Sidecar>. If you distribute
 Sidecar, or modify it and let others use it over a network (for example through its
 WING remote servers), the AGPLv3 asks you to offer them the corresponding source.
 

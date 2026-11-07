@@ -409,4 +409,26 @@ void ToggleKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
     drawDeviceTag (g, area.reduced (5.0f, 3.0f).removeFromTop (14.0f), device, theme);
 }
 
+//==============================================================================
+DataWheel::DataWheel() : juce::Slider (juce::Slider::RotaryVerticalDrag, juce::Slider::NoTextBox)
+{
+    // The range is only so it never ends; setMouseDragSensitivity is the pixels
+    // for all of it, so the pixels per step are that many times the range.
+    constexpr int range = 2000000;
+    setRange (-(double) range / 2.0, (double) range / 2.0, 1.0);
+    setRotaryParameters (0.0f, juce::MathConstants<float>::twoPi * 40.0f, false);
+    setMouseDragSensitivity (range * kPixelsPerStep);
+    for (auto id : { rotarySliderFillColourId, rotarySliderOutlineColourId, thumbColourId })
+        setColour (id, juce::Colours::transparentBlack);
+}
+
+void DataWheel::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& w)
+{
+    // Not the slider's own: that moves a share of the range.
+    const float amount = (std::abs (w.deltaX) > std::abs (w.deltaY) ? -w.deltaX : w.deltaY) * (w.isReversed ? -1.0f : 1.0f);
+    const int step = amount > 0.0f ? 1 : (amount < 0.0f ? -1 : 0);
+    if (step != 0)
+        setValue (getValue() + step, juce::sendNotificationSync);
+}
+
 } // namespace livedaw::ui::universal

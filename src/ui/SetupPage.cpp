@@ -3,6 +3,7 @@
 #include "engine/Recorder.h"
 #include "engine/UsbRecorder.h"
 #include "ui/CustomControlsPage.h"
+#include "ui/MixerChooser.h"
 #include "ui/HomeScreens.h"
 #include "ui/MidiRemoteUi.h"
 #include "ui/MonitorsPage.h"
@@ -465,7 +466,7 @@ namespace
             g.drawFittedText ("SURFACE FINISH", finishRow.withRight (finishKeys.getX() - 4), juce::Justification::centredLeft, 1, 0.8f);
             g.setColour (Dark::text);
             g.drawFittedText ("CONSOLE MODEL", modelRow.withRight (modelKeys.getX() - 4), juce::Justification::centredLeft, 1, 0.8f);
-            g.drawFittedText ("INTERFACE", interfaceRow.withRight (interfaceKeys.getX() - 4), juce::Justification::centredLeft, 1, 0.8f);
+            g.drawFittedText ("INTERFACE", interfaceRow, juce::Justification::centredLeft, 1, 0.8f);
         }
 
         void resized() override
@@ -503,7 +504,7 @@ namespace
             // A caption and six rows, no taller than the WING's 52 px rows.
             config = config.withHeight (juce::jmin (config.getHeight(), 7 * juce::roundToInt (wingPx (56.0f))));
             configCaption = config.removeFromTop (config.getHeight() / 7);
-            const int h = config.getHeight() / 6;
+            const int h = config.getHeight() / 7;
             for (auto [row, minus, value, plus] : { std::tuple { &chRow, &chMinus, &chValue, &chPlus }, std::tuple { &busRow, &busMinus, &busValue, &busPlus },
                                                     std::tuple { &fxRow, &fxMinus, &fxValue, &fxPlus } })
             {
@@ -524,7 +525,8 @@ namespace
             modelRow = config.removeFromTop (h).reduced (0, 2);
             modelKeys.setBounds (modelRow.withTrimmedLeft (modelRow.getWidth() - juce::jmin (modelRow.getWidth() * 62 / 100, screenCap (200))).reduced (2, 0));
             interfaceRow = config.removeFromTop (h).reduced (0, 2);
-            interfaceKeys.setBounds (interfaceRow.withTrimmedLeft (interfaceRow.getWidth() - juce::jmin (interfaceRow.getWidth() * 62 / 100, screenCap (200))).reduced (2, 0));
+            // Its name, then the keys across the panel: each says how finished its mixer is.
+            interfaceKeys.setBounds (config.removeFromTop (h).reduced (2, 2));
         }
 
     private:
@@ -588,7 +590,7 @@ namespace
         // INTERFACE (Sidecar's own): the WING surface, the Universal Mixer (a
         // preview, docs/UNIVERSAL_MIXER.md), the X32, ProMix 01 or 02R surface
         // (each offers to make the console its own); the window changes at once.
-        ChoiceKeys interfaceKeys { { "WING", "UNIVERSAL", "X32", "PROMIX 01", "02R" },
+        ChoiceKeys interfaceKeys { mixerChooser::keyLabels(),
                                    [this] { return (int) ctx.interfaceKind; },
                                    [this] (int i)
                                    {

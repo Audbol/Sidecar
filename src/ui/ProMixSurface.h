@@ -352,7 +352,7 @@ private:
     std::array<std::unique_ptr<universal::ToggleKey>, kNumFaders> selKeys, onKeys;
     std::vector<std::pair<promix::Function, std::unique_ptr<universal::ToggleKey>>> functionKeys;
     std::vector<std::unique_ptr<universal::ToggleKey>> panelKeys; // STORE, RECALL, INC, DEC, cursors, ENTER
-    std::unique_ptr<juce::Slider> wheel;
+    std::unique_ptr<universal::DataWheel> wheel;
     int rtnSend = 0, memory = 1, lastBound = -1;
     /** The Edit Buffer as the scene last recalled or stored left it (the LCD's EDIT). */
     std::vector<uint8_t> recalledBytes;

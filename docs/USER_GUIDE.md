@@ -8,6 +8,21 @@ Sidecar follows the Behringer WING's own screens and terms, so the WING's manual
 a good companion; this guide says where Sidecar differs. Sidecar is not affiliated
 with or endorsed by Behringer or Music Tribe; "WING" is their trademark.
 
+## Starting Sidecar
+
+Sidecar opens with a window that asks how to start:
+
+- **CONTINUE WHERE YOU LEFT OFF** keeps the console from your last session, as the
+  autosave restored it, with the mixer it was on. **Esc** does the same.
+- **A new mixer** starts a fresh console: WING (experimental), UNIVERSAL, X32, PROMIX 01
+  or 02R (very experimental). It clears the console and its scenes. The session you
+  left is kept as `autosave-previous.lshow` in Sidecar's data folder, which you can
+  open with the LIBRARY's show tab.
+
+The window doesn't open in safe mode, or when files in the LIBRARY's STARTUP folder
+chose the show. Audio runs while it is open. SETUP > SIDECAR > INTERFACE changes the
+mixer later.
+
 ## A WING on your computer
 
 - **Console topology:** 40 input channels, 8 aux channels, 16 stereo buses, 4 stereo

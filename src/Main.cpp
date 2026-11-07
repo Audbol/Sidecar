@@ -234,9 +234,11 @@ public:
         // Restore the console from the last run. After a crash, restore it without
         // plugins (safe mode) so a bad plugin can't crash the app again.
         safeMode = crashedLastTime;
+        bool restored = false;
         if (getAutosaveFile().existsAsFile())
         {
             const auto result = show->loadFromFile (getAutosaveFile(), ! safeMode);
+            restored = result.wasOk();
             if (result.failed())
                 log.warning (result.getErrorMessage());
         }
@@ -302,11 +304,23 @@ public:
             main->setFullScreen (true);
 
         // The start-up notice (unless turned off for this version); in safe
-        // mode after the recovery question, which comes first.
+        // mode after the recovery question, which comes first. Otherwise the
+        // choice of mixer comes first, unless STARTUP files chose the show:
+        // those start a console unattended.
         if (safeMode)
             offerSafeModeRecovery (crashedPlugin);
-        else
+        else if (startupShow != juce::File())
             showStartupNotice();
+        else
+            main->showMixerChooser (restored,
+                                    [this]
+                                    {
+                                        // A fresh console's autosave replaces this one: keep it.
+                                        if (getAutosaveFile().existsAsFile()
+                                            && ! getAutosaveFile().copyFileTo (getDataDirectory().getChildFile ("autosave-previous.lshow")))
+                                            log.warning ("Could not keep the previous autosave");
+                                    },
+                                    [this] { showStartupNotice(); });
 
         startAutosave();
         signalQuitter = std::make_unique<SignalQuitter>();

@@ -411,7 +411,18 @@ public:
             g.fillRect (k);
             g.setColour (on && ! enabled ? Dark::text.withAlpha (0.45f) : ink);
             g.setFont (wingFontPx (juce::jmin (wingKeyCap (k.getHeight()), k.getWidth() * 0.3f)));
-            g.drawFittedText (names[i], k.toNearestInt().reduced (2, 0), juce::Justification::centred, 1, 0.7f);
+            // A label's second line, smaller, under it.
+            const auto second = names[i].fromFirstOccurrenceOf ("\n", false, false);
+            auto text = k.toNearestInt().reduced (2, 0);
+            if (second.isEmpty())
+            {
+                g.drawFittedText (names[i], text, juce::Justification::centred, 1, 0.7f);
+                continue;
+            }
+            g.drawFittedText (names[i].upToFirstOccurrenceOf ("\n", false, false), text.removeFromTop (text.getHeight() * 11 / 20),
+                              juce::Justification::centredBottom, 1, 0.7f);
+            g.setFont (wingFontPx (juce::jmin (k.getHeight() * 0.3f, k.getWidth() * 0.11f)));
+            g.drawFittedText (second, text, juce::Justification::centredTop, 1, 0.5f);
         }
     }
 

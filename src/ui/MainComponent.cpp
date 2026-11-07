@@ -8,6 +8,7 @@
 #include "ui/X32Surface.h"
 #include "ui/PluginChainWindow.h"
 #include "ui/PluginOverviewWindow.h"
+#include "ui/MixerChooser.h"
 #include "ui/StartupNotice.h"
 #include "ui/UniversalSkin.h"
 #include "ui/WebMirror.h"
@@ -558,6 +559,8 @@ void MainComponent::resized()
         editor->setBounds (getLocalBounds());
     if (skin != nullptr)
         skin->setBounds (getLocalBounds());
+    if (mixerChooserWindow != nullptr)
+        mixerChooserWindow->setBounds (getLocalBounds());
 }
 
 void MainComponent::focusGained (FocusChangeType)
@@ -840,6 +843,63 @@ void MainComponent::setFullScreen (bool shouldBe)
 void MainComponent::showStartupNotice()
 {
     startupNotice::show (settings, *this, true);
+}
+
+void MainComponent::showMixerChooser (bool canContinue, std::function<void()> beforeFresh, std::function<void()> done)
+{
+    // Closing destroys the window whose key is calling: after that key's callback.
+    const auto close = [this, done]
+    {
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainComponent> (this), done]
+        {
+            if (safe == nullptr)
+                return;
+            safe->mixerChooserWindow.reset();
+            if (done)
+                done();
+        });
+    };
+    mixerChooser::Options options;
+    if (canContinue)
+    {
+        options.continueText = mixerChooser::label (ctx.interfaceKind);
+        if (showFile != juce::File())
+            options.continueText << ", " << showFile.getFileNameWithoutExtension();
+    }
+    options.onContinue = close;
+    options.onMixer = [this, beforeFresh, close] (InterfaceKind kind)
+    {
+        if (beforeFresh)
+            beforeFresh();
+        startFresh (kind);
+        close();
+    };
+    mixerChooserWindow = mixerChooser::create (std::move (options));
+    addChildComponent (*mixerChooserWindow);
+    mixerChooserWindow->setBounds (getLocalBounds());
+    mixerChooserWindow->setVisible (true);
+}
+
+void MainComponent::startFresh (InterfaceKind kind)
+{
+    closeAllPluginWindows();
+    for (int i = 0; i < kMaxFx; ++i)
+        engine.getFx().setPlugin (i, nullptr);
+    // The profile first: a console's surface shows only that console.
+    if (kind == InterfaceKind::Wing)
+        engine.configure (nullptr);
+    else
+        engine.configureProfile (kind == InterfaceKind::X32         ? ld::kProfileX32
+                                 : kind == InterfaceKind::ProMix    ? ld::kProfileProMix01
+                                 : kind == InterfaceKind::Yamaha02R ? ld::kProfileYamaha02R
+                                                                    : ld::kProfileUniversal);
+    show.clear (engine.getConfiguredCounts().channels);
+    showFile = juce::File();
+    hasSelection = false;
+    setInterface (kind, true);
+    refreshAll();
+    updateTitle();
+    log.info ("Started a fresh console: " + mixerChooser::label (kind));
 }
 
 void MainComponent::openLastProject()

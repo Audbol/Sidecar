@@ -48,6 +48,14 @@ public:
         WING), unless it was turned off for this version. */
     void showStartupNotice();
 
+    /** The window Sidecar opens with (ui/MixerChooser.h). `canContinue`: the
+        autosave restored a console. `beforeFresh` runs before a chosen mixer
+        replaces the console; `done` when the window has closed. */
+    void showMixerChooser (bool canContinue, std::function<void()> beforeFresh, std::function<void()> done);
+
+    /** A fresh console of `kind`: the console and scenes cleared, its surface shown. */
+    void startFresh (InterfaceKind kind);
+
     /** Full screen (F11): the window covers the screen without its title bar
         (kiosk mode). Works together with the screen-only mode (F10). */
     void setFullScreen (bool);
@@ -121,6 +129,8 @@ private:
 
     /** The interface over the console (WingSurface or UniversalSkin). */
     std::unique_ptr<Skin> skin;
+    /** The window Sidecar opens with, over everything while it is open. */
+    std::unique_ptr<juce::Component> mixerChooserWindow;
     std::unique_ptr<SoloWatcher> soloWatcher;
 
     juce::OwnedArray<PluginChainWindow> pluginWindows;
