@@ -244,15 +244,22 @@ namespace
         std::atomic<juce::AudioIODevice*> device { nullptr };
     };
 
-    /** Keys whose action reaches outside the app or ends it: never pressed. */
-    bool isBlocked (juce::Component* c)
+    /** Keys whose action reaches outside the app or ends it: never pressed. Besides
+        these buttons, a component can name such a key of its own drawing in its
+        "outsideKey" property (its bounds, as a notice's link to the browser). */
+    bool isBlocked (juce::Component* c, juce::Point<int> screen)
     {
         static const char* const blocked[] = { "SHUTDOWN", "DATA FOLDER", "SHOW FOLDER", "SCAN", "OPTIONS..." };
         for (; c != nullptr; c = c->getParentComponent())
+        {
             if (auto* b = dynamic_cast<juce::Button*> (c))
                 for (auto* text : blocked)
                     if (b->getButtonText().containsIgnoreCase (text))
                         return true;
+            if (const auto* key = c->getProperties().getVarPointer ("outsideKey"))
+                if (juce::Rectangle<int>::fromString (key->toString()).contains (c->getLocalPoint (nullptr, screen)))
+                    return true;
+        }
         return false;
     }
 
@@ -510,7 +517,7 @@ private:
         if (peer == nullptr)
             return;
         auto* hit = window->getComponentAt (window->getLocalPoint (nullptr, screen));
-        if (isBlocked (hit))
+        if (isBlocked (hit, screen))
         {
             ++blockedCount;
             actionLog.write ("skipped (blocked key) at " + describe (hit));

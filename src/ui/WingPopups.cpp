@@ -2017,6 +2017,8 @@ namespace
             linkKey = options.linkText.isEmpty() ? juce::Rectangle<int>() : keys.removeFromLeft (juce::roundToInt (cap * 11.0f));
             if (! linkKey.isEmpty())
                 keys.removeFromLeft (juce::roundToInt (cap));
+            // Where a press leaves the app (the browser): the monkey test presses elsewhere.
+            getProperties().set ("outsideKey", linkKey.toString());
             checkKey = options.checkText.isEmpty() ? juce::Rectangle<int>()
                                                    : keys.removeFromRight (juce::jmin (keys.getWidth(), juce::roundToInt (cap * 30.0f)));
             const int side = juce::roundToInt (cap * 1.6f);
