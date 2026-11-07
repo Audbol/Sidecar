@@ -6,7 +6,7 @@ welcome.
 
 ## Reporting bugs and ideas
 
-Use the [issue templates](https://github.com/Audbol/Live-Daw/issues/new/choose).
+Use the [issue templates](https://github.com/Audbol/Sidecar/issues/new/choose).
 For a bug, say which OS, audio interface, driver, sample rate and buffer size you
 used, and what the event log (SETUP > LOG) shows. Security problems: see
 [SECURITY.md](SECURITY.md).

@@ -4,5 +4,5 @@ contact_links:
     url: https://discord.gg/TEE8q979x
     about: Ask how to set something up, share tips and talk to other users on the Sidecar Discord server.
   - name: Security vulnerability
-    url: https://github.com/Audbol/Live-Daw/security/advisories/new
+    url: https://github.com/Audbol/Sidecar/security/advisories/new
     about: Please report security problems privately.

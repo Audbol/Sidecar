@@ -5,8 +5,8 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for reporting! Please check the [known limitations](https://github.com/Audbol/Live-Daw#known-limitations) first.
-        For security problems, don't open an issue: see [SECURITY.md](https://github.com/Audbol/Live-Daw/blob/HEAD/SECURITY.md).
+        Thanks for reporting! Please check the [known limitations](https://github.com/Audbol/Sidecar#known-limitations) first.
+        For security problems, don't open an issue: see [SECURITY.md](https://github.com/Audbol/Sidecar/blob/HEAD/SECURITY.md).
   - type: textarea
     id: what
     attributes:

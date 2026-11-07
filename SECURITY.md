@@ -8,7 +8,7 @@ Sidecar is a beta hobby project. Fixes go into the latest release only.
 
 Please **don't open a public issue** for a security problem. Report it privately
 through GitHub: on the repository's **Security** tab, choose **Report a
-vulnerability** (<https://github.com/Audbol/Live-Daw/security/advisories/new>).
+vulnerability** (<https://github.com/Audbol/Sidecar/security/advisories/new>).
 If that isn't available, open an issue that only asks for a private contact, without
 details.
 

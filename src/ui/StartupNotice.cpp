@@ -62,7 +62,7 @@ juce::String text()
            "\n"
            "## Community\n"
            "Questions, setup help and feedback: the " + kAppName + " Discord server, " + kDiscordUrl + " (the DISCORD key below "
-           "opens it). Bugs: https://github.com/Audbol/Live-Daw/issues\n"
+           "opens it). Bugs: https://github.com/Audbol/Sidecar/issues\n"
            "\n"
            "## Before you use it live\n"
            "Don't rely on " + kAppName + " for a critical live show without testing it thoroughly first, "
@@ -71,7 +71,7 @@ juce::String text()
            "## Licence\n"
            + kAppName + " is free software under the GNU Affero General Public License, version 3 (AGPLv3), "
            "WITHOUT ANY WARRANTY. Source code, the licence and the third-party notices (JUCE, the VST3, LV2 "
-           "and ASIO SDKs, the Barlow fonts, libwing's WING parameter data): https://github.com/Audbol/Live-Daw";
+           "and ASIO SDKs, the Barlow fonts, libwing's WING parameter data): https://github.com/Audbol/Sidecar";
 }
 
 void show (juce::PropertiesFile& settings, juce::Component& host, bool atStartup)
