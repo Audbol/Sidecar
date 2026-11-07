@@ -15,8 +15,8 @@ anything can be sent to any hardware output. It runs on Windows, macOS and Linux
 > SETUP > GENERAL > ABOUT, lists the differences). Don't rely on it for a critical
 > live show without testing it thoroughly first.
 
-**Status: v0.2.0 beta**, the seventh public beta and the first of the **Universal
-Mixer**: Sidecar is growing from a WING emulator into an emulator of several consoles,
+**Status: v0.3.0 beta**, the eighth public beta, with previews of the X32, the ProMix 01
+and the 02R on the **Universal Mixer**: Sidecar is growing from a WING emulator into an emulator of several consoles,
 built on a mixer core without any one console's limits. The console's size is a
 configuration (any number of channels, buses, mains and matrices, up to 256 DCAs and
 mute groups, 64 FX slots), and each strip's processing is a chain that can hold extra

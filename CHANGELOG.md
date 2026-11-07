@@ -3,7 +3,36 @@
 All notable changes to Sidecar are listed here. Versions follow
 [semantic versioning](https://semver.org); 0.x releases are betas.
 
-## [Unreleased]
+## [0.3.0] - beta
+
+Three more consoles on the Universal Mixer's core, each a preview: the **Behringer
+X32**, the **Yamaha ProMix 01** and the **Yamaha 02R**. A console's profile (the
+console it emulates) is now part of its configuration and brings that console's
+counts, signal chains, processing models, fader and pan laws, port groups, colours,
+effects and remote protocols; the WING is one of these profiles and sounds as before.
+
+- **X32:** its channels, buses, LR and M/C mains, gates, compressors and EQs, its 61
+  effects (all with their algorithms) and factory rack, an OSC server that answers
+  X32 apps, its MIDI map, .scn scene import and export, and the X32 surface with its
+  display (HOME, ROUTING, EFFECTS, LIBRARY, SCENES, SETUP, METERS, MONITOR, USB...).
+- **ProMix 01:** its 16 channels, ST IN and effect returns, 3-band EQ, three
+  dynamics processors, two internal effects, its 531 MIDI parameters, scene memories
+  by bulk dump, libraries, and the ProMix surface with its LCD and PARAMETER wheel.
+- **02R (Version 2):** its 40 input channels, 4-band EQ, dynamics, two internal
+  effects, EQ, dynamics, effects and channel libraries, scene memories, surround
+  panning, MS decoding, its MIDI and SysEx, and the 02R surface with its display.
+
+Sidecar now opens with a window: continue where you left off, or start a fresh WING
+(experimental), Universal, X32, ProMix 01 or 02R (very experimental). Also: console
+oscillators, dropout diagnostics (`LIVEDAW_TRACE_SLOW`), WING remote clients see the
+console's selection, the console surfaces scale to the window, and fixes for a crash
+when the Universal Mixer opened on an 02R console and for the ProMix 01's and 02R's
+data wheels, which moved a value thousands of steps per pixel.
+
+The show format is still 4: shows from 0.2.0 open as before. Shows of an X32, ProMix
+01 or 02R console need 0.3.0 (0.2.0 knows no console profiles).
+
+### All changes
 
 - The Universal Mixer no longer crashes when it opens on an 02R console (or another
   whose strips' dynamics models change under it): the dynamics graph's handles use the

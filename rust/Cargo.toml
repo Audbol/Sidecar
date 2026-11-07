@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/livedaw-dsp", "crates/livedaw-recorder", "crates/livedaw-engine", "crates/livedaw-session", "crates/livedaw-wing", "crates/livedaw-x32", "crates/livedaw-promix", "crates/livedaw-02r", "crates/livedaw-ffi", "crates/livedaw-web"]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "AGPL-3.0-only"
 rust-version = "1.83"

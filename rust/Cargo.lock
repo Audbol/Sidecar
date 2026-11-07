@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "livedaw-02r"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "livedaw-dsp",
  "livedaw-engine",
@@ -13,11 +13,11 @@ dependencies = [
 
 [[package]]
 name = "livedaw-dsp"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "livedaw-engine"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "livedaw-dsp",
  "livedaw-recorder",
@@ -25,7 +25,7 @@ dependencies = [
 
 [[package]]
 name = "livedaw-ffi"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "livedaw-02r",
  "livedaw-dsp",
@@ -39,7 +39,7 @@ dependencies = [
 
 [[package]]
 name = "livedaw-promix"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "livedaw-dsp",
  "livedaw-engine",
@@ -47,11 +47,11 @@ dependencies = [
 
 [[package]]
 name = "livedaw-recorder"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "livedaw-session"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "livedaw-dsp",
  "livedaw-engine",
@@ -59,11 +59,11 @@ dependencies = [
 
 [[package]]
 name = "livedaw-web"
-version = "0.2.0"
+version = "0.3.0"
 
 [[package]]
 name = "livedaw-wing"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "livedaw-dsp",
  "livedaw-engine",
@@ -72,7 +72,7 @@ dependencies = [
 
 [[package]]
 name = "livedaw-x32"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "livedaw-dsp",
  "livedaw-engine",
