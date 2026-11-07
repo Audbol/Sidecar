@@ -217,6 +217,9 @@ private:
     const Theme& theme;
     DynSlotParams* params = nullptr;
     int thrIndex = -1, slopeIndex = -1; // the threshold's, and the ratio's or range's parameter
+    int curveModel = -1;                // the model the curve and those indexes were made for
+    /** The ratio's or range's parameter of curveModel (none if it has none). */
+    const models::Param* slopeParam() const;
     std::vector<float> inDb, outDb;
     float reduction = 0.0f;
     int dragging = -1;

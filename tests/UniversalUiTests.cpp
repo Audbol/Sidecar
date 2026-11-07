@@ -7,8 +7,10 @@
 #include "engine/Recorder.h"
 #include "ui/Knobs.h"
 #include "ui/RoutingGroups.h"
+#include "engine/Models.h"
 #include "ui/MixerChooser.h"
 #include "ui/UniversalSkin.h"
+#include "ui/universal/ValueControls.h"
 #include "ui/universal/Widgets.h"
 
 #include <optional>
@@ -305,6 +307,44 @@ public:
             expect (chosen == ui::InterfaceKind::ProMix);
         }
 
+        beginTest ("A dynamics graph whose strip changes model before it refreshes keeps to the model it drew");
+        {
+            // An 02R console opened on the Universal Mixer crashed here: the handle of
+            // a model's ratio was looked up in the strip's new model, which has fewer
+            // parameters.
+            const auto& table = models::table (models::Dynamics);
+            int wide = -1, wideAt = -1, narrow = -1;
+            for (int m = 0; m < (int) table.size(); ++m)
+            {
+                int at = table[(size_t) m].find ("ratio");
+                if (at < 0)
+                    at = table[(size_t) m].find ("range");
+                if (at > wideAt)
+                {
+                    wideAt = at;
+                    wide = m;
+                }
+            }
+            for (int m = 0; m < (int) table.size() && narrow < 0; ++m)
+                if ((int) table[(size_t) m].params.size() <= wideAt)
+                    narrow = m;
+            expect (wide >= 0 && narrow >= 0, "two models to switch between");
+            if (wide >= 0 && narrow >= 0)
+            {
+                auto slot = std::make_unique<DynSlotParams>();
+                slot->model = wide;
+                TransferView view (Theme::dark());
+                view.setSize (300, 200);
+                view.bind (slot.get());
+                slot->model = narrow; // changed, not yet refreshed
+                expect (! view.handlePosition (1).isOrigin(), "the drawn model's handle");
+                const auto image = view.createComponentSnapshot (view.getLocalBounds());
+                expect (image.isValid());
+                view.refresh();
+                expect (view.handlePosition (1).isOrigin() == (table[(size_t) narrow].find ("ratio") < 0 && table[(size_t) narrow].find ("range") < 0));
+            }
+        }
+
         beginTest ("A data wheel turns a step per few pixels of a drag and per click of the mouse wheel");
         {
             DataWheel wheel;
@@ -331,6 +371,15 @@ public:
             expectEquals (dragBy (-40.0f * DataWheel::kPixelsPerStep), -40, "down");
             // Far past what used to wrap it round to the other end of its range.
             expectEquals (dragBy (500.0f * DataWheel::kPixelsPerStep), 500, "a long drag");
+            {
+                DataWheel slow (6); // the ProMix 01's
+                slow.setBounds (0, 0, 156, 156);
+                const double before = slow.getValue();
+                slow.mouseDown (mouseEvent (slow, from, from, left));
+                slow.mouseDrag (mouseEvent (slow, from.translated (0.0f, -60.0f), from, left));
+                slow.mouseUp (mouseEvent (slow, from.translated (0.0f, -60.0f), from));
+                expectEquals ((int) (slow.getValue() - before), 10, "6 pixels a step");
+            }
 
             const auto scroll = [&] (float deltaY, bool reversed)
             {

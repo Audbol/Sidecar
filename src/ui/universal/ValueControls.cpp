@@ -508,6 +508,7 @@ void TransferView::computeCurve()
     if (params == nullptr)
         return;
     const int model = params->model.load();
+    curveModel = model;
     const auto& spec = models::model (models::Dynamics, model);
     thrIndex = spec.find ("thr");
     slopeIndex = spec.find ("ratio");
@@ -549,6 +550,14 @@ void TransferView::refresh()
         repaint();
 }
 
+const models::Param* TransferView::slopeParam() const
+{
+    // The model the curve and its indexes were made for: the strip's model can
+    // change (a recall, a console's own processing) before the next refresh.
+    const auto& spec = models::model (models::Dynamics, curveModel);
+    return juce::isPositiveAndBelow (slopeIndex, (int) spec.params.size()) ? &spec.params[(size_t) slopeIndex] : nullptr;
+}
+
 juce::Point<float> TransferView::handlePosition (int which) const
 {
     if (params == nullptr || outDb.empty())
@@ -561,7 +570,10 @@ juce::Point<float> TransferView::handlePosition (int which) const
     if (which == 1 && slopeIndex >= 0)
     {
         // A compressor's ratio at the top of the curve, a gate's range at its foot.
-        const bool range = models::model (models::Dynamics, params->model.load()).params[(size_t) slopeIndex].id == "range";
+        const auto* p = slopeParam();
+        if (p == nullptr)
+            return {};
+        const bool range = p->id == "range";
         const float at = range ? -54.0f : 0.0f;
         return { xAt (at), yAt (outAt (at)) };
     }
@@ -579,9 +591,11 @@ void TransferView::mouseDown (const juce::MouseEvent& e)
                 best = d;
                 dragging = which;
             }
+    if (dragging == 1 && slopeParam() == nullptr)
+        dragging = -1;
     if (dragging == 1)
     {
-        const auto& p = models::model (models::Dynamics, params->model.load()).params[(size_t) slopeIndex];
+        const auto& p = *slopeParam();
         const float v = params->values[slopeIndex].load();
         const int n = p.choices.size() > 0 ? p.choices.size() : p.steps;
         dragStartPos = p.isStepped() && n > 1 ? v / (float) (n - 1) : p.toNormalised (v);
@@ -593,13 +607,14 @@ void TransferView::mouseDrag (const juce::MouseEvent& e)
 {
     if (params == nullptr || dragging < 0)
         return;
-    const auto& spec = models::model (models::Dynamics, params->model.load());
-    if (dragging == 0 && thrIndex >= 0)
+    const auto& spec = models::model (models::Dynamics, curveModel);
+    const int numParams = (int) spec.params.size();
+    if (dragging == 0 && juce::isPositiveAndBelow (thrIndex, numParams))
     {
         const auto& p = spec.params[(size_t) thrIndex];
         params->values[thrIndex] = juce::jlimit (p.min, p.max, dbAtX (e.position.x));
     }
-    else if (dragging == 1 && slopeIndex >= 0)
+    else if (dragging == 1 && juce::isPositiveAndBelow (slopeIndex, numParams))
     {
         // Up: less (a lower ratio, a smaller range).
         const auto& p = spec.params[(size_t) slopeIndex];

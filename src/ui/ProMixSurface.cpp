@@ -2699,7 +2699,7 @@ ProMixSurface::ProMixSurface (UiContext& c)
         panelKeys.push_back (std::move (key));
     }
     // The PARAMETER wheel: an endless rotary; each detent a step.
-    wheel = std::make_unique<universal::DataWheel>();
+    wheel = std::make_unique<universal::DataWheel> (6); // a step per 6 pixels: slower than the 02R's
     wheel->onValueChange = [this]
     {
         const double v = wheel->getValue();

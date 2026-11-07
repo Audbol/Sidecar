@@ -410,14 +410,14 @@ void ToggleKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
 }
 
 //==============================================================================
-DataWheel::DataWheel() : juce::Slider (juce::Slider::RotaryVerticalDrag, juce::Slider::NoTextBox)
+DataWheel::DataWheel (int pixelsPerStep) : juce::Slider (juce::Slider::RotaryVerticalDrag, juce::Slider::NoTextBox)
 {
     // The range is only so it never ends; setMouseDragSensitivity is the pixels
     // for all of it, so the pixels per step are that many times the range.
     constexpr int range = 2000000;
     setRange (-(double) range / 2.0, (double) range / 2.0, 1.0);
     setRotaryParameters (0.0f, juce::MathConstants<float>::twoPi * 40.0f, false);
-    setMouseDragSensitivity (range * kPixelsPerStep);
+    setMouseDragSensitivity (range * juce::jlimit (1, 1000, pixelsPerStep));
     for (auto id : { rotarySliderFillColourId, rotarySliderOutlineColourId, thumbColourId })
         setColour (id, juce::Colours::transparentBlack);
 }

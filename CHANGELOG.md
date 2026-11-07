@@ -5,13 +5,17 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+- The Universal Mixer no longer crashes when it opens on an 02R console (or another
+  whose strips' dynamics models change under it): the dynamics graph's handles use the
+  model the graph was drawn for.
 - Sidecar opens with a window: continue where you left off, or start a fresh console
   of a mixer (WING, UNIVERSAL, X32, PROMIX 01, 02R). A fresh start keeps the last
   autosave as `autosave-previous.lshow`. Safe mode and STARTUP files skip the window.
 - The start-up window and SETUP > SIDECAR > INTERFACE say how finished each mixer is:
   WING (experimental); X32, PROMIX 01 and 02R (very experimental).
 - The ProMix 01's PARAMETER wheel and the 02R's wheel can be used: a drag turns them
-  a step per 4 pixels and a click of the mouse wheel a step. A drag used to move a
+  a step per 6 pixels on the ProMix 01 and 4 on the 02R, and a click of the mouse
+  wheel a step. A drag used to move a
   value about 8,000 steps per pixel (the whole field at once), and a long one wrapped
   round to the other end.
 - The audio thread no longer allocates on its first block: the engine reads
