@@ -241,11 +241,15 @@ void ChannelPanel::paint (juce::Graphics& g)
             {
                 const auto& slot = s == GateSection ? strip->params.gate() : strip->params.dynamics();
                 g.setColour (theme.text);
-                // Narrowed, then smaller, rather than cut ("WING CO..."): the sections are slim.
-                const auto modelName = models::model (models::Dynamics, slot.model.load()).name.toUpperCase();
-                if (const float w = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), modelName) * 0.6f; w > title.getWidth() && w > 0.0f)
-                    g.setFont (g.getCurrentFont().withHeight (juce::jmax (8.0f, g.getCurrentFont().getHeight() * title.getWidth() / w)));
-                g.drawFittedText (modelName, title.toNearestInt(), juce::Justification::centredLeft, 1, 0.6f);
+                // Narrowed rather than cut ("WING CO..."): the sections are slim. Too long
+                // even so, it drops "WING " (the section's tag says it) and gets a little smaller.
+                auto modelName = models::model (models::Dynamics, slot.model.load()).name.toUpperCase();
+                const auto fits = [&g, &title] (const juce::String& s) { return juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), s) * 0.5f <= title.getWidth(); };
+                if (! fits (modelName) && modelName.startsWith ("WING "))
+                    modelName = modelName.substring (5);
+                if (const float w = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), modelName) * 0.5f; w > title.getWidth() && w > 0.0f)
+                    g.setFont (g.getCurrentFont().withHeight (juce::jmax (9.0f, g.getCurrentFont().getHeight() * title.getWidth() / w)));
+                g.drawFittedText (modelName, title.toNearestInt(), juce::Justification::centredLeft, 1, 0.5f);
             }
         }
         if ((s == FilterSection || s == GateSection) && ! channel)
