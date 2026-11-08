@@ -295,6 +295,7 @@ MainComponent::MainComponent (juce::AudioDeviceManager& dm, MixerEngine& e, Plug
                   : savedKind == "x32"     ? InterfaceKind::X32
                   : savedKind == "promix"  ? InterfaceKind::ProMix
                   : savedKind == "02r"     ? InterfaceKind::Yamaha02R
+                  : savedKind == "sq5"     ? InterfaceKind::Sq5
                                            : InterfaceKind::Wing,
                   false);
     setWantsKeyboardFocus (true);
@@ -384,17 +385,18 @@ void MainComponent::refreshAll()
     // shows an X32, the ProMix surface a ProMix 01, the Universal Mixer any
     // other; a console's surface without its console gives way to the Universal Mixer.
     const bool x32 = engine.getProfile() == ld::kProfileX32, promix = engine.getProfile() == ld::kProfileProMix01,
-               y02r = engine.getProfile() == ld::kProfileYamaha02R;
+               y02r = engine.getProfile() == ld::kProfileYamaha02R, sq5 = engine.getProfile() == ld::kProfileSq5;
     if (ctx.interfaceKind == InterfaceKind::Wing && ! isWingConsole())
     {
         log.info (x32      ? "This console is an X32: the X32 surface shows it"
                   : promix ? "This console is a ProMix 01: the ProMix surface shows it"
                   : y02r   ? "This console is an 02R: the 02R surface shows it"
+                  : sq5    ? "This console is an SQ-5: the Universal Mixer shows it"
                            : "This console isn't a WING: the Universal Mixer shows it (SETUP > GENERAL > INTERFACE)");
-        setInterface (x32 ? InterfaceKind::X32 : promix ? InterfaceKind::ProMix : y02r ? InterfaceKind::Yamaha02R : InterfaceKind::Universal, false);
+        setInterface (x32 ? InterfaceKind::X32 : promix ? InterfaceKind::ProMix : y02r ? InterfaceKind::Yamaha02R : sq5 ? InterfaceKind::Sq5 : InterfaceKind::Universal, false);
     }
     else if ((ctx.interfaceKind == InterfaceKind::X32 && ! x32) || (ctx.interfaceKind == InterfaceKind::ProMix && ! promix)
-             || (ctx.interfaceKind == InterfaceKind::Yamaha02R && ! y02r))
+             || (ctx.interfaceKind == InterfaceKind::Yamaha02R && ! y02r) || (ctx.interfaceKind == InterfaceKind::Sq5 && ! sq5))
         setInterface (InterfaceKind::Universal, false);
     syncRemotes();
     skin->refreshAll();
@@ -494,11 +496,30 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                          }, true);
         return;
     }
+    if (kind == InterfaceKind::Sq5 && skin != nullptr && engine.getProfile() != ld::kProfileSq5)
+    {
+        // Likewise an SQ-5: its 48 inputs, 12 mixes and 4 FX sends, on the Universal Mixer for now.
+        popups::confirm (skin->popupHost(), "SQ-5",
+                         "This console isn't an SQ-5. Clear the console and make it a fresh SQ-5 (48 inputs, 12 mixes, "
+                         "4 FX sends, 8 FX and their returns, LR, 3 matrices, 8 DCAs, 8 mute groups)? "
+                         "It runs on the Universal Mixer until it has a surface of its own.",
+                         "MAKE IT AN SQ-5",
+                         [this, save]
+                         {
+                             closeAllPluginWindows();
+                             engine.configureProfile (ld::kProfileSq5);
+                             setInterface (InterfaceKind::Sq5, save);
+                             refreshAll();
+                             log.info ("The console is an SQ-5");
+                         }, true);
+        return;
+    }
     if (save)
         settings.setValue (uiprefs::interfaceKind, kind == InterfaceKind::Universal ? "universal"
                                                    : kind == InterfaceKind::X32     ? "x32"
                                                    : kind == InterfaceKind::ProMix  ? "promix"
                                                    : kind == InterfaceKind::Yamaha02R ? "02r"
+                                                   : kind == InterfaceKind::Sq5     ? "sq5"
                                                                                     : "wing");
     if (skin != nullptr && kind == ctx.interfaceKind)
         return;
@@ -508,7 +529,8 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
     skin.reset();
     if ((kind == InterfaceKind::X32 && engine.getProfile() != ld::kProfileX32)
         || (kind == InterfaceKind::ProMix && engine.getProfile() != ld::kProfileProMix01)
-        || (kind == InterfaceKind::Yamaha02R && engine.getProfile() != ld::kProfileYamaha02R))
+        || (kind == InterfaceKind::Yamaha02R && engine.getProfile() != ld::kProfileYamaha02R)
+        || (kind == InterfaceKind::Sq5 && engine.getProfile() != ld::kProfileSq5))
         kind = ctx.interfaceKind = InterfaceKind::Universal; // a console's surface shows that console only
     if (kind == InterfaceKind::Wing)
         skin = std::make_unique<WingSurface> (ctx);
@@ -531,6 +553,7 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                   : kind == InterfaceKind::X32     ? "Interface: the X32 surface"
                   : kind == InterfaceKind::ProMix  ? "Interface: the ProMix 01 surface"
                   : kind == InterfaceKind::Yamaha02R ? "Interface: the 02R surface"
+                  : kind == InterfaceKind::Sq5     ? "Interface: the SQ-5, on the Universal Mixer"
                                                    : "Interface: the WING surface");
     }
 }
@@ -901,6 +924,7 @@ void MainComponent::startFresh (InterfaceKind kind)
         engine.configureProfile (kind == InterfaceKind::X32         ? ld::kProfileX32
                                  : kind == InterfaceKind::ProMix    ? ld::kProfileProMix01
                                  : kind == InterfaceKind::Yamaha02R ? ld::kProfileYamaha02R
+                                 : kind == InterfaceKind::Sq5       ? ld::kProfileSq5
                                                                     : ld::kProfileUniversal);
     show.clear (engine.getConfiguredCounts().channels);
     showFile = juce::File();

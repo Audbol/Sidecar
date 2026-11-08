@@ -20,7 +20,7 @@ struct Mixer
 };
 
 /** The mixers, in InterfaceKind's order. */
-const std::array<Mixer, 5>& mixers();
+const std::array<Mixer, 6>& mixers();
 
 /** A mixer's name with its note: "X32 (very experimental)". */
 juce::String label (InterfaceKind);

@@ -5,10 +5,14 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+- A crash when a control on a console's display rebuilt the controls while it was still
+  being turned (seen on the X32's SCENES screen).
 - A start on the Allen & Heath SQ-5: its processing blocks (gate, compressor with parallel
   path, ducker, 4-band PEQ), offered on any Universal strip, and its console profile
   (counts, signal chains, fader law), its 28-band GEQ on every mix and its 11 RackExtra
-  effects. C ABI 53. Its add-on effects, MIDI and surface follow.
+  effects, and its MIDI (NRPN levels, mutes, pans and assignments, scenes). It can be
+  chosen in the start-up window and SETUP's INTERFACE and runs on the Universal Mixer
+  for now. C ABI 53. Its add-on effects, TCP MIDI and surface follow.
 
 ## [0.3.0] - beta
 

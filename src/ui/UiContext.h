@@ -70,7 +70,9 @@ enum class InterfaceKind
     /** The ProMix 01 surface (a ProMix 01 console's skin). */
     ProMix,
     /** The 02R surface (an 02R console's skin). */
-    Yamaha02R
+    Yamaha02R,
+    /** An Allen & Heath SQ-5 console, on the Universal Mixer until it has a surface of its own. */
+    Sq5
 };
 
 /** The HOME screen's tabs for the selected strip: the overview group

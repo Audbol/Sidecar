@@ -1227,10 +1227,15 @@ strips and on any Universal strip from the start:
    (`wing::fx::sq_voices`), the first four FX slots populated. Not yet: the add-ons
    (MultiBD 3 and 4, DynEQ4, De-Esser, Bucket Brigade, Echo, Hypabass), the DEEP models
    and each panel's controls without an algorithm (listed in `sq/fx.rs`).
-4. **Its state, MIDI and scenes**: mixes as Aux or Group, mono / stereo pairs, NRPN over
-   USB and TCP 51325, MMC, the DAW strips, scene recall filters.
-5. **Its surface**: the 16+1 faders, 6 layers, the touchscreen's screens and the
-   physical controls around it; then the labels and the start-up window.
+4. **Its MIDI** (done over USB MIDI; `livedaw-sq`, `SqMidi`): NRPN mutes, levels, pans
+   and assignments from the protocol's tables (pictures: `livedaw_sq::decode` holds
+   their formulas) in both fader laws, scenes by bank and program change, changes sent
+   back. Not yet: the Group addresses (mixes as Aux or Group), the Soft Keys' notes, the
+   DAW strips, MIDI Show Control, MIDI over TCP/IP (port 51325).
+5. **Selectable** (done): the start-up window, SETUP's INTERFACE (`InterfaceKind::Sq5`),
+   running on the Universal Mixer until it has a surface of its own.
+6. **Its surface**: the 16+1 faders, 6 layers, the touchscreen's screens and the
+   physical controls around it.
 
 Sidecar's reading until measured on a console: the compressor's ratio steps, the soft
 knee's width, the ducker's controls, the PEQ's filter slopes, every default value, the

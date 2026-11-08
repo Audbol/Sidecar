@@ -277,6 +277,7 @@ public:
             expectEquals (ui::mixerChooser::label (ui::InterfaceKind::X32), juce::String ("X32 (very experimental)"));
             expectEquals (ui::mixerChooser::label (ui::InterfaceKind::ProMix), juce::String ("PROMIX 01 (very experimental)"));
             expectEquals (ui::mixerChooser::label (ui::InterfaceKind::Yamaha02R), juce::String ("02R (very experimental)"));
+            expectEquals (ui::mixerChooser::label (ui::InterfaceKind::Sq5), juce::String ("SQ-5 (very experimental)"));
             expectEquals (ui::mixerChooser::label (ui::InterfaceKind::Universal), juce::String ("UNIVERSAL"));
             // The SETUP keys are in ui::InterfaceKind's order: a key's index is its kind.
             const auto keys = ui::mixerChooser::keyLabels();
@@ -308,10 +309,10 @@ public:
 
             auto first = open ({}); // nothing to continue
             expect (keyNamed (*first, "CONTINUE") == nullptr);
-            expectEquals (first->getNumChildComponents(), 5);
+            expectEquals (first->getNumChildComponents(), 6);
 
             auto later = open ("02R (very experimental)");
-            expectEquals (later->getNumChildComponents(), 6);
+            expectEquals (later->getNumChildComponents(), 7);
             keyNamed (*later, "CONTINUE")->onClick();
             expectEquals (kept, 1);
             later->keyPressed (juce::KeyPress (juce::KeyPress::escapeKey));
