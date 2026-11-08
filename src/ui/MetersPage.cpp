@@ -398,8 +398,9 @@ void MetersPage::paintScale (juce::Graphics& g, juce::Rectangle<int> column, con
         if (y - lastY < minGap)
             continue;
         lastY = y;
-        g.drawText (text, juce::Rectangle<float> ((float) column.getX(), y - minGap * 0.6f, (float) column.getWidth() - px (4.0f), minGap * 1.2f),
-                    juce::Justification::centredRight);
+        // Narrowed rather than cut ("C..."): the scale's column is slim.
+        g.drawFittedText (text, juce::Rectangle<float> ((float) column.getX(), y - minGap * 0.6f, (float) column.getWidth() - px (4.0f), minGap * 1.2f).toNearestInt(),
+                          juce::Justification::centredRight, 1, 0.6f);
     }
 }
 

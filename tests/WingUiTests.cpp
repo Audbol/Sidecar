@@ -2,6 +2,8 @@
 // what a pointer passing over does, what asks first.
 
 #include "TestHelpers.h"
+#include "ui/MainDisplay.h"
+#include "daw/Session.h"
 #include "engine/EventLog.h"
 #include "engine/MixerEngine.h"
 #include "engine/PluginHost.h"
@@ -439,6 +441,61 @@ public:
             }
             fx.setPlugin (0, nullptr);
             engine.getGarbage().collectAllNow();
+        }
+
+        beginTest ("The WING's main display: every screen and HOME tab renders (LIVEDAW_UI_SNAPSHOTS keeps them, to compare with the manual's)");
+        {
+            MixerEngine engine (0);
+            test::setChannels (engine, 40);
+            WingRig rig (engine);
+            auto& ch = *engine.getChannels()[0];
+            ch.setName ("Kick");
+            rig.selected = &ch;
+            daw::Session recording (engine.getRecorder(), &rig.settings); // the recorder screen's session
+            rig.ctx.recording = &recording;
+            ui::MainDisplay display (rig.ctx);
+            display.setSize (1600, 1050);
+            display.setVisible (true);
+            const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_UI_SNAPSHOTS", {});
+            const auto shoot = [&] (const juce::String& shot)
+            {
+                display.refresh();
+                test::pumpMessages (150);
+                const auto picture = display.createComponentSnapshot (display.getLocalBounds());
+                expect (picture.isValid(), shot);
+                if (folder.isNotEmpty())
+                {
+                    juce::FileOutputStream out (juce::File (folder).getChildFile ("wing-" + shot + ".png"));
+                    out.setPosition (0);
+                    out.truncate();
+                    juce::PNGImageFormat().writeImageToStream (picture, out);
+                }
+            };
+            const std::pair<ui::Screen, const char*> screens[] = {
+                { ui::Screen::Home, "home" },         { ui::Screen::Effects, "effects" }, { ui::Screen::Meters, "meters" },
+                { ui::Screen::Routing, "routing" },   { ui::Screen::Setup, "setup" },     { ui::Screen::Library, "library" },
+                { ui::Screen::Utility, "utility" },   { ui::Screen::Overview, "overview" }, { ui::Screen::Faders, "faders" },
+                { ui::Screen::Sends, "sends" },       { ui::Screen::Config, "config" },   { ui::Screen::MuteGroups, "mutegroups" },
+            };
+            for (const auto& [screen, screenName] : screens)
+            {
+                display.showScreen (screen);
+                expect (display.getScreen() == screen, screenName);
+                shoot (juce::String ("screen-") + screenName);
+            }
+            display.showScreen (ui::Screen::Home);
+            const std::pair<ui::HomeTab, const char*> tabs[] = {
+                { ui::HomeTab::Home, "home" },         { ui::HomeTab::Icon, "icon" },         { ui::HomeTab::Tags, "tags" },
+                { ui::HomeTab::Input, "input" },       { ui::HomeTab::Filter, "filter" },     { ui::HomeTab::Gate, "gate" },
+                { ui::HomeTab::Eq, "eq" },             { ui::HomeTab::Dynamics, "dynamics" }, { ui::HomeTab::PreInsert, "preins" },
+                { ui::HomeTab::PostInsert, "postins" }, { ui::HomeTab::Main, "main" },        { ui::HomeTab::Sends, "sends" },
+                { ui::HomeTab::Name, "name" },
+            };
+            for (const auto& [tab, tabName] : tabs)
+            {
+                display.showHomeTab (tab);
+                shoot (juce::String ("home-") + tabName);
+            }
         }
     }
 };

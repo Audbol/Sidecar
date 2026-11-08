@@ -16,6 +16,15 @@ All notable changes to Sidecar are listed here. Versions follow
 - Fixed: the dynamics transfer graph drew the WING's model at the same place in its
   list instead of the console's own (on an X32, the gate's graph was another model's).
 - Fixed: an FX preset of an X32 effect showed "NONE" as its device.
+- WING surface checked against the pictures of the WING User Manual (2025-10-20): HOME,
+  EFFECTS, METERS, ROUTING, SETUP, LIBRARY, OVERVIEW, FADERS, SENDS, CONFIG, MUTE GROUPS
+  and HOME > INPUT match its figures. Labels that were cut short now show whole, as on
+  the console: CLIP on the meter scales, SOURCE GROUP and COPY CUSTOMIZATION on ROUTING,
+  the selected tab (GENERAL), OVERVIEW and MUTEGRP in the status bar, the "37-40 / AUX
+  IN" layer key, 0 dB and 0.1 m on INPUT's scales and METERS / SAMPLES on its delay
+  units. The FADERS screen's names no longer run into each other on a 12-fader page.
+  A test renders every main screen and HOME tab (`LIVEDAW_UI_SNAPSHOTS=<folder>`
+  keeps the pictures, to compare with the manual's).
 
 ## [0.3.0] - beta
 

@@ -302,7 +302,7 @@ namespace
         g.fillRect (r);
         g.setColour (Dark::caption);
         g.setFont (fontFittingWidth (capFont (9.0f), text, (float) r.getWidth() - 4.0f, 0.75f));
-        g.drawText (text, r, juce::Justification::centred);
+        g.drawFittedText (text, r.reduced (2, 0), juce::Justification::centred, 1, 0.6f); // narrowed, never cut ("COPY CUSTOMIZATI...")
     }
 
     /** An outlined key [I8]: a frame on the panel, an optional icon at the left
@@ -388,7 +388,7 @@ namespace
         g.setColour (Dark::caption);
         const auto name = juce::String (routing::info (group).name);
         g.setFont (fontFittingWidth (capFont (14.0f), caption, (float) r.getWidth(), 0.8f));
-        g.drawText (caption, r.withHeight (r.getHeight() * 44 / 100).translated (0, -px (1.0f)), juce::Justification::bottomLeft);
+        g.drawFittedText (caption, r.withHeight (r.getHeight() * 44 / 100).translated (0, -px (1.0f)), juce::Justification::bottomLeft, 1, 0.6f);
         g.setColour (Dark::text);
         g.setFont (fontFittingWidth (capFont (20.0f, WingWeight::SemiBold), name, (float) r.getWidth(), 0.7f));
         g.drawText (name, r.withTrimmedTop (r.getHeight() * 44 / 100).translated (0, -px (3.0f)), juce::Justification::centredLeft);

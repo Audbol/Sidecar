@@ -457,9 +457,10 @@ public:
         {
             const float k = r.getHeight() / 56.0f;
             const auto name = keyText.upToFirstOccurrenceOf ("\n", false, false), value = keyText.fromFirstOccurrenceOf ("\n", false, false);
-            g.setFont (fontFittingWidth (wingFontPx (16.0f * k), name, r.getWidth() - 6.0f, 0.7f));
+            // drawText doesn't squash: the font is made small enough for the whole word ("SAMPLES").
+            g.setFont (fontFittingWidth (wingFontPx (16.0f * k), name, r.getWidth() - 6.0f, 1.0f));
             g.drawText (name, r.withTrimmedTop (8.0f * k).withHeight (24.0f * k).toNearestInt(), juce::Justification::centred, false);
-            g.setFont (wingFontPx (10.0f * k));
+            g.setFont (fontFittingWidth (wingFontPx (10.0f * k), value, r.getWidth() - 6.0f, 1.0f));
             g.drawText (value, r.withTrimmedTop (32.0f * k).withHeight (16.0f * k).toNearestInt(), juce::Justification::centred, false);
             return;
         }
@@ -996,8 +997,10 @@ public:
             for (float db : { 0.0f, -6.0f, -12.0f, -24.0f, -36.0f, -48.0f, -60.0f })
             {
                 const float y = r.getBottom() - r.getHeight() * proportion (db);
-                g.drawText (db == 0.0f ? juce::String ("CLIP") : juce::String ((int) db),
-                            scaleArea.withY (y - font.getHeight() * 0.5f).withHeight (font.getHeight()).toNearestInt(), juce::Justification::centredRight);
+                // Narrowed rather than cut ("C..."): the scale's column is slim.
+                g.drawFittedText (db == 0.0f ? juce::String ("CLIP") : juce::String ((int) db),
+                                  scaleArea.withY (y - font.getHeight() * 0.5f).withHeight (font.getHeight()).toNearestInt(),
+                                  juce::Justification::centredRight, 1, 0.6f);
             }
         }
         const float pitch = juce::jmax (4.0f, wingPx (9.0f));

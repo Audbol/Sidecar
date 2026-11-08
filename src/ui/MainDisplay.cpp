@@ -1963,7 +1963,9 @@ void MainDisplay::paintStatusBar (juce::Graphics& g)
         {
             auto label = r.removeFromBottom (r.getHeight() * 0.34f);
             drawIcon (g, *key.icon, r.withSizeKeepingCentre (r.getHeight() * 0.86f, r.getHeight() * 0.86f).translated (0.0f, 2.0f * k), keyInk);
-            g.drawFittedText (key.text, label.toNearestInt(), juce::Justification::centred, 1, 0.7f);
+            // Smaller rather than cut ("OVERV...", "MUTEG..."): the key is narrow.
+            g.setFont (fontFittingWidth (g.getCurrentFont(), key.text, label.getWidth() - 2.0f, 0.7f));
+            g.drawFittedText (key.text, label.toNearestInt(), juce::Justification::centred, 1, 0.5f);
         }
         else
         {

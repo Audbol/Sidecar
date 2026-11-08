@@ -762,7 +762,9 @@ namespace
         // A virtual layer: its name, an empty key until it has one (manual Fig. 55).
         if (LayerSet::isVirtualLayer (l.id))
             return l.name.toUpperCase();
-        return (l.user ? l.name.toUpperCase() : LayerSet::keyLabel (l)).replaceCharacter ('\n', ' ');
+        // A user layer's name on one line; a default layer's label keeps its two
+        // ("37-40" over "AUX IN"), which on one line doesn't fit the key.
+        return l.user ? l.name.toUpperCase().replaceCharacter ('\n', ' ') : LayerSet::keyLabel (l);
     }
 
     // The column's rows (WING px from the page's top): keys 48 tall every 52,
@@ -948,7 +950,7 @@ StatusTitle ViewPage::getStatusTitle()
     t.prefix = juce::String::charToString ((juce::juce_wchar) (isVirtual() ? 'V' : letters[juce::jlimit (0, 2, (int) section())]));
     const auto all = banks();
     const auto layer = currentLayer();
-    t.text = juce::isPositiveAndBelow (shownBank(), (int) all.size()) ? all[(size_t) shownBank()].title : columnLabel (layer);
+    t.text = juce::isPositiveAndBelow (shownBank(), (int) all.size()) ? all[(size_t) shownBank()].title : columnLabel (layer).replaceCharacter ('\n', ' ');
     if (t.text.isEmpty() && LayerSet::isVirtualLayer (layer.id))
         t.text = "VIRTUAL " + layer.id.fromFirstOccurrenceOf ("-", false, false); // an unnamed virtual layer
     t.icon = Icon::Layers;
@@ -1982,6 +1984,11 @@ namespace
         r.fader = at (4.0f, 224.0f, 70.0f, 400.0f);
         r.meter = at (77.0f, 227.0f, 15.0f, 394.0f);
         r.label = at (0.0f, 632.0f, 96.0f, 32.0f);
+        // A page of more faders than the console's 8 has narrower columns: the
+        // rows with text keep to their own (the names ran into the next).
+        const auto keepIn = [&c] (juce::Rectangle<float>& row) { row = row.withX (juce::jmax (row.getX(), c.getX())).withRight (juce::jmin (row.getRight(), c.getRight())); };
+        for (auto* row : { &r.name, &r.number, &r.label })
+            keepIn (*row);
         return r;
     }
 

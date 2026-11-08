@@ -347,7 +347,8 @@ public:
             }
             g.setColour (sel ? t.colour : (t.enabled ? Dark::textDim : Dark::textDim.withAlpha (0.4f)));
             const float cap = (sel ? TypeScale::tab : TypeScale::tab * 0.7f) * getWingScreenHeight(); // [3.1] unselected 14 px caps, selected 20
-            g.setFont (wingFontPx (juce::jmin (cap, r.getHeight() * 0.38f)));
+            // Smaller rather than cut: the selected tab's bigger caps ("GENERAL") may not fit.
+            g.setFont (fontFittingWidth (wingFontPx (juce::jmin (cap, r.getHeight() * 0.38f)), t.name, r.getWidth() - 8.0f, 0.8f)); // as drawFittedText squashes
             g.drawFittedText (t.name, r.toNearestInt().reduced (4, 0), juce::Justification::centred, 1, 0.8f);
         }
     }

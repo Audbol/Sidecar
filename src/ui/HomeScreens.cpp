@@ -296,7 +296,8 @@ public:
             const float y = track.getBottom() - track.getHeight() * frac;
             const float v = i == 0 ? range.start : range.end * frac;
             const auto text = i == 0 ? delayText (v, mode) : juce::String (v, mode == 3 || v >= 10.0f ? 0 : 1);
-            g.drawText (text, scale.withY (y - 6.0f).withHeight (12.0f).toNearestInt(), juce::Justification::centredRight);
+            // The minimum's unit ("0.1 m") needs more than the column: narrowed, never "0...".
+            g.drawFittedText (text, scale.withY (y - 6.0f).withHeight (12.0f).toNearestInt(), juce::Justification::centredRight, 1, 0.5f);
         }
         g.setColour (juce::Colours::black);
         g.fillRect (well);
@@ -473,8 +474,8 @@ public:
         {
             const float y = p.getCentreY() - (float) db / 18.0f * p.getHeight() * 0.5f;
             g.setColour (Colours::caption);
-            g.drawText (db == 0 ? juce::String ("0 dB") : juce::String (db), juce::Rectangle<float> (r.getX(), y - lh * 0.5f, p.getX() - r.getX() - 3.0f * k, lh).toNearestInt(),
-                        juce::Justification::centredRight);
+            g.drawFittedText (db == 0 ? juce::String ("0 dB") : juce::String (db), juce::Rectangle<float> (r.getX(), y - lh * 0.5f, p.getX() - r.getX() - 3.0f * k, lh).toNearestInt(),
+                              juce::Justification::centredRight, 1, 0.5f); // narrowed, never "0..."
             g.setColour (juce::Colour (0xff585858));
             g.fillRect (r.getRight() - 20.0f * k, y - k, 6.0f * k, juce::jmax (1.0f, 2.0f * k));
         }
