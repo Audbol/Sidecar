@@ -886,6 +886,9 @@ console's palette), the **DCAS** it belongs to and its **MUTE GROUPS**: a key pe
 while the strip is a member, a tap assigns or unassigns. As on the console, a channel
 with LINK CUSTOMIZATION TO SOURCE on (as a factory WING's are) takes its name and colour
 from its source: renaming or recolouring it changes the source's, which the page says.
+**SAVE PRESET** saves the strip as a channel preset (every section but its routing, as
+the WING's LIBRARY saves one) to a .lchn file, in the Library folder unless you choose
+another; **LOAD PRESET** loads one onto the strip.
 
 ![The inspector's STRIP page: a bus's name, its colour among the palette's, its DCAs and its mute groups (one assigned)](images/universal-strip-page.png)
 
@@ -916,6 +919,9 @@ devices in FX 1-8 only),
 **PLUGIN** (load a plugin, open its window, bypass or remove it; a slot with a plugin
 is EXT) and the device's controls, its front panel (**FRONT PANEL**) or the list of its
 parameters.
+**SAVE PRESET** saves the selected slot (its device and settings) to a .lfx file, **LOAD
+PRESET** loads one into it; both in the Library folder unless you choose another, the
+same files as the WING's LIBRARY > FX.
 
 ![The FX RACK: reverbs, a delay and a chorus in FX 1-4, a limiter and a de-esser in FX 9-10, the hall's parameters](images/universal-fx.png)
 
@@ -999,9 +1005,11 @@ compensation and output protection.
 
 ### Still on the WING surface
 
-Custom controls and the LIBRARY's file browser are on the WING surface for now (the
-show's NEW, OPEN and SAVE are on the top bar's SHOW key, snippets and presets on
-SCENES, the remotes' settings on SETUP > REMOTE); so are the WING's REMOTE LOCK and HA
+Custom controls and the LIBRARY (its file browser, and making snippets and adding
+files to the show) are on the WING surface for now. The show's NEW, OPEN and SAVE are on
+the top bar's SHOW key, SCENES lists and recalls the show's scenes, snippets and presets,
+channel and FX presets are saved and loaded on the inspector's STRIP page and on FX
+RACK, and the remotes' settings are on SETUP > REMOTE. Also on the WING surface: the WING's REMOTE LOCK and HA
 REMOTE, and the DAW's surface layout and presets. The WING
 surface addresses the WING's ranges: a console with other aux, main, matrix, DCA or
 mute group counts opens in the Universal Mixer, and choosing the WING surface offers to

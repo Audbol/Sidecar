@@ -1,5 +1,8 @@
 #include "ui/universal/StripPanel.h"
 
+#include "engine/AppPaths.h"
+#include "engine/Show.h"
+#include "ui/ShowPanel.h"
 #include "ui/StripCustomize.h"
 
 namespace livedaw::ui::universal
@@ -8,10 +11,12 @@ namespace livedaw::ui::universal
 namespace
 {
     constexpr int kCaption = 24, kSwatch = 40, kNameRow = 56;
+    /** A channel preset holds every section but routing (as the WING's LIBRARY saves one). */
+    constexpr juce::uint32 kPresetScope = state::AllSections & ~(juce::uint32) state::Routing;
 } // namespace
 
 StripPanel::StripPanel (UiContext& c, const Theme& t)
-    : renameKey ("RENAME", t.accent, t), dcas (t, t.accent), muteGroups (t, t.mute), ctx (c), theme (t)
+    : renameKey ("RENAME", t.accent, t), savePresetKey ("SAVE PRESET", t.accent, t), loadPresetKey ("LOAD PRESET", t.accent, t), dcas (t, t.accent), muteGroups (t, t.mute), ctx (c), theme (t)
 {
     renameKey.onClick = [this]
     {
@@ -24,6 +29,36 @@ StripPanel::StripPanel (UiContext& c, const Theme& t)
                         if (safe != nullptr)
                             safe->rename (text);
                     });
+    };
+    // Channel presets, in the Library folder; no file dialogs in a test run.
+    savePresetKey.onClick = [this]
+    {
+        if (strip == nullptr || paths::externalActionsBlocked().load())
+            return;
+        const auto folder = ShowPanel::libraryFolder();
+        folder.createDirectory();
+        const auto name = juce::File::createLegalFileName (strip->getName().isNotEmpty() ? strip->getName() : strip->getLabel());
+        chooser = std::make_unique<juce::FileChooser> ("Save " + strip->getLabel() + " as a channel preset",
+                                                       folder.getChildFile (name + Show::channelPresetExtension), juce::String ("*") + Show::channelPresetExtension);
+        chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting,
+                              [safe = juce::Component::SafePointer<StripPanel> (this)] (const juce::FileChooser& fc)
+                              {
+                                  if (safe != nullptr && fc.getResult() != juce::File())
+                                      safe->savePreset (fc.getResult().withFileExtension (Show::channelPresetExtension));
+                              });
+    };
+    loadPresetKey.onClick = [this]
+    {
+        if (strip == nullptr || paths::externalActionsBlocked().load())
+            return;
+        chooser = std::make_unique<juce::FileChooser> ("Load a channel preset onto " + strip->getLabel(), ShowPanel::libraryFolder(),
+                                                       juce::String ("*") + Show::channelPresetExtension);
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                              [safe = juce::Component::SafePointer<StripPanel> (this)] (const juce::FileChooser& fc)
+                              {
+                                  if (safe != nullptr && fc.getResult() != juce::File())
+                                      safe->loadPreset (fc.getResult());
+                              });
     };
     dcas.count = [this] { return strip != nullptr ? ctx.engine.getNumDcas() : 0; };
     dcas.isOn = [this] (int i) { return strip != nullptr && strip->params.dcaMask.contains (i); };
@@ -41,7 +76,7 @@ StripPanel::StripPanel (UiContext& c, const Theme& t)
             strip->params.muteGroupMask.toggle (i);
     };
     muteGroups.name = [this] (int i) { return customGroupName (ctx.engine.getMuteGroupName (i), i); };
-    for (auto* child : std::initializer_list<juce::Component*> { &renameKey, &dcas, &muteGroups })
+    for (auto* child : std::initializer_list<juce::Component*> { &renameKey, &savePresetKey, &loadPresetKey, &dcas, &muteGroups })
         addAndMakeVisible (child);
     startTimerHz (6);
 }
@@ -62,6 +97,31 @@ void StripPanel::rename (const juce::String& text)
         return;
     customize::rename (ctx.engine, *strip, text);
     refresh();
+}
+
+juce::Result StripPanel::savePreset (const juce::File& file)
+{
+    if (strip == nullptr)
+        return juce::Result::fail ("No strip");
+    const auto r = ctx.show.saveChannelPreset (state::StripRef::of (*strip), kPresetScope, file, file.getFileNameWithoutExtension());
+    if (r.failed())
+        ctx.log.error (r.getErrorMessage());
+    else
+        ctx.log.info ("Saved channel preset " + file.getFileName());
+    return r;
+}
+
+juce::Result StripPanel::loadPreset (const juce::File& file)
+{
+    if (strip == nullptr)
+        return juce::Result::fail ("No strip");
+    const auto r = ctx.show.loadChannelPreset (state::StripRef::of (*strip), file);
+    if (r.failed())
+        ctx.log.error (r.getErrorMessage());
+    else
+        ctx.log.info ("Loaded channel preset " + file.getFileName() + " onto " + strip->getLabel());
+    refresh();
+    return r;
 }
 
 void StripPanel::chooseColour (int c)
@@ -131,6 +191,7 @@ void StripPanel::paint (juce::Graphics& g)
     }
     caption (dcaCaption, "DCAS (A TAP ASSIGNS OR UNASSIGNS)");
     caption (muteCaption, "MUTE GROUPS");
+    caption (presetCaption, "CHANNEL PRESET (EVERY SECTION BUT ROUTING)");
 }
 
 int StripPanel::heightFor (int width) const
@@ -139,7 +200,7 @@ int StripPanel::heightFor (int width) const
     const int cols = juce::jmax (1, w / kSwatch);
     const int rows = (palette::count() + cols - 1) / cols;
     return sizes::kGap + kNameRow + sizes::kGap + kCaption + rows * kSwatch + sizes::kGap + kCaption + dcas.heightFor (w) + sizes::kGap + kCaption
-           + muteGroups.heightFor (w) + sizes::kGap;
+           + muteGroups.heightFor (w) + sizes::kGap + kCaption + sizes::kTouch + sizes::kGap;
 }
 
 void StripPanel::resized()
@@ -159,6 +220,11 @@ void StripPanel::resized()
     area.removeFromTop (sizes::kGap);
     muteCaption = area.removeFromTop (kCaption);
     muteGroups.setBounds (area.removeFromTop (muteGroups.heightFor (area.getWidth())));
+    area.removeFromTop (sizes::kGap);
+    presetCaption = area.removeFromTop (kCaption);
+    auto keys = area.removeFromTop (sizes::kTouch);
+    savePresetKey.setBounds (keys.removeFromLeft (keys.getWidth() / 2).withTrimmedRight (sizes::kGapSmall / 2));
+    loadPresetKey.setBounds (keys.withTrimmedLeft (sizes::kGapSmall / 2));
 }
 
 void StripPanel::mouseUp (const juce::MouseEvent& e)

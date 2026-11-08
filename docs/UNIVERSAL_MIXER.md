@@ -283,8 +283,10 @@ Three layers:
    matrices, tagged WING). SETUP > REMOTE took the remotes' settings (WING remote,
    web remote, MIDI routes and devices, DAW control); the network remotes now start
    with the app (`MainComponent`), not with the WING surface's SETUP page. Left on the
-   WING surface: custom controls, the LIBRARY's file browser, REMOTE LOCK, HA REMOTE,
-   the DAW's surface layout and presets.
+   WING surface: custom controls, the LIBRARY (its file browser, making snippets,
+   adding files to the show; SCENES lists and recalls the show's items, the STRIP page
+   and FX RACK save and load channel and FX presets), REMOTE LOCK, HA REMOTE, the DAW's
+   surface layout and presets.
 
    The monitor SOURCE and DIRECT IN reach every strip of the console: choices past
    the WING's counts are numbered from `params::EXTENDED_SOURCE_BASE` (kind and

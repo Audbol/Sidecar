@@ -12,6 +12,7 @@
 #include "ui/UniversalSkin.h"
 #include "ui/StripCustomize.h"
 #include "ui/universal/StripPanel.h"
+#include "ui/universal/FxRackView.h"
 #include "engine/MidiRemote.h"
 #include "engine/WebRemote.h"
 #include "ui/universal/ValueControls.h"
@@ -1444,6 +1445,49 @@ public:
             expect (keepPicture (setup.createComponentSnapshot (setup.getLocalBounds()), "universal-remote.png"));
             r.wingOn.onClick(); // off again (no servers left behind)
             expect (! WingRemote::Settings::load (rig.settings).enabled);
+        }
+
+        beginTest ("Channel and FX presets from the Universal Mixer: saved to a file and loaded back");
+        {
+            MixerEngine engine (0);
+            engine.configure (nullptr);
+            UiRig rig (engine);
+            const auto folder = juce::File::createTempFile ("presets");
+            folder.createDirectory();
+
+            // A channel preset: the strip's processing and levels, not its routing.
+            StripPanel panel (rig.ctx, Theme::dark());
+            panel.setSize (440, 1400);
+            auto& ch3 = *engine.getChannels()[2];
+            panel.setStrip (&ch3);
+            ch3.params.faderDb = -7.5f;
+            ch3.params.filter().lowCutFreq = 140.0f;
+            const auto chanFile = folder.getChildFile ("Lead vocal" + juce::String (Show::channelPresetExtension));
+            expect (panel.savePreset (chanFile).wasOk() && chanFile.existsAsFile());
+            ch3.params.faderDb = 0.0f;
+            ch3.params.filter().lowCutFreq = 40.0f;
+            expect (panel.loadPreset (chanFile).wasOk());
+            expectWithinAbsoluteError (ch3.params.filter().lowCutFreq.load(), 140.0f, 0.5f);
+            expectEquals (Show::readPreset (chanFile).name, juce::String ("Lead vocal"));
+            expect (panel.savePresetKey.isVisible() && panel.loadPresetKey.getBottom() <= panel.heightFor (440));
+            expect (panel.loadPreset (folder.getChildFile ("missing.lchn")).failed(), "a file that isn't there");
+
+            // An FX preset: the slot's device and its settings.
+            FxRackView rack (rig.ctx, Theme::dark());
+            rack.setSize (1400, 800);
+            rack.selectSlot (0);
+            const int hall = models::findModel (models::Fx, "HALL");
+            expect (engine.getFx().setModel (0, hall));
+            const int decay = models::model (models::Fx, hall).find ("dcy");
+            engine.getFx().params (0).values[decay] = 3.5f;
+            const auto fxFile = folder.getChildFile ("Long hall" + juce::String (Show::fxPresetExtension));
+            expect (rack.savePreset (fxFile).wasOk() && fxFile.existsAsFile());
+            expect (engine.getFx().setModel (0, models::findModel (models::Fx, "ST-DL")));
+            expect (rack.loadPreset (fxFile).wasOk());
+            expectEquals (engine.getFx().getModel (0), hall);
+            expectWithinAbsoluteError (engine.getFx().params (0).values[decay].load(), 3.5f, 0.01f);
+            expect (rack.savePresetKey.isVisible() && rack.loadPresetKey.isVisible());
+            folder.deleteRecursively();
         }
 
         beginTest ("The top bar names the show; its SHOW menu runs NEW, OPEN, SAVE and SAVE AS");

@@ -20,6 +20,9 @@ All notable changes to Sidecar are listed here. Versions follow
   distance, the LIMITER with its gain reduction) and talkback (the talkback channel,
   TALK LEVEL, TALK A and TALK B pressed and released as on the console, each path's
   mode, dims, USE SEND LEVELS and destinations), which were on the WING surface only.
+- Universal Mixer: channel presets (SAVE PRESET / LOAD PRESET on the inspector's STRIP
+  page) and FX presets (on FX RACK, for the selected slot), the same .lchn and .lfx files
+  as the WING's LIBRARY, in the Library folder unless another is chosen.
 - Talkback reaches every bus, main and matrix of the console (the first 256 of each),
   not only a WING's 16, 4 and 8: TALK A and B's destinations are group sets (shows store
   them as before while they fit, so older shows load as they were). The Universal

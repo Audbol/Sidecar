@@ -30,7 +30,11 @@ public:
     void refresh();
 
     ChoiceBar device;
-    ToggleKey pluginKey, panelKey;
+    ToggleKey pluginKey, panelKey, savePresetKey, loadPresetKey;
+    /** The selected slot as an FX preset (.lfx in the Library folder, as the WING's
+        LIBRARY > FX keeps them), named after the file; one loaded into it. */
+    juce::Result savePreset (const juce::File&);
+    juce::Result loadPreset (const juce::File&);
     ParamPanel params;
     Faceplate faceplate;
 
@@ -45,6 +49,7 @@ private:
             refresh();
     }
     void bindSlot();
+    std::unique_ptr<juce::FileChooser> chooser;
 
     UiContext& ctx;
     const Theme& theme;

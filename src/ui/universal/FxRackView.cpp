@@ -1,5 +1,9 @@
 #include "ui/universal/FxRackView.h"
 
+#include "engine/AppPaths.h"
+#include "engine/Show.h"
+#include "ui/ShowPanel.h"
+
 #include "ui/Faceplate.h"
 
 namespace livedaw::ui::universal
@@ -93,7 +97,8 @@ private:
 };
 
 FxRackView::FxRackView (UiContext& c, const Theme& t)
-    : device (t), pluginKey ("PLUGIN", t.accent, t), panelKey ("FRONT PANEL", t.accent, t), params (t), ctx (c), theme (t),
+    : device (t), pluginKey ("PLUGIN", t.accent, t), panelKey ("FRONT PANEL", t.accent, t), savePresetKey ("SAVE PRESET", t.accent, t),
+      loadPresetKey ("LOAD PRESET", t.accent, t), params (t), ctx (c), theme (t),
       tiles (std::make_unique<Tiles> (*this))
 {
     device.caption = "DEVICE";
@@ -119,6 +124,37 @@ FxRackView::FxRackView (UiContext& c, const Theme& t)
     };
     // The slot's plugins: load one, open its window, bypass, remove.
     pluginKey.onClick = [this] { showFxSlotMenu (ctx, selected, &pluginKey); };
+    // FX presets, in the Library folder; no file dialogs in a test run.
+    savePresetKey.onClick = [this]
+    {
+        if (paths::externalActionsBlocked().load())
+            return;
+        const auto folder = ShowPanel::libraryFolder();
+        folder.createDirectory();
+        const auto model = models::model (models::Fx, ctx.engine.getFx().getModel (selected)).name;
+        chooser = std::make_unique<juce::FileChooser> ("Save FX " + juce::String (selected + 1) + " as a preset",
+                                                       folder.getChildFile (juce::File::createLegalFileName (model) + Show::fxPresetExtension),
+                                                       juce::String ("*") + Show::fxPresetExtension);
+        chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles | juce::FileBrowserComponent::warnAboutOverwriting,
+                              [safe = juce::Component::SafePointer<FxRackView> (this)] (const juce::FileChooser& fc)
+                              {
+                                  if (safe != nullptr && fc.getResult() != juce::File())
+                                      safe->savePreset (fc.getResult().withFileExtension (Show::fxPresetExtension));
+                              });
+    };
+    loadPresetKey.onClick = [this]
+    {
+        if (paths::externalActionsBlocked().load())
+            return;
+        chooser = std::make_unique<juce::FileChooser> ("Load an FX preset into FX " + juce::String (selected + 1), ShowPanel::libraryFolder(),
+                                                       juce::String ("*") + Show::fxPresetExtension);
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                              [safe = juce::Component::SafePointer<FxRackView> (this)] (const juce::FileChooser& fc)
+                              {
+                                  if (safe != nullptr && fc.getResult() != juce::File())
+                                      safe->loadPreset (fc.getResult());
+                              });
+    };
     panelKey.isOn = [this] { return isShowingPanel(); };
     panelKey.onClick = [this]
     {
@@ -135,7 +171,7 @@ FxRackView::FxRackView (UiContext& c, const Theme& t)
     listView.setScrollOnDragMode (juce::Viewport::ScrollOnDragMode::nonHover);
     for (auto* v : { &tilesView, &listView })
         v->getVerticalScrollBar().setColour (juce::ScrollBar::thumbColourId, theme.outline);
-    for (auto* child : std::initializer_list<juce::Component*> { &tilesView, &device, &pluginKey, &panelKey })
+    for (auto* child : std::initializer_list<juce::Component*> { &tilesView, &device, &pluginKey, &panelKey, &savePresetKey, &loadPresetKey })
         addAndMakeVisible (child);
     addChildComponent (listView);
     addChildComponent (faceplate);
@@ -233,6 +269,27 @@ void FxRackView::paint (juce::Graphics& g)
     }
 }
 
+juce::Result FxRackView::savePreset (const juce::File& file)
+{
+    const auto r = ctx.show.saveFxPreset (selected, file, file.getFileNameWithoutExtension());
+    if (r.failed())
+        ctx.log.error (r.getErrorMessage());
+    else
+        ctx.log.info ("Saved FX preset " + file.getFileName());
+    return r;
+}
+
+juce::Result FxRackView::loadPreset (const juce::File& file)
+{
+    const auto r = ctx.show.loadFxPreset (selected, file);
+    if (r.failed())
+        ctx.log.error (r.getErrorMessage());
+    else
+        ctx.log.info ("Loaded FX preset " + file.getFileName() + " into FX " + juce::String (selected + 1));
+    refresh();
+    return r;
+}
+
 void FxRackView::resized()
 {
     auto area = getLocalBounds().reduced (sizes::kGap, sizes::kGapSmall);
@@ -248,6 +305,10 @@ void FxRackView::resized()
     pluginKey.setBounds (bar.removeFromLeft (170));
     bar.removeFromLeft (sizes::kGap);
     panelKey.setBounds (bar.removeFromLeft (150));
+    bar.removeFromLeft (sizes::kGap);
+    savePresetKey.setBounds (bar.removeFromLeft (juce::jmin (150, juce::jmax (0, bar.getWidth() / 2 - sizes::kGapSmall))));
+    bar.removeFromLeft (sizes::kGapSmall);
+    loadPresetKey.setBounds (bar.removeFromLeft (juce::jmin (150, bar.getWidth())));
     area.removeFromTop (sizes::kGap);
 
     const bool panel = isShowingPanel();
