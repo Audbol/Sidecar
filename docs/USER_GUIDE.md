@@ -1285,10 +1285,20 @@ SURFACE** key comes back.
   - **MIDI:** MIDI SETUP.
   - **GROUP:** groups A-H, the channel's fader and mute group.
   - **PAIR:** the channel's pair, the aux and bus pairs.
+  - **DIGITAL I/O:** the clock and inputs, shown as fixed: they're your audio
+    interface's.
+  - **SETUP:** four pages. SOLO sets where the channels and the outputs are heard
+    (PRE FADER or AFTER PAN). AUX OUTPUT SELECT is fixed. PREFERENCES 1 and 2 hold
+    the preferences Sidecar acts on: AUTO EQ, PAN, ROUTING and SOLO DISPLAY, STORE and
+    RECALL CONFIRMATION, INITIAL DATA NOMINAL and TOUCH SENSE SELECT. They're kept
+    in the app settings.
+  - **AUTOMIX:** shown, not emulated.
 
   The MIXING keys:
   - **METER:** every strip.
-  - **VIEW:** the channel at a glance.
+  - **VIEW:** the channel at a glance. Its second page (VIEW again) is the **CHANNEL
+    LIBRARY**: 64 programs of an input strip's settings, with RECALL, STORE, CLEAR
+    and an UNDO.
   - **ROUTING:** BUS 1-8, ST, DIRECT.
   - **Ø / ATT, DELAY, PAN.**
   - **EQ:** its curve, the four bands, HPF and LPF, and its library.
@@ -1305,6 +1315,10 @@ SURFACE** key comes back.
   - **AUX:** an aux key picks the send, **SEND LEVEL** turns it, **ON** switches it.
   - **PAN.**
   - **EQUALIZER:** a band key picks the band for **Q**, **F** and **G**, and **EQ ON**.
+- **The monitor column.** **MONO** and **DIM** are the monitor's, **SLATE** and **T/B**
+  the talkback paths, and **C-R LEVEL** the monitor level. **SOLO** lights while
+  anything is soloed, and a press clears every solo. The source keys are dark:
+  Sidecar's monitor follows the solo bus and the main.
 - **SCENE MEMORY.** ▲ and ▼ choose a number, STORE stores the console as that scene of the
   show (a new scene at the end if the show has fewer), RECALL recalls it. 00 is the
   console's initial data: RECALL resets the mix.
@@ -1325,9 +1339,8 @@ SURFACE** key comes back.
 
 Not there yet:
 - the analog controls (gain, pad, phantom power)
-- DIGITAL I/O, SETUP and AUTOMIX
-- solo and the monitor keys
-- the channel library
+- AUTOMIX, and the hardware's settings on DIGITAL I/O and SETUP
+- soloing a channel from the 02R surface, and the monitor's source keys
 - surround panning
 
 The fader steps, part of the Q table, the dynamics' time tables and the effects'
