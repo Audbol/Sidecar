@@ -1487,6 +1487,22 @@ private:
             display.setAssignCode (4, "-");
         }
 
+        // UTILITY's init tab: two pushes put the selected strip back to the factory.
+        {
+            auto* selectedBefore = rig.selected;
+            auto& ch = *channels[14];
+            rig.selected = &ch;
+            ch.setName ("Pad");
+            ch.params.faderDb = -12.0f;
+            display.showScreen (ui::x32::Display::Screen::Utility, 1);
+            display.pushEncoder (0);
+            expectEquals (ch.getName(), juce::String ("Pad"), "the first push only arms it");
+            display.pushEncoder (0);
+            expectEquals (ch.getName(), juce::String());
+            expect (ch.params.faderDb.load() < -100.0f, "a factory fader is down");
+            rig.selected = selectedBefore;
+        }
+
         // MONITOR's talk tabs: the sixth encoder picks the talkback channel.
         {
             display.showScreen (ui::x32::Display::Screen::Monitor, 1);

@@ -736,8 +736,10 @@ Three layers:
         show actions (`UiContext::newShow`, `openShow`, `saveShow`, and
         `getShowFile` for its rows); UTILITY's copy tab COPYs the selected strip
         and PASTEs its chosen sections onto the selected one with the WING's
-        CHANNEL COPY (`copyStripSections`, `HomeScreens.h`). Not done: INIT (the
-        WING's defaults would give an X32 strip WING models). The X32's channel
+        CHANNEL COPY (`copyStripSections`, `HomeScreens.h`). INIT came later, on
+        UTILITY's init tab (`livedaw_x32::chn::init`: a freshly configured X32's
+        strip, rather than the WING's defaults, which would give it WING
+        models; the source stays). The X32's channel
         presets (`.chn` library files) came later: `livedaw_x32::chn`, the
         scene file's lines relative to a strip, on LIBRARY's channel tab (IMPORT
         / EXPORT .chn); the header is from public descriptions, not yet compared

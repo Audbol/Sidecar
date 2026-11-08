@@ -218,6 +218,19 @@ pub unsafe extern "C" fn ld_x32_channel_read(
     })
 }
 
+/// ABI 52: INIT, the strip at `strip` back to an X32's factory values (its
+/// source stays): how many lines were set, -1 if the console isn't an X32 or
+/// that isn't a strip.
+///
+/// # Safety
+/// `x` is from `ld_x32_create` (or null); `strip` holds `len` UTF-8 bytes.
+#[no_mangle]
+pub unsafe extern "C" fn ld_x32_channel_init(x: *const LdX32, strip: *const u8, len: usize) -> i32 {
+    let Some(x) = x.as_ref() else { return -1 };
+    let strip = str_arg(strip, len);
+    guard(-1, || x.with_console(|c| chn::init(c, &strip)).flatten().map_or(-1, |n| i32::try_from(n).unwrap_or(i32::MAX)))
+}
+
 /// ABI 42: runs an OSC command's text from a MIDI SysEx message (`F0 00 20 32
 /// 32 <text> F7`, the host strips the framing) on the console. Returns the
 /// answer to a query (an address alone: its `/node` line), else null; `set`

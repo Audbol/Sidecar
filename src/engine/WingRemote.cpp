@@ -147,6 +147,12 @@ WingRemote::X32SceneRead WingRemote::readX32Channel (const juce::String& strip, 
     return r;
 }
 
+bool WingRemote::initX32Channel (const juce::String& strip)
+{
+    const Utf8 s (strip);
+    return ld::ld_x32_channel_init (x32, s.data, s.size) >= 0;
+}
+
 juce::StringArray WingRemote::applyWing (const Settings& s)
 {
     if (! s.enabled)

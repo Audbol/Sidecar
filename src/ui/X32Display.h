@@ -266,6 +266,8 @@ private:
     Strip* copySource = nullptr;
     juce::uint32 copySections = 0x3f;
     juce::String utilityStatus;
+    /** UTILITY's INIT: the strip its first push armed (a second push initialises it). */
+    const Strip* initArmed = nullptr;
     bool isStrip (const Strip*) const;
 
     std::array<Encoder, 6> encoders;

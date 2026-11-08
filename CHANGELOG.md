@@ -5,6 +5,8 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+- X32: INIT on UTILITY's new init tab puts the selected strip back to an X32's
+  factory settings (two pushes; the source stays).
 - X32: the display's ASSIGN editor also sets effect parameters and the selected
   channel's controls on encoders, and a scene, PREV and NEXT on buttons; a
   control holding another code (MIDI, a page) shows it instead of "-".

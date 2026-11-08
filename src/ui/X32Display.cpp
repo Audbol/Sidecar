@@ -334,7 +334,7 @@ juce::StringArray Display::getTabs() const
         case Screen::Library:    return { "scenes", "show", "channel", "effects", "routing" };
         case Screen::Effects:    return { "home", "fx1", "fx2", "fx3", "fx4", "fx5", "fx6", "fx7", "fx8" };
         case Screen::MuteGroups: return { "mute grp" };
-        case Screen::Utility:    return { "copy" };
+        case Screen::Utility:    return { "copy", "init" };
         case Screen::Monitor:    return { "monitor", "talk a", "talk b", "osc" };
         case Screen::Assign:     return { "set a", "set b", "set c" };
         case Screen::Scenes:     return { "home", "scenes", "snippets", "param safe", "chan safe", "MIDI" };
@@ -2280,6 +2280,30 @@ void Display::assignEncoders()
                                            [] (int v) { return juce::String (v + 1); },
                                            [this, make, kind, target] (int v) { setAssignCode (assignControl, make (kind, target, v)); assignEncoders(); }));
     }
+    else if (screen == Screen::Utility && tab == 1)
+    {
+        // INIT: the selected strip back to an X32's factory values (its source
+        // stays); a second push confirms.
+        encoders[0] = encoder ({}, "INIT", [this]
+        {
+            auto* st = selected();
+            const auto address = st != nullptr ? x32Address (*st) : juce::String();
+            if (address.isEmpty())
+                utilityStatus = "Select a strip to initialise";
+            else if (initArmed != st)
+            {
+                initArmed = st;
+                utilityStatus = "Push INIT again to initialise " + st->getLabel();
+            }
+            else
+            {
+                initArmed = nullptr;
+                utilityStatus = ctx.engine.getWing().initX32Channel (address) ? "Initialised " + st->getLabel() : juce::String ("The console isn't an X32");
+                refreshStrip();
+            }
+            repaint();
+        });
+    }
     else if (screen == Screen::Utility)
     {
         // COPY the selected strip, PASTE its chosen sections onto the selected one.
@@ -3874,6 +3898,14 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
         }
         case Screen::Utility:
         {
+            if (tab == 1)
+            {
+                auto* sel = selected();
+                paintRows (g, r.reduced (12), { "INITIALISE (SELECTED)", "", "" },
+                           { sel != nullptr ? sel->getLabel() + "  " + sel->getName() : juce::String ("-"),
+                             "Back to an X32's factory settings; the source stays", utilityStatus });
+                break;
+            }
             const bool copied = copySource != nullptr && isStrip (copySource);
             auto* sel = selected();
             juce::StringArray right { copied ? copySource->getLabel() + "  " + copySource->getName() : juce::String ("-"),

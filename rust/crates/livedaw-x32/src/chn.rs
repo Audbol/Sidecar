@@ -15,9 +15,10 @@
 //! `/config` sets the name, icon and colour, not the source. Head amp lines
 //! (`/headamp/...`) are skipped, as Sidecar has no remote preamps.
 
-use crate::map::{Console, Found};
+use crate::map::{Console, Found, State};
 use crate::scn::Read;
 use crate::value::fields;
+use livedaw_engine::{ConsoleConfig, Counts, Engine, Profile};
 
 /// The header's version tag, as channel presets carry it.
 pub const VERSION: &str = "#2.1#";
@@ -88,4 +89,17 @@ pub fn read(c: &Console, strip: &str, text: &str) -> Option<Read> {
         r.applied += 1;
     }
     Some(r)
+}
+
+/// INIT: the strip at `strip` back to an X32's factory values (a freshly
+/// configured X32's strip, as the scene file test checks against a real
+/// one), keeping its source as a preset does. Returns how many lines it set;
+/// None for an address that isn't a strip.
+pub fn init(c: &Console, strip: &str) -> Option<usize> {
+    strip_node(c, strip)?;
+    let fresh = Engine::new(0);
+    fresh.configure(&ConsoleConfig { profile: Profile::X32, counts: Counts::X32 });
+    let state = State::default();
+    let factory = write(&Console::new(&fresh, &state), strip, "")?;
+    read(c, strip, &factory).map(|r| r.applied)
 }

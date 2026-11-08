@@ -87,3 +87,41 @@ fn head_amps_and_unknown_lines_are_skipped() {
     assert_eq!((read.name.as_str(), read.applied, read.skipped), ("Kick", 1, 3));
     assert!(chn::read(&c, "/bus/02", "").is_some_and(|r| r.applied == 0 && r.skipped == 0));
 }
+
+#[test]
+fn init_puts_a_strip_back_to_the_factory_but_its_source() {
+    let a = x32();
+    let sa = State::default();
+    let ca = Console::new(&a, &sa);
+    let factory = chn::write(&ca, "/ch/05", "").unwrap();
+    let changes = "/config \"Gtr\" 3 GN 9\n/mix OFF -10.0 ON -25 OFF -oo\n/eq/1 PEQ 1k2 +6.0 2.0\n";
+    let read = chn::read(&ca, "/ch/05", changes).unwrap();
+    assert_eq!(read.applied, 3);
+    let changed = chn::write(&ca, "/ch/05", "").unwrap();
+    assert_ne!(changed, factory);
+    let source = |text: &str| text.lines().find(|l| l.starts_with("/config ")).unwrap().rsplit(' ').next().unwrap().to_owned();
+    // A source of its own, which INIT keeps.
+    // A source of its own (through its own address), which INIT keeps.
+    assert_eq!(chn::read(&ca, "/ch/05", "/config/source 9").unwrap().applied, 1);
+    assert_eq!(source(&chn::write(&ca, "/ch/05", "").unwrap()), "9");
+    assert!(chn::init(&ca, "/ch/05").is_some_and(|n| n > 20));
+    let after = chn::write(&ca, "/ch/05", "").unwrap();
+    assert_eq!(source(&after), "9", "the source stays");
+    assert_eq!(
+        after.replacen(
+            " 9
+",
+            &format!(
+                " {}
+",
+                source(&factory)
+            ),
+            1
+        ),
+        factory,
+        "the rest back to the factory"
+    );
+    assert!(chn::init(&ca, "/ch/40").is_none());
+    let ch5 = &a.strips(StripKind::Channel)[4];
+    assert!(!ch5.params.mute.load(Relaxed));
+}

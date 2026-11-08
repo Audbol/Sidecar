@@ -1161,8 +1161,9 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
   (encoders 1-4), the same as the menus of the other surfaces.
 - **Copy and paste.** UTILITY: select a strip and push **COPY**, select another and
   push **PASTE**. Encoders 3-6 choose what is pasted: preamp and gate, dynamics, EQ,
-  sends and fader (all four at first). Resetting a strip and channel presets are on
-  the Universal Mixer for now.
+  sends and fader (all four at first). UTILITY's **init** tab puts the selected strip
+  back to an X32's factory settings: push **INIT** twice (the first push only arms
+  it). The strip keeps its source. Channel presets are on LIBRARY's channel tab.
 
 ## The ProMix 01 surface (preview)
 

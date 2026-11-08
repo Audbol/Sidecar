@@ -78,6 +78,9 @@ public:
         `note` stays empty). */
     juce::String writeX32Channel (const juce::String& strip, const juce::String& name) const;
     X32SceneRead readX32Channel (const juce::String& strip, const juce::String& text);
+    /** INIT: that strip back to an X32's factory values (its source stays); false if
+        the console isn't an X32 or that isn't a strip. */
+    bool initX32Channel (const juce::String& strip);
     /** OSC over MIDI SysEx (Phase 4 step 6b): runs a command's text (the
         SysEx framing stripped) on the console as an X32. Returns the answer
         to a query (an address alone), else empty; `set` gets how many values

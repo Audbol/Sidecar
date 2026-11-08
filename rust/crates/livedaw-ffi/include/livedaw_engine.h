@@ -1792,6 +1792,9 @@ extern "C"
     /** ABI 52: sets the strip at `strip` from a channel preset's text (its source
         stays); false if it isn't an X32 or a strip. `out->note` is null. */
     bool ld_x32_channel_read (const LdX32*, const char* strip, size_t stripLen, const char* text, size_t len, LdX32SceneRead* out);
+    /** ABI 52: INIT, that strip back to an X32's factory values (its source stays):
+        the lines set, -1 if it isn't an X32 or a strip. */
+    int32_t ld_x32_channel_init (const LdX32*, const char* strip, size_t stripLen);
     /** ABI 42: runs an OSC command's text from a MIDI SysEx message (the
         framing stripped): the answer to a query (an address alone), else
         null; `set` gets how many values were set, -1 for an unknown address. */
