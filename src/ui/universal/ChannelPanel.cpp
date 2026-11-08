@@ -225,31 +225,42 @@ void ChannelPanel::paint (juce::Graphics& g)
         g.setColour (theme.panel);
         g.fillRoundedRectangle (r, sizes::kRadius);
         auto title = r.withHeight ((float) kTitle).reduced ((float) sizes::kGap, 0.0f);
-        g.setColour (theme.textDim);
-        g.setFont (type::font (type::kCaption, true));
         juce::String text (sectionName (s));
         if (s == InputSection)
             text = strip->getLabel().toUpperCase() + "  " + strip->getName();
-        g.drawText (text, title, juce::Justification::centredLeft, false);
-        // The strip's own blocks are its WING template's (the tag); a dynamics block's model after its name.
-        if (s == FilterSection || s == GateSection || s == EqSection || s == DynamicsSection)
-        {
+        // The strip's own blocks are its WING template's (the tag, at the right first, so
+        // the name keeps clear of it in a slim section); a dynamics block's model after its name.
+        const bool tagged = s == FilterSection || s == GateSection || s == EqSection || s == DynamicsSection;
+        if (tagged)
             title.removeFromRight (drawDeviceTag (g, title, devices::wing, theme) + (float) sizes::kGapSmall);
-            // The measured width runs short of the drawn caps: a margin keeps the model's name clear of it.
-            title.removeFromLeft (juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), text) * 1.15f + (float) sizes::kGap);
+        g.setColour (theme.textDim);
+        g.setFont (type::font (type::kCaption, true));
+        g.drawFittedText (text, title.toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
+        if (tagged)
+        {
+            // The name's width in the font it was drawn with, and a gap.
+            title.removeFromLeft (juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), text) * 1.04f + (float) sizes::kGapSmall + 2.0f);
             if (s == GateSection || s == DynamicsSection)
             {
                 const auto& slot = s == GateSection ? strip->params.gate() : strip->params.dynamics();
                 g.setColour (theme.text);
+                g.setFont (type::font (type::kCaption - 2.0f, true)); // a size under the section's name
                 // Narrowed rather than cut ("WING CO..."): the sections are slim. Too long
                 // even so, it drops "WING " (the section's tag says it) and gets a little smaller.
                 auto modelName = models::model (models::Dynamics, slot.model.load()).name.toUpperCase();
-                const auto fits = [&g, &title] (const juce::String& s) { return juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), s) * 0.5f <= title.getWidth(); };
+                const auto fits = [&g, &title] (const juce::String& s) { return juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), s) * 0.7f <= title.getWidth(); };
                 if (! fits (modelName) && modelName.startsWith ("WING "))
                     modelName = modelName.substring (5);
-                if (const float w = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), modelName) * 0.5f; w > title.getWidth() && w > 0.0f)
-                    g.setFont (g.getCurrentFont().withHeight (juce::jmax (9.0f, g.getCurrentFont().getHeight() * title.getWidth() / w)));
-                g.drawFittedText (modelName, title.toNearestInt(), juce::Justification::centredLeft, 1, 0.5f);
+                // Squashed to 0.7, or a size smaller squashed to 0.55; if it doesn't fit even
+                // so, it is left out (a few cut letters say less than none: the editor names it).
+                if (juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), modelName) * 0.7f <= title.getWidth())
+                    g.drawFittedText (modelName, title.toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
+                else if (const auto smaller = type::font (type::kCaption - 3.0f, true);
+                         juce::GlyphArrangement::getStringWidth (smaller, modelName) * 0.55f <= title.getWidth())
+                {
+                    g.setFont (smaller);
+                    g.drawFittedText (modelName, title.toNearestInt(), juce::Justification::centredLeft, 1, 0.55f);
+                }
             }
         }
         if ((s == FilterSection || s == GateSection) && ! channel)

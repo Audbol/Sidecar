@@ -260,6 +260,17 @@ void MonitorView::Path::paint (juce::Graphics& g)
     }
 }
 
+int MonitorView::Path::preferredHeight() const
+{
+    int h = sizes::kGap + (kTitle - sizes::kGap);
+    for (auto [c, rowH] : rows)
+        h += rowH + sizes::kGapSmall;
+    constexpr int kEqMin = 180;
+    h += kCaption + 2 * (kRow + sizes::kGapSmall) + sizes::kTouch + sizes::kGapSmall; // DIRECT IN, its level, EQ / INVERT / DELAY
+    h += kEqMin + sizes::kGapSmall + 4 * kRow + 3 * sizes::kGapSmall + 22 + sizes::kGapSmall + sizes::kGap; // the EQ, PAN ... LIMITER, GR
+    return h;
+}
+
 void MonitorView::Path::resized()
 {
     auto area = getLocalBounds().reduced (sizes::kGap);
@@ -468,6 +479,13 @@ void MonitorView::Talkback::paint (juce::Graphics& g)
     g.drawText ("TALK " + juce::String (shown == 0 ? "A" : "B") + " TO", toCaption, juce::Justification::bottomLeft);
 }
 
+int MonitorView::Talkback::preferredHeight (int width) const
+{
+    const int keysW = width - 2 * sizes::kGap;
+    return sizes::kGap + (kTitle - sizes::kGap) + 2 * (kRow + sizes::kGapSmall) + sizes::kTouch + sizes::kGap + (sizes::kTouch - 8) + sizes::kGapSmall
+           + 3 * (kRow + sizes::kGapSmall) + sizes::kTouch + kCaption + destinations.heightFor (keysW) + sizes::kGap;
+}
+
 void MonitorView::Talkback::resized()
 {
     auto area = getLocalBounds().reduced (sizes::kGap);
@@ -524,8 +542,19 @@ MonitorView::MonitorView (UiContext& c, const Theme& t)
     afl (aflMatrices, StripKind::Matrix);
     clearSolo.isOn = [&e] { return e.anySoloActive.load(); };
     clearSolo.onClick = [this] { clearAllSolos(); };
-    for (auto* child : std::initializer_list<juce::Component*> { &speakers, &phones, &soloBus, &soloMode, &aflChannels, &aflBuses, &aflMains,
-                                                                 &aflMatrices, &clearSolo, &talkback })
+    for (auto [view, path] : { std::pair { &speakersView, &speakers }, { &phonesView, &phones } })
+    {
+        view->setViewedComponent (path, false);
+        view->setScrollBarsShown (true, false);
+        view->setScrollOnDragMode (juce::Viewport::ScrollOnDragMode::nonHover);
+        view->getVerticalScrollBar().setColour (juce::ScrollBar::thumbColourId, theme.outline);
+        addAndMakeVisible (view);
+    }
+    talkbackView.setViewedComponent (&talkback, false);
+    talkbackView.setScrollBarsShown (true, false);
+    talkbackView.setScrollOnDragMode (juce::Viewport::ScrollOnDragMode::nonHover);
+    talkbackView.getVerticalScrollBar().setColour (juce::ScrollBar::thumbColourId, theme.outline);
+    for (auto* child : std::initializer_list<juce::Component*> { &soloBus, &soloMode, &aflChannels, &aflBuses, &aflMains, &aflMatrices, &clearSolo, &talkbackView })
         addAndMakeVisible (child);
     refresh();
     startTimerHz (20);
@@ -572,16 +601,24 @@ void MonitorView::resized()
 {
     auto area = getLocalBounds().reduced (sizes::kGap);
     const int w = (area.getWidth() - 2 * sizes::kGap) / 3;
-    speakers.setBounds (area.removeFromLeft (w));
-    area.removeFromLeft (sizes::kGap);
-    phones.setBounds (area.removeFromLeft (w));
-    area.removeFromLeft (sizes::kGap);
+    // Each path as tall as it needs (with an EQ worth having), scrolled when the view is shorter.
+    for (auto [view, path] : { std::pair { &speakersView, &speakers }, { &phonesView, &phones } })
+    {
+        view->setBounds (area.removeFromLeft (w));
+        area.removeFromLeft (sizes::kGap);
+        const int needed = path->preferredHeight();
+        const bool scrolls = needed > view->getHeight();
+        path->setSize (view->getWidth() - (scrolls ? view->getScrollBarThickness() : 0), juce::jmax (view->getHeight(), needed));
+    }
     // SOLO over TALKBACK: SOLO as tall as its rows.
     auto column = area.withWidth (w);
     const int soloH = kTitle + 2 * kRow + 5 * sizes::kTouch + 7 * sizes::kGapSmall + sizes::kGap;
     soloPanel = column.removeFromTop (soloH);
     column.removeFromTop (sizes::kGap);
-    talkback.setBounds (column);
+    talkbackView.setBounds (column);
+    const int needed = talkback.preferredHeight (column.getWidth());
+    const bool scrolls = needed > column.getHeight();
+    talkback.setSize (column.getWidth() - (scrolls ? talkbackView.getScrollBarThickness() : 0), juce::jmax (column.getHeight(), needed));
     auto solo = soloPanel.reduced (sizes::kGap);
     solo.removeFromTop (kTitle - sizes::kGap);
     layoutRows (solo, { { &soloBus, kRow }, { &soloMode, kRow }, { &aflChannels, sizes::kTouch }, { &aflBuses, sizes::kTouch },

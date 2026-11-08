@@ -152,7 +152,8 @@ public:
             const Counts counts { 48, 4, 24, 2, 6, 32, 12, 16 };
             engine.configure (&counts);
             UiRig rig (engine);
-            MixerView view (rig.ctx, Theme::dark());
+            auto viewOwner = std::make_unique<MixerView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto& view = *viewOwner;
             view.setSize (1400, 800);
             expectEquals (view.getNumColumns(), 48 + 4 + 24 + 2 + 6);
             expect (&view.getColumn (0)->getStrip() == engine.getChannels()[0].get());
@@ -182,7 +183,8 @@ public:
             MixerEngine engine (0);
             test::setChannels (engine, 2);
             UiRig rig (engine);
-            MixerView view (rig.ctx, Theme::dark());
+            auto viewOwner = std::make_unique<MixerView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto& view = *viewOwner;
             view.setSize (1400, 800);
             auto& column = *view.getColumn (1);
             auto& strip = column.getStrip();
@@ -232,7 +234,8 @@ public:
             const Counts counts { 24, 2, 8, 2, 4, 16, 8, 16 };
             engine.configure (&counts);
             UiRig rig (engine);
-            ui::UniversalSkin skin (rig.ctx);
+            auto skinOwner = std::make_unique<ui::UniversalSkin> (rig.ctx); // on the heap: the test function's frame is big
+            auto& skin = *skinOwner;
             skin.setSize (1600, 900);
             expectEquals (skin.getMixer().getNumColumns(), 24 + 2 + 8 + 2 + 4);
             // Some strips in use: names, a colour, a mute, a solo, a level.
@@ -638,7 +641,8 @@ public:
             const Counts counts { 24, 2, 8, 2, 4, 16, 8, 16 };
             engine.configure (&counts);
             UiRig rig (engine);
-            ui::UniversalSkin skin (rig.ctx);
+            auto skinOwner = std::make_unique<ui::UniversalSkin> (rig.ctx); // on the heap: the test function's frame is big
+            auto& skin = *skinOwner;
             skin.setSize (1600, 900);
             expect (! skin.isInspectorOpen());
             auto& ch = *engine.getChannels()[0];
@@ -757,7 +761,8 @@ public:
             const Counts counts { 4, 1, 6, 2, 3, 8, 4, 16 };
             engine.configure (&counts);
             UiRig rig (engine);
-            RoutingView view (rig.ctx, Theme::dark());
+            auto viewOwner = std::make_unique<RoutingView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto& view = *viewOwner;
             view.setSize (1200, 700);
 
             // INPUTS: the channels and aux against LOCAL IN.
@@ -808,7 +813,8 @@ public:
         {
             MixerEngine engine (0);
             UiRig rig (engine);
-            FxRackView view (rig.ctx, Theme::dark());
+            auto viewOwner = std::make_unique<FxRackView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto& view = *viewOwner;
             view.setSize (1400, 800);
             auto& fx = engine.getFx();
             expectEquals (view.getNumSlots(), fx.getNumSlots());
@@ -859,7 +865,8 @@ public:
             const Counts counts { 2, 0, 4, 1, 2, 32, 8, 16 };
             engine.configure (&counts);
             UiRig rig (engine);
-            MonitorView view (rig.ctx, Theme::dark());
+            auto viewOwner = std::make_unique<MonitorView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto& view = *viewOwner;
             view.setSize (1400, 700);
             view.speakers.level.setPositionFromUser (0.75f);
             expectWithinAbsoluteError (engine.monitorLevelDb.load(), 0.0f, 1.0e-4f);
@@ -907,7 +914,8 @@ public:
             MixerEngine engine (0);
             engine.configure (nullptr);
             UiRig rig (engine);
-            MonitorView view (rig.ctx, Theme::dark());
+            auto viewOwner = std::make_unique<MonitorView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto& view = *viewOwner;
             view.setSize (1600, 1000);
             view.refresh();
             auto& sp = engine.monitorPath (false);
@@ -1002,7 +1010,8 @@ public:
             const Counts counts { 16, 2, 8, 2, 4, 16, 8, 16 };
             engine.configure (&counts);
             UiRig rig (engine);
-            ui::UniversalSkin skin (rig.ctx);
+            auto skinOwner = std::make_unique<ui::UniversalSkin> (rig.ctx); // on the heap: the test function's frame is big
+            auto& skin = *skinOwner;
             skin.setSize (1600, 900);
             expect (skin.getView() == ui::UniversalSkin::View::Mixer && skin.getMixer().isVisible() && ! skin.getRouting().isVisible());
             skin.showView (ui::UniversalSkin::View::Routing);
@@ -1035,7 +1044,8 @@ public:
             MixerEngine engine (0);
             test::setChannels (engine, 2);
             UiRig rig (engine);
-            MixerView view (rig.ctx, Theme::dark());
+            auto viewOwner = std::make_unique<MixerView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto& view = *viewOwner;
             view.setChannelShown (false); // the columns alone (the channel panel has a test of its own)
             view.setSize (1400, 900);
             auto& column = *view.getColumn (0);
@@ -1080,7 +1090,8 @@ public:
             MixerEngine engine (0);
             test::setChannels (engine, 2);
             UiRig rig (engine);
-            ScenesView view (rig.ctx, Theme::dark());
+            auto viewOwner = std::make_unique<ScenesView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto& view = *viewOwner;
             view.setSize (1200, 700);
             expectEquals (view.getNumRows(), 0);
             auto& fader = engine.getChannels()[0]->params.faderDb;
@@ -1118,7 +1129,8 @@ public:
             const Counts counts { 8, 2, 8, 2, 4, 8, 4, 16 };
             engine.configure (&counts);
             UiRig rig (engine);
-            SetupView view (rig.ctx, Theme::dark());
+            auto viewOwner = std::make_unique<SetupView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto& view = *viewOwner;
             view.setSize (1200, 800);
             auto& ch1 = *engine.getChannels()[0];
             ch1.setName ("Kick");
@@ -1240,7 +1252,8 @@ public:
             MixerEngine engine (0);
             test::setChannels (engine, 4);
             UiRig rig (engine);
-            MixerView view (rig.ctx, Theme::dark());
+            auto viewOwner = std::make_unique<MixerView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto& view = *viewOwner;
             view.setSize (1920, 1000);
             view.setChannelShown (true);
             auto& panel = view.getChannelPanel();
@@ -1277,7 +1290,8 @@ public:
             const Counts counts { 8, 2, 4, 1, 2, 6, 3, 8 };
             engine.configure (&counts);
             UiRig rig (engine);
-            MixerView view (rig.ctx, Theme::dark());
+            auto viewOwner = std::make_unique<MixerView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto& view = *viewOwner;
             view.setSize (1400, 800);
             expectEquals (view.getNumColumns(), 8 + 2 + 4 + 1 + 2);
             expectEquals (view.getNumDcaColumns(), 6);
@@ -1327,7 +1341,8 @@ public:
             MixerEngine engine (0);
             engine.configure (nullptr); // a factory WING: channels linked to their sources
             UiRig rig (engine);
-            StripPanel panel (rig.ctx, Theme::dark());
+            auto panelOwner = std::make_unique<StripPanel> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto& panel = *panelOwner;
             panel.setSize (440, 1200);
 
             // A channel with LINK CUSTOMIZATION TO SOURCE: the source is renamed and recoloured.
@@ -1370,7 +1385,8 @@ public:
             expect (panel.heightFor (440) >= panel.muteGroups.getBottom(), "the scroller shows every key");
 
             // In the inspector, its third tab.
-            Inspector inspector (rig.ctx, Theme::dark());
+            auto inspectorOwner = std::make_unique<Inspector> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto& inspector = *inspectorOwner;
             inspector.setSize (460, 900);
             inspector.setStrip (&bus2);
             inspector.showPage (Inspector::Page::Strip);
@@ -1384,7 +1400,8 @@ public:
             MixerEngine engine (0);
             engine.configure (nullptr);
             UiRig rig (engine);
-            SetupView setup (rig.ctx, Theme::dark());
+            auto setupOwner = std::make_unique<SetupView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto& setup = *setupOwner;
             setup.setSize (1600, 900);
             setup.showPage (SetupView::Page::Remote);
             auto& r = setup.remote;
@@ -1453,7 +1470,8 @@ public:
             MixerEngine engine (0);
             engine.configure (nullptr);
             UiRig rig (engine);
-            ScenesView view (rig.ctx, Theme::dark());
+            auto viewOwner = std::make_unique<ScenesView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto& view = *viewOwner;
             view.setSize (1400, 700);
             expectEquals (view.add(), 0);
             expectEquals (view.getNumSnippets(), 0);
@@ -1511,7 +1529,8 @@ public:
             folder.createDirectory();
 
             // A channel preset: the strip's processing and levels, not its routing.
-            StripPanel panel (rig.ctx, Theme::dark());
+            auto panelOwner = std::make_unique<StripPanel> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto& panel = *panelOwner;
             panel.setSize (440, 1400);
             auto& ch3 = *engine.getChannels()[2];
             panel.setStrip (&ch3);
@@ -1528,7 +1547,8 @@ public:
             expect (panel.loadPreset (folder.getChildFile ("missing.lchn")).failed(), "a file that isn't there");
 
             // An FX preset: the slot's device and its settings.
-            FxRackView rack (rig.ctx, Theme::dark());
+            auto rackOwner = std::make_unique<FxRackView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto& rack = *rackOwner;
             rack.setSize (1400, 800);
             rack.selectSlot (0);
             const int hall = models::findModel (models::Fx, "HALL");
@@ -1545,6 +1565,34 @@ public:
             folder.deleteRecursively();
         }
 
+        beginTest ("Every view of the Universal skin draws at 1280 x 720 (LIVEDAW_UI_SNAPSHOTS keeps them, to look at)");
+        {
+            MixerEngine engine (0);
+            engine.configure (nullptr);
+            UiRig rig (engine);
+            rig.selected = engine.getChannels()[0].get();
+            auto skinOwner = std::make_unique<ui::UniversalSkin> (rig.ctx); // on the heap: the test function's frame is big
+            auto& skin = *skinOwner;
+            skin.setSize (1280, 720);
+            skin.selectionChanged();
+            using V = ui::UniversalSkin::View;
+            const std::pair<V, const char*> views[] = { { V::Mixer, "mixer" },       { V::Routing, "routing" }, { V::Fx, "fx" },
+                                                        { V::Monitoring, "monitoring" }, { V::Scenes, "scenes" },   { V::Recorder, "recorder" },
+                                                        { V::Setup, "setup" } };
+            for (const auto& [v, viewName] : views)
+            {
+                skin.showView (v);
+                const auto picture = skin.createComponentSnapshot (skin.getLocalBounds());
+                expect (picture.isValid(), viewName);
+                expect (keepPicture (picture, juce::String ("small-") + viewName + ".png"));
+            }
+            skin.getInspector().showPage (Inspector::Page::Strip);
+            expect (keepPicture (skin.createComponentSnapshot (skin.getLocalBounds()), "small-strip.png"));
+            skin.getSetup().showPage (SetupView::Page::Remote);
+            skin.showView (V::Setup);
+            expect (keepPicture (skin.createComponentSnapshot (skin.getLocalBounds()), "small-remote.png"));
+        }
+
         beginTest ("The top bar names the show; its SHOW menu runs NEW, OPEN, SAVE and SAVE AS");
         {
             MixerEngine engine (0);
@@ -1556,7 +1604,8 @@ public:
             rig.ctx.newShow = [&calls] { calls.add ("new"); };
             rig.ctx.openShow = [&calls] { calls.add ("open"); };
             rig.ctx.saveShow = [&calls] (bool as) { calls.add (as ? "save as" : "save"); };
-            ui::UniversalSkin skin (rig.ctx);
+            auto skinOwner = std::make_unique<ui::UniversalSkin> (rig.ctx); // on the heap: the test function's frame is big
+            auto& skin = *skinOwner;
             skin.setSize (1600, 900);
             expectEquals (skin.getShowTitle(), juce::String ("UNTITLED SHOW"));
             file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("Friday Gig.lshow");

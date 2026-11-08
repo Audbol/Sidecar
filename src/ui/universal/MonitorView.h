@@ -39,6 +39,9 @@ public:
         ResponseView eq;
         ValueBar pan, width, distance, limiter;
 
+        /** The height the path needs with an EQ graph worth having (its scroller
+            gives it at least this; a small window scrolls). */
+        int preferredHeight() const;
         /** The limiter's largest gain reduction shown (dB, 0 or below), held a moment. */
         float getLimiterReduction() const noexcept { return limiterGr; }
         void refresh();
@@ -71,6 +74,8 @@ public:
         ToggleKey useSendLevels;
         GroupGrid destinations;
 
+        /** The height its controls and every destination key need at a width. */
+        int preferredHeight (int width) const;
         /** The talk path whose settings show (0 = A, 1 = B). */
         void showPath (int path);
         int getShownPath() const noexcept { return shown; }
@@ -94,9 +99,12 @@ public:
     };
 
     Path speakers, phones;
+    /** The paths' scrollers (a small window scrolls them rather than squash the EQ). */
+    juce::Viewport speakersView, phonesView;
     ChoiceBar soloBus, soloMode;
     ToggleKey aflChannels, aflBuses, aflMains, aflMatrices, clearSolo;
     Talkback talkback;
+    juce::Viewport talkbackView;
 
     /** Takes the values again (the timer does this 20 times a second). */
     void refresh();

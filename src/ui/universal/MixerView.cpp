@@ -408,12 +408,17 @@ void MixerView::paint (juce::Graphics& g)
 {
     g.fillAll (theme.background);
     // The strips' blocks (the overview's GATE, DYN, EQ) and the faders' law are the WING's.
-    auto bar = getLocalBounds().removeFromTop (sizes::kFilterBar).reduced (sizes::kGapLarge, 0).toFloat();
-    bar.removeFromRight ((float) (fadersKey.getWidth() + channelKey.getWidth()) + sizes::kGap * 2.0f);
+    // Between the last filter key and CHANNEL, where there's room for it.
+    auto bar = getLocalBounds().removeFromTop (sizes::kFilterBar).toFloat();
+    bar.setLeft ((float) (filterKeys.empty() ? 0 : filterKeys.back()->getRight()) + sizes::kGap);
+    bar.setRight ((float) channelKey.getX() - sizes::kGap);
+    g.setFont (type::font (type::kCaption, true));
+    const auto caption = juce::String ("BLOCKS AND FADER LAW");
+    if (bar.getWidth() < juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), caption) + deviceTagWidth (devices::wing) + 12.0f)
+        return;
     bar.removeFromRight (drawDeviceTag (g, bar, devices::wing, theme));
     g.setColour (theme.textDim);
-    g.setFont (type::font (type::kCaption, true));
-    g.drawText ("BLOCKS AND FADER LAW", bar, juce::Justification::centredRight);
+    g.drawText (caption, bar, juce::Justification::centredRight);
 }
 
 void MixerView::resized()
@@ -423,9 +428,13 @@ void MixerView::resized()
     fadersKey.setBounds (bar.removeFromRight (120));
     bar.removeFromRight (sizes::kGapSmall);
     channelKey.setBounds (bar.removeFromRight (120));
+    // The filter keys share what's left (112 px each at most), so none goes under CHANNEL.
+    bar.removeFromRight (sizes::kGap);
+    const int n = juce::jmax (1, (int) filterKeys.size());
+    const int keyW = juce::jlimit (60, 112, (bar.getWidth() - (n - 1) * sizes::kGapSmall) / n);
     for (auto& key : filterKeys)
     {
-        key->setBounds (bar.removeFromLeft (112));
+        key->setBounds (bar.removeFromLeft (keyW));
         bar.removeFromLeft (sizes::kGapSmall);
     }
     if (channelShown)

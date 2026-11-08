@@ -118,12 +118,25 @@ void ValueBar::paint (juce::Graphics& g)
         g.fillRoundedRectangle (area.withWidth (juce::jmax (sizes::kRadius * 2.0f, area.getWidth() * position)), sizes::kRadius);
     }
     auto text = area.reduced (10.0f, 0.0f);
-    g.setColour (theme.textDim);
-    g.setFont (type::font (type::kCaption, true));
-    g.drawText (binding.caption, text, juce::Justification::centredLeft);
+    // The value keeps its room (smaller if even it doesn't fit); the caption takes
+    // what is left, narrowed, or none in a bar too narrow for both (a slim column).
+    auto valueFont = type::font (type::kValue);
+    float valueW = juce::GlyphArrangement::getStringWidth (valueFont, shownText);
+    if (valueW > text.getWidth() && valueW > 0.0f)
+    {
+        valueFont = valueFont.withHeight (juce::jmax (9.0f, valueFont.getHeight() * text.getWidth() / valueW));
+        valueW = text.getWidth();
+    }
+    const auto captionArea = text.withTrimmedRight (valueW + 6.0f);
+    if (captionArea.getWidth() >= 18.0f)
+    {
+        g.setColour (theme.textDim);
+        g.setFont (type::font (type::kCaption, true));
+        g.drawFittedText (binding.caption, captionArea.toNearestInt(), juce::Justification::centredLeft, 1, 0.6f);
+    }
     g.setColour (isEnabled() ? theme.text : theme.textDim);
-    g.setFont (type::font (type::kValue));
-    g.drawText (shownText, text, juce::Justification::centredRight);
+    g.setFont (valueFont);
+    g.drawFittedText (shownText, text.toNearestInt(), juce::Justification::centredRight, 1, 0.8f);
 }
 
 void ValueBar::mouseDown (const juce::MouseEvent&)
@@ -421,15 +434,19 @@ void ResponseView::paint (juce::Graphics& g)
     g.fillRect (area.getX(), yAt (0.0), area.getWidth(), 1.0f);
     g.setColour (theme.textDim);
     g.setFont (type::font (type::kCaption));
+    float lastRight = area.getX();
     for (auto [hz, label] : { std::pair<double, const char*> { 100.0, "100" }, { 1000.0, "1k" }, { 10000.0, "10k" } })
     {
-        // Right of its line, or left of it where the graph ends first (a narrow FILTER: "10" for "10k").
+        // Right of its line, or left of it where the graph ends first (a narrow FILTER: "10" for "10k");
+        // left out where it would run into the one before (a very narrow graph).
         const float w = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), label) + 4.0f;
         const float x = xAt (hz);
-        if (x + 3.0f + w <= area.getRight())
-            g.drawText (label, juce::Rectangle<float> (x + 3.0f, area.getBottom() - 16.0f, w, 14.0f), juce::Justification::centredLeft);
-        else
-            g.drawText (label, juce::Rectangle<float> (x - 3.0f - w, area.getBottom() - 16.0f, w, 14.0f), juce::Justification::centredRight);
+        auto r = x + 3.0f + w <= area.getRight() ? juce::Rectangle<float> (x + 3.0f, area.getBottom() - 16.0f, w, 14.0f)
+                                                 : juce::Rectangle<float> (x - 3.0f - w, area.getBottom() - 16.0f, w, 14.0f);
+        if (r.getX() < lastRight + 2.0f)
+            continue;
+        g.drawText (label, r, juce::Justification::centredLeft);
+        lastRight = r.getRight();
     }
 
     if (! curve.empty())

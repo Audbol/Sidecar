@@ -404,8 +404,14 @@ void ToggleKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
     g.setColour (halfLit ? colour : (highlighted && ! lit ? theme.outline.brighter (0.3f) : theme.outline));
     g.drawRoundedRectangle (area, sizes::kRadius, halfLit ? 2.0f : 1.0f);
     g.setColour (lit ? theme.textOnAccent : (isEnabled() ? theme.text : theme.textDim));
-    g.setFont (type::font (type::kLabel, true));
-    g.drawText (getButtonText(), area, juce::Justification::centred);
+    // A narrow key (the channel panel's INVERT, LOW CUT in a slim column) makes its
+    // label smaller rather than cut it ("IN...").
+    auto font = type::font (type::kLabel, true);
+    const float room = area.getWidth() - 8.0f;
+    if (const float w = juce::GlyphArrangement::getStringWidth (font, getButtonText()); w * 0.7f > room && w > 0.0f)
+        font = font.withHeight (juce::jmax (9.0f, font.getHeight() * room / (w * 0.7f)));
+    g.setFont (font);
+    g.drawFittedText (getButtonText(), area.toNearestInt().reduced (4, 0), juce::Justification::centred, 1, 0.7f);
     drawDeviceTag (g, area.reduced (5.0f, 3.0f).removeFromTop (14.0f), device, theme);
 }
 
