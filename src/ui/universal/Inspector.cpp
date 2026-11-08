@@ -133,8 +133,9 @@ void Inspector::paint (juce::Graphics& g)
     g.drawText (strip->getLabel(), header.removeFromTop (header.getHeight() / 2), juce::Justification::bottomLeft);
     g.setColour (theme.text);
     g.setFont (type::font (type::kLabel + 2.0f, true));
+    // Its name (a strip without one: a dash, its label is just above).
     const auto name = strip->getName();
-    g.drawText (name.isNotEmpty() ? name : strip->getLabel(), header, juce::Justification::topLeft);
+    g.drawText (name.isNotEmpty() && name != strip->getLabel() ? name : juce::String::fromUTF8 ("\xe2\x80\x94"), header, juce::Justification::topLeft);
 }
 
 void Inspector::resized()

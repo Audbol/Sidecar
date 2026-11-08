@@ -306,7 +306,13 @@ void FxRackView::resized()
     bar.removeFromLeft (sizes::kGap);
     panelKey.setBounds (bar.removeFromLeft (150));
     bar.removeFromLeft (sizes::kGap);
-    savePresetKey.setBounds (bar.removeFromLeft (juce::jmin (150, juce::jmax (0, bar.getWidth() / 2 - sizes::kGapSmall))));
+    // SAVE / LOAD PRESET beside them where there's room, else on a row of their own.
+    if (bar.getWidth() < 2 * 130 + sizes::kGapSmall)
+    {
+        area.removeFromTop (sizes::kGapSmall);
+        bar = area.removeFromTop (sizes::kTouch);
+    }
+    savePresetKey.setBounds (bar.removeFromLeft (juce::jmin (150, (bar.getWidth() - sizes::kGapSmall) / 2)));
     bar.removeFromLeft (sizes::kGapSmall);
     loadPresetKey.setBounds (bar.removeFromLeft (juce::jmin (150, bar.getWidth())));
     area.removeFromTop (sizes::kGap);

@@ -37,13 +37,16 @@ void TextField::paint (juce::Graphics& g)
     g.setColour (shownFailed ? theme.mute : theme.outline);
     g.drawRoundedRectangle (area, sizes::kRadius, shownFailed ? 2.0f : 1.0f);
     auto text = area.reduced (10.0f, 0.0f);
+    // The value keeps its room; the caption takes what is left (narrowed, never under the value).
+    const auto valueText = shown.isNotEmpty() ? shown : juce::String ("-");
+    const auto valueFont = type::font (type::kValue, true);
+    const float valueW = juce::jmin (text.getWidth() * 0.6f, juce::GlyphArrangement::getStringWidth (valueFont, valueText) + 4.0f);
     g.setColour (theme.textDim);
     g.setFont (type::font (type::kCaption, true));
-    g.drawText (caption, text, juce::Justification::centredLeft);
+    g.drawFittedText (caption, text.withTrimmedRight (valueW + 6.0f).toNearestInt(), juce::Justification::centredLeft, 1, 0.6f);
     g.setColour (shownFailed ? theme.mute : theme.text);
-    g.setFont (type::font (type::kValue, true));
-    g.drawFittedText (shown.isNotEmpty() ? shown : juce::String ("-"), text.withTrimmedLeft (text.getWidth() * 0.45f).toNearestInt(),
-                      juce::Justification::centredRight, 1, 0.7f);
+    g.setFont (valueFont);
+    g.drawFittedText (valueText, text.withTrimmedLeft (text.getWidth() - valueW).toNearestInt(), juce::Justification::centredRight, 1, 0.7f);
 }
 
 void TextField::mouseUp (const juce::MouseEvent& e)
