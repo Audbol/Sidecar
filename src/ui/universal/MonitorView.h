@@ -74,8 +74,11 @@ public:
         /** The talk path whose settings show (0 = A, 1 = B). */
         void showPath (int path);
         int getShownPath() const noexcept { return shown; }
-        /** The destinations' keys: buses, then mains, then matrices (the WING's). */
-        static constexpr int kDestinations = kWingBuses + kWingMains + kWingMatrices;
+        /** The destinations' keys: the console's buses, then mains, then matrices
+            (the first 256 of each). */
+        int numDestinations() const;
+        /** Destination key `i`: (kind, its number in the talk sets: a bus's slot). */
+        std::pair<StripKind, int> destination (int i) const;
         void refresh();
         void paint (juce::Graphics&) override;
         void resized() override;

@@ -977,12 +977,19 @@ public:
             tb.destinations.toggle (2);  // BUS 3
             tb.destinations.toggle (17); // MAIN 2
             tb.destinations.toggle (27); // MTX 8
-            expectEquals ((int) engine.talk.paths[1].buses.load(), 1 << 2);
-            expectEquals ((int) engine.talk.paths[1].mains.load(), 1 << 1);
-            expectEquals ((int) engine.talk.paths[1].matrices.load(), 1 << 7);
-            expectEquals ((int) engine.talk.paths[0].buses.load() & (1 << 2), 0, "TALK A's untouched");
+            expect (engine.talk.paths[1].buses.load().low() == (1u << 2));
+            expect (engine.talk.paths[1].mains.load().low() == (1u << 1));
+            expect (engine.talk.paths[1].matrices.load().low() == (1u << 7));
+            expect (! engine.talk.paths[0].buses.contains (2), "TALK A's untouched");
             tb.useSendLevels.onClick();
             expect (engine.talk.paths[1].individual.load());
+            // A bigger console: its buses past the WING's 16 are destinations too (B17-B24).
+            engine.setNumStrips (StripKind::Bus, 24);
+            expectEquals (tb.destinations.count(), 24 + 4 + 8);
+            expectEquals (tb.destinations.keyText (23), juce::String ("B24"));
+            expectEquals (tb.destinations.keyText (24), juce::String ("M1"));
+            tb.destinations.toggle (23);
+            expect (engine.talk.paths[1].buses.contains (23), "BUS 24");
             view.refresh();
             expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds(), true, 1.0f), "universal-monitoring.png"));
         }

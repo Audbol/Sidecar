@@ -290,8 +290,11 @@ Three layers:
    the WING's counts are numbered from `params::EXTENDED_SOURCE_BASE` (kind and
    number), the WING's keep theirs (C ABI 51: `ld_monitor_source_index`,
    `ld_monitor_direct_index`, `ld_monitor_source_name`); MONITORING lists the
-   console's strips. Still the WING's ranges: the talkback destinations and the strip
-   sources ($BUS/$MAIN/$MTX of the routing's source groups). The interface still says PREVIEW: dropping it, as the decision above
+   console's strips. The talkback destinations too: TALK A / B's buses, mains and
+   matrices are group sets (the first 256 of each; `TalkRamps` holds as many), stored
+   as group sets (a decimal mask while they fit the low 64, as the WING's u32 masks
+   were). Still the WING's ranges: the strip sources ($BUS/$MAIN/$MTX of the routing's
+   source groups). The interface still says PREVIEW: dropping it, as the decision above
    foresees once Phase 2 is complete, waits for the owner's go.
 3. **WING as a profile**: move the WING's limits, defaults, laws, surface, protocols
    and files into a WING profile over the core (including Phase 1's step 3d: the

@@ -18,15 +18,12 @@ use livedaw_engine::params::MonitorSourceParams;
 use livedaw_engine::sources::{source_mode, SourceParams, NUM_SOURCES, OSC_SOURCE_INDEX, USER_SIGNAL_GROUPS, USER_SIGNAL_SIDES};
 use livedaw_engine::talk::talk_tag;
 use livedaw_engine::Engine;
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering::Relaxed};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering::Relaxed};
 
 fn put_b(e: &mut Element, name: &str, v: &AtomicBool) {
     e.set_bool(name, v.load(Relaxed));
 }
 fn put_i(e: &mut Element, name: &str, v: &AtomicI32) {
-    e.set(name, v.load(Relaxed));
-}
-fn put_u(e: &mut Element, name: &str, v: &AtomicU32) {
     e.set(name, v.load(Relaxed));
 }
 fn put_f(e: &mut Element, name: &str, v: &AtomicF32) {
@@ -40,11 +37,6 @@ fn get_b(e: &Element, name: &str, v: &AtomicBool) {
 fn get_i(e: &Element, name: &str, v: &AtomicI32) {
     if e.has_attr(name) {
         v.store(e.int_or(name, 0), Relaxed);
-    }
-}
-fn get_u(e: &Element, name: &str, v: &AtomicU32) {
-    if e.has_attr(name) {
-        v.store(e.int_or(name, 0) as u32, Relaxed);
     }
 }
 fn get_f(e: &Element, name: &str, v: &AtomicF32) {
@@ -154,9 +146,10 @@ fn capture_talk(engine: &Engine, parent: &mut Element) {
         put_i(x, "mode", &p.mode);
         put_f(x, "monDim", &p.mon_dim_db);
         put_f(x, "busDim", &p.bus_dim_db);
-        put_u(x, "buses", &p.buses);
-        put_u(x, "matrices", &p.matrices);
-        put_u(x, "mains", &p.mains);
+        // Group sets: a decimal mask while they fit the low 64, as the WING's masks were saved.
+        crate::console::put_groups(x, "buses", &p.buses);
+        crate::console::put_groups(x, "matrices", &p.matrices);
+        crate::console::put_groups(x, "mains", &p.mains);
     }
 }
 
@@ -172,9 +165,9 @@ fn apply_talk(engine: &Engine, parent: &Element) {
         get_i(x, "mode", &p.mode);
         get_f(x, "monDim", &p.mon_dim_db);
         get_f(x, "busDim", &p.bus_dim_db);
-        get_u(x, "buses", &p.buses);
-        get_u(x, "matrices", &p.matrices);
-        get_u(x, "mains", &p.mains);
+        crate::console::get_groups(x, "buses", &p.buses);
+        crate::console::get_groups(x, "matrices", &p.matrices);
+        crate::console::get_groups(x, "mains", &p.mains);
     }
 }
 

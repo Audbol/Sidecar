@@ -656,7 +656,7 @@ struct TalkPathParams
     std::atomic<bool> individual; // USE SEND LEVELS: the talkback channel's send levels
     std::atomic<int32_t> mode;    // TalkMode
     std::atomic<float> monDimDb, busDimDb; // AUTO DIM (attenuations, dB)
-    std::atomic<uint32_t> buses, matrices, mains; // TALK TO BUS 1-16 / MATRIX 1-8 / MAIN 1-4 (bit n = n+1)
+    GroupMask buses, matrices, mains; // ABI 51: TALK TO BUS / MATRIX / MAIN (group n = bus slot n; the first 256)
 };
 
 /** Talkback: the talkback channel (kTalkOff, or kChannel / kAux and its 0-based

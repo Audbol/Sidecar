@@ -1327,10 +1327,10 @@ private:
                 display.getEncoder (3).turn.set (16.0f / 17.0f);
                 expectEquals (display.getEncoder (3).turn.text(), juce::String ("LR"));
                 display.pushEncoder (3);
-                expect ((rig.engine.talk.paths[0].mains.load() & 1u) != 0, "LR");
+                expect (rig.engine.talk.paths[0].mains.contains (0), "LR");
                 expectEquals (wing.runX32Text ("/config/talk/A/destmap", set), juce::String ("/config/talk/A/destmap %010000000000000000"));
                 display.pushEncoder (3);
-                expect ((rig.engine.talk.paths[0].mains.load() & 1u) == 0);
+                expect (! rig.engine.talk.paths[0].mains.contains (0));
             }
             // OSCILLATOR: the first push switches it on, the sixth encoder its destination.
             {

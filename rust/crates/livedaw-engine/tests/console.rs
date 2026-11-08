@@ -377,6 +377,32 @@ fn mutegroup_sip_override_unmutes_until_the_group_changes() {
 }
 
 #[test]
+fn talkback_reaches_a_bus_past_the_wings_16() {
+    let mut rig = Rig::new(3, 8);
+    channels(&mut rig, &[0.4, 0.5, 0.2]);
+    let engine = rig.engine.clone();
+    // 24 buses (a Universal console): talk to BUS 20.
+    engine.set_num_strips(StripKind::Bus, 24);
+    let t = &engine.controls.talk;
+    rig.ch(1).params.mute.store(true, Relaxed);
+    t.assign_kind.store(StripKind::Channel as i32, Relaxed);
+    t.assign_index.store(1, Relaxed);
+    t.level_db.store(-6.0206);
+    t.paths[0].buses.set(19, true);
+    let bus20 = rig.strip(StripKind::Bus, 19);
+    bus20.params.fader_db.store(0.0);
+    bus20.params.output_left.store(2, Relaxed);
+    rig.run(4);
+    assert!(rig.out(2).abs() < 1e-7, "nothing on BUS 20 yet: {}", rig.out(2));
+    t.paths[0].on.store(true, Relaxed);
+    rig.run(4);
+    assert!(close(rig.out(2), 0.25, 1e-4), "CH 2 at the TALK LEVEL on BUS 20: {}", rig.out(2));
+    t.paths[0].on.store(false, Relaxed);
+    rig.run(8);
+    assert!(rig.out(2).abs() < 1e-4, "{}", rig.out(2));
+}
+
+#[test]
 fn talkback_reaches_its_destinations_with_modes_levels_and_dims() {
     let mut rig = Rig::new(3, 8);
     channels(&mut rig, &[0.4, 0.5, 0.2]);
@@ -390,12 +416,12 @@ fn talkback_reaches_its_destinations_with_modes_levels_and_dims() {
     t.assign_index.store(1, Relaxed);
     t.level_db.store(-6.0206);
     let a = &t.paths[0];
-    a.buses.store(0b1, Relaxed); // BUS 1
+    a.buses.store(livedaw_engine::GroupSet::from_mask(0b1)); // BUS 1
     a.bus_dim_db.store(20.0);
     a.mon_dim_db.store(6.0206);
     let b = &t.paths[1];
-    b.matrices.store(0b10, Relaxed); // MTX 2
-    b.mains.store(0b10, Relaxed); // MAIN 2
+    b.matrices.store(livedaw_engine::GroupSet::from_mask(0b10)); // MTX 2
+    b.mains.store(livedaw_engine::GroupSet::from_mask(0b10)); // MAIN 2
     b.mon_dim_db.store(0.0);
 
     let bus = rig.strip(StripKind::Bus, 0);
@@ -471,7 +497,7 @@ fn talk_from_an_aux_channel() {
     aux.params.input_left.store(1, Relaxed);
     t.assign_kind.store(StripKind::Aux as i32, Relaxed);
     t.assign_index.store(7, Relaxed);
-    t.paths[0].mains.store(1, Relaxed);
+    t.paths[0].mains.store(livedaw_engine::GroupSet::from_mask(1));
     aux.main_send(0).unwrap().on.store(false, Relaxed);
     rig.run(4);
     assert!(rig.out(0).abs() < 1e-7);

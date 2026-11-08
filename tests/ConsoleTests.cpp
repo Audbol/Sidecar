@@ -66,7 +66,7 @@ public:
             expectEquals ((int) engine.talk.assignIndex.load(), 39);
 
             auto& pathA = engine.talk.paths[0];
-            pathA.buses = 1u << 2; // BUS 3
+            pathA.buses.store (ld::GroupBits::single (2)); // BUS 3
             auto& bus3 = *engine.getBusInSlot (2);
             bus3.params.outputLeft = 2;
             rig.run (2);

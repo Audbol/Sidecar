@@ -984,9 +984,10 @@ void MonitorsPage::paintTalk (juce::Graphics& g)
     g.setFont (capFont (15.0f));
     g.drawText ("USE SEND LEVELS", sendLevelsRow, juce::Justification::centredLeft);
     const auto& p = talkPath();
-    tileGrid (g, busGrid, busTiles, "TALK TO BUS", "BUS", p.buses.load(), talkDim);
-    tileGrid (g, mtxGrid, mtxTiles, "TALK TO MATRIX", "MTX", p.matrices.load(), talkDim);
-    tileGrid (g, mainGrid, mainTiles, "TALK TO MAIN", "MAIN", p.mains.load(), talkDim);
+    // The WING's 16 buses, 8 matrices and 4 mains: the sets' low groups.
+    tileGrid (g, busGrid, busTiles, "TALK TO BUS", "BUS", (uint32_t) p.buses.load().low(), talkDim);
+    tileGrid (g, mtxGrid, mtxTiles, "TALK TO MATRIX", "MTX", (uint32_t) p.matrices.load().low(), talkDim);
+    tileGrid (g, mainGrid, mainTiles, "TALK TO MAIN", "MAIN", (uint32_t) p.mains.load().low(), talkDim);
 }
 
 void MonitorsPage::paintPath (juce::Graphics& g)
@@ -1314,12 +1315,12 @@ void MonitorsPage::mouseUp (const juce::MouseEvent& e)
             repaint (toolbar);
             return;
         }
-    auto toggle = [this] (const std::vector<juce::Rectangle<int>>& tiles, std::atomic<uint32_t>& mask, juce::Point<int> p)
+    auto toggle = [this] (const std::vector<juce::Rectangle<int>>& tiles, ld::GroupMask& set, juce::Point<int> p)
     {
         for (size_t i = 0; i < tiles.size(); ++i)
             if (tiles[i].contains (p))
             {
-                mask = mask.load() ^ (1u << i);
+                set.toggle ((int) i);
                 repaint (talkArea);
                 return true;
             }

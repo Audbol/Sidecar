@@ -14,11 +14,12 @@
 //! sets `TalkPathParams::on`.
 
 use crate::atomic::AtomicF32;
-use crate::params::{StripKind, WING_BUSES, WING_MAINS, WING_MATRICES};
+use crate::groups::{AtomicGroupSet, GroupSet, MAX_GROUPS};
+use crate::params::StripKind;
 use crate::strip::Strip;
 use livedaw_dsp::util::db_to_gain;
 use std::cell::UnsafeCell;
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering::Relaxed};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering::Relaxed};
 
 /// SWITCH MODE of a talk key: AUTO (held = push, a short press latches),
 /// PUSH (talk while held), LATCH (press on, press off).
@@ -80,10 +81,12 @@ pub struct TalkPathParams {
     /// DIM) and of the buses talked to (BUS DIM) while talking.
     pub mon_dim_db: AtomicF32,
     pub bus_dim_db: AtomicF32,
-    /// TALK TO BUS (bit n = bus n+1, 1-16), MATRIX (1-8), MAIN (1-4).
-    pub buses: AtomicU32,
-    pub matrices: AtomicU32,
-    pub mains: AtomicU32,
+    /// TALK TO BUS (group n = bus slot n), MATRIX, MAIN: the WING's 16, 8 and 4,
+    /// and on a bigger console its others up to 256 each (shows store them as
+    /// group sets: a decimal mask while they fit the low 64, as the masks were).
+    pub buses: AtomicGroupSet,
+    pub matrices: AtomicGroupSet,
+    pub mains: AtomicGroupSet,
 }
 
 impl Default for TalkPathParams {
@@ -94,9 +97,9 @@ impl Default for TalkPathParams {
             mode: AtomicI32::new(talk_mode::AUTO),
             mon_dim_db: AtomicF32::new(DEFAULT_TALK_DIM_DB),
             bus_dim_db: AtomicF32::new(DEFAULT_TALK_DIM_DB),
-            buses: AtomicU32::new(0),
-            matrices: AtomicU32::new(0),
-            mains: AtomicU32::new(0),
+            buses: AtomicGroupSet::default(),
+            matrices: AtomicGroupSet::default(),
+            mains: AtomicGroupSet::default(),
         }
     }
 }
@@ -137,9 +140,9 @@ impl TalkParams {
             p.mode.store(d.mode.load(Relaxed), Relaxed);
             p.mon_dim_db.store(d.mon_dim_db.load());
             p.bus_dim_db.store(d.bus_dim_db.load());
-            p.buses.store(0, Relaxed);
-            p.matrices.store(0, Relaxed);
-            p.mains.store(0, Relaxed);
+            p.buses.clear();
+            p.matrices.clear();
+            p.mains.clear();
         }
     }
 
@@ -160,9 +163,9 @@ impl TalkParams {
 #[derive(Clone, Copy, Default)]
 struct PathSnap {
     individual: bool,
-    buses: u32,
-    matrices: u32,
-    mains: u32,
+    buses: GroupSet,
+    matrices: GroupSet,
+    mains: GroupSet,
     bus_dim: f32,
     mon_dim: f32,
 }
@@ -196,9 +199,9 @@ impl<'a> TalkBlock<'a> {
         let active = if strip.is_some() { params.keys_on() } else { 0 };
         let snap = |p: &TalkPathParams| PathSnap {
             individual: p.individual.load(Relaxed),
-            buses: p.buses.load(Relaxed),
-            matrices: p.matrices.load(Relaxed),
-            mains: p.mains.load(Relaxed),
+            buses: p.buses.load(),
+            matrices: p.matrices.load(),
+            mains: p.mains.load(),
             bus_dim: db_to_gain(-p.bus_dim_db.load().max(0.0)),
             mon_dim: db_to_gain(-p.mon_dim_db.load().max(0.0)),
         };
@@ -235,31 +238,31 @@ impl<'a> TalkBlock<'a> {
         g
     }
 
-    /// Bus slot `slot` (talk reaches buses 1-16 only; BUS DIM applies).
+    /// Bus slot `slot` (talk reaches the first 256; BUS DIM applies).
     pub fn bus(&self, slot: usize) -> TalkGains {
-        if slot >= WING_BUSES {
+        if slot >= MAX_GROUPS {
             return TalkGains::NONE;
         }
         self.gains(
-            |p| p.buses & (1 << slot) != 0,
+            |p| p.buses.contains(slot),
             |s| s.sends.find(slot).map_or(crate::sends::DEFAULT_SEND_LEVEL_DB, |send| send.level_db.load()),
             true,
         )
     }
 
     pub fn main(&self, i: usize) -> TalkGains {
-        if i >= WING_MAINS {
+        if i >= MAX_GROUPS {
             return TalkGains::NONE;
         }
-        self.gains(|p| p.mains & (1 << i) != 0, |s| s.main_send(i).map_or(0.0, |m| m.level_db.load()), false)
+        self.gains(|p| p.mains.contains(i), |s| s.main_send(i).map_or(0.0, |m| m.level_db.load()), false)
     }
 
     pub fn matrix(&self, i: usize) -> TalkGains {
-        if i >= WING_MATRICES {
+        if i >= MAX_GROUPS {
             return TalkGains::NONE;
         }
         self.gains(
-            |p| p.matrices & (1 << i) != 0,
+            |p| p.matrices.contains(i),
             |s| s.matrix_send(i).map_or(livedaw_dsp::fader::FADER_MIN, |m| m.level_db.load()),
             false,
         )
@@ -274,13 +277,13 @@ impl<'a> TalkBlock<'a> {
     }
 }
 
-/// The ramps of the talk signal and the talk dim per destination (buses
-/// 1-16, mains, matrices). Each destination's task owns its entry, like the
-/// send ramps it sums.
+/// The ramps of the talk signal and the talk dim per destination (the
+/// first 256 buses, mains and matrices). Each destination's task owns its
+/// entry, like the send ramps it sums.
 pub(crate) struct TalkRamps {
-    buses: [UnsafeCell<TalkGains>; WING_BUSES],
-    mains: [UnsafeCell<TalkGains>; WING_MAINS],
-    matrices: [UnsafeCell<TalkGains>; WING_MATRICES],
+    buses: [UnsafeCell<TalkGains>; MAX_GROUPS],
+    mains: [UnsafeCell<TalkGains>; MAX_GROUPS],
+    matrices: [UnsafeCell<TalkGains>; MAX_GROUPS],
 }
 
 // SAFETY: each entry is only touched by the task of its destination.

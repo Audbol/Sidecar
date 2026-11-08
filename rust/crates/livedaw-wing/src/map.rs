@@ -2241,7 +2241,7 @@ impl<'a> Console<'a> {
             }
             Binding::TalkPath(i, tf) => {
                 let p = c.talk.paths.get(i as usize)?;
-                let bit = |mask: &std::sync::atomic::AtomicU32, k: u8| Value::bool(mask.load(Relaxed) & (1 << k) != 0);
+                let bit = |set: &livedaw_engine::AtomicGroupSet, k: u8| Value::bool(set.contains(k as usize));
                 match tf {
                     TalkPathF::On => b(&p.on),
                     TalkPathF::Mode => item(def, p.mode.load(Relaxed)),
@@ -3137,13 +3137,7 @@ impl<'a> Console<'a> {
             }
             Binding::TalkPath(i, f) => {
                 let p = c.talk.paths.get(i as usize).ok_or(SetError::NotFound)?;
-                let set_bit = |mask: &std::sync::atomic::AtomicU32, k: u8| {
-                    if v.as_bool() {
-                        mask.fetch_or(1 << k, Relaxed);
-                    } else {
-                        mask.fetch_and(!(1 << k), Relaxed);
-                    }
-                };
+                let set_bit = |set: &livedaw_engine::AtomicGroupSet, k: u8| set.set(k as usize, v.as_bool());
                 match f {
                     TalkPathF::On => set_b(&p.on, v),
                     TalkPathF::Mode => set_item(&p.mode, def, v),
@@ -4374,10 +4368,10 @@ mod tests {
         assert_eq!(b.mode.load(Relaxed), 2);
         assert_eq!(b.mon_dim_db.load(), 15.0);
         assert!(b.individual.load(Relaxed));
-        assert_eq!((b.buses.load(Relaxed), b.matrices.load(Relaxed), b.mains.load(Relaxed)), (1 << 11, 1 << 2, 1 << 3));
+        assert_eq!((b.buses.load().low(), b.matrices.load().low(), b.mains.load().low()), (1 << 11, 1 << 2, 1 << 3));
         assert!(ctl.talk.paths[0].on.load(Relaxed));
         c.set(node(&c, "/cfg/talk/B/B12"), &Value::Int(0)).unwrap();
-        assert_eq!(b.buses.load(Relaxed), 0);
+        assert_eq!(b.buses.load().low(), 0);
         assert_eq!(c.get(node(&c, "/cfg/talk/B/MX3")), Some(Value::Int(1)));
         c.set(node(&c, "/cfg/talk/assign"), &Value::str("OFF")).unwrap();
         assert_eq!(ctl.talk.assignment(), None);

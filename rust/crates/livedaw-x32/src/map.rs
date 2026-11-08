@@ -1335,7 +1335,7 @@ impl<'a> Console<'a> {
                 return Some(Val::Int(match e.bind {
                     Bind::TalkDim(_) => i32::from(p.mon_dim_db.load() > 0.0),
                     Bind::TalkLatch(_) => i32::from(p.mode.load(Relaxed) == livedaw_engine::talk::talk_mode::LATCH),
-                    _ => (p.buses.load(Relaxed) & 0xffff) as i32 | ((p.mains.load(Relaxed) & 3) << 16) as i32,
+                    _ => (p.buses.load().low() & 0xffff) as i32 | ((p.mains.load().low() & 3) << 16) as i32,
                 }));
             }
             Bind::DcaOn => return on(!self.dca(e.target)?.mute.load(Relaxed)),
@@ -1472,8 +1472,13 @@ impl<'a> Console<'a> {
                     }
                     _ => {
                         let bits = v.int() as u32;
-                        p.buses.store((p.buses.load(Relaxed) & !0xffff) | (bits & 0xffff), Relaxed);
-                        p.mains.store((p.mains.load(Relaxed) & !3) | ((bits >> 16) & 3), Relaxed);
+                        // The X32's 16 buses and LR / M/C; the console's others stay as they are.
+                        for b in 0..16 {
+                            p.buses.set(b, bits & (1 << b) != 0);
+                        }
+                        for m in 0..2 {
+                            p.mains.set(m, bits & (1 << (16 + m)) != 0);
+                        }
                     }
                 }
                 return true;

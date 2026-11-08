@@ -940,8 +940,8 @@ OFF), **TALK LEVEL**, and the **TALK A** and **TALK B** keys, which act as on th
 in AUTO a tap latches and a hold talks while held, PUSH talks while held, LATCH
 toggles. **A** and **B** show a talk path's settings: its **MODE**, how far it dims the
 monitors and the buses (**MONITOR DIM**, **BUS DIM**), **USE SEND LEVELS** (the talkback
-channel's send levels instead of TALK LEVEL), and the buses (B1-16), mains (M1-4) and
-matrices (X1-8) it talks to, a key each.
+channel's send levels instead of TALK LEVEL), and the buses (B1...), mains (M1...) and
+matrices (X1...) it talks to, a key each: every one of the console's, up to 256 of each.
 
 ![MONITORING: the speakers and phones paths with their EQ, delay and limiter, the solo settings and talkback](images/universal-monitoring.png)
 

@@ -33,12 +33,12 @@ fn console_level_state_survives_a_show_round_trip() {
     t.assign_kind.store(StripKind::Channel as i32, Relaxed);
     t.assign_index.store(39, Relaxed);
     t.level_db.store(-3.5);
-    t.paths[0].buses.store(0b1111, Relaxed);
+    t.paths[0].buses.store(livedaw_engine::GroupSet::from_mask(0b1111));
     t.paths[0].individual.store(true, Relaxed);
     t.paths[0].mon_dim_db.store(12.0);
     t.paths[1].mode.store(2, Relaxed);
-    t.paths[1].matrices.store(0b1000_0001, Relaxed);
-    t.paths[1].mains.store(0b10, Relaxed);
+    t.paths[1].matrices.store(livedaw_engine::GroupSet::from_mask(0b1000_0001));
+    t.paths[1].mains.store(livedaw_engine::GroupSet::from_mask(0b10));
     t.paths[1].bus_dim_db.store(3.0);
     t.paths[1].on.store(true, Relaxed); // a key state: not saved
 
@@ -80,12 +80,12 @@ fn console_level_state_survives_a_show_round_trip() {
     let ot = &o.talk;
     assert_eq!(ot.assignment(), Some((StripKind::Channel, 39)));
     assert_eq!(ot.level_db.load(), -3.5);
-    assert_eq!(ot.paths[0].buses.load(Relaxed), 0b1111);
+    assert_eq!(ot.paths[0].buses.load().low(), 0b1111);
     assert!(ot.paths[0].individual.load(Relaxed));
     assert_eq!(ot.paths[0].mon_dim_db.load(), 12.0);
     assert_eq!(ot.paths[1].mode.load(Relaxed), 2);
-    assert_eq!(ot.paths[1].matrices.load(Relaxed), 0b1000_0001);
-    assert_eq!(ot.paths[1].mains.load(Relaxed), 0b10);
+    assert_eq!(ot.paths[1].matrices.load().low(), 0b1000_0001);
+    assert_eq!(ot.paths[1].mains.load().low(), 0b10);
     assert_eq!(ot.paths[1].bus_dim_db.load(), 3.0);
     assert!(!ot.paths[1].on.load(Relaxed), "talk keys start off");
 

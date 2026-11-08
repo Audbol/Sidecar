@@ -278,7 +278,7 @@ fn console_level_settings_round_trip_through_a_snapshot() {
     c.talk.assign_kind.store(StripKind::Channel as i32, Relaxed);
     c.talk.assign_index.store(39, Relaxed);
     c.talk.level_db.store(-4.0);
-    c.talk.paths[0].buses.store(0b101, Relaxed);
+    c.talk.paths[0].buses.store(livedaw_engine::GroupSet::from_mask(0b101));
     c.talk.paths[1].mode.store(1, Relaxed);
     c.talk.paths[1].bus_dim_db.store(6.0);
     let ch5 = e.channel_at(4).unwrap();
@@ -318,7 +318,7 @@ fn console_level_settings_round_trip_through_a_snapshot() {
     assert!(c2.mute_override.load(Relaxed));
     assert_eq!(c2.talk.assignment(), Some((StripKind::Channel, 39)));
     assert_eq!(c2.talk.level_db.load(), -4.0);
-    assert_eq!(c2.talk.paths[0].buses.load(Relaxed), 0b101);
+    assert_eq!(c2.talk.paths[0].buses.load().low(), 0b101);
     assert_eq!(c2.talk.paths[1].mode.load(Relaxed), 1);
     assert_eq!(c2.talk.paths[1].bus_dim_db.load(), 6.0);
     let ch5b = e2.channel_at(4).unwrap();

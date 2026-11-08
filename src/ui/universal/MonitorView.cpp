@@ -376,14 +376,11 @@ MonitorView::Talkback::Talkback (UiContext& c, const Theme& t)
     mode.caption = "MODE";
     mode.items = [] { return juce::StringArray { "AUTO", "PUSH", "LATCH" }; };
     destinations.minKey = 46;
-    destinations.count = [] { return kDestinations; };
-    destinations.keyText = [] (int i)
+    destinations.count = [this] { return numDestinations(); };
+    destinations.keyText = [this] (int i)
     {
-        if (i < kWingBuses)
-            return "B" + juce::String (i + 1);
-        if (i < kWingBuses + kWingMains)
-            return "M" + juce::String (i - kWingBuses + 1);
-        return "X" + juce::String (i - kWingBuses - kWingMains + 1);
+        const auto [kind, n] = destination (i);
+        return (kind == StripKind::Bus ? "B" : kind == StripKind::Main ? "M" : "X") + juce::String (n + 1);
     };
     bindPath();
     for (auto* child : std::initializer_list<juce::Component*> { &channel, &talkLevel, &talkA, &talkB, &tabA, &tabB, &mode, &monDim, &busDim,
@@ -400,25 +397,41 @@ void MonitorView::Talkback::bindPath()
     busDim.bind (ValueBar::linear ("BUS DIM", p.busDimDb, 0.0f, 40.0f, 10.0f, " dB", 0));
     useSendLevels.isOn = [&p] { return p.individual.load(); };
     useSendLevels.onClick = [&p] { p.individual = ! p.individual.load(); };
-    // TO: buses (bit n = BUS n+1), mains, matrices.
-    auto bits = [&p] (int i) -> std::pair<std::atomic<uint32_t>*, int>
+    // TO: the console's buses (by slot), mains and matrices, as group sets.
+    auto set = [this, &p] (int i) -> std::pair<ld::GroupMask*, int>
     {
-        if (i < kWingBuses)
-            return { &p.buses, i };
-        if (i < kWingBuses + kWingMains)
-            return { &p.mains, i - kWingBuses };
-        return { &p.matrices, i - kWingBuses - kWingMains };
+        const auto [kind, n] = destination (i);
+        return { kind == StripKind::Bus ? &p.buses : kind == StripKind::Main ? &p.mains : &p.matrices, n };
     };
-    destinations.isOn = [bits] (int i)
+    destinations.isOn = [set] (int i)
     {
-        auto [word, bit] = bits (i);
-        return (word->load() >> bit & 1u) != 0;
+        auto [s, n] = set (i);
+        return s->contains (n);
     };
-    destinations.toggle = [bits] (int i)
+    destinations.toggle = [set] (int i)
     {
-        auto [word, bit] = bits (i);
-        word->fetch_xor (1u << bit);
+        auto [s, n] = set (i);
+        s->toggle (n);
     };
+}
+
+int MonitorView::Talkback::numDestinations() const
+{
+    auto& e = ctx.engine;
+    const auto capped = [] (size_t n) { return juce::jmin ((int) n, ld::kMaxGroups); };
+    return capped (e.getBuses().size()) + capped (e.getMains().size()) + capped (e.getMatrices().size());
+}
+
+std::pair<StripKind, int> MonitorView::Talkback::destination (int i) const
+{
+    auto& e = ctx.engine;
+    const int buses = juce::jmin ((int) e.getBuses().size(), ld::kMaxGroups);
+    const int mains = juce::jmin ((int) e.getMains().size(), ld::kMaxGroups);
+    if (i < buses)
+        return { StripKind::Bus, e.getBuses()[(size_t) i]->getId() };
+    if (i < buses + mains)
+        return { StripKind::Main, i - buses };
+    return { StripKind::Matrix, i - buses - mains };
 }
 
 void MonitorView::Talkback::showPath (int path)
@@ -449,7 +462,7 @@ void MonitorView::Talkback::paint (juce::Graphics& g)
     g.setFont (type::font (type::kLabel + 2.0f, true));
     g.drawText ("TALKBACK", title, juce::Justification::centredLeft);
     title.removeFromLeft (110);
-    drawDeviceTag (g, title.toFloat(), devices::wing, theme); // the WING's talk paths and destinations
+    drawDeviceTag (g, title.toFloat(), devices::wing, theme); // the WING's talk paths (AUTO / PUSH / LATCH, the dims)
     g.setColour (theme.textDim);
     g.setFont (type::font (type::kCaption, true));
     g.drawText ("TALK " + juce::String (shown == 0 ? "A" : "B") + " TO", toCaption, juce::Justification::bottomLeft);
