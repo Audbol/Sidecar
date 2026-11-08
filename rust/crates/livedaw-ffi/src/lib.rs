@@ -106,7 +106,8 @@ use std::sync::Arc;
 // ABI 46 (Phase 6 step 5): the 02R's MIDI (ld_y02r_*, RemotesC::midi 3).
 // ABI 52: X32 channel presets (ld_x32_channel_write/read); the 02R around a
 // scene recall (ld_y02r_before_recall / after_recall).
-pub const LD_ABI_VERSION: i32 = 52;
+// ABI 53: the SQ-5 profile (5).
+pub const LD_ABI_VERSION: i32 = 53;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(default)
@@ -649,6 +650,7 @@ fn profile_id(p: Profile) -> i32 {
         Profile::X32 => 2,
         Profile::ProMix01 => 3,
         Profile::Yamaha02R => 4,
+        Profile::AhSq5 => 5,
     }
 }
 

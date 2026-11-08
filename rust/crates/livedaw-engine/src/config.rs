@@ -74,6 +74,11 @@ impl Counts {
     /// 1-8), 1 main (STEREO), no matrices, DCAs or mute groups (its fader and
     /// mute groups are its own), 2 FX slots (its internal effects).
     pub const Y02R: Counts = Counts { channels: 36, aux: 2, buses: 16, mains: 1, matrices: 0, dcas: 0, mute_groups: 0, fx: 2 };
+
+    /// The Allen & Heath SQ-5's (Reference Guide V1.6.0, section 18): 48 input
+    /// channels, 8 aux (its stereo FX returns), 16 buses (12 mixes, then the 4 FX
+    /// sends), 1 main (LR), 3 stereo matrices, 8 DCAs, 8 mute groups, 8 FX slots.
+    pub const SQ5: Counts = Counts { channels: 48, aux: 8, buses: 16, mains: 1, matrices: 3, dcas: 8, mute_groups: 8, fx: 8 };
 }
 
 impl Default for Counts {

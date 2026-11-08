@@ -556,7 +556,7 @@ public:
         surface's UNIVERSAL MIXER key opens it on an X32. */
     void universalOnEveryConsole()
     {
-        for (const auto profile : { ld::kProfileX32, ld::kProfileProMix01, ld::kProfileYamaha02R })
+        for (const auto profile : { ld::kProfileX32, ld::kProfileProMix01, ld::kProfileYamaha02R, ld::kProfileSq5 })
         {
             beginTest ("The Universal Mixer on profile " + juce::String ((int) profile));
             MixerEngine engine (0);
@@ -1305,9 +1305,9 @@ private:
                 home.deleteRecursively();
             }
             display.showScreen (S::Assign, 0);
-            display.getEncoder (1).turn.set (1.0f / 3.0f); // ENC 1: FADER
+            display.getEncoder (1).turn.set (1.0f / 5.0f); // ENC 1: FADER
             expect (skin.getAssignSection().getCode (0).startsWith ("F"), "a fader");
-            display.getEncoder (2).turn.set (3.0f / 71.0f); // CH 4
+            display.getEncoder (2).turn.set (3.0f / 79.0f); // CH 4
             expectEquals (skin.getAssignSection().getCode (0), juce::String ("F03"));
             display.getEncoder (1).turn.set (0.0f);
             expectEquals (skin.getAssignSection().getCode (0), juce::String ("-"));

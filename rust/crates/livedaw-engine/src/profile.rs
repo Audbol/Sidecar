@@ -9,7 +9,7 @@
 use crate::chain::{self, Node};
 use crate::config::Counts;
 use crate::params::{StripKind, DEFAULT_COLOUR, WING_BUSES, WING_COLOURS, WING_COLOUR_GRID};
-use crate::ports::{PortGroup, PROMIX01_PORT_GROUPS, WING_PORT_GROUPS, X32_PORT_GROUPS, Y02R_PORT_GROUPS};
+use crate::ports::{PortGroup, PROMIX01_PORT_GROUPS, SQ5_PORT_GROUPS, WING_PORT_GROUPS, X32_PORT_GROUPS, Y02R_PORT_GROUPS};
 use livedaw_dsp::fader::FaderLaw;
 use livedaw_dsp::model::ModelTables;
 use livedaw_dsp::util::PanLaw;
@@ -29,10 +29,13 @@ pub enum Profile {
     ProMix01,
     /// The Yamaha 02R, Version 2 (Phase 6: its processing, effects and MIDI follow).
     Yamaha02R,
+    /// The Allen & Heath SQ-5 (its effects, MIDI and surface follow).
+    AhSq5,
 }
 
 impl Profile {
-    pub const ALL: [Profile; 5] = [Profile::Universal, Profile::Wing, Profile::X32, Profile::ProMix01, Profile::Yamaha02R];
+    pub const ALL: [Profile; 6] =
+        [Profile::Universal, Profile::Wing, Profile::X32, Profile::ProMix01, Profile::Yamaha02R, Profile::AhSq5];
 
     /// The id shows store (`<Console profile="...">`).
     pub fn id(self) -> &'static str {
@@ -42,6 +45,7 @@ impl Profile {
             Profile::X32 => "x32",
             Profile::ProMix01 => "promix01",
             Profile::Yamaha02R => "02r",
+            Profile::AhSq5 => "sq5",
         }
     }
 
@@ -57,6 +61,7 @@ impl Profile {
             Profile::X32 => &X32,
             Profile::ProMix01 => &PROMIX01,
             Profile::Yamaha02R => &Y02R,
+            Profile::AhSq5 => &SQ5,
         }
     }
 
@@ -72,7 +77,7 @@ impl Profile {
     pub fn fits(self, counts: &Counts) -> bool {
         match self {
             Profile::Universal => true,
-            Profile::X32 | Profile::ProMix01 | Profile::Yamaha02R => *counts == self.spec().counts,
+            Profile::X32 | Profile::ProMix01 | Profile::Yamaha02R | Profile::AhSq5 => *counts == self.spec().counts,
             Profile::Wing => {
                 let w = self.spec().counts;
                 counts.aux == w.aux
@@ -897,9 +902,131 @@ static Y02R: ProfileSpec = ProfileSpec {
     fx_send_buses: &[y02r::AUX + 6, y02r::AUX + 7],
 };
 
+/// The first of the SQ-5's buses that is an FX send (Mix 1-12, then FX 1-4).
+const SQ_FX_SENDS: usize = 12;
+
+const SQ_LABELS: [&str; 5] = ["IP", "FXR", "MIX", "LR", "MTX"];
+
+/// A new SQ-5 strip's name. Sidecar's reading of the guide's names (Ip, Aux, FX,
+/// Fx1Rtn, Mtx).
+fn sq5_name(kind: StripKind, slot: usize) -> Option<String> {
+    match (kind, slot) {
+        (StripKind::Channel, s) => Some(format!("Ip{}", s + 1)),
+        (StripKind::Aux, s) => Some(format!("Fx{}Rtn", s + 1)),
+        (StripKind::Bus, s) if s < SQ_FX_SENDS => Some(format!("Aux{}", s + 1)),
+        (StripKind::Bus, s) => Some(format!("FX{}", s - SQ_FX_SENDS + 1)),
+        (StripKind::Main, 0) => Some("LR".into()),
+        (StripKind::Matrix, s) => Some(format!("Mtx{}", s + 1)),
+        _ => None,
+    }
+}
+
+/// A new SQ-5's strips: inputs 17-22 stereo pairs on ST1-ST3 (Sidecar's
+/// reading: the guide doesn't list the factory patch), the FX returns on
+/// their RackFX.
+fn sq5_factory(p: &crate::params::StripParams, kind: StripKind, slot: usize) {
+    use std::sync::atomic::Ordering::Relaxed;
+    match kind {
+        StripKind::Channel if (16..22).contains(&slot) => p.input_left.store(slot as i32, Relaxed),
+        StripKind::Channel if slot >= 22 => p.input_left.store(-1, Relaxed),
+        StripKind::Aux => {
+            let fx = crate::sources::FX_RETURN_SOURCE_BASE + 2 * slot as i32;
+            p.stereo.store(true, Relaxed);
+            p.input_left.store(fx, Relaxed);
+            p.input_right.store(fx + 1, Relaxed);
+        }
+        _ => {}
+    }
+}
+
+/// A new SQ-5's outputs (Sidecar's reading): sockets 1-12 Mix 1-12, A and B and
+/// the AES output LR.
+fn sq5_factory_outputs(patch: &crate::routing::OutputPatch) {
+    use crate::routing::strip_source_input;
+    for mix in 0..12 {
+        patch.set(mix as i32, strip_source_input(StripKind::Bus, mix, 0));
+    }
+    for side in 0..2 {
+        let lr = strip_source_input(StripKind::Main, 0, side);
+        patch.set(12 + side as i32, lr);
+        patch.set(14 + side as i32, lr);
+    }
+}
+
+/// The SQ's strip colours (its LCD backlight): Sidecar's reading, to check
+/// against the guide's colour picker when the surface is built.
+const SQ_COLOURS: [(&str, u32); 8] = [
+    ("Off", 0x000000),
+    ("Red", 0xE02020),
+    ("Green", 0x20C040),
+    ("Yellow", 0xE8D020),
+    ("Blue", 0x3060F0),
+    ("Purple", 0xB040E0),
+    ("Light Blue", 0x40C8E8),
+    ("White", 0xF0F0F0),
+];
+
+impl Palette {
+    pub const SQ5: Palette = Palette { colours: &SQ_COLOURS, grid: &[1, 2, 3, 4, 5, 6, 7, 8], default: 8, factory: None };
+}
+
+/// The Allen & Heath SQ-5 (Reference Guide V1.6.0): 48 inputs, 12 mixes and 4 FX
+/// sends, LR, 3 stereo matrices, 8 DCAs, 8 mute groups, 8 FX; its fader law
+/// (`FaderLaw::SQ`), its port groups and names, its processing as blocks
+/// (`livedaw_dsp::sq`) in the order of its block diagrams (`chain::SQ_*`). Its
+/// RackFX and GEQ, its MIDI and its surface follow.
+static SQ5: ProfileSpec = ProfileSpec {
+    profile: Profile::AhSq5,
+    name: "SQ-5",
+    counts: Counts::SQ5,
+    templates: [chain::SQ_CHANNEL, chain::SQ_RETURN, chain::SQ_MIX],
+    process_orders: chain::SQ_ORDERS,
+    aux_order: b"",
+    output_orders: &["DI"],
+    fader: FaderLaw::SQ,
+    main_fader: None,
+    pan: PanLaw::WING,
+    port_groups: SQ5_PORT_GROUPS,
+    models: &livedaw_dsp::sq::MODELS,
+    remotes: Remotes { midi: None, network: &[] },
+    palette: Palette::SQ5,
+    labels: SQ_LABELS,
+    slots: &[SlotRange { kind: StripKind::Bus, first: SQ_FX_SENDS, count: 4, chain: chain::SQ_FX_SEND, label: "FX" }],
+    // Its mixes start as Auxes, which don't feed LR.
+    buses_to_main: 0..0,
+    mono_mains: &[],
+    source_link: false,
+    sends_on: true,
+    send_tap: -1,
+    tap_point: crate::strip::tap::PFL as i32,
+    factory: Some(sq5_factory),
+    factory_name: Some(sq5_name),
+    factory_outputs: Some(sq5_factory_outputs),
+    dca_names: None,
+    dca_fader_db: 0.0,
+    // The guide: the first four FX slots start populated; with the RackFX.
+    fx_factory: &[],
+    // FX sends 1-4 feed the first four FX engines (p.61).
+    fx_send_buses: &[SQ_FX_SENDS, SQ_FX_SENDS + 1, SQ_FX_SENDS + 2, SQ_FX_SENDS + 3],
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_sq5() {
+        let p = Profile::AhSq5.spec();
+        assert_eq!(Profile::from_id("sq5"), Some(Profile::AhSq5));
+        assert!(Profile::AhSq5.fits(&Counts::SQ5));
+        assert!(!Profile::AhSq5.fits(&Counts { channels: 32, ..Counts::SQ5 }));
+        assert_eq!((p.counts.channels, p.counts.buses, p.counts.matrices, p.counts.fx), (48, 16, 3, 8));
+        assert_eq!(p.name, "SQ-5");
+        assert_eq!(p.models.gate_default, "SQGATE");
+        assert_eq!(sq5_name(StripKind::Channel, 47).as_deref(), Some("Ip48"));
+        assert_eq!(sq5_name(StripKind::Bus, 11).as_deref(), Some("Aux12"));
+        assert_eq!(sq5_name(StripKind::Bus, 12).as_deref(), Some("FX1"));
+    }
 
     #[test]
     fn profiles() {
@@ -1132,6 +1259,10 @@ mod tests {
             let s = p.spec();
             if p == Profile::ProMix01 || p == Profile::Yamaha02R {
                 assert_eq!(s.fader.steps, 128, "a Yamaha's");
+                continue;
+            }
+            if p == Profile::AhSq5 {
+                assert_eq!(s.fader.steps, 256, "the SQ's");
                 continue;
             }
             // The X32's faders run the same law on 1024 steps.

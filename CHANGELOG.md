@@ -5,6 +5,10 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+- A start on the Allen & Heath SQ-5: its processing blocks (gate, compressor with parallel
+  path, ducker, 4-band PEQ), offered on any Universal strip, and its console profile
+  (counts, signal chains, fader law). C ABI 53. Its effects, MIDI and surface follow.
+
 ## [0.3.0] - beta
 
 Three more consoles on the Universal Mixer's core, each a preview: the **Behringer

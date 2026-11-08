@@ -430,6 +430,106 @@ pub(crate) const Y02R_STEREO: &[Node] = &[
     t(tap::POST),
 ];
 
+/// The SQ's input channels (Reference Guide p.126): trim and polarity, HPF,
+/// gate, insert, PEQ, compressor, delay, then mute and fader.
+pub(crate) const SQ_CHANNEL: &[Node] = &[
+    rta(rta_tap::IN),
+    Node::Input,
+    t(tap::IN),
+    rta(rta_tap::PRE_FILTER),
+    Node::Filter,
+    t(tap::FILT),
+    rta(rta_tap::POST_FILTER),
+    Node::Gate,
+    t(2),
+    Node::PreInsert,
+    Node::Eq,
+    t(3),
+    Node::Dynamics,
+    t(4),
+    Node::Delay,
+    Node::Pfl,
+    t(tap::PFL),
+    Node::Fader,
+    t(tap::AFL),
+    rta(rta_tap::POST_FADER),
+    t(TAP_INS2),
+    Node::Post,
+    t(tap::POST),
+];
+
+/// The SQ's FX returns (p.127): the PEQ, then mute and fader.
+pub(crate) const SQ_RETURN: &[Node] = &[
+    rta(rta_tap::IN),
+    Node::Input,
+    t(tap::IN),
+    rta(rta_tap::PRE_FILTER),
+    t(tap::FILT),
+    rta(rta_tap::POST_FILTER),
+    Node::Eq,
+    t(2),
+    t(3),
+    t(4),
+    Node::Pfl,
+    t(tap::PFL),
+    Node::Fader,
+    t(tap::AFL),
+    rta(rta_tap::POST_FADER),
+    t(TAP_INS2),
+    Node::Post,
+    t(tap::POST),
+];
+
+/// The SQ's mixes, LR and matrices (p.126): insert, PEQ (the 28-band GEQ comes
+/// before it, with the RackFX), compressor, delay, then mute and fader.
+pub(crate) const SQ_MIX: &[Node] = &[
+    rta(rta_tap::IN),
+    Node::Input,
+    t(tap::IN),
+    rta(rta_tap::PRE_FILTER),
+    t(tap::FILT),
+    rta(rta_tap::POST_FILTER),
+    Node::PreInsert,
+    Node::Eq,
+    t(2),
+    Node::Dynamics,
+    t(3),
+    t(TAP_EQ_POST),
+    Node::Delay,
+    Node::Pfl,
+    t(tap::PFL),
+    Node::Fader,
+    t(tap::AFL),
+    rta(rta_tap::POST_FADER),
+    t(TAP_INS2),
+    Node::Post,
+    t(tap::POST),
+];
+
+/// The SQ's FX sends (p.127): mute and fader alone.
+pub(crate) const SQ_FX_SEND: &[Node] = &[
+    rta(rta_tap::IN),
+    Node::Input,
+    t(tap::IN),
+    rta(rta_tap::PRE_FILTER),
+    t(tap::FILT),
+    rta(rta_tap::POST_FILTER),
+    t(2),
+    t(3),
+    t(TAP_EQ_POST),
+    Node::Pfl,
+    t(tap::PFL),
+    Node::Fader,
+    t(tap::AFL),
+    rta(rta_tap::POST_FADER),
+    t(TAP_INS2),
+    Node::Post,
+    t(tap::POST),
+];
+
+/// The SQ's strips have one fixed order of processing.
+pub(crate) const SQ_ORDERS: &[&str] = &["GED"];
+
 /// The 02R's strips have no process orders (one, unused).
 pub(crate) const Y02R_ORDERS: &[&str] = &["ED"];
 

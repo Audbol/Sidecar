@@ -106,6 +106,24 @@ impl FaderLaw {
         steps: 128,
     };
 
+    /// The Allen & Heath SQ's faders: 256 positions, +10 dB at the top, 0 dB on
+    /// position 196, from the SQ MIDI Protocol's "Approximate Audio Taper Level
+    /// Values" table (which the guide says behaves as the SQ's faders do; eight
+    /// of its points: between -10 and 0 dB the law is within 4 positions of it).
+    pub const SQ: FaderLaw = FaderLaw {
+        points: &[
+            (3.0 / 255.0, -89.0),
+            (16.0 / 255.0, -50.0),
+            (31.0 / 255.0, -40.0),
+            (93.0 / 255.0, -20.0),
+            (124.0 / 255.0, -10.0),
+            (196.0 / 255.0, 0.0),
+            (231.0 / 255.0, 5.0),
+            (1.0, 10.0),
+        ],
+        steps: 256,
+    };
+
     /// The 02R's STEREO fader: 128 steps, 0 dB at the top, -120 dB on the step
     /// above -oo (p.192); the steps between are where the panel prints its
     /// scale (0, 5, 10, 15, 20, 30, 40, 50, 60, 70).
@@ -225,6 +243,28 @@ mod tests {
             assert_eq!((law.to_pos(0.0) * 127.0).round(), zero, "0 dB");
             // Every breakpoint on a step.
             assert!(law.points.iter().all(|p| ((p.0 * 127.0).round() - p.0 * 127.0).abs() < 1e-4));
+        }
+    }
+
+    #[test]
+    fn the_sqs_law_follows_the_midi_protocols_table() {
+        let law = FaderLaw::SQ;
+        assert!(law.points.len() <= FaderLaw::MAX_POINTS);
+        assert_eq!((law.steps, law.max_db()), (256, 10.0));
+        assert_eq!(law.to_db(0.0), FADER_MIN, "the bottom is -oo");
+        // (dB, position) from the table's VC / VF columns.
+        for (db, pos) in [
+            (-89.0, 3.0),
+            (-50.0, 16.0),
+            (-40.0, 31.0),
+            (-30.0, 62.0),
+            (-20.0, 93.0),
+            (-10.0, 124.0),
+            (0.0, 196.0),
+            (5.0, 231.0),
+            (10.0, 255.0),
+        ] {
+            assert!((law.to_pos(db) * 255.0 - pos).abs() < 0.6, "{db} dB");
         }
     }
 

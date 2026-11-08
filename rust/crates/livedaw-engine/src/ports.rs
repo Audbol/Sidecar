@@ -197,6 +197,37 @@ pub static Y02R_PORT_GROUPS: &[PortGroup] = &[
     PortGroup::new("BUS DIRECT", "BUS", IN, None, 0),
 ];
 
+/// The Allen & Heath SQ-5's port groups, in the WING's order: its 16 mic inputs
+/// and its stereo line inputs ST1-ST3 (engine inputs 16-21), its local outputs
+/// (1-12, A and B) and the AES output.
+pub static SQ5_PORT_GROUPS: &[PortGroup] = &[
+    PortGroup::new("LOCAL IN", "LCL", IN, Some(0), 16),
+    PortGroup::new("ST IN", "ST", IN, Some(16), 6),
+    PortGroup::new("AES/EBU IN", "AES", IN, None, 0),
+    PortGroup::new("SIGNAL GEN", "GEN", IN, Some(OSC_SOURCE_BASE), NUM_OSCILLATORS as i32),
+    PortGroup::new("SLINK A", "SL", BOTH, None, 0),
+    PortGroup::new("SLINK", "SL", BOTH, Some(WING_BLOCK), WING_BLOCK),
+    PortGroup::new("I/O PORT", "IO", BOTH, Some(2 * WING_BLOCK), WING_BLOCK),
+    PortGroup::new("ST CONNECT", "SC", BOTH, None, 0),
+    PortGroup::new("USB AUDIO", "USB", BOTH, None, 0),
+    PortGroup::new("SQ-DRIVE", "PLAY", IN, Some(PLAYBACK_SOURCE_BASE), NUM_PLAYBACK_CHANNELS as i32),
+    PortGroup::new("DANTE", "DAN", BOTH, None, 0),
+    PortGroup::new("USB PLAYER", "PLAYER", IN, Some(USB_PLAYER_SOURCE_BASE), USB_CHANNELS as i32),
+    PortGroup::new("MIX", "MIX", IN, Some(BUS_SOURCES), 2 * 16),
+    PortGroup::new("LR", "LR", IN, Some(MAIN_SOURCES), 2),
+    PortGroup::new("MATRIX", "MTX", IN, Some(MTX_SOURCES), 2 * 3),
+    PortGroup::new("USER SIGNAL", "USR", IN, None, 0),
+    PortGroup::new("MONITOR", "MON", IN, None, 0),
+    PortGroup::new("FX SEND", "FX", IN, None, 0),
+    PortGroup::new("LOCAL OUT", "LCL", OUT, Some(0), 14),
+    PortGroup::new("AES OUT", "AES", OUT, Some(14), 2),
+    PortGroup::new("AUX OUT", "AUX", OUT, None, 0),
+    PortGroup::new("WLIVE REC", "REC", OUT, None, 0),
+    PortGroup::new("RECORDER", "REC", OUT, None, USB_CHANNELS as i32),
+    PortGroup::new("CH DIRECT", "CH", IN, None, 0),
+    PortGroup::new("BUS DIRECT", "BUS", IN, None, 0),
+];
+
 /// The group (of `groups`) an engine index belongs to, and its number there.
 pub fn group_of(groups: &'static [PortGroup], output: bool, index: i32) -> Option<(&'static PortGroup, i32)> {
     groups.iter().filter(|g| if output { g.output } else { g.input }).find_map(|g| Some((g, g.number_of(index)?)))

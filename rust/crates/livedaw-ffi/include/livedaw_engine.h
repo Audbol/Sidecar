@@ -29,7 +29,7 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 52;
+constexpr int kAbiVersion = 53;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -174,7 +174,8 @@ enum ProfileId : int32_t
     kProfileWing = 1,
     kProfileX32 = 2,
     kProfileProMix01 = 3, // ABI 43, Phase 5
-    kProfileYamaha02R = 4 // ABI 45, Phase 6: its processing, effects and MIDI follow
+    kProfileYamaha02R = 4, // ABI 45, Phase 6: its processing, effects and MIDI follow
+    kProfileSq5 = 5 // ABI 53: the Allen & Heath SQ-5; its effects, MIDI and surface follow
 };
 
 enum StripKindId : int32_t

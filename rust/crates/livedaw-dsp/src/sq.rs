@@ -12,7 +12,8 @@
 //! soft knee's width, the slope of the PEQ's HPF and LPF modes, the ducker's
 //! controls and every default value.
 
-use crate::model::{ModelCategory, ModelSpec, ParamKind, ParamSpec};
+use crate::model::{ModelCategory, ModelSpec, ModelTables, ParamKind, ParamSpec};
+use crate::wing::FILTER_TOOLS;
 
 /// A parameter, in `ParamSpec`'s field order.
 #[allow(clippy::too_many_arguments)]
@@ -120,6 +121,22 @@ static PEQ_PARAMS: [ParamSpec; 14] = [
 
 /// The PEQ, on inputs, FX returns and mixes alike.
 pub static EQ: &[ModelSpec] = &[ModelSpec { token: "SQPEQ", name: "PEQ", category: ModelCategory::Eq, params: &PEQ_PARAMS }];
+
+/// The FX rack's devices: an empty slot and EXT so far (its RackFX come next).
+pub static FX_MODELS: [ModelSpec; 2] = [crate::wing::FX_MODELS[0], crate::wing::FX_MODELS[1]];
+
+/// The SQ-5's models.
+pub static MODELS: ModelTables = ModelTables {
+    dynamics: DYN_MODELS,
+    aux_dynamics: &[],
+    eq_channel: EQ,
+    eq_bus: EQ,
+    filter_tools: FILTER_TOOLS,
+    fx: &FX_MODELS,
+    fx_premium_slots: 8,
+    gate_default: "SQGATE",
+    comp_default: "SQCOMP",
+};
 
 #[cfg(test)]
 mod tests {

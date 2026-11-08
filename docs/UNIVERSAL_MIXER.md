@@ -1209,6 +1209,29 @@ Three layers:
    - the SysEx addresses and the dumps' byte layout
    - the effects' algorithms
 
+**The Allen & Heath SQ-5** (in progress, November 2026). From the owner's reference
+notes (kept outside the repository: the SQ-5 resources page's documents, the SQ
+Reference Guide V1.6.0 and the SQ MIDI Protocol V1.6, with their pictures; the SQ5+ is
+a different console and isn't used). Built blocks first, so they run on the SQ's own
+strips and on any Universal strip from the start:
+
+1. **Its blocks** (done): `livedaw_dsp::sq`: the gate, the compressor (RMS / Peak, soft
+   knee, parallel path), the ducker and the 4-band PEQ, in the Universal tables.
+2. **Its profile** (done): `Profile::AhSq5`, `Counts::SQ5` (48 inputs, 8 FX returns, 12
+   mixes and 4 FX sends, LR, 3 stereo matrices, 8 DCAs, 8 mute groups, 8 FX), its chains
+   in the order of the guide's block diagrams (`chain::SQ_*`), `FaderLaw::SQ` from the
+   MIDI protocol's audio taper table, its port groups, names and colours. C ABI 53.
+3. **Its GEQ and RackFX**: the mixes' 28-band GEQ before the PEQ, the 8 RackExtra types
+   and the add-ons on the WING's devices, the first four FX slots populated, as blocks.
+4. **Its state, MIDI and scenes**: mixes as Aux or Group, mono / stereo pairs, NRPN over
+   USB and TCP 51325, MMC, the DAW strips, scene recall filters.
+5. **Its surface**: the 16+1 faders, 6 layers, the touchscreen's screens and the
+   physical controls around it; then the labels and the start-up window.
+
+Sidecar's reading until measured on a console: the compressor's ratio steps, the soft
+knee's width, the ducker's controls, the PEQ's filter slopes, every default value, the
+factory patch and the strip colours.
+
 Each emulation keeps the independent-project disclaimer: not affiliated with or
 endorsed by the console's maker, their trademarks used only to say what is emulated,
 none of their firmware, software, documents or artwork included.
