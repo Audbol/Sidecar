@@ -11,11 +11,13 @@
 //! isn't an 02R.
 
 use super::guard;
-use super::session::{str_arg, LdString};
+use super::session::{str_arg, LdShow, LdString};
 use livedaw_02r::library::{Kind, Library, CHANNEL_PROGRAMS};
 use livedaw_02r::midi::{Event, Midi, Setup};
+use livedaw_02r::state::{FADERS, MEMBERS};
 use livedaw_02r::{params, Console, State, Y2Strip};
 use livedaw_engine::{Engine, Profile};
+use livedaw_session::FaderRecall;
 
 pub struct LdY02R {
     engine: *const Engine,
@@ -25,6 +27,9 @@ pub struct LdY02R {
     version: u64,
     library: Library,
     midi: Midi,
+    /// Fader recall safe (ENABLE, each fader) and the fade times while a
+    /// scene recalls (`ld_y02r_before_recall`), put back after it.
+    kept: Option<(bool, [bool; FADERS], [u8; FADERS])>,
 }
 
 impl LdY02R {
@@ -78,6 +83,7 @@ pub unsafe extern "C" fn ld_y02r_create(e: *const Engine) -> *mut LdY02R {
             version: 0,
             library: Library::default(),
             midi: Midi::default(),
+            kept: None,
         }))
     })
 }
@@ -566,6 +572,60 @@ pub extern "C" fn ld_y02r_panel_fader_strip(n: i32) -> i32 {
     u8::try_from(n).ok().and_then(livedaw_02r::midi::panel_fader).map_or(-1, |s: Y2Strip| params::index_of(s) as i32)
 }
 
+/// ABI 52: before the show recalls a scene (`ld_show_recall_scene`): the
+/// 02R's fader recall safe and fade times (SCENE MEMORY, MAN pp.120-121) as
+/// the show's fader recall, so a safe fader keeps its level and a fader with a
+/// fade time glides; they are kept for `ld_y02r_after_recall`. Nothing while
+/// the console isn't an 02R.
+///
+/// # Safety
+/// `p` is from `ld_y02r_create` and `s` from `ld_show_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_y02r_before_recall(p: *mut LdY02R, s: *mut LdShow) {
+    let (Some(p), Some(s)) = (p.as_mut(), s.as_mut()) else { return };
+    guard((), || {
+        let Some((faders, kept)) = p.with(|c, _, _| {
+            let st = &*c.state;
+            let faders: Vec<FaderRecall> = (0..FADERS)
+                .filter_map(|i| {
+                    let strip = if i == MEMBERS { Some(Y2Strip::Stereo) } else { Y2Strip::of_member(i) };
+                    let safe = st.recall_safe_on && st.recall_safe[i];
+                    let seconds = f64::from(st.fade_times[i]) / 10.0;
+                    (safe || seconds > 0.0).then_some(())?;
+                    Some(FaderRecall { strip: c.strip(strip?)?, safe, seconds })
+                })
+                .collect();
+            (faders, (st.recall_safe_on, st.recall_safe, st.fade_times))
+        }) else {
+            p.kept = None;
+            return;
+        };
+        p.kept = Some(kept);
+        s.show.set_fader_recall(faders);
+    });
+}
+
+/// ABI 52: after the show recalled a scene: the fader recall safe and fade
+/// times as they were before it (the scene's console state would bring back
+/// the ones stored with it). Nothing if `ld_y02r_before_recall` kept none.
+///
+/// # Safety
+/// `p` is from `ld_y02r_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_y02r_after_recall(p: *mut LdY02R) {
+    let Some(p) = p.as_mut() else { return };
+    let Some((on, safe, times)) = p.kept.take() else { return };
+    guard((), || {
+        p.with_mut(|c, _, _| {
+            if (c.state.recall_safe_on, c.state.recall_safe, c.state.fade_times) != (on, safe, times) {
+                c.state.recall_safe_on = on;
+                c.state.recall_safe = safe;
+                c.state.fade_times = times;
+            }
+        });
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -643,6 +703,54 @@ mod tests {
             // Scene 0.
             ld_y02r_recall_initial(p);
             assert_eq!(ld_y02r_get(p, 0), 0);
+            ld_y02r_destroy(p);
+        }
+    }
+}
+
+#[cfg(test)]
+mod recall_tests {
+    use super::*;
+    use crate::session::{ld_show_add_scene, ld_show_create, ld_show_destroy, ld_show_recall_scene, ld_show_tick};
+    use livedaw_engine::{ConsoleConfig, Counts, StripKind};
+
+    #[test]
+    fn fader_recall_safe_and_fade_times_act_on_a_recall_and_outlast_it() {
+        let e = Engine::new(0);
+        e.configure(&ConsoleConfig { profile: Profile::Yamaha02R, counts: Counts::Y02R });
+        unsafe {
+            let p = ld_y02r_create(&e);
+            let s = ld_show_create(std::ptr::null());
+            let fader = |i: usize| e.strips(StripKind::Channel)[i].params.fader_db.load();
+            let set = |i: usize, db: f32| e.strips(StripKind::Channel)[i].params.fader_db.store(db);
+            for i in 0..3 {
+                set(i, 0.0);
+            }
+            assert_eq!(ld_show_add_scene(s, &e, b"A".as_ptr(), 1, -1), 0);
+            for i in 0..3 {
+                set(i, -40.0);
+            }
+            // MIC 1 recall safe (with ENABLE), MIC 2 a 5 s fade time; set after the scene.
+            ld_y02r_set_state(p, 12, 0, 1);
+            ld_y02r_set_state(p, 11, 0, 1);
+            ld_y02r_set_state(p, 13, 1, 50);
+            ld_y02r_before_recall(p, s);
+            ld_show_recall_scene(s, &e, 0, 0, std::ptr::null_mut());
+            ld_y02r_after_recall(p);
+            assert_eq!(fader(0), -40.0, "recall safe");
+            assert_eq!(fader(1), -40.0, "fading from where it was");
+            assert_eq!(fader(2), 0.0, "no fade time: at once");
+            assert!(ld_show_tick(s, &e), "MIC 2 still fading");
+            // The scene's console state didn't take them away.
+            assert_eq!((ld_y02r_state(p, 12, 0), ld_y02r_state(p, 11, 0), ld_y02r_state(p, 13, 1)), (1, 1, 50));
+
+            // ENABLE off: MIC 1 comes back with the scene.
+            ld_y02r_set_state(p, 12, 0, 0);
+            ld_y02r_before_recall(p, s);
+            ld_show_recall_scene(s, &e, 0, 0, std::ptr::null_mut());
+            ld_y02r_after_recall(p);
+            assert_eq!(fader(0), 0.0);
+            ld_show_destroy(s);
             ld_y02r_destroy(p);
         }
     }

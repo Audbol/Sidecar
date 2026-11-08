@@ -5,6 +5,10 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+- 02R: fader recall safe and fade times act on a scene recall. A safe fader keeps
+  its level, and a fader with a fade time glides over it; a recall keeps these
+  settings as they are. Any scene fade can now give a fader a time of its own
+  (`Show::set_fader_recall`).
 - X32: channel preset files (`.chn`). LIBRARY's channel tab imports one onto the
   selected strip (keeping its source) and exports the strip as one; mains, buses,
   matrices, aux and FX returns too. C ABI 52.

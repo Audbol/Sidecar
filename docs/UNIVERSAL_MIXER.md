@@ -1166,8 +1166,12 @@ Three layers:
         (`params::initial_bytes`), recalled without rebuilding the console.
       - `livedaw_02r::panel` numbers that state for the host (C ABI 46
         `ld_y02r_state` / `ld_y02r_set_state`).
-      - Not done: fader recall safe and fade times are kept, not yet applied
-        to a recall.
+      - Fader recall safe and fade times act on a recall (later): the host
+        hands them to the show just before (`ld_y02r_before_recall`,
+        `Show::set_fader_recall`; each fade has its own time) and puts them
+        back after it (`ld_y02r_after_recall`), so a scene's stored console
+        state doesn't change them. Whether an 02R keeps them per scene is
+        unconfirmed.
    7. **An 02R skin** (done): `Y02RSurface` (`src/ui/Y02RSurface.*`, a `Skin`,
       `InterfaceKind::Yamaha02R`, the setting `02r`; SETUP > INTERFACE offers 02R
       on every skin and makes the console a fresh 02R, asking first; the

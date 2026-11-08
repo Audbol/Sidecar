@@ -1901,6 +1901,12 @@ extern "C"
     void ld_y02r_midi_poll (LdY02R*);
     /** Scene `scene` (0-96) was recalled: its program change goes out. */
     void ld_y02r_scene_recalled (LdY02R*, int32_t scene);
+    /** ABI 52: around a scene recall (ld_show_recall_scene): before, the fader recall
+        safe and fade times become the show's fader recall (a safe fader keeps its
+        level, a fader with a fade time glides); after, they are put back as they
+        were (the scene's console state would bring its own). Nothing unless an 02R. */
+    void ld_y02r_before_recall (LdY02R*, Show*);
+    void ld_y02r_after_recall (LdY02R*);
     /** The next message to send: its length, 0 for none, minus its length if `max` is too small. */
     int32_t ld_y02r_midi_out (LdY02R*, uint8_t* out, size_t max);
     struct LdY02REvent

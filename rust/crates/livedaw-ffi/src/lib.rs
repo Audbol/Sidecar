@@ -104,7 +104,8 @@ use std::sync::Arc;
 // ABI 45 (Phase 6 step 1): the 02R profile (4); a strip kind's fader law
 // (ld_engine_fader_law_of: the 02R's STEREO has its own).
 // ABI 46 (Phase 6 step 5): the 02R's MIDI (ld_y02r_*, RemotesC::midi 3).
-// ABI 52: X32 channel presets (ld_x32_channel_write/read).
+// ABI 52: X32 channel presets (ld_x32_channel_write/read); the 02R around a
+// scene recall (ld_y02r_before_recall / after_recall).
 pub const LD_ABI_VERSION: i32 = 52;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {

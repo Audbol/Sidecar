@@ -331,6 +331,9 @@ private:
     void timerCallback() override;
     void changed();
     state::ApplyResult afterRecall (ld::ApplyResultC&);
+    /** ld_show_recall_scene (`which`: 0 a scene, 1 next, 2 previous, 3 by tag), with
+        an 02R's fader recall safe and fade times around it. */
+    ld::ApplyResultC runRecall (int which, int index);
     juce::Result afterLoad (bool ok, ld::LdString* message);
 
     static bool captureFx (void* ctx, int32_t slot, ld::LdSink* description, ld::LdSink* state);

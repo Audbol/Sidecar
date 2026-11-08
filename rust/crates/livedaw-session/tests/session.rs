@@ -284,6 +284,62 @@ fn model_changes_recall_with_their_parameters() {
 }
 
 #[test]
+fn faders_keep_their_own_recall_safe_and_fade_time() {
+    // The 02R's SCENE MEMORY: a recall-safe fader stays, a fader with a fade
+    // time glides over it although the scene has none, the others jump.
+    let engine = Engine::new(0);
+    let mut np = NoPlugins;
+    set_channels(&engine, 3);
+    let (a, b, c) = (ch(&engine, 0), ch(&engine, 1), ch(&engine, 2));
+    let mut show = Show::new();
+    show.add_scene(&engine, &mut np, "A", -1);
+    for s in [&a, &b, &c] {
+        s.params.fader_db.store(-40.0);
+        s.params.pan.store(0.5);
+    }
+    show.set_fader_recall(vec![
+        FaderRecall { strip: a.clone(), safe: true, seconds: 3.0 },
+        FaderRecall { strip: b.clone(), safe: false, seconds: 2.0 },
+    ]);
+    let start = Instant::now();
+    show.recall_scene(&engine, &mut np, 0);
+    assert_eq!(a.params.fader_db.load(), -40.0, "safe");
+    assert_eq!(a.params.pan.load(), 0.0, "only the fader is safe");
+    assert_eq!(c.params.fader_db.load(), 0.0, "no fade time: at once");
+    assert_eq!(b.params.pan.load(), 0.0, "the pan has the scene's fade time (none)");
+    assert!(show.is_fading());
+    assert_eq!(b.params.fader_db.load(), -40.0);
+    assert!(show.tick_at(&engine, start + Duration::from_millis(1000)));
+    let mid = b.params.fader_db.load();
+    assert!(mid > -40.0 && mid < 0.0, "{mid}");
+    assert_eq!(a.params.fader_db.load(), -40.0);
+    assert!(!show.tick_at(&engine, start + Duration::from_millis(2100)));
+    assert_eq!(b.params.fader_db.load(), 0.0);
+
+    // They're for one recall: the next one has none.
+    for s in [&a, &b] {
+        s.params.fader_db.store(-40.0);
+    }
+    show.recall_scene(&engine, &mut np, 0);
+    assert!(!show.is_fading());
+    assert_eq!((a.params.fader_db.load(), b.params.fader_db.load()), (0.0, 0.0));
+
+    // With the scene's own fade, a fader's time still wins.
+    show.scene_mut(0).unwrap().fade_seconds = 4.0;
+    for s in [&a, &b] {
+        s.params.fader_db.store(-40.0);
+    }
+    show.set_fader_recall(vec![FaderRecall { strip: b.clone(), safe: false, seconds: 1.0 }]);
+    let start = Instant::now();
+    show.recall_scene(&engine, &mut np, 0);
+    assert!(show.tick_at(&engine, start + Duration::from_millis(1500)));
+    assert_eq!(b.params.fader_db.load(), 0.0, "its own second");
+    let a_mid = a.params.fader_db.load();
+    assert!(a_mid > -40.0 && a_mid < 0.0, "the scene's four: {a_mid}");
+    assert!(!show.tick_at(&engine, start + Duration::from_secs(5)));
+}
+
+#[test]
 fn fades_glide_and_survive_removed_strips() {
     let engine = Engine::new(0);
     let mut np = NoPlugins;

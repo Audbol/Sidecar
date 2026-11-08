@@ -443,31 +443,38 @@ state::ApplyResult Show::afterRecall (ld::ApplyResultC& r)
     return result;
 }
 
+ld::ApplyResultC Show::runRecall (int which, int index)
+{
+    // An 02R's fader recall safe and fade times act on the recall and outlast it.
+    auto* y02r = engine.getYamaha02R().getHandle();
+    ld::ld_y02r_before_recall (y02r, handle);
+    ld::ApplyResultC r {};
+    ld::ld_show_recall_scene (handle, engine.getHandle(), which, index, &r);
+    ld::ld_y02r_after_recall (y02r);
+    return r;
+}
+
 state::ApplyResult Show::recallScene (int index)
 {
-    ld::ApplyResultC r {};
-    ld::ld_show_recall_scene (handle, engine.getHandle(), 0, index, &r);
+    auto r = runRecall (0, index);
     return afterRecall (r);
 }
 
 state::ApplyResult Show::recallNext()
 {
-    ld::ApplyResultC r {};
-    ld::ld_show_recall_scene (handle, engine.getHandle(), 1, 0, &r);
+    auto r = runRecall (1, 0);
     return afterRecall (r);
 }
 
 state::ApplyResult Show::recallPrevious()
 {
-    ld::ApplyResultC r {};
-    ld::ld_show_recall_scene (handle, engine.getHandle(), 2, 0, &r);
+    auto r = runRecall (2, 0);
     return afterRecall (r);
 }
 
 state::ApplyResult Show::recallSceneByTag (int tag)
 {
-    ld::ApplyResultC r {};
-    ld::ld_show_recall_scene (handle, engine.getHandle(), 3, tag, &r);
+    auto r = runRecall (3, tag);
     return afterRecall (r);
 }
 

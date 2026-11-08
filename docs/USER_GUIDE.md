@@ -1275,7 +1275,11 @@ SURFACE** key comes back.
 - **Encoders.** TAPE 1-16 and EFF1-2, with **SEL** and **ON**: drag or scroll to turn them.
 - **The display** shows the function its key calls, for the channel SEL chose. The
   CONFIGURATION keys:
-  - **SCENE MEMORY:** the channel's fade time and recall safe.
+  - **SCENE MEMORY:** the channel's fade time and recall safe. On a scene recall a
+    recall-safe fader (with ENABLE on) keeps its level, and a fader with a fade time
+    glides to the scene's level over that time; the others move at once. A recall
+    leaves these settings as they are, rather than bringing back the ones stored with
+    the scene (Sidecar's reading: the User's Guide doesn't settle it).
   - **UTILITY:** the oscillator, which plays: its level (dB below 0 as dBFS), a 100 Hz,
     1 kHz or 10 kHz sine or pink noise, onto BUS 1-8, STEREO and AUX 1-8.
   - **MIDI:** MIDI SETUP.
@@ -1325,7 +1329,6 @@ Not there yet:
 - solo and the monitor keys
 - the channel library
 - surround panning
-- fader recall safe and fade times taking effect on a recall
 
 The fader steps, part of the Q table, the dynamics' time tables and the effects'
 algorithms are Sidecar's reading of the User's Guides, not measured on a console.

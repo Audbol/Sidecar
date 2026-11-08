@@ -41,12 +41,13 @@ use crate::refs::{refs_from_string, refs_to_string, StripRef};
 use crate::scope::{self, ChangeCounts, GlobalSafe, RecordedChanges, Recording, Scope};
 use crate::xml::{self, Element};
 use livedaw_engine::params::MAX_FX;
-use livedaw_engine::{Engine, GroupSet};
+use livedaw_engine::{Engine, GroupSet, Strip};
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use std::sync::Arc;
+use std::time::Instant;
 
 /// 4: the Universal core's (the console's `<Config>`); 3: the WING layout.
 pub const SHOW_VERSION: i32 = 4;
@@ -321,6 +322,19 @@ struct Fade {
     target: f32,
     /// The value the fade last wrote: anything else means it was moved.
     written: f32,
+    /// How long it takes (the scene's fade time, or its fader's own).
+    seconds: f64,
+}
+
+/// A fader's own recall behaviour, as the 02R has it (SCENE MEMORY: fader
+/// recall safe and fade times): a safe fader keeps its level when a scene is
+/// recalled; a fader with a fade time glides to the scene's level over that
+/// time, whatever the scene's own fade.
+#[derive(Clone)]
+pub struct FaderRecall {
+    pub strip: Arc<Strip>,
+    pub safe: bool,
+    pub seconds: f64,
 }
 
 /// How far a fading value may drift from what the fade wrote before it counts
@@ -353,7 +367,9 @@ pub struct Show {
     pending_clips: Vec<PathBuf>,
     fades: Vec<Fade>,
     fade_start: Instant,
-    fade_duration: Duration,
+    /// The faders' own recall behaviour for the next scene recall
+    /// (`set_fader_recall`); cleared once it has run.
+    fader_recall: Vec<FaderRecall>,
 }
 
 impl Default for Show {
@@ -372,7 +388,7 @@ impl Default for Show {
             pending_clips: Vec::new(),
             fades: Vec::new(),
             fade_start: Instant::now(),
-            fade_duration: Duration::ZERO,
+            fader_recall: Vec::new(),
         }
     }
 }
@@ -512,7 +528,15 @@ impl Show {
                 break;
             }
         }
+        self.fader_recall.clear();
         result
+    }
+
+    /// The faders' own recall behaviour (the 02R's fader recall safe and fade
+    /// times) for the next scene recall (`recall_scene`, GO NEXT / PREV, by
+    /// tag); the host sets it just before, from the console's state.
+    pub fn set_fader_recall(&mut self, faders: Vec<FaderRecall>) {
+        self.fader_recall = faders;
     }
 
     /// SEND MIDI of the scenes the last recall (`recall_scene`, GO NEXT /
@@ -559,10 +583,18 @@ impl Show {
 
         self.cancel_fade(engine);
 
-        let fade = fade_seconds > 0.0;
+        // A fader with a fade time of its own glides even when the scene doesn't.
+        let fade = fade_seconds > 0.0 || self.fader_recall.iter().any(|f| !f.safe && f.seconds > 0.0);
         let mut targets = Vec::new();
         let safe = self.global_safe.clone();
+        let kept: Vec<(Arc<Strip>, f32)> =
+            self.fader_recall.iter().filter(|f| f.safe).map(|f| (f.strip.clone(), f.strip.params.fader_db.load())).collect();
         result = scope::apply_scoped(engine, &state, &scope, Some(&safe), true, fade.then_some(&mut targets), bridge);
+        // Recall-safe faders keep their level (before the snippets, which ignore safes).
+        for (strip, db) in &kept {
+            strip.params.fader_db.store(*db);
+            targets.retain(|t| !matches!(&t.param, FadeParam::Fader(s) if Arc::ptr_eq(s, strip)));
+        }
 
         // Auto-fire snippets apply on top of the scene (they ignore recall safes, like
         // a manual snippet). Their continuous values override the scene's fade targets.
@@ -993,11 +1025,26 @@ impl Show {
                 existing.target = t.target;
             } else if let Some(v) = t.param.value(engine) {
                 let start = v.load();
-                self.fades.push(Fade { start, param: t.param, target: t.target, written: start });
+                // A fader's own fade time, else the scene's.
+                let own = match &t.param {
+                    FadeParam::Fader(s) => self.fader_recall.iter().find(|f| Arc::ptr_eq(&f.strip, s)).map(|f| f.seconds),
+                    _ => None,
+                };
+                let seconds = own.unwrap_or(seconds).clamp(0.0, MAX_FADE_SECONDS);
+                self.fades.push(Fade { start, param: t.param, target: t.target, written: start, seconds });
             }
         }
+        // What has no fade time is there at once.
+        self.fades.retain(|f| {
+            if f.seconds > 0.0 {
+                return true;
+            }
+            if let Some(v) = f.param.value(engine) {
+                v.store(f.target);
+            }
+            false
+        });
         self.fade_start = Instant::now();
-        self.fade_duration = Duration::from_secs_f64(seconds.clamp(0.0, MAX_FADE_SECONDS));
     }
 
     /// When the running (or last) fade started: `tick_at` measures from it.
@@ -1028,13 +1075,13 @@ impl Show {
             return false;
         }
         let elapsed = now.saturating_duration_since(self.fade_start).as_secs_f64();
-        let t = (elapsed / self.fade_duration.as_secs_f64().max(0.001)).clamp(0.0, 1.0) as f32;
         let spec = engine.profile().spec();
         self.fades.retain_mut(|f| {
             let Some(v) = f.param.value(engine) else { return false };
             if f.moved(v.load()) {
                 return false;
             }
+            let t = (elapsed / f.seconds.max(0.001)).clamp(0.0, 1.0) as f32;
             f.written = if t >= 1.0 {
                 f.target
             } else if f.param.is_level() {
@@ -1051,11 +1098,9 @@ impl Show {
                 f.start + t * (f.target - f.start)
             };
             v.store(f.written);
-            true
+            // Each ends at its own time.
+            t < 1.0
         });
-        if t >= 1.0 {
-            self.fades.clear();
-        }
         !self.fades.is_empty()
     }
 
