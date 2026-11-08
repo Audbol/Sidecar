@@ -777,7 +777,7 @@ fn an_x32_show_loads_as_an_x32() {
 }
 
 #[test]
-fn a_universal_console_keeps_the_x32s_blocks_through_a_show() {
+fn a_universal_console_keeps_other_consoles_blocks_through_a_show() {
     use livedaw_engine::config::{ConsoleConfig, Counts};
     use livedaw_engine::Profile;
     let engine = Engine::new(0);
@@ -799,6 +799,13 @@ fn a_universal_console_keeps_the_x32s_blocks_through_a_show() {
     engine.controls.fx[0].param_in(m.fx, "decay").unwrap().store(3.25);
     assert!(engine.set_fx_model(8, idx(m.fx, "X32PHAS"), true));
     assert!(!engine.set_fx_model(8, idx(m.fx, "X32HALL"), true), "the X32's send effects need FX 1-8");
+    // The ProMix 01's and the 02R's: a channel's dynamics, a matrix's EQ, two effects.
+    let c2 = ch(&engine, 1);
+    c2.params.dynamics().set_model(idx(m.dynamics, "Y2CPS"));
+    let mtx = engine.strip_at(StripKind::Matrix, 0).unwrap();
+    mtx.params.eq().set_model(idx(m.eq_bus, "PMEQ"));
+    assert!(engine.set_fx_model(1, idx(m.fx, "PMREV"), true));
+    assert!(engine.set_fx_model(2, idx(m.fx, "Y2CHREV"), true));
 
     let mut show = Show::new();
     show.add_scene(&engine, &mut NoPlugins, "A", -1);
@@ -821,6 +828,11 @@ fn a_universal_console_keeps_the_x32s_blocks_through_a_show() {
     assert_eq!(e2.controls.fx[0].param_in(m.fx, "decay").unwrap().load(), 3.25);
     assert!(e2.fx(0).unwrap().has_device());
     assert_eq!(m.fx[e2.controls.fx[8].model_index_in(m.fx)].token, "X32PHAS");
+    assert_eq!(ch(&e2, 1).params.dynamics().model_spec().unwrap().token, "Y2CPS");
+    assert_eq!(e2.strip_at(StripKind::Matrix, 0).unwrap().params.eq().model_spec().unwrap().token, "PMEQ");
+    assert_eq!(m.fx[e2.controls.fx[1].model_index_in(m.fx)].token, "PMREV");
+    assert_eq!(m.fx[e2.controls.fx[2].model_index_in(m.fx)].token, "Y2CHREV");
+    assert!(e2.fx(1).unwrap().has_device() && e2.fx(2).unwrap().has_device());
     assert_eq!(e2.controls.fx[0].wing_model(), None, "not a WING device");
 
     // A scene brings them back after a change.

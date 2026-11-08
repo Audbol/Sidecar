@@ -42,8 +42,15 @@ int Model::find (const juce::String& id) const noexcept
 
 juce::String consoleOf (const juce::String& token)
 {
-    // As livedaw_dsp::universal::console_of: the tokens of the X32's models start "X32".
-    return token.startsWith ("X32") ? juce::String ("X32") : juce::String();
+    // As livedaw_dsp::universal::console_of: the X32's tokens start "X32", the
+    // ProMix 01's "PM", the 02R's "Y2" (none of the WING's do).
+    if (token.startsWith ("X32"))
+        return "X32";
+    if (token.startsWith ("PM"))
+        return "PROMIX 01";
+    if (token.startsWith ("Y2"))
+        return "02R";
+    return {};
 }
 
 static std::vector<Model> build (Table t)

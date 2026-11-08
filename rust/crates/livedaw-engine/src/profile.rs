@@ -1187,6 +1187,15 @@ mod tests {
         let bus = StripParams::new_with(StripKind::Bus, u);
         bus.eq().set_model(model_index(u.eq_bus, "X32EQ4").unwrap());
         assert_eq!(bus.eq().model_spec().unwrap().token, "X32EQ4");
+        // The ProMix 01's and the 02R's too: a compander, their EQs.
+        ch.dynamics().set_model(model_index(u.dynamics, "Y2CPH").unwrap());
+        assert_eq!(ch.dynamics().model_spec().unwrap().token, "Y2CPH");
+        ch.gate().set_model(model_index(u.dynamics, "PMGATE").unwrap());
+        assert_eq!(ch.gate().model_spec().unwrap().token, "PMGATE");
+        bus.eq().set_model(model_index(u.eq_bus, "PMEQ").unwrap());
+        assert_eq!(bus.eq().model_spec().unwrap().token, "PMEQ");
+        ch.eq().set_model(model_index(u.eq_channel, "Y2EQ").unwrap());
+        assert_eq!(ch.eq().model_spec().unwrap().token, "Y2EQ");
         // The X32's profile itself stays the X32's alone.
         let x = Profile::X32.spec().models;
         assert!(model_index(x.dynamics, "GATE").is_none() && model_index(x.fx, "HALL").is_none());

@@ -99,8 +99,8 @@ const Model& model (Table, int index);
 /** Index of the model with this token ("COMP"), or -1. */
 int findModel (Table, const juce::String& token);
 
-/** The console a model comes from, by its token ("X32" for "X32GATE"); empty
-    for the WING's. On a Universal console, which holds every console's
+/** The console a model comes from, by its token ("X32" for "X32GATE",
+    "PROMIX 01" for "PMCOMP", "02R" for "Y2EQ"); empty for the WING's. On a Universal console, which holds every console's
     models, the others' names start with it ("X32 Gate"). */
 juce::String consoleOf (const juce::String& token);
 

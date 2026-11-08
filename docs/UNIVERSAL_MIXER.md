@@ -39,7 +39,9 @@ or environment. Keep it up to date as phases land.
    profiles stay faithful: an X32 holds only the X32's models. The Universal's tables
    are the WING's first, in the WING's order (so WING shows and WING remote clients
    see the same models), then each other console's (`livedaw_dsp::universal`); a show
-   names a block's model by its token, so the order can grow. The X32's come first.
+   names a block's model by its token, so the order can grow. The X32's came first,
+   then the ProMix 01's and the 02R's (November 2026): every emulated console's
+   blocks are now on the Universal.
 
 ## Where the code stood (Sidecar 0.1.6, before Phase 1)
 

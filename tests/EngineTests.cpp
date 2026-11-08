@@ -132,6 +132,13 @@ public:
                 expect (! models::model (models::Fx, models::findModel (models::Fx, "HALL")).name.startsWith ("X32"), "the WING's own keep their names");
                 expectEquals (models::consoleOf ("X32COMP"), juce::String ("X32"));
                 expectEquals (models::consoleOf ("COMP"), juce::String());
+                expectEquals (models::model (models::Dynamics, models::findModel (models::Dynamics, "PMCOMP")).name, juce::String ("PROMIX 01 Compressor"));
+                expectEquals (models::model (models::BusEq, models::findModel (models::BusEq, "Y2EQ")).name, juce::String ("02R 4-Band PEQ"));
+                expectEquals (models::model (models::Fx, models::findModel (models::Fx, "Y2CHREV")).name, juce::String ("02R Chorus->Reverb"));
+                // No WING token looks like another console's.
+                for (const auto& m : models::table (models::Fx))
+                    if (m.index < 2 || (! m.token.startsWith ("X32") && ! m.token.startsWith ("PM") && ! m.token.startsWith ("Y2")))
+                        expect (! m.name.startsWith ("X32 ") && ! m.name.startsWith ("PROMIX") && ! m.name.startsWith ("02R "), m.token);
             }
             // The transfer graph is the shown console's model's: the X32's compressor
             // (past the WING's table) at its defaults, threshold 0 dB, and with one at -30.

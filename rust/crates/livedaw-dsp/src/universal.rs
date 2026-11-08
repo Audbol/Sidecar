@@ -1,48 +1,54 @@
 //! The Universal profile's models: every emulated console's blocks on any
 //! strip (`docs/UNIVERSAL_MIXER.md`, decision 6). The WING's tables come
 //! first, in the WING's order, so its models keep their indices (WING shows,
-//! the WING remote); the X32's follow. A show names a block's model by its
-//! token, so later consoles can be appended without changing older shows.
+//! the WING remote); the X32's, the ProMix 01's and the 02R's follow. A show
+//! names a block's model by its token, so later consoles can be appended
+//! without changing older shows.
 //!
 //! The models run on the DSP that already runs them for their own consoles
 //! (`dynamics`, `eq` and `fx::create` pick them by token).
 
 use crate::model::{ModelSpec, ModelTables};
-use crate::{wing, x32};
+use crate::{promix, wing, x32, y02r};
 
-/// `a` then `b` from its `skip`th model on.
-const fn join<const N: usize>(a: &[ModelSpec], b: &[ModelSpec], skip: usize) -> [ModelSpec; N] {
-    assert!(a.len() + b.len() - skip == N);
-    let mut out = [a[0]; N];
-    let mut i = 0;
-    while i < a.len() {
-        out[i] = a[i];
-        i += 1;
+/// The tables in `parts` one after the other, each from its `skip`th model on.
+const fn join<const N: usize>(parts: &[(&[ModelSpec], usize)]) -> [ModelSpec; N] {
+    let mut out = [parts[0].0[0]; N];
+    let mut n = 0;
+    let mut p = 0;
+    while p < parts.len() {
+        let (table, skip) = parts[p];
+        let mut i = skip;
+        while i < table.len() {
+            out[n] = table[i];
+            n += 1;
+            i += 1;
+        }
+        p += 1;
     }
-    let mut j = skip;
-    while j < b.len() {
-        out[a.len() + j - skip] = b[j];
-        j += 1;
-    }
+    assert!(n == N);
     out
 }
 
-/// The X32's EQs, offered on every strip (an input may take its 6-band, a bus
-/// its 4-band).
-const X32_EQS: [ModelSpec; 2] = [x32::EQ_CHANNEL[0], x32::EQ_BUS[0]];
+/// The other consoles' EQs, offered on every strip (an input may take a bus EQ
+/// and a bus an input's).
+const OTHER_EQS: [ModelSpec; 4] = [x32::EQ_CHANNEL[0], x32::EQ_BUS[0], promix::EQ[0], y02r::EQ[0]];
 
-/// The X32's FX table starts with NONE and EXT, which the WING's has already.
-const X32_FX_SKIP: usize = 2;
+/// The other consoles' FX tables start with NONE and EXT, which the WING's has already.
+const FX_SKIP: usize = 2;
 
-const N_DYN: usize = wing::DYN_MODELS.len() + x32::DYN_MODELS.len();
-const N_EQ_CH: usize = wing::EQ_MODELS_CH.len() + X32_EQS.len();
-const N_EQ_BUS: usize = wing::EQ_MODELS_BUS.len() + X32_EQS.len();
-const N_FX: usize = wing::FX_MODELS.len() + x32::FX_MODELS.len() - X32_FX_SKIP;
+const N_DYN: usize = wing::DYN_MODELS.len() + x32::DYN_MODELS.len() + promix::DYN_MODELS.len() + y02r::DYN_MODELS.len();
+const N_EQ_CH: usize = wing::EQ_MODELS_CH.len() + OTHER_EQS.len();
+const N_EQ_BUS: usize = wing::EQ_MODELS_BUS.len() + OTHER_EQS.len();
+const N_FX: usize =
+    wing::FX_MODELS.len() + x32::FX_MODELS.len() + promix::FX_MODELS.len() + y02r::fx::FX_MODELS.len() - 3 * FX_SKIP;
 
-pub static DYN_MODELS: [ModelSpec; N_DYN] = join(wing::DYN_MODELS, x32::DYN_MODELS, 0);
-pub static EQ_MODELS_CH: [ModelSpec; N_EQ_CH] = join(wing::EQ_MODELS_CH, &X32_EQS, 0);
-pub static EQ_MODELS_BUS: [ModelSpec; N_EQ_BUS] = join(wing::EQ_MODELS_BUS, &X32_EQS, 0);
-pub static FX_MODELS: [ModelSpec; N_FX] = join(wing::FX_MODELS, x32::FX_MODELS, X32_FX_SKIP);
+pub static DYN_MODELS: [ModelSpec; N_DYN] =
+    join(&[(wing::DYN_MODELS, 0), (x32::DYN_MODELS, 0), (promix::DYN_MODELS, 0), (y02r::DYN_MODELS, 0)]);
+pub static EQ_MODELS_CH: [ModelSpec; N_EQ_CH] = join(&[(wing::EQ_MODELS_CH, 0), (&OTHER_EQS, 0)]);
+pub static EQ_MODELS_BUS: [ModelSpec; N_EQ_BUS] = join(&[(wing::EQ_MODELS_BUS, 0), (&OTHER_EQS, 0)]);
+pub static FX_MODELS: [ModelSpec; N_FX] =
+    join(&[(wing::FX_MODELS, 0), (x32::FX_MODELS, FX_SKIP), (&promix::FX_MODELS, FX_SKIP), (&y02r::fx::FX_MODELS, FX_SKIP)]);
 
 /// The Universal's models. Its aux channels, FX premium slots (1-8), filter
 /// tools and a new strip's gate and dynamics stay the WING's.
@@ -58,10 +64,27 @@ pub static MODELS: ModelTables = ModelTables {
     comp_default: "COMP",
 };
 
-/// The console a model comes from, by its token's prefix: "X32" for the
-/// X32's, None for the WING's (the Universal's own).
+/// The console a model comes from, by its token's prefix ("X32" for the X32's,
+/// "PROMIX 01" for the ProMix 01's, "02R" for the 02R's); None for the WING's
+/// (the Universal's own).
 pub fn console_of(token: &str) -> Option<&'static str> {
-    token.starts_with("X32").then_some("X32")
+    if token.starts_with("X32") {
+        Some("X32")
+    } else if token.starts_with("PM")
+        && (model_in(promix::DYN_MODELS, token) || model_in(promix::EQ, token) || promix::fx::is_promix(token))
+    {
+        Some("PROMIX 01")
+    } else if token.starts_with("Y2")
+        && (model_in(y02r::DYN_MODELS, token) || model_in(y02r::EQ, token) || y02r::fx::is_02r(token))
+    {
+        Some("02R")
+    } else {
+        None
+    }
+}
+
+fn model_in(table: &[ModelSpec], token: &str) -> bool {
+    table.iter().any(|m| m.token == token)
 }
 
 #[cfg(test)]
@@ -82,15 +105,21 @@ mod tests {
     }
 
     #[test]
-    fn every_x32_model_is_offered_once() {
-        for m in x32::DYN_MODELS {
-            assert!(model_index(&DYN_MODELS, m.token).is_some(), "{}", m.token);
+    fn every_consoles_models_are_offered_once() {
+        for table in [x32::DYN_MODELS, promix::DYN_MODELS, y02r::DYN_MODELS] {
+            for m in table {
+                assert!(model_index(&DYN_MODELS, m.token).is_some(), "{}", m.token);
+            }
         }
         for t in [&EQ_MODELS_CH[..], &EQ_MODELS_BUS[..]] {
-            assert!(model_index(t, "X32EQ4").is_some() && model_index(t, "X32EQ6").is_some());
+            for token in ["X32EQ4", "X32EQ6", "PMEQ", "Y2EQ"] {
+                assert!(model_index(t, token).is_some(), "{token}");
+            }
         }
-        for m in &x32::FX_MODELS[X32_FX_SKIP..] {
-            assert!(model_index(&FX_MODELS, m.token).is_some(), "{}", m.token);
+        for table in [x32::FX_MODELS, &promix::FX_MODELS[..], &y02r::fx::FX_MODELS[..]] {
+            for m in &table[FX_SKIP..] {
+                assert!(model_index(&FX_MODELS, m.token).is_some(), "{}", m.token);
+            }
         }
         // Tokens stay unique, so a show's token finds one model.
         for t in [&DYN_MODELS[..], &EQ_MODELS_CH[..], &EQ_MODELS_BUS[..], &FX_MODELS[..]] {
@@ -99,10 +128,13 @@ mod tests {
             }
         }
         assert_eq!(FX_MODELS.iter().filter(|m| m.token == "NONE" || m.token == "EXT").count(), 2);
+        assert!(DYN_MODELS.iter().all(|m| m.params.len() <= wing::MAX_DYN_PARAMS));
+        assert!(EQ_MODELS_CH.iter().chain(EQ_MODELS_BUS.iter()).all(|m| m.params.len() <= wing::MAX_EQ_PARAMS));
+        assert!(FX_MODELS.iter().all(|m| m.params.len() <= wing::MAX_FX_PARAMS));
     }
 
     #[test]
-    fn the_x32s_models_run() {
+    fn every_consoles_models_run() {
         use crate::wing::fx::{allowed_in, create, FxContext};
         let ctx = FxContext { sample_rate: 48000.0, max_block: 64 };
         for m in &FX_MODELS[wing::FX_MODELS.len()..] {
@@ -111,7 +143,32 @@ mod tests {
         // The X32's send / return devices are premium: FX 1-8, as the WING's.
         let hall = model_index(&FX_MODELS, "X32HALL").unwrap();
         assert!(allowed_in(&MODELS, hall, 7) && !allowed_in(&MODELS, hall, 8));
+        // Each console's dynamics and EQ make a configuration on the shared DSP.
+        let mut values = [0.0f32; 32];
+        for m in DYN_MODELS.iter().skip(wing::DYN_MODELS.len()) {
+            m.defaults_into(&mut values);
+            let mut out = [0.0f32; 2];
+            // A model the DSP doesn't know has no static curve and no configuration: every one here has one.
+            let known = crate::wing::dynamics::static_curve_in(
+                &DYN_MODELS,
+                model_index(&DYN_MODELS, m.token).unwrap(),
+                &values,
+                &[-40.0, 0.0],
+                &mut out,
+            );
+            assert!(known || m.category == crate::model::ModelCategory::Gate, "{} has no level curve", m.token);
+        }
+    }
+
+    #[test]
+    fn a_model_names_its_console() {
         assert_eq!(console_of("X32GATE"), Some("X32"));
-        assert_eq!(console_of("GATE"), None);
+        assert_eq!(console_of("PMCOMP"), Some("PROMIX 01"));
+        assert_eq!(console_of("PMREV"), Some("PROMIX 01"));
+        assert_eq!(console_of("Y2EQ"), Some("02R"));
+        assert_eq!(console_of("Y2CHREV"), Some("02R"));
+        for wing in ["GATE", "COMP", "HALL", "PIA", "PULSAR", "PHASER", "PCORR"] {
+            assert_eq!(console_of(wing), None, "{wing}");
+        }
     }
 }

@@ -5,6 +5,10 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+- Universal Mixer, every console's blocks: the ProMix 01's (compressor, gate,
+  ducking, 3-band EQ, its 15 effects) and the 02R's (compressor, expander, the two
+  companders, gate, ducking, 4-band EQ, its 17 effects) join the WING's and the X32's
+  on a Universal console, named with their console ("PROMIX 01 Compressor").
 - Universal Mixer, stand-alone basics: the top bar shows the show's name and its
   **SHOW** menu (NEW, OPEN, SAVE, SAVE AS); the MIXER view has a column per DCA (name,
   colour, MUTE, SOLO, fader) and the mute groups' keys (engage, ALL OFF) after the
