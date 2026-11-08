@@ -785,8 +785,8 @@ The top bar shows how many channels, aux, buses, mains, matrices, DCAs, mute gro
 and FX slots the console has, and the show's name (UNTITLED SHOW until it is saved).
 Its **SHOW** key opens the show menu: **New show**, **Open...**, **Save** and **Save
 as...**, as on the WING's LIBRARY. Under it, the view keys show one view at a time:
-**MIXER**, **ROUTING**, **FX RACK**, **MONITORING**, **SCENES**, **RECORDER** and
-**SETUP**. The inspector of the selected strip opens beside any of them.
+**MIXER**, **ROUTING**, **FX RACK**, **MONITORING**, **SCENES**, **LIBRARY**,
+**RECORDER** and **SETUP**. The inspector of the selected strip opens beside any of them.
 
 Every control works the same way. A drag moves it by how far your finger or the mouse
 travels, so touching a fader never makes it jump; Shift makes the move finer. A
@@ -967,6 +967,25 @@ The WING surface's LIBRARY can widen a snippet to more strips and sections.
 
 ![SCENES: a show's scenes, Song 1 selected](images/universal-scenes.png)
 
+### LIBRARY
+
+The files in the Library folder (`Documents/Sidecar/Library`, the WING surface's
+LIBRARY INT), in a list that **ALL**, **SCENES**, **SNIPPETS**, **CHANNEL** and **FX**
+narrow. Each row shows the file's kind, name, what it holds and when it was saved. For
+the file selected:
+
+- **LOAD** puts a scene or snippet file onto the console, a channel preset onto the
+  selected strip, and an FX preset into the **FX SLOT** chosen beside the keys.
+- **ADD TO SHOW** makes it a scene of the show: a scene file is imported, and a snippet
+  or preset becomes a scene of its own (a channel preset's loads onto the selected
+  strip, an FX preset's into the FX SLOT).
+- **RENAME**, and **DELETE**, which moves it to the bin after asking.
+- **SAVE SCENE** writes the show's current scene, with its snippets, as a scene file.
+
+What a key did shows under the keys.
+
+![LIBRARY: a channel preset and a scene file in the Library folder](images/universal-library.png)
+
 ### RECORDER
 
 The WING display's recorder pages: **MULTITRACK** (see *Multitrack recording*) and
@@ -1011,10 +1030,11 @@ compensation and output protection.
 
 ### Still on the WING surface
 
-Custom controls and the LIBRARY (its file browser, adding files to the show, and a
-snippet's strips and sections beyond one strip) are on the WING surface for now. The
-show's NEW, OPEN and SAVE are on the top bar's SHOW key, SCENES runs the show's scenes
-and makes and runs their snippets, channel and FX presets are saved and loaded on the inspector's STRIP page and on FX
+Custom controls are on the WING surface for now, and so are the LIBRARY's other
+locations (USB, the open show's folder), its WING .snap import and its clips, and a
+snippet's strips and sections beyond one strip. The show's NEW, OPEN and SAVE are on
+the top bar's SHOW key, SCENES runs the show's scenes and makes and runs their
+snippets, LIBRARY browses the Library folder, channel and FX presets are saved and loaded on the inspector's STRIP page and on FX
 RACK, and the remotes' settings are on SETUP > REMOTE. Also on the WING surface: the WING's REMOTE LOCK and HA
 REMOTE, and the DAW's surface layout and presets. The WING
 surface addresses the WING's ranges: a console with other aux, main, matrix, DCA or

@@ -12,10 +12,11 @@ UniversalSkin::UniversalSkin (UiContext& c)
                : c.engine.getProfile() == ld::kProfileYamaha02R ? "02R SURFACE"
                                                                : "WING SURFACE",
                theme.accent, theme), showKey ("SHOW", theme.accent, theme), mixer (c, theme), routingView (c, theme), fxRack (c, theme),
-      monitoring (c, theme), scenes (c, theme), recorder (c, theme), setup (c, theme), inspector (c, theme)
+      monitoring (c, theme), scenes (c, theme), library (c, theme), recorder (c, theme), setup (c, theme), inspector (c, theme)
 {
     const std::pair<const char*, View> views[] = { { "MIXER", View::Mixer },           { "ROUTING", View::Routing }, { "FX RACK", View::Fx },
-                                                   { "MONITORING", View::Monitoring }, { "SCENES", View::Scenes },   { "RECORDER", View::Recorder },
+                                                   { "MONITORING", View::Monitoring }, { "SCENES", View::Scenes },   { "LIBRARY", View::Library },
+                                                   { "RECORDER", View::Recorder },
                                                    { "SETUP", View::Setup } };
     for (auto [name, target] : views)
     {
@@ -64,6 +65,7 @@ UniversalSkin::UniversalSkin (UiContext& c)
     addChildComponent (fxRack);
     addChildComponent (monitoring);
     addChildComponent (scenes);
+    addChildComponent (library);
     addChildComponent (recorder);
     addChildComponent (setup);
     // Opened by a strip's selection (a tap on its name), closed by its CLOSE key.
@@ -84,6 +86,7 @@ void UniversalSkin::showView (View v)
     fxRack.setVisible (v == View::Fx);
     monitoring.setVisible (v == View::Monitoring);
     scenes.setVisible (v == View::Scenes);
+    library.setVisible (v == View::Library);
     recorder.setVisible (v == View::Recorder);
     setup.setVisible (v == View::Setup);
     for (auto& key : viewKeys)
@@ -96,6 +99,7 @@ void UniversalSkin::showView (View v)
         case View::Fx:         fxRack.refresh(); break;
         case View::Monitoring: monitoring.refresh(); break;
         case View::Scenes:     scenes.refresh(); break;
+        case View::Library:    library.refresh(); break;
         case View::Recorder:   break;
         case View::Setup:      setup.refresh(); break;
     }
@@ -192,7 +196,7 @@ void UniversalSkin::resized()
     inspector.setVisible (showInspector);
     if (showInspector)
         inspector.setBounds (area.removeFromRight (juce::jmin (460, area.getWidth() / 2)));
-    for (auto* v : std::initializer_list<juce::Component*> { &mixer, &routingView, &fxRack, &monitoring, &scenes, &recorder, &setup })
+    for (auto* v : std::initializer_list<juce::Component*> { &mixer, &routingView, &fxRack, &monitoring, &scenes, &library, &recorder, &setup })
         v->setBounds (area);
 }
 

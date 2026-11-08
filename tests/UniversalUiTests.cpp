@@ -12,6 +12,8 @@
 #include "ui/UniversalSkin.h"
 #include "ui/StripCustomize.h"
 #include "ui/universal/StripPanel.h"
+#include "ui/ShowPanel.h"
+#include "ui/universal/LibraryView.h"
 #include "ui/universal/ScenesView.h"
 #include "ui/universal/FxRackView.h"
 #include "engine/MidiRemote.h"
@@ -1030,7 +1032,7 @@ public:
             expect (skin.getMonitoring().isVisible() && ! skin.getFxRack().isVisible());
             skin.showView (ui::UniversalSkin::View::Mixer);
             expect (skin.getMixer().isVisible() && ! skin.getMonitoring().isVisible());
-            for (auto v : { ui::UniversalSkin::View::Scenes, ui::UniversalSkin::View::Recorder, ui::UniversalSkin::View::Setup })
+            for (auto v : { ui::UniversalSkin::View::Scenes, ui::UniversalSkin::View::Library, ui::UniversalSkin::View::Recorder, ui::UniversalSkin::View::Setup })
             {
                 skin.showView (v);
                 expect (skin.getView() == v && ! skin.getMixer().isVisible());
@@ -1523,6 +1525,85 @@ public:
             expectEquals (view.getSelectedSnippet(), -1);
         }
 
+        beginTest ("LIBRARY lists the Library folder's files, loads them, adds them to the show, renames and deletes them");
+        {
+            // A Library folder of the test's own.
+            const auto home = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("sidecar-universal-library-test");
+            home.deleteRecursively();
+            home.createDirectory();
+            const auto setHome = [] (const juce::String& h)
+            {
+               #if JUCE_WINDOWS
+                _putenv_s ("SIDECAR_HOME", h.toRawUTF8());
+               #else
+                setenv ("SIDECAR_HOME", h.toRawUTF8(), 1);
+               #endif
+            };
+            setHome (home.getFullPathName());
+            {
+                MixerEngine engine (0);
+                engine.configure (nullptr);
+                UiRig rig (engine);
+                auto viewOwner = std::make_unique<LibraryView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+                auto& view = *viewOwner;
+                view.setSize (1400, 700);
+                view.refresh();
+                expectEquals (view.getNumFiles(), 0);
+                expect (view.saveScene().startsWith ("Recall a scene first"));
+
+                // SAVE SCENE: the current scene as a scene file.
+                auto& ch2 = *engine.getChannels()[1];
+                ch2.params.faderDb = -6.0f;
+                expectEquals (rig.show.addScene ("Verse"), 0);
+                rig.show.recallScene (0);
+                expect (view.saveScene().startsWith ("Saved scene 1"));
+                expectEquals (view.getNumFiles(), 1);
+                expectEquals (view.getFile (view.getSelected()).getFileName(), juce::String ("Verse.lsnap"));
+
+                // A channel preset and an FX preset beside it; the filters narrow the list.
+                const auto folder = ui::ShowPanel::libraryFolder();
+                ch2.setName ("Bass");
+                expect (rig.show.saveChannelPreset (state::StripRef::of (ch2), state::AllSections & ~(juce::uint32) state::Routing,
+                                                    folder.getChildFile ("Bass.lchn"), "Bass")
+                            .wasOk());
+                expect (rig.show.saveFxPreset (0, folder.getChildFile ("Room.lfx"), "Room").wasOk());
+                view.refresh();
+                expectEquals (view.getNumFiles(), 3);
+                view.setFilter (LibraryView::Filter::Channel);
+                expectEquals (view.getNumFiles(), 1);
+                view.setFilter (LibraryView::Filter::All);
+
+                // LOAD: the scene onto the console; the channel preset onto the selected strip.
+                ch2.params.faderDb = -30.0f;
+                view.selectFile (folder.getChildFile ("Verse.lsnap"));
+                expect (view.load().startsWith ("Loaded Verse"), view.getStatus());
+                expectWithinAbsoluteError (ch2.params.faderDb.load(), -6.0f, 0.01f);
+                auto& ch5 = *engine.getChannels()[4];
+                view.selectFile (folder.getChildFile ("Bass.lchn"));
+                expect (view.load().startsWith ("Select the strip"));
+                rig.selected = &ch5;
+                ch5.params.faderDb = -40.0f;
+                expect (view.load().startsWith ("Loaded Bass onto"));
+                expectWithinAbsoluteError (ch5.params.faderDb.load(), -6.0f, 0.01f, "the preset's fader (saved at -6 dB)");
+
+                // ADD TO SHOW: the preset becomes a scene of its own.
+                expect (view.addToShow().startsWith ("Added Bass as scene 2"));
+                expectEquals (rig.show.getNumScenes(), 2);
+
+                // RENAME and DELETE.
+                expect (view.rename ("Bass DI").startsWith ("Renamed"));
+                expect (folder.getChildFile ("Bass DI.lchn").existsAsFile() && ! folder.getChildFile ("Bass.lchn").exists());
+                expectEquals (view.getFile (view.getSelected()).getFileName(), juce::String ("Bass DI.lchn"));
+                view.selectFile (folder.getChildFile ("Room.lfx"));
+                expect (view.rename ("Verse").startsWith ("Renamed"), "another extension: no clash");
+                expect (view.remove().startsWith ("Deleted"));
+                expectEquals (view.getNumFiles(), 2);
+                expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds()), "universal-library.png"));
+            }
+            setHome ({});
+            home.deleteRecursively();
+        }
+
         beginTest ("Channel and FX presets from the Universal Mixer: saved to a file and loaded back");
         {
             MixerEngine engine (0);
@@ -1580,7 +1661,8 @@ public:
             skin.selectionChanged();
             using V = ui::UniversalSkin::View;
             const std::pair<V, const char*> views[] = { { V::Mixer, "mixer" },       { V::Routing, "routing" }, { V::Fx, "fx" },
-                                                        { V::Monitoring, "monitoring" }, { V::Scenes, "scenes" },   { V::Recorder, "recorder" },
+                                                        { V::Monitoring, "monitoring" }, { V::Scenes, "scenes" },   { V::Library, "library" },
+                                                        { V::Recorder, "recorder" },
                                                         { V::Setup, "setup" } };
             for (const auto& [v, viewName] : views)
             {

@@ -305,6 +305,7 @@ set(LIVEDAW_UI_SOURCES
     src/ui/universal/FxRackView.cpp
     src/ui/universal/MonitorView.cpp
     src/ui/universal/ScenesView.cpp
+    src/ui/universal/LibraryView.cpp
     src/ui/universal/RecorderView.cpp
     src/ui/universal/SetupView.cpp
     src/ui/MidiRemoteUi.cpp

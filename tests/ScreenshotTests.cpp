@@ -569,7 +569,8 @@ public:
             skin.refreshAll();
             skin.selectionChanged();
             for (auto view : { ui::UniversalSkin::View::Mixer, ui::UniversalSkin::View::Routing, ui::UniversalSkin::View::Fx,
-                               ui::UniversalSkin::View::Monitoring, ui::UniversalSkin::View::Scenes, ui::UniversalSkin::View::Recorder, ui::UniversalSkin::View::Setup })
+                               ui::UniversalSkin::View::Monitoring, ui::UniversalSkin::View::Scenes, ui::UniversalSkin::View::Library, ui::UniversalSkin::View::Recorder,
+                               ui::UniversalSkin::View::Setup })
             {
                 skin.showView (view);
                 skin.refreshAll();

@@ -1042,7 +1042,10 @@ strip and every DCA in use).
 
 SCENES (`ScenesView.h`) runs and edits the show's scenes through `Show` (`recallScene`,
 `recallNext` / `recallPrevious`, `addScene`, `storeScene`, `moveScene`, `removeScene`,
-`setSceneName`; recalls are logged with `logRecall`). RECORDER (`RecorderView.h`)
+`setSceneName`; recalls are logged with `logRecall`). LIBRARY (`LibraryView.h`) lists
+`ShowPanel::libraryFolder()`'s files (`Show::readLibraryFile`, `readPreset`) and runs
+them through `Show` (`applyLibraryFile`, `loadChannelPreset`, `loadFxPreset`,
+`addItem`, `exportScene`). RECORDER (`RecorderView.h`)
 embeds the WING display's `RecorderPage` (on `UiContext::recording`) and
 `UsbRecorderPage`, with `showEditor` for the multitrack editor. SETUP (`SetupView.h`):
 the configuration editor applies its counts with `MixerEngine::setNumStrips`
@@ -1608,13 +1611,14 @@ README's *Known limitations*; keep the three in step.
 - The Universal core (Phase 1, `docs/UNIVERSAL_MIXER.md`): user taps feed sends only
   (not keys or direct outs) and aren't delay compensated,
   every strip has the WING's own blocks (chain blocks since Phase 3 step 5; a
-  profile's own set comes with Phase 4), and the strip sources, the monitor SOURCE / DIRECT IN lists and
-  the talkback destinations cover the WING's buses, mains and matrices only. The
-  Universal Mixer's interface is a preview: it covers the mixer, chains, sends,
-  routing, FX, monitoring (with the monitor paths' processing and talkback), DCAs and
-  mute groups, scenes, the recorder, the show's files and setup for any
-  configuration, and the remotes' settings; custom controls and the library's file
-  browser are on the WING surface, which addresses the WING's ranges.
+  profile's own set comes with Phase 4), and the strip sources cover the WING's
+  buses, mains and matrices only (the monitor SOURCE / DIRECT IN lists and the
+  talkback destinations reach every strip). The Universal Mixer's interface is a
+  preview: it covers the mixer, chains, sends, routing, FX, monitoring (with the
+  monitor paths' processing and talkback), DCAs and mute groups, scenes and
+  snippets, the Library folder's files, the recorder, the show's files and setup for
+  any configuration, and the remotes' settings; custom controls are on the WING
+  surface, which addresses the WING's ranges.
 
 - Hardware: the audio interface's ports stand in for the WING's. No StageConnect,
   AES50 or Dante; source GAIN is digital and +48V is only stored.

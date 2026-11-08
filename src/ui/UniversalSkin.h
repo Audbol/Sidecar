@@ -4,6 +4,7 @@
 #include "ui/UiContext.h"
 #include "ui/universal/FxRackView.h"
 #include "ui/universal/Inspector.h"
+#include "ui/universal/LibraryView.h"
 #include "ui/universal/MixerView.h"
 #include "ui/universal/MonitorView.h"
 #include "ui/universal/RecorderView.h"
@@ -18,7 +19,7 @@ namespace livedaw::ui
     preview while it is being built: a top bar (the console it runs, the show
     and its SHOW menu: NEW, OPEN, SAVE, SAVE AS; the way back to the WING
     surface) and the view keys over the view shown (MIXER,
-    ROUTING, FX RACK, MONITORING, SCENES, RECORDER, SETUP), with the inspector
+    ROUTING, FX RACK, MONITORING, SCENES, LIBRARY, RECORDER, SETUP), with the inspector
     of the selected strip beside it (src/ui/universal). */
 class UniversalSkin final : public Skin
 {
@@ -37,6 +38,7 @@ public:
         Fx,
         Monitoring,
         Scenes,
+        Library,
         Recorder,
         Setup
     };
@@ -48,6 +50,7 @@ public:
     universal::FxRackView& getFxRack() noexcept { return fxRack; }
     universal::MonitorView& getMonitoring() noexcept { return monitoring; }
     universal::ScenesView& getScenes() noexcept { return scenes; }
+    universal::LibraryView& getLibrary() noexcept { return library; }
     universal::RecorderView& getRecorder() noexcept { return recorder; }
     universal::SetupView& getSetup() noexcept { return setup; }
     void showChanged() override
@@ -73,6 +76,7 @@ private:
     universal::FxRackView fxRack;
     universal::MonitorView monitoring;
     universal::ScenesView scenes;
+    universal::LibraryView library;
     universal::RecorderView recorder;
     universal::SetupView setup;
     View view = View::Mixer;

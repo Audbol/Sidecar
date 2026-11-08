@@ -277,7 +277,7 @@ This list matches the notice Sidecar shows at start-up.
   matrices up to 8192 samples; solo, monitoring, direct outs and recorder taps are
   not compensated.
 - **The Universal Mixer** (SETUP > SIDECAR > INTERFACE: UNIVERSAL) is a preview: custom
-  controls and the LIBRARY's file browser are still on the WING surface, and on a console bigger than a WING
+  controls are still on the WING surface, and on a console bigger than a WING
   the WING surface and the WING remote apps reach its first 40 channels, 16 buses, 4
   mains and 8 matrices.
 - **WING remote apps:** the WING network protocols answer every parameter of the

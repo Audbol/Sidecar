@@ -5,6 +5,9 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+- Universal Mixer: a LIBRARY view, the Library folder's scene, snippet, channel and FX
+  preset files with filters, LOAD (onto the console, the selected strip or an FX slot),
+  ADD TO SHOW, RENAME, DELETE and SAVE SCENE (the current scene as a file).
 - X32: INIT on UTILITY's new init tab puts the selected strip back to an X32's
   factory settings (two pushes; the source stays).
 - X32: the display's ASSIGN editor also sets effect parameters and the selected
