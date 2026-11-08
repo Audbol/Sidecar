@@ -32,6 +32,14 @@ or environment. Keep it up to date as phases land.
      is released as **0.2.0**.
    - The stage order stays Bus → Main → Matrix (buses send to buses in waves); no
      main → main or matrix → matrix sends until an emulation needs them.
+6. **Every console's blocks on the Universal Mixer** (November 2026): the Universal
+   profile isn't limited to one console's models. Any block of any emulated console
+   (its gates, dynamics, EQs and FX devices) can go on any strip of a Universal
+   console, under its own name with the console's in front ("X32 Gate"). The console
+   profiles stay faithful: an X32 holds only the X32's models. The Universal's tables
+   are the WING's first, in the WING's order (so WING shows and WING remote clients
+   see the same models), then each other console's (`livedaw_dsp::universal`); a show
+   names a block's model by its token, so the order can grow. The X32's come first.
 
 ## Where the code stood (Sidecar 0.1.6, before Phase 1)
 
@@ -87,7 +95,7 @@ Three layers:
      emulation can choose the console's.
    - A show format that describes this generally (versioned; 0.1.x shows load into it).
 2. **Universal Mixer**: its own interface and feature set over the core: the "without
-   limits" mixer.
+   limits" mixer, whose blocks can be any emulated console's (decision 6).
 3. **Emulations** (profiles): each limits and dresses the core: the console's counts,
    strip types and formats, allowed models per block, process orders and taps,
    defaults, laws and ballistics, its surface and screens, its remote protocols and its

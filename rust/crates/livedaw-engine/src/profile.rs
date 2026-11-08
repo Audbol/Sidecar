@@ -636,9 +636,9 @@ static WING: ProfileSpec = ProfileSpec {
     fx_send_buses: &[],
 };
 
-/// No console's limits. Its strips have the WING's blocks (a profile's own set
-/// comes with Phase 4's consoles), it speaks the WING's remote protocols, and a
-/// new one starts with the WING's counts.
+/// No console's limits. Its strips may hold any emulated console's blocks
+/// (`livedaw_dsp::universal`: the WING's, then the X32's), it speaks the WING's
+/// remote protocols, and a new one starts with the WING's counts.
 static UNIVERSAL: ProfileSpec = ProfileSpec {
     profile: Profile::Universal,
     name: "Universal",
@@ -651,7 +651,7 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
     main_fader: None,
     pan: PanLaw::WING,
     port_groups: WING_PORT_GROUPS,
-    models: &WING_MODELS,
+    models: &livedaw_dsp::universal::MODELS,
     remotes: Remotes::WING,
     palette: Palette::WING,
     labels: WING_LABELS,
@@ -1147,18 +1147,49 @@ mod tests {
     #[test]
     fn the_wings_models() {
         use livedaw_dsp::wing::{AUX_DYN_MODELS, DYN_MODELS, EQ_MODELS_BUS, EQ_MODELS_CH, FILTER_TOOLS, FX_MODELS};
-        for p in [Profile::Universal, Profile::Wing] {
-            let m = p.spec().models;
-            assert_eq!(m.table(0), DYN_MODELS);
-            assert_eq!(m.table(1), EQ_MODELS_CH);
-            assert_eq!(m.table(2), EQ_MODELS_BUS);
-            assert_eq!(m.table(3), FILTER_TOOLS);
-            assert_eq!(m.table(4), FX_MODELS);
-            assert_eq!(m.table(9), DYN_MODELS, "out of range: dynamics");
+        let m = Profile::Wing.spec().models;
+        assert_eq!(m.table(0), DYN_MODELS);
+        assert_eq!(m.table(1), EQ_MODELS_CH);
+        assert_eq!(m.table(2), EQ_MODELS_BUS);
+        assert_eq!(m.table(3), FILTER_TOOLS);
+        assert_eq!(m.table(4), FX_MODELS);
+        assert_eq!(m.table(9), DYN_MODELS, "out of range: dynamics");
+        // The Universal's tables start with the WING's, in its order.
+        let u = Profile::Universal.spec().models;
+        for t in 0..5 {
+            assert_eq!(&u.table(t)[..m.table(t).len()], m.table(t), "table {t}");
+        }
+        for m in [m, u] {
             assert_eq!(m.aux_dynamics, AUX_DYN_MODELS);
             assert!(AUX_DYN_MODELS.iter().all(|t| m.aux_may_hold(t)));
             assert!(!m.aux_may_hold("NO SUCH MODEL"));
         }
+    }
+
+    #[test]
+    fn a_universal_strip_takes_the_x32s_blocks() {
+        use crate::params::StripParams;
+        use livedaw_dsp::model::model_index;
+        let u = Profile::Universal.spec().models;
+        let ch = StripParams::new_with(StripKind::Channel, u);
+        // A new strip starts on the WING's blocks.
+        assert_eq!(ch.gate().model_spec().unwrap().token, "GATE");
+        assert_eq!(ch.dynamics().model_spec().unwrap().token, "COMP");
+        // Any X32 model goes on it, and takes its own defaults.
+        ch.gate().set_model(model_index(u.dynamics, "X32DUCK").unwrap());
+        ch.dynamics().set_model(model_index(u.dynamics, "X32COMP").unwrap());
+        ch.eq().set_model(model_index(u.eq_channel, "X32EQ6").unwrap());
+        assert_eq!(ch.gate().model_spec().unwrap().token, "X32DUCK");
+        assert_eq!(ch.dynamics().model_spec().unwrap().token, "X32COMP");
+        assert_eq!(ch.dynamics().param("ratio").unwrap().load(), 5.0, "the X32's 3.0:1 (item 5)");
+        assert_eq!(ch.eq().model_spec().unwrap().token, "X32EQ6");
+        assert!(ch.eq().param("6q").is_some(), "six bands on an input");
+        let bus = StripParams::new_with(StripKind::Bus, u);
+        bus.eq().set_model(model_index(u.eq_bus, "X32EQ4").unwrap());
+        assert_eq!(bus.eq().model_spec().unwrap().token, "X32EQ4");
+        // The X32's profile itself stays the X32's alone.
+        let x = Profile::X32.spec().models;
+        assert!(model_index(x.dynamics, "GATE").is_none() && model_index(x.fx, "HALL").is_none());
     }
 
     #[test]

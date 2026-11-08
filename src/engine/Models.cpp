@@ -40,6 +40,12 @@ int Model::find (const juce::String& id) const noexcept
     return -1;
 }
 
+juce::String consoleOf (const juce::String& token)
+{
+    // As livedaw_dsp::universal::console_of: the tokens of the X32's models start "X32".
+    return token.startsWith ("X32") ? juce::String ("X32") : juce::String();
+}
+
 static std::vector<Model> build (Table t)
 {
     std::vector<Model> models;
@@ -53,6 +59,10 @@ static std::vector<Model> build (Table t)
         model.index = m;
         model.token = takeString (ld::ld_model_text (t, m, 0));
         model.name = takeString (ld::ld_model_text (t, m, 1));
+        // A Universal console holds every console's models: name the console
+        // of those that aren't the WING's ("X32 Gate" beside "Wing Gate").
+        if (const auto console = consoleOf (model.token); console.isNotEmpty() && shownProfile() == ld::kProfileUniversal)
+            model.name = console + " " + model.name;
         model.category = static_cast<Category> (juce::jlimit (0, 9, (int) ld::ld_model_category (t, m)));
 
         const int np = ld::ld_model_num_params (t, m);

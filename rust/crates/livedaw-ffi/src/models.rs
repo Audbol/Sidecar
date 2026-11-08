@@ -200,7 +200,8 @@ pub extern "C" fn ld_model_param_from_normalised(t: i32, m: i32, p: i32, pos: f3
     param(t, m, p).map_or(0.0, |p| p.from_normalised(pos))
 }
 
-/// Static curve of a dynamics model (the transfer graph): for each input level
+/// Static curve of a dynamics model of the shown console's table (as the other
+/// model calls: `ld_models_show_profile`), its transfer graph: for each input level
 /// in `in_db`, the output level, computed from the same configuration the
 /// audio thread runs. Returns false (outputs untouched) for models without a
 /// level curve.
@@ -225,7 +226,7 @@ pub unsafe extern "C" fn ld_dyn_static_curve(
     let values = std::slice::from_raw_parts(values, nv);
     let ins = std::slice::from_raw_parts(in_db, n);
     let outs = std::slice::from_raw_parts_mut(out_db, n);
-    livedaw_dsp::wing::dynamics::static_curve(model, values, ins, outs)
+    livedaw_dsp::wing::dynamics::static_curve_in(table(0), model, values, ins, outs)
 }
 
 /// # Safety

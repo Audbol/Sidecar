@@ -120,6 +120,46 @@ public:
             expect (palette::count() == 18 && consoleColour (9) == juce::Colour (0xff000000u | ld::ld_colour_rgb (9)) && consoleColourName (1) == "Dark Blue");
             expectEquals (palette::clamp (40), 18);
             expectEquals (consoleColourName (19), juce::String(), "no such colour");
+            // The Universal holds every console's models: the WING's first, as on a
+            // WING, then the X32's, named with their console.
+            {
+                const auto& dyn = models::table (models::Dynamics);
+                expectEquals (dyn[0].name, juce::String ("Wing Gate"));
+                const int x32Gate = models::findModel (models::Dynamics, "X32GATE");
+                expect (x32Gate > 0 && dyn[(size_t) x32Gate].name == "X32 Gate", dyn[(size_t) juce::jmax (0, x32Gate)].name);
+                expectEquals (models::model (models::ChannelEq, models::findModel (models::ChannelEq, "X32EQ6")).name, juce::String ("X32 6-Band EQ"));
+                expectEquals (models::model (models::Fx, models::findModel (models::Fx, "X32HALL")).name, juce::String ("X32 Hall Reverb"));
+                expect (! models::model (models::Fx, models::findModel (models::Fx, "HALL")).name.startsWith ("X32"), "the WING's own keep their names");
+                expectEquals (models::consoleOf ("X32COMP"), juce::String ("X32"));
+                expectEquals (models::consoleOf ("COMP"), juce::String());
+            }
+            // The transfer graph is the shown console's model's: the X32's compressor
+            // (past the WING's table) at its defaults, threshold 0 dB, and with one at -30.
+            const auto compressorCurve = [this] (float thresholdDb)
+            {
+                const int comp = models::findModel (models::Dynamics, "X32COMP");
+                const auto& spec = models::model (models::Dynamics, comp);
+                std::vector<float> values;
+                for (const auto& p : spec.params)
+                    values.push_back (p.id == "thr" ? thresholdDb : p.defaultValue);
+                const float in[] = { -40.0f, 0.0f };
+                float out[] = { 1.0f, 1.0f };
+                expect (models::dynStaticCurve (comp, values.data(), (int) values.size(), in, out, 2), spec.token);
+                return std::pair { out[0], out[1] };
+            };
+            {
+                const auto [quiet, loud] = compressorCurve (-30.0f);
+                expectWithinAbsoluteError (quiet, -40.0f, 0.5f, "below the threshold: unchanged");
+                expect (loud < -10.0f, "above it: compressed (" + juce::String (loud) + ")");
+            }
+            // On an X32 its own models keep their own names.
+            setShownProfile (ld::kProfileX32);
+            expectEquals (models::model (models::Dynamics, models::findModel (models::Dynamics, "X32GATE")).name, juce::String ("Gate"));
+            expectEquals (models::findModel (models::Dynamics, "GATE"), -1, "an X32 holds only the X32's");
+            {
+                const auto [quiet, loud] = compressorCurve (-30.0f);
+                expect (quiet > -40.5f && loud < -10.0f, "the X32's compressor, not WING model " + juce::String (models::findModel (models::Dynamics, "X32COMP")));
+            }
             setShownProfile (ld::kProfileWing);
 
             // Wrappers survive structure changes; numbering follows position.

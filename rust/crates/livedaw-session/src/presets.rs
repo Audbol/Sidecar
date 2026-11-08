@@ -15,7 +15,6 @@ use crate::refs::StripRef;
 use crate::show::write_atomically;
 use crate::xml::{self, Element};
 use livedaw_dsp::model::model_index;
-use livedaw_dsp::wing::FX_MODELS;
 use livedaw_engine::params::MAX_FX;
 use livedaw_engine::{Engine, StripKind};
 use std::fs;
@@ -66,7 +65,11 @@ pub fn info(preset: &Element) -> Option<PresetInfo> {
             let slot = preset.child("Slot")?;
             let detail = match console::plugin_element(slot) {
                 Some(p) => p.str_or("name", "PLUGIN").to_owned(),
-                None => slot.attr("mdl").and_then(|t| model_index(FX_MODELS, t)).map_or("NONE", |m| FX_MODELS[m].name).to_owned(),
+                // Any console's device: the Universal's table holds them all.
+                None => {
+                    let fx = &livedaw_dsp::universal::FX_MODELS[..];
+                    slot.attr("mdl").and_then(|t| model_index(fx, t)).map_or("NONE", |m| fx[m].name).to_owned()
+                }
             };
             Some(PresetInfo { kind: PresetType::Fx, name, detail, scope: 0, strip_kind: None })
         }
@@ -199,6 +202,7 @@ pub fn load(path: &Path) -> Result<Element, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use livedaw_dsp::wing::FX_MODELS;
 
     #[test]
     fn headers() {
@@ -206,6 +210,10 @@ mod tests {
         fx.add_new("Slot").set("mdl", FX_MODELS[3].token);
         let i = info(&fx).unwrap();
         assert_eq!((i.kind, i.name.as_str(), i.detail.as_str()), (PresetType::Fx, "Plate", FX_MODELS[3].name));
+        // Another console's device (an X32's, on a Universal or an X32 console).
+        let mut x32 = root(PresetType::Fx, "Vocal hall");
+        x32.add_new("Slot").set("mdl", "X32HALL");
+        assert_eq!(info(&x32).unwrap().detail, "Hall Reverb");
 
         let mut ch = root(PresetType::Channel, "Kick");
         ch.add_new("Strip").set("ref", "ch:4");

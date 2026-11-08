@@ -3,6 +3,20 @@
 All notable changes to Sidecar are listed here. Versions follow
 [semantic versioning](https://semver.org); 0.x releases are betas.
 
+## [Unreleased]
+
+- Universal Mixer, every console's blocks (`docs/UNIVERSAL_MIXER.md`, decision 6): a
+  Universal console's strips and FX rack can hold the X32's models beside the WING's:
+  its gates (expanders, gate, ducker), compressor and expander, 4-band and 6-band EQ
+  on any strip, and its 61 effects (its send effects in FX 1-8). The lists name them
+  with their console ("X32 Gate"); shows and scenes keep them. The WING's models keep
+  their places, so WING shows and WING remote clients are unchanged; a WING client
+  can't see an X32 model and reads its node's default. The X32, WING and other
+  profiles still offer only their own models.
+- Fixed: the dynamics transfer graph drew the WING's model at the same place in its
+  list instead of the console's own (on an X32, the gate's graph was another model's).
+- Fixed: an FX preset of an X32 effect showed "NONE" as its device.
+
 ## [0.3.0] - beta
 
 Three more consoles on the Universal Mixer's core, each a preview: the **Behringer

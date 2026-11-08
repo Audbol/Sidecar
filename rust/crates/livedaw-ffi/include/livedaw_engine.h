@@ -1372,8 +1372,9 @@ extern "C"
     LdString* ld_model_param_display (int32_t table, int32_t model, int32_t param, float value);
     float ld_model_param_to_normalised (int32_t table, int32_t model, int32_t param, float value);
     float ld_model_param_from_normalised (int32_t table, int32_t model, int32_t param, float position);
-    /** Static curve of a dynamics model (its transfer graph): the output level for each input
-        level in `inDb` (dB; peak or RMS as the model detects). False for models without one. */
+    /** Static curve of a dynamics model of the shown console's table (its transfer graph): the
+        output level for each input level in `inDb` (dB; peak or RMS as the model detects). False
+        for models without one. */
     bool ld_dyn_static_curve (int32_t model, const float* values, int32_t numValues, const float* inDb, float* outDb, int32_t count);
     /** Frequency response (dB at `freqs`) of a model as set, for its front panel's graph: the
         EQ models (tables 1, 2) and the FX devices that have one (EQ devices and the channel

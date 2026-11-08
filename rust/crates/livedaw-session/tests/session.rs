@@ -777,6 +777,60 @@ fn an_x32_show_loads_as_an_x32() {
 }
 
 #[test]
+fn a_universal_console_keeps_the_x32s_blocks_through_a_show() {
+    use livedaw_engine::config::{ConsoleConfig, Counts};
+    use livedaw_engine::Profile;
+    let engine = Engine::new(0);
+    engine.configure(&ConsoleConfig { profile: Profile::Universal, counts: Counts::WING });
+    let m = livedaw_engine::Profile::Universal.spec().models;
+    let idx = |t: &[livedaw_dsp::model::ModelSpec], token: &str| model_index(t, token).unwrap();
+
+    // Channel 1: the X32's gate and compressor and its 6-band EQ; bus 1 its
+    // 4-band; FX 1 its hall reverb, FX 9 its phaser.
+    let c = ch(&engine, 0);
+    c.params.gate().set_model(idx(m.dynamics, "X32GATE"));
+    c.params.gate().param("thr").unwrap().store(-35.5);
+    c.params.dynamics().set_model(idx(m.dynamics, "X32COMP"));
+    c.params.eq().set_model(idx(m.eq_channel, "X32EQ6"));
+    c.params.eq().param("6g").unwrap().store(4.5);
+    let bus = engine.strip_at(StripKind::Bus, 0).unwrap();
+    bus.params.eq().set_model(idx(m.eq_bus, "X32EQ4"));
+    assert!(engine.set_fx_model(0, idx(m.fx, "X32HALL"), true));
+    engine.controls.fx[0].param_in(m.fx, "decay").unwrap().store(3.25);
+    assert!(engine.set_fx_model(8, idx(m.fx, "X32PHAS"), true));
+    assert!(!engine.set_fx_model(8, idx(m.fx, "X32HALL"), true), "the X32's send effects need FX 1-8");
+
+    let mut show = Show::new();
+    show.add_scene(&engine, &mut NoPlugins, "A", -1);
+    let text = show.to_xml(&engine, &mut NoPlugins).to_document();
+    assert!(text.contains("profile=\"universal\"") && text.contains("X32GATE"), "{text}");
+
+    let e2 = Engine::new(0);
+    let mut loaded = Show::new();
+    let warnings = loaded.load_from_text(&e2, &mut NoPlugins, &text, true).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(e2.profile(), Profile::Universal);
+    let c2 = ch(&e2, 0);
+    assert_eq!(c2.params.gate().model_spec().unwrap().token, "X32GATE");
+    assert_eq!(c2.params.gate().param("thr").unwrap().load(), -35.5);
+    assert_eq!(c2.params.dynamics().model_spec().unwrap().token, "X32COMP");
+    assert_eq!(c2.params.eq().model_spec().unwrap().token, "X32EQ6");
+    assert_eq!(c2.params.eq().param("6g").unwrap().load(), 4.5);
+    assert_eq!(e2.strip_at(StripKind::Bus, 0).unwrap().params.eq().model_spec().unwrap().token, "X32EQ4");
+    assert_eq!(m.fx[e2.controls.fx[0].model_index_in(m.fx)].token, "X32HALL");
+    assert_eq!(e2.controls.fx[0].param_in(m.fx, "decay").unwrap().load(), 3.25);
+    assert!(e2.fx(0).unwrap().has_device());
+    assert_eq!(m.fx[e2.controls.fx[8].model_index_in(m.fx)].token, "X32PHAS");
+    assert_eq!(e2.controls.fx[0].wing_model(), None, "not a WING device");
+
+    // A scene brings them back after a change.
+    c2.params.gate().set_model(idx(m.dynamics, "GATE"));
+    let r = loaded.recall_scene(&e2, &mut NoPlugins, 0);
+    assert!(r.warnings.is_empty(), "{:?}", r.warnings);
+    assert_eq!(c2.params.gate().model_spec().unwrap().token, "X32GATE");
+}
+
+#[test]
 fn an_02r_show_loads_as_an_02r() {
     use livedaw_engine::config::{ConsoleConfig, Counts};
     use livedaw_engine::Profile;

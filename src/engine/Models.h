@@ -99,6 +99,11 @@ const Model& model (Table, int index);
 /** Index of the model with this token ("COMP"), or -1. */
 int findModel (Table, const juce::String& token);
 
+/** The console a model comes from, by its token ("X32" for "X32GATE"); empty
+    for the WING's. On a Universal console, which holds every console's
+    models, the others' names start with it ("X32 Gate"). */
+juce::String consoleOf (const juce::String& token);
+
 /** A tab of the FX TYPE list (firmware 3.1): its devices in the console's
     order, a row per family. */
 struct FxMenuTab

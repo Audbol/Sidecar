@@ -1275,6 +1275,12 @@ impl FxParams {
         self.model_index_in(FX_MODELS)
     }
 
+    /// The model if it is one of the WING's devices (a Universal console's
+    /// slot may hold another console's, past the WING's table), else None.
+    pub fn wing_model(&self) -> Option<usize> {
+        usize::try_from(self.model.load(Relaxed)).ok().filter(|&m| m < FX_MODELS.len())
+    }
+
     /// The model, in a console's FX table (`Engine::fx_models`).
     pub fn model_index_in(&self, table: &[ModelSpec]) -> usize {
         (self.model.load(Relaxed).max(0) as usize).min(table.len().max(1) - 1)

@@ -852,6 +852,13 @@ its handles, a dynamics block's curve and gain reduction and every parameter of 
 model. The strip's own blocks and extra blocks have the same editors. A delay
 keeps its time when you change its unit.
 
+On a Universal console the MODEL and DEVICE lists hold every emulated console's
+models: the WING's, then the X32's, named with their console (**X32 Gate**, **X32
+6-Band EQ**, **X32 Hall Reverb**). Any of them goes on any strip: an X32 compressor
+on one channel and a WING one on the next, the X32's 6-band EQ on an input. The X32's
+send effects take FX 1-8, as the WING's premium ones. A console of another profile
+(WING, X32...) offers only its own models.
+
 ![The inspector on the lead vocal: its chain with an EQ block after DYNAMICS, and the EQ block's editor](images/universal-inspector.png)
 
 **SENDS** lists every bus, main and matrix the strip can send to (buses take channels,

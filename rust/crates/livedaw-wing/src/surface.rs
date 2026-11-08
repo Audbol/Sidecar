@@ -1339,7 +1339,12 @@ pub fn publish(engine: &Engine, layers: &LayerSet, custom: &CustomControls, cc_b
             .controls
             .fx
             .iter()
-            .map(|p| FX_MODELS.get(p.model_index()).map(|m| m.params.iter().map(|ps| ps.label).collect()).unwrap_or_default())
+            .map(|p| {
+                p.wing_model()
+                    .and_then(|m| FX_MODELS.get(m))
+                    .map(|m| m.params.iter().map(|ps| ps.label).collect())
+                    .unwrap_or_default()
+            })
             .collect(),
     };
     Surface { attached: true, sections, controls, cc_bank: cc_bank.clamp(0, NUM_BANKS - 1), num, names }

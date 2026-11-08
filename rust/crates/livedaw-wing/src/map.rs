@@ -1763,30 +1763,36 @@ impl ModelSource for Console<'_> {
         let token = match bindings()[row as usize] {
             Binding::Strip(kind, n, SF::Slot(blk)) => {
                 let st = self.strip(kind, n)?;
-                block_spec(&st.params, kind, blk).0.token
+                block_spec(&st.params, kind, blk)?.token
             }
-            Binding::FxSlot(i) => FX_MODELS[self.engine.controls.fx.get(i as usize)?.model_index()].token,
+            Binding::FxSlot(i) => FX_MODELS.get(self.engine.controls.fx.get(i as usize)?.wing_model()?)?.token,
             _ => return None,
         };
         s.model_index(slot, token)
     }
 }
 
-/// The model table and current spec of a strip block.
-fn block_spec(p: &StripParams, kind: StripKind, blk: Blk) -> (&'static ModelSpec, &'static [ModelSpec]) {
+/// The WING's model table of a strip block. A Universal console's tables start
+/// with these, in this order (`livedaw_dsp::universal`).
+fn block_table(kind: StripKind, blk: Blk) -> &'static [ModelSpec] {
     match blk {
-        Blk::Gate => (&DYN_MODELS[p.gate().model_index()], DYN_MODELS),
-        Blk::Dyn => (&DYN_MODELS[p.dynamics().model_index()], DYN_MODELS),
-        Blk::Eq => {
-            let bus = kind.is_output();
-            let table = if bus { EQ_MODELS_BUS } else { EQ_MODELS_CH };
-            (&table[p.eq().model_index()], table)
-        }
-        Blk::Tool => {
-            let i = (p.filter().tool_model.load(Relaxed).max(0) as usize).min(FILTER_TOOLS.len() - 1);
-            (&FILTER_TOOLS[i], FILTER_TOOLS)
-        }
+        Blk::Gate | Blk::Dyn => DYN_MODELS,
+        Blk::Eq if kind.is_output() => EQ_MODELS_BUS,
+        Blk::Eq => EQ_MODELS_CH,
+        Blk::Tool => FILTER_TOOLS,
     }
+}
+
+/// The current model of a strip block, if it is a WING model (a Universal
+/// console's strip may hold another console's, which a WING client can't see).
+fn block_spec(p: &StripParams, kind: StripKind, blk: Blk) -> Option<&'static ModelSpec> {
+    let model = match blk {
+        Blk::Gate => p.gate().model_index(),
+        Blk::Dyn => p.dynamics().model_index(),
+        Blk::Eq => p.eq().model_index(),
+        Blk::Tool => (p.filter().tool_model.load(Relaxed).max(0) as usize).min(FILTER_TOOLS.len() - 1),
+    };
+    block_table(kind, blk).get(model)
 }
 
 fn block_values(p: &StripParams, blk: Blk) -> &[AtomicF32] {
@@ -2079,11 +2085,11 @@ impl<'a> Console<'a> {
         let (values, spec): (&[AtomicF32], &'static ModelSpec) = match bindings()[row as usize] {
             Binding::Strip(kind, n, SF::Slot(blk)) => {
                 let st = self.strip(kind, n)?;
-                (block_values(&st.params, blk), block_spec(&st.params, kind, blk).0)
+                (block_values(&st.params, blk), block_spec(&st.params, kind, blk)?)
             }
             Binding::FxSlot(i) => {
                 let p = self.engine.controls.fx.get(i as usize)?;
-                (&p.values, &FX_MODELS[p.model_index()])
+                (&p.values, FX_MODELS.get(p.wing_model()?)?)
             }
             _ => return None,
         };
@@ -2185,7 +2191,7 @@ impl<'a> Console<'a> {
             }
             Binding::MuteGroup(i, true) => Value::bool(c.mute_groups.contains(i as usize)),
             Binding::MuteGroup(i, false) => Value::Str(e.mute_group_name(i as usize)),
-            Binding::FxModel(i) => Value::str(FX_MODELS[c.fx.get(i as usize)?.model_index()].token),
+            Binding::FxModel(i) => Value::str(FX_MODELS.get(c.fx.get(i as usize)?.wing_model()?)?.token),
             Binding::FxMix(i) => f(&c.fx.get(i as usize)?.mix),
             Binding::Ctl(ctl) => match ctl {
                 CtlF::MainLink => item(def, c.main_link.load(Relaxed)),
@@ -2580,7 +2586,7 @@ impl<'a> Console<'a> {
                 Blk::Tool => b(&p.filter().tool),
                 _ => b(&dyn_slot(p, blk).on),
             },
-            SF::BlkMdl(blk) => Value::str(block_spec(p, kind, blk).0.token),
+            SF::BlkMdl(blk) => Value::str(block_spec(p, kind, blk)?.token),
             SF::BlkMix(blk) => match blk {
                 Blk::Eq => f(&p.eq().mix),
                 _ => f(&dyn_slot(p, blk).mix),
@@ -3489,13 +3495,14 @@ impl<'a> Console<'a> {
         let p = c.fx.get(i).ok_or(SetError::NotFound)?;
         let token = str_of(v);
         let model = model_index(FX_MODELS, &token).ok_or(SetError::BadValue)?;
-        let current = p.model_index();
-        if model == current {
+        // None: another console's device (on a Universal console).
+        let current = p.wing_model();
+        if current == Some(model) {
             return Ok(());
         }
         // EXT without a plugin is an empty plugin slot (plugins are loaded on
         // Sidecar's EFFECTS screen); a loaded plugin isn't replaced remotely.
-        if current == FX_EXT && self.engine.fx(i).is_some_and(|r| r.is_loaded()) {
+        if current == Some(FX_EXT) && self.engine.fx(i).is_some_and(|r| r.is_loaded()) {
             return Err(SetError::Unsupported(format!("FX {} holds a plugin", i + 1)));
         }
         if !allowed_in_slot(model, i) {
@@ -3590,10 +3597,10 @@ impl<'a> Console<'a> {
                 _ => set_b(&dyn_slot(p, blk).on, v),
             },
             SF::BlkMdl(blk) => {
-                let (current, table) = block_spec(p, kind, blk);
+                let table = block_table(kind, blk);
                 let token = str_of(v);
                 let m = model_index(table, &token).ok_or(SetError::BadValue)?;
-                if table[m].token != current.token {
+                if block_spec(p, kind, blk).map(|s| s.token) != Some(table[m].token) {
                     match blk {
                         Blk::Gate | Blk::Dyn => dyn_slot(p, blk).set_model(m),
                         Blk::Eq => p.eq().set_model(m),
@@ -3890,12 +3897,7 @@ pub fn coverage() -> Coverage {
     for (si, slot) in s.slots.iter().enumerate() {
         let parts = s.row_parts(slot.row);
         let tables: Option<&[ModelSpec]> = match b[slot.row as usize] {
-            Binding::Strip(kind, _, SF::Slot(blk)) => Some(match blk {
-                Blk::Gate | Blk::Dyn => DYN_MODELS,
-                Blk::Eq if kind.is_output() => EQ_MODELS_BUS,
-                Blk::Eq => EQ_MODELS_CH,
-                Blk::Tool => FILTER_TOOLS,
-            }),
+            Binding::Strip(kind, _, SF::Slot(blk)) => Some(block_table(kind, blk)),
             Binding::FxSlot(_) => Some(FX_MODELS),
             _ => None,
         };
@@ -4083,6 +4085,40 @@ mod tests {
         assert_eq!(e.controls.fx[0].param("dcy").unwrap().load(), got);
         // Premium devices only in slots 1-8.
         assert!(matches!(c.set(node(&c, "/fx/12/mdl"), &Value::str("HALL")), Err(SetError::Unsupported(_) | SetError::BadValue)));
+    }
+
+    /// A Universal console's strips and FX slots may hold another console's
+    /// models (an X32's): the WING's tables don't have them, so a WING client
+    /// reads their nodes' defaults (as for any node it can't map), and can
+    /// still set the WING's.
+    #[test]
+    fn another_consoles_models_on_a_universal_console() {
+        use livedaw_engine::config::{ConsoleConfig, Counts};
+        use livedaw_engine::Profile;
+        let e = engine();
+        e.configure(&ConsoleConfig { profile: Profile::Universal, counts: Counts::WING });
+        let st = WingState::default();
+        let c = Console::new(&e, &st);
+        let m = Profile::Universal.spec().models;
+        let ch1 = c.strip(StripKind::Channel, 1).unwrap();
+        ch1.params.gate().set_model(model_index(m.dynamics, "X32GATE").unwrap());
+        ch1.params.eq().set_model(model_index(m.eq_channel, "X32EQ6").unwrap());
+        assert!(e.set_fx_model(0, model_index(m.fx, "X32HALL").unwrap(), true));
+        for path in ["/ch/1/gate/mdl", "/ch/1/eq/mdl", "/fx/1/mdl"] {
+            assert!(c.get(node(&c, path)).is_some(), "{path}");
+        }
+        // Their parameters aren't WING nodes: a client's get or set finds nothing.
+        for path in ["/ch/1/gate/thr", "/ch/1/eq/6g", "/fx/1/dcy"] {
+            assert!(schema().resolve(path, &c).is_none(), "{path}");
+        }
+        assert_eq!(e.controls.fx[0].wing_model(), None);
+        // The WING's last device too: the slot doesn't hold it yet.
+        let last = FX_MODELS.last().unwrap().token;
+        c.set(node(&c, "/fx/1/mdl"), &Value::str(last)).unwrap();
+        assert_eq!(c.get(node(&c, "/fx/1/mdl")), Some(Value::str(last)));
+        c.set(node(&c, "/ch/1/gate/mdl"), &Value::str("GATE")).unwrap();
+        assert_eq!(c.get(node(&c, "/ch/1/gate/mdl")), Some(Value::str("GATE")));
+        assert_eq!(ch1.params.gate().model_spec().unwrap().token, "GATE");
     }
 
     /// The routing nodes: USR sources and what they copy, sources on outputs,
