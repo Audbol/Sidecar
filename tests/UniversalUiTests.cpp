@@ -1514,6 +1514,26 @@ public:
             view.refresh();
             expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds()), "universal-snippets.png"));
 
+            // Its scope: + STRIP and - STRIP, a section out (not recalled) and in again (captured).
+            expectEquals (view.getSnippetSections(), (juce::uint32) state::AllSections);
+            auto& ch6 = *engine.getChannels()[5];
+            rig.selected = &ch6;
+            ch6.params.faderDb = -7.0f;
+            view.addSelectedStrip();
+            expectEquals ((int) rig.show.getSnippet (0, 0)->strips.size(), 2);
+            view.toggleSection (state::Fader);
+            expectEquals (view.getSnippetSections(), (juce::uint32) state::AllSections & ~(juce::uint32) state::Fader);
+            ch6.params.faderDb = -20.0f;
+            view.recallSnippet();
+            expectWithinAbsoluteError (ch6.params.faderDb.load(), -20.0f, 0.01f, "FADER is out of the snippet");
+            view.toggleSection (state::Fader); // in again: the faders as they are now
+            ch6.params.faderDb = 0.0f;
+            view.recallSnippet();
+            expectWithinAbsoluteError (ch6.params.faderDb.load(), -20.0f, 0.01f, "captured when it came back in");
+            view.removeSelectedStrip();
+            expectEquals ((int) rig.show.getSnippet (0, 0)->strips.size(), 1);
+            rig.selected = &ch4;
+
             // Another scene: its own (none); back again: the snippet is there.
             view.selectScene (-1);
             expectEquals (view.getNumSnippets(), 0);

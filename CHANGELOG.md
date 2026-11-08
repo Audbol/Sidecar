@@ -5,6 +5,9 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+- Universal Mixer, SCENES: a snippet's strips and sections. + STRIP captures the
+  selected strip into it, - STRIP drops it, and a key per section (NAME ... GROUPS)
+  drops that section or captures it again.
 - Universal Mixer: a LIBRARY view, the Library folder's scene, snippet, channel and FX
   preset files with filters, LOAD (onto the console, the selected strip or an FX slot),
   ADD TO SHOW, RENAME, DELETE and SAVE SCENE (the current scene as a file).

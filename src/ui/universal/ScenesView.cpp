@@ -126,7 +126,8 @@ ScenesView::ScenesView (UiContext& c, const Theme& t)
       storeKey ("STORE", t.accent, t), renameKey ("RENAME", t.accent, t), upKey ("UP", t.accent, t), downKey ("DOWN", t.accent, t),
       removeKey ("REMOVE", t.mute, t), importKey ("IMPORT .scn", t.accent, t), exportKey ("EXPORT .scn", t.accent, t),
       snippetNew ("NEW", t.accent, t), snippetGo ("GO", t.accent, t), snippetStore ("STORE", t.accent, t), snippetRename ("RENAME", t.accent, t),
-      snippetFire ("FIRE WITH SCENE", t.accent, t), snippetRemove ("REMOVE", t.mute, t), ctx (c), theme (t), list (std::make_unique<List> (*this)),
+      snippetFire ("FIRE WITH SCENE", t.accent, t), snippetRemove ("REMOVE", t.mute, t), snippetAddStrip ("+ STRIP", t.accent, t),
+      snippetRemoveStrip ("- STRIP", t.accent, t), ctx (c), theme (t), list (std::make_unique<List> (*this)),
       snippetList (std::make_unique<SnippetList> (*this))
 {
     goKey.onClick = [this] { go(); };
@@ -221,7 +222,24 @@ ScenesView::ScenesView (UiContext& c, const Theme& t)
         if (selectedSnippet >= 0)
             confirm ("REMOVE", "Remove this snippet from its scene?", [this] { removeSnippet(); });
     };
-    for (auto* k : { &snippetNew, &snippetGo, &snippetStore, &snippetRename, &snippetFire, &snippetRemove })
+    // Its scope: the selected strip in or out, and each section.
+    snippetAddStrip.onClick = [this] { addSelectedStrip(); };
+    snippetRemoveStrip.onClick = [this] { removeSelectedStrip(); };
+    snippetAddStrip.setTooltip ("Capture the selected strip into the snippet, in its sections");
+    snippetRemoveStrip.setTooltip ("Drop the selected strip from the snippet");
+    const std::pair<juce::uint32, const char*> sections[] = { { state::Name, "NAME" },       { state::Routing, "ROUTING" }, { state::Preamp, "INPUT" },
+                                                              { state::Gate, "GATE" },       { state::Eq, "EQ" },           { state::Dynamics, "DYNAMICS" },
+                                                              { state::Inserts, "INSERTS" }, { state::Sends, "SENDS" },     { state::Fader, "FADER" },
+                                                              { state::Groups, "GROUPS" } };
+    for (auto [bit, name] : sections)
+    {
+        auto key = std::make_unique<ToggleKey> (name, t.accent, t);
+        key->isOn = [this, b = bit] { return (getSnippetSections() & b) != 0; };
+        key->onClick = [this, b = bit] { toggleSection (b); };
+        addAndMakeVisible (*key);
+        sectionKeys.push_back (std::move (key));
+    }
+    for (auto* k : { &snippetNew, &snippetGo, &snippetStore, &snippetRename, &snippetFire, &snippetRemove, &snippetAddStrip, &snippetRemoveStrip })
         addAndMakeVisible (k);
     addAndMakeVisible (*snippetList);
 
@@ -289,6 +307,14 @@ void ScenesView::selectSnippet (int index)
         k->setEnabled (selectedSnippet >= 0);
     snippetNew.setEnabled (selected >= 0);
     snippetFire.refresh();
+    const bool strip = ctx.getSelectedStrip && ctx.getSelectedStrip() != nullptr;
+    snippetAddStrip.setEnabled (selectedSnippet >= 0 && strip);
+    snippetRemoveStrip.setEnabled (selectedSnippet >= 0 && strip);
+    for (auto& k : sectionKeys)
+    {
+        k->setEnabled (selectedSnippet >= 0);
+        k->refresh();
+    }
     snippetList->repaint();
 }
 
@@ -395,6 +421,44 @@ void ScenesView::rename (const juce::String& name)
     refresh();
 }
 
+juce::uint32 ScenesView::getSnippetSections() const
+{
+    const auto s = selected >= 0 && selectedSnippet >= 0 ? ctx.show.getSnippet (selected, selectedSnippet) : std::nullopt;
+    return s.has_value() ? s->sections : 0u;
+}
+
+void ScenesView::addSelectedStrip()
+{
+    auto* strip = ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr;
+    if (strip == nullptr || selected < 0 || selectedSnippet < 0)
+        return;
+    const auto sections = getSnippetSections();
+    ctx.show.addSnippetItems (selected, selectedSnippet, state::Scope::only (sections != 0 ? sections : (juce::uint32) state::AllSections,
+                                                                              { state::StripRef::of (*strip) }));
+    refresh();
+}
+
+void ScenesView::removeSelectedStrip()
+{
+    auto* strip = ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr;
+    if (strip == nullptr || selected < 0 || selectedSnippet < 0)
+        return;
+    ctx.show.removeSnippetItems (selected, selectedSnippet, state::Scope::only (state::AllSections, { state::StripRef::of (*strip) }));
+    refresh();
+}
+
+void ScenesView::toggleSection (juce::uint32 section)
+{
+    if (selected < 0 || selectedSnippet < 0)
+        return;
+    // Without strips the items are every strip the snippet has.
+    if ((getSnippetSections() & section) != 0)
+        ctx.show.removeSnippetItems (selected, selectedSnippet, state::Scope::only (section, {}));
+    else
+        ctx.show.addSnippetItems (selected, selectedSnippet, state::Scope::only (section, {}));
+    refresh();
+}
+
 void ScenesView::refresh()
 {
     std::vector<Row> now;
@@ -436,7 +500,7 @@ void ScenesView::refresh()
     juce::String snippets;
     for (int i = 0; i < getNumSnippets(); ++i)
         if (const auto s = ctx.show.getSnippet (selected, i))
-            snippets << s->name << (s->fireWithScene ? "*" : "") << (int) s->strips.size() << "|";
+            snippets << s->name << (s->fireWithScene ? "*" : "") << (int) s->strips.size() << "/" << (int) s->sections << "|";
     if (snippets != snippetsShown)
     {
         snippetsShown = snippets;
@@ -447,6 +511,15 @@ void ScenesView::refresh()
     }
     snippetNew.setEnabled (selected >= 0);
     snippetFire.refresh();
+    const bool snippet = selected >= 0 && selectedSnippet >= 0;
+    const bool strip = ctx.getSelectedStrip && ctx.getSelectedStrip() != nullptr;
+    snippetAddStrip.setEnabled (snippet && strip);
+    snippetRemoveStrip.setEnabled (snippet && strip);
+    for (auto& k : sectionKeys)
+    {
+        k->setEnabled (snippet);
+        k->refresh();
+    }
     const bool x32 = ctx.engine.getProfile() == ld::kProfileX32;
     if (importKey.isVisible() != x32)
     {
@@ -518,6 +591,22 @@ void ScenesView::resized()
     snippetRemove.setBounds (row2.removeFromRight (kw));
     row2.removeFromRight (sizes::kGapSmall);
     snippetFire.setBounds (row2);
+    // Its scope: the selected strip in or out, then the sections in two rows of five.
+    sp.removeFromTop (sizes::kGapSmall);
+    auto row3 = sp.removeFromTop (sizes::kTouch);
+    const int half = (row3.getWidth() - sizes::kGapSmall) / 2;
+    snippetAddStrip.setBounds (row3.removeFromLeft (half));
+    snippetRemoveStrip.setBounds (row3.withTrimmedLeft (sizes::kGapSmall));
+    const int sw = (sp.getWidth() - 4 * sizes::kGapSmall) / 5;
+    for (int i = 0; i < (int) sectionKeys.size(); ++i)
+    {
+        if (i % 5 == 0)
+            sp.removeFromTop (sizes::kGapSmall);
+        auto row = sp.withHeight (sizes::kTouch);
+        sectionKeys[(size_t) i]->setBounds (row.withTrimmedLeft ((i % 5) * (sw + sizes::kGapSmall)).withWidth (sw));
+        if (i % 5 == 4)
+            sp.removeFromTop (sizes::kTouch);
+    }
     sp.removeFromTop (sizes::kGap);
     snippetList->setBounds (sp.withHeight (juce::jmax (kRow, juce::jmin (sp.getHeight(), getNumSnippets() * (kRow + sizes::kGapSmall)))));
     viewport.setBounds (area);

@@ -963,7 +963,12 @@ and **DOWN** move it, and **REMOVE** deletes it. STORE and REMOVE ask first.
 selected in the inspector (every section), **GO** recalls the selected snippet (only its
 strips change), **STORE** captures the console into it (asking first), **RENAME**, **FIRE
 WITH SCENE** (it fires whenever its scene is recalled) and **REMOVE** (asking first).
-The WING surface's LIBRARY can widen a snippet to more strips and sections.
+Under them, the snippet's scope: **+ STRIP** captures the strip selected in the inspector
+into it (in the snippet's sections), **- STRIP** drops that strip, and a section's key
+(**NAME**, **ROUTING**, **INPUT**, **GATE**, **EQ**, **DYNAMICS**, **INSERTS**, **SENDS**,
+**FADER**, **GROUPS**; lit while the snippet holds it) drops that section from all its
+strips, or captures it from them as they are now. A snippet's DCAs, mute groups, FX
+slots and console settings are the WING surface's LIBRARY's.
 
 ![SCENES: a show's scenes, Song 1 selected](images/universal-scenes.png)
 
@@ -1032,7 +1037,7 @@ compensation and output protection.
 
 Custom controls are on the WING surface for now, and so are the LIBRARY's other
 locations (USB, the open show's folder), its WING .snap import and its clips, and a
-snippet's strips and sections beyond one strip. The show's NEW, OPEN and SAVE are on
+snippet's DCAs, mute groups, FX slots and console settings. The show's NEW, OPEN and SAVE are on
 the top bar's SHOW key, SCENES runs the show's scenes and makes and runs their
 snippets, LIBRARY browses the Library folder, channel and FX presets are saved and loaded on the inspector's STRIP page and on FX
 RACK, and the remotes' settings are on SETUP > REMOTE. Also on the WING surface: the WING's REMOTE LOCK and HA

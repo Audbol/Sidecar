@@ -19,7 +19,9 @@ namespace livedaw::ui::universal
     SNIPPETS, beside them, are the selected scene's: NEW makes one of the
     selected strip (every section), GO recalls one, STORE captures the console
     into it, RENAME, FIRE WITH SCENE (it fires when its scene is recalled),
-    REMOVE (asking first). */
+    REMOVE (asking first). Its scope: + STRIP captures the selected strip into
+    it, - STRIP drops that strip, and a section's key (NAME ... GROUPS) captures
+    that section of its strips, or drops it. */
 class ScenesView final : public juce::Component, private juce::Timer
 {
 public:
@@ -51,10 +53,20 @@ public:
     void removeSnippet();
     void renameSnippet (const juce::String&);
     void toggleFireWithScene();
+    /** The selected snippet's scope: the selected strip in (its sections now) or out;
+        a section in (captured from its strips) or out. */
+    void addSelectedStrip();
+    void removeSelectedStrip();
+    void toggleSection (juce::uint32 section);
+    /** The selected snippet's sections (0: none selected). */
+    juce::uint32 getSnippetSections() const;
 
     ToggleKey goKey, prevKey, nextKey, addKey, storeKey, renameKey, upKey, downKey, removeKey;
     ToggleKey importKey, exportKey;
     ToggleKey snippetNew, snippetGo, snippetStore, snippetRename, snippetFire, snippetRemove;
+    ToggleKey snippetAddStrip, snippetRemoveStrip;
+    /** NAME, ROUTING, INPUT, GATE, EQ, DYNAMICS, INSERTS, SENDS, FADER, GROUPS. */
+    std::vector<std::unique_ptr<ToggleKey>> sectionKeys;
 
     void paint (juce::Graphics&) override;
     void resized() override;

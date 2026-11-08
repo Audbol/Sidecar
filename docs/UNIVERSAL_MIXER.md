@@ -284,8 +284,10 @@ Three layers:
    web remote, MIDI routes and devices, DAW control); the network remotes now start
    with the app (`MainComponent`), not with the WING surface's SETUP page. Left on the
    WING surface: custom controls, the LIBRARY's other locations, WING .snap import and
-   clips, a snippet's scope beyond one strip (SCENES runs the scenes and makes and
-   runs snippets of a strip; the STRIP page and FX RACK save and load channel and FX
+   clips, a snippet's DCAs, mute groups, FX and console settings (SCENES runs the
+   scenes and makes and runs snippets, their strips and sections set there later:
+   + STRIP, - STRIP and a key per section, through `Show::addSnippetItems` /
+   `removeSnippetItems`; the STRIP page and FX RACK save and load channel and FX
    presets; LIBRARY, a view of its own later, browses the Library folder: LOAD, ADD
    TO SHOW, RENAME, DELETE, SAVE SCENE), REMOTE LOCK, HA REMOTE, the DAW's surface
    layout and presets.
