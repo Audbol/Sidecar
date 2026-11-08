@@ -10,6 +10,8 @@
 #include "engine/Models.h"
 #include "ui/MixerChooser.h"
 #include "ui/UniversalSkin.h"
+#include "ui/StripCustomize.h"
+#include "ui/universal/StripPanel.h"
 #include "ui/universal/ValueControls.h"
 #include "ui/universal/Widgets.h"
 
@@ -1154,6 +1156,137 @@ public:
             const auto tile = grid.tileBounds (5).getCentre().toFloat();
             grid.mouseUp (mouseEvent (grid, tile, tile));
             expectEquals (picked, 5);
+        }
+
+        beginTest ("DCAs and mute groups in the MIXER view: a column per DCA and the mute groups' keys, after the strips or alone (DCAS)");
+        {
+            MixerEngine engine (0);
+            const Counts counts { 8, 2, 4, 1, 2, 6, 3, 8 };
+            engine.configure (&counts);
+            UiRig rig (engine);
+            MixerView view (rig.ctx, Theme::dark());
+            view.setSize (1400, 800);
+            expectEquals (view.getNumColumns(), 8 + 2 + 4 + 1 + 2);
+            expectEquals (view.getNumDcaColumns(), 6);
+            expect (view.getMuteGroups() != nullptr);
+            // After the strips, a gap between them.
+            const auto* lastStrip = view.getColumn (view.getNumColumns() - 1);
+            expectEquals (view.getDcaColumn (0)->getX() - lastStrip->getRight(), sizes::kKindGap);
+            expect (view.getMuteGroups()->getX() > view.getDcaColumn (5)->getRight());
+
+            view.setFilter (MixerView::kDcas);
+            expectEquals (view.getNumColumns(), 0);
+            expectEquals (view.getNumDcaColumns(), 6);
+            view.setFilter ((int) StripKind::Bus);
+            expectEquals (view.getNumDcaColumns(), 0);
+            expect (view.getMuteGroups() == nullptr, "the strips of one kind only");
+            view.setFilter (-1);
+
+            // A DCA's keys and fader act on it.
+            auto* dca3 = view.getDcaColumn (2);
+            expectEquals (dca3->getDca(), 2);
+            dca3->muteKey.onClick();
+            dca3->soloKey.onClick();
+            expect (engine.getDca (2).mute.load() && engine.getDca (2).solo.load());
+            dca3->fader.setPositionFromUser (0.25);
+            expect (engine.getDca (2).faderDb.load() < -10.0f, juce::String (engine.getDca (2).faderDb.load()));
+            engine.setDcaName (2, "Drums");
+            engine.setMuteGroupName (0, "Band");
+            expectEquals (customGroupName (engine.getMuteGroupName (1), 1), juce::String(), "a default name isn't repeated under its number");
+            expectEquals (customGroupName (engine.getMuteGroupName (0), 0), juce::String ("Band"));
+            view.setFilter (MixerView::kDcas);
+            view.refresh();
+            expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds()), "universal-dcas.png"));
+            view.setFilter (-1);
+
+            // The mute groups: a key engages a group, ALL OFF releases them.
+            auto& groups = view.getMuteGroups()->groups;
+            expectEquals (groups.count(), 3);
+            const auto key = groups.keyArea (1).getCentre().toFloat();
+            groups.mouseUp (mouseEvent (groups, key, key));
+            expect (engine.muteGroups.contains (1) && ! engine.muteGroups.contains (0));
+            view.getMuteGroups()->allOffKey.onClick();
+            expect (! engine.muteGroups.any());
+        }
+
+        beginTest ("The inspector's STRIP page names and colours a strip (its source while linked) and assigns its DCAs and mute groups");
+        {
+            MixerEngine engine (0);
+            engine.configure (nullptr); // a factory WING: channels linked to their sources
+            UiRig rig (engine);
+            StripPanel panel (rig.ctx, Theme::dark());
+            panel.setSize (440, 1200);
+
+            // A channel with LINK CUSTOMIZATION TO SOURCE: the source is renamed and recoloured.
+            auto& ch1 = *engine.getChannels()[0];
+            panel.setStrip (&ch1);
+            const auto ownBefore = ch1.getOwnName();
+            expect (ui::customize::goesToSource (ch1), "a factory channel is linked to its source");
+            if (ui::customize::goesToSource (ch1))
+            {
+                panel.rename ("Kick");
+                expectEquals (ch1.getName(), juce::String ("Kick"));
+                expectEquals (engine.getSourceName (ch1.linkedSourceIndex()), juce::String ("Kick"));
+                expectEquals (ch1.getOwnName(), ownBefore, "the strip's own name stays");
+                panel.chooseColour (7);
+                expectEquals (ch1.getColourIndex(), 7);
+            }
+
+            // A bus: its own name and colour.
+            auto& bus2 = *engine.getBuses()[1];
+            panel.setStrip (&bus2);
+            panel.rename ("Monitors");
+            expectEquals (bus2.getName(), juce::String ("Monitors"));
+            panel.chooseColour (3);
+            expectEquals (bus2.getColourIndex(), 3);
+            // A colour by its swatch.
+            const auto swatch = panel.swatchArea (5).getCentre().toFloat();
+            panel.mouseUp (mouseEvent (panel, swatch, swatch));
+            expectEquals (bus2.getColourIndex(), 5);
+
+            // DCAs and mute groups by their keys: a tap assigns, another unassigns.
+            expectEquals (panel.dcas.count(), engine.getNumDcas());
+            const auto dca4 = panel.dcas.keyArea (3).getCentre().toFloat();
+            panel.dcas.mouseUp (mouseEvent (panel.dcas, dca4, dca4));
+            expect (bus2.params.dcaMask.contains (3));
+            panel.dcas.mouseUp (mouseEvent (panel.dcas, dca4, dca4));
+            expect (! bus2.params.dcaMask.contains (3));
+            const auto mg2 = panel.muteGroups.keyArea (1).getCentre().toFloat();
+            panel.muteGroups.mouseUp (mouseEvent (panel.muteGroups, mg2, mg2));
+            expect (bus2.params.muteGroupMask.contains (1));
+            expect (panel.heightFor (440) >= panel.muteGroups.getBottom(), "the scroller shows every key");
+
+            // In the inspector, its third tab.
+            Inspector inspector (rig.ctx, Theme::dark());
+            inspector.setSize (460, 900);
+            inspector.setStrip (&bus2);
+            inspector.showPage (Inspector::Page::Strip);
+            expect (inspector.getPage() == Inspector::Page::Strip && inspector.stripPage.getStrip() == &bus2);
+            expect (! inspector.chain.isVisible() && ! inspector.sends.isVisible());
+            expect (keepPicture (inspector.createComponentSnapshot (inspector.getLocalBounds()), "universal-strip-page.png"));
+        }
+
+        beginTest ("The top bar names the show; its SHOW menu runs NEW, OPEN, SAVE and SAVE AS");
+        {
+            MixerEngine engine (0);
+            engine.configure (nullptr);
+            UiRig rig (engine);
+            juce::StringArray calls;
+            juce::File file;
+            rig.ctx.getShowFile = [&file] { return file; };
+            rig.ctx.newShow = [&calls] { calls.add ("new"); };
+            rig.ctx.openShow = [&calls] { calls.add ("open"); };
+            rig.ctx.saveShow = [&calls] (bool as) { calls.add (as ? "save as" : "save"); };
+            ui::UniversalSkin skin (rig.ctx);
+            skin.setSize (1600, 900);
+            expectEquals (skin.getShowTitle(), juce::String ("UNTITLED SHOW"));
+            file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("Friday Gig.lshow");
+            expectEquals (skin.getShowTitle(), juce::String ("Friday Gig"));
+            for (int item = 1; item <= 4; ++item)
+                skin.runShowCommand (item);
+            expectEquals (calls.joinIntoString (","), juce::String ("new,open,save,save as"));
+            expect (skin.getShowKey().isVisible() && skin.getShowKey().getRight() <= skin.getWidth());
+            expect (keepPicture (skin.createComponentSnapshot (skin.getLocalBounds()), "universal-topbar.png"));
         }
     }
 };

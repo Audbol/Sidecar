@@ -296,6 +296,8 @@ set(LIVEDAW_UI_SOURCES
     src/ui/universal/BlockEditor.cpp
     src/ui/universal/ChainList.cpp
     src/ui/universal/SendsPanel.cpp
+    src/ui/universal/Groups.cpp
+    src/ui/universal/StripPanel.cpp
     src/ui/universal/Inspector.cpp
     src/ui/universal/PatchGrid.cpp
     src/ui/universal/RoutingView.cpp

@@ -782,7 +782,9 @@ console that isn't a WING opens in the Universal Mixer.
 ### The top bar and the views
 
 The top bar shows how many channels, aux, buses, mains, matrices, DCAs, mute groups
-and FX slots the console has. Under it, the view keys show one view at a time:
+and FX slots the console has, and the show's name (UNTITLED SHOW until it is saved).
+Its **SHOW** key opens the show menu: **New show**, **Open...**, **Save** and **Save
+as...**, as on the WING's LIBRARY. Under it, the view keys show one view at a time:
 **MIXER**, **ROUTING**, **FX RACK**, **MONITORING**, **SCENES**, **RECORDER** and
 **SETUP**. The inspector of the selected strip opens beside any of them.
 
@@ -800,9 +802,10 @@ consoles' parts will carry their names.
 
 ### MIXER
 
-A column for every strip of the console, channels first and matrices last, scrolled
-sideways (drag with a finger, or use the scroll bar). **ALL** shows every kind;
-**CHANNELS**, **AUX**, **BUSES**, **MAINS** and **MATRICES** one. A column has:
+A column for every strip of the console, channels first and matrices last, then the
+DCAs and the mute groups, scrolled sideways (drag with a finger, or use the scroll
+bar). **ALL** shows everything; **CHANNELS**, **AUX**, **BUSES**, **MAINS** and
+**MATRICES** one kind; **DCAS** the DCAs and the mute groups. A strip's column has:
 
 - the strip's colour, its label and its name: a tap selects the strip and opens the
   inspector;
@@ -817,6 +820,16 @@ sideways (drag with a finger, or use the scroll bar). **ALL** shows every kind;
 
 **FADERS** hides or shows every fader at any moment. Hidden, the overview takes the
 whole column, to watch the processing.
+
+A **DCA**'s column has its colour, number and name (a tap renames it or picks its
+colour), **MUTE**, **SOLO** and its fader; a DCA has no meter, as on a console. The
+strips a DCA controls are chosen on their STRIP page in the inspector.
+
+**MUTE GROUPS**, beside the DCAs, has a key per group, named if the group has a name of
+its own: a tap engages the group (it mutes its members) or releases it; **ALL OFF**
+releases them all. The members are chosen on their STRIP page.
+
+![The DCAS view: six DCAs with their faders, one muted and soloed, and the mute groups' keys](images/universal-dcas.png)
 
 Across the top, the **channel panel** shows the selected strip whole: **INPUT** (trim,
 balance, invert, delay), **FILTER**, **GATE**, **EQ** and **DYNAMICS** with their curves,
@@ -866,6 +879,14 @@ aux and other buses; mains the same; matrices everything but matrices), each wit
 **ON**, its level and **FROM**: where the send takes the signal. That is PRE or POST
 (a bus send's GRP too), or one of the strip's user taps, so a send can take the signal
 anywhere in the chain.
+
+**STRIP** has the strip's **NAME** (**RENAME**), its **COLOUR** (a tap on a swatch of the
+console's palette), the **DCAS** it belongs to and its **MUTE GROUPS**: a key per group, lit
+while the strip is a member, a tap assigns or unassigns. As on the console, a channel
+with LINK CUSTOMIZATION TO SOURCE on (as a factory WING's are) takes its name and colour
+from its source: renaming or recolouring it changes the source's, which the page says.
+
+![The inspector's STRIP page: a bus's name, its colour among the palette's, its DCAs and its mute groups (one assigned)](images/universal-strip-page.png)
 
 ![The inspector's SENDS: the lead vocal's sends, the one to the reverb bus taking its signal from a user tap](images/universal-sends.png)
 
@@ -944,7 +965,9 @@ compensation and output protection.
 ### Still on the WING surface
 
 The monitor paths' processing (EQ, delay, limiter), talkback, custom controls, the
-LIBRARY, snippets and the remotes' settings are on the WING surface for now. The WING
+LIBRARY's file browser and the remotes' settings are on the WING surface for now (the
+show's NEW, OPEN and SAVE are on the top bar's SHOW key, snippets and presets on
+SCENES). The WING
 surface addresses the WING's ranges: a console with other aux, main, matrix, DCA or
 mute group counts opens in the Universal Mixer, and choosing the WING surface offers to
 make it a WING first.

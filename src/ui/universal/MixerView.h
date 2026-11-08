@@ -2,6 +2,7 @@
 
 #include "ui/UiContext.h"
 #include "ui/universal/ChannelPanel.h"
+#include "ui/universal/Groups.h"
 #include "ui/universal/Widgets.h"
 
 #include <memory>
@@ -82,16 +83,18 @@ private:
 };
 
 /** The MIXER view: a column per strip, every kind and any number of each (the
-    console's configuration), side by side and scrolled sideways, with keys
-    that show one kind at a time. */
+    console's configuration), then a column per DCA and the mute groups' keys,
+    side by side and scrolled sideways, with keys that show one kind at a time
+    (DCAS: the DCAs and the mute groups). */
 class MixerView final : public juce::Component, private juce::Timer
 {
 public:
     MixerView (UiContext&, const Theme&);
     ~MixerView() override;
 
-    /** -1: every kind; else a StripKind. */
+    /** -1: every kind; a StripKind; or kDcas. */
     void setFilter (int kind);
+    static constexpr int kDcas = kNumStripKinds;
     /** The FADERS key: the columns show their faders, or only their overviews. */
     void setFadersShown (bool);
     bool areFadersShown() const noexcept { return fadersShown; }
@@ -108,6 +111,10 @@ public:
 
     int getNumColumns() const noexcept { return (int) columns.size(); }
     StripColumn* getColumn (int index) const noexcept;
+    int getNumDcaColumns() const noexcept { return (int) dcaColumns.size(); }
+    DcaColumn* getDcaColumn (int index) const noexcept;
+    /** The mute groups' panel (null while the filter hides the DCAs). */
+    MuteGroupsPanel* getMuteGroups() const noexcept { return muteGroups.get(); }
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -132,6 +139,8 @@ private:
     juce::Viewport viewport;
     juce::Component content;
     std::vector<std::unique_ptr<StripColumn>> columns;
+    std::vector<std::unique_ptr<DcaColumn>> dcaColumns;
+    std::unique_ptr<MuteGroupsPanel> muteGroups;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MixerView)
 };

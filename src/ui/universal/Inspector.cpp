@@ -9,13 +9,18 @@ namespace
 } // namespace
 
 Inspector::Inspector (UiContext& c, const Theme& t)
-    : chainTab ("CHAIN", t.accent, t), sendsTab ("SENDS", t.accent, t), closeKey ("CLOSE", t.accent, t), chain (c, t), editor (c, t), sends (c, t),
-      ctx (c), theme (t)
+    : chainTab ("CHAIN", t.accent, t), sendsTab ("SENDS", t.accent, t), stripTab ("STRIP", t.accent, t), closeKey ("CLOSE", t.accent, t), chain (c, t),
+      editor (c, t), sends (c, t), stripPage (c, t), ctx (c), theme (t)
 {
     chainTab.isOn = [this] { return page == Page::Chain; };
     chainTab.onClick = [this] { showPage (Page::Chain); };
     sendsTab.isOn = [this] { return page == Page::Sends; };
     sendsTab.onClick = [this] { showPage (Page::Sends); };
+    stripTab.isOn = [this] { return page == Page::Strip; };
+    stripTab.onClick = [this] { showPage (Page::Strip); };
+    stripScroller.setViewedComponent (&stripPage, false);
+    stripScroller.setScrollBarsShown (true, false);
+    stripScroller.setScrollOnDragMode (juce::Viewport::ScrollOnDragMode::nonHover);
     closeKey.onClick = [this]
     {
         if (onClose)
@@ -23,10 +28,11 @@ Inspector::Inspector (UiContext& c, const Theme& t)
     };
     // The selected row's editor (none for a marker or a tap).
     chain.onSelectionChanged = [this] { editSelectedStep(); };
-    for (auto* child : std::initializer_list<juce::Component*> { &chainTab, &sendsTab, &closeKey, &chain, &editor, &sends })
+    for (auto* child : std::initializer_list<juce::Component*> { &chainTab, &sendsTab, &stripTab, &closeKey, &chain, &editor, &sends, &stripScroller })
         addChildComponent (child);
     chainTab.setVisible (true);
     sendsTab.setVisible (true);
+    stripTab.setVisible (true);
     closeKey.setVisible (true);
     showPage (Page::Chain);
     startTimerHz (30);
@@ -52,6 +58,8 @@ void Inspector::setStrip (Strip* s)
     structureVersion = ctx.engine.getStructureVersion();
     chain.setStrip (s);
     sends.setStrip (s);
+    stripPage.setStrip (s);
+    resized();
     setTitle (s != nullptr ? s->getLabel() : juce::String());
     repaint();
 }
@@ -62,8 +70,10 @@ void Inspector::showPage (Page p)
     chain.setVisible (p == Page::Chain);
     editor.setVisible (p == Page::Chain);
     sends.setVisible (p == Page::Sends);
+    stripScroller.setVisible (p == Page::Strip);
     chainTab.refresh();
     sendsTab.refresh();
+    stripTab.refresh();
     if (p == Page::Sends)
         sends.refresh();
 }
@@ -95,8 +105,9 @@ void Inspector::refresh()
     chain.refresh();
     if (page == Page::Chain)
         editor.refresh();
-    else
+    else if (page == Page::Sends)
         sends.refresh();
+    // The STRIP page takes its values by itself (6 a second).
 }
 
 void Inspector::paint (juce::Graphics& g)
@@ -132,10 +143,15 @@ void Inspector::resized()
     auto header = area.removeFromTop (kHeader).reduced (sizes::kGap, (kHeader - sizes::kTouch) / 2);
     closeKey.setBounds (header.removeFromRight (96));
     auto tabs = area.removeFromTop (sizes::kTabBar);
-    chainTab.setBounds (tabs.removeFromLeft (tabs.getWidth() / 2).withTrimmedRight (sizes::kGapSmall / 2));
-    sendsTab.setBounds (tabs.withTrimmedLeft (sizes::kGapSmall / 2));
+    const int tabW = tabs.getWidth() / 3;
+    chainTab.setBounds (tabs.removeFromLeft (tabW).withTrimmedRight (sizes::kGapSmall / 2));
+    sendsTab.setBounds (tabs.removeFromLeft (tabW).reduced (sizes::kGapSmall / 2, 0));
+    stripTab.setBounds (tabs.withTrimmedLeft (sizes::kGapSmall / 2));
     area.removeFromTop (sizes::kGap);
     sends.setBounds (area);
+    stripScroller.setBounds (area);
+    const int pageW = area.getWidth() - stripScroller.getScrollBarThickness();
+    stripPage.setSize (pageW, stripPage.heightFor (pageW));
     // The chain list above the selected block's editor.
     chain.setBounds (area.removeFromTop (juce::jmax (220, area.getHeight() * 2 / 5)));
     area.removeFromTop (sizes::kGap);

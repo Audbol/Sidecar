@@ -15,8 +15,9 @@ namespace livedaw::ui
 {
 
 /** The Universal Mixer's interface (docs/UNIVERSAL_MIXER.md, Phase 2), a
-    preview while it is being built: a top bar (the console it runs, the way
-    back to the WING surface) and the view keys over the view shown (MIXER,
+    preview while it is being built: a top bar (the console it runs, the show
+    and its SHOW menu: NEW, OPEN, SAVE, SAVE AS; the way back to the WING
+    surface) and the view keys over the view shown (MIXER,
     ROUTING, FX RACK, MONITORING, SCENES, RECORDER, SETUP), with the inspector
     of the selected strip beside it (src/ui/universal). */
 class UniversalSkin final : public Skin
@@ -49,14 +50,23 @@ public:
     universal::ScenesView& getScenes() noexcept { return scenes; }
     universal::RecorderView& getRecorder() noexcept { return recorder; }
     universal::SetupView& getSetup() noexcept { return setup; }
-    void showChanged() override { scenes.refresh(); }
+    void showChanged() override
+    {
+        scenes.refresh();
+        repaint(); // the show's name
+    }
     universal::Inspector& getInspector() noexcept { return inspector; }
     bool isInspectorOpen() const noexcept { return inspectorOpen; }
+    /** The show's name in the top bar (its file's, or UNTITLED SHOW). */
+    juce::String getShowTitle() const;
+    /** The SHOW menu's items, as its key offers them: 1 NEW, 2 OPEN, 3 SAVE, 4 SAVE AS. */
+    void runShowCommand (int item);
+    universal::ToggleKey& getShowKey() noexcept { return showKey; }
 
 private:
     UiContext& ctx;
     const universal::Theme& theme;
-    universal::ToggleKey wingKey;
+    universal::ToggleKey wingKey, showKey;
     std::vector<std::unique_ptr<universal::ToggleKey>> viewKeys;
     universal::MixerView mixer;
     universal::RoutingView routingView;

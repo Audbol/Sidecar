@@ -5,6 +5,12 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+- Universal Mixer, stand-alone basics: the top bar shows the show's name and its
+  **SHOW** menu (NEW, OPEN, SAVE, SAVE AS); the MIXER view has a column per DCA (name,
+  colour, MUTE, SOLO, fader) and the mute groups' keys (engage, ALL OFF) after the
+  strips, or alone under the new **DCAS** key; the inspector's new **STRIP** page names
+  and colours the strip (its source while LINK CUSTOMIZATION TO SOURCE is on, as on the
+  WING) and assigns it to DCAs and mute groups. Any number of each, as configured.
 - Universal Mixer, every console's blocks (`docs/UNIVERSAL_MIXER.md`, decision 6): a
   Universal console's strips and FX rack can hold the X32's models beside the WING's:
   its gates (expanders, gate, ducker), compressor and expander, 4-band and 6-band EQ

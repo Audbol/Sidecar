@@ -1,4 +1,5 @@
 #include "ui/HomePage.h"
+#include "ui/StripCustomize.h"
 #include "ui/ChainSummary.h"
 #include "dsp/DspUtils.h"
 #include "ui/Faceplate.h"
@@ -757,13 +758,7 @@ public:
     std::vector<HomeKnob> knobs() override { return homeTabKnobs (ctx, strip); }
 
     /** Names the strip, or its source while linked. */
-    void rename (const juce::String& name)
-    {
-        if (const int index = strip.linkedSourceIndex(); index >= 0)
-            ctx.engine.setSourceName (index, name);
-        else
-            strip.setName (name);
-    }
+    void rename (const juce::String& name) { customize::rename (ctx.engine, strip, name); }
 
     void timerCallback() override
     {
@@ -908,13 +903,7 @@ public:
             strip.params.icon = icon;
     }
 
-    void setColour (int colour)
-    {
-        if (auto* src = strip.linkedSource())
-            src->colour = palette::clamp (colour);
-        else
-            strip.setColourIndex (colour);
-    }
+    void setColour (int colour) { customize::setColour (strip, colour); }
 
     void timerCallback() override
     {

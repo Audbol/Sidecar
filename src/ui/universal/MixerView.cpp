@@ -248,6 +248,7 @@ namespace
             case (int) StripKind::Bus:     return "BUSES";
             case (int) StripKind::Main:    return "MAINS";
             case (int) StripKind::Matrix:  return "MATRICES";
+            case MixerView::kDcas:         return "DCAS";
             default:                       break;
         }
         return "ALL";
@@ -277,7 +278,7 @@ MixerView::MixerView (UiContext& c, const Theme& t)
         ctx.settings.setValue (uiprefs::universalFaders, fadersShown);
     };
     addAndMakeVisible (fadersKey);
-    for (int kind = -1; kind < kNumStripKinds; ++kind)
+    for (int kind = -1; kind <= kDcas; ++kind)
     {
         auto key = std::make_unique<ToggleKey> (filterName (kind), theme.accent, theme);
         key->onClick = [this, kind] { setFilter (kind); };
@@ -310,7 +311,7 @@ void MixerView::setFadersShown (bool shown)
 
 void MixerView::setFilter (int kind)
 {
-    const int f = juce::jlimit (-1, kNumStripKinds - 1, kind);
+    const int f = juce::jlimit (-1, (int) kDcas, kind);
     if (f == filter)
         return;
     filter = f;
@@ -321,6 +322,8 @@ void MixerView::rebuild()
 {
     structureVersion = ctx.engine.getStructureVersion();
     columns.clear();
+    dcaColumns.clear();
+    muteGroups.reset();
     for (int k = 0; k < kNumStripKinds; ++k)
     {
         if (filter >= 0 && filter != k)
@@ -330,6 +333,20 @@ void MixerView::rebuild()
             columns.push_back (std::make_unique<StripColumn> (ctx, *s, theme));
             columns.back()->setFaderShown (fadersShown);
             content.addAndMakeVisible (*columns.back());
+        }
+    }
+    // The DCAs and the mute groups after the strips (ALL), or alone (DCAS).
+    if (filter < 0 || filter == kDcas)
+    {
+        for (int d = 0; d < ctx.engine.getNumDcas(); ++d)
+        {
+            dcaColumns.push_back (std::make_unique<DcaColumn> (ctx, d, theme));
+            content.addAndMakeVisible (*dcaColumns.back());
+        }
+        if (ctx.engine.getNumMuteGroups() > 0)
+        {
+            muteGroups = std::make_unique<MuteGroupsPanel> (ctx, theme);
+            content.addAndMakeVisible (*muteGroups);
         }
     }
     for (auto& key : filterKeys)
@@ -371,11 +388,20 @@ void MixerView::refresh()
     }
     for (auto& c : columns)
         c->refresh();
+    for (auto& d : dcaColumns)
+        d->refresh();
+    if (muteGroups != nullptr)
+        muteGroups->refresh();
 }
 
 StripColumn* MixerView::getColumn (int index) const noexcept
 {
     return juce::isPositiveAndBelow (index, (int) columns.size()) ? columns[(size_t) index].get() : nullptr;
+}
+
+DcaColumn* MixerView::getDcaColumn (int index) const noexcept
+{
+    return juce::isPositiveAndBelow (index, (int) dcaColumns.size()) ? dcaColumns[(size_t) index].get() : nullptr;
 }
 
 void MixerView::paint (juce::Graphics& g)
@@ -421,6 +447,22 @@ void MixerView::layoutColumns()
         lastKind = kind;
         c->setBounds (x, 0, sizes::kColumnWidth, height);
         x += sizes::kColumnWidth;
+    }
+    if (! dcaColumns.empty() && ! columns.empty())
+        x += sizes::kKindGap;
+    for (auto& d : dcaColumns)
+    {
+        d->setBounds (x, 0, sizes::kColumnWidth, height);
+        x += sizes::kColumnWidth;
+    }
+    if (muteGroups != nullptr)
+    {
+        if (x > sizes::kGapSmall)
+            x += sizes::kKindGap;
+        // Two keys across (four once there are more than 16 groups).
+        const int width = (ctx.engine.getNumMuteGroups() > 16 ? 4 : 2) * muteGroups->groups.minKey + 2 * sizes::kGap + 8;
+        muteGroups->setBounds (x, 0, width, height);
+        x += width;
     }
     content.setSize (x + sizes::kGapSmall, height);
 }

@@ -11,7 +11,7 @@ UniversalSkin::UniversalSkin (UiContext& c)
                : c.engine.getProfile() == ld::kProfileProMix01 ? "PROMIX SURFACE"
                : c.engine.getProfile() == ld::kProfileYamaha02R ? "02R SURFACE"
                                                                : "WING SURFACE",
-               theme.accent, theme), mixer (c, theme), routingView (c, theme), fxRack (c, theme),
+               theme.accent, theme), showKey ("SHOW", theme.accent, theme), mixer (c, theme), routingView (c, theme), fxRack (c, theme),
       monitoring (c, theme), scenes (c, theme), recorder (c, theme), setup (c, theme), inspector (c, theme)
 {
     const std::pair<const char*, View> views[] = { { "MIXER", View::Mixer },           { "ROUTING", View::Routing }, { "FX RACK", View::Fx },
@@ -41,6 +41,24 @@ UniversalSkin::UniversalSkin (UiContext& c)
     };
     wingKey.setTooltip (back == InterfaceKind::X32 ? "Back to the X32 surface" : back == InterfaceKind::ProMix ? "Back to the ProMix 01 surface" : "Back to the WING surface");
     addAndMakeVisible (wingKey);
+    // The show: NEW, OPEN, SAVE and SAVE AS (the shell's, as the WING's LIBRARY uses them).
+    showKey.onClick = [this]
+    {
+        juce::PopupMenu menu;
+        menu.addSectionHeader (getShowTitle());
+        menu.addItem (1, "New show");
+        menu.addItem (2, "Open...");
+        menu.addItem (3, "Save");
+        menu.addItem (4, "Save as...");
+        juce::Component::SafePointer<UniversalSkin> safe (this);
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&showKey), [safe] (int item)
+        {
+            if (safe != nullptr && item != 0)
+                safe->runShowCommand (item);
+        });
+    };
+    showKey.setTooltip ("The show: new, open, save");
+    addAndMakeVisible (showKey);
     addAndMakeVisible (mixer);
     addChildComponent (routingView);
     addChildComponent (fxRack);
@@ -81,6 +99,25 @@ void UniversalSkin::showView (View v)
         case View::Recorder:   break;
         case View::Setup:      setup.refresh(); break;
     }
+}
+
+juce::String UniversalSkin::getShowTitle() const
+{
+    const auto file = ctx.getShowFile ? ctx.getShowFile() : juce::File();
+    return file != juce::File() ? file.getFileNameWithoutExtension() : juce::String ("UNTITLED SHOW");
+}
+
+void UniversalSkin::runShowCommand (int item)
+{
+    switch (item)
+    {
+        case 1: if (ctx.newShow) ctx.newShow(); break;
+        case 2: if (ctx.openShow) ctx.openShow(); break;
+        case 3: if (ctx.saveShow) ctx.saveShow (false); break;
+        case 4: if (ctx.saveShow) ctx.saveShow (true); break;
+        default: break;
+    }
+    repaint();
 }
 
 void UniversalSkin::selectionChanged()
@@ -126,9 +163,15 @@ void UniversalSkin::paint (juce::Graphics& g)
     g.setFont (type::font (type::kCaption, true));
     g.drawText ("PREVIEW", badge, juce::Justification::centred);
     bar.removeFromLeft (sizes::kGapLarge);
+    // The show's name left of its SHOW key; the console's counts between.
+    bar.removeFromRight (wingKey.getWidth() + showKey.getWidth() + sizes::kGapLarge * 2);
+    auto showName = bar.removeFromRight (juce::jmin (320, bar.getWidth() / 3));
+    g.setColour (theme.text);
+    g.setFont (type::font (type::kLabel + 1.0f, true));
+    g.drawFittedText (getShowTitle(), showName, juce::Justification::centredRight, 1, 0.7f);
     g.setColour (theme.textDim);
     g.setFont (type::font (type::kLabel));
-    g.drawFittedText (summary, bar.withTrimmedRight (wingKey.getWidth() + sizes::kGapLarge), juce::Justification::centredLeft, 1, 0.8f);
+    g.drawFittedText (summary, bar.withTrimmedRight (sizes::kGapLarge), juce::Justification::centredLeft, 1, 0.8f);
 }
 
 void UniversalSkin::resized()
@@ -136,6 +179,8 @@ void UniversalSkin::resized()
     auto area = getLocalBounds();
     auto bar = area.removeFromTop (sizes::kTopBar).reduced (sizes::kGapLarge, (sizes::kTopBar - sizes::kTouch) / 2);
     wingKey.setBounds (bar.removeFromRight (160));
+    bar.removeFromRight (sizes::kGapLarge);
+    showKey.setBounds (bar.removeFromRight (112));
     auto keys = area.removeFromTop (sizes::kTabBar + sizes::kGap).reduced (sizes::kGap, sizes::kGapSmall);
     const int keyWidth = juce::jmin (150, (keys.getWidth() - ((int) viewKeys.size() - 1) * sizes::kGapSmall) / juce::jmax (1, (int) viewKeys.size()));
     for (auto& key : viewKeys)

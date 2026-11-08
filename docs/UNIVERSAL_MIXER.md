@@ -268,7 +268,15 @@ Three layers:
 
    Phase 2 is complete (November 2026). Still on the WING surface: the monitor paths'
    processing, talkback, custom controls, the LIBRARY, snippets and the remotes'
-   settings. The interface still says PREVIEW: dropping it, as the decision above
+   settings.
+
+   *Universal stands alone* (November 2026, the owner's order): first the basics a
+   show needs. Done: the show's NEW / OPEN / SAVE / SAVE AS on the top bar's SHOW key;
+   DCAs as MIXER columns and the mute groups' keys (MIXER: ALL, DCAS); the
+   inspector's STRIP page (name and colour, through the source while customization
+   is linked: `ui/StripCustomize.h`, shared with the WING's HOME; DCA and mute group
+   membership). Next: the monitor paths' processing and talkback; then custom
+   controls and the remotes' settings. The interface still says PREVIEW: dropping it, as the decision above
    foresees once Phase 2 is complete, waits for the owner's go.
 3. **WING as a profile**: move the WING's limits, defaults, laws, surface, protocols
    and files into a WING profile over the core (including Phase 1's step 3d: the
