@@ -14,6 +14,32 @@ pub extern "C" fn ld_monitor_direct_name(index: i32) -> *mut LdString {
     LdString::new(guard(String::new(), || direct_source_name(index)))
 }
 
+/// The display name of a monitor SOURCE index ("MAIN.1", "BUS.17"; "OFF").
+#[no_mangle]
+pub extern "C" fn ld_monitor_source_name(index: i32) -> *mut LdString {
+    LdString::new(guard(String::new(), || livedaw_engine::params::monitor_source_name(index)))
+}
+
+/// ABI 51: the monitor SOURCE index of a strip (StripKind, 0-based number; a bus
+/// by its slot): the WING's number while it has one, else its extended choice
+/// (a Universal console's BUS 17); -1 for a channel or an unknown kind.
+#[no_mangle]
+pub extern "C" fn ld_monitor_source_index(kind: i32, number: i32) -> i32 {
+    match (livedaw_engine::StripKind::from_i32(kind), usize::try_from(number)) {
+        (Some(k), Ok(n)) => livedaw_engine::params::monitor_source_index(k, n),
+        _ => -1,
+    }
+}
+
+/// ABI 51: the DIRECT IN index of a strip, as `ld_monitor_source_index` (any kind).
+#[no_mangle]
+pub extern "C" fn ld_monitor_direct_index(kind: i32, number: i32) -> i32 {
+    match (livedaw_engine::StripKind::from_i32(kind), usize::try_from(number)) {
+        (Some(k), Ok(n)) => monitor::direct_index(k, n),
+        _ => -1,
+    }
+}
+
 /// Milliseconds of delay for a distance in meters (the DIST slider).
 #[no_mangle]
 pub extern "C" fn ld_monitor_delay_ms(meters: f32) -> f32 {

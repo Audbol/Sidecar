@@ -35,6 +35,71 @@ namespace
         };
     }
 
+    /** A monitor SOURCE or DIRECT IN choice: its name and the engine's index. */
+    struct Choice
+    {
+        juce::String name;
+        int index;
+    };
+
+    /** The console's strips of `kinds` as choices (a bus by its slot), in that
+        order: a Universal console's past the WING's counts too (BUS.17). */
+    std::vector<Choice> stripChoices (MixerEngine& e, std::initializer_list<StripKind> kinds, bool direct)
+    {
+        std::vector<Choice> list;
+        for (auto kind : kinds)
+        {
+            const auto& strips = e.getStrips (kind);
+            for (int i = 0; i < (int) strips.size(); ++i)
+            {
+                const int number = strips[(size_t) i]->isBus() ? strips[(size_t) i]->getId() : i;
+                const int index = direct ? MixerEngine::directSourceIndex (kind, number) : MixerEngine::monitorSourceIndex (kind, number);
+                if (index >= 0)
+                    list.push_back ({ direct ? MixerEngine::directSourceName (index) : MixerEngine::monitorSourceName (index), index });
+            }
+        }
+        return list;
+    }
+
+    std::vector<Choice> monitorSources (MixerEngine& e)
+    {
+        return stripChoices (e, { StripKind::Main, StripKind::Matrix, StripKind::Bus, StripKind::Aux }, false);
+    }
+
+    /** OFF, then every channel, aux, bus, main and matrix. */
+    std::vector<Choice> directSources (MixerEngine& e)
+    {
+        auto list = stripChoices (e, { StripKind::Channel, StripKind::Aux, StripKind::Bus, StripKind::Main, StripKind::Matrix }, true);
+        list.insert (list.begin(), { "OFF", -1 });
+        return list;
+    }
+
+    void bindChoices (ChoiceBar& bar, std::function<std::vector<Choice>()> choices, std::atomic<int32_t>& value)
+    {
+        bar.items = [choices]
+        {
+            juce::StringArray names;
+            for (const auto& c : choices())
+                names.add (c.name);
+            return names;
+        };
+        bar.current = [choices, &value]
+        {
+            const auto list = choices();
+            const int v = value.load();
+            for (size_t i = 0; i < list.size(); ++i)
+                if (list[i].index == v)
+                    return (int) i;
+            return -1;
+        };
+        bar.choose = [choices, &value] (int i)
+        {
+            const auto list = choices();
+            if (juce::isPositiveAndBelow (i, (int) list.size()))
+                value = list[(size_t) i].index;
+        };
+    }
+
     // The monitor EQ (engine monitor.rs): L (low shelf), 1-6 (PEQ), H (high shelf);
     // their defaults are a WING's after INITIALIZE.
     constexpr float kEqDefaultFreq[ld::kMonitorEqBands] = { 60.14f, 129.88f, 299.25f, 699.49f, 1499.8f, 2992.5f, 6013.9f, 12000.0f };
@@ -72,17 +137,9 @@ MonitorView::Path::Path (UiContext& c, const Theme& t, bool isPhones)
 {
     auto& e = c.engine;
     auto& src = phones ? e.phones.source : e.speakers;
+    // The console's mains, matrices, buses and aux (the WING's order), past the WING's counts too.
     source.caption = "SOURCE";
-    source.device = devices::wing; // the WING's monitor source list
-    source.items = []
-    {
-        juce::StringArray names;
-        for (int i = 0; i < ld::kNumMonitorSources; ++i)
-            names.add (MixerEngine::monitorSourceName (i));
-        return names;
-    };
-    source.current = [&src] { return src.source.load(); };
-    source.choose = [&src] (int i) { src.source = i; };
+    bindChoices (source, [&e] { return monitorSources (e); }, src.source);
     sourceLevel.bind (ValueBar::level ("SOURCE LEVEL", src.sourceLevelDb));
     level.bind (ValueBar::level ("LEVEL", phones ? e.phones.levelDb : e.monitorLevelDb));
     dimAmount.bind (ValueBar::linear ("DIM BY", phones ? e.phones.dimDb : e.monitorDimDb, 0.0f, 40.0f, 20.0f, " dB", 0));
@@ -101,16 +158,7 @@ MonitorView::Path::Path (UiContext& c, const Theme& t, bool isPhones)
     // The path's processing.
     auto& p = e.monitorPath (phones);
     directIn.caption = "DIRECT IN";
-    directIn.device = devices::wing; // CH.1-40, AUX.1-8, BUS.1-16, MAIN.1-4, MTX.1-8
-    directIn.items = []
-    {
-        juce::StringArray names { "OFF" };
-        for (int i = 0; i < ld::kNumDirectSources; ++i)
-            names.add (MixerEngine::directSourceName (i));
-        return names;
-    };
-    directIn.current = [&p] { return p.directSource.load() + 1; };
-    directIn.choose = [&p] (int i) { p.directSource = i - 1; };
+    bindChoices (directIn, [&e] { return directSources (e); }, p.directSource);
     directLevel.bind (ValueBar::level ("DIRECT LEVEL", p.directLevelDb));
     eqOn.isOn = [&p] { return p.eqOn.load(); };
     eqOn.onClick = [&p] { p.eqOn = ! p.eqOn.load(); };

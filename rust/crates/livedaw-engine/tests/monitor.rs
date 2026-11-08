@@ -160,6 +160,31 @@ fn direct_in_mixes_any_strip_into_one_path() {
 }
 
 #[test]
+fn a_universal_consoles_buses_past_the_wings_16_are_sources_and_direct_inputs() {
+    use livedaw_engine::params::{monitor_source_index, EXTENDED_SOURCE_BASE};
+    let mut rig = Rig::new(2);
+    two_channels(&mut rig, 0.25, 0.5);
+    // 24 buses (a Universal console): channel 2 feeds bus 20 only.
+    rig.engine.set_num_strips(StripKind::Bus, 24);
+    let bus20 = rig.strip(StripKind::Bus, 19);
+    bus20.params.fader_db.store(0.0);
+    let ch2 = rig.ch(1);
+    let send = ch2.sends.get_or_create(19).unwrap();
+    send.enabled.store(true, Relaxed);
+    send.level_db.store(0.0);
+    // BUS.20 as the SPEAKERS' SOURCE (an extended choice: the WING has 16 buses).
+    let src = monitor_source_index(StripKind::Bus, 19);
+    assert!(src >= EXTENDED_SOURCE_BASE);
+    rig.engine.controls.speakers.source.store(src, Relaxed);
+    rig.run(16, SPK);
+    assert!(close(rig.last(SPK), 0.5, 1e-3), "BUS.20 on the speakers: {}", rig.last(SPK));
+    // And as the PHONES' DIRECT IN, beside their MAIN.1.
+    rig.phones().direct_source.store(direct_index(StripKind::Bus, 19), Relaxed);
+    rig.run(16, PH);
+    assert!(close(rig.last(PH), 0.25 + 0.5, 1e-3), "MAIN.1 + BUS.20: {}", rig.last(PH));
+}
+
+#[test]
 fn source_off_plays_only_solos_and_direct_in() {
     let mut rig = Rig::new(2);
     two_channels(&mut rig, 0.25, 0.5);

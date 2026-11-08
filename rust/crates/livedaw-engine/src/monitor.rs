@@ -80,7 +80,11 @@ pub fn delay_ms(meters: f32) -> f32 {
 pub const NUM_DIRECT_SOURCES: usize = WING_CHANNELS + WING_AUX + WING_BUSES + WING_MAINS + WING_MATRICES;
 
 /// The strip a DIRECT IN index plays: (kind, 0-based number; buses by slot).
+/// A strip past the WING's counts has an extended choice (`params::extended_source`).
 pub fn direct_source(index: i32) -> Option<(StripKind, usize)> {
+    if let Some(strip) = crate::params::decode_extended_source(index) {
+        return Some(strip);
+    }
     let mut i = usize::try_from(index).ok()?;
     for (kind, count) in [
         (StripKind::Channel, WING_CHANNELS),
@@ -97,7 +101,8 @@ pub fn direct_source(index: i32) -> Option<(StripKind, usize)> {
     None
 }
 
-/// The DIRECT IN index of a strip (kind, 0-based number), or -1.
+/// The DIRECT IN index of a strip (kind, 0-based number): the WING's number
+/// while it has one, else its extended choice.
 pub fn direct_index(kind: StripKind, number: usize) -> i32 {
     let mut base = 0;
     for (k, count) in [
@@ -108,7 +113,7 @@ pub fn direct_index(kind: StripKind, number: usize) -> i32 {
         (StripKind::Matrix, WING_MATRICES),
     ] {
         if k == kind {
-            return if number < count { (base + number) as i32 } else { -1 };
+            return if number < count { (base + number) as i32 } else { crate::params::extended_source(kind, number) };
         }
         base += count;
     }
@@ -629,6 +634,14 @@ mod tests {
         assert_eq!(direct_source(45), Some((StripKind::Aux, 5)));
         assert_eq!(direct_source(NUM_DIRECT_SOURCES as i32 - 1), Some((StripKind::Matrix, 7)));
         assert_eq!(direct_source(NUM_DIRECT_SOURCES as i32), None);
+        // Past the WING's counts: extended choices (BUS 17, MAIN 5, CH 48).
+        for (kind, n) in [(StripKind::Bus, 16), (StripKind::Main, 4), (StripKind::Channel, 47), (StripKind::Matrix, 8)] {
+            let i = direct_index(kind, n);
+            assert!(i >= crate::params::EXTENDED_SOURCE_BASE, "{kind:?} {n}");
+            assert_eq!(direct_source(i), Some((kind, n)));
+        }
+        assert_eq!(direct_source_name(direct_index(StripKind::Bus, 16)), "BUS.17");
+        assert_eq!(direct_index(StripKind::Bus, 15), 40 + 8 + 15, "the WING's keep their numbers");
         for i in 0..NUM_DIRECT_SOURCES as i32 {
             let (k, n) = direct_source(i).unwrap();
             assert_eq!(direct_index(k, n), i);

@@ -921,10 +921,11 @@ parameters.
 
 ### MONITORING
 
-**SPEAKERS** and **PHONES**: their source and source level, their level, **DIM**,
+**SPEAKERS** and **PHONES**: their source (any main, matrix, bus or aux of the
+console, past a WING's 16 buses, 4 mains and 8 matrices too) and source level, their level, **DIM**,
 **MONO** and **MUTE** for the speakers, how far DIM takes them down, their outputs and
-meters. Under them each path's **PROCESSING**, in the order it runs: **DIRECT IN** (a
-channel, aux, bus, main or matrix added to the path, with its level), the **EQ** (its
+meters. Under them each path's **PROCESSING**, in the order it runs: **DIRECT IN** (any
+channel, aux, bus, main or matrix of the console added to the path, with its level), the **EQ** (its
 key turns it on; eight bands: a low shelf, six peaking bands and a high shelf, set on
 the curve by their handles as a strip's EQ), **INVERT**, **PAN** and **WIDTH**,
 **DELAY** (its key turns it on; **DISTANCE** sets it in metres, its time in ms beside

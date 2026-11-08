@@ -864,8 +864,10 @@ public:
             const bool dimmed = engine.monitorDim.load();
             view.speakers.dim.onClick();
             expect (engine.monitorDim.load() != dimmed);
-            view.phones.source.chooseItem (3);
-            expectEquals (engine.phones.source.source.load(), 3);
+            // The console's own: MAIN.1, MTX.1-2, BUS.1-4 (no aux here).
+            expectEquals (view.phones.source.items().size(), 1 + 2 + 4);
+            view.phones.source.chooseItem (2);
+            expectEquals (engine.phones.source.source.load(), MixerEngine::monitorSourceIndex (StripKind::Matrix, 1), "MTX.2");
             view.speakers.outputLeft.chooseItem (2);
             expectEquals (engine.monitorOutputLeft.load(), 1);
             view.speakers.outputLeft.chooseItem (0);
@@ -880,9 +882,22 @@ public:
             engine.getDca (29).solo = true;
             view.clearSolo.onClick();
             expect (! engine.getChannels()[1]->params.solo.load() && ! engine.getDca (29).solo.load());
-            expect (view.phones.source.device == devices::wing && view.soloMode.device == devices::wing);
+            expect (view.phones.source.device.isEmpty() && view.soloMode.device == devices::wing, "the console's sources, the WING's solo modes");
             view.refresh();
             expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds(), true, 1.0f), "universal-monitoring.png"));
+
+            // 24 buses: BUS.17-24 are sources and direct inputs too (past the WING's 16).
+            engine.setNumStrips (StripKind::Bus, 24);
+            view.refresh();
+            const auto names = view.speakers.source.items();
+            expect (names.contains ("BUS.24"), names.joinIntoString (", "));
+            view.speakers.source.chooseItem (names.indexOf ("BUS.24"));
+            expectEquals (engine.speakers.source.load(), MixerEngine::monitorSourceIndex (StripKind::Bus, 23));
+            expect (engine.speakers.source.load() >= 0x10000, "an extended choice");
+            expectEquals (view.speakers.source.getText(), juce::String ("BUS.24"));
+            const auto direct = view.phones.directIn.items();
+            view.phones.directIn.chooseItem (direct.indexOf ("BUS.17"));
+            expectEquals (engine.monitorPath (true).directSource.load(), MixerEngine::directSourceIndex (StripKind::Bus, 16));
         }
 
         beginTest ("MONITORING: each path's processing (DIRECT IN, EQ, PAN / WIDTH, INVERT, DELAY, LIMITER) and talkback");
@@ -921,7 +936,7 @@ public:
             // DIRECT IN, PAN, WIDTH, INVERT, DELAY (by distance), LIMITER.
             view.phones.directIn.chooseItem (2);
             expectEquals (ph.directSource.load(), 1, "CH.2");
-            expect (view.phones.directIn.device == devices::wing);
+            expect (view.phones.directIn.device.isEmpty(), "the console's strips");
             view.phones.pan.setPositionFromUser (1.0f);
             expectWithinAbsoluteError (ph.pan.load(), 100.0f, 0.01f);
             view.phones.width.setPositionFromUser (0.5f);

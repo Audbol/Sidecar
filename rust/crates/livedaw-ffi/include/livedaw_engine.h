@@ -29,7 +29,7 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 50;
+constexpr int kAbiVersion = 51;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -2092,6 +2092,13 @@ extern "C"
     // Monitor path processing and SOURCE SOLO (ABI 8; settings in EngineControls::monitor)
     /** DIRECT IN name ("CH.12", "AUX.6", "MTX.3"; "OFF"). */
     LdString* ld_monitor_direct_name (int32_t index);
+    /** Monitor SOURCE name ("MAIN.1", "BUS.17"; "OFF"). */
+    LdString* ld_monitor_source_name (int32_t index);
+    /** ABI 51: the monitor SOURCE / DIRECT IN index of a strip (StripKind, 0-based number,
+        a bus by its slot): the WING's number while it has one, else an extended choice
+        (kExtendedSourceBase + ...) for a strip past the WING's counts; -1 for none. */
+    int32_t ld_monitor_source_index (int32_t kind, int32_t number);
+    int32_t ld_monitor_direct_index (int32_t kind, int32_t number);
     /** Delay in ms for a distance in meters. */
     float ld_monitor_delay_ms (float meters);
     /** dB response of path `path`'s EQ (0 SPEAKERS, 1 PHONES): the whole EQ (band < 0, flat while off) or one band. */

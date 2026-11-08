@@ -1342,8 +1342,49 @@ pub const DEFAULT_PFL_DIM_DB: f32 = 12.0;
 /// path plays without a solo: MAIN.1-4, MTX.1-8, BUS.1-16, AUX.1-8.
 pub const NUM_MONITOR_SOURCES: usize = WING_MAINS + WING_MATRICES + WING_BUSES + WING_AUX;
 
+/// Strips past the WING's counts (a Universal console's BUS 17, MAIN 5) as
+/// monitor SOURCE and DIRECT IN choices: `EXTENDED_SOURCE_BASE + kind * 0x1000 +
+/// number` (0-based; a bus by its slot). The WING's own choices keep their
+/// numbers (`monitor_source`, `monitor::direct_source`), so WING shows and the
+/// WING remote see the same values; shows store either as a number.
+pub const EXTENDED_SOURCE_BASE: i32 = 0x10000;
+const EXTENDED_KIND_STRIDE: i32 = 0x1000;
+
+/// The extended choice of a strip (any kind and number up to 4095).
+pub fn extended_source(kind: StripKind, number: usize) -> i32 {
+    EXTENDED_SOURCE_BASE + kind as i32 * EXTENDED_KIND_STRIDE + number.min(EXTENDED_KIND_STRIDE as usize - 1) as i32
+}
+
+/// The strip of an extended choice (None for a WING choice or OFF).
+pub fn decode_extended_source(index: i32) -> Option<(StripKind, usize)> {
+    let rest = index.checked_sub(EXTENDED_SOURCE_BASE).filter(|r| *r >= 0)?;
+    let kind = StripKind::from_i32(rest / EXTENDED_KIND_STRIDE)?;
+    Some((kind, (rest % EXTENDED_KIND_STRIDE) as usize))
+}
+
+/// The monitor SOURCE index of a strip: the WING's number while it has one,
+/// else its extended choice; -1 for a channel (not a SOURCE).
+pub fn monitor_source_index(kind: StripKind, number: usize) -> i32 {
+    let mut base = 0;
+    for (k, count) in [
+        (StripKind::Main, WING_MAINS),
+        (StripKind::Matrix, WING_MATRICES),
+        (StripKind::Bus, WING_BUSES),
+        (StripKind::Aux, WING_AUX),
+    ] {
+        if k == kind {
+            return if number < count { (base + number) as i32 } else { extended_source(kind, number) };
+        }
+        base += count;
+    }
+    -1
+}
+
 /// The strip a monitor SOURCE index plays: (kind, 0-based number; buses by slot).
 pub fn monitor_source(index: i32) -> Option<(StripKind, usize)> {
+    if let Some((kind, n)) = decode_extended_source(index) {
+        return (kind != StripKind::Channel).then_some((kind, n));
+    }
     let mut i = usize::try_from(index).ok()?;
     for (kind, count) in [
         (StripKind::Main, WING_MAINS),
@@ -1638,5 +1679,29 @@ impl EngineControls {
             f.source_left.store(-1, Relaxed);
             f.source_right.store(-1, Relaxed);
         }
+    }
+}
+
+#[cfg(test)]
+mod monitor_source_tests {
+    use super::*;
+
+    #[test]
+    fn monitor_sources_past_the_wings_counts() {
+        // The WING's keep their numbers; past them, extended choices.
+        assert_eq!(monitor_source_index(StripKind::Main, 0), 0);
+        assert_eq!(monitor_source_index(StripKind::Bus, 15), (WING_MAINS + WING_MATRICES + 15) as i32);
+        assert_eq!(monitor_source_index(StripKind::Channel, 0), -1, "a channel isn't a SOURCE");
+        for (kind, n) in
+            [(StripKind::Bus, 16), (StripKind::Bus, 255), (StripKind::Main, 4), (StripKind::Matrix, 8), (StripKind::Aux, 8)]
+        {
+            let i = monitor_source_index(kind, n);
+            assert!(i >= EXTENDED_SOURCE_BASE);
+            assert_eq!(monitor_source(i), Some((kind, n)));
+        }
+        assert_eq!(monitor_source_name(monitor_source_index(StripKind::Bus, 23)), "BUS.24");
+        assert_eq!(monitor_source(extended_source(StripKind::Channel, 3)), None);
+        assert_eq!(decode_extended_source(-1), None);
+        assert_eq!(decode_extended_source(5), None);
     }
 }

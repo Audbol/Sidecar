@@ -20,6 +20,10 @@ All notable changes to Sidecar are listed here. Versions follow
   distance, the LIMITER with its gain reduction) and talkback (the talkback channel,
   TALK LEVEL, TALK A and TALK B pressed and released as on the console, each path's
   mode, dims, USE SEND LEVELS and destinations), which were on the WING surface only.
+- Universal Mixer: a monitor path's SOURCE and DIRECT IN can be any strip of the
+  console, past a WING's 16 buses, 4 mains and 8 matrices (a console's BUS 17-24, say):
+  the engine numbers those choices past the WING's (`params::extended_source`), so the
+  WING's keep their numbers in shows and for WING apps. C ABI 51.
 - Universal Mixer, SETUP > REMOTE: the WING remote (enable, discovery, OSC and native
   servers with their ports, the console name, the clients), the web remote (enable,
   port, PIN, view only, the addresses) and MIDI (each function's route, the DIN and USB

@@ -284,7 +284,14 @@ Three layers:
    web remote, MIDI routes and devices, DAW control); the network remotes now start
    with the app (`MainComponent`), not with the WING surface's SETUP page. Left on the
    WING surface: custom controls, the LIBRARY's file browser, REMOTE LOCK, HA REMOTE,
-   the DAW's surface layout and presets. The interface still says PREVIEW: dropping it, as the decision above
+   the DAW's surface layout and presets.
+
+   The monitor SOURCE and DIRECT IN reach every strip of the console: choices past
+   the WING's counts are numbered from `params::EXTENDED_SOURCE_BASE` (kind and
+   number), the WING's keep theirs (C ABI 51: `ld_monitor_source_index`,
+   `ld_monitor_direct_index`, `ld_monitor_source_name`); MONITORING lists the
+   console's strips. Still the WING's ranges: the talkback destinations and the strip
+   sources ($BUS/$MAIN/$MTX of the routing's source groups). The interface still says PREVIEW: dropping it, as the decision above
    foresees once Phase 2 is complete, waits for the owner's go.
 3. **WING as a profile**: move the WING's limits, defaults, laws, surface, protocols
    and files into a WING profile over the core (including Phase 1's step 3d: the

@@ -380,15 +380,18 @@ void MixerEngine::talkKey (int path, bool down) noexcept
 
 juce::String MixerEngine::monitorSourceName (int index)
 {
-    struct Group { const char* name; int count; };
-    const Group groups[] = { { "MAIN", kWingMains }, { "MTX", kWingMatrices }, { "BUS", kWingBuses }, { "AUX", kWingAux } };
-    for (auto& g : groups)
-    {
-        if (juce::isPositiveAndBelow (index, g.count))
-            return juce::String (g.name) + "." + juce::String (index + 1);
-        index -= g.count;
-    }
-    return "OFF";
+    // The engine's names, which know a Universal console's strips past the WING's counts ("BUS.17").
+    return takeString (ld::ld_monitor_source_name (index));
+}
+
+int MixerEngine::monitorSourceIndex (StripKind kind, int number)
+{
+    return ld::ld_monitor_source_index ((int32_t) kind, number);
+}
+
+int MixerEngine::directSourceIndex (StripKind kind, int number)
+{
+    return ld::ld_monitor_direct_index ((int32_t) kind, number);
 }
 
 juce::String MixerEngine::directSourceName (int index)

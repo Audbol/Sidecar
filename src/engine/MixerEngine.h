@@ -321,6 +321,11 @@ public:
 
     /** Monitor SOURCE names ("MAIN.1", "MTX.3", "BUS.12", "AUX.8"). */
     static juce::String monitorSourceName (int index);
+    /** The monitor SOURCE / DIRECT IN index of a strip (0-based number; a bus by its slot,
+        getId()): the WING's number while it has one, else an extended choice (a Universal
+        console's BUS 17); -1 for none (a channel as a SOURCE). */
+    static int monitorSourceIndex (StripKind, int number);
+    static int directSourceIndex (StripKind, int number);
     /** The monitor paths (bit 0 = SPEAKERS, bit 1 = PHONES) whose level DCA `dca`
         controls (named MON A: PHONES, MON B: SPEAKERS, MON LVL: both; firmware 1.09). */
     uint32_t getDcaMonitorPaths (int dca) const noexcept { return ld::ld_engine_dca_monitor_paths (engine, dca); }
