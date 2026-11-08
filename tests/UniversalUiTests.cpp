@@ -883,6 +883,93 @@ public:
             expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds(), true, 1.0f), "universal-monitoring.png"));
         }
 
+        beginTest ("MONITORING: each path's processing (DIRECT IN, EQ, PAN / WIDTH, INVERT, DELAY, LIMITER) and talkback");
+        {
+            MixerEngine engine (0);
+            engine.configure (nullptr);
+            UiRig rig (engine);
+            MonitorView view (rig.ctx, Theme::dark());
+            view.setSize (1600, 1000);
+            view.refresh();
+            auto& sp = engine.monitorPath (false);
+            auto& ph = engine.monitorPath (true);
+
+            // The EQ: 8 handles (L, 1-6, H; the shelves without a Q) on the path's bands.
+            auto& eq = view.speakers.eq;
+            expectEquals ((int) eq.getHandles().size(), ld::kMonitorEqBands);
+            expect (eq.getHandles()[0].q == nullptr && eq.getHandles()[3].q == &sp.eq[3].q);
+            expect (eq.getHandles()[3].freq == &sp.eq[3].freq && eq.getHandles()[7].label == "H");
+            const bool eqWasOn = sp.eqOn.load();
+            view.speakers.eqOn.onClick();
+            expect (sp.eqOn.load() != eqWasOn);
+            if (! sp.eqOn.load())
+                view.speakers.eqOn.onClick();
+            sp.eq[3].gainDb = 9.0f;
+            eq.refresh();
+            const auto& curve = eq.getCurve();
+            expect (! curve.empty() && *std::max_element (curve.begin(), curve.end()) > 6.0, "the engine's response: a 9 dB band");
+            // A drag on a band's handle moves its frequency and gain.
+            const float freqBefore = sp.eq[3].freq.load();
+            const auto at = eq.handlePosition (3);
+            eq.mouseDown (mouseEvent (eq, at, at));
+            eq.mouseDrag (mouseEvent (eq, at + juce::Point<float> (40.0f, 20.0f), at));
+            eq.mouseUp (mouseEvent (eq, at + juce::Point<float> (40.0f, 20.0f), at));
+            expect (sp.eq[3].freq.load() > freqBefore && sp.eq[3].gainDb.load() < 9.0f);
+
+            // DIRECT IN, PAN, WIDTH, INVERT, DELAY (by distance), LIMITER.
+            view.phones.directIn.chooseItem (2);
+            expectEquals (ph.directSource.load(), 1, "CH.2");
+            expect (view.phones.directIn.device == devices::wing);
+            view.phones.pan.setPositionFromUser (1.0f);
+            expectWithinAbsoluteError (ph.pan.load(), 100.0f, 0.01f);
+            view.phones.width.setPositionFromUser (0.5f);
+            expectWithinAbsoluteError (ph.width.load(), 0.0f, 0.5f);
+            const bool inverted = ph.invert.load();
+            view.phones.invert.onClick();
+            expect (ph.invert.load() != inverted);
+            view.phones.delayOn.onClick();
+            view.phones.distance.setPositionFromUser (1.0f / 3.0f);
+            expectWithinAbsoluteError (ph.delayM.load(), 1.0f, 0.05f, "a third of the log scale: 1 m");
+            expect (view.phones.distance.getText().contains (" ms"));
+            view.phones.limiter.setPositionFromUser (0.5f);
+            expectWithinAbsoluteError (ph.limiterDb.load(), -20.0f, 0.1f);
+            ph.limiterGrDb = 6.0f;
+            view.phones.refresh();
+            expectWithinAbsoluteError (view.phones.getLimiterReduction(), -6.0f, 0.01f, "its gain reduction shows");
+
+            // Talkback: the channel, TALK A by its key (a short press latches in AUTO), the destinations.
+            auto& tb = view.talkback;
+            tb.channel.chooseItem (40); // CH 40
+            expect (engine.getTalkStrip() == engine.getChannels()[39].get());
+            tb.channel.chooseItem (0);
+            expect (engine.getTalkStrip() == nullptr, "OFF");
+            tb.channel.chooseItem (41); // AUX 1
+            expect (engine.getTalkStrip() == engine.getAux()[0].get());
+            engine.talk.paths[0].mode = ld::kTalkAuto;
+            tb.talkA.setState (juce::Button::buttonDown);
+            tb.talkA.setState (juce::Button::buttonNormal);
+            expect (engine.isTalkOn (0), "a tap latches TALK A");
+            tb.talkA.setState (juce::Button::buttonDown);
+            tb.talkA.setState (juce::Button::buttonNormal);
+            expect (! engine.isTalkOn (0), "another tap releases it");
+            // TALK B's settings by its tab: mode, dims, the destinations (B1-16, M1-4, X1-8).
+            tb.showPath (1);
+            tb.mode.chooseItem (1);
+            expectEquals (engine.talk.paths[1].mode.load(), (int32_t) ld::kTalkPush);
+            expectEquals (tb.destinations.count(), 16 + 4 + 8);
+            tb.destinations.toggle (2);  // BUS 3
+            tb.destinations.toggle (17); // MAIN 2
+            tb.destinations.toggle (27); // MTX 8
+            expectEquals ((int) engine.talk.paths[1].buses.load(), 1 << 2);
+            expectEquals ((int) engine.talk.paths[1].mains.load(), 1 << 1);
+            expectEquals ((int) engine.talk.paths[1].matrices.load(), 1 << 7);
+            expectEquals ((int) engine.talk.paths[0].buses.load() & (1 << 2), 0, "TALK A's untouched");
+            tb.useSendLevels.onClick();
+            expect (engine.talk.paths[1].individual.load());
+            view.refresh();
+            expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds(), true, 1.0f), "universal-monitoring.png"));
+        }
+
         beginTest ("The Universal skin's view keys show one view at a time");
         {
             MixerEngine engine (0);

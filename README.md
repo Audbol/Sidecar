@@ -276,9 +276,9 @@ This list matches the notice Sidecar shows at start-up.
   Delay compensation (SETUP > SIDECAR > PLUGINS) lines up the paths into buses, mains and
   matrices up to 8192 samples; solo, monitoring, direct outs and recorder taps are
   not compensated.
-- **The Universal Mixer** (SETUP > SIDECAR > INTERFACE: UNIVERSAL) is a preview: the
-  monitor paths' processing, talkback, custom controls, the LIBRARY, snippets and the
-  remotes' settings are still on the WING surface, and on a console bigger than a WING
+- **The Universal Mixer** (SETUP > SIDECAR > INTERFACE: UNIVERSAL) is a preview: custom
+  controls, the LIBRARY's file browser and the remotes' settings are still on the WING
+  surface, and on a console bigger than a WING
   the WING surface and the WING remote apps reach its first 40 channels, 16 buses, 4
   mains and 8 matrices.
 - **WING remote apps:** the WING network protocols answer every parameter of the

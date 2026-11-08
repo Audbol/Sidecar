@@ -34,6 +34,8 @@ public:
     std::function<void (int)> toggle;
     /** A key's text under its number (a group's name), empty for none. */
     std::function<juce::String (int)> name;
+    /** A key's own text in place of its number ("B12"), if set. */
+    std::function<juce::String (int)> keyText;
     int minKey = 44;
 
     /** The key of group `i` (for the tests and the layout). */

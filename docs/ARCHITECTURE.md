@@ -1611,9 +1611,10 @@ README's *Known limitations*; keep the three in step.
   profile's own set comes with Phase 4), and the strip sources, the monitor SOURCE / DIRECT IN lists and
   the talkback destinations cover the WING's buses, mains and matrices only. The
   Universal Mixer's interface is a preview: it covers the mixer, chains, sends,
-  routing, FX, monitoring, scenes, the recorder and setup for any configuration; the
-  monitor paths' processing, talkback, custom controls, the library, snippets and the
-  remotes' settings are on the WING surface, which addresses the WING's ranges.
+  routing, FX, monitoring (with the monitor paths' processing and talkback), DCAs and
+  mute groups, scenes, the recorder, the show's files and setup for any
+  configuration; custom controls, the library's file browser and the remotes'
+  settings are on the WING surface, which addresses the WING's ranges.
 
 - Hardware: the audio interface's ports stand in for the WING's. No StageConnect,
   AES50 or Dante; source GAIN is digital and +48V is only stored.

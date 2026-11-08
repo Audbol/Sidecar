@@ -1,15 +1,20 @@
 #pragma once
 
 #include "ui/UiContext.h"
+#include "ui/universal/Groups.h"
 #include "ui/universal/ValueControls.h"
 
 namespace livedaw::ui::universal
 {
 
-/** The MONITORING view: the two monitor paths, SPEAKERS and PHONES (their
-    source from the WING's monitor source list, levels, DIM, MONO and MUTE,
-    outputs and meters), and the solo settings (the WING's solo bus and solo
-    modes, PFL or AFL by kind of strip, CLEAR SOLO). */
+/** The MONITORING view: the two monitor paths, SPEAKERS and PHONES, each with
+    its source (the WING's monitor source list), levels, DIM, MONO and MUTE,
+    outputs and meter, and its processing (DIRECT IN, the 8-band EQ with its
+    curve, PAN and WIDTH, INVERT, DELAY by distance, the LIMITER with its gain
+    reduction); then the solo settings (the WING's solo bus and solo modes, PFL
+    or AFL by kind of strip, CLEAR SOLO) and talkback (the talkback channel,
+    TALK LEVEL, the TALK A and TALK B keys, and each talk path's mode, dims
+    and destinations). */
 class MonitorView final : public juce::Component, private juce::Timer
 {
 public:
@@ -27,20 +32,68 @@ public:
         ToggleKey dim, mono, mute;
         ChoiceBar outputLeft, outputRight;
         MeterControl meter;
+        // Processing (engine monitor.rs): DIRECT IN -> EQ -> PAN / WIDTH -> INVERT -> DELAY -> LIMITER.
+        ChoiceBar directIn;
+        ValueBar directLevel;
+        ToggleKey eqOn, invert, delayOn;
+        ResponseView eq;
+        ValueBar pan, width, distance, limiter;
 
+        /** The limiter's largest gain reduction shown (dB, 0 or below), held a moment. */
+        float getLimiterReduction() const noexcept { return limiterGr; }
         void refresh();
         void paint (juce::Graphics&) override;
         void resized() override;
 
     private:
+        UiContext& ctx;
         const Theme& theme;
         bool phones;
+        float limiterGr = 0.0f;
+        int heldTicks = 0;
         std::vector<std::pair<juce::Component*, int>> rows;
+        juce::Rectangle<int> processingCaption, reductionArea;
+    };
+
+    /** Talkback: the talkback channel, TALK LEVEL, TALK A / TALK B (pressed and
+        released as on the console: the path's mode decides), and the settings
+        of the talk path chosen by its tab. */
+    class Talkback final : public juce::Component
+    {
+    public:
+        Talkback (UiContext&, const Theme&);
+
+        ChoiceBar channel;
+        ValueBar talkLevel;
+        ToggleKey talkA, talkB, tabA, tabB;
+        ChoiceBar mode;
+        ValueBar monDim, busDim;
+        ToggleKey useSendLevels;
+        GroupGrid destinations;
+
+        /** The talk path whose settings show (0 = A, 1 = B). */
+        void showPath (int path);
+        int getShownPath() const noexcept { return shown; }
+        /** The destinations' keys: buses, then mains, then matrices (the WING's). */
+        static constexpr int kDestinations = kWingBuses + kWingMains + kWingMatrices;
+        void refresh();
+        void paint (juce::Graphics&) override;
+        void resized() override;
+
+    private:
+        void bindPath();
+
+        UiContext& ctx;
+        const Theme& theme;
+        int shown = 0;
+        bool downA = false, downB = false;
+        juce::Rectangle<int> toCaption;
     };
 
     Path speakers, phones;
     ChoiceBar soloBus, soloMode;
     ToggleKey aflChannels, aflBuses, aflMains, aflMatrices, clearSolo;
+    Talkback talkback;
 
     /** Takes the values again (the timer does this 20 times a second). */
     void refresh();
@@ -59,6 +112,7 @@ private:
 
     UiContext& ctx;
     const Theme& theme;
+    juce::Rectangle<int> soloPanel;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MonitorView)
 };

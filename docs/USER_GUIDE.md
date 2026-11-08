@@ -922,11 +922,26 @@ parameters.
 
 **SPEAKERS** and **PHONES**: their source and source level, their level, **DIM**,
 **MONO** and **MUTE** for the speakers, how far DIM takes them down, their outputs and
-meters. **SOLO**: where solos go (**SOLO TO**), the solo mode (LIVE, STUDIO, SIP), PFL
-or AFL for channels, buses, mains and matrices, and **CLEAR SOLO**, lit while anything
-is soloed.
+meters. Under them each path's **PROCESSING**, in the order it runs: **DIRECT IN** (a
+channel, aux, bus, main or matrix added to the path, with its level), the **EQ** (its
+key turns it on; eight bands: a low shelf, six peaking bands and a high shelf, set on
+the curve by their handles as a strip's EQ), **INVERT**, **PAN** and **WIDTH**,
+**DELAY** (its key turns it on; **DISTANCE** sets it in metres, its time in ms beside
+them) and the **LIMITER**'s threshold, with its gain reduction under it.
 
-![MONITORING: the speakers and phones paths and the solo settings](images/universal-monitoring.png)
+**SOLO**: where solos go (**SOLO TO**), the solo mode (LIVE, STUDIO, SIP), PFL or AFL
+for channels, buses, mains and matrices, and **CLEAR SOLO**, lit while anything is
+soloed.
+
+**TALKBACK**: the **TALK CHANNEL** (an input or aux channel with the talkback mic, or
+OFF), **TALK LEVEL**, and the **TALK A** and **TALK B** keys, which act as on the console:
+in AUTO a tap latches and a hold talks while held, PUSH talks while held, LATCH
+toggles. **A** and **B** show a talk path's settings: its **MODE**, how far it dims the
+monitors and the buses (**MONITOR DIM**, **BUS DIM**), **USE SEND LEVELS** (the talkback
+channel's send levels instead of TALK LEVEL), and the buses (B1-16), mains (M1-4) and
+matrices (X1-8) it talks to, a key each.
+
+![MONITORING: the speakers and phones paths with their EQ, delay and limiter, the solo settings and talkback](images/universal-monitoring.png)
 
 ### SCENES
 
@@ -964,10 +979,9 @@ compensation and output protection.
 
 ### Still on the WING surface
 
-The monitor paths' processing (EQ, delay, limiter), talkback, custom controls, the
-LIBRARY's file browser and the remotes' settings are on the WING surface for now (the
-show's NEW, OPEN and SAVE are on the top bar's SHOW key, snippets and presets on
-SCENES). The WING
+Custom controls, the LIBRARY's file browser and the remotes' settings are on the WING
+surface for now (the show's NEW, OPEN and SAVE are on the top bar's SHOW key, snippets
+and presets on SCENES). The WING
 surface addresses the WING's ranges: a console with other aux, main, matrix, DCA or
 mute group counts opens in the Universal Mixer, and choosing the WING surface offers to
 make it a WING first.

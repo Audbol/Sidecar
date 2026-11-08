@@ -85,12 +85,13 @@ void GroupGrid::paint (juce::Graphics& g)
         const auto label = name ? name (i) : juce::String();
         auto text = r.reduced (3.0f, 2.0f);
         g.setFont (type::font (type::kLabel, true));
+        const auto number = keyText ? keyText (i) : juce::String (i + 1);
         if (label.isEmpty())
         {
-            g.drawText (juce::String (i + 1), text, juce::Justification::centred);
+            g.drawFittedText (number, text.toNearestInt(), juce::Justification::centred, 1, 0.7f);
             continue;
         }
-        g.drawText (juce::String (i + 1), text.removeFromTop (text.getHeight() * 0.5f), juce::Justification::centredBottom);
+        g.drawText (number, text.removeFromTop (text.getHeight() * 0.5f), juce::Justification::centredBottom);
         g.setFont (type::font (type::kCaption - 2.0f));
         g.drawFittedText (label, text.toNearestInt(), juce::Justification::centredTop, 1, 0.6f);
     }

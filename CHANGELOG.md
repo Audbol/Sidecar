@@ -11,6 +11,11 @@ All notable changes to Sidecar are listed here. Versions follow
   strips, or alone under the new **DCAS** key; the inspector's new **STRIP** page names
   and colours the strip (its source while LINK CUSTOMIZATION TO SOURCE is on, as on the
   WING) and assigns it to DCAs and mute groups. Any number of each, as configured.
+- Universal Mixer, MONITORING: each monitor path's processing (DIRECT IN and its
+  level, the 8-band EQ on its curve with handles, INVERT, PAN, WIDTH, DELAY by
+  distance, the LIMITER with its gain reduction) and talkback (the talkback channel,
+  TALK LEVEL, TALK A and TALK B pressed and released as on the console, each path's
+  mode, dims, USE SEND LEVELS and destinations), which were on the WING surface only.
 - Universal Mixer, every console's blocks (`docs/UNIVERSAL_MIXER.md`, decision 6): a
   Universal console's strips and FX rack can hold the X32's models beside the WING's:
   its gates (expanders, gate, ducker), compressor and expander, 4-band and 6-band EQ

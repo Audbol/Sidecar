@@ -275,8 +275,10 @@ Three layers:
    DCAs as MIXER columns and the mute groups' keys (MIXER: ALL, DCAS); the
    inspector's STRIP page (name and colour, through the source while customization
    is linked: `ui/StripCustomize.h`, shared with the WING's HOME; DCA and mute group
-   membership). Next: the monitor paths' processing and talkback; then custom
-   controls and the remotes' settings. The interface still says PREVIEW: dropping it, as the decision above
+   membership). Then MONITORING took the monitor paths' processing (DIRECT IN, EQ,
+   PAN / WIDTH, INVERT, DELAY, LIMITER) and talkback (channel, level, TALK A / B,
+   each path's mode, dims and destinations: the WING's 16 buses, 4 mains and 8
+   matrices, tagged WING). Next: custom controls and the remotes' settings. The interface still says PREVIEW: dropping it, as the decision above
    foresees once Phase 2 is complete, waits for the owner's go.
 3. **WING as a profile**: move the WING's limits, defaults, laws, surface, protocols
    and files into a WING profile over the core (including Phase 1's step 3d: the
