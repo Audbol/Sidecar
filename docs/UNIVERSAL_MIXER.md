@@ -1233,6 +1233,10 @@ Questions for the owner that the WING emulation still waits on:
   `cd rust && cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`,
   then `cmake --build build --target LiveDAW SidecarPluginHost LiveDAWTests` (no
   warnings) and run `LiveDAWTests`.
+- Build and test locally before pushing (on Windows: the Rust checks, the full build
+  and `LiveDAWTests`); CI is for macOS, Linux, the sanitizers and releases. A
+  docs-only push runs no CI, a newer push cancels the older run, and compiler and
+  linker errors show in a run's annotations (`.github/compiler-errors.json`).
 - Releases: the CI workflow (`.github/workflows/ci.yml`) run by hand with
   `release_tag` (e.g. `v0.1.7-test.1`, or `v0.1.7`) and `prerelease`; it publishes only
   when every job passes. Release notes come from the version's CHANGELOG section
