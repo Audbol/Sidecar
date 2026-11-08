@@ -12,6 +12,8 @@
 #include "ui/UniversalSkin.h"
 #include "ui/StripCustomize.h"
 #include "ui/universal/StripPanel.h"
+#include "engine/MidiRemote.h"
+#include "engine/WebRemote.h"
 #include "ui/universal/ValueControls.h"
 #include "ui/universal/Widgets.h"
 
@@ -1351,6 +1353,75 @@ public:
             expect (inspector.getPage() == Inspector::Page::Strip && inspector.stripPage.getStrip() == &bus2);
             expect (! inspector.chain.isVisible() && ! inspector.sends.isVisible());
             expect (keepPicture (inspector.createComponentSnapshot (inspector.getLocalBounds()), "universal-strip-page.png"));
+        }
+
+        beginTest ("SETUP > REMOTE: the WING, web and MIDI remotes' settings, in the app settings and applied at once");
+        {
+            MixerEngine engine (0);
+            engine.configure (nullptr);
+            UiRig rig (engine);
+            SetupView setup (rig.ctx, Theme::dark());
+            setup.setSize (1600, 900);
+            setup.showPage (SetupView::Page::Remote);
+            auto& r = setup.remote;
+            expect (r.isVisible());
+
+            // WING REMOTE: enable, a server off, a port, the console name (upper case).
+            expect (! WingRemote::Settings::load (rig.settings).enabled);
+            r.wingOn.onClick();
+            expect (WingRemote::Settings::load (rig.settings).enabled);
+            r.oscOn.onClick();
+            expect (! WingRemote::Settings::load (rig.settings).osc);
+            expect (! r.nativePort.change ("not a port") && ! r.nativePort.change ("70000"), "a port is 1-65535");
+            expect (r.nativePort.change ("3000"));
+            expectEquals (WingRemote::Settings::load (rig.settings).nativePort, 3000);
+            expect (r.consoleName.change ("foh desk"));
+            expectEquals (WingRemote::Settings::load (rig.settings).name, juce::String ("FOH DESK"));
+            r.refresh();
+            expect (! r.getWingStatus().isEmpty() && ! r.getWingStatus().contains ("WING REMOTE IS OFF"));
+
+            // WEB REMOTE: enable, port, PIN (4-8 digits or none), view only.
+            r.webOn.onClick();
+            expect (WebRemote::Settings::load (rig.settings).enabled);
+            expect (r.webPort.change ("8090"));
+            expectEquals (WebRemote::Settings::load (rig.settings).port, 8090);
+            expect (! r.webPin.change ("12"), "too short");
+            expect (r.webPin.change ("4321"));
+            expectEquals (WebRemote::Settings::load (rig.settings).pin, juce::String ("4321"));
+            r.webPin.refresh();
+            expect (r.webPin.change (""), "no PIN");
+            expect (WebRemote::Settings::load (rig.settings).pin.isEmpty());
+            r.viewOnly.onClick();
+            expect (WebRemote::Settings::load (rig.settings).viewOnly);
+
+            // MIDI: a function's route, DAW control and its emulation.
+            r.routes[(size_t) MidiRemote::SceneChange]->chooseItem (2);
+            expectEquals (MidiRemote::Settings::load (rig.settings).routes[(size_t) MidiRemote::SceneChange], (int) MidiRemote::RouteUsb);
+            expect (r.routes[0]->device == devices::wing);
+            r.dawOn.onClick();
+            expect (MidiRemote::Settings::load (rig.settings).daw.enabled);
+            r.dawEmulation.chooseItem (1);
+            expect (MidiRemote::Settings::load (rig.settings).daw.emulation == DawRemote::Emulation::Hui);
+            r.devices[0]->chooseItem (0);
+            expect (MidiRemote::Settings::load (rig.settings).inputs[(size_t) MidiRemote::Din].isEmpty(), "DIN IN: NONE");
+            // A device that is set but not there reads NOT FOUND, never another device.
+            {
+                auto s = MidiRemote::Settings::load (rig.settings);
+                s.outputs[(size_t) MidiRemote::Usb] = "No Such MIDI Device";
+                s.save (rig.settings);
+                r.devices[3]->refresh();
+                expectEquals (r.devices[3]->getText(), juce::String ("No Such MIDI Device (NOT FOUND)"));
+                s.outputs[(size_t) MidiRemote::Usb] = MidiRemote::virtualDevice;
+                s.save (rig.settings);
+                r.devices[3]->refresh();
+                expect (MidiRemote::canCreateVirtualPorts() ? r.devices[3]->getText() == MidiRemote::virtualPortName (MidiRemote::Usb)
+                                                            : r.devices[3]->getText() == "VIRTUAL PORT (NOT FOUND)",
+                        r.devices[3]->getText());
+            }
+            r.refresh();
+            expect (keepPicture (setup.createComponentSnapshot (setup.getLocalBounds()), "universal-remote.png"));
+            r.wingOn.onClick(); // off again (no servers left behind)
+            expect (! WingRemote::Settings::load (rig.settings).enabled);
         }
 
         beginTest ("The top bar names the show; its SHOW menu runs NEW, OPEN, SAVE and SAVE AS");

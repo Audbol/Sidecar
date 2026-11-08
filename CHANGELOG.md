@@ -16,6 +16,15 @@ All notable changes to Sidecar are listed here. Versions follow
   distance, the LIMITER with its gain reduction) and talkback (the talkback channel,
   TALK LEVEL, TALK A and TALK B pressed and released as on the console, each path's
   mode, dims, USE SEND LEVELS and destinations), which were on the WING surface only.
+- Universal Mixer, SETUP > REMOTE: the WING remote (enable, discovery, OSC and native
+  servers with their ports, the console name, the clients), the web remote (enable,
+  port, PIN, view only, the addresses) and MIDI (each function's route, the DIN and USB
+  ports' devices, DAW control and its emulation, the DAW port's devices).
+- Fixed: the network remotes (WING apps; an X32's OSC on an X32) started only when the
+  WING surface was built, so Sidecar started on the Universal Mixer or a console's own
+  surface left them off. They start with the app now, whatever the interface.
+- Universal Mixer polish: a send's FROM no longer reads "PRE...", the DYNAMICS panel's
+  model name no longer runs into its title, the FILTER graph shows "10k" whole.
 - Universal Mixer, every console's blocks (`docs/UNIVERSAL_MIXER.md`, decision 6): a
   Universal console's strips and FX rack can hold the X32's models beside the WING's:
   its gates (expanders, gate, ducker), compressor and expander, 4-band and 6-band EQ

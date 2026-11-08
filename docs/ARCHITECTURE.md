@@ -1613,8 +1613,8 @@ README's *Known limitations*; keep the three in step.
   Universal Mixer's interface is a preview: it covers the mixer, chains, sends,
   routing, FX, monitoring (with the monitor paths' processing and talkback), DCAs and
   mute groups, scenes, the recorder, the show's files and setup for any
-  configuration; custom controls, the library's file browser and the remotes'
-  settings are on the WING surface, which addresses the WING's ranges.
+  configuration, and the remotes' settings; custom controls and the library's file
+  browser are on the WING surface, which addresses the WING's ranges.
 
 - Hardware: the audio interface's ports stand in for the WING's. No StageConnect,
   AES50 or Dante; source GAIN is digital and +48V is only stored.

@@ -278,7 +278,11 @@ Three layers:
    membership). Then MONITORING took the monitor paths' processing (DIRECT IN, EQ,
    PAN / WIDTH, INVERT, DELAY, LIMITER) and talkback (channel, level, TALK A / B,
    each path's mode, dims and destinations: the WING's 16 buses, 4 mains and 8
-   matrices, tagged WING). Next: custom controls and the remotes' settings. The interface still says PREVIEW: dropping it, as the decision above
+   matrices, tagged WING). SETUP > REMOTE took the remotes' settings (WING remote,
+   web remote, MIDI routes and devices, DAW control); the network remotes now start
+   with the app (`MainComponent`), not with the WING surface's SETUP page. Left on the
+   WING surface: custom controls, the LIBRARY's file browser, REMOTE LOCK, HA REMOTE,
+   the DAW's surface layout and presets. The interface still says PREVIEW: dropping it, as the decision above
    foresees once Phase 2 is complete, waits for the owner's go.
 3. **WING as a profile**: move the WING's limits, defaults, laws, surface, protocols
    and files into a WING profile over the core (including Phase 1's step 3d: the

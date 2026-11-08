@@ -972,16 +972,35 @@ new numbers (shown with an arrow), **APPLY** makes them so without a reset and
   with members and an FX slot in use stay, with those before them, and SETUP says
   which stayed.
 
-**AUDIO** chooses the audio device. **PREFERENCES** has the interface, delay
+**AUDIO** chooses the audio device.
+
+**REMOTE** has the remotes' settings, the same ones as the WING surface's SETUP >
+REMOTE and DAW (kept in the app settings and applied at once):
+
+- **WING REMOTE**: **ENABLE WING REMOTE**, the three servers WING apps use
+  (**DISCOVERY**, **OSC**, **NATIVE**), each with its port (tap it to change it; red while
+  it is on but its port is taken), the **CONSOLE NAME** apps list, and the clients
+  connected. On an X32 the same key starts the X32's OSC server.
+- **WEB REMOTE**: **ENABLE WEB REMOTE**, its **PORT**, a **PIN** (4 to 8 digits, or none),
+  **VIEW ONLY**, and the addresses to open in a browser with how many are watching.
+- **MIDI**: each MIDI REMOTE CONTROL function's route (OFF, DIN or USB), the DIN and USB
+  ports' devices (NONE, Sidecar's virtual port where the system has them, a device of
+  the computer; one that isn't connected reads NOT FOUND), **DAW CONTROL** with its
+  **EMULATION** (MCU or HUI) and the MIDI DAW 1 port's devices.
+
+![SETUP > REMOTE: the WING remote's servers and console name, the web remote's port and PIN, and the MIDI routes and devices](images/universal-remote.png)
+
+**PREFERENCES** has the interface, delay
 compensation and output protection.
 
 ![SETUP > CONSOLE: the configuration, the buses about to go from 16 to 24](images/universal-setup.png)
 
 ### Still on the WING surface
 
-Custom controls, the LIBRARY's file browser and the remotes' settings are on the WING
-surface for now (the show's NEW, OPEN and SAVE are on the top bar's SHOW key, snippets
-and presets on SCENES). The WING
+Custom controls and the LIBRARY's file browser are on the WING surface for now (the
+show's NEW, OPEN and SAVE are on the top bar's SHOW key, snippets and presets on
+SCENES, the remotes' settings on SETUP > REMOTE); so are the WING's REMOTE LOCK and HA
+REMOTE, and the DAW's surface layout and presets. The WING
 surface addresses the WING's ranges: a console with other aux, main, matrix, DCA or
 mute group counts opens in the Universal Mixer, and choosing the WING surface offers to
 make it a WING first.

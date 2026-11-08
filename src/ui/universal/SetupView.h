@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui/UiContext.h"
+#include "ui/universal/RemotePanel.h"
 #include "ui/universal/ValueControls.h"
 
 #include <juce_audio_utils/juce_audio_utils.h>
@@ -17,8 +18,9 @@ namespace livedaw::ui::universal
     end and keeps everything else; it removes from the end, asking first,
     channels and aux whatever they hold, but never a bus, main or matrix that
     something feeds, a DCA or mute group with members, or an FX slot in use
-    (those stay, and it says so). AUDIO: the audio device. PREFERENCES: the
-    interface, delay compensation and output protection. */
+    (those stay, and it says so). AUDIO: the audio device. REMOTE: the WING,
+    web and MIDI remotes' settings (RemotePanel). PREFERENCES: the interface,
+    delay compensation and output protection. */
 class SetupView final : public juce::Component, private juce::Timer
 {
 public:
@@ -29,6 +31,7 @@ public:
     {
         Console,
         Audio,
+        Remote,
         Preferences
     };
     void showPage (Page);
@@ -60,9 +63,10 @@ public:
     const juce::String& getStatus() const noexcept { return status; }
     void refresh();
 
-    ToggleKey consoleTab, audioTab, prefsTab, applyKey, revertKey;
+    ToggleKey consoleTab, audioTab, remoteTab, prefsTab, applyKey, revertKey;
     ChoiceBar interfaceChoice;
     ToggleKey compensationKey, protectionKey;
+    RemotePanel remote;
 
     void paint (juce::Graphics&) override;
     void resized() override;

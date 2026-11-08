@@ -187,15 +187,22 @@ void ChoiceBar::paint (juce::Graphics& g)
     g.setFont (captionFont);
     g.drawText (caption, text, juce::Justification::centredLeft);
     // The value, with a mark that says it opens a list; the tag between, where there's room.
-    const auto valueFont = type::font (type::kValue, true);
-    const auto value = shownText + juce::String::fromUTF8 ("  \xe2\x96\xbe");
+    auto valueFont = type::font (type::kValue, true);
+    auto value = shownText + juce::String::fromUTF8 ("  \xe2\x96\xbe");
+    // A narrow bar (a send's FROM on one line) gives up the list mark, then makes
+    // the value smaller, rather than cutting it ("PRE...").
+    const float room = text.getWidth() - (caption.isNotEmpty() ? juce::GlyphArrangement::getStringWidth (captionFont, caption) + 8.0f : 0.0f);
+    if (juce::GlyphArrangement::getStringWidth (valueFont, value) > room)
+        value = shownText;
+    if (const float w = juce::GlyphArrangement::getStringWidth (valueFont, value); w > room && w > 0.0f)
+        valueFont = valueFont.withHeight (juce::jmax (9.0f, valueFont.getHeight() * juce::jmax (0.0f, room) / w));
     const auto between = text.withTrimmedLeft (juce::GlyphArrangement::getStringWidth (captionFont, caption) + 8.0f)
                              .withTrimmedRight (juce::GlyphArrangement::getStringWidth (valueFont, value) + 6.0f);
     if (between.getWidth() >= deviceTagWidth (device))
         drawDeviceTag (g, between, device, theme, true);
     g.setColour (theme.text);
     g.setFont (valueFont);
-    g.drawText (value, text, juce::Justification::centredRight);
+    g.drawFittedText (value, text.toNearestInt(), juce::Justification::centredRight, 1, 0.8f);
 }
 
 void ChoiceBar::mouseUp (const juce::MouseEvent& e)
@@ -415,7 +422,15 @@ void ResponseView::paint (juce::Graphics& g)
     g.setColour (theme.textDim);
     g.setFont (type::font (type::kCaption));
     for (auto [hz, label] : { std::pair<double, const char*> { 100.0, "100" }, { 1000.0, "1k" }, { 10000.0, "10k" } })
-        g.drawText (label, juce::Rectangle<float> (xAt (hz) + 3.0f, area.getBottom() - 16.0f, 40.0f, 14.0f), juce::Justification::centredLeft);
+    {
+        // Right of its line, or left of it where the graph ends first (a narrow FILTER: "10" for "10k").
+        const float w = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), label) + 4.0f;
+        const float x = xAt (hz);
+        if (x + 3.0f + w <= area.getRight())
+            g.drawText (label, juce::Rectangle<float> (x + 3.0f, area.getBottom() - 16.0f, w, 14.0f), juce::Justification::centredLeft);
+        else
+            g.drawText (label, juce::Rectangle<float> (x - 3.0f - w, area.getBottom() - 16.0f, w, 14.0f), juce::Justification::centredRight);
+    }
 
     if (! curve.empty())
     {

@@ -277,6 +277,15 @@ MainComponent::MainComponent (juce::AudioDeviceManager& dm, MixerEngine& e, Plug
     if (! engine.getChannels().empty())
         selectStrip (engine.getChannels()[0].get());
 
+    // The network remotes (WING apps; an X32's OSC on an X32) start with the app
+    // whatever the interface: only the WING surface's SETUP page started them, so
+    // a start on the Universal Mixer or a console's surface left them off.
+    {
+        const auto remote = WingRemote::Settings::load (settings);
+        for (const auto& error : engine.getWing().apply (remote))
+            log.error ("WING remote: " + error);
+    }
+
     // The console model's state beyond the surface (the layers, the WING remote's
     // identity), then the interface (the WING surface unless the settings say
     // the Universal Mixer, or the console isn't a WING).

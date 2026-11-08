@@ -235,13 +235,17 @@ void ChannelPanel::paint (juce::Graphics& g)
         if (s == FilterSection || s == GateSection || s == EqSection || s == DynamicsSection)
         {
             title.removeFromRight (drawDeviceTag (g, title, devices::wing, theme) + (float) sizes::kGapSmall);
-            title.removeFromLeft (juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), text) + (float) sizes::kGap);
+            // The measured width runs short of the drawn caps: a margin keeps the model's name clear of it.
+            title.removeFromLeft (juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), text) * 1.15f + (float) sizes::kGap);
             if (s == GateSection || s == DynamicsSection)
             {
                 const auto& slot = s == GateSection ? strip->params.gate() : strip->params.dynamics();
                 g.setColour (theme.text);
-                g.drawFittedText (models::model (models::Dynamics, slot.model.load()).name.toUpperCase(), title.toNearestInt(),
-                                  juce::Justification::centredLeft, 1, 0.7f);
+                // Narrowed, then smaller, rather than cut ("WING CO..."): the sections are slim.
+                const auto modelName = models::model (models::Dynamics, slot.model.load()).name.toUpperCase();
+                if (const float w = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), modelName) * 0.6f; w > title.getWidth() && w > 0.0f)
+                    g.setFont (g.getCurrentFont().withHeight (juce::jmax (8.0f, g.getCurrentFont().getHeight() * title.getWidth() / w)));
+                g.drawFittedText (modelName, title.toNearestInt(), juce::Justification::centredLeft, 1, 0.6f);
             }
         }
         if ((s == FilterSection || s == GateSection) && ! channel)
