@@ -15,7 +15,11 @@ namespace livedaw::ui::universal
     GO PREV / GO NEXT), ADD captures the console as a new scene after the
     selected one, STORE captures it into the selected one, RENAME, UP / DOWN
     move it, REMOVE deletes it. STORE and REMOVE ask first. On an X32, IMPORT
-    .scn and EXPORT .scn read and write X32 scene files (`x32::SceneFiles`). */
+    .scn and EXPORT .scn read and write X32 scene files (`x32::SceneFiles`).
+    SNIPPETS, beside them, are the selected scene's: NEW makes one of the
+    selected strip (every section), GO recalls one, STORE captures the console
+    into it, RENAME, FIRE WITH SCENE (it fires when its scene is recalled),
+    REMOVE (asking first). */
 class ScenesView final : public juce::Component, private juce::Timer
 {
 public:
@@ -36,14 +40,28 @@ public:
     void move (int delta);
     void rename (const juce::String&);
 
+    // The selected scene's snippets (these don't ask either).
+    int getNumSnippets() const;
+    int getSelectedSnippet() const noexcept { return selectedSnippet; }
+    void selectSnippet (int index);
+    /** A snippet of the selected strip, every section; -1 if no scene or strip is selected. */
+    int newSnippet();
+    void recallSnippet();
+    void storeSnippet();
+    void removeSnippet();
+    void renameSnippet (const juce::String&);
+    void toggleFireWithScene();
+
     ToggleKey goKey, prevKey, nextKey, addKey, storeKey, renameKey, upKey, downKey, removeKey;
     ToggleKey importKey, exportKey;
+    ToggleKey snippetNew, snippetGo, snippetStore, snippetRename, snippetFire, snippetRemove;
 
     void paint (juce::Graphics&) override;
     void resized() override;
 
 private:
     class List;
+    class SnippetList;
     struct Row
     {
         juce::String text, flags;
@@ -66,6 +84,10 @@ private:
     int selected = -1;
     std::unique_ptr<List> list;
     juce::Viewport viewport;
+    int selectedSnippet = -1;
+    std::unique_ptr<SnippetList> snippetList;
+    juce::Rectangle<int> snippetPanel;
+    juce::String snippetsShown; // what the snippet list drew (its names), to repaint on a change
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ScenesView)
 };

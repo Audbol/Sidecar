@@ -959,6 +959,12 @@ ones (skipping as the WING does). **ADD** captures the console as a new scene af
 selected one, **STORE** captures it into the selected one, **RENAME** names it, **UP**
 and **DOWN** move it, and **REMOVE** deletes it. STORE and REMOVE ask first.
 
+**SNIPPETS**, at the right, are the selected scene's: **NEW** makes one of the strip
+selected in the inspector (every section), **GO** recalls the selected snippet (only its
+strips change), **STORE** captures the console into it (asking first), **RENAME**, **FIRE
+WITH SCENE** (it fires whenever its scene is recalled) and **REMOVE** (asking first).
+The WING surface's LIBRARY can widen a snippet to more strips and sections.
+
 ![SCENES: a show's scenes, Song 1 selected](images/universal-scenes.png)
 
 ### RECORDER
@@ -1005,10 +1011,10 @@ compensation and output protection.
 
 ### Still on the WING surface
 
-Custom controls and the LIBRARY (its file browser, and making snippets and adding
-files to the show) are on the WING surface for now. The show's NEW, OPEN and SAVE are on
-the top bar's SHOW key, SCENES lists and recalls the show's scenes, snippets and presets,
-channel and FX presets are saved and loaded on the inspector's STRIP page and on FX
+Custom controls and the LIBRARY (its file browser, adding files to the show, and a
+snippet's strips and sections beyond one strip) are on the WING surface for now. The
+show's NEW, OPEN and SAVE are on the top bar's SHOW key, SCENES runs the show's scenes
+and makes and runs their snippets, channel and FX presets are saved and loaded on the inspector's STRIP page and on FX
 RACK, and the remotes' settings are on SETUP > REMOTE. Also on the WING surface: the WING's REMOTE LOCK and HA
 REMOTE, and the DAW's surface layout and presets. The WING
 surface addresses the WING's ranges: a console with other aux, main, matrix, DCA or

@@ -12,6 +12,7 @@
 #include "ui/UniversalSkin.h"
 #include "ui/StripCustomize.h"
 #include "ui/universal/StripPanel.h"
+#include "ui/universal/ScenesView.h"
 #include "ui/universal/FxRackView.h"
 #include "engine/MidiRemote.h"
 #include "engine/WebRemote.h"
@@ -1445,6 +1446,60 @@ public:
             expect (keepPicture (setup.createComponentSnapshot (setup.getLocalBounds()), "universal-remote.png"));
             r.wingOn.onClick(); // off again (no servers left behind)
             expect (! WingRemote::Settings::load (rig.settings).enabled);
+        }
+
+        beginTest ("SCENES: the selected scene's snippets, made of the selected strip, recalled, stored, renamed and removed");
+        {
+            MixerEngine engine (0);
+            engine.configure (nullptr);
+            UiRig rig (engine);
+            ScenesView view (rig.ctx, Theme::dark());
+            view.setSize (1400, 700);
+            expectEquals (view.add(), 0);
+            expectEquals (view.getNumSnippets(), 0);
+
+            // NEW: a snippet of the selected strip (none selected: nothing).
+            expectEquals (view.newSnippet(), -1, "no strip selected");
+            auto& ch4 = *engine.getChannels()[3];
+            rig.selected = &ch4;
+            ch4.setName ("Snare");
+            ch4.params.faderDb = -4.0f;
+            const int sn = view.newSnippet();
+            expectEquals (sn, 0);
+            expectEquals (view.getNumSnippets(), 1);
+            expectEquals (view.getSelectedSnippet(), 0);
+            const auto s = rig.show.getSnippet (0, 0);
+            expect (s.has_value() && s->strips.size() == 1);
+
+            // GO brings the strip back as the snippet holds it; another strip is left alone.
+            ch4.params.faderDb = -20.0f;
+            engine.getChannels()[0]->params.faderDb = -9.0f;
+            view.recallSnippet();
+            expectWithinAbsoluteError (ch4.params.faderDb.load(), -4.0f, 0.01f);
+            expectWithinAbsoluteError (engine.getChannels()[0]->params.faderDb.load(), -9.0f, 0.01f, "not in the snippet");
+
+            // STORE, RENAME, FIRE WITH SCENE.
+            ch4.params.faderDb = -12.0f;
+            view.storeSnippet();
+            ch4.params.faderDb = 0.0f;
+            view.recallSnippet();
+            expectWithinAbsoluteError (ch4.params.faderDb.load(), -12.0f, 0.01f);
+            view.renameSnippet ("Snare down");
+            expectEquals (rig.show.getSnippet (0, 0)->name, juce::String ("Snare down"));
+            view.toggleFireWithScene();
+            expect (rig.show.getSnippet (0, 0)->fireWithScene && view.snippetFire.isEnabled());
+            view.refresh();
+            expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds()), "universal-snippets.png"));
+
+            // Another scene: its own (none); back again: the snippet is there.
+            view.selectScene (-1);
+            expectEquals (view.getNumSnippets(), 0);
+            view.selectScene (0);
+            expectEquals (view.getNumSnippets(), 1);
+            view.selectSnippet (0);
+            view.removeSnippet();
+            expectEquals (view.getNumSnippets(), 0);
+            expectEquals (view.getSelectedSnippet(), -1);
         }
 
         beginTest ("Channel and FX presets from the Universal Mixer: saved to a file and loaded back");

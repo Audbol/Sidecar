@@ -70,10 +70,64 @@ private:
     ScenesView& owner;
 };
 
+/** The selected scene's snippets, drawn; a tap selects one. */
+class ScenesView::SnippetList final : public juce::Component
+{
+public:
+    explicit SnippetList (ScenesView& o) : owner (o) {}
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto& t = owner.theme;
+        const int scene = owner.selected;
+        const int n = owner.getNumSnippets();
+        if (n == 0)
+        {
+            g.setColour (t.textDim);
+            g.setFont (type::font (type::kLabel));
+            g.drawFittedText (scene < 0 ? "Select a scene" : "No snippets: NEW makes one of the selected strip", getLocalBounds().reduced (8),
+                              juce::Justification::centredTop, 2, 0.8f);
+            return;
+        }
+        for (int i = 0; i < n; ++i)
+        {
+            const auto s = owner.ctx.show.getSnippet (scene, i);
+            const auto r = juce::Rectangle<int> (0, i * (kRow + sizes::kGapSmall), getWidth(), kRow).toFloat();
+            const bool sel = i == owner.selectedSnippet;
+            g.setColour (sel ? t.raised.brighter (0.1f) : t.raised);
+            g.fillRoundedRectangle (r, sizes::kRadius);
+            g.setColour (sel ? t.accent : t.outline);
+            g.drawRoundedRectangle (r.reduced (0.5f), sizes::kRadius, sel ? 2.0f : 1.0f);
+            auto inner = r.reduced (12.0f, 0.0f);
+            if (! s.has_value())
+                continue;
+            g.setColour (t.textDim);
+            g.setFont (type::font (type::kCaption, true));
+            const auto strips = juce::String ((int) s->strips.size()) + ((int) s->strips.size() == 1 ? " STRIP" : " STRIPS");
+            g.drawText (strips + (s->fireWithScene ? "  FIRES" : ""), inner, juce::Justification::centredRight);
+            g.setColour (t.text);
+            g.setFont (type::font (type::kLabel, true));
+            g.drawText (s->name, inner, juce::Justification::centredLeft);
+        }
+    }
+
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        if (! e.mouseWasDraggedSinceMouseDown())
+            owner.selectSnippet (e.y / (kRow + sizes::kGapSmall));
+    }
+
+private:
+    ScenesView& owner;
+};
+
 ScenesView::ScenesView (UiContext& c, const Theme& t)
     : goKey ("GO", t.accent, t), prevKey ("PREV", t.accent, t), nextKey ("NEXT", t.accent, t), addKey ("ADD", t.accent, t),
       storeKey ("STORE", t.accent, t), renameKey ("RENAME", t.accent, t), upKey ("UP", t.accent, t), downKey ("DOWN", t.accent, t),
-      removeKey ("REMOVE", t.mute, t), importKey ("IMPORT .scn", t.accent, t), exportKey ("EXPORT .scn", t.accent, t), ctx (c), theme (t), list (std::make_unique<List> (*this))
+      removeKey ("REMOVE", t.mute, t), importKey ("IMPORT .scn", t.accent, t), exportKey ("EXPORT .scn", t.accent, t),
+      snippetNew ("NEW", t.accent, t), snippetGo ("GO", t.accent, t), snippetStore ("STORE", t.accent, t), snippetRename ("RENAME", t.accent, t),
+      snippetFire ("FIRE WITH SCENE", t.accent, t), snippetRemove ("REMOVE", t.mute, t), ctx (c), theme (t), list (std::make_unique<List> (*this)),
+      snippetList (std::make_unique<SnippetList> (*this))
 {
     goKey.onClick = [this] { go(); };
     prevKey.onClick = [this]
@@ -132,6 +186,45 @@ ScenesView::ScenesView (UiContext& c, const Theme& t)
     addChildComponent (importKey);
     addChildComponent (exportKey);
 
+    // The selected scene's snippets.
+    snippetNew.onClick = [this] { newSnippet(); };
+    snippetGo.onClick = [this] { recallSnippet(); };
+    snippetStore.onClick = [this]
+    {
+        if (selectedSnippet >= 0)
+            confirm ("STORE", "Store the console into this snippet? What it holds now is replaced.", [this] { storeSnippet(); });
+    };
+    snippetRename.onClick = [this]
+    {
+        const auto s = selected >= 0 && selectedSnippet >= 0 ? ctx.show.getSnippet (selected, selectedSnippet) : std::nullopt;
+        if (! s.has_value())
+            return;
+        auto* w = new juce::AlertWindow ("RENAME", "Snippet:", juce::MessageBoxIconType::NoIcon, this);
+        w->addTextEditor ("name", s->name);
+        w->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
+        w->addButton ("CANCEL", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+        juce::Component::SafePointer<ScenesView> safe (this);
+        w->enterModalState (true, juce::ModalCallbackFunction::create ([safe, w] (int r)
+        {
+            if (r != 0 && safe != nullptr)
+                safe->renameSnippet (w->getTextEditorContents ("name").trim());
+        }), true);
+    };
+    snippetFire.isOn = [this]
+    {
+        const auto s = selected >= 0 && selectedSnippet >= 0 ? ctx.show.getSnippet (selected, selectedSnippet) : std::nullopt;
+        return s.has_value() && s->fireWithScene;
+    };
+    snippetFire.onClick = [this] { toggleFireWithScene(); };
+    snippetRemove.onClick = [this]
+    {
+        if (selectedSnippet >= 0)
+            confirm ("REMOVE", "Remove this snippet from its scene?", [this] { removeSnippet(); });
+    };
+    for (auto* k : { &snippetNew, &snippetGo, &snippetStore, &snippetRename, &snippetFire, &snippetRemove })
+        addAndMakeVisible (k);
+    addAndMakeVisible (*snippetList);
+
     viewport.setViewedComponent (list.get(), false);
     viewport.setScrollBarsShown (true, false);
     viewport.setScrollOnDragMode (juce::Viewport::ScrollOnDragMode::nonHover);
@@ -167,13 +260,89 @@ void ScenesView::confirm (const juce::String& title, const juce::String& message
 void ScenesView::selectScene (int index)
 {
     const int s = juce::isPositiveAndBelow (index, (int) rows.size()) ? index : -1;
-    if (s != selected)
+    const bool another = s != selected;
+    if (another)
     {
         selected = s;
         list->repaint();
     }
     for (auto* k : { &goKey, &storeKey, &renameKey, &upKey, &downKey, &removeKey })
         k->setEnabled (selected >= 0);
+    if (another)
+    {
+        selectSnippet (-1); // another scene's snippets
+        snippetsShown = {};
+        repaint (snippetPanel);
+    }
+}
+
+int ScenesView::getNumSnippets() const
+{
+    const auto scene = selected >= 0 ? ctx.show.getScene (selected) : std::nullopt;
+    return scene.has_value() ? scene->numSnippets : 0;
+}
+
+void ScenesView::selectSnippet (int index)
+{
+    selectedSnippet = juce::isPositiveAndBelow (index, getNumSnippets()) ? index : -1;
+    for (auto* k : { &snippetGo, &snippetStore, &snippetRename, &snippetFire, &snippetRemove })
+        k->setEnabled (selectedSnippet >= 0);
+    snippetNew.setEnabled (selected >= 0);
+    snippetFire.refresh();
+    snippetList->repaint();
+}
+
+int ScenesView::newSnippet()
+{
+    auto* strip = ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr;
+    if (selected < 0 || strip == nullptr)
+        return -1;
+    const auto name = strip->getName().isNotEmpty() ? strip->getName() : strip->getLabel();
+    const int index = ctx.show.addSnippet (selected, name, state::AllSections, { state::StripRef::of (*strip) });
+    refresh();
+    selectSnippet (index);
+    return index;
+}
+
+void ScenesView::recallSnippet()
+{
+    if (selected < 0 || selectedSnippet < 0)
+        return;
+    logRecall (ctx, "snippet " + juce::String (selectedSnippet + 1) + " of scene " + juce::String (selected + 1),
+               ctx.show.recallSnippet (selected, selectedSnippet));
+}
+
+void ScenesView::storeSnippet()
+{
+    if (selected >= 0 && selectedSnippet >= 0)
+        ctx.show.storeSnippet (selected, selectedSnippet);
+    snippetList->repaint();
+}
+
+void ScenesView::removeSnippet()
+{
+    if (selected < 0 || selectedSnippet < 0)
+        return;
+    ctx.show.removeSnippet (selected, selectedSnippet);
+    refresh();
+    selectSnippet (juce::jmin (selectedSnippet, getNumSnippets() - 1));
+}
+
+void ScenesView::renameSnippet (const juce::String& name)
+{
+    if (selected >= 0 && selectedSnippet >= 0 && name.isNotEmpty())
+        ctx.show.setSnippetName (selected, selectedSnippet, name);
+    snippetList->repaint();
+}
+
+void ScenesView::toggleFireWithScene()
+{
+    const auto s = selected >= 0 && selectedSnippet >= 0 ? ctx.show.getSnippet (selected, selectedSnippet) : std::nullopt;
+    if (! s.has_value())
+        return;
+    ctx.show.setSnippetFireWithScene (selected, selectedSnippet, ! s->fireWithScene);
+    snippetFire.refresh();
+    snippetList->repaint();
 }
 
 void ScenesView::go()
@@ -263,6 +432,21 @@ void ScenesView::refresh()
     }
     for (auto* k : { &goKey, &storeKey, &renameKey, &upKey, &downKey, &removeKey })
         k->setEnabled (selected >= 0);
+    // The snippet list follows changes made elsewhere (the WING surface, a remote).
+    juce::String snippets;
+    for (int i = 0; i < getNumSnippets(); ++i)
+        if (const auto s = ctx.show.getSnippet (selected, i))
+            snippets << s->name << (s->fireWithScene ? "*" : "") << (int) s->strips.size() << "|";
+    if (snippets != snippetsShown)
+    {
+        snippetsShown = snippets;
+        snippetList->setSize (snippetList->getWidth(), juce::jmax (kRow, getNumSnippets() * (kRow + sizes::kGapSmall)));
+        if (selectedSnippet >= getNumSnippets())
+            selectSnippet (getNumSnippets() - 1);
+        snippetList->repaint();
+    }
+    snippetNew.setEnabled (selected >= 0);
+    snippetFire.refresh();
     const bool x32 = ctx.engine.getProfile() == ld::kProfileX32;
     if (importKey.isVisible() != x32)
     {
@@ -275,6 +459,15 @@ void ScenesView::refresh()
 void ScenesView::paint (juce::Graphics& g)
 {
     g.fillAll (theme.background);
+    if (! snippetPanel.isEmpty())
+    {
+        g.setColour (theme.panel);
+        g.fillRoundedRectangle (snippetPanel.toFloat(), sizes::kRadius);
+        g.setColour (theme.text);
+        g.setFont (type::font (type::kLabel + 2.0f, true));
+        g.drawText (selected >= 0 ? "SNIPPETS OF SCENE " + juce::String (selected + 1) : juce::String ("SNIPPETS"),
+                    snippetPanel.withHeight (36).reduced (sizes::kGap + 4, 0), juce::Justification::centredLeft);
+    }
     if (fileStatus.isNotEmpty() && importKey.isVisible())
     {
         g.setColour (theme.textDim);
@@ -308,6 +501,25 @@ void ScenesView::resized()
         statusArea = area.removeFromTop (22).withTrimmedLeft (keys.getX() - area.getX());
     }
     area.removeFromTop (sizes::kGap);
+    // The selected scene's snippets at the right (a third of the view, at least 360 px).
+    snippetPanel = area.removeFromRight (juce::jmax (360, area.getWidth() / 3));
+    area.removeFromRight (sizes::kGap);
+    auto sp = snippetPanel.reduced (sizes::kGap);
+    sp.removeFromTop (36 - sizes::kGap);
+    auto row1 = sp.removeFromTop (sizes::kTouch);
+    const int kw = (row1.getWidth() - 3 * sizes::kGapSmall) / 4;
+    for (auto* k : { &snippetNew, &snippetGo, &snippetStore, &snippetRename })
+    {
+        k->setBounds (row1.removeFromLeft (kw));
+        row1.removeFromLeft (sizes::kGapSmall);
+    }
+    sp.removeFromTop (sizes::kGapSmall);
+    auto row2 = sp.removeFromTop (sizes::kTouch);
+    snippetRemove.setBounds (row2.removeFromRight (kw));
+    row2.removeFromRight (sizes::kGapSmall);
+    snippetFire.setBounds (row2);
+    sp.removeFromTop (sizes::kGap);
+    snippetList->setBounds (sp.withHeight (juce::jmax (kRow, juce::jmin (sp.getHeight(), getNumSnippets() * (kRow + sizes::kGapSmall)))));
     viewport.setBounds (area);
     list->setSize (viewport.getWidth() - viewport.getScrollBarThickness(), (int) rows.size() * (kRow + sizes::kGapSmall));
 }

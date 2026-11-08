@@ -20,6 +20,8 @@ All notable changes to Sidecar are listed here. Versions follow
   distance, the LIMITER with its gain reduction) and talkback (the talkback channel,
   TALK LEVEL, TALK A and TALK B pressed and released as on the console, each path's
   mode, dims, USE SEND LEVELS and destinations), which were on the WING surface only.
+- Universal Mixer, SCENES: the selected scene's snippets beside its scenes: NEW (a snippet
+  of the selected strip, every section), GO, STORE, RENAME, FIRE WITH SCENE, REMOVE.
 - Universal Mixer: channel presets (SAVE PRESET / LOAD PRESET on the inspector's STRIP
   page) and FX presets (on FX RACK, for the selected slot), the same .lchn and .lfx files
   as the WING's LIBRARY, in the Library folder unless another is chosen.
