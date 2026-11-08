@@ -1049,14 +1049,15 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
 - **Monitor and talkback.** At the right of the display: **MONITOR**
   and **PHONES** set the speakers' and the phones' level; **DIM**, **MONO** and
   **MUTE** act on the monitor; **TALK** sets the talkback level, and **TALK A** and
-  **TALK B** switch talkback on and off (they latch). Which input is the talkback
-  microphone is set on the Universal Mixer. The MONITOR screen's tabs follow the
+  **TALK B** switch talkback on and off (they latch). The channel the talkback
+  microphone comes in on is the sixth encoder of MONITOR's talk tabs (**TALK CH**:
+  OFF, an input, an aux in or an FX return; an X32 has its own talkback socket). The MONITOR screen's tabs follow the
   manual's encoders: **monitor** the monitor gain, the solo options (EXCLUSIVE, SOLO
   FOLLOWS SEL, SEL FOLLOWS SOLO, CHANNEL AFL, MIX BUS AFL, DCA AFL, USE MASTER FADER;
   push to switch the one shown), the monitor delay (push on), the dim depth (push DIM),
   the source trim (push MONO) and the source; **talk a / talk b** push TALK, push EXT
   MIC, the talk gain (push AUTO DIM), the destinations (MIX BUS 1-16, LR, C/M; push to
-  assign the one shown) and push LATCH (`/config/talk`); **osc** the X32's
+  assign the one shown), push LATCH (`/config/talk`) and TALK CH; **osc** the X32's
   oscillator: its level (push: on / off), F1, F2 (push: switch between them),
   SINE, PINK or WHITE, and one destination (mix bus
   1-16, main L, R, L+R, M/C, matrix 1-6), as `/config/osc` and `/-stat/osc/on`; it plays

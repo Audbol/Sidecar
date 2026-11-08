@@ -1461,6 +1461,21 @@ private:
             file.deleteFile();
         }
 
+        // MONITOR's talk tabs: the sixth encoder picks the talkback channel.
+        {
+            display.showScreen (ui::x32::Display::Screen::Monitor, 1);
+            const auto& talk = display.getEncoder (5).turn;
+            expectEquals (talk.label, juce::String ("TALK CH"));
+            talk.set (0.0f);
+            expect (engine.getTalkStrip() == nullptr);
+            expectEquals (talk.text(), juce::String ("OFF"));
+            const float count = (float) (channels.size() + engine.getAux().size());
+            talk.set (3.0f / count); // CH 3
+            expect (engine.getTalkStrip() == channels[2].get());
+            expectEquals (talk.text(), channels[2]->getLabel());
+            talk.set (0.0f);
+        }
+
         // X32 channel presets: channel 13 exported, loaded onto channel 20; the main too.
         {
             ui::x32::SceneFiles files (rig.ctx);

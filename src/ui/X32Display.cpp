@@ -2071,6 +2071,34 @@ void Display::assignEncoders()
                                [this, run, node, bit] { run (node + "/destmap " + juce::String (x32Bits (x32Value (node + "/destmap")) ^ bit())); },
                                [this, node, bit] { return (x32Bits (x32Value (node + "/destmap")) & bit()) != 0; });
         encoders[4] = encoder ({}, "LATCH", [flip, node] { flip (node + "/latch"); }, on (node + "/latch"));
+        // 6: the channel the talkback microphone comes in on (Sidecar's: an X32
+        // has its own talkback socket), OFF or an input, aux in or FX return.
+        auto strips = std::make_shared<std::vector<Strip*>>();
+        for (auto* list : { &engine.getChannels(), &engine.getAux() })
+            for (auto& st : *list)
+                strips->push_back (st.get());
+        const int count = (int) strips->size() + 1;
+        KnobBinding channel;
+        channel.label = "TALK CH";
+        channel.steps = (float) count;
+        const auto current = [&engine, strips]
+        {
+            const auto it = std::find (strips->begin(), strips->end(), engine.getTalkStrip());
+            return it == strips->end() ? 0 : (int) (it - strips->begin()) + 1;
+        };
+        channel.get = [current, count] { return (float) current() / (float) (count - 1); };
+        channel.set = [this, &engine, strips, count] (float v)
+        {
+            const int i = juce::roundToInt (v * (float) (count - 1));
+            engine.setTalkStrip (i > 0 ? (*strips)[(size_t) i - 1] : nullptr);
+            repaint();
+        };
+        channel.text = [current, strips]
+        {
+            const int i = current();
+            return i == 0 ? juce::String ("OFF") : (*strips)[(size_t) i - 1]->getLabel();
+        };
+        encoders[5] = encoder (channel);
     }
     else if (screen == Screen::Monitor)
     {
@@ -3706,10 +3734,12 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
                 for (int b = 0; b < 18; ++b)
                     if ((bits & (1 << b)) != 0)
                         to.add (b < 16 ? "BUS " + juce::String (b + 1) : juce::String (b == 16 ? "LR" : "C/M"));
-                paintRows (g, r.reduced (12), { tab == 1 ? "TALK A" : "TALK B", "MICROPHONE", "TALK LEVEL", "AUTO DIM", "DESTINATIONS", "LATCH" },
+                const auto* talk = e.getTalkStrip();
+                paintRows (g, r.reduced (12), { tab == 1 ? "TALK A" : "TALK B", "MICROPHONE", "TALK LEVEL", "AUTO DIM", "DESTINATIONS", "LATCH", "TALK CHANNEL" },
                            { onOff (path.on.load()), x32Value ("/config/talk/source") == "EXT" ? juce::String ("EXTERNAL") : juce::String ("INTERNAL"),
                              fader::text (e.talk.levelDb.load()) + " dB", x32Value (node + "/dim"),
-                             to.isEmpty() ? juce::String ("NONE") : to.joinIntoString (", "), x32Value (node + "/latch") });
+                             to.isEmpty() ? juce::String ("NONE") : to.joinIntoString (", "), x32Value (node + "/latch"),
+                             talk != nullptr ? talk->getLabel() : juce::String ("OFF") });
             }
             else
                 paintRows (g, r.reduced (12), { "OSCILLATOR", "LEVEL", "F1", "F2", "PLAYING", "TYPE", "DESTINATION" },
