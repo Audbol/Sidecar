@@ -411,7 +411,15 @@ void ToggleKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
     if (const float w = juce::GlyphArrangement::getStringWidth (font, getButtonText()); w * 0.7f > room && w > 0.0f)
         font = font.withHeight (juce::jmax (9.0f, font.getHeight() * room / (w * 0.7f)));
     g.setFont (font);
-    g.drawFittedText (getButtonText(), area.toNearestInt().reduced (4, 0), juce::Justification::centred, 1, 0.7f);
+    // A key with a device tag: a label that would reach the tag keeps to its left.
+    auto textArea = area.toNearestInt().reduced (4, 0);
+    if (const float tag = deviceTagWidth (device); tag > 0.0f)
+    {
+        const float half = juce::GlyphArrangement::getStringWidth (font, getButtonText()) / 2.0f;
+        if (area.getCentreX() + half > area.getRight() - 5.0f - tag)
+            textArea.removeFromRight ((int) tag);
+    }
+    g.drawFittedText (getButtonText(), textArea, juce::Justification::centred, 1, 0.7f);
     drawDeviceTag (g, area.reduced (5.0f, 3.0f).removeFromTop (14.0f), device, theme);
 }
 

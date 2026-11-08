@@ -172,7 +172,7 @@ void StripPanel::paint (juce::Graphics& g)
 
     // NAME: the name shown, and whose it is while linked.
     auto n = nameArea;
-    caption (n.removeFromTop (kCaption / 2 + 4), linked ? "NAME (THE SOURCE'S: LINK CUSTOMIZATION TO SOURCE)" : "NAME");
+    caption (n.removeFromTop (kCaption / 2 + 4), linked ? "NAME (THE SOURCE'S, LINKED)" : "NAME");
     g.setColour (theme.text);
     g.setFont (type::font (type::kValue + 3.0f, true));
     g.drawFittedText (name.isNotEmpty() ? name : strip->getLabel(), n, juce::Justification::centredLeft, 1, 0.7f);
