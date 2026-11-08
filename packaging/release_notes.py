@@ -4,7 +4,8 @@
     python3 packaging/release_notes.py <tag> [<commit>]
 
 The notes start with CHANGELOG.md's section for the version, if there is one
-(a heading like "## [0.1.0]", "## 0.1.0 - 2026-10-19" or "## v0.1.0"), then the
+(a heading like "## [0.1.0]", "## 0.1.0 - 2026-10-19" or "## v0.1.0"; a test or
+candidate tag such as v0.3.0-test.3 takes 0.3.0's), then the
 per-platform install instructions, the disclaimer and the licence.
 """
 import re
@@ -40,7 +41,8 @@ def main():
     version = tag[1:] if tag[:1] in "vV" else tag
     built = f", built and tested by CI from {commit}" if commit else ""
 
-    intro = changelog_section(version) or (
+    # A test build or release candidate (0.3.0-test.3, 0.3.0-rc.1) is the version it leads to.
+    intro = changelog_section(version) or changelog_section(version.split("-")[0]) or (
         f"Sidecar {version}{built}: a live mixing console for Windows, macOS and Linux "
         "that emulates the Behringer WING. See README.md for what it does."
     )
