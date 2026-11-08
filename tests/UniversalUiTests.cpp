@@ -54,6 +54,9 @@ bool keepPicture (const juce::Image& image, const juce::String& name)
     const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_UI_SNAPSHOTS", {});
     if (folder.isEmpty())
         return true;
+    // A folder that isn't there yet is made (rather than failing every picture).
+    if (! juce::File (folder).createDirectory())
+        return false;
     const auto file = juce::File (folder).getChildFile (name);
     file.deleteFile();
     juce::FileOutputStream out (file);
