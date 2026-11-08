@@ -535,6 +535,31 @@ void Display::assignLibraryPresetEncoders()
         assignEncoders();
         repaint();
     });
+    if (tab == 2)
+    {
+        // The X32's own channel preset files (.chn): IMPORT loads one onto the
+        // selected strip (its source stays), EXPORT writes the strip as one.
+        const juce::Component::SafePointer<Display> safe (this);
+        auto said = [safe] (const juce::String& status)
+        {
+            if (safe == nullptr)
+                return;
+            safe->libraryStatus = status;
+            safe->refreshStrip();
+            safe->repaint();
+        };
+        encoders[4] = encoder ({}, "IMPORT .chn", [this, said]
+        {
+            auto* st = selected();
+            sceneFiles.importChannel (st != nullptr ? x32Address (*st) : juce::String(), said);
+        });
+        encoders[5] = encoder ({}, "EXPORT .chn", [this, said]
+        {
+            auto* st = selected();
+            const auto name = st == nullptr ? juce::String() : st->getName().isNotEmpty() ? st->getName() : st->getLabel();
+            sceneFiles.exportChannel (st != nullptr ? x32Address (*st) : juce::String(), name, said);
+        });
+    }
 }
 
 void Display::paintLibraryPresets (juce::Graphics& g, juce::Rectangle<int> r)
@@ -2248,6 +2273,8 @@ juce::String Display::x32Address (const Strip& s) const
         return "/bus/" + two (s.getId() + 1);
     if (const int i = at (e.getMatrices()); i >= 0)
         return "/mtx/" + two (i + 1);
+    if (const int i = at (e.getMains()); i == 0 || i == 1)
+        return i == 0 ? "/main/st" : "/main/m";
     return {};
 }
 

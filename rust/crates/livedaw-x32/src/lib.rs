@@ -9,6 +9,7 @@
 //! * [`meters`]: the meter replies.
 //! * [`oscillator`]: its oscillator, on the engine's console oscillator.
 //! * [`scn`]: scene files (`.scn`), written and read.
+//! * [`chn`]: channel presets (`.chn`), written and read.
 //! * [`sysex`]: OSC commands as text in MIDI SysEx.
 //! * [`server`]: the server itself.
 //!
@@ -18,6 +19,7 @@
 //! Remote Protocol" and replies of a real console to read-only requests; no
 //! Behringer firmware or X32-Edit code is used.
 
+pub mod chn;
 pub mod map;
 pub mod meters;
 pub mod oscillator;

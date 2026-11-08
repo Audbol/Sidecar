@@ -5,6 +5,9 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+- X32: channel preset files (`.chn`). LIBRARY's channel tab imports one onto the
+  selected strip (keeping its source) and exports the strip as one; mains, buses,
+  matrices, aux and FX returns too. C ABI 52.
 - Universal Mixer, every console's blocks: the ProMix 01's (compressor, gate,
   ducking, 3-band EQ, its 15 effects) and the 02R's (compressor, expander, the two
   companders, gate, ducking, 4-band EQ, its 17 effects) join the WING's and the X32's

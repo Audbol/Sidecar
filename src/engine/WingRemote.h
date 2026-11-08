@@ -72,6 +72,12 @@ public:
         juce::String name, note;
     };
     X32SceneRead readX32Scene (const juce::String& text);
+    /** X32 channel presets (`.chn`): the strip at an X32 address ("/ch/01",
+        "/bus/16", "/main/st"...) as one (empty if the console isn't an X32 or
+        that isn't a strip), and that strip set from one's text (its source stays;
+        `note` stays empty). */
+    juce::String writeX32Channel (const juce::String& strip, const juce::String& name) const;
+    X32SceneRead readX32Channel (const juce::String& strip, const juce::String& text);
     /** OSC over MIDI SysEx (Phase 4 step 6b): runs a command's text (the
         SysEx framing stripped) on the console as an X32. Returns the answer
         to a query (an address alone), else empty; `set` gets how many values

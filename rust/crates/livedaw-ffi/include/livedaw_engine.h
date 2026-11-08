@@ -29,7 +29,7 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 51;
+constexpr int kAbiVersion = 52;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -1786,6 +1786,12 @@ extern "C"
     LdString* ld_x32_scene_write (const LdX32*, const char* name, size_t nameLen, const char* note, size_t noteLen);
     /** Sets the console from a scene file's text; false if it isn't an X32. */
     bool ld_x32_scene_read (const LdX32*, const char* text, size_t len, LdX32SceneRead* out);
+    /** ABI 52: X32 channel presets (.chn): the strip at `strip` ("/ch/01", "/bus/16",
+        "/main/st"...) as one, or null (not an X32, not a strip). */
+    LdString* ld_x32_channel_write (const LdX32*, const char* strip, size_t stripLen, const char* name, size_t nameLen);
+    /** ABI 52: sets the strip at `strip` from a channel preset's text (its source
+        stays); false if it isn't an X32 or a strip. `out->note` is null. */
+    bool ld_x32_channel_read (const LdX32*, const char* strip, size_t stripLen, const char* text, size_t len, LdX32SceneRead* out);
     /** ABI 42: runs an OSC command's text from a MIDI SysEx message (the
         framing stripped): the answer to a query (an address alone), else
         null; `set` gets how many values were set, -1 for an unknown address. */

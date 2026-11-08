@@ -11,7 +11,7 @@ use livedaw_engine::{Engine, Profile};
 use livedaw_wing::server::{EngineHandle, EnginePtr};
 use livedaw_x32::map::State;
 use livedaw_x32::sysex::{self, Done};
-use livedaw_x32::{scn, Config, Console, Identity, LinkFollower, X32Server};
+use livedaw_x32::{chn, scn, Config, Console, Identity, LinkFollower, X32Server};
 use std::sync::Arc;
 
 pub struct LdX32 {
@@ -161,6 +161,57 @@ pub unsafe extern "C" fn ld_x32_scene_read(x: *const LdX32, text: *const u8, len
                 skipped: i32::try_from(r.skipped).unwrap_or(i32::MAX),
                 name: LdString::new(r.name),
                 note: LdString::new(r.note),
+            };
+        }
+        true
+    })
+}
+
+/// ABI 52: the strip at `strip` (`/ch/01`, `/main/st`...) as an X32 channel
+/// preset (`.chn` text), or null if the console isn't an X32 or that isn't a strip.
+///
+/// # Safety
+/// `x` is from `ld_x32_create` (or null); the strings hold their lengths in UTF-8 bytes.
+#[no_mangle]
+pub unsafe extern "C" fn ld_x32_channel_write(
+    x: *const LdX32,
+    strip: *const u8,
+    strip_len: usize,
+    name: *const u8,
+    name_len: usize,
+) -> *mut LdString {
+    let Some(x) = x.as_ref() else { return std::ptr::null_mut() };
+    let (strip, name) = (str_arg(strip, strip_len), str_arg(name, name_len));
+    guard(std::ptr::null_mut(), || {
+        x.with_console(|c| chn::write(c, &strip, &name)).flatten().map(LdString::new).unwrap_or(std::ptr::null_mut())
+    })
+}
+
+/// ABI 52: sets the strip at `strip` from an X32 channel preset's text (its
+/// source stays); false if the console isn't an X32 or that isn't a strip.
+///
+/// # Safety
+/// `x` is from `ld_x32_create` (or null); the strings hold their lengths in
+/// UTF-8 bytes; `out` is null or writable.
+#[no_mangle]
+pub unsafe extern "C" fn ld_x32_channel_read(
+    x: *const LdX32,
+    strip: *const u8,
+    strip_len: usize,
+    text: *const u8,
+    len: usize,
+    out: *mut LdX32SceneRead,
+) -> bool {
+    let Some(x) = x.as_ref() else { return false };
+    let (strip, text) = (str_arg(strip, strip_len), str_arg(text, len));
+    guard(false, || {
+        let Some(r) = x.with_console(|c| chn::read(c, &strip, &text)).flatten() else { return false };
+        if let Some(out) = out.as_mut() {
+            *out = LdX32SceneRead {
+                applied: i32::try_from(r.applied).unwrap_or(i32::MAX),
+                skipped: i32::try_from(r.skipped).unwrap_or(i32::MAX),
+                name: LdString::new(r.name),
+                note: std::ptr::null_mut(),
             };
         }
         true

@@ -1460,6 +1460,23 @@ private:
             expectEquals (channels[12]->getName(), juce::String ("Lead"));
             file.deleteFile();
         }
+
+        // X32 channel presets: channel 13 exported, loaded onto channel 20; the main too.
+        {
+            ui::x32::SceneFiles files (rig.ctx);
+            const auto file = juce::File::createTempFile (".chn");
+            expect (files.exportChannelFile (file, "/ch/13", "Lead").startsWith ("Exported"));
+            const auto text = file.loadFileAsString();
+            expect (text.startsWith ("#2.1# \"Lead\" "), text.substring (0, 40));
+            expect (text.contains ("\n/config \"Lead\" ") && ! text.contains ("/ch/13"), "paths relative to the strip");
+            const auto status = files.importChannelFile (file, "/ch/20");
+            expect (status.startsWith ("Loaded"), status);
+            expectEquals (channels[19]->getName(), juce::String ("Lead"));
+            expect (files.importChannelFile (file, {}) == "Select a strip");
+            expect (files.exportChannelFile (file, "/main/st", "Main").startsWith ("Exported"));
+            expect (file.loadFileAsString().contains ("\n/mix "));
+            file.deleteFile();
+        }
         setShownProfile (ld::kProfileWing);
     }
 

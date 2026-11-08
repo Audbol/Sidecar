@@ -1089,6 +1089,12 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
   show; **EXPORT .scn** saves the console as one, which an X32 can load. The
   Universal Mixer's SCENES has the same two keys on an X32. What Sidecar doesn't
   emulate is skipped, and the import says how many lines that was.
+- **X32 channel presets.** LIBRARY's channel tab has **IMPORT .chn** on its fifth
+  encoder's key, which loads an X32 channel preset file onto the selected strip, and
+  **EXPORT .chn** on its sixth, which saves the strip as one. A preset keeps the
+  strip's source, as an X32's does, and head amp lines are skipped. The file's
+  header follows public descriptions of the X32's: a file Sidecar writes hasn't
+  been tried on an X32 yet.
 - **Outputs.** The interface's outputs are numbered as an X32 numbers its own: 1-16
   the local outputs, 17-22 aux out, 33-80 AES50 A, 81-128 AES50 B, 129-160 the card,
   161-176 P16. As on a full-size X32, outputs 1-14 play buses 1-14 and **15-16 the

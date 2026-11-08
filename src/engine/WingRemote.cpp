@@ -126,6 +126,27 @@ WingRemote::X32SceneRead WingRemote::readX32Scene (const juce::String& text)
     return r;
 }
 
+juce::String WingRemote::writeX32Channel (const juce::String& strip, const juce::String& name) const
+{
+    const Utf8 s (strip), n (name);
+    return takeString (ld::ld_x32_channel_write (x32, s.data, s.size, n.data, n.size));
+}
+
+WingRemote::X32SceneRead WingRemote::readX32Channel (const juce::String& strip, const juce::String& text)
+{
+    const Utf8 s (strip), t (text);
+    ld::LdX32SceneRead out {};
+    X32SceneRead r;
+    r.ok = ld::ld_x32_channel_read (x32, s.data, s.size, t.data, t.size, &out);
+    if (r.ok)
+    {
+        r.applied = out.applied;
+        r.skipped = out.skipped;
+        r.name = takeString (out.name);
+    }
+    return r;
+}
+
 juce::StringArray WingRemote::applyWing (const Settings& s)
 {
     if (! s.enabled)

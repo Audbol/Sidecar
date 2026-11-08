@@ -25,6 +25,14 @@ public:
     juce::String importFile (const juce::File&);
     juce::String exportFile (const juce::File&);
 
+    /** X32 channel presets (`.chn`) for the LIBRARY's channel tab: IMPORT loads
+        one onto the strip at an X32 address ("/ch/01"...; its source stays),
+        EXPORT writes that strip as one, named `name`. */
+    void importChannel (const juce::String& strip, std::function<void (const juce::String&)> done);
+    void exportChannel (const juce::String& strip, const juce::String& name, std::function<void (const juce::String&)> done);
+    juce::String importChannelFile (const juce::File&, const juce::String& strip);
+    juce::String exportChannelFile (const juce::File&, const juce::String& strip, const juce::String& name);
+
 private:
     UiContext& ctx;
     std::unique_ptr<juce::FileChooser> chooser;

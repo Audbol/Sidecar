@@ -734,8 +734,11 @@ Three layers:
         `getShowFile` for its rows); UTILITY's copy tab COPYs the selected strip
         and PASTEs its chosen sections onto the selected one with the WING's
         CHANNEL COPY (`copyStripSections`, `HomeScreens.h`). Not done: INIT (the
-        WING's defaults would give an X32 strip WING models) and the X32's channel
-        presets (`.chn` library files).
+        WING's defaults would give an X32 strip WING models). The X32's channel
+        presets (`.chn` library files) came later: `livedaw_x32::chn`, the
+        scene file's lines relative to a strip, on LIBRARY's channel tab (IMPORT
+        / EXPORT .chn); the header is from public descriptions, not yet compared
+        with a file an X32 wrote.
 
 5. **Third emulation: the Yamaha ProMix 01** (1994), the first console controlled
    only over MIDI. From the owner's reference notes (kept outside the repository:

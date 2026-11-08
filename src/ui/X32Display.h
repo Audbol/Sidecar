@@ -213,7 +213,7 @@ private:
     /** An X32 address's values as the console answers them ("AN1-8"), or empty. */
     juce::String x32Value (const juce::String& address) const;
     /** A strip's X32 address ("/ch/05", "/auxin/02", "/fxrtn/01", "/bus/03",
-        "/mtx/01"; empty for the mains), and its pair's link ("/config/chlink/5-6";
+        "/mtx/01", "/main/st", "/main/m"), and its pair's link ("/config/chlink/5-6";
         empty for a strip that has none). */
     juce::String x32Address (const Strip&) const;
     juce::String linkAddress (const Strip&) const;
