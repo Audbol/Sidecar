@@ -2151,23 +2151,75 @@ void Display::assignEncoders()
     else if (screen == Screen::Assign && assignCode && setAssignCode)
     {
         // A set's tab (p.64): the control, what kind of thing it does, its
-        // target (and a send's bus); a change writes the control's code.
+        // target (and a send's bus or an effect's parameter); a change writes
+        // the control's code. A code of another kind (MIDI...) shows as itself.
         const bool button = assignControl >= 4;
-        const juce::StringArray kinds = button ? juce::StringArray { "-", "MUTE", "INSERT", "MUTE GRP", "SCENE GO" } : juce::StringArray { "-", "FADER", "PAN", "SEND" };
+        const juce::StringArray kinds = button ? juce::StringArray { "-", "MUTE", "INSERT", "MUTE GRP", "SCENE GO", "SCENE", "PREV", "NEXT" }
+                                               : juce::StringArray { "-", "FADER", "PAN", "SEND", "FX PARAM", "SELECTED" };
         const auto code = assignCode (assignControl);
+        const auto two = [] (int v) { return juce::String (v).paddedLeft ('0', 2); };
         const int xx = code.substring (1, 3).getIntValue();
-        const int kind = code == "-" || code.isEmpty() ? 0
-                       : button ? (code[0] == 'O' ? (xx >= 80 ? 3 : 1) : code[0] == 'I' ? 2 : code.startsWith ("S9") ? 4 : 0)
-                                : (code[0] == 'F' ? 1 : code[0] == 'P' ? 2 : code[0] == 'S' ? 3 : 0);
-        const int bus = code.length() >= 5 ? code.substring (3, 5).getIntValue() : 0;
-        const auto make = [button] (int k, int target, int b) -> juce::String
+        int kind = 0, target = 0, second = 0;
+        if (code.isNotEmpty() && code != "-")
         {
-            const auto two = [] (int v) { return juce::String (v).paddedLeft ('0', 2); };
+            kind = -1;
             if (button)
-                return k == 1 ? "O" + two (target) : k == 2 ? "I" + two (target) : k == 3 ? "O" + two (80 + juce::jlimit (0, 5, target)) : k == 4 ? juce::String ("S93") : juce::String ("-");
-            return k == 1 ? "F" + two (target) : k == 2 ? "P" + two (target) : k == 3 ? "S" + two (target) + two (b) : juce::String ("-");
+            {
+                if (code[0] == 'O')
+                {
+                    kind = xx >= 80 ? 3 : 1;
+                    target = xx >= 80 ? xx - 80 : xx;
+                }
+                else if (code[0] == 'I')
+                {
+                    kind = 2;
+                    target = xx;
+                }
+                else if (code == "S93" || code == "S90" || code == "S91")
+                    kind = code == "S93" ? 4 : code == "S90" ? 6 : 7;
+                else if (code.startsWith ("S0"))
+                {
+                    kind = 5;
+                    target = code.substring (2).getIntValue();
+                }
+            }
+            else
+            {
+                switch (code[0])
+                {
+                    case 'F': kind = 1; target = xx; break;
+                    case 'P': kind = 2; target = xx; break;
+                    case 'S': kind = 3; target = xx; second = code.substring (3, 5).getIntValue(); break;
+                    case 'X': kind = 4; target = code.substring (1, 2).getIntValue(); second = code.substring (2, 4).getIntValue(); break;
+                    case 'D': kind = 5; target = code[1] == '@' ? 0 : (int) (code[1] - 'A') + 1; break;
+                    default: break;
+                }
+            }
+        }
+        const auto make = [button, two] (int k, int t, int s) -> juce::String
+        {
+            if (button)
+                switch (k)
+                {
+                    case 1: return "O" + two (t);
+                    case 2: return "I" + two (t);
+                    case 3: return "O" + two (80 + juce::jlimit (0, 5, t));
+                    case 4: return "S93";
+                    case 5: return "S0" + two (juce::jlimit (0, 99, t));
+                    case 6: return "S90";
+                    case 7: return "S91";
+                    default: return "-";
+                }
+            switch (k)
+            {
+                case 1: return "F" + two (t);
+                case 2: return "P" + two (t);
+                case 3: return "S" + two (t) + two (s);
+                case 4: return "X" + juce::String (juce::jlimit (0, 7, t)) + two (juce::jlimit (0, 63, s));
+                case 5: return t <= 0 ? juce::String ("D@") : "D" + juce::String::charToString ((juce::juce_wchar) ('A' + juce::jlimit (0, 11, t - 1)));
+                default: return "-";
+            }
         };
-        const int target = kind == 3 && button ? xx - 80 : xx;
         const auto picker = [] (const juce::String& label, int value, int count, std::function<juce::String (int)> text, std::function<void (int)> set)
         {
             KnobBinding b;
@@ -2180,20 +2232,52 @@ void Display::assignEncoders()
         };
         encoders[0] = encoder (picker ("CONTROL", assignControl, 12, [] (int v) { return v < 4 ? "ENC " + juce::String (v + 1) : "KEY " + juce::String (v + 1); },
                                        [this] (int v) { assignControl = v; assignEncoders(); }));
-        encoders[1] = encoder (picker ("TYPE", kind, kinds.size(), [kinds] (int v) { return kinds[v]; },
-                                       [this, make, target, bus] (int v) { setAssignCode (assignControl, make (v, juce::jmax (0, target), bus)); assignEncoders(); }));
-        if (kind != 0 && ! (button && kind == 4))
+        const auto shown = x32::AssignSection::describe (code, button);
+        encoders[1] = encoder (picker ("TYPE", juce::jmax (0, kind), kinds.size(), [kinds, kind, shown] (int v) { return kind < 0 && v == 0 ? shown : kinds[v]; },
+                                       [this, make, target, second] (int v) { setAssignCode (assignControl, make (v, juce::jmax (0, target), second)); assignEncoders(); }));
+        // The target: a strip (or a DCA's fader), a mute group, a scene, an FX slot, the selected channel's control.
+        int count = 0;
+        std::function<juce::String (int)> text;
+        const auto strip = [] (int v) { return x32::AssignSection::describe ("F" + juce::String (v).paddedLeft ('0', 2), false).fromFirstOccurrenceOf ("FDR ", false, false); };
+        if (button)
         {
-            const int count = button && kind == 3 ? 6 : 72;
-            encoders[2] = encoder (picker ("TARGET", juce::jlimit (0, count - 1, target), count,
-                                           [button, kind] (int v)
-                                           {
-                                               return button && kind == 3 ? "MUTE G" + juce::String (v + 1) : x32::AssignSection::describe (juce::String ("F") + juce::String (v).paddedLeft ('0', 2), false).fromFirstOccurrenceOf ("FDR ", false, false);
-                                           },
-                                           [this, make, kind, bus] (int v) { setAssignCode (assignControl, make (kind, v, bus)); assignEncoders(); }));
+            if (kind == 1 || kind == 2)
+            {
+                count = 72;
+                text = strip;
+            }
+            else if (kind == 3)
+            {
+                count = 6;
+                text = [] (int v) { return "MUTE G" + juce::String (v + 1); };
+            }
+            else if (kind == 5)
+            {
+                count = 100;
+                text = [] (int v) { return x32::AssignSection::describe ("S0" + juce::String (v).paddedLeft ('0', 2), true); };
+            }
         }
-        if (! button && kind == 3)
-            encoders[3] = encoder (picker ("BUS", bus, 16, [] (int v) { return juce::String (v + 1); },
+        else if (kind >= 1 && kind <= 3)
+        {
+            count = kind == 1 ? 80 : 72;
+            text = strip;
+        }
+        else if (kind == 4)
+        {
+            count = 8;
+            text = [] (int v) { return "FX" + juce::String (v + 1); };
+        }
+        else if (kind == 5)
+        {
+            count = 13;
+            text = [make] (int v) { return x32::AssignSection::describe (make (5, v, 0), false); };
+        }
+        if (count > 0)
+            encoders[2] = encoder (picker ("TARGET", juce::jlimit (0, count - 1, target), count, text,
+                                           [this, make, kind, second] (int v) { setAssignCode (assignControl, make (kind, v, second)); assignEncoders(); }));
+        if (! button && (kind == 3 || kind == 4))
+            encoders[3] = encoder (picker (kind == 3 ? "BUS" : "PARAM", juce::jlimit (0, kind == 3 ? 15 : 63, second), kind == 3 ? 16 : 64,
+                                           [] (int v) { return juce::String (v + 1); },
                                            [this, make, kind, target] (int v) { setAssignCode (assignControl, make (kind, target, v)); assignEncoders(); }));
     }
     else if (screen == Screen::Utility)

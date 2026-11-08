@@ -1066,8 +1066,13 @@ switches to the Universal Mixer, whose **X32 SURFACE** key comes back.
   forward (five seconds), REC, and the tracks (push to play the one shown).
 - **Assign.** Right of the main fader, the X32's user controls: **SET A**, **SET B**
   and **SET C** each hold four encoders and eight buttons (5-12). What each does is
-  its X32 function code, set from an X32 remote app (`/config/userctrl`) or a scene
-  file: an encoder can turn a fader, a pan, a send, an effect parameter, the selected
+  its X32 function code, set on the display's ASSIGN screen (its set a / b / c
+  tabs: the control, its type, its target, and a send's bus or an effect's
+  parameter), from an X32 remote app (`/config/userctrl`) or a scene file. ASSIGN
+  sets an encoder to a fader, pan, send, effect parameter or the selected
+  channel's fader or dynamics, and a button to a mute, insert, mute group, scene,
+  PREV, NEXT or GO; other codes (MIDI, pages) come from the apps and show as
+  themselves. An encoder can turn a fader, a pan, a send, an effect parameter, the selected
   channel's fader or dynamics, or send MIDI; a button can mute a strip, DCA or mute
   group, switch an insert, recall a scene (or PREV / NEXT / GO), open a page of the
   display or send MIDI. Each control shows what it's set to.

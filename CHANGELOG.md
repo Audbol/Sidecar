@@ -5,6 +5,9 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+- X32: the display's ASSIGN editor also sets effect parameters and the selected
+  channel's controls on encoders, and a scene, PREV and NEXT on buttons; a
+  control holding another code (MIDI, a page) shows it instead of "-".
 - X32: the talkback channel on the display's MONITOR talk tabs (the sixth
   encoder, TALK CH), so an X32 show no longer needs the Universal Mixer for it.
 - 02R: fader recall safe and fade times act on a scene recall. A safe fader keeps

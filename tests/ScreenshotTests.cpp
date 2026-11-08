@@ -1461,6 +1461,32 @@ private:
             file.deleteFile();
         }
 
+        // ASSIGN's editor writes each kind of code; another kind shows as itself.
+        {
+            display.showScreen (ui::x32::Display::Screen::Assign, 0);
+            const auto turn = [&display] (int encoder, int step, int steps) { display.getEncoder (encoder).turn.set ((float) step / (float) (steps - 1)); };
+            turn (0, 0, 12); // ENC 1
+            turn (1, 4, 6);  // FX PARAM
+            turn (2, 2, 8);  // FX3
+            turn (3, 5, 64); // P6
+            expectEquals (display.assignCode (0), juce::String ("X205"));
+            turn (1, 5, 6); // SELECTED
+            turn (2, 7, 13);
+            expectEquals (display.assignCode (0), juce::String ("DG"));
+            expectEquals (display.getEncoder (2).turn.text(), juce::String ("SEL RATIO"));
+            turn (0, 4, 12); // KEY 5
+            turn (1, 5, 8);  // SCENE
+            turn (2, 3, 100);
+            expectEquals (display.assignCode (4), juce::String ("S003"));
+            turn (1, 7, 8); // NEXT
+            expectEquals (display.assignCode (4), juce::String ("S91"));
+            display.setAssignCode (4, "M100");
+            display.showScreen (ui::x32::Display::Screen::Assign, 0);
+            expect (display.getEncoder (1).turn.text().startsWith ("MIDI"), display.getEncoder (1).turn.text());
+            display.setAssignCode (0, "-");
+            display.setAssignCode (4, "-");
+        }
+
         // MONITOR's talk tabs: the sixth encoder picks the talkback channel.
         {
             display.showScreen (ui::x32::Display::Screen::Monitor, 1);
