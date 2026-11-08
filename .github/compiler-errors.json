@@ -1,0 +1,26 @@
+{
+  "problemMatcher": [
+    {
+      "owner": "sidecar-gcc-clang",
+      "pattern": [
+        {
+          "regexp": "^(.*?):(\\d+):(\\d+):\\s+(?:fatal\\s+)?(error):\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "severity": 4,
+          "message": 5
+        }
+      ]
+    },
+    {
+      "owner": "sidecar-linker",
+      "pattern": [
+        {
+          "regexp": "^(.*(?:undefined reference to|Undefined symbols|multiple definition of|duplicate symbol|ld: error|collect2: error|clang: error|ld returned).*)$",
+          "message": 1
+        }
+      ]
+    }
+  ]
+}

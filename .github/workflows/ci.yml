@@ -126,7 +126,10 @@ jobs:
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release "-DLIVEDAW_VERSION=${{ env.LIVEDAW_VERSION_STAMP }}"
 
       - name: Build
-        run: cmake --build build --config Release --parallel ${{ matrix.parallel }}
+        # Compiler and linker errors become annotations (readable without signing in).
+        run: |
+          echo "::add-matcher::.github/compiler-errors.json"
+          cmake --build build --config Release --parallel ${{ matrix.parallel }}
 
       - name: Test
         run: ctest --test-dir build -C Release --output-on-failure
@@ -212,7 +215,9 @@ jobs:
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DLIVEDAW_SANITIZE=${{ matrix.sanitizer }}
 
       - name: Build tests
-        run: cmake --build build --target LiveDAWTests --parallel 2
+        run: |
+          echo "::add-matcher::.github/compiler-errors.json"
+          cmake --build build --target LiveDAWTests --parallel 2
 
       - name: Test
         env:
