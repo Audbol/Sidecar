@@ -1234,8 +1234,12 @@ The UTILITY page's oscillator plays: ON, its level (the fader's scale, as dBFS),
 1 kHz, 10 kHz or pink noise, onto SEND3, SEND4 (with SEND3-4 a stereo pair, the left
 and right of its bus) and ST OUT.
 
-Not there yet: Local OFF, the GAIN
-and PAD controls (the console's are analog; use the strip's trim on the Universal Mixer).
+**LOCAL ON/OFF** (MIDI's menu): with Local OFF, while that page shows, the faders and
+CH1-16 [SEL] control another device instead (their control changes and program
+changes go out, the mix stays).
+
+Not there yet: the GAIN and PAD controls (the console's are analog; use the strip's
+trim on the Universal Mixer).
 The fader's steps, the effects' algorithms and the compressor's ratio steps are Sidecar's
 reading of the User's Guide, not measured on a console.
 
