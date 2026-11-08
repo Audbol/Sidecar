@@ -271,6 +271,10 @@ private:
     bool isStrip (const Strip*) const;
 
     std::array<Encoder, 6> encoders;
+    /** An encoder's turn or push that asks for the encoders again gets them when it
+        has returned: assigning them replaces the very function being called. */
+    int encoderCallbacks = 0;
+    bool encodersWanted = false;
     std::array<DisplayKnob, 6> knobs;
     SceneFiles sceneFiles { ctx };
     juce::String libraryStatus; // what the last IMPORT / EXPORT .scn did

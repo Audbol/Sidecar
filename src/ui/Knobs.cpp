@@ -156,7 +156,9 @@ DisplayKnob::DisplayKnob()
             auto p = (float) slider.getValue();
             if (binding.steps > 1.0f)
                 p = std::round (p * (binding.steps - 1.0f)) / (binding.steps - 1.0f);
-            binding.set (p);
+            // A copy: what it sets can rebind this slot, replacing the function being called.
+            const auto set = binding.set;
+            set (p);
             timerCallback();
         }
     };
@@ -308,7 +310,8 @@ void ParamSlot::setPosition (float p)
     p = juce::jlimit (0.0f, 1.0f, p);
     if (binding.steps > 1.0f)
         p = std::round (p * (binding.steps - 1.0f)) / (binding.steps - 1.0f);
-    binding.set (p);
+    const auto set = binding.set; // a copy: what it sets can rebind this slot
+    set (p);
     timerCallback();
 }
 

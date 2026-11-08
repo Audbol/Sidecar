@@ -1454,6 +1454,11 @@ void Display::pushEncoder (int i)
 
 void Display::assignEncoders()
 {
+    if (encoderCallbacks > 0)
+    {
+        encodersWanted = true;
+        return;
+    }
     for (auto& e : encoders)
         e = {};
     auto* s = selected();
@@ -2370,6 +2375,32 @@ void Display::assignEncoders()
         encoders[1] = encoder ({}, "EXPORT .scn", [this, said] { sceneFiles.exportScene (said); });
     }
 
+    // Each turn and push runs guarded: see encoderCallbacks.
+    const auto finish = [this]
+    {
+        if (--encoderCallbacks == 0 && encodersWanted)
+        {
+            encodersWanted = false;
+            assignEncoders();
+        }
+    };
+    for (auto& e : encoders)
+    {
+        if (e.turn.set)
+            e.turn.set = [this, finish, inner = e.turn.set] (float v)
+            {
+                ++encoderCallbacks;
+                inner (v);
+                finish();
+            };
+        if (e.push)
+            e.push = [this, finish, inner = e.push]
+            {
+                ++encoderCallbacks;
+                inner();
+                finish();
+            };
+    }
     for (int i = 0; i < 6; ++i)
     {
         knobs[(size_t) i].setBinding (encoders[(size_t) i].turn);
