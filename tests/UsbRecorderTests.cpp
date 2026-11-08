@@ -80,7 +80,7 @@ std::pair<double, double> fitSine (const float* x, int n, double hz, double rate
         ys += x[i] * s;
         yc += x[i] * c;
     }
-    const double det = ss * cc - sc * sc, a = (ys * cc - yc * sc) / det, b = (yc * ss - ys * sc) / det;
+    const double det = juce::jmax (1.0e-30, ss * cc - sc * sc), a = (ys * cc - yc * sc) / det, b = (yc * ss - ys * sc) / det;
     double err = 0, sig = 0;
     for (int i = 0; i < n; ++i)
     {

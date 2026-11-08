@@ -313,7 +313,7 @@ For questions, setup help and quick feedback, join the
 You need:
 
 - CMake 3.22 or newer
-- a C++20 compiler: Visual Studio 2022 (MSVC), Xcode 14+ or GCC 11+ / Clang 14+
+- a C++20 compiler: Visual Studio 2022 or 2026 (MSVC), Xcode 14+ or GCC 11+ / Clang 14+
 - a stable Rust toolchain, 1.83 or newer ([rustup](https://rustup.rs))
 - Git (CMake fetches JUCE 8 and Corrosion at configure time)
 
@@ -343,8 +343,8 @@ sudo apt install build-essential pkg-config cmake git libasound2-dev libjack-jac
 
 ### Windows
 
-Build from a *Developer Command Prompt for VS 2022* (or let CMake find Visual
-Studio):
+Build from a *Developer Command Prompt* for VS 2022 or VS 2026 (or let CMake find
+Visual Studio; for VS 2026, use the CMake that comes with it):
 
 ```bat
 cmake -S . -B build

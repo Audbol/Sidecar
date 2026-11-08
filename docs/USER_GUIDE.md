@@ -16,12 +16,24 @@ Sidecar opens with a window that asks how to start:
   autosave restored it, with the mixer it was on. **Esc** does the same.
 - **A new mixer** starts a fresh console: WING (experimental), UNIVERSAL, X32, PROMIX 01
   or 02R (very experimental). It clears the console and its scenes. The session you
-  left is kept as `autosave-previous.lshow` in Sidecar's data folder, which you can
-  open with the LIBRARY's show tab.
+  left is kept as `autosave-previous.lshow` in Sidecar's data folder (see below).
 
 The window doesn't open in safe mode, or when files in the LIBRARY's STARTUP folder
 chose the show. Audio runs while it is open. SETUP > SIDECAR > INTERFACE changes the
 mixer later.
+
+### Getting a session back
+
+Started a new mixer by mistake? The session you left is in `autosave-previous.lshow`,
+in the folder that holds the autosave:
+
+- Windows: `%APPDATA%\Sidecar`
+- macOS: `~/Library/Sidecar`
+- Linux: `~/.config/Sidecar`
+
+Copy it into `Documents/Sidecar/Library`, then open it from the LIBRARY (the show's
+OPEN). It holds the whole console, its scenes and its plugins as they were when you
+quit. Each new mixer replaces it, so copy it before starting another one.
 
 ## A WING on your computer
 
