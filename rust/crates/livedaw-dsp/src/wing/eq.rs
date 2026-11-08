@@ -12,7 +12,7 @@ use crate::biquad::{Biquad, BiquadCoeffs};
 use crate::util::db_to_gain;
 use std::f64::consts::FRAC_1_SQRT_2;
 
-pub const MAX_SECTIONS: usize = 16;
+pub const MAX_SECTIONS: usize = 32;
 const SUB_BLOCK: usize = 32;
 
 #[derive(Clone, Copy, Debug)]
@@ -64,6 +64,7 @@ pub fn design(spec: &ModelSpec, values: &[f32], sr: f64, gain_scale: f32) -> EqD
         "PMEQ" => design_promix(&p, sr, k, &mut d),
         "Y2EQ" => design_02r(&p, sr, k, &mut d),
         "SQPEQ" => design_sq(&p, sr, k, &mut d),
+        "SQGEQ" => design_sq_geq(&p, sr, k, &mut d),
         _ => {}
     }
     d
@@ -305,6 +306,16 @@ fn design_sq(p: &Params, sr: f64, k: f32, d: &mut EqDesign) {
         "LPF" => sec_cut(d, sr, hf, false),
         "BELL" => push_gain(d, hg, || peak(sr, hf, width_q(p.f("hq")), hg)),
         _ => push_gain(d, hg, || high_shelf(sr, hf, SHELF_Q, hg)),
+    }
+}
+
+/// The SQ's 28-band graphic EQ: constant 1/3 octave bells; a band at 0 dB costs nothing.
+fn design_sq_geq(p: &Params, sr: f64, k: f32, d: &mut EqDesign) {
+    use crate::sq::{width_q, GEQ_HZ, GEQ_WIDTH};
+    let q = width_q(GEQ_WIDTH);
+    for (&f, &v) in GEQ_HZ.iter().zip(p.values) {
+        let g = v * k;
+        push_gain(d, g, || peak(sr, f, q, g));
     }
 }
 

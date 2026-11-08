@@ -11,9 +11,14 @@
 //! silent the choices are Sidecar's reading: the compressor's ratio steps, the
 //! soft knee's width, the slope of the PEQ's HPF and LPF modes, the ducker's
 //! controls and every default value.
+//!
+//! The mixes' 28-band graphic EQ (p.38) is a block too, placed before their PEQ
+//! (`ProfileSpec::factory_eq_block`): each mix has its own, none takes an FX slot.
 
 use crate::model::{ModelCategory, ModelSpec, ModelTables, ParamKind, ParamSpec};
 use crate::wing::FILTER_TOOLS;
+
+pub mod fx;
 
 /// A parameter, in `ParamSpec`'s field order.
 #[allow(clippy::too_many_arguments)]
@@ -122,17 +127,59 @@ static PEQ_PARAMS: [ParamSpec; 14] = [
 /// The PEQ, on inputs, FX returns and mixes alike.
 pub static EQ: &[ModelSpec] = &[ModelSpec { token: "SQPEQ", name: "PEQ", category: ModelCategory::Eq, params: &PEQ_PARAMS }];
 
-/// The FX rack's devices: an empty slot and EXT so far (its RackFX come next).
-pub static FX_MODELS: [ModelSpec; 2] = [crate::wing::FX_MODELS[0], crate::wing::FX_MODELS[1]];
+/// The GEQ's bands (p.38), 1/3 octave wide.
+pub const GEQ_HZ: [f32; 28] = [
+    31.0, 40.0, 50.0, 63.0, 80.0, 100.0, 125.0, 160.0, 200.0, 250.0, 315.0, 400.0, 500.0, 630.0, 800.0, 1000.0, 1250.0, 1600.0,
+    2000.0, 2500.0, 3150.0, 4000.0, 5000.0, 6300.0, 8000.0, 10000.0, 12500.0, 16000.0,
+];
+
+/// The GEQ's width: 1/3 octave (p.38: constant).
+pub const GEQ_WIDTH: f32 = 1.0 / 3.0;
+
+/// The 28 bands' gains, -12..+12 dB (p.38).
+static GEQ_PARAMS: [ParamSpec; 28] = [
+    p("g1", "31", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g2", "40", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g3", "50", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g4", "63", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g5", "80", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g6", "100", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g7", "125", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g8", "160", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g9", "200", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g10", "250", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g11", "315", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g12", "400", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g13", "500", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g14", "630", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g15", "800", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g16", "1k", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g17", "1.25k", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g18", "1.6k", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g19", "2k", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g20", "2.5k", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g21", "3.15k", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g22", "4k", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g23", "5k", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g24", "6.3k", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g25", "8k", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g26", "10k", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g27", "12.5k", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+    p("g28", "16k", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
+];
+
+/// The mixes' EQs: the PEQ, then the graphic EQ.
+pub static EQ_BUS: [ModelSpec; 2] =
+    [EQ[0], ModelSpec { token: "SQGEQ", name: "GEQ", category: ModelCategory::Eq, params: &GEQ_PARAMS }];
 
 /// The SQ-5's models.
 pub static MODELS: ModelTables = ModelTables {
     dynamics: DYN_MODELS,
     aux_dynamics: &[],
     eq_channel: EQ,
-    eq_bus: EQ,
+    eq_bus: &EQ_BUS,
     filter_tools: FILTER_TOOLS,
-    fx: &FX_MODELS,
+    fx: &fx::FX_MODELS,
     fx_premium_slots: 8,
     gate_default: "SQGATE",
     comp_default: "SQCOMP",
@@ -273,5 +320,30 @@ mod dynamics_tests {
         assert!((open / (quiet / std::f32::consts::SQRT_2) - 1.0).abs() < 0.03, "{open}");
         let closed = run("SQGATE", &[("thr", -20.0), ("range", 20.0)], quiet);
         assert!((closed / open - 0.1).abs() < 0.02, "{}", closed / open);
+    }
+}
+
+#[cfg(test)]
+mod geq_tests {
+    use super::*;
+
+    #[test]
+    fn the_geq_has_the_guides_28_bands_and_each_lifts_its_own() {
+        use crate::wing::eq::design;
+        let spec = &EQ_BUS[1];
+        assert_eq!(spec.params.len(), 28);
+        assert!(spec.params.len() <= crate::wing::MAX_EQ_PARAMS);
+        assert_eq!((GEQ_HZ[0], GEQ_HZ[15], GEQ_HZ[27]), (31.0, 1000.0, 16000.0));
+        assert_eq!((spec.params[0].label, spec.params[27].label), ("31", "16k"));
+        let sr = 96000.0;
+        let mut v = vec![0.0; 28];
+        assert_eq!(design(spec, &v, sr, 1.0).len, 0, "flat: no filters at all");
+        v[15] = 12.0;
+        let one = design(spec, &v, sr, 1.0);
+        assert!((one.response_db(1000.0, sr) - 12.0).abs() < 0.1);
+        assert!(one.response_db(500.0, sr).abs() < 0.8, "1/3 octave: an octave away is nearly flat");
+        // Every band at once fits.
+        let all = design(spec, &[3.0; 28], sr, 1.0);
+        assert_eq!(all.len, 28);
     }
 }

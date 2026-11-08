@@ -751,6 +751,20 @@ impl Engine {
             p.source_left.store(input, Relaxed);
             p.source_right.store(input, Relaxed);
         }
+        // A console's own EQ block on its mixes, before their EQ (the SQ's GEQ).
+        if let Some(token) = spec.factory_eq_block {
+            for kind in [StripKind::Bus, StripKind::Main, StripKind::Matrix] {
+                for strip in self.strips(kind) {
+                    let Some(at) = strip.steps().iter().position(|s| matches!(s, Step::Node(Node::Eq))) else { continue };
+                    let Some(block) = self.insert_block(&strip, BlockKind::Eq, at) else { continue };
+                    if let crate::blocks::BlockParams::Eq(eq) = &block.params {
+                        if let Some(model) = livedaw_dsp::model::model_index(eq.table(), token) {
+                            eq.set_model(model);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Message thread: makes this a fresh console of `config`'s structure

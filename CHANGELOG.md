@@ -7,7 +7,8 @@ All notable changes to Sidecar are listed here. Versions follow
 
 - A start on the Allen & Heath SQ-5: its processing blocks (gate, compressor with parallel
   path, ducker, 4-band PEQ), offered on any Universal strip, and its console profile
-  (counts, signal chains, fader law). C ABI 53. Its effects, MIDI and surface follow.
+  (counts, signal chains, fader law), its 28-band GEQ on every mix and its 11 RackExtra
+  effects. C ABI 53. Its add-on effects, MIDI and surface follow.
 
 ## [0.3.0] - beta
 

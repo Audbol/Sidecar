@@ -24,6 +24,7 @@ mod eqfx;
 mod modulation;
 mod pitch;
 mod reverb;
+mod sq_voices;
 #[cfg(test)]
 mod time_audit;
 mod utility;
@@ -147,6 +148,7 @@ pub fn create(token: &str, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
         .or_else(|| crate::x32::fx::create(token, ctx))
         .or_else(|| crate::promix::fx::create(token, ctx))
         .or_else(|| crate::y02r::fx::create(token, ctx))
+        .or_else(|| sq_voices::create(token, ctx))
 }
 
 /// The devices whose screen graph is their measured frequency response.
@@ -367,6 +369,8 @@ pub(crate) mod tests {
             &crate::promix::FX_MODELS
         } else if crate::y02r::fx::is_02r(token) {
             &crate::y02r::fx::FX_MODELS
+        } else if crate::sq::fx::is_sq(token) {
+            &crate::sq::fx::FX_MODELS
         } else {
             FX_MODELS
         };

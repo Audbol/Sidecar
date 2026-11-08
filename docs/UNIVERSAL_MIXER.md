@@ -1221,8 +1221,12 @@ strips and on any Universal strip from the start:
    mixes and 4 FX sends, LR, 3 stereo matrices, 8 DCAs, 8 mute groups, 8 FX), its chains
    in the order of the guide's block diagrams (`chain::SQ_*`), `FaderLaw::SQ` from the
    MIDI protocol's audio taper table, its port groups, names and colours. C ABI 53.
-3. **Its GEQ and RackFX**: the mixes' 28-band GEQ before the PEQ, the 8 RackExtra types
-   and the add-ons on the WING's devices, the first four FX slots populated, as blocks.
+3. **Its GEQ and RackFX** (done, but for the add-ons): the mixes' 28-band GEQ, an EQ
+   block before the PEQ of every mix, LR and matrix (`ProfileSpec::factory_eq_block`);
+   the 8 RackExtra types (SMR's 4 models as 4 devices, 11 in all) on the WING's devices
+   (`wing::fx::sq_voices`), the first four FX slots populated. Not yet: the add-ons
+   (MultiBD 3 and 4, DynEQ4, De-Esser, Bucket Brigade, Echo, Hypabass), the DEEP models
+   and each panel's controls without an algorithm (listed in `sq/fx.rs`).
 4. **Its state, MIDI and scenes**: mixes as Aux or Group, mono / stereo pairs, NRPN over
    USB and TCP 51325, MMC, the DAW strips, scene recall filters.
 5. **Its surface**: the 16+1 faders, 6 layers, the touchscreen's screens and the
@@ -1230,7 +1234,7 @@ strips and on any Universal strip from the start:
 
 Sidecar's reading until measured on a console: the compressor's ratio steps, the soft
 knee's width, the ducker's controls, the PEQ's filter slopes, every default value, the
-factory patch and the strip colours.
+factory patch and FX rack, the strip colours, and which WING device runs each RackFX.
 
 Each emulation keeps the independent-project disclaimer: not affiliated with or
 endorsed by the console's maker, their trademarks used only to say what is emulated,

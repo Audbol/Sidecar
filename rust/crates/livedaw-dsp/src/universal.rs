@@ -32,7 +32,7 @@ const fn join<const N: usize>(parts: &[(&[ModelSpec], usize)]) -> [ModelSpec; N]
 
 /// The other consoles' EQs, offered on every strip (an input may take a bus EQ
 /// and a bus an input's).
-const OTHER_EQS: [ModelSpec; 5] = [x32::EQ_CHANNEL[0], x32::EQ_BUS[0], promix::EQ[0], y02r::EQ[0], sq::EQ[0]];
+const OTHER_EQS: [ModelSpec; 6] = [x32::EQ_CHANNEL[0], x32::EQ_BUS[0], promix::EQ[0], y02r::EQ[0], sq::EQ[0], sq::EQ_BUS[1]];
 
 /// The other consoles' FX tables start with NONE and EXT, which the WING's has already.
 const FX_SKIP: usize = 2;
@@ -42,14 +42,20 @@ const N_DYN: usize =
 const N_EQ_CH: usize = wing::EQ_MODELS_CH.len() + OTHER_EQS.len();
 const N_EQ_BUS: usize = wing::EQ_MODELS_BUS.len() + OTHER_EQS.len();
 const N_FX: usize =
-    wing::FX_MODELS.len() + x32::FX_MODELS.len() + promix::FX_MODELS.len() + y02r::fx::FX_MODELS.len() - 3 * FX_SKIP;
+    wing::FX_MODELS.len() + x32::FX_MODELS.len() + promix::FX_MODELS.len() + y02r::fx::FX_MODELS.len() + sq::fx::FX_MODELS.len()
+        - 4 * FX_SKIP;
 
 pub static DYN_MODELS: [ModelSpec; N_DYN] =
     join(&[(wing::DYN_MODELS, 0), (x32::DYN_MODELS, 0), (promix::DYN_MODELS, 0), (y02r::DYN_MODELS, 0), (sq::DYN_MODELS, 0)]);
 pub static EQ_MODELS_CH: [ModelSpec; N_EQ_CH] = join(&[(wing::EQ_MODELS_CH, 0), (&OTHER_EQS, 0)]);
 pub static EQ_MODELS_BUS: [ModelSpec; N_EQ_BUS] = join(&[(wing::EQ_MODELS_BUS, 0), (&OTHER_EQS, 0)]);
-pub static FX_MODELS: [ModelSpec; N_FX] =
-    join(&[(wing::FX_MODELS, 0), (x32::FX_MODELS, FX_SKIP), (&promix::FX_MODELS, FX_SKIP), (&y02r::fx::FX_MODELS, FX_SKIP)]);
+pub static FX_MODELS: [ModelSpec; N_FX] = join(&[
+    (wing::FX_MODELS, 0),
+    (x32::FX_MODELS, FX_SKIP),
+    (&promix::FX_MODELS, FX_SKIP),
+    (&y02r::fx::FX_MODELS, FX_SKIP),
+    (&sq::fx::FX_MODELS, FX_SKIP),
+]);
 
 /// The Universal's models. Its aux channels, FX premium slots (1-8), filter
 /// tools and a new strip's gate and dynamics stay the WING's.
@@ -79,7 +85,8 @@ pub fn console_of(token: &str) -> Option<&'static str> {
         && (model_in(y02r::DYN_MODELS, token) || model_in(y02r::EQ, token) || y02r::fx::is_02r(token))
     {
         Some("02R")
-    } else if token.starts_with("SQ") && (model_in(sq::DYN_MODELS, token) || model_in(sq::EQ, token)) {
+    } else if token.starts_with("SQ") && (model_in(sq::DYN_MODELS, token) || model_in(&sq::EQ_BUS, token) || sq::fx::is_sq(token))
+    {
         Some("SQ-5")
     } else {
         None
@@ -115,11 +122,11 @@ mod tests {
             }
         }
         for t in [&EQ_MODELS_CH[..], &EQ_MODELS_BUS[..]] {
-            for token in ["X32EQ4", "X32EQ6", "PMEQ", "Y2EQ", "SQPEQ"] {
+            for token in ["X32EQ4", "X32EQ6", "PMEQ", "Y2EQ", "SQPEQ", "SQGEQ"] {
                 assert!(model_index(t, token).is_some(), "{token}");
             }
         }
-        for table in [x32::FX_MODELS, &promix::FX_MODELS[..], &y02r::fx::FX_MODELS[..]] {
+        for table in [x32::FX_MODELS, &promix::FX_MODELS[..], &y02r::fx::FX_MODELS[..], &sq::fx::FX_MODELS[..]] {
             for m in &table[FX_SKIP..] {
                 assert!(model_index(&FX_MODELS, m.token).is_some(), "{}", m.token);
             }
@@ -172,6 +179,8 @@ mod tests {
         assert_eq!(console_of("Y2CHREV"), Some("02R"));
         assert_eq!(console_of("SQCOMP"), Some("SQ-5"));
         assert_eq!(console_of("SQPEQ"), Some("SQ-5"));
+        assert_eq!(console_of("SQGEQ"), Some("SQ-5"));
+        assert_eq!(console_of("SQSMRH"), Some("SQ-5"));
         for wing in ["GATE", "COMP", "HALL", "PIA", "PULSAR", "PHASER", "PCORR"] {
             assert_eq!(console_of(wing), None, "{wing}");
         }

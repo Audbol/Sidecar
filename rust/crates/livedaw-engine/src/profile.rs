@@ -338,6 +338,10 @@ pub struct ProfileSpec {
     /// A new console's FX rack, slot by slot (tokens of `models.fx`, on their
     /// defaults): an X32's VRM, HALL, DLY, CRS and GEQs. Empty: every slot empty.
     pub fx_factory: &'static [&'static str],
+    /// An EQ block a new console's buses, mains and matrices start with, before
+    /// their EQ (the token of a model of the bus EQ table; the SQ's GEQ). Strips
+    /// without an EQ node don't get one.
+    pub factory_eq_block: Option<&'static str>,
     /// The buses (0-based slots) feeding the first FX slots as send effects
     /// (`FxParams::source_left`): an X32's buses 13-16 feed FX 1-4. Empty:
     /// every slot an insert.
@@ -638,6 +642,7 @@ static WING: ProfileSpec = ProfileSpec {
     dca_names: None,
     dca_fader_db: livedaw_dsp::fader::FADER_MIN,
     fx_factory: &[],
+    factory_eq_block: None,
     fx_send_buses: &[],
 };
 
@@ -673,6 +678,7 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
     dca_names: None,
     dca_fader_db: livedaw_dsp::fader::FADER_MIN,
     fx_factory: &[],
+    factory_eq_block: None,
     fx_send_buses: &[],
 };
 
@@ -717,6 +723,7 @@ static X32: ProfileSpec = ProfileSpec {
     dca_names: Some("DCA"),
     dca_fader_db: 0.0,
     fx_factory: &["X32VRM", "X32HALL", "X32DLY", "X32CRS", "X32GEQ2", "X32GEQ2", "X32GEQ2", "X32GEQ"],
+    factory_eq_block: None,
     fx_send_buses: &[12, 13, 14, 15],
 };
 
@@ -764,6 +771,7 @@ static PROMIX01: ProfileSpec = ProfileSpec {
     // REVERB HALL 1 and DELAY L-C-R (Sidecar's choice: the guide doesn't say
     // what scene 00's effects are).
     fx_factory: &["PMREV", "PMDLCR"],
+    factory_eq_block: None,
     fx_send_buses: &[0, 1],
 };
 
@@ -898,6 +906,7 @@ static Y02R: ProfileSpec = ProfileSpec {
     // REVERB HALL1 and DELAY L-C-R 1 (Sidecar's choice: the guides don't say
     // what scene 0's effects are).
     fx_factory: &["Y2REV", "Y2DLCR"],
+    factory_eq_block: None,
     // AUX 7 feeds Effect 1, AUX 8 Effect 2 (MAN p.90).
     fx_send_buses: &[y02r::AUX + 6, y02r::AUX + 7],
 };
@@ -1004,8 +1013,10 @@ static SQ5: ProfileSpec = ProfileSpec {
     factory_outputs: Some(sq5_factory_outputs),
     dca_names: None,
     dca_fader_db: 0.0,
-    // The guide: the first four FX slots start populated; with the RackFX.
-    fx_factory: &[],
+    // The first four FX engines start populated (p.60); which, the guide
+    // doesn't say: Sidecar's choice.
+    fx_factory: &["SQSMRH", "SQSMRE", "SQTAP", "SQCHOR"],
+    factory_eq_block: Some("SQGEQ"),
     // FX sends 1-4 feed the first four FX engines (p.61).
     fx_send_buses: &[SQ_FX_SENDS, SQ_FX_SENDS + 1, SQ_FX_SENDS + 2, SQ_FX_SENDS + 3],
 };
@@ -1013,6 +1024,46 @@ static SQ5: ProfileSpec = ProfileSpec {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_new_sq5s_mixes_have_a_geq_before_their_peq_and_its_fx_are_populated() {
+        use crate::blocks::{BlockParams, Step};
+        use crate::chain::Node;
+        use crate::{ConsoleConfig, Engine};
+        let e = Engine::new(0);
+        e.configure(&ConsoleConfig { profile: Profile::AhSq5, counts: Counts::SQ5 });
+        assert_eq!((e.strips(StripKind::Channel).len(), e.strips(StripKind::Bus).len()), (48, 16));
+        let geq_at = |s: &crate::Strip| {
+            let steps = s.steps();
+            let block = steps.iter().position(|x| matches!(x, Step::Block(_)));
+            let eq = steps.iter().position(|x| matches!(x, Step::Node(Node::Eq)));
+            (block, eq)
+        };
+        let mixes: Vec<_> = e
+            .strips(StripKind::Bus)
+            .into_iter()
+            .take(12)
+            .chain(e.strips(StripKind::Main))
+            .chain(e.strips(StripKind::Matrix))
+            .collect();
+        assert_eq!(mixes.len(), 16);
+        for s in &mixes {
+            let (block, eq) = geq_at(s);
+            let (block, eq) = (block.expect("a GEQ block"), eq.expect("a PEQ"));
+            assert!(block < eq, "the GEQ runs first");
+            let blocks = s.blocks();
+            let BlockParams::Eq(p) = &blocks[0].params else { panic!("an EQ block") };
+            assert_eq!(p.model_spec().unwrap().token, "SQGEQ");
+        }
+        // The FX sends have no EQ, so no GEQ; the inputs have none either.
+        assert!(e.strips(StripKind::Bus)[12].blocks().is_empty());
+        assert!(e.strips(StripKind::Channel)[0].blocks().is_empty());
+        // The first four FX engines start with a device, the others empty.
+        let models = e.fx_models();
+        let token = |i: usize| models[e.controls.fx[i].model_index_in(models)].token;
+        assert_eq!([token(0), token(1), token(2), token(3)], ["SQSMRH", "SQSMRE", "SQTAP", "SQCHOR"]);
+        assert_eq!(token(4), "NONE");
+    }
 
     #[test]
     fn the_sq5() {
