@@ -63,6 +63,7 @@ pub fn design(spec: &ModelSpec, values: &[f32], sr: f64, gain_scale: f32) -> EqD
         "X32EQ4" | "X32EQ6" => design_x32(&p, sr, k, &mut d),
         "PMEQ" => design_promix(&p, sr, k, &mut d),
         "Y2EQ" => design_02r(&p, sr, k, &mut d),
+        "SQPEQ" => design_sq(&p, sr, k, &mut d),
         _ => {}
     }
     d
@@ -280,6 +281,30 @@ fn design_02r(p: &Params, sr: f64, k: f32, d: &mut EqDesign) {
         }
         x if x == SHELF => push_gain(d, hg, || high_shelf(sr, hf, std::f32::consts::FRAC_1_SQRT_2, hg)),
         _ => push_gain(d, hg, || peak(sr, hf, q("hq"), hg)),
+    }
+}
+
+/// The SQ's PEQ (`livedaw_dsp::sq`): the outer bands Shelf, Bell or filter, the
+/// inner two parametric; WIDTH in octaves.
+fn design_sq(p: &Params, sr: f64, k: f32, d: &mut EqDesign) {
+    use crate::sq::width_q;
+    use std::f32::consts::FRAC_1_SQRT_2 as SHELF_Q;
+    let (lf, lg) = (p.f("lf"), p.f("lg") * k);
+    match p.text("lm") {
+        "HPF" => sec_cut(d, sr, lf, true),
+        "BELL" => push_gain(d, lg, || peak(sr, lf, width_q(p.f("lq")), lg)),
+        _ => push_gain(d, lg, || low_shelf(sr, lf, SHELF_Q, lg)),
+    }
+    for band in ["1", "2"] {
+        let (f, g) = (p.f(&format!("{band}f")), p.f(&format!("{band}g")) * k);
+        let q = width_q(p.f(&format!("{band}q")));
+        push_gain(d, g, || peak(sr, f, q, g));
+    }
+    let (hf, hg) = (p.f("hf"), p.f("hg") * k);
+    match p.text("hm") {
+        "LPF" => sec_cut(d, sr, hf, false),
+        "BELL" => push_gain(d, hg, || peak(sr, hf, width_q(p.f("hq")), hg)),
+        _ => push_gain(d, hg, || high_shelf(sr, hf, SHELF_Q, hg)),
     }
 }
 

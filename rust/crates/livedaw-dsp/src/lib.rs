@@ -12,6 +12,7 @@ pub mod fader;
 pub mod generator;
 pub mod model;
 pub mod promix;
+pub mod sq;
 pub mod surround;
 pub mod universal;
 pub mod util;

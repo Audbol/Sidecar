@@ -362,6 +362,8 @@ struct CompCfg {
     det_tilt: f32,
     pre_db: f32,
     post_db: f32,
+    /// The parallel path's dry and wet levels as gains (the SQ's); None: no parallel path.
+    parallel: Option<(f32, f32)>,
     colour: f32,
     max_gr: f32,
     /// Makeup that follows the average gain reduction.
@@ -394,6 +396,7 @@ impl Default for CompCfg {
             det_tilt: 0.0,
             pre_db: 0.0,
             post_db: 0.0,
+            parallel: None,
             colour: 0.0,
             max_gr: f32::INFINITY,
             auto_gain: false,
@@ -594,6 +597,24 @@ fn configure(spec: &ModelSpec, v: &[f32], sr: f32) -> Config {
                     c.curve = Curve::Compand { thr, slope: slope_of(ratio), width: p.f("width"), exp };
                 }
                 _ => {}
+            }
+            Config::Comp(c)
+        }
+        // The SQ's (`livedaw_dsp::sq`): DEPTH what the gate takes off; the
+        // compressor RMS or Peak with its soft knee, GAIN after it and its
+        // parallel path; the ducker keyed from its side chain.
+        "SQGATE" => Config::Gate(gate(p.f("thr"), p.f("range"), 0.0, p.f("att"), p.f("hld"), p.f("rel"))),
+        "SQDUCK" => Config::Duck(gate(p.f("thr"), p.f("range"), 0.0, p.f("att"), p.f("hld"), p.f("rel"))),
+        "SQCOMP" => {
+            use crate::sq::{PARALLEL_OFF_DB, RATIOS, SOFT_KNEE_DB};
+            let ratio = RATIOS[p.choice("ratio").min(RATIOS.len() - 1)];
+            let knee = if p.on("soft") { SOFT_KNEE_DB } else { 0.0 };
+            let mut c = comp(p.f("thr"), ratio, knee, p.f("att"), p.f("rel"));
+            c.rms = p.text("det") == "RMS";
+            c.post_db = p.f("gain");
+            if p.on("par") {
+                let level = |db: f32| if db <= PARALLEL_OFF_DB { 0.0 } else { db_to_gain(db) };
+                c.parallel = Some((level(p.f("dry")), level(p.f("wet"))));
             }
             Config::Comp(c)
         }
@@ -1617,8 +1638,12 @@ impl WingDynamics {
             }
             Config::Comp(c) => {
                 let key = self.delay_key(key, c.wing.map_or(0, |w| w.delay));
-                let (y, gr, lvl) = self.comp_tick(&c, 0, key, x, 1.0, band);
+                let (mut y, gr, lvl) = self.comp_tick(&c, 0, key, x, 1.0, band);
                 st.report(gr, lvl);
+                if let Some((dry, wet)) = c.parallel {
+                    // The SQ's parallel path: dry and compressed, in time with each other.
+                    y = [x[0] * dry + y[0] * wet, x[1] * dry + y[1] * wet];
+                }
                 (band.then_some(gr), y)
             }
             Config::Dual(a, b) => {
