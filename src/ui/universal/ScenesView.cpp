@@ -250,6 +250,7 @@ ScenesView::ScenesView (UiContext& c, const Theme& t)
     addAndMakeVisible (viewport);
     for (auto* k : { &goKey, &prevKey, &nextKey, &addKey, &storeKey, &renameKey, &upKey, &downKey, &removeKey })
         addAndMakeVisible (k);
+    selectSnippet (-1); // the snippet keys start disabled, as with no snippet selected
     refresh();
     startTimerHz (5);
 }
