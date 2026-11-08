@@ -17,6 +17,7 @@ pub mod monitor;
 pub mod promix;
 pub mod recorder;
 pub mod session;
+pub mod sq;
 pub mod usb;
 pub mod web;
 pub mod wing;
@@ -106,7 +107,7 @@ use std::sync::Arc;
 // ABI 46 (Phase 6 step 5): the 02R's MIDI (ld_y02r_*, RemotesC::midi 3).
 // ABI 52: X32 channel presets (ld_x32_channel_write/read); the 02R around a
 // scene recall (ld_y02r_before_recall / after_recall).
-// ABI 53: the SQ-5 profile (5).
+// ABI 53: the SQ-5 profile (5), its MIDI (ld_sq_*, RemotesC::midi 4).
 pub const LD_ABI_VERSION: i32 = 53;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
@@ -637,6 +638,7 @@ pub unsafe extern "C" fn ld_engine_remotes(e: *const Engine, out: *mut LdRemotes
                 Some(livedaw_engine::MidiProtocol::X32) => 1,
                 Some(livedaw_engine::MidiProtocol::ProMix01) => 2,
                 Some(livedaw_engine::MidiProtocol::Yamaha02R) => 3,
+                Some(livedaw_engine::MidiProtocol::AhSq) => 4,
             },
             network: r.network_bits(),
         };

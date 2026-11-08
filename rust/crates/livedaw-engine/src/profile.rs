@@ -117,6 +117,9 @@ pub enum MidiProtocol {
     /// control changes through its map, scenes by program change, Yamaha bulk
     /// dumps (`livedaw-02r`).
     Yamaha02R,
+    /// The SQ-5's: NRPN levels, mutes, pans and assignments, scenes by bank and
+    /// program change (`livedaw-sq`).
+    AhSq,
 }
 
 /// A network protocol a console serves (`livedaw-wing`'s servers for the WING's).
@@ -997,7 +1000,7 @@ static SQ5: ProfileSpec = ProfileSpec {
     pan: PanLaw::WING,
     port_groups: SQ5_PORT_GROUPS,
     models: &livedaw_dsp::sq::MODELS,
-    remotes: Remotes { midi: None, network: &[] },
+    remotes: Remotes { midi: Some(MidiProtocol::AhSq), network: &[] },
     palette: Palette::SQ5,
     labels: SQ_LABELS,
     slots: &[SlotRange { kind: StripKind::Bus, first: SQ_FX_SENDS, count: 4, chain: chain::SQ_FX_SEND, label: "FX" }],

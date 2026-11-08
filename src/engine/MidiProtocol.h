@@ -32,7 +32,8 @@ public:
         Wing = 0,
         X32 = 1,
         ProMix01 = 2,
-        Yamaha02R = 3
+        Yamaha02R = 3,
+        AhSq = 4
     };
 
     virtual ~MidiProtocol() = default;

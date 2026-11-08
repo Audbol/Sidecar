@@ -2,6 +2,7 @@
 
 #include "engine/MidiRemote.h"
 #include "engine/ProMixMidi.h"
+#include "engine/SqMidi.h"
 #include "engine/Y02RMidi.h"
 #include "engine/X32Midi.h"
 
@@ -20,6 +21,8 @@ std::unique_ptr<MidiProtocol> MidiProtocol::create (int id, MixerEngine& engine,
             return std::make_unique<ProMixMidi> (engine, show, useDevices);
         case Yamaha02R:
             return std::make_unique<Y02RMidi> (engine, show, useDevices);
+        case AhSq:
+            return std::make_unique<SqMidi> (engine, show, useDevices);
         default:
             return nullptr;
     }

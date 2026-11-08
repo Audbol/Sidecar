@@ -2,6 +2,7 @@
 #include "engine/MidiPorts.h"
 #include "engine/MidiRemote.h"
 #include "engine/ProMixMidi.h"
+#include "engine/SqMidi.h"
 #include "engine/Y02RMidi.h"
 
 #include <cstring>
@@ -315,6 +316,51 @@ private:
         setShownProfile (ld::kProfileWing);
         engine.configure (nullptr);
         expect (engine.getProfile() == ld::kProfileWing);
+
+        beginTest ("An SQ-5: its counts and its MIDI");
+        engine.configureProfile (ld::kProfileSq5);
+        expect (engine.getProfile() == ld::kProfileSq5);
+        expectEquals ((int) engine.getChannels().size(), 48);
+        expectEquals ((int) engine.getBuses().size(), 16);
+        expectEquals ((int) engine.getMatrices().size(), 3);
+        expect (engine.getRemotes().midi == MidiProtocol::AhSq && engine.getRemotes().network == 0u, "MIDI only");
+        {
+            auto protocol = MidiProtocol::create (MidiProtocol::AhSq, engine, show, false);
+            auto* p = dynamic_cast<SqMidi*> (protocol.get());
+            expect (p != nullptr && protocol->asWing() == nullptr);
+            std::vector<juce::MidiMessage> sent;
+            p->onSend = [&] (const juce::MidiMessage& m) { sent.push_back (m); };
+            p->sendFeedback();
+            expect (sent.empty(), "nothing at start");
+            // Ip1 to LR, -20 dB (the level table's 64 16); not echoed.
+            for (const auto [cc, v] : { std::pair<int, int> { 0x63, 0x40 }, { 0x62, 0x00 }, { 0x06, 0x64 }, { 0x26, 0x16 } })
+                p->handleMessage (0, juce::MidiMessage::controllerEvent (1, cc, v));
+            expectWithinAbsoluteError (engine.getChannels()[0]->params.faderDb.load(), -20.0f, 0.05f);
+            p->sendFeedback();
+            expect (sent.empty(), "not echoed");
+            // Ip2 muted on the console: its NRPN (00 01, then 00 01).
+            engine.getChannels()[1]->params.mute.store (true);
+            p->sendFeedback();
+            expectEquals ((int) sent.size(), 4);
+            expect (sent[1].getControllerNumber() == 0x62 && sent[1].getControllerValue() == 1);
+            expect (sent[3].getControllerNumber() == 0x26 && sent[3].getControllerValue() == 1);
+            sent.clear();
+            // Scene 2 by program change, recalled and not sent back; one on the console goes out.
+            show.addScene ("A");
+            show.addScene ("B");
+            p->handleMessage (0, juce::MidiMessage::controllerEvent (1, 0, 0));
+            p->handleMessage (0, juce::MidiMessage::programChange (1, 1));
+            expectEquals (show.getCurrentSceneIndex(), 1);
+            p->sendFeedback();
+            sent.clear();
+            show.recallScene (0);
+            p->sendFeedback();
+            bool program = false;
+            for (const auto& m : sent)
+                program = program || (m.isProgramChange() && m.getProgramChangeNumber() == 0);
+            expect (program, "scene 1 goes out");
+        }
+        engine.configure (nullptr);
 
         beginTest ("A 02R (Phase 6): its counts, fader laws, names and MIDI");
         engine.configureProfile (ld::kProfileYamaha02R);

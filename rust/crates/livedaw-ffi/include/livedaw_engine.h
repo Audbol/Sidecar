@@ -1805,6 +1805,25 @@ extern "C"
         shares; a pair just linked takes its odd strip's values. */
     void ld_x32_follow_links (LdX32*);
 
+    // ABI 53: the Allen & Heath SQ-5's MIDI (livedaw-sq), over the engine (message
+    // thread; destroy it before the engine). Does nothing unless the engine is an SQ-5.
+    struct LdSq;
+    LdSq* ld_sq_create (const Engine*);
+    void ld_sq_destroy (LdSq*);
+    void ld_sq_midi_in (LdSq*, const uint8_t* bytes, size_t len);
+    /** Queues the console's changes since the last call (the first sends nothing). */
+    void ld_sq_midi_poll (LdSq*);
+    /** Every value again at the next poll. */
+    void ld_sq_midi_resend (LdSq*);
+    /** Scene `scene` (1-300) was recalled: its bank and program change go out. */
+    void ld_sq_scene_recalled (LdSq*, int32_t scene);
+    /** The next message into `out` (3 bytes are enough): its length, 0 for none. */
+    int32_t ld_sq_midi_out (LdSq*, uint8_t* out, size_t max);
+    /** The next scene the MIDI asks to recall (1-300), 0 for none. */
+    int32_t ld_sq_scene_request (LdSq*);
+    /** The MIDI channel (0-15) and the NRPN fader law (audio: Audio Taper). */
+    void ld_sq_set_setup (LdSq*, int32_t channel, bool audio);
+
     // ABI 44: the ProMix 01 (livedaw-promix): its own state, program libraries and
     // MIDI over the engine (message thread; destroy it before the engine). Every
     // call does nothing (or answers none) while the engine isn't a ProMix 01.

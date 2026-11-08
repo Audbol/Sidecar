@@ -17,5 +17,6 @@ livedaw-session = { path = "../livedaw-session" }
 livedaw-wing = { path = "../livedaw-wing" }
 livedaw-x32 = { path = "../livedaw-x32" }
 livedaw-02r = { path = "../livedaw-02r" }
+livedaw-sq = { path = "../livedaw-sq" }
 livedaw-promix = { path = "../livedaw-promix" }
 livedaw-web = { path = "../livedaw-web" }

@@ -32,6 +32,7 @@ dependencies = [
  "livedaw-engine",
  "livedaw-promix",
  "livedaw-session",
+ "livedaw-sq",
  "livedaw-web",
  "livedaw-wing",
  "livedaw-x32",
@@ -51,6 +52,14 @@ version = "0.3.0"
 
 [[package]]
 name = "livedaw-session"
+version = "0.3.0"
+dependencies = [
+ "livedaw-dsp",
+ "livedaw-engine",
+]
+
+[[package]]
+name = "livedaw-sq"
 version = "0.3.0"
 dependencies = [
  "livedaw-dsp",

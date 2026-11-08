@@ -1,0 +1,11 @@
+[package]
+name = "livedaw-sq"
+description = "Allen & Heath SQ-5 emulation for Sidecar: the console's MIDI protocol over the engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+livedaw-dsp = { path = "../livedaw-dsp" }
+livedaw-engine = { path = "../livedaw-engine" }
