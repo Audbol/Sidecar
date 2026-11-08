@@ -1201,7 +1201,7 @@ public:
         {
             // WING 3.1 (a 64 px box): the caption in 15 px capitals 8 px under the top.
             const float k = (float) getHeight() / 64.0f;
-            g.setFont (fontFittingWidth (wingFontPx (15.0f * k), binding.label, r.getWidth()));
+            g.setFont (fontFittingWidth (wingFontPx (15.0f * k), binding.label, r.getWidth(), 1.0f)); // not squashed: the whole word fits ("TAP WIDTH")
             g.drawSingleLineText (binding.label, juce::roundToInt (r.getX()), juce::roundToInt (r.getY() + 23.0f * k));
             r.removeFromTop (r.getHeight() * 0.4f);
         }
@@ -1318,7 +1318,8 @@ public:
         const int chRows = juce::jmax (1, ((int) e.getChannels().size() + 7) / 8);
         const int busRows = juce::jmax (1, juce::jmin (2, ((int) e.getBuses().size() + 7) / 8));
         const float captionH = juce::jlimit (9.0f, screenCap (13.0f), getHeight() * 0.08f);
-        const float cellH = juce::jmin ((left.getHeight() - 2.0f * captionH - 6.0f) / (float) (chRows + 1), left.getWidth() / 8.0f * 0.75f);
+        // Cells about square, as the console's (manual Figs. 69, 70).
+        const float cellH = juce::jmin ((left.getHeight() - 2.0f * captionH - 6.0f) / (float) (chRows + 1), left.getWidth() / 8.0f * 0.95f);
 
         auto drawGroup = [&] (juce::Rectangle<float>& area, const Group& grp, int maxRows)
         {

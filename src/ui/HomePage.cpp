@@ -423,7 +423,7 @@ public:
         // caption under it; GAIN and TRIM (176 x 64) at x 496 and 692, y 240.
         box (inputArea, "INPUT", true);
         if (feed != nullptr)
-            feed->setBounds (wingRect (300.0f, 240.0f, 280.0f, 192.0f));
+            feed->setBounds (wingRect (300.0f, 240.0f, 372.0f, 192.0f)); // [manual Fig. 69] CHANNEL 300-476, BUS 494-671
         else
         {
             source->setBounds (wingRect (300.0f, 240.0f, 112.0f, 112.0f));

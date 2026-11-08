@@ -25,6 +25,13 @@ All notable changes to Sidecar are listed here. Versions follow
   units. The FADERS screen's names no longer run into each other on a 12-fader page.
   A test renders every main screen and HOME tab (`LIVEDAW_UI_SNAPSHOTS=<folder>`
   keeps the pictures, to compare with the manual's).
+- More of the WING surface against the manual: FILTER SETUP, MAIN and BUS SENDS, the
+  aux, bus, matrix and main HOME, the USB recorder and the WING EQ match. The knob
+  bar's captions keep their words (LC FREQ, HC FREQ, SEND LVL), as do TAP WIDTH and
+  the playlist keys (CREATE / OPEN / SAVE / CLOSE PLAYLIST); a bus's, matrix's and
+  main's input grid on HOME is the console's size (it was half). Thirteen more labels
+  that could be cut the same way (a font sized for squashing, then drawn unsquashed)
+  are sized to fit.
 
 ## [0.3.0] - beta
 

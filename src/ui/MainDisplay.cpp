@@ -194,9 +194,11 @@ public:
         auto font = wingFontPx (juce::jmin (TypeScale::paramLabel * screenH, (float) b.getHeight() * 0.5f));
         // The text sits just over the track (capitals 765-781 of 800 on the console).
         b.removeFromTop (juce::roundToInt (screenH * 12.0f / 800.0f));
-        const float needed = juce::GlyphArrangement::getStringWidth (font, label) + juce::GlyphArrangement::getStringWidth (font, valueText) + gap;
-        if (needed * 0.85f > (float) b.getWidth() && needed > 0.0f)
-            font = font.withHeight (juce::jmax (6.0f, font.getHeight() * (float) b.getWidth() / (needed * 0.85f)));
+        // As drawn below: the label may be squashed to 3/4, the value keeps its width
+        // (the label was cut short otherwise: "LC FR...", "SEND L...").
+        const float needed = juce::GlyphArrangement::getStringWidth (font, label) * 0.75f + juce::GlyphArrangement::getStringWidth (font, valueText) + gap + 2.0f;
+        if (needed > (float) b.getWidth() && needed > 0.0f)
+            font = font.withHeight (juce::jmax (6.0f, font.getHeight() * ((float) b.getWidth() - gap - 2.0f) / (needed - gap - 2.0f)));
         g.setFont (font);
         auto valueArea = b.removeFromRight (juce::jmin (b.getWidth() * 2 / 3, juce::roundToInt (juce::GlyphArrangement::getStringWidth (font, valueText)) + 1));
         b.removeFromRight (juce::roundToInt (gap));

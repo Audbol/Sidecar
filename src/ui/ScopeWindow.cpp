@@ -331,7 +331,7 @@ void ScopeWindow::paint (juce::Graphics& g)
             auto label = r.removeFromBottom (r.getHeight() * 0.34f);
             drawIcon (g, *t.icon, r.reduced (r.getHeight() * 0.16f), ink);
             g.setColour (ink);
-            g.setFont (fontFittingWidth (wingFontFit (TypeScale::statusCaption, label.getHeight() * 0.85f), t.number, label.getWidth() - 2.0f, 0.7f));
+            g.setFont (fontFittingWidth (wingFontFit (TypeScale::statusCaption, label.getHeight() * 0.85f), t.number, label.getWidth() - 2.0f, 1.0f));
             g.drawText (t.number, label.toNearestInt(), juce::Justification::centredTop);
         }
         else

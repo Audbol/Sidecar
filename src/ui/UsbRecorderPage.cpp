@@ -283,7 +283,7 @@ namespace
         auto segment = [&] (int fromTop) { return area.getY() + (8.0f + 9.0f * (float) fromTop) * sy; };
         g.setColour (Colours::caption);
         // The scale shrinks to the bank's width (narrow in small windows) rather than being cut.
-        g.setFont (fontFittingWidth (font (juce::jmax (5.0f, 7.0f * sy), false), "CLIP", 26.0f * sx, 0.8f));
+        g.setFont (fontFittingWidth (font (juce::jmax (5.0f, 7.0f * sy), false), "CLIP", 26.0f * sx, 1.0f));
         const std::pair<const char*, int> marks[] = { { "CLIP", 0 }, { "-6", 3 }, { "-12", 6 }, { "-24", 9 }, { "-48", 12 }, { "-60", 15 } };
         for (auto& [text, row] : marks)
             g.drawText (text, juce::Rectangle<float> (area.getX(), segment (row) - 6.0f * sy, 28.0f * sx, 18.0f * sy), juce::Justification::centredRight,
@@ -1404,7 +1404,11 @@ void UsbRecorderPage::paintPlaylistKeys (juce::Graphics& g)
         auto content = r.reduced (r.getHeight() * 0.1f, r.getHeight() * 0.08f);
         icon (g, content.removeFromLeft (content.getHeight()).reduced (content.getHeight() * 0.1f), ink);
         g.setColour (ink);
-        g.setFont (font (juce::jmin (content.getHeight() * 0.36f, (float) getHeight() * 0.024f)));
+        // Smaller rather than cut ("PLAYLI"): the longer line fits unsquashed.
+        auto f = font (juce::jmin (content.getHeight() * 0.36f, (float) getHeight() * 0.024f));
+        for (const auto& line : juce::StringArray::fromLines (text))
+            f = fontFittingWidth (f, line, content.getWidth() - 4.0f, 1.0f);
+        g.setFont (f);
         g.drawFittedText (text, content.toNearestInt(), juce::Justification::centred, 2, 0.7f);
     };
     flat (playlistKeyAreas[0], "CREATE\nPLAYLIST", [] (juce::Graphics& gr, juce::Rectangle<float> r, juce::Colour c) { drawIcon (gr, Icon::Edit, r, c); }, true);

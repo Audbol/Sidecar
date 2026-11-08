@@ -390,7 +390,7 @@ namespace
         g.setFont (fontFittingWidth (capFont (14.0f), caption, (float) r.getWidth(), 0.8f));
         g.drawFittedText (caption, r.withHeight (r.getHeight() * 44 / 100).translated (0, -px (1.0f)), juce::Justification::bottomLeft, 1, 0.6f);
         g.setColour (Dark::text);
-        g.setFont (fontFittingWidth (capFont (20.0f, WingWeight::SemiBold), name, (float) r.getWidth(), 0.7f));
+        g.setFont (fontFittingWidth (capFont (20.0f, WingWeight::SemiBold), name, (float) r.getWidth(), 1.0f));
         g.drawText (name, r.withTrimmedTop (r.getHeight() * 44 / 100).translated (0, -px (3.0f)), juce::Justification::centredLeft);
     }
 
@@ -1253,7 +1253,7 @@ void routing::paintGroupTile (juce::Graphics& g, juce::Rectangle<int> area, Grou
     drawGroupIcon (g, group, f.expanded (f.getHeight() * 0.04f).translated (0.0f, f.getHeight() * 0.06f), iconGrey);
     const auto name = juce::String (routing::info (group).name);
     g.setColour (Dark::caption);
-    g.setFont (fontFittingWidth (capFont (10.0f), name, caption.getWidth() - 2.0f, 0.75f));
+    g.setFont (fontFittingWidth (capFont (10.0f), name, caption.getWidth() - 2.0f, 1.0f));
     g.drawText (name, caption.toNearestInt(), juce::Justification::centred);
 }
 
@@ -1297,7 +1297,7 @@ void routing::paintSourceTile (juce::Graphics& g, juce::Rectangle<int> area, Mix
         g.setFont (capFont (9.5f));
         g.setColour (stereoLabel);
         const auto label = numbered ? juce::String (index + 1) : routing::sourceLabel (port);
-        g.setFont (fontFittingWidth (g.getCurrentFont(), label, bottom.getWidth(), 0.7f));
+        g.setFont (fontFittingWidth (g.getCurrentFont(), label, bottom.getWidth(), 1.0f));
         g.drawText (label, bottom.toNearestInt(), numbered ? juce::Justification::centredLeft : juce::Justification::centred);
         juce::ignoreUnused (side);
         if (marked)
@@ -1397,7 +1397,7 @@ void routing::paintSourceTile (juce::Graphics& g, juce::Rectangle<int> area, Mix
     {
         const auto label = routing::sourceLabel (port);
         g.setColour (pairing != ld::kSourceMono ? stereoLabel : monoLabel);
-        g.setFont (fontFittingWidth (g.getCurrentFont(), label, bottom.getWidth(), 0.7f));
+        g.setFont (fontFittingWidth (g.getCurrentFont(), label, bottom.getWidth(), 1.0f));
         g.drawText (label, bottom.toNearestInt(), juce::Justification::centred);
     }
     if (marked)
@@ -1448,7 +1448,7 @@ void RoutingPage::paintOutputTile (juce::Graphics& g, juce::Rectangle<int> area,
         const auto text = signalLabel (feeder);
         auto label = juce::Rectangle<float> (r.getX(), r.getY() + 38.0f * v, r.getWidth(), 15.0f * v);
         g.setColour (stereo ? stereoLabel : monoLabel);
-        g.setFont (fontFittingWidth (capFont (9.5f), text, label.getWidth() - 2.0f, 0.7f));
+        g.setFont (fontFittingWidth (capFont (9.5f), text, label.getWidth() - 2.0f, 1.0f));
         g.drawText (text, label.toNearestInt(), juce::Justification::centred);
     }
     if (selected)
@@ -1518,7 +1518,7 @@ void RoutingPage::paintSignal (juce::Graphics& g, juce::Rectangle<int> area, con
     else
         number = (sig.strip->getKind() == StripKind::Aux ? "A" : "") + juce::String (sig.strip->getNumber()) + (stereo ? (sig.channel == 0 ? "L" : "R") : "");
     g.setColour (numberGrey);
-    g.setFont (fontFittingWidth (capFont (14.0f), number, 60.0f * u, 0.7f));
+    g.setFont (fontFittingWidth (capFont (14.0f), number, 60.0f * u, 1.0f));
     g.drawText (number, juce::Rectangle<float> (r.getX(), r.getY() + 6.0f * v, 66.0f * u, 24.0f * v).toNearestInt(), juce::Justification::centredRight);
 
     // o-o for a stereo signal, o for a mono one.
@@ -1907,7 +1907,7 @@ void RoutingPage::paintSourceSettings (juce::Graphics& g) const
         g.drawText ("SOURCE", f.removeFromTop (f.getHeight() / 3), juce::Justification::centredLeft);
         const auto text = userSourceText();
         g.setColour (text == "OFF" ? Dark::textDim : Dark::text);
-        g.setFont (fontFittingWidth (capFont (14.0f, WingWeight::SemiBold), text, (float) f.getWidth(), 0.7f));
+        g.setFont (fontFittingWidth (capFont (14.0f, WingWeight::SemiBold), text, (float) f.getWidth(), 1.0f));
         g.drawText (text, f, juce::Justification::centredLeft);
         drawIconKeyBelow (g, sourcePolKey, Icon::Polarity, "POL", src->invert.load(), Colours::gold);
         drawOutlinedKey (g, sourceMuteKey, std::nullopt, "MUTE", src->mute.load(), Colours::mute, juce::Colours::black);

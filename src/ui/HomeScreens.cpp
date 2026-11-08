@@ -740,7 +740,7 @@ void paintInputSourceTile (juce::Graphics& g, juce::Rectangle<float> r, MixerEng
             g.setColour (lit ? colours::mute : colours::chipOff);
             g.fillRoundedRectangle (c, 1.5f);
             g.setColour (lit ? colours::ink : juce::Colours::black);
-            g.setFont (fontFittingWidth (wingFontPx (9.5f * v, WingWeight::SemiBold), text, c.getWidth() - 2.0f));
+            g.setFont (fontFittingWidth (wingFontPx (9.5f * v, WingWeight::SemiBold), text, c.getWidth() - 2.0f, 1.0f));
             g.drawText (text, c, juce::Justification::centred, false);
         };
         chip (at (62.0f, 44.0f, 37.0f, 13.0f), "48V", phantom);

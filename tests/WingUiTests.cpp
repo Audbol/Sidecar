@@ -446,10 +446,9 @@ public:
         beginTest ("The WING's main display: every screen and HOME tab renders (LIVEDAW_UI_SNAPSHOTS keeps them, to compare with the manual's)");
         {
             MixerEngine engine (0);
-            test::setChannels (engine, 40);
+            engine.setNumChannels (40); // a factory console: sends off at -oo
             WingRig rig (engine);
             auto& ch = *engine.getChannels()[0];
-            ch.setName ("Kick");
             rig.selected = &ch;
             daw::Session recording (engine.getRecorder(), &rig.settings); // the recorder screen's session
             rig.ctx.recording = &recording;
@@ -496,6 +495,27 @@ public:
                 display.showHomeTab (tab);
                 shoot (juce::String ("home-") + tabName);
             }
+            // The other strips' HOME (manual Figs. 68-71) and the recorders (74, 78).
+            const std::pair<Strip*, const char*> strips[] = { { engine.getAux()[0].get(), "aux" },
+                                                              { engine.getBuses()[0].get(), "bus" },
+                                                              { engine.getMatrices()[0].get(), "matrix" },
+                                                              { engine.getMains()[0].get(), "main" } };
+            for (const auto& [strip, stripName] : strips)
+            {
+                rig.selected = strip;
+                display.showScreen (ui::Screen::Home);
+                display.showHomeTab (ui::HomeTab::Home);
+                shoot (juce::String ("strip-") + stripName);
+                display.showHomeTab (ui::HomeTab::Main);
+                shoot (juce::String ("strip-") + stripName + "-main");
+                display.showHomeTab (ui::HomeTab::Sends);
+                shoot (juce::String ("strip-") + stripName + "-sends");
+            }
+            rig.selected = &ch;
+            display.showScreen (ui::Screen::Recorder);
+            shoot ("screen-recorder");
+            display.showScreen (ui::Screen::UsbRecorder);
+            shoot ("screen-usbrecorder");
         }
     }
 };

@@ -2550,7 +2550,7 @@ namespace
             g.setColour (Dark::text);
             auto title = r.removeFromTop (juce::jmin (r.getHeight() / 3, screenCap (34)));
             const auto known = juce::String (types.size()) + " PLUGINS KNOWN";
-            g.setFont (fontFittingWidth (wingFontFit (TypeScale::statusTitle, (float) title.getHeight(), WingWeight::SemiBold), known, (float) title.getWidth()));
+            g.setFont (fontFittingWidth (wingFontFit (TypeScale::statusTitle, (float) title.getHeight(), WingWeight::SemiBold), known, (float) title.getWidth(), 1.0f));
             g.drawText (known, title, juce::Justification::centredLeft);
             g.setColour (Dark::textDim);
             g.setFont (wingFont (TypeScale::body));
@@ -2600,14 +2600,14 @@ namespace
             const auto totalText = engine.isLatencyCompensationOn() ? "TOTAL COMPENSATION: " + samples (engine.getTotalCompensation())
                                                                     : juce::String ("DELAY COMPENSATION OFF");
             g.setColour (Dark::text);
-            g.setFont (fontFittingWidth (wingFontFit (TypeScale::paramLabel, (float) rowH * 0.8f, WingWeight::SemiBold), totalText, (float) total.getWidth()));
+            g.setFont (fontFittingWidth (wingFontFit (TypeScale::paramLabel, (float) rowH * 0.8f, WingWeight::SemiBold), totalText, (float) total.getWidth(), 0.8f));
             g.drawFittedText (totalText, total, juce::Justification::centredLeft, 1, 0.8f);
             if (engine.isLatencyCompensationOn() && engine.isCompensationLimited())
             {
                 auto warn = body.removeFromTop (rowH);
                 g.setColour (Dark::pre);
                 const juce::String limit = "A PATH NEEDS MORE THAN " + juce::String (MixerEngine::kMaxCompensation) + " SMP: IT STAYS LATE BY THE REST";
-                g.setFont (fontFittingWidth (wingFontFit (TypeScale::body, (float) rowH * 0.8f), limit, (float) warn.getWidth()));
+                g.setFont (fontFittingWidth (wingFontFit (TypeScale::body, (float) rowH * 0.8f), limit, (float) warn.getWidth(), 0.8f));
                 g.drawFittedText (limit, warn, juce::Justification::centredLeft, 1, 0.8f);
             }
             body.removeFromTop (4);
