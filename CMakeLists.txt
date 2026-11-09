@@ -41,6 +41,13 @@ endif()
 option(LIVEDAW_BUILD_TESTS "Build the unit test runner" ON)
 set(LIVEDAW_JUCE_DIR "" CACHE PATH "Path to a local JUCE checkout (otherwise JUCE is fetched)")
 set(LIVEDAW_JUCE_TAG "8.0.15" CACHE STRING "JUCE git tag to fetch when LIVEDAW_JUCE_DIR is empty")
+# Precompiled JUCE and standard headers: a change to a widely used header of ours rebuilds
+# far faster. On for Visual Studio; off elsewhere until it's been tried on those compilers.
+if(MSVC)
+    option(LIVEDAW_PCH "Precompile the JUCE and standard library headers" ON)
+else()
+    option(LIVEDAW_PCH "Precompile the JUCE and standard library headers" OFF)
+endif()
 option(LIVEDAW_ASIO "Windows only: enable ASIO (uses the ASIO SDK bundled with JUCE, GPLv3)" ON)
 set(LIVEDAW_ASIO_SDK_DIR "" CACHE PATH "Windows only, optional: use this ASIO SDK instead of JUCE's bundled copy")
 set(LIVEDAW_VST2_SDK_DIR "" CACHE PATH "Optional: path to a legacy VST2 SDK (enables VST2 hosting)")
@@ -202,6 +209,18 @@ function(livedaw_configure_juce_target target)
             juce::juce_recommended_lto_flags
             juce::juce_recommended_warning_flags
             livedaw_warning_overrides)
+
+    if(LIVEDAW_PCH)
+        target_precompile_headers(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_SOURCE_DIR}/src/PrecompiledHeader.h>")
+        # JUCE's own module files set macros before their headers: they can't start from it.
+        if(LIVEDAW_JUCE_DIR)
+            set(juce_modules "${LIVEDAW_JUCE_DIR}/modules")
+        else()
+            set(juce_modules "${juce_SOURCE_DIR}/modules")
+        endif()
+        file(GLOB juce_module_sources "${juce_modules}/*/*.cpp" "${juce_modules}/*/*.mm")
+        set_source_files_properties(${juce_module_sources} TARGET_DIRECTORY ${target} PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+    endif()
 endfunction()
 
 #-------------------------------------------------------------------------------
