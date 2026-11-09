@@ -1709,6 +1709,11 @@ and open-source projects (see below), and it is **experimental**.
   console, Sidecar keeps a float set over OSC or the Native protocol (or from a
   snapshot) on the nearest of the parameter's steps, so a Q of 1.00 reads back
   0.9979702 and 100 Hz on the TAP EQ 99.68543.
+- **WebSocket on the Native port** (experimental): a client that opens TCP 2222 with
+  an HTTP upgrade gets the Native protocol in WebSocket messages, for apps that are web
+  pages. Only a page served by the device itself may (an app's WebView), never a web
+  site in a browser. WING-Q connects this way: enter the computer's address under
+  MANUAL if it isn't found.
 - **Native protocol** (TCP 2222): node definitions and data, set/get by id, navigation,
   change notifications to every connected client, and meters over UDP: a frame every
   50 ms, as the console, with the levels as Sidecar's meters show them (the full peak

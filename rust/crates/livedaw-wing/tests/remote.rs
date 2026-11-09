@@ -822,6 +822,91 @@ fn osc_and_native_reach_sources_outputs_safes_and_settings() {
     assert!(a.read_until_ends(1).contains(&Tok::Data(vol, livedaw_wing::Value::str("NO DRIVE"))));
 }
 
+/// A web page's way in (WING-Q is one, in an Android WebView): the Native
+/// protocol in a WebSocket on the Native port, the first bytes telling them apart.
+#[test]
+fn a_websocket_on_the_native_port_speaks_the_native_protocol() {
+    fn masked(payload: &[u8]) -> Vec<u8> {
+        let mask = [0x12, 0x34, 0x56, 0x78];
+        let mut out = vec![0x82, 0x80 | payload.len() as u8];
+        out.extend_from_slice(&mask);
+        out.extend(payload.iter().enumerate().map(|(i, b)| b ^ mask[i % 4]));
+        out
+    }
+    let (_e, server) = start();
+    let mut tcp = TcpStream::connect(server.status().native.unwrap()).unwrap();
+    tcp.set_read_timeout(Some(Duration::from_secs(20))).unwrap();
+    tcp.write_all(
+        b"GET / HTTP/1.1\r\nHost: x:2222\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nOrigin: http://localhost\r\n\
+          Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n\r\n",
+    )
+    .unwrap();
+    let mut rx = Vec::new();
+    let mut buf = [0u8; 65536];
+    while !rx.windows(4).any(|w| w == b"\r\n\r\n") {
+        let n = tcp.read(&mut buf).unwrap();
+        assert!(n > 0, "closed during the handshake");
+        rx.extend_from_slice(&buf[..n]);
+    }
+    let end = rx.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4;
+    let head = String::from_utf8_lossy(&rx[..end]).into_owned();
+    assert!(head.starts_with("HTTP/1.1 101 "), "{head}");
+    assert!(head.contains("Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo="), "{head}");
+    rx.drain(..end);
+
+    // WING-Q's opening: the channel, then a node's data. A real id may hold a 0xdf.
+    let schema = schema::schema();
+    let id = schema.id(schema.resolve("/ch/1/fdr", &schema::NoModels).unwrap());
+    let mut request = vec![0xd7];
+    for b in id.to_be_bytes() {
+        request.push(b);
+        if b == 0xdf {
+            request.push(0xde);
+        }
+    }
+    request.push(0xdc);
+    tcp.write_all(&masked(&[0xdf, 0xd1])).unwrap();
+    tcp.write_all(&masked(&request)).unwrap();
+
+    // What comes back is in frames; unframed and unescaped, it's the node's value.
+    let want = [&[0xd7][..], &id.to_be_bytes()[..]].concat();
+    let until = Instant::now() + Duration::from_secs(20);
+    loop {
+        let mut payload = Vec::new();
+        let mut rest = &rx[..];
+        while rest.len() >= 2 {
+            assert_eq!(rest[0] & 0x0f, 2, "binary frames");
+            assert_eq!(rest[1] & 0x80, 0, "a server doesn't mask");
+            let (len, at) = match rest[1] {
+                126 if rest.len() >= 4 => (u16::from_be_bytes([rest[2], rest[3]]) as usize, 4),
+                127 | 126 => break,
+                n => (n as usize, 2),
+            };
+            if rest.len() < at + len {
+                break;
+            }
+            payload.extend_from_slice(&rest[at..at + len]);
+            rest = &rest[at + len..];
+        }
+        let unescaped: Vec<u8> = {
+            let mut out = Vec::new();
+            let mut i = 0;
+            while i < payload.len() {
+                out.push(payload[i]);
+                i += if payload[i] == 0xdf && payload.get(i + 1) == Some(&0xde) { 2 } else { 1 };
+            }
+            out
+        };
+        if unescaped.windows(want.len()).any(|w| w == want) {
+            return;
+        }
+        assert!(Instant::now() < until, "no answer: {payload:02x?}");
+        let n = tcp.read(&mut buf).unwrap();
+        assert!(n > 0, "closed");
+        rx.extend_from_slice(&buf[..n]);
+    }
+}
+
 /// Issue 22: an encoder and its two keys each have a name of their own, as wxfade
 /// sets them on a real WING.
 #[test]

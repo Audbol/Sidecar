@@ -12,6 +12,7 @@ use crate::native::{self, MeterRequest, Session};
 use crate::osc::{self, Arg, Effect, Message, SubFormat};
 use crate::schema::{schema, ModelSource, Node};
 use crate::value::Value;
+use crate::websocket;
 use livedaw_engine::Engine;
 use std::collections::{HashMap, VecDeque};
 use std::io::{ErrorKind, Read, Write};
@@ -276,15 +277,36 @@ struct NativeClient {
     /// When the writer handed the socket its current chunk (µs since
     /// `since`, plus one; 0 while it isn't writing).
     writing: AtomicU64,
+    /// Its first bytes said which protocol it speaks (see `OPENING_WAIT`).
+    opened: AtomicBool,
+    /// It speaks the Native protocol in a WebSocket: what it's sent goes in frames.
+    websocket: AtomicBool,
 }
 
 impl NativeClient {
-    /// Queues `bytes` for the client; never blocks on the network.
+    /// Queues the Native bytes `bytes` for the client, as its connection carries them.
     fn send(&self, bytes: &[u8]) {
+        trace(|| {
+            let hex: Vec<String> = bytes[..bytes.len().min(160)].iter().map(|b| format!("{b:02x}")).collect();
+            format!("  SEND {} bytes {}", bytes.len(), hex.join(" "))
+        });
+        let out = lock(&self.out);
+        if self.websocket.load(Ordering::Relaxed) {
+            self.push(out, &websocket::messages(bytes));
+        } else {
+            self.push(out, bytes);
+        }
+    }
+
+    /// Queues `bytes` exactly as they are; never blocks on the network.
+    fn queue(&self, bytes: &[u8]) {
+        self.push(lock(&self.out), bytes);
+    }
+
+    fn push(&self, mut out: MutexGuard<'_, Vec<u8>>, bytes: &[u8]) {
         if !self.alive.load(Ordering::Relaxed) {
             return;
         }
-        let mut out = lock(&self.out);
         if out.len() + bytes.len() > NATIVE_MAX_QUEUED {
             drop(out);
             self.close(CloseReason::QueueFull);
@@ -294,6 +316,30 @@ impl NativeClient {
         self.ready.notify_one();
     }
 
+    /// Its first bytes said what it speaks: the writer may start.
+    fn opened_now(&self) {
+        self.opened.store(true, Ordering::Relaxed);
+        self.ready.notify_one();
+    }
+
+    /// The writer holds back until the first bytes say what the client speaks
+    /// (an HTTP upgrade takes its answer first and nothing else); a client that
+    /// says nothing is the Native protocol's, served after `OPENING_WAIT`.
+    fn may_write(&self) -> bool {
+        self.opened.load(Ordering::Relaxed) || self.since.elapsed() >= OPENING_WAIT
+    }
+
+    /// Answers an upgrade: `answer`, then only frames. What waited for a
+    /// connection that turned out to be a WebSocket isn't for it.
+    fn open_websocket(&self, answer: &[u8]) {
+        let mut out = lock(&self.out);
+        self.websocket.store(true, Ordering::Relaxed);
+        out.clear();
+        out.extend_from_slice(answer);
+        drop(out);
+        self.opened_now();
+    }
+
     fn queued(&self) -> usize {
         lock(&self.out).len()
     }
@@ -301,6 +347,7 @@ impl NativeClient {
     /// Closes the connection (if still open) for `reason`. The shutdown ends
     /// the client's blocked read and write.
     fn close(&self, reason: CloseReason) {
+        trace(|| format!("CLOSE {} {reason:?}", self.peer));
         lock(&self.reason).get_or_insert(reason);
         self.alive.store(false, Ordering::Relaxed);
         let _ = self.stream.shutdown(std::net::Shutdown::Both);
@@ -319,7 +366,9 @@ impl NativeClient {
     fn overdue(&self, now: Instant) -> Option<CloseReason> {
         let now = self.micros(now);
         let heard = self.heard.load(Ordering::Relaxed);
-        if now.saturating_sub(heard) > NATIVE_IDLE.as_micros() as u64 {
+        // WebSocket clients aren't held to the Native keep-alive: WING-Q sends none
+        // for its first 16 s. A dead one is found by its writes.
+        if !self.websocket.load(Ordering::Relaxed) && now.saturating_sub(heard) > NATIVE_IDLE.as_micros() as u64 {
             return Some(CloseReason::Idle);
         }
         let writing = self.writing.load(Ordering::Relaxed);
@@ -722,7 +771,11 @@ impl Shared {
 
     /// Handles one OSC datagram; replies through `sock`.
     pub fn handle_osc(&self, sock: &UdpSocket, data: &[u8], from: SocketAddr) {
-        let Some(msg) = osc::decode(data) else { return };
+        let Some(msg) = osc::decode(data) else {
+            trace(|| format!("OSC {from} undecodable, {} bytes", data.len()));
+            return;
+        };
+        trace(|| format!("OSC {from} {} {:?}", msg.addr, msg.args));
         self.osc_messages.fetch_add(1, Ordering::Relaxed);
         // The client is where its replies go, not the port it sent from.
         let dest = osc::reply_port(&msg.addr).0.map_or(from, |p| SocketAddr::new(from.ip(), p));
@@ -733,6 +786,7 @@ impl Shared {
         }
         // `/?` reports the address the client reached us on.
         for r in replies.iter_mut() {
+            trace(|| format!("  -> {} {:?}", r.addr, r.args));
             if r.addr == "/?" {
                 r.args = vec![Arg::Str(self.info_string(Some(local_ip_for(from))))];
             }
@@ -938,6 +992,25 @@ fn spawn(name: &str, f: impl FnOnce() + Send + 'static) -> JoinHandle<()> {
         .expect("spawning a thread")
 }
 
+/// How long what's queued for a new Native connection waits for its first
+/// bytes to say what it speaks.
+const OPENING_WAIT: Duration = Duration::from_millis(500);
+
+/// Diagnostics: with `SIDECAR_WING_TRACE` set to a file, what remote clients ask
+/// is appended to it (for trying a remote app against Sidecar).
+fn trace(line: impl FnOnce() -> String) {
+    static FILE: OnceLock<Option<Mutex<std::fs::File>>> = OnceLock::new();
+    let file = FILE.get_or_init(|| {
+        let path = std::env::var_os("SIDECAR_WING_TRACE")?;
+        std::fs::OpenOptions::new().create(true).append(true).open(path).ok().map(Mutex::new)
+    });
+    if let Some(file) = file {
+        static START: OnceLock<Instant> = OnceLock::new();
+        let at = START.get_or_init(Instant::now).elapsed().as_secs_f32();
+        let _ = writeln!(lock(file), "{at:9.3} {}", line());
+    }
+}
+
 const TICK: Duration = Duration::from_millis(100);
 /// How often a Native reader with nothing to read looks again (Windows, where
 /// its socket doesn't block, and after an interrupted read).
@@ -949,6 +1022,7 @@ fn discovery_loop(sh: &Shared, sock: UdpSocket) {
     while !sh.stop.load(Ordering::Relaxed) {
         match sock.recv_from(&mut buf) {
             Ok((n, from)) => {
+                trace(|| format!("DISCOVERY {from} {:?}", String::from_utf8_lossy(&buf[..n])));
                 if buf[..n].trim_ascii_end().starts_with(b"WING?") {
                     let _ = sock.send_to(sh.info_string(Some(local_ip_for(from))).as_bytes(), from);
                 }
@@ -1043,6 +1117,8 @@ fn native_loop(sh: &Arc<Shared>, listener: TcpListener) {
                     since: Instant::now(),
                     heard: AtomicU64::new(0),
                     writing: AtomicU64::new(0),
+                    opened: AtomicBool::new(false),
+                    websocket: AtomicBool::new(false),
                 });
                 lock(&sh.clients).push(client.clone());
                 sh.ensure_baseline();
@@ -1072,7 +1148,10 @@ fn writer_loop(sh: &Shared, client: &NativeClient, mut stream: TcpStream) {
     loop {
         {
             let mut out = lock(&client.out);
-            while out.is_empty() && client.alive.load(Ordering::Relaxed) && !sh.stop.load(Ordering::Relaxed) {
+            while (out.is_empty() || !client.may_write())
+                && client.alive.load(Ordering::Relaxed)
+                && !sh.stop.load(Ordering::Relaxed)
+            {
                 out = client.ready.wait_timeout(out, TICK).unwrap_or_else(|e| e.into_inner()).0;
             }
             if !client.alive.load(Ordering::Relaxed) || sh.stop.load(Ordering::Relaxed) {
@@ -1119,6 +1198,9 @@ fn writer_loop(sh: &Shared, client: &NativeClient, mut stream: TcpStream) {
 fn client_loop(sh: &Shared, client: Arc<NativeClient>, mut stream: TcpStream) {
     let mut session = Session::new(Origin::Native(client.id));
     let mut buf = vec![0u8; 16384];
+    // Until its first bytes say what it speaks.
+    let mut opening = Some(Vec::new());
+    let mut frames: Option<websocket::Reader> = None;
     client.heard_now();
     while !sh.stop.load(Ordering::Relaxed) && client.alive.load(Ordering::Relaxed) {
         if client.queued() > NATIVE_READ_PAUSE {
@@ -1138,7 +1220,55 @@ fn client_loop(sh: &Shared, client: Arc<NativeClient>, mut stream: TcpStream) {
             ReadOutcome::Data(n) => {
                 client.heard_now();
                 sh.native_bytes.fetch_add(n as u64, Ordering::Relaxed);
-                session.feed(sh, &buf[..n]);
+                let mut incoming = buf[..n].to_vec();
+                if let Some(mut first) = opening.take() {
+                    first.extend_from_slice(&incoming);
+                    match websocket::classify(&first) {
+                        websocket::Opening::Undecided => {
+                            opening = Some(first);
+                            continue;
+                        }
+                        websocket::Opening::Native => {
+                            client.opened_now();
+                            incoming = first;
+                        }
+                        websocket::Opening::Http(end) => {
+                            trace(|| format!("HTTP {}", String::from_utf8_lossy(&first[..end]).replace("\r\n", " | ")));
+                            match websocket::handshake(&first[..end]) {
+                                Ok(answer) => {
+                                    client.open_websocket(&answer);
+                                    frames = Some(websocket::Reader::default());
+                                    incoming = first[end..].to_vec();
+                                }
+                                Err(refusal) => {
+                                    client.queue(&refusal);
+                                    client.opened_now();
+                                    std::thread::sleep(Duration::from_millis(50)); // for the writer
+                                    client.close(CloseReason::ClientClosed);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                if let Some(reader) = frames.as_mut() {
+                    let got = reader.push(&incoming);
+                    for reply in &got.replies {
+                        client.queue(reply);
+                    }
+                    if got.closed {
+                        trace(|| format!("WEBSOCKET close frame, answered {:02x?}", got.replies));
+                        std::thread::sleep(Duration::from_millis(50)); // the close's answer
+                        client.close(CloseReason::ClientClosed);
+                        break;
+                    }
+                    incoming = got.payload;
+                }
+                trace(|| {
+                    let hex: Vec<String> = incoming[..incoming.len().min(160)].iter().map(|b| format!("{b:02x}")).collect();
+                    format!("NATIVE {} bytes {}", incoming.len(), hex.join(" "))
+                });
+                session.feed(sh, &incoming);
                 if !session.out.is_empty() {
                     let payload = std::mem::take(&mut session.out);
                     client.send(&native::frame(native::CH_AUDIO, &payload));
@@ -1273,6 +1403,8 @@ mod tests {
             since: Instant::now(),
             heard: AtomicU64::new(0),
             writing: AtomicU64::new(0),
+            opened: AtomicBool::new(true),
+            websocket: AtomicBool::new(false),
         }
     }
 
@@ -1294,6 +1426,11 @@ mod tests {
         assert_eq!(cl.overdue(t + Duration::from_millis(1100) + NATIVE_WRITE_STALL), Some(CloseReason::WriteStalled));
         cl.writing.store(0, Ordering::Relaxed);
         assert_eq!(cl.overdue(t + Duration::from_secs(12)), None);
+        // A WebSocket client isn't held to the keep-alive (WING-Q is silent while
+        // it takes the console's data in); a stalled write still ends it.
+        cl.websocket.store(true, Ordering::Relaxed);
+        assert_eq!(cl.overdue(t + Duration::from_secs(600)), None);
+        cl.websocket.store(false, Ordering::Relaxed);
         cl.close(CloseReason::WriteStalled);
         cl.close(CloseReason::ClientClosed);
         assert_eq!(*lock(&cl.reason), Some(CloseReason::WriteStalled));

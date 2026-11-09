@@ -7,6 +7,8 @@ All notable changes to Sidecar are listed here. Versions follow
 
 - A crash when a control on a console's display rebuilt the controls while it was still
   being turned (seen on the X32's SCENES screen).
+- The WING remote also accepts the Native protocol in a WebSocket on its TCP port, as
+  web-based remote apps use it (experimental): WING-Q connects and shows the console.
 - Custom controls: an encoder and its two keys each keep their own name (`bu/name`,
   `bd/name` were dropped), and their LCD shows them as a WING does: the encoder's name
   above a rule, then a row for each key.
