@@ -36,7 +36,9 @@ struct Look
     enum class Cap
     {
         Block,
-        Metal
+        Metal,
+        /** The SQ's: tall and white, waisted in the middle. */
+        Waisted
     };
     Cap cap = Cap::Block;
 
@@ -46,9 +48,13 @@ struct Look
     {
         Plain,
         Dome,
-        Wheel
+        Wheel,
+        /** The SQ's: a silver knurled gear around a black cap, a lit jewel in its centre. */
+        Jewel
     };
     Knob knobStyle = Knob::Plain;
+    /** The fader scale printed 10, 5, 0, 5, 10, 20, 30, 40, oo with no signs (the SQ's). */
+    bool shortScale = false;
 
     /** The Behringer X32's titanium frame, slate sections, light rubber keys. */
     static const Look& x32();
@@ -56,6 +62,8 @@ struct Look
     static const Look& promix();
     /** The Yamaha 02R's dark grey panel, cream keys, blue LCD. */
     static const Look& y02r();
+    /** The Allen & Heath SQ-5's black panel, backlit keys, silver knobs, white fader caps. */
+    static const Look& sq();
 };
 
 /** The console's panel over `area`: a slight gradient, a fine brushed texture

@@ -85,6 +85,40 @@ const Look& Look::promix()
     return look;
 }
 
+const Look& Look::sq()
+{
+    static const Look look = [] {
+        Look l;
+        l.panelTop = c (0xff131416);
+        l.panelBottom = c (0xff0c0d0f);
+        l.frame = c (0xff0c0c0d);
+        l.section = c (0xff101113);
+        l.sectionLine = c (0xff2f9a8e); // the teal outlines around its sections
+        l.silk = c (0xfff4f4f4);
+        l.silkDim = c (0xffa6a9ad);
+        l.keyTop = c (0xff9a9da2);
+        l.keyBottom = c (0xff74777c);
+        l.keyText = c (0xff101010);
+        l.backlit = true;
+        l.slot = c (0xff060607);
+        l.capTop = c (0xfff4f4f2);
+        l.capBottom = c (0xffc6c6c2);
+        l.capLine = c (0xff202020);
+        l.knob = c (0xffc8cacd);
+        l.knobLine = c (0xff161616);
+        l.lcd = c (0xff7ee02e);
+        l.lcdPixel = c (0xff101010);
+        l.lcdDim = c (0xff3d6d16);
+        l.lcdBezel = c (0xff0a0a0a);
+        l.keyRadius = 6.0f;
+        l.shortScale = true;
+        l.cap = Cap::Waisted;
+        l.knobStyle = Knob::Jewel;
+        return l;
+    }();
+    return look;
+}
+
 const Look& Look::y02r()
 {
     static const Look look = [] {
@@ -271,6 +305,32 @@ void faderSlot (juce::Graphics& g, float x, float top, float bottom, const Look&
 
 void faderCap (juce::Graphics& g, float x, float y, float width, const Look& l, juce::Colour colour)
 {
+    if (l.cap == Look::Cap::Waisted)
+    {
+        // The SQ's: tall, white, drawn in at the waist; a line across it at the fader's position.
+        const float h = width * 2.0f, w = width, waist = w * 0.42f;
+        const auto cap = juce::Rectangle<float> (w, h).withCentre ({ x, y });
+        juce::Path p;
+        p.startNewSubPath (cap.getX() + 2.0f, cap.getY());
+        p.lineTo (cap.getRight() - 2.0f, cap.getY());
+        p.cubicTo (cap.getRight() + 1.0f, y - h * 0.3f, x + waist, y - h * 0.16f, x + waist, y);
+        p.cubicTo (x + waist, y + h * 0.16f, cap.getRight() + 1.0f, y + h * 0.3f, cap.getRight() - 2.0f, cap.getBottom());
+        p.lineTo (cap.getX() + 2.0f, cap.getBottom());
+        p.cubicTo (cap.getX() - 1.0f, y + h * 0.3f, x - waist, y + h * 0.16f, x - waist, y);
+        p.cubicTo (x - waist, y - h * 0.16f, cap.getX() - 1.0f, y - h * 0.3f, cap.getX() + 2.0f, cap.getY());
+        p.closeSubPath();
+        g.setColour (juce::Colours::black.withAlpha (0.55f));
+        g.fillPath (p, juce::AffineTransform::translation (0.0f, 3.0f));
+        juce::ColourGradient body (l.capTop, cap.getX(), cap.getY(), l.capBottom, cap.getRight(), cap.getBottom(), false);
+        body.addColour (0.5, l.capBottom.brighter (0.15f));
+        g.setGradientFill (body);
+        g.fillPath (p);
+        g.setColour (juce::Colours::black.withAlpha (0.3f));
+        g.strokePath (p, juce::PathStrokeType (1.0f));
+        g.setColour (l.capLine);
+        g.fillRect (juce::Rectangle<float> (x - waist, y - 1.0f, waist * 2.0f, 2.0f));
+        return;
+    }
     if (l.cap == Look::Cap::Metal)
     {
         // The X32's: a tall brushed-aluminium cap (tinted if coloured), its face
@@ -406,6 +466,36 @@ void knob (juce::Graphics& g, juce::Rectangle<float> area, float fraction, const
             g.fillEllipse (dimple);
             break;
         }
+        case Look::Knob::Jewel:
+        {
+            juce::Path gear;
+            constexpr int points = 72, teeth = 10;
+            for (int k = 0; k < points; ++k)
+            {
+                const float a = juce::MathConstants<float>::twoPi * (float) k / (float) points;
+                const float r = radius * (0.88f + 0.12f * std::cos ((float) teeth * (a + angle)));
+                const juce::Point<float> at (cc.x + r * std::cos (a), cc.y + r * std::sin (a));
+                if (k == 0)
+                    gear.startNewSubPath (at);
+                else
+                    gear.lineTo (at);
+            }
+            gear.closeSubPath();
+            g.setGradientFill (juce::ColourGradient (c (0xfff0f2f4), outer.getX(), outer.getY(), c (0xff7d8186), outer.getRight(), outer.getBottom(), false));
+            g.fillPath (gear);
+            const float capR = radius * 0.68f;
+            g.setGradientFill (juce::ColourGradient (c (0xff33353a), cc.x, cc.y - capR, c (0xff08090a), cc.x, cc.y + capR, false));
+            g.fillEllipse (juce::Rectangle<float> (capR * 2.0f, capR * 2.0f).withCentre (cc));
+            pointer (radius * 0.42f, radius * 0.68f, 2.0f, juce::Colours::white);
+            // The jewel: the control's colour, lit when it has something to do.
+            const float jewel = radius * 0.32f;
+            const auto lit = colour.isTransparent() ? c (0xff55585e) : colour;
+            g.setColour (lit.withAlpha (0.35f));
+            g.fillEllipse (juce::Rectangle<float> (jewel * 3.0f, jewel * 3.0f).withCentre (cc));
+            g.setGradientFill (juce::ColourGradient (lit.brighter (0.8f), cc.x, cc.y, lit, cc.x + jewel, cc.y + jewel, true));
+            g.fillEllipse (juce::Rectangle<float> (jewel * 2.0f, jewel * 2.0f).withCentre (cc));
+            break;
+        }
         case Look::Knob::Plain:
         default:
         {
@@ -447,7 +537,10 @@ namespace
         void drawRotarySlider (juce::Graphics& g, int x, int y, int w, int h, float pos, float, float, juce::Slider& s) override
         {
             const bool centred = s.getMinimum() < 0.0 && std::abs (s.getMinimum() + s.getMaximum()) < 1.0e-6;
-            knob (g, juce::Rectangle<int> (x, y, w, h).toFloat().reduced (2.0f), pos, look, ring ? look.knobRing : juce::Colour(), centred);
+            // A knob may name its own colour (the SQ's jewels).
+            const auto& own = s.getProperties()["jewel"];
+            const auto colour = own.isVoid() ? juce::Colour() : juce::Colour ((juce::uint32) (juce::int64) own);
+            knob (g, juce::Rectangle<int> (x, y, w, h).toFloat().reduced (2.0f), pos, look, look.knobStyle, colour, ring ? look.knobRing : juce::Colour(), centred);
         }
 
     private:

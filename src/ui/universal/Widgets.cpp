@@ -39,21 +39,45 @@ FaderControl::FaderControl (const Theme& t) : theme (t)
 void FaderControl::bind (std::atomic<float>* db)
 {
     value = db;
+    linearMin = linearMax = 0.0f;
     setEnabled (db != nullptr);
     refresh();
+}
+
+void FaderControl::bindLinear (std::atomic<float>* v, float min, float max)
+{
+    value = v;
+    linearMin = min;
+    linearMax = max;
+    setEnabled (v != nullptr);
+    refresh();
+}
+
+double FaderControl::toPosition (float v) const noexcept
+{
+    if (linearMax > linearMin)
+        return (double) juce::jlimit (0.0f, 1.0f, (v - linearMin) / (linearMax - linearMin));
+    return (double) fader::dbToPos (v);
+}
+
+float FaderControl::fromPosition (double p) const noexcept
+{
+    if (linearMax > linearMin)
+        return linearMin + (linearMax - linearMin) * (float) p;
+    return fader::posToDb ((float) p);
 }
 
 void FaderControl::setPositionFromUser (double newPosition)
 {
     position = juce::jlimit (0.0, 1.0, newPosition);
     if (value != nullptr)
-        value->store (fader::posToDb ((float) position));
+        value->store (fromPosition (position));
     repaint();
 }
 
 void FaderControl::refresh()
 {
-    const double p = value != nullptr ? (double) fader::dbToPos (value->load()) : 0.0;
+    const double p = value != nullptr ? toPosition (value->load()) : 0.0;
     if (std::abs (p - position) > 1.0e-4)
     {
         position = p;
@@ -64,7 +88,7 @@ void FaderControl::refresh()
 juce::Rectangle<float> FaderControl::track() const noexcept
 {
     // The cap's centre travels between these (the cap stays inside the control).
-    return getLocalBounds().toFloat().reduced (0.0f, kTrackInset);
+    return getLocalBounds().toFloat().reduced (0.0f, look != nullptr && look->cap == hw::Look::Cap::Waisted ? 30.0f : kTrackInset);
 }
 
 void FaderControl::paint (juce::Graphics& g)
@@ -81,10 +105,11 @@ void FaderControl::paint (juce::Graphics& g)
         static constexpr float consoleMarks[] = { 10.0f, 5.0f, 0.0f, -5.0f, -10.0f, -20.0f, -30.0f, -40.0f, -50.0f, -60.0f, fader::kMinDb };
         for (float db : consoleMarks)
         {
-            if (db > fader::maxDb() + 0.01f)
+            if (db > fader::maxDb() + 0.01f || (look->shortScale && (db == -50.0f || db == -60.0f)))
                 continue;
             const float y = yAt (fader::dbToPos (db));
-            const auto label = db <= fader::kMinDb ? juce::String::fromUTF8 ("-\xe2\x88\x9e") : juce::String ((int) db);
+            const auto label = db <= fader::kMinDb ? juce::String::fromUTF8 (look->shortScale ? "\xe2\x88\x9e" : "-\xe2\x88\x9e")
+                                                   : juce::String ((int) (look->shortScale ? std::abs (db) : db));
             hw::silk (g, juce::Rectangle<float> (-2.0f, y - 7.0f, groove - 12.0f, 14.0f), label, *look, 9.0f, juce::Justification::centredRight,
                       db != 0.0f);
             g.setColour (look->silkDim.withAlpha (0.6f));
@@ -321,7 +346,7 @@ void ToggleKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
             auto a = area.reduced (2.0f).translated (0.0f, down ? 1.0f : 0.0f);
             juce::Path p;
             if (shape == Shape::Oval)
-                p.addRoundedRectangle (a, a.getHeight() * 0.5f);
+                p.addRoundedRectangle (a, cornerRadius >= 0.0f ? cornerRadius : a.getHeight() * 0.5f);
             else
             {
                 const auto c = a.getCentre();
@@ -338,10 +363,18 @@ void ToggleKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
             }
             g.setColour (juce::Colours::black.withAlpha (0.45f));
             g.fillPath (p, juce::AffineTransform::translation (0.0f, down ? 0.5f : 1.5f));
-            g.setGradientFill (juce::ColourGradient (look->keyTop, a.getX(), a.getY(), look->keyBottom, a.getX(), a.getBottom(), false));
+            if (lit && look->backlit)
+            {
+                // A backlit console's key (the SQ's): the whole key glows in its colour.
+                g.setGradientFill (juce::ColourGradient (colour.brighter (0.2f), a.getX(), a.getY(), colour.darker (0.2f), a.getX(), a.getBottom(), false));
+                g.fillPath (p);
+                return;
+            }
+            g.setGradientFill (juce::ColourGradient (face.isTransparent() ? look->keyTop : face.brighter (0.12f), a.getX(), a.getY(),
+                                                     face.isTransparent() ? look->keyBottom : face.darker (0.12f), a.getX(), a.getBottom(), false));
             g.fillPath (p);
-            g.setColour (lit ? colour : juce::Colours::black.withAlpha (0.35f));
-            g.strokePath (p, juce::PathStrokeType (1.0f));
+            g.setColour (lit || (halfLit && look->backlit) ? colour : juce::Colours::black.withAlpha (0.35f));
+            g.strokePath (p, juce::PathStrokeType (lit ? 1.0f : 1.6f));
             return;
         }
         if (textLit)

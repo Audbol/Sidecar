@@ -31,6 +31,7 @@ UniversalSkin::UniversalSkin (UiContext& c)
     const auto back = ctx.engine.getProfile() == ld::kProfileX32        ? InterfaceKind::X32
                       : ctx.engine.getProfile() == ld::kProfileProMix01 ? InterfaceKind::ProMix
                       : ctx.engine.getProfile() == ld::kProfileYamaha02R ? InterfaceKind::Yamaha02R
+                      : ctx.engine.getProfile() == ld::kProfileSq5      ? InterfaceKind::Sq5
                                                                         : InterfaceKind::Wing;
     wingKey.onClick = [&context = ctx, back]
     {
@@ -40,7 +41,7 @@ UniversalSkin::UniversalSkin (UiContext& c)
                 context.setInterface (back);
         });
     };
-    wingKey.setTooltip (back == InterfaceKind::X32 ? "Back to the X32 surface" : back == InterfaceKind::ProMix ? "Back to the ProMix 01 surface" : "Back to the WING surface");
+    wingKey.setTooltip (back == InterfaceKind::X32 ? "Back to the X32 surface" : back == InterfaceKind::ProMix ? "Back to the ProMix 01 surface" : back == InterfaceKind::Sq5 ? "Back to the SQ-5 surface" : "Back to the WING surface");
     addAndMakeVisible (wingKey);
     // The show: NEW, OPEN, SAVE and SAVE AS (the shell's, as the WING's LIBRARY uses them).
     showKey.onClick = [this]

@@ -51,6 +51,8 @@ public:
 
     /** The value it moves (nullptr: none, disabled). */
     void bind (std::atomic<float>* db);
+    /** Moves a value from `min` to `max` over the whole travel instead (the SQ's GEQ on the faders). */
+    void bindLinear (std::atomic<float>* value, float min, float max);
     /** 0 (-oo) to 1 (+10 dB). */
     double getPosition() const noexcept { return position; }
     /** Moves the fader as the user would: writes the value. */
@@ -73,6 +75,9 @@ private:
     const Theme& theme;
     std::atomic<float>* value = nullptr;
     double position = 0.0, dragStart = 0.0;
+    float linearMin = 0.0f, linearMax = 0.0f; // equal: the fader law
+    double toPosition (float value) const noexcept;
+    float fromPosition (double pos) const noexcept;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FaderControl)
 };
@@ -162,6 +167,8 @@ public:
         Right
     };
     Shape shape = Shape::Rect;
+    /** An oval's corners, if not a full half of its height (the SQ's rounded oblong keys). */
+    float cornerRadius = -1.0f;
     /** With a look: a black key whose name glows in its colour (the X32's
         screen keys), brighter while on. */
     bool textLit = false;

@@ -1232,10 +1232,18 @@ strips and on any Universal strip from the start:
    their formulas) in both fader laws, scenes by bank and program change, changes sent
    back. Not yet: the Group addresses (mixes as Aux or Group), the Soft Keys' notes, the
    DAW strips, MIDI Show Control, MIDI over TCP/IP (port 51325).
-5. **Selectable** (done): the start-up window, SETUP's INTERFACE (`InterfaceKind::Sq5`),
-   running on the Universal Mixer until it has a surface of its own.
-6. **Its surface**: the 16+1 faders, 6 layers, the touchscreen's screens and the
-   physical controls around it.
+5. **Selectable** (done): the start-up window, SETUP's INTERFACE (`InterfaceKind::Sq5`).
+6. **Its surface** (`Sq5Surface`, `sq5::Display`; done but for what's listed): the panel
+   of the datasheet's dimensioned drawing (16+1 faders on layers A-F, the processing and
+   EQ rotaries, Mix / FX select, Assign, Pre Fade, CH to All Mix, Copy / Paste / Reset, 8
+   SoftKeys, GEQ on the faders) and the touchscreen drawn from the guide's pictures: title
+   bar, Home, Processing's bank view and block screens, Routing, Meters, FX with its
+   library, Scenes and Safes, Setup's Strip Assign and Soft Controls, Utility, I/O.
+   Keys the console holds (Assign, Pre Fade, Copy, Paste, Reset) latch here, as a mouse
+   can't hold one key and press another. A new console's layers are Sidecar's reading.
+   Drawn dim until they have something to run: Direct Out's settings, the Pad, side
+   chains, the Cue List and Global Filter, Mixer Config, Ganging, Network, Users, USB /
+   SQ-Drive, AMM, RTAs, channel libraries.
 
 Sidecar's reading until measured on a console: the compressor's ratio steps, the soft
 knee's width, the ducker's controls, the PEQ's filter slopes, every default value, the

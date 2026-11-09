@@ -4,6 +4,7 @@
 #include "ui/MidiRemoteUi.h"
 #include "ui/RoutingGroups.h"
 #include "ui/ProMixSurface.h"
+#include "ui/Sq5Surface.h"
 #include "ui/Y02RSurface.h"
 #include "ui/X32Surface.h"
 #include "ui/PluginChainWindow.h"
@@ -391,7 +392,7 @@ void MainComponent::refreshAll()
         log.info (x32      ? "This console is an X32: the X32 surface shows it"
                   : promix ? "This console is a ProMix 01: the ProMix surface shows it"
                   : y02r   ? "This console is an 02R: the 02R surface shows it"
-                  : sq5    ? "This console is an SQ-5: the Universal Mixer shows it"
+                  : sq5    ? "This console is an SQ-5: the SQ-5 surface shows it"
                            : "This console isn't a WING: the Universal Mixer shows it (SETUP > GENERAL > INTERFACE)");
         setInterface (x32 ? InterfaceKind::X32 : promix ? InterfaceKind::ProMix : y02r ? InterfaceKind::Yamaha02R : sq5 ? InterfaceKind::Sq5 : InterfaceKind::Universal, false);
     }
@@ -498,11 +499,10 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
     }
     if (kind == InterfaceKind::Sq5 && skin != nullptr && engine.getProfile() != ld::kProfileSq5)
     {
-        // Likewise an SQ-5: its 48 inputs, 12 mixes and 4 FX sends, on the Universal Mixer for now.
+        // Likewise an SQ-5: its 48 inputs, 12 mixes and 4 FX sends.
         popups::confirm (skin->popupHost(), "SQ-5",
                          "This console isn't an SQ-5. Clear the console and make it a fresh SQ-5 (48 inputs, 12 mixes, "
-                         "4 FX sends, 8 FX and their returns, LR, 3 matrices, 8 DCAs, 8 mute groups)? "
-                         "It runs on the Universal Mixer until it has a surface of its own.",
+                         "4 FX sends, 8 FX and their returns, LR, 3 matrices, 8 DCAs, 8 mute groups)?",
                          "MAKE IT AN SQ-5",
                          [this, save]
                          {
@@ -540,6 +540,8 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
         skin = std::make_unique<ProMixSurface> (ctx);
     else if (kind == InterfaceKind::Yamaha02R)
         skin = std::make_unique<Y02RSurface> (ctx);
+    else if (kind == InterfaceKind::Sq5)
+        skin = std::make_unique<Sq5Surface> (ctx);
     else
         skin = std::make_unique<UniversalSkin> (ctx);
     addChildComponent (*skin, 0); // under the editor and anything over the window
@@ -553,7 +555,7 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                   : kind == InterfaceKind::X32     ? "Interface: the X32 surface"
                   : kind == InterfaceKind::ProMix  ? "Interface: the ProMix 01 surface"
                   : kind == InterfaceKind::Yamaha02R ? "Interface: the 02R surface"
-                  : kind == InterfaceKind::Sq5     ? "Interface: the SQ-5, on the Universal Mixer"
+                  : kind == InterfaceKind::Sq5     ? "Interface: the SQ-5 surface"
                                                    : "Interface: the WING surface");
     }
 }

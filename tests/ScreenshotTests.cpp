@@ -18,6 +18,7 @@
 #include "engine/Yamaha02R.h"
 #include "ui/X32SceneFiles.h"
 #include "ui/ProMixSurface.h"
+#include "ui/Sq5Surface.h"
 #include "ui/X32Surface.h"
 
 using namespace livedaw;
@@ -177,6 +178,200 @@ public:
         proMixSurface();
         universalOnEveryConsole();
         y02rSurface();
+        sq5Surface();
+    }
+
+    /** The SQ-5's surface and touchscreen, at 1920x1080. */
+    void sq5Surface()
+    {
+        beginTest ("The SQ-5 surface, on an SQ-5");
+        MixerEngine engine (0);
+        engine.configureProfile (ld::kProfileSq5);
+        ShotRig rig (engine);
+        setShownProfile (ld::kProfileSq5);
+        ui::fader::setLaw (engine.getFaderLaw());
+        auto& channels = engine.getChannels();
+        expectEquals ((int) channels.size(), 48);
+        for (size_t i = 0; i < channels.size(); ++i)
+        {
+            auto& m = channels[i]->meters;
+            const float level = 0.08f + 0.6f * (float) ((i * 37) % 11) / 10.0f;
+            m.trimPeak[0] = m.outputPeak[0] = level;
+            m.trimPeak[1] = m.outputPeak[1] = level * 0.9f;
+            channels[i]->params.colour = 2 + (int) (i / 4) % 7;
+            channels[i]->params.faderDb = i % 5 == 0 ? 0.0f : -12.0f - (float) (i % 7) * 3.0f;
+        }
+        channels[2]->params.mute = true;
+        channels[4]->params.solo = true;
+        channels[0]->params.gate().on = true;
+        channels[0]->params.dynamics().on = true;
+        channels[0]->params.eq().on = true;
+        channels[0]->params.filter().lowCut = true;
+        channels[0]->params.filter().lowCutFreq = 100.0f;
+        setEq (channels[0]->params.eq(), models::ChannelEq, "1g", 8.0f);
+        setEq (channels[0]->params.eq(), models::ChannelEq, "2g", -6.0f);
+        rig.meters.advance (0.01f);
+        rig.selected = channels[0].get();
+
+        ui::Sq5Surface skin (rig.ctx);
+        skin.setSize (1920, 1080);
+        skin.refreshAll();
+        const auto shot = [this, &skin] (const juce::String& fileName)
+        {
+            skin.getDisplay().repaint();
+            const auto image = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
+            expect (image.isValid(), fileName);
+            const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {});
+            if (folder.isEmpty())
+                return;
+            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile (fileName);
+            file.deleteFile();
+            juce::FileOutputStream out (file);
+            expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out), file.getFullPathName());
+        };
+        using namespace ui::sq5;
+        auto& display = skin.getDisplay();
+        shot ("sq5-home.png");
+
+        // The layers: A Ip 1-16, the fader on the LR; a mix: the send to it, the master its fader.
+        expect (skin.getStrip (0).getSlot() == Slot { Slot::Input, 0 });
+        skin.setLayer (1);
+        expect (skin.getStrip (0).getSlot() == Slot { Slot::Input, 16 });
+        skin.setLayer (0);
+        channels[0]->sends[2].levelDb = -7.0f;
+        skin.setMix (3);
+        expect (skin.getMaster().getSlot() == Slot { Slot::Mix, 2 });
+        expectWithinAbsoluteError ((float) ui::fader::posToDb ((float) skin.getStrip (0).getFader().getPosition()), -7.0f, 0.3f, "Ip1's send to Mix 3");
+        // Assign: Sel assigns the channel to the selected mix.
+        const bool before = channels[1]->sends[2].enabled.load();
+        skin.setAssignMode (true);
+        skin.getStrip (1).getSel().onClick();
+        expect (channels[1]->sends[2].enabled.load() != before, "Assign + Sel");
+        skin.setAssignMode (false);
+        skin.setMix (0);
+
+        // Processing: the bank view, then each block's detail.
+        skin.findKey ("Processing")->onClick();
+        expect (display.getScreen() == Screen::Processing && display.getBlock() == Block::Bank);
+        shot ("sq5-processing.png");
+        for (auto [block, name] : { std::pair (Block::Preamp, "sq5-preamp.png"), std::pair (Block::Hpf, "sq5-hpf.png"), std::pair (Block::Gate, "sq5-gate.png"),
+                                    std::pair (Block::Insert, "sq5-insert.png"), std::pair (Block::Peq, "sq5-peq.png"), std::pair (Block::Comp, "sq5-comp.png") })
+        {
+            display.showBlock (block);
+            shot (name);
+        }
+        // The other screens, as the guide draws them.
+        channels[1]->sends[0].enabled = true;
+        channels[1]->sends[0].levelDb = -3.0f;
+        channels[1]->params.dcaMask.set (0, true);
+        rig.show.addScene ("Verse");
+        rig.show.addScene ("Chorus");
+        for (auto [key, name] : { std::pair ("Routing", "sq5-routing.png"), std::pair ("Meters", "sq5-meters.png"), std::pair ("FX", "sq5-fx.png"),
+                                  std::pair ("Scenes", "sq5-scenes.png"), std::pair ("Setup", "sq5-setup.png"), std::pair ("Utility", "sq5-utility.png"),
+                                  std::pair ("I/O", "sq5-io.png") })
+        {
+            skin.findKey (key)->onClick();
+            shot (name);
+        }
+        // I/O's Inputs: socket 3 to Ip1, the first crosspoint under the side tabs.
+        skin.findKey ("I/O")->onClick();
+        const auto crosspoint = [&display] (int row, int col)
+        {
+            int area = 0;
+            for (int i = 0; i < (int) display.getFields().size(); ++i)
+                if (display.getFields()[(size_t) i].kind == Field::Area && area++ == row * 14 + col)
+                    return i;
+            return -1;
+        };
+        display.touchField (crosspoint (0, 2));
+        expectEquals (channels[0]->params.inputLeft.load(), 2, "patched");
+        display.touchField (crosspoint (0, 0));
+        expectEquals (channels[0]->params.inputLeft.load(), 0, "patched back");
+        // Routing's details: the Sends and DCA assignment work.
+        display.showBlock (Block::Sends);
+        expect (display.getScreen() == Screen::Routing);
+        shot ("sq5-sends.png");
+        display.showBlock (Block::DcaMute);
+        shot ("sq5-dca.png");
+        const bool wasInDca = channels[0]->params.dcaMask.contains (2);
+        display.touchField (display.findField ("DCA3 Assign"));
+        expect (channels[0]->params.dcaMask.contains (2) != wasInDca, "DCA assign");
+        // The FX Library loads a unit.
+        skin.findKey ("FX")->onClick();
+        expect (display.hasLibrary());
+        skin.findKey ("Library")->onClick();
+        expect (display.isLibraryOpen());
+        shot ("sq5-fxlib.png");
+        display.touchField (display.findField ("Gated Verb"));
+        expect (! display.isLibraryOpen(), "Recalled");
+        shot ("sq5-fxunit.png");
+        // Strip Assign: a channel to a fader strip, kept in the settings.
+        skin.findKey ("Setup")->onClick();
+        display.touchField (display.findField ("Ip3"));
+        // The strips' row: Ip1 is the first strip of layer A.
+        int strip1 = -1;
+        for (int i = (int) display.getFields().size() - 1; i >= 0; --i)
+            if (display.getFields()[(size_t) i].title == "Ip1")
+                strip1 = i;
+        // The channel row comes first: the strip's is the second.
+        int count = 0;
+        for (int i = 0; i < (int) display.getFields().size(); ++i)
+            if (display.getFields()[(size_t) i].title == "Ip1" && ++count == 2)
+                strip1 = i;
+        display.touchField (strip1);
+        expect (skin.getStrip (0).getSlot() == Slot { Slot::Input, 2 }, "Strip Assign");
+        expect (rig.settings.getValue ("sq5.layers").isNotEmpty());
+        // Back as it was, for what follows.
+        rig.settings.removeValue ("sq5.layers");
+        // Soft Controls: a SoftKey as a mute group.
+        soft::set (rig.settings, 0, 4);
+        engine.muteGroups.set (0, false);
+        skin.findKey ("Soft 1")->onClick();
+        expect (engine.muteGroups.contains (0), "SoftKey = Mute Group 1");
+        engine.muteGroups.set (0, false);
+        // Copy and Paste by the Sel keys.
+        rig.selected = channels[0].get();
+        skin.setLayer (0);
+        channels[0]->params.gate().on = true;
+        skin.setClipboardMode (1);
+        skin.getStrip (2).getSel().onClick();
+        skin.setClipboardMode (2);
+        skin.getStrip (3).getSel().onClick();
+        expect (channels[3]->params.filter().lowCut.load() == channels[2]->params.filter().lowCut.load());
+        // Fader Flip: the selected mix's GEQ on the faders, 2 sets, then back.
+        skin.setMix (1);
+        auto* geq = skin.selectedGeq();
+        expect (geq != nullptr, "Mix 1's GEQ");
+        skin.pressFaderFlip();
+        expectEquals (skin.getFaderFlip(), 1);
+        expectEquals (skin.getStrip (0).getLcdText(), juce::String ("31"));
+        skin.getStrip (0).getFader().setPositionFromUser (1.0);
+        expectWithinAbsoluteError (geq->values[0].load(), 12.0f, 0.01f);
+        skin.pressFaderFlip();
+        expectEquals (skin.getStrip (0).getLcdText(), juce::String ("1.25k"));
+        skin.pressFaderFlip();
+        expectEquals (skin.getFaderFlip(), 0);
+        skin.setMix (0);
+        rig.selected = channels[0].get();
+
+        // A value touched is yellow and the rotary adjusts it.
+        display.showBlock (Block::Hpf);
+        const int freq = display.findField ("Freq");
+        expect (freq >= 0);
+        display.touchField (freq);
+        expectEquals (display.getSelectedField(), freq);
+        auto rotary = display.getRotaryBinding();
+        expect (rotary.isValid());
+        rotary.set (0.0f);
+        expectWithinAbsoluteError (channels[0]->params.filter().lowCutFreq.load(), 20.0f, 0.5f);
+        // The Processing key: from the detail to the bank, from the bank home, deselected.
+        display.pressScreenKey (Screen::Processing);
+        expect (display.getBlock() == Block::Bank);
+        display.pressScreenKey (Screen::Processing);
+        expect (display.getScreen() == Screen::Home);
+        expect (rig.selected == nullptr);
+        setShownProfile (ld::kProfileWing);
+        ui::fader::setLaw (FaderLaw::wing());
     }
 
     /** The 02R surface (Phase 6 step 7) on an 02R, at 1920x1080. */

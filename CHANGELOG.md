@@ -11,8 +11,9 @@ All notable changes to Sidecar are listed here. Versions follow
   path, ducker, 4-band PEQ), offered on any Universal strip, and its console profile
   (counts, signal chains, fader law), its 28-band GEQ on every mix and its 11 RackExtra
   effects, and its MIDI (NRPN levels, mutes, pans and assignments, scenes). It can be
-  chosen in the start-up window and SETUP's INTERFACE and runs on the Universal Mixer
-  for now. C ABI 53. Its add-on effects, TCP MIDI and surface follow.
+  chosen in the start-up window and SETUP's INTERFACE, and has its own surface and
+  touchscreen screens drawn from the manual's pictures. C ABI 53. Its add-on effects,
+  TCP MIDI, and several Setup and Utility pages follow.
 
 ## [0.3.0] - beta
 

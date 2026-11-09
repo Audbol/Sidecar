@@ -979,7 +979,8 @@ const SQ_COLOURS: [(&str, u32); 8] = [
 ];
 
 impl Palette {
-    pub const SQ5: Palette = Palette { colours: &SQ_COLOURS, grid: &[1, 2, 3, 4, 5, 6, 7, 8], default: 8, factory: None };
+    // Default Green, as the guide's screens show a new console's channels.
+    pub const SQ5: Palette = Palette { colours: &SQ_COLOURS, grid: &[1, 2, 3, 4, 5, 6, 7, 8], default: 3, factory: None };
 }
 
 /// The Allen & Heath SQ-5 (Reference Guide V1.6.0): 48 inputs, 12 mixes and 4 FX
