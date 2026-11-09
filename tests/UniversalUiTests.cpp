@@ -8,6 +8,7 @@
 #include "ui/Knobs.h"
 #include "ui/RoutingGroups.h"
 #include "engine/Models.h"
+#include "ui/ChainSummary.h"
 #include "ui/MixerChooser.h"
 #include "ui/UniversalSkin.h"
 #include "ui/StripCustomize.h"
@@ -278,6 +279,8 @@ public:
             expectEquals (ui::mixerChooser::label (ui::InterfaceKind::ProMix), juce::String ("PROMIX 01 (very experimental)"));
             expectEquals (ui::mixerChooser::label (ui::InterfaceKind::Yamaha02R), juce::String ("02R (very experimental)"));
             expectEquals (ui::mixerChooser::label (ui::InterfaceKind::Sq5), juce::String ("SQ-5 (very experimental)"));
+            expectEquals (ui::mixerChooser::label (ui::InterfaceKind::Yamaha01V), juce::String ("01V (very experimental)"));
+            expectEquals (ui::mixerChooser::label (ui::InterfaceKind::DLive), juce::String ("DLIVE (very experimental)"));
             expectEquals (ui::mixerChooser::label (ui::InterfaceKind::Universal), juce::String ("UNIVERSAL"));
             // The SETUP keys are in ui::InterfaceKind's order: a key's index is its kind.
             const auto keys = ui::mixerChooser::keyLabels();
@@ -309,10 +312,10 @@ public:
 
             auto first = open ({}); // nothing to continue
             expect (keyNamed (*first, "CONTINUE") == nullptr);
-            expectEquals (first->getNumChildComponents(), 6);
+            expectEquals (first->getNumChildComponents(), 8);
 
             auto later = open ("02R (very experimental)");
-            expectEquals (later->getNumChildComponents(), 7);
+            expectEquals (later->getNumChildComponents(), 9);
             keyNamed (*later, "CONTINUE")->onClick();
             expectEquals (kept, 1);
             later->keyPressed (juce::KeyPress (juce::KeyPress::escapeKey));
@@ -1127,6 +1130,107 @@ public:
             view.remove();
             expectEquals (view.getNumRows(), 1);
             expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds(), true, 1.0f), "universal-scenes.png"));
+        }
+
+        beginTest ("A dLive's Mixer Config, in SETUP");
+        {
+            MixerEngine engine (0);
+            engine.configureProfile (ld::kProfileDLive);
+            UiRig rig (engine);
+            setShownProfile (ld::kProfileDLive);
+            setShownSlots (engine.getHandle());
+            auto viewOwner = std::make_unique<SetupView> (rig.ctx, Theme::dark());
+            auto& view = *viewOwner;
+            view.setSize (1200, 800);
+            view.refresh();
+            auto& panel = view.mixerConfig;
+            expect (panel.isVisible());
+            using K = MixerConfigPanel;
+            expectEquals (panel.getCurrent (K::Aux), 8);
+            expectEquals (panel.getCurrent (K::StereoAux), 8);
+            expectEquals (panel.getBussesUsed(), 58);
+            expect (panel.fits());
+            expect (! panel.hasChanges());
+
+            // Over the 64 busses: nothing to apply.
+            panel.setPending (K::StereoAux, 12);
+            expectEquals (panel.getBussesUsed(), 66);
+            expect (! panel.fits());
+            expect (! panel.applyKey.isEnabled());
+            panel.revert();
+
+            // A channel keeps its settings; the mixes follow the new layout.
+            engine.getChannels()[3]->params.faderDb = -7.0f;
+            panel.setPending (K::Aux, 12);
+            expect (panel.hasChanges() && panel.fits());
+            panel.apply();
+            expectEquals (panel.getStatus(), juce::String ("Applied."));
+            expect (engine.getProfile() == ld::kProfileDLive);
+            // AMM's page takes effect at once.
+            {
+                auto* ammParams = ld::ld_engine_amm (engine.getHandle());
+                panel.showPage (std::remove_reference_t<decltype (panel)>::Page::Amm);
+                panel.dClassicKey.onClick();
+                expectEquals (ammParams->mode.load(), 1);
+                panel.nomKey.onClick();
+                expectEquals (ammParams->mode.load(), 0);
+                panel.ammCountKeys[1]->onClick();
+                expectEquals (ammParams->count.load(), 2);
+                panel.ammCountKeys[0]->onClick();
+                expectEquals (ammParams->count.load(), 1);
+                panel.showPage (std::remove_reference_t<decltype (panel)>::Page::Mixes);
+            }
+            // An input's preamp block: named PREAMP, only the preamp models go in it.
+            {
+                auto& strip = *engine.getChannels()[0];
+                const int uid = ld::ld_strip_preamp_block (strip.getHandle());
+                expect (uid >= 0);
+                ChainStep step;
+                step.kind = ld::kStepBlock;
+                step.uid = uid;
+                expectEquals (ui::stepName (strip, step), juce::String ("PREAMP"));
+                const int valve = models::findModel (models::Dynamics, "DLVVALVE"), gate = models::findModel (models::Dynamics, "DLVGATE");
+                expect (valve >= 0 && gate >= 0);
+                expect (ld::ld_dyn_model_allowed (valve, 2) && ! ld::ld_dyn_model_allowed (gate, 2));
+                expect (! ld::ld_dyn_model_allowed (valve, 0) && ! ld::ld_dyn_model_allowed (valve, 1));
+            }
+            expectEquals (panel.getCurrent (K::Aux), 12);
+            expectEquals (engine.getCounts().buses, 36);
+            expectEquals ((int) engine.getBuses().size(), 36);
+            expectWithinAbsoluteError (engine.getChannels()[3]->params.faderDb.load(), -7.0f, 0.001f);
+            expect (! panel.hasChanges());
+
+            // IP STEREO CONFIG: inputs 1/2 become one channel; input 5 keeps its settings.
+            engine.getChannels()[4]->params.faderDb = -9.0f;
+            panel.showPage (MixerConfigPanel::Page::Inputs);
+            panel.setStereoPending (0, true);
+            expect (panel.hasChanges());
+            panel.apply();
+            expectEquals (panel.getStatus(), juce::String ("Applied."));
+            expectEquals (engine.getCounts().channels, 123);
+            expectEquals ((int) engine.getChannels().size(), 123);
+            expect (engine.getChannels()[0]->params.stereo.load());
+            expectWithinAbsoluteError (engine.getChannels()[3]->params.faderDb.load(), -9.0f, 0.001f); // Ip5, now the 4th channel
+
+            // A mix's Ext In and Mix Source, on its STRIP page.
+            {
+                auto stripPageOwner = std::make_unique<StripPanel> (rig.ctx, Theme::dark());
+                auto& page = *stripPageOwner;
+                auto& mix = *engine.getBuses()[8];
+                page.setStrip (&mix);
+                expect (page.showsMixInput() && page.extIn.isVisible() && page.mixSource.isVisible());
+                page.extIn.chooseItem (3);
+                expectEquals (mix.mixInput().extSource.load(), 2);
+                page.extTrim.chooseItem (18);
+                expectWithinAbsoluteError (mix.mixInput().extTrimDb.load(), -6.0f, 0.01f);
+                page.extPolarity.onClick();
+                expect (mix.mixInput().extInvert.load());
+                page.mixSource.chooseItem (1);
+                expectEquals (mix.mixInput().mixSource.load(), 1);
+                page.setStrip (engine.getChannels()[0].get());
+                expect (! page.showsMixInput() && ! page.extIn.isVisible());
+            }
+            setShownProfile (ld::kProfileWing); // the next test's console
         }
 
         beginTest ("SETUP changes the console's configuration without a reset, keeping what is in use");

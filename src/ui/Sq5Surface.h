@@ -129,6 +129,8 @@ private:
     /** A panel key: `colour` lit, `face` idle (their backlights never go out). */
     universal::ToggleKey& panelKey (const juce::String& name, juce::Colour, juce::Rectangle<int>, bool labelAbove = true, juce::Colour face = {});
     void lightJewels();
+    /** The panel's small LEDs now (Pk, GR, Pan, Insert Active, GEQ, PAFL), one bit each. */
+    int panelLeds() const;
     DisplayKnob& panelKnob (const juce::String& name, juce::Rectangle<int>);
     sq5::Slot selectedSlot() const;
     /** With Copy, Paste or Reset latched: does it to `strip`; false: not in that mode. */
@@ -164,6 +166,7 @@ private:
     int faderFlip = 0, clipboardMode = 0;
     sq5::Slot clipboard;
     Strip* boundStrip = nullptr;
+    int shownLeds = 0;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Sq5Surface)
 };

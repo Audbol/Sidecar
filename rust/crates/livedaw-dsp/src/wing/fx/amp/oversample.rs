@@ -6,6 +6,8 @@
 //! ~0.58 fs; the second (2x <-> 4x) only has to reject the images above the
 //! first stage's passband, so it is short.
 
+use std::sync::OnceLock;
+
 /// A two-path polyphase IIR half-band filter with `N` allpass sections, for
 /// 2x up- or downsampling.
 #[derive(Clone, Copy)]
@@ -118,7 +120,13 @@ type First = HalfBand<6>;
 type Second = HalfBand<3>;
 
 fn first() -> First {
-    HalfBand::new(0.08)
+    static DESIGN: OnceLock<First> = OnceLock::new();
+    *DESIGN.get_or_init(|| HalfBand::new(0.08))
+}
+
+fn second() -> Second {
+    static DESIGN: OnceLock<Second> = OnceLock::new();
+    *DESIGN.get_or_init(|| HalfBand::new(0.25))
 }
 
 /// 4x up- and downsampler (two half-band stages each way).
@@ -132,8 +140,7 @@ pub struct Oversampler4 {
 
 impl Default for Oversampler4 {
     fn default() -> Self {
-        let second = HalfBand::new(0.25);
-        Self { up1: first(), up2: second, down2: second, down1: first() }
+        Self { up1: first(), up2: second(), down2: second(), down1: first() }
     }
 }
 

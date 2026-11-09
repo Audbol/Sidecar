@@ -2,6 +2,7 @@
 
 #include "engine/AppPaths.h"
 #include "engine/Show.h"
+#include "ui/RoutingGroups.h"
 #include "ui/ShowPanel.h"
 #include "ui/StripCustomize.h"
 
@@ -11,12 +12,18 @@ namespace livedaw::ui::universal
 namespace
 {
     constexpr int kCaption = 24, kSwatch = 40, kNameRow = 56;
+    /** The EXT IN and MIX SOURCE rows' height together. */
+    constexpr int kMixRows = kCaption + 3 * 40 + 2 * sizes::kGapSmall + sizes::kGap;
+    /** A dLive's MixRack, DX and Surface sockets: what Ext In offers. */
+    constexpr int kExtInSockets = 140, kExtTrimRange = 24;
+    /** The AMM rows' height together. */
+    constexpr int kAmmRows = kCaption + 3 * 40 + 2 * sizes::kGapSmall + sizes::kGap;
     /** A channel preset holds every section but routing (as the WING's LIBRARY saves one). */
     constexpr juce::uint32 kPresetScope = state::AllSections & ~(juce::uint32) state::Routing;
 } // namespace
 
 StripPanel::StripPanel (UiContext& c, const Theme& t)
-    : renameKey ("RENAME", t.accent, t), savePresetKey ("SAVE PRESET", t.accent, t), loadPresetKey ("LOAD PRESET", t.accent, t), dcas (t, t.accent), muteGroups (t, t.mute), ctx (c), theme (t)
+    : extIn (t), extTrim (t), mixSource (t), extPolarity ("POLARITY", t.accent, t), amm (t), ammOn ("ON", t.accent, t), ammChair ("CHAIR", t.accent, t), ammSolo ("SOLO", t.accent, t), ammPriority (t), renameKey ("RENAME", t.accent, t), savePresetKey ("SAVE PRESET", t.accent, t), loadPresetKey ("LOAD PRESET", t.accent, t), dcas (t, t.accent), muteGroups (t, t.mute), ctx (c), theme (t)
 {
     renameKey.onClick = [this]
     {
@@ -76,9 +83,98 @@ StripPanel::StripPanel (UiContext& c, const Theme& t)
             strip->params.muteGroupMask.toggle (i);
     };
     muteGroups.name = [this] (int i) { return customGroupName (ctx.engine.getMuteGroupName (i), i); };
+    extIn.caption = "EXT IN";
+    extIn.items = []
+    {
+        juce::StringArray names { "OFF" };
+        for (int i = 0; i < kExtInSockets; ++i)
+            names.add (routing::sourceLabel (i));
+        return names;
+    };
+    extIn.current = [this] { return strip != nullptr ? strip->mixInput().extSource.load() + 1 : 0; };
+    extIn.choose = [this] (int i)
+    {
+        if (strip != nullptr)
+            strip->mixInput().extSource = i - 1;
+    };
+    extTrim.caption = "EXT TRIM";
+    extTrim.items = []
+    {
+        juce::StringArray names;
+        for (int db = -kExtTrimRange; db <= kExtTrimRange; ++db)
+            names.add ((db > 0 ? "+" : "") + juce::String (db) + " dB");
+        return names;
+    };
+    extTrim.current = [this] { return strip != nullptr ? juce::roundToInt (strip->mixInput().extTrimDb.load()) + kExtTrimRange : kExtTrimRange; };
+    extTrim.choose = [this] (int i)
+    {
+        if (strip != nullptr)
+            strip->mixInput().extTrimDb = (float) (i - kExtTrimRange);
+    };
+    extPolarity.isOn = [this] { return strip != nullptr && strip->mixInput().extInvert.load(); };
+    extPolarity.onClick = [this]
+    {
+        if (strip != nullptr)
+            strip->mixInput().extInvert = ! strip->mixInput().extInvert.load();
+    };
+    mixSource.caption = "MIX SOURCE";
+    mixSource.items = [] { return juce::StringArray { "POST PREAMP", "POST INSERT A", "POST PEQ", "POST DELAY" }; };
+    mixSource.current = [this] { return strip != nullptr ? strip->mixInput().mixSource.load() : 3; };
+    mixSource.choose = [this] (int i)
+    {
+        if (strip != nullptr)
+            strip->mixInput().mixSource = i;
+    };
+    amm.caption = "AMM";
+    amm.items = [this]
+    {
+        juce::StringArray names { "NONE" };
+        for (int i = 0; i < ld::ld_engine_amm (ctx.engine.getHandle())->count.load(); ++i)
+            names.add ("AMM " + juce::String (i + 1));
+        return names;
+    };
+    amm.current = [this]
+    {
+        if (strip == nullptr)
+            return 0;
+        const int n = ld::ld_strip_amm (strip->getHandle())->amm.load();
+        return n < ld::ld_engine_amm (ctx.engine.getHandle())->count.load() ? n + 1 : 0;
+    };
+    amm.choose = [this] (int i)
+    {
+        if (strip != nullptr)
+            ld::ld_strip_amm (strip->getHandle())->amm = i - 1;
+    };
+    const auto ammFlag = [this] (ToggleKey& key, std::atomic<bool> ld::AmmStripParams::*flag)
+    {
+        key.isOn = [this, flag] { return strip != nullptr && (ld::ld_strip_amm (strip->getHandle())->*flag).load(); };
+        key.onClick = [this, flag]
+        {
+            if (strip != nullptr)
+            {
+                auto& f = ld::ld_strip_amm (strip->getHandle())->*flag;
+                f = ! f.load();
+            }
+        };
+    };
+    ammFlag (ammOn, &ld::AmmStripParams::on);
+    ammFlag (ammChair, &ld::AmmStripParams::chair);
+    ammFlag (ammSolo, &ld::AmmStripParams::solo);
+    for (auto* child : std::initializer_list<juce::Component*> { &extIn, &extTrim, &extPolarity, &mixSource, &amm, &ammOn, &ammChair, &ammSolo, &ammPriority })
+        addChildComponent (child);
     for (auto* child : std::initializer_list<juce::Component*> { &renameKey, &savePresetKey, &loadPresetKey, &dcas, &muteGroups })
         addAndMakeVisible (child);
     startTimerHz (6);
+}
+
+bool StripPanel::showsMixInput() const
+{
+    return strip != nullptr && strip->isOutput() && ctx.engine.getProfile() == ld::kProfileDLive;
+}
+
+bool StripPanel::showsAmm() const
+{
+    return strip != nullptr && strip->getKind() == StripKind::Channel && ctx.engine.getProfile() == ld::kProfileDLive;
 }
 
 void StripPanel::setStrip (Strip* s)
@@ -86,6 +182,18 @@ void StripPanel::setStrip (Strip* s)
     strip = s;
     name = {};
     colour = 0;
+    const bool mix = showsMixInput();
+    for (auto* child : std::initializer_list<juce::Component*> { &extIn, &extTrim, &extPolarity })
+        child->setVisible (mix);
+    mixSource.setVisible (mix && strip->getKind() == StripKind::Bus);
+    const bool hasAmm = showsAmm();
+    amm.setVisible (hasAmm);
+    ammOn.setVisible (hasAmm);
+    if (hasAmm)
+        ammPriority.bind (ValueBar::linear ("PRIORITY", ld::ld_strip_amm (strip->getHandle())->priorityDb, -15.0f, 15.0f, 0.0f, " dB", 0));
+    else
+        ammPriority.unbind();
+    shownAmmNom = ! shownAmmNom; // refresh() sets CHAIR, SOLO and PRIORITY for the mode
     refresh();
     resized();
     repaint();
@@ -138,6 +246,29 @@ void StripPanel::refresh()
     muteGroups.refresh();
     if (strip == nullptr)
         return;
+    if (showsAmm())
+    {
+        const bool nom = ld::ld_engine_amm (ctx.engine.getHandle())->mode.load() == 0;
+        if (nom != shownAmmNom)
+        {
+            shownAmmNom = nom;
+            ammChair.setVisible (nom);
+            ammSolo.setVisible (nom);
+            ammPriority.setVisible (! nom);
+        }
+        amm.refresh();
+        ammOn.refresh();
+        ammChair.refresh();
+        ammSolo.refresh();
+        ammPriority.refresh();
+        // The gain it's taking now, beside the caption.
+        const float gain = ld::ld_strip_amm (strip->getHandle())->gainDb.load();
+        if (std::abs (gain - shownAmmGain) > 0.05f)
+        {
+            shownAmmGain = gain;
+            repaint (ammCaption);
+        }
+    }
     const auto newName = strip->getName();
     const int newColour = strip->getColourIndex();
     const bool newLinked = customize::goesToSource (*strip);
@@ -177,6 +308,8 @@ void StripPanel::paint (juce::Graphics& g)
     g.setFont (type::font (type::kValue + 3.0f, true));
     g.drawFittedText (name.isNotEmpty() ? name : strip->getLabel(), n, juce::Justification::centredLeft, 1, 0.7f);
 
+    if (! ammCaption.isEmpty())
+        caption (ammCaption, "AUTOMATIC MIC MIXING   GAIN " + juce::String (shownAmmGain, 1) + " dB");
     caption (colourCaption, "COLOUR");
     for (int c = 1; c <= palette::count(); ++c)
     {
@@ -199,7 +332,7 @@ int StripPanel::heightFor (int width) const
     const int w = width - 2 * sizes::kGap;
     const int cols = juce::jmax (1, w / kSwatch);
     const int rows = (palette::count() + cols - 1) / cols;
-    return sizes::kGap + kNameRow + sizes::kGap + kCaption + rows * kSwatch + sizes::kGap + kCaption + dcas.heightFor (w) + sizes::kGap + kCaption
+    return (showsMixInput() ? kMixRows : 0) + (showsAmm() ? kAmmRows : 0) + sizes::kGap + kNameRow + sizes::kGap + kCaption + rows * kSwatch + sizes::kGap + kCaption + dcas.heightFor (w) + sizes::kGap + kCaption
            + muteGroups.heightFor (w) + sizes::kGap + kCaption + sizes::kTouch + sizes::kGap;
 }
 
@@ -210,6 +343,37 @@ void StripPanel::resized()
     nameArea = area.removeFromTop (kNameRow);
     renameKey.setBounds (nameArea.removeFromRight (112).withSizeKeepingCentre (112, sizes::kTouch));
     area.removeFromTop (sizes::kGap);
+    mixCaption = {};
+    if (showsMixInput())
+    {
+        mixCaption = area.removeFromTop (kCaption);
+        extIn.setBounds (area.removeFromTop (40));
+        area.removeFromTop (sizes::kGapSmall);
+        auto trim = area.removeFromTop (40);
+        extPolarity.setBounds (trim.removeFromRight (96));
+        trim.removeFromRight (sizes::kGapSmall);
+        extTrim.setBounds (trim);
+        area.removeFromTop (sizes::kGapSmall);
+        mixSource.setBounds (area.removeFromTop (40));
+        area.removeFromTop (sizes::kGap);
+    }
+    ammCaption = {};
+    if (showsAmm())
+    {
+        ammCaption = area.removeFromTop (kCaption);
+        amm.setBounds (area.removeFromTop (40));
+        area.removeFromTop (sizes::kGapSmall);
+        auto keys = area.removeFromTop (40);
+        const int keyW = (keys.getWidth() - 2 * sizes::kGapSmall) / 3;
+        ammOn.setBounds (keys.removeFromLeft (keyW));
+        keys.removeFromLeft (sizes::kGapSmall);
+        ammChair.setBounds (keys.removeFromLeft (keyW));
+        keys.removeFromLeft (sizes::kGapSmall);
+        ammSolo.setBounds (keys);
+        area.removeFromTop (sizes::kGapSmall);
+        ammPriority.setBounds (area.removeFromTop (40));
+        area.removeFromTop (sizes::kGap);
+    }
     colourCaption = area.removeFromTop (kCaption);
     const int cols = juce::jmax (1, area.getWidth() / kSwatch);
     const int rows = (palette::count() + cols - 1) / cols;

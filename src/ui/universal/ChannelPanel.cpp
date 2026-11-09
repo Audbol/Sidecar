@@ -290,7 +290,7 @@ void ChannelPanel::paint (juce::Graphics& g)
         const bool on = stepOn (*strip, step);
         g.setColour (isExtra (step) ? theme.accent : (on ? theme.text : theme.textDim));
         g.fillEllipse (juce::Rectangle<float> (6.0f, 6.0f).withCentre ({ r.getX() + 5.0f, r.getCentreY() }));
-        g.drawText (stepName (step), r.withTrimmedLeft (14.0f), juce::Justification::centredLeft, false);
+        g.drawText (stepName (*strip, step), r.withTrimmedLeft (14.0f), juce::Justification::centredLeft, false);
         if (! on)
         {
             g.setColour (theme.background);

@@ -8,7 +8,7 @@ use super::parts::{pole, rate, BuildUp, Decay, Diffuser, Echo, Fdn, Output, Para
 
 /// What a device asks of its voice (targets; the voice smooths them).
 #[derive(Clone, Copy, Debug)]
-pub(super) struct Settings {
+pub(crate) struct Settings {
     pub pre_ms: f32,
     /// Mean tank line length (SIZE).
     pub size_ms: f32,
@@ -56,7 +56,7 @@ impl Default for Settings {
 }
 
 /// Fixed properties of a voice.
-pub(super) struct Config<const N: usize> {
+pub(crate) struct Config<const N: usize> {
     /// Relative line lengths (see `parts::spread`).
     pub rel: [f32; N],
     pub max_size_ms: f32,
@@ -73,7 +73,7 @@ pub(super) struct Config<const N: usize> {
 /// to fill the gap before the tank answers without rising above it.
 const EARLY_MIX: f32 = 0.3;
 
-pub(super) struct Space<const N: usize> {
+pub(crate) struct Space<const N: usize> {
     sr: f32,
     pub build: BuildUp<N>,
     diff_l: Diffuser,

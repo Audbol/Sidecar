@@ -148,7 +148,9 @@ inline bool stripOfSource (int source, StripKind& kind, int& number, int& side)
         return false;
     int n = source - ld::kStripSourceBase;
     kind = StripKind::Bus;
-    if (n >= 2 * kWingBuses)
+    if (n >= ld::kExtraBusSourcesAt)
+        n += 2 * kWingBuses - ld::kExtraBusSourcesAt; // buses 17 on
+    else if (n >= 2 * kWingBuses)
     {
         n -= 2 * kWingBuses;
         kind = StripKind::Main;

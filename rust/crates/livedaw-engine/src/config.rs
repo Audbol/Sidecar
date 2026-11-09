@@ -75,10 +75,24 @@ impl Counts {
     /// mute groups are its own), 2 FX slots (its internal effects).
     pub const Y02R: Counts = Counts { channels: 36, aux: 2, buses: 16, mains: 1, matrices: 0, dcas: 0, mute_groups: 0, fx: 2 };
 
+    /// The Yamaha 01V's: 22 channels (CH 1-12, the stereo 13/14 and 15/16, the
+    /// Option I/O card's 17-24: 24 inputs in all), 2 aux (the effect returns), 10
+    /// buses (BUS 1-4, AUX 1-4, EFFECT 1-2), 1 main (STEREO), no matrices, DCAs or
+    /// mute groups (its fader groups and groups of [ON] buttons are its own), 2 FX
+    /// slots (its internal effects).
+    pub const Y01V: Counts = Counts { channels: 22, aux: 2, buses: 10, mains: 1, matrices: 0, dcas: 0, mute_groups: 0, fx: 2 };
+
     /// The Allen & Heath SQ-5's (Reference Guide V1.6.0, section 18): 48 input
     /// channels, 8 aux (its stereo FX returns), 16 buses (12 mixes, then the 4 FX
     /// sends), 1 main (LR), 3 stereo matrices, 8 DCAs, 8 mute groups, 8 FX slots.
     pub const SQ5: Counts = Counts { channels: 48, aux: 8, buses: 16, mains: 1, matrices: 3, dcas: 8, mute_groups: 8, fx: 8 };
+
+    /// The Allen & Heath dLive's, as its FoH Template Show (its factory default)
+    /// configures its 64 mix busses: 124 channels (the 128 inputs, 120 mono and
+    /// 4 stereo pairs), 16 aux (its stereo FX returns), 32 buses (8 Groups, 16
+    /// Aux, 8 FX sends), 1 main (LR), 8 matrices, 24 DCAs, 8 mute groups, 16 FX.
+    pub const DLIVE: Counts =
+        Counts { channels: 124, aux: 16, buses: 32, mains: 1, matrices: 8, dcas: 24, mute_groups: 8, fx: 16 };
 }
 
 impl Default for Counts {

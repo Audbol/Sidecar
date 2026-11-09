@@ -29,7 +29,7 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 53;
+constexpr int kAbiVersion = 56;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -58,7 +58,7 @@ constexpr int kWingFx = 16;
 constexpr int kWingChannels = 40;
 constexpr int kWingBuses = 16;
 constexpr int kMaxDynParams = 20;
-constexpr int kMaxEqParams = 32;
+constexpr int kMaxEqParams = 64; // ABI 56: was 32 (the dLive's NEQ-12 uses 51)
 constexpr int kMaxToolParams = 2;
 constexpr int kMaxFxParams = 64;
 /** The WING colour (1..18) of a new channel, source and DCA: Dark Blue. */
@@ -93,9 +93,12 @@ constexpr int32_t kOscSourceBase = 0x30000;
 /** ABI 19, the strip sources (manual 2.6): a bus, main or matrix as a
     channel's source, input kStripSourceBase + n: the WING's $BUS (n 0-31, a
     bus slot * 2 + side), $MAIN (32-39) and $MTX (40-55) signals
-    (ld_strip_source_input). A channel hears them one block late. */
+    (ld_strip_source_input). A channel hears them one block late. ABI 55:
+    buses 17-64 (n from kExtraBusSourcesAt: a dLive's mixes). */
 constexpr int32_t kStripSourceBase = 0x40000;
-constexpr int kNumStripSources = 2 * (kWingBuses + kWingMains + kWingMatrices);
+constexpr int kExtraBusSourcesAt = 2 * (kWingBuses + kWingMains + kWingMatrices);
+constexpr int kMaxSourceBuses = 64;
+constexpr int kNumStripSources = kExtraBusSourcesAt + 2 * (kMaxSourceBuses - kWingBuses);
 /** ABI 19, the USER SIGNAL group (USR): USR n is input kUsrSourceBase + n - 1;
     USR 1-24 user signals (ld_engine_user_signals), USR 25-56 user patches
     (ld_engine_user_patches). */
@@ -107,7 +110,7 @@ constexpr int kNumUsrSources = kNumUserSignals + kNumUserPatches;
     channels): FX slot n's stereo output as a send effect is input
     kFxReturnSourceBase + 2n (L) and + 2n + 1 (R), n < kNumSendFx. */
 constexpr int32_t kFxReturnSourceBase = 0x60000;
-constexpr int kNumSendFx = 8;
+constexpr int kNumSendFx = 16;
 /** DYNAMICS KEY SOURCE of aux, buses, mains and matrices (DynSlotParams::scSource):
     kKeyStripBase * kind (StripKindId) + index; they take one of kNumOutputKeyTaps taps. */
 constexpr int32_t kKeyStripBase = 0x10000;
@@ -175,7 +178,9 @@ enum ProfileId : int32_t
     kProfileX32 = 2,
     kProfileProMix01 = 3, // ABI 43, Phase 5
     kProfileYamaha02R = 4, // ABI 45, Phase 6: its processing, effects and MIDI follow
-    kProfileSq5 = 5 // ABI 53: the Allen & Heath SQ-5; its effects, MIDI and surface follow
+    kProfileSq5 = 5, // ABI 53: the Allen & Heath SQ-5; its effects, MIDI and surface follow
+    kProfileYamaha01V = 6, // ABI 54: the original 01V; its surface and MIDI follow
+    kProfileDLive = 7 // ABI 55: the Allen & Heath dLive (its FoH template); its effects, MIDI and surface follow
 };
 
 enum StripKindId : int32_t
@@ -319,6 +324,47 @@ struct InputParams
     std::atomic<bool> invert, delayOn;
     std::atomic<int32_t> delayMode; // list 5: M, FT, MS, SMP
     std::atomic<float> delay;
+};
+
+/** ABI 56: a mix's Ext In and Mix Source (ld_strip_mix_input). extSource: an input
+    number, -1 none. mixSource: 0 Post Preamp, 1 Post Insert A, 2 Post PEQ, 3 Post Delay. */
+struct MixInputParams
+{
+    std::atomic<int32_t> extSource;
+    std::atomic<float> extTrimDb;
+    std::atomic<bool> extInvert;
+    std::atomic<int32_t> mixSource;
+};
+
+/** ABI 56: a dLive channel's Automatic Mic Mixer (ld_strip_amm). The settings are ignored on
+    any other strip. gainDb and open are read-back, written by the audio thread each block. */
+struct AmmStripParams
+{
+    std::atomic<int32_t> amm;   // the AMM it's in, from 0; -1 none. Past ld_engine_amm's count: none
+    std::atomic<bool> on;       // off: out of its AMM, passes at 0 dB and doesn't count
+    std::atomic<bool> chair;    // NOM: the AMM's Chair. Just set it: the engine clears the AMM's others
+    std::atomic<bool> solo;     // NOM: opens this mic, others down. Exclusive per AMM, as chair
+    std::atomic<float> priorityDb; // D-Classic: -15 .. +15 dB
+    std::atomic<float> gainDb;  // read-back: the AMM's gain now, dB (0 outside an AMM; for meters)
+    std::atomic<bool> open;     // read-back, NOM: the mic is open (false in D-Classic)
+};
+
+/** ABI 56: a dLive's Automatic Mic Mixers, console-wide (ld_engine_amm). Up to 64 members in one
+    AMM, 32 each in two, 16 each in four: those past that stay out, in channel order. Values out
+    of range are clamped where they're used. */
+struct AmmParams
+{
+    std::atomic<int32_t> mode;  // 0 NOM, 1 D-Classic (for every AMM)
+    std::atomic<int32_t> count; // 1, 2 or 4 AMMs
+    std::atomic<float> offAttenDb;       // -90 .. -10 dB: closed mics
+    std::atomic<float> onHoldS;          // 1 .. 5 s (not for the Chair)
+    std::atomic<float> nomAttenDb;       // 3 .. 6 dB per doubling of the open mics
+    std::atomic<float> chairSensitivity; // 1 .. 10
+    std::atomic<float> chairDuckDb;      // -40 .. -3 dB: the others, while the Chair is open
+    std::atomic<float> keyHpfHz;         // 20 .. 2000 Hz: the side chain, both modes
+    std::atomic<float> keyLpfHz;         // 1000 .. 20000 Hz
+    std::atomic<bool> bestMic[4];        // each AMM's Best Mic On (NOM)
+    std::atomic<bool> solo[4];           // each AMM's Solo: on while one of its channels is soloed; clear it to release that channel
 };
 
 struct FilterParams
@@ -895,7 +941,7 @@ struct LayoutInfo
         // ABI 25 (group sets, the console's counts)
         groupSet, offMuteGroupMask, scope, offScopeFx, counts,
         // ABI 28 (a strip's chain)
-        chainStep, block, offBlockMeters, blockMeters, offBlockMetersOutPeak, delayBlock;
+        chainStep, block, offBlockMeters, blockMeters, offBlockMetersOutPeak, delayBlock, amm, ammStrip;
 };
 
 /** ABI 25: how many of each kind a console has (ld_engine_counts, ld_engine_configure). */
@@ -1325,7 +1371,8 @@ extern "C"
     /** HOME > TAGS: the strip's free tags, comma-separated. */
     LdString* ld_strip_tags (const Strip*);
     void ld_strip_set_tags (const Strip*, const char* utf8, size_t len);
-    /** block: 0 = gate slot, 1 = EQ, 2 = dynamics slot, 3 = filter tool. Loads the model's defaults. */
+    /** block: 0 = gate slot, 1 = EQ, 2 = dynamics slot, 3 = filter tool. Loads the model's defaults.
+        ABI 56: a dynamics model the slot may not hold (ld_dyn_model_allowed) changes nothing. */
     void ld_strip_set_model (const Strip*, int32_t block, int32_t model);
     /** Response in dB of the EQ (block 1), FILTER (block 3), TAP EQ (block 4), the GATE key filter (5),
         the DYNAMICS key filter (6) or the DYNAMICS crossover (7) at `count` frequencies. */
@@ -1336,8 +1383,13 @@ extern "C"
     int32_t ld_strip_chain (const Strip*, ChainStepC* out, int32_t max);
     /** Extra block `uid` into `out`; false if there's none. */
     bool ld_strip_block (const Strip*, int32_t uid, BlockC* out);
+    /** ABI 56: a dLive input channel's preamp block: its id for ld_strip_block (a dynamics block:
+        BlockC::params is its DynSlotParams, on the block's own key; table 0 models); -1 on any
+        other strip or console. */
+    int32_t ld_strip_preamp_block (const Strip*);
     /** Selects a model for block `uid` and loads its defaults: an EQ block's (table 1, or 2
-        on a bus, main or matrix), a dynamics block's (table 0), a filter block's tool (table 3). */
+        on a bus, main or matrix), a dynamics block's (table 0), a filter block's tool (table 3).
+        ABI 56: false too for a dynamics model the block may not hold (ld_dyn_model_allowed). */
     bool ld_strip_set_block_model (const Strip*, int32_t uid, int32_t model);
     /** Response in dB of block `uid` at `count` frequencies: an EQ or filter block's curve
         (part 0), a dynamics block's key filter (0) or crossover (1). False if it has none. */
@@ -1365,6 +1417,11 @@ extern "C"
     /** 0 gate, 1 compressor, 2 special, 3 EQ, 4 filter. */
     int32_t ld_model_category (int32_t table, int32_t model);
     int32_t ld_model_find (int32_t table, const char* utf8, size_t len);
+    /** ABI 56: may dynamics model `model` (table 0 of the shown console) be offered for `slot`?
+        slot: 0 = gate slot, 1 = dynamics slot or an extra dynamics block, 2 = the preamp block
+        (ld_strip_preamp_block). On a dLive the preamp models go in that block alone and it holds
+        nothing else; on any other console (the Universal first) every model goes anywhere. */
+    bool ld_dyn_model_allowed (int32_t model, int32_t slot);
     int32_t ld_model_num_params (int32_t table, int32_t model);
     bool ld_model_param_info (int32_t table, int32_t model, int32_t param, ParamInfo* out);
     /** what: 0 = id ("thr"), 1 = label ("THR"), 2 = unit ("dB"). */
@@ -1536,6 +1593,16 @@ extern "C"
 
     LdString* ld_show_to_xml (Show*, const Engine*);
     /** False if nothing was loaded (error in *message); true may still set *message (warnings). */
+    /** ABI 56: a dLive's Mixer Config (eight numbers: ld_engine_dlive_layout): its mixes laid out anew
+        and reset, the rest kept. False, with `message`, if nothing changed. */
+    bool ld_show_apply_dlive_layout (Show*, const Engine*, const int32_t* layout, uint64_t stereoInputs, LdString** message);
+    /** ABI 56: a dLive's IP Stereo Config (bit n: inputs 2n+1 and 2n+2 are one stereo channel). */
+    uint64_t ld_engine_dlive_stereo_inputs (const Engine*);
+    /** ABI 56: a dLive's Mixer Config: Groups, stereo Groups, Aux, stereo Aux, FX sends, stereo FX
+        sends, Matrices, stereo Matrices. False: not a dLive. */
+    bool ld_engine_dlive_layout (const Engine*, int32_t* out);
+    /** ABI 56: the slot ranges of the console the engine is (a dLive's follow its Mixer Config). */
+    int32_t ld_engine_slot_ranges (const Engine*, SlotRangeC* out, int32_t max);
     bool ld_show_load_xml (Show*, const Engine*, const char* utf8, size_t len, bool loadPlugins, LdString** message);
     bool ld_show_save_file (Show*, const Engine*, const char* path, size_t len, LdString** error);
     bool ld_show_load_file (Show*, const Engine*, const char* path, size_t len, bool loadPlugins, LdString** message);
@@ -2092,6 +2159,11 @@ extern "C"
     void ld_source_initialize (const Engine*, int32_t index);
     /** The oscillators (*count entries: OSC 1, OSC 2). */
     OscParams* ld_engine_oscillators (const Engine*, int32_t* count);
+    /** A console's own oscillator, set from its surface: what it plays (mode: OscMode;
+        burst: 200 ms every 4 s; exclusive: what it's assigned to carries nothing else). */
+    void ld_engine_console_osc_set (const Engine*, bool on, int32_t mode, float freqHz, float levelDb, bool burst, bool exclusive);
+    /** Bus, main or matrix `number` (0-based) takes it at left and right (0 0: not at all). */
+    void ld_engine_console_osc_assign (const Engine*, int32_t kind, int32_t number, float left, float right);
     /** Any thread: TalkTag bits. */
     uint32_t ld_strip_talk_tags (const Strip*);
     void ld_strip_set_talk_tags (const Strip*, uint32_t tags);
@@ -2099,6 +2171,11 @@ extern "C"
     int32_t ld_strip_mute_state (const Strip*);
     /** Any thread: soloed in the last block (own solo, a soloed DCA or TALK SOLO). */
     bool ld_strip_is_soloed (const Strip*);
+    MixInputParams* ld_strip_mix_input (const Strip*);
+    /** ABI 56: a dLive channel's AMM settings and read-back. */
+    AmmStripParams* ld_strip_amm (const Strip*);
+    /** ABI 56: the console's AMM settings. */
+    AmmParams* ld_engine_amm (const Engine*);
     /** The MUTE key, MUTEGROUP/SIP OVERRIDE aware. */
     void ld_engine_press_mute (const Engine*, const Strip*);
     /** ABI 22: the global MAIN / ALT switch; switches the channels in GLOBAL INPUT SELECT ENABLE. */
@@ -2254,6 +2331,8 @@ inline const char* verifyLayout()
         { info.blockMeters, sizeof (BlockMeters), "BlockMeters size" },
         { info.offBlockMetersOutPeak, offsetof (BlockMeters, outPeak), "BlockMeters.outPeak" },
         { info.delayBlock, sizeof (DelayBlockParams), "DelayBlockParams size" },
+        { info.amm, sizeof (AmmParams), "AmmParams size" },
+        { info.ammStrip, sizeof (AmmStripParams), "AmmStripParams size" },
     };
 
     if (info.abiVersion != kAbiVersion)

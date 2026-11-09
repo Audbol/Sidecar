@@ -103,7 +103,7 @@ private:
 SetupView::SetupView (UiContext& c, const Theme& t)
     : consoleTab ("CONSOLE", t.accent, t), audioTab ("AUDIO", t.accent, t), remoteTab ("REMOTE", t.accent, t), prefsTab ("PREFERENCES", t.accent, t),
       applyKey ("APPLY", t.accent, t), revertKey ("REVERT", t.accent, t), interfaceChoice (t), compensationKey ("DELAY COMPENSATION", t.accent, t),
-      protectionKey ("OUTPUT PROTECTION", t.accent, t), remote (c, t), ctx (c), theme (t)
+      protectionKey ("OUTPUT PROTECTION", t.accent, t), remote (c, t), mixerConfig (c, t), ctx (c), theme (t)
 {
     const std::pair<ToggleKey*, Page> tabs[] = { { &consoleTab, Page::Console }, { &audioTab, Page::Audio }, { &remoteTab, Page::Remote },
                                                  { &prefsTab, Page::Preferences } };
@@ -144,7 +144,7 @@ SetupView::SetupView (UiContext& c, const Theme& t)
     addChildComponent (revertKey);
 
     interfaceChoice.caption = "INTERFACE";
-    interfaceChoice.items = [] { return juce::StringArray { "WING", "UNIVERSAL", "X32", "PROMIX 01", "02R", "SQ-5" }; };
+    interfaceChoice.items = [] { return juce::StringArray { "WING", "UNIVERSAL", "X32", "PROMIX 01", "02R", "SQ-5", "01V", "DLIVE" }; };
     interfaceChoice.current = [this] { return (int) ctx.interfaceKind; };
     interfaceChoice.choose = [this] (int i)
     {
@@ -170,6 +170,7 @@ SetupView::SetupView (UiContext& c, const Theme& t)
         addChildComponent (child);
 
     addChildComponent (remote);
+    addChildComponent (mixerConfig);
     device = std::make_unique<juce::AudioDeviceSelectorComponent> (ctx.deviceManager, 0, 256, 0, 256, false, false, false, false);
     addChildComponent (*device);
     revert();
@@ -185,16 +186,27 @@ SetupView::~SetupView()
 void SetupView::showPage (Page p)
 {
     page = p;
-    for (auto& r : rows)
-        r->setVisible (p == Page::Console);
-    applyKey.setVisible (p == Page::Console);
-    revertKey.setVisible (p == Page::Console);
+    showConsolePage();
     device->setVisible (p == Page::Audio);
     remote.setVisible (p == Page::Remote);
     for (auto* c : std::initializer_list<juce::Component*> { &interfaceChoice, &compensationKey, &protectionKey })
         c->setVisible (p == Page::Preferences);
     refresh();
     repaint();
+}
+
+void SetupView::showConsolePage()
+{
+    const bool console = page == Page::Console, dlive = ctx.engine.getProfile() == ld::kProfileDLive;
+    for (auto& r : rows)
+        r->setVisible (console && ! dlive);
+    applyKey.setVisible (console && ! dlive);
+    revertKey.setVisible (console && ! dlive);
+    if (mixerConfig.isVisible() != (console && dlive))
+    {
+        mixerConfig.setVisible (console && dlive);
+        mixerConfig.revert();
+    }
 }
 
 int SetupView::getCurrent (Kind k) const
@@ -272,6 +284,9 @@ void SetupView::refresh()
     for (auto* k : { &consoleTab, &audioTab, &remoteTab, &prefsTab, &compensationKey, &protectionKey })
         k->refresh();
     interfaceChoice.refresh();
+    showConsolePage(); // the console may have become a dLive, or stopped being one
+    if (mixerConfig.isVisible())
+        mixerConfig.refresh();
     bool changes = false;
     for (int k = 0; k < NumKinds; ++k)
         changes = changes || pending[(size_t) k] != getCurrent (static_cast<Kind> (k));
@@ -304,6 +319,7 @@ void SetupView::resized()
     }
     area.removeFromTop (sizes::kGap);
     auto console = area.withWidth (juce::jmin (area.getWidth(), 900));
+    mixerConfig.setBounds (console);
     for (auto& r : rows)
     {
         r->setBounds (console.removeFromTop (kRow));

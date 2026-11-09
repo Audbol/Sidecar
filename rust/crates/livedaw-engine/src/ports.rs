@@ -197,6 +197,39 @@ pub static Y02R_PORT_GROUPS: &[PortGroup] = &[
     PortGroup::new("BUS DIRECT", "BUS", IN, None, 0),
 ];
 
+/// The Yamaha 01V's port groups, in the WING's order: its inputs 1-16, the
+/// Option I/O card's 8 channels in and out (engine inputs and outputs 17-24),
+/// 2TR IN and DIGITAL STEREO IN; outputs 1-2 STEREO OUT, 3-6 OMNI OUT 1-4, 7-8
+/// 2TR OUT, 9-10 DIGITAL STEREO OUT (Owner's Manual pp.20-23). Its sources: the
+/// oscillator, BUS 1-4, AUX 1-4 and STEREO.
+pub static Y01V_PORT_GROUPS: &[PortGroup] = &[
+    PortGroup::new("INPUT", "IN", IN, Some(0), 16),
+    PortGroup::new("2TR IN", "2TR", IN, Some(24), 2),
+    PortGroup::new("DIGITAL IN", "DIG", IN, Some(26), 2),
+    PortGroup::new("OSCILLATOR", "OSC", IN, Some(OSC_SOURCE_BASE), NUM_OSCILLATORS as i32),
+    PortGroup::new("OPTION I/O", "OPT", BOTH, Some(16), 8),
+    PortGroup::new("SLOT 2", "S2", BOTH, None, 0),
+    PortGroup::new("SLOT 3", "S3", BOTH, None, 0),
+    PortGroup::new("SLOT 4", "S4", BOTH, None, 0),
+    PortGroup::new("USB AUDIO", "USB", BOTH, None, 0),
+    PortGroup::new("WLIVE PLAY", "PLAY", IN, Some(PLAYBACK_SOURCE_BASE), NUM_PLAYBACK_CHANNELS as i32),
+    PortGroup::new("DANTE", "DAN", BOTH, None, 0),
+    PortGroup::new("USB PLAYER", "PLAYER", IN, Some(USB_PLAYER_SOURCE_BASE), USB_CHANNELS as i32),
+    PortGroup::new("BUS / AUX", "BUS", IN, Some(BUS_SOURCES), 2 * 8),
+    PortGroup::new("STEREO", "ST", IN, Some(MAIN_SOURCES), 2),
+    PortGroup::new("MATRIX", "MTX", IN, None, 0),
+    PortGroup::new("USER SIGNAL", "USR", IN, None, 0),
+    PortGroup::new("MONITOR", "MON", IN, None, 0),
+    PortGroup::new("FX SEND", "FX", IN, None, 0),
+    PortGroup::new("STEREO OUT", "ST", OUT, Some(0), 2),
+    PortGroup::new("OMNI OUT", "OMNI", OUT, Some(2), 4),
+    PortGroup::new("2TR / DIGITAL", "2TR", OUT, Some(6), 4),
+    PortGroup::new("WLIVE REC", "REC", OUT, None, 0),
+    PortGroup::new("RECORDER", "REC", OUT, None, USB_CHANNELS as i32),
+    PortGroup::new("CH DIRECT", "CH", IN, None, 0),
+    PortGroup::new("BUS DIRECT", "BUS", IN, None, 0),
+];
+
 /// The Allen & Heath SQ-5's port groups, in the WING's order: its 16 mic inputs
 /// and its stereo line inputs ST1-ST3 (engine inputs 16-21), its local outputs
 /// (1-12, A and B) and the AES output.
@@ -222,6 +255,54 @@ pub static SQ5_PORT_GROUPS: &[PortGroup] = &[
     PortGroup::new("LOCAL OUT", "LCL", OUT, Some(0), 14),
     PortGroup::new("AES OUT", "AES", OUT, Some(14), 2),
     PortGroup::new("AUX OUT", "AUX", OUT, None, 0),
+    PortGroup::new("WLIVE REC", "REC", OUT, None, 0),
+    PortGroup::new("RECORDER", "REC", OUT, None, USB_CHANNELS as i32),
+    PortGroup::new("CH DIRECT", "CH", IN, None, 0),
+    PortGroup::new("BUS DIRECT", "BUS", IN, None, 0),
+];
+
+/// Where a dLive's sockets sit in the engine's numbering (inputs and outputs
+/// alike): the MixRack's from 0, the DX expanders', the Surface's, the I/O Ports'.
+pub mod dlive_ports {
+    pub const DX_12: i32 = 64;
+    pub const DX_34: i32 = 96;
+    pub const SURFACE: i32 = 128;
+    pub const PORT_1: i32 = 144;
+    pub const PORT_2: i32 = 272;
+    pub const PORT_3: i32 = 400;
+}
+
+/// Buses 17 on (`routing::EXTRA_BUS_SOURCES_AT`).
+const EXTRA_BUS_SOURCES: i32 = STRIP_SOURCE_BASE + crate::routing::EXTRA_BUS_SOURCES_AT as i32;
+
+/// The Allen & Heath dLive's port groups, in the WING's places: a DM64's 64
+/// inputs and 32 outputs (R-nn), the DX expander ports (DX 1/2 and 3/4, 32 each
+/// way), the S-Class Surface's 8 XLR and 2 stereo AES inputs and 8 XLR and 3
+/// stereo AES outputs (S-nn), its USB stereo playback (the USB player), the
+/// three 128-channel I/O Ports (Pn-nn). The USER SIGNAL place holds the second
+/// half of the mixes, which take two groups (a tile per side).
+pub static DLIVE_PORT_GROUPS: &[PortGroup] = &[
+    PortGroup::new("MIXRACK", "R", IN, Some(0), 64),
+    PortGroup::new("SURFACE", "S", IN, Some(dlive_ports::SURFACE), 12),
+    PortGroup::new("AES/EBU IN", "AES", IN, None, 0),
+    PortGroup::new("SIGNAL GEN", "GEN", IN, Some(OSC_SOURCE_BASE), NUM_OSCILLATORS as i32),
+    PortGroup::new("DX 1/2", "DX1", BOTH, Some(dlive_ports::DX_12), 32),
+    PortGroup::new("DX 3/4", "DX3", BOTH, Some(dlive_ports::DX_34), 32),
+    PortGroup::new("I/O PORT 1", "P1", BOTH, Some(dlive_ports::PORT_1), 128),
+    PortGroup::new("I/O PORT 2", "P2", BOTH, Some(dlive_ports::PORT_2), 128),
+    PortGroup::new("USB AUDIO", "USB", BOTH, None, 0),
+    PortGroup::new("MULTITRACK", "PLAY", IN, Some(PLAYBACK_SOURCE_BASE), NUM_PLAYBACK_CHANNELS as i32),
+    PortGroup::new("I/O PORT 3", "P3", BOTH, Some(dlive_ports::PORT_3), 128),
+    PortGroup::new("SURFACE USB", "USB", IN, Some(USB_PLAYER_SOURCE_BASE), USB_CHANNELS as i32),
+    PortGroup::new("MIX 1-16", "MIX", IN, Some(BUS_SOURCES), 2 * 16),
+    PortGroup::new("LR", "LR", IN, Some(MAIN_SOURCES), 2),
+    PortGroup::new("MATRIX", "MTX", IN, Some(MTX_SOURCES), 2 * 8),
+    PortGroup::new("MIX 17-32", "MIX", IN, Some(EXTRA_BUS_SOURCES), 2 * 16),
+    PortGroup::new("MONITOR", "MON", IN, None, 0),
+    PortGroup::new("FX SEND", "FX", IN, None, 0),
+    PortGroup::new("MIXRACK OUT", "R", OUT, Some(0), 32),
+    PortGroup::new("SURFACE OUT", "S", OUT, Some(dlive_ports::SURFACE), 14),
+    PortGroup::new("AES OUT", "AES", OUT, None, 0),
     PortGroup::new("WLIVE REC", "REC", OUT, None, 0),
     PortGroup::new("RECORDER", "REC", OUT, None, USB_CHANNELS as i32),
     PortGroup::new("CH DIRECT", "CH", IN, None, 0),

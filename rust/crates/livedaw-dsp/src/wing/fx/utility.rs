@@ -69,7 +69,7 @@ fn sub_blocks(len: usize, mut f: impl FnMut(usize, usize)) {
 /// rail that never passes +24 dBFS, like an analog output stage. Normal levels
 /// never reach it.
 #[inline]
-pub(super) fn rail(x: f32) -> f32 {
+pub(crate) fn rail(x: f32) -> f32 {
     const KNEE: f32 = 8.0;
     let a = x.abs();
     if a <= KNEE {
@@ -114,7 +114,7 @@ fn fast_exp2(y: f32) -> f32 {
 
 /// 20 log10(level); zero or tiny levels read as -400 dB.
 #[inline]
-fn level_db(x: f32) -> f32 {
+pub(crate) fn level_db(x: f32) -> f32 {
     6.020_6 * fast_log2(x.max(1e-20))
 }
 
@@ -126,7 +126,7 @@ fn power_db(ms: f32) -> f32 {
 
 /// 10^(dB/20).
 #[inline]
-fn db_gain(db: f32) -> f32 {
+pub(crate) fn db_gain(db: f32) -> f32 {
     fast_exp2(db * (1.0 / 6.020_6))
 }
 

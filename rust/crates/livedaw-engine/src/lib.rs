@@ -4,6 +4,7 @@
 //! lock-free atomics shared with the UI; the audio path never allocates, locks
 //! or frees. See `engine.rs` for the per-block signal flow and threading rules.
 
+pub mod amm;
 pub mod analyser;
 pub mod atomic;
 pub mod blocks;

@@ -117,6 +117,17 @@ struct Field
     juce::Colour colour { 0xff3fd06a };
     /** What Sidecar doesn't model: drawn dim, doesn't respond. */
     bool enabled = true;
+    /** What's printed, if not its title (a field is found by its title). */
+    juce::String caption;
+    /** A button's text while not lit, if it differs (On / Off, p.50). */
+    juce::String captionOff;
+    /** A value without its title above the box (the PEQ's columns name the rows once). */
+    bool hideTitle = false;
+    /** A value's box outline, if not the usual one (the PEQ's bands' colours). */
+    juce::Colour outline;
+    /** A button's little picture in place of its text (the PEQ's mode keys, p.40):
+        1 low shelf, 2 bell, 3 high pass, 4 high shelf, 5 low pass; 0 none. */
+    int glyph = 0;
 };
 
 /** The SQ-5's 7" touchscreen, drawn after the Reference Guide's pictures: the title
@@ -215,6 +226,7 @@ private:
     void addSideTabs (const juce::StringArray& names, int& tab);
     Field& addTab (juce::Rectangle<float>, const juce::String& title, int& tab, int value);
     void paintRoutingBank (juce::Graphics&);
+    void paintRoutingColumn (juce::Graphics&, juce::Rectangle<float>, const Slot&, bool isSelected);
     void paintMeters (juce::Graphics&);
     void paintScenes (juce::Graphics&);
     void paintUtility (juce::Graphics&);
@@ -256,7 +268,7 @@ private:
     // Where each screen was left.
     static constexpr int kIoRows = 12, kIoCols = 14;
     int meterTab = 0, sceneTab = 0, safesTab = 0, setupTab = 1, surfaceTab = 0, utilityTab = 0, generalTab = 0, ioTab = 0, fxSlot = 0;
-    int sendFirst = 0, sceneFirst = 0, sceneSelected = 0, ioFirst = 0, ioSocketFirst = 0;
+    int meterFirst = 0, sendFirst = 0, sceneFirst = 0, sceneSelected = 0, ioFirst = 0, ioSocketFirst = 0;
     int assignKind = 0, assignFirst = 0, assignLayer = 0;
     Slot assignChoice;
     bool assignPicked = false, autoIncrement = true, libraryOpen = false;

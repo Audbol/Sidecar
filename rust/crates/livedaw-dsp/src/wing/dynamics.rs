@@ -13,6 +13,7 @@
 //! descriptions in the WING operation manual (section 11.2; page numbers in
 //! the comments below). Nothing here allocates.
 
+use super::fx::amp::oversample::Oversampler4;
 use super::{colour, dial_log, ModelSpec, Params, DYN_MODELS, MAX_DYN_PARAMS};
 use crate::biquad::{Biquad, BiquadCoeffs};
 use crate::util::{db_to_gain, gain_to_db};
@@ -476,6 +477,157 @@ enum Config {
         trans_on: bool,
         comp: CompCfg,
     },
+    /// The dLive's preamp models.
+    Preamp(PreampCfg),
+}
+
+// ---- the dLive's preamp models ----------------------------------------------------------
+//
+// The guide names the controls and says Triode leans even, Pentode odd (mainly
+// 3rd), Bias sets the overdrive and HiDrive goes from break-up to continuous
+// overdrive. Everything else here is Sidecar's reading.
+
+/// 0 dBu on a dLive (+18 dBu = 0 dBFS): the level a pentode stage keeps steady.
+const VALVE_NOMINAL: f32 = 0.125_892;
+/// How far (at the curve's input) Stage-2 stays clean before it breaks up.
+const VALVE_KNEE: f32 = 0.5;
+
+/// A valve stage's transfer curve; `knee` is how far it runs clean first. A
+/// triode's is a parabola with tangent lines past its ends (`x` plus an even
+/// function of it: even harmonics only), flat at the top and steeper below; a
+/// pentode's a cubic (mainly 3rd harmonic), flat beyond it.
+#[inline(always)]
+fn valve_curve(x: f32, triode: bool, knee: f32) -> f32 {
+    let v = x - x.clamp(-knee, knee);
+    if triode {
+        if v >= 2.0 {
+            knee + 1.0
+        } else if v >= -2.0 {
+            x - 0.25 * v * v
+        } else {
+            2.0 * x + knee + 1.0
+        }
+    } else if v.abs() >= 1.5 {
+        (knee + 1.0).copysign(x)
+    } else {
+        x - v * v * v / 6.75
+    }
+}
+
+/// Keeps a stage's output inside +-2, leaving anything under +-1.2 alone.
+#[inline(always)]
+fn valve_limit(y: f32) -> f32 {
+    let v = y - y.clamp(-1.2, 1.2);
+    if v.abs() >= 1.2 {
+        2.0f32.copysign(y)
+    } else {
+        y - v * v * v / 4.32
+    }
+}
+
+/// One valve stage: a gain into its curve, the curve, a gain out of it.
+#[derive(Clone, Copy, Debug)]
+struct ValveStage {
+    triode: bool,
+    pre: f32,
+    post: f32,
+    knee: f32,
+}
+
+impl ValveStage {
+    /// A triode's gain out undoes its gain in (the even harmonics leave its
+    /// fundamental where it was); a pentode's keeps a tone at 0 dBu at its level
+    /// however hard the stage is driven.
+    fn new(triode: bool, pre_db: f32, knee: f32) -> Self {
+        let pre = db_to_gain(pre_db);
+        let post = if triode { 1.0 / pre } else { VALVE_NOMINAL / valve_curve(pre * VALVE_NOMINAL, false, knee) };
+        Self { triode, pre, post, knee }
+    }
+
+    /// HARMONICS or Drive (0..1): how hard the stage is driven; it distorts from the start.
+    fn driven(triode: bool, amount: f32) -> Self {
+        Self::new(triode, if triode { -24.0 + 48.0 * amount } else { 24.0 * amount }, 0.0)
+    }
+
+    /// Stage-2: BIAS (0..1) sets the overdrive. It breaks up past the knee;
+    /// HiDrive takes the knee away and adds 12 dB, so it distorts all the time.
+    fn biased(triode: bool, bias: f32, hidrive: bool) -> Self {
+        let pre_db = -6.0 + 30.0 * bias;
+        if hidrive {
+            Self::new(triode, pre_db + 12.0, 0.0)
+        } else {
+            Self::new(triode, pre_db, VALVE_KNEE)
+        }
+    }
+}
+
+/// A preamp model: one or two valve stages, a shelf and an output gain.
+#[derive(Clone, Copy, Debug)]
+struct PreampCfg {
+    first: ValveStage,
+    second: Option<ValveStage>,
+    /// HF LIFT's gain (linear; 1: none).
+    hf: f32,
+    out: f32,
+}
+
+/// [`PreampCfg`]'s gains that glide (`Coefs::param`), in this order.
+const VALVE_GLIDES: usize = 7;
+
+impl PreampCfg {
+    fn glides(&self) -> [f32; VALVE_GLIDES] {
+        let (pre, post, knee) = self.second.map_or((1.0, 1.0, 0.0), |s| (s.pre, s.post, s.knee));
+        [self.first.pre, self.first.post, pre, post, knee, self.hf, self.out]
+    }
+}
+
+/// `y = b0 (x - x1) + a1 y1`: a first-order high pass at `hz`, as (b0, a1).
+fn one_pole_high_pass(hz: f32, sr: f32) -> (f32, f32) {
+    let k = (std::f32::consts::PI * hz.min(sr * 0.49) / sr).tan();
+    (1.0 / (1.0 + k), (1.0 - k) / (1.0 + k))
+}
+
+/// One channel of a preamp model. Its curves run at 4x, so strong drive doesn't alias.
+#[derive(Clone, Copy, Default)]
+struct PreampChannel {
+    os: Oversampler4,
+    /// `[x1, y1]`: the coupling capacitors between the stages and after them, HF LIFT's band.
+    coupling: [f32; 2],
+    dc: [f32; 2],
+    hf: [f32; 2],
+}
+
+impl PreampChannel {
+    fn reset(&mut self) {
+        self.os.reset();
+        self.coupling = [0.0; 2];
+        self.dc = [0.0; 2];
+        self.hf = [0.0; 2];
+    }
+
+    #[inline]
+    fn high_pass(input: f32, (b0, a1): (f32, f32), state: &mut [f32; 2]) -> f32 {
+        let out = b0 * (input - state[0]) + a1 * state[1];
+        *state = [input, out];
+        out
+    }
+
+    /// `gl`: the glides of [`PreampCfg::glides`].
+    #[inline]
+    fn tick(&mut self, x: f32, cfg: &PreampCfg, gl: &[f32; VALVE_GLIDES], k: &Coefs) -> f32 {
+        let mut over = self.os.up(x);
+        for s in &mut over {
+            let mut y = valve_curve(*s * gl[0], cfg.first.triode, 0.0) * gl[1];
+            if let Some(second) = cfg.second {
+                let coupled = Self::high_pass(y, k.valve_coupling, &mut self.coupling);
+                y = valve_curve(coupled * gl[2], second.triode, gl[4]) * gl[3];
+            }
+            *s = valve_limit(y);
+        }
+        let y = Self::high_pass(self.os.down(over), k.valve_coupling_1x, &mut self.dc);
+        let band = Self::high_pass(y, k.valve_hf, &mut self.hf);
+        (y + (gl[5] - 1.0) * band) * gl[6]
+    }
 }
 
 fn ms_choice(text: &str, default: f32) -> f32 {
@@ -605,6 +757,170 @@ fn configure(spec: &ModelSpec, v: &[f32], sr: f32) -> Config {
         // parallel path; the ducker keyed from its side chain.
         "SQGATE" => Config::Gate(gate(p.f("thr"), p.f("range"), 0.0, p.f("att"), p.f("hld"), p.f("rel"))),
         "SQDUCK" => Config::Duck(gate(p.f("thr"), p.f("range"), 0.0, p.f("att"), p.f("hld"), p.f("rel"))),
+        // The dLive's (`livedaw_dsp::dlive`): thresholds in dBu.
+        "DLVGATE" => Config::Gate(gate(dbu(p.f("thr")), p.f("range"), 0.0, p.f("att"), p.f("hld"), p.f("rel"))),
+        "DLVDUCK" | "DLVDUCKC" => Config::Duck(gate(dbu(p.f("thr")), p.f("range"), 0.0, p.f("att"), p.f("hld"), p.f("rel"))),
+        // Fully open over UPPER and at DEPTH by LOWER: a straight line in dB
+        // (LOG) or that line rounded over the whole span (LIN: Sidecar's reading).
+        "DLVDTEX" => {
+            let (upper, lower, range) = (dbu(p.f("uthr")), dbu(p.f("lthr")), p.f("range"));
+            let span = (upper - lower).max(0.5);
+            let knee = if p.text("exp") == "LIN" { span } else { 0.0 };
+            let mut c = comp(upper, 1.0, 0.0, p.f("att"), p.f("rel"));
+            c.curve = Curve::Expand { thr: upper, ratio: 1.0 + range / span, knee, range };
+            Config::Comp(c)
+        }
+        // A gentle 2:1 under its threshold; the speeds are Sidecar's reading.
+        "DLVSRCX" => {
+            let (att, rel) = match p.text("spd") {
+                "SLOW" => (50.0, 1000.0),
+                "FAST" => (5.0, 150.0),
+                _ => (20.0, 400.0),
+            };
+            let thr = dbu(p.f("thr"));
+            let mut c = comp(thr, 1.0, 0.0, att, rel);
+            c.curve = Curve::Expand { thr, ratio: 2.0, knee: 6.0, range: p.f("range") };
+            c.rms = true;
+            Config::Comp(c)
+        }
+        "DLVPEAK" | "DLVRMS" => {
+            use crate::sq::{PARALLEL_OFF_DB, RATIOS, SOFT_KNEE_DB};
+            let ratio = RATIOS[p.choice("ratio").min(RATIOS.len() - 1)];
+            let knee = if p.on("soft") { SOFT_KNEE_DB } else { 0.0 };
+            let mut c = comp(dbu(p.f("thr")), ratio, knee, p.f("att"), p.f("rel"));
+            c.rms = spec.token == "DLVRMS";
+            c.post_db = p.f("gain");
+            if p.on("par") {
+                let level = |db: f32| if db <= PARALLEL_OFF_DB { 0.0 } else { db_to_gain(db) };
+                c.parallel = Some((level(p.f("dry")), level(p.f("wet"))));
+            }
+            Config::Comp(c)
+        }
+        // VCA and RMS, its release a steady rate; past infinity the output falls
+        // as the level rises (-1: 1 dB down for every 1 dB over).
+        "DLV16T" | "DLV16VU" => {
+            let thr = dbu(p.f("thr"));
+            let text = p.text("ratio");
+            let slope = match text {
+                "-5" => -1.2,
+                "-2" => -1.5,
+                "-1" => -2.0,
+                "INF" => -1.0,
+                t => slope_of(ms_choice(t.trim_end_matches(":1"), 2.0)),
+            };
+            let knee = if p.on("knee") { 12.0 } else { 0.0 };
+            let mut c = CompCfg { rms: true, release: Release::Rate(120.0), ..comp(thr, 2.0, knee, 15.0, 100.0) };
+            c.curve = Curve::Comp { thr, slope, knee };
+            c.post_db = p.f("out");
+            if spec.token == "DLV16VU" {
+                c.colour = 0.12;
+            }
+            Config::Comp(c)
+        }
+        // A very fast attack; RELEASE is a rate; THRESHOLD in dBv (+2.2 dBu).
+        "DLVMIGHT" => {
+            let mut c = comp(dbu(p.f("thr") + 2.2), 20.0, 2.0, 0.1, 100.0);
+            c.release = Release::Rate(20.0 / p.f("rel").max(0.01));
+            c.rms = p.text("det") == "AVG";
+            c.post_db = p.f("out");
+            c.colour = 0.1;
+            Config::Comp(c)
+        }
+        // An optical cell: fast at the start of its recovery, then smooth and slow.
+        // BURN holds more of the reduction back for longer (Sidecar's reading of a
+        // panel key the guide doesn't describe; TRANSIENT likewise).
+        "DLVOPTO" => {
+            let att = match p.text("att") {
+                "FAST" => 2.0,
+                "SLOW" => 40.0,
+                _ => 10.0,
+            };
+            let (rel, first, second) = match p.text("rec") {
+                "FAST" => (60.0, 500.0, 2500.0),
+                "SLOW" => (250.0, 2500.0, 12000.0),
+                _ => (120.0, 1200.0, 6000.0),
+            };
+            let burn = if p.on("burn") { 1.8 } else { 1.0 };
+            let mut c = comp(dbu(p.f("thr")), p.f("ratio"), 6.0, att, rel);
+            c.release = Release::Stages([stage(0.4, 400.0, first * burn), stage(0.2, 3000.0, second * burn)]);
+            if p.on("trans") {
+                c.attack = Attack::Crest { min_scale: 0.1 };
+            }
+            c.rms = true;
+            c.post_db = p.f("out");
+            c.colour = 0.08;
+            Config::Comp(c)
+        }
+        // A leveling amplifier; EMPHASIS shapes the side chain; UNIT B holds on longer.
+        "DLVOTRON" => {
+            let mut c = leveler(p.f("gain"), p.f("peak"), p.text("mode") == "LIMIT");
+            c.det_tilt = match p.text("emph") {
+                "FLAT" => 0.0,
+                "80" => 0.3,
+                _ => 0.5,
+            };
+            if p.text("unit") == "B" {
+                c.release = Release::Stages([stage(0.4, 500.0, 2200.0), stage(0.25, 4000.0, 11000.0)]);
+                c.colour = 0.18;
+            }
+            Config::Comp(c)
+        }
+        "DLVBUS" => {
+            let rel_text = p.text("rel");
+            let auto = rel_text == "AUTO";
+            let rel_ms = if auto { 1200.0 } else { ms_choice(rel_text, 0.4) * 1000.0 };
+            let mut c = comp(dbu(p.f("thr")), p.f("ratio"), 1.0, p.f("att"), rel_ms);
+            if auto {
+                c.release = Release::TwoStage { fast_ms: 100.0, split_db: 6.0 };
+            }
+            c.post_db = p.f("gain");
+            c.colour = 0.05;
+            Config::Comp(c)
+        }
+        // Soft knee but at 20:1 and SMASH; 10:1 is its opto mode, as the panel
+        // marks; BRIT is the 76's all-buttons; the DISTORTION modes get stronger,
+        // the DETECTOR's filters make it listen more to the top end.
+        "DLVSTORT" => {
+            let text = p.text("ratio");
+            let (smash, brit) = (text == "SMASH", text == "BRIT");
+            let ratio: f32 = if smash {
+                999.0
+            } else if brit {
+                20.0
+            } else {
+                ms_choice(text.trim_end_matches(":1"), 4.0)
+            };
+            let opto = (ratio - 10.0).abs() < 0.01;
+            let knee = if smash || (ratio >= 20.0 && !brit) {
+                0.0
+            } else if brit {
+                6.0
+            } else {
+                8.0
+            };
+            let att = if smash || brit {
+                0.05
+            } else if opto {
+                dial_log(p.f("att"), 5.0, 30.0)
+            } else {
+                dial_log(p.f("att"), 0.05, 30.0)
+            };
+            let rel = if brit { 60.0 } else { dial_log(p.f("rel"), 50.0, 3500.0) };
+            let mut c = comp(-20.0, ratio, knee, att, rel);
+            if opto {
+                c.release = Release::Stages([stage(0.4, 500.0, dial_log(p.f("rel"), 1000.0, 20000.0)), Stage::default()]);
+            }
+            c.pre_db = p.f("in") * 4.0;
+            c.post_db = (p.f("out") - 5.0) * 4.0;
+            c.colour = match p.text("dist") {
+                "B" => 0.16,
+                "C" => 0.14,
+                "D" => 0.24,
+                _ => 0.08,
+            } + if brit { 0.1 } else { 0.0 };
+            c.det_tilt = 0.3 * f32::from(u8::from(p.on("hp"))) + 0.5 * f32::from(u8::from(p.on("bp")));
+            Config::Comp(c)
+        }
         "SQCOMP" => {
             use crate::sq::{PARALLEL_OFF_DB, RATIOS, SOFT_KNEE_DB};
             let ratio = RATIOS[p.choice("ratio").min(RATIOS.len() - 1)];
@@ -719,6 +1035,27 @@ fn configure(spec: &ModelSpec, v: &[f32], sr: f32) -> Config {
             trim: p.f("trim"),
             mix: p.f("wmix") / 100.0,
         },
+        // The dLive's preamp models (`livedaw_dsp::dlive`); all Sidecar's reading.
+        // HF LIFT's marks read as dB of a shelf (`Coefs::valve_hf`).
+        "DLVVALVE" => Config::Preamp(PreampCfg {
+            first: ValveStage::driven(p.text("s1") == "TRIODE", p.f("harm") / 100.0),
+            second: match p.text("s2") {
+                "OFF" => None,
+                stage => Some(ValveStage::biased(stage == "TRIODE", p.f("bias") / 100.0, p.on("hidrv"))),
+            },
+            hf: db_to_gain(p.f("hf")),
+            out: db_to_gain(p.f("out")),
+        }),
+        // Tube Stage's three unnamed modes: a triode, a pentode, the one into the other.
+        "DLVTUBE" => {
+            let drive = p.f("drive") / 100.0;
+            let (first, second) = match p.choice("mode") {
+                0 => (ValveStage::driven(true, drive), None),
+                1 => (ValveStage::driven(false, drive), None),
+                _ => (ValveStage::driven(true, drive), Some(ValveStage::driven(false, drive))),
+            };
+            Config::Preamp(PreampCfg { first, second, hf: 1.0, out: db_to_gain(p.f("level")) })
+        }
 
         // ---- compressors ---------------------------------------------------------------
         // The X32's compressor and expander (`livedaw_dsp::x32`) are the
@@ -846,7 +1183,7 @@ fn configure(spec: &ModelSpec, v: &[f32], sr: f32) -> Config {
             }
             Config::Comp(c)
         }
-        "76LA" => {
+        "76LA" | "DLV76" => {
             // FET limiter: the input knob drives a fixed threshold; knobs at 7 are
             // fastest. Release 1.1 s (1) .. 50 ms (7), attack 800 us .. 20 us.
             let all = p.text("ratio") == "ALL";
@@ -857,6 +1194,17 @@ fn configure(spec: &ModelSpec, v: &[f32], sr: f32) -> Config {
             c.pre_db = p.f("in") + 24.0;
             c.post_db = p.f("out") + 24.0;
             c.colour = if all { 0.3 } else { 0.15 };
+            // The dLive's: UNIT 2 is the black vintage one. Its INPUT is a real gain
+            // before the limiter, except that GAIN LINK turns the output down as
+            // the input goes up, which cancels it.
+            if spec.token == "DLV76" {
+                if p.text("unit") == "2" {
+                    c.colour += 0.08;
+                }
+                if !p.on("link") {
+                    c.post_db += c.pre_db;
+                }
+            }
             Config::Comp(c)
         }
         "LA" => Config::Comp(leveler(p.f("ingain"), p.f("peak"), p.text("mode") == "LIM")),
@@ -1190,6 +1538,11 @@ struct Coefs {
     param: f32,
     /// Per-sample step of the ON / OFF crossfade (5 ms).
     fade_step: f32,
+    /// The preamp models: their coupling capacitors (5 Hz; at 4x, and after
+    /// the stages) and HF LIFT's band (8 kHz, Sidecar's reading).
+    valve_coupling: (f32, f32),
+    valve_coupling_1x: (f32, f32),
+    valve_hf: (f32, f32),
 }
 
 impl Coefs {
@@ -1214,6 +1567,9 @@ impl Coefs {
             ride: coef(300.0, sr),
             param: coef(10.0, sr),
             fade_step: 1.0 / (0.005 * sr),
+            valve_coupling: one_pole_high_pass(5.0, 4.0 * sr),
+            valve_coupling_1x: one_pole_high_pass(5.0, sr),
+            valve_hf: one_pole_high_pass(8000.0, sr),
         }
     }
 }
@@ -1251,6 +1607,10 @@ pub struct WingDynamics {
     ride_hold: u32,
     // Saturation tone filter state per channel
     warm_lp: [f32; 2],
+    // The preamp models: one per channel, and their gains as they glide
+    preamp: [PreampChannel; 2],
+    preamp_glides: [f32; VALVE_GLIDES],
+    preamp_primed: bool,
     k: Coefs,
     /// ON / OFF crossfade: 1 = processing, 0 = bypassed.
     wet: f32,
@@ -1285,6 +1645,9 @@ impl Default for WingDynamics {
             ride_ms: 0.0,
             ride_hold: 0,
             warm_lp: [0.0; 2],
+            preamp: [PreampChannel::default(); 2],
+            preamp_glides: [0.0; VALVE_GLIDES],
+            preamp_primed: false,
             k: Coefs::default(),
             wet: 0.0,
             mix_s: 1.0,
@@ -1406,8 +1769,14 @@ impl WingDynamics {
         self.ride_ms = 0.0;
         self.ride_hold = 0;
         self.warm_lp = [0.0; 2];
+        self.clear_preamp();
         self.wet = 0.0;
         self.primed = false;
+    }
+
+    fn clear_preamp(&mut self) {
+        self.preamp.iter_mut().for_each(PreampChannel::reset);
+        self.preamp_primed = false;
     }
 
     /// Runs the models of `table` (a console's dynamics table: its profile's
@@ -1465,6 +1834,7 @@ impl WingDynamics {
         self.ride_ms = 0.0;
         self.ride_hold = 0;
         self.warm_lp = [0.0; 2];
+        self.clear_preamp();
     }
 
     /// Filters used by the de-esser and dynamic EQ.
@@ -1781,6 +2151,26 @@ impl WingDynamics {
                     y[1] = y[0];
                 }
                 st.active |= drive > 0.2;
+                (None, y)
+            }
+            Config::Preamp(cfg) => {
+                let target = cfg.glides();
+                if !self.preamp_primed {
+                    self.preamp_glides = target;
+                    self.preamp_primed = true;
+                }
+                let c = self.k.param;
+                for (g, t) in self.preamp_glides.iter_mut().zip(target) {
+                    *g = smooth(*g, t, c);
+                }
+                let mut y = x;
+                for (ch, v) in y.iter_mut().enumerate().take(if stereo { 2 } else { 1 }) {
+                    *v = self.preamp[ch].tick(*v, &cfg, &self.preamp_glides, &self.k);
+                }
+                if !stereo {
+                    y[1] = y[0];
+                }
+                st.active = true;
                 (None, y)
             }
             Config::Lmt { speed, trans, trans_gain, trans_on, comp } => {

@@ -63,6 +63,13 @@ void setShownProfile (ld::ProfileId profile)
     ld::ld_models_show_profile (profile); // the model menus and editors: its models
 }
 
+void setShownSlots (const ld::Engine* engine)
+{
+    auto& s = shown();
+    s.slots.assign ((size_t) juce::jmax (0, ld::ld_engine_slot_ranges (engine, nullptr, 0)), {});
+    ld::ld_engine_slot_ranges (engine, s.slots.data(), (int32_t) s.slots.size());
+}
+
 ld::ProfileId shownProfile() noexcept { return shown().profile; }
 
 const char* label (StripKind kind) noexcept

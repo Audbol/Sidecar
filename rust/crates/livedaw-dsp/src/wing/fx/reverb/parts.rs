@@ -16,10 +16,10 @@ use crate::wing::fx::blocks::{db_to_gain, DelayLine, Svf};
 use std::f32::consts::{LOG2_10, TAU};
 
 /// Samples per control step.
-pub(super) const CTL: usize = 32;
+pub(crate) const CTL: usize = 32;
 
 /// A device processed sample by sample with a control step every [`CTL`].
-pub(super) trait Voice {
+pub(crate) trait Voice {
     /// Samples left until the next control step.
     fn clock(&mut self) -> &mut usize;
     fn control(&mut self);
@@ -28,7 +28,7 @@ pub(super) trait Voice {
 
 /// Runs a [`Voice`] over a block in place.
 #[inline]
-pub(super) fn run<V: Voice>(v: &mut V, left: &mut [f32], right: &mut [f32]) {
+pub(crate) fn run<V: Voice>(v: &mut V, left: &mut [f32], right: &mut [f32]) {
     for (l, r) in left.iter_mut().zip(right.iter_mut()) {
         if *v.clock() == 0 {
             *v.clock() = CTL;
@@ -41,18 +41,18 @@ pub(super) fn run<V: Voice>(v: &mut V, left: &mut [f32], right: &mut [f32]) {
 
 /// Added to recirculating paths so idle tails never decay into denormals
 /// (far below anything audible; the output lo cut removes the offset).
-pub(super) const TINY: f32 = 1e-18;
+pub(crate) const TINY: f32 = 1e-18;
 
 /// Hard safety limit for anything written into a feedback path.
-pub(super) const LIM: f32 = 24.0;
+pub(crate) const LIM: f32 = 24.0;
 
 /// `-3 * log2(10)`: `2^(K60 * t / T60)` is the gain after `t` seconds of a
 /// decay that falls 60 dB in `T60`.
-pub(super) const K60: f32 = -3.0 * LOG2_10;
+pub(crate) const K60: f32 = -3.0 * LOG2_10;
 
 /// A control value smoothed at the control rate.
 #[derive(Clone, Copy, Default, Debug)]
-pub(super) struct Param {
+pub(crate) struct Param {
     pub cur: f32,
     pub target: f32,
 }
@@ -105,12 +105,12 @@ impl Param {
 }
 
 /// Per-control-step smoothing coefficient for a time constant in ms.
-pub(super) fn rate(ms: f32, sr: f32) -> f32 {
+pub(crate) fn rate(ms: f32, sr: f32) -> f32 {
     1.0 - (-(CTL as f32) / (ms * 0.001 * sr).max(1.0)).exp()
 }
 
 /// A console fader level in dB (-60 and below = off) as a gain.
-pub(super) fn fader(db: f32) -> f32 {
+pub(crate) fn fader(db: f32) -> f32 {
     if db <= -60.0 {
         0.0
     } else {
@@ -119,7 +119,7 @@ pub(super) fn fader(db: f32) -> f32 {
 }
 
 /// Deterministic hash of `i` and `seed` to 0..1.
-pub(super) fn hash01(i: u32, seed: u32) -> f32 {
+pub(crate) fn hash01(i: u32, seed: u32) -> f32 {
     let mut x = i.wrapping_mul(0x9E37_79B9) ^ seed.wrapping_mul(0x85EB_CA6B);
     x ^= x >> 16;
     x = x.wrapping_mul(0x7FEB_352D);
@@ -130,7 +130,7 @@ pub(super) fn hash01(i: u32, seed: u32) -> f32 {
 }
 
 /// A deterministic sign for `i`.
-pub(super) fn sign(i: u32, seed: u32) -> f32 {
+pub(crate) fn sign(i: u32, seed: u32) -> f32 {
     if hash01(i, seed) < 0.5 {
         -1.0
     } else {
@@ -139,7 +139,7 @@ pub(super) fn sign(i: u32, seed: u32) -> f32 {
 }
 
 /// One-pole low-pass coefficient for a corner in Hz.
-pub(super) fn pole(hz: f32, sr: f32) -> f32 {
+pub(crate) fn pole(hz: f32, sr: f32) -> f32 {
     1.0 - (-TAU * hz.clamp(1.0, sr * 0.49) / sr).exp()
 }
 
@@ -147,7 +147,7 @@ pub(super) fn pole(hz: f32, sr: f32) -> f32 {
 /// (Hermite reads) to reach each control step's target by the next one; once
 /// settled it reads an integer tap.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct Pos {
+pub(crate) struct Pos {
     f: f32,
     inc: f32,
     i: usize,
@@ -189,7 +189,7 @@ impl Pos {
 /// `N` relative delay lengths (mean 1) spread geometrically from `lo` to `hi`
 /// with a little deterministic jitter, bit-reverse ordered so even (left-fed)
 /// and odd (right-fed) lines both get short and long ones.
-pub(super) fn spread<const N: usize>(lo: f32, hi: f32, seed: u32) -> [f32; N] {
+pub(crate) fn spread<const N: usize>(lo: f32, hi: f32, seed: u32) -> [f32; N] {
     let mut sorted = [0.0f32; N];
     for (i, v) in sorted.iter_mut().enumerate() {
         let t = (i as f32 + 0.35 * (hash01(i as u32, seed) - 0.5)) / (N as f32 - 1.0).max(1.0);
@@ -326,7 +326,7 @@ const PROBES: usize = 24;
 /// Frequency-dependent decay: `bands` are decay rates (1 / RT60 in s, 0 =
 /// infinite) for low, low-mid, high-mid and high, split at `xo` (Hz).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct Decay {
+pub(crate) struct Decay {
     pub bands: [f32; 4],
     pub xo: [f32; 3],
 }
@@ -358,7 +358,7 @@ impl Decay {
 /// (plates, dense rooms) builds density faster and multiplies the modes. The first quarter of the lines are modulated.
 /// Each line has its own input (see [`BuildUp`]); the left output is taken
 /// from the even lines and the right from the odd.
-pub(super) struct Fdn<const N: usize> {
+pub(crate) struct Fdn<const N: usize> {
     sr: f32,
     lines: Lines<N>,
     aps: Option<Lines<N>>,
@@ -658,7 +658,7 @@ impl<const N: usize> Fdn<N> {
 
 /// A chain of four Schroeder allpasses smearing transients into a dense
 /// wash before the tank (the 480L's input diffusion).
-pub(super) struct Diffuser {
+pub(crate) struct Diffuser {
     lines: Vec<DelayLine>,
     base: [f32; 4],
     pos: [Pos; 4],
@@ -706,7 +706,7 @@ impl Diffuser {
 /// optionally faded in over the first `ramp` samples (a plate's ATTACK).
 /// Each tap feeds its own line (even lines from the left, odd from the
 /// right), so the taps never sum into a comb filter.
-pub(super) struct BuildUp<const N: usize> {
+pub(crate) struct BuildUp<const N: usize> {
     /// Left and right pre-delay lines.
     lines: Lines<2>,
     pub pre: Param,
@@ -836,7 +836,7 @@ impl<const N: usize> BuildUp<N> {
 
 /// A set of discrete taps per channel (early reflections, reflection
 /// clusters). Tap times and gains glide to new settings.
-pub(super) struct Taps<const K: usize> {
+pub(crate) struct Taps<const K: usize> {
     lines: Vec<DelayLine>,
     pos: [[Param; K]; 2],
     gain: [[Param; K]; 2],
@@ -918,7 +918,7 @@ impl<const K: usize> Taps<K> {
 /// A delay read whose time jumps with a short crossfade between two heads,
 /// like a digital delay's time control: no pitch sweep, no click.
 #[derive(Clone, Copy, Debug)]
-pub(super) struct XHead {
+pub(crate) struct XHead {
     pos: [usize; 2],
     active: usize,
     target: usize,
@@ -970,7 +970,7 @@ impl XHead {
 /// The 480L's pre-echoes: a delay per side fed from after the input diffusion
 /// and returned before it (FEED; the loop is damped above ~6 kHz), and heard
 /// in the output at `level`. Time 0 switches a side off.
-pub(super) struct Echo {
+pub(crate) struct Echo {
     lines: Vec<DelayLine>,
     heads: [XHead; 2],
     pub feed: [Param; 2],
@@ -1047,7 +1047,7 @@ impl Echo {
 
 /// The wet output: lo cut and hi cut (12 dB/oct), stereo width (mid/side;
 /// 0 = mono, 1 = as generated, more is wider), balance and level.
-pub(super) struct Output {
+pub(crate) struct Output {
     sr: f32,
     hp: [Svf; 2],
     lp: [Svf; 2],

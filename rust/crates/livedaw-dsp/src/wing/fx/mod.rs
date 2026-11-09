@@ -18,22 +18,22 @@
 pub mod blocks;
 pub mod meters;
 
-mod amp;
-mod delay;
+pub(crate) mod amp;
+pub(crate) mod delay;
 mod eqfx;
-mod modulation;
-mod pitch;
-mod reverb;
+pub(crate) mod modulation;
+pub(crate) mod pitch;
+pub(crate) mod reverb;
 mod sq_voices;
 #[cfg(test)]
 mod time_audit;
-mod utility;
+pub(crate) mod utility;
 mod x32_combos;
 mod x32_dynamics;
 mod x32_eqs;
 mod x32_inserts;
 mod x32_misc;
-mod x32_voices;
+pub(crate) mod x32_voices;
 
 use super::{ModelCategory, ModelSpec, Params, FX_MODELS, MAX_FX_PARAMS};
 use crate::model::ModelTables;
@@ -120,10 +120,11 @@ pub fn allowed_in_slot(model: usize, slot: usize) -> bool {
 }
 
 /// Whether device `model` of a console's FX table may run in FX slot `slot`
-/// (0-based): premium devices need its premium slots, the rest run anywhere.
+/// (0-based): premium devices need its premium slots, the rest run anywhere
+/// (`fx_premium_first`..`fx_premium_slots`).
 pub fn allowed_in(models: &ModelTables, model: usize, slot: usize) -> bool {
     match models.fx.get(model) {
-        Some(m) => m.category != ModelCategory::FxPremium || slot < models.fx_premium_slots,
+        Some(m) => m.category != ModelCategory::FxPremium || (models.fx_premium_first..models.fx_premium_slots).contains(&slot),
         None => false,
     }
 }
@@ -148,7 +149,9 @@ pub fn create(token: &str, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
         .or_else(|| crate::x32::fx::create(token, ctx))
         .or_else(|| crate::promix::fx::create(token, ctx))
         .or_else(|| crate::y02r::fx::create(token, ctx))
+        .or_else(|| crate::y01v::fx::create(token, ctx))
         .or_else(|| sq_voices::create(token, ctx))
+        .or_else(|| crate::dlive_fx::create(token, ctx))
 }
 
 /// The devices whose screen graph is their measured frequency response.
@@ -371,6 +374,10 @@ pub(crate) mod tests {
             &crate::y02r::fx::FX_MODELS
         } else if crate::sq::fx::is_sq(token) {
             &crate::sq::fx::FX_MODELS
+        } else if crate::dlive_fx::is_dlive(token) {
+            &crate::dlive_fx::FX_MODELS
+        } else if crate::y01v::fx::is_01v(token) {
+            &crate::y01v::fx::FX_MODELS
         } else {
             FX_MODELS
         };

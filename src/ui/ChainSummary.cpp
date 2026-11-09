@@ -12,6 +12,11 @@ namespace
     bool insertOn (const InsertParams& i) { return i.on.load() && i.fx.load() >= 0; }
 } // namespace
 
+juce::String stepName (const Strip& strip, const ChainStep& s)
+{
+    return s.isBlock() && s.uid == ld::ld_strip_preamp_block (strip.getHandle()) ? juce::String ("PREAMP") : stepName (s);
+}
+
 juce::String stepName (const ChainStep& s)
 {
     switch (s.kind)

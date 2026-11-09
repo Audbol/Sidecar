@@ -30,6 +30,8 @@ struct Look
     bool blackSections = false;
     /** A key's LED (a look that isn't backlit): its size, round where they're equal. */
     float ledWidth = 14.0f, ledHeight = 3.5f;
+    /** Blank keys without an LED have a moulded bar across their face. */
+    bool keyBar = true;
 
     /** A fader cap: a moulded block with grip ridges and a centre line (the
         Yamahas'), or a tall brushed-metal cap with a scooped face (the X32's). */
@@ -38,7 +40,9 @@ struct Look
         Block,
         Metal,
         /** The SQ's: tall and white, waisted in the middle. */
-        Waisted
+        Waisted,
+        /** The dLive's: tall, ribbed and grey (ribbedFaderCap). */
+        Ribbed
     };
     Cap cap = Cap::Block;
 
@@ -64,6 +68,8 @@ struct Look
     static const Look& y02r();
     /** The Allen & Heath SQ-5's black panel, backlit keys, silver knobs, white fader caps. */
     static const Look& sq();
+    /** The Allen & Heath dLive's (photographs of a C1500). */
+    static const Look& dlive();
 };
 
 /** The console's panel over `area`: a slight gradient, a fine brushed texture
@@ -82,6 +88,10 @@ void key (juce::Graphics&, juce::Rectangle<float> area, const juce::String& text
           const Look&, juce::Colour face = {}, bool led = true);
 /** A fader's slot from `top` to `bottom` at `x`, and its cap centred on `y`
     (`colour`: a coloured cap, the ProMix's ST OUT; transparent: the look's). */
+/** The Yamaha consoles' tall waisted fader cap: ribbed above and below the waist, a pale
+    line across it at the fader's position. Centred on (x, y), half its width and height,
+    half its width at the waist, its plastic's colour. */
+void ribbedFaderCap (juce::Graphics&, float x, float y, float halfWidth, float halfHeight, float waist, juce::Colour face);
 void faderSlot (juce::Graphics&, float x, float top, float bottom, const Look&);
 void faderCap (juce::Graphics&, float x, float y, float width, const Look&, juce::Colour colour = {});
 /** A knob cap in `area` turned to `fraction` (0..1 over 300 degrees), with an

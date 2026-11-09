@@ -73,7 +73,8 @@ public:
             expectEquals (routing::sourceAt (Group::Bus, 32), -1);
             expectEquals (routing::sourceAt (Group::Main, 7), MixerEngine::stripSource (StripKind::Main, 3, 1));
             expectEquals (routing::sourceAt (Group::Matrix, 2), MixerEngine::stripSource (StripKind::Matrix, 1, 0));
-            expectEquals (MixerEngine::stripSource (StripKind::Bus, 16, 0), -1); // past the WING's 16
+            expectEquals (routing::sourceLabel (MixerEngine::stripSource (StripKind::Bus, 16, 1)), juce::String ("BUS 17R")); // past the WING's 16
+            expectEquals (MixerEngine::stripSource (StripKind::Bus, 64, 0), -1);
             expectEquals (MixerEngine::stripSource (StripKind::Channel, 0, 0), -1);
             const int bus12r = routing::sourceAt (Group::Bus, 23);
             expectEquals (routing::sourceLabel (bus12r), juce::String ("BUS 12R"));

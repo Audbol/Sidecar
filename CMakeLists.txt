@@ -48,6 +48,12 @@ if(MSVC)
 else()
     option(LIVEDAW_PCH "Precompile the JUCE and standard library headers" OFF)
 endif()
+# Link-time optimisation: what releases want, and by far the slowest part of a build. The
+# "dev" preset (CMakePresets.json) turns it off for building and testing while working.
+option(LIVEDAW_LTO "Link-time optimisation in Release builds" ON)
+if(MSVC AND LIVEDAW_LTO)
+    add_link_options("$<$<CONFIG:Release>:/CGTHREADS:8>") # the link's code generation: as many threads as it takes
+endif()
 option(LIVEDAW_ASIO "Windows only: enable ASIO (uses the ASIO SDK bundled with JUCE, GPLv3)" ON)
 set(LIVEDAW_ASIO_SDK_DIR "" CACHE PATH "Windows only, optional: use this ASIO SDK instead of JUCE's bundled copy")
 set(LIVEDAW_VST2_SDK_DIR "" CACHE PATH "Optional: path to a legacy VST2 SDK (enables VST2 hosting)")
@@ -206,7 +212,7 @@ function(livedaw_configure_juce_target target)
             juce::juce_dsp
         PUBLIC
             juce::juce_recommended_config_flags
-            juce::juce_recommended_lto_flags
+            $<$<BOOL:${LIVEDAW_LTO}>:juce::juce_recommended_lto_flags>
             juce::juce_recommended_warning_flags
             livedaw_warning_overrides)
 
@@ -220,6 +226,21 @@ function(livedaw_configure_juce_target target)
         endif()
         file(GLOB juce_module_sources "${juce_modules}/*/*.cpp" "${juce_modules}/*/*.mm")
         set_source_files_properties(${juce_module_sources} TARGET_DIRECTORY ${target} PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+    endif()
+endfunction()
+
+# Debug symbols on a test program. Without link-time optimisation it's for speed: symbols in
+# the object files, no PDB server to queue for, an incremental link.
+function(livedaw_add_symbols target)
+    if(NOT MSVC)
+        return()
+    endif()
+    if(LIVEDAW_LTO)
+        target_compile_options(${target} PRIVATE /Zi)
+        target_link_options(${target} PRIVATE /DEBUG /OPT:REF /OPT:ICF)
+    else()
+        target_compile_options(${target} PRIVATE /Z7)
+        target_link_options(${target} PRIVATE /DEBUG:FASTLINK /INCREMENTAL /OPT:NOREF /OPT:NOICF)
     endif()
 endfunction()
 
@@ -307,6 +328,10 @@ set(LIVEDAW_UI_SOURCES
     src/ui/X32Surface.cpp
     src/ui/ProMixSurface.cpp
     src/ui/Y02RSurface.cpp
+    src/ui/Y01VSurface.cpp
+    src/ui/DLiveSurface.cpp
+    src/ui/DLiveC3500Surface.cpp
+    src/ui/DLiveScreens.cpp
     src/ui/Sq5Surface.cpp
     src/ui/Sq5Display.cpp
     src/ui/Sq5Screens.cpp
@@ -331,6 +356,7 @@ set(LIVEDAW_UI_SOURCES
     src/ui/universal/LibraryView.cpp
     src/ui/universal/RecorderView.cpp
     src/ui/universal/SetupView.cpp
+    src/ui/universal/MixerConfigPanel.cpp
     src/ui/MidiRemoteUi.cpp
     src/ui/DawSurface.cpp)
 
@@ -391,7 +417,7 @@ target_link_libraries(SidecarPluginHost
         juce::juce_audio_processors
     PUBLIC
         juce::juce_recommended_config_flags
-        juce::juce_recommended_lto_flags
+        $<$<BOOL:${LIVEDAW_LTO}>:juce::juce_recommended_lto_flags>
         juce::juce_recommended_warning_flags
         livedaw_warning_overrides)
 if(APPLE)
@@ -450,10 +476,7 @@ if(LIVEDAW_BUILD_TESTS)
     livedaw_configure_juce_target(LiveDAWTests)
     target_link_libraries(LiveDAWTests PRIVATE LiveDAWResources) # the screen fonts (the plugin chain view)
     # Symbols, so the stack a crash prints (tests/TestMain.cpp) names the functions.
-    if(MSVC)
-        target_compile_options(LiveDAWTests PRIVATE /Zi)
-        target_link_options(LiveDAWTests PRIVATE /DEBUG /OPT:REF /OPT:ICF)
-    endif()
+    livedaw_add_symbols(LiveDAWTests)
 
     # The sandbox tests start the real helper (with its test plugins).
     add_dependencies(LiveDAWTests SidecarPluginHost)
@@ -494,10 +517,8 @@ if(LIVEDAW_BUILD_TESTS)
     livedaw_configure_juce_target(SidecarMonkey)
     target_link_libraries(SidecarMonkey PRIVATE LiveDAWResources)
     # Symbols, so a crash's stack in the monkey's log names the functions.
-    if(MSVC)
-        target_compile_options(SidecarMonkey PRIVATE /Zi)
-        target_link_options(SidecarMonkey PRIVATE /DEBUG /OPT:REF /OPT:ICF)
-    else()
+    livedaw_add_symbols(SidecarMonkey)
+    if(NOT MSVC)
         target_compile_options(SidecarMonkey PRIVATE -g)
     endif()
 endif()

@@ -19,6 +19,67 @@ All notable changes to Sidecar are listed here. Versions follow
   chosen in the start-up window and SETUP's INTERFACE, and has its own surface and
   touchscreen screens drawn from the manual's pictures. C ABI 53. Its add-on effects,
   TCP MIDI, and several Setup and Utility pages follow.
+- A start on the Yamaha 01V (the original): its 42 effect types, offered on any Universal
+  strip, and its console profile (24 inputs on 22 channels, 4 auxes, 4 buses, 2 effect sends
+  and returns, signal chains from the manual's block diagrams, 2-band EQ on channels 17-24,
+  three fader laws). It can be chosen in the start-up window and SETUP's INTERFACE and runs
+  on the Universal Mixer. C ABI 54. Its MIDI and its own surface follow.
+- The dLive's Mixer Config, on SETUP's CONSOLE page: how its 64 busses are laid out as mono and
+  stereo Groups, Aux, FX sends and Matrices, and its IP Stereo Config, which of the 64 input pairs
+  are one stereo channel. APPLY resets the mixes and keeps the channels, FX and DCAs, as the
+  console does (a pair that changes between mono and stereo starts on its defaults). C ABI 56.
+- An accuracy pass over the other surfaces and their screens, against photographs and the manuals' pictures:
+  the 01V's LCD pages (Phase, Delay, View, Pan, Routing, Dynamics, Memory and more), the ProMix 01's body, keys
+  and LCD, the 02R's plates, keys and readouts, the SQ-5's panel and every screen, the X32's pale screen pages.
+- The dLive now opens on a C3500 surface, drawn from photographs of a real one: 24 motor faders in two banks
+  of 12 with six layers each, two touchscreens, two blocks of soft rotaries. Its left screen is the selected
+  channel's processing, with the PEQ's graph and boxes as the console has them; its right screen has Scene
+  Manager and MixRack (Config and Audio). The PEQ graph has the RTA. The C1500 surface stays, one key away. Pages without a photograph are Sidecar's reading.
+- On both dLive surfaces: Copy, Paste, Reset, Safes, Freeze in Layers and the GEQ on the faders work (the keys
+  latch, as a mouse can't hold one key and press another), Assign takes a strip's Mix key and Pre its Sel key,
+  rotary keys 1-4 have default functions, and the LCDs show what the console's do.
+- The dLive has its own surface, drawn from photographs of a real C1500: 12 strips in three groups with
+  colour LCDs, lit rotaries, banks A-F and the PEQ's rotaries, its touchscreen showing the mixer's
+  pages. Some keys are drawn but don't work yet (see the docs).
+- The dLive has its Automatic Mic Mixer: NOM and D-Classic, with up to four AMMs, Chair, Solo, Best Mic
+  and Priority. SETUP has an AMM tab; each channel chooses its AMM on its strip panel.
+- The dLive's input channels have its two preamp models, Dual-Stage Valve and Tube Stage, in a PREAMP
+  block after the trim. Their ranges and curves are Sidecar's reading.
+- The dLive's mixes can use its 12-band NEQ, alongside the GEQs; it's on any Universal console too.
+- The dLive has all 20 of its RackExtra effects, in any of its 16 engines and on any Universal
+  console: the four SMR reverbs, delays, modulation, pitch and dynamics processors. Where its guide is
+  silent, the ranges and algorithms are Sidecar's reading.
+- A dLive's mixes have the console's Ext In (a socket mixed in with its own trim and polarity) and
+  Mix Source (the point in each channel its sends to that mix leave from). Sends start pre-fade to
+  the Aux and post-fade to the Groups and FX sends.
+- The Yamaha 01V has its own surface, drawn from the Owner's Manual and photographs of a real
+  console: 14 motor faders and the STEREO master on their printed scales, SEL, SOLO and ON, the
+  nine fader modes (HOME, AUX 1-4, EFFECT 1-2, OPTION I/O; REMOTE doesn't work yet), SELECTED
+  CHANNEL, RETURN 1-2, GAIN and PAD, the L/R meter and a 320 x 80 dot LCD. The LCD's EQ/ATT,
+  DYNAMICS, delay, pan, send, VIEW and MEMORY pages work, and so do EFFECT 1 and 2's edit,
+  library and PRE/POST pages, AUX's PRE/POST, and UTILITY's oscillator and preferences. A function
+  key pressed again goes to its next page. CH 17-24 have their controls on OPTION page 2 (routing,
+  pan, fader, AUX 1-2 and EFFECT 1-2 with PRE/POST, attenuator and 2-band EQ). MIDI, SETUP and REMOTE
+  are still to come.
+- The ProMix 01's surface is redrawn from photographs of a real console: a true 240 x 64 dot LCD in
+  its black window, ribbed waisted fader caps, plain cream keys with round LED holes and their names
+  printed on the panel, the light plates behind SCENE MEMORY, and the raised plate around the LCD
+  and wheel.
+- The 02R's panel takes its colours from photographs of the console: the charcoal body and raised
+  LCD hood, light grey plates for DISPLAY ACCESS and SELECTED CHANNEL, cream, orange and pale blue
+  function keys, black SEL and cream ON keys, teal EQ keys and knobs, a red ST key, ribbed cream
+  fader caps with black 17/18-23/24 and a red STEREO, and the LCD's pale blue.
+- A start on the Allen & Heath dLive: its processing blocks, offered on any Universal strip.
+  Its gate, ducker, dual-threshold and source expanders; ten compressor models (Manual Peak,
+  Manual RMS, 16T, 16VU, Mighty, Opto, OptTronik, Peak Limiter 76, Bus, CompStortion); its
+  4-band PEQ and four 28-band graphic EQs. Its console profile, as its FoH template lays it
+  out: 128 inputs on 124 channels, 8 groups, 16 auxes, 8 FX sends, 16 FX and their returns,
+  LR, 8 matrices, 24 DCAs and 8 mute groups, signal chains from its block diagram (the
+  compressor before or after the PEQ on each input, a 28-band GEQ after each mix's PEQ), its
+  fader table and sockets. It can be chosen in the start-up window and SETUP's INTERFACE and
+  runs on the Universal Mixer, its FX slots on the SQ-5's effects for now. Buses past the
+  16th can now feed outputs, channels and effects. C ABI 55. Mixer Config, its own effects,
+  its 12-band EQ, its MIDI over TCP and its surface follow.
 
 ## [0.3.0] - beta
 

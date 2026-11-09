@@ -63,6 +63,13 @@ pub fn design(spec: &ModelSpec, values: &[f32], sr: f64, gain_scale: f32) -> EqD
         "X32EQ4" | "X32EQ6" => design_x32(&p, sr, k, &mut d),
         "PMEQ" => design_promix(&p, sr, k, &mut d),
         "Y2EQ" => design_02r(&p, sr, k, &mut d),
+        "DLVPEQ" => design_dlive_peq(&p, sr, k, &mut d),
+        "DLVGEQC" | "DLVGEQP" | "DLVGEQD" | "DLVGEQH" => design_dlive_geq(spec.token, &p, sr, k, &mut d),
+        "DLVNEQ12" => design_dlive_neq(&p, sr, k, &mut d),
+        "O1EQ2" => {
+            design_02r_low(&p, sr, k, &mut d);
+            design_02r_high(&p, sr, k, &mut d);
+        }
         "SQPEQ" => design_sq(&p, sr, k, &mut d),
         "SQGEQ" => design_sq_geq(&p, sr, k, &mut d),
         _ => {}
@@ -256,6 +263,19 @@ fn design_promix(p: &Params, sr: f64, k: f32, d: &mut EqDesign) {
 /// shelf or a 12 dB/oct HPF past its last Q, HIGH a high shelf or an LPF, the
 /// filters switched by their own parameter (the band's gain knob, MAN p.50).
 fn design_02r(p: &Params, sr: f64, k: f32, d: &mut EqDesign) {
+    use crate::y02r::Q_VALUES;
+    let q = |id: &str| Q_VALUES[p.choice(id).min(Q_VALUES.len() - 1)];
+    design_02r_low(p, sr, k, d);
+    for band in ["lm", "hm"] {
+        let (f, g) = (p.f(&format!("{band}f")), p.f(&format!("{band}g")) * k);
+        let bq = q(&format!("{band}q"));
+        push_gain(d, g, || peak(sr, f, bq, g));
+    }
+    design_02r_high(p, sr, k, d);
+}
+
+/// The 02R EQ's LOW band: peak, L.SHELF or HPF (also the 01V's 2-band EQ).
+fn design_02r_low(p: &Params, sr: f64, k: f32, d: &mut EqDesign) {
     use crate::y02r::{FILTER, Q_VALUES, SHELF};
     let q = |id: &str| Q_VALUES[p.choice(id).min(Q_VALUES.len() - 1)];
     let (lf, lg) = (p.f("lf"), p.f("lg") * k);
@@ -268,11 +288,12 @@ fn design_02r(p: &Params, sr: f64, k: f32, d: &mut EqDesign) {
         x if x == SHELF => push_gain(d, lg, || low_shelf(sr, lf, std::f32::consts::FRAC_1_SQRT_2, lg)),
         _ => push_gain(d, lg, || peak(sr, lf, q("lq"), lg)),
     }
-    for band in ["lm", "hm"] {
-        let (f, g) = (p.f(&format!("{band}f")), p.f(&format!("{band}g")) * k);
-        let bq = q(&format!("{band}q"));
-        push_gain(d, g, || peak(sr, f, bq, g));
-    }
+}
+
+/// The 02R EQ's HIGH band: peak, H.SHELF or LPF (also the 01V's 2-band EQ).
+fn design_02r_high(p: &Params, sr: f64, k: f32, d: &mut EqDesign) {
+    use crate::y02r::{FILTER, Q_VALUES, SHELF};
+    let q = |id: &str| Q_VALUES[p.choice(id).min(Q_VALUES.len() - 1)];
     let (hf, hg) = (p.f("hf"), p.f("hg") * k);
     match p.choice("hq") as f32 {
         x if x == FILTER => {
@@ -316,6 +337,111 @@ fn design_sq_geq(p: &Params, sr: f64, k: f32, d: &mut EqDesign) {
     for (&f, &v) in GEQ_HZ.iter().zip(p.values) {
         let g = v * k;
         push_gain(d, g, || peak(sr, f, q, g));
+    }
+}
+
+/// The dLive's PEQ: Baxandall shelves (first order), non-constant-Q bells (the
+/// set width at full gain, wider below it: Sidecar's reading of how much), and
+/// 12 dB/oct cuts on the outer bands.
+fn design_dlive_peq(p: &Params, sr: f64, k: f32, d: &mut EqDesign) {
+    use crate::sq::width_q;
+    let bell = |d: &mut EqDesign, f: f32, w: f32, g: f32| {
+        let q = proportional_q(width_q(w), g);
+        push_gain(d, g, || peak(sr, f, q, g));
+    };
+    let (lf, lg) = (p.f("lf"), p.f("lg") * k);
+    match p.text("lm") {
+        "HPF" => sec_cut(d, sr, lf, true),
+        "BELL" => bell(d, lf, p.f("lq"), lg),
+        _ => push_gain(d, lg, || BiquadCoeffs::low_shelf_1(sr, lf as f64, lg as f64)),
+    }
+    for band in ["1", "2"] {
+        bell(d, p.f(&format!("{band}f")), p.f(&format!("{band}q")), p.f(&format!("{band}g")) * k);
+    }
+    let (hf, hg) = (p.f("hf"), p.f("hg") * k);
+    match p.text("hm") {
+        "LPF" => sec_cut(d, sr, hf, false),
+        "BELL" => bell(d, hf, p.f("hq"), hg),
+        _ => push_gain(d, hg, || BiquadCoeffs::high_shelf_1(sr, hf as f64, hg as f64)),
+    }
+}
+
+/// The dLive's 28-band graphic EQ, by its four DEEP types: Constant-Q 1/3 octave
+/// at any level; Proportional-Q wide when small and past 1/3 octave at the
+/// limits; Hybrid proportional boosts and constant cuts; Digi-Q tighter bands
+/// whose gains are corrected so the curve lands on the sliders.
+fn design_dlive_geq(token: &str, p: &Params, sr: f64, k: f32, d: &mut EqDesign) {
+    use crate::sq::{width_q, GEQ_HZ, GEQ_WIDTH};
+    const BANDS: usize = GEQ_HZ.len();
+    let base = width_q(GEQ_WIDTH);
+    let proportional = |g: f32| base * (0.35 + 0.85 * (g.abs() / 12.0).min(1.0));
+    let q_of = |g: f32| match token {
+        "DLVGEQP" => proportional(g),
+        "DLVGEQH" if g > 0.0 => proportional(g),
+        "DLVGEQD" => base * 1.3,
+        _ => base,
+    };
+    let mut gains = [0.0f32; BANDS];
+    for (g, &v) in gains.iter_mut().zip(p.values) {
+        *g = v * k;
+    }
+    if token == "DLVGEQD" && gains.iter().any(|g| g.abs() > 1e-3) {
+        let target = gains;
+        for _ in 0..4 {
+            let mut at = [0.0f32; BANDS];
+            for (i, &g) in gains.iter().enumerate() {
+                if g.abs() > 1e-3 {
+                    let c = peak(sr, GEQ_HZ[i], q_of(g), g);
+                    for (j, a) in at.iter_mut().enumerate() {
+                        *a += 20.0 * c.magnitude_at(GEQ_HZ[j] as f64, sr).max(1e-9).log10() as f32;
+                    }
+                }
+            }
+            for i in 0..BANDS {
+                gains[i] = (gains[i] + 0.7 * (target[i] - at[i])).clamp(-18.0, 18.0);
+            }
+        }
+    }
+    for (&f, &g) in GEQ_HZ.iter().zip(gains.iter()) {
+        push_gain(d, g, || peak(sr, f, q_of(g), g));
+    }
+}
+
+/// The dLive's NEQ-12 (`livedaw_dsp::dlive`): an overall In and 12 bands, each
+/// with its own In; bells in the middle, the outer bands a bell, a shelf or a
+/// cut of 12, 24 or 48 dB/oct. Sidecar's reading: the bells keep the set width
+/// at any gain (unlike the 4-band PEQ's non-constant-Q ones), the shelves are
+/// the PEQ's first-order Baxandall, the cuts Butterworth. Read by index, not
+/// by name: the design runs on the audio thread while a control moves, so
+/// nothing here allocates or searches.
+fn design_dlive_neq(p: &Params, sr: f64, k: f32, d: &mut EqDesign) {
+    use crate::dlive::{neq_band, NEQ_BANDS, NEQ_BELL, NEQ_CUT, NEQ_HF_SHAPE, NEQ_IN, NEQ_LF_SHAPE, NEQ_SHELF};
+    use crate::sq::width_q;
+    let at = |i: usize| {
+        let s = &p.spec.params[i];
+        s.sanitise(p.values.get(i).copied().unwrap_or(s.default))
+    };
+    if at(NEQ_IN) < 0.5 {
+        return;
+    }
+    for band in 0..NEQ_BANDS {
+        let i = neq_band(band);
+        if at(i) < 0.5 {
+            continue;
+        }
+        let (f, g, w) = (at(i + 1), at(i + 2) * k, at(i + 3));
+        let (low, high) = (band == 0, band == NEQ_BANDS - 1);
+        let shape = match (low, high) {
+            (true, _) => at(NEQ_LF_SHAPE) as usize,
+            (_, true) => at(NEQ_HF_SHAPE) as usize,
+            _ => NEQ_BELL,
+        };
+        match shape {
+            NEQ_SHELF if low => push_gain(d, g, || BiquadCoeffs::low_shelf_1(sr, f as f64, g as f64)),
+            NEQ_SHELF => push_gain(d, g, || BiquadCoeffs::high_shelf_1(sr, f as f64, g as f64)),
+            NEQ_BELL => push_gain(d, g, || peak(sr, f, width_q(w), g)),
+            c => push_cut(d, sr, ["BW12", "BW24", "BW48"][(c - NEQ_CUT).min(2)], f, 0.0, low),
+        }
     }
 }
 

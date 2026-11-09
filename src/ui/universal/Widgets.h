@@ -65,6 +65,8 @@ public:
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
+    /** How far the groove's centre is from the right edge. */
+    float grooveFromRight = 18.0f;
     /** Drawn as a console's fader (a console surface's hardware look: its slot,
         its moulded cap, its silkscreen scale); null: the Universal Mixer's. */
     const hw::Look* look = nullptr;
@@ -153,6 +155,8 @@ public:
     /** With a look: the key blank, its name (`belowText` if set) printed and
         underlined on the panel above it (the ProMix 01's function keys). */
     bool labelAbove = false;
+    /** With labelAbove: its colour, if not the panel's silkscreen (a label on a light plate). */
+    juce::Colour labelColour;
     /** With a look whose keys have LEDs: false for a key without one. */
     bool showLed = true;
     /** With a look: the key's outline (the ProMix 01's oval ENTER, its

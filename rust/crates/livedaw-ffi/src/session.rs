@@ -905,6 +905,35 @@ pub unsafe extern "C" fn ld_show_load_xml(
     )
 }
 
+/// ABI 56: a dLive's Mixer Config (eight numbers: `ld_engine_dlive_layout`): the
+/// mixes laid out anew and reset, the rest of the console kept. False, with `message`,
+/// if nothing changed; on success `message` may list what failed to load.
+///
+/// # Safety
+/// `s` and `e` are valid; `layout` holds eight.
+#[no_mangle]
+pub unsafe extern "C" fn ld_show_apply_dlive_layout(
+    s: *mut LdShow,
+    e: *const Engine,
+    layout: *const i32,
+    stereo_inputs: u64,
+    message: *mut *mut LdString,
+) -> bool {
+    let (Some(s), Some(e)) = (show(s), eng(e)) else { return false };
+    let mut values = [0i32; 8];
+    std::ptr::copy_nonoverlapping(layout, values.as_mut_ptr(), 8);
+    let Some(layout) = livedaw_engine::profile::DLiveLayout::from_values(values, stereo_inputs) else {
+        write_string(message, "That mixer configuration doesn't fit the 64 busses".to_string());
+        return false;
+    };
+    finish_load(
+        guard(Err("internal error while configuring".into()), || {
+            livedaw_session::console::apply_dlive_layout(e, layout, &mut s.bridge)
+        }),
+        message,
+    )
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn ld_show_save_file(
     s: *mut LdShow,

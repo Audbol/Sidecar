@@ -57,10 +57,10 @@ pub const NUM_USER_SIGNALS: usize = 24;
 pub const NUM_USER_PATCHES: usize = 32;
 pub const NUM_USR_SOURCES: usize = NUM_USER_SIGNALS + NUM_USER_PATCHES;
 pub const USR_SOURCE_BASE: i32 = 0x50000;
-/// The FX returns (an X32's FX 1-4 on its FX return channels): the stereo
+/// The FX returns (an X32's FX 1-4 on its FX return channels, a dLive's 16): the stereo
 /// output of FX slot `n` as a send effect (`FxParams::source_left`) is input
 /// `FX_RETURN_SOURCE_BASE + 2n` (L) and `+ 2n + 1` (R).
-pub const NUM_SEND_FX: usize = 8;
+pub const NUM_SEND_FX: usize = 16;
 pub const NUM_FX_RETURNS: usize = 2 * NUM_SEND_FX;
 pub const FX_RETURN_SOURCE_BASE: i32 = 0x60000;
 /// Sources: the hardware ports, the playback channels, the USB PLAYER, the

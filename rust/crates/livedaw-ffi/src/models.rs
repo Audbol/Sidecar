@@ -21,6 +21,7 @@ use livedaw_engine::params::{
     colour_rgb, DynSlotParams, EqBlockParams, FilterParams, MAIN_LINK_MODES, MONITOR_BUSES, POST_INSERT_MODES, WING_COLOURS,
     WING_COLOUR_GRID,
 };
+use livedaw_engine::profile::DynSlot;
 use livedaw_engine::{Strip, SEND_MODES};
 
 /// The profile whose models the host's model calls describe (`ld_engine_profile`'s
@@ -117,6 +118,43 @@ pub extern "C" fn ld_model_category(t: i32, m: i32) -> i32 {
         ModelCategory::FxStandard => 8,
         ModelCategory::FxChannel => 9,
     })
+}
+
+/// `slot` of the C ABI: 0 = gate slot, 1 = dynamics slot or an extra dynamics block,
+/// 2 = the preamp block (`ld_strip_preamp_block`).
+fn dyn_slot(slot: i32) -> Option<DynSlot> {
+    match slot {
+        0 => Some(DynSlot::Gate),
+        1 => Some(DynSlot::Dynamics),
+        2 => Some(DynSlot::Preamp),
+        _ => None,
+    }
+}
+
+/// ABI 56: whether dynamics model `m` (table 0, of the shown console:
+/// `ld_models_show_profile`) may be offered for `slot` (0 = gate slot, 1 = dynamics
+/// slot or an extra dynamics block, 2 = the preamp block). A dLive's preamp models
+/// go in its preamp block alone, and it holds nothing else; on any other console,
+/// the Universal first, every model of its table goes anywhere (false: no such model
+/// or slot).
+#[no_mangle]
+pub extern "C" fn ld_dyn_model_allowed(m: i32, slot: i32) -> bool {
+    dyn_model_allowed(crate::profile_of(SHOWN_PROFILE.load(std::sync::atomic::Ordering::Relaxed)), m, slot)
+}
+
+fn dyn_model_allowed(profile: livedaw_engine::Profile, m: i32, slot: i32) -> bool {
+    let spec = profile.spec();
+    let (Some(model), Some(slot)) = (usize::try_from(m).ok().and_then(|i| spec.models.table(0).get(i)), dyn_slot(slot)) else {
+        return false;
+    };
+    spec.may_hold(slot, model.token)
+}
+
+/// The refusals of the strip setters (`ld_strip_set_model`, `ld_strip_set_block_model`):
+/// may this dynamics slot of the strip hold model `m` of its table? (A model it
+/// hasn't is the setter's no-op.)
+pub(crate) fn dyn_slot_may_hold(s: &Strip, p: &DynSlotParams, slot: DynSlot, m: usize) -> bool {
+    p.table().get(m).is_none_or(|spec| s.spec().may_hold(slot, spec.token))
 }
 
 #[no_mangle]
@@ -340,5 +378,39 @@ fn eq_response(eq: &EqBlockParams, freqs: &[f64], out: &mut [f64], sr: f64) {
     let d = design(spec, &values[..spec.params.len()], sr, if on { eq.mix.load() / 100.0 } else { 0.0 });
     for (f, o) in freqs.iter().zip(out.iter_mut()) {
         *o = d.response_db(*f, sr);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use livedaw_engine::profile::DLiveLayout;
+    use livedaw_engine::Profile;
+
+    #[test]
+    fn a_slot_is_offered_only_the_models_it_may_hold() {
+        let dlive = Profile::AhDLive(DLiveLayout::FOH);
+        let index = |p: Profile, token: &str| p.spec().models.table(0).iter().position(|m| m.token == token).unwrap() as i32;
+        let (valve, tube, gate, comp) =
+            (index(dlive, "DLVVALVE"), index(dlive, "DLVTUBE"), index(dlive, "DLVGATE"), index(dlive, "DLVPEAK"));
+        for m in [valve, tube] {
+            assert!(!dyn_model_allowed(dlive, m, 0), "not in the gate slot");
+            assert!(!dyn_model_allowed(dlive, m, 1), "not in the compressor slot");
+            assert!(dyn_model_allowed(dlive, m, 2), "in the preamp block");
+        }
+        for m in [gate, comp] {
+            assert!(dyn_model_allowed(dlive, m, 0) && dyn_model_allowed(dlive, m, 1));
+            assert!(!dyn_model_allowed(dlive, m, 2));
+        }
+        assert!(!dyn_model_allowed(dlive, -1, 2) && !dyn_model_allowed(dlive, 999, 2));
+        assert!(!dyn_model_allowed(dlive, valve, 3));
+
+        // The Universal offers them with every other console's models, anywhere.
+        let u = Profile::Universal;
+        let v = index(u, "DLVVALVE");
+        for slot in 0..3 {
+            assert!(dyn_model_allowed(u, v, slot), "slot {slot}");
+        }
+        assert!(dyn_model_allowed(Profile::Wing, index(Profile::Wing, "COMP"), 1));
     }
 }

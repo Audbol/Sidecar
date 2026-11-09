@@ -108,7 +108,11 @@ use std::sync::Arc;
 // ABI 52: X32 channel presets (ld_x32_channel_write/read); the 02R around a
 // scene recall (ld_y02r_before_recall / after_recall).
 // ABI 53: the SQ-5 profile (5), its MIDI (ld_sq_*, RemotesC::midi 4).
-pub const LD_ABI_VERSION: i32 = 53;
+// ABI 54: the 01V profile (6).
+// ABI 55: the dLive profile (7); strip sources for buses 17-64; 16 FX returns.
+// ABI 56, among others: a dLive input channel's preamp block (ld_strip_preamp_block),
+// which dynamics models a slot may hold (ld_dyn_model_allowed).
+pub const LD_ABI_VERSION: i32 = 56;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(default)
@@ -248,6 +252,9 @@ pub struct LdLayoutInfo {
     pub block_meters: i32,
     pub off_block_meters_out_peak: i32,
     pub delay_block: i32,
+    // ABI 56: a dLive's AMM
+    pub amm: i32,
+    pub amm_strip: i32,
 }
 
 #[no_mangle]
@@ -353,6 +360,8 @@ pub unsafe extern "C" fn ld_layout_info(out: *mut LdLayoutInfo) {
         block_meters: size_of::<BlockMeters>() as i32,
         off_block_meters_out_peak: offset_of!(BlockMeters, out_peak) as i32,
         delay_block: size_of::<DelayParams>() as i32,
+        amm: size_of::<livedaw_engine::amm::AmmParams>() as i32,
+        amm_strip: size_of::<livedaw_engine::amm::AmmStripParams>() as i32,
     };
 }
 
@@ -653,6 +662,8 @@ fn profile_id(p: Profile) -> i32 {
         Profile::ProMix01 => 3,
         Profile::Yamaha02R => 4,
         Profile::AhSq5 => 5,
+        Profile::Yamaha01V => 6,
+        Profile::AhDLive(_) => 7,
     }
 }
 
@@ -804,23 +815,60 @@ pub struct LdSlotRange {
 /// `out` holds `max` ranges, or is null.
 #[no_mangle]
 pub unsafe extern "C" fn ld_profile_slot_ranges(profile: i32, out: *mut LdSlotRange, max: i32) -> i32 {
-    guard(0, || {
-        let slots = profile_of(profile).spec().slots;
-        if !out.is_null() {
-            for (i, r) in slots.iter().take(max.max(0) as usize).enumerate() {
-                let mut label = [0u8; 8];
-                let n = r.label.len().min(7);
-                label[..n].copy_from_slice(&r.label.as_bytes()[..n]);
-                *out.add(i) = LdSlotRange {
-                    kind: StripKind::ALL.iter().position(|&k| k == r.kind).unwrap_or(0) as i32,
-                    first: r.first as i32,
-                    count: r.count as i32,
-                    label,
-                };
-            }
-        }
-        slots.len() as i32
+    guard(0, || write_slot_ranges(profile_of(profile).spec().slots, out, max))
+}
+
+/// ABI 56: the slot ranges of the console `e` is (a dLive's follow its Mixer Config).
+///
+/// # Safety
+/// `e` is a valid engine; `out` holds `max` ranges, or is null.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_slot_ranges(e: *const Engine, out: *mut LdSlotRange, max: i32) -> i32 {
+    guard(0, || write_slot_ranges((*e).profile().spec().slots, out, max))
+}
+
+/// ABI 56: a dLive's Mixer Config: eight numbers (Groups, stereo Groups, Aux, stereo
+/// Aux, FX sends, stereo FX sends, Matrices, stereo Matrices). False: not a dLive.
+///
+/// # Safety
+/// `e` is a valid engine; `out` holds eight.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_dlive_layout(e: *const Engine, out: *mut i32) -> bool {
+    guard(false, || {
+        let livedaw_engine::Profile::AhDLive(layout) = (*e).profile() else { return false };
+        std::ptr::copy_nonoverlapping(layout.values().as_ptr(), out, 8);
+        true
     })
+}
+
+/// ABI 56: a dLive's IP Stereo Config (bit n: inputs 2n+1 and 2n+2 are one stereo
+/// channel); 0 on any other console.
+///
+/// # Safety
+/// `e` is a valid engine.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_dlive_stereo_inputs(e: *const Engine) -> u64 {
+    guard(0, || match (*e).profile() {
+        livedaw_engine::Profile::AhDLive(layout) => layout.stereo_inputs,
+        _ => 0,
+    })
+}
+
+unsafe fn write_slot_ranges(slots: &[livedaw_engine::profile::SlotRange], out: *mut LdSlotRange, max: i32) -> i32 {
+    if !out.is_null() {
+        for (i, r) in slots.iter().take(max.max(0) as usize).enumerate() {
+            let mut label = [0u8; 8];
+            let n = r.label.len().min(7);
+            label[..n].copy_from_slice(&r.label.as_bytes()[..n]);
+            *out.add(i) = LdSlotRange {
+                kind: StripKind::ALL.iter().position(|&k| k == r.kind).unwrap_or(0) as i32,
+                first: r.first as i32,
+                count: r.count as i32,
+                label,
+            };
+        }
+    }
+    slots.len() as i32
 }
 
 /// ABI 34: what profile `profile` calls a strip of `kind` (`StripKind` numbers),
@@ -1278,14 +1326,17 @@ pub unsafe extern "C" fn ld_strip_set_tags(s: *const Strip, utf8: *const u8, len
 }
 
 /// Blocks with a model: 0 = gate slot, 1 = EQ, 2 = dynamics slot, 3 = filter tool.
+/// A dynamics model the slot may not hold (`ld_dyn_model_allowed`) changes nothing.
 #[no_mangle]
 pub unsafe extern "C" fn ld_strip_set_model(s: *const Strip, block: i32, model: i32) {
+    use livedaw_engine::profile::DynSlot;
     let Some(s) = strip(s) else { return };
     let m = model.max(0) as usize;
     guard((), || match block {
-        0 => s.params.gate().set_model(m),
+        0 if models::dyn_slot_may_hold(s, s.params.gate(), DynSlot::Gate, m) => s.params.gate().set_model(m),
         1 => s.params.eq().set_model(m),
-        2 => s.params.dynamics().set_model(m),
+        2 if models::dyn_slot_may_hold(s, s.params.dynamics(), DynSlot::Dynamics, m) => s.params.dynamics().set_model(m),
+        0 | 2 => {}
         _ => s.params.filter().set_tool_model(m),
     });
 }
@@ -1321,6 +1372,41 @@ mod tests {
         unsafe { ld_layout_info(&mut info) };
         assert_eq!(info.abi_version, LD_ABI_VERSION);
         assert!(info.strip_params > 0 && info.send == 28, "SendParams: 28 bytes since ABI 27 (`tap`)");
+    }
+
+    /// `EqBlockParams` in `livedaw_engine.h`: the same limit and layout as here.
+    #[test]
+    fn the_eq_block_matches_the_header() {
+        use livedaw_dsp::wing::MAX_EQ_PARAMS;
+        let header = include_str!("../include/livedaw_engine.h");
+        let line = header.lines().find(|l| l.contains("constexpr int kMaxEqParams")).expect("kMaxEqParams in the header");
+        assert!(line.contains(&format!("= {MAX_EQ_PARAMS};")), "the header says {line:?}");
+        let mut info = LdLayoutInfo::default();
+        unsafe { ld_layout_info(&mut info) };
+        assert_eq!(info.off_eq_values, 12);
+        // on, model, mix; the values; padding to the two words of the model table.
+        assert_eq!(info.eq_block as usize, (12 + 4 * MAX_EQ_PARAMS).div_ceil(8) * 8 + 16);
+    }
+
+    #[test]
+    fn the_amm_is_reachable_through_the_c_abi() {
+        let mut info = LdLayoutInfo::default();
+        unsafe { ld_layout_info(&mut info) };
+        assert_eq!(info.amm, 44, "AmmParams: as in livedaw_engine.h");
+        assert_eq!(info.amm_strip, 20, "AmmStripParams: as in livedaw_engine.h");
+        {
+            use livedaw_engine::amm::{AmmParams as P, AmmStripParams as S};
+            assert_eq!((offset_of!(P, key_lpf_hz), offset_of!(P, best_mic), offset_of!(P, solo)), (32, 36, 40));
+            assert_eq!((offset_of!(S, priority_db), offset_of!(S, gain_db), offset_of!(S, open)), (8, 12, 16));
+        }
+        unsafe {
+            let e = ld_engine_create(0);
+            ld_engine_set_num_channels(e, 1);
+            assert_eq!((*console::ld_engine_amm(e)).count.load(std::sync::atomic::Ordering::Relaxed), 1);
+            let ch = ld_engine_strip_at(e, 0, 0);
+            assert_eq!((*console::ld_strip_amm(ch)).amm.load(std::sync::atomic::Ordering::Relaxed), -1);
+            ld_engine_destroy(e);
+        }
     }
 
     #[test]

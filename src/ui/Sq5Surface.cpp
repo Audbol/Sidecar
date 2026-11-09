@@ -15,15 +15,22 @@ namespace
     const hw::Look& look() { return hw::Look::sq(); }
     // The keys' colours, from the console's photographs.
     // Lit, then the faces they show when idle (their backlights are always on).
-    const juce::Colour kMute (0xffff2a2a), kSel (0xff46f5c6), kPafl (0xffffa52e), kBlue (0xffbfe2ff), kWhite (0xfff5f5f5), kRed (0xffff5a5a),
+    const juce::Colour kMute (0xfff06a78), kSel (0xff46f5c6), kPafl (0xffffa52e), kBlue (0xffbfe2ff), kWhite (0xfff5f5f5), kRed (0xffff5a5a),
         kScreenKey (0xffd2f7e6), kGreenLed (0xff8ff5c0), kPeach (0xffffc98a);
-    const juce::Colour kFacePink (0xfff3b7b2), kFaceTeal (0xff0e8f76), kFaceGrey (0xff8c8f94), kFaceRed (0xffc61e26), kFaceBlue (0xff1a55c4),
-        kFaceLayer (0xffc3ccd7), kFaceMixA (0xff90d9f1), kFaceMixB (0xff42b9ec), kFaceSoftGrey (0xffb8bbc0);
+    // Unlit a key is its rubber's colour: Mute, the SoftKeys and the EQ bands white
+    // (lit red behind white, they photograph pink), Sel and two screen keys teal.
+    const juce::Colour kFaceWhite (0xffd7dade), kFaceTeal (0xff0e8f76), kFaceGrey (0xff8c8f94), kFaceRed (0xffc61e26), kFaceBlue (0xff1a55c4),
+        kFaceLayer (0xffc3ccd7), kFaceMixA (0xff90d9f1), kFaceMixB (0xff42b9ec);
     // The jewels: what each rotary's centre is lit in.
     const juce::Colour kJewelRed (0xffff3a30), kJewelGreen (0xff4cf08a), kJewelOrange (0xffff9a2a), kJewelYellow (0xffffe05a), kJewelOff (0xff4a4d52);
 
+    const juce::Colour kLedRed (0xffff3a30), kLedOrange (0xffffa52e), kLedGreen (0xff55e66e);
+
     constexpr int kStripWidth = 94, kStripsX = 138, kGroupGap = 4;
     constexpr int kStripTop = 480, kStripBottom = 1072;
+
+    /** The PAFL LED meter, beside the screen. */
+    const juce::Rectangle<float> kPaflMeter (1340.0f, 30.0f, 48.0f, 238.0f);
 
     int stripX (int i) { return kStripsX + i * kStripWidth + (i / 4) * kGroupGap; }
 
@@ -77,7 +84,7 @@ namespace sq5
             addAndMakeVisible (*k);
         }
         mute.cornerRadius = 6.0f;
-        mute.face = kFacePink;
+        mute.face = kFaceWhite;
         sel.face = kFaceTeal;
         pafl.face = kFaceGrey;
         mute.isOn = [this] { return muteState (false); };
@@ -412,23 +419,10 @@ Sq5Surface::Sq5Surface (UiContext& c)
     panelKnob ("Gate", { 274, 200, 62, 62 });
     panelKnob ("Comp", { 354, 268, 62, 62 });
     panelKnob ("Pan", { 423, 352, 62, 62 });
-    auto& insertKey = panelKey ("Insert Active", kWhite, { 420, 136, 58, 30 });
-    insertKey.onClick = [this]
-    {
-        if (auto* s = ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr)
-        {
-            auto& ins = s->params.preInsert();
-            ins.on = ! ins.on.load();
-        }
-    };
-    insertKey.isOn = [this]
-    {
-        auto* s = ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr;
-        return s != nullptr && s->params.preInsert().on.load();
-    };
     const auto inKey = [this] (juce::Rectangle<int> r, std::function<std::atomic<bool>*(Strip&)> get, const juce::String& name)
     {
-        auto& k = panelKey (name, kGreenLed, r.withSizeKeepingCentre (32, 32));
+        auto& k = panelKey (name, kGreenLed, r.withSizeKeepingCentre (32, 32), false, kFaceWhite);
+        silks.push_back ({ juce::Rectangle<int> (r.getCentreX() - 20, r.getCentreY() - 32, 40, 14).toFloat(), "In", 11.0f, juce::Justification::centred });
         k.isOn = [this, get]
         {
             auto* s = ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr;
@@ -455,29 +449,23 @@ Sq5Surface::Sq5Surface (UiContext& c)
     panelKnob ("Width", { 1534, 40, 62, 62 });
     panelKnob ("Freq", { 1534, 124, 62, 62 });
     panelKnob ("EQ Gain", { 1478, 200, 62, 62 });
-    inKey ({ 1420, 76, 44, 26 }, [] (Strip& s) { return &s.params.eq().on; }, "EQ In");
+    inKey ({ 1476, 100, 44, 26 }, [] (Strip& s) { return &s.params.eq().on; }, "EQ In");
     const std::pair<const char*, juce::Rectangle<int>> bands[] = { { "LF", { 1618, 232, 44, 26 } }, { "LM", { 1662, 180, 44, 26 } },
                                                                    { "HM", { 1662, 124, 44, 26 } }, { "HF", { 1662, 66, 44, 26 } } };
     for (int b = 0; b < 4; ++b)
     {
-        auto& k = panelKey (bands[(size_t) b].first, kPeach, bands[(size_t) b].second.withSizeKeepingCentre (32, 32));
+        auto& k = panelKey (bands[(size_t) b].first, kPeach, bands[(size_t) b].second.withSizeKeepingCentre (32, 32), true, kFaceWhite);
         k.isOn = [this, b] { return eqBand == b; };
         k.onClick = [this, b] { setEqBand (b); };
     }
-    // The selected mix's GEQ: In and Fader Flip.
-    auto& geqIn = panelKey ("GEQ In", kGreenLed, juce::Rectangle<int> { 1626, 330, 40, 24 }.withSizeKeepingCentre (28, 28));
-    geqIn.isOn = [this] { auto* geq = selectedGeq(); return geq != nullptr && geq->on.load(); };
-    geqIn.onClick = [this]
-    {
-        if (auto* geq = selectedGeq())
-            geq->on = ! geq->on.load();
-    };
-    auto& flip = panelKey ("Fader Flip", kWhite, { 1670, 330, 56, 24 });
+    // The selected mix's GEQ: its In and Pk LEDs are drawn with the panel, Fader Flip
+    // is the section's only key (p.38).
+    auto& flip = panelKey ("Fader Flip", kWhite, { 1672, 354, 56, 22 }, true, kFaceWhite);
     flip.isOn = [this] { return faderFlip > 0; };
     flip.onClick = [this] { pressFaderFlip(); };
 
     // The PAFL meter, Talk and the touchscreen rotary.
-    auto& talk = panelKey ("Talk", kPafl, { 1336, 312, 56, 30 }, true, kFaceTeal);
+    auto& talk = panelKey ("Talk", kPafl, { 1336, 312, 56, 30 });
     talk.cornerRadius = 7.0f;
     talk.isOn = [this] { return ctx.engine.talk.paths[0].on.load(); };
     talk.onClick = [this]
@@ -490,11 +478,11 @@ Sq5Surface::Sq5Surface (UiContext& c)
     rotary.setBounds (1330, 360, 62, 62);
 
     // SoftKeys 1-8: what they do is Setup > Surface > Soft Controls.
-    const juce::Rectangle<int> softs[] = { { 40, 196, 56, 26 },  { 40, 250, 56, 26 },  { 40, 304, 56, 26 },  { 40, 358, 56, 26 },
-                                           { 120, 408, 56, 26 }, { 196, 408, 56, 26 }, { 1560, 424, 56, 26 }, { 1650, 424, 56, 26 } };
+    const juce::Rectangle<int> softs[] = { { 40, 246, 56, 26 },  { 40, 300, 56, 26 },  { 40, 354, 56, 26 },  { 40, 408, 56, 26 },
+                                           { 120, 408, 56, 26 }, { 196, 408, 56, 26 }, { 1590, 410, 56, 26 }, { 1670, 410, 56, 26 } };
     for (int i = 0; i < 8; ++i)
     {
-        auto& k = panelKey ("Soft " + juce::String (i + 1), kRed, softs[(size_t) i], true, i < 6 ? kFacePink : kFaceSoftGrey);
+        auto& k = panelKey ("Soft " + juce::String (i + 1), kMute, softs[(size_t) i], true, kFaceWhite);
         k.cornerRadius = 6.0f;
         k.onClick = [this, i] { pressSoftKey (i); };
         k.isOn = [this, i]
@@ -534,7 +522,7 @@ Sq5Surface::Sq5Surface (UiContext& c)
         auto& k = panelKey ("Layer " + letter, kGreenLed, { 44, 864 + l * 34, 56, 24 }, false, kFaceLayer);
         k.isOn = [this, l] { return layer == l; };
         k.onClick = [this, l] { setLayer (l); };
-        silks.push_back ({ juce::Rectangle<int> (102, 864 + l * 34, 18, 24).toFloat(), letter, 12.0f, juce::Justification::centred });
+        silks.push_back ({ juce::Rectangle<int> (100, 858 + l * 34, 18, 16).toFloat(), letter, 12.0f, juce::Justification::centred });
     }
 
     // The right column: FX 1-4, LR, Mix 1-12.
@@ -545,7 +533,7 @@ Sq5Surface::Sq5Surface (UiContext& c)
         k.onClick = [this, f] { setMix (13 + f); };
         silks.push_back ({ juce::Rectangle<int> (1806, 286 + f * 44, 24, 26).toFloat(), juce::String (f + 1), 12.0f, juce::Justification::centred });
     }
-    auto& lr = panelKey ("LR", kBlue, { 1808, 500, 52, 26 }, true, kFaceBlue);
+    auto& lr = panelKey ("LR", kBlue, { 1687, 498, 52, 24 }, true, kFaceBlue);
     lr.isOn = [this] { return mix == 0; };
     lr.onClick = [this] { setMix (0); };
     const auto mixY = [] (int m) { return m < 4 ? 552 + m * 40 : m < 8 ? 720 + (m - 4) * 44 : 900 + (m - 8) * 40; };
@@ -558,11 +546,13 @@ Sq5Surface::Sq5Surface (UiContext& c)
     }
 
     // Phones.
-    panelKnob ("Phones", { 1820, 130, 56, 56 }).setBinding (bindFader ("Phones", ctx.engine.phones.levelDb));
+    panelKnob ("Phones", { 1820, 148, 56, 56 }).setBinding (bindFader ("Phones", ctx.engine.phones.levelDb));
 
     // The strips, their panel silkscreen.
-    silks.push_back ({ { 1862.0f, 498.0f, 56.0f, 14.0f }, "Mix", 11.0f, juce::Justification::centred });
-    silks.push_back ({ { 1862.0f, 512.0f, 56.0f, 14.0f }, "Select", 11.0f, juce::Justification::centred });
+    silks.push_back ({ { 1760.0f, 486.0f, 60.0f, 14.0f }, "Mix", 11.0f, juce::Justification::centred });
+    silks.push_back ({ { 1760.0f, 500.0f, 60.0f, 14.0f }, "Select", 11.0f, juce::Justification::centred });
+    silks.push_back ({ { 1832.0f, 536.0f, 56.0f, 14.0f }, "Mix", 11.0f, juce::Justification::centred });
+    silks.push_back ({ { 1808.0f, 44.0f, 84.0f, 16.0f }, "ST3 In", 11.0f, juce::Justification::centred });
     silks.push_back ({ { 1810.0f, 264.0f, 70.0f, 16.0f }, "FX", 12.0f, juce::Justification::centred });
     silks.push_back ({ { 44.0f, 846.0f, 70.0f, 14.0f }, "Layers", 11.0f, juce::Justification::centredLeft });
 
@@ -593,9 +583,18 @@ DisplayKnob& Sq5Surface::panelKnob (const juce::String& name, juce::Rectangle<in
     k->setHardware (true);
     k->setBounds (r);
     addAndMakeVisible (*k);
-    const auto below = name == "Phones";
-    silks.push_back ({ (below ? juce::Rectangle<int> (r.getX() - 8, r.getBottom() + 2, r.getWidth() + 16, 14) : juce::Rectangle<int> (r.getRight() + 2, r.getY() + 2, 64, 16)).toFloat(),
-                       name == "EQ Gain" ? juce::String ("Gain") : name, 13.0f, below ? juce::Justification::centred : juce::Justification::centredLeft });
+    // Printed as on the datasheet's p.2: to the right of the processing rotaries with
+    // what they turn under the name, to the left of the EQ's, under Pan.
+    const bool left = name == "Width" || name == "Freq" || name == "EQ Gain", below = name == "Pan";
+    const juce::Rectangle<int> labelArea = below  ? juce::Rectangle<int> (r.getX() - 8, r.getBottom() + 2, r.getWidth() + 16, 15)
+                                           : left ? juce::Rectangle<int> (r.getX() - 68, r.getY() + 12, 66, 16)
+                                                  : juce::Rectangle<int> (r.getRight() + 2, r.getY() + 8, 64, 16);
+    if (name != "Phones")
+        silks.push_back ({ labelArea.toFloat(), name == "EQ Gain" ? juce::String ("Gain") : name, 13.0f,
+                           below ? juce::Justification::centred : left ? juce::Justification::centredRight : juce::Justification::centredLeft });
+    const char* under = name == "Preamp" ? "Gain" : name == "HPF" ? "Freq" : name == "Gate" || name == "Comp" ? "Thres" : nullptr;
+    if (under != nullptr)
+        silks.push_back ({ juce::Rectangle<int> (r.getRight() + 2, r.getY() + 25, 40, 12).toFloat(), under, 9.5f, juce::Justification::centredLeft });
     knobs.emplace_back (name, std::move (k));
     return *knobs.back().second;
 }
@@ -828,7 +827,7 @@ void Sq5Surface::lightJewels()
 {
     // A rotary's centre lights when it has something to do (p.9).
     const std::pair<const char*, juce::Colour> jewels[] = { { "Preamp", kJewelRed }, { "HPF", kJewelGreen },     { "Gate", kJewelOrange }, { "Comp", kJewelOrange },
-                                                            { "Pan", kJewelYellow }, { "Width", kJewelYellow }, { "Freq", kJewelGreen },  { "EQ Gain", kJewelRed },
+                                                            { "Pan", kJewelOrange }, { "Width", kJewelOrange }, { "Freq", kJewelGreen },  { "EQ Gain", kJewelRed },
                                                             { "Phones", kJewelOff } };
     for (const auto& [name, colour] : jewels)
     {
@@ -874,6 +873,41 @@ void Sq5Surface::timerCallback()
     universalKey.refresh();
     if (boundStrip != (ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr))
         selectionChanged();
+    const auto repaintDesign = [this] (juce::Rectangle<float> r) { repaint (r.transformedBy (design).getSmallestIntegerContainer().expanded (1)); };
+    if (const int leds = panelLeds(); leds != shownLeds)
+    {
+        shownLeds = leds;
+        repaintDesign ({ 100.0f, 14.0f, 1644.0f, 400.0f });
+    }
+    repaintDesign (kPaflMeter);
+}
+
+int Sq5Surface::panelLeds() const
+{
+    // The panel's little LEDs, one bit each.
+    int leds = 0;
+    const auto light = [&leds] (int bit, bool on) { leds |= on ? (1 << bit) : 0; };
+    if (auto* s = ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr)
+    {
+        const float input = juce::jmax (ctx.meters.get (s, MeterPoint::Input, 0), ctx.meters.get (s, MeterPoint::Input, 1));
+        const float output = juce::jmax (ctx.meters.get (s, MeterPoint::Output, 0), ctx.meters.get (s, MeterPoint::Output, 1));
+        light (0, input > 0.89f);                                                         // Preamp Pk
+        light (1, s->getKind() == StripKind::Channel && s->meters.gateReductionDb.load() > 1.0f); // Gate GR
+        light (2, s->meters.dynReductionDb.load() > 1.0f);                                 // Comp GR
+        light (3, output > 0.89f);                                                         // Comp Pk
+        light (7, output > 0.89f);                                                         // EQ Pk
+        const float pan = s->params.pan.load();
+        light (4, pan < -3.0f);                                                            // Pan L, centre, R
+        light (5, std::abs (pan) <= 3.0f);
+        light (6, pan > 3.0f);
+        light (10, s->params.preInsert().on.load() && s->params.preInsert().fx.load() >= 0); // Insert Active (p.37)
+    }
+    if (auto* geq = selectedGeq())
+        light (9, geq->on.load());                                                         // GEQ In (p.38)
+    if (auto* m = sq5::stripOf (ctx.engine, sq5::slotOfMix (mix)))
+        light (8, juce::jmax (ctx.meters.get (m, MeterPoint::Output, 0), ctx.meters.get (m, MeterPoint::Output, 1)) > 0.89f); // GEQ Pk
+    light (11, ctx.engine.anySoloActive.load());                                           // PAFL (p.52)
+    return leds;
 }
 
 void Sq5Surface::resized()
@@ -952,11 +986,22 @@ void Sq5Surface::paint (juce::Graphics& g)
         g.setColour (l.sectionLine);
         g.drawRoundedRectangle (r, 7.0f, 1.2f);
     };
-    box ({ 28.0f, 170.0f, 80.0f, 272.0f });      // Soft 1-4
-    box ({ 112.0f, 384.0f, 150.0f, 58.0f });     // Soft 5-6
-    box ({ 1552.0f, 400.0f, 170.0f, 58.0f });    // Soft 7-8
-    box ({ 1612.0f, 312.0f, 128.0f, 56.0f });    // GEQ
-    box ({ 1808.0f, 112.0f, 84.0f, 104.0f });    // the phones
+    {
+        // SoftKeys 1-4 in a column, 5 and 6 on along the bottom: one outline, an L.
+        juce::Path softs;
+        softs.startNewSubPath (28.0f, 226.0f);
+        softs.lineTo (108.0f, 226.0f);
+        softs.lineTo (108.0f, 386.0f);
+        softs.lineTo (262.0f, 386.0f);
+        softs.lineTo (262.0f, 442.0f);
+        softs.lineTo (28.0f, 442.0f);
+        softs.closeSubPath();
+        g.setColour (l.sectionLine);
+        g.strokePath (softs.createPathWithRoundedCorners (7.0f), juce::PathStrokeType (1.2f));
+    }
+    box ({ 1576.0f, 392.0f, 150.0f, 56.0f });    // Soft 7-8
+    box ({ 1330.0f, 294.0f, 68.0f, 52.0f });     // Talk
+    box ({ 1808.0f, 108.0f, 84.0f, 114.0f });    // the phones
     box ({ 1800.0f, 262.0f, 112.0f, 206.0f });   // FX
     box ({ 30.0f, 480.0f, 88.0f, 58.0f });       // View
     box ({ 30.0f, 542.0f, 88.0f, 142.0f });      // Pre Fade, Assign, CH to All Mix
@@ -967,7 +1012,8 @@ void Sq5Surface::paint (juce::Graphics& g)
     box ({ 136.0f, 690.0f, 1522.0f, 384.0f });   // the faders
     box ({ 1664.0f, 530.0f, 98.0f, 156.0f });    // the Master's keys
     box ({ 1664.0f, 690.0f, 98.0f, 384.0f });    // its fader
-    box ({ 1800.0f, 476.0f, 112.0f, 598.0f });   // Mix Select
+    box ({ 1664.0f, 476.0f, 248.0f, 54.0f });    // LR and Mix Select
+    box ({ 1800.0f, 532.0f, 112.0f, 542.0f });   // the Mix keys
 
     // The Master's teal tag, and the lit arcs at the pod's top and bottom.
     const juce::Rectangle<float> tag (1672.0f, 694.0f, 82.0f, 15.0f);
@@ -982,6 +1028,132 @@ void Sq5Surface::paint (juce::Graphics& g)
     for (const auto& s : silks)
         hw::silk (g, s.area, s.text, l, s.size, s.justification);
 
+    // The panel's little LEDs: dim until they have something to say.
+    const int leds = panelLeds();
+    const auto led = [&g, leds] (float x, float y, int bit, juce::Colour c)
+    {
+        const bool on = (leds & (1 << bit)) != 0;
+        g.setColour (on ? c : c.withMultipliedBrightness (0.22f));
+        g.fillEllipse (x - 4.0f, y - 4.0f, 8.0f, 8.0f);
+        g.setColour (juce::Colours::black);
+        g.drawEllipse (x - 4.0f, y - 4.0f, 8.0f, 8.0f, 0.8f);
+    };
+    const auto tiny = [&g, &l] (juce::Rectangle<float> r, const juce::String& t, juce::Justification j = juce::Justification::centredLeft) { hw::silk (g, r, t, l, 9.5f, j); };
+    tiny ({ 190.0f, 92.0f, 18.0f, 12.0f }, "Pk");
+    led (214.0f, 98.0f, 0, kLedRed);        // Preamp Pk, down and left of the rotary
+    led (378.0f, 216.0f, 1, kLedRed);       // Gate GR
+    tiny ({ 384.0f, 210.0f, 20.0f, 12.0f }, "GR");
+    led (468.0f, 284.0f, 2, kLedRed);       // Comp GR
+    tiny ({ 474.0f, 278.0f, 20.0f, 12.0f }, "GR");
+    tiny ({ 318.0f, 328.0f, 18.0f, 12.0f }, "Pk");
+    led (342.0f, 334.0f, 3, kLedRed);       // Comp Pk
+    tiny ({ 1449.0f, 254.0f, 18.0f, 12.0f }, "Pk");
+    led (1472.0f, 260.0f, 7, kLedRed);      // EQ Pk
+
+    // Pan: three LEDs over the rotary, L and R beside them.
+    tiny ({ 424.0f, 334.0f, 14.0f, 14.0f }, "L", juce::Justification::centred);
+    tiny ({ 470.0f, 334.0f, 14.0f, 14.0f }, "R", juce::Justification::centred);
+    led (444.0f, 343.0f, 4, kLedGreen);
+    led (454.0f, 339.0f, 5, kLedGreen);
+    led (464.0f, 343.0f, 6, kLedGreen);
+
+    // Insert Active: an LED in a printed box, not a key (p.37).
+    {
+        const juce::Rectangle<float> insert (420.0f, 138.0f, 72.0f, 30.0f);
+        g.setColour (l.silk.withAlpha (0.7f));
+        g.drawRoundedRectangle (insert, 3.0f, 1.0f);
+        hw::silk (g, { 424.0f, 141.0f, 44.0f, 12.0f }, "Insert", l, 9.5f, juce::Justification::centredLeft);
+        hw::silk (g, { 424.0f, 153.0f, 44.0f, 12.0f }, "Active", l, 9.5f, juce::Justification::centredLeft);
+        led (482.0f, 153.0f, 10, kLedGreen);
+    }
+
+    // The EQ's band keys in their chain, and its name.
+    if (auto* hf = findKey ("HF"))
+    {
+        g.setColour (l.sectionLine);
+        const auto keyCentre = [this] (const char* n) { return findKey (n)->getBounds().toFloat().getCentre(); };
+        g.drawLine (juce::Line<float> (hf->getBounds().toFloat().getCentre(), keyCentre ("HM")), 1.0f);
+        g.drawLine (juce::Line<float> (keyCentre ("HM"), keyCentre ("LM")), 1.0f);
+        g.drawLine (juce::Line<float> (keyCentre ("LM"), keyCentre ("LF")), 1.0f);
+    }
+    hw::silk (g, { 1548.0f, 270.0f, 44.0f, 20.0f }, "EQ", l, 16.0f, juce::Justification::centred);
+
+    // GEQ: its printed shape, the slant along the pod's edge, its band; Pk and In are
+    // LEDs (p.38).
+    {
+        juce::Path outline;
+        outline.startNewSubPath (1630.0f, 380.0f);
+        outline.lineTo (1630.0f, 354.0f);
+        outline.lineTo (1677.0f, 308.0f);
+        outline.lineTo (1740.0f, 308.0f);
+        outline.lineTo (1740.0f, 380.0f);
+        outline.closeSubPath();
+        g.setColour (l.sectionLine);
+        g.strokePath (outline.createPathWithRoundedCorners (6.0f), juce::PathStrokeType (1.2f));
+        const juce::Rectangle<float> label (1654.0f, 328.0f, 86.0f, 12.0f);
+        g.setColour (juce::Colours::white);
+        g.fillRect (label);
+        g.setColour (juce::Colours::black);
+        g.setFont (type::font (10.5f, true));
+        g.drawText ("GEQ", label, juce::Justification::centred);
+        tiny ({ 1707.0f, 313.0f, 18.0f, 12.0f }, "Pk");
+        led (1730.0f, 319.0f, 8, kLedRed);
+        tiny ({ 1642.0f, 344.0f, 22.0f, 12.0f }, "In", juce::Justification::centred);
+        led (1653.0f, 364.0f, 9, kLedGreen);
+    }
+
+    // Pre Fade and Assign join to the Sel keys: printed "+" and bracket.
+    {
+        g.setColour (l.sectionLine);
+        g.drawLine (100.0f, 575.0f, 112.0f, 575.0f, 1.0f);
+        g.drawLine (100.0f, 619.0f, 112.0f, 619.0f, 1.0f);
+        g.drawLine (112.0f, 575.0f, 112.0f, 619.0f, 1.0f);
+        g.drawLine (112.0f, 597.0f, 158.0f, 597.0f, 1.0f);
+        hw::silk (g, { 113.0f, 584.0f, 16.0f, 12.0f }, "+", l, 11.0f);
+    }
+
+    // LR's line to the Mix Select label.
+    g.setColour (l.sectionLine);
+    g.drawLine (1739.0f, 507.0f, 1762.0f, 507.0f, 1.0f);
+
+    // Top right: ST3 In, the USB port, the phones socket and its scale.
+    {
+        const auto socket = [&g] (float cx, float cy, float radius)
+        {
+            g.setColour (juce::Colour (0xff9ea2a6));
+            g.fillEllipse (cx - radius, cy - radius, radius * 2.0f, radius * 2.0f);
+            g.setColour (juce::Colour (0xff15161a));
+            g.fillEllipse (cx - radius * 0.55f, cy - radius * 0.55f, radius * 1.1f, radius * 1.1f);
+        };
+        socket (1826.0f, 72.0f, 6.0f);
+        // The USB port, drawn plainly.
+        const juce::Rectangle<float> usb (1840.0f, 62.0f, 36.0f, 18.0f);
+        g.setColour (juce::Colour (0xff222428));
+        g.fillRoundedRectangle (usb, 2.0f);
+        g.setColour (juce::Colour (0xff9ea2a6));
+        g.drawRoundedRectangle (usb, 2.0f, 1.0f);
+        g.fillRect (usb.getX() + 5.0f, usb.getY() + 6.0f, usb.getWidth() - 10.0f, 6.0f);
+        hw::silk (g, { 1840.0f, 84.0f, 36.0f, 12.0f }, "USB", l, 9.0f);
+        // The phones socket, and a headphone mark.
+        socket (1848.0f, 128.0f, 11.0f);
+        juce::Path phones;
+        phones.addCentredArc (1878.0f, 127.0f, 7.0f, 7.0f, 0.0f, -juce::MathConstants<float>::halfPi, juce::MathConstants<float>::halfPi, true);
+        g.setColour (l.silk);
+        g.strokePath (phones, juce::PathStrokeType (1.4f));
+        g.fillRoundedRectangle (1869.5f, 125.0f, 3.0f, 7.0f, 1.0f);
+        g.fillRoundedRectangle (1883.0f, 125.0f, 3.0f, 7.0f, 1.0f);
+        // The phones rotary's scale, 0 to 10.
+        g.setColour (l.sectionLine.brighter (0.4f));
+        const float cx = 1848.0f, cy = 176.0f;
+        for (int t = 0; t <= 8; ++t)
+        {
+            const float a = juce::MathConstants<float>::pi * (-0.75f + 1.5f * (float) t / 8.0f);
+            g.drawLine (cx + std::sin (a) * 31.0f, cy - std::cos (a) * 31.0f, cx + std::sin (a) * 35.0f, cy - std::cos (a) * 35.0f, 1.0f);
+        }
+        tiny ({ 1814.0f, 205.0f, 16.0f, 12.0f }, "0", juce::Justification::centred);
+        tiny ({ 1866.0f, 205.0f, 18.0f, 12.0f }, "10", juce::Justification::centred);
+    }
+
     // Group rules between the fader groups, the Master's frame.
     g.setColour (l.sectionLine.withAlpha (0.35f));
     for (int i = 1; i < 4; ++i)
@@ -989,24 +1161,29 @@ void Sq5Surface::paint (juce::Graphics& g)
 
     // The PAFL meter, beside the screen.
     const auto pafl = [this] (int ch) { return juce::Decibels::gainToDecibels (ctx.meters.getPhones (ch), -60.0f); };
-    juce::Rectangle<float> meter (1340.0f, 34.0f, 48.0f, 240.0f);
+    const juce::Rectangle<float> meter = kPaflMeter;
     g.setColour (juce::Colours::black);
     g.fillRoundedRectangle (meter, 3.0f);
-    const float marks[] = { 12.0f, 6.0f, 3.0f, 0.0f, -3.0f, -6.0f, -9.0f, -12.0f, -16.0f, -20.0f, -40.0f };
-    for (int i = 0; i < 11; ++i)
+    hw::silk (g, { meter.getX() + 1.0f, meter.getY() + 3.0f, 14.0f, 12.0f }, "L", l, 9.0f);
+    hw::silk (g, { meter.getRight() - 15.0f, meter.getY() + 3.0f, 14.0f, 12.0f }, "R", l, 9.0f);
+    // The 12 segments, the peak row on top (p.52): red, three amber, the rest green.
+    const char* const scale[] = { "Pk", "+12", "+6", "+3", "0", "-3", "-6", "-9", "-12", "-16", "-20", "-40" };
+    const float marks[] = { 17.0f, 12.0f, 6.0f, 3.0f, 0.0f, -3.0f, -6.0f, -9.0f, -12.0f, -16.0f, -20.0f, -40.0f };
+    const float rowH = (meter.getHeight() - 20.0f) / 12.0f;
+    for (int i = 0; i < 12; ++i)
     {
-        const float y = meter.getY() + 10.0f + (float) i * 20.0f;
+        const float y = meter.getY() + 17.0f + (float) i * rowH;
         for (int ch = 0; ch < 2; ++ch)
         {
             const bool on = pafl (ch) >= marks[(size_t) i];
-            const auto c = marks[(size_t) i] > 3.0f ? juce::Colours::red : marks[(size_t) i] > -6.0f ? juce::Colours::yellow : kGreenLed;
+            const auto c = i == 0 ? juce::Colours::red : i <= 3 ? kLedOrange : kLedGreen;
             g.setColour (on ? c : c.withMultipliedBrightness (0.18f));
             g.fillEllipse (ch == 0 ? meter.getX() + 4.0f : meter.getRight() - 12.0f, y, 8.0f, 8.0f);
         }
-        const auto t = marks[(size_t) i] > 0.0f ? "+" + juce::String ((int) marks[(size_t) i]) : juce::String ((int) marks[(size_t) i]);
-        hw::silk (g, { meter.getX() + 12.0f, y - 2.0f, 24.0f, 12.0f }, t, l, 8.5f);
+        hw::silk (g, { meter.getX() + 12.0f, y - 2.0f, 24.0f, 12.0f }, scale[i], l, 8.5f);
     }
-    hw::silk (g, { meter.getX(), meter.getBottom() + 2.0f, meter.getWidth(), 12.0f }, "PAFL", l, 10.0f);
+    led (meter.getCentreX(), meter.getBottom() + 9.0f, 11, kLedOrange);
+    hw::silk (g, { meter.getX(), meter.getBottom() + 14.0f, meter.getWidth(), 12.0f }, "PAFL", l, 10.0f);
 
     hw::silk (g, { 800.0f, 463.0f, 220.0f, 14.0f }, "SQ-5", l, 12.0f);
 }

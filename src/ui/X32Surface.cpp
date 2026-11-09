@@ -14,6 +14,8 @@ namespace
     constexpr int kLayerColumn = 58;  // the layer keys' columns
     constexpr int kRightPanel = 300;  // SCENES, ASSIGN, MUTE GROUPS
     const juce::Colour kLayerLit (0xff62f0a6), kKeyLit (0xffffc83a);
+    // The keys unlit: pale translucent rubber (the strips' and keys' close-ups).
+    const juce::Colour kKeyFace (0xffc9ccca);
 
     /** An input layer: its key, the strips (0 channels, 1 aux, 2 buses) from the
         first, and the name printed under its key where it isn't the key's. */
@@ -184,6 +186,7 @@ X32Surface::X32Surface (UiContext& c)
                 const bool view = k->getButtonText() == "VIEW";
                 k->labelBelow = ! view;
                 k->labelAbove = view;
+                k->face = kKeyFace;
             }
             namesBelow (*child);
         }
@@ -237,6 +240,7 @@ void X32Surface::buildInputLayerKeys()
     {
         auto key = std::make_unique<ToggleKey> (layers[(size_t) i].name, kLayerLit, theme);
         key->look = &hw::Look::x32();
+        key->face = kKeyFace;
         key->labelBelow = true;
         if (layers[(size_t) i].printed != nullptr)
             key->belowText = layers[(size_t) i].printed;
@@ -448,10 +452,11 @@ void X32Surface::paint (juce::Graphics& g)
     };
     const int top = inputs.front()->getY() - 6, bottom = inputs.front()->getBottom() + 18;
     const auto band = [&] (const juce::Component& c) { column (juce::Rectangle<int> (c.getX() + 2, top, c.getWidth() - 4, bottom - top)); };
-    for (int i = 0; i < getNumInputFaders(); ++i)
+    // Every second strip has the black band, the others the panel's own grey (the strips' close-up).
+    for (int i = 1; i < getNumInputFaders(); i += 2)
         band (*inputs[(size_t) i]);
-    for (auto& s : groups)
-        band (*s);
+    for (int i = 1; i < (int) groups.size(); i += 2)
+        band (*groups[(size_t) i]);
     band (*main);
     for (auto* keys : { &inputLayerKeys, &groupLayerKeys })
         if (! keys->empty())

@@ -6,6 +6,9 @@
 #include "ui/ProMixSurface.h"
 #include "ui/Sq5Surface.h"
 #include "ui/Y02RSurface.h"
+#include "ui/Y01VSurface.h"
+#include "ui/DLiveSurface.h"
+#include "ui/DLiveC3500Surface.h"
 #include "ui/X32Surface.h"
 #include "ui/PluginChainWindow.h"
 #include "ui/PluginOverviewWindow.h"
@@ -297,6 +300,8 @@ MainComponent::MainComponent (juce::AudioDeviceManager& dm, MixerEngine& e, Plug
                   : savedKind == "promix"  ? InterfaceKind::ProMix
                   : savedKind == "02r"     ? InterfaceKind::Yamaha02R
                   : savedKind == "sq5"     ? InterfaceKind::Sq5
+                  : savedKind == "01v"     ? InterfaceKind::Yamaha01V
+                  : savedKind == "dlive"   ? InterfaceKind::DLive
                                            : InterfaceKind::Wing,
                   false);
     setWantsKeyboardFocus (true);
@@ -367,6 +372,7 @@ void MainComponent::refreshAll()
     ui::fader::setLaw (engine.getFaderLaw());
     ui::routing::setProfile (engine.getProfile());
     setShownProfile (engine.getProfile());
+    setShownSlots (engine.getHandle());
 
     // A loaded or new show brings its own custom controls.
     customControlAssignments->reload();
@@ -386,18 +392,22 @@ void MainComponent::refreshAll()
     // shows an X32, the ProMix surface a ProMix 01, the Universal Mixer any
     // other; a console's surface without its console gives way to the Universal Mixer.
     const bool x32 = engine.getProfile() == ld::kProfileX32, promix = engine.getProfile() == ld::kProfileProMix01,
-               y02r = engine.getProfile() == ld::kProfileYamaha02R, sq5 = engine.getProfile() == ld::kProfileSq5;
+               y02r = engine.getProfile() == ld::kProfileYamaha02R, sq5 = engine.getProfile() == ld::kProfileSq5,
+               y01v = engine.getProfile() == ld::kProfileYamaha01V, dlive = engine.getProfile() == ld::kProfileDLive;
     if (ctx.interfaceKind == InterfaceKind::Wing && ! isWingConsole())
     {
         log.info (x32      ? "This console is an X32: the X32 surface shows it"
                   : promix ? "This console is a ProMix 01: the ProMix surface shows it"
                   : y02r   ? "This console is an 02R: the 02R surface shows it"
                   : sq5    ? "This console is an SQ-5: the SQ-5 surface shows it"
+                  : y01v   ? "This console is a 01V: the Universal Mixer shows it"
+                  : dlive  ? "This console is a dLive: the dLive surface shows it"
                            : "This console isn't a WING: the Universal Mixer shows it (SETUP > GENERAL > INTERFACE)");
-        setInterface (x32 ? InterfaceKind::X32 : promix ? InterfaceKind::ProMix : y02r ? InterfaceKind::Yamaha02R : sq5 ? InterfaceKind::Sq5 : InterfaceKind::Universal, false);
+        setInterface (x32 ? InterfaceKind::X32 : promix ? InterfaceKind::ProMix : y02r ? InterfaceKind::Yamaha02R : sq5 ? InterfaceKind::Sq5 : y01v ? InterfaceKind::Yamaha01V : dlive ? InterfaceKind::DLive : InterfaceKind::Universal, false);
     }
     else if ((ctx.interfaceKind == InterfaceKind::X32 && ! x32) || (ctx.interfaceKind == InterfaceKind::ProMix && ! promix)
-             || (ctx.interfaceKind == InterfaceKind::Yamaha02R && ! y02r) || (ctx.interfaceKind == InterfaceKind::Sq5 && ! sq5))
+             || (ctx.interfaceKind == InterfaceKind::Yamaha02R && ! y02r) || (ctx.interfaceKind == InterfaceKind::Sq5 && ! sq5)
+             || (ctx.interfaceKind == InterfaceKind::Yamaha01V && ! y01v) || (ctx.interfaceKind == InterfaceKind::DLive && ! dlive))
         setInterface (InterfaceKind::Universal, false);
     syncRemotes();
     skin->refreshAll();
@@ -514,12 +524,48 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                          }, true);
         return;
     }
+    if (kind == InterfaceKind::Yamaha01V && skin != nullptr && engine.getProfile() != ld::kProfileYamaha01V)
+    {
+        // Likewise a 01V: its 24 inputs, 4 auxes, 4 buses and 2 effects.
+        popups::confirm (skin->popupHost(), "01V",
+                         "This console isn't a 01V. Clear the console and make it a fresh 01V (24 inputs on 22 channels, "
+                         "4 auxes, 4 buses, 2 effect sends and returns, STEREO)?",
+                         "MAKE IT A 01V",
+                         [this, save]
+                         {
+                             closeAllPluginWindows();
+                             engine.configureProfile (ld::kProfileYamaha01V);
+                             setInterface (InterfaceKind::Yamaha01V, save);
+                             refreshAll();
+                             log.info ("The console is a 01V");
+                         }, true);
+        return;
+    }
+    if (kind == InterfaceKind::DLive && skin != nullptr && engine.getProfile() != ld::kProfileDLive)
+    {
+        // Likewise a dLive, as its FoH template lays out its mixes.
+        popups::confirm (skin->popupHost(), "DLIVE",
+                         "This console isn't a dLive. Clear the console and make it a fresh dLive (128 inputs on 124 channels, "
+                         "8 groups, 16 auxes, 8 FX sends, 16 FX, LR, 8 matrices, 24 DCAs)?",
+                         "MAKE IT A DLIVE",
+                         [this, save]
+                         {
+                             closeAllPluginWindows();
+                             engine.configureProfile (ld::kProfileDLive);
+                             setInterface (InterfaceKind::DLive, save);
+                             refreshAll();
+                             log.info ("The console is a dLive");
+                         }, true);
+        return;
+    }
     if (save)
         settings.setValue (uiprefs::interfaceKind, kind == InterfaceKind::Universal ? "universal"
                                                    : kind == InterfaceKind::X32     ? "x32"
                                                    : kind == InterfaceKind::ProMix  ? "promix"
                                                    : kind == InterfaceKind::Yamaha02R ? "02r"
                                                    : kind == InterfaceKind::Sq5     ? "sq5"
+                                                   : kind == InterfaceKind::Yamaha01V ? "01v"
+                                                   : kind == InterfaceKind::DLive   ? "dlive"
                                                                                     : "wing");
     if (skin != nullptr && kind == ctx.interfaceKind)
         return;
@@ -530,7 +576,9 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
     if ((kind == InterfaceKind::X32 && engine.getProfile() != ld::kProfileX32)
         || (kind == InterfaceKind::ProMix && engine.getProfile() != ld::kProfileProMix01)
         || (kind == InterfaceKind::Yamaha02R && engine.getProfile() != ld::kProfileYamaha02R)
-        || (kind == InterfaceKind::Sq5 && engine.getProfile() != ld::kProfileSq5))
+        || (kind == InterfaceKind::Sq5 && engine.getProfile() != ld::kProfileSq5)
+        || (kind == InterfaceKind::Yamaha01V && engine.getProfile() != ld::kProfileYamaha01V)
+        || (kind == InterfaceKind::DLive && engine.getProfile() != ld::kProfileDLive))
         kind = ctx.interfaceKind = InterfaceKind::Universal; // a console's surface shows that console only
     if (kind == InterfaceKind::Wing)
         skin = std::make_unique<WingSurface> (ctx);
@@ -542,6 +590,15 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
         skin = std::make_unique<Y02RSurface> (ctx);
     else if (kind == InterfaceKind::Sq5)
         skin = std::make_unique<Sq5Surface> (ctx);
+    else if (kind == InterfaceKind::Yamaha01V)
+        skin = std::make_unique<Y01VSurface> (ctx);
+    else if (kind == InterfaceKind::DLive)
+    {
+        if (settings.getValue (uiprefs::dliveSurface, "c3500") == "c1500")
+            skin = std::make_unique<DLiveSurface> (ctx);
+        else
+            skin = std::make_unique<DLiveC3500Surface> (ctx);
+    }
     else
         skin = std::make_unique<UniversalSkin> (ctx);
     addChildComponent (*skin, 0); // under the editor and anything over the window
@@ -556,6 +613,8 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                   : kind == InterfaceKind::ProMix  ? "Interface: the ProMix 01 surface"
                   : kind == InterfaceKind::Yamaha02R ? "Interface: the 02R surface"
                   : kind == InterfaceKind::Sq5     ? "Interface: the SQ-5 surface"
+                  : kind == InterfaceKind::Yamaha01V ? "Interface: the 01V surface"
+                  : kind == InterfaceKind::DLive   ? "Interface: the dLive surface"
                                                    : "Interface: the WING surface");
     }
 }
@@ -927,6 +986,8 @@ void MainComponent::startFresh (InterfaceKind kind)
                                  : kind == InterfaceKind::ProMix    ? ld::kProfileProMix01
                                  : kind == InterfaceKind::Yamaha02R ? ld::kProfileYamaha02R
                                  : kind == InterfaceKind::Sq5       ? ld::kProfileSq5
+                                 : kind == InterfaceKind::Yamaha01V ? ld::kProfileYamaha01V
+                                 : kind == InterfaceKind::DLive     ? ld::kProfileDLive
                                                                     : ld::kProfileUniversal);
     show.clear (engine.getConfiguredCounts().channels);
     showFile = juce::File();

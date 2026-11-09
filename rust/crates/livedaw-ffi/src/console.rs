@@ -94,6 +94,37 @@ pub unsafe extern "C" fn ld_engine_oscillators(e: *const Engine, count: *mut i32
     e.sources().oscillators().as_ptr()
 }
 
+/// A console's own oscillator (`Engine::oscillator`), set from its surface: what it
+/// plays (`mode`: OscMode; `burst`: 200 ms every 4 s; `exclusive`: what it's assigned
+/// to carries nothing else).
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_console_osc_set(
+    e: *const Engine,
+    on: bool,
+    mode: i32,
+    freq_hz: f32,
+    level_db: f32,
+    burst: bool,
+    exclusive: bool,
+) {
+    let Some(e) = engine(e) else { return };
+    let o = &e.oscillator;
+    o.burst.store(burst, std::sync::atomic::Ordering::Relaxed);
+    o.exclusive.store(exclusive, std::sync::atomic::Ordering::Relaxed);
+    o.set(on, mode, freq_hz, level_db);
+}
+
+/// Where the console oscillator plays: bus, main or matrix `number` (0-based) at
+/// `left` and `right` (0 0: not at all).
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_console_osc_assign(e: *const Engine, kind: i32, number: i32, left: f32, right: f32) {
+    let (Some(e), Some(kind), Ok(number)) = (engine(e), livedaw_engine::StripKind::from_i32(kind), usize::try_from(number))
+    else {
+        return;
+    };
+    e.oscillator.assign(kind, number, [left, right]);
+}
+
 /// HOME > TAGS talk tags (bits: TALK SOLO, TALK ON, TALK A SOLO, TALK A ON,
 /// TALK B SOLO, TALK B ON).
 #[no_mangle]
@@ -116,6 +147,31 @@ pub unsafe extern "C" fn ld_strip_mute_state(s: *const Strip) -> i32 {
 }
 
 /// Soloed in the last block (own solo, a soloed DCA or TALK SOLO).
+/// ABI 56: a mix's Ext In and Mix Source.
+///
+/// # Safety
+/// `s` is a valid strip; the result lives as long as it does.
+#[no_mangle]
+pub unsafe extern "C" fn ld_strip_mix_input(s: *const Strip) -> *const livedaw_engine::params::MixInputParams {
+    &(*s).mix_input
+}
+
+/// ABI 56: a dLive channel's AMM settings and read-back (the settings are ignored on
+/// any other strip).
+///
+/// # Safety
+/// `s` is a valid strip; the result lives as long as it does.
+#[no_mangle]
+pub unsafe extern "C" fn ld_strip_amm(s: *const Strip) -> *const livedaw_engine::amm::AmmStripParams {
+    strip(s).map_or(std::ptr::null(), |s| &s.amm)
+}
+
+/// ABI 56: the console's AMM settings; lives as long as the engine.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_amm(e: *const Engine) -> *const livedaw_engine::amm::AmmParams {
+    engine(e).map_or(std::ptr::null(), |e| &e.amm)
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn ld_strip_is_soloed(s: *const Strip) -> bool {
     strip(s).is_some_and(|s| s.console.is_soloed())

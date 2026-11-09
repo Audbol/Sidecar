@@ -68,7 +68,7 @@ pub(super) fn create(token: &str, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
 }
 
 /// WING device `wing` run by `map` over `spec` (None: the device's own controls).
-pub(super) fn bridge(wing: &str, spec: Option<&'static ModelSpec>, map: Map, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
+pub(crate) fn bridge(wing: &str, spec: Option<&'static ModelSpec>, map: Map, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
     let spec = spec.or_else(|| Some(&crate::wing::FX_MODELS[super::model_index(wing)?]))?;
     let dev = super::create(wing, ctx)?;
     // Controls a mapping leaves alone keep the WING device's defaults.
@@ -237,7 +237,7 @@ fn pitch(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
 
 /// Writes the WING device's values (by its ids) from the X32 model's; returns
 /// an output gain in dB (0 when the WING device has the level itself).
-pub(super) type Map = fn(&Params, &mut dyn FnMut(&'static str, f32)) -> f32;
+pub(crate) type Map = fn(&Params, &mut dyn FnMut(&'static str, f32)) -> f32;
 
 struct Bridge {
     dev: Box<dyn FxAlgo>,

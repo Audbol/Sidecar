@@ -10,6 +10,7 @@ UniversalSkin::UniversalSkin (UiContext& c)
       wingKey (c.engine.getProfile() == ld::kProfileX32        ? "X32 SURFACE"
                : c.engine.getProfile() == ld::kProfileProMix01 ? "PROMIX SURFACE"
                : c.engine.getProfile() == ld::kProfileYamaha02R ? "02R SURFACE"
+               : c.engine.getProfile() == ld::kProfileDLive     ? "DLIVE SURFACE"
                                                                : "WING SURFACE",
                theme.accent, theme), showKey ("SHOW", theme.accent, theme), mixer (c, theme), routingView (c, theme), fxRack (c, theme),
       monitoring (c, theme), scenes (c, theme), library (c, theme), recorder (c, theme), setup (c, theme), inspector (c, theme)
@@ -32,6 +33,8 @@ UniversalSkin::UniversalSkin (UiContext& c)
                       : ctx.engine.getProfile() == ld::kProfileProMix01 ? InterfaceKind::ProMix
                       : ctx.engine.getProfile() == ld::kProfileYamaha02R ? InterfaceKind::Yamaha02R
                       : ctx.engine.getProfile() == ld::kProfileSq5      ? InterfaceKind::Sq5
+                      : ctx.engine.getProfile() == ld::kProfileYamaha01V ? InterfaceKind::Yamaha01V
+                      : ctx.engine.getProfile() == ld::kProfileDLive    ? InterfaceKind::DLive
                                                                         : InterfaceKind::Wing;
     wingKey.onClick = [&context = ctx, back]
     {
@@ -41,7 +44,7 @@ UniversalSkin::UniversalSkin (UiContext& c)
                 context.setInterface (back);
         });
     };
-    wingKey.setTooltip (back == InterfaceKind::X32 ? "Back to the X32 surface" : back == InterfaceKind::ProMix ? "Back to the ProMix 01 surface" : back == InterfaceKind::Sq5 ? "Back to the SQ-5 surface" : "Back to the WING surface");
+    wingKey.setTooltip (back == InterfaceKind::X32 ? "Back to the X32 surface" : back == InterfaceKind::ProMix ? "Back to the ProMix 01 surface" : back == InterfaceKind::Sq5 ? "Back to the SQ-5 surface" : back == InterfaceKind::Yamaha01V ? "Back to the 01V surface" : "Back to the WING surface");
     addAndMakeVisible (wingKey);
     // The show: NEW, OPEN, SAVE and SAVE AS (the shell's, as the WING's LIBRARY uses them).
     showKey.onClick = [this]

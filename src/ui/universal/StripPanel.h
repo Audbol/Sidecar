@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui/universal/Groups.h"
+#include "ui/universal/ValueControls.h"
 
 namespace livedaw::ui::universal
 {
@@ -33,6 +34,16 @@ public:
 
     ToggleKey renameKey, savePresetKey, loadPresetKey;
     GroupGrid dcas, muteGroups;
+    /** A dLive mix's Ext In (its socket, trim, polarity) and, on its Groups, Aux and FX
+        sends, Mix Source. Hidden on anything else. */
+    ChoiceBar extIn, extTrim, mixSource;
+    ToggleKey extPolarity;
+    bool showsMixInput() const;
+    /** A dLive input channel's AMM: which it's in, ON, CHAIR, SOLO (NOM) or PRIORITY (D-Classic). */
+    ChoiceBar amm;
+    ToggleKey ammOn, ammChair, ammSolo;
+    ValueBar ammPriority;
+    bool showsAmm() const;
 
     /** The height the page needs at a width (its scroller sizes it so). */
     int heightFor (int width) const;
@@ -53,7 +64,9 @@ private:
     juce::String name;
     int colour = 0;
     bool linked = false;
-    juce::Rectangle<int> nameArea, colourCaption, coloursArea, dcaCaption, muteCaption, presetCaption;
+    juce::Rectangle<int> nameArea, colourCaption, coloursArea, dcaCaption, muteCaption, presetCaption, mixCaption, ammCaption;
+    float shownAmmGain = 0.0f;
+    bool shownAmmNom = true;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StripPanel)
 };

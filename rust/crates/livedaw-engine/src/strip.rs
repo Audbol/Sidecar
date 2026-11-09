@@ -18,6 +18,7 @@
 //! analysed strip (`analyser`) also copies its signal to the RTA and scope
 //! rings, and the listened strip computes its LISTEN signal.
 
+use crate::amm::{AmmChannel, AmmParams, AmmStripParams};
 use crate::analyser::{listen_mode, rta_tap, Probes, StripProbe};
 use crate::atomic::AtomicF32;
 use crate::blocks::{Block, BlockDsp, BlockParams, ChainLayout, Step};
@@ -91,6 +92,8 @@ pub(crate) struct ProcessContext<'a> {
     /// SOURCE SOLO (`monitor.rs`): the host strip and the soloed source's
     /// ports, which it plays instead of its own input this block.
     pub source_solo: Option<(&'a Strip, SoloPatch)>,
+    /// The AMM's side chain filters.
+    pub amm: &'a AmmParams,
 }
 
 /// The strips other than input channels a key can come from (`keytap.rs`).
@@ -164,6 +167,8 @@ pub(crate) struct StripDsp {
     key: Vec<f32>,
     delay: DelayLine,
     last_in: [f32; 2],
+    /// The Ext In's gain last block.
+    last_ext: f32,
     last_gain: f32,
     /// 2x2 output matrix (ll, rl, lr, rr): out_l = ll*L + rl*R, out_r = lr*L + rr*R.
     out_matrix: [f32; 4],
@@ -171,6 +176,8 @@ pub(crate) struct StripDsp {
     pan_gains: [f32; 2],
     automix_gain: f32,
     automix_power: f32,
+    /// A dLive's AMM (`amm.rs`).
+    pub(crate) amm: AmmChannel,
     tap_point: usize,
     /// Effective mute in the last block (TAP-mode sends follow it).
     muted: bool,
@@ -207,11 +214,13 @@ impl StripDsp {
             key: Vec::new(),
             delay: DelayLine::default(),
             last_in: [1.0; 2],
+            last_ext: 0.0,
             last_gain: 1.0,
             out_matrix: [0.0; 4],
             pan_gains: [1.0; 2],
             automix_gain: 1.0,
             automix_power: 0.0,
+            amm: AmmChannel::default(),
             tap_point: tap::PFL,
             muted: false,
             last_direct: 0.0,
@@ -231,6 +240,7 @@ impl StripDsp {
         self.delay.reset();
         self.listen_filter.reset();
         self.tap_shaper.reset();
+        self.amm.reset_filters();
     }
 
     fn buffers_mut(&mut self) -> [&mut [Vec<f32>; 2]; 6] {
@@ -273,6 +283,10 @@ pub struct Strip {
     /// Console-level state: talk tags, MUTEGROUP/SIP OVERRIDE, the block's
     /// effective solo and mute decision (`solo.rs`).
     pub console: StripConsole,
+    /// A mix's Ext In and Mix Source.
+    pub mix_input: crate::params::MixInputParams,
+    /// A dLive channel's AMM settings and read-back.
+    pub amm: AmmStripParams,
     /// Plugin delay compensation: tap latencies and history rings (`pdc.rs`).
     pub pdc: StripPdc,
     /// Input channels: the taps other strips' keys read (`keytap.rs`).
@@ -395,7 +409,7 @@ impl Strip {
             params: {
                 let p = StripParams::new_in_slot_of(kind, slot, spec);
                 if let Some(colour) = spec.palette.factory {
-                    p.colour.store(colour(kind, slot), Relaxed);
+                    p.colour.store(colour(spec, kind, slot), Relaxed);
                 }
                 p
             },
@@ -405,9 +419,11 @@ impl Strip {
             sends: SendBank::of(spec, kind, usize::try_from(id).unwrap_or(0)),
             mains: Bank::new(MAX_MAINS, MAIN_SEND_PAGE, kind, usize::try_from(id).unwrap_or(0), spec),
             matrices: Bank::new(MAX_MATRICES, MAIN_SEND_PAGE, kind, usize::try_from(id).unwrap_or(0), spec),
-            name: Mutex::new(spec.factory_name.and_then(|f| f(kind, slot)).unwrap_or_default()),
+            name: Mutex::new(spec.factory_name.and_then(|f| f(spec, kind, slot)).unwrap_or_default()),
             tags: Mutex::new(String::new()),
             console: StripConsole::default(),
+            mix_input: Default::default(),
+            amm: AmmStripParams::default(),
             pdc: StripPdc::default(),
             keys: StripKeyTaps::default(),
             taps: StripTaps::default(),
@@ -453,6 +469,17 @@ impl Strip {
     /// The strip can join automix X/Y (the INS 2 of input channels only).
     pub fn has_automix(&self) -> bool {
         self.kind == StripKind::Channel
+    }
+
+    /// The strip can join an AMM: a dLive's input channels.
+    pub fn has_amm(&self) -> bool {
+        self.kind == StripKind::Channel && matches!(self.spec.profile, Profile::AhDLive(_))
+    }
+
+    /// The AMM (from 0) the channel is an On member of, of the console's `amms`.
+    pub(crate) fn amm_zone(&self, amms: usize) -> Option<usize> {
+        let zone = usize::try_from(self.amm.amm.load(Relaxed)).ok().filter(|&z| z < amms)?;
+        (self.has_amm() && self.amm.on.load(Relaxed)).then_some(zone)
     }
 
     /// The automix group the strip is a member of (0 = X, 1 = Y): an input
@@ -564,6 +591,15 @@ impl Strip {
     /// The extra blocks of the chain, in order.
     pub fn blocks(&self) -> Vec<Arc<Block>> {
         self.layout().map(|l| l.blocks().cloned().collect()).unwrap_or_default()
+    }
+
+    /// A dLive input channel's preamp block: the dynamics block holding a preamp
+    /// model (only that block may: `ProfileSpec::may_hold`). None on other consoles.
+    pub fn preamp_block(&self) -> Option<Arc<Block>> {
+        self.spec.factory_preamp_block?;
+        self.blocks().into_iter().find(|b| {
+            matches!(&b.params, BlockParams::Dynamics(d) if d.model_spec().is_some_and(|m| livedaw_dsp::dlive::is_preamp(m.token)))
+        })
     }
 
     /// A new id for an extra block (unique on the strip; `ensure_block_uid`
@@ -737,6 +773,7 @@ impl Strip {
         d.listen_filter.reset();
         d.listen_state = None;
         d.tap_shaper.prepare(sample_rate);
+        d.amm = AmmChannel::default();
         if let Some(layout) = self.layout() {
             for b in layout.blocks() {
                 b.dsp_mut().prepare(sample_rate);
@@ -889,6 +926,32 @@ impl Strip {
         }
     }
 
+    /// A mix's Ext In: summed in before its processing, with its own trim and polarity.
+    unsafe fn add_ext_in(&self, d: &mut StripDsp, ctx: &ProcessContext, n: usize) {
+        let m = &self.mix_input;
+        let first = m.ext_source.load(Relaxed);
+        let polarity = if m.ext_invert.load(Relaxed) { -1.0 } else { 1.0 };
+        let gain = db_to_gain(m.ext_trim_db.load()) * polarity;
+        if first >= 0 {
+            let stereo = self.params.stereo.load(Relaxed);
+            let step = (gain - d.last_ext) / n.max(1) as f32;
+            for ch in 0..2 {
+                let Some(src) = ctx.source(first + i32::from(stereo && ch == 1)) else { continue };
+                let mut g = d.last_ext;
+                for (out, x) in d.work[ch][..n].iter_mut().zip(std::slice::from_raw_parts(src, n)) {
+                    g += step;
+                    *out += x * g;
+                }
+            }
+        }
+        d.last_ext = gain;
+    }
+
+    /// The compressor comes after the PEQ on this channel (its process order).
+    pub(crate) fn eq_first(&self) -> bool {
+        self.spec.pre_fader_order(self.kind, self.params.process_order.load(Relaxed)).first() == Some(&b'E')
+    }
+
     /// Summing buses: clear the work buffer before sums are accumulated into it.
     ///
     /// # Safety
@@ -930,6 +993,7 @@ impl Strip {
                 self.meters.gate_active.store(false, Relaxed);
                 self.meters.dyn_active.store(false, Relaxed);
                 d.idle = true;
+                d.amm.clear_key();
                 self.keys.clear(ctx.block, n);
                 // An analysed idle strip is silent (its buffers are zero).
                 let probe = ctx.probes.of(self);
@@ -977,7 +1041,9 @@ impl Strip {
     /// and the key tap other strips' keys read (if any).
     unsafe fn tap_at(&self, d: &mut StripDsp, ctx: &ProcessContext, point: usize, n: usize) {
         // POST, after INS 2: with the automix gain of the last block (automix runs after stage 1).
-        let gain = if point == tap::POST { d.automix_gain } else { 1.0 };
+        let automix = if point == tap::POST { d.automix_gain } else { 1.0 };
+        // At and after the fader: with the AMM gain of the last block (the AMM pass runs after stage 1).
+        let gain = automix * if point >= tap::AFL { d.amm.gain } else { 1.0 };
         self.keys.write(point, ctx.block, [&d.work[0][..n], &d.work[1][..n]], d.num_channels, gain);
         Self::copy_tap(d, point, n);
     }
@@ -1165,6 +1231,9 @@ impl Strip {
         let nc = d.num_channels;
         match node {
             Node::Input => {
+                if self.kind.is_output() {
+                    self.add_ext_in(d, ctx, n);
+                }
                 // INPUT: trim, balance, polarity
                 let polarity = if p.input.invert.load(Relaxed) { -1.0 } else { 1.0 };
                 let trim = db_to_gain(p.input.trim_db.load()) * polarity;
@@ -1211,7 +1280,10 @@ impl Strip {
                 }
                 self.run_dynamics(d, ctx, n)
             }
-            Node::PreInsert => self.run_insert(d, ctx, n, false),
+            Node::PreInsert => {
+                self.amm_key(d, ctx, n);
+                self.run_insert(d, ctx, n, false)
+            }
             Node::PostInsert => {
                 // INS 2 (automix is applied by the engine after all channels ran; it
                 // follows the post-fader level, so the fader shapes the automix response).
@@ -1538,6 +1610,40 @@ impl Strip {
         self.remote_peaks.output[1].fetch_max(p1);
     }
 
+    /// The AMM's key: the channel's signal before Insert A, so the PEQ, the
+    /// compressor and the fader don't affect it. A stereo channel is one member,
+    /// keyed by L+R (Sidecar's reading).
+    fn amm_key(&self, d: &mut StripDsp, ctx: &ProcessContext, n: usize) {
+        if self.amm.amm.load(Relaxed) < 0 || !self.amm.on.load(Relaxed) || !self.has_amm() {
+            d.amm.clear_key();
+            return;
+        }
+        if d.num_channels > 1 {
+            for (k, (l, r)) in d.key[..n].iter_mut().zip(d.work[0][..n].iter().zip(&d.work[1][..n])) {
+                *k = 0.5 * (l + r);
+            }
+        } else {
+            d.key[..n].copy_from_slice(&d.work[0][..n]);
+        }
+        d.amm.measure(&mut d.key[..n], ctx.amm, d.sample_rate);
+    }
+
+    /// A gain ramp on everything that leaves the strip after the fader (post-fade
+    /// sends, the output) from `last` to `gain`, and on the TAP-mode copy when its
+    /// point is `from_tap` or later: what the engine's gain passes share.
+    fn ramp_post_fader(d: &mut StripDsp, last: f32, gain: f32, from_tap: usize, n: usize) {
+        let nc = d.num_channels;
+        for ch in 0..nc {
+            apply_gain_ramp(&mut d.post[ch][..n], last, gain);
+            if d.tap_point >= from_tap {
+                apply_gain_ramp(&mut d.tap[ch][..n], last, gain);
+            }
+        }
+        for ch in 0..2 {
+            apply_gain_ramp(&mut d.out[ch][..n], last, gain);
+        }
+    }
+
     /// Engine automix pass: scales everything after INS 2 (where automix sits)
     /// by `gain`; the POST FDR tap, before INS 2, keeps the plain fader level.
     ///
@@ -1545,19 +1651,20 @@ impl Strip {
     /// Audio thread, after the input stage, before anything reads this strip.
     pub(crate) unsafe fn apply_automix(&self, gain: f32, n: usize) {
         let d = self.dsp_mut();
-        let last = d.automix_gain;
-        let nc = d.num_channels;
-        for ch in 0..nc {
-            apply_gain_ramp(&mut d.post[ch][..n], last, gain);
-            if d.tap_point == tap::POST {
-                apply_gain_ramp(&mut d.tap[ch][..n], last, gain);
-            }
-        }
-        for ch in 0..2 {
-            apply_gain_ramp(&mut d.out[ch][..n], last, gain);
-        }
+        Self::ramp_post_fader(d, d.automix_gain, gain, tap::POST, n);
         d.automix_gain = gain;
         self.meters.automix_db.store(gain_to_db(gain));
+    }
+
+    /// Engine AMM pass (`amm.rs`): scales everything after the fader by `gain`.
+    /// Pre-fade sends, and the taps before the fader, don't take it.
+    ///
+    /// # Safety
+    /// Audio thread, after the input stage, before anything reads this strip.
+    pub(crate) unsafe fn apply_amm(&self, gain: f32, n: usize) {
+        let d = self.dsp_mut();
+        Self::ramp_post_fader(d, d.amm.gain, gain, tap::AFL, n);
+        d.amm.gain = gain;
     }
 }
 

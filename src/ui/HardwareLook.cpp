@@ -58,7 +58,10 @@ const Look& Look::promix()
         Look l;
         l.panelTop = c (0xff5b5e62);
         l.panelBottom = c (0xff45484c);
-        l.frame = c (0xffb9bcbe); // the silver rack ears
+        l.frame = c (0xff2e3034); // the case's dark ends
+        l.keyBar = false;         // plain cream keys, a round LED hole in those that have one
+        l.ledWidth = 6.0f;
+        l.ledHeight = 6.0f;
         l.section = c (0xff4a4d51);
         l.sectionLine = c (0xffd7d9db);
         l.silk = c (0xfff0f0ee);
@@ -119,17 +122,47 @@ const Look& Look::sq()
     return look;
 }
 
+const Look& Look::dlive()
+{
+    static const Look look = [] {
+        Look l;
+        l.panelTop = c (0xff35373c);
+        l.panelBottom = c (0xff27292d);
+        l.frame = c (0xff1a1b1e);
+        l.section = c (0xff2c2e33);
+        l.sectionLine = c (0xffc9ced6);
+        l.silk = c (0xffe3e6ea);
+        l.silkDim = c (0xffb0b6bd);
+        l.keyTop = c (0xffd2d8d4);
+        l.keyBottom = c (0xffaeb5b1);
+        l.keyText = c (0xff17191b);
+        l.backlit = false;
+        l.slot = c (0xff0b0b0c);
+        l.capTop = c (0xffb0b4ba);
+        l.capBottom = c (0xff666a70);
+        l.capLine = c (0xffd8dade);
+        l.cap = Cap::Ribbed;
+        l.shortScale = true;
+        l.knob = c (0xff4b4e53);
+        l.knobLine = c (0xffe8e8e8);
+        return l;
+    }();
+    return look;
+}
+
 const Look& Look::y02r()
 {
     static const Look look = [] {
         Look l;
-        l.panelTop = c (0xff404245);
-        l.panelBottom = c (0xff2f3134);
-        l.frame = c (0xff6a4428); // the wooden cheeks
+        // A dark charcoal in sharp recent photographs of a real one (the 1996 magazine
+        // scans, tinted, made it look green). The LCD's pale blue is from a lit press photo.
+        l.panelTop = c (0xff5a5c60);
+        l.panelBottom = c (0xff4b4d51);
+        l.frame = c (0xff2e3032); // the case's dark ends (wooden cheeks were an option)
         l.section = c (0xff36383b);
         l.sectionLine = c (0xffc4c7ca);
         l.silk = c (0xffeceeef);
-        l.silkDim = c (0xffa9adb1);
+        l.silkDim = c (0xffc6c9cd);
         l.keyTop = c (0xffe4ddc8);
         l.keyBottom = c (0xffc6bea6);
         l.keyText = c (0xff2a2723);
@@ -141,9 +174,9 @@ const Look& Look::y02r()
         l.knobLine = c (0xffe6e6e6);
         l.knobStyle = Knob::Dome;
         l.knob = c (0xffc9cbcc);
-        l.lcd = c (0xff7fa8e0);
-        l.lcdPixel = c (0xff0d1a3a);
-        l.lcdDim = c (0xff36507e);
+        l.lcd = c (0xffa1d0de);
+        l.lcdPixel = c (0xff14306e);
+        l.lcdDim = c (0xff4f76a6);
         l.lcdBezel = c (0xff2a2c2e);
         l.keyRadius = 2.5f;
         l.ledWidth = 8.0f; // a small oval at the top
@@ -265,7 +298,7 @@ void key (juce::Graphics& g, juce::Rectangle<float> a, const juce::String& text,
     g.setColour (juce::Colours::black.withAlpha (0.3f));
     g.drawRoundedRectangle (body.reduced (0.5f), r, 1.0f);
     auto textArea = body;
-    if (! l.backlit && ! withLed && text.isEmpty())
+    if (! l.backlit && ! withLed && text.isEmpty() && l.keyBar)
     {
         // A blank key without an LED: the moulded bar across its face.
         g.setColour (juce::Colours::black.withAlpha (0.35f));
@@ -294,6 +327,41 @@ void key (juce::Graphics& g, juce::Rectangle<float> a, const juce::String& text,
     g.drawFittedText (text, textArea.reduced (3.0f, 1.0f).toNearestInt(), juce::Justification::centred, 2, 0.75f);
 }
 
+void ribbedFaderCap (juce::Graphics& g, float cx, float cy, float halfW, float halfH, float waist, juce::Colour face)
+{
+    juce::Path p;
+    p.startNewSubPath (cx - halfW, cy - halfH);
+    p.lineTo (cx + halfW, cy - halfH);
+    p.cubicTo (cx + halfW, cy - halfH * 0.55f, cx + waist, cy - halfH * 0.35f, cx + waist, cy);
+    p.cubicTo (cx + waist, cy + halfH * 0.35f, cx + halfW, cy + halfH * 0.55f, cx + halfW, cy + halfH);
+    p.lineTo (cx - halfW, cy + halfH);
+    p.cubicTo (cx - halfW, cy + halfH * 0.55f, cx - waist, cy + halfH * 0.35f, cx - waist, cy);
+    p.cubicTo (cx - waist, cy - halfH * 0.35f, cx - halfW, cy - halfH * 0.55f, cx - halfW, cy - halfH);
+    p.closeSubPath();
+    g.setColour (juce::Colours::black.withAlpha (0.5f));
+    g.fillPath (p, juce::AffineTransform::translation (2.0f, 4.0f));
+    g.setGradientFill (juce::ColourGradient (face.brighter (0.1f), cx, cy - halfH, face.darker (0.2f), cx, cy + halfH, false));
+    g.fillPath (p);
+    {
+        juce::Graphics::ScopedSaveState state (g);
+        g.reduceClipRegion (p);
+        const int ribs = juce::jmax (3, juce::roundToInt ((halfH - 8.0f) / 7.0f));
+        for (int side = -1; side <= 1; side += 2)
+            for (int k = 0; k < ribs; ++k)
+            {
+                const float y = cy + (float) side * (halfH - 6.0f - (float) k * 7.0f);
+                g.setColour (face.darker (0.5f));
+                g.fillRect (cx - halfW, y, halfW * 2.0f, 1.5f);
+                g.setColour (face.brighter (0.4f).withAlpha (0.7f));
+                g.fillRect (cx - halfW, y + 1.5f, halfW * 2.0f, 1.0f);
+            }
+    }
+    g.setColour (juce::Colour (0xffb9c1ca));
+    g.fillRect (cx - waist, cy - 1.0f, waist * 2.0f, 2.0f);
+    g.setColour (juce::Colours::black.withAlpha (0.35f));
+    g.strokePath (p, juce::PathStrokeType (1.0f));
+}
+
 void faderSlot (juce::Graphics& g, float x, float top, float bottom, const Look& l)
 {
     auto slot = juce::Rectangle<float> (x - 2.5f, top, 5.0f, bottom - top);
@@ -305,6 +373,11 @@ void faderSlot (juce::Graphics& g, float x, float top, float bottom, const Look&
 
 void faderCap (juce::Graphics& g, float x, float y, float width, const Look& l, juce::Colour colour)
 {
+    if (l.cap == Look::Cap::Ribbed)
+    {
+        ribbedFaderCap (g, x, y, width * 0.85f, width * 1.1f, width * 0.78f, colour.isTransparent() ? l.capTop : colour);
+        return;
+    }
     if (l.cap == Look::Cap::Waisted)
     {
         // The SQ's: tall, white, drawn in at the waist; a line across it at the fader's position.

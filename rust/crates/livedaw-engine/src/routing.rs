@@ -37,7 +37,13 @@ pub const STRIP_SOURCE_BASE: i32 = 0x40000;
 pub const NUM_BUS_SOURCES: usize = 2 * WING_BUSES;
 pub const NUM_MAIN_SOURCES: usize = 2 * WING_MAINS;
 pub const NUM_MTX_SOURCES: usize = 2 * WING_MATRICES;
-pub const NUM_STRIP_SOURCES: usize = NUM_BUS_SOURCES + NUM_MAIN_SOURCES + NUM_MTX_SOURCES;
+/// The buses with strip sources (a dLive's 64 mixes at most). Those past the
+/// WING's 16 are numbered after the matrices, so the numbers shows hold keep
+/// their meaning.
+pub const MAX_SOURCE_BUSES: usize = 64;
+/// Where buses 17 on start among the strip sources.
+pub const EXTRA_BUS_SOURCES_AT: usize = NUM_BUS_SOURCES + NUM_MAIN_SOURCES + NUM_MTX_SOURCES;
+pub const NUM_STRIP_SOURCES: usize = EXTRA_BUS_SOURCES_AT + 2 * (MAX_SOURCE_BUSES - WING_BUSES);
 
 /// The strip signal of input `input`: (kind, 0-based number (a bus's slot),
 /// side 0 = L / 1 = R).
@@ -47,8 +53,10 @@ pub fn strip_source(input: i32) -> Option<(StripKind, usize, usize)> {
         (StripKind::Bus, n)
     } else if n < NUM_BUS_SOURCES + NUM_MAIN_SOURCES {
         (StripKind::Main, n - NUM_BUS_SOURCES)
-    } else if n < NUM_STRIP_SOURCES {
+    } else if n < EXTRA_BUS_SOURCES_AT {
         (StripKind::Matrix, n - NUM_BUS_SOURCES - NUM_MAIN_SOURCES)
+    } else if n < NUM_STRIP_SOURCES {
+        (StripKind::Bus, n - EXTRA_BUS_SOURCES_AT + NUM_BUS_SOURCES)
     } else {
         return None;
     };
@@ -56,9 +64,15 @@ pub fn strip_source(input: i32) -> Option<(StripKind, usize, usize)> {
 }
 
 /// The input index of a strip signal (inverse of [`strip_source`]); -1 when
-/// it has none (input and aux channels, buses past the WING's 16).
+/// it has none (input and aux channels, buses past `MAX_SOURCE_BUSES`).
 pub fn strip_source_input(kind: StripKind, number: usize, side: usize) -> i32 {
     let (base, count) = match kind {
+        StripKind::Bus if number >= WING_BUSES => {
+            if number >= MAX_SOURCE_BUSES || side > 1 {
+                return -1;
+            }
+            return STRIP_SOURCE_BASE + (EXTRA_BUS_SOURCES_AT + 2 * (number - WING_BUSES) + side) as i32;
+        }
         StripKind::Bus => (0, WING_BUSES),
         StripKind::Main => (NUM_BUS_SOURCES, WING_MAINS),
         StripKind::Matrix => (NUM_BUS_SOURCES + NUM_MAIN_SOURCES, WING_MATRICES),
@@ -430,13 +444,15 @@ mod tests {
         assert_eq!(strip_source(STRIP_SOURCE_BASE + 31), Some((StripKind::Bus, 15, 1)));
         assert_eq!(strip_source(STRIP_SOURCE_BASE + 32), Some((StripKind::Main, 0, 0)));
         assert_eq!(strip_source(STRIP_SOURCE_BASE + 55), Some((StripKind::Matrix, 7, 1)));
-        assert_eq!(strip_source(STRIP_SOURCE_BASE + 56), None);
+        assert_eq!(strip_source(STRIP_SOURCE_BASE + 56), Some((StripKind::Bus, 16, 0)), "bus 17, after the matrices");
+        assert_eq!(strip_source(STRIP_SOURCE_BASE + 151), Some((StripKind::Bus, 63, 1)));
+        assert_eq!(strip_source(STRIP_SOURCE_BASE + 152), None);
         assert_eq!(strip_source(3), None);
         for n in 0..NUM_STRIP_SOURCES as i32 {
             let (k, i, s) = strip_source(STRIP_SOURCE_BASE + n).unwrap();
             assert_eq!(strip_source_input(k, i, s), STRIP_SOURCE_BASE + n);
         }
-        assert_eq!(strip_source_input(StripKind::Bus, 16, 0), -1);
+        assert_eq!(strip_source_input(StripKind::Bus, 64, 0), -1);
         assert_eq!(strip_source_input(StripKind::Channel, 0, 0), -1);
     }
 

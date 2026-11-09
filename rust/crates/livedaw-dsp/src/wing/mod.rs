@@ -32,6 +32,7 @@ pub static MODELS: ModelTables = ModelTables {
     eq_bus: EQ_MODELS_BUS,
     filter_tools: FILTER_TOOLS,
     fx: FX_MODELS,
+    fx_premium_first: 0,
     fx_premium_slots: 8,
     gate_default: "GATE",
     comp_default: "COMP",
@@ -39,8 +40,11 @@ pub static MODELS: ModelTables = ModelTables {
 
 /// Parameter slots per dynamics model (the largest, DEQ2, uses 18).
 pub const MAX_DYN_PARAMS: usize = 20;
-/// Parameter slots per EQ model (the bus STD EQ uses 27).
-pub const MAX_EQ_PARAMS: usize = 32;
+/// Parameter slots per EQ model (the dLive's NEQ-12 uses the most, 51). The
+/// model tables are by name in a show, so old shows don't depend on this; it
+/// sizes `EqBlockParams::values` and is mirrored by `kMaxEqParams` in
+/// `livedaw_engine.h`.
+pub const MAX_EQ_PARAMS: usize = 64;
 /// Parameter slots per filter tool.
 pub const MAX_TOOL_PARAMS: usize = 2;
 /// Parameter slots per FX device (the graphic EQ and the channel strips use 33).

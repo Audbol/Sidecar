@@ -88,13 +88,13 @@ void FaderControl::refresh()
 juce::Rectangle<float> FaderControl::track() const noexcept
 {
     // The cap's centre travels between these (the cap stays inside the control).
-    return getLocalBounds().toFloat().reduced (0.0f, look != nullptr && look->cap == hw::Look::Cap::Waisted ? 30.0f : kTrackInset);
+    return getLocalBounds().toFloat().reduced (0.0f, look != nullptr && look->cap == hw::Look::Cap::Ribbed ? 33.0f : look != nullptr && look->cap == hw::Look::Cap::Waisted ? 30.0f : kTrackInset);
 }
 
 void FaderControl::paint (juce::Graphics& g)
 {
     const auto t = track();
-    const float groove = t.getRight() - 18.0f; // the groove's centre
+    const float groove = t.getRight() - grooveFromRight; // the groove's centre
     const auto yAt = [&t] (float pos) { return t.getBottom() - t.getHeight() * pos; };
 
     static constexpr float marks[] = { 10.0f, 5.0f, 0.0f, -5.0f, -10.0f, -20.0f, -30.0f, -40.0f, -60.0f, fader::kMinDb };
@@ -114,6 +114,24 @@ void FaderControl::paint (juce::Graphics& g)
                       db != 0.0f);
             g.setColour (look->silkDim.withAlpha (0.6f));
             g.fillRect (groove - 13.0f, y - 0.5f, 6.0f, 1.0f);
+        }
+        if (look->cap == hw::Look::Cap::Ribbed)
+        {
+            // The dLive's: ticks both sides of the slot, a stipple round 0 dB.
+            for (float db : consoleMarks)
+                if (db <= fader::maxDb() + 0.01f && ! (look->shortScale && (db == -50.0f || db == -60.0f)))
+                {
+                    g.setColour (look->silkDim.withAlpha (0.6f));
+                    g.fillRect (groove + 7.0f, yAt (fader::dbToPos (db)) - 0.5f, 6.0f, 1.0f);
+                }
+            const float top = yAt (fader::dbToPos (5.0f)), bottom = yAt (fader::dbToPos (-5.0f));
+            g.setColour (look->silkDim.withAlpha (0.42f));
+            for (float y = top; y < bottom; y += 3.0f)
+                for (float dx = 6.0f; dx < 13.0f; dx += 3.0f)
+                {
+                    g.fillRect (groove - dx - 1.0f, y, 1.2f, 1.2f);
+                    g.fillRect (groove + dx, y, 1.2f, 1.2f);
+                }
         }
         hw::faderSlot (g, groove, t.getY(), t.getBottom(), *look);
         if (isEnabled())
@@ -412,10 +430,10 @@ void ToggleKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
         }
         if (labelAbove)
         {
-            // The name over the key, underlined, as the panel prints it.
+            // The name over the key, as the panel prints it.
             const auto printed = belowText.isNotEmpty() ? belowText : getButtonText();
             auto label = area.removeFromTop (13.0f);
-            g.setColour (look->silk);
+            g.setColour (labelColour.isTransparent() ? look->silk : labelColour);
             const auto font = type::font (11.0f);
             g.setFont (font);
             g.drawFittedText (printed, label.toNearestInt(), juce::Justification::centred, 1, 0.7f);
@@ -423,8 +441,6 @@ void ToggleKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
             if (look->backlit)
                 // The X32's: the name in a small outlined box.
                 g.drawRoundedRectangle (juce::Rectangle<float> (w + 4.0f, label.getHeight() - 1.0f).withCentre (label.getCentre()), 2.0f, 1.0f);
-            else
-                g.fillRect (juce::Rectangle<float> (w, 1.0f).withCentre ({ label.getCentreX(), label.getBottom() - 0.5f }));
             hw::key (g, area.reduced (3.0f, 2.0f), {}, lit || halfLit, down, colour, *look, face, showLed);
             return;
         }

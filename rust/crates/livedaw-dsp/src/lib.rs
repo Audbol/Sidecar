@@ -8,6 +8,8 @@
 pub mod biquad;
 pub mod delay;
 pub mod denormals;
+pub mod dlive;
+pub mod dlive_fx;
 pub mod fader;
 pub mod generator;
 pub mod model;
@@ -18,6 +20,7 @@ pub mod universal;
 pub mod util;
 pub mod wing;
 pub mod x32;
+pub mod y01v;
 pub mod y02r;
 
 pub use biquad::{Biquad, BiquadCoeffs};

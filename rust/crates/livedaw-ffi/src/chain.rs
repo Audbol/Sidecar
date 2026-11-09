@@ -11,6 +11,7 @@
 use crate::{engine, guard, models, strip};
 use livedaw_engine::blocks::{Block, BlockKind, BlockMeters, BlockParams, Step};
 use livedaw_engine::chain::Node;
+use livedaw_engine::profile::DynSlot;
 use livedaw_engine::{Engine, Strip};
 use std::ffi::c_void;
 
@@ -144,9 +145,18 @@ pub unsafe extern "C" fn ld_strip_block(s: *const Strip, uid: i32, out: *mut LdB
     true
 }
 
+/// ABI 56: the id of a dLive input channel's preamp block (its parameters and
+/// meters through `ld_strip_block`); -1 on any other strip or console.
+#[no_mangle]
+pub unsafe extern "C" fn ld_strip_preamp_block(s: *const Strip) -> i32 {
+    let Some(s) = strip(s) else { return -1 };
+    guard(-1, || s.preamp_block().map_or(-1, |b| b.uid() as i32))
+}
+
 /// Selects a model for block `uid` and loads its defaults: an EQ block's
 /// (table 1, or 2 on a bus, main or matrix), a dynamics block's (table 0), a
-/// filter block's tool (table 3). False for other blocks.
+/// filter block's tool (table 3). False for other blocks, and for a dynamics
+/// model that block may not hold (`ld_dyn_model_allowed`).
 #[no_mangle]
 pub unsafe extern "C" fn ld_strip_set_block_model(s: *const Strip, uid: i32, model: i32) -> bool {
     let Some(s) = strip(s) else { return false };
@@ -158,6 +168,11 @@ pub unsafe extern "C" fn ld_strip_set_block_model(s: *const Strip, uid: i32, mod
             true
         }
         BlockParams::Dynamics(p) => {
+            let preamp = s.preamp_block().is_some_and(|x| x.uid() == b.uid());
+            let slot = if preamp { DynSlot::Preamp } else { DynSlot::Dynamics };
+            if !models::dyn_slot_may_hold(s, p, slot, m) {
+                return false;
+            }
             p.set_model(m);
             true
         }
@@ -395,6 +410,62 @@ mod tests {
             ld_engine_set_config(e, std::ptr::null(), std::ptr::null_mut());
             ld_engine_counts(e, &mut now);
             assert_eq!((now.buses, now.mains, now.matrices), (16, 4, 8), "null: the WING");
+            ld_engine_collect(e);
+            ld_engine_destroy(e);
+        }
+    }
+
+    #[test]
+    fn a_dlive_channels_preamp_block_through_the_c_abi() {
+        use crate::{ld_engine_configure_profile, ld_strip_set_model};
+        use livedaw_dsp::model::model_index;
+        const DLIVE: i32 = 7;
+        unsafe {
+            let e = ld_engine_create(0);
+            assert_eq!(ld_strip_preamp_block(std::ptr::null()), -1);
+            ld_engine_configure_profile(e, DLIVE);
+            let ch = ld_engine_strip_at(e, StripKind::Channel as i32, 0);
+            let uid = ld_strip_preamp_block(ch);
+            assert!(uid >= 0);
+            let steps = chain(ch);
+            let input = steps.iter().position(|s| s.kind == step::INPUT).unwrap();
+            assert_eq!(
+                steps[input + 1],
+                LdChainStep { kind: step::BLOCK, arg: BlockKind::Dynamics.index() as i32, uid, slot: -1 }
+            );
+
+            let b = block(ch, uid);
+            let d = &*(b.params as *const DynSlotParams);
+            assert!(!d.on.load(Relaxed));
+            let dlive_models = d.table();
+            let at = |token: &str| model_index(dlive_models, token).unwrap() as i32;
+            assert_eq!(d.model_index() as i32, at("DLVVALVE"));
+
+            // The preamp block takes the Tube Stage, not a compressor.
+            assert!(ld_strip_set_block_model(ch, uid, at("DLVTUBE")));
+            assert_eq!(d.model_index() as i32, at("DLVTUBE"));
+            assert!(!ld_strip_set_block_model(ch, uid, at("DLV16T")));
+            assert_eq!(d.model_index() as i32, at("DLVTUBE"), "refused");
+
+            // The gate and compressor slots don't take the preamp models.
+            let gate = (*ch).params.gate();
+            let before = gate.model_index();
+            ld_strip_set_model(ch, 0, at("DLVVALVE"));
+            assert_eq!(gate.model_index(), before);
+            ld_strip_set_model(ch, 2, at("DLVTUBE"));
+            assert_ne!((*ch).params.dynamics().model_index() as i32, at("DLVTUBE"));
+            ld_strip_set_model(ch, 2, at("DLV16T"));
+            assert_eq!((*ch).params.dynamics().model_index() as i32, at("DLV16T"));
+            // A dLive's other dynamics blocks don't either.
+            let extra = ld_engine_insert_block(e, ch, BlockKind::Dynamics.index() as i32, -1);
+            assert!(!ld_strip_set_block_model(ch, extra, at("DLVVALVE")));
+            assert!(ld_strip_set_block_model(ch, extra, at("DLV16T")));
+            assert_eq!(ld_strip_preamp_block(ch), uid, "still the same block");
+
+            // Other strips and consoles: none.
+            assert_eq!(ld_strip_preamp_block(ld_engine_strip_at(e, StripKind::Bus as i32, 0)), -1);
+            ld_engine_configure_profile(e, 1); // the WING
+            assert_eq!(ld_strip_preamp_block(ld_engine_strip_at(e, StripKind::Channel as i32, 0)), -1);
             ld_engine_collect(e);
             ld_engine_destroy(e);
         }

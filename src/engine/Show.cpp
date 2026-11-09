@@ -894,6 +894,13 @@ juce::Result Show::loadFromXml (const juce::XmlElement& xml, bool loadPlugins)
     return afterLoad (ok, message);
 }
 
+juce::Result Show::applyDLiveLayout (const int32_t* layout, uint64_t stereoInputs)
+{
+    ld::LdString* message = nullptr;
+    const bool ok = ld::ld_show_apply_dlive_layout (handle, engine.getHandle(), layout, stereoInputs, &message);
+    return afterLoad (ok, message);
+}
+
 juce::Result Show::saveToFile (const juce::File& file) const
 {
     const auto path = file.getFullPathName();

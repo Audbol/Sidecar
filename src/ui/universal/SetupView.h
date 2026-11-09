@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui/UiContext.h"
+#include "ui/universal/MixerConfigPanel.h"
 #include "ui/universal/RemotePanel.h"
 #include "ui/universal/ValueControls.h"
 
@@ -20,7 +21,8 @@ namespace livedaw::ui::universal
     something feeds, a DCA or mute group with members, or an FX slot in use
     (those stay, and it says so). AUDIO: the audio device. REMOTE: the WING,
     web and MIDI remotes' settings (RemotePanel). PREFERENCES: the interface,
-    delay compensation and output protection. */
+    delay compensation and output protection. On a dLive CONSOLE is its Mixer Config
+    (MixerConfigPanel) instead: its counts follow from how its busses are laid out. */
 class SetupView final : public juce::Component, private juce::Timer
 {
 public:
@@ -67,12 +69,15 @@ public:
     ChoiceBar interfaceChoice;
     ToggleKey compensationKey, protectionKey;
     RemotePanel remote;
+    MixerConfigPanel mixerConfig;
 
     void paint (juce::Graphics&) override;
     void resized() override;
 
 private:
     class Row;
+    /** Which of the two CONSOLE pages shows. */
+    void showConsolePage();
     void timerCallback() override
     {
         if (isVisible())

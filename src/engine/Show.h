@@ -296,6 +296,9 @@ public:
 
     /** Loads a show (or a v1 session file). With loadPlugins false (safe mode) the
         console is restored without instantiating any plugins. */
+    /** A dLive's Mixer Config (eight numbers: ld_engine_dlive_layout): its mixes laid out anew and
+        reset, the rest of the console kept. */
+    juce::Result applyDLiveLayout (const int32_t* layout, uint64_t stereoInputs);
     juce::Result loadFromXml (const juce::XmlElement&, bool loadPlugins = true);
 
     /** Writes atomically (temp file + rename) and keeps the previous version as .bak,

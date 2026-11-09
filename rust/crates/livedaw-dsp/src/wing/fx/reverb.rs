@@ -16,8 +16,8 @@ use super::{FxAlgo, FxContext};
 
 mod lexicon;
 mod nonlin;
-mod parts;
-mod space;
+pub(crate) mod parts;
+pub(crate) mod space;
 mod special;
 mod spring;
 mod vintage;

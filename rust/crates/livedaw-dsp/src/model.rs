@@ -339,6 +339,9 @@ pub struct ModelTables {
     pub fx: &'static [ModelSpec],
     /// The FX slots (from the first) that take `FxPremium` devices: the WING's
     /// 1-8, the X32's 1-4 (its send / return slots).
+    /// The first FX slot (0-based) the premium devices may run in: the 01V's
+    /// PITCH and FREEZE types only on Effect 2 (1); 0 on the other consoles.
+    pub fx_premium_first: usize,
     pub fx_premium_slots: usize,
     /// The models a new strip's GATE and DYNAMICS slots start on (tokens of
     /// `dynamics`).

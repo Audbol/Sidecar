@@ -21,13 +21,30 @@ using namespace universal;
 
 namespace
 {
-    // The screen's look, as the X32's: black glass, its blocks light blue with
-    // navy text and darker blue edges, yellow for what is on, the scene and the
-    // clock in amber.
-    const juce::Colour kGlass (0xff000000), kSky (0xff66c6f2), kSkyAlt (0xff52b4e4), kSkyLine (0xff2a6db5);
-    const juce::Colour kNavy (0xff0f2747), kDeep (0xff1c4687), kDeepText (0xffa9d2f5), kYellow (0xffffd02a);
-    const juce::Colour kAmber (0xffffc21a), kWell (0xff111315), kCurve (0xffffa21f), kGr (0xffe5321e), kBox (0xfff4f4f2);
-    const juce::Colour kDim (0xff6f9fd0);
+    // The screen's look, as the screen photographs (HOME, METERS, LIBRARY, EFFECTS):
+    // black glass around a pale page, pale blue blocks with navy text and darker blue
+    // edges, orange for what is on, the scene in amber, the clock on an orange tile.
+    const juce::Colour kGlass (0xff000000), kPage (0xffe6f1f9), kSky (0xffb4dcf6), kSkyAlt (0xffa0d0ef), kSkyLine (0xff2a6db5);
+    const juce::Colour kNavy (0xff0f2747), kDeep (0xff1c4687), kDeepText (0xffa9d2f5), kYellow (0xfff6b34a);
+    const juce::Colour kAmber (0xfff29a2e), kWell (0xff111315), kCurve (0xffffa21f), kGr (0xffe5321e), kBox (0xfff4f4f2);
+    const juce::Colour kDim (0xff40678f), kTabOff (0xff7fb2dc), kClockTile (0xffef9a3e);
+
+    /** An encoder's name as the screen prints it: "GAIN" is "Gain"; initials stay. */
+    juce::String titled (const juce::String& s)
+    {
+        static const juce::StringArray keep { "DCA", "EQ", "FX", "LR", "M/C", "RTA", "USB", "MIDI", "OSC", "IP", "AES50", "HA", "BPM", "LFO", "XLR", "P16" };
+        auto words = juce::StringArray::fromTokens (s, " ", {});
+        for (auto& w : words)
+        {
+            if (keep.contains (w) || w.containsAnyOf ("0123456789") || w != w.toUpperCase())
+                continue;
+            juce::String out;
+            for (int i = 0; i < w.length(); ++i)
+                out += juce::String::charToString (i == 0 || w[i - 1] == '/' ? w[i] : juce::CharacterFunctions::toLowerCase (w[i]));
+            w = out;
+        }
+        return words.joinIntoString (" ");
+    }
 
     /** The theme the screen's graphs (EQ, gate, dynamics) draw with. */
     Theme screenThemeFrom (const Theme& t)
@@ -276,7 +293,7 @@ Display::Display (UiContext& c, const Theme& t)
         auto push = std::make_unique<ToggleKey> ("PUSH", kAmber, t);
         push->onClick = [this, i] { pushEncoder (i); };
         push->isOn = [this, i] { auto& e = encoders[(size_t) i]; return e.pushOn && e.pushOn(); };
-        addAndMakeVisible (*push);
+        addChildComponent (*push); // the X32's encoders push: no keys under them on the panel
         pushKeys.push_back (std::move (push));
     }
     for (int g = 0; g < 6; ++g)
@@ -335,7 +352,7 @@ juce::StringArray Display::getTabs() const
         case Screen::Effects:    return { "home", "fx1", "fx2", "fx3", "fx4", "fx5", "fx6", "fx7", "fx8" };
         case Screen::MuteGroups: return { "mute grp" };
         case Screen::Utility:    return { "copy", "init" };
-        case Screen::Monitor:    return { "monitor", "talk a", "talk b", "osc" };
+        case Screen::Monitor:    return { "monitor", "talkback A", "talkback B", "oscillator" };
         case Screen::Assign:     return { "set a", "set b", "set c" };
         case Screen::Scenes:     return { "home", "scenes", "snippets", "param safe", "chan safe", "MIDI" };
         case Screen::Usb:        return { "home", "config" };
@@ -999,7 +1016,7 @@ void Display::paintSafeColumns (juce::Graphics& g, juce::Rectangle<float> r, con
     // A column of check boxes per encoder, the one it points at marked.
     if (footer.isNotEmpty())
     {
-        g.setColour (kDeepText);
+        g.setColour (kDeep);
         g.setFont (type::font (10.0f));
         g.drawFittedText (footer, r.removeFromBottom (14.0f).toNearestInt(), juce::Justification::centredLeft, 1, 0.8f);
         r.removeFromBottom (2.0f);
@@ -1061,7 +1078,7 @@ void Display::paintScenes (juce::Graphics& g, juce::Rectangle<int> r)
             }
             if (sceneStatus.isNotEmpty())
             {
-                g.setColour (kDeepText);
+                g.setColour (kDeep);
                 g.setFont (type::font (10.0f));
                 g.drawFittedText (sceneStatus, area.removeFromBottom (14), juce::Justification::centredLeft, 1, 0.8f);
             }
@@ -2682,7 +2699,7 @@ void Display::paintEffects (juce::Graphics& g, juce::Rectangle<int> r)
     // A slot: its model, then every parameter in two columns, this layer's marked.
     const int slot = tab - 1;
     const int m = fx.getModel (slot);
-    g.setColour (theme.text);
+    g.setColour (kNavy);
     g.setFont (type::font (type::kLabel, true));
     g.drawText ("FX " + juce::String (slot + 1) + "   " + modelName (slot), r.removeFromTop (22), juce::Justification::centredLeft);
     if (m <= ld::kFxExt)
@@ -3167,6 +3184,16 @@ void Display::paint (juce::Graphics& g)
     g.drawRoundedRectangle (screenArea.getUnion (bezelMeters).toFloat().expanded (7.5f), 10.0f, 1.0f);
     g.setColour (kGlass);
     g.fillRect (screenArea);
+    // The page: pale, under the tabs (the screen's photographs).
+    g.setColour (kPage);
+    g.fillRect (contentArea);
+    // The thin lines from the on-screen cells down to their encoders.
+    g.setColour (juce::Colour (0xff4a4c50));
+    for (int i = 0; i < 6; ++i)
+    {
+        const auto knob = knobs[(size_t) i].getBounds();
+        g.drawVerticalLine (knob.getCentreX(), (float) screenArea.getBottom(), (float) knob.getY());
+    }
     // PAGE SELECT and LAYER, printed beside their keys.
     if (g.clipRegionIntersects (pageLabel.getUnion (layerLabel).getUnion (pagePrev.getBounds().getUnion (pageNext.getBounds()).withHeight (pagePrev.getHeight() + 14))))
     {
@@ -3191,67 +3218,103 @@ void Display::paint (juce::Graphics& g)
 
 void Display::paintStatus (juce::Graphics& g, juce::Rectangle<int> area)
 {
+    // The status bar as the screen's photographs show it: five tiles along the top.
+    // The selected channel on a pale tile, its colour at its right edge; the scene, its
+    // number large in amber; the recorder's clock; the digital links and rates; the clock.
     auto r = area.toFloat().reduced (4.0f, 3.0f);
-
-    // The selected channel's tile: its number and name, its colour along the right.
-    auto tile = r.removeFromLeft (118.0f);
-    g.setColour (kDeep);
-    g.fillRoundedRectangle (tile, 4.0f);
-    g.setColour (kSkyLine);
-    g.drawRoundedRectangle (tile.reduced (0.5f), 4.0f, 1.0f);
-    if (auto* s = selected())
+    const float unit = (r.getWidth() - 12.0f) / 440.0f;
+    const auto tileOf = [&r, &g] (float width, juce::Colour fill)
     {
-        g.setColour (consoleColour (s->getColourIndex()));
-        g.fillRect (tile.removeFromRight (6.0f).reduced (0.0f, 3.0f));
-        auto text = tile.reduced (6.0f, 3.0f);
-        g.setColour (kDeepText);
-        g.setFont (type::font (10.0f, true));
-        g.drawText (s->getLabel(), text.removeFromTop (text.getHeight() * 0.42f), juce::Justification::centredLeft);
-        g.setColour (juce::Colours::white);
-        g.setFont (type::font (12.5f, true));
-        g.drawFittedText (s->getName().isNotEmpty() ? s->getName() : s->getLabel(), text.toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
-    }
-    r.removeFromLeft (8.0f);
+        auto t = r.removeFromLeft (width);
+        r.removeFromLeft (3.0f);
+        g.setColour (fill);
+        g.fillRoundedRectangle (t, 3.0f);
+        g.setColour (kNavy.withAlpha (0.55f));
+        g.drawRoundedRectangle (t.reduced (0.5f), 3.0f, 1.0f);
+        return t.reduced (4.0f, 2.0f);
+    };
 
-    // The scene: its number large in amber, its name, the next one under it.
+    {
+        auto tile = tileOf (78.0f * unit, kSky);
+        if (auto* s = selected())
+        {
+            g.setColour (consoleColour (s->getColourIndex()));
+            g.fillRect (tile.removeFromRight (5.0f));
+            tile.removeFromRight (2.0f);
+            auto label = s->getLabel();
+            if (label.startsWith ("CH "))
+                label = "Ch" + label.fromFirstOccurrenceOf (" ", false, false).paddedLeft ('0', 2);
+            g.setColour (kNavy);
+            g.setFont (type::font (10.0f, true));
+            g.drawFittedText (label, tile.removeFromTop (tile.getHeight() * 0.42f).toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
+            g.setFont (type::font (11.5f, true));
+            g.drawFittedText (s->getName().isNotEmpty() ? s->getName() : s->getLabel(), tile.toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
+        }
+    }
+
+    // The scene: its number, the name and the next one on the bars beside it.
     auto& show = ctx.show;
     const int current = show.getCurrentSceneIndex();
-    auto scene = r.removeFromLeft (190.0f);
-    g.setColour (kAmber);
-    g.setFont (type::font (27.0f, true));
-    g.drawText (current >= 0 ? juce::String (current + 1).paddedLeft ('0', 2) : juce::String ("--"), scene.removeFromLeft (40.0f),
-                juce::Justification::centredLeft);
-    const auto nameOf = [&show] (int i)
     {
-        const auto s = show.getScene (i);
-        return s.has_value() ? s->name : juce::String();
-    };
-    g.setFont (type::font (12.5f, true));
-    g.drawFittedText (current >= 0 ? nameOf (current) : juce::String ("no scene"), scene.removeFromTop (scene.getHeight() * 0.55f).toNearestInt(),
-                      juce::Justification::bottomLeft, 1, 0.7f);
-    g.setColour (juce::Colour (0xff3f74c4));
-    g.setFont (type::font (10.5f, true));
-    if (current + 1 < show.getNumScenes())
-        g.drawFittedText (juce::String (current + 2).paddedLeft ('0', 2) + ": " + nameOf (current + 1), scene.toNearestInt(),
-                          juce::Justification::topLeft, 1, 0.7f);
+        auto scene = tileOf (124.0f * unit, kSky);
+        g.setColour (kAmber);
+        g.setFont (type::font (23.0f, true));
+        g.drawText (current >= 0 ? juce::String (current + 1).paddedLeft ('0', 2) : juce::String ("--"), scene.removeFromLeft (34.0f), juce::Justification::centredLeft);
+        const auto nameOf = [&show] (int i)
+        {
+            const auto s = show.getScene (i);
+            return s.has_value() ? s->name : juce::String();
+        };
+        auto upper = scene.removeFromTop (scene.getHeight() * 0.55f);
+        g.setColour (kBox);
+        g.fillRect (upper.reduced (0.0f, 1.0f));
+        g.fillRect (scene.reduced (0.0f, 1.0f));
+        g.setColour (kNavy);
+        g.setFont (type::font (10.5f, true));
+        g.drawFittedText (current >= 0 ? nameOf (current) : juce::String ("no scene"), upper.reduced (3.0f, 0.0f).toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
+        if (current + 1 < show.getNumScenes())
+        {
+            g.setFont (type::font (9.5f, true));
+            g.drawFittedText (juce::String (current + 2).paddedLeft ('0', 2) + ":  " + nameOf (current + 1), scene.reduced (3.0f, 0.0f).toNearestInt(),
+                              juce::Justification::centredLeft, 1, 0.7f);
+        }
+    }
 
-    // The clock at the right, the seconds small; the sample rate in its box.
-    auto clock = r.removeFromRight (104.0f);
-    const auto now = juce::Time::getCurrentTime();
-    g.setColour (kAmber);
-    g.setFont (type::font (11.0f, true));
-    g.drawText (now.formatted (":%S"), clock.removeFromRight (22.0f).withTrimmedTop (8.0f), juce::Justification::centredLeft);
-    g.setFont (type::font (24.0f, true));
-    g.drawText (now.formatted ("%H:%M"), clock, juce::Justification::centredRight);
-    auto box = r.removeFromRight (70.0f).reduced (4.0f, 6.0f);
-    g.setColour (kDeep);
-    g.fillRoundedRectangle (box, 3.0f);
-    g.setColour (kSkyLine);
-    g.drawRoundedRectangle (box.reduced (0.5f), 3.0f, 1.0f);
-    const double sr = ctx.engine.getSampleRate();
-    g.setColour (kDeepText);
-    g.setFont (type::font (11.0f, true));
-    g.drawText (sr > 0 ? juce::String (juce::roundToInt (sr / 1000.0)) + "K" : juce::String ("48K"), box, juce::Justification::centred);
+    // The recorder's clock: elapsed, a square, what's left.
+    {
+        auto tape = tileOf (90.0f * unit, kBox);
+        g.setColour (kNavy);
+        g.setFont (type::font (11.0f, true));
+        const auto w = tape.getWidth() * 0.5f;
+        g.drawText ("0:00", tape.removeFromLeft (w * 0.8f), juce::Justification::centred);
+        g.fillRect (tape.removeFromLeft (w * 0.4f).withSizeKeepingCentre (6.0f, 6.0f));
+        g.drawText ("-0:00", tape, juce::Justification::centred);
+    }
+
+    // The digital links and clock: AES A and B, the sample rate, the expansion card.
+    {
+        auto rates = tileOf (70.0f * unit, kBox);
+        const double sr = ctx.engine.getSampleRate();
+        const auto rate = sr > 0 ? juce::String (juce::roundToInt (sr / 1000.0)) + "K" : juce::String ("48K");
+        g.setColour (kNavy);
+        g.setFont (type::font (9.5f, true));
+        auto upper = rates.removeFromTop (rates.getHeight() * 0.5f);
+        g.drawText ("A: -", upper.removeFromLeft (upper.getWidth() * 0.45f), juce::Justification::centredLeft);
+        g.drawText ("L  " + rate, upper, juce::Justification::centredLeft);
+        g.drawText ("B: -", rates.removeFromLeft (rates.getWidth() * 0.45f), juce::Justification::centredLeft);
+        g.drawText ("C: -", rates, juce::Justification::centredLeft);
+    }
+
+    // The clock on its orange tile, the seconds small.
+    {
+        auto clock = tileOf (r.getWidth(), kClockTile);
+        const auto now = juce::Time::getCurrentTime();
+        g.setColour (juce::Colours::white);
+        g.setFont (type::font (10.0f, true));
+        g.drawText (now.formatted (":%S"), clock.removeFromRight (18.0f).withTrimmedTop (9.0f), juce::Justification::centredLeft);
+        g.setFont (type::font (19.0f, true));
+        g.drawFittedText (now.formatted ("%H:%M"), clock.toNearestInt(), juce::Justification::centredRight, 1, 0.8f);
+    }
 }
 
 void Display::paintBezelMeters (juce::Graphics& g, juce::Rectangle<int> area)
@@ -3315,21 +3378,21 @@ void Display::paintTabs (juce::Graphics& g, juce::Rectangle<int> r)
 {
     // The tabs as folders along the top of the page: the shown one light blue.
     const auto tabs = getTabs();
-    g.setFont (type::font (12.0f, true));
+    g.setFont (type::font (12.0f, true).italicised());
     for (int i = 0; i < tabs.size(); ++i)
     {
         auto cell = getTabBounds (i).toFloat().reduced (1.0f, 0.0f).withTrimmedTop (2.0f);
         const bool on = i == tab;
         juce::Path folder;
         folder.addRoundedRectangle (cell.getX(), cell.getY(), cell.getWidth(), cell.getHeight(), 6.0f, 6.0f, true, true, false, false);
-        g.setColour (on ? kSky : kDeep);
+        g.setColour (on ? kBox : kTabOff);
         g.fillPath (folder);
         g.setColour (kSkyLine);
         g.strokePath (folder, juce::PathStrokeType (1.0f));
-        g.setColour (on ? kNavy : kDeepText);
+        g.setColour (kNavy);
         g.drawText (tabs[i], cell, juce::Justification::centred);
     }
-    g.setColour (kSky);
+    g.setColour (kBox);
     g.fillRect (r.removeFromBottom (2));
     r.removeFromLeft (getTabBounds (tabs.size()).getX() - r.getX());
     if (numLayers() > 1)
@@ -3369,7 +3432,7 @@ void Display::paintRows (juce::Graphics& g, juce::Rectangle<int> r, const juce::
 void Display::paintHomeFlow (juce::Graphics& g, juce::Rectangle<int> area, Strip& s)
 {
     // The home tab as the X32 draws it: the channel's blocks in a row (In, Gate,
-    // Ins, EQ, Dynamics, Out, Busses), its DCAs and mute groups along the bottom.
+    // Ins, EQ, Dynamics, Out, Bus Sends), its DCAs and mute groups along the bottom.
     auto& p = s.params;
     auto r = area.toFloat().reduced (4.0f, 2.0f);
     auto groups = r.removeFromBottom (20.0f);
@@ -3387,7 +3450,7 @@ void Display::paintHomeFlow (juce::Graphics& g, juce::Rectangle<int> area, Strip
     parts.push_back ({ "Dynamics", 1.55f });
     parts.push_back ({ "Out", 1.15f });
     if (s.isInput())
-        parts.push_back ({ "Busses", 1.5f });
+        parts.push_back ({ "Bus Sends", 1.5f });
     float total = 0.0f;
     for (auto& part : parts)
         total += part.weight;
@@ -3471,7 +3534,7 @@ void Display::paintHomeFlow (juce::Graphics& g, juce::Rectangle<int> area, Strip
             transfer (in.removeFromTop (in.getHeight() * 0.44f), gate ? gateView : dynView, d.model.load() > 0,
                       gate ? s.meters.gateReductionDb.load() : s.meters.dynReductionDb.load());
             in.removeFromTop (3.0f);
-            chip (g, in.removeFromTop (12.0f).reduced (6.0f, 0.0f), gate ? "Gate" : "Dyn", d.on.load());
+            chip (g, in.removeFromTop (12.0f).reduced (6.0f, 0.0f), gate ? "Gate" : "Comp", d.on.load());
             in.removeFromTop (3.0f);
             const auto [thr, frac] = threshold (d);
             valueBox (g, in.removeFromTop (13.0f).reduced (6.0f, 0.0f), juce::String (thr, 1));
@@ -3529,7 +3592,7 @@ void Display::paintHomeFlow (juce::Graphics& g, juce::Rectangle<int> area, Strip
             valueBox (g, in.removeFromTop (13.0f).reduced (2.0f, 0.0f), pan == 0 ? juce::String ("C") : (pan > 0 ? "+" : "") + juce::String (pan));
             knobWithName (in, "Pan", (p.pan.load() + 100.0f) / 200.0f, true);
         }
-        else if (name == "Busses")
+        else if (name == "Bus Sends")
         {
             const int buses = juce::jmin (16, (int) ctx.engine.getBuses().size());
             const float rowH = in.getHeight() / 16.0f;
@@ -3577,6 +3640,10 @@ void Display::paintHomeFlow (juce::Graphics& g, juce::Rectangle<int> area, Strip
         }
         line.removeFromLeft (14.0f);
     };
+    // SAFE, then the groups (the HOME photograph).
+    g.setColour (kNavy.withAlpha (0.25f));
+    g.setFont (type::font (13.0f, true));
+    g.drawText ("SAFE", line.removeFromLeft (44.0f), juce::Justification::centredLeft);
     row ("DCA", 30.0f, 8, dcas.words[0]);
     row ("Mute Groups", 76.0f, 6, mutes.words[0]);
 }
@@ -3615,6 +3682,8 @@ void Display::paintSends (juce::Graphics& g, juce::Rectangle<int> area, Strip& s
 
 void Display::paintMeters (juce::Graphics& g, juce::Rectangle<int> r)
 {
+    // As the METERS photograph: the meters, the faders' positions, then rows of
+    // gain reduction (gate and dynamics), the strips in groups of 16.
     std::vector<Strip*> strips;
     auto add = [&strips] (const MixerEngine::StripList& list, int from, int count)
     {
@@ -3631,24 +3700,77 @@ void Display::paintMeters (juce::Graphics& g, juce::Rectangle<int> r)
     }
     if (strips.empty())
         return;
-    r.reduce (12, 10);
-    const int w = juce::jmax (6, r.getWidth() / (int) strips.size());
-    for (auto* s : strips)
+    r.reduce (6, 4);
+    const juce::String title = tab == 0 ? "Input Channels" : tab == 1 ? "Mix Bus" : tab == 2 ? "Aux / FX" : "In / Out";
+    g.setColour (kSkyLine);
+    g.fillRoundedRectangle (r.toFloat().expanded (1.0f), 4.0f);
+    g.setColour (kPage);
+    g.fillRoundedRectangle (r.toFloat().reduced (1.0f), 3.0f);
+    const auto section = [&g] (juce::Rectangle<int>& area, const juce::String& name)
     {
-        auto col = r.removeFromLeft (w).reduced (2, 0);
-        auto label = col.removeFromBottom (18);
-        g.setColour (kSky);
-        g.setFont (type::font (10.0f, true));
-        g.drawFittedText (juce::String (s->getNumber()), label, juce::Justification::centred, 1, 0.6f);
+        auto head = area.removeFromTop (12);
+        g.setColour (kSkyLine);
+        g.fillRect (head.toFloat().withSizeKeepingCentre (head.toFloat().getWidth(), 1.0f));
+        g.setColour (kNavy);
+        g.setFont (type::font (9.0f, true));
+        g.drawText (name, head.withSizeKeepingCentre (130, 12), juce::Justification::centred);
+    };
+    auto body = r.reduced (4, 2);
+    const bool dynamics = tab == 0;
+    const int grRow = dynamics ? 16 : 0;
+    const int rowsH = body.getHeight() - (dynamics ? 2 * (grRow + 14) : 0);
+    section (body, title);
+    auto meterRow = body.removeFromTop (rowsH / 2 - 10);
+    auto faderRow = body.removeFromTop (rowsH / 2 - 10);
+    const int n = (int) strips.size();
+    const float gap = n > 16 ? 8.0f : 0.0f; // the space between strips 16 and 17
+    const float w = ((float) body.getWidth() - gap) / (float) n;
+    const auto colX = [&body, w, gap, n] (int i) { return (float) body.getX() + w * (float) i + (n > 16 && i >= 16 ? gap : 0.0f); };
+    // A level bar, a fader's position above its number, the selected strip's cap white.
+    for (int i = 0; i < n; ++i)
+    {
+        auto* s = strips[(size_t) i];
+        const float x = colX (i);
+        juce::Rectangle<float> cell (x + 0.5f, (float) meterRow.getY(), w - 1.0f, (float) meterRow.getHeight());
         g.setColour (kWell);
-        g.fillRect (col);
+        g.fillRect (cell);
         const float level = juce::jlimit (0.0f, 1.0f, fader::dbToPos (juce::Decibels::gainToDecibels (ctx.meters.get (s, MeterPoint::Output, 0), -144.0f)));
-        const int h = juce::roundToInt ((float) col.getHeight() * level);
-        auto lit = col.removeFromBottom (h);
-        g.setGradientFill (juce::ColourGradient (juce::Colour (0xffff3b30), 0.0f, (float) col.getY(), juce::Colour (0xff3ddc5a), 0.0f,
-                                                 (float) col.getBottom(), false));
-        g.fillRect (lit);
+        const float h = cell.getHeight() * level;
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xffff3b30), 0.0f, cell.getY(), juce::Colour (0xff3ddc5a), 0.0f, cell.getBottom(), false));
+        g.fillRect (cell.withTop (cell.getBottom() - h));
+
+        juce::Rectangle<float> fcell (x + 0.5f, (float) faderRow.getY(), w - 1.0f, (float) faderRow.getHeight() - 12.0f);
+        g.setColour (kNavy);
+        g.fillRect (fcell.withSizeKeepingCentre (2.0f, fcell.getHeight()));
+        const float pos = juce::jlimit (0.0f, 1.0f, fader::dbToPos (s->params.faderDb.load()));
+        const float y = fcell.getBottom() - fcell.getHeight() * pos;
+        g.setColour (s == selected() ? kYellow : juce::Colours::white);
+        g.fillRect (juce::Rectangle<float> (fcell.getCentreX() - w * 0.35f, y - 3.0f, w * 0.7f, 6.0f));
+        g.setColour (kNavy);
+        g.drawRect (juce::Rectangle<float> (fcell.getCentreX() - w * 0.35f, y - 3.0f, w * 0.7f, 6.0f), 0.8f);
+        g.setFont (type::font (8.5f, true));
+        g.drawFittedText (juce::String (s->getNumber()), juce::Rectangle<float> (x, fcell.getBottom() + 1.0f, w, 10.0f).toNearestInt(), juce::Justification::centred, 1, 0.6f);
     }
+    if (! dynamics)
+        return;
+    const auto reductionRow = [&] (juce::Rectangle<int> row, const juce::String& name, bool gate)
+    {
+        section (row, name);
+        for (int i = 0; i < n; ++i)
+        {
+            auto* s = strips[(size_t) i];
+            juce::Rectangle<float> cell (colX (i) + 0.5f, (float) row.getY(), w - 1.0f, (float) row.getHeight());
+            g.setColour (kNavy);
+            g.fillRect (cell);
+            const float gr = std::abs (gate ? s->meters.gateReductionDb.load() : s->meters.dynReductionDb.load());
+            g.setColour (kGr);
+            g.fillRect (cell.withHeight (cell.getHeight() * juce::jlimit (0.0f, 1.0f, gr / 30.0f)));
+        }
+    };
+    body.removeFromTop (2);
+    reductionRow (body.removeFromTop (grRow + 12), "Gain Reduction Gate", true);
+    body.removeFromTop (2);
+    reductionRow (body.removeFromTop (grRow + 12), "Gain Reduction Dyn", false);
 }
 
 void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
@@ -3752,7 +3874,7 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
             auto list = r.reduced (12);
             if (libraryStatus.isNotEmpty())
             {
-                g.setColour (kAmber);
+                g.setColour (kDeep);
                 g.setFont (type::font (type::kCaption, true));
                 g.drawFittedText (libraryStatus, list.removeFromBottom (20), juce::Justification::centredLeft, 1, 0.8f);
             }
@@ -3957,8 +4079,12 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
 
 void Display::paintEncoderRow (juce::Graphics& g, juce::Rectangle<int>)
 {
-    // The six encoders' cells: what each turns (its icon, name and value), and
-    // along the bottom what a push does, yellow while on.
+    // The six encoders' cells: what each turns (its icon, name and value), and along the
+    // bottom what a push does, orange while on. Names as the screen prints them; the
+    // HOME page's first layer as photographed (Gate/Duck, Comp/Exp, the two Thresholds).
+    static const char* const homeTurn[] = { "Gain", "Threshold", "Insert", "Dynamics", "Threshold", "Pan" };
+    static const char* const homePush[] = { "Link", "Gate/Duck", "Insert", "EQ", "Comp/Exp", "LR" };
+    const bool homeFirst = screen == Screen::Home && tab == 0 && layer == 0;
     for (int i = 0; i < 6; ++i)
     {
         auto cell = getEncoderCell (i).toFloat().reduced (2.0f, 3.0f);
@@ -3975,7 +4101,7 @@ void Display::paintEncoderRow (juce::Graphics& g, juce::Rectangle<int>)
         g.drawRoundedRectangle (cell.reduced (0.75f), 4.0f, 1.5f);
         auto in = cell.reduced (3.0f, 3.0f);
         auto band = in.removeFromBottom (15.0f);
-        chip (g, band, e.push ? e.pushLabel : juce::String(), e.push && e.pushOn && e.pushOn());
+        chip (g, band, e.push ? (homeFirst && e.pushLabel.isNotEmpty() ? juce::String (homePush[i]) : titled (e.pushLabel)) : juce::String(), e.push && e.pushOn && e.pushOn());
         in.removeFromBottom (2.0f);
         if (! e.turn.isValid())
             continue;
@@ -3983,7 +4109,7 @@ void Display::paintEncoderRow (juce::Graphics& g, juce::Rectangle<int>)
         knobIcon (g, icon.getCentre(), juce::jmin (10.0f, icon.getWidth() * 0.32f), e.turn.get());
         g.setColour (kNavy);
         g.setFont (type::font (10.0f, true));
-        g.drawFittedText (e.turn.label, in.removeFromTop (in.getHeight() * 0.45f).toNearestInt(), juce::Justification::centred, 1, 0.7f);
+        g.drawFittedText (homeFirst ? juce::String (homeTurn[i]) : titled (e.turn.label), in.removeFromTop (in.getHeight() * 0.45f).toNearestInt(), juce::Justification::centred, 1, 0.7f);
         valueBox (g, in.reduced (2.0f, 1.0f), e.turn.text ? e.turn.text() : juce::String());
     }
 }
@@ -4094,8 +4220,8 @@ void Display::resized()
     for (int i = 0; i < 6; ++i)
     {
         auto cell = knobsRow.removeFromLeft (w).reduced (8, 0);
-        pushKeys[(size_t) i]->setBounds (cell.removeFromBottom (26));
-        knobs[(size_t) i].setBounds (cell.withSizeKeepingCentre (juce::jmin (cell.getWidth(), cell.getHeight()), cell.getHeight()));
+        pushKeys[(size_t) i]->setBounds (cell.withTrimmedTop (cell.getHeight() - 26));
+        knobs[(size_t) i].setBounds (cell.withSizeKeepingCentre (56, 56));
     }
 }
 

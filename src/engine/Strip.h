@@ -40,6 +40,8 @@ inline bool isInputKind (StripKind k) noexcept { return k == StripKind::Channel 
     (label()) and colours (palette). The WING's until the app says otherwise
     (MainComponent follows the console's). Message thread only. */
 void setShownProfile (ld::ProfileId);
+/** The shown console's slot ranges are this engine's (a dLive's follow its Mixer Config). */
+void setShownSlots (const ld::Engine*);
 ld::ProfileId shownProfile() noexcept;
 
 /** The colours the interface shows: the shown profile's palette. A strip's,
@@ -366,6 +368,8 @@ public:
     int getMuteState() const noexcept { return ld::ld_strip_mute_state (handle); }
     /** Soloed in the last block: own solo, a soloed DCA or a TALK SOLO tag. */
     bool isSoloedNow() const noexcept { return ld::ld_strip_is_soloed (handle); }
+    /** A mix's Ext In and Mix Source. */
+    ld::MixInputParams& mixInput() const noexcept { return *ld::ld_strip_mix_input (handle); }
     /** HOME > TAGS talk tags (ld::TalkTag bits). */
     uint32_t getTalkTags() const noexcept { return ld::ld_strip_talk_tags (handle); }
     void setTalkTags (uint32_t tags) const noexcept { ld::ld_strip_set_talk_tags (handle, tags); }

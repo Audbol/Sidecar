@@ -193,8 +193,9 @@ namespace promix
                 value (BATTERY CHECK's, PROGRAM CHANGE ASSIGN's "1= 01"); a cell
                 of a ruled table, its name over its value (LOCAL ON/OFF's); a row
                 of a scrolling list, "Name=" then its value (an EDIT page's); the
-                groups A-D as four squares, the strip's filled (CUE's). */
-            enum class Style { Box, Bare, Inline, Button, Knob, Circle, PairBox, Fader, Number, Value, Text, Grid, Row, Groups } style = Style::Box;
+                groups A-D as four squares, the strip's filled (CUE's); ENTER's oval,
+                "NAME:" and its value under it (PAN's CONTROL). */
+            enum class Style { Box, Bare, Inline, Button, Knob, Circle, PairBox, Fader, Number, Value, Text, Grid, Row, Groups, Paddle } style = Style::Box;
             /** What it stands for, where the style needs it (PAIR's pair). */
             int index = -1;
             int span = 1;
@@ -218,6 +219,10 @@ namespace promix
         void menu (const char* const* items, int count);
         int midiPage() const;
         /** An EDIT page's program line and rule; COMP EDIT's gain curve. */
+        /** The page, in the component's pixels; paint() turns it into the LCD's dots. */
+        void paintPage (juce::Graphics&);
+        juce::Image lowRes, dotsImage;
+        std::vector<uint8_t> shownDots;
         void paintEditHeader (juce::Graphics&, juce::Rectangle<float> area, const juce::String& name, float width) const;
         void paintGainCurve (juce::Graphics&, juce::Rectangle<float>) const;
         Field listField (const juce::String& label, int library, int count, int param, juce::Rectangle<float> box);
@@ -341,7 +346,8 @@ private:
     void repaintDesign (juce::Rectangle<int> r) { repaint (r.toFloat().transformedBy (design).getSmallestIntegerContainer().expanded (2)); }
     /** The panel's analog row (PAD and GAIN, MONITOR OUT, PHONES: drawn, not
         controls), and the stereo meter's place, set by resized(). */
-    juce::Rectangle<int> analogArea, meterRect, contrastKnob, grilleArea;
+    juce::Rectangle<int> analogArea, meterRect, contrastKnob, lcdWindow;
+    std::array<juce::Rectangle<int>, kNumFaders> grilles;
 
     UiContext& ctx;
     const universal::Theme& theme;

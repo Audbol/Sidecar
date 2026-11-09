@@ -13,7 +13,7 @@ mod mood;
 mod panner;
 mod phaser;
 mod rotary;
-pub(super) mod shared;
+pub(crate) mod shared;
 
 use super::{FxAlgo, FxContext};
 

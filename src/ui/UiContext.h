@@ -72,7 +72,11 @@ enum class InterfaceKind
     /** The 02R surface (an 02R console's skin). */
     Yamaha02R,
     /** The SQ-5 surface (an Allen & Heath SQ-5 console's skin). */
-    Sq5
+    Sq5,
+    /** The 01V surface (a Yamaha 01V console's skin). */
+    Yamaha01V,
+    /** An Allen & Heath dLive console: its own surface (a C1500's layout). */
+    DLive
 };
 
 /** The HOME screen's tabs for the selected strip: the overview group
@@ -281,6 +285,7 @@ namespace uiprefs
 
     // The window (MainComponent).
     constexpr const char* screenMaximized = "ui.screenMaximized";   // bool: only the main display (F10)
+    constexpr const char* dliveSurface = "ui.dliveSurface";         // "c3500" (default) or "c1500": which surface a dLive shows
     constexpr const char* interfaceKind = "ui.interface";           // "wing" (default) or "universal": the window's skin
     constexpr const char* universalChannel = "ui.universalChannel"; // bool, default true: the MIXER view shows the selected strip's panel
     constexpr const char* universalFaders = "ui.universalFaders";   // bool, default true: the Universal MIXER view shows its faders
@@ -458,7 +463,9 @@ inline juce::String inputPortName (int input, int pad = 0)
     {
         int n = input - ld::kStripSourceBase;
         const char* prefix = "BUS ";
-        if (n >= 2 * kWingBuses)
+        if (n >= ld::kExtraBusSourcesAt)
+            n += 2 * kWingBuses - ld::kExtraBusSourcesAt; // buses 17 on
+        else if (n >= 2 * kWingBuses)
         {
             n -= 2 * kWingBuses;
             prefix = n >= 2 * kWingMains ? "MTX " : "MAIN ";

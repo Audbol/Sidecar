@@ -4,6 +4,8 @@
 
 #include "ui/DelayUnits.h"
 
+#include <algorithm>
+
 namespace livedaw::ui::universal
 {
 
@@ -15,14 +17,6 @@ namespace
     {
         const double sr = ctx.engine.getSampleRate();
         return sr > 0.0 ? sr : 48000.0;
-    }
-
-    juce::StringArray modelNames (models::Table table)
-    {
-        juce::StringArray names;
-        for (const auto& m : models::table (table))
-            names.add (m.name);
-        return names;
     }
 
     /** A dynamics block's gain reduction as a bar from the right. */
@@ -110,6 +104,7 @@ BlockTarget BlockTarget::of (UiContext& ctx, Strip& strip, const ChainStep& step
             t.title = "GATE";
             t.dynamics = &p.gate();
             t.setModel = withModel (ModelBlock::Gate);
+            t.modelSlot = 0;
             t.response = own (5);
             t.reductionDb = [&strip] { return strip.meters.gateReductionDb.load(); };
             break;
@@ -119,6 +114,7 @@ BlockTarget BlockTarget::of (UiContext& ctx, Strip& strip, const ChainStep& step
             t.eq = &p.eq();
             t.table = (models::Table) strip.getEqTable();
             t.setModel = withModel (ModelBlock::Eq);
+            t.fixedModel = ctx.engine.getProfile() == ld::kProfileYamaha01V || ctx.engine.getProfile() == ld::kProfileDLive;
             t.response = own (1);
             break;
         case ld::kStepDynamics:
@@ -126,8 +122,11 @@ BlockTarget BlockTarget::of (UiContext& ctx, Strip& strip, const ChainStep& step
             t.title = "DYNAMICS";
             t.dynamics = &p.dynamics();
             t.setModel = withModel (ModelBlock::Dynamics);
+            t.modelSlot = 1;
             t.response = own (6);
             t.reductionDb = [&strip] { return strip.meters.dynReductionDb.load(); };
+            if (ctx.engine.getProfile() == ld::kProfileDLive && strip.getKind() == StripKind::Channel)
+                t.compressorOrder = &p.processOrder;
             break;
         case ld::kStepPreInsert:
             t.kind = Kind::Insert;
@@ -174,7 +173,10 @@ BlockTarget BlockTarget::of (UiContext& ctx, Strip& strip, const ChainStep& step
                 case BlockKind::Dynamics:
                 {
                     t.kind = Kind::Dynamics;
-                    t.title = "DYNAMICS BLOCK";
+                    // A dLive input's preamp is a dynamics block of its own (DEEP Processing).
+                    const bool preamp = uid == ld::ld_strip_preamp_block (strip.getHandle());
+                    t.title = preamp ? "PREAMP" : "DYNAMICS BLOCK";
+                    t.modelSlot = preamp ? 2 : 1;
                     t.dynamics = block.dynamics();
                     t.setModel = setBlockModel;
                     t.response = curve (0);
@@ -273,15 +275,29 @@ ChoiceBar& BlockEditor::addChoice (const juce::String& caption, std::function<ju
 void BlockEditor::addModel (std::atomic<int32_t>& model)
 {
     const auto table = target.table;
-    auto& choice = addChoice ("MODEL", [table] { return modelNames (table); }, [&model] { return model.load(); },
-                              [set = target.setModel] (int m)
+    // What this block may hold: on a dLive the preamp models go in their block alone.
+    std::vector<int> ids;
+    juce::StringArray names;
+    for (const auto& m : models::table (table))
+        if (table != models::Dynamics || target.modelSlot < 0 || ld::ld_dyn_model_allowed (m.index, target.modelSlot))
+        {
+            ids.push_back (m.index);
+            names.add (m.name);
+        }
+    auto& choice = addChoice ("MODEL", [names] { return names; },
+                              [ids, &model]
                               {
-                                  if (set)
-                                      set (m);
+                                  const auto found = std::find (ids.begin(), ids.end(), model.load());
+                                  return found == ids.end() ? -1 : (int) std::distance (ids.begin(), found);
+                              },
+                              [ids, set = target.setModel] (int i)
+                              {
+                                  if (set && juce::isPositiveAndBelow (i, (int) ids.size()))
+                                      set (ids[(size_t) i]);
                               },
                               devices::wing); // the WING's model tables
     // Chosen by their pictures: the WING's front panels.
-    choice.paintItem = [table] (juce::Graphics& g, juce::Rectangle<float> r, int m) { Faceplate::paintThumbnail (g, r, table, m, {}); };
+    choice.paintItem = [ids, table] (juce::Graphics& g, juce::Rectangle<float> r, int i) { Faceplate::paintThumbnail (g, r, table, ids[(size_t) i], {}); };
 }
 
 void BlockEditor::addParams (std::atomic<int32_t>& model, std::atomic<float>* values, int numValues)
@@ -375,7 +391,8 @@ void BlockEditor::build()
         {
             auto& eq = *target.eq;
             addKey ("ON", eq.on);
-            addModel (eq.model);
+            if (! target.fixedModel)
+                addModel (eq.model);
             addResponse ([&eq, table = target.table] { return ResponseView::eqHandles (models::model (table, eq.model.load()), eq.values); });
             addBar (ValueBar::linear ("MIX", eq.mix, 0.0f, 125.0f, 100.0f, " %", 0));
             addParams (eq.model, eq.values, ld::kMaxEqParams);
@@ -385,6 +402,13 @@ void BlockEditor::build()
         {
             auto& d = *target.dynamics;
             addKey ("ON", d.on);
+            if (auto* order = target.compressorOrder)
+            {
+                auto& key = add (std::make_unique<ToggleKey> ("PRE PEQ", theme.accent, theme), kKey);
+                key.isOn = [order] { return order->load() == 1; };
+                key.onClick = [order] { order->store (order->load() == 1 ? 0 : 1); };
+                refreshers.push_back ([&key] { key.refresh(); });
+            }
             addModel (d.model);
             addTransfer (d);
             auto& meter = add (std::make_unique<ReductionMeter> (theme), kRow);

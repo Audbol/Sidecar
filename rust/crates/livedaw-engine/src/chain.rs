@@ -406,6 +406,66 @@ pub(crate) const Y02R_AUX: &[Node] = &[
     t(tap::POST),
 ];
 
+/// The 01V's CH 1-16 (Owner's Manual p.60): attenuator, 4-band EQ, dynamics,
+/// delay, ON, fader: the 02R's channel.
+pub(crate) const Y01V_CHANNEL: &[Node] = Y02R_CHANNEL;
+
+/// The 01V's CH 17-24 (the Option I/O card's, p.60): attenuator, the 2-band EQ,
+/// ON, fader; no dynamics or delay.
+pub(crate) const Y01V_OPTION: &[Node] = &[
+    rta(rta_tap::IN),
+    Node::Input,
+    t(tap::IN),
+    rta(rta_tap::PRE_FILTER),
+    t(tap::FILT),
+    rta(rta_tap::POST_FILTER),
+    Node::Eq,
+    t(2),
+    t(3),
+    t(4),
+    Node::Pfl,
+    t(tap::PFL),
+    Node::Fader,
+    t(tap::AFL),
+    rta(rta_tap::POST_FADER),
+    t(TAP_INS2),
+    Node::Post,
+    t(tap::POST),
+];
+
+/// The 01V's effect returns (p.25): the 4-band EQ, ON, level; no delay either.
+pub(crate) const Y01V_RETURN: &[Node] = Y01V_OPTION;
+
+/// The 01V's BUS 1-4 and EFFECT 1-2: the master alone (p.24).
+pub(crate) const Y01V_BUS: &[Node] = Y02R_AUX;
+
+/// The 01V's AUX 1-4: 4-band EQ, dynamics, the master (p.24).
+pub(crate) const Y01V_AUX: &[Node] = Y02R_STEREO;
+
+/// The 01V's STEREO: 4-band EQ, dynamics, fader, ON, then the output delay (p.24).
+pub(crate) const Y01V_STEREO: &[Node] = &[
+    rta(rta_tap::IN),
+    Node::Input,
+    t(tap::IN),
+    rta(rta_tap::PRE_FILTER),
+    t(tap::FILT),
+    rta(rta_tap::POST_FILTER),
+    Node::Eq,
+    t(2),
+    Node::Dynamics,
+    t(3),
+    t(TAP_EQ_POST),
+    Node::Pfl,
+    t(tap::PFL),
+    Node::Fader,
+    t(tap::AFL),
+    rta(rta_tap::POST_FADER),
+    t(TAP_INS2),
+    Node::Delay,
+    Node::Post,
+    t(tap::POST),
+];
+
 /// The 02R's STEREO: its attenuator, the 4-band EQ, the dynamics processor, the
 /// fader (MAN p.197).
 pub(crate) const Y02R_STEREO: &[Node] = &[
@@ -526,6 +586,51 @@ pub(crate) const SQ_FX_SEND: &[Node] = &[
     Node::Post,
     t(tap::POST),
 ];
+
+/// The dLive's input channels (the datasheets' block diagram): trim and
+/// polarity, filters, gate, Insert A, the PEQ and the compressor in the
+/// channel's order (the PEQ first, or the compressor first:
+/// [`DLIVE_ORDERS`]), Insert B, delay, then mute and fader.
+pub(crate) const DLIVE_CHANNEL: &[Node] = &[
+    rta(rta_tap::IN),
+    Node::Input,
+    t(tap::IN),
+    rta(rta_tap::PRE_FILTER),
+    Node::Filter,
+    t(tap::FILT),
+    rta(rta_tap::POST_FILTER),
+    Node::Gate,
+    Node::PreInsert,
+    t(2), // Post Insert A
+    Node::Slot(0),
+    t(3),
+    Node::Slot(1),
+    t(4),
+    Node::PostInsert,
+    Node::Delay,
+    Node::Pfl,
+    t(tap::PFL),
+    Node::Fader,
+    t(tap::AFL),
+    rta(rta_tap::POST_FADER),
+    t(TAP_INS2),
+    Node::Post,
+    t(tap::POST),
+];
+
+/// The dLive's FX returns: the PEQ, then mute and fader: the SQ's.
+pub(crate) const DLIVE_RETURN: &[Node] = SQ_RETURN;
+
+/// The dLive's Groups, Aux, Main and Matrices: insert, PEQ (the 28-band GEQ
+/// follows it, a block: `factory_eq_block`), compressor, delay, then mute and
+/// fader: the SQ's.
+pub(crate) const DLIVE_MIX: &[Node] = SQ_MIX;
+
+/// The dLive's FX sends: mute and fader alone.
+pub(crate) const DLIVE_FX_SEND: &[Node] = SQ_FX_SEND;
+
+/// A dLive input's compressor comes after the PEQ, or before it (per channel).
+pub(crate) const DLIVE_ORDERS: &[&str] = &["ED", "DE"];
 
 /// The SQ's strips have one fixed order of processing.
 pub(crate) const SQ_ORDERS: &[&str] = &["GED"];

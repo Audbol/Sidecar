@@ -103,6 +103,26 @@ impl Element {
         self.elements().find(|e| e.name == name)
     }
 
+    pub fn child_mut(&mut self, name: &str) -> Option<&mut Element> {
+        self.children.iter_mut().find_map(|n| match n {
+            Node::Element(e) if e.name == name => Some(e),
+            _ => None,
+        })
+    }
+
+    /// The children named `name`, to change them.
+    pub fn children_named_mut<'a>(&'a mut self, name: &'a str) -> impl Iterator<Item = &'a mut Element> + 'a {
+        self.children.iter_mut().filter_map(move |n| match n {
+            Node::Element(e) if e.name == name => Some(e),
+            _ => None,
+        })
+    }
+
+    /// Takes away the children named `name`.
+    pub fn remove_children(&mut self, name: &str) {
+        self.children.retain(|n| !matches!(n, Node::Element(e) if e.name == name));
+    }
+
     pub fn add(&mut self, child: Element) -> &mut Element {
         self.children.push(Node::Element(child));
         match self.children.last_mut() {

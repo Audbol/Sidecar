@@ -146,6 +146,7 @@ pub static MODELS: ModelTables = ModelTables {
     eq_bus: EQ,
     filter_tools: FILTER_TOOLS,
     fx: &fx::FX_MODELS,
+    fx_premium_first: 0,
     fx_premium_slots: 2,
     gate_default: "PMGATE",
     comp_default: "PMCOMP",

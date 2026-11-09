@@ -49,7 +49,7 @@ fn smoothstep(t: f32) -> f32 {
 /// no click), as digital delays do. A change that arrives during a fade
 /// starts its own fade once the current one is done.
 #[derive(Clone, Copy)]
-struct XfadeTap {
+pub(crate) struct XfadeTap {
     cur: usize,
     next: usize,
     target: usize,
@@ -59,24 +59,24 @@ struct XfadeTap {
 }
 
 impl XfadeTap {
-    fn new(fade_ms: f32, sr: f32) -> Self {
+    pub(crate) fn new(fade_ms: f32, sr: f32) -> Self {
         Self { cur: 0, next: 0, target: 0, fade: 0.0, step: 1.0 / (fade_ms * 0.001 * sr).max(1.0) }
     }
 
     /// New delay in samples (as a `DelayLine::tap` index).
-    fn set(&mut self, d: usize) {
+    pub(crate) fn set(&mut self, d: usize) {
         self.target = d;
     }
 
     /// Jumps to the target.
-    fn snap(&mut self) {
+    pub(crate) fn snap(&mut self) {
         self.cur = self.target;
         self.next = self.target;
         self.fade = 0.0;
     }
 
     #[inline]
-    fn read(&mut self, line: &DelayLine) -> f32 {
+    pub(crate) fn read(&mut self, line: &DelayLine) -> f32 {
         if self.fade == 0.0 {
             if self.target == self.cur {
                 return line.tap(self.cur);

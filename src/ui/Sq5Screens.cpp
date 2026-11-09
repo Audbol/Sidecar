@@ -19,7 +19,7 @@ using namespace universal;
 namespace
 {
     const juce::Colour kWell (0xff071019), kLine (0xff8fbcd9), kColumn (0xff3f82b3), kColumnSelected (0xff4aa56f), kPink (0xffe05cc8), kGreenBar (0xff7ee02e),
-        kCurrent (0xff8fd14f), kNext (0xffb4c24a), kOffCell (0xff2c5f8a), kOnCell (0xffd9e6f2);
+        kCurrent (0xff8fd14f), kNext (0xffb4c24a), kOffCell (0xff3a5a82), kOnCell (0xffe4ebf2);
     constexpr float kTabWidth = 70.0f;
     /** I/O's Outputs: LR's sides, then Mix 1-12 (their first side). */
     constexpr int outputRows = 2 + kMixes;
@@ -42,8 +42,9 @@ namespace
     {
         g.setColour (juce::Colours::black);
         g.fillRect (r);
-        const float db = juce::Decibels::gainToDecibels (gain, -60.0f), f = juce::jlimit (0.0f, 1.0f, (db + 60.0f) / 66.0f);
-        g.setColour (db > -3.0f ? juce::Colours::red : db > -12.0f ? juce::Colours::yellow : kGreenBar);
+        // The main meters show -40 dB to +10 dB (p.52).
+        const float db = juce::Decibels::gainToDecibels (gain, -60.0f), f = juce::jlimit (0.0f, 1.0f, (db + 40.0f) / 50.0f);
+        g.setColour (db > 3.0f ? juce::Colours::red : db > -6.0f ? juce::Colours::yellow : kGreenBar);
         g.fillRect (r.withTop (r.getBottom() - r.getHeight() * f));
     }
 
@@ -161,102 +162,116 @@ void Display::paintRoutingBank (juce::Graphics& g)
         if (at >= (int) layer.size())
             break;
         const auto slot = layer[(size_t) at];
-        juce::Rectangle<float> col ((float) c * cw + 1.5f, top, cw - 3.0f, height);
-        g.setColour (slot == sel && slot.kind != Slot::None ? kColumnSelected : kColumn);
-        g.fillRoundedRectangle (col, 3.0f);
-        if (slot.kind == Slot::None)
-            continue;
-        auto* s = stripOf (ctx.engine, slot);
-        auto r = col;
-        auto name = r.removeFromTop (22.0f);
-        const auto colour = s != nullptr ? s->getColour() : consoleColour (ctx.engine.getDca (slot.index).colour.load());
-        g.setColour (colour);
-        g.fillRect (name.reduced (1.0f));
-        const auto label = s != nullptr ? s->getName() : ctx.engine.getDcaName (slot.index).isNotEmpty() ? ctx.engine.getDcaName (slot.index) : "DCA" + juce::String (slot.index + 1);
-        text (g, name, label, 12.0f, inkOn (colour), juce::Justification::centred, true);
-        if (s == nullptr)
-            continue;
-        // Dir Out, or the mix's type.
-        auto button = r.removeFromTop (24.0f).reduced (6.0f, 3.0f);
-        g.setColour (juce::Colour (0xff24598a));
-        g.fillRoundedRectangle (button, 3.0f);
-        g.setColour (kLine);
-        g.drawRoundedRectangle (button, 3.0f, 0.8f);
-        text (g, button, slot.kind == Slot::Input ? "Dir Out" : slot.kind == Slot::Mix ? "Aux Snd" : slot.kind == Slot::FxSend ? "FX Snd" : "Main Snd", 10.5f, juce::Colours::white, juce::Justification::centred, true);
-
-        // DCA and mute group assignments, the numbers filled when assigned (p.45).
-        const auto group = [&] (const char* title, ld::GroupMask& mask)
-        {
-            text (g, r.removeFromTop (12.0f), title, 9.5f, juce::Colours::white, juce::Justification::centred, true);
-            auto grid = r.removeFromTop (20.0f).reduced (5.0f, 1.0f);
-            const float w = grid.getWidth() / 4.0f, h = grid.getHeight() * 0.5f;
-            for (int i = 0; i < 8; ++i)
-            {
-                juce::Rectangle<float> cell (grid.getX() + (float) (i % 4) * w, grid.getY() + (float) (i / 4) * h, w, h);
-                const bool on = mask.contains (i);
-                g.setColour (on ? juce::Colours::white : juce::Colour (0xff24598a));
-                g.fillRect (cell.reduced (0.6f));
-                if (on)
-                    text (g, cell, juce::String (i + 1), 8.5f, juce::Colours::black, juce::Justification::centred, true);
-            }
-        };
-        group ("DCA Assign", s->params.dcaMask);
-        group ("Mute Assign", s->params.muteGroupMask);
-
-        if (s->isOutput() && slot.kind != Slot::Mix)
-            continue;
-        // Main, Mix and FX sends (only the channels send to them).
-        const bool sends = s->isInput();
-        text (g, r.removeFromTop (12.0f), "Main Sends", 9.5f, juce::Colours::white, juce::Justification::centred, true);
-        {
-            auto bar = r.removeFromTop (32.0f).reduced (24.0f, 1.0f);
-            g.setColour (kWell);
-            g.fillRect (bar);
-            const auto& lr = s->mains[0];
-            sendBar (g, bar.reduced (2.0f, 1.0f), s->params.faderDb.load(), lr.on.load(), lr.pre.load());
-            text (g, { bar.getX(), bar.getBottom() - 11.0f, bar.getWidth(), 10.0f }, "LR", 8.5f, juce::Colours::white);
-        }
-        if (! sends)
-            continue;
-        const auto sendRow = [&] (const char* title, int first, int count)
-        {
-            text (g, r.removeFromTop (12.0f), title, 9.5f, juce::Colours::white, juce::Justification::centred, true);
-            auto bars = r.removeFromTop (70.0f).reduced (5.0f, 1.0f);
-            g.setColour (kWell);
-            g.fillRect (bars);
-            const float w = bars.getWidth() / (float) count;
-            for (int i = 0; i < count; ++i)
-            {
-                auto& send = s->sends[(size_t) (first + i)];
-                sendBar (g, juce::Rectangle<float> (bars.getX() + (float) i * w + 0.5f, bars.getY() + 1.0f, w - 1.0f, bars.getHeight() - 2.0f),
-                         send.levelDb.load(), send.enabled.load(), send.mode.load() == (int) SendMode::Pre);
-            }
-        };
-        sendRow ("Mix Sends", 0, kMixes);
-        sendRow ("FX Sends", kMixes, kFxSends);
+        paintRoutingColumn (g, juce::Rectangle<float> ((float) c * cw + 1.5f, top, cw - 3.0f, height), slot, slot == sel && slot.kind != Slot::None);
     }
+}
+
+void Display::paintRoutingColumn (juce::Graphics& g, juce::Rectangle<float> col, const Slot& slot, bool isSelected)
+{
+    g.setColour (isSelected ? kColumnSelected : kColumn);
+    g.fillRoundedRectangle (col, 3.0f);
+    if (slot.kind == Slot::None)
+        return;
+    auto* s = stripOf (ctx.engine, slot);
+    auto r = col;
+    auto name = r.removeFromTop (22.0f);
+    const auto colour = s != nullptr ? s->getColour() : consoleColour (ctx.engine.getDca (slot.index).colour.load());
+    g.setColour (colour);
+    g.fillRect (name.reduced (1.0f));
+    const auto label = s != nullptr ? s->getName() : ctx.engine.getDcaName (slot.index).isNotEmpty() ? ctx.engine.getDcaName (slot.index) : "DCA" + juce::String (slot.index + 1);
+    text (g, name, label, 12.0f, inkOn (colour), juce::Justification::centred, true);
+    if (s == nullptr)
+        return;
+    // Dir Out, or the mix's type, its button's marker at the right (p.45).
+    auto button = r.removeFromTop (24.0f).reduced (6.0f, 3.0f);
+    g.setColour (juce::Colour (0xff24598a));
+    g.fillRoundedRectangle (button, 3.0f);
+    g.setColour (kLine);
+    g.drawRoundedRectangle (button, 3.0f, 0.8f);
+    auto mark = button.removeFromRight (button.getHeight()).reduced (3.5f);
+    g.setColour (juce::Colours::white);
+    g.drawEllipse (mark, 1.2f);
+    text (g, button, slot.kind == Slot::Input ? "Dir Out" : slot.kind == Slot::Mix ? "Aux Snd" : slot.kind == Slot::FxSend ? "FX Snd" : "Main Snd", 10.5f, juce::Colours::white, juce::Justification::centred, true);
+
+    // DCA and mute group assignments, the numbers filled when assigned (p.45).
+    const auto group = [&] (const char* title, ld::GroupMask& mask)
+    {
+        text (g, r.removeFromTop (12.0f), title, 9.5f, juce::Colours::white, juce::Justification::centred, true);
+        auto grid = r.removeFromTop (20.0f).reduced (5.0f, 1.0f);
+        const float w = grid.getWidth() / 4.0f, h = grid.getHeight() * 0.5f;
+        for (int i = 0; i < 8; ++i)
+        {
+            juce::Rectangle<float> cell (grid.getX() + (float) (i % 4) * w, grid.getY() + (float) (i / 4) * h, w, h);
+            const bool on = mask.contains (i);
+            g.setColour (on ? juce::Colours::white : juce::Colour (0xff24598a));
+            g.fillRect (cell.reduced (0.6f));
+            if (on)
+                text (g, cell, juce::String (i + 1), 8.5f, juce::Colours::black, juce::Justification::centred, true);
+        }
+    };
+    group ("DCA Assign", s->params.dcaMask);
+    group ("Mute Assign", s->params.muteGroupMask);
+
+    if (s->isOutput() && slot.kind != Slot::Mix)
+        return;
+    // Main, Mix and FX sends (only the channels send to them).
+    const bool sends = s->isInput();
+    text (g, r.removeFromTop (12.0f), "Main Sends", 9.5f, juce::Colours::white, juce::Justification::centred, true);
+    {
+        auto bar = r.removeFromTop (32.0f).reduced (24.0f, 1.0f);
+        g.setColour (kWell);
+        g.fillRect (bar);
+        const auto& lr = s->mains[0];
+        sendBar (g, bar.reduced (2.0f, 1.0f), s->params.faderDb.load(), lr.on.load(), lr.pre.load());
+        text (g, { bar.getX(), bar.getBottom() - 11.0f, bar.getWidth(), 10.0f }, "LR", 8.5f, juce::Colours::white);
+    }
+    if (! sends)
+        return;
+    const auto sendRow = [&] (const char* title, int first, int count)
+    {
+        text (g, r.removeFromTop (12.0f), title, 9.5f, juce::Colours::white, juce::Justification::centred, true);
+        auto bars = r.removeFromTop (70.0f).reduced (5.0f, 1.0f);
+        g.setColour (kWell);
+        g.fillRect (bars);
+        const float w = bars.getWidth() / (float) count;
+        for (int i = 0; i < count; ++i)
+        {
+            auto& send = s->sends[(size_t) (first + i)];
+            sendBar (g, juce::Rectangle<float> (bars.getX() + (float) i * w + 0.5f, bars.getY() + 1.0f, w - 1.0f, bars.getHeight() - 2.0f),
+                     send.levelDb.load(), send.enabled.load(), send.mode.load() == (int) SendMode::Pre);
+        }
+    };
+    sendRow ("Mix Sends", 0, kMixes);
+    sendRow ("FX Sends", kMixes, kFxSends);
 }
 
 void Display::buildDirOut (Strip& s)
 {
+    // As p.46: the channel's own level in a box at the left, the global settings in a
+    // panel, all Sidecar's fixed (no direct out modelled yet).
     juce::ignoreUnused (s);
-    add (Field::Header, { 92, 40, 540, 18 }, "Global Direct Out Settings");
-    add (Field::Button, { 210, 70, 210, 30 }, "Post Compressor").enabled = false;
-    add (Field::Value, { 120, 150, 90, 48 }, "Level").enabled = false;
-    for (auto [title, x, y] : { std::tuple ("Follow Fader", 240, 120), std::tuple ("Follow Mute", 370, 120), std::tuple ("Follow DCA Fader", 240, 190),
-                                std::tuple ("Follow DCA Mute", 370, 190), std::tuple ("Follow Mute Group", 370, 260) })
-        add (Field::Button, { (float) x, (float) y, 110, 36 }, title).enabled = false;
+    add (Field::Header, { 120, 164, 90, 18 }, "Direct Out");
+    add (Field::Value, { 124, 186, 82, 48 }, "Level").enabled = false;
+    add (Field::Header, { 230, 56, 416, 20 }, "Global Direct Out Settings");
+    add (Field::Button, { 312, 106, 136, 32 }, "Post Compressor").enabled = false;
+    for (auto [title, x, y] : { std::tuple ("Follow Fader", 288, 186), std::tuple ("Follow Mute", 413, 186), std::tuple ("Follow DCA Fader", 288, 252),
+                                std::tuple ("Follow DCA Mute", 413, 252), std::tuple ("Follow Mute Group", 413, 318) })
+    {
+        auto& f = add (Field::Button, { (float) x, (float) y, 60, 26 }, title);
+        f.enabled = false;
+        f.caption = "Off";
+    }
 }
 
 void Display::buildMixSettings (Strip& s)
 {
     const auto slot = getSelectedSlot ? getSelectedSlot() : Slot {};
     const int bus = slot.kind == Slot::Mix ? slot.index : slot.kind == Slot::FxSend ? kMixes + slot.index : -1;
-    add (Field::Header, { 92, 40, 540, 18 }, slot.kind == Slot::Main ? "Main Settings" : slot.kind == Slot::Matrix ? "Matrix Settings" : typeOf (slot) + " Send Settings");
-    addValue ({ 120, 110, 110, 48 }, "Output Bal", bindPan ("Output Bal", s.params.pan));
+    add (Field::Header, { 230, 56, 304, 20 }, slot.kind == Slot::Main ? "Main Settings" : slot.kind == Slot::Matrix ? "Matrix Settings" : typeOf (slot) + " Send Settings");
+    addValue ({ 120, 178, 92, 48 }, "Output Bal", bindPan ("Output Bal", s.params.pan));
     if (bus < 0)
         return;
-    add (Field::Button, { 280, 70, 210, 30 }, "Post Compressor").enabled = false; // the channel source point
+    add (Field::Button, { 276, 96, 210, 30 }, "Post Compressor").enabled = false; // the channel source point
     const auto allOf = [this, bus] (std::function<void (ld::SendParams&)> action)
     {
         return [this, bus, action]
@@ -266,30 +281,36 @@ void Display::buildMixSettings (Strip& s)
                     action (c->sends[(size_t) bus]);
         };
     };
-    add (Field::Button, { 280, 130, 90, 34 }, "All On").press = allOf ([] (ld::SendParams& p) { p.enabled = true; });
-    add (Field::Button, { 400, 130, 90, 34 }, "All Off").press = allOf ([] (ld::SendParams& p) { p.enabled = false; });
-    add (Field::Button, { 280, 200, 90, 34 }, "All Pre").press = allOf ([] (ld::SendParams& p) { p.mode = (int) SendMode::Pre; });
-    add (Field::Button, { 400, 200, 90, 34 }, "All Post").press = allOf ([] (ld::SendParams& p) { p.mode = (int) SendMode::Post; });
+    add (Field::Button, { 276, 160, 84, 34 }, "All On").press = allOf ([] (ld::SendParams& p) { p.enabled = true; });
+    add (Field::Button, { 402, 160, 84, 34 }, "All Off").press = allOf ([] (ld::SendParams& p) { p.enabled = false; });
+    add (Field::Button, { 276, 214, 84, 34 }, "All Pre").press = allOf ([] (ld::SendParams& p) { p.mode = (int) SendMode::Pre; });
+    add (Field::Button, { 402, 214, 84, 34 }, "All Post").press = allOf ([] (ld::SendParams& p) { p.mode = (int) SendMode::Post; });
 }
 
 void Display::buildDcaMute (Strip& s)
 {
-    add (Field::Header, { 92, 40, 540, 18 }, "DCA");
-    add (Field::Header, { 92, 212, 540, 18 }, "Mute Groups");
-    const float x0 = 92.0f, cw = 540.0f / 8.0f;
-    const auto row = [&] (ld::GroupMask& mask, float y, const juce::String& prefix)
+    // As p.49: a column per DCA and mute group, its name, Assign, then View.
+    const float x0 = 88.0f, cw = 590.0f / 8.0f;
+    const auto row = [&] (ld::GroupMask& mask, float y, const juce::String& prefix, const juce::String& name)
     {
         for (int i = 0; i < 8; ++i)
         {
             const float x = x0 + (float) i * cw;
             auto* m = &mask;
-            auto& f = add (Field::Button, { x + 3, y + 22, cw - 6, 40 }, prefix + juce::String (i + 1) + " Assign");
+            add (Field::Header, { x + 2, y, cw - 4, 20 }, name + juce::String (i + 1));
+            auto& f = add (Field::Button, { x + 3, y + 28, cw - 6, 40 }, prefix + juce::String (i + 1) + " Assign");
+            f.caption = "Assign";
+            f.colour = juce::Colours::white;
             f.lit = [m, i] { return m->contains (i); };
             f.press = [m, i] { m->set (i, ! m->contains (i)); };
+            auto& view = add (Field::Button, { x + 3, y + 76, cw - 6, 32 }, prefix + juce::String (i + 1) + " View");
+            view.caption = "View";
+            view.enabled = false;
         }
     };
-    row (s.params.dcaMask, 62.0f, "DCA");
-    row (s.params.muteGroupMask, 234.0f, "MGrp");
+    row (s.params.dcaMask, 50.0f, "DCA", "DCA");
+    add (Field::Header, { x0, 184.0f, 590.0f, 20.0f }, "Mute Groups");
+    row (s.params.muteGroupMask, 210.0f, "MGrp", "MGrp");
 }
 
 void Display::buildSends (Strip& s)
@@ -310,16 +331,18 @@ void Display::buildSends (Strip& s)
         if (mix == 0)
         {
             auto* send = &s.mains[0];
-            auto& pre = add (Field::Button, { x + 8, top + 28, cw - 16, 32 }, "Post");
+            auto& pre = add (Field::Button, { x + 8, top + 44, cw - 16, 32 }, "Post");
             pre.enabled = false;
             auto& on = add (Field::Button, { x + 8, top + 110, cw - 16, 34 }, "On");
+            on.captionOff = "Off";
+            on.colour = juce::Colours::white;
             on.lit = [send] { return send->on.load(); };
             on.press = [send] { send->on = ! send->on.load(); };
             addValue ({ x + 6, top + 240, cw - 12, 50 }, "Level", bindFader ("Level", s.params.faderDb));
             continue;
         }
         auto* send = &s.sends[(size_t) (mix - 1)];
-        auto& pre = add (Field::Button, { x + 8, top + 28, cw - 16, 32 }, send->mode.load() == (int) SendMode::Pre ? "Pre" : "Post");
+        auto& pre = add (Field::Button, { x + 8, top + 44, cw - 16, 32 }, send->mode.load() == (int) SendMode::Pre ? "Pre" : "Post");
         pre.colour = kGreenBar;
         pre.lit = [send] { return send->mode.load() == (int) SendMode::Pre; };
         pre.press = [this, send]
@@ -328,6 +351,8 @@ void Display::buildSends (Strip& s)
             rebuild();
         };
         auto& on = add (Field::Button, { x + 8, top + 110, cw - 16, 34 }, "On");
+        on.captionOff = "Off";
+        on.colour = juce::Colours::white;
         on.lit = [send] { return send->enabled.load(); };
         on.press = [send] { send->enabled = ! send->enabled.load(); };
         addValue ({ x + 6, top + 174, cw - 12, 50 }, "Pan", bindPan ("Pan", send->pan));
@@ -343,37 +368,63 @@ void Display::buildMeters()
     addSideTabs ({ "Input Meters", "FX Meters", "Mix Meters", "USB Meters", "RTA", "Channel Meters" }, meterTab);
     for (int i = 3; i < 6; ++i)
         fields[(size_t) i].enabled = false; // USB, RTA and the chromatic thresholds: not yet
+    // The meter source point, for Input and Mix (p.53): Post Compressor is what's drawn.
+    if (meterTab == 0 || meterTab == 2)
+    {
+        const auto body = bodyArea();
+        add (Field::Button, { body.getX() + 64, body.getY(), 150, 24 }, meterTab == 0 ? "Post Compressor" : "Post Delay/Fader").enabled = false;
+    }
 }
 
 void Display::paintMeters (juce::Graphics& g)
 {
     auto body = bodyArea();
+    if (meterTab == 0 || meterTab == 2)
+        text (g, body.removeFromTop (28.0f).removeFromLeft (62.0f), meterTab == 0 ? "Input Meter Source" : "Mix Meter Source", 8.5f, juce::Colours::white, juce::Justification::centredLeft, true);
     const std::vector<Strip*> list = [this]
     {
         std::vector<Strip*> v;
-        const auto add_ = [&v] (const MixerEngine::StripList& l) { for (const auto& s : l) v.push_back (s.get()); };
+        const auto add_ = [&v] (const MixerEngine::StripList& l, int first, int count) { for (int i = first; i < first + count && i < (int) l.size(); ++i) v.push_back (l[(size_t) i].get()); };
         if (meterTab == 0)
-            add_ (ctx.engine.getChannels());
+            add_ (ctx.engine.getChannels(), 0, 48);
         else if (meterTab == 1)
-            add_ (ctx.engine.getAux());
+        {
+            // FX sends, then the FX returns (p.53).
+            add_ (ctx.engine.getBuses(), kMixes, kFxSends);
+            add_ (ctx.engine.getAux(), 0, 8);
+        }
         else
         {
-            add_ (ctx.engine.getBuses());
-            add_ (ctx.engine.getMains());
-            add_ (ctx.engine.getMatrices());
+            add_ (ctx.engine.getBuses(), 0, kMixes);
+            add_ (ctx.engine.getMains(), 0, 1);
+            add_ (ctx.engine.getMatrices(), 0, 3);
         }
         return v;
     }();
-    const int perRow = meterTab == 0 ? 24 : juce::jmax (12, (int) list.size());
-    const int rows = meterTab == 0 ? 2 : 1;
-    const float rowH = body.getHeight() / (float) rows, cw = body.getWidth() / (float) perRow;
-    for (int i = 0; i < (int) list.size(); ++i)
+    // 16 meters a row (p.52), two rows at once; the rest by dragging up and down.
+    const int perRow = 16, shown = meterTab == 0 ? 2 : 1;
+    const int total = ((int) list.size() + perRow - 1) / perRow;
+    meterFirst = juce::jlimit (0, juce::jmax (0, total - shown), meterFirst);
+    const float rowH = body.getHeight() / (float) shown;
+    const float scale = 18.0f, cw = (body.getWidth() - 2.0f * scale) / (float) perRow;
+    for (int row = 0; row < shown; ++row)
+    {
+        auto band = body.withY (body.getY() + (float) row * rowH).withHeight (rowH);
+        // The scale, both sides: 10, 0, -10 ... -40 (p.52).
+        for (float side : { band.getX(), band.getRight() - scale })
+            for (int db = 10; db >= -40; db -= 10)
+            {
+                const float y = band.getBottom() - 40.0f - (band.getHeight() - 44.0f) * (float) (db + 40) / 50.0f;
+                text (g, { side, y - 5.0f, scale, 10.0f }, db > 0 ? "+" + juce::String (db) : juce::String (db), 8.0f, juce::Colours::white.withAlpha (0.75f), juce::Justification::centred);
+            }
+    }
+    for (int i = perRow * meterFirst; i < (int) list.size(); ++i)
     {
         auto* s = list[(size_t) i];
-        const int col = i % perRow, row = i / perRow;
-        if (row >= rows)
+        const int col = i % perRow, row = i / perRow - meterFirst;
+        if (row >= shown)
             break;
-        juce::Rectangle<float> cell (body.getX() + (float) col * cw, body.getY() + (float) row * rowH, cw, rowH);
+        juce::Rectangle<float> cell (body.getX() + scale + (float) col * cw, body.getY() + (float) row * rowH, cw, rowH);
         auto r = cell.reduced (1.5f, 3.0f);
         g.setColour (kWell);
         g.fillRect (r);
@@ -381,13 +432,15 @@ void Display::paintMeters (juce::Graphics& g)
         auto bars = r.reduced (2.0f, 2.0f);
         const float w = bars.getWidth() * 0.33f;
         meterBar (g, bars.withWidth (w), ctx.meters.get (s, meterTab == 0 ? MeterPoint::Trim : MeterPoint::Output, 0));
-        // The gain reduction from the top; the gate's dot when it's open (p.52).
+        // Gain reduction from the top, red while the compressor's in, grey-white while not;
+        // the gate's dot likewise (p.52).
         auto gr = bars.withX (bars.getX() + w + 1.0f).withWidth (w * 0.8f);
-        g.setColour (juce::Colours::orange);
-        g.fillRect (gr.withHeight (gr.getHeight() * juce::jlimit (0.0f, 1.0f, s->meters.dynReductionDb.load() / 36.0f)));
-        if (s->getKind() == StripKind::Channel && s->params.gate().on.load() && s->meters.gateActive.load())
+        const bool compIn = s->getKind() != StripKind::Aux && s->params.dynamics().on.load();
+        g.setColour (compIn ? juce::Colour (0xffff3b30) : juce::Colours::white.withAlpha (0.45f));
+        g.fillRect (gr.withHeight (gr.getHeight() * juce::jlimit (0.0f, 1.0f, s->meters.dynReductionDb.load() / 30.0f)));
+        if (s->getKind() == StripKind::Channel && s->meters.gateActive.load())
         {
-            g.setColour (kGreenBar);
+            g.setColour (s->params.gate().on.load() ? juce::Colour (0xffff3b30) : juce::Colours::white.withAlpha (0.6f));
             g.fillEllipse (bars.getRight() - 4.0f, bars.getY(), 4.0f, 4.0f);
         }
         juce::Graphics::ScopedSaveState state (g);
@@ -452,7 +505,11 @@ void Display::buildFx()
 
     const int model = fx.getModel (fxSlot);
     const auto& m = models_[(size_t) juce::jlimit (0, (int) models_.size() - 1, model)];
-    add (Field::Header, { 92, 40, 540, 18 }, "FX Unit " + juce::String (fxSlot + 1) + (model != 0 ? ": " + m.name : juce::String()));
+    add (Field::Header, { 88, 40, 200, 20 }, "FX Unit " + juce::String (fxSlot + 1) + (model != 0 ? ": " + m.name : juce::String()));
+    // Global Tap Tempo, Front Panel and Back Panel (p.60): not modelled.
+    add (Field::Button, { 420, 38, 58, 26 }, "Tap").enabled = false;
+    add (Field::Button, { 552, 38, 60, 26 }, "Front Panel").enabled = false;
+    add (Field::Button, { 614, 38, 60, 26 }, "Back Panel").enabled = false;
     auto& params = fx.params (fxSlot);
     const float cellW = 88.0f, cellH = 54.0f;
     int i = 0;
@@ -475,20 +532,25 @@ void Display::buildFx()
         if (fxSlot < kFxSends && kMixes + fxSlot < (int) buses.size())
         {
             auto* send = buses[(size_t) (kMixes + fxSlot)].get();
-            add (Field::Header, { 92, 296, 200, 16 }, send->getName());
-            addValue ({ 96, 316, 100, 46 }, "Send Level", bindFader ("Send Level", send->params.faderDb));
-            addToggle (Field::Button, { 204, 322, 80, 34 }, "Send Mute", send->params.mute).colour = juce::Colours::red;
+            add (Field::Header, { 92, 318, 230, 16 }, send->getName());
+            add (Field::Button, { 100, 342, 44, 36 }, "PAFL").enabled = false;
+            addToggle (Field::Button, { 190, 344, 60, 32 }, "Send Mute", send->params.mute).colour = juce::Colours::red;
+            fields.back().caption = "Mute";
+            addValue ({ 262, 338, 62, 46 }, "Send Level", bindFader ("Send Level", send->params.faderDb)).caption = "Level";
         }
-        auto& peq = add (Field::Button, { 306, 322, 74, 34 }, "PEQ");
+        add (Field::Header, { 342, 318, 84, 16 }, "FX Unit Output");
+        auto& peq = add (Field::Button, { 346, 344, 76, 34 }, "PEQ");
         peq.press = [this, r]
         {
             if (ctx.selectStrip)
                 ctx.selectStrip (r);
             showBlock (Block::Peq);
         };
-        add (Field::Header, { 400, 296, 232, 16 }, r->getName());
-        addValue ({ 404, 316, 100, 46 }, "Return Level", bindFader ("Return Level", r->params.faderDb));
-        addToggle (Field::Button, { 516, 322, 90, 34 }, "Return Mute", r->params.mute).colour = juce::Colours::red;
+        add (Field::Header, { 436, 318, 232, 16 }, r->getName());
+        add (Field::Button, { 446, 342, 44, 36 }, "PAFL").enabled = false;
+        addToggle (Field::Button, { 534, 344, 64, 32 }, "Return Mute", r->params.mute).colour = juce::Colours::red;
+        fields.back().caption = "Mute";
+        addValue ({ 606, 338, 62, 46 }, "Return Level", bindFader ("Return Level", r->params.faderDb)).caption = "Level";
     }
 }
 
@@ -506,18 +568,22 @@ void Display::buildScenes()
         return;
     }
 
-    // All Scenes: the list, then what the selected one can do (p.67).
+    // All Scenes as p.67: All Scenes / Cue List over the list; Recall and Modify at its
+    // right, with the name field over them.
     auto& show = ctx.show;
     const int count = show.getNumScenes();
     const auto body = bodyArea();
+    const auto list = body.withTrimmedTop (32.0f).withWidth (284.0f);
     sceneSelected = juce::jlimit (0, juce::jmax (0, count - 1), sceneSelected);
-    const int visible = (int) ((body.getHeight() - 8.0f) / 26.0f);
+    const int visible = (int) ((list.getHeight() - 4.0f) / 30.0f);
     sceneFirst = juce::jlimit (0, juce::jmax (0, count - visible), sceneFirst);
+    addTab ({ body.getX() + 34, body.getY(), 106, 26 }, "All Scenes", sceneTab, 0);
+    auto& cue = add (Field::Tab, { body.getX() + 142, body.getY(), 106, 26 }, "Cue List");
+    cue.enabled = false;
     for (int i = 0; i < visible && sceneFirst + i < count; ++i)
     {
         const int at = sceneFirst + i;
-        juce::Rectangle<float> row (body.getX(), body.getY() + 4.0f + (float) i * 26.0f, 280.0f, 24.0f);
-        auto& f = add (Field::Area, row, {});
+        auto& f = add (Field::Area, { list.getX(), list.getY() + 2.0f + (float) i * 30.0f, list.getWidth(), 28.0f }, {});
         f.press = [this, at]
         {
             sceneSelected = at;
@@ -525,8 +591,13 @@ void Display::buildScenes()
         };
     }
     const float x = body.getX() + 300.0f, w = body.getWidth() - 300.0f;
-    add (Field::Header, { x, body.getY(), w, 18 }, "Recall");
-    auto& go = add (Field::Button, { x + 12, body.getY() + 28, 90, 40 }, "Go");
+    {
+        // The scene name field, across the top (p.67).
+        const auto scene = show.getScene (sceneSelected);
+        add (Field::Button, { x, body.getY(), w, 26 }, scene.has_value() ? scene->name : juce::String ("No Scene")).enabled = false;
+    }
+    add (Field::Header, { x, body.getY() + 40, w, 18 }, "Recall");
+    auto& go = add (Field::Button, { x + 14, body.getY() + 66, 88, 34 }, "Go");
     go.enabled = count > 0;
     go.press = [this, &show]
     {
@@ -535,25 +606,26 @@ void Display::buildScenes()
             sceneSelected = juce::jmin (sceneSelected + 1, juce::jmax (0, show.getNumScenes() - 1));
         rebuild();
     };
-    auto& inc = add (Field::Button, { x + 124, body.getY() + 28, 90, 40 }, "Auto Increment");
+    auto& inc = add (Field::Button, { x + 170, body.getY() + 66, 110, 34 }, "Auto Increment");
     inc.lit = [this] { return autoIncrement; };
     inc.press = [this] { autoIncrement = ! autoIncrement; };
-    add (Field::Button, { x + 12, body.getY() + 86, 90, 40 }, "Recall Filter").enabled = false;
-    add (Field::Header, { x, body.getY() + 196, w, 18 }, "Modify");
-    auto& store = add (Field::Button, { x + 12, body.getY() + 224, 90, 40 }, "Store");
+    add (Field::Button, { x + 14, body.getY() + 116, 88, 34 }, "Recall Filter").enabled = false;
+    add (Field::Value, { x + 186, body.getY() + 108, 80, 44 }, "Crossfade Time").enabled = false;
+    add (Field::Header, { x, body.getY() + 176, w, 18 }, "Modify");
+    auto& store = add (Field::Button, { x + 14, body.getY() + 208, 80, 34 }, "Store");
     store.enabled = count > 0;
     store.press = [this, &show] { show.storeScene (sceneSelected); };
-    auto& del = add (Field::Button, { x + 124, body.getY() + 224, 90, 40 }, "Delete");
+    auto& addNew = add (Field::Button, { x + 108, body.getY() + 208, 80, 34 }, "Add New");
+    addNew.press = [this, &show]
+    {
+        sceneSelected = show.addScene ("Scene " + juce::String (show.getNumScenes() + 1));
+        rebuild();
+    };
+    auto& del = add (Field::Button, { x + 202, body.getY() + 208, 80, 34 }, "Delete");
     del.enabled = count > 0;
     del.press = [this, &show]
     {
         show.removeScene (sceneSelected);
-        rebuild();
-    };
-    auto& addNew = add (Field::Button, { x + 12, body.getY() + 280, 90, 40 }, "Add New");
-    addNew.press = [this, &show]
-    {
-        sceneSelected = show.addScene ("Scene " + juce::String (show.getNumScenes() + 1));
         rebuild();
     };
 }
@@ -564,14 +636,15 @@ void Display::paintScenes (juce::Graphics& g)
         return;
     auto& show = ctx.show;
     const auto body = bodyArea();
+    const auto list = body.withTrimmedTop (32.0f).withWidth (284.0f);
     const int count = show.getNumScenes(), current = show.getCurrentSceneIndex();
-    const int visible = (int) ((body.getHeight() - 8.0f) / 26.0f);
+    const int visible = (int) ((list.getHeight() - 4.0f) / 30.0f);
     g.setColour (kWell.withAlpha (0.55f));
-    g.fillRoundedRectangle (juce::Rectangle<float> (body.getX() - 2.0f, body.getY(), 284.0f, body.getHeight()), 3.0f);
+    g.fillRoundedRectangle (list.expanded (2.0f, 0.0f), 3.0f);
     for (int i = 0; i < visible && sceneFirst + i < count; ++i)
     {
         const int at = sceneFirst + i;
-        juce::Rectangle<float> row (body.getX(), body.getY() + 4.0f + (float) i * 26.0f, 280.0f, 24.0f);
+        juce::Rectangle<float> row (list.getX(), list.getY() + 2.0f + (float) i * 30.0f, list.getWidth(), 28.0f);
         const auto colour = at == sceneSelected ? kNext : at == current ? kCurrent.withAlpha (0.7f) : juce::Colour (0xff102a40);
         g.setColour (colour);
         g.fillRoundedRectangle (row, 3.0f);
@@ -580,7 +653,7 @@ void Display::paintScenes (juce::Graphics& g)
               at == sceneSelected ? juce::Colours::black : juce::Colours::white, juce::Justification::centredLeft, true);
     }
     if (count == 0)
-        text (g, juce::Rectangle<float> (body.getX(), body.getY() + 40.0f, 280.0f, 40.0f), "No scenes: touch Add New", 13.0f, juce::Colours::white);
+        text (g, list.withHeight (40.0f).translated (0.0f, 40.0f), "No scenes: touch Add New", 13.0f, juce::Colours::white);
 }
 
 void Display::buildSafes()
@@ -622,19 +695,35 @@ void Display::buildSetup()
         fields[(size_t) i].enabled = false;
 
     const auto body = bodyArea();
+    // The top tabs of a side tab (p.19's list): the ones Sidecar has no page for are dim.
+    const auto topTab = [&] (int index, int of, const juce::String& name, bool on)
+    {
+        const float w = (body.getWidth() - 4.0f * (float) (of - 1)) / (float) of;
+        auto& f = add (Field::Tab, { body.getX() + (float) index * (w + 4.0f), body.getY(), w, 24 }, name);
+        f.lit = [on] { return on; };
+        f.enabled = on;
+    };
     if (setupTab == 0)
     {
         // Audio: Talkback (p.96): its source mic's level, the mixes it goes to.
-        add (Field::Header, { body.getX(), body.getY(), body.getWidth(), 18 }, "Talkback");
+        const char* const audioTabs[] = { "PAFL", "Talkback", "SigGen", "Digital I/O", "I/O Port" };
+        for (int t = 0; t < 5; ++t)
+            topTab (t, 5, audioTabs[t], t == 1);
+        add (Field::Header, { body.getX(), body.getY() + 30, body.getWidth(), 18 }, "Talkback");
         auto& talk = ctx.engine.talk;
-        addValue ({ body.getX() + 12, body.getY() + 30, 110, 50 }, "Level", bindFader ("Level", talk.levelDb));
-        addToggle (Field::Button, { body.getX() + 140, body.getY() + 36, 110, 38 }, "Talk", talk.paths[0].on).colour = juce::Colours::orange;
+        addValue ({ body.getX() + 12, body.getY() + 60, 110, 50 }, "Level", bindFader ("Level", talk.levelDb));
+        addToggle (Field::Button, { body.getX() + 140, body.getY() + 66, 110, 38 }, "Talk", talk.paths[0].on).colour = juce::Colours::orange;
         return;
     }
 
     // Surface: Strip Assign, Soft Controls (pp.84, 88).
-    addTab ({ body.getX(), body.getY(), 180, 22 }, "Strip Assign", surfaceTab, 0);
-    addTab ({ body.getX() + 184, body.getY(), 180, 22 }, "Soft Controls", surfaceTab, 1);
+    {
+        const float w = (body.getWidth() - 12.0f) / 4.0f;
+        addTab ({ body.getX(), body.getY(), w, 24 }, "Strip Assign", surfaceTab, 0);
+        addTab ({ body.getX() + w + 4.0f, body.getY(), w, 24 }, "Soft Controls", surfaceTab, 1);
+        topTab (2, 4, "Footswitch", false);
+        topTab (3, 4, "Surface Prefs", false);
+    }
     if (surfaceTab == 1)
     {
         for (int k = 0; k < 8; ++k)
@@ -652,21 +741,23 @@ void Display::buildSetup()
         return;
     }
 
-    // Strip Assign: the channels above, the layer's strips below; touch a channel, then a
-    // strip (the console drags one to the other).
-    const float cw = body.getWidth() / 12.0f, top = body.getY() + 28.0f;
+    // Strip Assign (p.84): the channels above, the layer's strips below; touch a
+    // channel, then a strip (the console drags one to the other); the channel types and
+    // layers in keys at the right.
+    const float keysW = 108.0f, listW = body.getWidth() - keysW - 6.0f, keysX = body.getX() + listW + 6.0f;
+    const float cw = listW / 12.0f, top = body.getY() + 30.0f;
     const Slot::Kind kinds[] = { Slot::Input, Slot::FxReturn, Slot::Mix, Slot::FxSend, Slot::Main, Slot::Matrix, Slot::Dca };
-    const char* const names[] = { "Ip", "FX Rtn", "Aux", "FX", "LR", "Mtx", "DCA" };
+    const char* const names[] = { "IP", "FX Rtn", "Aux", "FX", "LR", "Mtx", "DCA" };
     const int counts[] = { 48, 8, kMixes, kFxSends, 1, 3, 8 };
     for (int k = 0; k < 7; ++k)
-        addTab ({ body.getX() + (float) k * 60.0f, top, 58, 22 }, names[k], assignKind, k);
+        addTab ({ keysX + (float) (k % 2) * (keysW * 0.5f + 1.0f), top + (float) (k / 2) * 28.0f, keysW * 0.5f - 1.0f, 26 }, names[k], assignKind, k);
     assignFirst = juce::jlimit (0, juce::jmax (0, counts[assignKind] - 12), assignFirst);
     for (int i = 0; i < 12 && assignFirst + i < counts[assignKind]; ++i)
     {
         const Slot slot { kinds[assignKind], assignFirst + i };
         auto* strip = stripOf (ctx.engine, slot);
         const auto title = strip != nullptr ? strip->getName() : "DCA" + juce::String (slot.index + 1);
-        auto& f = add (Field::Button, { body.getX() + (float) i * cw + 1, top + 30, cw - 2, 56 }, title);
+        auto& f = add (Field::Button, { body.getX() + (float) i * cw + 1, top, cw - 2, 150 }, title);
         f.lit = [this, slot] { return assignPicked && assignChoice == slot; };
         f.press = [this, slot]
         {
@@ -679,16 +770,16 @@ void Display::buildSetup()
     for (int l = 0; l < 6; ++l)
     {
         const auto letter = juce::String::charToString ((juce::juce_wchar) ('A' + l));
-        addTab ({ body.getX() + (float) l * 60.0f, top + 104, 58, 22 }, letter, assignLayer, l);
+        addTab ({ keysX + (float) (l % 2) * (keysW * 0.5f + 1.0f), top + 160.0f + (float) (l / 2) * 48.0f, keysW * 0.5f - 1.0f, 46 }, letter, assignLayer, l);
     }
     const auto& slots = getLayerSlots (assignLayer);
-    const float sw = body.getWidth() / 16.0f;
+    const float sw = listW / 16.0f;
     for (int i = 0; i < (int) slots.size(); ++i)
     {
         const auto slot = slots[(size_t) i];
         auto* strip = stripOf (ctx.engine, slot);
         const auto title = slot.kind == Slot::None ? juce::String ("-") : strip != nullptr ? strip->getName() : "DCA" + juce::String (slot.index + 1);
-        auto& f = add (Field::Button, { body.getX() + (float) i * sw + 1, top + 134, sw - 2, 86 }, title);
+        auto& f = add (Field::Button, { body.getX() + (float) i * sw + 1, top + 160, sw - 2, 150 }, title);
         f.press = [this, i]
         {
             // A strip touched with no channel chosen is emptied.
@@ -708,10 +799,15 @@ void Display::buildUtility()
     for (int i : { 1, 2, 3, 4 })
         fields[(size_t) i].enabled = false;
     const auto body = bodyArea();
-    addTab ({ body.getX(), body.getY(), 180, 24 }, "Diagnostics", generalTab, 0);
-    addTab ({ body.getX() + 184, body.getY(), 180, 24 }, "MIDI", generalTab, 1);
-    addTab ({ body.getX() + 368, body.getY(), 180, 24 }, "Add-ons", generalTab, 2);
-    fields.back().enabled = false;
+    {
+        const float w = (body.getWidth() - 12.0f) / 4.0f;
+        addTab ({ body.getX(), body.getY(), w, 24 }, "Diagnostics", generalTab, 0);
+        addTab ({ body.getX() + w + 4.0f, body.getY(), w, 24 }, "Calibration", generalTab, 3);
+        fields.back().enabled = false;
+        addTab ({ body.getX() + 2.0f * (w + 4.0f), body.getY(), w, 24 }, "MIDI", generalTab, 1);
+        addTab ({ body.getX() + 3.0f * (w + 4.0f), body.getY(), w, 24 }, "Add-ons", generalTab, 2);
+        fields.back().enabled = false;
+    }
     if (generalTab != 1)
         return;
     // MIDI (p.112): the channel, and the NRPN fader law.
@@ -793,7 +889,7 @@ void Display::buildIo()
 juce::Rectangle<float> Display::matrixArea() const
 {
     const auto body = bodyArea();
-    return { body.getX() + 76.0f, body.getY() + 44.0f, body.getWidth() - 76.0f, body.getHeight() - 44.0f };
+    return { body.getX() + 76.0f, body.getY() + 46.0f, body.getWidth() - 76.0f, body.getHeight() - 46.0f };
 }
 
 void Display::paintIo (juce::Graphics& g)
@@ -801,7 +897,23 @@ void Display::paintIo (juce::Graphics& g)
     const auto r = matrixArea();
     const float cw = r.getWidth() / (float) kIoCols, ch = r.getHeight() / (float) kIoRows;
     const auto body = bodyArea();
-    text (g, { body.getX(), body.getY(), body.getWidth(), 20.0f }, ioTab == 0 ? "Local" : "Local Outputs", 14.0f, juce::Colours::white, juce::Justification::centred, true);
+    // The socket types along the top: Local chosen, the others not modelled (p.24), and
+    // the Patch key at the matrix's corner.
+    {
+        const juce::StringArray types = ioTab == 0 ? juce::StringArray { "Local", "SLink", "USB", "I/O Port" } : juce::StringArray { "Local", "SLink", "ME", "USB", "I/O Port" };
+        const float tw = (r.getWidth() + 76.0f) / (float) types.size();
+        for (int t = 0; t < types.size(); ++t)
+        {
+            juce::Rectangle<float> cell (body.getX() + (float) t * tw + 1.0f, body.getY(), tw - 2.0f, 20.0f);
+            g.setColour (t == 0 ? juce::Colours::white : juce::Colour (0xff24598a).withAlpha (0.8f));
+            g.fillRoundedRectangle (cell, 3.0f);
+            text (g, cell, types[t], 12.0f, t == 0 ? juce::Colours::black : juce::Colours::white.withAlpha (0.45f), juce::Justification::centred, true);
+        }
+        juce::Rectangle<float> patch (body.getX(), r.getY() - 22.0f, 74.0f, 20.0f);
+        g.setColour (kWell);
+        g.fillRoundedRectangle (patch, 3.0f);
+        text (g, patch, "Patch", 11.0f, juce::Colours::white.withAlpha (0.8f), juce::Justification::centred, true);
+    }
     const int rows = ioTab == 0 ? 48 : outputRows;
     const int cols = ioTab == 0 ? 22 : 16;
     for (int col = 0; col < kIoCols && ioSocketFirst + col < cols; ++col)

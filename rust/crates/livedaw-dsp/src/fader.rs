@@ -106,6 +106,61 @@ impl FaderLaw {
         steps: 128,
     };
 
+    /// The Yamaha 01V's input faders: 128 steps, +6 dB at the top, -72 dB on the
+    /// step above -oo (Owner's Manual p.261). The manual gives no table of the
+    /// steps between, so the breakpoints are where a console's panel prints its
+    /// scale (6, 0, 5, 10, 20, 40, 60, measured on a photo, November 2026, the
+    /// travel from 6 to -oo): 0 dB on step 102; the steps' levels themselves are
+    /// still to be measured.
+    pub const Y01V: FaderLaw = FaderLaw {
+        points: &[
+            (1.0 / 127.0, -72.0),
+            (7.0 / 127.0, -60.0),
+            (15.0 / 127.0, -40.0),
+            (37.0 / 127.0, -20.0),
+            (59.0 / 127.0, -10.0),
+            (81.0 / 127.0, -5.0),
+            (102.0 / 127.0, 0.0),
+            (1.0, 6.0),
+        ],
+        steps: 128,
+    };
+
+    /// The 01V's master faders except STEREO (BUS, AUX, EFFECT): 128 steps, 0 dB
+    /// at the top, -72 dB on the step above -oo (p.261). They have no printed
+    /// scale, so this is the input faders' from 0 dB down, stretched over the
+    /// whole travel; to be measured on a console.
+    pub const Y01V_MASTER: FaderLaw = FaderLaw {
+        points: &[
+            (1.0 / 127.0, -72.0),
+            (9.0 / 127.0, -60.0),
+            (19.0 / 127.0, -40.0),
+            (46.0 / 127.0, -20.0),
+            (73.0 / 127.0, -10.0),
+            (101.0 / 127.0, -5.0),
+            (1.0, 0.0),
+        ],
+        steps: 128,
+    };
+
+    /// The 01V's STEREO fader: 128 steps, 0 dB at the top, -96 dB on the step
+    /// above -oo (p.261), the rest where the panel prints its scale (the drawing
+    /// on p.14; a photo of a console's panel, November 2026, agrees within a step
+    /// or two).
+    pub const Y01V_STEREO: FaderLaw = FaderLaw {
+        points: &[
+            (1.0 / 127.0, -96.0),
+            (10.0 / 127.0, -70.0),
+            (22.0 / 127.0, -50.0),
+            (36.0 / 127.0, -40.0),
+            (52.0 / 127.0, -30.0),
+            (73.0 / 127.0, -20.0),
+            (100.0 / 127.0, -10.0),
+            (1.0, 0.0),
+        ],
+        steps: 128,
+    };
+
     /// The Allen & Heath SQ's faders: 256 positions, +10 dB at the top, 0 dB on
     /// position 196, from the SQ MIDI Protocol's "Approximate Audio Taper Level
     /// Values" table (which the guide says behaves as the SQ's faders do; eight
@@ -123,6 +178,12 @@ impl FaderLaw {
         ],
         steps: 256,
     };
+
+    /// The Allen & Heath dLive's faders, from the MIDI over TCP protocol's Fader
+    /// Level table, the only scale its documents publish: 128 steps, +10 dB at
+    /// the top, 0 dB on step 107 and 0.5 dB a step, step 0 off. (The guides don't
+    /// give the Surface's own taper.)
+    pub const DLIVE: FaderLaw = FaderLaw { points: &[(1.0 / 127.0, -53.0), (1.0, 10.0)], steps: 128 };
 
     /// The 02R's STEREO fader: 128 steps, 0 dB at the top, -120 dB on the step
     /// above -oo (p.192); the steps between are where the panel prints its

@@ -1249,6 +1249,142 @@ Sidecar's reading until measured on a console: the compressor's ratio steps, the
 knee's width, the ducker's controls, the PEQ's filter slopes, every default value, the
 factory patch and FX rack, the strip colours, and which WING device runs each RackFX.
 
+**The Yamaha 01V** (the original, not the 01V96; in progress, November 2026). From the
+Owner's Manual and its block diagrams (kept outside the repository). Blocks first again:
+
+1. **Its effects** (done): `livedaw_dsp::y01v::fx`, 42 types on Sidecar's own devices,
+   offered on any Universal FX slot. Its EQ and dynamics are the 02R's, the same bands,
+   ranges and six types.
+2. **Its profile** (done): `Profile::Yamaha01V`, `Counts::Y01V`. 24 inputs on 22 channels,
+   as the panel has them: CH 1-12, the stereo 13/14 and 15/16, CH 17-24 of the Option I/O
+   card. 2 effect returns, BUS 1-4, AUX 1-4, EFFECT 1-2 (bus slots 8-9, feeding FX 1-2),
+   STEREO. Chains follow the block diagrams (`chain::Y01V_*`): CH 1-16 attenuator, 4-band
+   EQ, dynamics, delay; CH 17-24 attenuator and the 2-band EQ (`O1EQ2`) only; the returns
+   EQ only; AUX EQ and dynamics; BUS and EFFECT the master alone; STEREO EQ, dynamics and
+   the output delay after its fader. Three fader laws: inputs +6 to -72 dB, masters 0 to
+   -72 dB (`ProfileSpec::bus_fader`), STEREO 0 to -96 dB. PITCH and FREEZE run on Effect 2
+   only (`ModelTables::fx_premium_first`). OMNI OUT 1-4 start on AUX 1-4, as the manual
+   says. C ABI 54.
+3. **Selectable** (done): the start-up window, SETUP's INTERFACE
+   (`InterfaceKind::Yamaha01V`). On a 01V the EQ block shows no model list, each strip
+   keeping its own.
+4. **Its surface** (started): `Y01VSurface`, from the manual's panel drawing and the owner's
+   console. 14 faders and STEREO, SEL, SOLO and ON, the fader modes of pp.32-35 (a return
+   can't feed its own effect), SELECTED CHANNEL, GAIN and PAD, the meter, the 320 x 80 dot
+   LCD with EQ/ATT, DYNAMICS, delay, pan, send, VIEW and MEMORY pages (TITLE EDIT, RECALL, STORE
+   and PROTECT over the show's scenes, 00 being the read-only initial data). A function key pressed
+   again goes to the function's next page. EFFECT 1 and 2 have EDIT (p.136), LIBRARY (p.134, the
+   01V's types; RECALL only) and PRE/POST (p.125); AUX has PRE/POST (p.99); UTILITY has the
+   oscillator (p.204, through the engine's console oscillator, with its burst noise and its
+   priority over whatever it's assigned to) and two pages of preferences (p.203: EQ and PANPOT AUTO
+   SCREEN, STORE and RECALL CONFIRMATION, INC/DEC SCENE RECALL, LIBRARY LIST ORDER). Wider than the
+   real panel, with no connector row and no logo, so that the LCD can be read on a screen at 3 px a
+   dot.
+
+OPTION page 2 is CH 17-24's control page (p.49's picture; AUX 1-2 and EFFECT 1-2 are all those
+channels can reach, p.264).
+
+Not yet: the surface's other LCD pages (MIDI, SETUP, OPTION's output pages, REMOTE, and later pages of the
+EQ, dynamics and pan functions), the libraries' STORE and TITLE EDIT, the preferences DIGITAL IN SYNC
+CAUTION, "SELECTED CH" MESSAGE and DELAY UNITS, MEMORY's RECALL UNDO, and REMOTE's faders, its MIDI (parameter changes,
+control changes, program changes, bulk), its fader groups and groups of [ON] buttons, CH
+13/14's FLIP and CASCADE, 15/16's 2TR IN switch, the OMNI OUT selection of CH 1-16, and
+channels 17-24 sending to AUX 1-2 and EFFECT 1-2 only.
+
+The owner's console (photos, November 2026, kept outside the repository) gave the input
+faders' printed marks, the panel's colours and shapes, and shows HALL and CHORUS on scene 00,
+which a new 01V starts with. PAD as a 26 dB step on the source's gain is Sidecar's reading.
+
+Sidecar's reading until measured on a console: the levels of the fader steps, the masters'
+whole scale (nothing prints it), the effects' algorithms, and that BUS TO ST starts off.
+
+**The Allen & Heath dLive** (in progress, November 2026). From the dLive Firmware Reference
+Guide V2.12 (online chapters, with their pictures), the MIDI over TCP protocol V2.0, the Getting
+Started guides and the datasheets (kept outside the repository). Blocks first:
+
+1. **Its blocks** (started): `livedaw_dsp::dlive`, offered on any Universal strip. Thresholds in
+   dBu (+18 dBu = 0 dBFS). The gate slot: Gate, Ducker, Dual Threshold Expander, Source Expander.
+   The compressor slot: Manual Peak and RMS (with the parallel path), 16T (ratios past infinity to
+   -5, -2, -1), 16VU, Ducker, Mighty, Opto, OptTronik, Peak Limiter 76, Bus, CompStortion, each
+   with the controls its picture shows, on the WING's dynamics cores. EQ: the 4-band PEQ
+   (Baxandall first-order shelves, non-constant-Q bells), the 28-band GEQ's Constant-Q,
+   Proportional-Q, Digi-Q and Hybrid, and the NEQ-12 (`DLVNEQ12`, 51 parameters: an overall In,
+   12 bands of In, Frequency, Width and Gain, and the outer bands' shapes; `MAX_EQ_PARAMS` is now
+   64, C ABI 56).
+2. **Its profile** (done): `Profile::AhDLive`, `Counts::DLIVE`, as its FoH Template Show (its
+   factory default) configures the 64 mix busses: 120 mono and 4 stereo input strips (128
+   inputs), 8 Groups (4 mono, 4 stereo), 16 Aux (8 and 8), 8 mono FX sends, 8 Matrices (4 and
+   4), LR, 16 FX and their stereo returns, 24 DCAs, 8 mute groups. Chains (`chain::DLIVE_*`) from
+   the datasheet's block diagram: input trim and polarity, filters, gate, Insert A, PEQ and
+   compressor in the channel's order (a PRE PEQ key on the compressor), Insert B, delay, fader;
+   mixes insert, PEQ, a 28-band GEQ block, compressor, delay, fader; FX returns the PEQ; FX sends
+   the master alone. The Template Show chapter sets the factory patch (Ip 1-64 MixRack, 65-114 DX,
+   115-126 Surface, 127/128 the Surface's USB playback, all channels muted); the MIDI table sets
+   `FaderLaw::DLIVE`. Port groups by socket (R, S, DX, P1-P3). Buses past the WING's 16 now have
+   strip sources (`routing::MAX_SOURCE_BUSES`, numbered after the matrices so shows keep their
+   meaning) and 16 FX have returns (`sources::NUM_SEND_FX`).
+3. **Selectable** (done): the start-up window, SETUP's INTERFACE (`InterfaceKind::DLive`), on the
+   Universal Mixer.
+4. **Mixer Config** (done): `DLiveLayout`, the profile's `Profile::AhDLive(layout)`, SETUP's
+   CONSOLE page on a dLive (`MixerConfigPanel`): mono and stereo Groups, Aux, FX sends and Matrices
+   within the 64 busses (the LR takes 2, mono ones change in pairs, at most 16 FX sends). APPLY
+   (`console::apply_dlive_layout`) resets the mixes and every send to them and keeps the channels,
+   FX, DCAs and the LR, as the guide says; a show stores the layout in `<Config layout="...">`
+   (absent: the FoH template's). Sidecar's reading: outputs that fed a mix go back to the new
+   layout's defaults (where nothing else is patched), each FX send feeds its FX, scenes saved
+   before keep their old mix numbers. C ABI 56.
+5. **IP Stereo Config** (done): `DLiveLayout::stereo_inputs`, one bit for each of the 64 input
+   pairs (FoH template: the last four pairs). SETUP's second tab on a dLive. Channels are renumbered
+   to suit, and `console::remap_dlive_channels` carries each channel's settings to its new place; a
+   pair that changes between mono and stereo starts on its defaults (Sidecar's reading).
+6. **A mix's input** (done): each Bus mix has Ext In (a socket summed in, with EXT TRIM and
+   POLARITY) and Mix Source (Post Preamp, Post Insert A, Post PEQ, Post Delay: the point in each
+   channel its sends leave from), on the strip panel. Sends start pre-fade to Aux and post-fade
+   to Groups and FX sends (Sidecar's reading).
+
+7. **RackExtra FX** (done): all 20 models, SMR as four devices and the Multiband's two sizes as two
+   (`livedaw_dsp::dlive_fx`), in any of the 16 engines; also offered on the Universal console. Sidecar's
+   reading where the guide is silent (see the module). Not modelled: a Multiband band's External key
+   (an FX slot has no key input). The delays' Global Tap takes a GLOBAL BPM control of each device
+   until the console has a shared tempo.
+
+8. **The preamp models** (done): Dual-Stage Valve and Tube Stage (`DLVVALVE`, `DLVTUBE`) in a PREAMP
+   block on every input channel, right after the trim, off. Only they can go in it, and they go
+   nowhere else on a dLive (`ProfileSpec::may_hold`); a Universal console offers them anywhere. All
+   their ranges and curves, and the Tube Stage's three numbered modes, are Sidecar's reading.
+
+9. **AMM** (done): `livedaw-engine/src/amm.rs`, NOM and D-Classic, 1, 2 or 4 AMMs of 64, 32 or 16 members.
+   Its key is taken before Insert A, its gain after the fader. SETUP's AMM tab has the console-wide
+   settings, a channel's strip panel its AMM, ON, CHAIR, SOLO or PRIORITY. Saved in shows and recalled
+   with the INSERTS section. The detector (attack, release, noise floor, opening thresholds) and the
+   gain speeds are all Sidecar's reading; it has been tested with steady tones, not voices.
+
+10. **Its surface** (started): `DLiveSurface`, a C1500's layout from the owner's photographs: 12 strips
+    in three groups of four with meters, colour LCDs, rotaries (Gain, Pan, Sends), Mute, Sel, Mix and
+    PAFL, banks A-F, the PEQ's Gain and Freq, the PAFL meters, Pre and Assign. The touchscreen hosts
+    the Universal Mixer's pages. Wider than the real surface, with no logo. Drawn but not working yet:
+    SoftKeys, View, Help and the data rotary.
+    The banks' contents are Sidecar's reading (no template file to read).
+11. **The C3500** (the default surface): `DLiveC3500Surface`, from the owner's ten photographs and the C-Series Getting
+    Started Guide, sharing `dl::StripUnit`, `dl::Key` and `dl::Rotary` with the C1500 through `dl::Desk`. Its screens are
+    `DLiveScreens`: `ProcessingScreen` and `SceneScreen` are matched to photographs of the PEQ tab and Scene Manager; the
+    other tabs show the right controls in the same style, without a photograph to match. Which surface shows is the
+    `ui.dliveSurface` setting.
+
+Not yet: the Main modes other than LR, PAFL busses, Dyn8, the 11 RackUltra models and the UFX's 8
+engines, Ext In from mixes and PAFL, Mix Source on the Matrices and Main, MIDI over TCP, the rest of
+its surface.
+
+Sidecar's reading until checked on a console: the manual compressors' attack and release ranges
+(the SQ's), the ducker's and expanders' threshold ranges (the gate's), the ballistics behind each
+model's name, what Opto's TRANSIENT and BURN do, how far each GEQ type's bands widen; the NEQ-12's
+Frequency and Width ranges (the PEQ's: 20 Hz to 20 kHz, 1.5 to 1/9 octave), its constant-width
+bells, first-order shelves and Butterworth cuts, and where its controls start; the strips' names
+and colours, the output patch, the Groups starting on LR, the mix masters at 0 dB, which
+effects a new show holds; the Surface's fader taper (the guides publish only the MIDI table).
+The block diagrams (firmware 1.6 and 2.0) have the mixes' compressor after the GEQ; the Processing
+Specs also list it pre or post the PEQ on mixes, which isn't offered yet. See `DLIVE_RESEARCH.md`.
+
 Each emulation keeps the independent-project disclaimer: not affiliated with or
 endorsed by the console's maker, their trademarks used only to say what is emulated,
 none of their firmware, software, documents or artwork included.

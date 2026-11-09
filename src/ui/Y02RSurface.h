@@ -89,6 +89,8 @@ namespace y02r
     public:
         Fader (UiContext&, const Theme&);
 
+        /** Its cap's colour; transparent: the panel's white. */
+        juce::Colour capColour;
         /** The address it moves (-1: none) and whether it is STEREO's (its own law). */
         void bind (int address, bool stereo);
         int getAddress() const noexcept { return addr; }
@@ -130,10 +132,13 @@ namespace y02r
         bool centred = false;
         /** Its cap's colour (the EQ's Q, F and G are green); transparent: the panel's grey. */
         juce::Colour cap;
+        /** On a light plate (SELECTED CHANNEL's): its lettering prints dark. */
+        bool onPlate = false;
         /** Drawn as the panel has it: an endless knurled ring, no pointer; its
             name printed under it (two lines: "TAPE" over the number), no value. */
         bool endless = false, nameBelow = false, showValue = true;
         void setLabel (const juce::String& l) { label = l; repaint(); }
+        const juce::String& getLabel() const noexcept { return label; }
         void refresh();
         /** Touched (a press or the wheel). */
         std::function<void()> onTouch;

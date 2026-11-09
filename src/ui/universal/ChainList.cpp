@@ -232,7 +232,9 @@ void ChainList::rebuild (const std::vector<ChainStep>& chain)
         if (! isShown (s))
             continue;
         const bool own = ! s.isBlock() && ! s.isUserTap() && ! isMarker (s);
-        rows.push_back ({ s, i, stepName (s), s.isBlock() || s.isUserTap(), isMarker (s), own ? devices::wing : juce::String() });
+        // A dLive's preamp is part of its channel: it can't be moved or removed.
+        const bool preamp = strip != nullptr && s.isBlock() && s.uid == ld::ld_strip_preamp_block (strip->getHandle());
+        rows.push_back ({ s, i, strip != nullptr ? stepName (*strip, s) : stepName (s), (s.isBlock() && ! preamp) || s.isUserTap(), isMarker (s), own ? devices::wing : juce::String() });
     }
     lit.assign (rows.size(), false);
 

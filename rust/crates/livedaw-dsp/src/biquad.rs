@@ -51,6 +51,12 @@ fn solve3(m: [[f64; 3]; 3], r: [f64; 3]) -> Option<[f64; 3]> {
     Some(out)
 }
 
+/// `gain * (s + num) / (s + den)` through the bilinear transform (`num` and `den` prewarped).
+fn first_order(gain: f64, num: f64, den: f64) -> BiquadCoeffs {
+    let n = 1.0 + den;
+    BiquadCoeffs { b0: gain * (1.0 + num) / n, b1: gain * (num - 1.0) / n, b2: 0.0, a1: (den - 1.0) / n, a2: 0.0 }
+}
+
 fn normalise(b0: f64, b1: f64, b2: f64, a0: f64, a1: f64, a2: f64) -> BiquadCoeffs {
     BiquadCoeffs { b0: b0 / a0, b1: b1 / a0, b2: b2 / a0, a1: a1 / a0, a2: a2 / a0 }
 }
@@ -214,6 +220,21 @@ impl BiquadCoeffs {
             -2.0 * ((a - 1.0) + (a + 1.0) * p.cosw),
             (a + 1.0) + (a - 1.0) * p.cosw - t,
         )
+    }
+
+    /// A first-order low shelf (a Baxandall tone control's gentle slope): `gain_db`
+    /// far below `freq`, half of it at `freq`.
+    pub fn low_shelf_1(sr: f64, freq: f64, gain_db: f64) -> Self {
+        let k = (PI * freq.clamp(10.0, sr * 0.49) / sr).tan();
+        let a = 10f64.powf(gain_db / 20.0).sqrt();
+        first_order(1.0, a * k, k / a)
+    }
+
+    /// A first-order high shelf: `gain_db` far above `freq`, half of it at `freq`.
+    pub fn high_shelf_1(sr: f64, freq: f64, gain_db: f64) -> Self {
+        let k = (PI * freq.clamp(10.0, sr * 0.49) / sr).tan();
+        let a = 10f64.powf(gain_db / 20.0).sqrt();
+        first_order(a * a, k / a, a * k)
     }
 
     pub fn high_shelf(sr: f64, freq: f64, q: f64, gain_db: f64) -> Self {

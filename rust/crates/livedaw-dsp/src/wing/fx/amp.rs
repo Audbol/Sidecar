@@ -14,7 +14,7 @@
 //! defaults come out at about the input level. The result goes to both
 //! channels.
 
-mod oversample;
+pub(crate) mod oversample;
 mod tonestack;
 
 use super::blocks::{db_to_gain, Biquad, BiquadCoeffs, OnePole, Smoothed};

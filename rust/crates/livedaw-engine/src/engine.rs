@@ -6,7 +6,8 @@
 //! Per audio block:
 //!  1. channels + aux channels read their inputs and run their chains (parallel;
 //!     in waves when keys come from other channels: `keytap.rs`)
-//!  2. automix (gain sharing between channels in automix groups X/Y)
+//!  2. automix (gain sharing between channels in automix groups X/Y), and a
+//!     dLive's AMM (`amm.rs`)
 //!  3. (and 4.) buses sum the input sends and the other buses' sends: in
 //!     waves, a bus after the buses feeding it (`routing.rs`)           (parallel)
 //!  5. mains sum channel/aux/bus main sends                            (parallel)
@@ -49,6 +50,7 @@
 //! immutable `Topology`; the old one is retired to the garbage collector, which
 //! drops it (and any removed strips) once the audio thread is done with it.
 
+use crate::amm::{AmmParams, AmmState};
 use crate::analyser::{rta_tap, Analyser, Probes};
 use crate::atomic::AtomicF32;
 use crate::blocks::{Block, BlockKind, Step, MAX_EXTRA_BLOCKS};
@@ -207,6 +209,8 @@ struct AudioState {
     /// The sources' processing and the input pointers the channels read.
     sources: SourceDsp,
     block_counter: u64,
+    /// The AMMs' state from block to block (`amm.rs`).
+    amm: AmmState,
     /// Where every return ring writes this block (`routing.rs`).
     returns: ReturnClock,
     /// The matrices' DIRECT IN from the monitor paths, one block late:
@@ -281,6 +285,8 @@ pub struct Engine {
     names: Mutex<GroupNames>,
     audio: UnsafeCell<AudioState>,
     pub controls: EngineControls,
+    /// A dLive's Automatic Mic Mixers, console-wide (`amm.rs`; a channel's are `Strip::amm`).
+    pub amm: AmmParams,
     /// The monitor paths' output peaks (SPEAKERS, PHONES; L/R) for the WING
     /// remote's meter stream, which takes them (the UI takes `controls`').
     pub monitor_remote_peaks: [[AtomicF32; 2]; 2],
@@ -373,11 +379,13 @@ impl Engine {
                 monitor_dsp: Default::default(),
                 sources: SourceDsp::default(),
                 block_counter: 0,
+                amm: AmmState::default(),
                 returns: ReturnClock::new(DEFAULT_BLOCK),
                 monitor_returns: ReturnRing::new(6, DEFAULT_BLOCK),
                 monitor_returns_live: [false; 3],
             }),
             controls: EngineControls::default(),
+            amm: AmmParams::default(),
             monitor_remote_peaks: Default::default(),
             fx: (0..MAX_FX).map(|_| FxRack::default()).collect(),
             num_fx: AtomicUsize::new(WING_FX),
@@ -512,16 +520,19 @@ impl Engine {
 
     /// Grows or shrinks the channel count in one topology change.
     pub fn set_num_channels(&self, count: usize) {
-        let mut st = self.lock();
-        if count == st.channels.len() {
-            return;
+        {
+            let mut st = self.lock();
+            if count == st.channels.len() {
+                return;
+            }
+            while st.channels.len() < count {
+                let s = self.create_channel(&mut st, -1);
+                st.channels.push(s);
+            }
+            st.channels.truncate(count);
+            self.publish(&st);
         }
-        while st.channels.len() < count {
-            let s = self.create_channel(&mut st, -1);
-            st.channels.push(s);
-        }
-        st.channels.truncate(count);
-        self.publish(&st);
+        self.add_factory_preamp_blocks();
     }
 
     /// Adds a bus in the first free slot (or `requested_slot` if free). The
@@ -699,6 +710,7 @@ impl Engine {
         self.num_dcas.store(st.counts.dcas, Relaxed);
         self.num_mute_groups.store(st.counts.mute_groups, Relaxed);
         self.controls.reset();
+        self.amm.reset();
         // The console's new DCAs take its palette's colour (an X32's WH).
         for d in &self.controls.dcas {
             d.colour.store(st.profile.spec().palette.default, Relaxed);
@@ -709,12 +721,13 @@ impl Engine {
         self.output_patch.reset();
         // A console's own factory outputs (an X32's buses and mains), in place
         // of main 1 on outputs 1-2.
-        if let Some(outputs) = st.profile.spec().factory_outputs {
+        let spec = st.profile.spec();
+        if let Some(outputs) = spec.factory_outputs {
             for m in &st.mains {
                 m.params.output_left.store(-1, Relaxed);
                 m.params.output_right.store(-1, Relaxed);
             }
-            outputs(&self.output_patch);
+            outputs(spec, &self.output_patch);
         }
         let mut names = self.names.lock().unwrap_or_else(|e| e.into_inner());
         *names = GroupNames::default();
@@ -751,16 +764,71 @@ impl Engine {
             p.source_left.store(input, Relaxed);
             p.source_right.store(input, Relaxed);
         }
-        // A console's own EQ block on its mixes, before their EQ (the SQ's GEQ).
-        if let Some(token) = spec.factory_eq_block {
-            for kind in [StripKind::Bus, StripKind::Main, StripKind::Matrix] {
-                for strip in self.strips(kind) {
-                    let Some(at) = strip.steps().iter().position(|s| matches!(s, Step::Node(Node::Eq))) else { continue };
-                    let Some(block) = self.insert_block(&strip, BlockKind::Eq, at) else { continue };
-                    if let crate::blocks::BlockParams::Eq(eq) = &block.params {
-                        if let Some(model) = livedaw_dsp::model::model_index(eq.table(), token) {
-                            eq.set_model(model);
-                        }
+        self.add_factory_eq_blocks(&[StripKind::Bus, StripKind::Main, StripKind::Matrix]);
+    }
+
+    /// A console's own preamp block, off, on each of its input channels that lacks
+    /// one, right after the channel's INPUT (a dLive's: `ProfileSpec::factory_preamp_block`):
+    /// new channels (`set_num_channels`), a show from before it had one, a channel back on its defaults.
+    pub fn add_factory_preamp_blocks(&self) {
+        let Some(token) = self.profile().spec().factory_preamp_block else { return };
+        for strip in self.strips(StripKind::Channel) {
+            if strip.preamp_block().is_some() {
+                continue;
+            }
+            let Some(input) = strip.steps().iter().position(|s| matches!(s, Step::Node(Node::Input))) else { continue };
+            let Some(block) = self.insert_block(&strip, BlockKind::Dynamics, input + 1) else { continue };
+            if let crate::blocks::BlockParams::Dynamics(d) = &block.params {
+                if let Some(model) = livedaw_dsp::model::model_index(d.table(), token) {
+                    d.set_model(model);
+                }
+            }
+        }
+    }
+
+    /// A console's own EQ block on its mixes of these kinds, before their EQ (the
+    /// SQ's GEQ) or after it (the dLive's).
+    fn add_factory_eq_blocks(&self, kinds: &[StripKind]) {
+        let spec = self.profile().spec();
+        let Some(token) = spec.factory_eq_block else { return };
+        for &kind in kinds {
+            for strip in self.strips(kind) {
+                let Some(at) = strip.steps().iter().position(|s| matches!(s, Step::Node(Node::Eq))) else { continue };
+                let at = at + usize::from(spec.factory_eq_after);
+                let Some(block) = self.insert_block(&strip, BlockKind::Eq, at) else { continue };
+                if let crate::blocks::BlockParams::Eq(eq) = &block.params {
+                    if let Some(model) = livedaw_dsp::model::model_index(eq.table(), token) {
+                        eq.set_model(model);
+                    }
+                }
+            }
+        }
+    }
+
+    /// A dLive's mixes have just been laid out anew (`console::apply_dlive_layout`),
+    /// all on their defaults: their GEQs, the outputs that fed the old mixes (now
+    /// the new ones' defaults, where nothing else is patched) and the FX sends' FX.
+    pub fn settle_mix_layout(&self, layout: crate::profile::DLiveLayout) {
+        use crate::routing::{strip_source, strip_source_input};
+        self.add_factory_eq_blocks(&[StripKind::Bus, StripKind::Matrix]);
+        let was_mix = |source: i32| matches!(strip_source(source), Some((StripKind::Bus | StripKind::Matrix, ..)));
+        let patched: Vec<(usize, i32)> = self.output_patch.patched().collect();
+        for (port, source) in patched {
+            if was_mix(source) {
+                self.output_patch.set(port as i32, -1);
+            }
+        }
+        layout.patch_mix_outputs(&self.output_patch);
+        let sends = self.profile().spec().fx_send_buses;
+        for (i, p) in self.controls.fx.iter().enumerate() {
+            if let Some(&bus) = sends.get(i) {
+                let input = strip_source_input(StripKind::Bus, bus, 0);
+                p.source_left.store(input, Relaxed);
+                p.source_right.store(input, Relaxed);
+            } else {
+                for source in [&p.source_left, &p.source_right] {
+                    if was_mix(source.load(Relaxed)) {
+                        source.store(-1, Relaxed);
                     }
                 }
             }
@@ -1013,6 +1081,12 @@ impl Engine {
             for i in 0..st.matrices.len() {
                 if let Some(send) = s.matrix_send(i).filter(|send| send.on.load(Relaxed)) {
                     want(send.tap.load(Relaxed));
+                }
+            }
+            // A dLive's Mix Source can move any mix's pre-fade sends to these at any moment.
+            if matches!(st.profile, Profile::AhDLive(_)) && s.kind() == StripKind::Channel {
+                for id in [crate::strip::tap::IN, 2, 3, 4] {
+                    wanted[id] = true;
                 }
             }
             s.taps.plan(&wanted, st.device.block_size, &self.garbage);
@@ -1764,7 +1838,8 @@ impl Engine {
 
         // 2. Automix
         self.automix(topo, n);
-        // The inputs' compensation rings, now that automix has scaled them.
+        crate::amm::process(&self.amm, &mut a.amm, &topo.channels, a.sample_rate, n);
+        // The inputs' compensation rings, now that automix and the AMM have scaled them.
         for s in topo.inputs() {
             s.write_pdc(n);
         }
@@ -1973,6 +2048,7 @@ impl Engine {
         ProcessContext {
             fx: &self.fx,
             fx_params: &self.controls.fx,
+            amm: &self.amm,
             dcas: &self.controls.dcas,
             mute_groups: g.mute_groups,
             dca_mute_groups: g.dca_mute_groups,
@@ -2645,13 +2721,28 @@ unsafe fn sum_bus(bus: &Strip, index: usize, topo: &Topology, schedule: &BusSche
     }
 }
 
+/// The tap of channel `s` that `bus`'s Mix Source takes its pre-fade sends from (None:
+/// their usual tap, Post Delay on a dLive, and on every other console).
+fn mix_source_tap(bus: &Strip, s: &Strip, mode: i32) -> Option<usize> {
+    use crate::params::mix_source;
+    if mode != send_mode::PRE || s.kind() != StripKind::Channel {
+        return None;
+    }
+    match bus.mix_input.mix_source.load(Relaxed) {
+        mix_source::POST_PREAMP => Some(crate::strip::tap::IN),
+        mix_source::POST_INSERT_A => Some(2),
+        mix_source::POST_PEQ => Some(if s.eq_first() { 3 } else { 4 }),
+        _ => None,
+    }
+}
+
 /// Adds strip `s`'s send to bus slot `slot` into `bus`. `late`: the send
 /// closes a loop and reads `s`'s previous block at that return clock
 /// position (its output, or its tap for PRE; the send's own pan balances it,
 /// and it follows `s`'s own MUTE), never `s`'s buffers, which may be running.
 unsafe fn add_bus_send(bus: &Strip, s: &Strip, slot: usize, target: u32, late: Option<usize>, block: u64, n: usize) {
     let Some(send) = s.sends.find(slot) else { return };
-    if let Some(id) = send_tap(send.tap.load(Relaxed)) {
+    if let Some(id) = send_tap(send.tap.load(Relaxed)).or_else(|| mix_source_tap(bus, s, send.mode.load(Relaxed))) {
         let last = &mut *send.last_gain.get();
         if late.is_some() {
             *last = [0.0, 0.0]; // a send closing a loop can't take a tap of this block

@@ -12,6 +12,9 @@
 #include "engine/PluginHost.h"
 #include "engine/Show.h"
 #include "ui/UniversalSkin.h"
+#include "ui/Y01VSurface.h"
+#include "ui/DLiveSurface.h"
+#include "ui/DLiveC3500Surface.h"
 #include "ui/Y02RSurface.h"
 #include "engine/ProMixMidi.h"
 #include "engine/Y02RMidi.h"
@@ -182,6 +185,9 @@ public:
         universalOnEveryConsole();
         y02rSurface();
         sq5Surface();
+        y01vSurface();
+        dliveSurface();
+        dliveC3500Surface();
         customControlScribbles();
     }
 
@@ -221,6 +227,522 @@ public:
             juce::FileOutputStream out (file);
             expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out));
         }
+    }
+
+    /** The 01V's surface and LCD, at 1920x1080. */
+    void y01vSurface()
+    {
+        beginTest ("The 01V surface, on a 01V");
+        MixerEngine engine (0);
+        engine.configureProfile (ld::kProfileYamaha01V);
+        ShotRig rig (engine);
+        setShownProfile (ld::kProfileYamaha01V);
+        ui::fader::setLaw (engine.getFaderLaw());
+        auto& channels = engine.getChannels();
+        auto& buses = engine.getBuses();
+        expectEquals ((int) channels.size(), 22);
+        for (size_t i = 0; i < 14; ++i)
+        {
+            auto& m = channels[i]->meters;
+            const float level = 0.08f + 0.6f * (float) ((i * 37) % 11) / 10.0f;
+            m.trimPeak[0] = m.outputPeak[0] = level;
+            m.trimPeak[1] = m.outputPeak[1] = level * 0.9f;
+            channels[i]->params.faderDb = i % 5 == 0 ? 0.0f : -12.0f - (float) (i % 7) * 3.0f;
+        }
+        auto& lr = engine.getMain (0);
+        lr.meters.outputPeak[0] = 0.32f;
+        lr.meters.outputPeak[1] = 0.25f;
+        lr.params.faderDb = 0.0f;
+        channels[3]->params.solo = true;
+        channels[4]->params.eq().on = true;
+        setEq (channels[4]->params.eq(), models::ChannelEq, "lmg", 10.5f);
+        setEq (channels[4]->params.eq(), models::ChannelEq, "hmg", 5.0f);
+        rig.meters.advance (0.01f);
+        rig.selected = channels[4].get();
+
+        ui::Y01VSurface skin (rig.ctx);
+        skin.setSize (1920, 1080);
+        skin.refreshAll();
+        const auto shot = [this, &skin] (const juce::String& fileName)
+        {
+            skin.getDisplay().refresh();
+            const auto image = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
+            expect (image.isValid(), fileName);
+            const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {});
+            if (folder.isEmpty())
+                return;
+            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile (fileName);
+            file.deleteFile();
+            juce::FileOutputStream out (file);
+            expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out), file.getFullPathName());
+        };
+        using namespace ui::y01v;
+        auto& display = skin.getDisplay();
+        shot ("y01v-eq.png");
+
+        // HOME: each fader its channel, the master the STEREO.
+        expect (skin.stripAt (0) == channels[0].get());
+        expect (skin.stripAt (13) == channels[13].get());
+        expect (skin.masterStrip() == &lr);
+        expectWithinAbsoluteError (skin.getFader (0).getPosition(), (double) engine.getFaderLaw ((int) StripKind::Channel).toPosition (0.0f), 0.001);
+
+        // [ON] and [SOLO] (pp.33-34): the channel's.
+        channels[2]->params.mute = false;
+        skin.findKey ("ON 2")->onClick();
+        expect (channels[2]->params.mute.load());
+        skin.findKey ("SOLO 5")->onClick();
+        expect (channels[5]->params.solo.load());
+        channels[5]->params.solo = false;
+
+        // AUX 1: the faders are the sends to it (bus slot 4), the master its master.
+        channels[2]->sends[4].levelDb = -7.0f;
+        skin.findKey ("AUX 1")->onClick();
+        expect (skin.getFaderMode() == FaderMode::Aux1);
+        expect (display.getFunction() == Function::Send);
+        expect (skin.masterStrip() == buses[4].get());
+        expectWithinAbsoluteError (skin.getFader (2).getPosition(), (double) engine.getFaderLaw ((int) StripKind::Channel).toPosition (-7.0f), 0.001);
+        expectEquals (display.getNumFields(), 16);
+        shot ("y01v-aux1.png");
+
+        // EFFECT 1: a return can't feed its own effect (p.35).
+        skin.findKey ("EFFECT 1")->onClick();
+        expect (skin.masterStrip() == buses[8].get());
+        expect (! skin.getKnob ("RETURN 1").getBinding().isValid());
+        expect (skin.getKnob ("RETURN 2").getBinding().isValid());
+
+        // Its pages, a press each (pp.125, 134, 136): EDIT, LIBRARY, PRE/POST.
+        expectEquals (display.getNumPages(), 3);
+        expectEquals (display.getPage(), 0);
+        expect (display.getNumFields() > 0 && display.getNumFields() <= 9);
+        shot ("y01v-effect-edit.png");
+        skin.findKey ("EFFECT 1")->onClick();
+        expectEquals (display.getPage(), 1);
+        expectEquals (display.getNumFields(), 2);
+        shot ("y01v-effect-library.png");
+        const int effectBefore = engine.getFx().getModel (0);
+        display.cursor (0, 1);              // the list
+        display.turn (1);
+        display.cursor (0, -1);             // RECALL
+        display.enter();
+        expect (engine.getFx().getModel (0) != effectBefore);
+        expect (models::consoleOf (models::model (models::Fx, engine.getFx().getModel (0)).token) == "01V");
+        skin.findKey ("EFFECT 1")->onClick();
+        expectEquals (display.getPage(), 2);
+        expectEquals (display.getNumFields(), 15); // a return can't feed its own effect
+        shot ("y01v-effect-prepost.png");
+        const int sendBefore = channels[0]->sends[8].mode.load();
+        display.enter();
+        expect (channels[0]->sends[8].mode.load() != sendBefore);
+        channels[0]->sends[8].mode = sendBefore;
+        skin.findKey ("EFFECT 1")->onClick();
+        expectEquals (display.getPage(), 0);
+        skin.findKey ("AUX 1")->onClick();
+        expectEquals (display.getPage(), 0);
+        expectEquals (display.getNumPages(), 2);
+        skin.findKey ("AUX 1")->onClick();
+        expectEquals (display.getNumFields(), 16); // AUX PRE/POST: both returns can
+
+        // OPTION I/O: 1-8 are CH 17-24, the rest do nothing.
+        skin.findKey ("OPTION I/O")->onClick();
+        expect (skin.stripAt (0) == channels[14].get());
+        expect (skin.stripAt (8) == nullptr);
+        expect (! skin.getFader (8).isBound());
+        expect (skin.masterStrip() == &lr);
+        shot ("y01v-option.png");
+        // OPTION page 2: what CH 17-24 have, only AUX 1-2 and EFFECT 1-2 among the sends.
+        rig.selected = channels[14].get();
+        skin.selectionChanged();
+        skin.findKey ("OPTION I/O")->onClick();
+        expectEquals (display.getPage(), 1);
+        expectEquals (display.getNumFields(), 5 + 1 + 2 + 8 + 2 + 6); // ROUTE, PAN, FADER and ON, sends and PRE/POST, EQ ON and ATT, F/G/Q
+        shot ("y01v-option-control.png");
+        rig.selected = channels[4].get();
+        skin.selectionChanged();
+
+        // Back HOME: the LCD's fields, the cursor, the wheel.
+        skin.findKey ("HOME")->onClick();
+        skin.findKey ("EQ/ATT")->onClick();
+        expect (display.getFunction() == Function::EqAtt);
+        expectEquals (display.getNumFields(), 14); // EQ ON, ATT, F, G and Q of four bands
+        display.enter();
+        expect (! channels[4]->params.eq().on.load());
+        display.enter();
+        expect (channels[4]->params.eq().on.load());
+        const int before = display.getFocus();
+        display.cursor (1, 0);
+        expect (display.getFocus() != before);
+        const auto text = display.getFocusText();
+        display.turn (-4);
+        expect (display.getFocusText() != text);
+        display.turn (4);
+        expectEquals (display.getFocusText(), text);
+
+        // SELECTED CHANNEL: F and G work the band picked.
+        const auto& eqModel = models::model (models::ChannelEq, channels[4]->params.eq().model.load());
+        skin.setEqBand (1);
+        expect (skin.getKnob ("G").getBinding().isValid());
+        const float atOne = skin.getKnob ("G").getBinding().get();
+        skin.getKnob ("G").getBinding().set (0.5f);
+        expectWithinAbsoluteError (channels[4]->params.eq().values[eqModel.find ("lmg")].load(), 0.0f, 0.3f);
+        skin.getKnob ("G").getBinding().set (atOne);
+
+        // CH 17-24 have only LOW and HIGH (p.264): their page has fewer fields.
+        rig.selected = channels[14].get();
+        skin.selectionChanged();
+        expectEquals (display.getNumFields(), 8); // EQ ON, ATT, and F, G, Q of two bands
+
+        rig.selected = channels[4].get();
+        skin.selectionChanged();
+        skin.findKey ("DYNAMICS")->onClick();
+        expect (display.getNumFields() > 4);
+        shot ("y01v-dynamics.png");
+        skin.findKey ("PAN/ROUTING")->onClick();
+        expectEquals (display.getNumFields(), 16);
+        shot ("y01v-pan.png");
+        // PAN/ROUT page 2 (p.55): four buses and ST for each.
+        skin.findKey ("PAN/ROUTING")->onClick();
+        expectEquals (display.getPage(), 1);
+        expectEquals (display.getNumFields(), 16 * 5);
+        channels[0]->sends[0].enabled = false;
+        display.enter();                    // bus 1, the first field: routed at 0 dB
+        expect (channels[0]->sends[0].enabled.load());
+        expectWithinAbsoluteError (channels[0]->sends[0].levelDb.load(), 0.0f, 0.01f);
+        display.enter();
+        expect (! channels[0]->sends[0].enabled.load());
+        shot ("y01v-routing.png");
+        skin.findKey ("PAN/ROUTING")->onClick();
+        skin.findKey ("VIEW")->onClick();
+        shot ("y01v-view.png");
+        // MEMORY (p.186): store a scene, name comes from the show; 00 is read-only.
+        skin.findKey ("MEMORY")->onClick();
+        expect (display.getFunction() == Function::Memory);
+        expectEquals (display.getMemory(), 0);
+        display.turn (1);                  // TITLE EDIT has the focus: nothing moves
+        display.setMemory (1);
+        channels[0]->params.faderDb = -5.0f;
+        display.setPreference ("y01vStoreConfirm", false);
+        for (int i = 0; i < 2; ++i)
+            display.cursor (0, 1);          // TITLE EDIT, RECALL, STORE
+        display.enter();
+        expectEquals (rig.show.getNumScenes(), 1);
+        channels[0]->params.faderDb = -30.0f;
+        display.cursor (0, -1);             // RECALL
+        display.enter();
+        expectWithinAbsoluteError (channels[0]->params.faderDb.load(), -5.0f, 0.01f);
+        display.setMemory (0);
+        for (int i = 0; i < 1; ++i)
+            display.cursor (0, 1);          // STORE: 00 refuses it
+        display.enter();
+        expectEquals (rig.show.getNumScenes(), 1);
+        shot ("y01v-memory.png");
+        // UTILITY: the oscillator (p.204), then the two pages of preferences (p.203).
+        skin.findKey ("UTILITY")->onClick();
+        expectEquals (display.getPage(), 0);
+        expectEquals (display.getNumFields(), 14); // ON, WAVEFORM, LEVEL, 11 assigns
+        shot ("y01v-oscillator.png");
+        skin.findKey ("UTILITY")->onClick();
+        expectEquals (display.getPage(), 1);
+        expectEquals (display.getNumFields(), 4);
+        expect (display.preference ("y01vEqAutoScreen"));
+        display.enter();
+        expect (! display.preference ("y01vEqAutoScreen"));
+        display.enter();
+        shot ("y01v-preferences.png");
+        skin.findKey ("UTILITY")->onClick();
+        expectEquals (display.getPage(), 2);
+        expectEquals (display.getNumFields(), 2);
+        skin.findKey ("MIDI")->onClick();
+        expectEquals (display.getNumFields(), 0);
+        skin.findKey ("UTILITY")->onClick();
+        expectEquals (display.getPage(), 2);        // where it was left
+        skin.findKey ("EQ/ATT")->onClick();
+        shot ("y01v-surface.png");
+        setShownProfile (ld::kProfileWing);
+    }
+
+    /** The dLive's surface (a C1500's layout), at 1920x1080. */
+    void dliveSurface()
+    {
+        beginTest ("The dLive surface, on a dLive");
+        MixerEngine engine (0);
+        engine.configureProfile (ld::kProfileDLive);
+        ShotRig rig (engine);
+        setShownProfile (ld::kProfileDLive);
+        ui::fader::setLaw (engine.getFaderLaw());
+        auto& channels = engine.getChannels();
+        for (size_t i = 0; i < 12; ++i)
+        {
+            auto& m = channels[i]->meters;
+            m.trimPeak[0] = m.outputPeak[0] = 0.08f + 0.05f * (float) i;
+            channels[i]->params.faderDb = -12.0f + (float) (i % 5) * 3.0f;
+            channels[i]->params.colour = 1 + (int) i % 8;
+        }
+        channels[1]->params.mute = true;
+        channels[2]->params.solo = true;
+        rig.meters.advance (0.01f);
+        rig.selected = channels[4].get();
+        channels[4]->params.eq().on = true;
+
+        ui::DLiveSurface skin (rig.ctx);
+        skin.setSize (1920, 1080);
+        skin.refreshAll();
+        for (int i = 0; i < 12; ++i)
+            skin.getStrip (i).refresh();
+        const auto shot = [this, &skin] (const juce::String& fileName)
+        {
+            const auto image = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
+            expect (image.isValid(), fileName);
+            const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {});
+            if (folder.isEmpty())
+                return;
+            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile (fileName);
+            file.deleteFile();
+            juce::FileOutputStream out (file);
+            expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out), file.getFullPathName());
+        };
+        shot ("dlive-surface.png");
+
+        using Page = ui::DLiveSurface::Page;
+        // Bank A: the first 12 channels on the faders.
+        expectEquals (skin.getBank(), 0);
+        expect (skin.getStrip (0).getSlot().kind == ui::dl::Slot::Channel && skin.getStrip (11).getSlot().index == 11);
+        expectWithinAbsoluteError (skin.getStrip (3).getFader().getPosition(), (double) ui::fader::dbToPos (channels[3]->params.faderDb.load()), 0.002);
+        // Mute, Sel and PAFL are the strip's.
+        channels[7]->params.mute = false;
+        skin.getStrip (7).getMute().onClick();
+        expect (channels[7]->params.mute.load());
+        skin.getStrip (5).getPafl().onClick();
+        expect (channels[5]->params.solo.load());
+        skin.findKey ("Clear")->onClick();
+        expect (! channels[5]->params.solo.load() && ! channels[2]->params.solo.load());
+        skin.getStrip (9).getSel().onClick();
+        expect (rig.selected == channels[9].get());
+        skin.selectionChanged();
+        // Banks: B is the next 12, F the mixes and LR.
+        skin.findKey ("B")->onClick();
+        expectEquals (skin.getBank(), 1);
+        expectEquals (skin.getStrip (0).getSlot().index, 12);
+        skin.findKey ("F")->onClick();
+        expect (skin.getStrip (0).getSlot().kind == ui::dl::Slot::Bus && skin.getStrip (11).getSlot().kind == ui::dl::Slot::Main);
+        // A mix's Mix key: the sends on the faders, on bank A.
+        skin.getStrip (2).getMix().onClick();
+        expectEquals (skin.getMixOnFaders(), 2);
+        skin.findKey ("A")->onClick();
+        channels[0]->sends[2].levelDb = -7.0f;
+        skin.getStrip (0).rebind();
+        skin.getStrip (0).getFader().refresh();
+        expectWithinAbsoluteError (skin.getStrip (0).getFader().getPosition(), (double) ui::fader::dbToPos (-7.0f), 0.002);
+        skin.setMixOnFaders (-1);
+        // The rotaries' function.
+        skin.findKey ("Rotary Pan")->onClick();
+        expect (skin.getRotaryFunction() == ui::DLiveSurface::RotaryFunction::Pan);
+        expect (skin.getStrip (0).getRotary().getBinding().isValid());
+        // The PEQ's rotaries follow the selection.
+        rig.selected = channels[4].get();
+        skin.selectionChanged();
+        expect (skin.getPeqRotary (1, true).getBinding().isValid());
+        // The screen keys pick the page.
+        skin.findKey ("Page Processing")->onClick();
+        expect (skin.getPage() == Page::Processing);
+        expect (skin.getInspector().getStrip() == channels[4].get());
+        shot ("dlive-surface-processing.png");
+        skin.findKey ("Page Scenes")->onClick();
+        expect (skin.getPage() == Page::Scenes);
+        skin.findKey ("Page FX")->onClick();
+        shot ("dlive-surface-fx.png");
+        setShownProfile (ld::kProfileWing);
+    }
+
+    /** The dLive's C3500 surface, at 1920x1080: its strips and banks, its two screens. */
+    void dliveC3500Surface()
+    {
+        beginTest ("The dLive C3500 surface, on a dLive");
+        MixerEngine engine (0);
+        engine.configureProfile (ld::kProfileDLive);
+        ShotRig rig (engine);
+        setShownProfile (ld::kProfileDLive);
+        ui::fader::setLaw (engine.getFaderLaw());
+        auto& channels = engine.getChannels();
+        for (size_t i = 0; i < 24; ++i)
+        {
+            auto& m = channels[i]->meters;
+            m.trimPeak[0] = m.outputPeak[0] = 0.08f + 0.03f * (float) i;
+            channels[i]->params.faderDb = -12.0f + (float) (i % 5) * 3.0f;
+            channels[i]->params.colour = 1 + (int) (i / 4) % 8;
+            channels[i]->setName ("lav" + juce::String ((int) i + 1));
+        }
+        for (size_t i = 4; i < 8; ++i)
+            channels[i]->params.mute = true;
+        rig.meters.advance (0.01f);
+        rig.selected = channels[5].get();
+        auto& eq = channels[5]->params.eq();
+        eq.on = true;
+        const auto& peqModel = models::model ((models::Table) channels[5]->getEqTable(), eq.model.load());
+        const auto setEq = [&] (const char* id, float v)
+        {
+            const int at = peqModel.find (id);
+            expect (at >= 0, id);
+            eq.values[at] = v;
+        };
+        setEq ("lm", 1.0f);
+        setEq ("lf", 60.0f);
+        setEq ("lg", 3.0f);
+        setEq ("1f", 385.0f);
+        setEq ("1g", -2.1f);
+        setEq ("2f", 3790.0f);
+        setEq ("2g", -2.9f);
+        setEq ("hm", 2.0f);
+        setEq ("hf", 10000.0f);
+        channels[5]->params.filter().lowCut = true;
+        channels[5]->params.filter().lowCutFreq = 180.0f;
+        rig.show.addScene ("Peaches");
+        rig.show.addScene ("oakenfold");
+        rig.show.addScene ("Rental");
+
+        ui::DLiveC3500Surface skin (rig.ctx);
+        skin.setSize (1920, 1080);
+        skin.refreshAll();
+        for (int i = 0; i < 24; ++i)
+            skin.getStrip (i).refresh();
+        const auto shot = [this, &skin] (const juce::String& fileName)
+        {
+            const auto image = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
+            expect (image.isValid(), fileName);
+            const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {});
+            if (folder.isEmpty())
+                return;
+            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile (fileName);
+            file.deleteFile();
+            juce::FileOutputStream out (file);
+            expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out), file.getFullPathName());
+        };
+        using Page = ui::DLiveC3500Surface::Page;
+        using Tab = ui::dl::ProcessingScreen::Tab;
+        skin.getScenes().select (2);
+        shot ("dlive-c3500.png");
+
+        // Two banks of 12: inputs on the first, the mixes on the second.
+        expect (skin.getStrip (0).getSlot().kind == ui::dl::Slot::Channel && skin.getStrip (11).getSlot().index == 11);
+        expect (skin.getStrip (12).getSlot().kind == ui::dl::Slot::Bus && skin.getStrip (23).getSlot().index == 11);
+        expectWithinAbsoluteError (skin.getStrip (3).getFader().getPosition(), (double) ui::fader::dbToPos (channels[3]->params.faderDb.load()), 0.002);
+        // A layer key moves its own bank only.
+        skin.findKey ("Bank1 B")->onClick();
+        expectEquals (skin.getStrip (0).getSlot().index, 12);
+        expect (skin.getStrip (12).getSlot().kind == ui::dl::Slot::Bus);
+        skin.findKey ("Bank2 D")->onClick();
+        expect (skin.getStrip (12).getSlot().kind == ui::dl::Slot::Dca);
+        skin.findKey ("Bank1 A")->onClick();
+        skin.findKey ("Bank2 A")->onClick();
+
+        // Mute and Sel; PAFL and Clear.
+        channels[7]->params.mute = false;
+        skin.getStrip (7).getMute().onClick();
+        expect (channels[7]->params.mute.load());
+        channels[7]->params.mute = false;
+        skin.getStrip (2).getPafl().onClick();
+        expect (channels[2]->params.solo.load());
+        skin.findKey ("Clear")->onClick();
+        expect (! channels[2]->params.solo.load());
+        skin.getStrip (5).getSel().onClick();
+        expect (rig.selected == channels[5].get());
+        skin.selectionChanged();
+
+        // The left screen follows the selection; its tabs; the PEQ rotaries.
+        expect (skin.getProcessing().getStrip() == channels[5].get());
+        expect (skin.getProcessing().getTab() == Tab::Peq);
+        expect (skin.getProcessing().hasTab (Tab::Gate) && ! skin.getProcessing().hasTab (Tab::Geq));
+        expect (skin.getPeqRotary (1, true).getBinding().isValid());
+        expectWithinAbsoluteError (eq.values[peqModel.find ("1f")].load(), 385.0f, 0.01f);
+        skin.getProcessing().showTab (Tab::Gate);
+        shot ("dlive-c3500-gate.png");
+        skin.getProcessing().showTab (Tab::Comp);
+        shot ("dlive-c3500-comp.png");
+        skin.getProcessing().showTab (Tab::Preamp);
+        shot ("dlive-c3500-preamp.png");
+        skin.getProcessing().showTab (Tab::Filter);
+        skin.getProcessing().showTab (Tab::Overview);
+        shot ("dlive-c3500-overview.png");
+        skin.getProcessing().showTab (Tab::Peq);
+
+        // The soft rotaries: Gate and Comp on layer 1, sends on layer 2.
+        expect (skin.getSoftRotary (1).getBinding().isValid() && skin.getSoftRotary (3).getBinding().isValid());
+        expect (! skin.getSoftRotary (0).getBinding().isValid());
+        auto& gate = channels[5]->params.gate();
+        const int thr = models::model (models::Dynamics, gate.model.load()).find ("thr");
+        skin.getSoftRotary (1).getBinding().set (0.5f);
+        expectWithinAbsoluteError (skin.getSoftRotary (1).getBinding().get(), 0.5f, 0.02f);
+        expect (thr >= 0);
+        skin.findKey ("Layer 2")->onClick();
+        channels[5]->sends[1].levelDb = -7.0f;
+        expectWithinAbsoluteError (skin.getSoftRotary (1).getBinding().get(), ui::fader::dbToPos (-7.0f), 0.02f);
+        skin.findKey ("Layer 1")->onClick();
+
+        // A mix's Mix key: the sends on the faders; Assign with a strip's Mix key.
+        skin.getStrip (14).getMix().onClick();
+        expectEquals (skin.getMixOnFaders(), 2);
+        channels[0]->sends[2].levelDb = -7.0f;
+        skin.getStrip (0).rebind();
+        skin.getStrip (0).getFader().refresh();
+        expectWithinAbsoluteError (skin.getStrip (0).getFader().getPosition(), (double) ui::fader::dbToPos (-7.0f), 0.002);
+        const bool wasOn = channels[1]->sends[2].enabled.load();
+        skin.findKey ("Assign")->onClick();
+        skin.getStrip (1).getMix().onClick();
+        expect (channels[1]->sends[2].enabled.load() != wasOn);
+        skin.findKey ("Assign")->onClick();
+        expect (skin.getLatch() == ui::dl::Desk::Latch::None);
+
+        // Safes on a strip's Mix key.
+        skin.setMixOnFaders (-1);
+        expect (! channels[3]->params.recallSafe.load());
+        skin.findKey ("Safes")->onClick();
+        skin.getStrip (3).getMix().onClick();
+        expect (channels[3]->params.recallSafe.load());
+        skin.findKey ("Safes")->onClick();
+
+        // MixRack: Mixer Config's counts are pending until Apply, Name & Colour reaches the strips.
+        using Sub = ui::dl::MixRackScreen::Sub;
+        skin.findKey ("Page MixRack")->onClick();
+        expect (skin.getPage() == Page::MixRack);
+        shot ("dlive-c3500-mixrack.png");
+        auto& mixRack = skin.getMixRack();
+        const auto before = mixRack.getConfig().getCurrent (ui::universal::MixerConfigPanel::Aux);
+        mixRack.getConfig().setPending (ui::universal::MixerConfigPanel::Aux, before + 2);
+        expect (mixRack.getConfig().hasChanges());
+        mixRack.getConfig().revert();
+        for (auto [sub, file] : { std::pair<Sub, const char*> { Sub::InputStereos, "dlive-c3500-stereos.png" }, { Sub::NameColour, "dlive-c3500-name.png" }, { Sub::Network, "dlive-c3500-network.png" },
+                                  { Sub::Users, "dlive-c3500-users.png" }, { Sub::IoPort, "dlive-c3500-ioport.png" }, { Sub::AudioSync, "dlive-c3500-sync.png" },
+                                  { Sub::SourceSelector, "dlive-c3500-selector.png" }, { Sub::Amm, "dlive-c3500-amm.png" } })
+        {
+            mixRack.showSub (sub);
+            expect (mixRack.getSub() == sub);
+            shot (file);
+        }
+        mixRack.setRange (0, 30, 31);
+        mixRack.applyColour (5);
+        mixRack.applyName ("Pad");
+        expectEquals (channels[30]->params.colour.load(), 5);
+        expect (channels[31]->getName() == "Pad 2");
+        mixRack.applyName ({});
+
+        // Home puts things back.
+        skin.findKey ("Rotary Pan")->onClick();
+        expect (skin.getRotaryFunction() == ui::dl::RotaryFunction::Pan);
+        expect (skin.getStrip (0).getRotary().getBinding().isValid());
+        skin.findKey ("Page FX")->onClick();
+        expect (skin.getPage() == Page::Fx);
+        shot ("dlive-c3500-fx.png");
+        skin.findKey ("Home")->onClick();
+        expect (skin.getPage() == Page::Scenes);
+        expect (skin.getRotaryFunction() == ui::dl::RotaryFunction::Gain);
+
+        // Scene keys: Next and GO.
+        skin.getScenes().select (0);
+        skin.findKey ("Next")->onClick();
+        expectEquals (skin.getScenes().getNext(), 1);
+        skin.findKey ("GO")->onClick();
+        expectEquals (skin.getScenes().getSelected(), 1);
+        expectEquals (skin.getScenes().getNext(), 2);
+        setShownProfile (ld::kProfileWing);
     }
 
     /** The SQ-5's surface and touchscreen, at 1920x1080. */
@@ -793,13 +1315,15 @@ public:
         surface's UNIVERSAL MIXER key opens it on an X32. */
     void universalOnEveryConsole()
     {
-        for (const auto profile : { ld::kProfileX32, ld::kProfileProMix01, ld::kProfileYamaha02R, ld::kProfileSq5 })
+        const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {});
+        for (const auto profile : { ld::kProfileX32, ld::kProfileProMix01, ld::kProfileYamaha02R, ld::kProfileSq5, ld::kProfileYamaha01V, ld::kProfileDLive })
         {
             beginTest ("The Universal Mixer on profile " + juce::String ((int) profile));
             MixerEngine engine (0);
             engine.configureProfile (profile);
             ShotRig rig (engine);
             setShownProfile (profile);
+            ui::routing::setProfile (profile);
             rig.selected = engine.getChannels()[0].get();
             ui::UniversalSkin skin (rig.ctx);
             skin.setSize (1920, 1080);
@@ -813,8 +1337,17 @@ public:
                 skin.refreshAll();
                 const auto image = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
                 expect (image.isValid());
+                if (folder.isNotEmpty())
+                {
+                    const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder)
+                                          .getChildFile ("universal-on-" + juce::String ((int) profile) + "-" + juce::String ((int) view) + ".png");
+                    file.deleteFile();
+                    juce::FileOutputStream out (file);
+                    expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out), file.getFullPathName());
+                }
             }
             setShownProfile (ld::kProfileWing);
+            ui::routing::setProfile (ld::kProfileWing);
         }
     }
 

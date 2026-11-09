@@ -152,6 +152,39 @@ impl StripKind {
 
 // ---- blocks ---------------------------------------------------------------------------
 
+/// Where the channels' pre-fade sends to a mix leave them (`MixInputParams::mix_source`).
+pub mod mix_source {
+    pub const POST_PREAMP: i32 = 0;
+    pub const POST_INSERT_A: i32 = 1;
+    pub const POST_PEQ: i32 = 2;
+    /// Their usual tap, and every console's but a dLive's.
+    pub const POST_DELAY: i32 = 3;
+}
+
+/// A mix's Ext In and Mix Source (a dLive's: Firmware Reference Guide, Processing
+/// Screen and Routing).
+#[repr(C)]
+#[derive(Debug)]
+pub struct MixInputParams {
+    /// The input summed in before the mix's insert (-1: none). A stereo mix takes it
+    /// and the next one.
+    pub ext_source: AtomicI32,
+    pub ext_trim_db: AtomicF32,
+    pub ext_invert: AtomicBool,
+    pub mix_source: AtomicI32,
+}
+
+impl Default for MixInputParams {
+    fn default() -> Self {
+        Self {
+            ext_source: AtomicI32::new(-1),
+            ext_trim_db: AtomicF32::new(0.0),
+            ext_invert: AtomicBool::new(false),
+            mix_source: AtomicI32::new(mix_source::POST_DELAY),
+        }
+    }
+}
+
 /// INPUT: trim, balance, polarity and delay (input delay on channels, output
 /// delay on buses, mains and matrices).
 #[repr(C)]
@@ -390,7 +423,7 @@ impl EqBlockParams {
             on: AtomicBool::new(true),
             model: AtomicI32::new(0),
             mix: AtomicF32::new(100.0),
-            values: Default::default(),
+            values: std::array::from_fn(|_| AtomicF32::new(0.0)),
             table,
         };
         p.set_model(0);
@@ -1155,7 +1188,7 @@ impl StripParams {
         // Last: a console's own factory has the final word (an X32's aux in 2
         // isn't the WING's USB player).
         if let Some(factory) = spec.factory {
-            factory(&p, kind, index);
+            factory(spec, &p, kind, index);
         }
         p
     }

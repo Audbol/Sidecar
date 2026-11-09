@@ -16,6 +16,8 @@ namespace livedaw::ui
 
 /** A step's name: INPUT, EQ, INSERT 1, PRE-FADER, EQ BLOCK, TAP 3 ... */
 juce::String stepName (const ChainStep&);
+/** The step as the strip has it: a dLive input's preamp block is its PREAMP. */
+juce::String stepName (const Strip&, const ChainStep&);
 
 /** Whether the step processes now: the block's ON (a filter: any of its cuts or its
     tool; an insert: on with an FX slot). Markers, taps and the input are never "on". */

@@ -6,7 +6,7 @@
 //! without flanging. The pitch fix adds a YIN pitch detector ([`yin`]); the
 //! sub devices ([`sub`]) use analog-style octave dividers and waveshaping.
 
-mod shifter;
+pub(crate) mod shifter;
 mod sub;
 mod yin;
 

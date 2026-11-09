@@ -43,6 +43,13 @@ struct BlockTarget
     /** Its model table and how to load a model with its defaults (EQ, dynamics, the filter's tool). */
     models::Table table = models::Dynamics;
     std::function<void (int model)> setModel;
+    /** A dynamics block's place, for what it may hold (ld_dyn_model_allowed: 0 the gate slot, 1 a
+        dynamics slot or block, 2 a dLive's preamp block); -1: any model. */
+    int modelSlot = -1;
+    /** Its model is the strip's for good (a 01V's EQs: 4-band, or 2-band on channels 17-24; a dLive's PEQ). */
+    bool fixedModel = false;
+    /** A compressor that goes before or after the PEQ, the strip's process order (a dLive input's). */
+    std::atomic<int32_t>* compressorOrder = nullptr;
     /** Its curve: an EQ's or a filter's, a dynamics block's key filter. */
     std::function<bool (const double* freqs, double* outDb, int count)> response;
     /** A dynamics block's gain reduction, dB. */

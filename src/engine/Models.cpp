@@ -43,7 +43,7 @@ int Model::find (const juce::String& id) const noexcept
 juce::String consoleOf (const juce::String& token)
 {
     // As livedaw_dsp::universal::console_of: the X32's tokens start "X32", the
-    // ProMix 01's "PM", the 02R's "Y2", the SQ-5's "SQ" (none of the WING's do).
+    // ProMix 01's "PM", the 02R's "Y2", the SQ-5's "SQ", the 01V's "O1", the dLive's "DLV" (none of the WING's do).
     if (token.startsWith ("X32"))
         return "X32";
     if (token.startsWith ("PM"))
@@ -52,6 +52,10 @@ juce::String consoleOf (const juce::String& token)
         return "02R";
     if (token.startsWith ("SQ"))
         return "SQ-5";
+    if (token.startsWith ("O1"))
+        return "01V";
+    if (token.startsWith ("DLV"))
+        return "dLive";
     return {};
 }
 

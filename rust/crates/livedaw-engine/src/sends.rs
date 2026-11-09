@@ -118,7 +118,12 @@ impl BankItem for SendParams {
         }
         // The X32's FX returns (aux slots of its "FX" range) send POST.
         let fx_return = spec.slot(kind, slot).is_some_and(|r| r.label == "FX");
-        let post = fx_return || index >= 8;
+        // A dLive's Aux start pre-fade, its Groups and FX sends post-fade (Sidecar's reading).
+        let post = fx_return
+            || match spec.dlive_layout {
+                Some(layout) => !(layout.aux_at()..layout.fx_at()).contains(&index),
+                None => index >= 8,
+            };
         let s = Self::with_mode(if post { send_mode::POST } else { send_mode::PRE });
         s.enabled.store(true, Ordering::Relaxed);
         s.pan_link.store(false, Ordering::Relaxed); // the X32's pan follow starts off

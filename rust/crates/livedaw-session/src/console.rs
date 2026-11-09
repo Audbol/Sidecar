@@ -9,13 +9,16 @@ use crate::refs::StripRef;
 use crate::xml::{fmt_f32, parse, Element};
 use livedaw_dsp::model::{model_index, ModelSpec};
 use livedaw_dsp::wing::FILTER_TOOLS;
+use livedaw_engine::amm::{AmmStripParams, MAX_AMMS};
 use livedaw_engine::analyser::RtaViewSettings;
 use livedaw_engine::atomic::AtomicF32;
 use livedaw_engine::blocks::{BlockKind, BlockParams, Step};
 use livedaw_engine::chain::Node;
+use livedaw_engine::params::mix_source;
 use livedaw_engine::params::{
     ext, DynSlotParams, EqBlockParams, FilterParams, InsertParams, MatrixSendParams, StripParams, FX_EXT, FX_NONE, MAX_FX,
 };
+use livedaw_engine::profile::DLiveLayout;
 use livedaw_engine::routing::{bus_feeds_bus, matrix_direct, MATRIX_DIRECT_INPUTS};
 use livedaw_engine::taps::FIRST_USER_TAP;
 use livedaw_engine::{AtomicGroupSet, ConsoleConfig, Counts, Engine, GroupSet, Profile, Strip, StripKind, MAX_BUSES};
@@ -39,7 +42,7 @@ pub mod section {
     pub const DYNAMICS: u32 = 1 << 5;
     /// Older name of [`DYNAMICS`].
     pub const COMP: u32 = DYNAMICS;
-    pub const INSERTS: u32 = 1 << 6; // insert points, process order, tap (+ FX slot states, automix X/Y enables)
+    pub const INSERTS: u32 = 1 << 6; // insert points, process order, tap, a dLive's AMM (+ FX slot states, automix X/Y enables)
     pub const SENDS: u32 = 1 << 7; // bus, main and matrix sends, matrix direct input
     pub const FADER: u32 = 1 << 8; // fader, pan, width, mute (+ DCA levels)
     pub const GROUPS: u32 = 1 << 9; // DCA and mute group membership (+ mute group states)
@@ -573,6 +576,23 @@ fn capture_strip(s: &Strip, sections: u32, slots: &[usize], mains: usize, matric
         put_i(ins, "tap", &p.tap);
         put_insert(ins.add_new("Pre"), p.pre_insert());
         put_insert(ins.add_new("Post"), p.post_insert());
+        if s.has_amm() {
+            put_strip_amm(ins, &s.amm);
+        }
+    }
+    if sections & ROUTING != 0 && !kind.is_input() {
+        let m = &s.mix_input;
+        if m.ext_source.load(Relaxed) >= 0
+            || m.ext_trim_db.load() != 0.0
+            || m.ext_invert.load(Relaxed)
+            || m.mix_source.load(Relaxed) != mix_source::POST_DELAY
+        {
+            let x = e.add_new("MixInput");
+            put_i(x, "source", &m.ext_source);
+            put_f(x, "trim", &m.ext_trim_db);
+            put_b(x, "invert", &m.ext_invert);
+            put_i(x, "mixSource", &m.mix_source);
+        }
     }
     if sections & SENDS != 0 {
         if kind != StripKind::Matrix {
@@ -878,6 +898,69 @@ fn apply_automix(engine: &Engine, parent: &Element) {
     }
 }
 
+/// A dLive's AMM settings, console-wide (scenes recall them with INSERTS). Written
+/// only by a dLive; a show without them leaves them as they are.
+fn capture_amm(engine: &Engine, parent: &mut Element) {
+    if !matches!(engine.profile(), Profile::AhDLive(_)) {
+        return;
+    }
+    let (c, a) = (&engine.amm, parent.add_new("Amm"));
+    put_i(a, "mode", &c.mode);
+    put_i(a, "count", &c.count);
+    put_f(a, "off", &c.off_atten_db);
+    put_f(a, "hold", &c.on_hold_s);
+    put_f(a, "nom", &c.nom_atten_db);
+    put_f(a, "chairSens", &c.chair_sensitivity);
+    put_f(a, "chairDuck", &c.chair_duck_db);
+    put_f(a, "hpf", &c.key_hpf_hz);
+    put_f(a, "lpf", &c.key_lpf_hz);
+    for i in 0..MAX_AMMS {
+        let z = a.add_new("A");
+        z.set("i", i);
+        put_b(z, "bestMic", &c.best_mic[i]);
+        put_b(z, "solo", &c.solo[i]);
+    }
+}
+
+fn apply_amm(engine: &Engine, parent: &Element) {
+    let Some(a) = parent.child("Amm") else { return };
+    let c = &engine.amm;
+    get_i(a, "mode", &c.mode);
+    get_i(a, "count", &c.count);
+    get_f(a, "off", &c.off_atten_db);
+    get_f(a, "hold", &c.on_hold_s);
+    get_f(a, "nom", &c.nom_atten_db);
+    get_f(a, "chairSens", &c.chair_sensitivity);
+    get_f(a, "chairDuck", &c.chair_duck_db);
+    get_f(a, "hpf", &c.key_hpf_hz);
+    get_f(a, "lpf", &c.key_lpf_hz);
+    for z in a.children_named("A") {
+        if let Some(i) = usize::try_from(z.int_or("i", -1)).ok().filter(|&i| i < MAX_AMMS) {
+            get_b(z, "bestMic", &c.best_mic[i]);
+            get_b(z, "solo", &c.solo[i]);
+        }
+    }
+}
+
+/// A dLive channel's AMM settings, always written there, so that a recalled scene
+/// also takes a channel out of its AMM; absent, they stay as they are.
+fn put_strip_amm(e: &mut Element, m: &AmmStripParams) {
+    let x = e.add_new("Amm");
+    put_i(x, "amm", &m.amm);
+    put_b(x, "on", &m.on);
+    put_b(x, "chair", &m.chair);
+    put_b(x, "solo", &m.solo);
+    put_f(x, "priority", &m.priority_db);
+}
+
+fn get_strip_amm(x: &Element, m: &AmmStripParams) {
+    get_i(x, "amm", &m.amm);
+    get_b(x, "on", &m.on);
+    get_b(x, "chair", &m.chair);
+    get_b(x, "solo", &m.solo);
+    get_f(x, "priority", &m.priority_db);
+}
+
 /// SETUP > PREFERENCES kept with the show (scenes don't recall them).
 fn capture_prefs(engine: &Engine, parent: &mut Element) {
     let c = &engine.controls;
@@ -1068,8 +1151,10 @@ pub(crate) fn apply_fx_slot(
             }
         }
         if !engine.set_fx_model(i, saved, false) {
-            let premium = engine.profile().spec().models.fx_premium_slots;
-            warnings.push(format!("FX {}: {} needs a premium slot (FX 1-{premium})", i + 1, fx[saved].name));
+            let m = engine.profile().spec().models;
+            let (first, last) = (m.fx_premium_first + 1, m.fx_premium_slots);
+            let slots = if first == last { format!("FX {first}") } else { format!("FX {first}-{last}") };
+            warnings.push(format!("FX {}: {} needs a premium slot ({slots})", i + 1, fx[saved].name));
             engine.set_fx_model(i, FX_NONE, true);
         }
         return;
@@ -1127,6 +1212,7 @@ pub fn capture(engine: &Engine, sections: u32, only: Option<&[StripRef]>, bridge
         if sections & section::INSERTS != 0 {
             capture_fx(engine, &mut state, bridge);
             capture_automix(engine, &mut state);
+            capture_amm(engine, &mut state);
         }
         if sections & CONSOLE_STATE_SECTIONS != 0 {
             capture_console_state(engine, &mut state);
@@ -1183,6 +1269,13 @@ fn apply_strip(
             p.cust_link.store(e.bool_or("clink", false), Relaxed);
         }
     }
+    if sections & ROUTING != 0 && !kind.is_input() {
+        let (m, x) = (&s.mix_input, e.child("MixInput"));
+        m.ext_source.store(x.map_or(-1, |x| x.int_or("source", -1)), Relaxed);
+        m.ext_trim_db.store(x.map_or(0.0, |x| x.double_or("trim", 0.0) as f32));
+        m.ext_invert.store(x.is_some_and(|x| x.bool_or("invert", false)), Relaxed);
+        m.mix_source.store(x.map_or(mix_source::POST_DELAY, |x| x.int_or("mixSource", mix_source::POST_DELAY)), Relaxed);
+    }
     if let Some(r) = e.child("Route").filter(|_| sections & ROUTING != 0) {
         if kind.is_input() {
             get_b(r, "stereo", &p.stereo);
@@ -1231,6 +1324,9 @@ fn apply_strip(
         }
         if let Some(x) = ins.child("Post") {
             get_insert(x, p.post_insert());
+        }
+        if let Some(x) = ins.child("Amm").filter(|_| s.has_amm()) {
+            get_strip_amm(x, &s.amm);
         }
     }
     if sections & SENDS != 0 {
@@ -1365,6 +1461,7 @@ pub fn apply(
         if effective & section::INSERTS != 0 {
             apply_fx(engine, state, Some(InsertMode::StateOnly), bridge, &mut result.warnings);
             apply_automix(engine, state);
+            apply_amm(engine, state);
         }
     }
     if let Some(before) = outputs_before {
@@ -1451,6 +1548,7 @@ pub fn save_console(engine: &Engine, bridge: &mut dyn PluginBridge) -> Element {
     capture_prefs(engine, &mut console);
     capture_rta(engine, &mut console);
     capture_automix(engine, &mut console);
+    capture_amm(engine, &mut console);
     capture_dcas(engine, &mut console, true);
     capture_mute_groups(engine, &mut console, true);
     capture_fx(engine, &mut console, bridge);
@@ -1485,6 +1583,67 @@ fn capture_config(engine: &Engine, console: &mut Element) {
         .set("dcas", c.dcas)
         .set("mgrps", c.mute_groups)
         .set("fx", c.fx);
+    if let Profile::AhDLive(layout) = engine.profile() {
+        if layout != DLiveLayout::FOH {
+            if let Some(config) = console.child_mut("Config") {
+                config.set("layout", layout.to_text());
+            }
+        }
+    }
+}
+
+/// A dLive's IP Stereo Config changed: each channel moves to its new place with its
+/// settings and id; one that is mono or stereo differently now starts on its defaults.
+fn remap_dlive_channels(console: &mut Element, old: DLiveLayout, new: DLiveLayout) {
+    let Some(list) = console.child_mut("Channels") else { return };
+    let mut kept: std::collections::HashMap<(usize, bool), Element> =
+        old.channel_inputs().into_iter().zip(list.children_named("Strip").cloned()).collect();
+    let mut next_id = list.children_named("Strip").map(|e| e.int_or("id", 0)).max().unwrap_or(0);
+    list.remove_children("Strip");
+    for channel in new.channel_inputs() {
+        let strip = kept.remove(&channel).unwrap_or_else(|| {
+            next_id += 1;
+            let mut fresh = Element::new("Strip");
+            fresh.set("id", next_id);
+            fresh
+        });
+        list.add(strip);
+    }
+}
+
+/// A dLive's Mixer Config (Firmware Reference Guide, MixRack Setup): its mix busses
+/// laid out anew. As on the console, that "resets mix parameters" and leaves "all
+/// current settings other than the bus configuration": the Groups, Aux, FX sends and
+/// Matrices start on their defaults, and the inputs' sends to them with them; the
+/// channels, FX, DCAs and the LR stay. Scenes saved before keep their old mix numbers.
+pub fn apply_dlive_layout(engine: &Engine, layout: DLiveLayout, bridge: &mut dyn PluginBridge) -> Result<Vec<String>, String> {
+    let Profile::AhDLive(old) = engine.profile() else {
+        return Err("This console isn't a dLive".into());
+    };
+    if !layout.is_valid() {
+        return Err("That mixer configuration doesn't fit the 64 busses".into());
+    }
+    let mut console = save_console(engine, bridge);
+    if let Some(config) = console.child_mut("Config") {
+        let c = layout.counts();
+        config.set("channels", c.channels).set("buses", c.buses).set("matrices", c.matrices).set("layout", layout.to_text());
+    }
+    if layout.stereo_inputs != old.stereo_inputs {
+        remap_dlive_channels(&mut console, old, layout);
+    }
+    console.remove_children("Buses");
+    console.remove_children("Matrices");
+    for tag in ["Channels", "Aux"] {
+        if let Some(list) = console.child_mut(tag) {
+            for strip in list.children_named_mut("Strip") {
+                strip.remove_children("Sends");
+                strip.remove_children("Mtx");
+            }
+        }
+    }
+    let warnings = load_console(engine, &console, bridge, true);
+    engine.settle_mix_layout(layout);
+    Ok(warnings)
 }
 
 /// The configuration a `<Console>` describes: its profile and `<Config>`, or
@@ -1500,6 +1659,11 @@ fn read_config(console: &Element, warnings: &mut Vec<String>) -> ConsoleConfig {
             warnings.push(format!("The show was made for a console this version doesn't know (\"{id}\")"));
             Profile::Wing
         }),
+    };
+    // A dLive's Mixer Config, if it isn't the FoH template's.
+    let profile = match (profile, x.attr("layout").and_then(DLiveLayout::from_text)) {
+        (Profile::AhDLive(_), Some(layout)) if layout.is_valid() => Profile::AhDLive(layout),
+        (p, _) => p,
     };
     let w = profile.spec().counts;
     let n = |name: &str, default: usize| usize::try_from(x.int_or(name, default as i32)).unwrap_or(default);
@@ -1532,6 +1696,7 @@ pub fn load_console(engine: &Engine, console: &Element, bridge: &mut dyn PluginB
     apply_prefs(engine, console);
     apply_rta(engine, console);
     apply_automix(engine, console);
+    apply_amm(engine, console);
     apply_dcas(engine, console, &mut None);
     apply_mute_groups(engine, console);
     apply_console_state(engine, console);
@@ -1570,6 +1735,8 @@ pub fn load_console(engine: &Engine, console: &Element, bridge: &mut dyn PluginB
         apply_strip(engine, &s, e, section::ALL, &mut None, &mut result);
         s.params.recall_safe.store(e.bool_or("recallSafe", false), Relaxed);
     }
+    // A show from before a dLive had them, and a channel a Mixer Config put back on its defaults.
+    engine.add_factory_preamp_blocks();
     apply_input_select(engine, console);
     crate::globals::apply(engine, console);
     if let Some(x) = console.child("IoSafes") {

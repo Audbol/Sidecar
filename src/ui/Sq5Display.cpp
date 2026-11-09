@@ -5,6 +5,7 @@
 #include "ui/MeterBank.h"
 
 #include <cmath>
+#include <tuple>
 
 namespace livedaw::ui::sq5
 {
@@ -91,7 +92,7 @@ namespace
         l.name = c.removeFromTop (22.0f);
         l.source = c.removeFromTop (14.0f);
         l.preamp = c.removeFromTop (42.0f);
-        l.flags = c.removeFromTop (28.0f);
+        l.flags = c.removeFromTop (33.0f);
         const float blocks = c.getHeight() - 40.0f;
         const float unit = blocks / (rows.geq ? 5.6f : 5.0f);
         l.hpf = c.removeFromTop (unit * 0.9f);
@@ -121,7 +122,8 @@ namespace
 
     /** A response in dB over a log frequency axis, -`range` to +`range` dB. */
     template <typename T>
-    void drawCurve (juce::Graphics& g, juce::Rectangle<float> r, const T* db, const double* freqs, int n, float range, juce::Colour c, bool fill)
+    void drawCurve (juce::Graphics& g, juce::Rectangle<float> r, const T* db, const double* freqs, int n, float range, juce::Colour c, bool fill,
+                    juce::Colour fillColour = kFill)
     {
         juce::Path p;
         const auto yOf = [&] (float d) { return r.getCentreY() - r.getHeight() * 0.5f * juce::jlimit (-1.0f, 1.0f, d / range); };
@@ -139,7 +141,7 @@ namespace
             f.lineTo (r.getRight(), yOf (0.0f));
             f.lineTo (r.getX(), yOf (0.0f));
             f.closeSubPath();
-            g.setColour (kFill.withAlpha (0.65f));
+            g.setColour (fillColour.withAlpha (0.65f));
             g.fillPath (f);
         }
         g.setColour (c);
@@ -331,7 +333,8 @@ void Display::showScreen (Screen s)
 
 void Display::showBlock (Block b)
 {
-    screen = b == Block::DirOut || b == Block::MixSettings || b == Block::DcaMute || b == Block::Sends ? Screen::Routing : Screen::Processing;
+    if (b != Block::Bank)
+        screen = b == Block::DirOut || b == Block::MixSettings || b == Block::DcaMute || b == Block::Sends ? Screen::Routing : Screen::Processing;
     block = b;
     rebuild();
 }
@@ -514,7 +517,7 @@ void Display::rebuild()
 
 void Display::buildHome()
 {
-    const float w = 72.0f, h = 64.0f, gap = 20.0f, y = 220.0f;
+    const float w = 75.0f, h = 64.0f, gap = 36.0f, y = 264.0f;
     float x = ((float) kWidth - (4.0f * w + 3.0f * gap)) * 0.5f;
     const auto next = [&] { juce::Rectangle<float> r (x, y, w, h); x += w + gap; return r; };
     add (Field::Button, next(), "Shut Down").enabled = false; // the app's window closes Sidecar
@@ -562,6 +565,21 @@ void Display::buildBank()
 
 void Display::buildOverview()
 {
+    if (screen == Screen::Routing)
+    {
+        // Routing's details keep the channel's routing column at the left (p.46).
+        const auto slot = getSelectedSlot ? getSelectedSlot() : Slot {};
+        const float x = 1.5f, w = kOverviewWidth - 3.0f, top = (float) kTitleBar + 2.0f;
+        const auto toggle = [this] (juce::Rectangle<float> r, Block b)
+        {
+            add (Field::Area, r, {}).press = [this, b] { showBlock (block == b ? Block::Bank : b); };
+        };
+        toggle ({ x, top + 24.0f, w, 22.0f }, slot.kind == Slot::Input ? Block::DirOut : Block::MixSettings);
+        toggle ({ x, top + 50.0f, w, 66.0f }, Block::DcaMute);
+        if (slot.kind != Slot::Dca)
+            toggle ({ x, top + 120.0f, w, (float) kHeight - top - 120.0f }, Block::Sends);
+        return;
+    }
     if (screen != Screen::Processing)
         return;
     // The selected channel's overview, at the left of a detail (p.29); its blocks open.
@@ -615,26 +633,28 @@ void Display::buildDetail()
 
 void Display::buildPreamp (Strip& s)
 {
-    // Source Select, Socket Preamp, Stereo Image, Delay and Trim (p.30).
+    // As p.30: Source Select over Socket Preamp, Stereo Image, Delay and Trim under them,
+    // the meter on the right of those.
     auto& p = s.params;
-    add (Field::Header, { 92, 40, 540, 18 }, "Source Select");
     auto* src = preampOf (ctx.engine, s);
-    add (Field::Button, { 150, 64, 130, 32 }, src != nullptr ? "Local Socket" : "Unassigned").enabled = false;
-    add (Field::Button, { 300, 64, 60, 32 }, juce::String (p.inputLeft.load() + 1)).enabled = false;
-    add (Field::Header, { 92, 104, 540, 18 }, "Socket Preamp");
+    add (Field::Header, { 92, 40, 300, 20 }, "Source Select");
+    add (Field::Button, { 100, 68, 150, 34 }, src != nullptr ? "Local Socket" : "Unassigned").enabled = false;
+    add (Field::Button, { 258, 68, 60, 34 }, juce::String (p.inputLeft.load() + 1)).enabled = false;
+    add (Field::Header, { 92, 128, 300, 20 }, "Socket Preamp");
     if (src != nullptr)
     {
-        addToggle (Field::Button, { 150, 150, 72, 34 }, "48V", src->phantom).colour = juce::Colours::red;
-        add (Field::Button, { 240, 150, 72, 34 }, "Pad").enabled = false; // Sidecar's preamp has none
+        addToggle (Field::Button, { 100, 162, 72, 34 }, "48V", src->phantom).colour = juce::Colours::red;
+        add (Field::Button, { 196, 162, 72, 34 }, "Pad").enabled = false; // Sidecar's preamp has none
         auto gain = bindLinear ("Gain", src->gainDb, 0.0f, 60.0f, " dB", 0, 0.0f);
         gain.steps = 61.0f;
-        addValue ({ 340, 136, 100, 48 }, "Gain", std::move (gain));
+        addValue ({ 300, 150, 88, 48 }, "Gain", std::move (gain));
     }
-    add (Field::Header, { 92, 212, 148, 18 }, "Stereo Image");
-    add (Field::Header, { 250, 212, 120, 18 }, "Delay");
-    add (Field::Header, { 380, 212, 252, 18 }, "Trim");
+    add (Field::Header, { 92, 226, 104, 20 }, "Stereo Image");
+    add (Field::Header, { 200, 226, 92, 20 }, "Delay");
+    add (Field::Header, { 296, 226, 96, 20 }, "Trim");
+    add (Field::Value, { 100, 252, 88, 44 }, "Mode").enabled = false; // Sidecar's only mode: L/R
     auto width = bindLinear ("Width", p.width, 0.0f, 100.0f, " %", 0, 100.0f);
-    addValue ({ 104, 240, 124, 48 }, "Width", std::move (width)).enabled = p.stereo.load();
+    addValue ({ 100, 304, 88, 44 }, "Width", std::move (width)).enabled = p.stereo.load();
     KnobBinding delay;
     {
         auto* in = &p.input;
@@ -642,10 +662,10 @@ void Display::buildPreamp (Strip& s)
         const auto inner = delay.set;
         delay.set = [in, inner] (float v) { in->delayMode.store (2); inner (v); }; // the engine's milliseconds
     }
-    addValue ({ 256, 240, 108, 48 }, "Delay", std::move (delay));
-    addToggle (Field::InKey, { 290, 300, 40, 40 }, "Delay In", p.input.delayOn);
-    addToggle (Field::Button, { 400, 240, 90, 34 }, "Polarity", p.input.invert);
-    addValue ({ 510, 240, 110, 48 }, "Trim", bindLinear ("Trim", p.input.trimDb, -24.0f, 24.0f, " dB", 1, 0.0f));
+    addValue ({ 204, 252, 84, 44 }, "Delay", std::move (delay));
+    addToggle (Field::InKey, { 226, 310, 40, 40 }, "Delay In", p.input.delayOn);
+    addToggle (Field::Button, { 300, 254, 88, 34 }, "Polarity", p.input.invert);
+    addValue ({ 300, 304, 88, 44 }, "Trim", bindLinear ("Trim", p.input.trimDb, -24.0f, 24.0f, " dB", 1, 0.0f));
 }
 
 void Display::buildHpf (Strip& s)
@@ -654,39 +674,52 @@ void Display::buildHpf (Strip& s)
     auto freq = bindFreq ("Freq", f.lowCutFreq, 20.0f, 2000.0f, 20.0f);
     freq.text = [text_ = freq.text] { return text_() + " Hz"; };
     addValue ({ 130, 330, 130, 54 }, "Freq", std::move (freq));
-    auto slope = bindChoice ("Slope", f.lowCutSlope, { "6 dB", "12 dB Butterworth", "18 dB Butterworth", "24 dB Butterworth" }, 3);
+    auto slope = bindChoice ("Slope", f.lowCutSlope, { "6dB", "12dB Butterworth", "18dB Butterworth", "24dB Butterworth" }, 3);
     {
         // The SQ's slopes are 12, 18 and 24 dB (p.34).
         const auto inner = slope.set;
         slope.set = [inner] (float v) { inner (juce::jmax (1.0f / 3.0f, v)); };
     }
     addValue ({ 300, 330, 190, 54 }, "Slope", std::move (slope));
-    addToggle (Field::InKey, { 590, 340, 40, 40 }, "In", f.lowCut);
+    addToggle (Field::InKey, { 604, 326, 44, 44 }, "In", f.lowCut);
 }
 
 void Display::buildGate (Strip& s)
 {
+    // As p.35: the side chain and its filter at the left, the timings over the graph,
+    // Threshold and Depth at its right, the histogram under it.
     auto& g = s.params.gate();
     const auto table = models::Dynamics;
     const int m = g.model.load();
-    add (Field::Header, { 92, 40, 76, 18 }, "Side Chain");
-    add (Field::Button, { 94, 62, 72, 28 }, "Self Keyed").enabled = false;
-    addValue ({ 180, 38, 90, 48 }, "Attack", bindParam (table, m, g.values, "att", "Attack"));
-    addValue ({ 280, 38, 90, 48 }, "Hold", bindParam (table, m, g.values, "hld", "Hold"));
-    addValue ({ 380, 38, 90, 48 }, "Release", bindParam (table, m, g.values, "rel", "Release"));
-    addValue ({ 544, 100, 92, 48 }, "Threshold", bindParam (table, m, g.values, "thr", "Threshold"));
-    addValue ({ 544, 160, 92, 48 }, "Depth", bindParam (table, m, g.values, "range", "Depth"));
-    addToggle (Field::InKey, { 590, 340, 40, 40 }, "In", g.on);
+    add (Field::Header, { 92, 40, 100, 18 }, "Side Chain");
+    add (Field::Button, { 98, 62, 88, 28 }, "Self Keyed").enabled = false;
+    add (Field::Button, { 112, 110, 60, 32 }, "HPF").enabled = false;      // the key filter: not modelled here
+    add (Field::Value, { 100, 146, 84, 40 }, "Freq").enabled = false;
+    add (Field::InKey, { 120, 210, 40, 40 }, "Filter In").enabled = false;
+    addValue ({ 256, 38, 74, 48 }, "Attack", bindParam (table, m, g.values, "att", "Attack"));
+    addValue ({ 350, 38, 74, 48 }, "Hold", bindParam (table, m, g.values, "hld", "Hold"));
+    addValue ({ 444, 38, 74, 48 }, "Release", bindParam (table, m, g.values, "rel", "Release"));
+    addValue ({ 592, 100, 80, 48 }, "Threshold", bindParam (table, m, g.values, "thr", "Threshold"));
+    addValue ({ 592, 160, 80, 48 }, "Depth", bindParam (table, m, g.values, "range", "Depth"));
+    addToggle (Field::InKey, { 604, 326, 44, 44 }, "In", g.on);
 }
 
 void Display::buildInsert (Strip& s)
 {
+    // As p.37: Send over Return, the operating level and Unassign under them.
     auto& ins = s.params.preInsert();
-    add (Field::Header, { 92, 40, 540, 18 }, "Send");
-    add (Field::Button, { 180, 70, 150, 34 }, ins.fx.load() >= 0 ? "FX " + juce::String (ins.fx.load() + 1) : "Unassigned").enabled = false;
-    add (Field::Header, { 92, 150, 540, 18 }, "Return");
-    add (Field::Button, { 180, 180, 150, 34 }, ins.fx.load() >= 0 ? "FX " + juce::String (ins.fx.load() + 1) : "Unassigned").enabled = false;
-    addToggle (Field::InKey, { 590, 340, 40, 40 }, "In", ins.on);
+    const auto where = [&ins] { return ins.fx.load() >= 0 ? "FX " + juce::String (ins.fx.load() + 1) : juce::String ("Unassigned"); };
+    add (Field::Header, { 92, 40, 500, 20 }, "Send");
+    add (Field::Button, { 106, 100, 126, 34 }, where()).enabled = false;
+    add (Field::Button, { 240, 100, 58, 34 }, juce::String ("-")).enabled = false;
+    add (Field::Header, { 92, 160, 500, 20 }, "Return");
+    add (Field::Button, { 106, 228, 126, 34 }, where()).enabled = false;
+    add (Field::Button, { 240, 228, 58, 34 }, juce::String ("-")).enabled = false;
+    add (Field::Button, { 362, 312, 96, 30 }, "Digital").enabled = false;
+    add (Field::Button, { 106, 360, 84, 30 }, "Unassign").enabled = false;
+    add (Field::Button, { 262, 360, 60, 30 }, "Apply").enabled = false;
+    add (Field::Button, { 416, 360, 60, 30 }, "Cancel").enabled = false;
+    addToggle (Field::InKey, { 604, 326, 44, 44 }, "In", ins.on);
 }
 
 void Display::buildGeq (Strip& s)
@@ -710,7 +743,7 @@ void Display::buildGeq (Strip& s)
                 auto& f = addValue ({ x0 + (float) b * bw, 64.0f, bw, 260.0f }, "GEQ " + m.params[(size_t) b].label, std::move (binding));
                 f.kind = Field::Area;
             }
-            addToggle (Field::InKey, { 590, 340, 40, 40 }, "In", eq->on);
+            addToggle (Field::InKey, { 604, 330, 44, 44 }, "In", eq->on);
         }
         break;
     }
@@ -718,47 +751,90 @@ void Display::buildGeq (Strip& s)
 
 void Display::buildPeq (Strip& s)
 {
+    // As p.40: the graph over four columns, Width, Frequency and Gain stacked in each,
+    // the LF and HF mode keys on the outsides.
     auto& eq = s.params.eq();
-    const float y = 278.0f;
+    const juce::Colour lf (0xffd97cf0), lm (0xff78d6ec), hm (0xff5b9dff), hf (0xffff4d4d);
     const struct { const char* name; const char* prefix; float x; juce::Colour c; } bands[] = {
-        { "LF", "l", 110, juce::Colours::orange }, { "LM", "1", 234, juce::Colours::lightgreen }, { "HM", "2", 358, juce::Colours::cornflowerblue }, { "HF", "h", 482, juce::Colours::violet }
+        { "LF", "l", 167, lf }, { "LM", "1", 273, lm }, { "HM", "2", 380, hm }, { "HF", "h", 486, hf }
     };
+    static constexpr float rows[] = { 268.0f, 312.0f, 356.0f };
     for (const auto& b : bands)
     {
         const juce::String n (b.name), pre (b.prefix);
-        addValue ({ b.x, y, 56, 44 }, n + " Freq", eqParam (s, pre + "f", n + " Freq"));
-        addValue ({ b.x + 58, y, 56, 44 }, n + " Width", eqParam (s, pre + "q", n + " Width"));
-        addValue ({ b.x + 29, y + 48, 56, 44 }, n + " Gain", eqParam (s, pre + "g", n + " Gain"));
+        const auto cell = [&] (int row, const juce::String& which, const char* id)
+        {
+            auto& f = addValue ({ b.x, rows[row], 62, 34 }, n + " " + which, eqParam (s, pre + id, n + " " + which));
+            f.hideTitle = true;
+            f.outline = b.c;
+        };
+        cell (0, "Width", "q");
+        cell (1, "Freq", "f");
+        cell (2, "Gain", "g");
     }
-    addValue ({ 110 - 18, y + 48, 44, 44 }, "LF Mode", eqParam (s, "lm", "LF Mode"));
-    addValue ({ 482 + 90, y + 48, 44, 44 }, "HF Mode", eqParam (s, "hm", "HF Mode"));
-    addToggle (Field::InKey, { 620, 240, 34, 34 }, "In", eq.on);
+    const auto modeKeys = [this, &s] (const char* id, const char* name, float x, int shelfGlyph, int cutGlyph)
+    {
+        auto mode = eqParam (s, id, name);
+        if (! mode.isValid())
+            return;
+        const int glyphs[] = { shelfGlyph, 2, cutGlyph };
+        for (int k = 0; k < 3; ++k)
+        {
+            auto& f = add (Field::Button, { x, rows[k], 44, 34 }, juce::String (name) + " " + juce::String (k));
+            f.glyph = glyphs[k];
+            f.colour = juce::Colour (0xfff2f2f2);
+            f.lit = [get = mode.get, k] { return juce::roundToInt (get() * 2.0f) == k; };
+            f.press = [set = mode.set, k] { set ((float) k / 2.0f); };
+        }
+    };
+    modeKeys ("lm", "LF Mode", 110, 1, 3);
+    modeKeys ("hm", "HF Mode", 556, 4, 5);
+    add (Field::Button, { 628, 274, 44, 34 }, "RTA").enabled = false;
+    addToggle (Field::InKey, { 628, 334, 44, 44 }, "In", eq.on);
 }
 
 void Display::buildComp (Strip& s)
 {
+    // As p.41: the side chain at the left; RMS and Peak, Attack, Release and Soft Knee
+    // along the top; Ratio, Threshold and Gain at the graph's right; parallel path below.
     auto& d = s.params.dynamics();
     const auto table = models::Dynamics;
     const int m = d.model.load();
-    add (Field::Header, { 92, 40, 76, 18 }, "Side Chain");
-    add (Field::Button, { 94, 62, 72, 28 }, "Self Keyed").enabled = false;
-    addValue ({ 180, 38, 110, 48 }, "Mode", bindParam (table, m, d.values, "det", "Mode"));
-    addValue ({ 296, 38, 80, 48 }, "Attack", bindParam (table, m, d.values, "att", "Attack"));
-    addValue ({ 382, 38, 80, 48 }, "Release", bindParam (table, m, d.values, "rel", "Release"));
-    addValue ({ 468, 38, 80, 48 }, "Soft Knee", bindParam (table, m, d.values, "soft", "Soft Knee"));
-    addValue ({ 544, 100, 92, 48 }, "Ratio", bindParam (table, m, d.values, "ratio", "Ratio"));
-    addValue ({ 544, 160, 92, 48 }, "Threshold", bindParam (table, m, d.values, "thr", "Threshold"));
-    addValue ({ 544, 220, 92, 48 }, "Gain", bindParam (table, m, d.values, "gain", "Gain"));
-    addValue ({ 96, 336, 64, 48 }, "Dry", bindParam (table, m, d.values, "dry", "Dry"));
-    addValue ({ 166, 336, 64, 48 }, "Wet", bindParam (table, m, d.values, "wet", "Wet"));
+    add (Field::Header, { 92, 40, 100, 18 }, "Side Chain");
+    add (Field::Button, { 98, 62, 88, 28 }, "Self Keyed").enabled = false;
+    add (Field::Button, { 112, 110, 60, 32 }, "HPF").enabled = false;
+    add (Field::Value, { 100, 146, 84, 40 }, "Freq").enabled = false;
+    add (Field::InKey, { 120, 210, 40, 40 }, "Filter In").enabled = false;
+    if (auto det = bindParam (table, m, d.values, "det", "Mode"); det.isValid())
+    {
+        auto& rms = add (Field::Tab, { 262, 44, 52, 20 }, "RMS");
+        rms.lit = [get = det.get] { return get() < 0.5f; };
+        rms.press = [set = det.set] { set (0.0f); };
+        auto& peak = add (Field::Tab, { 316, 44, 52, 20 }, "Peak");
+        peak.lit = [get = det.get] { return get() >= 0.5f; };
+        peak.press = [set = det.set] { set (1.0f); };
+    }
+    addValue ({ 388, 38, 74, 48 }, "Attack", bindParam (table, m, d.values, "att", "Attack"));
+    addValue ({ 484, 38, 74, 48 }, "Release", bindParam (table, m, d.values, "rel", "Release"));
+    if (auto knee = bindParam (table, m, d.values, "soft", "Soft Knee"); knee.isValid())
+    {
+        auto& f = add (Field::Button, { 596, 42, 76, 34 }, "Soft Knee");
+        f.lit = [get = knee.get] { return get() > 0.5f; };
+        f.press = [get = knee.get, set = knee.set] { set (get() > 0.5f ? 0.0f : 1.0f); };
+    }
+    addValue ({ 592, 100, 80, 48 }, "Ratio", bindParam (table, m, d.values, "ratio", "Ratio"));
+    addValue ({ 592, 160, 80, 48 }, "Threshold", bindParam (table, m, d.values, "thr", "Threshold"));
+    addValue ({ 592, 220, 80, 48 }, "Gain", bindParam (table, m, d.values, "gain", "Gain"));
+    addValue ({ 96, 348, 64, 44 }, "Dry", bindParam (table, m, d.values, "dry", "Dry"));
+    addValue ({ 166, 348, 64, 44 }, "Wet", bindParam (table, m, d.values, "wet", "Wet"));
     auto parallel = bindParam (table, m, d.values, "par", "Parallel Path");
     if (parallel.isValid())
     {
-        auto& f = add (Field::Button, { 96, 300, 134, 28 }, "Parallel Path");
+        auto& f = add (Field::Button, { 96, 312, 134, 30 }, "Parallel Path");
         f.lit = [get = parallel.get] { return get() > 0.5f; };
         f.press = [get = parallel.get, set = parallel.set] { set (get() > 0.5f ? 0.0f : 1.0f); };
     }
-    addToggle (Field::InKey, { 590, 340, 40, 40 }, "In", d.on);
+    addToggle (Field::InKey, { 604, 326, 44, 44 }, "In", d.on);
 }
 
 //==============================================================================
@@ -794,13 +870,16 @@ void Display::paintField (juce::Graphics& g, const Field& f, bool isSelected)
         case Field::Value:
         {
             auto r = f.area;
-            auto title = r.removeFromTop (16.0f);
-            text (g, title, f.title, 10.5f, juce::Colours::white.withMultipliedAlpha (dim), juce::Justification::centred, true);
+            if (! f.hideTitle)
+            {
+                auto title = r.removeFromTop (16.0f);
+                text (g, title, f.caption.isNotEmpty() ? f.caption : f.title, 10.5f, juce::Colours::white.withMultipliedAlpha (dim), juce::Justification::centred, true);
+            }
             r.reduce (2.0f, 0.0f);
             auto box = r.removeFromTop (juce::jmin (22.0f, r.getHeight()));
             g.setColour (kWell.withMultipliedAlpha (dim));
             g.fillRoundedRectangle (box, 2.0f);
-            g.setColour ((isSelected ? kYellow : kLine).withMultipliedAlpha (dim));
+            g.setColour ((isSelected ? kYellow : ! f.outline.isTransparent() ? f.outline : kLine).withMultipliedAlpha (dim));
             g.drawRoundedRectangle (box, 2.0f, isSelected ? 1.5f : 0.8f);
             if (f.binding.isValid())
             {
@@ -826,24 +905,43 @@ void Display::paintField (juce::Graphics& g, const Field& f, bool isSelected)
         case Field::Button:
         {
             const bool on = f.lit && f.lit();
-            auto top = on ? f.colour.brighter (0.25f) : juce::Colour (0xff4d8bb8), bottom = on ? f.colour.darker (0.25f) : juce::Colour (0xff24598a);
+            const auto top = on ? f.colour.brighter (0.25f) : juce::Colour (0xff4d8bb8), bottom = on ? f.colour.darker (0.25f) : juce::Colour (0xff24598a);
             g.setGradientFill (juce::ColourGradient (top.withMultipliedAlpha (dim), f.area.getX(), f.area.getY(), bottom.withMultipliedAlpha (dim),
                                                      f.area.getX(), f.area.getBottom(), false));
             g.fillRoundedRectangle (f.area, 4.0f);
             g.setColour (kLine.withMultipliedAlpha (dim));
             g.drawRoundedRectangle (f.area, 4.0f, 0.8f);
-            text (g, f.area, f.title, 11.0f, juce::Colours::white.withMultipliedAlpha (dim), juce::Justification::centred, true);
+            if (f.glyph > 0)
+            {
+                // The PEQ's mode keys: a shape's outline, as p.40 draws them.
+                auto r = f.area.reduced (8.0f, 8.0f);
+                juce::Path p;
+                const auto at = [&r] (float x, float y) { return juce::Point<float> (r.getX() + r.getWidth() * x, r.getY() + r.getHeight() * y); };
+                p.startNewSubPath (at (0.0f, f.glyph == 3 ? 1.0f : f.glyph == 5 ? 0.15f : f.glyph == 2 ? 0.75f : 0.65f));
+                if (f.glyph == 1)      { p.lineTo (at (0.35f, 0.65f)); p.lineTo (at (0.65f, 0.25f)); p.lineTo (at (1.0f, 0.25f)); }
+                else if (f.glyph == 2) { p.lineTo (at (0.3f, 0.75f)); p.lineTo (at (0.5f, 0.15f)); p.lineTo (at (0.7f, 0.75f)); p.lineTo (at (1.0f, 0.75f)); }
+                else if (f.glyph == 3) { p.lineTo (at (0.3f, 0.15f)); p.lineTo (at (1.0f, 0.15f)); }
+                else if (f.glyph == 4) { p.lineTo (at (0.35f, 0.25f)); p.lineTo (at (0.65f, 0.65f)); p.lineTo (at (1.0f, 0.65f)); }
+                else                   { p.lineTo (at (0.7f, 0.15f)); p.lineTo (at (1.0f, 1.0f)); }
+                g.setColour ((on ? juce::Colours::black : juce::Colours::white).withMultipliedAlpha (dim));
+                g.strokePath (p, juce::PathStrokeType (1.5f));
+                return;
+            }
+            {
+                const auto shown = ! on && f.captionOff.isNotEmpty() ? f.captionOff : f.caption.isNotEmpty() ? f.caption : f.title;
+                text (g, f.area, shown, 11.0f, (on ? inkOn (f.colour) : juce::Colours::white).withMultipliedAlpha (dim), juce::Justification::centred, true);
+            }
             return;
         }
         case Field::InKey:
         {
             const bool on = f.lit && f.lit();
             auto r = f.area.withSizeKeepingCentre (juce::jmin (f.area.getWidth(), f.area.getHeight()), juce::jmin (f.area.getWidth(), f.area.getHeight()));
-            g.setColour (on ? kGreen : juce::Colour (0xff24598a));
+            g.setColour ((on ? kGreen : juce::Colour (0xff24598a)).withMultipliedAlpha (dim));
             g.fillEllipse (r);
-            g.setColour (juce::Colours::white);
+            g.setColour (juce::Colours::white.withMultipliedAlpha (dim));
             g.drawEllipse (r, 1.2f);
-            text (g, r, "In", 11.0f, on ? juce::Colours::black : juce::Colours::white, juce::Justification::centred, true);
+            text (g, r, "In", 11.0f, (on ? juce::Colours::black : juce::Colours::white).withMultipliedAlpha (dim), juce::Justification::centred, true);
             return;
         }
     }
@@ -892,17 +990,23 @@ void Display::paintTitleBar (juce::Graphics& g)
         case Screen::Routing:
             title = block == Block::DirOut ? "Ch/Mix Settings" : block == Block::MixSettings ? "Ch/Mix Settings" : block == Block::DcaMute ? "DCA/MG Assign" : block == Block::Sends ? "Sends" : "Routing";
             break;
-        case Screen::Meters:     title = "Meters"; break;
+        case Screen::Meters:     title = juce::StringArray ({ "Input Meters", "FX Meters", "Mix Meters", "USB Meters", "RTA", "Channel Meters" })[meterTab]; break;
         case Screen::Fx:         title = "FX"; break;
-        case Screen::Scenes:     title = "Scenes"; break;
-        case Screen::Setup:      title = "Setup"; break;
-        case Screen::Utility:    title = "Utility"; break;
-        case Screen::Io:         title = "I/O"; break;
+        case Screen::Scenes:     title = juce::StringArray ({ "Scene Manager", "Cue List Editor", "Global Filter", "Safes" })[sceneTab]; break;
+        case Screen::Setup:      title = setupTab == 0 ? "Talkback" : surfaceTab == 0 ? "Strip Assign" : "Soft Controls"; break;
+        case Screen::Utility:    title = utilityTab == 0 ? juce::StringArray ({ "Diagnostics", "MIDI", "Add-ons", "Calibration" })[generalTab] : juce::StringArray ({ "General", "Data", "USB Utility", "SQ Drive", "Auto Mic Mixer" })[utilityTab]; break;
+        case Screen::Io:         title = juce::StringArray ({ "Input Patch", "Output Patch", "Tie Lines" })[ioTab]; break;
     }
-    juce::Rectangle<float> tab (92.0f, 5.0f, 110.0f, 19.0f);
+    // Its white tab, cut along the channel tag's slant (p.11).
+    juce::Path tab;
+    tab.startNewSubPath (76.0f, 5.0f);
+    tab.lineTo (202.0f, 5.0f);
+    tab.lineTo (202.0f, 24.0f);
+    tab.lineTo (86.0f, 24.0f);
+    tab.closeSubPath();
     g.setColour (juce::Colours::white);
-    g.fillRoundedRectangle (tab, 3.0f);
-    text (g, tab.reduced (6.0f, 0.0f), title, 12.0f, juce::Colours::black, juce::Justification::centredLeft, true);
+    g.fillPath (tab);
+    text (g, { 92.0f, 5.0f, 106.0f, 19.0f }, title, 12.0f, juce::Colours::black, juce::Justification::centredLeft, true);
 
     // Current and next scene.
     auto& show = ctx.show;
@@ -919,17 +1023,19 @@ void Display::paintTitleBar (juce::Graphics& g)
     text (g, { 366.0f, 2.0f, 110.0f, 14.0f }, "Next:", 10.5f, juce::Colours::white, juce::Justification::centredLeft, true);
     text (g, { 366.0f, 16.0f, 130.0f, 14.0f }, nextName.isNotEmpty() ? nextName : "No Scene", 10.5f, juce::Colours::white, juce::Justification::centredLeft);
 
-    // The selected mix, at the far right, yellow.
+    // The selected mix, at the far right, in its channel colour (yellow for Main, p.34).
+    auto* mixStrip = stripOf (ctx.engine, slotOfMix (selectedMix));
+    const auto mixColour = selectedMix != 0 && mixStrip != nullptr && ! mixStrip->getColour().isTransparent() ? mixStrip->getColour() : kMixTag;
     juce::Path mix;
     mix.startNewSubPath ((float) kWidth, 0.0f);
     mix.lineTo ((float) kWidth - 62.0f, 0.0f);
     mix.lineTo ((float) kWidth - 78.0f, bar.getBottom());
     mix.lineTo ((float) kWidth, bar.getBottom());
     mix.closeSubPath();
-    g.setColour (kMixTag);
+    g.setColour (mixColour);
     g.fillPath (mix);
-    text (g, { (float) kWidth - 60.0f, 2.0f, 56.0f, 15.0f }, mixType (selectedMix), 11.0f, juce::Colours::black, juce::Justification::centredRight, true);
-    text (g, { (float) kWidth - 70.0f, 16.0f, 66.0f, 15.0f }, mixName (ctx.engine, selectedMix), 11.0f, juce::Colours::black, juce::Justification::centredRight, true);
+    text (g, { (float) kWidth - 60.0f, 2.0f, 56.0f, 15.0f }, mixType (selectedMix), 11.0f, inkOn (mixColour), juce::Justification::centredRight, true);
+    text (g, { (float) kWidth - 70.0f, 16.0f, 66.0f, 15.0f }, mixName (ctx.engine, selectedMix), 11.0f, inkOn (mixColour), juce::Justification::centredRight, true);
 
     g.setColour (kLine);
     g.drawHorizontalLine (kTitleBar, 0.0f, (float) kWidth);
@@ -938,9 +1044,9 @@ void Display::paintTitleBar (juce::Graphics& g)
 void Display::paintHome (juce::Graphics& g)
 {
     // The console's name large and faint behind the buttons, the version under it.
-    text (g, { 0.0f, 90.0f, (float) kWidth, 110.0f }, "SQ-5", 96.0f, juce::Colours::white.withAlpha (0.14f), juce::Justification::centred, true);
-    text (g, { 0.0f, 186.0f, (float) kWidth, 18.0f }, "Sidecar", 12.0f, juce::Colours::white.withAlpha (0.6f));
-    text (g, { 0.0f, 300.0f, (float) kWidth, 18.0f }, "Current User: Admin", 11.0f, juce::Colours::white.withAlpha (0.65f));
+    text (g, { 0.0f, 118.0f, (float) kWidth, 110.0f }, "SQ-5", 96.0f, juce::Colours::white.withAlpha (0.14f), juce::Justification::centred, true);
+    text (g, { 0.0f, 232.0f, (float) kWidth, 18.0f }, "Sidecar", 12.0f, juce::Colours::white.withAlpha (0.6f));
+    text (g, { 0.0f, 358.0f, (float) kWidth, 18.0f }, "Current User: Admin", 11.0f, juce::Colours::white.withAlpha (0.65f));
 }
 
 void Display::paintColumn (juce::Graphics& g, juce::Rectangle<float> col, const Slot& slot, bool isSelected, bool overview)
@@ -1004,19 +1110,22 @@ void Display::paintColumn (juce::Graphics& g, juce::Rectangle<float> col, const 
         text (g, value.removeFromTop (r.getHeight() * 0.62f), gainText (gain), 15.0f, juce::Colours::white, juce::Justification::centred, true);
         text (g, value, "dB", 10.0f, juce::Colours::white);
         // 48V, PAD, POL, DLY, AMM and TIE.
-        auto flags = l.flags.reduced (4.0f, 1.0f);
-        auto rowA = flags.removeFromTop (flags.getHeight() * 0.5f), rowB = flags;
+        auto flagArea = l.flags.reduced (4.0f, 1.0f);
+        const float flagRow = flagArea.getHeight() / 3.0f;
+        auto rowA = flagArea.removeFromTop (flagRow), rowB = flagArea.removeFromTop (flagRow), rowC = flagArea;
         const auto flag = [&] (juce::Rectangle<float> r2, const char* name, bool on, juce::Colour c)
         {
             g.setColour (juce::Colours::black.withAlpha (on ? 0.9f : 0.3f));
             g.fillRect (r2.reduced (1.0f, 0.5f));
-            text (g, r2, name, 9.5f, on ? c : juce::Colours::white.withAlpha (0.35f), juce::Justification::centred, true);
+            text (g, r2, name, 9.0f, on ? c : juce::Colours::white.withAlpha (0.35f), juce::Justification::centred, true);
         };
         const auto w = rowA.getWidth() * 0.5f;
         flag (rowA.removeFromLeft (w), "48V", src != nullptr && src->phantom.load(), juce::Colours::red);
         flag (rowA, "PAD", false, kYellow);
         flag (rowB.removeFromLeft (w), "POL", p.input.invert.load(), kYellow);
         flag (rowB, "DLY", p.input.delayOn.load(), juce::Colours::orange);
+        flag (rowC.removeFromLeft (w), "AMM", false, kYellow); // what Sidecar has no Automatic Mic Mixer for
+        flag (rowC, "TS", false, kYellow);
     }
     else if (slot.kind == Slot::FxReturn || slot.kind == Slot::FxSend)
     {
@@ -1056,7 +1165,10 @@ void Display::paintColumn (juce::Graphics& g, juce::Rectangle<float> col, const 
         const bool on = p.preInsert().on.load();
         g.setColour (on ? kGreen.withAlpha (0.85f) : juce::Colour (0xff5595c0).withAlpha (0.55f));
         g.fillRoundedRectangle (r, 3.0f);
+        auto dot = r.removeFromRight (r.getHeight()).reduced (4.0f);
         text (g, r, "Insert", 10.5f, on ? juce::Colours::black : juce::Colours::white.withAlpha (0.8f), juce::Justification::centred, true);
+        g.setColour (on ? kGreen.brighter (0.3f) : juce::Colours::white.withAlpha (0.25f));
+        g.fillEllipse (dot);
     }
     if (rows.peq || rows.geq)
     {
@@ -1127,7 +1239,17 @@ void Display::paintResponse (juce::Graphics& g, juce::Rectangle<float> r, Strip&
 {
     g.setColour (kWell);
     g.fillRect (r);
-    // The frequency grid (p.34's): 20, 50, 100, 200, 500, 1k, 2k, 5k, 10k.
+    // The log grid and frequencies (pp.34, 40).
+    for (float decade : { 10.0f, 100.0f, 1000.0f, 10000.0f })
+        for (int k = 2; k < 10; ++k)
+        {
+            const float hz = decade * (float) k;
+            if (hz < 20.0f || hz > 20000.0f)
+                continue;
+            const auto x = logX (r, hz);
+            g.setColour (kLine.withAlpha (k == 2 || k == 5 ? 0.3f : 0.14f));
+            g.drawVerticalLine ((int) x, r.getY(), r.getBottom());
+        }
     for (float hz : { 50.0f, 100.0f, 200.0f, 500.0f, 1000.0f, 2000.0f, 5000.0f, 10000.0f })
     {
         const auto x = logX (r, hz);
@@ -1140,11 +1262,26 @@ void Display::paintResponse (juce::Graphics& g, juce::Rectangle<float> r, Strip&
         const auto y = r.getCentreY() - r.getHeight() * 0.5f * db / 18.0f;
         g.setColour (kLine.withAlpha (db == 0.0f ? 0.6f : 0.25f));
         g.drawHorizontalLine ((int) y, r.getX(), r.getRight());
+        text (g, { r.getX() + 4.0f, y - 11.0f, 26.0f, 10.0f }, (db > 0.0f ? "+" : "") + juce::String ((int) db), 8.5f, juce::Colours::white.withAlpha (0.7f), juce::Justification::centredLeft);
     }
     const auto& freqs = curveFreqs();
     std::array<double, 48> db {};
+    if (blockId == 1 && s.params.filter().lowCut.load())
+    {
+        // The HPF's slope shows green under the PEQ's curve (p.40).
+        std::array<double, 48> hpf {};
+        ld::ld_strip_response (s.getHandle(), 3, freqs.data(), hpf.data(), (int32_t) hpf.size(), 48000.0);
+        drawCurve (g, r, hpf.data(), freqs.data(), (int) hpf.size(), 18.0f, kFill.brighter (0.2f), true);
+    }
     ld::ld_strip_response (s.getHandle(), blockId, freqs.data(), db.data(), (int32_t) db.size(), 48000.0);
-    drawCurve (g, r, db.data(), freqs.data(), (int) db.size(), 18.0f, kCurve, true);
+    if (blockId == 1)
+    {
+        // Brightly coloured while the PEQ is in, greyed out while it's not (p.40).
+        const bool on = s.params.eq().on.load();
+        drawCurve (g, r, db.data(), freqs.data(), (int) db.size(), 18.0f, on ? kCurve : juce::Colours::white.withAlpha (0.4f), true, on ? juce::Colour (0xff6b4fd0) : juce::Colours::grey);
+    }
+    else
+        drawCurve (g, r, db.data(), freqs.data(), (int) db.size(), 18.0f, kCurve, true);
 }
 
 void Display::paintTransfer (juce::Graphics& g, juce::Rectangle<float> r, ld::DynSlotParams& d)
@@ -1194,29 +1331,64 @@ void Display::paintGraph (juce::Graphics& g)
     switch (block)
     {
         case Block::Preamp:
+            text (g, { 100.0f, 150.0f, 72.0f, 11.0f }, "(Hold)", 9.0f, juce::Colours::white, juce::Justification::centred, true);
+            paintLevel (g, { 396.0f, 150.0f, 12.0f, 240.0f }, *s);
+            break;
         case Block::Insert:
+            // Each socket's caption (p.37).
+            text (g, { 106.0f, 86.0f, 192.0f, 12.0f }, "Ip Insert Send, Left", 9.0f, juce::Colours::white.withAlpha (0.7f));
+            text (g, { 106.0f, 214.0f, 192.0f, 12.0f }, "Ip Insert Return", 9.0f, juce::Colours::white.withAlpha (0.7f));
+            text (g, { 200.0f, 318.0f, 150.0f, 18.0f }, "Operating Level:", 10.5f, juce::Colours::white, juce::Justification::centredRight, true);
+            paintLevel (g, { 636.0f, 58.0f, 12.0f, 260.0f }, *s);
+            break;
         case Block::Bank:
             paintLevel (g, { 636.0f, 58.0f, 12.0f, 330.0f }, *s);
             break;
         case Block::Hpf:
-            paintResponse (g, { 96.0f, 42.0f, 540.0f, 270.0f }, *s, 3);
-            paintLevel (g, { 646.0f, 42.0f, 12.0f, 270.0f }, *s);
+            paintResponse (g, { 92.0f, 38.0f, 546.0f, 274.0f }, *s, 3);
+            paintLevel (g, { 646.0f, 38.0f, 12.0f, 274.0f }, *s);
             break;
         case Block::Gate:
             paintTransfer (g, { 240.0f, 100.0f, 290.0f, 180.0f }, p.gate());
             paintLevel (g, { 225.0f, 100.0f, 12.0f, 180.0f }, *s);
-            paintHistory (g, { 240.0f, 300.0f, 290.0f, 80.0f }, true);
+            paintHistory (g, { 240.0f, 312.0f, 290.0f, 76.0f }, true);
             break;
         case Block::Comp:
             paintTransfer (g, { 240.0f, 100.0f, 290.0f, 180.0f }, p.dynamics());
             paintLevel (g, { 225.0f, 100.0f, 12.0f, 180.0f }, *s);
-            paintHistory (g, { 240.0f, 300.0f, 290.0f, 80.0f }, false);
+            paintHistory (g, { 240.0f, 312.0f, 290.0f, 76.0f }, false);
             break;
         case Block::Peq:
-            paintResponse (g, { 96.0f, 42.0f, 520.0f, 228.0f }, *s, 1);
-            paintLevel (g, { 625.0f, 42.0f, 12.0f, 190.0f }, *s);
+        {
+            paintResponse (g, { 92.0f, 36.0f, 546.0f, 206.0f }, *s, 1);
+            paintLevel (g, { 646.0f, 36.0f, 12.0f, 206.0f }, *s);
+            // The bands' panels and coloured names, under the graph (p.40).
+            const struct { const char* name; float x, w; juce::Colour c; } panels[] = {
+                { "LF", 92.0f, 154.0f, juce::Colour (0xffd97cf0) }, { "LM", 256.0f, 96.0f, juce::Colour (0xff78d6ec) },
+                { "HM", 363.0f, 96.0f, juce::Colour (0xff5b9dff) }, { "HF", 470.0f, 152.0f, juce::Colour (0xffff4d4d) }
+            };
+            for (const auto& b : panels)
+            {
+                juce::Rectangle<float> panel (b.x, 246.0f, b.w, 150.0f);
+                g.setColour (kColumnDim);
+                g.fillRoundedRectangle (panel, 3.0f);
+                g.setColour (kLine.withAlpha (0.7f));
+                g.drawRoundedRectangle (panel, 3.0f, 0.8f);
+                auto head = panel.removeFromTop (18.0f);
+                g.setColour (kBar);
+                g.fillRect (head.reduced (1.0f));
+                text (g, head, b.name, 12.0f, b.c, juce::Justification::centred, true);
+            }
             break;
+        }
         case Block::DirOut:
+            // The follow options' names and the source's caption (p.46).
+            text (g, { 230.0f, 88.0f, 416.0f, 14.0f }, "Direct Out Source", 10.5f, juce::Colours::white, juce::Justification::centred, true);
+            for (auto [name, x, y] : { std::tuple ("Follow Fader", 288.0f, 170.0f), std::tuple ("Follow Mute", 413.0f, 170.0f),
+                                       std::tuple ("Follow DCA Fader", 288.0f, 236.0f), std::tuple ("Follow DCA Mute", 413.0f, 236.0f),
+                                       std::tuple ("Follow Mute Group", 413.0f, 302.0f) })
+                text (g, { x - 28.0f, y, 120.0f, 13.0f }, name, 10.0f, juce::Colours::white, juce::Justification::centred, true);
+            break;
         case Block::MixSettings:
         case Block::DcaMute:
         case Block::Sends:
@@ -1250,6 +1422,11 @@ void Display::paintDetail (juce::Graphics& g)
     {
         const juce::Rectangle<float> col (1.5f, (float) kTitleBar + 2.0f, kOverviewWidth - 3.0f, (float) kHeight - kTitleBar - 2.0f);
         paintColumn (g, col, slotOf (ctx.engine, s), true, true);
+    }
+    if (auto* s = selectedStrip(); s != nullptr && screen == Screen::Routing)
+    {
+        const juce::Rectangle<float> col (1.5f, (float) kTitleBar + 2.0f, kOverviewWidth - 3.0f, (float) kHeight - kTitleBar - 2.0f);
+        paintRoutingColumn (g, col, slotOf (ctx.engine, s), true);
     }
     paintGraph (g);
 }
@@ -1308,7 +1485,7 @@ void Display::mouseDown (const juce::MouseEvent& e)
     dragged = false;
     pressed = -1;
     dragStartBank = bankFirst;
-    dragStartOther = screen == Screen::Scenes ? sceneFirst : screen == Screen::Io ? ioFirst : sendFirst;
+    dragStartOther = screen == Screen::Scenes ? sceneFirst : screen == Screen::Io ? ioFirst : screen == Screen::Meters ? meterFirst : sendFirst;
     if (locked)
     {
         setLocked (false);
@@ -1352,6 +1529,12 @@ void Display::mouseDrag (const juce::MouseEvent& e)
     {
         sendFirst = dragStartOther - stepX;
         rebuild();
+    }
+    else if (screen == Screen::Meters && meterFirst != dragStartOther - stepY / 5)
+    {
+        // Up and down through the rows of meters (p.53).
+        meterFirst = dragStartOther - stepY / 5;
+        repaint();
     }
     else if (screen == Screen::Scenes && sceneFirst != dragStartOther - stepY)
     {

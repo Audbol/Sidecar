@@ -135,7 +135,7 @@ const Q07: f32 = 23.0;
 /// MAN p.50), as the EQ reset sets them (L.SHELF 125 Hz, peaks at 1 kHz and
 /// 4 kHz Q 0.7, H.SHELF 10 kHz, all at 0 dB; MAN p.51); scene 0 is taken to be
 /// the same (the guide doesn't say).
-static EQ_PARAMS: [ParamSpec; 14] = [
+pub const EQ_PARAMS: [ParamSpec; 14] = [
     p("lf", "LOW F", "Hz", ParamKind::Values(&FREQS), 0.0, 119.0, 120, nearest(&FREQS, 125.0)),
     p("lg", "LOW G", "dB", ParamKind::Linear, -18.0, 18.0, 73, 0.0),
     p("lq", "LOW Q", "", ParamKind::Choice(LOW_Q), 0.0, 42.0, 43, SHELF),
@@ -153,7 +153,8 @@ static EQ_PARAMS: [ParamSpec; 14] = [
 ];
 
 /// The 4-band EQ of the inputs, the tape and effect returns and STEREO.
-pub static EQ: &[ModelSpec] = &[ModelSpec { token: "Y2EQ", name: "4-Band PEQ", category: ModelCategory::Eq, params: &EQ_PARAMS }];
+pub const EQ_MODEL: ModelSpec = ModelSpec { token: "Y2EQ", name: "4-Band PEQ", category: ModelCategory::Eq, params: &EQ_PARAMS };
+pub static EQ: &[ModelSpec] = &[EQ_MODEL];
 
 /// The compressor's and expander's ratios (MAN p.194): oo is 1000:1.
 pub const RATIOS: [f32; 16] = [1.0, 1.1, 1.3, 1.5, 1.7, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 8.0, 10.0, 20.0, 1000.0];
@@ -247,6 +248,7 @@ pub static MODELS: ModelTables = ModelTables {
     eq_bus: EQ,
     filter_tools: FILTER_TOOLS,
     fx: &fx::FX_MODELS,
+    fx_premium_first: 0,
     fx_premium_slots: 2,
     gate_default: "Y2GAT",
     comp_default: "Y2CMP",

@@ -38,7 +38,7 @@ const fn p(
 /// The compressor's ratios: 1:1 (none) to infinity (p.42; the steps between
 /// are Sidecar's reading). The last stands for infinity.
 pub const RATIOS: [f32; 17] = [1.0, 1.1, 1.2, 1.3, 1.5, 1.7, 2.0, 2.5, 3.0, 3.5, 4.0, 5.0, 6.0, 8.0, 10.0, 20.0, 1000.0];
-const RATIO_NAMES: &[&str] = &[
+pub const RATIO_NAMES: &[&str] = &[
     "1:1", "1.1:1", "1.2:1", "1.3:1", "1.5:1", "1.7:1", "2:1", "2.5:1", "3:1", "3.5:1", "4:1", "5:1", "6:1", "8:1", "10:1",
     "20:1", "INF",
 ];
@@ -99,15 +99,15 @@ pub fn width_q(octaves: f32) -> f32 {
     n.sqrt() / (n - 1.0)
 }
 
-const FREQ: (f32, f32, u32) = (20.0, 20000.0, 241);
-const GAIN: (f32, f32, u32) = (-15.0, 15.0, 61);
+pub(crate) const FREQ: (f32, f32, u32) = (20.0, 20000.0, 241);
+pub(crate) const GAIN: (f32, f32, u32) = (-15.0, 15.0, 61);
 /// WIDTH runs from 1.5 octaves to 1/9 octave (p.40).
-const WIDTH: (f32, f32, u32) = (1.5, 1.0 / 9.0, 41);
+pub(crate) const WIDTH: (f32, f32, u32) = (1.5, 1.0 / 9.0, 41);
 
 /// The PEQ (p.40): LF Shelf, Bell or HPF; two parametric bands; HF Shelf, Bell
 /// or LPF. Every frequency 20 Hz..20 kHz, gain +-15 dB. The bands start flat
 /// (their frequencies are Sidecar's choice).
-static PEQ_PARAMS: [ParamSpec; 14] = [
+pub static PEQ_PARAMS: [ParamSpec; 14] = [
     p("lm", "LF MODE", "", ParamKind::Choice(&["SHELF", "BELL", "HPF"]), 0.0, 2.0, 3, 0.0),
     p("lf", "LF F", "Hz", ParamKind::Log, FREQ.0, FREQ.1, FREQ.2, 100.0),
     p("lg", "LF G", "dB", ParamKind::Linear, GAIN.0, GAIN.1, GAIN.2, 0.0),
@@ -137,7 +137,7 @@ pub const GEQ_HZ: [f32; 28] = [
 pub const GEQ_WIDTH: f32 = 1.0 / 3.0;
 
 /// The 28 bands' gains, -12..+12 dB (p.38).
-static GEQ_PARAMS: [ParamSpec; 28] = [
+pub static GEQ_PARAMS: [ParamSpec; 28] = [
     p("g1", "31", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
     p("g2", "40", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
     p("g3", "50", "dB", ParamKind::Linear, -12.0, 12.0, 49, 0.0),
@@ -180,6 +180,7 @@ pub static MODELS: ModelTables = ModelTables {
     eq_bus: &EQ_BUS,
     filter_tools: FILTER_TOOLS,
     fx: &fx::FX_MODELS,
+    fx_premium_first: 0,
     fx_premium_slots: 8,
     gate_default: "SQGATE",
     comp_default: "SQCOMP",
