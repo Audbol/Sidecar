@@ -7,6 +7,9 @@ All notable changes to Sidecar are listed here. Versions follow
 
 - A crash when a control on a console's display rebuilt the controls while it was still
   being turned (seen on the X32's SCENES screen).
+- Custom controls: an encoder and its two keys each keep their own name (`bu/name`,
+  `bd/name` were dropped), and their LCD shows them as a WING does: the encoder's name
+  above a rule, then a row for each key.
 - A start on the Allen & Heath SQ-5: its processing blocks (gate, compressor with parallel
   path, ducker, 4-band PEQ), offered on any Universal strip, and its console profile
   (counts, signal chains, fader law), its 28-band GEQ on every mix and its 11 RackExtra

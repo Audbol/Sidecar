@@ -143,6 +143,42 @@ void drawScribble (juce::Graphics& g, juce::Rectangle<float> lcd, const Scribble
     const float pad = juce::jlimit (2.0f, 6.0f, W * 0.04f);
     auto r = lcd;
 
+    if (info.controlRows)
+    {
+        // A custom control: the encoder's name, a rule, then its two keys.
+        const auto row = [&] (const juce::String& text, juce::Rectangle<float> area, float size)
+        {
+            const bool inverted = text.startsWithChar ('|');
+            const auto shown = text.removeCharacters ("|*");
+            g.setFont (lcdFont (size, WingWeight::Medium));
+            if (inverted && shown.isNotEmpty())
+            {
+                const float width = juce::jmin (area.getWidth(), juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), shown) + 2.0f * pad);
+                g.setColour (ink);
+                g.fillRect (area.withSizeKeepingCentre (width, area.getHeight() - 1.0f));
+                g.setColour (bg);
+            }
+            else
+            {
+                g.setColour (ink);
+            }
+            lcdText (g, shown, area.reduced (1.0f, 0.0f), juce::Justification::centred);
+        };
+        if (info.controlTop.isNotEmpty())
+        {
+            auto top = r.removeFromTop (std::round (H * 0.36f));
+            row (info.controlTop, top, juce::jmax (6.0f, top.getHeight() * 0.56f));
+            g.setColour (ink.withMultipliedAlpha (0.85f));
+            g.fillRect (juce::Rectangle<float> (lcd.getX(), std::round (top.getBottom()), lcd.getWidth(), 1.0f));
+            r.removeFromTop (1.0f);
+        }
+        auto upper = r.removeFromTop (r.getHeight() * 0.5f);
+        const float size = juce::jmax (6.0f, juce::jmin (upper.getHeight() * 0.62f, H * 0.2f));
+        row (info.controlUpper, upper, size);
+        row (info.controlLower, r, size);
+        return;
+    }
+
     // Top row: the number, and the tag on an inverted box ("5" | "CRD5" for
     // inputs, "BUS" | "1" otherwise), under a rule across the strip.
     if (info.number.isNotEmpty() || info.tag.isNotEmpty() || info.sendTag.isNotEmpty())

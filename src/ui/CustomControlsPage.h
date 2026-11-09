@@ -59,8 +59,13 @@ struct Function
 struct Control
 {
     Function encoder, upper, lower;
-    juce::String name;
+    juce::String name;                 // the encoder's (a layer with no encoder: the upper key's)
+    juce::String upperName, lowerName; // the keys' own names (`bu/name`, `bd/name`)
     int colour = 0; // WING colour 1-18 with its light on; -18..-1 the colour with the light off; 0 = none
+
+    /** The name of a part, on a layer with an encoder or without one. */
+    juce::String& nameOf (Slot s, bool layerHasEncoder) { return s == Slot::Lower ? lowerName : s == Slot::Upper && layerHasEncoder ? upperName : name; }
+    const juce::String& nameOf (Slot s, bool layerHasEncoder) const { return s == Slot::Lower ? lowerName : s == Slot::Upper && layerHasEncoder ? upperName : name; }
 
     Function& slot (Slot s) { return s == Slot::Encoder ? encoder : s == Slot::Upper ? upper : lower; }
     const Function& slot (Slot s) const { return s == Slot::Encoder ? encoder : s == Slot::Upper ? upper : lower; }

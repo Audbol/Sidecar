@@ -5631,7 +5631,7 @@ mod tests {
         assert_eq!(cov.mapped, 79325, "{}", cov.report());
         // 89 settings: the COMPACT's mfdr, cscmode, autosel_CMPCT, mfdrkeep, busspill, mainspill,
         // mtxspill and dcacc and the surface lock (cnslock) among them.
-        assert_eq!((cov.settings, cov.stored), (89, 5423), "{}", cov.report());
+        assert_eq!((cov.settings, cov.stored), (89, 5275), "{}", cov.report());
         for (g, (m, t)) in &cov.by_group {
             assert!(m == t || g == "/$ctl/daw", "{g}: {m} of {t}");
         }
@@ -5639,7 +5639,7 @@ mod tests {
         // The engine-backed share: everything but the settings and the stored values.
         // (The COMPACT's key sets count here on either model; the routing: every
         // bus to every other bus, USR 1-56 and their user/..., the matrices' dir/in.)
-        assert_eq!(cov.mapped - cov.settings - cov.stored, 73813);
+        assert_eq!(cov.mapped - cov.settings - cov.stored, 73961);
         let b = bindings();
         let row = |p: &str| match schema().resolve(p, &NoModels) {
             Some(Node::Row(r)) => r as usize,
@@ -5706,7 +5706,7 @@ mod tests {
                 }
             }
         }
-        assert!(checked > 5100, "{checked}");
+        assert!(checked > 4876, "{checked}");
         // Unbound parameters answer the factory value too (where the strip is missing).
         let e8 = Engine::new(0);
         e8.set_num_channels(8);

@@ -821,3 +821,17 @@ fn osc_and_native_reach_sources_outputs_safes_and_settings() {
     a.send(&req);
     assert!(a.read_until_ends(1).contains(&Tok::Data(vol, livedaw_wing::Value::str("NO DRIVE"))));
 }
+
+/// Issue 22: an encoder and its two keys each have a name of their own, as wxfade
+/// sets them on a real WING.
+#[test]
+fn a_custom_controls_keys_keep_their_own_names() {
+    let (_e, server) = start();
+    let c = Osc::new(&server);
+    for (part, text) in [("enc", "Scene: 1"), ("bu", "Save"), ("bd", "Restore")] {
+        let path = format!("/$ctl/user/2/1/{part}/name");
+        c.send(&Message::new(&path, vec![Arg::Str(text.into())]));
+        let reply = c.get(&path);
+        assert_eq!(reply.args.first(), Some(&Arg::Str(text.into())), "{path}: {reply:?}");
+    }
+}

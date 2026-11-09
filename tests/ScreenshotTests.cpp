@@ -19,6 +19,9 @@
 #include "ui/X32SceneFiles.h"
 #include "ui/ProMixSurface.h"
 #include "ui/Sq5Surface.h"
+#include "ui/Scribble.h"
+
+#include <set>
 #include "ui/X32Surface.h"
 
 using namespace livedaw;
@@ -179,6 +182,45 @@ public:
         universalOnEveryConsole();
         y02rSurface();
         sq5Surface();
+        customControlScribbles();
+    }
+
+    /** Issue 22's custom control LCD: the names wxfade sets on layer 2. */
+    void customControlScribbles()
+    {
+        beginTest ("A custom control's LCD names its encoder and both keys");
+        const char* const rows[4][3] = { { "Scene: 1", "Save", "Restore" }, { "Go_To: 1", "|GO!", "Next/+1" }, { "Fade", "scroll_up", "scroll_dn" }, { "D_v: -144", "scroll", "|Fade" } };
+        juce::Image image (juce::Image::ARGB, 4 * 134, 112, true);
+        {
+            juce::Graphics g (image); // ended before the pixels are read: it may draw deferred
+            for (int i = 0; i < 4; ++i)
+            {
+                ui::ScribbleInfo info;
+                info.controlRows = true;
+                info.controlTop = rows[i][0];
+                info.controlUpper = rows[i][1];
+                info.controlLower = rows[i][2];
+                expect (! info.isEmpty());
+                ui::drawScribble (g, juce::Rectangle<float> ((float) i * 134.0f, 0.0f, 133.0f, 112.0f), info);
+            }
+        }
+        // The backlight and text of all three rows are there.
+        for (const auto [from, to] : { std::pair (0, 40), std::pair (42, 76), std::pair (77, 112) })
+        {
+            std::set<juce::uint32> shades;
+            for (int y = from; y < to; ++y)
+                for (int x = 0; x < 133; ++x)
+                    shades.insert (image.getPixelAt (x, y).getARGB());
+            expect (shades.size() > 1, "text in the row from " + juce::String (from));
+        }
+        const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {});
+        if (folder.isNotEmpty())
+        {
+            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile ("cc-scribbles.png");
+            file.deleteFile();
+            juce::FileOutputStream out (file);
+            expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out));
+        }
     }
 
     /** The SQ-5's surface and touchscreen, at 1920x1080. */

@@ -201,6 +201,8 @@ void Assignments::reload()
             c.upper = parseFunction (e->getStringAttribute ("bu"));
             c.lower = parseFunction (e->getStringAttribute ("bd"));
             c.name = e->getStringAttribute ("name");
+            c.upperName = e->getStringAttribute ("nameBu");
+            c.lowerName = e->getStringAttribute ("nameBd");
             c.colour = juce::jlimit (-18, 18, e->getIntAttribute ("colour"));
         }
     ++revision;
@@ -237,12 +239,17 @@ void Assignments::save()
         for (int i = 0; i < kNumControls; ++i)
         {
             const auto& c = layers[(size_t) l][(size_t) i];
-            if (! c.encoder.isAssigned() && ! c.upper.isAssigned() && ! c.lower.isAssigned() && c.name.isEmpty() && c.colour == 0)
+            if (! c.encoder.isAssigned() && ! c.upper.isAssigned() && ! c.lower.isAssigned() && c.name.isEmpty() && c.upperName.isEmpty()
+                && c.lowerName.isEmpty() && c.colour == 0)
                 continue;
             auto* e = xml.createNewChildElement ("Control");
             e->setAttribute ("layer", l);
             e->setAttribute ("index", i);
             e->setAttribute ("name", c.name);
+            if (c.upperName.isNotEmpty())
+                e->setAttribute ("nameBu", c.upperName);
+            if (c.lowerName.isNotEmpty())
+                e->setAttribute ("nameBd", c.lowerName);
             e->setAttribute ("colour", c.colour);
             e->setAttribute ("enc", functionText (c.encoder));
             e->setAttribute ("bu", functionText (c.upper));
@@ -1745,7 +1752,8 @@ void CustomControlsPage::paintLayer (juce::Graphics& g)
                      : (e.slot == cc::Slot::Encoder ? juce::Rectangle<int> (r.getCentreX() - s / 2, r.getBottom() - juce::roundToInt (wingPx (2.0f)) - s, s, s)
                                                     : juce::Rectangle<int> (r.getCentreX() - s / 2, r.getY() + juce::roundToInt (wingPx (18.0f)), s, s));
         auto caption = r.withBottom (square.getY());
-        juce::String text = e.slot == cc::Slot::Encoder && c.name.isNotEmpty() ? c.name : cc::describe (ctx, e.slot, f);
+        const auto& ownName = c.nameOf (e.slot, layer < cc::kNumLayers);
+        juce::String text = ownName.isNotEmpty() ? ownName : cc::describe (ctx, e.slot, f);
         g.setColour (Dark::caption);
         g.setFont (wingFontPx (juce::jlimit (6.0f, wingPx (11.0f), (float) caption.getHeight() * 0.6f)));
         g.drawFittedText (text.removeCharacters ("|*"), caption, juce::Justification::centredBottom, 1, 0.6f);
@@ -1965,13 +1973,14 @@ void CustomControlsPage::mouseUp (const juce::MouseEvent& e)
         options.icon = Icon::CcEdit;
         options.maxLength = 16;
         const int l = layer, i = index;
+        const auto part = slot;
         juce::Component::SafePointer<CustomControlsPage> safe (this);
-        popups::editText (*this, "CONTROL NAME", control().name, [safe, l, i] (const juce::String& name)
+        popups::editText (*this, "CONTROL NAME", control().nameOf (part, l < cc::kNumLayers), [safe, l, i, part] (const juce::String& name)
         {
             if (safe == nullptr)
                 return;
             auto c = safe->assignments.get (l, i);
-            c.name = name.trim();
+            c.nameOf (part, l < cc::kNumLayers) = name.trim();
             safe->assignments.set (l, i, c);
             if (safe->ctx.customControlsChanged)
                 safe->ctx.customControlsChanged();

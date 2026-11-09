@@ -60,8 +60,9 @@
 //!   `par`, `other`, `area`, `bank` ...: the schema's custom control slots),
 //!   read and set through [`Surface::get_cc_param`] and
 //!   [`Surface::set_cc_param`]; a node Sidecar has no equivalent for keeps
-//!   what a client sets. A control has one name (`enc/name`, `bu/name` where
-//!   there is no encoder) and a colour; `$fname` reads the function's name.
+//!   what a client sets. A control has a name per part (`enc/name`, `bu/name`,
+//!   `bd/name`; `bu/name` is its main name where there is no encoder) and a
+//!   colour; `$fname` reads the function's name.
 //!   `sel`: the upper part's layer (1-16; the document says the console
 //!   answers 0-15).
 
@@ -232,6 +233,8 @@ pub enum UserF {
     Led(u8, u8),
     Mode(u8, u8, CcSlot),
     Name(u8, u8),
+    /// A key's own name (`bu/name`, `bd/name`, where it isn't [`UserF::Name`]).
+    KeyName(u8, u8, CcSlot),
     FName(u8, u8, CcSlot),
     /// The `enc`, `bu` or `bd` node itself (its mode's own nodes are the
     /// schema's model parameters).
@@ -309,6 +312,7 @@ pub fn bind_user(rest: &[&str]) -> Option<UserF> {
                 "mode" => UserF::Mode(layer, control, cs),
                 "$fname" => UserF::FName(layer, control, cs),
                 "name" if *slot == name_slot => UserF::Name(layer, control),
+                "name" => UserF::KeyName(layer, control, cs),
                 _ => return None,
             }
         }
@@ -363,12 +367,14 @@ pub struct SurfaceControl {
     /// ... and as Sidecar's functions (their targets and options).
     pub functions: [CcFunction; 3],
     pub name: String,
+    /// The upper and lower keys' own names.
+    pub key_names: [String; 2],
     pub colour: i32,
 }
 
 impl Default for SurfaceControl {
     fn default() -> Self {
-        Self { modes: ["OFF"; 3], functions: Default::default(), name: String::new(), colour: 0 }
+        Self { modes: ["OFF"; 3], functions: Default::default(), name: String::new(), key_names: Default::default(), colour: 0 }
     }
 }
 
@@ -440,6 +446,13 @@ pub enum SurfaceEdit {
         index: usize,
         name: String,
     },
+    /// A key's own name: its slot is `Up` or `Down`.
+    KeyName {
+        layer: usize,
+        index: usize,
+        slot: CcSlot,
+        name: String,
+    },
     Colour {
         layer: usize,
         index: usize,
@@ -468,6 +481,11 @@ impl WingState {
 
 fn user_key(id: &str) -> Option<usize> {
     livedaw_session::layers::USER_KEYS.iter().position(|k| *k == id)
+}
+
+/// Where a key's own name is kept: the upper's, then the lower's.
+fn key_name_index(slot: CcSlot) -> usize {
+    usize::from(slot == CcSlot::Down)
 }
 
 fn cc_slot_index(slot: CcSlot) -> usize {
@@ -582,6 +600,7 @@ impl Surface {
             UserF::Led(l, c) => Value::Int(i32::from(control(l, c)?.colour > 0)),
             UserF::Mode(l, c, slot) => Value::str(control(l, c)?.modes[cc_slot_index(slot)]),
             UserF::Name(l, c) => Value::Str(control(l, c)?.name.clone()),
+            UserF::KeyName(l, c, slot) => Value::Str(control(l, c)?.key_names[key_name_index(slot)].clone()),
             UserF::FName(l, c, slot) => {
                 // What the LCD shows for the function, as the console names it
                 // (a control not assigned has none).
@@ -600,7 +619,12 @@ impl Surface {
             self.cc_bank = bank;
             return Ok(Some(SurfaceEdit::Bank(bank)));
         }
-        let (UserF::Colour(l, c) | UserF::Led(l, c) | UserF::Mode(l, c, _) | UserF::Name(l, c) | UserF::FName(l, c, _)) = f
+        let (UserF::Colour(l, c)
+        | UserF::Led(l, c)
+        | UserF::Mode(l, c, _)
+        | UserF::Name(l, c)
+        | UserF::KeyName(l, c, _)
+        | UserF::FName(l, c, _)) = f
         else {
             return Err(SetError::NotFound);
         };
@@ -656,6 +680,14 @@ impl Surface {
                     other => other.as_i32().unwrap_or(0).to_string(),
                 };
                 SurfaceEdit::Name { layer, index, name: control.name.clone() }
+            }
+            UserF::KeyName(_, _, slot) => {
+                let name = match v {
+                    Value::Str(s) => s.clone(),
+                    other => other.as_i32().unwrap_or(0).to_string(),
+                };
+                control.key_names[key_name_index(slot)].clone_from(&name);
+                SurfaceEdit::KeyName { layer, index, slot, name }
             }
             _ => return Err(SetError::ReadOnly),
         }))
@@ -1328,6 +1360,7 @@ pub fn publish(engine: &Engine, layers: &LayerSet, custom: &CustomControls, cc_b
                     modes: [enc_mode(&c.encoder), btn_mode(&c.upper), btn_mode(&c.lower)],
                     functions: [c.encoder, c.upper, c.lower],
                     name: c.name,
+                    key_names: [c.upper_name, c.lower_name],
                     colour: c.colour,
                 }
             })
@@ -1516,6 +1549,15 @@ fn apply(engine: &Engine, layers: &mut LayerSet, custom: &mut CustomControls, ed
             if let Some(c) = custom.control_mut(layer, index).filter(|c| c.name != name) {
                 c.name = name;
                 r.controls = true;
+            }
+        }
+        SurfaceEdit::KeyName { layer, index, slot, name } => {
+            if let Some(c) = custom.control_mut(layer, index) {
+                let kept = if slot == CcSlot::Down { &mut c.lower_name } else { &mut c.upper_name };
+                if *kept != name {
+                    *kept = name;
+                    r.controls = true;
+                }
             }
         }
         SurfaceEdit::Colour { layer, index, colour } => {

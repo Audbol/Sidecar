@@ -32,11 +32,15 @@ struct ScribbleInfo
     juce::String name, footer;
     bool footerRow = false;       // the footer's row under its rule even when empty (a key that does nothing here)
     bool nameInverted = false;
+    /** A custom control's LCD, as on the console: the encoder's name above a rule,
+        then a row for each key ("|word" inverts a row, as on the name). */
+    bool controlRows = false;
+    juce::String controlTop, controlUpper, controlLower;
     float backlight = 1.0f, contrast = 1.0f; // SETUP > GENERAL: SCRIBBLE and SCR CONT
 
     bool isEmpty() const noexcept
     {
-        return number.isEmpty() && tag.isEmpty() && sendTag.isEmpty() && name.isEmpty() && value.isEmpty() && line2.isEmpty()
+        return ! controlRows && number.isEmpty() && tag.isEmpty() && sendTag.isEmpty() && name.isEmpty() && value.isEmpty() && line2.isEmpty()
                && line3.isEmpty() && footer.isEmpty() && strip == nullptr && wingIcon == 0 && ! icon.has_value();
     }
 };

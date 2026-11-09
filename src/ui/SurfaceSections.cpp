@@ -1690,33 +1690,24 @@ void CustomControlSection::paintLcd (juce::Graphics& g, juce::Rectangle<int> are
         info.contrast = uiprefs::brightness (ctx.settings, "scrCont", 50);
         if (upper || lowerCcLayer() >= 0)
         {
-            // The layer and control on the top row; the control's name (a name
-            // starting with '*' shows the encoder's value large over it,
-            // "|word" puts the word on an inverted bar), then its two keys.
-            info.tag = cc::layerName (ccLayer);
-            info.tagFirst = true;
-            info.number = juce::String (i + 1);
-            auto name = control.name.isNotEmpty() ? control.name : cc::describe (ctx, cc::Slot::Encoder, control.encoder);
-            const auto upperKey = cc::describe (ctx, cc::Slot::Upper, control.upper);
-            const auto lowerKey = cc::describe (ctx, cc::Slot::Lower, control.lower);
-            const auto keys = upperKey + (upperKey.isNotEmpty() && lowerKey.isNotEmpty() ? " | " : "") + lowerKey;
-            if (name.startsWith ("*"))
-                if (const auto b = cc::bindEncoder (ctx, control.encoder); b.isValid() && b.text)
-                {
-                    info.value = b.text();
-                    info.caption = name.removeCharacters ("*|");
-                }
-            if (info.value.isEmpty())
-                info.line2 = name.removeCharacters ("*|");
-            if (name.containsChar ('|'))
+            // As on the console (Issue 22): the encoder's name above a rule, then
+            // each key's own name, a part with none showing its function. A name
+            // starting with '*' adds the encoder's value; "|word" inverts a row.
+            const bool hasEncoder = ccLayer < cc::kNumLayers;
+            const auto partText = [&] (cc::Slot part, const cc::Function& function)
             {
-                info.name = name.fromFirstOccurrenceOf ("|", false, false).upToFirstOccurrenceOf (" ", false, false);
-                info.nameInverted = true;
-                info.line3 = keys;
-            }
-            else
+                const auto& own = control.nameOf (part, hasEncoder);
+                return own.isNotEmpty() ? own : cc::describe (ctx, part, function);
+            };
+            info.controlRows = true;
+            info.controlUpper = partText (cc::Slot::Upper, control.upper);
+            info.controlLower = partText (cc::Slot::Lower, control.lower);
+            if (hasEncoder)
             {
-                info.name = keys;
+                info.controlTop = partText (cc::Slot::Encoder, control.encoder);
+                if (control.name.startsWith ("*"))
+                    if (const auto b = cc::bindEncoder (ctx, control.encoder); b.isValid() && b.text)
+                        info.controlTop = control.name.removeCharacters ("*") + " " + b.text();
             }
         }
         else if (lowerLayer == ShowControl)

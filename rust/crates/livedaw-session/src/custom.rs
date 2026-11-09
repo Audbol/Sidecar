@@ -75,7 +75,11 @@ pub struct CcControl {
     pub encoder: CcFunction,
     pub upper: CcFunction,
     pub lower: CcFunction,
+    /// The encoder's name (on a layer with no encoder, the upper key's).
     pub name: String,
+    /// The keys' own names (`bu/name`, `bd/name`), shown on the LCD.
+    pub upper_name: String,
+    pub lower_name: String,
     /// The WING colour (1-18) with its light on (`led`); the colour negated
     /// with the light off (COLOR > LIGHT, the colour kept); 0 = none.
     pub colour: i32,
@@ -145,6 +149,19 @@ pub fn factory_control(layer: usize, index: usize) -> CcControl {
     CcControl { upper: daw_key(upper), lower: daw_key(lower), name: name.to_owned(), ..CcControl::default() }
 }
 
+/// A `<Control>`'s key names, written only when set.
+const UPPER_NAME_ATTR: &str = "nameBu";
+const LOWER_NAME_ATTR: &str = "nameBd";
+
+fn set_key_names(e: &mut Element, c: &CcControl) {
+    if !c.upper_name.is_empty() {
+        e.set(UPPER_NAME_ATTR, &c.upper_name);
+    }
+    if !c.lower_name.is_empty() {
+        e.set(LOWER_NAME_ATTR, &c.lower_name);
+    }
+}
+
 /// `<CustomControls factory="...">`: the defaults the controls left out had.
 /// Shows without it were saved when every control, the DAW layers' too,
 /// started not assigned.
@@ -198,7 +215,8 @@ impl CustomControls {
                 if *c == factory_control(l, i) {
                     continue;
                 }
-                xml.add_new("Control")
+                let e = xml
+                    .add_new("Control")
                     .set("layer", l)
                     .set("index", i)
                     .set("name", &c.name)
@@ -206,6 +224,7 @@ impl CustomControls {
                     .set("enc", c.encoder.to_attr())
                     .set("bu", c.upper.to_attr())
                     .set("bd", c.lower.to_attr());
+                set_key_names(e, c);
             }
         }
         xml
@@ -223,7 +242,8 @@ impl CustomControls {
                 if c.is_default() {
                     continue;
                 }
-                xml.add_new("Control")
+                let e = xml
+                    .add_new("Control")
                     .set("layer", l)
                     .set("index", i)
                     .set("name", &c.name)
@@ -231,6 +251,7 @@ impl CustomControls {
                     .set("enc", c.encoder.to_attr())
                     .set("bu", c.upper.to_attr())
                     .set("bd", c.lower.to_attr());
+                set_key_names(e, c);
             }
         }
         xml
@@ -266,6 +287,8 @@ impl CustomControls {
                     upper: CcFunction::parse(e.str_or("bu", "")),
                     lower: CcFunction::parse(e.str_or("bd", "")),
                     name: e.str_or("name", "").to_owned(),
+                    upper_name: e.str_or(UPPER_NAME_ATTR, "").to_owned(),
+                    lower_name: e.str_or(LOWER_NAME_ATTR, "").to_owned(),
                     colour: e.int_or("colour", 0).clamp(-18, 18),
                 };
             }
