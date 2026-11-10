@@ -28,8 +28,15 @@ namespace livedaw::ui::universal
     matrix) have none. */
 namespace devices
 {
-    /** The Behringer WING emulation. */
-    inline const juce::String wing { "WING" };
+    /** The console the screens show (the shown profile), named as a tag: WING, X32, DM2000 and so on;
+        none on the Universal Mixer's own profile, whose blocks are its own. */
+    juce::String shown();
+
+    /** The tag of a block holding model `token`: the console the model comes from when it is not the
+        shown console's (a WING EQ on a ProMix: "WING"; another console's model on the Universal
+        Mixer: its console), else `fallback` (the shown console, or none for the core's own blocks).
+        `foreign`: the model is another console's on the shown one (models::Model::foreign). */
+    juce::String of (const juce::String& token, bool foreign, const juce::String& fallback);
 } // namespace devices
 
 /** Draws `device` as a small tag at the right of `area` (at its left with
@@ -195,7 +202,7 @@ public:
     ToggleKey (const juce::String& label, juce::Colour onColour, const Theme&);
 
     std::function<bool()> isOn, isHalfOn;
-    /** The console the key's page comes from (devices::wing), as a tag in its corner. */
+    /** The console the key's page comes from (devices::shown()), as a tag in its corner. */
     juce::String device;
     /** A page tab (the Universal Mixer's): no key face, the name dim, a line under it while on. */
     bool tab = false;

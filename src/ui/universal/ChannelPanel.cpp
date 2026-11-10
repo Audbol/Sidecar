@@ -280,7 +280,7 @@ void ChannelPanel::paint (juce::Graphics& g)
         // the name keeps clear of it in a slim section); a dynamics block's model after its name.
         const bool tagged = s == FilterSection || s == GateSection || s == EqSection || s == DynamicsSection;
         if (tagged)
-            title.removeFromRight (drawDeviceTag (g, title, devices::wing, theme) + (float) sizes::kGapSmall);
+            title.removeFromRight (drawDeviceTag (g, title, devices::shown(), theme) + (float) sizes::kGapSmall);
         g.setColour (theme.textDim);
         g.setFont (type::font (type::kCaption, true));
         g.drawFittedText (text, title.toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);

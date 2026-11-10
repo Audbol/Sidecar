@@ -738,7 +738,7 @@ impl Engine {
         self.amm.reset();
         self.dlive.reset();
         // A dLive's RackUltra strips and Dyn8 engines (none on another console).
-        let fx_table = st.profile.spec().models.fx;
+        let fx_table = st.profile.spec().run_models().fx;
         let dyn8 =
             matches!(st.profile, Profile::AhDLive(_)).then(|| livedaw_dsp::model::model_index(fx_table, DYN8_TOKEN)).flatten();
         self.ufx.reset(fx_table, dyn8);
@@ -1158,7 +1158,7 @@ impl Engine {
         if steps.iter().filter(|s| matches!(s, Step::Block(_))).count() >= MAX_EXTRA_BLOCKS {
             return None;
         }
-        let block = Arc::new(Block::new(uid, kind, strip.kind().is_output(), st.device.sample_rate, strip.spec().models));
+        let block = Arc::new(Block::new(uid, kind, strip.kind().is_output(), st.device.sample_rate, strip.spec().run_models()));
         steps.insert(at.min(steps.len()), Step::Block(block.clone()));
         strip.set_layout(steps, &self.garbage);
         Some(block)
@@ -1766,7 +1766,7 @@ impl Engine {
     /// The console's FX devices (its profile's `ModelTables::fx`): what FX
     /// slots' model indexes mean.
     pub fn fx_models(&self) -> &'static [ModelSpec] {
-        self.profile().spec().models.fx
+        self.profile().spec().run_models().fx
     }
 
     /// Message thread: selects the device of FX slot `i` (an index into
@@ -1775,7 +1775,7 @@ impl Engine {
     /// the console's premium slots (the WING's 1-8, the X32's 1-4).
     pub fn set_fx_model(&self, i: usize, model: usize, defaults: bool) -> bool {
         let (Some(rack), Some(params)) = (self.fx.get(i), self.controls.fx.get(i)) else { return false };
-        let models = self.profile().spec().models;
+        let models = self.profile().spec().run_models();
         if model >= models.fx.len() || !allowed_in(models, model, i) {
             return false;
         }
@@ -1817,7 +1817,7 @@ impl Engine {
     /// Creates (or removes) the built-in device of slot `i` for `model`.
     fn install_fx_device(&self, i: usize, rack: &FxRack, model: usize) {
         let ctx = self.fx_context();
-        let models = self.profile().spec().models;
+        let models = self.profile().spec().run_models();
         if rack.device_info() == Some((model, ctx)) && rack.device_table().is_none_or(|t| std::ptr::eq(t, models.fx)) {
             return;
         }

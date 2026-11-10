@@ -189,6 +189,7 @@ public:
         skin.getSetup().refresh();
         shot ("universal-setup.png");
         x32Surface();
+        foreignBlocks();
         proMixSurface();
         universalOnEveryConsole();
         y02rSurface();
@@ -3397,6 +3398,74 @@ private:
         setShownProfile (ld::kProfileWing);
     }
 
+    /** Another console's models on a console's blocks (the Universal Mixer's swap): tagged by the model's
+        console, shown as foreign on the console's own surface, refused under remote control. */
+    void foreignBlocks()
+    {
+        beginTest ("Another console's models on a console's blocks");
+        const auto indexOf = [] (models::Table t, const char* token)
+        {
+            const auto& all = models::tableAll (t);
+            for (size_t i = 0; i < all.size(); ++i)
+                if (all[i].token == token)
+                    return (int) i;
+            return -1;
+        };
+
+        // A ProMix 01's EQ takes the WING's, and goes back.
+        {
+            MixerEngine engine (0);
+            engine.configureProfile (ld::kProfileProMix01);
+            setShownProfile (ld::kProfileProMix01);
+            auto& s = *engine.getChannels()[0];
+            const int own = (int) models::table (models::ChannelEq).size();
+            const int wing = indexOf (models::ChannelEq, "STD");
+            expect (wing >= own, "the WING's EQ is offered after the ProMix's");
+            expect (models::tableAll (models::ChannelEq)[(size_t) wing].foreign);
+            expectEquals (models::tableAll (models::ChannelEq)[(size_t) wing].name, juce::String ("WING EQ"));
+            const auto token = [&s] { return models::model (models::ChannelEq, s.params.eq().model.load()).token; };
+            expectEquals (token(), juce::String ("PMEQ"));
+            expectEquals (devices::of ("PMEQ", false, devices::shown()), juce::String ("PROMIX"));
+            s.setModel (ModelBlock::Eq, wing);
+            expectEquals (token(), juce::String ("STD"));
+            expectEquals (devices::of ("STD", true, devices::shown()), juce::String ("WING"));
+            s.setModel (ModelBlock::Eq, indexOf (models::ChannelEq, "PMEQ"));
+            expectEquals (token(), juce::String ("PMEQ"));
+        }
+
+        // An X32 with other consoles' blocks: its surface renders; under remote control none is offered.
+        {
+            MixerEngine engine (0);
+            engine.configureProfile (ld::kProfileX32);
+            ShotRig rig (engine);
+            setShownProfile (ld::kProfileX32);
+            auto& s = *engine.getChannels()[3];
+            s.setModel (ModelBlock::Gate, indexOf (models::Dynamics, "GATE"));
+            s.setModel (ModelBlock::Eq, indexOf (models::ChannelEq, "STD"));
+            s.setModel (ModelBlock::Dynamics, indexOf (models::Dynamics, "DMCMP"));
+            rig.selected = &s;
+            ui::X32Surface skin (rig.ctx);
+            skin.setSize (1920, 1080);
+            skin.selectionChanged();
+            skin.refreshAll();
+            expect (! skin.createComponentSnapshot (skin.getLocalBounds()).isNull(), "the surface renders with foreign blocks");
+
+            const int stdEq = indexOf (models::ChannelEq, "STD");
+            expect (models::offered (models::ChannelEq).size() > models::table (models::ChannelEq).size());
+            models::setRemoteHeld (true);
+            expectEquals ((int) models::offered (models::ChannelEq).size(), (int) models::table (models::ChannelEq).size());
+            expectEquals ((int) models::offered (models::Fx).size(), (int) models::table (models::Fx).size());
+            auto& other = *engine.getChannels()[4];
+            const int before = other.params.eq().model.load();
+            other.setModel (ModelBlock::Eq, stdEq);
+            expectEquals ((int) other.params.eq().model.load(), before, "the engine refuses a foreign model too");
+            models::setRemoteHeld (false);
+            other.setModel (ModelBlock::Eq, stdEq);
+            expectEquals ((int) other.params.eq().model.load(), stdEq);
+        }
+        setShownProfile (ld::kProfileWing);
+    }
+
     /** The X32 surface (Phase 4 step 8) on an X32 with a few channels named. */
     void x32Surface()
     {
@@ -3574,7 +3643,7 @@ private:
 
         // ROUTING (step 10c): the input blocks, as the X32 map answers them.
         display.showScreen (ui::x32::Display::Screen::Routing);
-        expectEquals (display.getEncoder (0).turn.label, juce::String ("IN 1-8"));
+        expectEquals (display.getEncoder (0).turn.label, juce::String ("Select"));
         expectEquals (display.getEncoder (2).turn.text(), juce::String ("AN17-24"), "inputs 17-24 local, as on a full-size X32");
         display.getEncoder (0).turn.set (10.0f / 23.0f); // B1-8
         expectEquals (channels[2]->params.inputLeft.load(), 2, "not until CONNECT");
@@ -3596,13 +3665,13 @@ private:
         // ROUTING's output tabs: out 1-16's signals (Main LR on 15-16), then its blocks.
         display.showScreen (ui::x32::Display::Screen::Routing, 1);
         // The manual's encoders (p.52): 3 the category, 4 the signal, pushed to assign.
-        expectEquals (display.getEncoder (3).turn.label, juce::String ("SIGNAL"));
+        expectEquals (display.getEncoder (3).turn.label, juce::String ("Select"));
         display.getEncoder (0).turn.set (14.0f / 15.0f); // OUT 15
-        expectEquals (display.getEncoder (3).turn.text(), juce::String ("MAIN L"));
-        expectEquals (display.getEncoder (2).turn.text(), juce::String ("MAIN"));
+        expectEquals (display.getEncoder (3).turn.text(), juce::String ("Main L"));
+        expectEquals (display.getEncoder (2).turn.text(), juce::String ("Main (LRC)"));
         const int mainL = engine.getOutputSource (14);
         display.getEncoder (2).turn.set (2.0f / 5.0f); // MIX BUS
-        expectEquals (display.getEncoder (3).turn.text(), juce::String ("MIXBUS 01"));
+        expectEquals (display.getEncoder (3).turn.text(), juce::String ("MixBus 1"));
         expectEquals (engine.getOutputSource (14), mainL, "not until ASSIGN");
         display.pushEncoder (3);
         expect (engine.getOutputSource (14) == engine.getOutputSource (0) && engine.getOutputSource (14) != mainL, "output 15 plays bus 1");
@@ -3933,7 +4002,7 @@ private:
                                                                   { S::Home, 5, "sends" }, { S::Home, 6, "main" }, { S::Routing, 7, "xlr" }, { S::Usb, 1, "usb-config" }, { S::MuteGroups, 0, "mutegrp" },
                                                                   { S::Setup, 3, "network" }, { S::Setup, 6, "card" },
                                                                   { S::Meters, 4, "rta" }, { S::Home, 1, "config" }, { S::Home, 2, "gate" }, { S::Home, 3, "dyn" }, { S::Home, 4, "eq" },
-                                                                  { S::Routing, 0, "routing-home" }, { S::Routing, 1, "out" }, { S::Routing, 4, "card-out" }, { S::Routing, 5, "aes-a" }, { S::Routing, 6, "aes-b" },
+                                                                  { S::Routing, 0, "routing-home" }, { S::Routing, 1, "out" }, { S::Routing, 4, "card-out" }, { S::Routing, 5, "aes-a" }, { S::Routing, 6, "aes-b" }, { S::Meters, 5, "automix" }, { S::Routing, 7, "xlr" }, { S::Routing, 8, "user" }, { S::Routing, 3, "p16" },
                                                                   { S::Effects, 1, "fx1" }, { S::Effects, 5, "fx5" }, { S::Monitor, 2, "talk-b" }, { S::Assign, 2, "assign-b" }, { S::Assign, 3, "assign-c" },
                                                                   { S::Utility, 0, "utility" }, { S::Utility, 1, "init" } };
                 for (auto [screen, page, shot] : pages)
@@ -4118,19 +4187,19 @@ private:
             display.showScreen (S::Home, 5);
             auto& send = channels[12]->sends[2];
             const bool wasOn = send.enabled.load();
-            display.pushEncoder (2);
-            expect (send.enabled.load() != wasOn, "MUTE of bus 3");
-            display.pushEncoder (2);
-            display.getEncoder (5).turn.set (1.0f / 6.0f);
-            expectEquals (display.getEncoder (5).turn.text(), juce::String ("3-6"));
-            display.getEncoder (5).turn.set (0.0f);
+            display.pushEncoder (4);
+            expect (send.enabled.load() != wasOn, "MUTE of bus 3 (Level 3, the fifth encoder)");
+            display.pushEncoder (4);
+            display.getEncoder (0).turn.set (1.0f / 6.0f);
+            expectEquals (display.getEncoder (0).turn.text(), juce::String ("3..6"));
+            display.getEncoder (0).turn.set (0.0f);
             display.setLayer (1);
-            expectEquals (display.getEncoder (0).turn.label, juce::String ("TAP 1/2"));
+            expectEquals (display.getEncoder (2).turn.label, juce::String ("TAP 1/2"));
             {
                 int set = 0;
-                display.getEncoder (0).turn.set (3.0f / 5.0f); // PRE
+                display.getEncoder (2).turn.set (3.0f / 5.0f); // PRE
                 expect (engine.getWing().runX32Text ("/ch/13/mix/01/type", set).endsWith ("PRE"));
-                display.getEncoder (0).turn.set (4.0f / 5.0f); // POST
+                display.getEncoder (2).turn.set (4.0f / 5.0f); // POST
                 expect (engine.getWing().runX32Text ("/ch/13/mix/01/type", set).endsWith ("POST"));
             }
             display.setLayer (0);

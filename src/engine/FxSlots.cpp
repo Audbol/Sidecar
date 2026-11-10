@@ -328,7 +328,7 @@ bool FxSlots::moveInChain (int slot, int from, int to)
 
 bool FxSlots::isAllowed (int model, int slot)
 {
-    const auto& table = models::table (models::Fx);
+    const auto& table = models::offered (models::Fx); // another console's, unless a real one is under remote control
     if (! juce::isPositiveAndBelow (model, (int) table.size()))
         return false;
     return ld::ld_model_fx_allowed (model, slot);

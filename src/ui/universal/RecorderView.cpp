@@ -11,8 +11,8 @@ RecorderView::RecorderView (UiContext& c, const Theme& t)
 {
     // Both are the WING display's pages.
     multitrackTab.tab = usbTab.tab = true;
-    multitrackTab.device = devices::wing;
-    usbTab.device = devices::wing;
+    multitrackTab.device = devices::shown();
+    usbTab.device = devices::shown();
     multitrackTab.isOn = [this] { return page == Page::Multitrack; };
     multitrackTab.onClick = [this] { showPage (Page::Multitrack); };
     usbTab.isOn = [this] { return page == Page::Usb; };

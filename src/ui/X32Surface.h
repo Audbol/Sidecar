@@ -127,7 +127,7 @@ namespace x32
                 if (k == kLeds - 1 && bottomMark == nullptr)
                     continue;
                 const float y = window.getY() + 3.0f + rowH * (float) k;
-                const auto colour = k == 0 ? juce::Colour (0xffff9a3c) : k == 1 ? juce::Colour (0xffff3b30)
+                const auto colour = k == 0 ? juce::Colour (0xffff9a3c) : k == 1 ? juce::Colour (0xffff3b30) : k == 2 ? juce::Colour (0xffffd02a)
                                     : k == kLeds - 1 && isPre() ? juce::Colour (0xffffd02a) : juce::Colour (0xff59f08a);
                 const auto led = juce::Rectangle<float> (9.0f, juce::jmin (4.0f, rowH - 2.0f)).withCentre ({ window.getCentreX(), y + rowH * 0.5f });
                 if (! lit)
@@ -203,7 +203,8 @@ namespace x32
                     ctx.selectStrip (strip);
             };
             select.isOn = [this] { return strip != nullptr && ctx.getSelectedStrip && ctx.getSelectedStrip() == strip; };
-            meter.level = [this] (int ch) { return strip != nullptr ? ctx.meters.get (strip, MeterPoint::Output, ch) : 0.0f; };
+            // A channel's meter reads its input (after the gain), as the console's do; buses and mains read their output.
+            meter.level = [this] (int ch) { return strip != nullptr ? ctx.meters.get (strip, isInputKind (strip->getKind()) ? MeterPoint::Trim : MeterPoint::Output, ch) : 0.0f; };
             for (auto* child : std::initializer_list<juce::Component*> { &fader, &meter, &solo, &mute, &select })
                 addAndMakeVisible (child);
             clear();

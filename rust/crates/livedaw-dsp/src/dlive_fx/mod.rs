@@ -155,7 +155,10 @@ pub fn is_ultra(token: &str) -> bool {
 /// by which engines the model's kind runs on. `None` for any other console's
 /// table, and for a dLive's RackExtra models, which follow the usual premium range.
 pub fn slot_rule(models: &crate::model::ModelTables, model: usize, slot: usize) -> Option<bool> {
-    if !std::ptr::eq(models.fx.as_ptr(), FX_MODELS.as_ptr()) {
+    // The dLive's own table, or its table with the other consoles' models after it.
+    let dlive = std::ptr::eq(models.fx.as_ptr(), FX_MODELS.as_ptr())
+        || models.fx.len() >= FX_MODELS.len() && models.fx[..FX_MODELS.len()] == FX_MODELS[..];
+    if !dlive {
         return None;
     }
     let token = models.fx.get(model)?.token;

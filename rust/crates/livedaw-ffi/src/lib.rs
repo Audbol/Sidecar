@@ -1112,7 +1112,7 @@ pub unsafe extern "C" fn ld_fx_set_model(e: *const Engine, slot: i32, model: i32
     if slot < 0 || model < 0 {
         return false;
     }
-    guard(false, || e.set_fx_model(slot as usize, model as usize, defaults))
+    guard(false, || models::fx_may_hold(e, model as usize) && e.set_fx_model(slot as usize, model as usize, defaults))
 }
 
 /// The meter of a slot's built-in device: gain reduction in dB (<= 0).
@@ -1403,10 +1403,11 @@ pub unsafe extern "C" fn ld_strip_set_model(s: *const Strip, block: i32, model: 
     let m = model.max(0) as usize;
     guard((), || match block {
         0 if models::dyn_slot_may_hold(s, s.params.gate(), DynSlot::Gate, m) => s.params.gate().set_model(m),
-        1 => s.params.eq().set_model(m),
+        1 if models::eq_may_hold(s, m) => s.params.eq().set_model(m),
         2 if models::dyn_slot_may_hold(s, s.params.dynamics(), DynSlot::Dynamics, m) => s.params.dynamics().set_model(m),
-        0 | 2 => {}
-        _ => s.params.filter().set_tool_model(m),
+        0..=2 => {}
+        _ if models::tool_may_hold(s, m) => s.params.filter().set_tool_model(m),
+        _ => {}
     });
 }
 

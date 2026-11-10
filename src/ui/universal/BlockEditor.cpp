@@ -61,6 +61,20 @@ namespace
 } // namespace
 
 //==============================================================================
+juce::String BlockTarget::tag() const
+{
+    const auto of = [this] (int model)
+    {
+        const auto& m = models::model (table, model);
+        return devices::of (m.token, m.foreign, device);
+    };
+    if (eq != nullptr)
+        return of (eq->model.load());
+    if (dynamics != nullptr)
+        return of (dynamics->model.load());
+    return device;
+}
+
 BlockTarget BlockTarget::of (UiContext& ctx, Strip& strip, const ChainStep& step)
 {
     BlockTarget t;
@@ -78,7 +92,7 @@ BlockTarget BlockTarget::of (UiContext& ctx, Strip& strip, const ChainStep& step
     const auto withModel = [&strip] (ModelBlock block) { return [&strip, block] (int m) { strip.setModel (block, m); }; };
 
     // The strip's own blocks are its WING template's; an extra block (below) is the core's.
-    t.device = devices::wing;
+    t.device = devices::shown();
     switch (step.kind)
     {
         case ld::kStepInput:
@@ -280,7 +294,9 @@ void BlockEditor::addModel (std::atomic<int32_t>& model)
     // What this block may hold: on a dLive the preamp models go in their block alone.
     std::vector<int> ids;
     juce::StringArray names;
-    for (const auto& m : models::table (table))
+    // Every console's models of the kind, the shown console's first, each console together (the
+    // tables hold them so); a real console under remote control offers its own alone.
+    for (const auto& m : models::offered (table))
         if (table != models::Dynamics || target.modelSlot < 0 || ld::ld_dyn_model_allowed (m.index, target.modelSlot))
         {
             ids.push_back (m.index);
@@ -297,7 +313,18 @@ void BlockEditor::addModel (std::atomic<int32_t>& model)
                                   if (set && juce::isPositiveAndBelow (i, (int) ids.size()))
                                       set (ids[(size_t) i]);
                               },
-                              devices::wing); // the WING's model tables
+                              devices::shown()); // the WING's model tables
+    refreshers.push_back ([&choice, &model, table]
+    {
+        // The MODEL tag follows the model: another console's names that console.
+        const auto& m = models::model (table, model.load());
+        const auto tag = devices::of (m.token, m.foreign, devices::shown());
+        if (tag != choice.device)
+        {
+            choice.device = tag;
+            choice.repaint();
+        }
+    });
     // Chosen by their pictures: the WING's front panels.
     choice.paintItem = [ids, table] (juce::Graphics& g, juce::Rectangle<float> r, int i) { Faceplate::paintThumbnail (g, r, table, ids[(size_t) i], {}); };
 }
@@ -386,12 +413,12 @@ void BlockEditor::build()
             addBar (ValueBar::frequency ("LOW CUT", f.lowCutFreq, 20.0f, 2000.0f, kLowCutDefaultHz));
             joinLast (2, { kSwitch + 24 });
             addChoice ("SLOPE", [] { return models::list (models::LowCutSlopes); }, [&f] { return f.lowCutSlope.load(); },
-                       [&f] (int i) { f.lowCutSlope = i; }, devices::wing);
+                       [&f] (int i) { f.lowCutSlope = i; }, devices::shown());
             addKey ("HIGH CUT", f.highCut);
             addBar (ValueBar::frequency ("HIGH CUT", f.highCutFreq, 50.0f, 20000.0f, kHighCutDefaultHz));
             joinLast (2, { kSwitch + 24 });
             addChoice ("SLOPE", [] { return models::list (models::HighCutSlopes); }, [&f] { return f.highCutSlope.load(); },
-                       [&f] (int i) { f.highCutSlope = i; }, devices::wing);
+                       [&f] (int i) { f.highCutSlope = i; }, devices::shown());
             addKey ("TOOL", f.tool);
             addModel (f.toolModel);
             joinLast (2, { kSwitch });
@@ -453,7 +480,7 @@ void BlockEditor::build()
             joinLast (2, { kSwitch });
             if (target.postInsert)
                 addChoice ("MODE", [] { return models::list (models::PostInsertModes); }, [&ins] { return ins.mode.load(); },
-                           [&ins] (int i) { ins.mode = i; }, devices::wing);
+                           [&ins] (int i) { ins.mode = i; }, devices::shown());
             break;
         }
         case BlockTarget::Kind::Delay:
@@ -471,7 +498,7 @@ void BlockEditor::build()
                            mode = juce::jlimit (0, 3, i);
                            value = delayRange (mode.load(), (float) sr).snapToLegalValue (msToDelay (ms, mode.load(), (float) sr));
                        },
-                       devices::wing);
+                       devices::shown());
             joinLast (2, { kSwitch });
             ValueBar::Binding b;
             b.caption = "DELAY";
@@ -511,7 +538,7 @@ void BlockEditor::paint (juce::Graphics& g)
     const auto text = target.kind == BlockTarget::Kind::None ? juce::String ("Select a block to edit it") : target.title;
     g.drawText (text, title, juce::Justification::centredLeft);
     drawDeviceTag (g, title.withTrimmedLeft (juce::GlyphArrangement::getStringWidth (font, text) + 10.0f),
-                   target.kind == BlockTarget::Kind::None ? juce::String() : target.device, theme, true);
+                   target.kind == BlockTarget::Kind::None ? juce::String() : target.tag(), theme, true);
 }
 
 void BlockEditor::resized()

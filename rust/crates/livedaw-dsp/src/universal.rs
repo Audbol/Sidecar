@@ -119,6 +119,50 @@ pub static MODELS: ModelTables = ModelTables {
     comp_default: "COMP",
 };
 
+/// A console's own tables followed by every other console's models of each kind
+/// (the Universal's, minus what the console has): what the blocks of that console's
+/// strips and FX slots hold, so any block may take another console's model
+/// (`docs/UNIVERSAL_MIXER.md`, "Foreign models"). The own models keep their indices,
+/// so a console's surface, shows and remote protocols number them as before; a model
+/// at or past an own table's length is foreign (the token names it across tables).
+/// A dLive's RackUltra and Dyn8 engines belong to its channel strips, so they stay
+/// off the other consoles' racks. Built once per table set (message thread: allocates,
+/// never on the audio thread); the Universal's own tables are returned as they are.
+pub fn with_foreign(own: &'static ModelTables) -> &'static ModelTables {
+    use std::sync::Mutex;
+    static CACHE: Mutex<Vec<(usize, &'static ModelTables)>> = Mutex::new(Vec::new());
+    if std::ptr::eq(own, &MODELS) {
+        return &MODELS;
+    }
+    let key = own as *const ModelTables as usize;
+    let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((_, t)) = cache.iter().find(|(k, _)| *k == key) {
+        return t;
+    }
+    let dlive_own = own.fx.iter().any(|m| m.token == "DLVDYN8");
+    let extend = |mine: &'static [ModelSpec], all: &'static [ModelSpec], keep: &dyn Fn(&str) -> bool| -> &'static [ModelSpec] {
+        let mut v: Vec<ModelSpec> = mine.to_vec();
+        v.extend(all.iter().filter(|m| !mine.iter().any(|o| o.token == m.token) && keep(m.token)).copied());
+        Box::leak(v.into_boxed_slice())
+    };
+    let foreign_fx = |t: &str| dlive_own || !(dlive_fx::is_ultra(t) || t == "DLVDYN8");
+    let tables: &'static ModelTables = Box::leak(Box::new(ModelTables {
+        dynamics: extend(own.dynamics, &DYN_MODELS, &|_| true),
+        eq_channel: extend(own.eq_channel, &EQ_MODELS_CH, &|_| true),
+        eq_bus: extend(own.eq_bus, &EQ_MODELS_BUS, &|_| true),
+        filter_tools: extend(own.filter_tools, wing::FILTER_TOOLS, &|_| true),
+        fx: extend(own.fx, &FX_MODELS, &foreign_fx),
+        ..*own
+    }));
+    cache.push((key, tables));
+    tables
+}
+
+/// Whether `token` is one of `own`'s own models of its kind (any table).
+pub fn is_own(own: &ModelTables, token: &str) -> bool {
+    [own.dynamics, own.eq_channel, own.eq_bus, own.filter_tools, own.fx].iter().any(|t| t.iter().any(|m| m.token == token))
+}
+
 /// The console a model comes from, by its token's prefix ("X32" for the X32's,
 /// "PROMIX 01" for the ProMix 01's, "02R" for the 02R's, "SQ-5" for the SQ-5's); None for the WING's
 /// (the Universal's own).

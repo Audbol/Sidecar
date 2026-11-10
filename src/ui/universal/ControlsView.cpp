@@ -203,7 +203,7 @@ ControlsView::ControlsView (UiContext& c, const Theme& t) : editKey ("EDIT", t.a
         columns.push_back (std::make_unique<Column> (c, t, i));
         addAndMakeVisible (*columns.back());
     }
-    editKey.device = devices::wing; // CC EDIT is the WING display's page
+    editKey.device = devices::shown(); // CC EDIT is the WING display's page
     editKey.isOn = [this] { return isEditorShown(); };
     editKey.onClick = [this] { showEditor (! isEditorShown()); };
     editKey.setEnabled (ctx.customControls != nullptr);

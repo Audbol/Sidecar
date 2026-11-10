@@ -271,6 +271,11 @@ private:
     /** The X32 models slot `slot` (0-7) takes: FX 1-4 any, FX 5-8 the insert ones. */
     std::vector<int> fxModelsFor (int slot) const;
     void paintOutputs (juce::Graphics&, juce::Rectangle<int>);
+    void paintPatch (juce::Graphics&, juce::Rectangle<int>);
+    void paintAutomix (juce::Graphics&, juce::Rectangle<int>);
+    void assignAutomixEncoders();
+    void paintUser (juce::Graphics&, juce::Rectangle<int>);
+    void assignUserEncoders();
     /** An encoder that turns `path`'s value through `choices` (by name). */
     KnobBinding enumKnob (const juce::String& label, const juce::String& path, const juce::StringArray& choices);
     /** An X32 value's text as a level (dB, "-oo" the bottom) and as hertz ("1k97"). */
@@ -406,6 +411,9 @@ private:
     int selectedOutput = 0; // ROUTING's signal tabs: the output the encoders set
     int lastKeyFilter = 3;  // a key filter switched off: its type, for switching it on again
     int usbTrack = 0;       // USB > home: the track the sixth encoder shows
+    int overviewFirst = 0; // ROUTING's OUTPUT PATCH OVERVIEW: the first row shown
+    int userBank = 0, userSlot = 0; // ROUTING > USER: the bank of eight, the slot (inert: Sidecar has no user routing)
+    bool userOutput = false;
     int pendingOutputSource = -1; // ROUTING outputs: the source chosen, not yet assigned (-1 none)
     int selectedFx = 0;     // EFFECTS > home: the slot the encoders set
     // UTILITY: the strip COPY took and the sections PASTE copies (CopySection bits).

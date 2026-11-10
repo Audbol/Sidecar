@@ -153,11 +153,11 @@ FxRackView::FxRackView (UiContext& c, const Theme& t)
       tiles (std::make_unique<Tiles> (*this))
 {
     device.caption = "DEVICE";
-    device.device = devices::wing; // the WING's FX devices (and EXT)
+    device.device = devices::shown(); // the WING's FX devices (and EXT)
     device.items = [this]
     {
         juce::StringArray names;
-        for (const auto& m : models::table (models::Fx))
+        for (const auto& m : models::offered (models::Fx)) // every console's, the shown first
             names.add (m.name + slotNote (m.index, selected));
         return names;
     };
@@ -314,7 +314,10 @@ void FxRackView::refresh()
     {
         auto& info = infos[(size_t) i];
         info.name = deviceName (fx, i);
-        info.device = fx.getModel (i) > ld::kFxExt ? devices::wing : juce::String();
+        {
+            const auto& m = models::model (models::Fx, fx.getModel (i));
+            info.device = fx.getModel (i) > ld::kFxExt ? devices::of (m.token, m.foreign, devices::shown()) : juce::String();
+        }
         info.users = fx.getNumUsers (i);
         info.loaded = fx.isLoaded (i);
         info.bypassed = fx.params (i).bypass.load();
@@ -328,6 +331,16 @@ void FxRackView::refresh()
     {
         tiles->infos = std::move (infos);
         tiles->repaint();
+    }
+    {
+        // The DEVICE tag follows the device: another console's names that console.
+        const auto& m = models::model (models::Fx, ctx.engine.getFx().getModel (selected));
+        const auto tag = devices::of (m.token, m.foreign, devices::shown());
+        if (tag != device.device)
+        {
+            device.device = tag;
+            device.repaint();
+        }
     }
     device.refresh();
     if (listView.isVisible())

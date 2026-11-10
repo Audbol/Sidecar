@@ -63,7 +63,7 @@ RoutingView::RoutingView (UiContext& c, const Theme& t)
     interfaceTab.onClick = [this] { showPage (Page::Interface); };
     addAndMakeVisible (interfaceTab);
     group.caption = "GROUP";
-    group.device = devices::wing; // the WING's port groups
+    group.device = devices::shown(); // the WING's port groups
     group.items = [this]
     {
         juce::StringArray names;

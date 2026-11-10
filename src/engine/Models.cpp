@@ -2,6 +2,8 @@
 #include "engine/Strip.h"
 
 #include <array>
+#include <atomic>
+#include <cstring>
 #include <map>
 
 namespace livedaw::models
@@ -42,30 +44,24 @@ int Model::find (const juce::String& id) const noexcept
 
 juce::String consoleOf (const juce::String& token)
 {
-    // As livedaw_dsp::universal::console_of: the X32's tokens start "X32", the
-    // ProMix 01's "PM", the 02R's "Y2", the SQ-5's "SQ", the 01V's "O1", the dLive's "DLV", the
-    // DM2000's "DM" (none of the WING's do: "DEQ", "DS902", "DIMCRS" and its other D's go on differently).
-    if (token.startsWith ("X32"))
-        return "X32";
-    if (token.startsWith ("PM"))
-        return "PROMIX 01";
-    if (token.startsWith ("Y2"))
-        return "02R";
-    if (token.startsWith ("SQ"))
-        return "SQ-5";
-    if (token.startsWith ("O1"))
-        return "01V";
-    if (token.startsWith ("DLV"))
-        return "dLive";
-    if (token.startsWith ("DM"))
-        return "DM2000";
-    return {};
+    // livedaw_dsp::universal::console_of: the console whose tables hold the token (the X32's,
+    // the ProMix 01's, the 02R's, the SQ-5's, the 01V's, the dLive's, the DM2000's, the PRO2's,
+    // the Q1202USB's); empty for the WING's. Kept per token: the models are a fixed set.
+    static std::map<juce::String, juce::String> known;
+    if (const auto it = known.find (token); it != known.end())
+        return it->second;
+    const auto utf8 = token.toRawUTF8();
+    return known[token] = takeString (ld::ld_model_console (utf8, std::strlen (utf8)));
 }
 
-static std::vector<Model> build (Table t)
+/** Table `t` as the shown console holds it (`foreign` false), or with every other console's
+    models after its own (`foreign`: the tables' numbers + 10, which the Rust model calls take). */
+static std::vector<Model> build (Table t, bool foreign = false)
 {
+    const int ownCount = foreign ? ld::ld_model_count (t) : 0;
+    const int tableId = foreign ? (int) t + 10 : (int) t;
     std::vector<Model> models;
-    const int n = ld::ld_model_count (t);
+    const int n = ld::ld_model_count (tableId);
     models.reserve ((size_t) n);
 
     for (int m = 0; m < n; ++m)
@@ -77,8 +73,16 @@ static std::vector<Model> build (Table t)
         model.name = takeString (ld::ld_model_text (t, m, 1));
         // A Universal console holds every console's models: name the console
         // of those that aren't the WING's ("X32 Gate" beside "Wing Gate").
+        // (On another console, the models past its own are the foreign ones: named by their console.)
         if (const auto console = consoleOf (model.token); console.isNotEmpty() && shownProfile() == ld::kProfileUniversal)
             model.name = console + " " + model.name;
+        else if (foreign && m >= ownCount)
+        {
+            const auto prefix = console.isNotEmpty() ? console : juce::String ("WING");
+            if (! model.name.startsWithIgnoreCase (prefix))
+                model.name = prefix + " " + model.name; // ("WING EQ" already says it)
+        }
+        model.foreign = foreign && m >= ownCount;
         model.category = static_cast<Category> (juce::jlimit (0, 9, (int) ld::ld_model_category (t, m)));
 
         const int np = ld::ld_model_num_params (t, m);
@@ -110,7 +114,7 @@ static std::vector<Model> build (Table t)
     return models;
 }
 
-const std::vector<Model>& table (Table t)
+static const std::vector<Model>& tableOf (Table t, bool all)
 {
     // The shown console's models (setShownProfile; the Rust side's model calls
     // follow it), built once per console profile.
@@ -118,22 +122,56 @@ const std::vector<Model>& table (Table t)
     {
         bool built = false;
         std::array<std::vector<Model>, 5> tables;
+        std::array<std::vector<Model>, 5> all; // with the other consoles' models after
     };
     static std::map<int, Set> sets;
     auto& set = sets[(int) shownProfile()];
     if (! set.built)
     {
         for (int i = 0; i < (int) set.tables.size(); ++i)
+        {
             set.tables[(size_t) i] = build ((Table) i);
+            set.all[(size_t) i] = shownProfile() == ld::kProfileUniversal ? set.tables[(size_t) i] : build ((Table) i, true);
+        }
         set.built = true;
     }
-    return set.tables[(size_t) juce::jlimit (0, 4, (int) t)];
+    return (all ? set.all : set.tables)[(size_t) juce::jlimit (0, 4, (int) t)];
+}
+
+const std::vector<Model>& table (Table t)
+{
+    return tableOf (t, false);
+}
+
+const std::vector<Model>& tableAll (Table t)
+{
+    return tableOf (t, true);
+}
+
+static std::atomic<bool> remoteHold { false };
+
+void setRemoteHeld (bool held)
+{
+    remoteHold = held;
+    ld::ld_models_hold_remote (held);
+}
+
+bool remoteHeld() noexcept
+{
+    return remoteHold;
+}
+
+const std::vector<Model>& offered (Table t)
+{
+    return remoteHeld() ? table (t) : tableAll (t);
 }
 
 const Model& model (Table t, int index)
 {
-    const auto& models = table (t);
-    jassert (! models.empty());
+    // A block may hold another console's model (past the console's own table).
+    const auto& own = table (t);
+    jassert (! own.empty());
+    const auto& models = index >= (int) own.size() ? tableAll (t) : own;
     return models[(size_t) juce::jlimit (0, (int) models.size() - 1, index)];
 }
 

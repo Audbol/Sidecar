@@ -35,7 +35,7 @@ public:
         /** PRE-FADER, FADER, POST: a marker, not a block. */
         bool marker = false;
         /** The console it comes from: the strip's own blocks are its WING
-            template's (devices::wing); extra blocks and user taps, none. */
+            template's (devices::shown()); extra blocks and user taps, none. */
         juce::String device;
     };
     const std::vector<Row>& getRows() const noexcept { return rows; }
@@ -69,9 +69,12 @@ private:
     void rebuild (const std::vector<ChainStep>& chain);
     static bool sameChain (const std::vector<ChainStep>&, const std::vector<ChainStep>&);
     bool isOn (const ChainStep&) const;
+    /** The console tag of a step: its model's, when the step holds one (a WING EQ on a ProMix: WING). */
+    juce::String deviceOf (const ChainStep&, bool own) const;
     std::atomic<bool>* switchOf (const ChainStep&) const;
     void selectStep (std::function<bool (const ChainStep&)> match);
 
+    UiContext& ctx;
     const Theme& theme;
     Strip* strip = nullptr;
     std::vector<ChainStep> shownChain;

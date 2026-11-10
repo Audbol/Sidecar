@@ -190,7 +190,7 @@ void StripBody::paint (juce::Graphics& g)
                 if (r.getHeight() >= 12.0f)
                 {
                     auto second = r.removeFromTop (12.0f);
-                    second.removeFromRight (drawDeviceTag (g, second, b.target.device, theme));
+                    second.removeFromRight (drawDeviceTag (g, second, b.target.tag(), theme));
                     if (b.model.isNotEmpty())
                         drawEngraved (g, b.model, second, juce::Justification::centredLeft, theme, false);
                 }

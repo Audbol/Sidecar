@@ -615,6 +615,11 @@ impl ProfileSpec {
     /// console with a preamp block keeps its preamp models there, and only there;
     /// every other console (the Universal first) offers its table's models anywhere.
     pub fn may_hold(&self, slot: DynSlot, token: &str) -> bool {
+        if !self.is_own_dynamics(token) {
+            // Another console's model (`ProfileSpec::run_models`) goes in any slot
+            // but a preamp block, which takes the dLive's preamps and nothing else.
+            return self.factory_preamp_block.is_none() || livedaw_dsp::dlive::is_preamp(token) == (slot == DynSlot::Preamp);
+        }
         if self.profile == Profile::Dm2000 {
             return slot != DynSlot::Preamp && livedaw_dsp::dm2000::is_gate(token) == (slot == DynSlot::Gate);
         }
@@ -628,10 +633,24 @@ impl ProfileSpec {
         self.factory_preamp_block.is_none() || livedaw_dsp::dlive::is_preamp(token) == (slot == DynSlot::Preamp)
     }
 
+    /// Whether dynamics model `token` is one of this console's own (not another console's).
+    pub fn is_own_dynamics(&self, token: &str) -> bool {
+        self.models.dynamics.iter().any(|m| m.token == token)
+    }
+
+    /// The tables a strip's blocks and the FX slots run on: the console's own models
+    /// first (their indices are the console's), then every other console's
+    /// (`livedaw_dsp::universal::with_foreign`). Foreign models are for the Universal
+    /// Mixer's block editor; a console's own surface keeps to `models`.
+    pub fn run_models(&self) -> &'static ModelTables {
+        livedaw_dsp::universal::with_foreign(self.models)
+    }
+
     /// [`Self::may_hold`] on a strip of `kind`: a PRO2's compressors are a pair, the
     /// inputs' four modes and the outputs' five (Owner's Manual pp.250, 273).
     pub fn may_hold_on(&self, kind: StripKind, slot: DynSlot, token: &str) -> bool {
         if self.profile == Profile::MidasPro2
+            && self.is_own_dynamics(token)
             && slot == DynSlot::Dynamics
             && livedaw_dsp::midas_pro::is_output_compressor(token) != kind.is_output()
         {

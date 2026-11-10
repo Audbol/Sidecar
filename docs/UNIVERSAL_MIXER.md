@@ -103,6 +103,29 @@ Three layers:
    defaults, laws and ballistics, its surface and screens, its remote protocols and its
    file formats. The WING becomes the first profile, built from today's code.
 
+**Foreign models** (any console's models on any console's blocks). A console's own
+`ModelTables` stay as they are: its surface, its shows and its remote protocols number
+and list its own models. A strip's blocks and the FX slots run on `ProfileSpec::run_models()`
+instead: the own tables followed by every other console's models of each kind
+(`universal::with_foreign`, built once, own indices unchanged; a dLive's RackUltra and
+Dyn8 stay on a dLive). A model past the own table is *foreign*; the token names a model
+across tables, so shows and scenes (which save `mdl="TOKEN"`) recall a swapped block and old
+shows load unchanged. The host's model calls take table numbers 10-14 for the extended
+tables (and fall back to them for an index past the own table); `ld_model_console(token)`
+names a model's console; no struct layout changed, so `LD_ABI_VERSION` stays. The
+Universal Mixer's block editor, chain list and FX rack list offer `models::offered()`
+(the shown console's models first, each console together, named "WING EQ", "X32 Gate"),
+and a block's tag follows its model (`devices::of`: foreign, else the shown console).
+Swapping loads the new model's defaults (a block's on/off stays; EQ and dynamics values
+are the model's own, since parameter ids differ between consoles). Dynamics rules
+(`may_hold`) apply to a console's own models only; a foreign model goes in any slot but a
+dLive's preamp block, which takes preamps alone. A console's own surface reads a foreign
+block by token and parameter id (`models::model` resolves past-the-table indices): it
+shows the block as "WING EQ" and its controls that the model has by id, the rest stay
+inert; surface lists never offer foreign models. Under remote control of a real console
+(`RemoteSession`) `models::setRemoteHeld` hides foreign models and the engine refuses them
+(`ld_models_hold_remote`); the X32 remote protocol sends nothing for a foreign block.
+
 ## Phases
 
 1. **Generalize the engine and show model** (done, November 2026) behind the current

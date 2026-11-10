@@ -833,6 +833,33 @@ fn an_x32_show_loads_as_an_x32() {
 }
 
 #[test]
+fn a_promix_keeps_a_swapped_wing_eq_through_a_show() {
+    use livedaw_engine::config::{ConsoleConfig, Counts};
+    use livedaw_engine::Profile;
+    let engine = Engine::new(0);
+    engine.configure(&ConsoleConfig { profile: Profile::ProMix01, counts: Counts::PROMIX01 });
+    let c = ch(&engine, 0);
+    let eq = c.params.eq();
+    eq.set_model(model_index(eq.table(), "STD").unwrap());
+    eq.param("1g").unwrap().store(3.5);
+    let mut show = Show::new();
+    show.add_scene(&engine, &mut NoPlugins, "A", -1);
+    let text = show.to_xml(&engine, &mut NoPlugins).to_document();
+    assert!(text.contains("mdl=\"STD\""), "{text}");
+
+    let e2 = Engine::new(0);
+    let warnings = Show::new().load_from_text(&e2, &mut NoPlugins, &text, true).unwrap();
+    assert!(warnings.is_empty(), "{warnings:?}");
+    assert_eq!(e2.profile(), Profile::ProMix01);
+    let c2 = ch(&e2, 0);
+    let eq2 = c2.params.eq();
+    assert_eq!(eq2.model_spec().unwrap().token, "STD");
+    assert_eq!(eq2.param("1g").unwrap().load(), 3.5);
+    eq2.set_model(model_index(eq2.table(), "PMEQ").unwrap());
+    assert_eq!(eq2.model_spec().unwrap().token, "PMEQ");
+}
+
+#[test]
 fn a_universal_console_keeps_other_consoles_blocks_through_a_show() {
     use livedaw_engine::config::{ConsoleConfig, Counts};
     use livedaw_engine::Profile;

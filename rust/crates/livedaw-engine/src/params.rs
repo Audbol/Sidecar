@@ -1168,7 +1168,7 @@ impl StripParams {
     /// [`Self::new_in_slot`] on a console of `spec` (its models in the
     /// blocks; its `buses_to_main` are the subgroups at 0 dB; its mono mains).
     pub fn new_in_slot_of(kind: StripKind, index: usize, spec: &ProfileSpec) -> Self {
-        let p = Self::new_with(kind, spec.models);
+        let p = Self::new_with(kind, spec.run_models());
         if kind == StripKind::Main && spec.mono_mains.contains(&index) {
             p.stereo.store(false, Relaxed);
         }

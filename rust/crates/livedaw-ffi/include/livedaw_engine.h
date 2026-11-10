@@ -1505,6 +1505,10 @@ extern "C"
     /** Whether the shown console lets FX device `model` run in FX slot `slot` (0-based). */
     bool ld_model_fx_allowed (int32_t model, int32_t slot);
     int32_t ld_model_find (int32_t table, const char* utf8, size_t len);
+    /** The console a model comes from, by its token ("X32", "PROMIX 01", "dLive"...); empty for the WING's. Free with ld_string_free. */
+    LdString* ld_model_console (const char* utf8, size_t len);
+    /** A real console is under remote control: the strips and FX slots refuse other consoles' models while it is. */
+    void ld_models_hold_remote (bool held);
     /** ABI 56: may dynamics model `model` (table 0 of the shown console) be offered for `slot`?
         slot: 0 = gate slot, 1 = dynamics slot or an extra dynamics block, 2 = the preamp block
         (ld_strip_preamp_block). On a dLive the preamp models go in that block alone and it holds

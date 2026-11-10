@@ -1,6 +1,7 @@
 #include "ui/universal/ChainList.h"
 
 #include "ui/ChainSummary.h"
+#include "ui/universal/BlockEditor.h"
 
 #include <algorithm>
 
@@ -166,8 +167,8 @@ private:
 };
 
 //==============================================================================
-ChainList::ChainList (UiContext&, const Theme& t)
-    : addKey ("ADD", t.accent, t), removeKey ("REMOVE", t.mute, t), theme (t), rowsView (std::make_unique<Rows> (*this))
+ChainList::ChainList (UiContext& c, const Theme& t)
+    : addKey ("ADD", t.accent, t), removeKey ("REMOVE", t.mute, t), ctx (c), theme (t), rowsView (std::make_unique<Rows> (*this))
 {
     viewport.setViewedComponent (rowsView.get(), false);
     viewport.setScrollBarsShown (true, false);
@@ -226,6 +227,14 @@ bool ChainList::isOn (const ChainStep& s) const
     return strip != nullptr && stepOn (*strip, s);
 }
 
+juce::String ChainList::deviceOf (const ChainStep& s, bool own) const
+{
+    const bool holdsModel = s.isBlock() || s.kind == ld::kStepGate || s.kind == ld::kStepEq || s.kind == ld::kStepDynamics;
+    if (strip != nullptr && holdsModel)
+        return BlockTarget::of (ctx, *strip, s).tag();
+    return own ? devices::shown() : juce::String();
+}
+
 void ChainList::rebuild (const std::vector<ChainStep>& chain)
 {
     const auto before = juce::isPositiveAndBelow (selected, (int) rows.size()) ? std::optional<ChainStep> (rows[(size_t) selected].step) : std::nullopt;
@@ -239,7 +248,7 @@ void ChainList::rebuild (const std::vector<ChainStep>& chain)
         const bool own = ! s.isBlock() && ! s.isUserTap() && ! isMarker (s);
         // A dLive's preamp is part of its channel: it can't be moved or removed.
         const bool preamp = strip != nullptr && s.isBlock() && s.uid == ld::ld_strip_preamp_block (strip->getHandle());
-        rows.push_back ({ s, i, strip != nullptr ? stepName (*strip, s) : stepName (s), (s.isBlock() && ! preamp) || s.isUserTap(), isMarker (s), own ? devices::wing : juce::String() });
+        rows.push_back ({ s, i, strip != nullptr ? stepName (*strip, s) : stepName (s), (s.isBlock() && ! preamp) || s.isUserTap(), isMarker (s), deviceOf (s, own) });
     }
     lit.assign (rows.size(), false);
 
@@ -275,6 +284,13 @@ void ChainList::refresh()
         if (on != lit[i])
         {
             lit[i] = on;
+            changed = true;
+        }
+        // The tag follows the block's model: swapped for another console's, it names that console.
+        const auto device = deviceOf (rows[i].step, ! rows[i].step.isBlock() && ! rows[i].step.isUserTap() && ! rows[i].marker);
+        if (device != rows[i].device)
+        {
+            rows[i].device = device;
             changed = true;
         }
     }

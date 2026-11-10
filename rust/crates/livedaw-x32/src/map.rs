@@ -1238,6 +1238,17 @@ impl<'a> Console<'a> {
         list.iter().position(|c| *c == code).map(|i| i as i32)
     }
 
+    /// A block parameter, for a console's own model only: on a real X32's profile, a block
+    /// holding another console's model (the Universal Mixer's swap) has nothing to send.
+    fn x32_only<'v, T>(&self, spec: Option<&livedaw_dsp::model::ModelSpec>, v: Option<&'v T>) -> Option<&'v T> {
+        let foreign = self.engine.profile() == livedaw_engine::Profile::X32 && !spec?.token.starts_with("X32");
+        if foreign {
+            None
+        } else {
+            v
+        }
+    }
+
     /// The value of entry `i`.
     pub fn get(&self, i: usize) -> Val {
         let e = &self.tree.entries[i];
@@ -1567,13 +1578,13 @@ impl<'a> Console<'a> {
             }
             Bind::GateOn => return on(p.gate().on.load(Relaxed)),
             Bind::GateMode => Val::Int(model_of(p.gate(), &GATE_MODELS)?),
-            Bind::Gate(id) => Self::typed(e, p.gate().param(id)?.load()),
+            Bind::Gate(id) => Self::typed(e, self.x32_only(p.gate().model_spec(), p.gate().param(id))?.load()),
             Bind::DynOn => return on(p.dynamics().on.load(Relaxed)),
             Bind::DynMode => Val::Int(model_of(p.dynamics(), &DYN_MODELS)?),
-            Bind::Dyn(id) => Self::typed(e, p.dynamics().param(id)?.load()),
+            Bind::Dyn(id) => Self::typed(e, self.x32_only(p.dynamics().model_spec(), p.dynamics().param(id))?.load()),
             Bind::DynMix => Val::Real(p.dynamics().mix.load()),
             Bind::EqOn => return on(p.eq().on.load(Relaxed)),
-            Bind::Eq(id) => Self::typed(e, p.eq().param(id)?.load()),
+            Bind::Eq(id) => Self::typed(e, self.x32_only(p.eq().model_spec(), p.eq().param(id))?.load()),
             Bind::InsertOn => return on(p.pre_insert().on.load(Relaxed)),
             Bind::InsertSel => {
                 let fx = p.pre_insert().fx.load(Relaxed);
@@ -1811,13 +1822,13 @@ impl<'a> Console<'a> {
             }
             Bind::GateOn => p.gate().on.store(v.on(), Relaxed),
             Bind::GateMode => return set_model(p.gate(), GATE_MODELS[v.int().clamp(0, 4) as usize]),
-            Bind::Gate(id) => return param(p.gate().param(id)),
+            Bind::Gate(id) => return param(self.x32_only(p.gate().model_spec(), p.gate().param(id))),
             Bind::DynOn => p.dynamics().on.store(v.on(), Relaxed),
             Bind::DynMode => return set_model(p.dynamics(), DYN_MODELS[v.int().clamp(0, 1) as usize]),
-            Bind::Dyn(id) => return param(p.dynamics().param(id)),
+            Bind::Dyn(id) => return param(self.x32_only(p.dynamics().model_spec(), p.dynamics().param(id))),
             Bind::DynMix => p.dynamics().mix.store(v.real()),
             Bind::EqOn => p.eq().on.store(v.on(), Relaxed),
-            Bind::Eq(id) => return param(p.eq().param(id)),
+            Bind::Eq(id) => return param(self.x32_only(p.eq().model_spec(), p.eq().param(id))),
             Bind::InsertOn => p.pre_insert().on.store(v.on(), Relaxed),
             Bind::InsertSel => {
                 // The FX slot goes to the engine; the side (L/R) and the AUX

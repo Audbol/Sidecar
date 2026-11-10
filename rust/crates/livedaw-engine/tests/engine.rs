@@ -464,7 +464,7 @@ fn an_x32s_fx_rack_runs_its_table_and_takes_premium_devices_in_fx_1_to_4() {
     assert!(!rig.engine.set_fx_model(8, hall(&rig.engine), true));
     rig.engine.configure(&ConsoleConfig { profile: Profile::X32, counts: Counts::X32 });
     let e = &rig.engine;
-    assert!(std::ptr::eq(e.fx_models(), Profile::X32.spec().models.fx));
+    assert_eq!(&e.fx_models()[..Profile::X32.spec().models.fx.len()], Profile::X32.spec().models.fx, "its own first");
     assert_eq!(e.fx_models()[hall(e)].token, "X32HALL", "its own models");
     let geq = model_index(e.fx_models(), "X32GEQ2").unwrap();
     assert!(e.set_fx_model(4, geq, true), "an insert model in FX 5");

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/Models.h"
 #include "engine/WingRemote.h"
 
 #include <juce_core/juce_core.h>
@@ -58,13 +59,24 @@ public:
 
     juce::String consoleName() const override { return "X32"; }
     int requiredProfile() const override { return 2; } // ld::kProfileX32
-    bool connect (const juce::String& address) override { return wing.connectX32Remote (address); }
-    void disconnect() override { wing.disconnectX32Remote(); }
+    bool connect (const juce::String& address) override
+    {
+        const bool started = wing.connectX32Remote (address);
+        models::setRemoteHeld (started); // the hardware runs its own models only
+        return started;
+    }
+
+    void disconnect() override
+    {
+        wing.disconnectX32Remote();
+        models::setRemoteHeld (false);
+    }
 
     Info info() const override
     {
         Info i;
         i.state = (State) juce::jlimit (0, 3, wing.getX32RemoteState());
+        models::setRemoteHeld (i.state != State::Offline);
         if (i.state == State::Offline)
             return i;
         const auto r = wing.getX32RemoteInfo();

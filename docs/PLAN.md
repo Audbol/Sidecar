@@ -128,6 +128,7 @@ The owner wants a lot of work done here; what comes first is theirs to say.
 - [x] Second pass: scene scope and recall safes, a snippet's items, banks and JUMP, FX bypass on the tiles, ROUTING's levels,
       crosshair and range drag, light theme and MENU. Left: recorder and CC EDIT in this theme, LIBRARY / RECORDER / SETUP spacing.
 - [x] Universal Mixer: a design pass so it looks and works like a professional tool (owner, November 2026): consistent type, spacing and colour across every view, polished meters, faders and keys, and every feature you would expect.
+- [x] Any console's blocks on any console (`ProfileSpec::run_models`, `UNIVERSAL_MIXER.md` "Foreign models"): lists, tags, shows, remote-mode guard. Still to do: a surface's own pages for a foreign block (today inert or by parameter id), foreign models on aux channels' dynamics lists, and trying a swapped show on a real X32 (remote control hides them).
 - [ ] Look at it again in the renders after that pass; then the list in `UNIVERSAL_MIXER.md`, "Interface pass".
 
 ## 6. The other consoles
@@ -187,7 +188,7 @@ Research is in `NEW_CONSOLES_RESEARCH.md`; documents and photos are outside the 
   - [x] The C++ side of the profile and its surface (`Pro2Surface`, `Pro2Screen`), first pass.
   - [ ] MCA groups, the direct output, the safes but AUTO, the aux send modes, stereo-linked sends and matrices, SIS panning.
 - [ ] DM2000: accuracy pass against the owner's photos (`photos-owner` in the reference folder), and its meter bridge.
-- [ ] Remote control, X32 done in code (livedaw-x32 client, RemoteSession, CONNECT keys; tested against Sidecar's own server only; meters from /meters and a check against a real console still to do): Later (owner: for sure): Universal Mixer as a remote for real consoles: audio off, the profile loaded, moves sent to the console and its changes shown, full state read on connect, a clear connected state. Start with the 01V (owner has one), then the X32 and WING, the MIDI Yamahas, partial SQ-5 and dLive. Not the PRO2 (no published protocol) or analog mixers.
+- [x] Remote control, X32: tried on a real X32 by the owner (test.10, November 2026) and works. Still to do: meters from the console, the 01V and others. Done in code (livedaw-x32 client, RemoteSession, CONNECT keys; tested against Sidecar's own server only; meters from /meters and a check against a real console still to do): Later (owner: for sure): Universal Mixer as a remote for real consoles: audio off, the profile loaded, moves sent to the console and its changes shown, full state read on connect, a clear connected state. Start with the 01V (owner has one), then the X32 and WING, the MIDI Yamahas, partial SQ-5 and dLive. Not the PRO2 (no published protocol) or analog mixers.
 - [ ] Analog mixers: Sidecar will branch out to cover them as well.
 - [ ] Then, as wanted: Midas M32, Yamaha CL, QL, TF and DM7, Allen & Heath Avantis, DiGiCo SD and
       Quantum.

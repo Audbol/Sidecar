@@ -40,16 +40,31 @@ pub extern "C" fn ld_models_show_profile(profile: i32) {
 /// parameters in the order of the strip's values (`ld_ufx_strip_values`).
 const UFX_STRIP_TABLE: i32 = 5;
 
-/// The host's model tables: the shown profile's (`ProfileSpec::models`).
+/// The host's model tables: the shown profile's (`ProfileSpec::models`), or with 10 added the
+/// same with every other console's models after its own.
 fn table(t: i32) -> &'static [ModelSpec] {
     if t == UFX_STRIP_TABLE {
         return std::slice::from_ref(&livedaw_dsp::dlive_fx::ultra::strip::STRIP);
     }
-    crate::profile_of(SHOWN_PROFILE.load(std::sync::atomic::Ordering::Relaxed)).spec().models.table(t)
+    // Tables 10-14: tables 0-4 with every other console's models after the shown
+    // console's own (`ProfileSpec::run_models`), numbered alike for the own ones.
+    let spec = crate::profile_of(SHOWN_PROFILE.load(std::sync::atomic::Ordering::Relaxed)).spec();
+    if t >= FOREIGN_TABLES {
+        spec.run_models().table(t - FOREIGN_TABLES)
+    } else {
+        spec.models.table(t)
+    }
 }
 
+/// Tables `FOREIGN_TABLES` + 0..4: the shown console's tables 0..4 and the other
+/// consoles' models after them.
+const FOREIGN_TABLES: i32 = 10;
+
+/// Model `m` of table `t`; past the shown console's own models, another console's
+/// (a block may hold one: `ProfileSpec::run_models`).
 fn model(t: i32, m: i32) -> Option<&'static ModelSpec> {
-    table(t).get(usize::try_from(m).ok()?)
+    let m = usize::try_from(m).ok()?;
+    table(t).get(m).or_else(|| table(t % FOREIGN_TABLES + FOREIGN_TABLES).get(m))
 }
 
 fn param(t: i32, m: i32, p: i32) -> Option<&'static ParamSpec> {
@@ -108,7 +123,7 @@ pub extern "C" fn ld_model_count(t: i32) -> i32 {
 #[no_mangle]
 pub extern "C" fn ld_model_fx_allowed(m: i32, slot: i32) -> bool {
     let (Ok(m), Ok(slot)) = (usize::try_from(m), usize::try_from(slot)) else { return false };
-    let models = crate::profile_of(SHOWN_PROFILE.load(std::sync::atomic::Ordering::Relaxed)).spec().models;
+    let models = crate::profile_of(SHOWN_PROFILE.load(std::sync::atomic::Ordering::Relaxed)).spec().run_models();
     livedaw_dsp::wing::fx::allowed_in(models, m, slot)
 }
 
@@ -161,7 +176,8 @@ pub extern "C" fn ld_dyn_model_allowed(m: i32, slot: i32) -> bool {
 
 fn dyn_model_allowed(profile: livedaw_engine::Profile, m: i32, slot: i32) -> bool {
     let spec = profile.spec();
-    let (Some(model), Some(slot)) = (usize::try_from(m).ok().and_then(|i| spec.models.table(0).get(i)), dyn_slot(slot)) else {
+    let (Some(model), Some(slot)) = (usize::try_from(m).ok().and_then(|i| spec.run_models().dynamics.get(i)), dyn_slot(slot))
+    else {
         return false;
     };
     spec.may_hold(slot, model.token)
@@ -171,7 +187,51 @@ fn dyn_model_allowed(profile: livedaw_engine::Profile, m: i32, slot: i32) -> boo
 /// may this dynamics slot of the strip hold model `m` of its table? (A model it
 /// hasn't is the setter's no-op.)
 pub(crate) fn dyn_slot_may_hold(s: &Strip, p: &DynSlotParams, slot: DynSlot, m: usize) -> bool {
-    p.table().get(m).is_none_or(|spec| s.spec().may_hold_on(s.kind(), slot, spec.token))
+    p.table().get(m).is_none_or(|spec| {
+        (!remote_held() || s.spec().is_own_dynamics(spec.token)) && s.spec().may_hold_on(s.kind(), slot, spec.token)
+    })
+}
+
+/// Whether a real console is under remote control (`ld_models_hold_remote`): its hardware can't
+/// run another console's models, so none is taken while it is.
+static REMOTE_HELD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// The host's remote session (the X32's: `ld_x32c_*`) is connected, or not: while it is, the
+/// strips and FX slots refuse the models of other consoles (the screens don't offer them).
+#[no_mangle]
+pub extern "C" fn ld_models_hold_remote(held: bool) {
+    REMOTE_HELD.store(held, std::sync::atomic::Ordering::Relaxed);
+}
+
+fn remote_held() -> bool {
+    REMOTE_HELD.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// May `s`'s EQ take model `m` of its table (a foreign one: not under remote control)?
+pub(crate) fn eq_may_hold(s: &Strip, m: usize) -> bool {
+    let own = if s.kind().is_output() { s.spec().models.eq_bus } else { s.spec().models.eq_channel };
+    !remote_held() || m < own.len()
+}
+
+/// May a filter block take tool `m` (a foreign one: not under remote control)?
+pub(crate) fn tool_may_hold(s: &Strip, m: usize) -> bool {
+    !remote_held() || m < s.spec().models.filter_tools.len()
+}
+
+/// May FX slots of the engine take device `m` (a foreign one: not under remote control)?
+pub(crate) fn fx_may_hold(e: &livedaw_engine::Engine, m: usize) -> bool {
+    !remote_held() || m < e.profile().spec().models.fx.len()
+}
+
+/// The console a model comes from by its token ("X32", "PROMIX 01", "02R", "SQ-5", "01V",
+/// "dLive", "DM2000", "PRO2", "Q1202USB"); empty for the WING's (`universal::console_of`).
+///
+/// # Safety
+/// `utf8` must point to `len` bytes.
+#[no_mangle]
+pub unsafe extern "C" fn ld_model_console(utf8: *const u8, len: usize) -> *mut LdString {
+    let token = crate::session::str_arg(utf8, len);
+    LdString::new(livedaw_dsp::universal::console_of(&token).unwrap_or("").to_owned())
 }
 
 #[no_mangle]
@@ -281,7 +341,7 @@ pub unsafe extern "C" fn ld_dyn_static_curve(
     let values = std::slice::from_raw_parts(values, nv);
     let ins = std::slice::from_raw_parts(in_db, n);
     let outs = std::slice::from_raw_parts_mut(out_db, n);
-    livedaw_dsp::wing::dynamics::static_curve_in(table(0), model, values, ins, outs)
+    livedaw_dsp::wing::dynamics::static_curve_in(table(FOREIGN_TABLES), model, values, ins, outs)
 }
 
 /// # Safety
@@ -302,7 +362,8 @@ pub unsafe extern "C" fn ld_model_response(
     if values.is_null() || freqs.is_null() || out_db.is_null() {
         return false;
     }
-    let Some(spec) = table(t).get(model) else { return false };
+    let Some(spec) = i32::try_from(model).ok().and_then(|m| self::model(t, m)) else { return false };
+    let t = t % FOREIGN_TABLES;
     let values = std::slice::from_raw_parts(values, nv);
     let freqs = std::slice::from_raw_parts(freqs, n);
     let out = std::slice::from_raw_parts_mut(out_db, n);

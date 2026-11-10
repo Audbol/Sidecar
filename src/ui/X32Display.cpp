@@ -503,9 +503,9 @@ juce::StringArray Display::getTabs() const
     switch (screen == Screen::MuteGroups ? underScreen : screen)
     {
         case Screen::Home:       return { "home", "config", "gate", "dyn", "eq", "sends", "main" };
-        case Screen::Meters:     return { "channel", "mix bus", "aux / fx", "in / out", "rta" };
-        case Screen::Routing:    return { "home", "out 1-16", "aux out", "p16 out", "card out", "aes50-a", "aes50-b", "xlr out" };
-        case Screen::Setup:      return { "global", "config", "remote", "network", "scribble strip", "preamps", "card" };
+        case Screen::Meters:     return { "channel", "mix bus", "aux/fx", "in/out", "rta", "automix" };
+        case Screen::Routing:    return { "input", "out", "aux", "p16", "card", "aes a", "aes b", "xlr", "user" };
+        case Screen::Setup:      return { "global", "config", "remote", "network", "name/icon", "preamps", "card" };
         case Screen::Library:    return { "channel", "effects", "routing" };
         case Screen::Effects:    return { "home", "fx1", "fx2", "fx3", "fx4", "fx5", "fx6", "fx7", "fx8" };
         case Screen::MuteGroups: return { "mute grp" };
@@ -2116,7 +2116,7 @@ void Display::assignEncoders()
                         if (slot >= (int) engine.getBuses().size())
                             break;
                         auto& send = s->sends[(size_t) slot];
-                        encoders[(size_t) i] = encoder (bindFader ("BUS " + juce::String (slot + 1), send.levelDb), "MUTE", [&send] { send.enabled = ! send.enabled.load(); },
+                        encoders[(size_t) (i + 2)] = encoder (bindFader ("Level " + juce::String (i + 1), send.levelDb), "MUTE", [&send] { send.enabled = ! send.enabled.load(); },
                                                         [&send] { return ! send.enabled.load(); });
                     }
                 else if (addressOf.startsWith ("/ch/") || addressOf.startsWith ("/auxin/") || addressOf.startsWith ("/fxrtn/"))
@@ -2127,12 +2127,12 @@ void Display::assignEncoders()
                     {
                         const int bus = first + 2 * k + 1;
                         if (bus <= (int) engine.getBuses().size())
-                            encoders[(size_t) (2 * k)] = encoder (enumKnob ("TAP " + juce::String (bus) + "/" + juce::String (bus + 1),
+                            encoders[(size_t) (2 * k + 2)] = encoder (enumKnob ("TAP " + juce::String (bus) + "/" + juce::String (bus + 1),
                                                                             addressOf + "/mix/" + juce::String (bus).paddedLeft ('0', 2) + "/type", taps));
                     }
                 }
                 KnobBinding bank;
-                bank.label = "SENDS";
+                bank.label = "Scroll";
                 bank.get = [this] { return (float) sendBank / 6.0f; };
                 bank.set = [this] (float v)
                 {
@@ -2144,18 +2144,18 @@ void Display::assignEncoders()
                                                          { if (safe != nullptr) safe->assignEncoders(); });
                     }
                 };
-                bank.text = [this] { return juce::String (2 * sendBank + 1) + "-" + juce::String (2 * sendBank + 4); };
+                bank.text = [this] { return juce::String (2 * sendBank + 1) + ".." + juce::String (2 * sendBank + 4); };
                 bank.steps = 7.0f;
-                encoders[5] = encoder (bank, "NEXT 4", [this] { sendBank = (sendBank + 2) % 7; assignEncoders(); });
+                encoders[0] = encoder (bank, "JUMP +4", [this] { sendBank = (sendBank + 2) % 7; assignEncoders(); });
                 break;
             }
             case 6: // main
                 if (toMains)
-                    encoders[0] = encoder (bindPan ("PAN", p.pan), "LR", toggle (s->mains[0].on), isOn (s->mains[0].on));
+                    encoders[0] = encoder (bindPan ("Pan", p.pan), "LR", toggle (s->mains[0].on), isOn (s->mains[0].on));
                 else if (isLr)
                     encoders[0] = encoder (bindPan ("PAN", p.pan));
                 if (hasMc && toMains)
-                    encoders[1] = encoder (bindFader ("M/C LEVEL", s->mains[1].levelDb), "M/C", toggle (s->mains[1].on), isOn (s->mains[1].on));
+                    encoders[1] = encoder (bindFader ("Level", s->mains[1].levelDb), "SUB", toggle (s->mains[1].on), isOn (s->mains[1].on));
                 encoders[4] = encoder ({}, "SOLO", toggle (p.solo), isOn (p.solo));
                 encoders[5] = encoder (faderOf(), "MUTE", toggle (p.mute), isOn (p.mute));
                 break;
@@ -2182,7 +2182,7 @@ void Display::assignEncoders()
             };
             m.text = [this] { return getModel() == 1 ? juce::String ("X32 COMPACT") : juce::String ("X32"); };
             m.steps = 2.0f;
-            encoders[0] = encoder (m, "SWITCH", [this] { setModel (1 - getModel()); }, [] { return false; });
+            encoders[0] = encoder (m, "GO", [this] { setModel (1 - getModel()); }, [] { return false; });
         }
         assignSetupGlobalEncoders();
         auto* device = ctx.deviceManager.getCurrentAudioDevice();
@@ -2193,12 +2193,12 @@ void Display::assignEncoders()
             if (! juce::isPositiveAndBelow (globalRate, n))
                 globalRate = juce::jmax (0, rates.indexOf (device->getCurrentSampleRate()));
             KnobBinding rate;
-            rate.label = "SAMPLE RATE";
+            rate.label = "Select";
             rate.get = [this, n] { return n > 1 ? (float) globalRate / (float) (n - 1) : 0.0f; };
             rate.set = [this, n] (float v) { globalRate = juce::roundToInt (v * (float) (n - 1)); repaint(); };
-            rate.text = [this, rates] { return juce::String (juce::roundToInt (rates[globalRate])); };
+            rate.text = [this, rates] { return juce::String (rates[globalRate] / 1000.0, 1); };
             rate.steps = (float) juce::jmax (2, n);
-            encoders[1] = encoder (rate, "CONFIRM", [this, rates]
+            encoders[1] = encoder (rate, "SET", [this, rates]
             {
                 auto setup = ctx.deviceManager.getAudioDeviceSetup();
                 setup.sampleRate = rates[globalRate];
@@ -2690,6 +2690,10 @@ void Display::assignEncoders()
         dest.text = [this] { return x32OscDestination (x32Value ("/config/osc/dest").getIntValue()); };
         dest.steps = 26.0f;
         encoders[5] = encoder (dest);
+    }
+    else if (screen == Screen::Meters && tab == 5)
+    {
+        assignAutomixEncoders();
     }
     else if (screen == Screen::Meters && tab == 4)
     {
@@ -3403,74 +3407,92 @@ void Display::paintHomeConfig (juce::Graphics& g, juce::Rectangle<int> r, Strip&
     }
 }
 
-void Display::paintHomeMain (juce::Graphics& g, juce::Rectangle<int> r, Strip& s)
+namespace
 {
-    // Manual p.46: pan and the LR assign, the M/C level and assign, solo, the fader and mute.
-    auto& p = s.params;
-    const bool mc = ctx.engine.getMains().size() > 1;
-    auto area = pageFrame (g, r).toFloat();
-    const float cw = area.getWidth() / 4.0f;
-    const auto column = [&] (const juce::String& name, const juce::String& value, float fraction, const juce::String& chipText, bool on)
-    {
-        auto c = area.removeFromLeft (cw).reduced (6.0f, 0.0f);
-        g.setColour (kNavy);
-        g.setFont (type::font (10.5f, true));
-        g.drawText (name, c.removeFromTop (16.0f), juce::Justification::centred);
-        chip (g, c.removeFromBottom (15.0f).reduced (6.0f, 0.0f), chipText, on);
-        c.removeFromBottom (2.0f);
-        valueBox (g, c.removeFromBottom (16.0f).reduced (4.0f, 1.0f), value);
-        if (fraction >= 0.0f)
-            knobIcon (g, c.getCentre(), juce::jmin (13.0f, c.getHeight() * 0.35f), fraction);
-    };
-    column ("Main LR", juce::String (juce::roundToInt (p.pan.load())), (p.pan.load() + 100.0f) / 200.0f, "LR", s.mains[0].on.load());
-    column ("Mono / Center", mc ? fader::text (s.mains[1].levelDb.load()) : juce::String ("-"), mc ? fader::dbToPos (s.mains[1].levelDb.load()) : 0.0f, "M/C", mc && s.mains[1].on.load());
-    column ("Solo", {}, -1.0f, "Solo", p.solo.load());
-    column ("Fader", fader::text (p.faderDb.load()), fader::dbToPos (p.faderDb.load()), "Mute", p.mute.load());
+    void drawBar (juce::Graphics& g, juce::Rectangle<int> r, const juce::String& text, float size = 11.0f);
 }
 
-void Display::paintSetupGlobal (juce::Graphics& g, juce::Rectangle<int> r)
+void Display::paintHomeMain (juce::Graphics& g, juce::Rectangle<int> r, Strip& s)
 {
-    // Manual 7.5.1: the system controls, the rate, initialize, time and date, brightness.
-    auto* device = ctx.deviceManager.getCurrentAudioDevice();
-    auto area = pageFrame (g, r).toFloat();
-    if (globalStatus.isNotEmpty())
+    // The MAIN tab as the console draws it: the assign (LR + SUB), the stereo and M/C buses'
+    // pan and level at the left, and the LEFT, SUB and RIGHT meters with their faders.
+    auto& p = s.params;
+    const bool mc = ctx.engine.getMains().size() > 1;
+    auto area = r.reduced (8, 4);
+    auto panels = area.removeFromRight (area.getWidth() * 56 / 100);
+    area.removeFromRight (4);
+    // The assign: LR + SUB, or LCR (Sidecar's mains are a stereo bus and the M/C bus).
     {
-        g.setColour (kDeep);
-        g.setFont (type::font (10.0f, true));
-        g.drawFittedText (globalStatus, area.removeFromBottom (14.0f).toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
+        auto line = area.removeFromTop (16).withTrimmedLeft (area.getWidth() / 5);
+        g.setFont (type::font (11.0f, true));
+        int k = 0;
+        for (auto text : { "LR + SUB", "LCR" })
+        {
+            auto row = k == 0 ? line : area.removeFromTop (16).withTrimmedLeft (area.getWidth() / 5);
+            g.setColour (kNavy);
+            g.drawText (text, row.removeFromLeft (row.getWidth() * 55 / 100), juce::Justification::centredLeft);
+            auto dot = row.removeFromLeft (14).withSizeKeepingCentre (10, 10).toFloat();
+            g.setColour (k == 0 ? kAmber : kDim);
+            g.fillEllipse (dot);
+            ++k;
+        }
     }
-    const float w = area.getWidth() / 5.0f;
-    const auto column = [&area, w] { return area.removeFromLeft (w).reduced (5.0f, 0.0f); };
+    area.removeFromTop (10);
+    const float cw = (float) area.getWidth() / 2.0f;
+    const auto group = [&] (juce::Rectangle<float> c, const juce::String& title, const juce::String& chipText, bool on, const juce::String& value, float fraction, const juce::String& knobName)
     {
-        // Sidecar's own switch of surface (X32, X32 COMPACT) has the system's place.
-        auto c = column();
-        listColumn (g, c.removeFromTop (60.0f), "Surface", { "X32", "X32 Compact" }, -1, getModel ? getModel() : 0);
-        c.removeFromTop (4.0f);
-        listColumn (g, c, "System", { "Shutdown", "Reboot", "Update Firmware" }, -1, -1, true);
-    }
+        g.setColour (kDim);
+        g.setFont (type::font (9.5f, true));
+        g.drawText (title, c.removeFromTop (14.0f), juce::Justification::centred);
+        chip (g, c.removeFromTop (14.0f).reduced (14.0f, 0.0f), chipText, on);
+        c.removeFromTop (3.0f);
+        valueBox (g, c.removeFromTop (14.0f).reduced (12.0f, 0.0f), value);
+        auto name = c.removeFromBottom (14.0f);
+        g.setColour (kDim);
+        g.drawText (knobName, name, juce::Justification::centred);
+        knobIcon (g, c.getCentre(), juce::jmin (12.0f, c.getHeight() * 0.4f), fraction);
+    };
+    auto left = area.toFloat();
+    group (left.removeFromLeft (cw), "STEREO BUS", "LR", s.mains[0].on.load(), juce::String (juce::roundToInt (p.pan.load())), (p.pan.load() + 100.0f) / 200.0f, "PAN");
+    group (left, "M/C BUS", "SUB", mc && s.mains[1].on.load(), mc ? fader::text (s.mains[1].levelDb.load()) + " dB" : juce::String ("-"),
+           mc ? fader::dbToPos (s.mains[1].levelDb.load()) : 0.0f, "LEVEL");
+    // LEFT, SUB, RIGHT: each a fader and a meter on its own scale (Clip, -2 ... -60).
+    const float w = (float) panels.getWidth() / 3.0f;
+    const char* const names[] = { "LEFT", "SUB", "RIGHT" };
+    for (int k = 0; k < 3; ++k)
     {
-        juce::StringArray rates;
-        int on = -1;
-        if (device != nullptr)
-            for (auto rate : device->getAvailableSampleRates())
-            {
-                if (rate == device->getCurrentSampleRate())
-                    on = rates.size();
-                rates.add (juce::String (juce::roundToInt (rate)) + " Hz");
-            }
-        listColumn (g, column(), "Sample Rate", rates.isEmpty() ? juce::StringArray { "No interface" } : rates, globalRate, on);
+        auto col = juce::Rectangle<float> ((float) panels.getX() + w * (float) k, (float) panels.getY(), w, (float) panels.getHeight()).reduced (2.0f, 0.0f);
+        drawBar (g, col.removeFromTop (16.0f).toNearestInt(), names[k], 10.0f);
+        g.setColour (juce::Colour (0xff2b2f3a));
+        g.fillRect (col);
+        auto well = col.reduced (4.0f, 6.0f);
+        auto slot = well.removeFromLeft (well.getWidth() * 0.3f).reduced (well.getWidth() * 0.1f, 0.0f);
+        const float db = k == 1 ? (mc ? s.mains[1].levelDb.load() : -144.0f) : p.faderDb.load();
+        const float pos = juce::jlimit (0.0f, 1.0f, fader::dbToPos (db));
+        g.setColour (juce::Colour (0xff10131a));
+        g.fillRect (slot.withSizeKeepingCentre (3.0f, slot.getHeight()));
+        g.setColour (juce::Colour (0xffe09a1f));
+        g.fillRect (slot.getCentreX() - 1.5f, slot.getBottom() - slot.getHeight() * pos, 3.0f, slot.getHeight() * pos);
+        g.setColour (juce::Colour (0xffdfe3ee));
+        g.fillRect (slot.getCentreX() - 7.0f, slot.getBottom() - slot.getHeight() * pos - 4.0f, 14.0f, 8.0f);
+        auto meter = well.removeFromLeft (well.getWidth() * 0.5f).reduced (2.0f, 0.0f);
+        auto scale = well;
+        const float level = k == 1 ? 0.0f : juce::jlimit (0.0f, 1.0f, fader::dbToPos (juce::Decibels::gainToDecibels (ctx.meters.get (&s, MeterPoint::Output, k == 0 ? 0 : 1), -144.0f)));
+        g.setColour (juce::Colour (0xffff3b30));
+        g.fillRect (meter.getX(), meter.getY(), meter.getWidth(), 3.0f);
+        const auto m = meter.withTrimmedTop (4.0f);
+        for (float yy = m.getBottom(); yy > m.getY() + 2.0f; yy -= 3.0f)
+        {
+            const float up = (m.getBottom() - yy) / m.getHeight();
+            g.setColour (up > level ? juce::Colour (0xff3a3f4c) : up < fader::dbToPos (-18.0f) ? juce::Colour (0xff3ddc5a) : juce::Colour (0xfff2d51f));
+            g.fillRect (m.getX(), yy - 2.0f, m.getWidth(), 2.0f);
+        }
+        g.setColour (juce::Colour (0xffc8d0ea));
+        g.setFont (type::font (7.5f, true));
+        g.drawText ("Clip", scale.withHeight (9.0f), juce::Justification::centredLeft);
+        for (float mark : { -2.0f, -6.0f, -12.0f, -18.0f, -30.0f, -42.0f, -60.0f })
+            g.drawText (juce::String ((int) mark), juce::Rectangle<float> (scale.getX(), m.getBottom() - m.getHeight() * fader::dbToPos (mark) - 4.0f, scale.getWidth(), 9.0f), juce::Justification::centredLeft);
     }
-    {
-        auto c = column();
-        listColumn (g, c.removeFromTop (60.0f), "Synchronization", { device != nullptr ? "Internal (Interface)" : "None", "AES50-A", "AES50-B", "Card" }, -1, 0, true);
-        c.removeFromTop (4.0f);
-        listColumn (g, c, "Initialize", { "Console", "Show Data", "Libraries" }, initItem, initArmedItem);
-    }
-    {
-        const auto now = juce::Time::getCurrentTime();
-        listColumn (g, column(), "Date / Time", { now.formatted ("%d.%m.%Y"), now.formatted ("%H:%M:%S") }, -1, -1, true);
-    }
-    listColumn (g, column(), "Brightness", { "LCD  " + x32Value ("/-prefs/bright") + "%", "LED  " + x32Value ("/-prefs/ledbright") + "%" }, brightnessLed ? 1 : 0, -1);
 }
 
 void Display::paintSetupConfig (juce::Graphics& g, juce::Rectangle<int> r)
@@ -3994,6 +4016,217 @@ void Display::assignEffectsEncoders()
     encoders[5].push = [this] { showScreen (Screen::Effects, 0); };
 }
 
+//==============================================================================
+// ROUTING's pages as the console draws them (photographs of an X32, firmware 4.09):
+// dark lists in columns, the chosen row filled orange, the cursor framed.
+
+namespace
+{
+    const juce::Colour kRowDark (0xff1d2029), kBarDark (0xff2a2d36), kPicked (0xff6b3410), kFrame (0xfff29a2e);
+
+    /** The livedaw-x32 block names as the screen prints them. */
+    juce::String routPrefix (const juce::String& c, juce::String& rest)
+    {
+        static const struct { const char* p; const char* name; } table[] = {
+            { "UOUT", "User Out " }, { "UIN", "User In " }, { "CARD", "Card " }, { "OUT", "Output " }, { "P16", "P16 " }, { "AuxIN", "Aux In " },
+            { "AUX/", "Aux/" }, { "AUX", "Aux " }, { "AN", "Local " }, { "A", "AES50 A" }, { "B", "AES50 B" } };
+        for (auto& t : table)
+            if (c.startsWith (t.p))
+            {
+                rest = c.substring ((int) std::strlen (t.p));
+                return t.name;
+            }
+        rest = c;
+        return {};
+    }
+
+    juce::String routName (const juce::String& c, bool aux = false)
+    {
+        if (aux && c == "AUX1-4")
+            return "Aux Ins";
+        juce::String rest;
+        const auto name = routPrefix (c, rest);
+        const int first = rest.getIntValue();
+        const bool bracket = (c.startsWith ("AN") && first > 16)
+                             || (c.startsWith ("CARD") && (first > 8 || (aux && rest.fromFirstOccurrenceOf ("-", false, false).getIntValue() > 2)));
+        return bracket ? "[" + name + rest + "]" : name + rest;
+    }
+
+    /** What channel `i` of a block connected to `choice` carries ("Local In 3"). */
+    juce::String routChannel (const juce::String& choice, int i)
+    {
+        juce::String rest;
+        auto name = routPrefix (choice, rest);
+        if (name.isEmpty() || ! juce::CharacterFunctions::isDigit (rest[0]))
+            return routName (choice);
+        if (name == "Local " || name == "Card ")
+            name += "In ";
+        return name + juce::String (rest.getIntValue() + i);
+    }
+
+    juce::String sigName (int s)
+    {
+        if (s <= 0)
+            return "OFF";
+        if (s <= 2)
+            return s == 1 ? "Main L" : "Main R";
+        if (s == 3)
+            return "Main M/C";
+        if (s <= 19)
+            return "MixBus " + juce::String (s - 3);
+        if (s <= 25)
+            return "Matrix " + juce::String (s - 19);
+        if (s <= 57)
+            return "DirOut Ch " + juce::String (s - 25);
+        if (s <= 65)
+            return "DirOut Aux " + juce::String (s - 57);
+        if (s <= 73)
+            return "DirOut FX " + juce::String ((s - 66) / 2 + 1) + ((s - 66) % 2 != 0 ? "R" : "L");
+        return s == 74 ? "Monitor L" : s == 75 ? "Monitor R" : "Talkback";
+    }
+
+    const char* const kCategoryNames[] = { "OFF", "Main (LRC)", "Mix Bus", "Matrix", "Direct Out", "Monitor/TB" };
+
+    juce::String tapName (const juce::String& pos)
+    {
+        if (pos == "POST")
+            return "Post Fader";
+        if (pos == "PRE")
+            return "Pre Fader";
+        if (pos == "<-EQ")
+            return "PreEQ";
+        if (pos == "EQ->")
+            return "PostEQ";
+        return pos == "IN/LC" ? juce::String ("In/LC") : pos;
+    }
+
+    int windowFrom (int sel, int n, int rows) { return juce::jlimit (0, juce::jmax (0, n - rows), sel - (rows - 1)); }
+
+    void drawBar (juce::Graphics& g, juce::Rectangle<int> r, const juce::String& text, float size)
+    {
+        g.setColour (kBarDark);
+        g.fillRect (r);
+        g.setColour (juce::Colours::white);
+        g.setFont (type::font (size, true));
+        g.drawFittedText (text, r.reduced (3, 0), juce::Justification::centred, 1, 0.7f);
+    }
+
+    void drawHead (juce::Graphics& g, juce::Rectangle<int> r, const juce::String& text)
+    {
+        g.setColour (juce::Colour (0xff3b4a7a));
+        g.setFont (type::font (10.5f, true));
+        g.drawFittedText (text, r.reduced (14, 0), juce::Justification::centred, 2, 0.7f);
+        const auto line = r.getBottom() - 1;
+        g.drawHorizontalLine (line, (float) r.getX() + 3.0f, (float) r.getX() + 11.0f);
+        g.drawHorizontalLine (line, (float) r.getRight() - 11.0f, (float) r.getRight() - 3.0f);
+        g.drawVerticalLine (r.getX() + 3, (float) line - 4.0f, (float) line);
+        g.drawVerticalLine (r.getRight() - 4, (float) line - 4.0f, (float) line);
+    }
+
+    /** Dark rows; `current` filled orange-brown with orange text, `cursor` framed orange. */
+    void drawList (juce::Graphics& g, juce::Rectangle<int> r, const juce::StringArray& items, int rowH, int cursor, int current)
+    {
+        for (int i = 0; i < items.size(); ++i)
+        {
+            auto row = r.removeFromTop (rowH).reduced (0, 1);
+            g.setColour (i == current ? kPicked : kRowDark);
+            g.fillRect (row);
+            g.setColour (i == current || i == cursor ? kFrame : juce::Colours::white);
+            g.setFont (type::font (juce::jmin (12.0f, (float) rowH * 0.78f), true));
+            g.drawText (items[i], row.reduced (4, 0), juce::Justification::centredLeft);
+            if (i == cursor || i == current)
+                g.drawRect (row, 1);
+        }
+    }
+
+    struct BlockColumn
+    {
+        juce::String head;
+        juce::StringArray names;
+        int current = -1, cursor = -1;
+    };
+
+    void paintBlockColumns (juce::Graphics& g, juce::Rectangle<int> area, const std::vector<BlockColumn>& cols)
+    {
+        const int n = (int) cols.size();
+        const int rowH = juce::jlimit (8, 20, (area.getHeight() - 18) / 12);
+        for (int c = 0; c < n; ++c)
+        {
+            auto cell = area.withX (area.getX() + c * area.getWidth() / n).withWidth (area.getWidth() / n).reduced (2, 0);
+            drawHead (g, cell.removeFromTop (18), cols[(size_t) c].head);
+            drawList (g, cell, cols[(size_t) c].names, rowH, cols[(size_t) c].cursor, cols[(size_t) c].current);
+        }
+    }
+
+    struct OverviewRow
+    {
+        juce::String number, name, tap;
+    };
+
+    void paintOverview (juce::Graphics& g, juce::Rectangle<int> r, const std::vector<OverviewRow>& rows, int first)
+    {
+        drawBar (g, r.removeFromTop (20), "OUTPUT PATCH OVERVIEW", 10.0f);
+        const int rowH = juce::jmax (8, juce::jmin (20, r.getHeight() / 8));
+        for (int i = 0; i < 8 && first + i < (int) rows.size(); ++i)
+        {
+            auto row = r.removeFromTop (rowH).reduced (0, 1);
+            const auto& o = rows[(size_t) (first + i)];
+            g.setColour (kRowDark);
+            g.fillRect (row);
+            if (i == 0)
+            {
+                g.setColour (kFrame);
+                g.drawRect (row, 1);
+            }
+            g.setColour (juce::Colours::white);
+            g.setFont (type::font (juce::jmin (12.0f, (float) rowH * 0.78f), true));
+            g.drawText (o.number, row.removeFromLeft (28), juce::Justification::centred);
+            g.drawText (o.name, row.removeFromLeft (row.getWidth() * 58 / 100), juce::Justification::centredLeft);
+            g.drawText (o.tap, row, juce::Justification::centredLeft);
+        }
+    }
+
+    //==========================================================================
+    // The ROUTING tab strip: BLOCK (INPUT, AES A, AES B, CARD, XLR) and PATCH
+    // (OUT, AUX, P16, USER), the shown group's name over its tabs.
+    struct StripCell
+    {
+        juce::String text;
+        int tab; // the tab it shows
+        int kind; // 0 the group's name, 1 a tab, 2 the other group
+        juce::Rectangle<int> bounds;
+    };
+
+    std::vector<StripCell> routingStrip (juce::Rectangle<int> area, int shown)
+    {
+        const bool block = shown == 0 || (shown >= 4 && shown <= 7);
+        std::vector<StripCell> v;
+        int x = area.getX();
+        const auto add = [&] (const char* text, int tab, int kind, int w)
+        {
+            v.push_back ({ text, tab, kind, { x, area.getY(), w, area.getHeight() } });
+            x += w;
+        };
+        if (block)
+        {
+            add ("BLOCK", -1, 0, 70);
+            for (auto [text, tab] : { std::pair<const char*, int> { "INPUT", 0 }, { "AES A", 5 }, { "AES B", 6 }, { "CARD", 4 }, { "XLR", 7 } })
+                add (text, tab, 1, 64);
+            x += 10;
+            add ("PATCH POINTS", 1, 2, 122);
+        }
+        else
+        {
+            add ("BLOCK ROUTING", 0, 2, 122);
+            x += 10;
+            add ("PATCH", -1, 0, 64);
+            for (auto [text, tab] : { std::pair<const char*, int> { "OUT", 1 }, { "AUX", 2 }, { "P16", 3 }, { "USER", 8 } })
+                add (text, tab, 1, 58);
+        }
+        return v;
+    }
+}
+
 Display::Encoder Display::blockEncoder (int i, const juce::String& label, std::function<juce::String()> path, const juce::StringArray& choices, const juce::String& pushLabel)
 {
     const int n = choices.size();
@@ -4022,6 +4255,18 @@ void Display::assignOutputEncoders()
         ctx.engine.getWing().runX32Text (text, set);
         repaint();
     };
+    // The OUTPUT PATCH OVERVIEW's scroll (its push assigns nothing here).
+    const auto overviewEncoder = [this] (int last)
+    {
+        KnobBinding k;
+        k.label = "Scroll";
+        k.get = [this, last] { return (float) juce::jlimit (0, last, overviewFirst) / (float) last; };
+        k.set = [this, last] (float v) { overviewFirst = juce::roundToInt (juce::jlimit (0.0f, 1.0f, v) * (float) last); repaint(); };
+        k.text = [this] { return juce::String (overviewFirst + 1); };
+        k.steps = (float) (last + 1);
+        return encoder (k, "ASSIGN");
+    };
+    overviewFirst = 0;
     if (tab >= 4 && tab < 7)
     {
         // card out, AES50-A, AES50-B: what each block of eight outputs plays.
@@ -4029,8 +4274,10 @@ void Display::assignOutputEncoders()
         for (int b = 0; b < t.blocks; ++b)
         {
             const auto address = "/config/routing/" + juce::String (t.node) + "/" + kNetBlocks[b];
-            encoders[(size_t) b] = blockEncoder (b, juce::String (t.label) + " " + kNetBlocks[b], [address] { return address; }, kRoutingNet, "ASSIGN");
+            encoders[(size_t) b] = blockEncoder (b, "Select", [address] { return address; }, kRoutingNet, "CONNECT");
         }
+        if (tab == 4)
+            encoders[5] = overviewEncoder (24);
         return;
     }
     if (tab == 7)
@@ -4039,8 +4286,9 @@ void Display::assignOutputEncoders()
         for (int b = 0; b < 4; ++b)
         {
             const auto address = "/config/routing/OUT/" + juce::String (kOutBlocks[b]);
-            encoders[(size_t) b] = blockEncoder (b, "XLR " + juce::String (kOutBlocks[b]), [address] { return address; }, b % 2 == 0 ? kRoutingOutA : kRoutingOutB, "ASSIGN");
+            encoders[(size_t) b] = blockEncoder (b, "Select", [address] { return address; }, b % 2 == 0 ? kRoutingOutA : kRoutingOutB, "CONNECT");
         }
+        encoders[5] = overviewEncoder (8);
         return;
     }
     if (tab == 3 && iqSetup)
@@ -4053,7 +4301,7 @@ void Display::assignOutputEncoders()
     selectedOutput = juce::jlimit (0, t.count - 1, selectedOutput);
     const auto path = [t] (int n) { return signalPath (t, n); };
     KnobBinding pick;
-    pick.label = t.label;
+    pick.label = "Select";
     pick.get = [this, t] { return (float) selectedOutput / (float) (t.count - 1); };
     pick.set = [this, t] (float v)
     {
@@ -4063,16 +4311,17 @@ void Display::assignOutputEncoders()
     };
     pick.text = [this, t] { return signalName (t, selectedOutput); };
     pick.steps = (float) t.count;
-    encoders[0] = encoder (pick);
+    encoders[0] = encoder (pick, "NEXT", [this, t] { selectedOutput = (selectedOutput + 1) % t.count; pendingOutputSource = -1; assignEncoders(); });
+    encoders[1] = dimmedEncoder (" ", " ", "INVERT"); // the polarity: nothing behind it in Sidecar
     if (juce::String (t.group) == "p16") // the sixth push: iQ SETUP (p.51)
-        encoders[5] = encoder ({}, "IQ SETUP", [this] { iqSetup = true; assignEncoders(); });
+        encoders[5] = encoder ({}, "EDIT IQ SETUP", [this] { iqSetup = true; assignEncoders(); });
 
     // 3 the source's category, 4 the source in it (push: ASSIGN), 5 the tap
     // point, 6 the delay of an analog output (push: on) (pp.52-53).
     const auto p = path (selectedOutput);
     const auto shown = [this, p] { return pendingOutputSource >= 0 ? pendingOutputSource : x32Value (p + "/src").getIntValue(); };
     KnobBinding category;
-    category.label = "CATEGORY";
+    category.label = "Select";
     category.get = [shown] { return (float) categoryOf (shown()) / 5.0f; };
     category.set = [this] (float v)
     {
@@ -4080,16 +4329,16 @@ void Display::assignOutputEncoders()
         assignEncoders();
         repaint();
     };
-    category.text = [shown] { return juce::String (kSourceCategories[categoryOf (shown())].name); };
+    category.text = [shown] { return juce::String (kCategoryNames[categoryOf (shown())]); };
     category.steps = 6.0f;
     encoders[2] = encoder (category);
     const auto& c = kSourceCategories[categoryOf (shown())];
     const int span = c.last - c.first;
     KnobBinding signal;
-    signal.label = "SIGNAL";
+    signal.label = "Select";
     signal.get = [shown, c, span] { return span > 0 ? (float) (shown() - c.first) / (float) span : 0.0f; };
     signal.set = [this, c, span] (float v) { pendingOutputSource = c.first + juce::roundToInt (juce::jlimit (0.0f, 1.0f, v) * (float) span); repaint(); };
-    signal.text = [shown] { return outputSources()[shown()]; };
+    signal.text = [shown] { return sigName (shown()); };
     signal.steps = (float) (span + 1);
     encoders[3] = encoder (signal, "ASSIGN", [this, run, p]
     {
@@ -4112,6 +4361,44 @@ void Display::assignOutputEncoders()
     }
 }
 
+namespace
+{
+    BlockColumn blockColumn (const juce::String& head, const juce::String& value, int pending, const juce::StringArray& choices, bool aux)
+    {
+        BlockColumn c;
+        c.head = head;
+        const int n = choices.size(), now = choices.indexOf (value);
+        const int cursor = pending >= 0 ? pending : now;
+        const int from = windowFrom (juce::jmax (0, cursor), n, 12);
+        for (int i = from; i < juce::jmin (n, from + 12); ++i)
+            c.names.add (routName (choices[i], aux));
+        c.current = now >= 0 ? now - from : -1;
+        c.cursor = cursor >= 0 ? cursor - from : -1;
+        return c;
+    }
+
+    void deviceBox (juce::Graphics& g, juce::Rectangle<int> r, const juce::String& letter, const juce::String& text)
+    {
+        g.setColour (juce::Colour (0xff8a96bd));
+        g.fillRect (r);
+        g.setColour (juce::Colour (0xff6b789f));
+        g.drawRect (r, 1);
+        g.setColour (juce::Colours::white);
+        g.setFont (type::font (11.0f, true));
+        g.drawText (letter, r.reduced (4, 2), juce::Justification::topLeft);
+        g.setColour (juce::Colour (0xffd8def0));
+        g.drawText (text, r, juce::Justification::centred);
+    }
+
+    juce::StringArray numbered (const juce::String& prefix, int first, int count)
+    {
+        juce::StringArray s;
+        for (int i = 0; i < count; ++i)
+            s.add (prefix + juce::String (first + i));
+        return s;
+    }
+}
+
 void Display::paintOutputs (juce::Graphics& g, juce::Rectangle<int> r)
 {
     if (tab == 3 && iqSetup)
@@ -4119,50 +4406,476 @@ void Display::paintOutputs (juce::Graphics& g, juce::Rectangle<int> r)
         paintIqSetup (g, r);
         return;
     }
+    if (tab == 8)
+    {
+        paintUser (g, r);
+        return;
+    }
+    if (tab >= 1 && tab <= 3)
+    {
+        paintPatch (g, r);
+        return;
+    }
     if (tab >= 4 && tab < 7)
     {
+        // CARD, AES A, AES B: what each block of eight outputs plays.
         const auto& t = kBlockTabs[tab - 4];
-        juce::StringArray left, right;
+        const bool card = tab == 4;
+        auto right = card ? r.removeFromRight (juce::jmin (230, r.getWidth() * 32 / 100)) : juce::Rectangle<int>();
+        drawBar (g, r.removeFromTop (22), card ? "EXPANSION CARD  OUTPUTS" : tab == 5 ? "AES50 A OUTPUTS" : "AES50 B OUTPUTS");
+        r.removeFromTop (3);
+        std::vector<BlockColumn> cols;
         for (int b = 0; b < t.blocks; ++b)
+            cols.push_back (blockColumn (kNetBlocks[b], x32Value ("/config/routing/" + juce::String (t.node) + "/" + kNetBlocks[b]), pendingBlock[(size_t) b], kRoutingNet, false));
+        paintBlockColumns (g, r, cols);
+        if (card)
         {
-            left.add (juce::String (t.label) + " " + kNetBlocks[b] + "  (INTERFACE " + juce::String (t.firstPort + 8 * b + 1) + "-"
-                      + juce::String (t.firstPort + 8 * b + 8) + ")");
-            right.add (x32Value ("/config/routing/" + juce::String (t.node) + "/" + kNetBlocks[b]));
+            right.removeFromLeft (4);
+            drawBar (g, right.removeFromTop (22), "CONNECTED DEVICES");
+            auto well = right.removeFromTop (juce::jmax (30, right.getHeight() * 28 / 100)).reduced (0, 3);
+            g.setColour (juce::Colour (0xff3b4a7a));
+            g.setFont (type::font (11.0f, true));
+            g.drawFittedText ("NO EXPANSION CARD", well, juce::Justification::centred, 1, 0.7f);
+            std::vector<OverviewRow> rows;
+            for (int k = 0; k < 32; ++k)
+                rows.push_back ({ juce::String (k + 1), routChannel (x32Value ("/config/routing/CARD/" + juce::String (kNetBlocks[k / 8])), k % 8), {} });
+            paintOverview (g, right, rows, juce::jlimit (0, 24, overviewFirst));
         }
-        paintRows (g, r, left, right);
         return;
     }
-    if (tab == 7)
+    // XLR OUTPUTS: the rear panel's outputs in fours, and what each plays.
+    auto right = r.removeFromRight (juce::jmin (250, r.getWidth() * 34 / 100));
+    drawBar (g, r.removeFromTop (22), "XLR OUTPUTS");
+    r.removeFromTop (3);
+    std::vector<BlockColumn> cols;
+    for (int b = 0; b < 4; ++b)
+        cols.push_back (blockColumn (kOutBlocks[b], x32Value ("/config/routing/OUT/" + juce::String (kOutBlocks[b])), pendingBlock[(size_t) b],
+                                     b % 2 == 0 ? kRoutingOutA : kRoutingOutB, false));
+    paintBlockColumns (g, r, cols);
+    right.removeFromLeft (4);
+    std::vector<OverviewRow> rows;
+    for (int k = 0; k < 16; ++k)
     {
-        juce::StringArray left, right;
-        for (int b = 0; b < 4; ++b)
-        {
-            left.add ("XLR OUTPUTS " + juce::String (kOutBlocks[b]) + "  (INTERFACE " + kOutBlocks[b] + ")");
-            right.add (x32Value ("/config/routing/OUT/" + juce::String (kOutBlocks[b])));
-        }
-        paintRows (g, r, left, right);
-        return;
+        const auto p = signalPath (kSignalTabs[0], k);
+        rows.push_back ({ juce::String (k + 1), sigName (x32Value (p + "/src").getIntValue()), tapName (x32Value (p + "/pos")) });
     }
-    // The output signals, in two columns of up to eight; the chosen one marked.
+    paintOverview (g, right, rows, juce::jlimit (0, 8, overviewFirst));
+}
+
+void Display::paintPatch (juce::Graphics& g, juce::Rectangle<int> r)
+{
+    // PATCH > OUT, AUX, P16: the outputs at the left, the signal one plays in the middle.
     const auto& t = kSignalTabs[tab - 1];
-    const int perColumn = juce::jmin (8, t.count);
-    auto columns = r;
-    for (int c = 0; c * perColumn < t.count; ++c)
+    const bool isMain = juce::String (t.group) == "main";
+    const int rowH = juce::jlimit (8, 20, (r.getHeight() - 56) / 12);
+    auto left = r.removeFromLeft (juce::jmin (150, r.getWidth() / 5));
+    r.removeFromLeft (4);
+    drawHead (g, left.removeFromTop (34), isMain ? "ANALOG OUTPUT" : tab == 2 ? "AUX OUTPUT" : "ULTRANET P16 OUTPUT");
     {
-        auto area = columns.removeFromLeft (r.getWidth() / ((t.count + perColumn - 1) / perColumn)).reduced (c == 0 ? 0 : 4, 0);
-        juce::StringArray left, right;
-        for (int i = c * perColumn; i < juce::jmin (t.count, (c + 1) * perColumn); ++i)
+        juce::StringArray names;
+        const int from = windowFrom (selectedOutput, t.count, 12);
+        for (int i = from; i < juce::jmin (t.count, from + 12); ++i)
+            names.add (isMain ? "Output " + juce::String (i + 1)
+                              : tab == 2 ? (i >= 6 ? (i == 6 ? juce::String ("AES/EBU L") : juce::String ("AES/EBU R")) : "Aux Out " + juce::String (i + 1))
+                                         : juce::String (i + 1).paddedLeft ('0', 2) + " @ -");
+        drawList (g, left, names, rowH, selectedOutput - from, selectedOutput - from);
+    }
+    drawBar (g, r.removeFromTop (22), "EDIT OUTPUT ASSIGNMENT");
+    r.removeFromTop (3);
+    const auto p = signalPath (t, selectedOutput);
+    const int actual = x32Value (p + "/src").getIntValue();
+    const int shown = pendingOutputSource >= 0 ? pendingOutputSource : actual;
+    const int cat = categoryOf (shown);
+    const int w = r.getWidth();
+    auto setting = r.removeFromLeft (w * 24 / 100).reduced (4, 0);
+    auto category = r.removeFromLeft (w * 23 / 100).reduced (4, 0);
+    auto signal = r.removeFromLeft (w * 25 / 100).reduced (4, 0);
+    drawHead (g, setting.removeFromTop (18), "SETTING");
+    for (auto text : { sigName (actual), tapName (x32Value (p + "/pos")) })
+    {
+        auto box = setting.removeFromTop (rowH + 2).reduced (0, 1);
+        g.setColour (juce::Colour (0xff7b88b0));
+        g.fillRect (box);
+        g.setColour (juce::Colours::white);
+        g.setFont (type::font (11.5f, true));
+        g.drawFittedText (text, box, juce::Justification::centred, 1, 0.7f);
+    }
+    {
+        auto well = setting.removeFromTop (juce::jmax (30, rowH * 4));
+        g.setColour (juce::Colour (0xff4a4d58));
+        g.fillRect (well);
+        g.setColour (juce::Colour (0xfff6e24a));
+        g.fillRect (well.removeFromRight (5).reduced (0, 6));
+        g.setColour (juce::Colours::white);
+        g.setFont (type::font (11.5f, true));
+        g.drawFittedText (sigName (actual), well.removeFromBottom (rowH + 2), juce::Justification::centred, 1, 0.7f);
+        setting.removeFromTop (6);
+        auto invert = setting.removeFromTop (rowH + 4);
+        g.setColour (juce::Colours::white);
+        g.drawEllipse (invert.removeFromLeft (rowH).reduced (2).toFloat(), 1.3f);
+        g.setFont (type::font (11.0f, true));
+        g.drawText ("INVERT", invert.reduced (4, 0), juce::Justification::centredLeft);
+    }
+    drawHead (g, category.removeFromTop (18), "CATEGORY");
+    {
+        juce::StringArray names;
+        for (auto* n : kCategoryNames)
+            names.add (n);
+        drawList (g, category, names, rowH, cat, categoryOf (actual));
+    }
+    drawHead (g, signal.removeFromTop (18), "OUT SIGNAL");
+    {
+        juce::StringArray names;
+        const int from = windowFrom (shown, outputSources().size(), 12);
+        for (int i = from; i < juce::jmin (outputSources().size(), from + 12); ++i)
+            names.add (sigName (i));
+        drawList (g, signal, names, rowH, shown - from, actual - from);
+    }
+    if (isMain)
+    {
+        // The output's delay: feet, metres and milliseconds, and its knob.
+        auto delay = r.reduced (6, 0);
+        const float ms = x32Value (p + "/delay/time").getFloatValue();
+        g.setColour (juce::Colour (0xffb8c0d8));
+        g.fillRect (delay.removeFromTop (rowH + 2).withWidth (56));
+        g.setColour (juce::Colour (0xff3b4a7a));
+        g.setFont (type::font (10.5f, true));
+        g.drawText ("DELAY", delay.getX(), delay.getY() - rowH - 2, 56, rowH + 2, juce::Justification::centred);
+        delay.removeFromTop (6);
+        const juce::String values[] = { juce::String (ms * 0.343f * 3.28084f, 1), juce::String (ms * 0.343f, 2), juce::String (ms, 1) };
+        const char* const units[] = { "ft", "m", "ms" };
+        for (int k = 0; k < 3; ++k)
         {
-            const auto p = signalPath (t, i);
-            left.add ((i == selectedOutput ? "> " : "") + signalName (t, i));
-            right.add (outputSources()[x32Value (p + "/src").getIntValue()] + "  " + x32Value (p + "/pos"));
+            auto line = delay.removeFromTop (rowH + 2);
+            auto box = line.removeFromLeft (56).reduced (0, 1);
+            g.setColour (juce::Colour (0xffe9ecf4));
+            g.fillRect (box);
+            g.setColour (juce::Colour (0xff22262e));
+            g.setFont (type::font (11.0f, false));
+            g.drawText (values[k], box.reduced (3, 0), juce::Justification::centredRight);
+            g.setColour (juce::Colours::white);
+            g.drawText (units[k], line.reduced (3, 0), juce::Justification::centredLeft);
         }
-        paintRows (g, area, left, right);
+        auto knob = delay.removeFromTop (46).withSizeKeepingCentre (34, 34).toFloat();
+        g.setColour (juce::Colour (0xffe9e9ea));
+        g.fillEllipse (knob);
+        g.setColour (juce::Colour (0xfff29a2e));
+        g.drawEllipse (knob.reduced (1.0f), 2.0f);
+        const float angle = juce::degreesToRadians (-135.0f + 270.0f * juce::jlimit (0.0f, 1.0f, (ms - 0.3f) / 499.7f));
+        const auto c = knob.getCentre();
+        g.setColour (juce::Colour (0xff22262e));
+        g.drawLine (c.x, c.y, c.x + std::sin (angle) * 12.0f, c.y - std::cos (angle) * 12.0f, 2.0f);
+        g.setColour (juce::Colours::white);
+        g.setFont (type::font (10.5f, true));
+        g.drawText ("DELAY", delay.removeFromTop (14), juce::Justification::centred);
     }
 }
 
+void Display::paintUser (juce::Graphics& g, juce::Rectangle<int> r)
+{
+    // PATCH > USER: the user routing slots (the console's; Sidecar has none, so the page is drawn and inert).
+    const int rowH = juce::jlimit (8, 20, (r.getHeight() - 56) / 12);
+    auto slots = r.removeFromLeft (juce::jmin (120, r.getWidth() / 7));
+    r.removeFromLeft (4);
+    drawHead (g, slots.removeFromTop (34), "USER\nSLOT");
+    const auto choice = [&] (juce::Rectangle<int> row, const juce::String& text, bool on)
+    {
+        row = row.reduced (0, 1);
+        g.setColour (on ? kYellow : kRowDark);
+        g.fillRect (row);
+        g.setColour (on ? kNavy : juce::Colour (0xffaab4d4));
+        g.setFont (type::font (11.5f, true));
+        g.drawText (text, row, juce::Justification::centred);
+    };
+    choice (slots.removeFromTop (rowH + 4), "INPUT", ! userOutput);
+    choice (slots.removeFromTop (rowH + 4), "OUTPUT", userOutput);
+    slots.removeFromTop (12);
+    for (int b = 0; b < 4; ++b)
+        choice (slots.removeFromTop (rowH + 4), juce::String (b * 8 + 1) + "-" + juce::String (b * 8 + 8), b == userBank);
+    auto list = r.removeFromLeft (juce::jmin (140, r.getWidth() / 5));
+    r.removeFromLeft (4);
+    const juce::String side = userOutput ? "Out " : "In ";
+    drawHead (g, list.removeFromTop (34), userOutput ? "USER\nOUTPUT" : "USER\nINPUT");
+    {
+        juce::StringArray names;
+        for (int i = 0; i < 12 && userBank * 8 + i < 32; ++i)
+            names.add (side + juce::String (userBank * 8 + i + 1) + ": -");
+        drawList (g, list, names, rowH, userSlot, userSlot);
+    }
+    drawBar (g, r.removeFromTop (22), "EDIT USER ROUTING SLOTS");
+    r.removeFromTop (3);
+    const int w = r.getWidth();
+    auto category = r.removeFromLeft (w * 28 / 100).reduced (4, 0);
+    auto signal = r.removeFromLeft (w * 28 / 100).reduced (4, 0);
+    auto setting = r.removeFromLeft (w * 28 / 100).reduced (4, 0);
+    drawHead (g, category.removeFromTop (18), "CATEGORY");
+    const juce::String dir = userOutput ? " Out" : " In";
+    juce::StringArray categories;
+    for (auto text : { juce::String ("OFF"), "Local" + dir, "AES-50 A" + dir, "AES-50 B" + dir, "Card" + dir, juce::String (userOutput ? "Aux Out" : "Aux In"), juce::String (userOutput ? "Monitor" : "Talkback") })
+        categories.add (text);
+    drawList (g, category, categories, rowH, 0, 0);
+    drawHead (g, signal.removeFromTop (18), userOutput ? "OUT SIGNAL" : "IN SIGNAL");
+    juce::StringArray names { "OFF" };
+    names.addArray (numbered ("Local" + dir + " ", 1, 11));
+    drawList (g, signal, names, rowH, 0, 0);
+    drawHead (g, setting.removeFromTop (18), "SETTING");
+    {
+        auto box = setting.removeFromTop (rowH + 2);
+        g.setColour (juce::Colour (0xff7b88b0));
+        g.drawRect (box, 1);
+        g.setColour (juce::Colours::white);
+        g.setFont (type::font (11.5f, true));
+        g.drawText ("OFF", box, juce::Justification::centred);
+    }
+}
+
+void Display::assignUserEncoders()
+{
+    // 1 the bank of eight (push: input or output), 2 the slot (push: next), 3 and 4 the
+    // category and signal (Sidecar has no user routing: shown, inert).
+    KnobBinding bank;
+    bank.label = "Select";
+    bank.get = [this] { return (float) userBank / 3.0f; };
+    bank.set = [this] (float v) { userBank = juce::roundToInt (juce::jlimit (0.0f, 1.0f, v) * 3.0f); userSlot = 0; repaint(); };
+    bank.text = [this] { return juce::String (userBank * 8 + 1) + "-" + juce::String (userBank * 8 + 8); };
+    bank.steps = 4.0f;
+    encoders[0] = encoder (bank, "INPUT / OUTPUT", [this] { userOutput = ! userOutput; repaint(); }, [this] { return userOutput; });
+    KnobBinding slot;
+    slot.label = "Select";
+    slot.get = [this] { return (float) userSlot / 11.0f; };
+    slot.set = [this] (float v) { userSlot = juce::roundToInt (juce::jlimit (0.0f, 1.0f, v) * 11.0f); repaint(); };
+    slot.text = [this] { return juce::String (userOutput ? "Out " : "In ") + juce::String (userBank * 8 + userSlot + 1); };
+    slot.steps = 12.0f;
+    encoders[1] = encoder (slot, "NEXT", [this] { userSlot = (userSlot + 1) % 12; repaint(); });
+    encoders[2] = dimmedEncoder ("Select", "OFF", " ");
+    encoders[3] = dimmedEncoder ("Select", "OFF", "ASSIGN");
+}
+
+void Display::paintRouting (juce::Graphics& g, juce::Rectangle<int> r)
+{
+    // BLOCK > INPUT: what feeds inputs 1-8 .. 25-32 and the aux ins, and the console's side (record or play).
+    const bool play = x32Value ("/config/routing/routswitch") == "PLAY";
+    const juce::String group = play ? "PLAY" : "IN";
+    auto right = r.removeFromRight (juce::jmin (160, r.getWidth() / 6));
+    right.removeFromLeft (4);
+    drawBar (g, r.removeFromTop (22), "CHANNEL PROCESSING BLOCK PATCH");
+    drawBar (g, right.removeFromTop (22), "CONNECTED DEVICES");
+    r.removeFromTop (3);
+    right.removeFromTop (3);
+    std::vector<BlockColumn> cols;
+    for (int b = 0; b < 5; ++b)
+        cols.push_back (blockColumn (b < 4 ? juce::String (kInBlocks[b]) : juce::String ("AUX IN"), x32Value ("/config/routing/" + group + "/" + kInBlocks[b]),
+                                     pendingBlock[(size_t) b], b < 4 ? kRoutingIn : kRoutingAux, b == 4));
+    paintBlockColumns (g, r, cols);
+    const int half = (right.getHeight() - 4) / 2;
+    deviceBox (g, right.removeFromTop (half), "A", "NO DEVICE");
+    right.removeFromTop (4);
+    deviceBox (g, right, "B", "NO DEVICE");
+}
+
+void Display::paintSetupGlobal (juce::Graphics& g, juce::Rectangle<int> r)
+{
+    // The console's GLOBAL page: firmware, sample rate and clock, reset, backup, time and date, brightness.
+    auto* device = ctx.deviceManager.getCurrentAudioDevice();
+    auto area = r.reduced (8, 6);
+    if (globalStatus.isNotEmpty())
+    {
+        g.setColour (kDeep);
+        g.setFont (type::font (10.0f, true));
+        g.drawFittedText (globalStatus, area.removeFromBottom (14), juce::Justification::centredLeft, 1, 0.7f);
+    }
+    const int w = area.getWidth();
+    auto c1 = area.removeFromLeft (w * 17 / 100).reduced (2, 0);
+    auto c2 = area.removeFromLeft (w * 20 / 100).reduced (2, 0);
+    auto c3 = area.removeFromLeft (w * 19 / 100).reduced (2, 0);
+    auto c5 = area.removeFromRight (w * 17 / 100).reduced (2, 0);
+    auto c4 = area.reduced (2, 0);
+    const int rh = juce::jlimit (10, 20, area.getHeight() / 14);
+    const auto item = [&] (juce::Rectangle<int>& c, const juce::String& text, bool hot, bool framed = false)
+    {
+        auto row = c.removeFromTop (rh).reduced (0, 1);
+        g.setColour (hot ? kYellow : kBarDark);
+        g.fillRect (row);
+        g.setColour (hot ? kNavy : juce::Colour (0xffc8d0ea));
+        g.setFont (type::font (juce::jmin (11.5f, (float) rh * 0.75f), true));
+        g.drawFittedText (text, row, juce::Justification::centred, 1, 0.7f);
+        if (framed)
+        {
+            g.setColour (kFrame);
+            g.drawRect (row, 1);
+        }
+    };
+    const auto sub = [&] (juce::Rectangle<int>& c, const juce::String& text)
+    {
+        auto row = c.removeFromTop (rh + 2).reduced (0, 1);
+        g.setColour (juce::Colour (0xff7b88b0));
+        g.fillRect (row);
+        g.setColour (juce::Colours::white);
+        g.setFont (type::font (11.0f, true));
+        g.drawFittedText (text, row, juce::Justification::centred, 1, 0.7f);
+    };
+    const auto dot = [&] (juce::Rectangle<int> row, bool on)
+    {
+        auto d = row.removeFromRight (rh).withSizeKeepingCentre (rh - 5, rh - 5).toFloat();
+        g.setColour (on ? kFrame : kBarDark.darker());
+        g.fillEllipse (d);
+        if (on)
+        {
+            g.setColour (juce::Colours::white);
+            g.drawLine (d.getX() + d.getWidth() * 0.25f, d.getCentreY(), d.getCentreX() - 0.5f, d.getBottom() - 3.0f, 1.5f);
+            g.drawLine (d.getCentreX() - 0.5f, d.getBottom() - 3.0f, d.getRight() - 2.5f, d.getY() + 3.0f, 1.5f);
+        }
+    };
+    // FIRMWARE: Sidecar's own version; its surface (X32, X32 Compact) below, the one the first encoder switches.
+    drawBar (g, c1.removeFromTop (rh + 6), "FIRMWARE");
+    {
+        auto box = c1.removeFromTop (rh * 5);
+        g.setColour (juce::Colour (0xff23283a));
+        g.fillRect (box);
+        g.setFont (type::font (9.5f, true));
+        g.setColour (juce::Colours::white);
+        auto line = box.removeFromTop (rh + 2);
+        g.drawText ("VERSION", line.removeFromLeft (line.getWidth() * 52 / 100).reduced (3, 0), juce::Justification::centredRight);
+        g.setColour (kFrame);
+        g.drawFittedText (juce::String (JUCE_APPLICATION_VERSION_STRING), line.reduced (4, 0), juce::Justification::centredLeft, 1, 0.6f);
+        g.setColour (juce::Colour (0xffc8d0ea));
+        for (auto text : { juce::String ("SIDECAR"), juce::String (getModel && getModel() == 1 ? "X32 COMPACT" : "X32") })
+            g.drawText (text, box.removeFromTop (rh), juce::Justification::centred);
+    }
+    c1.removeFromTop (4);
+    drawBar (g, c1.removeFromTop (rh + 6), "SYS CONTROL");
+    item (c1, "SHUTDOWN", true);
+    item (c1, "REBOOT", false);
+    item (c1, "UPDATE FW", false);
+    // AUDIO SETTINGS: the rate (the interface's rates) and the clock.
+    drawBar (g, c2.removeFromTop (rh + 6), "AUDIO SETTINGS");
+    sub (c2, "SAMPLE RATE");
+    {
+        const int n = device != nullptr ? device->getAvailableSampleRates().size() : 0;
+        for (int k = 0; k < n; ++k)
+        {
+            const auto rate = device->getAvailableSampleRates()[k];
+            const auto text = juce::String (rate / 1000.0, rate == 44100.0 ? 1 : 0) + " kHz";
+            auto row = c2.removeFromTop (rh).reduced (0, 1);
+            g.setColour (juce::Colour (0xff23283a));
+            g.fillRect (row);
+            g.setColour (juce::Colours::white);
+            g.setFont (type::font (11.5f, true));
+            g.drawText (text, row.reduced (6, 0), juce::Justification::centredLeft);
+            const bool now = rate == device->getCurrentSampleRate();
+            dot (row, now);
+            if (k == globalRate)
+            {
+                g.setColour (kFrame);
+                g.drawRect (row, 1);
+            }
+        }
+        if (n == 0)
+            item (c2, "No interface", false);
+    }
+    c2.removeFromTop (rh * 2);
+    sub (c2, "CLOCK SOURCE");
+    {
+        int k = 0;
+        for (auto text : { "Internal", "AES50 A", "AES50 B", "Exp. Card" })
+        {
+            auto row = c2.removeFromTop (rh).reduced (0, 1);
+            g.setColour (juce::Colour (0xff23283a));
+            g.fillRect (row);
+            g.setColour (juce::Colours::white);
+            g.setFont (type::font (11.0f, true));
+            g.drawText (text, row.reduced (6, 0), juce::Justification::centredLeft);
+            dot (row, k++ == 0);
+        }
+    }
+    // RESET, BACKUP, CUSTOM BOOT.
+    drawBar (g, c3.removeFromTop (rh + 6), "RESET");
+    {
+        int k = 0;
+        for (auto text : { "CONSOLE", "SHOW DATA", "LIBRARIES", "FACTORY RST" })
+        {
+            item (c3, text, k == initItem, k == initArmedItem);
+            ++k;
+        }
+    }
+    c3.removeFromTop (6);
+    drawBar (g, c3.removeFromTop (rh + 6), "BACKUP");
+    item (c3, "EXPORT", false);
+    item (c3, "RESTORE", false);
+    c3.removeFromTop (6);
+    drawBar (g, c3.removeFromTop (rh + 6), "CUSTOM BOOT");
+    item (c3, "CREATE", false);
+    // TIME | DATE: the computer's.
+    drawBar (g, c4.removeFromTop (rh + 6), "TIME | DATE");
+    {
+        const auto now = juce::Time::getCurrentTime();
+        const int h12 = now.getHours() % 12 == 0 ? 12 : now.getHours() % 12;
+        const juce::String time[][2] = { { now.getHours() >= 12 ? "HOUR  PM" : "HOUR  AM", juce::String (h12).paddedLeft ('0', 2) },
+                                         { "MIN", juce::String (now.getMinutes()).paddedLeft ('0', 2) },
+                                         { "SEC", juce::String (now.getSeconds()).paddedLeft ('0', 2) } };
+        const juce::String date[][2] = { { "DAY", juce::String (now.getDayOfMonth()).paddedLeft ('0', 2) },
+                                         { "MONTH", juce::String (now.getMonth() + 1).paddedLeft ('0', 2) }, { "YEAR", juce::String (now.getYear()) } };
+        auto icons = c4.removeFromTop (rh * 2);
+        auto left = c4.removeFromLeft (c4.getWidth() / 2).reduced (3, 0);
+        auto rightHalf = c4.reduced (3, 0);
+        g.setColour (juce::Colour (0xff3b4a7a));
+        g.drawEllipse (icons.removeFromLeft (icons.getWidth() / 2).withSizeKeepingCentre (rh + 4, rh + 4).toFloat(), 1.6f);
+        g.drawRect (icons.withSizeKeepingCentre (rh + 4, rh + 2), 2);
+        const int boxH = rh * 2;
+        for (int k = 0; k < 3; ++k)
+            for (int side = 0; side < 2; ++side)
+            {
+                auto& col = side == 0 ? left : rightHalf;
+                auto box = col.removeFromTop (boxH).reduced (0, 1);
+                const auto& cell = side == 0 ? time[k] : date[k];
+                g.setColour (juce::Colour (0xff3a4258));
+                g.fillRect (box);
+                g.setColour (juce::Colour (0xffc8d0ea));
+                g.setFont (type::font (8.5f, true));
+                g.drawText (cell[0], box.reduced (4, 0), juce::Justification::topLeft);
+                g.setColour (juce::Colours::white);
+                g.setFont (type::font ((float) boxH * 0.55f, true));
+                g.drawText (cell[1], box.reduced (5, 0), juce::Justification::centredRight);
+            }
+        g.setColour (juce::Colour (0xff3b4a7a));
+        g.setFont (type::font (8.5f, true));
+        g.drawFittedText ("PUSH TO EDIT", left.removeFromTop (rh), juce::Justification::centred, 1, 0.6f);
+        g.drawFittedText ("PUSH TO EDIT", rightHalf.removeFromTop (rh), juce::Justification::centred, 1, 0.6f);
+    }
+    // The three knobs: the screen's and the LEDs' brightness, the channel LCDs' contrast (the strips have none here).
+    const auto knob = [&] (juce::Rectangle<int> cell, const juce::String& name, float v, bool framed)
+    {
+        if (framed)
+        {
+            g.setColour (kFrame);
+            g.drawRect (cell, 2);
+        }
+        auto k = cell.reduced (2).removeFromTop (cell.getHeight() * 55 / 100).withSizeKeepingCentre (30, 30).toFloat();
+        g.setColour (juce::Colour (0xffe9e9ea));
+        g.fillEllipse (k);
+        g.setColour (kFrame);
+        g.drawEllipse (k.reduced (1.0f), 2.5f);
+        const float angle = juce::degreesToRadians (-135.0f + 270.0f * juce::jlimit (0.0f, 1.0f, v));
+        g.setColour (juce::Colour (0xff22262e));
+        g.drawLine (k.getCentreX(), k.getCentreY(), k.getCentreX() + std::sin (angle) * 10.0f, k.getCentreY() - std::cos (angle) * 10.0f, 2.0f);
+        g.setColour (juce::Colour (0xff1c2b55));
+        g.setFont (type::font (10.0f, true));
+        g.drawFittedText (name, cell.reduced (2).withTrimmedTop (cell.getHeight() * 56 / 100), juce::Justification::centredTop, 2, 0.7f);
+    };
+    const int third = c5.getHeight() / 3;
+    knob (c5.removeFromTop (third).reduced (0, 2), "MAIN LCD\nBRIGHTNESS", (x32Value ("/-prefs/bright").getFloatValue() - 10.0f) / 90.0f, ! brightnessLed);
+    knob (c5.removeFromTop (third).reduced (0, 2), "LED\nBRIGHTNESS", (x32Value ("/-prefs/ledbright").getFloatValue() - 10.0f) / 90.0f, brightnessLed);
+    knob (c5.reduced (0, 2), "CHANNEL LCD\nCONTRAST", 0.5f, false);
+}
+
+
 void Display::assignRoutingEncoders()
 {
+    if (tab == 8)
+    {
+        assignUserEncoders();
+        return;
+    }
     if (tab > 0)
     {
         assignOutputEncoders();
@@ -4176,10 +4889,10 @@ void Display::assignRoutingEncoders()
         const auto& choices = b < 4 ? kRoutingIn : kRoutingAux;
         const auto path = [group, b] { return "/config/routing/" + group() + "/" + kInBlocks[b]; };
         // Turned through the list, connected by the push (p.48).
-        encoders[(size_t) b] = blockEncoder (b, b < 4 ? "IN " + juce::String (kInBlocks[b]) : juce::String ("AUX 1-6"), path, choices, "CONNECT");
+        encoders[(size_t) b] = blockEncoder (b, "Select", path, choices, "CONNECT");
     }
     KnobBinding sw;
-    sw.label = "SOURCE";
+    sw.label = "Inputs";
     sw.get = [group] { return group() == "PLAY" ? 1.0f : 0.0f; };
     sw.set = [this] (float v)
     {
@@ -4187,53 +4900,15 @@ void Display::assignRoutingEncoders()
         ctx.engine.getWing().runX32Text (v >= 0.5f ? "/config/routing/routswitch PLAY" : "/config/routing/routswitch REC", set);
         repaint();
     };
-    sw.text = [group] { return group() == "PLAY" ? juce::String ("PLAY") : juce::String ("REC"); };
+    sw.text = [group] { return group() == "PLAY" ? juce::String ("Play") : juce::String ("Rec"); };
     sw.steps = 2.0f;
-    encoders[5] = encoder (sw, "REC / PLAY", [this, group]
+    encoders[5] = encoder (sw, "RECORD / PLAY", [this, group]
     {
         pendingBlock.fill (-1);
         int set = 0;
         ctx.engine.getWing().runX32Text (group() == "PLAY" ? "/config/routing/routswitch REC" : "/config/routing/routswitch PLAY", set);
         assignEncoders();
     }, [group] { return group() == "PLAY"; });
-}
-
-void Display::paintRouting (juce::Graphics& g, juce::Rectangle<int> r)
-{
-    // What each block names, in the interface's numbering (Sidecar's ports).
-    auto ports = [] (const juce::String& choice) -> juce::String
-    {
-        const auto digits = choice.retainCharacters ("0123456789-");
-        const int first = digits.upToFirstOccurrenceOf ("-", false, false).getIntValue();
-        const int last = digits.fromFirstOccurrenceOf ("-", false, false).getIntValue();
-        int base = -1;
-        if (choice.startsWith ("AN"))
-            base = 0;
-        else if (choice.startsWith ("A"))
-            base = 32;
-        else if (choice.startsWith ("B"))
-            base = 80;
-        else if (choice.startsWith ("CARD"))
-            base = 128;
-        if (base < 0 || first <= 0)
-            return choice.startsWith ("UIN") ? "USER IN (NOT IN SIDECAR)" : juce::String();
-        return "INTERFACE " + juce::String (base + first) + "-" + juce::String (base + last);
-    };
-    const bool play = x32Value ("/config/routing/routswitch") == "PLAY";
-    const juce::String group = play ? "PLAY" : "IN";
-    juce::StringArray left, right;
-    for (int b = 0; b < 5; ++b)
-    {
-        const auto choice = x32Value ("/config/routing/" + group + "/" + kInBlocks[b]);
-        left.add (b < 4 ? "INPUTS " + juce::String (kInBlocks[b]) : juce::String ("AUX IN 1-6"));
-        const auto where = b < 4 ? ports (choice) : (choice == "AUX1-4" ? juce::String ("INTERFACE 161-166") : ports (choice) + ", THE REST AUX IN");
-        right.add (choice + (where.isNotEmpty() ? "  (" + where + ")" : juce::String()));
-    }
-    left.add ("USB L / R");
-    right.add ("USB PLAYER");
-    left.add ("BLOCKS IN USE");
-    right.add (play ? "PLAY (PLAYBACK)" : "IN (RECORDING)");
-    paintRows (g, r, left, right);
 }
 
 bool Display::isStrip (const Strip* s) const
@@ -4837,43 +5512,162 @@ void Display::paintSpectrograph (juce::Graphics& g, juce::Rectangle<float> area,
 
 void Display::paintRta (juce::Graphics& g, juce::Rectangle<int> r)
 {
-    // The check boxes at the left under their headings (Channel EQ, Graphic EQ, RTA
-    // Source), the analyser beside them.
-    auto area = pageFrame (g, r).toFloat();
-    auto side = area.removeFromLeft (juce::jmax (118.0f, area.getWidth() * 0.22f));
-    area.removeFromLeft (8.0f);
+    // The analyser on top, over its grid (20 Hz to 20 kHz, 6 dB steps); under it the
+    // defaults' boxes: the channel EQ's, the graphic EQ's and the RTA source's.
+    auto area = r.reduced (8, 4).toFloat();
     const int bits = x32Bits (x32Value ("/-prefs/rta/option"));
-    static const char* const heads[] = { "Channel EQ", nullptr, "Graphic EQ", nullptr, nullptr, "RTA Source" };
-    const float rowH = juce::jlimit (10.0f, 14.0f, (side.getHeight() - 30.0f) / 9.0f);
-    for (int k = 0; k < 6; ++k)
-    {
-        if (heads[k] != nullptr)
-        {
-            g.setColour (kNavy);
-            g.setFont (type::font (juce::jmin (9.5f, rowH), true));
-            g.drawText (heads[k], side.removeFromTop (rowH), juce::Justification::centredLeft);
-        }
-        auto row = side.removeFromTop (rowH);
-        if (k == rtaOption)
-        {
-            g.setColour (kGr);
-            g.drawRect (row, 1.0f);
-        }
-        g.setColour (kNavy);
-        checkBox (g, row.reduced (1.0f), rtaOptions()[k], (bits & (1 << k)) != 0);
-    }
-    auto* strip = rtaStrip();
-    g.setColour (kNavy);
-    g.setFont (type::font (9.5f, true));
-    g.drawFittedText ("Source: " + (strip != nullptr ? strip->getLabel() : juce::String ("select a strip")) + "\n"
-                          + (x32Value ("/-prefs/rta/pos") == "PRE" ? "Pre EQ" : "Post EQ") + (ctx.engine.getAnalysis().isFrozen() ? "  (frozen)" : ""),
-                      side.removeFromBottom (juce::jmin (26.0f, side.getHeight())).toNearestInt(), juce::Justification::centredLeft, 2, 0.7f);
-    g.setColour (kWell);
+    auto defaults = area.removeFromBottom (juce::jmin (62.0f, area.getHeight() * 0.32f));
+    area.removeFromBottom (3.0f);
+    g.setColour (juce::Colour (0xff05070a));
     g.fillRect (area);
-    if (x32Value ("/-prefs/rta/mode") == "SPEC")
-        paintSpectrograph (g, area.reduced (1.0f), 1.0f);
-    else
-        paintRtaBars (g, area.reduced (1.0f), 1.0f);
+    {
+        const auto plot = area.reduced (24.0f, 6.0f).withTrimmedBottom (8.0f);
+        const auto xOf = [&plot] (float hz) { return plot.getX() + plot.getWidth() * std::log10 (hz / 20.0f) / 3.0f; };
+        g.setColour (juce::Colour (0xff3f5f8a));
+        g.setFont (type::font (7.5f, false));
+        for (float decade : { 10.0f, 100.0f, 1000.0f })
+            for (int m = 1; m <= 9; ++m)
+            {
+                const float hz = decade * (float) m;
+                if (hz < 20.0f || hz > 20000.0f)
+                    continue;
+                g.drawVerticalLine (juce::roundToInt (xOf (hz)), plot.getY(), plot.getBottom());
+                if (m == 1 || m == 2 || m == 4 || m == 6 || m == 8 || hz == 30.0f || hz == 50.0f)
+                    g.drawText (hz >= 1000.0f ? juce::String ((int) (hz / 1000.0f)) + "k" : juce::String ((int) hz),
+                                juce::Rectangle<float> (xOf (hz) - 10.0f, plot.getBottom(), 20.0f, 8.0f), juce::Justification::centred);
+            }
+        g.drawVerticalLine (juce::roundToInt (xOf (20000.0f)), plot.getY(), plot.getBottom());
+        for (int k = 1; k <= 5; ++k)
+        {
+            const float y = plot.getY() + plot.getHeight() * (float) k / 6.0f;
+            g.drawHorizontalLine (juce::roundToInt (y), plot.getX(), plot.getRight());
+            g.drawText ("-" + juce::String (6 * k), juce::Rectangle<float> (area.getX() + 1.0f, y - 5.0f, 22.0f, 10.0f), juce::Justification::centredRight);
+        }
+        if (x32Value ("/-prefs/rta/mode") == "SPEC")
+            paintSpectrograph (g, plot, 1.0f);
+        else
+            paintRtaBars (g, plot, 1.0f);
+        auto* strip = rtaStrip();
+        g.setColour (juce::Colour (0xff6fb4ff));
+        g.setFont (type::font (10.0f, true));
+        g.drawText (strip != nullptr ? strip->getLabel() : juce::String ("Monitor"), plot.withHeight (12.0f), juce::Justification::topRight);
+    }
+    // The defaults: a dark title over each box's check boxes (the ringed one is the encoder's).
+    const float third = defaults.getWidth() / 3.0f;
+    const auto box = [&] (juce::Rectangle<float> c, const juce::String& title, std::vector<int> items)
+    {
+        drawBar (g, c.removeFromTop (14.0f).toNearestInt(), title, 9.0f);
+        const float colW = c.getWidth() / 2.0f;
+        int k = 0;
+        for (int item : items)
+        {
+            auto cell = juce::Rectangle<float> (c.getX() + colW * (float) (k % 2), c.getY() + 15.0f * (float) (k / 2), colW, 15.0f);
+            ++k;
+            if (item == rtaOption)
+            {
+                g.setColour (kFrame);
+                g.drawRect (cell, 1.0f);
+            }
+            g.setColour (juce::Colour (0xff1c2b55));
+            checkBox (g, cell.reduced (1.0f), rtaOptions()[item].toUpperCase(), (bits & (1 << item)) != 0);
+        }
+    };
+    box (defaults.removeFromLeft (third).reduced (3.0f, 0.0f), "CHANNEL EQ DEFAULTS", { 0, 1 });
+    box (defaults.removeFromLeft (third).reduced (3.0f, 0.0f), "GEQ DEFAULTS", { 3, 2, 4 });
+    {
+        auto c = defaults.reduced (3.0f, 0.0f);
+        box (c.removeFromLeft (c.getWidth() * 0.55f), "RTA SOURCE", { 5 });
+        auto list = c.withTrimmedTop (16.0f).reduced (2.0f, 0.0f);
+        auto* strip = rtaStrip();
+        for (auto text : { juce::String ("Selected Ch"), strip != nullptr ? strip->getLabel() : juce::String ("Monitor") })
+        {
+            auto row = list.removeFromTop (14.0f).reduced (0.0f, 1.0f).toNearestInt();
+            g.setColour (text == "Selected Ch" ? kRowDark : kPicked);
+            g.fillRect (row);
+            g.setColour (text == "Selected Ch" ? juce::Colours::white : kFrame);
+            g.setFont (type::font (10.0f, true));
+            g.drawText (text, row.reduced (3, 0), juce::Justification::centredLeft);
+        }
+    }
+}
+
+void Display::paintAutomix (juce::Graphics& g, juce::Rectangle<int> r)
+{
+    // METERS > automix: the information, and the eight strips it works on (the engine has no
+    // automix: the page is drawn, its groups OFF and its controls inert).
+    auto area = r.reduced (8, 4);
+    auto strips = area.removeFromRight (juce::jmin (300, area.getWidth() * 46 / 100));
+    area.removeFromRight (6);
+    auto info = area.removeFromTop (area.getHeight() - 32);
+    g.setColour (juce::Colours::white);
+    g.setFont (type::font (10.5f, true));
+    g.drawText ("AUTOMIX INFORMATION", info.removeFromTop (14).withTrimmedLeft (18), juce::Justification::centredLeft);
+    g.setFont (type::font (9.0f, false));
+    g.drawFittedText ("Automix is a feature that helps you control levels of several channels without having to move any fader.\n\n"
+                      "The Automix algorithm detects the levels of the assigned channels, and adjusts their volume to keep a constant general level. "
+                      "The Weight parameter can be used to adjust the priority of each channel in that group. The meter shows the applied level reduction.\n\n"
+                      "This feature is available on channels 1 to 8",
+                      info.withTrimmedLeft (18), juce::Justification::topLeft, 12, 0.8f);
+    drawBar (g, area.removeFromTop (14).withWidth (juce::jmin (170, area.getWidth())), "AUTOMIX GROUP ENABLE", 8.5f);
+    {
+        auto keys = area.removeFromTop (14);
+        g.setColour (juce::Colour (0xff1c3be0));
+        g.fillRect (keys.removeFromLeft (30).translated (14, 0));
+        g.setColour (juce::Colour (0xff22d9d0));
+        g.fillRect (keys.withX (keys.getX() + 80).withWidth (30));
+    }
+    const int n = 8;
+    const float w = (float) strips.getWidth() / (float) n;
+    const auto& channels = ctx.engine.getChannels();
+    const auto row = [&] (juce::Rectangle<int> rows, bool group)
+    {
+        for (int i = 0; i < n; ++i)
+        {
+            auto cell = juce::Rectangle<float> ((float) strips.getX() + w * (float) i, (float) rows.getY(), w, (float) rows.getHeight()).reduced (1.0f, 0.0f);
+            g.setColour (kRowDark);
+            g.fillRect (cell);
+            auto* s = i < (int) channels.size() ? channels[(size_t) i].get() : nullptr;
+            auto label = cell.removeFromBottom (12.0f);
+            auto bar = cell.removeFromRight (cell.getWidth() * 0.45f).reduced (1.0f, 2.0f);
+            const float level = group ? 0.7f : s != nullptr ? juce::jlimit (0.0f, 1.0f, fader::dbToPos (juce::Decibels::gainToDecibels (ctx.meters.get (s, MeterPoint::Output, 0), -144.0f))) : 0.0f;
+            for (float yy = bar.getBottom(); yy > bar.getY() + 2.0f; yy -= 3.0f)
+            {
+                const float up = (bar.getBottom() - yy) / bar.getHeight();
+                g.setColour (up > level ? juce::Colour (0xff2a2d36)
+                                        : group ? juce::Colour (0xff1fb8d0)
+                                                : up < fader::dbToPos (-18.0f) ? juce::Colour (0xff3ddc5a) : up < 0.95f ? juce::Colour (0xfff2d51f) : juce::Colour (0xffff3b30));
+                g.fillRect (bar.getX(), yy - 2.0f, bar.getWidth(), 2.0f);
+            }
+            const float pos = s != nullptr ? juce::jlimit (0.0f, 1.0f, fader::dbToPos (s->params.faderDb.load())) : 0.5f;
+            const float y = cell.getBottom() - cell.getHeight() * pos;
+            g.setColour (juce::Colour (0xffdfe3ee));
+            g.fillRect (cell.getX() + 2.0f, y - 3.0f, cell.getWidth() - 4.0f, 6.0f);
+            g.setColour (juce::Colours::white);
+            g.setFont (type::font (10.0f, true));
+            g.drawText (group ? juce::String ("OFF") : juce::String (i + 1), label.toNearestInt(), juce::Justification::centred);
+        }
+    };
+    drawBar (g, strips.removeFromTop (14), "INPUT CHANNELS", 9.0f);
+    row (strips.removeFromTop (juce::jmax (30, strips.getHeight() * 38 / 100)), false);
+    strips.removeFromTop (4);
+    drawBar (g, strips.removeFromTop (14), "AUTOMIX GROUP/WEIGHT", 9.0f);
+    row (strips, true);
+    g.setColour (kFrame);
+    g.drawRect (juce::Rectangle<float> ((float) strips.getX(), (float) strips.getY(), w * 4.0f, (float) strips.getHeight()), 1.5f);
+}
+
+void Display::assignAutomixEncoders()
+{
+    KnobBinding scroll;
+    scroll.label = "Scroll";
+    scroll.get = [this] { return overviewFirst >= 4 ? 1.0f : 0.0f; };
+    scroll.set = [this] (float v) { overviewFirst = v >= 0.5f ? 4 : 0; repaint(); };
+    scroll.text = [this] { return overviewFirst >= 4 ? juce::String ("5..8") : juce::String ("1..4"); };
+    scroll.steps = 2.0f;
+    encoders[0] = encoder (scroll, "ACTIVE");
+    encoders[1] = dimmedEncoder (" ", " ", "ACTIVE");
+    for (int k = 2; k < 6; ++k)
+        encoders[(size_t) k] = dimmedEncoder ("Auto Weight", "+0.0 dB", "X / Y");
 }
 
 void Display::paintOverChildren (juce::Graphics& g)
@@ -4909,33 +5703,41 @@ void Display::assignSetupGlobalEncoders()
     // GLOBAL's right half (manual 7.5.1): 4 INITIALIZE, the item turned, pushed twice (the
     // first push arms it); 5 the time and date, the computer's; 6 the brightness of the
     // screen or of the LEDs (`/-prefs/bright`, `ledbright`), its push between the two.
-    static const juce::StringArray initItems { "Console", "Show Data", "Libraries" };
+    static const juce::StringArray initItems { "Console", "Show Data", "Libraries", "Factory Rst" };
     KnobBinding init;
-    init.label = "INITIALIZE";
-    init.get = [this] { return (float) initItem / 2.0f; };
+    init.label = "Select";
+    init.get = [this] { return (float) initItem / 3.0f; };
     init.set = [this] (float v)
     {
-        initItem = juce::jlimit (0, 2, juce::roundToInt (v * 2.0f));
+        initItem = juce::jlimit (0, 3, juce::roundToInt (v * 3.0f));
         initArmedItem = -1;
         globalStatus = {};
         repaint();
     };
     init.text = [this] { return initItems[initItem]; };
-    init.steps = 3.0f;
-    encoders[3] = encoder (init, "INIT", [this] { initialize (initItem); }, [this] { return initArmedItem == initItem; });
-    encoders[4] = dimmedEncoder ("TIME", juce::Time::getCurrentTime().formatted ("%H:%M"), "NEXT");
+    init.steps = 4.0f;
+    encoders[2] = encoder (init, "SELECT", [this] { initialize (initItem); }, [this] { return initArmedItem == initItem; });
+    encoders[3] = dimmedEncoder ("Edit", juce::Time::getCurrentTime().formatted ("%H:%M"), "SELECT");
+    encoders[4] = dimmedEncoder ("Edit", juce::Time::getCurrentTime().formatted ("%d.%m.%Y"), "SELECT");
     const auto path = [this] { return juce::String (brightnessLed ? "/-prefs/ledbright" : "/-prefs/bright"); };
     KnobBinding bright;
-    bright.label = "BRIGHTNESS";
+    bright.label = "Bright";
     bright.get = [this, path] { return juce::jlimit (0.0f, 1.0f, (x32Value (path()).getFloatValue() - 10.0f) / 90.0f); };
     bright.set = [this, path] (float v) { x32Run (path() + " " + juce::String (10 + 5 * juce::roundToInt (juce::jlimit (0.0f, 1.0f, v) * 18.0f))); };
-    bright.text = [this, path] { return juce::String (brightnessLed ? "LED " : "LCD ") + x32Value (path()) + "%"; };
+    bright.text = [this, path] { return x32Value (path()); };
     bright.steps = 19.0f;
-    encoders[5] = encoder (bright, "LCD / LED", [this] { brightnessLed = ! brightnessLed; repaint(); }, [this] { return brightnessLed; });
+    encoders[5] = encoder (bright, "SELECT", [this] { brightnessLed = ! brightnessLed; repaint(); }, [this] { return brightnessLed; });
 }
 
 void Display::initialize (int item)
 {
+    if (item == 3)
+    {
+        initArmedItem = -1;
+        globalStatus = "Factory reset: not in Sidecar (initialize the console and its libraries instead)";
+        repaint();
+        return;
+    }
     if (item == 2)
     {
         // Sidecar's library is a folder of the user's files: nothing is deleted from here.
@@ -5875,7 +6677,7 @@ void Display::paintStatus (juce::Graphics& g, juce::Rectangle<int> area)
 void Display::paintBezelMeters (juce::Graphics& g, juce::Rectangle<int> area)
 {
     // The X32's main meters beside the screen: M/C (and the solo bus), the
-    // scale, L and R; a red CLIP, orange to -8 dB, then green.
+    // scale, L and R; a red CLIP, yellow above -18 dB, then green.
     static constexpr float marks[] = { 0.0f, -1.0f, -2.0f, -3.0f, -4.0f, -6.0f, -8.0f, -10.0f, -12.0f, -15.0f, -18.0f, -21.0f,
                                        -24.0f, -27.0f, -30.0f, -33.0f, -36.0f, -39.0f, -42.0f, -45.0f, -48.0f, -51.0f, -54.0f, -57.0f };
     constexpr int n = (int) std::size (marks);
@@ -5899,7 +6701,7 @@ void Display::paintBezelMeters (juce::Graphics& g, juce::Rectangle<int> area)
     for (int k = 0; k < n; ++k)
     {
         const float y = r.getY() + rowH * (float) k;
-        const auto colour = k == 0 ? juce::Colour (0xffff3b30) : k <= 6 ? juce::Colour (0xffff9a1f) : juce::Colour (0xff3ddc5a);
+        const auto colour = k == 0 ? juce::Colour (0xffff3b30) : k < 10 ? juce::Colour (0xfff2d51f) : juce::Colour (0xff3ddc5a);
         for (int m = 0; m < 3; ++m)
         {
             const bool on = dbs[m] >= marks[k] && dbs[m] > -90.0f;
@@ -5919,6 +6721,13 @@ void Display::paintBezelMeters (juce::Graphics& g, juce::Rectangle<int> area)
 
 juce::Rectangle<int> Display::getTabBounds (int i) const
 {
+    if ((screen == Screen::MuteGroups ? underScreen : screen) == Screen::Routing)
+    {
+        for (auto& c : routingStrip (tabsArea, shownTab()))
+            if (c.kind == 1 && c.tab == i)
+                return c.bounds;
+        return {};
+    }
     const int w = juce::jmin (130, tabsArea.getWidth() / juce::jmax (1, getTabs().size()));
     return { tabsArea.getX() + i * w, tabsArea.getY(), w, tabsArea.getHeight() };
 }
@@ -5933,6 +6742,38 @@ void Display::paintTabs (juce::Graphics& g, juce::Rectangle<int> r)
 {
     // The tabs as folders along the top of the page: the shown one light blue.
     const auto tabs = getTabs();
+    if ((screen == Screen::MuteGroups ? underScreen : screen) == Screen::Routing)
+    {
+        // BLOCK and PATCH: the shown group's name, its tabs in a band, the shown one framed.
+        const auto cells = routingStrip (tabsArea, shownTab());
+        g.setColour (kTabOff);
+        juce::Rectangle<int> band;
+        for (auto& c : cells)
+            if (c.kind != 2)
+                band = band.isEmpty() ? c.bounds : band.getUnion (c.bounds);
+        g.fillRect (band.withTrimmedTop (3));
+        for (auto& c : cells)
+        {
+            auto b = c.bounds.toFloat().withTrimmedTop (3.0f);
+            const bool on = c.kind == 1 && c.tab == shownTab();
+            if (c.kind == 2)
+            {
+                g.setColour (kDeep);
+                g.fillRoundedRectangle (b.reduced (0.0f, 1.0f), 3.0f);
+            }
+            if (on)
+            {
+                g.setColour (kYellow);
+                g.drawRoundedRectangle (b.reduced (1.5f, 2.0f), 3.0f, 2.0f);
+            }
+            g.setColour (c.kind == 1 && ! on ? kDeepText : juce::Colours::white);
+            g.setFont (type::font (c.kind == 1 ? 12.5f : 11.5f, true));
+            g.drawFittedText (c.text, b.toNearestInt(), juce::Justification::centred, 1, 0.7f);
+        }
+        g.setColour (kBox);
+        g.fillRect (r.removeFromBottom (2));
+        return;
+    }
     g.setFont (type::font (12.0f, true).italicised());
     for (int i = 0; i < tabs.size(); ++i)
     {
@@ -5945,7 +6786,7 @@ void Display::paintTabs (juce::Graphics& g, juce::Rectangle<int> r)
         g.setColour (kSkyLine);
         g.strokePath (folder, juce::PathStrokeType (1.0f));
         g.setColour (kNavy);
-        g.drawText (tabs[i], cell, juce::Justification::centred);
+        g.drawText (screen == Screen::Setup || screen == Screen::Meters || screen == Screen::Home ? tabs[i].toUpperCase() : tabs[i], cell, juce::Justification::centred);
     }
     g.setColour (kBox);
     g.fillRect (r.removeFromBottom (2));
@@ -6209,6 +7050,8 @@ void Display::paintHomeFlow (juce::Graphics& g, juce::Rectangle<int> area, Strip
 
 void Display::paintSends (juce::Graphics& g, juce::Rectangle<int> area, Strip& s)
 {
+    // The 16 bus sends as the console draws them: the bus number, the send's fader and meter,
+    // MUTE and the tap point of each pair, and the signal-flow diagram under them.
     const int buses = juce::jmin (16, (int) ctx.engine.getBuses().size());
     if (! s.isInput() || buses == 0)
     {
@@ -6217,31 +7060,94 @@ void Display::paintSends (juce::Graphics& g, juce::Rectangle<int> area, Strip& s
         g.drawText ("No bus sends on this strip", area, juce::Justification::centred);
         return;
     }
-    auto r = block (g, area.toFloat().reduced (8.0f, 4.0f), "Bus Sends").reduced (4.0f, 2.0f);
-    const float w = r.getWidth() / (float) buses;
+    auto r = area.reduced (8, 4);
+    const float w = (float) r.getWidth() / (float) buses;
+    const int diagramH = juce::jmin (40, r.getHeight() / 4);
+    auto diagram = r.removeFromBottom (diagramH);
+    const int boxH = 12, chipH = 11;
+    auto numbers = r.removeFromTop (boxH);
+    auto chips = r.removeFromBottom (chipH * 2 + 2);
+    const auto taps = [] (const juce::String& t)
+    {
+        return t == "IN/LC" ? juce::String ("IN/LC") : t == "<-EQ" ? juce::String ("PRE EQ") : t == "EQ->" ? juce::String ("POST EQ")
+               : t == "PRE" ? juce::String ("PRE FADER") : t == "POST" ? juce::String ("POST FADER") : juce::String ("SUB GROUP");
+    };
     for (int i = 0; i < buses; ++i)
     {
-        auto col = r.removeFromLeft (w).reduced (3.0f, 0.0f);
+        const float x = (float) r.getX() + w * (float) i;
         auto* send = s.sends.find (i);
         const bool on = send != nullptr && send->enabled.load();
         const float pos = fader::dbToPos (send != nullptr ? send->levelDb.load() : -144.0f);
         const bool focused = i >= 2 * sendBank && i < 2 * sendBank + 4;
-        auto label = col.removeFromBottom (16.0f);
-        g.setColour (focused ? kYellow : kSkyAlt);
-        g.fillRect (label.reduced (0.0f, 1.0f));
+        auto num = juce::Rectangle<float> (x + 1.0f, (float) numbers.getY(), w - 2.0f, (float) boxH);
+        g.setColour (i < 8 ? juce::Colour (0xffaeb8d6) : juce::Colour (0xffe9ecf4));
+        g.fillRect (num);
+        g.setColour (juce::Colour (0xff5b668c));
+        g.drawRect (num, 1.0f);
         g.setColour (kNavy);
         g.setFont (type::font (10.0f, true));
-        g.drawText (juce::String (i + 1), label, juce::Justification::centred);
-        if (focused && layer == 1 && i % 2 == 0)
+        g.drawText (juce::String (i + 1), num.toNearestInt(), juce::Justification::centred);
+        auto well = juce::Rectangle<float> (x + 1.0f, (float) r.getY() + 1.0f, w - 2.0f, (float) r.getHeight() - 5.0f);
+        g.setColour (juce::Colour (0xff22262e));
+        g.fillRect (well);
+        // The fader's slot and cap at the left, the meter at the right: green to -18, yellow above.
+        auto meter = well.removeFromRight (well.getWidth() * 0.45f).reduced (1.0f, 2.0f);
+        auto slot = well.reduced (well.getWidth() * 0.4f, 3.0f);
+        g.setColour (juce::Colour (0xff10131a));
+        g.fillRect (slot);
+        g.setColour (juce::Colour (0xffdfe3ee));
+        g.fillRect (slot.getCentreX() - w * 0.22f, slot.getBottom() - slot.getHeight() * pos - 3.0f, w * 0.44f, 6.0f);
+        for (float yy = meter.getBottom(); yy > meter.getY() + 2.0f; yy -= 3.0f)
         {
-            const auto taps = x32Value (x32Address (s) + "/mix/" + juce::String (i + 1).paddedLeft ('0', 2) + "/type");
-            g.setFont (type::font (8.5f, true));
-            g.drawFittedText (taps, col.removeFromTop (12.0f).toNearestInt().withWidth ((int) (w * 2.0f)), juce::Justification::centredLeft, 1, 0.6f);
+            const float up = (meter.getBottom() - yy) / meter.getHeight();
+            if (up > pos)
+                break;
+            g.setColour (! on ? juce::Colour (0xff4a4f5c) : up < fader::dbToPos (-18.0f) ? juce::Colour (0xff3ddc5a) : up < 0.95f ? juce::Colour (0xfff2d51f) : juce::Colour (0xffff3b30));
+            g.fillRect (meter.getX(), yy - 2.0f, meter.getWidth(), 2.0f);
         }
-        g.setColour (kWell);
-        g.fillRect (col);
-        g.setColour (on ? kYellow : kDeepText.withAlpha (0.5f));
-        g.fillRect (col.reduced (1.0f).withTrimmedTop ((col.getHeight() - 2.0f) * (1.0f - pos)));
+        g.setColour (i < 12 ? juce::Colour (0xff22d9d0) : juce::Colour (0xffff4fd0));
+        g.fillRect (x + 1.0f, (float) r.getBottom() - 3.0f, w - 2.0f, 2.0f);
+        auto chip = juce::Rectangle<float> (x + 1.0f, (float) chips.getY(), w - 2.0f, (float) chipH);
+        g.setColour (on ? juce::Colour (0xffbec6e0) : kYellow);
+        g.fillRect (chip);
+        g.setColour (kNavy);
+        g.setFont (type::font (8.5f, true));
+        g.drawText ("MUTE", chip.toNearestInt(), juce::Justification::centred);
+        if (i % 2 == 0)
+        {
+            auto tap = juce::Rectangle<float> (x + 1.0f, (float) chips.getY() + (float) chipH + 2.0f, w * 2.0f - 2.0f, (float) chipH);
+            g.setColour (i < 8 ? juce::Colour (0xffbec6e0) : juce::Colour (0xffe9ecf4));
+            g.fillRect (tap);
+            g.setColour (kNavy);
+            g.drawText (taps (x32Value (x32Address (s) + "/mix/" + juce::String (i + 1).paddedLeft ('0', 2) + "/type")), tap.toNearestInt(), juce::Justification::centred);
+        }
+        if (focused && i % 4 == 0)
+        {
+            g.setColour (kFrame);
+            g.drawRect (juce::Rectangle<float> (x, (float) numbers.getY() - 1.0f, w * 4.0f, (float) (chips.getBottom() - numbers.getY() + 2)), 1.5f);
+        }
+    }
+    // The flow of a channel: the points the sends can tap.
+    {
+        const float y = (float) diagram.getCentreY() + 4.0f, x0 = (float) diagram.getX() + (float) diagram.getWidth() * 0.18f, span = (float) diagram.getWidth() * 0.6f;
+        g.setColour (kNavy);
+        g.drawHorizontalLine ((int) y, x0, x0 + span);
+        g.setFont (type::font (8.5f, true));
+        const char* const names[] = { "IN/LC", "Pre EQ", "Post EQ", "Pre Fdr", "Post Fdr" };
+        const float at[] = { 0.12f, 0.3f, 0.52f, 0.68f, 0.88f };
+        for (int k = 0; k < 5; ++k)
+        {
+            const float px = x0 + span * at[k];
+            g.drawLine (px, y, px, y - 7.0f, 1.0f);
+            g.drawText (names[k], juce::Rectangle<float> (px - 26.0f, y - 18.0f, 52.0f, 11.0f), juce::Justification::centred);
+        }
+        for (float f : { 0.0f, 0.1f, 0.22f, 0.4f, 0.6f, 0.8f })
+        {
+            g.setColour (juce::Colour (0xffd9deee));
+            g.fillRect (x0 + span * f, y - 5.0f, 10.0f, 10.0f);
+        }
+        g.setColour (kNavy);
+        g.drawText ("Sub Grp", juce::Rectangle<float> (x0 + span + 4.0f, y - 6.0f, 44.0f, 12.0f), juce::Justification::centredLeft);
     }
 }
 
@@ -6291,21 +7197,18 @@ void Display::paintMeters (juce::Graphics& g, juce::Rectangle<int> r)
     if (strips.empty())
         return;
     r.reduce (6, 4);
-    g.setColour (kSkyLine);
+    g.setColour (juce::Colour (0xff7f8aae));
     g.fillRoundedRectangle (r.toFloat().expanded (1.0f), 4.0f);
-    g.setColour (kPage);
+    g.setColour (juce::Colour (0xffaeb8d6));
     g.fillRoundedRectangle (r.toFloat().reduced (1.0f), 3.0f);
+    // A dark title bar over each group, as the console's.
     const auto section = [&g] (juce::Rectangle<int> head, const juce::String& name)
     {
-        g.setColour (kSkyLine);
-        g.fillRect (head.toFloat().withSizeKeepingCentre (head.toFloat().getWidth(), 1.0f));
-        g.setColour (kNavy);
+        g.setColour (kBarDark);
+        g.fillRect (head);
+        g.setColour (juce::Colours::white);
         g.setFont (type::font (9.0f, true));
-        const int w = juce::jmin (head.getWidth(), name.length() * 6 + 16);
-        g.setColour (kPage);
-        g.fillRect (head.withSizeKeepingCentre (w, 12));
-        g.setColour (kNavy);
-        g.drawText (name, head, juce::Justification::centred);
+        g.drawText (name.toUpperCase(), head, juce::Justification::centred);
     };
     auto body = r.reduced (4, 2);
     const int rows = tab == 0 ? 2 : tab == 1 ? 1 : 0;
@@ -6314,7 +7217,7 @@ void Display::paintMeters (juce::Graphics& g, juce::Rectangle<int> r)
     const auto heads = body.removeFromTop (12);
     const int n = (int) strips.size();
     const int numGaps = (int) groups.size() - 1;
-    const float gap = 8.0f;
+    const float gap = tab == 0 ? 22.0f : 8.0f; // channels: the scale stands between 16 and 17
     const float w = ((float) body.getWidth() - gap * (float) numGaps) / (float) n;
     const auto colX = [&, w, gap] (int i)
     {
@@ -6340,14 +7243,28 @@ void Display::paintMeters (juce::Graphics& g, juce::Rectangle<int> r)
         auto* s = strips[(size_t) i];
         const float x = colX (i);
         juce::Rectangle<float> cell (x + 0.5f, (float) meterRow.getY(), w - 1.0f, (float) meterRow.getHeight());
-        g.setColour (kWell);
+        g.setColour (kRowDark);
         g.fillRect (cell);
         if (s == nullptr)
             continue;
         const float level = juce::jlimit (0.0f, 1.0f, fader::dbToPos (juce::Decibels::gainToDecibels (ctx.meters.get (s, MeterPoint::Output, 0), -144.0f)));
         const float h = cell.getHeight() * level;
-        g.setGradientFill (juce::ColourGradient (juce::Colour (0xffff3b30), 0.0f, cell.getY(), juce::Colour (0xff3ddc5a), 0.0f, cell.getBottom(), false));
-        g.fillRect (cell.withTop (cell.getBottom() - h));
+        // As the console's: green to -18 dB, yellow above it, red from the top (CLIP).
+        const float yellowAt = cell.getHeight() * fader::dbToPos (-18.0f), redAt = cell.getHeight() * fader::dbToPos (-1.0f);
+        for (auto [from, to, colour] : { std::tuple<float, float, juce::uint32> { 0.0f, yellowAt, 0xff3ddc5a }, { yellowAt, redAt, 0xfff2d51f },
+                                          { redAt, cell.getHeight(), 0xffff3b30 } })
+        {
+            const float top = juce::jmin (h, to);
+            if (top > from)
+            {
+                g.setColour (juce::Colour (colour));
+                g.fillRect (juce::Rectangle<float> (cell.getX(), cell.getBottom() - top, cell.getWidth(), top - from));
+            }
+        }
+        // The console's LED segments.
+        g.setColour (kRowDark);
+        for (float yy = cell.getBottom() - 2.0f; yy > cell.getY(); yy -= 3.0f)
+            g.fillRect (cell.getX(), yy, cell.getWidth(), 1.0f);
 
         juce::Rectangle<float> fcell (x + 0.5f, (float) faderRow.getY(), w - 1.0f, faderH);
         g.setColour (kNavy);
@@ -6362,6 +7279,18 @@ void Display::paintMeters (juce::Graphics& g, juce::Rectangle<int> r)
         if (n <= 40)
             g.drawFittedText (juce::String (s->getNumber()), juce::Rectangle<float> (x, fcell.getBottom() + 1.0f, w, 10.0f).toNearestInt(), juce::Justification::centred, 1, 0.6f);
     }
+    if (tab == 0)
+    {
+        const float sx = colX (16) - gap, sy = (float) meterRow.getY();
+        g.setColour (juce::Colour (0xff4b5578));
+        g.fillRect (sx, sy, gap, (float) meterRow.getHeight());
+        g.setColour (juce::Colours::white);
+        g.setFont (type::font (7.5f, true));
+        const char* const marks[] = { "Clip", "-6", "-18", "-36", "-60" };
+        const float ys[] = { 0.0f, 0.07f, 0.25f, 0.5f, 0.93f };
+        for (int k = 0; k < 5; ++k)
+            g.drawText (marks[k], juce::Rectangle<float> (sx - 2.0f, sy + ys[k] * ((float) meterRow.getHeight() - 8.0f), gap + 4.0f, 9.0f), juce::Justification::centred);
+    }
     if (rows == 0)
         return;
     const auto reductionRow = [&] (juce::Rectangle<int> row, const juce::String& name, bool gate)
@@ -6371,21 +7300,29 @@ void Display::paintMeters (juce::Graphics& g, juce::Rectangle<int> r)
         {
             auto* s = strips[(size_t) i];
             juce::Rectangle<float> cell (colX (i) + 0.5f, (float) row.getY(), w - 1.0f, (float) row.getHeight());
-            g.setColour (kNavy);
+            g.setColour (juce::Colour (0xff4d1416)); // unlit: dark red, as the LEDs
             g.fillRect (cell);
             if (s == nullptr)
                 continue;
             const float gr = std::abs (gate ? s->meters.gateReductionDb.load() : s->meters.dynReductionDb.load());
-            g.setColour (kGr);
+            g.setColour (juce::Colour (0xffff3326));
             g.fillRect (cell.withHeight (cell.getHeight() * juce::jlimit (0.0f, 1.0f, gr / 30.0f)));
         }
     };
     body.removeFromTop (2);
     if (tab == 0)
     {
-        reductionRow (body.removeFromTop (grRow + 12), "Gain Reduction Gate", true);
+        {
+            // Thr -18 (the gate's), Thr -6 -12 -18 (the dynamics') in the scale's column.
+            g.setColour (juce::Colours::white);
+            g.setFont (type::font (7.5f, true));
+            const float sx = colX (16) - gap;
+            g.drawText ("Thr", juce::Rectangle<float> (sx - 2.0f, (float) body.getY() + 11.0f, gap + 4.0f, 9.0f), juce::Justification::centred);
+            g.drawText ("-18", juce::Rectangle<float> (sx - 2.0f, (float) body.getY() + 20.0f, gap + 4.0f, 9.0f), juce::Justification::centred);
+        }
+        reductionRow (body.removeFromTop (grRow + 12), "Gate Gain Reduction", true);
         body.removeFromTop (2);
-        reductionRow (body.removeFromTop (grRow + 12), "Gain Reduction Dyn", false);
+        reductionRow (body.removeFromTop (grRow + 12), "Dyn Gain Reduction", false);
     }
     else
         reductionRow (body.removeFromTop (grRow + 12), "Gain Reduction", false);
@@ -6435,6 +7372,11 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
             if (tab == 4)
             {
                 paintRta (g, r);
+                break;
+            }
+            if (tab == 5)
+            {
+                paintAutomix (g, r);
                 break;
             }
             paintMeters (g, r);
@@ -6612,6 +7554,13 @@ void Display::mouseDown (const juce::MouseEvent& e)
     dragEncoder = -1;
     dragged = false;
     const auto p = e.getPosition();
+    if ((screen == Screen::MuteGroups ? underScreen : screen) == Screen::Routing)
+        for (auto& c : routingStrip (tabsArea, shownTab()))
+            if (c.kind == 2 && c.bounds.contains (p))
+            {
+                showTab (c.tab);
+                return;
+            }
     for (int t = 0; t < getTabs().size(); ++t)
         if (getTabBounds (t).contains (p))
         {

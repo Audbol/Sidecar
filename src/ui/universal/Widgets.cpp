@@ -1,3 +1,4 @@
+#include "engine/Strip.h"
 #include "ui/universal/Widgets.h"
 #include "ui/HardwareLook.h"
 
@@ -14,6 +15,35 @@ namespace livedaw::ui::universal
 float deviceTagWidth (const juce::String& device)
 {
     return device.isEmpty() ? 0.0f : juce::GlyphArrangement::getStringWidth (type::font (type::kMicro, true), device) + 10.0f;
+}
+
+juce::String devices::shown()
+{
+    switch (shownProfile())
+    {
+        case ld::kProfileWing:      return "WING";
+        case ld::kProfileX32:       return "X32";
+        case ld::kProfileProMix01:  return "PROMIX";
+        case ld::kProfileYamaha02R: return "02R";
+        case ld::kProfileSq5:       return "SQ-5";
+        case ld::kProfileYamaha01V: return "01V";
+        case ld::kProfileDLive:     return "DLIVE";
+        case ld::kProfileDm2000:    return "DM2000";
+        case ld::kProfileMidasPro2: return "PRO2";
+        case ld::kProfileXenyx1202: return "Q1202";
+        default:                    return {};
+    }
+}
+
+juce::String devices::of (const juce::String& token, bool foreign, const juce::String& fallback)
+{
+    const auto console = models::consoleOf (token);
+    if (! foreign && (console.isEmpty() || shownProfile() != ld::kProfileUniversal))
+        return fallback;
+    // The tags are short: PROMIX for PROMIX 01, DLIVE, Q1202; the WING's models name no console.
+    if (console.isEmpty())
+        return "WING";
+    return console == "PROMIX 01" ? "PROMIX" : console == "dLive" ? "DLIVE" : console == "Q1202USB" ? "Q1202" : console;
 }
 
 float drawDeviceTag (juce::Graphics& g, juce::Rectangle<float> area, const juce::String& device, const Theme& theme, bool atLeft)

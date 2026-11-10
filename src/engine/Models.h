@@ -85,6 +85,8 @@ struct Model
     juce::String token, name;
     Category category = Category::Gate;
     std::vector<Param> params;
+    /** Another console's model on the shown one (the Universal Mixer's swap; `tableAll` only). */
+    bool foreign = false;
 
     /** Index of the parameter `id` ("thr"), or -1. */
     int find (const juce::String& id) const noexcept;
@@ -93,7 +95,23 @@ struct Model
 /** All models of a table (built once, message thread). */
 const std::vector<Model>& table (Table);
 
-/** Model `index` of a table (clamped to the table). */
+/** The shown console's models of a table, then every other console's (named by their console:
+    "WING Gate", "X32 Gate"); the shown console's keep their indices. On a Universal
+    console, `table`. What the Universal Mixer's block editor offers, unless a real console
+    is under remote control (the hardware can't run them). */
+const std::vector<Model>& tableAll (Table);
+
+/** A real console is under remote control (RemoteSession): its hardware can't run another
+    console's models, so `offered` gives the shown console's alone and the engine refuses the rest. */
+void setRemoteHeld (bool held);
+bool remoteHeld() noexcept;
+
+/** The models a block's model list offers: `tableAll`, or `table` while a real console is under
+    remote control. */
+const std::vector<Model>& offered (Table);
+
+/** Model `index` of a table (clamped to it); past the shown console's own models, another
+    console's (a block may hold one). */
 const Model& model (Table, int index);
 
 /** Index of the model with this token ("COMP"), or -1. */

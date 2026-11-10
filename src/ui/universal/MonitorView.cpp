@@ -474,7 +474,7 @@ void MonitorView::Talkback::paint (juce::Graphics& g)
     g.setFont (type::font (type::kHeading, true));
     g.drawText ("TALKBACK", title, juce::Justification::centredLeft);
     title.removeFromLeft (110);
-    drawDeviceTag (g, title.toFloat(), devices::wing, theme); // the WING's talk paths (AUTO / PUSH / LATCH, the dims)
+    drawDeviceTag (g, title.toFloat(), devices::shown(), theme); // the WING's talk paths (AUTO / PUSH / LATCH, the dims)
     g.setColour (theme.textDim);
     g.setFont (type::font (type::kCaption, true));
     g.drawText ("TALK " + juce::String (shown == 0 ? "A" : "B") + " TO", toCaption, juce::Justification::bottomLeft);
@@ -524,12 +524,12 @@ MonitorView::MonitorView (UiContext& c, const Theme& t)
 {
     auto& e = ctx.engine;
     soloBus.caption = "SOLO TO";
-    soloBus.device = devices::wing;
+    soloBus.device = devices::shown();
     soloBus.items = [] { return models::list (models::MonitorBuses); };
     soloBus.current = [&e] { return e.soloBus.load(); };
     soloBus.choose = [&e] (int i) { e.setSoloBus (i); };
     soloMode.caption = "SOLO MODE";
-    soloMode.device = devices::wing; // LIVE, STUDIO, SIP
+    soloMode.device = devices::shown(); // LIVE, STUDIO, SIP
     soloMode.items = [] { return juce::StringArray { "LIVE", "STUDIO", "SIP" }; };
     soloMode.current = [&e] { return e.soloMode.load(); };
     soloMode.choose = [&e] (int i) { e.soloMode = i; };

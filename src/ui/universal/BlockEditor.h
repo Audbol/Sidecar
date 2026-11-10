@@ -24,7 +24,7 @@ struct BlockTarget
     Kind kind = Kind::None;
     juce::String title;
     /** The console the block comes from: the strip's own blocks are its WING
-        template's (devices::wing); an extra block, none (the Universal core). */
+        template's (devices::shown()); an extra block, none (the Universal core). */
     juce::String device;
     /** An extra block's id, else -1. */
     int uid = -1;
@@ -54,6 +54,10 @@ struct BlockTarget
     std::function<bool (const double* freqs, double* outDb, int count)> response;
     /** A dynamics block's gain reduction, dB. */
     std::function<float()> reductionDb;
+
+    /** The console tag to show for the block now: its model's console when that is not the shown
+        console's (a WING EQ on a ProMix; `devices::of`), else `device`. */
+    juce::String tag() const;
 
     /** A step of `strip`'s chain as a target (Kind::None for a step without an editor). */
     static BlockTarget of (UiContext&, Strip&, const ChainStep&);

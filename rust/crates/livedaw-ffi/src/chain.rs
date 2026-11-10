@@ -167,6 +167,9 @@ pub unsafe extern "C" fn ld_strip_set_block_model(s: *const Strip, uid: i32, mod
     let m = model.max(0) as usize;
     guard(false, || match &b.params {
         BlockParams::Eq(p) => {
+            if !models::eq_may_hold(s, m) {
+                return false;
+            }
             p.set_model(m);
             true
         }
@@ -180,6 +183,9 @@ pub unsafe extern "C" fn ld_strip_set_block_model(s: *const Strip, uid: i32, mod
             true
         }
         BlockParams::Filter(p) => {
+            if !models::tool_may_hold(s, m) {
+                return false;
+            }
             p.set_tool_model(m);
             true
         }

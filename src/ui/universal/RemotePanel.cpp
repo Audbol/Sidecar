@@ -149,7 +149,7 @@ RemotePanel::RemotePanel (UiContext& c, const Theme& t)
         auto& r = routes[(size_t) f];
         r = std::make_unique<ChoiceBar> (t);
         r->caption = MidiRemote::functionName (f);
-        r->device = devices::wing; // the WING's MIDI REMOTE CONTROL rows
+        r->device = devices::shown(); // the WING's MIDI REMOTE CONTROL rows
         r->items = [] { return juce::StringArray { "OFF", "DIN", "USB" }; };
         r->current = [this, f] { return midiSettings().routes[(size_t) f]; };
         r->choose = [this, f] (int i) { changeMidi ([f, i] (MidiRemote::Settings& s) { s.routes[(size_t) f] = juce::jlimit (0, 2, i); }); };
@@ -328,7 +328,7 @@ void RemotePanel::paint (juce::Graphics& g)
         g.setFont (type::font (type::kHeading, true));
         g.drawText (title, t, juce::Justification::centredLeft);
         if (tagged)
-            drawDeviceTag (g, t.toFloat(), devices::wing, theme);
+            drawDeviceTag (g, t.toFloat(), devices::shown(), theme);
     };
     panel (wingPanel, "WING REMOTE", true);
     panel (webPanel, "WEB REMOTE", false);

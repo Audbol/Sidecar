@@ -743,22 +743,22 @@ public:
                 else if (row.step.isBlock() || row.step.isUserTap())
                     expect (row.device.isEmpty(), row.name + ": the core's");
                 else
-                    expectEquals (row.device, devices::wing, row.name + ": the WING template's");
+                    expectEquals (row.device, devices::shown(), row.name + ": the shown console's template");
             }
             const auto own = BlockTarget::of (rig.ctx, ch, stepOf (ch, [] (const ChainStep& s) { return s.kind == ld::kStepEq; }));
             const auto extra = BlockTarget::of (rig.ctx, ch, stepOf (ch, [uid] (const ChainStep& s) { return s.uid == uid; }));
-            expectEquals (own.device, devices::wing);
+            expectEquals (own.device, devices::shown());
             expect (extra.device.isEmpty());
             // An extra block's models are the WING's model tables all the same.
             BlockEditor editor (rig.ctx, Theme::charcoal());
             editor.setSize (420, 700);
             editor.setTarget (extra);
             auto* model = dynamic_cast<ChoiceBar*> (editor.getControl (1));
-            expect (model != nullptr && model->device == devices::wing);
+            expect (model != nullptr && model->device == devices::shown());
             SendsPanel sends (rig.ctx, Theme::charcoal());
             sends.setSize (420, 600);
             sends.setStrip (&ch);
-            expect (sends.getNumRows() > 0 && sends.getRow (0)->source.device == devices::wing, "the WING's send modes");
+            expect (sends.getNumRows() > 0 && sends.getRow (0)->source.device == devices::shown(), "the WING's send modes");
             expect (ch.removeTap (tap));
             editor.setTarget ({});
             ch.clearChain();
@@ -875,7 +875,7 @@ public:
             expectEquals (fx.getModel (2), withPanel);
             view.refresh();
             expect (view.isShowingPanel() && view.faceplate.isVisible());
-            expectEquals (view.device.device, devices::wing);
+            expectEquals (view.device.device, devices::shown());
             expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds(), true, 1.0f), "universal-fx.png"));
             // The list of its parameters instead.
             view.panelKey.onClick();
@@ -929,7 +929,7 @@ public:
             engine.getDca (29).solo = true;
             view.clearSolo.onClick();
             expect (! engine.getChannels()[1]->params.solo.load() && ! engine.getDca (29).solo.load());
-            expect (view.phones.source.device.isEmpty() && view.soloMode.device == devices::wing, "the console's sources, the WING's solo modes");
+            expect (view.phones.source.device.isEmpty() && view.soloMode.device == devices::shown(), "the console's sources, the WING's solo modes");
             view.refresh();
             expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds(), true, 1.0f), "universal-monitoring.png"));
 
@@ -1072,7 +1072,7 @@ public:
             }
             expect (skin.getScenes().isVisible() == false && skin.getSetup().isVisible());
             // The recorder pages are the WING display's.
-            expectEquals (skin.getRecorder().usbTab.device, devices::wing);
+            expectEquals (skin.getRecorder().usbTab.device, devices::shown());
             skin.getRecorder().showPage (RecorderView::Page::Usb);
             expect (skin.getRecorder().getPageComponent() != nullptr && skin.getRecorder().getPageComponent()->isVisible());
         }
@@ -1601,7 +1601,7 @@ public:
             // MIDI: a function's route, DAW control and its emulation.
             r.routes[(size_t) MidiRemote::SceneChange]->chooseItem (2);
             expectEquals (MidiRemote::Settings::load (rig.settings).routes[(size_t) MidiRemote::SceneChange], (int) MidiRemote::RouteUsb);
-            expect (r.routes[0]->device == devices::wing);
+            expect (r.routes[0]->device == devices::shown());
             r.dawOn.onClick();
             expect (MidiRemote::Settings::load (rig.settings).daw.enabled);
             r.dawEmulation.chooseItem (1);
