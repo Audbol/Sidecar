@@ -10,6 +10,7 @@
 #include "ui/Skin.h"
 #include "ui/SurfaceLock.h"
 #include "ui/SurfaceSections.h"
+#include "ui/SurfaceTopBar.h"
 #include "ui/UiContext.h"
 
 namespace livedaw::ui
@@ -56,6 +57,9 @@ public:
 private:
     class LockOverlay;
 
+    /** The surface under its top bar (the whole window while only the screen shows). */
+    juce::Rectangle<int> bodyArea() const;
+    void paintSurface (juce::Graphics&);
     void saveScreenshot();
     /** Hold HOME (with the keys of `held`): locks or unlocks the surface (SurfaceLock). */
     void holdHomeLock (const juce::String& held);
@@ -107,6 +111,7 @@ private:
         room for a legible screen. */
     static constexpr int kMinCompactStripWidth = 300, kMinCompactRightWidth = 220;
 
+    universal::ToggleKey universalKey;
     std::unique_ptr<ChannelStripSection> channelStrip;
     std::unique_ptr<MainDisplay> display;
     std::unique_ptr<MonitorSection> monitor;

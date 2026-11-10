@@ -261,6 +261,12 @@ struct UiContext
 
     /** The interface the window shows (the main component sets it from the app settings). */
     InterfaceKind interfaceKind = InterfaceKind::Wing;
+    /** Where you were on the Universal Mixer (its view, the MIXER filter and scroll), kept while a
+        console's surface is shown, so the swap back returns to it. */
+    struct UniversalMemory
+    {
+        int view = 0, filter = -1, scrollX = 0;
+    } universalMemory;
     /** Switches the interface: saves it and replaces the window's skin (the WING
         surface on a console that isn't a WING asks first). */
     std::function<void (InterfaceKind)> setInterface;
@@ -294,6 +300,7 @@ namespace uiprefs
     constexpr const char* dliveSurface = "ui.dliveSurface";         // "c3500" (default) or "c1500": which surface a dLive shows
     constexpr const char* interfaceKind = "ui.interface";           // "wing" (default) or "universal": the window's skin
     constexpr const char* universalChannel = "ui.universalChannel"; // bool, default true: the MIXER view shows the selected strip's panel
+    constexpr const char* universalHeader = "ui.universalHeader";   // bool, default true: the Universal Mixer's header shows its second row
     constexpr const char* universalFaders = "ui.universalFaders";   // bool, default true: the Universal MIXER view shows its faders
     constexpr const char* fullScreen = "ui.fullScreen";             // bool: the window covers the screen (F11)
     constexpr const char* noticeDismissed = "ui.noticeDismissedFor"; // the app version the start-up notice was turned off for

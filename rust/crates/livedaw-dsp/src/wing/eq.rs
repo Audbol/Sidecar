@@ -214,10 +214,15 @@ fn design_std(p: &Params, sr: f64, k: f32, d: &mut EqDesign) {
 
 /// The X32's bands (`livedaw_dsp::x32`): each its TYPE (low cut, low shelf,
 /// bell, vintage bell, high shelf, high cut) at FREQ and GAIN; Q only shapes
-/// the bells (the X32's manual). The cuts are 12 dB/oct Butterworth, the shelves
-/// gentle (Q 0.71); the vintage bell narrows as it is boosted or cut further
-/// (Sidecar's reading: the references don't describe it).
+/// the bells. As measured on an X32 (firmware 4.09): the cuts are 12 dB/oct
+/// Butterworth; a shelf's Q is fixed at 0.71 and FREQ is where its poles sit,
+/// so its half-gain point moves off FREQ by the square root of A
+/// (10^(gain/40)), 1.4 x at 12 dB; the vintage bell's Q belongs to its poles,
+/// so its half-gain Q is Q / A.
 fn design_x32(p: &Params, sr: f64, k: f32, d: &mut EqDesign) {
+    /// The shelves sit this much above the displayed FREQ (fitted to the
+    /// shelves measured from 50 Hz to 5 kHz).
+    const X32_SHELF_FREQ: f32 = 1.015;
     const IDS: [[&str; 4]; 6] = [
         ["1t", "1f", "1g", "1q"],
         ["2t", "2f", "2g", "2q"],
@@ -231,12 +236,15 @@ fn design_x32(p: &Params, sr: f64, k: f32, d: &mut EqDesign) {
             break;
         }
         let (f, g, q) = (p.f(ids[1]), p.f(ids[2]) * k, p.f(ids[3]));
+        let a = 10f32.powf(g.abs() / 40.0);
+        let corner = |x: f32| (x * X32_SHELF_FREQ).min(0.45 * sr as f32);
+        let shelf_q = std::f32::consts::FRAC_1_SQRT_2;
         match p.text(ids[0]) {
             "LCut" => sec_cut(d, sr, f, true),
-            "LShv" => push_gain(d, g, || low_shelf(sr, f, std::f32::consts::FRAC_1_SQRT_2, g)),
+            "LShv" => push_gain(d, g, || low_shelf(sr, corner(f * a.sqrt()), shelf_q, g)),
             "PEQ" => push_gain(d, g, || peak(sr, f, q, g)),
-            "VEQ" => push_gain(d, g, || peak(sr, f, proportional_q(q, g), g)),
-            "HShv" => push_gain(d, g, || high_shelf(sr, f, std::f32::consts::FRAC_1_SQRT_2, g)),
+            "VEQ" => push_gain(d, g, || peak(sr, f, q / a, g)),
+            "HShv" => push_gain(d, g, || high_shelf(sr, corner(f / a.sqrt()), shelf_q, g)),
             "HCut" => sec_cut(d, sr, f, false),
             _ => {}
         }

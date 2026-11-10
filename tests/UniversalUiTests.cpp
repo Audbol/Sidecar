@@ -293,7 +293,8 @@ public:
                 return std::abs (a.getRed() - b.getRed()) <= 2 && std::abs (a.getGreen() - b.getGreen()) <= 2 && std::abs (a.getBlue() - b.getBlue()) <= 2;
             };
             expect (image.getPixelAt (sizes::kGapLarge / 2, 4).getBrightness() < 0.3f, "the top bar, a dark plate");
-            expect (near (image.getPixelAt (1250, sizes::kTopBar + sizes::kFilterBar / 2), t.background), "the filter row, right of its keys");
+            expect (skin.headerHeight() <= sizes::kTopBar + sizes::kFilterBar, "the header is two rows");
+            (void) t;
             expect (keepPicture (image, "universal-mixer.png"));
         }
 
@@ -2191,9 +2192,13 @@ public:
             skin.setSize (1920, 1080);
             expect (skin.talkAKey.isVisible() && skin.nextSceneKey.isVisible() && skin.talkBKey.getRight() <= skin.getWidth());
             skin.setSize (1500, 900);
-            expect (! skin.talkAKey.isVisible() && skin.nextSceneKey.isVisible());
+            expect (skin.talkAKey.isVisible() && skin.nextSceneKey.isVisible());
             skin.setSize (1280, 720);
-            expect (! skin.nextSceneKey.isVisible());
+            expect (skin.nextSceneKey.isVisible() && skin.clearSoloKey.isVisible() && ! skin.talkAKey.isVisible(), "GO and CLR SOLO stay one tap away on a tablet");
+            skin.setSize (1920, 1080);
+            skin.setSecondRowShown (false);
+            expect (skin.nextSceneKey.isVisible() && skin.clearSoloKey.getBottom() <= sizes::kTopBar, "with the row put away the keys move up");
+            skin.setSecondRowShown (true);
             skin.showView (ui::UniversalSkin::View::Controls);
             expect (skin.getControls().isVisible() && ! skin.getMixer().isVisible());
             rig.show.addScene ("Doors", -1);
@@ -2617,6 +2622,26 @@ public:
             expectEquals (view.getNumJumpRows(), 6 + 1 + 2 + 2 + 1);
         }
 
+        beginTest ("Swapping to a surface and back keeps the selected strip and the view");
+        {
+            MixerEngine engine (0);
+            engine.configure (nullptr);
+            UiRig rig (engine);
+            rig.selected = &*engine.getStrips (StripKind::Channel)[2];
+            {
+                auto first = std::make_unique<ui::UniversalSkin> (rig.ctx);
+                first->setSize (1920, 1080);
+                first->showView (ui::UniversalSkin::View::Scenes);
+                first->getMixer().setFilter ((int) StripKind::Bus);
+            } // the swap to a surface
+            auto back = std::make_unique<ui::UniversalSkin> (rig.ctx);
+            back->setSize (1920, 1080);
+            expect (back->getView() == ui::UniversalSkin::View::Scenes, "the same view");
+            expectEquals (back->getMixer().getFilter(), (int) StripKind::Bus);
+            expect (back->getInspector().getStrip() == rig.selected, "the selected strip stays");
+            expect (back->getBackKey().getButtonText().endsWith ("SURFACE"), "the back key names the console it returns to");
+        }
+
         beginTest ("The top bar's MENU: the theme, the views, the show's and the scenes' commands; Ctrl+J jumps from any view");
         {
             MixerEngine engine (0);
@@ -2632,7 +2657,14 @@ public:
                 skin.setSize (size.x, size.y);
                 auto& menu = skin.getMenuKey();
                 expect (menu.isVisible() && menu.getRight() <= skin.getWidth() && menu.getBottom() <= sizes::kTopBar);
-                expect (! menu.getBounds().intersects (skin.getShowKey().getBounds()) && skin.getShowKey().getRight() <= menu.getX());
+                expect (! skin.getShowKey().isVisible() || (! menu.getBounds().intersects (skin.getShowKey().getBounds()) && skin.getShowKey().getRight() <= menu.getX()));
+                expect (skin.headerHeight() <= sizes::kTopBar + sizes::kFilterBar, "no more than two header rows");
+                expect (skin.getBackKey().isVisible() && skin.getBackKey().getBottom() <= sizes::kTopBar, "the back key is on the first row");
+                for (auto* key : { &skin.nextSceneKey, &skin.clearSoloKey })
+                    expect (key->isVisible() && key->getHeight() >= sizes::kTouch - 4, "a show's keys stay one tap away");
+                skin.setSecondRowShown (false);
+                expect (skin.headerHeight() == sizes::kTopBar, "the second row can be put away");
+                skin.setSecondRowShown (true);
             }
             expect (skin.buildMenu().getNumItems() >= 8);
 

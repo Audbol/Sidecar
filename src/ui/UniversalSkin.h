@@ -35,6 +35,24 @@ class UniversalSkin final : public Skin, private juce::Timer
 {
 public:
     explicit UniversalSkin (UiContext&);
+    ~UniversalSkin() override;
+
+    /** The header: two rows (title, connection and views; the strips' controls or the show's details,
+        with what a show needs), the second one can be put away. */
+    int headerHeight() const noexcept { return universal::sizes::kTopBar + (row2Shown ? universal::sizes::kFilterBar : 0); }
+    bool isSecondRowShown() const noexcept { return row2Shown; }
+    void setSecondRowShown (bool);
+    /** The way back: the key's text, the console it names, and what it does (a surface now; a real
+        console that the Universal Mixer controls later). */
+    void setBackTarget (const juce::String& keyText, const juce::String& consoleName, std::function<void()> go);
+    universal::ToggleKey& getBackKey() noexcept { return wingKey; }
+    /** The console shown in the header's connection place: LOCAL, or a real console's name, CONNECTED or OFFLINE. */
+    struct Connection
+    {
+        juce::String console;
+        bool remote = false, connected = false;
+    };
+    void setConnection (const Connection&);
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -101,6 +119,7 @@ public:
         kMenuShortcuts = 53,
         kMenuStripWidth = 54, // + 0 narrow, 1 normal, 2 wide
         kMenuResetStrips = 57,
+        kMenuHeader = 58,
         kMenuSurface = 60
     };
     juce::PopupMenu buildMenu();
@@ -123,7 +142,12 @@ private:
     bool talkHeld[2] { false, false };
     UiContext& ctx;
     const universal::Theme& theme;
-    universal::ToggleKey wingKey, showKey, menuKey;
+    universal::ToggleKey wingKey, showKey, menuKey, headerKey;
+    void layoutSecondRow();
+    juce::String backName;
+    Connection connection;
+    bool row2Shown = true;
+    juce::Rectangle<int> titleArea, infoArea, mixerKeysArea;
     std::vector<std::unique_ptr<universal::ToggleKey>> viewKeys;
     universal::MixerView mixer;
     universal::RoutingView routingView;

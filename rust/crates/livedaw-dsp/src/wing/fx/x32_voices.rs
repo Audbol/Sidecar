@@ -8,14 +8,15 @@
 //! Hall, Vintage Room and Stereo Chorus (the factory rack) map over ranges
 //! wide enough for both consoles; the others over the WING device's own (an
 //! X32 value beyond them, such as a 10 Hz LO CUT, takes the WING's limit).
-//! A LEVEL the WING device lacks is an output gain. Where the controls'
-//! units differ the mapping is Sidecar's reading, to be measured on an X32:
-//! Vintage Room's SIZE (0-100 on the console, factory 24) takes the WING's
-//! 1-50 at half; DIFFUSE 1-30 is the WING Room's and Chamber's 0-100 scaled;
-//! Chamber's REFLECTION GAIN (%) the WING's level in dB; Vintage Reverb's
-//! MODULATE 0-10 the WING's 0-100; Phaser's BASE 0-50 the WING's RANGE at
-//! twice; Mood Filter's RESONANCE and DRIVE 0-100 the WING's 0-10. The X32's
-//! Plate is the WING's Blue Plate design, its Rich Plate the WING's Plate.
+//! A LEVEL the WING device lacks is an output gain. Measured on an X32
+//! (firmware 4.09, one control at a time from factory): each reverb's DECAY
+//! and output are calibrated against the WING device's ([`calibrated`]),
+//! Chorus depth, Flanger depth and the Rotary's speeds are scaled. Where the
+//! controls' units differ the mapping is Sidecar's reading: Vintage Room's SIZE
+//! (2-100) takes the WING's 1-50 at half; Chamber's REFLECTION GAIN (%) the
+//! WING's level in dB; Phaser's BASE 0-50 the WING's RANGE at twice; Mood
+//! Filter's RESONANCE and DRIVE 0-100 the WING's 0-10. The X32's Plate is the
+//! WING's Blue Plate design, its Rich Plate the WING's Plate.
 //!
 //! The dual effects (Dual Pitch, Sub Octaver) run two WING devices, one per
 //! side ([`Dual`]): side A takes the left input, side B the right, each fed
@@ -38,7 +39,7 @@ pub(super) fn create(token: &str, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
         return None;
     }
     match token {
-        "X32PIT2" => return Dual::boxed("PITCH", dual_pitch, ctx),
+        "X32PIT2" => return Panned::boxed(Dual::boxed("PITCH", dual_pitch, ctx)?),
         "X32SUB" => return Dual::boxed("SUB", dual_sub, ctx),
         _ => {}
     }
@@ -77,6 +78,40 @@ pub(crate) fn bridge(wing: &str, spec: Option<&'static ModelSpec>, map: Map, ctx
     Some(Box::new(Bridge { dev, spec, map, values, gain: 1.0, last_gain: 1.0 }))
 }
 
+/// `set` times a ratio read from `points` (set value, ratio), interpolated
+/// over log(set). The ratios are measured: an X32 reverb's RT60 against the
+/// WING device's at the same DECAY, at the control's ends and factory value.
+fn calibrated(set: f32, points: &[(f32, f32)]) -> f32 {
+    let (first, last) = (points[0], points[points.len() - 1]);
+    if set <= first.0 {
+        return set * first.1;
+    }
+    if set >= last.0 {
+        return set * last.1;
+    }
+    for w in points.windows(2) {
+        let ((a, ra), (b, rb)) = (w[0], w[1]);
+        if set <= b {
+            let t = (set / a).ln() / (b / a).ln();
+            return set * ra * (rb / ra).powf(t);
+        }
+    }
+    set
+}
+
+/// DECAY of the WING device for an X32 reverb's, and the output trim (dB) that
+/// matches its level on a -12 dBFS sweep at factory settings.
+const HALL_DECAY: &[(f32, f32)] = &[(0.2, 2.29), (1.0, 1.40), (1.57, 1.31), (5.0, 1.31)];
+const VRM_DECAY: &[(f32, f32)] = &[(0.1, 3.47), (1.41, 1.76), (2.16, 1.70), (20.0, 1.09)];
+const AMBI_DECAY: &[(f32, f32)] = &[(0.2, 4.44), (0.84, 1.83), (1.21, 1.19), (7.3, 0.93)];
+const ROOM_DECAY: &[(f32, f32)] = &[(0.3, 1.67), (0.43, 1.33), (2.95, 1.62), (29.0, 1.33)];
+const CHAM_DECAY: &[(f32, f32)] = &[(0.3, 1.48), (1.7, 0.67), (2.95, 0.66), (29.0, 0.99)];
+const RPLT_DECAY: &[(f32, f32)] = &[(0.3, 1.13), (1.7, 1.06), (2.95, 1.04), (29.0, 1.04)];
+const PLAT_DECAY: &[(f32, f32)] = &[(0.5, 1.42), (2.11, 1.35), (10.0, 2.55)];
+const VREV_DECAY: &[(f32, f32)] = &[(0.4, 0.86), (2.4, 1.19), (3.0, 1.16), (4.5, 1.14)];
+const GATE_DECAY: f32 = 0.6;
+const RVRS_DECAY: f32 = 1.67;
+
 /// Sets each WING control (first) from the X32 control of the same meaning.
 fn copy(p: &Params, set: &mut dyn FnMut(&'static str, f32), pairs: &[(&'static str, &str)]) {
     for &(wing, x32) in pairs {
@@ -84,94 +119,102 @@ fn copy(p: &Params, set: &mut dyn FnMut(&'static str, f32), pairs: &[(&'static s
     }
 }
 
-/// The X32's DIFFUSE (1-30) as the WING Room's and Chamber's DIFFUSION (0-100).
-fn diffusion(x32: f32) -> f32 {
-    (x32 - 1.0) * 100.0 / 29.0
-}
-
 fn ambi(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
-    let pairs = [("pdel", "pre_delay"), ("size", "size"), ("dcy", "decay"), ("tail", "tail_gain"), ("damp", "damping")];
+    let pairs = [("pdel", "pre_delay"), ("size", "size"), ("tail", "tail_gain"), ("damp", "damping")];
     copy(p, set, &pairs);
     copy(p, set, &[("diff", "diffuse"), ("mod", "modulate"), ("lc", "lo_cut"), ("hc", "hi_cut")]);
-    p.f("level")
+    set("dcy", calibrated(p.f("decay"), AMBI_DECAY));
+    p.f("level") + 5.6
 }
 
 /// The controls the X32's Room, Chamber and Rich Plate share with the WING's.
-fn lexicon(p: &Params, set: &mut dyn FnMut(&'static str, f32)) {
-    let pairs = [("pdel", "pre_delay"), ("size", "size"), ("dcy", "decay"), ("mult", "bass_multi"), ("damp", "damping")];
+fn lexicon(p: &Params, decay: &[(f32, f32)], set: &mut dyn FnMut(&'static str, f32)) {
+    let pairs = [("pdel", "pre_delay"), ("size", "size"), ("mult", "bass_multi"), ("damp", "damping")];
     copy(p, set, &pairs);
+    set("dcy", calibrated(p.f("decay"), decay));
     copy(p, set, &[("lc", "lo_cut"), ("hc", "hi_cut"), ("sprd", "spread"), ("spin", "spin")]);
-    set("diff", diffusion(p.f("diffuse")));
+    set("diff", p.f("diffuse"));
 }
 
 fn room(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
-    lexicon(p, set);
+    lexicon(p, ROOM_DECAY, set);
     let pairs = [("shp", "shape"), ("ecl", "echo_l"), ("ecr", "echo_r"), ("efl", "echo_feed_l"), ("efr", "echo_feed_r")];
     copy(p, set, &pairs);
-    p.f("level")
+    p.f("level") + 8.5
 }
 
 fn chamber(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
-    lexicon(p, set);
+    lexicon(p, CHAM_DECAY, set);
     copy(p, set, &[("shp", "shape"), ("ecl", "reflection_l"), ("ecr", "reflection_r")]);
     // REFLECTION GAIN in % of full level.
     let db = |pct: f32| if pct <= 0.1 { -60.0 } else { 20.0 * (pct * 0.01).log10() };
     set("ell", db(p.f("reflection_gain_l")));
     set("elr", db(p.f("reflection_gain_r")));
-    p.f("level")
+    p.f("level") + 1.3
 }
 
 fn rich_plate(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
-    lexicon(p, set);
+    lexicon(p, RPLT_DECAY, set);
     let pairs = [("att", "attack"), ("ecl", "echo_l"), ("ecr", "echo_r"), ("efl", "echo_feed_l"), ("efr", "echo_feed_r")];
     copy(p, set, &pairs);
-    p.f("level")
+    p.f("level") + 3.1
 }
 
 fn plate(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
-    let pairs = [("pdel", "pre_delay"), ("size", "size"), ("dcy", "decay"), ("mult", "bass_multi"), ("damp", "damping")];
+    let pairs = [("pdel", "pre_delay"), ("size", "size"), ("mult", "bass_multi"), ("damp", "damping")];
     copy(p, set, &pairs);
     let pairs =
         [("lc", "lo_cut"), ("hc", "hi_cut"), ("xover", "xover"), ("mdep", "mod"), ("mspd", "mod_speed"), ("diff", "diffuse")];
     copy(p, set, &pairs);
-    p.f("level")
+    set("dcy", calibrated(p.f("decay"), PLAT_DECAY));
+    p.f("level") + 0.3
 }
 
 fn vintage_reverb(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
-    let pairs = [("pdel", "pre_delay"), ("dcy", "decay"), ("lmult", "lo_multiply"), ("hmult", "hi_multiply")];
+    let pairs = [("pdel", "pre_delay"), ("lmult", "lo_multiply"), ("hmult", "hi_multiply")];
     copy(p, set, &pairs);
     copy(p, set, &[("lc", "lo_cut"), ("hc", "hi_cut"), ("out", "position"), ("trans", "vintage")]);
-    set("mod", 10.0 * p.f("modulate"));
-    p.f("level")
+    set("mod", p.f("modulate"));
+    set("dcy", calibrated(p.f("decay"), VREV_DECAY));
+    p.f("level") - 3.3
 }
 
 /// Gated and Reverse: DECAY in ms on the X32, seconds on the WING.
-fn nonlinear(p: &Params, set: &mut dyn FnMut(&'static str, f32)) {
+fn nonlinear(p: &Params, ratio: f32, set: &mut dyn FnMut(&'static str, f32)) {
     let pairs = [("pdel", "pre_delay"), ("diff", "diffuse"), ("sprd", "spread"), ("lc", "lo_cut"), ("hsf", "hi_cut")];
     copy(p, set, &pairs);
     set("hsg", p.f("hi_shv_gain"));
-    set("dcy", 0.001 * p.f("decay"));
+    set("dcy", 0.001 * ratio * p.f("decay"));
 }
 
 fn gated(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
-    nonlinear(p, set);
+    nonlinear(p, GATE_DECAY, set);
     copy(p, set, &[("att", "attack"), ("dens", "density")]);
-    p.f("level")
+    p.f("level") + 2.7
 }
 
 fn reverse(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
-    nonlinear(p, set);
+    nonlinear(p, RVRS_DECAY, set);
     set("rise", p.f("rise"));
-    p.f("level")
+    p.f("level") + 1.0
 }
 
 fn flanger(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
     let pairs = [("lc", "lo_cut"), ("hc", "hi_cut"), ("flc", "feed_lo_cut"), ("fhc", "feed_hi_cut"), ("mix", "mix")];
     copy(p, set, &pairs);
-    let pairs = [("dlyl", "delay_l"), ("dlyr", "delay_r"), ("depl", "depth_l"), ("depr", "depth_r"), ("phase", "phase")];
+    let pairs = [("dlyl", "delay_l"), ("dlyr", "delay_r"), ("phase", "phase")];
     copy(p, set, &pairs);
+    set("depl", flanger_depth(p.f("depth_l"), p.f("delay_l")));
+    set("depr", flanger_depth(p.f("depth_r"), p.f("delay_r")));
     copy(p, set, &[("spd", "speed"), ("feed", "feed")]);
     0.0
+}
+
+/// The WING flanger's DEPTH for an X32 DEPTH at DELAY `ms`: the X32 sweeps far
+/// less, and by a share of the delay that grows with it (measured on a tone;
+/// the device's sweep grows as DEPTH to the 1.5).
+pub(super) fn flanger_depth(depth: f32, ms: f32) -> f32 {
+    calibrated(ms, &[(0.5, 0.19), (3.2, 0.266), (4.2, 0.27), (20.0, 0.42)]) / ms * depth
 }
 
 fn phaser(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
@@ -205,8 +248,11 @@ fn mood(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
 }
 
 fn rotary(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
-    let pairs = [("lo", "lo_speed"), ("hi", "hi_speed"), ("bal", "balance"), ("mix", "mix"), ("dist", "distance")];
+    let pairs = [("bal", "balance"), ("mix", "mix"), ("dist", "distance")];
     copy(p, set, &pairs);
+    // The X32's rotors turn at twice the displayed speed (measured).
+    set("lo", 2.0 * p.f("lo_speed"));
+    set("hi", 2.0 * p.f("hi_speed"));
     // One ACCELERATE for both rotors; STOP, else SLOW or FAST.
     copy(p, set, &[("dac", "accelerate"), ("hac", "accelerate")]);
     set(
@@ -214,12 +260,12 @@ fn rotary(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
         if p.on("stop") {
             0.0
         } else if p.on("slow") {
-            1.0
-        } else {
             2.0
+        } else {
+            1.0
         },
     );
-    0.0
+    3.3
 }
 
 fn panner(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
@@ -376,12 +422,59 @@ impl FxAlgo for Dual {
 
 fn dual_pitch(p: &Params, side: usize, set: &mut dyn FnMut(&'static str, f32)) -> (bool, Option<f32>) {
     let ab = ["a", "b"][side];
-    for (wing, x32) in
-        [("semi", "semitone"), ("cent", "cent"), ("dly", "delay"), ("lc", "lo_cut"), ("hc", "hi_cut"), ("mix", "mix")]
-    {
+    for (wing, x32) in [("semi", "semitone"), ("cent", "cent"), ("dly", "delay")] {
         set(wing, p.f(&format_id(x32, ab)));
     }
+    set("hc", p.f("hi_cut"));
+    set("mix", p.f("mix"));
     (true, None)
+}
+
+/// Dual Pitch's two voices, each with its GAIN and PAN, into the stereo output.
+/// (Its controls are read from their ranges on the console; only the factory
+/// setting was measured. PAN is the console's bus law: 0 dB in the centre.)
+struct Panned {
+    inner: Box<dyn FxAlgo>,
+    /// Voice A to left and right, voice B to left and right.
+    m: [f32; 4],
+}
+
+impl Panned {
+    fn boxed(inner: Box<dyn FxAlgo>) -> Option<Box<dyn FxAlgo>> {
+        Some(Box::new(Self { inner, m: [1.0, 0.0, 0.0, 1.0] }))
+    }
+}
+
+impl FxAlgo for Panned {
+    fn set_params(&mut self, p: &Params) {
+        self.inner.set_params(p);
+        let voice = |gain: f32, pan: f32| {
+            let t = (pan.clamp(-100.0, 100.0) + 100.0) / 200.0 * std::f32::consts::FRAC_PI_2;
+            let g = 0.01 * gain * std::f32::consts::SQRT_2;
+            (g * t.cos(), g * t.sin())
+        };
+        let (al, ar) = voice(p.f("gain_a"), p.f("pan_a"));
+        let (bl, br) = voice(p.f("gain_b"), p.f("pan_b"));
+        self.m = [al, ar, bl, br];
+    }
+
+    fn process(&mut self, left: &mut [f32], right: &mut [f32]) {
+        self.inner.process(left, right);
+        let [al, ar, bl, br] = self.m;
+        for (l, r) in left.iter_mut().zip(right.iter_mut()) {
+            let (a, b) = (*l, *r);
+            *l = a * al + b * bl;
+            *r = a * ar + b * br;
+        }
+    }
+
+    fn reset(&mut self) {
+        self.inner.reset();
+    }
+
+    fn latency(&self) -> u32 {
+        self.inner.latency()
+    }
 }
 
 fn dual_sub(p: &Params, side: usize, set: &mut dyn FnMut(&'static str, f32)) -> (bool, Option<f32>) {
@@ -477,7 +570,6 @@ fn hall(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
     for (wing, x32) in [
         ("pdel", "pre_delay"),
         ("size", "size"),
-        ("dcy", "decay"),
         ("mult", "bass_multi"),
         ("damp", "damping"),
         ("lc", "lo_cut"),
@@ -489,7 +581,8 @@ fn hall(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
     ] {
         set(wing, p.f(x32));
     }
-    p.f("level")
+    set("dcy", calibrated(p.f("decay"), HALL_DECAY));
+    p.f("level") + 2.6
 }
 
 static VROOM: ModelSpec = spec(
@@ -515,7 +608,6 @@ static VROOM: ModelSpec = spec(
 fn vroom(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
     for (wing, x32) in [
         ("pdel", "reverb_delay"),
-        ("dcy", "decay"),
         ("dens", "density"),
         ("erlvl", "er_level"),
         ("lmult", "lo_multiply"),
@@ -529,9 +621,10 @@ fn vroom(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
     ] {
         set(wing, p.f(x32));
     }
+    set("dcy", calibrated(p.f("decay"), VRM_DECAY));
     set("size", (0.5 * p.f("size")).max(1.0));
     set("add", 0.0);
-    0.0
+    -2.9
 }
 
 static CHORUS: ModelSpec = spec(
@@ -544,8 +637,8 @@ static CHORUS: ModelSpec = spec(
         r("mix", 0.0, 100.0),
         r("dlyl", 0.5, 50.0),
         r("dlyr", 0.5, 50.0),
-        r("depl", 0.0, 100.0),
-        r("depr", 0.0, 100.0),
+        r("depl", 0.0, 185.0),
+        r("depr", 0.0, 185.0),
         r("sprd", 0.0, 100.0),
         r("spd", 0.05, 5.0),
     ],
@@ -560,13 +653,14 @@ fn chorus(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
         ("mix", "mix"),
         ("dlyl", "delay_l"),
         ("dlyr", "delay_r"),
-        ("depl", "depth_l"),
-        ("depr", "depth_r"),
         ("sprd", "spread"),
         ("spd", "speed"),
     ] {
         set(wing, p.f(x32));
     }
+    // The X32's sweep is 1.85 x the WING device's at the same DEPTH (measured).
+    set("depl", 1.85 * p.f("depth_l"));
+    set("depr", 1.85 * p.f("depth_r"));
     0.0
 }
 
@@ -678,29 +772,33 @@ mod tests {
     #[test]
     fn the_x32_devices_sound_as_the_wings_with_the_same_settings() {
         let (x32, wing) = (crate::x32::FX_MODELS, crate::wing::FX_MODELS);
-        let hall = [("pdel", 20.0), ("size", 60.0), ("dcy", 2.0), ("lc", 83.0), ("hc", 7200.0)];
+        // The X32's DECAY and level are calibrated against the WING device's.
+        let hall = [("pdel", 20.0), ("size", 60.0), ("dcy", calibrated(2.0, HALL_DECAY)), ("lc", 83.0), ("hc", 7200.0)];
         let x32_hall = [("pre_delay", 20.0), ("size", 60.0), ("decay", 2.0), ("lo_cut", 83.0), ("hi_cut", 7200.0)];
         let mut w = hall.to_vec();
         w.extend([("mult", 0.95), ("damp", 5740.0), ("shp", 50.0), ("sprd", 25.0), ("diff", 25.0), ("mspd", 30.0)]);
         let (a, b) = (impulse(x32, "X32HALL", &x32_hall), impulse(wing, "HALL", &w));
-        assert!(a.iter().zip(&b).all(|(a, b)| (a - b).abs() < 1e-6), "HALL");
+        let g = db_to_gain(2.6);
+        assert!(a.iter().zip(&b).all(|(a, b)| (a - g * b).abs() < 1e-5), "HALL");
         // LEVEL +6 dB: twice the WING hall's output.
         let louder = impulse(x32, "X32HALL", &[&x32_hall[..], &[("level", 6.0206)]].concat());
         assert!(louder.iter().zip(&a).all(|(l, a)| (l - 2.0 * a).abs() < 1e-5), "LEVEL");
 
         // The chorus, its delays inside the WING's range.
         let crs = [("speed", 0.5), ("depth_l", 15.0), ("depth_r", 15.0), ("delay_l", 19.9), ("delay_r", 19.9), ("mix", 100.0)];
-        let wcrs = [("spd", 0.5), ("depl", 15.0), ("depr", 15.0), ("dlyl", 19.9), ("dlyr", 19.9), ("mix", 100.0)];
+        let wcrs = [("spd", 0.5), ("depl", 27.75), ("depr", 27.75), ("dlyl", 19.9), ("dlyr", 19.9), ("mix", 100.0)];
         let rest = [("lc", 97.0), ("hc", 15100.0), ("phase", 120.0), ("wave", 100.0), ("sprd", 85.0)];
         let (a, b) = (impulse(x32, "X32CRS", &crs), impulse(wing, "CHORUS", &[&wcrs[..], &rest[..]].concat()));
         assert!(a.iter().zip(&b).all(|(a, b)| (a - b).abs() < 1e-6), "CHORUS");
 
         // Vintage Room: SIZE at half, the rest as set.
         let vrm = [("size", 30.0), ("decay", 1.5), ("er_level", 22.0), ("level", 0.0)];
-        let wvrm = [("size", 15.0), ("dcy", 1.5), ("erlvl", 22.0), ("lvl", 0.0), ("pdel", 20.0), ("dens", 30.0)];
+        let wvrm =
+            [("size", 15.0), ("dcy", calibrated(1.5, VRM_DECAY)), ("erlvl", 22.0), ("lvl", 0.0), ("pdel", 20.0), ("dens", 30.0)];
         let wrest = [("lmult", 1.1), ("hmult", 0.69), ("lc", 97.0), ("hc", 10400.0), ("erl", 28.0), ("err", 34.0)];
         let (a, b) = (impulse(x32, "X32VRM", &vrm), impulse(wing, "V-ROOM", &[&wvrm[..], &wrest[..]].concat()));
-        assert!(a.iter().zip(&b).all(|(a, b)| (a - b).abs() < 1e-6), "V-ROOM");
+        let g = db_to_gain(-2.9);
+        assert!(a.iter().zip(&b).all(|(a, b)| (a - g * b).abs() < 1e-5), "V-ROOM");
     }
 
     #[test]

@@ -91,6 +91,9 @@ impl StereoDelay {
     }
 }
 
+/// The X32's FEED is a straight gain: 30 % repeats 12.3 dB down (measured).
+pub(super) const X32_FEED: f32 = 0.0081;
+
 impl FxAlgo for StereoDelay {
     fn set_params(&mut self, p: &Params) {
         let sr = self.sr;
@@ -101,10 +104,11 @@ impl FxAlgo for StereoDelay {
         if self.x32 {
             let factor = |id| X32_FACTORS.get(p.choice(id)).copied().unwrap_or(1.0);
             let (time, offs) = (p.f("time"), p.f("offset_l_r"));
-            self.taps[0].set(tap(time * factor("factor_l") + (-offs).max(0.0)));
-            self.taps[1].set(tap(time * factor("factor_r") + offs.max(0.0)));
-            self.fb[0].target = square(p.f("feed_left"));
-            self.fb[1].target = square(p.f("feed_right"));
+            // OFFSET moves the two sides apart by half each way (measured).
+            self.taps[0].set(tap(time * factor("factor_l") - 0.5 * offs));
+            self.taps[1].set(tap(time * factor("factor_r") + 0.5 * offs));
+            self.fb[0].target = X32_FEED * p.f("feed_left");
+            self.fb[1].target = X32_FEED * p.f("feed_right");
             self.mix.target = p.f("mix") * 0.01;
             self.fcut.set(p.f("feed_lo_cut"), p.f("feed_hi_cut"));
             self.cut.set(p.f("lo_cut"), p.f("hi_cut"));
@@ -251,9 +255,9 @@ mod tests {
         let (mut dev, v) = device("X32DLY", &[&open[..], &settings[..]].concat());
         let (l, r) = impulse(&mut dev, &v, 1.0);
         let ms = |t: f32| (t * 0.001 * SR) as usize;
-        assert!(peak(&l, 100, l.len()).0.abs_diff(ms(100.0)) <= 3, "L at 1/2");
-        assert!(peak(&r, 100, r.len()).0.abs_diff(ms(310.0)) <= 3, "R at 3/2 + 10 ms");
-        assert!(peak(&l, ms(150.0), l.len()).1 < 1e-3, "FEED LEFT 1: one repeat");
+        assert!(peak(&l, 100, l.len()).0.abs_diff(ms(95.0)) <= 3, "L at 1/2 - 5 ms");
+        assert!(peak(&r, 100, r.len()).0.abs_diff(ms(305.0)) <= 3, "R at 3/2 + 5 ms");
+        assert!(peak(&l, ms(150.0), l.len()).1 < 0.01, "FEED LEFT 1: one repeat");
         assert!(peak(&r, ms(400.0), ms(700.0)).1 > 0.3, "FEED RIGHT 71: a second repeat");
         // MIX 0: the dry signal only; the factory mix (100) the wet only.
         let (mut dev, v) = device("X32DLY", &[("mix", 0.0)]);

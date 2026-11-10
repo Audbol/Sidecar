@@ -93,7 +93,7 @@ impl FxAlgo for TapDelay {
             let (l, r) = pan(pans[k]);
             self.gains[k] = (levels[k] * l, levels[k] * r);
         }
-        self.feedback = (p.f("feedback") * 0.01).powi(2);
+        self.feedback = super::stereo::X32_FEED * p.f("feedback");
         self.cross = p.on("cross_feed");
         self.mono = p.on("mono");
         self.dry = if p.on("dry") { 1.0 } else { 0.0 };

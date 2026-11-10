@@ -1,7 +1,7 @@
 //! The X32's FX devices (Phase 4 step 9, `docs/UNIVERSAL_MIXER.md`): its 61
 //! models ([`super::FX_MODELS`]), described with the parameters the public OSC
-//! protocol document lists for each (pp. 85-115) and the factory values of a
-//! freshly initialised X32 Compact.
+//! protocol document lists for each (pp. 85-115), corrected against the laws
+//! read from an X32 Compact (firmware 4.09), and that console's factory values.
 //!
 //! Every model has its algorithm (steps 9d-9g, listed in [`BUILT`]): most
 //! reverbs, modulation and pitch effects and many insert effects run on the

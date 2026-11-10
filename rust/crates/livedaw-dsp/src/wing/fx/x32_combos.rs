@@ -225,7 +225,8 @@ fn chorus(p: &Params, c: &mut Stage) {
 
 /// The flanger of FL/R and D/FL.
 fn flanger(p: &Params, f: &mut Stage) {
-    let (dly, dep) = (p.f("delay"), p.f("depth"));
+    let dly = p.f("delay");
+    let dep = super::x32_voices::flanger_depth(p.f("depth"), dly);
     for (id, v) in [("dlyl", dly), ("dlyr", dly), ("depl", dep), ("depr", dep), ("spd", p.f("speed"))] {
         f.set(id, v);
     }

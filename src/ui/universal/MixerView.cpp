@@ -895,7 +895,7 @@ private:
 
 //==============================================================================
 MixerView::MixerView (UiContext& c, const Theme& t)
-    : ctx (c), theme (t), fadersKey ("FADERS", t.accent, t), channelKey ("CHANNEL", t.accent, t), sofKey ("SOF", t.accent, t), jumpKey ("JUMP", t.accent, t),
+    : ctx (c), theme (t), fadersKey ("FADERS", t.accent, t), channelKey ("CHANNEL", t.accent, t), sofKey ("SOF", t.accent, t), jumpKey ("JUMP", t.accent, t), filterMenuKey ("FILTER", t.accent, t), bankKey ("BANK", t.accent, t),
       channel (c, t), bankBar (std::make_unique<BankBar> (*this))
 {
     layout.fromString (c.settings.getValue (StripLayout::kSetting));
@@ -904,6 +904,13 @@ MixerView::MixerView (UiContext& c, const Theme& t)
     jumpKey.onClick = [this] { setJumpListShown (! isJumpListShown()); };
     jumpKey.setTooltip ("Jump to a strip by number, label or name (Ctrl+J or /)");
     addAndMakeVisible (jumpKey);
+    filterMenuKey.onClick = [this] { showFilterMenu(); };
+    filterMenuKey.isOn = [this] { return filter != -1; };
+    filterMenuKey.setTooltip ("Which strips the view shows");
+    addChildComponent (filterMenuKey);
+    bankKey.onClick = [this] { showBankMenu(); };
+    bankKey.setTooltip ("Go to a bank of strips (Page Up and Page Down step through them)");
+    addChildComponent (bankKey);
     addChildComponent (*bankBar);
     // CHANNEL shows or hides the selected strip's panel across the top; an app setting.
     channelShown = ctx.settings.getBoolValue (uiprefs::universalChannel, true);
@@ -1180,6 +1187,7 @@ void MixerView::showBank (int index)
         bankHint = index;
         bankHintX = viewport.getViewPositionX();
         bankBar->repaint();
+        updateBankKey();
     }
 }
 
@@ -1476,6 +1484,7 @@ void MixerView::refresh()
     {
         shownScrollX = x; // the bank at the left is another one
         bankBar->repaint();
+        updateBankKey();
     }
     for (auto& c : columns)
         c->refresh();
@@ -1501,46 +1510,11 @@ void MixerView::paint (juce::Graphics& g)
 {
     g.fillAll (theme.background);
     // The strips' blocks (the overview's GATE, DYN, EQ) and the faders' law are the WING's.
-    // Between the last filter key and CHANNEL, where there's room for it.
-    auto bar = getLocalBounds().removeFromTop (sizes::kFilterBar).toFloat();
-    bar.setLeft ((float) (filterKeys.empty() ? 0 : filterKeys.back()->getRight()) + sizes::kGap);
-    bar.setRight ((float) jumpKey.getX() - sizes::kGap);
-    g.setFont (type::font (type::kCaption, true));
-    if (filter == kSpill)
-    {
-        // A spill isn't a filter key: say what is showing, and the way back.
-        g.setColour (theme.accent);
-        g.drawFittedText ("SPILL DCA " + juce::String (spillDca + 1) + "  (a filter key goes back)", bar.toNearestInt(), juce::Justification::centredRight, 1, 0.8f);
-        return;
-    }
-    const auto caption = juce::String ("BLOCKS AND FADER LAW");
-    if (bar.getWidth() < juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), caption) + deviceTagWidth (devices::wing) + 12.0f)
-        return;
-    bar.removeFromRight (drawDeviceTag (g, bar, devices::wing, theme));
-    g.setColour (theme.textDim);
-    g.drawText (caption, bar, juce::Justification::centredRight);
 }
 
 void MixerView::resized()
 {
     auto area = getLocalBounds();
-    auto bar = area.removeFromTop (sizes::kFilterBar).reduced (sizes::kGap, sizes::kGapSmall);
-    fadersKey.setBounds (bar.removeFromRight (120));
-    bar.removeFromRight (sizes::kGapSmall);
-    channelKey.setBounds (bar.removeFromRight (120));
-    bar.removeFromRight (sizes::kGapSmall);
-    sofKey.setBounds (bar.removeFromRight (120));
-    bar.removeFromRight (sizes::kGapSmall);
-    jumpKey.setBounds (bar.removeFromRight (88));
-    // The filter keys share what's left (112 px each at most), so none goes under JUMP.
-    bar.removeFromRight (sizes::kGap);
-    const int n = juce::jmax (1, (int) filterKeys.size());
-    const int keyW = juce::jlimit (60, 112, (bar.getWidth() - (n - 1) * sizes::kGapSmall) / n);
-    for (auto& key : filterKeys)
-    {
-        key->setBounds (bar.removeFromLeft (keyW));
-        bar.removeFromLeft (sizes::kGapSmall);
-    }
     // On a short window the strips need the height: the panel leaves them to it (the CHANNEL
     // key stays lit and the panel comes back when the window is tall enough).
     channel.setVisible (channelShown && getHeight() >= 760 && ctx.getSelectedStrip && ctx.getSelectedStrip() != nullptr);
@@ -1558,19 +1532,95 @@ void MixerView::resized()
         viewport.setBounds (a);
         layoutColumns();
     };
-    place (false);
-    const bool banksShown = isBankBarShown();
-    bankBar->setVisible (banksShown);
-    if (banksShown)
-        place (true);
+    place (false); // the banks are a key in the header (bankKey), not a row
+    bankBar->setVisible (false);
     if (jumpList != nullptr)
     {
         // Under JUMP, over the columns.
         const int w = juce::jmin (380, getWidth() - 2 * sizes::kGap);
-        const int y = sizes::kFilterBar;
-        jumpList->setBounds (juce::jlimit (sizes::kGap, juce::jmax (sizes::kGap, getWidth() - w - sizes::kGap), jumpKey.getRight() - w), y, w,
+        const int y = 0;
+        jumpList->setBounds (juce::jlimit (sizes::kGap, juce::jmax (sizes::kGap, getWidth() - w - sizes::kGap), jumpKey.getRight() - getX() - w), y, w,
                              juce::jmax (0, juce::jmin (560, getHeight() - y - sizes::kGap)));
     }
+    if (onHeaderChanged)
+        onHeaderChanged(); // the filter or the banks changed what the header shows
+}
+
+std::vector<juce::Component*> MixerView::getHeaderParts()
+{
+    std::vector<juce::Component*> parts;
+    for (auto& k : filterKeys)
+        parts.push_back (k.get());
+    for (auto* k : { &filterMenuKey, &bankKey, &jumpKey, &sofKey, &channelKey, &fadersKey })
+        parts.push_back (k);
+    return parts;
+}
+
+void MixerView::layoutHeader (juce::Rectangle<int> area, bool visible)
+{
+    const bool banks = isBankBarShown();
+    const auto fromRight = [&area] (juce::Component& key, int w)
+    {
+        key.setBounds (area.removeFromRight (w));
+        area.removeFromRight (sizes::kGapSmall);
+    };
+    fromRight (fadersKey, 96);
+    fromRight (channelKey, 108);
+    fromRight (sofKey, 72);
+    if (banks)
+        fromRight (bankKey, 112);
+    fromRight (jumpKey, 72);
+    area.removeFromRight (sizes::kGap);
+    const int n = juce::jmax (1, (int) filterKeys.size());
+    const bool inline_ = filter != kSpill && area.getWidth() >= n * 64 + (n - 1) * sizes::kGapSmall;
+    const int keyW = inline_ ? juce::jlimit (64, 112, (area.getWidth() - (n - 1) * sizes::kGapSmall) / n) : 0;
+    for (auto& key : filterKeys)
+    {
+        key->setBounds (area.removeFromLeft (keyW));
+        key->setVisible (visible && inline_);
+        area.removeFromLeft (sizes::kGapSmall);
+    }
+    filterMenuKey.setBounds (area.withWidth (juce::jmin (area.getWidth(), 190)));
+    filterMenuKey.setButtonText (filter == kSpill ? "SPILL DCA " + juce::String (spillDca + 1) : "FILTER: " + juce::String (filterName (filter)));
+    filterMenuKey.setVisible (visible && ! inline_);
+    bankKey.setVisible (visible && banks);
+    for (auto* k : { &jumpKey, &sofKey, &channelKey, &fadersKey })
+        k->setVisible (visible);
+    updateBankKey();
+}
+
+void MixerView::showFilterMenu()
+{
+    juce::PopupMenu menu;
+    menu.setLookAndFeel (&lookAndFeelFor (theme));
+    for (int kind = -1; kind <= kDcas; ++kind)
+        menu.addItem (kind + 2, filterName (kind), true, filter == kind);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&filterMenuKey).withStandardItemHeight (sizes::kTouch - 8),
+                        [safe = juce::Component::SafePointer<MixerView> (this)] (int item)
+                        {
+                            if (safe != nullptr && item > 0)
+                                safe->setFilter (item - 2);
+                        });
+}
+
+void MixerView::showBankMenu()
+{
+    juce::PopupMenu menu;
+    menu.setLookAndFeel (&lookAndFeelFor (theme));
+    for (int i = 0; i < (int) banks.size(); ++i)
+        menu.addItem (i + 1, banks[(size_t) i].label, true, i == getCurrentBank());
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&bankKey).withStandardItemHeight (sizes::kTouch - 8),
+                        [safe = juce::Component::SafePointer<MixerView> (this)] (int item)
+                        {
+                            if (safe != nullptr && item > 0)
+                                safe->showBank (item - 1);
+                        });
+}
+
+void MixerView::updateBankKey()
+{
+    if (const auto* b = getBank (getCurrentBank()); b != nullptr && banks.size() > 1)
+        bankKey.setButtonText (b->label);
 }
 
 void MixerView::layoutColumns()

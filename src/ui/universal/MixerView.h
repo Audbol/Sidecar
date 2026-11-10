@@ -187,6 +187,16 @@ public:
     MixerView (UiContext&, const Theme&);
     ~MixerView() override;
 
+    /** The strips' controls (the filter, JUMP, BANK, SOF, CHANNEL, FADERS) as the window's header shows them:
+        the owner makes them its children (the header is the window's), places them with layoutHeader. */
+    std::vector<juce::Component*> getHeaderParts();
+    /** Places the header's controls in `area` (the owner's coordinates), the filter as keys where they fit,
+        else as one menu key; `visible` false hides them (another view is shown). */
+    void layoutHeader (juce::Rectangle<int> area, bool visible);
+    void setScrollX (int x) { viewport.setViewPosition (x, 0); }
+    /** The window places the header again (the filter or the banks changed). */
+    std::function<void()> onHeaderChanged;
+    /** The MIXER's filter (-1 for all). */
     /** -1: every kind; a StripKind; or kDcas. */
     void setFilter (int kind);
     static constexpr int kDcas = kNumStripKinds;
@@ -294,7 +304,10 @@ private:
     int filter = -1, spillDca = 0;
     int structureVersion = -1;
     std::vector<std::unique_ptr<ToggleKey>> filterKeys;
-    ToggleKey fadersKey, channelKey, sofKey, jumpKey;
+    ToggleKey fadersKey, channelKey, sofKey, jumpKey, filterMenuKey, bankKey;
+    void showFilterMenu();
+    void showBankMenu();
+    void updateBankKey();
     StripColumn* pinnedMain = nullptr;
     /** The pinned main when the filter leaves it out of the columns. */
     std::unique_ptr<StripColumn> extraPinned;

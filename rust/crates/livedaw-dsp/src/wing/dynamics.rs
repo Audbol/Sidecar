@@ -299,6 +299,27 @@ impl MidasEnv {
     }
 }
 
+/// ATTACK and RELEASE of the X32's gate as one-pole time constants: measured
+/// on an X32 (firmware 4.09), the gain moves on a linear scale with a time
+/// constant of 0.46 x the set time, both ways, so closing falls about 18 dB
+/// per set RELEASE and eases into the floor.
+const X32_GATE_TIME: f32 = 0.46;
+/// The X32's gate opens this far above its threshold and closes this far under it.
+const X32_GATE_HYST_DB: f32 = 0.5;
+
+/// The X32 gate's envelope (`/ch/NN/gate`, all five modes).
+#[derive(Clone, Copy, Debug)]
+struct X32Gate {
+    /// One-pole coefficients of the linear gain.
+    att: f32,
+    rel: f32,
+    /// Lowest gain (linear).
+    floor: f32,
+    /// EXP3: the floor is added to the expander's gain instead of limiting it,
+    /// so the curve rounds into RANGE and stands above 0 dB at the threshold.
+    add_floor: bool,
+}
+
 /// The WING GATE: the gain moves on a linear scale.
 #[derive(Clone, Copy, Debug)]
 struct WingGate {
@@ -326,6 +347,8 @@ fn coef_10_90(ms: f32, sr: f32) -> f32 {
 
 #[derive(Clone, Copy, Debug)]
 struct GateCfg {
+    /// The X32's envelope (None: the WING's or the other models').
+    x32: Option<X32Gate>,
     /// Opens at this level ...
     thr: f32,
     /// ... and closes below this one (hysteresis).
@@ -448,6 +471,8 @@ struct CompCfg {
     auto_gain: bool,
     /// Peak limiter after the compressor: (threshold dB, release coef).
     limiter: Option<(f32, f32)>,
+    /// The detector stops here (dBFS).
+    max_level: f32,
     enabled: bool,
 }
 
@@ -480,6 +505,7 @@ impl Default for CompCfg {
             max_gr: f32::INFINITY,
             auto_gain: false,
             limiter: None,
+            max_level: f32::INFINITY,
             enabled: true,
         }
     }
@@ -737,6 +763,10 @@ fn dbu(x: f32) -> f32 {
     x - 18.0
 }
 
+fn x32_gate(range: f32, att_ms: f32, rel_ms: f32, add_floor: bool, sr: f32) -> X32Gate {
+    X32Gate { att: coef(att_ms * X32_GATE_TIME, sr), rel: coef(rel_ms * X32_GATE_TIME, sr), floor: db_to_gain(-range), add_floor }
+}
+
 fn configure(spec: &ModelSpec, v: &[f32], sr: f32) -> Config {
     let p = Params::new(spec, v);
     // A DM2000's HOLD, DECAY and RELEASE are counted in samples (its manual gives
@@ -763,6 +793,7 @@ fn configure(spec: &ModelSpec, v: &[f32], sr: f32) -> Config {
         accent_db: 0.0,
         rms: false,
         wing: None,
+        x32: None,
     };
     // LA-style opto leveler, shared by LA and CMB (p.113-114): the cell is
     // program dependent and frequency sensitive, and releases in stages - most
@@ -803,9 +834,19 @@ fn configure(spec: &ModelSpec, v: &[f32], sr: f32) -> Config {
                 "X32EXP4" => 4.0,
                 _ => 0.0,
             };
-            Config::Gate(gate(p.f("thr"), p.f("range"), ratio, p.f("att"), p.f("hld"), p.f("rel")))
+            let mut g = gate(p.f("thr"), p.f("range"), ratio, p.f("att"), p.f("hld"), p.f("rel"));
+            g.x32 = Some(x32_gate(p.f("range"), p.f("att"), p.f("rel"), spec.token == "X32EXP3", sr));
+            if ratio == 0.0 {
+                g.thr += X32_GATE_HYST_DB;
+                g.close -= X32_GATE_HYST_DB;
+            }
+            Config::Gate(g)
         }
-        "X32DUCK" => Config::Duck(gate(p.f("thr"), p.f("range"), 0.0, p.f("att"), p.f("hld"), p.f("rel"))),
+        "X32DUCK" => {
+            let mut g = gate(p.f("thr"), p.f("range"), 0.0, p.f("att"), p.f("hld"), p.f("rel"));
+            g.x32 = Some(x32_gate(p.f("range"), p.f("att"), p.f("rel"), false, sr));
+            Config::Duck(g)
+        }
         // The ProMix 01's gate and ducking (`livedaw_dsp::promix`): RANGE is
         // the level the signal closes to (-80..0 dB), DECAY the release.
         "PMGATE" => Config::Gate(gate(p.f("thr"), -p.f("range"), 0.0, p.f("att"), p.f("hld"), p.f("dcy"))),
@@ -1230,6 +1271,9 @@ fn configure(spec: &ModelSpec, v: &[f32], sr: f32) -> Config {
             c.wing = Some(WingEnv { delay: delay_samples(WING_COMP_DELAY_MS, sr), times });
             if spec.token.starts_with("X32") {
                 c.post_db = p.f("mgain");
+                // Measured: a +12 dB EQ ahead of it reduces no further once
+                // the detector reaches 0 dBFS.
+                c.max_level = 0.0;
             }
             if spec.token == "EXP" || spec.token == "X32EXP" {
                 c.curve = Curve::Expand { thr, ratio, knee, range: 60.0 };
@@ -1568,6 +1612,8 @@ fn static_gain(cfg: &Config, x: f32) -> Option<f32> {
 fn gate_static(g: &GateCfg, x: f32) -> f32 {
     if x >= g.thr {
         0.0
+    } else if let Some(X32Gate { add_floor: true, floor, .. }) = g.x32 {
+        gain_to_db(db_to_gain(-(g.ratio - 1.0) * (g.close - x).max(0.0)) + floor)
     } else if g.ratio > 0.0 {
         let under = (g.close - x).max(0.0);
         (-(g.ratio - 1.0) * under - g.growth * under * under).max(-g.range)
@@ -2346,6 +2392,9 @@ impl WingDynamics {
     /// Gate / expander / ducker gain in dB.
     #[inline]
     fn gate_tick(&mut self, g: &GateCfg, key: f32, duck: bool) -> (f32, f32) {
+        if let Some(x) = g.x32 {
+            return self.x32_gate_tick(g, &x, key, duck);
+        }
         if let Some(w) = g.wing {
             return self.wing_gate_tick(g, &w, key);
         }
@@ -2406,6 +2455,48 @@ impl WingDynamics {
         let accent = s.accent;
         s.accent *= k.accent;
         (next + accent, lvl)
+    }
+
+    /// The X32's gate (gain in dB, detector level): HOLD is a real wait, then
+    /// the linear gain heads for its target on a one-pole, ATTACK towards
+    /// open (a ducker: towards ducked), RELEASE back.
+    #[inline]
+    fn x32_gate_tick(&mut self, g: &GateCfg, x: &X32Gate, key: f32, duck: bool) -> (f32, f32) {
+        let k = self.k;
+        let s = &mut self.gate;
+        s.env = key.abs().max(s.env * k.wing_peak);
+        let lvl = gain_to_db(s.env + 1e-9);
+        if lvl >= g.thr {
+            s.open = true;
+            s.hold = g.hold;
+        } else if lvl < g.close {
+            if s.hold > 0 {
+                s.hold -= 1;
+            } else {
+                s.open = false;
+            }
+        }
+        let target = if duck {
+            if s.open {
+                x.floor
+            } else {
+                1.0
+            }
+        } else if s.open {
+            1.0
+        } else if g.ratio > 0.0 {
+            let open = db_to_gain(-(g.ratio - 1.0) * (g.close - lvl).max(0.0));
+            if x.add_floor {
+                open + x.floor
+            } else {
+                open.max(x.floor)
+            }
+        } else {
+            x.floor
+        };
+        let c = if (target > s.gain) != duck { x.att } else { x.rel };
+        s.gain = target + (s.gain - target) * c;
+        (gain_to_db(s.gain), lvl)
     }
 
     /// The WING GATE (gain in dB, detector level). Above the threshold it
@@ -2578,6 +2669,7 @@ impl WingDynamics {
             s.wing_peak = det.abs().max(s.wing_peak * decay);
             gain_to_db(s.wing_peak + 1e-9)
         };
+        let lvl = lvl.min(c.max_level);
         // The level dot: what the detector sees, on the input scale (a feedback
         // detector sees the output, so its dot uses the input's peak).
         let shown = if c.feedback { gain_to_db(key.abs() + 1e-9) } else { lvl - s.pre_s };

@@ -5,6 +5,8 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+- X32: processing and effects corrected against measurements of a real X32 Compact (firmware 4.09): factory values, ranges and laws of the 61 effects, gate envelopes, compressor detector, EQ shapes, reverb decay and level. Saved settings of M/S Fair, Dual Enhancer and Dual Pitch no longer line up.
+- Surfaces and the Universal Mixer: the WING (all three models) has the shared top bar with the UNIVERSAL MIXER key; the swap is one click both ways and the Universal Mixer returns to the same view, filter, scroll and selected strip. The Universal Mixer's header is two rows (title and connection place, the views, back key, MENU; the strips' controls with the show's keys: scene GO, CLR SOLO, DIM, TALK), the second row can be put away (LESS/MORE, MENU), bank and filter fold into keys.
 - 01V and DM2000: fader groups, [ON] groups and pairs save with shows and recall with scenes (the console text; the FADER, SENDS, GROUPS and DYNAMICS recall scope covers them). Shows without them load with nothing grouped.
 - ProMix 01: METER, PAN, COMP and EQ now match photographs of a real console dot for dot (fonts, positions, tint); panel colours resampled.
 - WING RACK: a third console model (SETUP > SIDECAR > CONSOLE MODEL RACK). The front panel in one row: the display without the six

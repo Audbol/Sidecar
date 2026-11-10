@@ -36,8 +36,18 @@ private:
 };
 
 //==============================================================================
-WingSurface::WingSurface (UiContext& c) : ctx (c)
+WingSurface::WingSurface (UiContext& c) : universalKey ("UNIVERSAL MIXER", universal::Theme::dark().accent, universal::Theme::dark()), ctx (c)
 {
+    universalKey.onClick = [&context = ctx]
+    {
+        juce::MessageManager::callAsync ([&context]
+        {
+            if (context.setInterface)
+                context.setInterface (InterfaceKind::Universal);
+        });
+    };
+    universalKey.setTooltip ("The Universal Mixer");
+    addAndMakeVisible (universalKey);
     // What the WING's screens and keys reach through the context.
     ctx.showScreen = [this] (Screen screen) { display->showScreen (screen); };
     ctx.showOverviewPage = [this] (int area, int bank) { display->showOverviewPage (cc::overviewSection (area), bank); };
@@ -260,6 +270,14 @@ bool WingSurface::skinKeyPressed (const juce::KeyPress& key)
 //==============================================================================
 void WingSurface::paint (juce::Graphics& g)
 {
+    paintSurface (g);
+    if (! screenMaximized)
+        surfacetopbar::paint (g, universal::Theme::dark(), getLocalBounds(),
+                              ctx.consoleModel == ConsoleModel::Rack ? "WING RACK" : ctx.consoleModel == ConsoleModel::Compact ? "WING COMPACT" : "WING");
+}
+
+void WingSurface::paintSurface (juce::Graphics& g)
+{
     if (isRack() && ! screenMaximized)
     {
         // The RACK's panel in a rack: the window around it dark, a rack ear
@@ -288,9 +306,14 @@ void WingSurface::paint (juce::Graphics& g)
     g.fillAll (screenMaximized ? juce::Colours::black : surfaceColours().surface);
 }
 
+juce::Rectangle<int> WingSurface::bodyArea() const
+{
+    return screenMaximized ? getLocalBounds() : getLocalBounds().withTrimmedTop (surfacetopbar::kHeight);
+}
+
 int WingSurface::topRowHeight() const
 {
-    const int h = getHeight();
+    const int h = bodyArea().getHeight();
     // Wide windows are short for their width: past 2:1 the top row (and with
     // it the screen, the most important part) takes up to 8 % more.
     const float aspect = (float) getWidth() / (float) juce::jmax (1, h);
@@ -338,7 +361,7 @@ WingSurface::TopRowSides WingSurface::topRowSideWidths (int width)
 
 juce::Rectangle<int> WingSurface::consoleArea() const
 {
-    const auto all = getLocalBounds();
+    const auto all = bodyArea();
     const int width = all.getWidth();
     const int topH = topRowHeight();
 
@@ -386,7 +409,7 @@ void WingSurface::placeDisplay (juce::Rectangle<int> bounds)
 void WingSurface::layoutCompact()
 {
     const int topH = topRowHeight();
-    const auto plan = layout::compact::plan (getLocalBounds(), topH, MainDisplay::preferredWidth (topH));
+    const auto plan = layout::compact::plan (bodyArea(), topH, MainDisplay::preferredWidth (topH));
     monitor->setBounds (plan.panel);
     splitter.setBounds (plan.splitter);
     placeDisplay (plan.display);
@@ -407,7 +430,7 @@ void WingSurface::layoutCompact()
 
 void WingSurface::layoutRack()
 {
-    const auto plan = layout::rack::plan (getLocalBounds(), [] (int h) { return MainDisplay::preferredWidth (h); });
+    const auto plan = layout::rack::plan (bodyArea(), [] (int h) { return MainDisplay::preferredWidth (h); });
     if (plan.panel != rackPanel)
     {
         rackPanel = plan.panel;
@@ -572,6 +595,7 @@ void WingSurface::layoutTopRow()
 
 void WingSurface::resized()
 {
+    surfacetopbar::place (universalKey, getWidth());
     layoutTopRow();
 
     // Auto-width sections may now hold a different number of faders.
@@ -640,6 +664,7 @@ void WingSurface::updateVisibility()
     // The console's parts stay alive (and keep their state) under the editor
     // and while the screen is maximized.
     const bool surface = ! covered && ! screenMaximized;
+    universalKey.setVisible (surface);
     // The COMPACT has no channel strip, custom controls, 4-Channel, center
     // or right section; it has its key section instead. The RACK has its
     // four-channel section: the left section's strips as its channels, or

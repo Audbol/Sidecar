@@ -8,13 +8,18 @@
 //!
 //! Each side has its ACTIVE (off: the signal passes) and its GAIN after the
 //! unit. Where the controls differ, Sidecar's reading (to be measured on an
-//! X32): the Fair's INPUT GAIN up to 0 dB is the F670's IN, above it a gain
-//! ahead of it; its TIME 0 is the F670's 1; BIAS 0-100 its 0-1; BALANCE the
-//! output's left / right balance. The Wave Designer's ATTACK and SUSTAIN
+//! X32): BIAS 0-100 is the F670's 0-1. Measured on an X32: BALANCE changes
+//! nothing on a signal equal on both sides, so it isn't an output balance
+//! (what it does otherwise wasn't measured, so it does nothing here); the Fair's level follows INPUT GAIN + GAIN +
+//! 19.5 dB under its threshold, which falls 2 dB per THRESHOLD step from -13 dB
+//! at the unit's input (the M/S one stands 4.9 dB lower); the Ultimo's follows
+//! INPUT + OUTPUT + 51 dB; the Leisure's stands 2.2 dB above the LA's, GAIN 0
+//! mutes it and above 50 GAIN adds 0.1 dB a step. The Wave Designer's ATTACK and SUSTAIN
 //! (+-100) are the WAVE's +-15 and +-24 dB at full scale.
 
 use super::{FxAlgo, FxContext};
 use crate::model::{ModelSpec, Params};
+#[cfg(test)]
 use crate::util::db_to_gain;
 use crate::wing::dynamics::{SidechainSettings, WingDynamics, XoverSettings};
 use crate::wing::{DYN_MODELS, MAX_DYN_PARAMS};
@@ -29,7 +34,10 @@ pub(super) fn create(token: &str, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
     let (wing, layout, map): (&str, Layout, SideMap) = match token {
         "X32FAC" => ("F670", Layout::Stereo, |p, _, set| fair(p, None, set)),
         "X32FAC2" => ("F670", Layout::Dual, |p, s, set| fair(p, Some(["a", "b"][s]), set)),
-        "X32FAC1M" => ("F670", Layout::MidSide, |p, s, set| fair(p, Some(["m", "s"][s]), set)),
+        "X32FAC1M" => ("F670", Layout::MidSide, |p, s, set| {
+            let side = fair(p, Some(["m", "s"][s]), set);
+            Side { makeup_db: side.makeup_db - 4.9, ..side }
+        }),
         "X32LEC" => ("LA", Layout::Stereo, |p, _, set| leisure(p, None, set)),
         "X32LEC2" => ("LA", Layout::Dual, |p, s, set| leisure(p, Some(["a", "b"][s]), set)),
         "X32ULC" => ("76LA", Layout::Stereo, |p, _, set| ultimo(p, None, set)),
@@ -222,22 +230,17 @@ fn f(p: &Params, base: &str, sfx: Option<&str>) -> f32 {
 }
 
 fn on(p: &Params, sfx: Option<&str>) -> bool {
-    f(p, "active", sfx) >= 0.5
+    // M/S Fair has one ACTIVE for both.
+    f(p, "active", if sfx == Some("s") { Some("m") } else { sfx }) >= 0.5
 }
 
 fn fair(p: &Params, sfx: Option<&str>, set: &mut dyn FnMut(&'static str, f32)) -> Side {
-    let input = f(p, "input_gain", sfx);
-    set("in", input.clamp(-20.0, 0.0));
-    set("thr", f(p, "threshold", sfx));
+    set("in", f(p, "input_gain", sfx).clamp(-20.0, 0.0));
+    // The F670's threshold is -4 dB a step at its own detector, 10 dB above IN.
+    set("thr", 0.75 + 0.5 * f(p, "threshold", sfx));
     set("time", f(p, "time", sfx).max(1.0));
     set("bias", 0.01 * f(p, "bias", sfx));
-    let b = (0.01 * f(p, "balance", sfx)).clamp(-1.0, 1.0);
-    Side {
-        on: on(p, sfx),
-        makeup_db: f(p, "gain", sfx),
-        pre: db_to_gain(input.max(0.0)),
-        balance: ((1.0 - b).min(1.0), (1.0 + b).min(1.0)),
-    }
+    Side { on: on(p, sfx), makeup_db: f(p, "gain", sfx) + 9.5, ..Side::default() }
 }
 
 fn leisure(p: &Params, sfx: Option<&str>, set: &mut dyn FnMut(&'static str, f32)) -> Side {
@@ -253,14 +256,17 @@ fn leisure(p: &Params, sfx: Option<&str>, set: &mut dyn FnMut(&'static str, f32)
         }
         None => p.f("gain_2"),
     };
-    Side { on: on(p, sfx), makeup_db: out, ..Side::default() }
+    let gain = f(p, "gain", sfx);
+    let makeup_db = if gain <= 0.0 { -200.0 } else { out + 2.2 + 0.1 * (gain - 50.0).max(0.0) };
+    Side { on: on(p, sfx), makeup_db, ..Side::default() }
 }
 
 fn ultimo(p: &Params, sfx: Option<&str>, set: &mut dyn FnMut(&'static str, f32)) -> Side {
     for (wing, x32) in [("in", "input_gain"), ("out", "out_gain"), ("att", "attack"), ("rel", "release"), ("ratio", "ratio")] {
         set(wing, f(p, x32, sfx));
     }
-    Side { on: on(p, sfx), ..Side::default() }
+    // The 76LA's IN only drives its detector; here it is a level as well.
+    Side { on: on(p, sfx), makeup_db: f(p, "input_gain", sfx) + 27.2, ..Side::default() }
 }
 
 fn wave(p: &Params, side: usize, set: &mut dyn FnMut(&'static str, f32)) -> Side {
@@ -315,14 +321,16 @@ mod tests {
             let (on, _) = level(token, &[], 0.0);
             let (off, _) = level(token, &[("active", 0.0)], 0.0);
             assert!((off - 0.0).abs() < 0.1, "{token} off passes: {off}");
-            assert!(on < off - 1.0 || token == "X32ULC", "{token} compresses: {on} vs {off}");
+            // Less gain at full level than on a quiet signal.
+            let (quiet, _) = level(token, &[], -40.0);
+            assert!(on < quiet + 40.0 - 1.0 || token == "X32ULC", "{token} compresses: {on} vs {quiet}");
         }
         // The dual: B off passes the right side; A's GAIN is its output gain.
-        let (l, r) = level("X32LEC2", &[("active_b", 0.0), ("gain_a_2", -6.0)], -20.0);
+        let (l, r) = level("X32LEC2", &[("active_b", 0.0), ("gain_a_2", -12.0)], -20.0);
         assert!((r + 20.0).abs() < 0.1, "B off: {r}");
         assert!(l < r - 3.0, "A down: {l}");
-        // The Fair's BALANCE takes one side down.
+        // The Fair's BALANCE leaves a signal equal on both sides alone.
         let (l, r) = level("X32FAC", &[("balance", 100.0)], -30.0);
-        assert!(l <= -99.0 && r > -40.0, "{l} {r}");
+        assert!((l - r).abs() < 0.01, "{l} {r}");
     }
 }

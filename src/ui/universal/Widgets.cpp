@@ -122,24 +122,11 @@ void drawPlate (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour top, j
 {
     g.setGradientFill (juce::ColourGradient (top, 0.0f, r.getY(), bottom, 0.0f, r.getBottom(), false));
     g.fillRect (r);
-    g.setTiledImageFill (grain (theme), juce::roundToInt (r.getX()), 0, 1.0f);
-    g.fillRect (r);
     g.setColour (theme.edgeLight());
     g.fillRect (r.getX(), r.getY(), r.getWidth(), 1.0f);
     g.setColour (theme.edgeDark());
     g.fillRect (r.getRight() - 1.0f, r.getY(), 1.0f, r.getHeight());
-    if (! screws || r.getHeight() < 24.0f || r.getWidth() < 24.0f)
-        return;
-    for (auto p : { r.getTopLeft() + juce::Point<float> (6.0f, 6.0f), r.getTopRight() + juce::Point<float> (-6.0f, 6.0f),
-                    r.getBottomLeft() + juce::Point<float> (6.0f, -6.0f), r.getBottomRight() + juce::Point<float> (-6.0f, -6.0f) })
-    {
-        const auto head = juce::Rectangle<float> (5.0f, 5.0f).withCentre (p);
-        g.setColour (theme.hw.knobDark);
-        g.fillEllipse (head);
-        g.setColour (theme.hw.capEdge);
-        g.drawEllipse (head, 0.8f);
-        g.drawLine (p.x - 1.8f, p.y + 1.0f, p.x + 1.8f, p.y - 1.0f, 0.9f);
-    }
+    juce::ignoreUnused (screws);
 }
 
 void drawEngraved (juce::Graphics& g, const juce::String& text, juce::Rectangle<float> r, juce::Justification just, const Theme& theme, bool bold)

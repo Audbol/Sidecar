@@ -204,8 +204,8 @@
     "n": 5,
     "name": "Diffuse",
     "type": "linf",
-    "min": 1,
-    "max": 30
+    "min": 0,
+    "max": 100
    },
    {
     "n": 6,
@@ -311,7 +311,7 @@
     "name": "Size",
     "type": "linf",
     "min": 4,
-    "max": 72
+    "max": 76
    },
    {
     "n": 4,
@@ -324,8 +324,8 @@
     "n": 5,
     "name": "Diffuse",
     "type": "linf",
-    "min": 1,
-    "max": 30
+    "min": 0,
+    "max": 100
    },
    {
     "n": 6,
@@ -431,7 +431,7 @@
     "name": "Size",
     "type": "linf",
     "min": 4,
-    "max": 72
+    "max": 76
    },
    {
     "n": 4,
@@ -444,8 +444,8 @@
     "n": 5,
     "name": "Diffuse",
     "type": "linf",
-    "min": 1,
-    "max": 30
+    "min": 0,
+    "max": 100
    },
    {
     "n": 6,
@@ -543,7 +543,7 @@
     "n": 2,
     "name": "Decay",
     "type": "logf",
-    "min": 0.2,
+    "min": 0.5,
     "max": 10
    },
    {
@@ -606,7 +606,7 @@
     "n": 11,
     "name": "Mod",
     "type": "linf",
-    "min": 0,
+    "min": 1,
     "max": 50
    },
    {
@@ -633,8 +633,8 @@
    {
     "n": 2,
     "name": "Decay",
-    "type": "logf",
-    "min": 0.3,
+    "type": "linf",
+    "min": 0.4,
     "max": 4.5
    },
    {
@@ -642,7 +642,7 @@
     "name": "Modulate",
     "type": "linf",
     "min": 0,
-    "max": 10
+    "max": 100
    },
    {
     "n": 4,
@@ -680,7 +680,7 @@
     "n": 8,
     "name": "Hi Cut",
     "type": "logf",
-    "min": 200,
+    "min": 10000,
     "max": 20000
    },
    {
@@ -709,7 +709,7 @@
     "name": "Reverb Delay",
     "type": "linf",
     "min": 0,
-    "max": 20
+    "max": 200
    },
    {
     "n": 2,
@@ -722,8 +722,8 @@
     "n": 3,
     "name": "Size",
     "type": "linf",
-    "min": 0,
-    "max": 10
+    "min": 2,
+    "max": 100
    },
    {
     "n": 4,
@@ -737,7 +737,7 @@
     "name": "ER Level",
     "type": "linf",
     "min": 0,
-    "max": 190
+    "max": 100
    },
    {
     "n": 6,
@@ -779,14 +779,14 @@
     "name": "ER Left",
     "type": "linf",
     "min": 0,
-    "max": 10
+    "max": 200
    },
    {
     "n": 12,
     "name": "ER Right",
     "type": "linf",
     "min": 0,
-    "max": 10
+    "max": 200
    },
    {
     "n": 13,
@@ -814,7 +814,7 @@
    {
     "n": 2,
     "name": "Decay",
-    "type": "logf",
+    "type": "linf",
     "min": 140,
     "max": 1000
    },
@@ -830,7 +830,7 @@
     "name": "Density",
     "type": "linf",
     "min": 1,
-    "max": 30
+    "max": 50
    },
    {
     "n": 5,
@@ -913,7 +913,7 @@
     "n": 5,
     "name": "Spread",
     "type": "linf",
-    "min": 1,
+    "min": 0,
     "max": 100
    },
    {
@@ -1039,14 +1039,14 @@
     "n": 10,
     "name": "Feed Left",
     "type": "linf",
-    "min": 1,
+    "min": 0,
     "max": 100
    },
    {
     "n": 11,
     "name": "Feed Right",
     "type": "linf",
-    "min": 1,
+    "min": 0,
     "max": 100
    },
    {
@@ -1370,14 +1370,14 @@
     "name": "Delay L",
     "type": "logf",
     "min": 0.5,
-    "max": 20
+    "max": 50
    },
    {
     "n": 5,
     "name": "Delay R",
     "type": "logf",
     "min": 0.5,
-    "max": 20
+    "max": 50
    },
    {
     "n": 6,
@@ -1705,7 +1705,7 @@
     "n": 4,
     "name": "Base",
     "type": "logf",
-    "min": 10,
+    "min": 20,
     "max": 15000
    },
    {
@@ -1780,8 +1780,8 @@
     "name": "4 Pole",
     "type": "enum",
     "items": [
-     "OFF",
-     "ON"
+     "2POL",
+     "4POL"
     ]
    },
    {
@@ -1848,8 +1848,8 @@
     "name": "Stop",
     "type": "enum",
     "items": [
-     "OFF",
-     "ON"
+     "RUN",
+     "STOP"
     ]
    },
    {
@@ -1857,8 +1857,8 @@
     "name": "Slow",
     "type": "enum",
     "items": [
-     "OFF",
-     "ON"
+     "SLOW",
+     "FAST"
     ]
    }
   ]
@@ -1873,7 +1873,7 @@
     "name": "Speed",
     "type": "logf",
     "min": 0.05,
-    "max": 4
+    "max": 5
    },
    {
     "n": 2,
@@ -4106,7 +4106,7 @@
     "type": "enum",
     "items": [
      "ST",
-     "M/S"
+     "MS"
     ]
    }
   ],
@@ -4145,7 +4145,7 @@
     "name": "Lo Freq",
     "type": "enum",
     "items": [
-     "0",
+     "20",
      "30",
      "60",
      "100"
@@ -4248,7 +4248,7 @@
     "name": "Lo Freq A",
     "type": "enum",
     "items": [
-     "0",
+     "20",
      "30",
      "60",
      "100"
@@ -4343,7 +4343,7 @@
     "name": "Lo Freq B",
     "type": "enum",
     "items": [
-     "0",
+     "20",
      "30",
      "60",
      "100"
@@ -4759,7 +4759,7 @@
     "name": "Out Gain",
     "type": "linf",
     "min": -18,
-    "max": 18
+    "max": 0
    },
    {
     "n": 3,
@@ -4871,7 +4871,7 @@
     "n": 7,
     "name": "SBC speed",
     "type": "linf",
-    "min": 0,
+    "min": 1,
     "max": 10
    },
    {
@@ -5055,8 +5055,8 @@
     "type": "enum",
     "items": [
      "GR",
-     "SBC",
-     "PEAK"
+     "PEAK",
+     "SBC"
     ]
    }
   ],
@@ -5123,7 +5123,7 @@
     "n": 7,
     "name": "SBC speed A",
     "type": "linf",
-    "min": 0,
+    "min": 1,
     "max": 10
    },
    {
@@ -5307,8 +5307,8 @@
     "type": "enum",
     "items": [
      "GR",
-     "SBC",
-     "PEAK"
+     "PEAK",
+     "SBC"
     ]
    },
    {
@@ -5367,7 +5367,7 @@
     "n": 36,
     "name": "SBC speed B",
     "type": "linf",
-    "min": 0,
+    "min": 1,
     "max": 10
    },
    {
@@ -5551,8 +5551,8 @@
     "type": "enum",
     "items": [
      "GR",
-     "SBC",
-     "PEAK"
+     "PEAK",
+     "SBC"
     ]
    }
   ],
@@ -5577,7 +5577,7 @@
     "name": "Input Gain",
     "type": "linf",
     "min": -20,
-    "max": 20
+    "max": 0
    },
    {
     "n": 3,
@@ -5590,7 +5590,7 @@
     "n": 4,
     "name": "Time",
     "type": "linf",
-    "min": 0,
+    "min": 1,
     "max": 6
    },
    {
@@ -5619,7 +5619,7 @@
  {
   "code": "FAC1M",
   "title": "M/S Fair Compressor",
-  "signature": "iffffffiffffff",
+  "signature": "iffffffifffff",
   "params": [
    {
     "n": 1,
@@ -5635,7 +5635,7 @@
     "name": "Input Gain M",
     "type": "linf",
     "min": -20,
-    "max": 20
+    "max": 0
    },
    {
     "n": 3,
@@ -5648,7 +5648,7 @@
     "n": 4,
     "name": "Time M",
     "type": "linf",
-    "min": 0,
+    "min": 1,
     "max": 6
    },
    {
@@ -5674,50 +5674,41 @@
    },
    {
     "n": 8,
-    "name": "Active S",
-    "type": "enum",
-    "items": [
-     "OFF",
-     "ON"
-    ]
-   },
-   {
-    "n": 9,
     "name": "Input Gain S",
     "type": "linf",
     "min": -20,
-    "max": 20
+    "max": 0
    },
    {
-    "n": 10,
+    "n": 9,
     "name": "Threshold S",
     "type": "linf",
     "min": 0,
     "max": 10
    },
    {
-    "n": 11,
+    "n": 10,
     "name": "Time S",
     "type": "linf",
-    "min": 0,
+    "min": 1,
     "max": 6
    },
    {
-    "n": 12,
+    "n": 11,
     "name": "Bias S",
     "type": "linf",
     "min": 0,
     "max": 100
    },
    {
-    "n": 13,
+    "n": 12,
     "name": "Gain S",
     "type": "linf",
     "min": -18,
     "max": 6
    },
    {
-    "n": 14,
+    "n": 13,
     "name": "Balance S",
     "type": "linf",
     "min": -100,
@@ -5745,7 +5736,7 @@
     "name": "Input Gain A",
     "type": "linf",
     "min": -20,
-    "max": 20
+    "max": 0
    },
    {
     "n": 3,
@@ -5758,7 +5749,7 @@
     "n": 4,
     "name": "Time A",
     "type": "linf",
-    "min": 0,
+    "min": 1,
     "max": 6
    },
    {
@@ -5796,7 +5787,7 @@
     "name": "Input Gain B",
     "type": "linf",
     "min": -20,
-    "max": 20
+    "max": 0
    },
    {
     "n": 10,
@@ -5809,7 +5800,7 @@
     "n": 11,
     "name": "Time B",
     "type": "linf",
-    "min": 0,
+    "min": 1,
     "max": 6
    },
    {
@@ -6133,7 +6124,7 @@
  {
   "code": "ENH2",
   "title": "Dual Enhancer",
-  "signature": "ffffffffiffffffffi",
+  "signature": "ffffffffifffffff",
   "params": [
    {
     "n": 1,
@@ -6144,55 +6135,48 @@
    },
    {
     "n": 2,
-    "name": "Speed A",
-    "type": "linf",
-    "min": 0,
-    "max": 100
-   },
-   {
-    "n": 3,
     "name": "Bass Gain A",
     "type": "linf",
     "min": 0,
     "max": 100
    },
    {
-    "n": 4,
+    "n": 3,
     "name": "Bass Freq A",
     "type": "linf",
     "min": 1,
     "max": 50
    },
    {
-    "n": 5,
+    "n": 4,
     "name": "Mid Gain A",
     "type": "linf",
     "min": 0,
     "max": 100
    },
    {
-    "n": 6,
+    "n": 5,
     "name": "Mid Freq A",
     "type": "linf",
     "min": 1,
     "max": 50
    },
    {
-    "n": 7,
+    "n": 6,
     "name": "Hi Gain A",
     "type": "linf",
     "min": 0,
     "max": 100
    },
    {
-    "n": 8,
+    "n": 7,
     "name": "Hi Freq A",
     "type": "linf",
     "min": 1,
     "max": 50
    },
    {
-    "n": 9,
+    "n": 8,
     "name": "Solo A",
     "type": "enum",
     "items": [
@@ -6201,63 +6185,56 @@
     ]
    },
    {
-    "n": 10,
+    "n": 9,
     "name": "Out Gain B",
     "type": "linf",
     "min": -12,
     "max": 12
    },
    {
-    "n": 11,
-    "name": "Speed B",
-    "type": "linf",
-    "min": 0,
-    "max": 100
-   },
-   {
-    "n": 12,
+    "n": 10,
     "name": "Bass Gain B",
     "type": "linf",
     "min": 0,
     "max": 100
    },
    {
-    "n": 13,
+    "n": 11,
     "name": "Bass Freq B",
     "type": "linf",
     "min": 1,
     "max": 50
    },
    {
-    "n": 14,
+    "n": 12,
     "name": "Mid Gain B",
     "type": "linf",
     "min": 0,
     "max": 100
    },
    {
-    "n": 15,
+    "n": 13,
     "name": "Mid Freq B",
     "type": "linf",
     "min": 1,
     "max": 50
    },
    {
-    "n": 16,
+    "n": 14,
     "name": "Hi Gain B",
     "type": "linf",
     "min": 0,
     "max": 100
    },
    {
-    "n": 17,
+    "n": 15,
     "name": "Hi Freq B",
     "type": "linf",
     "min": 1,
     "max": 50
    },
    {
-    "n": 18,
+    "n": 16,
     "name": "Solo B",
     "type": "enum",
     "items": [
@@ -7160,25 +7137,25 @@
     "name": "Delay A",
     "type": "logf",
     "min": 1,
-    "max": 100
-   },
-   {
-    "n": 4,
-    "name": "Lo Cut A",
-    "type": "logf",
-    "min": 10,
     "max": 500
    },
    {
+    "n": 4,
+    "name": "Gain A",
+    "type": "linf",
+    "min": 0,
+    "max": 100
+   },
+   {
     "n": 5,
-    "name": "Hi Cut A",
-    "type": "logf",
-    "min": 2000,
-    "max": 20000
+    "name": "Pan A",
+    "type": "linf",
+    "min": -100,
+    "max": 100
    },
    {
     "n": 6,
-    "name": "Mix A",
+    "name": "Mix",
     "type": "linf",
     "min": 0,
     "max": 100
@@ -7202,28 +7179,28 @@
     "name": "Delay B",
     "type": "logf",
     "min": 1,
-    "max": 100
-   },
-   {
-    "n": 10,
-    "name": "Lo Cut B",
-    "type": "logf",
-    "min": 10,
     "max": 500
    },
    {
-    "n": 11,
-    "name": "Hi Cut B",
-    "type": "logf",
-    "min": 2000,
-    "max": 20000
-   },
-   {
-    "n": 12,
-    "name": "Mix B",
+    "n": 10,
+    "name": "Gain B",
     "type": "linf",
     "min": 0,
     "max": 100
+   },
+   {
+    "n": 11,
+    "name": "Pan B",
+    "type": "linf",
+    "min": -100,
+    "max": 100
+   },
+   {
+    "n": 12,
+    "name": "Hi Cut",
+    "type": "logf",
+    "min": 2000,
+    "max": 20000
    }
   ]
  },
@@ -7251,7 +7228,7 @@
     "name": "Delay",
     "type": "logf",
     "min": 1,
-    "max": 100
+    "max": 500
    },
    {
     "n": 4,

@@ -231,15 +231,160 @@ mod tests {
             d.process(&mut [&mut x[..]], None, m, &v[..DYN_MODELS[m].params.len()], &sc, &xo, 1.0, 0.0);
             tail_peak(&x) / level
         };
-        // The gate closes on a signal under its threshold by its range.
+        // The gate closes on a signal under its threshold by its range (still
+        // falling half a second in, at the default 258 ms RELEASE).
         let g = run("X32GATE", &[("thr", -20.0), ("range", 40.0)], 0.01);
-        assert!(g < 0.02, "gate {g}");
+        assert!(g < 0.03, "gate {g}");
         assert!(run("X32GATE", &[("thr", -60.0)], 0.5) > 0.95, "open above the threshold");
         // The compressor turns a loud signal down; GAIN makes up.
         let c = run("X32COMP", &[("thr", -30.0), ("ratio", 9.0)], 0.8);
         assert!(c < 0.2, "comp {c}");
         let made_up = run("X32COMP", &[("thr", -30.0), ("ratio", 9.0), ("mgain", 12.0)], 0.8);
         assert!((made_up / c - 3.98).abs() < 0.3, "12 dB of makeup: {}", made_up / c);
+    }
+
+    fn dynamics(token: &str, set: &[(&str, f32)], input: &mut [f32]) {
+        use crate::wing::dynamics::{SidechainSettings, WingDynamics, XoverSettings};
+        let (sc, xo) = (SidechainSettings::default(), XoverSettings::default());
+        let m = DYN_MODELS.iter().position(|m| m.token == token).unwrap();
+        let v = values(&DYN_MODELS[m], set);
+        let mut d = WingDynamics::default();
+        d.set_table(DYN_MODELS);
+        d.prepare(48000.0);
+        d.process(&mut [input], None, m, &v[..DYN_MODELS[m].params.len()], &sc, &xo, 1.0, 0.0);
+    }
+
+    /// A 1 kHz sine of amplitude `amp(sample)`.
+    fn tone(n: usize, amp: impl Fn(usize) -> f32) -> Vec<f32> {
+        (0..n).map(|i| amp(i) * (i as f32 * std::f32::consts::TAU / 48.0).sin()).collect()
+    }
+
+    /// Gain (dB) on a steady 1 kHz sine at `db` dBFS.
+    fn steady(token: &str, set: &[(&str, f32)], db: f32) -> f32 {
+        let n = 96000;
+        let t = tone(n, |_| 10f32.powf(db / 20.0));
+        let mut y = t.clone();
+        dynamics(token, set, &mut y);
+        let rms = |x: &[f32]| (x.iter().map(|s| s * s).sum::<f32>() / x.len() as f32).sqrt();
+        20.0 * (rms(&y[n - 9600..]) / rms(&t[n - 9600..])).log10()
+    }
+
+    /// Gain (dB), `at` ms after a tone falls from -10 to -70 dBFS.
+    fn after_drop(token: &str, set: &[(&str, f32)], at: &[f32]) -> Vec<f32> {
+        let up = 48000;
+        let t = tone(up + 48 * 9000, |i| if i < up { 0.316 } else { 0.000316 });
+        let mut y = t.clone();
+        dynamics(token, set, &mut y);
+        at.iter()
+            .map(|ms| {
+                let c = up + (*ms * 48.0) as usize;
+                let (mut a, mut b) = (0.0, 0.0);
+                for i in c - 96..c + 96 {
+                    a += y[i] * y[i];
+                    b += t[i] * t[i];
+                }
+                10.0 * (a / b).log10()
+            })
+            .collect()
+    }
+
+    fn near(what: &str, got: f32, want: f32, tol: f32) {
+        assert!((got - want).abs() <= tol, "{what}: {got} dB, the X32 {want} dB");
+    }
+
+    // The figures below were measured on an X32 Compact (firmware 4.09).
+
+    #[test]
+    fn the_x32_gate_measured() {
+        let open = [("thr", -30.0), ("range", 40.0), ("att", 1.0), ("hld", 50.2), ("rel", 198.0)];
+        near("gate under", steady("X32GATE", &open, -40.0), -40.0, 0.2);
+        near("gate over", steady("X32GATE", &open, -20.0), 0.0, 0.05);
+        near("EXP2 -40", steady("X32EXP2", &open, -40.0), -10.0, 0.5);
+        near("EXP2 -50", steady("X32EXP2", &open, -50.0), -20.0, 0.5);
+        near("EXP4 -40", steady("X32EXP4", &open, -40.0), -30.0, 0.8);
+        // EXP3 rounds into its range.
+        for (range, input, want) in [(30.0, -40.0, -17.6), (30.0, -50.0, -27.6), (60.0, -50.0, -39.2), (60.0, -60.0, -54.0)] {
+            let set = [("thr", -30.0), ("range", range), ("att", 1.0), ("hld", 50.2), ("rel", 198.0)];
+            near("EXP3", steady("X32EXP3", &set, input), want, 0.8);
+        }
+        near("duck over", steady("X32DUCK", &open, -20.0), -40.0, 0.2);
+        near("duck under", steady("X32DUCK", &open, -40.0), 0.0, 0.05);
+    }
+
+    #[test]
+    fn the_x32_gate_closes_as_measured() {
+        let set = |rel: f32| [("thr", -30.0), ("range", 40.0), ("att", 1.0), ("hld", 50.2), ("rel", rel)];
+        let at = [100.0, 300.0, 1000.0, 2000.0];
+        for (rel, want) in
+            [(504.0, [-2.0, -9.4, -31.9, -39.8]), (983.0, [-1.0, -4.8, -17.9, -33.0]), (4000.0, [-0.2, -1.2, -4.5, -9.2])]
+        {
+            let got = after_drop("X32GATE", &set(rel), &at);
+            for (g, w) in got.iter().zip(want) {
+                near(&format!("gate release {rel}"), *g, w, 1.0);
+            }
+        }
+        // HOLD waits, then the fall starts.
+        let hold = [("thr", -30.0), ("range", 40.0), ("att", 1.0), ("hld", 1002.0), ("rel", 198.0)];
+        let got = after_drop("X32GATE", &hold, &[900.0, 1300.0]);
+        near("in hold", got[0], 0.0, 0.1);
+        assert!(got[1] < -20.0, "after hold {}", got[1]);
+    }
+
+    #[test]
+    fn the_x32_compressor_measured() {
+        let c = |extra: &[(&str, f32)], db: f32| {
+            let mut s = vec![("thr", -30.0), ("ratio", 6.0), ("knee", 0.0)];
+            s.extend_from_slice(extra);
+            steady("X32COMP", &s, db)
+        };
+        // Ratio index 6 is 4:1.
+        for (db, want) in [(-20.0, -7.6), (-10.0, -15.1), (0.0, -22.6)] {
+            near("4:1", c(&[], db), want, 0.3);
+        }
+        near("RMS", c(&[("det", 1.0)], -10.0), -12.9, 0.3);
+        // KNEE at the threshold.
+        for (knee, want) in [(1.0, -0.7), (3.0, -2.1), (5.0, -3.4)] {
+            near("knee", c(&[("knee", knee)], -30.0), want, 0.4);
+        }
+        let base = [("thr", -30.0), ("ratio", 6.0), ("knee", 0.0), ("att", 10.0)];
+        let with = |more: &[(&'static str, f32)]| {
+            let mut s = base.to_vec();
+            s.extend_from_slice(more);
+            s
+        };
+        // LOG release: one pole in dB, the set time its constant.
+        let got = after_drop("X32COMP", &with(&[("hld", 0.02), ("rel", 983.0)]), &[983.0, 1966.0]);
+        near("1 x release", got[0], -5.5, 1.0);
+        near("2 x release", got[1], -2.0, 0.8);
+        // LIN release: 10 dB per set time.
+        let lin = after_drop("X32COMP", &with(&[("hld", 0.02), ("rel", 983.0), ("env", 0.0)]), &[983.0]);
+        near("LIN", lin[0], -5.1, 1.0);
+        // Long HOLD stretches the fall instead of waiting.
+        let got = after_drop("X32COMP", &with(&[("hld", 502.0), ("rel", 101.0)]), &[100.0, 300.0, 1000.0]);
+        near("hold 100", got[0], -14.3, 1.0);
+        near("hold 300", got[1], -9.6, 1.0);
+        near("hold 1000", got[2], -0.1, 0.5);
+    }
+
+    #[test]
+    fn the_x32_eq_shapes_measured() {
+        use crate::wing::eq::design;
+        let eq = &EQ_CHANNEL[0];
+        let oct = [125.0, 250.0, 500.0, 1000.0, 2000.0];
+        let check = |what: &str, set: &[(&str, f32)], want: [f32; 5], tol: f32| {
+            let v = values(eq, set);
+            let d = design(eq, &v[..eq.params.len()], 48000.0, 1.0);
+            for (f, w) in oct.iter().zip(want) {
+                near(&format!("{what} at {f}"), d.response_db(*f, 48000.0) as f32, w, tol);
+            }
+        };
+        check("LShv +12", &[("1t", 1.0), ("1f", 195.4), ("1g", 12.0)], [11.4, 7.2, 1.3, 0.1, 0.0], 0.25);
+        check("LShv -6", &[("1t", 1.0), ("1f", 195.4), ("1g", -6.0)], [-5.5, -2.7, -0.3, 0.0, 0.0], 0.25);
+        check("HShv +12", &[("4t", 4.0), ("4f", 496.6), ("4g", 12.0)], [0.2, 2.7, 9.2, 11.7, 12.0], 0.25);
+        check("VEQ +12", &[("2t", 3.0), ("2f", 990.9), ("2g", 12.0), ("2q", 2.1)], [0.2, 0.9, 3.8, 12.0, 3.8], 0.4);
+        check("VEQ -6", &[("2t", 3.0), ("2f", 990.9), ("2g", -6.0), ("2q", 2.1)], [0.0, -0.2, -1.1, -6.0, -1.1], 0.3);
+        check("PEQ -12", &[("2f", 990.9), ("2g", -12.0), ("2q", 2.1)], [-0.1, -0.3, -1.4, -12.0, -1.4], 0.25);
+        check("LCut 195", &[("1t", 0.0), ("1f", 195.4)], [-8.6, -1.4, -0.1, 0.0, 0.0], 0.3);
     }
 
     #[test]

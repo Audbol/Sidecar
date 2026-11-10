@@ -12,20 +12,34 @@ namespace
     {
         return Theme::fromSettings (c.settings);
     }
+
+    /** The surface a console's profile returns to: one table for the back key, its tooltip and the swap. */
+    struct Back
+    {
+        InterfaceKind kind;
+        const char* key;
+        const char* name;
+    };
+    Back backTo (ld::ProfileId profile)
+    {
+        if (profile == ld::kProfileXenyx1204) return { InterfaceKind::Xenyx1204, "1204USB SURFACE", "XENYX 1204USB" };
+        if (profile == ld::kProfileMidasPro2) return { InterfaceKind::Pro2, "PRO2 SURFACE", "PRO2" };
+        if (profile == ld::kProfileDm2000)    return { InterfaceKind::Dm2000, "DM2000 SURFACE", "DM2000" };
+        if (profile == ld::kProfileX32)       return { InterfaceKind::X32, "X32 SURFACE", "X32" };
+        if (profile == ld::kProfileProMix01)  return { InterfaceKind::ProMix, "PROMIX SURFACE", "ProMix 01" };
+        if (profile == ld::kProfileYamaha02R) return { InterfaceKind::Yamaha02R, "02R SURFACE", "02R" };
+        if (profile == ld::kProfileSq5)       return { InterfaceKind::Sq5, "SQ-5 SURFACE", "SQ-5" };
+        if (profile == ld::kProfileYamaha01V) return { InterfaceKind::Yamaha01V, "01V SURFACE", "01V" };
+        if (profile == ld::kProfileDLive)     return { InterfaceKind::DLive, "DLIVE SURFACE", "dLive" };
+        return { InterfaceKind::Wing, "WING SURFACE", "WING" };
+    }
 } // namespace
 
 UniversalSkin::UniversalSkin (UiContext& c)
     : prevSceneKey ("PREV", themeOf (c).accent, themeOf (c)), nextSceneKey ("GO NEXT", themeOf (c).accent, themeOf (c)), clearSoloKey ("CLR SOLO", themeOf (c).solo, themeOf (c)),
       dimKey ("DIM", themeOf (c).solo, themeOf (c)), talkAKey ("TALK A", themeOf (c).solo, themeOf (c)), talkBKey ("TALK B", themeOf (c).solo, themeOf (c)),
       ctx (c), theme (themeOf (c)),
-      wingKey (c.engine.getProfile() == ld::kProfileXenyx1204 ? "1204USB SURFACE" : c.engine.getProfile() == ld::kProfileMidasPro2 ? "PRO2 SURFACE" : c.engine.getProfile() == ld::kProfileDm2000 ? "DM2000 SURFACE" : c.engine.getProfile() == ld::kProfileX32        ? "X32 SURFACE"
-               : c.engine.getProfile() == ld::kProfileProMix01 ? "PROMIX SURFACE"
-               : c.engine.getProfile() == ld::kProfileYamaha02R ? "02R SURFACE"
-               : c.engine.getProfile() == ld::kProfileSq5       ? "SQ-5 SURFACE"
-               : c.engine.getProfile() == ld::kProfileYamaha01V ? "01V SURFACE"
-               : c.engine.getProfile() == ld::kProfileDLive     ? "DLIVE SURFACE"
-                                                               : "WING SURFACE",
-               theme.accent, theme), showKey ("SHOW", theme.accent, theme), menuKey ("MENU", theme.accent, theme), mixer (c, theme), routingView (c, theme), fxRack (c, theme),
+      wingKey (backTo (c.engine.getProfile()).key, themeOf (c).accent, themeOf (c)), showKey ("SHOW", theme.accent, theme), menuKey ("MENU", theme.accent, theme), headerKey ("LESS", theme.accent, theme), mixer (c, theme), routingView (c, theme), fxRack (c, theme),
       monitoring (c, theme), scenes (c, theme), library (c, theme), recorder (c, theme), setup (c, theme), controls (c, theme), inspector (c, theme), bridge (c, theme), history (c.engine)
 {
     setLookAndFeel (&universal::lookAndFeelFor (theme));
@@ -43,27 +57,14 @@ UniversalSkin::UniversalSkin (UiContext& c)
         addAndMakeVisible (*key);
         viewKeys.push_back (std::move (key));
     }
-    // Switching rebuilds the window's skin: let the click return first.
-    // (An X32 console's surface is the X32's, a ProMix 01's the ProMix's.)
-    const auto back = ctx.engine.getProfile() == ld::kProfileMidasPro2 ? InterfaceKind::Pro2
-                      : ctx.engine.getProfile() == ld::kProfileX32        ? InterfaceKind::X32
-                      : ctx.engine.getProfile() == ld::kProfileProMix01 ? InterfaceKind::ProMix
-                      : ctx.engine.getProfile() == ld::kProfileYamaha02R ? InterfaceKind::Yamaha02R
-                      : ctx.engine.getProfile() == ld::kProfileSq5      ? InterfaceKind::Sq5
-                      : ctx.engine.getProfile() == ld::kProfileYamaha01V ? InterfaceKind::Yamaha01V
-                      : ctx.engine.getProfile() == ld::kProfileDLive    ? InterfaceKind::DLive
-                      : ctx.engine.getProfile() == ld::kProfileDm2000   ? InterfaceKind::Dm2000
-                      : ctx.engine.getProfile() == ld::kProfileXenyx1204 ? InterfaceKind::Xenyx1204
-                                                                        : InterfaceKind::Wing;
-    wingKey.onClick = [&context = ctx, back]
+    // Switching rebuilds the window's skin: let the click return first. A real console that the
+    // Universal Mixer controls (a later mode) names itself the same way, with its own `go`.
+    const auto back = backTo (ctx.engine.getProfile());
+    setBackTarget (back.key, back.name, [&context = ctx, kind = back.kind]
     {
-        juce::MessageManager::callAsync ([&context, back]
-        {
-            if (context.setInterface)
-                context.setInterface (back);
-        });
-    };
-    wingKey.setTooltip (back == InterfaceKind::Xenyx1204 ? "Back to the XENYX 1204USB surface" : back == InterfaceKind::Pro2 ? "Back to the PRO2 surface" : back == InterfaceKind::Dm2000 ? "Back to the DM2000 surface" : back == InterfaceKind::X32 ? "Back to the X32 surface" : back == InterfaceKind::ProMix ? "Back to the ProMix 01 surface" : back == InterfaceKind::Yamaha02R ? "Back to the 02R surface" : back == InterfaceKind::Sq5 ? "Back to the SQ-5 surface" : back == InterfaceKind::Yamaha01V ? "Back to the 01V surface" : back == InterfaceKind::DLive ? "Back to the dLive surface" : "Back to the WING surface");
+        if (context.setInterface)
+            context.setInterface (kind);
+    });
     addChildComponent (wingKey);
     wingKey.setVisible (true);
     // The show: NEW, OPEN, SAVE and SAVE AS (the shell's, as the WING's LIBRARY uses them).
@@ -96,6 +97,13 @@ UniversalSkin::UniversalSkin (UiContext& c)
     };
     menuKey.setTooltip ("Theme, views, show and scene commands");
     addAndMakeVisible (menuKey);
+    // The header's second row (the strips' controls and the show's keys) can be put away for strip height.
+    row2Shown = ctx.settings.getBoolValue (uiprefs::universalHeader, true);
+    headerKey.onClick = [this] { setSecondRowShown (! row2Shown); };
+    addAndMakeVisible (headerKey);
+    for (auto* part : mixer.getHeaderParts())
+        addChildComponent (*part); // the window's header holds the strips' controls
+    mixer.onHeaderChanged = [this] { layoutSecondRow(); };
     startTimerHz (5);
     addAndMakeVisible (showKey);
     addAndMakeVisible (mixer);
@@ -149,6 +157,16 @@ UniversalSkin::UniversalSkin (UiContext& c)
         resized();
     };
     refreshAll();
+    // Back from a console's surface: the view and the strips' filter and scroll where they were
+    // (the selected strip is the window's, so it stays across the swap).
+    if (const auto m = ctx.universalMemory; m.view >= 0 && m.view <= (int) View::Controls)
+    {
+        if (m.filter != mixer.getFilter())
+            mixer.setFilter (m.filter);
+        showView (static_cast<View> (m.view));
+        mixer.setScrollX (m.scrollX);
+    }
+    selectionChanged();
 }
 
 void UniversalSkin::setLightTheme (bool light)
@@ -193,6 +211,7 @@ juce::PopupMenu UniversalSkin::buildMenu()
     width.addItem (kMenuStripWidth + 2, "Wide", true, mixer.getStripLayout().widthMode == 2);
     menu.addSubMenu ("Strip width", width);
     menu.addItem (kMenuResetStrips, "Reset the strips' sections");
+    menu.addItem (kMenuHeader, "Second header row", true, row2Shown);
     menu.addSeparator();
     showMenu.addItem (1, "New show");
     showMenu.addItem (2, "Open...");
@@ -249,6 +268,8 @@ void UniversalSkin::runMenuCommand (int item)
         mixer.getStripLayout().reset();
         mixer.applyStripLayout();
     }
+    else if (item == kMenuHeader)
+        setSecondRowShown (! row2Shown);
     else if (item == kMenuShortcuts)
         showShortcuts();
     else if (item == kMenuSurface && wingKey.isVisible())
@@ -315,6 +336,8 @@ void UniversalSkin::showView (View v)
     controls.setVisible (v == View::Controls);
     for (auto& key : viewKeys)
         key->refresh();
+    if (getWidth() > 0)
+        resized(); // the second row follows the view
     // The view shown takes the console at once.
     switch (v)
     {
@@ -337,6 +360,37 @@ juce::String UniversalSkin::getSceneReadout() const
     return scene.has_value() ? juce::String (current + 1) + "   " + scene->name : juce::String();
 }
 
+UniversalSkin::~UniversalSkin()
+{
+    const int filter = mixer.getFilter();
+    ctx.universalMemory = { (int) view, filter > universal::MixerView::kDcas ? -1 : filter, mixer.getScrollX() };
+}
+
+void UniversalSkin::setBackTarget (const juce::String& keyText, const juce::String& consoleName, std::function<void()> go)
+{
+    backName = consoleName;
+    wingKey.setButtonText (keyText);
+    wingKey.setTooltip ("Back to the " + consoleName + " surface");
+    wingKey.onClick = [go = std::move (go)]
+    {
+        juce::MessageManager::callAsync (go);
+    };
+}
+
+void UniversalSkin::setConnection (const Connection& c)
+{
+    connection = c;
+    repaint();
+}
+
+void UniversalSkin::setSecondRowShown (bool shown)
+{
+    row2Shown = shown;
+    ctx.settings.setValue (uiprefs::universalHeader, shown);
+    resized();
+    repaint();
+}
+
 void UniversalSkin::timerCallback()
 {
     if (! isVisible() || isCovered())
@@ -354,7 +408,7 @@ void UniversalSkin::timerCallback()
     if (status != shownStatus)
     {
         shownStatus = status;
-        repaint (statusArea);
+        repaint (infoArea);
     }
 }
 
@@ -399,19 +453,54 @@ void UniversalSkin::refreshAll()
     repaint();
 }
 
+void UniversalSkin::layoutSecondRow()
+{
+    // The strips' controls, the left of the second row in the MIXER view.
+    mixer.layoutHeader (mixerKeysArea, view == View::Mixer && row2Shown && ! mixerKeysArea.isEmpty());
+}
+
 void UniversalSkin::paint (juce::Graphics& g)
 {
     g.fillAll (theme.background);
-    auto bar = getLocalBounds().removeFromTop (sizes::kTopBar);
-    universal::drawPlate (g, bar.toFloat(), theme.hw.plateTop, theme.hw.plateBottom, theme);
+    auto head = getLocalBounds().removeFromTop (headerHeight());
+    g.setColour (theme.panel); // the header is flat: the metal is for the strips
+    g.fillRect (head);
     g.setColour (theme.outline);
-    g.fillRect (bar.removeFromBottom (1));
+    g.fillRect (head.removeFromBottom (1));
+    if (row2Shown)
+        g.fillRect (0, sizes::kTopBar - 1, getWidth(), 1);
 
-    bar.reduce (sizes::kGapLarge, 0);
+    // The title, and under it the connection: LOCAL (this app's own mixer), later a real console
+    // the Universal Mixer controls (its name, CONNECTED or OFFLINE; its CONNECT key goes beside it).
+    auto title = titleArea;
     g.setColour (theme.text);
     g.setFont (type::font (type::kTitle, true));
-    const int titleWidth = 200;
-    g.drawText ("Universal Mixer", bar.removeFromLeft (titleWidth), juce::Justification::centredLeft);
+    g.drawFittedText ("Universal Mixer", title.withTrimmedBottom (20), juce::Justification::centredLeft, 1, 0.8f);
+    auto caption = title.removeFromBottom (22).withTrimmedBottom (4);
+    g.setColour (connection.remote && connection.connected ? theme.accent : theme.textDim);
+    g.fillEllipse (caption.removeFromLeft (10).withSizeKeepingCentre (7, 7).toFloat());
+    caption.removeFromLeft (4);
+    g.setFont (type::font (type::kCaption, true));
+    g.drawFittedText (connection.remote ? connection.console + (connection.connected ? "  CONNECTED" : "  OFFLINE") : juce::String ("LOCAL  PREVIEW"),
+                      caption, juce::Justification::centredLeft, 1, 0.8f);
+
+    // The second row where it has no controls of its own: the show, the console's counts, DSP and time.
+    if (! infoArea.isEmpty())
+    {
+        auto info = infoArea;
+        g.setColour (theme.textDim);
+        g.setFont (type::font (type::kLabel));
+        if (info.getWidth() > 760)
+            g.drawText (shownStatus, info.removeFromRight (190), juce::Justification::centredRight);
+        g.setColour (theme.text);
+        g.setFont (type::font (type::kValue, true));
+        g.drawFittedText (getShowTitle(), info.removeFromLeft (juce::jmin (260, info.getWidth() / 2)), juce::Justification::centredLeft, 1, 0.7f);
+        g.setColour (theme.textDim);
+        const auto font = type::font (type::kLabel);
+        g.setFont (font);
+        g.drawFittedText (juce::GlyphArrangement::getStringWidth (font, summary) * 0.8f <= (float) info.getWidth() ? summary : summaryShort,
+                          info, juce::Justification::centredLeft, 1, 0.8f);
+    }
     // The current scene, beside the keys that step through the show.
     if (! sceneArea.isEmpty())
     {
@@ -423,93 +512,94 @@ void UniversalSkin::paint (juce::Graphics& g)
         g.setFont (type::font (type::kLabel, true));
         g.drawFittedText (shownScene.isNotEmpty() ? shownScene : juce::String::fromUTF8 ("\xe2\x80\x94"), readout, juce::Justification::centredLeft, 1, 0.75f);
     }
-    // PREVIEW until Phase 2 is complete.
-    auto badge = bar.removeFromLeft (84).withSizeKeepingCentre (76, 24).toFloat();
-    g.setColour (theme.textDim);
-    g.setFont (type::font (type::kCaption, true));
-    g.drawText ("PREVIEW", badge, juce::Justification::centredLeft);
-    bar.removeFromLeft (sizes::kGapLarge);
-    if (bridge.isVisible())
-        bar.removeFromLeft (bridge.getWidth() + sizes::kGapLarge);
-    // The show's name left of its SHOW key; the console's counts between.
-    bar.removeFromRight ((wingKey.isVisible() ? wingKey.getWidth() + sizes::kGapLarge : 0) + showKey.getWidth() + sizes::kGapLarge + menuKey.getWidth() + sizes::kGapSmall);
-    auto showName = bar.removeFromRight (juce::jmin (320, bar.getWidth() / 3));
-    // DSP load and the time, left of the show's name, where there's room.
-    if (statusArea = bar.getWidth() > 760 ? bar.removeFromRight (170) : juce::Rectangle<int>(); ! statusArea.isEmpty())
-    {
-        g.setColour (theme.textDim);
-        g.setFont (type::font (type::kLabel));
-        g.drawText (shownStatus, statusArea, juce::Justification::centredRight);
-    }
-    g.setColour (theme.text);
-    g.setFont (type::font (type::kValue, true));
-    g.drawFittedText (getShowTitle(), showName, juce::Justification::centredRight, 1, 0.7f);
-    g.setColour (theme.textDim);
-    const auto countsFont = type::font (type::kLabel);
-    g.setFont (countsFont);
-    // The counts in full where they fit (squeezed a little at most), else the strips' alone.
-    const auto countsArea = bar.withTrimmedRight (sizes::kGapLarge);
-    const bool full = juce::GlyphArrangement::getStringWidth (countsFont, summary) * 0.8f <= (float) countsArea.getWidth();
-    g.drawFittedText (full ? summary : summaryShort, countsArea, juce::Justification::centredLeft, 1, 0.8f);
 }
 
 void UniversalSkin::resized()
 {
+    const int w = getWidth();
     auto area = getLocalBounds();
-    auto bar = area.removeFromTop (sizes::kTopBar).reduced (sizes::kGapLarge, (sizes::kTopBar - sizes::kTouch) / 2);
-    menuKey.setBounds (bar.removeFromRight (84));
-    bar.removeFromRight (sizes::kGapSmall);
-    if (wingKey.isVisible())
+    auto head = area.removeFromTop (headerHeight());
+    auto bar = head.removeFromTop (sizes::kTopBar).reduced (sizes::kGapLarge, (sizes::kTopBar - sizes::kTouch) / 2);
+    const auto fromRight = [] (juce::Rectangle<int>& r, juce::Component& key, int kw)
     {
-        wingKey.setBounds (bar.removeFromRight (160));
-        bar.removeFromRight (sizes::kGapLarge);
-    }
-    showKey.setBounds (bar.removeFromRight (112));
-    // The main output, where the bar has room for it beside the counts.
-    bridge.setVisible (getWidth() >= 1500);
-    bridge.setBounds (sizes::kGapLarge + 200 + 84 + sizes::kGapLarge, (sizes::kTopBar - 28) / 2, 220, 28);
-    auto keys = area.removeFromTop (sizes::kTabBar + sizes::kGap).reduced (sizes::kGap, sizes::kGapSmall);
-    // The show's keys at the right: all of them on a wide window, fewer on a narrower one, none
-    // at the smallest, where the view keys need the row.
-    const int width = keys.getWidth();
-    const bool talk = width >= 1760, quick = width >= 1400;
-    for (auto* key : { &dimKey, &talkAKey, &talkBKey })
-        key->setVisible (talk);
-    for (auto* key : { &prevSceneKey, &nextSceneKey, &clearSoloKey })
-        key->setVisible (quick);
-    sceneArea = {};
-    if (quick)
+        key.setBounds (r.removeFromRight (kw));
+        r.removeFromRight (sizes::kGapSmall);
+    };
+
+    // Row 1: the title and connection, the views, the console's way back, SHOW, MENU and the header's key.
+    headerKey.setButtonText (row2Shown ? "LESS" : "MORE");
+    headerKey.setTooltip (row2Shown ? "Hide the second header row for more strip height" : "Show the second header row");
+    fromRight (bar, headerKey, 64);
+    fromRight (bar, menuKey, 84);
+    fromRight (bar, wingKey, 160);
+    const bool showShown = w >= 1500;
+    showKey.setVisible (showShown);
+    if (showShown)
+        fromRight (bar, showKey, 96);
+    // With the second row put away, what a show needs stays on the first one where it fits.
+    const bool oneRow = ! row2Shown && w >= 1500;
+    for (auto* key : { &prevSceneKey, &talkAKey, &talkBKey })
+        key->setVisible (false);
+    for (auto* key : { &nextSceneKey, &clearSoloKey, &dimKey })
+        key->setVisible (oneRow);
+    if (oneRow)
     {
-        const auto fromRight = [&keys] (juce::Component& key, int w)
-        {
-            key.setBounds (keys.removeFromRight (w));
-            keys.removeFromRight (sizes::kGapSmall);
-        };
-        if (talk)
-        {
-            fromRight (talkBKey, 72);
-            fromRight (talkAKey, 72);
-            fromRight (dimKey, 64);
-        }
-        fromRight (clearSoloKey, 104);
-        keys.removeFromRight (sizes::kGap);
-        fromRight (nextSceneKey, 96);
-        fromRight (prevSceneKey, 64);
-        sceneArea = keys.removeFromRight (width >= 1760 ? 210 : 190).withTrimmedRight (sizes::kGap);
-        keys.removeFromRight (sizes::kGapLarge);
+        fromRight (bar, dimKey, 64);
+        fromRight (bar, clearSoloKey, 104);
+        fromRight (bar, nextSceneKey, 96);
     }
-    const int keyWidth = juce::jmin (quick ? 132 : 150, (keys.getWidth() - ((int) viewKeys.size() - 1) * sizes::kGapSmall) / juce::jmax (1, (int) viewKeys.size()));
+    titleArea = bar.removeFromLeft (w >= 1500 ? 250 : 180);
+    bar.removeFromLeft (sizes::kGap);
+    const int n = (int) viewKeys.size();
+    const bool bridgeShown = bar.getWidth() - (n * 104 + (n - 1) * sizes::kGapSmall) >= 236;
+    bridge.setVisible (bridgeShown);
+    if (bridgeShown)
+        bridge.setBounds (bar.removeFromRight (220).withSizeKeepingCentre (220, 28));
+    const int keyWidth = juce::jmin (124, (bar.getWidth() - (n - 1) * sizes::kGapSmall) / juce::jmax (1, n));
     for (auto& key : viewKeys)
     {
-        key->setBounds (keys.removeFromLeft (keyWidth));
-        keys.removeFromLeft (sizes::kGapSmall);
+        key->setBounds (bar.removeFromLeft (keyWidth));
+        bar.removeFromLeft (sizes::kGapSmall);
     }
+
+    // Row 2: the strips' controls (MIXER) or the show's details, and at the right what a show needs.
+    sceneArea = {};
+    infoArea = {};
+    mixerKeysArea = {};
+    if (row2Shown)
+    {
+        auto keys = head.reduced (sizes::kGap, sizes::kGapSmall);
+        const bool talk = w >= 1500, dim = w >= 1300, readout = w >= 1180;
+        for (auto* key : { &prevSceneKey, &nextSceneKey, &clearSoloKey })
+            key->setVisible (true);
+        dimKey.setVisible (dim);
+        for (auto* key : { &talkAKey, &talkBKey })
+            key->setVisible (talk);
+        if (talk)
+        {
+            fromRight (keys, talkBKey, 72);
+            fromRight (keys, talkAKey, 72);
+        }
+        if (dim)
+            fromRight (keys, dimKey, 64);
+        fromRight (keys, clearSoloKey, 104);
+        keys.removeFromRight (sizes::kGap);
+        fromRight (keys, nextSceneKey, 96);
+        fromRight (keys, prevSceneKey, 64);
+        if (readout)
+            sceneArea = keys.removeFromRight (w >= 1500 ? 210 : 170).withTrimmedRight (sizes::kGap);
+        keys.removeFromRight (sizes::kGapLarge);
+        (view == View::Mixer ? mixerKeysArea : infoArea) = keys;
+    }
+    layoutSecondRow();
+
     const bool showInspector = inspectorOpen && inspector.getStrip() != nullptr;
     inspector.setVisible (showInspector);
     if (showInspector)
         inspector.setBounds (area.removeFromRight (juce::jmin (460, area.getWidth() / 2)));
     for (auto* v : std::initializer_list<juce::Component*> { &mixer, &routingView, &fxRack, &monitoring, &scenes, &library, &recorder, &setup, &controls })
         v->setBounds (area);
+    repaint (getLocalBounds().removeFromTop (headerHeight()));
 }
 
 } // namespace livedaw::ui

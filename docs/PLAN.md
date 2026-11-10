@@ -145,7 +145,7 @@ The owner wants a lot of work done here; what comes first is theirs to say.
 - [ ] X32 display menus, still open (drawn dimmed for now): SETUP's system controls, sync, time; the DAW protocol
       of SETUP > remote; LIBRARY's .efx / .rou import and export; USB's recorder trim. The Monitor Source list's LR+C/M
       and PFL / AFL act as LR. Kept for remotes only (`/-prefs`): lamp, card mode, network fields, iQ, most of config.
-- [ ] X32: redo the lost sound measurements, committing tools and results as they're made.
+- [x] X32: measured corrections recovered from the original session (real X32 Compact, firmware 4.09), with tools and tables in `tools/x32`.
 
 ## 7. Release
 
