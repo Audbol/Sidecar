@@ -128,7 +128,8 @@ fn a_dlive_engine_holds_only_its_own_and_a_universal_any() {
         assert!(allowed_in(d, at(d, token), slots.end - 1), "{token}");
         assert!(!allowed_in(d, at(d, token), out), "{token} not on slot {out}");
     }
-    assert!(!allowed_in(d, at(d, "DLVSPACE"), 24), "the 25th is a Dyn8's");
+    assert!(!allowed_in(d, at(d, "DLVSPACE"), 24), "no 25th RackUltra engine");
+    assert!(!allowed_in(d, at(d, "DLVDYN8"), 24) && !allowed_in(d, at(d, "DLVTAP"), 64), "Dyn8s are no FX slots");
     let u = &universal::MODELS;
     assert!(allowed_in(u, at(u, "DLVSPACE"), 0) && allowed_in(u, at(u, "DLVSPACE"), 7));
     assert!(allowed_in(u, at(u, "DLVDYN8"), 0) && allowed_in(u, at(u, "DLVDYN8"), 23), "any FX slot");

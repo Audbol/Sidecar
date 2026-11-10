@@ -29,8 +29,8 @@ namespace
     const juce::Colour kLcd = hw::Look::promix().lcd, kLcdFrame = hw::Look::promix().lcd.darker (0.2f),
                        kPixel = hw::Look::promix().lcdPixel, kPixelDim = hw::Look::promix().lcdDim;
     // Its LEDs: SEL and ON red; its function keys' colours.
-    const juce::Colour kSelLed (0xffff3030), kOnLed (0xffff3030), kOrangeKey (0xffef9a5a), kBlueKey (0xffc6cee0),
-                       kGreenKey (0xffbcdcc2); // pastel, as on the owner's console
+    const juce::Colour kSelLed (0xffff3030), kOnLed (0xffff3030), kOrangeKey (0xfff7ae6e), kBlueKey (0xffd2d9e6),
+                       kGreenKey (0xffcbe2ca); // sampled from the owner's photos, the glare taken off
 
     // Parameter numbers (User's Guide, Add-5 to Add-15).
     constexpr int kChOn = 22, kChPan = 44, kSendLevel = 68, kSendPre = 136, kSend34Pan = 140, kCue = 157, kPhase = 179;
@@ -42,9 +42,96 @@ namespace
 
     // The LCD is 240 x 64 dots (counted on the owner's console): the pages are laid out
     // in the component's pixels, drawn on a bitmap one dot to a pixel, and shown as dots.
-    constexpr int kLcdDotsW = 240, kLcdDotsH = 64, kPixelsPerDot = 4;
-    const juce::Colour kDotBack (0xffa6dd10), kDotInk (0xff3c5a14);
-    float dotsPerX = 1.0f, dotsPerY = 1.0f; // this paint's: dots per component pixel
+    constexpr int kLcdDotsW = 240, kLcdDotsH = 64, kPixelsPerDot = 3;
+    // Sampled from the LCD photos; the FUNCTION / MEMORY / SEL CH text is paler than the page's in all four.
+    const juce::Colour kDotBack (0xffa9e406), kDotInk (0xff356000), kDotInkPale (0xff4f7c04);
+    // The pages are laid out on a fixed 840 x 224 and printed on the dots.
+    constexpr float kLayoutW = 840.0f, kLayoutH = 224.0f;
+    constexpr float dotsPerX = (float) kLcdDotsW / kLayoutW, dotsPerY = (float) kLcdDotsH / kLayoutH;
+
+    // Measured off the User's Guide's LCD pictures and the owner's LCD photos (Sidecar's transcription of the dots).
+    const char* const kStampMeterNums[] = { "..#....##....##.....#.........####....#...####...##..........##...#..#...#..#.#..#........#..#..#..#..#.###.#..#..", ".##...#..#..#..#...##.........#......#.......#..#..#........#..#..#.#.#.##.##.#.#.#.......#.#.#.#.##..#.#...#.#.#.", "..#...#..#.....#..#.#.........###...#.......#...#..#........#..#..#.#.#..#..#.#.#.#.......#...#.##.#..#.###.#.#...", "..#.....#....##...#.#............#..###....#.....##..........###..#.#.#..#..#.#...#.......#..#..##.#..#.#.#.#.##..", "..#....#.......#..####...........#..#..#...#....#..#...........#..#.#.#..#..#.#..#........#...#.#####.#...#.#.#.#.", "..#...#.....#..#....#.........#..#..#..#...#....#..#..........#...#.#.#..#..#.#.#.........#.#.#.#..#..#.#.#.#.#.#.", ".###..####...##.....#..........##....##....#.....##..........#....#..#...#..#.#.###.......#..#..#..#..#..#..#..#.." };
+    const char* const kStampStin[] = { "..############....", "..#..........#....", "..#....#.....#....", "..#....##....#....", "..#..#####...#....", "..#..######..#....", "..#..#####...#....", "..#....##....#....", "..#....#..####....", "..#.......###.....", "..#.......##......", "..#########.......", "..................", ".##..###..#.#..#..", "#..#..#...#.##.#..", "#.....#...#.##.#..", ".##...#...#.#.##..", "...#..#...#.#.##..", "#..#..#...#.#..#..", ".##...#...#.#..#.." };
+    const char* const kStampScale[] = { ".##..#...#.###..", "#..#.#...#.#..#.", "#....#...#.#..#.", "#....#...#.###..", "#..#.#...#.#....", ".##..###.#.#....", "................", "................", "...#....#...##..", "...#...##..#..#.", ".#####..#.....#.", "...#....#....#..", "...#....#...#...", ".......###.####.", "................", "................", "...#........##..", "...#.......#..#.", ".#####.....###..", "...#.......#..#.", "...#.......#..#.", "............##..", "................", "................", "............##..", "...........#..#.", "...........#..#.", "...........#..#.", "...........#..#.", "............##..", "................", "................", "........#...##..", ".......##..#..#.", ".####.#.#..#..#.", "......####.#..#.", "........#..#..#.", "........#...##.." };
+    const char* const kStampAx100[] = { "#.###.###", "#.#.#.#.#", "#.#.#.#.#", "#.#.#.#.#", "#.###.###" };
+    const char* const kStampAx1k[] = { "#...###.#..#", "#...#.#.#.#.", "#...#.#.##..", "#...#.#.#.#.", "#.#.###.#..#" };
+    const char* const kStampAx10k[] = { "..#.###.#..#", "..#.#.#.#.#.", "..#.#.#.##..", "..#.#.#.#.#.", "..#.###.#..#" };
+    const char* const kStampOval[] = { "...#...........#...", "..#.............#..", "..#.............##.", "...#...........###.", "....#############..", ".....###########..." };
+    const char* const kStampGrOut[] = { "..##..###.....##..#..#.###...", ".#..#.#..#...#..#.#..#..#....", ".#....#..#...#..#.#..#..#....", ".#.##.###....#..#.#..#..#....", ".#..#.#.#....#..#.#..#..#....", "..###.#..#....##...##...#...." };
+    const char* const kStampEdit[] = { "#########################", "###.....#....##.#.....###", "###.######.##.#.###.#####", "###....###.##.#.###.#####", "###.######.##.#.###.#####", "###.....#....##.###.#####", "#########################" };
+    const char* const kStampPan[] = { ".................................###..", "#####....##...##..##............##....", "##..##..####..##..##........#...##....", "##..##.##..##.###.##.......#..######..", "##..##.##..##.###.##......#..##.##.##.", "#####..######.######.....#...##.##.##.", "##.....##..##.##.###....#....##.##.##.", "##.....##..##.##.###...#......######..", "##.....##..##.##..##..#.........##....", "##.....##..##.##..##............##....", "..............................###....." };
+    struct DotGlyph { char c; const char* rows[10]; };
+    const DotGlyph kTitleFont[] = {
+        { '-', { ".....", ".....", ".....", ".....", "#####", ".....", ".....", ".....", ".....", "....." } },
+        { '1', { ".##.", "###.", ".##.", ".##.", ".##.", ".##.", ".##.", ".##.", "####", "...." } },
+        { '2', { ".####.", "##..##", "##..##", "....##", "...##.", "..##..", ".##...", "##....", "######", "......" } },
+        { '3', { ".####.", "##..##", "##..##", "....##", "..###.", "....##", "##..##", "##..##", ".####.", "......" } },
+        { '4', { "..###.", ".####.", "##.##.", "##.##.", "##.##.", "##.##.", "######", "...##.", "...##.", "......" } },
+        { 'A', { "..##..", ".####.", "##..##", "##..##", "######", "##..##", "##..##", "##..##", "##..##", "......" } },
+        { 'B', { "#####.", "##..##", "##..##", "##..##", "#####.", "##..##", "##..##", "##..##", "#####.", "......" } },
+        { 'C', { ".####.", "##..##", "##..##", "##....", "##....", "##..##", "##..##", "##..##", ".####.", "......" } },
+        { 'D', { "#####.", "##..##", "##..##", "##..##", "##..##", "##..##", "##..##", "##..##", "#####.", "......" } },
+        { 'E', { "######", "##....", "##....", "##....", "#####.", "##....", "##....", "##....", "######", "......" } },
+        { 'F', { "######", "##....", "##....", "##....", "#####.", "##....", "##....", "##....", "##....", "......" } },
+        { 'G', { ".####.", "##..##", "##..##", "##....", "##.###", "##..##", "##..##", "##..##", ".#####", "......" } },
+        { 'I', { "##", "##", "##", "##", "##", "##", "##", "##", "##", ".." } },
+        { 'L', { "##....", "##....", "##....", "##....", "##....", "##....", "##....", "##....", "######", "......" } },
+        { 'M', { "##...##", "###.###", "###.###", "#######", "##.#.##", "##.#.##", "##...##", "##...##", "##...##", "......." } },
+        { 'N', { "##..##", "##..##", "###.##", "###.##", "######", "##.###", "##.###", "##..##", "##..##", "......" } },
+        { 'O', { ".####.", "##..##", "##..##", "##..##", "##..##", "##..##", "##..##", "##..##", ".####.", "......" } },
+        { 'P', { "#####.", "##..##", "##..##", "##..##", "#####.", "##....", "##....", "##....", "##....", "......" } },
+        { 'Q', { ".####.", "##..##", "##..##", "##..##", "##..##", "##..##", "##..##", "##.###", ".####.", "....##" } },
+        { 'R', { "#####.", "##..##", "##..##", "##..##", "#####.", "##..##", "##..##", "##..##", "##..##", "......" } },
+        { 'S', { ".####.", "##..##", "##..##", "##....", ".####.", "....##", "##..##", "##..##", ".####.", "......" } },
+        { 'T', { "######", "..##..", "..##..", "..##..", "..##..", "..##..", "..##..", "..##..", "..##..", "......" } },
+        { 'U', { "##..##", "##..##", "##..##", "##..##", "##..##", "##..##", "##..##", "##..##", ".####.", "......" } },
+        { 'Y', { "##..##", "##..##", "##..##", "##..##", ".####.", "..##..", "..##..", "..##..", "..##..", "......" } },
+    };
+    const DotGlyph kSmallFont[] = {
+        { ' ', { "...", "...", "...", "...", "..." } },
+        { '.', { ".", ".", ".", ".", "#" } },
+        { '/', { "....#", "...#.", "..#..", ".#...", "#...." } },
+        { ':', { "##", "##", "..", "##", "##" } },
+        { '@', { ".###.", "#...#", "#.#.#", "#..#.", ".##.#" } },
+        { 'A', { ".###.", "#...#", "#####", "#...#", "#...#" } },
+        { 'C', { ".####", "#....", "#....", "#....", ".####" } },
+        { 'D', { "####.", ".#..#", ".#..#", ".#..#", "####." } },
+        { 'E', { "#####", "#....", "####.", "#....", "#####" } },
+        { 'F', { "#####", "#....", "####.", "#....", "#...." } },
+        { 'G', { ".####", "#....", "#.###", "#...#", ".####" } },
+        { 'H', { "#...#", "#...#", "#####", "#...#", "#...#" } },
+        { 'I', { "###", ".#.", ".#.", ".#.", "###" } },
+        { 'L', { "#....", "#....", "#....", "#....", "#####" } },
+        { 'M', { "#...#", "##.##", "#.#.#", "#...#", "#...#" } },
+        { 'N', { "#...#", "##..#", "#.#.#", "#..##", "#...#" } },
+        { 'O', { ".###.", "#...#", "#...#", "#...#", ".###." } },
+        { 'Q', { ".###..", "#...#.", "#.#.#.", "#..##.", ".###.#" } },
+        { 'R', { "####.", "#...#", "####.", "#..#.", "#...#" } },
+        { 'S', { ".####", "#....", ".###.", "....#", "####." } },
+        { 'T', { "#####", "..#..", "..#..", "..#..", "..#.." } },
+        { 'V', { "#...#", "#...#", "#...#", ".#.#.", "..#.." } },
+        { 'W', { "#...#", "#...#", "#.#.#", "#.#.#", ".#.#." } },
+        { 'o', { ".###.", "#...#", "#...#", "#...#", ".###." } },
+    };
+    struct Glyph57 { char c; uint8_t columns[5]; };
+    const Glyph57 kOwnGlyphs[] = {
+        { 'D', { 0x41, 0x7F, 0x41, 0x41, 0x3E } },
+        { 'N', { 0x7F, 0x06, 0x08, 0x30, 0x7F } },
+        { 'S', { 0x26, 0x49, 0x49, 0x49, 0x32 } },
+        { 's', { 0x58, 0x54, 0x54, 0x54, 0x64 } },
+        { 'B', { 0x41, 0x7F, 0x49, 0x49, 0x36 } },
+        { 'm', { 0x7C, 0x04, 0x78, 0x04, 0x78 } },
+        { 'G', { 0x3E, 0x41, 0x41, 0x49, 0x7A } },
+        { 'c', { 0x38, 0x44, 0x44, 0x44, 0x28 } },
+        { 'k', { 0x00, 0x7F, 0x10, 0x28, 0x44 } },
+        { 'W', { 0x7F, 0x20, 0x18, 0x20, 0x7F } },
+        { 'y', { 0x0E, 0x50, 0x50, 0x48, 0x3E } },
+        { 'g', { 0x0C, 0x52, 0x52, 0x4C, 0x3E } },
+        { 'u', { 0x3C, 0x40, 0x40, 0x3C, 0x40 } },
+        { '!', { 0x00, 0x00, 0x4F, 0x00, 0x00 } },
+        { 'f', { 0x00, 0x08, 0x7E, 0x09, 0x02 } },
+    };
+
 
     /** The LCD's lettering for a size the page asked for: a 3 x 5 font; its 5 x 7; the
         5 x 7 made taller and bold (the function's name); the 5 x 7 three times over. */
@@ -113,7 +200,12 @@ namespace
         }
         static const uint8_t plainZero[5] = { 0x3E, 0x41, 0x41, 0x41, 0x3E };
         static const uint8_t phase[5] = { 0x1C, 0x22, 0x7F, 0x22, 0x1C }; // PAN's sign, a ring with a stroke through it
-        const auto* glyph = c == 127 ? phase : c == '0' && d.widen > 1 ? plainZero : dots::kFont5x7[c >= 32 && c <= 126 ? (int) c - 32 : 0];
+        const uint8_t* own = nullptr;
+        if (d.widen == 1)
+            for (auto& o : kOwnGlyphs)
+                if ((juce::juce_wchar) o.c == c)
+                    own = o.columns; // the ProMix's own letter shapes
+        const auto* glyph = c == 127 ? phase : c == '0' && d.widen > 1 ? plainZero : own != nullptr ? own : dots::kFont5x7[c >= 32 && c <= 126 ? (int) c - 32 : 0];
         for (int y1 = 0; y1 < d.rows; ++y1)
         {
             const int row = y1 * 7 / d.rows;
@@ -123,6 +215,77 @@ namespace
                         dot (x + col * d.widen + w, y + y1);
         }
     }
+
+    void dotRect (juce::Graphics& g, int x, int y, int w, int h)
+    {
+        if (w > 0 && h > 0)
+            g.fillRect (juce::Rectangle<float> ((float) x / dotsPerX, (float) y / dotsPerY, (float) w / dotsPerX, (float) h / dotsPerY));
+    }
+
+    void dotFrame (juce::Graphics& g, int x, int y, int w, int h)
+    {
+        dotRect (g, x, y, w, 1);
+        dotRect (g, x, y + h - 1, w, 1);
+        dotRect (g, x, y, 1, h);
+        dotRect (g, x + w - 1, y, 1, h);
+    }
+
+    /** A bitmap of the LCD's, '#' a dot. */
+    template <size_t N>
+    void dotBitmap (juce::Graphics& g, const char* const (&rows)[N], int x, int y)
+    {
+        for (size_t r = 0; r < N; ++r)
+            for (int c = 0; rows[r][c] != 0; ++c)
+                if (rows[r][c] == '#')
+                    dotRect (g, x + c, y + (int) r, 1, 1);
+    }
+
+    /** The LCD's 5 x 7 at its own pitch of six dots. */
+    void dotLabel (juce::Graphics& g, const juce::String& s, int x, int y)
+    {
+        const auto text = dotPrintable (s);
+        for (auto c = text.getCharPointer(); ! c.isEmpty(); x += 6)
+            dotStamp (g, c.getAndAdvance(), x, y, kDotNormal);
+    }
+
+    /** Lays out (and, with a Graphics, prints) a variable-width dot font; returns the width. */
+    template <size_t N>
+    int fontLayout (const DotGlyph (&font)[N], int rows, int missing, bool digitGap, juce::Graphics* g, const juce::String& s, int x, int y)
+    {
+        const int start = x;
+        juce::juce_wchar last = 0;
+        for (auto p = s.getCharPointer(); ! p.isEmpty();)
+        {
+            const auto c = p.getAndAdvance();
+            const DotGlyph* glyph = nullptr;
+            for (auto& candidate : font)
+                if ((juce::juce_wchar) candidate.c == c)
+                    glyph = &candidate;
+            if (glyph == nullptr)
+            {
+                x += missing;
+                continue;
+            }
+            if (digitGap && juce::CharacterFunctions::isDigit (c) && juce::CharacterFunctions::isLetter (last))
+                ++x; // a digit after a letter stands a dot further off (SEND1)
+            int width = 0;
+            while (glyph->rows[0][width] != 0)
+                ++width;
+            if (g != nullptr)
+                for (int r = 0; r < rows; ++r)
+                    for (int col = 0; col < width; ++col)
+                        if (glyph->rows[r][col] == '#')
+                            dotRect (*g, x + col, y + r, 1, 1);
+            x += width + 1;
+            last = c;
+        }
+        return x - start - 1;
+    }
+
+    int dotTitleWidth (const juce::String& s) { return fontLayout (kTitleFont, 10, 4, true, nullptr, s, 0, 0); }
+    void dotTitle (juce::Graphics& g, const juce::String& s, int x, int y) { fontLayout (kTitleFont, 10, 4, true, &g, s, x, y); }
+    int dotSmallWidth (const juce::String& s) { return fontLayout (kSmallFont, 5, 6, false, nullptr, s, 0, 0); }
+    void dotSmall (juce::Graphics& g, const juce::String& s, int x, int y) { fontLayout (kSmallFont, 5, 6, false, &g, s, x, y); }
 
     /** The width of `s` on the LCD, in the component's pixels. */
     float dotWidth (const juce::Font& font, const juce::String& s)
@@ -302,19 +465,19 @@ namespace promix
         {
             // The slot is wide (about a sixth of the strip), black with a lit left wall, and
             // runs on above the 6 (the panel photos).
-            const auto slot = juce::Rectangle<float> (cx - 7.0f, t.getY() - 28.0f, 14.0f, t.getHeight() + 32.0f);
+            const auto slot = juce::Rectangle<float> (cx - 6.0f, t.getY() - 28.0f, 12.0f, t.getHeight() + 32.0f);
             g.setColour (juce::Colour (0xff0e0e0f));
             g.fillRoundedRectangle (slot, 2.5f);
             g.setColour (juce::Colour (0xff3b3833));
-            g.fillRoundedRectangle (slot.withWidth (6.0f).withTrimmedTop (2.0f), 1.5f);
+            g.fillRoundedRectangle (slot.withWidth (5.0f).withTrimmedTop (2.0f), 1.5f);
         }
         if (param < 0)
             return;
         // ST IN's cap light blue, RTN / SEND's salmon, ST OUT's dark grey (the console's).
         const auto capColour = param == 16 ? juce::Colour (0xff9fb3d6)
-                             : param >= 17 && param <= 20 ? juce::Colour (0xffe08a80)
-                             : param == 21 ? juce::Colour (0xff55585c) : juce::Colour (0xffd9d3bd);
-        hw::ribbedFaderCap (g, cx, yOf (step), 31.0f, 50.0f, 25.0f, capColour);
+                             : param >= 17 && param <= 20 ? juce::Colour (0xffe8a294)
+                             : param == 21 ? juce::Colour (0xff55585c) : juce::Colour (0xffe0d6ba);
+        hw::ribbedFaderCap (g, cx, yOf (step), 22.0f, 46.0f, 18.0f, capColour);
     }
 
     void Fader::mouseDown (const juce::MouseEvent&)
@@ -1532,7 +1695,7 @@ namespace promix
     {
         switch (function)
         {
-            case Function::Phase: return "PHASE";
+            case Function::Phase: return {}; // p.20: no second line
             case Function::Group: return "FADER";
             case Function::Pair: return "STEREO";
             case Function::Cue: return "CH VIEW";
@@ -1561,12 +1724,12 @@ namespace promix
     juce::Rectangle<float> Display::leftColumn() const
     {
         // Its rules and the page's divider sit where the photographed LCD has them.
-        return getLocalBounds().toFloat().reduced (8.0f, 10.0f).withWidth (177.0f);
+        return juce::Rectangle<float> (kLayoutW, kLayoutH).reduced (8.0f, 10.0f).withWidth (177.0f);
     }
 
     juce::Rectangle<float> Display::pageArea() const
     {
-        auto a = getLocalBounds().toFloat().reduced (14.0f, 4.0f);
+        auto a = juce::Rectangle<float> (kLayoutW, kLayoutH).reduced (14.0f, 4.0f);
         a.removeFromLeft (leftColumn().getWidth() + 16.0f); // the column and its rule
         return a.withTrimmedRight (26.0f);                  // the RTN / SEND arrow
     }
@@ -2118,65 +2281,51 @@ namespace promix
 
     void Display::paintLeftColumn (juce::Graphics& g) const
     {
-        // Down the LCD's left (as a console's): FUNCTION, MEMORY and SEL CH,
-        // ruled off from each other and, twice, from the page.
-        const auto col = leftColumn();
-        const float y1 = col.getY() + col.getHeight() * 0.30f, y2 = col.getY() + col.getHeight() * 0.747f; // as the photos' rules
+        // Down the LCD's left: FUNCTION, MEMORY and SEL CH, ruled off, a two-dot line from
+        // the page. Every position is in the LCD's dots (the owner's photos, the Guide's pictures).
         g.setColour (kPixel);
-        g.fillRect (col.getX(), y1, col.getWidth(), 2.0f);
-        g.fillRect (col.getX(), y2, col.getWidth(), 2.0f);
-        g.fillRect (col.getRight() + 2.0f, col.getY() - 2.0f, 7.0f, col.getHeight() + 4.0f); // two dots wide
+        dotRect (g, 1, 20, 52, 1);
+        dotRect (g, 1, 48, 52, 1);
+        dotRect (g, 53, 0, 2, 64);
 
-        // FUNCTION: its name, and a second line ("No.2").
-        auto fn = juce::Rectangle<float> (col.getX(), col.getY(), col.getWidth(), y1 - col.getY()).reduced (4.0f, 2.0f);
-        const auto sub = subtitle();
-        g.setFont (lcdFont (26.0f, true));
-        dotText (g, title(), fn.removeFromTop (fn.getHeight() * 0.55f).toNearestInt(), juce::Justification::centred, 2, 0.7f); // SCENE over MEMORY
-        if (sub.isNotEmpty())
+        const auto name = title();
+        if (name.startsWith ("PAN"))
+            dotBitmap (g, kStampPan, 9, 0);
+        else if (name.containsChar (' '))
         {
-            // "NO." with the processor's number larger, at the right (the COMP photo).
-            const bool numbered = sub.startsWith ("NO.");
-            auto line = fn;
-            if (numbered)
-            {
-                g.setFont (lcdFont (26.0f, true));
-                dotText (g, sub.fromLastOccurrenceOf (".", false, false), line.removeFromRight (30.0f), juce::Justification::centredRight);
-            }
-            g.setFont (lcdFont (type::kLabel, true));
-            dotText (g, numbered ? juce::String ("NO.") : sub, line.toNearestInt(), juce::Justification::centredRight, 2, 0.6f);
+            // SCENE over MEMORY; SEND over 3-4.
+            const auto first = name.upToFirstOccurrenceOf (" ", false, false), second = name.fromFirstOccurrenceOf (" ", false, false);
+            const bool send = first == "SEND";
+            dotTitle (g, first, send ? 5 : 11, 0);
+            dotTitle (g, second, send ? 12 : 6, 10);
         }
-
-        // MEMORY: the scene's title, the number (two digits, big), EDIT.
-        auto mem = juce::Rectangle<float> (col.getX(), y1 + 2.0f, col.getWidth(), y2 - y1 - 2.0f).reduced (2.0f, 2.0f);
-        g.setFont (lcdFont (type::kValue + 1.0f));
-        dotText (g, memoryName ? memoryName() : juce::String(), mem.removeFromTop (mem.getHeight() * 0.34f).toNearestInt(),
-                          juce::Justification::centredLeft, 1, 0.6f);
-        // The number: two wide digits, thirteen dots tall (the photos), in the LCD's dots.
-        const int number = chosenMemory ? chosenMemory() : 0;
+        else
+            dotTitle (g, name, name.startsWith ("SEND") ? 5 : name == "COMP" ? 14 : 27 - dotTitleWidth (name) / 2, 1);
+        const auto sub = subtitle();
+        if (sub.startsWith ("NO."))
         {
-            static constexpr DotSize kDotMemory { 12, 13, 2, false, false };
-            const auto digits = juce::String (number).paddedLeft ('0', 2);
-            const int x0 = juce::roundToInt ((mem.getX() + 2.0f) * dotsPerX), y0 = juce::roundToInt (mem.getBottom() * dotsPerY) - 13;
-            dotStamp (g, digits[0], x0, y0, kDotMemory);
-            dotStamp (g, digits[1], x0 + kDotMemory.advance, y0, kDotMemory);
+            // "No." small, the processor's number large (the COMP photo).
+            dotSmall (g, "No.", 28, 13);
+            dotTitle (g, sub.fromLastOccurrenceOf (".", false, false), 43, 9);
+        }
+        else if (sub == "EQ")
+            dotSmall (g, sub, 35, 13);
+        else if (sub.isNotEmpty())
+            dotSmall (g, sub, 27 - dotSmallWidth (sub) / 2, 13);
+
+        dotLabel (g, (memoryName ? memoryName() : juce::String()).substring (0, 8), 2, 24);
+        {
+            // Two wide digits, fourteen dots tall.
+            static constexpr DotSize kDotMemory { 12, 14, 2, false, false };
+            const auto digits = juce::String (chosenMemory ? chosenMemory() : 0).paddedLeft ('0', 2);
+            dotStamp (g, digits[0], 2, 33, kDotMemory);
+            dotStamp (g, digits[1], 14, 33, kDotMemory);
         }
         if (memoryEdited && memoryEdited())
-        {
-            // EDIT: inverted at the right, against the rule under it.
-            const juce::Rectangle<float> flag (mem.getRight() - 88.0f, mem.getBottom() - 24.0f, 86.0f, 24.0f);
-            g.fillRect (flag);
-            g.setColour (kLcd);
-            g.setFont (lcdFont (type::kLabel, true));
-            dotText (g, "EDIT", flag, juce::Justification::centred);
-            g.setColour (kPixel);
-        }
+            dotBitmap (g, kStampEdit, 27, 40);
 
-        // SEL CH: the selected channel.
-        auto sel = juce::Rectangle<float> (col.getX(), y2 + 2.0f, col.getWidth(), col.getBottom() - y2 - 2.0f).reduced (22.0f, 2.0f);
         const char* stripNames[] = { "ST IN", "RTN 1", "RTN 2", "ST OUT" };
-        g.setFont (lcdFont (type::kValue + 1.0f, false));
-        dotText (g, eqStrip < 16 ? "CH " + juce::String (eqStrip + 1) : juce::String (stripNames[eqStrip - 16]), sel.toNearestInt(),
-                          juce::Justification::centredLeft, 1, 0.6f);
+        dotLabel (g, eqStrip < 16 ? "CH " + juce::String (eqStrip + 1) : juce::String (stripNames[juce::jlimit (0, 3, eqStrip - 16)]), 8, 56);
     }
 
     void Display::paintEditHeader (juce::Graphics& g, juce::Rectangle<float> area, const juce::String& name, float width) const
@@ -2225,8 +2374,6 @@ namespace promix
             lowRes = juce::Image (juce::Image::RGB, kLcdDotsW, kLcdDotsH, false);
         {
             juce::Graphics g (lowRes);
-            dotsPerX = (float) kLcdDotsW / (float) getWidth();
-            dotsPerY = (float) kLcdDotsH / (float) getHeight();
             g.fillAll (kLcd);
             g.addTransform (juce::AffineTransform::scale (dotsPerX, dotsPerY));
             paintPage (g);
@@ -2245,24 +2392,317 @@ namespace promix
             shownDots = std::move (now);
             if (! dotsImage.isValid())
                 dotsImage = juce::Image (juce::Image::RGB, kLcdDotsW * kPixelsPerDot, kLcdDotsH * kPixelsPerDot, false);
-            const auto grid = kDotBack.darker (0.05f);
+            const auto grid = kDotBack.darker (0.05f), inkEdge = kDotInk.interpolatedWith (kDotBack, 0.4f), paleEdge = kDotInkPale.interpolatedWith (kDotBack, 0.4f);
             juce::Image::BitmapData out (dotsImage, juce::Image::BitmapData::writeOnly);
             for (int y = 0; y < out.height; ++y)
                 for (int x = 0; x < out.width; ++x)
                 {
                     const bool gap = x % kPixelsPerDot == kPixelsPerDot - 1 || y % kPixelsPerDot == kPixelsPerDot - 1;
-                    const bool on = shownDots[(size_t) ((y / kPixelsPerDot) * kLcdDotsW + x / kPixelsPerDot)] != 0;
-                    out.setPixelColour (x, y, gap ? grid : on ? kDotInk : kDotBack);
+                    const int dotX = x / kPixelsPerDot, dotY = y / kPixelsPerDot;
+                    const bool on = shownDots[(size_t) (dotY * kLcdDotsW + dotX)] != 0;
+                    const bool pale = dotX < 53 && dotY != 20 && dotY != 48; // the left column's text, not its rules
+                    out.setPixelColour (x, y, on ? (gap ? (pale ? paleEdge : inkEdge) : pale ? kDotInkPale : kDotInk) : gap ? grid : kDotBack);
                 }
         }
-        screen.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
+        screen.setImageResamplingQuality (juce::Graphics::lowResamplingQuality); // whole dots at the design size
         screen.drawImage (dotsImage, getLocalBounds().toFloat());
+    }
+
+    bool Display::paintExactPage (juce::Graphics& g)
+    {
+        // The pages the owner photographed, dot for dot (x, y in the LCD's 240 x 64): METER, PAN, COMP and EQ.
+        const bool eq = function == Function::EqLow || function == Function::EqMid || function == Function::EqHigh;
+        if (! eq && ! (page == 0 && (function == Function::Meter || function == Function::Pan || function == Function::Comp)))
+            return false;
+        g.setColour (kPixel);
+        const auto inverted = [&g] (int x, int y, int w, int h, const juce::String& s, int tx, int ty)
+        {
+            g.setColour (kPixel);
+            dotRect (g, x, y, w, h);
+            g.setColour (kLcd);
+            dotLabel (g, s, tx, ty);
+            g.setColour (kPixel);
+        };
+        const auto shown = [] (const Field& f)
+        {
+            return f.onEnter && f.pending >= 0 && f.pending != f.get() && f.textOf ? f.textOf (f.pending) + "?" : f.text().trim();
+        };
+        const auto bands = [&g] (int x, int rule, int w, int lit)
+        {
+            for (int b = 0; b < lit; ++b)
+                dotRect (g, x, rule - 6 - 8 * b, w, 6);
+        };
+        dotRect (g, 56, 48, 184, 1); // the rule under the page
+        if (function == Function::Meter)
+        {
+            dotBitmap (g, kStampScale, 74, 1);
+            dotBitmap (g, kStampMeterNums, 92, 40);
+            dotBitmap (g, kStampStin, 212, 27);
+            const auto& chs = ctx.engine.getChannels();
+            for (int r = 0; r < 5; ++r)
+                dotRect (g, 91, 7 + 8 * r, 116, 1);
+            for (int i = 0; i < 16; ++i)
+            {
+                const int cx = 94 + 30 * (i / 4) + 6 * (i % 4);
+                for (int r = 0; r < 5; ++r)
+                    dotRect (g, cx, 6 + 8 * r, 1, 1);
+                const float level = i < (int) chs.size() ? ctx.meters.get (chs[(size_t) i].get(), MeterPoint::Input, 0) : 0.0f;
+                const int lit = meterBands (juce::Decibels::gainToDecibels (level, -100.0f));
+                peaks[(size_t) i] = peakHold ? juce::jmax (peaks[(size_t) i], lit) : 0;
+                bands (cx - 2, 39, 4, lit);
+                if (peakHold && peaks[(size_t) i] > lit)
+                    dotFrame (g, cx - 2, 33 - 8 * (peaks[(size_t) i] - 1), 4, 4);
+            }
+            dotLabel (g, "PEAK HOLD:", 104, 53);
+            const auto value = fields[0].text();
+            inverted (164, 51, 21, 11, value, 164 + (22 - 6 * value.length()) / 2, 53);
+            return true;
+        }
+        if (function == Function::Comp)
+        {
+            dotLabel (g, "COMP", 62, 0);
+            dotRect (g, 66, 8, 14, 13);
+            g.setColour (kLcd);
+            const auto digit = juce::String (processor + 1);
+            dotTitle (g, digit, 73 - dotTitleWidth (digit) / 2, 10);
+            g.setColour (kPixel);
+            dotRect (g, 56, 23, 128, 1);
+            const char* const names[] = { "ON/OFF:", "PATCH :", "KEYIN :" };
+            for (int k = 0; k < 3; ++k)
+            {
+                const int y = 8 * k;
+                dotLabel (g, names[k], 98, y);
+                const auto value = shown (fields[(size_t) k]);
+                if (focus == k)
+                    inverted (139, juce::jmax (0, y - 1), 6 * value.length() + 1, y == 0 ? 8 : 9, value, 140, y);
+                else
+                    dotLabel (g, value, 140, y);
+            }
+            {
+                // Sidecar's own: the key's input (no such word on the photographed page).
+                const auto in = shown (fields[3]);
+                const int x = 184 - 6 * in.length();
+                if (focus == 3)
+                    inverted (x - 1, 7, 6 * in.length() + 1, 9, in, x, 8);
+                else
+                    dotLabel (g, in, x, 8);
+            }
+            {
+                auto& list = fields[4];
+                const int count = list.steps(), current = list.get(), chosen = list.pending >= 0 ? list.pending : juce::jmax (0, current);
+                for (int k = 0; k < 3; ++k)
+                {
+                    const int i = chosen - 1 + k, y = 24 + 8 * k;
+                    if (i < 0 || i >= count)
+                        continue;
+                    auto text = list.item (i);
+                    const int digits = juce::jmax (1, text.indexOfChar ('.'));
+                    if (i == current)
+                        text = text.replaceSection (digits, 1, "=");
+                    const int x = 74 - 6 * digits;
+                    if (i == chosen && focus == 4)
+                        inverted (58, y - 1, 119, 9, text, x, y);
+                    else
+                    {
+                        if (i == chosen)
+                            dotFrame (g, 58, y - 1, 119, 9);
+                        dotLabel (g, text, x, y);
+                    }
+                }
+            }
+            // STORE, RECALL, EDIT: thick along the right and the bottom (the COMP photo).
+            const struct { int x, w, field; const char* name; } keys[] = { { 59, 34, 5, "STORE" }, { 98, 39, 6, "RECALL" }, { 143, 27, 7, "EDIT" } };
+            for (auto& k : keys)
+            {
+                if (focus == k.field)
+                    inverted (k.x, 51, k.w, 12, k.name, k.x + 2, 53);
+                else
+                {
+                    dotFrame (g, k.x, 51, k.w, 12);
+                    dotRect (g, k.x + k.w - 1, 52, 1, 11);
+                    dotRect (g, k.x + 1, 62, k.w - 1, 1);
+                    dotLabel (g, k.name, k.x + 2, 53);
+                }
+            }
+            if (juce::isPositiveAndBelow (focus, (int) fields.size()) && fields[(size_t) focus].style == Field::Style::Button
+                && fields[(size_t) focus].textOf && fields[(size_t) focus].pending >= 0)
+                dotLabel (g, ("> " + fields[(size_t) focus].textOf (fields[(size_t) focus].pending)).substring (0, 11), 172, 53); // STORE's choice, waiting for ENTER
+            // At the right the processor's gain reduction (top down, p.72) and its output.
+            dotRect (g, 185, 0, 1, 47);
+            dotBitmap (g, kStampScale, 191, 1);
+            dotBitmap (g, kStampGrOut, 205, 41);
+            for (int r = 0; r < 5; ++r)
+            {
+                dotRect (g, 208, 7 + 8 * r, 24, 1);
+                for (int x : { 215, 222, 228 })
+                    dotRect (g, x, 6 + 8 * r, 1, 1);
+            }
+            const int patch = pm.get (kCompPatch + processor);
+            auto& e = ctx.engine;
+            auto pick = [] (const MixerEngine::StripList& l, int k) -> Strip* { return juce::isPositiveAndBelow (k, (int) l.size()) ? l[(size_t) k].get() : nullptr; };
+            Strip* st = patch >= 1 && patch <= 16 ? pick (e.getChannels(), patch - 1) : patch == 17 ? pick (e.getBuses(), 2)
+                      : patch == 18 ? pick (e.getBuses(), 3) : patch == 19 ? pick (e.getMains(), 0) : nullptr;
+            const float gr = st != nullptr ? std::abs (st->meters.dynReductionDb.load()) : 0.0f;
+            dotRect (g, 213, 0, 4, juce::roundToInt (juce::jlimit (0.0f, 1.0f, gr / 30.0f) * 39.0f));
+            bands (224, 39, 4, meterBands (juce::Decibels::gainToDecibels (st != nullptr ? ctx.meters.get (st, MeterPoint::Output, 0) : 0.0f, -100.0f)));
+            return true;
+        }
+        if (function == Function::Pan)
+        {
+            const auto ring = [&g] (int cx, int cy, int r)
+            {
+                for (int k = 0; k < 96; ++k)
+                {
+                    const float a = juce::MathConstants<float>::twoPi * (float) k / 96.0f;
+                    dotRect (g, cx + juce::roundToInt ((float) r * std::sin (a)), cy - juce::roundToInt ((float) r * std::cos (a)), 1, 1);
+                }
+            };
+            for (int ch = 0; ch < 16 && ch < (int) fields.size(); ++ch)
+            {
+                const auto& f = fields[(size_t) ch];
+                const int cx = 70 + 18 * (ch % 8), cy = ch < 8 ? 7 : 31, numberY = ch < 8 ? 16 : 40;
+                const int numberX = f.label.length() > 1 ? cx - 5 : cx - 2;
+                if (focus == ch)
+                    inverted (cx - 6, numberY - 1, 13, 9, f.label, numberX, numberY);
+                else
+                    dotLabel (g, f.label, numberX, numberY);
+                if (f.span == 0)
+                    continue; // a pair's: drawn with its partner
+                const bool pair = f.span == 2;
+                const int kx = pair ? cx + 9 : cx, r = pair ? 8 : 7;
+                ring (kx, cy, r);
+                if (pair)
+                    ring (kx, cy, 6);
+                const int steps = juce::jmax (2, f.steps());
+                const float t = (float) juce::jlimit (0, steps - 1, f.get()) / (float) (steps - 1);
+                const float a = juce::MathConstants<float>::pi * (-0.75f + 1.5f * t);
+                const float dx = std::sin (a), dy = -std::cos (a);
+                const int stem = pair ? 5 : 6;
+                for (int k = 0; k <= stem; ++k)
+                    dotRect (g, kx + juce::roundToInt (dx * (float) k), cy + juce::roundToInt (dy * (float) k), 2, 1);
+                // The tee at the pointer's end (the PAN photo).
+                const int tipX = kx + juce::roundToInt (dx * (float) stem), tipY = cy + juce::roundToInt (dy * (float) stem);
+                if (std::abs (dx) < 0.7f)
+                    dotRect (g, tipX - 1, tipY, 4, 1);
+                else
+                    dotRect (g, tipX, tipY - 1, 1, 4);
+            }
+            dotBitmap (g, kStampStin, 212, 27);
+            if (eqStrip < 16)
+            {
+                // The selected channel's pan as a slider.
+                dotLabel (g, juce::String (eqStrip + 1), 59, 56);
+                dotFrame (g, 68, 57, 70, 6);
+                const int steps = juce::jmax (2, pm.steps (kChPan + eqStrip));
+                dotRect (g, 68 + 69 * juce::jmax (0, pm.get (kChPan + eqStrip)) / (steps - 1) - 1, 55, 3, 9);
+                inverted (139, 54, 19, 10, pm.text (kChPan + eqStrip).trim(), 141, 56);
+            }
+            dotRect (g, 166, 49, 1, 15);
+            dotBitmap (g, kStampOval, 167, 50);
+            dotLabel (g, "CONTROL:", 185, 49);
+            if (fields.size() > 16)
+            {
+                const auto value = fields[16].text();
+                const int x = 199 - (6 * value.length() - 1) / 2;
+                if (focus == 16)
+                    inverted (x - 1, 56, 6 * value.length() + 1, 8, value, x, 57);
+                else
+                    dotLabel (g, value, x, 57);
+            }
+            return true;
+        }
+        // EQ: the curve (59 dots a decade, 15 rows to 18 dB), its table under it.
+        const int tick[] = { 3, 4, 3, 5, 3, 4, 3 };
+        for (int k = 0; k < 7; ++k)
+            dotRect (g, 56, 5 * k, tick[k], 1);
+        dotRect (g, 62, 15, 171, 1);
+        for (int x : { 95, 154, 213 })
+            dotRect (g, x, 13, 1, 5);
+        dotBitmap (g, kStampAx100, 90, 19);
+        dotBitmap (g, kStampAx1k, 149, 19);
+        dotBitmap (g, kStampAx10k, 208, 19);
+        {
+            const int e = eqStrip;
+            auto v = [this] (int n) { return juce::jmax (0, pm.get (n)); };
+            struct Band { double f, g, q; int shape; } curve[3];
+            for (int b = 0; b < 3; ++b)
+            {
+                const int fi = v (kEq + 20 * (3 * b) + e), gi = v (kEq + 20 * (3 * b + 1) + e), qi = v (kEq + 20 * (3 * b + 2) + e);
+                const float f = b == 2 ? kMid[30 + juce::jmin (fi, 25)] : kMid[juce::jmin (fi, b == 0 ? 30 : 55)];
+                const bool shelf = b != 1 && qi == 9;
+                curve[b] = { f, (double) (gi - 15), kQ[juce::jmin (qi, 8)], shelf ? (b == 0 ? 1 : 2) : 0 };
+            }
+            const bool on = v (kEqOn + e) != 0;
+            for (int x = 62; x <= 232; ++x)
+            {
+                const double f = 100.0 * std::pow (10.0, (double) (x - 95) / 59.0);
+                double db = 0.0;
+                if (on)
+                    for (auto& b : curve)
+                        if (b.g != 0.0)
+                            db += bandDb (f, b.f, b.g, b.q, b.shape);
+                const int y = 15 - juce::roundToInt (juce::jlimit (-18.0, 18.0, db) * 15.0 / 18.0);
+                dotRect (g, x, juce::jmin (y, 15), 1, std::abs (y - 15) + 1);
+            }
+            if (focus < 9)
+            {
+                const int x = juce::jlimit (62, 232, juce::roundToInt (95.0 + 59.0 * std::log10 (curve[focus / 3].f / 100.0)));
+                for (int y = 0; y <= 30; y += 2)
+                    dotRect (g, x, y, 1, 1);
+            }
+        }
+        // ON/OFF: ENTER's oval, the name on two lines, the value big in its box.
+        dotBitmap (g, kStampOval, 61, 29);
+        dotSmall (g, "ON/", 61, 37);
+        dotSmall (g, "OFF:", 61, 42);
+        if (fields.size() > 9)
+        {
+            const auto value = fields[9].text().trim();
+            if (focus == 9)
+                dotRect (g, 59, 50, 24, 14);
+            else
+                dotFrame (g, 59, 50, 24, 14);
+            g.setColour (focus == 9 ? kLcd : kPixel);
+            dotTitle (g, value, 71 - dotTitleWidth (value) / 2, 53);
+            g.setColour (kPixel);
+        }
+        // LOW, MID, HIGH on their tabs; G, F, Q boxed at the left; no rules between the rows.
+        const int cellX[] = { 101, 143, 185 }, valueEnd[] = { 140, 182, 224 };
+        dotRect (g, 87, 39, 140, 1);
+        dotRect (g, 87, 63, 140, 1);
+        dotRect (g, 87, 47, 13, 1);
+        dotRect (g, 87, 55, 13, 1);
+        dotRect (g, 87, 40, 1, 23);
+        dotRect (g, 100, 32, 1, 31);
+        dotRect (g, 226, 32, 1, 31);
+        for (int x : { 142, 184 })
+            dotRect (g, x, 32, 1, 7);
+        for (int x : cellX)
+            dotRect (g, x, 31, 41, 1);
+        dotSmall (g, "LOW", 113, 33);
+        dotSmall (g, "MID", 156, 33);
+        dotSmall (g, "HIGH", 195, 33);
+        dotSmall (g, "G", 92, 41);
+        dotSmall (g, "F", 92, 49);
+        dotSmall (g, "@", 92, 57);
+        for (int band = 0; band < 3; ++band)
+            for (int row = 0; row < 3; ++row)
+            {
+                const int index = 3 * band + row, y = 40 + 8 * row;
+                const auto text = fields[(size_t) index].text().trim();
+                const int x = valueEnd[band] - 6 * text.length();
+                if (focus == index)
+                    inverted (cellX[band], y, 41, 8, text, x, y);
+                else
+                    dotLabel (g, text, x, y);
+            }
+        return true;
     }
 
     void Display::paintPage (juce::Graphics& g)
     {
-        auto b = getLocalBounds().toFloat();
         paintLeftColumn (g);
+        const bool exact = paintExactPage (g);
 
         const auto area = pageArea();
         // The link to METER's or PAN's other page: a page with an arrow, its name under it.
@@ -2297,21 +2737,24 @@ namespace promix
         // Five rows evenly (the METER and COMP photos), each with a ruled line under it.
         auto paintScale = [&g] (juce::Rectangle<float> col, juce::Rectangle<float> lines)
         {
-            const char* marks[] = { "CLIP", "+12", "+ 6", "0", "-40" };
             const float rowH = col.getHeight() / 5.0f, dy = 1.0f / dotsPerY;
-            g.setFont (lcdFont (type::kCaption + 1.0f, true));
             g.setColour (kPixel);
             for (int r = 0; r < 5; ++r)
             {
                 const auto row = col.withY (col.getY() + rowH * (float) r).withHeight (rowH);
-                dotText (g, marks[r], row, juce::Justification::centredRight);
+                // The scale's own six-row figures, right-aligned, over the rule.
+                const int ruleY = juce::roundToInt ((row.getBottom() - dy) * dotsPerY), right = juce::roundToInt (col.getRight() * dotsPerX);
+                for (int k = 0; k < 6; ++k)
+                    for (int c = 0; kStampScale[8 * r + k][c] != 0; ++c)
+                        if (kStampScale[8 * r + k][c] == '#')
+                            dotRect (g, right - 16 + c, ruleY - 6 + k, 1, 1);
                 const float y = (float) juce::roundToInt ((row.getBottom() - dy) * dotsPerY) / dotsPerY;
                 g.fillRect (lines.getX(), y, lines.getWidth(), dy);
             }
         };
         // The meter at the right of a page (COMP's, a SEND's): where the COMP photo has it.
         const auto rightMeter = [&area] { return juce::Rectangle<float> (area.getX() + area.getWidth() * 0.725f, area.getY(), area.getWidth() * 0.275f, area.getHeight() * 0.72f); };
-        switch (function)
+        if (! exact) switch (function)
         {
             case Function::Comp:
             {
@@ -2812,43 +3255,30 @@ namespace promix
             default:
                 break;
         }
-        for (size_t i = 0; i < fields.size(); ++i)
+        for (size_t i = 0; ! exact && i < fields.size(); ++i)
             if (! boxOf (fields[i]).isEmpty())
                 paintField (g, fields[i], (int) i == focus);
-        // The LCD's dot matrix: 240 x 64 dots, the gaps between them in the backlight.
-        {
-            const auto screen = b.reduced (6.0f);
-            const float pitchX = screen.getWidth() / 240.0f, pitchY = screen.getHeight() / 64.0f;
-            g.setColour (kLcd.withAlpha (0.42f));
-            for (int x = 1; x < 240; ++x)
-                g.fillRect (screen.getX() + pitchX * (float) x - 0.35f, screen.getY(), 0.7f, screen.getHeight());
-            for (int y = 1; y < 64; ++y)
-                g.fillRect (screen.getX(), screen.getY() + pitchY * (float) y - 0.35f, screen.getWidth(), 0.7f);
-        }
-        // Down the right edge, at the legends: what the RTN / SEND strip is, an inverted
-        // block with an arrow; a small cross at the other three (every photo).
+        // Down the right edge, at the legends: what the RTN / SEND strip is, a block with an
+        // arrow cut out of it; a small cross at the other three (every photo).
         if (rtnSendShown)
         {
             const int shownRow = juce::jlimit (0, 3, rtnSendShown());
-            const float rows[] = { 0.13f, 0.355f, 0.585f, 0.815f };
             g.setColour (kPixel);
             for (int k = 0; k < 4; ++k)
             {
-                const float y = b.getY() + b.getHeight() * rows[k], x = b.getRight() - 30.0f;
+                const int cy = 7 + 16 * k;
                 if (k == shownRow)
                 {
-                    const auto block = juce::Rectangle<float> (19.0f, 46.0f).withCentre ({ x, y });
-                    g.fillRect (block);
-                    juce::Path arrow;
-                    arrow.addTriangle (x - 5.0f, y - 7.0f, x - 5.0f, y + 7.0f, x + 7.0f, y);
+                    dotRect (g, 235, cy - 7, 5, 15);
                     g.setColour (kLcd);
-                    g.fillPath (arrow);
+                    for (int d = -3; d <= 3; ++d)
+                        dotRect (g, d == 0 ? 235 : 236, cy + d, 4 - std::abs (d), 1);
                     g.setColour (kPixel);
                 }
                 else
                 {
-                    g.fillRect (juce::Rectangle<float> (10.0f, 3.5f).withCentre ({ x, y }));
-                    g.fillRect (juce::Rectangle<float> (3.5f, 10.0f).withCentre ({ x, y }));
+                    dotRect (g, 237, cy, 3, 1);
+                    dotRect (g, 238, cy - 1, 1, 3);
                 }
             }
         }
@@ -2857,14 +3287,15 @@ namespace promix
     void Display::mouseDown (const juce::MouseEvent& e)
     {
         dragY = (float) e.y;
+        const juce::Point<float> at (e.position.x * kLayoutW / (float) juce::jmax (1, getWidth()), e.position.y * kLayoutH / (float) juce::jmax (1, getHeight()));
         for (size_t i = 0; i < fields.size(); ++i)
-            if (boxOf (fields[i]).contains (e.position))
+            if (boxOf (fields[i]).contains (at))
             {
                 focus = (int) i;
                 repaint();
                 return;
             }
-        if (function == Function::Meter || (function == Function::Pan && (page == 1 || pageLink().contains (e.position))))
+        if (function == Function::Meter || (function == Function::Pan && (page == 1 || pageLink().contains (at))))
             setPage (page == 0 ? 1 : 0);
     }
 
@@ -3298,8 +3729,9 @@ void ProMixSurface::paint (juce::Graphics& g)
                                                      end.getY(), false));
             g.fillRect (end);
         }
-        // The owner's console: a flat, even mid grey (no brushing).
-        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff7b7c7f), body.getX(), body.getY(), juce::Colour (0xff6a6b6e), body.getX(), body.getBottom(), false));
+        // The owner's console: a flat warm grey, no brushing, sampled from the straight-on photo
+        // (daylight: the top of the photo reads brighter than the bottom).
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xffa09f9d), body.getX(), body.getY(), juce::Colour (0xff83827f), body.getX(), body.getBottom(), false));
         g.fillRect (body);
         // Above each fader, a band of fine pale lines printed on the panel.
         g.setColour (juce::Colour (0xffa9adb2).withAlpha (0.8f));
@@ -3333,7 +3765,7 @@ void ProMixSurface::paint (juce::Graphics& g)
             plate = plate.createPathWithRoundedCorners (10.0f);
             g.setColour (juce::Colours::black.withAlpha (0.35f));
             g.fillPath (plate, juce::AffineTransform::translation (0.0f, 2.0f));
-            g.setColour (juce::Colour (0xff66676a));
+            g.setColour (juce::Colour (0xff918f8d)); // a little darker than the panel (the photo)
             g.fillPath (plate);
             g.setColour (juce::Colours::white.withAlpha (0.12f));
             g.strokePath (plate, juce::PathStrokeType (1.0f));
@@ -3344,6 +3776,9 @@ void ProMixSurface::paint (juce::Graphics& g)
             g.fillRoundedRectangle (window, 3.0f);
             g.setColour (juce::Colours::black);
             g.drawRoundedRectangle (window, 3.0f, 2.0f);
+            // The backlight shows past the dots: 2 dots left, 7 right, about 3 above and below (the photos).
+            g.setColour (kDotBack);
+            g.fillRect (lcdLit);
         }
         // The PARAMETER wheel, panel grey: a deep knurled rim, a broad dished top and a
         // large finger dimple (the photos).
@@ -3402,12 +3837,12 @@ void ProMixSurface::paint (juce::Graphics& g)
         const auto lcd = display.getBounds().toFloat();
         const char* left[] = { "FUNCTION", "MEMORY", "SEL CH" };
         for (int k = 0; k < 3; ++k)
-            hw::silk (g, juce::Rectangle<float> (lcd.getX() - 76.0f, lcd.getY() + lcd.getHeight() * promix::Display::kLeftRows[k] - 7.0f, 70.0f, 14.0f), left[k],
-                      look(), 10.0f, juce::Justification::centredRight);
+            hw::silk (g, juce::Rectangle<float> ((float) lcdLit.getX() - 82.0f, lcd.getY() + lcd.getHeight() * promix::Display::kLeftRows[k] - 8.0f, 78.0f, 16.0f), left[k],
+                      look(), 12.0f, juce::Justification::centredRight);
         const char* right[] = { "RTN   1", "RTN   2", "SEND 3", "SEND 4" };
         for (int k = 0; k < 4; ++k)
-            hw::silk (g, juce::Rectangle<float> (lcd.getRight() + 6.0f, lcd.getY() + lcd.getHeight() * promix::Display::kRightRows[k] - 7.0f, 60.0f, 14.0f), right[k],
-                      look(), 10.0f, juce::Justification::centredLeft);
+            hw::silk (g, juce::Rectangle<float> ((float) lcdLit.getRight() + 5.0f, lcd.getY() + lcd.getHeight() * promix::Display::kRightRows[k] - 8.0f, 70.0f, 16.0f), right[k],
+                      look(), 12.0f, juce::Justification::centredLeft);
     }
 
     // The analog row along the top, drawn as on the panel (they aren't Sidecar's
@@ -3431,7 +3866,7 @@ void ProMixSurface::paint (juce::Graphics& g)
         {
             g.setColour (juce::Colours::black.withAlpha (0.55f));
             g.fillRoundedRectangle (r.translated (1.5f, 2.5f), 1.5f);
-            g.setGradientFill (juce::ColourGradient (juce::Colour (0xff8c8d8e), r.getX(), r.getY(), juce::Colour (0xff6b6c6e), r.getX(), r.getBottom(), false));
+            g.setGradientFill (juce::ColourGradient (juce::Colour (0xffa19f97), r.getX(), r.getY(), juce::Colour (0xff77766f), r.getX(), r.getBottom(), false));
             g.fillRoundedRectangle (r, 1.5f);
             g.setColour (juce::Colours::black.withAlpha (0.35f));
             g.drawRoundedRectangle (r, 1.5f, 1.0f);
@@ -3643,11 +4078,9 @@ void ProMixSurface::resized()
     contrastKnob = meterColumn.removeFromTop (54).withSizeKeepingCentre (38, 38).translated (-6, 0);
     meterRect = meterColumn.reduced (8, 4);
     lcdWindow = upper.withTrimmedLeft (4);
-    upper.removeFromLeft (96);  // FUNCTION, MEMORY, SEL CH
-    upper.removeFromRight (74); // RTN 1 ... SEND 4
-    // 240 x 64 dots at 3.5 pixels a dot: the real panel's LCD is relatively smaller,
-    // this is so that it can be read on a screen.
-    display.setBounds (upper.withSizeKeepingCentre (juce::jmin (840, upper.getWidth()), 224));
+    // 240 x 64 dots at 3 pixels a dot (whole dots), with the backlight's margin (249 x 70 dots), centred in the black window.
+    lcdLit = lcdWindow.withSizeKeepingCentre (747, 210);
+    display.setBounds (lcdLit.getX() + 6, lcdLit.getY() + 8, 720, 192);
     // ENTER, an oval, beside the PARAMETER wheel; the cursor keys in a diamond under it.
     wheel->setBounds (right.removeFromRight (170).withSizeKeepingCentre (156, 156).withY (right.getY() + 36));
     right.removeFromRight (8);

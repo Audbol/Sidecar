@@ -2,7 +2,8 @@
 //! switches, labels, value text) from the same tables the DSP uses.
 //!
 //! Tables: 0 = dynamics models (GATE and DYNAMICS slots), 1 = channel EQ
-//! models, 2 = bus/main/matrix EQ models, 3 = filter tools, 4 = FX rack devices.
+//! models, 2 = bus/main/matrix EQ models, 3 = filter tools, 4 = FX rack devices,
+//! 5 = a dLive RackUltra engine's channel strip (one model, on every console).
 //! Lists: 0 = process
 //! orders, 1 = tap points, 2 = sidechain filters, 3 = crossover types,
 //! 4 = bus send modes, 5 = delay units, 6 = post insert modes, 7 = monitor
@@ -35,8 +36,15 @@ pub extern "C" fn ld_models_show_profile(profile: i32) {
     SHOWN_PROFILE.store(profile, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// Model table 5: the channel strip of a dLive's RackUltra engine, its one model's
+/// parameters in the order of the strip's values (`ld_ufx_strip_values`).
+const UFX_STRIP_TABLE: i32 = 5;
+
 /// The host's model tables: the shown profile's (`ProfileSpec::models`).
 fn table(t: i32) -> &'static [ModelSpec] {
+    if t == UFX_STRIP_TABLE {
+        return std::slice::from_ref(&livedaw_dsp::dlive_fx::ultra::strip::STRIP);
+    }
     crate::profile_of(SHOWN_PROFILE.load(std::sync::atomic::Ordering::Relaxed)).spec().models.table(t)
 }
 

@@ -55,6 +55,19 @@ constexpr int kWingMuteGroups = 8;
 constexpr int kMaxFx = 64;
 /** The WING's FX slots: the default number in use and the ones the WING remote sees. */
 constexpr int kWingFx = 16;
+/** A dLive's RackUltra (UFX) engines: FX slots kUfxFirst .. kUfxFirst + kNumUfx - 1 (FX 17-24),
+    each with a channel strip of kUfxStripParams values (model table kUfxStripTable, its one
+    model; ld_ufx_strip_*) and kUfxStripMeters gain-reduction meters (pre, post dynamics). */
+constexpr int kNumUfx = 8;
+constexpr int kUfxFirst = 16;
+constexpr int kUfxStripParams = 49;
+constexpr int kUfxStripMeters = 2;
+constexpr int kUfxStripTable = 5;
+/** A dLive's Dyn8 engines. They are not FX slots (kMaxFx stays 64): an insert names Dyn8 n
+    (from 0) as fx = kDyn8FxBase + n, and the ld_fx_* calls that read a slot take that number
+    too; their settings are an FxParams each outside EngineControls (ld_fx_params). */
+constexpr int kNumDyn8 = 64;
+constexpr int kDyn8FxBase = kMaxFx;
 constexpr int kWingChannels = 40;
 constexpr int kWingBuses = 16;
 constexpr int kMaxDynParams = 20;
@@ -108,9 +121,10 @@ constexpr int kNumUserPatches = 32;
 constexpr int kNumUsrSources = kNumUserSignals + kNumUserPatches;
 /** The FX returns (Phase 4 step 9c, an X32's FX 1-4 on its FX return
     channels): FX slot n's stereo output as a send effect is input
-    kFxReturnSourceBase + 2n (L) and + 2n + 1 (R), n < kNumSendFx. */
+    kFxReturnSourceBase + 2n (L) and + 2n + 1 (R), n < kNumSendFx.
+    24 since a dLive's RackUltra engines (FX 17-24) have returns too; it was 16. */
 constexpr int32_t kFxReturnSourceBase = 0x60000;
-constexpr int kNumSendFx = 16;
+constexpr int kNumSendFx = 24;
 /** DYNAMICS KEY SOURCE of aux, buses, mains and matrices (DynSlotParams::scSource):
     kKeyStripBase * kind (StripKindId) + index; they take one of kNumOutputKeyTaps taps. */
 constexpr int32_t kKeyStripBase = 0x10000;
@@ -1022,7 +1036,7 @@ struct PortGroupC
 static_assert (sizeof (PortGroupC) == 52);
 
 /** A console model's surface and local I/O (ld_console_model_info). Models:
-    0 the full-size WING, 1 the WING COMPACT (2 is kept for the RACK). */
+    0 the full-size WING, 1 the WING COMPACT, 2 the WING RACK. */
 struct ConsoleModelInfo
 {
     int32_t faders;       // motor faders (the COMPACT's fader 13 included)
@@ -1309,6 +1323,10 @@ extern "C"
     /** Sets the FX slots in use (clamped to kWingFx..kMaxFx and never below a slot
         in use, ld_engine_fx_in_use); returns the number set. */
     int32_t ld_engine_set_num_fx (const Engine*, int32_t count);
+    /** The console's own state text (a surface's groups and pairs: it goes with shows and scenes). */
+    LdString* ld_engine_console_text (const Engine*);
+    uint64_t ld_engine_console_version (const Engine*);
+    uint64_t ld_engine_set_console_text (const Engine*, const char* utf8, size_t len);
     /** The FX slot holds something (any model but NONE) or a strip's insert is assigned to it. */
     bool ld_engine_fx_in_use (const Engine*, int32_t slot);
     /** Adds a bus beyond the console's 16 (null if no slot is free). */
@@ -1350,6 +1368,46 @@ extern "C"
     void ld_fx_clear_flags (const Engine*, int32_t slot);
     float ld_fx_load (const Engine*, int32_t slot);
     int32_t ld_fx_num_users (const Engine*, int32_t slot);
+
+    // A dLive's RackUltra strips and Dyn8 engines; every FX engine's key source, the
+    // Global Key and MIDI notes. `slot` is an FX slot or kDyn8FxBase + a Dyn8 engine:
+    // ld_fx_meter, ld_fx_band_gain, ld_fx_readouts, ld_fx_state, ld_fx_clear_flags,
+    // ld_fx_load, ld_fx_num_users and ld_fx_latency take a Dyn8's number too
+    // (ld_fx_set_model, ld_fx_set and ld_fx_replace don't: its model is fixed).
+    /** The settings of FX slot `slot` (EngineControls::fx[slot]) or of Dyn8 engine
+        slot - kDyn8FxBase (values in Dyn8's parameter order); null for neither. */
+    const FxParams* ld_fx_params (const Engine*, int32_t slot);
+    /** The console has RackUltra and Dyn8 engines (a dLive). */
+    bool ld_engine_has_ufx (const Engine*);
+    /** Message thread: the Dyn8 engines some insert names, a bit each (engine 1 = bit 0). */
+    uint64_t ld_dyn8_in_use (const Engine*);
+    /** An engine's external key (Dyn8's External key, the Dual AutoKey Harmoniser's side
+        chain, a RackUltra strip's EXTERNAL): its source as DynSlotParams::scSource holds one
+        (an input channel's index, or kKeyStripBase * kind + index; -1 = none) and its tap as
+        DynSlotParams::scTap. Set, it is heard after the next ld_engine_collect. */
+    int32_t ld_fx_key_source (const Engine*, int32_t slot);
+    int32_t ld_fx_key_tap (const Engine*, int32_t slot);
+    bool ld_fx_set_key (const Engine*, int32_t slot, int32_t source, int32_t tap);
+    /** FX slot `slot` runs its device in a RackUltra strip (a dLive's FX 17-24). */
+    bool ld_ufx_is_strip (const Engine*, int32_t slot);
+    /** The strip's kUfxStripParams values, in model table kUfxStripTable's parameter order
+        (null without a strip): bind them as a device's values. */
+    const std::atomic<float>* ld_ufx_strip_values (const Engine*, int32_t slot);
+    bool ld_ufx_strip_set_value (const Engine*, int32_t slot, int32_t param, float value);
+    void ld_ufx_strip_reset (const Engine*, int32_t slot);
+    /** Gain reduction in dB (<= 0): which 0 = the pre dynamics, 1 = the post dynamics.
+        (The strip's input and output levels are the slot's, ld_fx_readouts.) */
+    float ld_ufx_strip_meter (const Engine*, int32_t slot, int32_t which);
+    /** The first value of a section of the strip: 0 pre PEQ (In, then the 4-band PEQ's 14),
+        1 pre dynamics (9), 2 post dynamics (9), 3 post PEQ (15), 4 Width (1); -1 otherwise. */
+    int32_t ld_ufx_strip_section (int32_t section);
+    /** The console-wide Global Key: what 0 = key (0 C .. 11 B), 1 = scale (0 Major, 1 Minor,
+        2 Chromatic). Saved in shows and recalled with the FX. */
+    int32_t ld_engine_global_key (const Engine*, int32_t what);
+    void ld_engine_set_global_key (const Engine*, int32_t key, int32_t scale);
+    /** Any thread, lock-free: a MIDI note for the FX devices that follow notes (the MIDI
+        Harmoniser, the Vocal Tuner's note snap); velocity 0 = note off. */
+    void ld_fx_midi_note (const Engine*, int32_t note, int32_t velocity);
 
     // Plugin delay compensation (ABI 10): every bus, main and matrix reads its
     // sources delayed so that paths through plugins of different latencies
@@ -1437,7 +1495,8 @@ extern "C"
     /** Takes user tap `id` out of the chain (sends taking it go silent). */
     bool ld_engine_remove_tap (const Engine*, const Strip*, int32_t id);
 
-    // Model tables: 0 = dynamics models, 1 = channel EQ models, 2 = bus EQ models, 3 = filter tools.
+    // Model tables: 0 = dynamics models, 1 = channel EQ models, 2 = bus EQ models, 3 = filter tools,
+    // 4 = FX devices, 5 (kUfxStripTable) = a RackUltra engine's channel strip (one model).
     int32_t ld_model_count (int32_t table);
     /** what: 0 = token ("COMP"), 1 = display name. */
     LdString* ld_model_text (int32_t table, int32_t model, int32_t what);
@@ -1661,7 +1720,8 @@ extern "C"
     void ld_layers_set_fitted_width (LayerSet*, int32_t section, int32_t width);
     int32_t ld_layers_effective_width (LayerSet*, int32_t section);
     /** The console model the surface shows (0 full size, 1 COMPACT: the left section is the
-        COMPACT's 12 faders with its nine layer keys). Kept by resets and show loads. */
+        COMPACT's 12 faders with its nine layer keys; 2 RACK: the left section is its
+        four-channel section with its five layers). Kept by resets and show loads. */
     void ld_layers_set_model (LayerSet*, int32_t model);
     int32_t ld_layers_model (LayerSet*);
     /** A console model's surface and I/O (unknown models: the full-size console's). */
@@ -2217,7 +2277,8 @@ extern "C"
     void ld_wing_stop (LdWing*);
     bool ld_wing_running (LdWing*);
     void ld_wing_set_name (LdWing*, const char* name, size_t len);
-    /** The model the console reports (0 full size: "ngc-full", 1 COMPACT: "wing-compact"),
+    /** The model the console reports (0 full size: "ngc-full", 1 COMPACT: "wing-compact",
+        2 RACK: "wing-rack"),
         at once and across restarts. */
     void ld_wing_set_model (LdWing*, int32_t model);
     /** The full-size console is the black WING: it reports "wing-bk" instead of "ngc-full"

@@ -1455,9 +1455,10 @@ pub unsafe extern "C" fn ld_layers_set_fitted_width(l: *mut LayerSet, section: i
     }
 }
 
-/// The console model the surface shows (0 full size, 1 COMPACT; see
+/// The console model the surface shows (0 full size, 1 COMPACT, 2 RACK; see
 /// `livedaw_session::model`): the COMPACT's section is the left one, 12
-/// faders with nine layer keys. An app setting, kept by resets and loads.
+/// faders with nine layer keys; the RACK's four-channel section is the left
+/// one too, four wide with five layers. An app setting, kept by resets and loads.
 #[no_mangle]
 pub unsafe extern "C" fn ld_layers_set_model(l: *mut LayerSet, model: i32) {
     if let Some(l) = layers(l) {
@@ -1867,6 +1868,9 @@ mod tests {
             ld_console_model_info(0, &mut info);
             assert_eq!((info.local_preamps, info.gpios, info.aux_inputs, info.faders, info.layer_keys), (8, 4, 8, 24, 7));
             ld_console_model_info(1, std::ptr::null_mut());
+            // The RACK: no faders, five layers, 24 preamps, 2x2 GPIO.
+            ld_console_model_info(2, &mut info);
+            assert_eq!((info.local_preamps, info.gpios, info.aux_inputs, info.faders, info.layer_keys), (24, 4, 0, 0, 5));
 
             let l = ld_layers_create();
             assert_eq!(ld_layers_model(l), 0);
@@ -1875,6 +1879,8 @@ mod tests {
             assert_eq!((ld_layers_model(l), ld_layers_effective_width(l, 0)), (1, 12));
             ld_layers_reset(l);
             assert_eq!(ld_layers_model(l), 1);
+            ld_layers_set_model(l, 2); // the RACK: four channels at a time
+            assert_eq!((ld_layers_model(l), ld_layers_effective_width(l, 0)), (2, 4));
             ld_layers_set_model(l, 7); // unknown: the full-size console
             assert_eq!(ld_layers_model(l), 0);
             ld_layers_destroy(l);

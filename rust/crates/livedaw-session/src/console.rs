@@ -7,6 +7,7 @@
 
 use crate::refs::StripRef;
 use crate::xml::{fmt_f32, parse, Element};
+use livedaw_dsp::dlive_fx::ultra::strip::STRIP as UFX_STRIP;
 use livedaw_dsp::model::{model_index, ModelSpec};
 use livedaw_dsp::wing::FILTER_TOOLS;
 use livedaw_engine::amm::{AmmStripParams, MAX_AMMS};
@@ -22,6 +23,7 @@ use livedaw_engine::params::{
 use livedaw_engine::profile::DLiveLayout;
 use livedaw_engine::routing::{bus_feeds_bus, matrix_direct, MATRIX_DIRECT_INPUTS};
 use livedaw_engine::taps::FIRST_USER_TAP;
+use livedaw_engine::ufx::DYN8_FX_BASE;
 use livedaw_engine::{AtomicGroupSet, ConsoleConfig, Counts, Engine, GroupSet, Profile, Strip, StripKind, MAX_BUSES};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicI32, Ordering::Relaxed};
@@ -1140,8 +1142,80 @@ fn apply_mute_groups(engine: &Engine, parent: &Element) {
 
 fn capture_fx(engine: &Engine, parent: &mut Element, bridge: &mut dyn PluginBridge) {
     let fx = parent.add_new("Fx");
+    // The Global Key (`livedaw_engine::ufx`): a dLive's always, another console's when set.
+    let key = &engine.ufx.global_key;
+    if engine.ufx.live() || key.key() != 0 || key.scale() != 0 {
+        fx.set("gkey", key.key()).set("gscale", key.scale());
+    }
     for i in 0..engine.num_fx() {
         fx.add(capture_fx_slot(engine, i, bridge));
+    }
+    capture_dyn8(engine, fx);
+}
+
+/// An FX engine's key source (`ufx::FxKey`), written only when it has one.
+fn put_fx_key(x: &mut Element, engine: &Engine, i: usize) {
+    if let Some(key) = engine.fx_key(i).filter(|k| k.source.load(Relaxed) >= 0) {
+        put_i(x, "key", &key.source);
+        put_i(x, "keyTap", &key.tap);
+    }
+}
+
+/// Restores an FX engine's key source: none when the element has none.
+fn get_fx_key(x: &Element, engine: &Engine, i: usize) {
+    if let Some(key) = engine.fx_key(i) {
+        key.reset();
+        get_i(x, "key", &key.source);
+        get_i(x, "keyTap", &key.tap);
+    }
+}
+
+/// A dLive's Dyn8 engines as `<Dyn8 i=..>` in `<Fx>`: the ones an insert names and
+/// the ones that aren't on their defaults (the others are as a new console's).
+fn capture_dyn8(engine: &Engine, fx: &mut Element) {
+    if !engine.ufx.live() {
+        return;
+    }
+    let table = engine.fx_models();
+    let in_use = engine.dyn8_in_use();
+    for (n, p) in engine.ufx.dyn8_params.iter().enumerate() {
+        let spec = &table[p.model_index_in(table)];
+        let slot = DYN8_FX_BASE + n;
+        let keyed = engine.fx_key(slot).is_some_and(|k| k.source.load(Relaxed) >= 0);
+        let changed = p.bypass.load(Relaxed)
+            || p.mix.load() != 100.0
+            || keyed
+            || spec.params.iter().zip(&p.values).any(|(s, v)| v.load() != s.default);
+        if in_use & (1 << n) == 0 && !changed {
+            continue;
+        }
+        let x = fx.add_new("Dyn8");
+        x.set("i", n);
+        put_b(x, "bypass", &p.bypass);
+        put_f(x, "mix", &p.mix);
+        put_fx_key(x, engine, slot);
+        put_model_params(x, spec, &p.values);
+    }
+}
+
+/// Restores the `<Dyn8>` engines of `<Fx>` (a dLive's; the model is always Dyn8).
+fn apply_dyn8(engine: &Engine, fx: &Element) {
+    if !engine.ufx.live() {
+        return;
+    }
+    let table = engine.fx_models();
+    for x in fx.children_named("Dyn8") {
+        let Ok(n) = usize::try_from(x.int_or("i", -1)) else { continue };
+        let Some(p) = engine.ufx.dyn8_params.get(n) else { continue };
+        get_b(x, "bypass", &p.bypass);
+        get_f(x, "mix", &p.mix);
+        get_fx_key(x, engine, DYN8_FX_BASE + n);
+        let spec = &table[p.model_index_in(table)];
+        for e in x.children_named("P") {
+            if let (Some(i), Some(v)) = (spec.param_index(e.str_or("n", "")), e.attr("v")) {
+                p.values[i].store(spec.params[i].sanitise(crate::xml::parse_double_prefix(v) as f32));
+            }
+        }
     }
 }
 
@@ -1162,6 +1236,11 @@ pub(crate) fn capture_fx_slot(engine: &Engine, i: usize, bridge: &mut dyn Plugin
     // A send effect's sources (an X32's FX 1-4 SOURCE; -1 = an insert).
     put_i(&mut x, "srcL", &p.source_left);
     put_i(&mut x, "srcR", &p.source_right);
+    put_fx_key(&mut x, engine, i);
+    // A dLive's RackUltra engine: its channel strip.
+    if let Some(strip) = engine.ufx.strip_of(i) {
+        put_model_params(x.add_new("Ufx"), &UFX_STRIP, &strip.values);
+    }
     // EXT's parameters too: the outboard insert, and the SOURCE.
     put_model_params(&mut x, &fx[model], &p.values);
     if fx[model].token == "PCORR" {
@@ -1191,10 +1270,14 @@ fn apply_fx(
     warnings: &mut Vec<String>,
 ) {
     let Some(fx) = parent.child("Fx") else { return };
+    if fx.has_attr("gkey") {
+        engine.ufx.global_key.set(fx.int_or("gkey", 0), fx.int_or("gscale", 0));
+    }
     for x in fx.children_named("Slot") {
         let Ok(i) = usize::try_from(x.int_or("i", -1)) else { continue };
         apply_fx_slot(engine, x, i, mode, bridge, warnings);
     }
+    apply_dyn8(engine, fx);
 }
 
 /// Restores a `<Slot>` element into FX slot `i` (see [`apply_fx`]).
@@ -1214,6 +1297,14 @@ pub(crate) fn apply_fx_slot(
     get_i(x, "sendR", &p.send_right);
     get_i(x, "srcL", &p.source_left);
     get_i(x, "srcR", &p.source_right);
+    get_fx_key(x, engine, i);
+    if let (Some(strip), Some(u)) = (engine.ufx.strip_of(i), x.child("Ufx")) {
+        for e in u.children_named("P") {
+            if let (Some(k), Some(v)) = (UFX_STRIP.param_index(e.str_or("n", "")), e.attr("v")) {
+                strip.set_value(k, crate::xml::parse_double_prefix(v) as f32);
+            }
+        }
+    }
 
     // Shows from before the FX rack hold plugins only.
     let fx = engine.fx_models();
@@ -1783,7 +1874,9 @@ fn read_config(console: &Element, warnings: &mut Vec<String>) -> ConsoleConfig {
         matrices: n("matrices", w.matrices),
         dcas: n("dcas", w.dcas),
         mute_groups: n("mgrps", w.mute_groups),
-        fx: n("fx", w.fx),
+        // A dLive's FX are its engines, whatever the show says: one saved before its
+        // RackUltra engines (FX 17-24) says 16, and is the same console still.
+        fx: if matches!(profile, Profile::AhDLive(_)) { w.fx } else { n("fx", w.fx) },
     };
     ConsoleConfig { profile: profile.or_universal(&counts), counts }
 }

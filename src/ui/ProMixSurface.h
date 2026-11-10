@@ -162,7 +162,7 @@ namespace promix
         std::function<int()> rtnSendShown;
         /** Where the legends beside the LCD sit, as fractions of its height:
             FUNCTION, MEMORY, SEL CH at the left, RTN 1 ... SEND 4 at the right. */
-        static constexpr float kLeftRows[] = { 0.19f, 0.53f, 0.86f }, kRightRows[] = { 0.17f, 0.39f, 0.61f, 0.83f };
+        static constexpr float kLeftRows[] = { 0.18f, 0.57f, 0.95f }, kRightRows[] = { 0.117f, 0.367f, 0.617f, 0.867f };
 
         /** A field of the page: a ProMix parameter, a program list, or a value of
             the app's (MIDI SETUP). */
@@ -221,6 +221,8 @@ namespace promix
         /** An EDIT page's program line and rule; COMP EDIT's gain curve. */
         /** The page, in the component's pixels; paint() turns it into the LCD's dots. */
         void paintPage (juce::Graphics&);
+        /** METER, PAN, COMP's first pages and EQ, dot for dot as photographed; false for any other page. */
+        bool paintExactPage (juce::Graphics&);
         juce::Image lowRes, dotsImage;
         std::vector<uint8_t> shownDots;
         void paintEditHeader (juce::Graphics&, juce::Rectangle<float> area, const juce::String& name, float width) const;
@@ -346,7 +348,7 @@ private:
     void repaintDesign (juce::Rectangle<int> r) { repaint (r.toFloat().transformedBy (design).getSmallestIntegerContainer().expanded (2)); }
     /** The panel's analog row (PAD and GAIN, MONITOR OUT, PHONES: drawn, not
         controls), and the stereo meter's place, set by resized(). */
-    juce::Rectangle<int> analogArea, meterRect, contrastKnob, lcdWindow;
+    juce::Rectangle<int> analogArea, meterRect, contrastKnob, lcdWindow, lcdLit;
     std::array<juce::Rectangle<int>, kNumFaders> grilles;
 
     UiContext& ctx;

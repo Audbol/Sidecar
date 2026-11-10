@@ -19,8 +19,9 @@ public:
     {
         g.excludeClipRegion (owner.display->getBounds());
         g.fillAll (juce::Colours::black.withAlpha (0.45f));
-        const auto faders = owner.sections[0]->getBounds().getUnion (owner.isCompact() ? owner.compactKeys->getBounds()
-                                                                                       : owner.sections[LayerSet::kNumSections - 1]->getBounds());
+        const auto faders = owner.isRack() ? owner.rackSection->getBounds()
+                                           : owner.sections[0]->getBounds().getUnion (owner.isCompact() ? owner.compactKeys->getBounds()
+                                                                                                        : owner.sections[LayerSet::kNumSections - 1]->getBounds());
         auto badge = juce::Rectangle<int> (300, 64).withCentre (faders.getCentre());
         g.setColour (Colours::screenPanel.withAlpha (0.95f));
         g.fillRoundedRectangle (badge.toFloat(), 6.0f);
@@ -45,8 +46,13 @@ WingSurface::WingSurface (UiContext& c) : ctx (c)
     ctx.showFxSendOutputs = [this] (int slot) { display->showFxSendOutputs (slot); };
     ctx.showRoutingTab = [this] (int tab) { display->showRoutingTab (tab); };
     ctx.getScreen = [this] { return display != nullptr ? display->getScreen() : Screen::Home; };
-    // The COMPACT's faders are the left section's.
-    ctx.revealFader = [this] (LayerSet::Section section, const state::FaderRef& f) { sections[isCompact() ? LayerSet::Left : section]->reveal (f); };
+    // The COMPACT's faders are the left section's, the RACK's four channels too.
+    ctx.revealFader = [this] (LayerSet::Section section, const state::FaderRef& f)
+    {
+        if (isRack() && rackSection != nullptr)
+            rackSection->showChannels();
+        sections[isSmallModel (ctx.consoleModel) ? LayerSet::Left : section]->reveal (f);
+    };
     ctx.takeScreenshot = [this] { saveScreenshot(); };
     ctx.holdHomeLock = [this] (const juce::String& held) { holdHomeLock (held); };
     ctx.settings.setValue (uiprefs::surfaceLock, juce::String()); // a new surface is unlocked, as the console after a restart
@@ -62,6 +68,11 @@ WingSurface::WingSurface (UiContext& c) : ctx (c)
     customControls = std::make_unique<CustomControlSection> (ctx);
     compactKeys = std::make_unique<CompactSection> (ctx);
     addChildComponent (*compactKeys);
+    // The RACK's section lies under its channels (the left section's strips)
+    // and the custom controls, which take their place on CUST, MUTE and TRANS.
+    rackSection = std::make_unique<RackSection> (ctx, *sections[LayerSet::Left], *customControls);
+    rackSection->onModeChanged = [this] { updateVisibility(); };
+    addChildComponent (*rackSection);
     // The 4-Channel section works on the right fader section's four strips.
     fourChannel = std::make_unique<FourChannelSection> (ctx, [this] (int i) { return sections[LayerSet::Right] != nullptr ? sections[LayerSet::Right]->getStrip (i) : nullptr; });
 
@@ -115,6 +126,7 @@ WingSurface::~WingSurface()
 
     lockOverlay.reset();
     fourChannel.reset();
+    rackSection.reset(); // before the section and the custom controls it drives
     compactKeys.reset();
     for (auto& sec : dawSections)
         sec.reset();
@@ -147,6 +159,8 @@ void WingSurface::refreshSections()
     fourChannel->refresh();
     if (compactKeys != nullptr)
         compactKeys->refresh();
+    if (rackSection != nullptr)
+        rackSection->refresh();
 }
 
 void WingSurface::selectionChanged()
@@ -182,8 +196,11 @@ void WingSurface::customControlsChanged()
 void WingSurface::consoleModelChanged (bool changed)
 {
     monitor->setConsoleModel (ctx.consoleModel);
-    if (changed && isCompact())
-        ctx.sendsOnFader = false; // its SOF is the BUS and MAIN MATRIX keys'
+    // The RACK: no encoders under the screen, its channels on encoders.
+    display->setRackPanel (isRack());
+    rackSection->setActive (isRack());
+    if (changed && isSmallModel (ctx.consoleModel))
+        ctx.sendsOnFader = false; // the COMPACT's SOF is the BUS and MAIN MATRIX keys', the RACK's a custom control's
     updateVisibility();
     refreshSections();
     resized();
@@ -243,6 +260,31 @@ bool WingSurface::skinKeyPressed (const juce::KeyPress& key)
 //==============================================================================
 void WingSurface::paint (juce::Graphics& g)
 {
+    if (isRack() && ! screenMaximized)
+    {
+        // The RACK's panel in a rack: the window around it dark, a rack ear
+        // with two slots either side where there is room (Sidecar's drawing).
+        g.fillAll (juce::Colour (0xff0a0a0b));
+        g.setColour (surfaceColours().surface);
+        g.fillRect (rackPanel);
+        const int ear = juce::jmin (36, (getWidth() - rackPanel.getWidth()) / 2);
+        if (ear >= 14)
+            for (const int x : { rackPanel.getX() - ear, rackPanel.getRight() })
+            {
+                const auto plate = juce::Rectangle<int> (x, rackPanel.getY(), ear, rackPanel.getHeight());
+                g.setColour (surfaceColours().surface);
+                g.fillRect (plate);
+                g.setColour (juce::Colours::black.withAlpha (0.45f));
+                g.fillRect (x == rackPanel.getRight() ? plate.withWidth (1) : plate.withLeft (plate.getRight() - 1));
+                for (const int y : { plate.getY() + plate.getHeight() / 6, plate.getBottom() - plate.getHeight() / 6 })
+                {
+                    g.setColour (juce::Colours::black);
+                    g.fillRoundedRectangle (juce::Rectangle<float> ((float) ear * 0.5f, (float) ear * 0.26f).withCentre ({ (float) plate.getCentreX(), (float) y }),
+                                            (float) ear * 0.13f);
+                }
+            }
+        return;
+    }
     g.fillAll (screenMaximized ? juce::Colours::black : surfaceColours().surface);
 }
 
@@ -363,8 +405,38 @@ void WingSurface::layoutCompact()
         }
 }
 
+void WingSurface::layoutRack()
+{
+    const auto plan = layout::rack::plan (getLocalBounds(), [] (int h) { return MainDisplay::preferredWidth (h); });
+    if (plan.panel != rackPanel)
+    {
+        rackPanel = plan.panel;
+        repaint();
+    }
+    placeDisplay (plan.display);
+    rackSection->setBounds (plan.section);
+    // Its four channels, and the custom controls that take their place.
+    const auto channels = rackSection->getChannelsArea() + plan.section.getPosition();
+    sections[LayerSet::Left]->setBounds (channels);
+    customControls->setBounds (channels);
+    // What the RACK doesn't have keeps no place on the surface.
+    for (juce::Component* c : { (juce::Component*) channelStrip.get(), (juce::Component*) monitor.get(), (juce::Component*) fourChannel.get(),
+                                (juce::Component*) compactKeys.get(), (juce::Component*) sections[LayerSet::Center].get(),
+                                (juce::Component*) sections[LayerSet::Right].get(), (juce::Component*) &splitter })
+        c->setBounds ({});
+    // (DAW mode's fader strips have no faders to lie over.)
+    for (auto& sec : dawSections)
+        if (sec != nullptr)
+            sec->setBounds ({});
+}
+
 void WingSurface::layoutSections()
 {
+    if (isRack())
+    {
+        layoutRack();
+        return;
+    }
     if (isCompact())
     {
         layoutCompact();
@@ -440,6 +512,11 @@ void WingSurface::layoutSections()
 
 void WingSurface::layoutTopRow()
 {
+    if (isRack())
+    {
+        layoutRack();
+        return;
+    }
     if (isCompact())
     {
         layoutCompact();
@@ -564,17 +641,22 @@ void WingSurface::updateVisibility()
     // and while the screen is maximized.
     const bool surface = ! covered && ! screenMaximized;
     // The COMPACT has no channel strip, custom controls, 4-Channel, center
-    // or right section; it has its key section instead.
-    const bool full = ! isCompact();
+    // or right section; it has its key section instead. The RACK has its
+    // four-channel section: the left section's strips as its channels, or
+    // the custom controls in their place (CUST, MUTE groups, TRANS).
+    const bool rack = isRack(), compact = isCompact();
+    const bool full = ! rack && ! compact;
+    const bool rackChannels = rack && rackSection->showsChannels();
     for (juce::Component* c : { (juce::Component*) monitor.get(), (juce::Component*) &splitter })
-        c->setVisible (surface);
-    for (juce::Component* c : { (juce::Component*) channelStrip.get(), (juce::Component*) customControls.get() })
-        c->setVisible (surface && full);
+        c->setVisible (surface && ! rack);
+    channelStrip->setVisible (surface && full);
+    customControls->setVisible (surface && (full || (rack && ! rackChannels)));
     display->setVisible (! covered);
     fourChannel->setVisible (surface && ccInBottomRow && full);
     for (int s = 0; s < LayerSet::kNumSections; ++s)
-        sections[s]->setVisible (surface && (full || s == LayerSet::Left));
-    compactKeys->setVisible (surface && ! full);
+        sections[s]->setVisible (surface && (full || (s == LayerSet::Left && (compact || rackChannels))));
+    compactKeys->setVisible (surface && compact);
+    rackSection->setVisible (surface && rack);
     // DAW mode's strips show themselves while the surface does (their timer).
     for (auto& sec : dawSections)
         if (sec != nullptr && ! surface)

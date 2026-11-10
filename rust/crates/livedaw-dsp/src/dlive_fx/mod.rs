@@ -93,11 +93,13 @@ const fn dyn8(params: &'static [ParamSpec]) -> ModelSpec {
     ModelSpec { token: "DLVDYN8", name: "Dyn8", category: ModelCategory::FxStandard, params }
 }
 
-/// The dLive's 16 RackExtra engines, then the RackUltra card's 8, then its 64 Dyn8s:
-/// where each lives in a dLive's FX slots (`slot_rule`).
+/// The dLive's 16 RackExtra engines, then the RackUltra card's 8: where each lives in
+/// a dLive's FX slots (`slot_rule`). Its 64 Dyn8 engines aren't FX slots: the engine
+/// holds them in an array of their own, and an insert names Dyn8 `n` as slot
+/// `DYN8_SLOTS.start + n`, past the last FX slot of any console (the engine's `MAX_FX`).
 pub const RACKEXTRA_SLOTS: std::ops::Range<usize> = 0..16;
 pub const ULTRA_SLOTS: std::ops::Range<usize> = 16..24;
-pub const DYN8_SLOTS: std::ops::Range<usize> = 24..88;
+pub const DYN8_SLOTS: std::ops::Range<usize> = 64..128;
 
 /// The models, after an empty slot and EXT: the RackExtra models (20), Dyn8 and the
 /// RackUltra models (11, `ultra`). On a dLive each engine holds only its own

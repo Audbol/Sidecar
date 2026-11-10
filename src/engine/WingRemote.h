@@ -105,13 +105,14 @@ public:
     void setName (const juce::String&);
     /** The model the console reports (discovery, /? and /$syscfg/$cnsmdl), as
         the WING does: "ngc-full" for the full-size console, "wing-compact" for
-        the COMPACT, so WING Edit and Mixing Station show the right one. At
-        once, and across restarts. */
+        the COMPACT, "wing-rack" for the RACK (WING Remote Protocols, $cnsmdl),
+        so WING Edit and Mixing Station show the right one. At once, and across
+        restarts. */
     void setConsoleModel (ConsoleModel);
     /** The full-size console is the black WING (SURFACE FINISH BLACK): it
         reports "wing-bk" (discovery, /?, $cnsmdl, $cnscfg, exported
         snapshots) instead of "ngc-full" / "wing-fullsize". The COMPACT stays
-        "wing-compact". At once, and across restarts. */
+        "wing-compact" and the RACK "wing-rack". At once, and across restarts. */
     void setBlackFinish (bool black);
 
     struct Client

@@ -3,7 +3,7 @@
 //! without the app.
 //!
 //! cargo run -p livedaw-wing --example wing_emulator -- [--name NAME] [--osc PORT]
-//!     [--native PORT] [--discovery PORT] [--bind IP] [--snap FILE] [--compact]
+//!     [--native PORT] [--discovery PORT] [--bind IP] [--snap FILE] [--compact | --rack]
 
 use livedaw_engine::Engine;
 use livedaw_session::ConsoleModel;
@@ -25,9 +25,10 @@ fn main() {
             "--discovery" => config.discovery_port = next().parse().expect("port"),
             "--bind" => config.bind = next().parse().expect("IP address"),
             "--snap" => snap_file = Some(next()),
-            "--compact" => {
+            "--compact" | "--rack" => {
+                let model = if a == "--rack" { ConsoleModel::Rack } else { ConsoleModel::Compact };
                 let name = std::mem::take(&mut config.identity.name);
-                config.identity = Identity { name, ..Identity::of_model(ConsoleModel::Compact) };
+                config.identity = Identity { name, ..Identity::of_model(model) };
             }
             other => {
                 eprintln!("unknown argument {other}");

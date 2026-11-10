@@ -107,9 +107,10 @@ impl Counts {
     /// The Allen & Heath dLive's, as its FoH Template Show (its factory default)
     /// configures its 64 mix busses: 124 channels (the 128 inputs, 120 mono and
     /// 4 stereo pairs), 16 aux (its stereo FX returns), 32 buses (8 Groups, 16
-    /// Aux, 8 FX sends), 1 main (LR), 8 matrices, 24 DCAs, 8 mute groups, 16 FX.
+    /// Aux, 8 FX sends), 1 main (LR), 8 matrices, 24 DCAs, 8 mute groups, 24 FX (the
+    /// 16 RackExtra engines and the RackUltra card's 8, FX 17-24: `ufx.rs`).
     pub const DLIVE: Counts =
-        Counts { channels: 124, aux: 16, buses: 32, mains: 1, matrices: 8, dcas: 24, mute_groups: 8, fx: 16 };
+        Counts { channels: 124, aux: 16, buses: 32, mains: 1, matrices: 8, dcas: 24, mute_groups: 8, fx: 24 };
 }
 
 impl Default for Counts {

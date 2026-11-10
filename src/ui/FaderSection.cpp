@@ -1,4 +1,5 @@
 #include "ui/FaderSection.h"
+#include "engine/AppPaths.h"
 
 namespace livedaw::ui
 {
@@ -11,8 +12,10 @@ void toggleSpill (UiContext& ctx, std::optional<LayerSet::Section> origin, const
 void toggleSpillAt (UiContext& ctx, LayerSet::Section target, const LayerSet::Spill& spill)
 {
     auto& layers = ctx.show.layers;
-    // The COMPACT has one fader section.
-    if (ctx.consoleModel == ConsoleModel::Compact)
+    // The COMPACT has one fader section; the RACK's four encoders take a
+    // spill (WING manual 6.1 p. 71: FX SPILL goes "to the 4 knobs on the
+    // front panel on WING RACK").
+    if (isSmallModel (ctx.consoleModel))
         target = LayerSet::Left;
     if (const auto section = layers.findSpill (spill))
         layers.endSpill (*section); // the section's layer and position come back
@@ -47,6 +50,24 @@ void toggleSpillAt (UiContext& ctx, LayerSet::Section target, const LayerSet::Sp
 bool isSpilling (UiContext& ctx, const LayerSet::Spill& spill)
 {
     return ctx.show.layers.findSpill (spill).has_value();
+}
+
+void drawRackName (juce::Graphics& g, juce::Rectangle<float> band)
+{
+    if (band.getHeight() < 8.0f)
+        return;
+    const juce::String name = juce::String (kAppName).toUpperCase();
+    const float size = juce::jlimit (8.0f, 30.0f, band.getHeight() * 0.62f);
+    const auto font = juce::Font (juce::FontOptions (size, juce::Font::bold)).withExtraKerningFactor (0.06f);
+    const float nameW = juce::jmin (band.getWidth() * 0.5f, juce::GlyphArrangement::getStringWidth (font, name) + 4.0f);
+    const float modelW = juce::jmin (band.getWidth() * 0.3f, size * 3.2f);
+    auto line = band.withSizeKeepingCentre (nameW + size * 0.4f + modelW, size * 1.1f);
+    g.setFont (fontFittingWidth (font, name, nameW, 1.0f));
+    g.setColour (surfaceColours().surfacePrint.withAlpha (0.8f));
+    g.drawText (name, line.removeFromLeft (nameW), juce::Justification::centredRight);
+    line.removeFromLeft (size * 0.4f);
+    drawSilk (g, line.withTrimmedTop (line.getHeight() * 0.35f), "R A C K", juce::jlimit (7.0f, 12.0f, size * 0.42f), juce::Justification::centredLeft,
+              surfaceColours().surfacePrintDim);
 }
 
 FaderSection::FaderSection (UiContext& c, LayerSet::Section s) : ctx (c), section (s)
@@ -156,6 +177,9 @@ void FaderSection::timerCallback()
 
 int FaderSection::shiftStep() const
 {
+    // The RACK's keys are "<4" and "4>": its four channels at a time.
+    if (rackStyle)
+        return 4;
     // SETUP > SURFACE: scroll 4, 8 or 12 faders at a time.
     const int step = ctx.settings.getIntValue ("ui.shiftStep", 4);
     return step == 8 || step == 12 ? step : 4;
@@ -268,6 +292,22 @@ void FaderSection::jumpToEnd (int direction)
     refreshFaders();
 }
 
+bool FaderSection::canShift (int direction) const noexcept
+{
+    return direction < 0 ? offset > 0 : offset + strips.size() < (int) layer.faders.size();
+}
+
+void FaderSection::setRackStyle (bool rack)
+{
+    if (rack == rackStyle)
+        return;
+    rackStyle = rack;
+    for (auto* s : strips)
+        s->setRackStyle (rack);
+    resized();
+    repaint();
+}
+
 void FaderSection::reveal (const state::FaderRef& fader)
 {
     const auto id = ctx.show.layers.findDefaultLayerContaining (ctx.engine, section, fader);
@@ -299,7 +339,11 @@ void FaderSection::refreshFaders()
     {
         strips.clear();
         for (int i = 0; i < n; ++i)
-            addAndMakeVisible (strips.add (new FaderStrip (ctx, section)));
+        {
+            auto* s = strips.add (new FaderStrip (ctx, section));
+            s->setRackStyle (rackStyle);
+            addAndMakeVisible (s);
+        }
         resized();
     }
 
@@ -319,6 +363,9 @@ void FaderSection::paint (juce::Graphics& g)
 {
     const auto& sc = surfaceColours();
     g.fillAll (sc.surface);
+    // The RACK's four channels have no layer column and no line at their right.
+    if (rackStyle)
+        return;
 
     // The layer column's plate the height of the section (the black surface's
     // lighter grey; the silver surface has none).
@@ -346,6 +393,12 @@ void FaderSection::paintOverChildren (juce::Graphics& g)
 {
     if (strips.isEmpty())
         return;
+    if (rackStyle)
+    {
+        // The name between the LCD and the encoders.
+        drawRackName (g, layout::rack::planColumn (strips[0]->getBounds()).name.withX (0).withWidth (getWidth()).toFloat());
+        return;
+    }
 
     // Strips come in modules of four (their LCD and meter panels run across the
     // module), with the meter scale printed between strips.
@@ -394,7 +447,7 @@ void FaderSection::paintOverChildren (juce::Graphics& g)
 void FaderSection::resized()
 {
     auto b = getLocalBounds();
-    column = b.removeFromLeft (kBankColumnWidth);
+    column = rackStyle ? juce::Rectangle<int>() : b.removeFromLeft (kBankColumnWidth);
 
     const int n = strips.size();
     if (n > 0)
@@ -405,6 +458,17 @@ void FaderSection::resized()
             strips[i]->setBounds (b.getX() + i * w, b.getY(), w, b.getHeight());
             strips[i]->setModuleEdges (i % 4 == 0, i % 4 == 3 || i == n - 1);
         }
+    }
+
+    // The RACK's keys are its own section's.
+    viewKey.setVisible (! rackStyle);
+    if (rackStyle)
+    {
+        for (auto* k : layerKeys)
+            k->setVisible (false);
+        for (auto* k : { &shiftLeft, &shiftRight, &sofKey })
+            k->setVisible (false);
+        return;
     }
 
     // VIEW level with the scribble strips; the layer keys from the SELECT row

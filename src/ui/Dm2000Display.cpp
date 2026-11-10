@@ -339,6 +339,10 @@ Display::Display (UiContext& c) : ctx (c), dots ((size_t) (kDotsW * kDotsH), 0),
         inputPairs = (uint64_t) pairs[0].getHexValue64() & ((uint64_t (1) << 48) - 1);
         outputPairs = (uint32_t) pairs[1].getHexValue32() & 0x3ffu;
     }
+    if (const auto text = ctx.engine.getConsoleText(); text.isEmpty() || ! adoptPairsText (text))
+        seenConsole = ctx.engine.setConsoleText (pairsText());
+    else
+        seenConsole = ctx.engine.getConsoleVersion();
     keys.addTokens (ctx.settings.getValue (kUserKeysKey), " ", "");
     keys.removeEmptyStrings();
     for (int k = 0; k < 16; ++k)
@@ -3683,6 +3687,52 @@ bool Display::isPaired (bool output, int pair) const
 void Display::savePairs() const
 {
     ctx.settings.setValue (kPairsKey, juce::String::toHexString ((juce::int64) inputPairs) + " " + juce::String::toHexString ((int) outputPairs));
+    seenConsole = ctx.engine.setConsoleText (pairsText());
+}
+
+juce::String Display::pairsText() const
+{
+    return "dm2000pairs1 " + juce::String::toHexString ((juce::int64) inputPairs) + " " + juce::String::toHexString ((int) outputPairs);
+}
+
+bool Display::adoptPairsText (const juce::String& text)
+{
+    juce::StringArray v;
+    v.addTokens (text, " ", "");
+    v.removeEmptyStrings();
+    if (v.size() != 3 || v[0] != "dm2000pairs1")
+        return false;
+    inputPairs = (uint64_t) v[1].getHexValue64() & ((uint64_t (1) << 48) - 1);
+    outputPairs = (uint32_t) v[2].getHexValue32() & 0x3ffu;
+    return true;
+}
+
+// A show load or a scene recall changed the engine's text: the pairs follow it. Text a show never
+// had means no pairs.
+void Display::adoptEnginePairs()
+{
+    const auto version = ctx.engine.getConsoleVersion();
+    if (version == seenConsole)
+        return;
+    const auto text = ctx.engine.getConsoleText();
+    if (text.isEmpty())
+        inputPairs = 0, outputPairs = 0;
+    else if (! adoptPairsText (text))
+    {
+        seenConsole = version;
+        return;
+    }
+    for (int i = 0; i < 58; ++i)
+    {
+        const bool output = i >= 48;
+        if (const auto [a, b] = pairStrips (output, output ? i - 48 : i); a != nullptr && b != nullptr)
+        {
+            pairSeen[(size_t) i * 2] = pairHash (*a);
+            pairSeen[(size_t) i * 2 + 1] = pairHash (*b);
+        }
+    }
+    savePairs();
+    refresh();
 }
 
 void Display::setPaired (bool output, int pair, bool on)
@@ -3810,6 +3860,7 @@ void Display::pairCopy (Strip& from, Strip& to) const
 
 void Display::followPairs()
 {
+    adoptEnginePairs();
     if (inputPairs == 0 && outputPairs == 0)
         return;
     for (int i = 0; i < 58; ++i)

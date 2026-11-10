@@ -315,7 +315,8 @@ const std::vector<int>& otherOrder()
 
 LayerSet::Section overviewSection (int area) noexcept
 {
-    // L, C, R, CMPCT (the COMPACT's fader section: the left), RCK, EXT, VRT.
+    // L, C, R, CMPCT (the COMPACT's fader section: the left), RCK (the RACK's
+    // four-channel section: the left too), EXT, VRT.
     switch (area)
     {
         case 1:  return LayerSet::Center;
@@ -1289,11 +1290,12 @@ void CustomControlsPage::rebuildLists()
                 // then the section's layer keys and its fixed banks.
                 targets.title = "AREA";
                 const bool compactConsole = ctx.consoleModel == ConsoleModel::Compact;
+                const bool rackConsole = ctx.consoleModel == ConsoleModel::Rack; // RACK and VIRTUAL
                 for (int i = 0; i < kNumOverviewAreas; ++i)
                 {
                     targets.rows.add (areaNames[i]);
                     targetCodes.push_back (i);
-                    targets.enabled.push_back (compactConsole ? (i == 3 || i == 6) : i < 3);
+                    targets.enabled.push_back (compactConsole ? (i == 3 || i == 6) : rackConsole ? (i == 4 || i == 6) : i < 3);
                 }
                 options.title = "BANK";
                 const auto section = overviewSection (f.target);
@@ -1389,11 +1391,15 @@ void CustomControlsPage::rebuildLists()
                 // buses, MAIN 1-4, MTX 1-8, AUTOMIX X / Y, the selected channel.
                 targets.title = "AREA";
                 const bool compactConsole = ctx.consoleModel == ConsoleModel::Compact;
-                for (int i = 0; i < 4; ++i)
+                const bool rackConsole = ctx.consoleModel == ConsoleModel::Rack;
+                for (int i = 0; i < 5; ++i)
                 {
+                    // (RACK only on a RACK: its four encoders, WING manual 6.1 p. 71.)
+                    if (i == 4 && ! rackConsole)
+                        break;
                     targets.rows.add (areaNames[i]);
                     targetCodes.push_back (i);
-                    targets.enabled.push_back (compactConsole ? i == 3 : i < 3);
+                    targets.enabled.push_back (compactConsole ? i == 3 : rackConsole ? i == 4 : i < 3);
                 }
                 options.title = "TARGET";
                 auto add = [&options, this] (const juce::String& row, int code)

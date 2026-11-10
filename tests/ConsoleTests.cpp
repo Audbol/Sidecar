@@ -1,9 +1,51 @@
 #include "TestHelpers.h"
+#include "engine/EventLog.h"
+#include "engine/PluginHost.h"
 #include "engine/Show.h"
 #include "ui/ConsoleLook.h"
+#include "ui/CustomControlsPage.h"
+#include "ui/MainDisplay.h"
+#include "ui/MeterBank.h"
+#include "ui/RackSection.h"
+#include "ui/SurfaceLayout.h"
+#include "ui/UiContext.h"
 
 using namespace livedaw;
 using livedaw::test::OfflineRig;
+
+namespace
+{
+/** A UI context over an engine, with a settings file of its own (for the WING RACK's section). */
+struct RackRig
+{
+    explicit RackRig (MixerEngine& e) : engine (e), show (e, host), meters (e), ctx (e, host, show, log, devices, settings, meters)
+    {
+        ctx.selectStrip = [this] (Strip* s) { selected = s; };
+        ctx.getSelectedStrip = [this] { return selected; };
+        ctx.showScreen = [this] (ui::Screen s) { screen = s; };
+        ctx.getScreen = [this] { return screen; };
+        ctx.showCustomControls = [this] (int layer)
+        {
+            customControlsShown = layer;
+            screen = ui::Screen::Setup;
+        };
+    }
+    ~RackRig() { settingsFile.deleteFile(); }
+
+    MixerEngine& engine;
+    PluginHost host { nullptr };
+    Show show;
+    EventLog log;
+    juce::AudioDeviceManager devices;
+    juce::File settingsFile = juce::File::createTempFile (".settings");
+    juce::PropertiesFile settings { settingsFile, {} };
+    ui::MeterBank meters;
+    ui::UiContext ctx;
+    Strip* selected = nullptr;
+    ui::Screen screen = ui::Screen::Home;
+    int customControlsShown = -1; // the layer CUSTOM CONTROLS was opened on
+};
+} // namespace
 
 /** The console-level features through the C++ facade: SOLO MODE, MUTEGROUP/SIP
     OVERRIDE, the talk keys, the PHONES path, MON DCAs and sources; and the
@@ -356,10 +398,21 @@ public:
             expect (look.model == ConsoleModel::Compact);
             expect (look.finish == ui::SurfaceFinish::Silver);       // the setting stays ...
             expect (look.shownFinish() == ui::SurfaceFinish::Black); // ... the COMPACT shows black
-            reopened.setValue (ui::ConsoleLook::modelKey, "RACK");   // not yet: the full-size console
+            // The RACK, black too.
+            reopened.setValue (ui::ConsoleLook::modelKey, "RACK");
+            const auto rack = ui::ConsoleLook::load (reopened);
+            expect (rack.model == ConsoleModel::Rack);
+            expect (rack.finish == ui::SurfaceFinish::Silver && rack.shownFinish() == ui::SurfaceFinish::Black);
+            reopened.setValue (ui::ConsoleLook::modelKey, "EXTENDER"); // unknown: the full-size console
             expect (ui::ConsoleLook::load (reopened).model == ConsoleModel::Full);
             expect (consoleModelFromName ("compact") == ConsoleModel::Compact);
+            expect (consoleModelFromName (" rack ") == ConsoleModel::Rack);
             expectEquals (consoleModelName (ConsoleModel::Compact), juce::String ("COMPACT"));
+            expectEquals (consoleModelName (ConsoleModel::Rack), juce::String ("RACK"));
+            // The values that cross the C ABI.
+            expect (consoleModelFromInt (2) == ConsoleModel::Rack && consoleModelFromInt (1) == ConsoleModel::Compact);
+            expect (consoleModelFromInt (0) == ConsoleModel::Full && consoleModelFromInt (7) == ConsoleModel::Full);
+            expect (isSmallModel (ConsoleModel::Rack) && isSmallModel (ConsoleModel::Compact) && ! isSmallModel (ConsoleModel::Full));
         }
 
         beginTest ("The console models' local I/O: 24 preamps and 1x2 GPIO on the COMPACT");
@@ -385,6 +438,230 @@ public:
                 const auto r = MixerEngine::sourceGainRange (lcl);
                 expect (r.min == -2.5f && r.max == 45.0f && r.step == 2.5f, "LCL " + juce::String (lcl + 1));
             }
+            // The RACK (WING manual chapter 12): 24 preamps, 8 XLR outputs, no local aux
+            // I/O, 2x2 GPIO, no faders; five front panel layers (5.6 p. 56).
+            const auto rack = consoleModelInfo (ConsoleModel::Rack);
+            expectEquals ((int) rack.localPreamps, 24);
+            expectEquals ((int) rack.localOutputs, 8);
+            expectEquals ((int) rack.auxInputs, 0);
+            expectEquals ((int) rack.auxOutputs, 0);
+            expectEquals ((int) rack.gpios, 4);
+            expectEquals ((int) rack.faders, 0);
+            expectEquals ((int) rack.layerKeys, 5);
+        }
+
+        beginTest ("The WING RACK's layers: four channels at a time on CHANNELS, AUX, BUSES, MAIN/MTX and DCA");
+        {
+            using S = LayerSet::Section;
+            MixerEngine engine (0);
+            PluginHost host (nullptr);
+            Show show (engine, host);
+            engine.setNumChannels (40);
+            auto& layers = show.layers;
+            layers.setModel (ConsoleModel::Rack);
+            expect (layers.getModel() == ConsoleModel::Rack);
+
+            juce::StringArray ids;
+            for (auto& layer : layers.getDefaultLayers (engine, S::Left))
+                ids.add (layer.id);
+            expectEquals (ids.joinIntoString ("|"), juce::String ("inputs|aux|bus-1|out-1|dca-1"));
+            expectEquals (ids.size(), (int) consoleModelInfo (ConsoleModel::Rack).layerKeys);
+            expectEquals ((int) layers.findLayer (engine, S::Left, "inputs").faders.size(), 40);
+            expectEquals (layers.findLayer (engine, S::Left, "dca-1").name, juce::String ("DCA 1-16"));
+            // Four wide, whatever the width setting; a layer of another model falls on CHANNELS.
+            layers.setWidth (S::Left, 12);
+            expectEquals (layers.getEffectiveWidth (S::Left), 4);
+            expectEquals (layers.findLayer (engine, S::Left, "user-1").id, juce::String ("inputs"));
+            // Its VIRTUAL section: eight layers, eight wide (manual 5.7 p. 61).
+            expectEquals ((int) layers.getDefaultLayers (engine, LayerSet::kVirtualSection).size(), LayerSet::kNumVirtualLayers);
+            expectEquals (layers.getEffectiveWidth (LayerSet::kVirtualSection), 8);
+
+            // An app setting: a new show keeps it.
+            show.clear (40);
+            expect (layers.getModel() == ConsoleModel::Rack);
+            layers.setModel (ConsoleModel::Full);
+            expectEquals ((int) layers.getDefaultLayers (engine, S::Left).size(), 7);
+            expectEquals (layers.getEffectiveWidth (S::Left), 12);
+        }
+
+        beginTest ("The WING RACK's front panel fits the window: the display and the four-channel section");
+        {
+            namespace rack = ui::layout::rack;
+            using Rect = juce::Rectangle<int>;
+            for (const auto [w, h] : { std::pair (1920, 1080), std::pair (1366, 768), std::pair (1280, 720), std::pair (2560, 1440), std::pair (3440, 1440), std::pair (1100, 700) })
+            {
+                const auto where = juce::String (w) + "x" + juce::String (h);
+                const Rect window (w, h);
+                const auto s = rack::plan (window, [] (int height) { return ui::MainDisplay::preferredWidth (height); });
+                expect (window.contains (s.panel) && ! s.display.isEmpty() && ! s.section.isEmpty(), where);
+                expect (! s.display.intersects (s.section) && s.display.getUnion (s.section) == s.panel, where);
+                expectEquals (s.display.getRight(), s.section.getX(), where);
+                // A 19 in, 4U unit: a band at least twice as wide as tall.
+                expect (s.panel.getWidth() >= 2 * s.panel.getHeight(), where + ": " + s.panel.toString());
+                expect (s.section.getWidth() >= 250 && s.display.getWidth() >= s.section.getWidth(), where);
+
+                // The section's parts: inside it, none on another.
+                const auto area = s.section.withZeroOrigin();
+                const auto p = rack::planSection (area);
+                std::vector<std::pair<juce::String, Rect>> parts { { "channels", p.channels }, { "layer display", p.layerDisplay }, { "<4", p.shiftLeft },
+                                                                   { "4>", p.shiftRight },     { "VIEW", p.view },                  { "USB", p.usb },
+                                                                   { "LEVEL", p.level },       { "phones", p.phones } };
+                const char* keyNames[] = { "INPUT AUX", "BUSES MAIN", "DCA MUTE", "CUST TRANS" };
+                for (int i = 0; i < rack::kChannels; ++i)
+                    parts.push_back ({ keyNames[i], p.layerKeys[(size_t) i] });
+                for (size_t i = 0; i < parts.size(); ++i)
+                {
+                    const auto& [name, r] = parts[i];
+                    expect (! r.isEmpty() && area.contains (r), where + ": " + name + " " + r.toString());
+                    for (size_t j = i + 1; j < parts.size(); ++j)
+                        expect (! r.intersects (parts[j].second), where + ": " + name + " overlaps " + parts[j].first);
+                }
+                expectEquals (p.channels.getWidth(), rack::kChannels * p.columnW, where);
+                expect (p.columnW >= 30, where);
+
+                // A channel's column, top to bottom: the LCD window, the name band, the
+                // encoder, MUTE, SOLO (manual Fig. 12: MUTE is the upper row); the
+                // shift keys beside the MUTE and SOLO rows, the layer keys under the columns.
+                for (int i = 0; i < rack::kChannels; ++i)
+                {
+                    const Rect column (p.channels.getX() + i * p.columnW, p.channels.getY(), p.columnW, p.channels.getHeight());
+                    const auto c = rack::planColumn (column);
+                    for (const auto& r : { c.window, c.knob, c.mute, c.solo })
+                        expect (! r.isEmpty() && column.contains (r), where + ": column " + juce::String (i + 1) + " " + r.toString());
+                    expect (c.window.getBottom() <= c.name.getY() && c.name.getBottom() <= c.knob.getY(), where);
+                    expect (c.knob.getBottom() <= c.mute.getY() && c.mute.getBottom() <= c.solo.getY(), where);
+                    expect (std::abs (c.knob.getCentreX() - column.getCentreX()) <= 1, where);
+                    expectEquals (p.layerKeys[(size_t) i].getCentreX(), column.getCentreX(), where);
+                    if (i == 0)
+                    {
+                        expectEquals (p.shiftLeft.getCentreY(), c.mute.getCentreY(), where);
+                        expectEquals (p.shiftRight.getCentreY(), c.solo.getCentreY(), where);
+                        expectEquals (p.layerDisplay.getCentreY(), c.knob.getCentreY(), where);
+                    }
+                }
+                expect (p.layerKeys[0].getY() >= p.channels.getBottom() && p.usb.getY() >= p.layerKeys[0].getBottom(), where);
+            }
+        }
+
+        beginTest ("The WING RACK's four-channel section: its layer keys, the shift keys, the layer display and VIEW");
+        {
+            using Key = ui::RackSection::Key;
+            using Mode = ui::RackSection::Mode;
+            using RackMode = ui::CustomControlSection::RackMode;
+            MixerEngine engine (0);
+            engine.setNumChannels (40);
+            RackRig rig (engine);
+            rig.ctx.consoleModel = ConsoleModel::Rack;
+            rig.show.layers.setModel (ConsoleModel::Rack);
+            ui::cc::Assignments assignments (rig.show);
+            rig.ctx.customControls = &assignments;
+
+            ui::FaderSection channels (rig.ctx, LayerSet::Left);
+            ui::CustomControlSection controls (rig.ctx);
+            ui::RackSection rack (rig.ctx, channels, controls);
+            int modeChanges = 0;
+            rack.onModeChanged = [&modeChanges] { ++modeChanges; };
+            rack.setActive (true);
+            channels.refresh();
+            rack.setSize (620, 720);
+            channels.setBounds (rack.getChannelsArea());
+            controls.setBounds (rack.getChannelsArea());
+            expect (channels.isRackStyle() && rack.showsChannels());
+            expectEquals (channels.getNumStrips(), 4);
+            expect (! rack.getChannelsArea().isEmpty() && rack.getLocalBounds().contains (rack.getChannelsArea()));
+
+            // INPUT AUX: it starts on input channels 1-40, four at a time; the key toggles to the aux channels.
+            expectEquals (channels.getLayerId(), juce::String (ui::RackSection::kInputs));
+            expect (channels.getStrip (0) == engine.getChannels()[0].get() && channels.getStrip (3) == engine.getChannels()[3].get());
+            expect (rack.isKeyLit (Key::InputAux) && ! rack.isKeyLit (Key::BusesMain) && ! rack.isKeyLit (Key::DcaMute) && ! rack.isKeyLit (Key::CustTrans));
+            expectEquals (rack.layerDisplayText(), juce::String ("1"));
+            expect (channels.canShift (1) && ! channels.canShift (-1));
+            rack.shift (1, false); // 4>
+            expect (channels.getStrip (0) == engine.getChannels()[4].get());
+            expectEquals (rack.layerDisplayText(), juce::String ("2"));
+            rack.shift (1, true); // held: the layer's last four
+            expect (channels.getStrip (3) == engine.getChannels()[39].get());
+            expectEquals (rack.layerDisplayText(), juce::String ("10"));
+            expect (! channels.canShift (1));
+            rack.shift (-1, true); // held: its first four
+            expect (channels.getStrip (0) == engine.getChannels()[0].get());
+            rack.pressKey (Key::InputAux);
+            expectEquals (channels.getLayerId(), juce::String (ui::RackSection::kAux));
+            expect (rack.isKeyLit (Key::InputAux));
+            rack.pressKey (Key::InputAux);
+            expectEquals (channels.getLayerId(), juce::String (ui::RackSection::kInputs));
+
+            // BUSES MAIN: buses 1-16; again: main 1-4 and matrix 1-8.
+            rack.pressKey (Key::BusesMain);
+            expectEquals (channels.getLayerId(), juce::String (ui::RackSection::kBuses));
+            expect (channels.getStrip (0) == engine.getBuses()[0].get());
+            rack.pressKey (Key::BusesMain);
+            expectEquals (channels.getLayerId(), juce::String (ui::RackSection::kMainMatrix));
+            expect (channels.getStrip (0) == engine.getMains()[0].get());
+            expect (rack.isKeyLit (Key::BusesMain) && ! rack.isKeyLit (Key::InputAux));
+
+            // DCA MUTE: DCA 1-16; again: the mute groups on the eight keys (the custom
+            // controls section plays them, in the channels' place).
+            rack.pressKey (Key::DcaMute);
+            expectEquals (channels.getLayerId(), juce::String (ui::RackSection::kDca));
+            expect (channels.getStrip (0) == nullptr && rack.showsChannels()); // a DCA, not a strip
+            const int before = modeChanges;
+            rack.pressKey (Key::DcaMute);
+            expect (rack.getMode() == Mode::MuteGroups && ! rack.showsChannels() && rack.isKeyLit (Key::DcaMute));
+            expect (controls.getRackMode() == RackMode::MuteGroups);
+            expectEquals (modeChanges, before + 1);
+            expect (rack.layerDisplayText().isEmpty());
+            rack.shift (1, false); // nothing to step through
+            expect (rack.getMode() == Mode::MuteGroups);
+            rack.pressKey (Key::DcaMute);
+            expect (rack.showsChannels());
+            expectEquals (channels.getLayerId(), juce::String (ui::RackSection::kDca));
+
+            // CUST TRANS: the custom controls' 16 layers on the shift keys, then the transports.
+            rack.pressKey (Key::CustTrans);
+            expect (rack.getMode() == Mode::Custom && controls.getRackMode() == RackMode::Custom && rack.isKeyLit (Key::CustTrans));
+            expectEquals (rack.layerDisplayText(), juce::String ("1"));
+            rack.shift (1, false);
+            expectEquals (assignments.currentLayer, 1);
+            expectEquals (rack.layerDisplayText(), juce::String ("2"));
+            rack.shift (1, true);
+            expectEquals (assignments.currentLayer, ui::cc::kNumLayers - 1);
+            expectEquals (rack.layerDisplayText(), juce::String ("16"));
+            rack.shift (-1, true);
+            expectEquals (assignments.currentLayer, 0);
+            rack.pressView (false); // VIEW on CUST: CUSTOM CONTROLS on the layer shown
+            expectEquals (rig.customControlsShown, 0);
+            rack.pressKey (Key::CustTrans);
+            expect (rack.getMode() == Mode::UsbTransport && controls.getRackMode() == RackMode::TwoTrack);
+            rack.pressView (false);
+            expect (rig.screen == ui::Screen::UsbRecorder);
+            rack.pressKey (Key::CustTrans);
+            expect (rack.getMode() == Mode::MultiTransport && controls.getRackMode() == RackMode::MultiTrack);
+            rack.pressKey (Key::CustTrans);
+            expect (rack.getMode() == Mode::Custom);
+
+            // VIEW on a channel layer (manual Table 4.6): OVERVIEW, again FADERS; held: CONFIG.
+            rack.pressKey (Key::InputAux);
+            expect (rack.showsChannels());
+            rig.screen = ui::Screen::Home;
+            rig.ctx.viewSection = LayerSet::Right;
+            rack.pressView (false);
+            expect (rig.screen == ui::Screen::Overview && rig.ctx.viewSection == LayerSet::Left);
+            rack.pressView (false);
+            expect (rig.screen == ui::Screen::Faders);
+            rack.pressView (false);
+            expect (rig.screen == ui::Screen::Overview);
+            rack.pressView (true);
+            expect (rig.screen == ui::Screen::Config);
+
+            // A fader to be shown brings the channels back.
+            rack.pressKey (Key::CustTrans);
+            rack.showChannels();
+            expect (rack.showsChannels() && controls.getRackMode() == RackMode::Custom); // (hidden, in its RACK layout)
+
+            // Another model: the strips and the custom controls are the console's again.
+            rack.setActive (false);
+            expect (! channels.isRackStyle() && controls.getRackMode() == RackMode::Off);
         }
     }
 };

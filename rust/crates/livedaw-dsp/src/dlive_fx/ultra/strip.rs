@@ -77,7 +77,8 @@ const PRE_DYN: usize = PRE_PEQ + PEQ_LEN;
 const POST_DYN: usize = PRE_DYN + DYN_LEN;
 const POST_PEQ: usize = POST_DYN + DYN_LEN;
 const WIDTH_AT: usize = POST_PEQ + PEQ_LEN;
-const STRIP_LEN: usize = WIDTH_AT + 1;
+/// How many values the strip has ([`STRIP`]'s parameters).
+pub const STRIP_LEN: usize = WIDTH_AT + 1;
 
 const fn strip_params() -> [ParamSpec; STRIP_LEN] {
     let pre_peq: [ParamSpec; PEQ_LEN] = peq_section!("a_", "PRE ");
@@ -237,6 +238,10 @@ pub struct UltraStrip {
     width: f32,
 }
 
+/// Where each section's values start in [`STRIP`], for a screen that lays them out:
+/// the pre PEQ, the pre dynamics, the post dynamics, the post PEQ, Width.
+pub const SECTIONS: [usize; 5] = [PRE_PEQ, PRE_DYN, POST_DYN, POST_PEQ, WIDTH_AT];
+
 impl UltraStrip {
     /// Message thread (allocates): blocks are at most `max_block` long.
     pub fn new(sample_rate: f32, max_block: usize) -> Self {
@@ -256,6 +261,13 @@ impl UltraStrip {
             scratch: [buf(), buf()],
             width: 1.0,
         }
+    }
+
+    /// The gain reduction of the pre and the post dynamics section now, in dB (<= 0;
+    /// 0 for a section that is out).
+    pub fn reductions(&self) -> [f32; 2] {
+        let of = |d: &Dyn| if d.on { d.gain_db.min(0.0) } else { 0.0 };
+        [of(&self.pre_dyn), of(&self.post_dyn)]
     }
 
     pub fn reset(&mut self) {

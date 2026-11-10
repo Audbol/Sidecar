@@ -13,6 +13,7 @@
 #include "engine/Show.h"
 #include "ui/UniversalSkin.h"
 #include "engine/DirectOut.h"
+#include "ui/LookAndFeel.h"
 #include "ui/Pro2Surface.h"
 #include "ui/Y01VSurface.h"
 #include "ui/DLiveSurface.h"
@@ -28,6 +29,8 @@
 #include "ui/ProMixSurface.h"
 #include "ui/Sq5Surface.h"
 #include "ui/Scribble.h"
+#include "ui/WingSurface.h"
+#include "daw/Session.h"
 
 #include <set>
 #include "ui/X32Surface.h"
@@ -191,9 +194,11 @@ public:
         y02rSurface();
         sq5Surface();
         y01vSurface();
+        groupsAndPairsInShows();
         dliveSurface();
         dliveMainModes();
         pro2Surface();
+        wingRackSurface();
         dliveC3500Surface();
         dm2000OnUniversal();
         dm2000Surface();
@@ -296,6 +301,75 @@ public:
             juce::FileOutputStream out (file);
             expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out));
         }
+    }
+
+    /** The 01V's fader/[ON] groups and pairs, and the DM2000's pairs and groups, go with scenes and shows. */
+    void groupsAndPairsInShows()
+    {
+        beginTest ("The 01V's groups and pairs and the DM2000's pairs and groups: scenes and shows");
+        const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("sidecar-groups-test.lds");
+        {
+            MixerEngine engine (0);
+            engine.configureProfile (ld::kProfileYamaha01V);
+            ShotRig rig (engine);
+            setShownProfile (ld::kProfileYamaha01V);
+            ui::Y01VSurface skin (rig.ctx);
+            auto& d = skin.getDisplay();
+            rig.show.addScene ("A");
+            d.setGroup (0, false, 1);
+            d.setGroup (3, true, 2);
+            d.setPair (4, true);
+            rig.show.storeScene (0);
+            d.setGroup (0, false, 0);
+            d.setGroup (3, true, 0);
+            d.setPair (4, false);
+            rig.show.recallScene (0);
+            d.tickLinks();
+            expect (d.getGroup (0, false) == 1 && d.getGroup (3, true) == 2 && d.isPaired (4) && ! d.isPaired (3), "01V scene recall");
+            expect (rig.show.saveToFile (file).wasOk());
+        }
+        {
+            MixerEngine engine (0);
+            engine.configureProfile (ld::kProfileYamaha01V);
+            ShotRig rig (engine);
+            expect (rig.show.loadFromFile (file).wasOk());
+            ui::Y01VSurface skin (rig.ctx);
+            auto& d = skin.getDisplay();
+            expect (d.getGroup (0, false) == 1 && d.getGroup (3, true) == 2 && d.isPaired (4), "01V show load");
+        }
+        {
+            MixerEngine engine (0);
+            engine.configureProfile (ld::kProfileDm2000);
+            ShotRig rig (engine);
+            setShownProfile (ld::kProfileDm2000);
+            ui::Dm2000Surface skin (rig.ctx);
+            auto& d = skin.getDisplay();
+            auto& ch = engine.getChannels();
+            rig.show.addScene ("A");
+            d.setPaired (false, 2, true);
+            ch[0]->params.dcaMask.set (0, true);
+            ch[1]->params.muteGroupMask.set (1, true);
+            rig.show.storeScene (0);
+            d.setPaired (false, 2, false);
+            ch[0]->params.dcaMask.set (0, false);
+            ch[1]->params.muteGroupMask.set (1, false);
+            rig.show.recallScene (0);
+            d.followPairs();
+            expect (d.isPaired (false, 2) && ! d.isPaired (false, 1), "DM2000 pair recall");
+            expect (ch[0]->params.dcaMask.contains (0) && ch[1]->params.muteGroupMask.contains (1), "DM2000 groups recall");
+            expect (rig.show.saveToFile (file).wasOk());
+        }
+        {
+            MixerEngine engine (0);
+            engine.configureProfile (ld::kProfileDm2000);
+            ShotRig rig (engine);
+            expect (rig.show.loadFromFile (file).wasOk());
+            ui::Dm2000Surface skin (rig.ctx);
+            expect (skin.getDisplay().isPaired (false, 2), "DM2000 show load, pair");
+            rig.show.recallScene (0);
+            expect (engine.getChannels()[0]->params.dcaMask.contains (0), "DM2000 show load, groups");
+        }
+        file.deleteFile();
     }
 
     /** The 01V's surface and LCD, at 1920x1080. */
@@ -1547,6 +1621,104 @@ public:
             expect (skin.getProcessing().findButton ("Post Delay") != nullptr);
             shot (skin, "dlive-c3500-mains.png");
         }
+    }
+
+    /** The WING RACK's front panel (wing-rack.png at 1920x1080, wing-rack-1366.png at
+        1366x768), then its section on the custom controls and on the mute groups. */
+    void wingRackSurface()
+    {
+        beginTest ("The WING surface as a WING RACK");
+        MixerEngine engine (0);
+        engine.setNumChannels (40);
+        ShotRig rig (engine);
+        setShownProfile (ld::kProfileWing);
+        rig.ctx.interfaceKind = ui::InterfaceKind::Wing;
+        rig.ctx.consoleModel = ConsoleModel::Rack;
+        rig.show.layers.setModel (ConsoleModel::Rack);
+        ui::setSurfaceFinish (ui::SurfaceFinish::Black); // the RACK is black
+        ui::ConsoleLookAndFeel rackLook; // as the app, so the knobs draw as they do there
+        juce::LookAndFeel::setDefaultLookAndFeel (&rackLook);
+        daw::Session recording (engine.getRecorder(), &rig.settings); // the recorder screen's session
+        rig.ctx.recording = &recording;
+        ui::cc::Assignments assignments (rig.show);
+        rig.ctx.customControls = &assignments;
+
+        const char* names[] = { "Kick", "Snare", "Hat", "Tom 1", "Tom 2", "OH L", "OH R", "Bass" };
+        const int colours[] = { 2, 2, 2, 3, 3, 4, 4, 5 };
+        auto& channels = engine.getChannels();
+        for (int i = 0; i < 8; ++i)
+        {
+            auto& s = *channels[(size_t) i];
+            s.setName (names[i]);
+            s.setColourIndex (colours[i]);
+            s.params.faderDb = i % 3 == 0 ? 0.0f : -6.0f - (float) (i % 4) * 3.0f;
+            s.meters.trimPeak[0] = s.meters.outputPeak[0] = 0.15f + 0.6f * (float) ((i * 37) % 11) / 10.0f;
+            s.meters.trimPeak[1] = s.meters.outputPeak[1] = s.meters.outputPeak[0] * 0.9f;
+        }
+        channels[1]->params.mute = true;
+        channels[2]->params.solo = true;
+        engine.monitorPeak[0] = 0.3f;
+        engine.monitorPeak[1] = 0.28f;
+        rig.meters.advance (0.01f);
+        rig.selected = channels[0].get();
+
+        {
+            ui::WingSurface skin (rig.ctx);
+            skin.setSize (1920, 1080);
+            skin.selectionChanged();
+            skin.refreshAll();
+            auto& rack = skin.getRackSection();
+            expect (rack.isVisible() && rack.showsChannels());
+            // One row: the display, the section right of it, inside the window.
+            expect (skin.getLocalBounds().contains (rack.getBounds()) && skin.getLocalBounds().contains (skin.getDisplay().getBounds()));
+            expectEquals (skin.getDisplay().getRight(), rack.getX());
+            expect (rack.getWidth() >= 300 && rack.getHeight() == skin.getDisplay().getHeight());
+
+            const auto shot = [this, &skin] (const juce::String& fileName)
+            {
+                test::pumpMessages (150); // the strips' and keys' timers
+                const auto image = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
+                expect (image.isValid() && image.getWidth() == skin.getWidth(), fileName);
+                // The panel isn't blank: more than a few shades in the section.
+                std::set<juce::uint32> shades;
+                const auto area = skin.getRackSection().getBounds();
+                for (int y = area.getY(); y < area.getBottom(); y += 7)
+                    for (int x = area.getX(); x < area.getRight(); x += 7)
+                        shades.insert (image.getPixelAt (x, y).getARGB());
+                expect (shades.size() > 8, fileName + ": the section is blank");
+                const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {});
+                if (folder.isEmpty())
+                    return;
+                const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile (fileName);
+                file.deleteFile();
+                juce::FileOutputStream out (file);
+                expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out), file.getFullPathName());
+                logMessage ("wrote " + file.getFullPathName());
+            };
+
+            // INPUT AUX: channels 1-4 on the LCD, the encoders and the MUTE / SOLO keys.
+            rack.pressKey (ui::RackSection::InputAux);
+            skin.refreshAll();
+            shot ("wing-rack.png");
+            // CUST: the custom controls; DCA MUTE twice: the mute groups.
+            rack.pressKey (ui::RackSection::CustTrans);
+            expect (! rack.showsChannels());
+            shot ("wing-rack-cust.png");
+            rack.pressKey (ui::RackSection::DcaMute);
+            rack.pressKey (ui::RackSection::DcaMute);
+            expect (rack.getMode() == ui::RackSection::Mode::MuteGroups);
+            shot ("wing-rack-mute-groups.png");
+            rack.pressKey (ui::RackSection::BusesMain);
+            expect (rack.showsChannels());
+
+            // A laptop's window.
+            skin.setSize (1366, 768);
+            skin.refreshAll();
+            expect (skin.getLocalBounds().contains (rack.getBounds()) && skin.getLocalBounds().contains (skin.getDisplay().getBounds()));
+            shot ("wing-rack-1366.png");
+        }
+        juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+        ui::setSurfaceFinish (ui::SurfaceFinish::Silver);
     }
 
     /** The dLive's C3500 surface, at 1920x1080: its strips and banks, its two screens. */
@@ -3187,6 +3359,7 @@ private:
             }
             display.setFunction (F::Meter);
         }
+        expectEquals (display.getWidth(), 720, "240 dots at 3 pixels each");
         // The EQ function on the selected channel (CH5), a bell on MID.
         skin.selectionChanged();
         expectEquals (display.getEqStrip(), 4);

@@ -131,6 +131,11 @@ public:
             expect (ask (sock, st.oscPort, oscGet ("/?")).contains ("RENAMED,wing-compact,"));
             expect (ask (sock, st.oscPort, oscGet ("/$syscfg/$cnsmdl")).contains ("wing-compact"));
             expect (ask (sock, st.oscPort, oscGet ("/$syscfg/$cnscfg")).contains ("wing-compact")); // WING Edit's model
+            // The RACK: "wing-rack" in both (WING Remote Protocols, $cnsmdl and $cnscfg).
+            wing.setConsoleModel (ConsoleModel::Rack);
+            expect (ask (sock, st.oscPort, oscGet ("/?")).contains ("RENAMED,wing-rack,"));
+            expect (ask (sock, st.oscPort, oscGet ("/$syscfg/$cnsmdl")).contains ("wing-rack"));
+            expect (ask (sock, st.oscPort, oscGet ("/$syscfg/$cnscfg")).contains ("wing-rack"));
             wing.setConsoleModel (ConsoleModel::Full);
             expect (ask (sock, st.oscPort, oscGet ("/?")).contains ("RENAMED,ngc-full,"));
             // The black full-size WING is "wing-bk" (the COMPACT stays itself).

@@ -20,6 +20,7 @@ pub mod promix;
 pub mod recorder;
 pub mod session;
 pub mod sq;
+pub mod ufx;
 pub mod usb;
 pub mod web;
 pub mod wing;
@@ -392,6 +393,8 @@ pub fn console_hook(e: &Engine, text: &str) {
         Profile::X32 => livedaw_x32::oscillator::apply(e, text),
         Profile::ProMix01 => livedaw_promix::console::apply_oscillator(e, &livedaw_promix::State::from_text(text)),
         Profile::Yamaha02R => livedaw_02r::console::apply_oscillator(e, &livedaw_02r::State::from_text(text)),
+        // The 01V's and DM2000's text is a surface's groups and pairs; their oscillator is the surface's.
+        Profile::Yamaha01V | Profile::Dm2000 => {}
         _ => e.oscillator.clear(),
     }
 }
@@ -980,6 +983,26 @@ pub unsafe extern "C" fn ld_engine_set_num_mute_groups(e: *const Engine, count: 
     engine(e).map_or(0, |e| guard(0, || e.set_num_mute_groups(count.max(0) as usize) as i32))
 }
 
+/// The console's own state text (`Engine::console_text`: groups and pairs a surface keeps; it
+/// goes with shows and scenes); caller frees.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_console_text(e: *const Engine) -> *mut session::LdString {
+    session::LdString::new(engine(e).map(|e| e.console_text().0).unwrap_or_default())
+}
+
+/// The console text's version (it changes whenever the text does).
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_console_version(e: *const Engine) -> u64 {
+    engine(e).map_or(0, |e| e.console_text_version())
+}
+
+/// Sets the console text; returns its version.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_set_console_text(e: *const Engine, utf8: *const u8, len: usize) -> u64 {
+    let text = session::str_arg(utf8, len);
+    engine(e).map_or(0, |e| guard(0, || e.set_console_text(&text)))
+}
+
 /// The FX slots in use (16, the WING's, to kMaxFx).
 #[no_mangle]
 pub unsafe extern "C" fn ld_engine_num_fx(e: *const Engine) -> i32 {
@@ -1140,7 +1163,7 @@ pub unsafe extern "C" fn ld_fx_ctx(e: *const Engine, slot: i32) -> *mut std::ffi
 #[no_mangle]
 pub unsafe extern "C" fn ld_fx_state(e: *const Engine, slot: i32, what: i32) -> bool {
     let Some(e) = engine(e) else { return false };
-    let (Some(r), Some(p)) = (e.fx(slot.max(0) as usize).filter(|_| slot >= 0), e.controls.fx.get(slot.max(0) as usize)) else {
+    let (Some(r), Some(p)) = (e.fx(slot.max(0) as usize).filter(|_| slot >= 0), e.fx_params(slot.max(0) as usize)) else {
         return false;
     };
     match what {
@@ -1190,7 +1213,7 @@ pub unsafe extern "C" fn ld_fx_set_latency(e: *const Engine, slot: i32, samples:
 #[no_mangle]
 pub unsafe extern "C" fn ld_fx_latency(e: *const Engine, slot: i32) -> i32 {
     let Some(e) = engine(e) else { return 0 };
-    match (e.fx(slot.max(0) as usize).filter(|_| slot >= 0), e.controls.fx.get(slot.max(0) as usize)) {
+    match (e.fx(slot.max(0) as usize).filter(|_| slot >= 0), e.fx_params(slot.max(0) as usize)) {
         (Some(r), Some(p)) => r.latency(p) as i32,
         _ => 0,
     }

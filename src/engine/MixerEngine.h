@@ -168,6 +168,11 @@ public:
     /** Sets the DCAs / mute groups in use (never below one in use); returns the number set. */
     int setNumDcas (int count) noexcept { return ld::ld_engine_set_num_dcas (engine, count); }
     int setNumMuteGroups (int count) noexcept { return ld::ld_engine_set_num_mute_groups (engine, count); }
+    /** The console's own state text (a surface's groups and pairs): it saves with shows and
+        recalls with scenes. The version changes whenever the text does. */
+    juce::String getConsoleText() const { return takeString (ld::ld_engine_console_text (engine)); }
+    uint64_t getConsoleVersion() const noexcept { return ld::ld_engine_console_version (engine); }
+    uint64_t setConsoleText (const juce::String&);
     juce::String getDcaName (int index) const { return takeString (ld::ld_engine_group_name (engine, 0, index)); }
     void setDcaName (int index, const juce::String&);
     juce::String getMuteGroupName (int index) const { return takeString (ld::ld_engine_group_name (engine, 1, index)); }

@@ -57,7 +57,7 @@ use crate::blocks::{Block, BlockKind, Step, MAX_EXTRA_BLOCKS};
 use crate::chain::Node;
 use crate::config::{ConsoleConfig, Counts, MAX_AUX};
 use crate::denormals::ScopedNoDenormals;
-use crate::fx::{FxInputs, FxRack, InsertCallbacks};
+use crate::fx::{FxExtras, FxInputs, FxRack, InsertCallbacks};
 use crate::garbage::Garbage;
 use crate::groups::{AtomicGroupSet, GroupSet};
 use crate::iosafes::IoSafes;
@@ -76,6 +76,8 @@ use crate::sources::{user_side, SourceDsp, SourceTable, UserSignalParams, NUM_SE
 use crate::strip::{source_ptr, KeyStrips, ProcessContext, Strip};
 use crate::talk::{TalkBlock, TalkGains, TalkRamps};
 use crate::taps::{send_tap, FIRST_USER_TAP, NUM_TAP_IDS};
+use crate::ufx::{dyn8_of, FxKey, UfxState, DYN8_FX_BASE, DYN8_TOKEN, NOTES_PER_BLOCK, NUM_FX_ENGINES};
+use livedaw_dsp::dlive_fx::ultra::strip::UltraStrip;
 use livedaw_dsp::model::ModelSpec;
 use livedaw_dsp::util::*;
 use livedaw_dsp::wing::fx::{allowed_in, FxContext, FxDevice};
@@ -220,6 +222,8 @@ struct AudioState {
     /// PHONES L/R, SPEAKERS L/R, the solo bus L/R; which pairs are written.
     monitor_returns: ReturnRing,
     monitor_returns_live: [bool; 3],
+    /// A send effect's external key of this block (`ufx.rs`).
+    fx_key: Vec<f32>,
 }
 
 /// A monitor path's ramps from the last block.
@@ -296,6 +300,9 @@ pub struct Engine {
     /// remote's meter stream, which takes them (the UI takes `controls`').
     pub monitor_remote_peaks: [[AtomicF32; 2]; 2],
     fx: Box<[FxRack]>,
+    /// The FX engines' key sources, the Global Key and MIDI notes, a dLive's
+    /// RackUltra strips and its Dyn8 engines (`ufx.rs`).
+    pub ufx: UfxState,
     /// The FX slots in use (`set_num_fx`): the first `num_fx` of `fx`.
     num_fx: AtomicUsize,
     recorder: Recorder,
@@ -391,11 +398,13 @@ impl Engine {
                 monitor_returns_live: [false; 3],
                 direct_gain: vec![0.0; NUM_PATCH_OUTPUTS],
                 direct_scratch: Vec::new(),
+                fx_key: vec![0.0; DEFAULT_BLOCK],
             }),
             controls: EngineControls::default(),
             amm: AmmParams::default(),
             monitor_remote_peaks: Default::default(),
             fx: (0..MAX_FX).map(|_| FxRack::default()).collect(),
+            ufx: UfxState::default(),
             num_fx: AtomicUsize::new(WING_FX),
             recorder: Recorder::new(),
             usb: UsbDeck::new(),
@@ -416,12 +425,16 @@ impl Engine {
                 f.prepare(DEFAULT_BLOCK);
                 f.set_round_trip(DEFAULT_BLOCK as u32);
             }
+            for f in engine.ufx.dyn8.iter() {
+                f.prepare_light(DEFAULT_BLOCK);
+            }
             (*engine.audio.get()).sources.prepare(0, DEFAULT_BLOCK, DEFAULT_SAMPLE_RATE);
         }
         let mut st = engine.lock();
         engine.build_fixed(&mut st);
         engine.publish(&st);
         drop(st);
+        engine.make_ufx_strips();
         engine
     }
 
@@ -675,6 +688,10 @@ impl Engine {
         };
         // Beyond the console emulated: the Universal Mixer's own.
         st.profile = st.profile.or_universal(&st.counts);
+        // No longer a dLive: its RackUltra strips and Dyn8 engines stop.
+        if !matches!(st.profile, Profile::AhDLive(_)) {
+            self.ufx.stop();
+        }
         self.publish(&st);
         n
     }
@@ -720,6 +737,11 @@ impl Engine {
         self.controls.reset();
         self.amm.reset();
         self.dlive.reset();
+        // A dLive's RackUltra strips and Dyn8 engines (none on another console).
+        let fx_table = st.profile.spec().models.fx;
+        let dyn8 =
+            matches!(st.profile, Profile::AhDLive(_)).then(|| livedaw_dsp::model::model_index(fx_table, DYN8_TOKEN)).flatten();
+        self.ufx.reset(fx_table, dyn8);
         // The console's new DCAs take its palette's colour (an X32's WH).
         for d in &self.controls.dcas {
             d.colour.store(st.profile.spec().palette.default, Relaxed);
@@ -1532,9 +1554,48 @@ impl Engine {
         }
     }
 
-    /// FX slot `i` (0..MAX_FX; the console uses the first `num_fx()`).
+    /// FX slot `i` (0..MAX_FX; the console uses the first `num_fx()`), or a
+    /// dLive's Dyn8 engine `i - DYN8_FX_BASE` (`ufx.rs`).
     pub fn fx(&self, i: usize) -> Option<&FxRack> {
-        self.fx.get(i)
+        match dyn8_of(i as i32) {
+            Some(n) => self.ufx.dyn8.get(n).filter(|_| self.ufx.live()),
+            None => self.fx.get(i),
+        }
+    }
+
+    /// The settings of FX slot `i`, or of Dyn8 engine `i - DYN8_FX_BASE`.
+    pub fn fx_params(&self, i: usize) -> Option<&FxParams> {
+        match dyn8_of(i as i32) {
+            Some(n) => self.ufx.dyn8_params.get(n).filter(|_| self.ufx.live()),
+            None => self.controls.fx.get(i),
+        }
+    }
+
+    /// The key source of FX slot `i`, or of Dyn8 engine `i - DYN8_FX_BASE`.
+    pub fn fx_key(&self, i: usize) -> Option<&FxKey> {
+        self.ufx.keys.get(i).filter(|_| i < DYN8_FX_BASE || self.ufx.live())
+    }
+
+    /// Message thread: the Dyn8 engines some insert names (on or off), a bit each
+    /// (none on a console without them).
+    pub fn dyn8_in_use(&self) -> u64 {
+        if self.ufx.live() {
+            self.dyn8_assigned(&self.lock())
+        } else {
+            0
+        }
+    }
+
+    fn dyn8_assigned(&self, st: &Structure) -> u64 {
+        let mut mask = 0u64;
+        for s in st.all() {
+            s.for_each_insert_fx(|slot| {
+                if let Some(n) = dyn8_of(slot) {
+                    mask |= 1 << n;
+                }
+            });
+        }
+        mask
     }
 
     /// The FX slots in use: WING_FX to MAX_FX.
@@ -1545,11 +1606,13 @@ impl Engine {
     /// Message thread: sets the number of FX slots in use (SETUP > GENERAL >
     /// FX SLOTS), within WING_FX..=MAX_FX and never below a slot in use
     /// (`fx_in_use`), so fewer slots never drop a device, a plugin or an
-    /// insert's assignment. Returns the number set.
+    /// insert's assignment; a dLive keeps its 24 (FX 17-24 are its RackUltra
+    /// engines). Returns the number set.
     pub fn set_num_fx(&self, count: usize) -> usize {
         let st = self.lock();
         let needed = (0..MAX_FX).rev().find(|&i| self.slot_in_use(&st, i)).map_or(0, |i| i + 1);
-        let n = count.clamp(WING_FX, MAX_FX).max(needed);
+        let ufx = if self.ufx.live() { crate::ufx::UFX_FIRST + crate::ufx::NUM_UFX } else { 0 };
+        let n = count.clamp(WING_FX, MAX_FX).max(needed).max(ufx);
         self.num_fx.store(n, Relaxed);
         n
     }
@@ -1560,6 +1623,7 @@ impl Engine {
         self.slot_in_use(&self.lock(), i)
     }
 
+    /// (A Dyn8 engine, `i` from `DYN8_FX_BASE`: an insert is assigned to it.)
     fn slot_in_use(&self, st: &Structure, i: usize) -> bool {
         let assigned = |s: &Arc<Strip>| s.assigns_fx(i);
         self.controls.fx.get(i).is_some_and(|p| p.model_index() != FX_NONE) || st.all().any(assigned)
@@ -1608,8 +1672,11 @@ impl Engine {
     pub fn update_pdc(&self) {
         let st = self.lock();
         let enabled = self.pdc.enabled.load(Relaxed);
-        let fx: [u32; MAX_FX] =
-            std::array::from_fn(|i| if enabled { self.fx[i].effective_latency(&self.controls.fx[i]) } else { 0 });
+        // Every engine an insert can name: the FX slots, then a dLive's Dyn8s.
+        let fx: [u32; NUM_FX_ENGINES] = std::array::from_fn(|i| match (self.fx(i), self.fx_params(i)) {
+            (Some(rack), Some(params)) if enabled => rack.effective_latency(params),
+            _ => 0,
+        });
         let add = |own: [u32; pdc_tap::COUNT], base: u32| own.map(|l| l.saturating_add(base));
 
         for s in st.channels.iter().chain(&st.auxes) {
@@ -1677,6 +1744,18 @@ impl Engine {
                 if let Some(m) = src.and_then(|src| masks.iter_mut().find(|(t, _)| Arc::ptr_eq(t, src))) {
                     m.1 |= 1 << buffer;
                 }
+            }
+        }
+        // The FX engines' key sources (`ufx.rs`).
+        for key in self.ufx.keys.iter() {
+            let (source, buffer) = key.get();
+            let src = match source {
+                KeySource::SelfKey => None,
+                KeySource::Channel(i) => st.channels.get(i),
+                KeySource::Strip(kind, i) => st.list(kind).iter().find(|t| t.id() as usize == i),
+            };
+            if let Some(m) = src.and_then(|src| masks.iter_mut().find(|(t, _)| Arc::ptr_eq(t, src))) {
+                m.1 |= 1 << buffer;
             }
         }
         for (s, mask) in masks {
@@ -1760,6 +1839,34 @@ impl Engine {
                 self.install_fx_device(i, rack, model);
             }
         }
+        self.sync_dyn8_devices();
+    }
+
+    /// A dLive's Dyn8 engines: a device for each one some insert names, none
+    /// for the others (and none on any other console).
+    fn sync_dyn8_devices(&self) {
+        let fx = self.fx_models();
+        let assigned = self.dyn8_in_use();
+        let ctx = self.fx_context();
+        for (n, (rack, params)) in self.ufx.dyn8.iter().zip(self.ufx.dyn8_params.iter()).enumerate() {
+            let model = params.model_index_in(fx);
+            let wanted = assigned & (1 << n) != 0 && fx.get(model).is_some_and(|m| m.token == DYN8_TOKEN);
+            let same = rack.device_info() == Some((model, ctx)) && rack.device_table().is_some_and(|t| std::ptr::eq(t, fx));
+            if wanted && !same {
+                self.install_fx_device(DYN8_FX_BASE + n, rack, model);
+            } else if !wanted && rack.has_device() {
+                rack.set_device(None, &self.garbage);
+            }
+        }
+    }
+
+    /// A UFX strip's DSP for each of the 8 engines, made for the device's sample
+    /// rate and block size.
+    fn make_ufx_strips(&self) {
+        let ctx = self.fx_context();
+        for u in self.ufx.strips.iter() {
+            u.set_strip(Some(Box::new(UltraStrip::new(ctx.sample_rate, ctx.max_block))), &self.garbage);
+        }
     }
 
     pub fn set_device_running(&self, running: bool) {
@@ -1783,6 +1890,7 @@ impl Engine {
         a.sample_rate = sample_rate;
         a.block_size = block_size;
         a.direct_scratch = vec![0.0; block_size];
+        a.fx_key = vec![0.0; block_size];
         a.hw_in_to_active = in_map.to_vec();
         a.hw_out_to_active = out_map.to_vec();
         a.hw_in_ptrs = vec![std::ptr::null(); in_map.len()];
@@ -1803,6 +1911,9 @@ impl Engine {
         for f in self.fx.iter() {
             f.prepare(block_size);
         }
+        for f in self.ufx.dyn8.iter() {
+            f.prepare_light(block_size);
+        }
         drop(st);
         self.update_keys();
         self.recorder.prepare(sample_rate, block_size);
@@ -1813,6 +1924,11 @@ impl Engine {
         for (i, (rack, params)) in self.fx.iter().zip(self.controls.fx.iter()).enumerate() {
             self.install_fx_device(i, rack, params.model_index_in(fx));
         }
+        for rack in self.ufx.dyn8.iter() {
+            rack.set_device(None, &self.garbage);
+        }
+        self.sync_dyn8_devices();
+        self.make_ufx_strips();
         self.pool.set_block_duration_hint(sample_rate, block_size);
         self.update_round_trip();
     }
@@ -1954,8 +2070,15 @@ impl Engine {
         // What is read a block late this block, and the bus stage's order (routing.rs).
         self.plan_returns(topo, a, n, source_solo.map(|(_, p)| p));
         self.tick_selectors(topo, a.sample_rate, n);
+        // The MIDI notes that arrived and the Global Key, for the FX devices (ufx.rs).
+        let mut notes = [(0u8, 0u8); NOTES_PER_BLOCK];
+        let count = self.ufx.notes.take(&mut notes);
+        let key = self.ufx.global_key.code();
+        for rack in self.fx.iter() {
+            rack.control(&notes[..count], key);
+        }
         // The send effects, on the buses' last block, for the FX return channels.
-        self.send_effects(a, n);
+        self.send_effects(topo, a, n);
         crate::trace::mark("plan+sendfx");
 
         let hw = SharedPtrs(a.sources.hw_ptrs());
@@ -1981,7 +2104,7 @@ impl Engine {
         let stage1 = |i: usize| if i < num_ch { &topo.channels[i] } else { &topo.auxes[i - num_ch] };
         (*topo.key_schedule.get()).compute(num_ch, |i| {
             let s = stage1(i);
-            key_sources(&s.params, s.kind() == StripKind::Channel)
+            key_sources(&s.params, s.kind() == StripKind::Channel, &self.ufx.keys)
         });
         let schedule = &*topo.key_schedule.get();
         let ctx_of = |hw, wave| self.context(topo, hw, playback.get(), &groups, block, probes, schedule.waves(), wave);
@@ -2184,7 +2307,7 @@ impl Engine {
     /// The send effects (an X32's FX 1-4): each slot with sources processes
     /// their signals (one block late, as channels read them) into its FX
     /// returns, which the channels read this block; the others' are silent.
-    unsafe fn send_effects(&self, a: &mut AudioState, n: usize) {
+    unsafe fn send_effects(&self, topo: &Topology, a: &mut AudioState, n: usize) {
         let count = self.num_fx().min(NUM_SEND_FX);
         let live = |slot: usize| slot < count && self.controls.fx[slot].is_send();
         for slot in 0..NUM_SEND_FX {
@@ -2208,7 +2331,16 @@ impl Engine {
                 }
             }
             let mut chans: [&mut [f32]; 2] = [l, r];
-            self.fx[slot].process(&mut chans, a.sample_rate, p, &FxInputs { hw, playback }, block);
+            // Its external key: the source's tap of the last block, as its input is.
+            let (source, buffer) = self.ufx.keys[slot].get();
+            let key_strip = match source {
+                KeySource::SelfKey => None,
+                KeySource::Channel(i) => topo.channels.get(i),
+                KeySource::Strip(kind, i) => topo.by_number(kind, i as i32 + 1),
+            };
+            let keyed = a.fx_key.len() >= n && key_strip.is_some_and(|s| s.keys.read(buffer, block, false, &mut a.fx_key[..n]));
+            let extras = FxExtras { key: keyed.then(|| &a.fx_key[..n]), ufx: self.ufx.strip_of(slot) };
+            self.fx[slot].process(&mut chans, a.sample_rate, p, &FxInputs { hw, playback }, &extras, block);
         }
     }
 
@@ -2242,6 +2374,7 @@ impl Engine {
         ProcessContext {
             fx: &self.fx,
             fx_params: &self.controls.fx,
+            ufx: &self.ufx,
             amm: &self.amm,
             dcas: &self.controls.dcas,
             mute_groups: g.mute_groups,

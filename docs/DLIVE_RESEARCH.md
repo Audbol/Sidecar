@@ -81,7 +81,7 @@ Each mix's NEQ slot is either a 28-band GEQ (4 types) or a 12-band PEQ, chosen w
 ### Built: `DLVDYN8`, `dlive_fx/dynamics/dyn8.rs`, and the RackUltra card, `dlive_fx/ultra`
 
 Every algorithm is Sidecar's reading; each module's comment says what is stated and what isn't.
-A dLive's table holds the 38 models (RackExtra 20, Dyn8, 11 RackUltra). `dlive_fx::slot_rule` keeps each to its own engines: RackExtra 0..16, RackUltra 16..24, Dyn8 24..88 (a Universal strip takes any: RackUltra FX 1-8, Dyn8 any slot).
+A dLive's table holds the 38 models (RackExtra 20, Dyn8, 11 RackUltra). `dlive_fx::slot_rule` keeps each to its own engines: RackExtra FX 1-16, RackUltra FX 17-24, and Dyn8 on the 64 Dyn8 engines only, which the engine holds beside the FX slots and an insert names as 64..128 (`livedaw_engine::ufx`; a Universal strip takes any: RackUltra FX 1-8, Dyn8 any slot).
 
 Public but unreadable here: the support site refuses fetches; the search engine's extract of its RackUltra article gave the Shifter's Precision, Gridder's tolerances, Harmoniser Interval reading and five cabinet names (FDR 1x12, FV 2x10, VX 2x12, Bass 8x10B, Bass 1x15). Four cabinets stay numbered. The Avantis guide (held, `Sidecar-reference/allen-heath-avantis`) has Dyn8's page: its key Split/Wide meaning (same key to both sides / true stereo) is used here.
 
@@ -165,8 +165,9 @@ by any delay locked to it.
 ## RackUltra FX (same chapter; needs the optional card)
 
 8 more engines, each with a **stereo send and return outside the 64 mix busses**, so a console
-with the card has 8 more stereo sends and 24 FX returns in all. Sidecar's FX return ceiling is 16
-(`sources::NUM_SEND_FX`), so that would have to grow.
+with the card has 8 more stereo sends and 24 FX returns in all. Sidecar has 24 FX returns
+(`sources::NUM_SEND_FX`); the 8 extra send mixes and return channels as strips are still to do, so
+a RackUltra engine is fed from one of the 64 mixes for now.
 
 Each has a channel strip the RackExtra FX don't have: pre and post 4-band PEQ, pre and post
 dynamics (Gate, Expander, Compressor or Ducker) keyed from self, one external source per FX, or

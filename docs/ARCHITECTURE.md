@@ -548,7 +548,11 @@ views after a show load changes the console from Rust.
   or recalling a scene raises it to cover what they fill (`console::fit_fx_slots`);
   `Engine::collect` does the same for a slot used any other way (a channel preset's
   insert, a copy, a remote), so the console always shows every slot that runs.
-  Shows save the slots in use; scope and safe masks are 64-bit. The WING remote and
+  Shows save the slots in use; scope and safe masks are 64-bit. A dLive's 64 Dyn8 engines
+  are therefore not FX slots but racks of their own (`ufx.rs`), named by an insert as
+  `DYN8_FX_BASE + n`, with their settings outside `EngineControls`; the same module holds
+  every FX engine's key source, the Global Key, the MIDI note queue and a dLive's RackUltra
+  channel strips (FX 17-24), which `FxRack::process` runs around the slot's device. The WING remote and
   the MIDI remote map FX 1-16 only. The first 16 slots are the WING's FX rack. Each holds one device from the
   console's FX table (`FX_MODELS`, generated like the processing models): the 26
   premium effects (reverbs, chorus/flanger/phaser, delays, pitch; slots 1-8 only), the
@@ -1441,7 +1445,13 @@ dependencies beyond the other Sidecar crates.
   controls and refreshes the fader sections). Until a show is attached the nodes are
   shadow. The console model and the black finish are in `WingState` too
   (`set_console_model`, `set_black_finish`): they set the identity (`ngc-full` /
-  `wing-fullsize`, `wing-bk` for the black full-size WING, `wing-compact`).
+  `wing-fullsize`, `wing-bk` for the black full-size WING, `wing-compact`,
+  `wing-rack`: `$cnsmdl` and `$cnscfg` as WING Remote Protocols V 3.0.5 p. 34 lists them).
+  The RACK (`ConsoleModel::Rack`, 2): `LayerSet` gives its left section four faders and
+  the layers `inputs`, `aux`, `bus-1`, `out-1`, `dca-1`; `RackSection` is its front
+  panel section, with `FaderSection` / `FaderStrip` in their RACK style as its four
+  channels and `CustomControlSection` in its RACK mode as its custom controls, mute
+  groups and transports (`layout::rack` holds the geometry).
   `U1`-`U4`, `MM` and `D1`-`D4` are the COMPACT's key sets on either model, and
   `VRT` the virtual layers. A key's or encoder's mode-dependent nodes (its
   function's targets and options: `ch`, `fx`, `par`, `other` ...) share one id per

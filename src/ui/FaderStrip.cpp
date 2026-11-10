@@ -36,8 +36,9 @@ FaderStrip::FaderStrip (UiContext& c, LayerSet::Section s) : ctx (c), section (s
     {
         // CH AUTOSELECT (SETUP > SURFACE): moving a fader selects its strip.
         const auto now = juce::Time::getMillisecondCounter();
-        // The COMPACT has one setting for its surface (autosel_CMPCT).
+        // The COMPACT has one setting for its surface (autosel_CMPCT), the RACK too (autosel_RCK).
         const char* autoSelect = ctx.consoleModel == ConsoleModel::Compact ? uiprefs::autoSelectCompact
+                                 : ctx.consoleModel == ConsoleModel::Rack  ? uiprefs::autoSelectRack
                                                                            : uiprefs::autoSelect[juce::jlimit (0, 2, (int) section)];
         if (strip != nullptr && ctx.settings.getBoolValue (autoSelect, false)
             && now - lastAutoSelect > 300 && ctx.selectStrip && (! ctx.getSelectedStrip || ctx.getSelectedStrip() != strip))
@@ -524,7 +525,7 @@ void FaderStrip::timerCallback()
         shownLit = lit;
         shownGate = gate;
         shownDyn = dyn;
-        repaint (meterArea);
+        repaint (rackStyle ? scribbleArea : meterArea); // the RACK's meter is in its LCD
     }
     const auto now = juce::Time::getMillisecondCounter();
     if (value != shownValue)
@@ -594,6 +595,23 @@ void FaderStrip::paint (juce::Graphics& g)
                       active && shownLight);
         const auto info = active ? scribbleInfo() : blankScribble();
         drawScribble (g, lcdArea.toFloat(), info);
+        // [WING RACK] the level in the LCD: two thin columns at its right edge
+        // (the manual says they are there, not what they look like: Sidecar's drawing).
+        if (rackStyle && (strip != nullptr || dca >= 0))
+        {
+            const auto ink = scribbleColours (info.backlight, info.contrast).second;
+            auto m = lcdArea.toFloat().reduced (2.0f, 3.0f);
+            m = m.removeFromRight (juce::jlimit (4.0f, 9.0f, m.getWidth() * 0.07f));
+            const float columnW = juce::jmax (1.0f, (m.getWidth() - 1.0f) * 0.5f);
+            const bool stereo = strip == nullptr || strip->getNumChannels() > 1;
+            g.setColour (ink);
+            for (int ch = 0; ch < 2; ++ch)
+            {
+                const float level = (float) shownLit[(size_t) (stereo ? ch : 0)] / (float) kMeterSegments;
+                const auto column = juce::Rectangle<float> (m.getX() + (columnW + 1.0f) * (float) ch, m.getY(), columnW, m.getHeight());
+                g.fillRect (column.withTop (column.getBottom() - juce::jmax (1.0f, column.getHeight() * level)));
+            }
+        }
         drawScribbleFrame (g, lcdArea.toFloat(), moduleFirst, moduleLast, info.backlight);
     }
 
@@ -646,11 +664,44 @@ void FaderStrip::setScribbleShown (bool shown)
     }
 }
 
+void FaderStrip::setRackStyle (bool rack)
+{
+    if (rack == rackStyle)
+        return;
+    rackStyle = rack;
+    // The level on a rotary encoder (drawn as the surface's other encoders).
+    fader.setSliderStyle (rack ? juce::Slider::RotaryHorizontalVerticalDrag : juce::Slider::LinearVertical);
+    fader.getProperties().set ("surfaceFader", ! rack);
+    fader.getProperties().set ("hardware", rack);
+    selectKey.setVisible (! rack);
+    // MUTE and SOLO are printed left of the rows, not on the keys.
+    muteKey.setLabel (rack ? juce::String() : juce::String ("MUTE"));
+    soloKey.setLabel (rack ? juce::String() : juce::String ("SOLO"));
+    resized();
+    repaint();
+}
+
 void FaderStrip::resized()
 {
     auto b = getLocalBounds().reduced (0, 3);
     const int w = b.getWidth();
     showValue = ctx.settings.getBoolValue ("ui.faderValues", false);
+
+    if (rackStyle)
+    {
+        const auto column = layout::rack::planColumn (getLocalBounds());
+        const int barRow = layout::rack::barRow (w, column.window.getHeight());
+        scribbleArea = column.window;
+        barArea = juce::Rectangle<int> (juce::roundToInt ((float) w * 0.78f), layout::scribbleBarHeight (w)).withCentre ({ w / 2, scribbleArea.getY() + barRow / 2 });
+        lcdArea = scribbleArea.withTrimmedTop (barRow).withTrimmedBottom (5)
+                      .withTrimmedLeft (moduleFirst ? 9 : 0).withTrimmedRight (moduleLast ? 9 : 0);
+        meterArea = valueArea = {};
+        selectKey.setBounds ({});
+        fader.setBounds (column.knob);
+        muteKey.setBounds (column.mute);
+        soloKey.setBounds (column.solo);
+        return;
+    }
 
     if (scribbleShown)
     {
@@ -705,8 +756,9 @@ void FaderStrip::resized()
 
 void FaderStrip::mouseDown (const juce::MouseEvent& e)
 {
-    // Touching the scribble strip acts like SELECT.
-    if (scribbleArea.contains (e.getPosition()))
+    // Touching the scribble strip acts like SELECT (not on the RACK: it has
+    // no SELECT keys, its channels are selected on the screen).
+    if (! rackStyle && scribbleArea.contains (e.getPosition()))
         pressSelect();
 }
 

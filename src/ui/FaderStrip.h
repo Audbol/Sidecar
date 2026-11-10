@@ -47,6 +47,13 @@ public:
     /** Without the light bar and scribble strip (the COMPACT's fader 13): the
         strip starts with SELECT. */
     void setScribbleShown (bool);
+    /** The WING RACK's channel column (WING manual 4.2 p. 18, Fig. 12): the
+        colour bar and its part of the LCD, a rotary encoder for the level, a
+        MUTE key and a SOLO key under it (layout::rack::planColumn). No
+        SELECT key and no fader; the level meter is in the LCD (manual 4.4
+        p. 22: "Stereo level meters in the scribble strips"). Everything a
+        fader strip can control goes on the encoder the same way. */
+    void setRackStyle (bool);
     /** How far below a strip's top `stripWidth` wide its SELECT key starts
         (the display window and the gap under it), for parts that line up
         with the strips. */
@@ -122,7 +129,7 @@ private:
     juce::Slider fader;
     SurfaceKey selectKey { "SELECT" }, soloKey { "SOLO" }, muteKey { "MUTE" };
     juce::Rectangle<int> scribbleArea, barArea, lcdArea, meterArea, valueArea;
-    bool showValue = false, moduleFirst = false, moduleLast = false, scribbleShown = true;
+    bool showValue = false, moduleFirst = false, moduleLast = false, scribbleShown = true, rackStyle = false;
 
     // What's drawn, to repaint only on changes.
     juce::String shownName, shownValue, shownSource;

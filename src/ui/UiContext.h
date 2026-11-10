@@ -346,6 +346,9 @@ namespace uiprefs
     constexpr const char* autoSelect[3] = { "ui.autoSelectL", "ui.autoSelectC", "ui.autoSelectR" };
     // The WING COMPACT's CH AUTOSELECT (/$ctl/cfg/autosel_CMPCT, "Compact Layer"): its one fader section.
     constexpr const char* autoSelectCompact = "ui.autoSelectCompact";
+    // The WING RACK's CH AUTOSELECT (/$ctl/cfg/autosel_RCK, "Rack Layer"; WING Remote Protocols): turning
+    // one of its four encoders selects its channel.
+    constexpr const char* autoSelectRack = "ui.autoSelectRack";
     // The WING COMPACT's fader 13 (/$ctl/cfg/mfdr): "OFF", "MAIN.1" (default) .. "MAIN.4",
     // "MTX.1" .., "DCA.1" .., "CH.1" .., "AUX.1" .., "BUS.1" ...
     constexpr const char* compactMainFader = "ui.compactMainFader";

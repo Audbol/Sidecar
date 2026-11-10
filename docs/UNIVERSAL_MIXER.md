@@ -1355,7 +1355,7 @@ Started guides and the datasheets (kept outside the repository). Blocks first:
    115-126 Surface, 127/128 the Surface's USB playback, all channels muted); the MIDI table sets
    `FaderLaw::DLIVE`. Port groups by socket (R, S, DX, P1-P3). Buses past the WING's 16 now have
    strip sources (`routing::MAX_SOURCE_BUSES`, numbered after the matrices so shows keep their
-   meaning) and 16 FX have returns (`sources::NUM_SEND_FX`).
+   meaning) and 24 FX have returns (`sources::NUM_SEND_FX`: the 16 RackExtra and the 8 RackUltra engines).
 3. **Selectable** (done): the start-up window, SETUP's INTERFACE (`InterfaceKind::DLive`), on the
    Universal Mixer.
 4. **Mixer Config** (done): `DLiveLayout`, the profile's `Profile::AhDLive(layout)`, SETUP's
@@ -1425,7 +1425,22 @@ Started guides and the datasheets (kept outside the repository). Blocks first:
     MIDI over TCP server's ports and clients. `SurfaceSetup::getShownSlot` gives a layer that ends on LR the Main mode's
     other strips beside it.
 
-Not yet: the 8 UFX engines and 64 Dyn8 engines in the signal path (their models and DSP are in `dlive_fx`, on Universal strips), the screens for Group to Group's source point and a channel's 5.1 panning, the rest of its surface.
+13. **RackUltra and Dyn8 in the signal path** (engine, shows and C ABI; `livedaw_engine::ufx`): a dLive has 24 FX. FX 17-24
+    are the RackUltra engines and take only its 11 models; each runs its device inside its channel strip (`UltraStrip`: PEQ,
+    dynamics, the FX, dynamics, PEQ, Width; 49 values and two gain-reduction meters per engine) whether inserted or fed from
+    a mix, and returns on FX returns 17-24 (`FX_RETURN_SOURCE_BASE + 2 * slot`). The 64 Dyn8 engines are an array of their
+    own, not FX slots: `MAX_FX` stays 64 because shows hold FX scopes and safes as 64-bit masks and the slots' settings sit
+    inside the controls the UI shares. An insert names Dyn8 n as FX `64 + n` (`DYN8_FX_BASE`); a Dyn8 gets its device when an
+    insert names it. Every FX engine of every console has a key source (a strip and a tap, as a gate's KEY SOURCE): Dyn8's
+    External key, the Dual AutoKey Harmoniser's side chain and a UFX strip's EXTERNAL key take it, in the same block when the
+    source runs first, else a block late. The Global Key is console-wide; MIDI notes go to every FX device through a
+    lock-free queue (`ld_fx_midi_note`). Shows and scenes keep all of it in `<Fx>` (`gkey`, `gscale`; a slot's `key`,
+    `keyTap` and `<Ufx>`; `<Dyn8 i=..>` for the engines inserted or changed), recalled with the FX. Sidecar's reading: the
+    strip is out while the slot is bypassed or empty; every engine hears every MIDI note (no MIDI channel per engine); a
+    Dyn8 band set to External with no key source keys itself. Not done: the card's own 8 stereo send mixes and 8 return
+    channels as strips (an engine is fed from any mix and returns on any channel), and every screen for these.
+
+Not yet: the screens for Group to Group's source point and a channel's 5.1 panning, the rest of its surface.
 
 MIDI over TCP (`livedaw-ahmidi`, the MixRack's 51325 and the Surface's 51328): every message of the
 V2.0 document; not its TLS ports or Cue Recall (Surface), and no pad or UFX to drive.

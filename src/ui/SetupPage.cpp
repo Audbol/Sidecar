@@ -76,14 +76,17 @@ namespace
 
     /** Independent toggle keys, each a boolean setting (CH AUTOSELECT L C R,
         USER LAYER LINK L/C C/R): lit blue when on. With `compactKeys`, the
-        WING COMPACT shows those instead (CH AUTOSELECT: its one section). */
+        WING COMPACT shows those instead (CH AUTOSELECT: its one section);
+        with `rackKeys`, the WING RACK those. */
     class ToggleKeys final : public juce::Component
     {
     public:
         ToggleKeys (UiContext& c, juce::StringArray labels, std::vector<const char*> settingKeys,
-                    juce::StringArray compactLabels = {}, std::vector<const char*> compactSettingKeys = {})
+                    juce::StringArray compactLabels = {}, std::vector<const char*> compactSettingKeys = {},
+                    juce::StringArray rackLabels = {}, std::vector<const char*> rackSettingKeys = {})
             : ctx (c), fullNames (std::move (labels)), fullKeys (std::move (settingKeys)),
-              compactNames (std::move (compactLabels)), compactKeys (std::move (compactSettingKeys))
+              compactNames (std::move (compactLabels)), compactKeys (std::move (compactSettingKeys)),
+              rackNames (std::move (rackLabels)), rackKeys (std::move (rackSettingKeys))
         {
         }
 
@@ -126,8 +129,9 @@ namespace
         void choose()
         {
             const bool compact = ctx.consoleModel == ConsoleModel::Compact && ! compactNames.isEmpty();
-            names = compact ? compactNames : fullNames;
-            keys = compact ? compactKeys : fullKeys;
+            const bool rack = ctx.consoleModel == ConsoleModel::Rack && ! rackNames.isEmpty();
+            names = rack ? rackNames : compact ? compactNames : fullNames;
+            keys = rack ? rackKeys : compact ? compactKeys : fullKeys;
         }
 
         UiContext& ctx;
@@ -135,6 +139,8 @@ namespace
         std::vector<const char*> fullKeys;
         juce::StringArray compactNames;
         std::vector<const char*> compactKeys;
+        juce::StringArray rackNames;
+        std::vector<const char*> rackKeys;
         juce::StringArray names;
         std::vector<const char*> keys;
     };
@@ -393,8 +399,8 @@ namespace
 
         void update()
         {
-            // The COMPACT comes in black only.
-            finishKeys.setEnabled (ctx.consoleModel != ConsoleModel::Compact);
+            // The COMPACT and the RACK come in black only.
+            finishKeys.setEnabled (! isSmallModel (ctx.consoleModel));
             enableKey (busMinus, ctx.engine.getBuses().size() > (size_t) kWingBuses);
             enableKey (chMinus, ! ctx.engine.getChannels().empty());
             const int fxSlots = ctx.engine.getFx().getNumSlots();
@@ -523,7 +529,7 @@ namespace
             finishRow = config.removeFromTop (h).reduced (0, 2);
             finishKeys.setBounds (finishRow.withTrimmedLeft (finishRow.getWidth() - juce::jmin (finishRow.getWidth() * 62 / 100, screenCap (200))).reduced (2, 0));
             modelRow = config.removeFromTop (h).reduced (0, 2);
-            modelKeys.setBounds (modelRow.withTrimmedLeft (modelRow.getWidth() - juce::jmin (modelRow.getWidth() * 62 / 100, screenCap (200))).reduced (2, 0));
+            modelKeys.setBounds (modelRow.withTrimmedLeft (modelRow.getWidth() - juce::jmin (modelRow.getWidth() * 70 / 100, screenCap (260))).reduced (2, 0)); // three keys
             interfaceRow = config.removeFromTop (h).reduced (0, 2);
             // Its name, then the keys across the panel: each says how finished its mixer is.
             interfaceKeys.setBounds (config.removeFromTop (h).reduced (2, 2));
@@ -576,12 +582,12 @@ namespace
                                     if (auto* top = getTopLevelComponent())
                                         top->repaint();
                                 } };
-        // CONSOLE MODEL: the full-size WING or the WING COMPACT; the surface changes at once.
-        ChoiceKeys modelKeys { { consoleModelName (ConsoleModel::Full), consoleModelName (ConsoleModel::Compact) },
+        // CONSOLE MODEL: the full-size WING, the WING COMPACT or the WING RACK; the surface changes at once.
+        ChoiceKeys modelKeys { { consoleModelName (ConsoleModel::Full), consoleModelName (ConsoleModel::Compact), consoleModelName (ConsoleModel::Rack) },
                                [this] { return (int) ctx.consoleModel; },
                                [this] (int i)
                                {
-                                   const auto m = i == 1 ? ConsoleModel::Compact : ConsoleModel::Full;
+                                   const auto m = consoleModelFromInt (i);
                                    if (m == ctx.consoleModel || ! ctx.setConsoleModel)
                                        return;
                                    // The surface is rebuilt: let this key's callback return first.
@@ -1241,10 +1247,11 @@ namespace
             rightSofRow = &faders.addRow ("RIGHT SECTION SENDS ON FADER", onSetting (uiprefs::rightSectionSof, uiprefs::rightSectionSofDefault), 1.3f);
             faders.addRow ("FULL FADER PAGING", onSetting (uiprefs::fullFaderPaging, false), 1.3f);
             faders.addRow ("FADER/SCREEN LAYER LINK", OnKey::forSetting (ctx.settings, prefs::layerLink, prefs::layerLinkDefault), 1.3f);
-            // The COMPACT's one fader section has one (autosel_CMPCT).
+            // The COMPACT's one fader section has one (autosel_CMPCT), the RACK's four channels too (autosel_RCK).
             faders.addRow ("CH AUTOSELECT", std::make_unique<ToggleKeys> (ctx, juce::StringArray { "L", "C", "R" },
                                                                          std::vector<const char*> (std::begin (uiprefs::autoSelect), std::end (uiprefs::autoSelect)),
-                                                                         juce::StringArray { "CMPCT" }, std::vector<const char*> { uiprefs::autoSelectCompact }),
+                                                                         juce::StringArray { "CMPCT" }, std::vector<const char*> { uiprefs::autoSelectCompact },
+                                                                         juce::StringArray { "RCK" }, std::vector<const char*> { uiprefs::autoSelectRack }),
                            3.6f);
             // The COMPACT's (WING manual 5.5, FADERS, in its order): MAIN FADER is fader
             // 13's own assignment, KEEP MAIN FADER keeps it there whatever key is pressed,
@@ -1396,16 +1403,20 @@ namespace
         }
 
         /** The rows of the console model shown: the COMPACT's, or the full-size
-            WING's (F1-F3, the right section, USER LAYER LINK, DCA SPILL). */
+            WING's (F1-F3, the right section, USER LAYER LINK, DCA SPILL). The
+            RACK has neither: no F1-F3, one section, no USER keys and no SELECT
+            keys to spill a DCA with (Sidecar's reading: the manual's SETUP
+            pictures are the full-size console's). */
         void showModelRows()
         {
             const bool compact = ctx.consoleModel == ConsoleModel::Compact;
+            const bool full = ctx.consoleModel == ConsoleModel::Full;
             for (auto* row : compactRows)
                 (row->getParentComponent() == &general ? general : faders).setRowShown (*row, compact);
-            general.setRowShown (*f1f3Row, ! compact);
-            faders.setRowShown (*rightSofRow, ! compact);
-            faders.setRowShown (*userLinkRow, ! compact);
-            faders.setRowShown (*dcaSpillRow, ! compact);
+            general.setRowShown (*f1f3Row, full);
+            faders.setRowShown (*rightSofRow, full);
+            faders.setRowShown (*userLinkRow, full);
+            faders.setRowShown (*dcaSpillRow, full);
         }
 
         /** MAIN FADER > SOURCE: OFF, a main, a matrix or a DCA (WING manual 4.2). */

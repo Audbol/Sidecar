@@ -31,7 +31,7 @@ Fixed by this audit:
 
 Still missing, biggest first:
 
-1. **WING RACK** as a console model: its front panel, layers and VIEW behaviour (see 4.2, 4.3, 4.8, 4.9, 5.7).
+1. **WING RACK**: built since this audit (see 4.2, 4.3, 4.8, 4.9, 5.7). Left of it: the FADERS screen's left toolbar on a RACK (5.1 p. 30), the RACK's key combinations (chapter 10) and `/$ctl/layer/RCK` for remote clients.
 2. **SD RECORDER's remaining keys**: marker recall (PLAYMARKER, GOMARKER), SELSESSION, previous / next session, the numbered SD-1 SESSION and SD-1 MARKER keys, and the SD encoder modes. The manual doesn't define them; only the WING's parameter tree and WING Edit list them.
 
 Everything else left is hardware (AES50, StageConnect, AES/EBU, the cards and modules, GPIO, the USB link, preamps, lamps), or is Sidecar's choice and listed below.
@@ -101,7 +101,7 @@ Nothing to emulate.
 | Extra layer pages, shift keys, hold to jump | Complete | |
 | User layers: channels, sends, FX parameters, MIDI CCs | Complete | |
 | WING COMPACT: fader section, 16 keys, main fader, LCD | Complete | |
-| WING RACK: front panel, encoders, four-channel LCD, pages | **Missing** | Largest gap in the audit; no new hardware needed |
+| WING RACK: front panel, encoders, four-channel LCD, pages | Complete | CONSOLE MODEL RACK. INPUT AUX, BUSES MAIN, DCA MUTE and CUST TRANS toggle their two layers; the shift keys step four channels, held they jump. Sidecar's reading: the two-digit display shows the page of four (the custom control layer on CUST), and TRANS steps the USB player's transport, then the multitrack recorder's |
 
 ### 4.3 VIEW keys
 
@@ -109,7 +109,7 @@ Nothing to emulate.
 | --- | --- | --- |
 | WING table (each section, hold for CONFIG, USB, channel strip) | Complete | |
 | WING COMPACT table | Complete | |
-| WING RACK table | **Missing** | With the RACK model |
+| WING RACK table | Complete | OVERVIEW, again FADERS, held CONFIG; on CUST it opens CUSTOM CONTROLS (4.8 p. 25). On the mute groups and transports it opens their screens (Sidecar's reading) |
 
 ### 4.4 Scribble strips, meters, SELECT
 
@@ -119,7 +119,7 @@ Nothing to emulate.
 | Second SELECT press (SEL DBL CLICK) | Complete | |
 | SOLO, MUTE | Complete | |
 | Level meters, DYN and GATE LEDs | Complete | |
-| RACK's LCD | **Missing** | With the RACK model |
+| RACK's LCD | Complete | Four parts with colour bars; the level meters in it are Sidecar's drawing (the manual says they are there, not what they look like) |
 
 ### 4.5 Channel strip section
 
@@ -158,7 +158,7 @@ Nothing to emulate.
 | Hold a key and turn the encoder above it | Complete | |
 | Lower layers: 2-TRACK, MULTI, MUTE GROUPS, SHOW CONTROL, USER | Complete | |
 | Function lists | Partial | All of them act except GPIO; SD RECORDER has nine of its fourteen keys, the rest and the SD session / marker keys and encoders aren't built |
-| RACK's CUST TRANS layer | **Missing** | With the RACK model |
+| RACK's CUST TRANS layer | Complete | The 16 layers on the four encoders and eight keys; the shift keys choose the layer (Sidecar's reading) |
 | DAW control | Complete | MCU and HUI, not tried with real hardware |
 | GPIO page, TGL / IN / OUT | Impossible here | The key is dimmed |
 
@@ -168,7 +168,7 @@ Nothing to emulate.
 | --- | --- | --- |
 | WING: standard and ALTERNATIVE SOF | Complete | |
 | WING COMPACT | Complete | |
-| WING RACK | **Missing** | With the RACK model |
+| WING RACK | Complete | A SENDS ON FDR custom control, then the layer keys: the encoders set the sends, MUTE switches them. Not tried in the app |
 
 ## 5. Main screens
 
@@ -244,7 +244,7 @@ Complete.
 
 **Surface**
 
-Complete, every METERING, GENERAL and FADERS row of the full-size WING and the COMPACT. The RACK's rows wait for the RACK model. The manual's own pictures show the COMPACT's rows (Fig. 40).
+Complete, every METERING, GENERAL and FADERS row of the full-size WING and the COMPACT. On a RACK the COMPACT's rows and the full-size console's F1-F3, RIGHT SECTION SENDS ON FADER, USER LAYER LINK and DCA SPILL are hidden, and CH AUTOSELECT has one key, RCK (`autosel_RCK`); the manual shows no RACK picture of this page, so that is Sidecar's reading. The manual's own pictures show the COMPACT's rows (Fig. 40).
 
 **Remote**
 
@@ -283,7 +283,7 @@ Complete: DAW ENABLE, CONNECTION, EMULATION, USE UPPER CC FOR DAW, DISABLE WHEEL
 | Item | Status | Notes |
 | --- | --- | --- |
 | Full-size WING and COMPACT layouts, including VIRTUAL | Complete | |
-| RACK and virtual sections on the RACK | **Missing** | With the RACK model |
+| RACK and virtual sections on the RACK | Partial | RACK (four channels) and VIRTUAL at the foot of the layer column. HOME opens FADERS, again OVERVIEW (5.1 p. 30); the left toolbar the manual gives that FADERS screen isn't built |
 | FADERS: gate / comp meters, AUTO RIDER square, group assignments | Complete | |
 | SENDS | Complete | |
 | CONFIG: all item types, drag, clear, rename, customisation choice | Complete | |

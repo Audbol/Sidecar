@@ -856,9 +856,10 @@ public:
             wingKey (g, k.area, k.name, on ? Dark::layer : Colours::screenTile, on ? Dark::choiceInk : keyText);
         }
         // The section's key olive, darker while a bank is shown instead of its layer [WING].
-        // The WING COMPACT has its fader section and the VIRTUAL one (manual Fig. 55).
-        const bool compact = page.isCompact();
-        const char* names[] = { compact ? "COMPACT" : "LEFT", compact ? "VIRTUAL" : "CENTER", "RIGHT" };
+        // The WING COMPACT has its fader section and the VIRTUAL one (manual Fig. 55);
+        // the WING RACK its four-channel section (RACK) and the VIRTUAL one (5.7 p. 61).
+        const bool compact = page.isSmallModel();
+        const char* names[] = { page.isRack() ? "RACK" : compact ? "COMPACT" : "LEFT", compact ? "VIRTUAL" : "CENTER", "RIGHT" };
         const auto sectionFill = shown >= 0 ? Dark::section.withMultipliedBrightness (0.55f) : Dark::section;
         for (int i = 0; i < (compact ? 2 : 3); ++i)
         {
@@ -889,7 +890,7 @@ public:
                 page.selectBank (k.id.getIntValue());
                 return;
             }
-        for (int i = 0; i < (page.isCompact() ? 2 : 3); ++i)
+        for (int i = 0; i < (page.isSmallModel() ? 2 : 3); ++i)
             if (sectionKeys[i].contains (pos))
             {
                 page.selectSection (static_cast<LayerSet::Section> (i));
@@ -1345,7 +1346,7 @@ public:
             for (int i = 0; i < n; ++i)
                 sourceTiles.push_back ({ wingRect (83.0f + 88.0f * (float) (i % 8), 79.0f + 76.0f * (float) (i / 8), 80.0f, 68.0f), i });
             frame = wingRect (76.0f, 72.0f, 710.0f, 76.0f * (float) ((n + 7) / 8) + 6.0f);
-            const auto menu = routing::sourceMenu (false, false, ctx.consoleModel == ConsoleModel::Compact);
+            const auto menu = routing::sourceMenu (false, false, isSmallModel (ctx.consoleModel));
             for (size_t r = 0; r < menu.rows.size(); ++r)
                 for (size_t c = 0; c < menu.rows[r].size(); ++c)
                     if (menu.rows[r][c] >= 0)

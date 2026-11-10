@@ -23,7 +23,7 @@ use crate::analyser::{listen_mode, rta_tap, Probes, StripProbe};
 use crate::atomic::AtomicF32;
 use crate::blocks::{Block, BlockDsp, BlockParams, ChainLayout, Step};
 use crate::chain::{self, Node};
-use crate::fx::{FxInputs, FxRack};
+use crate::fx::{FxExtras, FxInputs, FxRack};
 use crate::garbage::Garbage;
 use crate::groups::GroupSet;
 use crate::keytap::{key_tap, stage_of, KeySource, StripKeyTaps};
@@ -38,6 +38,7 @@ use crate::solo::StripConsole;
 use crate::sources::{fx_return_channel, internal, osc_channel, usr_channel};
 use crate::taps::{StripTaps, FIRST_USER_TAP};
 use crate::tapsend::TapShaper;
+use crate::ufx::UfxState;
 use livedaw_dsp::biquad::{Biquad, BiquadCoeffs};
 use livedaw_dsp::delay::{delay_samples, DelayLine};
 use livedaw_dsp::util::*;
@@ -65,6 +66,9 @@ pub mod tap {
 pub(crate) struct ProcessContext<'a> {
     pub fx: &'a [FxRack],
     pub fx_params: &'a [FxParams],
+    /// The FX engines' key sources, a dLive's RackUltra strips and its Dyn8
+    /// engines (`ufx.rs`).
+    pub ufx: &'a UfxState,
     pub dcas: &'a [DcaParams],
     pub mute_groups: GroupSet,
     /// DCA MUTEGROUPS: a muted DCA mutes its strips.
@@ -133,7 +137,18 @@ impl<'a> KeyStrips<'a> {
     }
 }
 
-impl ProcessContext<'_> {
+impl<'a> ProcessContext<'a> {
+    /// The FX engine an insert's slot number names: an FX slot or, on a dLive,
+    /// a Dyn8 engine (`ufx::DYN8_FX_BASE`).
+    fn fx_engine(&self, slot: i32) -> Option<(&'a FxRack, &'a FxParams)> {
+        let i = usize::try_from(slot).ok()?;
+        match crate::ufx::dyn8_of(slot) {
+            Some(n) if self.ufx.live() => Some((self.ufx.dyn8.get(n)?, self.ufx.dyn8_params.get(n)?)),
+            Some(_) => None,
+            None => Some((self.fx.get(i)?, self.fx_params.get(i)?)),
+        }
+    }
+
     /// The buffer of input source `index` (a hardware input or a playback channel).
     fn source(&self, index: i32) -> Option<*const f32> {
         source_ptr(self.hw_inputs, self.playback, index)
@@ -556,6 +571,16 @@ impl Strip {
         (p.pre_insert().on.load(Relaxed) && p.pre_insert().fx.load(Relaxed) == slot as i32)
             || self.post_insert_fx() == Some(slot as i32)
             || self.block_inserts().any(|ins| ins.on.load(Relaxed) && ins.fx.load(Relaxed) == slot as i32)
+    }
+
+    /// Calls `f` with the FX slot every insert of the strip names, on or off (-1: none).
+    pub fn for_each_insert_fx(&self, mut f: impl FnMut(i32)) {
+        let p = &self.params;
+        f(p.pre_insert().fx.load(Relaxed));
+        if self.has_post_insert() {
+            f(p.post_insert().fx.load(Relaxed));
+        }
+        self.block_inserts().for_each(|ins| f(ins.fx.load(Relaxed)));
     }
 
     /// An insert of the strip names FX slot `slot`, on or off.
@@ -1469,6 +1494,11 @@ impl Strip {
     /// at the slot's KEY TAP (`keytap.rs`), or false (the strip keys itself).
     unsafe fn key_for(&self, d: &mut StripDsp, ctx: &ProcessContext, slot: &DynSlotParams, n: usize) -> bool {
         let (source, buffer) = key_tap(slot);
+        self.read_key(d, ctx, source, buffer, n)
+    }
+
+    /// The key from `source`'s tap `buffer` into `d.key` (false: none, a self key).
+    unsafe fn read_key(&self, d: &mut StripDsp, ctx: &ProcessContext, source: KeySource, buffer: usize, n: usize) -> bool {
         let source = match source {
             KeySource::SelfKey => return false,
             KeySource::Channel(i) => i,
@@ -1576,11 +1606,16 @@ impl Strip {
             return;
         }
         let slot = ins.fx.load(Relaxed);
-        let (Some(rack), Some(fxp)) = (ctx.fx.get(slot.max(0) as usize), ctx.fx_params.get(slot.max(0) as usize)) else { return };
+        let Some((rack, fxp)) = ctx.fx_engine(slot) else { return };
         // A send effect (fed from a bus) isn't an insert: the strip passes through.
-        if slot < 0 || fxp.is_send() {
+        if fxp.is_send() {
             return;
         }
+        // The engine's external key, if it has a source (`ufx.rs`).
+        let keyed = match ctx.ufx.keys.get(slot as usize).map(|k| k.get()) {
+            Some((source, buffer)) => self.read_key(d, ctx, source, buffer, n),
+            None => false,
+        };
         // A mono strip feeds both of the FX's inputs and carries its stereo
         // output from here on, each side at the mono pan law. Measured on a
         // WING: a plate inserted on a mono channel comes out decorrelated
@@ -1595,7 +1630,8 @@ impl Strip {
         let mut chans: [&mut [f32]; 2] = [&mut w0[..n], &mut w1[..n]];
         // An outboard insert's RETURN reads the block's processed sources.
         let inputs = FxInputs { hw: ctx.hw_inputs, playback: ctx.playback };
-        rack.process(&mut chans, d.sample_rate, fxp, &inputs, ctx.block);
+        let extras = FxExtras { key: keyed.then(|| &d.key[..n]), ufx: ctx.ufx.strip_of(slot as usize) };
+        rack.process(&mut chans, d.sample_rate, fxp, &inputs, &extras, ctx.block);
     }
 
     fn run_output_stage(&self, d: &mut StripDsp, n: usize) {

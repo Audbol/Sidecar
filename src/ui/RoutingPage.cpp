@@ -2726,12 +2726,12 @@ void RoutingPage::showGroupMenu (bool rightSide)
     Group current = inputGroup;
     if (mode == Mode::Outputs)
     {
-        const bool compact = ctx.consoleModel == ConsoleModel::Compact;
+        const bool compact = isSmallModel (ctx.consoleModel); // the COMPACT and the RACK: no local aux I/O
         menu = rightSide ? routing::sourceMenu (true, true, compact) : routing::outputMenu (compact);
         current = rightSide ? signalGroup : outputGroup;
     }
     else
-        menu = routing::sourceMenu (mode == Mode::Channels, false, ctx.consoleModel == ConsoleModel::Compact);
+        menu = routing::sourceMenu (mode == Mode::Channels, false, isSmallModel (ctx.consoleModel));
     const auto box = rightSide ? rightGrid : leftGrid;
     const auto origin = juce::Point<int> ((rightSide ? rightPanel : leftPanel).getX() + px (8.0f), box.getY());
     juce::Component::SafePointer<RoutingPage> safe (this);

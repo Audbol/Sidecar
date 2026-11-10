@@ -5,6 +5,15 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+- 01V and DM2000: fader groups, [ON] groups and pairs save with shows and recall with scenes (the console text; the FADER, SENDS, GROUPS and DYNAMICS recall scope covers them). Shows without them load with nothing grouped.
+- ProMix 01: METER, PAN, COMP and EQ now match photographs of a real console dot for dot (fonts, positions, tint); panel colours resampled.
+- WING RACK: a third console model (SETUP > SIDECAR > CONSOLE MODEL RACK). The front panel in one row: the display without the six
+  encoders and the four-channel section (LCD, four level encoders, MUTE and SOLO keys, INPUT AUX, BUSES MAIN, DCA MUTE, CUST TRANS,
+  the shift keys, VIEW, PHONES LEVEL). 24 local preamps, no local aux I/O, a VIRTUAL section on the screens; remote clients see `wing-rack`.
+- dLive: its 8 RackUltra (UFX) engines are FX 17-24, each with its channel strip (PEQ, dynamics, the FX,
+  dynamics, PEQ, Width) and a send and return of its own, and its 64 Dyn8 engines insert on channels and mixes.
+  Every FX engine can take an external key from a strip; the console has a Global Key and MIDI notes reach the
+  MIDI Harmoniser and the Tuner. All of it is saved in shows and scenes. Engine side: the screens follow.
 - Universal Mixer: a design pass in black anodised metal (brushed silver in the light theme): one type, spacing and radius scale, LED meter bridge with a bar per channel, peak hold and clip, ribbed fader caps, knurled knobs, backlit keys, themed pop-ups. A strip's body now shows its real chain, block by block in signal order, each section draggable to resize and collapse (the same on every strip, kept in the settings), and narrow, normal or wide strips. Undo and redo of the mix (Ctrl+Z, Ctrl+Y), a shortcut list, F1 to F9 for the views, a main output meter in the top bar. Touch: 44 px rows, more room between MUTE and SOLO, a finger sweeping along the strips scrolls them instead of moving a fader, dragging off a fader is a fine adjustment.
 - Universal Mixer: scene recall scope and safes, snippet DCAs, mute groups and FX, banks and a JUMP list, FX bypass on the tiles, ROUTING levels and crosshair, a light theme.
 - 01V: SETUP, OPTION output, OMNI OUT, OUTPUT DELAY and REMOTE pages; fader and [ON] groups, pairs, FLIP, 2TR IN; user library programs.

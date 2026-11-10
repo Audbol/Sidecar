@@ -229,6 +229,12 @@ void MixerEngine::setDcaName (int index, const juce::String& name)
     ld::ld_engine_set_group_name (engine, 0, index, u.data, u.size);
 }
 
+uint64_t MixerEngine::setConsoleText (const juce::String& text)
+{
+    const Utf8 u (text);
+    return ld::ld_engine_set_console_text (engine, u.data, u.size);
+}
+
 void MixerEngine::setMuteGroupName (int index, const juce::String& name)
 {
     const Utf8 u (name);

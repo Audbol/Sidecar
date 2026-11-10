@@ -174,6 +174,30 @@ public:
         narrow to give the section its place between the fader sections. */
     void setCompact (bool);
 
+    /** The WING RACK's one LCD, four encoders and eight keys playing the
+        custom controls (WING manual 4.8 p. 26: "16 layers with 4 rotary
+        encoders and 8 buttons each, following the same arrangement as the
+        top half of the CC section on WING"), the eight mute groups (4.2
+        p. 18: "the rotary encoders are disabled, and the 8 square buttons
+        correspond to the 8 Mute Groups") or a transport. The section then
+        shows nothing else and lays itself out as the RACK's four channel
+        columns (layout::rack::planColumn): the RACK section (RackSection)
+        puts it where its channels are. Off: the full-size console's section. */
+    enum class RackMode
+    {
+        Off,
+        Custom,
+        MuteGroups,
+        TwoTrack,  // the USB recorder / player's transport
+        MultiTrack // the multitrack recorder's
+    };
+    void setRackMode (RackMode);
+    RackMode getRackMode() const noexcept { return rackMode; }
+    /** The next (1) or previous (-1) custom control layer. */
+    void stepLayer (int delta);
+    /** The custom control layer of the upper part (CC EDIT edits the same one). */
+    int currentLayer() const;
+
     void paint (juce::Graphics&) override;
     void resized() override;
 
@@ -197,9 +221,8 @@ private:
     void paintMuteGroupLcd (juce::Graphics&, juce::Rectangle<int>);
     bool useCursorWheel() const;
     void turnWheel (int steps);
-    /** The custom control layer of the upper part (CC EDIT edits the same one). */
-    int currentLayer() const;
-    void stepLayer (int delta);
+    /** Shows the parts of the layout in use (the whole section, its lower part, the RACK's). */
+    void applyVisibility();
     /** Key `key` of a custom control layer: 0-3 the upper keys, 4-7 the lower ones. */
     cc::Function ccFunction (int layer, int key) const;
     /** Binds the encoders and keys to the assignments. */
@@ -222,6 +245,8 @@ private:
     UiContext& ctx;
     int lowerLayer = MuteGroups;
     bool viewOpened = false, compact = false;
+    RackMode rackMode = RackMode::Off;
+    juce::Rectangle<int> rackName; // the band between the RACK's LCD and its encoders
     std::shared_ptr<float> wheelPos = std::make_shared<float> (0.5f);
     int sceneCursor = -1; // -1: the scene after the current one
     int shownCcRevision = -1, shownCcLayer = -1;

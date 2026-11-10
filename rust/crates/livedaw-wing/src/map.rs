@@ -77,7 +77,10 @@ impl Identity {
     /// `/$syscfg/$cnsmdl`) as the WING family does (WING remote protocols,
     /// `$cnsmdl`): "ngc-full" for the full-size console, "wing-bk" for the
     /// black one (`black`, SURFACE FINISH BLACK), "wing-compact" for the
-    /// COMPACT, so WING Edit and Mixing Station show the right model. The
+    /// COMPACT and "wing-rack" for the RACK (WING Remote Protocols V 3.0.5,
+    /// p. 34: `$cnsmdl` is "typically 'ngc-full' for the full sized desk,
+    /// can also be 'wing-bk', 'wing-rack', 'wing-compact'"; not checked on a
+    /// RACK), so WING Edit and Mixing Station show the right model. The
     /// serial (SIDECAR0001) and firmware (3.1-0-sidecar) still tell Sidecar
     /// apart.
     pub fn model_name(model: ConsoleModel, black: bool) -> &'static str {
@@ -85,6 +88,7 @@ impl Identity {
             ConsoleModel::Full if black => BLACK_WING,
             ConsoleModel::Full => "ngc-full",
             ConsoleModel::Compact => "wing-compact",
+            ConsoleModel::Rack => "wing-rack",
         }
     }
 
@@ -96,11 +100,14 @@ impl Identity {
             ConsoleModel::Full if black => BLACK_WING,
             ConsoleModel::Full => "wing-fullsize",
             ConsoleModel::Compact => "wing-compact",
+            // The same document, p. 34: `$cnscfg` "typically start[s] with
+            // 'wing', 'wing-rack', 'wing-compact'".
+            ConsoleModel::Rack => "wing-rack",
         }
     }
 
     /// The default identity of a console of `model` (`black`: the black
-    /// full-size WING; the COMPACT is black whatever it says).
+    /// full-size WING; the COMPACT and the RACK are black whatever it says).
     pub fn of_console(model: ConsoleModel, black: bool) -> Self {
         Self { model: Self::model_name(model, black).into(), config: Self::config_name(model, black).into(), ..Self::default() }
     }
@@ -4273,6 +4280,12 @@ mod tests {
         assert_eq!(st.identity().model, "wing-bk");
         assert_eq!(Identity::of_console(ConsoleModel::Full, true).config, "wing-bk");
         assert_eq!(Identity::of_console(ConsoleModel::Compact, true), Identity::of_model(ConsoleModel::Compact));
+        // The RACK is "wing-rack" in both, black or not.
+        st.set_console_model(ConsoleModel::Rack);
+        assert_eq!((c.get(model), c.get(config)), (Some(Value::str("wing-rack")), Some(Value::str("wing-rack"))));
+        assert_eq!(st.identity().model, "wing-rack");
+        assert_eq!(Identity::of_console(ConsoleModel::Rack, true), Identity::of_model(ConsoleModel::Rack));
+        st.set_console_model(ConsoleModel::Full);
         st.set_black_finish(false);
         assert_eq!(st.identity(), Identity::default());
     }
@@ -5630,9 +5643,9 @@ mod tests {
         assert_eq!(cov.total, 79326, "{}", cov.report());
         // Everything answers but DAW CONFIGURATION (see `unbound_feature`).
         assert_eq!(cov.mapped, 79325, "{}", cov.report());
-        // 89 settings: the COMPACT's mfdr, cscmode, autosel_CMPCT, mfdrkeep, busspill, mainspill,
-        // mtxspill and dcacc and the surface lock (cnslock) among them.
-        assert_eq!((cov.settings, cov.stored), (89, 5275), "{}", cov.report());
+        // 90 settings: the COMPACT's mfdr, cscmode, autosel_CMPCT, mfdrkeep, busspill, mainspill,
+        // mtxspill and dcacc, the RACK's autosel_RCK and the surface lock (cnslock) among them.
+        assert_eq!((cov.settings, cov.stored), (90, 5274), "{}", cov.report());
         for (g, (m, t)) in &cov.by_group {
             assert!(m == t || g == "/$ctl/daw", "{g}: {m} of {t}");
         }

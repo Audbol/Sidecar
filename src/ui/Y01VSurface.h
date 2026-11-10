@@ -467,6 +467,11 @@ namespace y01v
         std::array<float, 14> lastFader {};
         std::array<bool, 14> lastMute {};
         bool linksPrimed = false;
+        // The groups and pairs go with the show and its scenes: the engine's console text.
+        juce::String groupsText() const;
+        bool adoptGroupsText (const juce::String&);
+        void adoptEngineGroups();
+        uint64_t seenConsole = 0;
         template <typename T>
         struct Twin
         {

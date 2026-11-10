@@ -676,6 +676,10 @@ namespace y01v
     Display::Display (UiContext& c) : ctx (c), dots ((size_t) (kDotsW * kDotsH), 0), image (juce::Image::RGB, kWidth, kHeight, true)
     {
         loadPanel();
+        if (const auto text = ctx.engine.getConsoleText(); text.isEmpty() || ! adoptGroupsText (text))
+            seenConsole = ctx.engine.setConsoleText (groupsText());
+        else
+            seenConsole = ctx.engine.getConsoleVersion();
         loadLibrary();
         relink();
         rebuild();
@@ -3078,6 +3082,67 @@ namespace y01v
             for (int t : bank)
                 v.add (juce::String (t));
         ctx.settings.setValue (kPanelKey, v.joinIntoString (" "));
+        seenConsole = ctx.engine.setConsoleText (groupsText());
+    }
+
+    // The fader groups, [ON] groups, group enables and pairs as the show and scenes keep them.
+    juce::String Display::groupsText() const
+    {
+        juce::StringArray v { "y01vgroups1" };
+        for (int g : panel.faderGroup)
+            v.add (juce::String (g));
+        for (int g : panel.muteGroup)
+            v.add (juce::String (g));
+        for (bool on : panel.groupOn)
+            v.add (on ? "1" : "0");
+        for (bool on : panel.pair)
+            v.add (on ? "1" : "0");
+        return v.joinIntoString (" ");
+    }
+
+    bool Display::adoptGroupsText (const juce::String& text)
+    {
+        juce::StringArray v;
+        v.addTokens (text, " ", "");
+        v.removeEmptyStrings();
+        if (v.size() != 1 + 14 + 14 + 6 + 10 || v[0] != "y01vgroups1")
+            return false;
+        int at = 1;
+        const auto next = [&v, &at] { return v[at++].getIntValue(); };
+        for (auto& g : panel.faderGroup)
+            g = juce::jlimit (0, 3, next());
+        for (auto& g : panel.muteGroup)
+            g = juce::jlimit (0, 3, next());
+        for (auto& on : panel.groupOn)
+            on = next() != 0;
+        for (auto& on : panel.pair)
+            on = next() != 0;
+        return true;
+    }
+
+    // A show load or a scene recall changed the engine's text: the groups and pairs follow it.
+    // Text a show never had means nothing grouped.
+    void Display::adoptEngineGroups()
+    {
+        const auto version = ctx.engine.getConsoleVersion();
+        if (version == seenConsole)
+            return;
+        const auto text = ctx.engine.getConsoleText();
+        if (text.isEmpty())
+        {
+            panel.faderGroup.fill (0);
+            panel.muteGroup.fill (0);
+            panel.groupOn.fill (true);
+            panel.pair.fill (false);
+        }
+        else if (! adoptGroupsText (text))
+        {
+            seenConsole = version;
+            return;
+        }
+        savePanel();
+        relink();
+        refresh();
     }
 
     void Display::loadPanel()
@@ -3260,6 +3325,7 @@ namespace y01v
 
     void Display::tickLinks()
     {
+        adoptEngineGroups();
         const auto& channels = ctx.engine.getChannels();
         const int n = juce::jmin (14, (int) channels.size());
         const auto snapshot = [this, &channels, n]

@@ -4,6 +4,7 @@
 #include "daw/TimeGrid.h"
 #include "ui/MidiRemoteUi.h"
 #include "dsp/DspUtils.h"
+#include "ui/FaderSection.h"
 #include "ui/FaderStrip.h"
 #include "ui/HomeScreens.h"
 #include "ui/ResponseGraph.h"
@@ -1379,7 +1380,10 @@ void CustomControlSection::bindCustomControls()
     {
         const auto control = ctx.customControls != nullptr ? ctx.customControls->get (shownCcLayer, i) : cc::Control {};
         const bool daw = upperIsDaw();
-        if (i != heldColumn)
+        // [WING RACK] on MUTE GROUPS and the transports the encoders do nothing.
+        if (rackMode != RackMode::Off && rackMode != RackMode::Custom)
+            encoders[i].setBinding ({});
+        else if (i != heldColumn)
             encoders[i].setBinding (daw ? midiui::bindUpperVpot (ctx, i) : cc::bindEncoder (ctx, control.encoder));
         for (int row = 0; row < 2; ++row)
         {
@@ -1530,13 +1534,47 @@ void CustomControlSection::setCompact (bool c)
     if (compact == c)
         return;
     compact = c;
-    juce::Array<juce::Component*> upper { &upperView, &upKey, &downKey, &wheel, &navUp, &navDown, &navLeft, &navRight };
+    applyVisibility();
+    resized();
+    repaint();
+}
+
+void CustomControlSection::applyVisibility()
+{
+    const bool rack = rackMode != RackMode::Off, rackCustom = rackMode == RackMode::Custom;
+    // The upper part's own keys, the arrows and the wheel: the whole section only.
+    for (juce::Component* c : { (juce::Component*) &upperView, (juce::Component*) &upKey, (juce::Component*) &downKey, (juce::Component*) &wheel,
+                                (juce::Component*) &navUp, (juce::Component*) &navDown, (juce::Component*) &navLeft, (juce::Component*) &navRight })
+        c->setVisible (! rack && ! compact);
     for (auto& e : encoders)
-        upper.add (&e);
+        e.setVisible (rack || ! compact);
     for (auto* k : upperKeys)
-        upper.add (k);
-    for (auto* comp : upper)
-        comp->setVisible (! compact);
+        k->setVisible (rack ? rackCustom : ! compact);
+    // The lower part's: the RACK has its eight keys only (while they aren't custom controls).
+    for (auto* k : lowerKeys)
+        k->setVisible (! rackCustom);
+    for (auto* k : layerKeys)
+        k->setVisible (! rack);
+    lowerView.setVisible (! rack);
+    dawKey.setVisible (! rack);
+}
+
+void CustomControlSection::setRackMode (RackMode mode)
+{
+    if (mode == rackMode)
+        return;
+    const bool wasRack = rackMode != RackMode::Off;
+    rackMode = mode;
+    if (mode == RackMode::MuteGroups)
+        setLowerLayer (MuteGroups);
+    else if (mode == RackMode::TwoTrack)
+        setLowerLayer (TwoTrack);
+    else if (mode == RackMode::MultiTrack)
+        setLowerLayer (MultiTrack);
+    else if (wasRack && mode == RackMode::Off)
+        setLowerLayer (MuteGroups); // as a new section
+    applyVisibility();
+    bindCustomControls();
     resized();
     repaint();
 }
@@ -1657,9 +1695,12 @@ void CustomControlSection::paintLcd (juce::Graphics& g, juce::Rectangle<int> are
 {
     g.setColour (juce::Colours::black);
     g.fillRoundedRectangle (area.toFloat(), 4.0f);
+    // [WING RACK] the LCD sits under the colour bars' row, as with its channels on it.
+    const bool rack = rackMode != RackMode::Off;
+    const int rackBarRow = rack ? layout::rack::barRow (area.getWidth() / 4, area.getHeight()) : 0;
     if (! upper && lowerCcLayer() < 0 && lowerLayer == MuteGroups)
     {
-        paintMuteGroupLcd (g, area);
+        paintMuteGroupLcd (g, rack ? area.withTrimmedTop (juce::jmax (0, rackBarRow - 4)) : area);
         return;
     }
     auto r = area.reduced (3, 4);
@@ -1677,7 +1718,16 @@ void CustomControlSection::paintLcd (juce::Graphics& g, juce::Rectangle<int> are
         auto cell = juce::Rectangle<int> (r.getX() + i * w, r.getY(), w, r.getHeight());
         const int ccLayer = upper ? currentLayer() : juce::jmax (0, lowerCcLayer());
         const auto control = ctx.customControls != nullptr ? ctx.customControls->get (ccLayer, i) : cc::Control {};
-        if (colourBars)
+        if (rack)
+        {
+            const auto barCell = cell.removeFromTop (juce::jmax (0, rackBarRow - 4));
+            if (colourBars)
+                drawLightBar (g, juce::Rectangle<float> ((float) w * 0.78f, (float) layout::scribbleBarHeight (w)).withCentre (barCell.toFloat().getCentre()),
+                              lightBarColour (consoleColour (juce::jmax (1, control.colour))).withMultipliedBrightness (uiprefs::brightness (ctx.settings, "colorLed", 25)),
+                              control.colour > 0);
+            cell.removeFromBottom (1);
+        }
+        else if (colourBars)
         {
             // The control's colour (CC EDIT > COLOR).
             drawLightBar (g, cell.removeFromTop (juce::jmax (4, cell.getHeight() / 9)).toFloat().reduced ((float) w * 0.15f, 0.5f),
@@ -1791,6 +1841,20 @@ void CustomControlSection::paint (juce::Graphics& g)
 {
     g.fillAll (surfaceColours().surface);
 
+    if (rackMode != RackMode::Off)
+    {
+        // The RACK's one LCD: the custom controls' (the DAW's V-pots in DAW
+        // mode), or the mute groups' or a transport's.
+        if (rackMode != RackMode::Custom)
+            paintLcd (g, lowerLcd, false, false);
+        else if (upperIsDaw())
+            midiui::paintUpperLcd (g, upperLcd, ctx);
+        else
+            paintLcd (g, upperLcd, true, true);
+        drawRackName (g, rackName.toFloat());
+        return;
+    }
+
     // The deck under the encoders, keys and LCDs (the arrows and the wheel
     // sit on the surface below it).
     drawDeck (g, (frame.isEmpty() ? getLocalBounds().reduced (3) : frame).toFloat());
@@ -1837,6 +1901,30 @@ void CustomControlSection::resized()
     const int keyH = juce::jlimit (16, 30, h / 18);
     const int knob = juce::jlimit (22, 46, h / 12);
     const int viewSize = juce::jmin (keyColumn - 6, 42);
+
+    if (rackMode != RackMode::Off)
+    {
+        // The RACK's four columns: the LCD across them, an encoder and two keys in each.
+        const auto all = getLocalBounds();
+        const int w = all.getWidth() / layout::rack::kChannels;
+        juce::Rectangle<int> window, name;
+        for (int i = 0; i < layout::rack::kChannels; ++i)
+        {
+            const auto column = layout::rack::planColumn ({ all.getX() + i * w, all.getY(), w, all.getHeight() });
+            window = i == 0 ? column.window : window.getUnion (column.window);
+            name = i == 0 ? column.name : name.getUnion (column.name);
+            encoders[i].setBounds (column.knob);
+            for (auto* keys : { &upperKeys, &lowerKeys })
+            {
+                (*keys)[i]->setBounds (column.mute);
+                (*keys)[layout::rack::kChannels + i]->setBounds (column.solo);
+            }
+        }
+        upperLcd = lowerLcd = window;
+        rackName = name;
+        layerDisplay = heading = divider = frame = {};
+        return;
+    }
 
     auto left = [&] (juce::Rectangle<int> row) { return row.withWidth (keyColumn); };
     auto right = [&] (juce::Rectangle<int> row) { return row.withTrimmedLeft (keyColumn); };

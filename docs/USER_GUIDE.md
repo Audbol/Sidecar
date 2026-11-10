@@ -328,6 +328,29 @@ like the finish. The COMPACT is black, so it always shows the black finish. It f
   full-size WING keeps them.
   ROUTING has no AUX IN or AUX OUT group, as the COMPACT has no local aux inputs or
   outputs. SETUP > SURFACE > CH AUTOSELECT has one key, **CMPCT**.
+- CONSOLE MODEL **RACK** shows a WING RACK: one row, black, with no faders. Left, the
+  display unit without the six encoders under the screen (the parameter bar on the
+  screen stays; use the knob right of the screen or drag on the screen). Right of it,
+  the four-channel section: an LCD in four parts, an encoder for each channel's level,
+  a MUTE and a SOLO key under each.
+  - **INPUT AUX**, **BUSES MAIN**, **DCA MUTE** and **CUST TRANS** each toggle between
+    two layers: channels 1-40 and aux 1-8; buses 1-16 and main 1-4 with matrix 1-8;
+    DCA 1-16 and the eight mute groups (on the eight keys; the encoders do nothing);
+    the custom controls and the transports (the USB player's, then the multitrack
+    recorder's).
+  - **<4** and **4>** step four channels through the layer; held, they jump to its
+    first and last. On CUST they step through the 16 custom control layers. The
+    two-digit display shows the page, or the custom control layer.
+  - **VIEW** opens OVERVIEW of the layer; pressed again, FADERS; held, CONFIG. On CUST
+    it opens CUSTOM CONTROLS. **HOME** opens FADERS and, pressed again, OVERVIEW: click
+    a fader's name there (or the title tile) for the channel's HOME screen. Channels
+    are selected on the screen: the RACK has no SELECT keys.
+  - **LEVEL** is the PHONES level. The RACK has no MONITOR LEVEL, TALK, DIM or MONO
+    controls: put them on custom controls. Sends on Fader and the DAW layer are custom
+    controls too. FX SPILL puts a device's parameters on the four encoders.
+  - The VIEW screens show **RACK** and **VIRTUAL** at the foot of the layer column.
+    ROUTING has no AUX IN or AUX OUT group. CH AUTOSELECT has one key, **RCK**.
+  - WING remote clients see model `wing-rack`.
 - WING remote clients see a COMPACT: Sidecar answers with model `wing-compact`.
   Fader 13, the keys' mode and CH AUTOSELECT CMPCT are `/$ctl/cfg/mfdr`, `cscmode`
   and `autosel_CMPCT`, both ways; KEEP MAIN FADER, DCA SPILL ON SELECT, BUS, MAIN and
@@ -1705,9 +1728,10 @@ and open-source projects (see below), and it is **experimental**.
 - **Discovery** (UDP 2222) answers `WING?` with the console name, the model, serial
   `SIDECAR0001` and firmware `3.1-...` (Sidecar speaks the WING 3.1 parameter tree).
   The model is the WING's own: `ngc-full` for the full-size console, `wing-bk` for
-  the black one (SURFACE FINISH BLACK), `wing-compact` with CONSOLE MODEL COMPACT
+  the black one (SURFACE FINISH BLACK), `wing-compact` with CONSOLE MODEL COMPACT,
+  `wing-rack` with CONSOLE MODEL RACK
   (`/$syscfg/$cnscfg`, which WING Edit reads for its ACTIVE WING MODEL:
-  `wing-fullsize`, `wing-bk` or `wing-compact`), so WING Edit and Mixing Station show
+  `wing-fullsize`, `wing-bk`, `wing-compact` or `wing-rack`), so WING Edit and Mixing Station show
   the right one. The
   serial and the firmware's `sidecar` tell Sidecar apart.
 - **OSC** (UDP 2223): get and set any parameter by path or by `#id`, toggles, node

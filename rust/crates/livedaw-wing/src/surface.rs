@@ -938,7 +938,7 @@ fn set_key_param(num: &Numbering, mode: &str, f: CcFunction, index: u8, v: &Valu
         ("CHPAGE", 2) => with_option(if text(v) == "SND.EQ" { 9 } else { position(&CH_PAGES).ok_or(SetError::BadValue)? }),
         ("PAGE", 1) => with_option(position(&GLOBAL_PAGES[1..]).ok_or(SetError::BadValue)? + 1),
         ("FDRPAGE", 1) => match text(v).as_str() {
-            "L" | "CMPCT" => with_target(0),
+            "L" | "CMPCT" | "RCK" => with_target(0),
             "C" | "VRT" => with_target(1),
             "R" => with_target(2),
             _ => Err(unsupported()),
@@ -1393,7 +1393,7 @@ pub fn publish(engine: &Engine, layers: &LayerSet, custom: &CustomControls, cc_b
 /// `/$ctl/layer/VRT`: the virtual layers, and on a COMPACT its VIRTUAL
 /// section's selection and scroll position.
 fn publish_virtual(layers: &LayerSet, num: &Numbering) -> SurfaceSection {
-    let compact = layers.model().is_compact();
+    let compact = layers.model().has_virtual_section();
     let selected = layers.selected(VIRTUAL_SECTION);
     SurfaceSection {
         sel: if compact { VIRTUAL_KEYS.iter().position(|k| *k == selected).map_or(1, |k| k as i32 + 1) } else { 1 },
@@ -1467,7 +1467,8 @@ fn apply(engine: &Engine, layers: &mut LayerSet, custom: &mut CustomControls, ed
     match edit {
         // The virtual section's selection and scroll position are the
         // COMPACT's VIRTUAL section's (the full-size console has none).
-        SurfaceEdit::Select { section: VRT, .. } | SurfaceEdit::Offset { section: VRT, .. } if !layers.model().is_compact() => {}
+        SurfaceEdit::Select { section: VRT, .. } | SurfaceEdit::Offset { section: VRT, .. }
+            if !layers.model().has_virtual_section() => {}
         SurfaceEdit::Select { section, key } => {
             let (section, id) = if section == VRT { (VIRTUAL_SECTION, VIRTUAL_KEYS[key]) } else { (section, KEYS[section][key]) };
             if layers.shown(section) != id {

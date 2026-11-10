@@ -70,6 +70,13 @@ public:
     bool isLocked() const noexcept { return locked; }
     bool isTouchDisabled() const noexcept { return touchDisabled; }
 
+    /** A WING RACK's display (WING manual 4.1 p. 13: only "WING and WING
+        COMPACT feature 6 touch-sensitive knobs below the display"): the six
+        encoders under the screen are gone (the parameter bar on the screen
+        stays: the screen's own pages are the same), and HOME opens FADERS,
+        pressed again OVERVIEW (manual 5.1 p. 30). */
+    void setRackPanel (bool);
+
     /** Screen only (the main component shows nothing else): the display, its
         keys and knobs as one compact unit centred on black, the screen as
         large as fits; the key under the right-hand column reads RESTORE. */
@@ -162,7 +169,7 @@ private:
     int touchedSlot = -1;
     int focusIndex = -1;
     int acknowledgedFaults = 0;
-    bool blink = false, flash = false, touchDisabled = false, liveWritable = true, maximized = false;
+    bool blink = false, flash = false, touchDisabled = false, liveWritable = true, maximized = false, rackPanel = false;
     int ticks = 0;
 };
 

@@ -1269,10 +1269,28 @@ void MainDisplay::screenKeyPressed (Screen s)
         utilityPressed();
         return;
     }
+    // [WING RACK] "pressing the HOME button opens the FADERS screen ... Press
+    // the HOME button again to toggle to the OVERVIEW screen" (manual 5.1
+    // p. 30); Channel Home is reached from a fader's top there, or the title.
+    if (s == Screen::Home && rackPanel)
+    {
+        showScreen (screen == Screen::Faders ? Screen::Overview : Screen::Faders);
+        return;
+    }
     // A screen key pressed again: the page decides (SETUP: CC EDIT, firmware 3.1).
     if (s == screen && page (s)->screenKeyPressedAgain())
         return;
     showScreen (s);
+}
+
+void MainDisplay::setRackPanel (bool rack)
+{
+    if (rack == rackPanel)
+        return;
+    rackPanel = rack;
+    for (auto* e : encoders)
+        e->setVisible (! rack);
+    repaint();
 }
 
 void MainDisplay::utilityPressed()

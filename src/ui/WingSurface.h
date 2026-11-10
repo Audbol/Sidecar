@@ -6,6 +6,7 @@
 #include "ui/FaderSection.h"
 #include "ui/FourChannelSection.h"
 #include "ui/MainDisplay.h"
+#include "ui/RackSection.h"
 #include "ui/Skin.h"
 #include "ui/SurfaceLock.h"
 #include "ui/SurfaceSections.h"
@@ -22,7 +23,9 @@ namespace livedaw::ui
     alive underneath. As a WING COMPACT (SETUP > GENERAL > CONSOLE MODEL): the
     display and the monitoring panel on top; one fader section of 12 with the
     COMPACT's nine layer keys, and its key section with fader 13, below
-    (layout::compact). */
+    (layout::compact). As a WING RACK: one row, the display (without the six
+    encoders under it) and the four-channel section right of it
+    (layout::rack, RackSection); no faders, no monitoring panel. */
 class WingSurface final : public Skin
 {
 public:
@@ -46,6 +49,10 @@ public:
         lays the surface out for it. */
     void consoleModelChanged (bool changed);
 
+    /** The WING RACK's four-channel section and the display (for tests). */
+    RackSection& getRackSection() noexcept { return *rackSection; }
+    MainDisplay& getDisplay() noexcept { return *display; }
+
 private:
     class LockOverlay;
 
@@ -57,6 +64,9 @@ private:
     void layoutSections();
     /** The WING COMPACT's surface (both rows). */
     void layoutCompact();
+    /** The WING RACK's front panel. */
+    void layoutRack();
+    bool isRack() const noexcept { return ctx.consoleModel == ConsoleModel::Rack; }
     /** The display in `bounds`, or over the whole window in screen-only mode. */
     void placeDisplay (juce::Rectangle<int> bounds);
     bool isCompact() const noexcept { return ctx.consoleModel == ConsoleModel::Compact; }
@@ -104,6 +114,8 @@ private:
     std::unique_ptr<FaderSection> sections[LayerSet::kNumSections];
     std::unique_ptr<CustomControlSection> customControls;
     std::unique_ptr<CompactSection> compactKeys; // the WING COMPACT's key section and fader 13
+    std::unique_ptr<RackSection> rackSection;    // the WING RACK's four-channel section (its channels: sections[Left])
+    juce::Rectangle<int> rackPanel;              // the RACK's panel in the window
     std::unique_ptr<DawFaderSection> dawSections[LayerSet::kNumSections]; // the fader sections in DAW mode
     bool ccInBottomRow = true; // else docked under the monitoring panel
     std::unique_ptr<LockOverlay> lockOverlay;

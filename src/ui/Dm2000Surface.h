@@ -620,6 +620,12 @@ namespace dm2k
         bool directPost = true;
         uint64_t inputPairs = 0;
         uint32_t outputPairs = 0;
+        // The pairs go with the show and its scenes (the fader and [ON] groups are the engine's
+        // own masks, which they already do): the engine's console text.
+        juce::String pairsText() const;
+        bool adoptPairsText (const juce::String&);
+        void adoptEnginePairs();
+        mutable uint64_t seenConsole = 0;
         std::array<uint64_t, 116> pairSeen {}; // each pair's two sides, as last seen alike
         bool copied = false;
         StripKind copiedKind = StripKind::Channel;

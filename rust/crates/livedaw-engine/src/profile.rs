@@ -2398,7 +2398,7 @@ mod dlive_tests {
         assert_eq!(p.counts.channels, 124, "120 mono, 4 stereo: 128 inputs");
         assert_eq!(p.counts.buses, 32, "8 Groups, 16 Aux, 8 FX sends");
         assert_eq!((p.counts.aux, p.counts.matrices), (16, 8));
-        assert_eq!((p.counts.dcas, p.counts.mute_groups, p.counts.fx), (24, 8, 16));
+        assert_eq!((p.counts.dcas, p.counts.mute_groups, p.counts.fx), (24, 8, 24), "16 RackExtra and 8 RackUltra FX");
         assert_eq!(Counts::DLIVE.sanitised(), Counts::DLIVE);
     }
 

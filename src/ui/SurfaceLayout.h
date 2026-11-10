@@ -7,8 +7,9 @@
 
 /** Surface geometry that has no component behind it: the fader strips' rows
     and the WING COMPACT's surface plan (the main component and the COMPACT's
-    key section lay themselves out with it; the tests check it), and what the
-    COMPACT's fader 13 and 16 keys are set to. */
+    key section lay themselves out with it; the tests check it), what the
+    COMPACT's fader 13 and 16 keys are set to, and the WING RACK's front
+    panel. */
 namespace livedaw::ui::layout
 {
 
@@ -345,5 +346,170 @@ namespace compact
         return {};
     }
 } // namespace compact
+
+//==============================================================================
+/** The WING RACK's front panel (WING manual 4.2 p. 18-19, Fig. 12, and
+    Fig. 8; WING remote protocols, "Wing, a family": "No faders ... No
+    encoders below the LCD touch screen ... 1 LCD + set of 4 encoders and 8
+    buttons CC section, with Layer level indicator, VIEW and >4 <4 buttons"):
+
+      +------+----------------+------+-----------------------------+
+      | HOME |                | CLR  |  [bar] [bar] [bar] [bar]    |
+      | EFF. |                | SOLO |  [ LCD, four channels    ]  |
+      | MET. |     SCREEN     | L R  |           name              |
+      | ROUT.|                | meter|   (o)   (o)   (o)   (o)  [88]
+      | SETUP|                |      |   [M]   [M]   [M]   [M]  [<4]
+      | LIB. |                | knob |   [S]   [S]   [S]   [S]  [4>]
+      | UTIL.|                |      | INPUT BUSES  DCA  CUST  (VIEW)
+      +------+----------------+------+  AUX  MAIN  MUTE  TRANS       |
+                                     | [USB socket]      (LEVEL) (O) |
+                                     +-----------------------------+
+
+    One row: the display unit (the screen keys, the screen, CLR SOLO, the
+    meter and the knob: the main display's own frame) and, right of it, the
+    four-channel section. The proportions are read off the manual's drawing;
+    the positions are Sidecar's. */
+namespace rack
+{
+    constexpr int kChannels = 4;
+
+    /** How tall the black display window's light bar row is in a window
+        `windowH` tall over a column `w` wide. */
+    inline int barRow (int w, int windowH) { return juce::jmin (scribbleBarRow (w), windowH * 36 / 100); }
+
+    /** One channel's column, top to bottom: the display window (the colour
+        bar over its part of the LCD), the band the name is printed in, the
+        encoder, the MUTE key and the SOLO key (Fig. 12: MUTE is the upper
+        row). The fader strip in its RACK style and the custom controls in
+        theirs lay themselves out with it, so the two line up. */
+    struct Column
+    {
+        juce::Rectangle<int> window, name, knob, mute, solo;
+    };
+
+    inline int knobSize (int w) { return juce::jlimit (20, 72, w * 60 / 100); }
+    inline int keySize (int w) { return juce::jlimit (14, 52, w * 46 / 100); }
+    /** The height a column `w` wide wants. */
+    inline int columnHeight (int w) { return 6 + scribbleWindowHeight (w) + knobSize (w) + 2 * keySize (w) + w * 105 / 100; }
+
+    inline Column planColumn (juce::Rectangle<int> column)
+    {
+        Column c;
+        const int w = column.getWidth();
+        if (w < 8 || column.getHeight() < 24)
+            return c; // not laid out yet
+        auto r = column.reduced (0, 3);
+        c.window = r.removeFromTop (juce::jmin (scribbleWindowHeight (w), r.getHeight() * 2 / 5));
+        const int knob = juce::jmin (knobSize (w), juce::jmax (0, r.getHeight() / 4));
+        const int key = juce::jmin (keySize (w), juce::jmax (0, r.getHeight() / 6));
+        // What the encoder and the keys leave: the name band, then the gaps.
+        const int spare = juce::jmax (0, r.getHeight() - knob - 2 * key);
+        c.name = r.removeFromTop (spare * 34 / 100);
+        c.knob = r.removeFromTop (knob).withSizeKeepingCentre (knob, knob);
+        r.removeFromTop (spare * 26 / 100);
+        c.mute = r.removeFromTop (key).withSizeKeepingCentre (key, key);
+        r.removeFromTop (spare * 22 / 100);
+        c.solo = r.removeFromTop (key).withSizeKeepingCentre (key, key);
+        return c;
+    }
+
+    /** The four-channel section's parts, in its own coordinates. */
+    struct Section
+    {
+        int columnW = 60;
+        /** The four columns (LCD, encoders, MUTE and SOLO keys). */
+        juce::Rectangle<int> channels;
+        /** Right of them: the two-digit layer display beside the encoders,
+            the shift keys beside the MUTE and SOLO rows. */
+        juce::Rectangle<int> layerDisplay, shiftLeft, shiftRight;
+        /** INPUT AUX, BUSES MAIN, DCA MUTE, CUST TRANS under the columns; VIEW right of them. */
+        std::array<juce::Rectangle<int>, kChannels> layerKeys;
+        juce::Rectangle<int> view;
+        /** The bottom row: the USB socket, the PHONES LEVEL pot and the headphone socket. */
+        juce::Rectangle<int> usb, level, phones;
+        /** Where MUTE and SOLO are printed, left of their rows. */
+        juce::Rectangle<int> muteLabel, soloLabel;
+    };
+
+    /** The section's width for a panel `height` tall (about 5.6 columns). */
+    inline int sectionWidth (int height) { return juce::jlimit (250, 720, height * 86 / 100); }
+
+    inline Section planSection (juce::Rectangle<int> bounds)
+    {
+        Section s;
+        const auto b = bounds.reduced (8, 8);
+        // Four columns, a narrower one right of them and the row captions' margin
+        // at the left; the columns, the layer keys' row and the bottom row down.
+        constexpr int labelPc = 42, sidePc = 100; // of a column's width
+        int w = juce::jmax (30, b.getWidth() * 100 / (kChannels * 100 + labelPc + sidePc + 10));
+        while (w > 30 && columnHeight (w) + w * 190 / 100 > b.getHeight())
+            --w;
+        s.columnW = w;
+        const int labelW = w * labelPc / 100, sideW = w * sidePc / 100;
+        const int used = labelW + kChannels * w + w / 10 + sideW;
+        const int x0 = b.getX() + juce::jmax (0, (b.getWidth() - used) / 2) + labelW;
+        const int colsH = juce::jmin (columnHeight (w), b.getHeight());
+        const int rowsH = juce::jmin (w * 190 / 100, juce::jmax (0, b.getHeight() - colsH));
+        const int y0 = b.getY() + juce::jmax (0, (b.getHeight() - colsH - rowsH) / 3);
+        s.channels = { x0, y0, kChannels * w, colsH };
+
+        const auto first = planColumn ({ x0, y0, w, colsH });
+        auto side = juce::Rectangle<int> (s.channels.getRight() + w / 10, y0, sideW, colsH);
+        const int key = first.mute.getHeight();
+        s.layerDisplay = juce::Rectangle<int> (juce::jmin (sideW - 6, key * 13 / 10), juce::jmax (10, first.knob.getHeight() * 8 / 10))
+                             .withCentre ({ side.getCentreX(), first.knob.getCentreY() });
+        s.shiftLeft = juce::Rectangle<int> (key, key).withCentre ({ side.getCentreX(), first.mute.getCentreY() });
+        s.shiftRight = juce::Rectangle<int> (key, key).withCentre ({ side.getCentreX(), first.solo.getCentreY() });
+        s.muteLabel = juce::Rectangle<int> (b.getX(), first.mute.getY(), juce::jmax (0, first.mute.getX() - 3 - b.getX()), key);
+        s.soloLabel = s.muteLabel.withY (first.solo.getY());
+
+        // The two rows under the columns.
+        const int rowH = rowsH / 2;
+        auto keysRow = juce::Rectangle<int> (x0, s.channels.getBottom(), kChannels * w, rowH);
+        auto bottomRow = keysRow.translated (0, rowH);
+        const int layerKeyW = juce::jmax (10, w * 72 / 100), layerKeyH = juce::jmax (8, juce::jmin (rowH - 6, w * 48 / 100));
+        for (int i = 0; i < kChannels; ++i)
+            s.layerKeys[(size_t) i] = juce::Rectangle<int> (layerKeyW, layerKeyH).withCentre ({ x0 + i * w + w / 2, keysRow.getCentreY() });
+        const int viewSize = juce::jmax (10, juce::jmin (sideW - 4, rowH - 4, w * 66 / 100));
+        s.view = juce::Rectangle<int> (viewSize, viewSize).withCentre ({ side.getCentreX(), keysRow.getCentreY() });
+        // The socket under the first two columns, the pot under the fourth, the socket under VIEW.
+        const int plateH = juce::jmax (8, juce::jmin (rowH - 14, w * 54 / 100));
+        s.usb = juce::Rectangle<int> (w * 160 / 100, plateH).withCentre ({ x0 + w, bottomRow.getCentreY() - 3 });
+        const int pot = juce::jmax (10, juce::jmin (rowH - 16, w * 64 / 100));
+        s.level = juce::Rectangle<int> (pot, pot).withCentre ({ x0 + 3 * w + w / 2, bottomRow.getCentreY() - 5 });
+        const int jack = juce::jmax (8, juce::jmin (rowH - 16, sideW - 6, w * 56 / 100));
+        s.phones = juce::Rectangle<int> (jack, jack).withCentre ({ side.getCentreX(), bottomRow.getCentreY() - 5 });
+        return s;
+    }
+
+    /** The whole surface: the panel, the display unit in it and the
+        four-channel section right of it. */
+    struct Surface
+    {
+        juce::Rectangle<int> panel, display, section;
+    };
+
+    /** The surface in `window`. `displayWidthFor (h)` is the width the
+        display unit wants at height `h` (MainDisplay::preferredWidth). The
+        RACK is a 19 in, 4U unit (483 x 177 mm), so the panel is a band no
+        taller than about 0.4 of its width, as tall as the window and the two
+        parts side by side allow, centred. */
+    template <typename WidthFor>
+    Surface plan (juce::Rectangle<int> window, WidthFor&& displayWidthFor)
+    {
+        Surface s;
+        constexpr int kMinHeight = 300;
+        int h = juce::jmax (juce::jmin (window.getHeight(), kMinHeight), juce::jmin (window.getHeight(), window.getWidth() * 40 / 100));
+        while (h > kMinHeight && displayWidthFor (h) + sectionWidth (h) > window.getWidth())
+            h -= 4;
+        h = juce::jmin (h, window.getHeight());
+        const int sectionW = juce::jmin (sectionWidth (h), window.getWidth() / 2);
+        const int displayW = juce::jmin ((int) displayWidthFor (h), window.getWidth() - sectionW);
+        s.panel = window.withSizeKeepingCentre (displayW + sectionW, h);
+        s.display = s.panel.withWidth (displayW);
+        s.section = s.panel.withTrimmedLeft (displayW);
+        return s;
+    }
+} // namespace rack
 
 } // namespace livedaw::ui::layout

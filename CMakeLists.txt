@@ -318,6 +318,7 @@ set(LIVEDAW_UI_SOURCES
     src/ui/MonitorsPage.cpp
     src/ui/FourChannelSection.cpp
     src/ui/CompactSection.cpp
+    src/ui/RackSection.cpp
     src/ui/WebMirror.cpp
     src/ui/MainComponent.cpp
     src/ui/WingSurface.cpp

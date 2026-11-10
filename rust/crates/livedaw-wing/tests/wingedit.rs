@@ -318,7 +318,9 @@ fn pc_to_mixer_carries_models_parameters_and_inserts() {
 /// that stands.
 #[test]
 fn the_model_request_is_answered() {
-    for (model, name) in [(ConsoleModel::Full, "ngc-full"), (ConsoleModel::Compact, "wing-compact")] {
+    for (model, name) in
+        [(ConsoleModel::Full, "ngc-full"), (ConsoleModel::Compact, "wing-compact"), (ConsoleModel::Rack, "wing-rack")]
+    {
         let (_e, _st, server) = start(model);
         let mut edit = Client::connect(&server);
         let cnsmdl = id("/$syscfg/$cnsmdl");

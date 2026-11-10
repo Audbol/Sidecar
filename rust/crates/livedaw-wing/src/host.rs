@@ -116,6 +116,9 @@ pub const HOST_SETTINGS: &[HostSetting] = &[
     // The WING COMPACT's surface (CONSOLE MODEL COMPACT): CH AUTOSELECT of its one
     // section, what fader 13 controls and what its 16 keys do.
     s("/$ctl/cfg/autosel_CMPCT", "ui.autoSelectCompact", "0", Enc::Bool),
+    // The WING RACK's (CONSOLE MODEL RACK): CH AUTOSELECT of its four-channel
+    // section (WING Remote Protocols: `autosel_RCK`, "Rack Layer").
+    s("/$ctl/cfg/autosel_RCK", "ui.autoSelectRack", "0", Enc::Bool),
     s("/$ctl/cfg/mfdr", "ui.compactMainFader", "MAIN.1", Enc::Item),
     s("/$ctl/cfg/cscmode", "ui.compactKeyMode", "BUS", Enc::Item),
     // SETUP > SURFACE on a COMPACT (WING manual 5.5): KEEP MAIN FADER (the keys

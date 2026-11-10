@@ -15,7 +15,7 @@ namespace
 
     constexpr int kStripPitch = 152;
     constexpr float kFaderTop = 1351.0f, kFaderBottom = 1692.0f; // the cap's centre at +10 dB and at -oo
-    constexpr float kFaderBox = 1325.0f;                          // top of a fader component
+    constexpr float kFaderBox = 1293.0f;                          // top of a fader component
 
     /** A gain read off an atomic the strip owns, found again at every call (a strip may go). */
     using FloatRef = std::function<std::atomic<float>*()>;
@@ -206,7 +206,7 @@ namespace xy
     {
         const float x = (float) getWidth() * 0.5f;
         hw::faderSlot (g, x, capY (1.0f) - 4.0f, capY (0.0f) + 4.0f, look());
-        hw::faderCap (g, x, capY (binding.isValid() ? binding.get() : 0.0f), 56.0f, look(), cap);
+        hw::ribbedFaderCap (g, x, capY (binding.isValid() ? binding.get() : 0.0f), 30.0f, 56.0f, 24.0f, cap);
     }
 
     void Fader::mouseDown (const juce::MouseEvent& e)
@@ -354,7 +354,7 @@ void Xenyx1204Surface::build()
         soloKeys[(size_t) i].setComponentID (ch + "SOLO");
         soloKeys[(size_t) i].setBounds (centred (143 + kx, 1260, 82, 48));
         panel->addAndMakeVisible (soloKeys[(size_t) i]);
-        fader (ch + "FADER", juce::Colour (0xff3a3b3d), { 146 + kx - 30, (int) kFaderBox, 60, 390 });
+        fader (ch + "FADER", juce::Colour (0xff3a3b3d), { 146 + kx - 30, (int) kFaderBox, 60, 460 });
 
         tapes[(size_t) i] = std::make_unique<ConsoleTape> (i + 1);
         tapes[(size_t) i]->setComponentID (ch + "TAPE");
@@ -373,9 +373,9 @@ void Xenyx1204Surface::build()
     key ("2TR TO MAIN", kKeyRed, juce::Colour (0xffff5a4a), centred (1211, 1166, 56, 28));
     key ("PHANTOM", {}, juce::Colour (0xffe5352c), centred (1212, 980, 30, 30));
     knob ("PHONES LEVEL", juce::Colour (0xffd9dadb), centred (1212, 1073, 84, 84));
-    fader ("ALT FADER", juce::Colour (0xff4b5660), { 1098 - 30, (int) kFaderBox, 60, 390 });
-    fader ("MAIN FADER L", juce::Colour (0xffd9dadb), { 1305 - 30, (int) kFaderBox, 60, 390 });
-    fader ("MAIN FADER R", juce::Colour (0xffd9dadb), { 1385 - 30, (int) kFaderBox, 60, 390 });
+    fader ("ALT FADER", juce::Colour (0xff4b5660), { 1098 - 30, (int) kFaderBox, 60, 460 });
+    fader ("MAIN FADER L", juce::Colour (0xffd9dadb), { 1305 - 30, (int) kFaderBox, 60, 460 });
+    fader ("MAIN FADER R", juce::Colour (0xffd9dadb), { 1385 - 30, (int) kFaderBox, 60, 460 });
 
     for (int i = 0; i < 4; ++i)
     {
@@ -930,14 +930,14 @@ void Xenyx1204Surface::paintPanel (juce::Graphics& g)
         g.setColour (kGreyDark), g.drawVerticalLine (98 + kStripPitch * i, 1312.0f, 1788.0f);
     static const std::pair<const char*, float> scale[] = { { "10", 1351.0f }, { "", 1387.0f }, { "0", 1424.0f }, { "", 1460.0f }, { "10", 1497.0f }, { "15", 1534.0f },
                                                             { "20", 1569.0f }, { "25", 1604.0f }, { "30", 1630.0f }, { "40", 1657.0f }, { "60", 1675.0f }, { "oo", 1692.0f } };
-    const auto legend = [&] (float slotX)
+    const auto legend = [&] (float slotX, bool numbers = true)
     {
         for (const auto& [label, y] : scale)
         {
             g.setColour (kSilkOnGrey);
             g.drawHorizontalLine ((int) y, slotX - 34.0f, slotX - 24.0f);
             g.drawHorizontalLine ((int) y, slotX + 24.0f, slotX + 34.0f);
-            if (*label != 0)
+            if (numbers && *label != 0)
                 hw::silk (g, { slotX - 62.0f, y - 8.0f, 26.0f, 16.0f }, label, darkLook, 11.0f, juce::Justification::centredRight);
         }
     };
@@ -960,8 +960,9 @@ void Xenyx1204Surface::paintPanel (juce::Graphics& g)
         g.setColour (juce::Colour (0xff1b1c1d));
         g.fillEllipse (212.0f + kx, 1690.0f, 18.0f, 18.0f);
     }
-    for (const float slot : { 1098.0f, 1305.0f, 1385.0f })
-        legend (slot);
+    legend (1098.0f);
+    legend (1305.0f);
+    legend (1385.0f, false); // the pair shares the left fader's numbers
     g.setColour (juce::Colour (0xff1d1e20));
     g.drawVerticalLine (1195, 1325.0f, 1730.0f);
     text ("3-4", 1098.0f, 1294.0f, 60.0f, 20.0f, true);

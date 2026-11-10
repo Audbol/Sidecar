@@ -66,17 +66,20 @@ protected:
 
     void timerCallback() override;
 
-    bool isCompact() const noexcept { return ctx.consoleModel == ConsoleModel::Compact; }
+    /** A WING COMPACT or RACK: one section of its own and the VIRTUAL one. */
+    bool isSmallModel() const noexcept { return livedaw::isSmallModel (ctx.consoleModel); }
+    bool isRack() const noexcept { return ctx.consoleModel == ConsoleModel::Rack; }
     /** The section shown: the WING COMPACT has its fader section (the left)
-        and its VIRTUAL section (WING manual 5.7 p. 61, Fig. 55; the center). */
+        and its VIRTUAL section (WING manual 5.7 p. 61, Fig. 55; the center);
+        the WING RACK its four-channel section (the left) and the VIRTUAL one. */
     LayerSet::Section section() const noexcept
     {
-        if (ctx.consoleModel == ConsoleModel::Compact)
+        if (isSmallModel())
             return ctx.viewSection == LayerSet::kVirtualSection ? LayerSet::kVirtualSection : LayerSet::Left;
         return ctx.viewSection;
     }
-    /** The COMPACT's VIRTUAL section is shown. */
-    bool isVirtual() const noexcept { return isCompact() && section() == LayerSet::kVirtualSection; }
+    /** The COMPACT's or RACK's VIRTUAL section is shown. */
+    bool isVirtual() const noexcept { return isSmallModel() && section() == LayerSet::kVirtualSection; }
     juce::String currentLayerId() const;
     Layer currentLayer() const;
     using Bank = ViewBank;
@@ -136,8 +139,8 @@ public:
 
 protected:
     /** Not on the full-size WING's left section; the COMPACT's (with COMPACT
-        and VIRTUAL at its foot) has it. */
-    bool hasLayerColumn() const override { return isCompact() || section() != LayerSet::Left; }
+        and VIRTUAL at its foot) and the RACK's (RACK and VIRTUAL) have it. */
+    bool hasLayerColumn() const override { return isSmallModel() || section() != LayerSet::Left; }
     void paintContent (juce::Graphics&) override;
 
 private:

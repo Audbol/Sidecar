@@ -38,6 +38,17 @@
 //! `vrt-8`, `/$ctl/layer/VRT/1..8`), empty and unnamed at first, eight
 //! faders wide, which only the screens show. The full-size console keeps
 //! them (as the console does: all layers can be prepared on any model).
+//!
+//! **WING RACK** ([`ConsoleModel::Rack`]): no faders. Its front panel's
+//! four-channel section (WING manual 4.2 p. 18, Fig. 12) shows four faders
+//! of a layer at a time; the left section stands for it, four wide whatever
+//! the width setting, with the RACK's five layers (WING manual 5.6 p. 56,
+//! "RACK (WING RACK front panel layers)"): `CHANNELS` (`inputs`), `AUX`,
+//! `BUSES` (`bus-1`), `MAIN/MTX` (`out-1`) and `DCA` (`dca-1`). It has no
+//! USER keys. The right section is not on the surface, and the center one is
+//! its VIRTUAL section as on the COMPACT (manual 5.7 p. 61: "WING RACK has a
+//! hardware (RACK) and a virtual fader section ... The virtual section
+//! consists of 8 channels").
 
 use crate::model::ConsoleModel;
 use crate::refs::StripRef;
@@ -268,8 +279,11 @@ pub const INPUT_KEY_CHANNELS: usize = 12;
 pub const COMPACT_WIDTH: i32 = 12;
 /// The ids of the USER 1 and USER 2 keys.
 pub const USER_KEYS: [&str; 2] = ["user-1", "user-2"];
-/// The COMPACT's virtual layers (see the module docs): the center section's
-/// keys while the console is a COMPACT.
+/// The WING RACK's four-channel section (WING manual 4.2 p. 18).
+pub const RACK_WIDTH: i32 = 4;
+
+/// The COMPACT's and RACK's virtual layers (see the module docs): the center
+/// section's keys while the console is one of them.
 pub const NUM_VIRTUAL_LAYERS: usize = 8;
 pub const VIRTUAL_KEYS: [&str; NUM_VIRTUAL_LAYERS] = ["vrt-1", "vrt-2", "vrt-3", "vrt-4", "vrt-5", "vrt-6", "vrt-7", "vrt-8"];
 /// The section holding them, and its faders per page (`/$ctl/layer/VRT/N/ofs` 0-8).
@@ -616,7 +630,9 @@ impl LayerSet {
         if self.model.is_compact() && section == LEFT {
             // The COMPACT's section is its 12 faders, whatever the width setting.
             COMPACT_WIDTH
-        } else if self.model.is_compact() && section == VIRTUAL_SECTION {
+        } else if self.model.is_rack() && section == LEFT {
+            RACK_WIDTH
+        } else if self.model.has_virtual_section() && section == VIRTUAL_SECTION {
             VIRTUAL_WIDTH
         } else if self.is_auto_width(section) {
             self.fitted.get(section).copied().unwrap_or(1)
@@ -647,7 +663,7 @@ impl LayerSet {
 
     /// The section's layer keys, top to bottom (see the module docs).
     pub fn default_layers_for(&self, section: usize, console: &ConsoleRefs) -> Vec<Layer> {
-        if self.model.is_compact() && section == VIRTUAL_SECTION {
+        if self.model.has_virtual_section() && section == VIRTUAL_SECTION {
             return (0..NUM_VIRTUAL_LAYERS).filter_map(|i| self.virtual_layer(i)).collect();
         }
         let channels: Vec<Labelled> = labelled(&console.channels, "CH").collect();
@@ -672,6 +688,8 @@ impl LayerSet {
                 keys.extend([bus, out, dca]);
                 keys
             }
+            // [WING RACK] CHANNELS, AUX, BUSES, MAIN/MTX, DCA.
+            _ if self.model.is_rack() => vec![inputs, aux, bus, out, dca],
             _ => {
                 // A section wider than 12 (Auto width on a big screen) gets longer input keys.
                 let size = INPUT_KEY_CHANNELS.max(self.effective_width(section).max(1) as usize);
@@ -687,7 +705,9 @@ impl LayerSet {
                 l.faders.clone_from(&o.faders);
             }
         }
-        for (i, id) in USER_KEYS.iter().enumerate() {
+        // The RACK's front panel has no USER layers (its virtual section has layers to fill).
+        let user_keys: &[&str] = if self.model.is_rack() && section == LEFT { &[] } else { &USER_KEYS };
+        for (i, id) in user_keys.iter().enumerate() {
             let user = self.user_layers.get(i);
             layers.push(Layer {
                 id: (*id).into(),
@@ -1149,6 +1169,30 @@ mod tests {
         assert_eq!(set.default_layers_for(LEFT, &console).len(), 7);
         set.set_width(LEFT, AUTO_WIDTH);
         assert_eq!(set.effective_width(LEFT), 30);
+    }
+
+    #[test]
+    fn rack_layers() {
+        let mut set = LayerSet::default();
+        set.set_model(ConsoleModel::Rack);
+        let console = ConsoleRefs::wing(40);
+        let rack = set.default_layers_for(LEFT, &console);
+        assert_eq!(ids(&rack), ["inputs", "aux", "bus-1", "out-1", "dca-1"]);
+        assert_eq!(rack.len() as i32, ConsoleModel::Rack.io().layer_keys);
+        assert_eq!((rack[0].faders.len(), rack[1].faders.len(), rack[2].faders.len()), (40, 8, 16));
+        assert_eq!((rack[3].faders.len(), rack[4].faders.len()), (12, 16));
+        // Four channels at a time, whatever the width setting says.
+        set.set_width(LEFT, 12);
+        assert_eq!(set.effective_width(LEFT), RACK_WIDTH);
+        // Its virtual section, as the COMPACT's.
+        assert_eq!(ids(&set.default_layers_for(VIRTUAL_SECTION, &console)), VIRTUAL_KEYS);
+        assert_eq!(set.effective_width(VIRTUAL_SECTION), VIRTUAL_WIDTH);
+        // A layer id of another model (the full console's 13-24, a USER key) falls on CHANNELS.
+        assert_eq!(set.find_layer_for(LEFT, &console, "in-2").id, "inputs");
+        assert_eq!(set.find_layer_for(LEFT, &console, "user-1").id, "inputs");
+        set.set_model(ConsoleModel::Full);
+        assert_eq!(set.effective_width(LEFT), 12);
+        assert_eq!(set.default_layers_for(LEFT, &console).len(), 7);
     }
 
     #[test]

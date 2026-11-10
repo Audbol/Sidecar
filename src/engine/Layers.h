@@ -101,7 +101,7 @@ public:
 
     static constexpr int kNumSections = 3;
     static constexpr int kAutoWidth = 0;
-    /** The WING COMPACT's VIRTUAL section (WING manual 5.7 p. 61, Fig. 55):
+    /** The WING COMPACT's and RACK's VIRTUAL section (WING manual 5.7 p. 61, Fig. 55):
         eight layers of its own ("vrt-1" .. "vrt-8", empty and unnamed at
         first; renameUserLayer() names them), only on the screens. The
         full-size console keeps them. */
@@ -127,9 +127,12 @@ public:
     /** The console model the surface shows: on the WING COMPACT the left
         section is its 12 faders (whatever the width setting) with its nine
         layer keys (1-12 .. 37-48 AUX IN, BUS MASTER, MAIN MATRIX, DCA, USER 1,
-        USER 2). An app setting: resets and show loads keep it. */
+        USER 2). On the WING RACK the left section is its four-channel
+        section: four wide, with the layers CHANNELS, AUX, BUSES, MAIN/MTX and
+        DCA ("inputs", "aux", "bus-1", "out-1", "dca-1"; WING manual 5.6
+        p. 56). An app setting: resets and show loads keep it. */
     void setModel (ConsoleModel m) noexcept { ld::ld_layers_set_model (handle, (int32_t) m); }
-    ConsoleModel getModel() const noexcept { return ld::ld_layers_model (handle) == 1 ? ConsoleModel::Compact : ConsoleModel::Full; }
+    ConsoleModel getModel() const noexcept { return consoleModelFromInt ((int) ld::ld_layers_model (handle)); }
 
     /** The section's default bank containing `ref` (for "go to strip"). */
     juce::String findDefaultLayerContaining (const MixerEngine&, Section, const state::FaderRef&) const;

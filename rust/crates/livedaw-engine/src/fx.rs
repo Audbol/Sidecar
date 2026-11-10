@@ -42,12 +42,17 @@
 //! meter fed every sample would show. A slot that doesn't run (bypassed,
 //! auto-bypassed, no device yet) meters its signal as passing through and
 //! reports idle readouts.
+//!
+//! Besides its audio a device can take an external key, the console's Global Key
+//! and MIDI notes, and on a dLive FX 17-24 run theirs inside a RackUltra channel
+//! strip: see `ufx.rs` ([`FxExtras`], [`FxRack::control`]).
 
 use crate::atomic::AtomicF32;
 use crate::garbage::Garbage;
 use crate::params::{ext, FxParams, FX_EXT};
 use crate::pdc::{CompRing, MAX_PDC};
 use crate::strip::source_ptr;
+use crate::ufx::{UfxEngine, UFX_STRIP_PARAMS};
 use livedaw_dsp::util::{all_finite, db_to_gain};
 use livedaw_dsp::wing::fx::meters::FALL_DB_PER_S;
 use livedaw_dsp::wing::fx::{FxContext, FxDevice, FX_BANDS, FX_READOUTS};
@@ -125,6 +130,18 @@ pub(crate) struct FxInputs<'a> {
     pub playback: &'a [*const f32],
 }
 
+/// What a slot's device gets besides its audio and settings (`ufx.rs`).
+#[derive(Clone, Copy, Default)]
+pub(crate) struct FxExtras<'a> {
+    /// The external key of this block, mono (None: none patched).
+    pub key: Option<&'a [f32]>,
+    /// The RackUltra strip the device runs in (a dLive's FX 17-24).
+    pub ufx: Option<&'a UfxEngine>,
+}
+
+/// No Global Key given to the device yet.
+const NO_KEY: u32 = u32::MAX;
+
 /// The slot's levels (`FxRack::level`): input left/right, output left/right.
 pub const FX_LEVELS: usize = 4;
 
@@ -171,6 +188,8 @@ pub struct FxRack {
     /// The round trip through the interface in samples (one block plus its
     /// reported input and output latency).
     round_trip: AtomicU32,
+    /// The Global Key the device was last given (`NO_KEY`: none yet).
+    key_given: AtomicU32,
 }
 
 // SAFETY: `dry` is only used by the task that holds `busy`; everything else is atomic.
@@ -199,6 +218,7 @@ impl Default for FxRack {
             send: UnsafeCell::new([Vec::new(), Vec::new()]),
             send_block: AtomicU64::new(0),
             round_trip: AtomicU32::new(0),
+            key_given: AtomicU32::new(NO_KEY),
         }
     }
 }
@@ -207,13 +227,53 @@ impl FxRack {
     /// # Safety
     /// The audio thread must not be processing (device stopped).
     pub(crate) unsafe fn prepare(&self, max_block: usize) {
+        self.prepare_buffers(max_block);
+        *self.dry_ring.get() = Some(Box::new(CompRing::new(max_block)));
+    }
+
+    /// As `prepare` for a slot that only ever runs a device without latency (a
+    /// dLive's Dyn8 engines): no history of the dry signal.
+    ///
+    /// # Safety
+    /// As `prepare`.
+    pub(crate) unsafe fn prepare_light(&self, max_block: usize) {
+        self.prepare_buffers(max_block);
+        *self.dry_ring.get() = None;
+    }
+
+    unsafe fn prepare_buffers(&self, max_block: usize) {
         let dry = &mut *self.dry.get();
         for d in dry.iter_mut().chain((*self.send.get()).iter_mut()) {
             d.clear();
             d.resize(max_block, 0.0);
         }
         self.send_block.store(0, Relaxed);
-        *self.dry_ring.get() = Some(Box::new(CompRing::new(max_block)));
+    }
+
+    /// Audio thread, before the block's stages (no task runs a slot): gives the
+    /// device the MIDI `notes` that arrived (note, velocity; 0 = off) and the
+    /// Global Key (`ufx::GlobalKey::code`) when it hasn't had this one yet.
+    ///
+    /// # Safety
+    /// Audio thread only, while no task is in `process`.
+    pub(crate) unsafe fn control(&self, notes: &[(u8, u8)], key: u32) {
+        let given = self.key_given.load(SeqCst);
+        if notes.is_empty() && given == key {
+            return;
+        }
+        let device = self.device.load(Acquire);
+        let Some(dev) = device.as_mut() else { return };
+        if given != key {
+            dev.global_key((key & 0xff) as u8, (key >> 8) as u8);
+            self.key_given.store(key, SeqCst);
+            // Swapped meanwhile: the new device hasn't heard it.
+            if self.device.load(SeqCst) != device {
+                self.key_given.store(NO_KEY, SeqCst);
+            }
+        }
+        for &(note, velocity) in notes {
+            dev.midi_note(note, velocity);
+        }
     }
 
     /// The round trip of an outboard insert through the interface, in samples
@@ -319,7 +379,9 @@ impl FxRack {
     pub fn set_device(&self, device: Option<Box<FxDevice>>, garbage: &Garbage) {
         self.device_latency.store(device.as_ref().map_or(0, |d| d.latency()), Relaxed);
         let new = device.map_or(std::ptr::null_mut(), Box::into_raw);
-        let old = self.device.swap(new, AcqRel);
+        let old = self.device.swap(new, SeqCst);
+        // The new device hasn't heard the Global Key.
+        self.key_given.store(NO_KEY, SeqCst);
         self.faulted.store(false, Relaxed);
         self.meter.store(0.0);
         self.band_gains.iter().for_each(|g| g.store(0.0));
@@ -451,6 +513,7 @@ impl FxRack {
         sample_rate: f64,
         params: &FxParams,
         inputs: &FxInputs,
+        extras: &FxExtras,
         block: u64,
     ) {
         let n = channels.first().map_or(0, |c| c.len());
@@ -472,6 +535,9 @@ impl FxRack {
         }
         if !runnable || params.bypass.load(Relaxed) || self.faulted.load(Relaxed) {
             self.meter_passthrough(channels, fall);
+            if let Some(ufx) = extras.ufx {
+                ufx.store_reductions([0.0; 2]);
+            }
             return;
         }
         // One strip per slot per block; a second one passes through.
@@ -518,15 +584,26 @@ impl FxRack {
             let dev = &mut *device;
             let mut values = [0.0f32; MAX_FX_PARAMS];
             params.values_snapshot(&mut values);
+            let key = extras.key.filter(|k| k.len() >= n).map(|k| (&k[..n], &k[..n]));
             if channels.len() >= 2 {
                 let (l, r) = channels.split_at_mut(1);
-                dev.process(&values, &mut l[0][..n], &mut r[0][..n]);
+                let (l, r) = (&mut l[0][..n], &mut r[0][..n]);
+                // A RackUltra engine: its strip around the device.
+                match extras.ufx.and_then(|u| Some((u, u.strip_mut()?))) {
+                    Some((ufx, strip)) => {
+                        let mut strip_values = [0.0f32; UFX_STRIP_PARAMS];
+                        ufx.snapshot(&mut strip_values);
+                        strip.process(&strip_values, l, r, key, &mut |l, r| dev.process_keyed(&values, l, r, key));
+                        ufx.store_reductions(strip.reductions());
+                    }
+                    None => dev.process_keyed(&values, l, r, key),
+                }
             } else {
                 // Mono strip: feed both inputs, take the sum of the outputs back
                 // (dry[1] is free as the right channel's buffer).
                 let r = &mut dry[1][..n];
                 r.copy_from_slice(&channels[0][..n]);
-                dev.process(&values, &mut channels[0][..n], r);
+                dev.process_keyed(&values, &mut channels[0][..n], r, key);
                 for (y, r) in channels[0].iter_mut().zip(r.iter()) {
                     *y = 0.5 * (*y + r);
                 }

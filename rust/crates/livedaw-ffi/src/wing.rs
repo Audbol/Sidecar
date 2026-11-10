@@ -142,7 +142,8 @@ pub unsafe extern "C" fn ld_wing_set_name(w: *mut LdWing, name: *const u8, len: 
 }
 
 /// The console model the console reports itself as (0 full size, 1
-/// COMPACT: "wing-compact" in discovery, `/?` and `/$syscfg/$cnsmdl`), at
+/// COMPACT: "wing-compact" in discovery, `/?` and `/$syscfg/$cnsmdl`; 2
+/// RACK: "wing-rack"), at
 /// once and across restarts.
 #[no_mangle]
 pub unsafe extern "C" fn ld_wing_set_model(w: *mut LdWing, model: i32) {

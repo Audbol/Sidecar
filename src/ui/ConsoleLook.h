@@ -18,21 +18,21 @@ enum class SurfaceFinish
 
 /** How the console looks (SETUP > GENERAL > CONSOLE), kept in the app
     settings rather than in the show: a preference of the user, not of the mix.
-    The MODEL is the full-size WING or the WING COMPACT (the RACK may follow);
-    the COMPACT comes in black only, so it shows the black finish whatever the
-    finish setting says. */
+    The MODEL is the full-size WING, the WING COMPACT or the WING RACK; the
+    COMPACT and the RACK come in black only, so they show the black finish
+    whatever the finish setting says. */
 struct ConsoleLook
 {
     static constexpr const char* finishKey = "ui.surfaceFinish"; // "SILVER" (default) or "BLACK"
-    static constexpr const char* modelKey = "ui.consoleModel";   // "FULL" (default) or "COMPACT"
+    static constexpr const char* modelKey = "ui.consoleModel";   // "FULL" (default), "COMPACT" or "RACK"
 
     SurfaceFinish finish = SurfaceFinish::Silver;
     ConsoleModel model = ConsoleModel::Full;
 
     static juce::String finishName (SurfaceFinish f) { return f == SurfaceFinish::Black ? "BLACK" : "SILVER"; }
 
-    /** The finish the surface shows: the COMPACT's is black. */
-    SurfaceFinish shownFinish() const noexcept { return model == ConsoleModel::Compact ? SurfaceFinish::Black : finish; }
+    /** The finish the surface shows: the COMPACT's and the RACK's is black. */
+    SurfaceFinish shownFinish() const noexcept { return isSmallModel (model) ? SurfaceFinish::Black : finish; }
 
     static ConsoleLook load (const juce::PropertiesFile& settings)
     {

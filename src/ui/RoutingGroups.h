@@ -342,7 +342,7 @@ struct Menu
 /** The SOURCE GROUP menu: CHANNELS (`forChannels`, which also lists BUS, MAIN
     and MATRIX) or SOURCES; with `monitor` (OUTPUTS) MONITOR, FX SEND and the
     direct outs (CH DIRECT, BUS DIRECT: PRE or POST FADER) follow.
-    The WING COMPACT (`compact`) has no local aux inputs: no AUX IN. */
+    The WING COMPACT and RACK (`compact`) have no local aux inputs: no AUX IN. */
 inline Menu sourceMenu (bool forChannels, bool monitor = false, bool compact = false)
 {
     auto id = [] (Group g) { return (int) g; };
@@ -377,7 +377,7 @@ void paintGroupTile (juce::Graphics&, juce::Rectangle<int>, Group, bool selected
     SOURCES): the number and the gain instead of the label. */
 void paintSourceTile (juce::Graphics&, juce::Rectangle<int>, MixerEngine&, Group, int index, float peak, bool marked, bool numbered = false);
 
-/** The OUTPUT GROUP menu (the WING COMPACT's without AUX OUT: it has no local aux outputs). */
+/** The OUTPUT GROUP menu (the WING COMPACT's and RACK's without AUX OUT: they have no local aux outputs). */
 inline Menu outputMenu (bool compact = false)
 {
     auto id = [] (Group g) { return (int) g; };

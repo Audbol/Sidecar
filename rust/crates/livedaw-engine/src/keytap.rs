@@ -291,12 +291,19 @@ impl Drop for StripKeyTaps {
 
 /// The input channels a strip's GATE and DYNAMICS keys come from (-1 =
 /// none, itself or no input channel): the gate runs on input channels only.
-pub(crate) fn key_sources(p: &StripParams, has_gate: bool) -> [i32; 2] {
+/// Then those the FX engines of its INS 1 and INS 2 are keyed from (`fx_keys`:
+/// `ufx::UfxState::keys`), so an insert's key is of this block too. (An insert
+/// block's engine isn't counted: its key may be a block late.)
+pub(crate) fn key_sources(p: &StripParams, has_gate: bool, fx_keys: &[crate::ufx::FxKey]) -> [i32; 4] {
     let src = |s: &crate::params::DynSlotParams| match KeySource::from_code(s.sc_source.load(Relaxed)) {
         KeySource::Channel(n) => n as i32,
         _ => -1,
     };
-    [if has_gate { src(p.gate()) } else { -1 }, src(p.dynamics())]
+    let insert = |ins: &crate::params::InsertParams| {
+        let slot = if ins.on.load(Relaxed) { ins.fx.load(Relaxed) } else { -1 };
+        usize::try_from(slot).ok().and_then(|i| fx_keys.get(i)).map_or(-1, |k| k.channel())
+    };
+    [if has_gate { src(p.gate()) } else { -1 }, src(p.dynamics()), insert(p.pre_insert()), insert(p.post_insert())]
 }
 
 /// A slot's key source and the tap buffer its key takes.
@@ -336,7 +343,7 @@ impl KeySchedule {
     /// channel indices; channels are strips `0..num_channels`). A strip runs
     /// one wave after its latest source, up to the last wave, where cycles and
     /// deep chains end up (they read the previous block). Never allocates.
-    pub(crate) fn compute(&mut self, num_channels: usize, sources: impl Fn(usize) -> [i32; 2]) {
+    pub(crate) fn compute<const N: usize>(&mut self, num_channels: usize, sources: impl Fn(usize) -> [i32; N]) {
         let n = self.waves.len();
         self.waves.fill(0);
         let last = MAX_KEY_WAVES - 1;

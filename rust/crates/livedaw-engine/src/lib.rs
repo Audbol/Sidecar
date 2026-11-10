@@ -36,6 +36,7 @@ pub mod talk;
 pub mod taps;
 pub mod tapsend;
 pub mod trace;
+pub mod ufx;
 
 pub use analyser::{Analyser, AnalysisControls};
 pub use config::{ConsoleConfig, Counts};

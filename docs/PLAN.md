@@ -41,7 +41,10 @@ Processing:
 
 - [x] NEQ-12 (the engine's EQ parameter limit grew to 64).
 - [x] Dyn8's DSP and model (`DLVDYN8`, `dlive_fx`), on Universal.
-- [ ] A dLive's 64 Dyn8 engines in the signal path (engine slots, insert patching, the key source).
+- [x] A dLive's 64 Dyn8 engines in the signal path (engine side, `livedaw_engine::ufx`): an array of their own,
+      an insert names Dyn8 n as FX `64 + n`; each with a key source; in shows and scenes.
+- [ ] Screens for the Dyn8 engines: picking one on an insert, its panel and key source (FFI: `ld_fx_params`,
+      `ld_fx_set_key`, `ld_dyn8_in_use`; an insert's `fx` = `kDyn8FxBase + n`).
 - [x] The two preamp models.
 - [x] AMM, NOM and D-Classic.
 
@@ -49,7 +52,12 @@ Effects:
 
 - [x] The 20 RackExtra effects. Ranges and algorithms are largely Sidecar's reading.
 - [x] The RackUltra models and channel strip DSP (`dlive_fx/ultra`), the 11 models on Universal.
-- [ ] A dLive's 8 UFX engines in the engine: slots 17-24, their strip around the device, the Global Key, MIDI notes and key sources.
+- [x] A dLive's 8 UFX engines in the engine: FX 17-24 (a dLive has 24 FX now), their strip around the device, sends and
+      returns (24 FX returns), the Global Key, MIDI notes and key sources; in shows and scenes.
+- [ ] Screens for the UFX strip, the key source and the Global Key (FFI: `ld_ufx_strip_*`, model table 5,
+      `ld_fx_set_key`, `ld_engine_set_global_key`), and MIDI notes fed from the MIDI inputs (`ld_fx_midi_note`).
+- [ ] The RackUltra card's 8 extra stereo send mixes and 8 return channels as strips of their own: for now a UFX
+      engine is fed from any mix and returns on any channel or FX return.
 
 Console features:
 
@@ -100,7 +108,8 @@ Console features:
 ## 4. Bring the older surfaces up to the 01V's standard
 
 - [x] ProMix 01's panel and 240 x 64 dot LCD, from the owner's photos. Its LCD shares the 01V's fonts.
-- [ ] ProMix 01: check every LCD page against the owner's console.
+- [x] ProMix 01: METER, PAN, COMP and EQ dot for dot from the owner's LCD photos; panel colours sampled.
+- [ ] ProMix 01: check the other LCD pages against the owner's console.
 - [x] 02R's colours, plates and hood, from public photos (no console to photograph).
 - [ ] 02R: its LCD as dots, once its resolution is known (the manuals and reviews don't say).
 
@@ -128,7 +137,11 @@ The owner wants a lot of work done here; what comes first is theirs to say.
 - [ ] WING: Mixing Station write coverage, the owner's open questions
       (`UNIVERSAL_MIXER.md`, "Still open from the WING work").
 - [x] WING: page-by-page audit against the manual (`WING_GAPS.md`); BALANCE, REMOTE LOCK and the SD RECORDER keys fixed.
-- [ ] WING RACK as a console model: its front panel, layers and VIEW behaviour (`WING_GAPS.md`).
+- [x] WING RACK as a console model: its front panel (the display and the four-channel section), its five layers, the mute
+      groups, custom controls and transports on its eight keys, VIEW and HOME as the manual's RACK tables, `wing-rack` to remote clients.
+- [ ] WING RACK, still open: look at it in a render (never built or drawn yet); the FADERS screen's left toolbar (manual 5.1
+      p. 30, Fig. 72); the RACK's key combinations of chapter 10 (UTILITY, SETUP and CLR SOLO stand in for the blank key);
+      `/$ctl/layer/RCK` for remote clients; its completion figure in `src/ui/StartupNotice.cpp`.
 - [ ] X32 display menus, still open (drawn dimmed for now): SETUP's system controls, sync, time; the DAW protocol
       of SETUP > remote; LIBRARY's .efx / .rou import and export; USB's recorder trim. The Monitor Source list's LR+C/M
       and PFL / AFL act as LR. Kept for remotes only (`/-prefs`): lamp, card mode, network fields, iQ, most of config.
@@ -136,8 +149,8 @@ The owner wants a lot of work done here; what comes first is theirs to say.
 
 ## 7. Release
 
-- [ ] 01V and DM2000: fader groups, mute groups and pairs save with scenes (owner checked a real 01V: they do).
-- [ ] First run: the start-up window asks which console, with no default WING.
+- [x] 01V and DM2000: fader groups, mute groups and pairs save with scenes (owner checked a real 01V: they do).
+- [x] First run: the start-up window asks which console (it already does: with nothing to continue, a console must be chosen).
 - [ ] Analog mixers: reuse the 1204USB's console tape and scene bar as the template.
 - [ ] Consoles: controls Sidecar cannot back stay drawn but dim.
 - [ ] Regenerate the README screenshots after the Universal Mixer design pass, before v0.3.0.
