@@ -32,7 +32,7 @@ use crate::params::{DcaParams, DynSlotParams, FxParams, InsertParams, OwnBlocks,
 use crate::params::{MainSendParams, MatrixSendParams, MAIN_SEND_PAGE, MAX_MAINS, MAX_MATRICES};
 use crate::pdc::{pdc_tap, StripPdc};
 use crate::profile::{Profile, ProfileSpec};
-use crate::routing::{return_tap, strip_source_slot, ReturnRing};
+use crate::routing::{return_tap, strip_source, strip_source_slot, ReturnRing};
 use crate::sends::{Bank, SendBank};
 use crate::solo::StripConsole;
 use crate::sources::{fx_return_channel, internal, osc_channel, usr_channel};
@@ -167,8 +167,12 @@ pub(crate) struct StripDsp {
     key: Vec<f32>,
     delay: DelayLine,
     last_in: [f32; 2],
+    /// The attenuator gain last applied (`Node::Attenuator`).
+    last_att: f32,
     /// The Ext In's gain last block.
     last_ext: f32,
+    /// A dLive's stereo image width last block (0..1).
+    last_image_width: f32,
     last_gain: f32,
     /// 2x2 output matrix (ll, rl, lr, rr): out_l = ll*L + rl*R, out_r = lr*L + rr*R.
     out_matrix: [f32; 4],
@@ -214,7 +218,9 @@ impl StripDsp {
             key: Vec::new(),
             delay: DelayLine::default(),
             last_in: [1.0; 2],
+            last_att: 1.0,
             last_ext: 0.0,
+            last_image_width: 1.0,
             last_gain: 1.0,
             out_matrix: [0.0; 4],
             pan_gains: [1.0; 2],
@@ -285,6 +291,11 @@ pub struct Strip {
     pub console: StripConsole,
     /// A mix's Ext In and Mix Source.
     pub mix_input: crate::params::MixInputParams,
+    /// What only a dLive uses (`dlive.rs`).
+    pub dlive: crate::dlive::DLiveStripParams,
+    /// What a Source Selector leaves of its sends (`dlive::selector_destination`): 1 for
+    /// the sends no selector holds, written by the audio thread.
+    pub(crate) selector_gain: [crate::atomic::AtomicF32; crate::dlive::NUM_SELECTOR_DESTINATIONS],
     /// A dLive channel's AMM settings and read-back.
     pub amm: AmmStripParams,
     /// Plugin delay compensation: tap latencies and history rings (`pdc.rs`).
@@ -423,6 +434,8 @@ impl Strip {
             tags: Mutex::new(String::new()),
             console: StripConsole::default(),
             mix_input: Default::default(),
+            dlive: Default::default(),
+            selector_gain: std::array::from_fn(|_| crate::atomic::AtomicF32::new(1.0)),
             amm: AmmStripParams::default(),
             pdc: StripPdc::default(),
             keys: StripKeyTaps::default(),
@@ -769,7 +782,10 @@ impl Strip {
         for b in self.params.own_blocks() {
             b.dsp_mut().prepare(sample_rate);
         }
-        d.delay.prepare(sample_rate);
+        match self.spec.delay_samples {
+            Some((_, hi)) => d.delay.prepare_samples(sample_rate, hi as usize),
+            None => d.delay.prepare(sample_rate),
+        }
         d.listen_filter.reset();
         d.listen_state = None;
         d.tap_shaper.prepare(sample_rate);
@@ -874,7 +890,7 @@ impl Strip {
         }
     }
 
-    fn dca_offset_db(&self, dcas: &[DcaParams]) -> f32 {
+    pub(crate) fn dca_offset_db(&self, dcas: &[DcaParams]) -> f32 {
         Self::member_dcas(&self.params, dcas).map(|d| d.fader_db.load()).sum()
     }
 
@@ -932,7 +948,9 @@ impl Strip {
         let first = m.ext_source.load(Relaxed);
         let polarity = if m.ext_invert.load(Relaxed) { -1.0 } else { 1.0 };
         let gain = db_to_gain(m.ext_trim_db.load()) * polarity;
-        if first >= 0 {
+        // A mix can't take itself: it would only feed back.
+        let own = matches!(strip_source(first), Some((kind, number, _)) if kind == self.kind && number as i32 == self.id);
+        if first >= 0 && !own {
             let stereo = self.params.stereo.load(Relaxed);
             let step = (gain - d.last_ext) / n.max(1) as f32;
             for ch in 0..2 {
@@ -1234,11 +1252,24 @@ impl Strip {
                 if self.kind.is_output() {
                     self.add_ext_in(d, ctx, n);
                 }
+                // A dLive's stereo image comes ahead of its trim (block diagram).
+                if self.kind == StripKind::Channel && nc == 2 && self.spec.dlive_layout.is_some() {
+                    let mode = self.dlive.stereo_image.load(Relaxed);
+                    let width = (self.dlive.image_width.load() / 100.0).clamp(0.0, 1.0);
+                    if mode != crate::dlive::stereo_image::LR || width < 1.0 || d.last_image_width < 1.0 {
+                        let [l, r] = &mut d.work;
+                        crate::dlive::apply_stereo_image(&mut l[..n], &mut r[..n], mode, d.last_image_width, width);
+                    }
+                    d.last_image_width = width;
+                }
                 // INPUT: trim, balance, polarity
                 let polarity = if p.input.invert.load(Relaxed) { -1.0 } else { 1.0 };
-                let trim = db_to_gain(p.input.trim_db.load()) * polarity;
+                // A console with its attenuator further down leaves it to that node.
+                let trim = if self.spec.attenuator { 1.0 } else { db_to_gain(p.input.trim_db.load()) } * polarity;
+                // [Manual 6.1 p. 69] BALANCE: a positive value takes the left down and
+                // brings the right up by the same amount, a negative one the opposite.
                 let bal = if nc == 2 { p.input.balance_db.load() } else { 0.0 };
-                let gains = [trim * db_to_gain(-bal.max(0.0)), trim * db_to_gain(bal.min(0.0))];
+                let gains = [trim * db_to_gain(-bal), trim * db_to_gain(bal)];
                 for (ch, &gain) in gains.iter().enumerate().take(nc) {
                     apply_gain_ramp(&mut d.work[ch][..n], d.last_in[ch], gain);
                     let peak = peak_level(&d.work[ch][..n]);
@@ -1250,6 +1281,13 @@ impl Strip {
                 if probe.scope {
                     ctx.probes.push_scope([&d.work[0][..n], &d.work[1][..n]], nc, n);
                 }
+            }
+            Node::Attenuator => {
+                let gain = db_to_gain(p.input.trim_db.load());
+                for ch in 0..nc {
+                    apply_gain_ramp(&mut d.work[ch][..n], d.last_att, gain);
+                }
+                d.last_att = gain;
             }
             Node::Delay => self.apply_delay(d, n),
             Node::Filter => {
@@ -1415,8 +1453,12 @@ impl Strip {
         if !p.delay_on.load(Relaxed) {
             return;
         }
-        // As the WING: 0.3 m per ms, at least 16 samples.
-        let samples = delay_samples(p.delay.load(), p.delay_mode.load(Relaxed).clamp(0, 3) as usize, d.sample_rate);
+        let samples = match self.spec.delay_samples {
+            // A console that sets its delay in samples: its own range.
+            Some((lo, hi)) => (p.delay.load().round() as i64).clamp(lo as i64, hi as i64) as usize,
+            // As the WING: 0.3 m per ms, at least 16 samples.
+            None => delay_samples(p.delay.load(), p.delay_mode.load(Relaxed).clamp(0, 3) as usize, d.sample_rate),
+        };
         let nc = d.num_channels;
         let [w0, w1] = &mut d.work;
         let mut chans: [&mut [f32]; 2] = [&mut w0[..n], &mut w1[..n]];
@@ -1688,6 +1730,8 @@ pub(crate) fn source_ptr(hw: &[*const f32], playback: &[*const f32], index: i32)
         playback.get(internal::STRIP + n)
     } else if let Some(n) = fx_return_channel(index) {
         playback.get(internal::FX + n)
+    } else if let Some(n) = crate::routing::pafl_channel(index) {
+        playback.get(internal::PAFL + n)
     } else {
         hw.get(usize::try_from(index).ok()?)
     };

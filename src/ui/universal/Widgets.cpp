@@ -4,28 +4,214 @@
 #include "dsp/DspUtils.h"
 #include "ui/Knobs.h"
 
+#include <algorithm>
+#include <map>
+
 namespace livedaw::ui::universal
 {
 
 //==============================================================================
 float deviceTagWidth (const juce::String& device)
 {
-    return device.isEmpty() ? 0.0f : juce::GlyphArrangement::getStringWidth (type::font (type::kCaption - 2.0f, true), device) + 16.0f;
+    return device.isEmpty() ? 0.0f : juce::GlyphArrangement::getStringWidth (type::font (type::kMicro, true), device) + 10.0f;
 }
 
 float drawDeviceTag (juce::Graphics& g, juce::Rectangle<float> area, const juce::String& device, const Theme& theme, bool atLeft)
 {
     if (device.isEmpty())
         return 0.0f;
-    const auto font = type::font (type::kCaption - 2.0f, true);
-    const float w = juce::GlyphArrangement::getStringWidth (font, device) + 10.0f;
+    // The console's name, set small: a word, not one more box.
+    const auto font = type::font (type::kMicro, true);
+    const float w = juce::GlyphArrangement::getStringWidth (font, device) + 4.0f;
     const float h = juce::jmin (area.getHeight(), 16.0f);
     const auto tag = (atLeft ? area.removeFromLeft (w) : area.removeFromRight (w)).withSizeKeepingCentre (w, h);
     g.setColour (theme.textDim);
-    g.drawRoundedRectangle (tag.reduced (0.5f), 3.0f, 1.0f);
     g.setFont (font);
     g.drawText (device, tag, juce::Justification::centred);
     return w + 6.0f;
+}
+
+//==============================================================================
+namespace
+{
+    class ThemedLookAndFeel final : public juce::LookAndFeel_V4
+    {
+    public:
+        explicit ThemedLookAndFeel (const Theme& t) : theme (t)
+        {
+            setColourScheme ({ t.background, t.panel, t.raised, t.outline, t.text, t.accent, t.textOnAccent, t.accent, t.text });
+            using PM = juce::PopupMenu;
+            setColour (PM::backgroundColourId, t.raised);
+            setColour (PM::textColourId, t.text);
+            setColour (PM::headerTextColourId, t.textDim);
+            setColour (PM::highlightedBackgroundColourId, t.accent);
+            setColour (PM::highlightedTextColourId, t.textOnAccent);
+            setColour (juce::AlertWindow::backgroundColourId, t.panel);
+            setColour (juce::AlertWindow::textColourId, t.text);
+            setColour (juce::AlertWindow::outlineColourId, t.outline);
+            setColour (juce::ScrollBar::thumbColourId, t.lifted (t.outline, 0.3f));
+            setColour (juce::ScrollBar::trackColourId, juce::Colours::transparentBlack);
+            setColour (juce::TextEditor::backgroundColourId, t.well);
+            setColour (juce::TextEditor::textColourId, t.text);
+            setColour (juce::TextEditor::outlineColourId, t.outline);
+            setColour (juce::TextEditor::focusedOutlineColourId, t.accent);
+            setColour (juce::TextEditor::highlightColourId, t.accent.withAlpha (0.35f));
+            setColour (juce::TextButton::buttonColourId, t.raised);
+            setColour (juce::TextButton::buttonOnColourId, t.accent);
+            setColour (juce::TextButton::textColourOffId, t.text);
+            setColour (juce::TextButton::textColourOnId, t.textOnAccent);
+            setColour (juce::ComboBox::backgroundColourId, t.raised);
+            setColour (juce::ComboBox::textColourId, t.text);
+            setColour (juce::ComboBox::outlineColourId, t.outline);
+            setColour (juce::ComboBox::arrowColourId, t.textDim);
+            setColour (juce::ListBox::backgroundColourId, t.well);
+            setColour (juce::ListBox::textColourId, t.text);
+            setColour (juce::TooltipWindow::backgroundColourId, t.raised);
+            setColour (juce::TooltipWindow::textColourId, t.text);
+            setColour (juce::TooltipWindow::outlineColourId, t.outline);
+        }
+
+        juce::Font getPopupMenuFont() override { return type::font (type::kLabel); }
+
+        void drawCallOutBoxBackground (juce::CallOutBox&, juce::Graphics& g, const juce::Path& path, juce::Image&) override
+        {
+            g.setColour (theme.panel);
+            g.fillPath (path);
+            g.setColour (theme.outline);
+            g.strokePath (path, juce::PathStrokeType (1.0f));
+        }
+
+    private:
+        const Theme& theme;
+    };
+
+    /** A finger's first few pixels decide what it is doing: going along the strips scrolls them
+        and leaves the control alone. */
+    constexpr int kTouchSlop = 8;
+} // namespace
+
+namespace
+{
+    /** The hairlines of the brushing, tiled over a plate. */
+    const juce::Image& grain (const Theme& theme)
+    {
+        static std::map<const Theme*, juce::Image> images;
+        auto& image = images[&theme];
+        if (image.isNull())
+        {
+            // Fine: every pixel its own, with only a faint run along the strip.
+            image = juce::Image (juce::Image::ARGB, 256, 256, true);
+            juce::Image::BitmapData pixels (image, juce::Image::BitmapData::writeOnly);
+            juce::Random random (0x51dec);
+            std::array<float, 256> column;
+            for (auto& c : column)
+                c = random.nextFloat() - 0.5f;
+            for (int y = 0; y < image.getHeight(); ++y)
+                for (int x = 0; x < image.getWidth(); ++x)
+                {
+                    const float v = column[(size_t) x] * 0.35f + (random.nextFloat() - 0.5f) * 0.65f;
+                    pixels.setPixelColour (x, y, v >= 0.0f ? juce::Colours::white.withAlpha (juce::jmin (1.0f, theme.hw.grainLight * v * 2.0f))
+                                                           : juce::Colours::black.withAlpha (juce::jmin (1.0f, theme.hw.grainDark * -v * 2.0f)));
+                }
+        }
+        return image;
+    }
+} // namespace
+
+void drawPlate (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour top, juce::Colour bottom, const Theme& theme, bool screws)
+{
+    g.setGradientFill (juce::ColourGradient (top, 0.0f, r.getY(), bottom, 0.0f, r.getBottom(), false));
+    g.fillRect (r);
+    g.setTiledImageFill (grain (theme), juce::roundToInt (r.getX()), 0, 1.0f);
+    g.fillRect (r);
+    g.setColour (theme.edgeLight());
+    g.fillRect (r.getX(), r.getY(), r.getWidth(), 1.0f);
+    g.setColour (theme.edgeDark());
+    g.fillRect (r.getRight() - 1.0f, r.getY(), 1.0f, r.getHeight());
+    if (! screws || r.getHeight() < 24.0f || r.getWidth() < 24.0f)
+        return;
+    for (auto p : { r.getTopLeft() + juce::Point<float> (6.0f, 6.0f), r.getTopRight() + juce::Point<float> (-6.0f, 6.0f),
+                    r.getBottomLeft() + juce::Point<float> (6.0f, -6.0f), r.getBottomRight() + juce::Point<float> (-6.0f, -6.0f) })
+    {
+        const auto head = juce::Rectangle<float> (5.0f, 5.0f).withCentre (p);
+        g.setColour (theme.hw.knobDark);
+        g.fillEllipse (head);
+        g.setColour (theme.hw.capEdge);
+        g.drawEllipse (head, 0.8f);
+        g.drawLine (p.x - 1.8f, p.y + 1.0f, p.x + 1.8f, p.y - 1.0f, 0.9f);
+    }
+}
+
+void drawEngraved (juce::Graphics& g, const juce::String& text, juce::Rectangle<float> r, juce::Justification just, const Theme& theme, bool bold)
+{
+    g.setFont (type::font (type::kMicro, bold));
+    g.setColour (theme.hw.inkShadow);
+    g.drawText (text, r.translated (0.0f, theme.isLight ? 1.0f : -1.0f), just);
+    g.setColour (theme.hw.ink);
+    g.drawText (text, r, just);
+}
+
+void drawGlowText (juce::Graphics& g, const juce::String& text, juce::Rectangle<float> r, juce::Justification just, juce::Colour colour, const Theme& theme)
+{
+    if (! theme.isLight)
+    {
+        g.setColour (colour.withAlpha (0.28f));
+        for (auto d : { juce::Point<float> (-1.0f, 0.0f), { 1.0f, 0.0f }, { 0.0f, -1.0f }, { 0.0f, 1.0f } })
+            g.drawText (text, r + d, just);
+    }
+    g.setColour (colour);
+    g.drawText (text, r, just);
+}
+
+bool isTouchInput()
+{
+    return juce::Desktop::getInstance().getMainMouseSource().isTouch();
+}
+
+juce::LookAndFeel& lookAndFeelFor (const Theme& theme)
+{
+    static ThemedLookAndFeel charcoal (Theme::charcoal()), light (Theme::light()), classic (Theme::dark());
+    return theme.isLight ? light : (theme.isCharcoal ? charcoal : classic);
+}
+
+void drawKnob (juce::Graphics& g, juce::Rectangle<float> area, float position, bool fromCentre, const Theme& theme, bool enabled)
+{
+    const auto& hw = theme.hw;
+    const float size = juce::jmin (area.getWidth(), area.getHeight());
+    const auto c = area.getCentre();
+    const float ring = size * 0.5f - 1.0f, body = ring - 6.0f;
+    constexpr float sweep = 2.4f; // radians either side of the top
+    const float value = juce::jlimit (0.0f, 1.0f, position);
+    const float angle = -sweep + 2.0f * sweep * value;
+
+    // The ring of ticks, those the knob has passed lit.
+    constexpr int ticks = 11;
+    const float from = fromCentre ? 0.5f : 0.0f;
+    for (int i = 0; i < ticks; ++i)
+    {
+        const float t = (float) i / (float) (ticks - 1), a = -sweep + 2.0f * sweep * t;
+        const bool lit = enabled && t >= juce::jmin (from, value) - 0.001f && t <= juce::jmax (from, value) + 0.001f;
+        g.setColour (lit ? hw.pointer : hw.tick);
+        g.drawLine (c.x + std::sin (a) * (ring - 3.5f), c.y - std::cos (a) * (ring - 3.5f), c.x + std::sin (a) * ring, c.y - std::cos (a) * ring, 1.2f);
+    }
+
+    const auto cap = juce::Rectangle<float> (body * 2.0f, body * 2.0f).withCentre (c);
+    g.setColour (theme.capShadow());
+    g.fillEllipse (cap.translated (0.0f, 2.0f).expanded (0.5f));
+    g.setGradientFill (juce::ColourGradient (hw.knobLight, c.x - body * 0.35f, c.y - body * 0.5f, hw.knobDark, c.x + body, c.y + body, true));
+    g.fillEllipse (cap);
+    // The knurling round its edge.
+    g.setColour (hw.capEdge);
+    for (int i = 0; i < 32; ++i)
+    {
+        const float a = (float) i * juce::MathConstants<float>::twoPi / 32.0f;
+        g.drawLine (c.x + std::sin (a) * (body - 2.5f), c.y - std::cos (a) * (body - 2.5f), c.x + std::sin (a) * body, c.y - std::cos (a) * body, 0.8f);
+    }
+    g.drawEllipse (cap, 1.0f);
+
+    const float dx = std::sin (angle), dy = -std::cos (angle);
+    g.setColour (enabled ? hw.pointer : hw.tick);
+    g.drawLine (c.x + dx * body * 0.25f, c.y + dy * body * 0.25f, c.x + dx * (body - 2.0f), c.y + dy * (body - 2.0f), 2.0f);
 }
 
 //==============================================================================
@@ -88,7 +274,7 @@ void FaderControl::refresh()
 juce::Rectangle<float> FaderControl::track() const noexcept
 {
     // The cap's centre travels between these (the cap stays inside the control).
-    return getLocalBounds().toFloat().reduced (0.0f, look != nullptr && look->cap == hw::Look::Cap::Ribbed ? 33.0f : look != nullptr && look->cap == hw::Look::Cap::Waisted ? 30.0f : kTrackInset);
+    return getLocalBounds().toFloat().reduced (0.0f, look != nullptr && look->cap == hw::Look::Cap::Ribbed ? 33.0f : look != nullptr && look->cap == hw::Look::Cap::Waisted ? 30.0f : look != nullptr ? kTrackInset : kCapInset);
 }
 
 void FaderControl::paint (juce::Graphics& g)
@@ -138,50 +324,132 @@ void FaderControl::paint (juce::Graphics& g)
             hw::faderCap (g, groove, yAt ((float) position), look->cap == hw::Look::Cap::Metal ? 26.0f : 28.0f, *look); // the X32's: narrow and tall
         return;
     }
-    g.setFont (type::font (type::kCaption));
-    for (float db : marks)
-    {
-        if (db > fader::maxDb() + 0.01f)
-            continue;
-        const float y = yAt (fader::dbToPos (db));
-        g.setColour (db == 0.0f ? theme.text : theme.textDim);
-        const auto label = db <= fader::kMinDb ? juce::String::fromUTF8 ("-\xe2\x88\x9e") : (db > 0.0f ? "+" : "") + juce::String ((int) db);
-        g.drawText (label, juce::Rectangle<float> (0.0f, y - 7.0f, groove - 20.0f, 14.0f), juce::Justification::centredRight);
-        g.setColour (theme.outline);
-        g.fillRect (groove - 12.0f, y - 0.5f, 5.0f, 1.0f);
-    }
+    g.setFont (type::font (type::kMicro));
+    // 0 dB and the ends first, then the marks that clear those and each other: on a
+    // short fader the low marks crowd together and would print over one another.
+    std::array<float, std::size (marks)> placed {};
+    size_t numPlaced = 0;
+    for (int pass = 0; pass < 2; ++pass)
+        for (float db : marks)
+        {
+            if (db > fader::maxDb() + 0.01f || (db == 0.0f || db == fader::kMinDb) != (pass == 0))
+                continue;
+            const float y = yAt (fader::dbToPos (db));
+            if (std::any_of (placed.begin(), placed.begin() + (std::ptrdiff_t) numPlaced, [y] (float other) { return std::abs (other - y) < 13.0f; }))
+                continue;
+            placed[numPlaced++] = y;
+            g.setColour (db == 0.0f ? theme.text : theme.textDim);
+            const auto label = db <= fader::kMinDb ? juce::String::fromUTF8 ("-\xe2\x88\x9e") : (db > 0.0f ? "+" : "") + juce::String ((int) db);
+            g.drawText (label, juce::Rectangle<float> (0.0f, y - 7.0f, groove - 18.0f, 14.0f), juce::Justification::centredRight);
+            // Printed either side of the slot, longer at 0 dB.
+            g.setColour (db == 0.0f ? theme.text : theme.textDim.withAlpha (0.7f));
+            g.fillRect (groove - (db == 0.0f ? 16.0f : 13.0f), y - 0.5f, db == 0.0f ? 11.0f : 8.0f, 1.0f);
+            g.fillRect (groove + 5.0f, y - 0.5f, db == 0.0f ? 11.0f : 8.0f, 1.0f);
+        }
 
+    // The slot, cut into the plate: dark inside, its far edge catching the light.
+    const auto& hwTheme = theme.hw;
+    const juce::Rectangle<float> slot (groove - 5.0f, t.getY() - 16.0f, 10.0f, t.getHeight() + 32.0f);
+    g.setColour (theme.edgeDark());
+    g.fillRect (slot.expanded (2.0f));
+    g.setColour (theme.edgeLight());
+    g.fillRect (slot.getX() - 2.0f, slot.getBottom() + 2.0f, slot.getWidth() + 4.0f, 1.0f);
     g.setColour (theme.well);
-    g.fillRoundedRectangle (groove - 3.0f, t.getY(), 6.0f, t.getHeight(), 3.0f);
-    if (isEnabled())
+    g.fillRoundedRectangle (slot, sizes::kRadius);
+    g.setColour (juce::Colours::black.withAlpha (theme.isLight ? 0.2f : 0.75f));
+    g.fillRect (slot.getX() + 1.0f, slot.getY() + 2.0f, 3.0f, slot.getHeight() - 4.0f);
+    g.setColour (theme.edgeLight());
+    g.fillRect (slot.getRight(), slot.getY() + 2.0f, 1.0f, slot.getHeight() - 4.0f);
+    if (isEnabled() && ! tint.isTransparent())
     {
-        // The level from the bottom, so a glance tells where a fader is.
-        g.setColour (theme.accent.withAlpha (0.55f));
-        g.fillRoundedRectangle (groove - 3.0f, yAt ((float) position), 6.0f, t.getBottom() - yAt ((float) position), 3.0f);
+        // A send on the fader shows in the destination's colour.
+        g.setColour (tint);
+        g.fillRoundedRectangle (groove - 3.0f, yAt ((float) position), 6.0f, t.getBottom() - yAt ((float) position), sizes::kRadius);
     }
 
+    // The cap: machined, its face falling away to a waist, ribbed, casting a shadow into the slot.
     const float y = yAt ((float) position);
-    const juce::Rectangle<float> cap (groove - 14.0f, y - 12.0f, 28.0f, 24.0f);
-    g.setColour (isEnabled() ? theme.raised.brighter (0.25f) : theme.raised);
-    g.fillRoundedRectangle (cap, 4.0f);
-    g.setColour (theme.outline.brighter (0.4f));
-    g.drawRoundedRectangle (cap, 4.0f, 1.0f);
-    g.setColour (isEnabled() ? theme.text : theme.textDim);
-    g.fillRect (cap.getX() + 5.0f, y - 1.0f, cap.getWidth() - 10.0f, 2.0f);
+    const float half = juce::jmin (22.0f, grooveFromRight - 2.0f);
+    const juce::Rectangle<float> cap (groove - half, y - 29.0f, half * 2.0f, 58.0f);
+    // Its shadow, falling down the slot and onto the plate.
+    g.setGradientFill (juce::ColourGradient (theme.capShadow(), 0.0f, cap.getBottom(), juce::Colours::transparentBlack, 0.0f, cap.getBottom() + 16.0f, false));
+    g.fillRect (slot.getX(), cap.getBottom(), slot.getWidth(), 16.0f);
+    g.setColour (theme.capShadow().withMultipliedAlpha (0.5f));
+    g.fillRoundedRectangle (cap.translated (2.0f, 5.0f).expanded (1.0f), sizes::kRadius);
+    g.setColour (theme.capShadow());
+    g.fillRoundedRectangle (cap.translated (0.0f, 2.0f).expanded (1.0f), sizes::kRadius);
+    juce::ColourGradient body (hwTheme.capTop, cap.getX(), cap.getY(), hwTheme.capBottom, cap.getX(), cap.getBottom(), false);
+    body.addColour (0.46, hwTheme.capUpper);
+    body.addColour (0.54, hwTheme.capLower);
+    g.setGradientFill (body);
+    g.fillRoundedRectangle (cap, sizes::kRadius);
+    g.setColour (hwTheme.capEdge);
+    g.drawRoundedRectangle (cap, sizes::kRadius, 1.0f);
+    g.setColour (hwTheme.capShine);
+    g.fillRect (cap.getX() + 1.0f, cap.getY() + 1.0f, cap.getWidth() - 2.0f, 1.0f);
+    for (float row = 5.0f; row < cap.getHeight() - 4.0f; row += 3.0f)
+    {
+        if (std::abs (row - cap.getHeight() * 0.5f) < 5.0f)
+            continue;
+        g.setColour (juce::Colours::black.withAlpha (theme.isLight ? 0.2f : 0.45f));
+        g.fillRect (cap.getX() + 3.0f, cap.getY() + row, cap.getWidth() - 6.0f, 1.0f);
+        g.setColour (hwTheme.capShine.withMultipliedAlpha (0.55f));
+        g.fillRect (cap.getX() + 3.0f, cap.getY() + row + 1.0f, cap.getWidth() - 6.0f, 1.0f);
+    }
+    g.setColour (! isEnabled() ? theme.textDim : hwTheme.capLine);
+    g.fillRect (cap.getX() + 1.0f, y - 1.5f, cap.getWidth() - 2.0f, 3.0f);
+    if (emphasised)
+    {
+        // The selected strip's cap: its line carries a glow.
+        g.setColour (hwTheme.capLine.withAlpha (0.35f));
+        g.fillRect (cap.getX() + 1.0f, y - 3.5f, cap.getWidth() - 2.0f, 7.0f);
+    }
+}
+
+bool TouchGesture::update (juce::Component& control, const juce::MouseEvent& e)
+{
+    const int dx = e.getDistanceFromDragStartX(), dy = e.getDistanceFromDragStartY();
+    if (mode == Mode::Undecided)
+    {
+        if (juce::jmax (std::abs (dx), std::abs (dy)) < kTouchSlop)
+            return false;
+        view = std::abs (dx) > std::abs (dy) ? control.findParentComponentOfClass<juce::Viewport>() : nullptr;
+        mode = view != nullptr ? Mode::Scroll : Mode::Value;
+        if (view != nullptr)
+            viewStart = view->getViewPosition();
+        return false; // the event that decided moves nothing
+    }
+    if (mode == Mode::Scroll && view != nullptr)
+    {
+        view->setViewPosition (viewStart.x - dx, viewStart.y);
+        return false;
+    }
+    return mode == Mode::Value;
 }
 
 void FaderControl::mouseDown (const juce::MouseEvent&)
 {
-    dragStart = position;
+    lastDragY = 0;
+    gesture = {};
 }
 
 void FaderControl::mouseDrag (const juce::MouseEvent& e)
 {
     if (! isEnabled())
         return;
-    // As far as the touch travels (a quarter of that with Shift, for fine moves).
-    const double travel = (double) -e.getDistanceFromDragStartY() / juce::jmax (1.0, (double) track().getHeight());
-    setPositionFromUser (dragStart + travel * (e.mods.isShiftDown() ? 0.25 : 1.0));
+    const int dragged = e.getDistanceFromDragStartY();
+    if (look == nullptr && e.source.isTouch() && ! gesture.update (*this, e))
+    {
+        lastDragY = dragged;
+        return;
+    }
+    // As far as the touch travels; finer with Shift, and finer the further the finger goes off the
+    // fader to the side (the Universal Mixer's: a console's surface moves as its fader does).
+    const double off = look != nullptr ? 0.0 : (double) juce::jmax (0, std::abs (e.x - getWidth() / 2) - getWidth() / 2);
+    const double scale = (e.mods.isShiftDown() ? 0.25 : 1.0) * juce::jmax (0.1, 1.0 / (1.0 + off / 40.0));
+    const double travel = (double) -(dragged - lastDragY) / juce::jmax (1.0, (double) track().getHeight());
+    lastDragY = dragged;
+    setPositionFromUser (position + travel * scale);
 }
 
 void FaderControl::mouseDoubleClick (const juce::MouseEvent&)
@@ -204,17 +472,42 @@ MeterControl::MeterControl (const Theme& t) : theme (t)
 
 void MeterControl::setChannels (int numChannels)
 {
-    channels = juce::jlimit (1, 2, numChannels);
-    positions[1] = 0.0f;
+    channels = juce::jlimit (1, kMaxChannels, numChannels);
+    for (size_t ch = (size_t) channels; ch < positions.size(); ++ch)
+        positions[ch] = peaks[ch] = 0.0f;
     repaint();
 }
 
 void MeterControl::refresh()
 {
     bool moved = false;
+    const auto now = juce::Time::getMillisecondCounter();
+    static const float fullScale = fader::dbToPos (0.0f);
     for (int ch = 0; ch < channels; ++ch)
     {
         const float p = level ? fader::dbToPos (dsp::gainToDb (level (ch))) : 0.0f;
+        auto& peak = peaks[(size_t) ch];
+        if (p >= peak)
+        {
+            peak = p;
+            peakAt[(size_t) ch] = now;
+        }
+        else if (now - peakAt[(size_t) ch] > 1500u)
+        {
+            peak = juce::jmax (p, peak - 0.012f); // held, then falling
+            moved = true;
+        }
+        auto& clip = clipUntil[(size_t) ch];
+        if (p >= fullScale)
+        {
+            moved = moved || clip == 0;
+            clip = juce::jmax (1u, now + 2000u);
+        }
+        else if (clip != 0 && now >= clip)
+        {
+            clip = 0;
+            moved = true;
+        }
         // Repaint for a move of a pixel or more.
         if (std::abs (p - positions[(size_t) ch]) * (float) getHeight() >= 1.0f || (p == 0.0f) != (positions[(size_t) ch] == 0.0f))
         {
@@ -229,37 +522,36 @@ void MeterControl::refresh()
 void MeterControl::paint (juce::Graphics& g)
 {
     const auto area = getLocalBounds().toFloat();
-    const float clipH = 5.0f;
-    const float gap = 2.0f;
+    const float clipH = 4.0f, gap = 2.0f;
     const float barW = (area.getWidth() - gap * (float) (channels - 1)) / (float) channels;
     // The bars span a fader's travel; the clip light sits above them.
-    const auto bars = area.reduced (0.0f, kTrackInset);
+    const auto bars = area.reduced (0.0f, inset);
     const float lowTop = fader::dbToPos (-18.0f), midTop = fader::dbToPos (-6.0f), highTop = fader::dbToPos (0.0f);
+    const auto zone = [&] (float p) { return p >= highTop ? theme.hw.ledHot : p >= midTop ? theme.meterHigh : p >= lowTop ? theme.hw.ledWarn : theme.hw.ledOk; };
 
     for (int ch = 0; ch < channels; ++ch)
     {
         const float x = area.getX() + (barW + gap) * (float) ch;
         const auto bar = juce::Rectangle<float> (x, bars.getY(), barW, bars.getHeight());
         g.setColour (theme.well);
-        g.fillRoundedRectangle (bar, 2.0f);
+        g.fillRect (bar);
 
-        const float p = positions[(size_t) ch];
-        const auto fill = [&] (float from, float to, juce::Colour c)
+        // LEDs: unlit ones show faintly, as a dark diode does.
+        const float p = positions[(size_t) ch], peak = peaks[(size_t) ch];
+        for (float y = bar.getBottom() - 2.0f; y >= bar.getY(); y -= 3.0f)
         {
-            if (p <= from)
-                return;
-            const float top = bar.getBottom() - bar.getHeight() * juce::jmin (p, to);
-            const float bottom = bar.getBottom() - bar.getHeight() * from;
-            g.setColour (c);
-            g.fillRect (bar.getX(), top, bar.getWidth(), bottom - top);
-        };
-        fill (0.0f, lowTop, theme.meterLow);
-        fill (lowTop, midTop, theme.meterMid);
-        fill (midTop, highTop, theme.meterHigh);
-        fill (highTop, 1.0f, theme.meterClip);
-
-        g.setColour (p >= highTop ? theme.meterClip : theme.well);
-        g.fillRoundedRectangle (x, bars.getY() - clipH - gap * 2.0f, barW, clipH, 1.5f);
+            const float at = (bar.getBottom() - y - 1.0f) / bar.getHeight();
+            const auto c = zone (at);
+            g.setColour (at <= p ? c : c.withAlpha (0.1f));
+            g.fillRect (x + 1.0f, y, barW - 2.0f, 2.0f);
+        }
+        if (peak > 0.002f)
+        {
+            g.setColour (zone (peak));
+            g.fillRect (x + 1.0f, bar.getBottom() - bar.getHeight() * peak - 1.0f, barW - 2.0f, 2.0f);
+        }
+        g.setColour (clipUntil[(size_t) ch] != 0 ? theme.hw.ledHot : theme.hw.ledHot.withAlpha (0.12f));
+        g.fillRect (x + 1.0f, bars.getY() - clipH - gap, barW - 2.0f, clipH);
     }
 }
 
@@ -298,36 +590,33 @@ void PanControl::refresh()
 
 void PanControl::paint (juce::Graphics& g)
 {
-    auto area = getLocalBounds().toFloat().reduced (2.0f);
-    const auto bar = area.removeFromBottom (10.0f);
-    g.setColour (theme.well);
-    g.fillRoundedRectangle (bar, 3.0f);
-    const float centre = bar.getCentreX();
-    const float x = centre + bar.getWidth() * 0.5f * shown / 100.0f;
-    if (isEnabled())
-    {
-        g.setColour (theme.accent);
-        g.fillRect (juce::jmin (centre, x), bar.getY(), juce::jmax (2.0f, std::abs (x - centre)), bar.getHeight());
-    }
-    g.setColour (theme.textDim);
-    g.fillRect (centre - 0.5f, bar.getY() - 2.0f, 1.0f, bar.getHeight() + 4.0f);
-
+    auto area = getLocalBounds().toFloat();
+    const auto readout = area.removeFromRight (area.getWidth() * 0.44f);
+    drawKnob (g, area, (shown + 100.0f) / 200.0f, true, theme, isEnabled());
     const int rounded = juce::roundToInt (shown);
     const auto text = rounded == 0 ? juce::String ("C") : (rounded < 0 ? "L" : "R") + juce::String (std::abs (rounded));
     g.setColour (isEnabled() ? theme.text : theme.textDim);
     g.setFont (type::font (type::kCaption, true));
-    g.drawText (text, area, juce::Justification::centred);
+    g.drawText (text, readout, juce::Justification::centredLeft);
 }
 
 void PanControl::mouseDown (const juce::MouseEvent&)
 {
     dragStart = shown;
+    gesture = {};
+    dragBase = 0;
 }
 
 void PanControl::mouseDrag (const juce::MouseEvent& e)
 {
+    const int dragged = e.getDistanceFromDragStartX() - e.getDistanceFromDragStartY();
+    if (e.source.isTouch() && ! gesture.update (*this, e))
+    {
+        dragBase = dragged;
+        return;
+    }
     if (isEnabled())
-        setPanFromUser (dragStart + 200.0f * (float) e.getDistanceFromDragStartX() / juce::jmax (1.0f, (float) getWidth()) * (e.mods.isShiftDown() ? 0.25f : 1.0f));
+        setPanFromUser (dragStart + 200.0f * (float) (dragged - dragBase) / juce::jmax (1.0f, (float) getWidth()) * (e.mods.isShiftDown() ? 0.25f : 1.0f));
 }
 
 void PanControl::mouseDoubleClick (const juce::MouseEvent&)
@@ -355,6 +644,10 @@ void ToggleKey::refresh()
 
 void ToggleKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
 {
+    // What it shows now, whoever asked for the repaint (a view shown for the first time, a panel
+    // that only repaints its keys): refresh() alone would leave a key dark until something changed.
+    lit = isOn && isOn();
+    halfLit = ! lit && isHalfOn && isHalfOn();
     if (look != nullptr)
     {
         auto area = getLocalBounds().toFloat();
@@ -381,9 +674,35 @@ void ToggleKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
             }
             g.setColour (juce::Colours::black.withAlpha (0.45f));
             g.fillPath (p, juce::AffineTransform::translation (0.0f, down ? 0.5f : 1.5f));
+            if (windowLit)
+            {
+                // The SQ's keys, from the console's photographs: the cap keeps its own colour
+                // and a short slot in it, a little above the middle, is the light. Dark when
+                // off; lit, it glows and spills a little colour into a pale cap around it.
+                const bool on = lit || halfLit;
+                const auto top = face.isTransparent() ? look->keyTop : face.brighter (0.12f), bottom = face.isTransparent() ? look->keyBottom : face.darker (0.12f);
+                const float spill = on ? (top.getPerceivedBrightness() > 0.7f ? 0.3f : 0.1f) : 0.0f;
+                g.setGradientFill (juce::ColourGradient (top.interpolatedWith (colour, spill), a.getX(), a.getY(), bottom.interpolatedWith (colour, spill), a.getX(), a.getBottom(), false));
+                g.fillPath (p);
+                g.setColour (juce::Colours::black.withAlpha (0.35f));
+                g.strokePath (p, juce::PathStrokeType (1.2f));
+                if (shape == Shape::Oval)
+                {
+                    const auto window = juce::Rectangle<float> (juce::jlimit (7.0f, 18.0f, a.getWidth() * 0.3f), juce::jlimit (3.5f, 6.0f, a.getHeight() * 0.2f))
+                                            .withCentre ({ a.getCentreX(), a.getY() + a.getHeight() * 0.44f });
+                    if (on)
+                    {
+                        g.setColour (colour.withAlpha (lit ? 0.4f : 0.2f));
+                        g.fillRoundedRectangle (window.expanded (2.5f), window.getHeight() * 0.5f + 2.5f);
+                    }
+                    g.setColour (lit ? colour.brighter (0.35f) : halfLit ? colour.darker (0.25f) : juce::Colours::black.withAlpha (0.45f));
+                    g.fillRoundedRectangle (window, window.getHeight() * 0.5f);
+                }
+                return;
+            }
             if (lit && look->backlit)
             {
-                // A backlit console's key (the SQ's): the whole key glows in its colour.
+                // A backlit console's key: the whole key glows in its colour.
                 g.setGradientFill (juce::ColourGradient (colour.brighter (0.2f), a.getX(), a.getY(), colour.darker (0.2f), a.getX(), a.getBottom(), false));
                 g.fillPath (p);
                 return;
@@ -411,7 +730,7 @@ void ToggleKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
                 g.setColour (colour.withAlpha (0.35f));
                 g.drawText (getButtonText(), a.translated (0.0f, 0.5f).expanded (0.5f), juce::Justification::centred);
             }
-            g.setColour (on ? colour.brighter (0.25f) : colour.withMultipliedBrightness (0.8f));
+            g.setColour (on ? colour.brighter (0.25f) : juce::Colour (0xffe8eaec));
             g.drawText (getButtonText(), a, juce::Justification::centred);
             return;
         }
@@ -448,11 +767,50 @@ void ToggleKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
         return;
     }
     const auto area = getLocalBounds().toFloat().reduced (1.5f);
-    g.setColour (lit ? colour : (down ? theme.raised.brighter (0.2f) : theme.raised));
-    g.fillRoundedRectangle (area, sizes::kRadius);
-    g.setColour (halfLit ? colour : (highlighted && ! lit ? theme.outline.brighter (0.3f) : theme.outline));
-    g.drawRoundedRectangle (area, sizes::kRadius, halfLit ? 2.0f : 1.0f);
-    g.setColour (lit ? theme.textOnAccent : (isEnabled() ? theme.text : theme.textDim));
+    if (tab)
+    {
+        if (highlighted || down)
+        {
+            g.setColour (theme.raised);
+            g.fillRoundedRectangle (area, sizes::kRadius);
+        }
+        if (lit)
+        {
+            g.setColour (colour);
+            g.fillRect (area.getX(), area.getBottom() - 3.0f, area.getWidth(), 3.0f);
+        }
+        g.setColour (lit ? theme.text : theme.textDim);
+    }
+    else
+    {
+        // A backlit square key: its face a hard block, a window at its top lit in its colour.
+        const auto top = lit ? colour.brighter (0.15f) : (down ? theme.hw.keyBottom : theme.hw.keyTop);
+        const auto bottom = lit ? colour.darker (0.2f) : (down ? theme.hw.keyTop : theme.hw.keyBottom);
+        // The well it sits in, its side showing below the face until it is pressed.
+        g.setColour (theme.isLight ? theme.outline : theme.well);
+        g.fillRoundedRectangle (area, sizes::kRadius);
+        const auto faceArea = area.reduced (1.0f).withTrimmedBottom (down ? 1.0f : 3.0f).translated (0.0f, down ? 1.5f : 0.0f);
+        g.setColour (lit ? colour.darker (0.55f) : bottom.darker (0.45f));
+        g.fillRoundedRectangle (area.reduced (1.0f), sizes::kRadius);
+        g.setGradientFill (juce::ColourGradient (highlighted && ! lit ? top.brighter (0.08f) : top, 0.0f, faceArea.getY(), bottom, 0.0f, faceArea.getBottom(), false));
+        g.fillRoundedRectangle (faceArea, sizes::kRadius);
+        g.setColour (halfLit ? colour : theme.hw.capEdge);
+        g.drawRoundedRectangle (faceArea, sizes::kRadius, halfLit ? 2.0f : 1.0f);
+        g.setColour (theme.hw.capShine);
+        g.fillRect (faceArea.getX() + 2.0f, faceArea.getY() + 1.0f, faceArea.getWidth() - 4.0f, 1.0f);
+        if (isOn && area.getHeight() >= 30.0f)
+        {
+            const auto window = juce::Rectangle<float> (juce::jmin (18.0f, area.getWidth() * 0.4f), 3.0f).withCentre ({ area.getCentreX(), area.getY() + 6.5f });
+            if (lit || halfLit)
+            {
+                g.setColour (colour.withAlpha (0.45f));
+                g.fillRect (window.expanded (1.5f));
+            }
+            g.setColour (lit ? colour.brighter (0.7f) : (halfLit ? colour : theme.well));
+            g.fillRect (window);
+        }
+        g.setColour (lit ? theme.textOnAccent : (isEnabled() ? theme.hw.keyText : theme.textDim));
+    }
     // A narrow key (the channel panel's INVERT, LOW CUT in a slim column) makes its
     // label smaller rather than cut it ("IN...").
     auto font = type::font (type::kLabel, true);

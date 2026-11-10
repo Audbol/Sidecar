@@ -2,7 +2,7 @@
 Type=Application
 Name=Sidecar
 GenericName=Live Mixing Console
-Comment=Live mixing console that emulates the Behringer WING
+Comment=Live mixing console that emulates mixing consoles
 Exec=Sidecar
 Icon=sidecar
 Terminal=false

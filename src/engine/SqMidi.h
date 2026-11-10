@@ -38,6 +38,17 @@ public:
     /** The channel 1-16 and the fader law, as a line of numbers. */
     void setSetupText (const juce::String&);
 
+    /** Bus Config: n of the twelve mixes are Groups (`sq5.groups` in the settings). */
+    void setGroups (int n);
+
+    /** Sends a message of the surface's own (a SoftKey's note or MMC). */
+    void sendMessage (const juce::MidiMessage&);
+
+    /** The console's one SqMidi while it exists (the surface's way to it). */
+    static SqMidi* current() noexcept;
+    /** A SoftKey's note arrived: key 0-7, pressed or released (the surface's). */
+    static std::function<void (int key, bool down)> onSoftKey;
+
     /** Every outgoing message (tests, monitors). */
     std::function<void (const juce::MidiMessage&)> onSend;
 

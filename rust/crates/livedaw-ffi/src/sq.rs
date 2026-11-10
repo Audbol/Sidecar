@@ -107,6 +107,30 @@ pub unsafe extern "C" fn ld_sq_scene_request(p: *mut LdSq) -> i32 {
     }
 }
 
+/// The next Soft Key note: key + 1 (1-8) pressed, -(key + 1) released, 0 for none.
+///
+/// # Safety
+/// `p` is from `ld_sq_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_sq_soft_key(p: *mut LdSq) -> i32 {
+    match p.as_mut().and_then(|p| p.midi.take_soft_key()) {
+        Some((key, true)) => key as i32 + 1,
+        Some((key, false)) => -(key as i32 + 1),
+        None => 0,
+    }
+}
+
+/// Bus Config: `n` of the twelve mixes are Groups.
+///
+/// # Safety
+/// `p` is from `ld_sq_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_sq_set_groups(p: *mut LdSq, n: i32) {
+    if let Some(p) = p.as_mut() {
+        p.midi.set_groups(n.max(0) as usize);
+    }
+}
+
 /// The MIDI channel (0-15) and the NRPN fader law (`audio`: Audio Taper).
 ///
 /// # Safety

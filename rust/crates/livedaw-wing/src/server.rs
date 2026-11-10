@@ -485,7 +485,23 @@ impl Shared {
         self.apply(node, origin, |c| c.step(node, amount))
     }
 
+    /// SETUP > REMOTE > REMOTE LOCK (manual 5.5 p. 50): the protocol is blocked
+    /// from controlling the console. Sidecar's reading: a locked client can
+    /// still read and meter, its writes are refused (the tree's OSC switch is
+    /// called `ronly`). Only the console's own screen releases a lock its
+    /// protocol can no longer reach.
+    fn remote_locked(&self, origin: Origin) -> bool {
+        match origin {
+            Origin::Osc(_) => self.state.host_flag("setup.inert.lockOsc"),
+            Origin::Native(_) => self.state.host_flag("setup.inert.lockTcp"),
+            Origin::None => false,
+        }
+    }
+
     fn apply(&self, node: Node, origin: Origin, f: impl FnOnce(&Console) -> Result<Value, SetError>) -> Result<Value, SetError> {
+        if self.remote_locked(origin) {
+            return Err(SetError::ReadOnly);
+        }
         let mut cache = lock(&self.notify);
         let c = self.console();
         let v = f(&c)?;
@@ -1329,6 +1345,32 @@ mod tests {
         // A coarse timer (Windows: 15.6 ms) catches up, in bursts no bigger than this.
         assert_eq!(paced_batch(Duration::from_micros(15600)), OSC_EVENTS_BURST);
         assert_eq!(paced_batch(Duration::from_secs(1)), OSC_EVENTS_BURST);
+    }
+
+    #[test]
+    fn remote_lock_refuses_only_its_protocols_writes() {
+        let engine: Arc<dyn EngineHandle> = Arc::new(Arc::new(Engine::new(0)));
+        let state = Arc::new(WingState::default());
+        let sh = Shared::new(engine, state.clone());
+        let c = sh.console();
+        let n = schema().resolve("/$ctl/$globals/mousetchdis", &c).expect("the tree has it");
+        drop(c);
+        let osc = Origin::Osc(SocketAddr::from(([127, 0, 0, 1], 9000)));
+        let native = Origin::Native(1);
+
+        assert!(sh.apply_set(n, &Value::Int(0), osc).is_ok(), "open at first");
+        state.set_host_setting("setup.inert.lockOsc", "1");
+        assert_eq!(sh.apply_set(n, &Value::Int(0), osc), Err(SetError::ReadOnly));
+        assert!(sh.apply_toggle(n, osc).is_err());
+        assert!(sh.apply_step(n, 1, osc).is_err());
+        assert!(sh.apply_set(n, &Value::Int(0), native).is_ok(), "TCP has its own lock");
+        assert!(sh.console().get(n).is_some(), "reading still works");
+
+        state.set_host_setting("setup.inert.lockOsc", "0");
+        state.set_host_setting("setup.inert.lockTcp", "true");
+        assert_eq!(sh.apply_set(n, &Value::Int(0), native), Err(SetError::ReadOnly));
+        assert!(sh.apply_set(n, &Value::Int(0), osc).is_ok(), "OSC is open again");
+        assert!(sh.apply_set(n, &Value::Int(0), Origin::None).is_ok(), "the console itself");
     }
 
     /// A burst for several OSC subscribers (of different formats) is queued

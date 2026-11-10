@@ -20,8 +20,7 @@
 //! curves aren't published and are all Sidecar's reading (see `configure`'s
 //! `DLVVALVE` and `DLVTUBE` in [`crate::wing::dynamics`]).
 //!
-//! The RackExtra FX are in [`crate::dlive_fx`]. Still to come: Dyn8,
-//! the RackUltra FX and the console.
+//! The RackExtra FX, Dyn8 and the RackUltra FX are in [`crate::dlive_fx`].
 
 use crate::model::{ModelCategory, ModelSpec, ModelTables, ParamKind, ParamSpec};
 use crate::sq::{self, PARALLEL_OFF_DB};
@@ -358,9 +357,9 @@ pub static EQ: [ModelSpec; 6] = [
 /// The input channels' EQ: the 4-band PEQ alone.
 pub static EQ_INPUT: [ModelSpec; 1] = [EQ[0]];
 
-/// What a dLive's blocks may hold. Its FX slots run the 20 RackExtra models
-/// ([`crate::dlive_fx`]); all 16 engines are alike, so every slot may hold any of
-/// them. Manual Peak as the compressor's first model is Sidecar's reading.
+/// What a dLive's blocks may hold. Its FX slots are its 16 RackExtra engines (all
+/// alike, any RackExtra model), the 8 RackUltra engines and the Dyn8s, each holding
+/// only its own (`dlive_fx::slot_rule`). Manual Peak as the compressor's first model is Sidecar's reading.
 pub static MODELS: ModelTables = ModelTables {
     dynamics: DYN_MODELS,
     aux_dynamics: &[],

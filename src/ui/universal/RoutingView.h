@@ -46,8 +46,10 @@ public:
     std::vector<routing::Group> groups() const;
     /** Takes the patch again (the timer does this 10 times a second). */
     void refresh();
+    /** PATCH 1:1 (INPUTS): the channels and aux in order from the group's sources, as many as there are. */
+    void patchOneToOne();
 
-    ToggleKey inputsTab, outputsTab, interfaceTab;
+    ToggleKey inputsTab, outputsTab, interfaceTab, oneToOneKey;
     std::unique_ptr<juce::Component> interfacePage;
     ChoiceBar group;
     PatchGrid grid;

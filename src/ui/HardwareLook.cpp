@@ -39,7 +39,7 @@ const Look& Look::x32()
         l.capBottom = c (0xff9fa3a2);
         l.capLine = c (0xff202222);
         l.knob = c (0xff1d1f1f);
-        l.knobLine = c (0xffeeeeee);
+        l.knobLine = c (0xffff3a22); // the pots' pointers lit red, as photographed
         l.lcd = c (0xff0b0d10);
         l.lcdPixel = c (0xffe8eef2);
         l.lcdDim = c (0xff8b959c);

@@ -33,7 +33,9 @@ Page numbers are the document's printed page unless marked PDF.
 **Documents (`yamaha-dm2000\pdf\`):** `dm2000v2_en_om_g0.pdf` (V2 Owner's Manual, 403 PDF pages: the main
 source, called OM-V2 below), `DM2000E.pdf` (original manual), `dm2000_v22_supplementary.pdf`,
 `dm2000_quick_guide_en.pdf`, `StudioManagerE.pdf` and `DM2000E4.pdf` (Studio Manager manuals only),
-`brochure_dm_0_vcm_series.pdf`.
+`brochure_dm_0_vcm_series.pdf`; `dm2000v2_midi_specification\` (Yamaha's "DM2000 V2 MIDI Specification": the
+parameter change list with element, parameter and channel numbers, the PRM and CH tables, Key Remote, Remote Meter,
+meter data, MMC; retrieved 9 November 2026, called SPEC below).
 
 ### Structure and capacity
 
@@ -85,7 +87,9 @@ has 48 channels, 8 auxes and 4 effects processors [Review].
 ### Faders and metering
 
 - 25 touch-sensitive 100 mm motorised faders (24 + Stereo), 10-bit fader data: input faders +10 to -138 dB and
-  infinity, master fader 0 to -138 dB and infinity (OM-V2 p. 341) [Maker]. The taper (position to dB) is not stated.
+  infinity, master fader 0 to -138 dB and infinity (OM-V2 p. 341) [Maker]. The taper: SPEC's PRM TABLE #05-2 (channels; 0 dB on value
+  823) and #15-2 (outputs) list all 1024 values, and are straight lines between (1, -138), (15, -96), (33, -78), (223, -40), (423, -20), (1023,
+  +10) and (1, -138), (3, -134), (35, -102), (83, -78), (223, -50), (423, -30), (1023, 0) [Maker].
 - 24 encoders for Pan, Aux/Matrix sends or assigned parameters; layers: 1-24, 25-48, 49-72, 73-96, Master, 4 Remote
   (OM-V2 p. 19) [Maker]; encoder has four assignable modes, faders in three blocks of eight [Review][Photo].
 - Metering points pre-EQ, pre-fader, post-fader, independently for inputs and outputs. Peak Hold on all meters.
@@ -141,7 +145,10 @@ has 48 channels, 8 auxes and 4 effects processors [Review].
     digital-mixer group and 06 the DM2000 model ID.
   - Type byte tt: 01 Edit Buffer, 02 Patch, 03 Setup, 04 Backup, 10 recall/store/title/clear, 11 pair, 12 effect, 13 sort, 14 attribute/link, 20 Key
     remote, 21 Remote meter, 22 Remote time counter, 23 Automix status. Element and channel are the next bytes; element 0 extends to two bytes.
-  - **The element, parameter and channel numbers are not published:** the manual's parameter-address section (13.4.5) says to consult your dealer.
+  - **The element, parameter and channel numbers:** not in the manual (13.4.5 says to consult your dealer) but in SPEC's Parameter Change List:
+    every row gives the element and parameter numbers, range, initial value and full `F0 43 1n 3E ...` string [Maker]. Data is four 7-bit bytes of a
+    28-bit two's complement value. Edit-buffer elements use model `7F` type `01`, the patches, setup and backup model `06` types `02`-`04`. The
+    element byte in the edit-buffer strings is one more than the list's Element number; the other types count from 01 again.
   - DM1000 sibling: model ID 0C (`F0 43 1n 3E 0C`), same format (manual excerpt on ManualsLib) [Maker-x].
 - **MMC, MTC, MIDI Clock, Song Position** for Automix sync (p. 369) [Maker].
 - **DAW layers:** Pro Tools Remote Layer emulates three 8-fader HUI-type controllers on three virtual MIDI ports over USB [Maker-x] (Apple's Logic Pro
@@ -158,9 +165,9 @@ Gate/Dynamics/EQ/Pan), Layer and Scene sections, Automix and Locator on the righ
 
 ### What an emulation still needs (DM2000)
 
-1. Element and parameter address map for parameter changes (Yamaha says "consult your dealer"). Without it, bulk dumps and the SysEx edit buffer cannot be
-   decoded, only the published Control Change table and Program Change scene recall.
-2. Fader taper (10-bit position to dB) and the exact EQ responses (Type I vs II, shelf and HPF shapes). Would need measurements or a unit.
+1. ~~Element and parameter address map~~ and ~~the fader taper (10-bit position to dB)~~: answered by SPEC (`livedaw-dm2000`, `FaderLaw::DM2000`). Bulk dump bodies
+   (compressed scene data) are still not published, nor are the NRPN numbers of NRPN mode, nor the effect parameter tables behind `kEffectParam1..32` ("see effect specifications").
+2. The exact EQ responses (Type I vs II, shelf and HPF shapes). Would need measurements or a unit.
 3. Studio Manager protocol and display layouts (LCD pages only appear as small drawings in the manual).
 4. Straight-on, lit top-panel photo and section close-ups. Not obtained.
 5. The internals of VCM Add-On models. Proprietary, not in the public documents.

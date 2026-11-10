@@ -12,7 +12,7 @@ use crate::biquad::{Biquad, BiquadCoeffs};
 use crate::util::db_to_gain;
 use std::f64::consts::FRAC_1_SQRT_2;
 
-pub const MAX_SECTIONS: usize = 32;
+pub const MAX_SECTIONS: usize = 36;
 const SUB_BLOCK: usize = 32;
 
 #[derive(Clone, Copy, Debug)]
@@ -29,7 +29,7 @@ impl Default for EqDesign {
 }
 
 impl EqDesign {
-    fn push(&mut self, c: BiquadCoeffs) {
+    pub(crate) fn push(&mut self, c: BiquadCoeffs) {
         if self.len < MAX_SECTIONS {
             self.sections[self.len] = c;
             self.len += 1;
@@ -70,6 +70,12 @@ pub fn design(spec: &ModelSpec, values: &[f32], sr: f64, gain_scale: f32) -> EqD
             design_02r_low(&p, sr, k, &mut d);
             design_02r_high(&p, sr, k, &mut d);
         }
+        "DMEQ" => crate::dm2000::design_eq(&p, sr, k, &mut d),
+        "DMGEQ" => crate::dm2000::design_geq(&p, sr, k, &mut d),
+        "MPEQ4" => crate::midas_pro::design_eq4(&p, sr, k, &mut d),
+        "MPEQ6" => crate::midas_pro::design_eq6(&p, sr, k, &mut d),
+        "MPGEQ" => crate::midas_pro::design_geq(&p, sr, k, &mut d),
+        "XYEQ" => crate::xenyx1204::design_eq(&p, sr, k, &mut d),
         "SQPEQ" => design_sq(&p, sr, k, &mut d),
         "SQGEQ" => design_sq_geq(&p, sr, k, &mut d),
         _ => {}
@@ -685,7 +691,7 @@ impl Default for WingEq {
     fn default() -> Self {
         Self {
             sr: 48000.0,
-            sections: Default::default(),
+            sections: std::array::from_fn(|_| Biquad::default()),
             len: 0,
             model: None,
             smoothed: [0.0; MAX_EQ_PARAMS],

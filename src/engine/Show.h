@@ -124,6 +124,9 @@ public:
     std::vector<uint8_t> getProMixSceneBytes (ld::LdProMix*, int memory) const;
     /** Stores scene bytes (a bulk dump) into scene memory `memory` without recalling it. */
     bool storeProMixSceneBytes (ld::LdProMix*, int memory, const std::vector<uint8_t>& bytes);
+    /** A 01V's scene memory `memory` (1-99) as scene bytes, without recalling it. */
+    std::vector<uint8_t> getY01VSceneBytes (ld::LdY01V*, int memory) const;
+    bool storeY01VSceneBytes (ld::LdY01V*, int memory, const std::vector<uint8_t>& bytes);
     void removeScene (int index);
     void moveScene (int from, int to);
 
@@ -135,6 +138,15 @@ public:
     state::ApplyResult recallPrevious();
     /** Recalls the first non-skipped scene tagged `tag` (nothing if none). */
     state::ApplyResult recallSceneByTag (int tag);
+    /** RECALL UNDO (the 01V's, the dLive's Undo Go): the console as it was before
+        the last scene recall, what that recall changed and no more (its recall
+        filter and safes kept it from the rest). Called again it redoes the recall.
+        Not one of the show's scenes and never saved. */
+    state::ApplyResult undoRecall();
+    /** Whether a recall can be undone (none yet, or the show or console changed: false). */
+    bool canUndoRecall() const noexcept;
+    /** Takes that step back for a recall done outside the show's scenes (the 01V's scene 00), just before it. */
+    void markRecallUndo();
 
     //==============================================================================
     // Show items (manual 5.6 p. 52): ADD ITEM TO SHOW and SAVE + ADD
@@ -299,6 +311,8 @@ public:
     /** A dLive's Mixer Config (eight numbers: ld_engine_dlive_layout): its mixes laid out anew and
         reset, the rest of the console kept. */
     juce::Result applyDLiveLayout (const int32_t* layout, uint64_t stereoInputs);
+    /** As applyDLiveLayout, with the PAFL busses (0-4) and the Main mode (livedaw_engine MainMode's order). */
+    juce::Result applyDLiveStructure (const int32_t* layout, uint64_t stereoInputs, int pafl, int mainMode);
     juce::Result loadFromXml (const juce::XmlElement&, bool loadPlugins = true);
 
     /** Writes atomically (temp file + rename) and keeps the previous version as .bak,

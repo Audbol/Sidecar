@@ -24,6 +24,7 @@ juce::String stepName (const ChainStep& s)
         case ld::kStepInput:      return "INPUT";
         case ld::kStepDelay:      return "DELAY";
         case ld::kStepFilter:     return "FILTER";
+        case ld::kStepAttenuator: return "ATT";
         case ld::kStepGate:       return "GATE";
         case ld::kStepEq:         return "EQ";
         case ld::kStepDynamics:   return "DYNAMICS";

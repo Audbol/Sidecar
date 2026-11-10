@@ -11,7 +11,9 @@ namespace livedaw::ui::universal
 
 namespace
 {
-    constexpr int kTitle = 36, kRow = 40, kKey = sizes::kTouch, kCurve = 120;
+    constexpr int kTitle = 36, kRow = sizes::kTouch, kKey = sizes::kTouch, kCurve = 120, kMaxCurve = 260;
+    /** A switch beside what it switches. */
+    constexpr int kSwitch = 88;
 
     double sampleRateOf (UiContext& ctx)
     {
@@ -314,14 +316,19 @@ void BlockEditor::addParams (std::atomic<int32_t>& model, std::atomic<float>* va
     });
 }
 
-void BlockEditor::addResponse (std::function<std::vector<ResponseView::Handle>()> handles)
+void BlockEditor::joinLast (int count, std::vector<int> widths)
+{
+    lines.push_back ({ (int) rows.size() - count, count, std::move (widths) });
+}
+
+void BlockEditor::addResponse (std::function<std::vector<ResponseView::Handle>()> handles, int height)
 {
     auto view = std::make_unique<ResponseView> (theme);
     view->response = target.response;
     view->handleSource = std::move (handles);
     view->onEdited = [this] { refresh(); }; // the bars follow a handle
     response = view.get();
-    add (std::move (view), kCurve);
+    add (std::move (view), height);
     refreshers.push_back ([this] { response->refresh(); });
 }
 
@@ -332,13 +339,14 @@ void BlockEditor::addTransfer (DynSlotParams& d)
     view->reductionDb = target.reductionDb;
     view->onEdited = [this] { refresh(); };
     transfer = view.get();
-    add (std::move (view), kCurve);
+    add (std::move (view), -1);
     refreshers.push_back ([this] { transfer->refresh(); });
 }
 
 void BlockEditor::build()
 {
     rows.clear();
+    lines.clear();
     refreshers.clear();
     response = nullptr;
     transfer = nullptr;
@@ -376,14 +384,17 @@ void BlockEditor::build()
             });
             addKey ("LOW CUT", f.lowCut);
             addBar (ValueBar::frequency ("LOW CUT", f.lowCutFreq, 20.0f, 2000.0f, kLowCutDefaultHz));
+            joinLast (2, { kSwitch + 24 });
             addChoice ("SLOPE", [] { return models::list (models::LowCutSlopes); }, [&f] { return f.lowCutSlope.load(); },
                        [&f] (int i) { f.lowCutSlope = i; }, devices::wing);
             addKey ("HIGH CUT", f.highCut);
             addBar (ValueBar::frequency ("HIGH CUT", f.highCutFreq, 50.0f, 20000.0f, kHighCutDefaultHz));
+            joinLast (2, { kSwitch + 24 });
             addChoice ("SLOPE", [] { return models::list (models::HighCutSlopes); }, [&f] { return f.highCutSlope.load(); },
                        [&f] (int i) { f.highCutSlope = i; }, devices::wing);
             addKey ("TOOL", f.tool);
             addModel (f.toolModel);
+            joinLast (2, { kSwitch });
             addParams (f.toolModel, f.toolParams, ld::kMaxToolParams);
             break;
         }
@@ -392,7 +403,10 @@ void BlockEditor::build()
             auto& eq = *target.eq;
             addKey ("ON", eq.on);
             if (! target.fixedModel)
+            {
                 addModel (eq.model);
+                joinLast (2, { kSwitch });
+            }
             addResponse ([&eq, table = target.table] { return ResponseView::eqHandles (models::model (table, eq.model.load()), eq.values); });
             addBar (ValueBar::linear ("MIX", eq.mix, 0.0f, 125.0f, 100.0f, " %", 0));
             addParams (eq.model, eq.values, ld::kMaxEqParams);
@@ -410,13 +424,18 @@ void BlockEditor::build()
                 refreshers.push_back ([&key] { key.refresh(); });
             }
             addModel (d.model);
+            if (target.compressorOrder != nullptr)
+                joinLast (3, { kSwitch, kSwitch });
+            else
+                joinLast (2, { kSwitch });
             addTransfer (d);
             auto& meter = add (std::make_unique<ReductionMeter> (theme), kRow);
             refreshers.push_back ([&meter, gr = target.reductionDb] { meter.setReduction (gr ? gr() : 0.0f); });
             addBar (ValueBar::linear ("MIX", d.mix, 0.0f, 100.0f, 100.0f, " %", 0));
             addBar (ValueBar::linear ("GAIN", d.gain, -6.0f, 12.0f, 0.0f, " dB", 1));
+            joinLast (2, { 0 });
             addParams (d.model, d.values, ld::kMaxDynParams);
-            addResponse(); // the key filter
+            addResponse ({}, kCurve); // the key filter
             break;
         }
         case BlockTarget::Kind::Insert:
@@ -431,6 +450,7 @@ void BlockEditor::build()
                 return items;
             },
                        [&ins] { return juce::jmax (0, ins.fx.load() + 1); }, [&ins] (int i) { ins.fx = i - 1; });
+            joinLast (2, { kSwitch });
             if (target.postInsert)
                 addChoice ("MODE", [] { return models::list (models::PostInsertModes); }, [&ins] { return ins.mode.load(); },
                            [&ins] (int i) { ins.mode = i; }, devices::wing);
@@ -452,6 +472,7 @@ void BlockEditor::build()
                            value = delayRange (mode.load(), (float) sr).snapToLegalValue (msToDelay (ms, mode.load(), (float) sr));
                        },
                        devices::wing);
+            joinLast (2, { kSwitch });
             ValueBar::Binding b;
             b.caption = "DELAY";
             b.value = &value;
@@ -485,7 +506,7 @@ void BlockEditor::paint (juce::Graphics& g)
 {
     auto title = getLocalBounds().removeFromTop (kTitle).reduced (sizes::kGap, 0).toFloat();
     g.setColour (theme.text);
-    const auto font = type::font (type::kLabel + 2.0f, true);
+    const auto font = type::font (type::kHeading, true);
     g.setFont (font);
     const auto text = target.kind == BlockTarget::Kind::None ? juce::String ("Select a block to edit it") : target.title;
     g.drawText (text, title, juce::Justification::centredLeft);
@@ -499,15 +520,47 @@ void BlockEditor::resized()
     area.removeFromTop (kTitle);
     viewport.setBounds (area);
     const int width = juce::jmax (0, viewport.getWidth() - viewport.getScrollBarThickness() - sizes::kGapSmall);
-    std::vector<std::pair<juce::Component*, int>> layout;
-    for (auto& [c, h] : rows)
+    int y = 0;
+    for (int i = 0; i < (int) rows.size(); ++i)
     {
-        int height = h;
-        if (auto* panel = dynamic_cast<ParamPanel*> (c.get()))
-            height = panel->getHeightFor (width);
-        layout.push_back ({ c.get(), height });
+        const auto line = std::find_if (lines.begin(), lines.end(), [i] (const Line& l) { return l.first == i; });
+        if (line == lines.end())
+        {
+            const int height = heightOf (i, width);
+            rows[(size_t) i].first->setBounds (0, y, width, height);
+            y += height + sizes::kGapSmall;
+            continue;
+        }
+        // Side by side, as tall as the tallest.
+        int height = 0, shares = 1, rest = width - (line->count - 1) * sizes::kGapSmall;
+        for (int k = 0; k < line->count; ++k)
+            height = juce::jmax (height, heightOf (i + k, width));
+        for (int w : line->widths)
+        {
+            if (w > 0)
+                rest -= w;
+            else
+                ++shares;
+        }
+        int x = 0;
+        for (int k = 0; k < line->count; ++k)
+        {
+            const int w = k == line->count - 1 ? width - x : (k < (int) line->widths.size() && line->widths[(size_t) k] > 0 ? line->widths[(size_t) k] : rest / shares);
+            rows[(size_t) (i + k)].first->setBounds (x, y, w, height);
+            x += w + sizes::kGapSmall;
+        }
+        y += height + sizes::kGapSmall;
+        i += line->count - 1;
     }
-    content.setSize (width, layoutRows ({ 0, 0, width, 0 }, layout, sizes::kGapSmall));
+    content.setSize (width, y);
+}
+
+int BlockEditor::heightOf (int row, int width) const
+{
+    const auto& [c, h] = rows[(size_t) row];
+    if (auto* panel = dynamic_cast<ParamPanel*> (c.get()))
+        return panel->getHeightFor (width);
+    return h >= 0 ? h : juce::jlimit (kCurve, kMaxCurve, viewport.getHeight() * 2 / 5);
 }
 
 } // namespace livedaw::ui::universal

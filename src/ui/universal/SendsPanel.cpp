@@ -115,6 +115,8 @@ void SendsPanel::rebuild()
     {
         auto& s = *strip;
         const auto kind = s.getKind();
+        // On one line the row says what it is; the caption would only crowd the value.
+        const juce::String levelCaption = compact ? juce::String() : juce::String ("LEVEL");
         const bool toBusesAndMains = kind == StripKind::Channel || kind == StripKind::Aux || kind == StripKind::Bus;
 
         // Where a send takes its signal: `fixed` (the send's own modes), then the strip's user taps.
@@ -160,7 +162,7 @@ void SendsPanel::rebuild()
                 auto row = std::make_unique<Row> (theme, destinationName (*bus));
                 row->on.isOn = [&p] { return p.enabled.load(); };
                 row->on.onClick = [&p] { p.enabled = ! p.enabled.load(); };
-                row->level.bind (ValueBar::level ("LEVEL", p.levelDb));
+                row->level.bind (ValueBar::level (levelCaption, p.levelDb));
                 bindSource (row->source, models::list (models::SendModes), p.tap, [&p] { return (int) p.mode.load(); },
                             [&p] (int m) { p.mode = m; });
                 rows.push_back (std::move (row));
@@ -173,7 +175,7 @@ void SendsPanel::rebuild()
                 auto row = std::make_unique<Row> (theme, destinationName (*ctx.engine.getMains()[(size_t) i]));
                 row->on.isOn = [&p] { return p.on.load(); };
                 row->on.onClick = [&p] { p.on = ! p.on.load(); };
-                row->level.bind (ValueBar::level ("LEVEL", p.levelDb));
+                row->level.bind (ValueBar::level (levelCaption, p.levelDb));
                 bindSource (row->source, postPre, p.tap, [&p] { return p.pre.load() ? 1 : 0; }, [&p] (int m) { p.pre = m == 1; });
                 rows.push_back (std::move (row));
             }
@@ -184,7 +186,7 @@ void SendsPanel::rebuild()
                 auto row = std::make_unique<Row> (theme, destinationName (*ctx.engine.getMatrices()[(size_t) i]));
                 row->on.isOn = [&p] { return p.on.load(); };
                 row->on.onClick = [&p] { p.on = ! p.on.load(); };
-                row->level.bind (ValueBar::level ("LEVEL", p.levelDb));
+                row->level.bind (ValueBar::level (levelCaption, p.levelDb));
                 bindSource (row->source, postPre, p.tap, [&p] { return p.pre.load() ? 1 : 0; }, [&p] (int m) { p.pre = m == 1; });
                 rows.push_back (std::move (row));
             }

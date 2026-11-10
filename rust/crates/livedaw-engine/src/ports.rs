@@ -230,6 +230,131 @@ pub static Y01V_PORT_GROUPS: &[PortGroup] = &[
     PortGroup::new("BUS DIRECT", "BUS", IN, None, 0),
 ];
 
+/// The DM2000's inputs and outputs, in the engine's numbering (V2 Owner's Manual
+/// p.17: AD 1-24 first; each slot's 16 inputs and outputs as one group).
+pub mod dm2000_ports {
+    pub const OMNI: i32 = 2;
+    pub const SLOT: i32 = 24;
+    pub const DIGITAL_2TR: i32 = 120;
+    pub const ANALOG_2TR: i32 = 126;
+}
+
+/// The Yamaha DM2000's port groups, in the WING's order: AD 1-24, 2TR analog in and
+/// digital in, the oscillator, six slots of 16 in and out, BUS 1-8 and AUX 1-8 (AUX
+/// 9-12 at USER SIGNAL's place), STEREO as sources; STEREO OUT, OMNI OUT 1-8 and the
+/// 2TR digital outs (Owner's Manual pp.47-50, the block diagram).
+pub static DM2000_PORT_GROUPS: &[PortGroup] = &[
+    PortGroup::new("AD IN", "AD", IN, Some(0), 24),
+    PortGroup::new("2TR ANALOG", "2TA", IN, Some(dm2000_ports::ANALOG_2TR), 4),
+    PortGroup::new("2TR DIGITAL", "2TD", IN, Some(dm2000_ports::DIGITAL_2TR), 6),
+    PortGroup::new("OSCILLATOR", "OSC", IN, Some(OSC_SOURCE_BASE), NUM_OSCILLATORS as i32),
+    PortGroup::new("SLOT 1", "S1", BOTH, Some(dm2000_ports::SLOT), 16),
+    PortGroup::new("SLOT 2", "S2", BOTH, Some(dm2000_ports::SLOT + 16), 16),
+    PortGroup::new("SLOT 3", "S3", BOTH, Some(dm2000_ports::SLOT + 32), 16),
+    PortGroup::new("SLOT 4", "S4", BOTH, Some(dm2000_ports::SLOT + 48), 16),
+    PortGroup::new("SLOT 5", "S5", BOTH, Some(dm2000_ports::SLOT + 64), 16),
+    PortGroup::new("WLIVE PLAY", "PLAY", IN, Some(PLAYBACK_SOURCE_BASE), NUM_PLAYBACK_CHANNELS as i32),
+    PortGroup::new("SLOT 6", "S6", BOTH, Some(dm2000_ports::SLOT + 80), 16),
+    PortGroup::new("USB PLAYER", "PLAYER", IN, Some(USB_PLAYER_SOURCE_BASE), USB_CHANNELS as i32),
+    PortGroup::new("BUS / AUX", "BUS", IN, Some(BUS_SOURCES), 2 * 16),
+    PortGroup::new("STEREO", "ST", IN, Some(MAIN_SOURCES), 2),
+    PortGroup::new("MATRIX", "MTX", IN, None, 0),
+    PortGroup::new("AUX 9-12", "AUX", IN, Some(EXTRA_BUS_SOURCES), 2 * 4),
+    PortGroup::new("MONITOR", "MON", IN, None, 0),
+    PortGroup::new("FX SEND", "FX", IN, None, 0),
+    PortGroup::new("STEREO OUT", "ST", OUT, Some(0), 2),
+    PortGroup::new("OMNI OUT", "OMNI", OUT, Some(dm2000_ports::OMNI), 8),
+    PortGroup::new("2TR OUT", "2TD", OUT, Some(dm2000_ports::DIGITAL_2TR), 6),
+    PortGroup::new("WLIVE REC", "REC", OUT, None, 0),
+    PortGroup::new("RECORDER", "REC", OUT, None, USB_CHANNELS as i32),
+    PortGroup::new("CH DIRECT", "CH", IN, None, 0),
+    PortGroup::new("BUS DIRECT", "BUS", IN, None, 0),
+];
+
+/// The PRO2's inputs and outputs, in the engine's numbering (Owner's Manual pp.11,
+/// 305). DL251's 48 mic/line inputs first; the surface's 8 inputs after them (p.305
+/// lists them as outputs, a misprint: the other tables have "Surface I/O"); the
+/// surface's two AES3 inputs. Outputs: the surface's master XLRs, DL251's 16, the
+/// surface's 8 line outputs with its 4 monitor outputs.
+pub mod pro2_ports {
+    pub const DL251_IN: i32 = 0;
+    pub const SURFACE_IN: i32 = 48;
+    pub const AES_IN: i32 = 56;
+    pub const MASTER_OUT: i32 = 0;
+    pub const DL251_OUT: i32 = 2;
+    pub const SURFACE_OUT: i32 = 18;
+    pub const MONITOR_OUT: i32 = 26;
+}
+
+/// The XENYX 1204USB's inputs and outputs, in the engine's numbering (the panel's jacks
+/// and the USB interface; Sidecar's own order). Inputs: MIC/LINE 1-4, LINE 5/6 and 7/8
+/// (L, R each), the aux returns 1 and 2 (L, R), the 2-TR input (L, R), USB from the
+/// computer (L, R). Outputs: MAIN L, R, ALT 3-4 L, R, AUX SEND 1, 2, the 2-TR output
+/// (L, R), USB to the computer (L, R), PHONES L, R.
+pub mod xenyx1204_ports {
+    pub const MIC_LINE: i32 = 0;
+    pub const LINE: i32 = 4;
+    pub const RETURN: i32 = 8;
+    pub const TWO_TR_IN: i32 = 12;
+    pub const USB_IN: i32 = 14;
+    pub const MAIN_OUT: i32 = 0;
+    pub const ALT_OUT: i32 = 2;
+    pub const AUX_OUT: i32 = 4;
+    pub const TWO_TR_OUT: i32 = 6;
+    pub const USB_OUT: i32 = 8;
+    pub const PHONES_OUT: i32 = 10;
+}
+
+/// The XENYX 1204USB's port groups.
+pub static XENYX1204_PORT_GROUPS: &[PortGroup] = &[
+    PortGroup::new("MIC/LINE IN", "MIC", IN, Some(xenyx1204_ports::MIC_LINE), 4),
+    PortGroup::new("LINE IN", "LIN", IN, Some(xenyx1204_ports::LINE), 4),
+    PortGroup::new("AUX RETURN", "RTN", IN, Some(xenyx1204_ports::RETURN), 4),
+    PortGroup::new("2-TR IN", "2TR", IN, Some(xenyx1204_ports::TWO_TR_IN), 2),
+    PortGroup::new("USB IN", "USB", IN, Some(xenyx1204_ports::USB_IN), 2),
+    PortGroup::new("OSCILLATOR", "OSC", IN, Some(OSC_SOURCE_BASE), NUM_OSCILLATORS as i32),
+    PortGroup::new("AUX SEND", "AUX", IN, Some(BUS_SOURCES), 2 * 3),
+    PortGroup::new("MAIN MIX", "MIX", IN, Some(MAIN_SOURCES), 2),
+    PortGroup::new("MAIN OUT", "MAIN", OUT, Some(xenyx1204_ports::MAIN_OUT), 2),
+    PortGroup::new("ALT 3-4 OUT", "ALT", OUT, Some(xenyx1204_ports::ALT_OUT), 2),
+    PortGroup::new("AUX SEND OUT", "AUX", OUT, Some(xenyx1204_ports::AUX_OUT), 2),
+    PortGroup::new("2-TR OUT", "2TR", OUT, Some(xenyx1204_ports::TWO_TR_OUT), 2),
+    PortGroup::new("USB OUT", "USB", OUT, Some(xenyx1204_ports::USB_OUT), 2),
+    PortGroup::new("PHONES", "PH", OUT, Some(xenyx1204_ports::PHONES_OUT), 2),
+];
+
+/// The Midas PRO2's port groups, in the WING's order: its stage box, surface inputs
+/// and AES3 in; the talk oscillator's sources; the 16 aux sends, the masters and
+/// matrices as sources; the master, DL251 and surface outputs.
+pub static PRO2_PORT_GROUPS: &[PortGroup] = &[
+    PortGroup::new("DL251 IN", "DL", IN, Some(pro2_ports::DL251_IN), 48),
+    PortGroup::new("SURFACE IN", "SRF", IN, Some(pro2_ports::SURFACE_IN), 8),
+    PortGroup::new("AES3 IN", "AES", IN, Some(pro2_ports::AES_IN), 2),
+    PortGroup::new("OSCILLATOR", "OSC", IN, Some(OSC_SOURCE_BASE), NUM_OSCILLATORS as i32),
+    PortGroup::new("SLOT 1", "S1", BOTH, None, 0),
+    PortGroup::new("SLOT 2", "S2", BOTH, None, 0),
+    PortGroup::new("SLOT 3", "S3", BOTH, None, 0),
+    PortGroup::new("SLOT 4", "S4", BOTH, None, 0),
+    PortGroup::new("USB AUDIO", "USB", BOTH, None, 0),
+    PortGroup::new("WLIVE PLAY", "PLAY", IN, Some(PLAYBACK_SOURCE_BASE), NUM_PLAYBACK_CHANNELS as i32),
+    PortGroup::new("DANTE", "DAN", BOTH, None, 0),
+    PortGroup::new("USB PLAYER", "PLAYER", IN, Some(USB_PLAYER_SOURCE_BASE), USB_CHANNELS as i32),
+    PortGroup::new("AUX SEND", "AUX", IN, Some(BUS_SOURCES), 2 * 16),
+    PortGroup::new("MASTER", "MST", IN, Some(MAIN_SOURCES), 2 * 2),
+    PortGroup::new("MATRIX", "MTX", IN, Some(MTX_SOURCES), 2 * 8),
+    PortGroup::new("USER SIGNAL", "USR", IN, None, 0),
+    PortGroup::new("MONITOR", "MON", IN, None, 0),
+    PortGroup::new("FX SEND", "FX", IN, None, 0),
+    PortGroup::new("MASTER OUT", "MST", OUT, Some(pro2_ports::MASTER_OUT), 2),
+    PortGroup::new("DL251 OUT", "DL", OUT, Some(pro2_ports::DL251_OUT), 16),
+    PortGroup::new("SURFACE OUT", "SRF", OUT, Some(pro2_ports::SURFACE_OUT), 8),
+    PortGroup::new("MONITOR OUT", "MON", OUT, Some(pro2_ports::MONITOR_OUT), 4),
+    PortGroup::new("WLIVE REC", "REC", OUT, None, 0),
+    PortGroup::new("RECORDER", "REC", OUT, None, USB_CHANNELS as i32),
+    PortGroup::new("CH DIRECT", "CH", IN, None, 0),
+    PortGroup::new("BUS DIRECT", "BUS", IN, None, 0),
+];
+
 /// The Allen & Heath SQ-5's port groups, in the WING's order: its 16 mic inputs
 /// and its stereo line inputs ST1-ST3 (engine inputs 16-21), its local outputs
 /// (1-12, A and B) and the AES output.

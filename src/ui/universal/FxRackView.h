@@ -10,7 +10,8 @@ namespace livedaw::ui::universal
 {
 
 /** The FX RACK view: a tile per FX slot in use (its device or plugin, how many
-    inserts use it, its level), and under them the selected slot: its device
+    inserts use it, its level, and its switch: ON, or BYPASS while the slot
+    passes its input on), and under them the selected slot: its device
     (the WING's FX devices), its plugins (the FX slot menu: load one, which
     makes the slot EXT, open its window, bypass, remove), and the device's
     controls: the WING's front panel where it has one (ui::Faceplate) or the
@@ -24,6 +25,13 @@ public:
     int getNumSlots() const noexcept { return numSlots; }
     void selectSlot (int slot);
     int getSelectedSlot() const noexcept { return selected; }
+    /** A slot's bypass, as the switch on its tile shows and sets it. */
+    bool isBypassed (int slot) const;
+    void toggleBypass (int slot);
+    /** The switch on a slot's tile, among the tiles (empty: no such slot). */
+    juce::Rectangle<int> getBypassArea (int slot) const;
+    /** The tiles' component (a tap on it is a tap on a tile or its switch). */
+    juce::Component* getTiles() const noexcept;
     /** The front panel (true) or the parameter list shown for the selected slot. */
     bool isShowingPanel() const noexcept;
     /** Takes the slots again (the timer does this 15 times a second). */

@@ -29,7 +29,7 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 56;
+constexpr int kAbiVersion = 57;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -157,7 +157,8 @@ enum StepKind : int32_t
     kStepTapShaper = 12, // TAP EQ and TAP WIDTH
     kStepTap = 13,       // a tap point (arg: its id)
     kStepRta = 14,       // an RTA point (arg: its index)
-    kStepBlock = 15      // an extra block (arg: its kind, uid: its id)
+    kStepBlock = 15,     // an extra block (arg: its kind, uid: its id)
+    kStepAttenuator = 16 // ABI 57: an attenuator after the gate (a DM2000's)
 };
 
 /** ABI 28: the kinds of extra block (ld_engine_insert_block, BlockC::kind). */
@@ -180,7 +181,10 @@ enum ProfileId : int32_t
     kProfileYamaha02R = 4, // ABI 45, Phase 6: its processing, effects and MIDI follow
     kProfileSq5 = 5, // ABI 53: the Allen & Heath SQ-5; its effects, MIDI and surface follow
     kProfileYamaha01V = 6, // ABI 54: the original 01V; its surface and MIDI follow
-    kProfileDLive = 7 // ABI 55: the Allen & Heath dLive (its FoH template); its effects, MIDI and surface follow
+    kProfileDLive = 7, // ABI 55: the Allen & Heath dLive (its FoH template); its effects, MIDI and surface follow
+    kProfileDm2000 = 8, // ABI 57: the Yamaha DM2000 (Version 2); its surface and MIDI follow
+    kProfileMidasPro2 = 9, // the Midas PRO2: its processing and profile; its surface follows
+    kProfileXenyx1204 = 10 // the XENYX 1204USB: its blocks, routing and surface
 };
 
 enum StripKindId : int32_t
@@ -334,6 +338,28 @@ struct MixInputParams
     std::atomic<float> extTrimDb;
     std::atomic<bool> extInvert;
     std::atomic<int32_t> mixSource;
+};
+
+/** A strip's dLive settings (ld_strip_dlive; ignored on other consoles).
+    stereoImage: 0 L/R, 1 R/L, 2 L-Pol/R, 3 R-Pol/L, 4 Mono, 5 L/L, 6 R/R, 7 M/S.
+    imageWidth: 0-100 %. followMainPan, followInvert: stereo mixes, through
+    ld_engine_set_follow_main_pan. divergence: 0 (C alone) to 100 (LR alone) %.
+    panMode, surroundRear, lfeDb, nonLfeDb: a channel in 5.1 (panMode 0 LR, 1 LCR, 2 LCR+;
+    surroundRear 0 front to 100 rear %). directDb: the Direct Out's level. abcdOn, abcdActive:
+    through ld_engine_abcd_enable and _select; abcdLeft/Right: the patches of A to D, -1 none.
+    groupSource: Group to Group, 0 Post Comp, 1 Post Delay. */
+struct DLiveStripParams
+{
+    std::atomic<int32_t> stereoImage;
+    std::atomic<float> imageWidth;
+    std::atomic<bool> followMainPan, followInvert;
+    std::atomic<float> divergence;
+    std::atomic<int32_t> panMode;
+    std::atomic<float> surroundRear, lfeDb, nonLfeDb, directDb;
+    std::atomic<bool> abcdOn;
+    std::atomic<int32_t> abcdActive;
+    std::atomic<int32_t> abcdLeft[4], abcdRight[4];
+    std::atomic<int32_t> groupSource;
 };
 
 /** ABI 56: a dLive channel's Automatic Mic Mixer (ld_strip_amm). The settings are ignored on
@@ -973,8 +999,8 @@ struct SlotRangeC
 static_assert (sizeof (SlotRangeC) == 20);
 
 /** ABI 33: the remote protocols a console speaks (ld_engine_remotes): its MIDI
-    protocol (-1 none, 0 the WING's, 1 the X32's, 2 the ProMix 01's, 3 the 02R's: MidiProtocol::Id) and its network protocols, a set
-    of bits (1 WING discovery, 2 WING OSC, 4 WING native: the WING remote's servers). */
+    protocol (-1 none, 0 the WING's, 1 the X32's, 2 the ProMix 01's, 3 the 02R's, 4 the SQ's, 5 the 01V's, 6 the DM2000's: MidiProtocol::Id) and its network protocols, a set
+    of bits (1 WING discovery, 2 WING OSC, 4 WING native: the WING remote's servers; 8 X32 OSC; 16 Allen & Heath MIDI over TCP). */
 struct RemotesC
 {
     int32_t midi;
@@ -1050,6 +1076,7 @@ struct LdWing;    // opaque WING remote (servers + snapshot files), see ld_wing_
 struct LdX32;     // ABI 38: opaque X32 OSC server, see ld_x32_*
 struct LdProMix;  // ABI 44: opaque ProMix 01 state and MIDI, see ld_promix_*
 struct LdY02R;    // ABI 46: opaque 02R state, libraries and MIDI, see ld_y02r_*
+struct LdY01V;    // opaque 01V MIDI, see ld_y01v_*
 struct LdWeb;     // opaque web remote (HTTP + WebSocket screen mirror), see ld_web_*
 
 /** An input event from a browser (ld_web_take_input). */
@@ -1416,6 +1443,8 @@ extern "C"
     LdString* ld_model_text (int32_t table, int32_t model, int32_t what);
     /** 0 gate, 1 compressor, 2 special, 3 EQ, 4 filter. */
     int32_t ld_model_category (int32_t table, int32_t model);
+    /** Whether the shown console lets FX device `model` run in FX slot `slot` (0-based). */
+    bool ld_model_fx_allowed (int32_t model, int32_t slot);
     int32_t ld_model_find (int32_t table, const char* utf8, size_t len);
     /** ABI 56: may dynamics model `model` (table 0 of the shown console) be offered for `slot`?
         slot: 0 = gate slot, 1 = dynamics slot or an extra dynamics block, 2 = the preamp block
@@ -1533,6 +1562,11 @@ extern "C"
     void ld_show_store_scene_partial (Show*, const Engine*, int32_t index, const ScopeC* scope);
     /** PARTIAL LOAD (`scope`; ignoreSafes = NO GLOB) or RESTORE (scope null: all of it, safes included). */
     void ld_show_recall_scene_with (Show*, const Engine*, int32_t index, const ScopeC* scope, bool ignoreSafes, ApplyResultC* out);
+    /** RECALL UNDO: back to the console as it was before the last scene recall; pressed again, it redoes it. */
+    void ld_show_undo_recall (Show*, const Engine*, ApplyResultC* out);
+    bool ld_show_can_undo_recall (Show*, const Engine*);
+    /** The step back for a recall done outside the show's scenes (the 01V's scene 00): call just before it. */
+    void ld_show_mark_recall_undo (Show*, const Engine*);
     int32_t ld_show_partial_scope (Show*, ScopeC* out, StripRefC* strips, int32_t capacity);
     /** GLOBAL safes beyond strips (no strips; the strips' own recall safe stays on them). */
     void ld_show_global_safe (Show*, ScopeC* out);
@@ -1596,6 +1630,12 @@ extern "C"
     /** ABI 56: a dLive's Mixer Config (eight numbers: ld_engine_dlive_layout): its mixes laid out anew
         and reset, the rest kept. False, with `message`, if nothing changed. */
     bool ld_show_apply_dlive_layout (Show*, const Engine*, const int32_t* layout, uint64_t stereoInputs, LdString** message);
+    /** ld_show_apply_dlive_layout with the stereo PAFL busses and the Main mode (0 None, 1 LR, 2 LR+Msum,
+        3 LR+M, 4 LCR, 5 LCR+, 6 5.1). */
+    bool ld_show_apply_dlive_structure (Show*, const Engine*, const int32_t* layout, uint64_t stereoInputs, int32_t pafl, int32_t mainMode, LdString** message);
+    bool ld_engine_dlive_structure (const Engine*, int32_t* pafl, int32_t* mainMode);
+    /** Mixes Remaining for a Mixer Config (negative: too many; INT32_MIN: out of range). */
+    int32_t ld_dlive_busses_remaining (const int32_t* layout, int32_t pafl, int32_t mainMode);
     /** ABI 56: a dLive's IP Stereo Config (bit n: inputs 2n+1 and 2n+2 are one stereo channel). */
     uint64_t ld_engine_dlive_stereo_inputs (const Engine*);
     /** ABI 56: a dLive's Mixer Config: Groups, stereo Groups, Aux, stereo Aux, FX sends, stereo FX
@@ -1890,6 +1930,61 @@ extern "C"
     int32_t ld_sq_scene_request (LdSq*);
     /** The MIDI channel (0-15) and the NRPN fader law (audio: Audio Taper). */
     void ld_sq_set_setup (LdSq*, int32_t channel, bool audio);
+    /** The next Soft Key note: key + 1 (1-8) pressed, -(key + 1) released, 0 for none. */
+    int32_t ld_sq_soft_key (LdSq*);
+    /** Bus Config: n of the twelve mixes are Groups (0-12). */
+    void ld_sq_set_groups (LdSq*, int32_t n);
+
+    // The DM2000's MIDI (livedaw-dm2000), over the engine (message thread; destroy it
+    // before the engine). Does nothing unless the engine is a DM2000.
+    struct LdDm2000;
+    LdDm2000* ld_dm2000_create (const Engine*);
+    void ld_dm2000_destroy (LdDm2000*);
+    void ld_dm2000_midi_in (LdDm2000*, const uint8_t* bytes, size_t len);
+    /** Queues the console's changes since the last call and running meter data (every 50 ms). */
+    void ld_dm2000_midi_poll (LdDm2000*);
+    /** Every value again at the next poll. */
+    void ld_dm2000_midi_resend (LdDm2000*);
+    /** Scene `scene` (0-99) was recalled: its program change goes out. */
+    void ld_dm2000_scene_recalled (LdDm2000*, int32_t scene);
+    /** An MMC command goes out. */
+    void ld_dm2000_mmc (LdDm2000*, uint8_t command);
+    /** The next message into `out`: its length, 0 for none, minus the size it needs if `max` is short. */
+    int32_t ld_dm2000_midi_out (LdDm2000*, uint8_t* out, size_t max);
+    /** What the MIDI asks of the app: `kind` 0 recall scene `value`, 1 store, 2 a Key Remote key
+        (address bytes H M L, bit 24 pressed). False when there is none. */
+    bool ld_dm2000_event (LdDm2000*, int32_t* kind, int32_t* value);
+    /** MIDI SETUP (28 bytes: Rx and Tx channels, the Tx, Rx, OMNI, ECHO of each of six kinds, NRPN, FADER LOW). */
+    void ld_dm2000_get_setup (const LdDm2000*, uint8_t* out);
+    void ld_dm2000_set_setup (LdDm2000*, const uint8_t* bytes);
+    /** The program change table: 128 scene numbers (100 no assign). */
+    void ld_dm2000_get_pc_table (const LdDm2000*, uint8_t* out);
+    void ld_dm2000_set_pc_table (LdDm2000*, const uint8_t* bytes);
+    /** The initial Control Change table (Owner's Manual pp.353-368): Control Change `cc` (0-119) of
+        table `table` (0-15, a MIDI channel) as kind * 256 + target (kind 1 FADER H, 2 FADER L, 3 ON,
+        4 PAN, 5 EQ ATT H, 6 EQ ATT L, 7 EQ ON; target 0-95 INPUT, 96-103 BUS, 104-115 AUX, 116-119
+        MATRIX, 120 STEREO); 0 for none. */
+    int32_t ld_dm2000_cc_initial (int32_t table, int32_t cc);
+
+    // Allen & Heath MIDI over TCP (livedaw-ahmidi): the dLive's and SQ-5's, with the
+    // console's profile naming it (RemotesC::network bit 16). Background threads; destroy
+    // it before the engine.
+    struct LdAhMidi;
+    LdAhMidi* ld_ahmidi_create (const Engine*);
+    void ld_ahmidi_destroy (LdAhMidi*);
+    /** Listens on TCP `mixrack` (51325; the SQ's too) and `surface` (51328, a dLive's):
+        -1 doesn't, 0 takes any free port. False if a port couldn't be bound. */
+    bool ld_ahmidi_start (LdAhMidi*, int32_t mixrack, int32_t surface);
+    void ld_ahmidi_stop (LdAhMidi*);
+    /** The port it listens on (0 the MixRack's, 1 the Surface's), -1 for none. */
+    int32_t ld_ahmidi_port (const LdAhMidi*, int32_t which);
+    int32_t ld_ahmidi_clients (const LdAhMidi*);
+    /** The MIDI channel from 0 (a dLive's N, at most 11), the SQ's NRPN fader law. */
+    void ld_ahmidi_set_setup (LdAhMidi*, int32_t channel, bool audioTaper);
+    /** The next scene (from 1) a client asked to recall, 0 for none. */
+    int32_t ld_ahmidi_take_scene (LdAhMidi*);
+    /** Scene `scene` (from 1) was recalled: the clients are told, not the one that asked. */
+    void ld_ahmidi_scene_recalled (LdAhMidi*, int32_t scene);
 
     // ABI 44: the ProMix 01 (livedaw-promix): its own state, program libraries and
     // MIDI over the engine (message thread; destroy it before the engine). Every
@@ -2062,6 +2157,56 @@ extern "C"
     /** The strip panel fader `n` (0-20) moves, in the edit buffer's numbering. */
     int32_t ld_y02r_panel_fader_strip (int32_t n);
 
+    // The 01V (livedaw-01v): an LdY01V borrows the engine (message thread;
+    // destroy it before the engine). Every call does nothing (or answers none)
+    // while the engine isn't a 01V.
+    LdY01V* ld_y01v_create (const Engine*);
+    void ld_y01v_destroy (LdY01V*);
+    /** One received message (a channel message, or a whole SysEx F0..F7). */
+    void ld_y01v_midi_in (LdY01V*, const uint8_t* bytes, size_t len);
+    /** Queues the console's changes since the last call (the first sends nothing). */
+    void ld_y01v_midi_poll (LdY01V*);
+    /** A recall the MIDI asked for is done: its values aren't sent back. */
+    void ld_y01v_take_values (LdY01V*);
+    /** Scene `scene` (0-99) was recalled: its program change, or a function call. */
+    void ld_y01v_scene_recalled (LdY01V*, int32_t scene);
+    /** The next message to send: its length, 0 for none, minus its length if `max` is too small. */
+    int32_t ld_y01v_midi_out (LdY01V*, uint8_t* out, size_t max);
+    struct LdY01VEvent
+    {
+        int32_t kind; // 0 recall scene `value`, 1 store into it, 2 its dump requested, 3 a dump of it
+                      // (`size` bytes, `title`), 4 set its title, 5 its title requested, 6 scene 00 about
+                      // to load (take the undo, then ld_y01v_recall_initial), 7 effect program `value`
+                      // into EFFECT `data`, 8 key remote: key `value`, bit `data`
+        int32_t value, data, size;
+        char title[17];
+    };
+    bool ld_y01v_event (LdY01V*, LdY01VEvent* out, uint8_t* bytes, size_t max);
+    /** Loads scene 00, the initial data. */
+    void ld_y01v_recall_initial (LdY01V*);
+    /** Scene memory `scene` (1-99) as scene bytes (1014), without recalling it; how many were written. */
+    int32_t ld_y01v_show_scene_bytes (LdY01V*, Show*, int32_t scene, uint8_t* out, size_t max);
+    /** Stores scene bytes into scene memory `scene` without recalling it. */
+    bool ld_y01v_store_scene_bytes (LdY01V*, Show*, int32_t scene, const uint8_t* data, size_t len);
+    void ld_y01v_send_scene_dump (LdY01V*, int32_t scene, const char* title, size_t titleLen, const uint8_t* data, size_t len);
+    void ld_y01v_send_title (LdY01V*, int32_t number, const char* title, size_t len);
+    /** MIDI SETUP's value `i`, by position (see Yamaha01V::Setup); -1 for none. */
+    int32_t ld_y01v_setup_value (const LdY01V*, int32_t i);
+    void ld_y01v_set_setup_value (LdY01V*, int32_t i, int32_t value);
+    /** MIDI page 2: the scene program `pc` (0-127) recalls (-1 none), and setting it. */
+    int32_t ld_y01v_pc_scene (const LdY01V*, int32_t pc);
+    void ld_y01v_set_pc_scene (LdY01V*, int32_t pc, int32_t scene);
+    /** MIDI page 3: controller `cc`'s target (0: NO ASSIGN), and setting it. */
+    int32_t ld_y01v_cc_target (const LdY01V*, int32_t cc);
+    void ld_y01v_set_cc_target (LdY01V*, int32_t cc, int32_t code);
+    /** Column `column` (0-2) of a target's code, as the page prints it. Free with ld_string_free. */
+    LdString* ld_y01v_cc_label (int32_t code, int32_t column);
+    /** INITIALIZE: 0 the program change table; 1 DEFAULT, 2 P.MIX 01, 3 03D the control change table. */
+    void ld_y01v_init_table (LdY01V*, int32_t table);
+    /** MIDI page 4: TRANSMIT or REQUEST a dump (`kind` 'M', 'S', 'P', 'C'). */
+    void ld_y01v_transmit (LdY01V*, int32_t kind, int32_t number);
+    void ld_y01v_request (LdY01V*, int32_t kind, int32_t number);
+
     // WING remote (message thread). Destroy it before the engine.
     LdWing* ld_wing_create (const Engine*);
     void ld_wing_destroy (LdWing*);
@@ -2174,6 +2319,34 @@ extern "C"
     MixInputParams* ld_strip_mix_input (const Strip*);
     /** ABI 56: a dLive channel's AMM settings and read-back. */
     AmmStripParams* ld_strip_amm (const Strip*);
+    /** A strip's dLive settings. */
+    DLiveStripParams* ld_strip_dlive (const Strip*);
+    /** A dLive's Global Direct Output Source: 0 Post Preamp, 1 Post LPF, 2 Post Gate, 3 Post Insert A,
+        4 Post PEQ, 5 Post Comp, 6 Post Insert B, 7 Post Delay. */
+    int32_t ld_engine_dlive_direct_source (const Engine*);
+    void ld_engine_dlive_set_direct_source (const Engine*, int32_t source);
+    /** Bits: 1 Follow Fader, 2 Follow Mute, 4 Follow All. */
+    int32_t ld_engine_dlive_direct_follow (const Engine*);
+    void ld_engine_dlive_set_direct_follow (const Engine*, int32_t bits);
+    void ld_engine_set_follow_main_pan (const Engine*, const Strip*, bool follow, bool invert);
+    void ld_engine_abcd_enable (const Engine*, const Strip*, bool on);
+    void ld_engine_abcd_select (const Engine*, const Strip*, int32_t which);
+    /** The Actions: dca < 0 sets all channels, else that DCA's members. */
+    void ld_engine_abcd_set (const Engine*, int32_t dca, int32_t which);
+    void ld_engine_abcd_set_range (const Engine*, int32_t first, int32_t last, int32_t which);
+    /** Source Selectors (20, each up to 20 sources). kind < 0: unassigned or empty. */
+    void ld_selector_set_output (const Engine*, int32_t selector, int32_t kind, int32_t index);
+    void ld_selector_set_source (const Engine*, int32_t selector, int32_t member, int32_t kind, int32_t number);
+    void ld_selector_set_on_level (const Engine*, int32_t selector, int32_t member, float db);
+    /** The source playing, -1 Off. */
+    void ld_selector_select (const Engine*, int32_t selector, int32_t member);
+    int32_t ld_selector_active (const Engine*, int32_t selector);
+    void ld_selector_set_fades (const Engine*, int32_t selector, float fadeInSeconds, float fadeOutSeconds);
+    /** What the setters set, for a screen (the pointers may be null). False: an unassigned output,
+        an empty source, no such selector; the values are then left alone. */
+    bool ld_selector_output (const Engine*, int32_t selector, int32_t* kind, int32_t* index);
+    bool ld_selector_source (const Engine*, int32_t selector, int32_t member, int32_t* kind, int32_t* number, float* onDb);
+    bool ld_selector_fades (const Engine*, int32_t selector, float* fadeInSeconds, float* fadeOutSeconds);
     /** ABI 56: the console's AMM settings. */
     AmmParams* ld_engine_amm (const Engine*);
     /** The MUTE key, MUTEGROUP/SIP OVERRIDE aware. */

@@ -316,10 +316,10 @@ pub unsafe extern "C" fn ld_promix_send_scene_dump(p: *mut LdProMix, scene: i32,
 /// A scratch ProMix 01 (no audio) holding the live console's mix, then the
 /// show's scene `index` over it: a scene memory read or written without
 /// recalling it. None if the scene holds no mix (an item, or none stored).
-fn scene_engine(live: &Engine, show: &livedaw_session::Show, index: i32) -> Option<Engine> {
+pub(crate) fn scene_engine(live: &Engine, show: &livedaw_session::Show, index: i32, config: &ConsoleConfig) -> Option<Engine> {
     let state = show.scene(index).filter(|s| s.item.is_none())?.state.as_ref()?;
     let e = Engine::new(0);
-    e.configure(&ConsoleConfig { profile: Profile::ProMix01, counts: Counts::PROMIX01 });
+    e.configure(config);
     let live_state = session_console::capture(live, section::ALL, None, &mut NoPlugins);
     session_console::apply(&e, &live_state, section::ALL, None, false, None, &mut NoPlugins);
     session_console::apply(&e, state, section::ALL, None, false, None, &mut NoPlugins);
@@ -347,6 +347,8 @@ fn keep_plugins(new: &mut Element, old: &Element) {
     }
 }
 
+const PROMIX_CONFIG: ConsoleConfig = ConsoleConfig { profile: Profile::ProMix01, counts: Counts::PROMIX01 };
+
 /// ABI 50: scene memory `scene` (1-50, the show's scene `scene - 1`) as scene
 /// bytes (408) into `out`, without recalling it; how many were written (0: no
 /// such scene, or it holds no mix).
@@ -367,7 +369,7 @@ pub unsafe extern "C" fn ld_promix_show_scene_bytes(
         return 0;
     }
     let bytes = guard(Vec::new(), || {
-        let Some(e) = scene_engine(live, &s.show, scene - 1) else { return Vec::new() };
+        let Some(e) = scene_engine(live, &s.show, scene - 1, &PROMIX_CONFIG) else { return Vec::new() };
         let mut state = State::from_text(&e.console_text().0);
         livedaw_promix::midi::scene_bytes(&Console::new(&e, &mut state, &p.library))
     });
@@ -399,31 +401,47 @@ pub unsafe extern "C" fn ld_promix_store_scene_bytes(
         return false;
     }
     let data = std::slice::from_raw_parts(data, len).to_vec();
+    let library = &p.library;
     guard(false, || {
-        let index = scene - 1;
-        let name = |n: i32| format!("SCENE {n:02}");
-        while s.show.scenes().len() as i32 <= index {
-            let n = s.show.scenes().len() as i32 + 1;
-            s.show.insert_scene(Scene { name: name(n), ..Scene::default() }, n - 1);
-        }
-        let target = s.show.scene_mut(index).expect("added above");
-        if target.item.is_some() {
-            return false;
-        }
-        // A scene without a mix starts from the live console's.
-        let old = target.state.get_or_insert_with(|| session_console::capture(live, section::ALL, None, &mut NoPlugins)).clone();
-        let Some(e) = scene_engine(live, &s.show, index) else { return false };
-        let mut state = State::from_text(&e.console_text().0);
-        livedaw_promix::midi::load_scene_bytes(&mut Console::new(&e, &mut state, &p.library), &data);
-        e.set_console_text(&state.to_text());
-        let sections = old.int_or("sections", section::ALL as i32) as u32;
-        let mut new = session_console::capture(&e, sections, None, &mut NoPlugins);
-        keep_plugins(&mut new, &old);
-        if let Some(t) = s.show.scene_mut(index) {
-            t.state = Some(new);
-        }
-        true
+        store_into_scene(live, &mut s.show, scene - 1, &PROMIX_CONFIG, |e| {
+            let mut state = State::from_text(&e.console_text().0);
+            livedaw_promix::midi::load_scene_bytes(&mut Console::new(e, &mut state, library), &data);
+            e.set_console_text(&state.to_text());
+        })
     })
+}
+
+/// Stores a scene's mix without recalling it: `load` changes an engine
+/// holding the scene, and what it then holds becomes the scene (its plugins
+/// kept). Missing scenes up to it are added ("SCENE nn", the ones before it
+/// empty). False if the scene is an item. A ProMix 01's and a 01V's bulk dumps.
+pub(crate) fn store_into_scene(
+    live: &Engine,
+    show: &mut livedaw_session::Show,
+    index: i32,
+    config: &ConsoleConfig,
+    load: impl FnOnce(&Engine),
+) -> bool {
+    let name = |n: i32| format!("SCENE {n:02}");
+    while show.scenes().len() as i32 <= index {
+        let n = show.scenes().len() as i32 + 1;
+        show.insert_scene(Scene { name: name(n), ..Scene::default() }, n - 1);
+    }
+    let target = show.scene_mut(index).expect("added above");
+    if target.item.is_some() {
+        return false;
+    }
+    // A scene without a mix starts from the live console's.
+    let old = target.state.get_or_insert_with(|| session_console::capture(live, section::ALL, None, &mut NoPlugins)).clone();
+    let Some(e) = scene_engine(live, show, index, config) else { return false };
+    load(&e);
+    let sections = old.int_or("sections", section::ALL as i32) as u32;
+    let mut new = session_console::capture(&e, sections, None, &mut NoPlugins);
+    keep_plugins(&mut new, &old);
+    if let Some(t) = show.scene_mut(index) {
+        t.state = Some(new);
+    }
+    true
 }
 
 /// ABI 44: MIDI SETUP (`livedaw_promix::midi::Setup`): channels 0-15; per

@@ -92,7 +92,7 @@ void GroupGrid::paint (juce::Graphics& g)
             continue;
         }
         g.drawText (number, text.removeFromTop (text.getHeight() * 0.5f), juce::Justification::centredBottom);
-        g.setFont (type::font (type::kCaption - 2.0f));
+        g.setFont (type::font (type::kMicro));
         g.drawFittedText (label, text.toNearestInt(), juce::Justification::centredTop, 1, 0.6f);
     }
 }
@@ -157,7 +157,8 @@ void DcaColumn::paint (juce::Graphics& g)
     g.fillRoundedRectangle (getLocalBounds().toFloat().reduced (2.0f), sizes::kRadius);
     auto h = header().toFloat();
     g.setColour (consoleColour (colour));
-    g.fillRoundedRectangle (h.removeFromTop (6.0f), 3.0f);
+    g.fillRect (h.removeFromTop (4.0f));
+    h.removeFromTop (2.0f);
     h.removeFromTop (4.0f);
     g.setColour (theme.accent);
     g.setFont (type::font (type::kCaption, true));
@@ -193,7 +194,10 @@ void DcaColumn::mouseUp (const juce::MouseEvent& e)
         return;
     // A tap on the header: rename it, or pick its colour.
     juce::PopupMenu menu, colours;
+    menu.setLookAndFeel (&lookAndFeelFor (theme));
     menu.addSectionHeader ("DCA " + juce::String (dca + 1));
+    if (onSpill)
+        menu.addItem (2, "Spill members");
     menu.addItem (1, "Rename...");
     for (int i = 1; i <= palette::count(); ++i)
         colours.addItem (100 + i, consoleColourName (i), true, ctx.engine.getDca (dca).colour.load() == i);
@@ -204,7 +208,13 @@ void DcaColumn::mouseUp (const juce::MouseEvent& e)
         if (safe == nullptr || r == 0)
             return;
         auto& self = *safe;
-        if (r == 1)
+        if (r == 2)
+        {
+            // Last: the view rebuilds its columns, this one among them.
+            if (self.onSpill)
+                self.onSpill (self.dca);
+        }
+        else if (r == 1)
             askForText (self, "RENAME", "DCA " + juce::String (self.dca + 1) + ":", self.ctx.engine.getDcaName (self.dca),
                         [safe] (const juce::String& text)
                         {

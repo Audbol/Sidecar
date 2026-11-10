@@ -1,4 +1,5 @@
 #include "ui/DLiveSurface.h"
+#include "ui/DLiveScreens.h"
 
 #include "engine/MixerEngine.h"
 #include "engine/Models.h"
@@ -19,12 +20,12 @@ using dl::look;
 namespace
 {
     constexpr int kTopBar = 48;
-    constexpr int kStripW = 118, kStripsX = 178, kStripsY = 450, kStripH = 626, kGroupGap = 14;
+    constexpr int kStripW = 118, kStripsX = 178, kStripsY = 500, kStripH = 576, kGroupGap = 14;
     int stripX (int i) { return kStripsX + i * kStripW + (i / 4) * kGroupGap; }
 
-    // The touchscreen: the Universal Mixer's pages, drawn at this scale.
-    constexpr int kScreenX = 114, kScreenY = 64, kScreenW = 1120, kScreenH = 462;
-    constexpr float kScreenScale = 0.8f;
+    // The touchscreen: the screens' 1000 by 690 at this scale, close to the proportions of a C1500's.
+    constexpr int kScreenX = 114, kScreenY = 60;
+    constexpr float kScreenScale = 0.625f;
 
     // The keys' colours, idle and lit (photographs of a C1500).
     const juce::Colour kMuteIdle (0xffcbc9c2), kMuteLit (0xfff2526c), kSelIdle (0xff2fa897), kSelLit (0xff36e0b2), kMixIdle (0xff4497df), kMixLit (0xff0c4fe6),
@@ -62,6 +63,11 @@ namespace dl
                         g.fillRect (x + (float) col * dot, y + (float) row * dot, dot * 0.85f, dot * 0.85f);
             x += 6.0f * dot;
         }
+    }
+
+    bool wantsAssign (bool setupHeld)
+    {
+        return setupHeld || juce::ModifierKeys::getCurrentModifiers().isPopupMenu();
     }
 
     KnobBinding bindEq (Strip& s, const juce::String& id, const juce::String& label)
@@ -361,6 +367,441 @@ namespace dl
     }
 
     //==========================================================================
+    juce::String customRotaryName (CustomRotary f)
+    {
+        switch (f)
+        {
+            case CustomRotary::Trim:      return "Trim";
+            case CustomRotary::Hpf:       return "HPF Freq";
+            case CustomRotary::Lpf:       return "LPF Freq";
+            case CustomRotary::GateThres: return "Gate Thres";
+            case CustomRotary::GateDepth: return "Gate Depth";
+            case CustomRotary::CompThres: return "Comp Thres";
+            case CustomRotary::CompRatio: return "Comp Ratio";
+            case CustomRotary::CompGain:  return "Comp Gain";
+            case CustomRotary::Pan:       return "Pan";
+            case CustomRotary::Width:     return "Stereo Width";
+            case CustomRotary::Delay:     return "Delay";
+            case CustomRotary::NumFunctions: break;
+        }
+        return {};
+    }
+
+    static KnobBinding bindCustomRotary (Strip& st, CustomRotary f)
+    {
+        auto& p = st.params;
+        const bool input = st.isInput(), hasGate = st.getKind() == StripKind::Channel, hasComp = st.getKind() != StripKind::Aux;
+        switch (f)
+        {
+            case CustomRotary::Trim:      return bindLinear ("Trim", p.input.trimDb, -24.0f, 24.0f, " dB", 1, 0.0f);
+            case CustomRotary::Hpf:       return input ? bindFreq ("HPF", p.filter().lowCutFreq, 20.0f, 2000.0f, 20.0f) : KnobBinding {};
+            case CustomRotary::Lpf:       return input ? bindFreq ("LPF", p.filter().highCutFreq, 500.0f, 20000.0f, 20000.0f) : KnobBinding {};
+            case CustomRotary::GateThres: return hasGate ? bindDyn (p.gate(), "thr", "Gate") : KnobBinding {};
+            case CustomRotary::GateDepth: return hasGate ? bindDyn (p.gate(), "range", "Depth") : KnobBinding {};
+            case CustomRotary::CompThres: return hasComp ? bindDyn (p.dynamics(), "thr", "Comp") : KnobBinding {};
+            case CustomRotary::CompRatio: return hasComp ? bindDyn (p.dynamics(), "ratio", "Ratio") : KnobBinding {};
+            case CustomRotary::CompGain:  return hasComp ? bindDyn (p.dynamics(), "gain", "Gain") : KnobBinding {};
+            case CustomRotary::Pan:       return bindPan ("Pan", p.pan);
+            case CustomRotary::Width:     return p.stereo.load() ? bindLinear ("Width", p.width, 0.0f, 100.0f, " %", 0, 100.0f) : KnobBinding {};
+            case CustomRotary::Delay:
+            {
+                auto* in = &p.input;
+                auto delay = bindLinear ("Delay", in->delay, 0.0f, st.isInput() ? 341.0f : 682.0f, " ms", 2, 0.0f);
+                delay.set = [in, inner = delay.set] (float v) { in->delayMode.store (2); inner (v); }; // the engine's milliseconds
+                return delay;
+            }
+            case CustomRotary::NumFunctions: break;
+        }
+        return {};
+    }
+
+    //==========================================================================
+    SurfaceSetup::SurfaceSetup (juce::PropertiesFile& file, const juce::String& model, int numBanks, int numLayers, int numStrips, Factory f)
+        : settings (file), key ("ui.dliveSurfaceSetup." + model), banks (numBanks), layers (numLayers), strips (numStrips), factory (std::move (f))
+    {
+        custom = { CustomRotary::Trim, CustomRotary::Hpf, CustomRotary::GateThres, CustomRotary::CompThres };
+        slots.resize ((size_t) (banks * layers * strips));
+        for (int b = 0; b < banks; ++b)
+            for (int l = 0; l < layers; ++l)
+                for (int s = 0; s < strips; ++s)
+                    slots[(size_t) cell (b, l, s)] = factory (b, l, s);
+        load();
+    }
+
+    int SurfaceSetup::cell (int bank, int layer, int strip) const noexcept
+    {
+        return ((juce::jlimit (0, banks - 1, bank) * layers + juce::jlimit (0, layers - 1, layer)) * strips) + juce::jlimit (0, strips - 1, strip);
+    }
+
+    Slot SurfaceSetup::getSlot (int bank, int layer, int strip) const { return slots[(size_t) cell (bank, layer, strip)]; }
+
+    Slot SurfaceSetup::getShownSlot (int bank, int layer, int strip, int numMains) const
+    {
+        const auto own = getSlot (bank, layer, strip);
+        const auto last = getSlot (bank, layer, strips - 1);
+        const int first = strips - numMains;
+        if (numMains < 2 || first < 0 || strip < first || strip >= strips || last.kind != Slot::Main || last.index != 0)
+            return own;
+        if (strip != strips - 1)
+        {
+            const auto made = factory (bank, layer, strip);
+            if (own.kind != made.kind || own.index != made.index)
+                return own; // the user's own strip stays
+        }
+        return { Slot::Main, strip - first };
+    }
+
+    void SurfaceSetup::setSlot (int bank, int layer, int strip, const Slot& s)
+    {
+        slots[(size_t) cell (bank, layer, strip)] = s;
+        changed();
+    }
+
+    void SurfaceSetup::setSoftKey (int i, const SoftKey& k)
+    {
+        softKeys[(size_t) juce::jlimit (0, kSoftKeys - 1, i)] = k;
+        changed();
+    }
+
+    void SurfaceSetup::setCustom (int i, CustomRotary f)
+    {
+        custom[(size_t) juce::jlimit (0, kCustomRotaries - 1, i)] = f;
+        changed();
+    }
+
+    void SurfaceSetup::reset()
+    {
+        for (int b = 0; b < banks; ++b)
+            for (int l = 0; l < layers; ++l)
+                for (int s = 0; s < strips; ++s)
+                    slots[(size_t) cell (b, l, s)] = factory (b, l, s);
+        softKeys = {};
+        custom = { CustomRotary::Trim, CustomRotary::Hpf, CustomRotary::GateThres, CustomRotary::CompThres };
+        changed();
+    }
+
+    void SurfaceSetup::changed()
+    {
+        save();
+        if (onChanged)
+            onChanged();
+    }
+
+    void SurfaceSetup::save() const
+    {
+        juce::XmlElement xml ("DLiveSurfaceSetup");
+        for (int b = 0; b < banks; ++b)
+            for (int l = 0; l < layers; ++l)
+            {
+                juce::StringArray cells;
+                for (int s = 0; s < strips; ++s)
+                {
+                    const auto slot = getSlot (b, l, s);
+                    cells.add (juce::String ((int) slot.kind) + ":" + juce::String (slot.index));
+                }
+                auto* e = xml.createNewChildElement ("Layer");
+                e->setAttribute ("bank", b);
+                e->setAttribute ("layer", l);
+                e->setAttribute ("strips", cells.joinIntoString (" "));
+            }
+        for (int i = 0; i < kSoftKeys; ++i)
+        {
+            const auto& k = softKeys[(size_t) i];
+            if (k.kind == SoftKey::Unused)
+                continue;
+            auto* e = xml.createNewChildElement ("SoftKey");
+            e->setAttribute ("n", i);
+            e->setAttribute ("kind", (int) k.kind);
+            e->setAttribute ("index", k.index);
+            e->setAttribute ("slotKind", (int) k.slot.kind);
+            e->setAttribute ("slotIndex", k.slot.index);
+        }
+        for (int i = 0; i < kCustomRotaries; ++i)
+            xml.setAttribute ("custom" + juce::String (i + 1), (int) custom[(size_t) i]);
+        settings.setValue (key, &xml);
+    }
+
+    void SurfaceSetup::load()
+    {
+        const auto xml = settings.getXmlValue (key);
+        if (xml == nullptr || ! xml->hasTagName ("DLiveSurfaceSetup"))
+            return;
+        for (auto* e : xml->getChildWithTagNameIterator ("Layer"))
+        {
+            const auto cells = juce::StringArray::fromTokens (e->getStringAttribute ("strips"), false);
+            for (int s = 0; s < juce::jmin (cells.size(), strips); ++s)
+            {
+                Slot slot;
+                slot.kind = (Slot::Kind) juce::jlimit (0, (int) Slot::Dca, cells[s].upToFirstOccurrenceOf (":", false, false).getIntValue());
+                slot.index = cells[s].fromFirstOccurrenceOf (":", false, false).getIntValue();
+                slots[(size_t) cell (e->getIntAttribute ("bank"), e->getIntAttribute ("layer"), s)] = slot;
+            }
+        }
+        for (auto* e : xml->getChildWithTagNameIterator ("SoftKey"))
+        {
+            auto& k = softKeys[(size_t) juce::jlimit (0, kSoftKeys - 1, e->getIntAttribute ("n"))];
+            k.kind = (SoftKey::Kind) juce::jlimit (0, (int) SoftKey::ClearPafl, e->getIntAttribute ("kind"));
+            k.index = e->getIntAttribute ("index");
+            k.slot.kind = (Slot::Kind) juce::jlimit (0, (int) Slot::Dca, e->getIntAttribute ("slotKind"));
+            k.slot.index = e->getIntAttribute ("slotIndex");
+        }
+        for (int i = 0; i < kCustomRotaries; ++i)
+            custom[(size_t) i] = (CustomRotary) juce::jlimit (0, (int) CustomRotary::NumFunctions - 1, xml->getIntAttribute ("custom" + juce::String (i + 1), (int) custom[(size_t) i]));
+    }
+
+    //==========================================================================
+    juce::String slotName (UiContext& ctx, const Slot& s)
+    {
+        const juce::String number (s.index + 1);
+        switch (s.kind)
+        {
+            case Slot::None:     return "-";
+            case Slot::Channel:  return "Ip " + number;
+            case Slot::FxReturn: return "FXRet " + number;
+            case Slot::Bus:
+            {
+                auto* st = stripOf (ctx.engine, s);
+                return st != nullptr && st->getName().isNotEmpty() ? st->getName() : "Mix " + number;
+            }
+            case Slot::Main:
+            {
+                // The Main mode names them: LR, M, C, LFE, Ls/Rs.
+                auto* st = stripOf (ctx.engine, s);
+                return "Main " + (st != nullptr && st->getName().isNotEmpty() ? st->getName() : number);
+            }
+            case Slot::Matrix:   return "Mtx " + number;
+            case Slot::Dca:      return "DCA " + number;
+        }
+        return {};
+    }
+
+    juce::String softKeyName (UiContext& ctx, const SoftKey& k)
+    {
+        switch (k.kind)
+        {
+            case SoftKey::Unused:    return "Unused";
+            case SoftKey::Mute:      return "Mute " + slotName (ctx, k.slot);
+            case SoftKey::MuteGroup: return "Mute Group " + juce::String (k.index + 1);
+            case SoftKey::DcaMute:   return "DCA " + juce::String (k.index + 1) + " Mute";
+            case SoftKey::Mix:       return "Mix " + slotName (ctx, k.slot);
+            case SoftKey::SceneGo:   return "Scene Go";
+            case SoftKey::SceneNext: return "Scene Next";
+            case SoftKey::ScenePrev: return "Scene Prev";
+            case SoftKey::Talk:      return "Talk";
+            case SoftKey::ClearPafl: return "Clear PAFL";
+        }
+        return {};
+    }
+
+    void Desk::clearPafl (UiContext& ctx)
+    {
+        for (const auto* list : { &ctx.engine.getChannels(), &ctx.engine.getAux(), &ctx.engine.getBuses(), &ctx.engine.getMains(), &ctx.engine.getMatrices() })
+            for (const auto& s : *list)
+                s->params.solo = false;
+    }
+
+    void Desk::pressSoftKey (UiContext& ctx, int index)
+    {
+        const auto& k = getSetup().getSoftKey (index);
+        switch (k.kind)
+        {
+            case SoftKey::Unused:
+                break;
+            case SoftKey::Mute:
+                if (k.slot.kind == Slot::Dca)
+                {
+                    if (juce::isPositiveAndBelow (k.slot.index, ctx.engine.getNumDcas()))
+                        ctx.engine.getDca (k.slot.index).mute = ! ctx.engine.getDca (k.slot.index).mute.load();
+                }
+                else if (auto* st = stripOf (ctx.engine, k.slot))
+                    ctx.engine.pressMute (*st);
+                break;
+            case SoftKey::MuteGroup:
+                if (juce::isPositiveAndBelow (k.index, ctx.engine.getNumMuteGroups()))
+                    ctx.engine.muteGroups.toggle (k.index);
+                break;
+            case SoftKey::DcaMute:
+                if (juce::isPositiveAndBelow (k.index, ctx.engine.getNumDcas()))
+                    ctx.engine.getDca (k.index).mute = ! ctx.engine.getDca (k.index).mute.load();
+                break;
+            case SoftKey::Mix:
+                setMixOnFaders (getMixOnFaders() == k.slot.index ? -1 : k.slot.index);
+                break;
+            case SoftKey::SceneGo:   sceneGo(); break;
+            case SoftKey::SceneNext: sceneStep (1); break;
+            case SoftKey::ScenePrev: sceneStep (-1); break;
+            case SoftKey::Talk:      ctx.engine.talk.paths[0].on = ! ctx.engine.talk.paths[0].on.load(); break;
+            case SoftKey::ClearPafl: clearPafl (ctx); break;
+        }
+    }
+
+    bool Desk::isSoftKeyOn (UiContext& ctx, int index)
+    {
+        const auto& k = getSetup().getSoftKey (index);
+        switch (k.kind)
+        {
+            case SoftKey::Mute:
+                if (k.slot.kind == Slot::Dca)
+                    return juce::isPositiveAndBelow (k.slot.index, ctx.engine.getNumDcas()) && ctx.engine.getDca (k.slot.index).mute.load();
+                if (auto* st = stripOf (ctx.engine, k.slot))
+                    return st->getMuteState() != 0;
+                return false;
+            case SoftKey::MuteGroup: return ctx.engine.muteGroups.contains (k.index);
+            case SoftKey::DcaMute:   return juce::isPositiveAndBelow (k.index, ctx.engine.getNumDcas()) && ctx.engine.getDca (k.index).mute.load();
+            case SoftKey::Mix:       return getMixOnFaders() == k.slot.index;
+            case SoftKey::Talk:      return ctx.engine.isTalkOn (0);
+            case SoftKey::ClearPafl: return ctx.engine.anySoloActive.load();
+            case SoftKey::Unused:
+            case SoftKey::SceneGo:
+            case SoftKey::SceneNext:
+            case SoftKey::ScenePrev: break;
+        }
+        return false;
+    }
+
+    /** The strips a menu can offer, in submenus by kind; an item's id: `base` + kind * 1000 + index. */
+    static void addSlotMenus (juce::PopupMenu& menu, UiContext& ctx, int base, const Slot& current, bool mixesOnly)
+    {
+        const auto group = [&] (const juce::String& title, Slot::Kind kind, int count)
+        {
+            if (count <= 0)
+                return;
+            juce::PopupMenu sub;
+            const auto addRange = [&] (juce::PopupMenu& m, int first, int last)
+            {
+                for (int i = first; i < last; ++i)
+                    m.addItem (base + (int) kind * 1000 + i, slotName (ctx, { kind, i }), true, current.kind == kind && current.index == i);
+            };
+            if (count > 40)
+                for (int first = 0; first < count; first += 32)
+                {
+                    juce::PopupMenu block;
+                    addRange (block, first, juce::jmin (first + 32, count));
+                    sub.addSubMenu (juce::String (first + 1) + "-" + juce::String (juce::jmin (first + 32, count)), block);
+                }
+            else
+                addRange (sub, 0, count);
+            menu.addSubMenu (title, sub, true, nullptr, current.kind == kind);
+        };
+        if (! mixesOnly)
+        {
+            group ("Inputs", Slot::Channel, (int) ctx.engine.getChannels().size());
+            group ("FX Returns", Slot::FxReturn, (int) ctx.engine.getAux().size());
+        }
+        group ("Mixes", Slot::Bus, (int) ctx.engine.getBuses().size());
+        if (! mixesOnly)
+        {
+            group ("Mains", Slot::Main, (int) ctx.engine.getMains().size());
+            group ("Matrices", Slot::Matrix, (int) ctx.engine.getMatrices().size());
+            group ("DCAs", Slot::Dca, ctx.engine.getNumDcas());
+        }
+    }
+
+    static Slot decodeSlot (int id, int base)
+    {
+        const int value = id - base;
+        return { (Slot::Kind) (value / 1000), value % 1000 };
+    }
+
+    static juce::PopupMenu::Options menuOptions (juce::Component* target)
+    {
+        return target != nullptr ? juce::PopupMenu::Options().withTargetComponent (target) : juce::PopupMenu::Options();
+    }
+
+    void showSoftKeyMenu (UiContext& ctx, SurfaceSetup& setup, int index, juce::Component* target, std::function<void()> then)
+    {
+        enum
+        {
+            kUnused = 1,
+            kGo,
+            kNext,
+            kPrev,
+            kTalk,
+            kClear,
+            kGroupBase = 1000,
+            kDcaBase = 2000,
+            kMuteBase = 10000,
+            kMixBase = 20000
+        };
+        const auto& k = setup.getSoftKey (index);
+        juce::PopupMenu menu;
+        menu.addSectionHeader ("SoftKey " + juce::String (index + 1));
+        menu.addItem (kUnused, "Unused", true, k.kind == SoftKey::Unused);
+        menu.addItem (kGo, "Scene Go", true, k.kind == SoftKey::SceneGo);
+        menu.addItem (kNext, "Scene Next", true, k.kind == SoftKey::SceneNext);
+        menu.addItem (kPrev, "Scene Prev", true, k.kind == SoftKey::ScenePrev);
+        menu.addItem (kTalk, "Talk", true, k.kind == SoftKey::Talk);
+        menu.addItem (kClear, "Clear PAFL", true, k.kind == SoftKey::ClearPafl);
+        {
+            juce::PopupMenu mute;
+            addSlotMenus (mute, ctx, kMuteBase, k.kind == SoftKey::Mute ? k.slot : Slot {}, false);
+            menu.addSubMenu ("Mute", mute, true, nullptr, k.kind == SoftKey::Mute);
+            juce::PopupMenu groups, dcas, mixes;
+            for (int i = 0; i < ctx.engine.getNumMuteGroups(); ++i)
+                groups.addItem (kGroupBase + i, juce::String (i + 1), true, k.kind == SoftKey::MuteGroup && k.index == i);
+            menu.addSubMenu ("Mute Group", groups, true, nullptr, k.kind == SoftKey::MuteGroup);
+            for (int i = 0; i < ctx.engine.getNumDcas(); ++i)
+                dcas.addItem (kDcaBase + i, juce::String (i + 1), true, k.kind == SoftKey::DcaMute && k.index == i);
+            menu.addSubMenu ("DCA Mute", dcas, true, nullptr, k.kind == SoftKey::DcaMute);
+            addSlotMenus (mixes, ctx, kMixBase, k.kind == SoftKey::Mix ? k.slot : Slot {}, true);
+            menu.addSubMenu ("Mix on Faders", mixes, true, nullptr, k.kind == SoftKey::Mix);
+        }
+        menu.showMenuAsync (menuOptions (target), [safe = juce::Component::SafePointer<juce::Component> (target), &setup, index, then = std::move (then)] (int r)
+        {
+            if (safe == nullptr || r <= 0)
+                return;
+            SoftKey picked;
+            if (r == kUnused) picked.kind = SoftKey::Unused;
+            else if (r == kGo) picked.kind = SoftKey::SceneGo;
+            else if (r == kNext) picked.kind = SoftKey::SceneNext;
+            else if (r == kPrev) picked.kind = SoftKey::ScenePrev;
+            else if (r == kTalk) picked.kind = SoftKey::Talk;
+            else if (r == kClear) picked.kind = SoftKey::ClearPafl;
+            else if (r >= kMixBase) { picked.kind = SoftKey::Mix; picked.slot = decodeSlot (r, kMixBase); }
+            else if (r >= kMuteBase) { picked.kind = SoftKey::Mute; picked.slot = decodeSlot (r, kMuteBase); }
+            else if (r >= kDcaBase) { picked.kind = SoftKey::DcaMute; picked.index = r - kDcaBase; }
+            else { picked.kind = SoftKey::MuteGroup; picked.index = r - kGroupBase; }
+            setup.setSoftKey (index, picked);
+            if (then)
+                then();
+        });
+    }
+
+    void showCustomRotaryMenu (SurfaceSetup& setup, int index, juce::Component* target, std::function<void()> then)
+    {
+        juce::PopupMenu menu;
+        menu.addSectionHeader ("Custom " + juce::String (index + 1));
+        for (int f = 0; f < (int) CustomRotary::NumFunctions; ++f)
+            menu.addItem (f + 1, customRotaryName ((CustomRotary) f), true, (int) setup.getCustom (index) == f);
+        menu.showMenuAsync (menuOptions (target), [safe = juce::Component::SafePointer<juce::Component> (target), &setup, index, then = std::move (then)] (int r)
+        {
+            if (safe == nullptr || r <= 0)
+                return;
+            setup.setCustom (index, (CustomRotary) (r - 1));
+            if (then)
+                then();
+        });
+    }
+
+    void showStripMenu (UiContext& ctx, SurfaceSetup& setup, int bank, int layer, int strip, juce::Component* target, std::function<void()> then)
+    {
+        constexpr int kBase = 100, kNone = 1;
+        const auto current = setup.getSlot (bank, layer, strip);
+        juce::PopupMenu menu;
+        menu.addSectionHeader ("Layer " + juce::String::charToString ((juce::juce_wchar) ('A' + layer)) + ", strip " + juce::String (strip + 1));
+        menu.addItem (kNone, "Nothing", true, current.kind == Slot::None);
+        addSlotMenus (menu, ctx, kBase, current, false);
+        menu.showMenuAsync (menuOptions (target), [safe = juce::Component::SafePointer<juce::Component> (target), &setup, bank, layer, strip, kBase, kNone, then = std::move (then)] (int r)
+        {
+            if (safe == nullptr || r <= 0)
+                return;
+            setup.setSlot (bank, layer, strip, r == kNone ? Slot {} : decodeSlot (r, kBase));
+            if (then)
+                then();
+        });
+    }
+
+    //==========================================================================
     StripLayout StripLayout::c1500 (int w, int h)
     {
         StripLayout l;
@@ -575,26 +1016,18 @@ namespace dl
                         light = mixStrip->getColour(); // the active Mix's
                 }
                 break;
-            // Sidecar's defaults: the four are assignable on the console (Surface / Control / Preferences).
+            // The four are assignable (the Surface page, or Setup held and the key).
             case F::Custom1:
-                b = bindLinear ("Trim", st->params.input.trimDb, -24.0f, 24.0f, " dB", 1, 0.0f);
-                light = juce::Colour (0xfff2c10a);
-                break;
             case F::Custom2:
-                if (st->isInput())
-                    b = bindFreq ("HPF", st->params.filter().lowCutFreq, 20.0f, 2000.0f, 20.0f);
-                light = juce::Colour (0xff68db0e);
-                break;
             case F::Custom3:
-                if (st->getKind() == StripKind::Channel)
-                    b = bindDyn (st->params.gate(), "thr", "Gate");
-                light = juce::Colour (0xff09ece6);
-                break;
             case F::Custom4:
-                if (st->getKind() != StripKind::Aux)
-                    b = bindDyn (st->params.dynamics(), "thr", "Comp");
-                light = juce::Colour (0xffb58cff);
+            {
+                static const juce::Colour lights[] = { juce::Colour (0xfff2c10a), juce::Colour (0xff68db0e), juce::Colour (0xff09ece6), juce::Colour (0xffb58cff) };
+                const int custom = (int) surface.getRotaryFunction() - (int) F::Custom1;
+                b = bindCustomRotary (*st, surface.getSetup().getCustom (custom));
+                light = lights[custom];
                 break;
+            }
         }
         rotary.setBinding (b);
         rotary.setLight (light);
@@ -699,7 +1132,9 @@ namespace dl
         const auto& b = rotary.getBinding();
         if (! b.isValid())
             return {};
-        if (surface.getRotaryFunction() == RotaryFunction::Gain || surface.getRotaryFunction() == RotaryFunction::Sends || surface.getRotaryFunction() == RotaryFunction::Custom1)
+        if (surface.getRotaryFunction() == RotaryFunction::Gain || surface.getRotaryFunction() == RotaryFunction::Sends
+            || (surface.getRotaryFunction() >= RotaryFunction::Custom1 && surface.getRotaryFunction() <= RotaryFunction::Custom4
+                && surface.getSetup().getCustom ((int) surface.getRotaryFunction() - (int) RotaryFunction::Custom1) == CustomRotary::Trim))
             return b.label + " dB";
         return b.label;
     }
@@ -880,11 +1315,14 @@ dl::Key* DLiveSurface::findKey (const juce::String& name) const
 }
 
 DLiveSurface::DLiveSurface (UiContext& c)
-    : ctx (c), theme (Theme::dark()), universalKey ("UNIVERSAL MIXER", theme.accent, theme), c3500Key ("C3500 SURFACE", theme.accent, theme), mixer (c, theme), routingView (c, theme), fxRack (c, theme), monitoring (c, theme), scenes (c, theme),
-      library (c, theme), setup (c, theme), inspector (c, theme)
+    : ctx (c), theme (Theme::dark()), universalKey ("UNIVERSAL MIXER", theme.accent, theme), c3500Key ("C3500 SURFACE", theme.accent, theme),
+      assignments (c.settings, "c1500", 1, kBanks, kStrips, [] (int, int layer, int strip) { return defaultBank (layer)[(size_t) strip]; }),
+      routingView (c, theme), fxRack (c, theme), monitoring (c, theme), library (c, theme), setupView (c, theme)
 {
-    for (int b = 0; b < kBanks; ++b)
-        banks.push_back (defaultBank (b));
+    using Shape = dl::Key::Shape;
+    assignments.onChanged = [this] { bindStrips(); };
+    assignSoftKey = [this] (int i, juce::Component* t) { dl::showSoftKeyMenu (ctx, assignments, i, t); };
+    assignRotary = [this] (int i, juce::Component* t) { dl::showCustomRotaryMenu (assignments, i, t); };
 
     universalKey.onClick = [&context = ctx]
     {
@@ -898,31 +1336,63 @@ DLiveSurface::DLiveSurface (UiContext& c)
     c3500Key.onClick = [&context = ctx] { dl::switchSurface (context, "c3500"); };
     addAndMakeVisible (c3500Key);
 
-    // The touchscreen.
+    // The touchscreen: the processing page hosts the other pages in its main area.
+    processing = std::make_unique<dl::ProcessingScreen> (c, *this);
+    scenes = std::make_unique<dl::SceneScreen> (c, *this);
+    mixRack = std::make_unique<dl::MixRackScreen> (c, *this);
+    metersScreen = std::make_unique<dl::MetersScreen> (c, *this);
+    ioScreen = std::make_unique<dl::IoScreen> (c, *this);
+    surfaceScreen = std::make_unique<dl::SurfaceScreen> (c, *this);
+    status = std::make_unique<dl::StatusScreen> (c);
+    help = std::make_unique<dl::HelpPanel>();
     addAndMakeVisible (screenHost);
-    for (auto* view : std::initializer_list<juce::Component*> { &mixer, &routingView, &fxRack, &monitoring, &scenes, &library, &setup, &inspector })
+    screenHost.addAndMakeVisible (*processing);
+    processing->setBounds (0, 0, dl::kTouchW, dl::kTouchH);
+    processing->setOneScreen (true);
+    processing->setView (1); // the four bands, as the C1500 shots have them
+    for (auto* view : std::initializer_list<juce::Component*> { &routingView, &fxRack, &monitoring, &library, &setupView })
     {
         screenHost.addChildComponent (view);
-        view->setBounds (0, 0, kScreenW, kScreenH);
+        view->setBounds (0, 0, dl::kTouchW, dl::kTouchH);
     }
-    mixer.setVisible (true);
-    inspector.onClose = [this] { showPage (Page::Home); };
+    screenHost.addChildComponent (*help);
+    help->setBounds (140, 70, 720, 400);
+    const auto touchTurn = [this] (const KnobBinding& b) { dataRotary->setBinding (b); };
+    processing->onTouchTurn = touchTurn;
+    scenes->onTouchTurn = touchTurn;
+    mixRack->onTouchTurn = touchTurn;
+    metersScreen->onTouchTurn = touchTurn;
+    ioScreen->onTouchTurn = touchTurn;
+    surfaceScreen->onTouchTurn = touchTurn;
+    scenes->onSubChanged = [this]
+    {
+        if (page == Page::Scenes)
+            processing->hostPage (scenes.get(), scenes->hostSource());
+    };
+    processing->onLibrary = [this] { selectPage ("Lib", Page::Library); };
+    processing->onFxUnit = [this] { selectPage ("Page FX", Page::Fx); };
+    processing->onWantsProcessing = [this] { selectPage ("Page Processing", Page::Processing); };
+    mixRack->onOpenSetup = [this] { selectPage ("Setup", Page::Setup); };
 
     // Left of the screen.
-    const auto pageKey = [this] (const juce::String& name, Page p, juce::Rectangle<int> r, juce::Colour idle, juce::Colour lit, dl::Key::Shape shape = dl::Key::Shape::Block)
+    const auto pageKey = [this] (const juce::String& name, Page p, juce::Rectangle<int> r, juce::Colour idle, juce::Colour lit, Shape shape = Shape::Block) -> dl::Key&
     {
         auto& k = key (name, idle, lit, r, shape);
         k.isOn = [this, name] { return litPageKey == name; };
         k.onClick = [this, p, name]
         {
-            litPageKey = name;
-            showPage (p);
+            if (litPageKey == name && p != Page::Status)
+                selectPage ({}, Page::Status); // a lit key off: the status page
+            else
+                selectPage (name, p);
         };
+        return k;
     };
-    pageKey ("Home", Page::Home, { 28, 74, 66, 32 }, kPaflIdle, kPaleLit, dl::Key::Shape::Oval);
+    key ("Home", kPaflIdle, kPaleLit, { 28, 74, 66, 32 }, Shape::Oval, false).onClick = [this] { pressHome(); };
     silks.push_back ({ { 18.0f, 124.0f, 86.0f, 16.0f }, "Insert", 13.0f, juce::Justification::centred, false });
+    silks.push_back ({ { 18.0f, 154.0f, 86.0f, 11.0f }, "Assigned", 9.0f, juce::Justification::centred, true });
     {
-        auto& in = key ("In", kBlueIdle, kBlueLit, { 32, 144, 58, 30 }, dl::Key::Shape::Oval);
+        auto& in = key ("In", kBlueIdle, kBlueLit, { 32, 168, 58, 28 }, Shape::Oval);
         in.isOn = [this]
         {
             auto* s = ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr;
@@ -939,32 +1409,25 @@ DLiveSurface::DLiveSurface (UiContext& c)
     pageKey ("Listen", Page::Listen, { 28, 306, 66, 32 }, kPale, kPaleLit);
 
     // Right of the screen: what it shows.
-    const std::pair<const char*, Page> pages[] = { { "Meters", Page::Home },   { "FX", Page::Fx },       { "I/O", Page::Routing },     { "Scenes", Page::Scenes },
-                                                   { "Ganging", Page::Setup }, { "MixRack", Page::Setup }, { "Surface", Page::Setup }, { "Util/Shows", Page::Library },
-                                                   { "Routing", Page::Routing }, { "Processing", Page::Processing } };
+    const std::pair<const char*, Page> pages[] = { { "Meters", Page::Meters },   { "FX", Page::Fx },        { "I/O", Page::Io },           { "Scenes", Page::Scenes },   { "Ganging", Page::Ganging },
+                                                   { "MixRack", Page::MixRack }, { "Surface", Page::Surface }, { "Util/Shows", Page::Util }, { "Routing", Page::Routing }, { "Processing", Page::Processing } };
     int row = 0;
     for (auto [name, p] : pages)
     {
         const int y = 56 + row * 38;
-        silks.push_back ({ { 1020.0f, (float) y - 2.0f, 80.0f, 13.0f }, name, 10.0f, juce::Justification::centred, false });
-        const juce::String keyName = juce::String ("Page ") + name;
-        auto& k = key (keyName, row == 8 ? juce::Colour (0xff1ea898) : row == 9 ? juce::Colour (0xff17b06a) : kPale, kPaleLit, { 1028, y + 11, 64, 25 });
+        silks.push_back ({ { 750.0f, (float) y - 2.0f, 80.0f, 13.0f }, name, 10.0f, juce::Justification::centred, false });
+        auto& k = pageKey (juce::String ("Page ") + name, p, { 758, y + 11, 64, 25 }, row == 8 ? juce::Colour (0xff1ea898) : row == 9 ? juce::Colour (0xff17b06a) : kPale, kPaleLit);
         k.setButtonText ({});
-        k.isOn = [this, keyName] { return litPageKey == keyName; };
-        k.onClick = [this, target = p, keyName]
-        {
-            litPageKey = keyName;
-            showPage (target);
-        };
         ++row;
     }
 
     // PAFL's meters, Clear; Assign and Talk.
-    silks.push_back ({ { 1110.0f, 60.0f, 76.0f, 12.0f }, "L    R    M", 10.5f, juce::Justification::centred, false });
-    silks.push_back ({ { 1110.0f, 300.0f, 76.0f, 12.0f }, "PAFL", 10.5f, juce::Justification::centred, false });
-    key ("Clear", kPaflIdle, kPaflLit, { 1120, 314, 56, 28 }, dl::Key::Shape::Oval).onClick = [this] { clearSolos(); };
-    if (auto* k = findKey ("Clear"))
-        k->isOn = [this]
+    silks.push_back ({ { 840.0f, 60.0f, 76.0f, 12.0f }, "L    R    M", 10.5f, juce::Justification::centred, false });
+    silks.push_back ({ { 840.0f, 300.0f, 76.0f, 12.0f }, "PAFL", 10.5f, juce::Justification::centred, false });
+    {
+        auto& clear = key ("Clear", kPaflIdle, kPaflLit, { 850, 314, 56, 28 }, Shape::Oval);
+        clear.onClick = [this] { clearPafl (ctx); };
+        clear.isOn = [this]
         {
             for (const auto* list : { &ctx.engine.getChannels(), &ctx.engine.getAux(), &ctx.engine.getBuses(), &ctx.engine.getMains(), &ctx.engine.getMatrices() })
                 for (const auto& s : *list)
@@ -972,21 +1435,22 @@ DLiveSurface::DLiveSurface (UiContext& c)
                         return true;
             return false;
         };
-    silks.push_back ({ { 1198.0f, 150.0f, 76.0f, 12.0f }, "+Mix", 10.0f, juce::Justification::centred, true });
-    silks.push_back ({ { 1192.0f, 188.0f, 88.0f, 12.0f }, "Talk Active", 10.0f, juce::Justification::centred, false });
+    }
+    silks.push_back ({ { 928.0f, 150.0f, 76.0f, 12.0f }, "+Mix", 10.0f, juce::Justification::centred, true });
+    silks.push_back ({ { 922.0f, 188.0f, 88.0f, 12.0f }, "Talk Active", 10.0f, juce::Justification::centred, false });
     {
-        auto& assign = key ("Assign Talk", kBlueIdle, kBlueLit, { 1208, 116, 56, 30 }, dl::Key::Shape::Oval);
+        auto& assign = key ("Assign Talk", kBlueIdle, kBlueLit, { 938, 116, 56, 30 }, Shape::Oval);
         assign.setButtonText ("Assign");
-        auto& talk = key ("Talk", kPale, kPaleLit, { 1204, 208, 64, 36 });
+        auto& talk = key ("Talk", kPale, kPaleLit, { 934, 208, 64, 36 });
         talk.isOn = [this] { return ctx.engine.isTalkOn (0); };
         talk.onClick = [this] { ctx.engine.talk.paths[0].on = ! ctx.engine.talk.paths[0].on.load(); };
     }
 
     // Under the screen on the real thing, beside it here: the PEQ.
-    silks.push_back ({ { 1296.0f, 60.0f, 60.0f, 18.0f }, "PEQ", 16.0f, juce::Justification::centred, false });
-    silks.push_back ({ { 1296.0f, 80.0f, 60.0f, 12.0f }, "Pk!", 9.0f, juce::Justification::centred, true });
+    silks.push_back ({ { 1062.0f, 60.0f, 60.0f, 18.0f }, "PEQ", 16.0f, juce::Justification::centred, false });
+    silks.push_back ({ { 1062.0f, 80.0f, 60.0f, 12.0f }, "Pk!", 9.0f, juce::Justification::centred, true });
     {
-        auto& in = key ("PEQ In", kSelIdle, kPaleLit, { 1302, 118, 48, 30 }, dl::Key::Shape::Oval);
+        auto& in = key ("PEQ In", kSelIdle, kPaleLit, { 1068, 118, 48, 30 }, Shape::Oval);
         in.setButtonText ("In");
         in.isOn = [this]
         {
@@ -998,7 +1462,7 @@ DLiveSurface::DLiveSurface (UiContext& c)
             if (auto* s = ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr)
                 s->params.eq().on = ! s->params.eq().on.load();
         };
-        auto& width = key ("Width", kAmberKey, kAmberLit, { 1356, 112, 44, 44 }, dl::Key::Shape::Oval, false);
+        auto& width = key ("Width", kAmberKey, kAmberLit, { 1122, 112, 44, 44 }, Shape::Oval, false);
         width.isOn = [this] { return widthMode; };
         width.onClick = [this]
         {
@@ -1008,13 +1472,13 @@ DLiveSurface::DLiveSurface (UiContext& c)
     }
     for (int band = 0; band < 4; ++band)
     {
-        const int x = 1408 + band * 74;
-        silks.push_back ({ { (float) x, 62.0f, 34.0f, 12.0f }, "Gain", 9.5f, juce::Justification::centred, false });
-        silks.push_back ({ { (float) x + 32.0f, 62.0f, 36.0f, 12.0f }, "Freq", 9.5f, juce::Justification::centred, false });
+        const int x = 1184 + band * 100;
+        silks.push_back ({ { (float) x + 4.0f, 62.0f, 34.0f, 12.0f }, "Gain", 9.5f, juce::Justification::centred, false });
+        silks.push_back ({ { (float) x + 46.0f, 62.0f, 36.0f, 12.0f }, "Freq", 9.5f, juce::Justification::centred, false });
         auto gain = std::make_unique<dl::Rotary> (juce::Colour (0xffff3030));
         auto freq = std::make_unique<dl::Rotary> (juce::Colour (0xff30e060));
-        gain->setBounds (x, 130, 44, 44);
-        freq->setBounds (x + 26, 78, 44, 44);
+        gain->setBounds (x + 2, 130, 44, 44);
+        freq->setBounds (x + 44, 78, 44, 44);
         addAndMakeVisible (*gain);
         addAndMakeVisible (*freq);
         peq[(size_t) band * 2] = std::move (gain);
@@ -1022,19 +1486,38 @@ DLiveSurface::DLiveSurface (UiContext& c)
     }
 
     // View, Help and the data rotary; Phones.
-    key ("View", kPale, kPaleLit, { 1320, 212, 66, 32 });
-    key ("Help", kPale, kPaleLit, { 1420, 212, 66, 32 });
-    dataRotary = std::make_unique<dl::Rotary> (juce::Colour (0xff202226));
-    dataRotary->setBounds (1362, 260, 84, 84);
+    {
+        auto& view = key ("View", kPale, kPaleLit, { 1250, 212, 66, 32 });
+        view.isOn = [this] { return processing->getView() != 1; };
+        view.onClick = [this] { processing->toggleView(); };
+        auto& h = key ("Help", kPale, kPaleLit, { 1350, 212, 66, 32 });
+        h.isOn = [this] { return help->isVisible(); };
+        h.onClick = [this]
+        {
+            if (help->isVisible())
+                help->setVisible (false);
+            else
+                help->show (helpKey());
+        };
+    }
+    dataRotary = std::make_unique<dl::Rotary> (juce::Colour (0xfff5b83a));
+    dataRotary->alwaysLit = true;
+    dataRotary->setBounds (1292, 260, 84, 84);
     addAndMakeVisible (*dataRotary);
     phones = std::make_unique<dl::Rotary> (juce::Colour (0xffe0e0e0));
     phones->setBinding (bindFader ("Phones", ctx.engine.phones.levelDb));
-    phones->setBounds (1716, 262, 56, 56);
+    phones->setBounds (1666, 262, 56, 56);
     addAndMakeVisible (*phones);
-    silks.push_back ({ { 1700.0f, 326.0f, 88.0f, 14.0f }, "Phones", 11.0f, juce::Justification::centred, false });
+    silks.push_back ({ { 1650.0f, 326.0f, 88.0f, 14.0f }, "Phones", 11.0f, juce::Justification::centred, false });
 
-    // SoftKeys 1-10, 11-16 and 17-19 (not assignable yet).
-    const auto softKey = [this] (int n, juce::Rectangle<int> r) { key ("Soft " + juce::String (n), kSoft, kSoftLit, r).setButtonText (juce::String (n)); };
+    // SoftKeys 1-10, 11-16 and 17-19 (Setup held and a key assigns it; or the Surface page).
+    const auto softKey = [this] (int n, juce::Rectangle<int> r)
+    {
+        auto& k = key ("Soft " + juce::String (n), kSoft, kSoftLit, r);
+        k.setButtonText (juce::String (n));
+        k.isOn = [this, n] { return isSoftKeyOn (ctx, n - 1); };
+        k.onClick = [this, n] { softKeyPressed (n - 1); };
+    };
     for (int i = 0; i < 10; ++i)
         softKey (i + 1, { 1812, 56 + i * 38, 76, 32 });
     for (int i = 0; i < 6; ++i)
@@ -1051,13 +1534,13 @@ DLiveSurface::DLiveSurface (UiContext& c)
     }
 
     // Left of the strips: the LCDs' and the rotaries' functions; Copy to GEQ.
-    silks.push_back ({ { 10.0f, 616.0f, 84.0f, 26.0f }, "Display\nFunction", 10.0f, juce::Justification::centred, false });
+    silks.push_back ({ { 10.0f, 666.0f, 84.0f, 26.0f }, "Display\nFunction", 10.0f, juce::Justification::centred, false });
     {
         const std::pair<const char*, DisplayFunction> displayKeys[] = { { "Name", DisplayFunction::Name }, { "dB", DisplayFunction::Db }, { "I/O", DisplayFunction::Io }, { "Chan", DisplayFunction::Chan } };
         int r = 0;
         for (auto [name, f] : displayKeys)
         {
-            auto& k = key (name, kPale, kPaleLit, { 20, 456 + r * 39, 66, 34 });
+            auto& k = key (name, kPale, kPaleLit, { 20, 506 + r * 39, 66, 34 });
             k.isOn = [this, target = f] { return displayFunction == target; };
             k.onClick = [this, target = f] { setDisplayFunction (target); };
             ++r;
@@ -1069,16 +1552,25 @@ DLiveSurface::DLiveSurface (UiContext& c)
         for (auto [name, f] : rotaryKeys)
         {
             const juce::Colour lit = f == RotaryFunction::Sends ? kBlueLit : kMuteLit;
-            auto& k = key (juce::String ("Rotary ") + name, f == RotaryFunction::Sends ? kSoft : kPale, lit, { 20, 650 + r * 42, 66, 36 });
+            auto& k = key (juce::String ("Rotary ") + name, f == RotaryFunction::Sends ? kSoft : kPale, lit, { 20, 700 + r * 42, 66, 36 });
             k.setButtonText (name);
             k.isOn = [this, target = f] { return rotaryFunction == target; };
-            k.onClick = [this, target = f] { setRotaryFunction (target); };
+            k.onClick = [this, target = f, custom = (r >= 2 && r <= 5) ? r - 2 : -1, keyPtr = &k]
+            {
+                if (custom >= 0 && dl::wantsAssign (litPageKey == "Setup"))
+                {
+                    if (assignRotary)
+                        assignRotary (custom, keyPtr);
+                }
+                else
+                    setRotaryFunction (target);
+            };
             ++r;
         }
     }
     const auto latchKey = [this] (const juce::String& name, Latch l, juce::Colour idle, juce::Colour lit, juce::Rectangle<int> r)
     {
-        auto& k = key (name, idle, lit, r, dl::Key::Shape::Oval);
+        auto& k = key (name, idle, lit, r, Shape::Oval);
         k.isOn = [this, l] { return getLatch() == l; };
         k.onClick = [this, l] { toggleLatch (l); };
     };
@@ -1088,7 +1580,7 @@ DLiveSurface::DLiveSurface (UiContext& c)
     latchKey ("Safes", Latch::Safes, kBlueIdle, kBlueLit, { 100, 970, 62, 30 });
     latchKey ("Freeze", Latch::Freeze, kBlueIdle, kBlueLit, { 100, 1006, 62, 30 });
     {
-        auto& geq = key ("GEQ", kTeal, kPaleLit, { 100, 1042, 62, 30 }, dl::Key::Shape::Oval);
+        auto& geq = key ("GEQ", kTeal, kPaleLit, { 100, 1042, 62, 30 }, Shape::Oval);
         geq.isOn = [this] { return getGeq() != nullptr; };
         geq.onClick = [this]
         {
@@ -1099,22 +1591,22 @@ DLiveSurface::DLiveSurface (UiContext& c)
 
     // Right of the strips: Pre and Assign, the banks.
     {
-        auto& pre = key ("Pre", kSelIdle, kSelLit, { 1648, 460, 60, 32 }, dl::Key::Shape::Oval);
+        auto& pre = key ("Pre", kSelIdle, kSelLit, { 1648, 510, 60, 32 }, Shape::Oval);
         pre.isOn = [this] { return isPreMode(); };
         pre.onClick = [this] { toggleLatch (Latch::Pre); };
-        silks.push_back ({ { 1642.0f, 493.0f, 72.0f, 11.0f }, "+Sel", 9.5f, juce::Justification::centred, true });
-        auto& assign = key ("Assign", kBlueIdle, kBlueLit, { 1648, 510, 60, 32 }, dl::Key::Shape::Oval);
+        silks.push_back ({ { 1642.0f, 543.0f, 72.0f, 11.0f }, "+Sel", 9.5f, juce::Justification::centred, true });
+        auto& assign = key ("Assign", kBlueIdle, kBlueLit, { 1648, 560, 60, 32 }, Shape::Oval);
         assign.isOn = [this] { return isAssignMode(); };
         assign.onClick = [this] { toggleLatch (Latch::Assign); };
-        silks.push_back ({ { 1642.0f, 543.0f, 72.0f, 11.0f }, "+Mix", 9.5f, juce::Justification::centred, true });
+        silks.push_back ({ { 1642.0f, 593.0f, 72.0f, 11.0f }, "+Mix", 9.5f, juce::Justification::centred, true });
     }
-    silks.push_back ({ { 1648.0f, 572.0f, 110.0f, 16.0f }, "Bank 1", 12.0f, juce::Justification::centredLeft, false });
+    silks.push_back ({ { 1648.0f, 622.0f, 110.0f, 16.0f }, "Bank 1", 12.0f, juce::Justification::centredLeft, false });
     for (int b = 0; b < kBanks; ++b)
     {
-        auto& k = key (juce::String::charToString ((juce::juce_wchar) ('A' + b)), kPale, kPaleLit, { 1648, 592 + b * 52, 66, 40 });
+        auto& k = key (juce::String::charToString ((juce::juce_wchar) ('A' + b)), kPale, kPaleLit, { 1648, 642 + b * 52, 66, 40 });
         k.isOn = [this, b] { return bank == b; };
         k.onClick = [this, b] { setBank (b); };
-        silks.push_back ({ { 1718.0f, 606.0f + (float) b * 52.0f, 32.0f, 12.0f }, "Pk!", 9.0f, juce::Justification::centredLeft, true });
+        silks.push_back ({ { 1718.0f, 656.0f + (float) b * 52.0f, 32.0f, 12.0f }, "Pk!", 9.0f, juce::Justification::centredLeft, true });
     }
 
     bindStrips();
@@ -1124,6 +1616,39 @@ DLiveSurface::DLiveSurface (UiContext& c)
 
 DLiveSurface::~DLiveSurface() = default;
 
+void DLiveSurface::selectPage (const juce::String& keyName, Page p)
+{
+    litPageKey = keyName;
+    showPage (p);
+}
+
+void DLiveSurface::softKeyPressed (int index)
+{
+    if (dl::wantsAssign (litPageKey == "Setup"))
+    {
+        if (assignSoftKey)
+            assignSoftKey (index, findKey ("Soft " + juce::String (index + 1)));
+    }
+    else
+        pressSoftKey (ctx, index);
+}
+
+void DLiveSurface::sceneGo() { scenes->goNext(); }
+void DLiveSurface::sceneStep (int delta) { scenes->stepNext (delta); }
+
+void DLiveSurface::pressHome()
+{
+    bank = 0;
+    mixBus = -1;
+    rotaryFunction = RotaryFunction::Gain;
+    displayFunction = DisplayFunction::Name;
+    setLatch (Latch::None);
+    endGeq();
+    bindStrips();
+    processing->setView (1);
+    selectPage ("Page Processing", Page::Processing);
+}
+
 void DLiveSurface::bindStrips()
 {
     for (int i = 0; i < kStrips; ++i)
@@ -1131,10 +1656,11 @@ void DLiveSurface::bindStrips()
         // A strip frozen in layers stays where it is.
         auto& unit = *strips[(size_t) i];
         if (unit.getSlot().kind == dl::Slot::None || ! isFrozen (unit.getSlot()))
-            unit.setSlot (banks[(size_t) bank][(size_t) i]);
+            unit.setSlot (assignments.getShownSlot (0, bank, i, (int) ctx.engine.getMains().size()));
         else
             unit.rebind();
     }
+    processing->mixChanged();
 }
 
 void DLiveSurface::bindPeq()
@@ -1149,13 +1675,6 @@ void DLiveSurface::bindPeq()
         // WIDTH lit: the Freq rotaries set the bands' widths.
         peq[(size_t) b * 2 + 1]->setBinding (s != nullptr ? dl::bindEq (*s, pre + (widthMode ? "q" : "f"), widthMode ? "Width" : "Freq") : KnobBinding {});
     }
-}
-
-void DLiveSurface::clearSolos()
-{
-    for (const auto* list : { &ctx.engine.getChannels(), &ctx.engine.getAux(), &ctx.engine.getBuses(), &ctx.engine.getMains(), &ctx.engine.getMatrices() })
-        for (const auto& s : *list)
-            s->params.solo = false;
 }
 
 void DLiveSurface::setBank (int b)
@@ -1179,31 +1698,80 @@ void DLiveSurface::setMixOnFaders (int bus)
 void DLiveSurface::showPage (Page p)
 {
     page = p;
-    mixer.setVisible (p == Page::Home);
-    fxRack.setVisible (p == Page::Fx);
-    routingView.setVisible (p == Page::Routing);
-    scenes.setVisible (p == Page::Scenes);
-    library.setVisible (p == Page::Library);
-    setup.setVisible (p == Page::Setup);
-    monitoring.setVisible (p == Page::Listen);
-    inspector.setVisible (p == Page::Processing);
+    juce::Component* hosted = nullptr;
+    auto source = dl::wideSource();
     switch (p)
     {
-        case Page::Home:       mixer.refresh(); break;
-        case Page::Fx:         fxRack.refresh(); break;
-        case Page::Routing:    routingView.refresh(); break;
-        case Page::Scenes:     scenes.refresh(); break;
-        case Page::Library:    library.refresh(); break;
-        case Page::Setup:      setup.refresh(); break;
-        case Page::Listen:     monitoring.refresh(); break;
-        case Page::Processing: break;
+        case Page::Status:   hosted = status.get(); break;
+        case Page::Meters:   hosted = metersScreen.get(); metersScreen->refresh(); break;
+        case Page::Io:       hosted = ioScreen.get(); ioScreen->refresh(); break;
+        case Page::Scenes:   hosted = scenes.get(); source = scenes->hostSource(); scenes->refresh(); break;
+        case Page::MixRack:  hosted = mixRack.get(); mixRack->refresh(); break;
+        case Page::Surface:  hosted = surfaceScreen.get(); surfaceScreen->refresh(); break;
+        case Page::Processing:
+        case Page::Fx:
+        case Page::Ganging:
+        case Page::Util:
+        case Page::Routing:
+        case Page::Library:
+        case Page::Setup:
+        case Page::Listen:   break;
     }
+    processing->hostPage (hosted, source);
+    help->setVisible (false);
+
+    // What has no screen of its own yet fills the screen.
+    const bool universal = p == Page::Fx || p == Page::Routing || p == Page::Util || p == Page::Library || p == Page::Ganging || p == Page::Setup || p == Page::Listen;
+    processing->setVisible (! universal);
+    fxRack.setVisible (p == Page::Fx);
+    routingView.setVisible (p == Page::Routing);
+    library.setVisible (p == Page::Util || p == Page::Library);
+    setupView.setVisible (p == Page::Ganging || p == Page::Setup);
+    monitoring.setVisible (p == Page::Listen);
+    switch (p)
+    {
+        case Page::Fx:      fxRack.refresh(); break;
+        case Page::Routing: routingView.refresh(); break;
+        case Page::Util:
+        case Page::Library: library.refresh(); break;
+        case Page::Ganging:
+        case Page::Setup:   setupView.refresh(); break;
+        case Page::Listen:  monitoring.refresh(); break;
+        default: break;
+    }
+}
+
+juce::String DLiveSurface::helpKey() const
+{
+    switch (page)
+    {
+        case Page::Status:     return "Status";
+        case Page::Processing: return processing->helpKey();
+        case Page::Meters:     return "Meters";
+        case Page::Fx:         return "Fx";
+        case Page::Io:         return "Io";
+        case Page::Scenes:
+        {
+            static const char* const subs[] = { "Scenes", "Scenes/Update", "Scenes/Cue", "Scenes/Import", "Scenes/Safes" };
+            return subs[juce::jlimit (0, 4, scenes->getSub())];
+        }
+        case Page::Ganging:    return "Ganging";
+        case Page::MixRack:    return "MixRack";
+        case Page::Surface:    return "Surface";
+        case Page::Util:       return "Util";
+        case Page::Routing:    return "Routing";
+        case Page::Library:    return "Library";
+        case Page::Setup:      return "Setup";
+        case Page::Listen:     return "Listen";
+    }
+    return {};
 }
 
 void DLiveSurface::refreshAll()
 {
-    mixer.rebuild();
-    inspector.setStrip (ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr);
+    metersScreen->showTab (metersScreen->getTab());
+    selectionChanged();
+    processing->refreshAll();
     bindStrips();
     bindPeq();
     repaint();
@@ -1211,11 +1779,22 @@ void DLiveSurface::refreshAll()
 
 void DLiveSurface::selectionChanged()
 {
-    mixer.selectionChanged();
     auto* s = ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr;
-    if (s != inspector.getStrip())
-        inspector.setStrip (s);
+    if (s != processing->getStrip())
+    {
+        processing->setStrip (s);
+        scenes->setStrip (s);
+        mixRack->setStrip (s);
+        metersScreen->setStrip (s);
+        ioScreen->setStrip (s);
+        surfaceScreen->setStrip (s);
+    }
     bindPeq();
+}
+
+void DLiveSurface::showChanged()
+{
+    scenes->refresh();
 }
 
 void DLiveSurface::timerCallback()
@@ -1226,12 +1805,17 @@ void DLiveSurface::timerCallback()
         k->refresh();
     for (auto& r : peq)
         r->refresh();
+    dataRotary->refresh();
     phones->refresh();
     universalKey.refresh();
     c3500Key.refresh();
     if ((ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr) != boundStrip)
         selectionChanged();
-    repaint (juce::Rectangle<float> (1104.0f, 72.0f, 90.0f, 230.0f).transformedBy (design).getSmallestIntegerContainer());
+    // PAFL's meters, the Assigned light, the banks' peak lights.
+    repaint (juce::Rectangle<float> (834.0f, 72.0f, 90.0f, 230.0f).transformedBy (design).getSmallestIntegerContainer());
+    repaint (juce::Rectangle<float> (50.0f, 140.0f, 24.0f, 14.0f).transformedBy (design).getSmallestIntegerContainer());
+    repaint (juce::Rectangle<float> (960.0f, 168.0f, 16.0f, 16.0f).transformedBy (design).getSmallestIntegerContainer());
+    repaint (juce::Rectangle<float> (1744.0f, 650.0f, 16.0f, 320.0f).transformedBy (design).getSmallestIntegerContainer());
 }
 
 void DLiveSurface::paint (juce::Graphics& g)
@@ -1248,11 +1832,11 @@ void DLiveSurface::paint (juce::Graphics& g)
     g.drawText ("dLive C1500", top.reduced (sizes::kGapLarge, 0), juce::Justification::centredLeft);
     g.setColour (theme.textDim);
     g.setFont (type::font (type::kCaption));
-    g.drawText ("Not affiliated with or endorsed by Allen & Heath; dLive is their trademark, used only to say what is emulated.",
+    g.drawText ("Not affiliated with or endorsed by any console maker; product names are their owners' trademarks.",
                 top.reduced (sizes::kGapLarge, 0).withTrimmedLeft (170).withTrimmedRight (390), juce::Justification::centredLeft);
 
     // The upper panel, nearly black; the surface under it.
-    const juce::Rectangle<float> upper (0.0f, (float) kTopBar, (float) kDesignWidth, 398.0f);
+    const juce::Rectangle<float> upper (0.0f, (float) kTopBar, (float) kDesignWidth, (float) (kStripsY - kTopBar - 2));
     g.setGradientFill (juce::ColourGradient (juce::Colour (0xff191a1e), 0.0f, upper.getY(), juce::Colour (0xff24262b), 0.0f, upper.getBottom(), false));
     g.fillRect (upper);
     hw::panel (g, juce::Rectangle<float> (0.0f, upper.getBottom(), (float) kDesignWidth, (float) kDesignHeight - upper.getBottom()), l);
@@ -1261,7 +1845,7 @@ void DLiveSurface::paint (juce::Graphics& g)
 
     // The screen's silver bezel.
     {
-        const juce::Rectangle<float> bezel ((float) kScreenX - 5.0f, (float) kScreenY - 5.0f, (float) kScreenW * kScreenScale + 10.0f, (float) kScreenH * kScreenScale + 10.0f);
+        const juce::Rectangle<float> bezel ((float) kScreenX - 5.0f, (float) kScreenY - 5.0f, (float) dl::kTouchW * kScreenScale + 10.0f, (float) dl::kTouchH * kScreenScale + 10.0f);
         g.setColour (juce::Colour (0xffb9bdc3));
         g.fillRoundedRectangle (bezel, 4.0f);
         g.setColour (juce::Colours::black);
@@ -1274,18 +1858,18 @@ void DLiveSurface::paint (juce::Graphics& g)
         g.setColour (juce::Colour (0xff9fa5ad).withAlpha (0.55f));
         g.drawRoundedRectangle (r, 8.0f, 1.2f);
     };
-    outline ({ 18.0f, 122.0f, 86.0f, 64.0f });
+    outline ({ 18.0f, 122.0f, 86.0f, 78.0f });
     outline ({ 18.0f, 204.0f, 86.0f, 144.0f });
-    outline ({ 1020.0f, 52.0f, 80.0f, 386.0f });
-    outline ({ 1106.0f, 54.0f, 84.0f, 296.0f });
-    outline ({ 1196.0f, 104.0f, 84.0f, 152.0f });
-    outline ({ 1294.0f, 54.0f, 64.0f, 110.0f });
+    outline ({ 750.0f, 52.0f, 80.0f, 386.0f });
+    outline ({ 836.0f, 54.0f, 84.0f, 296.0f });
+    outline ({ 926.0f, 104.0f, 84.0f, 152.0f });
+    outline ({ 1060.0f, 54.0f, 64.0f, 110.0f });
     for (int band = 0; band < 4; ++band)
-        outline ({ 1404.0f + (float) band * 74.0f, 58.0f, 72.0f, 122.0f });
+        outline ({ 1180.0f + (float) band * 100.0f, 58.0f, 96.0f, 122.0f });
 
     // PAFL's three meters.
     {
-        const float x[] = { 1115.0f, 1140.0f, 1165.0f };
+        const float x[] = { 845.0f, 870.0f, 895.0f };
         const float marks[] = { 12.0f, 6.0f, 3.0f, 0.0f, -3.0f, -6.0f, -9.0f, -12.0f, -16.0f, -20.0f, -40.0f };
         for (int m = 0; m < 3; ++m)
         {
@@ -1306,12 +1890,22 @@ void DLiveSurface::paint (juce::Graphics& g)
         }
     }
 
+    // The Assigned light.
+    {
+        auto* s = ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr;
+        const bool assigned = s != nullptr && (s->params.preInsert().fx.load() >= 0 || (s->getKind() != StripKind::Aux && s->params.postInsert().fx.load() >= 0));
+        g.setColour (assigned ? juce::Colour (0xffff4040) : juce::Colour (0xff3a2020));
+        g.fillEllipse (57.0f, 143.0f, 8.0f, 8.0f);
+    }
+    g.setColour (ctx.engine.isTalkOn (0) ? juce::Colour (0xffff4040) : juce::Colour (0xff3a2020));
+    g.fillEllipse (964.0f, 172.0f, 8.0f, 8.0f); // Talk Active
+
     // The two USB sockets, drawn.
     {
         const char* names[] = { "Record/Playback", "Data" };
         for (int i = 0; i < 2; ++i)
         {
-            const juce::Rectangle<float> r (1690.0f, 60.0f + (float) i * 88.0f, 108.0f, 82.0f);
+            const juce::Rectangle<float> r (1640.0f, 60.0f + (float) i * 88.0f, 108.0f, 82.0f);
             g.setColour (juce::Colour (0xff3c3f46));
             g.fillRoundedRectangle (r, 6.0f);
             hw::silk (g, r.withHeight (14.0f).translated (0.0f, 3.0f), names[i], l, 8.5f, juce::Justification::centred, false);
@@ -1320,6 +1914,19 @@ void DLiveSurface::paint (juce::Graphics& g)
             g.setColour (juce::Colour (0xff4c74c0));
             g.fillRect (juce::Rectangle<float> (40.0f, 8.0f).withCentre (r.getCentre().translated (0.0f, 8.0f)));
         }
+    }
+
+    // The banks' peak lights.
+    for (int b = 0; b < kBanks; ++b)
+    {
+        bool peak = false;
+        for (int s = 0; s < kStrips && ! peak; ++s)
+        {
+            auto* st = dl::stripOf (ctx.engine, assignments.getShownSlot (0, b, s, (int) ctx.engine.getMains().size()));
+            peak = st != nullptr && juce::Decibels::gainToDecibels (ctx.meters.get (st, st->isInput() ? MeterPoint::Trim : MeterPoint::Output, 0), -100.0f) > -5.0f;
+        }
+        g.setColour (peak ? juce::Colour (0xffff3030) : juce::Colour (0xff3a2020));
+        g.fillEllipse (1749.0f, 658.0f + (float) b * 52.0f, 7.0f, 7.0f);
     }
 
     // The strips' groups: the outlines above the faders, the LCD windows.
@@ -1355,7 +1962,7 @@ void DLiveSurface::resized()
     auto bar = juce::Rectangle<int> (kDesignWidth, kTopBar);
     universalKey.setBounds (bar.removeFromRight (190).reduced (sizes::kGap, 7));
     c3500Key.setBounds (bar.removeFromRight (190).reduced (sizes::kGap, 7));
-    screenHost.setBounds (0, 0, kScreenW, kScreenH);
+    screenHost.setBounds (0, 0, dl::kTouchW, dl::kTouchH);
     screenHost.setTransform (juce::AffineTransform::scale (kScreenScale).translated ((float) kScreenX, (float) kScreenY).followedBy (design));
 }
 

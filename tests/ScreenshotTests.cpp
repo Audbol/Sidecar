@@ -12,9 +12,14 @@
 #include "engine/PluginHost.h"
 #include "engine/Show.h"
 #include "ui/UniversalSkin.h"
+#include "engine/DirectOut.h"
+#include "ui/Pro2Surface.h"
 #include "ui/Y01VSurface.h"
 #include "ui/DLiveSurface.h"
 #include "ui/DLiveC3500Surface.h"
+#include "engine/Dm2000Midi.h"
+#include "ui/Dm2000Surface.h"
+#include "ui/Xenyx1204Surface.h"
 #include "ui/Y02RSurface.h"
 #include "engine/ProMixMidi.h"
 #include "engine/Y02RMidi.h"
@@ -187,8 +192,72 @@ public:
         sq5Surface();
         y01vSurface();
         dliveSurface();
+        dliveMainModes();
+        pro2Surface();
         dliveC3500Surface();
+        dm2000OnUniversal();
+        dm2000Surface();
+        xenyx1204Surface();
         customControlScribbles();
+    }
+
+    /** The 1204USB's surface at 1920x1080: some levels, EQ, names on the console tape and a scene. */
+    void xenyx1204Surface()
+    {
+        beginTest ("The 1204USB surface");
+        MixerEngine engine (0);
+        engine.configureProfile (ld::kProfileXenyx1204);
+        ShotRig rig (engine);
+        setShownProfile (ld::kProfileXenyx1204);
+        ui::fader::setLaw (engine.getFaderLaw());
+        ui::Xenyx1204Surface skin (rig.ctx);
+        skin.setSize (1920, 1080);
+        skin.refreshAll();
+        const auto& channels = engine.getChannels();
+        const char* names[] = { "KICK", "SNARE", "VOX", "ACOUS GTR", "KEYS", "BACK TRK" };
+        const float faders[] = { -2.0f, -5.0f, 0.0f, -9.0f, -12.0f, -16.0f };
+        for (size_t i = 0; i < channels.size(); ++i)
+        {
+            auto& p = channels[i]->params;
+            channels[i]->setName (names[i]);
+            p.faderDb = faders[i];
+            p.pan = (float) i * 36.0f - 90.0f;
+            p.eq().values[0] = (float) i * 2.0f - 4.0f;
+            p.eq().values[1] = 3.0f - (float) i * 1.5f;
+            p.eq().values[2] = (float) (i % 3) * 3.0f - 3.0f;
+            channels[i]->sends[0].levelDb = -20.0f + (float) i * 6.0f;
+            channels[i]->sends[1].levelDb = -10.0f + (float) i * 4.0f;
+            channels[i]->meters.trimPeak[0] = 0.1f + 0.15f * (float) i;
+            if (i < 4)
+            {
+                p.input.trimDb = 20.0f + (float) i * 8.0f;
+                p.dynamics().values[0] = (float) i * 2.5f;
+            }
+        }
+        channels[0]->params.filter().lowCut = true;
+        channels[1]->meters.dynReductionDb = 3.0f;
+        channels[3]->sends[2].enabled = true;
+        channels[3]->mains[0].on = false;
+        channels[2]->params.solo = true;
+        auto& main = engine.getMain (0);
+        main.params.faderDb = -3.0f;
+        main.meters.outputPeak[0] = 0.22f;
+        main.meters.outputPeak[1] = 0.17f;
+        engine.getBuses()[2]->params.faderDb = -6.0f;
+        rig.meters.advance (0.01f);
+        rig.show.addScene ("Verse", -1);
+        skin.showChanged();
+        skin.refreshAll();
+        const auto image = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
+        expect (image.isValid());
+        const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {});
+        if (folder.isNotEmpty())
+        {
+            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile ("xenyx1204.png");
+            file.deleteFile();
+            juce::FileOutputStream out (file);
+            expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out), file.getFullPathName());
+        }
     }
 
     /** Issue 22's custom control LCD: the names wxfade sets on layer 2. */
@@ -317,7 +386,7 @@ public:
         shot ("y01v-effect-edit.png");
         skin.findKey ("EFFECT 1")->onClick();
         expectEquals (display.getPage(), 1);
-        expectEquals (display.getNumFields(), 2);
+        expectEquals (display.getNumFields(), 4); // RECALL, the list, STORE, TITLE EDIT
         shot ("y01v-effect-library.png");
         const int effectBefore = engine.getFx().getModel (0);
         display.cursor (0, 1);              // the list
@@ -410,7 +479,49 @@ public:
         display.enter();
         expect (! channels[0]->sends[0].enabled.load());
         shot ("y01v-routing.png");
+        // PAN/ROUT page 3 (p.109): each bus master's fader, ON, TO ST and pan.
         skin.findKey ("PAN/ROUTING")->onClick();
+        expectEquals (display.getPage(), 2);
+        expectEquals (display.getNumPages(), 4);
+        expectEquals (display.getNumFields(), 16);
+        buses[0]->params.faderDb = 0.0f;
+        display.turn (-5);                  // BUS 1's fader, the first field
+        expect (buses[0]->params.faderDb.load() < -0.1f);
+        buses[0]->params.faderDb = 0.0f;
+        shot ("y01v-bus-master.png");
+        // PAN/ROUT page 4 (pp.116, 213): the OMNI OUTs' sources (AUX 1-4 at first), CH 13/14's FLIP.
+        skin.findKey ("PAN/ROUTING")->onClick();
+        expectEquals (display.getPage(), 3);
+        expectEquals (display.getNumFields(), 5);
+        expectEquals (display.getFocusText(), juce::String ("AUX1"));
+        display.turn (4);
+        expectEquals (display.getFocusText(), juce::String ("BUS1"));
+        expectEquals (engine.getOutputSource (2), MixerEngine::stripSource (StripKind::Bus, 0, 0));
+        display.turn (6);                   // past ST L and ST R: CH 1's direct out, after its fader
+        expectEquals (display.getFocusText(), juce::String ("CH1"));
+        expectEquals (engine.getOutputSource (2), DirectOut { StripKind::Channel, 1, 0, true }.code());
+        display.turn (-10);
+        expectEquals (engine.getOutputSource (2), MixerEngine::stripSource (StripKind::Bus, 4, 0));
+        display.cursor (0, 1);              // FLIP: CH 13/14 from the coaxial DIGITAL IN (ports 26-27)
+        display.enter();
+        expectEquals (channels[12]->params.inputLeft.load(), 26);
+        expectEquals (channels[12]->params.inputRight.load(), 27);
+        shot ("y01v-omni-out.png");
+        display.enter();
+        expectEquals (channels[12]->params.inputLeft.load(), 12);
+        skin.findKey ("PAN/ROUTING")->onClick();
+        expectEquals (display.getPage(), 0);
+        // DELAY page 4 (pp.91, 117): the STEREO OUT's delay.
+        for (int i = 0; i < 4; ++i)
+            skin.findKey ("PHASE/DELAY")->onClick();
+        expectEquals (display.getPage(), 3);
+        expectEquals (display.getNumFields(), 4);
+        display.enter();
+        expect (lr.params.input.delayOn.load());
+        shot ("y01v-output-delay.png");
+        display.enter();
+        expect (! lr.params.input.delayOn.load());
+        skin.findKey ("PHASE/DELAY")->onClick();
         skin.findKey ("VIEW")->onClick();
         shot ("y01v-view.png");
         // MEMORY (p.186): store a scene, name comes from the show; 00 is read-only.
@@ -426,9 +537,19 @@ public:
         display.enter();
         expectEquals (rig.show.getNumScenes(), 1);
         channels[0]->params.faderDb = -30.0f;
+        expect (! rig.show.canUndoRecall());  // gray until a scene has been recalled (p.189)
         display.cursor (0, -1);             // RECALL
         display.enter();
         expectWithinAbsoluteError (channels[0]->params.faderDb.load(), -5.0f, 0.01f);
+        expect (rig.show.canUndoRecall());
+        display.cursor (0, 1);              // STORE
+        display.cursor (1, 0);              // RECALL UNDO
+        display.enter();
+        expectWithinAbsoluteError (channels[0]->params.faderDb.load(), -30.0f, 0.01f);
+        display.enter();                    // and back: it toggles
+        expectWithinAbsoluteError (channels[0]->params.faderDb.load(), -5.0f, 0.01f);
+        display.cursor (-1, 0);             // STORE
+        display.cursor (0, -1);             // RECALL
         display.setMemory (0);
         for (int i = 0; i < 1; ++i)
             display.cursor (0, 1);          // STORE: 00 refuses it
@@ -442,7 +563,11 @@ public:
         shot ("y01v-oscillator.png");
         skin.findKey ("UTILITY")->onClick();
         expectEquals (display.getPage(), 1);
-        expectEquals (display.getNumFields(), 4);
+        expectEquals (display.getNumFields(), 4 + 2 + 3); // and DIGITAL IN SYNC CAUTION, "SELECTED CH" MESSAGE, the three DELAY UNITS
+        expectEquals (display.delayText (10.0f), juce::String ("10.0"));
+        rig.settings.setValue ("y01vDelayUnits", 1);     // meter: 102.2 m for 300 ms (p.117)
+        expectEquals (display.delayText (300.0f), juce::String ("102.2"));
+        rig.settings.setValue ("y01vDelayUnits", 0);
         expect (display.preference ("y01vEqAutoScreen"));
         display.enter();
         expect (! display.preference ("y01vEqAutoScreen"));
@@ -451,11 +576,229 @@ public:
         skin.findKey ("UTILITY")->onClick();
         expectEquals (display.getPage(), 2);
         expectEquals (display.getNumFields(), 2);
+        // MIDI (pp.224-234): SETUP, PROGRAM CHANGE, CONTROL CHANGE, BULK, LOCAL CONTROL.
+        skin.findKey ("MIDI")->onClick();
+        expectEquals (display.getPage(), 0);
+        expectEquals (display.getNumPages(), 5);
+        expectEquals (display.getNumFields(), 2 + 12);  // Tx, Rx CH and the switches
+        shot ("y01v-midi-setup.png");
+        skin.findKey ("MIDI")->onClick();
+        expectEquals (display.getNumFields(), 3);       // INITIALIZE, its program, its scene
+        shot ("y01v-midi-program.png");
+        skin.findKey ("MIDI")->onClick();
+        expectEquals (display.getNumFields(), 5);       // INITIALIZE, its controller, its three columns
+        shot ("y01v-midi-control.png");
+        skin.findKey ("MIDI")->onClick();
+        expectEquals (display.getNumFields(), 2 + 1 + 5 + 2);
+        shot ("y01v-midi-bulk.png");
         skin.findKey ("MIDI")->onClick();
         expectEquals (display.getNumFields(), 0);
+        shot ("y01v-midi-local.png");
+        skin.findKey ("MIDI")->onClick();
+        expectEquals (display.getPage(), 0);
         skin.findKey ("UTILITY")->onClick();
         expectEquals (display.getPage(), 2);        // where it was left
+
+        // SETUP (pp.52-56, 78-80, 209, 212): WORD CLOCK, MONITOR and SOLO, GROUP, PAIR, DITHER.
+        const auto law = engine.getFaderLaw ((int) StripKind::Channel);
+        skin.findKey ("SETUP")->onClick();
+        expectEquals (display.getNumPages(), 5);
+        expectEquals (display.getNumFields(), 0);
+        shot ("y01v-setup-wordclock.png");
+        skin.findKey ("SETUP")->onClick();
+        expectEquals (display.getNumFields(), 9 + 2 + 4); // the sources, MONI TRIM and MONO, SOLO SETUP's four
+        display.cursor (1, 0);              // from STEREO OUT to AUX 1
+        display.enter();
+        expectEquals (engine.speakers.source.load(), MixerEngine::monitorSourceIndex (StripKind::Bus, 4));
+        display.cursor (-1, 0);
+        display.enter();
+        expectEquals (engine.speakers.source.load(), MixerEngine::monitorSourceIndex (StripKind::Main, 0));
+        shot ("y01v-setup-monitor.png");
+        display.cursor (0, 1);              // SOLO: DISABLE clears the solos, and the keys do nothing
+        expect (display.isSoloEnabled());
+        display.enter();
+        expect (! display.isSoloEnabled());
+        expect (! channels[3]->params.solo.load());
+        skin.findKey ("SOLO 5")->onClick();
+        expect (! channels[5]->params.solo.load());
+        display.enter();
+        display.cursor (1, 0);              // SOLO MODE
+        display.cursor (1, 0);              // SEL MODE: LAST SOLO, one at a time
+        display.enter();
+        expect (display.isLastSolo());
+        skin.findKey ("SOLO 5")->onClick();
+        skin.findKey ("SOLO 6")->onClick();
+        expect (channels[6]->params.solo.load() && ! channels[5]->params.solo.load());
+        display.enter();
+        skin.findKey ("SOLO 5")->onClick();
+        expect (channels[6]->params.solo.load() && channels[5]->params.solo.load(), "MIX SOLO");
+        channels[5]->params.solo = false;
+        channels[6]->params.solo = false;
+        channels[3]->params.solo = true;
+
+        // GROUP: the cursor on a group, [SEL] puts a fader in it. A is on at first.
+        skin.findKey ("SETUP")->onClick();
+        expectEquals (display.getPage(), 2);
+        expectEquals (display.getNumFields(), 6);
+        skin.findKey ("SEL 0")->onClick();
+        skin.findKey ("SEL 1")->onClick();
+        expectEquals (display.getGroup (0, false), 1);
+        expectEquals (display.getGroup (1, false), 1);
+        expect (rig.selected == channels[4].get(), "[SEL] didn't select");
+        channels[0]->params.faderDb = 0.0f;
+        channels[1]->params.faderDb = -10.0f;
+        display.tickLinks();
+        display.tickLinks();
+        const float before1 = law.toPosition (-10.0f);
+        skin.getFader (0).setPositionFromUser (skin.getFader (0).getPosition() - 0.1);
+        display.tickLinks();
+        expectWithinAbsoluteError (law.toPosition (channels[1]->params.faderDb.load()), before1 - 0.1f, 0.01f);
+        display.enter();                    // ENABLE off: the faders move alone
+        expect (! display.isGroupOn (0));
+        const float alone = channels[1]->params.faderDb.load();
+        skin.getFader (0).setPositionFromUser (skin.getFader (0).getPosition() + 0.1);
+        display.tickLinks();
+        expectWithinAbsoluteError (channels[1]->params.faderDb.load(), alone, 0.001f);
+        display.enter();
+        for (int i = 0; i < 3; ++i)
+            display.cursor (0, 1);          // D, the first [ON] group
+        skin.findKey ("SEL 2")->onClick();
+        skin.findKey ("SEL 3")->onClick();
+        expectEquals (display.getGroup (3, true), 1);
+        channels[2]->params.mute = false;
+        channels[3]->params.mute = true;
+        display.tickLinks();
+        skin.findKey ("ON 2")->onClick();
+        display.tickLinks();
+        expect (channels[2]->params.mute.load() && ! channels[3]->params.mute.load(), "those on go off, those off come on (p.56)");
+        shot ("y01v-setup-group.png");
+        display.setGroup (2, true, 0);
+        display.setGroup (3, true, 0);
+
+        // PAIR (p.52): the second takes the first's settings, then each follows the other.
+        skin.findKey ("SETUP")->onClick();
+        expectEquals (display.getNumFields(), 10);
+        channels[6]->params.faderDb = -3.0f;
+        display.setPair (3, true);
+        expect (display.isPaired (3));
+        expectWithinAbsoluteError (channels[7]->params.faderDb.load(), -3.0f, 0.001f);
+        display.tickLinks();
+        channels[7]->params.faderDb = -8.0f;
+        channels[6]->params.eq().on = ! channels[6]->params.eq().on.load();
+        display.tickLinks();
+        expectWithinAbsoluteError (channels[6]->params.faderDb.load(), -8.0f, 0.001f);
+        expect (channels[7]->params.eq().on.load() == channels[6]->params.eq().on.load());
+        shot ("y01v-setup-pair.png");
+        display.setPair (3, false);
+        display.tickLinks();
+        channels[7]->params.faderDb = -20.0f;
+        display.tickLinks();
+        expectWithinAbsoluteError (channels[6]->params.faderDb.load(), -8.0f, 0.001f);
+        skin.findKey ("SETUP")->onClick();
+        expectEquals (display.getPage(), 4);
+        expectEquals (display.getNumFields(), 0);
+        shot ("y01v-setup-dither.png");
+
+        // OPTION pages 3-5 (pp.51, 85, 219): the card's outputs and the input swap.
+        for (int i = 0; i < 5 && ! (display.getFunction() == Function::OptionIO && display.getPage() == 2); ++i)
+            skin.findKey ("OPTION I/O")->onClick();
+        expectEquals (display.getPage(), 2);
+        expectEquals (display.getNumFields(), 0);
+        shot ("y01v-option-out-meter.png");
+        skin.findKey ("OPTION I/O")->onClick();
+        expectEquals (display.getNumFields(), 8 * 5);
+        expectEquals (engine.getOutputSource (16), MixerEngine::stripSource (StripKind::Bus, 0, 0)); // BUS 1 at first
+        display.cursor (0, 1);              // output 1's CH 1
+        display.enter();
+        expectEquals (engine.getOutputSource (16), DirectOut { StripKind::Channel, 1, 0, true }.code());
+        display.cursor (0, -1);
+        display.enter();
+        expectEquals (engine.getOutputSource (16), MixerEngine::stripSource (StripKind::Bus, 0, 0));
+        shot ("y01v-option-out.png");
+        skin.findKey ("OPTION I/O")->onClick();
+        expectEquals (display.getNumFields(), 1 + 8);
+        display.enter();                    // GLOBAL: CH 1-8 take the card's inputs, CH 17-24 the jacks
+        expectEquals (channels[0]->params.inputLeft.load(), 16);
+        expectEquals (channels[14]->params.inputLeft.load(), 0);
+        shot ("y01v-option-swap.png");
+        display.enter();
+        expectEquals (channels[0]->params.inputLeft.load(), 0);
+        expectEquals (channels[14]->params.inputLeft.load(), 16);
+
+        // REMOTE page 1 (pp.194-197): bank 1 has the bus masters on faders 1-4.
+        skin.findKey ("REMOTE")->onClick();
+        expect (skin.getFaderMode() == FaderMode::Remote);
+        expectEquals (display.getPage(), 0);
+        expectEquals (display.getNumFields(), 1 + 1 + 4 + 6);
+        expectEquals (display.remoteLabel (false, 0, 2), juce::String ("BUS1"));
+        expect (skin.stripAt (0) == nullptr);
+        buses[0]->params.faderDb = 0.0f;
+        skin.getFader (0).setPositionFromUser (0.0);
+        expect (buses[0]->params.faderDb.load() < -60.0f);
+        buses[0]->params.faderDb = 0.0f;
+        buses[0]->params.mute = false;
+        skin.findKey ("ON 0")->onClick();
+        expect (buses[0]->params.mute.load());
+        skin.findKey ("ON 0")->onClick();
+        expect (! buses[0]->params.mute.load());
+        expect (! skin.getFader (10).isBound(), "fader 11: NO ASSIGN");
+        expect (skin.getMasterFader().isBound(), "the master: ST OUT");
+        display.setRemoteBank (1);          // bank 2 (p.198): the channels' delay times
+        expectEquals (display.remoteLabel (false, 0, 0), juce::String ("DELAY"));
+        skin.getFader (0).setPositionFromUser (1.0);
+        expectWithinAbsoluteError (channels[0]->params.input.delay.load(), 250.0f, 0.5f);
+        channels[0]->params.input.delay = 0.0f;
+        display.setRemoteBank (0);
+        skin.findKey ("SEL 4")->onClick();  // the control the page shows
+        shot ("y01v-remote.png");
+        skin.findKey ("REMOTE")->onClick(); // another page: the faders are the channels' again (p.194)
+        expect (skin.stripAt (0) == channels[0].get());
+        skin.findKey ("HOME")->onClick();
+
+        // The libraries' user programs (pp.68, 131, 174): STORE, then RECALL brings the values back.
+        display.showFirstPage (Function::EqAtt);
         skin.findKey ("EQ/ATT")->onClick();
+        expectEquals (display.getPage(), 1);
+        expectEquals (display.getNumFields(), 4);
+        expectEquals (display.getLibraryNumber(), 41);
+        expect (display.getLibraryTitle (0, 41).isEmpty());
+        display.cursor (-1, 0);             // STORE
+        display.enter();
+        expect (display.getLibraryTitle (0, 41).isNotEmpty());
+        setEq (channels[4]->params.eq(), models::ChannelEq, "lmg", -6.0f);
+        display.cursor (1, 0);              // RECALL
+        display.enter();
+        expectWithinAbsoluteError (channels[4]->params.eq().values[eqModel.find ("lmg")].load(), 10.5f, 0.01f);
+        shot ("y01v-eq-library.png");
+        display.showFirstPage (Function::Dynamics);
+        skin.findKey ("DYNAMICS")->onClick();
+        expectEquals (display.getPage(), 1);
+        display.cursor (-1, 0);
+        display.enter();
+        expect (display.getLibraryTitle (1, 41).isNotEmpty());
+        shot ("y01v-dynamics-library.png");
+        for (int i = 0; i < 4 && ! (display.getFunction() == Function::Send && display.getPage() == 1); ++i)
+            skin.findKey ("EFFECT 1")->onClick();
+        expectEquals (display.getPage(), 1);
+        display.cursor (0, 1);              // the list: to its last program, 99, a user's
+        display.turn (200);
+        expectEquals (display.getLibraryNumber(), 99);
+        display.cursor (0, -1);
+        display.cursor (-1, 0);
+        display.enter();
+        expect (display.getLibraryTitle (2, 99).isNotEmpty());
+        skin.findKey ("HOME")->onClick();
+
+        // The 15/16 - 2TR IN switch (p.77); CH 17-24 have no AUX 3-4 (p.264).
+        skin.findKey ("2TR IN")->onClick();
+        expectEquals (channels[13]->params.inputLeft.load(), 24);
+        skin.findKey ("2TR IN")->onClick();
+        expectEquals (channels[13]->params.inputLeft.load(), 14);
+        channels[14]->sends[6].levelDb = 0.0f;
+        skin.refreshAll();
+        expect (channels[14]->sends[6].levelDb.load() <= -89.5f);
+
+        display.showFirstPage (Function::EqAtt);
         shot ("y01v-surface.png");
         setShownProfile (ld::kProfileWing);
     }
@@ -541,16 +884,669 @@ public:
         rig.selected = channels[4].get();
         skin.selectionChanged();
         expect (skin.getPeqRotary (1, true).getBinding().isValid());
-        // The screen keys pick the page.
-        skin.findKey ("Page Processing")->onClick();
+        // The one screen: Processing, the four bands along the bottom, the pages in its middle.
         expect (skin.getPage() == Page::Processing);
-        expect (skin.getInspector().getStrip() == channels[4].get());
+        expect (skin.getProcessing().getStrip() == channels[4].get());
+        expect (skin.getProcessing().getHostedPage() == nullptr);
+        expectEquals (skin.getProcessing().getView(), 1);
         shot ("dlive-surface-processing.png");
         skin.findKey ("Page Scenes")->onClick();
         expect (skin.getPage() == Page::Scenes);
+        expect (skin.getProcessing().getHostedPage() == static_cast<juce::Component*> (&skin.getScenes()));
+        shot ("dlive-surface-scenes.png");
+        skin.findKey ("Page Meters")->onClick();
+        expect (skin.getProcessing().getHostedPage() == static_cast<juce::Component*> (&skin.getMeters()));
+        shot ("dlive-surface-meters.png");
+        skin.findKey ("Page MixRack")->onClick();
+        shot ("dlive-surface-mixrack.png");
+        skin.findKey ("Page I/O")->onClick();
+        expect (skin.getProcessing().getHostedPage() == static_cast<juce::Component*> (&skin.getIo()));
+        shot ("dlive-surface-io.png");
+        skin.findKey ("Page Surface")->onClick();
+        expect (skin.getPage() == Page::Surface);
+        shot ("dlive-surface-assign.png");
+        skin.getSurfaceScreen().showTab (ui::dl::SurfaceScreen::SoftKeys);
+        shot ("dlive-surface-softkeys.png");
+        skin.getSurfaceScreen().showTab (ui::dl::SurfaceScreen::Rotaries);
+        shot ("dlive-surface-rotaries.png");
+        skin.getSurfaceScreen().showTab (ui::dl::SurfaceScreen::StripAssign);
+        skin.findKey ("Page Processing")->onClick();
+        expect (skin.getPage() == Page::Processing && skin.getProcessing().getHostedPage() == nullptr);
+        // Pressed again, a lit key lights none: the status page, from the engine.
+        skin.findKey ("Page Processing")->onClick();
+        expect (skin.getPage() == Page::Status);
+        expect (skin.getStatus().getLines().joinIntoString ("|").contains ("Inputs: " + juce::String ((int) channels.size())));
+        shot ("dlive-surface-status.png");
         skin.findKey ("Page FX")->onClick();
         shot ("dlive-surface-fx.png");
+        skin.findKey ("Home")->onClick();
+        expect (skin.getPage() == Page::Processing);
+
+        // The strip's soft widget, and its meters, from the engine.
+        const auto& gateBlock = skin.getProcessing().getBlock (0);
+        expect ((bool) gateBlock.reductionDb);
+        channels[4]->meters.gateReductionDb = -6.0f;
+        expectWithinAbsoluteError (gateBlock.reductionDb(), -6.0f, 0.01f);
+
+        // View: the four bands, the small faders, the wide curve, and round.
+        skin.findKey ("View")->onClick();
+        expectEquals (skin.getProcessing().getView(), 2);
+        shot ("dlive-surface-faders.png");
+        skin.findKey ("View")->onClick();
+        skin.findKey ("View")->onClick();
+        expectEquals (skin.getProcessing().getView(), 1);
+
+        // Strip Assign: a layer's strips, saved with this surface.
+        expectEquals (skin.getStrip (3).getSlot().index, 3);
+        skin.getSetup().setSlot (0, 0, 3, { ui::dl::Slot::Channel, 30 });
+        expectEquals (skin.getStrip (3).getSlot().index, 30);
+        {
+            ui::dl::SurfaceSetup again (rig.settings, "c1500", 1, 6, 12, [] (int, int, int) { return ui::dl::Slot {}; });
+            expect (again.getSlot (0, 0, 3).kind == ui::dl::Slot::Channel && again.getSlot (0, 0, 3).index == 30);
+        }
+        skin.getSetup().reset();
+        expectEquals (skin.getStrip (3).getSlot().index, 3);
+
+        // A SoftKey does what it's given; Setup lit and a key assigns it instead.
+        ui::dl::SoftKey groupKey;
+        groupKey.kind = ui::dl::SoftKey::MuteGroup;
+        groupKey.index = 0;
+        skin.getSetup().setSoftKey (0, groupKey);
+        expect (! engine.muteGroups.contains (0));
+        skin.findKey ("Soft 1")->onClick();
+        expect (engine.muteGroups.contains (0));
+        int assignedKey = -1;
+        skin.assignSoftKey = [&assignedKey] (int i, juce::Component*) { assignedKey = i; };
+        skin.findKey ("Setup")->onClick();
+        skin.findKey ("Soft 1")->onClick();
+        expectEquals (assignedKey, 0);
+        expect (engine.muteGroups.contains (0));
+
+        // The custom rotaries: assigned the same way.
+        int assignedRotary = -1;
+        skin.assignRotary = [&assignedRotary] (int i, juce::Component*) { assignedRotary = i; };
+        skin.findKey ("Rotary 2")->onClick();
+        expectEquals (assignedRotary, 1);
+        skin.findKey ("Home")->onClick();
+        skin.getSetup().setCustom (0, ui::dl::CustomRotary::Hpf);
+        skin.findKey ("Rotary 1")->onClick();
+        expect (skin.getRotaryFunction() == ui::dl::RotaryFunction::Custom1);
+        expectEquals (skin.getStrip (0).getRotary().getBinding().label, juce::String ("HPF"));
+        skin.findKey ("Rotary Gain")->onClick();
+
+        // Help: a note for the screen showing.
+        skin.findKey ("Help")->onClick();
+        expect (skin.getHelp().isVisible());
+        expect (skin.getHelp().getText().isNotEmpty());
+        shot ("dlive-surface-help.png");
+        skin.findKey ("Help")->onClick();
+        expect (! skin.getHelp().isVisible());
         setShownProfile (ld::kProfileWing);
+    }
+
+    /** A DM2000 on the Universal Mixer (its own surface is below). */
+    void dm2000OnUniversal()
+    {
+        beginTest ("A DM2000 on the Universal Mixer");
+        MixerEngine engine (0);
+        engine.configureProfile (ld::kProfileDm2000);
+        ShotRig rig (engine);
+        setShownProfile (ld::kProfileDm2000);
+        ui::routing::setProfile (ld::kProfileDm2000);
+        ui::fader::setLaw (engine.getFaderLaw());
+        expectEquals ((int) engine.getChannels().size(), 96);
+        expectEquals ((int) engine.getBuses().size(), 20);
+        expectEquals ((int) engine.getMatrices().size(), 4);
+        ui::UniversalSkin skin (rig.ctx);
+        skin.setSize (1920, 1080);
+        skin.refreshAll();
+        const auto image = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
+        expect (image.isValid());
+        const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {});
+        if (folder.isNotEmpty())
+        {
+            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile ("dm2000-universal.png");
+            file.deleteFile();
+            juce::FileOutputStream out (file);
+            expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out));
+        }
+        setShownProfile (ld::kProfileWing);
+        ui::routing::setProfile (ld::kProfileWing);
+    }
+
+    /** The DM2000's surface at 1920x1080: the panel, then its LCD's pages. */
+    void dm2000Surface()
+    {
+        beginTest ("The DM2000 surface");
+        MixerEngine engine (0);
+        engine.configureProfile (ld::kProfileDm2000);
+        ShotRig rig (engine);
+        setShownProfile (ld::kProfileDm2000);
+        ui::routing::setProfile (ld::kProfileDm2000);
+        ui::fader::setLaw (engine.getFaderLaw());
+
+        // A session: some levels and names, sends, EQ, and meters moving.
+        const auto& channels = engine.getChannels();
+        const char* names[] = { "Kick", "Snre", "HH", "Tom1", "Tom2", "OH L", "OH R", "Bass", "GtrL", "GtrR", "Keys", "Vox" };
+        for (int i = 0; i < (int) channels.size(); ++i)
+        {
+            auto& p = channels[(size_t) i]->params;
+            if (i < 12)
+            {
+                channels[(size_t) i]->setName (names[i]);
+                p.faderDb = -6.0f + (float) (i % 5) * 2.0f;
+                channels[(size_t) i]->mains[0].on = true;
+                channels[(size_t) i]->mains[0].levelDb = 0.0f;
+            }
+            else
+                p.faderDb = -144.0f;
+        }
+        channels[2]->params.mute = true;
+        channels[1]->params.solo = true;
+        channels[0]->params.eq().on = true;
+        channels[0]->params.gate().on = true;
+        channels[0]->sends[8].enabled = true;
+        channels[0]->sends[8].levelDb = -3.0f;
+        for (auto* list : { &engine.getChannels(), &engine.getBuses(), &engine.getMains(), &engine.getMatrices() })
+            for (const auto& s : *list)
+            {
+                s->meters.outputPeak[0] = 0.4f;
+                s->meters.outputPeak[1] = 0.32f;
+            }
+        rig.meters.advance (0.01f);
+        rig.selected = channels[0].get();
+
+        ui::Dm2000Surface skin (rig.ctx);
+        skin.setSize (1920, 1080);
+        skin.refreshAll();
+        skin.selectionChanged();
+        const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {});
+        const auto save = [this, &folder] (const juce::Image& image, const juce::String& fileName)
+        {
+            expect (image.isValid(), fileName);
+            if (folder.isEmpty())
+                return;
+            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile (fileName);
+            file.deleteFile();
+            juce::FileOutputStream out (file);
+            expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out), file.getFullPathName());
+        };
+        const auto shot = [&skin, &save] (const juce::String& fileName)
+        {
+            save (skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f), fileName);
+        };
+        auto& lcd = skin.getDisplay();
+        using Group = ui::dm2k::Group;
+        const auto page = [&lcd, &save] (const juce::String& fileName)
+        {
+            lcd.refresh();
+            save (lcd.createComponentSnapshot (lcd.getLocalBounds(), true, 1.0f), fileName);
+        };
+
+        skin.timerCallbackForTest();
+        shot ("dm2000.png");
+
+        // The layers (p.58): CH 25-48 on the strips; the Master Layer's BUS, AUX, MATRIX.
+        expect (skin.stripAt (0) == channels[0].get());
+        skin.setLayer (ui::Dm2000Surface::Layer25);
+        expect (skin.stripAt (0) == channels[24].get());
+        skin.setLayer (ui::Dm2000Surface::LayerMaster);
+        expect (skin.stripAt (0) == engine.getBuses()[0].get() && skin.stripAt (8) == engine.getBuses()[8].get() && skin.stripAt (20) == engine.getMatrices()[0].get());
+        skin.setLayer (ui::Dm2000Surface::LayerRemote1);
+        expect (skin.stripAt (0) == nullptr);
+        skin.setLayer (ui::Dm2000Surface::Layer1);
+
+        // The faders, ON, SOLO and SEL.
+        skin.getFader (3).setPositionFromUser (0.5);
+        expectWithinAbsoluteError (channels[3]->params.faderDb.load(), engine.getFaderLaw ((int) StripKind::Channel).toDb (0.5f), 0.01f);
+        const bool muted = channels[5]->params.mute.load();
+        skin.findKey ("ON 5")->onClick();
+        expect (channels[5]->params.mute.load() != muted);
+        skin.findKey ("SOLO 6")->onClick();
+        expect (channels[6]->params.solo.load());
+        channels[6]->params.solo = false;
+        skin.findKey ("SEL 7")->onClick();
+        expect (rig.selected == channels[7].get());
+        rig.selected = channels[0].get();
+        skin.selectionChanged();
+
+        // The Selected Channel: the attenuator's range, the EQ knobs, its ON key.
+        const auto& att = skin.findKnob ("ATT")->getBinding();
+        att.set (0.0f);
+        expectWithinAbsoluteError (channels[0]->params.input.trimDb.load(), -96.0f, 0.01f);
+        att.set (1.0f);
+        expectWithinAbsoluteError (channels[0]->params.input.trimDb.load(), 12.0f, 0.01f);
+        att.set (96.0f / 108.0f);
+        expectWithinAbsoluteError (channels[0]->params.input.trimDb.load(), 0.0f, 0.1f);
+        auto delay = ui::dm2k::bindDelay (*channels[0]);
+        delay.set (1.0f);
+        expectWithinAbsoluteError (channels[0]->params.input.delay.load(), 43400.0f, 0.5f);
+        delay.set (0.0f);
+        skin.findKnob ("EQ G 1")->getBinding().set (1.0f);
+        const auto& eqModel = models::model (models::ChannelEq, channels[0]->params.eq().model.load());
+        expectWithinAbsoluteError (channels[0]->params.eq().values[eqModel.find ("lg")].load(), 18.0f, 0.01f);
+        skin.findKnob ("EQ G 1")->getBinding().set (0.5f);
+        const bool eqOn = channels[0]->params.eq().on.load();
+        skin.findKey ("EQ ON")->onClick();
+        expect (channels[0]->params.eq().on.load() != eqOn);
+        skin.findKey ("EQ ON")->onClick();
+
+        // The process orders (p.136) round-trip.
+        for (int order = 0; order < 12; ++order)
+        {
+            int c = 0, i = 0;
+            bool first = false;
+            ui::dm2k::decodeOrder (order, c, i, first);
+            expectEquals (ui::dm2k::processOrder (c, i, first), order);
+        }
+
+        // Encoder modes.
+        skin.setEncoderMode (ui::Dm2000Surface::EncoderMode::AuxMtrx);
+        expect (skin.getEncoder (0).getBinding().label == "AUX");
+        skin.setEncoderMode (ui::Dm2000Surface::EncoderMode::Assign1);
+        expect (skin.getEncoder (0).getBinding().label == "ATT");
+        skin.setEncoderMode (ui::Dm2000Surface::EncoderMode::Pan);
+        skin.setFaderMode (ui::Dm2000Surface::FaderMode::AuxMtrx);
+        skin.getFader (0).setPositionFromUser (0.5);
+        expectWithinAbsoluteError (channels[0]->sends[8].levelDb.load(), engine.getFaderLaw ((int) StripKind::Channel).toDb (0.5f), 0.01f);
+        skin.setFaderMode (ui::Dm2000Surface::FaderMode::Fader);
+
+        // The LCD: the page, and F1-F4 selecting the tabs.
+        lcd.showPage (Group::Equalizer, 0);
+        lcd.refresh();
+        int dots = 0;
+        for (int y = 0; y < ui::dm2k::Display::kDotsH; ++y)
+            for (int x = 0; x < ui::dm2k::Display::kDotsW; ++x)
+                dots += lcd.isDotOn (x, y) ? 1 : 0;
+        expect (dots > 2000, "the EQ page draws dots");
+        lcd.pressF (1);
+        expectEquals (lcd.getTabName (lcd.getPage()), juce::String ("EQ LIBRARY"));
+        lcd.pressF (0);
+        expectEquals (lcd.getPage(), 0);
+        // The wheel and the cursor on a field.
+        const int focusAtt = lcd.findField ("ATT");
+        expect (focusAtt >= 0);
+        lcd.setFocus (focusAtt);
+        const auto before = lcd.getFocusText();
+        lcd.turn (5);
+        expect (lcd.getFocusText() != before);
+        lcd.turn (-5);
+
+        // Six GEQs, no more (p.183).
+        lcd.showPage (Group::Effects, 2);
+        expectEquals ((int) lcd.geqStrips().size(), 0);
+        for (int i = 0; i < ui::dm2k::Display::kMaxGeqs; ++i)
+            expect (lcd.insertGeq (*engine.getBuses()[(size_t) i]));
+        expect (! lcd.insertGeq (*engine.getBuses()[6]));
+        expectEquals ((int) lcd.geqStrips().size(), 6);
+        lcd.setGeqUnit (0);
+        lcd.rebuild();
+        page ("dm2000-lcd-geq.png");
+        for (auto* s : lcd.geqStrips())
+            lcd.removeGeq (*s);
+
+        // The pages, for the eye.
+        const std::pair<Group, int> shown[] = { { Group::Equalizer, 0 }, { Group::Equalizer, 1 }, { Group::Dynamics, 0 }, { Group::Dynamics, 1 }, { Group::PhaseInsert, 0 }, { Group::PhaseInsert, 2 }, { Group::Delay, 0 }, { Group::Pan, 0 }, { Group::Routing, 0 }, { Group::Routing, 4 }, { Group::AuxSend, 0 }, { Group::MatrixSend, 0 }, { Group::View, 0 }, { Group::View, 1 }, { Group::Meter, 0 }, { Group::Meter, 4 }, { Group::FaderGroup, 0 }, { Group::FaderGroup, 2 }, { Group::FaderGroup, 4 }, { Group::SceneMemory, 0 }, { Group::InputPatch, 0 }, { Group::Monitor, 0 }, { Group::EncoderMode, 0 }, { Group::Effects, 0 }, { Group::Effects, 1 }, { Group::Dio, 0 } };
+        for (const auto& [g, p] : shown)
+        {
+            lcd.showPage (g, p);
+            page ("dm2000-lcd-" + juce::String ((int) g) + "-" + juce::String (p) + ".png");
+        }
+
+        // The later pages, each its own picture.
+        for (const auto g : { Group::Midi, Group::OutputPatch, Group::Pair, Group::Setup, Group::Utility, Group::UserKeys, Group::Remote, Group::InputPatch, Group::Dynamics, Group::View, Group::Equalizer, Group::Automix, Group::TrackArming, Group::Locator, Group::Data })
+        {
+            lcd.showPage (g, 0);
+            for (int p = 0; p < lcd.getNumPages(); ++p)
+            {
+                lcd.showPage (g, p);
+                page ("dm2000-lcd-" + juce::String ((int) g) + "-" + juce::String (p) + ".png");
+            }
+        }
+
+        // MIDI SETUP: kept in the settings, the 28 numbers Dm2000Midi takes; Tx starts off.
+        using D = ui::dm2k::Display;
+        expectEquals (lcd.getMidiSetup (2), 0);
+        lcd.setMidiSetup (2, 1);
+        lcd.setMidiSetup (1, 5);
+        {
+            juce::StringArray v;
+            v.addTokens (rig.settings.getValue (Dm2000Midi::setupKey), " ", "");
+            v.removeEmptyStrings();
+            expectEquals (v.size(), 28);
+            expectEquals (v[1].getIntValue(), 5);
+            expectEquals (v[2].getIntValue(), 1);
+        }
+        expectEquals (lcd.getPcScene (0), 1);
+        lcd.setPcScene (0, 7);
+        expectEquals (lcd.getPcScene (0), 7);
+        lcd.initializePcTable();
+        expectEquals (lcd.getPcScene (0), 1);
+        expectEquals (lcd.getPcScene (99), 0);
+
+        // OUTPUT PATCH: the factory patch reads back, one signal can feed two ports.
+        expectEquals (lcd.getOutputPatch (D::kPortOmni), 9);
+        expectEquals (lcd.getOutputPatch (D::kPortSlot), 1);
+        lcd.setOutputPatch (D::kPortOmni, 1);
+        expectEquals (lcd.getOutputPatch (D::kPortOmni), 1);
+        expectEquals (lcd.getOutputPatch (D::kPortSlot), 1);
+        lcd.setDirectOut (0, 97);
+        expect (lcd.isDirectOn (0));
+        lcd.setDirectOn (0, false);
+        expect (! lcd.isDirectOn (0));
+        expectEquals (lcd.getDirectOut (0), 97);
+        lcd.setDirectOut (0, 0);
+        lcd.setOutputPatch (D::kPortOmni, 9);
+
+        // AUTOMIX: a take of a fader move plays back, UNDO restores the earlier take.
+        {
+            using AK = D::AutomixKey;
+            auto& fader = channels[0]->params.faderDb;
+            fader = 0.0f;
+            lcd.automixPress (AK::Run);
+            lcd.automixPress (AK::Rec);
+            fader = -12.0f;
+            lcd.automixTick();
+            lcd.automixPress (AK::Rec);
+            lcd.automixPress (AK::Run);
+            fader = 0.0f;
+            lcd.automixPress (AK::Run);
+            juce::Thread::sleep (30);
+            lcd.automixTick();
+            expectWithinAbsoluteError (fader.load(), -12.0f, 0.01f, "the take plays back");
+            lcd.automixPress (AK::Run);
+            lcd.automixPress (AK::Undo);
+            lcd.automixPress (AK::Clear);
+            expect (! lcd.automixIs (AK::Rec));
+        }
+
+        // A library memory: stored, changed, recalled, cleared; presets are read-only.
+        const auto libraries = juce::File::createTempFile ("dm2klib");
+        libraries.deleteFile();
+        lcd.setLibraryFolder (libraries);
+        using Lib = D::Library;
+        auto& eqOnParam = channels[0]->params.eq().on;
+        const bool eqWas = eqOnParam.load();
+        expect (lcd.storeLibrary (Lib::Eq, 41, "Mine"));
+        expectEquals (lcd.libraryTitle (Lib::Eq, 41), juce::String ("Mine"));
+        expect (! lcd.storeLibrary (Lib::Eq, 40, "No"));
+        eqOnParam = ! eqWas;
+        expect (lcd.recallLibrary (Lib::Eq, 41));
+        expect (eqOnParam.load() == eqWas);
+        expect (lcd.clearLibrary (Lib::Eq, 41));
+        expect (lcd.libraryTitle (Lib::Eq, 41).isEmpty());
+        expect (lcd.recallLibrary (Lib::Comp, 2));
+        expect (channels[0]->params.dynamics().model.load() == models::findModel (models::Dynamics, "DMEXP"));
+        expect (lcd.recallLibrary (Lib::Comp, 1));
+        libraries.deleteRecursively();
+
+        // PAIR: the first's settings go to the second, and a change follows.
+        lcd.setPaired (false, 10, true);
+        channels[20]->params.faderDb = -7.0f;
+        lcd.followPairs();
+        expectWithinAbsoluteError (channels[21]->params.faderDb.load(), -7.0f, 0.001f);
+        lcd.setPaired (false, 10, false);
+
+        // CHANNEL COPY and PASTE, by Channel Copy Parameter: only the fader.
+        channels[30]->params.faderDb = -11.0f;
+        channels[30]->params.mute = true;
+        channels[31]->params.mute = false;
+        rig.selected = channels[30].get();
+        skin.findKey ("COPY")->onClick();
+        rig.selected = channels[31].get();
+        lcd.setCopyParameters (2);
+        expect (lcd.pasteChannel());
+        expectWithinAbsoluteError (channels[31]->params.faderDb.load(), -11.0f, 0.001f);
+        expect (! channels[31]->params.mute.load());
+        lcd.setCopyParameters (1);
+        rig.selected = engine.getBuses()[0].get();
+        expect (! lcd.pasteChannel(), "not between kinds");
+        rig.selected = channels[0].get();
+
+        // A User Defined Key, the panel's: Fx 1 Bypass.
+        const int bypassKey = D::userKeyNames().indexOf ("Fx1 Bypass");
+        expect (bypassKey > 0);
+        lcd.setUserKey (0, bypassKey);
+        const bool bypassed = engine.getFx().params (0).bypass.load();
+        skin.findKey ("USER 1")->onClick();
+        expect (engine.getFx().params (0).bypass.load() != bypassed);
+        skin.findKey ("USER 1")->onClick();
+
+        // A confirmation's NO leaves things alone; FX MODE 4 only warns.
+        int yes = 0;
+        lcd.confirm ("Sure?", [&yes] { ++yes; });
+        expect (lcd.isConfirming());
+        lcd.answer (false);
+        expectEquals (yes, 0);
+        skin.findKey ("FX MODE 4")->onClick();
+        expect (lcd.getMessage().isNotEmpty());
+
+        // The printed legend isn't the law: a channel's 15 sits about where the law has -20 dB.
+        const auto& legend = ui::dm2k::printedLegend (false);
+        expectWithinAbsoluteError (legend[5].first, engine.getFaderLaw ((int) StripKind::Channel).toPosition (-20.0f), 0.02f);
+
+        setShownProfile (ld::kProfileWing);
+        ui::routing::setProfile (ld::kProfileWing);
+    }
+
+    /** The PRO2's surface at 1920x1080: navigation, its ranges, then the panel and each screen page. */
+    void pro2Surface()
+    {
+        beginTest ("The PRO2 surface");
+        using ui::pro2::Bay;
+        using ui::pro2::Page;
+        using ui::pro2::Area;
+        MixerEngine engine (0);
+        engine.configureProfile (ld::kProfileMidasPro2);
+        ShotRig rig (engine);
+        setShownProfile (ld::kProfileMidasPro2);
+        ui::routing::setProfile (ld::kProfileMidasPro2);
+        ui::fader::setLaw (engine.getFaderLaw());
+        const auto& channels = engine.getChannels();
+        auto& bus = *engine.getBuses()[0];
+        rig.selected = channels[0].get();
+        ui::Pro2Surface skin (rig.ctx);
+        skin.setSize (1920, 1080);
+        skin.refreshAll();
+        skin.timerCallbackForTest();
+
+        // Banks of eight, round through the outputs; the groups unfold.
+        expect (skin.stripAt (Bay::Input, 0) == channels[0].get() && skin.stripAt (Bay::Channel, 0) == channels[8].get());
+        skin.scroll (Bay::Channel, -2);
+        expect (skin.stripAt (Bay::Channel, 0) == engine.getMains()[0].get());
+        skin.setBank (Bay::Channel, 1);
+        skin.setMember (0, *channels[3], true);
+        skin.selectGroup (0);
+        expect (skin.stripAt (Bay::Input, 0) == channels[3].get());
+        skin.selectGroup (0);
+        skin.setMember (0, *channels[3], false);
+        skin.findKey ("MUTE C0")->onClick();
+        expect (channels[8]->params.mute.load());
+        channels[8]->params.mute = false;
+        skin.setFlip (true);
+        skin.selectMix (&bus);
+        skin.getFader (Bay::Channel, 0).setPositionFromUser (0.5);
+        expectWithinAbsoluteError (channels[8]->sends[0].levelDb.load(), engine.getFaderLaw ((int) StripKind::Channel).toDb (0.5f), 0.01f);
+        skin.setFlip (false);
+
+        // The profile's ranges.
+        auto& s = *channels[0];
+        const auto ends = [this] (ui::KnobBinding b, std::atomic<float>& v, float lo, float hi)
+        {
+            b.set (0.0f);
+            expectWithinAbsoluteError (v.load(), lo, 0.05f);
+            b.set (1.0f);
+            expectWithinAbsoluteError (v.load(), hi, 0.05f);
+        };
+        ends (skin.findKnob ("HIGH PASS")->getBinding(), s.params.filter().lowCutFreq, 10.0f, 400.0f);
+        ends (ui::pro2::bindLowPass (s), s.params.filter().highCutFreq, 2000.0f, 20000.0f);
+        ends (ui::pro2::bindDelayMs (s), s.params.input.delay, 0.0f, 50.0f);
+        ends (ui::pro2::bindDelayMs (bus), bus.params.input.delay, 0.0f, 500.0f);
+        s.params.input.delay = 0.3f;
+        bus.params.input.delay = 0.3f;
+        ends (ui::pro2::bindTrim (s), s.params.input.trimDb, -40.0f, 20.0f);
+        s.params.input.trimDb = 0.0f;
+        auto send = ui::pro2::bindSendLevel ("A", s.sends[0].levelDb);
+        send.set (1.0f);
+        expectWithinAbsoluteError (s.sends[0].levelDb.load(), 6.0f, 0.01f);
+        expectEquals (ui::pro2::compModes (s).size(), 4);
+        expectEquals (ui::pro2::compModes (bus).size(), 5);
+        ui::pro2::setSideChainWidth (s.params.dynamics(), 2);
+        expectEquals (ui::pro2::sideChainWidth (s.params.dynamics()), 2);
+        ui::pro2::setSteepSlope (s, false, true);
+        expect (ui::pro2::steepSlope (s, false));
+        ui::pro2::setSteepSlope (s, false, false);
+
+        // The pictures: the panel, each detail area and each page.
+        const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {});
+        const auto save = [this, &folder] (juce::Component& c, const juce::String& fileName)
+        {
+            const auto image = c.createComponentSnapshot (c.getLocalBounds(), true, 1.0f);
+            expect (image.isValid(), fileName);
+            if (folder.isEmpty())
+                return;
+            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile (fileName);
+            file.deleteFile();
+            juce::FileOutputStream out (file);
+            expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out), file.getFullPathName());
+        };
+        skin.timerCallbackForTest();
+        save (skin, "pro2.png");
+        auto& screen = skin.getScreen();
+        const std::pair<Area, const char*> areas[] = { { Area::Overview, "default" }, { Area::Config, "config" }, { Area::Comp, "comp" }, { Area::Gate, "gate" }, { Area::Eq, "eq" }, { Area::Insert, "insert" }, { Area::Aux, "aux" }, { Area::Masters, "masters" } };
+        for (const auto& [a, name] : areas)
+        {
+            skin.setArea (a);
+            save (screen, juce::String ("pro2-screen-") + name + ".png");
+        }
+        skin.setArea (Area::Overview);
+        const std::pair<Page, const char*> pages[] = { { Page::Overview, "overview" }, { Page::Automation, "automation" }, { Page::Effects, "effects" }, { Page::Geq, "geq" }, { Page::Patching, "patching" }, { Page::Groups, "groups" } };
+        ui::Pro2Surface::setGeq (bus, true);
+        for (const auto& [p, name] : pages)
+        {
+            screen.showPage (p);
+            save (screen, juce::String ("pro2-screen-") + name + ".png");
+        }
+        expect (ui::Pro2Surface::hasGeq (bus));
+        screen.showPage (Page::Effects);
+        expect (screen.findSpot ("unit 6") >= 0);
+
+        setShownProfile (ld::kProfileWing);
+        ui::routing::setProfile (ld::kProfileWing);
+    }
+
+    /** A dLive's Main modes: the surfaces show as many main strips as the mode has. */
+    void dliveMainModes()
+    {
+        beginTest ("A dLive's Main modes on its surfaces");
+        using Slot = ui::dl::Slot;
+        MixerEngine engine (0);
+        engine.configureProfile (ld::kProfileDLive);
+        ShotRig rig (engine);
+        setShownProfile (ld::kProfileDLive);
+        ui::fader::setLaw (engine.getFaderLaw());
+
+        // A layer that ends on LR makes room beside it for the mode's other strips.
+        {
+            const auto factory = [] (int, int layer, int strip) { return layer == 5 ? (strip == 11 ? Slot { Slot::Main, 0 } : Slot { Slot::Bus, strip }) : Slot { Slot::Channel, layer * 12 + strip }; };
+            ui::dl::SurfaceSetup setup (rig.settings, "mains-test", 1, 6, 12, factory);
+            const auto is = [&setup] (int layer, int strip, int mains, Slot::Kind kind, int index)
+            {
+                const auto s = setup.getShownSlot (0, layer, strip, mains);
+                return s.kind == kind && s.index == index;
+            };
+            expect (is (5, 11, 1, Slot::Main, 0) && is (5, 10, 1, Slot::Bus, 10), "LR");
+            expect (is (5, 10, 2, Slot::Main, 0) && is (5, 11, 2, Slot::Main, 1) && is (5, 9, 2, Slot::Bus, 9), "LR and M, or C");
+            expect (is (5, 8, 4, Slot::Main, 0) && is (5, 9, 4, Slot::Main, 1) && is (5, 11, 4, Slot::Main, 3) && is (5, 7, 4, Slot::Bus, 7), "5.1");
+            expect (is (0, 11, 4, Slot::Channel, 11), "a layer without LR stays as it is");
+            setup.setSlot (0, 5, 9, { Slot::Channel, 30 });
+            expect (is (5, 9, 4, Slot::Channel, 30) && is (5, 10, 4, Slot::Main, 2), "a strip the user put there stays");
+            expect (setup.getSlot (0, 5, 8).kind == Slot::Bus, "the assignments themselves don't move");
+        }
+
+        // The FX rack's list says where a RackUltra model runs, by the engine's rule for the console shown.
+        {
+            ui::universal::FxRackView rack (rig.ctx, ui::universal::Theme::dark());
+            rack.setSize (1200, 700);
+            rack.refresh();
+            rack.selectSlot (0);
+            int ultra = -1;
+            for (const auto& m : models::table (models::Fx))
+                if (m.name == "Quad Voice Harmoniser")
+                    ultra = m.index;
+            expect (ultra >= 0);
+            if (ultra >= 0)
+            {
+                expect (! FxSlots::isAllowed (ultra, 0) && FxSlots::isAllowed (ultra, 16) && ! FxSlots::isAllowed (ultra, 24));
+                const auto names = rack.device.items();
+                expect (names[ultra].endsWith (" (FX 17-24)"), names[ultra]);
+                const int before = engine.getFx().getModel (0);
+                rack.device.chooseItem (ultra);
+                expectEquals (engine.getFx().getModel (0), before, "not in a RackExtra slot");
+            }
+        }
+
+        // 5.1 on the console: LR, C, LFE and Ls/Rs. It takes four more of the 64 busses than LR.
+        auto* handle = engine.getHandle();
+        int32_t layout[8] = {};
+        int32_t pafl = 0, mainMode = 0;
+        expect (ld::ld_engine_dlive_layout (handle, layout) && ld::ld_engine_dlive_structure (handle, &pafl, &mainMode));
+        expectEquals ((int) engine.getMains().size(), 1);
+        while (ld::ld_dlive_busses_remaining (layout, pafl, 6) < 0 && layout[2] >= 2)
+            layout[2] -= 2; // mono Aux
+        const auto applied = rig.show.applyDLiveStructure (layout, ld::ld_engine_dlive_stereo_inputs (handle), pafl, 6);
+        expect (applied.wasOk(), applied.getErrorMessage());
+        expectEquals ((int) engine.getMains().size(), 4);
+        if (engine.getMains().size() != 4)
+            return;
+        rig.selected = engine.getChannels()[0].get();
+        const auto shot = [this] (juce::Component& skin, const juce::String& fileName)
+        {
+            const auto image = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
+            expect (image.isValid(), fileName);
+            const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {});
+            if (folder.isEmpty())
+                return;
+            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile (fileName);
+            file.deleteFile();
+            juce::FileOutputStream out (file);
+            expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out), file.getFullPathName());
+        };
+        {
+            ui::DLiveSurface skin (rig.ctx);
+            skin.setSize (1920, 1080);
+            skin.refreshAll();
+            skin.findKey ("F")->onClick();
+            for (int i = 0; i < 4; ++i)
+            {
+                const auto slot = skin.getStrip (8 + i).getSlot();
+                expect (slot.kind == Slot::Main && slot.index == i, "C1500 strip " + juce::String (9 + i));
+            }
+            expect (skin.getStrip (7).getSlot().kind == Slot::Bus);
+            expect (skin.getSurfaceScreen().getCellText (5, 9).startsWith ("Main"));
+            for (int i = 0; i < 12; ++i)
+                skin.getStrip (i).refresh();
+            shot (skin, "dlive-surface-mains.png");
+        }
+        {
+            ui::DLiveC3500Surface skin (rig.ctx);
+            skin.setSize (1920, 1080);
+            skin.refreshAll();
+            skin.findKey ("Bank2 F")->onClick();
+            for (int i = 0; i < 4; ++i)
+            {
+                const auto slot = skin.getStrip (20 + i).getSlot();
+                expect (slot.kind == Slot::Main && slot.index == i, "C3500 strip " + juce::String (21 + i));
+            }
+            for (int i = 0; i < 24; ++i)
+                skin.getStrip (i).refresh();
+            // Each main strip has a Mix Source of its own.
+            rig.selected = engine.getMains()[3].get();
+            skin.selectionChanged();
+            skin.getProcessing().showTab (ui::dl::ProcessingScreen::Tab::Routing);
+            expect (skin.getProcessing().findButton ("Post Delay") != nullptr);
+            shot (skin, "dlive-c3500-mains.png");
+        }
     }
 
     /** The dLive's C3500 surface, at 1920x1080: its strips and banks, its two screens. */
@@ -664,6 +1660,128 @@ public:
         shot ("dlive-c3500-overview.png");
         skin.getProcessing().showTab (Tab::Peq);
 
+        // Preamp: ABCD inputs. Enabled, A takes the channel's own socket; B is patched, then played.
+        auto& processing = skin.getProcessing();
+        auto* engineHandle = engine.getHandle();
+        processing.showTab (Tab::Preamp);
+        auto* dlive5 = ld::ld_strip_dlive (channels[5]->getHandle());
+        const int ownSocket = channels[5]->params.inputLeft.load();
+        expect (! dlive5->abcdOn.load() && processing.findButton ("Enable ABCD") != nullptr && processing.findButton ("B") != nullptr);
+        if (auto* key = processing.findButton ("Enable ABCD"))
+            key->onClick();
+        expect (dlive5->abcdOn.load() && processing.findButton ("Disable ABCD") != nullptr);
+        expectEquals (dlive5->abcdLeft[0].load(), ownSocket);
+        processing.setAbcdPatch (1, 40);
+        expectEquals (dlive5->abcdLeft[1].load(), 40);
+        expectEquals (channels[5]->params.inputLeft.load(), ownSocket, "B isn't playing yet");
+        if (auto* key = processing.findButton ("B"))
+            key->onClick();
+        expectEquals (dlive5->abcdActive.load(), 1);
+        expectEquals (channels[5]->params.inputLeft.load(), 40);
+        shot ("dlive-c3500-preamp-abcd.png");
+        if (auto* key = processing.findButton ("A"))
+            key->onClick();
+        expectEquals (channels[5]->params.inputLeft.load(), ownSocket);
+        if (auto* key = processing.findButton ("Disable ABCD"))
+            key->onClick();
+        expect (! dlive5->abcdOn.load() && processing.findButton ("Enable ABCD") != nullptr);
+
+        // A channel's Routing tab: its Direct Out; the source point and the Follow keys are the console's.
+        expect (processing.hasTab (Tab::Routing) && ! processing.hasTab (Tab::ExtIn));
+        processing.showTab (Tab::Routing);
+        expect (processing.findButton ("Post Delay") != nullptr, "the Global Direct Out Source a console starts on");
+        const int followed = ld::ld_engine_dlive_direct_follow (engineHandle);
+        if (auto* key = processing.findButton ("Follow Mute"))
+            key->onClick();
+        expectEquals ((int) ld::ld_engine_dlive_direct_follow (engineHandle), followed ^ 2);
+        shot ("dlive-c3500-routing-channel.png");
+        ld::ld_engine_dlive_set_direct_follow (engineHandle, followed);
+
+        // A stereo mix: Ext In waits for Apply and reads back; Mix Source and Follow Main Pan on Routing.
+        Strip* stereoMix = nullptr;
+        for (auto& b : engine.getBuses())
+            if (stereoMix == nullptr && b->params.stereo.load())
+                stereoMix = b.get();
+        expect (stereoMix != nullptr);
+        if (stereoMix != nullptr)
+        {
+            using Ext = ui::dl::ProcessingScreen::ExtType;
+            auto& mixIn = stereoMix->mixInput();
+            rig.selected = stereoMix;
+            skin.selectionChanged();
+            expect (processing.getStrip() == stereoMix);
+            expect (processing.hasTab (Tab::ExtIn) && processing.hasTab (Tab::Routing) && processing.hasTab (Tab::Geq) && ! processing.hasTab (Tab::Preamp));
+            processing.showTab (Tab::ExtIn);
+            expect (processing.getExtType() == Ext::None);
+            expectEquals (mixIn.extSource.load(), -1);
+            processing.chooseExtIn (Ext::Socket, 20);
+            expectEquals (mixIn.extSource.load(), -1, "pending until Apply");
+            processing.cancelExtIn();
+            expect (processing.getExtType() == Ext::None);
+            processing.chooseExtIn (Ext::Socket, 20);
+            if (auto* key = processing.findButton ("Apply"))
+                key->onClick();
+            expectEquals (mixIn.extSource.load(), 20);
+            mixIn.extTrimDb = 3.0f;
+            shot ("dlive-c3500-extin.png");
+            // A main, another mix and PAFL as its source (the engine's strip sources, a mix by its slot).
+            processing.chooseExtIn (Ext::Main, 0);
+            processing.applyExtIn();
+            expectEquals (mixIn.extSource.load(), MixerEngine::stripSource (StripKind::Main, 0, 0));
+            processing.showTab (Tab::Peq);
+            processing.showTab (Tab::ExtIn);
+            expect (processing.getExtType() == Ext::Main && processing.getExtNumber() == 0, "read back from the mix");
+            const int other = engine.getBuses()[0].get() == stereoMix ? 1 : 0;
+            processing.chooseExtIn (Ext::Mix, other);
+            processing.applyExtIn();
+            expectEquals (mixIn.extSource.load(), MixerEngine::stripSource (StripKind::Bus, engine.getBuses()[(size_t) other]->getId(), 0));
+            processing.cancelExtIn();
+            expect (processing.getExtType() == Ext::Mix && processing.getExtNumber() == other);
+            if (processing.extCount (Ext::Pafl) > 0)
+            {
+                processing.chooseExtIn (Ext::Pafl, 0);
+                processing.applyExtIn();
+                expectEquals (mixIn.extSource.load(), (int) ld::kStripSourceBase + 0x1000);
+                processing.cancelExtIn();
+                expect (processing.getExtType() == Ext::Pafl);
+            }
+            const int patchedNow = mixIn.extSource.load();
+            for (int i = 0; i < (int) engine.getBuses().size(); ++i)
+                if (engine.getBuses()[(size_t) i].get() == stereoMix)
+                    processing.chooseExtIn (Ext::Mix, i);
+            processing.applyExtIn();
+            expectEquals (mixIn.extSource.load(), patchedNow, "a mix isn't its own Ext In");
+            processing.chooseExtIn (Ext::None, 0);
+            processing.applyExtIn();
+            expectEquals (mixIn.extSource.load(), -1);
+            mixIn.extTrimDb = 0.0f;
+
+            processing.showTab (Tab::Routing);
+            expectEquals (mixIn.mixSource.load(), 3);
+            expect (processing.findButton ("Post Delay") != nullptr && processing.findButton ("Follow Mute") == nullptr);
+            auto* dliveMix = ld::ld_strip_dlive (stereoMix->getHandle());
+            expect (processing.findButton ("Follow Main Pan") != nullptr && processing.findButton ("Invert") != nullptr);
+            if (auto* key = processing.findButton ("Follow Main Pan"))
+                key->onClick();
+            expect (dliveMix->followMainPan.load() && ! dliveMix->followInvert.load());
+            shot ("dlive-c3500-routing-mix.png");
+            if (auto* key = processing.findButton ("Follow Main Pan"))
+                key->onClick();
+            expect (! dliveMix->followMainPan.load());
+
+            // Main and a Matrix have a Mix Source too; LR has no Follow Main Pan.
+            rig.selected = engine.getMains()[0].get();
+            skin.selectionChanged();
+            expect (processing.getTab() == Tab::Routing);
+            expect (processing.findButton ("Post Delay") != nullptr && processing.findButton ("Follow Main Pan") == nullptr);
+            rig.selected = engine.getMatrices()[0].get();
+            skin.selectionChanged();
+            expect (processing.findButton ("Post Delay") != nullptr);
+            rig.selected = channels[5].get();
+            skin.selectionChanged();
+            processing.showTab (Tab::Peq);
+        }
+
         // The soft rotaries: Gate and Comp on layer 1, sends on layer 2.
         expect (skin.getSoftRotary (1).getBinding().isValid() && skin.getSoftRotary (3).getBinding().isValid());
         expect (! skin.getSoftRotary (0).getBinding().isValid());
@@ -709,6 +1827,56 @@ public:
         mixRack.getConfig().setPending (ui::universal::MixerConfigPanel::Aux, before + 2);
         expect (mixRack.getConfig().hasChanges());
         mixRack.getConfig().revert();
+
+        // Source Selector: sources in and out, its output, the source playing.
+        mixRack.showSub (Sub::SourceSelector);
+        expectEquals (mixRack.getSelector(), 0);
+        expect (mixRack.getSelectorOutput() == nullptr);
+        expect (mixRack.toggleSelectorSource (channels[0].get()) && mixRack.toggleSelectorSource (channels[2].get()) && mixRack.toggleSelectorSource (channels[3].get()));
+        expectEquals (mixRack.selectorMember (channels[2].get()), 1);
+        expect (mixRack.toggleSelectorSource (channels[2].get()), "touched again, it leaves");
+        expectEquals (mixRack.selectorMember (channels[2].get()), -1);
+        expectEquals (mixRack.selectorMember (channels[3].get()), 2, "the others keep their places");
+        mixRack.setSelectorOutput (stereoMix);
+        expect (mixRack.getSelectorOutput() == stereoMix);
+        expect (stereoMix == nullptr || ! mixRack.toggleSelectorSource (stereoMix), "a mix isn't its own source");
+        expectEquals ((int) ld::ld_selector_active (engineHandle, 0), -1);
+        mixRack.playSelectorMember (2);
+        expectEquals ((int) ld::ld_selector_active (engineHandle, 0), 2);
+        mixRack.playSelectorMember (1);
+        expectEquals ((int) ld::ld_selector_active (engineHandle, 0), 2, "an empty place plays nothing");
+        mixRack.showSelectorMixes (true);
+        expect (mixRack.toggleSelectorSource (engine.getMains()[0].get()));
+        expectEquals (mixRack.selectorMember (engine.getMains()[0].get()), 1, "the first free place");
+        mixRack.showSelectorMixes (false);
+        {
+            float fadeIn = 0.0f, fadeOut = 0.0f;
+            expect (ld::ld_selector_fades (engineHandle, 0, &fadeIn, &fadeOut));
+            ld::ld_selector_set_fades (engineHandle, 0, 2.5f, fadeOut);
+            expect (ld::ld_selector_fades (engineHandle, 0, &fadeIn, &fadeOut));
+            expectWithinAbsoluteError (fadeIn, 2.5f, 0.001f);
+        }
+        // The other selectors are their own.
+        mixRack.chooseSelector (1);
+        expect (mixRack.getSelectorOutput() == nullptr && mixRack.selectorMember (channels[0].get()) < 0);
+        mixRack.chooseSelector (0);
+        expect (mixRack.getSelectorOutput() == stereoMix && mixRack.selectorMember (channels[0].get()) == 0);
+
+        // Network: the MIDI channel waits for Apply; no server runs in a test.
+        mixRack.showSub (Sub::Network);
+        expectEquals (mixRack.getMidiChannel(), 1);
+        mixRack.setPendingMidiChannel (7);
+        expectEquals (mixRack.getMidiChannel(), 1);
+        mixRack.applyMidiChannel();
+        expectEquals (mixRack.getMidiChannel(), 7);
+        expectEquals (WingRemote::Settings::load (rig.settings).dliveMidiChannel, 7);
+        expect (! engine.getWing().isAhMidiRunning());
+        mixRack.setPendingMidiChannel (40);
+        expectEquals (mixRack.getPendingMidiChannel(), 12, "five channels from 12 end on 16");
+        mixRack.setPendingMidiChannel (1);
+        mixRack.applyMidiChannel();
+        expectEquals (mixRack.getMidiChannel(), 1);
+
         for (auto [sub, file] : { std::pair<Sub, const char*> { Sub::InputStereos, "dlive-c3500-stereos.png" }, { Sub::NameColour, "dlive-c3500-name.png" }, { Sub::Network, "dlive-c3500-network.png" },
                                   { Sub::Users, "dlive-c3500-users.png" }, { Sub::IoPort, "dlive-c3500-ioport.png" }, { Sub::AudioSync, "dlive-c3500-sync.png" },
                                   { Sub::SourceSelector, "dlive-c3500-selector.png" }, { Sub::Amm, "dlive-c3500-amm.png" } })
@@ -717,12 +1885,93 @@ public:
             expect (mixRack.getSub() == sub);
             shot (file);
         }
+        // Off: no source plays.
+        mixRack.showSub (Sub::SourceSelector);
+        if (auto* key = mixRack.findButton ("Off"))
+            key->onClick();
+        expectEquals ((int) ld::ld_selector_active (engineHandle, 0), -1);
+        mixRack.setSelectorOutput (nullptr);
+        expect (mixRack.getSelectorOutput() == nullptr);
         mixRack.setRange (0, 30, 31);
         mixRack.applyColour (5);
         mixRack.applyName ("Pad");
         expectEquals (channels[30]->params.colour.load(), 5);
         expect (channels[31]->getName() == "Pad 2");
         mixRack.applyName ({});
+
+        // Meters: 48 inputs at a time; the mixes by kind; the RTAs; the empty User pages.
+        using Meters = ui::dl::MetersScreen;
+        skin.findKey ("Page Meters")->onClick();
+        expect (skin.getPage() == Page::Meters);
+        auto& meters = skin.getMeters();
+        expectEquals (meters.getNumCells(), 48);
+        expect (meters.getCellStrip (5) == channels[5].get());
+        shot ("dlive-c3500-meters.png");
+        for (auto [t, file] : { std::pair<int, const char*> { Meters::Fx, "dlive-c3500-meters-fx.png" }, { Meters::Ufx, "dlive-c3500-meters-ufx.png" }, { Meters::Mix, "dlive-c3500-meters-mix.png" },
+                                { Meters::User1, "dlive-c3500-meters-user.png" }, { Meters::Rta1, "dlive-c3500-meters-rta.png" } })
+        {
+            meters.showTab (t);
+            expectEquals (meters.getTab(), t);
+            shot (file);
+        }
+        meters.showTab (Meters::Inputs);
+
+        // I/O: the grids patch only in Patch mode.
+        ui::routing::setProfile (ld::kProfileDLive); // as the app does for the console shown
+        skin.findKey ("Page I/O")->onClick();
+        expect (skin.getPage() == Page::Io);
+        auto& io = skin.getIo();
+        using Io = ui::dl::IoScreen;
+        io.showTab (Io::Inputs);
+        shot ("dlive-c3500-io-inputs.png");
+        expect (io.getNumRows() >= 48);
+        expectEquals (io.getNumColumns(), 64);
+        const int patched = channels[3]->params.inputLeft.load();
+        io.tapPoint (3, 9);
+        expectEquals (channels[3]->params.inputLeft.load(), patched);
+        io.setPatchMode (true);
+        io.tapPoint (3, 9);
+        expect (io.isOn (3, 9));
+        io.tapPoint (3, 9);
+        expect (! io.isOn (3, 9));
+        channels[3]->params.inputLeft = patched;
+        io.setPatchMode (false);
+        io.showTab (Io::Outputs);
+        shot ("dlive-c3500-io-outputs.png");
+        expect (io.getNumRows() > 0);
+        expectEquals (io.getNumColumns(), 32);
+        io.showTab (Io::TieLines);
+        shot ("dlive-c3500-io-tie.png");
+        io.showTab (Io::SoundCheck);
+        shot ("dlive-c3500-io-vsc.png");
+
+        // Scenes' other tabs; Global Safes.
+        skin.findKey ("Page Scenes")->onClick();
+        auto& sceneScreen = skin.getScenes();
+        for (auto [t, file] : { std::pair<int, const char*> { 1, "dlive-c3500-scenes-update.png" }, { 2, "dlive-c3500-scenes-cue.png" }, { 3, "dlive-c3500-scenes-import.png" }, { 4, "dlive-c3500-scenes-safes.png" } })
+        {
+            sceneScreen.showSub (t);
+            shot (file);
+        }
+        expect (! sceneScreen.isSafeColumn (0));
+        sceneScreen.toggleSafeColumn (0);
+        expect (sceneScreen.isSafeColumn (0));
+        sceneScreen.toggleSafeColumn (0);
+        expect (! sceneScreen.isSafeRow (0, 1));
+        sceneScreen.toggleSafeRow (0, 1);
+        expect (channels[13]->params.recallSafe.load() && ! channels[11]->params.recallSafe.load());
+        sceneScreen.toggleSafeRow (0, 1);
+        sceneScreen.showSub (0);
+        ui::routing::setProfile (ld::kProfileWing);
+
+        // View: the wide curve, the four bands, the small faders, and round.
+        expectEquals (skin.getProcessing().getView(), 0);
+        skin.findKey ("View L")->onClick();
+        expectEquals (skin.getProcessing().getView(), 1);
+        shot ("dlive-c3500-view-bands.png");
+        skin.findKey ("View L")->onClick();
+        skin.findKey ("View L")->onClick();
+        expectEquals (skin.getProcessing().getView(), 0);
 
         // Home puts things back.
         skin.findKey ("Rotary Pan")->onClick();
@@ -742,6 +1991,75 @@ public:
         skin.findKey ("GO")->onClick();
         expectEquals (skin.getScenes().getSelected(), 1);
         expectEquals (skin.getScenes().getNext(), 2);
+
+        // Scene Manager: Lock keeps a scene from changing; Copy and Paste carry content, not names.
+        auto& scenesPage = skin.getScenes();
+        scenesPage.select (0);
+        scenesPage.toggleLock();
+        expect (scenesPage.isLocked (0));
+        const int sceneCount = rig.show.getNumScenes();
+        scenesPage.remove();
+        expectEquals (rig.show.getNumScenes(), sceneCount);
+        scenesPage.toggleLock();
+        expect (! scenesPage.isLocked (0));
+        scenesPage.select (1);
+        scenesPage.copyScene();
+        expect (scenesPage.hasCopiedScene());
+        scenesPage.select (2);
+        scenesPage.pasteScene();
+        expectEquals (rig.show.getNumScenes(), sceneCount);
+        expect (rig.show.getScene (2)->name == "Rental");
+        scenesPage.select (sceneCount); // a free slot: the next one along
+        scenesPage.pasteScene();
+        expectEquals (rig.show.getNumScenes(), sceneCount + 1);
+        expect (rig.show.getScene (sceneCount)->name == "Scene " + juce::String (sceneCount + 1));
+        scenesPage.select (sceneCount);
+        scenesPage.remove();
+
+        // The Surface page and SoftKeys; the status page; Help on each screen.
+        skin.findKey ("Page Surface")->onClick();
+        expect (skin.getPage() == Page::Surface);
+        shot ("dlive-c3500-surface-assign.png");
+        skin.getSurfaceScreen().showTab (ui::dl::SurfaceScreen::SoftKeys);
+        shot ("dlive-c3500-surface-softkeys.png");
+        skin.getSurfaceScreen().showTab (ui::dl::SurfaceScreen::StripAssign);
+        expect (skin.getSurfaceScreen().getCellText (0, 0) == "Ip 1");
+        skin.getSetup().setSlot (0, 0, 0, { ui::dl::Slot::Channel, 20 });
+        expectEquals (skin.getStrip (0).getSlot().index, 20);
+        expect (skin.getSurfaceScreen().getCellText (0, 0) == "Ip 21");
+        skin.getSetup().reset();
+        expectEquals (skin.getStrip (0).getSlot().index, 0);
+        ui::dl::SoftKey talkKey;
+        talkKey.kind = ui::dl::SoftKey::Talk;
+        skin.getSetup().setSoftKey (10, talkKey);
+        const bool talkWas = engine.isTalkOn (0);
+        skin.findKey ("Soft 11")->onClick();
+        expect (engine.isTalkOn (0) != talkWas);
+        skin.findKey ("Soft 11")->onClick();
+        skin.findKey ("Page Surface")->onClick();
+        expect (skin.getPage() == Page::Status);
+        expect (skin.getStatus().getLines().joinIntoString ("|").contains ("Scenes: " + juce::String (rig.show.getNumScenes())));
+        shot ("dlive-c3500-status.png");
+        skin.findKey ("Page Scenes")->onClick();
+        skin.findKey ("Help R")->onClick();
+        expect (skin.getHelp (true).isVisible() && skin.getHelp (true).getText().contains ("scene"));
+        skin.findKey ("Help R")->onClick();
+        skin.getProcessing().showTab (Tab::Gate);
+        skin.findKey ("Help L")->onClick();
+        expect (skin.getHelp (false).getText().contains ("gate"));
+        shot ("dlive-c3500-help.png");
+        skin.findKey ("Help L")->onClick();
+        skin.getProcessing().showTab (Tab::Peq);
+
+        // The right screen's View: over the small faders, the four bands, the curve.
+        skin.findKey ("View R")->onClick();
+        expectEquals (skin.getBottomBand().getView(), 1);
+        expect (skin.getBottomBand().isVisible());
+        shot ("dlive-c3500-right-view.png");
+        skin.findKey ("View R")->onClick();
+        skin.findKey ("View R")->onClick();
+        expectEquals (skin.getBottomBand().getView(), 0);
+        expect (! skin.getBottomBand().isVisible());
         setShownProfile (ld::kProfileWing);
     }
 
@@ -888,11 +2206,321 @@ public:
         // Back as it was, for what follows.
         rig.settings.removeValue ("sq5.layers");
         // Soft Controls: a SoftKey as a mute group.
-        soft::set (rig.settings, 0, 4);
+        soft::set (rig.settings, 0, { soft::MuteGroup, 0, 0 });
         engine.muteGroups.set (0, false);
         skin.findKey ("Soft 1")->onClick();
         expect (engine.muteGroups.contains (0), "SoftKey = Mute Group 1");
         engine.muteGroups.set (0, false);
+        expect (soft::get (rig.settings, 0) == soft::Assign { soft::MuteGroup, 0, 0 }, "kept in the settings");
+        // Types: a Channel Mute on Ip3, Mix Select on Mix 2, a DCA spill.
+        soft::set (rig.settings, 1, { soft::ChannelMute, 0, 2 });
+        const bool ip3Muted = channels[2]->params.mute.load();
+        skin.findKey ("Soft 2")->onClick();
+        expect (channels[2]->params.mute.load() != ip3Muted, "SoftKey = Channel Mute");
+        channels[2]->params.mute = true;
+        soft::set (rig.settings, 2, { soft::MixSelect, 0, 2 });
+        skin.findKey ("Soft 3")->onClick();
+        expectEquals (skin.getMix(), 2, "SoftKey = Mix Select");
+        skin.setMix (0);
+        channels[5]->params.dcaMask.set (0, true);
+        soft::set (rig.settings, 3, { soft::DcaSpill, 0, 1 });
+        skin.findKey ("Soft 4")->onClick();
+        expect (skin.getStrip (0).getSlot() == Slot { Slot::Input, 0 } || skin.getStrip (15).getSlot() == Slot { Slot::Dca, 0 }, "DCA 1 spilled");
+        expect (skin.getStrip (15).getSlot() == Slot { Slot::Dca, 0 });
+        skin.findKey ("Soft 4")->onClick();
+        channels[5]->params.dcaMask.set (0, false);
+        expect (skin.getStrip (15).getSlot() != Slot { Slot::Dca, 0 } || skin.getSpill() < 0, "out of the spill");
+
+        // Setup's new pages: PAFL, Talkback's mixes, the signal generator, Bus Config.
+        skin.findKey ("Setup")->onClick();
+        display.touchField (display.findField ("Audio"));
+        shot ("sq5-talkback.png");
+        expect (display.findField ("MainLR Assign") >= 0);
+        const bool talkLr = engine.talk.paths[0].mains.contains (0);
+        display.touchField (display.findField ("MainLR Assign"));
+        expect (engine.talk.paths[0].mains.contains (0) != talkLr, "Talkback to LR");
+        engine.talk.paths[0].mains.set (0, talkLr);
+        display.touchField (display.findField ("Aux1 Assign"));
+        expect (engine.talk.paths[0].buses.contains (0), "Talkback to Aux1");
+        display.touchField (display.findField ("All Assign"));
+        expect (engine.talk.paths[0].buses.contains (11), "All");
+        display.touchField (display.findField ("PAFL"));
+        shot ("sq5-pafl.png");
+        display.touchField (display.findField ("SigGen"));
+        shot ("sq5-siggen.png");
+        display.touchField (display.findField ("Digital I/O"));
+        shot ("sq5-digital.png");
+        display.touchField (display.findField ("Mixer Config"));
+        shot ("sq5-inputstereo.png");
+        display.touchField (display.findField ("Pair 1"));
+        channels[0]->params.inputLeft = 0;
+        channels[1]->params.inputLeft = 1;
+        display.touchField (display.findField ("Apply"));
+        expect (channels[0]->params.stereo.load(), "1/2 stereo");
+        expectEquals (channels[0]->params.inputRight.load(), 1, "both sockets on the odd channel");
+        expect (skin.getStrip (1).getSlot() == Slot {}, "the even channel off the surface");
+        display.touchField (display.findField ("Pair 1"));
+        display.touchField (display.findField ("Apply"));
+        expect (! channels[0]->params.stereo.load());
+        expectEquals (channels[1]->params.inputLeft.load(), 1, "its socket back");
+        display.touchField (display.findField ("Bus Config"));
+        shot ("sq5-busconfig.png");
+        expectEquals (groupCount(), 0);
+        if (auto i = display.findField ("Number of Groups"); i >= 0)
+        {
+            display.touchField (i);
+            display.getRotaryBinding().set (3.0f / 12.0f);
+        }
+        display.touchField (display.findField ("Apply"));
+        expectEquals (groupCount(), 3, "3 Groups");
+        expect (isGroupMix (9) && ! isGroupMix (8));
+        expectEquals (engine.getBuses()[9]->getName(), juce::String ("Grp1"));
+        expect (typeOf (Slot { Slot::Mix, 11 }) == "Grp");
+        rig.settings.removeValue ("sq5.groups");
+        display.touchField (display.findField ("Number of Auxes"));
+        display.getRotaryBinding().set (1.0f);
+        display.touchField (display.findField ("Apply"));
+        expectEquals (groupCount(), 0, "back to Auxes");
+        expectEquals (engine.getBuses()[9]->getName(), juce::String ("Aux10"));
+        display.touchField (display.findField ("Role"));
+        shot ("sq5-role.png");
+        display.touchField (display.findField ("Surface"));
+        display.touchField (display.findField ("Soft Controls"));
+        shot ("sq5-softcontrols.png");
+        display.touchField (display.findField ("Control Type"));
+        display.touchField (display.findField ("Talk"));
+        display.touchField (display.findField ("Apply"));
+        expectEquals (soft::get (rig.settings, 0).type, (int) soft::Talk, "applied");
+        display.touchField (display.findField ("Surface Prefs"));
+        shot ("sq5-prefs.png");
+        rig.settings.removeValue (soft::settingsKey);
+
+        // The pages that were dim (Reference Guide pp.80-116). A field by its name.
+        const auto field = [&display] (const juce::String& title) -> const Field&
+        {
+            static const Field none;
+            const int i = display.findField (title);
+            return i >= 0 ? display.getFields()[(size_t) i] : none;
+        };
+        // A lit key lights its window, not its cap (the console's photographs).
+        expect (skin.findKey ("Processing")->windowLit && skin.getStrip (0).getMute().windowLit && skin.findKey ("Soft 1")->windowLit);
+        // Surface > Footswitch: Tip as a mute group, kept in the settings, run by pressFootswitch.
+        display.touchField (display.findField ("Footswitch"));
+        shot ("sq5-footswitch.png");
+        expect (! field ("Calibrate").enabled && display.findField ("Tip") >= 0 && display.findField ("Ring") >= 0);
+        display.touchField (display.findField ("Control Type"));
+        expect (field ("SQ Drive Multitrack").enabled && field ("SQ Drive Stereo Play").enabled && field ("SQ Drive Stereo Record").enabled, "the SQ Drive types");
+        expect (! field ("DAW Control").enabled, "no DAW remote in this rig");
+        display.touchField (display.findField ("Mute Group"));
+        display.touchField (display.findField ("Apply"));
+        expectEquals (soft::getFootswitch (rig.settings, 0).type, (int) soft::MuteGroup, "the footswitch's Tip");
+        expectEquals (soft::getFootswitch (rig.settings, 1).type, (int) soft::Unassigned, "Ring as it was");
+        engine.muteGroups.set (0, false);
+        skin.pressFootswitch (0, true);
+        skin.pressFootswitch (0, false);
+        expect (engine.muteGroups.contains (0), "Tip = Mute Group 1");
+        engine.muteGroups.set (0, false);
+        rig.settings.removeValue (soft::footswitchKey);
+        // The SoftKeys' SQ Drive types: the USB recorder's player and the multitrack recorder.
+        expect (soft::isModelled (soft::DrivePlay) && soft::isModelled (soft::DriveRecord) && soft::isModelled (soft::DriveMultitrack) && ! soft::isModelled (soft::DawControl));
+        expectEquals (soft::option2Count (soft::DriveMultitrack, 0), 6);
+        expectEquals (soft::option2Count (soft::DrivePlay, 0), 4);
+        expectEquals (soft::option2Text (soft::DriveRecord, 3, engine), juce::String ("Arm/Rec/Stop"));
+        soft::set (rig.settings, 4, { soft::DrivePlay, 0, 1 });
+        skin.findKey ("Soft 5")->onClick(); // Stop
+        expect (engine.getUsbRecorder().getPlayState() == UsbRecorder::PlayState::Stopped);
+        expect (! skin.isSoftKeyLit (4));
+        soft::set (rig.settings, 4, { soft::DriveMultitrack, 0, 2 });
+        skin.findKey ("Soft 5")->onClick(); // no multitrack recorder in this rig: nothing to start
+        expect (! skin.isSoftKeyLit (4));
+        soft::set (rig.settings, 4, { soft::DawControl, 0, 0 });
+        skin.findKey ("Soft 5")->onClick(); // nor a DAW remote
+        rig.settings.removeValue (soft::settingsKey);
+
+        // Mixer Config > Mix Stereo: a mono mix is the engine's mono output, after Apply.
+        display.touchField (display.findField ("Mixer Config"));
+        display.touchField (display.findField ("Mix Stereo"));
+        shot ("sq5-mixstereo.png");
+        expect (! engine.getBuses()[0]->params.mono.load());
+        display.touchField (display.findField ("Aux1 Stereo"));
+        display.touchField (display.findField ("Mtx2 Stereo"));
+        expect (! engine.getBuses()[0]->params.mono.load(), "not before Apply");
+        display.touchField (display.findField ("Apply"));
+        expect (engine.getBuses()[0]->params.mono.load(), "Aux1 mono");
+        expect (engine.getMatrices()[1]->params.mono.load() && ! engine.getMatrices()[0]->params.mono.load(), "Mtx2 mono");
+        display.touchField (display.findField ("Aux1 Stereo"));
+        display.touchField (display.findField ("Cancel"));
+        expect (engine.getBuses()[0]->params.mono.load(), "Cancel");
+        display.touchField (display.findField ("Aux1 Stereo"));
+        display.touchField (display.findField ("Mtx2 Stereo"));
+        display.touchField (display.findField ("Apply"));
+        expect (! engine.getBuses()[0]->params.mono.load() && ! engine.getMatrices()[1]->params.mono.load(), "stereo again");
+        display.touchField (display.findField ("All Stereo"));
+        display.touchField (display.findField ("Apply"));
+        expect (engine.getBuses()[11]->params.mono.load() && ! engine.getMatrices()[0]->params.mono.load(), "All: the twelve mixes");
+        display.touchField (display.findField ("All Stereo"));
+        display.touchField (display.findField ("Apply"));
+        expect (! engine.getBuses()[11]->params.mono.load());
+
+        // Ganging: Ip7 and Ip8 in gang 1, their faders and mutes linked.
+        display.touchField (display.findField ("Ganging"));
+        display.touchField (display.findField ("Ip7"));
+        display.touchField (display.findField ("Ip8"));
+        display.touchField (display.findField ("Fader Link"));
+        display.touchField (display.findField ("Mute Link"));
+        expect (display.findField ("Direct Out Link") >= 0 && ! field ("Direct Out Link").enabled, "no direct outs to link");
+        shot ("sq5-ganging.png");
+        expect (display.getGangs()[0].members.empty(), "not before Apply");
+        display.touchField (display.findField ("Apply"));
+        expect (display.getGangs()[0].members == std::vector<int> { 6, 7 });
+        expectEquals (display.getGangs()[0].attributes, (1 << gangs::Fader) | (1 << gangs::Mute));
+        expect (gangs::load (rig.settings)[0] == display.getGangs()[0], "kept in the settings");
+        expectEquals (gangs::gangOf (display.getGangs(), 7), 0);
+        {
+            // What changes on one member changes on the other; what isn't linked doesn't.
+            gangs::Follower follower;
+            follower.follow (engine, display.getGangs()); // where they start from
+            const float fader8 = channels[7]->params.faderDb.load(), pan8 = channels[7]->params.pan.load();
+            follower.follow (engine, display.getGangs());
+            expectWithinAbsoluteError (channels[7]->params.faderDb.load(), fader8, 0.001f, "members keep their own levels until one moves");
+            channels[6]->params.faderDb = -4.0f;
+            channels[6]->params.pan = 30.0f;
+            follower.follow (engine, display.getGangs());
+            expectWithinAbsoluteError (channels[7]->params.faderDb.load(), -4.0f, 0.001f, "the gang's faders");
+            expectWithinAbsoluteError (channels[7]->params.pan.load(), pan8, 0.001f, "Pan isn't linked");
+            channels[7]->params.mute = true;
+            follower.follow (engine, display.getGangs());
+            expect (channels[6]->params.mute.load(), "the gang's mutes");
+            channels[6]->params.mute = false;
+            follower.follow (engine, display.getGangs());
+            expect (! channels[7]->params.mute.load());
+            channels[6]->params.pan = 0.0f;
+        }
+        // A channel is in one gang only; out of it again.
+        display.touchField (display.findField ("Gang 2"));
+        expect (display.findField ("Ip7") >= 0 && ! field ("Ip7").enabled, "Ip7 is in gang 1");
+        display.touchField (display.findField ("Gang 1"));
+        display.touchField (display.findField ("Member 1"));
+        display.touchField (display.findField ("Member 1"));
+        display.touchField (display.findField ("Apply"));
+        expect (display.getGangs()[0].members.empty());
+        rig.settings.removeValue (gangs::settingsKey);
+
+        // Network Setup: the MIDI over TCP/IP server as it is.
+        display.touchField (display.findField ("Network Setup"));
+        shot ("sq5-network.png");
+        {
+            expect (display.findField ("MIDI over TCP/IP State") >= 0 && field ("MIDI over TCP/IP State").live != nullptr);
+            const auto words = field ("MIDI over TCP/IP State").live ? field ("MIDI over TCP/IP State").live() : juce::String();
+            expect (words.startsWith ("Port 51325"), words);
+            expect (words.contains (engine.getWing().isAhMidiRunning() ? "Running" : "Not running"), words);
+            expect (! field ("Static IP Address").enabled && ! field ("DHCP Key").enabled);
+        }
+        // Users: the Admin alone, who can't be blocked.
+        display.touchField (display.findField ("Users"));
+        shot ("sq5-users.png");
+        expect (display.findField ("Set Password") >= 0 && display.findField ("User Row 11") < 0 && display.findField ("User Row 1") >= 0);
+        display.touchField (display.findField ("Parameters"));
+        shot ("sq5-permissions.png");
+        expect (display.findField ("Mix EQ Allow") >= 0 && ! field ("Mix EQ Allow").enabled);
+        display.touchField (display.findField ("Audio"));
+        display.touchField (display.findField ("I/O Port"));
+        shot ("sq5-ioport.png");
+        expect (! field ("Control Network Bridge").enabled);
+
+        // Utility: Calibration, then Data: shows and scenes to and from a folder (the console's USB drive).
+        skin.findKey ("Utility")->onClick();
+        display.touchField (display.findField ("Calibration"));
+        shot ("sq5-calibration.png");
+        expect (display.findField ("Calibrate") >= 0 && ! field ("Calibrate").enabled);
+        {
+            const auto usb = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("sidecar-sq5-data-test");
+            usb.deleteRecursively();
+            display.setDataFolder (usb);
+            expect (display.getDataFolder() == usb);
+            juce::File stored, opened;
+            rig.ctx.saveShowTo = [&stored, &rig] (const juce::File& f)
+            {
+                stored = f;
+                rig.show.saveToFile (f);
+            };
+            rig.ctx.openShowFile = [&opened] (const juce::File& f) { opened = f; };
+            display.touchField (display.findField ("Data"));
+            expect (display.findField ("Recall") >= 0 && ! field ("Recall").enabled, "no shows yet");
+            display.touchField (display.findField ("Store New"));
+            expect (stored.existsAsFile() && stored.getParentDirectory() == usb, stored.getFullPathName());
+            expect (display.findField ("USB Show 1") >= 0, "listed");
+            shot ("sq5-data.png");
+            display.touchField (display.findField ("Recall"));
+            expect (opened == juce::File(), "Recall asks first");
+            display.touchField (display.findField ("Recall"));
+            expect (opened == stored, "Recall");
+            display.touchField (display.findField ("Scenes"));
+            const int scenes = rig.show.getNumScenes();
+            expect (scenes >= 2);
+            display.touchField (display.findField ("SQ Scene 2"));
+            expect (! field ("To SQ").enabled, "no scene files yet");
+            display.touchField (display.findField ("To USB"));
+            expect (usb.getChildFile (juce::String ("Chorus") + Show::sceneFileExtension).existsAsFile(), "To USB");
+            expect (display.findField ("USB Scene 1") >= 0);
+            shot ("sq5-datascenes.png");
+            display.touchField (display.findField ("To SQ"));
+            expectEquals (rig.show.getNumScenes(), scenes + 1, "To SQ");
+            display.touchField (display.findField ("SQ Scene 1"));
+            display.touchField (display.findField ("Overwrite SQ"));
+            expectEquals (rig.show.getScene (0)->name, juce::String ("Verse"), "Overwrite SQ asks first");
+            display.touchField (display.findField ("Overwrite SQ"));
+            expectEquals (rig.show.getNumScenes(), scenes + 1, "in its place");
+            expectEquals (rig.show.getScene (0)->name, juce::String ("Chorus"));
+            display.touchField (display.findField ("Delete"));
+            expect (usb.getChildFile (juce::String ("Chorus") + Show::sceneFileExtension).existsAsFile(), "Delete asks first");
+            display.touchField (display.findField ("USB Scene 1")); // choosing takes the question back
+            display.touchField (display.findField ("Libraries"));
+            expect (! field ("To USB").enabled, "no user libraries");
+            display.touchField (display.findField ("Sync"));
+            shot ("sq5-sync.png");
+            expect (! field ("Sync Mode").enabled);
+            rig.ctx.saveShowTo = nullptr;
+            rig.ctx.openShowFile = nullptr;
+            display.setDataFolder ({});
+            usb.deleteRecursively();
+        }
+        display.touchField (display.findField ("USB Utility"));
+        shot ("sq5-usbutility.png");
+        expect (display.findField ("Format") >= 0 && ! field ("Format").enabled);
+        display.touchField (display.findField ("SQ Drive"));
+        shot ("sq5-drive.png");
+        expect (display.findField ("Record Record") >= 0 && display.findField ("Playback Play") >= 0 && display.findField ("Playback Mode") >= 0);
+        display.touchField (display.findField ("Playback Stop"));
+        expect (engine.getUsbRecorder().getPlayState() == UsbRecorder::PlayState::Stopped);
+        display.touchField (display.findField ("Multitrack"));
+        shot ("sq5-multitrack.png");
+        display.driveMultitrack (2); // no multitrack recorder in this rig: nothing to run
+
+        // The Libraries of Compressor, GEQ and Preamp (pp.32, 39, 43).
+        skin.setLayer (0);
+        rig.selected = channels[0].get();
+        skin.selectionChanged();
+        skin.findKey ("Processing")->onClick();
+        display.showBlock (Block::Comp);
+        expect (display.hasLibrary());
+        skin.findKey ("Library")->onClick();
+        expect (display.isLibraryOpen());
+        shot ("sq5-complib.png");
+        display.touchField (display.findField ("Opto"));
+        expect (! display.isLibraryOpen());
+        expect (models::model (models::Dynamics, channels[0]->params.dynamics().model.load()).name == "Opto");
+        shot ("sq5-opto.png");
+        skin.findKey ("Library")->onClick();
+        display.touchField (display.findField ("Compressor"));
+        display.showBlock (Block::Preamp);
+        skin.findKey ("Library")->onClick();
+        shot ("sq5-preamplib.png");
+        display.touchField (display.findField ("Tube Stage"));
+        shot ("sq5-tube.png");
+        skin.findKey ("Library")->onClick();
+        display.touchField (display.findField ("No Model"));
+        display.showBlock (Block::Bank);
         // Copy and Paste by the Sel keys.
         rig.selected = channels[0].get();
         skin.setLayer (0);
@@ -1780,8 +3408,12 @@ private:
         expectEquals (display.getEncoder (0).turn.label, juce::String ("IN 1-8"));
         expectEquals (display.getEncoder (2).turn.text(), juce::String ("AN17-24"), "inputs 17-24 local, as on a full-size X32");
         display.getEncoder (0).turn.set (10.0f / 23.0f); // B1-8
+        expectEquals (channels[2]->params.inputLeft.load(), 2, "not until CONNECT");
+        expectEquals (display.getEncoder (0).turn.text(), juce::String ("B1-8"));
+        display.pushEncoder (0);
         expectEquals (channels[2]->params.inputLeft.load(), 82, "channel 3 from AES50 B 3 (interface input 83)");
         display.getEncoder (0).turn.set (0.0f); // AN1-8
+        display.pushEncoder (0);
         expectEquals (channels[2]->params.inputLeft.load(), 2);
         if (folder.isNotEmpty())
         {
@@ -1821,21 +3453,24 @@ private:
         display.showScreen (ui::x32::Display::Screen::Routing, 4); // card out
         expectEquals (display.getEncoder (0).turn.text(), juce::String ("AN1-8"));
         display.getEncoder (0).turn.set (10.0f / 35.0f); // B1-8
+        display.pushEncoder (0); // ASSIGN
         expectEquals (engine.getOutputSource (128), 80, "card 1 records AES50 B 1");
         display.getEncoder (0).turn.set (0.0f);
+        display.pushEncoder (0);
         expectEquals (engine.getOutputSource (128), 0);
 
         // EFFECTS (step 11): home picks a slot and its model; fx1-fx8 its parameters.
         {
             auto& fx = engine.getFx();
             display.showScreen (ui::x32::Display::Screen::Effects);
-            expectEquals (display.getEncoder (1).turn.text(), juce::String ("Vintage Room"), "FX 1's factory model");
-            display.getEncoder (0).turn.set (4.0f / 7.0f); // FX 5
-            display.getEncoder (1).turn.set (0.0f);
+            expectEquals (display.getEncoder (4).turn.text(), juce::String ("Vintage Room"), "FX 1's factory model");
+            display.getEncoder (5).turn.set (4.0f / 7.0f); // FX 5
+            display.getEncoder (4).turn.set (0.0f);
+            display.pushEncoder (4); // ASSIGN
             const auto first = models::model (models::Fx, fx.getModel (4));
             expect (first.category != models::Category::FxPremium, "FX 5 takes the insert models only: " + first.name);
-            display.getEncoder (0).turn.set (0.0f); // FX 1
-            display.pushEncoder (1);                // EDIT
+            display.getEncoder (5).turn.set (0.0f); // FX 1
+            display.pushEncoder (5);                // EDIT
             expectEquals (display.getTab(), 1);
             expect (display.getEncoder (0).turn.label.isNotEmpty(), "FX 1's first parameter");
             display.getEncoder (0).turn.set (0.0f);
@@ -1933,7 +3568,8 @@ private:
 
         // LIBRARY > show and UTILITY (step 12d): the show file keys; COPY / PASTE.
         {
-            display.showScreen (ui::x32::Display::Screen::Library, 1);
+            display.showScreen (ui::x32::Display::Screen::Scenes, 1);
+            display.setLayer (1);
             expectEquals (display.getEncoder (0).pushLabel, juce::String ("NEW SHOW"));
             expectEquals (display.getEncoder (3).pushLabel, juce::String ("SAVE AS"));
             display.showScreen (ui::x32::Display::Screen::Utility);
@@ -1991,15 +3627,18 @@ private:
             display.getEncoder (1).turn.set (0.0f);
             expect (rig.show.getScene (scenesBefore)->midi.isEmpty());
             display.showScreen (S::Scenes, 2);
-            display.pushEncoder (2); // NEW
+            expectEquals (display.saveSnippet (99, "One"), 0, "a new one, of the selected strip");
             expectEquals (rig.show.getScene (scenesBefore)->numSnippets, 1);
-            display.pushEncoder (3); // FIRE
+            display.setLayer (1);
+            display.pushEncoder (0); // FIRE
             expect (rig.show.getSnippet (scenesBefore, 0)->fireWithScene);
-            display.pushEncoder (0); // GO
-            display.pushEncoder (2);
-            expectEquals (rig.show.getScene (scenesBefore)->numSnippets, 2);
-            display.pushEncoder (5); // DELETE the second
+            display.setLayer (0);
+            display.pushEncoder (0); // LOAD
+            expectEquals (display.saveSnippet (99, "Two"), 1);
+            display.setLayer (1);
+            display.pushEncoder (1); // DELETE the second
             expectEquals (rig.show.getScene (scenesBefore)->numSnippets, 1);
+            display.setLayer (0);
             // PARAM SAFE: HA (the preamp) safe; the console's column.
             display.showScreen (S::Scenes, 3);
             display.pushEncoder (0);
@@ -2030,11 +3669,11 @@ private:
             expectEquals (display.getEncoder (4).pushLabel, juce::String ("KEY SOLO"));
             display.setLayer (0);
             display.showScreen (S::Meters, 4);
-            expectEquals (display.getEncoder (0).pushLabel, juce::String ("FREEZE"));
-            display.showScreen (S::Library, 2);
+            expectEquals (display.getEncoder (2).pushLabel, juce::String ("FREEZE"));
+            display.showScreen (S::Library, 0);
             expectEquals (display.getEncoder (0).pushLabel, juce::String ("ON / OFF"));
-            expectEquals (display.getEncoder (1).pushLabel, juce::String ("LOAD"));
-            expectEquals (display.getEncoder (2).pushLabel, juce::String ("SAVE"));
+            expectEquals (display.getEncoder (1).pushLabel, juce::String ("LOAD PRESET"));
+            expectEquals (display.getEncoder (2).pushLabel, juce::String ("SAVE PRESET"));
             expectEquals (display.getEncoder (3).pushLabel, juce::String ("DELETE"));
             // LIBRARY > routing: SAVE the routing, change XLR 1-4, LOAD it back;
             // with XLR Out off the recall list, LOAD leaves it. (In a library
@@ -2053,8 +3692,8 @@ private:
                 const auto xlr = [&wing, &set] { return wing.runX32Text ("/config/routing/OUT/1-4", set); };
                 const auto xlrBefore = xlr();
                 const juce::String other = xlrBefore.endsWith ("AN9-12") ? "AN1-4" : "AN9-12";
-                display.showScreen (S::Library, 4);
-                expect (display.savePreset (4, "Test routing").wasOk());
+                display.showScreen (S::Library, 2);
+                expect (display.savePreset (2, "Test routing").wasOk());
                 expectEquals (display.getEncoder (1).turn.text(), juce::String ("Test routing"));
                 wing.runX32Text ("/config/routing/OUT/1-4 " + other, set);
                 expect (xlr() != xlrBefore);
@@ -2074,18 +3713,18 @@ private:
                #endif
                 home.deleteRecursively();
             }
-            display.showScreen (S::Assign, 0);
-            display.getEncoder (1).turn.set (1.0f / 5.0f); // ENC 1: FADER
+            display.showScreen (S::Assign, 1);
+            display.getEncoder (2).turn.set (1.0f / 5.0f); // ENC 1: FADER
             expect (skin.getAssignSection().getCode (0).startsWith ("F"), "a fader");
-            display.getEncoder (2).turn.set (3.0f / 79.0f); // CH 4
+            display.getEncoder (3).turn.set (3.0f / 79.0f); // CH 4
             expectEquals (skin.getAssignSection().getCode (0), juce::String ("F03"));
-            display.getEncoder (1).turn.set (0.0f);
+            display.getEncoder (2).turn.set (0.0f);
             expectEquals (skin.getAssignSection().getCode (0), juce::String ("-"));
             // MONITOR: AFL on the fifth push; TALK A's bus.
             display.showScreen (S::Monitor);
             const bool afl = rig.engine.soloAfl.load();
-            display.getEncoder (1).turn.set (3.0f / 6.0f); // the solo options: CHANNEL AFL
-            expectEquals (display.getEncoder (1).turn.text(), juce::String ("CHANNEL AFL"));
+            display.getEncoder (1).turn.set (3.0f / 6.0f); // the solo options: channel AFL
+            expectEquals (display.getEncoder (1).turn.text(), juce::String ("Ch AFL"));
             display.pushEncoder (1);
             expect (rig.engine.soloAfl.load() != afl);
             display.pushEncoder (1);
@@ -2119,11 +3758,15 @@ private:
             if (folder.isNotEmpty())
             {
                 const std::tuple<S, int, const char*> pages[] = { { S::Scenes, 0, "scenes" }, { S::Scenes, 1, "scenes-tab" }, { S::Scenes, 2, "snippets" }, { S::Scenes, 3, "param-safe" },
-                                                                  { S::Scenes, 4, "chan-safe" }, { S::Scenes, 5, "scenes-midi" }, { S::Library, 2, "library-channel" }, { S::Library, 4, "library-routing" }, { S::Setup, 0, "setup-global" }, { S::Monitor, 0, "monitor" },
-                                                                  { S::Monitor, 1, "talk-a" }, { S::Monitor, 3, "osc" }, { S::Assign, 0, "assign" },
-                                                                  { S::Usb, 0, "usb" }, { S::Setup, 4, "scribble" }, { S::Setup, 5, "preamps" }, { S::Setup, 1, "setup-config" },
+                                                                  { S::Scenes, 4, "chan-safe" }, { S::Scenes, 5, "scenes-midi" }, { S::Library, 0, "library-channel" }, { S::Library, 1, "library-effects" }, { S::Library, 2, "library-routing" }, { S::Setup, 0, "setup-global" }, { S::Monitor, 0, "monitor" },
+                                                                  { S::Monitor, 1, "talk-a" }, { S::Monitor, 3, "osc" }, { S::Routing, 2, "aux-out" }, { S::Routing, 3, "p16" }, { S::Effects, 0, "effects-home" }, { S::Setup, 2, "remote" }, { S::Assign, 0, "assign-home" }, { S::Assign, 1, "assign" },
+                                                                  { S::Usb, 0, "usb" }, { S::Setup, 4, "scribble" }, { S::Setup, 5, "preamps" }, { S::Setup, 1, "setup-config" }, { S::Meters, 0, "meters-channel" }, { S::Meters, 1, "meters-bus" }, { S::Meters, 2, "meters-aux" }, { S::Meters, 3, "meters-inout" },
+                                                                  { S::Home, 5, "sends" }, { S::Home, 6, "main" }, { S::Routing, 7, "xlr" }, { S::Usb, 1, "usb-config" }, { S::MuteGroups, 0, "mutegrp" },
                                                                   { S::Setup, 3, "network" }, { S::Setup, 6, "card" },
-                                                                  { S::Meters, 4, "rta" }, { S::Home, 1, "config" } };
+                                                                  { S::Meters, 4, "rta" }, { S::Home, 1, "config" }, { S::Home, 2, "gate" }, { S::Home, 3, "dyn" }, { S::Home, 4, "eq" },
+                                                                  { S::Routing, 0, "routing-home" }, { S::Routing, 1, "out" }, { S::Routing, 4, "card-out" }, { S::Routing, 5, "aes-a" }, { S::Routing, 6, "aes-b" },
+                                                                  { S::Effects, 1, "fx1" }, { S::Effects, 5, "fx5" }, { S::Monitor, 2, "talk-b" }, { S::Assign, 2, "assign-b" }, { S::Assign, 3, "assign-c" },
+                                                                  { S::Utility, 0, "utility" }, { S::Utility, 1, "init" } };
                 for (auto [screen, page, shot] : pages)
                 {
                     display.showScreen (screen, page);
@@ -2157,12 +3800,18 @@ private:
         // The bus scheme: every input's sends pre fader, then post again.
         {
             int set = 0;
-            display.getEncoder (4).turn.set (1.0f / 3.0f); // ALL PRE
+            display.getEncoder (4).turn.set (0.0f); // 8 pre / 8 post
             display.pushEncoder (4);
             expect (engine.getWing().runX32Text ("/ch/05/mix/03/type", set).endsWith ("PRE"));
-            display.getEncoder (4).turn.set (0.0f); // ALL POST
+            expect (engine.getWing().runX32Text ("/ch/05/mix/09/type", set).endsWith ("POST"));
+            display.getEncoder (4).turn.set (1.0f); // 10 pre / 6 post
             display.pushEncoder (4);
-            expect (engine.getWing().runX32Text ("/ch/05/mix/03/type", set).endsWith ("POST"));
+            expect (engine.getWing().runX32Text ("/ch/05/mix/09/type", set).endsWith ("PRE"));
+            display.getEncoder (4).turn.set (3.0f / 4.0f); // 4 pre / 4 post / 8 sub
+            display.pushEncoder (4);
+            expect (engine.getWing().runX32Text ("/ch/05/mix/09/type", set).endsWith ("GRP"), "buses 9-16 subgroups");
+            display.getEncoder (4).turn.set (0.0f);
+            display.pushEncoder (4);
         }
         // SCRIBBLE STRIP: a name from the Snippets list, given by its push.
         display.showScreen (ui::x32::Display::Screen::Setup, 4);
@@ -2183,7 +3832,7 @@ private:
         expectEquals (display.getEncoder (1).turn.label, juce::String ("GAIN 1"));
         display.setLayer (1);
         expectEquals (display.getEncoder (1).turn.label, juce::String ("GAIN 5"));
-        display.getEncoder (0).turn.set (1.0f);
+        display.getEncoder (0).turn.set (3.0f / 15.0f);
         expectEquals (display.getEncoder (0).turn.text(), juce::String ("25-32"));
         expectEquals (display.getEncoder (1).turn.label, juce::String ("GAIN 29"));
         display.setLayer (0);
@@ -2234,26 +3883,29 @@ private:
 
         // ASSIGN's editor writes each kind of code; another kind shows as itself.
         {
-            display.showScreen (ui::x32::Display::Screen::Assign, 0);
+            display.showScreen (ui::x32::Display::Screen::Assign, 1);
             const auto turn = [&display] (int encoder, int step, int steps) { display.getEncoder (encoder).turn.set ((float) step / (float) (steps - 1)); };
-            turn (0, 0, 12); // ENC 1
-            turn (1, 4, 6);  // FX PARAM
-            turn (2, 2, 8);  // FX3
-            turn (3, 5, 64); // P6
+            turn (1, 0, 12); // ENC 1
+            turn (2, 4, 6);  // FX PARAM
+            turn (3, 2, 8);  // FX3
+            turn (4, 5, 64); // P6
             expectEquals (display.assignCode (0), juce::String ("X205"));
-            turn (1, 5, 6); // SELECTED
-            turn (2, 7, 13);
+            turn (2, 5, 6); // SELECTED
+            turn (3, 7, 13);
             expectEquals (display.assignCode (0), juce::String ("DG"));
-            expectEquals (display.getEncoder (2).turn.text(), juce::String ("SEL RATIO"));
-            turn (0, 4, 12); // KEY 5
-            turn (1, 5, 8);  // SCENE
-            turn (2, 3, 100);
+            expectEquals (display.getEncoder (3).turn.text(), juce::String ("SEL RATIO"));
+            turn (1, 4, 12); // KEY 5
+            turn (2, 5, 9);  // SCENE
+            turn (3, 3, 100);
             expectEquals (display.assignCode (4), juce::String ("S003"));
-            turn (1, 7, 8); // NEXT
+            turn (2, 7, 9); // NEXT
             expectEquals (display.assignCode (4), juce::String ("S91"));
+            turn (2, 8, 9); // PAGE
+            turn (3, 4, 12); // EQ
+            expectEquals (display.assignCode (4), juce::String ("P9904"));
             display.setAssignCode (4, "M100");
-            display.showScreen (ui::x32::Display::Screen::Assign, 0);
-            expect (display.getEncoder (1).turn.text().startsWith ("MIDI"), display.getEncoder (1).turn.text());
+            display.showScreen (ui::x32::Display::Screen::Assign, 1);
+            expect (display.getEncoder (2).turn.text().startsWith ("MIDI"), display.getEncoder (2).turn.text());
             display.setAssignCode (0, "-");
             display.setAssignCode (4, "-");
         }
@@ -2274,10 +3926,105 @@ private:
             rig.selected = selectedBefore;
         }
 
+        // The menus as the manual lays them out.
+        {
+            using S = ui::x32::Display::Screen;
+            // LIBRARY: three tabs, as photographed.
+            display.showScreen (S::Library, 0);
+            expectEquals (display.getTabs().size(), 3);
+            expectEquals (display.getTabs()[1], juce::String ("effects"));
+            // MUTE GRP: over the page in view, its encoders push the groups; again, back.
+            display.showScreen (S::Home, 4);
+            display.showScreen (S::MuteGroups);
+            expect (display.getScreen() == S::MuteGroups);
+            expectEquals (display.getTabs()[4], juce::String ("eq"), "the page under it keeps its tabs");
+            expect (display.getEncoder (2).push != nullptr);
+            const bool grp3 = engine.muteGroups.contains (2);
+            display.pushEncoder (2);
+            expect (engine.muteGroups.contains (2) != grp3, "encoder 3 mutes group 3");
+            display.pushEncoder (2);
+            display.showScreen (S::MuteGroups);
+            expect (display.getScreen() == S::Home && display.getTab() == 4, "MUTE GRP again: back to the page");
+            // HOME > sends: mutes, the shift by two, page 2 the pair's tap.
+            display.showScreen (S::Home, 5);
+            auto& send = channels[12]->sends[2];
+            const bool wasOn = send.enabled.load();
+            display.pushEncoder (2);
+            expect (send.enabled.load() != wasOn, "MUTE of bus 3");
+            display.pushEncoder (2);
+            display.getEncoder (5).turn.set (1.0f / 6.0f);
+            expectEquals (display.getEncoder (5).turn.text(), juce::String ("3-6"));
+            display.getEncoder (5).turn.set (0.0f);
+            display.setLayer (1);
+            expectEquals (display.getEncoder (0).turn.label, juce::String ("TAP 1/2"));
+            {
+                int set = 0;
+                display.getEncoder (0).turn.set (3.0f / 5.0f); // PRE
+                expect (engine.getWing().runX32Text ("/ch/13/mix/01/type", set).endsWith ("PRE"));
+                display.getEncoder (0).turn.set (4.0f / 5.0f); // POST
+                expect (engine.getWing().runX32Text ("/ch/13/mix/01/type", set).endsWith ("POST"));
+            }
+            display.setLayer (0);
+            // HOME > eq: RESET a band, RESET all; RTA is shown dim.
+            display.showScreen (S::Home, 4);
+            expect (display.getEncoder (1).pushLabel == "RTA SPEC" && display.getEncoder (1).push != nullptr, "the RTA overlay's bars or spectrograph");
+            auto& eqParams = channels[12]->params.eq();
+            eqParams.values[2] = 6.0f; // band 1's gain
+            display.getEncoder (5).turn.set (0.0f);
+            display.pushEncoder (3);
+            expectWithinAbsoluteError (eqParams.values[2].load(), 0.0f, 0.1f, "RESET band");
+            // METERS > rta: AUTO GAIN.
+            display.showScreen (S::Meters, 4);
+            auto& rta = engine.getAnalysis().settings (ld::kRtaViewHome);
+            const bool autoGain = rta.autogain.load();
+            display.pushEncoder (3);
+            expect (rta.autogain.load() != autoGain);
+            display.pushEncoder (3);
+            // MONITOR: MUTE on the first push; the source list, set by the push.
+            display.showScreen (S::Monitor);
+            const bool wasMuted = engine.monitorMute.load();
+            display.pushEncoder (0);
+            expect (engine.monitorMute.load() != wasMuted, "MONITOR's mute");
+            display.pushEncoder (0);
+            {
+                int set = 0;
+                const auto wasSource = engine.getWing().runX32Text ("/config/solo/source", set);
+                const auto was = engine.speakers.source.load();
+                display.getEncoder (5).turn.set (5.0f / 6.0f); // Aux 5/6
+                expect (display.getEncoder (5).pushOn == nullptr || ! display.getEncoder (5).pushOn(), "not until SET");
+                display.pushEncoder (5);
+                expect (engine.getWing().runX32Text ("/config/solo/source", set).endsWith ("AUX56"));
+                expectEquals (engine.speakers.source.load(), MixerEngine::monitorSourceIndex (StripKind::Aux, 4));
+                engine.speakers.source = was;
+                engine.getWing().runX32Text (wasSource.isNotEmpty() ? wasSource : juce::String ("/config/solo/source LRAFL"), set);
+                display.getEncoder (5).turn.set (4.0f / 6.0f);
+                display.pushEncoder (5);
+                engine.speakers.source = was;
+            }
+            // ASSIGN > home: three sets, the set-tab offset by one; the layer keys pick the set.
+            display.showScreen (S::Assign);
+            expectEquals (display.getTabs()[1], juce::String ("set a"));
+            display.setLayer (2);
+            expectEquals (skin.getAssignSection().getSet(), 2, "set C");
+            display.pushEncoder (0); // NEXT SET
+            expectEquals (skin.getAssignSection().getSet(), 0);
+            display.showTab (2);
+            expectEquals (skin.getAssignSection().getSet(), 1, "set B's tab");
+            display.showTab (1);
+            // ROUTING > aux out: the AES/EBU pair after the six.
+            display.showScreen (S::Routing, 2);
+            display.getEncoder (0).turn.set (6.0f / 7.0f);
+            expectEquals (display.getEncoder (0).turn.text(), juce::String ("AES L"));
+            display.getEncoder (0).turn.set (0.0f);
+            // Dimmed items: drawn, inert.
+            display.showScreen (S::Setup, 0);
+            expect (display.getEncoder (4).dimmed && display.getEncoder (4).push == nullptr, "the time is the computer's");
+        }
+
         // MONITOR's talk tabs: the sixth encoder picks the talkback channel.
         {
             display.showScreen (ui::x32::Display::Screen::Monitor, 1);
-            const auto& talk = display.getEncoder (5).turn;
+            const auto& talk = display.getEncoder (1).turn;
             expectEquals (talk.label, juce::String ("TALK CH"));
             talk.set (0.0f);
             expect (engine.getTalkStrip() == nullptr);
@@ -2304,6 +4051,37 @@ private:
             expect (files.exportChannelFile (file, "/main/st", "Main").startsWith ("Exported"));
             expect (file.loadFileAsString().contains ("\n/mix "));
             file.deleteFile();
+        }
+        // EQ on faders, a bus's matrix sends, the DCAs' names, kept preferences.
+        {
+            using S = ui::x32::Display::Screen;
+            int set = 0;
+            auto& wing = engine.getWing();
+            wing.runX32Text ("/fx/5/type GEQ", set);
+            display.showScreen (S::Effects, 5);
+            expectEquals (display.getEncoder (0).pushLabel, juce::String ("GEQ ON FADERS"));
+            display.pushEncoder (0);
+            expectEquals (skin.getGroupStrip (1).getSendTo(), juce::String ("25"));
+            skin.getGroupStrip (1).getFader().setPositionFromUser (1.0);
+            expectWithinAbsoluteError (engine.getFx().params (4).values[1].load(), 15.0f, 0.1f, "band 2 up");
+            engine.getFx().params (4).values[1] = 0.0f;
+            display.pushEncoder (0);
+            expectEquals (skin.getGroupStrip (1).getSendTo(), juce::String(), "the faders their own again");
+            rig.selected = engine.getBuses()[0].get();
+            skin.selectionChanged();
+            display.showScreen (S::Home, 5);
+            expectEquals (display.getEncoder (0).turn.label, juce::String ("MTX 1"));
+            rig.selected = channels[12].get();
+            skin.selectionChanged();
+            display.showScreen (S::Setup, 4);
+            display.getEncoder (0).turn.set (1.0f); // the last entry: DCA 8
+            expectEquals (display.getEncoder (0).turn.text(), juce::String ("DCA 8"));
+            display.getEncoder (3).turn.set (0.0f);
+            display.pushEncoder (3);
+            expect (wing.runX32Text ("/dca/8/config/name", set).contains (ui::x32::Display::scribbleNames()[0]));
+            display.getEncoder (0).turn.set (0.0f);
+            display.showScreen (S::Setup, 1);
+            expect (wing.runX32Text ("/-prefs/sceneadvance", set).endsWith ("OFF"));
         }
         setShownProfile (ld::kProfileWing);
     }

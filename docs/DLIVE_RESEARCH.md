@@ -18,9 +18,9 @@ Researched November 2026, against firmware V2.12 (January 2026), the newest foun
 | AMM | Enough to build | The side-chain filters' ranges; the algorithms' details |
 | Preamp models | Controls known | Knob ranges, the curves |
 | NEQ-12 | Enough to build | Width range |
-| Dyn8 | Controls known | Its own ranges (RackExtra's are the nearest guide) |
+| Dyn8 | Built (`DLVDYN8`): controls known | Its own ranges (RackExtra's and the Avantis guide's picture are the nearest guide) |
 | RackExtra FX (20) | Built (`dlive_fx`): controls known, some ranges | Most knob ranges, the algorithms |
-| RackUltra FX (11) | Controls known, some ranges | Most knob ranges, the algorithms |
+| RackUltra FX (11) | Built (`dlive_fx/ultra`): controls known, some ranges | Most knob ranges, the algorithms |
 | MIDI over TCP | Full protocol | Newer messages since V2.0, if any |
 | Surface | Guides already held | Fader taper |
 
@@ -77,6 +77,13 @@ Each mix's NEQ slot is either a 28-band GEQ (4 types) or a 12-band PEQ, chosen w
   51 parameters. Built as `DLVNEQ12` (`livedaw_dsp::dlive`); `MAX_EQ_PARAMS` grew from 32 to 64.
 - Width: the screen picture shows values such as 0.6, 0.3 and 1/9 (octaves). Its range isn't
   stated. The 4-band PEQ's is 1.5 to 1/9 octave.
+
+### Built: `DLVDYN8`, `dlive_fx/dynamics/dyn8.rs`, and the RackUltra card, `dlive_fx/ultra`
+
+Every algorithm is Sidecar's reading; each module's comment says what is stated and what isn't.
+A dLive's table holds the 38 models (RackExtra 20, Dyn8, 11 RackUltra). `dlive_fx::slot_rule` keeps each to its own engines: RackExtra 0..16, RackUltra 16..24, Dyn8 24..88 (a Universal strip takes any: RackUltra FX 1-8, Dyn8 any slot).
+
+Public but unreadable here: the support site refuses fetches; the search engine's extract of its RackUltra article gave the Shifter's Precision, Gridder's tolerances, Harmoniser Interval reading and five cabinet names (FDR 1x12, FV 2x10, VX 2x12, Bass 8x10B, Bass 1x15). Four cabinets stay numbered. The Avantis guide (held, `Sidecar-reference/allen-heath-avantis`) has Dyn8's page: its key Split/Wide meaning (same key to both sides / true stereo) is used here.
 
 ## Dyn8 (Processing Screen; RackExtra's Dynamic EQ and Multiband entries)
 
@@ -234,6 +241,23 @@ Compared with the V1.6 diagram in the DM64 datasheet, and with Sidecar's `chain:
   Post-Delay tap comes after it (the guide's meter option also says "Post Delay (Post AMM)"). The
   key comes from before Insert A, as the guide says. A console would settle where the gain sits.
 
+## Structure, as built (Reference Guide V1.9)
+
+Checked against the V1.9 PDF of the Firmware Reference Guide (Preamp, Ext In, Routing, MixRack Setup, Audio / Source
+Select, block diagram); kept outside the repository in `Sidecar-reference/dlive/reference-guide-v1.9/`. It predates Group
+to Group and Mute Group override (V2.11).
+
+From the guide: the Main modes and what each does, PAFL busses in Mixer Config, Ext In from Mix and PAFL busses, Mix
+Source on Aux, Main, Matrix and FX sends, the Direct Out's eight source points and three follow options, Follow / Invert on
+each stereo mix, the stereo image modes and width (ahead of Trim), ABCD and its Actions, Source Selectors (20, each 20
+sources, an Aux or Matrix output, on-levels, fades to 10 s, sources not in it unaffected).
+
+Sidecar's reading, because the guide doesn't say: how many of the 64 busses a Main mode takes (one for each signal, Msum
+too); the most PAFL busses (4: one per Surface); the pan and divergence curves (equal power); how Ext In from a mix is
+delayed (one block, like every signal read back from a later stage); how a 5.0 position spreads (one front-to-rear
+control, equal power); the fades' shape (linear in gain); that Invert without Follow copies the mirrored pans once; that
+turning ABCD on gives A the channel's patch if it has none.
+
 ## Not published anywhere we could find
 
 These need a real console, or stay Sidecar's reading:
@@ -256,6 +280,9 @@ These need a real console, or stay Sidecar's reading:
   [DEEP Processing, RackExtra FX and RackUltra FX](https://support.allen-heath.com/hc/en-gb/articles/39827415078033),
   [Processing specs](https://support.allen-heath.com/hc/en-gb/articles/39827102349457)
 - [Firmware Release Notes V2.12](https://support.allen-heath.com/hc/en-gb/articles/42059219284753-dLive-Firmware-Release-Notes-Firmware-Version-2-12)
+- [Firmware Release Notes V2.11](https://www.allen-heath.com/content/uploads/2025/07/dLive-Release-Notes-V2.11.pdf)
+  (names Group to Group and Mute Group override, without describing them)
+- Firmware Reference Guide V1.9 as a PDF, a copy held by a distributor (see `Sidecar-reference/dlive/reference-guide-v1.9/SOURCES.md`)
 - [DM32U datasheet](https://www.allen-heath.com/content/uploads/2023/07/DM32U-Datasheet.pdf)
   (kept outside the repository, in `Sidecar-reference/dlive/dm32u/`)
 - [Bitfocus Companion dLive module](https://github.com/bitfocus/companion-module-allenheath-dlive)

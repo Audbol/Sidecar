@@ -810,6 +810,9 @@ const SHOW_ACTIONS: [&str; 5] = ["GO", "PREV", "NEXT", "GOPREV", "GONEXT"];
 /// PPLPS, are newer than the 3.1 tree).
 const USB_KEYS: [&str; 12] =
     ["PLAY", "PPAUSE", "PSTOP", "PPREV", "PNEXT", "RECORD", "RPAUSE", "RSTOP", "RNEW", "PLAY", "PLAY", "PLAY"];
+/// SD-1 RECORDER: the `sdrec` items Sidecar's multitrack recorder answers
+/// to, in the order of its option codes (custom.rs `SD_RECORDER_FUNCTIONS`).
+const SD_KEYS: [&str; 9] = ["STOP", "PLAY", "REC", "PAUSE", "PLAYSTOP", "PLAYPAUSE", "ADD", "PREV", "NEXT"];
 const AREAS: [&str; 7] = ["L", "C", "R", "CMPCT", "RCK", "EXT", "VRT"];
 /// OTHER: Sidecar's functions (custom.rs `other`) as `other` items (SOF
 /// OFF has none: TBA).
@@ -873,6 +876,7 @@ fn key_param(num: &Numbering, mode: &str, f: &CcFunction, index: u8) -> Option<V
         // Sidecar's MIDI keys send 127 (and 0).
         ("MIDICCT" | "MIDICCP" | "MIDINT" | "MIDINP", 3) => Value::Int(127),
         ("USBPR", 1) => return item(USB_KEYS.get(f.option as usize).copied().unwrap_or("PLAY")),
+        ("SDRECA", 1) => return item(SD_KEYS.get(f.option as usize).copied().unwrap_or("STOP")),
         _ => return None,
     })
 }
@@ -979,6 +983,7 @@ fn set_key_param(num: &Numbering, mode: &str, f: CcFunction, index: u8, v: &Valu
         ("MIDIPGM", 2) => with_option(int.clamp(1, 128) - 1),
         ("MIDICCT" | "MIDICCP" | "MIDINT" | "MIDINP", 2) => with_option(int.clamp(0, 127)),
         ("USBPR", 1) => with_option(position(&USB_KEYS).ok_or(SetError::BadValue)?),
+        ("SDRECA", 1) => with_option(position(&SD_KEYS).ok_or_else(|| SetError::Unsupported("this SD RECORDER key".to_owned()))?),
         _ => Ok(None),
     }
 }
@@ -1189,6 +1194,8 @@ fn fname(num: &Numbering, names: &FnameNames, slot: CcSlot, mode: &str, f: &CcFu
         "USBPR" if f.option == 10 => "|PL PL/ST".to_owned(),
         "USBPR" if f.option == 11 => "|PL PL/PA".to_owned(),
         "USBPR" => usb_name(&item(key_param(num, mode, f, 1))).to_owned(),
+        // Sidecar's own wording: the console's isn't documented.
+        "SDRECA" => format!("|SD {}", item(key_param(num, mode, f, 1))),
         _ => String::new(),
     }
 }

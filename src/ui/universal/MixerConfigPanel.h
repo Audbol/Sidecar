@@ -42,6 +42,11 @@ public:
     void setPending (Kind, int count);
     /** How many of the 64 busses the pending layout takes (the LR's two included). */
     int getBussesUsed() const noexcept;
+    /** The PAFL busses (stereo, 0-4) and the Main mode (livedaw_engine MainMode's order: 0 None, 1 LR...). */
+    int getPendingPafl() const noexcept { return pendingPafl; }
+    void setPendingPafl (int count);
+    int getPendingMainMode() const noexcept { return pendingMainMode; }
+    void setPendingMainMode (int mode);
     int getFxSendsUsed() const noexcept { return pending[FxSends] + pending[StereoFxSends]; }
     bool fits() const noexcept { return getBussesUsed() <= kBusses && getFxSendsUsed() <= kMaxFxSends; }
     bool hasChanges() const;
@@ -81,6 +86,7 @@ private:
     const Theme& theme;
     std::array<int, NumKinds> pending {};
     uint64_t pendingStereo = 0;
+    int pendingPafl = 1, pendingMainMode = 1;
     Page page = Page::Mixes;
     std::vector<std::unique_ptr<Row>> rows;
     std::vector<std::unique_ptr<ValueBar>> ammBars;

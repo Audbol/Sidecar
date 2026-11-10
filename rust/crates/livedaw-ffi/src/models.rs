@@ -95,6 +95,15 @@ pub extern "C" fn ld_model_count(t: i32) -> i32 {
     table(t).len() as i32
 }
 
+/// Whether the shown console lets FX device `m` run in FX slot `slot` (0-based), by the
+/// engine's own rule (`allowed_in`), so the screens offer what `set_fx_model` will take.
+#[no_mangle]
+pub extern "C" fn ld_model_fx_allowed(m: i32, slot: i32) -> bool {
+    let (Ok(m), Ok(slot)) = (usize::try_from(m), usize::try_from(slot)) else { return false };
+    let models = crate::profile_of(SHOWN_PROFILE.load(std::sync::atomic::Ordering::Relaxed)).spec().models;
+    livedaw_dsp::wing::fx::allowed_in(models, m, slot)
+}
+
 /// what: 0 = token ("COMP"), 1 = display name.
 #[no_mangle]
 pub extern "C" fn ld_model_text(t: i32, m: i32, what: i32) -> *mut LdString {
@@ -154,7 +163,7 @@ fn dyn_model_allowed(profile: livedaw_engine::Profile, m: i32, slot: i32) -> boo
 /// may this dynamics slot of the strip hold model `m` of its table? (A model it
 /// hasn't is the setter's no-op.)
 pub(crate) fn dyn_slot_may_hold(s: &Strip, p: &DynSlotParams, slot: DynSlot, m: usize) -> bool {
-    p.table().get(m).is_none_or(|spec| s.spec().may_hold(slot, spec.token))
+    p.table().get(m).is_none_or(|spec| s.spec().may_hold_on(s.kind(), slot, spec.token))
 }
 
 #[no_mangle]

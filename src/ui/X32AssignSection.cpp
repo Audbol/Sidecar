@@ -102,6 +102,15 @@ void AssignSection::setCode (int index, const juce::String& c)
     repaint();
 }
 
+juce::String AssignSection::codeOf (int s, int index) const
+{
+    const bool button = index >= 4;
+    int applied = 0;
+    const auto address = juce::String ("/config/userctrl/") + kSets[juce::jlimit (0, 2, s)] + (button ? "/btn/" : "/enc/") + juce::String (index + 1);
+    const auto text = ctx.engine.getWing().runX32Text (address, applied).fromFirstOccurrenceOf (" ", false, false).trim().unquoted();
+    return text.isEmpty() ? juce::String ("-") : text;
+}
+
 juce::StringArray AssignSection::describeSet() const
 {
     juce::StringArray lines;
@@ -364,8 +373,10 @@ void AssignSection::pressButton (const juce::String& c, int index)
                 show.recallScene (n);
             else if (c.startsWith ("S9"))
             {
-                // Show control: PREV, NEXT, (UNDO), GO.
+                // Show control: PREV, NEXT, UNDO, GO.
                 const int current = show.getCurrentSceneIndex();
+                if (n == 2 && show.canUndoRecall())
+                    show.undoRecall();
                 const int to = n == 0 ? current - 1 : n == 1 ? current + 1 : n == 3 ? juce::jmax (0, current) : -1;
                 if (juce::isPositiveAndBelow (to, show.getNumScenes()))
                     show.recallScene (to);

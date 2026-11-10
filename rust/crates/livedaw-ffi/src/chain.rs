@@ -35,6 +35,8 @@ pub mod step {
     pub const TAP: i32 = 13;
     pub const RTA: i32 = 14;
     pub const BLOCK: i32 = 15;
+    /// ABI 57: an attenuator after the gate (a DM2000's).
+    pub const ATTENUATOR: i32 = 16;
 }
 
 /// A step of a strip's chain (`ld_strip_chain`).
@@ -61,6 +63,7 @@ impl Default for LdChainStep {
 fn node_step(node: Node) -> (i32, i32) {
     match node {
         Node::Input => (step::INPUT, -1),
+        Node::Attenuator => (step::ATTENUATOR, -1),
         Node::Delay => (step::DELAY, -1),
         Node::Filter => (step::FILTER, -1),
         Node::Gate => (step::GATE, -1),

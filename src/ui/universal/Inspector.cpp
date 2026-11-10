@@ -9,9 +9,12 @@ namespace
 } // namespace
 
 Inspector::Inspector (UiContext& c, const Theme& t)
-    : chainTab ("CHAIN", t.accent, t), sendsTab ("SENDS", t.accent, t), stripTab ("STRIP", t.accent, t), closeKey ("CLOSE", t.accent, t), chain (c, t),
+    : chainTab ("CHAIN", t.accent, t), sendsTab ("SENDS", t.accent, t), stripTab ("STRIP", t.accent, t), closeKey ("CLOSE", t.accent, t), prevKey ("<", t.accent, t),
+      nextKey (">", t.accent, t), chain (c, t),
       editor (c, t), sends (c, t), stripPage (c, t), ctx (c), theme (t)
 {
+    for (auto* k : { &chainTab, &sendsTab, &stripTab })
+        k->tab = true;
     chainTab.isOn = [this] { return page == Page::Chain; };
     chainTab.onClick = [this] { showPage (Page::Chain); };
     sendsTab.isOn = [this] { return page == Page::Sends; };
@@ -28,12 +31,14 @@ Inspector::Inspector (UiContext& c, const Theme& t)
     };
     // The selected row's editor (none for a marker or a tap).
     chain.onSelectionChanged = [this] { editSelectedStep(); };
-    for (auto* child : std::initializer_list<juce::Component*> { &chainTab, &sendsTab, &stripTab, &closeKey, &chain, &editor, &sends, &stripScroller })
+    prevKey.onClick = [this] { stepStrip (-1); };
+    nextKey.onClick = [this] { stepStrip (1); };
+    prevKey.setTooltip ("The strip before this one");
+    nextKey.setTooltip ("The strip after this one");
+    for (auto* child : std::initializer_list<juce::Component*> { &chainTab, &sendsTab, &stripTab, &closeKey, &prevKey, &nextKey, &chain, &editor, &sends, &stripScroller })
         addChildComponent (child);
-    chainTab.setVisible (true);
-    sendsTab.setVisible (true);
-    stripTab.setVisible (true);
-    closeKey.setVisible (true);
+    for (auto* key : { &chainTab, &sendsTab, &stripTab, &closeKey, &prevKey, &nextKey })
+        key->setVisible (true);
     showPage (Page::Chain);
     startTimerHz (30);
 }
@@ -52,11 +57,19 @@ void Inspector::setStrip (Strip* s)
         editSelectedStep();
         return;
     }
+    // Going through the strips stays on the block being worked on (the EQ of each, say).
+    // An extra block or a tap is that strip's own: there the EQ.
+    int keepKind = ld::kStepEq;
+    if (const int row = chain.getSelectedRow(); juce::isPositiveAndBelow (row, (int) chain.getRows().size()))
+        if (const auto& step = chain.getRows()[(size_t) row].step; ! step.isBlock() && ! step.isUserTap())
+            keepKind = step.kind;
     // The editor lets go of the old strip's blocks first.
     editor.setTarget ({});
     strip = s;
     structureVersion = ctx.engine.getStructureVersion();
     chain.setStrip (s);
+    if (s != nullptr && ! chain.selectKind (keepKind))
+        chain.selectKind (ld::kStepEq);
     sends.setStrip (s);
     stripPage.setStrip (s);
     resized();
@@ -76,6 +89,34 @@ void Inspector::showPage (Page p)
     stripTab.refresh();
     if (p == Page::Sends)
         sends.refresh();
+}
+
+void Inspector::openStep (int stepKind, int uid)
+{
+    if (stepKind == kOpenSends)
+    {
+        showPage (Page::Sends);
+        return;
+    }
+    showPage (Page::Chain);
+    chain.selectKind (stepKind, uid);
+}
+
+void Inspector::stepStrip (int delta)
+{
+    if (strip == nullptr || ! ctx.selectStrip)
+        return;
+    std::vector<Strip*> list;
+    for (int k = 0; k < kNumStripKinds; ++k)
+        for (auto& s : ctx.engine.getStrips (static_cast<StripKind> (k)))
+            list.push_back (s.get());
+    const int n = (int) list.size();
+    for (int i = 0; i < n; ++i)
+        if (list[(size_t) i] == strip)
+        {
+            ctx.selectStrip (list[(size_t) ((i + delta % n + n) % n)]);
+            return;
+        }
 }
 
 void Inspector::editSelectedStep()
@@ -103,6 +144,8 @@ void Inspector::refresh()
         return;
     // The chain first: a block that went takes its editor with it.
     chain.refresh();
+    if (chain.preferredHeight() != chainHeight)
+        resized(); // a block added or removed: as tall as its rows
     if (page == Page::Chain)
         editor.refresh();
     else if (page == Page::Sends)
@@ -117,7 +160,7 @@ void Inspector::paint (juce::Graphics& g)
     g.fillRect (0, 0, 1, getHeight());
 
     auto header = getLocalBounds().removeFromTop (kHeader).reduced (sizes::kGapLarge, sizes::kGap);
-    header.removeFromRight (closeKey.getWidth() + sizes::kGap);
+    header.setRight (prevKey.getX() - sizes::kGap);
     if (strip == nullptr)
     {
         g.setColour (theme.textDim);
@@ -126,13 +169,13 @@ void Inspector::paint (juce::Graphics& g)
         return;
     }
     g.setColour (consoleColour (strip->getColourIndex()));
-    g.fillRoundedRectangle (header.removeFromLeft (6).toFloat(), 3.0f);
+    g.fillRoundedRectangle (header.removeFromLeft (6).toFloat(), sizes::kRadius);
     header.removeFromLeft (sizes::kGap);
     g.setColour (theme.kindColour (strip->getKind()));
     g.setFont (type::font (type::kCaption, true));
     g.drawText (strip->getLabel(), header.removeFromTop (header.getHeight() / 2), juce::Justification::bottomLeft);
     g.setColour (theme.text);
-    g.setFont (type::font (type::kLabel + 2.0f, true));
+    g.setFont (type::font (type::kHeading, true));
     // Its name (a strip without one: a dash, its label is just above).
     const auto name = strip->getName();
     g.drawText (name.isNotEmpty() && name != strip->getLabel() ? name : juce::String::fromUTF8 ("\xe2\x80\x94"), header, juce::Justification::topLeft);
@@ -142,7 +185,11 @@ void Inspector::resized()
 {
     auto area = getLocalBounds().reduced (sizes::kGap, 0);
     auto header = area.removeFromTop (kHeader).reduced (sizes::kGap, (kHeader - sizes::kTouch) / 2);
-    closeKey.setBounds (header.removeFromRight (96));
+    closeKey.setBounds (header.removeFromRight (84));
+    header.removeFromRight (sizes::kGapSmall);
+    nextKey.setBounds (header.removeFromRight (sizes::kTouch));
+    header.removeFromRight (sizes::kGapSmall);
+    prevKey.setBounds (header.removeFromRight (sizes::kTouch));
     auto tabs = area.removeFromTop (sizes::kTabBar);
     const int tabW = tabs.getWidth() / 3;
     chainTab.setBounds (tabs.removeFromLeft (tabW).withTrimmedRight (sizes::kGapSmall / 2));
@@ -153,8 +200,9 @@ void Inspector::resized()
     stripScroller.setBounds (area);
     const int pageW = area.getWidth() - stripScroller.getScrollBarThickness();
     stripPage.setSize (pageW, stripPage.heightFor (pageW));
-    // The chain list above the selected block's editor.
-    chain.setBounds (area.removeFromTop (juce::jmax (220, area.getHeight() * 2 / 5)));
+    // The chain list above the selected block's editor: as tall as its rows, up to about half.
+    chainHeight = chain.preferredHeight();
+    chain.setBounds (area.removeFromTop (juce::jlimit (juce::jmin (180, area.getHeight()), juce::jmax (180, area.getHeight() * 55 / 100), chainHeight)));
     area.removeFromTop (sizes::kGap);
     editor.setBounds (area);
 }

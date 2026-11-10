@@ -132,6 +132,15 @@ public:
                 expect (! models::model (models::Fx, models::findModel (models::Fx, "HALL")).name.startsWith ("X32"), "the WING's own keep their names");
                 expectEquals (models::consoleOf ("X32COMP"), juce::String ("X32"));
                 expectEquals (models::consoleOf ("COMP"), juce::String());
+                // The DM2000's tokens start "DM"; the WING's "DEQ3", "DIMCRS" and "DS902" don't.
+                expectEquals (models::consoleOf ("DMCMP"), juce::String ("DM2000"));
+                expectEquals (models::consoleOf ("DMHALL"), juce::String ("DM2000"));
+                expectEquals (models::consoleOf ("DEQ3"), juce::String());
+                expectEquals (models::consoleOf ("DIMCRS"), juce::String());
+                expectEquals (models::model (models::Dynamics, models::findModel (models::Dynamics, "DMGAT")).name, juce::String ("DM2000 Gate"));
+                for (const auto t : { models::Dynamics, models::ChannelEq, models::BusEq, models::Fx })
+                    for (const auto& m : models::table (t))
+                        expect (m.token.startsWith ("DM") == m.name.startsWith ("DM2000 "), m.token);
                 expectEquals (models::model (models::Dynamics, models::findModel (models::Dynamics, "PMCOMP")).name, juce::String ("PROMIX 01 Compressor"));
                 expectEquals (models::model (models::BusEq, models::findModel (models::BusEq, "Y2EQ")).name, juce::String ("02R 4-Band PEQ"));
                 expectEquals (models::model (models::Fx, models::findModel (models::Fx, "Y2CHREV")).name, juce::String ("02R Chorus->Reverb"));

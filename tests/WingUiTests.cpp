@@ -274,6 +274,19 @@ public:
             expectWithinAbsoluteError (rig.outputs[3].back(), 0.0f, 0.001f, "input 1 feeds nothing now");
         }
 
+        beginTest ("Custom controls: SD RECORDER keys are offered and named, GPIO stays unavailable");
+        {
+            MixerEngine engine (0);
+            WingRig rig (engine);
+            expect (ui::cc::categoryAvailable (ui::cc::Slot::Upper, ui::cc::BtnSdRecorder));
+            expect (! ui::cc::categoryAvailable (ui::cc::Slot::Upper, ui::cc::BtnGpio));
+            const ui::cc::Function play { ui::cc::BtnSdRecorder, 0, 1 };
+            expectEquals (ui::cc::describe (rig.ctx, ui::cc::Slot::Upper, play), juce::String ("SD PLAY"));
+            // No recorder session on this rig: a press does nothing and nothing lights.
+            ui::cc::press (rig.ctx, play);
+            expect (! ui::cc::isLit (rig.ctx, play));
+        }
+
         beginTest ("Custom controls: the FUNCTION list's scroll bar scrolls by its arrows, its well and its thumb (issue #20)");
         {
             MixerEngine engine (0);

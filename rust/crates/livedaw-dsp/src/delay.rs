@@ -85,6 +85,18 @@ impl DelayLine {
         }
     }
 
+    /// As [`Self::prepare`], with room for at least `samples` (a console whose
+    /// longest delay is more than the 500 ms of [`MAX_DELAY_MS`] at some rate).
+    pub fn prepare_samples(&mut self, sample_rate: f64, samples: usize) {
+        let len = ((MAX_DELAY_MS * 0.001 * sample_rate as f32) as usize).max(samples) + 1;
+        for b in &mut self.buf {
+            b.clear();
+            b.resize(len, 0.0);
+        }
+        self.pos = 0;
+        self.delay = 0;
+    }
+
     /// Delays `chans` in place by `samples` (clamped to the maximum).
     pub fn process(&mut self, chans: &mut [&mut [f32]], samples: usize) {
         let len = self.buf[0].len();

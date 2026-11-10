@@ -141,6 +141,8 @@ list(APPEND LIVEDAW_ENGINE_SOURCES
     src/engine/ProMixMidi.cpp
     src/engine/Y02RMidi.cpp
     src/engine/SqMidi.cpp
+    src/engine/Y01VMidi.cpp
+    src/engine/Dm2000Midi.cpp
     src/engine/X32Midi.cpp)
 
 # The multitrack project model (no UI), shared by the app and the tests.
@@ -332,6 +334,12 @@ set(LIVEDAW_UI_SOURCES
     src/ui/DLiveSurface.cpp
     src/ui/DLiveC3500Surface.cpp
     src/ui/DLiveScreens.cpp
+    src/ui/Pro2Surface.cpp
+    src/ui/Pro2Screen.cpp
+    src/ui/Dm2000Surface.cpp
+    src/ui/Xenyx1204Surface.cpp
+    src/ui/ConsoleTape.cpp
+    src/ui/Dm2000Display.cpp
     src/ui/Sq5Surface.cpp
     src/ui/Sq5Display.cpp
     src/ui/Sq5Screens.cpp
@@ -346,6 +354,7 @@ set(LIVEDAW_UI_SOURCES
     src/ui/universal/SendsPanel.cpp
     src/ui/universal/Groups.cpp
     src/ui/universal/StripPanel.cpp
+    src/ui/universal/ControlsView.cpp
     src/ui/universal/RemotePanel.cpp
     src/ui/universal/Inspector.cpp
     src/ui/universal/PatchGrid.cpp
@@ -353,6 +362,7 @@ set(LIVEDAW_UI_SOURCES
     src/ui/universal/FxRackView.cpp
     src/ui/universal/MonitorView.cpp
     src/ui/universal/ScenesView.cpp
+    src/ui/universal/ScopeEditor.cpp
     src/ui/universal/LibraryView.cpp
     src/ui/universal/RecorderView.cpp
     src/ui/universal/SetupView.cpp
@@ -373,6 +383,7 @@ juce_add_binary_data(LiveDAWResources SOURCES
     resources/fonts/BarlowCondensed-SemiBold.ttf
     resources/fonts/BarlowSemiCondensed-Medium.ttf
     resources/fonts/BarlowSemiCondensed-SemiBold.ttf
+    resources/fonts/PatrickHand-Regular.ttf
     resources/icon/sidecar-256.png)   # the window icon on Linux
 target_link_libraries(LiveDAW PRIVATE LiveDAWResources)
 

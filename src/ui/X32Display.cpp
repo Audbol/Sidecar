@@ -66,7 +66,7 @@ namespace
                                                juce::Colour (0xffeef2f4), juce::Colour (0xffeef2f4), juce::Colour (0xffeef2f4),
                                                juce::Colour (0xffff4b3e), juce::Colour (0xff3ddc5a) };
 
-    constexpr int kStatus = 46, kTabs = 24, kEncoderRow = 74, kSideKeys = 104, kKnobs = 92, kBezelMeters = 64;
+    constexpr int kStatus = 42, kTabs = 22, kEncoderRow = 64, kSideKeys = 104, kKnobs = 92, kBezelMeters = 64;
 
     /** A block of the screen: light blue, its darker edge, its title along the top. */
     juce::Rectangle<float> block (juce::Graphics& g, juce::Rectangle<float> r, const juce::String& title)
@@ -135,6 +135,51 @@ namespace
         g.drawFittedText (label, r.withTrimmedLeft (3.0f).toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
     }
 
+    /** A page's frame as the photographs show it: a blue rule around the page, the inside back. */
+    juce::Rectangle<int> pageFrame (juce::Graphics& g, juce::Rectangle<int> r)
+    {
+        auto f = r.reduced (6, 4);
+        g.setColour (kSkyLine);
+        g.drawRoundedRectangle (f.toFloat().reduced (0.5f), 4.0f, 1.5f);
+        return f.reduced (8, 6);
+    }
+
+    /** A real menu item with nothing behind it in Sidecar: shown, dimmed, inert. */
+    Display::Encoder dimmedEncoder (const juce::String& label, const juce::String& value, const juce::String& pushLabel)
+    {
+        Display::Encoder e;
+        e.turn.label = label;
+        e.turn.text = [value] { return value; };
+        e.pushLabel = pushLabel;
+        e.dimmed = true;
+        return e;
+    }
+
+    /** A title over a list of rows, the one at `pointed` outlined and the one at `on` orange. */
+    void listColumn (juce::Graphics& g, juce::Rectangle<float> r, const juce::String& title, const juce::StringArray& items, int pointed, int on, bool dimmed = false)
+    {
+        g.setColour (kNavy);
+        g.setFont (type::font (10.5f, true));
+        g.drawFittedText (title, r.removeFromTop (16.0f).toNearestInt(), juce::Justification::centred, 1, 0.7f);
+        const float rowH = juce::jmin (15.0f, r.getHeight() / (float) juce::jmax (1, items.size()));
+        for (int k = 0; k < items.size(); ++k)
+        {
+            auto row = r.removeFromTop (rowH);
+            g.setColour (k == on ? kCurve : kBox);
+            g.fillRect (row);
+            g.setColour (dimmed ? kDim.withAlpha (0.6f) : kNavy.withAlpha (0.5f));
+            g.drawRect (row, 1.0f);
+            if (k == pointed)
+            {
+                g.setColour (kGr);
+                g.drawRect (row, 1.5f);
+            }
+            g.setColour (dimmed ? kDim.withAlpha (0.8f) : kNavy);
+            g.setFont (type::font (juce::jmin (10.5f, rowH * 0.92f), k == on));
+            g.drawFittedText (items[k], row.reduced (3.0f, 0.0f).toNearestInt(), juce::Justification::centred, 1, 0.7f);
+        }
+    }
+
     /** A level meter in its dark well (linear level), from the bottom. */
     void levelBar (juce::Graphics& g, juce::Rectangle<float> r, float level)
     {
@@ -153,6 +198,16 @@ namespace
     const juce::StringArray kRoutingAux { "AUX1-4", "AN1-2", "AN1-4", "AN1-6", "A1-2", "A1-4", "A1-6", "B1-2",
                                           "B1-4", "B1-6", "CARD1-2", "CARD1-4", "CARD1-6", "UIN1-2", "UIN1-4", "UIN1-6" };
     const char* const kInBlocks[] = { "1-8", "9-16", "17-24", "25-32", "AUX" };
+    const juce::StringArray kInserts { "OFF",  "FX1L", "FX1R", "FX2L", "FX2R", "FX3L", "FX3R", "FX4L",
+                                       "FX4R", "FX5L", "FX5R", "FX6L", "FX6R", "FX7L", "FX7R", "FX8L",
+                                       "FX8R", "AUX1", "AUX2", "AUX3", "AUX4", "AUX5", "AUX6" };
+    struct BusScheme
+    {
+        const char* name;
+        int pre, post;
+    };
+    const BusScheme kBusSchemes[] = { { "8 Pre / 8 Post", 8, 8 }, { "8 Pre / 4 Post / 4 Sub", 8, 4 }, { "6 Pre / 4 Post / 6 Sub", 6, 4 },
+                                      { "4 Pre / 4 Post / 8 Sub", 4, 4 }, { "10 Pre / 6 Post", 10, 6 } };
     // The output blocks' choices: local outputs in fours (OUT/1-4 and 9-12, then
     // 5-8 and 13-16), AES50 and the card in eights.
     const juce::StringArray kRoutingOutA { "AN1-4", "AN9-12", "AN17-20", "AN25-28", "A1-4", "A9-12", "A17-20", "A25-28", "A33-36",
@@ -220,7 +275,18 @@ namespace
         int count;
         const char* label;
     };
-    const SignalTab kSignalTabs[] = { { "main", 16, "OUT" }, { "aux", 6, "AUX OUT" }, { "p16", 16, "P16" } };
+    const SignalTab kSignalTabs[] = { { "main", 16, "OUT" }, { "aux", 8, "AUX OUT" }, { "p16", 16, "P16" } };
+
+    /** An output signal's X32 address; the aux tab's last two are the AES/EBU pair. */
+    juce::String signalPath (const SignalTab& t, int n)
+    {
+        const bool aes = juce::String (t.group) == "aux" && n >= 6;
+        return "/outputs/" + juce::String (aes ? "aes" : t.group) + "/" + juce::String (aes ? n - 5 : n + 1).paddedLeft ('0', 2);
+    }
+    juce::String signalName (const SignalTab& t, int n)
+    {
+        return juce::String (t.group) == "aux" && n >= 6 ? (n == 6 ? juce::String ("AES L") : juce::String ("AES R")) : juce::String (t.label) + " " + juce::String (n + 1);
+    }
     /** Its block tabs (4-6): the node, the blocks, the interface's first output. */
     struct BlockTab
     {
@@ -232,6 +298,92 @@ namespace
     const BlockTab kBlockTabs[] = { { "CARD", 4, 128, "CARD" }, { "AES50A", 6, 32, "AES50 A" }, { "AES50B", 6, 80, "AES50 B" } };
 
     const char* const kScreenNames[] = { "HOME", "METERS", "ROUTING", "SETUP", "LIBRARY", "EFFECTS", "MUTE GRP", "UTILITY" };
+
+    /** `/-stat/screen/screen` (OSC document p.57) for one of the display's screens, and its page's node. */
+    struct StatScreen
+    {
+        int number;
+        const char* node;
+    };
+    StatScreen statScreen (Display::Screen s)
+    {
+        using S = Display::Screen;
+        switch (s)
+        {
+            case S::Home:       return { 0, "CHAN" };
+            case S::Meters:     return { 1, "METER" };
+            case S::Routing:    return { 2, "ROUTE" };
+            case S::Setup:      return { 3, "SETUP" };
+            case S::Library:    return { 4, "LIB" };
+            case S::Effects:    return { 5, "FX" };
+            case S::Monitor:    return { 6, "MON" };
+            case S::Usb:        return { 7, "USB" };
+            case S::Scenes:     return { 8, "SCENE" };
+            case S::Assign:     return { 9, "ASSIGN" };
+            case S::MuteGroups:
+            case S::Utility:    break;
+        }
+        return { -1, "" };
+    }
+
+    // Lists the screens and the X32's `/-prefs` share (OSC document pp.50-53).
+    const char* const kIpNodes[] = { "addr", "mask", "gateway" };
+    const juce::StringArray& rtaOptions()
+    {
+        static const juce::StringArray names { "Pre EQ", "Spectrograph", "Use RTA Source", "Post GEQ", "Spectrograph", "Solo Priority" };
+        return names;
+    }
+    const juce::StringArray& rtaVisibilities()
+    {
+        static const juce::StringArray names { "OFF", "25%", "30%", "35%", "40%", "45%", "50%", "55%", "60%", "65%", "70%", "75%", "80%" };
+        return names;
+    }
+    const juce::StringArray& iqSpeakers()
+    {
+        static const juce::StringArray names { "none", "iQ8", "iQ10", "iQ12", "iQ15", "iQ15B", "iQ18B" };
+        return names;
+    }
+    const juce::StringArray& haOptions()
+    {
+        static const juce::StringArray names { "Lock Stagebox", "HA Split Local", "HA Split AES50 A", "HA Split AES50 B" };
+        return names;
+    }
+    const juce::StringArray& cardModes()
+    {
+        static const juce::StringArray names { "32in/32out", "16in/16out", "32in/8out", "8in/32out", "8in/8out", "2in/2out" };
+        return names;
+    }
+    const juce::StringArray& scribbleColours()
+    {
+        static const juce::StringArray names { "OFF", "RD", "GN", "YE", "BL", "MG", "CY", "WH", "OFFi", "RDi", "GNi", "YEi", "BLi", "MGi", "CYi", "WHi" };
+        return names;
+    }
+
+    /** SETUP > preamps' blocks of eight inputs: Local 1-8 .. 25-32, AES50 A 1-8 .. 41-48, then B's
+        (interface inputs 1-128 in that order); `brief` as the encoder shows it ("1-8", "A17-24"). */
+    juce::String preampBlockName (int block, bool brief)
+    {
+        const int b = block < 4 ? block : (block - 4) % 6;
+        const auto range = juce::String (8 * b + 1) + "-" + juce::String (8 * b + 8);
+        if (block < 4)
+            return brief ? range : "Local " + range;
+        return juce::String (brief ? "" : "AES50 ") + (block < 10 ? "A" : "B") + range;
+    }
+    /** Preamp `k` (0-7) of a block, as numbered within its port (AES50 A17-24's first is 17). */
+    int preampNumber (int block, int k)
+    {
+        return 8 * (block < 4 ? block : (block - 4) % 6) + k + 1;
+    }
+
+    /** A graphic EQ's band 0-30 as an encoder names it ("8.00 kHz": the ISO thirds). */
+    juce::String geqBandHz (int band)
+    {
+        static const char* const names[] = { "20 Hz",    "25 Hz",    "31.5 Hz",  "40 Hz",    "50 Hz",    "63 Hz",    "80 Hz",    "100 Hz",
+                                             "125 Hz",   "160 Hz",   "200 Hz",   "250 Hz",   "315 Hz",   "400 Hz",   "500 Hz",   "630 Hz",
+                                             "800 Hz",   "1.00 kHz", "1.25 kHz", "1.60 kHz", "2.00 kHz", "2.50 kHz", "3.15 kHz", "4.00 kHz",
+                                             "5.00 kHz", "6.30 kHz", "8.00 kHz", "10.0 kHz", "12.5 kHz", "16.0 kHz", "20.0 kHz" };
+        return names[juce::jlimit (0, 30, band)];
+    }
 
     KnobBinding bindParam (models::Table table, int model, std::atomic<float>* values, const juce::String& id, const juce::String& label)
     {
@@ -273,15 +425,27 @@ Display::Display (UiContext& c, const Theme& t)
     {
         auto key = std::make_unique<ToggleKey> (kScreenNames[s], kScreenKeyColours[s], t);
         key->textLit = true; // black keys, their names in their colours
-        key->isOn = [this, s] { return (int) screen == s; };
-        key->onClick = [this, s] { showScreen ((Screen) s); };
+        key->isOn = [this, s] { return (int) screen == s || (screen == Screen::MuteGroups && (int) underScreen == s); };
+        key->onClick = [this, s] { if (s == (int) Screen::Utility) pressUtility(); else showScreen ((Screen) s); };
         addAndMakeVisible (*key);
         screenKeys.push_back (std::move (key));
     }
-    pagePrev.onClick = [this] { showTab (tab - 1); };
-    pageNext.onClick = [this] { showTab (tab + 1); };
-    layerUp.onClick = [this] { setLayer (layer - 1); };
-    layerDown.onClick = [this] { setLayer (layer + 1); };
+    pagePrev.onClick = [this] { showTab (shownTab() - 1); };
+    pageNext.onClick = [this] { showTab (shownTab() + 1); };
+    // LAYER up and down: the encoders' next set; on HOME > eq the band (manual 7.2.5).
+    const auto stepLayer = [this] (int by)
+    {
+        if (screen == Screen::Home && tab == 4)
+        {
+            auto* s = selected();
+            eqBand = juce::jlimit (0, s != nullptr && s->isOutput() ? 5 : 3, eqBand + by);
+            assignEncoders();
+        }
+        else
+            setLayer (layer + by);
+    };
+    layerUp.onClick = [stepLayer] { stepLayer (-1); };
+    layerDown.onClick = [stepLayer] { stepLayer (1); };
     for (auto* k : { &pagePrev, &pageNext, &layerUp, &layerDown })
         addAndMakeVisible (*k);
     for (int i = 0; i < 6; ++i)
@@ -295,14 +459,6 @@ Display::Display (UiContext& c, const Theme& t)
         push->isOn = [this, i] { auto& e = encoders[(size_t) i]; return e.pushOn && e.pushOn(); };
         addChildComponent (*push); // the X32's encoders push: no keys under them on the panel
         pushKeys.push_back (std::move (push));
-    }
-    for (int g = 0; g < 6; ++g)
-    {
-        auto key = std::make_unique<ToggleKey> ("MUTE GROUP " + juce::String (g + 1), t.mute, t);
-        key->isOn = [this, g] { return ctx.engine.muteGroups.contains (g); };
-        key->onClick = [this, g] { ctx.engine.muteGroups.set (g, ! ctx.engine.muteGroups.contains (g)); };
-        addChildComponent (*key);
-        muteGroupKeys.push_back (std::move (key));
     }
     for (auto* v : std::initializer_list<juce::Component*> { &eqView, &gateView, &dynView })
         addChildComponent (v);
@@ -325,6 +481,8 @@ Display::Display (UiContext& c, const Theme& t)
         return ResponseView::eqHandles (models::model (s->isOutput() ? models::BusEq : models::ChannelEq, eq.model.load()), eq.values);
     };
     refreshStrip();
+    if (publishedSel < 0)
+        publishedSel = x32Int ("/-stat/selidx", 0); // nothing selected yet: a remote's selection isn't a change
     startTimerHz (15);
 }
 
@@ -342,18 +500,18 @@ Strip* Display::selected() const
 
 juce::StringArray Display::getTabs() const
 {
-    switch (screen)
+    switch (screen == Screen::MuteGroups ? underScreen : screen)
     {
         case Screen::Home:       return { "home", "config", "gate", "dyn", "eq", "sends", "main" };
         case Screen::Meters:     return { "channel", "mix bus", "aux / fx", "in / out", "rta" };
         case Screen::Routing:    return { "home", "out 1-16", "aux out", "p16 out", "card out", "aes50-a", "aes50-b", "xlr out" };
         case Screen::Setup:      return { "global", "config", "remote", "network", "scribble strip", "preamps", "card" };
-        case Screen::Library:    return { "scenes", "show", "channel", "effects", "routing" };
+        case Screen::Library:    return { "channel", "effects", "routing" };
         case Screen::Effects:    return { "home", "fx1", "fx2", "fx3", "fx4", "fx5", "fx6", "fx7", "fx8" };
         case Screen::MuteGroups: return { "mute grp" };
         case Screen::Utility:    return { "copy", "init" };
         case Screen::Monitor:    return { "monitor", "talkback A", "talkback B", "oscillator" };
-        case Screen::Assign:     return { "set a", "set b", "set c" };
+        case Screen::Assign:     return { "home", "set a", "set b", "set c" };
         case Screen::Scenes:     return { "home", "scenes", "snippets", "param safe", "chan safe", "MIDI" };
         case Screen::Usb:        return { "home", "config" };
     }
@@ -367,7 +525,7 @@ namespace
 {
     const char* presetExtensionFor (int libraryTab)
     {
-        return libraryTab == 2 ? Show::channelPresetExtension : libraryTab == 3 ? Show::fxPresetExtension : Display::routingPresetExtension;
+        return libraryTab == 0 ? Show::channelPresetExtension : libraryTab == 1 ? Show::fxPresetExtension : Display::routingPresetExtension;
     }
 
     /** The channel elements' sections, in channelElements()'s order. */
@@ -401,9 +559,9 @@ juce::StringArray Display::routingPresetLines() const
             add (0, "/config/routing/" + juce::String (group) + "/" + b);
     add (0, "/config/routing/routswitch");
     for (int k = 0; k < 3; ++k)
-        for (int i = 1; i <= kSignalTabs[k].count; ++i)
+        for (int i = 0; i < kSignalTabs[k].count; ++i)
         {
-            const auto p = "/outputs/" + juce::String (kSignalTabs[k].group) + "/" + juce::String (i).paddedLeft ('0', 2);
+            const auto p = signalPath (kSignalTabs[k], i);
             add (1 + k, p + "/src");
             add (1 + k, p + "/pos");
         }
@@ -419,16 +577,19 @@ juce::Result Display::savePreset (int libraryTab, const juce::String& name)
 {
     auto& show = ctx.show;
     const auto legal = juce::File::createLegalFileName (name.isEmpty() ? juce::String ("Preset") : name);
-    const auto file = ShowPanel::libraryFolder().getNonexistentChildFile (legal, presetExtensionFor (libraryTab), false);
+    // SAVE at an existing slot under its own name replaces it.
+    const auto before = presets (presetExtensionFor (libraryTab));
+    const bool replace = juce::isPositiveAndBelow (presetSaveSlot, before.size()) && before[presetSaveSlot].getFileNameWithoutExtension() == legal;
+    const auto file = replace ? before[presetSaveSlot] : ShowPanel::libraryFolder().getNonexistentChildFile (legal, presetExtensionFor (libraryTab), false);
     juce::Result r = juce::Result::ok();
-    if (libraryTab == 2)
+    if (libraryTab == 0)
     {
         auto* st = selected();
         if (st == nullptr)
             return juce::Result::fail ("Select a strip");
         r = show.saveChannelPreset (state::StripRef::of (*st), state::AllSections & ~(juce::uint32) state::Routing, file, name);
     }
-    else if (libraryTab == 3)
+    else if (libraryTab == 1)
         r = show.saveFxPreset (presetSlot, file, name);
     else if (! ShowPanel::libraryFolder().createDirectory().wasOk() || ! file.replaceWithText (routingPresetLines().joinIntoString ("\n") + "\n"))
         r = juce::Result::fail ("Couldn't write " + file.getFullPathName());
@@ -452,29 +613,29 @@ void Display::assignLibraryPresetEncoders()
     const auto list = presets (presetExtensionFor (tab));
     const int n = list.size();
     presetChoice = juce::jlimit (0, juce::jmax (0, n - 1), presetChoice);
-    if (tab == 3)
+    if (tab == 1)
     {
         auto& fx = ctx.engine.getFx();
         KnobBinding slot;
-        slot.label = "FX SLOT";
+        slot.label = "SELECT";
         slot.get = [this] { return (float) presetSlot / 7.0f; };
         slot.set = [this] (float v) { presetSlot = juce::roundToInt (v * 7.0f); repaint(); };
         slot.text = [this, &fx]
         {
             const int m = fx.getModel (presetSlot);
-            return "FX" + juce::String (presetSlot + 1) + (m > ld::kFxExt ? " " + models::model (models::Fx, m).name : juce::String());
+            return "FX " + juce::String (presetSlot + 1) + (m > ld::kFxExt ? " " + models::model (models::Fx, m).name : juce::String());
         };
         slot.steps = 8.0f;
         encoders[0] = encoder (slot);
     }
     else
     {
-        const auto& names = tab == 2 ? channelElements() : routingElements();
-        auto& mask = tab == 2 ? channelRecall : routingRecall;
+        const auto& names = tab == 0 ? channelElements() : routingElements();
+        auto& mask = tab == 0 ? channelRecall : routingRecall;
         const int count = names.size();
         libraryElement = juce::jlimit (0, count - 1, libraryElement);
         KnobBinding element;
-        element.label = "RECALL";
+        element.label = "SELECT";
         element.get = [this, count] { return (float) libraryElement / (float) (count - 1); };
         element.set = [this, count] (float v) { libraryElement = juce::roundToInt (v * (float) (count - 1)); repaint(); };
         element.text = [this, &names] { return names[libraryElement]; };
@@ -483,18 +644,18 @@ void Display::assignLibraryPresetEncoders()
                                [this, &mask] { return (mask & (1u << libraryElement)) != 0; });
     }
     KnobBinding pick;
-    pick.label = "PRESET";
+    pick.label = "SCROLL";
     pick.get = [this, n] { return n > 1 ? (float) presetChoice / (float) (n - 1) : 0.0f; };
     pick.set = [this, n] (float v) { presetChoice = juce::roundToInt (v * (float) juce::jmax (0, n - 1)); repaint(); };
     pick.text = [this, list] { return list.isEmpty() ? juce::String ("-") : list[presetChoice].getFileNameWithoutExtension(); };
     pick.steps = (float) juce::jmax (2, n);
-    encoders[1] = encoder (pick, "LOAD", [this, list, &show, libraryTab]
+    encoders[1] = encoder (pick, "LOAD PRESET", [this, list, &show, libraryTab]
     {
         if (! juce::isPositiveAndBelow (presetChoice, list.size()))
             return;
         const auto& file = list[presetChoice];
         juce::Result r = juce::Result::ok();
-        if (libraryTab == 2)
+        if (libraryTab == 0)
         {
             auto* st = selected();
             if (st == nullptr)
@@ -506,7 +667,7 @@ void Display::assignLibraryPresetEncoders()
             r = show.loadChannelPreset (state::StripRef::of (*st), file, scope);
             refreshStrip();
         }
-        else if (libraryTab == 3)
+        else if (libraryTab == 1)
             r = show.loadFxPreset (presetSlot, file);
         else
         {
@@ -527,11 +688,19 @@ void Display::assignLibraryPresetEncoders()
         libraryStatus = r.wasOk() ? "Loaded " + file.getFileNameWithoutExtension() : r.getErrorMessage();
         repaint();
     });
-    encoders[2] = encoder ({}, "SAVE", [this, libraryTab]
+    presetSaveSlot = juce::jlimit (0, n, presetSaveSlot);
+    KnobBinding saveSlot;
+    saveSlot.label = "SCROLL";
+    saveSlot.get = [this, n] { return n > 0 ? (float) presetSaveSlot / (float) n : 0.0f; };
+    saveSlot.set = [this, n] (float v) { presetSaveSlot = juce::roundToInt (v * (float) n); repaint(); };
+    saveSlot.text = [this, list] { return juce::isPositiveAndBelow (presetSaveSlot, list.size()) ? list[presetSaveSlot].getFileNameWithoutExtension() : juce::String ("New"); };
+    saveSlot.steps = (float) juce::jmax (2, n + 1);
+    encoders[2] = encoder (saveSlot, "SAVE PRESET", [this, libraryTab, list]
     {
         auto* st = selected();
-        const auto suggested = libraryTab == 2 && st != nullptr ? (st->getName().isNotEmpty() ? st->getName() : st->getLabel())
-                             : libraryTab == 3 ? "FX" + juce::String (presetSlot + 1) : juce::String ("Routing");
+        const auto suggested = juce::isPositiveAndBelow (presetSaveSlot, list.size()) ? list[presetSaveSlot].getFileNameWithoutExtension()
+                             : libraryTab == 0 && st != nullptr ? (st->getName().isNotEmpty() ? st->getName() : st->getLabel())
+                             : libraryTab == 1 ? "FX" + juce::String (presetSlot + 1) : juce::String ("Routing");
         auto* w = new juce::AlertWindow ("SAVE PRESET", "Name:", juce::MessageBoxIconType::NoIcon, this);
         w->addTextEditor ("name", suggested);
         w->addButton ("SAVE", 1, juce::KeyPress (juce::KeyPress::returnKey));
@@ -552,7 +721,13 @@ void Display::assignLibraryPresetEncoders()
         assignEncoders();
         repaint();
     });
-    if (tab == 2)
+    if (tab != 0)
+    {
+        // The X32's .efx and .rou files: Sidecar reads and writes only .chn.
+        encoders[4] = dimmedEncoder ("USB DRIVE", {}, "IMPORT");
+        encoders[5] = dimmedEncoder ("USB DRIVE", {}, "EXPORT");
+    }
+    else
     {
         // The X32's own channel preset files (.chn): IMPORT loads one onto the
         // selected strip (its source stays), EXPORT writes the strip as one.
@@ -565,12 +740,14 @@ void Display::assignLibraryPresetEncoders()
             safe->refreshStrip();
             safe->repaint();
         };
-        encoders[4] = encoder ({}, "IMPORT .chn", [this, said]
+        KnobBinding drive;
+        drive.label = "USB DRIVE";
+        encoders[4] = encoder (drive, "IMPORT", [this, said]
         {
             auto* st = selected();
             sceneFiles.importChannel (st != nullptr ? x32Address (*st) : juce::String(), said);
         });
-        encoders[5] = encoder ({}, "EXPORT .chn", [this, said]
+        encoders[5] = encoder (drive, "EXPORT", [this, said]
         {
             auto* st = selected();
             const auto name = st == nullptr ? juce::String() : st->getName().isNotEmpty() ? st->getName() : st->getLabel();
@@ -581,69 +758,99 @@ void Display::assignLibraryPresetEncoders()
 
 void Display::paintLibraryPresets (juce::Graphics& g, juce::Rectangle<int> r)
 {
-    // The presets around the one picked; beside them the elements a load
-    // recalls (channel, routing) or the FX slots (effects).
+    // As the LIBRARY photograph: a narrow column beside the preset list (the FX
+    // slots, or the elements a load recalls), the list on navy, the chosen preset orange.
     const auto list = presets (presetExtensionFor (tab));
-    auto area = r.reduced (12);
+    auto area = pageFrame (g, r);
     if (libraryStatus.isNotEmpty())
     {
-        g.setColour (kSky);
-        g.setFont (type::font (11.0f, true));
-        g.drawFittedText (libraryStatus, area.removeFromBottom (18), juce::Justification::centredLeft, 1, 0.8f);
+        g.setColour (kNavy);
+        g.setFont (type::font (10.5f, true));
+        g.drawFittedText (libraryStatus, area.removeFromBottom (16), juce::Justification::centredLeft, 1, 0.8f);
     }
-    auto side = area.removeFromRight (area.getWidth() / 3).toFloat();
-    area.removeFromRight (8);
-    if (tab == 3)
+    auto side = area.removeFromLeft (juce::jmax (120, area.getWidth() / 5));
+    area.removeFromLeft (10);
+    g.setColour (kNavy);
+    g.setFont (type::font (10.5f, true));
+    g.drawText (tab == 1 ? "Select FX Slot" : "Recall", side.removeFromTop (18), juce::Justification::centredLeft);
+    if (tab == 1)
     {
         auto& fx = ctx.engine.getFx();
-        auto box = block (g, side, "FX SLOTS").reduced (3.0f, 1.0f);
-        const float rowH = juce::jmin (14.0f, box.getHeight() / 8.0f);
+        const float rowH = juce::jmin (15.0f, (float) (side.getHeight() - 32) / 8.0f);
         for (int s = 0; s < 8; ++s)
         {
-            auto row = box.removeFromTop (rowH);
-            if (s == presetSlot)
-            {
-                g.setColour (kDeep);
-                g.fillRect (row);
-            }
-            const int m = fx.getModel (s);
-            g.setColour (s == presetSlot ? juce::Colours::white : kNavy);
-            g.setFont (type::font (juce::jmin (10.5f, rowH * 0.85f), s == presetSlot));
-            g.drawFittedText ("FX" + juce::String (s + 1) + "  " + (m > ld::kFxExt ? models::model (models::Fx, m).name : juce::String ("-")),
-                              row.reduced (3.0f, 0.0f).toNearestInt(), juce::Justification::centredLeft, 1, 0.8f);
+            auto row = side.removeFromTop (juce::roundToInt (rowH)).toFloat();
+            auto dot = row.removeFromLeft (rowH).reduced (2.5f);
+            g.setColour (s == presetSlot ? kCurve : kBox);
+            g.fillEllipse (dot);
+            g.setColour (kNavy);
+            g.drawEllipse (dot, 1.0f);
+            g.setFont (type::font (juce::jmin (10.5f, rowH * 0.9f), false));
+            g.drawText ("Effect " + juce::String (s + 1), row.withTrimmedLeft (3.0f), juce::Justification::centredLeft);
         }
+        const int m = fx.getModel (presetSlot);
+        auto unit = side.removeFromBottom (28).toFloat();
+        g.setColour (kSky);
+        g.fillRoundedRectangle (unit, 3.0f);
+        g.setColour (kNavy);
+        g.setFont (type::font (10.0f, true));
+        g.drawFittedText (m > ld::kFxExt ? models::model (models::Fx, m).name : juce::String ("-"), unit.reduced (4.0f, 2.0f).toNearestInt(), juce::Justification::centred, 2, 0.7f);
     }
     else
     {
-        const auto& names = tab == 2 ? channelElements() : routingElements();
-        const auto mask = tab == 2 ? channelRecall : routingRecall;
-        auto box = block (g, side, "RECALL").reduced (3.0f, 1.0f);
-        const float rowH = juce::jmin (14.0f, box.getHeight() / (float) names.size());
+        const auto& names = tab == 0 ? channelElements() : routingElements();
+        const auto mask = tab == 0 ? channelRecall : routingRecall;
+        const float rowH = juce::jmin (16.0f, (float) side.getHeight() / (float) names.size());
         for (int k = 0; k < names.size(); ++k)
         {
-            auto row = box.removeFromTop (rowH);
+            auto row = side.removeFromTop (juce::roundToInt (rowH)).toFloat();
             if (k == libraryElement)
             {
-                g.setColour (kDeep.withAlpha (0.35f));
+                g.setColour (kDeep.withAlpha (0.25f));
                 g.fillRect (row);
             }
+            g.setColour (kNavy);
             checkBox (g, row.reduced (1.0f), names[k], (mask & (1u << k)) != 0);
         }
     }
-    juce::StringArray left, right;
-    const int rows = juce::jmax (1, area.getHeight() / 24);
-    const int from = juce::jlimit (0, juce::jmax (0, list.size() - rows), presetChoice - rows / 2);
-    for (int i = from; i < juce::jmin (list.size(), from + rows); ++i)
+    // The list: number, name and (a new slot past the last) "New".
+    auto panel = area.removeFromLeft (juce::roundToInt ((float) area.getWidth() * 0.72f)).toFloat();
+    g.setColour (kNavy);
+    g.fillRoundedRectangle (panel, 3.0f);
+    auto inner = panel.reduced (6.0f, 3.0f);
+    g.setColour (juce::Colours::white);
+    g.setFont (type::font (10.0f, true));
+    g.drawText ("Preset Library", inner.removeFromTop (14.0f), juce::Justification::centredLeft);
+    const int shown = juce::jmax (1, juce::roundToInt (inner.getHeight() / 15.0f));
+    const int first = juce::jlimit (0, juce::jmax (0, list.size() + 1 - shown), presetChoice - shown / 2);
+    for (int i = 0; i < shown && first + i <= list.size(); ++i)
     {
-        left.add ((i == presetChoice ? "> " : "  ") + juce::String (i + 1).paddedLeft ('0', 2));
-        right.add (list[i].getFileNameWithoutExtension());
+        const int at = first + i;
+        auto row = inner.removeFromTop (15.0f);
+        const bool isNew = at == list.size();
+        if (at == presetChoice && ! isNew)
+        {
+            g.setColour (kAmber);
+            g.fillRect (row);
+        }
+        else if (at == presetSaveSlot)
+        {
+            g.setColour (juce::Colours::white);
+            g.drawRect (row, 1.0f);
+        }
+        g.setColour (at == presetChoice && ! isNew ? kNavy : juce::Colours::white);
+        g.setFont (type::font (10.5f, true));
+        g.drawText (juce::String (at + 1).paddedLeft ('0', 2), row.removeFromLeft (26.0f), juce::Justification::centred);
+        g.drawFittedText (isNew ? juce::String ("(new slot)") : list[at].getFileNameWithoutExtension(), row.reduced (2.0f, 0.0f).toNearestInt(),
+                          juce::Justification::centredLeft, 1, 0.8f);
     }
     if (list.isEmpty())
     {
-        left.add ("No presets");
-        right.add (tab == 2 ? "SAVE stores the selected strip" : tab == 3 ? "SAVE stores the FX slot" : "SAVE stores the routing");
+        g.setColour (kDeepText);
+        g.setFont (type::font (10.0f, false));
+        g.drawText (tab == 0 ? "Save Preset stores the selected strip" : tab == 1 ? "Save Preset stores the FX slot" : "Save Preset stores the routing",
+                    panel.reduced (8.0f).withTrimmedTop (20.0f), juce::Justification::centred);
     }
-    paintRows (g, area, left, right);
 }
 
 //==============================================================================
@@ -679,12 +886,32 @@ void Display::assignScenesEncoders()
     const auto refresh = [this] { assignEncoders(); repaint(); };
     const auto valid = [&show] (int i) { return juce::isPositiveAndBelow (i, show.getNumScenes()); };
 
+    if (tab == 1 && layer == 1)
+    {
+        // The show file (Sidecar's; the X32 keeps its show in the console): NEW, OPEN,
+        // SAVE, SAVE AS, as on every skin.
+        auto call = [] (const std::function<void()>& f) { return [f] { if (f) f(); }; };
+        encoders[0] = encoder ({}, "NEW SHOW", call (ctx.newShow));
+        encoders[1] = encoder ({}, "OPEN", call (ctx.openShow));
+        encoders[2] = encoder ({}, "SAVE", [this] { if (ctx.saveShow) ctx.saveShow (false); });
+        encoders[3] = encoder ({}, "SAVE AS", [this] { if (ctx.saveShow) ctx.saveShow (true); });
+        return;
+    }
     if (tab == 0)
     {
         // HOME (p.65): GO the scene picked; SKIP one; NEW (the X32's cue); a
         // snippet of the current scene, GO; PREV and NEXT on 4 and 6 (no UNDO).
         encoders[0] = encoder (pickKnob ("SCENE", selectedScene, n, [this, sceneName] { return sceneName (selectedScene); }, refresh), "GO",
-                               [this, &show, valid] { if (valid (selectedScene)) show.recallScene (selectedScene); repaint(); });
+                               [this, &show, valid]
+                               {
+                                   if (! valid (selectedScene))
+                                       return;
+                                   show.recallScene (selectedScene);
+                                   // Scene Go Next (SETUP > config, `/-prefs/sceneadvance`): on to the next one.
+                                   if (x32On ("/-prefs/sceneadvance") && valid (selectedScene + 1))
+                                       ++selectedScene;
+                                   repaint();
+                               });
         encoders[1] = encoder (pickKnob ("SKIP", skipScene, n, [this, sceneName] { return sceneName (skipScene); }, refresh), "SKIP",
                                [this, &show, valid] { if (valid (skipScene)) show.setSceneSkip (skipScene, ! show.getScene (skipScene)->skip); repaint(); },
                                [this, &show, valid] { return valid (skipScene) && show.getScene (skipScene)->skip; });
@@ -703,7 +930,8 @@ void Display::assignScenesEncoders()
                                    return snippets > 0 && s.has_value() ? two (homeSnippet + 1) + " " + s->name : juce::String ("-");
                                }, refresh), "GO",
                                [this, &show, current, snippets] { if (homeSnippet < snippets) show.recallSnippet (current, homeSnippet); repaint(); });
-        encoders[5] = encoder ({}, "NEXT", [this, &show] { show.recallNext(); repaint(); });
+        // 6 UNDO (p.65): the console as it was before the last scene's recall. (NEXT is the panel's key.)
+        encoders[5] = encoder ({}, "UNDO", [this, &show] { if (show.canUndoRecall()) show.undoRecall(); repaint(); });
     }
     else if (tab == 1)
     {
@@ -784,40 +1012,7 @@ void Display::assignScenesEncoders()
     }
     else if (tab == 2)
     {
-        // SNIPPETS (p.66): the selected scene's (an X32's belong to the show,
-        // Sidecar's to a scene): one picked, GO recalls it, SAVE stores the
-        // console into it, NEW makes one of the selected strip, FIRE recalls it
-        // with its scene, DELETE.
-        const auto scene = show.getScene (selectedScene);
-        const int snippets = scene.has_value() ? scene->numSnippets : 0;
-        const auto ok = [this, &show]
-        {
-            const auto sc = show.getScene (selectedScene);
-            return sc.has_value() && juce::isPositiveAndBelow (selectedSnippet, sc->numSnippets);
-        };
-        encoders[0] = encoder (pickKnob ("SNIPPET", selectedSnippet, snippets, [this, snippets] { return snippets == 0 ? juce::String ("-") : two (selectedSnippet + 1); }, refresh),
-                               "GO", [this, &show, ok] { if (ok()) show.recallSnippet (selectedScene, selectedSnippet); });
-        encoders[1] = encoder ({}, "SAVE", [this, &show, ok] { if (ok()) show.storeSnippet (selectedScene, selectedSnippet); repaint(); });
-        encoders[2] = encoder ({}, "NEW", [this, &show, valid]
-        {
-            auto* st = selected();
-            if (st == nullptr || ! valid (selectedScene))
-                return;
-            selectedSnippet = show.addSnippet (selectedScene, st->getLabel(), state::AllSections & ~(juce::uint32) state::Routing, { state::StripRef::of (*st) });
-            assignEncoders();
-        });
-        encoders[3] = encoder ({}, "FIRE", [this, &show, ok]
-        {
-            if (ok())
-                show.setSnippetFireWithScene (selectedScene, selectedSnippet, ! show.getSnippet (selectedScene, selectedSnippet)->fireWithScene);
-            repaint();
-        }, [this, &show, ok] { return ok() && show.getSnippet (selectedScene, selectedSnippet)->fireWithScene; });
-        encoders[5] = encoder ({}, "DELETE", [this, &show, ok]
-        {
-            if (ok())
-                show.removeSnippet (selectedScene, selectedSnippet);
-            assignEncoders();
-        });
+        assignSnippetEncoders();
     }
     else if (tab == 3 || tab == 4)
     {
@@ -1108,23 +1303,7 @@ void Display::paintScenes (juce::Graphics& g, juce::Rectangle<int> r)
     }
     if (tab == 2)
     {
-        // The selected scene's snippets; FIRE marks those recalled with it.
-        const auto scene = show.getScene (selectedScene);
-        left.add ("SCENE " + two (selectedScene + 1));
-        right.add (scene.has_value() ? scene->name : juce::String ("-"));
-        const int n = scene.has_value() ? scene->numSnippets : 0;
-        for (int k = 0; k < n; ++k)
-            if (const auto snip = show.getSnippet (selectedScene, k))
-            {
-                left.add ((k == selectedSnippet ? "> " : "  ") + two (k + 1) + (snip->fireWithScene ? "  FIRE" : ""));
-                right.add (snip->name);
-            }
-        if (n == 0)
-        {
-            left.add ("No snippets");
-            right.add ("NEW makes one of the selected strip");
-        }
-        paintRows (g, r.reduced (12), left, right);
+        paintSnippets (g, r);
         return;
     }
     if (tab == 3)
@@ -1222,9 +1401,12 @@ void Display::paintScribble (juce::Graphics& g, juce::Rectangle<float> r, Strip*
     };
 
     const auto strips = recallStrips();
-    const int at = (int) (std::find (strips.begin(), strips.end(), s) - strips.begin());
-    list (column ("Channel"), (int) strips.size(), at, [&] (juce::Rectangle<float> row, int i, bool chosen) { text (row, strips[(size_t) i]->getLabel(), chosen); });
-    const int colour = s != nullptr ? juce::jlimit (1, 16, s->getColourIndex()) : 0;
+    const int numStrips = (int) strips.size();
+    const int at = scribbleDca >= 0 ? numStrips + scribbleDca : (int) (std::find (strips.begin(), strips.end(), s) - strips.begin());
+    list (column ("Channel"), numStrips + ctx.engine.getNumDcas(), at, [&] (juce::Rectangle<float> row, int i, bool chosen)
+          { text (row, i < numStrips ? strips[(size_t) i]->getLabel() : "DCA " + juce::String (i - numStrips + 1), chosen); });
+    const int colour = scribbleDca >= 0 ? 1 + juce::jmax (0, scribbleColours().indexOf (x32Value ("/dca/" + juce::String (scribbleDca + 1) + "/config/color")))
+                     : s != nullptr ? juce::jlimit (1, 16, s->getColourIndex()) : 0;
     list (column ("Color"), 16, colour - 1, [&] (juce::Rectangle<float> row, int i, bool chosen)
     {
         g.setColour (consoleColour (i + 1));
@@ -1236,7 +1418,7 @@ void Display::paintScribble (juce::Graphics& g, juce::Rectangle<float> r, Strip*
         }
     });
     const auto icons = wingIconNumbers();
-    const auto found = s != nullptr ? std::find (icons.begin(), icons.end(), s->params.icon.load()) : icons.end();
+    const auto found = s != nullptr && scribbleDca < 0 ? std::find (icons.begin(), icons.end(), s->params.icon.load()) : icons.end();
     const int icon = found != icons.end() ? (int) (found - icons.begin()) : -1;
     {
         // Icon: the chosen one large, its neighbours either side.
@@ -1267,7 +1449,7 @@ void Display::paintScribble (juce::Graphics& g, juce::Rectangle<float> r, Strip*
     const auto& names = scribbleNames();
     list (column ("Snippets"), names.size(), scribbleName, [&] (juce::Rectangle<float> row, int i, bool chosen) { text (row, names[i], chosen); });
     auto name = column ("Name");
-    valueBox (g, name.removeFromTop (rowH + 2.0f), s != nullptr ? s->getName() : juce::String ("-"));
+    valueBox (g, name.removeFromTop (rowH + 2.0f), scribbleDca >= 0 ? dcaName (scribbleDca) : s != nullptr ? s->getName() : juce::String ("-"));
 }
 
 void Display::paintPreamps (juce::Graphics& g, juce::Rectangle<float> r)
@@ -1281,25 +1463,44 @@ void Display::paintPreamps (juce::Graphics& g, juce::Rectangle<float> r)
     r.removeFromRight (6.0f);
     auto controls = block (g, r, "PREAMP CONTROLS").reduced (6.0f, 4.0f);
 
-    for (int b = 0; b < 4; ++b)
     {
-        auto row = blocks.removeFromTop (18.0f);
-        g.setColour (b == preampBlock ? kDeep : kBox);
-        g.fillRect (row.reduced (0.0f, 1.0f));
-        g.setColour (b == preampBlock ? juce::Colours::white : kNavy);
-        g.setFont (type::font (11.0f, b == preampBlock));
-        g.drawText ("Local " + juce::String (8 * b + 1) + "-" + juce::String (8 * b + 8), row, juce::Justification::centred);
+        // The sixteen blocks (the manual's picture): the four local ones, AES50 A's six, B's six.
+        const float blockH = juce::jmin (18.0f, blocks.getHeight() / 16.0f);
+        for (int b = 0; b < 16; ++b)
+        {
+            auto row = blocks.removeFromTop (blockH);
+            g.setColour (b == preampBlock ? kDeep : kBox);
+            g.fillRect (row.reduced (0.0f, 0.5f));
+            g.setColour (b == preampBlock ? juce::Colours::white : kNavy);
+            g.setFont (type::font (juce::jmin (11.0f, blockH * 0.85f), b == preampBlock));
+            g.drawFittedText (preampBlockName (b, false), row.toNearestInt(), juce::Justification::centred, 1, 0.7f);
+        }
     }
 
     g.setColour (kNavy);
     g.setFont (type::font (10.5f, true));
-    for (const char* bus : { "AES50 A", "AES50 B" })
     {
-        auto d = devices.removeFromTop (devices.getHeight() * (bus[6] == 'A' ? 0.5f : 1.0f));
-        g.drawText (bus, d.removeFromTop (16.0f), juce::Justification::centredLeft);
-        g.setFont (type::font (10.0f));
-        g.drawText ("none", d.removeFromTop (14.0f), juce::Justification::centredLeft);
-        g.setFont (type::font (10.5f, true));
+        // The devices on the AES50 ports (none: the interface's inputs stand in), then the options.
+        auto ports = devices.removeFromTop (juce::jmin (46.0f, devices.getHeight() * 0.4f));
+        for (const char* bus : { "AES50 A", "AES50 B" })
+        {
+            auto d = ports.removeFromTop (ports.getHeight() * (bus[6] == 'A' ? 0.5f : 1.0f));
+            g.setFont (type::font (10.0f, true));
+            g.drawText (juce::String (bus) + ": none", d, juce::Justification::centredLeft);
+        }
+        const int flags = x32Bits (x32Value ("/-prefs/haflags"));
+        const float rowH = juce::jmin (14.0f, devices.getHeight() / 4.0f);
+        for (int k = 0; k < 4; ++k)
+        {
+            auto row = devices.removeFromTop (rowH);
+            if (k == haOption)
+            {
+                g.setColour (kGr);
+                g.drawRect (row, 1.0f);
+            }
+            g.setColour (kNavy);
+            checkBox (g, row.reduced (1.0f), haOptions()[k], (flags & (1 << k)) != 0);
+        }
     }
 
     const float rowH = controls.getHeight() / 2.0f;
@@ -1323,7 +1524,7 @@ void Display::paintPreamps (juce::Graphics& g, juce::Rectangle<float> r)
             auto top = tile.removeFromTop (18.0f).reduced (2.0f);
             g.setColour (kNavy);
             g.setFont (type::font (10.0f, true));
-            g.drawText (juce::String (input + 1), top.removeFromLeft (16.0f), juce::Justification::centred);
+            g.drawText (juce::String (preampNumber (preampBlock, 4 * half + k)), top.removeFromLeft (16.0f), juce::Justification::centred);
             if (src == nullptr)
             {
                 g.setFont (type::font (10.0f));
@@ -1346,11 +1547,24 @@ void Display::paintPreamps (juce::Graphics& g, juce::Rectangle<float> r)
 
 const std::vector<Display::ConfigItem>& Display::configPrefs()
 {
-    // SETUP > config's preferences that Sidecar acts on: the solo's and the mono bus's.
+    // SETUP > config's preferences, by the groups the X32 OSC document names for this
+    // page (p.50): Confirm Pop-ups, View Preferences, General Prefs, Mute System; then
+    // the solo's and the mono bus's. Sidecar acts on Scene Go Next (SCENES > home's GO)
+    // and 12h Clock Mode (the status bar); the others are kept, for a remote to read.
+    // (The solo options themselves are MONITOR's.)
     static const std::vector<ConfigItem> items {
-        { "EXCLUSIVE SOLO", "/config/solo/exclusive", "ON", "OFF" },
-        { "SOLO FOLLOWS SELECT", "/config/solo/followsel", "ON", "OFF" },
-        { "SELECT FOLLOWS SOLO", "/config/solo/followsolo", "ON", "OFF" },
+        { "CONFIRM GENERAL", "/-prefs/confirm_general", "ON", "OFF" },
+        { "CONFIRM OVERWRITE", "/-prefs/confirm_overwrite", "ON", "OFF" },
+        { "CONFIRM SCENE LOAD", "/-prefs/confirm_sceneload", "ON", "OFF" },
+        { "RETURN TO LAST", "/-prefs/viewrtn", "ON", "OFF" },
+        { "SEL FOLLOWS BANK", "/-prefs/selfollowsbank", "ON", "OFF" },
+        { "AUTO SELECT", "/-prefs/autosel", "ON", "OFF" },
+        { "SCENE GO NEXT", "/-prefs/sceneadvance", "ON", "OFF" },
+        { "SAFE MAIN LEVELS", "/-prefs/safe_masterlevels", "ON", "OFF" },
+        { "12H CLOCK MODE", "/-prefs/clockmode", "12h", "24h" },
+        { "HARD MUTES", "/-prefs/hardmute", "ON", "OFF" },
+        { "DCA GROUPS MUTE", "/-prefs/dcamute", "ON", "OFF" },
+        { "INVERT MUTE LEDS", "/-prefs/invertmutes", "INV", "NORM" },
         { "DIM ON PFL", "/config/solo/dimpfl", "ON", "OFF" },
         { "MONO LINKED TO LR", "/config/mono/link", "ON", "OFF" },
         { "MONO AS CENTER (LCR)", "/config/mono/mode", "LCR", "LR+M" },
@@ -1383,56 +1597,99 @@ std::vector<Strip*> Display::recallStrips() const
 
 int Display::numLayers() const
 {
+    if (screen == Screen::Assign)
+        return tab == 0 ? 3 : 1; // home's layers are the sets (LAYER ^ v, p.63)
+    if (screen == Screen::Scenes)
+        return tab == 1 || tab == 2 ? 2 : 1; // scenes' second layer: the show file; snippets': FIRE and DELETE (both Sidecar's)
     if (screen == Screen::Setup)
         return tab == 2 || tab == 5 ? 2 : 1; // remote: the MIDI kinds, then SysEx; preamps: the top four, the bottom four
     if (screen == Screen::Routing)
         return 1; // none of its tabs has a second layer (p.51)
     if (screen == Screen::Effects && tab > 0)
     {
-        // A slot's parameters, six per layer.
+        // A graphic EQ: its two sides (a dual one); else a slot's parameters, six per layer.
+        if (isGraphicEq (tab - 1))
+            return geqBands (tab - 1).size() > 31 ? 2 : 1;
         const int m = ctx.engine.getFx().getModel (tab - 1);
         const int n = m > ld::kFxExt ? (int) models::model (models::Fx, m).params.size() : 0;
         return juce::jmax (1, (n + 5) / 6);
     }
+    if (screen == Screen::Usb)
+        return tab == 1 ? 2 : 1; // config's second layer: Sidecar's own recording format
     if (screen != Screen::Home)
         return 1;
-    // HOME's home, gate and dynamics tabs have a second layer of encoders.
-    return tab == 0 || tab == 2 || tab == 3 ? 2 : 1;
+    // HOME's home, gate, dynamics and sends tabs have a second layer of encoders.
+    return tab == 0 || tab == 2 || tab == 3 || tab == 5 ? 2 : 1;
 }
 
 void Display::showScreen (Screen s, int t)
 {
+    if (s == Screen::MuteGroups && screen == Screen::MuteGroups)
+    {
+        // MUTE GRP again: back to the page it covered.
+        const int back = underTab;
+        screen = underScreen;
+        tab = 0;
+        showTab (back);
+        return;
+    }
+    if (s == Screen::MuteGroups)
+    {
+        underScreen = screen;
+        underTab = tab;
+        screen = s;
+        tab = 0;
+        showTab (underTab);
+        return;
+    }
     screen = s;
     tab = 0;
     showTab (t);
 }
 
+void Display::pressUtility()
+{
+    // Manual 7.9: UTILITY is a shortcut into the screen in view. Where the real
+    // console has none, Sidecar's copy and init pages show.
+    switch (screen)
+    {
+        case Screen::Home:    showScreen (Screen::Library, 0); break;
+        case Screen::Routing: showScreen (Screen::Library, 2); break;
+        case Screen::Effects: showScreen (Screen::Library, 1); break;
+        case Screen::Usb:     showScreen (Screen::Usb, 1); break;
+        case Screen::Scenes:  showScreen (Screen::Scenes, 1); break;
+        default:              showScreen (Screen::Utility); break;
+    }
+}
+
 void Display::showTab (int t)
 {
-    tab = juce::jlimit (0, getTabs().size() - 1, t);
+    (screen == Screen::MuteGroups ? underTab : tab) = juce::jlimit (0, getTabs().size() - 1, t);
     layer = 0;
-    // METERS' RTA: the selected strip's while the tab shows.
+    const auto shown = screen == Screen::MuteGroups ? underScreen : screen;
+    const int shownT = shownTab();
+    iqSetup = false;
+    initArmedItem = -1;
+    netPending.fill (-1);
+    pendingBlock.fill (-1);
+    cardMode = -1;
+    rtaSourcePick = -1;
+    // METERS' RTA and the EQ's overlay: analysed while their tab shows.
+    updateRta();
+    publishScreen();
+    if (screen == Screen::Assign && tab > 0 && setAssignSet)
+        setAssignSet (tab - 1); // a set's tab shows (and picks) the set
+    if (screen == Screen::Assign && tab == 0 && getAssignSet)
+        layer = getAssignSet();
     {
-        auto analysis = ctx.engine.getAnalysis();
-        if (screen == Screen::Meters && tab == 4)
-        {
-            analysis.showRta (selected(), ld::kRtaViewHome);
-            rtaShown = true;
-        }
-        else if (rtaShown)
-        {
-            analysis.hideRta();
-            rtaShown = false;
-        }
+        // HOME's graphs: the gate's for a channel, the dynamics' for a channel or an output.
+        const bool home = shown == Screen::Home;
+        auto* s = selected();
+        const bool hasGate = s != nullptr && s->getKind() == StripKind::Channel;
+        eqView.setVisible (home && shownT == 4);
+        gateView.setVisible (home && shownT == 2 && hasGate);
+        dynView.setVisible (home && shownT == 3 && s != nullptr && (hasGate || s->isOutput()));
     }
-    if (screen == Screen::Assign && setAssignSet)
-        setAssignSet (tab); // a set's tab shows (and picks) the set
-    const bool home = screen == Screen::Home;
-    eqView.setVisible (home && tab == 4);
-    gateView.setVisible (home && tab == 2);
-    dynView.setVisible (home && tab == 3);
-    for (auto& k : muteGroupKeys)
-        k->setVisible (screen == Screen::MuteGroups);
     assignEncoders();
     for (auto& k : screenKeys)
         k->refresh();
@@ -1443,6 +1700,10 @@ void Display::showTab (int t)
 void Display::setLayer (int l)
 {
     layer = juce::jlimit (0, numLayers() - 1, l);
+    if (screen == Screen::Assign && tab == 0 && setAssignSet)
+        setAssignSet (layer);
+    if (geqSlot >= 0 && screen == Screen::Effects && tab == geqSlot + 1)
+        showGeqOnFaders (geqSlot, geqFirst); // a dual EQ's other side on the faders
     assignEncoders();
     repaint();
 }
@@ -1452,9 +1713,22 @@ void Display::refreshStrip()
     auto* s = selected();
     gateView.bind (s != nullptr ? &s->params.gate() : nullptr);
     dynView.bind (s != nullptr ? &s->params.dynamics() : nullptr);
+    {
+        const bool home = (screen == Screen::MuteGroups ? underScreen : screen) == Screen::Home;
+        const bool hasGate = s != nullptr && s->getKind() == StripKind::Channel;
+        gateView.setVisible (home && shownTab() == 2 && hasGate);
+        dynView.setVisible (home && shownTab() == 3 && s != nullptr && (hasGate || s->isOutput()));
+    }
     eqView.refresh();
-    if (rtaShown)
-        ctx.engine.getAnalysis().showRta (s, ld::kRtaViewHome); // the RTA follows the selection
+    updateRta(); // the RTA follows the selection
+    // The selection, for a remote (`/-stat/selidx`).
+    if (s != nullptr)
+        if (const int index = x32Index (*s); index >= 0 && index != publishedSel)
+        {
+            publishedSel = index;
+            int set = 0;
+            ctx.engine.getWing().runX32Text ("/-stat/selidx " + juce::String (index), set);
+        }
     assignEncoders();
     repaint();
 }
@@ -1500,7 +1774,12 @@ void Display::assignEncoders()
             b.steps = 2.0f;
             return b;
         };
-        auto gainOf = [&] { return bindLinear ("GAIN", p.input.trimDb, -18.0f, 18.0f, " dB", 1, 0.0f); };
+        // What the strip has (an X32's aux ins and FX returns: an EQ only; no gate on a bus).
+        const bool hasGate = s->getKind() == StripKind::Channel;
+        const bool hasDyn = hasGate || s->isOutput();
+        const auto stripAddress = x32Address (*s);
+        const bool isLr = stripAddress == "/main/st";
+        const bool toMains = s->isInput() || s->getKind() == StripKind::Bus;
         // A key filter's frequency, its push switching the filter on (the last
         // type, BANDPASS at first) and off (p.47-48).
         auto keyFreq = [this] (auto& slot)
@@ -1567,20 +1846,44 @@ void Display::assignEncoders()
             case 0: // home
                 if (layer == 0)
                 {
-                    encoders[0] = encoder (gainOf(), linkPush ? "LINK" : "", linkPush, linkOn);
-                    encoders[1] = encoder (bindParam (models::Dynamics, gate.model.load(), gate.values, "thr", "GATE"), "GATE", toggle (gate.on), isOn (gate.on));
+                    encoders[0] = encoder (gainBinding (*s), linkPush ? "LINK" : "", linkPush, linkOn);
+                    if (hasGate)
+                        encoders[1] = encoder (bindParam (models::Dynamics, gate.model.load(), gate.values, "thr", "GATE"), "GATE", toggle (gate.on), isOn (gate.on));
                     encoders[2] = encoder (orderBit (2, "INSERT"), "INSERT", toggle (p.preInsert().on), isOn (p.preInsert().on));
-                    encoders[3] = encoder (orderBit (1, "DYN POS"), "EQ", toggle (eq.on), isOn (eq.on));
-                    encoders[4] = encoder (bindParam (models::Dynamics, dyn.model.load(), dyn.values, "thr", "COMP"), "COMP", toggle (dyn.on), isOn (dyn.on));
-                    encoders[5] = encoder (bindPan ("PAN", p.pan), "LR", toggle (s->mains[0].on), isOn (s->mains[0].on));
+                    encoders[3] = encoder (hasDyn ? orderBit (1, "DYN POS") : KnobBinding(), "EQ", toggle (eq.on), isOn (eq.on));
+                    if (hasDyn)
+                        encoders[4] = encoder (bindParam (models::Dynamics, dyn.model.load(), dyn.values, "thr", "COMP"), "COMP", toggle (dyn.on), isOn (dyn.on));
+                    // PAN and the LR assign: inputs and mix buses; the LR's own pan is its balance; a matrix and the M/C have neither.
+                    if (toMains)
+                        encoders[5] = encoder (bindPan ("PAN", p.pan), "LR", toggle (s->mains[0].on), isOn (s->mains[0].on));
+                    else if (isLr)
+                        encoders[5] = encoder (bindPan ("PAN", p.pan));
                 }
                 else
                 {
                     // 48V on the strip's input; a DCA and a mute group picked, PUSH
                     // assigns the strip to it (p.47).
                     const int input = p.inputLeft.load();
+                    const auto strips = recallStrips();
+                    const int numStrips = (int) strips.size();
+                    const int at = (int) (std::find (strips.begin(), strips.end(), s) - strips.begin());
+                    KnobBinding pickStrip;
+                    pickStrip.label = "SELECT";
+                    pickStrip.get = [numStrips, at] { return numStrips > 1 && at < numStrips ? (float) at / (float) (numStrips - 1) : 0.0f; };
+                    pickStrip.set = [this, strips, numStrips] (float v)
+                    {
+                        if (numStrips > 0 && ctx.selectStrip)
+                            ctx.selectStrip (strips[(size_t) juce::roundToInt (v * (float) (numStrips - 1))]);
+                    };
+                    pickStrip.text = [s] { return s->getLabel(); };
+                    pickStrip.steps = (float) juce::jmax (2, numStrips);
+                    encoders[0] = encoder (pickStrip);
                     if (auto* src = input >= 0 && input < 128 ? engine.getSource (input) : nullptr)
-                        encoders[0] = encoder ({}, "48V", toggle (src->phantom), isOn (src->phantom));
+                    {
+                        encoders[0].pushLabel = "48V";
+                        encoders[0].push = toggle (src->phantom);
+                        encoders[0].pushOn = isOn (src->phantom);
+                    }
                     encoders[1] = encoder ({}, "POLARITY", toggle (p.input.invert), isOn (p.input.invert));
                     const auto picker = [this] (const char* label, int& value, int count)
                     {
@@ -1603,10 +1906,11 @@ void Display::assignEncoders()
                 break;
             case 1: // config
             {
-                encoders[0] = encoder (gainOf(), linkPush ? "LINK" : "", linkPush, linkOn);
-                encoders[1] = encoder (bindFreq ("LOW CUT", p.filter().lowCutFreq, 20.0f, 400.0f, 20.0f), "LOW CUT", toggle (p.filter().lowCut), isOn (p.filter().lowCut));
+                encoders[0] = encoder (gainBinding (*s), linkPush ? "LINK" : "", linkPush, linkOn);
+                if (hasGate) // the low cut is a channel's
+                    encoders[1] = encoder (bindFreq ("LOW CUT", p.filter().lowCutFreq, 20.0f, 400.0f, 20.0f), "LOW CUT", toggle (p.filter().lowCut), isOn (p.filter().lowCut));
                 // SOURCE (p.45): turned through the X32's list, SELECT (the push) patches it.
-                const auto address = x32Address (*s);
+                const auto address = stripAddress;
                 if (address.startsWith ("/ch/") || address.startsWith ("/auxin/"))
                 {
                     const auto path = address + "/config/source";
@@ -1632,14 +1936,13 @@ void Display::assignEncoders()
                         repaint();
                     }, [this, s] { return pendingSource >= 0 && pendingSourceStrip == s; });
                 }
-                encoders[3] = encoder (bindLinear ("DELAY", p.input.delay, 0.3f, 500.0f, " ms", 1, 0.3f), "DELAY", toggle (p.input.delayOn), isOn (p.input.delayOn));
+                if (hasGate) // and so is the delay (an output's is on ROUTING)
+                    encoders[3] = encoder (bindLinear ("DELAY", p.input.delay, 0.3f, 500.0f, " ms", 1, 0.3f), "DELAY", toggle (p.input.delayOn), isOn (p.input.delayOn));
                 encoders[4] = encoder (orderBit (2, "INSERT POS"), "INSERT", toggle (p.preInsert().on), isOn (p.preInsert().on));
                 // The insert's slot (p.45): turned, then CONNECT (the push) puts it in.
                 if (address.startsWith ("/ch/") || address.startsWith ("/bus/") || address.startsWith ("/mtx/"))
                 {
-                    static const juce::StringArray inserts { "OFF",  "FX1L", "FX1R", "FX2L", "FX2R", "FX3L", "FX3R", "FX4L",
-                                                             "FX4R", "FX5L", "FX5R", "FX6L", "FX6R", "FX7L", "FX7R", "FX8L",
-                                                             "FX8R", "AUX1", "AUX2", "AUX3", "AUX4", "AUX5", "AUX6" };
+                    static const auto& inserts = kInserts;
                     const auto path = address + "/insert/sel";
                     const auto shown = [this, path, s]
                     {
@@ -1669,6 +1972,8 @@ void Display::assignEncoders()
                 break;
             }
             case 2: // gate
+                if (! hasGate)
+                    break; // a channel's only
                 if (layer == 0)
                 {
                     encoders[0] = encoder (bindParam (models::Dynamics, gate.model.load(), gate.values, "thr", "THRESHOLD"), "GATE", toggle (gate.on), isOn (gate.on));
@@ -1691,6 +1996,8 @@ void Display::assignEncoders()
                 }
                 break;
             case 3: // dyn
+                if (! hasDyn)
+                    break;
                 if (layer == 0)
                 {
                     encoders[0] = encoder (bindParam (models::Dynamics, dyn.model.load(), dyn.values, "thr", "THRESHOLD"), "COMP", toggle (dyn.on), isOn (dyn.on));
@@ -1732,12 +2039,35 @@ void Display::assignEncoders()
                 const int bands = s->isOutput() ? 6 : 4;
                 eqBand = juce::jlimit (0, bands - 1, eqBand);
                 const auto n = juce::String (eqBand + 1);
-                if (! s->isOutput())
+                if (hasGate)
                     encoders[0] = encoder (bindFreq ("LOW CUT", p.filter().lowCutFreq, 20.0f, 400.0f, 20.0f), "LOW CUT", toggle (p.filter().lowCut), isOn (p.filter().lowCut));
-                encoders[1] = encoder (bindParam (eqTable, eq.model.load(), eq.values, n + "f", "FREQ"));
-                encoders[2] = encoder (bindParam (eqTable, eq.model.load(), eq.values, n + "g", "GAIN"));
-                encoders[3] = encoder (bindParam (eqTable, eq.model.load(), eq.values, n + "q", "Q"));
-                encoders[4] = encoder (bindParam (eqTable, eq.model.load(), eq.values, n + "t", "TYPE"));
+                // Pushes (p.45): the RTA overlay as a bar graph or a spectrograph, and
+                // before or after the EQ (`/-stat/rtamodeeq`, `rtaeqpre`); RESET a band, RESET all.
+                // The band, for a remote (`/-stat/eqband`: Low, Low2, Lo-Mid, Hi-Mid, High2, High).
+                {
+                    static constexpr int four[] = { 0, 2, 3, 5 };
+                    const int band = bands == 4 ? four[eqBand] : eqBand;
+                    if (band != publishedBand)
+                    {
+                        publishedBand = band;
+                        int set = 0;
+                        ctx.engine.getWing().runX32Text ("/-stat/eqband " + juce::String (band), set);
+                    }
+                }
+                const auto resetBand = [&eq, eqTable] (int b)
+                {
+                    const auto& m = models::model (eqTable, eq.model.load());
+                    const auto prefix = juce::String (b + 1);
+                    for (int k = 0; k < (int) m.params.size(); ++k)
+                        if (m.params[(size_t) k].id.startsWith (prefix) && m.params[(size_t) k].id.length() == prefix.length() + 1)
+                            eq.values[k] = m.params[(size_t) k].defaultValue;
+                };
+                encoders[1] = encoder (bindParam (eqTable, eq.model.load(), eq.values, n + "f", "FREQ"), "RTA SPEC",
+                                       [this] { setRtaOption (1, x32Value ("/-stat/rtamodeeq") != "SPEC"); }, [this] { return x32Value ("/-stat/rtamodeeq") == "SPEC"; });
+                encoders[2] = encoder (bindParam (eqTable, eq.model.load(), eq.values, n + "g", "GAIN"), "RTA PRE",
+                                       [this] { setRtaOption (0, ! x32On ("/-stat/rtaeqpre")); }, [this] { return x32On ("/-stat/rtaeqpre"); });
+                encoders[3] = encoder (bindParam (eqTable, eq.model.load(), eq.values, n + "q", "Q"), "RESET", [this, resetBand] { resetBand (eqBand); });
+                encoders[4] = encoder (bindParam (eqTable, eq.model.load(), eq.values, n + "t", "TYPE"), "RESET ALL", [bands, resetBand] { for (int b = 0; b < bands; ++b) resetBand (b); });
                 KnobBinding band;
                 band.label = "BAND";
                 band.get = [this, bands] { return bands > 1 ? (float) eqBand / (float) (bands - 1) : 0.0f; };
@@ -1760,21 +2090,53 @@ void Display::assignEncoders()
             }
             case 5: // sends
             {
-                const bool hasSends = s->isInput();
-                for (int i = 0; i < 4 && hasSends; ++i)
+                if (s->getKind() == StripKind::Bus || s->getKind() == StripKind::Main)
                 {
-                    const int slot = 4 * sendBank + i;
-                    if (slot >= (int) engine.getBuses().size())
-                        break;
-                    auto& send = s->sends[(size_t) slot];
-                    encoders[(size_t) i] = encoder (bindFader ("BUS " + juce::String (slot + 1), send.levelDb), "ON", toggle (send.enabled), isOn (send.enabled));
+                    // A mix bus's and a main's sends go to the matrices: 1-4, then 3-6.
+                    const int numMtx = juce::jmin (6, (int) engine.getMatrices().size());
+                    sendBank = juce::jlimit (0, 1, sendBank);
+                    const int firstMtx = sendBank > 0 ? juce::jmax (0, numMtx - 4) : 0;
+                    for (int i = 0; i < 4 && firstMtx + i < numMtx; ++i)
+                    {
+                        auto& send = s->matrix[(size_t) (firstMtx + i)];
+                        encoders[(size_t) i] = encoder (bindFader ("MTX " + juce::String (firstMtx + i + 1), send.levelDb), "MUTE", [&send] { send.on = ! send.on.load(); },
+                                                        [&send] { return ! send.on.load(); });
+                    }
+                    if (numMtx > 4)
+                        encoders[5] = encoder ({}, "NEXT 4", [this] { sendBank = 1 - juce::jlimit (0, 1, sendBank); assignEncoders(); });
+                    break;
+                }
+                const bool hasSends = s->isInput();
+                const auto addressOf = x32Address (*s);
+                const int first = 2 * sendBank;
+                if (layer == 0)
+                    for (int i = 0; i < 4 && hasSends; ++i)
+                    {
+                        const int slot = first + i;
+                        if (slot >= (int) engine.getBuses().size())
+                            break;
+                        auto& send = s->sends[(size_t) slot];
+                        encoders[(size_t) i] = encoder (bindFader ("BUS " + juce::String (slot + 1), send.levelDb), "MUTE", [&send] { send.enabled = ! send.enabled.load(); },
+                                                        [&send] { return ! send.enabled.load(); });
+                    }
+                else if (addressOf.startsWith ("/ch/") || addressOf.startsWith ("/auxin/") || addressOf.startsWith ("/fxrtn/"))
+                {
+                    // Page 2 (p.46): each pair's tap point, on encoders 1 and 3.
+                    static const juce::StringArray taps { "IN/LC", "<-EQ", "EQ->", "PRE", "POST", "GRP" };
+                    for (int k = 0; k < 2; ++k)
+                    {
+                        const int bus = first + 2 * k + 1;
+                        if (bus <= (int) engine.getBuses().size())
+                            encoders[(size_t) (2 * k)] = encoder (enumKnob ("TAP " + juce::String (bus) + "/" + juce::String (bus + 1),
+                                                                            addressOf + "/mix/" + juce::String (bus).paddedLeft ('0', 2) + "/type", taps));
+                    }
                 }
                 KnobBinding bank;
                 bank.label = "SENDS";
-                bank.get = [this] { return (float) sendBank / 3.0f; };
+                bank.get = [this] { return (float) sendBank / 6.0f; };
                 bank.set = [this] (float v)
                 {
-                    const int b = juce::roundToInt (v * 3.0f);
+                    const int b = juce::roundToInt (v * 6.0f);
                     if (b != sendBank)
                     {
                         sendBank = b;
@@ -1782,14 +2144,17 @@ void Display::assignEncoders()
                                                          { if (safe != nullptr) safe->assignEncoders(); });
                     }
                 };
-                bank.text = [this] { return juce::String (4 * sendBank + 1) + "-" + juce::String (4 * sendBank + 4); };
-                bank.steps = 4.0f;
-                encoders[5] = encoder (bank, "NEXT 4", [this] { sendBank = (sendBank + 1) % 4; assignEncoders(); });
+                bank.text = [this] { return juce::String (2 * sendBank + 1) + "-" + juce::String (2 * sendBank + 4); };
+                bank.steps = 7.0f;
+                encoders[5] = encoder (bank, "NEXT 4", [this] { sendBank = (sendBank + 2) % 7; assignEncoders(); });
                 break;
             }
             case 6: // main
-                encoders[0] = encoder (bindPan ("PAN", p.pan), "LR", toggle (s->mains[0].on), isOn (s->mains[0].on));
-                if (hasMc)
+                if (toMains)
+                    encoders[0] = encoder (bindPan ("PAN", p.pan), "LR", toggle (s->mains[0].on), isOn (s->mains[0].on));
+                else if (isLr)
+                    encoders[0] = encoder (bindPan ("PAN", p.pan));
+                if (hasMc && toMains)
                     encoders[1] = encoder (bindFader ("M/C LEVEL", s->mains[1].levelDb), "M/C", toggle (s->mains[1].on), isOn (s->mains[1].on));
                 encoders[4] = encoder ({}, "SOLO", toggle (p.solo), isOn (p.solo));
                 encoders[5] = encoder (faderOf(), "MUTE", toggle (p.mute), isOn (p.mute));
@@ -1819,6 +2184,7 @@ void Display::assignEncoders()
             m.steps = 2.0f;
             encoders[0] = encoder (m, "SWITCH", [this] { setModel (1 - getModel()); }, [] { return false; });
         }
+        assignSetupGlobalEncoders();
         auto* device = ctx.deviceManager.getCurrentAudioDevice();
         const auto rates = device != nullptr ? device->getAvailableSampleRates() : juce::Array<double>();
         if (! rates.isEmpty())
@@ -1837,6 +2203,9 @@ void Display::assignEncoders()
                 auto setup = ctx.deviceManager.getAudioDeviceSetup();
                 setup.sampleRate = rates[globalRate];
                 ctx.deviceManager.setAudioDeviceSetup (setup, true);
+                // The X32's own two rates, for a remote (`/-prefs/clockrate`).
+                if (const int rate = juce::roundToInt (rates[globalRate]); rate == 48000 || rate == 44100)
+                    x32Run (rate == 48000 ? "/-prefs/clockrate 48K" : "/-prefs/clockrate 44K1");
                 assignEncoders();
                 repaint();
             }, [this, rates] { auto* d = ctx.deviceManager.getCurrentAudioDevice(); return d != nullptr && d->getCurrentSampleRate() == rates[globalRate]; });
@@ -1864,24 +2233,30 @@ void Display::assignEncoders()
         };
         encoders[0] = list ("PREFERENCE", configPref, configPrefs());
         encoders[3] = list ("LINK", configLink, configLinks());
-        static const juce::StringArray schemes { "ALL POST", "ALL PRE", "1-8 PRE", "9-16 PRE" };
+        // 6 what PREV, NEXT and GO step through (`/-prefs/show_control`; Sidecar's shows hold scenes).
+        static const juce::StringArray showControl { "CUES", "SCENES", "SNIPPETS" };
+        encoders[5] = encoder (enumKnob ("SHOW CONTROL", "/-prefs/show_control", showControl));
+        // 3 the word clock: the audio interface's own (no AES50 or card to lock to).
+        encoders[2] = dimmedEncoder ("SYNC", "Internal", {});
         KnobBinding bus;
         bus.label = "BUS CONFIG";
-        bus.get = [this] { return (float) configBus / 3.0f; };
-        bus.set = [this] (float v) { configBus = juce::roundToInt (v * 3.0f); repaint(); };
-        bus.text = [this] { return schemes[configBus]; };
-        bus.steps = 4.0f;
+        bus.get = [this] { return (float) configBus / 4.0f; };
+        bus.set = [this] (float v) { configBus = juce::roundToInt (v * 4.0f); repaint(); };
+        bus.text = [this] { return juce::String (kBusSchemes[configBus].name); };
+        bus.steps = 5.0f;
         encoders[4] = encoder (bus, "APPLY", [this, run]
         {
-            // Every input's (channels, aux in, FX returns) send pairs' tap.
+            // Every input's (channels, aux in, FX returns) send pairs: pre, post,
+            // then subgroup, as the manual's five bus configurations give them.
+            const auto& sch = kBusSchemes[configBus];
             const std::pair<const char*, int> inputs[] = { { "ch", 32 }, { "auxin", 8 }, { "fxrtn", 8 } };
             for (const auto& [node, count] : inputs)
                 for (int i = 1; i <= count; ++i)
                     for (int send = 1; send <= 16; send += 2)
                     {
-                        const bool pre = configBus == 1 || (configBus == 2 && send <= 8) || (configBus == 3 && send > 8);
+                        const int bus = send - 1;
                         run ("/" + juce::String (node) + "/" + juce::String (i).paddedLeft ('0', 2) + "/mix/" + juce::String (send).paddedLeft ('0', 2)
-                             + "/type " + (pre ? "PRE" : "POST"));
+                             + "/type " + (bus < sch.pre ? "PRE" : bus < sch.pre + sch.post ? "POST" : "GRP"));
                     }
         });
     }
@@ -1891,21 +2266,53 @@ void Display::assignEncoders()
         // colour, its icon, a name from the list (pushed to give it), its name
         // (EDIT asks for it).
         const auto strips = recallStrips();
-        const int n = (int) strips.size();
-        const int at = (int) (std::find (strips.begin(), strips.end(), s) - strips.begin());
+        // The strips, then the DCAs (p.56), which can't be selected: kept here.
+        const int n = (int) strips.size(), total = n + engine.getNumDcas();
+        const int at = scribbleDca >= 0 ? n + scribbleDca : (int) (std::find (strips.begin(), strips.end(), s) - strips.begin());
         KnobBinding pick;
         pick.label = "SELECT";
-        pick.get = [n, at] { return n > 1 && at < n ? (float) at / (float) (n - 1) : 0.0f; };
-        pick.set = [this, strips, n] (float v)
+        pick.get = [total, at] { return total > 1 && at < total ? (float) at / (float) (total - 1) : 0.0f; };
+        pick.set = [this, strips, n, total] (float v)
         {
-            if (n > 0 && ctx.selectStrip)
-                ctx.selectStrip (strips[(size_t) juce::roundToInt (v * (float) (n - 1))]);
+            const int to = juce::roundToInt (v * (float) (total - 1));
+            scribbleDca = to >= n ? to - n : -1;
+            if (to < n && ctx.selectStrip)
+                ctx.selectStrip (strips[(size_t) to]);
             assignEncoders();
         };
-        pick.text = [s] { return s != nullptr ? s->getLabel() : juce::String ("-"); };
-        pick.steps = (float) juce::jmax (2, n);
+        pick.text = [this, s] { return scribbleDca >= 0 ? "DCA " + juce::String (scribbleDca + 1) : s != nullptr ? s->getLabel() : juce::String ("-"); };
+        pick.steps = (float) juce::jmax (2, total);
         encoders[0] = encoder (pick);
-        if (s != nullptr)
+        if (scribbleDca >= 0)
+        {
+            // A DCA: `/dca/N/config` (name, icon, colour).
+            const juce::String node = "/dca/" + juce::String (scribbleDca + 1) + "/config/";
+            encoders[1] = encoder (enumKnob ("SELECT", node + "color", scribbleColours()));
+            encoders[2] = encoder (intKnob ("SELECT", node + "icon", 1, 74, [] (int v) { return juce::String (v); }));
+            const auto& names = scribbleNames();
+            scribbleName = juce::jlimit (0, names.size() - 1, scribbleName);
+            KnobBinding name;
+            name.label = "SELECT";
+            name.get = [this, &names] { return (float) scribbleName / (float) (names.size() - 1); };
+            name.set = [this, &names] (float v) { scribbleName = juce::roundToInt (v * (float) (names.size() - 1)); repaint(); };
+            name.text = [this, &names] { return names[scribbleName]; };
+            name.steps = (float) names.size();
+            encoders[3] = encoder (name, "SELECT", [this, node, &names] { x32Run (node + "name \"" + names[scribbleName] + "\""); });
+            encoders[4] = encoder ({}, "EDIT", [this, node]
+            {
+                auto* w = new juce::AlertWindow ("NAME", "DCA " + juce::String (scribbleDca + 1) + ":", juce::MessageBoxIconType::NoIcon, this);
+                w->addTextEditor ("name", dcaName (scribbleDca));
+                w->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
+                w->addButton ("CANCEL", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+                juce::Component::SafePointer<Display> safe (this);
+                w->enterModalState (true, juce::ModalCallbackFunction::create ([safe, w, node] (int result)
+                {
+                    if (result != 0 && safe != nullptr)
+                        safe->x32Run (node + "name \"" + w->getTextEditorContents ("name").trim().substring (0, 12) + "\"");
+                }), true);
+            });
+        }
+        else if (s != nullptr)
         {
             KnobBinding colour;
             colour.label = "SELECT";
@@ -1947,20 +2354,33 @@ void Display::assignEncoders()
     {
         // PREAMPS (p.56-57): encoder 1 the block of eight inputs, 2-5 the gains
         // of its top four (layer 1) or bottom four (layer 2), pushed for 48V.
+        // The blocks: Local 1-8 .. 25-32, AES50 A 1-8 .. 41-48, AES50 B (interface inputs 1-128).
         KnobBinding block;
         block.label = "SELECT";
-        block.get = [this] { return (float) preampBlock / 3.0f; };
-        block.set = [this] (float v) { preampBlock = juce::roundToInt (v * 3.0f); assignEncoders(); };
-        block.text = [this] { return juce::String (8 * preampBlock + 1) + "-" + juce::String (8 * preampBlock + 8); };
-        block.steps = 4.0f;
+        block.get = [this] { return (float) preampBlock / 15.0f; };
+        block.set = [this] (float v) { preampBlock = juce::roundToInt (v * 15.0f); assignEncoders(); };
+        block.text = [this] { return preampBlockName (preampBlock, true); };
+        block.steps = 16.0f;
         encoders[0] = encoder (block);
         for (int k = 0; k < 4; ++k)
             if (auto* src = engine.getSource (8 * preampBlock + 4 * layer + k))
             {
-                auto b = bindLinear ("GAIN " + juce::String (8 * preampBlock + 4 * layer + k + 1), src->gainDb, -12.0f, 60.0f, " dB", 1, 0.0f);
+                auto b = bindLinear ("GAIN " + juce::String (preampNumber (preampBlock, 4 * layer + k)), src->gainDb, -12.0f, 60.0f, " dB", 1, 0.0f);
                 b.steps = 145.0f;
                 encoders[(size_t) (k + 1)] = encoder (b, "+48V", toggle (src->phantom), isOn (src->phantom));
             }
+        // 6 the options (`/-prefs/haflags`): Lock Stagebox (kept: no stagebox here), and HA
+        // gain split for the local inputs and each AES50 port: with it a strip's GAIN is its
+        // own trim, and the head amp is set only on this page.
+        KnobBinding option;
+        option.label = "SELECT";
+        option.get = [this] { return (float) haOption / 3.0f; };
+        option.set = [this] (float v) { haOption = juce::roundToInt (v * 3.0f); repaint(); };
+        option.text = [this] { return haOptions()[haOption]; };
+        option.steps = 4.0f;
+        const auto flags = [this] { return x32Bits (x32Value ("/-prefs/haflags")); };
+        encoders[5] = encoder (option, "SET", [this, flags] { x32Run ("/-prefs/haflags " + juce::String (flags() ^ (1 << haOption))); },
+                               [this, flags] { return (flags() & (1 << haOption)) != 0; });
     }
     else if (screen == Screen::Usb && tab == 0)
     {
@@ -2002,12 +2422,54 @@ void Display::assignEncoders()
     {
         // CONFIG: what it records.
         auto& usb = engine.getUsbRecorder();
-        encoders[0] = encoder ({}, "4 TRACKS", [&usb] { usb.setRecChannels (usb.getRecChannels() == 4 ? 2 : 4); }, [&usb] { return usb.getRecChannels() == 4; });
-        encoders[1] = encoder ({}, "24 BIT", [&usb] { usb.setRecBits (usb.getRecBits() == 24 ? 16 : 24); }, [&usb] { return usb.getRecBits() == 24; });
+        if (layer == 1)
+        {
+            encoders[0] = encoder ({}, "4 TRACKS", [&usb] { usb.setRecChannels (usb.getRecChannels() == 4 ? 2 : 4); }, [&usb] { return usb.getRecChannels() == 4; });
+            encoders[1] = encoder ({}, "24 BIT", [&usb] { usb.setRecBits (usb.getRecBits() == 24 ? 16 : 24); }, [&usb] { return usb.getRecBits() == 24; });
+        }
+        else
+        {
+            // Manual p.62-63: 1 the folder recordings go to; 2-5 the recorder's input;
+            // 6 playback folder mode.
+            assignUsbConfigEncoders();
+            encoders[0] = encoder ({}, "SELECT FOLDER", [this, &usb]
+            {
+                usbFolderChooser = std::make_unique<juce::FileChooser> ("Folder for recordings", usb.getRecPath());
+                usbFolderChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+                                               [this, &usb] (const juce::FileChooser& fc)
+                                               {
+                                                   if (fc.getResult().isDirectory())
+                                                       usb.setRecPath (fc.getResult());
+                                                   repaint();
+                                               });
+            });
+            encoders[5] = encoder ({}, "FOLDER MODE", [this, &usb] { usbFolderMode = ! usbFolderMode; usb.setStopAll (! usbFolderMode); }, [this] { return usbFolderMode; });
+        }
     }
     else if (screen == Screen::Setup && tab == 2)
     {
         assignRemoteEncoders();
+    }
+    else if (screen == Screen::Setup && tab == 3)
+    {
+        assignNetworkEncoders();
+    }
+    else if (screen == Screen::Setup && tab == 6)
+    {
+        // CARD (p.56): the X-USB card's channel configuration, the second encoder, SET by
+        // its push (`/-prefs/card/USBmode`, kept for remotes: the audio interface has its own channels).
+        static const juce::StringArray brief { "32/32", "16/16", "32/8", "8/32", "8/8", "2/2" };
+        const auto current = [this] { return juce::jmax (0, cardModes().indexOf (x32Value ("/-prefs/card/USBmode"))); };
+        if (cardMode < 0)
+            cardMode = current();
+        KnobBinding mode;
+        mode.label = "SELECT";
+        mode.get = [this] { return (float) cardMode / 5.0f; };
+        mode.set = [this] (float v) { cardMode = juce::jlimit (0, 5, juce::roundToInt (v * 5.0f)); repaint(); };
+        mode.text = [this] { return brief[juce::jlimit (0, 5, cardMode)]; };
+        mode.steps = 6.0f;
+        encoders[1] = encoder (mode, "SET", [this] { x32Run ("/-prefs/card/USBmode " + juce::String (juce::jlimit (0, 5, cardMode))); },
+                               [this, current] { return current() == cardMode; });
     }
     else if (screen == Screen::Routing)
     {
@@ -2017,18 +2479,43 @@ void Display::assignEncoders()
     {
         assignEffectsEncoders();
     }
-    else if (screen == Screen::Library && tab >= 2)
+    else if (screen == Screen::Library)
     {
         assignLibraryPresetEncoders();
     }
-    else if (screen == Screen::Library && tab == 1)
+    else if (screen == Screen::MuteGroups)
     {
-        // The show file: NEW, OPEN, SAVE, SAVE AS (the app's, as on every skin).
-        auto call = [] (const std::function<void()>& f) { return [f] { if (f) f(); }; };
-        encoders[0] = encoder ({}, "NEW SHOW", call (ctx.newShow));
-        encoders[1] = encoder ({}, "OPEN", call (ctx.openShow));
-        encoders[2] = encoder ({}, "SAVE", [this] { if (ctx.saveShow) ctx.saveShow (false); });
-        encoders[3] = encoder ({}, "SAVE AS", [this] { if (ctx.saveShow) ctx.saveShow (true); });
+        // Manual 7.8: over the page in view, an encoder for each group; a push
+        // mutes or unmutes it.
+        for (int g = 0; g < 6; ++g)
+        {
+            KnobBinding name;
+            name.label = "MUTE GROUP " + juce::String (g + 1);
+            encoders[(size_t) g] = encoder (name, "MUTE", [this, g] { ctx.engine.muteGroups.set (g, ! ctx.engine.muteGroups.contains (g)); },
+                                            [this, g] { return ctx.engine.muteGroups.contains (g); });
+        }
+    }
+    else if (screen == Screen::Assign && tab == 0)
+    {
+        // HOME (p.63): 1 the next set, 2-5 the set's encoders, 6 EDIT that set.
+        encoders[0] = encoder ({}, "NEXT SET", [this]
+        {
+            if (getAssignSet && setAssignSet)
+            {
+                setAssignSet ((getAssignSet() + 1) % 3);
+                layer = getAssignSet();
+                assignEncoders();
+                repaint();
+            }
+        });
+        if (assignBinding)
+            for (int i = 0; i < 4; ++i)
+            {
+                auto b = assignBinding (i);
+                if (b.isValid())
+                    encoders[(size_t) (i + 1)] = encoder (b);
+            }
+        encoders[5] = encoder ({}, "EDIT", [this] { if (getAssignSet) showTab (getAssignSet() + 1); });
     }
     else if (screen == Screen::Monitor && tab == 0)
     {
@@ -2037,14 +2524,14 @@ void Display::assignEncoders()
         // push DIM; 5 the source's trim, push MONO; 6 the source. (PHONES is the
         // panel's knob.) What the engine doesn't do is kept as `/config/solo`.
         const auto run = [this] (const juce::String& text) { int set = 0; ctx.engine.getWing().runX32Text (text, set); repaint(); };
-        encoders[0] = encoder (bindFader ("MONITOR", engine.monitorLevelDb));
+        encoders[0] = encoder (bindFader ("LEVEL", engine.monitorLevelDb), "MUTE", toggle (engine.monitorMute), isOn (engine.monitorMute));
         KnobBinding solo;
-        solo.label = "SOLO";
+        solo.label = "SELECT";
         solo.get = [this] { return (float) soloOption / (float) (soloOptions().size() - 1); };
         solo.set = [this] (float v) { soloOption = juce::roundToInt (v * (float) (soloOptions().size() - 1)); assignEncoders(); repaint(); };
-        solo.text = [this] { return soloOptions()[soloOption]; };
+        solo.text = [this] { static const juce::StringArray shortNames { "Excl", "SoloSel", "SelSolo", "Ch AFL", "Bus AFL", "DCA AFL", "Master" }; return shortNames[soloOption]; };
         solo.steps = (float) soloOptions().size();
-        encoders[1] = encoder (solo, "APPLY", [this] { toggleSoloOption (soloOption); }, [this] { return soloOptionOn (soloOption); });
+        encoders[1] = encoder (solo, "SET", [this] { toggleSoloOption (soloOption); }, [this] { return soloOptionOn (soloOption); });
         KnobBinding delay;
         delay.label = "DELAY";
         delay.get = [this] { return (x32Value ("/config/solo/delaytime").getFloatValue() - 0.3f) / 499.7f; };
@@ -2053,19 +2540,53 @@ void Display::assignEncoders()
         delay.steps = 4998.0f;
         encoders[2] = encoder (delay, "DELAY", [this, run] { run (juce::String ("/config/solo/delay ") + (x32Value ("/config/solo/delay") == "ON" ? "OFF" : "ON")); },
                                [this] { return x32Value ("/config/solo/delay") == "ON"; });
-        encoders[3] = encoder (bindLinear ("DIM ATT", engine.monitorDimDb, 0.0f, 40.0f, " dB", 0, 20.0f), "DIM", toggle (engine.monitorDim),
-                               isOn (engine.monitorDim));
+        KnobBinding dim;
+        dim.label = "DIM ATTEN";
+        dim.get = [&engine] { return engine.monitorDimDb.load() / 40.0f; };
+        dim.set = [&engine, run] (float v)
+        {
+            engine.monitorDimDb = v * 40.0f;
+            run ("/config/solo/dimatt " + juce::String (-v * 40.0f, 0));
+        };
+        dim.text = [&engine] { return "-" + juce::String (juce::roundToInt (engine.monitorDimDb.load())) + " dB"; };
+        dim.steps = 41.0f;
+        encoders[3] = encoder (dim, "DIM", toggle (engine.monitorDim), isOn (engine.monitorDim));
         KnobBinding trim;
-        trim.label = "TRIM";
+        trim.label = "SOURCE";
         trim.get = [this] { return (x32Value ("/config/solo/sourcetrim").getFloatValue() + 18.0f) / 36.0f; };
-        trim.set = [run] (float v) { run ("/config/solo/sourcetrim " + juce::String (-18.0f + v * 36.0f, 1)); };
+        trim.set = [&engine, run] (float v)
+        {
+            run ("/config/solo/sourcetrim " + juce::String (-18.0f + v * 36.0f, 1));
+            if (engine.speakers.sourceLevelDb.load() > -100.0f)
+                engine.speakers.sourceLevelDb = -18.0f + v * 36.0f;
+        };
         trim.text = [this] { return x32Value ("/config/solo/sourcetrim") + " dB"; };
         trim.steps = 73.0f;
         encoders[4] = encoder (trim, "MONO", toggle (engine.monitorMono), isOn (engine.monitorMono));
-        juce::StringArray sources;
-        for (int i = 0; i < ld::kNumMonitorSources; ++i)
-            sources.add (MixerEngine::monitorSourceName (i));
-        encoders[5] = encoder (bindChoice ("SOURCE", engine.speakers.source, sources));
+        // 6: the Monitor Source list (p.61), set by the push.
+        static const juce::StringArray sourceCodes { "OFF", "LR", "LR+C", "LRPFL", "LRAFL", "AUX56", "AUX78" };
+        static const juce::StringArray sourceShort { "OFF", "LR", "LR+C/M", "LR P", "LR A", "A 5/6", "A 7/8" };
+        const auto current = [this] { return juce::jmax (0, sourceCodes.indexOf (x32Value ("/config/solo/source"))); };
+        if (monitorSourcePick < 0)
+            monitorSourcePick = current();
+        KnobBinding source;
+        source.label = "SELECT";
+        source.get = [this] { return (float) monitorSourcePick / 6.0f; };
+        source.set = [this] (float v) { monitorSourcePick = juce::jlimit (0, 6, juce::roundToInt (v * 6.0f)); repaint(); };
+        source.text = [this] { return sourceShort[monitorSourcePick]; };
+        source.steps = 7.0f;
+        encoders[5] = encoder (source, "SET", [this, &engine, run]
+        {
+            // The list's LR choices and the two aux pairs reach the engine; the rest
+            // of the list is kept with `/config/solo/source`.
+            run ("/config/solo/source " + sourceCodes[monitorSourcePick]);
+            const float trimDb = x32Value ("/config/solo/sourcetrim").getFloatValue();
+            engine.speakers.sourceLevelDb = monitorSourcePick == 0 ? -144.0f : trimDb;
+            if (monitorSourcePick == 5 || monitorSourcePick == 6)
+                engine.speakers.source = MixerEngine::monitorSourceIndex (StripKind::Aux, monitorSourcePick == 5 ? 4 : 6);
+            else if (monitorSourcePick != 0)
+                engine.speakers.source = MixerEngine::monitorSourceIndex (StripKind::Main, 0);
+        }, [this, current] { return current() == monitorSourcePick; });
     }
     else if (screen == Screen::Monitor && tab < 3)
     {
@@ -2079,8 +2600,6 @@ void Display::assignEncoders()
         const auto flip = [this, run] (const juce::String& address) { run (address + (x32Value (address) == "ON" ? " OFF" : " ON")); };
         const auto on = [this] (const juce::String& address) { return [this, address] { return x32Value (address) == "ON"; }; };
         encoders[0] = encoder ({}, tab == 1 ? "TALK A" : "TALK B", toggle (path.on), isOn (path.on));
-        encoders[1] = encoder ({}, "EXT MIC", [this, run] { run (juce::String ("/config/talk/source ") + (x32Value ("/config/talk/source") == "EXT" ? "INT" : "EXT")); },
-                               [this] { return x32Value ("/config/talk/source") == "EXT"; });
         encoders[2] = encoder (bindFader ("TALK", engine.talk.levelDb), "AUTO DIM", [flip, node] { flip (node + "/dim"); }, on (node + "/dim"));
         KnobBinding dest;
         dest.label = "DEST";
@@ -2093,8 +2612,8 @@ void Display::assignEncoders()
                                [this, run, node, bit] { run (node + "/destmap " + juce::String (x32Bits (x32Value (node + "/destmap")) ^ bit())); },
                                [this, node, bit] { return (x32Bits (x32Value (node + "/destmap")) & bit()) != 0; });
         encoders[4] = encoder ({}, "LATCH", [flip, node] { flip (node + "/latch"); }, on (node + "/latch"));
-        // 6: the channel the talkback microphone comes in on (Sidecar's: an X32
-        // has its own talkback socket), OFF or an input, aux in or FX return.
+        // 2's turn: the channel the talkback microphone comes in on (Sidecar's: an X32
+        // has its own talkback microphone and socket), OFF or an input, aux in or FX return.
         auto strips = std::make_shared<std::vector<Strip*>>();
         for (auto* list : { &engine.getChannels(), &engine.getAux() })
             for (auto& st : *list)
@@ -2120,7 +2639,18 @@ void Display::assignEncoders()
             const int i = current();
             return i == 0 ? juce::String ("OFF") : (*strips)[(size_t) i - 1]->getLabel();
         };
-        encoders[5] = encoder (channel);
+        encoders[1] = encoder (channel, "EXT MIC", [this, run] { run (juce::String ("/config/talk/source ") + (x32Value ("/config/talk/source") == "EXT" ? "INT" : "EXT")); },
+                               [this] { return x32Value ("/config/talk/source") == "EXT"; });
+        // 6: the lamp's brightness, pushed on and off (`/-prefs/lamp`, `lampon`: kept, a
+        // computer has no lamp socket).
+        KnobBinding lamp;
+        lamp.label = "LAMP";
+        lamp.get = [this] { return juce::jlimit (0.0f, 1.0f, (x32Value ("/-prefs/lamp").getFloatValue() - 10.0f) / 90.0f); };
+        lamp.set = [this] (float v) { x32Run ("/-prefs/lamp " + juce::String (10 + 10 * juce::roundToInt (juce::jlimit (0.0f, 1.0f, v) * 9.0f))); };
+        lamp.text = [this] { return x32Value ("/-prefs/lamp") + "%"; };
+        lamp.steps = 10.0f;
+        encoders[5] = encoder (lamp, "LAMP", [this] { x32Run (juce::String ("/-prefs/lampon ") + (x32On ("/-prefs/lampon") ? "OFF" : "ON")); },
+                               [this] { return x32On ("/-prefs/lampon"); });
     }
     else if (screen == Screen::Monitor)
     {
@@ -2163,8 +2693,7 @@ void Display::assignEncoders()
     }
     else if (screen == Screen::Meters && tab == 4)
     {
-        encoders[0] = encoder ({}, "FREEZE", [&engine] { auto a = engine.getAnalysis(); a.setFrozen (! a.isFrozen()); },
-                               [&engine] { return engine.getAnalysis().isFrozen(); });
+        assignRtaEncoders();
     }
     else if (screen == Screen::Scenes)
     {
@@ -2172,11 +2701,14 @@ void Display::assignEncoders()
     }
     else if (screen == Screen::Assign && assignCode && setAssignCode)
     {
+        static const std::tuple<int, int, const char*> pages[] { { 0, 0, "HOME" }, { 0, 1, "CONFIG" }, { 0, 2, "GATE" }, { 0, 3, "DYN" }, { 0, 4, "EQ" }, { 0, 5, "SENDS" }, { 0, 6, "MAIN" },
+                                                                 { 1, 0, "METERS" }, { 2, 0, "ROUTING" }, { 3, 0, "SETUP" }, { 4, 0, "LIBRARY" }, { 5, 0, "EFFECTS" } };
+        static constexpr int numPages = 12;
         // A set's tab (p.64): the control, what kind of thing it does, its
         // target (and a send's bus or an effect's parameter); a change writes
         // the control's code. A code of another kind (MIDI...) shows as itself.
         const bool button = assignControl >= 4;
-        const juce::StringArray kinds = button ? juce::StringArray { "-", "MUTE", "INSERT", "MUTE GRP", "SCENE GO", "SCENE", "PREV", "NEXT" }
+        const juce::StringArray kinds = button ? juce::StringArray { "-", "MUTE", "INSERT", "MUTE GRP", "SCENE GO", "SCENE", "PREV", "NEXT", "PAGE" }
                                                : juce::StringArray { "-", "FADER", "PAN", "SEND", "FX PARAM", "SELECTED" };
         const auto code = assignCode (assignControl);
         const auto two = [] (int v) { return juce::String (v).paddedLeft ('0', 2); };
@@ -2204,6 +2736,14 @@ void Display::assignEncoders()
                     kind = 5;
                     target = code.substring (2).getIntValue();
                 }
+                else if (code[0] == 'P')
+                {
+                    kind = 8;
+                    const int y = code.substring (3, 4).getIntValue(), z = code.substring (4, 5).getIntValue();
+                    for (int k = 0; k < numPages; ++k)
+                        if (std::get<0> (pages[k]) == y && std::get<1> (pages[k]) == z)
+                            target = k;
+                }
             }
             else
             {
@@ -2230,6 +2770,7 @@ void Display::assignEncoders()
                     case 5: return "S0" + two (juce::jlimit (0, 99, t));
                     case 6: return "S90";
                     case 7: return "S91";
+                    case 8: return "P99" + juce::String (std::get<0> (pages[juce::jlimit (0, numPages - 1, t)])) + juce::String (std::get<1> (pages[juce::jlimit (0, numPages - 1, t)]));
                     default: return "-";
                 }
             switch (k)
@@ -2252,10 +2793,29 @@ void Display::assignEncoders()
             b.steps = (float) juce::jmax (2, count);
             return b;
         };
-        encoders[0] = encoder (picker ("CONTROL", assignControl, 12, [] (int v) { return v < 4 ? "ENC " + juce::String (v + 1) : "KEY " + juce::String (v + 1); },
+        // 1 the set's colour (the section's LCDs have one): dimmed; 2 the control,
+        // 3 its type, 4 and 5 its target (p.64).
+        {
+            // The set's LCD colour (`/config/userctrl/A/color`): the eight colours turned, the
+            // push inverts text and background.
+            const juce::String colourPath = "/config/userctrl/" + juce::String::charToString ((juce::juce_wchar) ('A' + juce::jlimit (0, 2, tab - 1))) + "/color";
+            const auto current = [this, colourPath] { return juce::jmax (0, scribbleColours().indexOf (x32Value (colourPath))); };
+            KnobBinding colour;
+            colour.label = "SET COLOR";
+            colour.get = [current] { return (float) (current() % 8) / 7.0f; };
+            colour.set = [this, colourPath, current] (float v)
+            {
+                x32Run (colourPath + " " + scribbleColours()[(current() / 8) * 8 + juce::jlimit (0, 7, juce::roundToInt (v * 7.0f))]);
+            };
+            colour.text = [current] { return scribbleColours()[current()]; };
+            colour.steps = 8.0f;
+            encoders[0] = encoder (colour, "INVERT", [this, colourPath, current] { x32Run (colourPath + " " + scribbleColours()[(current() + 8) % 16]); },
+                                   [current] { return current() >= 8; });
+        }
+        encoders[1] = encoder (picker ("CONTROL", assignControl, 12, [] (int v) { return v < 4 ? "ENC " + juce::String (v + 1) : "KEY " + juce::String (v + 1); },
                                        [this] (int v) { assignControl = v; assignEncoders(); }));
         const auto shown = x32::AssignSection::describe (code, button);
-        encoders[1] = encoder (picker ("TYPE", juce::jmax (0, kind), kinds.size(), [kinds, kind, shown] (int v) { return kind < 0 && v == 0 ? shown : kinds[v]; },
+        encoders[2] = encoder (picker ("TYPE", juce::jmax (0, kind), kinds.size(), [kinds, kind, shown] (int v) { return kind < 0 && v == 0 ? shown : kinds[v]; },
                                        [this, make, target, second] (int v) { setAssignCode (assignControl, make (v, juce::jmax (0, target), second)); assignEncoders(); }));
         // The target: a strip (or a DCA's fader), a mute group, a scene, an FX slot, the selected channel's control.
         int count = 0;
@@ -2278,6 +2838,11 @@ void Display::assignEncoders()
                 count = 100;
                 text = [] (int v) { return x32::AssignSection::describe ("S0" + juce::String (v).paddedLeft ('0', 2), true); };
             }
+            else if (kind == 8)
+            {
+                count = numPages;
+                text = [] (int v) { return juce::String (std::get<2> (pages[juce::jlimit (0, numPages - 1, v)])); };
+            }
         }
         else if (kind >= 1 && kind <= 3)
         {
@@ -2295,12 +2860,17 @@ void Display::assignEncoders()
             text = [make] (int v) { return x32::AssignSection::describe (make (5, v, 0), false); };
         }
         if (count > 0)
-            encoders[2] = encoder (picker ("TARGET", juce::jlimit (0, count - 1, target), count, text,
+            encoders[3] = encoder (picker ("TARGET", juce::jlimit (0, count - 1, target), count, text,
                                            [this, make, kind, second] (int v) { setAssignCode (assignControl, make (kind, v, second)); assignEncoders(); }));
         if (! button && (kind == 3 || kind == 4))
-            encoders[3] = encoder (picker (kind == 3 ? "BUS" : "PARAM", juce::jlimit (0, kind == 3 ? 15 : 63, second), kind == 3 ? 16 : 64,
+            encoders[4] = encoder (picker (kind == 3 ? "BUS" : "PARAM", juce::jlimit (0, kind == 3 ? 15 : 63, second), kind == 3 ? 16 : 64,
                                            [] (int v) { return juce::String (v + 1); },
                                            [this, make, kind, target] (int v) { setAssignCode (assignControl, make (kind, target, v)); assignEncoders(); }));
+        assignKinds = kinds;
+        assignKind = juce::jmax (0, kind);
+        assignTargetCount = count;
+        assignTargetAt = juce::jlimit (0, juce::jmax (0, count - 1), target);
+        assignTargetText = text;
     }
     else if (screen == Screen::Utility && tab == 1)
     {
@@ -2426,9 +2996,708 @@ void Display::assignEncoders()
         key.setVisible (static_cast<bool> (encoders[(size_t) i].push));
         key.refresh();
     }
-    layerUp.setEnabled (numLayers() > 1);
-    layerDown.setEnabled (numLayers() > 1);
+    const bool layers = numLayers() > 1 || (screen == Screen::Home && tab == 4); // HOME > eq: the band
+    layerUp.setEnabled (layers);
+    layerDown.setEnabled (layers);
     repaint();
+}
+
+void Display::paintMonitor (juce::Graphics& g, juce::Rectangle<int> r)
+{
+    // As the MONITOR photograph: the monitor level, the solo options, the delay
+    // in three units, dim, the source's trim and the source list.
+    auto& e = ctx.engine;
+    auto area = pageFrame (g, r).toFloat();
+    auto helpArea = area.removeFromBottom (26.0f);
+    const float unit = area.getWidth() / 100.0f;
+
+    auto meter = area.removeFromLeft (20.0f * unit);
+    area.removeFromLeft (2.0f * unit);
+    {
+        auto strip = meter.removeFromLeft (meter.getWidth() * 0.55f);
+        const auto scale = strip.removeFromRight (20.0f);
+        g.setColour (kNavy);
+        g.setFont (type::font (8.5f, true));
+        static const char* const marks[] = { "Clip", "-6", "-18", "-30", "-60" };
+        for (int k = 0; k < 5; ++k)
+            g.drawText (marks[k], scale.withTrimmedTop ((float) k * scale.getHeight() / 5.0f).withHeight (scale.getHeight() / 5.0f), juce::Justification::centredLeft);
+        for (int ch = 0; ch < 2; ++ch)
+            levelBar (g, strip.removeFromLeft (strip.getWidth() / (ch == 0 ? 2.0f : 1.0f)).reduced (2.0f, 0.0f), ctx.meters.getMonitor (ch));
+        valueBox (g, meter.removeFromTop (16.0f).reduced (2.0f, 1.0f), fader::text (e.monitorLevelDb.load()));
+        g.setColour (kNavy);
+        g.setFont (type::font (9.5f, false));
+        g.drawFittedText ("Monitor Level", meter.removeFromBottom (24.0f).toNearestInt(), juce::Justification::centred, 2, 0.7f);
+        knobIcon (g, meter.getCentre(), juce::jmin (10.0f, meter.getHeight() * 0.32f), fader::dbToPos (e.monitorLevelDb.load()));
+    }
+
+    auto solo = area.removeFromLeft (27.0f * unit);
+    area.removeFromLeft (2.0f * unit);
+    g.setColour (kNavy);
+    g.setFont (type::font (10.5f, true));
+    g.drawText ("Solo Options", solo.removeFromTop (18.0f), juce::Justification::centredLeft);
+    const float rowH = juce::jmin (17.0f, solo.getHeight() / 7.0f);
+    for (int k = 0; k < soloOptions().size(); ++k)
+    {
+        auto row = solo.removeFromTop (rowH);
+        if (k == soloOption)
+        {
+            g.setColour (kGr);
+            g.drawRect (row, 1.0f);
+        }
+        checkBox (g, row.reduced (1.0f), soloOptions()[k], soloOptionOn (k));
+    }
+
+    const auto column = [&area, unit] (float widthPercent)
+    {
+        auto c = area.removeFromLeft (widthPercent * unit);
+        area.removeFromLeft (2.0f * unit);
+        return c;
+    };
+    const auto knobAndChip = [&g] (juce::Rectangle<float> c, float fraction, const juce::String& name, const juce::String& chipText, bool on)
+    {
+        auto chipArea = c.removeFromBottom (15.0f);
+        chip (g, chipArea.reduced (6.0f, 0.0f), chipText, on);
+        g.setColour (kNavy);
+        g.setFont (type::font (9.5f, false));
+        g.drawFittedText (name, c.removeFromBottom (24.0f).toNearestInt(), juce::Justification::centred, 2, 0.7f);
+        knobIcon (g, c.getCentre(), juce::jmin (11.0f, c.getHeight() * 0.3f), fraction);
+    };
+    const float ms = x32Value ("/config/solo/delaytime").getFloatValue();
+    {
+        auto c = column (14.0f);
+        for (auto [text, suffix] : { std::pair<juce::String, const char*> { juce::String (ms * 1.125f, 1), "ft" },
+                                     std::pair<juce::String, const char*> { juce::String (ms * 0.343f, 2), "m" },
+                                     std::pair<juce::String, const char*> { juce::String (ms, 1), "ms" } })
+        {
+            auto row = c.removeFromTop (15.0f);
+            g.setColour (kNavy);
+            g.setFont (type::font (9.5f, false));
+            g.drawText (suffix, row.removeFromRight (16.0f), juce::Justification::centredLeft);
+            valueBox (g, row.reduced (1.0f, 1.0f), text);
+        }
+        knobAndChip (c, (ms - 0.3f) / 499.7f, "Delay", "Delay", x32Value ("/config/solo/delay") == "ON");
+    }
+    {
+        auto c = column (14.0f);
+        valueBox (g, c.removeFromTop (16.0f).reduced (6.0f, 1.0f), "-" + juce::String (juce::roundToInt (e.monitorDimDb.load())));
+        knobAndChip (c, e.monitorDimDb.load() / 40.0f, "Dim Attenuation", "Dim", e.monitorDim.load());
+    }
+    {
+        auto c = column (14.0f);
+        const float trim = x32Value ("/config/solo/sourcetrim").getFloatValue();
+        valueBox (g, c.removeFromTop (16.0f).reduced (6.0f, 1.0f), juce::String (trim, 1));
+        knobAndChip (c, (trim + 18.0f) / 36.0f, "Source Trim", "Mono", e.monitorMono.load());
+    }
+    static const juce::StringArray sourceNames { "OFF", "LR Bus", "LR+C/M", "LR PFL", "LR AFL", "Aux 5/6", "Aux 7/8" };
+    static const juce::StringArray sourceCodes { "OFF", "LR", "LR+C", "LRPFL", "LRAFL", "AUX56", "AUX78" };
+    listColumn (g, area, "Monitor Source", sourceNames, monitorSourcePick, juce::jmax (0, sourceCodes.indexOf (x32Value ("/config/solo/source"))));
+
+    static const char* const help[][2] = {
+        { "A new solo replaces the one before.", "Solos add up; each key switches its own channel." },
+        { "The selected channel is soloed automatically.", "Select and solo stay separate." },
+        { "A soloed channel also becomes the selected one.", "Solo leaves the selection alone." },
+        { "Channel solos listen after the fader.", "Channel solos listen before the fader." },
+        { "Mix bus solos listen after the fader.", "Mix bus solos listen before the fader." },
+        { "DCA solos listen after the fader.", "DCA solos listen before the fader." },
+        { "The main fader and mute also set the solo / monitor output.", "The monitor section alone sets the output." } };
+    g.setColour (kDim);
+    g.setFont (type::font (9.5f, false));
+    auto lines = helpArea;
+    g.drawText (juce::String ("[ON]   ") + help[soloOption][0], lines.removeFromTop (12.0f), juce::Justification::centredLeft);
+    g.drawText (juce::String ("[OFF]  ") + help[soloOption][1], lines.removeFromTop (12.0f), juce::Justification::centredLeft);
+}
+
+void Display::paintTalkback (juce::Graphics& g, juce::Rectangle<int> r)
+{
+    // Manual p.61: level and gain-reduction meters, the keys, the talk level and
+    // the destinations (Mix Bus 1-16, LR, C/M).
+    auto& e = ctx.engine;
+    const juce::String node = tab == 1 ? "/config/talk/A" : "/config/talk/B";
+    auto& path = e.talk.paths[(size_t) (tab - 1)];
+    const int bits = x32Bits (x32Value (node + "/destmap"));
+    const auto* talk = e.getTalkStrip();
+    auto area = pageFrame (g, r).toFloat();
+    const float unit = area.getWidth() / 100.0f;
+
+    auto meters = area.removeFromLeft (14.0f * unit);
+    area.removeFromLeft (3.0f * unit);
+    {
+        auto strip = meters.removeFromTop (meters.getHeight() - 14.0f);
+        auto level = strip.removeFromLeft (strip.getWidth() * 0.5f).reduced (3.0f, 0.0f);
+        levelBar (g, level, talk != nullptr ? ctx.meters.get (talk, MeterPoint::Output, 0) : 0.0f);
+        // The talk channel has no gain reduction of its own: the well stays dark.
+        g.setColour (kWell);
+        g.fillRect (strip.reduced (3.0f, 0.0f));
+        g.setColour (kNavy);
+        g.setFont (type::font (9.0f, true));
+        g.drawText ("Level     GR", meters, juce::Justification::centred);
+    }
+    auto keys = area.removeFromLeft (24.0f * unit);
+    area.removeFromLeft (3.0f * unit);
+    g.setColour (kNavy);
+    g.setFont (type::font (10.5f, true));
+    g.drawText (tab == 1 ? "Talkback A" : "Talkback B", keys.removeFromTop (18.0f), juce::Justification::centredLeft);
+    const float chipH = juce::jmin (20.0f, (keys.getHeight() - 6.0f) / 4.0f);
+    const auto keyRow = [&] (const juce::String& text, bool on) { chip (g, keys.removeFromTop (chipH).reduced (0.0f, 2.0f), text, on); };
+    keyRow ("Talk", path.on.load());
+    keyRow (x32Value ("/config/talk/source") == "EXT" ? "Ext Mic" : "Int Mic", x32Value ("/config/talk/source") == "EXT");
+    keyRow ("Auto Dim", x32Value (node + "/dim") == "ON");
+    keyRow ("Latch", x32Value (node + "/latch") == "ON");
+
+    auto level = area.removeFromLeft (16.0f * unit);
+    area.removeFromLeft (3.0f * unit);
+    {
+        valueBox (g, level.removeFromTop (18.0f).reduced (6.0f, 1.0f), fader::text (e.talk.levelDb.load()));
+        g.setColour (kNavy);
+        g.setFont (type::font (9.5f, false));
+        g.drawText ("Talk Level", level.removeFromBottom (14.0f), juce::Justification::centred);
+        knobIcon (g, level.getCentre(), juce::jmin (12.0f, level.getHeight() * 0.3f), fader::dbToPos (e.talk.levelDb.load()));
+    }
+    // Sidecar's talkback channel (an X32 has its own socket).
+    g.setColour (kNavy);
+    g.setFont (type::font (10.5f, true));
+    g.drawText ("Destinations", area.removeFromTop (18.0f), juce::Justification::centredLeft);
+    auto grid = area.removeFromTop (juce::jmin (area.getHeight(), 136.0f));
+    const float cw = grid.getWidth() / 4.0f, ch = grid.getHeight() / 5.0f;
+    const auto destCell = [&] (int b) { return juce::Rectangle<float> (grid.getX() + cw * (float) (b % 4), grid.getY() + ch * (float) (b / 4), cw, ch).reduced (2.0f); };
+    for (int b = 0; b < 18; ++b)
+    {
+        auto c = destCell (b);
+        chip (g, c, b < 16 ? juce::String (b + 1) : juce::String (b == 16 ? "LR" : "C/M"), (bits & (1 << b)) != 0);
+        if (b == talkBus)
+        {
+            g.setColour (kGr);
+            g.drawRect (c, 1.5f);
+        }
+    }
+    g.setColour (kDim);
+    g.setFont (type::font (9.5f, false));
+    g.drawFittedText ("Talk channel: " + (talk != nullptr ? talk->getLabel() : juce::String ("OFF")) + ".  Lamp: " + x32Value ("/-prefs/lamp") + "% "
+                          + (x32On ("/-prefs/lampon") ? "on" : "off") + " (kept: no lamp socket on a computer).",
+                      area.toNearestInt(), juce::Justification::centredLeft, 2, 0.7f);
+}
+
+void Display::paintOscillator (juce::Graphics& g, juce::Rectangle<int> r)
+{
+    // Manual p.61: the level meter, the two frequencies, the type and the destination list.
+    const bool on = x32Value ("/-stat/osc/on") == "ON";
+    const float levelDb = x32Level (x32Value ("/config/osc/level"));
+    auto area = pageFrame (g, r).toFloat();
+    const float unit = area.getWidth() / 100.0f;
+    auto meter = area.removeFromLeft (10.0f * unit);
+    area.removeFromLeft (3.0f * unit);
+    levelBar (g, meter.reduced (6.0f, 0.0f), on ? juce::Decibels::decibelsToGain (levelDb) : 0.0f);
+
+    const auto knobColumn = [&] (const juce::String& name, const juce::String& value, float fraction, const juce::String& chipText, bool chipOn)
+    {
+        auto c = area.removeFromLeft (17.0f * unit);
+        area.removeFromLeft (2.0f * unit);
+        valueBox (g, c.removeFromTop (18.0f).reduced (4.0f, 1.0f), value);
+        auto chipArea = c.removeFromBottom (15.0f);
+        chip (g, chipArea.reduced (6.0f, 0.0f), chipText, chipOn);
+        g.setColour (kNavy);
+        g.setFont (type::font (9.5f, false));
+        g.drawText (name, c.removeFromBottom (14.0f), juce::Justification::centred);
+        knobIcon (g, c.getCentre(), juce::jmin (13.0f, c.getHeight() * 0.32f), fraction);
+    };
+    const bool useF2 = x32Value ("/config/osc/fsel") == "F2";
+    knobColumn ("Level", x32Value ("/config/osc/level"), fader::dbToPos (levelDb), "Osc On", on);
+    knobColumn ("Frequency 1", x32Value ("/config/osc/f1"), std::log (x32Hz (x32Value ("/config/osc/f1")) / 20.0f) / std::log (1000.0f), useF2 ? "" : "In Use", ! useF2);
+    knobColumn ("Frequency 2", x32Value ("/config/osc/f2"), std::log (x32Hz (x32Value ("/config/osc/f2")) / 20.0f) / std::log (1000.0f), useF2 ? "In Use" : "", useF2);
+    static const juce::StringArray typeNames { "SINE", "PINK", "WHITE" };
+    auto typeList = area.removeFromLeft (14.0f * unit);
+    area.removeFromLeft (2.0f * unit);
+    listColumn (g, typeList, "Type", { "Sine", "Pink Noise", "White Noise" }, -1, juce::jmax (0, typeNames.indexOf (x32Value ("/config/osc/type"))));
+    juce::StringArray dests;
+    const int dest = x32Value ("/config/osc/dest").getIntValue();
+    for (int i = juce::jmax (0, dest - 4); i < juce::jmin (26, juce::jmax (0, dest - 4) + 9); ++i)
+        dests.add (x32OscDestination (i));
+    listColumn (g, area, "Destination", dests, -1, juce::jlimit (0, dests.size() - 1, dest - juce::jmax (0, dest - 4)));
+}
+
+void Display::paintAssign (juce::Graphics& g, juce::Rectangle<int> r)
+{
+    auto area = pageFrame (g, r).toFloat();
+    if (tab == 0)
+    {
+        // HOME (p.63): all three sets at once, the one on the keys marked.
+        const int shownSet = getAssignSet ? getAssignSet() : 0;
+        static const char* const setNames[] = { "Set A", "Set B", "Set C" };
+        const float w = area.getWidth() / 3.0f;
+        for (int set = 0; set < 3; ++set)
+        {
+            auto col = area.removeFromLeft (w).reduced (4.0f, 0.0f);
+            if (set == shownSet)
+            {
+                g.setColour (kAmber.withAlpha (0.35f));
+                g.fillRoundedRectangle (col.expanded (2.0f), 3.0f);
+            }
+            g.setColour (kNavy);
+            g.setFont (type::font (10.5f, true));
+            g.drawText (setNames[set], col.removeFromTop (16.0f), juce::Justification::centred);
+            const float rowH = juce::jmin (15.0f, col.getHeight() / 12.0f);
+            for (int i = 0; i < 12; ++i)
+            {
+                auto row = col.removeFromTop (rowH);
+                const auto code = assignCodeOf ? assignCodeOf (set, i) : juce::String ("-");
+                g.setColour (kNavy);
+                g.setFont (type::font (9.5f, true));
+                g.drawText ((i < 4 ? "Enc " : "Btn ") + juce::String (i + 1), row.removeFromLeft (38.0f), juce::Justification::centredLeft);
+                g.setFont (type::font (9.5f, false));
+                g.drawFittedText (code == "-" ? juce::String ("not assigned") : x32::AssignSection::describe (code, i >= 4), row.toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
+            }
+        }
+        return;
+    }
+    // A set's tab (manual p.64): the set colour, the control, its target type and parameter.
+    juce::StringArray controls;
+    for (int i = 0; i < 12; ++i)
+        controls.add ((i < 4 ? "Encoder " : "Button ") + juce::String (i + 1));
+    juce::StringArray parameters;
+    int paramPointed = -1, paramFirst = 0;
+    if (assignTargetCount > 0 && assignTargetText)
+    {
+        paramFirst = juce::jlimit (0, juce::jmax (0, assignTargetCount - 12), assignTargetAt - 6);
+        for (int i = paramFirst; i < juce::jmin (assignTargetCount, paramFirst + 12); ++i)
+            parameters.add (assignTargetText (i));
+        paramPointed = assignTargetAt - paramFirst;
+    }
+    g.setColour (kNavy);
+    g.setFont (type::font (10.5f, true));
+    g.drawText ("Assignable Controls Configuration", area.removeFromTop (18.0f), juce::Justification::centredLeft);
+    const float w = area.getWidth() / 4.0f;
+    auto first = area.removeFromLeft (w).reduced (6.0f, 0.0f);
+    {
+        // Set Color (the manual's picture): the eight colours, the set's own framed; "inv" when inverted.
+        const int colour = juce::jmax (0, scribbleColours().indexOf (x32Value ("/config/userctrl/" + juce::String::charToString ((juce::juce_wchar) ('A' + juce::jlimit (0, 2, tab - 1))) + "/color")));
+        g.setColour (kNavy);
+        g.setFont (type::font (10.5f, true));
+        g.drawFittedText (colour >= 8 ? "Set Color (inv)" : "Set Color", first.removeFromTop (16.0f).toNearestInt(), juce::Justification::centred, 1, 0.7f);
+        const float rowH = juce::jmin (15.0f, first.getHeight() / 8.0f);
+        for (int k = 0; k < 8; ++k)
+        {
+            auto row = first.removeFromTop (rowH);
+            g.setColour (k == 0 ? juce::Colour (0xff101214) : consoleColour (k + 1));
+            g.fillRect (row.reduced (0.0f, 0.5f));
+            if (k == colour % 8)
+            {
+                g.setColour (kNavy);
+                g.drawRect (row, 2.0f);
+            }
+        }
+    }
+    listColumn (g, area.removeFromLeft (w).reduced (6.0f, 0.0f), "Select Control", controls, assignControl, assignControl);
+    listColumn (g, area.removeFromLeft (w).reduced (6.0f, 0.0f), "Target Type", assignKinds, assignKind, assignKind);
+    listColumn (g, area.reduced (6.0f, 0.0f), "Parameter", parameters, paramPointed, paramPointed);
+}
+
+void Display::paintHomeConfig (juce::Graphics& g, juce::Rectangle<int> r, Strip& s)
+{
+    // The manual's Config picture (p.41): gain and link, the low cut, the source
+    // list, the delay in three units, the insert and its position.
+    auto& p = s.params;
+    const auto address = x32Address (s);
+    auto area = pageFrame (g, r).toFloat();
+    const float unit = area.getWidth() / 100.0f;
+    const auto column = [&area, unit] (float widthPercent)
+    {
+        auto c = area.removeFromLeft (widthPercent * unit);
+        area.removeFromLeft (2.0f * unit);
+        return c;
+    };
+    const auto titleOf = [&g] (juce::Rectangle<float>& c, const juce::String& name)
+    {
+        g.setColour (kNavy);
+        g.setFont (type::font (10.5f, true));
+        g.drawText (name, c.removeFromTop (15.0f), juce::Justification::centred);
+    };
+    const auto knobValue = [&g] (juce::Rectangle<float> c, const juce::String& value, float fraction, const juce::String& caption)
+    {
+        valueBox (g, c.removeFromTop (16.0f).reduced (6.0f, 1.0f), value);
+        g.setColour (kNavy);
+        g.setFont (type::font (9.5f, false));
+        g.drawText (caption, c.removeFromBottom (13.0f), juce::Justification::centred);
+        knobIcon (g, c.getCentre(), juce::jmin (11.0f, c.getHeight() * 0.3f), fraction);
+    };
+    {
+        auto c = column (13.0f);
+        titleOf (c, "Link");
+        const auto link = linkAddress (s);
+        chip (g, c.removeFromTop (14.0f).reduced (4.0f, 0.0f), "Link", link.isNotEmpty() && x32Value (link) == "ON");
+        if (const auto gain = gainBinding (s); gain.isValid())
+            knobValue (c, gain.text().upToFirstOccurrenceOf (" ", false, false), gain.get(), gainIsHeadAmp (s) ? "Gain" : "Trim");
+    }
+    {
+        auto c = column (19.0f);
+        titleOf (c, "Lo Cut");
+        chip (g, c.removeFromTop (14.0f).reduced (4.0f, 0.0f), "Lo Cut", p.filter().lowCut.load());
+        c.removeFromTop (2.0f);
+        auto curve = c.removeFromTop (juce::jmin (46.0f, c.getHeight() - 18.0f));
+        g.setColour (kWell);
+        g.fillRect (curve);
+        g.setColour (kCurve);
+        const float x = curve.getX() + curve.getWidth() * (std::log (p.filter().lowCutFreq.load() / 20.0f) / std::log (20.0f));
+        juce::Path pth;
+        pth.startNewSubPath (curve.getX() + 2.0f, curve.getBottom() - 3.0f);
+        pth.lineTo (x, curve.getBottom() - 3.0f);
+        pth.lineTo (x + 10.0f, curve.getCentreY() - 8.0f);
+        pth.lineTo (curve.getRight() - 2.0f, curve.getCentreY() - 8.0f);
+        if (p.filter().lowCut.load())
+            g.strokePath (pth, juce::PathStrokeType (1.5f));
+        valueBox (g, c.removeFromTop (16.0f).reduced (6.0f, 1.0f), formatHz (p.filter().lowCutFreq.load()) + " Hz");
+    }
+    {
+        auto c = column (21.0f);
+        juce::StringArray items;
+        int on = 0, pointed = -1;
+        if (address.startsWith ("/ch/") || address.startsWith ("/auxin/"))
+        {
+            const int cur = pendingSource >= 0 && pendingSourceStrip == &s ? pendingSource : x32Value (address + "/config/source").getIntValue();
+            const int first = juce::jlimit (0, juce::jmax (0, 65 - 7), cur - 3);
+            for (int k = 0; k < 7 && first + k <= 64; ++k)
+                items.add (sourceName (first + k));
+            on = x32Value (address + "/config/source").getIntValue() - first;
+            pointed = cur - first;
+        }
+        else
+            items.add ("-");
+        listColumn (g, c, "Source", items, pointed, on);
+    }
+    {
+        auto c = column (15.0f);
+        titleOf (c, "Delay");
+        const float ms = p.input.delay.load();
+        chip (g, c.removeFromTop (14.0f).reduced (4.0f, 0.0f), "Delay", p.input.delayOn.load());
+        for (auto [text, suffix] : { std::pair<juce::String, const char*> { juce::String (ms * 1.125f, 1), "ft" },
+                                     std::pair<juce::String, const char*> { juce::String (ms * 0.343f, 2), "m" },
+                                     std::pair<juce::String, const char*> { juce::String (ms, 1), "ms" } })
+        {
+            auto row = c.removeFromTop (15.0f);
+            g.setColour (kNavy);
+            g.setFont (type::font (9.5f, false));
+            g.drawText (suffix, row.removeFromRight (16.0f), juce::Justification::centredLeft);
+            valueBox (g, row.reduced (1.0f, 1.0f), text);
+        }
+    }
+    {
+        juce::StringArray items;
+        int on = 0, pointed = -1;
+        if (address.startsWith ("/ch/") || address.startsWith ("/bus/") || address.startsWith ("/mtx/"))
+        {
+            const int current = juce::jmax (0, kInserts.indexOf (x32Value (address + "/insert/sel")));
+            const int cur = pendingInsert >= 0 && pendingSourceStrip == &s ? pendingInsert : current;
+            const int first = juce::jlimit (0, juce::jmax (0, kInserts.size() - 6), cur - 2);
+            for (int k = 0; k < 6 && first + k < kInserts.size(); ++k)
+                items.add (kInserts[first + k]);
+            on = current - first;
+            pointed = cur - first;
+        }
+        else
+            items.add ("-");
+        auto column2 = area.withTrimmedBottom (18.0f);
+        listColumn (g, column2, "Insert", items, pointed, on);
+        auto pos = area.removeFromBottom (16.0f);
+        const bool pre = (p.processOrder.load() & 2) != 0;
+        chip (g, pos.removeFromLeft (pos.getWidth() * 0.5f).reduced (1.0f, 1.0f), "Pre", pre);
+        chip (g, pos.reduced (1.0f, 1.0f), "Post", ! pre);
+    }
+}
+
+void Display::paintHomeMain (juce::Graphics& g, juce::Rectangle<int> r, Strip& s)
+{
+    // Manual p.46: pan and the LR assign, the M/C level and assign, solo, the fader and mute.
+    auto& p = s.params;
+    const bool mc = ctx.engine.getMains().size() > 1;
+    auto area = pageFrame (g, r).toFloat();
+    const float cw = area.getWidth() / 4.0f;
+    const auto column = [&] (const juce::String& name, const juce::String& value, float fraction, const juce::String& chipText, bool on)
+    {
+        auto c = area.removeFromLeft (cw).reduced (6.0f, 0.0f);
+        g.setColour (kNavy);
+        g.setFont (type::font (10.5f, true));
+        g.drawText (name, c.removeFromTop (16.0f), juce::Justification::centred);
+        chip (g, c.removeFromBottom (15.0f).reduced (6.0f, 0.0f), chipText, on);
+        c.removeFromBottom (2.0f);
+        valueBox (g, c.removeFromBottom (16.0f).reduced (4.0f, 1.0f), value);
+        if (fraction >= 0.0f)
+            knobIcon (g, c.getCentre(), juce::jmin (13.0f, c.getHeight() * 0.35f), fraction);
+    };
+    column ("Main LR", juce::String (juce::roundToInt (p.pan.load())), (p.pan.load() + 100.0f) / 200.0f, "LR", s.mains[0].on.load());
+    column ("Mono / Center", mc ? fader::text (s.mains[1].levelDb.load()) : juce::String ("-"), mc ? fader::dbToPos (s.mains[1].levelDb.load()) : 0.0f, "M/C", mc && s.mains[1].on.load());
+    column ("Solo", {}, -1.0f, "Solo", p.solo.load());
+    column ("Fader", fader::text (p.faderDb.load()), fader::dbToPos (p.faderDb.load()), "Mute", p.mute.load());
+}
+
+void Display::paintSetupGlobal (juce::Graphics& g, juce::Rectangle<int> r)
+{
+    // Manual 7.5.1: the system controls, the rate, initialize, time and date, brightness.
+    auto* device = ctx.deviceManager.getCurrentAudioDevice();
+    auto area = pageFrame (g, r).toFloat();
+    if (globalStatus.isNotEmpty())
+    {
+        g.setColour (kDeep);
+        g.setFont (type::font (10.0f, true));
+        g.drawFittedText (globalStatus, area.removeFromBottom (14.0f).toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
+    }
+    const float w = area.getWidth() / 5.0f;
+    const auto column = [&area, w] { return area.removeFromLeft (w).reduced (5.0f, 0.0f); };
+    {
+        // Sidecar's own switch of surface (X32, X32 COMPACT) has the system's place.
+        auto c = column();
+        listColumn (g, c.removeFromTop (60.0f), "Surface", { "X32", "X32 Compact" }, -1, getModel ? getModel() : 0);
+        c.removeFromTop (4.0f);
+        listColumn (g, c, "System", { "Shutdown", "Reboot", "Update Firmware" }, -1, -1, true);
+    }
+    {
+        juce::StringArray rates;
+        int on = -1;
+        if (device != nullptr)
+            for (auto rate : device->getAvailableSampleRates())
+            {
+                if (rate == device->getCurrentSampleRate())
+                    on = rates.size();
+                rates.add (juce::String (juce::roundToInt (rate)) + " Hz");
+            }
+        listColumn (g, column(), "Sample Rate", rates.isEmpty() ? juce::StringArray { "No interface" } : rates, globalRate, on);
+    }
+    {
+        auto c = column();
+        listColumn (g, c.removeFromTop (60.0f), "Synchronization", { device != nullptr ? "Internal (Interface)" : "None", "AES50-A", "AES50-B", "Card" }, -1, 0, true);
+        c.removeFromTop (4.0f);
+        listColumn (g, c, "Initialize", { "Console", "Show Data", "Libraries" }, initItem, initArmedItem);
+    }
+    {
+        const auto now = juce::Time::getCurrentTime();
+        listColumn (g, column(), "Date / Time", { now.formatted ("%d.%m.%Y"), now.formatted ("%H:%M:%S") }, -1, -1, true);
+    }
+    listColumn (g, column(), "Brightness", { "LCD  " + x32Value ("/-prefs/bright") + "%", "LED  " + x32Value ("/-prefs/ledbright") + "%" }, brightnessLed ? 1 : 0, -1);
+}
+
+void Display::paintSetupConfig (juce::Graphics& g, juce::Rectangle<int> r)
+{
+    auto area = pageFrame (g, r).toFloat();
+    const float w = area.getWidth() / 3.0f;
+    const auto checks = [&] (juce::Rectangle<float> c, const juce::String& title, const std::vector<ConfigItem>& items, int pointed)
+    {
+        g.setColour (kNavy);
+        g.setFont (type::font (10.5f, true));
+        g.drawText (title, c.removeFromTop (16.0f), juce::Justification::centredLeft);
+        // Every box when they fit at 11 px or more; else scrolled around the one pointed at.
+        const int n = (int) items.size();
+        const float fit = c.getHeight() / (float) juce::jmax (1, n);
+        const float rowH = fit >= 11.0f ? juce::jmin (16.0f, fit) : 13.0f;
+        const int rows = juce::jmax (1, (int) (c.getHeight() / rowH));
+        const int from = juce::jlimit (0, juce::jmax (0, n - rows), pointed - rows / 2);
+        for (int k = from; k < juce::jmin (n, from + rows); ++k)
+        {
+            auto row = c.removeFromTop (rowH);
+            if (k == pointed)
+            {
+                g.setColour (kGr);
+                g.drawRect (row, 1.0f);
+            }
+            g.setColour (kNavy);
+            checkBox (g, row.reduced (1.0f), titled (items[(size_t) k].name), x32Value (items[(size_t) k].path) == items[(size_t) k].on);
+        }
+    };
+    checks (area.removeFromLeft (w).reduced (4.0f, 0.0f), "Preferences", configPrefs(), configPref);
+    checks (area.removeFromLeft (w).reduced (4.0f, 0.0f), "Channel Link", configLinks(), configLink);
+    // The bus pre-configuration: each mix bus's kind under the scheme the encoder points at.
+    auto c = area.reduced (4.0f, 0.0f);
+    const auto& sch = kBusSchemes[configBus];
+    g.setColour (kNavy);
+    g.setFont (type::font (10.5f, true));
+    g.drawText ("Bus Pre-Configuration", c.removeFromTop (16.0f), juce::Justification::centredLeft);
+    g.setFont (type::font (10.0f, false));
+    g.drawFittedText (sch.name, c.removeFromTop (16.0f).toNearestInt(), juce::Justification::centred, 1, 0.7f);
+    // Show Control along the bottom (what PREV, NEXT and GO step through).
+    {
+        auto line = c.removeFromBottom (15.0f);
+        g.setFont (type::font (10.0f, true));
+        g.drawText ("Show Control", line.removeFromLeft (line.getWidth() * 0.55f), juce::Justification::centredLeft);
+        valueBox (g, line.reduced (1.0f), titled (x32Value ("/-prefs/show_control")));
+        g.setColour (kNavy);
+    }
+    const float cw = c.getWidth() / 8.0f, ch = juce::jmin (c.getHeight() / 2.0f, 26.0f);
+    for (int b = 0; b < 16; ++b)
+    {
+        auto cell = juce::Rectangle<float> (c.getX() + cw * (float) (b % 8), c.getY() + ch * (float) (b / 8), cw, ch).reduced (1.5f);
+        const bool sub = b >= sch.pre + sch.post;
+        g.setColour (sub ? kDeep : b < sch.pre ? kCurve : kSky);
+        g.fillRoundedRectangle (cell, 2.0f);
+        g.setColour (sub ? juce::Colours::white : kNavy);
+        g.setFont (type::font (8.5f, true));
+        g.drawFittedText (juce::String (b + 1) + "\n" + (sub ? "SUB" : b < sch.pre ? "PRE" : "POST"), cell.toNearestInt(), juce::Justification::centred, 2, 0.6f);
+    }
+}
+
+void Display::paintNetwork (juce::Graphics& g, juce::Rectangle<int> r)
+{
+    // Manual p.54: IP address, subnet mask and gateway, each four numbers. They're
+    // the computer's and read-only here; below, what X32 remotes need.
+    juce::String ip ("0.0.0.0");
+    for (auto& a : juce::IPAddress::getAllAddresses (false))
+        if (a.address[0] != 127 && (a.address[0] < 224 || a.address[0] > 239) && ! (a.address[0] == 169 && a.address[1] == 254) && ! a.isNull())
+        {
+            ip = a.toString();
+            break;
+        }
+    auto area = pageFrame (g, r).toFloat();
+    const auto fields = [&] (const juce::String& name, const juce::StringArray& values, bool real)
+    {
+        auto row = area.removeFromTop (28.0f);
+        g.setColour (real ? kNavy : kDim);
+        g.setFont (type::font (10.5f, true));
+        g.drawText (name, row.removeFromLeft (120.0f), juce::Justification::centredLeft);
+        for (int k = 0; k < 4; ++k)
+        {
+            auto box = row.removeFromLeft (64.0f).reduced (4.0f, 4.0f);
+            valueBox (g, box, values[k]);
+        }
+    };
+    // The three fields as `/-prefs/ip` keeps them, the one being edited marked and showing its edits.
+    static const char* const names[] = { "IP Address", "Subnet Mask", "Gateway" };
+    for (int f = 0; f < 3; ++f)
+    {
+        juce::StringArray values;
+        for (int k = 0; k < 4; ++k)
+            values.add (juce::String (f == netField && netPending[(size_t) k] >= 0 ? netPending[(size_t) k]
+                                                                                 : x32Int (juce::String ("/-prefs/ip/") + kIpNodes[f] + "/" + juce::String (k), 0)));
+        const auto top = area.getY();
+        fields (names[f], values, true);
+        if (f == netField)
+        {
+            g.setColour (kGr);
+            g.drawRect (juce::Rectangle<float> (area.getX(), top + 2.0f, 120.0f + 4.0f * 64.0f, 24.0f), 1.0f);
+        }
+    }
+    area.removeFromTop (6.0f);
+    g.setColour (kNavy);
+    g.setFont (type::font (10.5f, true));
+    g.drawText ("This computer: " + ip, area.removeFromTop (16.0f), juce::Justification::centredLeft);
+    auto& wing = ctx.engine.getWing();
+    g.setColour (kNavy);
+    g.setFont (type::font (10.5f, true));
+    g.drawText ("Host: " + juce::SystemStats::getComputerName(), area.removeFromTop (16.0f), juce::Justification::centredLeft);
+    g.drawText ("X32 OSC: " + (wing.isX32Running() ? juce::String ("running on UDP ") + juce::String (WingRemote::x32Port) : juce::String ("off (set in Setup > Remote)")),
+                area.removeFromTop (16.0f), juce::Justification::centredLeft);
+    g.setColour (kDim);
+    g.setFont (type::font (10.0f, false));
+    g.drawText ("The fields are kept for X32 remotes; the computer's own address is set in its network settings.", area.removeFromTop (16.0f),
+                juce::Justification::centredLeft);
+}
+
+void Display::paintCard (juce::Graphics& g, juce::Rectangle<int> r)
+{
+    auto* device = ctx.deviceManager.getCurrentAudioDevice();
+    auto area = pageFrame (g, r).toFloat();
+    auto left = area.removeFromLeft (area.getWidth() * 0.32f);
+    area.removeFromLeft (10.0f);
+    // Configuration (as the manual's picture): the mode pointed at, the one in use orange.
+    listColumn (g, left, "Configuration", { "32in / 32out", "16in / 16out", "32in / 8out", "8in / 32out", "8in / 8out", "2in / 2out" }, cardMode,
+                juce::jmax (0, cardModes().indexOf (x32Value ("/-prefs/card/USBmode"))));
+    const auto bits = [] (juce::BigInteger b) { return b.countNumberOfSetBits(); };
+    const auto row = [&] (const juce::String& name, const juce::String& value)
+    {
+        auto line = area.removeFromTop (18.0f);
+        g.setColour (kNavy);
+        g.setFont (type::font (10.5f, true));
+        g.drawText (name, line.removeFromLeft (line.getWidth() * 0.42f), juce::Justification::centredLeft);
+        g.setFont (type::font (10.5f, false));
+        g.drawFittedText (value, line.toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
+    };
+    row ("Card", "Audio Interface");
+    row ("Device", device != nullptr ? device->getName() : juce::String ("None"));
+    row ("Inputs / Outputs", device != nullptr ? juce::String (bits (device->getActiveInputChannels())) + " / " + juce::String (bits (device->getActiveOutputChannels())) : juce::String ("-"));
+    row ("Buffer", device != nullptr ? juce::String (device->getCurrentBufferSizeSamples()) + " samples" : juce::String ("-"));
+    row ("Latency In / Out", device != nullptr ? juce::String (device->getInputLatencyInSamples()) + " / " + juce::String (device->getOutputLatencyInSamples()) + " samples" : juce::String ("-"));
+}
+
+void Display::paintUsb (juce::Graphics& g, juce::Rectangle<int> r)
+{
+    // Manual p.62: meters for the recorder and the player, the transport state and the tracks.
+    auto& usb = ctx.engine.getUsbRecorder();
+    using P = UsbRecorder::PlayState;
+    using R = UsbRecorder::RecState;
+    const auto clock = [] (int64_t samples, double rate)
+    {
+        const int secs = rate > 0.0 ? (int) ((double) samples / rate) : 0;
+        return juce::String (secs / 60).paddedLeft ('0', 2) + ":" + juce::String (secs % 60).paddedLeft ('0', 2);
+    };
+    const double rate = juce::jmax (1.0, usb.getSampleRate());
+    const auto play = usb.getPlayState();
+    const auto rec = usb.getRecState();
+    auto area = pageFrame (g, r).toFloat();
+    const float unit = area.getWidth() / 100.0f;
+    auto meters = area.removeFromLeft (20.0f * unit);
+    area.removeFromLeft (3.0f * unit);
+    {
+        auto recCol = meters.removeFromLeft (meters.getWidth() * 0.5f);
+        const auto pair = [&g] (juce::Rectangle<float> c, const juce::String& name, float l, float rr)
+        {
+            g.setColour (kNavy);
+            g.setFont (type::font (9.0f, true));
+            g.drawText (name, c.removeFromBottom (12.0f), juce::Justification::centred);
+            levelBar (g, c.removeFromLeft (c.getWidth() * 0.5f).reduced (2.0f, 0.0f), l);
+            levelBar (g, c.reduced (2.0f, 0.0f), rr);
+        };
+        const auto toGain = [] (float db) { return juce::Decibels::decibelsToGain (db, -144.0f); };
+        pair (recCol, "Rec", toGain (usb.getRecLevel (0)), toGain (usb.getRecLevel (1)));
+        pair (meters, "Play", usb.getPlayLevel (0), usb.getPlayLevel (1));
+    }
+    if (tab == 0)
+    {
+        auto info = area.removeFromLeft (area.getWidth() * 0.44f);
+        area.removeFromLeft (8.0f);
+        const auto row = [&info, &g] (const juce::String& name, const juce::String& value)
+        {
+            auto line = info.removeFromTop (16.0f);
+            g.setColour (kNavy);
+            g.setFont (type::font (10.0f, true));
+            g.drawText (name, line.removeFromLeft (64.0f), juce::Justification::centredLeft);
+            g.setFont (type::font (10.0f, false));
+            g.drawFittedText (value, line.toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
+        };
+        row ("Player", play == P::Playing ? "Playing" : play == P::Paused ? "Paused" : play == P::Error ? "Error" : "Stopped");
+        row ("File", usb.getCurrentFile().getFileName().isEmpty() ? juce::String ("-") : usb.getCurrentFile().getFileName());
+        row ("Position", clock (usb.getPosition(), rate) + " / " + clock (usb.getLength(), rate));
+        row ("Recorder", rec == R::Recording ? "Recording" : rec == R::Paused ? "Paused" : rec == R::Error ? "Error" : "Stopped");
+        row ("Recording", usb.getRecFile().getFileName().isEmpty() ? juce::String ("-") : usb.getRecFile().getFileName());
+        const auto queue = usb.getQueue();
+        juce::StringArray names;
+        int on = -1;
+        for (size_t i = 0; i < queue.size() && names.size() < 12; ++i)
+        {
+            if (queue[i].id == usb.getCurrentEntry())
+                on = names.size();
+            names.add (queue[i].file.getFileNameWithoutExtension());
+        }
+        listColumn (g, area, "Tracks", names.isEmpty() ? juce::StringArray { "No files" } : names, usbTrack, on);
+    }
+    else
+    {
+        const auto row = [&area, &g] (const juce::String& name, const juce::String& value)
+        {
+            auto line = area.removeFromTop (17.0f);
+            g.setColour (kNavy);
+            g.setFont (type::font (10.0f, true));
+            g.drawText (name, line.removeFromLeft (112.0f), juce::Justification::centredLeft);
+            g.setFont (type::font (10.0f, false));
+            g.drawFittedText (value, line.toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
+        };
+        row ("Record Folder", usb.getRecPath().getFullPathName());
+        row ("Storage", usb.getStorageFolder().getFullPathName());
+        row ("Playback", usbFolderMode ? "Folder: on to the next file" : "Stop after the file");
+        row ("Tracks / Bits", juce::String (usb.getRecChannels()) + " / " + juce::String (usb.getRecBits()));
+        // The recorder's two inputs as `/outputs/rec` keeps them (OFF: as patched on Sidecar's routing).
+        for (int side = 0; side < 2; ++side)
+        {
+            const juce::String p = "/outputs/rec/" + two (side + 1);
+            const int source = juce::jlimit (0, outputSources().size() - 1, x32Int (p + "/src", 0));
+            row (juce::String (side == usbRecSide ? "> " : "") + (side == 0 ? "Input Left" : "Input Right"),
+                 source == 0 ? juce::String ("as patched on Sidecar's routing") : outputSources()[source] + "  " + x32Value (p + "/pos"));
+        }
+    }
 }
 
 juce::Array<juce::File> Display::presets (const char* extension)
@@ -2502,7 +3771,7 @@ int Display::x32Bits (const juce::String& text)
 const juce::StringArray& Display::soloOptions()
 {
     // MONITOR's solo options (p.60-61), in the manual's order.
-    static const juce::StringArray options { "EXCLUSIVE", "SOLO FOLLOWS SEL", "SEL FOLLOWS SOLO", "CHANNEL AFL", "MIX BUS AFL", "DCA AFL", "USE MASTER FADER" };
+    static const juce::StringArray options { "Exclusive (last)", "Solo follows Select", "Select follows Solo", "Ch Solo AFL", "MixBus Solo AFL", "DCA Solo AFL", "Use Master Fader" };
     return options;
 }
 
@@ -2607,50 +3876,60 @@ void Display::assignEffectsEncoders()
     };
     if (tab == 0)
     {
-        // Encoder 1 the slot, 2 its model (push: edit it), 3-4 FX 1-4's SOURCE L / R.
+        // As the manual gives them (p.58): 1 and 2 FX 1-4's sources L and R, 5 the
+        // effect (ASSIGN puts it in), 6 the slot (push: EDIT).
         KnobBinding pick;
         pick.label = "FX";
         pick.get = [this] { return (float) selectedFx / 7.0f; };
         pick.set = [this] (float v)
         {
             selectedFx = juce::jlimit (0, 7, juce::roundToInt (v * 7.0f));
+            pendingFxModel = -1;
             assignEncoders();
         };
         pick.text = [this] { return juce::String (selectedFx + 1); };
         pick.steps = 8.0f;
-        encoders[0] = encoder (pick);
+        encoders[5] = encoder (pick, "EDIT", [this] { showScreen (Screen::Effects, selectedFx + 1); });
 
         const int slot = selectedFx;
         const auto list = fxModelsFor (slot);
         KnobBinding type;
         type.label = "TYPE";
         const int n = (int) list.size();
-        type.get = [&fx, slot, list, n]
+        const auto shownModel = [this, &fx, slot] { return pendingFxModel >= 0 ? pendingFxModel : fx.getModel (slot); };
+        type.get = [shownModel, list, n]
         {
-            const auto at = std::find (list.begin(), list.end(), fx.getModel (slot));
+            const auto at = std::find (list.begin(), list.end(), shownModel());
             return at == list.end() || n < 2 ? 0.0f : (float) (at - list.begin()) / (float) (n - 1);
         };
-        type.set = [slot, list, n, run] (float v)
+        type.set = [this, list, n] (float v)
         {
             if (n == 0)
                 return;
-            const auto& m = models::model (models::Fx, list[(size_t) juce::roundToInt (v * (float) (n - 1))]);
-            run ("/fx/" + juce::String (slot + 1) + "/type " + m.token.fromFirstOccurrenceOf ("X32", false, false));
+            pendingFxModel = list[(size_t) juce::roundToInt (v * (float) (n - 1))];
+            repaint();
         };
-        type.text = [&fx, slot]
+        type.text = [shownModel]
         {
-            const int m = fx.getModel (slot);
+            const int m = shownModel();
             return m > ld::kFxExt ? models::model (models::Fx, m).name : juce::String ("-");
         };
         type.steps = (float) juce::jmax (2, n);
-        encoders[1] = encoder (type, "EDIT", [this, slot] { showScreen (Screen::Effects, slot + 1); }, [] { return false; });
+        encoders[4] = encoder (type, "ASSIGN", [this, slot, run]
+        {
+            if (pendingFxModel < 0)
+                return;
+            const auto& m = models::model (models::Fx, pendingFxModel);
+            run ("/fx/" + juce::String (slot + 1) + "/type " + m.token.fromFirstOccurrenceOf ("X32", false, false));
+            pendingFxModel = -1;
+        }, [this] { return pendingFxModel >= 0; });
         if (slot < 4)
         {
             static const juce::StringArray sources { "INS", "MIX1", "MIX2", "MIX3", "MIX4", "MIX5", "MIX6", "MIX7", "MIX8", "MIX9",
                                                      "MIX10", "MIX11", "MIX12", "MIX13", "MIX14", "MIX15", "MIX16", "M/C" };
             const auto base = "/fx/" + juce::String (slot + 1) + "/source/";
-            encoders[2] = encoder (enumKnob ("SOURCE L", base + "l", sources));
-            encoders[3] = encoder (enumKnob ("SOURCE R", base + "r", sources));
+            encoders[0] = encoder (enumKnob ("SOURCE L", base + "l", sources));
+            encoders[1] = encoder (enumKnob ("SOURCE R", base + "r", sources));
         }
         return;
     }
@@ -2662,64 +3941,77 @@ void Display::assignEffectsEncoders()
     const auto& model = models::model (models::Fx, m);
     auto& values = fx.params (slot).values;
     layer = juce::jlimit (0, numLayers() - 1, layer); // a new model may have fewer
+    if (isGraphicEq (slot))
+    {
+        // A graphic EQ (as its page photographs): 1 Scroll, the four bands on encoders
+        // 2-5 (push: GEQ ON FADERS, the manual's tip, p.58); 2-5 their gains (push: RESET);
+        // 6 the side's level (push: FX HOME). A dual EQ's layers are its sides A and B.
+        const auto bands = geqBands (slot);
+        const int side = bands.size() > 31 ? juce::jlimit (0, 1, layer) : 0;
+        geqFirst = juce::jlimit (0, 27, geqFirst);
+        KnobBinding scroll;
+        scroll.label = "SCROLL";
+        scroll.get = [this] { return (float) geqFirst / 27.0f; };
+        scroll.set = [this, slot] (float v)
+        {
+            geqFirst = juce::jlimit (0, 27, juce::roundToInt (v * 27.0f));
+            if (geqSlot == slot)
+                showGeqOnFaders (slot, geqFirst);
+            assignEncoders();
+        };
+        scroll.text = [this] { return juce::String (geqFirst); };
+        scroll.steps = 28.0f;
+        encoders[0] = encoder (scroll, "GEQ ON FADERS", [this, slot] { showGeqOnFaders (geqSlot == slot ? -1 : slot, geqFirst); }, [this, slot] { return geqSlot == slot; });
+        for (int k = 0; k < 4; ++k)
+        {
+            const size_t at = (size_t) (side * 31 + geqFirst + k);
+            if (at >= bands.size())
+                break;
+            const int index = bands[at];
+            auto b = bindModelParam (values[index], model.params[(size_t) index]);
+            b.label = geqBandHz (geqFirst + k);
+            auto* value = &values[index];
+            encoders[(size_t) k + 1] = encoder (b, "RESET", [value] { value->store (0.0f); });
+        }
+        const int master = model.find (bands.size() > 31 ? (side == 0 ? "master_a" : "master_b") : "master");
+        KnobBinding level;
+        if (master >= 0)
+        {
+            level = bindModelParam (values[master], model.params[(size_t) master]);
+            level.label = "LEVEL";
+        }
+        encoders[5] = encoder (level, "FX HOME", [this] { showScreen (Screen::Effects, 0); });
+        return;
+    }
     for (int e = 0; e < 6; ++e)
     {
         const int k = layer * 6 + e;
         if (k < (int) model.params.size())
             encoders[(size_t) e] = encoder (bindModelParam (values[k], model.params[(size_t) k]));
     }
+    // Manual p.58: the sixth encoder's push goes back to home.
+    encoders[5].pushLabel = "FX HOME";
+    encoders[5].push = [this] { showScreen (Screen::Effects, 0); };
 }
 
-void Display::paintEffects (juce::Graphics& g, juce::Rectangle<int> r)
+Display::Encoder Display::blockEncoder (int i, const juce::String& label, std::function<juce::String()> path, const juce::StringArray& choices, const juce::String& pushLabel)
 {
-    auto& fx = ctx.engine.getFx();
-    const auto modelName = [&fx] (int slot)
+    const int n = choices.size();
+    const auto slot = (size_t) i;
+    const auto shown = [this, slot, path, &choices] { return pendingBlock[slot] >= 0 ? choices[pendingBlock[slot]] : x32Value (path()); };
+    KnobBinding k;
+    k.label = label;
+    k.get = [shown, &choices, n] { return (float) juce::jmax (0, choices.indexOf (shown())) / (float) (n - 1); };
+    k.set = [this, slot, n] (float v) { pendingBlock[slot] = juce::roundToInt (juce::jlimit (0.0f, 1.0f, v) * (float) (n - 1)); repaint(); };
+    k.text = shown;
+    k.steps = (float) n;
+    return encoder (k, pushLabel, [this, slot, path, &choices]
     {
-        const int m = fx.getModel (slot);
-        return m > ld::kFxExt ? models::model (models::Fx, m).name : juce::String ("-");
-    };
-    if (tab == 0)
-    {
-        juce::StringArray left, right;
-        for (int i = 0; i < juce::jmin (8, fx.getNumSlots()); ++i)
-        {
-            left.add ((i == selectedFx ? "> FX " : "FX ") + juce::String (i + 1));
-            auto text = modelName (i);
-            if (i < 4)
-            {
-                const auto l = x32Value ("/fx/" + juce::String (i + 1) + "/source/l");
-                const auto rr = x32Value ("/fx/" + juce::String (i + 1) + "/source/r");
-                text << "   " << (l == "INS" ? juce::String ("INSERT") : l == rr ? "FROM " + l : "FROM " + l + " / " + rr);
-            }
-            right.add (text);
-        }
-        paintRows (g, r, left, right);
-        return;
-    }
-    // A slot: its model, then every parameter in two columns, this layer's marked.
-    const int slot = tab - 1;
-    const int m = fx.getModel (slot);
-    g.setColour (kNavy);
-    g.setFont (type::font (type::kLabel, true));
-    g.drawText ("FX " + juce::String (slot + 1) + "   " + modelName (slot), r.removeFromTop (22), juce::Justification::centredLeft);
-    if (m <= ld::kFxExt)
-        return;
-    const auto& model = models::model (models::Fx, m);
-    auto& values = fx.params (slot).values;
-    const int n = (int) model.params.size();
-    const int perColumn = (n + 1) / 2;
-    for (int c = 0; c < 2; ++c)
-    {
-        auto area = r.removeFromLeft (c == 0 ? r.getWidth() / 2 : r.getWidth()).reduced (c == 0 ? 0 : 4, 0);
-        juce::StringArray left, right;
-        for (int k = c * perColumn; k < juce::jmin (n, (c + 1) * perColumn); ++k)
-        {
-            const auto& p = model.params[(size_t) k];
-            left.add ((k / 6 == layer ? "> " : "") + p.label);
-            right.add (p.display (values[k].load()));
-        }
-        paintRows (g, area, left, right);
-    }
+        if (pendingBlock[slot] < 0)
+            return;
+        x32Run (path() + " " + choices[pendingBlock[slot]]);
+        pendingBlock[slot] = -1;
+    }, [this, slot] { return pendingBlock[slot] >= 0; });
 }
 
 void Display::assignOutputEncoders()
@@ -2735,22 +4027,31 @@ void Display::assignOutputEncoders()
         // card out, AES50-A, AES50-B: what each block of eight outputs plays.
         const auto& t = kBlockTabs[tab - 4];
         for (int b = 0; b < t.blocks; ++b)
-            encoders[(size_t) b] = encoder (enumKnob (juce::String (t.label) + " " + kNetBlocks[b],
-                                                      "/config/routing/" + juce::String (t.node) + "/" + kNetBlocks[b], kRoutingNet));
+        {
+            const auto address = "/config/routing/" + juce::String (t.node) + "/" + kNetBlocks[b];
+            encoders[(size_t) b] = blockEncoder (b, juce::String (t.label) + " " + kNetBlocks[b], [address] { return address; }, kRoutingNet, "ASSIGN");
+        }
         return;
     }
     if (tab == 7)
     {
         // XLR OUT (p.54): the rear panel's XLR outputs 1-16, four at a time.
         for (int b = 0; b < 4; ++b)
-            encoders[(size_t) b] = encoder (enumKnob ("XLR " + juce::String (kOutBlocks[b]), "/config/routing/OUT/" + juce::String (kOutBlocks[b]),
-                                                      b % 2 == 0 ? kRoutingOutA : kRoutingOutB));
+        {
+            const auto address = "/config/routing/OUT/" + juce::String (kOutBlocks[b]);
+            encoders[(size_t) b] = blockEncoder (b, "XLR " + juce::String (kOutBlocks[b]), [address] { return address; }, b % 2 == 0 ? kRoutingOutA : kRoutingOutB, "ASSIGN");
+        }
+        return;
+    }
+    if (tab == 3 && iqSetup)
+    {
+        assignIqEncoders();
         return;
     }
     // out 1-16, aux out, P16 out: the output signals, one chosen at a time.
     const auto& t = kSignalTabs[tab - 1];
     selectedOutput = juce::jlimit (0, t.count - 1, selectedOutput);
-    const auto path = [t] (int n) { return "/outputs/" + juce::String (t.group) + "/" + juce::String (n + 1).paddedLeft ('0', 2); };
+    const auto path = [t] (int n) { return signalPath (t, n); };
     KnobBinding pick;
     pick.label = t.label;
     pick.get = [this, t] { return (float) selectedOutput / (float) (t.count - 1); };
@@ -2760,9 +4061,11 @@ void Display::assignOutputEncoders()
         pendingOutputSource = -1;
         assignEncoders();
     };
-    pick.text = [this] { return juce::String (selectedOutput + 1); };
+    pick.text = [this, t] { return signalName (t, selectedOutput); };
     pick.steps = (float) t.count;
     encoders[0] = encoder (pick);
+    if (juce::String (t.group) == "p16") // the sixth push: iQ SETUP (p.51)
+        encoders[5] = encoder ({}, "IQ SETUP", [this] { iqSetup = true; assignEncoders(); });
 
     // 3 the source's category, 4 the source in it (push: ASSIGN), 5 the tap
     // point, 6 the delay of an analog output (push: on) (pp.52-53).
@@ -2811,6 +4114,11 @@ void Display::assignOutputEncoders()
 
 void Display::paintOutputs (juce::Graphics& g, juce::Rectangle<int> r)
 {
+    if (tab == 3 && iqSetup)
+    {
+        paintIqSetup (g, r);
+        return;
+    }
     if (tab >= 4 && tab < 7)
     {
         const auto& t = kBlockTabs[tab - 4];
@@ -2845,8 +4153,8 @@ void Display::paintOutputs (juce::Graphics& g, juce::Rectangle<int> r)
         juce::StringArray left, right;
         for (int i = c * perColumn; i < juce::jmin (t.count, (c + 1) * perColumn); ++i)
         {
-            const auto p = "/outputs/" + juce::String (t.group) + "/" + juce::String (i + 1).paddedLeft ('0', 2);
-            left.add ((i == selectedOutput ? "> " : "") + juce::String (t.label) + " " + juce::String (i + 1));
+            const auto p = signalPath (t, i);
+            left.add ((i == selectedOutput ? "> " : "") + signalName (t, i));
             right.add (outputSources()[x32Value (p + "/src").getIntValue()] + "  " + x32Value (p + "/pos"));
         }
         paintRows (g, area, left, right);
@@ -2867,19 +4175,8 @@ void Display::assignRoutingEncoders()
     {
         const auto& choices = b < 4 ? kRoutingIn : kRoutingAux;
         const auto path = [group, b] { return "/config/routing/" + group() + "/" + kInBlocks[b]; };
-        KnobBinding k;
-        k.label = b < 4 ? "IN " + juce::String (kInBlocks[b]) : juce::String ("AUX 1-6");
-        const int n = choices.size();
-        k.get = [this, path, &choices, n] { return (float) juce::jmax (0, choices.indexOf (x32Value (path()))) / (float) (n - 1); };
-        k.set = [this, path, &choices, n] (float v)
-        {
-            int set = 0;
-            ctx.engine.getWing().runX32Text (path() + " " + choices[juce::roundToInt (v * (float) (n - 1))], set);
-            repaint();
-        };
-        k.text = [this, path] { return x32Value (path()); };
-        k.steps = (float) n;
-        encoders[(size_t) b] = encoder (k);
+        // Turned through the list, connected by the push (p.48).
+        encoders[(size_t) b] = blockEncoder (b, b < 4 ? "IN " + juce::String (kInBlocks[b]) : juce::String ("AUX 1-6"), path, choices, "CONNECT");
     }
     KnobBinding sw;
     sw.label = "SOURCE";
@@ -2894,6 +4191,7 @@ void Display::assignRoutingEncoders()
     sw.steps = 2.0f;
     encoders[5] = encoder (sw, "REC / PLAY", [this, group]
     {
+        pendingBlock.fill (-1);
         int set = 0;
         ctx.engine.getWing().runX32Text (group() == "PLAY" ? "/config/routing/routswitch REC" : "/config/routing/routswitch PLAY", set);
         assignEncoders();
@@ -2955,6 +4253,7 @@ X32Midi* Display::x32Midi() const
 void Display::assignRemoteEncoders()
 {
     auto& settings = ctx.settings;
+    publishRemotePrefs();
     if (layer == 0)
     {
         // MIDI IN and OUT: turn to a device, push to use it.
@@ -3024,6 +4323,7 @@ void Display::assignRemoteEncoders()
                 ctx.settings.setValue (X32Midi::enableKey, bits);
                 if (auto* m32 = x32Midi())
                     m32->setEnabled (bits);
+                publishRemotePrefs();
                 repaint();
             };
             KnobBinding b;
@@ -3046,6 +4346,7 @@ void Display::assignRemoteEncoders()
         ctx.settings.setValue (X32Midi::enableKey, bits);
         if (auto* m = x32Midi())
             m->setEnabled (bits);
+        publishRemotePrefs();
         repaint();
     };
     KnobBinding b;
@@ -3055,6 +4356,8 @@ void Display::assignRemoteEncoders()
     b.text = [sysexOn] { return sysexOn() ? juce::String ("ON") : juce::String ("OFF"); };
     b.steps = 2.0f;
     encoders[0] = encoder (b, "SYSEX", [sysexOn, setSysex] { setSysex (! sysexOn()); }, sysexOn);
+    encoders[1] = dimmedEncoder ("PROTOCOL", "Mackie / HUI", "REMOTE");
+    encoders[4] = dimmedEncoder ("PORT", "MIDI / USB", "SET");
     encoders[5] = encoder ({}, "SEND ALL", [this]
     {
         if (ctx.consoleMidi != nullptr)
@@ -3092,12 +4395,1223 @@ void Display::paintRemote (juce::Graphics& g, juce::Rectangle<int> r)
                  mode (X32Midi::RxFader), mode (X32Midi::RxMute), mode (X32Midi::RxPan), (bits & X32Midi::SysEx) != 0 ? "ON" : "OFF" });
 }
 
+//==============================================================================
+// What the console's own preferences and status hold (`/-prefs`, `/-stat`: the
+// names and ranges of the X32 OSC document, pp.50-59), so that the screen and
+// a remote agree.
+
+void Display::x32Run (const juce::String& text)
+{
+    int set = 0;
+    ctx.engine.getWing().runX32Text (text, set);
+    repaint();
+}
+
+int Display::x32Int (const juce::String& address, int fallback) const
+{
+    const auto value = x32Value (address);
+    return value.isEmpty() ? fallback : value.getIntValue();
+}
+
+KnobBinding Display::intKnob (const juce::String& label, const juce::String& path, int first, int count, std::function<juce::String (int)> text)
+{
+    KnobBinding k;
+    k.label = label;
+    const int last = juce::jmax (1, count - 1);
+    k.get = [this, path, first, last] { return (float) juce::jlimit (0, last, x32Int (path, first) - first) / (float) last; };
+    k.set = [this, path, first, last] (float v) { x32Run (path + " " + juce::String (first + juce::roundToInt (juce::jlimit (0.0f, 1.0f, v) * (float) last))); };
+    k.text = [this, path, first, text] { return text (x32Int (path, first)); };
+    k.steps = (float) juce::jmax (2, count);
+    return k;
+}
+
+int Display::x32Index (const Strip& s) const
+{
+    const auto address = x32Address (s);
+    const int n = address.fromLastOccurrenceOf ("/", false, false).getIntValue();
+    if (address.startsWith ("/ch/"))
+        return n - 1;
+    if (address.startsWith ("/auxin/"))
+        return 31 + n;
+    if (address.startsWith ("/fxrtn/"))
+        return 39 + n;
+    if (address.startsWith ("/bus/"))
+        return 47 + n;
+    if (address.startsWith ("/mtx/"))
+        return 63 + n;
+    if (address == "/main/st")
+        return 70;
+    if (address == "/main/m")
+        return 71;
+    return -1;
+}
+
+Strip* Display::stripAtX32Index (int index) const
+{
+    if (index < 0)
+        return nullptr;
+    for (auto* s : recallStrips())
+        if (x32Index (*s) == index)
+            return s;
+    return nullptr;
+}
+
+void Display::publishScreen()
+{
+    // `/-stat/screen` (p.57): the screen, its page, MUTE GRP over it; Sidecar's own
+    // UTILITY pages as `utils`.
+    int set = 0;
+    auto& wing = ctx.engine.getWing();
+    const int muteGrp = screen == Screen::MuteGroups ? 1 : 0;
+    if (muteGrp != publishedMuteGrp)
+    {
+        publishedMuteGrp = muteGrp;
+        wing.runX32Text (juce::String ("/-stat/screen/mutegrp ") + (muteGrp != 0 ? "ON" : "OFF"), set);
+    }
+    const auto st = statScreen (screen == Screen::MuteGroups ? underScreen : screen);
+    if (st.number < 0)
+    {
+        if (publishedScreen != -2)
+            wing.runX32Text ("/-stat/screen/utils ON", set);
+        publishedScreen = -2;
+        return;
+    }
+    if (publishedScreen == -2)
+        wing.runX32Text ("/-stat/screen/utils OFF", set);
+    const int page = shownTab();
+    if (st.number != publishedScreen)
+        wing.runX32Text ("/-stat/screen/screen " + juce::String (st.number), set);
+    wing.runX32Text ("/-stat/screen/" + juce::String (st.node) + "/page " + juce::String (page), set);
+    publishedScreen = st.number;
+    publishedPage = page;
+}
+
+void Display::followRemote()
+{
+    // What a remote set since the surface last wrote it: the screen and its page,
+    // the selected strip, the EQ's band, the assign set. And for it: the recorder.
+    if (x32Value ("/-stat/screen/screen").isEmpty())
+        return; // the console isn't an X32
+    int set = 0;
+    auto& wing = ctx.engine.getWing();
+    if (publishedScreen >= 0)
+    {
+        const int wantScreen = x32Int ("/-stat/screen/screen", publishedScreen);
+        if (wantScreen != publishedScreen)
+        {
+            bool found = false;
+            for (auto s : { Screen::Home, Screen::Meters, Screen::Routing, Screen::Setup, Screen::Library, Screen::Effects, Screen::Monitor, Screen::Usb,
+                            Screen::Scenes, Screen::Assign })
+                if (const auto st = statScreen (s); st.number == wantScreen)
+                {
+                    found = true;
+                    showScreen (s, x32Int ("/-stat/screen/" + juce::String (st.node) + "/page", 0));
+                    break;
+                }
+            if (! found) // the lock screen: none here
+                wing.runX32Text ("/-stat/screen/screen " + juce::String (publishedScreen), set);
+            return;
+        }
+        const auto st = statScreen (screen == Screen::MuteGroups ? underScreen : screen);
+        if (st.number >= 0)
+            if (const int wantPage = x32Int ("/-stat/screen/" + juce::String (st.node) + "/page", publishedPage); wantPage != publishedPage)
+            {
+                showTab (wantPage);
+                return;
+            }
+    }
+    if (const int sel = x32Int ("/-stat/selidx", publishedSel); sel != publishedSel)
+    {
+        publishedSel = sel;
+        if (auto* strip = stripAtX32Index (sel); strip != nullptr && ctx.selectStrip)
+            ctx.selectStrip (strip);
+    }
+    if (screen == Screen::Home && tab == 4)
+        if (const int band = x32Int ("/-stat/eqband", publishedBand); band != publishedBand && publishedBand >= 0)
+        {
+            auto* s = selected();
+            static constexpr int four[] = { 0, 0, 1, 2, 3, 3 };
+            eqBand = s != nullptr && s->isOutput() ? juce::jlimit (0, 5, band) : four[juce::jlimit (0, 5, band)];
+            assignEncoders(); // writes the band it took
+        }
+    if (getAssignSet && setAssignSet)
+    {
+        const int here = getAssignSet(), there = x32Int ("/-stat/userbank", here);
+        if (here != publishedBank)
+        {
+            publishedBank = here;
+            wing.runX32Text ("/-stat/userbank " + juce::String (juce::jlimit (0, 2, here)), set);
+        }
+        else if (there != publishedBank)
+        {
+            publishedBank = there;
+            setAssignSet (there);
+            if (screen == Screen::Assign)
+                showTab (tab == 0 ? 0 : there + 1);
+        }
+    }
+    // The recorder: 0 stop, 1 pause, 2 play, 3 record paused, 4 record; the seconds played and left.
+    auto& usb = ctx.engine.getUsbRecorder();
+    using P = UsbRecorder::PlayState;
+    using R = UsbRecorder::RecState;
+    const auto rec = usb.getRecState();
+    const auto play = usb.getPlayState();
+    const int tape = rec == R::Recording ? 4 : rec == R::Paused ? 3 : play == P::Playing ? 2 : play == P::Paused ? 1 : 0;
+    if (tape != publishedTape)
+    {
+        publishedTape = tape;
+        wing.runX32Text ("/-stat/tape/state " + juce::String (tape), set);
+    }
+    const double rate = juce::jmax (1.0, usb.getSampleRate());
+    const int seconds = tape >= 3 ? (int) ((double) usb.getRecTime() / rate) : (int) ((double) usb.getPosition() / rate);
+    if (tape != 0 && seconds != publishedTapeSeconds)
+    {
+        publishedTapeSeconds = seconds;
+        const int left = tape >= 3 ? 0 : (int) ((double) juce::jmax ((int64_t) 0, usb.getLength() - usb.getPosition()) / rate);
+        wing.runX32Text ("/-stat/tape/etime " + juce::String (juce::jlimit (0, 359999, seconds)), set);
+        wing.runX32Text ("/-stat/tape/rtime " + juce::String (juce::jlimit (0, 359999, left)), set);
+    }
+}
+
+void Display::publishRemotePrefs()
+{
+    // `/-prefs/remote/ioenable` (p.51): bit 0 MIDI In/Out, 3-10 Rx and Tx of program
+    // changes, faders, mutes and pans, 11 X/OSC (OSC over SysEx): the app's X32 MIDI settings.
+    const int bits = ctx.settings.getIntValue (X32Midi::enableKey, X32Midi::All);
+    const int io = 1 | ((bits & 0xff) << 3) | ((bits & X32Midi::SysEx) != 0 ? 1 << 11 : 0);
+    if (io != publishedMidi)
+    {
+        publishedMidi = io;
+        int set = 0;
+        ctx.engine.getWing().runX32Text ("/-prefs/remote/ioenable " + juce::String (io), set);
+    }
+}
+
+void Display::followRemotePrefs()
+{
+    const auto text = x32Value ("/-prefs/remote/ioenable");
+    if (text.isEmpty() || publishedMidi < 0)
+        return;
+    const int io = x32Bits (text);
+    if (io == publishedMidi)
+        return;
+    publishedMidi = io;
+    const int bits = ((io >> 3) & 0xff) | ((io & (1 << 11)) != 0 ? (int) X32Midi::SysEx : 0);
+    ctx.settings.setValue (X32Midi::enableKey, bits);
+    if (auto* m = x32Midi())
+        m->setEnabled (bits);
+    assignEncoders();
+}
+
+float Display::lcdBrightness() const
+{
+    const auto value = x32Value ("/-prefs/bright");
+    return value.isEmpty() ? 1.0f : juce::jlimit (0.1f, 1.0f, value.getFloatValue() / 100.0f);
+}
+
+//==============================================================================
+// GAIN: the head amp or the trim
+
+bool Display::gainIsHeadAmp (const Strip& s) const
+{
+    const int input = s.params.inputLeft.load();
+    if (input < 0 || input >= 128 || ctx.engine.getSource (input) == nullptr)
+        return false;
+    // HA gain split (`/-prefs/haflags`: bit 1 the local inputs', 2 and 3 AES50 A's and
+    // B's): the strip's GAIN is its own trim, the head amp is SETUP > preamps'.
+    const int split = x32Bits (x32Value ("/-prefs/haflags"));
+    return (split & (input < 32 ? 2 : input < 80 ? 4 : 8)) == 0;
+}
+
+KnobBinding Display::gainBinding (Strip& s) const
+{
+    const auto address = x32Address (s);
+    if (! (address.startsWith ("/ch/") || address.startsWith ("/auxin/")))
+        return {};
+    if (gainIsHeadAmp (s))
+    {
+        auto b = bindLinear ("GAIN", ctx.engine.getSource (s.params.inputLeft.load())->gainDb, -12.0f, 60.0f, " dB", 1, 0.0f);
+        b.steps = 145.0f;
+        return b;
+    }
+    return bindLinear ("GAIN", s.params.input.trimDb, -18.0f, 18.0f, " dB", 1, 0.0f);
+}
+
+//==============================================================================
+// The RTA (manual 7.3, 7.2.5)
+
+Strip* Display::rtaStrip() const
+{
+    const int source = x32Int ("/-prefs/rta/source", 0);
+    if (source >= 2)
+        if (auto* s = stripAtX32Index (source - 2))
+            return s;
+    return selected();
+}
+
+void Display::setRtaOption (int option, bool on)
+{
+    const int bits = x32Bits (x32Value ("/-prefs/rta/option"));
+    x32Run ("/-prefs/rta/option " + juce::String (on ? bits | (1 << option) : bits & ~(1 << option)));
+    static const char* const twins[] = { "/-stat/rtaeqpre", "/-stat/rtamodeeq", nullptr, "/-stat/rtageqpost", "/-stat/rtamodegeq", nullptr };
+    if (juce::isPositiveAndBelow (option, 6) && twins[option] != nullptr)
+        x32Run (juce::String (twins[option]) + (option == 1 || option == 4 ? (on ? " SPEC" : " BAR") : (on ? " ON" : " OFF")));
+    updateRta();
+}
+
+void Display::updateRta()
+{
+    // METERS > rta analyses its source; HOME > eq the selected strip, while the overlay
+    // is visible (`/-prefs/rta/visibility`). PRE: the strip's input; POST: after its EQ.
+    auto analysis = ctx.engine.getAnalysis();
+    const auto shown = screen == Screen::MuteGroups ? underScreen : screen;
+    const int t = shownTab();
+    const bool page = shown == Screen::Meters && t == 4;
+    const auto visibility = x32Value ("/-prefs/rta/visibility");
+    const bool overlay = shown == Screen::Home && t == 4 && visibility.isNotEmpty() && visibility != "OFF";
+    if (page || overlay)
+    {
+        const bool pre = page ? x32Value ("/-prefs/rta/pos") == "PRE" : x32On ("/-stat/rtaeqpre");
+        analysis.settings (ld::kRtaViewHome).tap = pre ? 0 : 1;
+        analysis.showRta (page ? rtaStrip() : selected(), ld::kRtaViewHome);
+        rtaShown = true;
+    }
+    else if (rtaShown)
+    {
+        analysis.hideRta();
+        rtaShown = false;
+        rtaHistory.clear();
+    }
+}
+
+void Display::assignRtaEncoders()
+{
+    // METERS > rta (manual 7.3): 1 the six check boxes, pushed on and off; 2 bar graph or
+    // spectrograph; 4 the gain by hand, its push AUTO GAIN; 5 the EQ overlay's visibility,
+    // its push before or after the EQ; 6 the source, SET by its push. The third encoder is
+    // Sidecar's placing: the decay (`/-prefs/rta/decay`, the document's), its push FREEZE.
+    auto& engine = ctx.engine;
+    auto& rta = engine.getAnalysis().settings (ld::kRtaViewHome);
+    KnobBinding option;
+    option.label = "SELECT";
+    option.get = [this] { return (float) rtaOption / 5.0f; };
+    option.set = [this] (float v) { rtaOption = juce::jlimit (0, 5, juce::roundToInt (v * 5.0f)); repaint(); };
+    option.text = [this] { return rtaOptions()[rtaOption]; };
+    option.steps = 6.0f;
+    const auto checked = [this] { return (x32Bits (x32Value ("/-prefs/rta/option")) & (1 << rtaOption)) != 0; };
+    encoders[0] = encoder (option, "SET", [this, checked] { setRtaOption (rtaOption, ! checked()); }, checked);
+
+    const auto spec = [this] { return x32Value ("/-prefs/rta/mode") == "SPEC"; };
+    KnobBinding mode;
+    mode.label = "DISPLAY";
+    mode.get = [spec] { return spec() ? 1.0f : 0.0f; };
+    mode.set = [this] (float v) { x32Run (v >= 0.5f ? "/-prefs/rta/mode SPEC" : "/-prefs/rta/mode BAR"); };
+    mode.text = [spec] { return spec() ? juce::String ("Spectrograph") : juce::String ("Bargraph"); };
+    mode.steps = 2.0f;
+    encoders[1] = encoder (mode, "SPECTROGRAPH", [this, spec] { x32Run (spec() ? "/-prefs/rta/mode BAR" : "/-prefs/rta/mode SPEC"); }, spec);
+
+    KnobBinding decay;
+    decay.label = "DECAY";
+    decay.get = [this] { return juce::jlimit (0.0f, 1.0f, std::log (juce::jmax (0.25f, x32Value ("/-prefs/rta/decay").getFloatValue()) / 0.25f) / std::log (64.0f)); };
+    decay.set = [this, &rta] (float v)
+    {
+        const float time = 0.25f * std::pow (64.0f, juce::jlimit (0.0f, 1.0f, v));
+        x32Run ("/-prefs/rta/decay " + juce::String (time, 2));
+        rta.decay = time < 0.7f ? 2 : time < 3.0f ? 1 : 0; // the engine's FAST, MED and SLOW
+    };
+    decay.text = [this] { return x32Value ("/-prefs/rta/decay"); };
+    decay.steps = 19.0f;
+    encoders[2] = encoder (decay, "FREEZE", [&engine] { auto a = engine.getAnalysis(); a.setFrozen (! a.isFrozen()); },
+                           [&engine] { return engine.getAnalysis().isFrozen(); });
+
+    KnobBinding gain;
+    gain.label = "GAIN";
+    gain.get = [&rta] { return juce::jlimit (0.0f, 1.0f, rta.gainDb.load() / 60.0f); };
+    gain.set = [this, &rta] (float v)
+    {
+        const float db = 6.0f * (float) juce::roundToInt (juce::jlimit (0.0f, 1.0f, v) * 10.0f);
+        rta.gainDb = db;
+        x32Run ("/-prefs/rta/gain " + juce::String (juce::roundToInt (db)));
+    };
+    gain.text = [&rta] { return rta.autogain.load() ? juce::String ("Auto") : juce::String (juce::roundToInt (rta.gainDb.load())) + " dB"; };
+    gain.steps = 11.0f;
+    encoders[3] = encoder (gain, "AUTO GAIN", [this, &rta]
+    {
+        rta.autogain = ! rta.autogain.load();
+        x32Run (rta.autogain.load() ? "/-prefs/rta/autogain ON" : "/-prefs/rta/autogain OFF");
+    }, isOn (rta.autogain));
+
+    const auto post = [this] { return x32Value ("/-prefs/rta/pos") == "POST"; };
+    encoders[4] = encoder (enumKnob ("EQ OVERLAY", "/-prefs/rta/visibility", rtaVisibilities()), "POST EQ",
+                           [this, post] { x32Run (post() ? "/-prefs/rta/pos PRE" : "/-prefs/rta/pos POST"); updateRta(); }, post);
+
+    // The source: the selected channel (the document's 0, "none", and 1, the monitor,
+    // whose path Sidecar's analyser doesn't take), or a fixed strip.
+    const auto current = [this] { return juce::jlimit (0, 73, x32Int ("/-prefs/rta/source", 0)); };
+    if (rtaSourcePick < 0)
+        rtaSourcePick = current();
+    KnobBinding source;
+    source.label = "SOURCE";
+    source.get = [this] { return (float) rtaSourcePick / 73.0f; };
+    source.set = [this] (float v) { rtaSourcePick = juce::jlimit (0, 73, juce::roundToInt (v * 73.0f)); repaint(); };
+    source.text = [this]
+    {
+        if (rtaSourcePick < 2)
+            return juce::String (rtaSourcePick == 0 ? "Selected" : "Monitor");
+        auto* strip = stripAtX32Index (rtaSourcePick - 2);
+        return strip != nullptr ? strip->getLabel() : juce::String (rtaSourcePick);
+    };
+    source.steps = 74.0f;
+    encoders[5] = encoder (source, "SET", [this]
+    {
+        x32Run ("/-prefs/rta/source " + juce::String (rtaSourcePick));
+        updateRta();
+    }, [this, current] { return current() == rtaSourcePick; });
+}
+
+namespace
+{
+    /** The RTA's gain as drawn: by hand, or (AUTO GAIN) what lifts the loudest band to 6 dB under the top. */
+    float rtaGainFor (const ld::RtaViewSettings& rta, const float* levels, int count)
+    {
+        if (! rta.autogain.load())
+            return rta.gainDb.load();
+        float top = -144.0f;
+        for (int k = 0; k < count; ++k)
+            top = juce::jmax (top, levels[k]);
+        return top > -120.0f ? juce::jlimit (0.0f, 60.0f, -6.0f - top) : 0.0f;
+    }
+}
+
+void Display::paintRtaBars (juce::Graphics& g, juce::Rectangle<float> area, float alpha)
+{
+    // A bar a band (20 Hz to 20 kHz across), its peak a line over it.
+    Analysis::Bands bands;
+    ctx.engine.getAnalysis().read (bands);
+    const float gain = rtaGainFor (ctx.engine.getAnalysis().settings (ld::kRtaViewHome), bands.peaks.data(), Analysis::numBands);
+    const auto xOf = [&area] (float hz) { return area.getX() + area.getWidth() * juce::jlimit (0.0f, 1.0f, std::log (juce::jmax (20.0f, hz) / 20.0f) / std::log (1000.0f)); };
+    const auto yOf = [&area, gain] (float db) { return area.getBottom() - area.getHeight() * juce::jlimit (0.0f, 1.0f, (db + gain + 90.0f) / 90.0f); };
+    for (int k = 0; k < Analysis::numBands; ++k)
+    {
+        const float x0 = xOf (Analysis::bandLowHz (k)), x1 = xOf (Analysis::bandHighHz (k));
+        if (x1 <= x0)
+            continue;
+        const float w = juce::jmax (1.0f, x1 - x0 - 0.5f);
+        const float y = yOf (bands.levels[(size_t) k]);
+        g.setColour (juce::Colour (0xffff9a1f).withAlpha (alpha));
+        g.fillRect (juce::Rectangle<float> (x0, y, w, area.getBottom() - y));
+        g.setColour (kSky.withAlpha (alpha));
+        g.fillRect (juce::Rectangle<float> (x0, yOf (bands.peaks[(size_t) k]) - 1.0f, w, 2.0f));
+    }
+}
+
+void Display::paintSpectrograph (juce::Graphics& g, juce::Rectangle<float> area, float alpha)
+{
+    // The last ten seconds, the newest at the bottom: a row a timer tick, a column a
+    // band, the level as a colour from blue (quiet) to red.
+    constexpr int rows = 150;
+    const int n = juce::jmin (rows, (int) rtaHistory.size());
+    if (n == 0 || area.isEmpty())
+        return;
+    const auto& newest = rtaHistory.back();
+    const float gain = rtaGainFor (ctx.engine.getAnalysis().settings (ld::kRtaViewHome), newest.data(), (int) newest.size());
+    juce::Image image (juce::Image::RGB, Analysis::numBands, rows, true);
+    {
+        juce::Image::BitmapData data (image, juce::Image::BitmapData::writeOnly);
+        for (int r = 0; r < n; ++r)
+        {
+            const auto& row = rtaHistory[rtaHistory.size() - (size_t) n + (size_t) r];
+            const int y = rows - n + r;
+            for (int k = 0; k < Analysis::numBands && k < (int) row.size(); ++k)
+            {
+                const float v = juce::jlimit (0.0f, 1.0f, (row[(size_t) k] + gain + 90.0f) / 90.0f);
+                data.setPixelColour (k, y, juce::Colour::fromHSV (0.66f * (1.0f - v), 1.0f, juce::jmin (1.0f, 0.1f + 1.3f * v), 1.0f));
+            }
+        }
+    }
+    g.setOpacity (alpha);
+    g.setImageResamplingQuality (juce::Graphics::lowResamplingQuality);
+    g.drawImage (image, area);
+    g.setOpacity (1.0f);
+}
+
+void Display::paintRta (juce::Graphics& g, juce::Rectangle<int> r)
+{
+    // The check boxes at the left under their headings (Channel EQ, Graphic EQ, RTA
+    // Source), the analyser beside them.
+    auto area = pageFrame (g, r).toFloat();
+    auto side = area.removeFromLeft (juce::jmax (118.0f, area.getWidth() * 0.22f));
+    area.removeFromLeft (8.0f);
+    const int bits = x32Bits (x32Value ("/-prefs/rta/option"));
+    static const char* const heads[] = { "Channel EQ", nullptr, "Graphic EQ", nullptr, nullptr, "RTA Source" };
+    const float rowH = juce::jlimit (10.0f, 14.0f, (side.getHeight() - 30.0f) / 9.0f);
+    for (int k = 0; k < 6; ++k)
+    {
+        if (heads[k] != nullptr)
+        {
+            g.setColour (kNavy);
+            g.setFont (type::font (juce::jmin (9.5f, rowH), true));
+            g.drawText (heads[k], side.removeFromTop (rowH), juce::Justification::centredLeft);
+        }
+        auto row = side.removeFromTop (rowH);
+        if (k == rtaOption)
+        {
+            g.setColour (kGr);
+            g.drawRect (row, 1.0f);
+        }
+        g.setColour (kNavy);
+        checkBox (g, row.reduced (1.0f), rtaOptions()[k], (bits & (1 << k)) != 0);
+    }
+    auto* strip = rtaStrip();
+    g.setColour (kNavy);
+    g.setFont (type::font (9.5f, true));
+    g.drawFittedText ("Source: " + (strip != nullptr ? strip->getLabel() : juce::String ("select a strip")) + "\n"
+                          + (x32Value ("/-prefs/rta/pos") == "PRE" ? "Pre EQ" : "Post EQ") + (ctx.engine.getAnalysis().isFrozen() ? "  (frozen)" : ""),
+                      side.removeFromBottom (juce::jmin (26.0f, side.getHeight())).toNearestInt(), juce::Justification::centredLeft, 2, 0.7f);
+    g.setColour (kWell);
+    g.fillRect (area);
+    if (x32Value ("/-prefs/rta/mode") == "SPEC")
+        paintSpectrograph (g, area.reduced (1.0f), 1.0f);
+    else
+        paintRtaBars (g, area.reduced (1.0f), 1.0f);
+}
+
+void Display::paintOverChildren (juce::Graphics& g)
+{
+    // The RTA over the channel EQ (`/-prefs/rta/visibility`, 25 to 80 %), as bars or as
+    // the spectrograph (an X32 draws it behind the curve; here it lies over the graph).
+    if (eqView.isVisible() && rtaShown)
+    {
+        const float alpha = juce::jlimit (0.0f, 0.8f, x32Value ("/-prefs/rta/visibility").getFloatValue() / 100.0f) * 0.6f;
+        if (alpha > 0.0f)
+        {
+            const auto area = eqView.getBounds().toFloat();
+            if (x32Value ("/-stat/rtamodeeq") == "SPEC")
+                paintSpectrograph (g, area, alpha);
+            else
+                paintRtaBars (g, area, alpha);
+        }
+    }
+    // The screen's brightness (`/-prefs/bright`, SETUP > global).
+    const float dark = 1.0f - lcdBrightness();
+    if (dark > 0.01f)
+    {
+        g.setColour (juce::Colours::black.withAlpha (dark * 0.75f));
+        g.fillRect (screenArea);
+    }
+}
+
+//==============================================================================
+// SETUP's pages
+
+void Display::assignSetupGlobalEncoders()
+{
+    // GLOBAL's right half (manual 7.5.1): 4 INITIALIZE, the item turned, pushed twice (the
+    // first push arms it); 5 the time and date, the computer's; 6 the brightness of the
+    // screen or of the LEDs (`/-prefs/bright`, `ledbright`), its push between the two.
+    static const juce::StringArray initItems { "Console", "Show Data", "Libraries" };
+    KnobBinding init;
+    init.label = "INITIALIZE";
+    init.get = [this] { return (float) initItem / 2.0f; };
+    init.set = [this] (float v)
+    {
+        initItem = juce::jlimit (0, 2, juce::roundToInt (v * 2.0f));
+        initArmedItem = -1;
+        globalStatus = {};
+        repaint();
+    };
+    init.text = [this] { return initItems[initItem]; };
+    init.steps = 3.0f;
+    encoders[3] = encoder (init, "INIT", [this] { initialize (initItem); }, [this] { return initArmedItem == initItem; });
+    encoders[4] = dimmedEncoder ("TIME", juce::Time::getCurrentTime().formatted ("%H:%M"), "NEXT");
+    const auto path = [this] { return juce::String (brightnessLed ? "/-prefs/ledbright" : "/-prefs/bright"); };
+    KnobBinding bright;
+    bright.label = "BRIGHTNESS";
+    bright.get = [this, path] { return juce::jlimit (0.0f, 1.0f, (x32Value (path()).getFloatValue() - 10.0f) / 90.0f); };
+    bright.set = [this, path] (float v) { x32Run (path() + " " + juce::String (10 + 5 * juce::roundToInt (juce::jlimit (0.0f, 1.0f, v) * 18.0f))); };
+    bright.text = [this, path] { return juce::String (brightnessLed ? "LED " : "LCD ") + x32Value (path()) + "%"; };
+    bright.steps = 19.0f;
+    encoders[5] = encoder (bright, "LCD / LED", [this] { brightnessLed = ! brightnessLed; repaint(); }, [this] { return brightnessLed; });
+}
+
+void Display::initialize (int item)
+{
+    if (item == 2)
+    {
+        // Sidecar's library is a folder of the user's files: nothing is deleted from here.
+        initArmedItem = -1;
+        globalStatus = "Libraries: the library folder's files stay (delete them there)";
+        repaint();
+        return;
+    }
+    if (initArmedItem != item)
+    {
+        initArmedItem = item;
+        globalStatus = juce::String ("Push INIT again to initialize ") + (item == 0 ? "every strip of the console" : "the show data");
+        repaint();
+        return;
+    }
+    initArmedItem = -1;
+    if (item == 0)
+    {
+        // Every strip back to an X32's factory values (its source stays), as UTILITY's INIT does one.
+        int done = 0;
+        for (auto* strip : recallStrips())
+            if (const auto address = x32Address (*strip); address.isNotEmpty() && ctx.engine.getWing().initX32Channel (address))
+                ++done;
+        globalStatus = done > 0 ? "Initialized " + juce::String (done) + " strips" : juce::String ("The console isn't an X32");
+        refreshStrip();
+    }
+    else
+    {
+        globalStatus = "Show data: a new show";
+        if (ctx.newShow)
+            ctx.newShow(); // asks before it drops unsaved changes
+    }
+    repaint();
+}
+
+void Display::assignNetworkEncoders()
+{
+    // NETWORK (manual 7.5.4): 1 the field, 2-5 its four numbers, the sixth push applies
+    // them. Kept as `/-prefs/ip` for a remote that reads them; the computer's own
+    // address is set in its network settings and shown beside them.
+    static const juce::StringArray fields { "IP Address", "Subnet Mask", "Gateway" };
+    KnobBinding field;
+    field.label = "SELECT";
+    field.get = [this] { return (float) netField / 2.0f; };
+    field.set = [this] (float v)
+    {
+        netField = juce::jlimit (0, 2, juce::roundToInt (v * 2.0f));
+        netPending.fill (-1);
+        assignEncoders();
+    };
+    field.text = [this] { return fields[netField]; };
+    field.steps = 3.0f;
+    encoders[0] = encoder (field);
+    const juce::String node = juce::String ("/-prefs/ip/") + kIpNodes[juce::jlimit (0, 2, netField)] + "/";
+    for (int k = 0; k < 4; ++k)
+    {
+        const auto value = [this, node, k] { return netPending[(size_t) k] >= 0 ? netPending[(size_t) k] : x32Int (node + juce::String (k), 0); };
+        KnobBinding b;
+        b.label = "FIELD " + juce::String (k + 1);
+        b.get = [value] { return (float) value() / 255.0f; };
+        b.set = [this, k] (float v) { netPending[(size_t) k] = juce::roundToInt (juce::jlimit (0.0f, 1.0f, v) * 255.0f); repaint(); };
+        b.text = [value] { return juce::String (value()); };
+        b.steps = 256.0f;
+        encoders[(size_t) k + 1] = encoder (b);
+    }
+    encoders[5] = encoder ({}, "APPLY", [this, node]
+    {
+        for (int k = 0; k < 4; ++k)
+            if (netPending[(size_t) k] >= 0)
+                x32Run (node + juce::String (k) + " " + juce::String (netPending[(size_t) k]));
+        netPending.fill (-1);
+    }, [this] { return std::any_of (netPending.begin(), netPending.end(), [] (int v) { return v >= 0; }); });
+}
+
+void Display::assignIqEncoders()
+{
+    // iQ SETUP (manual 7.4.4): 1 the P16 channel, 3 the speaker on it, 4 its EQ preset, 5
+    // the sound profile it models, 6 back (2, the group, is the document's). Kept as
+    // `/outputs/p16/NN/iQ`: no Turbosound iQ speaker listens on a computer's P16.
+    selectedOutput = juce::jlimit (0, 15, selectedOutput);
+    KnobBinding pick;
+    pick.label = "P16";
+    pick.get = [this] { return (float) selectedOutput / 15.0f; };
+    pick.set = [this] (float v)
+    {
+        selectedOutput = juce::jlimit (0, 15, juce::roundToInt (v * 15.0f));
+        assignEncoders();
+    };
+    pick.text = [this] { return "P16 " + juce::String (selectedOutput + 1); };
+    pick.steps = 16.0f;
+    encoders[0] = encoder (pick);
+    const juce::String node = "/outputs/p16/" + two (selectedOutput + 1) + "/iQ/";
+    static const juce::StringArray groups { "OFF", "A", "B" };
+    static const juce::StringArray eqs { "Linear", "Live", "Speech", "Playback", "User" };
+    encoders[1] = encoder (enumKnob ("GROUP", node + "group", groups));
+    encoders[2] = encoder (enumKnob ("SPEAKER", node + "speaker", iqSpeakers()));
+    encoders[3] = encoder (enumKnob ("EQ PRESET", node + "eq", eqs));
+    encoders[4] = encoder (intKnob ("SOUND", node + "model", 0, 8, [] (int v) { return "Profile " + juce::String (v + 1); }));
+    encoders[5] = encoder ({}, "IQ SETUP", [this] { iqSetup = false; assignEncoders(); }, [] { return true; });
+}
+
+void Display::paintIqSetup (juce::Graphics& g, juce::Rectangle<int> r)
+{
+    // The sixteen P16 channels in two columns: each one's speaker, EQ preset and profile.
+    auto columns = r;
+    for (int c = 0; c < 2; ++c)
+    {
+        auto area = columns.removeFromLeft (c == 0 ? r.getWidth() / 2 : columns.getWidth()).reduced (c == 0 ? 0 : 4, 0);
+        juce::StringArray left, right;
+        for (int i = 8 * c; i < 8 * c + 8; ++i)
+        {
+            const juce::String node = "/outputs/p16/" + two (i + 1) + "/iQ/";
+            const auto speaker = x32Value (node + "speaker");
+            left.add ((i == selectedOutput ? "> P16 " : "P16 ") + juce::String (i + 1));
+            right.add (speaker == "none" || speaker.isEmpty() ? juce::String ("no iQ speaker")
+                                                              : speaker + "  " + x32Value (node + "eq") + "  profile " + juce::String (x32Int (node + "model", 0) + 1));
+        }
+        paintRows (g, area, left, right);
+    }
+}
+
+//==============================================================================
+// USB > config: the recorder's inputs
+
+void Display::assignUsbConfigEncoders()
+{
+    // Manual 7.11.2: 2 the recorder's side, left or right (the X32's input trim has no
+    // counterpart in Sidecar's recorder); 3 the category and 4 the signal that side
+    // records; 5 its tap point. `/outputs/rec/01` and `02` keep them, and the app's
+    // recorder takes the signal (a monitor signal or the talkback: nothing).
+    const juce::String p = "/outputs/rec/" + two (usbRecSide + 1);
+    KnobBinding side;
+    side.label = usbRecSide == 0 ? "INPUT LEFT" : "INPUT RIGHT";
+    encoders[1] = encoder (side, "L / R", [this] { usbRecSide = 1 - usbRecSide; assignEncoders(); }, [this] { return usbRecSide == 1; });
+    const int last = outputSources().size() - 1;
+    const auto shown = [this, p, last] { return juce::jlimit (0, last, x32Int (p + "/src", 0)); };
+    const auto assign = [this, p] (int source)
+    {
+        x32Run (p + "/src " + juce::String (source));
+        UsbRecorder::Tap tap;
+        const auto strip = [&tap] (StripKind kind, int number, int channel)
+        {
+            tap.kind = UsbRecorder::Tap::Kind::Strip;
+            tap.stripKind = kind;
+            tap.stripNumber = number;
+            tap.channel = channel;
+        };
+        if (source == 1 || source == 2)
+            strip (StripKind::Main, 1, source - 1);
+        else if (source == 3)
+            strip (StripKind::Main, 2, 0);
+        else if (source >= 4 && source <= 19)
+            strip (StripKind::Bus, source - 3, 0);
+        else if (source >= 20 && source <= 25)
+            strip (StripKind::Matrix, source - 19, 0);
+        else if (source >= 26 && source <= 57)
+            strip (StripKind::Channel, source - 25, 0);
+        else if (source >= 58 && source <= 73)
+            strip (StripKind::Aux, source - 57, 0); // aux in 1-8, then the FX returns
+        ctx.engine.getUsbRecorder().setTap (usbRecSide, tap);
+    };
+    KnobBinding category;
+    category.label = "CATEGORY";
+    category.get = [shown] { return (float) categoryOf (shown()) / 5.0f; };
+    category.set = [this, assign, shown] (float v)
+    {
+        const int to = juce::jlimit (0, 5, juce::roundToInt (v * 5.0f));
+        if (to != categoryOf (shown()))
+            assign (kSourceCategories[to].first);
+        assignEncoders();
+    };
+    category.text = [shown] { return juce::String (kSourceCategories[categoryOf (shown())].name); };
+    category.steps = 6.0f;
+    encoders[2] = encoder (category);
+    const auto c = kSourceCategories[categoryOf (shown())];
+    const int span = c.last - c.first;
+    KnobBinding signal;
+    signal.label = "SOURCE";
+    signal.get = [shown, c, span] { return span > 0 ? (float) (shown() - c.first) / (float) span : 0.0f; };
+    signal.set = [assign, c, span] (float v) { assign (c.first + juce::roundToInt (juce::jlimit (0.0f, 1.0f, v) * (float) span)); };
+    signal.text = [shown] { return outputSources()[shown()]; };
+    signal.steps = (float) (span + 1);
+    encoders[3] = encoder (signal);
+    encoders[4] = encoder (enumKnob ("TAP", p + "/pos", kOutputTaps));
+}
+
+//==============================================================================
+// SCENES > snippets (manual 7.13.3)
+
+std::vector<Strip*> Display::snippetStrips() const
+{
+    std::vector<Strip*> out;
+    for (auto* strip : recallStrips())
+        if (std::find (snippetChecked.begin(), snippetChecked.end(), strip) != snippetChecked.end())
+            out.push_back (strip);
+    if (out.empty())
+        if (auto* strip = selected())
+            out.push_back (strip);
+    return out;
+}
+
+int Display::saveSnippet (int slot, const juce::String& name)
+{
+    auto& show = ctx.show;
+    const auto scene = show.getScene (selectedScene);
+    if (! scene.has_value())
+    {
+        sceneStatus = "No scene to keep the snippet in";
+        repaint();
+        return -1;
+    }
+    if (juce::isPositiveAndBelow (slot, scene->numSnippets))
+    {
+        // An existing one: the console into it, as it was scoped.
+        show.storeSnippet (selectedScene, slot);
+        if (name.isNotEmpty())
+            show.setSnippetName (selectedScene, slot, name);
+        selectedSnippet = slot;
+        sceneStatus = "Saved snippet " + two (slot + 1);
+    }
+    else
+    {
+        const auto strips = snippetStrips();
+        if (strips.empty())
+        {
+            sceneStatus = "Select a strip, or check the channels to save";
+            repaint();
+            return -1;
+        }
+        std::vector<state::StripRef> refs;
+        for (auto* strip : strips)
+            refs.push_back (state::StripRef::of (*strip));
+        const auto sections = snippetScope != 0 ? snippetScope : state::AllSections & ~(juce::uint32) state::Routing;
+        selectedSnippet = show.addSnippet (selectedScene, name.isNotEmpty() ? name : strips.front()->getLabel(), sections, refs);
+        snippetSlot = selectedSnippet;
+        sceneStatus = "Saved snippet " + two (selectedSnippet + 1);
+    }
+    assignEncoders();
+    repaint();
+    return selectedSnippet;
+}
+
+void Display::assignSnippetEncoders()
+{
+    // The selected scene's snippets (an X32's belong to the show, Sidecar's to a
+    // scene): 1 a snippet, LOAD; 2 a slot, SAVE (a new one asks its name); 3-5 what a
+    // new one holds: the parameters, the inputs and the outputs, each checked by its
+    // push (nothing checked: every parameter but the routing, of the selected strip).
+    // Layer 2, Sidecar's own: FIRE (recalled with its scene) and DELETE.
+    auto& show = ctx.show;
+    const auto refresh = [this] { assignEncoders(); repaint(); };
+    const auto scene = show.getScene (selectedScene);
+    const int snippets = scene.has_value() ? scene->numSnippets : 0;
+    const auto ok = [this, &show]
+    {
+        const auto sc = show.getScene (selectedScene);
+        return sc.has_value() && juce::isPositiveAndBelow (selectedSnippet, sc->numSnippets);
+    };
+    const auto name = [this, &show, snippets]
+    {
+        const auto snip = snippets > 0 ? show.getSnippet (selectedScene, selectedSnippet) : std::optional<Show::Snippet>();
+        return snip.has_value() ? two (selectedSnippet + 1) + " " + snip->name : juce::String ("-");
+    };
+    if (layer == 1)
+    {
+        encoders[0] = encoder (pickKnob ("SNIPPET", selectedSnippet, snippets, name, refresh), "FIRE", [this, &show, ok]
+        {
+            if (ok())
+                show.setSnippetFireWithScene (selectedScene, selectedSnippet, ! show.getSnippet (selectedScene, selectedSnippet)->fireWithScene);
+            repaint();
+        }, [this, &show, ok] { return ok() && show.getSnippet (selectedScene, selectedSnippet)->fireWithScene; });
+        encoders[1] = encoder ({}, "DELETE", [this, &show, ok]
+        {
+            if (ok())
+                show.removeSnippet (selectedScene, selectedSnippet);
+            assignEncoders();
+        });
+        return;
+    }
+    encoders[0] = encoder (pickKnob ("SNIPPET", selectedSnippet, snippets, name, refresh), "LOAD",
+                           [this, &show, ok] { if (ok()) show.recallSnippet (selectedScene, selectedSnippet); repaint(); });
+    encoders[1] = encoder (pickKnob ("SLOT", snippetSlot, snippets + 1, [this, snippets] { return two (snippetSlot + 1) + (snippetSlot >= snippets ? " (NEW)" : ""); }, refresh),
+                           "SAVE", [this, snippets]
+    {
+        if (snippetSlot < snippets)
+        {
+            saveSnippet (snippetSlot, {});
+            return;
+        }
+        const auto strips = snippetStrips();
+        auto* w = new juce::AlertWindow ("SAVE SNIPPET", "Snippet " + two (snippetSlot + 1) + ":", juce::MessageBoxIconType::NoIcon, this);
+        w->addTextEditor ("name", strips.empty() ? juce::String ("Snippet") : strips.front()->getLabel(), "Name:");
+        w->addButton ("SAVE", 1, juce::KeyPress (juce::KeyPress::returnKey));
+        w->addButton ("CANCEL", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+        juce::Component::SafePointer<Display> safe (this);
+        const int slot = snippetSlot;
+        w->enterModalState (true, juce::ModalCallbackFunction::create ([safe, w, slot] (int result)
+        {
+            if (result != 0 && safe != nullptr)
+                safe->saveSnippet (slot, w->getTextEditorContents ("name").trim());
+        }), true);
+    });
+    encoders[2] = encoder (pickKnob ("PARAMETERS", snippetRows[0], state::kNumSections,
+                                     [this] { return juce::String (state::sectionName (state::sectionAt (snippetRows[0]))).toUpperCase(); }, [this] { repaint(); }),
+                           "CHECK", [this] { snippetScope ^= (juce::uint32) state::sectionAt (snippetRows[0]); repaint(); },
+                           [this] { return (snippetScope & (juce::uint32) state::sectionAt (snippetRows[0])) != 0; });
+    std::vector<Strip*> inputs, outputs;
+    for (auto* strip : recallStrips())
+        (strip->isInput() ? inputs : outputs).push_back (strip);
+    const auto column = [this] (const char* label, int& row, std::vector<Strip*> list)
+    {
+        const auto checked = [this, &row, list]
+        {
+            return ! list.empty() && std::find (snippetChecked.begin(), snippetChecked.end(), list[(size_t) juce::jlimit (0, (int) list.size() - 1, row)]) != snippetChecked.end();
+        };
+        return encoder (pickKnob (label, row, (int) list.size(), [&row, list] { return list.empty() ? juce::String ("-") : list[(size_t) juce::jlimit (0, (int) list.size() - 1, row)]->getLabel(); },
+                                  [this] { repaint(); }),
+                        "CHECK", [this, &row, list]
+        {
+            if (list.empty())
+                return;
+            const Strip* strip = list[(size_t) juce::jlimit (0, (int) list.size() - 1, row)];
+            const auto at = std::find (snippetChecked.begin(), snippetChecked.end(), strip);
+            if (at != snippetChecked.end())
+                snippetChecked.erase (at);
+            else
+                snippetChecked.push_back (strip);
+            repaint();
+        }, checked);
+    };
+    encoders[3] = column ("INPUTS", snippetRows[1], inputs);
+    encoders[4] = column ("OUTPUTS", snippetRows[2], outputs);
+}
+
+void Display::paintSnippets (juce::Graphics& g, juce::Rectangle<int> r)
+{
+    // The selected scene's snippets at the left (FIRE marks those recalled with it),
+    // the scope a new one takes beside them: a column of check boxes an encoder.
+    auto& show = ctx.show;
+    auto area = r.reduced (10);
+    if (sceneStatus.isNotEmpty())
+    {
+        g.setColour (kDeep);
+        g.setFont (type::font (10.0f));
+        g.drawFittedText (sceneStatus, area.removeFromBottom (14), juce::Justification::centredLeft, 1, 0.8f);
+    }
+    auto listArea = area.removeFromLeft (area.getWidth() * 2 / 5);
+    area.removeFromLeft (6);
+    juce::StringArray left, right;
+    const auto scene = show.getScene (selectedScene);
+    left.add ("SCENE " + two (selectedScene + 1));
+    right.add (scene.has_value() ? scene->name : juce::String ("-"));
+    const int n = scene.has_value() ? scene->numSnippets : 0;
+    for (int k = 0; k < n; ++k)
+        if (const auto snip = show.getSnippet (selectedScene, k))
+        {
+            left.add ((k == selectedSnippet ? "> " : "  ") + two (k + 1) + (snip->fireWithScene ? "  FIRE" : ""));
+            right.add (snip->name);
+        }
+    if (n == 0)
+    {
+        left.add ("No snippets");
+        right.add ("SAVE makes one");
+    }
+    paintRows (g, listArea, left, right);
+
+    std::vector<SafeColumn> columns { { "Parameters", {} }, { "Inputs", {} }, { "Outputs", {} } };
+    for (int k = 0; k < state::kNumSections; ++k)
+    {
+        const auto bit = (juce::uint32) state::sectionAt (k);
+        columns[0].items.push_back ({ juce::String (state::sectionName (state::sectionAt (k))), [this, bit] { return (snippetScope & bit) != 0; }, {} });
+    }
+    for (auto* strip : recallStrips())
+        columns[strip->isInput() ? 1 : 2].items.push_back (
+            { strip->getLabel(), [this, strip] { return std::find (snippetChecked.begin(), snippetChecked.end(), strip) != snippetChecked.end(); }, {} });
+    paintSafeColumns (g, area.toFloat(), columns, snippetRows.data(), "Nothing checked: every parameter but the routing, of the selected strip.");
+}
+
+//==============================================================================
+// EFFECTS: the home tab's slots, a device's face, EQ on faders
+
+juce::String Display::geqBandName (int band)
+{
+    static const char* const names[] = { "20",  "25",  "31.5", "40",  "50",  "63",   "80",  "100", "125", "160", "200",
+                                         "250", "315", "400",  "500", "630", "800",  "1k",  "1k25", "1k6", "2k",  "2k5",
+                                         "3k15", "4k", "5k",   "6k3", "8k",  "10k",  "12k5", "16k", "20k" };
+    return names[juce::jlimit (0, 30, band)];
+}
+
+bool Display::isGraphicEq (int slot) const
+{
+    auto& fx = ctx.engine.getFx();
+    if (! juce::isPositiveAndBelow (slot, fx.getNumSlots()))
+        return false;
+    const int m = fx.getModel (slot);
+    if (m <= ld::kFxExt)
+        return false;
+    const auto& token = models::model (models::Fx, m).token;
+    return token == "X32GEQ2" || token == "X32GEQ" || token == "X32TEQ2" || token == "X32TEQ";
+}
+
+std::vector<int> Display::geqBands (int slot) const
+{
+    std::vector<int> bands;
+    if (! isGraphicEq (slot))
+        return bands;
+    const auto& model = models::model (models::Fx, ctx.engine.getFx().getModel (slot));
+    for (int k = 0; k < (int) model.params.size(); ++k)
+        if (model.params[(size_t) k].id.startsWith ("band_"))
+            bands.push_back (k);
+    return bands;
+}
+
+void Display::showGeqOnFaders (int slot, int firstBand)
+{
+    geqSlot = slot >= 0 && isGraphicEq (slot) ? slot : -1;
+    geqFirst = juce::jlimit (0, 27, firstBand);
+    // The faders take eight bands (the last window starts at the 24th); a dual EQ's side
+    // is the one its page shows.
+    const int window = juce::jmin (23, geqFirst);
+    int set = 0;
+    auto& wing = ctx.engine.getWing();
+    wing.runX32Text (juce::String ("/-stat/geqonfdr ") + (geqSlot >= 0 ? "ON" : "OFF"), set);
+    if (geqSlot >= 0)
+        wing.runX32Text ("/-stat/geqpos " + juce::String (((geqSlot + 1) << 8) | window), set);
+    const bool sideB = geqSlot >= 0 && geqBands (geqSlot).size() > 31 && screen == Screen::Effects && tab == geqSlot + 1 && layer == 1;
+    if (setGeqOnFaders)
+        setGeqOnFaders (geqSlot, (sideB ? 31 : 0) + window);
+    assignEncoders();
+    repaint();
+}
+
+void Display::paintEffectsHome (juce::Graphics& g, juce::Rectangle<int> r)
+{
+    // The eight slots, four to a row: each one's sources (FX 1-4 take a mix bus or an
+    // insert, FX 5-8 are inserts) and its effect; the slot the encoders set outlined.
+    auto& fx = ctx.engine.getFx();
+    auto area = r.reduced (8, 4).toFloat();
+    const int slots = juce::jmin (8, fx.getNumSlots());
+    const float w = area.getWidth() / 4.0f, h = area.getHeight() / 2.0f;
+    for (int i = 0; i < slots; ++i)
+    {
+        const auto cell = juce::Rectangle<float> (area.getX() + w * (float) (i % 4), area.getY() + h * (float) (i / 4), w, h).reduced (3.0f);
+        auto in = block (g, cell, "FX " + juce::String (i + 1));
+        if (i == selectedFx)
+        {
+            g.setColour (kGr);
+            g.drawRoundedRectangle (cell.reduced (0.75f), 4.0f, 2.0f);
+        }
+        const int m = fx.getModel (i);
+        const bool pending = i == selectedFx && pendingFxModel >= 0;
+        const auto name = pending ? models::model (models::Fx, pendingFxModel).name : m > ld::kFxExt ? models::model (models::Fx, m).name : juce::String ("-");
+        // The effect on a navy plate (amber while it waits for ASSIGN).
+        auto plate = in.removeFromBottom (juce::jmin (30.0f, in.getHeight() * 0.45f));
+        g.setColour (kNavy);
+        g.fillRoundedRectangle (plate, 3.0f);
+        g.setColour (pending ? kAmber : juce::Colours::white);
+        g.setFont (type::font (10.5f, true));
+        g.drawFittedText (name, plate.reduced (3.0f, 1.0f).toNearestInt(), juce::Justification::centred, 2, 0.7f);
+        in.removeFromBottom (3.0f);
+        const float rowH = juce::jmin (14.0f, in.getHeight() / 2.0f);
+        for (int side = 0; side < 2; ++side)
+        {
+            auto row = in.removeFromTop (rowH);
+            const auto source = i < 4 ? x32Value ("/fx/" + juce::String (i + 1) + (side == 0 ? "/source/l" : "/source/r")) : juce::String ("INS");
+            g.setColour (kNavy);
+            g.setFont (type::font (juce::jmin (9.5f, rowH), true));
+            g.drawText (side == 0 ? "L" : "R", row.removeFromLeft (12.0f), juce::Justification::centred);
+            const bool send = source.isNotEmpty() && source != "INS";
+            chip (g, row.reduced (2.0f, 1.0f), send ? source : juce::String ("Insert"), send);
+        }
+    }
+}
+
+void Display::paintFxPanel (juce::Graphics& g, juce::Rectangle<int> r, int slot)
+{
+    // As the EFFECTS photographs: a strip along the top (the slot, its sources, the
+    // effect's name), then the device's face: a rack unit in navy, its name at the left,
+    // every control on it, this layer's six lit. A graphic EQ: its 31 sliders and the
+    // level, the four bands on the encoders boxed. (Sidecar's drawing of each device.)
+    auto& fx = ctx.engine.getFx();
+    const int m = fx.getModel (slot);
+    auto area = r.reduced (6, 3).toFloat();
+    auto head = block (g, area.removeFromTop (30.0f), {}).reduced (2.0f, 1.0f);
+    area.removeFromTop (3.0f);
+    g.setColour (kNavy);
+    g.setFont (type::font (12.0f, true));
+    g.drawText (juce::String (slot + 1), head.removeFromLeft (16.0f), juce::Justification::centred);
+    {
+        auto sources = head.removeFromLeft (juce::jmin (70.0f, head.getWidth() * 0.2f));
+        const float rowH = sources.getHeight() / 2.0f;
+        for (int side = 0; side < 2; ++side)
+        {
+            const auto source = slot < 4 ? x32Value ("/fx/" + juce::String (slot + 1) + (side == 0 ? "/source/l" : "/source/r")) : juce::String ("INS");
+            const bool send = source.isNotEmpty() && source != "INS";
+            chip (g, sources.removeFromTop (rowH).reduced (1.0f), send ? source : juce::String ("Insert"), send);
+        }
+    }
+    g.setColour (kNavy);
+    g.setFont (type::font (11.0f, true));
+    g.drawFittedText (m > ld::kFxExt ? models::model (models::Fx, m).name : juce::String ("No effect"), head.reduced (8.0f, 0.0f).toNearestInt(),
+                      juce::Justification::centredRight, 1, 0.7f);
+
+    g.setColour (juce::Colour (0xff1b2a5c));
+    g.fillRoundedRectangle (area, 5.0f);
+    g.setColour (juce::Colour (0xff8fa3d8));
+    g.drawRoundedRectangle (area.reduced (1.0f), 5.0f, 1.0f);
+    for (const auto screw : { area.getTopLeft().translated (7.0f, 7.0f), area.getTopRight().translated (-7.0f, 7.0f), area.getBottomLeft().translated (7.0f, -7.0f),
+                              area.getBottomRight().translated (-7.0f, -7.0f) })
+        g.fillEllipse (juce::Rectangle<float> (5.0f, 5.0f).withCentre (screw));
+    if (m <= ld::kFxExt)
+        return;
+    const auto& model = models::model (models::Fx, m);
+    auto& values = fx.params (slot).values;
+    auto face = area.reduced (14.0f, 6.0f);
+
+    if (isGraphicEq (slot))
+    {
+        const auto bands = geqBands (slot);
+        const bool dual = bands.size() > 31;
+        const int side = dual ? juce::jlimit (0, 1, layer) : 0;
+        const auto title = face.removeFromTop (16.0f);
+        g.setColour (juce::Colours::white);
+        g.setFont (type::font (13.0f, true).italicised());
+        g.drawText (model.name.toUpperCase(), title, juce::Justification::centred);
+        if (dual)
+            g.drawText (side == 0 ? "A" : "B", title, juce::Justification::centredLeft);
+        const auto names = face.removeFromBottom (juce::jmin (22.0f, face.getHeight() * 0.25f));
+        const float cw = face.getWidth() / 32.0f;
+        g.setColour (juce::Colours::white.withAlpha (0.25f));
+        g.fillRect (juce::Rectangle<float> (face.getX(), face.getCentreY() - 0.5f, face.getWidth(), 1.0f));
+        for (int k = 0; k < 32; ++k)
+        {
+            int index = -1;
+            if (k == 31)
+                index = model.find (dual ? (side == 0 ? "master_a" : "master_b") : "master");
+            else if (const size_t at = (size_t) (side * 31 + k); at < bands.size())
+                index = bands[at];
+            const auto col = juce::Rectangle<float> (face.getX() + cw * (float) k, face.getY(), cw, face.getHeight());
+            g.setColour (juce::Colours::black.withAlpha (0.6f));
+            g.fillRect (col.withSizeKeepingCentre (2.0f, col.getHeight()));
+            if (index >= 0)
+            {
+                const float v = juce::jlimit (-15.0f, 15.0f, values[index].load());
+                const float y = col.getCentreY() - v / 15.0f * (col.getHeight() * 0.5f - 3.0f);
+                g.setColour (juce::Colours::white);
+                g.fillRoundedRectangle (juce::Rectangle<float> (juce::jmin (9.0f, cw - 2.0f), 6.0f).withCentre ({ col.getCentreX(), y }), 1.5f);
+            }
+            g.setColour (juce::Colours::white.withAlpha (0.85f));
+            g.setFont (type::font (juce::jlimit (6.0f, 8.0f, cw * 0.6f), true));
+            g.drawFittedText (k < 31 ? geqBandName (k) : juce::String ("lvl"), juce::Rectangle<float> (col.getX(), names.getY() + (k % 2 == 0 ? 0.0f : names.getHeight() * 0.5f), cw, names.getHeight() * 0.5f)
+                                                                                    .expanded (cw * 0.45f, 0.0f)
+                                                                                    .toNearestInt(),
+                              juce::Justification::centred, 1, 0.6f);
+        }
+        // The four bands on the encoders, boxed; the eight on the faders under a bar.
+        g.setColour (kAmber);
+        g.drawRect (juce::Rectangle<float> (face.getX() + cw * (float) juce::jlimit (0, 27, geqFirst), face.getY() - 1.0f, cw * 4.0f, face.getHeight() + 2.0f), 1.5f);
+        if (geqSlot == slot)
+            g.fillRect (juce::Rectangle<float> (face.getX() + cw * (float) juce::jmin (23, geqFirst), face.getBottom() + 1.0f, cw * 8.0f, 2.0f));
+        return;
+    }
+
+    auto plate = face.removeFromLeft (juce::jmin (92.0f, face.getWidth() * 0.18f));
+    g.setColour (juce::Colours::white);
+    g.setFont (type::font (13.0f, true).italicised());
+    g.drawFittedText (model.name, plate.reduced (2.0f, 0.0f).toNearestInt(), juce::Justification::centredLeft, 3, 0.7f);
+    const int n = (int) model.params.size();
+    if (n == 0)
+        return;
+    const int perRow = n > 24 ? 12 : 6; // a row a layer of six, while they fit
+    const int rows = juce::jmax (1, (n + perRow - 1) / perRow);
+    const float cw = face.getWidth() / (float) perRow, ch = face.getHeight() / (float) rows;
+    for (int k = 0; k < n; ++k)
+    {
+        const auto& p = model.params[(size_t) k];
+        auto cell = juce::Rectangle<float> (face.getX() + cw * (float) (k % perRow), face.getY() + ch * (float) (k / perRow), cw, ch).reduced (1.0f);
+        const bool mine = k / 6 == layer;
+        if (mine)
+        {
+            g.setColour (kYellow.withAlpha (0.16f));
+            g.fillRoundedRectangle (cell, 3.0f);
+        }
+        const float v = values[k].load();
+        g.setColour (juce::Colours::white.withAlpha (mine ? 1.0f : 0.75f));
+        g.setFont (type::font (juce::jlimit (6.5f, 9.0f, ch * 0.22f), true));
+        g.drawFittedText (titled (p.label), cell.removeFromBottom (juce::jmin (11.0f, ch * 0.26f)).toNearestInt(), juce::Justification::centred, 1, 0.6f);
+        if (ch >= 40.0f)
+        {
+            g.setColour (kDeepText);
+            g.setFont (type::font (juce::jlimit (6.5f, 9.0f, ch * 0.2f), false));
+            g.drawFittedText (p.display (v), cell.removeFromTop (juce::jmin (11.0f, ch * 0.24f)).toNearestInt(), juce::Justification::centred, 1, 0.6f);
+        }
+        if (p.kind == models::ParamKind::Toggle)
+        {
+            chip (g, juce::Rectangle<float> (juce::jmin (34.0f, cell.getWidth() - 4.0f), juce::jmin (13.0f, cell.getHeight())).withCentre (cell.getCentre()),
+                  v > 0.5f ? "On" : "Off", v > 0.5f);
+            continue;
+        }
+        // A knob: a dark cap in a white ring, its pointer yellow.
+        const float radius = juce::jmax (3.0f, juce::jmin (9.0f, cell.getHeight() * 0.4f, cell.getWidth() * 0.3f));
+        const float angle = (juce::jlimit (0.0f, 1.0f, p.toNormalised (v)) - 0.5f) * juce::MathConstants<float>::pi * 5.0f / 3.0f;
+        const auto c = cell.getCentre();
+        const auto cap = juce::Rectangle<float> (2.0f * radius, 2.0f * radius).withCentre (c);
+        g.setColour (juce::Colour (0xff0d1634));
+        g.fillEllipse (cap);
+        g.setColour (juce::Colours::white.withAlpha (0.9f));
+        g.drawEllipse (cap, 1.2f);
+        g.setColour (kYellow);
+        g.drawLine (c.x, c.y, c.x + radius * std::sin (angle), c.y - radius * std::cos (angle), 1.8f);
+    }
+}
+
+void Display::paintMatrixSends (juce::Graphics& g, juce::Rectangle<int> area, Strip& s)
+{
+    // A mix bus's or a main's sends to the six matrices, the four on the encoders marked.
+    const int matrices = juce::jmin (6, (int) ctx.engine.getMatrices().size());
+    if (matrices == 0)
+    {
+        g.setColour (kDim);
+        g.setFont (type::font (type::kLabel));
+        g.drawText ("No matrix sends on this console", area, juce::Justification::centred);
+        return;
+    }
+    auto r = block (g, area.toFloat().reduced (8.0f, 4.0f), "Matrix Sends").reduced (4.0f, 2.0f);
+    const float w = r.getWidth() / (float) matrices;
+    const int first = juce::jlimit (0, 1, sendBank) > 0 ? juce::jmax (0, matrices - 4) : 0;
+    for (int i = 0; i < matrices; ++i)
+    {
+        auto col = r.removeFromLeft (w).reduced (juce::jmin (12.0f, w * 0.2f), 0.0f);
+        auto& send = s.matrix[(size_t) i];
+        const bool on = send.on.load();
+        const float pos = fader::dbToPos (send.levelDb.load());
+        const bool focused = i >= first && i < first + 4;
+        auto label = col.removeFromBottom (16.0f);
+        g.setColour (focused ? kYellow : kSkyAlt);
+        g.fillRect (label.reduced (0.0f, 1.0f));
+        g.setColour (kNavy);
+        g.setFont (type::font (10.0f, true));
+        g.drawText ("MTX " + juce::String (i + 1), label, juce::Justification::centred);
+        g.setColour (kWell);
+        g.fillRect (col);
+        g.setColour (on ? kYellow : kDeepText.withAlpha (0.5f));
+        g.fillRect (col.reduced (1.0f).withTrimmedTop ((col.getHeight() - 2.0f) * (1.0f - pos)));
+    }
+}
+
 void Display::timerCallback()
 {
     if (! isShowing())
         return;
+    followRemote();
     if (screen == Screen::Setup && tab == 2)
+    {
+        followRemotePrefs();
         repaint(); // the messages counted
+    }
+    if (screen == Screen::Setup && (tab == 0 || tab == 3))
+        repaint (encoderRow); // the clock; the fields being edited
+    // The spectrograph's rows (and the EQ's overlay redrawn).
+    if (rtaShown)
+    {
+        if (! ctx.engine.getAnalysis().isFrozen())
+        {
+            Analysis::Bands bands;
+            ctx.engine.getAnalysis().read (bands);
+            rtaHistory.emplace_back (bands.levels.begin(), bands.levels.end());
+            if (rtaHistory.size() > 150)
+                rtaHistory.erase (rtaHistory.begin());
+        }
+        if (eqView.isVisible())
+            repaint (eqView.getBounds());
+    }
+    // EQ on faders ends when its slot no longer holds a graphic EQ.
+    if (geqSlot >= 0 && ! isGraphicEq (geqSlot))
+        showGeqOnFaders (-1, geqFirst);
     // A model, an order or a strip changed under the encoders: map them anew.
     juce::String now;
     if (auto* s = selected())
@@ -3118,9 +5632,6 @@ void Display::timerCallback()
     }
     for (auto& k : pushKeys)
         k->refresh();
-    for (auto& k : muteGroupKeys)
-        if (k->isVisible())
-            k->refresh();
     if (eqView.isVisible())
         eqView.refresh();
     if (gateView.isVisible())
@@ -3170,7 +5681,9 @@ void Display::timerCallback()
             repaint (bezelMeters);
         }
     }
-    if (screen == Screen::Meters || (screen == Screen::Home && (tab == 0 || tab == 5)))
+    const auto page = screen == Screen::MuteGroups ? underScreen : screen;
+    const int pageTab = shownTab();
+    if (page == Screen::Meters || (page == Screen::Home && (pageTab == 0 || pageTab == 5)) || page == Screen::Monitor || page == Screen::Usb)
         repaint (contentArea);
 }
 
@@ -3280,29 +5793,70 @@ void Display::paintStatus (juce::Graphics& g, juce::Rectangle<int> area)
         }
     }
 
-    // The recorder's clock: elapsed, a square, what's left.
+    // The recorder: its file, the time, a stop / play / record mark, the time left.
     {
         auto tape = tileOf (90.0f * unit, kBox);
+        auto& usb = ctx.engine.getUsbRecorder();
+        using P = UsbRecorder::PlayState;
+        const auto clock = [] (int64_t samples, double rate)
+        {
+            const int secs = rate > 0.0 ? (int) ((double) samples / rate) : 0;
+            return juce::String (secs / 60) + ":" + juce::String (secs % 60).paddedLeft ('0', 2);
+        };
+        const double rate = juce::jmax (1.0, usb.getSampleRate());
+        const bool recording = usb.isRecording();
+        const int64_t now = recording ? usb.getRecTime() : usb.getPosition();
+        const int64_t left = recording ? 0 : juce::jmax ((int64_t) 0, usb.getLength() - usb.getPosition());
+        const auto file = (recording ? usb.getRecFile() : usb.getCurrentFile()).getFileNameWithoutExtension();
         g.setColour (kNavy);
+        if (file.isNotEmpty())
+        {
+            g.setFont (type::font (9.0f, false));
+            g.drawFittedText (file, tape.removeFromTop (12.0f).toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
+        }
         g.setFont (type::font (11.0f, true));
         const auto w = tape.getWidth() * 0.5f;
-        g.drawText ("0:00", tape.removeFromLeft (w * 0.8f), juce::Justification::centred);
-        g.fillRect (tape.removeFromLeft (w * 0.4f).withSizeKeepingCentre (6.0f, 6.0f));
-        g.drawText ("-0:00", tape, juce::Justification::centred);
+        g.drawText (clock (now, rate), tape.removeFromLeft (w * 0.8f), juce::Justification::centred);
+        auto mark = tape.removeFromLeft (w * 0.4f).withSizeKeepingCentre (7.0f, 7.0f);
+        if (recording)
+        {
+            g.setColour (kGr);
+            g.fillEllipse (mark);
+        }
+        else if (usb.getPlayState() == P::Playing)
+        {
+            juce::Path arrow;
+            arrow.addTriangle (mark.getX(), mark.getY(), mark.getRight(), mark.getCentreY(), mark.getX(), mark.getBottom());
+            g.fillPath (arrow);
+        }
+        else
+            g.fillRect (mark.withSizeKeepingCentre (6.0f, 6.0f));
+        g.setColour (kNavy);
+        g.drawText ("-" + clock (left, rate), tape, juce::Justification::centred);
     }
 
     // The digital links and clock: AES A and B, the sample rate, the expansion card.
     {
         auto rates = tileOf (70.0f * unit, kBox);
+        auto* device = ctx.deviceManager.getCurrentAudioDevice();
         const double sr = ctx.engine.getSampleRate();
-        const auto rate = sr > 0 ? juce::String (juce::roundToInt (sr / 1000.0)) + "K" : juce::String ("48K");
-        g.setColour (kNavy);
+        const auto rate = sr > 0 ? juce::String (juce::roundToInt (sr / 1000.0)) + "K" : juce::String ("--");
+        // Each with its green LED; A and B are the AES50 ports (nothing plugged in here),
+        // L the clock (the audio interface's), C the expansion card (the audio interface).
+        const auto cell = [&g] (juce::Rectangle<float> area, const juce::String& text, bool led)
+        {
+            auto dot = area.removeFromLeft (8.0f).withSizeKeepingCentre (5.0f, 5.0f);
+            g.setColour (led ? juce::Colour (0xff3ddc5a) : kNavy.withAlpha (0.25f));
+            g.fillEllipse (dot);
+            g.setColour (kNavy);
+            g.drawText (text, area, juce::Justification::centredLeft);
+        };
         g.setFont (type::font (9.5f, true));
         auto upper = rates.removeFromTop (rates.getHeight() * 0.5f);
-        g.drawText ("A: -", upper.removeFromLeft (upper.getWidth() * 0.45f), juce::Justification::centredLeft);
-        g.drawText ("L  " + rate, upper, juce::Justification::centredLeft);
-        g.drawText ("B: -", rates.removeFromLeft (rates.getWidth() * 0.45f), juce::Justification::centredLeft);
-        g.drawText ("C: -", rates, juce::Justification::centredLeft);
+        cell (upper.removeFromLeft (upper.getWidth() * 0.45f), "A: -", false);
+        cell (upper, "L  " + rate, device != nullptr);
+        cell (rates.removeFromLeft (rates.getWidth() * 0.45f), "B: -", false);
+        cell (rates, device != nullptr ? "C: " + device->getName().substring (0, 5).toUpperCase() : juce::String ("C: -"), device != nullptr);
     }
 
     // The clock on its orange tile, the seconds small.
@@ -3313,7 +5867,8 @@ void Display::paintStatus (juce::Graphics& g, juce::Rectangle<int> area)
         g.setFont (type::font (10.0f, true));
         g.drawText (now.formatted (":%S"), clock.removeFromRight (18.0f).withTrimmedTop (9.0f), juce::Justification::centredLeft);
         g.setFont (type::font (19.0f, true));
-        g.drawFittedText (now.formatted ("%H:%M"), clock.toNearestInt(), juce::Justification::centredRight, 1, 0.8f);
+        // 12 h or 24 h (SETUP > config's 12h Clock Mode, `/-prefs/clockmode`).
+        g.drawFittedText (now.formatted (x32Value ("/-prefs/clockmode") == "12h" ? "%I:%M" : "%H:%M"), clock.toNearestInt(), juce::Justification::centredRight, 1, 0.8f);
     }
 }
 
@@ -3382,7 +5937,7 @@ void Display::paintTabs (juce::Graphics& g, juce::Rectangle<int> r)
     for (int i = 0; i < tabs.size(); ++i)
     {
         auto cell = getTabBounds (i).toFloat().reduced (1.0f, 0.0f).withTrimmedTop (2.0f);
-        const bool on = i == tab;
+        const bool on = i == shownTab();
         juce::Path folder;
         folder.addRoundedRectangle (cell.getX(), cell.getY(), cell.getWidth(), cell.getHeight(), 6.0f, 6.0f, true, true, false, false);
         g.setColour (on ? kBox : kTabOff);
@@ -3523,9 +6078,13 @@ void Display::paintHomeFlow (juce::Graphics& g, juce::Rectangle<int> area, Strip
             const auto link = linkAddress (s);
             chip (g, in.removeFromTop (12.0f).reduced (4.0f, 0.0f), "Link", link.isNotEmpty() && x32Value (link) == "ON");
             in.removeFromTop (3.0f);
-            const float trim = p.input.trimDb.load();
-            valueBox (g, in.removeFromTop (13.0f).reduced (2.0f, 0.0f), (trim > 0.0f ? "+" : "") + juce::String (trim, 1));
-            knobWithName (in, "Gain", (trim + 18.0f) / 36.0f, true);
+            // GAIN: the input's head amp, or the strip's trim (an FX return, a bus: neither).
+            if (const auto gain = gainBinding (s); gain.isValid())
+            {
+                const bool headAmp = gainIsHeadAmp (s);
+                valueBox (g, in.removeFromTop (13.0f).reduced (2.0f, 0.0f), gain.text().upToFirstOccurrenceOf (" ", false, false));
+                knobWithName (in, headAmp ? "Gain" : "Trim", gain.get(), ! headAmp);
+            }
         }
         else if (name == "Gate" || name == "Dynamics")
         {
@@ -3666,13 +6225,19 @@ void Display::paintSends (juce::Graphics& g, juce::Rectangle<int> area, Strip& s
         auto* send = s.sends.find (i);
         const bool on = send != nullptr && send->enabled.load();
         const float pos = fader::dbToPos (send != nullptr ? send->levelDb.load() : -144.0f);
-        const bool focused = i / 4 == sendBank;
+        const bool focused = i >= 2 * sendBank && i < 2 * sendBank + 4;
         auto label = col.removeFromBottom (16.0f);
         g.setColour (focused ? kYellow : kSkyAlt);
         g.fillRect (label.reduced (0.0f, 1.0f));
         g.setColour (kNavy);
         g.setFont (type::font (10.0f, true));
         g.drawText (juce::String (i + 1), label, juce::Justification::centred);
+        if (focused && layer == 1 && i % 2 == 0)
+        {
+            const auto taps = x32Value (x32Address (s) + "/mix/" + juce::String (i + 1).paddedLeft ('0', 2) + "/type");
+            g.setFont (type::font (8.5f, true));
+            g.drawFittedText (taps, col.removeFromTop (12.0f).toNearestInt().withWidth ((int) (w * 2.0f)), juce::Justification::centredLeft, 1, 0.6f);
+        }
         g.setColour (kWell);
         g.fillRect (col);
         g.setColour (on ? kYellow : kDeepText.withAlpha (0.5f));
@@ -3683,50 +6248,93 @@ void Display::paintSends (juce::Graphics& g, juce::Rectangle<int> area, Strip& s
 void Display::paintMeters (juce::Graphics& g, juce::Rectangle<int> r)
 {
     // As the METERS photograph: the meters, the faders' positions, then rows of
-    // gain reduction (gate and dynamics), the strips in groups of 16.
-    std::vector<Strip*> strips;
-    auto add = [&strips] (const MixerEngine::StripList& list, int from, int count)
+    // gain reduction; each tab's groups as the manual lists them (p.47). A group
+    // with no strips (outputs the engine has no meter for) is drawn as empty wells.
+    struct Group
     {
-        for (int i = from; i < from + count && i < (int) list.size(); ++i)
-            strips.push_back (list[(size_t) i].get());
+        juce::String title;
+        std::vector<Strip*> strips;
     };
     auto& e = ctx.engine;
+    const auto take = [] (const MixerEngine::StripList& list, int from, int count)
+    {
+        std::vector<Strip*> out;
+        for (int i = from; i < from + count && i < (int) list.size(); ++i)
+            out.push_back (list[(size_t) i].get());
+        return out;
+    };
+    const auto blanks = [] (int n) { return std::vector<Strip*> ((size_t) n, nullptr); };
+    std::vector<Group> groups;
     switch (tab)
     {
-        case 0: add (e.getChannels(), 0, 32); break;
-        case 1: add (e.getBuses(), 0, 16); add (e.getMatrices(), 0, 6); add (e.getMains(), 0, 2); break;
-        case 2: add (e.getAux(), 0, 16); break;
-        default: add (e.getChannels(), 0, 32); add (e.getAux(), 0, 16); break;
+        case 0:
+            groups = { { "", take (e.getChannels(), 0, 16) }, { "", take (e.getChannels(), 16, 16) } };
+            break;
+        case 1:
+            groups = { { "Mix Bus", take (e.getBuses(), 0, 16) }, { "Matrix", take (e.getMatrices(), 0, 6) }, { "Main", take (e.getMains(), 0, 2) } };
+            break;
+        case 2:
+            groups = { { "Aux Sends", blanks (6) }, { "Aux Returns", take (e.getAux(), 0, 8) }, { "FX Returns", take (e.getAux(), 8, 8) } };
+            break;
+        default:
+            groups = { { "Inputs", take (e.getChannels(), 0, 32) }, { "Aux In", take (e.getAux(), 0, 8) }, { "Aux Out", blanks (6) }, { "AES", blanks (2) },
+                       { "Mon", blanks (2) }, { "Outputs", blanks (16) }, { "P16", blanks (16) } };
+            break;
+    }
+    std::vector<Strip*> strips;
+    std::vector<int> groupStart;
+    for (auto& grp : groups)
+    {
+        groupStart.push_back ((int) strips.size());
+        strips.insert (strips.end(), grp.strips.begin(), grp.strips.end());
     }
     if (strips.empty())
         return;
     r.reduce (6, 4);
-    const juce::String title = tab == 0 ? "Input Channels" : tab == 1 ? "Mix Bus" : tab == 2 ? "Aux / FX" : "In / Out";
     g.setColour (kSkyLine);
     g.fillRoundedRectangle (r.toFloat().expanded (1.0f), 4.0f);
     g.setColour (kPage);
     g.fillRoundedRectangle (r.toFloat().reduced (1.0f), 3.0f);
-    const auto section = [&g] (juce::Rectangle<int>& area, const juce::String& name)
+    const auto section = [&g] (juce::Rectangle<int> head, const juce::String& name)
     {
-        auto head = area.removeFromTop (12);
         g.setColour (kSkyLine);
         g.fillRect (head.toFloat().withSizeKeepingCentre (head.toFloat().getWidth(), 1.0f));
         g.setColour (kNavy);
         g.setFont (type::font (9.0f, true));
-        g.drawText (name, head.withSizeKeepingCentre (130, 12), juce::Justification::centred);
+        const int w = juce::jmin (head.getWidth(), name.length() * 6 + 16);
+        g.setColour (kPage);
+        g.fillRect (head.withSizeKeepingCentre (w, 12));
+        g.setColour (kNavy);
+        g.drawText (name, head, juce::Justification::centred);
     };
     auto body = r.reduced (4, 2);
-    const bool dynamics = tab == 0;
-    const int grRow = dynamics ? 16 : 0;
-    const int rowsH = body.getHeight() - (dynamics ? 2 * (grRow + 14) : 0);
-    section (body, title);
+    const int rows = tab == 0 ? 2 : tab == 1 ? 1 : 0;
+    const int grRow = rows > 0 ? 16 : 0;
+    const int rowsH = body.getHeight() - rows * (grRow + 14);
+    const auto heads = body.removeFromTop (12);
+    const int n = (int) strips.size();
+    const int numGaps = (int) groups.size() - 1;
+    const float gap = 8.0f;
+    const float w = ((float) body.getWidth() - gap * (float) numGaps) / (float) n;
+    const auto colX = [&, w, gap] (int i)
+    {
+        int gaps = 0;
+        for (size_t k = 1; k < groupStart.size(); ++k)
+            gaps += i >= groupStart[k] ? 1 : 0;
+        return (float) body.getX() + w * (float) i + gap * (float) gaps;
+    };
+    if (tab == 0)
+        section (heads, "Input Channels");
+    else
+        for (size_t k = 0; k < groups.size(); ++k)
+        {
+            const int first = groupStart[k], last = first + (int) groups[k].strips.size() - 1;
+            const int x0 = juce::roundToInt (colX (first)), x1 = juce::roundToInt (colX (last) + w);
+            section (juce::Rectangle<int> (x0, heads.getY(), x1 - x0, 12), groups[k].title);
+        }
     auto meterRow = body.removeFromTop (rowsH / 2 - 10);
     auto faderRow = body.removeFromTop (rowsH / 2 - 10);
-    const int n = (int) strips.size();
-    const float gap = n > 16 ? 8.0f : 0.0f; // the space between strips 16 and 17
-    const float w = ((float) body.getWidth() - gap) / (float) n;
-    const auto colX = [&body, w, gap, n] (int i) { return (float) body.getX() + w * (float) i + (n > 16 && i >= 16 ? gap : 0.0f); };
-    // A level bar, a fader's position above its number, the selected strip's cap white.
+    const float faderH = (float) juce::jmax (0, faderRow.getHeight() - 12);
     for (int i = 0; i < n; ++i)
     {
         auto* s = strips[(size_t) i];
@@ -3734,12 +6342,14 @@ void Display::paintMeters (juce::Graphics& g, juce::Rectangle<int> r)
         juce::Rectangle<float> cell (x + 0.5f, (float) meterRow.getY(), w - 1.0f, (float) meterRow.getHeight());
         g.setColour (kWell);
         g.fillRect (cell);
+        if (s == nullptr)
+            continue;
         const float level = juce::jlimit (0.0f, 1.0f, fader::dbToPos (juce::Decibels::gainToDecibels (ctx.meters.get (s, MeterPoint::Output, 0), -144.0f)));
         const float h = cell.getHeight() * level;
         g.setGradientFill (juce::ColourGradient (juce::Colour (0xffff3b30), 0.0f, cell.getY(), juce::Colour (0xff3ddc5a), 0.0f, cell.getBottom(), false));
         g.fillRect (cell.withTop (cell.getBottom() - h));
 
-        juce::Rectangle<float> fcell (x + 0.5f, (float) faderRow.getY(), w - 1.0f, (float) faderRow.getHeight() - 12.0f);
+        juce::Rectangle<float> fcell (x + 0.5f, (float) faderRow.getY(), w - 1.0f, faderH);
         g.setColour (kNavy);
         g.fillRect (fcell.withSizeKeepingCentre (2.0f, fcell.getHeight()));
         const float pos = juce::jlimit (0.0f, 1.0f, fader::dbToPos (s->params.faderDb.load()));
@@ -3749,32 +6359,43 @@ void Display::paintMeters (juce::Graphics& g, juce::Rectangle<int> r)
         g.setColour (kNavy);
         g.drawRect (juce::Rectangle<float> (fcell.getCentreX() - w * 0.35f, y - 3.0f, w * 0.7f, 6.0f), 0.8f);
         g.setFont (type::font (8.5f, true));
-        g.drawFittedText (juce::String (s->getNumber()), juce::Rectangle<float> (x, fcell.getBottom() + 1.0f, w, 10.0f).toNearestInt(), juce::Justification::centred, 1, 0.6f);
+        if (n <= 40)
+            g.drawFittedText (juce::String (s->getNumber()), juce::Rectangle<float> (x, fcell.getBottom() + 1.0f, w, 10.0f).toNearestInt(), juce::Justification::centred, 1, 0.6f);
     }
-    if (! dynamics)
+    if (rows == 0)
         return;
     const auto reductionRow = [&] (juce::Rectangle<int> row, const juce::String& name, bool gate)
     {
-        section (row, name);
+        section (row.removeFromTop (12), name);
         for (int i = 0; i < n; ++i)
         {
             auto* s = strips[(size_t) i];
             juce::Rectangle<float> cell (colX (i) + 0.5f, (float) row.getY(), w - 1.0f, (float) row.getHeight());
             g.setColour (kNavy);
             g.fillRect (cell);
+            if (s == nullptr)
+                continue;
             const float gr = std::abs (gate ? s->meters.gateReductionDb.load() : s->meters.dynReductionDb.load());
             g.setColour (kGr);
             g.fillRect (cell.withHeight (cell.getHeight() * juce::jlimit (0.0f, 1.0f, gr / 30.0f)));
         }
     };
     body.removeFromTop (2);
-    reductionRow (body.removeFromTop (grRow + 12), "Gain Reduction Gate", true);
-    body.removeFromTop (2);
-    reductionRow (body.removeFromTop (grRow + 12), "Gain Reduction Dyn", false);
+    if (tab == 0)
+    {
+        reductionRow (body.removeFromTop (grRow + 12), "Gain Reduction Gate", true);
+        body.removeFromTop (2);
+        reductionRow (body.removeFromTop (grRow + 12), "Gain Reduction Dyn", false);
+    }
+    else
+        reductionRow (body.removeFromTop (grRow + 12), "Gain Reduction", false);
 }
 
 void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
 {
+    // MUTE GRP covers only the encoder row (manual 7.8): the page under it stays.
+    juce::ScopedValueSetter<Screen> screenBelow (screen, screen == Screen::MuteGroups ? underScreen : screen);
+    juce::ScopedValueSetter<int> tabBelow (tab, shownTab());
     auto* s = selected();
     switch (screen)
     {
@@ -3789,100 +6410,43 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
             if (tab == 0)
                 paintHomeFlow (g, r, *s);
             else if (tab == 1)
-            {
-                auto& p = s->params;
-                const auto address = x32Address (*s), link = linkAddress (*s);
-                juce::String source = p.inputLeft.load() >= 0 ? "IN " + juce::String (p.inputLeft.load() + 1) : juce::String ("OFF");
-                if (address.startsWith ("/ch/") || address.startsWith ("/auxin/"))
-                    source = sourceName (x32Value (address + "/config/source").getIntValue())
-                             + (pendingSource >= 0 && pendingSourceStrip == s ? "  >  " + sourceName (pendingSource) + " (SELECT)" : juce::String());
-                paintRows (g, r.reduced (12), { "SOURCE", "LINK", "GAIN", "LOW CUT", "DELAY", "INSERT" },
-                           { source, link.isEmpty() ? juce::String ("-") : x32Value (link) + "  (" + link.fromLastOccurrenceOf ("/", false, false) + ")",
-                             juce::String (p.input.trimDb.load(), 1) + " dB",
-                             (p.filter().lowCut.load() ? "ON  " : "OFF  ") + (formatHz (p.filter().lowCutFreq.load()) + " Hz"),
-                             (p.input.delayOn.load() ? "ON  " : "OFF  ") + juce::String (p.input.delay.load(), 1),
-                             ((p.processOrder.load() & 2) != 0 ? "PRE  " : "POST  ")
-                                 + (p.preInsert().fx.load() >= 0 ? "FX " + juce::String (p.preInsert().fx.load() + 1) : juce::String ("-")) });
-            }
+                paintHomeConfig (g, r, *s);
+            else if (tab == 5 && (s->getKind() == StripKind::Bus || s->getKind() == StripKind::Main))
+                paintMatrixSends (g, r, *s);
             else if (tab == 5)
                 paintSends (g, r, *s);
             else if (tab == 6)
-            {
-                auto& p = s->params;
-                const bool mc = ctx.engine.getMains().size() > 1;
-                paintRows (g, r.reduced (12), { "LR", "PAN", "M/C", "M/C LEVEL", "FADER" },
-                           { s->mains[0].on.load() ? "ON" : "OFF", juce::String (juce::roundToInt (p.pan.load())),
-                             mc && s->mains[1].on.load() ? "ON" : "OFF",
-                             mc ? juce::String (s->mains[1].levelDb.load(), 1) + " dB" : juce::String ("-"),
-                             juce::String (p.faderDb.load(), 1) + " dB" + (p.mute.load() ? "  MUTED" : "") });
-            }
+                paintHomeMain (g, r, *s);
             // gate, dyn and eq: their graphs (child components) in a block.
             if (tab >= 2 && tab <= 4)
-                block (g, r.reduced (12, 6).toFloat(), tab == 2 ? "Gate" : tab == 3 ? "Dynamics" : "Equalizer");
+            {
+                const auto inner = block (g, r.reduced (12, 6).toFloat(), tab == 2 ? "Gate" : tab == 3 ? "Dynamics" : "Equalizer");
+                // A strip without the block (an X32's aux ins and FX returns have an EQ only; a gate is a channel's).
+                const bool hasGate = s->getKind() == StripKind::Channel;
+                if ((tab == 2 && ! hasGate) || (tab == 3 && ! hasGate && ! s->isOutput()))
+                {
+                    g.setColour (kDim);
+                    g.setFont (type::font (type::kLabel));
+                    g.drawText (tab == 2 ? "No gate on this strip" : "No dynamics on this strip", inner, juce::Justification::centred);
+                }
+            }
             break;
         case Screen::Meters:
             if (tab == 4)
             {
-                // RTA: the selected strip's bands, their peaks over them.
-                Analysis::Bands bands;
-                ctx.engine.getAnalysis().read (bands);
-                auto area = r.reduced (16, 12).toFloat();
-                g.setColour (kWell);
-                g.fillRect (area);
-                const float w = area.getWidth() / (float) Analysis::numBands;
-                const auto yOf = [&area] (float db) { return area.getBottom() - area.getHeight() * juce::jlimit (0.0f, 1.0f, (db + 90.0f) / 90.0f); };
-                for (int k = 0; k < Analysis::numBands; ++k)
-                {
-                    const float x = area.getX() + w * (float) k;
-                    g.setColour (juce::Colour (0xffff9a1f));
-                    g.fillRect (juce::Rectangle<float> (x + 0.5f, yOf (bands.levels[(size_t) k]), juce::jmax (1.0f, w - 1.0f), area.getBottom() - yOf (bands.levels[(size_t) k])));
-                    g.setColour (kSky);
-                    g.fillRect (juce::Rectangle<float> (x + 0.5f, yOf (bands.peaks[(size_t) k]) - 1.0f, juce::jmax (1.0f, w - 1.0f), 2.0f));
-                }
-                g.setColour (kSky);
-                g.setFont (type::font (10.0f, true));
-                g.drawText (selected() != nullptr ? "RTA  " + selected()->getLabel() : juce::String ("RTA: select a strip"), area.reduced (6.0f, 4.0f),
-                            juce::Justification::topLeft);
+                paintRta (g, r);
                 break;
             }
             paintMeters (g, r);
             break;
         case Screen::Library:
-        {
-            if (tab >= 2)
-            {
-                paintLibraryPresets (g, r);
-                break;
-            }
-            auto& show = ctx.show;
-            const int n = show.getNumScenes();
-            juce::StringArray left, right;
-            // The rows that fit, around the scene the encoder points at.
-            const int rows = juce::jmax (1, (r.getHeight() - 44) / 26);
-            const int from = juce::jlimit (0, juce::jmax (0, n - rows), selectedScene - rows / 2);
-            for (int i = from; i < juce::jmin (n, from + rows); ++i)
-            {
-                const auto scene = show.getScene (i);
-                left.add ((i == selectedScene ? "> " : "  ") + juce::String (i + 1).paddedLeft ('0', 2));
-                right.add (scene.has_value() ? scene->name : juce::String());
-            }
-            if (n == 0)
-            {
-                left.add ("No scenes");
-                right.add ({});
-            }
-            auto list = r.reduced (12);
-            if (libraryStatus.isNotEmpty())
-            {
-                g.setColour (kDeep);
-                g.setFont (type::font (type::kCaption, true));
-                g.drawFittedText (libraryStatus, list.removeFromBottom (20), juce::Justification::centredLeft, 1, 0.8f);
-            }
-            paintRows (g, list, left, right);
+            paintLibraryPresets (g, r);
             break;
-        }
         case Screen::Effects:
-            paintEffects (g, r.reduced (12));
+            if (tab == 0)
+                paintEffectsHome (g, r);
+            else
+                paintFxPanel (g, r, tab - 1);
             break;
         case Screen::Routing:
             if (tab > 0)
@@ -3893,20 +6457,7 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
         case Screen::Setup:
             if (tab == 1)
             {
-                // CONFIG: the preferences, then the link preferences; the ones the
-                // encoders point at marked.
-                juce::StringArray left, right;
-                const auto rows = [this, &left, &right] (const std::vector<ConfigItem>& items, int at)
-                {
-                    for (int k = 0; k < (int) items.size(); ++k)
-                    {
-                        left.add ((k == at ? "> " : "  ") + juce::String (items[(size_t) k].name));
-                        right.add (x32Value (items[(size_t) k].path));
-                    }
-                };
-                rows (configPrefs(), configPref);
-                rows (configLinks(), configLink);
-                paintRows (g, r.reduced (12), left, right);
+                paintSetupConfig (g, r);
                 break;
             }
             if (tab == 2)
@@ -3916,30 +6467,12 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
             }
             if (tab == 3)
             {
-                // NETWORK: where X32 remotes (X32-Edit, apps) reach Sidecar: this
-                // computer's addresses, the X32's OSC port.
-                juce::StringArray addresses;
-                // The computer's own IPv4 addresses (not loopback, multicast or link-local).
-                for (auto& a : juce::IPAddress::getAllAddresses (false))
-                    if (a.address[0] != 127 && (a.address[0] < 224 || a.address[0] > 239) && ! (a.address[0] == 169 && a.address[1] == 254)
-                        && ! a.isNull() && addresses.size() < 3)
-                        addresses.add (a.toString());
-                auto& wing = ctx.engine.getWing();
-                paintRows (g, r.reduced (12), { "HOST NAME", "IP ADDRESS", "X32 OSC", "OSC PORT" },
-                           { juce::SystemStats::getComputerName(), addresses.isEmpty() ? juce::String ("NONE") : addresses.joinIntoString (", "),
-                             wing.isX32Running() ? juce::String ("RUNNING") : juce::String ("OFF (SETUP > REMOTE CONTROL)"),
-                             juce::String (WingRemote::x32Port) + " UDP" });
+                paintNetwork (g, r);
                 break;
             }
             if (tab == 6)
             {
-                // CARD: the expansion card's place is Sidecar's audio interface.
-                auto* device = ctx.deviceManager.getCurrentAudioDevice();
-                paintRows (g, r.reduced (12), { "CARD", "DEVICE", "INPUTS / OUTPUTS", "BUFFER", "LATENCY IN / OUT" },
-                           { "AUDIO INTERFACE", device != nullptr ? device->getName() : juce::String ("NONE"),
-                             device != nullptr ? juce::String (device->getActiveInputChannels().countNumberOfSetBits()) + " / " + juce::String (device->getActiveOutputChannels().countNumberOfSetBits()) : juce::String ("-"),
-                             device != nullptr ? juce::String (device->getCurrentBufferSizeSamples()) + " SAMPLES" : juce::String ("-"),
-                             device != nullptr ? juce::String (device->getInputLatencyInSamples()) + " / " + juce::String (device->getOutputLatencyInSamples()) + " SAMPLES" : juce::String ("-") });
+                paintCard (g, r);
                 break;
             }
             if (tab == 4)
@@ -3952,103 +6485,27 @@ void Display::paintContent (juce::Graphics& g, juce::Rectangle<int> r)
                 paintPreamps (g, r.reduced (12).toFloat());
                 break;
             }
-        {
-            // GLOBAL: the console, the clock (the audio interface's), the time and date.
-            auto* device = ctx.deviceManager.getCurrentAudioDevice();
-            const auto now = juce::Time::getCurrentTime();
-            paintRows (g, r.reduced (12), { "CONSOLE", "SURFACE", "SAMPLE RATE", "SYNCHRONIZATION", "CHANNELS", "BUSES / MATRICES", "TIME / DATE" },
-                       { "X32 (Sidecar)", getModel && getModel() == 1 ? "X32 COMPACT" : "X32", juce::String (juce::roundToInt (ctx.engine.getSampleRate())) + " Hz",
-                         device != nullptr ? "INTERNAL (" + device->getName() + ")" : juce::String ("NO AUDIO INTERFACE"),
-                         juce::String ((int) ctx.engine.getChannels().size()),
-                         juce::String ((int) ctx.engine.getBuses().size()) + " / " + juce::String ((int) ctx.engine.getMatrices().size()),
-                         now.formatted ("%H:%M  %d.%m.%Y") + " (THE COMPUTER'S)" });
-        }
+            paintSetupGlobal (g, r);
             break;
         case Screen::MuteGroups:
             break; // its keys
         case Screen::Monitor:
-        {
-            auto& e = ctx.engine;
-            const auto onOff = [] (bool on) { return on ? juce::String ("ON") : juce::String ("OFF"); };
             if (tab == 0)
-            {
-                // The solo options ticked, and the delay in feet, metres and ms.
-                juce::StringArray ticked;
-                for (int k = 0; k < soloOptions().size(); ++k)
-                    if (soloOptionOn (k))
-                        ticked.add (soloOptions()[k]);
-                const float ms = x32Value ("/config/solo/delaytime").getFloatValue();
-                paintRows (g, r.reduced (12), { "MONITOR LEVEL", "SOLO", "DELAY", "DIM", "DIM ATTENUATION", "TRIM", "MONO", "SOURCE" },
-                           { fader::text (e.monitorLevelDb.load()) + " dB", ticked.isEmpty() ? juce::String ("-") : ticked.joinIntoString (", "),
-                             x32Value ("/config/solo/delay") + "  " + juce::String (ms * 1.125f, 1) + " ft  " + juce::String (ms * 0.343f, 2) + " m  "
-                                 + juce::String (ms, 1) + " ms",
-                             onOff (e.monitorDim.load()), juce::String (e.monitorDimDb.load(), 0) + " dB", x32Value ("/config/solo/sourcetrim") + " dB",
-                             onOff (e.monitorMono.load()),
-                             e.anySoloActive.load() ? juce::String ("SOLO BUS") : MixerEngine::monitorSourceName (e.speakers.source.load()) });
-            }
+                paintMonitor (g, r);
             else if (tab < 3)
-            {
-                const juce::String node = tab == 1 ? "/config/talk/A" : "/config/talk/B";
-                auto& path = e.talk.paths[(size_t) (tab - 1)];
-                const int bits = x32Bits (x32Value (node + "/destmap"));
-                juce::StringArray to;
-                for (int b = 0; b < 18; ++b)
-                    if ((bits & (1 << b)) != 0)
-                        to.add (b < 16 ? "BUS " + juce::String (b + 1) : juce::String (b == 16 ? "LR" : "C/M"));
-                const auto* talk = e.getTalkStrip();
-                paintRows (g, r.reduced (12), { tab == 1 ? "TALK A" : "TALK B", "MICROPHONE", "TALK LEVEL", "AUTO DIM", "DESTINATIONS", "LATCH", "TALK CHANNEL" },
-                           { onOff (path.on.load()), x32Value ("/config/talk/source") == "EXT" ? juce::String ("EXTERNAL") : juce::String ("INTERNAL"),
-                             fader::text (e.talk.levelDb.load()) + " dB", x32Value (node + "/dim"),
-                             to.isEmpty() ? juce::String ("NONE") : to.joinIntoString (", "), x32Value (node + "/latch"),
-                             talk != nullptr ? talk->getLabel() : juce::String ("OFF") });
-            }
+                paintTalkback (g, r);
             else
-                paintRows (g, r.reduced (12), { "OSCILLATOR", "LEVEL", "F1", "F2", "PLAYING", "TYPE", "DESTINATION" },
-                           { x32Value ("/-stat/osc/on"), x32Value ("/config/osc/level") + " dB", x32Value ("/config/osc/f1") + " Hz",
-                             x32Value ("/config/osc/f2") + " Hz", x32Value ("/config/osc/fsel"), x32Value ("/config/osc/type"),
-                             x32OscDestination (x32Value ("/config/osc/dest").getIntValue()) });
+                paintOscillator (g, r);
             break;
-        }
         case Screen::Usb:
-        {
-            auto& usb = ctx.engine.getUsbRecorder();
-            using P = UsbRecorder::PlayState;
-            using R = UsbRecorder::RecState;
-            const auto time = [] (int64_t samples, double rate)
-            {
-                const int secs = rate > 0.0 ? (int) ((double) samples / rate) : 0;
-                return juce::String (secs / 60).paddedLeft ('0', 2) + ":" + juce::String (secs % 60).paddedLeft ('0', 2);
-            };
-            const double rate = juce::jmax (1.0, usb.getSampleRate());
-            const auto play = usb.getPlayState();
-            const auto rec = usb.getRecState();
-            if (tab == 0)
-                paintRows (g, r.reduced (12), { "PLAYER", "FILE", "POSITION", "RECORDER", "RECORDING" },
-                           { play == P::Playing ? "PLAYING" : play == P::Paused ? "PAUSED" : play == P::Error ? "ERROR" : "STOPPED",
-                             usb.getCurrentFile().getFileName().isEmpty() ? juce::String ("-") : usb.getCurrentFile().getFileName(),
-                             time (usb.getPosition(), rate) + " / " + time (usb.getLength(), rate),
-                             rec == R::Recording ? "RECORDING" : rec == R::Paused ? "PAUSED" : rec == R::Error ? "ERROR" : "STOPPED",
-                             usb.getRecFile().getFileName().isEmpty() ? juce::String ("-") : usb.getRecFile().getFileName() });
-            else
-                paintRows (g, r.reduced (12), { "TRACKS", "BITS", "FOLDER" },
-                           { juce::String (usb.getRecChannels()), juce::String (usb.getRecBits()), usb.getStorageFolder().getFullPathName() });
+            paintUsb (g, r);
             break;
-        }
         case Screen::Scenes:
             paintScenes (g, r);
             break;
         case Screen::Assign:
-        {
-            const auto lines = assignLines ? assignLines() : juce::StringArray();
-            juce::StringArray left, right;
-            for (auto& l : lines)
-            {
-                left.add (l.upToFirstOccurrenceOf ("  ", false, false));
-                right.add (l.fromFirstOccurrenceOf ("  ", false, false));
-            }
-            paintRows (g, r.reduced (12), left, right);
+            paintAssign (g, r);
             break;
-        }
         case Screen::Utility:
         {
             if (tab == 1)
@@ -4089,22 +6546,57 @@ void Display::paintEncoderRow (juce::Graphics& g, juce::Rectangle<int>)
     {
         auto cell = getEncoderCell (i).toFloat().reduced (2.0f, 3.0f);
         const auto& e = encoders[(size_t) i];
-        if (! e.turn.isValid() && ! e.push)
+        if (! e.turn.isValid() && ! e.push && ! e.dimmed)
         {
             g.setColour (kDeep.withAlpha (0.45f));
             g.fillRoundedRectangle (cell, 4.0f);
             continue;
         }
-        g.setColour (kSky);
+        // A real menu item with nothing behind it: drawn, greyed.
+        g.setColour (e.dimmed ? kSky.withAlpha (0.4f) : kSky);
         g.fillRoundedRectangle (cell, 4.0f);
-        g.setColour (kSkyLine);
+        g.setColour (e.dimmed ? kSkyLine.withAlpha (0.4f) : kSkyLine);
         g.drawRoundedRectangle (cell.reduced (0.75f), 4.0f, 1.5f);
         auto in = cell.reduced (3.0f, 3.0f);
         auto band = in.removeFromBottom (15.0f);
-        chip (g, band, e.push ? (homeFirst && e.pushLabel.isNotEmpty() ? juce::String (homePush[i]) : titled (e.pushLabel)) : juce::String(), e.push && e.pushOn && e.pushOn());
+        if (e.dimmed)
+        {
+            g.setColour (kDim.withAlpha (0.35f));
+            g.fillRoundedRectangle (band, 2.5f);
+            g.setColour (juce::Colours::white.withAlpha (0.7f));
+            g.setFont (type::font (10.0f, true));
+            g.drawFittedText (titled (e.pushLabel), band.toNearestInt(), juce::Justification::centred, 1, 0.7f);
+            in.removeFromBottom (2.0f);
+            g.setColour (kDeepText.withAlpha (0.75f));
+            g.setFont (type::font (10.0f, true));
+            g.drawFittedText (titled (e.turn.label), in.removeFromTop (in.getHeight() * 0.5f).toNearestInt(), juce::Justification::centred, 1, 0.7f);
+            g.setFont (type::font (10.0f, false));
+            g.drawFittedText (e.turn.text ? e.turn.text() : juce::String(), in.toNearestInt(), juce::Justification::centred, 1, 0.7f);
+            continue;
+        }
+        if (! e.push && e.pushLabel.isNotEmpty())
+        {
+            // A real push Sidecar has nothing behind: its chip shown, dimmed.
+            g.setColour (kDim.withAlpha (0.35f));
+            g.fillRoundedRectangle (band, 2.5f);
+            g.setColour (juce::Colours::white.withAlpha (0.55f));
+            g.setFont (type::font (10.0f, true));
+            g.drawFittedText (titled (e.pushLabel), band.toNearestInt(), juce::Justification::centred, 1, 0.7f);
+        }
+        else
+            chip (g, band, e.push ? (homeFirst && e.pushLabel.isNotEmpty() ? juce::String (homePush[i]) : titled (e.pushLabel)) : juce::String(), e.push && e.pushOn && e.pushOn());
         in.removeFromBottom (2.0f);
         if (! e.turn.isValid())
+        {
+            // A push with a name over it (USB Drive).
+            if (e.turn.label.isNotEmpty())
+            {
+                g.setColour (kNavy);
+                g.setFont (type::font (10.0f, true));
+                g.drawFittedText (titled (e.turn.label), in.toNearestInt(), juce::Justification::centred, 1, 0.7f);
+            }
             continue;
+        }
         auto icon = in.removeFromLeft (juce::jmin (in.getHeight(), 30.0f));
         knobIcon (g, icon.getCentre(), juce::jmin (10.0f, icon.getWidth() * 0.32f), e.turn.get());
         g.setColour (kNavy);
@@ -4207,12 +6699,6 @@ void Display::resized()
     contentArea = screenInner.reduced (0, 4);
     for (auto* v : std::initializer_list<juce::Component*> { &eqView, &gateView, &dynView })
         v->setBounds (contentArea.reduced (12, 6).withTrimmedTop (14).reduced (4, 3));
-    {
-        auto grid = contentArea.reduced (40, 30);
-        const int w = grid.getWidth() / 3, h = grid.getHeight() / 2;
-        for (int i = 0; i < 6; ++i)
-            muteGroupKeys[(size_t) i]->setBounds (juce::Rectangle<int> (grid.getX() + (i % 3) * w, grid.getY() + (i / 3) * h, w, h).reduced (10));
-    }
 
     // The six encoders under the screen, each with its push key.
     knobsRow.reduce (6, 0);

@@ -325,6 +325,9 @@ of any size, of which the WING is one configuration.
   over one port). Its effect
   types are `livedaw_dsp::promix::fx` (`FX_MODELS`, `PM...` tokens; the devices
   run the WING's in series and `Taps`, a delay of their own).
+- `livedaw-01v`: the Yamaha 01V's edit buffer and MIDI (`params`, `midi`) over the engine; its MIDI
+  protocol is `Y01VMidi` (`src/engine/Y01VMidi.*`, a `MidiProtocol` over one port), its setup and tables
+  are `Yamaha01V` (held by the MixerEngine).
 - `livedaw-02r` (Phase 6): the Yamaha 02R over the engine, as `livedaw-promix` is the
   ProMix 01's (whose value steps and pans it reuses). `State`:
   - pairs, aux and bus pairs, fader and mute groups, gangs

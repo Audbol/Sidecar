@@ -5,6 +5,7 @@
 #include "engine/MixerEngine.h"
 #include "engine/RustStrings.h"
 #include "engine/Show.h"
+#include "engine/SqMidi.h"
 
 #include <array>
 
@@ -12,13 +13,15 @@ namespace livedaw
 {
 
 WingRemote::WingRemote (MixerEngine& e)
-    : engine (e), handle (ld::ld_wing_create (e.getHandle())), x32 (ld::ld_x32_create (e.getHandle()))
+    : engine (e), handle (ld::ld_wing_create (e.getHandle())), x32 (ld::ld_x32_create (e.getHandle())),
+      ahMidi (ld::ld_ahmidi_create (e.getHandle()))
 {
 }
 
 WingRemote::~WingRemote()
 {
     stopTimer();
+    ld::ld_ahmidi_destroy (ahMidi);
     ld::ld_x32_destroy (x32);
     ld::ld_wing_destroy (handle);
 }
@@ -42,6 +45,8 @@ WingRemote::Settings WingRemote::Settings::load (juce::PropertiesFile& p)
     s.discovery = p.getBoolValue ("wing.discovery", s.discovery);
     s.osc = p.getBoolValue ("wing.osc", s.osc);
     s.native = p.getBoolValue ("wing.native", s.native);
+    s.sqMidiSetup = p.getValue (SqMidi::setupKey);
+    s.dliveMidiChannel = juce::jlimit (1, 12, p.getIntValue ("dlive.midiChannel", 1));
     return s;
 }
 
@@ -69,7 +74,52 @@ juce::StringArray WingRemote::apply (const Settings& s)
     auto errors = applyWing (s);
     if (! applyX32 (s))
         errors.add ("X32 OSC: UDP port " + juce::String (x32Port) + " is in use");
+    if (! applyAhMidi (s))
+        errors.add ("MIDI over TCP: a TCP port (" + juce::String (ahMixRackPort) + ", " + juce::String (ahSurfacePort) + ") is in use");
     return errors;
+}
+
+bool WingRemote::applyAhMidi (const Settings& s)
+{
+    // Allen & Heath MIDI over TCP while the console is a dLive or SQ-5 and the
+    // network remote is on.
+    const auto profile = engine.getProfile();
+    const bool wanted = s.enabled && ! paths::externalActionsBlocked().load()
+                        && (engine.getRemotes().network & ahMidiBit) != 0;
+    if (! wanted)
+    {
+        ld::ld_ahmidi_stop (ahMidi);
+        ahMidiProfile = -1;
+        return true;
+    }
+    const bool dlive = profile == ld::kProfileDLive;
+    if (dlive)
+    {
+        ld::ld_ahmidi_set_setup (ahMidi, s.dliveMidiChannel - 1, false);
+    }
+    else
+    {
+        // The SQ's: its MIDI's own setting (SqMidi): the channel 1-16 and the fader law.
+        juce::StringArray v;
+        v.addTokens (s.sqMidiSetup, " ", "");
+        v.removeEmptyStrings();
+        ld::ld_ahmidi_set_setup (ahMidi, v.size() >= 2 ? juce::jlimit (0, 15, v[0].getIntValue() - 1) : 0, v.size() >= 2 && v[1].getIntValue() != 0);
+    }
+    if (isAhMidiRunning() && ahMidiProfile == (int) profile)
+        return true;
+    ahMidiProfile = (int) profile;
+    ahLastScene = -2; // the current scene as it is at the next pump
+    return ld::ld_ahmidi_start (ahMidi, ahMixRackPort, dlive ? ahSurfacePort : -1);
+}
+
+bool WingRemote::isAhMidiRunning() const
+{
+    return ld::ld_ahmidi_port (ahMidi, 0) >= 0;
+}
+
+int WingRemote::getAhMidiClients() const
+{
+    return ld::ld_ahmidi_clients (ahMidi);
 }
 
 bool WingRemote::applyX32 (const Settings& s)
@@ -189,7 +239,8 @@ juce::StringArray WingRemote::applyWing (const Settings& s)
 
 void WingRemote::refreshProtocols()
 {
-    if (running.enabled && engine.getRemotes().network != runningProtocols)
+    const auto network = engine.getRemotes().network;
+    if (running.enabled && (network != runningProtocols || ((network & ahMidiBit) != 0 && (int) engine.getProfile() != ahMidiProfile)))
         apply (running);
 }
 
@@ -197,6 +248,8 @@ void WingRemote::stop()
 {
     ld::ld_wing_stop (handle);
     ld::ld_x32_stop (x32);
+    ld::ld_ahmidi_stop (ahMidi);
+    ahMidiProfile = -1;
     x32Name.clear();
     running.enabled = false;
 }
@@ -302,6 +355,30 @@ void WingRemote::timerCallback()
 {
     if (isRunning())
         pump();
+    pumpAhMidi();
+}
+
+void WingRemote::pumpAhMidi()
+{
+    if (libraryShow == nullptr || ! isAhMidiRunning())
+        return;
+    while (const int scene = ld::ld_ahmidi_take_scene (ahMidi))
+    {
+        if (scene <= libraryShow->getNumScenes())
+        {
+            auto result = libraryShow->recallScene (scene - 1);
+            if (onRecalled)
+                onRecalled ("scene " + juce::String (scene), result);
+        }
+    }
+    // A scene recalled here, or by a client: its clients are told (not the one that asked).
+    const int current = libraryShow->getCurrentSceneIndex();
+    if (ahLastScene != current)
+    {
+        if (ahLastScene != -2 && current >= 0)
+            ld::ld_ahmidi_scene_recalled (ahMidi, current + 1);
+        ahLastScene = current;
+    }
 }
 
 void WingRemote::pump()

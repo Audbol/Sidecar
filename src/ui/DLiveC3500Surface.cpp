@@ -66,33 +66,6 @@ namespace
     }
 } // namespace
 
-/** The status page: what shows while no page key is lit. */
-class DLiveC3500Surface::Status final : public juce::Component
-{
-public:
-    explicit Status (UiContext& c) : ctx (c) {}
-    void paint (juce::Graphics& g) override
-    {
-        g.fillAll (juce::Colour (0xff0b1228));
-        g.setColour (juce::Colours::white);
-        g.setFont (type::font (30.0f));
-        g.drawText ("System Status", 40, 30, 600, 40, juce::Justification::centredLeft);
-        g.setFont (type::font (20.0f));
-        const juce::StringArray lines {
-            "Scenes: " + juce::String (ctx.show.getNumScenes()),
-            "Inputs: " + juce::String ((int) ctx.engine.getChannels().size()),
-            "Mixes: " + juce::String ((int) ctx.engine.getBuses().size()),
-            "FX returns: " + juce::String ((int) ctx.engine.getAux().size()),
-            "DCAs: " + juce::String (ctx.engine.getNumDcas()),
-        };
-        for (int i = 0; i < lines.size(); ++i)
-            g.drawText (lines[i], 40, 96 + i * 38, 700, 32, juce::Justification::centredLeft);
-    }
-
-private:
-    UiContext& ctx;
-};
-
 //==============================================================================
 std::vector<dl::Slot> DLiveC3500Surface::defaultLayer (int b, int l)
 {
@@ -140,13 +113,15 @@ void DLiveC3500Surface::silk (float x, float y, float w, float h, const juce::St
 }
 
 DLiveC3500Surface::DLiveC3500Surface (UiContext& c)
-    : ctx (c), theme (Theme::dark()), universalKey ("UNIVERSAL MIXER", theme.accent, theme), c1500Key ("C1500 SURFACE", theme.accent, theme), processing (c, *this), scenes (c), mixRack (c, *this), mixer (c, theme),
-      routingView (c, theme), fxRack (c, theme), monitoring (c, theme), library (c, theme), setup (c, theme), status (std::make_unique<Status> (c))
+    : ctx (c), theme (Theme::dark()), universalKey ("UNIVERSAL MIXER", theme.accent, theme), c1500Key ("C1500 SURFACE", theme.accent, theme),
+      assignments (c.settings, "c3500", kBanks, kLayers, kBankStrips, [] (int b, int l, int strip) { return defaultLayer (b, l)[(size_t) strip]; }),
+      processing (c, *this), scenes (c, *this), mixRack (c, *this), metersScreen (c, *this), ioScreen (c, *this), surfaceScreen (c, *this), status (c), bottomBand (c),
+      routingView (c, theme), fxRack (c, theme), monitoring (c, theme), library (c, theme), setup (c, theme)
 {
     using Shape = dl::Key::Shape;
-    for (int b = 0; b < kBanks; ++b)
-        for (int l = 0; l < kLayers; ++l)
-            layouts[(size_t) b][(size_t) l] = defaultLayer (b, l);
+    assignments.onChanged = [this] { bindStrips(); };
+    assignSoftKey = [this] (int i, juce::Component* t) { dl::showSoftKeyMenu (ctx, assignments, i, t); };
+    assignRotary = [this] (int i, juce::Component* t) { dl::showCustomRotaryMenu (assignments, i, t); };
 
     universalKey.onClick = [&context = ctx]
     {
@@ -165,15 +140,24 @@ DLiveC3500Surface::DLiveC3500Surface (UiContext& c)
     addAndMakeVisible (rightHost);
     leftHost.addAndMakeVisible (processing);
     processing.setBounds (0, 0, dl::kTouchW, dl::kTouchH);
-    for (auto* view : std::initializer_list<juce::Component*> { &scenes, &mixRack, &mixer, &routingView, &fxRack, &monitoring, &library, &setup, status.get() })
+    for (auto* view : std::initializer_list<juce::Component*> { &scenes, &mixRack, &metersScreen, &ioScreen, &surfaceScreen, &routingView, &fxRack, &monitoring, &library, &setup, &status })
     {
         rightHost.addChildComponent (view);
         view->setBounds (0, 0, dl::kTouchW, dl::kTouchH);
     }
     scenes.setVisible (true);
+    rightHost.addChildComponent (bottomBand); // over the pages' small faders, on the right screen's View
+    bottomBand.setBounds (0, 535, dl::kTouchW, dl::kTouchH - 535);
+    leftHost.addChildComponent (helpLeft);
+    rightHost.addChildComponent (helpRight);
+    helpLeft.setBounds (140, 70, 720, 400);
+    helpRight.setBounds (140, 70, 720, 400);
     processing.onTouchTurn = [this] (const KnobBinding& b) { dataLeft->setBinding (b); };
     scenes.onTouchTurn = [this] (const KnobBinding& b) { dataRight->setBinding (b); };
     mixRack.onTouchTurn = [this] (const KnobBinding& b) { dataRight->setBinding (b); };
+    metersScreen.onTouchTurn = [this] (const KnobBinding& b) { dataRight->setBinding (b); };
+    ioScreen.onTouchTurn = [this] (const KnobBinding& b) { dataRight->setBinding (b); };
+    surfaceScreen.onTouchTurn = [this] (const KnobBinding& b) { dataRight->setBinding (b); };
     processing.onSoftChanged = [this] { bindSoft(); };
     const auto selectPage = [this] (const juce::String& name, Page p)
     {
@@ -259,7 +243,18 @@ DLiveC3500Surface::DLiveC3500Surface (UiContext& c)
     key ("View L", kPale, kPaleLit, { 758, 388, 56, 26 }).setButtonText ("View");
     findKey ("View L")->isOn = [this] { return processing.isViewAlt(); };
     findKey ("View L")->onClick = [this] { processing.toggleView(); };
-    key ("Help L", kPale, kPaleLit, { 836, 388, 56, 26 }).setButtonText ("Help");
+    {
+        auto& h = key ("Help L", kPale, kPaleLit, { 836, 388, 56, 26 });
+        h.setButtonText ("Help");
+        h.isOn = [this] { return helpLeft.isVisible(); };
+        h.onClick = [this]
+        {
+            if (helpLeft.isVisible())
+                helpLeft.setVisible (false);
+            else
+                helpLeft.show (helpKey (false));
+        };
+    }
     dataLeft = std::make_unique<dl::Rotary> (juce::Colour (0xfff5b83a));
     dataLeft->alwaysLit = true;
     dataLeft->setBounds (juce::Rectangle<int> (66, 66).withCentre ({ 815, 462 }));
@@ -324,7 +319,7 @@ DLiveC3500Surface::DLiveC3500Surface (UiContext& c)
     silk (1716.0f, 224.0f, 68.0f, 11.0f, "PAFL", 9.5f);
     {
         auto& clear = key ("Clear", kPaflIdle, kPaflLit, { 1726, 236, 48, 24 }, Shape::Oval);
-        clear.onClick = [this] { clearSolos(); };
+        clear.onClick = [this] { clearPafl (ctx); };
         clear.isOn = [this]
         {
             for (const auto* list : { &ctx.engine.getChannels(), &ctx.engine.getAux(), &ctx.engine.getBuses(), &ctx.engine.getMains(), &ctx.engine.getMatrices() })
@@ -345,8 +340,22 @@ DLiveC3500Surface::DLiveC3500Surface (UiContext& c)
     }
 
     // The right screen's View, Help and data rotary; the scene keys.
-    key ("View R", kPale, kPaleLit, { 1656, 404, 54, 26 }).setButtonText ("View");
-    key ("Help R", kPale, kPaleLit, { 1738, 404, 54, 26 }).setButtonText ("Help");
+    {
+        auto& v = key ("View R", kPale, kPaleLit, { 1656, 404, 54, 26 });
+        v.setButtonText ("View");
+        v.isOn = [this] { return bottomBand.getView() != 0; };
+        v.onClick = [this] { bottomBand.cycleView(); };
+        auto& h = key ("Help R", kPale, kPaleLit, { 1738, 404, 54, 26 });
+        h.setButtonText ("Help");
+        h.isOn = [this] { return helpRight.isVisible(); };
+        h.onClick = [this]
+        {
+            if (helpRight.isVisible())
+                helpRight.setVisible (false);
+            else
+                helpRight.show (helpKey (true));
+        };
+    }
     dataRight = std::make_unique<dl::Rotary> (juce::Colour (0xfff5b83a));
     dataRight->alwaysLit = true;
     dataRight->setBounds (juce::Rectangle<int> (62, 62).withCentre ({ 1724, 480 }));
@@ -358,13 +367,19 @@ DLiveC3500Surface::DLiveC3500Surface (UiContext& c)
     key ("Next", kBlueIdle, kBlueLit, { 1486, 498, 48, 26 }, Shape::Oval, false).onClick = [this] { scenes.stepNext (1); };
     key ("GO", kSelIdle, kSelLit, { 1566, 478, 62, 32 }, Shape::Oval, false).onClick = [this] { scenes.goNext(); };
 
-    // The phones and the SoftKeys (not assignable yet).
+    // The phones and the SoftKeys (Setup held and a key assigns it; or the Surface page).
     phones = std::make_unique<dl::Rotary> (juce::Colour (0xffe0e0e0));
     phones->setBinding (bindFader ("Phones", ctx.engine.phones.levelDb));
     phones->setBounds (1830, 134, 42, 42);
     addAndMakeVisible (*phones);
     silk (1810.0f, 178.0f, 82.0f, 12.0f, "Phones", 10.0f);
-    const auto softKey = [this] (int n, juce::Rectangle<int> r) { key ("Soft " + juce::String (n), kSoft, kSoftLit, r).setButtonText (juce::String (n)); };
+    const auto softKey = [this] (int n, juce::Rectangle<int> r)
+    {
+        auto& k = key ("Soft " + juce::String (n), kSoft, kSoftLit, r);
+        k.setButtonText (juce::String (n));
+        k.isOn = [this, n] { return isSoftKeyOn (ctx, n - 1); };
+        k.onClick = [this, n] { softKeyPressed (n - 1); };
+    };
     for (int i = 0; i < 10; ++i)
         softKey (i + 1, { 1826, 198 + i * 33, 58, 27 });
     for (int i = 0; i < 6; ++i)
@@ -420,7 +435,16 @@ DLiveC3500Surface::DLiveC3500Surface (UiContext& c)
             auto& k = key (juce::String ("Rotary ") + name, custom ? kBlueIdle : kPale, f == dl::RotaryFunction::Sends ? kBlueLit : kMuteLit, { 924, 540 + r * 25, 52, 22 });
             k.setButtonText (name);
             k.isOn = [this, target = f] { return rotaryFunction == target; };
-            k.onClick = [this, target = f] { setRotaryFunction (target); };
+            k.onClick = [this, target = f, customKey = custom && r <= 5 ? r - 2 : -1, keyPtr = &k]
+            {
+                if (customKey >= 0 && dl::wantsAssign (litPageKey == "Setup"))
+                {
+                    if (assignRotary)
+                        assignRotary (customKey, keyPtr);
+                }
+                else
+                    setRotaryFunction (target);
+            };
             ++r;
         }
     }
@@ -473,7 +497,7 @@ void DLiveC3500Surface::bindStrips()
         const int bank = i / kBankStrips;
         auto& unit = *strips[(size_t) i];
         if (unit.getSlot().kind == dl::Slot::None || ! isFrozen (unit.getSlot()))
-            unit.setSlot (layouts[(size_t) bank][(size_t) layers[(size_t) bank]][(size_t) (i % kBankStrips)]);
+            unit.setSlot (assignments.getShownSlot (bank, layers[(size_t) bank], i % kBankStrips, (int) ctx.engine.getMains().size()));
         else
             unit.rebind();
     }
@@ -507,11 +531,42 @@ void DLiveC3500Surface::bindSoft()
     }
 }
 
-void DLiveC3500Surface::clearSolos()
+void DLiveC3500Surface::softKeyPressed (int index)
 {
-    for (const auto* list : { &ctx.engine.getChannels(), &ctx.engine.getAux(), &ctx.engine.getBuses(), &ctx.engine.getMains(), &ctx.engine.getMatrices() })
-        for (const auto& s : *list)
-            s->params.solo = false;
+    if (dl::wantsAssign (litPageKey == "Setup"))
+    {
+        if (assignSoftKey)
+            assignSoftKey (index, findKey ("Soft " + juce::String (index + 1)));
+    }
+    else
+        pressSoftKey (ctx, index);
+}
+
+juce::String DLiveC3500Surface::helpKey (bool right) const
+{
+    if (! right)
+        return processing.helpKey();
+    switch (page)
+    {
+        case Page::Status:  return "Status";
+        case Page::Meters:  return "Meters";
+        case Page::Fx:      return "Fx";
+        case Page::Io:      return "Io";
+        case Page::Scenes:
+        {
+            static const char* const subs[] = { "Scenes", "Scenes/Update", "Scenes/Cue", "Scenes/Import", "Scenes/Safes" };
+            return subs[juce::jlimit (0, 4, scenes.getSub())];
+        }
+        case Page::Ganging: return "Ganging";
+        case Page::MixRack: return "MixRack";
+        case Page::Surface: return "Surface";
+        case Page::Util:    return "Util";
+        case Page::Routing: return "Routing";
+        case Page::Library: return "Library";
+        case Page::Setup:   return "Setup";
+        case Page::Listen:  return "Listen";
+    }
+    return {};
 }
 
 void DLiveC3500Surface::setLayer (int bank, int layer)
@@ -544,6 +599,7 @@ void DLiveC3500Surface::pressHome()
     bindStrips();
     processing.mixChanged();
     processing.showTab (dl::ProcessingScreen::Tab::Peq);
+    bottomBand.setView (0);
     litPageKey = "Page Scenes";
     showPage (Page::Scenes);
 }
@@ -552,35 +608,38 @@ void DLiveC3500Surface::showPage (Page p)
 {
     page = p;
     scenes.setVisible (p == Page::Scenes);
-    mixer.setVisible (p == Page::Meters);
+    metersScreen.setVisible (p == Page::Meters);
     fxRack.setVisible (p == Page::Fx);
-    routingView.setVisible (p == Page::Io || p == Page::Routing);
+    ioScreen.setVisible (p == Page::Io);
+    routingView.setVisible (p == Page::Routing);
     library.setVisible (p == Page::Util || p == Page::Library);
     mixRack.setVisible (p == Page::MixRack);
-    setup.setVisible (p == Page::Ganging || p == Page::Surface || p == Page::Setup);
+    surfaceScreen.setVisible (p == Page::Surface);
+    setup.setVisible (p == Page::Ganging || p == Page::Setup);
     monitoring.setVisible (p == Page::Listen);
-    status->setVisible (p == Page::Status);
+    status.setVisible (p == Page::Status);
+    helpRight.setVisible (false);
     switch (p)
     {
-        case Page::Meters:  mixer.refresh(); break;
+        case Page::Meters:  metersScreen.refresh(); break;
         case Page::Fx:      fxRack.refresh(); break;
-        case Page::Io:
+        case Page::Io:      ioScreen.refresh(); break;
         case Page::Routing: routingView.refresh(); break;
         case Page::Scenes:  scenes.refresh(); break;
         case Page::Util:
         case Page::Library: library.refresh(); break;
         case Page::MixRack: mixRack.refresh(); break;
+        case Page::Surface: surfaceScreen.refresh(); break;
         case Page::Ganging:
-        case Page::Surface:
         case Page::Setup:   setup.refresh(); break;
         case Page::Listen:  monitoring.refresh(); break;
-        case Page::Status:  status->repaint(); break;
+        case Page::Status:  status.repaint(); break;
     }
 }
 
 void DLiveC3500Surface::refreshAll()
 {
-    mixer.rebuild();
+    metersScreen.showTab (metersScreen.getTab());
     selectionChanged();
     processing.refreshAll();
     bindStrips();
@@ -590,13 +649,16 @@ void DLiveC3500Surface::refreshAll()
 
 void DLiveC3500Surface::selectionChanged()
 {
-    mixer.selectionChanged();
     auto* s = ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr;
     if (s != processing.getStrip())
     {
         processing.setStrip (s);
         scenes.setStrip (s);
         mixRack.setStrip (s);
+        metersScreen.setStrip (s);
+        ioScreen.setStrip (s);
+        surfaceScreen.setStrip (s);
+        bottomBand.setStrip (s);
     }
     bindPeq();
 }
@@ -644,7 +706,7 @@ void DLiveC3500Surface::paint (juce::Graphics& g)
     g.drawText ("dLive C3500", top.reduced (sizes::kGapLarge, 0), juce::Justification::centredLeft);
     g.setColour (theme.textDim);
     g.setFont (type::font (type::kCaption));
-    g.drawText ("Not affiliated with or endorsed by Allen & Heath; dLive is their trademark, used only to say what is emulated.",
+    g.drawText ("Not affiliated with or endorsed by any console maker; product names are their owners' trademarks.",
                 top.reduced (sizes::kGapLarge, 0).withTrimmedLeft (170).withTrimmedRight (390), juce::Justification::centredLeft);
 
     // The upper panel, nearly black; the surface under it.
@@ -742,8 +804,8 @@ void DLiveC3500Surface::paint (juce::Graphics& g)
         for (int layer = 0; layer < kLayers; ++layer)
         {
             bool peak = false;
-            for (const auto& slot : layouts[(size_t) b][(size_t) layer])
-                peak = peak || peakDb (ctx, slot) > -5.0f;
+            for (int s = 0; s < kBankStrips && ! peak; ++s)
+                peak = peakDb (ctx, assignments.getShownSlot (b, layer, s, (int) ctx.engine.getMains().size())) > -5.0f;
             g.setColour (peak ? juce::Colour (0xffff3030) : juce::Colour (0xff3a2020));
             g.fillEllipse ((b == 0 ? 971.0f : 1879.0f), 804.0f + (float) layer * 28.0f, 7.0f, 7.0f);
         }

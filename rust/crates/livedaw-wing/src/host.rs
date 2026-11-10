@@ -185,8 +185,9 @@ pub const HOST_SETTINGS: &[HostSetting] = &[
     s("/cards/wlive/2/cfg/playmode", "recorder.playMode", "0", Enc::Index),
     // Under the keys they had while their rows did nothing (`setup.inert.*`):
     // TAP TEMPO FLASH, SEND PAGE ACTIVATES SOLO (VIEW > SENDS solos the
-    // destination chosen); and features Sidecar doesn't have (a mouse, remote
-    // locks), kept as settings, shown and switched as on the console.
+    // destination chosen); REMOTE LOCK (`Shared::remote_locked` refuses the
+    // writes); and a feature Sidecar doesn't have (a mouse touch switch), kept
+    // as a setting, shown and switched as on the console.
     s("/$ctl/$globals/tapflash", "setup.inert.tapTempoFlash", "2", Enc::Index),
     s("/$ctl/$globals/mousetchdis", "setup.inert.mouseDisablesTouch", "0", Enc::Bool),
     s("/$ctl/cfg/sfdr2solo", "setup.inert.sendPageActivatesSolo", "0", Enc::Bool),
@@ -252,6 +253,11 @@ impl WingState {
     /// Host: forgets the published values and the pending changes.
     pub fn clear_host_settings(&self) {
         *self.host.lock().unwrap_or_else(|e| e.into_inner()) = HostValues::default();
+    }
+
+    /// A switch among the settings, on or off (off when it isn't one).
+    pub(crate) fn host_flag(&self, key: &str) -> bool {
+        HOST_SETTINGS.iter().find(|h| h.key == key).is_some_and(|h| self.host_value(h) == "1")
     }
 
     fn host_value(&self, h: &HostSetting) -> String {

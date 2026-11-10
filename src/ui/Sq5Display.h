@@ -41,6 +41,11 @@ Slot slotOf (MixerEngine&, const Strip*);
 
 /** The mix the Mix keys choose (the "selected mix"): 0 LR, 1-12 Mix n, 13-16 FX n. */
 constexpr int kMixes = 12, kFxSends = 4;
+/** Bus Config (Setup > Mixer Config, p.87): the last n of the twelve mixes are Groups. */
+int groupCount() noexcept;
+void setGroupCount (int) noexcept;
+/** Mix `index` (0-11) is a Group. */
+bool isGroupMix (int index) noexcept;
 /** The bus slot of a selected mix, or -1 for LR. */
 constexpr int busOfMix (int mix) noexcept { return mix - 1; }
 juce::String mixType (int mix);
@@ -81,14 +86,138 @@ enum class Block
     Sends
 };
 
-/** What the SoftKeys do (Setup > Surface > Soft Controls, p.88), kept in the app settings. */
+/** What the SoftKeys do (Setup > Surface > Soft Controls, pp.88-89), kept in the app settings. */
 namespace soft
 {
     constexpr const char* settingsKey = "sq5.softkeys";
-    juce::StringArray functions();
-    int get (juce::PropertiesFile&, int key);
-    void set (juce::PropertiesFile&, int key, int function);
+    /** p.89's control types, in its order. */
+    enum Type
+    {
+        Unassigned,
+        AmmChannel,
+        AmmInOut,
+        ChannelMute,
+        ChannelPafl,
+        DawControl,
+        DcaMute,
+        DcaPafl,
+        DcaSpill,
+        MidiNote,
+        MidiProgram,
+        MixSelect,
+        Mmc,
+        MuteGroup,
+        PaflClear,
+        RecallScene,
+        SceneNext,
+        ScenePrevious,
+        SceneGo,
+        SceneStore,
+        Select,
+        DriveMultitrack,
+        DrivePlay,
+        DriveRecord,
+        Talk,
+        TapTempo,
+        GlobalTap,
+        kNumTypes
+    };
+    /** A key's control type and its two options. */
+    struct Assign
+    {
+        int type = Unassigned, option1 = 0, option2 = 0;
+        bool operator== (const Assign& o) const noexcept { return type == o.type && option1 == o.option1 && option2 == o.option2; }
+    };
+    /** Every audio channel, as "All audio channels" lists them: inputs, FX returns, mixes, FX sends, LR, matrices. */
+    constexpr int kChannels = 48 + 8 + kMixes + kFxSends + 1 + 3;
+    Slot channelAt (int index);
+
+    juce::StringArray typeNames();
+    /** False for what Sidecar has no counterpart of (drawn dim in the list): DAW Control,
+        which needs the app's DAW remote (the list lights it where there is one). */
+    bool isModelled (int type);
+    int option1Count (int type);
+    int option2Count (int type, int numScenes);
+    juce::String option1Text (int type, int value);
+    juce::String option2Text (int type, int value, MixerEngine&);
+    Assign get (juce::PropertiesFile&, int key);
+    void set (juce::PropertiesFile&, int key, const Assign&);
+
+    /** The footswitch's two switches (Setup > Surface > Footswitch, p.91): 0 Tip, 1 Ring.
+        Sidecar has no footswitch socket: Sq5Surface::pressFootswitch is what one would press. */
+    constexpr const char* footswitchKey = "sq5.footswitch";
+    Assign getFootswitch (juce::PropertiesFile&, int which);
+    void setFootswitch (juce::PropertiesFile&, int which, const Assign&);
 } // namespace soft
+
+/** Input ganging (Setup > Ganging, p.105): 8 gangs of up to 12 input channels; what is
+    linked changes on every member when it changes on one. Kept in the app settings. The
+    engine has no gangs: the surface's display follows the members (Follower) while it's up. */
+namespace gangs
+{
+    constexpr int kGangs = 8, kMembers = 12;
+    constexpr const char* settingsKey = "sq5.gangs";
+    /** p.105's attributes, in the screen's order. */
+    enum Attribute
+    {
+        Trim,
+        Filter,
+        Gate,
+        Peq,
+        Compressor,
+        Delay,
+        Fader,
+        Mute,
+        Pan,
+        Routing,
+        DirectOut,
+        kNumAttributes
+    };
+    const char* attributeName (int attribute);
+    /** False for Direct Out: Sidecar's SQ has no direct outs yet. */
+    bool isModelled (int attribute);
+    struct Gang
+    {
+        /** Input channels, 0-based, in the order they were added. */
+        std::vector<int> members;
+        /** Bit n: Attribute n is linked. */
+        int attributes = 0;
+        bool operator== (const Gang& o) const noexcept { return members == o.members && attributes == o.attributes; }
+    };
+    using Set = std::array<Gang, kGangs>;
+    Set load (juce::PropertiesFile&);
+    void save (juce::PropertiesFile&, const Set&);
+    /** The gang a channel is in (-1: none). */
+    int gangOf (const Set&, int channel);
+
+    /** Copies what changed on one member of a gang to the others. Message thread. */
+    class Follower
+    {
+    public:
+        /** The gangs changed: what the members hold now is where they start from. */
+        void reset() { seen.clear(); }
+        void follow (MixerEngine&, const Set&);
+
+    private:
+        /** Each gang's members' linked values as last seen (member by member). */
+        std::vector<std::vector<std::vector<float>>> seen;
+    };
+} // namespace gangs
+
+/** On/Off settings of Setup's pages, kept in the app settings. */
+namespace prefs
+{
+    constexpr const char* additive = "sq5.pafl.additive";
+    constexpr const char* selFollow = "sq5.pafl.selFollow";
+    constexpr const char* followMix = "sq5.pafl.followMix";
+    constexpr const char* overrideMix = "sq5.pafl.overrideMix";
+    constexpr const char* preampOnSurface = "sq5.prefs.preampOnSurface";
+    constexpr const char* fxFollowSel = "sq5.prefs.fxFollowSel";
+    /** Master Fader Mode: Listen Level, not Mix Master (p.103). */
+    constexpr const char* listen = "sq5.masterListen";
+    bool get (juce::PropertiesFile&, const char* key, bool fallback);
+    void set (juce::PropertiesFile&, const char* key, bool value);
+} // namespace prefs
 
 /** Something on the screen a touch reaches. */
 struct Field
@@ -106,7 +235,9 @@ struct Field
         /** A tab: white while chosen. */
         Tab,
         /** A touch area only: what's under it paints itself (the bank view's blocks). */
-        Area
+        Area,
+        /** Words only: its caption. */
+        Label
     };
     Kind kind = Value;
     juce::Rectangle<float> area;
@@ -123,11 +254,19 @@ struct Field
     juce::String captionOff;
     /** A value without its title above the box (the PEQ's columns name the rows once). */
     bool hideTitle = false;
+    /** A label centred, not at the left. */
+    bool centred = false;
     /** A value's box outline, if not the usual one (the PEQ's bands' colours). */
     juce::Colour outline;
     /** A button's little picture in place of its text (the PEQ's mode keys, p.40):
-        1 low shelf, 2 bell, 3 high pass, 4 high shelf, 5 low pass; 0 none. */
+        1 low shelf, 2 bell, 3 high pass, 4 high shelf, 5 low pass; the transport keys
+        (pp.111-116): 6 stop, 7 play/pause, 8 record, 9 previous, 10 next; 0 none. */
     int glyph = 0;
+    /** What's printed, asked for at every paint (a state that changes by itself): a
+        label's or a button's words, or a value box's text where it has no binding. */
+    std::function<juce::String()> live;
+    /** A list's row (a Button): its words at the left, on the list's green while lit. */
+    bool row = false;
 };
 
 /** The SQ-5's 7" touchscreen, drawn after the Reference Guide's pictures: the title
@@ -177,6 +316,24 @@ public:
     /** Setup's Strip Assign: a layer's slots, and a slot given a channel. */
     std::function<const std::vector<Slot>& (int layer)> getLayerSlots;
     std::function<void (int layer, int index, const Slot&)> assignSlot;
+    /** A Setup page changed what the surface shows. */
+    std::function<void()> onSurfaceChanged;
+    /** Utility > Data's "USB" (pp.80-82): the folder its shows and scenes are kept in.
+        Sidecar's Library folder (Documents/Sidecar/Library) until set. */
+    void setDataFolder (const juce::File&);
+    juce::File getDataFolder() const;
+    /** The gangs as applied (Setup > Ganging). */
+    const gangs::Set& getGangs() const noexcept { return gangSet; }
+    /** The SQ-Drive pages' transports (pp.111-114) and the SoftKeys' SQ Drive types (p.89):
+        Sidecar's USB recorder is the Stereo page's, its multitrack recorder the Multitrack
+        page's. `action`: 0 previous, 1 stop, 2 start / pause, 3 arm (here: record), 4 next,
+        5 arm / record / stop in turn. */
+    void driveStereoPlay (int action);
+    void driveStereoRecord (int action);
+    void driveMultitrack (int action);
+    /** The Scene Manager's selection, by a SoftKey (pp.68, 89). */
+    void stepSceneSelection (int delta);
+    void recallSelectedScene (bool autoIncrementAfter);
 
     /** The Library key (lit where the screen has a library). */
     void pressLibrary();
@@ -221,8 +378,46 @@ private:
     void buildScenes();
     void buildSafes();
     void buildSetup();
+    void buildAudioSetup();
+    void buildSurfaceSetup();
+    void buildSoftControls();
+    void buildFootswitch();
+    /** The control type's list of Soft Controls and Footswitch (p.89). */
+    void buildTypePicker (juce::Rectangle<float>);
+    /** Control Type, Option 1 and Option 2 of `softEdit`, at the three places. */
+    void buildAssignValues (juce::Rectangle<float> type, juce::Rectangle<float> option1, juce::Rectangle<float> option2);
+    void buildMixerConfig();
+    void buildGanging();
+    void buildNetwork();
+    void buildUsers();
     void buildUtility();
+    void buildData();
+    void buildUsbUtility();
+    void buildDrive();
+    void buildCalibration();
+    void buildAddons();
+    void buildAmm();
     void buildIo();
+    void buildLibrary (Strip&);
+    /** A row's words and a key (On / Off). */
+    void addFlag (juce::Rectangle<float> label, juce::Rectangle<float> key, const juce::String& text, bool enabled, std::function<bool()> get, std::function<void (bool)> set);
+    /** The assign-to-mix keys of Talkback and SigGen (pp.96-97). */
+    void addMixGrid (juce::Rectangle<float>, std::function<bool (int)> get, std::function<void (int, bool)> set);
+    void applySigGen();
+    void loadSigGen();
+    void applyInputStereo();
+    void applyBusConfig (int groups);
+    void applyMixStereo();
+    /** The shows (`.lshow`) or scenes (`.lsnap`) of the data folder, by name. */
+    juce::Array<juce::File> dataFiles (const char* extension) const;
+    /** A list of `count` rows in `area`, `first` its first row and `picked` the one chosen
+        (both kept in range): the rows are fields named `prefix` + number (from 1). */
+    void addList (juce::Rectangle<float> area, const juce::String& prefix, int count, int& first, int& picked, std::function<juce::String (int)> words);
+    /** The transport keys in `area`, left to right: previous, stop, play / pause, record
+        (if `withRecord`), next. `lit (action)`: the key's lamp. */
+    void addTransport (juce::Rectangle<float> area, const juce::String& prefix, std::function<void (int action)> run, std::function<bool (int action)> lit, bool withRecord, bool withSkip);
+    void resetRole (int role);
+    ld::SourceParams* preampSource (Strip&) const;
     void addSideTabs (const juce::StringArray& names, int& tab);
     Field& addTab (juce::Rectangle<float>, const juce::String& title, int& tab, int value);
     void paintRoutingBank (juce::Graphics&);
@@ -230,6 +425,8 @@ private:
     void paintMeters (juce::Graphics&);
     void paintScenes (juce::Graphics&);
     void paintUtility (juce::Graphics&);
+    void paintSetup (juce::Graphics&);
+    void paintDrive (juce::Graphics&);
     void paintIo (juce::Graphics&);
     juce::Rectangle<float> matrixArea() const;
 
@@ -268,10 +465,54 @@ private:
     // Where each screen was left.
     static constexpr int kIoRows = 12, kIoCols = 14;
     int meterTab = 0, sceneTab = 0, safesTab = 0, setupTab = 1, surfaceTab = 0, utilityTab = 0, generalTab = 0, ioTab = 0, fxSlot = 0;
+    int audioTab = 1, configTab = 0, ammTab = 0, ammPick = 0, softKeySelected = 0, addonSelected = 0, pendingGroups = -1, resetRoleChoice = 0, fxPage = 0;
+    bool softPicking = false, stereoPendingValid = false, resetArmed = false;
+    soft::Assign softEdit;
+    std::array<bool, 24> stereoPending {};
+    // The signal generator (p.97).
+    std::atomic<int32_t> sigType { 0 };
+    std::atomic<bool> sigMute { true };
+    std::atomic<float> sigFreq { 1000.0f }, sigLevel { 0.0f };
+    std::atomic<int> sigAssign { 0 };
+    struct SigShown
+    {
+        int type = 0;
+        float mute = 1.0f, freq = 1000.0f, level = 0.0f;
+        int mask = 0;
+    } sigShown;
     int meterFirst = 0, sendFirst = 0, sceneFirst = 0, sceneSelected = 0, ioFirst = 0, ioSocketFirst = 0;
     int assignKind = 0, assignFirst = 0, assignLayer = 0;
     Slot assignChoice;
     bool assignPicked = false, autoIncrement = true, libraryOpen = false;
+    // Setup's Mix Stereo (p.86): 12 mixes, then 3 matrices.
+    std::array<bool, kMixes + 3> mixStereoPending {};
+    bool mixStereoPendingValid = false;
+    // Ganging (p.105).
+    gangs::Set gangSet, gangPending;
+    gangs::Follower gangFollower;
+    int gangSelected = 0, gangFirst = 0;
+    bool gangPendingValid = false;
+    // Footswitch (p.91), Users (p.107), Data (pp.80-83), USB Utility, SQ-Drive (pp.111-114).
+    int footswitchSelected = 0, usersTab = 0, userSelected = 0, userFirst = 0, userPage = 0;
+    int dataTab = 0, dataShowFirst = 0, dataShowPicked = 0, dataSceneFirst = 0, dataScenePicked = 0, dataFileFirst = 0, dataFilePicked = 0;
+    /** What Data's keys wait to have confirmed: 1 Recall, 2 Overwrite, 3 Delete, 4 Overwrite SQ; 0 nothing. */
+    int dataArmed = 0;
+    int usbTab = 0, driveTab = 0;
+    juce::File dataFolder;
+    /** The page's lists (addList): a drag up or down, or the wheel, scrolls the one under it. */
+    struct ListArea
+    {
+        juce::Rectangle<float> area;
+        int* first = nullptr;
+        /** Its rows run left to right (Ganging's channels): a drag left or right scrolls it. */
+        bool across = false;
+    };
+    std::vector<ListArea> lists;
+    int* dragList = nullptr;
+    bool dragListAcross = false;
+    const ListArea* listAt (juce::Point<float>) const;
+    /** Whose assignment `softEdit` holds: a SoftKey (0-7), a footswitch (100 Tip, 101 Ring); -1 none yet. */
+    int assignEditing = -1;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Display)
 };

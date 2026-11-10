@@ -50,6 +50,8 @@ public:
         code ("F03", "O80", "-"), and setting it (the X32's /config/userctrl). */
     juce::String getCode (int index) const { return shownCodes[(size_t) juce::jlimit (0, 11, index)]; }
     void setCode (int index, const juce::String& code);
+    /** Control `index` (as above) of any set, without showing it. */
+    juce::String codeOf (int set, int index) const;
 
     /** A code's function as a short label ("FDR CH 6", "MUTE GRP 1"). */
     static juce::String describe (const juce::String& code, bool button);

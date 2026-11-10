@@ -101,8 +101,24 @@ public:
         button. 0 none, 1 Copy, 2 Paste, 3 Reset. */
     int getClipboardMode() const noexcept { return clipboardMode; }
     void setClipboardMode (int);
-    /** The SoftKey's function (Setup's Soft Controls). */
-    void pressSoftKey (int key);
+    /** A SoftKey pressed or released: what Setup's Soft Controls gave it. */
+    void pressSoftKey (int key, bool down);
+    /** The footswitch's Tip (0) or Ring (1) pressed or released: what Setup's Footswitch
+        page gave it (p.91). Sidecar has no footswitch socket: this is for what stands in
+        for a pedal. */
+    void pressFootswitch (int which, bool down);
+    /** Whether the SoftKey's function is on now (its LED). */
+    bool isSoftKeyLit (int key) const;
+    /** A PAFL key (Setup > Audio > PAFL's options, p.94). */
+    void pressPafl (const sq5::Slot&);
+    /** Tap: FX unit `slot`'s delay time, or every unit's (-1, Global Tap Tempo). */
+    void tapTempo (int slot);
+    /** DCA Spill (p.104): a DCA's members on the strips, the DCA on the last (-1: none). */
+    void setSpill (int dca);
+    int getSpill() const noexcept { return spill; }
+    bool isSpillOnSel() const noexcept { return spillOnSel; }
+    /** Master Fader Mode (p.103). */
+    bool isListenMode() const;
     void setAssignMode (bool);
     void setPreFadeMode (bool);
     void setChToAll (bool);
@@ -129,6 +145,8 @@ private:
     /** A panel key: `colour` lit, `face` idle (their backlights never go out). */
     universal::ToggleKey& panelKey (const juce::String& name, juce::Colour, juce::Rectangle<int>, bool labelAbove = true, juce::Colour face = {});
     void lightJewels();
+    /** What a SoftKey or a footswitch does (p.89's control types). */
+    void runAssign (const sq5::soft::Assign&, bool down);
     /** The panel's small LEDs now (Pk, GR, Pan, Insert Active, GEQ, PAFL), one bit each. */
     int panelLeds() const;
     DisplayKnob& panelKnob (const juce::String& name, juce::Rectangle<int>);
@@ -167,6 +185,12 @@ private:
     sq5::Slot clipboard;
     Strip* boundStrip = nullptr;
     int shownLeds = 0;
+    bool talkHeld = false, spillOnSel = false;
+    int spill = -1;
+    /** The mixes PAFL'd before an input overrode them (p.94's Input Override Mix). */
+    std::vector<Strip*> overriddenMixes;
+    /** Tap Tempo's last tap per FX unit, then the global key's (ms). */
+    std::array<double, 9> lastTapMs {};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Sq5Surface)
 };

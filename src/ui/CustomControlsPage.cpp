@@ -1,4 +1,5 @@
 #include "ui/CustomControlsPage.h"
+#include "daw/Session.h"
 #include "engine/Models.h"
 #include "ui/MidiRemoteUi.h"
 #include "ui/TapTempo.h"
@@ -132,6 +133,12 @@ namespace
     /** CC EDIT's list in WING Edit's order (PSTOP, PLAY, PPAUSE, PPLST, PPLPS, PNEXT,
         PPREV, RSTOP, RECORD, RPAUSE, RNEW), Sidecar's REPEAT last. */
     constexpr int usbOrder[] = { 2, 0, 1, 10, 11, 4, 3, 7, 5, 6, 8, 9 };
+    // SD RECORDER: the WING's SD-1 RECORDER keys that Sidecar's multitrack
+    // recorder can answer (custom.rs SD_RECORDER_FUNCTIONS, append-only; it
+    // stands in for the WING-LIVE card, and there is only one of it).
+    const char* const sdNames[] = { "STOP", "PLAY", "RECORD", "PAUSE", "TOGGLE PLAY/STOP", "TOGGLE PLAY/PAUSE", "ADD MARKER", "PREV MARKER", "NEXT MARKER" };
+    constexpr int kNumSdFunctions = 9;
+    static_assert (std::size (sdNames) == kNumSdFunctions);
 
     Strip* stripOf (UiContext& ctx, int target) { return state::findStrip (ctx.engine, decodeStrip (target)); }
 
@@ -327,8 +334,8 @@ bool categoryAvailable (Slot s, int category)
 {
     if (s == Slot::Encoder)
         return juce::isPositiveAndBelow (category, (int) kNumEncoderCategories);
-    // SD RECORDER and GPIO need the console's hardware.
-    return category != BtnSdRecorder && category != BtnGpio && juce::isPositiveAndBelow (category, (int) kNumButtonCategories);
+    // GPIO needs the console's hardware.
+    return category != BtnGpio && juce::isPositiveAndBelow (category, (int) kNumButtonCategories);
 }
 
 juce::Colour categoryColour (Slot s, int category)
@@ -646,6 +653,45 @@ void press (UiContext& ctx, const Function& f)
             }
             break;
         }
+        case BtnSdRecorder:
+        {
+            if (ctx.recording == nullptr)
+                break;
+            auto& rec = *ctx.recording;
+            // PAUSE here keeps the position, as STOP does: the recorder has no
+            // pause of its own, and a recording can't be paused.
+            const auto playOrHold = [&rec]
+            {
+                if (! rec.isRolling())
+                    rec.play();
+                else if (! rec.isRecording())
+                    rec.stop();
+            };
+            switch (f.option)
+            {
+                case 0: rec.stop(); break;
+                case 1: if (! rec.isRolling()) rec.play(); break;
+                case 2:
+                    if (rec.isRecording())
+                        rec.stop();
+                    else if (auto r = rec.record(); r.failed())
+                        ctx.log.warning ("Record: " + r.getErrorMessage());
+                    break;
+                case 3:
+                case 5: playOrHold(); break;
+                case 4:
+                    if (rec.isRolling())
+                        rec.stop();
+                    else
+                        rec.play();
+                    break;
+                case 6: rec.addMarkerAtPosition(); break;
+                case 7: rec.jumpToMarker (false); break;
+                case 8: rec.jumpToMarker (true); break;
+                default: break;
+            }
+            break;
+        }
         case BtnUsbPlayer:
         {
             auto& usb = ctx.engine.getUsbRecorder();
@@ -831,6 +877,21 @@ bool isLit (UiContext& ctx, const Function& f)
                 case OtherDcaMeterTap: return ! prefs::meterTapPre (ctx, f.option - OtherChMeterTap);
                 default: return false;
             }
+        case BtnSdRecorder:
+        {
+            if (ctx.recording == nullptr)
+                return false;
+            const auto& rec = *ctx.recording;
+            switch (f.option)
+            {
+                case 0: return ! rec.isRolling();
+                case 1: return rec.isRolling() && ! rec.isRecording();
+                case 2: return rec.isRecording();
+                case 4:
+                case 5: return rec.isRolling();
+                default: return false;
+            }
+        }
         case BtnUsbPlayer:
         {
             auto& usb = ctx.engine.getUsbRecorder();
@@ -905,6 +966,8 @@ juce::String describe (UiContext& ctx, Slot s, const Function& f)
     static const char* const usbShort[] = { "PL PLAY", "PL PAUSE", "PL STOP",  "PL PREV",  "PL NEXT",  "REC REC",
                                             "REC PAUSE", "REC STOP", "REC NEW", "REPEAT", "PL PL/ST", "PL PL/PA" };
     static_assert (std::size (usbShort) == kNumUsbFunctions);
+    static const char* const sdShort[] = { "SD STOP", "SD PLAY", "SD REC", "SD PAUSE", "SD PL/ST", "SD PL/PA", "SD MARK", "SD PREV", "SD NEXT" };
+    static_assert (std::size (sdShort) == kNumSdFunctions);
     static const char* const areas[kNumOverviewAreas] = { "L", "C", "R", "CMPCT", "RCK", "EXT", "VRT" };
     switch (f.category)
     {
@@ -940,6 +1003,7 @@ juce::String describe (UiContext& ctx, Slot s, const Function& f)
             return midi (kinds[juce::jlimit (0, 4, type)], f.target % 16, type == 4 ? f.option + 1 : f.option);
         }
         case BtnUsbPlayer:    return usbShort[juce::jlimit (0, kNumUsbFunctions - 1, f.option)];
+        case BtnSdRecorder:   return sdShort[juce::jlimit (0, kNumSdFunctions - 1, f.option)];
         case BtnCcBank:       return "CC " + juce::String (f.option + 1);
         case BtnInsertPre:    return strip() + " INS1";
         case BtnInsertPost:   return strip() + " INS2";
@@ -1399,6 +1463,14 @@ void CustomControlsPage::rebuildLists()
                 }
                 break;
             }
+            case BtnSdRecorder:
+                options.title = "SD RECORDER";
+                for (int code = 0; code < kNumSdFunctions; ++code)
+                {
+                    options.rows.add (sdNames[code]);
+                    optionCodes.push_back (code);
+                }
+                break;
             case BtnUsbPlayer:
                 options.title = "USB PLAY/REC";
                 for (int code : usbOrder)
@@ -1793,12 +1865,12 @@ void CustomControlsPage::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colours::black);
 
-    // Header: ‹ ›, USER (these controls) and GPIO (not here yet), the title.
+    // Header: ‹ ›, USER (these controls) and GPIO (dimmed: a computer has no GPIO contacts), the title.
     g.setColour (Dark::header);
     g.fillRect (header);
     arrowKey (g, prevKey, false);
     arrowKey (g, nextKey, true);
-    for (auto [r, text, enabled] : { std::tuple { userKey, "USER", true }, std::tuple { gpioKey, "GPIO", true } })
+    for (auto [r, text, enabled] : { std::tuple { userKey, "USER", true }, std::tuple { gpioKey, "GPIO", false } })
     {
         g.setColour (juce::Colours::black);
         g.fillRect (r);

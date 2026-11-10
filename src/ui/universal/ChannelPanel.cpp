@@ -12,6 +12,9 @@ namespace
 
     /** The sections' widths at 1920 px (SENDS takes the rest); narrower windows scale them. */
     constexpr int kWidths[] = { 210, 200, 210, 380, 220, 180 };
+    /** Under this width (the inspector open, a small window) CHAIN and SENDS give their room to the
+        curves: the inspector has both, each in full. */
+    constexpr int kSlimBelow = 1560;
 } // namespace
 
 ChannelPanel::ChannelPanel (UiContext& c, const Theme& t)
@@ -172,12 +175,24 @@ void ChannelPanel::refresh()
 void ChannelPanel::resized()
 {
     auto area = getLocalBounds().reduced (sizes::kGap, sizes::kGapSmall);
-    const float scale = juce::jmin (1.0f, (float) area.getWidth() / 1904.0f);
+    const bool slim = area.getWidth() < kSlimBelow;
+    // Slim: the five sections share all of it, by the same proportions.
+    const float sum = (float) kWidths[0] + kWidths[1] + kWidths[2] + kWidths[3] + kWidths[4];
+    const float scale = slim ? (float) (area.getWidth() - 4 * sizes::kGapSmall) / sum : juce::jmin (1.0f, (float) area.getWidth() / 1904.0f);
     for (int s = 0; s < NumSections; ++s)
     {
-        areas[(size_t) s] = s < (int) std::size (kWidths) ? area.removeFromLeft (juce::roundToInt ((float) kWidths[s] * scale)) : area;
+        if (slim && s >= ChainSection)
+        {
+            areas[(size_t) s] = {};
+            continue;
+        }
+        if (slim && s == DynamicsSection)
+            areas[(size_t) s] = area; // what rounding left
+        else
+            areas[(size_t) s] = s < (int) std::size (kWidths) ? area.removeFromLeft (juce::roundToInt ((float) kWidths[s] * scale)) : area;
         area.removeFromLeft (sizes::kGapSmall);
     }
+    sends.setVisible (strip != nullptr && ! slim);
     const auto body = [this] (int s) { return areas[(size_t) s].withTrimmedTop (kTitle).reduced (sizes::kGapSmall); };
 
     {
@@ -208,6 +223,37 @@ void ChannelPanel::resized()
     sends.setBounds (body (SendsSection));
 }
 
+std::vector<ChainStep> ChannelPanel::shownSteps() const
+{
+    std::vector<ChainStep> steps;
+    if (strip != nullptr)
+        for (const auto& step : strip->getChain())
+            if (isShown (step))
+                steps.push_back (step);
+    return steps;
+}
+
+void ChannelPanel::mouseUp (const juce::MouseEvent& e)
+{
+    if (strip == nullptr || e.mouseWasDraggedSinceMouseDown() || ! onOpenStep)
+        return;
+    if (chainList.contains (e.getPosition()))
+    {
+        const auto steps = shownSteps();
+        const float row = juce::jmin (20.0f, (float) chainList.getHeight() / juce::jmax (1.0f, (float) steps.size()));
+        const int i = (int) ((float) (e.y - chainList.getY()) / row);
+        if (juce::isPositiveAndBelow (i, (int) steps.size()) && ! isMarker (steps[(size_t) i]))
+            onOpenStep (steps[(size_t) i].kind, steps[(size_t) i].isBlock() ? steps[(size_t) i].uid : -1);
+        return;
+    }
+    // A section's title: that block in the inspector.
+    const std::pair<int, int> titled[] = { { InputSection, ld::kStepInput }, { FilterSection, ld::kStepFilter }, { GateSection, ld::kStepGate },
+                                           { EqSection, ld::kStepEq },       { DynamicsSection, ld::kStepDynamics } };
+    for (auto [section, kind] : titled)
+        if (areas[(size_t) section].withHeight (kTitle).contains (e.getPosition()))
+            onOpenStep (kind, -1);
+}
+
 void ChannelPanel::paint (juce::Graphics& g)
 {
     g.fillAll (theme.background);
@@ -221,6 +267,8 @@ void ChannelPanel::paint (juce::Graphics& g)
     const bool channel = strip->getKind() == StripKind::Channel;
     for (int s = 0; s < NumSections; ++s)
     {
+        if (areas[(size_t) s].isEmpty())
+            continue;
         const auto r = areas[(size_t) s].toFloat();
         g.setColour (theme.panel);
         g.fillRoundedRectangle (r, sizes::kRadius);
@@ -243,23 +291,15 @@ void ChannelPanel::paint (juce::Graphics& g)
             if (s == GateSection || s == DynamicsSection)
             {
                 const auto& slot = s == GateSection ? strip->params.gate() : strip->params.dynamics();
-                g.setColour (theme.text);
-                g.setFont (type::font (type::kCaption - 2.0f, true)); // a size under the section's name
-                // Narrowed rather than cut ("WING CO..."): the sections are slim. Too long
-                // even so, it drops "WING " (the section's tag says it) and gets a little smaller.
-                auto modelName = models::model (models::Dynamics, slot.model.load()).name.toUpperCase();
-                const auto fits = [&g, &title] (const juce::String& s) { return juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), s) * 0.7f <= title.getWidth(); };
-                if (! fits (modelName) && modelName.startsWith ("WING "))
-                    modelName = modelName.substring (5);
-                // Squashed to 0.7, or a size smaller squashed to 0.55; if it doesn't fit even
-                // so, it is left out (a few cut letters say less than none: the editor names it).
-                if (juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), modelName) * 0.7f <= title.getWidth())
-                    g.drawFittedText (modelName, title.toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
-                else if (const auto smaller = type::font (type::kCaption - 3.0f, true);
-                         juce::GlyphArrangement::getStringWidth (smaller, modelName) * 0.55f <= title.getWidth())
+                // The model without "WING " (the section's tag says it), at a size that stays
+                // readable; left out where it doesn't fit (the editor names it).
+                const auto modelName = models::model (models::Dynamics, slot.model.load()).name.toUpperCase().replace ("WING ", "");
+                const auto modelFont = type::font (type::kMicro, true);
+                if (juce::GlyphArrangement::getStringWidth (modelFont, modelName) <= title.getWidth())
                 {
-                    g.setFont (smaller);
-                    g.drawFittedText (modelName, title.toNearestInt(), juce::Justification::centredLeft, 1, 0.55f);
+                    g.setColour (theme.text);
+                    g.setFont (modelFont);
+                    g.drawText (modelName, title, juce::Justification::centredLeft, false);
                 }
             }
         }
@@ -270,12 +310,11 @@ void ChannelPanel::paint (juce::Graphics& g)
         }
     }
 
+    if (areas[ChainSection].isEmpty())
+        return;
     // CHAIN: the strip's processing in order; the Universal core's own in the accent.
     auto list = chainList.toFloat();
-    std::vector<ChainStep> steps;
-    for (const auto& step : strip->getChain())
-        if (isShown (step))
-            steps.push_back (step);
+    const auto steps = shownSteps();
     const float row = juce::jmin (20.0f, list.getHeight() / juce::jmax (1.0f, (float) steps.size()));
     g.setFont (type::font (juce::jmin (type::kCaption, row * 0.75f), true));
     for (const auto& step : steps)

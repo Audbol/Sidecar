@@ -326,6 +326,30 @@ fn stereo_channel_width_and_inputs() {
     assert!(close(rig.out(0), -0.125, 1e-5) && close(rig.out(1), -0.125, 1e-5));
 }
 
+/// [Manual 6.1 p. 69] BALANCE: positive takes the left down and brings the
+/// right up by the same amount, negative the opposite; no effect on a mono source.
+#[test]
+fn balance_moves_both_sides_by_the_same_amount() {
+    let mut rig = Rig::new(1, 2, 2);
+    set_channels(&rig.engine, 1);
+    let ch = rig.ch(0);
+    rig.set_input(0, 0.25);
+    rig.set_input(1, 0.25);
+    ch.params.input.balance_db.store(6.0206);
+    rig.run(40);
+    assert!(close(rig.out(0), 0.25, 1e-4), "mono: {}", rig.out(0));
+
+    ch.params.stereo.store(true, Relaxed);
+    rig.run(40);
+    assert!(close(rig.out(0), 0.125, 1e-4), "{}", rig.out(0));
+    assert!(close(rig.out(1), 0.5, 1e-4), "{}", rig.out(1));
+
+    ch.params.input.balance_db.store(-6.0206);
+    rig.run(40);
+    assert!(close(rig.out(0), 0.5, 1e-4), "{}", rig.out(0));
+    assert!(close(rig.out(1), 0.125, 1e-4), "{}", rig.out(1));
+}
+
 #[test]
 fn bus_sends_pre_post_and_subgroup() {
     let mut rig = Rig::new(2, 2, 6);

@@ -4,14 +4,24 @@
 #include "engine/Show.h"
 
 #include <array>
+#include <cstdlib>
 
 namespace livedaw
 {
+
+namespace
+{
+    SqMidi* currentMidi = nullptr; // message thread
+} // namespace
+
+std::function<void (int, bool)> SqMidi::onSoftKey;
+SqMidi* SqMidi::current() noexcept { return currentMidi; }
 
 SqMidi::SqMidi (MixerEngine& e, Show& s, bool useDevices)
     : show (s), handle (ld::ld_sq_create (e.getHandle())), ports (juce::StringArray ("SQ-5"), useDevices)
 {
     lastScene = show.getCurrentSceneIndex(); // nothing is sent at start
+    currentMidi = this;
     ports.onMessage = [this] (int port, const juce::MidiMessage& m) { handleMessage (port, m); };
     startTimer (50);
 }
@@ -19,6 +29,8 @@ SqMidi::SqMidi (MixerEngine& e, Show& s, bool useDevices)
 SqMidi::~SqMidi()
 {
     stopTimer();
+    if (currentMidi == this)
+        currentMidi = nullptr;
     ports.onMessage = nullptr;
     ports.closeAll();
     ld::ld_sq_destroy (handle);
@@ -27,6 +39,7 @@ SqMidi::~SqMidi()
 void SqMidi::loadSettings (juce::PropertiesFile& p)
 {
     setSetupText (p.getValue (setupKey));
+    setGroups (p.getIntValue ("sq5.groups", 0));
     ports.open ({ { true, p.getValue (inputKey, MidiPorts::virtualDevice), p.getValue (outputKey, MidiPorts::virtualDevice) } });
 }
 
@@ -38,6 +51,18 @@ void SqMidi::setSetupText (const juce::String& text)
     if (v.size() < 2)
         return; // the defaults: channel 1, Linear Taper
     ld::ld_sq_set_setup (handle, juce::jlimit (0, 15, v[0].getIntValue() - 1), v[1].getIntValue() != 0);
+}
+
+void SqMidi::setGroups (int n)
+{
+    ld::ld_sq_set_groups (handle, n);
+}
+
+void SqMidi::sendMessage (const juce::MidiMessage& m)
+{
+    if (onSend)
+        onSend (m);
+    ports.send (0, m);
 }
 
 void SqMidi::handleMessage (int port, const juce::MidiMessage& m)
@@ -58,6 +83,10 @@ void SqMidi::flush()
             lastScene = show.getCurrentSceneIndex(); // not sent back
         }
     }
+    // A SoftKey by its note (the protocol's 3.2): held and released as a press would.
+    while (const int key = ld::ld_sq_soft_key (handle))
+        if (onSoftKey)
+            onSoftKey (std::abs (key) - 1, key > 0);
     std::array<uint8_t, 3> out {};
     while (const int n = ld::ld_sq_midi_out (handle, out.data(), out.size()))
     {

@@ -9,7 +9,7 @@ namespace livedaw::ui::universal
 
 namespace
 {
-    constexpr int kRow = 40, kTitle = 36, kCaption = 22;
+    constexpr int kRow = sizes::kTouch, kTitle = 36, kCaption = 22;
 
     /** OFF, then the output ports ROUTING offers ("LCL 3"). */
     void bindOutput (ChoiceBar& choice, UiContext& ctx, const juce::String& caption, std::atomic<int32_t>& port)
@@ -241,7 +241,7 @@ void MonitorView::Path::paint (juce::Graphics& g)
     g.setColour (theme.panel);
     g.fillRoundedRectangle (getLocalBounds().toFloat(), sizes::kRadius);
     g.setColour (theme.text);
-    g.setFont (type::font (type::kLabel + 2.0f, true));
+    g.setFont (type::font (type::kHeading, true));
     g.drawText (phones ? "PHONES" : "SPEAKERS", getLocalBounds().removeFromTop (kTitle).reduced (sizes::kGap + 4, 0), juce::Justification::centredLeft);
     g.setColour (theme.textDim);
     g.setFont (type::font (type::kCaption, true));
@@ -251,10 +251,10 @@ void MonitorView::Path::paint (juce::Graphics& g)
     {
         auto r = reductionArea.toFloat();
         g.setColour (theme.well);
-        g.fillRoundedRectangle (r, 3.0f);
+        g.fillRoundedRectangle (r, sizes::kRadius);
         const float amount = juce::jlimit (0.0f, 1.0f, -limiterGr / 20.0f);
         g.setColour (theme.solo);
-        g.fillRoundedRectangle (r.withLeft (r.getRight() - r.getWidth() * amount), 3.0f);
+        g.fillRoundedRectangle (r.withLeft (r.getRight() - r.getWidth() * amount), sizes::kRadius);
         g.setColour (theme.textDim);
         g.drawText ("GR " + juce::String (limiterGr, 1) + " dB", reductionArea.reduced (6, 0), juce::Justification::centredLeft);
     }
@@ -266,7 +266,7 @@ int MonitorView::Path::preferredHeight() const
     for (auto [c, rowH] : rows)
         h += rowH + sizes::kGapSmall;
     constexpr int kEqMin = 180;
-    h += kCaption + 2 * (kRow + sizes::kGapSmall) + sizes::kTouch + sizes::kGapSmall; // DIRECT IN, its level, EQ / INVERT / DELAY
+    h += kCaption + sizes::kGapSmall + 2 * (kRow + sizes::kGapSmall) + sizes::kTouch + sizes::kGapSmall; // DIRECT IN, its level, EQ / INVERT / DELAY
     h += kEqMin + sizes::kGapSmall + 4 * kRow + 3 * sizes::kGapSmall + 22 + sizes::kGapSmall + sizes::kGap; // the EQ, PAN ... LIMITER, GR
     return h;
 }
@@ -300,6 +300,7 @@ void MonitorView::Path::resized()
     // The processing under the levels: the EQ takes what the rows leave.
     area.setTop (y);
     processingCaption = area.removeFromTop (kCaption);
+    area.removeFromTop (sizes::kGapSmall);
     directIn.setBounds (area.removeFromTop (kRow));
     area.removeFromTop (sizes::kGapSmall);
     directLevel.setBounds (area.removeFromTop (kRow));
@@ -470,7 +471,7 @@ void MonitorView::Talkback::paint (juce::Graphics& g)
     g.fillRoundedRectangle (getLocalBounds().toFloat(), sizes::kRadius);
     auto title = getLocalBounds().removeFromTop (kTitle).reduced (sizes::kGap + 4, 0);
     g.setColour (theme.text);
-    g.setFont (type::font (type::kLabel + 2.0f, true));
+    g.setFont (type::font (type::kHeading, true));
     g.drawText ("TALKBACK", title, juce::Justification::centredLeft);
     title.removeFromLeft (110);
     drawDeviceTag (g, title.toFloat(), devices::wing, theme); // the WING's talk paths (AUTO / PUSH / LATCH, the dims)
@@ -483,7 +484,7 @@ int MonitorView::Talkback::preferredHeight (int width) const
 {
     const int keysW = width - 2 * sizes::kGap;
     return sizes::kGap + (kTitle - sizes::kGap) + 2 * (kRow + sizes::kGapSmall) + sizes::kTouch + sizes::kGap + (sizes::kTouch - 8) + sizes::kGapSmall
-           + 3 * (kRow + sizes::kGapSmall) + sizes::kTouch + kCaption + destinations.heightFor (keysW) + sizes::kGap;
+           + 3 * (kRow + sizes::kGapSmall) + sizes::kTouch + kCaption + sizes::kGapSmall + destinations.heightFor (keysW) + sizes::kGap;
 }
 
 void MonitorView::Talkback::resized()
@@ -511,6 +512,7 @@ void MonitorView::Talkback::resized()
     area.removeFromTop (sizes::kGapSmall);
     useSendLevels.setBounds (area.removeFromTop (sizes::kTouch));
     toCaption = area.removeFromTop (kCaption);
+    area.removeFromTop (sizes::kGapSmall);
     destinations.setBounds (area.removeFromTop (juce::jmin (area.getHeight(), destinations.heightFor (area.getWidth()))));
 }
 
@@ -593,7 +595,7 @@ void MonitorView::paint (juce::Graphics& g)
     g.setColour (theme.panel);
     g.fillRoundedRectangle (soloPanel.toFloat(), sizes::kRadius);
     g.setColour (theme.text);
-    g.setFont (type::font (type::kLabel + 2.0f, true));
+    g.setFont (type::font (type::kHeading, true));
     g.drawText ("SOLO", soloPanel.withHeight (kTitle).reduced (sizes::kGap + 4, 0), juce::Justification::centredLeft);
 }
 

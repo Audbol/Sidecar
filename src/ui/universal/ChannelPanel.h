@@ -31,9 +31,12 @@ public:
     ResponseView& getEqView() noexcept { return eqView; }
     TransferView& getGateView() noexcept { return gateView; }
     TransferView& getDynamicsView() noexcept { return dynView; }
+    /** A tap on a section's title or a CHAIN row: that chain step (its kind, an extra block's id or -1). */
+    std::function<void (int stepKind, int uid)> onOpenStep;
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    void mouseUp (const juce::MouseEvent&) override;
 
 private:
     enum Section
@@ -62,6 +65,7 @@ private:
     SendsPanel sends;
     std::array<juce::Rectangle<int>, NumSections> areas;
     juce::Rectangle<int> chainList;
+    std::vector<ChainStep> shownSteps() const;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChannelPanel)
 };

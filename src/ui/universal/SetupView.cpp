@@ -105,6 +105,8 @@ SetupView::SetupView (UiContext& c, const Theme& t)
       applyKey ("APPLY", t.accent, t), revertKey ("REVERT", t.accent, t), interfaceChoice (t), compensationKey ("DELAY COMPENSATION", t.accent, t),
       protectionKey ("OUTPUT PROTECTION", t.accent, t), remote (c, t), mixerConfig (c, t), ctx (c), theme (t)
 {
+    for (auto* k : { &consoleTab, &audioTab, &remoteTab, &prefsTab })
+        k->tab = true;
     const std::pair<ToggleKey*, Page> tabs[] = { { &consoleTab, Page::Console }, { &audioTab, Page::Audio }, { &remoteTab, Page::Remote },
                                                  { &prefsTab, Page::Preferences } };
     for (auto [key, target] : tabs)
@@ -140,6 +142,14 @@ SetupView::SetupView (UiContext& c, const Theme& t)
                                       });
     };
     revertKey.onClick = [this] { revert(); };
+    // Lit while there is something to apply.
+    applyKey.isOn = [this]
+    {
+        for (int k = 0; k < NumKinds; ++k)
+            if (pending[(size_t) k] != getCurrent (static_cast<Kind> (k)))
+                return true;
+        return false;
+    };
     addChildComponent (applyKey);
     addChildComponent (revertKey);
 
@@ -292,6 +302,7 @@ void SetupView::refresh()
         changes = changes || pending[(size_t) k] != getCurrent (static_cast<Kind> (k));
     applyKey.setEnabled (changes);
     revertKey.setEnabled (changes);
+    applyKey.refresh();
     for (auto& r : rows)
         r->repaint();
 }

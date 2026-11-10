@@ -243,12 +243,16 @@ public:
     juce::Component* getControl (int index) const noexcept;
     /** Its height for the controls it holds at `width`. */
     int getHeightFor (int width) const noexcept;
+    /** How many columns of controls it may use, width allowing (each at least kMinColumn wide). */
+    int maxColumns = 2;
+    static constexpr int kMinColumn = 200;
     void refresh();
 
     void resized() override;
 
 private:
     void rebuild();
+    int columnsFor (int width) const noexcept;
 
     const Theme& theme;
     models::Table table = models::Dynamics;

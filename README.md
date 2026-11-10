@@ -1,59 +1,52 @@
+<p align="center">
+  <img src="branding/github/sidecar-readme-banner.png" alt="Sidecar: live mixing consoles" width="100%">
+</p>
+
+<p align="center">
+  <a href="https://github.com/Audbol/Sidecar/releases"><img src="https://img.shields.io/github/v/release/Audbol/Sidecar?include_prereleases&label=release&color=FF9220" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-AGPLv3-3A3F48" alt="Licence: AGPLv3"></a>
+  <img src="https://img.shields.io/badge/platforms-Windows%20%7C%20macOS%20%7C%20Linux-3A3F48" alt="Windows, macOS, Linux">
+  <a href="https://discord.gg/TEE8q979x"><img src="https://img.shields.io/badge/Discord-join-FF9220" alt="Discord"></a>
+</p>
+
 # Sidecar
 
-Sidecar turns an ordinary computer and audio interface into a digital mixing console
-for live sound, laid out and working like a **Behringer WING**. Inputs from your audio
-interface are channels on the console; they feed buses, mains and matrices, and
-anything can be sent to any hardware output. It runs on Windows, macOS and Linux.
+Sidecar turns an ordinary computer and audio interface into a mixing console for live sound.
+It emulates the surfaces, screens, processing and remote protocols of real digital consoles, with
+analog mixers to follow, and adds the **Universal Mixer**, its own interface for a console of any
+size. Inputs from your audio interface are channels on the console; they feed buses, mains and
+matrices, and anything can be sent to any hardware output. It runs on Windows, macOS and Linux.
 
-> **Sidecar is an independent hobby project, made for fun and practice.** It is not
-> affiliated with or endorsed by Behringer or Music Tribe; "WING" is their trademark.
-> Sidecar tries its hardest to emulate the WING's interface and behaviour faithfully,
-> but it is incomplete and can differ from the real console: the processing recreates
-> the character of the WING's models, not Behringer's algorithms, and there is no
-> remote preamp control, StageConnect, AES50 or Dante (see
-> [Known limitations](#known-limitations); the notice shown at start-up, also under
-> SETUP > GENERAL > ABOUT, lists the differences). Don't rely on it for a critical
-> live show without testing it thoroughly first.
+> **Sidecar is an independent hobby project, made for fun and practice, and you use it at your
+> own risk.** It is not affiliated with, endorsed by or supported by any console maker. Product
+> names are their owners' trademarks, used only to say which console is emulated. No console here is complete, and each can differ from the real one: the
+> processing recreates each unit's controls and character from published information, not the
+> makers' algorithms, and there is no remote preamp control, StageConnect, AES50 or Dante (see
+> [Known limitations](#known-limitations)). The notice shown at start-up gives a rough
+> completion figure for each console. Don't rely on Sidecar for a critical live show without
+> testing it thoroughly first.
 
-**Status: v0.3.0 beta**, the eighth public beta, with previews of the X32, the ProMix 01
-and the 02R on the **Universal Mixer**: Sidecar is growing from a WING emulator into an emulator of several consoles,
-built on a mixer core without any one console's limits. The console's size is a
-configuration (any number of channels, buses, mains and matrices, up to 256 DCAs and
-mute groups, 64 FX slots), and each strip's processing is a chain that can hold extra
-blocks and tap points. The Universal Mixer's own interface is a preview beside the WING
-surface, under SETUP > SIDECAR > INTERFACE (see the user guide's chapter *The
-Universal Mixer*): a touch-friendly MIXER view for a console of any size with the
-selected strip whole across the top and curves you set by their handles, an
-inspector, ROUTING, FX RACK, MONITORING, SCENES, RECORDER and SETUP. The WING works as
-before. Expect rough edges, and please [report what you find](#reporting-problems).
+**Status: v0.3.0 beta.** Choose a console under SETUP > SIDECAR > INTERFACE. Expect rough edges,
+and please [report what you find](#reporting-problems).
 
-**In progress: the X32.** An X32 console (SETUP > SIDECAR > INTERFACE: X32) has the X32's
-channels, buses, models and fader law, answers X32 remote apps and the X32's MIDI map,
-and opens on the **X32 surface** (a preview): its faders and layers, the channel strip
-section and the X32's display, which takes touch (see the user guide's chapter *The X32
-surface*).
+| Console | How it appears in Sidecar |
+| --- | --- |
+| **WING** | The most complete: its surface and screens, and its network protocols, which WING Edit works with |
+| **X32** | Its faders and layers, channel strip section and display, its remote protocol and MIDI |
+| **ProMix 01** | Its faders, LCD pages, scene memories and MIDI |
+| **02R** | Its surface, LCD pages and MIDI |
+| **01V** | Its surface and LCD, matched to photographs of a real console, and its MIDI |
+| **DM2000** | Its surface, dot-matrix LCD pages and MIDI |
+| **SQ-5** | Its surface and touchscreen, MIDI and MIDI over TCP |
+| **dLive** | C3500 and C1500 surfaces and touchscreens, MIDI over TCP |
+| **PRO2** | Its processing and effects, on the Universal Mixer until it has a surface |
+| **1204USB** | An analog mixer: its panel, routing and blocks, plus console tape and scenes |
+| **Universal Mixer** | Sidecar's own touch-friendly interface, for any size of console |
 
-**In progress: the Yamaha ProMix 01.** A ProMix 01 console (SETUP > SIDECAR > INTERFACE:
-PROMIX 01) has its channels, effects, dynamics processors, EQ and MIDI, and opens on the
-**ProMix surface** (a preview): its faders, its LCD with the function keys, the scene
-memory and the PARAMETER wheel (see the user guide's chapter *The ProMix 01 surface*).
-
-**In progress: the Yamaha 02R.** An 02R console (SETUP > SIDECAR > INTERFACE: 02R) has its
-40 input channels, effects, dynamics, EQ, libraries and MIDI, and opens on the **02R
-surface** (a preview): its faders and encoders, the display with its function keys, the
-SELECTED CHANNEL section and the scene memory (see the user guide's chapter *The 02R
-surface*).
-
-**Coming next: more consoles.** After the 02R come the Yamaha DM2000 and Midas
-PRO1, then Allen & Heath and DiGiCo, each an emulation on the same core. The plan is in
-[docs/UNIVERSAL_MIXER.md](docs/UNIVERSAL_MIXER.md).
-
-Sidecar opens by asking whether to continue where you left off or start a new mixer. The
-WING is experimental; the X32, ProMix 01 and 02R are very experimental.
-
-**Community:** questions, tips and feedback on the [Sidecar Discord server](https://discord.gg/TEE8q979x).
-
-![The full-size console: the HOME screen of a channel, the channel strip, fader sections with the input list on the left and DCAs in the middle, all metering a signal](docs/images/console.png)
+Under all of them is one mixer core without any one console's limits. A console's size is a
+configuration (any number of channels, buses, mains and matrices, up to 256 DCAs and mute
+groups, 64 FX slots), and each strip's processing is a chain that can hold extra blocks and tap
+points, including those of any other console emulated here.
 
 ## Use cases
 
@@ -103,6 +96,8 @@ relying on it at a show (see [Known limitations](#known-limitations)).
 | **02R surface** (preview): its faders, encoders, display and SELECTED CHANNEL section | |
 
 ## What it does
+
+This section describes the WING, the most complete console. The others share its mixer core, recorder and plugin hosting; each has its own surface, processing and remote protocol, as in the table at the top.
 
 - **A WING console:** 40 input channels, 8 aux, 16 stereo buses, 4 stereo mains,
   8 matrices, 16 DCAs, 8 mute groups and 16 FX slots. More channels, buses and FX
@@ -217,7 +212,7 @@ for the files of each version.
 6. **Connect WING apps (optional, experimental):** **SETUP > REMOTE > WING REMOTE >
    ENABLE** starts the WING network servers (UDP 2222 discovery, UDP 2223 OSC, TCP
    2222 native). Remote apps on the same network can then discover Sidecar under its
-   console name. Allow Sidecar through your firewall. Tested with Behringer's WING
+   console name. Allow Sidecar through your firewall. Tested with the WING
    Edit 3.3.4 (connect, MIXER -> PC and PC -> MIXER sync on both console models, live
    control both ways, FX and channel processing models, inserts), libwing's clients
    and the Bitfocus Companion WING module's OSC paths; testers use Mixing Station.
@@ -259,7 +254,7 @@ see the [user guide](docs/USER_GUIDE.md#multitrack-recording)).
 This list matches the notice Sidecar shows at start-up.
 
 - **Sound:** the channel processing and FX models recreate each unit's controls and
-  character from the WING's parameter set, not Behringer's exact algorithms.
+  character from the WING's parameter set, not the maker's exact algorithms.
 - **Hardware:** your audio interface's inputs and outputs take the place of the
   WING's. There is no StageConnect, AES50 or Dante, and no remote preamp control
   (HA REMOTE): source GAIN is digital and +48V is only stored.
@@ -430,7 +425,7 @@ realtime and threading design.
 Bug reports, testing with real hardware and pull requests are welcome; see
 [CONTRIBUTING.md](CONTRIBUTING.md). In short: keep the audio thread realtime-safe,
 add tests, keep `cargo fmt`, `cargo clippy` and the C++ build warning-free, and never
-add Behringer firmware, software, documents or artwork.
+add any maker's firmware, software, documents or artwork.
 
 ## Licence
 
@@ -450,6 +445,6 @@ License 1.1), and the WING parameter data is derived from
 [libwing](https://github.com/jerrythemaus/libwing) (Apache License 2.0). See
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for every component and its licence.
 
-Behringer, WING and Music Tribe are trademarks of their owners. Sidecar is an
-independent hobby project, not affiliated with or endorsed by Behringer or Music
-Tribe, and contains none of their firmware, software or artwork.
+Product names are trademarks of their owners. Sidecar is an
+independent hobby project, not affiliated with or endorsed by any console
+maker, and contains none of their firmware, software or artwork.

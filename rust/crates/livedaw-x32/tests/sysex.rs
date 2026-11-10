@@ -62,3 +62,49 @@ fn the_oscillator_plays_on_its_destination() {
     assert!(!osc.on.load(Relaxed));
     assert_eq!(command(&c, "/-stat/osc/on"), Done::Answer("/-stat/osc/on OFF".into()));
 }
+
+#[test]
+fn preferences_and_status_are_kept_and_the_solo_switches_are_the_engines() {
+    use std::sync::atomic::Ordering::Relaxed;
+    let engine = x32();
+    let state = State::default();
+    let c = Console::new(&engine, &state);
+    // Kept by the server, by name or number, in the document's ranges.
+    assert_eq!(command(&c, "/-prefs/clockmode"), Done::Answer("/-prefs/clockmode 24h".into()));
+    assert_eq!(command(&c, "/-prefs/clockmode 12h"), Done::Set(1));
+    assert_eq!(command(&c, "/-prefs/clockmode"), Done::Answer("/-prefs/clockmode 12h".into()));
+    assert_eq!(command(&c, "/-prefs/card/USBmode 5"), Done::Set(1));
+    assert_eq!(command(&c, "/-prefs/card/USBmode"), Done::Answer("/-prefs/card/USBmode 2in/2out".into()));
+    assert_eq!(command(&c, "/-prefs/rta/visibility"), Done::Answer("/-prefs/rta/visibility 70%".into()));
+    assert_eq!(command(&c, "/-prefs/haflags 2"), Done::Set(1));
+    assert_eq!(command(&c, "/-prefs/haflags"), Done::Answer("/-prefs/haflags %0010".into()));
+    assert_eq!(command(&c, "/-prefs/ip/addr/3 77"), Done::Set(1));
+    assert_eq!(command(&c, "/-prefs/ip/addr"), Done::Answer("/-prefs/ip/addr 192 168 1 77".into()));
+    assert_eq!(command(&c, "/-prefs/lamp 44"), Done::Set(1));
+    assert_eq!(command(&c, "/-prefs/lamp"), Done::Answer("/-prefs/lamp 40".into()), "steps of 10");
+    assert_eq!(command(&c, "/-stat/screen/SETUP/page 5"), Done::Set(1));
+    assert_eq!(command(&c, "/-stat/screen/SETUP/page"), Done::Answer("/-stat/screen/SETUP/page 5".into()));
+    assert_eq!(command(&c, "/-stat/selidx 70"), Done::Set(1));
+    assert_eq!(command(&c, "/-stat/selidx 99"), Done::Set(0), "no such strip");
+    assert_eq!(command(&c, "/-stat/selidx"), Done::Answer("/-stat/selidx 70".into()));
+    // The solo switches: channel 3, bus 2 (50), the M/C (72), DCA 8 (80).
+    assert_eq!(command(&c, "/-stat/solosw/03 ON"), Done::Set(1));
+    assert!(engine.strips(StripKind::Channel)[2].params.solo.load(Relaxed));
+    assert_eq!(command(&c, "/-stat/solosw/03"), Done::Answer("/-stat/solosw/03 ON".into()));
+    assert_eq!(command(&c, "/-stat/solosw/50 ON"), Done::Set(1));
+    let bus2 = engine.strips(StripKind::Bus).into_iter().find(|s| s.id() == 1).unwrap();
+    assert!(bus2.params.solo.load(Relaxed));
+    assert_eq!(command(&c, "/-stat/solosw/72 ON"), Done::Set(1));
+    assert!(engine.strips(StripKind::Main)[1].params.solo.load(Relaxed));
+    assert_eq!(command(&c, "/-stat/solosw/80 ON"), Done::Set(1));
+    assert!(engine.controls.dcas[7].solo.load(Relaxed));
+    engine.controls.dcas[7].solo.store(false, Relaxed);
+    assert_eq!(command(&c, "/-stat/solosw/80"), Done::Answer("/-stat/solosw/80 OFF".into()));
+    assert_eq!(command(&c, "/-stat/solosw/81"), Done::Unknown);
+    // A scene file leaves preferences and status out, and doesn't read them.
+    let scene = livedaw_x32::scn::write(&c, "s", "");
+    assert!(!scene.contains("/-prefs") && !scene.contains("/-stat"), "not in a scene file");
+    let read = livedaw_x32::scn::read(&c, "#2.7# \"s\" \"\" %000000000 1\n/-prefs/clockmode 24h\n");
+    assert_eq!((read.applied, read.skipped), (0, 1));
+    assert_eq!(command(&c, "/-prefs/clockmode"), Done::Answer("/-prefs/clockmode 12h".into()));
+}

@@ -2,6 +2,8 @@
 
 #include "ui/DLiveSurface.h"
 #include "engine/Analysis.h"
+#include "engine/ConsoleState.h"
+#include "ui/RoutingGroups.h"
 #include "ui/universal/MixerConfigPanel.h"
 
 #include <array>
@@ -14,6 +16,12 @@ namespace livedaw::ui::dl
 
 /** The size the C3500's touchscreens are laid out at (scaled to their place on the panel). */
 constexpr int kTouchW = 1000, kTouchH = 690;
+
+/** What of a right-screen page the C1500's one screen shows of it (`ProcessingScreen::hostPage`):
+    Scenes keeps its own proportions, the others are drawn across the screen's whole width on
+    a C3500 and are narrowed to fit, as a C1500's page is. */
+inline juce::Rectangle<int> sceneSource() { return { 117, 0, 758, 530 }; }
+inline juce::Rectangle<int> wideSource() { return { 10, 0, 866, 530 }; }
 
 /** Something on a screen a value drives: dragged where it is, or touched so that the data
     rotary beside the screen turns it (the manual's Touch & Turn). */
@@ -136,6 +144,8 @@ public:
         int thumb = 0; // 0 none, 1 a gate's, 2 a compressor's
         ld::DynSlotParams* dyn = nullptr;
         std::atomic<bool>* in = nullptr;
+        /** The thumbnail's meters: its level (dBFS) and its gain reduction (dB, negative). */
+        std::function<float()> levelDb, reductionDb;
         std::array<Control, 3> controls;
     };
 
@@ -173,6 +183,8 @@ public:
     void update();
     /** With handles: the rings to drag, the mouse wheel for a band's width. */
     bool handles = true;
+    /** One band alone, on black (the four panels' View); -1: all of them. */
+    int onlyBand = -1;
     int getSelectedBand() const noexcept { return selected; }
     void selectBand (int);
     std::function<void()> onBandChanged;
@@ -206,6 +218,21 @@ private:
     int selected = 1, dragging = -1;
 };
 
+/** The PEQ band by band: LF, LM, HM, HF, each with its colour, shape and width (the View key). */
+class BandPanels final : public juce::Component
+{
+public:
+    explicit BandPanels (UiContext&);
+    void setStrip (Strip*);
+    void update();
+    void paint (juce::Graphics&) override;
+    void resized() override;
+
+private:
+    Strip* strip = nullptr;
+    std::array<std::unique_ptr<EqGraph>, 4> graphs;
+};
+
 /** A dynamics section's input-to-output curve. */
 class TransferGraph final : public juce::Component
 {
@@ -221,7 +248,7 @@ private:
 class MiniFaders final : public juce::Component, private juce::Timer
 {
 public:
-    explicit MiniFaders (UiContext&);
+    MiniFaders (UiContext&, Desk&);
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
@@ -232,7 +259,10 @@ private:
     Strip* stripAt (int column) const;
     int columnAt (int x) const;
     static constexpr int kColumns = 31;
+    /** What a strip's small fader stands at (with a mix on the faders, as its fader does). */
+    float levelDb (const Strip&) const;
     UiContext& ctx;
+    Desk& desk;
     int first = 0, dragFirst = 0;
     juce::String shown;
 };
@@ -256,7 +286,23 @@ public:
         Geq,
         Comp,
         InsB,
-        Delay
+        Delay,
+        /** A mix's external input (the guide's 1.6). */
+        ExtIn,
+        /** What the console's Routing screen has and Sidecar's routing page hasn't: a channel's
+            Direct Out, a mix's Mix Source and Follow Main Pan. */
+        Routing
+    };
+
+    /** Ext In's Source Select: what kind of source, then which of them. */
+    enum class ExtType
+    {
+        None,
+        Socket,
+        Mix,
+        Main,
+        Matrix,
+        Pafl
     };
 
     ProcessingScreen (UiContext&, Desk&);
@@ -271,7 +317,20 @@ public:
     int getLayer() const noexcept { return layer; }
     const SoftWidget::Block& getBlock (int i) const noexcept { return soft.getBlock (i); }
     void toggleView();
-    bool isViewAlt() const noexcept { return viewAlt; }
+    bool isViewAlt() const noexcept { return view != 0; }
+    /** 0 the wide curve, 1 the four bands, 2 the small faders. */
+    int getView() const noexcept { return view; }
+    void setView (int);
+    /** The C1500's one screen: the Main box as its photographs have it. */
+    void setOneScreen (bool on) { oneScreen = on; repaint(); }
+    /** The C1500's one screen: `page` (a right-screen page, laid out at kTouchW by kTouchH)
+        takes the main area, the part of it `source` says and no more: its own side columns and
+        small faders are clipped away, this screen's strip box, preamp, soft widget and bottom
+        band stay. nullptr: the processing page again. */
+    void hostPage (juce::Component* page, juce::Rectangle<int> source = wideSource());
+    juce::Component* getHostedPage() const noexcept { return hostedPage; }
+    /** Help's key for the page shown now. */
+    juce::String helpKey() const;
     /** The active Mix's name moved. */
     void mixChanged() { repaint(); }
     /** Takes a model or a structure change (a scene, a remote). */
@@ -279,9 +338,26 @@ public:
 
     EqGraph& getGraph() noexcept { return graph; }
 
+    /** Ext In: Source Select and the Socket box choose, Apply patches the mix's Ext In,
+        Cancel takes the mix's own again. */
+    void chooseExtIn (ExtType, int number);
+    ExtType getExtType() const noexcept { return extType; }
+    int getExtNumber() const noexcept { return extNumber; }
+    void applyExtIn();
+    void cancelExtIn();
+    /** How many sources a kind has on this console, and the engine's input for one (-1: none). */
+    int extCount (ExtType) const;
+    int extInSource (ExtType, int number) const;
+    /** ABCD Source Setup: the socket (an input number, -1 none) of input A to D of the strip. */
+    void setAbcdPatch (int which, int socket);
+    /** A key of the tab showing, by its text (nullptr: none). */
+    ScreenButton* findButton (const juce::String& text) const;
+
     /** Touch & Turn: what the data rotary turns now. */
     std::function<void (const KnobBinding&)> onTouchTurn;
     std::function<void()> onLibrary, onFxUnit, onSoftChanged;
+    /** A tap that wants the processing page, while another is hosted (the C1500). */
+    std::function<void()> onWantsProcessing;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -301,6 +377,10 @@ private:
     void buildOverview (Strip&);
     void buildBank();
     void buildGeq (Strip&);
+    void buildExtIn (Strip&);
+    void buildRouting (Strip&);
+    void loadExtIn();
+    juce::String extName (ExtType, int number) const;
     void touch (Touchable&);
     ParamBox& addBox (juce::Rectangle<int>, KnobBinding, juce::Colour, const juce::String& caption = {});
     ScreenButton& addButton (juce::Rectangle<int>, const juce::String&, juce::Colour, std::function<void()>);
@@ -311,21 +391,30 @@ private:
     Strip* strip = nullptr;
     Tab tab = Tab::Peq;
     int layer = 0;
-    bool viewAlt = false;
+    int view = 0;
     juce::uint32 structureSeen = 0;
     std::vector<std::pair<Tab, std::unique_ptr<ScreenTab>>> tabs;
     TouchKnob gainKnob, trimKnob;
     FilterThumb hpf, lpf;
     EqGraph graph, wideCurve;
+    BandPanels bandPanels;
     MiniFaders faders;
     TransferGraph transfer;
     SoftWidget soft;
+    juce::Component pageArea;
+    juce::Component* hostedPage = nullptr;
+    bool oneScreen = false;
     std::vector<std::unique_ptr<juce::Component>> items;
+    /** A tab's old items, hidden until the next timer tick: one of them may be the key whose
+        click is building the tab again. */
+    std::vector<std::unique_ptr<juce::Component>> retired;
     juce::Component::SafePointer<Touchable> touchedNow;
     Analysis::Bands rtaBands;
     int rtaFrame = -1;
     bool rtaShowing = false;
     int gateModel = -1, compModel = -1;
+    ExtType extType = ExtType::None;
+    int extNumber = 0, extShown = -2;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ProcessingScreen)
 };
@@ -365,6 +454,32 @@ public:
     void applyName (const juce::String&);
     void applyColour (int colourIndex);
     void setRange (int type, int first, int last);
+
+    /** Source Selector (Audio): the selector shown, 0 to 19. */
+    static constexpr int kSelectors = 20, kSelectorSources = 20;
+    void chooseSelector (int);
+    int getSelector() const noexcept { return selector; }
+    /** Its top pane lists the inputs (false) or the mixes: Groups, Aux and Mains. */
+    void showSelectorMixes (bool);
+    /** A source of the top pane touched: it joins the selector at its first free place, or
+        leaves it (the console drags them down; Sidecar's reading). False: no room, or no such. */
+    bool toggleSelectorSource (Strip*);
+    /** The place a strip has in the selector, -1: none. */
+    int selectorMember (const Strip*) const;
+    /** A member touched: it plays (the others fade out) and its on-level goes to the rotary.
+        -1: Off. */
+    void playSelectorMember (int member);
+    /** Set Output: a mono or stereo Aux or Matrix, nullptr: unassigned. */
+    void setSelectorOutput (Strip*);
+    Strip* getSelectorOutput() const;
+    /** Network: the MIDI channel dLive's messages start at (1 to 12; it uses five), pending
+        until Apply. */
+    void setPendingMidiChannel (int);
+    int getPendingMidiChannel() const noexcept { return pendingMidi; }
+    int getMidiChannel() const;
+    void applyMidiChannel();
+    /** A key of the tab showing, by its text (nullptr: none). */
+    ScreenButton* findButton (const juce::String& text) const;
 
     std::function<void (const KnobBinding&)> onTouchTurn;
     std::function<void()> onOpenSetup;
@@ -406,6 +521,12 @@ private:
     void addApplyCancel (float x0, float x1, float gap, float y0, float y1);
     const MixerEngine::StripList* typeList() const;
     std::vector<Strip*> ammMembers (int amm) const;
+    std::vector<Strip*> selectorSources() const;
+    Strip* selectorStrip (int member, float* onDb = nullptr) const;
+    juce::Rectangle<float> selectorCell (int index) const;
+    juce::Rectangle<float> selectorSlot (int member) const;
+    KnobBinding selectorFade (bool out);
+    KnobBinding selectorLevel (int member);
 
     void buildMixerConfig();
     void buildInputStereos();
@@ -430,18 +551,289 @@ private:
     MiniFaders faders;
     juce::Component::SafePointer<Touchable> touchedNow;
     ScreenButton* applyKey = nullptr;
+    ScreenButton* midiApply = nullptr;
     juce::TextEditor* nameField = nullptr;
     std::vector<juce::Rectangle<float>> ammBoxes, colourDots;
     int softLayer = 0, pairFirst = 0, nameType = 0, rangeFirst = 0, rangeLast = 127, selectorFirst = 0, ammBlock = 0;
+    int selector = 0, selectorTouched = -1, pendingMidi = 0;
+    bool selectorMixes = false;
+    juce::String selectorShown;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MixRackScreen)
 };
+
+/** The right screen's Meters page, as photographs of a real console's have it: Inputs, FX,
+    UFX, Mix, four User pages and two RTAs. */
+class MetersScreen final : public juce::Component, private juce::Timer
+{
+public:
+    enum Tab
+    {
+        Inputs,
+        Fx,
+        Ufx,
+        Mix,
+        User1,
+        User2,
+        User3,
+        User4,
+        Rta1,
+        Rta2,
+        NumTabs
+    };
+
+    MetersScreen (UiContext&, Desk&);
+    ~MetersScreen() override;
+
+    void showTab (int);
+    int getTab() const noexcept { return tab; }
+    int getNumCells() const noexcept { return (int) cells.size(); }
+    /** Which strip a cell shows (nullptr: an empty one), and what its key is. */
+    Strip* getCellStrip (int i) const noexcept { return cells[(size_t) i].strip; }
+    void setStrip (Strip*);
+    void setSoftLayer (int);
+    void refresh();
+
+    std::function<void (const KnobBinding&)> onTouchTurn;
+
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+
+private:
+    struct Cell
+    {
+        Strip* strip = nullptr;
+        juce::String top, bottom, key;
+        juce::Rectangle<float> r;
+        juce::Colour body;
+        int bars = 1;
+        bool withKey = true;
+    };
+    struct Scale
+    {
+        float x, y, h;
+    };
+
+    void timerCallback() override;
+    void rebuild();
+    void buildRta();
+    void addRow (const std::vector<Cell>&, float y, float h, float pitch, float x0);
+    void paintCell (juce::Graphics&, const Cell&) const;
+    void paintRta (juce::Graphics&);
+
+    UiContext& ctx;
+    Desk& desk;
+    Strip* strip = nullptr;
+    int tab = Inputs, first = 0, softLayer = 0, rtaMode = 0;
+    bool avgOn = true, pkOn = true, holdMax = false;
+    ScreenTab titleTab;
+    std::vector<std::unique_ptr<ScreenTab>> tabs;
+    std::vector<std::unique_ptr<ScreenButton>> rtaKeys;
+    std::vector<Cell> cells;
+    std::vector<Scale> scales;
+    SoftWidget sends;
+    MiniFaders faders;
+    juce::Component::SafePointer<Touchable> touchedNow;
+    Analysis::Bands bands, maxBands;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MetersScreen)
+};
+
+/** The right screen's I/O page, as photographs of a real console's have it: Outputs and
+    Inputs as patch grids, group by group, a tap patching only in Patch mode; Tie Lines and
+    Virtual SoundCheck are drawn (Sidecar has nothing behind them yet). */
+class IoScreen final : public juce::Component, private juce::Timer
+{
+public:
+    enum Tab
+    {
+        Outputs,
+        Inputs,
+        TieLines,
+        SoundCheck,
+        NumTabs
+    };
+
+    IoScreen (UiContext&, Desk&);
+    ~IoScreen() override;
+
+    void showTab (int);
+    int getTab() const noexcept { return tab; }
+    /** MixRack (0) or Surface (1) sockets, and which group of them. */
+    void setSide (int);
+    void setGroup (int);
+    void setPatchMode (bool);
+    bool isPatchMode() const noexcept { return patchMode; }
+    int getNumRows() const noexcept { return (int) rows.size(); }
+    int getNumColumns() const noexcept { return (int) columns.size(); }
+    bool isOn (int row, int column) const;
+    /** A tap on the point (only in Patch mode). */
+    void tapPoint (int row, int column);
+    void setStrip (Strip*);
+    void refresh();
+
+    std::function<void (const KnobBinding&)> onTouchTurn;
+
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+
+private:
+    struct Row
+    {
+        Strip* strip = nullptr;
+        int side = 0;
+        juce::String name, right;
+        bool stereo = false;
+        juce::Colour edge;
+    };
+
+    void timerCallback() override { if (isVisible()) refresh(); }
+    void rebuild();
+    void rebuildGrid();
+    ScreenButton& addKey (juce::Rectangle<int>, const juce::String&, juce::Colour, std::function<void()>, bool pale = false);
+    juce::Rectangle<float> gridArea() const noexcept;
+    float cellSize() const noexcept { return 18.0f * zoom; }
+    int rowLabelWidth() const noexcept { return tab == Inputs || tab == SoundCheck ? 118 : 138; }
+    std::vector<routing::Group> sideGroups() const;
+
+    UiContext& ctx;
+    Desk& desk;
+    Strip* strip = nullptr;
+    int tab = Inputs, side = 0, groupIndex = 0, firstRow = 0, firstColumn = 0, softLayer = 0, dragRow = 0, dragColumn = 0;
+    float zoom = 1.0f;
+    bool patchMode = false;
+    ScreenTab titleTab;
+    std::vector<std::unique_ptr<ScreenTab>> tabs;
+    std::vector<std::unique_ptr<ScreenButton>> items;
+    std::vector<Row> rows;
+    std::vector<int> columns; // sources (Inputs) or output ports (Outputs)
+    SoftWidget sends;
+    MiniFaders faders;
+    juce::Component::SafePointer<Touchable> touchedNow;
+    juce::String heading;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (IoScreen)
+};
+
+/** The right screen's Surface page: Strip Assign, the SoftKeys, the custom rotaries. */
+class SurfaceScreen final : public juce::Component, private juce::Timer
+{
+public:
+    enum Tab
+    {
+        StripAssign,
+        SoftKeys,
+        Rotaries,
+        NumTabs
+    };
+
+    SurfaceScreen (UiContext&, Desk&);
+    ~SurfaceScreen() override;
+
+    void showTab (int);
+    int getTab() const noexcept { return tab; }
+    /** Which bank Strip Assign shows (bank 2 is a C3500's). */
+    void setBank (int);
+    int getBank() const noexcept { return bank; }
+    void setStrip (Strip*);
+    void refresh();
+    juce::String getCellText (int layer, int stripIndex) const;
+    juce::Rectangle<int> cellBounds (int layer, int stripIndex) const noexcept;
+    /** A strip cell touched (tests replace it). */
+    std::function<void (int bank, int layer, int stripIndex)> assignCell;
+
+    std::function<void (const KnobBinding&)> onTouchTurn;
+
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void mouseDown (const juce::MouseEvent&) override;
+
+private:
+    void timerCallback() override { if (isVisible()) refresh(); }
+    void rebuild();
+    ScreenButton& addKey (juce::Rectangle<int>, const juce::String&, juce::Colour, std::function<void()>);
+
+    UiContext& ctx;
+    Desk& desk;
+    Strip* strip = nullptr;
+    int tab = StripAssign, bank = 0, softLayer = 0;
+    ScreenTab titleTab;
+    std::vector<std::unique_ptr<ScreenTab>> tabs;
+    std::vector<std::unique_ptr<ScreenButton>> items;
+    SoftWidget sends;
+    MiniFaders faders;
+    juce::Component::SafePointer<Touchable> touchedNow;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SurfaceScreen)
+};
+
+/** What shows while no screen key is lit: the console's state, from the engine and the show. */
+class StatusScreen final : public juce::Component, private juce::Timer
+{
+public:
+    explicit StatusScreen (UiContext&);
+    ~StatusScreen() override;
+
+    /** The panels' lines, "Name: value". */
+    juce::StringArray getLines() const;
+    void paint (juce::Graphics&) override;
+
+private:
+    void timerCallback() override;
+    UiContext& ctx;
+    juce::String shown;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StatusScreen)
+};
+
+/** The right screen's bottom band on View: the four bands or the wide curve of the selected
+    strip, over the page's small faders. */
+class BottomBand final : public juce::Component, private juce::Timer
+{
+public:
+    explicit BottomBand (UiContext&);
+    ~BottomBand() override;
+    void setStrip (Strip*);
+    /** 0: the small faders (this hides), 1 the four bands, 2 the wide curve. */
+    void setView (int);
+    int getView() const noexcept { return view; }
+    void cycleView() { setView ((view + 1) % 3); }
+    void resized() override;
+
+private:
+    void timerCallback() override;
+    EqGraph curve;
+    BandPanels bands;
+    int view = 0;
+};
+
+/** A short note on the screen showing (the Help key), in Sidecar's own words. */
+class HelpPanel final : public juce::Component
+{
+public:
+    /** Shows the note for a screen (see `screenHelp`). */
+    void show (const juce::String& key);
+    const juce::String& getText() const noexcept { return body; }
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+
+private:
+    juce::String title, body;
+};
+
+/** Help's note: "Scenes", "Meters", "Processing/Gate"... (a key it doesn't know gets a general one). */
+juce::String screenHelp (const juce::String& key);
 
 /** The right screen's Scenes page: Scene Manager. */
 class SceneScreen final : public juce::Component, private juce::Timer
 {
 public:
-    explicit SceneScreen (UiContext&);
+    SceneScreen (UiContext&, Desk&);
     ~SceneScreen() override;
 
     int getSelected() const noexcept { return selected; }
@@ -459,6 +851,34 @@ public:
     void remove();
     void setSoftLayer (int);
 
+    /** The tabs: 0 Scene Manager, 1 Update, 2 Cue List Editor, 3 Import, 4 Global Safes. */
+    void showSub (int);
+    int getSub() const noexcept { return sub; }
+    std::function<void()> onSubChanged;
+    /** What of this page a hosting screen should show: Scene Manager's has a side list a
+        C1500 shows instead of the page's own, the other tabs are wide. */
+    juce::Rectangle<int> hostSource() const noexcept { return sub == 0 ? sceneSource() : wideSource(); }
+    /** Lock: a locked scene can't be stored over, deleted, pasted on or renamed. The show
+        file has no field for this, so it lasts while the show is open. */
+    bool isLocked (int row) const;
+    void toggleLock();
+    /** Copy: the selected scene's content and Recall Filter. Paste: over the selected scene,
+        or into a free slot; names and descriptions stay where they are. */
+    void copyScene();
+    void pasteScene();
+    bool hasCopiedScene() const { return copied.existsAsFile(); }
+    /** Global Safes: a whole column (a kind of setting) on every strip, a whole row of
+        strips, everything. Its other points show what those make safe. */
+    void toggleSafeColumn (int column);
+    void toggleSafeRow (int category, int row);
+    bool isSafeColumn (int column) const;
+    bool isSafeRow (int category, int row) const;
+    void setAllSafe (bool);
+    void toggleUpdateScene (int row);
+    int getNumUpdateScenes() const noexcept { return (int) updateRows.size(); }
+    void applyUpdate();
+
+    void undoGo();
     ScreenButton goKey, undoKey, storeKey, deleteKey, filterKey, lockKey, copyFilterKey, embeddedKey, midiKey, actionsKey, copyKey, pasteKey;
     juce::TextEditor nameEditor, notesEditor;
 
@@ -477,14 +897,27 @@ private:
     juce::String rowName (int row) const;
 
     static constexpr int kMainRows = 11, kLeftRows = 15, kSlots = 500;
+    void rebuildSub();
+    void paintSub (juce::Graphics&);
+    void paintRows (juce::Graphics&, juce::Rectangle<float> first, float pitch, int count, int firstRow, bool marks) const;
+    const MixerEngine::StripList* safeList (int category) const;
+    ScreenButton& addSubKey (juce::Rectangle<int>, const juce::String&, juce::Colour, std::function<void()>, bool enabled = true);
+    int sub = 0, safeCategory = 0, firstSubRow = 0;
+    juce::uint32 updateSections = state::AllSections;
+    bool updateManual = false;
+    std::vector<int> updateRows;
+    std::vector<std::unique_ptr<ScreenButton>> subKeys;
     UiContext& ctx;
+    Desk& desk;
     Strip* strip = nullptr;
     ScreenTab titleTab, managerTab, updateTab, cueTab, importTab, safesTab;
     ParamBox fade;
     SoftWidget sends;
     MiniFaders faders;
     int selected = 0, next = 0, firstMain = 0, firstLeft = 0, softLayer = 0, lastRecalled = -1;
-    juce::String lastTime, shownSignature;
+    juce::String lastTime, shownSignature, shownShow;
+    std::vector<int> lockedScenes;
+    juce::File copied;
     juce::Component::SafePointer<Touchable> touchedNow;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SceneScreen)

@@ -11,6 +11,7 @@ pub mod blocks;
 pub mod chain;
 pub mod config;
 pub mod denormals;
+pub mod dlive;
 pub mod engine;
 pub mod fft;
 pub mod fx;

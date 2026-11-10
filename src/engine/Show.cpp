@@ -397,6 +397,21 @@ bool Show::storeProMixSceneBytes (ld::LdProMix* promix, int memory, const std::v
     return stored;
 }
 
+std::vector<uint8_t> Show::getY01VSceneBytes (ld::LdY01V* y01v, int memory) const
+{
+    std::vector<uint8_t> bytes (1014);
+    bytes.resize ((size_t) juce::jmax (0, ld::ld_y01v_show_scene_bytes (y01v, handle, memory, bytes.data(), bytes.size())));
+    return bytes;
+}
+
+bool Show::storeY01VSceneBytes (ld::LdY01V* y01v, int memory, const std::vector<uint8_t>& bytes)
+{
+    const bool stored = ld::ld_y01v_store_scene_bytes (y01v, handle, memory, bytes.data(), bytes.size());
+    if (stored)
+        changed();
+    return stored;
+}
+
 void Show::removeScene (int index)
 {
     ld::ld_show_remove_scene (handle, index);
@@ -476,6 +491,23 @@ state::ApplyResult Show::recallSceneByTag (int tag)
 {
     auto r = runRecall (3, tag);
     return afterRecall (r);
+}
+
+state::ApplyResult Show::undoRecall()
+{
+    ld::ApplyResultC r {};
+    ld::ld_show_undo_recall (handle, engine.getHandle(), &r);
+    return afterRecall (r);
+}
+
+bool Show::canUndoRecall() const noexcept
+{
+    return ld::ld_show_can_undo_recall (handle, engine.getHandle());
+}
+
+void Show::markRecallUndo()
+{
+    ld::ld_show_mark_recall_undo (handle, engine.getHandle());
 }
 
 //==============================================================================
@@ -898,6 +930,13 @@ juce::Result Show::applyDLiveLayout (const int32_t* layout, uint64_t stereoInput
 {
     ld::LdString* message = nullptr;
     const bool ok = ld::ld_show_apply_dlive_layout (handle, engine.getHandle(), layout, stereoInputs, &message);
+    return afterLoad (ok, message);
+}
+
+juce::Result Show::applyDLiveStructure (const int32_t* layout, uint64_t stereoInputs, int pafl, int mainMode)
+{
+    ld::LdString* message = nullptr;
+    const bool ok = ld::ld_show_apply_dlive_structure (handle, engine.getHandle(), layout, stereoInputs, pafl, mainMode, &message);
     return afterLoad (ok, message);
 }
 

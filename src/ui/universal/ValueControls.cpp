@@ -9,7 +9,7 @@ namespace livedaw::ui::universal
 
 namespace
 {
-    constexpr int kRowHeight = 40;
+    constexpr int kRowHeight = sizes::kTouch;
 } // namespace
 
 //==============================================================================
@@ -114,8 +114,12 @@ void ValueBar::paint (juce::Graphics& g)
     g.fillRoundedRectangle (area, sizes::kRadius);
     if (isEnabled())
     {
-        g.setColour (theme.accent.withAlpha (0.35f));
-        g.fillRoundedRectangle (area.withWidth (juce::jmax (sizes::kRadius * 2.0f, area.getWidth() * position)), sizes::kRadius);
+        // The level in the raised neutral, its end in the accent: a page of these stays calm.
+        const float w = juce::jmax (sizes::kRadius * 2.0f, area.getWidth() * position);
+        g.setColour (theme.raised);
+        g.fillRoundedRectangle (area.withWidth (w), sizes::kRadius);
+        g.setColour (theme.accent);
+        g.fillRect (area.getX() + w - 2.0f, area.getY() + 3.0f, 2.0f, area.getHeight() - 6.0f);
     }
     auto text = area.reduced (10.0f, 0.0f);
     // The value keeps its room (smaller if even it doesn't fit); the caption takes
@@ -241,6 +245,7 @@ void ChoiceBar::mouseUp (const juce::MouseEvent& e)
         return;
     }
     juce::PopupMenu menu;
+    menu.setLookAndFeel (&lookAndFeelFor (theme));
     const auto list = items();
     const int i = current ? current() : -1;
     for (int k = 0; k < list.size(); ++k)
@@ -465,7 +470,7 @@ void ResponseView::paint (juce::Graphics& g)
     }
 
     // The handles: a ring with the band's name; the one held, filled.
-    const float r = juce::jlimit (6.0f, 11.0f, area.getHeight() * 0.06f);
+    const float r = juce::jlimit (6.0f, 16.0f, area.getHeight() * 0.06f);
     for (int i = 0; i < (int) handles.size(); ++i)
     {
         if (! isActive (handles[(size_t) i]))
@@ -788,9 +793,15 @@ juce::Component* ParamPanel::getControl (int index) const noexcept
     return juce::isPositiveAndBelow (index, (int) controls.size()) ? controls[(size_t) index].get() : nullptr;
 }
 
-int ParamPanel::getHeightFor (int) const noexcept
+int ParamPanel::columnsFor (int width) const noexcept
 {
-    return (int) controls.size() * (kRowHeight + sizes::kGapSmall);
+    return juce::jlimit (1, juce::jmax (1, maxColumns), width / kMinColumn);
+}
+
+int ParamPanel::getHeightFor (int width) const noexcept
+{
+    const int n = (int) controls.size(), columns = columnsFor (width);
+    return ((n + columns - 1) / columns) * (kRowHeight + sizes::kGapSmall);
 }
 
 void ParamPanel::refresh()
@@ -850,10 +861,12 @@ void ParamPanel::rebuild()
 
 void ParamPanel::resized()
 {
-    std::vector<std::pair<juce::Component*, int>> rows;
-    for (auto& c : controls)
-        rows.push_back ({ c.get(), kRowHeight });
-    layoutRows (getLocalBounds(), rows, sizes::kGapSmall);
+    // Down each column in turn, so the parameters read in their table's order.
+    const int n = (int) controls.size(), columns = columnsFor (getWidth());
+    const int perColumn = juce::jmax (1, (n + columns - 1) / columns);
+    const int width = (getWidth() - (columns - 1) * sizes::kGapSmall) / columns;
+    for (int i = 0; i < n; ++i)
+        controls[(size_t) i]->setBounds ((i / perColumn) * (width + sizes::kGapSmall), (i % perColumn) * (kRowHeight + sizes::kGapSmall), width, kRowHeight);
 }
 
 int layoutRows (juce::Rectangle<int> area, const std::vector<std::pair<juce::Component*, int>>& rows, int gap)

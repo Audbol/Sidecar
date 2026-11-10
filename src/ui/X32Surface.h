@@ -255,6 +255,14 @@ namespace x32
             fader.bind (level != nullptr ? level : strip != nullptr ? &strip->params.faderDb : dca >= 0 ? &ctx.engine.getDca (dca).faderDb : nullptr);
             repaint();
         }
+        /** EQ on faders: the fader moves a graphic EQ's band (-15..+15 dB), named on the scribble strip. */
+        void setBand (std::atomic<float>* value, const juce::String& band)
+        {
+            sendTo = band;
+            fader.bindLinear (value, -15.0f, 15.0f);
+            repaint();
+        }
+        FaderControl& getFader() noexcept { return fader; }
         /** What the fader sends to ("BUS 3"), or empty for its own fader. */
         const juce::String& getSendTo() const noexcept { return sendTo; }
 
@@ -304,7 +312,7 @@ namespace x32
         void paint (juce::Graphics& g) override
         {
             auto area = scribbleArea().toFloat();
-            if (isEmpty())
+            if (isEmpty() && sendTo.isEmpty())
             {
                 g.setColour (juce::Colour (0xff15171a));
                 g.fillRoundedRectangle (area, 3.0f);
@@ -526,6 +534,9 @@ private:
     GroupLayer groupLayer = GroupLayer::Dca;
     bool sendsOnFader = false;
     void applySendsOnFader();
+    /** EQ on faders: eight bands of FX slot `geqSlot` on the group faders (-1: their own). */
+    void applyGeqOnFaders();
+    int geqSlot = -1, geqBand = 0;
     Strip* sofShown = nullptr; // the selected strip the sends were laid out for
 
 

@@ -2,6 +2,7 @@
 
 #include "ui/Skin.h"
 #include "ui/UiContext.h"
+#include "ui/universal/ControlsView.h"
 #include "ui/universal/FxRackView.h"
 #include "ui/universal/Inspector.h"
 #include "ui/universal/LibraryView.h"
@@ -16,12 +17,21 @@ namespace livedaw::ui
 {
 
 /** The Universal Mixer's interface (docs/UNIVERSAL_MIXER.md, Phase 2), a
-    preview while it is being built: a top bar (the console it runs, the show
-    and its SHOW menu: NEW, OPEN, SAVE, SAVE AS; the way back to the WING
-    surface) and the view keys over the view shown (MIXER,
-    ROUTING, FX RACK, MONITORING, SCENES, LIBRARY, RECORDER, SETUP), with the inspector
-    of the selected strip beside it (src/ui/universal). */
-class UniversalSkin final : public Skin
+    preview while it is being built: a top bar (the console it runs, DSP load
+    and the time, the show and its SHOW menu: NEW, OPEN, SAVE, SAVE AS; the way
+    back to the console's surface; MENU: the theme, dark or light, the views,
+    the show's and the scenes' commands that a narrow window has no key for,
+    JUMP) and a row of the view keys (MIXER, ROUTING, FX
+    RACK, MONITORING, SCENES, LIBRARY, RECORDER, CONTROLS, SETUP) with what a show
+    needs at any moment beside them (the current scene with PREV and GO NEXT, CLR
+    SOLO, DIM, TALK A and B), over the view shown, with the inspector of the
+    selected strip beside it (src/ui/universal).
+
+    The keyboard (skinKeyPressed): Ctrl+J opens the MIXER view's JUMP list from
+    any view; in the MIXER view / opens it too, Page Up / Page Down step
+    through the banks, Home / End go to the first and last, Left / Right
+    select the strip before or after the selected one. */
+class UniversalSkin final : public Skin, private juce::Timer
 {
 public:
     explicit UniversalSkin (UiContext&);
@@ -40,7 +50,8 @@ public:
         Scenes,
         Library,
         Recorder,
-        Setup
+        Setup,
+        Controls
     };
     void showView (View);
     View getView() const noexcept { return view; }
@@ -53,6 +64,9 @@ public:
     universal::LibraryView& getLibrary() noexcept { return library; }
     universal::RecorderView& getRecorder() noexcept { return recorder; }
     universal::SetupView& getSetup() noexcept { return setup; }
+    universal::ControlsView& getControls() noexcept { return controls; }
+    void sendsOnFaderChanged() override { mixer.sendsOnFaderChanged(); }
+    void customControlsChanged() override { controls.refresh(); }
     void showChanged() override
     {
         scenes.refresh();
@@ -66,10 +80,50 @@ public:
     void runShowCommand (int item);
     universal::ToggleKey& getShowKey() noexcept { return showKey; }
 
+    /** The theme its views are drawn in (the app setting's when it was made). */
+    const universal::Theme& getTheme() const noexcept { return theme; }
+    /** Keeps the theme in the app settings and has the window make the skin again in it
+        (a view takes its theme when it is made). */
+    void setLightTheme (bool light);
+    /** MENU's items. 1-4 are the SHOW menu's. */
+    enum MenuItem
+    {
+        kMenuThemeDark = 10,
+        kMenuThemeLight = 11,
+        kMenuView = 20, // + the view (View)
+        kMenuPreviousScene = 40,
+        kMenuNextScene = 41,
+        kMenuClearSolo = 42,
+        kMenuDim = 43,
+        kMenuJump = 50,
+        kMenuUndo = 51,
+        kMenuRedo = 52,
+        kMenuShortcuts = 53,
+        kMenuStripWidth = 54, // + 0 narrow, 1 normal, 2 wide
+        kMenuResetStrips = 57,
+        kMenuSurface = 60
+    };
+    juce::PopupMenu buildMenu();
+    void runMenuCommand (int item);
+    universal::ToggleKey& getMenuKey() noexcept { return menuKey; }
+    bool skinKeyPressed (const juce::KeyPress&) override;
+    /** The mix's undo and redo. */
+    universal::MixerHistory& getHistory() noexcept { return history; }
+    void showShortcuts();
+
+    /** What a show needs at any moment, beside the view keys. */
+    universal::ToggleKey prevSceneKey, nextSceneKey, clearSoloKey, dimKey, talkAKey, talkBKey;
+    /** The current scene as shown beside the keys ("3  Song 1"; empty: none). */
+    juce::String getSceneReadout() const;
+
 private:
+    void timerCallback() override;
+    juce::String shownScene, shownStatus;
+    juce::Rectangle<int> sceneArea, statusArea;
+    bool talkHeld[2] { false, false };
     UiContext& ctx;
     const universal::Theme& theme;
-    universal::ToggleKey wingKey, showKey;
+    universal::ToggleKey wingKey, showKey, menuKey;
     std::vector<std::unique_ptr<universal::ToggleKey>> viewKeys;
     universal::MixerView mixer;
     universal::RoutingView routingView;
@@ -79,10 +133,13 @@ private:
     universal::LibraryView library;
     universal::RecorderView recorder;
     universal::SetupView setup;
+    universal::ControlsView controls;
     View view = View::Mixer;
     universal::Inspector inspector;
+    universal::OutputBridge bridge;
+    universal::MixerHistory history;
     bool inspectorOpen = false;
-    juce::String summary;
+    juce::String summary, summaryShort;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (UniversalSkin)
 };

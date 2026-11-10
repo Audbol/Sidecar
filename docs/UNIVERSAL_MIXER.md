@@ -1224,14 +1224,17 @@ strips and on any Universal strip from the start:
 3. **Its GEQ and RackFX** (done, but for the add-ons): the mixes' 28-band GEQ, an EQ
    block before the PEQ of every mix, LR and matrix (`ProfileSpec::factory_eq_block`);
    the 8 RackExtra types (SMR's 4 models as 4 devices, 11 in all) on the WING's devices
-   (`wing::fx::sq_voices`), the first four FX slots populated. Not yet: the add-ons
-   (MultiBD 3 and 4, DynEQ4, De-Esser, Bucket Brigade, Echo, Hypabass), the DEEP models
-   and each panel's controls without an algorithm (listed in `sq/fx.rs`).
+   (`wing::fx::sq_voices`), the first four FX slots populated. The add-ons (MultiBD 3 and 4, DynEQ4, De-Esser,
+   Bucket Brigade, Echo, Hypabass) and DEEP models (the guide's compressors, Tube Stage
+   and the three GEQs) are the dLive's models under the guide's names, on the screens'
+   Libraries: Sidecar has them all on, and their panels are Sidecar's reading. Not yet:
+   each panel's controls without an algorithm (listed in `sq/fx.rs`).
 4. **Its MIDI** (done over USB MIDI; `livedaw-sq`, `SqMidi`): NRPN mutes, levels, pans
    and assignments from the protocol's tables (pictures: `livedaw_sq::decode` holds
    their formulas) in both fader laws, scenes by bank and program change, changes sent
-   back. Not yet: the Group addresses (mixes as Aux or Group), the Soft Keys' notes, the
-   DAW strips, MIDI Show Control, MIDI over TCP/IP (port 51325).
+   back. MIDI over TCP/IP (`livedaw-ahmidi`, port 51325): the same, and its Gets. Not yet:
+   the Group addresses (mixes as Aux or Group), the Soft Keys' notes, the DAW strips, MIDI
+   Show Control.
 5. **Selectable** (done): the start-up window, SETUP's INTERFACE (`InterfaceKind::Sq5`).
 6. **Its surface** (`Sq5Surface`, `sq5::Display`; done but for what's listed): the panel
    of the datasheet's dimensioned drawing (16+1 faders on layers A-F, the processing and
@@ -1241,9 +1244,18 @@ strips and on any Universal strip from the start:
    library, Scenes and Safes, Setup's Strip Assign and Soft Controls, Utility, I/O.
    Keys the console holds (Assign, Pre Fade, Copy, Paste, Reset) latch here, as a mouse
    can't hold one key and press another. A new console's layers are Sidecar's reading.
-   Drawn dim until they have something to run: Direct Out's settings, the Pad, side
-   chains, the Cue List and Global Filter, Mixer Config, Ganging, Network, Users, USB /
-   SQ-Drive, AMM, RTAs, channel libraries.
+   Setup's Audio (PAFL's options on the engine's solo, Talkback's mix assignment and
+   Momentary + Latch, SigGen on the console oscillator), Surface (Soft Controls with every
+   SoftKey type of p.89, the two Surface Prefs that act), Mixer Config (Input Stereo: the odd
+   channel takes both sockets and the even strip goes off the surface; Bus Config; Role, with
+   Reset Mix Settings and Master Fader Mode), Utility's MIDI with MMC, Add-ons and the AMM
+   (the engine's D-Classic), Mix Stereo (the engine's mono output), Ganging (the display copies a linked change to the gang's other members), Data (shows and scenes in the Library folder), SQ-Drive and its SoftKeys (the USB and multitrack recorders) and the Footswitch's assignments are real. Drawn dim until they have something to run: Direct
+   Out's settings, the Pad, side chains, the Cue List and Global Filter,
+   Ext In, PAFL's source point and delay, band-pass noise,
+   Digital I/O's choices, I/O Port, Network's address settings, Users' permissions, Sync, USB Format,
+   Calibration, RTAs, channel libraries, Soft Keys' DAW Control (without the app's DAW remote), the mix keys'
+   magenta for a Group, SoftKey colours by function. Talkback's source is a channel (the
+   SQ-5's Talk socket isn't a port here). Its HPF is dim: the guide's is talkback's own.
 
 Sidecar's reading until measured on a console: the compressor's ratio steps, the soft
 knee's width, the ducker's controls, the PEQ's filter slopes, every default value, the
@@ -1284,12 +1296,33 @@ Owner's Manual and its block diagrams (kept outside the repository). Blocks firs
 OPTION page 2 is CH 17-24's control page (p.49's picture; AUX 1-2 and EFFECT 1-2 are all those
 channels can reach, p.264).
 
-Not yet: the surface's other LCD pages (MIDI, SETUP, OPTION's output pages, REMOTE, and later pages of the
-EQ, dynamics and pan functions), the libraries' STORE and TITLE EDIT, the preferences DIGITAL IN SYNC
-CAUTION, "SELECTED CH" MESSAGE and DELAY UNITS, MEMORY's RECALL UNDO, and REMOTE's faders, its MIDI (parameter changes,
-control changes, program changes, bulk), its fader groups and groups of [ON] buttons, CH
-13/14's FLIP and CASCADE, 15/16's 2TR IN switch, the OMNI OUT selection of CH 1-16, and
-channels 17-24 sending to AUX 1-2 and EFFECT 1-2 only.
+The later pages (the manual's pictures of them): SETUP's WORD CLOCK and DITHER (drawn only), MONITOR and SOLO, GROUP, PAIR; PAN/ROUT's BUS
+MASTER and OMNI OUT SELECT with CH 13/14's FLIP; OUTPUT DELAY; OPTION's meters, OUT SELECT and INPUT SWAP; REMOTE page 1's four banks; the EQ,
+dynamics and effect libraries' STORE and TITLE EDIT; DELAY UNITS. Groups, pairs, REMOTE's banks and the user programs are the surface's own, in the
+app's settings: not in a scene, not on MIDI, and they work only while the surface is open. A group moving by the same travel is Sidecar's reading.
+
+Not yet: the EQ and dynamics libraries' 40 presets (their lists start at 41), REMOTE's MMC and USER DEFINE, STEREO CASCADE, several monitor sources at
+once (the engine's monitor has one), the monitor's own LISTEN and SOLO TRIM (drawn), the OMNI OUTs' delays (drawn off), one STEREO OUT delay for both
+sides, the dynamics' parameters, aux pans and BALANCE on REMOTE, VIEW's CH COPY, the other MEMORY pages.
+
+Its MIDI (November 2026, `livedaw-01v`, `Y01VMidi`, chapter 17 and appendix C): program changes through
+the scene table (#1-99 scenes 1-99, #100 scene 00, p.273), control changes both ways through the 114
+controller table with its three arrangements (DEFAULT, P.MIX 01, 03D, pp.274-279; the value equation of
+p.280), the SysEx parameter changes of model `3E 04` (byte, 7-bit and bit operations on the edit buffer,
+the setup, function calls for scene recall, store and titles, effect recall, the ON and SOLO key remote), bulk dumps
+and requests under `LM  8B34` (scene memories, 127 the edit buffer; the setup; both tables; a channel's
+current EQ and dynamics, an effect's current settings). The manual gives the sizes of a scene's 1014 bytes
+and the address range 0-1023, not the map, so the addresses and the bytes inside the dumps are Sidecar's own
+(`livedaw_01v::params`): a dump comes back into Sidecar, not into a 01V, and Tx CH / Rx CH and
+Program Change Tx etc. are the only setup the protocol has (p.224's picture is the initial state). PORT is
+drawn as it is pictured: Sidecar has one port. Not built: the EQ and dynamics libraries' function calls
+and dumps (the 01V has no such libraries here yet), MMC, Note On for the effects, the fader and LCD remotes,
+the link messages (type 4) and remote meters (5), LOCAL CONTROL off (its page is drawn).
+
+RECALL UNDO (p.189) is the show's (`Show::undoRecall`, the dLive's Undo Go wants it too): before a scene recall the
+console is captured, and the undo restores what that recall changed, with its recall filter and the safes of that
+moment taken out, so a safe strip's later moves stay. It toggles, as the page does; the current scene goes back too.
+It is never one of the show's scenes and isn't saved.
 
 The owner's console (photos, November 2026, kept outside the repository) gave the input
 faders' printed marks, the panel's colours and shapes, and shows HALL and CHORUS on scene 00,
@@ -1361,19 +1394,41 @@ Started guides and the datasheets (kept outside the repository). Blocks first:
 
 10. **Its surface** (started): `DLiveSurface`, a C1500's layout from the owner's photographs: 12 strips
     in three groups of four with meters, colour LCDs, rotaries (Gain, Pan, Sends), Mute, Sel, Mix and
-    PAFL, banks A-F, the PEQ's Gain and Freq, the PAFL meters, Pre and Assign. The touchscreen hosts
-    the Universal Mixer's pages. Wider than the real surface, with no logo. Drawn but not working yet:
-    SoftKeys, View, Help and the data rotary.
-    The banks' contents are Sidecar's reading (no template file to read).
+    PAFL, banks A-F, the PEQ's Gain and Freq, the PAFL meters, Pre and Assign. Wider than the real
+    surface, with no logo. Its one touchscreen shows the screens in `DLiveScreens`: `ProcessingScreen`
+    keeps the strip box, preamp, soft widget and bottom band and hosts a page in its main area
+    (`hostPage`: the Scene Manager at its own size, the wide pages narrowed to fit, as a C1500's are).
+    The Universal Mixer's pages still fill it for FX, Routing, Ganging, Util, Setup and Listen.
+    The banks' contents are Sidecar's reading (no template file to read). Both surfaces have SoftKeys
+    and custom rotaries assignable (Setup lit and the key, or right-click; or the Surface page),
+    Strip Assign on the Surface page, a Help note per screen and the Scene Manager's Lock and Copy/Paste.
+    Strip Assign and those assignments are stored in Sidecar's settings per surface: the manual has them
+    stored in Scenes, but the show file has nowhere for them yet (a getter for `LayerSet`'s default
+    overrides would do). Lock lives only while the show is open, for the same reason.
 11. **The C3500** (the default surface): `DLiveC3500Surface`, from the owner's ten photographs and the C-Series Getting
     Started Guide, sharing `dl::StripUnit`, `dl::Key` and `dl::Rotary` with the C1500 through `dl::Desk`. Its screens are
     `DLiveScreens`: `ProcessingScreen` and `SceneScreen` are matched to photographs of the PEQ tab and Scene Manager; the
     other tabs show the right controls in the same style, without a photograph to match. Which surface shows is the
     `ui.dliveSurface` setting.
+12. **Its structure** (engine and shows; `livedaw_engine::dlive`, `MainMode`): Main modes as extra main strips (LR+M, LCR, LCR+
+    and Msum: a mono second main; 5.1: LR, C, LFE, Ls/Rs), one stereo PAFL taking two of the 64 busses, Ext In from mixes and PAFL
+    a block late, Mix Source on the Matrices and Main, Source Selectors, ABCD inputs, the Direct Out's global source and follows,
+    Group to Group's source point, Follow Main Pan and the stereo image. What's the guide's
+    and what's Sidecar's reading is in `DLIVE_RESEARCH.md`.
+13. **Their screens** (`DLiveScreens`): `ProcessingScreen` has a mix's Ext In tab (the guide's 1.6: Source Select, the Socket
+    box, Apply and Cancel; a socket, a mix, a main, a matrix or PAFL), ABCD and Stereo Image on Preamp, and a Routing tab for
+    what the console's Routing screen has and Sidecar's routing page hasn't: a channel's Direct Out level with the Global
+    Direct Out Source and the Follow keys, a mix's Mix Source and a stereo mix's Follow Main Pan and Invert. That tab is
+    Sidecar's placing. `MixRackScreen`'s Source Selector is live: a touch on a source of the top pane puts it in the selector
+    or takes it out (the console drags), a touch on a member plays it and puts its on-level on the rotary (the console's IP
+    controllers choose), Off plays none. Network has the MIDI channel (the console's is on Utility > Control > MIDI) and the
+    MIDI over TCP server's ports and clients. `SurfaceSetup::getShownSlot` gives a layer that ends on LR the Main mode's
+    other strips beside it.
 
-Not yet: the Main modes other than LR, PAFL busses, Dyn8, the 11 RackUltra models and the UFX's 8
-engines, Ext In from mixes and PAFL, Mix Source on the Matrices and Main, MIDI over TCP, the rest of
-its surface.
+Not yet: the 8 UFX engines and 64 Dyn8 engines in the signal path (their models and DSP are in `dlive_fx`, on Universal strips), the screens for Group to Group's source point and a channel's 5.1 panning, the rest of its surface.
+
+MIDI over TCP (`livedaw-ahmidi`, the MixRack's 51325 and the Surface's 51328): every message of the
+V2.0 document; not its TLS ports or Cue Recall (Surface), and no pad or UFX to drive.
 
 Sidecar's reading until checked on a console: the manual compressors' attack and release ranges
 (the SQ's), the ducker's and expanders' threshold ranges (the gate's), the ballistics behind each
@@ -1389,18 +1444,175 @@ Each emulation keeps the independent-project disclaimer: not affiliated with or
 endorsed by the console's maker, their trademarks used only to say what is emulated,
 none of their firmware, software, documents or artwork included.
 
+**The Yamaha DM2000** (Version 2; started, November 2026). From the V2 Owner's Manual and its
+block diagrams, drawings and parameter tables (kept outside the repository). Blocks first again;
+the profile and its effects are the first slice, surface and MIDI follow.
+
+1. **Its blocks** (done): `livedaw_dsp::dm2000`. The 4-band EQ (TYPE I and TYPE II, Q on HPF,
+   the 41 Qs, L.SHELF, as its manual orders them; the 120 frequencies; gain +/-18 dB in 0.1 dB),
+   the 31-band GEQ (LIMIT +/-15, +/-12, +/-6, -24 dB), COMP, EXPAND, COMPAND-H, COMPAND-S, GATE,
+   DUCKING with their ranges and steps (pp.133-134, 183-184, 345-346), starting on their preset
+   templates, and the attenuator, the delay (0-43400 samples on every channel: pp.342-344). The
+   Universal offers them under their own names; a DM2000 holds only these.
+2. **Its effects** (done as far as stereo slots go): `livedaw_dsp::dm2000::fx`, 44 of the 52 preset
+   types (pp.310-329) on the 01V's devices with what the DM2000 adds (LSH/EQ/HSH on the modulation
+   types, the delays' HPF and LPF, the reverbs' gate, AM DEPTH, SYNC/NOTE/TEMPO), ST REVERB and
+   M.BAND DYNA on their own. Not done: the eight types that need more than a stereo slot (REVERB 5.1,
+   OCTA REVERB, AUTO PAN 5.1, CHORUS 5.1, FLANGE 5.1, SYMPHO. 5.1, COMP 5.1, COMPAND 5.1) and the VCM
+   Add-On types (Comp276/S, Comp260/S, Equalizer601, OpenDeck, REV-X and V2.2's): their circuits are
+   proprietary. Parameters that are on the panel but do nothing are listed in the module.
+3. **Its profile** (done): `Profile::Dm2000`, `Counts::DM2000`. 96 Input Channels, BUS 1-8, AUX 1-12
+   (bus slots 8-19), 4 stereo Matrix Sends, Stereo Out, 12 fader groups as DCAs and 12 mute groups, 8
+   FX. Chains from the block diagram (`chain::DM2000_*`, p.399; the Insert page p.136): phase, gate, the
+   attenuator (`Node::Attenuator`, after the gate as the diagram has it; INPUT does the polarity alone
+   on this console), EQ, delay, ON, fader on the inputs, and the compressor and insert PRE EQ, PRE
+   FADER or POST FADER by process order (12 of them, two slots at each place, COMP ORDER for a shared
+   place); the outputs attenuator, EQ, the same three places, fader, output delay. The DM2000 has no
+   effect returns: Effects 1-8 come back on Input Channels 73-88 (p.289).
+4. **Its fader law** (done): `FaderLaw::DM2000` and `DM2000_MASTER` are Yamaha's 10-bit tables (the V2 MIDI
+   Specification's PRM TABLE #05-2 and #15-2) exactly, straight lines between their breakpoints.
+5. **Its MIDI** (done on the engine; `livedaw-dm2000`, `src/engine/Dm2000Midi.*`, its table
+   `tables.rs` generated by `tools/dm2000/gen_midi_tables.py` from Yamaha's V2 MIDI Specification):
+   parameter changes and requests by the specification's element, parameter and channel numbers for
+   everything the engine has (channels' ON, pan, faders with the 10-bit tables, the attenuator, phase, insert,
+   gate, comp, EQ, delay, routing, AUX sends, matrix sends, stereo sends, group memberships, group
+   masters, input and output patches, long names, the effects' type, mix and bypass, MIDI SETUP and the program
+   change table); the manual's 16 Control Change tables (p.370's scaling) on the way in and out; Program Change
+   to scenes through its table (1-99, 100 scene 0); scene recall and store by function call; Key Remote (LAYER,
+   ON and SOLO act; every key also reaches the app for the surface); remote meter data for ten seconds at 50 ms (METER
+   DATA's scale); MMC out (stop, play, FF, REW, record) and its responses noted.
+
+What's the manual's and what's Sidecar's reading: **the manual** gives every range and step above, the
+order of processing, the initial patches (pp.289, 297), and the channel names; **Yamaha's V2 MIDI
+Specification** gives the two 10-bit fader tables. **Sidecar's reading:** the EQ's curves (TYPE I the 02R's bilinear bells and shelves, a 12 dB/oct
+HPF and LPF; TYPE II the same controls with the bands' overlap solved out and bells that keep their
+shape to Nyquist, after the CL and QL manuals' "reduces interference between bands"), the list of 120
+frequencies (the rounded series the presets use; it comes to exactly 120), eight Qs and the hold,
+decay and release tables (evenly log-spaced, the 02R's), which scale with the sample rate as the
+manual's ends do; the knee, the compander's expansion and the expander's range (the 02R's); the
+GEQ's bell width; the
+effects' algorithms and their steps. FREQ.'s SYNC (p.331) is the manual's equation taken literally
+(0.25 Hz for an eighth at 120, as its example has it, where a period would give 4 Hz).
+
+Differences between a DM2000 and a DM2000VCM or V2: a VCM is a V2 with the Add-On Effects, so one
+profile covers both; the original DM2000 (before V2) has fewer output features and is not modelled
+apart. The profile is V2's: 96 channels, surround, cascade as the V2 manual.
+
+**Its surface** (`src/ui/Dm2000Surface.*`, `Dm2000Display.cpp`): 24 strips and STEREO at 1920 x 1080
+from a straight-on photograph and the manual's pp.20-44; LAYER, FADER and ENCODER MODE, the Selected
+Channel, Display Access, the channel strip displays (p.55), and the 320 x 240 LCD drawn as dots with
+the title bar, F1-F4's tabs and their pages. The panel's own: the sections it has keys for are shown; its
+transport, Track Arming, Automix, User Defined Keys, Locator and the Monitor source keys are drawn and do
+nothing yet; so are INSERT's patch, DELAY's MIX and FB, and the +48V/GAIN row beyond CH 24's AD inputs. The
+ASSIGN keys' initial assignments are Sidecar's (Attenuator, Delay, EQ On, Comp On) rather than the manual's
+Input Patch, Direct Out, Surr LFE, Pan Wheel, which aren't encoder parameters here. A GEQ is an EQ block
+added after the strip's PEQ, one of six in all, rather than a GEQ patched at an insert point.
+
+Its other pages are built too (MIDI, OUTPUT PATCH, PAIR, libraries, preferences, oscillator, Word Clock, User Defined Keys); Automix, Track Arming, Locator and Data remain.
+
+Not yet: bulk dumps (their bodies are not published), NRPN mode's numbers
+(unpublished: only the setting is there), the effects' 32 parameters by MIDI (their tables aren't published),
+fade times, a channel's PAN and DIRECT routing switches, surround parameters and the Control Change table's SURROUND
+assignments, GEQ assignment by six units (a strip's EQ block holds one
+here), the 12-channel key-in groups, the rotary attenuator's bit-shift parameter, the Direct Outs'
+destination patch.
+
+**The Midas PRO series** (the PRO2; started, November 2026). From the PRO2 Owner's Manual (DOC02-DL2,
+October 2011, "OM"), its functional block diagrams (pp.296-303, read off the rendered pages) and, where
+the PRO2's manual is silent and the family agrees, the PRO X manual (Appendices A, C, D). Midas is Music
+Tribe: public manuals only, no firmware or software, and no code from any. The whole of the processing is
+Sidecar's own reading of those words and diagrams; the lists below say which is which.
+
+Why the PRO2 and not the PRO X: its manual has the block diagrams for each channel type (the PRO X's has
+none), its counts fit a laptop (64 inputs and 27 buses against the PRO X's 168 and 99), and it's the
+family's most common console. Models differ in counts and effects, not in processing: a PRO X, PRO3 or PRO1
+would be another `Counts`, its extra effects and three more mix bays later.
+
+1. **Its blocks** (done): `livedaw_dsp::midas_pro`. The 4-band input EQ (Bell and three shelves on treble
+   and bass, OM pp.257, 292), the 6-band output EQ (band 1 Warm shelf and HP 6/12, band 2 HP 24, band 6
+   Soft shelf and LP 6/12, pp.293-294) and the 31-band GEQ (proportional or constant Q, HP, LP, two notches,
+   p.124); the compressor (four modes on inputs, five with Shimmer on outputs; knee 4, 12, 40 dB; soft clip
+   on the outputs), the gate, peak detecting, with its hysteresis and hold. The side chain filter is the
+   dynamics slot's key filter, BP, width 1/3, 1, 2 octaves (`SC_WIDTH_Q`).
+2. **Its effects** (done as far as stereo slots go): `livedaw_dsp::midas_pro::fx`, seven of the eight in the
+   manual's list: Delay, Virtual DN780 (all 12 programs), Flanger, Phaser, Pitch Shifter, 3-Band Compressor,
+   Dynamic EQ, each with the controls and ranges the manual lists. Not done: SQ1 Dynamics (8 in, 8 out;
+   its ranges are in a manual that isn't public here), the Dynamic EQ's 2x2 and 4x1 routings, the 3-band's
+   Soft Link.
+3. **Its profile** (done): `Profile::MidasPro2` ("pro2", FFI id 9), `Counts::PRO2`: 56 input channels, 8 aux
+   returns, 16 aux sends (buses), 2 mains (stereo masters, mono master), 8 matrices, 8 VCAs, 6 auto-mutes
+   as mute groups, 6 FX. Chains from the diagrams (`chain::PRO2_*`): digital gain and phase, HP and LP,
+   then the processing block in its order (EQ, INS, DYN or DYN, INS, EQ, gate before compressor), mute and
+   fader; aux returns EQ and insert only; outputs compressor, insert, EQ in the same two orders, fader, delay.
+   Its new state is the manual's Normal (FOH) mode (pp.210-211): FX 1-3 DN780, FX 4 pitch, Matrices 1-4 feeding FX
+   1-4, FX 1-4 back on Aux Returns 1-8, Aux 9-16 routed to the stereo masters, Aux 1-8 on DL251 outs 1-8,
+   Matrices 1-5 on 9-13, Master L, R, C on 14-16, and DL251 inputs on channels 1-48.
+
+What's the manual's and what's Sidecar's reading: **the manual** gives the controls and their ranges, the
+order of the processing, the mode descriptions (in words), the Normal (FOH) state, the faders' 1024 steps. The
+fader scale is **a press render** of the panel (10, 5, 0, 5, 10, 20, 30, 40, 50, 70, -oo), its perspective
+left in. **Sidecar's reading:** every curve the manual only describes: the shelves (Soft/Warm first order,
+Classic a second-order shelf with Q 1.1 that undershoots, Bright/Deep a 6th-order Butterworth shelf); bells'
+width to Q; the compressor's envelopes (Corrective and Adaptive one-poles, the latter on a 10 ms RMS; Creative
+a line of 10 dB per ATTACK and a two-pole release; Vintage's slow onset, 40 ms and 800 ms, handing over to
+the set times by 15 dB of reduction, with saturation that grows with the reduction; Shimmer's under-damped
+attack, damping 0.55; a soft knee slowing the attack up to 3 times), the gate's 4 dB of hysteresis, the
+ratio's end at 25:1, 0 dBFS at +21 dBu, the GEQ's proportional Q, the delay and insert positions the
+diagrams don't show, the effects' algorithms and their steps, every default not on a panel drawing, the
+pan law (the WING's). The DN780 is a plain FDN and tap delays that follow its published controls, not a model
+of the unit.
+
+Where the manual disagrees with itself: the gate's release is 2 ms to 2 s on p.315, 5 ms on p.254 (the
+spec is used; the PRO X manual says 5 ms); PATTERN is 1-9 on p.132 and 0-9 in the PRO X's Appendix D (0-9);
+the PRO2 GEQ's notch filters are on p.124 but the PRO X's Appendix C says the family has none (the PRO2's
+kept); aux returns have an EQ and insert in the specification and Figure 24, none on the block diagram (p.297).
+
+Not yet: the surface and its 8 VCA + POP-group navigation, the direct output's tap modes and the aux send MODE
+(Mix, Mix Minus, Group: a bus's send taps are the WING's for now), linked stereo aux sends and matrix pairs (they are
+mono here; the groups 9-16 are panned hard odd and even), the SIS L-C-R pan, MCA and POP groups, GEQ assignment
+from the rack (a strip's EQ block holds one), the effects racks of the other PRO models. No control protocol is
+published, so no remote.
+
+**What the C++ side needs** (as the DM2000 did): `ld::kProfileMidasPro2 = 9`, `InterfaceKind::Pro2` (`UiContext.h`), the saved key "pro2", the
+switching in `MainComponent.cpp`, a `MixerChooser` entry and a line in `StartupNotice.cpp`, the compressor chooser filtered by strip
+kind (`dyn_model_allowed` doesn't know it; the setter `dyn_slot_may_hold` does and refuses the other compressor), the strip kinds' labels (`IN`, `AR`, `AUX`, `MST`, `MTX`); a Universal-skin view of the
+input Filter's PRO ranges (HP 10-400 Hz at 12 or 24 dB/oct, LP 2-20 kHz at 6 or 12 dB/oct: the Filter block holds both
+slopes already), the input delay 0-50 ms and output delay 0-500 ms, the input trim -40..+20 dB and aux
+bus trim -12..+6 dB; the side chain filter's three widths (`SC_WIDTH_Q`) on the key filter panel; the
+compressor's MODE and KNEE as buttons. No ABI change: `LD_ABI_VERSION` is as it was, only a new profile value.
+
+## Interface pass (November 2026)
+
+The owner's review ("a lot of work"). Done: `ToggleKey` reads its state when painted (tabs and the channel panel's keys
+stayed dark until something refreshed them); the fader scale drops the marks that would print over each other; the first
+main is pinned at the right of the MIXER view; SOF on the shell's Sends on Fader state (so a custom control's key does it
+too); a DCA's Spill members; a tap on a strip's overview or the channel panel's titles and CHAIN rows opens that block; the
+inspector stays on the same block through the strips, its chain list as tall as its rows, the lights are switches; the block
+editor puts a switch beside what it switches and gives its curve the room; `ParamPanel` in columns; the show's keys beside
+the view keys; SCENES' SKIP, LINK, tag, fade and notes; ROUTING's PATCH 1:1; strip COPY / PASTE on the STRIP page; CONTROLS
+(the custom controls' layers, played with an `Encoder` bar and keys; EDIT embeds the WING's CC EDIT page, tagged WING).
+
+Second pass: SCENES' SCOPE and SAFES pages and a snippet's ITEMS (`ScopeEditor`); MIXER's bank keys, JUMP list and keyboard; FX RACK's bypass on
+the tiles; ROUTING's levels, crosshair and drag across a 1:1 range (mouse only: a touch drag scrolls); the light theme and the top bar's MENU.
+
+Still to do: the recorder and CC EDIT pages in this theme rather than the WING's (they stay dark in the light theme, as do the hosted INTERFACE page
+and the pop-ups); LIBRARY, RECORDER and SETUP spacing checked at 1280 x 720, 1500 x 900 and 1920 x 1080; the view kept when the theme changes.
+
 ## Still open from the WING work
+
+The audit against the WING's manual, chapter by chapter, is `WING_GAPS.md`.
 
 Questions for the owner that the WING emulation still waits on:
 
 - VSS3: the list of presets on a real WING.
-- When a reverb or delay is bypassed, does its tail cut or ring out?
 - Windows: is there a faint seam around a meter on an FX page when only the meters
   repaint (ENHANCE, *MASTER*)? A test showed Direct2D partial repaints a few levels off.
 - FX / CHAN preset show items: what they load into; the STARTUP-skip key; the EXTERNAL
   effect's LATENCY unit; sources recalled with ROUTING; WING Edit's COMPACT fallback;
   whether to store parameters of firmware newer than 3.1; whether to snap values to the
   WING's steps; keeping the DAW-mode escape (an empty DAW key with DAW LAYER exits).
+
+Settled by the owner: a bypassed reverb or delay does not ring out, its tail cuts; a bypassed slot passes the dry signal and its device stops, as `fx.rs` does.
 
 ## Working on Sidecar
 

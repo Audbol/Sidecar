@@ -47,7 +47,7 @@ public:
             const auto& e = owner.files[(size_t) i];
             const auto r = juce::Rectangle<int> (0, i * (kRow + sizes::kGapSmall), getWidth(), kRow).toFloat();
             const bool sel = i == owner.selected;
-            g.setColour (sel ? t.raised.brighter (0.1f) : t.raised);
+            g.setColour (sel ? t.lifted (t.raised, 0.1f) : t.raised);
             g.fillRoundedRectangle (r, sizes::kRadius);
             g.setColour (sel ? t.accent : t.outline);
             g.drawRoundedRectangle (r.reduced (0.5f), sizes::kRadius, sel ? 2.0f : 1.0f);

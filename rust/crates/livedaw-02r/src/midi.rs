@@ -34,7 +34,7 @@ use crate::console::{Console, Origin, Y2Strip};
 use crate::library::{Kind, Library, Program, PROGRAMS};
 use crate::params::{self, SIZE};
 use livedaw_dsp::model::ModelSpec;
-use livedaw_promix::midi::checksum;
+use livedaw_promix::midi::{frame_dump, parse_frame};
 use std::collections::VecDeque;
 
 /// Yamaha's id and the 02R's model id.
@@ -241,12 +241,7 @@ pub fn dump(channel: u8, kind: u8, number: u8, title: &str, data: &[u8]) -> Vec<
         body.push(d >> 4);
         body.push(d & 0xf);
     }
-    let count = body.len();
-    let mut out = vec![0xf0, YAMAHA, channel & 0xf, 0x7e, (count >> 7) as u8 & 0x7f, count as u8 & 0x7f];
-    out.extend_from_slice(&body);
-    out.push(checksum(&body));
-    out.push(0xf7);
-    out
+    frame_dump(channel, &body)
 }
 
 /// A bulk request of `kind` (memory `number` where it has one).
@@ -261,14 +256,7 @@ pub fn request(channel: u8, kind: u8, number: u8) -> Vec<u8> {
 
 /// A dump's (channel, kind, number, title, data), if `msg` is a well-formed one.
 pub fn parse_dump(msg: &[u8]) -> Option<(u8, u8, u8, String, Vec<u8>)> {
-    if msg.len() < 18 || msg[0] != 0xf0 || msg[1] != YAMAHA || msg[2] & 0xf0 != 0 || msg[3] != 0x7e || *msg.last()? != 0xf7 {
-        return None;
-    }
-    let count = ((msg[4] as usize) << 7) | msg[5] as usize;
-    let body = msg.get(6..6 + count)?;
-    if msg.len() != 6 + count + 2 || checksum(body) != msg[6 + count] || &body[..8] != HEADER {
-        return None;
-    }
+    let (channel, body) = parse_frame(msg, HEADER)?;
     let kind = body[8];
     let (number, title, nibbles) = if numbered(kind) {
         let skip = if kind == b'M' { 16 } else { 0 };
@@ -280,7 +268,7 @@ pub fn parse_dump(msg: &[u8]) -> Option<(u8, u8, u8, String, Vec<u8>)> {
     if nibbles.len() % 2 != 0 || data_len(kind) != Some(nibbles.len() / 2) || nibbles.iter().any(|&n| n > 0xf) {
         return None;
     }
-    Some((msg[2], kind, number, title, nibbles.chunks(2).map(|p| p[0] << 4 | p[1]).collect()))
+    Some((channel, kind, number, title, nibbles.chunks(2).map(|p| p[0] << 4 | p[1]).collect()))
 }
 
 /// A bulk request's (channel, kind, number).

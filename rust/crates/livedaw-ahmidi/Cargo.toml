@@ -1,0 +1,13 @@
+[package]
+name = "livedaw-ahmidi"
+description = "Allen & Heath MIDI over TCP for Sidecar: the dLive and SQ-5 protocols, parsed and answered over the engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+livedaw-dsp = { path = "../livedaw-dsp" }
+livedaw-engine = { path = "../livedaw-engine" }
+livedaw-sq = { path = "../livedaw-sq" }
+livedaw-wing = { path = "../livedaw-wing" }

@@ -9,8 +9,11 @@
 #include "ui/RoutingGroups.h"
 #include "engine/Models.h"
 #include "ui/ChainSummary.h"
+#include "ui/CustomControlsPage.h"
+#include "ui/HomeScreens.h"
 #include "ui/MixerChooser.h"
 #include "ui/UniversalSkin.h"
+#include "ui/Xenyx1204Surface.h"
 #include "ui/StripCustomize.h"
 #include "ui/universal/StripPanel.h"
 #include "ui/ShowPanel.h"
@@ -19,10 +22,12 @@
 #include "ui/universal/FxRackView.h"
 #include "engine/MidiRemote.h"
 #include "engine/WebRemote.h"
+#include "ui/universal/ControlsView.h"
 #include "ui/universal/ValueControls.h"
 #include "ui/universal/Widgets.h"
 
 #include <optional>
+#include <typeinfo>
 
 using namespace livedaw;
 using namespace livedaw::ui::universal;
@@ -87,6 +92,25 @@ int indexOf (const Strip& strip, Match match)
     return -1;
 }
 
+/** The first visible child of `c`, at any depth, that reaches out of its parent (and so is cut off there), as
+    "Parent > Child x y w h in w h"; empty: none. What a Viewport scrolls is larger than it on purpose. */
+juce::String firstClipped (juce::Component& c)
+{
+    for (auto* child : c.getChildren())
+    {
+        if (! child->isVisible() || child->getBounds().isEmpty())
+            continue;
+        if (! c.getLocalBounds().contains (child->getBounds()))
+            return juce::String (typeid (c).name()) + " > " + juce::String (typeid (*child).name()) + " \"" + child->getName() + "\" " + child->getBounds().toString() + " in "
+                   + juce::String (c.getWidth()) + " " + juce::String (c.getHeight());
+        if (dynamic_cast<juce::Viewport*> (child) != nullptr)
+            continue;
+        if (const auto inner = firstClipped (*child); inner.isNotEmpty())
+            return inner;
+    }
+    return {};
+}
+
 /** A mouse event on `c`, from `down` to `at` (a drag when they differ). */
 juce::MouseEvent mouseEvent (juce::Component& c, juce::Point<float> at, juce::Point<float> down, juce::ModifierKeys mods = {})
 {
@@ -105,7 +129,7 @@ public:
     {
         beginTest ("The dark theme reads: text, keys and strip labels stand out from what they sit on");
         {
-            const auto& t = Theme::dark();
+            const auto& t = Theme::charcoal();
             expectWithinAbsoluteError (contrastRatio (juce::Colours::black, juce::Colours::white), 21.0f, 0.01f);
             expectGreaterOrEqual (contrastRatio (t.text, t.background), 7.0f);
             expectGreaterOrEqual (contrastRatio (t.text, t.raised), 7.0f);
@@ -119,7 +143,7 @@ public:
         beginTest ("The fader follows the WING law, writes its value as it is moved and follows changes made elsewhere");
         {
             std::atomic<float> db { -100.0f };
-            FaderControl f (Theme::dark());
+            FaderControl f (Theme::charcoal());
             f.setSize (60, 400);
             expect (! f.isEnabled(), "unbound: disabled");
             f.bind (&db);
@@ -133,13 +157,13 @@ public:
             f.refresh();
             expectWithinAbsoluteError (f.getPosition(), (double) ui::fader::dbToPos (-10.0f), 1.0e-6);
 
-            // A drag moves it by how far it travels (the track is 372 px): a tenth up, -10 dB to -6 dB.
+            // A drag moves it by how far it travels (the track is 340 px): a tenth up, -10 dB to -6 dB.
             f.mouseDown (mouseEvent (f, { 30.0f, 300.0f }, { 30.0f, 300.0f }));
-            f.mouseDrag (mouseEvent (f, { 30.0f, 300.0f - 37.2f }, { 30.0f, 300.0f }));
+            f.mouseDrag (mouseEvent (f, { 30.0f, 300.0f - 34.0f }, { 30.0f, 300.0f }));
             expectWithinAbsoluteError (db.load(), -6.0f, 0.05f);
             // With Shift a quarter as far.
             f.mouseDown (mouseEvent (f, { 30.0f, 300.0f }, { 30.0f, 300.0f }));
-            f.mouseDrag (mouseEvent (f, { 30.0f, 300.0f + 37.2f }, { 30.0f, 300.0f }, juce::ModifierKeys::shiftModifier));
+            f.mouseDrag (mouseEvent (f, { 30.0f, 300.0f + 34.0f }, { 30.0f, 300.0f }, juce::ModifierKeys::shiftModifier));
             expectWithinAbsoluteError (f.getPosition(), 0.575, 1.0e-3);
             f.mouseDoubleClick (mouseEvent (f, { 30.0f, 100.0f }, { 30.0f, 100.0f }));
             expectWithinAbsoluteError (db.load(), 0.0f, 1.0e-4f);
@@ -158,7 +182,7 @@ public:
             const Counts counts { 48, 4, 24, 2, 6, 32, 12, 16 };
             engine.configure (&counts);
             UiRig rig (engine);
-            auto viewOwner = std::make_unique<MixerView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto viewOwner = std::make_unique<MixerView> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
             auto& view = *viewOwner;
             view.setSize (1400, 800);
             expectEquals (view.getNumColumns(), 48 + 4 + 24 + 2 + 6);
@@ -189,7 +213,7 @@ public:
             MixerEngine engine (0);
             test::setChannels (engine, 2);
             UiRig rig (engine);
-            auto viewOwner = std::make_unique<MixerView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto viewOwner = std::make_unique<MixerView> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
             auto& view = *viewOwner;
             view.setSize (1400, 800);
             auto& column = *view.getColumn (1);
@@ -224,7 +248,8 @@ public:
             expectWithinAbsoluteError (column.meter.getPosition (0), ui::fader::dbToPos (dsp::gainToDb (0.5f)), 0.01f);
 
             // A tap on its name selects it; the view shows the selection.
-            column.mouseUp (mouseEvent (column, { 40.0f, 30.0f }, { 40.0f, 30.0f }));
+            const auto onName = juce::Point<float> (40.0f, (float) column.pan.getBottom() + 10.0f);
+            column.mouseUp (mouseEvent (column, onName, onName));
             expect (rig.selected == &strip);
             view.selectionChanged();
             expect (column.isSelected() && ! view.getColumn (0)->isSelected());
@@ -262,13 +287,13 @@ public:
             rig.meters.advance (0.01f);
             skin.getMixer().refresh();
             const auto image = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
-            const auto& t = Theme::dark();
+            const auto& t = Theme::charcoal();
             const auto near = [] (juce::Colour a, juce::Colour b)
             {
                 return std::abs (a.getRed() - b.getRed()) <= 2 && std::abs (a.getGreen() - b.getGreen()) <= 2 && std::abs (a.getBlue() - b.getBlue()) <= 2;
             };
-            expect (near (image.getPixelAt (sizes::kGapLarge / 2, 4), t.panel), "the top bar");
-            expect (near (image.getPixelAt (1500, sizes::kTopBar + sizes::kFilterBar / 2), t.background), "the filter row, right of its keys");
+            expect (image.getPixelAt (sizes::kGapLarge / 2, 4).getBrightness() < 0.3f, "the top bar, a dark plate");
+            expect (near (image.getPixelAt (1250, sizes::kTopBar + sizes::kFilterBar / 2), t.background), "the filter row, right of its keys");
             expect (keepPicture (image, "universal-mixer.png"));
         }
 
@@ -281,6 +306,9 @@ public:
             expectEquals (ui::mixerChooser::label (ui::InterfaceKind::Sq5), juce::String ("SQ-5 (very experimental)"));
             expectEquals (ui::mixerChooser::label (ui::InterfaceKind::Yamaha01V), juce::String ("01V (very experimental)"));
             expectEquals (ui::mixerChooser::label (ui::InterfaceKind::DLive), juce::String ("DLIVE (very experimental)"));
+            expectEquals (ui::mixerChooser::label (ui::InterfaceKind::Dm2000), juce::String ("DM2000 (very experimental)"));
+            expectEquals (ui::mixerChooser::label (ui::InterfaceKind::Pro2), juce::String ("PRO2 (very experimental)"));
+            expectEquals (ui::mixerChooser::label (ui::InterfaceKind::Xenyx1204), juce::String ("XENYX 1204USB (very experimental)"));
             expectEquals (ui::mixerChooser::label (ui::InterfaceKind::Universal), juce::String ("UNIVERSAL"));
             // The SETUP keys are in ui::InterfaceKind's order: a key's index is its kind.
             const auto keys = ui::mixerChooser::keyLabels();
@@ -312,10 +340,10 @@ public:
 
             auto first = open ({}); // nothing to continue
             expect (keyNamed (*first, "CONTINUE") == nullptr);
-            expectEquals (first->getNumChildComponents(), 8);
+            expectEquals (first->getNumChildComponents(), 11);
 
             auto later = open ("02R (very experimental)");
-            expectEquals (later->getNumChildComponents(), 9);
+            expectEquals (later->getNumChildComponents(), 12);
             keyNamed (*later, "CONTINUE")->onClick();
             expectEquals (kept, 1);
             later->keyPressed (juce::KeyPress (juce::KeyPress::escapeKey));
@@ -351,7 +379,7 @@ public:
             {
                 auto slot = std::make_unique<DynSlotParams>();
                 slot->model = wide;
-                TransferView view (Theme::dark());
+                TransferView view (Theme::charcoal());
                 view.setSize (300, 200);
                 view.bind (slot.get());
                 slot->model = narrow; // changed, not yet refreshed
@@ -417,7 +445,7 @@ public:
         beginTest ("Value bars and choice lists write their values");
         {
             std::atomic<float> trim { 0.0f };
-            ValueBar bar (Theme::dark());
+            ValueBar bar (Theme::charcoal());
             bar.setSize (300, 40);
             expect (! bar.isEnabled(), "unbound: disabled");
             bar.bind (ValueBar::linear ("TRIM", trim, -18.0f, 18.0f, 0.0f, " dB", 1));
@@ -435,7 +463,7 @@ public:
             bar.setPositionFromUser (0.5f);
             expectWithinAbsoluteError (hz.load(), 200.0f, 0.5f, "a log scale: the middle is the geometric mean");
 
-            ChoiceBar choice (Theme::dark());
+            ChoiceBar choice (Theme::charcoal());
             int chosen = 1;
             choice.items = [] { return juce::StringArray { "A", "B", "C" }; };
             choice.current = [&chosen] { return chosen; };
@@ -455,7 +483,7 @@ public:
             test::setChannels (engine, 1);
             UiRig rig (engine);
             auto& ch = *engine.getChannels()[0];
-            ChainList list (rig.ctx, Theme::dark());
+            ChainList list (rig.ctx, Theme::charcoal());
             list.setSize (420, 600);
             list.setStrip (&ch);
             const auto names = [&list]
@@ -520,7 +548,7 @@ public:
             test::setChannels (engine, 1);
             UiRig rig (engine);
             auto& ch = *engine.getChannels()[0];
-            BlockEditor editor (rig.ctx, Theme::dark());
+            BlockEditor editor (rig.ctx, Theme::charcoal());
             editor.setSize (420, 700);
             const auto paramsOf = [] (models::Table table, int model, int numValues)
             {
@@ -605,7 +633,7 @@ public:
             const Counts counts { 2, 1, 4, 2, 3, 8, 4, 16 };
             engine.configure (&counts);
             UiRig rig (engine);
-            SendsPanel panel (rig.ctx, Theme::dark());
+            SendsPanel panel (rig.ctx, Theme::charcoal());
             panel.setSize (420, 600);
             auto& ch = *engine.getChannels()[0];
             panel.setStrip (&ch);
@@ -704,7 +732,7 @@ public:
             auto& ch = *engine.getChannels()[0];
             const int uid = ch.insertBlock (BlockKind::Eq, -1);
             const int tap = ch.insertTap (-1);
-            ChainList list (rig.ctx, Theme::dark());
+            ChainList list (rig.ctx, Theme::charcoal());
             list.setSize (420, 600);
             list.setStrip (&ch);
             for (const auto& row : list.getRows())
@@ -721,12 +749,12 @@ public:
             expectEquals (own.device, devices::wing);
             expect (extra.device.isEmpty());
             // An extra block's models are the WING's model tables all the same.
-            BlockEditor editor (rig.ctx, Theme::dark());
+            BlockEditor editor (rig.ctx, Theme::charcoal());
             editor.setSize (420, 700);
             editor.setTarget (extra);
             auto* model = dynamic_cast<ChoiceBar*> (editor.getControl (1));
             expect (model != nullptr && model->device == devices::wing);
-            SendsPanel sends (rig.ctx, Theme::dark());
+            SendsPanel sends (rig.ctx, Theme::charcoal());
             sends.setSize (420, 600);
             sends.setStrip (&ch);
             expect (sends.getNumRows() > 0 && sends.getRow (0)->source.device == devices::wing, "the WING's send modes");
@@ -738,7 +766,7 @@ public:
 
         beginTest ("The patch matrix shows its model's points and patches with a tap");
         {
-            PatchGrid grid (Theme::dark());
+            PatchGrid grid (Theme::charcoal());
             grid.setSize (600, 400);
             std::vector<int> patched { -1, 2, -1 }; // a column per row, -1 none
             PatchGrid::Model m;
@@ -770,7 +798,7 @@ public:
             const Counts counts { 4, 1, 6, 2, 3, 8, 4, 16 };
             engine.configure (&counts);
             UiRig rig (engine);
-            auto viewOwner = std::make_unique<RoutingView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto viewOwner = std::make_unique<RoutingView> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
             auto& view = *viewOwner;
             view.setSize (1200, 700);
 
@@ -822,7 +850,7 @@ public:
         {
             MixerEngine engine (0);
             UiRig rig (engine);
-            auto viewOwner = std::make_unique<FxRackView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto viewOwner = std::make_unique<FxRackView> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
             auto& view = *viewOwner;
             view.setSize (1400, 800);
             auto& fx = engine.getFx();
@@ -874,7 +902,7 @@ public:
             const Counts counts { 2, 0, 4, 1, 2, 32, 8, 16 };
             engine.configure (&counts);
             UiRig rig (engine);
-            auto viewOwner = std::make_unique<MonitorView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto viewOwner = std::make_unique<MonitorView> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
             auto& view = *viewOwner;
             view.setSize (1400, 700);
             view.speakers.level.setPositionFromUser (0.75f);
@@ -923,7 +951,7 @@ public:
             MixerEngine engine (0);
             engine.configure (nullptr);
             UiRig rig (engine);
-            auto viewOwner = std::make_unique<MonitorView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto viewOwner = std::make_unique<MonitorView> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
             auto& view = *viewOwner;
             view.setSize (1600, 1000);
             view.refresh();
@@ -1048,12 +1076,12 @@ public:
             expect (skin.getRecorder().getPageComponent() != nullptr && skin.getRecorder().getPageComponent()->isVisible());
         }
 
-        beginTest ("A strip's overview shows its input, gate, compression, EQ and output; FADERS hides or shows the faders");
+        beginTest ("A strip's body is its chain, in order; FADERS hides or shows the faders");
         {
             MixerEngine engine (0);
             test::setChannels (engine, 2);
             UiRig rig (engine);
-            auto viewOwner = std::make_unique<MixerView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto viewOwner = std::make_unique<MixerView> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
             auto& view = *viewOwner;
             view.setChannelShown (false); // the columns alone (the channel panel has a test of its own)
             view.setSize (1400, 900);
@@ -1070,22 +1098,46 @@ public:
             p.eq().values[models::model ((models::Table) strip.getEqTable(), p.eq().model.load()).find ("lg")] = 6.0f;
             rig.meters.advance (0.01f);
             view.refresh();
-            const auto& o = column.overview;
-            expectWithinAbsoluteError (o.getGateReduction(), 6.0f, 0.01f);
-            expectWithinAbsoluteError (o.getDynamicsReduction(), 3.0f, 0.01f);
-            expectWithinAbsoluteError (o.getInput(), ui::fader::dbToPos (dsp::gainToDb (0.5f)), 0.01f);
-            expectWithinAbsoluteError (o.getOutput(), ui::fader::dbToPos (dsp::gainToDb (0.25f)), 0.01f);
-            expect (! o.getEqCurve().empty() && o.getEqCurve().front() > 5.0, "the EQ's low shelf");
+            auto& b = column.body;
+            expect (b.getNumBlocks() > 0, "the strip's blocks");
+            int eq = -1, previous = -1;
+            const auto chain = strip.getChain();
+            for (int i = 0; i < b.getNumBlocks(); ++i)
+            {
+                // In the chain's order.
+                const auto at = std::find_if (chain.begin(), chain.end(), [&] (const ChainStep& c) { return c.kind == b.getStep (i).kind && c.slot == b.getStep (i).slot && c.uid == b.getStep (i).uid; });
+                expect (at != chain.end());
+                const int index = (int) std::distance (chain.begin(), at);
+                expect (index > previous, "in signal order");
+                previous = index;
+                if (b.getStep (i).kind == ld::kStepEq)
+                    eq = i;
+            }
+            expect (eq >= 0, "the EQ is one of them");
 
-            // With faders: the fader no taller than it needs, the overview above it.
+            // A section's height is every strip's, and a tiny one collapses.
+            auto& layout = view.getStripLayout();
+            const int before = layout.blockHeight (b.getStep (eq));
+            layout.setBlock (StripLayout::blockKey (b.getStep (eq)), before + 40);
+            view.applyStripLayout();
+            expectEquals (view.getColumn (1)->body.getNaturalHeight() - b.getNaturalHeight(), 0);
+            layout.setBlock (StripLayout::blockKey (b.getStep (eq)), 4);
+            expectEquals (layout.blockHeight (b.getStep (eq)), StripLayout::kCollapsed);
+            StripLayout copy;
+            copy.fromString (layout.toString());
+            expectEquals (copy.blockHeight (b.getStep (eq)), StripLayout::kCollapsed);
+            layout.reset();
+            view.applyStripLayout();
+
+            // With faders: the blocks above the fader.
             expect (view.areFadersShown() && column.fader.isVisible());
-            expect (column.fader.getHeight() <= 340 && column.overview.getBottom() < column.fader.getY());
-            const int withFaders = column.overview.getHeight();
+            expect (column.body.getBottom() < column.fader.getY());
+            const int withFaders = column.body.getHeight();
             expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds(), true, 1.0f), "universal-overview-faders.png"));
-            // FADERS off: no fader, the overview takes the column.
+            // FADERS off: no fader, the blocks take its room; the bridge stays.
             view.setFadersShown (false);
-            expect (! column.fader.isVisible() && ! column.meter.isVisible());
-            expect (column.overview.getHeight() > withFaders + 200);
+            expect (! column.fader.isVisible() && column.meter.isVisible());
+            expect (column.body.getHeight() >= withFaders);
             expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds(), true, 1.0f), "universal-overview.png"));
             // A rebuild keeps the choice.
             view.setFilter ((int) StripKind::Channel);
@@ -1099,7 +1151,7 @@ public:
             MixerEngine engine (0);
             test::setChannels (engine, 2);
             UiRig rig (engine);
-            auto viewOwner = std::make_unique<ScenesView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto viewOwner = std::make_unique<ScenesView> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
             auto& view = *viewOwner;
             view.setSize (1200, 700);
             expectEquals (view.getNumRows(), 0);
@@ -1139,7 +1191,7 @@ public:
             UiRig rig (engine);
             setShownProfile (ld::kProfileDLive);
             setShownSlots (engine.getHandle());
-            auto viewOwner = std::make_unique<SetupView> (rig.ctx, Theme::dark());
+            auto viewOwner = std::make_unique<SetupView> (rig.ctx, Theme::charcoal());
             auto& view = *viewOwner;
             view.setSize (1200, 800);
             view.refresh();
@@ -1148,13 +1200,13 @@ public:
             using K = MixerConfigPanel;
             expectEquals (panel.getCurrent (K::Aux), 8);
             expectEquals (panel.getCurrent (K::StereoAux), 8);
-            expectEquals (panel.getBussesUsed(), 58);
+            expectEquals (panel.getBussesUsed(), 60);
             expect (panel.fits());
             expect (! panel.hasChanges());
 
             // Over the 64 busses: nothing to apply.
             panel.setPending (K::StereoAux, 12);
-            expectEquals (panel.getBussesUsed(), 66);
+            expectEquals (panel.getBussesUsed(), 68);
             expect (! panel.fits());
             expect (! panel.applyKey.isEnabled());
             panel.revert();
@@ -1214,7 +1266,7 @@ public:
 
             // A mix's Ext In and Mix Source, on its STRIP page.
             {
-                auto stripPageOwner = std::make_unique<StripPanel> (rig.ctx, Theme::dark());
+                auto stripPageOwner = std::make_unique<StripPanel> (rig.ctx, Theme::charcoal());
                 auto& page = *stripPageOwner;
                 auto& mix = *engine.getBuses()[8];
                 page.setStrip (&mix);
@@ -1239,7 +1291,7 @@ public:
             const Counts counts { 8, 2, 8, 2, 4, 8, 4, 16 };
             engine.configure (&counts);
             UiRig rig (engine);
-            auto viewOwner = std::make_unique<SetupView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto viewOwner = std::make_unique<SetupView> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
             auto& view = *viewOwner;
             view.setSize (1200, 800);
             auto& ch1 = *engine.getChannels()[0];
@@ -1288,7 +1340,7 @@ public:
             auto& strip = *engine.getChannels()[0];
             auto& eq = strip.params.eq();
             const auto& model = models::model ((models::Table) strip.getEqTable(), eq.model.load());
-            ResponseView view (Theme::dark());
+            ResponseView view (Theme::charcoal());
             view.setSize (600, 300);
             view.response = [&strip] (const double* f, double* db, int n)
             {
@@ -1335,7 +1387,7 @@ public:
             const auto& model = models::model (models::Dynamics, dyn.model.load());
             const int thr = model.find ("thr"), ratio = model.find ("ratio");
             expect (thr >= 0 && ratio >= 0, "a compressor");
-            TransferView view (Theme::dark());
+            TransferView view (Theme::charcoal());
             view.setSize (300, 300);
             view.bind (&dyn);
             view.refresh();
@@ -1362,12 +1414,12 @@ public:
             MixerEngine engine (0);
             test::setChannels (engine, 4);
             UiRig rig (engine);
-            auto viewOwner = std::make_unique<MixerView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto viewOwner = std::make_unique<MixerView> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
             auto& view = *viewOwner;
             view.setSize (1920, 1000);
             view.setChannelShown (true);
             auto& panel = view.getChannelPanel();
-            expect (panel.isVisible() && panel.getStrip() == nullptr, "nothing selected: a hint");
+            expect (! panel.isVisible() && panel.getStrip() == nullptr, "nothing selected: no panel");
             rig.selected = engine.getChannels()[2].get();
             view.selectionChanged();
             view.refresh();
@@ -1384,7 +1436,7 @@ public:
         {
             juce::StringArray names { "One", "Two", "Three", "Four", "Five", "Six", "Seven" };
             int painted = 0, picked = -1;
-            PictureGrid grid (Theme::dark(), names, 2, [&painted] (juce::Graphics&, juce::Rectangle<float>, int) { ++painted; },
+            PictureGrid grid (Theme::charcoal(), names, 2, [&painted] (juce::Graphics&, juce::Rectangle<float>, int) { ++painted; },
                               [&picked] (int i) { picked = i; });
             expectEquals (grid.getNumItems(), 7);
             expectEquals (grid.getHeight(), 2 * PictureGrid::kTileHeight);
@@ -1400,7 +1452,7 @@ public:
             const Counts counts { 8, 2, 4, 1, 2, 6, 3, 8 };
             engine.configure (&counts);
             UiRig rig (engine);
-            auto viewOwner = std::make_unique<MixerView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto viewOwner = std::make_unique<MixerView> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
             auto& view = *viewOwner;
             view.setSize (1400, 800);
             expectEquals (view.getNumColumns(), 8 + 2 + 4 + 1 + 2);
@@ -1451,7 +1503,7 @@ public:
             MixerEngine engine (0);
             engine.configure (nullptr); // a factory WING: channels linked to their sources
             UiRig rig (engine);
-            auto panelOwner = std::make_unique<StripPanel> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto panelOwner = std::make_unique<StripPanel> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
             auto& panel = *panelOwner;
             panel.setSize (440, 1200);
 
@@ -1495,7 +1547,7 @@ public:
             expect (panel.heightFor (440) >= panel.muteGroups.getBottom(), "the scroller shows every key");
 
             // In the inspector, its third tab.
-            auto inspectorOwner = std::make_unique<Inspector> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto inspectorOwner = std::make_unique<Inspector> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
             auto& inspector = *inspectorOwner;
             inspector.setSize (460, 900);
             inspector.setStrip (&bus2);
@@ -1510,7 +1562,7 @@ public:
             MixerEngine engine (0);
             engine.configure (nullptr);
             UiRig rig (engine);
-            auto setupOwner = std::make_unique<SetupView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto setupOwner = std::make_unique<SetupView> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
             auto& setup = *setupOwner;
             setup.setSize (1600, 900);
             setup.showPage (SetupView::Page::Remote);
@@ -1580,7 +1632,7 @@ public:
             MixerEngine engine (0);
             engine.configure (nullptr);
             UiRig rig (engine);
-            auto viewOwner = std::make_unique<ScenesView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto viewOwner = std::make_unique<ScenesView> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
             auto& view = *viewOwner;
             view.setSize (1400, 700);
             expectEquals (view.add(), 0);
@@ -1669,7 +1721,7 @@ public:
                 MixerEngine engine (0);
                 engine.configure (nullptr);
                 UiRig rig (engine);
-                auto viewOwner = std::make_unique<LibraryView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+                auto viewOwner = std::make_unique<LibraryView> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
                 auto& view = *viewOwner;
                 view.setSize (1400, 700);
                 view.refresh();
@@ -1738,7 +1790,7 @@ public:
             folder.createDirectory();
 
             // A channel preset: the strip's processing and levels, not its routing.
-            auto panelOwner = std::make_unique<StripPanel> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto panelOwner = std::make_unique<StripPanel> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
             auto& panel = *panelOwner;
             panel.setSize (440, 1400);
             auto& ch3 = *engine.getChannels()[2];
@@ -1756,7 +1808,7 @@ public:
             expect (panel.loadPreset (folder.getChildFile ("missing.lchn")).failed(), "a file that isn't there");
 
             // An FX preset: the slot's device and its settings.
-            auto rackOwner = std::make_unique<FxRackView> (rig.ctx, Theme::dark()); // on the heap: the test function's frame is big
+            auto rackOwner = std::make_unique<FxRackView> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
             auto& rack = *rackOwner;
             rack.setSize (1400, 800);
             rack.selectSlot (0);
@@ -1825,6 +1877,1150 @@ public:
             expectEquals (calls.joinIntoString (","), juce::String ("new,open,save,save as"));
             expect (skin.getShowKey().isVisible() && skin.getShowKey().getRight() <= skin.getWidth());
             expect (keepPicture (skin.createComponentSnapshot (skin.getLocalBounds()), "universal-topbar.png"));
+        }
+
+        beginTest ("The mix's undo and redo take a change once it has stopped moving");
+        {
+            MixerEngine engine (0);
+            const Counts counts { 8, 1, 2, 1, 1, 2, 2, 2 };
+            engine.configure (&counts);
+            UiRig rig (engine);
+            auto& strip = *rig.ctx.engine.getChannels().front();
+            MixerHistory history (rig.ctx.engine);
+            history.tick (1000); // the first look
+            strip.params.faderDb = -12.0f;
+            history.tick (1100);
+            expect (! history.canUndo(), "not while it may still be moving");
+            history.tick (1500);
+            expect (history.canUndo());
+            expect (history.undo());
+            expect (strip.params.faderDb.load() != -12.0f);
+            expect (history.canRedo());
+            expect (history.redo());
+            expectWithinAbsoluteError (strip.params.faderDb.load(), -12.0f, 0.001f);
+        }
+
+        beginTest ("The whole interface at tablet sizes, both themes");
+        {
+            MixerEngine engine (0);
+            const Counts counts { 8, 1, 2, 1, 1, 2, 2, 2 };
+            engine.configure (&counts);
+            UiRig rig (engine);
+            for (auto size : { juce::Point<int> (1280, 800), juce::Point<int> (800, 1280) })
+                for (auto* name : { "dark", "light" })
+                {
+                    rig.settings.setValue (Theme::kSetting, name);
+                    ui::UniversalSkin skin (rig.ctx);
+                    skin.setSize (size.x, size.y);
+                    expect (keepPicture (skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f),
+                                         "universal-tablet-" + juce::String (size.x) + "-" + name + ".png"));
+                }
+        }
+
+        beginTest ("A key shows its state when it is painted, even if nobody called refresh()");
+        {
+            ToggleKey key ("ON", Theme::charcoal().accent, Theme::charcoal());
+            bool on = true;
+            key.isOn = [&on] { return on; };
+            key.setSize (80, 44);
+            const auto lit = key.createComponentSnapshot (key.getLocalBounds()).getPixelAt (6, 22);
+            expect (lit.getBlue() > 180 && lit.getRed() < 170, "lit in its colour");
+            on = false;
+            const auto dark = key.createComponentSnapshot (key.getLocalBounds()).getPixelAt (6, 22);
+            expect (dark.getBlue() < 100, "dark again");
+        }
+
+        beginTest ("Sends on fader: the columns' faders move a bus's sends; the main stays pinned and its own");
+        {
+            MixerEngine engine (0);
+            const Counts counts { 4, 1, 3, 1, 1, 2, 2, 8 };
+            engine.configure (&counts);
+            UiRig rig (engine);
+            auto viewOwner = std::make_unique<MixerView> (rig.ctx, Theme::charcoal());
+            auto& view = *viewOwner;
+            view.setSize (1400, 800);
+            auto* bus2 = engine.getBuses()[1].get();
+            auto& ch1 = *engine.getChannels()[0];
+            auto& send = ch1.sends[(size_t) bus2->getId()];
+            const float faderBefore = ch1.params.faderDb.load();
+            view.setSendsOnFader (bus2);
+            expect (rig.ctx.sendsOnFader && view.getSofDestination() == bus2);
+            auto& column = *view.getColumn (0);
+            expect (column.getSendDestination() == bus2 && column.sendKey.isVisible());
+            column.fader.setPositionFromUser (ui::fader::dbToPos (-6.0f));
+            expectWithinAbsoluteError (send.levelDb.load(), -6.0f, 0.2f);
+            expectWithinAbsoluteError (ch1.params.faderDb.load(), faderBefore, 1.0e-4f);
+            const bool was = send.enabled.load();
+            column.sendKey.onClick();
+            expect (send.enabled.load() != was);
+            // The bus has no send to itself: its column's fader is out of use.
+            expect (! view.getColumn (4 + 1 + 1)->fader.isEnabled());
+            expect (view.getPinnedMain()->getSendDestination() == nullptr, "the main keeps its fader");
+            view.setSendsOnFader (nullptr);
+            expect (! rig.ctx.sendsOnFader && column.getSendDestination() == nullptr && ! column.sendKey.isVisible());
+            column.fader.setPositionFromUser (ui::fader::dbToPos (0.0f));
+            expectWithinAbsoluteError (ch1.params.faderDb.load(), 0.0f, 0.2f);
+
+            // With no fixed destination it follows the selected bus.
+            rig.ctx.sendsOnFader = true;
+            rig.ctx.sofDestination.reset();
+            rig.selected = bus2;
+            view.sendsOnFaderChanged();
+            expect (column.getSendDestination() == bus2);
+            rig.selected = nullptr;
+            rig.ctx.sendsOnFader = false;
+            view.sendsOnFaderChanged();
+        }
+
+        beginTest ("The first main stays in view at the right, a DCA spills its members");
+        {
+            MixerEngine engine (0);
+            const Counts counts { 6, 1, 2, 2, 1, 2, 2, 8 };
+            engine.configure (&counts);
+            UiRig rig (engine);
+            auto viewOwner = std::make_unique<MixerView> (rig.ctx, Theme::charcoal());
+            auto& view = *viewOwner;
+            view.setSize (1400, 800);
+            expectEquals (view.getNumColumns(), 6 + 1 + 2 + 2 + 1);
+            auto* pinned = view.getPinnedMain();
+            expect (pinned != nullptr && &pinned->getStrip() == engine.getMains()[0].get());
+            expect (pinned->getParentComponent() == &view && pinned->getRight() <= view.getWidth() && pinned->getWidth() == sizes::kColumnWidth);
+            view.setFilter ((int) StripKind::Channel);
+            expectEquals (view.getNumColumns(), 6);
+            expect (view.getPinnedMain() != nullptr, "there with a filter too");
+            view.setFilter ((int) StripKind::Main);
+            expect (view.getPinnedMain() == nullptr, "MAINS shows them all");
+
+            engine.getChannels()[1]->params.dcaMask.toggle (1);
+            engine.getChannels()[4]->params.dcaMask.toggle (1);
+            view.setDcaSpill (1);
+            expectEquals (view.getSpilledDca(), 1);
+            expectEquals (view.getNumColumns(), 2);
+            expect (&view.getColumn (1)->getStrip() == engine.getChannels()[4].get());
+            expectEquals (view.getNumDcaColumns(), 1);
+            expectEquals (view.getDcaColumn (0)->getDca(), 1);
+            view.setFilter (-1);
+            expectEquals (view.getSpilledDca(), -1);
+            expectEquals (view.getNumColumns(), 6 + 1 + 2 + 2 + 1);
+
+            // A tap on a block: the strip selected, and that block for the inspector.
+            auto& column0 = *view.getColumn (0);
+            int opened = -2;
+            view.onOpenStep = [&opened] (Strip&, int kind, int) { opened = kind; };
+            expect (column0.body.getNumBlocks() > 0 && column0.onOpenBlock != nullptr);
+            column0.onOpenBlock (column0.getStrip(), column0.body.getStep (0));
+            expectEquals (opened, (int) column0.body.getStep (0).kind);
+            expect (rig.selected == &column0.getStrip());
+        }
+
+        beginTest ("The inspector opens on a block, stays on it through the strips, and its lights are switches");
+        {
+            MixerEngine engine (0);
+            engine.configure (nullptr);
+            UiRig rig (engine);
+            auto inspectorOwner = std::make_unique<Inspector> (rig.ctx, Theme::charcoal());
+            auto& inspector = *inspectorOwner;
+            rig.ctx.selectStrip = [&rig, &inspector] (Strip* s)
+            {
+                rig.selected = s;
+                inspector.setStrip (s);
+            };
+            inspector.setSize (440, 900);
+            auto& ch1 = *engine.getChannels()[0];
+            auto& ch2 = *engine.getChannels()[1];
+            inspector.setStrip (&ch1);
+            expect (inspector.editor.getTarget().kind == BlockTarget::Kind::Eq, "the EQ first");
+            inspector.openStep (ld::kStepDynamics);
+            expect (inspector.editor.getTarget().dynamics == &ch1.params.dynamics());
+            inspector.stepStrip (1);
+            expect (inspector.getStrip() == &ch2);
+            expect (inspector.editor.getTarget().dynamics == &ch2.params.dynamics(), "the same block of the next strip");
+            inspector.stepStrip (-1);
+            expect (inspector.getStrip() == &ch1);
+            inspector.openStep (kOpenSends);
+            expect (inspector.getPage() == Inspector::Page::Sends);
+            inspector.showPage (Inspector::Page::Chain);
+
+            int eqRow = -1;
+            for (int i = 0; i < (int) inspector.chain.getRows().size(); ++i)
+                if (inspector.chain.getRows()[(size_t) i].step.kind == ld::kStepEq)
+                    eqRow = i;
+            const bool wasOn = ch1.params.eq().on.load();
+            expect (inspector.chain.canToggle (eqRow));
+            inspector.chain.toggleRow (eqRow);
+            expect (ch1.params.eq().on.load() != wasOn);
+            expect (inspector.chain.preferredHeight() > (int) inspector.chain.getRows().size() * 24, "as tall as its rows");
+        }
+
+        beginTest ("A long parameter list uses the width it has");
+        {
+            MixerEngine engine (0);
+            engine.configure (nullptr);
+            for (const auto& m : models::table (models::Fx))
+                if (m.params.size() > 6 && m.index != ld::kFxExt)
+                {
+                    engine.getFx().setModel (0, m.index);
+                    break;
+                }
+            auto& p = engine.getFx().params (0);
+            ParamPanel panel (Theme::charcoal());
+            panel.maxColumns = 3;
+            panel.bind (models::Fx, &p.model, p.values, ld::kMaxFxParams);
+            panel.refresh();
+            expect (panel.getNumControls() > 6);
+            expect (panel.getHeightFor (1000) < panel.getHeightFor (ParamPanel::kMinColumn) / 2);
+            panel.setSize (1000, panel.getHeightFor (1000));
+            expect (panel.getControl (panel.getNumControls() - 1)->getRight() <= 1000 && panel.getControl (panel.getNumControls() - 1)->getBottom() <= panel.getHeight());
+        }
+
+        beginTest ("SCENES sets SKIP, LINK, the tag, the fade and the notes of the selected scene");
+        {
+            MixerEngine engine (0);
+            engine.configure (nullptr);
+            UiRig rig (engine);
+            auto viewOwner = std::make_unique<ScenesView> (rig.ctx, Theme::charcoal());
+            auto& view = *viewOwner;
+            view.setSize (1400, 800);
+            view.add();
+            view.selectScene (0);
+            view.toggleSkip();
+            view.toggleLink();
+            view.setTag (5);
+            view.setFadeSeconds (2.0);
+            view.setNotes ("Hold for the intro");
+            const auto scene = rig.show.getScene (0);
+            expect (scene.has_value() && scene->skip && scene->linkNext && scene->tag == 5);
+            expectWithinAbsoluteError (scene->fadeSeconds, 2.0, 1.0e-6);
+            expectEquals (scene->notes, juce::String ("Hold for the intro"));
+            expectEquals (view.tagKey.getButtonText(), juce::String ("TAG #5"));
+            expectEquals (view.fadeKey.getButtonText(), juce::String ("FADE 2 s"));
+            view.setTag (0);
+            expectEquals (rig.show.getScene (0)->tag, 0);
+        }
+
+        beginTest ("ROUTING's PATCH 1:1 patches the channels in order");
+        {
+            MixerEngine engine (0);
+            engine.configure (nullptr);
+            UiRig rig (engine);
+            auto viewOwner = std::make_unique<RoutingView> (rig.ctx, Theme::charcoal());
+            auto& view = *viewOwner;
+            view.setSize (1400, 800);
+            for (auto& s : engine.getChannels())
+                s->params.inputLeft = -1;
+            view.refresh();
+            view.patchOneToOne();
+            const int n = juce::jmin (view.grid.getNumRows(), view.grid.getNumColumns());
+            expect (n > 2);
+            for (int i = 0; i < n; ++i)
+                expect (view.grid.getState (i, i) == PatchGrid::On);
+        }
+
+        beginTest ("The STRIP page copies one strip's settings onto another");
+        {
+            MixerEngine engine (0);
+            engine.configure (nullptr);
+            UiRig rig (engine);
+            auto panelOwner = std::make_unique<StripPanel> (rig.ctx, Theme::charcoal());
+            auto& panel = *panelOwner;
+            panel.setSize (440, 900);
+            auto& ch1 = *engine.getChannels()[0];
+            auto& ch2 = *engine.getChannels()[1];
+            ch1.params.faderDb = -12.0f;
+            panel.setStrip (&ch1);
+            expect (! panel.hasCopy());
+            panel.copyStrip();
+            expect (panel.hasCopy() && ! panel.pasteKey.isEnabled(), "not onto itself");
+            panel.setStrip (&ch2);
+            panel.refresh();
+            expect (panel.pasteKey.isEnabled() && panel.pasteKey.getButtonText().contains (ch1.getLabel()));
+            panel.paste (ui::kCopyMix);
+            expectWithinAbsoluteError (ch2.params.faderDb.load(), -12.0f, 1.0e-3f);
+        }
+
+        beginTest ("CONTROLS plays the show's custom controls");
+        {
+            MixerEngine engine (0);
+            engine.configure (nullptr);
+            UiRig rig (engine);
+            ui::cc::Assignments assignments (rig.show);
+            rig.ctx.customControls = &assignments;
+            auto& ch1 = *engine.getChannels()[0];
+            ui::cc::Control control;
+            const int target = ui::cc::encodeStrip (state::StripRef::of (ch1));
+            control.encoder = { ui::cc::EncFader, target, 0 };
+            control.upper = { ui::cc::BtnMute, target, 0 };
+            assignments.set (0, 0, control);
+
+            auto viewOwner = std::make_unique<ControlsView> (rig.ctx, Theme::charcoal());
+            auto& view = *viewOwner;
+            view.setSize (1400, 700);
+            auto& column = *view.getColumn (0);
+            expect (column.encoder.isBound() && column.upper.isEnabled() && ! column.lower.isEnabled());
+            expect (! view.getColumn (1)->encoder.isBound());
+
+            column.encoder.setPositionFromUser (0.5f);
+            expectWithinAbsoluteError (column.encoder.getPosition(), 0.5f, 0.01f);
+            expectWithinAbsoluteError (ch1.params.faderDb.load(), ui::fader::posToDb (0.5f), 0.3f);
+
+            const bool muted = ch1.params.mute.load();
+            column.upper.setState (juce::Button::buttonDown);
+            column.upper.setState (juce::Button::buttonNormal);
+            expect (ch1.params.mute.load() != muted, "a press and release");
+
+            view.setLayer (3);
+            expectEquals (assignments.currentLayer, 3);
+            expect (! column.encoder.isBound() && ! column.upper.isEnabled());
+            assignments.currentLayer = 0;
+            view.refresh();
+            expectEquals (view.getLayer(), 0, "follows the layer changed elsewhere");
+            expect (column.encoder.isBound());
+            view.showEditor (true);
+            expect (view.isEditorShown() && ! column.isVisible());
+            view.showEditor (false);
+            expect (! view.isEditorShown() && column.isVisible());
+        }
+
+        beginTest ("The view row carries the show's keys where the window has room");
+        {
+            MixerEngine engine (0);
+            engine.configure (nullptr);
+            UiRig rig (engine);
+            auto skinOwner = std::make_unique<ui::UniversalSkin> (rig.ctx);
+            auto& skin = *skinOwner;
+            skin.setSize (1920, 1080);
+            expect (skin.talkAKey.isVisible() && skin.nextSceneKey.isVisible() && skin.talkBKey.getRight() <= skin.getWidth());
+            skin.setSize (1500, 900);
+            expect (! skin.talkAKey.isVisible() && skin.nextSceneKey.isVisible());
+            skin.setSize (1280, 720);
+            expect (! skin.nextSceneKey.isVisible());
+            skin.showView (ui::UniversalSkin::View::Controls);
+            expect (skin.getControls().isVisible() && ! skin.getMixer().isVisible());
+            rig.show.addScene ("Doors", -1);
+            expectEquals (skin.getSceneReadout(), juce::String ("1   Doors"), "a new scene is the current one");
+        }
+
+        beginTest ("The light theme reads as the dark one does; the app setting names the skin's theme");
+        {
+            const auto& t = Theme::light();
+            expect (t.isLight && ! Theme::charcoal().isLight);
+            expectGreaterOrEqual (contrastRatio (t.text, t.background), 7.0f);
+            expectGreaterOrEqual (contrastRatio (t.text, t.raised), 7.0f);
+            expectGreaterOrEqual (contrastRatio (t.textDim, t.panel), 4.5f);
+            for (auto role : { t.accent, t.mute, t.solo })
+            {
+                expectGreaterOrEqual (contrastRatio (t.textOnAccent, role), 4.5f, "text on a lit key");
+                expectGreaterOrEqual (contrastRatio (role, t.panel), 4.5f, "a role's colour as text on a panel");
+            }
+            for (int k = 0; k < kNumStripKinds; ++k)
+                expectGreaterOrEqual (contrastRatio (t.kindColour (static_cast<StripKind> (k)), t.raised), 4.5f, "a strip kind's label");
+            expect (&Theme::named ("light") == &t && &Theme::named (" Light ") == &t);
+            expect (&Theme::named ("dark") == &Theme::charcoal() && &Theme::named ({}) == &Theme::charcoal() && &Theme::named ("blue") == &Theme::charcoal());
+            expectEquals (t.getName(), juce::String ("light"));
+            expectEquals (Theme::charcoal().getName(), juce::String ("dark"));
+            // A step towards the text: brighter on the dark theme (as it always was), darker on the light one.
+            expect (Theme::charcoal().lifted (Theme::charcoal().raised, 0.2f) == Theme::charcoal().raised.brighter (0.2f));
+            expect (t.lifted (t.raised, 0.2f).getBrightness() < t.raised.getBrightness());
+
+            MixerEngine engine (0);
+            engine.configure (nullptr);
+            UiRig rig (engine);
+            {
+                // A view draws in the theme it was made with.
+                auto dark = std::make_unique<ScenesView> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
+                auto light = std::make_unique<ScenesView> (rig.ctx, t);
+                dark->setSize (900, 600);
+                light->setSize (900, 600);
+                expect (dark->createComponentSnapshot (dark->getLocalBounds(), true, 1.0f).getPixelAt (20, 300).getBrightness() < 0.25f);
+                expect (light->createComponentSnapshot (light->getLocalBounds(), true, 1.0f).getPixelAt (20, 300).getBrightness() > 0.75f);
+            }
+            {
+                auto skinOwner = std::make_unique<ui::UniversalSkin> (rig.ctx);
+                expect (! skinOwner->getTheme().isLight, "dark unless the settings say otherwise");
+                skinOwner->setLightTheme (true);
+                expectEquals (rig.settings.getValue (Theme::kSetting), juce::String ("light"));
+            }
+            // The skin made again (as the window does when the theme changes) is the light one, every view of it.
+            rig.selected = engine.getChannels()[0].get();
+            auto skinOwner = std::make_unique<ui::UniversalSkin> (rig.ctx);
+            auto& skin = *skinOwner;
+            expect (skin.getTheme().isLight);
+            skin.setSize (1280, 720);
+            skin.selectionChanged();
+            using V = ui::UniversalSkin::View;
+            const std::pair<V, const char*> views[] = { { V::Mixer, "mixer" },   { V::Routing, "routing" },   { V::Fx, "fx" },       { V::Monitoring, "monitoring" }, { V::Scenes, "scenes" },
+                                                        { V::Library, "library" }, { V::Recorder, "recorder" }, { V::Controls, "controls" }, { V::Setup, "setup" } };
+            for (const auto& [v, viewName] : views)
+            {
+                skin.showView (v);
+                const auto picture = skin.createComponentSnapshot (skin.getLocalBounds());
+                expect (picture.isValid(), viewName);
+                expect (keepPicture (picture, juce::String ("light-") + viewName + ".png"));
+            }
+            skin.setLightTheme (false);
+            expectEquals (rig.settings.getValue (Theme::kSetting), juce::String ("dark"));
+        }
+
+        beginTest ("SCENES: a scene's recall scope, per scene, said in a line and marked in the list");
+        {
+            MixerEngine engine (0);
+            engine.configure (nullptr);
+            UiRig rig (engine);
+            auto viewOwner = std::make_unique<ScenesView> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
+            auto& view = *viewOwner;
+            view.setSize (1400, 800);
+            auto& ch1 = *engine.getChannels()[0];
+            auto& ch2 = *engine.getChannels()[1];
+            ch1.params.faderDb = -10.0f;
+            ch2.params.faderDb = -10.0f;
+            expectEquals (view.add(), 0);
+            expect (view.getPage() == ScenesView::Page::Snippets && ! view.getScopeEditor().isVisible());
+            view.showPage (ScenesView::Page::Scope);
+            auto& scope = view.getScopeEditor();
+            expect (scope.isVisible() && scope.isEnabled() && ! view.getSafesEditor().isVisible() && ! view.snippetNew.isVisible());
+            expect (view.scopeTab.getBounds().getY() == view.snippetsTab.getBounds().getY() && view.safesTab.getRight() <= view.getWidth());
+
+            // A new scene recalls everything but ROUTING: no mark in the list, and the line says so.
+            expect (! view.getRowMarks (0).contains ("PARTIAL"), view.getRowMarks (0));
+            expect (scope.getSummary().contains ("all but ROUTING") && scope.getSummary().contains ("every strip"), scope.getSummary());
+
+            // FADER out of its scope: GO leaves the faders alone, and the list says PARTIAL.
+            scope.toggleSection (state::Fader);
+            expectEquals ((int) rig.show.getScene (0)->scope, (int) (state::AllSections & ~((juce::uint32) state::Routing | (juce::uint32) state::Fader)));
+            expect (view.getRowMarks (0).contains ("PARTIAL"), view.getRowMarks (0));
+            ch1.params.faderDb = -30.0f;
+            view.go();
+            expectWithinAbsoluteError (ch1.params.faderDb.load(), -30.0f, 0.01f, "FADER is out of the scene's scope");
+            scope.toggleSection (state::Fader);
+            expect (! view.getRowMarks (0).contains ("PARTIAL"));
+            view.go();
+            expectWithinAbsoluteError (ch1.params.faderDb.load(), -10.0f, 0.01f);
+
+            // A strip out of its scope: the others still come back.
+            int strips = 0;
+            for (int k = 0; k < kNumStripKinds; ++k)
+                strips += (int) engine.getStrips (static_cast<StripKind> (k)).size();
+            scope.toggleStrip (ch2);
+            expect (! scope.hasStrip (ch2) && scope.hasStrip (ch1));
+            expect (! rig.show.getSceneRecallScope (0).allStrips);
+            expect (scope.getSummary().contains (juce::String (strips - 1) + " of " + juce::String (strips) + " strips"), scope.getSummary());
+            ch1.params.faderDb = -40.0f;
+            ch2.params.faderDb = -40.0f;
+            view.go();
+            expectWithinAbsoluteError (ch1.params.faderDb.load(), -10.0f, 0.01f);
+            expectWithinAbsoluteError (ch2.params.faderDb.load(), -40.0f, 0.01f, "CH 2 is out of the scene's scope");
+            expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds()), "universal-scene-scope.png"));
+            scope.toggleStrip (ch2);
+            expect (rig.show.getSceneRecallScope (0).allStrips, "every strip in the list: every strip again");
+
+            // A tap on a kind's heading: all of its strips out, then in.
+            scope.toggleKind (StripKind::Bus);
+            expect (! scope.hasStrip (*engine.getBuses()[0]) && ! scope.hasStrip (*engine.getBuses().back()) && scope.hasStrip (ch1));
+            scope.toggleKind (StripKind::Bus);
+            expect (scope.hasStrip (*engine.getBuses()[0]) && rig.show.getSceneRecallScope (0).allStrips);
+
+            // DCAs, FX slots and the console's settings.
+            scope.toggleDca (1);
+            expect (! rig.show.getSceneRecallScope (0).dcas.contains (1) && rig.show.getSceneRecallScope (0).dcas.contains (0));
+            scope.toggleMuteGroup (0);
+            expect (! rig.show.getSceneRecallScope (0).muteGroups.contains (0));
+            scope.toggleFx (0);
+            expect ((rig.show.getSceneRecallScope (0).fx & 1u) == 0);
+            scope.toggleConsole();
+            expect (! rig.show.getSceneRecallScope (0).console);
+            expect (view.getRowMarks (0).contains ("PARTIAL"));
+            // ALL and NONE.
+            scope.setAll (true);
+            expectEquals (scope.getSummary(), juce::String ("Everything"));
+            expect (! view.getRowMarks (0).contains ("PARTIAL"));
+            scope.setAll (false);
+            expectEquals (scope.getSummary(), juce::String ("Nothing"));
+            ch1.params.faderDb = -60.0f;
+            view.go();
+            expectWithinAbsoluteError (ch1.params.faderDb.load(), -60.0f, 0.01f, "a scene with nothing in its scope recalls nothing");
+            scope.setAll (true);
+
+            // A tap on a strip's key, as the finger does it.
+            scope.refresh();
+            const auto key = scope.getStripKeyArea (ch2);
+            expect (! key.isEmpty());
+            expect (scope.getBodyHeight (300) > scope.getBodyHeight (600), "a narrower list is a longer one");
+
+            // No scene: nothing to edit.
+            view.selectScene (-1);
+            view.refresh();
+            expect (! scope.isEnabled());
+        }
+
+        beginTest ("SCENES: the recall safes, a strip's own and the show's, hold every recall back");
+        {
+            MixerEngine engine (0);
+            engine.configure (nullptr);
+            UiRig rig (engine);
+            auto viewOwner = std::make_unique<ScenesView> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
+            auto& view = *viewOwner;
+            view.setSize (1400, 800);
+            auto& ch1 = *engine.getChannels()[0];
+            auto& ch2 = *engine.getChannels()[1];
+            auto& dca = engine.getDca (0);
+            ch1.params.faderDb = -10.0f;
+            ch2.params.faderDb = -10.0f;
+            const float dcaWas = dca.faderDb.load();
+            expectEquals (view.add(), 0);
+
+            view.showPage (ScenesView::Page::Safes);
+            auto& safes = view.getSafesEditor();
+            expect (safes.isVisible() && ! view.getScopeEditor().isVisible());
+            expect (! view.anySafe() && view.getSafesLine().isEmpty());
+            expectEquals (safes.getSummary(), juce::String ("Nothing"));
+            expect (! view.safesTab.isHalfOn());
+
+            // A strip's recall safe: GO leaves it alone.
+            safes.toggleStrip (ch1);
+            expect (ch1.params.recallSafe.load() && ! ch2.params.recallSafe.load() && view.anySafe());
+            expect (view.getSafesLine().contains ("1 strip"), view.getSafesLine());
+            expect (view.safesTab.isHalfOn(), "the SAFES key's outline is lit from the other pages too");
+            ch1.params.faderDb = -50.0f;
+            ch2.params.faderDb = -50.0f;
+            view.go();
+            expectWithinAbsoluteError (ch1.params.faderDb.load(), -50.0f, 0.01f, "CH 1 is recall safe");
+            expectWithinAbsoluteError (ch2.params.faderDb.load(), -10.0f, 0.01f);
+            // The flag set elsewhere (the WING's GLOBAL window, a remote) shows here.
+            ch2.params.recallSafe = true;
+            view.refresh();
+            expect (safes.hasStrip (ch2) && view.getSafesLine().contains ("2 strips"), view.getSafesLine());
+            ch2.params.recallSafe = false;
+            safes.toggleStrip (ch1);
+            expect (! ch1.params.recallSafe.load() && ! view.anySafe());
+
+            // A global safe of the show: DCA 1.
+            safes.toggleDca (0);
+            expect (rig.show.getGlobalSafe().dcas.contains (0) && ! rig.show.getGlobalSafe().dcas.contains (1) && rig.show.hasGlobalSafes());
+            expect (view.getSafesLine().contains ("1 DCA"), view.getSafesLine());
+            dca.faderDb = dcaWas - 20.0f;
+            view.go();
+            expectWithinAbsoluteError (dca.faderDb.load(), dcaWas - 20.0f, 0.01f, "DCA 1 is safe");
+            expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds()), "universal-safes.png"));
+            safes.toggleDca (0);
+            expect (! rig.show.hasGlobalSafes());
+            view.go();
+            expectWithinAbsoluteError (dca.faderDb.load(), dcaWas, 0.01f);
+
+            // A section, a mute group, an FX slot, the console's settings; NONE clears them all, the strips' too.
+            safes.toggleSection (state::Eq);
+            expectEquals ((int) rig.show.getGlobalSafe().sections, (int) state::Eq);
+            safes.toggleMuteGroup (2);
+            safes.toggleFx (4);
+            safes.toggleConsole();
+            safes.toggleKind (StripKind::Main);
+            const auto g = rig.show.getGlobalSafe();
+            expect (g.muteGroups.contains (2) && (g.fx & (juce::uint64 (1) << 4)) != 0 && g.console);
+            expect (engine.getMains()[0]->params.recallSafe.load() && engine.getMains().back()->params.recallSafe.load());
+            safes.setAll (false);
+            expect (! view.anySafe() && ! engine.getMains()[0]->params.recallSafe.load());
+            view.refresh();
+            expect (view.getSafesLine().isEmpty());
+        }
+
+        beginTest ("SCENES: a snippet's strips, DCAs, mute groups and FX slots as keys (ITEMS)");
+        {
+            MixerEngine engine (0);
+            engine.configure (nullptr);
+            UiRig rig (engine);
+            auto viewOwner = std::make_unique<ScenesView> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
+            auto& view = *viewOwner;
+            view.setSize (1400, 800);
+            expectEquals (view.add(), 0);
+            auto& ch1 = *engine.getChannels()[0];
+            auto& ch4 = *engine.getChannels()[3];
+            expect (! view.snippetItemsKey.isEnabled(), "no snippet: nothing to show");
+            rig.selected = &ch4;
+            expectEquals (view.newSnippet(), 0);
+            expect (view.snippetItemsKey.isEnabled() && view.snippetItemsKey.isVisible() && ! view.areSnippetItemsShown());
+            view.setSnippetItemsShown (true);
+            auto& items = view.getSnippetItems();
+            expect (view.areSnippetItemsShown() && items.isVisible() && ! items.areSectionsShown());
+            expect (items.hasStrip (ch4) && ! items.hasStrip (ch1));
+
+            // A DCA into the snippet: captured as it is now, recalled with the snippet.
+            auto& dca = engine.getDca (2);
+            dca.faderDb = -6.0f;
+            items.toggleDca (2);
+            expect (rig.show.getSnippet (0, 0)->scope.dcas.contains (2) && ! rig.show.getSnippet (0, 0)->scope.dcas.contains (1));
+            dca.faderDb = -30.0f;
+            view.recallSnippet();
+            expectWithinAbsoluteError (dca.faderDb.load(), -6.0f, 0.01f);
+            // Out again: the snippet leaves it alone.
+            items.toggleDca (2);
+            expect (! rig.show.getSnippet (0, 0)->scope.dcas.contains (2));
+            dca.faderDb = -30.0f;
+            view.recallSnippet();
+            expectWithinAbsoluteError (dca.faderDb.load(), -30.0f, 0.01f, "DCA 3 is out of the snippet");
+
+            // A mute group and an FX slot.
+            items.toggleMuteGroup (1);
+            items.toggleFx (3);
+            auto held = rig.show.getSnippet (0, 0)->scope;
+            expect (held.muteGroups.contains (1) && (held.fx & (juce::uint64 (1) << 3)) != 0);
+            items.toggleFx (3);
+            held = rig.show.getSnippet (0, 0)->scope;
+            expect ((held.fx & (juce::uint64 (1) << 3)) == 0 && held.muteGroups.contains (1));
+
+            // Another strip by its key: captured in the snippet's sections, and dropped again.
+            ch1.params.faderDb = -15.0f;
+            items.toggleStrip (ch1);
+            expectEquals ((int) rig.show.getSnippet (0, 0)->strips.size(), 2);
+            ch1.params.faderDb = 0.0f;
+            view.recallSnippet();
+            expectWithinAbsoluteError (ch1.params.faderDb.load(), -15.0f, 0.01f);
+            view.refresh();
+            expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds()), "universal-snippet-items.png"));
+            items.toggleStrip (ch1);
+            expectEquals ((int) rig.show.getSnippet (0, 0)->strips.size(), 1);
+
+            // The other pages hide the snippet's keys; without a snippet the list is back.
+            view.showPage (ScenesView::Page::Safes);
+            expect (! items.isVisible() && ! view.snippetItemsKey.isVisible());
+            view.showPage (ScenesView::Page::Snippets);
+            expect (items.isVisible());
+            view.removeSnippet();
+            expect (! view.areSnippetItemsShown() && ! items.isVisible());
+        }
+
+        beginTest ("MIXER on a large console: bank keys by kind and range, a JUMP list by number, label or name, and the keyboard");
+        {
+            MixerEngine engine (0);
+            const Counts counts { 96, 8, 24, 2, 8, 16, 8, 16 };
+            engine.configure (&counts);
+            UiRig rig (engine);
+            auto viewOwner = std::make_unique<MixerView> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
+            auto& view = *viewOwner;
+            view.setSize (1280, 612); // as in a 1280 x 720 window
+            const auto& channels = engine.getChannels();
+            const int strips = 96 + 8 + 24 + 2 + 8;
+
+            // The columns in banks: 16 to a key here (8 would make more keys than can be read).
+            expect (view.isBankBarShown());
+            expect (view.getNumBanks() >= 10 && view.getNumBanks() * 76 <= view.getWidth(), juce::String (view.getNumBanks()));
+            const auto* first = view.getBank (0);
+            expect (first != nullptr && first->kind == (int) StripKind::Channel && first->count == 16);
+            expectEquals (first->label, channels[0]->getLabel() + "-16");
+            expect (view.getBank (view.getNumBanks() - 1)->kind == MixerView::kMuteGroupsBank);
+            expect (view.getBank (view.getNumBanks()) == nullptr);
+            expect (view.getColumn (0)->getY() == 0 && view.getColumn (0)->getHeight() > 250, "the columns keep their room under the keys");
+            expectEquals (view.getCurrentBank(), 0);
+
+            // A bank's key brings its first column to the left of the view.
+            int busBank = -1, dcaBank = -1;
+            for (int i = 0; i < view.getNumBanks(); ++i)
+            {
+                if (view.getBank (i)->kind == (int) StripKind::Bus && busBank < 0)
+                    busBank = i;
+                if (view.getBank (i)->kind == MixerView::kDcas && dcaBank < 0)
+                    dcaBank = i;
+            }
+            expect (busBank > 0 && dcaBank > busBank);
+            view.showBank (busBank);
+            expectEquals (view.getCurrentBank(), busBank);
+            expectEquals (view.getColumn (96 + 8)->getX() - view.getScrollX(), (int) sizes::kGapSmall);
+            view.stepBank (-1);
+            expectEquals (view.getCurrentBank(), busBank - 1);
+            // The last banks can't reach the left of the view: the key asked for is still the lit one.
+            view.showBank (view.getNumBanks() - 1);
+            expectEquals (view.getCurrentBank(), view.getNumBanks() - 1);
+            view.stepBank (1);
+            expectEquals (view.getCurrentBank(), view.getNumBanks() - 1);
+            view.showBank (0);
+            expectEquals (view.getScrollX(), 0);
+
+            // The keyboard: Page Down / Up, End / Home through the banks, Right / Left through the strips.
+            expect (view.handleKey (juce::KeyPress (juce::KeyPress::pageDownKey)));
+            expectEquals (view.getCurrentBank(), 1);
+            expect (view.handleKey (juce::KeyPress (juce::KeyPress::pageUpKey)));
+            expectEquals (view.getCurrentBank(), 0);
+            expect (view.handleKey (juce::KeyPress (juce::KeyPress::endKey)));
+            expectEquals (view.getCurrentBank(), view.getNumBanks() - 1);
+            expect (view.handleKey (juce::KeyPress (juce::KeyPress::homeKey)));
+            expectEquals (view.getCurrentBank(), 0);
+            rig.selected = channels[0].get();
+            view.selectionChanged();
+            expect (view.handleKey (juce::KeyPress (juce::KeyPress::rightKey)));
+            expect (rig.selected == channels[1].get());
+            expect (view.handleKey (juce::KeyPress (juce::KeyPress::leftKey)) && view.handleKey (juce::KeyPress (juce::KeyPress::leftKey)));
+            expect (rig.selected == channels[0].get(), "the first strip is where it stops");
+            expect (! view.handleKey (juce::KeyPress ('x', juce::ModifierKeys(), 'x')), "other keys aren't the view's");
+
+            // The search: a number, a label, part of a name.
+            channels[40]->params.custLink = false; // its own name, not its source's
+            channels[40]->setName ("Lead Vox");
+            engine.getBuses()[2]->setName ("Drum Bus");
+            expectEquals ((int) view.findStrips ({}).size(), strips);
+            auto found = view.findStrips ("41");
+            expect (! found.empty() && found.front() == channels[40].get(), "a number is a strip's number");
+            found = view.findStrips ("4");
+            expect (found.size() > 10 && found.front() == channels[3].get(), "the exact number first, then those that start with it");
+            found = view.findStrips ("vox");
+            expect (found.size() == 1 && found.front() == channels[40].get());
+            found = view.findStrips ("  DRUM ");
+            expect (found.size() == 1 && found.front() == engine.getBuses()[2].get());
+            found = view.findStrips (engine.getBuses()[2]->getLabel().toLowerCase());
+            expect (! found.empty() && found.front() == engine.getBuses()[2].get(), "a label");
+            expect (view.findStrips ("no such strip").empty());
+
+            // JUMP (Ctrl+J): the list, a search, Return goes there and selects.
+            expect (! view.isJumpListShown());
+            expect (view.handleKey (juce::KeyPress ('j', juce::ModifierKeys::commandModifier, 0)));
+            expect (view.isJumpListShown() && view.getJumpKey().isVisible());
+            expectEquals (view.getNumJumpRows(), strips);
+            expect (! view.handleKey (juce::KeyPress (juce::KeyPress::pageDownKey)), "the list's search line has the keyboard");
+            view.setJumpQuery ("vox");
+            expectEquals (view.getNumJumpRows(), 1);
+            expect (view.getJumpRow (0) == channels[40].get());
+            view.setJumpQuery ({});
+            expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds()), "universal-jump.png"));
+            view.setJumpQuery ("vox");
+            view.chooseJumpRow();
+            expect (! view.isJumpListShown());
+            expect (rig.selected == channels[40].get());
+            expectEquals (view.getColumn (40)->getX() - view.getScrollX(), (int) sizes::kGapSmall);
+            expect (view.getColumn (40)->isSelected());
+            // / opens it too; Down moves through the list.
+            expect (view.handleKey (juce::KeyPress ('/', juce::ModifierKeys(), '/')));
+            expect (view.isJumpListShown());
+            view.moveJumpHighlight (2);
+            view.moveJumpHighlight (-1);
+            view.chooseJumpRow();
+            expect (rig.selected == channels[1].get());
+            // A strip the filter leaves out: every kind again.
+            view.setFilter ((int) StripKind::Bus);
+            view.jumpTo (*channels[90]);
+            expectEquals (view.getFilter(), -1);
+            expect (rig.selected == channels[90].get());
+            expect (view.getColumn (90)->getX() >= view.getScrollX() && view.getColumn (90)->getRight() <= view.getScrollX() + view.getWidth());
+            expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds()), "universal-banks.png"));
+
+            // One kind at a time: its banks alone, of 8.
+            view.setFilter ((int) StripKind::Channel);
+            expectEquals (view.getNumBanks(), 12);
+            expectEquals (view.getBank (11)->label, channels[88]->getLabel() + "-96");
+
+            // A console that fits has no bank keys.
+            rig.selected = nullptr;
+            view.selectionChanged();
+            const Counts small { 6, 1, 2, 2, 1, 2, 2, 8 };
+            engine.configure (&small);
+            view.setFilter (-1);
+            view.setSize (1920, 900);
+            view.refresh();
+            expect (! view.isBankBarShown());
+            view.setJumpListShown (true);
+            expectEquals (view.getNumJumpRows(), 6 + 1 + 2 + 2 + 1);
+        }
+
+        beginTest ("The top bar's MENU: the theme, the views, the show's and the scenes' commands; Ctrl+J jumps from any view");
+        {
+            MixerEngine engine (0);
+            engine.configure (nullptr);
+            UiRig rig (engine);
+            juce::StringArray calls;
+            rig.ctx.saveShow = [&calls] (bool as) { calls.add (as ? "save as" : "save"); };
+            auto skinOwner = std::make_unique<ui::UniversalSkin> (rig.ctx); // on the heap: the test function's frame is big
+            auto& skin = *skinOwner;
+            using V = ui::UniversalSkin::View;
+            for (const auto size : { juce::Point<int> (1280, 720), juce::Point<int> (1500, 900), juce::Point<int> (1920, 1080) })
+            {
+                skin.setSize (size.x, size.y);
+                auto& menu = skin.getMenuKey();
+                expect (menu.isVisible() && menu.getRight() <= skin.getWidth() && menu.getBottom() <= sizes::kTopBar);
+                expect (! menu.getBounds().intersects (skin.getShowKey().getBounds()) && skin.getShowKey().getRight() <= menu.getX());
+            }
+            expect (skin.buildMenu().getNumItems() >= 8);
+
+            skin.runMenuCommand (ui::UniversalSkin::kMenuView + (int) V::Scenes);
+            expect (skin.getView() == V::Scenes && skin.getScenes().isVisible());
+            skin.runMenuCommand (ui::UniversalSkin::kMenuView + (int) V::Controls);
+            expect (skin.getView() == V::Controls);
+            skin.runMenuCommand (3);
+            skin.runMenuCommand (4);
+            expectEquals (calls.joinIntoString (","), juce::String ("save,save as"));
+            rig.show.addScene ("One", -1);
+            rig.show.addScene ("Two", -1);
+            expectEquals (rig.show.getCurrentSceneIndex(), 1);
+            skin.runMenuCommand (ui::UniversalSkin::kMenuPreviousScene);
+            expectEquals (rig.show.getCurrentSceneIndex(), 0);
+            skin.runMenuCommand (ui::UniversalSkin::kMenuNextScene);
+            expectEquals (rig.show.getCurrentSceneIndex(), 1);
+            const bool dim = engine.monitorDim.load();
+            skin.runMenuCommand (ui::UniversalSkin::kMenuDim);
+            expect (engine.monitorDim.load() != dim);
+            skin.runMenuCommand (ui::UniversalSkin::kMenuDim);
+            engine.getChannels()[0]->params.solo = true;
+            skin.runMenuCommand (ui::UniversalSkin::kMenuClearSolo);
+            expect (! engine.getChannels()[0]->params.solo.load());
+            skin.runMenuCommand (ui::UniversalSkin::kMenuThemeLight);
+            expectEquals (rig.settings.getValue (Theme::kSetting), juce::String ("light"));
+            skin.runMenuCommand (ui::UniversalSkin::kMenuThemeDark);
+            expectEquals (rig.settings.getValue (Theme::kSetting), juce::String ("dark"));
+
+            // Ctrl+J from any view: the MIXER view and its JUMP list. Another view closes it.
+            expect (skin.skinKeyPressed (juce::KeyPress ('j', juce::ModifierKeys::commandModifier, 0)));
+            expect (skin.getView() == V::Mixer && skin.getMixer().isJumpListShown());
+            skin.showView (V::Routing);
+            expect (! skin.getMixer().isJumpListShown());
+            expect (! skin.skinKeyPressed (juce::KeyPress (juce::KeyPress::pageDownKey)), "the MIXER view's keys are for the MIXER view");
+            skin.runMenuCommand (ui::UniversalSkin::kMenuJump);
+            expect (skin.getView() == V::Mixer && skin.getMixer().isJumpListShown());
+            skin.getMixer().setJumpListShown (false);
+            expect (skin.skinKeyPressed (juce::KeyPress (juce::KeyPress::pageDownKey)));
+        }
+
+        beginTest ("FX RACK: a slot's bypass on its tile");
+        {
+            MixerEngine engine (0);
+            UiRig rig (engine);
+            auto viewOwner = std::make_unique<FxRackView> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
+            auto& view = *viewOwner;
+            view.setSize (1280, 612);
+            auto& fx = engine.getFx();
+            int device = -1;
+            for (const auto& m : models::table (models::Fx))
+                if (m.index > ld::kFxExt && device < 0 && FxSlots::isAllowed (m.index, 0))
+                    device = m.index;
+            expect (device > ld::kFxExt && fx.setModel (0, device));
+            // FX 6 empty, whatever the console starts with.
+            fx.setModel (5, ld::kFxNone);
+            fx.params (5).bypass = false;
+            view.selectSlot (1);
+            view.refresh();
+            expect (fx.isLoaded (0) && ! fx.isLoaded (5) && ! view.isBypassed (0));
+
+            // A tap on the switch bypasses the slot and leaves the selection alone.
+            auto& tiles = *view.getTiles();
+            const auto sw = view.getBypassArea (0);
+            expect (! sw.isEmpty() && tiles.getLocalBounds().contains (sw));
+            tiles.mouseUp (mouseEvent (tiles, sw.getCentre().toFloat(), sw.getCentre().toFloat()));
+            expect (view.isBypassed (0) && fx.params (0).bypass.load());
+            expectEquals (view.getSelectedSlot(), 1);
+            expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds()), "universal-fx-bypass.png"));
+            tiles.mouseUp (mouseEvent (tiles, sw.getCentre().toFloat(), sw.getCentre().toFloat()));
+            expect (! view.isBypassed (0));
+            // The rest of the tile selects the slot.
+            const juce::Point<float> name ((float) sw.getX() - 80.0f, (float) sw.getY() - 20.0f);
+            tiles.mouseUp (mouseEvent (tiles, name, name));
+            expectEquals (view.getSelectedSlot(), 0);
+            expect (! view.isBypassed (0));
+            // An empty slot has no switch: a tap there selects it.
+            const auto empty = view.getBypassArea (5).getCentre().toFloat();
+            tiles.mouseUp (mouseEvent (tiles, empty, empty));
+            expect (! fx.params (5).bypass.load());
+            expectEquals (view.getSelectedSlot(), 5);
+            // A bypass set elsewhere (a scene, a remote) shows.
+            fx.params (0).bypass = true;
+            view.refresh();
+            expect (view.isBypassed (0));
+            view.toggleBypass (0);
+            expect (! fx.params (0).bypass.load());
+            expect (view.getBypassArea (-1).isEmpty() && view.getBypassArea (view.getNumSlots()).isEmpty());
+        }
+
+        beginTest ("ROUTING: a crosshair on the point under the pointer, a drag patches a range 1:1, levels beside the labels");
+        {
+            PatchGrid grid (Theme::charcoal());
+            grid.setSize (700, 500);
+            std::vector<int> patched (6, -1); // a column per row, -1 none
+            std::vector<float> levels (6, 0.0f);
+            PatchGrid::Model m;
+            m.numRows = [] { return 6; };
+            m.numColumns = [] { return 8; };
+            m.state = [&patched] (int r, int c) { return patched[(size_t) r] == c ? PatchGrid::On : PatchGrid::Off; };
+            m.toggle = [&patched] (int r, int c) { patched[(size_t) r] = patched[(size_t) r] == c ? -1 : c; };
+            m.rowLevel = [&levels] (int r) { return levels[(size_t) r]; };
+            grid.setModel (m);
+
+            // The crosshair: only on a point of the grid.
+            expect (! grid.getCrosshair().isValid());
+            grid.setCrosshair ({ 2, 3 });
+            expect (grid.getCrosshair() == PatchGrid::Point { 2, 3 });
+            grid.setCrosshair ({ 9, 3 });
+            expect (! grid.getCrosshair().isValid());
+
+            // A drag's range: 1:1 from where it starts, as long as the longer way of the drag, inside the grid.
+            auto range = grid.rangePoints ({ 1, 2 }, { 4, 2 });
+            expectEquals ((int) range.size(), 4);
+            expect (range.front() == PatchGrid::Point { 1, 2 } && range.back() == PatchGrid::Point { 4, 5 });
+            expectEquals ((int) grid.rangePoints ({ 0, 5 }, { 5, 7 }).size(), 3, "it ends at the last column");
+            expect (grid.rangePoints ({ 4, 4 }, { 2, 2 }).back() == PatchGrid::Point { 2, 2 }, "up and left too");
+            expect (grid.rangePoints ({ 1, 1 }, { 1, 1 }).empty() && grid.rangePoints ({}, { 1, 1 }).empty());
+            patched[2] = 3; // already there: it stays (not toggled off)
+            grid.refresh();
+            grid.patchRange ({ 1, 2 }, { 4, 5 });
+            expect (patched[0] == -1 && patched[1] == 2 && patched[2] == 3 && patched[3] == 4 && patched[4] == 5 && patched[5] == -1);
+            expect (grid.getState (3, 4) == PatchGrid::On);
+
+            // The rows' levels.
+            levels[1] = 0.5f;
+            grid.refreshLevels();
+            expectWithinAbsoluteError (grid.getRowLevel (1), 0.5f, 0.001f);
+            expectEquals (grid.getRowLevel (0), 0.0f);
+            expectEquals (grid.getColumnLevel (0), 0.0f, "no columnLevel: no meter");
+            expect (grid.createComponentSnapshot (grid.getLocalBounds()).isValid());
+
+            // On the ROUTING view: a channel's input level by its name, a bus's output over its column; a drag patches the channels in order.
+            MixerEngine engine (0);
+            const Counts counts { 8, 1, 6, 2, 3, 8, 4, 16 };
+            engine.configure (&counts);
+            UiRig rig (engine);
+            auto viewOwner = std::make_unique<RoutingView> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
+            auto& view = *viewOwner;
+            view.setSize (1280, 612);
+            auto& ch3 = *engine.getChannels()[2];
+            ch3.meters.trimPeak[0] = 0.5f;
+            rig.meters.advance (0.01f);
+            view.refresh();
+            expectWithinAbsoluteError (view.grid.getRowLevel (2), ui::fader::dbToPos (dsp::gainToDb (0.5f)), 0.02f);
+            expect (view.grid.getRowLevel (0) < 0.05f);
+            for (auto& s : engine.getChannels())
+                s->params.inputLeft = -1;
+            view.grid.patchRange ({ 1, 4 }, { 3, 6 });
+            expectEquals (engine.getChannels()[0]->params.inputLeft.load(), -1);
+            expectEquals (engine.getChannels()[1]->params.inputLeft.load(), 4);
+            expectEquals (engine.getChannels()[2]->params.inputLeft.load(), 5);
+            expectEquals (engine.getChannels()[3]->params.inputLeft.load(), 6);
+            view.grid.setCrosshair ({ 2, 5 });
+            expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds()), "universal-routing-crosshair.png"));
+            view.showPage (RoutingView::Page::Outputs);
+            auto& bus2 = *engine.getBuses()[1];
+            bus2.meters.outputPeak[0] = 0.25f;
+            rig.meters.advance (0.01f);
+            view.refresh();
+            expectWithinAbsoluteError (view.grid.getColumnLevel (2), ui::fader::dbToPos (dsp::gainToDb (0.25f)), 0.02f);
+            expect (view.grid.getColumnLevel (0) < 0.05f);
+            expect (! view.grid.getCrosshair().isValid(), "another page: no crosshair left over");
+        }
+
+        beginTest ("Every view of the Universal skin draws at 1280 x 720, 1500 x 900 and 1920 x 1080, and SCENES keeps its keys inside it");
+        {
+            MixerEngine engine (0);
+            engine.configure (nullptr);
+            UiRig rig (engine);
+            rig.selected = engine.getChannels()[0].get();
+            rig.show.addScene ("Doors", -1);
+            rig.show.addScene ("Song 1", -1);
+            rig.show.addSnippet (1, "Vox up", state::AllSections, { state::StripRef::of (*engine.getChannels()[0]) });
+            engine.getChannels()[3]->params.recallSafe = true;
+            auto skinOwner = std::make_unique<ui::UniversalSkin> (rig.ctx); // on the heap: the test function's frame is big
+            auto& skin = *skinOwner;
+            using V = ui::UniversalSkin::View;
+            const std::pair<V, const char*> views[] = { { V::Mixer, "mixer" },   { V::Routing, "routing" },   { V::Fx, "fx" },       { V::Monitoring, "monitoring" }, { V::Scenes, "scenes" },
+                                                        { V::Library, "library" }, { V::Recorder, "recorder" }, { V::Controls, "controls" }, { V::Setup, "setup" } };
+            const std::pair<juce::Point<int>, const char*> sizes3[] = { { { 1280, 720 }, "1280" }, { { 1500, 900 }, "1500" }, { { 1920, 1080 }, "1920" } };
+            // Signal on the strips for the pictures: levels, gain reduction, some EQ, the faders up.
+            for (int kind = 0; kind < kNumStripKinds; ++kind)
+            {
+                int i = 0;
+                for (auto& s : engine.getStrips (static_cast<StripKind> (kind)))
+                {
+                    const float level = 0.03f + 0.55f * std::fmod ((float) i * 0.37f, 1.0f);
+                    s->meters.outputPeak[0] = level;
+                    s->meters.outputPeak[1] = level * 0.8f;
+                    s->meters.trimPeak[0] = level;
+                    s->meters.gateReductionDb = (float) (i % 3) * 3.0f;
+                    s->meters.dynReductionDb = (float) (i % 5) * 2.0f;
+                    s->params.faderDb = -2.0f - (float) (i % 7) * 2.5f;
+                    s->params.eq().on = true;
+                    s->params.dynamics().on = true;
+                    s->params.eq().values[models::model ((models::Table) s->getEqTable(), s->params.eq().model.load()).find ("lg")] = (float) (i % 5) * 2.0f - 4.0f;
+                    ++i;
+                }
+            }
+            rig.meters.advance (0.01f);
+            {
+                // The same mixer in the brushed silver theme.
+                rig.selected = nullptr;
+                rig.settings.setValue (Theme::kSetting, "light");
+                auto silverOwner = std::make_unique<ui::UniversalSkin> (rig.ctx);
+                auto& silver = *silverOwner;
+                silver.setSize (1920, 1080);
+                silver.selectionChanged();
+                for (int settle = 0; settle < 7; ++settle)
+                    silver.getMixer().refresh();
+                expect (keepPicture (silver.createComponentSnapshot (silver.getLocalBounds()), "size1920-mixer-light.png"));
+                rig.settings.setValue (Theme::kSetting, "dark");
+            }
+            for (const auto& [size, sizeName] : sizes3)
+            {
+                const auto prefix = juce::String ("size") + sizeName + "-";
+                // With the inspector closed (the views at their widest) and open (at their narrowest).
+                for (const bool inspector : { false, true })
+                {
+                    rig.selected = inspector ? engine.getChannels()[0].get() : nullptr;
+                    skin.setSize (size.x, size.y);
+                    skin.selectionChanged();
+                    for (int settle = 0; settle < 7; ++settle)
+                        skin.getMixer().refresh(); // the blocks take their curves on every few
+                    for (const auto& [v, viewName] : views)
+                    {
+                        skin.showView (v);
+                        const auto picture = skin.createComponentSnapshot (skin.getLocalBounds());
+                        expect (picture.isValid() && picture.getWidth() == size.x, viewName);
+                        expect (keepPicture (picture, prefix + viewName + (inspector ? "-inspector" : "") + ".png"));
+                        // A child that reaches out of its parent is cut off there: say which (the main session reads this).
+                        juce::Component* shown = &skin.getMixer();
+                        for (auto* c : std::initializer_list<juce::Component*> { &skin.getMixer(), &skin.getRouting(), &skin.getFxRack(), &skin.getMonitoring(), &skin.getScenes(),
+                                                                                 &skin.getLibrary(), &skin.getRecorder(), &skin.getControls(), &skin.getSetup() })
+                            if (c->isVisible())
+                                shown = c;
+                        if (const auto clipped = firstClipped (*shown); clipped.isNotEmpty())
+                            logMessage (prefix + viewName + (inspector ? " (inspector open)" : "") + ": clipped: " + clipped);
+                    }
+                    // SCENES' pages: every key inside the view, the panel's pages one at a time.
+                    skin.showView (V::Scenes);
+                    auto& scenes = skin.getScenes();
+                    scenes.selectScene (1);
+                    scenes.selectSnippet (0);
+                    for (const auto page : { ScenesView::Page::Snippets, ScenesView::Page::Scope, ScenesView::Page::Safes })
+                    {
+                        scenes.showPage (page);
+                        expectEquals (firstClipped (scenes), juce::String(), prefix + "scenes page " + juce::String ((int) page));
+                        if (page == ScenesView::Page::Scope)
+                            expect (scenes.getScopeEditor().isVisible() && scenes.getScopeEditor().getHeight() >= 250, prefix + "the scope's keys have room");
+                        for (auto* tab : { &scenes.snippetsTab, &scenes.scopeTab, &scenes.safesTab })
+                            expect (tab->isVisible() && tab->getWidth() >= 80 && tab->getHeight() >= sizes::kTouch - 4);
+                        expect (keepPicture (skin.createComponentSnapshot (skin.getLocalBounds()),
+                                             prefix + "scenes-page" + juce::String ((int) page) + (inspector ? "-inspector" : "") + ".png"));
+                    }
+                    expect (scenes.getSafesLine().isNotEmpty());
+                    scenes.showPage (ScenesView::Page::Snippets);
+                    scenes.setSnippetItemsShown (true);
+                    expect (scenes.getSnippetItems().isVisible() && scenes.getSnippetItems().getHeight() >= 150, prefix + "the snippet's items have room");
+                    expectEquals (firstClipped (scenes), juce::String(), prefix + "the snippet's items");
+                    expect (keepPicture (skin.createComponentSnapshot (skin.getLocalBounds()), prefix + "scenes-items" + (inspector ? "-inspector" : "") + ".png"));
+                    scenes.setSnippetItemsShown (false);
+                    // MIXER's JUMP list and bank keys.
+                    skin.showView (V::Mixer);
+                    skin.getMixer().setJumpListShown (true);
+                    expect (skin.getMixer().getLocalBounds().contains (skin.getMixer().getJumpKey().getBounds()));
+                    expect (keepPicture (skin.createComponentSnapshot (skin.getLocalBounds()), prefix + "mixer-jump" + (inspector ? "-inspector" : "") + ".png"));
+                    skin.getMixer().setJumpListShown (false);
+                }
+            }
+        }
+
+        beginTest ("The 1204USB surface: its controls act on the engine, the console tape names a strip, and scenes recall through the show");
+        {
+            MixerEngine engine (0);
+            engine.configureProfile (ld::kProfileXenyx1204);
+            setShownProfile (ld::kProfileXenyx1204);
+            ui::fader::setLaw (engine.getFaderLaw());
+            UiRig rig (engine);
+            auto skinOwner = std::make_unique<ui::Xenyx1204Surface> (rig.ctx);
+            auto& skin = *skinOwner;
+            skin.setSize (1920, 1080);
+            const auto strip = [&engine] (StripKind k, int i) { return engine.getStrips (k)[(size_t) i].get(); };
+            const auto knobOf = [&skin] (const juce::String& id) { return dynamic_cast<ui::xy::Knob*> (skin.findControl (id)); };
+            const auto keyOf = [&skin] (const juce::String& id) { return dynamic_cast<ui::xy::Key*> (skin.findControl (id)); };
+            const auto faderOf = [&skin] (const juce::String& id) { return dynamic_cast<ui::xy::Fader*> (skin.findControl (id)); };
+            expectEquals ((int) engine.getChannels().size(), 6);
+            expect (skin.getPanel().getNumChildComponents() > 90, "every control of the panel");
+
+            // The panel is scaled to fit under the scenes bar, whole.
+            const auto where = skin.getLocalArea (&skin.getPanel(), skin.getPanel().getLocalBounds());
+            expect (skin.getLocalBounds().withTrimmedTop (ui::Xenyx1204Surface::kBarHeight).expanded (1).contains (where), "the panel fits the window");
+
+            // A fader, on the engine's law; the two MAIN faders are one level.
+            auto* f = faderOf ("CH1 FADER");
+            expect (f != nullptr);
+            f->getBinding().set (0.786f);
+            expectWithinAbsoluteError (strip (StripKind::Channel, 0)->params.faderDb.load(), 0.0f, 0.5f);
+            faderOf ("MAIN FADER L")->getBinding().set (0.572f);
+            expectWithinAbsoluteError (strip (StripKind::Main, 0)->params.faderDb.load(), -10.0f, 0.5f);
+            expectWithinAbsoluteError (faderOf ("MAIN FADER R")->getBinding().get(), 0.572f, 0.01f);
+
+            // GAIN: the mic scale +10 to +60 dB; a plug in the LINE jack puts it on -10 to +40.
+            auto& ch1 = strip (StripKind::Channel, 0)->params;
+            knobOf ("CH1 GAIN")->getBinding().set (1.0f);
+            expectWithinAbsoluteError (ch1.input.trimDb.load(), 60.0f, 0.01f);
+            knobOf ("CH1 GAIN")->getBinding().set (0.0f);
+            expectWithinAbsoluteError (ch1.input.trimDb.load(), 10.0f, 0.01f);
+            auto* line = skin.getPanel().findChildWithID ("CH1 LINE");
+            expect (line != nullptr);
+            line->mouseUp (mouseEvent (*line, { 5, 5 }, { 5, 5 }));
+            expectWithinAbsoluteError (ch1.input.trimDb.load(), -10.0f, 0.01f);
+            knobOf ("CH1 GAIN")->getBinding().set (1.0f);
+            expectWithinAbsoluteError (ch1.input.trimDb.load(), 40.0f, 0.01f);
+
+            // COMP (channels 1-4), the 75 Hz low cut, the EQ, AUX 1 (pre) and AUX 2 (post).
+            knobOf ("CH2 COMP")->getBinding().set (1.0f);
+            expectWithinAbsoluteError (strip (StripKind::Channel, 1)->params.dynamics().values[0].load(), 10.0f, 0.01f);
+            expect (skin.findControl ("CH5 COMP") == nullptr, "the stereo channels have no compressor");
+            keyOf ("CH1 LOWCUT")->onClick();
+            expect (ch1.filter().lowCut.load());
+            knobOf ("CH1 HIGH")->getBinding().set (1.0f);
+            expectWithinAbsoluteError (ch1.eq().values[0].load(), 15.0f, 0.01f);
+            knobOf ("CH3 AUX1")->getBinding().set (1.0f);
+            knobOf ("CH3 AUX2")->getBinding().set (1.0f);
+            expectWithinAbsoluteError (strip (StripKind::Channel, 2)->sends[0].levelDb.load(), 15.0f, 0.01f);
+            expectEquals (strip (StripKind::Channel, 2)->sends[0].mode.load(), (int) SendMode::Pre);
+            expectEquals (strip (StripKind::Channel, 2)->sends[1].mode.load(), (int) SendMode::Post);
+
+            // MUTE / ALT 3-4 takes a channel out of the main mix and into ALT 3-4; again puts it back.
+            auto* alt = keyOf ("CH4 ALT");
+            expect (strip (StripKind::Channel, 3)->mains[0].on.load() && ! alt->isOn());
+            alt->onClick();
+            expect (! strip (StripKind::Channel, 3)->mains[0].on.load() && strip (StripKind::Channel, 3)->sends[2].enabled.load() && alt->isOn());
+            alt->onClick();
+            expect (strip (StripKind::Channel, 3)->mains[0].on.load() && ! strip (StripKind::Channel, 3)->sends[2].enabled.load());
+
+            // The stereo channels' level switch, the returns, 2-TR/USB, SOURCE and +48 V.
+            keyOf ("CH5 LEVEL")->onClick();
+            expectWithinAbsoluteError (strip (StripKind::Channel, 4)->params.input.trimDb.load(), 11.8f, 0.01f);
+            expect (strip (StripKind::Aux, 0)->params.stereo.load() && strip (StripKind::Aux, 1)->params.stereo.load());
+            keyOf ("RETURN2 ASSIGN")->onClick();
+            expect (! strip (StripKind::Aux, 1)->mains[0].on.load() && strip (StripKind::Aux, 1)->sends[2].enabled.load());
+            expect (! strip (StripKind::Aux, 2)->mains[0].on.load(), "2-TR/USB is off the main mix until its key");
+            keyOf ("2TR TO MAIN")->onClick();
+            expect (strip (StripKind::Aux, 2)->mains[0].on.load());
+            keyOf ("SOURCE ALT")->onClick();
+            expectEquals (engine.phones.source.source.load(), MixerEngine::monitorSourceIndex (StripKind::Bus, 2));
+            expect (keyOf ("SOURCE ALT")->isOn() && ! keyOf ("SOURCE MAIN")->isOn());
+            keyOf ("PHANTOM")->onClick();
+            expect (engine.getSource (0)->phantom.load() && engine.getSource (3)->phantom.load());
+
+            // Console tape: each strip's own, a little crooked, its name written by clicking and typing.
+            auto& tape1 = skin.getTape (0);
+            expect (std::abs (tape1.getTiltDegrees()) > 0.3f && std::abs (tape1.getTiltDegrees()) < 3.0f);
+            expect (skin.getTape (0).getTiltDegrees() != skin.getTape (1).getTiltDegrees(), "no two alike");
+            tape1.setSize (140, 56);
+            tape1.mouseUp (mouseEvent (tape1, { 20, 20 }, { 20, 20 }));
+            expect (tape1.isEditing());
+            tape1.getEditor().setText ("KICK IN");
+            tape1.endEdit (true);
+            expect (! tape1.isEditing());
+            expectEquals (strip (StripKind::Channel, 0)->getOwnName(), juce::String ("KICK IN"));
+            skin.getTape (1).beginEdit();
+            skin.getTape (1).getEditor().setText ("never kept");
+            skin.getTape (1).endEdit (false);
+            expect (strip (StripKind::Channel, 1)->getOwnName() != "never kept");
+            const auto image = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
+            expect (image.isValid());
+
+            // Scenes (the show's): NEW stores the console, choosing a scene recalls it.
+            expectEquals (skin.getSceneBox().getNumItems(), 0);
+            strip (StripKind::Channel, 0)->params.faderDb = -10.0f;
+            skin.newScene();
+            expectEquals (rig.show.getNumScenes(), 1);
+            expectEquals (skin.getSceneBox().getNumItems(), 1);
+            strip (StripKind::Channel, 0)->params.faderDb = -20.0f;
+            skin.getSceneBox().setSelectedId (0, juce::dontSendNotification);
+            skin.getSceneBox().setSelectedId (1, juce::sendNotificationSync);
+            expectWithinAbsoluteError (strip (StripKind::Channel, 0)->params.faderDb.load(), -10.0f, 0.01f);
+            strip (StripKind::Channel, 0)->params.faderDb = -30.0f;
+            skin.storeScene();
+            expectEquals (rig.show.getNumScenes(), 1, "STORE writes the current scene");
+            strip (StripKind::Channel, 0)->params.faderDb = 0.0f;
+            skin.recallSelected();
+            expectWithinAbsoluteError (strip (StripKind::Channel, 0)->params.faderDb.load(), -30.0f, 0.01f);
+            setShownProfile (ld::kProfileUniversal);
         }
     }
 };

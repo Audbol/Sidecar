@@ -10,6 +10,7 @@ RecorderView::RecorderView (UiContext& c, const Theme& t)
     : multitrackTab ("MULTITRACK", t.accent, t), usbTab ("USB", t.accent, t), editorKey ("MULTITRACK EDITOR", t.accent, t), ctx (c), theme (t)
 {
     // Both are the WING display's pages.
+    multitrackTab.tab = usbTab.tab = true;
     multitrackTab.device = devices::wing;
     usbTab.device = devices::wing;
     multitrackTab.isOn = [this] { return page == Page::Multitrack; };
@@ -30,6 +31,10 @@ RecorderView::RecorderView (UiContext& c, const Theme& t)
     if (multitrack != nullptr)
         addChildComponent (*multitrack);
     addChildComponent (*usb);
+    // These two are drawn in their own colours: they keep the widgets that go with them.
+    for (juce::Component* hosted : { (juce::Component*) multitrack.get(), (juce::Component*) usb.get() })
+        if (hosted != nullptr)
+            hosted->setLookAndFeel (&juce::LookAndFeel::getDefaultLookAndFeel());
     showPage (Page::Multitrack);
 }
 

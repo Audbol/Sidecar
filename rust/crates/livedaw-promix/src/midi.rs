@@ -205,6 +205,31 @@ pub fn checksum(bytes: &[u8]) -> u8 {
     ((!sum).wrapping_add(1) & 0x7f) as u8
 }
 
+/// A Yamaha bulk dump's frame around `body` (from `LM` to the last data byte):
+/// the byte count, the checksum and the EOX. Shared with the 02R and the 01V.
+pub fn frame_dump(channel: u8, body: &[u8]) -> Vec<u8> {
+    let count = body.len();
+    let mut out = vec![0xf0, 0x43, channel & 0xf, 0x7e, (count >> 7) as u8 & 0x7f, count as u8 & 0x7f];
+    out.extend_from_slice(body);
+    out.push(checksum(body));
+    out.push(0xf7);
+    out
+}
+
+/// A dump's (channel, body), if `msg` is one with `header`: its frame checked
+/// (the count and the checksum).
+pub fn parse_frame<'a>(msg: &'a [u8], header: &[u8; 8]) -> Option<(u8, &'a [u8])> {
+    if msg.len() < 18 || msg[0] != 0xf0 || msg[1] != 0x43 || msg[2] & 0xf0 != 0 || msg[3] != 0x7e || *msg.last()? != 0xf7 {
+        return None;
+    }
+    let count = ((msg[4] as usize) << 7) | msg[5] as usize;
+    let body = msg.get(6..6 + count)?;
+    if msg.len() != 6 + count + 2 || checksum(body) != msg[6 + count] || &body[..8] != header {
+        return None;
+    }
+    Some((msg[2] & 0xf, body))
+}
+
 /// A bulk dump of `kind` (memory `number` where it has one) for `channel`.
 pub fn dump(channel: u8, kind: u8, number: u8, data: &[u8]) -> Vec<u8> {
     let mut body = HEADER.to_vec();
@@ -215,12 +240,7 @@ pub fn dump(channel: u8, kind: u8, number: u8, data: &[u8]) -> Vec<u8> {
             body.push(b"0123456789ABCDEF"[nibble as usize]);
         }
     }
-    let count = body.len();
-    let mut out = vec![0xf0, 0x43, channel & 0xf, 0x7e, (count >> 7) as u8 & 0x7f, count as u8 & 0x7f];
-    out.extend_from_slice(&body);
-    out.push(checksum(&body));
-    out.push(0xf7);
-    out
+    frame_dump(channel, &body)
 }
 
 /// A bulk request of `kind` (memory `number` where it has one).

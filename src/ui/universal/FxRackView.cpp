@@ -24,6 +24,24 @@ namespace
         const auto text = fx.describe (slot);
         return text.containsChar (':') ? text.fromFirstOccurrenceOf (":", false, false).trim() : text;
     }
+
+    /** After a device's name in the list: nothing where `slot` can run it, else the slots
+        that can, as the engine has them for the console shown (FxSlots::isAllowed): the
+        WING's premium devices " (FX 1-8)", a dLive's RackUltra models " (FX 17-24)" and its
+        Dyn8 the slots after those. */
+    juce::String slotNote (int model, int slot)
+    {
+        if (FxSlots::isAllowed (model, slot))
+            return {};
+        int first = -1, last = -1;
+        for (int s = 0; s < kMaxFx; ++s)
+            if (FxSlots::isAllowed (model, s))
+            {
+                first = first < 0 ? s : first;
+                last = s;
+            }
+        return first < 0 ? juce::String (" (not in this rack)") : " (FX " + juce::String (first + 1) + "-" + juce::String (last + 1) + ")";
+    }
 } // namespace
 
 /** The slots' tiles; a tap selects one. */
@@ -37,7 +55,11 @@ public:
         juce::String name, device;
         int users = 0;
         float level = 0.0f;
-        bool operator!= (const Info& o) const { return name != o.name || device != o.device || users != o.users || std::abs (level - o.level) > 0.01f; }
+        bool loaded = false, bypassed = false;
+        bool operator!= (const Info& o) const
+        {
+            return name != o.name || device != o.device || users != o.users || std::abs (level - o.level) > 0.01f || loaded != o.loaded || bypassed != o.bypassed;
+        }
     };
     std::vector<Info> infos;
 
@@ -46,6 +68,12 @@ public:
     juce::Rectangle<int> tile (int i) const
     {
         return { (i % perRow()) * (kTileW + sizes::kGap), (i / perRow()) * (kTileH + sizes::kGap), kTileW, kTileH };
+    }
+    /** A tile's bypass switch, at its bottom right (a slot that holds something has one). */
+    juce::Rectangle<int> bypassArea (int i) const
+    {
+        const auto r = tile (i);
+        return { r.getRight() - 68, r.getBottom() - 32, 60, 24 };
     }
 
     void paint (juce::Graphics& g) override
@@ -56,7 +84,7 @@ public:
             const auto& info = infos[(size_t) i];
             const auto r = tile (i).toFloat();
             const bool sel = i == owner.selected;
-            g.setColour (sel ? t.raised.brighter (0.1f) : t.raised);
+            g.setColour (sel ? t.lifted (t.raised, 0.1f) : t.raised);
             g.fillRoundedRectangle (r, sizes::kRadius);
             g.setColour (sel ? t.accent : t.outline);
             g.drawRoundedRectangle (r.reduced (0.5f), sizes::kRadius, sel ? 2.0f : 1.0f);
@@ -67,7 +95,7 @@ public:
             g.drawText ("FX " + juce::String (i + 1), top, juce::Justification::centredLeft);
             // A built-in device is the WING's FX rack's.
             drawDeviceTag (g, top, info.device, t);
-            g.setColour (info.name == "EMPTY" ? t.textDim : t.text);
+            g.setColour (info.name == "EMPTY" || info.bypassed ? t.textDim : t.text);
             g.setFont (type::font (type::kLabel, true));
             g.drawFittedText (info.name, inner.removeFromTop (22.0f).toNearestInt(), juce::Justification::centredLeft, 1, 0.8f);
             g.setColour (t.textDim);
@@ -80,6 +108,21 @@ public:
             g.fillRect (bar);
             g.setColour (t.meterLow);
             g.fillRect (bar.withWidth (bar.getWidth() * juce::jlimit (0.0f, 1.0f, info.level)));
+            // Its switch: ON while it runs, BYPASS (lit) while the slot passes its input on.
+            if (info.loaded)
+            {
+                const auto sw = bypassArea (i).toFloat();
+                g.setColour (info.bypassed ? t.solo : t.well);
+                g.fillRoundedRectangle (sw, sizes::kRadius);
+                if (! info.bypassed)
+                {
+                    g.setColour (t.outline);
+                    g.drawRoundedRectangle (sw.reduced (0.5f), sizes::kRadius, 1.0f);
+                }
+                g.setColour (info.bypassed ? t.textOnAccent : t.text);
+                g.setFont (type::font (type::kCaption, true));
+                g.drawText (info.bypassed ? "BYPASS" : "ON", sw, juce::Justification::centred);
+            }
         }
     }
 
@@ -88,8 +131,16 @@ public:
         if (e.mouseWasDraggedSinceMouseDown())
             return;
         for (int i = 0; i < (int) infos.size(); ++i)
-            if (tile (i).contains (e.getPosition()))
+        {
+            // The switch first (a little past its edges, for a finger); the rest of the tile selects the slot.
+            if (infos[(size_t) i].loaded && bypassArea (i).expanded (6, 9).contains (e.getPosition()))
+                owner.toggleBypass (i);
+            else if (tile (i).contains (e.getPosition()))
                 owner.selectSlot (i);
+            else
+                continue;
+            return;
+        }
     }
 
 private:
@@ -107,7 +158,7 @@ FxRackView::FxRackView (UiContext& c, const Theme& t)
     {
         juce::StringArray names;
         for (const auto& m : models::table (models::Fx))
-            names.add (m.name + (FxSlots::isAllowed (m.index, selected) ? juce::String() : juce::String (" (FX 1-8)")));
+            names.add (m.name + slotNote (m.index, selected));
         return names;
     };
     device.current = [this] { return ctx.engine.getFx().getModel (selected); };
@@ -163,6 +214,7 @@ FxRackView::FxRackView (UiContext& c, const Theme& t)
         panelKey.refresh();
     };
 
+    params.maxColumns = 3; // the rack has the width: more of a device's parameters in view
     tilesView.setViewedComponent (tiles.get(), false);
     tilesView.setScrollBarsShown (true, false);
     tilesView.setScrollOnDragMode (juce::Viewport::ScrollOnDragMode::nonHover);
@@ -198,6 +250,30 @@ void FxRackView::selectSlot (int slot)
     selected = s;
     bindSlot();
     tiles->repaint();
+}
+
+bool FxRackView::isBypassed (int slot) const
+{
+    return juce::isPositiveAndBelow (slot, numSlots) && ctx.engine.getFx().params (slot).bypass.load();
+}
+
+void FxRackView::toggleBypass (int slot)
+{
+    if (! juce::isPositiveAndBelow (slot, numSlots))
+        return;
+    auto& bypass = ctx.engine.getFx().params (slot).bypass;
+    bypass = ! bypass.load();
+    refresh();
+}
+
+juce::Rectangle<int> FxRackView::getBypassArea (int slot) const
+{
+    return juce::isPositiveAndBelow (slot, numSlots) ? tiles->bypassArea (slot) : juce::Rectangle<int>();
+}
+
+juce::Component* FxRackView::getTiles() const noexcept
+{
+    return tiles.get();
 }
 
 void FxRackView::bindSlot()
@@ -240,6 +316,8 @@ void FxRackView::refresh()
         info.name = deviceName (fx, i);
         info.device = fx.getModel (i) > ld::kFxExt ? devices::wing : juce::String();
         info.users = fx.getNumUsers (i);
+        info.loaded = fx.isLoaded (i);
+        info.bypassed = fx.params (i).bypass.load();
         const int got = fx.getReadouts (i, levels, ld::kFxLevels);
         info.level = got >= 4 ? juce::jmax (levels[2], levels[3]) : 0.0f;
     }
@@ -325,7 +403,7 @@ void FxRackView::resized()
         const int w = juce::jmin (area.getWidth(), juce::roundToInt ((float) area.getHeight() * kPanelAspect));
         faceplate.setBounds (area.withSizeKeepingCentre (w, juce::roundToInt ((float) w / kPanelAspect)).withY (area.getY()));
     }
-    listView.setBounds (area.withWidth (juce::jmin (area.getWidth(), 900))); // bars too long to read across a wide window
+    listView.setBounds (area);
     const int width = juce::jmax (0, listView.getWidth() - listView.getScrollBarThickness() - sizes::kGapSmall);
     params.setSize (width, params.getHeightFor (width));
 }

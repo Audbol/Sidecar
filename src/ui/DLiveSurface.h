@@ -6,12 +6,9 @@
 #include "ui/Skin.h"
 #include "ui/UiContext.h"
 #include "ui/universal/FxRackView.h"
-#include "ui/universal/Inspector.h"
 #include "ui/universal/LibraryView.h"
-#include "ui/universal/MixerView.h"
 #include "ui/universal/MonitorView.h"
 #include "ui/universal/RoutingView.h"
-#include "ui/universal/ScenesView.h"
 #include "ui/universal/SetupView.h"
 #include "ui/universal/Widgets.h"
 
@@ -26,6 +23,15 @@ class DLiveSurface;
 
 namespace dl
 {
+    class ProcessingScreen;
+    class SceneScreen;
+    class MixRackScreen;
+    class MetersScreen;
+    class IoScreen;
+    class SurfaceScreen;
+    class StatusScreen;
+    class HelpPanel;
+
     /** What a fader strip shows. */
     struct Slot
     {
@@ -87,6 +93,94 @@ namespace dl
         KnobBinding binding;
         juce::Colour light;
         float shown = -1.0f, dragStart = 0.0f;
+    };
+
+    /** What a SoftKey does (a choice from the console's list of functions, the ones Sidecar
+        has something behind). */
+    struct SoftKey
+    {
+        enum Kind
+        {
+            Unused,
+            Mute,      // the strip `slot`'s mute
+            MuteGroup, // mute group `index`
+            DcaMute,   // DCA `index`'s mute
+            Mix,       // the mix `slot` on the faders
+            SceneGo,
+            SceneNext,
+            ScenePrev,
+            Talk,
+            ClearPafl
+        };
+        Kind kind = Unused;
+        int index = 0;
+        Slot slot;
+    };
+
+    /** What a custom rotary key (1 to 4) sets, on every strip it can. */
+    enum class CustomRotary
+    {
+        Trim,
+        Hpf,
+        Lpf,
+        GateThres,
+        GateDepth,
+        CompThres,
+        CompRatio,
+        CompGain,
+        Pan,
+        Width,
+        Delay,
+        NumFunctions
+    };
+    /** Its name in a menu. */
+    juce::String customRotaryName (CustomRotary);
+
+    /** A surface's own assignments: which strips sit on each layer, what the SoftKeys and
+        custom rotaries do. Kept in Sidecar's settings, one set per surface: the console stores
+        them with a show's scenes, but the engine's show file has nowhere for them yet. */
+    class SurfaceSetup
+    {
+    public:
+        static constexpr int kSoftKeys = 19, kCustomRotaries = 4;
+        using Factory = std::function<Slot (int bank, int layer, int strip)>;
+
+        SurfaceSetup (juce::PropertiesFile&, const juce::String& model, int numBanks, int numLayers, int numStrips, Factory);
+
+        int getNumBanks() const noexcept { return banks; }
+        int getNumLayers() const noexcept { return layers; }
+        int getNumStrips() const noexcept { return strips; }
+
+        Slot getSlot (int bank, int layer, int strip) const;
+        /** What a strip of a layer shows on a console with `numMains` main strips (its Main
+            mode's: LR, then M or C, LFE, Ls/Rs). A layer that ends on LR's master makes room
+            for the others beside it, in their order, where the strips there are still the
+            factory's; else the strip's own slot. */
+        Slot getShownSlot (int bank, int layer, int strip, int numMains) const;
+        void setSlot (int bank, int layer, int strip, const Slot&);
+        const SoftKey& getSoftKey (int i) const { return softKeys[(size_t) juce::jlimit (0, kSoftKeys - 1, i)]; }
+        void setSoftKey (int i, const SoftKey&);
+        CustomRotary getCustom (int i) const noexcept { return custom[(size_t) juce::jlimit (0, kCustomRotaries - 1, i)]; }
+        void setCustom (int i, CustomRotary);
+        /** Back to the factory strips, nothing on the SoftKeys, the default rotaries. */
+        void reset();
+
+        /** Something moved (the surface rebinds its strips). */
+        std::function<void()> onChanged;
+
+    private:
+        void load();
+        void save() const;
+        void changed();
+        int cell (int bank, int layer, int strip) const noexcept;
+
+        juce::PropertiesFile& settings;
+        juce::String key;
+        int banks, layers, strips;
+        Factory factory;
+        std::vector<Slot> slots;
+        std::array<SoftKey, kSoftKeys> softKeys;
+        std::array<CustomRotary, kCustomRotaries> custom;
     };
 
     /** The strips' rotaries' functions (the keys Gain, Pan, 1-4, Sends). */
@@ -152,6 +246,17 @@ namespace dl
         ld::EqBlockParams* getGeq() const;
         /** The band strip `position` moves, -1: none (or the last strip, the mix's master). */
         int getGeqBand (int position, int numStrips) const;
+
+        /** The surface's assignments. */
+        virtual SurfaceSetup& getSetup() noexcept = 0;
+        /** GO on the panel; Prev (-1) and Next (+1): the scene GO will recall. */
+        virtual void sceneGo() = 0;
+        virtual void sceneStep (int delta) = 0;
+        /** A SoftKey does what it's assigned; its light. */
+        void pressSoftKey (UiContext&, int index);
+        bool isSoftKeyOn (UiContext&, int index);
+        /** Every PAFL off. */
+        static void clearPafl (UiContext&);
 
     private:
         Latch latch = Latch::None;
@@ -226,6 +331,19 @@ namespace dl
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StripUnit)
     };
 
+    /** The assignment menus (they open beside `target`; a pick takes effect at once and
+        `then` runs after it). */
+    void showSoftKeyMenu (UiContext&, SurfaceSetup&, int index, juce::Component* target, std::function<void()> then = {});
+    void showCustomRotaryMenu (SurfaceSetup&, int index, juce::Component* target, std::function<void()> then = {});
+    void showStripMenu (UiContext&, SurfaceSetup&, int bank, int layer, int strip, juce::Component* target, std::function<void()> then = {});
+    /** True if a press of a SoftKey or custom rotary key is to assign it: Setup is held
+        (latched, as a mouse has one pointer), or it's a right-click. */
+    bool wantsAssign (bool setupHeld);
+    /** What a slot is called (Ip 5, Aux 3, DCA 2; "-": nothing). */
+    juce::String slotName (UiContext&, const Slot&);
+    /** What a SoftKey is set to, in words. */
+    juce::String softKeyName (UiContext&, const SoftKey&);
+
     /** Shows a dLive on its other surface ("c1500" or "c3500"), and remembers that. */
     void switchSurface (UiContext&, const char* model);
     /** The strip a slot shows (nullptr: none, or a DCA). */
@@ -242,8 +360,12 @@ namespace dl
 /** The Allen & Heath dLive's surface, as the C1500 has it (the owner's photographs of a
     real one, kept outside the repository): 12 motor faders in three groups of four on six
     banks, a colour LCD per group, rotaries with a function chosen by their keys, the PEQ's
-    Gain and Freq under the screen. Wider than the real surface so that it fits a screen,
-    its touchscreen hosting the Universal Mixer's pages. No maker's artwork or logo is used. */
+    Gain and Freq by the screen. Wider than the real surface so that it fits a screen. Its one
+    touchscreen is what photographs of a C1500's show: the strip box and preamp at the left,
+    the soft widget at the right, the four bands or a curve along the bottom, the page in the
+    middle (the screens in `DLiveScreens`, hosted by `ProcessingScreen`). The Universal
+    Mixer's pages fill it for what has no screen of its own yet. No maker's artwork or logo
+    is used. */
 class DLiveSurface final : public Skin,
                            public dl::Desk,
                            private juce::Timer
@@ -256,25 +378,34 @@ public:
     void resized() override;
     void refreshAll() override;
     void selectionChanged() override;
-    void showChanged() override { scenes.refresh(); }
+    void showChanged() override;
 
     static constexpr int kStrips = 12, kBanks = 6;
     static constexpr int kDesignWidth = 1920, kDesignHeight = 1080;
 
-    /** What the screen shows (the keys beside it). */
+    /** What the screen shows (the keys beside it; none lit: the status page). */
     enum class Page
     {
-        Home,
+        Status,
+        Processing,
+        Meters,
         Fx,
-        Routing,
+        Io,
         Scenes,
+        Ganging,
+        MixRack,
+        Surface,
+        Util,
+        Routing,
         Library,
         Setup,
-        Listen,
-        Processing
+        Listen
     };
     void showPage (Page);
     Page getPage() const noexcept { return page; }
+
+    /** Home: the default bank, screen, active Mix, rotary function and LCD view. */
+    void pressHome();
 
     /** Bank A-F (0-5). */
     void setBank (int);
@@ -291,11 +422,27 @@ public:
     void setMixOnFaders (int bus) override;
     int getMixOnFaders() const noexcept override { return mixBus; }
 
+    dl::SurfaceSetup& getSetup() noexcept override { return assignments; }
+    void sceneGo() override;
+    void sceneStep (int delta) override;
+
     dl::StripUnit& getStrip (int i) { return *strips[(size_t) juce::jlimit (0, kStrips - 1, i)]; }
     /** A panel key by its name (nullptr: none). */
     dl::Key* findKey (const juce::String& name) const;
     dl::Rotary& getPeqRotary (int band, bool freq) { return *peq[(size_t) (band * 2 + (freq ? 1 : 0))]; }
-    universal::Inspector& getInspector() noexcept { return inspector; }
+    dl::Rotary& getDataRotary() noexcept { return *dataRotary; }
+    dl::ProcessingScreen& getProcessing() noexcept { return *processing; }
+    dl::SceneScreen& getScenes() noexcept { return *scenes; }
+    dl::MixRackScreen& getMixRack() noexcept { return *mixRack; }
+    dl::MetersScreen& getMeters() noexcept { return *metersScreen; }
+    dl::IoScreen& getIo() noexcept { return *ioScreen; }
+    dl::SurfaceScreen& getSurfaceScreen() noexcept { return *surfaceScreen; }
+    dl::StatusScreen& getStatus() noexcept { return *status; }
+    dl::HelpPanel& getHelp() noexcept { return *help; }
+
+    /** What opens the assignment menus (tests replace them). */
+    std::function<void (int softKey, juce::Component*)> assignSoftKey;
+    std::function<void (int customRotary, juce::Component*)> assignRotary;
 
     /** The bank's strips as a new console has them (Sidecar's reading: strips are freely
         assignable on a dLive, and we have no file of a template's banks). */
@@ -305,7 +452,9 @@ private:
     void timerCallback() override;
     void bindStrips();
     void bindPeq();
-    void clearSolos();
+    void softKeyPressed (int index);
+    juce::String helpKey() const;
+    void selectPage (const juce::String& keyName, Page);
     dl::Key& key (const juce::String& name, juce::Colour idle, juce::Colour lit, juce::Rectangle<int>, dl::Key::Shape shape = dl::Key::Shape::Block, bool led = true);
 
     struct Silk
@@ -321,23 +470,28 @@ private:
     UiContext& ctx;
     const universal::Theme& theme;
     universal::ToggleKey universalKey, c3500Key;
+    dl::SurfaceSetup assignments;
     juce::Component screenHost;
-    universal::MixerView mixer;
+    std::unique_ptr<dl::ProcessingScreen> processing;
+    std::unique_ptr<dl::SceneScreen> scenes;
+    std::unique_ptr<dl::MixRackScreen> mixRack;
+    std::unique_ptr<dl::MetersScreen> metersScreen;
+    std::unique_ptr<dl::IoScreen> ioScreen;
+    std::unique_ptr<dl::SurfaceScreen> surfaceScreen;
+    std::unique_ptr<dl::StatusScreen> status;
+    std::unique_ptr<dl::HelpPanel> help;
     universal::RoutingView routingView;
     universal::FxRackView fxRack;
     universal::MonitorView monitoring;
-    universal::ScenesView scenes;
     universal::LibraryView library;
-    universal::SetupView setup;
-    universal::Inspector inspector;
+    universal::SetupView setupView;
     std::array<std::unique_ptr<dl::StripUnit>, kStrips> strips;
     std::vector<std::pair<juce::String, std::unique_ptr<dl::Key>>> keys;
     std::array<std::unique_ptr<dl::Rotary>, 8> peq; // Gain, Freq of each band
     std::unique_ptr<dl::Rotary> dataRotary, phones;
     std::vector<Silk> silks;
-    std::vector<std::vector<dl::Slot>> banks;
-    Page page = Page::Home;
-    juce::String litPageKey { "Home" };
+    Page page = Page::Processing;
+    juce::String litPageKey { "Page Processing" };
     RotaryFunction rotaryFunction = RotaryFunction::Gain;
     DisplayFunction displayFunction = DisplayFunction::Name;
     int bank = 0, mixBus = -1;

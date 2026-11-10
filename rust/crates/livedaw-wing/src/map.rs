@@ -5502,6 +5502,7 @@ mod tests {
             ("MIDICCP", "cc", Value::Int(7), "CC 1:7"),
             ("MIDIPGM", "ch", Value::Int(2), "PGM 2:8"), // a MIDI key keeps its number (CC 7: program 8)
             ("USBPR", "usbpr", Value::str("RSTOP"), "|REC STOP"),
+            ("SDRECA", "sdrec", Value::str("PLAY"), "|SD PLAY"),
             ("DAWBTN", "btn", Value::str("OT4"), "|DAW *TIME"),
             ("PAGE", "pg", Value::str("SRC"), "SRC"),
             ("PAGE", "pg", Value::str("2TRK"), "2TRK"),

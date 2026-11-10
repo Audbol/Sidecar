@@ -8,6 +8,7 @@
 #include "engine/UsbRecorder.h"
 #include "engine/Strip.h"
 #include "engine/ProMix.h"
+#include "engine/Yamaha01V.h"
 #include "engine/Yamaha02R.h"
 #include "engine/WingRemote.h"
 
@@ -188,6 +189,8 @@ public:
     /** The 02R's own state, libraries and MIDI (Phase 6; inert while the
         console isn't an 02R). */
     Yamaha02R& getYamaha02R() noexcept { return *y02r; }
+    /** The 01V's MIDI (inert while the console isn't a 01V). */
+    Yamaha01V& getYamaha01V() noexcept { return *y01v; }
 
     /** The RTA, LR vector scope and LISTEN (BAND / KEY / XOVER SOLO) of the analysed strip. */
     Analysis getAnalysis() const noexcept { return Analysis (engine); }
@@ -464,6 +467,14 @@ public:
     {
         return juce::isPositiveAndBelow (port, numPatchOutputs) ? outputPatch[port].load() : -1;
     }
+    /** `source` onto output `port` of the patch itself, as a console's factory patch does: a bus,
+        main or matrix signal may feed several outputs this way (the 01V's OMNI OUT and Option I/O
+        assignments). Clear the output first: this replaces only the patch's entry. */
+    void setOutputSource (int port, int source) const noexcept
+    {
+        if (juce::isPositiveAndBelow (port, numPatchOutputs))
+            outputPatch[port].store (source);
+    }
     /** `source` (an input index; a bus, main or matrix signal moves that strip's
         output there) to output `port`, replacing whatever fed it. */
     bool routeOutputSource (int port, int source) const noexcept { return ld::ld_engine_route_output_source (engine, port, source); }
@@ -601,6 +612,7 @@ private:
     std::unique_ptr<WingRemote> wing = std::make_unique<WingRemote> (*this);
     std::unique_ptr<ProMix> promix = std::make_unique<ProMix> (engine);
     std::unique_ptr<Yamaha02R> y02r = std::make_unique<Yamaha02R> (engine);
+    std::unique_ptr<Yamaha01V> y01v = std::make_unique<Yamaha01V> (engine);
     std::vector<std::unique_ptr<Worker>> workers;
 
     std::array<StripList, kNumStripKinds> lists;

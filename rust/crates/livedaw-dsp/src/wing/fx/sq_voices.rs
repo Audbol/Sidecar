@@ -7,6 +7,7 @@
 use super::x32_voices::{bridge, Map};
 use super::{FxAlgo, FxContext};
 use crate::model::Params;
+use crate::sq::fx::ADDONS;
 
 fn device(token: &str) -> Option<(&'static str, Map)> {
     Some(match token {
@@ -26,6 +27,10 @@ fn device(token: &str) -> Option<(&'static str, Map)> {
 }
 
 pub(super) fn create(token: &str, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
+    // The add-ons are the dLive's models (`crate::sq::fx::ADDONS`).
+    if let Some((_, dlive)) = ADDONS.iter().find(|(sq, _)| *sq == token) {
+        return crate::dlive_fx::create(dlive, ctx);
+    }
     let (wing, map) = device(token)?;
     bridge(wing, None, map, ctx)
 }
@@ -138,7 +143,7 @@ mod tests {
     #[test]
     fn every_model_runs_and_names_only_its_wing_devices_controls() {
         let ctx = FxContext { sample_rate: 48_000.0, max_block: 64 };
-        for m in &FX_MODELS[2..] {
+        for m in &FX_MODELS[2..crate::sq::fx::FIRST_ADDON] {
             assert!(is_sq(m.token), "{}", m.token);
             assert!(m.params.len() <= MAX_FX_PARAMS);
             assert!(create(m.token, ctx).is_some(), "{}", m.token);
@@ -154,6 +159,20 @@ mod tests {
                 assert!((lo..=hi).contains(&v), "{}: {id} = {v} outside {lo}..{hi}", m.token);
             });
             assert!(seen >= 2, "{}", m.token);
+        }
+    }
+
+    #[test]
+    fn the_addons_are_the_dlives_models_with_its_controls() {
+        let ctx = FxContext { sample_rate: 48_000.0, max_block: 64 };
+        assert_eq!(FX_MODELS.len() - crate::sq::fx::FIRST_ADDON, ADDONS.len());
+        for (m, (sq, dlive)) in FX_MODELS[crate::sq::fx::FIRST_ADDON..].iter().zip(ADDONS) {
+            assert_eq!(m.token, sq);
+            assert!(is_sq(m.token), "{}", m.token);
+            let d = crate::dlive_fx::FX_MODELS.iter().find(|d| d.token == dlive).unwrap();
+            assert_eq!(m.params.len(), d.params.len(), "{}", m.token);
+            assert!(m.params.iter().zip(d.params).all(|(a, b)| a.id == b.id), "{}", m.token);
+            assert!(create(m.token, ctx).is_some(), "{}", m.token);
         }
     }
 

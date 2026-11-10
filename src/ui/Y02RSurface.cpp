@@ -3535,7 +3535,7 @@ void Y02RSurface::paint (juce::Graphics& g)
     g.drawText ("02R", top.reduced (sizes::kGapLarge, 0), juce::Justification::centredLeft);
     g.setColour (theme.textDim);
     g.setFont (type::font (type::kCaption));
-    g.drawText ("Not affiliated with or endorsed by Yamaha; 02R is Yamaha's trademark, used only to say what is emulated.",
+    g.drawText ("Not affiliated with or endorsed by any console maker; product names are their owners' trademarks.",
                 top.reduced (sizes::kGapLarge, 0).withTrimmedLeft (90).withTrimmedRight (200), juce::Justification::centredLeft);
 
     const auto red = juce::Colour (0xffff4a36), green = juce::Colour (0xff40d070), amber = juce::Colour (0xfff0c030);

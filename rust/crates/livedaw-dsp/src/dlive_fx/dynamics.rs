@@ -913,3 +913,6 @@ impl FxAlgo for Multiband {
         }
     }
 }
+
+mod dyn8;
+pub(super) use dyn8::{Dyn8, DYN8};

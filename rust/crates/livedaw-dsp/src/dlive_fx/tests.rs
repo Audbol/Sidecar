@@ -130,12 +130,13 @@ fn spread(levels: &[f32]) -> f32 {
 
 #[test]
 fn every_model_is_in_the_table_once_and_starts_with_none_and_ext() {
-    assert_eq!(FX_MODELS.len(), 26);
+    assert_eq!(FX_MODELS.len(), 38);
     assert_eq!((FX_MODELS[0].token, FX_MODELS[1].token), ("NONE", "EXT"));
     for (i, m) in FX_MODELS.iter().enumerate().skip(2) {
         assert!(is_dlive(m.token), "{}", m.token);
         assert_eq!(model_index(&FX_MODELS, m.token), Some(i), "{} twice", m.token);
-        assert_eq!(m.category, ModelCategory::FxPremium, "{}", m.token);
+        let want = if m.token == "DLVDYN8" { ModelCategory::FxStandard } else { ModelCategory::FxPremium };
+        assert_eq!(m.category, want, "{}", m.token);
     }
     assert!(!is_dlive("SQSMRH") && !is_dlive("HALL"));
 }
@@ -221,7 +222,12 @@ fn every_model_passes_the_device_checks() {
     // Silence stays silent, noise gets through and dies away, random and extreme
     // settings stay finite, reset clears, at 44.1 and 96 kHz.
     for m in &FX_MODELS[2..] {
-        crate::wing::fx::tests::check_device(m.token);
+        if m.token == "DLVHMIDI" {
+            // Follows MIDI: silent until a note is held.
+            crate::wing::fx::tests::check_device_with(m.token, |d| d.midi_note(69, 100));
+        } else {
+            crate::wing::fx::tests::check_device(m.token);
+        }
     }
 }
 

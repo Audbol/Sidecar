@@ -1081,13 +1081,14 @@ impl Console<'_> {
 }
 
 /// An EQ parameter of a strip as its step.
-fn eq_step(st: &Strip, id: &str) -> Option<u16> {
+/// An EQ parameter of a strip as its step (the 02R's and the 01V's).
+pub fn eq_step(st: &Strip, id: &str) -> Option<u16> {
     let eq = st.params.eq();
     let spec = eq.model_spec()?.params.iter().find(|p| p.id == id)?;
     Some(param_step(spec, eq.param(id)?.load()))
 }
 
-fn set_eq_step(st: &Strip, id: &str, step: u16) {
+pub fn set_eq_step(st: &Strip, id: &str, step: u16) {
     let eq = st.params.eq();
     if let (Some(spec), Some(v)) = (eq.model_spec().and_then(|m| m.params.iter().find(|p| p.id == id)), eq.param(id)) {
         v.store(step_param(spec, step));

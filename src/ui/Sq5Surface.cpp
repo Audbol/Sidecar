@@ -1,7 +1,10 @@
 #include "ui/Sq5Surface.h"
 
+#include "daw/Session.h"
+#include "engine/MidiRemote.h"
 #include "engine/MixerEngine.h"
 #include "engine/Models.h"
+#include "engine/SqMidi.h"
 #include "ui/HardwareLook.h"
 #include "ui/MeterBank.h"
 
@@ -81,6 +84,7 @@ namespace sq5
         for (auto* k : { &mute, &sel, &pafl })
         {
             k->shape = ToggleKey::Shape::Oval;
+            k->windowLit = true;
             addAndMakeVisible (*k);
         }
         mute.cornerRadius = 6.0f;
@@ -125,16 +129,7 @@ namespace sq5
             auto* strip = stripOf (ctx.engine, slot);
             return strip != nullptr && strip->params.solo.load();
         };
-        pafl.onClick = [this]
-        {
-            if (slot.kind == Slot::Dca)
-            {
-                auto& d = ctx.engine.getDca (slot.index);
-                d.solo = ! d.solo.load();
-            }
-            else if (auto* strip = stripOf (ctx.engine, slot))
-                strip->params.solo = ! strip->params.solo.load();
-        };
+        pafl.onClick = [this] { surface.pressPafl (slot); };
     }
 
     bool FaderStrip::muteState (bool byGroup) const
@@ -159,6 +154,12 @@ namespace sq5
 
     void FaderStrip::pressSel()
     {
+        // A DCA's Sel: out of its spill, or into one with Spill On Sel (p.104).
+        if (slot.kind == Slot::Dca && (surface.getSpill() == slot.index || surface.isSpillOnSel()))
+        {
+            surface.setSpill (surface.getSpill() == slot.index ? -1 : slot.index);
+            return;
+        }
         auto* strip = stripOf (ctx.engine, slot);
         if (strip != nullptr && surface.applyClipboard (*strip))
             return;
@@ -239,12 +240,15 @@ namespace sq5
         {
             value = &strip->params.faderDb;
             const int bus = busOfMix (surface.getMix());
-            if (! master && slot.isSendSource() && bus >= 0)
-                value = &strip->sends[(size_t) bus].levelDb; // the send to the selected mix (p.9)
+            // The send to the selected mix (p.9); a Group has an assignment, no send level.
+            if (! master && slot.isSendSource() && bus >= 0 && ! (bus < kMixes && isGroupMix (bus)))
+                value = &strip->sends[(size_t) bus].levelDb;
             if (! master && surface.isChToAll() && (slot.kind == Slot::Mix || slot.kind == Slot::FxSend))
                 if (auto* sel_ = ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr; sel_ != nullptr && sel_->isInput())
                     value = &sel_->sends[(size_t) (slot.kind == Slot::Mix ? slot.index : kMixes + slot.index)].levelDb; // CH to All Mix (p.50)
         }
+        if (master && surface.isListenMode())
+            value = &ctx.engine.monitorLevelDb; // Master Fader Mode: Listen Level (p.103)
         fader.bind (value);
         const bool used = slot.kind != Slot::None;
         for (auto* k : { &mute, &sel, &pafl })
@@ -365,6 +369,12 @@ Sq5Surface::Sq5Surface (UiContext& c)
         lightJewels();
     };
     display.getLayerSlots = [this] (int l) -> const std::vector<sq5::Slot>& { return getLayerSlots (l); };
+    display.onSurfaceChanged = [this]
+    {
+        bindStrips();
+        bindKnobs();
+    };
+    SqMidi::onSoftKey = [this] (int key, bool down) { pressSoftKey (key, down); };
     display.assignSlot = [this] (int l, int i, const sq5::Slot& s)
     {
         layers[(size_t) l][(size_t) i] = s;
@@ -468,10 +478,15 @@ Sq5Surface::Sq5Surface (UiContext& c)
     auto& talk = panelKey ("Talk", kPafl, { 1336, 312, 56, 30 });
     talk.cornerRadius = 7.0f;
     talk.isOn = [this] { return ctx.engine.talk.paths[0].on.load(); };
-    talk.onClick = [this]
+    // Held or latched, by Setup's Momentary + Latch (p.96).
+    talk.onStateChange = [this, &talk]
     {
-        auto& on = ctx.engine.talk.paths[0].on;
-        on = ! on.load();
+        const bool down = talk.isDown();
+        if (down != talkHeld)
+        {
+            talkHeld = down;
+            ctx.engine.talkKey (0, down);
+        }
     };
     rotary.setHardware (true);
     addAndMakeVisible (rotary);
@@ -484,14 +499,12 @@ Sq5Surface::Sq5Surface (UiContext& c)
     {
         auto& k = panelKey ("Soft " + juce::String (i + 1), kMute, softs[(size_t) i], true, kFaceWhite);
         k.cornerRadius = 6.0f;
-        k.onClick = [this, i] { pressSoftKey (i); };
-        k.isOn = [this, i]
+        k.onClick = [this, i]
         {
-            const int f = sq5::soft::get (ctx.settings, i);
-            if (f == 3)
-                return ctx.engine.talk.paths[0].on.load();
-            return f >= 4 && ctx.engine.muteGroups.contains (f - 4);
+            pressSoftKey (i, true);
+            pressSoftKey (i, false);
         };
+        k.isOn = [this, i] { return isSoftKeyLit (i); };
     }
 
     // The left column: View; Pre Fade, Assign, CH to All Mix; Copy, Paste, Reset; Layers.
@@ -562,12 +575,16 @@ Sq5Surface::Sq5Surface (UiContext& c)
     startTimerHz (20);
 }
 
-Sq5Surface::~Sq5Surface() = default;
+Sq5Surface::~Sq5Surface()
+{
+    SqMidi::onSoftKey = nullptr;
+}
 
 ToggleKey& Sq5Surface::panelKey (const juce::String& name, juce::Colour colour, juce::Rectangle<int> r, bool labelAbove, juce::Colour face)
 {
     auto k = std::make_unique<ToggleKey> (name, colour, theme);
     k->shape = ToggleKey::Shape::Oval;
+    k->windowLit = true;
     k->face = face.isTransparent() ? kFaceGrey : face;
     k->setBounds (r);
     addAndMakeVisible (*k);
@@ -620,9 +637,151 @@ sq5::Slot Sq5Surface::selectedSlot() const
     return sq5::slotOf (ctx.engine, ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr);
 }
 
+void Sq5Surface::setSpill (int dca)
+{
+    spill = dca;
+    bindStrips();
+}
+
+bool Sq5Surface::isListenMode() const { return sq5::prefs::get (ctx.settings, sq5::prefs::listen, false); }
+
+void Sq5Surface::pressPafl (const sq5::Slot& slot)
+{
+    using namespace sq5;
+    auto& e = ctx.engine;
+    const bool dca = slot.kind == Slot::Dca;
+    auto* strip = stripOf (e, slot);
+    if (! dca && strip == nullptr)
+        return;
+    const bool on = ! (dca ? e.getDca (slot.index).solo.load() : strip->params.solo.load());
+    const auto forAll = [&e] (auto&& action)
+    {
+        for (const auto* list : { &e.getChannels(), &e.getAux(), &e.getBuses(), &e.getMains(), &e.getMatrices() })
+            for (const auto& s : *list)
+                action (*s);
+    };
+    if (on && ! prefs::get (ctx.settings, prefs::additive, false))
+    {
+        // Not additive: this replaces whatever was listened to.
+        forAll ([] (Strip& s) { s.params.solo = false; });
+        for (int d = 0; d < e.getCounts().dcas; ++d)
+            e.getDca (d).solo = false;
+    }
+    if (dca)
+        e.getDca (slot.index).solo = on;
+    else
+        strip->params.solo = on;
+    if (! dca && on && prefs::get (ctx.settings, prefs::selFollow, true) && ctx.selectStrip)
+        ctx.selectStrip (strip);
+    if (prefs::get (ctx.settings, prefs::overrideMix, true) && prefs::get (ctx.settings, prefs::additive, false))
+    {
+        // An input's PAFL takes the mixes off the bus; the last input off brings them back.
+        const auto isMix = [] (const Strip& s) { return s.isOutput(); };
+        bool anyInput = false;
+        forAll ([&anyInput, &isMix] (Strip& s) { anyInput = anyInput || (s.params.solo.load() && ! isMix (s)); });
+        if (! dca && strip->isInput() && on)
+        {
+            forAll ([this, &isMix] (Strip& s)
+                    {
+                        if (isMix (s) && s.params.solo.load())
+                        {
+                            s.params.solo = false;
+                            overriddenMixes.push_back (&s);
+                        }
+                    });
+        }
+        else if (! anyInput)
+        {
+            for (auto* s : overriddenMixes)
+                s->params.solo = true;
+            overriddenMixes.clear();
+        }
+    }
+}
+
+void Sq5Surface::tapTempo (int slot)
+{
+    const auto now = juce::Time::getMillisecondCounterHiRes();
+    auto& last = lastTapMs[(size_t) (slot < 0 ? 8 : slot)];
+    const double interval = now - last;
+    last = now;
+    if (interval > 3000.0 || interval < 40.0)
+        return; // the first tap, or a slip
+    auto& fx = ctx.engine.getFx();
+    for (int i = 0; i < 8; ++i)
+    {
+        if (slot >= 0 && slot != i)
+            continue;
+        const auto& m = models::model (models::Fx, fx.getModel (i));
+        if (const int p = m.find ("time"); p >= 0)
+            fx.params (i).values[p] = (float) interval;
+    }
+}
+
+bool Sq5Surface::isSoftKeyLit (int key) const
+{
+    using namespace sq5;
+    const auto a = soft::get (ctx.settings, key);
+    auto& e = ctx.engine;
+    switch (a.type)
+    {
+        case soft::ChannelMute:
+            if (auto* s = stripOf (e, soft::channelAt (a.option2)))
+                return s->params.mute.load();
+            return false;
+        case soft::ChannelPafl:
+            if (auto* s = stripOf (e, soft::channelAt (a.option2)))
+                return s->params.solo.load();
+            return false;
+        case soft::DcaMute:   return e.getDca (a.option2).mute.load();
+        case soft::DcaPafl:   return e.getDca (a.option2).solo.load();
+        case soft::DcaSpill:  return a.option2 == 0 ? spillOnSel : spill == a.option2 - 1;
+        case soft::MuteGroup: return e.muteGroups.contains (a.option2);
+        case soft::Talk:      return e.talk.paths[0].on.load();
+        case soft::MixSelect: return mix == a.option2;
+        case soft::AmmChannel:
+            if (auto* amm = ld::ld_strip_amm (e.getChannels()[(size_t) juce::jlimit (0, 47, a.option2)]->getHandle()))
+                return amm->amm.load() >= 0 && amm->on.load();
+            return false;
+        // SQ Drive: the Start / Pause key while it runs, the Arm keys while it records.
+        case soft::DriveMultitrack:
+            if (ctx.recording == nullptr)
+                return false;
+            return a.option2 == 2 ? ctx.recording->isRolling() : (a.option2 == 3 || a.option2 == 5) && ctx.recording->isRecording();
+        case soft::DrivePlay:   return a.option2 == 2 && e.getUsbRecorder().getPlayState() == UsbRecorder::PlayState::Playing;
+        case soft::DriveRecord:
+            return a.option2 == 1 ? e.getUsbRecorder().getRecState() == UsbRecorder::RecState::Recording : a.option2 >= 2 && e.getUsbRecorder().isRecording();
+        default:              return false;
+    }
+}
+
 void Sq5Surface::bindStrips()
 {
-    const auto& slots = layers[(size_t) layer];
+    using sq5::Slot;
+    auto slots = layers[(size_t) layer];
+    // A stereo pair's even channel goes off the surface (p.85).
+    const auto& channels = ctx.engine.getChannels();
+    for (auto& s : slots)
+        if (s.kind == Slot::Input && (s.index & 1) != 0 && juce::isPositiveAndBelow (s.index, (int) channels.size()) && channels[(size_t) (s.index - 1)]->params.stereo.load())
+            s = {};
+    if (spill >= 0)
+    {
+        // Spill (p.104): the DCA's members in order, the DCA itself on the last strip.
+        std::vector<Slot> members;
+        const auto add = [this, &members] (const MixerEngine::StripList& list, Slot::Kind kind, int first, int count)
+        {
+            for (int i = 0; i < count && first + i < (int) list.size(); ++i)
+                if (list[(size_t) (first + i)]->params.dcaMask.contains (spill))
+                    members.push_back ({ kind, i });
+        };
+        add (ctx.engine.getChannels(), Slot::Input, 0, 48);
+        add (ctx.engine.getAux(), Slot::FxReturn, 0, 8);
+        add (ctx.engine.getBuses(), Slot::Mix, 0, sq5::kMixes);
+        add (ctx.engine.getBuses(), Slot::FxSend, sq5::kMixes, sq5::kFxSends);
+        for (int i = 0; i < kStrips; ++i)
+            slots[(size_t) i] = i < (int) members.size() && i < kStrips - 1 ? members[(size_t) i] : Slot {};
+        slots[(size_t) (kStrips - 1)] = { Slot::Dca, spill };
+    }
     for (int i = 0; i < kStrips; ++i)
         strips[(size_t) i]->setSlot (slots[(size_t) i]);
     master->setSlot (sq5::slotOfMix (mix));
@@ -638,7 +797,19 @@ void Sq5Surface::setLayer (int l)
 
 void Sq5Surface::setMix (int m)
 {
-    mix = juce::jlimit (0, sq5::kMixes + sq5::kFxSends, m);
+    const int next = juce::jlimit (0, sq5::kMixes + sq5::kFxSends, m);
+    // PAFL Follow Mix (p.94): the master strip's PAFL goes with the mix.
+    if (next != mix && sq5::prefs::get (ctx.settings, sq5::prefs::followMix, true))
+    {
+        auto* was = sq5::stripOf (ctx.engine, sq5::slotOfMix (mix));
+        auto* now = sq5::stripOf (ctx.engine, sq5::slotOfMix (next));
+        if (was != nullptr && now != nullptr && was->params.solo.load())
+        {
+            was->params.solo = false;
+            now->params.solo = true;
+        }
+    }
+    mix = next;
     bindStrips();
 }
 
@@ -716,21 +887,162 @@ bool Sq5Surface::applyClipboard (Strip& strip)
     return true;
 }
 
-void Sq5Surface::pressSoftKey (int key)
+void Sq5Surface::pressSoftKey (int key, bool down)
 {
-    const int f = sq5::soft::get (ctx.settings, key);
-    auto& show = ctx.show;
-    if (f == 1)
-        show.recallNext();
-    else if (f == 2)
-        show.recallPrevious();
-    else if (f == 3)
+    runAssign (sq5::soft::get (ctx.settings, key), down);
+}
+
+void Sq5Surface::pressFootswitch (int which, bool down)
+{
+    runAssign (sq5::soft::getFootswitch (ctx.settings, which), down);
+}
+
+void Sq5Surface::runAssign (const sq5::soft::Assign& a, bool down)
+{
+    using namespace sq5;
+    auto& e = ctx.engine;
+    auto* midi = SqMidi::current();
+    if (a.type == soft::DawControl)
     {
-        auto& on = ctx.engine.talk.paths[0].on;
-        on = ! on.load();
+        // Bank Up and Bank Down (p.117) go to the DAW the app's DAW remote controls, where
+        // the console has one: its BK > and BK < keys. The SQ's own message to A&H MIDI
+        // Control isn't in the MIDI protocol document.
+        if (ctx.midi != nullptr)
+            if (const int command = DawRemote::findCommand (a.option2 == 0 ? "N7" : "N6"); command >= 0)
+                ctx.midi->getDaw().pressCommand (command, down);
+        return;
     }
-    else if (f >= 4)
-        ctx.engine.muteGroups.set (f - 4, ! ctx.engine.muteGroups.contains (f - 4));
+    // Those that act on the release too.
+    if (a.type == soft::Talk)
+    {
+        e.talkKey (0, down);
+        return;
+    }
+    if (a.type == soft::MidiNote)
+    {
+        if (midi != nullptr)
+            midi->sendMessage (down ? juce::MidiMessage::noteOn (a.option1 + 1, a.option2, (juce::uint8) 127) : juce::MidiMessage::noteOff (a.option1 + 1, a.option2));
+        return;
+    }
+    if (! down)
+        return;
+    switch (a.type)
+    {
+        case soft::AmmChannel:
+            if (auto* amm = ld::ld_strip_amm (e.getChannels()[(size_t) juce::jlimit (0, 47, a.option2)]->getHandle()))
+                amm->on = ! amm->on.load();
+            break;
+        case soft::AmmInOut:
+        {
+            bool in = false;
+            for (const auto& c : e.getChannels())
+                if (auto* amm = ld::ld_strip_amm (c->getHandle()); amm != nullptr && amm->amm.load() == a.option2)
+                    in = in || amm->on.load();
+            for (const auto& c : e.getChannels())
+                if (auto* amm = ld::ld_strip_amm (c->getHandle()); amm != nullptr && amm->amm.load() == a.option2)
+                    amm->on = ! in;
+            break;
+        }
+        case soft::ChannelMute:
+            if (auto* s = stripOf (e, soft::channelAt (a.option2)))
+                s->params.mute = ! s->params.mute.load();
+            break;
+        case soft::ChannelPafl:
+            pressPafl (soft::channelAt (a.option2));
+            break;
+        case soft::DcaMute:
+            e.getDca (a.option2).mute = ! e.getDca (a.option2).mute.load();
+            break;
+        case soft::DcaPafl:
+            pressPafl ({ Slot::Dca, a.option2 });
+            break;
+        case soft::DcaSpill:
+            if (a.option2 == 0)
+            {
+                spillOnSel = ! spillOnSel;
+                if (! spillOnSel)
+                    setSpill (-1); // deactivating it exits any spill (p.104)
+            }
+            else
+                setSpill (spill == a.option2 - 1 ? -1 : a.option2 - 1);
+            break;
+        case soft::MidiProgram:
+            if (midi != nullptr)
+                midi->sendMessage (juce::MidiMessage::programChange (a.option1 + 1, a.option2));
+            break;
+        case soft::MixSelect:
+            setMix (a.option2);
+            break;
+        case soft::Mmc:
+            if (midi != nullptr)
+            {
+                const juce::MidiMessage::MidiMachineControlCommand commands[] = { juce::MidiMessage::mmc_rewind, juce::MidiMessage::mmc_play, juce::MidiMessage::mmc_pause,
+                                                                                 juce::MidiMessage::mmc_stop, juce::MidiMessage::mmc_fastforward, juce::MidiMessage::mmc_recordStart };
+                midi->sendMessage (juce::MidiMessage::midiMachineControlCommand (commands[juce::jlimit (0, 5, a.option2)]));
+            }
+            break;
+        case soft::MuteGroup:
+            e.muteGroups.set (a.option2, ! e.muteGroups.contains (a.option2));
+            break;
+        case soft::PaflClear:
+            for (const auto* list : { &e.getChannels(), &e.getAux(), &e.getBuses(), &e.getMains(), &e.getMatrices() })
+                for (const auto& s : *list)
+                    s->params.solo = false;
+            for (int d = 0; d < e.getCounts().dcas; ++d)
+                e.getDca (d).solo = false;
+            overriddenMixes.clear();
+            break;
+        case soft::RecallScene:
+            if (a.option2 < ctx.show.getNumScenes())
+                ctx.show.recallScene (a.option2);
+            break;
+        case soft::SceneNext:
+            display.stepSceneSelection (1);
+            break;
+        case soft::ScenePrevious:
+            display.stepSceneSelection (-1);
+            break;
+        case soft::SceneGo:
+            display.recallSelectedScene (a.option1 == 1);
+            break;
+        case soft::SceneStore:
+            if (const int at = ctx.show.getCurrentSceneIndex(); at >= 0)
+                ctx.show.storeScene (at);
+            break;
+        case soft::Select:
+        {
+            const auto slot = getLayerSlots (a.option1)[(size_t) juce::jlimit (0, kStrips - 1, a.option2)];
+            if (auto* s = stripOf (e, slot); s != nullptr && ctx.selectStrip)
+                ctx.selectStrip (s);
+            break;
+        }
+        case soft::TapTempo:
+            tapTempo (a.option2);
+            break;
+        case soft::GlobalTap:
+            tapTempo (-1);
+            break;
+        // SQ Drive (p.89's lists): Sidecar's multitrack recorder and its USB recorder, by the
+        // display's transports. Their options to the transports' actions: 0 previous, 1 stop,
+        // 2 start / pause, 3 arm, 4 next, 5 arm / record / stop.
+        case soft::DriveMultitrack:
+            display.driveMultitrack (juce::jlimit (0, 5, a.option2));
+            break;
+        case soft::DrivePlay:
+        {
+            const int actions[] = { 0, 1, 2, 4 };
+            display.driveStereoPlay (actions[juce::jlimit (0, 3, a.option2)]);
+            break;
+        }
+        case soft::DriveRecord:
+        {
+            const int actions[] = { 1, 2, 3, 5 };
+            display.driveStereoRecord (actions[juce::jlimit (0, 3, a.option2)]);
+            break;
+        }
+        default:
+            break;
+    }
 }
 
 void Sq5Surface::saveLayers()
@@ -796,7 +1108,9 @@ void Sq5Surface::bindKnobs()
     auto& p = s->params;
 
     const int in = p.inputLeft.load();
-    if (auto* src = in >= 0 && in < 128 ? ctx.engine.getSource (in) : nullptr)
+    // Preamp On Surface off: the rotary is Trim's (p.92).
+    auto* src = in >= 0 && in < 128 && sq5::prefs::get (ctx.settings, sq5::prefs::preampOnSurface, true) ? ctx.engine.getSource (in) : nullptr;
+    if (src != nullptr)
     {
         auto b = bindLinear ("Preamp", src->gainDb, 0.0f, 60.0f, " dB", 0, 0.0f);
         b.steps = 61.0f;

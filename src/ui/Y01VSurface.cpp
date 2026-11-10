@@ -1,7 +1,10 @@
 #include "ui/Y01VSurface.h"
 
+#include "engine/DirectOut.h"
 #include "engine/MixerEngine.h"
 #include "engine/Models.h"
+#include "engine/Y01VMidi.h"
+#include "engine/Yamaha01V.h"
 #include "ui/DotFont.h"
 #include "ui/MeterBank.h"
 #include "ui/universal/Groups.h"
@@ -347,7 +350,15 @@ namespace y01v
     void Fader::bind (std::atomic<float>* db, const FaderLaw& newLaw)
     {
         value = db;
+        knob = {};
         law = newLaw;
+        refresh();
+    }
+
+    void Fader::bind (KnobBinding binding)
+    {
+        value = nullptr;
+        knob = std::move (binding);
         refresh();
     }
 
@@ -358,7 +369,7 @@ namespace y01v
 
     void Fader::refresh()
     {
-        const double p = value != nullptr ? (double) law.toPosition (value->load()) : 0.0;
+        const double p = knob.isValid() ? (double) knob.get() : value != nullptr ? (double) law.toPosition (value->load()) : 0.0;
         if (! juce::approximatelyEqual (p, position))
         {
             position = p;
@@ -368,9 +379,15 @@ namespace y01v
 
     void Fader::setPositionFromUser (double p)
     {
-        if (value == nullptr)
-            return;
-        *value = law.toDb (law.snap ((float) juce::jlimit (0.0, 1.0, p)));
+        if (knob.isValid() && knob.set)
+        {
+            float to = (float) juce::jlimit (0.0, 1.0, p);
+            if (knob.steps > 1.0f)
+                to = std::round (to * (knob.steps - 1.0f)) / (knob.steps - 1.0f);
+            knob.set (to);
+        }
+        else if (value != nullptr)
+            *value = law.toDb (law.snap ((float) juce::jlimit (0.0, 1.0, p)));
         refresh();
     }
 
@@ -391,9 +408,9 @@ namespace y01v
         {
             const float y = yOf (db);
             g.setColour (kWhiteSilk);
-            g.fillRect (cx - 13.0f, y - 0.75f, 7.0f, 1.5f);
+            g.fillRect (cx - 21.0f, y - 0.75f, 15.0f, 1.5f);
             g.setFont (type::font (14.0f));
-            g.drawText (label, juce::Rectangle<float> (0.0f, y - 8.0f, cx - 15.0f, 16.0f), juce::Justification::centredRight, false);
+            g.drawText (label, juce::Rectangle<float> (0.0f, y - 8.0f, cx - 24.0f, 16.0f), juce::Justification::centredRight, false);
             g.setColour (kNavy);
             g.fillRect (cx + 7.0f, y - 0.75f, 16.0f, 1.5f);
         };
@@ -422,9 +439,9 @@ namespace y01v
         {
             const float y = t.getBottom();
             g.setColour (kWhiteSilk);
-            g.fillRect (cx - 13.0f, y - 0.75f, 7.0f, 1.5f);
+            g.fillRect (cx - 21.0f, y - 0.75f, 15.0f, 1.5f);
             g.setFont (type::font (14.0f));
-            g.drawText (master ? "-" + infinity : infinity, juce::Rectangle<float> (0.0f, y - 8.0f, cx - 15.0f, 16.0f), juce::Justification::centredRight, false);
+            g.drawText (master ? "-" + infinity : infinity, juce::Rectangle<float> (0.0f, y - 8.0f, cx - 24.0f, 16.0f), juce::Justification::centredRight, false);
             g.setColour (kNavy);
             g.fillRect (cx + 7.0f, y - 0.75f, 16.0f, 1.5f);
         }
@@ -437,7 +454,7 @@ namespace y01v
         g.fillRect (slot.withLeft (slot.getRight() - 1.0f));
 
         // The cap: ribbed across, waisted at the middle.
-        constexpr float kCapW = 58.0f, kCapH = 82.0f, kPinch = 6.0f;
+        constexpr float kCapW = 44.0f, kCapH = 82.0f, kPinch = 5.0f; // narrower than the scale: its numbers stay in view
         const float capY = t.getBottom() - t.getHeight() * (float) position;
         const float hw = kCapW * 0.5f, top = capY - kCapH * 0.5f, bottom = capY + kCapH * 0.5f;
         juce::Path shape;
@@ -491,7 +508,17 @@ namespace y01v
         setPositionFromUser (dragStart - (double) e.getDistanceFromDragStartY() / (double) track().getHeight());
     }
 
-    void Fader::mouseDoubleClick (const juce::MouseEvent&) { setPositionFromUser ((double) law.toPosition (0.0f)); }
+    void Fader::mouseDoubleClick (const juce::MouseEvent&)
+    {
+        if (knob.isValid())
+        {
+            if (knob.reset)
+                knob.reset();
+            refresh();
+        }
+        else
+            setPositionFromUser ((double) law.toPosition (0.0f));
+    }
 
     void Fader::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& w)
     {
@@ -577,6 +604,10 @@ namespace y01v
         constexpr juce::juce_wchar kInfinity = 0x221E;
         /** The rows each of the 5x7 font's seven becomes: the function's name, and titles. */
         constexpr int kNameRows[7] = { 1, 2, 2, 1, 2, 2, 1 }, kTitleRows[7] = { 1, 1, 2, 1, 2, 1, 1 };
+        /** The preference DELAY UNITS (p.203): 0 msec, 1 meter, 2 sample. */
+        constexpr const char* kDelayUnitsKey = "y01vDelayUnits";
+        /** The 2TR IN jacks' input ports (livedaw_engine's Y01V_PORT_GROUPS). */
+        constexpr int kTwoTrackInput = 24;
 
         /** A level as the LCD prints it under a fader or a PRE/POST switch. */
         juce::String lcdLevel (float db)
@@ -600,20 +631,21 @@ namespace y01v
             return b;
         }
 
-        /** An input channel's delay in ms, the number alone: its page names the unit (p.45). */
+        /** A delay in ms (an input channel's: 250 at most; an output's 300), the number alone, in
+            the display's DELAY UNITS: its page names the unit (pp.45, 203). */
         template <typename Input>
-        KnobBinding delayBinding (Input& in)
+        KnobBinding delayBinding (Input& in, const Display* display, float maxMs = 250.0f)
         {
             KnobBinding b;
             b.label = "DELAY";
-            b.steps = 2501.0f;
-            b.get = [&in] { return in.delay.load() / 250.0f; };
-            b.set = [&in] (float x)
+            b.steps = maxMs * 10.0f + 1.0f;
+            b.get = [&in, maxMs] { return juce::jlimit (0.0f, 1.0f, in.delay.load() / maxMs); };
+            b.set = [&in, maxMs] (float x)
             {
                 in.delayMode = 2; // MS
-                in.delay = x * 250.0f;
+                in.delay = x * maxMs;
             };
-            b.text = [&in] { return juce::String (in.delay.load(), 1); };
+            b.text = [&in, display] { return display != nullptr ? display->delayText (in.delay.load()) : juce::String (in.delay.load(), 1); };
             return b;
         }
 
@@ -643,6 +675,9 @@ namespace y01v
 
     Display::Display (UiContext& c) : ctx (c), dots ((size_t) (kDotsW * kDotsH), 0), image (juce::Image::RGB, kWidth, kHeight, true)
     {
+        loadPanel();
+        loadLibrary();
+        relink();
         rebuild();
     }
 
@@ -862,6 +897,23 @@ namespace y01v
         rebuild();
     }
 
+    void Display::showFirstPage (Function f)
+    {
+        if (f != function)
+        {
+            lastPages[(size_t) f] = 0;
+            setFunction (f);
+        }
+        else if (page != 0)
+        {
+            page = 0;
+            focus = 0;
+            fxScroll = 0;
+            library = -1;
+            rebuild();
+        }
+    }
+
     void Display::pressFunction (Function f)
     {
         if (f == function)
@@ -885,10 +937,15 @@ namespace y01v
         {
             case Function::Send:    return sendBus() < 0 ? 1 : effectSlot() >= 0 ? 3 : 2;
             case Function::Utility: return 3;
-            case Function::OptionIO: return 2;
-            case Function::PanRouting: return 2;
-            case Function::PhaseDelay: return 3; // PHASE, then the delays of CH 1-8 and 9-16 (pp.42, 45)
+            case Function::OptionIO: return 5;   // IN METER, CH 17-24, OUT METER, OUT SELECT, INPUT SWAP (pp.51, 58, 85, 219)
+            case Function::PanRouting: return 4; // PANPOT, routing, BUS MASTER, OMNI OUT SELECT (pp.47, 49, 109, 116)
+            case Function::PhaseDelay: return 4; // PHASE, the delays of CH 1-8 and 9-16, OUTPUT DELAY (pp.42, 45, 117)
+            case Function::Setup:   return 5;    // WORD CLOCK, MONITOR and SOLO, GROUP, PAIR, DITHER (pp.52, 55, 78, 209, 212)
+            case Function::EqAtt:
+            case Function::Dynamics: return 2;   // the edit page, the library (pp.67, 173)
+            case Function::Remote:  return 3;    // INTERNAL PARAMETER, MMC CONTROL, USER DEFINE (pp.194, 236, 238)
             case Function::View:    return 2;
+            case Function::Midi:    return 5; // MIDI SETUP, PROGRAM CHANGE, CONTROL CHANGE, BULK, LOCAL CONTROL (pp.224-234)
             default:                return 1;
         }
     }
@@ -1027,29 +1084,45 @@ namespace y01v
         switch (function)
         {
             case Function::EqAtt:
-                if (s != nullptr)
+                if (page == 1)
+                    buildLibrary (0);
+                else if (s != nullptr)
                     buildEq (*s);
                 break;
             case Function::Dynamics:
-                if (s != nullptr)
+                if (page == 1)
+                    buildLibrary (1);
+                else if (s != nullptr)
                     buildDynamics (*s);
                 break;
             case Function::PhaseDelay:
-                page == 0 ? buildPhase() : buildDelay();
+                if (page == 0)
+                    buildPhase();
+                else if (page == 3)
+                    buildOutputDelay();
+                else
+                    buildDelay();
                 break;
             case Function::View:
                 if (s != nullptr)
                     buildView (*s);
                 break;
             case Function::PanRouting:
-                page == 0 ? buildPan() : buildRouting();
+                if (page == 0)
+                    buildPan();
+                else if (page == 1)
+                    buildRouting();
+                else if (page == 2)
+                    buildBusMaster();
+                else
+                    buildOmni();
                 break;
             case Function::Send:
                 // EFFECT: EDIT, LIBRARY, PRE/POST (pp.134-136). AUX: PRE/POST first (p.97).
                 if (sendBus() >= 0 && page == (effectSlot() >= 0 ? 2 : 0))
                     buildPrePost();
                 else if (effectSlot() >= 0)
-                    page == 0 ? buildEffectEdit() : buildEffectLibrary();
+                    page == 0 ? buildEffectEdit() : buildLibrary (2);
                 else
                     buildSend();
                 break;
@@ -1059,13 +1132,31 @@ namespace y01v
                 break;
             case Function::OptionIO:   buildOption(); break;
             case Function::Midi:
+                if (page == 0)
+                    buildMidiSetup();
+                else if (page == 1)
+                    buildMidiProgram();
+                else if (page == 2)
+                    buildMidiControl();
+                else if (page == 3)
+                    buildMidiBulk();
+                break; // page 5's LOCAL CONTROL: drawn, its OFF isn't built
             case Function::Setup:
-            case Function::Remote:     break;
+                if (page == 1)
+                    buildMonitorSetup();
+                else if (page == 2)
+                    buildGroups();
+                else if (page == 3)
+                    buildPairs();
+                break; // WORD CLOCK and DITHER: drawn
+            case Function::Remote:     buildRemote(); break;
         }
         focus = juce::jlimit (0, juce::jmax (0, (int) cells.size() - 1), focus);
         applyOscillator();
         shownDots.clear();
         refresh();
+        if (onRemoteChanged)
+            onRemoteChanged();
     }
 
     void Display::buildEq (Strip& s)
@@ -1213,7 +1304,7 @@ namespace y01v
             const int col = page == 2 && i >= 4 ? (i == 4 ? 1 : 3) : i % 4, row = i / 4;
             const int x = 120 + col * 42, y = 2 + row * 41;
             add (Cell::Switch, { x, y, 19, 9 }, bindBool ("DELAY", in.delayOn));
-            add (Cell::Text, { x - 18, y + 10, 37, 9 }, delayBinding (in));
+            add (Cell::Text, { x - 18, y + 10, 37, 9 }, delayBinding (in, this));
         }
     }
 
@@ -1224,7 +1315,7 @@ namespace y01v
         {
             const int y = 2 + row * 41;
             text (65, y + 3, "DELAY");
-            text (65, y + 12, "[ msec]", true);
+            text (65, y + 12, delayUnitLabel(), true);
             text (65, y + 20, "MIX");
             text (65, y + 30, "FB.GAIN");
         }
@@ -1347,7 +1438,7 @@ namespace y01v
         {
             auto& in = p.input;
             add (Cell::Switch, { 102, 14, 16, 9 }, bindBool ("DELAY", in.delayOn));
-            add (Cell::Text, { 95, 27, 31, 9 }, delayBinding (in)).dotted = true;
+            add (Cell::Text, { 95, 27, 31, 9 }, delayBinding (in, this)).dotted = true;
             for (int b = 0; b < 4; ++b)
                 add (Cell::Switch, { 138 + (b % 2) * 12, 11 + (b / 2) * 11, 10, 9 }, bindRoute (s.sends[(size_t) b], juce::String (b + 1)));
             add (Cell::Switch, { 138, 33, 10, 9 }, bindBool ("ST", s.mains[0].on, "ST", "ST"));
@@ -1407,7 +1498,7 @@ namespace y01v
         box ({ 58, 13, 33, 10 });
         textCentred ({ 58, 13, 33, 10 }, "DELAY");
         if (s.isInput())
-            text (60, 29, "[ msec]", true);
+            text (60, 29, delayUnitLabel(), true);
         hLine (55, 129, 37);
         // The groups and the pair: printed as the page has them; not kept here.
         const auto group = [this] (const char* upper, int y, const char* letters)
@@ -1466,7 +1557,7 @@ namespace y01v
     namespace
     {
         constexpr int kMaxMemory = 99;
-        const char* const kProtectedKey = "y01vProtectedMemories";
+        const char* const kProtectedKey = Y01VMidi::protectKey;
     } // namespace
 
     juce::String Display::memoryTitle (int m) const
@@ -1570,11 +1661,25 @@ namespace y01v
                                               return;
                                           juce::MessageManager::callAsync ([&context]
                                           {
+                                              context.show.markRecallUndo();
                                               context.engine.configureProfile (ld::kProfileYamaha01V);
+                                              if (auto* midi = dynamic_cast<Y01VMidi*> (context.consoleMidi))
+                                                  midi->initialSceneRecalled();
                                               if (context.structureChanged)
                                                   context.structureChanged();
                                           });
                                       });
+    }
+
+    void Display::undoRecall()
+    {
+        if (! ctx.show.canUndoRecall())
+            return;
+        ctx.show.undoRecall();
+        // The list follows the scene the console is back on.
+        if (const int scene = ctx.show.getCurrentSceneIndex(); scene >= 0)
+            setMemory (scene + 1);
+        rebuild();
     }
 
     void Display::editMemoryTitle()
@@ -1593,12 +1698,525 @@ namespace y01v
                     });
     }
 
+    //==========================================================================
+    // MIDI (pp.224-234).
+    void Display::saveMidiSettings()
+    {
+        auto& y = ctx.engine.getYamaha01V();
+        ctx.settings.setValue (Y01VMidi::setupKey, y.getSetupText());
+        ctx.settings.setValue (Y01VMidi::pcKey, y.getPcText());
+        ctx.settings.setValue (Y01VMidi::ccKey, y.getCcText());
+    }
+
+    KnobBinding Display::midiSwitch (int what, const juce::String& label)
+    {
+        KnobBinding b;
+        b.label = label;
+        b.steps = 2.0f;
+        b.get = [this, what] { return ctx.engine.getYamaha01V().getSetup ((Yamaha01V::Setup) what) != 0 ? 1.0f : 0.0f; };
+        b.set = [this, what] (float v)
+        {
+            ctx.engine.getYamaha01V().setSetup ((Yamaha01V::Setup) what, v >= 0.5f ? 1 : 0);
+            saveMidiSettings();
+        };
+        b.text = [this, what] { return juce::String (ctx.engine.getYamaha01V().getSetup ((Yamaha01V::Setup) what) != 0 ? "ON" : "OFF"); };
+        return b;
+    }
+
+    KnobBinding Display::midiChannel (int what, const juce::String& label)
+    {
+        KnobBinding b;
+        b.label = label;
+        b.steps = 16.0f;
+        b.get = [this, what] { return (float) ctx.engine.getYamaha01V().getSetup ((Yamaha01V::Setup) what) / 15.0f; };
+        b.set = [this, what] (float v)
+        {
+            ctx.engine.getYamaha01V().setSetup ((Yamaha01V::Setup) what, juce::roundToInt (v * 15.0f));
+            saveMidiSettings();
+        };
+        b.text = [this, what] { return juce::String (ctx.engine.getYamaha01V().getSetup ((Yamaha01V::Setup) what) + 1); };
+        return b;
+    }
+
+    void Display::buildMidiSetup()
+    {
+        // p.224.
+        auto& tx = add (Cell::Text, { 63, 28, 25, 9 }, midiChannel (Yamaha01V::TxChannel, "Tx CH"));
+        tx.dotted = tx.raw = true;
+        auto& rx = add (Cell::Text, { 63, 61, 25, 9 }, midiChannel (Yamaha01V::RxChannel, "Rx CH"));
+        rx.dotted = rx.raw = true;
+
+        const int xs[] = { 144, 173, 200, 227 }, ys[] = { 15, 31, 47, 63 };
+        const int rows[4][4] = { { Yamaha01V::PcTx, Yamaha01V::PcRx, Yamaha01V::PcOmni, Yamaha01V::PcEcho },
+                                 { Yamaha01V::CcTx, Yamaha01V::CcRx, Yamaha01V::CcOmni, Yamaha01V::CcEcho },
+                                 { Yamaha01V::ParamTx, Yamaha01V::ParamRx, -1, Yamaha01V::ParamEcho },
+                                 { -1, Yamaha01V::BulkRx, -1, -1 } };
+        const char* columns[] = { "Tx", "Rx", "OMNI", "ECHO" };
+        for (int r = 0; r < 4; ++r)
+            for (int c = 0; c < 4; ++c)
+                if (rows[r][c] >= 0)
+                    add (Cell::Switch, { xs[c], ys[r], 23, 10 }, midiSwitch (rows[r][c], columns[c]));
+    }
+
+    void Display::drawMidiSetup()
+    {
+        header ("MIDI SETUP");
+        const char* columns[] = { "Tx", "Rx", "OMNI", "ECHO" };
+        const int xs[] = { 144, 173, 200, 227 }, centers[] = { 155, 184, 211, 238 };
+        for (int c = 0; c < 4; ++c)
+            textCentred ({ xs[c], 5, 23, 8 }, columns[c]);
+
+        box ({ 58, 12, 34, 32 });
+        box ({ 60, 14, 30, 8 });
+        textCentred ({ 60, 14, 30, 8 }, "Tx CH");
+        box ({ 58, 45, 34, 32 });
+        box ({ 60, 47, 30, 8 });
+        textCentred ({ 60, 47, 30, 8 }, "Rx CH");
+
+        box ({ 95, 12, 160, 65 });
+        vLine (139, 12, 76);
+        for (int y : { 29, 45, 60 })
+            hLine (95, 254, y);
+        const char* names[][2] = { { "PROGRAM", "CHANGE" }, { "CONTROL", "CHANGE" }, { "PARAM.", "CHANGE" } };
+        const int nameY[] = { 13, 30, 46 };
+        for (int r = 0; r < 3; ++r)
+        {
+            textCentred ({ 96, nameY[r], 43, 7 }, names[r][0]);
+            textCentred ({ 96, nameY[r] + 7, 43, 7 }, names[r][1]);
+        }
+        textCentred ({ 96, 64, 43, 8 }, "BULK");
+        // The dots where a kind of message has no such switch.
+        fill ({ centers[2] - 1, 51, 2, 2 });
+        for (int c : { 0, 2, 3 })
+            fill ({ centers[c] - 1, 67, 2, 2 });
+
+        box ({ 257, 12, 33, 32 });
+        box ({ 259, 14, 29, 8 });
+        textCentred ({ 259, 14, 29, 8 }, "PORT");
+        dottedH (261, 286, 27);
+        dottedH (261, 286, 37);
+        dottedV (261, 27, 37);
+        dottedV (286, 27, 37);
+        textCentred ({ 261, 28, 26, 9 }, "MIDI"); // Sidecar has the one port.
+        box ({ 257, 45, 33, 32 });
+        box ({ 259, 47, 29, 15 });
+        textCentred ({ 259, 47, 29, 7 }, "LINK");
+        textCentred ({ 259, 54, 29, 7 }, "PORT");
+        textCentred ({ 259, 65, 29, 8 }, "HOST");
+    }
+
+    void Display::buildMidiProgram()
+    {
+        // p.227. The program's number 1-128, MIDI's 0-127.
+        auto& init = add (Cell::Button, { 234, 7, 54, 10 }, {}, "INITIALIZE");
+        init.press = [this] { initializeTable (true); };
+
+        KnobBinding no;
+        no.label = "PGM CHG.";
+        no.steps = 128.0f;
+        no.get = [this] { return (float) midiProgram / 127.0f; };
+        no.set = [this] (float v) { midiProgram = juce::roundToInt (v * 127.0f); };
+        no.text = [this] { return juce::String (midiProgram + 1); };
+        auto& pc = add (Cell::Text, { 108, 49, 23, 8 }, no);
+        pc.dotted = pc.raw = true;
+
+        KnobBinding scene;
+        scene.label = "SCENE";
+        scene.steps = 101.0f;
+        scene.get = [this] { return ((float) ctx.engine.getYamaha01V().pcScene (midiProgram) + 1.0f) / 100.0f; };
+        scene.set = [this] (float v)
+        {
+            ctx.engine.getYamaha01V().setPcScene (midiProgram, juce::roundToInt (v * 100.0f) - 1);
+            saveMidiSettings();
+        };
+        scene.text = [this]
+        {
+            const int m = ctx.engine.getYamaha01V().pcScene (midiProgram);
+            if (m < 0)
+                return juce::String ("--.[ NONE ]");
+            const auto title = memoryTitle (m);
+            return juce::String (m).paddedLeft ('0', 2) + "." + (title.isEmpty() ? juce::String ("[ ---- ]") : title.substring (0, 8));
+        };
+        auto& s = add (Cell::Text, { 148, 49, 70, 8 }, scene);
+        s.dotted = s.raw = true;
+    }
+
+    void Display::drawMidiProgram()
+    {
+        header ("PROGRAM CHANGE");
+        text (92, 18, "PGM CHG.");
+        hLine (82, 137, 25);
+        text (151, 18, "NO. TITLE");
+        hLine (140, 254, 25);
+        for (int row = 0; row < 2; ++row)
+        {
+            const int pc = midiProgram + 2 - row, y = 29 + row * 10;
+            if (pc > 127)
+                continue;
+            const auto number = juce::String (pc + 1);
+            text (131 - textWidth (number, false), y, number);
+            text (137, y, "=");
+            const int m = ctx.engine.getYamaha01V().pcScene (pc);
+            const auto title = memoryTitle (m);
+            text (151, y, m < 0 ? juce::String ("--.[ NONE ]") : juce::String (m).paddedLeft ('0', 2) + "." + (title.isEmpty() ? juce::String ("[ ---- ]") : title.substring (0, 8)));
+        }
+        text (86, 50, "NO.");
+        text (137, 50, "=");
+    }
+
+    std::vector<int> Display::ccChoices (int column, int code) const
+    {
+        // Every target, as Yamaha01V::ccLabel names it, in the manual's order.
+        static const std::vector<int> all = []
+        {
+            std::vector<int> v { 0 };
+            const auto add = [&v] (int kind, int strip, int extra = 0) { v.push_back (kind | strip << 8 | extra << 16); };
+            for (int s = 0; s < 35; ++s)
+                add (1, s);
+            for (int n = 0; n < 6; ++n)
+                for (int s = 0; s < 24; ++s)
+                    if (! (s >= 14 && s < 22 && (n == 2 || n == 3))) // CH 17-24 have no AUX 3-4 (p.264)
+                        add (4, s, n);
+            for (int s = 0; s < 35; ++s)
+                add (2, s);
+            for (int s = 0; s < 24; ++s)
+            {
+                add (3, s);
+                if (s == 12 || s == 13 || s == 22 || s == 23)
+                    add (3, s, 1);
+            }
+            add (3, 34);
+            return v;
+        }();
+        std::vector<int> out;
+        juce::StringArray seen;
+        const auto first = Yamaha01V::ccLabel (code, 0), second = Yamaha01V::ccLabel (code, 1);
+        for (int c : all)
+        {
+            if (column >= 1 && Yamaha01V::ccLabel (c, 0) != first)
+                continue;
+            if (column >= 2 && Yamaha01V::ccLabel (c, 1) != second)
+                continue;
+            const auto label = Yamaha01V::ccLabel (c, column);
+            if (column == 2 || ! seen.contains (label))
+            {
+                seen.add (label);
+                out.push_back (c);
+            }
+        }
+        return out;
+    }
+
+    void Display::buildMidiControl()
+    {
+        // p.229: controllers 0-95 and 102-119.
+        auto& init = add (Cell::Button, { 234, 7, 54, 10 }, {}, "INITIALIZE");
+        init.press = [this] { initializeTable (false); };
+
+        const auto indexOf = [] (int cc) { return cc < 96 ? cc : cc - 6; };
+        const auto ccOf = [] (int index) { return index < 96 ? index : index + 6; };
+        KnobBinding no;
+        no.label = "CTL CHG.";
+        no.steps = 114.0f;
+        no.get = [this, indexOf] { return (float) indexOf (midiControl) / 113.0f; };
+        no.set = [this, ccOf] (float v) { midiControl = ccOf (juce::roundToInt (v * 113.0f)); };
+        no.text = [this] { return juce::String (midiControl); };
+        auto& pc = add (Cell::Text, { 78, 45, 22, 8 }, no);
+        pc.dotted = pc.raw = true;
+
+        for (int column = 0; column < 3; ++column)
+        {
+            KnobBinding b;
+            b.label = column == 0 ? "PARAMETER" : column == 1 ? "GROUP" : "CHANNEL";
+            b.steps = 256.0f;
+            b.get = [this, column]
+            {
+                const int code = ctx.engine.getYamaha01V().ccCode (midiControl);
+                const auto choices = ccChoices (column, code);
+                const auto label = Yamaha01V::ccLabel (code, column);
+                int at = 0;
+                for (int i = 0; i < (int) choices.size(); ++i)
+                    if (Yamaha01V::ccLabel (choices[(size_t) i], column) == label)
+                        at = i;
+                return (float) at / 255.0f;
+            };
+            b.set = [this, column] (float v)
+            {
+                auto& y = ctx.engine.getYamaha01V();
+                const auto choices = ccChoices (column, y.ccCode (midiControl));
+                if (choices.empty())
+                    return;
+                y.setCcCode (midiControl, choices[(size_t) juce::jlimit (0, (int) choices.size() - 1, juce::roundToInt (v * 255.0f))]);
+                saveMidiSettings();
+            };
+            b.text = [this, column] { return Yamaha01V::ccLabel (ctx.engine.getYamaha01V().ccCode (midiControl), column); };
+            const int x[] = { 109, 172, 232 }, w[] = { 60, 58, 60 };
+            auto& c = add (Cell::Text, { x[column], 45, w[column], 8 }, b);
+            c.dotted = c.raw = true;
+        }
+    }
+
+    void Display::drawMidiControl()
+    {
+        header ("CONTROL CHANGE");
+        text (59, 18, "CTL CHG.");
+        hLine (58, 105, 25);
+        text (166, 18, "PARAMETER");
+        hLine (108, 291, 25);
+        for (int row = 0; row < 2; ++row)
+        {
+            int cc = midiControl + 2 - row;
+            if (cc >= 96 && cc < 102)
+                cc += 6; // 96-101 can't be assigned
+            if (cc > 119)
+                continue;
+            const int y = 29 + row * 8, code = ctx.engine.getYamaha01V().ccCode (cc);
+            const auto number = juce::String (cc);
+            text (100 - textWidth (number, false), y, number);
+            text (103, y, "=");
+            const int x[] = { 109, 172, 232 }, w[] = { 60, 58, 60 };
+            for (int column = 0; column < 3; ++column)
+                textCentred ({ x[column], y - 1, w[column], 8 }, Yamaha01V::ccLabel (code, column));
+        }
+        text (58, 46, "No.");
+        text (103, 46, "=");
+    }
+
+    void Display::initializeTable (bool program)
+    {
+        auto options = juce::MessageBoxOptions()
+                           .withTitle (program ? "CONFIRMATION" : "TABLE INITIALIZE")
+                           .withMessage (program ? "Will Initialize PGM Change table.\nARE YOU SURE?" : "Choose an Arrangement.")
+                           .withAssociatedComponent (this);
+        if (program)
+            options = options.withButton ("OK").withButton ("CANCEL");
+        else
+            options = options.withButton ("DEFAULT").withButton ("P.MIX 01").withButton ("03D").withButton ("CANCEL");
+        juce::AlertWindow::showAsync (options,
+                                      [safe = juce::Component::SafePointer<Display> (this), program] (int result)
+                                      {
+                                          if (safe == nullptr)
+                                              return;
+                                          auto& y = safe->ctx.engine.getYamaha01V();
+                                          if (program && result == 1)
+                                              y.initProgramTable();
+                                          else if (! program && result >= 1 && result <= 3)
+                                              y.initControlTable (result - 1);
+                                          else
+                                              return;
+                                          safe->saveMidiSettings();
+                                          safe->rebuild();
+                                      });
+    }
+
+    void Display::buildMidiBulk()
+    {
+        // p.232.
+        add (Cell::Button, { 100, 4, 44, 11 }, {}, "REQUEST").press = [this] { bulk (false); };
+        add (Cell::Button, { 155, 4, 44, 11 }, {}, "TRANSMIT").press = [this] { bulk (true); };
+
+        KnobBinding interval;
+        interval.label = "INTERVAL";
+        interval.steps = 128.0f;
+        interval.get = [this] { return (float) ctx.engine.getYamaha01V().getSetup (Yamaha01V::Interval) / 127.0f; };
+        interval.set = [this] (float v)
+        {
+            ctx.engine.getYamaha01V().setSetup (Yamaha01V::Interval, juce::roundToInt (v * 127.0f));
+            saveMidiSettings();
+        };
+        interval.text = [this] { return juce::String (ctx.engine.getYamaha01V().getSetup (Yamaha01V::Interval) * 10); };
+        auto& i = add (Cell::Text, { 251, 5, 22, 8 }, interval);
+        i.dotted = i.raw = true;
+
+        const struct { const char* name; juce::Rectangle<int> area; } categories[] = {
+            { "ALL", { 64, 24, 56, 11 } },         { "SETUP MEM.", { 64, 38, 56, 11 } }, { "PGM. TABLE", { 64, 51, 56, 11 } },
+            { "CTL. TABLE", { 64, 64, 56, 11 } },  { "SCENE MEM.", { 124, 38, 57, 11 } }
+        };
+        for (int k = 0; k < 5; ++k)
+        {
+            KnobBinding b;
+            b.label = categories[k].name;
+            b.steps = 2.0f;
+            b.get = [this, k] { return bulkCategory == k ? 1.0f : 0.0f; };
+            b.set = [this, k] (float) { bulkCategory = k; };
+            b.text = [name = juce::String (categories[k].name)] { return name; };
+            auto& c = add (Cell::Switch, categories[k].area, b);
+            c.raw = true;
+        }
+
+        // SCENE MEM.'s FROM and TO: ALL, EDIT, then the memories 1-99.
+        KnobBinding from;
+        from.label = "FROM";
+        from.steps = 101.0f;
+        from.get = [this] { return (float) bulkFrom / 100.0f; };
+        from.set = [this] (float v) { bulkFrom = juce::roundToInt (v * 100.0f); };
+        from.text = [this] { return bulkFrom == 0 ? juce::String ("ALL") : bulkFrom == 1 ? juce::String ("EDIT") : juce::String (bulkFrom - 1); };
+        auto& f = add (Cell::Text, { 224, 38, 26, 8 }, from);
+        f.dotted = f.raw = true;
+        KnobBinding to;
+        to.label = "TO";
+        to.steps = 99.0f;
+        to.get = [this] { return (float) (bulkTo - 1) / 98.0f; };
+        to.set = [this] (float v) { bulkTo = juce::roundToInt (v * 98.0f) + 1; };
+        to.text = [this] { return bulkFrom < 2 ? juce::String ("---") : juce::String (juce::jmax (bulkTo, bulkFrom - 1)); };
+        auto& t = add (Cell::Text, { 259, 38, 26, 8 }, to);
+        t.dotted = t.raw = true;
+    }
+
+    void Display::drawMidiBulk()
+    {
+        header ("BULK");
+        text (204, 5, "INTERVAL");
+        hLine (204, 222, 13);
+        vLine (222, 13, 16);
+        text (276, 5, "ms");
+
+        // CATEGORY.
+        box ({ 58, 20, 232, 57 });
+        fill ({ 149, 17, 51, 8 }, false);
+        box ({ 149, 17, 51, 8 });
+        textCentred ({ 149, 17, 51, 8 }, "CATEGORY");
+        text (229, 34, "FROM", true);
+        text (268, 34, "TO", true);
+        text (196, 46, "TYPE", true);
+        hLine (181, 223, 42);
+        for (int y : { 42, 55, 68 })
+        {
+            hLine (250, 258, y);
+            if (y != 42)
+                hLine (216, 223, y);
+        }
+        hLine (181, 189, 55);
+        hLine (181, 189, 68);
+
+        // LIBRARY and REMOTE: Sidecar's 01V has no user library or REMOTE page yet.
+        for (auto [name, y] : { std::pair { "LIBRARY", 51 }, std::pair { "REMOTE", 64 } })
+        {
+            box ({ 124, y, 57, 11 });
+            hLine (125, 181, y + 11);
+            vLine (181, y + 1, y + 11);
+            textCentred ({ 124, y, 57, 11 }, name);
+            for (int yy = y + 1; yy < y + 10; ++yy)
+                for (int x = 125; x < 180; ++x)
+                    if (((x + yy) & 1) == 0)
+                        dot (x, yy, false);
+        }
+        const auto dimmedField = [this] (juce::Rectangle<int> r, const juce::String& s)
+        {
+            dottedH (r.getX() - 1, r.getRight(), r.getY() - 1);
+            dottedH (r.getX() - 1, r.getRight(), r.getBottom());
+            dottedV (r.getX() - 1, r.getY() - 1, r.getBottom());
+            dottedV (r.getRight(), r.getY() - 1, r.getBottom());
+            textCentred (r, s, true);
+        };
+        dimmedField ({ 190, 51, 26, 8 }, "EQ");
+        dimmedField ({ 190, 64, 26, 8 }, "INTP");
+        for (int y : { 51, 64 })
+        {
+            dimmedField ({ 224, y, 26, 8 }, "ALL");
+            dimmedField ({ 259, y, 26, 8 }, "---");
+        }
+    }
+
+    void Display::bulk (bool transmit)
+    {
+        auto* midi = dynamic_cast<Y01VMidi*> (ctx.consoleMidi);
+        if (midi == nullptr)
+            return;
+        const auto send = [midi, transmit] (char kind, int number)
+        {
+            if (transmit)
+                midi->transmit (kind, number);
+            else
+                midi->request (kind, number);
+        };
+        const auto scenes = [&] (int first, int last)
+        {
+            for (int m = first; m <= last; ++m)
+                send ('M', m);
+        };
+        const int lastScene = transmit ? juce::jmin (99, ctx.show.getNumScenes()) : 99;
+        switch (bulkCategory)
+        {
+            case 0: // ALL: everything below
+                send ('S', 0);
+                send ('P', 0);
+                send ('C', 0);
+                send ('M', 127);
+                scenes (1, lastScene);
+                break;
+            case 1: send ('S', 0); break;
+            case 2: send ('P', 0); break;
+            case 3: send ('C', 0); break;
+            default:
+                if (bulkFrom == 0)
+                {
+                    send ('M', 127);
+                    scenes (1, lastScene);
+                }
+                else if (bulkFrom == 1)
+                    send ('M', 127);
+                else
+                    scenes (bulkFrom - 1, juce::jmin (juce::jmax (bulkTo, bulkFrom - 1), lastScene));
+                break;
+        }
+    }
+
+    void Display::drawMidiLocal()
+    {
+        // p.234: as the page stands with LOCAL CONTROL ON. Its OFF (the panel works
+        // a remote 01V over MIDI) isn't built.
+        header ("LOCAL CONTROL");
+        text (151, 7, "LOCAL CONTROL:");
+        fill ({ 236, 5, 33, 10 });
+        textCentred ({ 236, 5, 33, 10 }, "ON", false, false);
+        for (int y : { 19, 20 })
+            hLine (58, 291, y);
+        box ({ 58, 22, 134, 54 });
+
+        text (63, 24, "CONTROLLER");
+        box ({ 64, 31, 47, 38 });
+        const int xs[] = { 71, 81, 92, 102 };
+        for (int x : xs)
+        {
+            dial (x, 37, 3, 0.5f);
+            box ({ x - 4, 45, 8, 5 });
+            vLine (x, 52, 67);
+            fill ({ x - 2, 58, 5, 4 });
+        }
+        for (int y : { 51, 52, 53 })
+            hLine (113, 137, y);
+        for (int i = 0; i < 7; ++i)
+            vLine (138 + i, 48 + i, 56 - i);
+
+        textCentred ({ 139, 25, 54, 7 }, "INTERNAL");
+        textCentred ({ 139, 32, 54, 7 }, "PARAMETER");
+        box ({ 145, 40, 44, 26 });
+        for (int x = 147; x < 188; x += 3)
+        {
+            vLine (x, 41, 43);
+            vLine (x, 63, 65);
+        }
+        box ({ 150, 45, 34, 16 });
+        for (int x : { 160, 168 })
+        {
+            vLine (x + 3, 48, 57);
+            fill ({ x, 56, 4, 3 });
+        }
+        hLine (163, 171, 48);
+    }
+
     void Display::buildMemory()
     {
         setMemory (memory);
         add (Cell::Button, { 61, 14, 35, 17 }, {}, "TITLE|EDIT").press = [this] { editMemoryTitle(); };
         add (Cell::Button, { 61, 36, 35, 15 }, {}, "RECALL").press = [this] { recallMemory(); };
         add (Cell::Button, { 61, 58, 35, 15 }, {}, "STORE").press = [this] { storeMemory(); };
+        // Gray until a scene has been recalled (p.189).
+        auto& undo = add (Cell::Button, { 254, 57, 35, 17 }, {}, "RECALL|UNDO");
+        undo.tiny = true;
+        undo.enabled = [this] { return ctx.show.canUndoRecall(); };
+        undo.press = [this] { undoRecall(); };
 
         KnobBinding list;
         list.label = "MEMORY";
@@ -1634,12 +2252,6 @@ namespace y01v
         hLine (243, 250, 45);
         vLine (243, 45, 79);
         text (252, 20, "PROTECT");
-        // RECALL UNDO: drawn as the page has it. Nothing here undoes a recall.
-        box ({ 254, 57, 35, 17 });
-        hLine (255, 289, 74);
-        vLine (289, 58, 74);
-        textCentred ({ 254, 57, 35, 8 }, "RECALL", true);
-        textCentred ({ 254, 65, 35, 8 }, "UNDO", true);
 
         for (int row = 0; row < 3; ++row)
         {
@@ -1762,66 +2374,6 @@ namespace y01v
                                           if (result == 1)
                                               recall();
                                       });
-    }
-
-    void Display::buildEffectLibrary()
-    {
-        const auto list = libraryModels();
-        if (library < 0)
-            library = juce::jmax (0, list.indexOf (ctx.engine.getFx().getModel (effectSlot())));
-        add (Cell::Button, { 119, 15, 34, 15 }, {}, "RECALL").press = [this] { recallLibrary(); };
-
-        KnobBinding b;
-        b.label = "PROGRAM";
-        b.steps = (float) juce::jmax (2, list.size());
-        b.get = [this, n = list.size()] { return n > 1 ? (float) library / (float) (n - 1) : 0.0f; };
-        b.set = [this, n = list.size()] (float v) { library = juce::roundToInt (v * (float) (n - 1)); };
-        b.text = [this] { return juce::String (library + 1).paddedLeft ('0', 2); };
-        add (Cell::List, { 60, 45, 210, 24 }, b);
-    }
-
-    void Display::drawEffectLibrary()
-    {
-        header ("EFFECT " + juce::String (effectSlot() + 1) + " LIBRARY");
-        // STORE and TITLE EDIT: drawn as the page has them. Presets only here, so nothing to store or retitle.
-        const auto button = [this] (juce::Rectangle<int> r)
-        {
-            box (r);
-            hLine (r.getX() + 1, r.getRight(), r.getBottom());
-            vLine (r.getRight(), r.getY() + 1, r.getBottom());
-        };
-        button ({ 73, 15, 34, 15 });
-        textCentred ({ 73, 15, 34, 15 }, "STORE");
-        button ({ 164, 15, 34, 15 });
-        textCentred ({ 164, 15, 34, 8 }, "TITLE");
-        textCentred ({ 164, 22, 34, 8 }, "EDIT");
-        text (71, 36, "No.");
-        text (92, 36, "TITLE");
-        text (199, 36, "TYPE");
-        box ({ 57, 44, 217, 35 });
-        const auto list = libraryModels();
-        const bool up = preference ("y01vLibraryUp", true);
-        for (int row = 0; row < 2; ++row)
-        {
-            const int shown = up ? library + 1 - row : library + row;
-            if (! juce::isPositiveAndBelow (shown, list.size()))
-                continue;
-            const auto& m = models::model (models::Fx, list[shown]);
-            const int y = 47 + row * 12;
-            textTall (69, y, juce::String (shown + 1).paddedLeft ('0', 2) + "." + m.name.substring (0, 13), kTitleRows, 7.0f, false);
-            fill ({ 174, y, 8, 9 });
-            text (176, y + 1, "R", true, 1, false);
-            text (194, y + 1, "=" + m.name.toUpperCase().substring (0, 12));
-            if (shown == library)
-                for (int d = 0; d < 5; ++d)
-                {
-                    vLine (61 + d, y + d, y + 8 - d);
-                    vLine (190 - d, y + d, y + 8 - d);
-                }
-        }
-        const auto& aux = ctx.engine.getAux();
-        if (effectSlot() < (int) aux.size())
-            channelMeter (*aux[(size_t) effectSlot()], "L", "R");
     }
 
     Strip* Display::sendColumn (int i, juce::String& name) const
@@ -2076,6 +2628,10 @@ namespace y01v
     void Display::buildOption()
     {
         auto* s = optionStrip();
+        if (page == 3)
+            buildOptionOut();
+        else if (page == 4)
+            buildSwap();
         if (s == nullptr || page != 1)
             return;
         auto& p = s->params;
@@ -2116,12 +2672,14 @@ namespace y01v
     void Display::drawOption()
     {
         auto* s = optionStrip();
-        if (page == 0)
+        if (page != 1)
         {
-            header ("OPTION I/O");
-            text (64, 24, "CARD: NONE", false);
-            text (64, 38, "CH 17-24 TAKE THIS COMPUTER'S", true);
-            text (64, 46, "INPUTS 17-24.", true);
+            if (page == 3)
+                drawOptionOut();
+            else if (page == 4)
+                drawSwap();
+            else
+                drawOptionMeter (page == 2);
             return;
         }
         if (s == nullptr)
@@ -2207,6 +2765,38 @@ namespace y01v
             b.text = [this, p, isOrder] { return juce::String (preference (p.key, p.initial) ? (isOrder ? "UP" : "ON") : (isOrder ? "DOWN" : "OFF")); };
             add (Cell::Switch, { isOrder ? 129 : 144, 13 + i * 18, isOrder ? 32 : 16, 9 }, std::move (b));
         }
+        if (page != 1)
+            return;
+        // The right half of PREFERENCES-1 (p.203). The two switches are kept and do nothing here:
+        // Sidecar has no digital input to lose its wordclock, and shows no "SELECTED CH" message.
+        const Pref right[] = { { "y01vSyncCaution", "DIGITAL IN", "SYNC CAUTION", true }, { "y01vSelectedChMessage", "\"SELECTED CH\"", "MESSAGE", true } };
+        for (int i = 0; i < 2; ++i)
+        {
+            const auto p = right[i];
+            KnobBinding b;
+            b.label = p.first;
+            b.steps = 2.0f;
+            b.get = [this, p] { return preference (p.key, p.initial) ? 1.0f : 0.0f; };
+            b.set = [this, p] (float v) { setPreference (p.key, v >= 0.5f); };
+            b.text = [this, p] { return juce::String (preference (p.key, p.initial) ? "ON" : "OFF"); };
+            add (Cell::Switch, { 263, 13 + i * 18, 16, 9 }, std::move (b));
+        }
+        const char* units[] = { "msec", "meter", "sample" };
+        for (int i = 0; i < 3; ++i)
+        {
+            KnobBinding b;
+            b.label = "DELAY UNITS";
+            b.steps = 2.0f;
+            b.get = [this, i] { return ctx.settings.getIntValue (kDelayUnitsKey, 0) == i ? 1.0f : 0.0f; };
+            b.set = [this, i] (float)
+            {
+                ctx.settings.setValue (kDelayUnitsKey, i);
+                shownDots.clear();
+            };
+            b.text = [name = juce::String (units[i])] { return name; };
+            auto& c = add (Cell::Switch, { 180 + i * 37, 59, 34, 9 }, std::move (b));
+            c.raw = c.tiny = true;
+        }
     }
 
     void Display::drawPreferences()
@@ -2222,36 +2812,1833 @@ namespace y01v
         }
         if (page != 1)
             return;
-        // The right half of PREFERENCES-1 (p.203): these three do nothing here. Delays are always in ms.
+        // The right half of PREFERENCES-1 (p.203): its switches are fields.
         const auto right = [this] (int row, const char* a, const char* b)
         {
             text (180, 11 + row * 18, a);
             text (180, 18 + row * 18, b);
-            box ({ 263, 13 + row * 18, 15, 9 });
-            textCentred ({ 263, 13 + row * 18, 15, 9 }, "ON", true);
             vLine (287, 9 + row * 18, 25 + row * 18);
             hLine (178, 287, 25 + row * 18);
         };
         right (0, "DIGITAL IN", "SYNC CAUTION");
         right (1, "\"SELECTED CH\"", "MESSAGE");
         text (180, 45, "DELAY UNITS");
-        const char* units[] = { "msec", "meter", "sample" };
-        for (int i = 0; i < 3; ++i)
+        vLine (287, 45, 79);
+        hLine (178, 287, 79);
+    }
+
+    //==========================================================================
+    // The second pass: SETUP, the outputs, REMOTE and the libraries. The layouts are the
+    // Owner's Manual's pictures of these pages; what each field does is its text. What the
+    // engine doesn't keep (groups, pairs, REMOTE's banks, the user programs) is the surface's
+    // own, in the app's settings: not in a scene and not on MIDI.
+    namespace
+    {
+        constexpr const char* kPanelKey = "y01v.panel";
+        constexpr const char* kLibraryKey = "y01v.library";
+        /** The output ports (livedaw_engine::profile's y01v_factory_outputs): OMNI OUT 1-4, the card's eight. */
+        constexpr int kOmniPort = 2, kOptionPort = 16;
+        /** The input ports: the card's eight after CH 1-16's jacks, 2TR IN, the coaxial DIGITAL IN. */
+        constexpr int kOptionInput = 16, kDigitalInput = 26;
+        /** AUX 1-4, BUS 1-4, ST L, ST R, CH 1-16 (p.116). */
+        constexpr int kNumOutputChoices = 26;
+        constexpr int kGroupRows[6] = { 10, 21, 32, 47, 58, 69 };
+        constexpr int kGroupCx[14] = { 112, 121, 130, 139, 153, 162, 171, 180, 194, 203, 212, 221, 236, 252 };
+
+        juce::String outputChoiceName (int choice)
         {
-            const juce::Rectangle<int> r (180 + i * 37, 59, 34, 9);
-            if (i == 0)
+            if (choice < 0)
+                return "----";
+            if (choice < 4)
+                return "AUX" + juce::String (choice + 1);
+            if (choice < 8)
+                return "BUS" + juce::String (choice - 3);
+            if (choice < 10)
+                return choice == 8 ? "ST L" : "ST R";
+            return "CH" + juce::String (choice - 9);
+        }
+
+        /** The engine's source of an output's choice. A channel's is its direct out after the fader
+            (p.116); 13/14 and 15/16 are the two sides of a stereo strip. */
+        int outputChoiceSource (int choice)
+        {
+            if (choice < 4)
+                return MixerEngine::stripSource (StripKind::Bus, kAuxBus + choice, 0);
+            if (choice < 8)
+                return MixerEngine::stripSource (StripKind::Bus, choice - 4, 0);
+            if (choice < 10)
+                return MixerEngine::stripSource (StripKind::Main, 0, choice - 8);
+            const int ch = choice - 10;
+            return DirectOut { StripKind::Channel, ch < 12 ? ch + 1 : 13 + (ch - 12) / 2, ch < 12 ? 0 : (ch - 12) % 2, true }.code();
+        }
+
+        // REMOTE page 1's parameters (pp.195-196). A strip here is a code: 0-21 the channels,
+        // 22-23 the returns, 24-27 AUX 1-4, 28-31 BUS 1-4, 32-33 EFFECT 1-2, 34 ST OUT.
+        enum RemoteWhat
+        {
+            rNone,
+            rFader,
+            rSend,
+            rDelayTime,
+            rEq,
+            rAtt,
+            rFx,
+            rPan,
+            rOn,
+            rBusToSt,
+            rPhase,
+            rPrePost,
+            rDelayOn,
+            rEqOn,
+            rDynOn
+        };
+
+        struct RemoteTarget
+        {
+            juce::String a, b, c;
+            int what, strip, n;
+        };
+
+        juce::String remoteStripName (int s)
+        {
+            if (s < 12)
+                return "CH" + juce::String (s + 1);
+            if (s < 14)
+                return "CH" + juce::String (13 + 2 * (s - 12)) + "-" + juce::String (14 + 2 * (s - 12));
+            if (s < 22)
+                return "CH" + juce::String (s + 3);
+            if (s < 24)
+                return "RETURN" + juce::String (s - 21);
+            if (s < 28)
+                return "AUX" + juce::String (s - 23);
+            if (s < 32)
+                return "BUS" + juce::String (s - 27);
+            if (s < 34)
+                return "EFFECT" + juce::String (s - 31);
+            return "ST OUT";
+        }
+
+        const std::vector<RemoteTarget>& remoteTargets (bool on)
+        {
+            static const char* const sends[] = { "AUX1 SEND", "AUX2 SEND", "AUX3 SEND", "AUX4 SEND", "EFF1 SEND", "EFF2 SEND" };
+            // CH 17-24 reach AUX 1-2 and the effects only; a return can't feed its own effect.
+            const auto sendable = [] (int s, int n) { return ! (s >= 14 && s < 22 && (n == 2 || n == 3)) && ! (s >= 22 && n == 4 + (s - 22)); };
+            static const std::vector<RemoteTarget> faders = [sendable]
+            {
+                std::vector<RemoteTarget> v { { "NO ASSIGN", "-", "-", rNone, 0, 0 } };
+                for (int s = 0; s < 24; ++s)
+                    v.push_back ({ "FADER", "CHANNEL", remoteStripName (s), rFader, s, 0 });
+                for (int s = 24; s < 35; ++s)
+                    v.push_back ({ "FADER", "MASTER", remoteStripName (s), rFader, s, 0 });
+                for (int n = 0; n < 6; ++n)
+                    for (int s = 0; s < 24; ++s)
+                        if (sendable (s, n))
+                            v.push_back ({ "FADER", sends[n], remoteStripName (s), rSend, s, n });
+                for (int s = 0; s < 14; ++s)
+                    v.push_back ({ "DELAY", "TIME", remoteStripName (s), rDelayTime, s, 0 });
+                v.push_back ({ "DELAY", "TIME", "ST OUT", rDelayTime, 34, 0 });
+                static const char* const bands[] = { "LOW", "L-MID", "H-MID", "HIGH" };
+                static const char* const rows[] = { "F ", "G ", "Q " };
+                for (int band = 0; band < 4; ++band)
+                    for (int row = 0; row < 3; ++row)
+                        for (int s = 0; s < 35; ++s)
+                        {
+                            const bool has = s < 28 || s == 34;                             // not BUS, not EFFECT
+                            const bool twoBand = s >= 14 && s < 22 && (band == 1 || band == 2); // CH 17-24: LOW and HIGH
+                            if (has && ! twoBand)
+                                v.push_back ({ "EQ", juce::String (rows[row]) + bands[band], remoteStripName (s), rEq, s, band * 3 + row });
+                        }
+                for (int s = 0; s < 22; ++s)
+                    v.push_back ({ "EQ", "ATT", remoteStripName (s), rAtt, s, 0 });
+                for (int slot = 0; slot < 2; ++slot)
+                    for (int n = 0; n < 19; ++n)
+                        v.push_back ({ "EFFECT", "EFFECT" + juce::String (slot + 1), "PARAM" + juce::String (n + 1), rFx, slot, n });
+                for (int s = 0; s < 24; ++s)
+                    v.push_back ({ "PAN", "CHANNEL", remoteStripName (s), rPan, s, 0 });
+                for (int s = 28; s < 32; ++s)
+                    v.push_back ({ "PAN", "BUS TO ST", remoteStripName (s), rPan, s, 0 });
+                return v;
+            }();
+            static const std::vector<RemoteTarget> keys = [sendable]
+            {
+                std::vector<RemoteTarget> v { { "NO ASSIGN", "-", "-", rNone, 0, 0 } };
+                for (int s = 0; s < 24; ++s)
+                    v.push_back ({ "ON", "CHANNEL", remoteStripName (s), rOn, s, 0 });
+                for (int s = 24; s < 35; ++s)
+                    v.push_back ({ "ON", "MASTER", remoteStripName (s), rOn, s, 0 });
+                for (int s = 28; s < 32; ++s)
+                    v.push_back ({ "BUS TO ST", "-", remoteStripName (s), rBusToSt, s, 0 });
+                for (int s = 0; s < 14; ++s)
+                    v.push_back ({ "PHASE", "CHANNEL", remoteStripName (s), rPhase, s, 0 });
+                for (int n = 0; n < 6; ++n)
+                    for (int s = 0; s < 24; ++s)
+                        if (sendable (s, n))
+                            v.push_back ({ "PRE/POST", sends[n], remoteStripName (s), rPrePost, s, n });
+                for (int s = 0; s < 14; ++s)
+                    v.push_back ({ "DELAY", "CHANNEL", remoteStripName (s), rDelayOn, s, 0 });
+                v.push_back ({ "DELAY", "OUTPUT", "ST OUT", rDelayOn, 34, 0 });
+                for (int s = 0; s < 24; ++s)
+                    v.push_back ({ "EQ", "CHANNEL", remoteStripName (s), rEqOn, s, 0 });
+                for (int s : { 24, 25, 26, 27, 34 })
+                    v.push_back ({ "EQ", "OUTPUT", remoteStripName (s), rEqOn, s, 0 });
+                for (int s = 0; s < 14; ++s)
+                    v.push_back ({ "DYNAMICS", "CHANNEL", remoteStripName (s), rDynOn, s, 0 });
+                for (int s : { 24, 25, 26, 27, 34 })
+                    v.push_back ({ "DYNAMICS", "OUTPUT", remoteStripName (s), rDynOn, s, 0 });
+                return v;
+            }();
+            return on ? keys : faders;
+        }
+
+        int findRemoteTarget (bool on, const juce::String& a, const juce::String& b, const juce::String& c)
+        {
+            const auto& list = remoteTargets (on);
+            for (int i = 0; i < (int) list.size(); ++i)
+                if (list[(size_t) i].a == a && list[(size_t) i].b == b && list[(size_t) i].c == c)
+                    return i;
+            return 0;
+        }
+
+        const juce::String& remoteColumnOf (const RemoteTarget& t, int column) { return column == 0 ? t.a : column == 1 ? t.b : t.c; }
+
+        /** The targets a column offers: one for each of its names, among those sharing the columns before it. */
+        std::vector<int> remoteChoices (bool on, int column, int current)
+        {
+            const auto& list = remoteTargets (on);
+            const auto& now = list[(size_t) juce::jlimit (0, (int) list.size() - 1, current)];
+            std::vector<int> out;
+            juce::StringArray seen;
+            for (int i = 0; i < (int) list.size(); ++i)
+            {
+                const auto& t = list[(size_t) i];
+                if ((column >= 1 && t.a != now.a) || (column >= 2 && t.b != now.b))
+                    continue;
+                const auto& label = remoteColumnOf (t, column);
+                if (! seen.contains (label))
+                {
+                    seen.add (label);
+                    out.push_back (i);
+                }
+            }
+            return out;
+        }
+
+        juce::String remoteControlName (int control)
+        {
+            return control < 12 ? juce::String (control + 1) : control == 12 ? juce::String ("13-14") : control == 13 ? juce::String ("15-16") : juce::String ("MAS");
+        }
+    } // namespace
+
+    //==========================================================================
+    void Display::header (const juce::String& s, int y)
+    {
+        const int w = textWidth (s, false) + 8, x = kLeftColumn + 2;
+        text (x + 4, y, s);
+        vLine (x, y, y + 7);
+        vLine (x + w, y, y + 7);
+        vLine (x + w + 1, y, y + 8);
+        hLine (x + 1, x + w, y + 7);
+        hLine (x + 2, x + w + 1, y + 8);
+    }
+
+    juce::String Display::delayText (float ms) const
+    {
+        switch (ctx.settings.getIntValue (kDelayUnitsKey, 0))
+        {
+            case 1:  return juce::String (ms * 0.34067f, 1); // 102.2 m for 300 ms (p.117)
+            case 2:  return juce::String (juce::roundToInt ((double) ms * (ctx.engine.getSampleRate() > 0.0 ? ctx.engine.getSampleRate() : 48000.0) / 1000.0));
+            default: break;
+        }
+        return juce::String (ms, 1);
+    }
+
+    juce::String Display::delayUnitLabel() const
+    {
+        const int units = ctx.settings.getIntValue (kDelayUnitsKey, 0);
+        return units == 1 ? "[meter]" : units == 2 ? "[sample]" : "[ msec]";
+    }
+
+    //==========================================================================
+    // The panel's own state.
+    void Display::savePanel()
+    {
+        juce::StringArray v { "1" };
+        for (int g : panel.faderGroup)
+            v.add (juce::String (g));
+        for (int g : panel.muteGroup)
+            v.add (juce::String (g));
+        for (bool on : panel.groupOn)
+            v.add (on ? "1" : "0");
+        for (bool on : panel.pair)
+            v.add (on ? "1" : "0");
+        v.add (panel.soloOn ? "1" : "0");
+        v.add (panel.lastSolo ? "1" : "0");
+        v.add (juce::String (panel.bank));
+        for (const auto& bank : panel.remote)
+            for (int t : bank)
+                v.add (juce::String (t));
+        ctx.settings.setValue (kPanelKey, v.joinIntoString (" "));
+    }
+
+    void Display::loadPanel()
+    {
+        panel = {};
+        for (int bank = 0; bank < 4; ++bank)
+            initRemoteBank (bank);
+        juce::StringArray v;
+        v.addTokens (ctx.settings.getValue (kPanelKey), " ", "");
+        v.removeEmptyStrings();
+        if (v.size() != 1 + 14 + 14 + 6 + 10 + 3 + 120 || v[0] != "1")
+            return;
+        int at = 1;
+        const auto next = [&v, &at] { return v[at++].getIntValue(); };
+        for (auto& g : panel.faderGroup)
+            g = juce::jlimit (0, 3, next());
+        for (auto& g : panel.muteGroup)
+            g = juce::jlimit (0, 3, next());
+        for (auto& on : panel.groupOn)
+            on = next() != 0;
+        for (auto& on : panel.pair)
+            on = next() != 0;
+        panel.soloOn = next() != 0;
+        panel.lastSolo = next() != 0;
+        panel.bank = juce::jlimit (0, 3, next());
+        for (auto& bank : panel.remote)
+            for (int i = 0; i < 30; ++i)
+                bank[(size_t) i] = juce::jlimit (0, (int) remoteTargets (i >= 15).size() - 1, next());
+    }
+
+    int Display::getGroup (int fader, bool mute) const noexcept
+    {
+        if (! juce::isPositiveAndBelow (fader, 14))
+            return 0;
+        return mute ? panel.muteGroup[(size_t) fader] : panel.faderGroup[(size_t) fader];
+    }
+
+    void Display::setGroup (int fader, bool mute, int group)
+    {
+        if (! juce::isPositiveAndBelow (fader, 14))
+            return;
+        auto& groups = mute ? panel.muteGroup : panel.faderGroup;
+        groups[(size_t) fader] = juce::jlimit (0, 3, group);
+        // A pair goes in and out together (p.55).
+        if (fader < 12 && panel.pair[(size_t) (fader / 2)])
+            groups[(size_t) (fader ^ 1)] = groups[(size_t) fader];
+        savePanel();
+        refresh();
+    }
+
+    bool Display::isGroupOn (int group) const noexcept { return juce::isPositiveAndBelow (group, 6) && panel.groupOn[(size_t) group]; }
+
+    void Display::setGroupOn (int group, bool on)
+    {
+        if (juce::isPositiveAndBelow (group, 6))
+        {
+            panel.groupOn[(size_t) group] = on;
+            savePanel();
+        }
+    }
+
+    bool Display::isPaired (int pair) const noexcept { return juce::isPositiveAndBelow (pair, 10) && panel.pair[(size_t) pair]; }
+
+    namespace
+    {
+        /** The two strips of a pair: 0-5 CH 1/2 to 11/12, 6-7 AUX 1/2 and 3/4, 8-9 BUS 1/2 and 3/4. */
+        std::pair<Strip*, Strip*> pairStrips (MixerEngine& engine, int pair)
+        {
+            const auto& channels = engine.getChannels();
+            const auto& buses = engine.getBuses();
+            const auto of = [] (const MixerEngine::StripList& list, int first) -> std::pair<Strip*, Strip*>
+            {
+                if (first + 1 < (int) list.size())
+                    return { list[(size_t) first].get(), list[(size_t) first + 1].get() };
+                return { nullptr, nullptr };
+            };
+            if (pair < 6)
+                return of (channels, pair * 2);
+            return of (buses, pair < 8 ? kAuxBus + (pair - 6) * 2 : (pair - 8) * 2);
+        }
+    } // namespace
+
+    void Display::linkStrips (Strip& a, Strip& b, bool input)
+    {
+        const auto f = [this] (std::atomic<float>& x, std::atomic<float>& y)
+        {
+            y = x.load();
+            twinFloats.push_back ({ &x, &y, x.load() });
+        };
+        const auto t = [this] (std::atomic<bool>& x, std::atomic<bool>& y)
+        {
+            y = x.load();
+            twinBools.push_back ({ &x, &y, x.load() });
+        };
+        const auto n = [this] (std::atomic<int32_t>& x, std::atomic<int32_t>& y)
+        {
+            y = x.load();
+            twinInts.push_back ({ &x, &y, x.load() });
+        };
+        auto& pa = a.params;
+        auto& pb = b.params;
+        // The dynamics' type first: choosing one loads its initial values.
+        if (pa.dynamics().model.load() != pb.dynamics().model.load())
+            b.setModel (ModelBlock::Dynamics, pa.dynamics().model.load());
+        twinModels.push_back ({ &a, &b, pa.dynamics().model.load() });
+        f (pa.faderDb, pb.faderDb);
+        t (pa.mute, pb.mute);
+        t (pa.eq().on, pb.eq().on);
+        for (int i = 0; i < ld::kMaxEqParams; ++i)
+            f (pa.eq().values[i], pb.eq().values[i]);
+        t (pa.dynamics().on, pb.dynamics().on);
+        for (int i = 0; i < ld::kMaxDynParams; ++i)
+            f (pa.dynamics().values[i], pb.dynamics().values[i]);
+        if (! input)
+            return;
+        f (pa.input.trimDb, pb.input.trimDb);
+        f (pa.input.delay, pb.input.delay);
+        t (pa.input.delayOn, pb.input.delayOn);
+        for (int bus = kAuxBus; bus < kEffectBus + 2; ++bus)
+        {
+            f (a.sends[(size_t) bus].levelDb, b.sends[(size_t) bus].levelDb);
+            n (a.sends[(size_t) bus].mode, b.sends[(size_t) bus].mode);
+        }
+    }
+
+    void Display::relink()
+    {
+        twinFloats.clear();
+        twinBools.clear();
+        twinInts.clear();
+        twinModels.clear();
+        for (int pair = 0; pair < 10; ++pair)
+            if (panel.pair[(size_t) pair])
+                if (const auto [a, b] = pairStrips (ctx.engine, pair); a != nullptr && b != nullptr)
+                    linkStrips (*a, *b, pair < 6);
+        linksPrimed = false;
+    }
+
+    void Display::setPair (int pair, bool on, bool fromSecond)
+    {
+        if (! juce::isPositiveAndBelow (pair, 10))
+            return;
+        if (on && fromSecond)
+            if (const auto [a, b] = pairStrips (ctx.engine, pair); a != nullptr && b != nullptr)
+                linkStrips (*b, *a, pair < 6); // copies the second onto the first; relink() makes the pair
+        panel.pair[(size_t) pair] = on;
+        if (on && pair < 6)
+        {
+            // The second follows the first into its groups.
+            panel.faderGroup[(size_t) pair * 2 + 1] = panel.faderGroup[(size_t) pair * 2];
+            panel.muteGroup[(size_t) pair * 2 + 1] = panel.muteGroup[(size_t) pair * 2];
+        }
+        savePanel();
+        relink();
+        refresh();
+    }
+
+    void Display::confirmPair (int pair)
+    {
+        if (isPaired (pair))
+        {
+            setPair (pair, false);
+            return;
+        }
+        const int first = pair < 6 ? pair * 2 + 1 : ((pair - 6) % 2) * 2 + 1;
+        const juce::String what (pair < 6 ? "CH" : pair < 8 ? "AUX" : "BUS");
+        juce::AlertWindow::showAsync (juce::MessageBoxOptions()
+                                          .withTitle (what + " PAIR")
+                                          .withMessage ("Which settings does the pair take?")
+                                          .withButton (what + " " + juce::String (first) + " -> " + juce::String (first + 1))
+                                          .withButton (what + " " + juce::String (first + 1) + " -> " + juce::String (first))
+                                          .withButton ("CANCEL")
+                                          .withAssociatedComponent (this),
+                                      [safe = juce::Component::SafePointer<Display> (this), pair] (int result)
+                                      {
+                                          if (safe != nullptr && (result == 1 || result == 2))
+                                              safe->setPair (pair, true, result == 2);
+                                      });
+    }
+
+    void Display::tickLinks()
+    {
+        const auto& channels = ctx.engine.getChannels();
+        const int n = juce::jmin (14, (int) channels.size());
+        const auto snapshot = [this, &channels, n]
+        {
+            for (int i = 0; i < n; ++i)
+            {
+                lastFader[(size_t) i] = channels[(size_t) i]->params.faderDb.load();
+                lastMute[(size_t) i] = channels[(size_t) i]->params.mute.load();
+            }
+        };
+        if (! linksPrimed)
+        {
+            snapshot();
+            linksPrimed = true;
+            return;
+        }
+
+        // A group follows the one fader or [ON] key that moved. Several at once is a scene
+        // recall or the like: nothing follows that.
+        const auto law = ctx.engine.getFaderLaw ((int) StripKind::Channel);
+        for (int g = 1; g <= 3; ++g)
+        {
+            int moved = -1, count = 0;
+            for (int i = 0; i < n; ++i)
+                if (panel.faderGroup[(size_t) i] == g && ! juce::exactlyEqual (channels[(size_t) i]->params.faderDb.load(), lastFader[(size_t) i]))
+                {
+                    moved = i;
+                    ++count;
+                }
+            if (count == 1 && panel.groupOn[(size_t) (g - 1)])
+            {
+                // By the same travel: Sidecar's reading (the manual says only that one fader works the group).
+                const float delta = law.toPosition (channels[(size_t) moved]->params.faderDb.load()) - law.toPosition (lastFader[(size_t) moved]);
+                for (int i = 0; i < n; ++i)
+                    if (i != moved && panel.faderGroup[(size_t) i] == g)
+                    {
+                        auto& db = channels[(size_t) i]->params.faderDb;
+                        db = law.toDb (juce::jlimit (0.0f, 1.0f, law.toPosition (db.load()) + delta));
+                    }
+            }
+
+            moved = -1;
+            count = 0;
+            for (int i = 0; i < n; ++i)
+                if (panel.muteGroup[(size_t) i] == g && channels[(size_t) i]->params.mute.load() != lastMute[(size_t) i])
+                {
+                    moved = i;
+                    ++count;
+                }
+            if (count == 1 && panel.groupOn[(size_t) (g + 2)])
+                for (int i = 0; i < n; ++i)
+                    if (i != moved && panel.muteGroup[(size_t) i] == g)
+                    {
+                        // Those on go off, those off come on (p.56).
+                        auto& mute = channels[(size_t) i]->params.mute;
+                        mute = ! mute.load();
+                    }
+        }
+
+        // The pairs: whichever side changed, the other takes it.
+        for (auto& t : twinModels)
+        {
+            const int a = t.a->params.dynamics().model.load(), b = t.b->params.dynamics().model.load();
+            if (a != t.last)
+            {
+                t.b->setModel (ModelBlock::Dynamics, a);
+                t.last = a;
+            }
+            else if (b != t.last)
+            {
+                t.a->setModel (ModelBlock::Dynamics, b);
+                t.last = b;
+            }
+        }
+        for (auto& t : twinFloats)
+        {
+            const float a = t.a->load(), b = t.b->load();
+            if (! juce::exactlyEqual (a, t.last))
+            {
+                *t.b = a;
+                t.last = a;
+            }
+            else if (! juce::exactlyEqual (b, t.last))
+            {
+                *t.a = b;
+                t.last = b;
+            }
+        }
+        for (auto& t : twinBools)
+        {
+            const bool a = t.a->load(), b = t.b->load();
+            if (a != t.last)
+            {
+                *t.b = a;
+                t.last = a;
+            }
+            else if (b != t.last)
+            {
+                *t.a = b;
+                t.last = b;
+            }
+        }
+        for (auto& t : twinInts)
+        {
+            const int32_t a = t.a->load(), b = t.b->load();
+            if (a != t.last)
+            {
+                *t.b = a;
+                t.last = a;
+            }
+            else if (b != t.last)
+            {
+                *t.a = b;
+                t.last = b;
+            }
+        }
+        snapshot();
+    }
+
+    bool Display::pressSel (int fader)
+    {
+        if (function == Function::Setup && page == 2 && juce::isPositiveAndBelow (fader, 14) && juce::isPositiveAndBelow (focus, 6))
+        {
+            const bool mute = focus >= 3;
+            const int group = focus % 3 + 1;
+            setGroup (fader, mute, getGroup (fader, mute) == group ? 0 : group);
+            return true;
+        }
+        if (isRemoteActive() && juce::isPositiveAndBelow (fader, 15))
+        {
+            remoteChannel = fader;
+            refresh();
+            return true;
+        }
+        return false;
+    }
+
+    //==========================================================================
+    // SETUP page 1 (p.209): as the page stands on the internal clock. Sidecar's clock is the audio device's.
+    void Display::drawWordClock()
+    {
+        header ("WORD CLOCK SELECT");
+        const double rate = ctx.engine.getSampleRate() > 0.0 ? ctx.engine.getSampleRate() : 48000.0;
+        const auto fs = juce::String (rate / 1000.0, std::fmod (rate, 1000.0) < 1.0 ? 0 : 1) + "k";
+        box ({ 59, 21, 173, 46 });
+        box ({ 125, 21, 43, 10 });
+        textCentred ({ 125, 21, 43, 10 }, "SOURCE");
+        box ({ 64, 34, 57, 29 });
+        box ({ 70, 39, 45, 19 });
+        textCentred ({ 70, 40, 45, 8 }, "AUTO");
+        textCentred ({ 70, 48, 45, 8 }, "NAVIGATE", true);
+        fill ({ 127, 40, 30, 18 });
+        textCentred ({ 127, 40, 30, 9 }, "INT", false, false);
+        textCentred ({ 127, 49, 30, 9 }, fs, textWidth (fs, false) > 28, false);
+        const auto other = [this] (juce::Rectangle<int> r, const char* first, const char* second)
+        {
+            box (r);
+            hLine (r.getX() + 1, r.getRight(), r.getBottom());
+            vLine (r.getRight(), r.getY() + 1, r.getBottom());
+            textCentred (r.withHeight (9), first, true);
+            textCentred (r.withTrimmedTop (8), second, true);
+        };
+        other ({ 161, 39, 30, 18 }, "ST IN", "DIGITAL");
+        other ({ 196, 39, 30, 18 }, "OPTION", "SLOT");
+        box ({ 236, 21, 54, 46 });
+        box ({ 252, 21, 22, 10 });
+        textCentred ({ 252, 21, 22, 10 }, "Fs");
+        box ({ 242, 38, 42, 20 });
+        textCentred ({ 242, 38, 42, 20 }, fs);
+    }
+
+    // SETUP page 2 (pp.78, 80).
+    void Display::buildMonitorSetup()
+    {
+        auto& e = ctx.engine;
+        // One source at a time here: the engine's monitor has one (the 01V mixes those chosen).
+        const auto source = [this] (const juce::String& name, StripKind kind, int number, juce::Rectangle<int> area)
+        {
+            const int index = MixerEngine::monitorSourceIndex (kind, number);
+            KnobBinding b;
+            b.label = "SOURCE";
+            b.steps = 2.0f;
+            b.get = [this, index] { return ctx.engine.speakers.source.load() == index ? 1.0f : 0.0f; };
+            b.set = [this, index] (float)
+            {
+                ctx.engine.speakers.source = index;
+                ctx.engine.phones.source.source = index; // the phones carry the monitor's signal (p.77)
+            };
+            b.text = [name] { return name; };
+            add (Cell::Switch, area, std::move (b)).raw = true;
+        };
+        source ("STEREO OUT", StripKind::Main, 0, { 66, 23, 66, 10 });
+        for (int i = 0; i < 4; ++i)
+            source (juce::String (i + 1), StripKind::Bus, kAuxBus + i, { 155 + i * 15, 23, 12, 10 });
+        for (int i = 0; i < 4; ++i)
+            source (juce::String (i + 1), StripKind::Bus, i, { 155 + i * 15, 35, 12, 10 });
+
+        auto trim = bindLinear ("MONI TRIM", e.speakers.sourceLevelDb, -60.0f, 6.0f, "dB", 0, 0.0f);
+        trim.steps = 67.0f;
+        trim.text = [&e] { return juce::String (juce::roundToInt (e.speakers.sourceLevelDb.load())) + "dB"; };
+        auto& t = add (Cell::Text, { 259, 1, 31, 9 }, std::move (trim));
+        t.dotted = t.raw = true;
+        add (Cell::Switch, { 266, 23, 26, 10 }, bindBool ("MONO", e.monitorMono, "MONO", "ST")).raw = true;
+
+        const auto choice = [this] (const juce::String& label, std::function<bool()> get, std::function<void (bool)> set, const char* on, const char* off, juce::Rectangle<int> area, bool plain)
+        {
+            KnobBinding b;
+            b.label = label;
+            b.steps = 2.0f;
+            b.get = [get] { return get() ? 1.0f : 0.0f; };
+            b.set = [set] (float v) { set (v >= 0.5f); };
+            b.text = [get, on, off] { return juce::String (get() ? on : off); };
+            auto& c = add (Cell::Switch, area, std::move (b));
+            c.raw = true;
+            c.plain = plain;
+        };
+        choice ("SOLO", [this] { return panel.soloOn; },
+                [this] (bool v)
+                {
+                    panel.soloOn = v;
+                    if (! v) // nothing is soloed while it's disabled
+                        for (auto* list : { &ctx.engine.getChannels(), &ctx.engine.getAux() })
+                            for (const auto& s : *list)
+                                s->params.solo = false;
+                    savePanel();
+                },
+                "ENABLE", "DISABLE", { 61, 69, 42, 10 }, false);
+        // RECORDING SOLO is to the monitor alone; MIXDOWN SOLO mutes the others on the stereo bus.
+        choice ("SOLO MODE", [&e] { return e.soloMode.load() == (int) ld::kSoloSip; },
+                [&e] (bool v) { e.soloMode = (int32_t) (v ? ld::kSoloSip : ld::kSoloStudio); },
+                "MIXDOWN SOLO", "RECORDING SOLO", { 112, 69, 72, 10 }, true);
+        choice ("SEL MODE", [this] { return panel.lastSolo; },
+                [this] (bool v)
+                {
+                    panel.lastSolo = v;
+                    savePanel();
+                },
+                "LAST SOLO", "MIX SOLO", { 193, 69, 54, 10 }, true);
+        choice ("LISTEN", [&e] { return e.soloAfl.load(); }, [&e] (bool v) { e.soloAfl = v; }, "AFL", "PFL", { 258, 69, 32, 10 }, true);
+    }
+
+    void Display::drawMonitorSetup()
+    {
+        header ("MONITOR SETUP");
+        box ({ 62, 12, 44, 10 });
+        textCentred ({ 62, 12, 44, 10 }, "SOURCE");
+        text (137, 25, "AUX");
+        text (137, 37, "BUS");
+        text (190, 2, "MONI TRIM =");
+        box ({ 217, 12, 40, 10 });
+        textCentred ({ 217, 12, 40, 10 }, "LISTEN");
+        box ({ 261, 12, 29, 10 });
+        textCentred ({ 261, 12, 29, 10 }, "MONO");
+        // ST CASCADE IN, the monitor's own LISTEN and SOLO TRIM: drawn as the page has them. The
+        // engine has no stereo cascade input, and its monitor takes its source after the fader.
+        const auto plain = [this] (juce::Rectangle<int> r, const juce::String& s)
+        {
+            box (r);
+            hLine (r.getX() + 1, r.getRight(), r.getBottom());
+            vLine (r.getRight(), r.getY() + 1, r.getBottom());
+            textCentred (r, s, textWidth (s, false) > r.getWidth() - 1);
+        };
+        plain ({ 66, 35, 66, 10 }, "ST CASCADE IN");
+        fill ({ 222, 23, 32, 10 });
+        textCentred ({ 222, 23, 32, 10 }, "AFL", false, false);
+
+        header ("SOLO SETUP", 48);
+        text (190, 49, "SOLO TRIM =");
+        dottedH (258, 290, 46);
+        dottedH (258, 290, 56);
+        dottedV (258, 46, 56);
+        dottedV (290, 46, 56);
+        text (289 - textWidth ("0dB", false), 48, "0dB");
+        const auto label = [this] (juce::Rectangle<int> r, const char* s)
+        {
+            box (r);
+            textCentred (r, s);
+        };
+        label ({ 59, 58, 30, 10 }, "SOLO");
+        label ({ 110, 58, 60, 10 }, "SOLO MODE");
+        label ({ 191, 58, 53, 10 }, "SEL MODE");
+        label ({ 253, 58, 40, 10 }, "LISTEN");
+    }
+
+    // SETUP page 3 (pp.55-56): the cursor is on a group; a [SEL] key puts its fader in or takes it out.
+    void Display::buildGroups()
+    {
+        for (int g = 0; g < 6; ++g)
+        {
+            KnobBinding b;
+            b.label = "ENABLE";
+            b.steps = 2.0f;
+            b.get = [this, g] { return panel.groupOn[(size_t) g] ? 1.0f : 0.0f; };
+            b.set = [this, g] (float v) { setGroupOn (g, v >= 0.5f); };
+            b.text = [g] { return juce::String::charToString ((juce::juce_wchar) ('A' + g)); };
+            add (Cell::Switch, { 270, kGroupRows[g], 16, 9 }, std::move (b)).raw = true;
+        }
+    }
+
+    void Display::drawGroups()
+    {
+        header ("GROUP");
+        for (int i = 0; i < 14; ++i)
+        {
+            const auto name = i < 12 ? juce::String (i + 1) : juce::String (13 + 2 * (i - 12)) + "-" + juce::String (14 + 2 * (i - 12));
+            const bool tiny = name.length() > 1;
+            text (kGroupCx[i] - textWidth (name, tiny) / 2, tiny ? 3 : 2, name, tiny);
+        }
+        text (267, 3, "ENABLE", true);
+        box ({ 58, 19, 36, 10 });
+        textCentred ({ 58, 19, 36, 10 }, "FADER");
+        box ({ 62, 57, 29, 10 });
+        textCentred ({ 62, 57, 29, 10 }, "MUTE");
+        for (int x : { 98, 261 })
+        {
+            vLine (x, 10, 40);
+            vLine (x, 47, 77);
+        }
+        for (int g = 0; g < 6; ++g)
+        {
+            const int cy = kGroupRows[g] + 4;
+            text (101, cy - 3, juce::String::charToString ((juce::juce_wchar) ('A' + g)));
+            for (int i = 0; i < 14; ++i)
+            {
+                const int cx = kGroupCx[i];
+                if (getGroup (i, g >= 3) == g % 3 + 1)
+                {
+                    fill ({ cx - 2, cy - 3, 5, 7 });
+                    vLine (cx - 3, cy - 2, cy + 2);
+                    vLine (cx + 3, cy - 2, cy + 2);
+                }
+                else
+                    for (int d = -2; d <= 2; d += 2)
+                        dot (cx + d, cy + 2);
+            }
+        }
+    }
+
+    // SETUP page 4 (pp.52, 101, 110).
+    void Display::buildPairs()
+    {
+        for (int pair = 0; pair < 10; ++pair)
+        {
+            const int column = pair < 6 ? pair : pair - 5;
+            auto& c = add (Cell::Button, { 56 + column * 40, pair < 6 ? 28 : 65, 36, 10 }, {});
+            c.custom = true;
+            c.press = [this, pair] { confirmPair (pair); };
+        }
+    }
+
+    void Display::drawPairs()
+    {
+        header ("PAIR");
+        hLine (61, 158, 11);
+        hLine (191, 286, 11);
+        text (162, 8, "INPUT");
+        hLine (97, 123, 48);
+        hLine (145, 171, 48);
+        text (126, 45, "AUX");
+        hLine (177, 203, 48);
+        hLine (225, 251, 48);
+        text (206, 45, "BUS");
+        // A heart between the two numbers: whole when they're a pair, broken when not.
+        static const uint8_t heart[6] = { 0x36, 0x7F, 0x7F, 0x3E, 0x1C, 0x08 };
+        for (int pair = 0; pair < 10; ++pair)
+        {
+            const int column = pair < 6 ? pair : pair - 5;
+            const juce::Rectangle<int> r (56 + column * 40, pair < 6 ? 28 : 65, 36, 10);
+            const int first = pair < 6 ? pair * 2 + 1 : ((pair - 6) % 2) * 2 + 1, y = r.getY() - 9;
+            const bool paired = isPaired (pair);
+            text (r.getX() + 4, y, juce::String (first));
+            text (r.getRight() - 3 - textWidth (juce::String (first + 1), false), y, juce::String (first + 1));
+            for (int row = 0; row < 6; ++row)
+                for (int col = 0; col < 7; ++col)
+                    if ((heart[row] >> (6 - col)) & 1)
+                    {
+                        if (paired)
+                            dot (r.getX() + 15 + col, y + row);
+                        else if (col != 3) // two halves, a gap between
+                            dot (r.getX() + 15 + col + (col < 3 ? -1 : 1), y + row + (col < 3 ? 0 : 1));
+                    }
+            if (column > (pair < 6 ? 0 : 1))
+                dottedV (r.getX() - 2, y, r.getBottom());
+            if (paired)
             {
                 fill (r);
-                textCentred (r, units[i], true, false);
+                textCentred (r, "STEREO", true, false);
             }
             else
             {
                 box (r);
-                textCentred (r, units[i], true);
+                hLine (r.getX() + 1, r.getRight(), r.getBottom());
+                vLine (r.getRight(), r.getY() + 1, r.getBottom());
+                textCentred (r, "MONOx2", true);
             }
         }
-        vLine (287, 45, 79);
-        hLine (178, 287, 79);
+    }
+
+    // SETUP page 5 (p.212): drawn as the page stands. Sidecar's outputs aren't dithered.
+    void Display::drawDither()
+    {
+        header ("DITHER");
+        text (108, 17, "ON/OFF");
+        text (162, 17, "WORD LENGTH (BIT)");
+        for (int y : { 24, 48, 72 })
+        {
+            hLine (62, 105, y);
+            hLine (109, 137, y);
+            hLine (141, 288, y);
+        }
+        text (64, 30, "DIGITAL");
+        text (67, 38, "ST OUT");
+        text (67, 54, "OPTION");
+        text (76, 62, "OUT");
+        const auto key = [this] (juce::Rectangle<int> r, const juce::String& s, bool on)
+        {
+            if (on)
+                fill (r);
+            else
+            {
+                box (r);
+                hLine (r.getX() + 1, r.getRight(), r.getBottom());
+                vLine (r.getRight(), r.getY() + 1, r.getBottom());
+            }
+            textCentred (r, s, s.length() == 2, ! on);
+        };
+        for (int row = 0; row < 2; ++row)
+        {
+            key ({ 114, 30 + row * 24, 20, 12 }, "OFF", false);
+            for (int i = 0; i < 9; ++i)
+                key ({ 144 + i * 16, 30 + row * 24, 12, 12 }, juce::String (16 + i), i == 4);
+        }
+    }
+
+    //==========================================================================
+    // PAN/ROUT page 3 (p.109): the bus masters, each with its switch and pan to the stereo bus.
+    void Display::buildBusMaster()
+    {
+        const auto& buses = ctx.engine.getBuses();
+        for (int i = 0; i < juce::jmin (4, (int) buses.size()); ++i)
+        {
+            auto& s = *buses[(size_t) i];
+            const int x0 = 58 + i * 58;
+            add (Cell::Bar, { x0 + 9, 23, 13, 41 }, bindFader ("BUS", s.params.faderDb));
+            add (Cell::Switch, { x0 + 7, 69, 16, 9 }, onBinding (s.params));
+            add (Cell::Switch, { x0 + 35, 29, 14, 9 }, bindBool ("TO ST", s.mains[0].on, "ST", "ST"));
+            add (Cell::Dial, { x0 + 29, 52, 26, 24 }, bindPan01V ("PAN", s.params.pan));
+        }
+    }
+
+    void Display::drawBusMaster()
+    {
+        header ("BUS MASTER");
+        const auto& buses = ctx.engine.getBuses();
+        for (int i = 0; i < juce::jmin (4, (int) buses.size()); ++i)
+        {
+            const int x0 = 58 + i * 58;
+            textCentred ({ x0, 10, 58, 9 }, "BUS" + juce::String (i + 1));
+            if (i > 0)
+                vLine (x0, 11, 77);
+            dottedV (x0 + 28, 22, 77);
+            text (x0 + 34, 21, "TO ST", true);
+            text (x0 + 37, 45, "PAN", true);
+            const auto level = lcdLevel (buses[(size_t) i]->params.faderDb.load());
+            text (x0 + 15 - textWidth (level, true) / 2, 60, level, true);
+        }
+    }
+
+    // PAN/ROUT page 4 (pp.116, 213): the OMNI OUTs' sources; CH 13/14 from its jacks or the coaxial
+    // DIGITAL IN. The STEREO CASCADE switch is drawn open: the engine has no input to the stereo bus.
+    int Display::outputChoice (int port) const
+    {
+        const int source = ctx.engine.getOutputSource (port);
+        if (source >= 0)
+            for (int c = 0; c < kNumOutputChoices; ++c)
+                if (outputChoiceSource (c) == source)
+                    return c;
+        return -1;
+    }
+
+    void Display::setOutputChoice (int port, int choice)
+    {
+        ctx.engine.clearOutput (port);
+        // Onto the patch itself: a bus may feed several outputs (AUX 1 on OMNI OUT 1 and the card's 5).
+        ctx.engine.setOutputSource (port, outputChoiceSource (juce::jlimit (0, kNumOutputChoices - 1, choice)));
+    }
+
+    Strip* Display::outputStrip (int port, int& side) const
+    {
+        const int choice = outputChoice (port);
+        const auto& buses = ctx.engine.getBuses();
+        const auto& channels = ctx.engine.getChannels();
+        side = 0;
+        if (choice < 0)
+            return nullptr;
+        if (choice < 8)
+        {
+            const int slot = choice < 4 ? kAuxBus + choice : choice - 4;
+            return slot < (int) buses.size() ? buses[(size_t) slot].get() : nullptr;
+        }
+        if (choice < 10)
+        {
+            side = choice - 8;
+            return ctx.engine.getMains().empty() ? nullptr : &ctx.engine.getMain (0);
+        }
+        const int ch = choice - 10, strip = ch < 12 ? ch : 12 + (ch - 12) / 2;
+        side = ch < 12 ? 0 : (ch - 12) % 2;
+        return strip < (int) channels.size() ? channels[(size_t) strip].get() : nullptr;
+    }
+
+    void Display::buildOmni()
+    {
+        for (int i = 0; i < 4; ++i)
+        {
+            const int port = kOmniPort + i;
+            KnobBinding b;
+            b.label = "OMNI" + juce::String (i + 1);
+            b.steps = (float) kNumOutputChoices;
+            b.get = [this, port] { return (float) juce::jmax (0, outputChoice (port)) / (float) (kNumOutputChoices - 1); };
+            b.set = [this, port] (float v) { setOutputChoice (port, juce::roundToInt (v * (float) (kNumOutputChoices - 1))); };
+            b.text = [this, port] { return outputChoiceName (outputChoice (port)); };
+            auto& c = add (Cell::Text, { 59 + i * 60, 23, 51, 9 }, std::move (b));
+            c.dotted = c.raw = c.centred = true;
+        }
+        const auto& channels = ctx.engine.getChannels();
+        if (12 < (int) channels.size())
+        {
+            auto& p = channels[12]->params;
+            KnobBinding flip;
+            flip.label = "FLIP";
+            flip.steps = 2.0f;
+            flip.get = [&p] { return p.inputLeft.load() == kDigitalInput ? 1.0f : 0.0f; };
+            flip.set = [&p] (float v)
+            {
+                const int first = v >= 0.5f ? kDigitalInput : 12;
+                p.inputLeft = first;
+                p.inputRight = first + 1;
+            };
+            flip.text = [&p] { return juce::String (p.inputLeft.load() == kDigitalInput ? "FLIP" : "NORMAL"); };
+            add (Cell::Switch, { 164, 48, 31, 29 }, std::move (flip)).custom = true;
+        }
+    }
+
+    void Display::drawOmni()
+    {
+        header ("OMNI OUT SELECT");
+        for (int i = 0; i < 4; ++i)
+        {
+            textCentred ({ 59 + i * 60, 11, 51, 9 }, "OMNI" + juce::String (i + 1));
+            if (i > 0)
+                dottedV (54 + i * 60, 11, 33);
+        }
+        // The second heading, in the small type: the page's own is narrower than this font's.
+        text (61, 39, "CH13-14 FLIP", true);
+        vLine (57, 38, 45);
+        vLine (112, 38, 45);
+        vLine (113, 38, 46);
+        hLine (58, 112, 45);
+        hLine (59, 113, 46);
+        const auto arrow = [this] (int x, int y)
+        {
+            for (int k = 0; k < 4; ++k)
+                vLine (x + k, y - 3 + k, y + 3 - k);
+        };
+        const auto& channels = ctx.engine.getChannels();
+        const bool flipped = 12 < (int) channels.size() && channels[12]->params.inputLeft.load() == kDigitalInput;
+        // The two inputs.
+        box ({ 116, 38, 45, 20 });
+        textCentred ({ 116, 39, 45, 9 }, "CH13-14");
+        textCentred ({ 116, 48, 45, 9 }, "ANALOG");
+        dottedH (62, 108, 60);
+        dottedH (62, 108, 77);
+        dottedV (62, 60, 77);
+        dottedV (108, 60, 77);
+        textCentred ({ 62, 61, 47, 9 }, "COAXIAL");
+        hLine (139, 139, 58);
+        vLine (139, 58, 61);
+        hLine (139, 163, 61);
+        hLine (109, 163, 72);
+        // The switch: straight through, or crossed.
+        text (172, 39, "FLIP");
+        box ({ 164, 48, 31, 29 });
+        for (int y : { 61, 72 })
+        {
+            box ({ 168, y - 1, 3, 3 });
+            box ({ 188, y - 1, 3, 3 });
+        }
+        for (int x = 171; x <= 187; ++x)
+        {
+            const int across = 61 + (x - 171) * 11 / 16;
+            dot (x, flipped ? across : 61);
+            dot (x, flipped ? 61 + 72 - across : 72);
+        }
+        // To CH 13/14, and to the stereo bus.
+        fill ({ 204, 49, 44, 9 });
+        textCentred ({ 204, 49, 44, 9 }, "CH13-14", false, false);
+        hLine (195, 284, 61);
+        arrow (285, 61);
+        fill ({ 204, 63, 44, 7 });
+        textCentred ({ 204, 63, 44, 7 }, "ST CASCADE", true, false);
+        hLine (195, 249, 72);
+        text (252, 49, "ON/OFF", true);
+        box ({ 250, 63, 28, 15 });
+        box ({ 254, 71, 3, 3 });
+        box ({ 271, 71, 3, 3 });
+        for (int k = 0; k < 12; ++k)
+            dot (257 + k, 71 - k / 2);
+        hLine (278, 284, 72);
+        arrow (285, 72);
+    }
+
+    // DELAY page 4 (pp.91, 117). The STEREO OUT's delay is one for both sides here; the OMNI OUTs'
+    // aren't in the engine and are drawn off.
+    void Display::buildOutputDelay()
+    {
+        if (ctx.engine.getMains().empty())
+            return;
+        auto& in = ctx.engine.getMain (0).params.input;
+        for (int side = 0; side < 2; ++side)
+        {
+            add (Cell::Switch, { 146 + side * 42, 15, 20, 9 }, bindBool ("DELAY", in.delayOn));
+            add (Cell::Text, { 130 + side * 42, 28, 37, 9 }, delayBinding (in, this, 300.0f));
+        }
+    }
+
+    void Display::drawOutputDelay()
+    {
+        header ("OUTPUT DELAY");
+        arrowBox (56, 11, false);
+        text (68, 16, "STEREO OUT");
+        text (134, 16, "L");
+        text (176, 16, "R");
+        text (68, 48, "OMNI OUT");
+        for (int row = 0; row < 2; ++row)
+        {
+            text (94, 30 + row * 32, "DELAY");
+            text (96, 39 + row * 32, delayUnitLabel(), true);
+        }
+        for (int x : { 169, 211 })
+            dottedV (x, 15, 37);
+        for (int x : { 169, 211, 253 })
+            dottedV (x, 47, 69);
+        for (int i = 0; i < 4; ++i)
+        {
+            const juce::Rectangle<int> r (146 + i * 42, 47, 20, 9);
+            text (r.getX() - 12, 48, juce::String (i + 1));
+            box (r);
+            hLine (r.getX() + 1, r.getRight(), r.getBottom());
+            vLine (r.getRight(), r.getY() + 1, r.getBottom());
+            textCentred (r, "OFF", true);
+            const auto zero = delayText (0.0f);
+            text (r.getRight() - textWidth (zero, false), 61, zero);
+        }
+    }
+
+    //==========================================================================
+    // OPTION pages 1 and 3 (p.85): the card's eight inputs (CH 17-24, before their faders) and what
+    // feeds its eight outputs. PEAK HOLD is drawn off: these meters don't hold.
+    void Display::drawOptionMeter (bool outputs)
+    {
+        header (outputs ? "OPTION OUT METER" : "OPTION IN METER");
+        text (209, 2, "PEAK HOLD");
+        box ({ 267, 1, 23, 10 });
+        textCentred ({ 267, 1, 23, 10 }, "OFF");
+        // The card's name: Sidecar has none fitted, its eight ins and outs are the computer's.
+        box ({ 59, 14, 46, 24 });
+        textCentred ({ 59, 16, 46, 9 }, "OPTION");
+        textCentred ({ 59, 26, 46, 9 }, "I/O");
+        static const std::pair<const char*, float> marks[] = { { "CLIP", 0.0f }, { "- 6", -6.0f }, { "-12", -12.0f }, { "-18", -18.0f }, { "-30", -30.0f }, { "-48", -48.0f } };
+        static const int ys[] = { 19, 27, 35, 43, 51, 61 };
+        for (int k = 0; k < 6; ++k)
+        {
+            text (125 - textWidth (marks[k].first, false), ys[k] - 3, marks[k].first);
+            dottedH (128, 288, ys[k]);
+        }
+        const auto& channels = ctx.engine.getChannels();
+        for (int i = 0; i < 8; ++i)
+        {
+            const int cx = 137 + i * 21;
+            int side = 0;
+            Strip* s = outputs ? outputStrip (kOptionPort + i, side)
+                               : (kOptionChannel + i < (int) channels.size() ? channels[(size_t) (kOptionChannel + i)].get() : nullptr);
+            const float level = s == nullptr ? -100.0f : juce::Decibels::gainToDecibels (ctx.meters.get (s, outputs ? MeterPoint::Output : MeterPoint::PreFader, side), -100.0f);
+            for (int k = 0; k < 6; ++k)
+                if (level >= marks[k].second)
+                {
+                    fill ({ cx - 4, ys[k], 9, 62 - ys[k] });
+                    break;
+                }
+            const auto name = outputs ? outputChoiceName (outputChoice (kOptionPort + i)) : lcdLevel (level < -60.0f ? -100.0f : level);
+            text (cx - textWidth (name, true) / 2, 65, name, true);
+            const auto number = juce::String (outputs ? i + 1 : 17 + i);
+            text (cx - textWidth (number, false) / 2, 72, number);
+        }
+    }
+
+    // OPTION page 4 (p.219): each of the card's outputs takes one of five.
+    void Display::buildOptionOut()
+    {
+        for (int i = 0; i < 8; ++i)
+        {
+            const int choices[] = { 4 + i % 4, 10 + i, 18 + i, i % 4, 8 + i % 2 };
+            const juce::String names[] = { "BUS" + juce::String (i % 4 + 1), "CH" + juce::String (i + 1).paddedLeft (' ', 2), "CH" + juce::String (i + 9).paddedLeft (' ', 2),
+                                           "AUX" + juce::String (i % 4 + 1), i % 2 == 0 ? "ST L" : "ST R" };
+            for (int row = 0; row < 5; ++row)
+            {
+                const int port = kOptionPort + i, choice = choices[row];
+                KnobBinding b;
+                b.label = "OUT " + juce::String (i + 1);
+                b.steps = 2.0f;
+                b.get = [this, port, choice] { return outputChoice (port) == choice ? 1.0f : 0.0f; };
+                b.set = [this, port, choice] (float) { setOutputChoice (port, choice); };
+                b.text = [name = names[row]] { return name; };
+                auto& c = add (Cell::Switch, { 61 + i * 29, 21 + row * 12, 23, 9 }, std::move (b));
+                c.raw = c.tiny = true;
+            }
+        }
+    }
+
+    void Display::drawOptionOut()
+    {
+        header ("OPTION OUT SELECT");
+        for (int i = 0; i < 8; ++i)
+        {
+            const int x0 = 61 + i * 29;
+            textCentred ({ x0, 10, 23, 8 }, juce::String (i + 1));
+            hLine (x0 - 1, x0 + 24, 18);
+            if (i > 0)
+                vLine (x0 - 3, 11, 77);
+        }
+    }
+
+    // OPTION page 5 (p.51): CH 1-8 and CH 17-24 change inputs, one by one or all together.
+    bool Display::isSwapped (int channel) const
+    {
+        const auto& channels = ctx.engine.getChannels();
+        return juce::isPositiveAndBelow (channel, 8) && kOptionChannel + channel < (int) channels.size()
+            && channels[(size_t) channel]->params.inputLeft.load() == kOptionInput + channel;
+    }
+
+    void Display::swapInputs (int channel)
+    {
+        const auto& channels = ctx.engine.getChannels();
+        if (! juce::isPositiveAndBelow (channel, 8) || kOptionChannel + channel >= (int) channels.size())
+            return;
+        const bool swap = ! isSwapped (channel);
+        channels[(size_t) channel]->params.inputLeft = swap ? kOptionInput + channel : channel;
+        channels[(size_t) (kOptionChannel + channel)]->params.inputLeft = swap ? channel : kOptionInput + channel;
+    }
+
+    void Display::buildSwap()
+    {
+        const auto swapSwitch = [this] (std::function<bool()> get, std::function<void (bool)> set, juce::Rectangle<int> area)
+        {
+            KnobBinding b;
+            b.label = "SWAP";
+            b.steps = 2.0f;
+            b.get = [get] { return get() ? 1.0f : 0.0f; };
+            b.set = [set] (float v) { set (v >= 0.5f); };
+            b.text = [] { return juce::String ("SWAP"); };
+            add (Cell::Switch, area, std::move (b)).raw = true;
+        };
+        const auto all = [this]
+        {
+            for (int i = 0; i < 8; ++i)
+                if (! isSwapped (i))
+                    return false;
+            return true;
+        };
+        swapSwitch (all, [this] (bool v)
+                    {
+                        for (int i = 0; i < 8; ++i)
+                            if (isSwapped (i) != v)
+                                swapInputs (i);
+                    },
+                    { 120, 24, 29, 10 });
+        for (int i = 0; i < 8; ++i)
+            swapSwitch ([this, i] { return isSwapped (i); },
+                        [this, i] (bool v)
+                        {
+                            if (isSwapped (i) != v)
+                                swapInputs (i);
+                        },
+                        { 162 + (i % 4) * 32, 12 + (i / 4) * 22, 27, 10 });
+    }
+
+    void Display::drawSwap()
+    {
+        header ("INPUT SWAP");
+        box ({ 59, 14, 46, 24 });
+        textCentred ({ 59, 16, 46, 9 }, "OPTION");
+        textCentred ({ 59, 26, 46, 9 }, "I/O");
+        text (118, 14, "GLOBAL");
+        for (int i = 0; i < 8; ++i)
+            textCentred ({ 162 + (i % 4) * 32, 4 + (i / 4) * 22, 27, 8 }, juce::String (17 + i));
+        // The signal's way, as the page pictures it: the swap is before the EQ.
+        const auto block = [this] (juce::Rectangle<int> r, const char* s)
+        {
+            fill (r, false);
+            box (r);
+            textCentred (r, s, true);
+        };
+        text (60, 53, "INPUT");
+        text (56, 67, "OPTION");
+        hLine (96, 284, 56);
+        hLine (96, 284, 70);
+        text (140, 44, "SWAP", true);
+        block ({ 104, 52, 13, 9 }, "AD");
+        block ({ 134, 50, 31, 26 }, "");
+        hLine (139, 159, 56);
+        hLine (139, 159, 70);
+        block ({ 171, 52, 15, 9 }, "EQ");
+        block ({ 188, 52, 21, 9 }, "DYN.");
+        block ({ 211, 52, 27, 9 }, "DELAY");
+        block ({ 171, 66, 15, 9 }, "EQ");
+        text (246, 46, "ON FADER", true);
+        for (int y : { 56, 70 })
+        {
+            block ({ 266, y - 5, 7, 10 }, "");
+            for (int k = 0; k < 4; ++k)
+                vLine (285 + k, y - 3 + k, y + 3 - k);
+        }
+    }
+
+    //==========================================================================
+    // REMOTE page 1 (pp.194-200): what the 14 faders, the master and their [ON] keys work while the
+    // page shows, in four banks. Sidecar's reading where the manual gives only the lists: a fader
+    // works the whole of its parameter's range. The dynamics' parameters, the delays' MIX and
+    // FB GAIN, the aux pans and BALANCE aren't offered; MMC (page 2) and USER DEFINE (page 3) aren't built.
+    void Display::initRemoteBank (int bank)
+    {
+        auto& b = panel.remote[(size_t) juce::jlimit (0, 3, bank)];
+        b.fill (0);
+        static const char* const masters[] = { "BUS1", "BUS2", "BUS3", "BUS4", "AUX1", "AUX2", "AUX3", "AUX4", "EFFECT1", "EFFECT2" };
+        for (int i = 0; i < 15; ++i)
+            switch (bank)
+            {
+                case 0:
+                    if (i < 10 || i == 14)
+                    {
+                        const juce::String name (i == 14 ? "ST OUT" : masters[i]);
+                        b[(size_t) i] = findRemoteTarget (false, "FADER", "MASTER", name);
+                        b[(size_t) (15 + i)] = findRemoteTarget (true, "ON", "MASTER", name);
+                    }
+                    break;
+                case 1:
+                    if (i < 14)
+                    {
+                        b[(size_t) i] = findRemoteTarget (false, "DELAY", "TIME", remoteStripName (i));
+                        b[(size_t) (15 + i)] = findRemoteTarget (true, "DELAY", "CHANNEL", remoteStripName (i));
+                    }
+                    break;
+                default:
+                    b[(size_t) i] = findRemoteTarget (false, "EFFECT", "EFFECT" + juce::String (bank - 1), "PARAM" + juce::String (i + 1));
+                    break;
+            }
+    }
+
+    Strip* Display::remoteStrip (int code) const
+    {
+        const auto& channels = ctx.engine.getChannels();
+        const auto& aux = ctx.engine.getAux();
+        const auto& buses = ctx.engine.getBuses();
+        const auto at = [] (const MixerEngine::StripList& list, int i) { return juce::isPositiveAndBelow (i, (int) list.size()) ? list[(size_t) i].get() : nullptr; };
+        if (code < 22)
+            return at (channels, code);
+        if (code < 24)
+            return at (aux, code - 22);
+        if (code < 28)
+            return at (buses, kAuxBus + code - 24);
+        if (code < 32)
+            return at (buses, code - 28);
+        if (code < 34)
+            return at (buses, kEffectBus + code - 32);
+        return ctx.engine.getMains().empty() ? nullptr : &ctx.engine.getMain (0);
+    }
+
+    KnobBinding Display::remoteBinding (bool on, int target)
+    {
+        const auto& list = remoteTargets (on);
+        if (! juce::isPositiveAndBelow (target, (int) list.size()))
+            return {};
+        const auto& t = list[(size_t) target];
+        if (t.what == rNone)
+            return {};
+        if (t.what == rFx)
+        {
+            auto& fx = ctx.engine.getFx();
+            const int model = fx.getModel (t.strip);
+            if (model <= ld::kFxExt)
+                return {};
+            const auto& spec = models::model (models::Fx, model);
+            return t.n < (int) spec.params.size() ? bindModelParam (fx.params (t.strip).values[t.n], spec.params[(size_t) t.n]) : KnobBinding();
+        }
+        auto* s = remoteStrip (t.strip);
+        if (s == nullptr)
+            return {};
+        auto& p = s->params;
+        const int bus = t.n < 4 ? kAuxBus + t.n : kEffectBus + t.n - 4;
+        switch (t.what)
+        {
+            case rFader:     return bindFader ("FADER", p.faderDb);
+            case rSend:      return bindFader ("SEND", s->sends[(size_t) bus].levelDb);
+            case rDelayTime: return delayBinding (p.input, this, t.strip == 34 ? 300.0f : 250.0f);
+            case rEq:
+            {
+                static const char* const prefixes[] = { "l", "lm", "hm", "h" };
+                static const char* const rows[] = { "f", "g", "q" };
+                return bindParam (s->isOutput() ? models::BusEq : models::ChannelEq, p.eq().model.load(), p.eq().values, juce::String (prefixes[t.n / 3]) + rows[t.n % 3], t.b);
+            }
+            case rAtt:
+            {
+                auto att = bindLinear ("ATT", p.input.trimDb, -96.0f, 0.0f, "dB", 0, 0.0f);
+                att.steps = 97.0f;
+                return att;
+            }
+            case rPan:     return bindPan01V ("PAN", p.pan);
+            case rOn:      return onBinding (p);
+            case rBusToSt: return bindBool ("TO ST", s->mains[0].on);
+            case rPhase:   return bindBool ("PHASE", p.input.invert, "REV", "NOR");
+            case rPrePost: return prePostBinding (s->sends[(size_t) bus]);
+            case rDelayOn: return bindBool ("DELAY", p.input.delayOn);
+            case rEqOn:    return bindBool ("EQ", p.eq().on);
+            case rDynOn:   return bindBool ("DYNAMICS", p.dynamics().on);
+            default:       break;
+        }
+        return {};
+    }
+
+    KnobBinding Display::remoteFader (int control)
+    {
+        return juce::isPositiveAndBelow (control, 15) ? remoteBinding (false, panel.remote[(size_t) panel.bank][(size_t) control]) : KnobBinding();
+    }
+
+    KnobBinding Display::remoteOn (int control)
+    {
+        return juce::isPositiveAndBelow (control, 15) ? remoteBinding (true, panel.remote[(size_t) panel.bank][(size_t) (15 + control)]) : KnobBinding();
+    }
+
+    juce::String Display::remoteLabel (bool on, int control, int column) const
+    {
+        const auto& list = remoteTargets (on);
+        const int target = panel.remote[(size_t) panel.bank][(size_t) (juce::jlimit (0, 14, control) + (on ? 15 : 0))];
+        return remoteColumnOf (list[(size_t) juce::jlimit (0, (int) list.size() - 1, target)], column);
+    }
+
+    void Display::setRemoteBank (int bank)
+    {
+        panel.bank = juce::jlimit (0, 3, bank);
+        savePanel();
+        if (onRemoteChanged)
+            onRemoteChanged();
+    }
+
+    KnobBinding Display::remoteColumn (bool on, int column)
+    {
+        const auto slot = [this, on] () -> int& { return panel.remote[(size_t) panel.bank][(size_t) (remoteChannel + (on ? 15 : 0))]; };
+        KnobBinding b;
+        b.label = column == 0 ? "PARAMETER" : column == 1 ? "GROUP" : "CHANNEL";
+        b.steps = 256.0f;
+        b.get = [this, on, column, slot]
+        {
+            const auto choices = remoteChoices (on, column, slot());
+            const auto label = remoteLabel (on, remoteChannel, column);
+            int at = 0;
+            for (int i = 0; i < (int) choices.size(); ++i)
+                if (remoteColumnOf (remoteTargets (on)[(size_t) choices[(size_t) i]], column) == label)
+                    at = i;
+            return (float) at / 255.0f;
+        };
+        b.set = [this, on, column, slot] (float v)
+        {
+            const auto choices = remoteChoices (on, column, slot());
+            if (choices.empty())
+                return;
+            slot() = choices[(size_t) juce::jlimit (0, (int) choices.size() - 1, juce::roundToInt (v * 255.0f))];
+            savePanel();
+            if (onRemoteChanged)
+                onRemoteChanged();
+        };
+        b.text = [this, on, column] { return remoteLabel (on, remoteChannel, column); };
+        return b;
+    }
+
+    void Display::buildRemote()
+    {
+        if (page != 0)
+            return;
+        KnobBinding channel;
+        channel.label = "CONTROL";
+        channel.steps = 15.0f;
+        channel.get = [this] { return (float) remoteChannel / 14.0f; };
+        channel.set = [this] (float v) { remoteChannel = juce::jlimit (0, 14, juce::roundToInt (v * 14.0f)); };
+        channel.text = [this] { return remoteControlName (remoteChannel); };
+        auto& c = add (Cell::Text, { 64, 21, 36, 9 }, std::move (channel));
+        c.dotted = c.raw = c.centred = true;
+
+        auto& init = add (Cell::Button, { 142, 20, 62, 11 }, {}, "INITIALIZE");
+        init.press = [this]
+        {
+            juce::AlertWindow::showAsync (juce::MessageBoxOptions()
+                                              .withTitle ("CONFIRMATION")
+                                              .withMessage ("Will Initialize Bank " + juce::String (panel.bank + 1) + ".\nARE YOU SURE?")
+                                              .withButton ("OK")
+                                              .withButton ("CANCEL")
+                                              .withAssociatedComponent (this),
+                                          [safe = juce::Component::SafePointer<Display> (this)] (int result)
+                                          {
+                                              if (safe == nullptr || result != 1)
+                                                  return;
+                                              safe->initRemoteBank (safe->panel.bank);
+                                              safe->savePanel();
+                                              safe->rebuild();
+                                          });
+        };
+        for (int bank = 0; bank < 4; ++bank)
+        {
+            KnobBinding b;
+            b.label = "BANK";
+            b.steps = 2.0f;
+            b.get = [this, bank] { return panel.bank == bank ? 1.0f : 0.0f; };
+            b.set = [this, bank] (float) { setRemoteBank (bank); };
+            b.text = [bank] { return juce::String (bank + 1); };
+            add (Cell::Switch, { 219 + bank * 18, 21, 12, 11 }, std::move (b)).raw = true;
+        }
+        const int x[] = { 101, 162, 224 }, w[] = { 58, 59, 58 };
+        for (int row = 0; row < 2; ++row)
+            for (int column = 0; column < 3; ++column)
+            {
+                auto& field = add (Cell::Text, { x[column], row == 0 ? 42 : 62, w[column], 9 }, remoteColumn (row == 0, column));
+                field.dotted = field.raw = field.centred = true;
+            }
+    }
+
+    void Display::drawRemote()
+    {
+        if (page != 0)
+        {
+            header (page == 1 ? "MMC CONTROL" : "USER DEFINE");
+            textCentred ({ kLeftColumn + 1, 34, kRightColumn - kLeftColumn - 1, 12 }, "This page isn't built yet.");
+            return;
+        }
+        header ("INTERNAL PARAMETER");
+        box ({ 207, 6, 84, 31 });
+        fill ({ 236, 6, 29, 9 }, false);
+        box ({ 236, 6, 29, 9 });
+        textCentred ({ 236, 6, 29, 9 }, "BANK");
+        // The [ON] key and the fader, each beside what it works.
+        text (78, 33, "ON", true);
+        box ({ 75, 40, 12, 10 });
+        hLine (78, 83, 47);
+        fill ({ 80, 43, 2, 2 });
+        text (92, 43, "=");
+        text (71, 54, "FADER", true);
+        vLine (80, 60, 78);
+        vLine (82, 60, 78);
+        fill ({ 78, 62, 7, 9 });
+        for (int y : { 64, 66, 68 })
+            hLine (79, 83, y, false);
+        text (92, 63, "=");
+    }
+
+    //==========================================================================
+    // The libraries (pp.67-70, 130-133, 173-176): EQ and DYNAMICS page 2, EFFECT page 2. The effects'
+    // presets are the 01V's types; the EQ's and the dynamics' 40 presets aren't here yet, so those
+    // lists start at the first user program, 41. A user program is the block's model and its values.
+    int Display::libraryKind() const noexcept
+    {
+        if (function == Function::EqAtt && page == 1)
+            return 0;
+        if (function == Function::Dynamics && page == 1)
+            return 1;
+        if (function == Function::Send && effectSlot() >= 0 && page == 1)
+            return 2;
+        return -1;
+    }
+
+    int Display::libraryPresets (int kind) const { return kind == 2 ? libraryModels().size() : 0; }
+    int Display::libraryLast (int kind) const { return kind == 2 ? 99 : 80; }
+
+    namespace
+    {
+        /** A library's first number: the effects' presets start at 1, the others' user programs at 41. */
+        int libraryFirst (int kind) { return kind == 2 ? 1 : 41; }
+    } // namespace
+
+    int Display::getLibraryNumber() const { return libraryFirst (libraryKind()) + juce::jmax (0, library); }
+
+    const Display::Program* Display::userProgram (int kind, int number) const
+    {
+        if (! juce::isPositiveAndBelow (kind, 3))
+            return nullptr;
+        const auto it = programs[(size_t) kind].find (number);
+        return it != programs[(size_t) kind].end() ? &it->second : nullptr;
+    }
+
+    juce::String Display::getLibraryTitle (int kind, int number) const
+    {
+        if (kind == 2 && number >= 1 && number <= libraryPresets (2))
+            return models::model (models::Fx, libraryModels()[number - 1]).name;
+        const auto* p = userProgram (kind, number);
+        return p != nullptr ? p->title : juce::String();
+    }
+
+    void Display::saveLibrary()
+    {
+        juce::StringArray lines;
+        for (int kind = 0; kind < 3; ++kind)
+            for (const auto& [number, p] : programs[(size_t) kind])
+            {
+                juce::StringArray values;
+                for (float v : p.values)
+                    values.add (juce::String (v, 4));
+                lines.add (juce::String (kind) + "|" + juce::String (number) + "|" + p.token + "|" + values.joinIntoString (";") + "|" + p.title);
+            }
+        ctx.settings.setValue (kLibraryKey, lines.joinIntoString ("\n"));
+    }
+
+    void Display::loadLibrary()
+    {
+        for (auto& list : programs)
+            list.clear();
+        for (const auto& line : juce::StringArray::fromLines (ctx.settings.getValue (kLibraryKey)))
+        {
+            juce::StringArray parts;
+            parts.addTokens (line, "|", "");
+            if (parts.size() < 5)
+                continue;
+            const int kind = parts[0].getIntValue(), number = parts[1].getIntValue();
+            if (! juce::isPositiveAndBelow (kind, 3) || number < 1 || number > 99)
+                continue;
+            Program p;
+            p.token = parts[2];
+            for (const auto& v : juce::StringArray::fromTokens (parts[3], ";", ""))
+                p.values.push_back (v.getFloatValue());
+            parts.removeRange (0, 4);
+            p.title = parts.joinIntoString ("|");
+            programs[(size_t) kind][number] = std::move (p);
+        }
+    }
+
+    void Display::storeLibrary (int kind)
+    {
+        const int number = getLibraryNumber();
+        if (kind < 0 || number <= libraryPresets (kind) || number > libraryLast (kind))
+            return; // a preset can't be written over
+        Program p;
+        if (kind == 2)
+        {
+            auto& fx = ctx.engine.getFx();
+            const int model = fx.getModel (effectSlot());
+            if (model <= ld::kFxExt)
+                return;
+            const auto& spec = models::model (models::Fx, model);
+            p.token = spec.token;
+            p.title = spec.name;
+            for (int i = 0; i < (int) spec.params.size(); ++i)
+                p.values.push_back (fx.params (effectSlot()).values[i].load());
+        }
+        else
+        {
+            auto* s = selected();
+            if (s == nullptr)
+                return;
+            const auto table = kind == 1 ? models::Dynamics : s->isOutput() ? models::BusEq : models::ChannelEq;
+            const int model = kind == 1 ? s->params.dynamics().model.load() : s->params.eq().model.load();
+            const auto& spec = models::model (table, model);
+            p.token = spec.token;
+            p.title = kind == 1 ? spec.name : stripName (s) + " EQ";
+            for (int i = 0; i < (int) spec.params.size(); ++i)
+                p.values.push_back (kind == 1 ? s->params.dynamics().values[i].load() : s->params.eq().values[i].load());
+        }
+        if (const auto* old = userProgram (kind, number))
+            p.title = old->title;
+        auto store = [safe = juce::Component::SafePointer<Display> (this), kind, number, p] (const juce::String& title) mutable
+        {
+            if (safe == nullptr)
+                return;
+            p.title = title.substring (0, 12);
+            safe->programs[(size_t) kind][number] = p;
+            safe->saveLibrary();
+            safe->refresh();
+        };
+        // With STORE CONFIRMATION, the title dialog is the confirmation (p.203).
+        if (preference ("y01vStoreConfirm", true))
+            askForText (*this, "TITLE EDIT", "Program " + juce::String (number).paddedLeft ('0', 2) + ":", p.title, store);
+        else
+            store (p.title);
+    }
+
+    void Display::editLibraryTitle (int kind)
+    {
+        const int number = getLibraryNumber();
+        const auto* p = userProgram (kind, number);
+        if (p == nullptr)
+            return;
+        askForText (*this, "TITLE EDIT", "Program " + juce::String (number).paddedLeft ('0', 2) + ":", p->title,
+                    [safe = juce::Component::SafePointer<Display> (this), kind, number] (const juce::String& title)
+                    {
+                        if (safe == nullptr)
+                            return;
+                        const auto it = safe->programs[(size_t) kind].find (number);
+                        if (it != safe->programs[(size_t) kind].end())
+                        {
+                            it->second.title = title.substring (0, 12);
+                            safe->saveLibrary();
+                            safe->refresh();
+                        }
+                    });
+    }
+
+    void Display::recallUserProgram (int kind, int number)
+    {
+        const auto* p = userProgram (kind, number);
+        if (p == nullptr)
+            return;
+        if (kind == 2)
+        {
+            auto& fx = ctx.engine.getFx();
+            const int model = models::findModel (models::Fx, p->token), slot = effectSlot();
+            if (model < 0 || slot < 0)
+                return;
+            fx.setModel (slot, model);
+            for (int i = 0; i < juce::jmin ((int) p->values.size(), (int) ld::kMaxFxParams); ++i)
+                fx.params (slot).values[i] = p->values[(size_t) i];
+            fxScroll = 0;
+        }
+        else if (auto* s = selected())
+        {
+            // Only onto a block of its kind: a 4-band program doesn't go onto CH 17-24's two bands.
+            const auto table = kind == 1 ? models::Dynamics : s->isOutput() ? models::BusEq : models::ChannelEq;
+            const int model = models::findModel (table, p->token);
+            if (model < 0)
+                return;
+            if (kind == 1)
+            {
+                if (s->params.dynamics().model.load() != model)
+                    s->setModel (ModelBlock::Dynamics, model);
+                for (int i = 0; i < juce::jmin ((int) p->values.size(), (int) ld::kMaxDynParams); ++i)
+                    s->params.dynamics().values[i] = p->values[(size_t) i];
+            }
+            else
+            {
+                if (s->params.eq().model.load() != model)
+                    return;
+                for (int i = 0; i < juce::jmin ((int) p->values.size(), (int) ld::kMaxEqParams); ++i)
+                    s->params.eq().values[i] = p->values[(size_t) i];
+            }
+        }
+        rebuild();
+    }
+
+    void Display::buildLibrary (int kind)
+    {
+        if (kind != 2 && selected() == nullptr)
+            return;
+        const int presets = libraryPresets (kind), count = libraryLast (kind) - libraryFirst (kind) + 1;
+        if (library < 0)
+            library = kind == 2 ? juce::jmax (0, libraryModels().indexOf (ctx.engine.getFx().getModel (effectSlot()))) : 0;
+        library = juce::jlimit (0, count - 1, library);
+        add (Cell::Button, { 119, 15, 34, 15 }, {}, "RECALL").press = [this, kind, presets]
+        {
+            if (kind == 2 && library < presets)
+            {
+                recallLibrary();
+                return;
+            }
+            const int number = getLibraryNumber();
+            if (userProgram (kind, number) == nullptr)
+                return;
+            if (! preference ("y01vRecallConfirm", false))
+            {
+                recallUserProgram (kind, number);
+                return;
+            }
+            juce::AlertWindow::showAsync (juce::MessageBoxOptions()
+                                              .withTitle ("LIBRARY RECALL")
+                                              .withMessage ("Recall " + getLibraryTitle (kind, number) + "?")
+                                              .withButton ("RECALL")
+                                              .withButton ("CANCEL")
+                                              .withAssociatedComponent (this),
+                                          [safe = juce::Component::SafePointer<Display> (this), kind, number] (int result)
+                                          {
+                                              if (safe != nullptr && result == 1)
+                                                  safe->recallUserProgram (kind, number);
+                                          });
+        };
+
+        KnobBinding b;
+        b.label = "PROGRAM";
+        b.steps = (float) juce::jmax (2, count);
+        b.get = [this, count] { return count > 1 ? (float) library / (float) (count - 1) : 0.0f; };
+        b.set = [this, count] (float v) { library = juce::roundToInt (v * (float) (count - 1)); };
+        b.text = [this] { return juce::String (getLibraryNumber()).paddedLeft ('0', 2); };
+        // Under RECALL, so that the cursor goes up to it.
+        add (Cell::List, { 62, 45, 148, 24 }, b);
+
+        add (Cell::Button, { 73, 15, 34, 15 }, {}, "STORE").press = [this, kind] { storeLibrary (kind); };
+        add (Cell::Button, { 164, 15, 34, 15 }, {}, "TITLE|EDIT").press = [this, kind] { editLibraryTitle (kind); };
+    }
+
+    void Display::drawLibrary (int kind)
+    {
+        auto* s = selected();
+        if (kind != 2 && s == nullptr)
+            return;
+        header (kind == 2 ? "EFFECT " + juce::String (effectSlot() + 1) + " LIBRARY" : stripName (s) + (kind == 0 ? "  EQ LIBRARY" : "  DYNAMICS LIBRARY"));
+        text (71, 36, "No.");
+        text (92, 36, "TITLE");
+        if (kind != 0)
+            text (199, 36, "TYPE");
+        const int listRight = kind == 0 ? 193 : kind == 1 ? 256 : 273;
+        box ({ 57, 44, listRight - 56, 35 });
+        const int presets = libraryPresets (kind), first = libraryFirst (kind), last = libraryLast (kind);
+        const bool up = preference ("y01vLibraryUp", true);
+        for (int row = 0; row < 2; ++row)
+        {
+            const int number = first + (up ? library + 1 - row : library + row);
+            if (number < first || number > last)
+                continue;
+            const bool preset = number <= presets;
+            const auto* user = preset ? nullptr : userProgram (kind, number);
+            const auto title = preset || user != nullptr ? getLibraryTitle (kind, number) : juce::String ("No Data!");
+            const int y = 47 + row * 12;
+            textTall (69, y, juce::String (number).paddedLeft ('0', 2) + "." + title.substring (0, kind == 0 ? 12 : 13), kTitleRows, 7.0f, false);
+            if (preset) // read only
+            {
+                fill ({ 174, y, 8, 9 });
+                text (176, y + 1, "R", true, 1, false);
+            }
+            if (kind != 0 && (preset || user != nullptr))
+            {
+                const auto table = kind == 1 ? models::Dynamics : models::Fx;
+                const int model = preset ? libraryModels()[number - 1] : models::findModel (table, user->token);
+                if (model >= 0)
+                    text (194, y + 1, "=" + models::model (table, model).name.toUpperCase().replace ("COMPRESSOR", "COMP").substring (0, kind == 1 ? 9 : 12));
+            }
+            if (number == getLibraryNumber())
+                for (int d = 0; d < 5; ++d)
+                {
+                    vLine (61 + d, y + d, y + 8 - d);
+                    vLine (190 - d, y + d, y + 8 - d);
+                }
+        }
+        if (kind == 0)
+        {
+            // The program's curve, 20 Hz to 20 kHz, 18 dB each way.
+            box ({ 199, 44, 92, 35 });
+            fill ({ 221, 44, 49, 3 }, false);
+            text (222, 41, "EQ CURVE");
+            const juce::Rectangle<int> graph (207, 51, 74, 26);
+            box (graph);
+            const int mid = graph.getCentreY();
+            hLine (graph.getX(), graph.getRight() - 1, mid);
+            const auto* user = userProgram (0, getLibraryNumber());
+            const auto table = s->isOutput() ? models::BusEq : models::ChannelEq;
+            const int model = user != nullptr ? models::findModel (table, user->token) : -1;
+            if (model >= 0 && user->values.size() == models::model (table, model).params.size())
+            {
+                const int n = graph.getWidth() - 2;
+                std::vector<float> freqs ((size_t) n), db ((size_t) n);
+                for (int i = 0; i < n; ++i)
+                    freqs[(size_t) i] = 20.0f * std::pow (1000.0f, (float) i / (float) (n - 1));
+                if (models::modelResponse (table, model, user->values.data(), (int) user->values.size(), freqs.data(), db.data(), n))
+                    for (int i = 0; i < n; ++i)
+                    {
+                        const int y = mid - juce::roundToInt (juce::jlimit (-18.0f, 18.0f, db[(size_t) i]) * 11.0f / 18.0f);
+                        vLine (graph.getX() + 1 + i, juce::jmin (y, mid), juce::jmax (y, mid));
+                    }
+            }
+        }
+        if (kind == 2)
+        {
+            const auto& aux = ctx.engine.getAux();
+            if (effectSlot() < (int) aux.size())
+                channelMeter (*aux[(size_t) effectSlot()], "L", "R");
+        }
+        else
+            channelMeter (*s, {}, {});
     }
 
     void Display::cursor (int dx, int dy)
@@ -2411,6 +4798,15 @@ namespace y01v
     void Display::drawCell (const Cell& c, bool focused)
     {
         const auto& b = c.binding;
+        if (c.custom)
+        {
+            if (focused)
+            {
+                box (c.area.expanded (1));
+                box (c.area.expanded (2));
+            }
+            return;
+        }
         switch (c.kind)
         {
             case Cell::Text:
@@ -2443,14 +4839,17 @@ namespace y01v
                 }
                 if (textWidth (value, false) > c.area.getWidth())
                     value = value.replace ("dB", "");
-                text (c.area.getRight() - textWidth (value, false) - 1, c.area.getY() + 1, value);
+                if (c.centred)
+                    textCentred (c.area, value, textWidth (value, false) > c.area.getWidth());
+                else
+                    text (c.area.getRight() - textWidth (value, false) - 1, c.area.getY() + 1, value);
                 if (unit.isNotEmpty())
                     text (c.area.getRight() + 2, c.area.getY() + 1, unit);
                 break;
             }
             case Cell::Switch:
             {
-                const bool on = b.isValid() && b.get() > 0.5f;
+                const bool on = ! c.plain && b.isValid() && b.get() > 0.5f;
                 if (! c.caption.isEmpty())
                     text (c.area.getX() + 1, c.area.getY() - 7, c.caption, true);
                 if (on)
@@ -2462,7 +4861,10 @@ namespace y01v
                     hLine (c.area.getX() + 1, c.area.getRight(), c.area.getBottom());
                     vLine (c.area.getRight(), c.area.getY() + 1, c.area.getBottom());
                 }
-                textCentred (c.area, lcdValue (b), textWidth (lcdValue (b), false) > c.area.getWidth() - 1, ! on);
+                {
+                    const auto value = c.raw && b.isValid() && b.text ? b.text() : lcdValue (b);
+                    textCentred (c.area, value, c.tiny || textWidth (value, false) > c.area.getWidth() - 1, ! on);
+                }
                 break;
             }
             case Cell::Dial:
@@ -2496,7 +4898,12 @@ namespace y01v
                 vLine (c.area.getRight(), c.area.getY() + 1, c.area.getBottom());
                 const auto lines = juce::StringArray::fromTokens (c.caption, "|", "");
                 for (int i = 0; i < lines.size(); ++i)
-                    textCentred ({ c.area.getX(), c.area.getY() + (c.area.getHeight() - 8 * lines.size()) / 2 + i * 8, c.area.getWidth(), 8 }, lines[i]);
+                    textCentred ({ c.area.getX(), c.area.getY() + (c.area.getHeight() - 8 * lines.size()) / 2 + i * 8, c.area.getWidth(), 8 }, lines[i], c.tiny);
+                if (c.enabled && ! c.enabled())
+                    for (int y = c.area.getY() + 1; y < c.area.getBottom() - 1; ++y)
+                        for (int x = c.area.getX() + 1; x < c.area.getRight() - 1; ++x)
+                            if (((x + y) & 1) == 0)
+                                dot (x, y, false);
                 break;
             }
             case Cell::List:
@@ -2632,22 +5039,38 @@ namespace y01v
         switch (function)
         {
             case Function::EqAtt:
-                if (s != nullptr)
+                if (page == 1)
+                    drawLibrary (0);
+                else if (s != nullptr)
                     drawEq (*s);
                 break;
             case Function::Dynamics:
-                if (s != nullptr)
+                if (page == 1)
+                    drawLibrary (1);
+                else if (s != nullptr)
                     drawDynamics (*s);
                 break;
             case Function::PhaseDelay:
-                page == 0 ? drawPhase() : drawDelay();
+                if (page == 0)
+                    drawPhase();
+                else if (page == 3)
+                    drawOutputDelay();
+                else
+                    drawDelay();
                 break;
             case Function::View:
                 if (s != nullptr)
                     drawView (*s);
                 break;
             case Function::PanRouting:
-                page == 0 ? drawPan() : drawRouting();
+                if (page == 0)
+                    drawPan();
+                else if (page == 1)
+                    drawRouting();
+                else if (page == 2)
+                    drawBusMaster();
+                else
+                    drawOmni();
                 break;
             case Function::Send:
                 if (sendBus() >= 0 && page == (effectSlot() >= 0 ? 2 : 0))
@@ -2657,7 +5080,7 @@ namespace y01v
                 }
                 if (effectSlot() >= 0)
                 {
-                    page == 0 ? drawEffectEdit() : drawEffectLibrary();
+                    page == 0 ? drawEffectEdit() : drawLibrary (2);
                     break;
                 }
                 header (functionName() + " SEND");
@@ -2677,10 +5100,31 @@ namespace y01v
                 drawOption();
                 break;
             case Function::Midi:
+                if (page == 0)
+                    drawMidiSetup();
+                else if (page == 1)
+                    drawMidiProgram();
+                else if (page == 2)
+                    drawMidiControl();
+                else if (page == 3)
+                    drawMidiBulk();
+                else
+                    drawMidiLocal();
+                break;
             case Function::Setup:
+                if (page == 0)
+                    drawWordClock();
+                else if (page == 1)
+                    drawMonitorSetup();
+                else if (page == 2)
+                    drawGroups();
+                else if (page == 3)
+                    drawPairs();
+                else
+                    drawDither();
+                break;
             case Function::Remote:
-                header (functionName());
-                textCentred ({ kLeftColumn + 1, 34, kRightColumn - kLeftColumn - 1, 12 }, "This page isn't built yet.");
+                drawRemote();
                 break;
         }
         for (int i = 0; i < (int) cells.size(); ++i)
@@ -2791,20 +5235,63 @@ Y01VSurface::Y01VSurface (UiContext& c)
         auto& solo = key ("SOLO " + juce::String (i), kSoloGrey, true, { x, kSoloY, kKeyW, kKeyH });
         auto& on = key ("ON " + juce::String (i), kOnGrey, true, { x, kOnY, kKeyW, kKeyH });
         sel.isOn = [this, i] { auto* s = stripAt (i); return s != nullptr && ctx.getSelectedStrip && s == ctx.getSelectedStrip(); };
-        sel.onClick = [this, i] { if (auto* s = stripAt (i); s != nullptr && ctx.selectStrip) ctx.selectStrip (s); };
+        sel.onClick = [this, i]
+        {
+            // SETUP's GROUP page and REMOTE take the [SEL] keys (pp.55, 194).
+            if (display.pressSel (i))
+                return;
+            if (auto* s = stripAt (i); s != nullptr && ctx.selectStrip)
+                ctx.selectStrip (s);
+        };
         solo.isOn = [this, i] { auto* s = stripAt (i); return s != nullptr && s->params.solo.load(); };
-        solo.onClick = [this, i] { if (auto* s = stripAt (i)) s->params.solo = ! s->params.solo.load(); };
-        on.isOn = [this, i] { auto* s = stripAt (i); return s != nullptr && ! s->params.mute.load(); };
-        on.onClick = [this, i] { if (auto* s = stripAt (i)) s->params.mute = ! s->params.mute.load(); };
+        solo.onClick = [this, i] { pressSolo (stripAt (i)); };
+        on.isOn = [this, i]
+        {
+            if (remoteWorks())
+                return remoteOn[(size_t) i].isValid() && remoteOn[(size_t) i].get() > 0.5f;
+            auto* s = stripAt (i);
+            return s != nullptr && ! s->params.mute.load();
+        };
+        on.onClick = [this, i]
+        {
+            if (remoteWorks())
+            {
+                if (const auto& b = remoteOn[(size_t) i]; b.isValid() && b.set)
+                    b.set (b.get() > 0.5f ? 0.0f : 1.0f);
+            }
+            else if (auto* s = stripAt (i))
+                s->params.mute = ! s->params.mute.load();
+        };
     }
     {
         const int x = kMasterCx - kKeyW / 2;
         auto& sel = key ("SEL MASTER", kCream, true, { x, kSelY, kKeyW, kKeyH });
         auto& on = key ("ON MASTER", kOnGrey, true, { x, kOnY, kKeyW, kKeyH });
         sel.isOn = [this] { auto* s = masterStrip(); return s != nullptr && ctx.getSelectedStrip && s == ctx.getSelectedStrip(); };
-        sel.onClick = [this] { if (auto* s = masterStrip(); s != nullptr && ctx.selectStrip) ctx.selectStrip (s); };
-        on.isOn = [this] { auto* s = masterStrip(); return s != nullptr && ! s->params.mute.load(); };
-        on.onClick = [this] { if (auto* s = masterStrip()) s->params.mute = ! s->params.mute.load(); };
+        sel.onClick = [this]
+        {
+            if (display.pressSel (kStrips))
+                return;
+            if (auto* s = masterStrip(); s != nullptr && ctx.selectStrip)
+                ctx.selectStrip (s);
+        };
+        on.isOn = [this]
+        {
+            if (remoteWorks())
+                return remoteOn[(size_t) kStrips].isValid() && remoteOn[(size_t) kStrips].get() > 0.5f;
+            auto* s = masterStrip();
+            return s != nullptr && ! s->params.mute.load();
+        };
+        on.onClick = [this]
+        {
+            if (remoteWorks())
+            {
+                if (const auto& b = remoteOn[(size_t) kStrips]; b.isValid() && b.set)
+                    b.set (b.get() > 0.5f ? 0.0f : 1.0f);
+            }
+            else if (auto* s = masterStrip())
+                s->params.mute = ! s->params.mute.load();
+        };
     }
     for (int i = 0; i < 2; ++i)
     {
@@ -2816,7 +5303,7 @@ Y01VSurface::Y01VSurface (UiContext& c)
         sel.isOn = [this, strip] { auto* s = strip(); return s != nullptr && ctx.getSelectedStrip && s == ctx.getSelectedStrip(); };
         sel.onClick = [this, strip] { if (auto* s = strip(); s != nullptr && ctx.selectStrip) ctx.selectStrip (s); };
         solo.isOn = [strip] { auto* s = strip(); return s != nullptr && s->params.solo.load(); };
-        solo.onClick = [strip] { if (auto* s = strip()) s->params.solo = ! s->params.solo.load(); };
+        solo.onClick = [this, strip] { pressSolo (strip()); };
         on.isOn = [strip] { auto* s = strip(); return s != nullptr && ! s->params.mute.load(); };
         on.onClick = [strip] { if (auto* s = strip()) s->params.mute = ! s->params.mute.load(); };
     }
@@ -2873,7 +5360,7 @@ Y01VSurface::Y01VSurface (UiContext& c)
         {
             setEqBand (band);
             if (display.preference ("y01vEqAutoScreen"))
-                display.setFunction (Function::EqAtt);
+                display.showFirstPage (Function::EqAtt);
         };
     }
 
@@ -2904,6 +5391,16 @@ Y01VSurface::Y01VSurface (UiContext& c)
             k.onClick = [this, i] { pressPad (i); };
         }
     }
+    {
+        // The 15/16 - 2TR IN switch (p.77), where CH 1-12 have their PAD.
+        auto& k = key ("2TR IN", kPadGrey, false, { stripCx (13) + 21, 66, 24, 18 });
+        k.isOn = [this]
+        {
+            const auto& channels = ctx.engine.getChannels();
+            return 13 < (int) channels.size() && channels[13]->params.inputLeft.load() == y01v::kTwoTrackInput;
+        };
+        k.onClick = [this] { pressTwoTrack(); };
+    }
     knob ("MONITOR", kCream, kKnobDark, { kMasterCx - 26, 64, 52, 52 });
     getKnob ("MONITOR").setBinding (bindFader ("MONITOR", ctx.engine.monitorLevelDb));
     knob ("PHONES", kCream, kKnobDark, { kReturnCx - 26, 64, 52, 52 });
@@ -2923,6 +5420,11 @@ Y01VSurface::Y01VSurface (UiContext& c)
     key ("CURSOR RIGHT", kDark, false, { kRightCx + 38, 911, 64, 40 }).onClick = [this] { display.cursor (1, 0); };
     key ("ENTER", kDark, false, { 1700, 1004, 64, 40 }).onClick = [this] { display.enter(); };
 
+    display.onRemoteChanged = [this]
+    {
+        if (mode == y01v::FaderMode::Remote)
+            bindStrips();
+    };
     refreshAll();
     startTimerHz (30);
 }
@@ -2969,15 +5471,18 @@ int Y01VSurface::sendBus() const noexcept { return busOf (mode); }
 Strip* Y01VSurface::stripAt (int i) const
 {
     const auto& channels = ctx.engine.getChannels();
-    if (mode == y01v::FaderMode::Remote)
+    // REMOTE page 1 gives the faders and [ON] keys other work; on its other pages they do their own (p.194).
+    if (remoteWorks())
         return nullptr;
     const int index = mode == y01v::FaderMode::OptionIO ? (i < 8 ? kOptionChannel + i : -1) : i;
     return juce::isPositiveAndBelow (index, (int) channels.size()) ? channels[(size_t) index].get() : nullptr;
 }
 
+bool Y01VSurface::remoteWorks() const noexcept { return mode == y01v::FaderMode::Remote && display.isRemoteActive(); }
+
 Strip* Y01VSurface::masterStrip() const
 {
-    if (mode == y01v::FaderMode::Remote)
+    if (remoteWorks())
         return nullptr;
     const int bus = sendBus();
     const auto& buses = ctx.engine.getBuses();
@@ -3004,13 +5509,24 @@ void Y01VSurface::bindStrips()
 {
     const auto inputLaw = ctx.engine.getFaderLaw ((int) StripKind::Channel);
     const int bus = sendBus();
-    for (int i = 0; i < kStrips; ++i)
+    if (remoteWorks())
     {
-        auto* s = stripAt (i);
-        faders[(size_t) i]->bind (s == nullptr ? nullptr : bus >= 0 ? &s->sends[(size_t) bus].levelDb : &s->params.faderDb, inputLaw);
+        for (int i = 0; i <= kStrips; ++i)
+        {
+            (i < kStrips ? *faders[(size_t) i] : *masterFader).bind (display.remoteFader (i));
+            remoteOn[(size_t) i] = display.remoteOn (i);
+        }
     }
-    auto* master = masterStrip();
-    masterFader->bind (master != nullptr ? &master->params.faderDb : nullptr, ctx.engine.getFaderLaw ((int) (bus >= 0 ? StripKind::Bus : StripKind::Main)));
+    else
+    {
+        for (int i = 0; i < kStrips; ++i)
+        {
+            auto* s = stripAt (i);
+            faders[(size_t) i]->bind (s == nullptr ? nullptr : bus >= 0 ? &s->sends[(size_t) bus].levelDb : &s->params.faderDb, inputLaw);
+        }
+        auto* master = masterStrip();
+        masterFader->bind (master != nullptr ? &master->params.faderDb : nullptr, ctx.engine.getFaderLaw ((int) (bus >= 0 ? StripKind::Bus : StripKind::Main)));
+    }
 
     // The RETURN knobs: the returns' levels, or their sends to the fader mode's mix (p.35).
     const auto& aux = ctx.engine.getAux();
@@ -3061,6 +5577,30 @@ void Y01VSurface::bindInputs()
     }
 }
 
+void Y01VSurface::pressSolo (Strip* s)
+{
+    // SETUP page 2 (p.80): SOLO's DISABLE, and LAST SOLO's one channel at a time.
+    if (s == nullptr || ! display.isSoloEnabled())
+        return;
+    const bool on = ! s->params.solo.load();
+    if (on && display.isLastSolo())
+        for (auto* list : { &ctx.engine.getChannels(), &ctx.engine.getAux() })
+            for (const auto& other : *list)
+                other->params.solo = false;
+    s->params.solo = on;
+}
+
+void Y01VSurface::pressTwoTrack()
+{
+    const auto& channels = ctx.engine.getChannels();
+    if (13 >= (int) channels.size())
+        return;
+    auto& p = channels[13]->params;
+    const int first = p.inputLeft.load() == y01v::kTwoTrackInput ? 14 : y01v::kTwoTrackInput;
+    p.inputLeft = first;
+    p.inputRight = first + 1;
+}
+
 void Y01VSurface::pressPad (int i)
 {
     const auto& channels = ctx.engine.getChannels();
@@ -3100,7 +5640,7 @@ void Y01VSurface::bindKnobs()
             {
                 set (v);
                 if (display.preference (preference))
-                    display.setFunction (f);
+                    display.showFirstPage (f);
             };
         return b;
     };
@@ -3111,6 +5651,13 @@ void Y01VSurface::bindKnobs()
 
 void Y01VSurface::refreshAll()
 {
+    // CH 17-24 reach AUX 1-2 and the effects only (p.264): nothing of theirs on AUX 3-4.
+    const auto& channels = ctx.engine.getChannels();
+    for (int i = kOptionChannel; i < (int) channels.size(); ++i)
+        for (int bus : { kAuxBus + 2, kAuxBus + 3 })
+            if (bus < (int) ctx.engine.getBuses().size())
+                channels[(size_t) i]->sends[(size_t) bus].levelDb = fader::kMinDb;
+    display.relink();
     bindStrips();
     bindInputs();
     bindKnobs();
@@ -3130,6 +5677,7 @@ void Y01VSurface::timerCallback()
         return;
     if (boundStrip != (ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr))
         selectionChanged();
+    display.tickLinks();
     for (auto& f : faders)
         f->refresh();
     masterFader->refresh();
@@ -3228,6 +5776,8 @@ void Y01VSurface::paint (juce::Graphics& g)
             silk ("+10", knobCx - 38.0f, 101.0f, 22.0f, 11.0f, 9.5f);
             silk ("-20", knobCx + 16.0f, 101.0f, 22.0f, 11.0f, 9.5f);
             silk ("GAIN", knobCx - 25.0f, 114.0f, 50.0f, 13.0f, 11.5f);
+            if (i == 13)
+                silk ("2TR IN", cx + 14.0f, 85.0f, 38.0f, 12.0f, 9.5f);
         }
         silk (name, knobCx - 30.0f, 124.0f, 60.0f, 27.0f, i < 12 ? 21.0f : 15.0f);
         g.setColour (kNavy.withAlpha (0.7f));
@@ -3510,7 +6060,7 @@ void Y01VSurface::paint (juce::Graphics& g)
     g.drawText ("01V", top.reduced (sizes::kGapLarge, 0), juce::Justification::centredLeft);
     g.setColour (theme.textDim);
     g.setFont (type::font (type::kCaption));
-    g.drawText ("Not affiliated with or endorsed by Yamaha; 01V is Yamaha's trademark, used only to say what is emulated.",
+    g.drawText ("Not affiliated with or endorsed by any console maker; product names are their owners' trademarks.",
                 top.reduced (sizes::kGapLarge, 0).withTrimmedLeft (90).withTrimmedRight (200), juce::Justification::centredLeft);
 }
 

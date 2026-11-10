@@ -32,7 +32,13 @@ public:
     juce::Result savePreset (const juce::File&);
     juce::Result loadPreset (const juce::File&);
 
-    ToggleKey renameKey, savePresetKey, loadPresetKey;
+    /** COPY: remembers this strip; PASTE: its settings onto the strip shown, by CopySection bits
+        (the X32's and dLive's channel copy; strips of different kinds copy what they share). */
+    void copyStrip();
+    void paste (juce::uint32 sections);
+    bool hasCopy() const noexcept { return copied.has_value(); }
+
+    ToggleKey renameKey, savePresetKey, loadPresetKey, copyKey, pasteKey;
     GroupGrid dcas, muteGroups;
     /** A dLive mix's Ext In (its socket, trim, polarity) and, on its Groups, Aux and FX
         sends, Mix Source. Hidden on anything else. */
@@ -57,6 +63,7 @@ public:
 private:
     void timerCallback() override { refresh(); }
     std::unique_ptr<juce::FileChooser> chooser;
+    std::optional<state::StripRef> copied;
 
     UiContext& ctx;
     const Theme& theme;

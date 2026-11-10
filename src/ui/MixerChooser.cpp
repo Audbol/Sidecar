@@ -5,16 +5,19 @@
 namespace livedaw::ui::mixerChooser
 {
 
-const std::array<Mixer, 8>& mixers()
+const std::array<Mixer, 11>& mixers()
 {
-    static const std::array<Mixer, 8> list { { { InterfaceKind::Wing, "WING", "(experimental)" },
+    static const std::array<Mixer, 11> list { { { InterfaceKind::Wing, "WING", "(experimental)" },
                                                { InterfaceKind::Universal, "UNIVERSAL", "" },
                                                { InterfaceKind::X32, "X32", "(very experimental)" },
                                                { InterfaceKind::ProMix, "PROMIX 01", "(very experimental)" },
                                                { InterfaceKind::Yamaha02R, "02R", "(very experimental)" },
                                                { InterfaceKind::Sq5, "SQ-5", "(very experimental)" },
                                                { InterfaceKind::Yamaha01V, "01V", "(very experimental)" },
-                                               { InterfaceKind::DLive, "DLIVE", "(very experimental)" } } };
+                                               { InterfaceKind::DLive, "DLIVE", "(very experimental)" },
+                                               { InterfaceKind::Dm2000, "DM2000", "(very experimental)" },
+                                               { InterfaceKind::Pro2, "PRO2", "(very experimental)" },
+                                               { InterfaceKind::Xenyx1204, "XENYX 1204USB", "(very experimental)" } } };
     return list;
 }
 

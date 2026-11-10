@@ -41,6 +41,13 @@ public:
     const std::vector<Row>& getRows() const noexcept { return rows; }
     int getSelectedRow() const noexcept { return selected; }
     void selectRow (int row);
+    /** Selects the row of the chain step of `kind` (an extra block's by its `uid`); false if there is none. */
+    bool selectKind (int kind, int uid = -1);
+    /** The height that shows every row and the ADD / REMOVE keys. */
+    int preferredHeight() const;
+    /** Whether row `row`'s light is a switch, and flips it (a filter has several cuts: no one switch). */
+    bool canToggle (int row) const;
+    void toggleRow (int row);
     /** Called when the selection moves to another row (or none). */
     std::function<void()> onSelectionChanged;
 
@@ -62,6 +69,7 @@ private:
     void rebuild (const std::vector<ChainStep>& chain);
     static bool sameChain (const std::vector<ChainStep>&, const std::vector<ChainStep>&);
     bool isOn (const ChainStep&) const;
+    std::atomic<bool>* switchOf (const ChainStep&) const;
     void selectStep (std::function<bool (const ChainStep&)> match);
 
     const Theme& theme;

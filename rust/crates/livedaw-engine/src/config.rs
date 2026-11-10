@@ -82,6 +82,23 @@ impl Counts {
     /// slots (its internal effects).
     pub const Y01V: Counts = Counts { channels: 22, aux: 2, buses: 10, mains: 1, matrices: 0, dcas: 0, mute_groups: 0, fx: 2 };
 
+    /// The Yamaha DM2000's (V2 Owner's Manual p.17): 96 Input Channels, no aux
+    /// channels (effect returns come back on Input Channels), 20 buses (BUS 1-8,
+    /// AUX 1-12), 1 main (STEREO), 4 stereo Matrix Sends, 12 fader groups (DCAs:
+    /// 8 Input, 4 Output) and 12 mute groups, 8 FX slots (its internal effects).
+    pub const DM2000: Counts =
+        Counts { channels: 96, aux: 0, buses: 20, mains: 1, matrices: 4, dcas: 12, mute_groups: 12, fx: 8 };
+
+    /// The Midas PRO2's (Owner's Manual p.11, spec. p.306): 56 input channels, 8 aux
+    /// returns, 16 buses (the aux sends), 2 mains (the stereo masters and the mono
+    /// master), 8 matrices, 8 VCAs, 6 auto-mutes, 6 FX slots (p.127).
+    pub const PRO2: Counts = Counts { channels: 56, aux: 8, buses: 16, mains: 2, matrices: 8, dcas: 8, mute_groups: 6, fx: 6 };
+
+    /// The XENYX 1204USB's (the panel): channels 1-4 mono and 5/6, 7/8 stereo; the two
+    /// stereo aux returns and the 2-TR/USB input (aux channels); the AUX 1 and AUX 2
+    /// sends and the ALT 3-4 bus; MAIN MIX. No FX, no matrices.
+    pub const XENYX1204: Counts = Counts { channels: 6, aux: 3, buses: 3, mains: 1, matrices: 0, dcas: 0, mute_groups: 0, fx: 0 };
+
     /// The Allen & Heath SQ-5's (Reference Guide V1.6.0, section 18): 48 input
     /// channels, 8 aux (its stereo FX returns), 16 buses (12 mixes, then the 4 FX
     /// sends), 1 main (LR), 3 stereo matrices, 8 DCAs, 8 mute groups, 8 FX slots.

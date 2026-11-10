@@ -65,6 +65,46 @@ impl FaderLaw {
     /// its faders' 1024 steps.
     pub const X32: FaderLaw = FaderLaw { points: Self::WING.points, steps: 1024 };
 
+    /// The Midas PRO2's: 1024 steps (Owner's Manual p.306), +10 dB at the top. The
+    /// manual gives no law, so the breakpoints are where the panel prints its scale
+    /// (10, 5, 0, 5, 10, 20, 30, 40, 50, 70, -oo), measured on Midas's press render of
+    /// a PRO2 (November 2026; the render's perspective is small and not taken out).
+    /// +5, -5 and -40 fall on the straight lines; the step above -oo (-90 dB) is
+    /// Sidecar's. To be measured on a console.
+    pub const PRO2: FaderLaw = FaderLaw {
+        points: &[
+            (1.0 / 1023.0, -90.0),
+            (66.0 / 1023.0, -70.0),
+            (132.0 / 1023.0, -50.0),
+            (269.0 / 1023.0, -30.0),
+            (399.0 / 1023.0, -20.0),
+            (529.0 / 1023.0, -10.0),
+            (780.0 / 1023.0, 0.0),
+            (1.0, 10.0),
+        ],
+        steps: 1024,
+    };
+
+    /// The XENYX 1204USB's: continuous (analog 60 mm faders), +10 dB at the top. The
+    /// published manual gives no law, so the breakpoints are where the panel prints its
+    /// scale (10, 0, 10, 15, 20, 25, 30, 40, 60, -oo), measured on a straight-on render
+    /// of the panel (November 2026); the -90 dB end and the -60 dB mark's place are
+    /// Sidecar's. A law holds eight points, so -25 and -15 dB fall on the lines between their
+    /// neighbours (within a pixel of the render). To be measured on a mixer.
+    pub const XENYX1204: FaderLaw = FaderLaw {
+        points: &[
+            (0.0, -90.0),
+            (0.05, -60.0),
+            (0.103, -40.0),
+            (0.182, -30.0),
+            (0.361, -20.0),
+            (0.572, -10.0),
+            (0.786, 0.0),
+            (1.0, 10.0),
+        ],
+        steps: 0,
+    };
+
     /// The Yamaha ProMix 01's: 128 steps, +6 dB at the top, -66 dB on the
     /// step above -oo (User's Guide p.25, p.105). The guide gives no table of
     /// the steps between, so the breakpoints are where the panel prints its
@@ -124,6 +164,38 @@ impl FaderLaw {
             (1.0, 6.0),
         ],
         steps: 128,
+    };
+
+    /// The DM2000's channel faders: 10-bit fader data, +10 dB at the top, -138 dB
+    /// on the step above -oo (V2 Owner's Manual p.341): Yamaha's table of the 1024
+    /// values (the V2 MIDI Specification's PRM TABLE #05-2) is these straight
+    /// lines exactly, 0 dB on value 823.
+    pub const DM2000: FaderLaw = FaderLaw {
+        points: &[
+            (1.0 / 1023.0, -138.0),
+            (15.0 / 1023.0, -96.0),
+            (33.0 / 1023.0, -78.0),
+            (223.0 / 1023.0, -40.0),
+            (423.0 / 1023.0, -20.0),
+            (1.0, 10.0),
+        ],
+        steps: 1024,
+    };
+
+    /// The DM2000's output faders (BUS, AUX, MATRIX, STEREO): the 10-bit table
+    /// PRM TABLE #15-2 of the same specification, 0 dB at the top, -138 dB on the
+    /// step above -oo: these straight lines exactly.
+    pub const DM2000_MASTER: FaderLaw = FaderLaw {
+        points: &[
+            (1.0 / 1023.0, -138.0),
+            (3.0 / 1023.0, -134.0),
+            (35.0 / 1023.0, -102.0),
+            (83.0 / 1023.0, -78.0),
+            (223.0 / 1023.0, -50.0),
+            (423.0 / 1023.0, -30.0),
+            (1.0, 0.0),
+        ],
+        steps: 1024,
     };
 
     /// The 01V's master faders except STEREO (BUS, AUX, EFFECT): 128 steps, 0 dB
@@ -327,6 +399,33 @@ mod tests {
         ] {
             assert!((law.to_pos(db) * 255.0 - pos).abs() < 0.6, "{db} dB");
         }
+    }
+
+    #[test]
+    fn the_dm2000s_laws_are_yamahas_tables() {
+        // Points read off PRM TABLE #05-2 and #15-2 (the generated tables in
+        // livedaw-dm2000 are checked value by value there).
+        for (law, v, db) in [
+            (FaderLaw::DM2000, 1.0, -138.0),
+            (FaderLaw::DM2000, 15.0, -96.0),
+            (FaderLaw::DM2000, 33.0, -78.0),
+            (FaderLaw::DM2000, 128.0, -59.0),
+            (FaderLaw::DM2000, 223.0, -40.0),
+            (FaderLaw::DM2000, 423.0, -20.0),
+            (FaderLaw::DM2000, 823.0, 0.0),
+            (FaderLaw::DM2000, 1023.0, 10.0),
+            (FaderLaw::DM2000_MASTER, 3.0, -134.0),
+            (FaderLaw::DM2000_MASTER, 83.0, -78.0),
+            (FaderLaw::DM2000_MASTER, 223.0, -50.0),
+            (FaderLaw::DM2000_MASTER, 423.0, -30.0),
+            (FaderLaw::DM2000_MASTER, 1023.0, 0.0),
+        ] {
+            assert!((law.to_db(v / 1023.0) - db).abs() < 0.01, "{v}");
+            assert!((law.to_pos(db) * 1023.0 - v).abs() < 0.51, "{db}");
+        }
+        assert_eq!(FaderLaw::DM2000.to_db(0.0), FADER_MIN);
+        assert_eq!(FaderLaw::DM2000.points.len(), 6);
+        assert_eq!(FaderLaw::DM2000_MASTER.points.len(), 7);
     }
 
     #[test]

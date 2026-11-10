@@ -66,6 +66,8 @@ public:
 
     int getDca() const noexcept { return dca; }
     void refresh();
+    /** Its header's Spill members (the MIXER view shows this DCA's strips). */
+    std::function<void (int dca)> onSpill;
 
     ToggleKey muteKey, soloKey;
     FaderControl fader;

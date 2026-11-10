@@ -22,7 +22,7 @@ class ChainList::Rows final : public juce::Component
 public:
     explicit Rows (ChainList& o) : owner (o) { setViewportIgnoreDragFlag (true); }
 
-    static constexpr int kRow = 40, kMarker = 24, kGap = 4;
+    static constexpr int kRow = sizes::kTouch, kMarker = 24, kGap = 4, kLightWidth = 40;
 
     int heightOf (int row) const { return owner.rows[(size_t) row].marker ? kMarker : kRow; }
 
@@ -75,7 +75,7 @@ public:
                 continue;
             }
             const bool sel = i == owner.selected;
-            g.setColour (sel ? t.raised.brighter (0.1f) : t.raised);
+            g.setColour (sel ? t.lifted (t.raised, 0.1f) : t.raised);
             g.fillRoundedRectangle (r.reduced (0.5f), sizes::kRadius);
             g.setColour (sel ? t.accent : t.outline);
             g.drawRoundedRectangle (r.reduced (0.5f), sizes::kRadius, sel ? 2.0f : 1.0f);
@@ -140,7 +140,7 @@ public:
         repaint();
     }
 
-    void mouseUp (const juce::MouseEvent&) override
+    void mouseUp (const juce::MouseEvent& e) override
     {
         if (dragging)
         {
@@ -150,7 +150,11 @@ public:
         }
         else if (pressed >= 0 && ! owner.rows[(size_t) pressed].marker)
         {
-            owner.selectRow (pressed);
+            // Its light is a switch: bypass a block without opening it.
+            if (e.x < kLightWidth && owner.canToggle (pressed))
+                owner.toggleRow (pressed);
+            else
+                owner.selectRow (pressed);
         }
         pressed = -1;
     }
@@ -173,6 +177,7 @@ ChainList::ChainList (UiContext&, const Theme& t)
     addKey.onClick = [this]
     {
         juce::PopupMenu menu;
+        menu.setLookAndFeel (&lookAndFeelFor (theme));
         int id = 1;
         for (auto kind : { BlockKind::Filter, BlockKind::Eq, BlockKind::Dynamics, BlockKind::Insert, BlockKind::Delay })
             menu.addItem (id++, stepName ({ ld::kStepBlock, (int) kind }));
@@ -289,6 +294,69 @@ void ChainList::selectRow (int row)
     removeKey.setEnabled (r >= 0 && rows[(size_t) r].movable);
     if (onSelectionChanged)
         onSelectionChanged();
+}
+
+bool ChainList::selectKind (int kind, int uid)
+{
+    for (int i = 0; i < (int) rows.size(); ++i)
+        if (rows[(size_t) i].step.kind == kind && ! rows[(size_t) i].marker && (uid < 0 || rows[(size_t) i].step.uid == uid))
+        {
+            selectRow (i);
+            return true;
+        }
+    return false;
+}
+
+int ChainList::preferredHeight() const
+{
+    return rowsView->totalHeight() + sizes::kGap + sizes::kTouch;
+}
+
+std::atomic<bool>* ChainList::switchOf (const ChainStep& s) const
+{
+    if (strip == nullptr)
+        return nullptr;
+    auto& p = strip->params;
+    switch (s.kind)
+    {
+        case ld::kStepGate:       return &p.gate().on;
+        case ld::kStepEq:         return &p.eq().on;
+        case ld::kStepDynamics:   return &p.dynamics().on;
+        case ld::kStepPreInsert:  return &p.preInsert().on;
+        case ld::kStepPostInsert: return &p.postInsert().on;
+        case ld::kStepDelay:      return &p.input.delayOn;
+        case ld::kStepBlock:
+        {
+            const auto block = strip->getBlock (s.uid);
+            if (! block.isValid())
+                return nullptr;
+            switch (block.getKind())
+            {
+                case BlockKind::Eq:       return &block.eq()->on;
+                case BlockKind::Dynamics: return &block.dynamics()->on;
+                case BlockKind::Insert:   return &block.insert()->on;
+                case BlockKind::Delay:    return &block.delay()->on;
+                case BlockKind::Filter:   break;
+            }
+            return nullptr;
+        }
+        default:
+            return nullptr;
+    }
+}
+
+bool ChainList::canToggle (int row) const
+{
+    return juce::isPositiveAndBelow (row, (int) rows.size()) && switchOf (rows[(size_t) row].step) != nullptr;
+}
+
+void ChainList::toggleRow (int row)
+{
+    if (! canToggle (row))
+        return;
+    auto* on = switchOf (rows[(size_t) row].step);
+    on->store (! on->load());
+    refresh();
 }
 
 void ChainList::selectStep (std::function<bool (const ChainStep&)> match)

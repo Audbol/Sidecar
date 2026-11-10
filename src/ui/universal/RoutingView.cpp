@@ -1,6 +1,8 @@
 #include "ui/universal/RoutingView.h"
 
+#include "dsp/DspUtils.h"
 #include "ui/InterfacePage.h"
+#include "ui/Knobs.h"
 
 #include <algorithm>
 
@@ -48,9 +50,11 @@ std::vector<int> outputPorts (MixerEngine& engine)
 }
 
 RoutingView::RoutingView (UiContext& c, const Theme& t)
-    : inputsTab ("INPUTS", t.accent, t), outputsTab ("OUTPUTS", t.accent, t), interfaceTab ("INTERFACE", t.accent, t), group (t), grid (t), ctx (c),
-      theme (t)
+    : inputsTab ("INPUTS", t.accent, t), outputsTab ("OUTPUTS", t.accent, t), interfaceTab ("INTERFACE", t.accent, t), oneToOneKey ("PATCH 1:1", t.accent, t),
+      group (t), grid (t), ctx (c), theme (t)
 {
+    for (auto* k : { &inputsTab, &outputsTab, &interfaceTab })
+        k->tab = true;
     inputsTab.isOn = [this] { return page == Page::Inputs; };
     inputsTab.onClick = [this] { showPage (Page::Inputs); };
     outputsTab.isOn = [this] { return page == Page::Outputs; };
@@ -79,7 +83,23 @@ RoutingView::RoutingView (UiContext& c, const Theme& t)
         if (juce::isPositiveAndBelow (i, (int) list.size()))
             setGroup (list[(size_t) i]);
     };
-    for (auto* child : std::initializer_list<juce::Component*> { &inputsTab, &outputsTab, &group, &grid })
+    oneToOneKey.setTooltip ("Patch the channels and aux in order from this group's sources (or drag across the points with the mouse)");
+    oneToOneKey.onClick = [this]
+    {
+        juce::Component::SafePointer<RoutingView> safe (this);
+        juce::AlertWindow::showAsync (juce::MessageBoxOptions()
+                                          .withTitle ("PATCH 1:1")
+                                          .withMessage ("Patch the channels in order from " + juce::String (routing::info (getGroup()).name) + "? Their inputs are replaced.")
+                                          .withButton ("PATCH")
+                                          .withButton ("CANCEL")
+                                          .withAssociatedComponent (this),
+                                      [safe] (int result)
+                                      {
+                                          if (safe != nullptr && result == 1)
+                                              safe->patchOneToOne();
+                                      });
+    };
+    for (auto* child : std::initializer_list<juce::Component*> { &inputsTab, &outputsTab, &group, &oneToOneKey, &grid })
         addAndMakeVisible (child);
     rebuild();
     startTimerHz (10);
@@ -130,6 +150,7 @@ void RoutingView::showPage (Page p)
         interfacePage->setVisible (p == Page::Interface);
     group.setVisible (p != Page::Interface);
     grid.setVisible (p != Page::Interface);
+    oneToOneKey.setVisible (p == Page::Inputs);
     resized();
     if (p != Page::Interface)
         rebuild();
@@ -180,6 +201,15 @@ void RoutingView::patchInput (Strip& s, int source)
     }
 }
 
+void RoutingView::patchOneToOne()
+{
+    if (page != Page::Inputs)
+        return;
+    for (size_t i = 0; i < juce::jmin (inputStrips.size(), sources.size()); ++i)
+        patchInput (*inputStrips[i], sources[i]);
+    grid.refresh();
+}
+
 void RoutingView::rebuild()
 {
     structureVersion = ctx.engine.getStructureVersion();
@@ -212,6 +242,17 @@ void RoutingView::rebuild()
             if (p.stereo.load() && left >= 0 && (right == src || (right < 0 && src == left + 1)))
                 return PatchGrid::Pair;
             return PatchGrid::Off;
+        };
+        // A source's level over its column, and a channel's input level beside its name: whether the patch brings signal.
+        model.columnLevel = [this] (int c)
+        {
+            const int src = sources[(size_t) c];
+            return MixerEngine::isStripSource (src) ? 0.0f : fader::dbToPos (dsp::gainToDb (ctx.meters.getSource (MixerEngine::sourceIndex (src))));
+        };
+        model.rowLevel = [this] (int r)
+        {
+            auto* s = inputStrips[(size_t) r];
+            return fader::dbToPos (dsp::gainToDb (juce::jmax (ctx.meters.get (s, MeterPoint::Trim, 0), ctx.meters.get (s, MeterPoint::Trim, 1))));
         };
         model.toggle = [this] (int r, int c)
         {
@@ -251,6 +292,15 @@ void RoutingView::rebuild()
             static const char* monitor[] = { "SPK L", "SPK R", "PH L", "PH R" };
             return juce::String (monitor[s.side]);
         };
+        // A bus, main or matrix side's output level over its column, and the monitor paths'.
+        model.columnLevel = [this] (int c)
+        {
+            const auto& s = signals[(size_t) c];
+            const float level = s.strip != nullptr ? ctx.meters.get (s.strip, MeterPoint::Output, juce::jmin (s.side, s.strip->getNumChannels() - 1))
+                                : s.side < 2       ? ctx.meters.getMonitor (s.side)
+                                                   : ctx.meters.getPhones (s.side - 2);
+            return fader::dbToPos (dsp::gainToDb (level));
+        };
         model.state = [this] (int r, int c) { return outputOf (signals[(size_t) c])->load() == ports[(size_t) r] ? PatchGrid::On : PatchGrid::Off; };
         model.toggle = [this] (int r, int c)
         {
@@ -278,6 +328,8 @@ void RoutingView::refresh()
         rebuild();
     else
         grid.refresh();
+    if (page != Page::Interface)
+        grid.refreshLevels();
 }
 
 void RoutingView::paint (juce::Graphics& g)
@@ -299,7 +351,9 @@ void RoutingView::resized()
     if (interfacePage != nullptr)
         interfacePage->setBounds (area.reduced (sizes::kGap, 0));
     group.setBounds (bar.removeFromLeft (300));
-    grid.setBounds (area.reduced (sizes::kGap, 0));
+    bar.removeFromLeft (sizes::kGapSmall);
+    oneToOneKey.setBounds (bar.removeFromLeft (130));
+    grid.setBounds (area.reduced (sizes::kGap, 0).withTrimmedBottom (sizes::kGapSmall));
 }
 
 } // namespace livedaw::ui::universal

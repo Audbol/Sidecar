@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/livedaw-dsp", "crates/livedaw-recorder", "crates/livedaw-engine", "crates/livedaw-session", "crates/livedaw-wing", "crates/livedaw-x32", "crates/livedaw-promix", "crates/livedaw-02r", "crates/livedaw-sq", "crates/livedaw-ffi", "crates/livedaw-web"]
+members = ["crates/livedaw-dsp", "crates/livedaw-recorder", "crates/livedaw-engine", "crates/livedaw-session", "crates/livedaw-wing", "crates/livedaw-x32", "crates/livedaw-promix", "crates/livedaw-02r", "crates/livedaw-01v", "crates/livedaw-sq", "crates/livedaw-dm2000", "crates/livedaw-ahmidi", "crates/livedaw-ffi", "crates/livedaw-web"]
 
 [workspace.package]
 version = "0.3.0"

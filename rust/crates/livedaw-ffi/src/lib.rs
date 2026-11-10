@@ -8,10 +8,12 @@
 
 #![allow(clippy::missing_safety_doc)]
 
+pub mod ahmidi;
 pub mod analysis;
 pub mod chain;
 pub mod codec;
 pub mod console;
+pub mod dm2000;
 pub mod models;
 pub mod monitor;
 pub mod promix;
@@ -22,6 +24,7 @@ pub mod usb;
 pub mod web;
 pub mod wing;
 pub mod x32;
+pub mod y01v;
 pub mod y02r;
 
 use livedaw_dsp::fader::FaderLaw;
@@ -110,9 +113,12 @@ use std::sync::Arc;
 // ABI 53: the SQ-5 profile (5), its MIDI (ld_sq_*, RemotesC::midi 4).
 // ABI 54: the 01V profile (6).
 // ABI 55: the dLive profile (7); strip sources for buses 17-64; 16 FX returns.
+// ABI 57: the DM2000 profile (8). Its MIDI (ld_dm2000_*, RemotesC::midi 6) adds
+// functions only.
+// (Not a bump: the PRO2 profile is 9, a new value of the same enum.)
 // ABI 56, among others: a dLive input channel's preamp block (ld_strip_preamp_block),
 // which dynamics models a slot may hold (ld_dyn_model_allowed).
-pub const LD_ABI_VERSION: i32 = 56;
+pub const LD_ABI_VERSION: i32 = 57;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(default)
@@ -624,7 +630,7 @@ pub unsafe extern "C" fn ld_engine_profile(e: *const Engine) -> i32 {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LdRemotes {
-    /// Its MIDI protocol: -1 none, 0 the WING's, 1 the X32's, 2 the ProMix 01's, 3 the 02R's.
+    /// Its MIDI protocol: -1 none, 0 the WING's, 1 the X32's, 2 the ProMix 01's, 3 the 02R's, 4 the SQ's, 5 the 01V's.
     pub midi: i32,
     /// Its network protocols: `NetworkProtocol::bit`s (1 WING discovery, 2 WING
     /// OSC, 4 WING native).
@@ -648,6 +654,8 @@ pub unsafe extern "C" fn ld_engine_remotes(e: *const Engine, out: *mut LdRemotes
                 Some(livedaw_engine::MidiProtocol::ProMix01) => 2,
                 Some(livedaw_engine::MidiProtocol::Yamaha02R) => 3,
                 Some(livedaw_engine::MidiProtocol::AhSq) => 4,
+                Some(livedaw_engine::MidiProtocol::Dm2000) => 6,
+                Some(livedaw_engine::MidiProtocol::Yamaha01V) => 5,
             },
             network: r.network_bits(),
         };
@@ -664,6 +672,9 @@ fn profile_id(p: Profile) -> i32 {
         Profile::AhSq5 => 5,
         Profile::Yamaha01V => 6,
         Profile::AhDLive(_) => 7,
+        Profile::Dm2000 => 8,
+        Profile::MidasPro2 => 9,
+        Profile::Xenyx1204 => 10,
     }
 }
 
@@ -838,6 +849,41 @@ pub unsafe extern "C" fn ld_engine_dlive_layout(e: *const Engine, out: *mut i32)
         let livedaw_engine::Profile::AhDLive(layout) = (*e).profile() else { return false };
         std::ptr::copy_nonoverlapping(layout.values().as_ptr(), out, 8);
         true
+    })
+}
+
+/// A dLive's stereo PAFL busses and Main mode (`MainMode::index`). False: not a dLive.
+///
+/// # Safety
+/// `e` is a valid engine; `pafl` and `main` are written.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_dlive_structure(e: *const Engine, pafl: *mut i32, main: *mut i32) -> bool {
+    guard(false, || {
+        let livedaw_engine::Profile::AhDLive(layout) = (*e).profile() else { return false };
+        *pafl = i32::from(layout.pafl);
+        *main = layout.main.index();
+        true
+    })
+}
+
+/// What a Mixer Config would leave of the 64 busses (the screen's Mixes Remaining;
+/// negative if too many): eight numbers as `ld_engine_dlive_layout`, PAFL busses and Main
+/// mode. i32::MIN: out of range.
+///
+/// # Safety
+/// `layout` holds eight.
+#[no_mangle]
+pub unsafe extern "C" fn ld_dlive_busses_remaining(layout: *const i32, pafl: i32, main: i32) -> i32 {
+    guard(i32::MIN, || {
+        let mut values = [0i32; 8];
+        std::ptr::copy_nonoverlapping(layout, values.as_mut_ptr(), 8);
+        let main = livedaw_engine::profile::MainMode::from_index(main);
+        match (livedaw_engine::profile::DLiveLayout::from_values(values, 0), main, u8::try_from(pafl)) {
+            (Some(layout), Some(main), Ok(pafl)) => {
+                livedaw_engine::profile::DLiveLayout { pafl, main, ..layout }.busses_remaining()
+            }
+            _ => i32::MIN,
+        }
     })
 }
 
@@ -1365,6 +1411,17 @@ pub unsafe extern "C" fn ld_strip_response(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_dlive_busses_remaining_count_the_main_and_pafl() {
+        let foh = livedaw_engine::profile::DLiveLayout::FOH.values();
+        unsafe {
+            assert_eq!(ld_dlive_busses_remaining(foh.as_ptr(), 1, 1), 4, "LR and one PAFL");
+            assert_eq!(ld_dlive_busses_remaining(foh.as_ptr(), 0, 0), 8, "no Main, no PAFL");
+            assert_eq!(ld_dlive_busses_remaining(foh.as_ptr(), 1, 6), 0, "5.1");
+            assert_eq!(ld_dlive_busses_remaining(foh.as_ptr(), 1, 7), i32::MIN);
+        }
+    }
 
     #[test]
     fn layout_is_reported() {

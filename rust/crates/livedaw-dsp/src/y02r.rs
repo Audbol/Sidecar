@@ -35,7 +35,7 @@ const fn p(
 }
 
 /// The index of the value of `table` nearest `v`.
-const fn nearest(table: &[f32], v: f32) -> f32 {
+pub(crate) const fn nearest(table: &[f32], v: f32) -> f32 {
     let mut best = 0;
     let mut i = 1;
     while i < table.len() {

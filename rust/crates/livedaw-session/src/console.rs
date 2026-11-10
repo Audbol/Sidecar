@@ -14,6 +14,7 @@ use livedaw_engine::analyser::RtaViewSettings;
 use livedaw_engine::atomic::AtomicF32;
 use livedaw_engine::blocks::{BlockKind, BlockParams, Step};
 use livedaw_engine::chain::Node;
+use livedaw_engine::dlive::DLiveStripParams;
 use livedaw_engine::params::mix_source;
 use livedaw_engine::params::{
     ext, DynSlotParams, EqBlockParams, FilterParams, InsertParams, MatrixSendParams, StripParams, FX_EXT, FX_NONE, MAX_FX,
@@ -594,6 +595,9 @@ fn capture_strip(s: &Strip, sections: u32, slots: &[usize], mains: usize, matric
             put_i(x, "mixSource", &m.mix_source);
         }
     }
+    if sections & ROUTING != 0 && !s.dlive.is_default() {
+        put_strip_dlive(e.add_new("DLive"), &s.dlive);
+    }
     if sections & SENDS != 0 {
         if kind != StripKind::Matrix {
             let m = e.add_new("Mtx");
@@ -944,6 +948,98 @@ fn apply_amm(engine: &Engine, parent: &Element) {
 
 /// A dLive channel's AMM settings, always written there, so that a recalled scene
 /// also takes a channel out of its AMM; absent, they stay as they are.
+fn put_strip_dlive(x: &mut Element, d: &DLiveStripParams) {
+    put_i(x, "image", &d.stereo_image);
+    put_f(x, "width", &d.image_width);
+    put_b(x, "follow", &d.follow_main_pan);
+    put_b(x, "invert", &d.follow_invert);
+    put_f(x, "divergence", &d.divergence);
+    put_i(x, "panMode", &d.pan_mode);
+    put_f(x, "rear", &d.surround_rear);
+    put_f(x, "lfe", &d.lfe_db);
+    put_f(x, "nonLfe", &d.non_lfe_db);
+    put_f(x, "direct", &d.direct_db);
+    put_b(x, "abcd", &d.abcd_on);
+    put_i(x, "abcdActive", &d.abcd_active);
+    for (i, (l, r)) in d.abcd_left.iter().zip(&d.abcd_right).enumerate() {
+        x.set(format!("abcdL{i}").as_str(), l.load(Relaxed));
+        x.set(format!("abcdR{i}").as_str(), r.load(Relaxed));
+    }
+    put_i(x, "groupSource", &d.group_source);
+}
+
+fn get_strip_dlive(x: &Element, d: &DLiveStripParams) {
+    get_i(x, "image", &d.stereo_image);
+    get_f(x, "width", &d.image_width);
+    get_b(x, "follow", &d.follow_main_pan);
+    get_b(x, "invert", &d.follow_invert);
+    get_f(x, "divergence", &d.divergence);
+    get_i(x, "panMode", &d.pan_mode);
+    get_f(x, "rear", &d.surround_rear);
+    get_f(x, "lfe", &d.lfe_db);
+    get_f(x, "nonLfe", &d.non_lfe_db);
+    get_f(x, "direct", &d.direct_db);
+    get_b(x, "abcd", &d.abcd_on);
+    get_i(x, "abcdActive", &d.abcd_active);
+    for (i, (l, r)) in d.abcd_left.iter().zip(&d.abcd_right).enumerate() {
+        get_i(x, format!("abcdL{i}").as_str(), l);
+        get_i(x, format!("abcdR{i}").as_str(), r);
+    }
+    get_i(x, "groupSource", &d.group_source);
+}
+
+/// A dLive's Direct Out settings and Source Selectors.
+fn capture_dlive(engine: &Engine, parent: &mut Element) {
+    if !matches!(engine.profile(), Profile::AhDLive(_)) {
+        return;
+    }
+    let c = &engine.dlive;
+    let x = parent.add_new("DLive");
+    put_i(x, "directSource", &c.direct_source);
+    put_b(x, "directFader", &c.direct_follow_fader);
+    put_b(x, "directMute", &c.direct_follow_mute);
+    put_b(x, "directAll", &c.direct_follow_all);
+    for (i, sel) in c.selectors.iter().enumerate().filter(|(_, s)| !s.is_default()) {
+        let e = x.add_new("Selector");
+        e.set("i", i);
+        put_i(e, "outKind", &sel.output_kind);
+        put_i(e, "out", &sel.output);
+        put_i(e, "active", &sel.active);
+        put_f(e, "fadeIn", &sel.fade_in_s);
+        put_f(e, "fadeOut", &sel.fade_out_s);
+        for (j, m) in sel.sources.iter().enumerate().filter(|(_, m)| m.kind.load(Relaxed) >= 0) {
+            let y = e.add_new("Source");
+            y.set("i", j);
+            put_i(y, "kind", &m.kind);
+            put_i(y, "number", &m.number);
+            put_f(y, "on", &m.on_db);
+        }
+    }
+}
+
+fn apply_dlive(engine: &Engine, parent: &Element) {
+    let Some(x) = parent.child("DLive") else { return };
+    let c = &engine.dlive;
+    get_i(x, "directSource", &c.direct_source);
+    get_b(x, "directFader", &c.direct_follow_fader);
+    get_b(x, "directMute", &c.direct_follow_mute);
+    get_b(x, "directAll", &c.direct_follow_all);
+    for e in x.children_named("Selector") {
+        let Some(sel) = usize::try_from(e.int_or("i", -1)).ok().and_then(|i| c.selectors.get(i)) else { continue };
+        get_i(e, "outKind", &sel.output_kind);
+        get_i(e, "out", &sel.output);
+        get_i(e, "active", &sel.active);
+        get_f(e, "fadeIn", &sel.fade_in_s);
+        get_f(e, "fadeOut", &sel.fade_out_s);
+        for y in e.children_named("Source") {
+            let Some(m) = usize::try_from(y.int_or("i", -1)).ok().and_then(|j| sel.sources.get(j)) else { continue };
+            get_i(y, "kind", &m.kind);
+            get_i(y, "number", &m.number);
+            get_f(y, "on", &m.on_db);
+        }
+    }
+}
+
 fn put_strip_amm(e: &mut Element, m: &AmmStripParams) {
     let x = e.add_new("Amm");
     put_i(x, "amm", &m.amm);
@@ -1276,6 +1372,12 @@ fn apply_strip(
         m.ext_invert.store(x.is_some_and(|x| x.bool_or("invert", false)), Relaxed);
         m.mix_source.store(x.map_or(mix_source::POST_DELAY, |x| x.int_or("mixSource", mix_source::POST_DELAY)), Relaxed);
     }
+    if sections & ROUTING != 0 {
+        s.dlive.reset();
+        if let Some(x) = e.child("DLive") {
+            get_strip_dlive(x, &s.dlive);
+        }
+    }
     if let Some(r) = e.child("Route").filter(|_| sections & ROUTING != 0) {
         if kind.is_input() {
             get_b(r, "stereo", &p.stereo);
@@ -1549,6 +1651,7 @@ pub fn save_console(engine: &Engine, bridge: &mut dyn PluginBridge) -> Element {
     capture_rta(engine, &mut console);
     capture_automix(engine, &mut console);
     capture_amm(engine, &mut console);
+    capture_dlive(engine, &mut console);
     capture_dcas(engine, &mut console, true);
     capture_mute_groups(engine, &mut console, true);
     capture_fx(engine, &mut console, bridge);
@@ -1626,7 +1729,12 @@ pub fn apply_dlive_layout(engine: &Engine, layout: DLiveLayout, bridge: &mut dyn
     let mut console = save_console(engine, bridge);
     if let Some(config) = console.child_mut("Config") {
         let c = layout.counts();
-        config.set("channels", c.channels).set("buses", c.buses).set("matrices", c.matrices).set("layout", layout.to_text());
+        config
+            .set("channels", c.channels)
+            .set("buses", c.buses)
+            .set("mains", c.mains)
+            .set("matrices", c.matrices)
+            .set("layout", layout.to_text());
     }
     if layout.stereo_inputs != old.stereo_inputs {
         remap_dlive_channels(&mut console, old, layout);
@@ -1697,6 +1805,7 @@ pub fn load_console(engine: &Engine, console: &Element, bridge: &mut dyn PluginB
     apply_rta(engine, console);
     apply_automix(engine, console);
     apply_amm(engine, console);
+    apply_dlive(engine, console);
     apply_dcas(engine, console, &mut None);
     apply_mute_groups(engine, console);
     apply_console_state(engine, console);

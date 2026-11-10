@@ -2,7 +2,9 @@
 #include "engine/MidiPorts.h"
 #include "engine/MidiRemote.h"
 #include "engine/ProMixMidi.h"
+#include "engine/Dm2000Midi.h"
 #include "engine/SqMidi.h"
+#include "engine/Y01VMidi.h"
 #include "engine/Y02RMidi.h"
 
 #include <cstring>
@@ -323,7 +325,7 @@ private:
         expectEquals ((int) engine.getChannels().size(), 48);
         expectEquals ((int) engine.getBuses().size(), 16);
         expectEquals ((int) engine.getMatrices().size(), 3);
-        expect (engine.getRemotes().midi == MidiProtocol::AhSq && engine.getRemotes().network == 0u, "MIDI only");
+        expect (engine.getRemotes().midi == MidiProtocol::AhSq && engine.getRemotes().network == 16u, "its MIDI, and MIDI over TCP");
         {
             auto protocol = MidiProtocol::create (MidiProtocol::AhSq, engine, show, false);
             auto* p = dynamic_cast<SqMidi*> (protocol.get());
@@ -359,6 +361,36 @@ private:
             for (const auto& m : sent)
                 program = program || (m.isProgramChange() && m.getProgramChangeNumber() == 0);
             expect (program, "scene 1 goes out");
+        }
+        engine.configure (nullptr);
+
+        beginTest ("A DM2000: its MIDI");
+        engine.configureProfile (ld::kProfileDm2000);
+        expect (engine.getRemotes().midi == MidiProtocol::Dm2000 && engine.getRemotes().network == 0u, "MIDI only");
+        {
+            auto protocol = MidiProtocol::create (MidiProtocol::Dm2000, engine, show, false);
+            auto* p = dynamic_cast<Dm2000Midi*> (protocol.get());
+            expect (p != nullptr && protocol->asWing() == nullptr);
+            std::vector<juce::MidiMessage> sent;
+            p->onSend = [&] (const juce::MidiMessage& m) { sent.push_back (m); };
+            p->sendFeedback();
+            expect (sent.empty(), "nothing at start");
+            expectEquals (p->getSetupText().upToFirstOccurrenceOf (" ", false, false).getIntValue(), 1);
+            // CH1's fader to value 823, 0 dB (parameter change, edit buffer, element 1C).
+            const uint8_t change[] { 0x43, 0x10, 0x3e, 0x7f, 0x01, 0x1c, 0x00, 0x00, 0x00, 0x00, 0x06, 0x37 };
+            p->handleMessage (0, juce::MidiMessage::createSysExMessage (change, (int) sizeof (change)));
+            expectWithinAbsoluteError (engine.getChannels()[0]->params.faderDb.load(), 0.0f, 0.01f);
+            // Tx is off in Yamaha's initial setup; turn it on and a change goes out.
+            p->setSetupText ("1 1  1 1 1 1 1 1  1 1 1 1 1 1  0 0 0 0 0 0  0 0 0 0 0 0  0 0");
+            engine.getChannels()[1]->params.mute.store (true);
+            p->sendFeedback();
+            expect (! sent.empty(), "the console's change goes out");
+            sent.clear();
+            // Scene 2 by program change, recalled.
+            show.addScene ("A");
+            show.addScene ("B");
+            p->handleMessage (0, juce::MidiMessage::programChange (1, 1));
+            expectEquals (show.getCurrentSceneIndex(), 1);
         }
         engine.configure (nullptr);
 
@@ -431,6 +463,83 @@ private:
         expectEquals (engine.getChannels()[16]->getLabel(), juce::String ("LINE 1"));
         expectEquals (engine.getBuses()[8]->getLabel(), juce::String ("AUX 1"));
         setShownProfile (ld::kProfileWing);
+        beginTest ("A 01V: its MIDI, and undoing a scene recall");
+        engine.configureProfile (ld::kProfileYamaha01V);
+        expect (engine.getRemotes().midi == MidiProtocol::Yamaha01V && engine.getRemotes().network == 0u, "MIDI only");
+        {
+            auto protocol = MidiProtocol::create (MidiProtocol::Yamaha01V, engine, show, false);
+            auto* p = dynamic_cast<Y01VMidi*> (protocol.get());
+            expect (p != nullptr);
+            std::vector<juce::MidiMessage> sent;
+            p->onSend = [&] (const juce::MidiMessage& m) { sent.push_back (m); };
+            p->sendFeedback();
+            expect (sent.empty(), "nothing at start");
+            auto& y = engine.getYamaha01V();
+            expectEquals (y.getSetup (Yamaha01V::CcRx), 0, "control changes off, as p.224 pictures it");
+            expectEquals (y.pcScene (99), 0, "program change #100: scene 00");
+
+            // CC 3 (the table's CH3 fader) to step 102, 0 dB; with Rx on.
+            y.setSetup (Yamaha01V::CcRx, 1);
+            p->handleMessage (0, juce::MidiMessage::controllerEvent (1, 3, 102));
+            expectWithinAbsoluteError (engine.getChannels()[2]->params.faderDb.load(), 0.0f, 1e-3f);
+
+            // A byte parameter change of address 27 (CH4's fader, 3 strips of 9 in) to 102.
+            const uint8_t change[] = { 0xf0, 0x43, 0x10, 0x3e, 0x04, 0x00, 0, 27, 6, 6, 0xf7 };
+            p->handleMessage (0, juce::MidiMessage (change, (int) sizeof (change)));
+            expectWithinAbsoluteError (engine.getChannels()[3]->params.faderDb.load(), 0.0f, 1e-3f);
+            p->sendFeedback();
+            expect (sent.empty(), "received, not sent back");
+
+            // With control change Tx on, a fader the table has goes out as its control change.
+            y.setSetup (Yamaha01V::CcTx, 1);
+            engine.getChannels()[0]->params.faderDb.store (0.0f);
+            p->sendFeedback();
+            expect (sent.size() == 1 && sent[0].isController() && sent[0].getControllerNumber() == 1 && sent[0].getControllerValue() == 102);
+            sent.clear();
+
+            // An edit buffer request: a dump of 2048 bytes.
+            const uint8_t request[] = { 0xf0, 0x43, 0x20, 0x7e, 'L', 'M', ' ', ' ', '8', 'B', '3', '4', 'M', 0x7f, 0xf7 };
+            p->handleMessage (0, juce::MidiMessage (request, (int) sizeof (request)));
+            expect (sent.size() == 1 && sent[0].isSysEx() && sent[0].getRawDataSize() == 2056);
+            sent.clear();
+
+            // A program change recalls the show's scene; a scene recalled on the console sends one.
+            engine.getChannels()[2]->params.faderDb.store (-20.0f);
+            const int a = show.addScene ("A");
+            engine.getChannels()[2]->params.faderDb.store (-40.0f);
+            const int b = show.addScene ("B");
+            show.recallScene (a);
+            p->sendFeedback();
+            bool program = false;
+            for (const auto& m : sent)
+                program = program || (m.isProgramChange() && m.getProgramChangeNumber() == a);
+            expect (program, "scene 1 goes out");
+            sent.clear();
+            p->handleMessage (0, juce::MidiMessage::programChange (1, b));
+            expectEquals (show.getCurrentSceneIndex(), b);
+            expect (sent.empty(), "a program change that arrived isn't sent back");
+            expectWithinAbsoluteError (engine.getChannels()[2]->params.faderDb.load(), -40.0f, 1e-3f);
+
+            // Scene 00: the initial data, undoable.
+            p->handleMessage (0, juce::MidiMessage::programChange (1, 99));
+            const float initial = engine.getChannels()[2]->params.faderDb.load();
+            expect (initial != -40.0f, "the initial data");
+            expect (show.canUndoRecall());
+            show.undoRecall();
+            expectWithinAbsoluteError (engine.getChannels()[2]->params.faderDb.load(), -40.0f, 1e-3f);
+            show.undoRecall();
+            expectWithinAbsoluteError (engine.getChannels()[2]->params.faderDb.load(), initial, 1e-3f, "RECALL UNDO toggles");
+            show.undoRecall();
+
+            // A dump stores into a memory without touching the console; the show grows to it.
+            const auto scene = show.getY01VSceneBytes (y.getHandle(), a + 1);
+            expectEquals ((int) scene.size(), Yamaha01V::sceneBytes);
+            const int memory = show.getNumScenes() + 2;
+            expect (show.storeY01VSceneBytes (y.getHandle(), memory, scene));
+            expectEquals (show.getNumScenes(), memory);
+            expectEquals (show.getScene (memory - 1)->name, "SCENE " + juce::String (memory).paddedLeft ('0', 2));
+            expectWithinAbsoluteError (engine.getChannels()[2]->params.faderDb.load(), -40.0f, 1e-3f);
+        }
         engine.configure (nullptr);
         expect (engine.getProfile() == ld::kProfileWing);
     }

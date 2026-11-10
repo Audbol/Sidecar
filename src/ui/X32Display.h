@@ -60,6 +60,9 @@ public:
     std::function<void (int, const juce::String&)> setAssignCode;
     std::function<int()> getAssignSet;
     std::function<void (int)> setAssignSet;
+    /** Any set's control codes, and the assign section's encoders 1-4 (ASSIGN > home). */
+    std::function<juce::String (int, int)> assignCodeOf;
+    std::function<KnobBinding (int)> assignBinding;
 
     void showScreen (Screen, int tab = 0);
     void showTab (int);
@@ -73,8 +76,48 @@ public:
     std::function<int()> getModel;
     std::function<void (int)> setModel;
 
+    /** EQ on faders (EFFECTS, a graphic EQ's first push; the manual's tip, p.58):
+        the surface puts eight bands of FX slot `slot`, from `firstBand`, on its
+        group faders; a slot below 0 gives the faders back. `/-stat/geqonfdr`
+        and `/-stat/geqpos` hold it for a remote. */
+    std::function<void (int slot, int firstBand)> setGeqOnFaders;
+    int getGeqSlot() const noexcept { return geqSlot; }
+    int getGeqFirstBand() const noexcept { return geqFirst; }
+    /** Puts a graphic EQ's bands on the faders (a window of eight from `firstBand`), or takes them off (`slot` < 0). */
+    void showGeqOnFaders (int slot, int firstBand);
+    /** Whether FX slot `slot` holds a graphic EQ, and its band parameters
+        (indexes into its model's parameters, the left side's first). */
+    bool isGraphicEq (int slot) const;
+    std::vector<int> geqBands (int slot) const;
+    /** A graphic EQ's band 0-30 as the faders' scribble strips name it ("20", "1k25", "20k": the ISO thirds). */
+    static juce::String geqBandName (int band);
+    /** A strip's index as the X32 counts them (`/-stat/selidx`: 0-31 the
+        channels, 32-39 aux in, 40-47 FX returns, 48-63 buses, 64-69 matrices,
+        70 LR, 71 M/C; -1 for none), and the strip at one. */
+    int x32Index (const Strip&) const;
+    Strip* stripAtX32Index (int) const;
+    /** An RTA check box (`/-prefs/rta/option` bit 0-5), and its `/-stat` twin. */
+    void setRtaOption (int option, bool on);
+
     /** The selected strip changed (or the console did). */
     void refreshStrip();
+
+    /** The strip METERS > rta and the EQ's overlay analyse: the selected one, or
+        the fixed one `/-prefs/rta/source` names (2-73; 0 and 1, the document's
+        "none" and the monitor, follow the selection: Sidecar's reading). */
+    Strip* rtaStrip() const;
+    /** A SNIPPETS save's scope: the sections and strips its check boxes hold
+        (no strip checked: the selected one). */
+    juce::uint32 snippetSections() const noexcept { return snippetScope; }
+    std::vector<Strip*> snippetStrips() const;
+    /** SCENES > snippets' SAVE: the console into snippet `slot` of the selected
+        scene (a new one past the end, of the checked scope, named). Returns its index, -1 for none. */
+    int saveSnippet (int slot, const juce::String& name);
+    /** SETUP > global's INITIALIZE: 0 the console's strips, 1 the show data (asks), 2 the libraries (not done). */
+    void initialize (int item);
+    /** The screen's brightness (`/-prefs/bright`, 10-100 %), 0.1 to 1. */
+    float lcdBrightness() const;
+    void paintOverChildren (juce::Graphics&) override;
 
     /** What encoder `i` (0-5) turns and what its push does, as the screen shows. */
     struct Encoder
@@ -83,6 +126,8 @@ public:
         juce::String pushLabel;
         std::function<void()> push;
         std::function<bool()> pushOn;
+        /** The real console has it, Sidecar has nothing behind it: drawn dimmed. */
+        bool dimmed = false;
     };
     const Encoder& getEncoder (int i) const { return encoders[(size_t) juce::jlimit (0, 5, i)]; }
     /** A push of encoder `i` (its key under the screen, or a tap on the screen). */
@@ -116,7 +161,7 @@ public:
     /** PARAM SAFE's four columns (p.66) and CHAN SAFE's six, an encoder each. */
     std::vector<SafeColumn> paramSafeColumns();
     std::vector<SafeColumn> chanSafeColumns();
-    /** LIBRARY's channel, effects and routing tabs (2-4): the elements a load
+    /** LIBRARY's channel, effects and routing tabs (0-2): the elements a load
         recalls, as names (channel and routing), and SAVE under `name`. */
     static const juce::StringArray& channelElements();
     static const juce::StringArray& routingElements();
@@ -173,6 +218,36 @@ private:
     void paintMeters (juce::Graphics&, juce::Rectangle<int>);
     void paintSends (juce::Graphics&, juce::Rectangle<int>, Strip&);
     void paintRemote (juce::Graphics&, juce::Rectangle<int>);
+    /** MUTE GRP covers only the encoder row: the page it covers, and pressing it again. */
+    Screen underScreen = Screen::Home;
+    int underTab = 0;
+    int shownTab() const noexcept { return screen == Screen::MuteGroups ? underTab : tab; }
+    /** UTILITY: the page belonging to the screen in view (manual 7.9). */
+    void pressUtility();
+    void paintMonitor (juce::Graphics&, juce::Rectangle<int>);
+    void paintTalkback (juce::Graphics&, juce::Rectangle<int>);
+    void paintOscillator (juce::Graphics&, juce::Rectangle<int>);
+    void paintAssign (juce::Graphics&, juce::Rectangle<int>);
+    void paintHomeConfig (juce::Graphics&, juce::Rectangle<int>, Strip&);
+    void paintHomeMain (juce::Graphics&, juce::Rectangle<int>, Strip&);
+    void paintSetupGlobal (juce::Graphics&, juce::Rectangle<int>);
+    void paintSetupConfig (juce::Graphics&, juce::Rectangle<int>);
+    void paintNetwork (juce::Graphics&, juce::Rectangle<int>);
+    void paintCard (juce::Graphics&, juce::Rectangle<int>);
+    void paintUsb (juce::Graphics&, juce::Rectangle<int>);
+    /** EFFECTS > home: the model the fifth encoder points at, not yet assigned (-1 none). */
+    int pendingFxModel = -1;
+    /** USB > config: playback folder mode (a file's end goes on to the next). */
+    bool usbFolderMode = true;
+    std::unique_ptr<juce::FileChooser> usbFolderChooser;
+    /** MONITOR's source: the list's pointer (-1: at the source in use). */
+    int monitorSourcePick = -1;
+    /** LIBRARY: the slot SAVE points at (past the end: a new preset). */
+    int presetSaveSlot = 0;
+    /** ASSIGN's set tab, as drawn: the lists the encoders point into. */
+    juce::StringArray assignKinds;
+    int assignKind = 0, assignTargetAt = 0, assignTargetCount = 0;
+    std::function<juce::String (int)> assignTargetText;
     void paintScribble (juce::Graphics&, juce::Rectangle<float>, Strip*);
     void paintPreamps (juce::Graphics&, juce::Rectangle<float>);
     void paintSafeColumns (juce::Graphics&, juce::Rectangle<float>, const std::vector<SafeColumn>&, const int* pointed, const juce::String& footer);
@@ -193,7 +268,6 @@ private:
     /** EFFECTS (step 11): home picks a slot, its model and (FX 1-4) its
         source; fx1-fx8 turn the slot's parameters, six per layer. */
     void assignEffectsEncoders();
-    void paintEffects (juce::Graphics&, juce::Rectangle<int>);
     /** The X32 models slot `slot` (0-7) takes: FX 1-4 any, FX 5-8 the insert ones. */
     std::vector<int> fxModelsFor (int slot) const;
     void paintOutputs (juce::Graphics&, juce::Rectangle<int>);
@@ -223,6 +297,78 @@ private:
     /** SETUP > remote: the X32's MIDI (step 6b). */
     void assignRemoteEncoders();
     X32Midi* x32Midi() const;
+    /** Runs an X32 text command ("/-prefs/lamp 50") and repaints. */
+    void x32Run (const juce::String& text);
+    /** An address's value as a number (`fallback` while the console isn't an X32). */
+    int x32Int (const juce::String& address, int fallback = 0) const;
+    bool x32On (const juce::String& address) const { return x32Value (address) == "ON"; }
+    /** A list encoder on an int address: `count` values from `first`, named by `text`. */
+    KnobBinding intKnob (const juce::String& label, const juce::String& path, int first, int count, std::function<juce::String (int)> text);
+
+    // What the surface shows, for a remote (`/-stat`): written when it changes
+    // here, followed when a remote changes it (the timer).
+    void publishScreen();
+    void followRemote();
+    int publishedScreen = -1, publishedPage = -1, publishedMuteGrp = -1, publishedSel = -1, publishedBand = -1, publishedBank = -1,
+        publishedTape = -1, publishedTapeSeconds = -1, publishedMidi = -1;
+    /** `/-prefs/remote/ioenable` from the app's X32 MIDI settings, and back. */
+    void publishRemotePrefs();
+    void followRemotePrefs();
+
+    // The RTA: which strip it analyses and where; its page and the EQ's overlay.
+    void updateRta();
+    void paintRta (juce::Graphics&, juce::Rectangle<int>);
+    void paintRtaBars (juce::Graphics&, juce::Rectangle<float>, float alpha);
+    void paintSpectrograph (juce::Graphics&, juce::Rectangle<float>, float alpha);
+    /** The spectrograph's last ten seconds: a row of band levels (dB) per timer tick. */
+    std::vector<std::vector<float>> rtaHistory;
+    int rtaOption = 0;      // METERS > rta: the check box the first encoder points at
+    int rtaSourcePick = -1; // and the source the sixth points at (-1: the one in use)
+    void assignRtaEncoders();
+    void assignSetupGlobalEncoders();
+    void assignNetworkEncoders();
+    void assignUsbConfigEncoders();
+    void assignSnippetEncoders();
+    void assignIqEncoders();
+    void paintSnippets (juce::Graphics&, juce::Rectangle<int>);
+    void paintEffectsHome (juce::Graphics&, juce::Rectangle<int>);
+    void paintFxPanel (juce::Graphics&, juce::Rectangle<int>, int slot);
+    void paintMatrixSends (juce::Graphics&, juce::Rectangle<int>, Strip&);
+    void paintIqSetup (juce::Graphics&, juce::Rectangle<int>);
+    /** The strip's GAIN as the X32 has it: the head amp of its input, or the
+        trim (no head amp on its input, or HA gain split on for it). Not valid
+        for a strip without a preamp (FX returns, buses, matrices, mains). */
+    KnobBinding gainBinding (Strip&) const;
+    bool gainIsHeadAmp (const Strip&) const;
+    // SETUP > global: the item INITIALIZE points at, the one its first push
+    // armed, what it did; the brightness encoder on the LEDs.
+    int initItem = 0, initArmedItem = -1;
+    juce::String globalStatus;
+    bool brightnessLed = false;
+    // SETUP > network: the field (address, mask, gateway) and its four numbers being edited (-1: as kept).
+    int netField = 0;
+    std::array<int, 4> netPending { -1, -1, -1, -1 };
+    // SETUP > preamps: the option the sixth encoder points at; card: the mode pointed at (-1: the one in use).
+    int haOption = 0, cardMode = -1;
+    // ROUTING > p16 out: iQ SETUP shown.
+    bool iqSetup = false;
+    // USB > config: the recorder's side being set (0 left, 1 right).
+    int usbRecSide = 0;
+    // SCENES > snippets: the slot to save into; the rows the scope's encoders
+    // point at (parameters, inputs, outputs) and what is checked.
+    int snippetSlot = 0;
+    std::array<int, 3> snippetRows {};
+    juce::uint32 snippetScope = 0;
+    std::vector<const Strip*> snippetChecked;
+    // ROUTING's blocks: the choice turned on encoder i, not yet connected (-1 none).
+    std::array<int, 6> pendingBlock { -1, -1, -1, -1, -1, -1 };
+    /** A routing block's encoder: turned through `choices`, its push connects it. */
+    Encoder blockEncoder (int i, const juce::String& label, std::function<juce::String()> path, const juce::StringArray& choices, const juce::String& pushLabel);
+    // SETUP > scribble strip: the DCA shown (-1: the selected strip).
+    int scribbleDca = -1;
+    juce::String dcaName (int dca) const { return x32Value ("/dca/" + juce::String (dca + 1) + "/config/name").unquoted(); }
+    // EQ on faders: the FX slot (-1 off) and the first band on the faders.
+    int geqSlot = -1, geqFirst = 0;
 
     UiContext& ctx;
     const universal::Theme& theme;
@@ -282,7 +428,7 @@ private:
     // and the one it is on (a push uses it), for MIDI IN [0] and OUT [1].
     std::array<juce::StringArray, 2> midiChoices, midiValues;
     std::array<int, 2> midiPick { 0, 0 };
-    std::vector<std::unique_ptr<universal::ToggleKey>> screenKeys, pushKeys, muteGroupKeys;
+    std::vector<std::unique_ptr<universal::ToggleKey>> screenKeys, pushKeys;
     universal::ToggleKey pagePrev, pageNext, layerUp, layerDown;
     /** Where PAGE SELECT and LAYER are printed (set by resized()). */
     juce::Rectangle<int> pageLabel, layerLabel;

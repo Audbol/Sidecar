@@ -224,6 +224,81 @@ enum WingTimes {
     Auto { att_n: f32, rel: f32, onset: f32, onset_coef: f32 },
 }
 
+// The PRO2's compressor: its five envelope modes, from the manual's words alone
+// (Owner's Manual pp.290-292; `crate::midas_pro`). The constants below are Sidecar's.
+
+/// Creative: the attack is a straight line in dB, this many per ATTACK time.
+const MIDAS_LINEAR_DB: f32 = 10.0;
+/// How much slower an attack starts at the bottom of the soft knee (times).
+const MIDAS_KNEE_SLOW: f32 = 3.0;
+/// Vintage: the times at the onset of compression (ms), "largely independent of
+/// the envelope control settings", and the reduction (dB) by which it has returned
+/// to the set times.
+const MIDAS_VINTAGE_ATT_MS: f32 = 40.0;
+const MIDAS_VINTAGE_REL_MS: f32 = 800.0;
+const MIDAS_VINTAGE_FULL_DB: f32 = 15.0;
+/// Vintage: the saturation that grows with the reduction ("valve-like brightness").
+const MIDAS_VINTAGE_COLOUR: f32 = 0.18;
+/// Shimmer: the second-order attack's damping (under 1: it overshoots).
+const MIDAS_SHIMMER_DAMPING: f32 = 0.55;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MidasMode {
+    Corrective,
+    Adaptive,
+    Creative,
+    Vintage,
+    Shimmer,
+}
+
+/// A PRO2 compressor's envelope.
+#[derive(Clone, Copy, Debug)]
+struct MidasEnv {
+    mode: MidasMode,
+    /// ATTACK in samples, and its one-pole.
+    att_n: f32,
+    att: f32,
+    /// RELEASE's one-pole, and (Creative) the one-pole of each of its two poles.
+    rel: f32,
+    rel2: f32,
+    /// Vintage: its onset times, as samples.
+    slow_att_n: f32,
+    slow_rel_n: f32,
+    rel_n: f32,
+    /// Where the knee ends, and its width.
+    knee_top: f32,
+    knee: f32,
+    /// Vintage: drive into the colouration (the threshold at about half scale).
+    drive: f32,
+    /// The soft clip's threshold (linear; 0: off).
+    clip: f32,
+}
+
+impl MidasEnv {
+    /// How much slower the attack is in the knee (1: not at all; [`MIDAS_KNEE_SLOW`]
+    /// at its bottom).
+    #[inline]
+    fn knee_slowing(&self, lvl: f32) -> f32 {
+        if self.knee <= 0.0 {
+            return 1.0;
+        }
+        1.0 + (MIDAS_KNEE_SLOW - 1.0) * ((self.knee_top - lvl) / self.knee).clamp(0.0, 1.0)
+    }
+
+    /// The soft clip after the make-up gain: nothing under its threshold, then a
+    /// curve that leaves 6 dB of ceiling over it (Sidecar's).
+    #[inline]
+    fn soft_clip(&self, x: f32) -> f32 {
+        let t = self.clip;
+        let a = x.abs();
+        if t <= 0.0 || a <= t {
+            x
+        } else {
+            (t + t * super::fx::blocks::fast_tanh((a - t) / t)).copysign(x)
+        }
+    }
+}
+
 /// The WING GATE: the gain moves on a linear scale.
 #[derive(Clone, Copy, Debug)]
 struct WingGate {
@@ -358,6 +433,8 @@ struct CompCfg {
     /// The WING COMP's / EXP's detector and envelope (None: the one-poles and
     /// detectors of the other models).
     wing: Option<WingEnv>,
+    /// A PRO2 compressor's envelope (`midas_pro`).
+    midas: Option<MidasEnv>,
     feedback: bool,
     /// HF emphasis of the detector (0 = flat).
     det_tilt: f32,
@@ -393,6 +470,7 @@ impl Default for CompCfg {
             hold: 0,
             rms: false,
             wing: None,
+            midas: None,
             feedback: false,
             det_tilt: 0.0,
             pre_db: 0.0,
@@ -661,6 +739,9 @@ fn dbu(x: f32) -> f32 {
 
 fn configure(spec: &ModelSpec, v: &[f32], sr: f32) -> Config {
     let p = Params::new(spec, v);
+    // A DM2000's HOLD, DECAY and RELEASE are counted in samples (its manual gives
+    // their ranges for each sample rate): their tables are its 48 kHz values.
+    let rate_scale = 48000.0 / sr;
     let comp = |thr: f32, ratio: f32, knee: f32, att_ms: f32, rel_ms: f32| CompCfg {
         curve: Curve::Comp { thr, slope: slope_of(ratio), knee },
         att: coef(att_ms, sr),
@@ -732,24 +813,83 @@ fn configure(spec: &ModelSpec, v: &[f32], sr: f32) -> Config {
         // The 02R's (`livedaw_dsp::y02r`): RANGE the level the gate closes to
         // (-70..0 dB), DECAY the release.
         "Y2GAT" => Config::Gate(gate(p.f("thr"), -p.f("range"), 0.0, p.f("att"), p.f("hld"), p.f("dcy"))),
+        // The DM2000's (`livedaw_dsp::dm2000`): the 02R's curves on its own times.
+        "DMGAT" => {
+            Config::Gate(gate(p.f("thr"), -p.f("range"), 0.0, p.f("att"), p.f("hld") * rate_scale, p.f("dcy") * rate_scale))
+        }
+        "DMDUK" => {
+            Config::Duck(gate(p.f("thr"), -p.f("range"), 0.0, p.f("att"), p.f("hld") * rate_scale, p.f("dcy") * rate_scale))
+        }
+        // The XENYX 1204USB's (`livedaw_dsp::xenyx1204`; Sidecar's reading): the COMP
+        // knob's one law, and the soft clip as the Tube Stage's pentode at a low drive.
+        "XYCMP" => {
+            let s = crate::xenyx1204::comp_setting(p.f("comp"));
+            let mut c = comp(s.threshold_db, s.ratio, 6.0, 10.0, 150.0);
+            c.post_db = s.makeup_db;
+            Config::Comp(c)
+        }
+        "XYCLIP" => {
+            Config::Preamp(PreampCfg { first: ValveStage::driven(false, p.f("drive") / 100.0), second: None, hf: 1.0, out: 1.0 })
+        }
         "Y2DUK" => Config::Duck(gate(p.f("thr"), -p.f("range"), 0.0, p.f("att"), p.f("hld"), p.f("dcy"))),
         // Its compressor and expander: KNEE hard or 1-5 (Sidecar's reading: 2 dB
         // of soft knee a step), OUT GAIN after; the compander expands 5:1
         // (hard) or 1.5:1 (soft) under its WIDTH (MAN pp.63-66).
-        "Y2CMP" | "Y2EXP" | "Y2CPH" | "Y2CPS" => {
+        "Y2CMP" | "Y2EXP" | "Y2CPH" | "Y2CPS" | "DMCMP" | "DMEXP" | "DMCPH" | "DMCPS" => {
             let att = p.f("att").max(WING_MIN_ATTACK_MS);
             let (thr, ratio) = (p.f("thr"), p.f("ratio"));
-            let knee = if spec.token.starts_with("Y2C") && spec.token != "Y2CMP" { 0.0 } else { p.f("knee") * 2.0 };
-            let mut c = comp(thr, ratio, knee, att, p.f("rel"));
+            let compander = matches!(spec.token, "Y2CPH" | "Y2CPS" | "DMCPH" | "DMCPS");
+            let knee = if compander { 0.0 } else { p.f("knee") * 2.0 };
+            let rel = if spec.token.starts_with("DM") { p.f("rel") * rate_scale } else { p.f("rel") };
+            let mut c = comp(thr, ratio, knee, att, rel);
             c.post_db = p.f("gain");
             match spec.token {
-                "Y2EXP" => c.curve = Curve::Expand { thr, ratio, knee, range: Y02R_RANGE_DB },
-                "Y2CPH" | "Y2CPS" => {
-                    let exp = if spec.token == "Y2CPH" { 5.0 } else { 1.5 };
+                "Y2EXP" | "DMEXP" => c.curve = Curve::Expand { thr, ratio, knee, range: Y02R_RANGE_DB },
+                "Y2CPH" | "Y2CPS" | "DMCPH" | "DMCPS" => {
+                    let exp = if matches!(spec.token, "Y2CPH" | "DMCPH") { 5.0 } else { 1.5 };
                     c.curve = Curve::Compand { thr, slope: slope_of(ratio), width: p.f("width"), exp };
                 }
                 _ => {}
             }
+            Config::Comp(c)
+        }
+        // The PRO2's (`livedaw_dsp::midas_pro`): thresholds in dBu. Its hysteresis
+        // is unspecified ("internal hysteresis", p.254): 4 dB is Sidecar's.
+        "MPGAT" => {
+            let thr = crate::midas_pro::dbfs(p.f("thr"));
+            let mut g = gate(thr, -p.f("range"), 0.0, p.f("att"), p.f("hld"), p.f("rel"));
+            g.close = thr - 4.0;
+            Config::Gate(g)
+        }
+        "MPCMP" | "MPCMPO" => {
+            let thr = crate::midas_pro::dbfs(p.f("thr"));
+            let knee = crate::midas_pro::KNEES_DB[p.choice("knee").min(2)];
+            let (att, rel) = (p.f("att"), p.f("rel"));
+            let mode = match p.text("mode") {
+                "Adaptive" => MidasMode::Adaptive,
+                "Creative" => MidasMode::Creative,
+                "Vintage" => MidasMode::Vintage,
+                "Shimmer" => MidasMode::Shimmer,
+                _ => MidasMode::Corrective,
+            };
+            let samples = |ms: f32| (ms * 0.001 * sr).max(1.0);
+            let mut c = comp(thr, p.f("ratio"), knee, att, rel);
+            c.post_db = p.f("gain");
+            c.rms = mode == MidasMode::Adaptive;
+            c.midas = Some(MidasEnv {
+                mode,
+                att_n: samples(att),
+                att: coef(att, sr),
+                rel: coef(rel, sr),
+                rel2: coef(rel * 0.5, sr),
+                slow_att_n: samples(MIDAS_VINTAGE_ATT_MS),
+                slow_rel_n: samples(MIDAS_VINTAGE_REL_MS),
+                rel_n: samples(rel),
+                knee_top: thr + 0.5 * knee,
+                knee,
+                drive: 0.5 / db_to_gain(thr).max(1e-4),
+                clip: if p.on("clip") { db_to_gain(crate::midas_pro::dbfs(p.f("clipl"))) } else { 0.0 },
+            });
             Config::Comp(c)
         }
         // The SQ's (`livedaw_dsp::sq`): DEPTH what the gate takes off; the
@@ -1499,6 +1639,9 @@ struct CompState {
     wing_peak: f32,
     /// Auto gain (dB).
     makeup: f32,
+    /// A PRO2 mode's second state: Creative's second release pole, Shimmer's
+    /// attack velocity (dB per sample).
+    midas_v: f32,
     /// Smoothed input and output gains of the stage (dB), so knobs that
     /// change the level (INPUT, OUTPUT, GAIN on a unit's panel) glide.
     pre_s: f32,
@@ -2353,6 +2496,52 @@ impl WingDynamics {
         }
     }
 
+    /// A PRO2 compressor's next reduction (`MidasEnv`).
+    #[inline]
+    fn midas_envelope(s: &mut CompState, m: &MidasEnv, target: f32, lvl: f32, attacking: bool) -> f32 {
+        let gr = s.gr;
+        let slow = m.knee_slowing(lvl);
+        match m.mode {
+            MidasMode::Corrective | MidasMode::Adaptive => {
+                if attacking {
+                    smooth(gr, target, 1.0 - (1.0 - m.att) / slow)
+                } else {
+                    smooth(gr, target, m.rel)
+                }
+            }
+            MidasMode::Creative => {
+                if attacking {
+                    s.midas_v = gr;
+                    step_toward(gr, target, MIDAS_LINEAR_DB / (m.att_n * slow))
+                } else {
+                    // Two poles in a row: it starts its release from standstill.
+                    s.midas_v = smooth(s.midas_v, target, m.rel2);
+                    smooth(gr, s.midas_v, m.rel2)
+                }
+            }
+            MidasMode::Vintage => {
+                let t = (-target.min(gr) / MIDAS_VINTAGE_FULL_DB).clamp(0.0, 1.0);
+                let n = if attacking {
+                    m.slow_att_n + (m.att_n * slow - m.slow_att_n) * t
+                } else {
+                    m.slow_rel_n + (m.rel_n - m.slow_rel_n) * t
+                };
+                smooth(gr, target, 1.0 - 1.0 / n.max(1.0))
+            }
+            MidasMode::Shimmer => {
+                if attacking || s.midas_v.abs() > 1e-4 {
+                    // Under-damped, so it overshoots and settles.
+                    let w = (1.0 / (m.att_n * slow)).min(0.5);
+                    s.midas_v += w * w * (target - gr) - 2.0 * MIDAS_SHIMMER_DAMPING * w * s.midas_v;
+                    gr + s.midas_v
+                } else {
+                    s.midas_v = 0.0;
+                    smooth(gr, target, m.rel)
+                }
+            }
+        }
+    }
+
     /// Compressor/limiter/expander stage on samples `x`, keyed by `key`.
     /// `gr_scale` scales the stage's reduction (the LMT transient shaper).
     #[inline]
@@ -2413,7 +2602,9 @@ impl WingDynamics {
         let ka = if amount > s.amount { k.amount_charge } else { k.amount_rel };
         s.amount = ka * s.amount + (1.0 - ka) * amount;
 
-        if let Some(w) = c.wing {
+        if let Some(m) = c.midas {
+            s.gr = Self::midas_envelope(s, &m, target, lvl, attacking).min(0.0);
+        } else if let Some(w) = c.wing {
             s.gr = Self::wing_envelope(s, &w, target, attacking);
         } else if attacking {
             let a = match c.attack {
@@ -2479,6 +2670,13 @@ impl WingDynamics {
         let y_l = if c.colour > 0.0 { colour(x[0] * pre, c.colour) / pre } else { x[0] };
         let y_r = if c.colour > 0.0 { colour(x[1] * pre, c.colour) / pre } else { x[1] };
         let mut y = [y_l * g, y_r * g];
+        if let Some(m) = c.midas.filter(|_| !band) {
+            if m.mode == MidasMode::Vintage {
+                let amount = MIDAS_VINTAGE_COLOUR * (-gr / MIDAS_VINTAGE_FULL_DB).min(1.0);
+                y = [colour(y[0] * m.drive, amount) / m.drive, colour(y[1] * m.drive, amount) / m.drive];
+            }
+            y = [m.soft_clip(y[0]), m.soft_clip(y[1])];
+        }
 
         // In band mode the samples haven't had the reduction yet: the limiter
         // hears them as reduced, and its reduction joins the band's.

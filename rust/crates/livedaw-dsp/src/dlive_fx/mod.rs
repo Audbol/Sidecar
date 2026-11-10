@@ -1,5 +1,6 @@
-//! The dLive's RackExtra FX: its 20 models (SMR's four rooms are four devices
-//! here, the Multiband Compressor's two sizes two), with the controls and every
+//! The dLive's RackExtra FX (its 20 models, SMR's four rooms four devices here, the
+//! Multiband Compressor's two sizes two), its Dyn8 (`dynamics/dyn8.rs`) and, in [`ultra`],
+//! the RackUltra FX card; the RackExtra models with the controls and every
 //! range the dLive Firmware Reference Guide states (chapter DEEP Processing, its
 //! panel pictures; see the "RackExtra FX" table in `docs/DLIVE_RESEARCH.md`, and
 //! its Dyn8 chapter for the Dynamic EQ's and the Multiband's numbers).
@@ -34,6 +35,7 @@ mod pitch;
 mod reverb;
 #[cfg(test)]
 mod tests;
+pub mod ultra;
 
 use crate::model::{ModelCategory, ModelSpec, ParamKind, ParamSpec, Params};
 use crate::wing::fx::blocks::{OnePole, Svf};
@@ -86,8 +88,22 @@ const fn fx(token: &'static str, name: &'static str, params: &'static [ParamSpec
 static DIMENSION: [ParamSpec; 2] =
     [ch("mode", "MODE", &["1", "2", "3", "4", "E"], 0.0), ch("out", "OUTPUT", &["WET ONLY", "DRY+WET"], 0.0)];
 
-/// The RackExtra models, after an empty slot and EXT.
-pub static FX_MODELS: [ModelSpec; 26] = [
+/// Dyn8: an insert, so any slot on a Universal console (`slot_rule`).
+const fn dyn8(params: &'static [ParamSpec]) -> ModelSpec {
+    ModelSpec { token: "DLVDYN8", name: "Dyn8", category: ModelCategory::FxStandard, params }
+}
+
+/// The dLive's 16 RackExtra engines, then the RackUltra card's 8, then its 64 Dyn8s:
+/// where each lives in a dLive's FX slots (`slot_rule`).
+pub const RACKEXTRA_SLOTS: std::ops::Range<usize> = 0..16;
+pub const ULTRA_SLOTS: std::ops::Range<usize> = 16..24;
+pub const DYN8_SLOTS: std::ops::Range<usize> = 24..88;
+
+/// The models, after an empty slot and EXT: the RackExtra models (20), Dyn8 and the
+/// RackUltra models (11, `ultra`). On a dLive each engine holds only its own
+/// (`slot_rule`); a Universal strip is offered them all, as FX slots 1-8 take any
+/// premium model.
+pub static FX_MODELS: [ModelSpec; 38] = [
     crate::wing::FX_MODELS[0],
     crate::wing::FX_MODELS[1],
     fx("DLVSMRC", "SMR Classic", &reverb::SMR),
@@ -114,7 +130,41 @@ pub static FX_MODELS: [ModelSpec; 26] = [
     fx("DLVMB4", "Multiband Compressor 4-band", &dynamics::MULTI4),
     fx("DLVTRAN", "Transient Controller", &dynamics::TRANSIENT),
     fx("DLVDIMC", "Dimension Chorus", &DIMENSION),
+    dyn8(&dynamics::DYN8),
+    fx("DLVSPACE", "Spaces Reverb Designer", &ultra::reverb::SPACES),
+    fx("DLVPLATE", "Plate Reverb Designer", &ultra::reverb::PLATE),
+    fx("DLVRDLY", "Rhythm Delay", &ultra::delay::RHYTHM),
+    fx("DLVSAT", "Saturator", &ultra::tone::SATURATOR),
+    fx("DLVAMP", "Amp+Cab Distortion", &ultra::tone::AMP_CAB),
+    fx("DLVVSHFT", "Vocal Shifter", &ultra::pitch::SHIFTER),
+    fx("DLVTUNER", "Vocal Tuner", &ultra::pitch::TUNER),
+    fx("DLVGRID", "Vocal Gridder", &ultra::pitch::GRIDDER),
+    fx("DLVH2", "Dual AutoKey Harmoniser", &ultra::pitch::HARM_DUAL),
+    fx("DLVH4", "Quad Voice Harmoniser", &ultra::pitch::HARM_QUAD),
+    fx("DLVHMIDI", "MIDI Harmoniser", &ultra::pitch::HARM_MIDI),
 ];
+
+/// The RackUltra models' tokens (the last 11 of [`FX_MODELS`]).
+pub fn is_ultra(token: &str) -> bool {
+    ultra::TOKENS.contains(&token)
+}
+
+/// On a dLive (`models` is its table): whether its slot `slot` may hold `model`,
+/// by which engines the model's kind runs on. `None` for any other console's
+/// table, and for a dLive's RackExtra models, which follow the usual premium range.
+pub fn slot_rule(models: &crate::model::ModelTables, model: usize, slot: usize) -> Option<bool> {
+    if !std::ptr::eq(models.fx.as_ptr(), FX_MODELS.as_ptr()) {
+        return None;
+    }
+    let token = models.fx.get(model)?.token;
+    if is_ultra(token) {
+        Some(ULTRA_SLOTS.contains(&slot))
+    } else if token == "DLVDYN8" {
+        Some(DYN8_SLOTS.contains(&slot))
+    } else {
+        None
+    }
+}
 
 /// The dLive's RackExtra tokens.
 pub fn is_dlive(token: &str) -> bool {
@@ -135,7 +185,7 @@ fn dimension_map(p: &Params, set: &mut dyn FnMut(&'static str, f32)) -> f32 {
 
 /// Creates a device (message thread: allocates). `None` for any other token.
 pub fn create(token: &str, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
-    use dynamics::{DeEsser, DynEq, Multiband, TransientController};
+    use dynamics::{DeEsser, Dyn8, DynEq, Multiband, TransientController};
     use modulation::{Adt, ChorusVoice, Flanger, MooPhaser, Rotator};
     use pitch::{Hypabass, PitchDoubler, VocalShift};
     use reverb::{GatedVerb, Smr, SmrKind};
@@ -167,6 +217,8 @@ pub fn create(token: &str, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
         "DLVMB4" => Box::new(Multiband::new(4, ctx)),
         "DLVTRAN" => Box::new(TransientController::new(ctx)),
         "DLVDIMC" => return bridge("DIMCRS", None, dimension_map, ctx),
+        "DLVDYN8" => Box::new(Dyn8::new(ctx)),
+        token if is_ultra(token) => return ultra::create(token, ctx),
         _ => return None,
     })
 }

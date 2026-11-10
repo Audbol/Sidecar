@@ -91,7 +91,12 @@ private:
                           const juce::String& device = {});
     void addModel (std::atomic<int32_t>& model);
     void addParams (std::atomic<int32_t>& model, std::atomic<float>* values, int numValues);
-    void addResponse (std::function<std::vector<ResponseView::Handle>()> handles = {});
+    /** `height`: -1 for the block's main curve, which takes more room when there is some. */
+    void addResponse (std::function<std::vector<ResponseView::Handle>()> handles = {}, int height = -1);
+    /** Puts the last `count` rows side by side on one line: the first of them `widths` wide
+        (px; 0: an equal share of what's left), the last an equal share too. */
+    void joinLast (int count, std::vector<int> widths);
+    int heightOf (int row, int width) const;
     void addTransfer (DynSlotParams&);
 
     UiContext& ctx;
@@ -100,6 +105,12 @@ private:
     juce::Viewport viewport;
     juce::Component content;
     std::vector<std::pair<std::unique_ptr<juce::Component>, int>> rows;
+    struct Line
+    {
+        int first = 0, count = 0;
+        std::vector<int> widths;
+    };
+    std::vector<Line> lines;
     std::vector<std::function<void()>> refreshers;
     ResponseView* response = nullptr; // one of the rows
     TransferView* transfer = nullptr;

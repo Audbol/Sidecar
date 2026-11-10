@@ -14,6 +14,11 @@
 //!
 //! The mixes' 28-band graphic EQ (p.38) is a block too, placed before their PEQ
 //! (`ProfileSpec::factory_eq_block`): each mix has its own, none takes an FX slot.
+//!
+//! The DEEP models (pp.32, 39, 43-44) are the dLive's blocks of the same names,
+//! their controls too ([`crate::dlive`]): the guide shows no panels for them and
+//! the two consoles' models share a maker, so that they match is Sidecar's reading.
+//! They are in [`MODELS`] only: on a Universal console the dLive's own are offered.
 
 use crate::model::{ModelCategory, ModelSpec, ModelTables, ParamKind, ParamSpec};
 use crate::wing::FILTER_TOOLS;
@@ -172,12 +177,45 @@ pub static GEQ_PARAMS: [ParamSpec; 28] = [
 pub static EQ_BUS: [ModelSpec; 2] =
     [EQ[0], ModelSpec { token: "SQGEQ", name: "GEQ", category: ModelCategory::Eq, params: &GEQ_PARAMS }];
 
+/// The dynamics blocks of an SQ-5: its own, the DEEP compressors of pp.43-44 and,
+/// last, the DEEP preamp the guide's picture lists (p.32: Tube Stage).
+pub static DYN_TABLE: [ModelSpec; 11] = [
+    DYN_MODELS[0],
+    DYN_MODELS[1],
+    DYN_MODELS[2],
+    crate::dlive::DYN_MODELS[10], // Opto
+    crate::dlive::DYN_MODELS[6],  // 16T
+    crate::dlive::DYN_MODELS[7],  // 16VU
+    crate::dlive::DYN_MODELS[11], // OptTronik
+    ModelSpec { name: "Mighty", ..crate::dlive::DYN_MODELS[9] },
+    crate::dlive::DYN_MODELS[12], // Peak Limiter 76
+    crate::dlive::DYN_MODELS[13], // Bus
+    crate::dlive::DYN_MODELS[16], // Tube Stage
+];
+
+/// The first DEEP compressor in [`DYN_TABLE`] and the preamp model (the guide's
+/// Compressor and Preamp Libraries).
+pub const FIRST_DEEP_COMP: usize = 3;
+pub const PREAMP_MODEL: usize = 10;
+
+/// The mixes' EQs of an SQ-5: the PEQ, the Constant-Q GEQ and the DEEP GEQs (p.39).
+pub static EQ_TABLE: [ModelSpec; 5] = [
+    EQ_BUS[0],
+    ModelSpec { name: "Constant-Q", ..EQ_BUS[1] },
+    ModelSpec { name: "Proportional-Q", ..crate::dlive::EQ[2] },
+    ModelSpec { name: "Hybrid GEQ", ..crate::dlive::EQ[4] },
+    ModelSpec { name: "Digi GEQ", ..crate::dlive::EQ[3] },
+];
+
+/// The first GEQ model in [`EQ_TABLE`].
+pub const FIRST_GEQ: usize = 1;
+
 /// The SQ-5's models.
 pub static MODELS: ModelTables = ModelTables {
-    dynamics: DYN_MODELS,
+    dynamics: &DYN_TABLE,
     aux_dynamics: &[],
     eq_channel: EQ,
-    eq_bus: &EQ_BUS,
+    eq_bus: &EQ_TABLE,
     filter_tools: FILTER_TOOLS,
     fx: &fx::FX_MODELS,
     fx_premium_first: 0,
@@ -327,6 +365,36 @@ mod dynamics_tests {
 #[cfg(test)]
 mod geq_tests {
     use super::*;
+
+    #[test]
+    fn the_deep_models_are_the_guides_and_keep_the_sq_models_numbers() {
+        let names: Vec<_> = DYN_TABLE.iter().map(|m| m.name).collect();
+        assert_eq!(
+            names,
+            [
+                "Gate",
+                "Compressor",
+                "Ducker",
+                "Opto",
+                "16T",
+                "16VU",
+                "OptTronik",
+                "Mighty",
+                "Peak Limiter 76",
+                "Bus",
+                "Tube Stage"
+            ]
+        );
+        assert_eq!(DYN_TABLE[0].token, DYN_MODELS[0].token, "indices of old shows hold");
+        assert_eq!(DYN_TABLE[2].token, DYN_MODELS[2].token);
+        assert_eq!(DYN_TABLE[PREAMP_MODEL].token, "DLVTUBE");
+        assert_eq!(EQ_TABLE[FIRST_GEQ].token, "SQGEQ");
+        assert_eq!(EQ_TABLE[FIRST_GEQ + 1].name, "Proportional-Q");
+        for m in &EQ_TABLE[FIRST_GEQ..] {
+            assert_eq!(m.params.len(), 28, "{}: the faders' 28 bands", m.token);
+            assert_eq!(m.params[15].id, "g16", "{}", m.token);
+        }
+    }
 
     #[test]
     fn the_geq_has_the_guides_28_bands_and_each_lifts_its_own() {

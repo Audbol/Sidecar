@@ -41,6 +41,9 @@ pub enum Node {
     Slot(u8),
     /// PFL: the pre-fader copy (solo, direct outs, the METERS screen).
     Pfl,
+    /// The attenuator, where a console has it after the gate (the DM2000's):
+    /// `InputParams::trim_db`, INPUT leaving it to this.
+    Attenuator,
     /// The fader with the DCAs, mutes, mute groups and MAIN LINK.
     Fader,
     /// POST: the post-processing copy (POST sends, the output stage).
@@ -600,6 +603,7 @@ pub(crate) const DLIVE_CHANNEL: &[Node] = &[
     t(tap::FILT),
     rta(rta_tap::POST_FILTER),
     Node::Gate,
+    t(crate::dlive::TAP_POST_GATE),
     Node::PreInsert,
     t(2), // Post Insert A
     Node::Slot(0),
@@ -607,6 +611,7 @@ pub(crate) const DLIVE_CHANNEL: &[Node] = &[
     Node::Slot(1),
     t(4),
     Node::PostInsert,
+    t(crate::dlive::TAP_POST_INSERT_B),
     Node::Delay,
     Node::Pfl,
     t(tap::PFL),
@@ -638,6 +643,147 @@ pub(crate) const SQ_ORDERS: &[&str] = &["GED"];
 /// The 02R's strips have no process orders (one, unused).
 pub(crate) const Y02R_ORDERS: &[&str] = &["ED"];
 
+/// The DM2000's Input Channels (block diagram, V2 Owner's Manual p.399; Insert
+/// page p.136): phase, the gate, the attenuator and 4-band EQ, the delay, ON and
+/// the fader, with the compressor and the insert PRE EQ, PRE FADER or POST FADER:
+/// two `Slot`s at each of the three, by the strip's process order. The attenuator
+/// and the EQ are fixed where the diagram has them. No filter block.
+pub(crate) const DM2000_CHANNEL: &[Node] = &[
+    rta(rta_tap::IN),
+    Node::Input,
+    t(tap::IN),
+    rta(rta_tap::PRE_FILTER),
+    t(tap::FILT),
+    rta(rta_tap::POST_FILTER),
+    Node::Gate,
+    Node::Slot(0),
+    Node::Slot(1),
+    t(2),
+    Node::Attenuator,
+    Node::Eq,
+    t(3),
+    Node::Slot(2),
+    Node::Slot(3),
+    Node::Delay,
+    t(4),
+    Node::Pfl,
+    t(tap::PFL),
+    Node::Fader,
+    t(tap::AFL),
+    rta(rta_tap::POST_FADER),
+    Node::Slot(4),
+    Node::Slot(5),
+    t(TAP_INS2),
+    Node::Post,
+    t(tap::POST),
+];
+
+/// The DM2000's Bus Outs, Aux Sends, Matrix Sends and Stereo Out (p.399): the
+/// attenuator, the 4-band EQ, the compressor and the insert PRE EQ, PRE FADER or
+/// POST FADER (as a channel's), ON and the fader, then the output delay.
+pub(crate) const DM2000_OUTPUT: &[Node] = &[
+    rta(rta_tap::IN),
+    Node::Input,
+    t(tap::IN),
+    rta(rta_tap::PRE_FILTER),
+    t(tap::FILT),
+    rta(rta_tap::POST_FILTER),
+    Node::Slot(0),
+    Node::Slot(1),
+    t(2),
+    Node::Attenuator,
+    Node::Eq,
+    t(TAP_EQ_POST),
+    t(3),
+    Node::Slot(2),
+    Node::Slot(3),
+    Node::Pfl,
+    t(tap::PFL),
+    Node::Fader,
+    t(tap::AFL),
+    rta(rta_tap::POST_FADER),
+    Node::Slot(4),
+    Node::Slot(5),
+    t(TAP_INS2),
+    Node::Delay,
+    Node::Post,
+    t(tap::POST),
+];
+
+/// The DM2000's process orders: the compressor (D) and the insert (I) each PRE
+/// EQ, PRE FADER or POST FADER (p.136), twelve in all: index = 3 x the
+/// compressor's place + the insert's for the nine, and at a shared place COMP
+/// ORDER picks Comp->Ins (those nine) or Ins->Comp (the last three). Two slots at
+/// each place: slots 0-1 PRE EQ, 2-3 PRE FADER, 4-5 POST FADER.
+pub(crate) const DM2000_ORDERS: &[&str] =
+    &["DI----", "D-I---", "D---I-", "I-D---", "--DI--", "--D-I-", "I---D-", "--I-D-", "----DI", "ID----", "--ID--", "----ID"];
+
+/// The PRO2's input channels (Mono input channel signal flow, Owner's Manual p.296):
+/// digital gain and phase, the high and low pass filters, then the processing block
+/// in its order, the mute and the fader. The same steps as an X32's channel. The
+/// delay's place isn't on the diagram (p.243 says only "added to the input signal
+/// processing"): by the input, Sidecar's reading.
+pub(crate) const PRO2_CHANNEL: &[Node] = X32_CHANNEL;
+
+/// The PRO2's processing orders (p.247, p.296): index 0 EQ, insert, dynamics (its
+/// default), index 1 dynamics, insert, EQ. The dynamics are gate then compressor
+/// (Dynamics signal flow, p.303).
+pub(crate) const PRO2_ORDERS: &[&str] = &["EIGD", "GDIE"];
+
+/// The PRO2's aux returns: their EQ and insert (Figure 24, p.264; the specification,
+/// p.315: Returns signal flow, p.297, draws neither), no dynamics, the mute and fader.
+pub(crate) const PRO2_AUX: &[Node] = &[
+    rta(rta_tap::IN),
+    Node::Input,
+    t(tap::IN),
+    rta(rta_tap::PRE_FILTER),
+    t(tap::FILT),
+    rta(rta_tap::POST_FILTER),
+    Node::Eq,
+    t(3),
+    Node::PreInsert,
+    t(4),
+    Node::Pfl,
+    t(tap::PFL),
+    Node::Fader,
+    t(tap::AFL),
+    rta(rta_tap::POST_FADER),
+    t(TAP_INS2),
+    Node::Post,
+    t(tap::POST),
+];
+
+/// The PRO2's auxes, matrices and masters (Aux/group and Master signal flow, pp.298-299):
+/// the compressor, insert and EQ in their order (three `Slot`s), the mute and fader;
+/// the output delay after it (Sidecar's reading: p.281 gives its range, not its place).
+pub(crate) const PRO2_OUTPUT: &[Node] = &[
+    rta(rta_tap::IN),
+    Node::Input,
+    t(tap::IN),
+    rta(rta_tap::PRE_FILTER),
+    t(tap::FILT),
+    rta(rta_tap::POST_FILTER),
+    Node::Slot(0),
+    t(2),
+    Node::Slot(1),
+    t(3),
+    Node::Slot(2),
+    t(TAP_EQ_POST),
+    Node::Pfl,
+    t(tap::PFL),
+    Node::Fader,
+    t(tap::AFL),
+    rta(rta_tap::POST_FADER),
+    t(TAP_INS2),
+    Node::Delay,
+    Node::Post,
+    t(tap::POST),
+];
+
+/// The outputs' processing orders: 0 graphic or parametric EQ, insert, dynamics
+/// (its default), 1 dynamics, insert, EQ.
+pub(crate) const PRO2_OUTPUT_ORDERS: &[&str] = &["EID", "DIE"];
+
 /// The WING's chain for a strip of `kind`.
 pub fn template(kind: StripKind) -> &'static [Node] {
     match kind {
@@ -657,6 +803,53 @@ pub fn order_block(letter: u8) -> Option<Node> {
         _ => None,
     }
 }
+
+/// The XENYX 1204USB's channels (the panel's order, Sidecar's reading of the signal
+/// flow: the guide gives no block diagram in the part read): the preamp's gain (INPUT),
+/// the low cut (channels 1-4), the soft clip (the GATE slot), the compressor (channels
+/// 1-4), the 3-band EQ, then the fader.
+pub(crate) const XENYX1204_CHANNEL: &[Node] = &[
+    rta(rta_tap::IN),
+    Node::Input,
+    t(tap::IN),
+    rta(rta_tap::PRE_FILTER),
+    Node::Filter,
+    t(tap::FILT),
+    rta(rta_tap::POST_FILTER),
+    Node::Gate,
+    t(2),
+    Node::Dynamics,
+    t(3),
+    Node::Eq,
+    t(4),
+    Node::Pfl,
+    t(tap::PFL),
+    Node::Fader,
+    t(tap::AFL),
+    rta(rta_tap::POST_FADER),
+    Node::Post,
+    t(tap::POST),
+];
+
+/// The XENYX 1204USB's aux returns and 2-TR/USB input, its aux sends, ALT 3-4 and MAIN
+/// MIX: a level control and nothing else.
+pub(crate) const XENYX1204_PLAIN: &[Node] = &[
+    rta(rta_tap::IN),
+    Node::Input,
+    t(tap::IN),
+    Node::Pfl,
+    t(tap::PFL),
+    Node::Fader,
+    t(tap::AFL),
+    rta(rta_tap::POST_FADER),
+    Node::Post,
+    t(tap::POST),
+];
+
+/// Its channels' process order (one, unused: the blocks sit in the template's order).
+pub(crate) const XENYX1204_ORDERS: &[&str] = &["GDE"];
+/// Its outputs have no blocks.
+pub(crate) const XENYX1204_OUTPUT_ORDERS: &[&str] = &["---"];
 
 #[cfg(test)]
 mod tests {

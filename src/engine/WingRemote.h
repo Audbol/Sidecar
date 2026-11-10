@@ -40,6 +40,10 @@ public:
         juce::String name { "SIDECAR" };
         int discoveryPort = 2222, oscPort = 2223, nativePort = 2222;
         bool discovery = true, osc = true, native = true;
+        /** MIDI over TCP: the SQ's MIDI setup (SqMidi::setupKey) and a dLive's
+            base MIDI channel 1-12. Read from the app settings, not stored by save(). */
+        juce::String sqMidiSetup;
+        int dliveMidiChannel = 1;
 
         /** The console name is SETUP > GENERAL's CONSOLE NAME (network). */
         static constexpr const char* nameKey = "setup.consoleName";
@@ -61,6 +65,14 @@ public:
         is an X32 (its profile names that protocol), on UDP 10023. */
     bool isX32Running() const;
     static constexpr int x32Port = 10023;
+    /** Allen & Heath MIDI over TCP (livedaw-ahmidi): with the others while the
+        console is a dLive (TCP 51325 and the Surface's 51328) or an SQ-5 (51325). */
+    bool isAhMidiRunning() const;
+    int getAhMidiClients() const;
+    static constexpr int ahMixRackPort = 51325, ahSurfacePort = 51328;
+    /** Runs the scene recalls MIDI over TCP clients asked for and tells them of
+        recalls on the console (the timer does this; tests call it). */
+    void pumpAhMidi();
 
     /** X32 scene files (`.scn`, Phase 4 step 7): the console as one (empty if it
         isn't an X32), and the console set from one's text. */
@@ -197,10 +209,15 @@ private:
     MixerEngine& engine;
     ld::LdWing* handle;
     ld::LdX32* x32;
+    ld::LdAhMidi* ahMidi;
     juce::String x32Name;
     static constexpr juce::uint32 x32OscBit = 8; // RemotesC::network
+    static constexpr juce::uint32 ahMidiBit = 16; // RemotesC::network
+    int ahMidiProfile = -1; // the console the MIDI over TCP server started for
+    int ahLastScene = -2;   // the current scene as last seen (-2 not yet)
     juce::StringArray applyWing (const Settings&);
     bool applyX32 (const Settings&);
+    bool applyAhMidi (const Settings&);
     Settings running;
     juce::uint32 runningProtocols = 0; // the profile's set the servers started with
     Show* libraryShow = nullptr;

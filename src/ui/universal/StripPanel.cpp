@@ -2,6 +2,7 @@
 
 #include "engine/AppPaths.h"
 #include "engine/Show.h"
+#include "ui/HomeScreens.h"
 #include "ui/RoutingGroups.h"
 #include "ui/ShowPanel.h"
 #include "ui/StripCustomize.h"
@@ -13,17 +14,17 @@ namespace
 {
     constexpr int kCaption = 24, kSwatch = 40, kNameRow = 56;
     /** The EXT IN and MIX SOURCE rows' height together. */
-    constexpr int kMixRows = kCaption + 3 * 40 + 2 * sizes::kGapSmall + sizes::kGap;
+    constexpr int kMixRows = kCaption + 3 * sizes::kTouch + 2 * sizes::kGapSmall + sizes::kGap;
     /** A dLive's MixRack, DX and Surface sockets: what Ext In offers. */
     constexpr int kExtInSockets = 140, kExtTrimRange = 24;
     /** The AMM rows' height together. */
-    constexpr int kAmmRows = kCaption + 3 * 40 + 2 * sizes::kGapSmall + sizes::kGap;
+    constexpr int kAmmRows = kCaption + 3 * sizes::kTouch + 2 * sizes::kGapSmall + sizes::kGap;
     /** A channel preset holds every section but routing (as the WING's LIBRARY saves one). */
     constexpr juce::uint32 kPresetScope = state::AllSections & ~(juce::uint32) state::Routing;
 } // namespace
 
 StripPanel::StripPanel (UiContext& c, const Theme& t)
-    : extIn (t), extTrim (t), mixSource (t), extPolarity ("POLARITY", t.accent, t), amm (t), ammOn ("ON", t.accent, t), ammChair ("CHAIR", t.accent, t), ammSolo ("SOLO", t.accent, t), ammPriority (t), renameKey ("RENAME", t.accent, t), savePresetKey ("SAVE PRESET", t.accent, t), loadPresetKey ("LOAD PRESET", t.accent, t), dcas (t, t.accent), muteGroups (t, t.mute), ctx (c), theme (t)
+    : extIn (t), extTrim (t), mixSource (t), extPolarity ("POLARITY", t.accent, t), amm (t), ammOn ("ON", t.accent, t), ammChair ("CHAIR", t.accent, t), ammSolo ("SOLO", t.accent, t), ammPriority (t), renameKey ("RENAME", t.accent, t), savePresetKey ("SAVE PRESET", t.accent, t), loadPresetKey ("LOAD PRESET", t.accent, t), copyKey ("COPY", t.accent, t), pasteKey ("PASTE", t.accent, t), dcas (t, t.accent), muteGroups (t, t.mute), ctx (c), theme (t)
 {
     renameKey.onClick = [this]
     {
@@ -162,7 +163,26 @@ StripPanel::StripPanel (UiContext& c, const Theme& t)
     ammFlag (ammSolo, &ld::AmmStripParams::solo);
     for (auto* child : std::initializer_list<juce::Component*> { &extIn, &extTrim, &extPolarity, &mixSource, &amm, &ammOn, &ammChair, &ammSolo, &ammPriority })
         addChildComponent (child);
-    for (auto* child : std::initializer_list<juce::Component*> { &renameKey, &savePresetKey, &loadPresetKey, &dcas, &muteGroups })
+    copyKey.onClick = [this] { copyStrip(); };
+    copyKey.setTooltip ("Remember this strip's settings");
+    pasteKey.setTooltip ("Paste the settings copied onto this strip");
+    pasteKey.onClick = [this]
+    {
+        juce::PopupMenu menu;
+        menu.setLookAndFeel (&lookAndFeelFor (theme));
+        const std::pair<juce::uint32, const char*> items[] = { { kCopyAll, "Everything" },         { kCopyPreamp, "Input and filter" }, { kCopyGate, "Gate" },
+                                                               { kCopyEq, "EQ" },                  { kCopyDynamics, "Dynamics" },      { kCopySends, "Sends" },
+                                                               { kCopyMix, "Fader, mute and pan" } };
+        for (auto [bits, name] : items)
+            menu.addItem ((int) bits, name);
+        juce::Component::SafePointer<StripPanel> safe (this);
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&pasteKey).withStandardItemHeight (sizes::kTouch - 8), [safe] (int bits)
+        {
+            if (safe != nullptr && bits != 0)
+                safe->paste ((juce::uint32) bits);
+        });
+    };
+    for (auto* child : std::initializer_list<juce::Component*> { &renameKey, &savePresetKey, &loadPresetKey, &copyKey, &pasteKey, &dcas, &muteGroups })
         addAndMakeVisible (child);
     startTimerHz (6);
 }
@@ -240,10 +260,30 @@ void StripPanel::chooseColour (int c)
     refresh();
 }
 
+void StripPanel::copyStrip()
+{
+    if (strip != nullptr)
+        copied = state::StripRef::of (*strip);
+    refresh();
+}
+
+void StripPanel::paste (juce::uint32 sections)
+{
+    auto* from = copied.has_value() ? state::findStrip (ctx.engine, *copied) : nullptr;
+    if (from == nullptr || strip == nullptr || from == strip)
+        return;
+    copyStripSections (ctx.engine, *from, *strip, sections);
+    ctx.log.info ("Pasted " + from->getLabel() + " onto " + strip->getLabel());
+}
+
 void StripPanel::refresh()
 {
     dcas.refresh();
     muteGroups.refresh();
+    // PASTE names what it holds; it can't go onto the strip it came from.
+    auto* source = copied.has_value() ? state::findStrip (ctx.engine, *copied) : nullptr;
+    pasteKey.setEnabled (source != nullptr && source != strip);
+    pasteKey.setButtonText (source != nullptr ? "PASTE " + source->getLabel() : juce::String ("PASTE"));
     if (strip == nullptr)
         return;
     if (showsAmm())
@@ -305,7 +345,7 @@ void StripPanel::paint (juce::Graphics& g)
     auto n = nameArea;
     caption (n.removeFromTop (kCaption / 2 + 4), linked ? "NAME (THE SOURCE'S, LINKED)" : "NAME");
     g.setColour (theme.text);
-    g.setFont (type::font (type::kValue + 3.0f, true));
+    g.setFont (type::font (type::kHeading, true));
     g.drawFittedText (name.isNotEmpty() ? name : strip->getLabel(), n, juce::Justification::centredLeft, 1, 0.7f);
 
     if (! ammCaption.isEmpty())
@@ -333,7 +373,7 @@ int StripPanel::heightFor (int width) const
     const int cols = juce::jmax (1, w / kSwatch);
     const int rows = (palette::count() + cols - 1) / cols;
     return (showsMixInput() ? kMixRows : 0) + (showsAmm() ? kAmmRows : 0) + sizes::kGap + kNameRow + sizes::kGap + kCaption + rows * kSwatch + sizes::kGap + kCaption + dcas.heightFor (w) + sizes::kGap + kCaption
-           + muteGroups.heightFor (w) + sizes::kGap + kCaption + sizes::kTouch + sizes::kGap;
+           + muteGroups.heightFor (w) + sizes::kGap + kCaption + 2 * sizes::kTouch + sizes::kGapSmall + sizes::kGap;
 }
 
 void StripPanel::resized()
@@ -347,23 +387,23 @@ void StripPanel::resized()
     if (showsMixInput())
     {
         mixCaption = area.removeFromTop (kCaption);
-        extIn.setBounds (area.removeFromTop (40));
+        extIn.setBounds (area.removeFromTop (sizes::kTouch));
         area.removeFromTop (sizes::kGapSmall);
-        auto trim = area.removeFromTop (40);
+        auto trim = area.removeFromTop (sizes::kTouch);
         extPolarity.setBounds (trim.removeFromRight (96));
         trim.removeFromRight (sizes::kGapSmall);
         extTrim.setBounds (trim);
         area.removeFromTop (sizes::kGapSmall);
-        mixSource.setBounds (area.removeFromTop (40));
+        mixSource.setBounds (area.removeFromTop (sizes::kTouch));
         area.removeFromTop (sizes::kGap);
     }
     ammCaption = {};
     if (showsAmm())
     {
         ammCaption = area.removeFromTop (kCaption);
-        amm.setBounds (area.removeFromTop (40));
+        amm.setBounds (area.removeFromTop (sizes::kTouch));
         area.removeFromTop (sizes::kGapSmall);
-        auto keys = area.removeFromTop (40);
+        auto keys = area.removeFromTop (sizes::kTouch);
         const int keyW = (keys.getWidth() - 2 * sizes::kGapSmall) / 3;
         ammOn.setBounds (keys.removeFromLeft (keyW));
         keys.removeFromLeft (sizes::kGapSmall);
@@ -371,7 +411,7 @@ void StripPanel::resized()
         keys.removeFromLeft (sizes::kGapSmall);
         ammSolo.setBounds (keys);
         area.removeFromTop (sizes::kGapSmall);
-        ammPriority.setBounds (area.removeFromTop (40));
+        ammPriority.setBounds (area.removeFromTop (sizes::kTouch));
         area.removeFromTop (sizes::kGap);
     }
     colourCaption = area.removeFromTop (kCaption);
@@ -389,6 +429,10 @@ void StripPanel::resized()
     auto keys = area.removeFromTop (sizes::kTouch);
     savePresetKey.setBounds (keys.removeFromLeft (keys.getWidth() / 2).withTrimmedRight (sizes::kGapSmall / 2));
     loadPresetKey.setBounds (keys.withTrimmedLeft (sizes::kGapSmall / 2));
+    area.removeFromTop (sizes::kGapSmall);
+    keys = area.removeFromTop (sizes::kTouch);
+    copyKey.setBounds (keys.removeFromLeft (keys.getWidth() / 2).withTrimmedRight (sizes::kGapSmall / 2));
+    pasteKey.setBounds (keys.withTrimmedLeft (sizes::kGapSmall / 2));
 }
 
 void StripPanel::mouseUp (const juce::MouseEvent& e)

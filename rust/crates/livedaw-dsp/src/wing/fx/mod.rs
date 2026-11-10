@@ -88,6 +88,22 @@ pub trait FxAlgo: Send {
     fn latency(&self) -> u32 {
         0
     }
+
+    /// As [`Self::process`], with the block's external key (side-chain) signal,
+    /// when the slot has one patched: the devices with a key input use it, the
+    /// others ignore it. Same length as `left` and `right`. Audio thread.
+    fn process_keyed(&mut self, left: &mut [f32], right: &mut [f32], key: Option<(&[f32], &[f32])>) {
+        let _ = key;
+        self.process(left, right);
+    }
+
+    /// A MIDI note for the devices that follow notes (`velocity` 0: note off).
+    /// Audio thread.
+    fn midi_note(&mut self, _note: u8, _velocity: u8) {}
+
+    /// The console-wide key: `key` 0 (C) to 11 (B), `scale` 0 Major, 1 Minor,
+    /// 2 Chromatic. Audio thread.
+    fn global_key(&mut self, _key: u8, _scale: u8) {}
 }
 
 /// The readout layout of the modulation devices (CHORUS, FLANGER, DIMCRS,
@@ -123,6 +139,10 @@ pub fn allowed_in_slot(model: usize, slot: usize) -> bool {
 /// (0-based): premium devices need its premium slots, the rest run anywhere
 /// (`fx_premium_first`..`fx_premium_slots`).
 pub fn allowed_in(models: &ModelTables, model: usize, slot: usize) -> bool {
+    // A dLive's RackUltra and Dyn8 engines hold only their own (`dlive_fx`).
+    if let Some(on_engine) = crate::dlive_fx::slot_rule(models, model, slot) {
+        return on_engine;
+    }
     match models.fx.get(model) {
         Some(m) => m.category != ModelCategory::FxPremium || (models.fx_premium_first..models.fx_premium_slots).contains(&slot),
         None => false,
@@ -152,6 +172,8 @@ pub fn create(token: &str, ctx: FxContext) -> Option<Box<dyn FxAlgo>> {
         .or_else(|| crate::y01v::fx::create(token, ctx))
         .or_else(|| sq_voices::create(token, ctx))
         .or_else(|| crate::dlive_fx::create(token, ctx))
+        .or_else(|| crate::dm2000::fx::create(token, ctx))
+        .or_else(|| crate::midas_pro::fx::create(token, ctx))
 }
 
 /// The devices whose screen graph is their measured frequency response.
@@ -272,9 +294,25 @@ impl FxDevice {
         self.algo.reset();
     }
 
+    /// See [`FxAlgo::midi_note`].
+    pub fn midi_note(&mut self, note: u8, velocity: u8) {
+        self.algo.midi_note(note, velocity);
+    }
+
+    /// See [`FxAlgo::global_key`].
+    pub fn global_key(&mut self, key: u8, scale: u8) {
+        self.algo.global_key(key, scale);
+    }
+
     /// Audio thread: applies `values` if they changed, then processes in blocks
     /// of at most `max_block`.
     pub fn process(&mut self, values: &[f32], left: &mut [f32], right: &mut [f32]) {
+        self.process_keyed(values, left, right, None);
+    }
+
+    /// As [`Self::process`], with an external key signal (see
+    /// [`FxAlgo::process_keyed`]), as long as the audio.
+    pub fn process_keyed(&mut self, values: &[f32], left: &mut [f32], right: &mut [f32], key: Option<(&[f32], &[f32])>) {
         let spec = &self.table[self.model];
         let n = spec.params.len().min(MAX_FX_PARAMS).min(values.len());
         if !self.primed || self.values[..n] != values[..n] {
@@ -289,7 +327,8 @@ impl FxDevice {
         let mut start = 0;
         while start < len {
             let end = (start + self.ctx.max_block).min(len);
-            self.algo.process(&mut left[start..end], &mut right[start..end]);
+            let chunk = key.and_then(|(kl, kr)| Some((kl.get(start..end)?, kr.get(start..end)?)));
+            self.algo.process_keyed(&mut left[start..end], &mut right[start..end], chunk);
             start = end;
         }
     }
@@ -365,6 +404,12 @@ pub(crate) mod tests {
 
     /// The checks every device must pass (used by each family's tests).
     pub(crate) fn check_device(token: &str) {
+        check_device_with(token, |_| {});
+    }
+
+    /// As [`check_device`], `prepare` applied to each new device first (the MIDI
+    /// Harmoniser's held notes).
+    pub(crate) fn check_device_with(token: &str, prepare: impl Fn(&mut FxDevice)) {
         // The X32's and the ProMix 01's devices are in their own tables.
         let table = if token.starts_with("X32") {
             crate::x32::FX_MODELS
@@ -378,6 +423,10 @@ pub(crate) mod tests {
             &crate::dlive_fx::FX_MODELS
         } else if crate::y01v::fx::is_01v(token) {
             &crate::y01v::fx::FX_MODELS
+        } else if crate::dm2000::fx::is_dm2000(token) {
+            &crate::dm2000::fx::FX_MODELS
+        } else if crate::midas_pro::fx::is_pro2(token) {
+            &crate::midas_pro::fx::FX_MODELS
         } else {
             FX_MODELS
         };
@@ -386,6 +435,7 @@ pub(crate) mod tests {
         for sr in [44_100.0, 96_000.0] {
             let ctx = FxContext { sample_rate: sr, max_block: 512 };
             let mut dev = FxDevice::new_in(table, model, ctx).unwrap_or_else(|| panic!("{token}: not implemented"));
+            prepare(&mut dev);
             let mut rng = Rng(0x1234_5678 ^ model as u32);
             let mut defaults = [0.0; MAX_FX_PARAMS];
             spec.defaults_into(&mut defaults);

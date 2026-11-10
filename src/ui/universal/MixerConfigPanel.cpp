@@ -7,7 +7,6 @@ namespace
 {
     constexpr int kRow = 44;
     /** The LR main's share of the 64 busses. */
-    constexpr int kMainBusses = 2;
     constexpr int kStereoPairs = 64, kPairColumns = 8;
 
     const char* nameOf (MixerConfigPanel::Kind k)
@@ -67,6 +66,8 @@ MixerConfigPanel::MixerConfigPanel (UiContext& c, const Theme& t)
     : applyKey ("APPLY", t.accent, t), revertKey ("REVERT", t.accent, t), mixesTab ("MIXER CONFIG", t.accent, t), inputsTab ("IP STEREO CONFIG", t.accent, t), ammTab ("AMM", t.accent, t),
       nomKey ("NOM", t.accent, t), dClassicKey ("D-CLASSIC", t.accent, t), ctx (c), theme (t)
 {
+    for (auto* k : { &mixesTab, &inputsTab, &ammTab })
+        k->tab = true;
     mixesTab.isOn = [this] { return page == Page::Mixes; };
     mixesTab.onClick = [this] { showPage (Page::Mixes); };
     inputsTab.isOn = [this] { return page == Page::Inputs; };
@@ -204,10 +205,26 @@ void MixerConfigPanel::setPending (Kind k, int count)
 
 int MixerConfigPanel::getBussesUsed() const noexcept
 {
-    int used = kMainBusses;
+    // The engine's own count: it takes the PAFL busses and the Main mode's in too.
+    int32_t layout[NumKinds];
     for (int k = 0; k < NumKinds; ++k)
-        used += pending[(size_t) k] * (isStereo (static_cast<Kind> (k)) ? 2 : 1);
-    return used;
+        layout[(size_t) k] = pending[(size_t) k];
+    const auto remaining = ld::ld_dlive_busses_remaining (layout, pendingPafl, pendingMainMode);
+    return remaining == INT32_MIN ? kBusses + 1 : kBusses - remaining;
+}
+
+void MixerConfigPanel::setPendingPafl (int count)
+{
+    pendingPafl = juce::jlimit (0, 4, count);
+    status.clear();
+    refresh();
+}
+
+void MixerConfigPanel::setPendingMainMode (int mode)
+{
+    pendingMainMode = juce::jmax (0, mode);
+    status.clear();
+    refresh();
 }
 
 void MixerConfigPanel::setStereoPending (int pair, bool stereo)
@@ -232,6 +249,11 @@ void MixerConfigPanel::showPage (Page p)
 
 bool MixerConfigPanel::hasChanges() const
 {
+    {
+        int32_t pafl = 1, mainMode = 1;
+        if (ld::ld_engine_dlive_structure (ctx.engine.getHandle(), &pafl, &mainMode) && (pafl != pendingPafl || mainMode != pendingMainMode))
+            return true;
+    }
     if (pendingStereo != ld::ld_engine_dlive_stereo_inputs (ctx.engine.getHandle()))
         return true;
     for (int k = 0; k < NumKinds; ++k)
@@ -247,7 +269,7 @@ void MixerConfigPanel::apply()
     int32_t layout[NumKinds];
     for (int k = 0; k < NumKinds; ++k)
         layout[(size_t) k] = pending[(size_t) k];
-    const auto result = ctx.show.applyDLiveLayout (layout, pendingStereo);
+    const auto result = ctx.show.applyDLiveStructure (layout, pendingStereo, pendingPafl, pendingMainMode);
     status = result.wasOk() ? juce::String ("Applied.") : result.getErrorMessage();
     ctx.log.info ("Mixer Config: " + status);
     if (ctx.structureChanged)
@@ -257,6 +279,12 @@ void MixerConfigPanel::apply()
 
 void MixerConfigPanel::revert()
 {
+    int32_t pafl = 1, mainMode = 1;
+    if (ld::ld_engine_dlive_structure (ctx.engine.getHandle(), &pafl, &mainMode))
+    {
+        pendingPafl = pafl;
+        pendingMainMode = mainMode;
+    }
     for (int k = 0; k < NumKinds; ++k)
         pending[(size_t) k] = getCurrent (static_cast<Kind> (k));
     pendingStereo = ld::ld_engine_dlive_stereo_inputs (ctx.engine.getHandle());

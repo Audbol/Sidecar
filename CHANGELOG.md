@@ -5,6 +5,45 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+- Universal Mixer: a design pass in black anodised metal (brushed silver in the light theme): one type, spacing and radius scale, LED meter bridge with a bar per channel, peak hold and clip, ribbed fader caps, knurled knobs, backlit keys, themed pop-ups. A strip's body now shows its real chain, block by block in signal order, each section draggable to resize and collapse (the same on every strip, kept in the settings), and narrow, normal or wide strips. Undo and redo of the mix (Ctrl+Z, Ctrl+Y), a shortcut list, F1 to F9 for the views, a main output meter in the top bar. Touch: 44 px rows, more room between MUTE and SOLO, a finger sweeping along the strips scrolls them instead of moving a fader, dragging off a fader is a fine adjustment.
+- Universal Mixer: scene recall scope and safes, snippet DCAs, mute groups and FX, banks and a JUMP list, FX bypass on the tiles, ROUTING levels and crosshair, a light theme.
+- 01V: SETUP, OPTION output, OMNI OUT, OUTPUT DELAY and REMOTE pages; fader and [ON] groups, pairs, FLIP, 2TR IN; user library programs.
+- X32 display: the menus against the manual: RTA page and EQ overlay, EQ on faders, device panels, SETUP pages, snippet scopes, iQ setup, DCA names, UNDO; `/-prefs` and `/-stat` on the remote.
+- PRO2: its own surface (first pass, from the manual and press renders): the bays, VCA and POP group navigation, area B, the channel strip detail areas, outputs, scene keys and its screen.
+- XENYX 1204USB: Sidecar's first analog mixer. Its panel, routing (6 channels, 2 stereo returns, 2-TR/USB, AUX 1 pre and AUX 2 post, ALT 3-4, MAIN MIX, SOURCE to PHONES) and blocks (mic and line gain, 75 Hz low cut, one-knob compressor, British 3-band EQ, soft clip; the curves are Sidecar's reading), console tape under each channel and a scenes bar over the panel.
+
+- DM2000: Automix (fader and ON takes), Track Arming and Locator drive the multitrack recorder (with the transport), Data saves and loads shows, PHONES/Control Room source keys, PLUG-INS and CHANNEL INSERTS keys, Output Insert In patch.
+- DM2000 LCD: MIDI setup and tables, output patch and Direct Outs, pairs, libraries, preferences, oscillator, word clock, User Defined Keys; channel COPY/PASTE; the faders show the printed legends.
+- DM2000: its own surface. 24 strips and the master, channel name displays, layers, encoder and fader
+  modes, the Selected Channel, Display Access and the 320 x 240 dot LCD with the EQ, attenuator, gate, comp,
+  insert POSITION, delay, pan, routing, bus-to-stereo, aux and matrix send, parameter and fader view, meter,
+  group, GEQ (six at most), effects, scene and patch pages.
+- Yamaha DM2000: its fader laws are now Yamaha's own 1024-step tables, and its MIDI works: parameter
+  changes and requests for everything the engine has, Control and Program Changes, Key Remote, meter data and
+  MMC, from Yamaha's V2 MIDI Specification.
+- dLive: a C1500 surface beside the C3500 (SETUP chooses); Dyn8 and the RackUltra card's DSP, channel strip and 11 models, offered on
+  Universal strips for now.
+- Universal Mixer: a pass over every view: keys that stayed dark fixed, first main pinned, sends on fader, DCA spill, CONTROLS view
+  for custom controls, scene SKIP/LINK/tag/fade/notes, PATCH 1:1, strip copy and paste.
+- SQ-5: add-on effects and DEEP models, MIDI Group addresses and Soft Key notes, Soft Keys, Setup and Utility pages.
+- SQ-5: Ganging, Mix Stereo, Network, Users, Data, SQ-Drive and Footswitch pages; lit keys light their window, not the whole cap.
+- 01V: its MIDI (parameter changes, control changes with the three arrangements, program changes, bulk dumps) and its LCD pages; scene
+  recall undo (RECALL UNDO), with safes and recall filter respected.
+- Midas PRO2: processing blocks and profile in the engine (no surface yet).
+- dLive: Main modes, PAFL busses, Ext In from mixes and PAFL, Source Selectors, ABCD inputs, Direct Out options, Follow Main
+  Pan and stereo image in the engine and shows.
+- MIDI over TCP for the dLive (TCP 51325, 51328) and SQ-5 (51325), with Gets and state feedback.
+- dLive screens: a mix's Ext In tab, ABCD inputs and the stereo image on Preamp, a Routing tab (Direct Out, Mix Source, Follow
+  Main Pan), MixRack's Source Selector live, the MIDI channel and connections on Network; the Main mode's strips on both surfaces.
+- WING: BALANCE raises one side as it cuts the other; REMOTE LOCK now blocks OSC and TCP writes; the SD RECORDER custom-control
+  keys drive the multitrack recorder. `docs/WING_GAPS.md` lists every chapter of the manual against Sidecar.
+- X32: the display's menus redone against the manual and photographs: the LIBRARY (channel, effects,
+  routing only, preset list with save slots), MONITOR, talkback and oscillator pages, ASSIGN (a home tab
+  and the set tab's lists), METERS' groups and RTA controls, SETUP, HOME's config, main and sends pages,
+  MUTE GRP over the page in view, UTILITY by screen, the status bar's recorder and link LEDs. Items with
+  nothing behind them are shown dimmed.
+- The start-up notice now covers every console: a hobby project, used at your own risk, none of the consoles
+  complete, with a rough percentage for each.
 - A crash when a control on a console's display rebuilt the controls while it was still
   being turned (seen on the X32's SCENES screen).
 - The WING remote also accepts the Native protocol in a WebSocket on its TCP port, as
@@ -28,13 +67,15 @@ All notable changes to Sidecar are listed here. Versions follow
   stereo Groups, Aux, FX sends and Matrices, and its IP Stereo Config, which of the 64 input pairs
   are one stereo channel. APPLY resets the mixes and keeps the channels, FX and DCAs, as the
   console does (a pair that changes between mono and stereo starts on its defaults). C ABI 56.
+- A start on the Yamaha DM2000: its console profile and processing (EQ Types I and II, dynamics, GEQ and 44 of its 52
+  effect presets), offered on any Universal strip. It has no surface yet.
 - An accuracy pass over the other surfaces and their screens, against photographs and the manuals' pictures:
   the 01V's LCD pages (Phase, Delay, View, Pan, Routing, Dynamics, Memory and more), the ProMix 01's body, keys
   and LCD, the 02R's plates, keys and readouts, the SQ-5's panel and every screen, the X32's pale screen pages.
 - The dLive now opens on a C3500 surface, drawn from photographs of a real one: 24 motor faders in two banks
   of 12 with six layers each, two touchscreens, two blocks of soft rotaries. Its left screen is the selected
   channel's processing, with the PEQ's graph and boxes as the console has them; its right screen has Scene
-  Manager and MixRack (Config and Audio). The PEQ graph has the RTA. The C1500 surface stays, one key away. Pages without a photograph are Sidecar's reading.
+  Manager, the other Scenes tabs, I/O patch grids, Meters and MixRack (Config and Audio). The PEQ graph has the RTA. The C1500 surface stays, one key away. Pages without a photograph are Sidecar's reading.
 - On both dLive surfaces: Copy, Paste, Reset, Safes, Freeze in Layers and the GEQ on the faders work (the keys
   latch, as a mouse can't hold one key and press another), Assign takes a strip's Mix key and Pre its Sel key,
   rotary keys 1-4 have default functions, and the LCDs show what the console's do.

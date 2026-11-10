@@ -11,7 +11,7 @@ namespace livedaw::ui::universal
 
 namespace
 {
-    constexpr int kRow = 40, kTitle = 36;
+    constexpr int kRow = sizes::kTouch, kTitle = 36;
 } // namespace
 
 //==============================================================================
@@ -325,7 +325,7 @@ void RemotePanel::paint (juce::Graphics& g)
         g.fillRoundedRectangle (r.toFloat(), sizes::kRadius);
         auto t = r.withHeight (kTitle).reduced (sizes::kGap + 4, 0);
         g.setColour (theme.text);
-        g.setFont (type::font (type::kLabel + 2.0f, true));
+        g.setFont (type::font (type::kHeading, true));
         g.drawText (title, t, juce::Justification::centredLeft);
         if (tagged)
             drawDeviceTag (g, t.toFloat(), devices::wing, theme);

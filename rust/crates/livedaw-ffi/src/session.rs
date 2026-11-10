@@ -386,6 +386,32 @@ pub unsafe extern "C" fn ld_show_recall_scene(s: *mut LdShow, e: *const Engine, 
     write_result(out, r);
 }
 
+/// RECALL UNDO: back to the console as it was before the last scene recall,
+/// or, pressed again, redoes it (`Show::undo_recall`).
+#[no_mangle]
+pub unsafe extern "C" fn ld_show_undo_recall(s: *mut LdShow, e: *const Engine, out: *mut LdApplyResult) {
+    let (Some(s), Some(e)) = (show(s), eng(e)) else { return write_result(out, ApplyResult::default()) };
+    write_result(out, guard(ApplyResult::default(), || s.show.undo_recall(e, &mut s.bridge)));
+}
+
+/// Whether there is a scene recall to undo on this console.
+#[no_mangle]
+pub unsafe extern "C" fn ld_show_can_undo_recall(s: *mut LdShow, e: *const Engine) -> bool {
+    match (show(s), eng(e)) {
+        (Some(s), Some(e)) => guard(false, || s.show.can_undo_recall(e)),
+        _ => false,
+    }
+}
+
+/// Takes the step back for a recall the host does outside the show's scenes
+/// (the 01V's scene 00, just before it).
+#[no_mangle]
+pub unsafe extern "C" fn ld_show_mark_recall_undo(s: *mut LdShow, e: *const Engine) {
+    if let (Some(s), Some(e)) = (show(s), eng(e)) {
+        guard((), || s.show.mark_recall_undo(e, &mut s.bridge));
+    }
+}
+
 /// SEND MIDI of the scenes the last ld_show_recall_scene recalled, one per
 /// line, in order (empty if none); taking it clears it.
 #[no_mangle]
@@ -926,6 +952,46 @@ pub unsafe extern "C" fn ld_show_apply_dlive_layout(
         write_string(message, "That mixer configuration doesn't fit the 64 busses".to_string());
         return false;
     };
+    // The PAFL busses and Main mode stay as they are (`ld_show_apply_dlive_structure` sets them).
+    let layout = match e.profile() {
+        livedaw_engine::Profile::AhDLive(old) => {
+            livedaw_engine::profile::DLiveLayout { pafl: old.pafl, main: old.main, ..layout }
+        }
+        _ => layout,
+    };
+    finish_load(
+        guard(Err("internal error while configuring".into()), || {
+            livedaw_session::console::apply_dlive_layout(e, layout, &mut s.bridge)
+        }),
+        message,
+    )
+}
+
+/// `ld_show_apply_dlive_layout`, with the stereo PAFL busses and the Main mode
+/// (`MainMode::index`).
+///
+/// # Safety
+/// `s` and `e` are valid; `layout` holds eight.
+#[no_mangle]
+pub unsafe extern "C" fn ld_show_apply_dlive_structure(
+    s: *mut LdShow,
+    e: *const Engine,
+    layout: *const i32,
+    stereo_inputs: u64,
+    pafl: i32,
+    main: i32,
+    message: *mut *mut LdString,
+) -> bool {
+    use livedaw_engine::profile::{DLiveLayout, MainMode};
+    let (Some(s), Some(e)) = (show(s), eng(e)) else { return false };
+    let mut values = [0i32; 8];
+    std::ptr::copy_nonoverlapping(layout, values.as_mut_ptr(), 8);
+    let parts = (DLiveLayout::from_values(values, stereo_inputs), u8::try_from(pafl), MainMode::from_index(main));
+    let (Some(layout), Ok(pafl), Some(main)) = parts else {
+        write_string(message, "That mixer configuration doesn't fit the 64 busses".to_string());
+        return false;
+    };
+    let layout = DLiveLayout { pafl, main, ..layout };
     finish_load(
         guard(Err("internal error while configuring".into()), || {
             livedaw_session::console::apply_dlive_layout(e, layout, &mut s.bridge)

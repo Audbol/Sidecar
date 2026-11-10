@@ -45,6 +45,17 @@ pub const MAX_SOURCE_BUSES: usize = 64;
 pub const EXTRA_BUS_SOURCES_AT: usize = NUM_BUS_SOURCES + NUM_MAIN_SOURCES + NUM_MTX_SOURCES;
 pub const NUM_STRIP_SOURCES: usize = EXTRA_BUS_SOURCES_AT + 2 * (MAX_SOURCE_BUSES - WING_BUSES);
 
+/// A dLive's PAFL bus as an input (its left; the right is the next): a channel's source
+/// or a mix's Ext In (Firmware Reference Guide, Preamp and Ext In), a block late like the
+/// mixes. Outside the strip sources' numbers.
+pub const PAFL_SOURCE: i32 = STRIP_SOURCE_BASE + 0x1000;
+
+/// The side of the PAFL bus `input` names.
+pub fn pafl_channel(input: i32) -> Option<usize> {
+    let n = input.checked_sub(PAFL_SOURCE)?;
+    usize::try_from(n).ok().filter(|&n| n < 2)
+}
+
 /// The strip signal of input `input`: (kind, 0-based number (a bus's slot),
 /// side 0 = L / 1 = R).
 pub fn strip_source(input: i32) -> Option<(StripKind, usize, usize)> {

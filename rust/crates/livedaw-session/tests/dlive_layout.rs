@@ -290,3 +290,100 @@ fn it_refuses_a_layout_that_does_not_fit_and_other_consoles() {
     wing.configure(&ConsoleConfig::wing());
     assert!(apply_dlive_layout(&wing, LAYOUT, &mut NoPlugins).is_err());
 }
+
+#[test]
+fn a_main_mode_comes_and_goes_with_the_mixer_config() {
+    use livedaw_engine::profile::MainMode;
+    let engine = dlive();
+    let lrm = DLiveLayout { main: MainMode::LrM, ..LAYOUT };
+    apply_dlive_layout(&engine, lrm, &mut NoPlugins).unwrap();
+    assert_eq!(engine.num_strips(StripKind::Main), 2);
+    let m = engine.strip_at(StripKind::Main, 1).unwrap();
+    assert_eq!(m.name(), "M");
+    assert!(m.params.mono.load(Relaxed), "M is mono");
+    assert!(!m.params.stereo.load(Relaxed));
+    let lr = engine.strip_at(StripKind::Main, 0).unwrap();
+    assert!(lr.params.stereo.load(Relaxed), "LR stays stereo");
+    // On the output after the LR.
+    assert_eq!(engine.output_patch().get(2), strip_source_input(StripKind::Main, 1, 0));
+
+    let surround = DLiveLayout { main: MainMode::Surround, ..LAYOUT };
+    apply_dlive_layout(&engine, surround, &mut NoPlugins).unwrap();
+    assert_eq!(engine.num_strips(StripKind::Main), 4);
+    assert_eq!(engine.strip_at(StripKind::Main, 3).unwrap().name(), "Ls/Rs");
+    assert_eq!(engine.output_patch().get(5), strip_source_input(StripKind::Main, 3, 1));
+
+    apply_dlive_layout(&engine, LAYOUT, &mut NoPlugins).unwrap();
+    assert_eq!(engine.num_strips(StripKind::Main), 1);
+    assert_ne!(engine.output_patch().get(2), strip_source_input(StripKind::Main, 1, 0), "M's output is free again");
+}
+
+#[test]
+fn too_many_busses_with_pafl_are_refused() {
+    let full = DLiveLayout { grp: 0, st_grp: 0, aux: 62, st_aux: 0, fx: 0, st_fx: 0, mtx: 0, st_mtx: 0, ..DLiveLayout::FOH };
+    assert_eq!(full.busses_used(), 66);
+    assert!(apply_dlive_layout(&dlive(), full, &mut NoPlugins).is_err());
+    assert!(apply_dlive_layout(&dlive(), DLiveLayout { pafl: 0, ..full }, &mut NoPlugins).is_ok());
+}
+
+#[test]
+fn a_show_keeps_a_strips_dlive_settings_and_the_consoles() {
+    let engine = dlive();
+    let ch = engine.strip_at(StripKind::Channel, 2).unwrap();
+    ch.dlive.stereo_image.store(7, Relaxed);
+    ch.dlive.image_width.store(40.0);
+    ch.dlive.divergence.store(25.0);
+    ch.dlive.direct_db.store(-3.0);
+    ch.dlive.abcd_left[2].store(33, Relaxed);
+    engine.abcd_enable(&ch, true);
+    let mix = engine.strip_at(StripKind::Bus, 12).unwrap();
+    engine.set_follow_main_pan(&mix, true, true);
+    let group = engine.strip_at(StripKind::Bus, 0).unwrap();
+    group.dlive.group_source.store(0, Relaxed);
+    engine.dlive.direct_source.store(2, Relaxed);
+    engine.dlive.direct_follow_all.store(true, Relaxed);
+    engine.set_selector_output(3, Some((StripKind::Bus, 12)));
+    engine.set_selector_source(3, 4, Some((StripKind::Channel, 7)));
+    engine.dlive.selectors[3].sources[4].on_db.store(-6.0);
+    engine.dlive.selectors[3].active.store(4, Relaxed);
+    engine.dlive.selectors[3].fade_in_s.store(7.5);
+
+    let console = save_console(&engine, &mut NoPlugins);
+    let other = dlive();
+    let warnings = load_console(&other, &console, &mut NoPlugins, true);
+    assert!(warnings.is_empty(), "{warnings:?}");
+
+    let ch = other.strip_at(StripKind::Channel, 2).unwrap();
+    assert_eq!(ch.dlive.stereo_image.load(Relaxed), 7);
+    assert_eq!(ch.dlive.image_width.load(), 40.0);
+    assert_eq!(ch.dlive.divergence.load(), 25.0);
+    assert_eq!(ch.dlive.direct_db.load(), -3.0);
+    assert!(ch.dlive.abcd_on.load(Relaxed));
+    assert_eq!(ch.dlive.abcd_left[2].load(Relaxed), 33);
+    let mix = other.strip_at(StripKind::Bus, 12).unwrap();
+    assert!(mix.dlive.follow_main_pan.load(Relaxed) && mix.dlive.follow_invert.load(Relaxed));
+    assert_eq!(other.strip_at(StripKind::Bus, 0).unwrap().dlive.group_source.load(Relaxed), 0);
+    assert_eq!(other.dlive.direct_source.load(Relaxed), 2);
+    assert!(other.dlive.direct_follow_all.load(Relaxed));
+    let sel = &other.dlive.selectors[3];
+    assert_eq!(sel.destination(), Some(12));
+    assert_eq!(sel.active.load(Relaxed), 4);
+    assert_eq!(sel.fade_in_s.load(), 7.5);
+    assert_eq!(sel.sources[4].strip(), Some((StripKind::Channel, 7)));
+    assert_eq!(sel.sources[4].on_db.load(), -6.0);
+    assert!(other.strip_at(StripKind::Channel, 3).unwrap().dlive.is_default(), "the others stay as new");
+}
+
+#[test]
+fn a_show_keeps_the_pafl_busses_and_main_mode() {
+    use livedaw_engine::profile::MainMode;
+    let engine = dlive();
+    let layout = DLiveLayout { pafl: 2, main: MainMode::Lcr, ..LAYOUT };
+    apply_dlive_layout(&engine, layout, &mut NoPlugins).unwrap();
+    let console = save_console(&engine, &mut NoPlugins);
+    let other = dlive();
+    load_console(&other, &console, &mut NoPlugins, true);
+    assert_eq!(other.profile(), Profile::AhDLive(layout));
+    assert_eq!(other.num_strips(StripKind::Main), 2);
+    assert_eq!(other.strip_at(StripKind::Main, 1).unwrap().name(), "C");
+}

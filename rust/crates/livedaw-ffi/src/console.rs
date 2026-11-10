@@ -156,6 +156,240 @@ pub unsafe extern "C" fn ld_strip_mix_input(s: *const Strip) -> *const livedaw_e
     &(*s).mix_input
 }
 
+/// A strip's dLive settings (`livedaw_engine::dlive`; ignored on other consoles).
+///
+/// # Safety
+/// `s` is a valid strip; the result lives as long as it does.
+#[no_mangle]
+pub unsafe extern "C" fn ld_strip_dlive(s: *const Strip) -> *const livedaw_engine::dlive::DLiveStripParams {
+    &(*s).dlive
+}
+
+/// A dLive's Direct Out settings: source (`dlive::direct_source`), Follow Fader, Follow
+/// Mute, Follow All. Each getter and setter works on one value of the four.
+///
+/// # Safety
+/// `e` is a valid engine.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_dlive_direct_source(e: *const Engine) -> i32 {
+    (*e).dlive.direct_source.load(Relaxed)
+}
+
+/// # Safety
+/// `e` is a valid engine.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_dlive_set_direct_source(e: *const Engine, source: i32) {
+    (*e).dlive.direct_source.store(source.clamp(0, 7), Relaxed);
+}
+
+/// Bits: 1 Follow Fader, 2 Follow Mute, 4 Follow All.
+///
+/// # Safety
+/// `e` is a valid engine.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_dlive_direct_follow(e: *const Engine) -> i32 {
+    let c = &(*e).dlive;
+    i32::from(c.direct_follow_fader.load(Relaxed))
+        | i32::from(c.direct_follow_mute.load(Relaxed)) << 1
+        | i32::from(c.direct_follow_all.load(Relaxed)) << 2
+}
+
+/// # Safety
+/// `e` is a valid engine.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_dlive_set_direct_follow(e: *const Engine, bits: i32) {
+    let c = &(*e).dlive;
+    c.direct_follow_fader.store(bits & 1 != 0, Relaxed);
+    c.direct_follow_mute.store(bits & 2 != 0, Relaxed);
+    c.direct_follow_all.store(bits & 4 != 0, Relaxed);
+}
+
+/// A stereo mix's Follow Main Pan and Invert (`Engine::set_follow_main_pan`).
+///
+/// # Safety
+/// `e` and `s` are valid.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_set_follow_main_pan(e: *const Engine, s: *const Strip, follow: bool, invert: bool) {
+    (*e).set_follow_main_pan(&*s, follow, invert);
+}
+
+/// The channel's ABCD inputs on or off, or the one it plays (0-3).
+///
+/// # Safety
+/// `e` and `s` are valid.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_abcd_enable(e: *const Engine, s: *const Strip, on: bool) {
+    (*e).abcd_enable(&*s, on);
+}
+
+/// # Safety
+/// `e` and `s` are valid.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_abcd_select(e: *const Engine, s: *const Strip, which: i32) {
+    if let Ok(which) = usize::try_from(which) {
+        (*e).abcd_select(&*s, which);
+    }
+}
+
+/// The Actions: `dca` < 0 sets all channels, else that DCA's members.
+///
+/// # Safety
+/// `e` is a valid engine.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_abcd_set(e: *const Engine, dca: i32, which: i32) {
+    let Ok(which) = usize::try_from(which) else { return };
+    match usize::try_from(dca) {
+        Ok(dca) => (*e).abcd_set_for_dca(dca, which),
+        Err(_) => (*e).abcd_set_all(which),
+    }
+}
+
+/// # Safety
+/// `e` is a valid engine.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_abcd_set_range(e: *const Engine, first: i32, last: i32, which: i32) {
+    if let (Ok(first), Ok(last), Ok(which)) = (usize::try_from(first), usize::try_from(last), usize::try_from(which)) {
+        (*e).abcd_set_range(first, last, which);
+    }
+}
+
+/// A Source Selector's output: `kind` as `StripKind` (a Bus or Matrix), its slot or
+/// index. kind < 0: unassigned.
+///
+/// # Safety
+/// `e` is a valid engine.
+#[no_mangle]
+pub unsafe extern "C" fn ld_selector_set_output(e: *const Engine, selector: i32, kind: i32, index: i32) {
+    let Ok(selector) = usize::try_from(selector) else { return };
+    let output = livedaw_engine::StripKind::from_i32(kind).zip(usize::try_from(index).ok());
+    (*e).set_selector_output(selector, output);
+}
+
+/// A selector's source `member`: `kind` as `StripKind`, `number` from 1. kind < 0: empty.
+///
+/// # Safety
+/// `e` is a valid engine.
+#[no_mangle]
+pub unsafe extern "C" fn ld_selector_set_source(e: *const Engine, selector: i32, member: i32, kind: i32, number: i32) {
+    if let (Ok(selector), Ok(member)) = (usize::try_from(selector), usize::try_from(member)) {
+        (*e).set_selector_source(selector, member, livedaw_engine::StripKind::from_i32(kind).map(|k| (k, number)));
+    }
+}
+
+/// A source's on-level, dB.
+///
+/// # Safety
+/// `e` is a valid engine.
+#[no_mangle]
+pub unsafe extern "C" fn ld_selector_set_on_level(e: *const Engine, selector: i32, member: i32, db: f32) {
+    if let Some(m) = selector_source(e, selector, member) {
+        m.on_db.store(db);
+    }
+}
+
+/// The source playing (-1: Off).
+///
+/// # Safety
+/// `e` is a valid engine.
+#[no_mangle]
+pub unsafe extern "C" fn ld_selector_select(e: *const Engine, selector: i32, member: i32) {
+    if let Some(sel) = usize::try_from(selector).ok().and_then(|i| (*e).dlive.selectors.get(i)) {
+        sel.active.store(member.max(-1), Relaxed);
+    }
+}
+
+/// # Safety
+/// `e` is a valid engine.
+#[no_mangle]
+pub unsafe extern "C" fn ld_selector_active(e: *const Engine, selector: i32) -> i32 {
+    usize::try_from(selector).ok().and_then(|i| (*e).dlive.selectors.get(i)).map_or(-1, |s| s.active.load(Relaxed))
+}
+
+/// The fades, seconds (up to 10).
+///
+/// # Safety
+/// `e` is a valid engine.
+#[no_mangle]
+pub unsafe extern "C" fn ld_selector_set_fades(e: *const Engine, selector: i32, fade_in: f32, fade_out: f32) {
+    use livedaw_engine::dlive::MAX_SELECTOR_FADE_S as MAX;
+    if let Some(sel) = usize::try_from(selector).ok().and_then(|i| (*e).dlive.selectors.get(i)) {
+        sel.fade_in_s.store(fade_in.clamp(0.0, MAX));
+        sel.fade_out_s.store(fade_out.clamp(0.0, MAX));
+    }
+}
+
+/// A selector's output as `ld_selector_set_output` takes it. False: unassigned, and
+/// `kind` and `index` are left alone.
+///
+/// # Safety
+/// `e` is a valid engine; `kind` and `index` are null or writable.
+#[no_mangle]
+pub unsafe extern "C" fn ld_selector_output(e: *const Engine, selector: i32, kind: *mut i32, index: *mut i32) -> bool {
+    let Some(sel) = usize::try_from(selector).ok().and_then(|i| (*e).dlive.selectors.get(i)) else { return false };
+    let k = sel.output_kind.load(Relaxed);
+    if k < 0 {
+        return false;
+    }
+    if let Some(kind) = kind.as_mut() {
+        *kind = k;
+    }
+    if let Some(index) = index.as_mut() {
+        *index = sel.output.load(Relaxed);
+    }
+    true
+}
+
+/// A selector's source `member` as `ld_selector_set_source` takes it, and its on-level.
+/// False: empty, and the three are left alone.
+///
+/// # Safety
+/// `e` is a valid engine; `kind`, `number` and `on_db` are null or writable.
+#[no_mangle]
+pub unsafe extern "C" fn ld_selector_source(
+    e: *const Engine,
+    selector: i32,
+    member: i32,
+    kind: *mut i32,
+    number: *mut i32,
+    on_db: *mut f32,
+) -> bool {
+    let Some(m) = selector_source(e, selector, member) else { return false };
+    let k = m.kind.load(Relaxed);
+    if k < 0 {
+        return false;
+    }
+    if let Some(kind) = kind.as_mut() {
+        *kind = k;
+    }
+    if let Some(number) = number.as_mut() {
+        *number = m.number.load(Relaxed);
+    }
+    if let Some(on_db) = on_db.as_mut() {
+        *on_db = m.on_db.load();
+    }
+    true
+}
+
+/// A selector's fades, seconds. False: no such selector.
+///
+/// # Safety
+/// `e` is a valid engine; `fade_in` and `fade_out` are null or writable.
+#[no_mangle]
+pub unsafe extern "C" fn ld_selector_fades(e: *const Engine, selector: i32, fade_in: *mut f32, fade_out: *mut f32) -> bool {
+    let Some(sel) = usize::try_from(selector).ok().and_then(|i| (*e).dlive.selectors.get(i)) else { return false };
+    if let Some(fade_in) = fade_in.as_mut() {
+        *fade_in = sel.fade_in_s.load();
+    }
+    if let Some(fade_out) = fade_out.as_mut() {
+        *fade_out = sel.fade_out_s.load();
+    }
+    true
+}
+
+unsafe fn selector_source<'a>(e: *const Engine, selector: i32, member: i32) -> Option<&'a livedaw_engine::dlive::SelectorSource> {
+    (*e).dlive.selectors.get(usize::try_from(selector).ok()?)?.sources.get(usize::try_from(member).ok()?)
+}
+
 /// ABI 56: a dLive channel's AMM settings and read-back (the settings are ignored on
 /// any other strip).
 ///
@@ -275,6 +509,34 @@ pub extern "C" fn ld_strip_source_input(kind: i32, number: i32, side: i32) -> i3
 mod tests {
     use super::*;
     use crate::{ld_engine_create, ld_engine_destroy, ld_engine_set_group_name, ld_engine_set_num_channels, ld_engine_strip_at};
+
+    #[test]
+    fn a_source_selector_reads_back_through_the_c_abi() {
+        unsafe {
+            let e = ld_engine_create(0);
+            let (mut kind, mut index, mut number, mut db, mut fade_in, mut fade_out) = (-1, -1, -1, 1.0_f32, 0.0_f32, 0.0_f32);
+            assert!(!ld_selector_output(e, 0, &mut kind, &mut index));
+            assert_eq!((kind, index), (-1, -1), "left alone");
+            assert!(!ld_selector_source(e, 0, 3, &mut kind, &mut number, &mut db));
+            assert!(!ld_selector_source(e, 0, 20, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut()));
+            assert!(!ld_selector_output(e, 20, std::ptr::null_mut(), std::ptr::null_mut()));
+            assert!(!ld_selector_fades(e, 20, &mut fade_in, &mut fade_out));
+
+            ld_selector_set_output(e, 0, 4, 2);
+            assert!(ld_selector_output(e, 0, &mut kind, &mut index));
+            assert_eq!((kind, index), (4, 2));
+            ld_selector_set_source(e, 0, 3, 0, 7);
+            ld_selector_set_on_level(e, 0, 3, -6.0);
+            assert!(ld_selector_source(e, 0, 3, &mut kind, &mut number, &mut db));
+            assert_eq!((kind, number, db), (0, 7, -6.0));
+            ld_selector_set_source(e, 0, 3, -1, 0);
+            assert!(!ld_selector_source(e, 0, 3, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut()));
+            ld_selector_set_fades(e, 0, 2.5, 99.0);
+            assert!(ld_selector_fades(e, 0, &mut fade_in, &mut fade_out));
+            assert_eq!((fade_in, fade_out), (2.5, 10.0), "ten seconds at most");
+            ld_engine_destroy(e);
+        }
+    }
 
     #[test]
     fn sources_tags_and_mutes_through_the_c_abi() {

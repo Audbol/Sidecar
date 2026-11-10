@@ -3,12 +3,40 @@
 version = 4
 
 [[package]]
+name = "livedaw-01v"
+version = "0.3.0"
+dependencies = [
+ "livedaw-02r",
+ "livedaw-dsp",
+ "livedaw-engine",
+ "livedaw-promix",
+]
+
+[[package]]
 name = "livedaw-02r"
 version = "0.3.0"
 dependencies = [
  "livedaw-dsp",
  "livedaw-engine",
  "livedaw-promix",
+]
+
+[[package]]
+name = "livedaw-ahmidi"
+version = "0.3.0"
+dependencies = [
+ "livedaw-dsp",
+ "livedaw-engine",
+ "livedaw-sq",
+ "livedaw-wing",
+]
+
+[[package]]
+name = "livedaw-dm2000"
+version = "0.3.0"
+dependencies = [
+ "livedaw-dsp",
+ "livedaw-engine",
 ]
 
 [[package]]
@@ -27,7 +55,10 @@ dependencies = [
 name = "livedaw-ffi"
 version = "0.3.0"
 dependencies = [
+ "livedaw-01v",
  "livedaw-02r",
+ "livedaw-ahmidi",
+ "livedaw-dm2000",
  "livedaw-dsp",
  "livedaw-engine",
  "livedaw-promix",

@@ -125,6 +125,8 @@ pub enum Bind {
     /// The insert's FX slot in the engine, the side and AUX loops kept.
     InsertSel,
     DcaOn,
+    /// `/-stat/solosw/NN`: a strip's or a DCA's SOLO.
+    Solo,
     DcaFader,
     DcaName,
     DcaColour,
@@ -618,10 +620,149 @@ fn build() -> Tree {
         b.leaf(&c, "color", t, COLOUR, Bind::DcaColour, int(7));
     }
     config(&mut b);
+    prefs(&mut b);
+    stat(&mut b);
     fx(&mut b);
     headamps(&mut b);
     outputs(&mut b);
     b.t
+}
+
+/// `/-prefs` (OSC document pp.50-53): the console's preferences, kept by the
+/// server so that the X32 display's SETUP, METERS > rta and MONITOR pages and a
+/// remote agree. Sidecar acts on a few from its X32 surface (the clock mode,
+/// the screen's brightness, the RTA's, the HA gain split); the rest are the
+/// console's own hardware (lamp, card, network: the computer's here). The
+/// names, ranges and orders are the document's; the factory values are
+/// Sidecar's until they are compared with a console.
+fn prefs(b: &mut Builder) {
+    let t = Target::Config;
+    let lin = |min: f32, max: f32, steps: u32| Ty::Float(Law::Lin(min, max, steps), num(0, false, 0));
+    let p = "/-prefs";
+    b.leaf(p, "style", t, Ty::Str(16), Bind::State, Val::Text("Sidecar".into()));
+    b.leaf(p, "bright", t, lin(10.0, 100.0, 19), Bind::State, real(100.0));
+    b.leaf(p, "lcdcont", t, lin(0.0, 100.0, 51), Bind::State, real(50.0));
+    b.leaf(p, "ledbright", t, lin(10.0, 100.0, 19), Bind::State, real(100.0));
+    b.leaf(p, "lamp", t, lin(10.0, 100.0, 10), Bind::State, real(50.0));
+    b.leaf(p, "lampon", t, ONOFF, Bind::State, int(0));
+    b.leaf(p, "clockrate", t, Ty::Enum(&["48K", "44K1"]), Bind::State, int(0));
+    b.leaf(p, "clocksource", t, Ty::Enum(&["INT", "AES50A", "AES50B", "Exp Card"]), Bind::State, int(0));
+    for (name, on) in [
+        ("confirm_general", 1),
+        ("confirm_overwrite", 1),
+        ("confirm_sceneload", 0),
+        ("viewrtn", 0),
+        ("selfollowsbank", 0),
+        ("sceneadvance", 0),
+        ("safe_masterlevels", 0),
+    ] {
+        b.leaf(p, name, t, ONOFF, Bind::State, int(on));
+    }
+    // bit 0 Lock Stagebox, 1 the X32's HA gain split, 2 and 3 AES50 A's and B's.
+    b.leaf(p, "haflags", t, Ty::Bits(4), Bind::State, int(0));
+    b.leaf(p, "autosel", t, ONOFF, Bind::State, int(0));
+    b.leaf(p, "show_control", t, Ty::Enum(&["CUES", "SCENES", "SNIPPETS"]), Bind::State, int(1));
+    b.leaf(p, "clockmode", t, Ty::Enum(&["24h", "12h"]), Bind::State, int(0));
+    b.leaf(p, "hardmute", t, ONOFF, Bind::State, int(0));
+    b.leaf(p, "dcamute", t, ONOFF, Bind::State, int(0));
+    b.leaf(p, "invertmutes", t, Ty::Enum(&["NORM", "INV"]), Bind::State, int(0));
+    let r = "/-prefs/remote";
+    b.leaf(r, "enable", t, ONOFF, Bind::State, int(0));
+    b.leaf(r, "protocol", t, Ty::Enum(&["MC", "HUI", "CC"]), Bind::State, int(0));
+    b.leaf(r, "port", t, Ty::Enum(&["MIDI", "CARD", "RTP"]), Bind::State, int(0));
+    // bit 0 MIDI In/Out, 1 Card MIDI, 2 RTP MIDI, 3-10 Rx / Tx of program
+    // changes, faders, mutes and pans, 11 X/OSC (OSC over SysEx).
+    b.leaf(r, "ioenable", t, Ty::Bits(12), Bind::State, int(0xff9));
+    let c = "/-prefs/card";
+    b.leaf(c, "UFifc", t, Ty::Enum(&["FW", "USB"]), Bind::State, int(1));
+    b.leaf(c, "UFmode", t, Ty::Enum(&["32in/32out", "16in/16out", "32in/8out", "8in/32out"]), Bind::State, int(0));
+    let usb = Ty::Enum(&["32in/32out", "16in/16out", "32in/8out", "8in/32out", "8in/8out", "2in/2out"]);
+    b.leaf(c, "USBmode", t, usb, Bind::State, int(0));
+    let a = "/-prefs/rta";
+    let overlay = Ty::Enum(&["OFF", "25%", "30%", "35%", "40%", "45%", "50%", "55%", "60%", "65%", "70%", "75%", "80%"]);
+    b.leaf(a, "visibility", t, overlay, Bind::State, int(10));
+    b.leaf(a, "gain", t, lin(0.0, 60.0, 11), Bind::State, real(0.0));
+    b.leaf(a, "autogain", t, ONOFF, Bind::State, int(1));
+    // 0 none, 1 the monitor, 2-33 Ch 1-32, 34-41 Aux 1-8, 42-49 FX 1L-4R,
+    // 50-65 Bus 1-16, 66-71 Mtx 1-6, 72 Main, 73 Mono.
+    b.leaf(a, "source", t, Ty::Int(0, 73), Bind::State, int(0));
+    b.leaf(a, "pos", t, Ty::Enum(&["PRE", "POST"]), Bind::State, int(1));
+    b.leaf(a, "mode", t, Ty::Enum(&["BAR", "SPEC"]), Bind::State, int(0));
+    // bit 0 Pre EQ, 1 Spectrograph (the channel EQ's); 2 Use RTA Source, 3 Post
+    // GEQ, 4 Spectrograph (the GEQ's); 5 Solo Priority.
+    b.leaf(a, "option", t, Ty::Bits(6), Bind::State, int(0));
+    b.leaf(a, "det", t, Ty::Enum(&["RMS", "PEAK"]), Bind::State, int(0));
+    b.leaf(a, "decay", t, Ty::Float(Law::Log(0.25, 16.0, 19), Fmt::Sig3), Bind::State, real(1.0));
+    b.leaf(a, "peakhold", t, Ty::Enum(&["OFF", "1", "2", "3", "4", "5", "6", "7", "8"]), Bind::State, int(0));
+    b.leaf("/-prefs/ip", "dhcp", t, ONOFF, Bind::State, int(0));
+    for (node, factory) in [("addr", [192, 168, 1, 62]), ("mask", [255, 255, 255, 0]), ("gateway", [192, 168, 1, 1])] {
+        for (k, v) in factory.iter().enumerate() {
+            b.leaf(&format!("/-prefs/ip/{node}"), &k.to_string(), t, Ty::Int(0, 255), Bind::State, int(*v));
+        }
+    }
+}
+
+/// `/-stat` (OSC document pp.55-59): what the console's surface shows. The
+/// solo switches are the engine's; the others are kept by the server, and
+/// Sidecar's X32 surface writes and follows them (the selected strip, the
+/// screen and its page, the fader banks, sends on fader, the EQ band, the
+/// assign set, EQ on faders, the recorder's state).
+fn stat(b: &mut Builder) {
+    let t = Target::Config;
+    let s = "/-stat";
+    b.leaf(s, "selidx", t, Ty::Int(0, 71), Bind::State, int(0));
+    b.leaf(s, "chfaderbank", t, Ty::Int(0, 3), Bind::State, int(0));
+    b.leaf(s, "grpfaderbank", t, Ty::Int(0, 3), Bind::State, int(0));
+    b.leaf(s, "sendsonfader", t, ONOFF, Bind::State, int(0));
+    b.leaf(s, "bussendbank", t, Ty::Int(0, 3), Bind::State, int(0));
+    b.leaf(s, "eqband", t, Ty::Int(0, 5), Bind::State, int(0));
+    b.leaf(s, "keysolo", t, ONOFF, Bind::State, int(0));
+    b.leaf(s, "userbank", t, Ty::Int(0, 2), Bind::State, int(0));
+    b.leaf(s, "autosave", t, ONOFF, Bind::State, int(0));
+    b.leaf(s, "lock", t, Ty::Int(0, 1), Bind::State, int(0));
+    b.leaf(s, "usbmounted", t, ONOFF, Bind::State, int(1));
+    b.leaf(s, "remote", t, ONOFF, Bind::State, int(0));
+    let mode = Ty::Enum(&["BAR", "SPEC"]);
+    b.leaf(s, "rtamodeeq", t, mode, Bind::State, int(0));
+    b.leaf(s, "rtamodegeq", t, mode, Bind::State, int(0));
+    b.leaf(s, "rtaeqpre", t, ONOFF, Bind::State, int(0));
+    b.leaf(s, "rtageqpost", t, ONOFF, Bind::State, int(0));
+    b.leaf(s, "rtasource", t, Ty::Int(0, 170), Bind::State, int(0));
+    // 2: an X-USB card (the audio interface stands in for it).
+    b.leaf(s, "xcardtype", t, Ty::Int(0, 9), Bind::State, int(2));
+    b.leaf(s, "xcardsync", t, ONOFF, Bind::State, int(0));
+    b.leaf(s, "geqonfdr", t, ONOFF, Bind::State, int(0));
+    // The FX slot (0x100 .. 0x800) or'ed with the first of the eight bands on the faders.
+    b.leaf(s, "geqpos", t, Ty::Int(0, 0x8ff), Bind::State, int(0x100));
+    let sc = "/-stat/screen";
+    b.leaf(sc, "screen", t, Ty::Int(0, 10), Bind::State, int(0));
+    b.leaf(sc, "mutegrp", t, ONOFF, Bind::State, int(0));
+    b.leaf(sc, "utils", t, ONOFF, Bind::State, int(0));
+    for (name, last) in [
+        ("CHAN", 6),
+        ("METER", 4),
+        ("ROUTE", 7),
+        ("SETUP", 6),
+        ("LIB", 2),
+        ("FX", 8),
+        ("MON", 3),
+        ("USB", 1),
+        ("SCENE", 5),
+        ("ASSIGN", 3),
+    ] {
+        b.leaf(&format!("{sc}/{name}"), "page", t, Ty::Int(0, last), Bind::State, int(0));
+    }
+    // 01-32 the channels, 33-40 aux in, 41-48 FX returns, 49-64 buses, 65-70
+    // matrices, 71 LR, 72 M/C, 73-80 the DCAs.
+    for id in 0..80 {
+        let target = Target::of_meter_id(id).unwrap_or(Target::Dca(id.saturating_sub(72)));
+        b.leaf("/-stat/solosw", &format!("{:02}", id + 1), target, ONOFF, Bind::Solo, int(0));
+    }
+    // 0 stop, 1 pause, 2 play, 3 record paused, 4 record (written by the surface).
+    b.leaf("/-stat/tape", "state", t, Ty::Int(0, 6), Bind::State, int(0));
+    b.leaf("/-stat/tape", "file", t, Ty::Str(64), Bind::State, Val::Text(String::new()));
+    b.leaf("/-stat/tape", "etime", t, Ty::Int(0, 359_999), Bind::State, int(0));
+    b.leaf("/-stat/tape", "rtime", t, Ty::Int(0, 359_999), Bind::State, int(0));
 }
 
 /// `/outputs`: the X32's output signals (main 1-16, aux 1-6, P16 1-16, AES/EBU
@@ -1339,6 +1480,7 @@ impl<'a> Console<'a> {
                 }));
             }
             Bind::DcaOn => return on(!self.dca(e.target)?.mute.load(Relaxed)),
+            Bind::Solo if matches!(e.target, Target::Dca(_)) => return on(self.dca(e.target)?.solo.load(Relaxed)),
             Bind::DcaFader => return Some(Val::Real(self.dca(e.target)?.fader_db.load())),
             Bind::DcaColour => return Some(Val::Int(self.dca(e.target)?.colour.load(Relaxed) - 1)),
             Bind::DcaName => {
@@ -1394,6 +1536,7 @@ impl<'a> Console<'a> {
             Bind::Colour => Val::Int(p.colour.load(Relaxed) - 1),
             Bind::Fader => Val::Real(p.fader_db.load()),
             Bind::On => return on(!p.mute.load(Relaxed)),
+            Bind::Solo => return on(p.solo.load(Relaxed)),
             Bind::Pan => Val::Real(p.pan.load()),
             Bind::MainOn(m) => return on(s.mains.get_or_create(m)?.on.load(Relaxed)),
             Bind::MainLevel(m) => Val::Real(s.mains.get_or_create(m)?.level_db.load()),
@@ -1530,6 +1673,11 @@ impl<'a> Console<'a> {
                 }
                 return true;
             }
+            Bind::Solo if matches!(e.target, Target::Dca(_)) => {
+                let Some(d) = self.dca(e.target) else { return false };
+                d.solo.store(v.on(), Relaxed);
+                return true;
+            }
             Bind::MuteGroup(g) => {
                 if g >= self.engine.num_mute_groups() {
                     return false;
@@ -1594,6 +1742,7 @@ impl<'a> Console<'a> {
             Bind::Colour => p.colour.store(v.int() + 1, Relaxed),
             Bind::Fader => p.fader_db.store(v.real()),
             Bind::On => p.mute.store(!v.on(), Relaxed),
+            Bind::Solo => p.solo.store(v.on(), Relaxed),
             Bind::Pan => p.pan.store(v.real()),
             Bind::MainOn(m) | Bind::MainLevel(m) => {
                 let Some(send) = s.mains.get_or_create(m) else { return false };

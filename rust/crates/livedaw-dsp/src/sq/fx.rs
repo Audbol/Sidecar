@@ -5,10 +5,15 @@
 //! The algorithms run on the WING's devices of the same kind
 //! (`wing::fx::sq_voices`): Sidecar's reading, to be compared with a console.
 //! Not modelled: SMR's HF SLOPE, the delay's WIDTH, LINK and tap tempo, the
-//! choruses' and ADT's autopan, the flanger's LFO shapes. The add-ons (MultiBD
-//! Compressor 3 and 4, DynEQ4, De-Esser, Bucket Brigade, Echo, Hypabass) and
-//! the DEEP models aren't here yet. Defaults are the panels' pictures' values
-//! where they show one, else Sidecar's.
+//! choruses' and ADT's autopan, the flanger's LFO shapes. Defaults are the
+//! panels' pictures' values where they show one, else Sidecar's.
+//!
+//! The RackFX add-ons (p.65: MultiBD Compressor 3 and 4, DynEQ4, De-Esser, Bucket
+//! Brigade, Echo, Hypabass) take the dLive's RackExtra models of the same name
+//! whole, their controls too ([`crate::dlive_fx`]): the guide names them and
+//! gives no panels or ranges, and the two consoles' models share a maker. That
+//! they match is Sidecar's reading. Sidecar has them all enabled: there is no key
+//! to buy (Utility > General > Add-ons).
 
 use super::p;
 use crate::model::{ModelCategory, ModelSpec, ParamKind, ParamSpec};
@@ -87,8 +92,22 @@ const fn fx(token: &'static str, name: &'static str, params: &'static [ParamSpec
     ModelSpec { token, name, category: ModelCategory::FxPremium, params }
 }
 
-/// The RackFX, after an empty slot and EXT.
-pub static FX_MODELS: [ModelSpec; 13] = [
+/// The first add-on (p.65) in [`FX_MODELS`].
+pub const FIRST_ADDON: usize = 13;
+
+/// An add-on's token, and the dLive model it runs on.
+pub const ADDONS: [(&str, &str); 7] = [
+    ("SQMB4", "DLVMB4"),
+    ("SQMB3", "DLVMB3"),
+    ("SQDEQ4", "DLVDYNEQ"),
+    ("SQDEES", "DLVDEES"),
+    ("SQBBD", "DLVBBD"),
+    ("SQECHO", "DLVECHO"),
+    ("SQHYPA", "DLVHYPA"),
+];
+
+/// The RackFX, after an empty slot and EXT: the RackExtra types, then the add-ons.
+pub static FX_MODELS: [ModelSpec; 20] = [
     crate::wing::FX_MODELS[0],
     crate::wing::FX_MODELS[1],
     fx("SQSMRC", "SMR Classic", &SMR),
@@ -102,6 +121,13 @@ pub static FX_MODELS: [ModelSpec; 13] = [
     fx("SQFLNG", "Flanger", &FLANGER),
     fx("SQPHAS", "MOO 12 Stage Phaser", &PHASER),
     fx("SQGATE2", "Gated Verb", &GATED),
+    fx("SQMB4", "MultiBD Compressor 4", crate::dlive_fx::FX_MODELS[23].params),
+    fx("SQMB3", "MultiBD Compressor 3", crate::dlive_fx::FX_MODELS[22].params),
+    fx("SQDEQ4", "DynEQ4", crate::dlive_fx::FX_MODELS[21].params),
+    fx("SQDEES", "De-Esser", crate::dlive_fx::FX_MODELS[17].params),
+    fx("SQBBD", "Bucket Brigade", crate::dlive_fx::FX_MODELS[7].params),
+    fx("SQECHO", "Echo", crate::dlive_fx::FX_MODELS[9].params),
+    fx("SQHYPA", "Hypabass", crate::dlive_fx::FX_MODELS[16].params),
 ];
 
 /// The SQ-5 effect types' tokens.

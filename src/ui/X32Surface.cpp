@@ -108,7 +108,7 @@ X32Surface::X32Surface (UiContext& c)
     addAndMakeVisible (remoteKey);
     main->setMeterShown (false);
     // SCENES: PREV and NEXT recall the scene before or after, GO the current
-    // again (Sidecar keeps no undo: UNDO does nothing), VIEW the library.
+    // again, UNDO the console as it was before the last recall, VIEW the library.
     const char* const sceneNames[] = { "PREV", "NEXT", "UNDO", "GO", "VIEW" };
     for (int k = 0; k < 5; ++k)
     {
@@ -122,11 +122,16 @@ X32Surface::X32Surface (UiContext& c)
                 display.showScreen (x32::Display::Screen::Scenes);
                 return;
             }
-            const int to = k == 0 ? current - 1 : k == 1 ? current + 1 : k == 3 ? juce::jmax (0, current) : -1;
+            if (k == 2)
+            {
+                if (show.canUndoRecall())
+                    show.undoRecall();
+                return;
+            }
+            const int to = k == 0 ? current - 1 : k == 1 ? current + 1 : juce::jmax (0, current);
             if (juce::isPositiveAndBelow (to, show.getNumScenes()))
                 show.recallScene (to);
         };
-        key->setEnabled (k != 2);
         addAndMakeVisible (*key);
         sceneKeys.push_back (std::move (key));
     }
@@ -153,12 +158,14 @@ X32Surface::X32Surface (UiContext& c)
     };
     // MONITOR's and TALKBACK's VIEW: the display's MONITOR page; ASSIGN's its page.
     monitor.onView = [this] (int tab) { display.showScreen (x32::Display::Screen::Monitor, tab); };
-    assign.onView = [this] { display.showScreen (x32::Display::Screen::Assign, assign.getSet()); };
+    assign.onView = [this] { display.showScreen (x32::Display::Screen::Assign, assign.getSet() + 1); };
     display.assignLines = [this] { return assign.describeSet(); };
     display.assignCode = [this] (int i) { return assign.getCode (i); };
     display.setAssignCode = [this] (int i, const juce::String& code) { assign.setCode (i, code); };
     display.getAssignSet = [this] { return assign.getSet(); };
     display.setAssignSet = [this] (int s) { assign.setSet (s); };
+    display.assignCodeOf = [this] (int set, int i) { return assign.codeOf (set, i); };
+    display.assignBinding = [this] (int i) { return assign.getEncoder (i).getBinding(); };
     // A VIEW key opens its section's tab of the display's HOME screen.
     channel.onView = [this] (int section)
     {
@@ -166,6 +173,13 @@ X32Surface::X32Surface (UiContext& c)
             display.showScreen (x32::Display::Screen::Usb);
         else
             display.showScreen (x32::Display::Screen::Home, section + 1);
+    };
+    display.setGeqOnFaders = [this] (int slot, int first)
+    {
+        geqSlot = slot;
+        geqBand = first;
+        applySendsOnFader(); // the faders their own again, then the bands
+        applyGeqOnFaders();
     };
     display.getModel = [this] { return (int) model; };
     display.setModel = [this] (int m) { setModel (m == 1 ? Model::Compact : Model::Full); };
@@ -315,6 +329,7 @@ void X32Surface::assignBanks()
     }
     main->setStrip (at (e.getMains(), 0));
     applySendsOnFader();
+    applyGeqOnFaders();
     for (auto* keys : { &inputLayerKeys, &groupLayerKeys })
         for (auto& k : *keys)
             k->refresh();
@@ -326,6 +341,17 @@ void X32Surface::setSendsOnFader (bool on)
     sendsOnFader = on;
     assignBanks();
     sendsOnFaderKey.refresh();
+}
+
+void X32Surface::applyGeqOnFaders()
+{
+    if (geqSlot < 0)
+        return;
+    const auto bands = display.geqBands (geqSlot);
+    auto& values = ctx.engine.getFx().params (geqSlot).values;
+    for (int i = 0; i < 8; ++i)
+        if (const auto at = (size_t) (geqBand + i); at < bands.size())
+            groups[(size_t) i]->setBand (&values[bands[at]], x32::Display::geqBandName ((geqBand + i) % 31));
 }
 
 void X32Surface::applySendsOnFader()
@@ -374,7 +400,10 @@ void X32Surface::selectionChanged()
 {
     channel.setStrip (ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr);
     if (sendsOnFader && sofShown != (ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr))
+    {
         applySendsOnFader(); // the sends follow the selection
+        applyGeqOnFaders();
+    }
     timerCallback(); // the SELECT keys
     display.refreshStrip();
     repaintDesign (channelArea);

@@ -1,7 +1,7 @@
 //! The Universal profile's models: every emulated console's blocks on any
 //! strip (`docs/UNIVERSAL_MIXER.md`, decision 6). The WING's tables come
 //! first, in the WING's order, so its models keep their indices (WING shows,
-//! the WING remote); the X32's, the ProMix 01's, the 02R's and the SQ-5's follow. A show
+//! the WING remote); the X32's, the ProMix 01's, the 02R's, the SQ-5's, the 01V's, the dLive's, the DM2000's and the PRO2's follow. A show
 //! names a block's model by its token, so later consoles can be appended
 //! without changing older shows.
 //!
@@ -9,7 +9,7 @@
 //! (`dynamics`, `eq` and `fx::create` pick them by token).
 
 use crate::model::{ModelSpec, ModelTables};
-use crate::{dlive, dlive_fx, promix, sq, wing, x32, y01v, y02r};
+use crate::{dlive, dlive_fx, dm2000, midas_pro, promix, sq, wing, x32, xenyx1204, y01v, y02r};
 
 /// The tables in `parts` one after the other, each from its `skip`th model on.
 const fn join<const N: usize>(parts: &[(&[ModelSpec], usize)]) -> [ModelSpec; N] {
@@ -32,7 +32,7 @@ const fn join<const N: usize>(parts: &[(&[ModelSpec], usize)]) -> [ModelSpec; N]
 
 /// The other consoles' EQs, offered on every strip (an input may take a bus EQ
 /// and a bus an input's).
-const OTHER_EQS: [ModelSpec; 13] = [
+const OTHER_EQS: [ModelSpec; 19] = [
     x32::EQ_CHANNEL[0],
     x32::EQ_BUS[0],
     promix::EQ[0],
@@ -46,6 +46,12 @@ const OTHER_EQS: [ModelSpec; 13] = [
     dlive::EQ[3],
     dlive::EQ[4],
     dlive::EQ[5],
+    dm2000::EQ_MODEL,
+    dm2000::GEQ_MODEL,
+    midas_pro::EQ4_MODEL,
+    midas_pro::EQ6_MODEL,
+    midas_pro::GEQ_MODEL,
+    xenyx1204::EQ_MODEL,
 ];
 
 /// The other consoles' FX tables start with NONE and EXT, which the WING's has already.
@@ -56,7 +62,10 @@ const N_DYN: usize = wing::DYN_MODELS.len()
     + promix::DYN_MODELS.len()
     + y02r::DYN_MODELS.len()
     + sq::DYN_MODELS.len()
-    + dlive::DYN_MODELS.len();
+    + dlive::DYN_MODELS.len()
+    + dm2000::DYN_MODELS.len()
+    + midas_pro::DYN_MODELS.len()
+    + xenyx1204::DYN_MODELS.len();
 const N_EQ_CH: usize = wing::EQ_MODELS_CH.len() + OTHER_EQS.len();
 const N_EQ_BUS: usize = wing::EQ_MODELS_BUS.len() + OTHER_EQS.len();
 const N_FX: usize = wing::FX_MODELS.len()
@@ -66,7 +75,9 @@ const N_FX: usize = wing::FX_MODELS.len()
     + sq::fx::FX_MODELS.len()
     + y01v::fx::FX_MODELS.len()
     + dlive_fx::FX_MODELS.len()
-    - 6 * FX_SKIP;
+    + dm2000::FX_MODELS.len()
+    + midas_pro::fx::FX_MODELS.len()
+    - 8 * FX_SKIP;
 
 pub static DYN_MODELS: [ModelSpec; N_DYN] = join(&[
     (wing::DYN_MODELS, 0),
@@ -75,6 +86,9 @@ pub static DYN_MODELS: [ModelSpec; N_DYN] = join(&[
     (y02r::DYN_MODELS, 0),
     (sq::DYN_MODELS, 0),
     (dlive::DYN_MODELS, 0),
+    (dm2000::DYN_MODELS, 0),
+    (midas_pro::DYN_MODELS, 0),
+    (xenyx1204::DYN_MODELS, 0),
 ]);
 pub static EQ_MODELS_CH: [ModelSpec; N_EQ_CH] = join(&[(wing::EQ_MODELS_CH, 0), (&OTHER_EQS, 0)]);
 pub static EQ_MODELS_BUS: [ModelSpec; N_EQ_BUS] = join(&[(wing::EQ_MODELS_BUS, 0), (&OTHER_EQS, 0)]);
@@ -86,6 +100,8 @@ pub static FX_MODELS: [ModelSpec; N_FX] = join(&[
     (&sq::fx::FX_MODELS, FX_SKIP),
     (&y01v::fx::FX_MODELS, FX_SKIP),
     (&dlive_fx::FX_MODELS, FX_SKIP),
+    (&dm2000::FX_MODELS, FX_SKIP),
+    (&midas_pro::fx::FX_MODELS, FX_SKIP),
 ]);
 
 /// The Universal's models. Its aux channels, FX premium slots (1-8), filter
@@ -117,6 +133,19 @@ pub fn console_of(token: &str) -> Option<&'static str> {
         && (model_in(y02r::DYN_MODELS, token) || model_in(y02r::EQ, token) || y02r::fx::is_02r(token))
     {
         Some("02R")
+    } else if token.starts_with("DM")
+        && (model_in(dm2000::DYN_MODELS, token) || model_in(&dm2000::EQ_BUS, token) || dm2000::fx::is_dm2000(token))
+    {
+        Some("DM2000")
+    } else if token.starts_with("MP")
+        && (model_in(midas_pro::DYN_MODELS, token)
+            || model_in(&midas_pro::EQ_BUS, token)
+            || model_in(&midas_pro::EQ_CHANNEL, token)
+            || midas_pro::fx::is_pro2(token))
+    {
+        Some("PRO2")
+    } else if token.starts_with("XY") && (model_in(xenyx1204::DYN_MODELS, token) || token == xenyx1204::EQ_MODEL.token) {
+        Some("1204USB")
     } else if token.starts_with("DLV") {
         Some("dLive")
     } else if token.starts_with("O1") && (y01v::fx::is_01v(token) || token == y01v::TWO_BAND_EQ.token) {
@@ -152,7 +181,9 @@ mod tests {
 
     #[test]
     fn every_consoles_models_are_offered_once() {
-        for table in [x32::DYN_MODELS, promix::DYN_MODELS, y02r::DYN_MODELS, sq::DYN_MODELS, dlive::DYN_MODELS] {
+        for table in
+            [x32::DYN_MODELS, promix::DYN_MODELS, y02r::DYN_MODELS, sq::DYN_MODELS, dlive::DYN_MODELS, dm2000::DYN_MODELS]
+        {
             for m in table {
                 assert!(model_index(&DYN_MODELS, m.token).is_some(), "{}", m.token);
             }
@@ -160,14 +191,19 @@ mod tests {
         for t in [&EQ_MODELS_CH[..], &EQ_MODELS_BUS[..]] {
             for token in [
                 "X32EQ4", "X32EQ6", "PMEQ", "Y2EQ", "SQPEQ", "SQGEQ", "O1EQ2", "DLVPEQ", "DLVGEQC", "DLVGEQP", "DLVGEQD",
-                "DLVGEQH", "DLVNEQ12",
+                "DLVGEQH", "DLVNEQ12", "DMEQ", "DMGEQ",
             ] {
                 assert!(model_index(t, token).is_some(), "{token}");
             }
         }
-        for table in
-            [x32::FX_MODELS, &promix::FX_MODELS[..], &y02r::fx::FX_MODELS[..], &sq::fx::FX_MODELS[..], &dlive_fx::FX_MODELS[..]]
-        {
+        for table in [
+            x32::FX_MODELS,
+            &promix::FX_MODELS[..],
+            &y02r::fx::FX_MODELS[..],
+            &sq::fx::FX_MODELS[..],
+            &dlive_fx::FX_MODELS[..],
+            &dm2000::FX_MODELS[..],
+        ] {
             for m in &table[FX_SKIP..] {
                 assert!(model_index(&FX_MODELS, m.token).is_some(), "{}", m.token);
             }
@@ -208,7 +244,8 @@ mod tests {
                 &[-40.0, 0.0],
                 &mut out,
             );
-            let exempt = m.category == crate::model::ModelCategory::Gate || dlive::is_preamp(m.token);
+            let exempt =
+                m.category == crate::model::ModelCategory::Gate || dlive::is_preamp(m.token) || xenyx1204::is_clip(m.token);
             assert!(known || exempt, "{} has no level curve", m.token);
         }
     }
@@ -224,12 +261,22 @@ mod tests {
         assert_eq!(console_of("DLVGEQH"), Some("dLive"));
         assert_eq!(console_of("DLVVALVE"), Some("dLive"));
         assert_eq!(console_of("DLVTUBE"), Some("dLive"));
+        assert_eq!(console_of("XYEQ"), Some("1204USB"));
+        assert_eq!(console_of("XYCMP"), Some("1204USB"));
         assert_eq!(console_of("DLY"), None, "the X32's delay isn't a dLive's");
         assert_eq!(console_of("Y2CHREV"), Some("02R"));
         assert_eq!(console_of("SQCOMP"), Some("SQ-5"));
         assert_eq!(console_of("SQPEQ"), Some("SQ-5"));
         assert_eq!(console_of("SQGEQ"), Some("SQ-5"));
         assert_eq!(console_of("SQSMRH"), Some("SQ-5"));
+        assert_eq!(console_of("DMEQ"), Some("DM2000"));
+        assert_eq!(console_of("DMCMP"), Some("DM2000"));
+        assert_eq!(console_of("DMHALL"), Some("DM2000"));
+        assert_eq!(console_of("DMGEQ"), Some("DM2000"));
+        assert_eq!(console_of("MPEQ4"), Some("PRO2"));
+        assert_eq!(console_of("MPCMPO"), Some("PRO2"));
+        assert_eq!(console_of("MPDN780"), Some("PRO2"));
+        assert_eq!(console_of("MPGEQ"), Some("PRO2"));
         for wing in ["GATE", "COMP", "HALL", "PIA", "PULSAR", "PHASER", "PCORR"] {
             assert_eq!(console_of(wing), None, "{wing}");
         }

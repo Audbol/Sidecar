@@ -598,7 +598,7 @@ like the finish. The COMPACT is black, so it always shows the black finish. It f
     AUTOSELECT, FADER SPEED, paging, user layer link, alternative SOF; the **SECTIONS**
     key in the FADERS header opens Sidecar's FADER SECTIONS: section widths, SHIFT STEP
     and FADER VALUES), REMOTE (MIDI REMOTE CONTROL with the DIN and USB MIDI ports under
-    it, HA REMOTE, NETWORK, REMOTE LOCK and Sidecar's WING REMOTE and WEB REMOTE) and DAW (DAW CONTROL,
+    it, HA REMOTE, NETWORK, REMOTE LOCK (OSC or TCP on: that protocol's clients can still read and meter, but their changes are refused) and Sidecar's WING REMOTE and WEB REMOTE) and DAW (DAW CONTROL,
     DAW PORTS; see *MIDI and DAW remote control*) and Sidecar's own **SIDECAR** (gold): everything
     a WING doesn't have, behind three keys. **SETTINGS**: the console's size (CHANNELS,
     BUSES, FX SLOTS), the surface's finish SILVER / BLACK, the CONSOLE MODEL FULL /
@@ -786,7 +786,12 @@ and FX slots the console has, and the show's name (UNTITLED SHOW until it is sav
 Its **SHOW** key opens the show menu: **New show**, **Open...**, **Save** and **Save
 as...**, as on the WING's LIBRARY. Under it, the view keys show one view at a time:
 **MIXER**, **ROUTING**, **FX RACK**, **MONITORING**, **SCENES**, **LIBRARY**,
-**RECORDER** and **SETUP**. The inspector of the selected strip opens beside any of them.
+**RECORDER**, **CONTROLS** and **SETUP**. The inspector of the selected strip opens beside any of them.
+
+To the right of the view keys is what a show needs at any moment, as far as the
+window has room: the current scene with **PREV** and **GO NEXT**, **CLR SOLO** (lit
+while anything is soloed), and on a wide window **DIM**, **TALK A** and **TALK B**.
+The top bar also shows the DSP load and the time.
 
 Every control works the same way. A drag moves it by how far your finger or the mouse
 travels, so touching a fader never makes it jump; Shift makes the move finer. A
@@ -821,8 +826,18 @@ bar). **ALL** shows everything; **CHANNELS**, **AUX**, **BUSES**, **MAINS** and
 **FADERS** hides or shows every fader at any moment. Hidden, the overview takes the
 whole column, to watch the processing.
 
-A **DCA**'s column has its colour, number and name (a tap renames it or picks its
-colour), **MUTE**, **SOLO** and its fader; a DCA has no meter, as on a console. The
+The first main stays in view at the right of the columns whatever is scrolled. A tap
+on a strip's overview opens what you tapped in the inspector: **IN**, **GATE**, **DYN**
+or the **EQ** curve its block's editor, **OUT** its sends.
+
+**SOF** (sends on fader) puts a bus, main or matrix on the faders: choose it from the
+key's list, and each column's fader moves that strip's send to it, in the destination's
+colour, with a key over the overview for the send's ON. **Off** in the list goes back.
+The main keeps its own fader.
+
+A **DCA**'s column has its colour, number and name (a tap offers **Spill members**, to
+show only that DCA's strips until a filter key goes back, renaming and its colour),
+**MUTE**, **SOLO** and its fader; a DCA has no meter, as on a console. The
 strips a DCA controls are chosen on their STRIP page in the inspector.
 
 **MUTE GROUPS**, beside the DCAs, has a key per group, named if the group has a name of
@@ -834,8 +849,11 @@ releases them all. The members are chosen on their STRIP page.
 Across the top, the **channel panel** shows the selected strip whole: **INPUT** (trim,
 balance, invert, delay), **FILTER**, **GATE**, **EQ** and **DYNAMICS** with their curves,
 its **CHAIN** in order (the blocks and taps you added in the accent colour) and its
-**SENDS**, a line each (ON, level, where it takes the signal). **CHANNEL** hides or shows
-it; hidden, the columns take its room. Both keys are remembered.
+**SENDS**, a line each (ON, level, where it takes the signal). A tap on a section's title
+or a CHAIN row opens that block in the inspector. With the inspector open or on a smaller
+window CHAIN and SENDS give their room to the curves, since the inspector has both.
+**CHANNEL** hides or shows the panel; hidden, the columns take its room. Both keys are
+remembered.
 
 The curves have handles, here and in the inspector: an EQ's bands (drag one for its
 frequency and gain, turn the wheel over it for its Q, double tap it for its default), a
@@ -1523,7 +1541,7 @@ the USB key on the screen to choose another folder).
 - **FADER SPILL** on any CC key: spills a DCA, the sources sending to a bus, the
   strips feeding a main, an FX slot's parameters, automix group X or Y, or the selected channel's sends onto the
   left fader section (lit while it shows; pressed again, the section's layer comes
-  back). SD RECORDER and GPIO need the console's hardware and stay disabled.
+  back). **SD RECORDER** drives the multitrack recorder, which stands in for the WING-LIVE card: STOP, PLAY, RECORD, PAUSE (keeps the position; a recording can't pause), TOGGLE PLAY/STOP, TOGGLE PLAY/PAUSE, ADD / PREV / NEXT MARKER. GPIO needs the console's contacts and stays disabled.
 
 ## Shows, scenes and snippets
 

@@ -2369,3 +2369,161 @@ fn scenes_recall_sources_and_skip_safe_sources_and_outputs() {
     show.clear(&engine, 2);
     assert!(!engine.io_safes().any());
 }
+
+#[test]
+fn a_recall_can_be_undone_and_redone() {
+    let engine = Engine::new(0);
+    set_channels(&engine, 4);
+    let mut show = Show::default();
+    let mut b = NoPlugins;
+    let a = engine.strips(StripKind::Channel)[0].clone();
+    a.params.fader_db.store(-6.0);
+    show.add_scene(&engine, &mut b, "A", -1);
+    a.params.fader_db.store(-30.0);
+    show.add_scene(&engine, &mut b, "B", -1);
+    assert!(!show.can_undo_recall(&engine), "nothing recalled yet");
+    assert_eq!(show.current_scene(), 1);
+
+    show.recall_scene(&engine, &mut b, 0);
+    assert_eq!(a.params.fader_db.load(), -6.0);
+    assert!(show.can_undo_recall(&engine));
+    assert_eq!(show.num_scenes(), 2, "the undo is no scene");
+
+    show.undo_recall(&engine, &mut b);
+    assert_eq!((a.params.fader_db.load(), show.current_scene()), (-30.0, 1), "undone, the scene too");
+    show.undo_recall(&engine, &mut b);
+    assert_eq!((a.params.fader_db.load(), show.current_scene()), (-6.0, 0), "pressed again: redone");
+
+    // It isn't saved with the show.
+    let saved = show.to_xml(&engine, &mut b).to_document();
+    assert!(!saved.to_lowercase().contains("undo"));
+    let mut loaded = Show::default();
+    loaded.load_from_xml(&engine, &mut b, &xml::parse(&saved).unwrap(), true).unwrap();
+    assert!(!loaded.can_undo_recall(&engine));
+    show.clear(&engine, 4);
+    assert!(!show.can_undo_recall(&engine), "a new show has none");
+}
+
+#[test]
+fn undoing_a_recall_puts_back_only_what_it_changed() {
+    let engine = Engine::new(0);
+    set_channels(&engine, 4);
+    let mut show = Show::default();
+    let mut b = NoPlugins;
+    let strips = engine.strips(StripKind::Channel);
+    let (safe, free, filtered) = (strips[0].clone(), strips[1].clone(), strips[2].clone());
+    for s in [&safe, &free, &filtered] {
+        s.params.fader_db.store(-6.0);
+    }
+    free.params.input_left.store(3, Relaxed);
+    show.add_scene(&engine, &mut b, "A", -1);
+
+    // Only the faders of the scene are recalled (its recall filter), one strip is safe.
+    show.scene_mut(0).unwrap().scope = section::FADER;
+    for s in [&safe, &free, &filtered] {
+        s.params.fader_db.store(-30.0);
+    }
+    free.params.input_left.store(5, Relaxed);
+    safe.params.recall_safe.store(true, Relaxed);
+    show.recall_scene(&engine, &mut b, 0);
+    assert_eq!((safe.params.fader_db.load(), free.params.fader_db.load()), (-30.0, -6.0));
+    assert_eq!(free.params.input_left.load(Relaxed), 5, "the filter kept the routing out");
+
+    // Moved since: the safe strip's fader, the routing the recall didn't touch.
+    safe.params.fader_db.store(-12.0);
+    free.params.input_left.store(9, Relaxed);
+    show.undo_recall(&engine, &mut b);
+    assert_eq!(free.params.fader_db.load(), -30.0, "the recall's change is back");
+    assert_eq!(safe.params.fader_db.load(), -12.0, "the safe strip wasn't touched by the recall, or by its undo");
+    assert_eq!(free.params.input_left.load(Relaxed), 9, "nor what the filter left out");
+
+    // A section made globally safe since isn't touched either, while it is safe.
+    safe.params.recall_safe.store(false, Relaxed);
+    show.global_safe.sections = section::FADER;
+    show.undo_recall(&engine, &mut b);
+    assert_eq!(free.params.fader_db.load(), -30.0, "fader globally safe since: left alone");
+}
+
+#[test]
+fn undoing_a_fading_recall_or_a_chain_lands_on_the_console_before() {
+    let engine = Engine::new(0);
+    set_channels(&engine, 4);
+    let mut show = Show::default();
+    let mut b = NoPlugins;
+    let a = engine.strips(StripKind::Channel)[0].clone();
+    let c = engine.strips(StripKind::Channel)[1].clone();
+    a.params.fader_db.store(-6.0);
+    c.params.fader_db.store(-6.0);
+    show.add_scene(&engine, &mut b, "A", -1);
+    a.params.fader_db.store(-18.0);
+    c.params.fader_db.store(-18.0);
+    show.add_scene(&engine, &mut b, "B", -1);
+    a.params.fader_db.store(-40.0);
+    c.params.fader_db.store(-40.0);
+
+    // A fade under way when the next recall comes: the step back is where it ends.
+    show.scene_mut(0).unwrap().fade_seconds = 5.0;
+    show.recall_scene(&engine, &mut b, 0);
+    assert!(show.is_fading());
+    show.recall_scene(&engine, &mut b, 1);
+    assert!(!show.is_fading());
+    assert_eq!(a.params.fader_db.load(), -18.0);
+    show.undo_recall(&engine, &mut b);
+    assert_eq!(a.params.fader_db.load(), -6.0, "the first fade's end");
+
+    // A linked pair undoes as one recall.
+    show.scene_mut(0).unwrap().fade_seconds = 0.0;
+    show.scene_mut(0).unwrap().link_next = true;
+    a.params.fader_db.store(-50.0);
+    show.recall_scene(&engine, &mut b, 0);
+    assert_eq!(a.params.fader_db.load(), -18.0, "the last of the chain");
+    show.undo_recall(&engine, &mut b);
+    assert_eq!(a.params.fader_db.load(), -50.0);
+
+    // A recall that changes nothing (everything recall-safe, faders only) leaves the step.
+    for s in engine.strips(StripKind::Channel) {
+        s.params.recall_safe.store(true, Relaxed);
+    }
+    a.params.fader_db.store(-25.0);
+    let limited = Scope::strips(section::FADER, vec![StripRef::of(&a)]);
+    show.recall_scene_with(&engine, &mut b, 1, Some(&limited), false);
+    assert_eq!(a.params.fader_db.load(), -25.0);
+    show.undo_recall(&engine, &mut b);
+    assert_eq!(a.params.fader_db.load(), -25.0, "safe strip; the older step is what's undone");
+}
+
+#[test]
+fn the_undos_scene_follows_the_scene_list() {
+    let engine = Engine::new(0);
+    set_channels(&engine, 4);
+    let mut show = Show::default();
+    let mut b = NoPlugins;
+    show.add_scene(&engine, &mut b, "A", -1);
+    show.add_scene(&engine, &mut b, "B", -1);
+    show.add_scene(&engine, &mut b, "C", -1);
+    assert_eq!(show.current_scene(), 2);
+    show.recall_scene(&engine, &mut b, 0);
+    show.move_scene(2, 1); // C before B
+    show.undo_recall(&engine, &mut b);
+    assert_eq!(show.current_scene(), 1, "C, where it went");
+    show.undo_recall(&engine, &mut b);
+    assert_eq!(show.current_scene(), 0);
+    show.remove_scene(1);
+    show.undo_recall(&engine, &mut b);
+    assert_eq!(show.current_scene(), -1, "C is gone");
+}
+
+#[test]
+fn a_recall_outside_the_show_can_be_undone() {
+    let engine = Engine::new(0);
+    set_channels(&engine, 4);
+    let mut show = Show::default();
+    let mut b = NoPlugins;
+    let a = engine.strips(StripKind::Channel)[0].clone();
+    a.params.fader_db.store(-9.0);
+    assert!(!show.can_undo_recall(&engine));
+    show.mark_recall_undo(&engine, &mut b);
+    a.params.fader_db.store(-96.0); // the initial data
+    show.undo_recall(&engine, &mut b);
+    assert_eq!(a.params.fader_db.load(), -9.0);
+}

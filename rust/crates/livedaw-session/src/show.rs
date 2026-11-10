@@ -29,6 +29,10 @@
 //! ignoring the safes), RESTORE the whole scene, PARTIAL UPDATE stores a
 //! chosen scope into it. Snippet REC / STOP records which parameters changed.
 //!
+//! A scene recall can be undone (`undo_recall`, a [`RecallUndo`]): the 01V's
+//! RECALL UNDO, the dLive's Undo Go. It is one step that toggles, kept apart
+//! from the scenes and never saved.
+//!
 //! Scene and snippet recall never create or destroy channels or plugins, so
 //! recalling during a show can't cause dropouts. Message thread only.
 
@@ -41,11 +45,12 @@ use crate::refs::{refs_from_string, refs_to_string, StripRef};
 use crate::scope::{self, ChangeCounts, GlobalSafe, RecordedChanges, Recording, Scope};
 use crate::xml::{self, Element};
 use livedaw_engine::params::MAX_FX;
-use livedaw_engine::{Engine, GroupSet, Strip};
+use livedaw_engine::{Engine, GroupSet, Profile, Strip};
 use std::collections::HashMap;
 use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering::Relaxed;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -348,6 +353,102 @@ impl Fade {
     }
 }
 
+/// One part of what a scene recall changed: a scope with the safes already
+/// taken out of it, and whether safes still count when it is undone (a
+/// recall's own part does; an auto-fire snippet's, like the snippet, doesn't).
+#[derive(Clone, Debug, PartialEq)]
+struct UndoPart {
+    scope: Scope,
+    respect_safes: bool,
+}
+
+impl UndoPart {
+    /// What a recall within `scope` touches, the safes as they stand now
+    /// out of it: the global safes and (`respect_safes`) the recall-safe strips.
+    fn recalled(engine: &Engine, scope: &Scope, safe: Option<&GlobalSafe>, respect_safes: bool) -> Self {
+        let mut scope = scope.clone().sanitised();
+        if let Some(safe) = safe {
+            scope.sections &= !safe.sections;
+            scope.dcas &= !safe.dcas;
+            scope.mute_groups &= !safe.mute_groups;
+            scope.fx &= !safe.fx;
+            scope.console &= !safe.console;
+        }
+        if respect_safes {
+            let index = console::StripIndex::new(engine);
+            if index.strips.iter().any(|s| s.params.recall_safe.load(Relaxed)) {
+                let reached = |s: &Arc<Strip>| !s.params.recall_safe.load(Relaxed) && scope.includes_strip(&StripRef::of(s));
+                scope.strips = Some(index.strips.iter().filter(|s| reached(s)).map(|s| StripRef::of(s)).collect());
+            }
+        }
+        Self { scope, respect_safes }
+    }
+
+    /// The console's own (`apply_scoped` with no safes).
+    fn unsafe_scope(scope: Scope) -> Self {
+        Self { scope, respect_safes: false }
+    }
+
+    /// What loading an item scene changes (nothing for a clip).
+    fn of_item(item: &SceneItem) -> Option<Self> {
+        Some(Self::unsafe_scope(match item {
+            SceneItem::Snippet(sn) => sn.state.as_ref().map(|_| sn.scope())?,
+            SceneItem::Clip(_) => return None,
+            SceneItem::Fx { slot, .. } => {
+                let mut scope = Scope::strips(section::INSERTS, Vec::new());
+                scope.fx = 1u64.checked_shl(*slot as u32).unwrap_or(0);
+                scope
+            }
+            SceneItem::Channel { strip, .. } => Scope::strips(section::ALL, vec![*strip]),
+        }))
+    }
+}
+
+/// The step back from the last scene recall (`Show::undo_recall`): what the
+/// console held of what that recall changed, as a `<State>`. It stays out of
+/// the show's scenes and isn't saved, and only one is kept. Undoing swaps it
+/// with the console as it is then, so pressing again redoes the recall.
+///
+/// It puts back only what the recall changed, the safes and the recall filter
+/// of that moment having been taken out (`UndoPart::recalled`), so a safe
+/// strip moved since keeps its move. Something made safe since the recall is
+/// left alone too. An FX slot's plugin stays loaded: as a recall, this restores
+/// the state of what's there.
+struct RecallUndo {
+    /// The console it was taken on: other strips, other scenes, no undo.
+    profile: Profile,
+    state: Element,
+    /// What of the console `state` holds (`console::section`).
+    sections: u32,
+    parts: Vec<UndoPart>,
+    /// Faders the recall left where they were (an 02R's fader recall safe).
+    kept_faders: Vec<Arc<Strip>>,
+    /// The current scene before the recall, kept in step with the scene list.
+    scene: i32,
+}
+
+/// `current` (a scene index) after scene `index` was removed.
+fn scene_after_remove(current: i32, index: i32) -> i32 {
+    match current {
+        c if c == index => -1,
+        c if c > index => c - 1,
+        c => c,
+    }
+}
+
+/// `current` after the scene at `from` moved to `to`.
+fn scene_after_move(current: i32, from: i32, to: i32) -> i32 {
+    if current == from {
+        to
+    } else if from < current && to >= current {
+        current - 1
+    } else if from > current && to <= current {
+        current + 1
+    } else {
+        current
+    }
+}
+
 pub struct Show {
     pub name: String,
     pub layers: LayerSet,
@@ -370,6 +471,8 @@ pub struct Show {
     /// The faders' own recall behaviour for the next scene recall
     /// (`set_fader_recall`); cleared once it has run.
     fader_recall: Vec<FaderRecall>,
+    /// The step back from the last scene recall (never in the show's files).
+    recall_undo: Option<RecallUndo>,
 }
 
 impl Default for Show {
@@ -389,6 +492,7 @@ impl Default for Show {
             fades: Vec::new(),
             fade_start: Instant::now(),
             fader_recall: Vec::new(),
+            recall_undo: None,
         }
     }
 }
@@ -450,6 +554,9 @@ impl Show {
         if self.current_scene >= index {
             self.current_scene += 1;
         }
+        if let Some(undo) = self.recall_undo.as_mut().filter(|u| u.scene >= index) {
+            undo.scene += 1;
+        }
         index
     }
 
@@ -486,10 +593,9 @@ impl Show {
             return;
         }
         self.scenes.remove(index as usize);
-        if self.current_scene == index {
-            self.current_scene = -1;
-        } else if self.current_scene > index {
-            self.current_scene -= 1;
+        self.current_scene = scene_after_remove(self.current_scene, index);
+        if let Some(undo) = &mut self.recall_undo {
+            undo.scene = scene_after_remove(undo.scene, index);
         }
     }
 
@@ -500,13 +606,9 @@ impl Show {
         }
         let scene = self.scenes.remove(from as usize);
         self.scenes.insert(to as usize, scene);
-        let cur = self.current_scene;
-        if cur == from {
-            self.current_scene = to;
-        } else if from < cur && to >= cur {
-            self.current_scene -= 1;
-        } else if from > cur && to <= cur {
-            self.current_scene += 1;
+        self.current_scene = scene_after_move(self.current_scene, from, to);
+        if let Some(undo) = &mut self.recall_undo {
+            undo.scene = scene_after_move(undo.scene, from, to);
         }
     }
 
@@ -519,16 +621,100 @@ impl Show {
         let mut result = ApplyResult::default();
         self.pending_midi.clear();
         self.pending_clips.clear();
-        // Each scene at most once (indices only grow).
+        let chain = self.recall_chain(index);
+        let parts = chain.iter().flat_map(|&i| self.recall_parts(engine, i)).collect();
+        self.mark_undo(engine, bridge, parts);
+        for i in chain {
+            result.merge(self.recall_one(engine, bridge, i));
+        }
+        self.fader_recall.clear();
+        result
+    }
+
+    /// The scenes a recall of `index` recalls: it, then the ones it is linked
+    /// to, each at most once (indices only grow), up to a skipped one.
+    fn recall_chain(&self, index: i32) -> Vec<i32> {
+        let mut chain = Vec::new();
         for i in index.. {
             let Some(scene) = self.scene(i).filter(|s| !s.skip) else { break };
-            let linked = scene.link_next;
-            result.merge(self.recall_one(engine, bridge, i));
-            if !linked {
+            chain.push(i);
+            if !scene.link_next {
                 break;
             }
         }
-        self.fader_recall.clear();
+        chain
+    }
+
+    /// What recalling scene `index` changes, as `recall_one` applies it.
+    fn recall_parts(&self, engine: &Engine, index: i32) -> Vec<UndoPart> {
+        let Some(scene) = self.scene(index) else { return Vec::new() };
+        if let Some(item) = &scene.item {
+            return UndoPart::of_item(item).into_iter().collect();
+        }
+        if scene.state.is_none() {
+            return Vec::new();
+        }
+        let mut parts = vec![UndoPart::recalled(engine, &scene.recall_scope(), Some(&self.global_safe), true)];
+        for sn in scene.snippets.iter().filter(|s| s.fire_with_scene && s.state.is_some()) {
+            parts.push(UndoPart::unsafe_scope(sn.scope()));
+        }
+        parts
+    }
+
+    /// Takes the step back for a recall about to change `parts`, after a fade
+    /// still running has ended. A recall that changes nothing (a clip scene,
+    /// everything safe) leaves the step there was.
+    fn mark_undo(&mut self, engine: &Engine, bridge: &mut dyn PluginBridge, parts: Vec<UndoPart>) {
+        if parts.iter().all(|p| p.scope.is_empty()) {
+            return;
+        }
+        self.cancel_fade(engine);
+        let sections = parts.iter().fold(0, |s, p| s | p.scope.sections | scope::global_sections(&p.scope));
+        self.recall_undo = Some(RecallUndo {
+            profile: engine.profile(),
+            state: console::capture(engine, sections, None, bridge),
+            sections,
+            parts,
+            kept_faders: self.fader_recall.iter().filter(|f| f.safe).map(|f| f.strip.clone()).collect(),
+            scene: self.current_scene,
+        });
+    }
+
+    /// Takes the step back for a recall the host does outside the show's
+    /// scenes (the 01V's scene 00, the initial data): the whole console.
+    pub fn mark_recall_undo(&mut self, engine: &Engine, bridge: &mut dyn PluginBridge) {
+        self.mark_undo(engine, bridge, vec![UndoPart::unsafe_scope(Scope::console(section::ALL))]);
+    }
+
+    /// Whether a scene recall can be undone (or its undo redone) on this console.
+    pub fn can_undo_recall(&self, engine: &Engine) -> bool {
+        self.recall_undo.as_ref().is_some_and(|u| u.profile == engine.profile())
+    }
+
+    /// RECALL UNDO: back to the console as it was before the last scene
+    /// recall, or before the last undo (it toggles: 01V Owner's Manual p.189).
+    /// A fade still running ends first. The current scene goes back with it.
+    pub fn undo_recall(&mut self, engine: &Engine, bridge: &mut dyn PluginBridge) -> ApplyResult {
+        if !self.can_undo_recall(engine) {
+            return ApplyResult::default();
+        }
+        let Some(mut undo) = self.recall_undo.take() else { return ApplyResult::default() };
+        self.cancel_fade(engine);
+        self.pending_midi.clear();
+        self.pending_clips.clear();
+        let now = console::capture(engine, undo.sections, None, bridge);
+        let kept: Vec<f32> = undo.kept_faders.iter().map(|s| s.params.fader_db.load()).collect();
+        let mut result = ApplyResult::default();
+        for part in &undo.parts {
+            let safe = part.respect_safes.then_some(&self.global_safe);
+            result.merge(scope::apply_scoped(engine, &undo.state, &part.scope, safe, part.respect_safes, None, bridge));
+        }
+        for (strip, db) in undo.kept_faders.iter().zip(kept) {
+            strip.params.fader_db.store(db);
+        }
+        undo.state = now;
+        std::mem::swap(&mut undo.scene, &mut self.current_scene);
+        self.recall_undo = Some(undo);
         result
     }
 
@@ -690,13 +876,21 @@ impl Show {
         if let Some(item) = self.scene(index).and_then(|s| s.item.clone()) {
             // RESTORE loads an item scene's file; it has no scope to load part of.
             return match scope {
-                None => self.recall_item(engine, bridge, index, &item, 0.0),
+                None => {
+                    self.mark_undo(engine, bridge, UndoPart::of_item(&item).into_iter().collect());
+                    self.recall_item(engine, bridge, index, &item, 0.0)
+                }
                 Some(_) => ApplyResult::default(),
             };
         }
         let Some(state) = self.scene(index).and_then(|s| s.state.clone()) else { return ApplyResult::default() };
         self.cancel_fade(engine);
         let safe = self.global_safe.clone();
+        let part = match scope {
+            Some(scope) => UndoPart::recalled(engine, scope, (!ignore_safes).then_some(&safe), !ignore_safes),
+            None => UndoPart::unsafe_scope(Scope::console(section::ALL)),
+        };
+        self.mark_undo(engine, bridge, vec![part]);
         let result = match scope {
             Some(scope) => {
                 self.partial_scope = scope.clone();
@@ -1142,6 +1336,7 @@ impl Show {
         // Version 1 files were a bare console ("session").
         if xml.has_tag("LiveDAWSession") {
             self.scenes.clear();
+            self.recall_undo = None;
             self.layers.reset();
             self.custom = CustomControls::legacy();
             self.current_scene = -1;
@@ -1168,6 +1363,7 @@ impl Show {
         let console_xml = converted_console.as_ref().unwrap_or(console_xml);
 
         self.scenes.clear();
+        self.recall_undo = None;
         self.name = xml.str_or("name", "Untitled show").to_owned();
         match xml.child("Layers") {
             Some(l) if converter.is_some() => self.layers.from_xml(&legacy::convert_layers(l)),
@@ -1247,6 +1443,7 @@ impl Show {
     pub fn clear(&mut self, engine: &Engine, num_channels: usize) {
         self.cancel_fade(engine);
         self.scenes.clear();
+        self.recall_undo = None;
         self.current_scene = -1;
         self.name = "Untitled show".into();
         self.layers.reset();

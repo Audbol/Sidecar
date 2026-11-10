@@ -9,6 +9,9 @@
 #include "ui/Y01VSurface.h"
 #include "ui/DLiveSurface.h"
 #include "ui/DLiveC3500Surface.h"
+#include "ui/Dm2000Surface.h"
+#include "ui/Pro2Surface.h"
+#include "ui/Xenyx1204Surface.h"
 #include "ui/X32Surface.h"
 #include "ui/PluginChainWindow.h"
 #include "ui/PluginOverviewWindow.h"
@@ -302,6 +305,9 @@ MainComponent::MainComponent (juce::AudioDeviceManager& dm, MixerEngine& e, Plug
                   : savedKind == "sq5"     ? InterfaceKind::Sq5
                   : savedKind == "01v"     ? InterfaceKind::Yamaha01V
                   : savedKind == "dlive"   ? InterfaceKind::DLive
+                  : savedKind == "dm2000"  ? InterfaceKind::Dm2000
+                  : savedKind == "pro2"    ? InterfaceKind::Pro2
+                  : savedKind == "xenyx1204" ? InterfaceKind::Xenyx1204
                                            : InterfaceKind::Wing,
                   false);
     setWantsKeyboardFocus (true);
@@ -393,7 +399,9 @@ void MainComponent::refreshAll()
     // other; a console's surface without its console gives way to the Universal Mixer.
     const bool x32 = engine.getProfile() == ld::kProfileX32, promix = engine.getProfile() == ld::kProfileProMix01,
                y02r = engine.getProfile() == ld::kProfileYamaha02R, sq5 = engine.getProfile() == ld::kProfileSq5,
-               y01v = engine.getProfile() == ld::kProfileYamaha01V, dlive = engine.getProfile() == ld::kProfileDLive;
+               y01v = engine.getProfile() == ld::kProfileYamaha01V, dlive = engine.getProfile() == ld::kProfileDLive,
+               dm2000 = engine.getProfile() == ld::kProfileDm2000,
+               pro2 = engine.getProfile() == ld::kProfileMidasPro2, xenyx = engine.getProfile() == ld::kProfileXenyx1204;
     if (ctx.interfaceKind == InterfaceKind::Wing && ! isWingConsole())
     {
         log.info (x32      ? "This console is an X32: the X32 surface shows it"
@@ -402,12 +410,17 @@ void MainComponent::refreshAll()
                   : sq5    ? "This console is an SQ-5: the SQ-5 surface shows it"
                   : y01v   ? "This console is a 01V: the Universal Mixer shows it"
                   : dlive  ? "This console is a dLive: the dLive surface shows it"
+                  : dm2000 ? "This console is a DM2000: the DM2000 surface shows it"
+                  : pro2   ? "This console is a PRO2: the PRO2 surface shows it"
+                  : xenyx  ? "This console is a XENYX 1204USB: its surface shows it"
                            : "This console isn't a WING: the Universal Mixer shows it (SETUP > GENERAL > INTERFACE)");
-        setInterface (x32 ? InterfaceKind::X32 : promix ? InterfaceKind::ProMix : y02r ? InterfaceKind::Yamaha02R : sq5 ? InterfaceKind::Sq5 : y01v ? InterfaceKind::Yamaha01V : dlive ? InterfaceKind::DLive : InterfaceKind::Universal, false);
+        setInterface (x32 ? InterfaceKind::X32 : promix ? InterfaceKind::ProMix : y02r ? InterfaceKind::Yamaha02R : sq5 ? InterfaceKind::Sq5 : y01v ? InterfaceKind::Yamaha01V : dlive ? InterfaceKind::DLive : dm2000 ? InterfaceKind::Dm2000 : pro2 ? InterfaceKind::Pro2 : xenyx ? InterfaceKind::Xenyx1204 : InterfaceKind::Universal, false);
     }
     else if ((ctx.interfaceKind == InterfaceKind::X32 && ! x32) || (ctx.interfaceKind == InterfaceKind::ProMix && ! promix)
              || (ctx.interfaceKind == InterfaceKind::Yamaha02R && ! y02r) || (ctx.interfaceKind == InterfaceKind::Sq5 && ! sq5)
-             || (ctx.interfaceKind == InterfaceKind::Yamaha01V && ! y01v) || (ctx.interfaceKind == InterfaceKind::DLive && ! dlive))
+             || (ctx.interfaceKind == InterfaceKind::Yamaha01V && ! y01v) || (ctx.interfaceKind == InterfaceKind::DLive && ! dlive)
+             || (ctx.interfaceKind == InterfaceKind::Dm2000 && ! dm2000)
+             || (ctx.interfaceKind == InterfaceKind::Pro2 && ! pro2) || (ctx.interfaceKind == InterfaceKind::Xenyx1204 && ! xenyx))
         setInterface (InterfaceKind::Universal, false);
     syncRemotes();
     skin->refreshAll();
@@ -558,6 +571,54 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                          }, true);
         return;
     }
+    if (kind == InterfaceKind::Dm2000 && skin != nullptr && engine.getProfile() != ld::kProfileDm2000)
+    {
+        popups::confirm (skin->popupHost(), "DM2000",
+                         "This console isn't a DM2000. Clear the console and make it a fresh DM2000 (96 channels, 8 buses, 12 auxes, "
+                         "4 stereo matrices, stereo, 8 effects, 12 fader groups)?",
+                         "MAKE IT A DM2000",
+                         [this, save]
+                         {
+                             closeAllPluginWindows();
+                             engine.configureProfile (ld::kProfileDm2000);
+                             setInterface (InterfaceKind::Dm2000, save);
+                             refreshAll();
+                             log.info ("The console is a DM2000");
+                         }, true);
+        return;
+    }
+    if (kind == InterfaceKind::Xenyx1204 && skin != nullptr && engine.getProfile() != ld::kProfileXenyx1204)
+    {
+        popups::confirm (skin->popupHost(), "XENYX 1204USB",
+                         "This console isn't a XENYX 1204USB. Clear the console and make it a fresh one (4 mono and 2 stereo channels, "
+                         "2 stereo aux returns, AUX 1 and 2 sends, ALT 3-4, MAIN MIX)?",
+                         "MAKE IT A 1204USB",
+                         [this, save]
+                         {
+                             closeAllPluginWindows();
+                             engine.configureProfile (ld::kProfileXenyx1204);
+                             setInterface (InterfaceKind::Xenyx1204, save);
+                             refreshAll();
+                             log.info ("The console is a XENYX 1204USB");
+                         }, true);
+        return;
+    }
+    if (kind == InterfaceKind::Pro2 && skin != nullptr && engine.getProfile() != ld::kProfileMidasPro2)
+    {
+        popups::confirm (skin->popupHost(), "PRO2",
+                         "This console isn't a PRO2. Clear the console and make it a fresh Midas PRO2 (56 channels, 8 aux returns, 16 aux sends, "
+                         "8 matrices, stereo and mono masters, 8 VCAs, 6 effects)?",
+                         "MAKE IT A PRO2",
+                         [this, save]
+                         {
+                             closeAllPluginWindows();
+                             engine.configureProfile (ld::kProfileMidasPro2);
+                             setInterface (InterfaceKind::Pro2, save);
+                             refreshAll();
+                             log.info ("The console is a Midas PRO2");
+                         }, true);
+        return;
+    }
     if (save)
         settings.setValue (uiprefs::interfaceKind, kind == InterfaceKind::Universal ? "universal"
                                                    : kind == InterfaceKind::X32     ? "x32"
@@ -566,6 +627,9 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                                                    : kind == InterfaceKind::Sq5     ? "sq5"
                                                    : kind == InterfaceKind::Yamaha01V ? "01v"
                                                    : kind == InterfaceKind::DLive   ? "dlive"
+                                                   : kind == InterfaceKind::Dm2000  ? "dm2000"
+                                                   : kind == InterfaceKind::Pro2    ? "pro2"
+                                                   : kind == InterfaceKind::Xenyx1204 ? "xenyx1204"
                                                                                     : "wing");
     if (skin != nullptr && kind == ctx.interfaceKind)
         return;
@@ -578,7 +642,10 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
         || (kind == InterfaceKind::Yamaha02R && engine.getProfile() != ld::kProfileYamaha02R)
         || (kind == InterfaceKind::Sq5 && engine.getProfile() != ld::kProfileSq5)
         || (kind == InterfaceKind::Yamaha01V && engine.getProfile() != ld::kProfileYamaha01V)
-        || (kind == InterfaceKind::DLive && engine.getProfile() != ld::kProfileDLive))
+        || (kind == InterfaceKind::DLive && engine.getProfile() != ld::kProfileDLive)
+        || (kind == InterfaceKind::Dm2000 && engine.getProfile() != ld::kProfileDm2000)
+        || (kind == InterfaceKind::Xenyx1204 && engine.getProfile() != ld::kProfileXenyx1204)
+        || (kind == InterfaceKind::Pro2 && engine.getProfile() != ld::kProfileMidasPro2))
         kind = ctx.interfaceKind = InterfaceKind::Universal; // a console's surface shows that console only
     if (kind == InterfaceKind::Wing)
         skin = std::make_unique<WingSurface> (ctx);
@@ -599,6 +666,12 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
         else
             skin = std::make_unique<DLiveC3500Surface> (ctx);
     }
+    else if (kind == InterfaceKind::Dm2000)
+        skin = std::make_unique<Dm2000Surface> (ctx);
+    else if (kind == InterfaceKind::Pro2)
+        skin = std::make_unique<Pro2Surface> (ctx);
+    else if (kind == InterfaceKind::Xenyx1204)
+        skin = std::make_unique<Xenyx1204Surface> (ctx);
     else
         skin = std::make_unique<UniversalSkin> (ctx);
     addChildComponent (*skin, 0); // under the editor and anything over the window
@@ -615,6 +688,9 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                   : kind == InterfaceKind::Sq5     ? "Interface: the SQ-5 surface"
                   : kind == InterfaceKind::Yamaha01V ? "Interface: the 01V surface"
                   : kind == InterfaceKind::DLive   ? "Interface: the dLive surface"
+                  : kind == InterfaceKind::Dm2000  ? "Interface: the DM2000 surface"
+                  : kind == InterfaceKind::Pro2    ? "Interface: the PRO2 surface"
+                  : kind == InterfaceKind::Xenyx1204 ? "Interface: the XENYX 1204USB surface"
                                                    : "Interface: the WING surface");
     }
 }
@@ -988,6 +1064,9 @@ void MainComponent::startFresh (InterfaceKind kind)
                                  : kind == InterfaceKind::Sq5       ? ld::kProfileSq5
                                  : kind == InterfaceKind::Yamaha01V ? ld::kProfileYamaha01V
                                  : kind == InterfaceKind::DLive     ? ld::kProfileDLive
+                                 : kind == InterfaceKind::Dm2000    ? ld::kProfileDm2000
+                                 : kind == InterfaceKind::Pro2      ? ld::kProfileMidasPro2
+                                 : kind == InterfaceKind::Xenyx1204 ? ld::kProfileXenyx1204
                                                                     : ld::kProfileUniversal);
     show.clear (engine.getConfiguredCounts().channels);
     showFile = juce::File();

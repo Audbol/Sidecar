@@ -2,6 +2,7 @@
 
 #include "ui/UiContext.h"
 #include "ui/X32SceneFiles.h"
+#include "ui/universal/ScopeEditor.h"
 #include "ui/universal/Widgets.h"
 
 #include <memory>
@@ -21,7 +22,16 @@ namespace livedaw::ui::universal
     into it, RENAME, FIRE WITH SCENE (it fires when its scene is recalled),
     REMOVE (asking first). Its scope: + STRIP captures the selected strip into
     it, - STRIP drops that strip, and a section's key (NAME ... GROUPS) captures
-    that section of its strips, or drops it. */
+    that section of its strips, or drops it; ITEMS shows its strips, DCAs, mute
+    groups, FX slots and the console's settings as keys in place of the list
+    (ScopeEditor), a tap captures one into it or drops it.
+
+    The panel at the right has two more pages. SCOPE is the selected scene's
+    recall scope: what GO applies of it (its sections, strips, DCAs, mute groups,
+    FX slots, the console's settings), said in a line and edited with the same
+    keys. SAFES is what every recall leaves alone: the strips' recall safe and
+    the show's global safes. A scene with a narrowed scope is marked PARTIAL in
+    the list, and a line over the list says what is safe while anything is. */
 class ScenesView final : public juce::Component, private juce::Timer
 {
 public:
@@ -41,6 +51,13 @@ public:
     void remove();
     void move (int delta);
     void rename (const juce::String&);
+    // The selected scene's settings.
+    void toggleSkip();
+    void toggleLink();
+    /** 1..128; anything else clears the tag. */
+    void setTag (int tag);
+    void setFadeSeconds (double seconds);
+    void setNotes (const juce::String&);
 
     // The selected scene's snippets (these don't ask either).
     int getNumSnippets() const;
@@ -60,9 +77,36 @@ public:
     void toggleSection (juce::uint32 section);
     /** The selected snippet's sections (0: none selected). */
     juce::uint32 getSnippetSections() const;
+    /** ITEMS: the selected snippet's items as keys, in place of the snippets' list. */
+    void setSnippetItemsShown (bool);
+    bool areSnippetItemsShown() const noexcept { return snippetItemsShown; }
+
+    /** The panel's pages: the selected scene's snippets, its recall scope, the recall safes. */
+    enum class Page
+    {
+        Snippets,
+        Scope,
+        Safes
+    };
+    void showPage (Page);
+    Page getPage() const noexcept { return page; }
+    /** The selected scene's recall scope, the recall safes and the selected snippet's items, as their keys edit them. */
+    ScopeEditor& getScopeEditor() noexcept { return scopeEditor; }
+    ScopeEditor& getSafesEditor() noexcept { return safesEditor; }
+    ScopeEditor& getSnippetItems() noexcept { return snippetItems; }
+    /** Whether a recall leaves anything alone: a strip's recall safe, or a global safe of the show. */
+    bool anySafe() const;
+    /** What the line over the list says (empty while nothing is safe). */
+    juce::String getSafesLine() const;
+    /** A scene's marks in the list ("#3  LINK  PARTIAL"). */
+    juce::String getRowMarks (int index) const;
+
+    ToggleKey snippetsTab, scopeTab, safesTab, snippetItemsKey;
 
     ToggleKey goKey, prevKey, nextKey, addKey, storeKey, renameKey, upKey, downKey, removeKey;
     ToggleKey importKey, exportKey;
+    /** The selected scene: SKIP, LINK, its tag, its fade and its notes. */
+    ToggleKey skipKey, linkKey, tagKey, fadeKey, notesKey;
     ToggleKey snippetNew, snippetGo, snippetStore, snippetRename, snippetFire, snippetRemove;
     ToggleKey snippetAddStrip, snippetRemoveStrip;
     /** NAME, ROUTING, INPUT, GATE, EQ, DYNAMICS, INSERTS, SENDS, FADER, GROUPS. */
@@ -76,9 +120,9 @@ private:
     class SnippetList;
     struct Row
     {
-        juce::String text, flags;
+        juce::String text, flags, notes;
         bool current = false;
-        bool operator!= (const Row& o) const { return text != o.text || flags != o.flags || current != o.current; }
+        bool operator!= (const Row& o) const { return text != o.text || flags != o.flags || notes != o.notes || current != o.current; }
     };
     void timerCallback() override
     {
@@ -100,6 +144,11 @@ private:
     std::unique_ptr<SnippetList> snippetList;
     juce::Rectangle<int> snippetPanel;
     juce::String snippetsShown; // what the snippet list drew (its names), to repaint on a change
+    Page page = Page::Snippets;
+    bool snippetItemsShown = false;
+    ScopeEditor scopeEditor, safesEditor, snippetItems;
+    juce::Rectangle<int> titleArea, summaryArea, safesArea;
+    juce::String summaryShown, safesShown;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ScenesView)
 };

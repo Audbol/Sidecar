@@ -8,6 +8,7 @@
 
 #include <array>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -118,7 +119,9 @@ namespace y01v
 
         /** The level it moves (nullptr: none: the cap rests at the bottom). */
         void bind (std::atomic<float>* db, const FaderLaw&);
-        bool isBound() const noexcept { return value != nullptr; }
+        /** REMOTE: any parameter, over the whole of its travel (invalid: none). */
+        void bind (KnobBinding);
+        bool isBound() const noexcept { return value != nullptr || knob.isValid(); }
         double getPosition() const noexcept { return position; }
         /** Moves the fader as the user would: writes the value. */
         void setPositionFromUser (double newPosition);
@@ -137,6 +140,7 @@ namespace y01v
         bool master;
         FaderLaw printed, law;
         std::atomic<float>* value = nullptr;
+        KnobBinding knob;
         double position = 0.0, dragStart = 0.0;
     };
 
@@ -167,6 +171,8 @@ namespace y01v
         void setFunction (Function);
         /** A function key: its function, or if that's showing, the function's next page. */
         void pressFunction (Function);
+        /** A function's page 1, as the AUTO SCREEN preferences bring it up (p.203). */
+        void showFirstPage (Function);
         void nextPage();
         int getPage() const noexcept { return page; }
         int getNumPages() const;
@@ -198,6 +204,50 @@ namespace y01v
         /** The dots, for the tests. */
         bool isDotOn (int x, int y) const noexcept;
 
+        // What the console keeps and the engine doesn't: the surface's own, in the app's settings
+        // (not in a scene, not on MIDI).
+        /** SETUP page 3 (pp.55-56). `fader`: 0-13, the panel's (13/14 and 15/16 one each).
+            The group it is in: 0 none, 1-3 (A-C of the faders, D-F of the [ON] keys). */
+        int getGroup (int fader, bool mute) const noexcept;
+        void setGroup (int fader, bool mute, int group);
+        /** Group 0-5 (A-F) works: its ENABLE switch. */
+        bool isGroupOn (int group) const noexcept;
+        void setGroupOn (int group, bool);
+        /** SETUP page 4 (pp.52, 101, 110): pairs 0-5 are CH 1/2 to 11/12, 6-7 AUX 1/2 and 3/4,
+            8-9 BUS 1/2 and 3/4. Making one copies the first's settings to the second
+            (`fromSecond`: the other way). */
+        bool isPaired (int pair) const noexcept;
+        void setPair (int pair, bool on, bool fromSecond = false);
+        /** SETUP page 2's SOLO (ENABLE) and SEL MODE (LAST SOLO: one at a time). */
+        bool isSoloEnabled() const noexcept { return panel.soloOn; }
+        bool isLastSolo() const noexcept { return panel.lastSolo; }
+        /** The groups and pairs at work: the surface's timer calls it. */
+        void tickLinks();
+        /** The pairs' linked values again (the structure changed). */
+        void relink();
+        /** A [SEL] key (0-13, 14 the master's): true when the page took it (SETUP page 3 puts
+            the fader in the cursor's group, REMOTE page 1 shows its assignments). */
+        bool pressSel (int fader);
+
+        /** REMOTE page 1 (p.194) is showing: the faders and [ON] keys work what it assigns. */
+        bool isRemoteActive() const noexcept { return function == Function::Remote && page == 0; }
+        /** What control 0-13 or 14 (the master) works in the bank (invalid: NO ASSIGN). */
+        KnobBinding remoteFader (int control);
+        KnobBinding remoteOn (int control);
+        int getRemoteBank() const noexcept { return panel.bank; }
+        void setRemoteBank (int);
+        /** The three columns of a control's assignment, as the page prints them. */
+        juce::String remoteLabel (bool on, int control, int column) const;
+        /** Called when what REMOTE's controls work may have changed. */
+        std::function<void()> onRemoteChanged;
+
+        /** A delay as the pages print it: in DELAY UNITS (p.203). */
+        juce::String delayText (float ms) const;
+        /** The library pages (EQ and DYNAMICS page 2, EFFECT page 2): the program the list is on (1-based). */
+        int getLibraryNumber() const;
+        /** A library's (0 EQ, 1 dynamics, 2 effects) program's title (empty: nothing stored there). */
+        juce::String getLibraryTitle (int kind, int number) const;
+
         void refresh();
         void paint (juce::Graphics&) override;
         void mouseDown (const juce::MouseEvent&) override;
@@ -224,6 +274,11 @@ namespace y01v
             std::function<void()> press;
             bool dotted = false; // a Text field in a dotted frame
             bool raw = false;    // printed as it is, not as a value with units to shorten
+            bool tiny = false;   // a Button's or Switch's caption in the small font
+            bool centred = false; // a Text field's value in its middle
+            bool custom = false;  // drawn by its page: only the cursor here
+            bool plain = false;   // a Switch that names its state: never filled
+            std::function<bool()> enabled; // unset: always; a Button drawn gray while false (RECALL UNDO)
         };
 
         // The dots.
@@ -265,10 +320,27 @@ namespace y01v
         void drawView (Strip&);
         void buildMemory();
         void drawMemory();
+        void buildMidiSetup();
+        void drawMidiSetup();
+        void buildMidiProgram();
+        void drawMidiProgram();
+        void buildMidiControl();
+        void drawMidiControl();
+        void buildMidiBulk();
+        void drawMidiBulk();
+        void drawMidiLocal();
+        /** A MIDI SETUP switch of the Yamaha01V (`what`: its Setup value). */
+        KnobBinding midiSwitch (int what, const juce::String& label);
+        /** The channel field of MIDI SETUP. */
+        KnobBinding midiChannel (int what, const juce::String& label);
+        /** The choices of one of MIDI page 3's three columns, for the current assignment. */
+        std::vector<int> ccChoices (int column, int code) const;
+        void saveMidiSettings();
+        void initializeTable (bool program);
+        /** MIDI page 4's REQUEST (false) or TRANSMIT (true) of the selected category. */
+        void bulk (bool transmit);
         void buildEffectEdit();
         void drawEffectEdit();
-        void buildEffectLibrary();
-        void drawEffectLibrary();
         void buildPrePost();
         void drawPrePost();
         void buildOscillator();
@@ -279,6 +351,64 @@ namespace y01v
         void drawRouting();
         void buildOption();
         void drawOption();
+        // The pages of the second pass (SETUP, the outputs, REMOTE, the libraries).
+        void header (const juce::String&, int y);
+        juce::String delayUnitLabel() const;
+        /** A pair's two strips share what the manual lists (p.52); `a`'s values go onto `b`. */
+        void linkStrips (Strip& a, Strip& b, bool input);
+        void drawWordClock();
+        void buildMonitorSetup();
+        void drawMonitorSetup();
+        void buildGroups();
+        void drawGroups();
+        void buildPairs();
+        void drawPairs();
+        void drawDither();
+        void buildBusMaster();
+        void drawBusMaster();
+        void buildOmni();
+        void drawOmni();
+        void buildOutputDelay();
+        void drawOutputDelay();
+        void drawOptionMeter (bool outputs);
+        void buildOptionOut();
+        void drawOptionOut();
+        void buildSwap();
+        void drawSwap();
+        void buildRemote();
+        void drawRemote();
+        void buildLibrary (int kind);
+        void drawLibrary (int kind);
+        /** The library the page shows: 0 EQ, 1 dynamics, 2 effects; -1 none. */
+        int libraryKind() const noexcept;
+        struct Program
+        {
+            juce::String title, token;
+            std::vector<float> values;
+        };
+        /** A library's programs: its presets (effects: the 01V's types), then the user's up to its last. */
+        int libraryPresets (int kind) const;
+        int libraryLast (int kind) const;
+        const Program* userProgram (int kind, int number) const;
+        void storeLibrary (int kind);
+        void recallUserProgram (int kind, int number);
+        void editLibraryTitle (int kind);
+        void loadLibrary();
+        void saveLibrary();
+        void loadPanel();
+        void savePanel();
+        void initRemoteBank (int bank);
+        KnobBinding remoteColumn (bool on, int column);
+        KnobBinding remoteBinding (bool on, int target);
+        Strip* remoteStrip (int code) const;
+        /** The strip and side feeding output `port` (nullptr: none of the 01V's). */
+        Strip* outputStrip (int port, int& side) const;
+        /** An output's source as OMNI OUT SELECT counts them: AUX 1-4, BUS 1-4, ST L, ST R, CH 1-16 (-1: another). */
+        int outputChoice (int port) const;
+        void setOutputChoice (int port, int choice);
+        void swapInputs (int channel);
+        bool isSwapped (int channel) const;
+        void confirmPair (int pair);
         /** OPTION's channel: the selected one if it's CH 17-24, else CH 17. */
         Strip* optionStrip() const;
         /** The slot of the EFFECT fader mode (-1: none). */
@@ -297,6 +427,7 @@ namespace y01v
         void storeMemory();
         void recallMemory();
         void editMemoryTitle();
+        void undoRecall();
 
         void drawLeft();
         void drawRight();
@@ -318,7 +449,43 @@ namespace y01v
         int focus = 0;
         float dragStart = 0.0f, contrast = 0.75f;
         int memory = 0;
+        int midiProgram = 0, midiControl = 1, bulkCategory = 0, bulkFrom = 0, bulkTo = 1;
         int page = 0, fxScroll = 0, library = -1, eqBand = 1;
+        struct Panel
+        {
+            std::array<int, 14> faderGroup {}, muteGroup {};
+            std::array<bool, 6> groupOn { { true, true, true, true, true, true } };
+            std::array<bool, 10> pair {};
+            bool soloOn = true, lastSolo = false;
+            int bank = 0;
+            /** Each bank: the 15 faders' targets, then the 15 [ON] keys'. */
+            std::array<std::array<int, 30>, 4> remote {};
+        };
+        Panel panel;
+        int remoteChannel = 0;
+        // The groups' and pairs' last values, to see what moved.
+        std::array<float, 14> lastFader {};
+        std::array<bool, 14> lastMute {};
+        bool linksPrimed = false;
+        template <typename T>
+        struct Twin
+        {
+            std::atomic<T>* a;
+            std::atomic<T>* b;
+            T last;
+        };
+        std::vector<Twin<float>> twinFloats;
+        std::vector<Twin<bool>> twinBools;
+        std::vector<Twin<int32_t>> twinInts;
+        struct TwinModel
+        {
+            Strip* a;
+            Strip* b;
+            int last;
+        };
+        std::vector<TwinModel> twinModels;
+        /** The user programs: [kind] by number. */
+        std::array<std::map<int, Program>, 3> programs;
         std::array<int, 12> lastPages {};
         // The oscillator (UTILITY page 1, p.204). Not saved: it starts off.
         bool oscOn = false;
@@ -372,9 +539,14 @@ private:
     void bindKnobs();
     void bindInputs();
     void pressPad (int channel);
+    void pressSolo (Strip*);
+    /** The 15/16 - 2TR IN switch (p.77): CH 15/16 take the 2TR IN jacks. */
+    void pressTwoTrack();
     y01v::Key& key (const juce::String& name, juce::Colour face, bool led, juce::Rectangle<int>);
     y01v::Knob& knob (const juce::String& name, juce::Colour cap, juce::Colour pointer, juce::Rectangle<int>);
     int sendBus() const noexcept;
+    /** REMOTE's fader mode with its page 1 showing: the faders and [ON] keys work its assignments. */
+    bool remoteWorks() const noexcept;
 
     UiContext& ctx;
     const universal::Theme& theme;
@@ -391,6 +563,8 @@ private:
     y01v::FaderMode mode = y01v::FaderMode::Home;
     int eqBand = 1;
     Strip* boundStrip = nullptr;
+    /** REMOTE: what the 14 [ON] keys and the master's work. */
+    std::array<KnobBinding, 15> remoteOn;
     std::atomic<float> contrastValue { 0.75f };
     bool soloLit = false;
     /** The 26 dB PAD switches of CH 1-12. */

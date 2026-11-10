@@ -104,7 +104,8 @@ pub(crate) mod internal {
     pub const USR: usize = OSC + NUM_OSCILLATORS;
     pub const STRIP: usize = USR + NUM_USR_SOURCES;
     pub const FX: usize = STRIP + NUM_STRIP_SOURCES;
-    pub const COUNT: usize = FX + NUM_FX_RETURNS;
+    pub const PAFL: usize = FX + NUM_FX_RETURNS;
+    pub const COUNT: usize = PAFL + 2;
 }
 
 /// An external source a user patch can copy (a hardware port, a playback
@@ -731,6 +732,13 @@ impl SourceDsp {
     /// the channels read this block (null: silent).
     pub fn set_strip_return(&mut self, slot: usize, ptr: *const f32) {
         if let Some(p) = self.playback_out.get_mut(internal::STRIP + slot) {
+            *p = ptr;
+        }
+    }
+
+    /// The PAFL bus the channels and mixes read this block, a side (null: silent).
+    pub fn set_pafl_return(&mut self, side: usize, ptr: *const f32) {
+        if let Some(p) = self.playback_out.get_mut(internal::PAFL + side) {
             *p = ptr;
         }
     }

@@ -3383,7 +3383,7 @@ void ProMixSurface::paint (juce::Graphics& g)
     g.drawText ("ProMix 01", top.reduced (sizes::kGapLarge, 0), juce::Justification::centredLeft);
     g.setColour (theme.textDim);
     g.setFont (type::font (type::kCaption));
-    g.drawText ("Not affiliated with or endorsed by Yamaha; ProMix is Yamaha's trademark, used only to say what is emulated.",
+    g.drawText ("Not affiliated with or endorsed by any console maker; product names are their owners' trademarks.",
                 top.reduced (sizes::kGapLarge, 0).withTrimmedLeft (150).withTrimmedRight (200), juce::Justification::centredLeft);
 
     // SCENE MEMORY over its keys; the PARAMETER wheel's and ENTER's names.

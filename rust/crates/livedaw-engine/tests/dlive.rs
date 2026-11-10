@@ -248,7 +248,8 @@ fn every_input_channel_starts_with_its_preamp_off_ahead_of_its_filter() {
 #[test]
 fn no_other_console_has_a_preamp_block() {
     for profile in Profile::ALL {
-        if matches!(profile, Profile::AhDLive(_)) {
+        if matches!(profile, Profile::AhDLive(_) | Profile::AhSq5) {
+            // the SQ-5 has the DEEP preamp block
             continue;
         }
         let engine = Engine::new(0);

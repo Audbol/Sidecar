@@ -324,6 +324,13 @@ pub const USB_PLAY_REC_FUNCTIONS: [&str; 12] = [
     "TOGGLE PLAY/PAUSE",
 ];
 
+/// Button category 16, SD RECORDER (the WING's SD-1 RECORDER: Sidecar's
+/// multitrack recorder stands in for the WING-LIVE card): the option is the
+/// key, in this order.
+pub const SD_RECORDER_CATEGORY: i32 = 16;
+pub const SD_RECORDER_FUNCTIONS: [&str; 9] =
+    ["STOP", "PLAY", "RECORD", "PAUSE", "TOGGLE PLAY/STOP", "TOGGLE PLAY/PAUSE", "ADD MARKER", "PREV MARKER", "NEXT MARKER"];
+
 /// Button category 18, CC BANK (WING 3.0.6: a CC key switches the custom
 /// controls bank): the option is the upper part's layer to show, 0-15 (lit
 /// while it is shown). Categories are append-only: 16 SD RECORDER and 17

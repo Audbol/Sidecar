@@ -10,8 +10,9 @@ use crate::chain::{self, Node};
 use crate::config::Counts;
 use crate::params::{StripKind, DEFAULT_COLOUR, WING_BUSES, WING_COLOURS, WING_COLOUR_GRID};
 use crate::ports::{
-    dlive_ports, PortGroup, DLIVE_PORT_GROUPS, PROMIX01_PORT_GROUPS, SQ5_PORT_GROUPS, WING_PORT_GROUPS, X32_PORT_GROUPS,
-    Y01V_PORT_GROUPS, Y02R_PORT_GROUPS,
+    dlive_ports, dm2000_ports, pro2_ports, xenyx1204_ports, PortGroup, DLIVE_PORT_GROUPS, DM2000_PORT_GROUPS, PRO2_PORT_GROUPS,
+    PROMIX01_PORT_GROUPS, SQ5_PORT_GROUPS, WING_PORT_GROUPS, X32_PORT_GROUPS, XENYX1204_PORT_GROUPS, Y01V_PORT_GROUPS,
+    Y02R_PORT_GROUPS,
 };
 use livedaw_dsp::fader::FaderLaw;
 use livedaw_dsp::model::ModelTables;
@@ -46,10 +47,20 @@ pub enum Profile {
     /// out (its FoH template's on a new console; its own effects, MIDI and surface
     /// follow).
     AhDLive(DLiveLayout),
+    /// The Yamaha DM2000 (Version 2; a DM2000VCM adds only the Add-On Effects,
+    /// which aren't emulated): its processing and effects. Its surface and MIDI
+    /// follow.
+    Dm2000,
+    /// The Midas PRO2: its processing and effects. Its surface follows; it has no
+    /// published control protocol.
+    MidasPro2,
+    /// The Behringer XENYX 1204USB, Sidecar's first analog mixer: its blocks, routing
+    /// and surface; no remote protocol.
+    Xenyx1204,
 }
 
 impl Profile {
-    pub const ALL: [Profile; 8] = [
+    pub const ALL: [Profile; 11] = [
         Profile::Universal,
         Profile::Wing,
         Profile::X32,
@@ -58,6 +69,9 @@ impl Profile {
         Profile::AhSq5,
         Profile::Yamaha01V,
         Profile::AhDLive(DLiveLayout::FOH),
+        Profile::Dm2000,
+        Profile::MidasPro2,
+        Profile::Xenyx1204,
     ];
 
     /// The id shows store (`<Console profile="...">`).
@@ -71,6 +85,9 @@ impl Profile {
             Profile::AhSq5 => "sq5",
             Profile::Yamaha01V => "01v",
             Profile::AhDLive(_) => "dlive",
+            Profile::Dm2000 => "dm2000",
+            Profile::MidasPro2 => "pro2",
+            Profile::Xenyx1204 => "xenyx1204",
         }
     }
 
@@ -89,6 +106,9 @@ impl Profile {
             Profile::AhSq5 => &SQ5,
             Profile::Yamaha01V => &Y01V,
             Profile::AhDLive(layout) => dlive_spec(layout),
+            Profile::Dm2000 => &DM2000,
+            Profile::MidasPro2 => &PRO2,
+            Profile::Xenyx1204 => &XENYX1204,
         }
     }
 
@@ -104,9 +124,15 @@ impl Profile {
     pub fn fits(self, counts: &Counts) -> bool {
         match self {
             Profile::Universal => true,
-            Profile::X32 | Profile::ProMix01 | Profile::Yamaha02R | Profile::AhSq5 | Profile::Yamaha01V | Profile::AhDLive(_) => {
-                *counts == self.spec().counts
-            }
+            Profile::X32
+            | Profile::ProMix01
+            | Profile::Yamaha02R
+            | Profile::AhSq5
+            | Profile::Yamaha01V
+            | Profile::AhDLive(_)
+            | Profile::Dm2000
+            | Profile::MidasPro2
+            | Profile::Xenyx1204 => *counts == self.spec().counts,
             Profile::Wing => {
                 let w = self.spec().counts;
                 counts.aux == w.aux
@@ -139,6 +165,9 @@ pub enum MidiProtocol {
     /// The X32's fixed map: faders, mutes, pans and mute groups by CC on MIDI
     /// channels 1-3, scenes by program change.
     X32,
+    /// The 01V's: parameter changes, an assignable CC table, program changes,
+    /// bulk dumps (`livedaw-01v`).
+    Yamaha01V,
     /// The ProMix 01's: its 531 parameters by CC (Channel or Register mode),
     /// scenes by program change, Yamaha bulk dumps (`livedaw-promix`).
     ProMix01,
@@ -149,6 +178,9 @@ pub enum MidiProtocol {
     /// The SQ-5's: NRPN levels, mutes, pans and assignments, scenes by bank and
     /// program change (`livedaw-sq`).
     AhSq,
+    /// The DM2000's: SysEx parameter changes and requests, its control change
+    /// tables, scenes by program change, Key Remote, meters, MMC (`livedaw-dm2000`).
+    Dm2000,
 }
 
 /// A network protocol a console serves (`livedaw-wing`'s servers for the WING's).
@@ -162,6 +194,8 @@ pub enum NetworkProtocol {
     WingNative,
     /// The X32's OSC (UDP 10023, `livedaw-x32`).
     X32Osc,
+    /// Allen & Heath MIDI over TCP (the dLive's and SQ's, `livedaw-ahmidi`).
+    AhMidiTcp,
 }
 
 impl NetworkProtocol {
@@ -173,6 +207,7 @@ impl NetworkProtocol {
             Self::WingOsc => 2,
             Self::WingNative => 4,
             Self::X32Osc => 8,
+            Self::AhMidiTcp => 16,
         }
     }
 }
@@ -271,6 +306,46 @@ impl Palette {
             StripKind::Bus if slot >= y02r::AUX => 5,
             StripKind::Bus => 7,
             StripKind::Main | StripKind::Matrix => 2,
+        }),
+    };
+
+    /// The DM2000's: it has no strip colours (its displays are fluorescent), so the
+    /// ProMix 01's eight, a new strip coloured by what it is (Sidecar's): CH 1-24
+    /// white, the slots' 25-72 green, the effect returns 73-88 magenta, 2TR 89-96
+    /// yellow, BUS cyan, AUX blue, MATRIX yellow, STEREO red.
+    pub const DM2000: Palette = Palette {
+        colours: &PROMIX01_COLOURS,
+        grid: &[1, 2, 3, 4, 5, 6, 7, 8],
+        default: 8,
+        factory: Some(|_spec, kind, slot| match kind {
+            StripKind::Channel if slot < 24 => 8,
+            StripKind::Channel if slot < 72 => 3,
+            StripKind::Channel if slot < 88 => 6,
+            StripKind::Channel => 4,
+            StripKind::Aux => 6,
+            StripKind::Bus if slot >= dm2000::AUX => 5,
+            StripKind::Bus => 7,
+            StripKind::Matrix => 4,
+            StripKind::Main => 2,
+        }),
+    };
+
+    /// The XENYX 1204USB's: no strip colours on the panel (the surface has console tape),
+    /// so the ProMix 01's eight, every strip white (Sidecar's).
+    pub const XENYX1204: Palette =
+        Palette { colours: &PROMIX01_COLOURS, grid: &[1, 2, 3, 4, 5, 6, 7, 8], default: 8, factory: Some(|_s, _k, _n| 8) };
+
+    /// The PRO2's: the input name fields start green (Owner's Manual p.243), and the
+    /// ProMix 01's eight for the rest, a new strip coloured by what it is (Sidecar's).
+    pub const PRO2: Palette = Palette {
+        colours: &PROMIX01_COLOURS,
+        grid: &[1, 2, 3, 4, 5, 6, 7, 8],
+        default: 3,
+        factory: Some(|_spec, kind, _slot| match kind {
+            StripKind::Channel | StripKind::Aux => 3,
+            StripKind::Bus => 5,
+            StripKind::Matrix => 4,
+            StripKind::Main => 2,
         }),
     };
 
@@ -407,6 +482,13 @@ pub struct ProfileSpec {
     pub fx_send_buses: &'static [usize],
     /// A dLive's Mixer Config (None: any other console).
     pub dlive_layout: Option<DLiveLayout>,
+    /// INPUT's trim is an attenuator further down the chain
+    /// (`chain::Node::Attenuator`), INPUT doing the polarity alone (a DM2000's).
+    pub attenuator: bool,
+    /// The range of a strip's delay when the console sets it in whole samples
+    /// and the WING's 16-sample floor doesn't apply (a DM2000's 0-43400); None:
+    /// the WING's, in `DELAY_MODES` units.
+    pub delay_samples: Option<(u32, u32)>,
 }
 
 /// The pan of a strip a new console links into a pair (odd left, even
@@ -533,7 +615,39 @@ impl ProfileSpec {
     /// console with a preamp block keeps its preamp models there, and only there;
     /// every other console (the Universal first) offers its table's models anywhere.
     pub fn may_hold(&self, slot: DynSlot, token: &str) -> bool {
+        if self.profile == Profile::Dm2000 {
+            return slot != DynSlot::Preamp && livedaw_dsp::dm2000::is_gate(token) == (slot == DynSlot::Gate);
+        }
+        if self.profile == Profile::MidasPro2 {
+            return slot != DynSlot::Preamp && livedaw_dsp::midas_pro::is_gate(token) == (slot == DynSlot::Gate);
+        }
+        if self.profile == Profile::Xenyx1204 {
+            // The soft clip sits after the preamp (the GATE slot), the compressor after it.
+            return slot != DynSlot::Preamp && livedaw_dsp::xenyx1204::is_clip(token) == (slot == DynSlot::Gate);
+        }
         self.factory_preamp_block.is_none() || livedaw_dsp::dlive::is_preamp(token) == (slot == DynSlot::Preamp)
+    }
+
+    /// [`Self::may_hold`] on a strip of `kind`: a PRO2's compressors are a pair, the
+    /// inputs' four modes and the outputs' five (Owner's Manual pp.250, 273).
+    pub fn may_hold_on(&self, kind: StripKind, slot: DynSlot, token: &str) -> bool {
+        if self.profile == Profile::MidasPro2
+            && slot == DynSlot::Dynamics
+            && livedaw_dsp::midas_pro::is_output_compressor(token) != kind.is_output()
+        {
+            return false;
+        }
+        self.may_hold(slot, token)
+    }
+
+    /// The matrices (0-based slots) feeding the first FX slots as send effects: a
+    /// PRO2's matrices 1-4 feed FX 1-4 (p.211). Other consoles' sends are buses.
+    pub fn fx_send_matrices(&self) -> &'static [usize] {
+        if self.profile == Profile::MidasPro2 {
+            &[0, 1, 2, 3]
+        } else {
+            &[]
+        }
     }
 
     /// The chain of a strip of `kind`.
@@ -548,7 +662,7 @@ impl ProfileSpec {
     /// The fader law of a strip of `kind`: the mains' or buses' own, or the console's.
     pub fn fader_for(&self, kind: StripKind) -> FaderLaw {
         match (kind, self.main_fader, self.bus_fader) {
-            (StripKind::Main, Some(law), _) | (StripKind::Bus, _, Some(law)) => law,
+            (StripKind::Main, Some(law), _) | (StripKind::Bus | StripKind::Matrix, _, Some(law)) => law,
             _ => self.fader,
         }
     }
@@ -724,6 +838,8 @@ static WING: ProfileSpec = ProfileSpec {
     factory_eq_after: false,
     factory_preamp_block: None,
     dlive_layout: None,
+    attenuator: false,
+    delay_samples: None,
     fx_send_buses: &[],
 };
 
@@ -764,6 +880,8 @@ static UNIVERSAL: ProfileSpec = ProfileSpec {
     factory_eq_after: false,
     factory_preamp_block: None,
     dlive_layout: None,
+    attenuator: false,
+    delay_samples: None,
     fx_send_buses: &[],
 };
 
@@ -813,6 +931,8 @@ static X32: ProfileSpec = ProfileSpec {
     factory_eq_after: false,
     factory_preamp_block: None,
     dlive_layout: None,
+    attenuator: false,
+    delay_samples: None,
     fx_send_buses: &[12, 13, 14, 15],
 };
 
@@ -865,6 +985,8 @@ static PROMIX01: ProfileSpec = ProfileSpec {
     factory_eq_after: false,
     factory_preamp_block: None,
     dlive_layout: None,
+    attenuator: false,
+    delay_samples: None,
     fx_send_buses: &[0, 1],
 };
 
@@ -1005,6 +1127,8 @@ static Y02R: ProfileSpec = ProfileSpec {
     factory_preamp_block: None,
     dlive_layout: None,
     // AUX 7 feeds Effect 1, AUX 8 Effect 2 (MAN p.90).
+    attenuator: false,
+    delay_samples: None,
     fx_send_buses: &[y02r::AUX + 6, y02r::AUX + 7],
 };
 
@@ -1094,7 +1218,7 @@ const Y01V_LABELS: [&str; 5] = ["CH", "RTN", "BUS", "STEREO", "MTX"];
 /// 128-step fader laws (the inputs' +6 to -72 dB, the masters' 0 to -72 dB,
 /// STEREO's 0 to -96 dB), its labels and names, its port groups, its factory
 /// strip and output patch; its models (`livedaw_dsp::y01v`) and chains (pp.24-25,
-/// 60); the effects are fed by EFFECT 1-2. Its MIDI and surface follow.
+/// 60); the effects are fed by EFFECT 1-2. Its MIDI is `livedaw-01v`.
 static Y01V: ProfileSpec = ProfileSpec {
     profile: Profile::Yamaha01V,
     name: "01V",
@@ -1109,7 +1233,7 @@ static Y01V: ProfileSpec = ProfileSpec {
     pan: PanLaw::WING,
     port_groups: Y01V_PORT_GROUPS,
     models: &livedaw_dsp::y01v::MODELS,
-    remotes: Remotes { midi: None, network: &[] },
+    remotes: Remotes { midi: Some(MidiProtocol::Yamaha01V), network: &[] },
     palette: Palette::Y01V,
     labels: Y01V_LABELS,
     slots: &[
@@ -1140,13 +1264,99 @@ static Y01V: ProfileSpec = ProfileSpec {
     factory_preamp_block: None,
     dlive_layout: None,
     // EFFECT 1 feeds Effect 1, EFFECT 2 Effect 2 (p.24).
+    attenuator: false,
+    delay_samples: None,
     fx_send_buses: &[y01v::EFF, y01v::EFF + 1],
 };
 
-/// Where the dLive's strips of each sort start, in its FoH template.
+/// A dLive's Main mix (Mixer Config; Firmware Reference Guide, MixRack Setup). How many
+/// of the 64 busses a mode takes isn't stated: Sidecar counts one for each signal, Msum's
+/// included (it has its own output and master).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
+pub enum MainMode {
+    /// No Main mix: a monitor console's.
+    None,
+    /// Standard stereo.
+    #[default]
+    Lr,
+    /// LR, and an output of their mono sum, pre-fade and pre-processing.
+    LrMsum,
+    /// LR and an independent mono M: a channel assigns to any of the two.
+    LrM,
+    /// Pan runs left, centre, right; stereo channels feed LR alone.
+    Lcr,
+    /// Pan balances L and R; each channel's Divergence blends C against LR.
+    LcrPlus,
+    /// 5.1: LR, C, LFE, Ls/Rs.
+    Surround,
+}
+
+impl MainMode {
+    pub const ALL: [MainMode; 7] =
+        [MainMode::None, MainMode::Lr, MainMode::LrMsum, MainMode::LrM, MainMode::Lcr, MainMode::LcrPlus, MainMode::Surround];
+
+    pub fn index(self) -> i32 {
+        Self::ALL.iter().position(|m| *m == self).unwrap_or(1) as i32
+    }
+
+    pub fn from_index(i: i32) -> Option<Self> {
+        Self::ALL.get(usize::try_from(i).ok()?).copied()
+    }
+
+    /// Of the 64 busses.
+    pub fn busses(self) -> u32 {
+        match self {
+            MainMode::None => 0,
+            MainMode::Lr => 2,
+            MainMode::Surround => 6,
+            _ => 3,
+        }
+    }
+
+    /// The engine's main strips (a console has at least one: None's stays silent).
+    pub fn mains(self) -> usize {
+        match self {
+            MainMode::None | MainMode::Lr => 1,
+            MainMode::Surround => 4,
+            _ => 2,
+        }
+    }
+
+    /// Main strip `slot` carries a mono signal.
+    pub fn is_mono(self, slot: usize) -> bool {
+        match self {
+            MainMode::Surround => slot == 1 || slot == 2,
+            _ => slot > 0,
+        }
+    }
+
+    /// Main strip `slot`'s name.
+    pub fn strip_name(self, slot: usize) -> Option<&'static str> {
+        Some(match (self, slot) {
+            (_, 0) => "LR",
+            (MainMode::LrMsum, 1) => "Msum",
+            (MainMode::LrM, 1) => "M",
+            (MainMode::Lcr | MainMode::LcrPlus | MainMode::Surround, 1) => "C",
+            (MainMode::Surround, 2) => "LFE",
+            (MainMode::Surround, 3) => "Ls/Rs",
+            _ => return None,
+        })
+    }
+
+    /// The channel's assignment and level to main `slot` are its send to LR's (the
+    /// signals of one Main mix); else the send to `slot` itself.
+    pub fn shares_lr_send(self, slot: usize) -> bool {
+        match self {
+            MainMode::LrMsum | MainMode::Lcr | MainMode::LcrPlus | MainMode::Surround => slot > 0,
+            _ => false,
+        }
+    }
+}
+
 /// How a dLive's 64 configurable mix busses are laid out (its Mixer Config:
 /// Firmware Reference Guide, MixRack Setup). A stereo mix takes two busses, mono
-/// ones come and go in pairs, the LR takes two. They run, in the engine's bus
+/// ones come and go in pairs, the Main takes what its mode does, and each stereo PAFL
+/// bus two. They run, in the engine's bus
 /// slots, Groups then Aux then FX sends, each mono then stereo; the matrices mono
 /// then stereo. (The RackUltra card's 8 stereo sends are outside the 64, and not
 /// here yet.) `stereo_inputs` is its IP Stereo Config: bit n set, inputs 2n+1 and 2n+2
@@ -1162,6 +1372,10 @@ pub struct DLiveLayout {
     pub mtx: u8,
     pub st_mtx: u8,
     pub stereo_inputs: u64,
+    /// Stereo PAFL busses (1 for a normal system; only the first is modelled, the others
+    /// only take their busses).
+    pub pafl: u8,
+    pub main: MainMode,
 }
 
 impl DLiveLayout {
@@ -1176,12 +1390,15 @@ impl DLiveLayout {
         mtx: 4,
         st_mtx: 4,
         stereo_inputs: 0xf000_0000_0000_0000,
+        pafl: 1,
+        main: MainMode::Lr,
     };
     /// The busses there are, and the RackExtra FX sends.
     pub const BUSSES: u32 = 64;
     pub const MAX_FX_SENDS: u32 = 16;
-    /// What the LR main takes of the busses.
-    const MAIN_BUSSES: u32 = 2;
+    /// The most PAFL busses: one for each of up to 4 Surfaces (Sidecar's reading of the
+    /// guide's Multi-Surface and PAFL sections; it gives no maximum).
+    pub const MAX_PAFL: u8 = 4;
 
     /// From `values()`'s order; None if one is out of range.
     pub fn from_values(v: [i32; 8], stereo_inputs: u64) -> Option<Self> {
@@ -1196,6 +1413,8 @@ impl DLiveLayout {
             mtx: n(6)?,
             st_mtx: n(7)?,
             stereo_inputs,
+            pafl: 1,
+            main: MainMode::Lr,
         })
     }
 
@@ -1220,15 +1439,21 @@ impl DLiveLayout {
         [self.grp, self.st_grp, self.aux, self.st_aux, self.fx, self.st_fx, self.mtx, self.st_mtx].map(i32::from)
     }
 
-    /// How many of the 64 busses it takes, the LR's included.
+    /// How many of the 64 busses it takes, the Main's and the PAFL's included.
     pub fn busses_used(self) -> u32 {
         let v = self.values().map(|n| n as u32);
-        v[0] + 2 * v[1] + v[2] + 2 * v[3] + v[4] + 2 * v[5] + v[6] + 2 * v[7] + Self::MAIN_BUSSES
+        v[0] + 2 * v[1] + v[2] + 2 * v[3] + v[4] + 2 * v[5] + v[6] + 2 * v[7] + self.main.busses() + 2 * u32::from(self.pafl)
     }
 
-    /// It fits: the busses, the FX sends, mono mixes in pairs.
+    /// What the Mixer Config screen shows as Mixes Remaining (negative: too many).
+    pub fn busses_remaining(self) -> i32 {
+        Self::BUSSES as i32 - self.busses_used() as i32
+    }
+
+    /// It fits: the busses, the FX sends, mono mixes in pairs, the PAFL busses.
     pub fn is_valid(self) -> bool {
         self.busses_used() <= Self::BUSSES
+            && self.pafl <= Self::MAX_PAFL
             && u32::from(self.fx) + u32::from(self.st_fx) <= Self::MAX_FX_SENDS
             && [self.grp, self.aux, self.fx, self.mtx].iter().all(|n| n % 2 == 0)
     }
@@ -1255,20 +1480,29 @@ impl DLiveLayout {
             channels: 128 - self.stereo_inputs.count_ones() as usize,
             buses: self.st_fx_at() + usize::from(self.st_fx),
             matrices: usize::from(self.mtx) + usize::from(self.st_mtx),
+            mains: self.main.mains(),
             ..Counts::DLIVE
         }
     }
 
-    /// What a show stores: the eight numbers.
+    /// What a show stores: the eight numbers, the stereo inputs, PAFL busses, Main mode.
     pub fn to_text(self) -> String {
-        format!("{},{}", self.values().map(|n| n.to_string()).join(","), self.stereo_inputs)
+        format!("{},{},{},{}", self.values().map(|n| n.to_string()).join(","), self.stereo_inputs, self.pafl, self.main.index())
     }
 
+    /// Shows from before the PAFL busses counted have only the eight numbers and the
+    /// stereo inputs: they get one PAFL bus, or none if it wouldn't fit any more.
     pub fn from_text(text: &str) -> Option<Self> {
         let mut parts = text.split(',').map(str::trim);
         let numbers: Vec<i32> = parts.by_ref().take(8).map(|n| n.parse().ok()).collect::<Option<_>>()?;
         let stereo_inputs = parts.next()?.parse().ok()?;
-        Self::from_values(numbers.try_into().ok()?, stereo_inputs)
+        let layout = Self::from_values(numbers.try_into().ok()?, stereo_inputs)?;
+        let Some(pafl) = parts.next() else {
+            return Some(if layout.busses_used() > Self::BUSSES { Self { pafl: 0, ..layout } } else { layout });
+        };
+        let pafl = pafl.parse().ok()?;
+        let main = MainMode::from_index(parts.next()?.parse().ok()?)?;
+        Some(Self { pafl, main, ..layout })
     }
 
     fn bus_is_stereo(self, slot: usize) -> bool {
@@ -1308,6 +1542,10 @@ impl DLiveLayout {
                 port += 1;
             }
         };
+        // The Main's other signals come right after the LR (Sidecar's reading).
+        for slot in 1..self.main.mains() {
+            place(StripKind::Main, slot, !self.main.is_mono(slot));
+        }
         for i in 0..usize::from(self.aux) {
             place(StripKind::Bus, self.aux_at() + i, false);
         }
@@ -1444,7 +1682,13 @@ fn dlive_factory(spec: &ProfileSpec, p: &crate::params::StripParams, kind: Strip
             p.stereo.store(slot >= usize::from(layout.mtx), Relaxed);
             p.fader_db.store(0.0);
         }
-        StripKind::Main => p.fader_db.store(0.0),
+        StripKind::Main => {
+            p.fader_db.store(0.0);
+            if layout.main.is_mono(slot) {
+                p.stereo.store(false, Relaxed);
+                p.mono.store(true, Relaxed);
+            }
+        }
     }
 }
 
@@ -1462,10 +1706,9 @@ fn dlive_name(spec: &ProfileSpec, kind: StripKind, slot: usize) -> Option<String
             let (name, number) = layout.bus_name(s);
             Some(format!("{name}{number}"))
         }
-        (StripKind::Main, 0) => Some("LR".into()),
+        (StripKind::Main, s) => layout.main.strip_name(s).map(str::to_string),
         (StripKind::Matrix, s) if s < usize::from(layout.mtx) => Some(format!("Mtx{}", s + 1)),
         (StripKind::Matrix, s) => Some(format!("StMtx{}", s - usize::from(layout.mtx) + 1)),
-        _ => None,
     }
 }
 
@@ -1509,8 +1752,8 @@ impl Palette {
 /// Aux, 8 FX sends, LR, 8 Matrices, 24 DCAs, 8 mute groups, 16 FX; its models
 /// (`livedaw_dsp::dlive`) in the order of its block diagram (`chain::DLIVE_*`),
 /// its 28-band GEQ after each mix's PEQ, its fader law, its sockets and names;
-/// the FX sends feed FX 1-8. Mixer Config, its own effects, its MIDI over TCP
-/// and its surface follow.
+/// the FX sends feed FX 1-8. Mixer Config, its own effects and its surface follow;
+/// its MIDI over TCP is `livedaw-ahmidi`.
 static DLIVE: ProfileSpec = ProfileSpec {
     profile: Profile::AhDLive(DLiveLayout::FOH),
     name: "dLive",
@@ -1525,7 +1768,7 @@ static DLIVE: ProfileSpec = ProfileSpec {
     pan: PanLaw::WING,
     port_groups: DLIVE_PORT_GROUPS,
     models: &livedaw_dsp::dlive::MODELS,
-    remotes: Remotes { midi: None, network: &[] },
+    remotes: Remotes { midi: None, network: &[NetworkProtocol::AhMidiTcp] },
     palette: Palette::DLIVE,
     labels: ["IP", "FXR", "GRP", "LR", "MTX"],
     slots: &[
@@ -1566,6 +1809,387 @@ static DLIVE: ProfileSpec = ProfileSpec {
         dlive::FX + 6,
         dlive::FX + 7,
     ],
+    attenuator: false,
+    delay_samples: None,
+};
+
+/// Where the DM2000's buses of each sort start.
+pub mod dm2000 {
+    /// AUX 1-12 are bus slots 8-19 (after BUS 1-8).
+    pub const AUX: usize = 8;
+    /// The Input Channels the effect returns come back on (73-88), then 2TR (89-96).
+    pub const FX_RETURNS: usize = 72;
+    pub const TWO_TRACK: usize = 88;
+}
+
+/// The compressor PRE FADER and the insert PRE EQ on a new channel, both PRE FADER
+/// (Comp->Ins) on a new output (the Insert page's initial data, p.136).
+const DM2000_CHANNEL_ORDER: i32 = 3;
+const DM2000_OUTPUT_ORDER: i32 = 4;
+
+/// A new DM2000's strip, as Scene #0's initial data has it: every channel mono,
+/// patched as p.289 lists (CH 1-24 AD 1-24; 25-48 slots 1-3 and 49-72 slots 4-6,
+/// eight inputs of each; 73-88 the outputs of Effects 1-8; 89-92 2TR digital 1-2,
+/// 93-96 2TR analog 1-2), its fader at -oo (p.186; the Initial Data Nominal preference
+/// off), the delay in samples; BUS and AUX mono and MATRIX and STEREO stereo at 0 dB
+/// (Sidecar's reading of the outputs' faders: p.186 speaks only of the inputs').
+fn dm2000_factory(_spec: &ProfileSpec, p: &crate::params::StripParams, kind: StripKind, slot: usize) {
+    use std::sync::atomic::Ordering::Relaxed;
+    p.input.delay_mode.store(3, Relaxed); // SMP
+    p.input.delay.store(0.0);
+    match kind {
+        StripKind::Channel => {
+            p.process_order.store(DM2000_CHANNEL_ORDER, Relaxed);
+            let source = match slot {
+                0..=23 => slot as i32,
+                24..=47 => dm2000_ports::SLOT + 16 * ((slot as i32 - 24) / 8) + (slot as i32 - 24) % 8,
+                48..=71 => dm2000_ports::SLOT + 48 + 16 * ((slot as i32 - 48) / 8) + (slot as i32 - 48) % 8,
+                72..=87 => crate::sources::FX_RETURN_SOURCE_BASE + (slot as i32 - 72),
+                88..=91 => dm2000_ports::DIGITAL_2TR + (slot as i32 - 88),
+                _ => dm2000_ports::ANALOG_2TR + (slot as i32 - 92),
+            };
+            p.input_left.store(source, Relaxed);
+        }
+        StripKind::Bus => {
+            p.process_order.store(DM2000_OUTPUT_ORDER, Relaxed);
+            p.stereo.store(false, Relaxed);
+            p.fader_db.store(0.0);
+        }
+        StripKind::Matrix | StripKind::Main => {
+            p.process_order.store(DM2000_OUTPUT_ORDER, Relaxed);
+            p.fader_db.store(0.0);
+        }
+        StripKind::Aux => {}
+    }
+}
+
+/// The DM2000's strip names (pp.298-299: CH01, BUS1, AUX1 ... AUX12, MATRIX1, ST).
+fn dm2000_name(_spec: &ProfileSpec, kind: StripKind, slot: usize) -> Option<String> {
+    match (kind, slot) {
+        (StripKind::Channel, s) => Some(format!("CH{:02}", s + 1)),
+        (StripKind::Bus, s) if s < dm2000::AUX => Some(format!("BUS{}", s + 1)),
+        (StripKind::Bus, s) => Some(format!("AUX{}", s - dm2000::AUX + 1)),
+        (StripKind::Matrix, s) => Some(format!("MATRIX{}", s + 1)),
+        (StripKind::Main, 0) => Some("ST".into()),
+        _ => None,
+    }
+}
+
+/// A new DM2000's output patch (p.297): OMNI OUT 1-8 AUX 1-8, every slot's 16
+/// outputs BUS 1-8 twice over, STEREO on STEREO OUT and (Sidecar's reading: the
+/// table doesn't list them) the 2TR digital outs.
+fn dm2000_factory_outputs(_spec: &ProfileSpec, patch: &crate::routing::OutputPatch) {
+    use crate::routing::strip_source_input;
+    use dm2000_ports::{DIGITAL_2TR, OMNI, SLOT};
+    for side in 0..2 {
+        let st = strip_source_input(StripKind::Main, 0, side);
+        for port in [0, DIGITAL_2TR, DIGITAL_2TR + 2, DIGITAL_2TR + 4] {
+            patch.set(port + side as i32, st);
+        }
+    }
+    for aux in 0..8 {
+        patch.set(OMNI + aux as i32, strip_source_input(StripKind::Bus, dm2000::AUX + aux, 0));
+    }
+    for port in 0..96 {
+        patch.set(SLOT + port as i32, strip_source_input(StripKind::Bus, port % 8, 0));
+    }
+}
+
+/// The Yamaha DM2000 (V2 Owner's Manual): 96 Input Channels, BUS 1-8 and AUX 1-12,
+/// 4 stereo Matrix Sends, Stereo Out; its fader laws (the channels' +10 to -138 dB,
+/// the outputs' 0 to -138 dB on 10-bit data), its labels and names, its port groups,
+/// its factory strip and output patch; its models (`livedaw_dsp::dm2000`) in the
+/// order of its block diagram (`chain::DM2000_*`); its eight effects fed by AUX 1-8.
+/// Its surface and MIDI follow.
+static DM2000: ProfileSpec = ProfileSpec {
+    profile: Profile::Dm2000,
+    name: "DM2000",
+    counts: Counts::DM2000,
+    templates: [chain::DM2000_CHANNEL, chain::DM2000_OUTPUT, chain::DM2000_OUTPUT],
+    process_orders: chain::DM2000_ORDERS,
+    aux_order: b"",
+    output_orders: chain::DM2000_ORDERS,
+    fader: FaderLaw::DM2000,
+    main_fader: Some(FaderLaw::DM2000_MASTER),
+    bus_fader: Some(FaderLaw::DM2000_MASTER),
+    pan: PanLaw::WING,
+    port_groups: DM2000_PORT_GROUPS,
+    models: &livedaw_dsp::dm2000::MODELS,
+    remotes: Remotes { midi: Some(MidiProtocol::Dm2000), network: &[] },
+    palette: Palette::DM2000,
+    labels: ["CH", "-", "BUS", "ST", "MTRX"],
+    slots: &[SlotRange { kind: StripKind::Bus, first: dm2000::AUX, count: 12, chain: chain::DM2000_OUTPUT, label: "AUX" }],
+    // Each Bus Out has its own Bus to Stereo switch, off at first (Sidecar's
+    // reading: p.109 gives the switch, not its initial state).
+    buses_to_main: 0..0,
+    mono_mains: &[],
+    source_link: false,
+    sends_on: true,
+    send_tap: -1,
+    tap_point: crate::strip::tap::PFL as i32,
+    factory: Some(dm2000_factory),
+    factory_name: Some(dm2000_name),
+    factory_outputs: Some(dm2000_factory_outputs),
+    dca_names: None,
+    dca_fader_db: 0.0,
+    // Sidecar's choice: the manual doesn't say what the eight effects start on.
+    fx_factory: &["DMHALL", "DMROOM", "DMSTAGE", "DMPLATE", "DMSTDLY", "DMCHO", "DMSYMP", "DMMONO"],
+    factory_eq_block: None,
+    factory_eq_after: false,
+    factory_preamp_block: None,
+    dlive_layout: None,
+    attenuator: true,
+    delay_samples: Some((0, 43400)),
+    // AUX 1-8 feed Effects 1-8's first input (p.289).
+    fx_send_buses: &[
+        dm2000::AUX,
+        dm2000::AUX + 1,
+        dm2000::AUX + 2,
+        dm2000::AUX + 3,
+        dm2000::AUX + 4,
+        dm2000::AUX + 5,
+        dm2000::AUX + 6,
+        dm2000::AUX + 7,
+    ],
+};
+
+/// What a new XENYX 1204USB starts as (the panel): channels 1-4 mono on MIC/LINE 1-4, 5/6
+/// and 7/8 stereo on the LINE jacks; the low cut at 75 Hz, 18 dB/oct (off), the soft clip
+/// on, the compressor (channels 1-4) on at COMP 0 (flat), the EQ on and flat. The returns
+/// stereo on the AUX RETURN jacks and the 2-TR/USB input stereo on the 2-TR input. The
+/// AUX 1 and AUX 2 sends mono, ALT 3-4 and MAIN MIX stereo.
+fn xenyx1204_factory(_spec: &ProfileSpec, p: &crate::params::StripParams, kind: StripKind, slot: usize) {
+    use std::sync::atomic::Ordering::Relaxed;
+    use xenyx1204_ports::{LINE, MIC_LINE, RETURN, TWO_TR_IN};
+    match kind {
+        StripKind::Channel => {
+            let stereo = slot >= 4;
+            p.stereo.store(stereo, Relaxed);
+            let first = if stereo { LINE + 2 * (slot as i32 - 4) } else { MIC_LINE + slot as i32 };
+            p.input_left.store(first, Relaxed);
+            if stereo {
+                p.input_right.store(first + 1, Relaxed);
+            }
+            let f = p.filter();
+            f.low_cut_freq.store(livedaw_dsp::xenyx1204::LOW_CUT_HZ);
+            f.low_cut_slope.store(livedaw_dsp::xenyx1204::LOW_CUT_SLOPE, Relaxed);
+            p.gate().on.store(true, Relaxed);
+            p.dynamics().on.store(slot < 4, Relaxed);
+            p.eq().on.store(true, Relaxed);
+        }
+        StripKind::Aux => {
+            p.stereo.store(true, Relaxed);
+            let first = if slot < 2 { RETURN + 2 * slot as i32 } else { TWO_TR_IN };
+            p.input_left.store(first, Relaxed);
+            p.input_right.store(first + 1, Relaxed);
+        }
+        StripKind::Bus => p.stereo.store(slot == 2, Relaxed),
+        StripKind::Main | StripKind::Matrix => {}
+    }
+}
+
+/// The XENYX 1204USB's strip names, as the panel prints them.
+fn xenyx1204_name(_spec: &ProfileSpec, kind: StripKind, slot: usize) -> Option<String> {
+    match (kind, slot) {
+        (StripKind::Channel, 4) => Some("5/6".into()),
+        (StripKind::Channel, 5) => Some("7/8".into()),
+        (StripKind::Channel, s) => Some(format!("{}", s + 1)),
+        (StripKind::Aux, 2) => Some("2-TR/USB".into()),
+        (StripKind::Aux, s) => Some(format!("RTN {}", s + 1)),
+        (StripKind::Bus, 2) => Some("ALT 3-4".into()),
+        (StripKind::Bus, s) => Some(format!("AUX {}", s + 1)),
+        (StripKind::Main, 0) => Some("MAIN MIX".into()),
+        _ => None,
+    }
+}
+
+/// A new XENYX 1204USB's output patch: MAIN MIX on the main outputs, the 2-TR outputs and
+/// the USB send; ALT 3-4 on its jacks; AUX 1 and AUX 2 on their jacks.
+fn xenyx1204_factory_outputs(_spec: &ProfileSpec, patch: &crate::routing::OutputPatch) {
+    use crate::routing::strip_source_input;
+    use xenyx1204_ports::{ALT_OUT, AUX_OUT, MAIN_OUT, TWO_TR_OUT, USB_OUT};
+    for side in 0..2 {
+        let main = strip_source_input(StripKind::Main, 0, side);
+        for first in [MAIN_OUT, TWO_TR_OUT, USB_OUT] {
+            patch.set(first + side as i32, main);
+        }
+        patch.set(ALT_OUT + side as i32, strip_source_input(StripKind::Bus, 2, side));
+    }
+    for aux in 0..2 {
+        patch.set(AUX_OUT + aux as i32, strip_source_input(StripKind::Bus, aux, 0));
+    }
+}
+
+/// The Behringer XENYX 1204USB (the published panel and quick-start guide): 4 mono and 2
+/// stereo channels, 2 stereo aux returns and the 2-TR/USB input, the AUX 1 (pre) and AUX 2
+/// (post) sends, ALT 3-4, MAIN MIX; its fader law (a render's scale), its ports; its blocks
+/// (`livedaw_dsp::xenyx1204`). The sends start on (at -oo); the surface sets their modes.
+static XENYX1204: ProfileSpec = ProfileSpec {
+    profile: Profile::Xenyx1204,
+    name: "XENYX 1204USB",
+    counts: Counts::XENYX1204,
+    templates: [chain::XENYX1204_CHANNEL, chain::XENYX1204_PLAIN, chain::XENYX1204_PLAIN],
+    process_orders: chain::XENYX1204_ORDERS,
+    aux_order: b"",
+    output_orders: chain::XENYX1204_OUTPUT_ORDERS,
+    fader: FaderLaw::XENYX1204,
+    main_fader: None,
+    bus_fader: None,
+    // Not in the guide (the pan knob's taper): the WING's.
+    pan: PanLaw::WING,
+    port_groups: XENYX1204_PORT_GROUPS,
+    models: &livedaw_dsp::xenyx1204::MODELS,
+    remotes: Remotes { midi: None, network: &[] },
+    palette: Palette::XENYX1204,
+    labels: ["CH", "RTN", "AUX", "MAIN", "MTX"],
+    slots: &[],
+    buses_to_main: 0..0,
+    mono_mains: &[],
+    source_link: false,
+    sends_on: true,
+    send_tap: -1,
+    tap_point: crate::strip::tap::PFL as i32,
+    factory: Some(xenyx1204_factory),
+    factory_name: Some(xenyx1204_name),
+    factory_outputs: Some(xenyx1204_factory_outputs),
+    dca_names: None,
+    dca_fader_db: 0.0,
+    fx_factory: &[],
+    factory_eq_block: None,
+    factory_eq_after: false,
+    factory_preamp_block: None,
+    dlive_layout: None,
+    attenuator: false,
+    delay_samples: None,
+    fx_send_buses: &[],
+};
+
+/// What a PRO2 starts as: its Normal (FOH) navigation mode's default state, the
+/// safe scene (Owner's Manual pp.210-211). Channels mono; 1-48 on DL251's inputs;
+/// 49-56, which the manual leaves unpatched, on the surface's 8 inputs (Sidecar's
+/// reading, as the engine gives any unpatched channel its own input). Aux returns 1-8 on FX 1-4's stereo
+/// outputs, panned odd left and even right. AUX 1-8 mono mixes; AUX 9-16 the
+/// groups, routed to the stereo masters, at 0 dB, odd left and even right
+/// (`buses_to_main`). Delays in milliseconds, compressors on the outputs' model.
+/// Filter slopes on their switches' off positions (p.245: 12 and 6 dB/oct).
+fn pro2_factory(_spec: &ProfileSpec, p: &crate::params::StripParams, kind: StripKind, slot: usize) {
+    use std::sync::atomic::Ordering::Relaxed;
+    p.input.delay_mode.store(2, Relaxed); // MS
+    p.input.delay.store(0.3);
+    match kind {
+        StripKind::Channel => {
+            p.stereo.store(false, Relaxed);
+            p.input_left.store(pro2_ports::DL251_IN + slot as i32, Relaxed);
+            let f = p.filter();
+            f.low_cut_slope.store(1, Relaxed);
+            f.high_cut_slope.store(0, Relaxed);
+        }
+        StripKind::Aux => {
+            p.stereo.store(false, Relaxed);
+            p.input_left.store(crate::sources::FX_RETURN_SOURCE_BASE + slot as i32, Relaxed);
+            p.pan.store(if slot % 2 == 0 { -100.0 } else { 100.0 });
+        }
+        StripKind::Bus => {
+            p.stereo.store(false, Relaxed);
+            if slot >= pro2::GROUPS {
+                p.pan.store(if slot % 2 == 0 { -100.0 } else { 100.0 });
+            }
+        }
+        StripKind::Matrix => p.stereo.store(false, Relaxed),
+        StripKind::Main => {}
+    }
+    if kind.is_output() {
+        let d = p.dynamics();
+        if let Some(model) = livedaw_dsp::model::model_index(d.table(), "MPCMPO") {
+            d.set_model(model);
+        }
+    }
+}
+
+/// The PRO2's strip names (Owner's Manual: "Aux Send 3", and p.211's lists).
+fn pro2_name(_spec: &ProfileSpec, kind: StripKind, slot: usize) -> Option<String> {
+    match (kind, slot) {
+        (StripKind::Channel, s) => Some(format!("Input {}", s + 1)),
+        (StripKind::Aux, s) => Some(format!("Aux Ret {}", s + 1)),
+        (StripKind::Bus, s) => Some(format!("Aux Send {}", s + 1)),
+        (StripKind::Matrix, s) => Some(format!("Matrix {}", s + 1)),
+        (StripKind::Main, 0) => Some("Master".into()),
+        (StripKind::Main, 1) => Some("Mono".into()),
+        _ => None,
+    }
+}
+
+/// A new PRO2's output patch (p.211, Normal (FOH)): Aux Sends 1-8 on DL251's outputs
+/// 1-8, Matrices 1-5 on 9-13, Master L, R and C on 14-16, and (Sidecar's reading: the
+/// table doesn't list them) the masters on the surface's master XLRs.
+fn pro2_factory_outputs(_spec: &ProfileSpec, patch: &crate::routing::OutputPatch) {
+    use crate::routing::strip_source_input;
+    use pro2_ports::{DL251_OUT, MASTER_OUT};
+    for side in 0..2 {
+        let st = strip_source_input(StripKind::Main, 0, side);
+        patch.set(MASTER_OUT + side as i32, st);
+        patch.set(DL251_OUT + 13 + side as i32, st);
+    }
+    patch.set(DL251_OUT + 15, strip_source_input(StripKind::Main, 1, 0));
+    for aux in 0..8 {
+        patch.set(DL251_OUT + aux as i32, strip_source_input(StripKind::Bus, aux, 0));
+    }
+    for matrix in 0..5 {
+        patch.set(DL251_OUT + 8 + matrix as i32, strip_source_input(StripKind::Matrix, matrix, 0));
+    }
+}
+
+/// Where the PRO2's aux sends of each sort start.
+pub mod pro2 {
+    /// Aux Sends 9-16 are the Normal (FOH) mode's stereo groups.
+    pub const GROUPS: usize = 8;
+}
+
+/// The Midas PRO2 (Owner's Manual, DOC02-DL2 Issue A): 56 input channels, 8 aux returns,
+/// 16 aux sends, 8 matrices, the stereo and mono masters, 8 VCAs, 6 auto-mutes and 6
+/// FX; its fader law (a press render's scale), its port groups, its Normal (FOH)
+/// mode's patch; its models (`livedaw_dsp::midas_pro`) in the order of its block
+/// diagrams (`chain::PRO2_*`). FX 1-3 DN780, FX 4 Pitch Shifter, FX 1-4 fed by
+/// Matrices 1-4 (p.211). Its surface follows.
+static PRO2: ProfileSpec = ProfileSpec {
+    profile: Profile::MidasPro2,
+    name: "PRO2",
+    counts: Counts::PRO2,
+    templates: [chain::PRO2_CHANNEL, chain::PRO2_AUX, chain::PRO2_OUTPUT],
+    process_orders: chain::PRO2_ORDERS,
+    aux_order: b"",
+    output_orders: chain::PRO2_OUTPUT_ORDERS,
+    fader: FaderLaw::PRO2,
+    main_fader: None,
+    bus_fader: None,
+    // Not in the manual; the WING's. p.262 says only "pan" and a "constant
+    // power crossfade" for the SIS image.
+    pan: PanLaw::WING,
+    port_groups: PRO2_PORT_GROUPS,
+    models: &livedaw_dsp::midas_pro::MODELS,
+    remotes: Remotes { midi: None, network: &[] },
+    palette: Palette::PRO2,
+    labels: ["IN", "AR", "AUX", "MST", "MTX"],
+    slots: &[],
+    buses_to_main: pro2::GROUPS..16,
+    mono_mains: &[1],
+    source_link: false,
+    sends_on: false,
+    send_tap: -1,
+    tap_point: crate::strip::tap::PFL as i32,
+    factory: Some(pro2_factory),
+    factory_name: Some(pro2_name),
+    factory_outputs: Some(pro2_factory_outputs),
+    dca_names: None,
+    dca_fader_db: 0.0,
+    fx_factory: &["MPDN780", "MPDN780", "MPDN780", "MPPIT"],
+    factory_eq_block: None,
+    factory_eq_after: false,
+    factory_preamp_block: None,
+    dlive_layout: None,
+    attenuator: false,
+    delay_samples: None,
+    fx_send_buses: &[],
 };
 
 /// The first of the SQ-5's buses that is an FX send (Mix 1-12, then FX 1-4).
@@ -1656,7 +2280,7 @@ static SQ5: ProfileSpec = ProfileSpec {
     pan: PanLaw::WING,
     port_groups: SQ5_PORT_GROUPS,
     models: &livedaw_dsp::sq::MODELS,
-    remotes: Remotes { midi: Some(MidiProtocol::AhSq), network: &[] },
+    remotes: Remotes { midi: Some(MidiProtocol::AhSq), network: &[NetworkProtocol::AhMidiTcp] },
     palette: Palette::SQ5,
     labels: SQ_LABELS,
     slots: &[SlotRange { kind: StripKind::Bus, first: SQ_FX_SENDS, count: 4, chain: chain::SQ_FX_SEND, label: "FX" }],
@@ -1677,9 +2301,11 @@ static SQ5: ProfileSpec = ProfileSpec {
     fx_factory: &["SQSMRH", "SQSMRE", "SQTAP", "SQCHOR"],
     factory_eq_block: Some("SQGEQ"),
     factory_eq_after: false,
-    factory_preamp_block: None,
+    factory_preamp_block: Some("DLVTUBE"),
     dlive_layout: None,
     // FX sends 1-4 feed the first four FX engines (p.61).
+    attenuator: false,
+    delay_samples: None,
     fx_send_buses: &[SQ_FX_SENDS, SQ_FX_SENDS + 1, SQ_FX_SENDS + 2, SQ_FX_SENDS + 3],
 };
 
@@ -1706,7 +2332,8 @@ mod dlive_tests {
         assert_eq!(built.counts, DLIVE.counts);
         assert_eq!(built.buses_to_main, DLIVE.buses_to_main);
         assert_eq!(built.fx_send_buses, DLIVE.fx_send_buses);
-        assert_eq!(DLiveLayout::FOH.busses_used(), 58);
+        assert_eq!(DLiveLayout::FOH.busses_used(), 60, "the LR's two and one stereo PAFL's two");
+        assert_eq!(DLiveLayout::FOH.busses_remaining(), 4);
         assert!(DLiveLayout::FOH.is_valid());
     }
 
@@ -1733,7 +2360,7 @@ mod dlive_tests {
     fn a_mixer_config_must_fit() {
         let ok = DLiveLayout { grp: 2, st_grp: 2, aux: 16, st_aux: 4, fx: 4, st_fx: 2, mtx: 2, st_mtx: 2, ..DLiveLayout::FOH };
         assert!(ok.is_valid());
-        assert_eq!(ok.busses_used(), 2 + 4 + 16 + 8 + 4 + 4 + 2 + 4 + 2);
+        assert_eq!(ok.busses_used(), 2 + 4 + 16 + 8 + 4 + 4 + 2 + 4 + 2 + 2, "the mixes, the LR and one stereo PAFL");
         assert!(!DLiveLayout { grp: 3, ..ok }.is_valid(), "mono busses change in pairs");
         assert!(!DLiveLayout { aux: 62, ..ok }.is_valid(), "more than 64 busses");
         assert!(!DLiveLayout { fx: 14, st_fx: 4, ..ok }.is_valid(), "more than 16 FX sends");
@@ -2058,7 +2685,11 @@ mod tests {
         }
         // The FX sends have no EQ, so no GEQ; the inputs have none either.
         assert!(e.strips(StripKind::Bus)[12].blocks().is_empty());
-        assert!(e.strips(StripKind::Channel)[0].blocks().is_empty());
+        // The inputs' one block is the DEEP preamp's (p.32), and it starts out.
+        let blocks = e.strips(StripKind::Channel)[0].blocks();
+        assert_eq!(blocks.len(), 1);
+        let BlockParams::Dynamics(preamp) = &blocks[0].params else { panic!("a dynamics block") };
+        assert!(!preamp.on.load(std::sync::atomic::Ordering::Relaxed));
         // The first four FX engines start with a device, the others empty.
         let models = e.fx_models();
         let token = |i: usize| models[e.controls.fx[i].model_index_in(models)].token;
@@ -2311,6 +2942,18 @@ mod tests {
             let s = p.spec();
             if p == Profile::ProMix01 || p == Profile::Yamaha02R || p == Profile::Yamaha01V {
                 assert_eq!(s.fader.steps, 128, "a Yamaha's");
+                continue;
+            }
+            if p == Profile::Dm2000 {
+                assert_eq!(s.fader, FaderLaw::DM2000);
+                continue;
+            }
+            if p == Profile::Xenyx1204 {
+                assert_eq!(s.fader, FaderLaw::XENYX1204);
+                continue;
+            }
+            if p == Profile::MidasPro2 {
+                assert_eq!(s.fader, FaderLaw::PRO2);
                 continue;
             }
             if p == Profile::AhSq5 {

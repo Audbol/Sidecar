@@ -38,9 +38,48 @@ float drawDeviceTag (juce::Graphics&, juce::Rectangle<float> area, const juce::S
 /** The room drawDeviceTag takes for `device` (0 for none). */
 float deviceTagWidth (const juce::String& device);
 
+/** The look of what the views don't draw themselves (pop-up menus, dialogs, call-outs, scroll
+    bars, text fields), in `theme`. Hand it to a PopupMenu: a menu doesn't take its target's. */
+juce::LookAndFeel& lookAndFeelFor (const Theme& theme);
+
+/** A brushed metal plate, its grain tiled over `top` to `bottom`; `screws`: one in each corner. */
+void drawPlate (juce::Graphics&, juce::Rectangle<float>, juce::Colour top, juce::Colour bottom, const Theme&, bool screws = false);
+/** A legend engraved in a plate. */
+void drawEngraved (juce::Graphics&, const juce::String&, juce::Rectangle<float>, juce::Justification, const Theme&, bool bold = true);
+/** A readout lit from behind. */
+void drawGlowText (juce::Graphics&, const juce::String&, juce::Rectangle<float>, juce::Justification, juce::Colour, const Theme&);
+/** Is the input in use a finger (the small controls then open large)? */
+bool isTouchInput();
+
+/** A knob with its ring: `position` 0 to 1, the ring lit from the centre (`fromCentre`) or the start. */
+void drawKnob (juce::Graphics&, juce::Rectangle<float> area, float position, bool fromCentre, const Theme&, bool enabled);
+
+/** Open the inspector's SENDS page instead of a block of the chain (a step kind for the views' onOpenStep). */
+constexpr int kOpenSends = -1;
+
 /** A fader's travel and a meter's bars leave this much at either end, so a
     meter beside a fader of the same height lines up with its marks. */
 constexpr float kTrackInset = 14.0f;
+/** The same for the Universal Mixer's own fader: its taller cap stays inside the control. */
+constexpr float kCapInset = 30.0f;
+
+/** Whether a finger on a control is moving it or scrolling the strips: decided by its first
+    few pixels, so that sweeping along a row of faders moves none of them. */
+struct TouchGesture
+{
+    enum class Mode
+    {
+        Undecided,
+        Value,
+        Scroll
+    };
+    Mode mode = Mode::Undecided;
+    juce::Component::SafePointer<juce::Viewport> view;
+    juce::Point<int> viewStart;
+
+    /** With a touch's drag: true when the control should take this event as a move. */
+    bool update (juce::Component& control, const juce::MouseEvent&);
+};
 
 /** A fader in dB on the WING fader law (+10 dB at the top, 0 dB at 3/4, -oo at
     the bottom: ui::fader). */
@@ -67,6 +106,10 @@ public:
 
     /** How far the groove's centre is from the right edge. */
     float grooveFromRight = 18.0f;
+    /** The level's colour when it isn't the accent (a fader moving a send); transparent: the accent. */
+    juce::Colour tint;
+    /** The selected strip's: the cap's index line in the accent. */
+    bool emphasised = false;
     /** Drawn as a console's fader (a console surface's hardware look: its slot,
         its moulded cap, its silkscreen scale); null: the Universal Mixer's. */
     const hw::Look* look = nullptr;
@@ -76,7 +119,9 @@ private:
 
     const Theme& theme;
     std::atomic<float>* value = nullptr;
-    double position = 0.0, dragStart = 0.0;
+    double position = 0.0;
+    int lastDragY = 0;
+    TouchGesture gesture;
     float linearMin = 0.0f, linearMax = 0.0f; // equal: the fader law
     double toPosition (float value) const noexcept;
     float fromPosition (double pos) const noexcept;
@@ -84,20 +129,25 @@ private:
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FaderControl)
 };
 
-/** A level meter: one or two bars on the fader's scale (ui::fader, so the marks
-    beside a fader read for its meter too), green to -18 dB, yellow to -6 dB,
-    orange to 0 dBFS and red above, with a clip light. */
+/** A level meter: one or two segmented bars on the fader's scale (ui::fader, so
+    the marks beside a fader read for its meter too), green to -18 dB, yellow to
+    -6 dB, orange to 0 dBFS and red above, with a held peak and a clip light that
+    stays on for two seconds. */
 class MeterControl final : public juce::Component
 {
 public:
+    static constexpr int kMaxChannels = 8;
+
     explicit MeterControl (const Theme&);
+    /** Its bars leave this much at either end. */
+    float inset = kCapInset;
 
     /** The level of side `channel` (linear), and how many sides there are. */
     std::function<float (int channel)> level;
     void setChannels (int numChannels);
 
     /** Where side `channel` stands now, 0 to 1. */
-    float getPosition (int channel) const noexcept { return positions[(size_t) juce::jlimit (0, 1, channel)]; }
+    float getPosition (int channel) const noexcept { return positions[(size_t) juce::jlimit (0, kMaxChannels - 1, channel)]; }
     void refresh();
 
     void paint (juce::Graphics&) override;
@@ -105,7 +155,8 @@ public:
 private:
     const Theme& theme;
     int channels = 1;
-    std::array<float, 2> positions {};
+    std::array<float, kMaxChannels> positions {}, peaks {};
+    std::array<juce::uint32, kMaxChannels> peakAt {}, clipUntil {};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MeterControl)
 };
@@ -130,6 +181,8 @@ private:
     const Theme& theme;
     std::atomic<float>* value = nullptr;
     float shown = 0.0f, dragStart = 0.0f;
+    int dragBase = 0;
+    TouchGesture gesture;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PanControl)
 };
@@ -144,6 +197,8 @@ public:
     std::function<bool()> isOn, isHalfOn;
     /** The console the key's page comes from (devices::wing), as a tag in its corner. */
     juce::String device;
+    /** A page tab (the Universal Mixer's): no key face, the name dim, a line under it while on. */
+    bool tab = false;
     /** Drawn as a console's rubber key (a console surface's hardware look), on
         `face` if it has its own colour; null: the Universal Mixer's flat key. */
     const hw::Look* look = nullptr;
@@ -173,6 +228,9 @@ public:
     Shape shape = Shape::Rect;
     /** An oval's corners, if not a full half of its height (the SQ's rounded oblong keys). */
     float cornerRadius = -1.0f;
+    /** With a backlit look, on a shaped key: lit, a small window in the cap glows, not the
+        whole cap (the SQ's keys: a slot in the rubber over the LED). */
+    bool windowLit = false;
     /** With a look: a black key whose name glows in its colour (the X32's
         screen keys), brighter while on. */
     bool textLit = false;

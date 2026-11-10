@@ -458,6 +458,11 @@ struct Chain {
     b: Vec<f32>,
 }
 
+/// A phaser's STAGE, as its choice writes it (the 01V's list and the DM2000's).
+fn stage_count(p: &Params) -> f32 {
+    p.text("stg").parse().unwrap_or(16.0)
+}
+
 fn wave_index(p: &Params) -> f32 {
     if p.spec.param_index("wv").is_some() {
         p.f("wv")
@@ -664,7 +669,7 @@ impl FxAlgo for Chain {
                 s.set("spd", f("mf"));
                 s.set("depth", f("md"));
                 s.set("range", f("off"));
-                s.set("stg", [2.0, 4.0, 8.0, 10.0, 12.0, 14.0, 16.0][f("stg") as usize]);
+                s.set("stg", stage_count(p));
                 s.set("reso", f("fbg").abs());
             }
             "O1APAN" => panner(&mut self.stages[0], p, pan_phase(p)),
@@ -713,7 +718,7 @@ impl FxAlgo for Chain {
                 let s = &mut self.stages[0];
                 s.set("depth", 0.0);
                 s.set("reso", f("fbg").abs());
-                s.set("stg", [2.0, 4.0, 8.0, 10.0, 12.0, 14.0, 16.0][f("stg") as usize]);
+                s.set("stg", stage_count(p));
                 self.sense = (f("sns") * 0.08).max(0.05);
                 self.down = f("dir") > 0.5;
                 self.env_rel = (-1.0 / (0.001 * f("dcy") * self.sr)).exp();
@@ -878,7 +883,8 @@ impl Small {
         if !matches!(token, "O1RING" | "O1MODF" | "O1DIST" | "O1AMP" | "O1DYNF" | "O1MULTI" | "O1FRZ") {
             return None;
         }
-        let mem = if token == "O1FRZ" { (ctx.sample_rate * 2.97).ceil() as usize } else { 0 };
+        // The 01V's 2.97 s, and the DM2000's 5.46 s (it records the same way).
+        let mem = if token == "O1FRZ" { (ctx.sample_rate * 5.46).ceil() as usize } else { 0 };
         Some(Small {
             token,
             sr: ctx.sample_rate,
@@ -1104,6 +1110,10 @@ impl FxAlgo for Small {
     fn reset(&mut self) {
         self.filters = Default::default();
         self.eq = Default::default();
+        for d in &mut self.dist {
+            d.tone = Svf::default();
+            d.env = 0.0;
+        }
         self.env = 0.0;
         self.phase = 0.0;
         self.read = self.start;

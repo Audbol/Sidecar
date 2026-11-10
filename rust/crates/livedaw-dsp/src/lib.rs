@@ -10,8 +10,10 @@ pub mod delay;
 pub mod denormals;
 pub mod dlive;
 pub mod dlive_fx;
+pub mod dm2000;
 pub mod fader;
 pub mod generator;
+pub mod midas_pro;
 pub mod model;
 pub mod promix;
 pub mod sq;
@@ -20,6 +22,7 @@ pub mod universal;
 pub mod util;
 pub mod wing;
 pub mod x32;
+pub mod xenyx1204;
 pub mod y01v;
 pub mod y02r;
 

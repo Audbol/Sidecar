@@ -331,7 +331,7 @@ bool FxSlots::isAllowed (int model, int slot)
     const auto& table = models::table (models::Fx);
     if (! juce::isPositiveAndBelow (model, (int) table.size()))
         return false;
-    return table[(size_t) model].category != models::Category::FxPremium || slot < 8;
+    return ld::ld_model_fx_allowed (model, slot);
 }
 
 bool FxSlots::setModel (int slot, int model)

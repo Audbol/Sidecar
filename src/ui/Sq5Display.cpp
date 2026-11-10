@@ -1,7 +1,9 @@
 #include "ui/Sq5Display.h"
 
+#include "engine/AppPaths.h"
 #include "engine/MixerEngine.h"
 #include "engine/Models.h"
+#include "engine/SqMidi.h"
 #include "ui/MeterBank.h"
 
 #include <cmath>
@@ -261,7 +263,7 @@ juce::String typeOf (const Slot& s)
     {
         case Slot::Input:    return "Ip";
         case Slot::FxReturn: return "FX Rtn";
-        case Slot::Mix:      return "Aux";
+        case Slot::Mix:      return isGroupMix (s.index) ? "Grp" : "Aux";
         case Slot::FxSend:   return "FX";
         case Slot::Main:     return "Main";
         case Slot::Matrix:   return "Mtx";
@@ -271,7 +273,24 @@ juce::String typeOf (const Slot& s)
     return {};
 }
 
-juce::String mixType (int mix) { return mix == 0 ? "Main" : mix <= kMixes ? "Aux" : "FX"; }
+juce::String mixType (int mix) { return mix == 0 ? "Main" : mix <= kMixes ? (isGroupMix (mix - 1) ? "Grp" : "Aux") : "FX"; }
+
+namespace
+{
+    int groupsNow = 0; // Bus Config: message thread
+    constexpr int kFirstDeepComp = 3; // livedaw_dsp::sq::FIRST_DEEP_COMP
+
+    /** The DEEP preamp block of an input channel, if it has one. */
+    ld::DynSlotParams* preampModelOf (Strip& s)
+    {
+        const int uid = ld::ld_strip_preamp_block (s.getHandle());
+        return uid >= 0 ? s.getBlock (uid).dynamics() : nullptr;
+    }
+} // namespace
+
+int groupCount() noexcept { return groupsNow; }
+void setGroupCount (int n) noexcept { groupsNow = juce::jlimit (0, kMixes, n); }
+bool isGroupMix (int index) noexcept { return index >= kMixes - groupsNow && index < kMixes; }
 
 juce::String mixName (MixerEngine& e, int mix)
 {
@@ -293,11 +312,20 @@ Display::Display (UiContext& c, const Theme& t) : ctx (c), theme (t)
 {
     historyDb.fill (-90.0f);
     historyGr.fill (0.0f);
+    setGroupCount (ctx.settings.getIntValue ("sq5.groups", 0));
+    softEdit = soft::get (ctx.settings, 0);
+    assignEditing = 0;
+    gangSet = gangs::load (ctx.settings);
+    loadSigGen();
     rebuild();
     startTimerHz (20);
 }
 
-Display::~Display() = default;
+Display::~Display()
+{
+    // Off with the surface: another console's surface uses it its own way.
+    ld::ld_engine_console_osc_set (ctx.engine.getHandle(), false, ld::kOscSine, 1000.0f, -96.0f, false, false);
+}
 
 Strip* Display::selectedStrip() const { return ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr; }
 
@@ -333,6 +361,7 @@ void Display::showScreen (Screen s)
 
 void Display::showBlock (Block b)
 {
+    libraryOpen = false;
     if (b != Block::Bank)
         screen = b == Block::DirOut || b == Block::MixSettings || b == Block::DcaMute || b == Block::Sends ? Screen::Routing : Screen::Processing;
     block = b;
@@ -369,6 +398,13 @@ void Display::refreshStrip()
     if (getSelectedSlot)
     {
         const auto s = getSelectedSlot();
+        // FX Screen Follow Sel (p.63): an FX return shows its unit, an FX send its first four's.
+        if (screen == Screen::Fx && prefs::get (ctx.settings, prefs::fxFollowSel, true)
+            && (s.kind == Slot::FxReturn || s.kind == Slot::FxSend) && s.index != fxSlot)
+        {
+            fxSlot = s.index;
+            rebuild();
+        }
         for (int i = 0; i < (int) layer.size(); ++i)
             if (layer[(size_t) i] == s && (i < bankFirst || i >= bankFirst + kColumns))
                 bankFirst = juce::jlimit (0, juce::jmax (0, (int) layer.size() - kColumns), i);
@@ -444,11 +480,34 @@ void Display::touchField (int index)
     }
     if (f.press)
     {
-        // What it does can rebuild the fields.
+        // What it does can rebuild the fields, or (a show recalled, Utility > Data) replace
+        // the whole surface.
         const auto press = f.press;
+        juce::Component::SafePointer<Display> safe (this);
         press();
-        repaint();
+        if (safe != nullptr)
+            repaint();
     }
+}
+
+void Display::setDataFolder (const juce::File& folder)
+{
+    dataFolder = folder;
+    rebuild();
+}
+
+juce::File Display::getDataFolder() const
+{
+    // The LIBRARY's folder of the other surfaces (ShowPanel::libraryFolder).
+    return dataFolder != juce::File() ? dataFolder : paths::documents().getChildFile ("Library");
+}
+
+const Display::ListArea* Display::listAt (juce::Point<float> at) const
+{
+    for (const auto& l : lists)
+        if (l.area.contains (at))
+            return &l;
+    return nullptr;
 }
 
 //==============================================================================
@@ -482,9 +541,10 @@ Field& Display::addToggle (Field::Kind kind, juce::Rectangle<float> area, const 
 void Display::rebuild()
 {
     fields.clear();
+    lists.clear();
     const int was = selected;
     selected = -1;
-    if (screen != Screen::Fx)
+    if (! hasLibrary())
         libraryOpen = false;
     switch (screen)
     {
@@ -614,6 +674,11 @@ void Display::buildDetail()
             buildBank();
         return;
     }
+    if (libraryOpen)
+    {
+        buildLibrary (*s);
+        return;
+    }
     switch (block)
     {
         case Block::DirOut:      buildDirOut (*s); break;
@@ -666,6 +731,83 @@ void Display::buildPreamp (Strip& s)
     addToggle (Field::InKey, { 226, 310, 40, 40 }, "Delay In", p.input.delayOn);
     addToggle (Field::Button, { 300, 254, 88, 34 }, "Polarity", p.input.invert);
     addValue ({ 300, 304, 88, 44 }, "Trim", bindLinear ("Trim", p.input.trimDb, -24.0f, 24.0f, " dB", 1, 0.0f));
+
+    // The DEEP preamp model the Library loads (p.32).
+    if (auto* d = preampModelOf (s); d != nullptr && d->on.load())
+    {
+        const auto& m = models::model (models::Dynamics, d->model.load());
+        add (Field::Header, { 412, 128, 256, 20 }, m.name);
+        addToggle (Field::InKey, { 626, 156, 40, 40 }, "Preamp In", d->on);
+        int i = 0;
+        for (const auto& mp : m.params)
+        {
+            auto binding = bindModelParam (d->values[mp.index], mp);
+            addValue ({ 416.0f + (float) i * 66.0f, 204.0f, 62.0f, 48.0f }, mp.label, std::move (binding));
+            ++i;
+        }
+    }
+}
+
+void Display::buildLibrary (Strip& s)
+{
+    // The Library key's list on Preamp, GEQ and the Compressor (pp.32, 39, 43): choosing a
+    // model loads it, as Recall does on the console.
+    add (Field::Header, { 92, 40, 580, 20 }, block == Block::Preamp ? "Preamp Model Library" : block == Block::Geq ? "GEQ Library" : "Compressor Library");
+    float x = 96.0f, y = 68.0f;
+    const auto entry = [&] (const juce::String& name, std::function<bool()> lit, std::function<void()> recall)
+    {
+        auto& f = add (Field::Button, { x, y, 170, 40 }, name);
+        f.colour = juce::Colours::white;
+        f.lit = std::move (lit);
+        f.press = [this, recall]
+        {
+            recall();
+            libraryOpen = false;
+            rebuild();
+        };
+        x += 178.0f;
+        if (x > 500.0f)
+        {
+            x = 96.0f;
+            y += 48.0f;
+        }
+    };
+    auto* strip = &s;
+    if (block == Block::Preamp)
+    {
+        if (auto* d = preampModelOf (s))
+        {
+            entry ("No Model", [d] { return ! d->on.load(); }, [d] { d->on = false; });
+            entry (models::model (models::Dynamics, d->model.load()).name, [d] { return d->on.load(); }, [d] { d->on = true; });
+        }
+        return;
+    }
+    if (block == Block::Comp)
+    {
+        for (const auto& m : models::table (models::Dynamics))
+        {
+            if (m.category != models::Category::Compressor)
+                continue;
+            const int index = m.index;
+            entry (m.name, [strip, index] { return strip->params.dynamics().model.load() == index; }, [strip, index] { strip->setModel (ModelBlock::Dynamics, index); });
+        }
+        return;
+    }
+    for (const auto& step : s.getChain())
+    {
+        if (! step.isBlock() || step.getBlockKind() != BlockKind::Eq)
+            continue;
+        auto* eq = s.getBlock (step.uid).eq();
+        const int uid = step.uid;
+        if (eq != nullptr)
+            for (const auto& m : models::table (models::BusEq))
+                if (m.index > 0 && m.params.size() == 28)
+                {
+                    const int index = m.index;
+                    entry (m.name, [eq, index] { return eq->model.load() == index; }, [strip, uid, index] { strip->setBlockModel (uid, index); });
+                }
+        break;
+    }
 }
 
 void Display::buildHpf (Strip& s)
@@ -732,8 +874,8 @@ void Display::buildGeq (Strip& s)
         auto block_ = s.getBlock (step.uid);
         if (auto* eq = block_.eq())
         {
-            add (Field::Header, { 92, 40, 540, 18 }, "Constant-Q");
             const auto& m = models::model (models::BusEq, eq->model.load());
+            add (Field::Header, { 92, 40, 540, 18 }, m.name);
             const int bands = juce::jmin (28, (int) m.params.size());
             const float x0 = 96.0f, bw = 532.0f / (float) bands;
             for (int b = 0; b < bands; ++b)
@@ -800,6 +942,20 @@ void Display::buildComp (Strip& s)
     auto& d = s.params.dynamics();
     const auto table = models::Dynamics;
     const int m = d.model.load();
+    if (m >= kFirstDeepComp)
+    {
+        // A DEEP model: its own controls (Sidecar's reading of its panel).
+        const auto& deep = models::model (table, m);
+        add (Field::Header, { 92, 40, 580, 18 }, deep.name);
+        int i = 0;
+        for (const auto& mp : deep.params)
+        {
+            addValue ({ 96.0f + (float) (i % 6) * 92.0f, 66.0f + (float) (i / 6) * 60.0f, 88.0f, 52.0f }, mp.label, bindModelParam (d.values[mp.index], mp));
+            ++i;
+        }
+        addToggle (Field::InKey, { 604, 326, 44, 44 }, "In", d.on);
+        return;
+    }
     add (Field::Header, { 92, 40, 100, 18 }, "Side Chain");
     add (Field::Button, { 98, 62, 88, 28 }, "Self Keyed").enabled = false;
     add (Field::Button, { 112, 110, 60, 32 }, "HPF").enabled = false;
@@ -842,6 +998,10 @@ void Display::resized() {}
 
 void Display::timerCallback()
 {
+    if (sigType.load() != sigShown.type || (sigMute.load() ? 1.0f : 0.0f) != sigShown.mute
+        || ! juce::approximatelyEqual (sigFreq.load(), sigShown.freq) || ! juce::approximatelyEqual (sigLevel.load(), sigShown.level))
+        applySigGen();
+    gangFollower.follow (ctx.engine, gangSet);
     // The history under the gate's and compressor's graphs.
     if (screen == Screen::Processing && (block == Block::Gate || block == Block::Comp))
         if (auto* s = selectedStrip())
@@ -861,6 +1021,11 @@ void Display::paintField (juce::Graphics& g, const Field& f, bool isSelected)
     switch (f.kind)
     {
         case Field::Area:
+            return;
+        case Field::Label:
+            g.setColour (juce::Colours::white.withMultipliedAlpha (dim));
+            g.setFont (font (10.5f, true));
+            g.drawFittedText (f.live ? f.live() : f.caption, f.area.getSmallestIntegerContainer(), f.centred ? juce::Justification::centred : juce::Justification::centredLeft, 9, 0.8f);
             return;
         case Field::Header:
             g.setColour (kBar);
@@ -890,6 +1055,11 @@ void Display::paintField (juce::Graphics& g, const Field& f, bool isSelected)
                 g.setColour (isSelected ? kYellow : juce::Colours::white);
                 g.fillRect (bar.withWidth (bar.getWidth() * juce::jlimit (0.0f, 1.0f, f.binding.get())));
             }
+            else if (f.live)
+            {
+                // Something to read, not to set.
+                text (g, box.reduced (3.0f, 0.0f), f.live(), 11.0f, juce::Colours::white.withMultipliedAlpha (dim), juce::Justification::centred, true);
+            }
             return;
         }
         case Field::Tab:
@@ -899,18 +1069,63 @@ void Display::paintField (juce::Graphics& g, const Field& f, bool isSelected)
             g.fillRoundedRectangle (f.area, 4.0f);
             g.setColour (kLine.withMultipliedAlpha (dim));
             g.drawRoundedRectangle (f.area, 4.0f, 0.8f);
-            text (g, f.area.reduced (3.0f, 0.0f), f.title, 11.5f, (on ? juce::Colours::black : juce::Colours::white).withMultipliedAlpha (dim), juce::Justification::centred, true);
+            text (g, f.area.reduced (3.0f, 0.0f), f.caption.isNotEmpty() ? f.caption : f.title, 11.5f, (on ? juce::Colours::black : juce::Colours::white).withMultipliedAlpha (dim), juce::Justification::centred, true);
             return;
         }
         case Field::Button:
         {
             const bool on = f.lit && f.lit();
+            if (f.row)
+            {
+                // A list's row (pp.67, 80): dark, the chosen one in the list's green.
+                g.setColour ((on ? juce::Colour (0xffb4c24a) : juce::Colour (0xff102a40)).withMultipliedAlpha (dim));
+                g.fillRoundedRectangle (f.area, 3.0f);
+                g.setColour (kLine.withMultipliedAlpha (dim * 0.8f));
+                g.drawRoundedRectangle (f.area, 3.0f, 0.8f);
+                text (g, f.area.reduced (8.0f, 0.0f), f.live ? f.live() : f.caption.isNotEmpty() ? f.caption : f.title, 11.5f,
+                      (on ? juce::Colours::black : juce::Colours::white).withMultipliedAlpha (dim), juce::Justification::centredLeft, true);
+                return;
+            }
             const auto top = on ? f.colour.brighter (0.25f) : juce::Colour (0xff4d8bb8), bottom = on ? f.colour.darker (0.25f) : juce::Colour (0xff24598a);
             g.setGradientFill (juce::ColourGradient (top.withMultipliedAlpha (dim), f.area.getX(), f.area.getY(), bottom.withMultipliedAlpha (dim),
                                                      f.area.getX(), f.area.getBottom(), false));
             g.fillRoundedRectangle (f.area, 4.0f);
             g.setColour (kLine.withMultipliedAlpha (dim));
             g.drawRoundedRectangle (f.area, 4.0f, 0.8f);
+            if (f.glyph >= 6)
+            {
+                // The transport keys (pp.111-116): stop, play / pause, record, previous, next.
+                const auto ink = (f.glyph == 8 ? juce::Colour (0xffff4a3a) : on ? inkOn (f.colour) : juce::Colours::white).withMultipliedAlpha (dim);
+                const auto c = f.area.getCentre();
+                const float u = juce::jmin (f.area.getWidth(), f.area.getHeight()) * 0.2f;
+                g.setColour (ink);
+                const auto triangle = [&g] (float x, float y, float w, float hh, bool right)
+                {
+                    juce::Path p;
+                    if (right)
+                        p.addTriangle (x, y - hh, x + w, y, x, y + hh);
+                    else
+                        p.addTriangle (x + w, y - hh, x, y, x + w, y + hh);
+                    g.fillPath (p);
+                };
+                if (f.glyph == 6)
+                    g.fillRect (juce::Rectangle<float> (2.0f * u, 2.0f * u).withCentre (c));
+                else if (f.glyph == 7)
+                {
+                    triangle (c.x - 2.0f * u, c.y, 1.7f * u, u, true);
+                    g.fillRect (c.x + 0.3f * u, c.y - u, 0.6f * u, 2.0f * u);
+                    g.fillRect (c.x + 1.4f * u, c.y - u, 0.6f * u, 2.0f * u);
+                }
+                else if (f.glyph == 8)
+                    g.fillEllipse (juce::Rectangle<float> (2.0f * u, 2.0f * u).withCentre (c));
+                else
+                {
+                    const bool right = f.glyph == 10;
+                    triangle (c.x - 1.6f * u, c.y, 1.6f * u, u, right);
+                    triangle (c.x, c.y, 1.6f * u, u, right);
+                }
+                return;
+            }
             if (f.glyph > 0)
             {
                 // The PEQ's mode keys: a shape's outline, as p.40 draws them.
@@ -928,7 +1143,7 @@ void Display::paintField (juce::Graphics& g, const Field& f, bool isSelected)
                 return;
             }
             {
-                const auto shown = ! on && f.captionOff.isNotEmpty() ? f.captionOff : f.caption.isNotEmpty() ? f.caption : f.title;
+                const auto shown = f.live ? f.live() : ! on && f.captionOff.isNotEmpty() ? f.captionOff : f.caption.isNotEmpty() ? f.caption : f.title;
                 text (g, f.area, shown, 11.0f, (on ? inkOn (f.colour) : juce::Colours::white).withMultipliedAlpha (dim), juce::Justification::centred, true);
             }
             return;
@@ -993,8 +1208,21 @@ void Display::paintTitleBar (juce::Graphics& g)
         case Screen::Meters:     title = juce::StringArray ({ "Input Meters", "FX Meters", "Mix Meters", "USB Meters", "RTA", "Channel Meters" })[meterTab]; break;
         case Screen::Fx:         title = "FX"; break;
         case Screen::Scenes:     title = juce::StringArray ({ "Scene Manager", "Cue List Editor", "Global Filter", "Safes" })[sceneTab]; break;
-        case Screen::Setup:      title = setupTab == 0 ? "Talkback" : surfaceTab == 0 ? "Strip Assign" : "Soft Controls"; break;
-        case Screen::Utility:    title = utilityTab == 0 ? juce::StringArray ({ "Diagnostics", "MIDI", "Add-ons", "Calibration" })[generalTab] : juce::StringArray ({ "General", "Data", "USB Utility", "SQ Drive", "Auto Mic Mixer" })[utilityTab]; break;
+        case Screen::Setup:
+            // As the guide's pictures have them (pp.84-108).
+            title = setupTab == 0   ? juce::StringArray ({ "PAFL", "Talkback", "Signal Generator", "Digital I/O", "I/O Port Options" })[audioTab]
+                    : setupTab == 2 ? juce::StringArray ({ "Input Stereo", "Mix Stereo", "Bus Config", "Role" })[configTab]
+                    : setupTab == 3 ? juce::String ("Ganging")
+                    : setupTab == 4 ? juce::String ("Network Setup")
+                    : setupTab == 5 ? juce::StringArray ({ "User Settings", "Setup", "Parameters", "Control" })[usersTab]
+                                    : juce::StringArray ({ "Strip Assign", "Soft Controls", "Footswitch", "Surface Prefs" })[surfaceTab];
+            break;
+        case Screen::Utility:
+            title = utilityTab == 0   ? juce::StringArray ({ "Diagnostics", "MIDI", "Add-ons", "Calibration" })[generalTab]
+                    : utilityTab == 1 ? juce::StringArray ({ "Show Manager", "Scenes", "Libraries", "Sync" })[dataTab]
+                    : utilityTab == 3 ? juce::StringArray ({ "Stereo", "Multitrack" })[driveTab]
+                                      : juce::StringArray ({ "General", "Data", "USB Utility", "SQ Drive", "AMM" })[utilityTab];
+            break;
         case Screen::Io:         title = juce::StringArray ({ "Input Patch", "Output Patch", "Tie Lines" })[ioTab]; break;
     }
     // Its white tab, cut along the channel tag's slant (p.11).
@@ -1324,6 +1552,9 @@ void Display::paintLevel (juce::Graphics& g, juce::Rectangle<float> r, Strip& s)
 
 void Display::paintGraph (juce::Graphics& g)
 {
+    if (block == Block::Comp)
+        if (auto* strip = selectedStrip(); strip != nullptr && strip->params.dynamics().model.load() >= kFirstDeepComp)
+            return; // a DEEP model's page is its controls
     auto* s = selectedStrip();
     if (s == nullptr)
         return;
@@ -1418,6 +1649,8 @@ void Display::paintGraph (juce::Graphics& g)
 
 void Display::paintDetail (juce::Graphics& g)
 {
+    if (libraryOpen)
+        return;
     if (auto* s = selectedStrip(); s != nullptr && screen == Screen::Processing)
     {
         const juce::Rectangle<float> col (1.5f, (float) kTitleBar + 2.0f, kOverviewWidth - 3.0f, (float) kHeight - kTitleBar - 2.0f);
@@ -1464,8 +1697,10 @@ void Display::paint (juce::Graphics& g)
         case Screen::Io:
             paintIo (g);
             break;
-        case Screen::Fx:
         case Screen::Setup:
+            paintSetup (g);
+            break;
+        case Screen::Fx:
             break;
     }
     for (int i = 0; i < (int) fields.size(); ++i)
@@ -1486,12 +1721,19 @@ void Display::mouseDown (const juce::MouseEvent& e)
     pressed = -1;
     dragStartBank = bankFirst;
     dragStartOther = screen == Screen::Scenes ? sceneFirst : screen == Screen::Io ? ioFirst : screen == Screen::Meters ? meterFirst : sendFirst;
+    dragList = nullptr;
     if (locked)
     {
         setLocked (false);
         return;
     }
     const auto at = e.position;
+    if (const auto* list = listAt (at))
+    {
+        dragList = list->first;
+        dragListAcross = list->across;
+        dragStartOther = *dragList;
+    }
     for (int i = (int) fields.size() - 1; i >= 0; --i)
         if (fields[(size_t) i].area.contains (at) && fields[(size_t) i].enabled)
         {
@@ -1523,7 +1765,18 @@ void Display::mouseDrag (const juce::MouseEvent& e)
     // up and down: the scenes, the patch.
     const int stepX = juce::roundToInt ((float) e.getDistanceFromDragStartX() / ((float) kWidth / kColumns));
     const int stepY = juce::roundToInt ((float) e.getDistanceFromDragStartY() / 26.0f);
-    if ((screen == Screen::Processing || screen == Screen::Routing) && block == Block::Bank)
+    if (dragList != nullptr)
+    {
+        // A list's rows, up and down (pp.80, 107), or Ganging's channels, left and right
+        // (p.105); the page keeps it in range.
+        const float rows = dragListAcross ? (float) e.getDistanceFromDragStartX() / 54.0f : (float) e.getDistanceFromDragStartY() / 34.0f;
+        if (const int first = dragStartOther - juce::roundToInt (rows); first != *dragList)
+        {
+            *dragList = first;
+            rebuild();
+        }
+    }
+    else if ((screen == Screen::Processing || screen == Screen::Routing) && block == Block::Bank)
         setBankFirst (dragStartBank - stepX);
     else if (screen == Screen::Routing && block == Block::Sends && sendFirst != dragStartOther - stepX)
     {
@@ -1550,18 +1803,22 @@ void Display::mouseDrag (const juce::MouseEvent& e)
 
 void Display::mouseUp (const juce::MouseEvent&)
 {
-    if (! dragged)
-        if (juce::isPositiveAndBelow (pressed, (int) fields.size()))
-        {
-            const auto& f = fields[(size_t) pressed];
-            if (! f.binding.isValid())
-                touchField (pressed);
-        }
+    const int touched = pressed;
     pressed = -1;
+    dragList = nullptr;
+    // Last: what a touch does can take the surface away (touchField).
+    if (! dragged && juce::isPositiveAndBelow (touched, (int) fields.size()) && ! fields[(size_t) touched].binding.isValid())
+        touchField (touched);
 }
 
-void Display::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& w)
+void Display::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
 {
+    if (const auto* list = listAt (e.position))
+    {
+        *list->first += w.deltaY > 0 ? -1 : 1;
+        rebuild();
+        return;
+    }
     const auto b = getRotaryBinding();
     if (! b.isValid())
         return;

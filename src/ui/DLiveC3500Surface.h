@@ -64,6 +64,10 @@ public:
     void setMixOnFaders (int bus) override;
     int getMixOnFaders() const noexcept override { return mixBus; }
 
+    dl::SurfaceSetup& getSetup() noexcept override { return assignments; }
+    void sceneGo() override { scenes.goNext(); }
+    void sceneStep (int delta) override { scenes.stepNext (delta); }
+
     /** Home: the default layers, screens, active Mix, rotary function and LCD view. */
     void pressHome();
 
@@ -75,6 +79,15 @@ public:
     dl::ProcessingScreen& getProcessing() noexcept { return processing; }
     dl::SceneScreen& getScenes() noexcept { return scenes; }
     dl::MixRackScreen& getMixRack() noexcept { return mixRack; }
+    dl::MetersScreen& getMeters() noexcept { return metersScreen; }
+    dl::IoScreen& getIo() noexcept { return ioScreen; }
+    dl::SurfaceScreen& getSurfaceScreen() noexcept { return surfaceScreen; }
+    dl::StatusScreen& getStatus() noexcept { return status; }
+    dl::BottomBand& getBottomBand() noexcept { return bottomBand; }
+    dl::HelpPanel& getHelp (bool right) noexcept { return right ? helpRight : helpLeft; }
+    /** What opens the assignment menus (tests replace them). */
+    std::function<void (int softKey, juce::Component*)> assignSoftKey;
+    std::function<void (int customRotary, juce::Component*)> assignRotary;
 
     /** A layer's strips as a new console has them (Sidecar's reading: strips are freely
         assignable on a dLive). */
@@ -85,7 +98,8 @@ private:
     void bindStrips();
     void bindPeq();
     void bindSoft();
-    void clearSolos();
+    void softKeyPressed (int index);
+    juce::String helpKey (bool right) const;
     dl::Key& key (const juce::String& name, juce::Colour idle, juce::Colour lit, juce::Rectangle<int>, dl::Key::Shape shape = dl::Key::Shape::Block, bool led = true);
     void silk (float x, float y, float w, float h, const juce::String& text, float size, juce::Justification j = juce::Justification::centred, bool dim = false);
 
@@ -98,30 +112,32 @@ private:
         bool dim;
     };
 
-    class Status;
-
     juce::AffineTransform design;
     UiContext& ctx;
     const universal::Theme& theme;
     universal::ToggleKey universalKey, c1500Key;
+    dl::SurfaceSetup assignments;
     juce::Component leftHost, rightHost;
     dl::ProcessingScreen processing;
     dl::SceneScreen scenes;
     dl::MixRackScreen mixRack;
-    universal::MixerView mixer;
+    dl::MetersScreen metersScreen;
+    dl::IoScreen ioScreen;
+    dl::SurfaceScreen surfaceScreen;
+    dl::StatusScreen status;
+    dl::BottomBand bottomBand;
+    dl::HelpPanel helpLeft, helpRight;
     universal::RoutingView routingView;
     universal::FxRackView fxRack;
     universal::MonitorView monitoring;
     universal::LibraryView library;
     universal::SetupView setup;
-    std::unique_ptr<Status> status;
     std::array<std::unique_ptr<dl::StripUnit>, kStrips> strips;
     std::vector<std::pair<juce::String, std::unique_ptr<dl::Key>>> keys;
     std::array<std::unique_ptr<dl::Rotary>, 8> peq;
     std::array<std::unique_ptr<dl::Rotary>, 6> soft;
     std::unique_ptr<dl::Rotary> dataLeft, dataRight, phones;
     std::vector<Silk> silks;
-    std::array<std::array<std::vector<dl::Slot>, kLayers>, kBanks> layouts;
     std::array<int, kBanks> layers { 0, 0 };
     Page page = Page::Scenes;
     juce::String litPageKey { "Page Scenes" };

@@ -8,7 +8,7 @@
 
 pub(crate) mod shifter;
 mod sub;
-mod yin;
+pub(crate) mod yin;
 
 use super::blocks::{coef, db_to_gain, equal_power, Biquad, Noise, Smoothed};
 use super::modulation::shared::{CutFilter, Glide};

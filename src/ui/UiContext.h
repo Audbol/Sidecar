@@ -76,7 +76,13 @@ enum class InterfaceKind
     /** The 01V surface (a Yamaha 01V console's skin). */
     Yamaha01V,
     /** An Allen & Heath dLive console: its own surface (a C1500's layout). */
-    DLive
+    DLive,
+    /** A Yamaha DM2000 console: its own surface. */
+    Dm2000,
+    /** A Midas PRO2 console: its own surface. */
+    Pro2,
+    /** A XENYX 1204USB: its own surface. */
+    Xenyx1204
 };
 
 /** The HOME screen's tabs for the selected strip: the overview group
