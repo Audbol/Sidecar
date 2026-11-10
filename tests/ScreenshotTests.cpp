@@ -20,7 +20,7 @@
 #include "ui/DLiveC3500Surface.h"
 #include "engine/Dm2000Midi.h"
 #include "ui/Dm2000Surface.h"
-#include "ui/Xenyx1204Surface.h"
+#include "ui/Xenyx1202Surface.h"
 #include "ui/Y02RSurface.h"
 #include "engine/ProMixMidi.h"
 #include "engine/Y02RMidi.h"
@@ -202,25 +202,25 @@ public:
         dliveC3500Surface();
         dm2000OnUniversal();
         dm2000Surface();
-        xenyx1204Surface();
+        xenyx1202Surface();
         customControlScribbles();
     }
 
-    /** The 1204USB's surface at 1920x1080: some levels, EQ, names on the console tape and a scene. */
-    void xenyx1204Surface()
+    /** The Q1202USB's surface at 1920x1080: some levels, EQ, names on the console tape and a scene. */
+    void xenyx1202Surface()
     {
-        beginTest ("The 1204USB surface");
+        beginTest ("The Q1202USB surface");
         MixerEngine engine (0);
-        engine.configureProfile (ld::kProfileXenyx1204);
+        engine.configureProfile (ld::kProfileXenyx1202);
         ShotRig rig (engine);
-        setShownProfile (ld::kProfileXenyx1204);
+        setShownProfile (ld::kProfileXenyx1202);
         ui::fader::setLaw (engine.getFaderLaw());
-        ui::Xenyx1204Surface skin (rig.ctx);
+        ui::Xenyx1202Surface skin (rig.ctx);
         skin.setSize (1920, 1080);
         skin.refreshAll();
         const auto& channels = engine.getChannels();
-        const char* names[] = { "KICK", "SNARE", "VOX", "ACOUS GTR", "KEYS", "BACK TRK" };
-        const float faders[] = { -2.0f, -5.0f, 0.0f, -9.0f, -12.0f, -16.0f };
+        const char* names[] = { "KICK", "SNARE", "VOX", "ACOUS GTR", "KEYS", "BACK TRK", "SAMPLER", "FX RTN" };
+        const float faders[] = { -2.0f, -5.0f, 0.0f, -9.0f, -12.0f, -16.0f, -6.0f, -20.0f };
         for (size_t i = 0; i < channels.size(); ++i)
         {
             auto& p = channels[i]->params;
@@ -231,8 +231,7 @@ public:
             p.eq().values[1] = 3.0f - (float) i * 1.5f;
             p.eq().values[2] = (float) (i % 3) * 3.0f - 3.0f;
             channels[i]->sends[0].levelDb = -20.0f + (float) i * 6.0f;
-            channels[i]->sends[1].levelDb = -10.0f + (float) i * 4.0f;
-            channels[i]->meters.trimPeak[0] = 0.1f + 0.15f * (float) i;
+                        channels[i]->meters.trimPeak[0] = 0.1f + 0.15f * (float) i;
             if (i < 4)
             {
                 p.input.trimDb = 20.0f + (float) i * 8.0f;
@@ -241,14 +240,11 @@ public:
         }
         channels[0]->params.filter().lowCut = true;
         channels[1]->meters.dynReductionDb = 3.0f;
-        channels[3]->sends[2].enabled = true;
-        channels[3]->mains[0].on = false;
-        channels[2]->params.solo = true;
         auto& main = engine.getMain (0);
         main.params.faderDb = -3.0f;
         main.meters.outputPeak[0] = 0.22f;
         main.meters.outputPeak[1] = 0.17f;
-        engine.getBuses()[2]->params.faderDb = -6.0f;
+        engine.getBuses()[0]->params.faderDb = -6.0f;
         rig.meters.advance (0.01f);
         rig.show.addScene ("Verse", -1);
         skin.showChanged();
@@ -258,7 +254,7 @@ public:
         const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {});
         if (folder.isNotEmpty())
         {
-            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile ("xenyx1204.png");
+            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile ("xenyxq1202.png");
             file.deleteFile();
             juce::FileOutputStream out (file);
             expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out), file.getFullPathName());

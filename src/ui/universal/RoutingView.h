@@ -28,6 +28,8 @@ juce::String outputPortName (int port);
 class RoutingView final : public juce::Component, private juce::Timer
 {
 public:
+    /** A drag on the patch grid moves around it (see PatchGrid). */
+    void setDragPans (bool pans) { grid.setDragPans (pans); }
     RoutingView (UiContext&, const Theme&);
     ~RoutingView() override;
 

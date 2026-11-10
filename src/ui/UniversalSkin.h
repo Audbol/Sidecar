@@ -51,6 +51,8 @@ public:
     {
         juce::String console;
         bool remote = false, connected = false;
+        /** Its status word (OFFLINE, CONNECTING, CONNECTED, LOST). */
+        juce::String status;
     };
     void setConnection (const Connection&);
 
@@ -142,7 +144,8 @@ private:
     bool talkHeld[2] { false, false };
     UiContext& ctx;
     const universal::Theme& theme;
-    universal::ToggleKey wingKey, showKey, menuKey, headerKey;
+    universal::ToggleKey wingKey, showKey, menuKey, headerKey, connectKey;
+    RemoteSession::State shownRemote = RemoteSession::State::Offline;
     void layoutSecondRow();
     juce::String backName;
     Connection connection;

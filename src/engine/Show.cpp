@@ -469,32 +469,49 @@ ld::ApplyResultC Show::runRecall (int which, int index)
     return r;
 }
 
+state::ApplyResult Show::lockedResult()
+{
+    state::ApplyResult r;
+    r.warnings.add ("Scene recall is off while a real console is controlled: recall its scenes on the console, they follow here");
+    return r;
+}
+
 state::ApplyResult Show::recallScene (int index)
 {
+    if (recallLocked.load())
+        return lockedResult();
     auto r = runRecall (0, index);
     return afterRecall (r);
 }
 
 state::ApplyResult Show::recallNext()
 {
+    if (recallLocked.load())
+        return lockedResult();
     auto r = runRecall (1, 0);
     return afterRecall (r);
 }
 
 state::ApplyResult Show::recallPrevious()
 {
+    if (recallLocked.load())
+        return lockedResult();
     auto r = runRecall (2, 0);
     return afterRecall (r);
 }
 
 state::ApplyResult Show::recallSceneByTag (int tag)
 {
+    if (recallLocked.load())
+        return lockedResult();
     auto r = runRecall (3, tag);
     return afterRecall (r);
 }
 
 state::ApplyResult Show::undoRecall()
 {
+    if (recallLocked.load())
+        return lockedResult();
     ld::ApplyResultC r {};
     ld::ld_show_undo_recall (handle, engine.getHandle(), &r);
     return afterRecall (r);
@@ -546,6 +563,8 @@ void Show::storeScenePartial (int index, const state::Scope& scope)
 
 state::ApplyResult Show::recallScenePartial (int index, const state::Scope& scope, bool noGlobal)
 {
+    if (recallLocked.load())
+        return lockedResult();
     const auto refs = state::toC (scope.strips);
     const auto c = scope.toC (refs);
     ld::ApplyResultC r {};
@@ -555,6 +574,8 @@ state::ApplyResult Show::recallScenePartial (int index, const state::Scope& scop
 
 state::ApplyResult Show::restoreScene (int index)
 {
+    if (recallLocked.load())
+        return lockedResult();
     ld::ApplyResultC r {};
     ld::ld_show_recall_scene_with (handle, engine.getHandle(), index, nullptr, true, &r);
     return afterRecall (r);
@@ -634,6 +655,8 @@ void Show::removeSnippetItems (int sceneIndex, int snippetIndex, const state::Sc
 
 state::ApplyResult Show::recallSnippetPartial (int sceneIndex, int snippetIndex, const state::Scope& limit)
 {
+    if (recallLocked.load())
+        return lockedResult();
     const auto refs = state::toC (limit.strips);
     const auto c = limit.toC (refs);
     ld::ApplyResultC r {};
@@ -711,6 +734,8 @@ void Show::removeSnippet (int sceneIndex, int snippetIndex)
 
 state::ApplyResult Show::recallSnippet (int sceneIndex, int snippetIndex)
 {
+    if (recallLocked.load())
+        return lockedResult();
     ld::ApplyResultC r {};
     ld::ld_show_recall_snippet (handle, engine.getHandle(), sceneIndex, snippetIndex, &r);
     return state::ApplyResult::fromC (r);

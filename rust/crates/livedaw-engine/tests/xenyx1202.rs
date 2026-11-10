@@ -1,5 +1,5 @@
-//! A XENYX 1204USB console, end to end: its counts, names and patches, and audio
-//! through its blocks (the curves are Sidecar's reading: `livedaw_dsp::xenyx1204`).
+//! A XENYX Q1202USB console, end to end: its counts, names and patches, and audio
+//! through its blocks (the curves are Sidecar's reading: `livedaw_dsp::xenyx1202`).
 
 use livedaw_engine::config::{ConsoleConfig, Counts};
 use livedaw_engine::params::StripKind;
@@ -21,7 +21,7 @@ struct Rig {
 impl Rig {
     fn new() -> Self {
         let engine = Arc::new(Engine::new(0));
-        engine.configure(&ConsoleConfig { profile: Profile::Xenyx1204, counts: Counts::XENYX1204 });
+        engine.configure(&ConsoleConfig { profile: Profile::Xenyx1202, counts: Counts::XENYX1202 });
         let (num_ins, num_outs) = (16, 12);
         let in_map: Vec<i32> = (0..num_ins as i32).collect();
         let out_map: Vec<i32> = (0..num_outs as i32).collect();
@@ -58,18 +58,19 @@ fn db(x: f32) -> f32 {
 
 #[test]
 fn a_new_console_has_the_panels_strips_and_names() {
-    let spec = Profile::Xenyx1204.spec();
-    assert_eq!(spec.name, "XENYX 1204USB");
-    assert_eq!(Profile::from_id("xenyx1204"), Some(Profile::Xenyx1204));
-    assert_eq!(spec.counts, Counts { channels: 6, aux: 3, buses: 3, mains: 1, matrices: 0, dcas: 0, mute_groups: 0, fx: 0 });
+    let spec = Profile::Xenyx1202.spec();
+    assert_eq!(spec.name, "XENYX Q1202USB");
+    assert_eq!(Profile::from_id("xenyx1202"), Some(Profile::Xenyx1202));
+    assert_eq!(spec.counts, Counts { channels: 8, aux: 1, buses: 1, mains: 1, matrices: 0, dcas: 0, mute_groups: 0, fx: 0 });
     let rig = Rig::new();
     let name = |k, n: usize| rig.engine.strips(k)[n].name();
     assert_eq!((name(StripKind::Channel, 0).as_str(), name(StripKind::Channel, 4).as_str()), ("1", "5/6"));
-    assert_eq!(name(StripKind::Aux, 2), "2-TR/USB");
-    assert_eq!((name(StripKind::Bus, 0).as_str(), name(StripKind::Bus, 2).as_str()), ("AUX 1", "ALT 3-4"));
+    assert_eq!(name(StripKind::Channel, 7), "11/12");
+    assert_eq!(name(StripKind::Aux, 0), "2-TR/USB");
+    assert_eq!(name(StripKind::Bus, 0), "FX SEND");
     assert_eq!(name(StripKind::Main, 0), "MAIN MIX");
     assert!(!rig.channel(0).params.stereo.load(Relaxed) && rig.channel(4).params.stereo.load(Relaxed));
-    assert_eq!(rig.channel(5).params.input_left.load(Relaxed), 6, "7/8 on LINE 7/8");
+    assert_eq!(rig.channel(7).params.input_left.load(Relaxed), 10, "11/12 on LINE 11/12");
     let ch = rig.channel(0);
     let f = ch.params.filter();
     assert_eq!((f.low_cut_freq.load(), f.low_cut_slope.load(Relaxed)), (75.0, 2));
@@ -78,7 +79,7 @@ fn a_new_console_has_the_panels_strips_and_names() {
 
 #[test]
 fn it_may_hold_only_its_own_models_and_the_universal_all() {
-    let spec = Profile::Xenyx1204.spec();
+    let spec = Profile::Xenyx1202.spec();
     assert!(spec.may_hold(DynSlot::Gate, "XYCLIP") && spec.may_hold(DynSlot::Dynamics, "XYCMP"));
     assert!(!spec.may_hold(DynSlot::Dynamics, "XYCLIP") && !spec.may_hold(DynSlot::Gate, "XYCMP"));
     assert!(spec.models.table(0).iter().all(|m| m.token.starts_with("XY")));
@@ -89,7 +90,10 @@ fn it_may_hold_only_its_own_models_and_the_universal_all() {
 
 #[test]
 fn the_fader_law_prints_the_panels_scale() {
-    let fader = Profile::Xenyx1204.spec().fader_for(StripKind::Channel);
+    let level = Profile::Xenyx1202.spec().fader_for(StripKind::Channel);
+    assert_eq!(level.max_db(), 15.0);
+    assert!(level.to_db(0.0) < -80.0, "LEVEL's bottom is -oo");
+    let fader = Profile::Xenyx1202.spec().fader_for(StripKind::Main);
     assert_eq!(fader.max_db(), 10.0);
     assert!(fader.to_db(0.0) < -80.0, "the bottom is -oo");
     assert!((fader.to_pos(0.0) - 0.786).abs() < 1e-3);

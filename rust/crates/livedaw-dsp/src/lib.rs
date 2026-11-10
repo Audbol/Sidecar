@@ -22,7 +22,7 @@ pub mod universal;
 pub mod util;
 pub mod wing;
 pub mod x32;
-pub mod xenyx1204;
+pub mod xenyx1202;
 pub mod y01v;
 pub mod y02r;
 

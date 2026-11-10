@@ -13,7 +13,7 @@
 #include "ui/HomeScreens.h"
 #include "ui/MixerChooser.h"
 #include "ui/UniversalSkin.h"
-#include "ui/Xenyx1204Surface.h"
+#include "ui/Xenyx1202Surface.h"
 #include "ui/StripCustomize.h"
 #include "ui/universal/StripPanel.h"
 #include "ui/ShowPanel.h"
@@ -309,7 +309,7 @@ public:
             expectEquals (ui::mixerChooser::label (ui::InterfaceKind::DLive), juce::String ("DLIVE (very experimental)"));
             expectEquals (ui::mixerChooser::label (ui::InterfaceKind::Dm2000), juce::String ("DM2000 (very experimental)"));
             expectEquals (ui::mixerChooser::label (ui::InterfaceKind::Pro2), juce::String ("PRO2 (very experimental)"));
-            expectEquals (ui::mixerChooser::label (ui::InterfaceKind::Xenyx1204), juce::String ("XENYX 1204USB (very experimental)"));
+            expectEquals (ui::mixerChooser::label (ui::InterfaceKind::Xenyx1202), juce::String ("XENYX Q1202USB (very experimental)"));
             expectEquals (ui::mixerChooser::label (ui::InterfaceKind::Universal), juce::String ("UNIVERSAL"));
             // The SETUP keys are in ui::InterfaceKind's order: a key's index is its kind.
             const auto keys = ui::mixerChooser::keyLabels();
@@ -2938,35 +2938,42 @@ public:
             }
         }
 
-        beginTest ("The 1204USB surface: its controls act on the engine, the console tape names a strip, and scenes recall through the show");
+        beginTest ("The Q1202USB surface: its controls act on the engine, the console tape names a strip, and scenes recall through the show");
         {
             MixerEngine engine (0);
-            engine.configureProfile (ld::kProfileXenyx1204);
-            setShownProfile (ld::kProfileXenyx1204);
+            engine.configureProfile (ld::kProfileXenyx1202);
+            setShownProfile (ld::kProfileXenyx1202);
             ui::fader::setLaw (engine.getFaderLaw());
             UiRig rig (engine);
-            auto skinOwner = std::make_unique<ui::Xenyx1204Surface> (rig.ctx);
+            auto skinOwner = std::make_unique<ui::Xenyx1202Surface> (rig.ctx);
             auto& skin = *skinOwner;
             skin.setSize (1920, 1080);
             const auto strip = [&engine] (StripKind k, int i) { return engine.getStrips (k)[(size_t) i].get(); };
             const auto knobOf = [&skin] (const juce::String& id) { return dynamic_cast<ui::xy::Knob*> (skin.findControl (id)); };
             const auto keyOf = [&skin] (const juce::String& id) { return dynamic_cast<ui::xy::Key*> (skin.findControl (id)); };
             const auto faderOf = [&skin] (const juce::String& id) { return dynamic_cast<ui::xy::Fader*> (skin.findControl (id)); };
-            expectEquals ((int) engine.getChannels().size(), 6);
-            expect (skin.getPanel().getNumChildComponents() > 90, "every control of the panel");
+            expectEquals ((int) engine.getChannels().size(), 8);
+            expectEquals ((int) engine.getBuses().size(), 1);
+            expect (skin.getPanel().getNumChildComponents() > 70, "every control of the panel");
 
             // The panel is scaled to fit under the scenes bar, whole.
             const auto where = skin.getLocalArea (&skin.getPanel(), skin.getPanel().getLocalBounds());
-            expect (skin.getLocalBounds().withTrimmedTop (ui::Xenyx1204Surface::kBarHeight).expanded (1).contains (where), "the panel fits the window");
+            expect (skin.getLocalBounds().withTrimmedTop (ui::Xenyx1202Surface::kBarHeight).expanded (1).contains (where), "the panel fits the window");
 
-            // A fader, on the engine's law; the two MAIN faders are one level.
-            auto* f = faderOf ("CH1 FADER");
+            // LEVEL knobs (-oo to +15 dB) and the one horizontal MAIN MIX fader (to +10 dB).
+            auto* f = knobOf ("CH1 LEVEL");
             expect (f != nullptr);
-            f->getBinding().set (0.786f);
+            f->getBinding().set (0.7f);
             expectWithinAbsoluteError (strip (StripKind::Channel, 0)->params.faderDb.load(), 0.0f, 0.5f);
-            faderOf ("MAIN FADER L")->getBinding().set (0.572f);
+            f->getBinding().set (1.0f);
+            expectWithinAbsoluteError (strip (StripKind::Channel, 0)->params.faderDb.load(), 15.0f, 0.5f);
+            f->getBinding().set (0.0f);
+            expect (strip (StripKind::Channel, 0)->params.faderDb.load() < -80.0f, "the bottom is -oo");
+            faderOf ("MAIN FADER")->getBinding().set (0.572f);
             expectWithinAbsoluteError (strip (StripKind::Main, 0)->params.faderDb.load(), -10.0f, 0.5f);
-            expectWithinAbsoluteError (faderOf ("MAIN FADER R")->getBinding().get(), 0.572f, 0.01f);
+            faderOf ("MAIN FADER")->getBinding().set (1.0f);
+            expectWithinAbsoluteError (strip (StripKind::Main, 0)->params.faderDb.load(), 10.0f, 0.5f);
+            expect (skin.findControl ("MAIN FADER L") == nullptr, "one fader, not a pair");
 
             // GAIN: the mic scale +10 to +60 dB; a plug in the LINE jack puts it on -10 to +40.
             auto& ch1 = strip (StripKind::Channel, 0)->params;
@@ -2981,40 +2988,34 @@ public:
             knobOf ("CH1 GAIN")->getBinding().set (1.0f);
             expectWithinAbsoluteError (ch1.input.trimDb.load(), 40.0f, 0.01f);
 
-            // COMP (channels 1-4), the 75 Hz low cut, the EQ, AUX 1 (pre) and AUX 2 (post).
+            // COMP (channels 1-4 only), the 75 Hz low cut, the EQ (channels 1-4 only), and the FX send (post-LEVEL).
             knobOf ("CH2 COMP")->getBinding().set (1.0f);
             expectWithinAbsoluteError (strip (StripKind::Channel, 1)->params.dynamics().values[0].load(), 10.0f, 0.01f);
-            expect (skin.findControl ("CH5 COMP") == nullptr, "the stereo channels have no compressor");
+            expect (skin.findControl ("CH5 COMP") == nullptr && skin.findControl ("CH5 HIGH") == nullptr, "the stereo channels have no compressor or EQ");
             keyOf ("CH1 LOWCUT")->onClick();
             expect (ch1.filter().lowCut.load());
             knobOf ("CH1 HIGH")->getBinding().set (1.0f);
             expectWithinAbsoluteError (ch1.eq().values[0].load(), 15.0f, 0.01f);
-            knobOf ("CH3 AUX1")->getBinding().set (1.0f);
-            knobOf ("CH3 AUX2")->getBinding().set (1.0f);
+            knobOf ("CH3 FX")->getBinding().set (1.0f);
             expectWithinAbsoluteError (strip (StripKind::Channel, 2)->sends[0].levelDb.load(), 15.0f, 0.01f);
-            expectEquals (strip (StripKind::Channel, 2)->sends[0].mode.load(), (int) SendMode::Pre);
-            expectEquals (strip (StripKind::Channel, 2)->sends[1].mode.load(), (int) SendMode::Post);
+            expectEquals (strip (StripKind::Channel, 2)->sends[0].mode.load(), (int) SendMode::Post);
+            knobOf ("CH8 FX")->getBinding().set (1.0f);
+            expectWithinAbsoluteError (strip (StripKind::Channel, 7)->sends[0].levelDb.load(), 15.0f, 0.01f);
+            knobOf ("FX SEND")->getBinding().set (1.0f);
+            expectWithinAbsoluteError (strip (StripKind::Bus, 0)->params.faderDb.load(), 15.0f, 0.01f);
 
-            // MUTE / ALT 3-4 takes a channel out of the main mix and into ALT 3-4; again puts it back.
-            auto* alt = keyOf ("CH4 ALT");
-            expect (strip (StripKind::Channel, 3)->mains[0].on.load() && ! alt->isOn());
-            alt->onClick();
-            expect (! strip (StripKind::Channel, 3)->mains[0].on.load() && strip (StripKind::Channel, 3)->sends[2].enabled.load() && alt->isOn());
-            alt->onClick();
-            expect (strip (StripKind::Channel, 3)->mains[0].on.load() && ! strip (StripKind::Channel, 3)->sends[2].enabled.load());
-
-            // The stereo channels' level switch, the returns, 2-TR/USB, SOURCE and +48 V.
-            keyOf ("CH5 LEVEL")->onClick();
+            // The stereo channels' +4/-10 switch, USB/2-TRACK, FX TO CTRL RM, PHONES and +48 V.
+            keyOf ("CH5 PAD")->onClick();
             expectWithinAbsoluteError (strip (StripKind::Channel, 4)->params.input.trimDb.load(), 11.8f, 0.01f);
-            expect (strip (StripKind::Aux, 0)->params.stereo.load() && strip (StripKind::Aux, 1)->params.stereo.load());
-            keyOf ("RETURN2 ASSIGN")->onClick();
-            expect (! strip (StripKind::Aux, 1)->mains[0].on.load() && strip (StripKind::Aux, 1)->sends[2].enabled.load());
-            expect (! strip (StripKind::Aux, 2)->mains[0].on.load(), "2-TR/USB is off the main mix until its key");
-            keyOf ("2TR TO MAIN")->onClick();
-            expect (strip (StripKind::Aux, 2)->mains[0].on.load());
-            keyOf ("SOURCE ALT")->onClick();
-            expectEquals (engine.phones.source.source.load(), MixerEngine::monitorSourceIndex (StripKind::Bus, 2));
-            expect (keyOf ("SOURCE ALT")->isOn() && ! keyOf ("SOURCE MAIN")->isOn());
+            expect (strip (StripKind::Aux, 0)->params.stereo.load());
+            expect (! strip (StripKind::Aux, 0)->mains[0].on.load(), "USB/2-TRACK is off the main mix until its key");
+            keyOf ("USB TO MAIN")->onClick();
+            expect (strip (StripKind::Aux, 0)->mains[0].on.load());
+            keyOf ("FX TO CTRL")->onClick();
+            expectEquals (engine.phones.source.source.load(), MixerEngine::monitorSourceIndex (StripKind::Bus, 0));
+            expect (keyOf ("FX TO CTRL")->isOn() && ! keyOf ("USB TO PHONES")->isOn());
+            keyOf ("FX TO CTRL")->onClick();
+            expectEquals (engine.phones.source.source.load(), MixerEngine::monitorSourceIndex (StripKind::Main, 0));
             keyOf ("PHANTOM")->onClick();
             expect (engine.getSource (0)->phantom.load() && engine.getSource (3)->phantom.load());
 

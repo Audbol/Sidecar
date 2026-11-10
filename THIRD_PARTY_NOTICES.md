@@ -54,7 +54,7 @@ compiled in.
 - File: `resources/fonts/PatrickHand-Regular.ttf` (embedded in the application binary)
 - Copyright 2010-2012 Patrick Wagesreiter (<mail@patrickwagesreiter.at>)
 - Licence: **SIL Open Font License 1.1**, [resources/fonts/OFL-PatrickHand.txt](resources/fonts/OFL-PatrickHand.txt)
-- Used for: the handwritten names on the console tape of the 1204USB surface.
+- Used for: the handwritten names on the console tape of the Q1202USB surface.
 
 ### libwing parameter data
 

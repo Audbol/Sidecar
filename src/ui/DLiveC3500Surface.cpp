@@ -140,6 +140,7 @@ DLiveC3500Surface::DLiveC3500Surface (UiContext& c)
     addAndMakeVisible (rightHost);
     leftHost.addAndMakeVisible (processing);
     processing.setBounds (0, 0, dl::kTouchW, dl::kTouchH);
+    routingView.setDragPans (true); // drag the page to reach the whole matrix
     for (auto* view : std::initializer_list<juce::Component*> { &scenes, &mixRack, &metersScreen, &ioScreen, &surfaceScreen, &routingView, &fxRack, &monitoring, &library, &setup, &status })
     {
         rightHost.addChildComponent (view);

@@ -338,7 +338,7 @@ set(LIVEDAW_UI_SOURCES
     src/ui/Pro2Surface.cpp
     src/ui/Pro2Screen.cpp
     src/ui/Dm2000Surface.cpp
-    src/ui/Xenyx1204Surface.cpp
+    src/ui/Xenyx1202Surface.cpp
     src/ui/ConsoleTape.cpp
     src/ui/Dm2000Display.cpp
     src/ui/Sq5Surface.cpp

@@ -1,4 +1,5 @@
 #include "ui/X32Surface.h"
+#include "ui/RemoteBar.h"
 #include "ui/HardwareLook.h"
 
 #include "ui/MeterBank.h"
@@ -46,7 +47,7 @@ using x32::kScribble;
 
 //==============================================================================
 X32Surface::X32Surface (UiContext& c)
-    : ctx (c), theme (Theme::dark()), universalKey ("UNIVERSAL MIXER", theme.accent, theme),
+    : ctx (c), theme (Theme::dark()), universalKey ("UNIVERSAL MIXER", theme.accent, theme), connectKey ("CONNECT", theme.accent, theme),
       sendsOnFaderKey ("SENDS ON FADER", kLayerLit, theme), clearSolo ("CLEAR SOLO", x32::kSoloLit, theme), remoteKey ("REMOTE", kLayerLit, theme), channel (c, theme), monitor (c, theme),
       assign (c, theme), display (c, theme)
 {
@@ -93,6 +94,8 @@ X32Surface::X32Surface (UiContext& c)
     };
     universalKey.setTooltip ("The Universal Mixer");
     addAndMakeVisible (universalKey);
+    remotebar::setup (connectKey, ctx);
+    addAndMakeVisible (connectKey);
     sendsOnFaderKey.isOn = [this] { return sendsOnFader; };
     sendsOnFaderKey.onClick = [this] { setSendsOnFader (! sendsOnFader); };
     sendsOnFaderKey.setTooltip ("Sends on fader: select a bus for the inputs' sends to it, or a channel for its sends to the buses");
@@ -206,6 +209,10 @@ X32Surface::X32Surface (UiContext& c)
         }
     };
     namesBelow (*this);
+    // CONNECT is the app's own key in the top bar (flat, like UNIVERSAL MIXER), not the console's.
+    connectKey.look = nullptr;
+    connectKey.labelBelow = connectKey.labelAbove = false;
+    connectKey.face = juce::Colour();
     // The encoders turn endlessly in their LED rings; MONITOR, PHONES and TALK
     // are pots, and the six under the screen have no rings.
     for (const char* pot : { "MONITOR", "PHONES", "TALK" })
@@ -414,6 +421,16 @@ void X32Surface::timerCallback()
     ctx.engine.getWing().followX32Links(); // LINK: the panel's changes reach the pair's other strip
     if (isCovered())
         return;
+    {
+        // The status line and the CONNECT key follow the session (which survives a swap of surfaces).
+        const auto info = remotebar::infoOf (ctx);
+        const auto line = remotebar::caption (info, "X32") + juce::String (info.readDone);
+        if (remotebar::refresh (connectKey, ctx, shownRemote) || line != shownRemoteLine)
+        {
+            shownRemoteLine = line;
+            repaintDesign (designBounds().removeFromTop (kTopBar));
+        }
+    }
     for (int i = 0; i < getNumInputFaders(); ++i)
         inputs[(size_t) i]->refresh();
     for (auto& s : groups)
@@ -462,6 +479,13 @@ void X32Surface::paint (juce::Graphics& g)
         g.setColour (theme.textDim);
         g.setFont (type::font (type::kLabel));
         g.drawText ("Sidecar's X32 surface  -  not affiliated with Behringer", bar.removeFromLeft (420), juce::Justification::centredLeft);
+        // Remote control of a real X32: the console and its status, left of the CONNECT key.
+        const auto remote = remotebar::infoOf (ctx);
+        const bool live = remote.state != RemoteSession::State::Offline;
+        auto status = bar.withTrimmedRight (170 + 2 * sizes::kGap + 120).removeFromRight (360);
+        g.setColour (remote.state == RemoteSession::State::Connected ? theme.accent : remote.state == RemoteSession::State::Lost ? theme.solo : theme.textDim);
+        g.setFont (type::font (type::kLabel, true));
+        g.drawText (live ? remotebar::caption (remote, "X32") : juce::String ("LOCAL  ") + remotebar::word (remote.state), status, juce::Justification::centredRight);
     }
 
     // The display's housing: a raised black bezel.
@@ -579,6 +603,8 @@ void X32Surface::resized()
     auto area = designBounds();
     auto bar = area.removeFromTop (kTopBar).reduced (sizes::kGapLarge, 8);
     universalKey.setBounds (bar.removeFromRight (170));
+    bar.removeFromRight (sizes::kGap);
+    connectKey.setBounds (bar.removeFromRight (120));
     area.reduce (sizes::kGapLarge, 0);
     area.removeFromBottom (sizes::kGapLarge);
 

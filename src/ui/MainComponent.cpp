@@ -11,13 +11,14 @@
 #include "ui/DLiveC3500Surface.h"
 #include "ui/Dm2000Surface.h"
 #include "ui/Pro2Surface.h"
-#include "ui/Xenyx1204Surface.h"
+#include "ui/Xenyx1202Surface.h"
 #include "ui/X32Surface.h"
 #include "ui/PluginChainWindow.h"
 #include "ui/PluginOverviewWindow.h"
 #include "ui/MixerChooser.h"
 #include "ui/StartupNotice.h"
 #include "ui/UniversalSkin.h"
+#include "ui/universal/Groups.h"
 #include "ui/WebMirror.h"
 #include "ui/WingPopups.h"
 #include "ui/WingSurface.h"
@@ -168,6 +169,9 @@ MainComponent::MainComponent (juce::AudioDeviceManager& dm, MixerEngine& e, Plug
     };
     ctx.setConsoleModel = [this] (ConsoleModel m) { applyConsoleModel (m, true); };
     ctx.setInterface = [this] (InterfaceKind kind) { setInterface (kind, true); };
+    ctx.remoteInfo = [this] { return engine.getRemoteSession().info(); };
+    ctx.remoteConnect = [this] { connectRemote(); };
+    ctx.remoteDisconnect = [this] { endRemote (true); };
     ctx.newShow = [this] { newShow(); };
     ctx.openShow = [this] { openShow(); };
     ctx.saveShow = [this] (bool saveAs) { saveShow (saveAs); };
@@ -307,7 +311,7 @@ MainComponent::MainComponent (juce::AudioDeviceManager& dm, MixerEngine& e, Plug
                   : savedKind == "dlive"   ? InterfaceKind::DLive
                   : savedKind == "dm2000"  ? InterfaceKind::Dm2000
                   : savedKind == "pro2"    ? InterfaceKind::Pro2
-                  : savedKind == "xenyx1204" ? InterfaceKind::Xenyx1204
+                  : savedKind == "xenyx1202" ? InterfaceKind::Xenyx1202
                                            : InterfaceKind::Wing,
                   false);
     setWantsKeyboardFocus (true);
@@ -323,6 +327,8 @@ MainComponent::~MainComponent()
     ctx.web = nullptr;
     webMirror.reset();
     // MIDI and the WING remote's scene and surface control go first: their callbacks reach the views.
+    if (isRemoteActive())
+        endRemote (false); // the console is let go and the local show comes back before anything shuts down
     engine.getWing().attachShow (nullptr);
     engine.getWing().setSurfaceCallbacks ({}, {});
     engine.getWing().setConsoleCallbacks ({}, {}, {});
@@ -401,7 +407,7 @@ void MainComponent::refreshAll()
                y02r = engine.getProfile() == ld::kProfileYamaha02R, sq5 = engine.getProfile() == ld::kProfileSq5,
                y01v = engine.getProfile() == ld::kProfileYamaha01V, dlive = engine.getProfile() == ld::kProfileDLive,
                dm2000 = engine.getProfile() == ld::kProfileDm2000,
-               pro2 = engine.getProfile() == ld::kProfileMidasPro2, xenyx = engine.getProfile() == ld::kProfileXenyx1204;
+               pro2 = engine.getProfile() == ld::kProfileMidasPro2, xenyx = engine.getProfile() == ld::kProfileXenyx1202;
     if (ctx.interfaceKind == InterfaceKind::Wing && ! isWingConsole())
     {
         log.info (x32      ? "This console is an X32: the X32 surface shows it"
@@ -412,15 +418,15 @@ void MainComponent::refreshAll()
                   : dlive  ? "This console is a dLive: the dLive surface shows it"
                   : dm2000 ? "This console is a DM2000: the DM2000 surface shows it"
                   : pro2   ? "This console is a PRO2: the PRO2 surface shows it"
-                  : xenyx  ? "This console is a XENYX 1204USB: its surface shows it"
+                  : xenyx  ? "This console is a XENYX Q1202USB: its surface shows it"
                            : "This console isn't a WING: the Universal Mixer shows it (SETUP > GENERAL > INTERFACE)");
-        setInterface (x32 ? InterfaceKind::X32 : promix ? InterfaceKind::ProMix : y02r ? InterfaceKind::Yamaha02R : sq5 ? InterfaceKind::Sq5 : y01v ? InterfaceKind::Yamaha01V : dlive ? InterfaceKind::DLive : dm2000 ? InterfaceKind::Dm2000 : pro2 ? InterfaceKind::Pro2 : xenyx ? InterfaceKind::Xenyx1204 : InterfaceKind::Universal, false);
+        setInterface (x32 ? InterfaceKind::X32 : promix ? InterfaceKind::ProMix : y02r ? InterfaceKind::Yamaha02R : sq5 ? InterfaceKind::Sq5 : y01v ? InterfaceKind::Yamaha01V : dlive ? InterfaceKind::DLive : dm2000 ? InterfaceKind::Dm2000 : pro2 ? InterfaceKind::Pro2 : xenyx ? InterfaceKind::Xenyx1202 : InterfaceKind::Universal, false);
     }
     else if ((ctx.interfaceKind == InterfaceKind::X32 && ! x32) || (ctx.interfaceKind == InterfaceKind::ProMix && ! promix)
              || (ctx.interfaceKind == InterfaceKind::Yamaha02R && ! y02r) || (ctx.interfaceKind == InterfaceKind::Sq5 && ! sq5)
              || (ctx.interfaceKind == InterfaceKind::Yamaha01V && ! y01v) || (ctx.interfaceKind == InterfaceKind::DLive && ! dlive)
              || (ctx.interfaceKind == InterfaceKind::Dm2000 && ! dm2000)
-             || (ctx.interfaceKind == InterfaceKind::Pro2 && ! pro2) || (ctx.interfaceKind == InterfaceKind::Xenyx1204 && ! xenyx))
+             || (ctx.interfaceKind == InterfaceKind::Pro2 && ! pro2) || (ctx.interfaceKind == InterfaceKind::Xenyx1202 && ! xenyx))
         setInterface (InterfaceKind::Universal, false);
     syncRemotes();
     skin->refreshAll();
@@ -453,6 +459,13 @@ bool MainComponent::isWingConsole() const
 
 void MainComponent::setInterface (InterfaceKind kind, bool save)
 {
+    // Swapping between the X32 surface and the Universal Mixer keeps the session (it lives in the engine);
+    // a surface that would turn the console into another one can't be opened meanwhile.
+    if (isRemoteActive() && kind != InterfaceKind::X32 && kind != InterfaceKind::Universal)
+    {
+        refuseWhileRemote ("SURFACE");
+        return;
+    }
     if (kind == InterfaceKind::Wing && skin != nullptr && ! isWingConsole())
     {
         // The WING surface addresses the WING's buses, mains and matrices: offer
@@ -587,19 +600,19 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                          }, true);
         return;
     }
-    if (kind == InterfaceKind::Xenyx1204 && skin != nullptr && engine.getProfile() != ld::kProfileXenyx1204)
+    if (kind == InterfaceKind::Xenyx1202 && skin != nullptr && engine.getProfile() != ld::kProfileXenyx1202)
     {
-        popups::confirm (skin->popupHost(), "XENYX 1204USB",
-                         "This console isn't a XENYX 1204USB. Clear the console and make it a fresh one (4 mono and 2 stereo channels, "
-                         "2 stereo aux returns, AUX 1 and 2 sends, ALT 3-4, MAIN MIX)?",
-                         "MAKE IT A 1204USB",
+        popups::confirm (skin->popupHost(), "XENYX Q1202USB",
+                         "This console isn't a XENYX Q1202USB. Clear the console and make it a fresh one (4 mono and 4 stereo channels, "
+                         "the FX send, MAIN MIX)?",
+                         "MAKE IT A Q1202USB",
                          [this, save]
                          {
                              closeAllPluginWindows();
-                             engine.configureProfile (ld::kProfileXenyx1204);
-                             setInterface (InterfaceKind::Xenyx1204, save);
+                             engine.configureProfile (ld::kProfileXenyx1202);
+                             setInterface (InterfaceKind::Xenyx1202, save);
                              refreshAll();
-                             log.info ("The console is a XENYX 1204USB");
+                             log.info ("The console is a XENYX Q1202USB");
                          }, true);
         return;
     }
@@ -629,7 +642,7 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                                                    : kind == InterfaceKind::DLive   ? "dlive"
                                                    : kind == InterfaceKind::Dm2000  ? "dm2000"
                                                    : kind == InterfaceKind::Pro2    ? "pro2"
-                                                   : kind == InterfaceKind::Xenyx1204 ? "xenyx1204"
+                                                   : kind == InterfaceKind::Xenyx1202 ? "xenyx1202"
                                                                                     : "wing");
     if (skin != nullptr && kind == ctx.interfaceKind)
         return;
@@ -644,7 +657,7 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
         || (kind == InterfaceKind::Yamaha01V && engine.getProfile() != ld::kProfileYamaha01V)
         || (kind == InterfaceKind::DLive && engine.getProfile() != ld::kProfileDLive)
         || (kind == InterfaceKind::Dm2000 && engine.getProfile() != ld::kProfileDm2000)
-        || (kind == InterfaceKind::Xenyx1204 && engine.getProfile() != ld::kProfileXenyx1204)
+        || (kind == InterfaceKind::Xenyx1202 && engine.getProfile() != ld::kProfileXenyx1202)
         || (kind == InterfaceKind::Pro2 && engine.getProfile() != ld::kProfileMidasPro2))
         kind = ctx.interfaceKind = InterfaceKind::Universal; // a console's surface shows that console only
     if (kind == InterfaceKind::Wing)
@@ -670,8 +683,8 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
         skin = std::make_unique<Dm2000Surface> (ctx);
     else if (kind == InterfaceKind::Pro2)
         skin = std::make_unique<Pro2Surface> (ctx);
-    else if (kind == InterfaceKind::Xenyx1204)
-        skin = std::make_unique<Xenyx1204Surface> (ctx);
+    else if (kind == InterfaceKind::Xenyx1202)
+        skin = std::make_unique<Xenyx1202Surface> (ctx);
     else
         skin = std::make_unique<UniversalSkin> (ctx);
     addChildComponent (*skin, 0); // under the editor and anything over the window
@@ -690,7 +703,7 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                   : kind == InterfaceKind::DLive   ? "Interface: the dLive surface"
                   : kind == InterfaceKind::Dm2000  ? "Interface: the DM2000 surface"
                   : kind == InterfaceKind::Pro2    ? "Interface: the PRO2 surface"
-                  : kind == InterfaceKind::Xenyx1204 ? "Interface: the XENYX 1204USB surface"
+                  : kind == InterfaceKind::Xenyx1202 ? "Interface: the XENYX Q1202USB surface"
                                                    : "Interface: the WING surface");
     }
 }
@@ -1051,6 +1064,8 @@ void MainComponent::showMixerChooser (bool canContinue, std::function<void()> be
 
 void MainComponent::startFresh (InterfaceKind kind)
 {
+    if (refuseWhileRemote ("NEW CONSOLE"))
+        return;
     closeAllPluginWindows();
     for (int i = 0; i < kMaxFx; ++i)
         engine.getFx().setPlugin (i, nullptr);
@@ -1066,7 +1081,7 @@ void MainComponent::startFresh (InterfaceKind kind)
                                  : kind == InterfaceKind::DLive     ? ld::kProfileDLive
                                  : kind == InterfaceKind::Dm2000    ? ld::kProfileDm2000
                                  : kind == InterfaceKind::Pro2      ? ld::kProfileMidasPro2
-                                 : kind == InterfaceKind::Xenyx1204 ? ld::kProfileXenyx1204
+                                 : kind == InterfaceKind::Xenyx1202 ? ld::kProfileXenyx1202
                                                                     : ld::kProfileUniversal);
     show.clear (engine.getConfiguredCounts().channels);
     showFile = juce::File();
@@ -1113,8 +1128,104 @@ void MainComponent::updateTitle()
         setName (title);
 }
 
+bool MainComponent::refuseWhileRemote (const juce::String& title)
+{
+    if (! isRemoteActive() || skin == nullptr)
+        return false;
+    popups::warn (skin->popupHost(), title, "An X32 is controlled from here. Disconnect first: this would change the whole console, "
+                                              "and the console's state must not be overwritten from this app.");
+    return true;
+}
+
+void MainComponent::connectRemote()
+{
+    if (skin == nullptr || isRemoteActive())
+        return;
+    const auto last = ctx.settings.getValue ("remoteX32Ip", "192.168.1.");
+    universal::askForText (skin->popupHost(), "CONNECT TO AN X32", "The X32's IP address (on its SETUP > NETWORK page):", last,
+                           [this] (const juce::String& ip)
+    {
+        if (! ip.matchesWildcard ("*.*.*.*", true) || juce::IPAddress (ip).isNull())
+        {
+            popups::warn (skin->popupHost(), "CONNECT TO AN X32", "\"" + ip + "\" isn't an IP address.");
+            return;
+        }
+        const bool switches = engine.getProfile() != ld::kProfileX32;
+        popups::confirm (skin->popupHost(), "CONTROL THE X32 AT " + ip,
+                         "The console is read first and wins: its state replaces what is on screen, and this app never sends its own "
+                         "state to the console. Only what you change here afterwards goes to it. The console does the audio: this "
+                         "computer passes none while connected. Recalling scenes here is off (use the console's; they follow here). "
+                         "Your local show is saved first and brought back when you disconnect"
+                             + juce::String (switches ? ", and the mixer here becomes an X32 meanwhile." : "."),
+                         "CONNECT", [this, ip] { startRemote (ip); }, false);
+    });
+}
+
+void MainComponent::startRemote (const juce::String& ip)
+{
+    if (isRemoteActive())
+        return;
+    // The local show first (its scenes, the console, plugins): it comes back on disconnect.
+    const auto file = paths::appData().getChildFile ("remote-recovery").withFileExtension (Show::fileExtension);
+    file.getParentDirectory().createDirectory();
+    const auto saved = show.saveToFile (file);
+    if (saved.failed())
+    {
+        popups::warn (skin->popupHost(), "CONNECT", "The local show couldn't be kept (" + saved.getErrorMessage() + "), so nothing was changed.");
+        return;
+    }
+    remoteRestoreFile = file;
+    remoteRestoreShowFile = showFile;
+    if (engine.getProfile() != ld::kProfileX32)
+    {
+        closeAllPluginWindows();
+        for (int i = 0; i < kMaxFx; ++i)
+            engine.getFx().setPlugin (i, nullptr);
+        engine.configureProfile (ld::kProfileX32);
+        show.clear (engine.getConfiguredCounts().channels);
+    }
+    engine.setRemoteControlled (true);
+    show.setRecallLocked (true);
+    if (! engine.getRemoteSession().connect (ip))
+    {
+        endRemote (false);
+        popups::warn (skin->popupHost(), "CONNECT", "Couldn't start connecting to " + ip + ".");
+        return;
+    }
+    ctx.settings.setValue ("remoteX32Ip", ip);
+    ctx.settings.saveIfNeeded();
+    refreshAll();
+    log.info ("Controlling the X32 at " + ip + ": its state is read first; audio runs on the console");
+}
+
+void MainComponent::endRemote (bool announce)
+{
+    engine.getRemoteSession().disconnect(); // joins the network thread: nothing is sent after this line
+    show.setRecallLocked (false);
+    engine.setRemoteControlled (false);
+    if (remoteRestoreFile.existsAsFile())
+    {
+        const auto result = reloadShow (remoteRestoreFile, true);
+        showFile = remoteRestoreShowFile;
+        if (result.failed())
+            log.warning ("The local show couldn't be restored: " + result.getErrorMessage() + " (kept at " + remoteRestoreFile.getFullPathName() + ")");
+        else
+            remoteRestoreFile.deleteFile();
+    }
+    remoteRestoreFile = remoteRestoreShowFile = juce::File();
+    if (skin != nullptr)
+    {
+        refreshAll();
+        updateTitle();
+    }
+    if (announce)
+        log.info ("Disconnected from the X32: the local show is back, this computer's audio runs again");
+}
+
 void MainComponent::newShow()
 {
+    if (refuseWhileRemote ("NEW SHOW"))
+        return;
     // The console stays what it is (its profile and configuration), with its
     // configured channels.
     const int channels = engine.getConfiguredCounts().channels;
@@ -1155,6 +1266,8 @@ void MainComponent::openShow()
 
 void MainComponent::openShowFile (const juce::File& file)
 {
+    if (refuseWhileRemote ("OPEN SHOW"))
+        return;
     const auto result = reloadShow (file, true);
     showFile = file.hasFileExtension (Show::fileExtension) ? file : juce::File();
     updateTitle();

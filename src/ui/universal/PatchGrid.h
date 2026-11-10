@@ -23,6 +23,8 @@ namespace livedaw::ui::universal
 class PatchGrid final : public juce::Component
 {
 public:
+    /** A drag moves around the grid, with the mouse too, instead of patching a range (a dLive's routing page). */
+    void setDragPans (bool);
     explicit PatchGrid (const Theme&);
     ~PatchGrid() override;
 
@@ -94,6 +96,7 @@ private:
     std::vector<juce::String> rowNames, columnNames;
     std::vector<float> rowLevels, columnLevels;
     Point crosshair, dragFrom, dragTo;
+    bool dragPans = false;
     std::unique_ptr<Points> points;
     std::unique_ptr<ScrollView> viewport;
 

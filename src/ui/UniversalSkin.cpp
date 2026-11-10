@@ -1,4 +1,5 @@
 #include "ui/UniversalSkin.h"
+#include "ui/RemoteBar.h"
 
 namespace livedaw::ui
 {
@@ -22,7 +23,7 @@ namespace
     };
     Back backTo (ld::ProfileId profile)
     {
-        if (profile == ld::kProfileXenyx1204) return { InterfaceKind::Xenyx1204, "1204USB SURFACE", "XENYX 1204USB" };
+        if (profile == ld::kProfileXenyx1202) return { InterfaceKind::Xenyx1202, "Q1202USB SURFACE", "XENYX Q1202USB" };
         if (profile == ld::kProfileMidasPro2) return { InterfaceKind::Pro2, "PRO2 SURFACE", "PRO2" };
         if (profile == ld::kProfileDm2000)    return { InterfaceKind::Dm2000, "DM2000 SURFACE", "DM2000" };
         if (profile == ld::kProfileX32)       return { InterfaceKind::X32, "X32 SURFACE", "X32" };
@@ -39,7 +40,7 @@ UniversalSkin::UniversalSkin (UiContext& c)
     : prevSceneKey ("PREV", themeOf (c).accent, themeOf (c)), nextSceneKey ("GO NEXT", themeOf (c).accent, themeOf (c)), clearSoloKey ("CLR SOLO", themeOf (c).solo, themeOf (c)),
       dimKey ("DIM", themeOf (c).solo, themeOf (c)), talkAKey ("TALK A", themeOf (c).solo, themeOf (c)), talkBKey ("TALK B", themeOf (c).solo, themeOf (c)),
       ctx (c), theme (themeOf (c)),
-      wingKey (backTo (c.engine.getProfile()).key, themeOf (c).accent, themeOf (c)), showKey ("SHOW", theme.accent, theme), menuKey ("MENU", theme.accent, theme), headerKey ("LESS", theme.accent, theme), mixer (c, theme), routingView (c, theme), fxRack (c, theme),
+      wingKey (backTo (c.engine.getProfile()).key, themeOf (c).accent, themeOf (c)), showKey ("SHOW", theme.accent, theme), menuKey ("MENU", theme.accent, theme), headerKey ("LESS", theme.accent, theme), connectKey ("CONNECT", theme.accent, theme), mixer (c, theme), routingView (c, theme), fxRack (c, theme),
       monitoring (c, theme), scenes (c, theme), library (c, theme), recorder (c, theme), setup (c, theme), controls (c, theme), inspector (c, theme), bridge (c, theme), history (c.engine)
 {
     setLookAndFeel (&universal::lookAndFeelFor (theme));
@@ -101,6 +102,8 @@ UniversalSkin::UniversalSkin (UiContext& c)
     row2Shown = ctx.settings.getBoolValue (uiprefs::universalHeader, true);
     headerKey.onClick = [this] { setSecondRowShown (! row2Shown); };
     addAndMakeVisible (headerKey);
+    remotebar::setup (connectKey, ctx);
+    addAndMakeVisible (connectKey);
     for (auto* part : mixer.getHeaderParts())
         addChildComponent (*part); // the window's header holds the strips' controls
     mixer.onHeaderChanged = [this] { layoutSecondRow(); };
@@ -398,6 +401,16 @@ void UniversalSkin::timerCallback()
     history.tick (juce::Time::getMillisecondCounter());
     for (auto* key : { &clearSoloKey, &dimKey, &talkAKey, &talkBKey })
         key->refresh();
+    {
+        // A real console under remote control: its name and status in the header's connection place.
+        const auto info = remotebar::infoOf (ctx);
+        remotebar::refresh (connectKey, ctx, shownRemote);
+        Connection c { ctx.engine.getRemoteSession().consoleName() + (info.name.isNotEmpty() ? " " + info.name : juce::String()),
+                       info.state != RemoteSession::State::Offline, info.state == RemoteSession::State::Connected,
+                       remotebar::word (info.state) };
+        if (c.remote != connection.remote || c.connected != connection.connected || c.status != connection.status || c.console != connection.console)
+            setConnection (c);
+    }
     const auto scene = getSceneReadout();
     if (scene != shownScene)
     {
@@ -481,7 +494,7 @@ void UniversalSkin::paint (juce::Graphics& g)
     g.fillEllipse (caption.removeFromLeft (10).withSizeKeepingCentre (7, 7).toFloat());
     caption.removeFromLeft (4);
     g.setFont (type::font (type::kCaption, true));
-    g.drawFittedText (connection.remote ? connection.console + (connection.connected ? "  CONNECTED" : "  OFFLINE") : juce::String ("LOCAL  PREVIEW"),
+    g.drawFittedText (connection.remote ? connection.console + "  " + connection.status : juce::String ("LOCAL  PREVIEW"),
                       caption, juce::Justification::centredLeft, 1, 0.8f);
 
     // The second row where it has no controls of its own: the show, the console's counts, DSP and time.
@@ -532,6 +545,7 @@ void UniversalSkin::resized()
     fromRight (bar, headerKey, 64);
     fromRight (bar, menuKey, 84);
     fromRight (bar, wingKey, 160);
+    fromRight (bar, connectKey, 110);
     const bool showShown = w >= 1500;
     showKey.setVisible (showShown);
     if (showShown)

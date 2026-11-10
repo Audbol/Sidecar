@@ -75,7 +75,7 @@ pub fn design(spec: &ModelSpec, values: &[f32], sr: f64, gain_scale: f32) -> EqD
         "MPEQ4" => crate::midas_pro::design_eq4(&p, sr, k, &mut d),
         "MPEQ6" => crate::midas_pro::design_eq6(&p, sr, k, &mut d),
         "MPGEQ" => crate::midas_pro::design_geq(&p, sr, k, &mut d),
-        "XYEQ" => crate::xenyx1204::design_eq(&p, sr, k, &mut d),
+        "XYEQ" => crate::xenyx1202::design_eq(&p, sr, k, &mut d),
         "SQPEQ" => design_sq(&p, sr, k, &mut d),
         "SQGEQ" => design_sq_geq(&p, sr, k, &mut d),
         _ => {}

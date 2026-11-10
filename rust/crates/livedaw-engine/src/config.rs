@@ -94,10 +94,10 @@ impl Counts {
     /// master), 8 matrices, 8 VCAs, 6 auto-mutes, 6 FX slots (p.127).
     pub const PRO2: Counts = Counts { channels: 56, aux: 8, buses: 16, mains: 2, matrices: 8, dcas: 8, mute_groups: 6, fx: 6 };
 
-    /// The XENYX 1204USB's (the panel): channels 1-4 mono and 5/6, 7/8 stereo; the two
-    /// stereo aux returns and the 2-TR/USB input (aux channels); the AUX 1 and AUX 2
-    /// sends and the ALT 3-4 bus; MAIN MIX. No FX, no matrices.
-    pub const XENYX1204: Counts = Counts { channels: 6, aux: 3, buses: 3, mains: 1, matrices: 0, dcas: 0, mute_groups: 0, fx: 0 };
+    /// The XENYX Q1202USB's (the panel): channels 1-4 mono and 5/6 to 11/12 stereo; the
+    /// 2-TR/USB input (an aux channel); the one FX send bus; MAIN MIX. No FX engines,
+    /// no matrices.
+    pub const XENYX1202: Counts = Counts { channels: 8, aux: 1, buses: 1, mains: 1, matrices: 0, dcas: 0, mute_groups: 0, fx: 0 };
 
     /// The Allen & Heath SQ-5's (Reference Guide V1.6.0, section 18): 48 input
     /// channels, 8 aux (its stereo FX returns), 16 buses (12 mixes, then the 4 FX

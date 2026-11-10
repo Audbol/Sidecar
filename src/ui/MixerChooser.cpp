@@ -17,7 +17,7 @@ const std::array<Mixer, 11>& mixers()
                                                { InterfaceKind::DLive, "DLIVE", "(very experimental)" },
                                                { InterfaceKind::Dm2000, "DM2000", "(very experimental)" },
                                                { InterfaceKind::Pro2, "PRO2", "(very experimental)" },
-                                               { InterfaceKind::Xenyx1204, "XENYX 1204USB", "(very experimental)" } } };
+                                               { InterfaceKind::Xenyx1202, "XENYX Q1202USB", "(very experimental)" } } };
     return list;
 }
 

@@ -26,7 +26,7 @@ namespace
         { "Universal Mixer", 65 },
         { "DM2000", 70 },
         { "PRO2", 35 },
-        { "1204USB", 40 },
+        { "Q1202USB", 40 },
     };
 } // namespace
 
@@ -85,7 +85,7 @@ juce::String text()
          "the automatic mic mixer are " << app << "'s reading of the published material; RackUltra and Dyn8 are built but run only on Universal strips for now.\n"
          "- DM2000: its processing, most of its effects, its surface and the LCD's most-used pages exist; its Automix (faders and ON only), recorder arming and locator exist; remote layers, surround and Bulk are not built.\n"
          "- PRO2: its processing, most of its effects and a first surface with its screen exist; MCA and SIS, direct outs and the safes are drawn but not built.\n"
-         "- 1204USB: the first analog mixer: its routing, blocks and surface follow a render of the panel and the quick-start guide; its sound is " << app << "'s reading, nothing was measured. Console tape and scenes are " << app << "'s own additions.\n"
+         "- Q1202USB: the first analog mixer: its routing, blocks and surface follow the owner's photographs of the panel and the quick-start guide; its sound is " << app << "'s reading, nothing was measured. Console tape and scenes are " << app << "'s own additions.\n"
          "- Universal Mixer: " << app << "'s own interface for a console of any size.\n"
          "\n"
          "## Trademarks\n"

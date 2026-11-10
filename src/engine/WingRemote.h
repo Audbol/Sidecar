@@ -65,6 +65,18 @@ public:
         is an X32 (its profile names that protocol), on UDP 10023. */
     bool isX32Running() const;
     static constexpr int x32Port = 10023;
+    /** Remote control of a real X32 (the engine must be the X32 profile's): reads the console into the
+        engine first and sends nothing until then. State 0 offline, 1 connecting, 2 connected, 3 lost. */
+    bool connectX32Remote (const juce::String& ip);
+    void disconnectX32Remote();
+    int getX32RemoteState() const;
+    struct X32RemoteInfo
+    {
+        juce::String name, model, firmware, error;
+        int readDone = 0, readTotal = 0;
+        juce::int64 sent = 0, received = 0;
+    };
+    X32RemoteInfo getX32RemoteInfo() const;
     /** Allen & Heath MIDI over TCP (livedaw-ahmidi): with the others while the
         console is a dLive (TCP 51325 and the Surface's 51328) or an SQ-5 (51325). */
     bool isAhMidiRunning() const;

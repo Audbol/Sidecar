@@ -183,6 +183,8 @@ public:
     void update();
     /** With handles: the rings to drag, the mouse wheel for a band's width. */
     bool handles = true;
+    /** Without handles: a tap on the graph. */
+    std::function<void()> onTap;
     /** One band alone, on black (the four panels' View); -1: all of them. */
     int onlyBand = -1;
     int getSelectedBand() const noexcept { return selected; }

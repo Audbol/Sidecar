@@ -20,6 +20,7 @@
 //! Behringer firmware or X32-Edit code is used.
 
 pub mod chn;
+pub mod client;
 pub mod map;
 pub mod meters;
 pub mod oscillator;
@@ -28,6 +29,7 @@ pub mod server;
 pub mod sysex;
 pub mod value;
 
+pub use client::{ClientStatus, LinkState, X32Client};
 pub use map::{Console, Found, LinkFollower, Target, Tree};
 pub use server::{Config, Identity, Status, X32Server, OSC_PORT};
 pub use value::{Fmt, Law, Ty, Val};

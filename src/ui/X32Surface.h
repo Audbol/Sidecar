@@ -514,7 +514,9 @@ private:
 
     UiContext& ctx;
     const universal::Theme& theme;
-    universal::ToggleKey universalKey, sendsOnFaderKey, clearSolo;
+    universal::ToggleKey universalKey, sendsOnFaderKey, clearSolo, connectKey;
+    RemoteSession::State shownRemote = RemoteSession::State::Offline;
+    juce::String shownRemoteLine;
     /** REMOTE (DAW remote), at the top of the input layer keys: Sidecar has none, so it's dark. */
     universal::ToggleKey remoteKey;
     std::vector<std::unique_ptr<universal::ToggleKey>> inputLayerKeys, groupLayerKeys;

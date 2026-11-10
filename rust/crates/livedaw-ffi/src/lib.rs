@@ -677,7 +677,7 @@ fn profile_id(p: Profile) -> i32 {
         Profile::AhDLive(_) => 7,
         Profile::Dm2000 => 8,
         Profile::MidasPro2 => 9,
-        Profile::Xenyx1204 => 10,
+        Profile::Xenyx1202 => 10,
     }
 }
 

@@ -6,6 +6,7 @@
 
 #include <juce_events/juce_events.h>
 
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -344,7 +345,15 @@ public:
 
     static constexpr const char* fileExtension = ".lshow";
 
+    /** While a real console is under remote control its own scenes are the ones that count: every
+        recall of this app's scenes (scene, next, previous, tag, partial, snippet, undo) is refused with a
+        warning, so that the console's state isn't overwritten from a file. Storing a scene still works. */
+    void setRecallLocked (bool locked) noexcept { recallLocked.store (locked); }
+    bool isRecallLocked() const noexcept { return recallLocked.load(); }
+
 private:
+    std::atomic<bool> recallLocked { false };
+    static state::ApplyResult lockedResult();
     void timerCallback() override;
     void changed();
     state::ApplyResult afterRecall (ld::ApplyResultC&);

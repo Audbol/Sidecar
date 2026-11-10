@@ -90,6 +90,17 @@ private:
     void closePluginWindowsFor (juce::AudioProcessor*);
     void closeAllPluginWindows();
 
+    /** Remote control of a real X32 (CONNECT / DISCONNECT keys of the Universal Mixer and the X32 surface).
+        The address is asked for and remembered; the local show is saved to a recovery file first and
+        brought back by endRemote; this computer's audio is off meanwhile and local scene recall refused. */
+    void connectRemote();
+    void startRemote (const juce::String& ip);
+    void endRemote (bool announce);
+    bool isRemoteActive() const { return engine.getRemoteSession().isActive(); }
+    /** True (after a warning) when a console-wide change is asked for while a console is controlled. */
+    bool refuseWhileRemote (const juce::String& title);
+    juce::File remoteRestoreFile, remoteRestoreShowFile;
+
     void newShow();
     void openShow();
     void openShowFile (const juce::File&);

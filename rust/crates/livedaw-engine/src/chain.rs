@@ -804,11 +804,11 @@ pub fn order_block(letter: u8) -> Option<Node> {
     }
 }
 
-/// The XENYX 1204USB's channels (the panel's order, Sidecar's reading of the signal
+/// The XENYX Q1202USB's channels (the panel's order, Sidecar's reading of the signal
 /// flow: the guide gives no block diagram in the part read): the preamp's gain (INPUT),
 /// the low cut (channels 1-4), the soft clip (the GATE slot), the compressor (channels
-/// 1-4), the 3-band EQ, then the fader.
-pub(crate) const XENYX1204_CHANNEL: &[Node] = &[
+/// 1-4), the 3-band EQ (channels 1-4), then the LEVEL control.
+pub(crate) const XENYX1202_CHANNEL: &[Node] = &[
     rta(rta_tap::IN),
     Node::Input,
     t(tap::IN),
@@ -831,9 +831,9 @@ pub(crate) const XENYX1204_CHANNEL: &[Node] = &[
     t(tap::POST),
 ];
 
-/// The XENYX 1204USB's aux returns and 2-TR/USB input, its aux sends, ALT 3-4 and MAIN
-/// MIX: a level control and nothing else.
-pub(crate) const XENYX1204_PLAIN: &[Node] = &[
+/// The XENYX Q1202USB's 2-TR/USB input, its FX send and MAIN MIX: a level control and
+/// nothing else.
+pub(crate) const XENYX1202_PLAIN: &[Node] = &[
     rta(rta_tap::IN),
     Node::Input,
     t(tap::IN),
@@ -847,9 +847,9 @@ pub(crate) const XENYX1204_PLAIN: &[Node] = &[
 ];
 
 /// Its channels' process order (one, unused: the blocks sit in the template's order).
-pub(crate) const XENYX1204_ORDERS: &[&str] = &["GDE"];
+pub(crate) const XENYX1202_ORDERS: &[&str] = &["GDE"];
 /// Its outputs have no blocks.
-pub(crate) const XENYX1204_OUTPUT_ORDERS: &[&str] = &["---"];
+pub(crate) const XENYX1202_OUTPUT_ORDERS: &[&str] = &["---"];
 
 #[cfg(test)]
 mod tests {

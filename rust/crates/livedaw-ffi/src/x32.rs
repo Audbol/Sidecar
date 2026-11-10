@@ -11,12 +11,14 @@ use livedaw_engine::{Engine, Profile};
 use livedaw_wing::server::{EngineHandle, EnginePtr};
 use livedaw_x32::map::State;
 use livedaw_x32::sysex::{self, Done};
-use livedaw_x32::{chn, scn, Config, Console, Identity, LinkFollower, X32Server};
+use livedaw_x32::{chn, scn, Config, Console, Identity, LinkFollower, X32Client, X32Server};
 use std::sync::Arc;
 
 pub struct LdX32 {
     engine: *const Engine,
     server: Option<X32Server>,
+    /// Remote control of a real X32 (`ld_x32c_*`).
+    client: Option<X32Client>,
     /// What the X32 has and the engine doesn't (automix, key filters...)
     /// while the server is stopped (scene files).
     state: State,
@@ -33,7 +35,11 @@ impl LdX32 {
         if engine.profile() != Profile::X32 {
             return None;
         }
-        let state = self.server.as_ref().map_or(&self.state, |s| &s.shared().state);
+        let state = match (&self.client, &self.server) {
+            (Some(c), _) => &c.shared().state,
+            (None, Some(s)) => &s.shared().state,
+            _ => &self.state,
+        };
         Some(f(&Console::new(engine, state)))
     }
 }
@@ -48,7 +54,13 @@ pub unsafe extern "C" fn ld_x32_create(e: *const Engine) -> *mut LdX32 {
         return std::ptr::null_mut();
     }
     guard(std::ptr::null_mut(), || {
-        Box::into_raw(Box::new(LdX32 { engine: e, server: None, state: State::default(), links: LinkFollower::default() }))
+        Box::into_raw(Box::new(LdX32 {
+            engine: e,
+            server: None,
+            client: None,
+            state: State::default(),
+            links: LinkFollower::default(),
+        }))
     })
 }
 
@@ -60,6 +72,9 @@ pub unsafe extern "C" fn ld_x32_create(e: *const Engine) -> *mut LdX32 {
 pub unsafe extern "C" fn ld_x32_destroy(x: *mut LdX32) {
     if !x.is_null() {
         let mut x = Box::from_raw(x);
+        if let Some(mut c) = x.client.take() {
+            c.stop();
+        }
         if let Some(mut s) = x.server.take() {
             s.stop();
         }
@@ -277,6 +292,80 @@ pub unsafe extern "C" fn ld_x32_follow_links(x: *mut LdX32) {
         x.with_console(|c| c.follow_links(&mut links));
     });
     x.links = links;
+}
+
+/// Remote control (message thread): connects to a real X32 at `ip` (UDP 10023
+/// unless `port` is above 0). The engine must be the X32 profile's. Returns
+/// false for a bad address or another profile. It reads the console first; the
+/// console wins and nothing is sent to it until then.
+///
+/// # Safety
+/// `x` is from `ld_x32_create`; `ip` holds `ip_len` bytes of UTF-8.
+#[no_mangle]
+pub unsafe extern "C" fn ld_x32c_connect(x: *mut LdX32, ip: *const u8, ip_len: usize, port: i32) -> bool {
+    let Some(x) = x.as_mut() else { return false };
+    let ip = str_arg(ip, ip_len).trim().to_string();
+    guard(false, || {
+        if let Some(mut c) = x.client.take() {
+            c.stop();
+        }
+        let Ok(ip) = ip.parse::<std::net::IpAddr>() else { return false };
+        let Some(engine) = x.engine.as_ref() else { return false };
+        if engine.profile() != Profile::X32 {
+            return false;
+        }
+        let port = u16::try_from(port).ok().filter(|p| *p > 0).unwrap_or(livedaw_x32::OSC_PORT);
+        let handle: Arc<dyn EngineHandle> = Arc::new(EnginePtr(x.engine));
+        match X32Client::start(handle, std::net::SocketAddr::new(ip, port)) {
+            Ok(c) => {
+                x.client = Some(c);
+                true
+            }
+            Err(_) => false,
+        }
+    })
+}
+
+/// Disconnects (nothing is sent after it returns).
+///
+/// # Safety
+/// `x` is from `ld_x32_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_x32c_disconnect(x: *mut LdX32) {
+    if let Some(c) = x.as_mut().and_then(|x| x.client.take()) {
+        let mut c = c;
+        c.stop();
+    }
+}
+
+/// 0 offline, 1 connecting, 2 connected, 3 lost.
+///
+/// # Safety
+/// `x` is from `ld_x32_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_x32c_state(x: *const LdX32) -> i32 {
+    x.as_ref().and_then(|x| x.client.as_ref()).map_or(0, |c| c.status().state as i32)
+}
+
+/// The connection as text lines: name, model, firmware, error, then
+/// "read_done read_total sent received".
+///
+/// # Safety
+/// `x` is from `ld_x32_create` (or null); free the string with `ld_string_free`.
+#[no_mangle]
+pub unsafe extern "C" fn ld_x32c_info(x: *const LdX32) -> *mut LdString {
+    let Some(c) = x.as_ref().and_then(|x| x.client.as_ref()) else { return std::ptr::null_mut() };
+    let s = c.status();
+    guard(std::ptr::null_mut(), || {
+        LdString::new(format!(
+            "{}
+{}
+{}
+{}
+{} {} {} {}",
+            s.name, s.model, s.firmware, s.error, s.read_done, s.read_total, s.sent, s.received
+        ))
+    })
 }
 
 #[cfg(test)]

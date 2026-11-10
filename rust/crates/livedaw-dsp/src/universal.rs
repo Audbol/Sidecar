@@ -9,7 +9,7 @@
 //! (`dynamics`, `eq` and `fx::create` pick them by token).
 
 use crate::model::{ModelSpec, ModelTables};
-use crate::{dlive, dlive_fx, dm2000, midas_pro, promix, sq, wing, x32, xenyx1204, y01v, y02r};
+use crate::{dlive, dlive_fx, dm2000, midas_pro, promix, sq, wing, x32, xenyx1202, y01v, y02r};
 
 /// The tables in `parts` one after the other, each from its `skip`th model on.
 const fn join<const N: usize>(parts: &[(&[ModelSpec], usize)]) -> [ModelSpec; N] {
@@ -51,7 +51,7 @@ const OTHER_EQS: [ModelSpec; 19] = [
     midas_pro::EQ4_MODEL,
     midas_pro::EQ6_MODEL,
     midas_pro::GEQ_MODEL,
-    xenyx1204::EQ_MODEL,
+    xenyx1202::EQ_MODEL,
 ];
 
 /// The other consoles' FX tables start with NONE and EXT, which the WING's has already.
@@ -65,7 +65,7 @@ const N_DYN: usize = wing::DYN_MODELS.len()
     + dlive::DYN_MODELS.len()
     + dm2000::DYN_MODELS.len()
     + midas_pro::DYN_MODELS.len()
-    + xenyx1204::DYN_MODELS.len();
+    + xenyx1202::DYN_MODELS.len();
 const N_EQ_CH: usize = wing::EQ_MODELS_CH.len() + OTHER_EQS.len();
 const N_EQ_BUS: usize = wing::EQ_MODELS_BUS.len() + OTHER_EQS.len();
 const N_FX: usize = wing::FX_MODELS.len()
@@ -88,7 +88,7 @@ pub static DYN_MODELS: [ModelSpec; N_DYN] = join(&[
     (dlive::DYN_MODELS, 0),
     (dm2000::DYN_MODELS, 0),
     (midas_pro::DYN_MODELS, 0),
-    (xenyx1204::DYN_MODELS, 0),
+    (xenyx1202::DYN_MODELS, 0),
 ]);
 pub static EQ_MODELS_CH: [ModelSpec; N_EQ_CH] = join(&[(wing::EQ_MODELS_CH, 0), (&OTHER_EQS, 0)]);
 pub static EQ_MODELS_BUS: [ModelSpec; N_EQ_BUS] = join(&[(wing::EQ_MODELS_BUS, 0), (&OTHER_EQS, 0)]);
@@ -144,8 +144,8 @@ pub fn console_of(token: &str) -> Option<&'static str> {
             || midas_pro::fx::is_pro2(token))
     {
         Some("PRO2")
-    } else if token.starts_with("XY") && (model_in(xenyx1204::DYN_MODELS, token) || token == xenyx1204::EQ_MODEL.token) {
-        Some("1204USB")
+    } else if token.starts_with("XY") && (model_in(xenyx1202::DYN_MODELS, token) || token == xenyx1202::EQ_MODEL.token) {
+        Some("Q1202USB")
     } else if token.starts_with("DLV") {
         Some("dLive")
     } else if token.starts_with("O1") && (y01v::fx::is_01v(token) || token == y01v::TWO_BAND_EQ.token) {
@@ -245,7 +245,7 @@ mod tests {
                 &mut out,
             );
             let exempt =
-                m.category == crate::model::ModelCategory::Gate || dlive::is_preamp(m.token) || xenyx1204::is_clip(m.token);
+                m.category == crate::model::ModelCategory::Gate || dlive::is_preamp(m.token) || xenyx1202::is_clip(m.token);
             assert!(known || exempt, "{} has no level curve", m.token);
         }
     }
@@ -261,8 +261,8 @@ mod tests {
         assert_eq!(console_of("DLVGEQH"), Some("dLive"));
         assert_eq!(console_of("DLVVALVE"), Some("dLive"));
         assert_eq!(console_of("DLVTUBE"), Some("dLive"));
-        assert_eq!(console_of("XYEQ"), Some("1204USB"));
-        assert_eq!(console_of("XYCMP"), Some("1204USB"));
+        assert_eq!(console_of("XYEQ"), Some("Q1202USB"));
+        assert_eq!(console_of("XYCMP"), Some("Q1202USB"));
         assert_eq!(console_of("DLY"), None, "the X32's delay isn't a dLive's");
         assert_eq!(console_of("Y2CHREV"), Some("02R"));
         assert_eq!(console_of("SQCOMP"), Some("SQ-5"));

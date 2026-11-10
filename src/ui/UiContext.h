@@ -81,8 +81,8 @@ enum class InterfaceKind
     Dm2000,
     /** A Midas PRO2 console: its own surface. */
     Pro2,
-    /** A XENYX 1204USB: its own surface. */
-    Xenyx1204
+    /** A XENYX Q1202USB: its own surface. */
+    Xenyx1202
 };
 
 /** The HOME screen's tabs for the selected strip: the overview group
@@ -127,6 +127,12 @@ struct UiContext
     // Selection (one SELECT at a time). The strip may disappear: resolve every time.
     std::function<void (Strip*)> selectStrip;
     std::function<Strip*()> getSelectedStrip;
+
+    // Remote control of a real console (the X32's; engine/RemoteSession.h): the session's state, and the
+    // actions of the CONNECT and DISCONNECT keys (the first asks for the address and what happens to the
+    // local show). Set by the main component.
+    std::function<RemoteSession::Info()> remoteInfo;
+    std::function<void()> remoteConnect, remoteDisconnect;
 
     // Navigation
     std::function<void (Screen)> showScreen;

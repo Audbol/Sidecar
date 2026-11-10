@@ -1350,6 +1350,7 @@ DLiveSurface::DLiveSurface (UiContext& c)
     processing->setBounds (0, 0, dl::kTouchW, dl::kTouchH);
     processing->setOneScreen (true);
     processing->setView (1); // the four bands, as the C1500 shots have them
+    routingView.setDragPans (true); // drag the page to reach the whole matrix
     for (auto* view : std::initializer_list<juce::Component*> { &routingView, &fxRack, &monitoring, &library, &setupView })
     {
         screenHost.addChildComponent (view);

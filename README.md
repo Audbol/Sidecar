@@ -40,7 +40,7 @@ and please [report what you find](#reporting-problems).
 | **SQ-5** | Its surface and touchscreen, MIDI and MIDI over TCP |
 | **dLive** | C3500 and C1500 surfaces and touchscreens, MIDI over TCP |
 | **PRO2** | Its processing and effects, on the Universal Mixer until it has a surface |
-| **1204USB** | An analog mixer: its panel, routing and blocks, plus console tape and scenes |
+| **Q1202USB** | An analog mixer: its panel, routing and blocks, plus console tape and scenes |
 | **Universal Mixer** | Sidecar's own touch-friendly interface, for any size of console |
 
 Under all of them is one mixer core without any one console's limits. A console's size is a

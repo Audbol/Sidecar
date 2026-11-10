@@ -1,5 +1,5 @@
-//! The Behringer XENYX 1204USB's processing blocks, Sidecar's first analog mixer
-//! (the surface is `Xenyx1204Surface`).
+//! The Behringer XENYX Q1202USB's processing blocks, Sidecar's first analog mixer
+//! (the surface is `Xenyx1202Surface`).
 //!
 //! The ranges below are from the published panel and quick-start guide: the mic
 //! gain knob's +10 to +60 dB and the line scale's -10 to +40 dB, the low cut at
@@ -115,10 +115,10 @@ pub fn is_clip(token: &str) -> bool {
     token == "XYCLIP"
 }
 
-/// The FX table every console has (empty slot and EXT first); the 1204USB has no effects, and its console no slots.
+/// The FX table every console has (empty slot and EXT first); the Q1202USB has no effects, and its console no slots.
 pub static FX_MODELS: [ModelSpec; 2] = [crate::wing::FX_MODELS[0], crate::wing::FX_MODELS[1]];
 
-/// The 1204USB's models.
+/// The Q1202USB's models.
 pub static MODELS: ModelTables = ModelTables {
     dynamics: DYN_MODELS,
     aux_dynamics: &[],

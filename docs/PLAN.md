@@ -6,7 +6,7 @@ they land. The detail behind each console is in `UNIVERSAL_MIXER.md` and `DLIVE_
 ## 1. Save and try what exists
 
 - [ ] Commit the 01V, dLive and fast-build work. It's all uncommitted on one PC.
-- [x] XENYX 1204USB: blocks, routing, panel, console tape and scenes (first analog mixer). Still to do: measure a real mixer (compressor law, EQ widths, soft clip, fader law); independent MAIN L / R faders; the ALT 3-4 and aux send jack outputs on the panel.
+- [x] XENYX Q1202USB: blocks, routing, panel, console tape and scenes (first analog mixer). Still to do: measure a real mixer (compressor law, EQ widths, soft clip, fader law); the FX SEND and CTRL ROOM jack outputs on the panel.
 - [ ] Push the commits. Pushing needs a sign-in as Audbol on this PC.
 - [ ] Try test.6 by hand: the 01V's surface first, then the dLive.
 
@@ -99,6 +99,7 @@ Console features:
 - [ ] The right screen's other pages in the console's own style; they host the Universal pages for now.
 - [x] Scenes' other tabs and the I/O page from photos. Update stores into chosen scenes; Global Safes works by
       whole rows and columns; Outputs and Inputs patch for real.
+- [ ] dLive routing and I/O grids: click and drag the page to move around and reach the whole matrix (owner).
 - [ ] Scene Manager: Undo Go works (`Show::undoRecall`); still to do: Lock, Copy and
       Paste, Copy Filter, Embedded Recall, Custom MIDI, Actions. Cue lists, Import from a show, Tie Lines
       and Virtual SoundCheck are drawn only; Update's Auto Tracking and Relative too.
@@ -151,7 +152,7 @@ The owner wants a lot of work done here; what comes first is theirs to say.
 
 - [x] 01V and DM2000: fader groups, mute groups and pairs save with scenes (owner checked a real 01V: they do).
 - [x] First run: the start-up window asks which console (it already does: with nothing to continue, a console must be chosen).
-- [ ] Analog mixers: reuse the 1204USB's console tape and scene bar as the template.
+- [ ] Analog mixers: reuse the Q1202USB's console tape and scene bar as the template.
 - [ ] Consoles: controls Sidecar cannot back stay drawn but dim.
 - [ ] Regenerate the README screenshots after the Universal Mixer design pass, before v0.3.0.
 - [ ] With every update: review each console's completion percentage in `src/ui/StartupNotice.cpp`.
@@ -185,7 +186,8 @@ Research is in `NEW_CONSOLES_RESEARCH.md`; documents and photos are outside the 
   - [x] Its effects but SQ1 Dynamics (Delay, Virtual DN780, Flanger, Phaser, Pitch Shifter, 3-Band Compressor, Dynamic EQ).
   - [x] The C++ side of the profile and its surface (`Pro2Surface`, `Pro2Screen`), first pass.
   - [ ] MCA groups, the direct output, the safes but AUTO, the aux send modes, stereo-linked sends and matrices, SIS panning.
-- [ ] Later (owner: for sure): Universal Mixer as a remote for real consoles: audio off, the profile loaded, moves sent to the console and its changes shown, full state read on connect, a clear connected state. Start with the 01V (owner has one), then the X32 and WING, the MIDI Yamahas, partial SQ-5 and dLive. Not the PRO2 (no published protocol) or analog mixers.
+- [ ] DM2000: accuracy pass against the owner's photos (`photos-owner` in the reference folder), and its meter bridge.
+- [ ] Remote control, X32 done in code (livedaw-x32 client, RemoteSession, CONNECT keys; tested against Sidecar's own server only; meters from /meters and a check against a real console still to do): Later (owner: for sure): Universal Mixer as a remote for real consoles: audio off, the profile loaded, moves sent to the console and its changes shown, full state read on connect, a clear connected state. Start with the 01V (owner has one), then the X32 and WING, the MIDI Yamahas, partial SQ-5 and dLive. Not the PRO2 (no published protocol) or analog mixers.
 - [ ] Analog mixers: Sidecar will branch out to cover them as well.
 - [ ] Then, as wanted: Midas M32, Yamaha CL, QL, TF and DM7, Allen & Heath Avantis, DiGiCo SD and
       Quantum.

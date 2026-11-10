@@ -286,41 +286,39 @@ pub mod pro2_ports {
     pub const MONITOR_OUT: i32 = 26;
 }
 
-/// The XENYX 1204USB's inputs and outputs, in the engine's numbering (the panel's jacks
-/// and the USB interface; Sidecar's own order). Inputs: MIC/LINE 1-4, LINE 5/6 and 7/8
-/// (L, R each), the aux returns 1 and 2 (L, R), the 2-TR input (L, R), USB from the
-/// computer (L, R). Outputs: MAIN L, R, ALT 3-4 L, R, AUX SEND 1, 2, the 2-TR output
-/// (L, R), USB to the computer (L, R), PHONES L, R.
-pub mod xenyx1204_ports {
+/// The XENYX Q1202USB's inputs and outputs, in the engine's numbering (the panel's jacks
+/// and the USB interface; Sidecar's own order). Inputs: MIC/LINE 1-4, LINE 5/6 to 11/12
+/// (L, R each; eight jacks), the 2-TR input (L, R), USB from the computer (L, R).
+/// Outputs: MAIN L, R, FX SEND, CTRL ROOM L, R, the 2-TR output (L, R), USB to the
+/// computer (L, R), PHONES L, R.
+pub mod xenyx1202_ports {
     pub const MIC_LINE: i32 = 0;
     pub const LINE: i32 = 4;
-    pub const RETURN: i32 = 8;
     pub const TWO_TR_IN: i32 = 12;
     pub const USB_IN: i32 = 14;
     pub const MAIN_OUT: i32 = 0;
-    pub const ALT_OUT: i32 = 2;
-    pub const AUX_OUT: i32 = 4;
-    pub const TWO_TR_OUT: i32 = 6;
-    pub const USB_OUT: i32 = 8;
-    pub const PHONES_OUT: i32 = 10;
+    pub const FX_OUT: i32 = 2;
+    pub const CTRL_OUT: i32 = 3;
+    pub const TWO_TR_OUT: i32 = 5;
+    pub const USB_OUT: i32 = 7;
+    pub const PHONES_OUT: i32 = 9;
 }
 
-/// The XENYX 1204USB's port groups.
-pub static XENYX1204_PORT_GROUPS: &[PortGroup] = &[
-    PortGroup::new("MIC/LINE IN", "MIC", IN, Some(xenyx1204_ports::MIC_LINE), 4),
-    PortGroup::new("LINE IN", "LIN", IN, Some(xenyx1204_ports::LINE), 4),
-    PortGroup::new("AUX RETURN", "RTN", IN, Some(xenyx1204_ports::RETURN), 4),
-    PortGroup::new("2-TR IN", "2TR", IN, Some(xenyx1204_ports::TWO_TR_IN), 2),
-    PortGroup::new("USB IN", "USB", IN, Some(xenyx1204_ports::USB_IN), 2),
+/// The XENYX Q1202USB's port groups.
+pub static XENYX1202_PORT_GROUPS: &[PortGroup] = &[
+    PortGroup::new("MIC/LINE IN", "MIC", IN, Some(xenyx1202_ports::MIC_LINE), 4),
+    PortGroup::new("LINE IN", "LIN", IN, Some(xenyx1202_ports::LINE), 8),
+    PortGroup::new("2-TR IN", "2TR", IN, Some(xenyx1202_ports::TWO_TR_IN), 2),
+    PortGroup::new("USB IN", "USB", IN, Some(xenyx1202_ports::USB_IN), 2),
     PortGroup::new("OSCILLATOR", "OSC", IN, Some(OSC_SOURCE_BASE), NUM_OSCILLATORS as i32),
-    PortGroup::new("AUX SEND", "AUX", IN, Some(BUS_SOURCES), 2 * 3),
+    PortGroup::new("FX SEND", "FX", IN, Some(BUS_SOURCES), 2),
     PortGroup::new("MAIN MIX", "MIX", IN, Some(MAIN_SOURCES), 2),
-    PortGroup::new("MAIN OUT", "MAIN", OUT, Some(xenyx1204_ports::MAIN_OUT), 2),
-    PortGroup::new("ALT 3-4 OUT", "ALT", OUT, Some(xenyx1204_ports::ALT_OUT), 2),
-    PortGroup::new("AUX SEND OUT", "AUX", OUT, Some(xenyx1204_ports::AUX_OUT), 2),
-    PortGroup::new("2-TR OUT", "2TR", OUT, Some(xenyx1204_ports::TWO_TR_OUT), 2),
-    PortGroup::new("USB OUT", "USB", OUT, Some(xenyx1204_ports::USB_OUT), 2),
-    PortGroup::new("PHONES", "PH", OUT, Some(xenyx1204_ports::PHONES_OUT), 2),
+    PortGroup::new("MAIN OUT", "MAIN", OUT, Some(xenyx1202_ports::MAIN_OUT), 2),
+    PortGroup::new("FX SEND OUT", "FX", OUT, Some(xenyx1202_ports::FX_OUT), 1),
+    PortGroup::new("CTRL ROOM OUT", "CTRL", OUT, Some(xenyx1202_ports::CTRL_OUT), 2),
+    PortGroup::new("2-TR OUT", "2TR", OUT, Some(xenyx1202_ports::TWO_TR_OUT), 2),
+    PortGroup::new("USB OUT", "USB", OUT, Some(xenyx1202_ports::USB_OUT), 2),
+    PortGroup::new("PHONES", "PH", OUT, Some(xenyx1202_ports::PHONES_OUT), 2),
 ];
 
 /// The Midas PRO2's port groups, in the WING's order: its stage box, surface inputs

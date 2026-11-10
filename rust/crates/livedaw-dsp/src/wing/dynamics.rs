@@ -861,10 +861,10 @@ fn configure(spec: &ModelSpec, v: &[f32], sr: f32) -> Config {
         "DMDUK" => {
             Config::Duck(gate(p.f("thr"), -p.f("range"), 0.0, p.f("att"), p.f("hld") * rate_scale, p.f("dcy") * rate_scale))
         }
-        // The XENYX 1204USB's (`livedaw_dsp::xenyx1204`; Sidecar's reading): the COMP
+        // The XENYX Q1202USB's (`livedaw_dsp::xenyx1202`; Sidecar's reading): the COMP
         // knob's one law, and the soft clip as the Tube Stage's pentode at a low drive.
         "XYCMP" => {
-            let s = crate::xenyx1204::comp_setting(p.f("comp"));
+            let s = crate::xenyx1202::comp_setting(p.f("comp"));
             let mut c = comp(s.threshold_db, s.ratio, 6.0, 10.0, 150.0);
             c.post_db = s.makeup_db;
             Config::Comp(c)

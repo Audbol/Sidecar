@@ -145,6 +145,44 @@ bool WingRemote::isX32Running() const
     return ld::ld_x32_port (x32) >= 0;
 }
 
+bool WingRemote::connectX32Remote (const juce::String& ip)
+{
+    const Utf8 a (ip);
+    return ld::ld_x32c_connect (x32, a.data, a.size, 0);
+}
+
+void WingRemote::disconnectX32Remote()
+{
+    ld::ld_x32c_disconnect (x32);
+}
+
+int WingRemote::getX32RemoteState() const
+{
+    return ld::ld_x32c_state (x32);
+}
+
+WingRemote::X32RemoteInfo WingRemote::getX32RemoteInfo() const
+{
+    X32RemoteInfo r;
+    const auto lines = juce::StringArray::fromLines (takeString (ld::ld_x32c_info (x32)));
+    if (lines.size() >= 5)
+    {
+        r.name = lines[0];
+        r.model = lines[1];
+        r.firmware = lines[2];
+        r.error = lines[3];
+        const auto n = juce::StringArray::fromTokens (lines[4], " ", "");
+        if (n.size() >= 4)
+        {
+            r.readDone = n[0].getIntValue();
+            r.readTotal = n[1].getIntValue();
+            r.sent = n[2].getLargeIntValue();
+            r.received = n[3].getLargeIntValue();
+        }
+    }
+    return r;
+}
+
 juce::String WingRemote::writeX32Scene (const juce::String& name, const juce::String& note) const
 {
     const Utf8 n (name), t (note);

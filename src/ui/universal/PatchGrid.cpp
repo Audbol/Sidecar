@@ -73,7 +73,7 @@ public:
     {
         owner.setCrosshair (pointAt (e.getPosition()));
         // A mouse drag patches a range; a touch drag scrolls the points (the viewport's).
-        owner.dragFrom = e.source.canHover() ? pointAt (e.getPosition()) : Point();
+        owner.dragFrom = e.source.canHover() && ! owner.dragPans ? pointAt (e.getPosition()) : Point();
         owner.dragTo = {};
     }
 
@@ -119,6 +119,12 @@ public:
 private:
     PatchGrid& owner;
 };
+
+void PatchGrid::setDragPans (bool pans)
+{
+    dragPans = pans;
+    viewport->setScrollOnDragMode (pans ? juce::Viewport::ScrollOnDragMode::all : juce::Viewport::ScrollOnDragMode::nonHover);
+}
 
 PatchGrid::PatchGrid (const Theme& t) : theme (t), points (std::make_unique<Points> (*this)), viewport (std::make_unique<ScrollView> (*this))
 {

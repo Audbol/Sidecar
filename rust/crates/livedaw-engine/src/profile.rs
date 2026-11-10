@@ -10,8 +10,8 @@ use crate::chain::{self, Node};
 use crate::config::Counts;
 use crate::params::{StripKind, DEFAULT_COLOUR, WING_BUSES, WING_COLOURS, WING_COLOUR_GRID};
 use crate::ports::{
-    dlive_ports, dm2000_ports, pro2_ports, xenyx1204_ports, PortGroup, DLIVE_PORT_GROUPS, DM2000_PORT_GROUPS, PRO2_PORT_GROUPS,
-    PROMIX01_PORT_GROUPS, SQ5_PORT_GROUPS, WING_PORT_GROUPS, X32_PORT_GROUPS, XENYX1204_PORT_GROUPS, Y01V_PORT_GROUPS,
+    dlive_ports, dm2000_ports, pro2_ports, xenyx1202_ports, PortGroup, DLIVE_PORT_GROUPS, DM2000_PORT_GROUPS, PRO2_PORT_GROUPS,
+    PROMIX01_PORT_GROUPS, SQ5_PORT_GROUPS, WING_PORT_GROUPS, X32_PORT_GROUPS, XENYX1202_PORT_GROUPS, Y01V_PORT_GROUPS,
     Y02R_PORT_GROUPS,
 };
 use livedaw_dsp::fader::FaderLaw;
@@ -54,9 +54,9 @@ pub enum Profile {
     /// The Midas PRO2: its processing and effects. Its surface follows; it has no
     /// published control protocol.
     MidasPro2,
-    /// The Behringer XENYX 1204USB, Sidecar's first analog mixer: its blocks, routing
+    /// The Behringer XENYX Q1202USB, Sidecar's first analog mixer: its blocks, routing
     /// and surface; no remote protocol.
-    Xenyx1204,
+    Xenyx1202,
 }
 
 impl Profile {
@@ -71,7 +71,7 @@ impl Profile {
         Profile::AhDLive(DLiveLayout::FOH),
         Profile::Dm2000,
         Profile::MidasPro2,
-        Profile::Xenyx1204,
+        Profile::Xenyx1202,
     ];
 
     /// The id shows store (`<Console profile="...">`).
@@ -87,7 +87,7 @@ impl Profile {
             Profile::AhDLive(_) => "dlive",
             Profile::Dm2000 => "dm2000",
             Profile::MidasPro2 => "pro2",
-            Profile::Xenyx1204 => "xenyx1204",
+            Profile::Xenyx1202 => "xenyx1202",
         }
     }
 
@@ -108,7 +108,7 @@ impl Profile {
             Profile::AhDLive(layout) => dlive_spec(layout),
             Profile::Dm2000 => &DM2000,
             Profile::MidasPro2 => &PRO2,
-            Profile::Xenyx1204 => &XENYX1204,
+            Profile::Xenyx1202 => &XENYX1202,
         }
     }
 
@@ -132,7 +132,7 @@ impl Profile {
             | Profile::AhDLive(_)
             | Profile::Dm2000
             | Profile::MidasPro2
-            | Profile::Xenyx1204 => *counts == self.spec().counts,
+            | Profile::Xenyx1202 => *counts == self.spec().counts,
             Profile::Wing => {
                 let w = self.spec().counts;
                 counts.aux == w.aux
@@ -330,9 +330,9 @@ impl Palette {
         }),
     };
 
-    /// The XENYX 1204USB's: no strip colours on the panel (the surface has console tape),
+    /// The XENYX Q1202USB's: no strip colours on the panel (the surface has console tape),
     /// so the ProMix 01's eight, every strip white (Sidecar's).
-    pub const XENYX1204: Palette =
+    pub const XENYX1202: Palette =
         Palette { colours: &PROMIX01_COLOURS, grid: &[1, 2, 3, 4, 5, 6, 7, 8], default: 8, factory: Some(|_s, _k, _n| 8) };
 
     /// The PRO2's: the input name fields start green (Owner's Manual p.243), and the
@@ -621,9 +621,9 @@ impl ProfileSpec {
         if self.profile == Profile::MidasPro2 {
             return slot != DynSlot::Preamp && livedaw_dsp::midas_pro::is_gate(token) == (slot == DynSlot::Gate);
         }
-        if self.profile == Profile::Xenyx1204 {
+        if self.profile == Profile::Xenyx1202 {
             // The soft clip sits after the preamp (the GATE slot), the compressor after it.
-            return slot != DynSlot::Preamp && livedaw_dsp::xenyx1204::is_clip(token) == (slot == DynSlot::Gate);
+            return slot != DynSlot::Preamp && livedaw_dsp::xenyx1202::is_clip(token) == (slot == DynSlot::Gate);
         }
         self.factory_preamp_block.is_none() || livedaw_dsp::dlive::is_preamp(token) == (slot == DynSlot::Preamp)
     }
@@ -1953,14 +1953,13 @@ static DM2000: ProfileSpec = ProfileSpec {
     ],
 };
 
-/// What a new XENYX 1204USB starts as (the panel): channels 1-4 mono on MIC/LINE 1-4, 5/6
-/// and 7/8 stereo on the LINE jacks; the low cut at 75 Hz, 18 dB/oct (off), the soft clip
-/// on, the compressor (channels 1-4) on at COMP 0 (flat), the EQ on and flat. The returns
-/// stereo on the AUX RETURN jacks and the 2-TR/USB input stereo on the 2-TR input. The
-/// AUX 1 and AUX 2 sends mono, ALT 3-4 and MAIN MIX stereo.
-fn xenyx1204_factory(_spec: &ProfileSpec, p: &crate::params::StripParams, kind: StripKind, slot: usize) {
+/// What a new XENYX Q1202USB starts as (the panel): channels 1-4 mono on MIC/LINE 1-4, 5/6
+/// to 11/12 stereo on the LINE jacks; the low cut at 75 Hz, 18 dB/oct (off), the soft clip
+/// on, the compressor (channels 1-4) on at COMP 0 (flat), the EQ on and flat. The 2-TR/USB
+/// input stereo on the 2-TR input. The FX send mono, MAIN MIX stereo.
+fn xenyx1202_factory(_spec: &ProfileSpec, p: &crate::params::StripParams, kind: StripKind, slot: usize) {
     use std::sync::atomic::Ordering::Relaxed;
-    use xenyx1204_ports::{LINE, MIC_LINE, RETURN, TWO_TR_IN};
+    use xenyx1202_ports::{LINE, MIC_LINE, TWO_TR_IN};
     match kind {
         StripKind::Channel => {
             let stereo = slot >= 4;
@@ -1971,77 +1970,70 @@ fn xenyx1204_factory(_spec: &ProfileSpec, p: &crate::params::StripParams, kind: 
                 p.input_right.store(first + 1, Relaxed);
             }
             let f = p.filter();
-            f.low_cut_freq.store(livedaw_dsp::xenyx1204::LOW_CUT_HZ);
-            f.low_cut_slope.store(livedaw_dsp::xenyx1204::LOW_CUT_SLOPE, Relaxed);
+            f.low_cut_freq.store(livedaw_dsp::xenyx1202::LOW_CUT_HZ);
+            f.low_cut_slope.store(livedaw_dsp::xenyx1202::LOW_CUT_SLOPE, Relaxed);
             p.gate().on.store(true, Relaxed);
             p.dynamics().on.store(slot < 4, Relaxed);
             p.eq().on.store(true, Relaxed);
         }
         StripKind::Aux => {
             p.stereo.store(true, Relaxed);
-            let first = if slot < 2 { RETURN + 2 * slot as i32 } else { TWO_TR_IN };
-            p.input_left.store(first, Relaxed);
-            p.input_right.store(first + 1, Relaxed);
+            p.input_left.store(TWO_TR_IN, Relaxed);
+            p.input_right.store(TWO_TR_IN + 1, Relaxed);
         }
-        StripKind::Bus => p.stereo.store(slot == 2, Relaxed),
+        StripKind::Bus => p.stereo.store(false, Relaxed),
         StripKind::Main | StripKind::Matrix => {}
     }
 }
 
-/// The XENYX 1204USB's strip names, as the panel prints them.
-fn xenyx1204_name(_spec: &ProfileSpec, kind: StripKind, slot: usize) -> Option<String> {
+/// The XENYX Q1202USB's strip names, as the panel prints them.
+fn xenyx1202_name(_spec: &ProfileSpec, kind: StripKind, slot: usize) -> Option<String> {
     match (kind, slot) {
-        (StripKind::Channel, 4) => Some("5/6".into()),
-        (StripKind::Channel, 5) => Some("7/8".into()),
+        (StripKind::Channel, s) if s >= 4 => Some(format!("{}/{}", 2 * s - 3, 2 * s - 2)),
         (StripKind::Channel, s) => Some(format!("{}", s + 1)),
-        (StripKind::Aux, 2) => Some("2-TR/USB".into()),
-        (StripKind::Aux, s) => Some(format!("RTN {}", s + 1)),
-        (StripKind::Bus, 2) => Some("ALT 3-4".into()),
-        (StripKind::Bus, s) => Some(format!("AUX {}", s + 1)),
+        (StripKind::Aux, 0) => Some("2-TR/USB".into()),
+        (StripKind::Bus, 0) => Some("FX SEND".into()),
         (StripKind::Main, 0) => Some("MAIN MIX".into()),
         _ => None,
     }
 }
 
-/// A new XENYX 1204USB's output patch: MAIN MIX on the main outputs, the 2-TR outputs and
-/// the USB send; ALT 3-4 on its jacks; AUX 1 and AUX 2 on their jacks.
-fn xenyx1204_factory_outputs(_spec: &ProfileSpec, patch: &crate::routing::OutputPatch) {
+/// A new XENYX Q1202USB's output patch: MAIN MIX on the main outputs, the 2-TR outputs, the
+/// USB send and CTRL ROOM; the FX SEND on its jack.
+fn xenyx1202_factory_outputs(_spec: &ProfileSpec, patch: &crate::routing::OutputPatch) {
     use crate::routing::strip_source_input;
-    use xenyx1204_ports::{ALT_OUT, AUX_OUT, MAIN_OUT, TWO_TR_OUT, USB_OUT};
+    use xenyx1202_ports::{CTRL_OUT, FX_OUT, MAIN_OUT, TWO_TR_OUT, USB_OUT};
     for side in 0..2 {
         let main = strip_source_input(StripKind::Main, 0, side);
-        for first in [MAIN_OUT, TWO_TR_OUT, USB_OUT] {
+        for first in [MAIN_OUT, TWO_TR_OUT, USB_OUT, CTRL_OUT] {
             patch.set(first + side as i32, main);
         }
-        patch.set(ALT_OUT + side as i32, strip_source_input(StripKind::Bus, 2, side));
     }
-    for aux in 0..2 {
-        patch.set(AUX_OUT + aux as i32, strip_source_input(StripKind::Bus, aux, 0));
-    }
+    patch.set(FX_OUT, strip_source_input(StripKind::Bus, 0, 0));
 }
 
-/// The Behringer XENYX 1204USB (the published panel and quick-start guide): 4 mono and 2
-/// stereo channels, 2 stereo aux returns and the 2-TR/USB input, the AUX 1 (pre) and AUX 2
-/// (post) sends, ALT 3-4, MAIN MIX; its fader law (a render's scale), its ports; its blocks
-/// (`livedaw_dsp::xenyx1204`). The sends start on (at -oo); the surface sets their modes.
-static XENYX1204: ProfileSpec = ProfileSpec {
-    profile: Profile::Xenyx1204,
-    name: "XENYX 1204USB",
-    counts: Counts::XENYX1204,
-    templates: [chain::XENYX1204_CHANNEL, chain::XENYX1204_PLAIN, chain::XENYX1204_PLAIN],
-    process_orders: chain::XENYX1204_ORDERS,
+/// The XENYX Q1202USB (the owner's console, photographed, and the quick-start guide): 4
+/// mono and 4 stereo channels, the 2-TR/USB input, the FX send, MAIN MIX on one fader; its
+/// LEVEL and fader laws (the panel's scales), its ports; its blocks
+/// (`livedaw_dsp::xenyx1202`). The sends start on (at -oo); the surface sets their modes.
+static XENYX1202: ProfileSpec = ProfileSpec {
+    profile: Profile::Xenyx1202,
+    name: "XENYX Q1202USB",
+    counts: Counts::XENYX1202,
+    templates: [chain::XENYX1202_CHANNEL, chain::XENYX1202_PLAIN, chain::XENYX1202_PLAIN],
+    process_orders: chain::XENYX1202_ORDERS,
     aux_order: b"",
-    output_orders: chain::XENYX1204_OUTPUT_ORDERS,
-    fader: FaderLaw::XENYX1204,
-    main_fader: None,
+    output_orders: chain::XENYX1202_OUTPUT_ORDERS,
+    fader: FaderLaw::XENYX1202_LEVEL,
+    main_fader: Some(FaderLaw::XENYX1202),
     bus_fader: None,
     // Not in the guide (the pan knob's taper): the WING's.
     pan: PanLaw::WING,
-    port_groups: XENYX1204_PORT_GROUPS,
-    models: &livedaw_dsp::xenyx1204::MODELS,
+    port_groups: XENYX1202_PORT_GROUPS,
+    models: &livedaw_dsp::xenyx1202::MODELS,
     remotes: Remotes { midi: None, network: &[] },
-    palette: Palette::XENYX1204,
-    labels: ["CH", "RTN", "AUX", "MAIN", "MTX"],
+    palette: Palette::XENYX1202,
+    labels: ["CH", "RTN", "FX", "MAIN", "MTX"],
     slots: &[],
     buses_to_main: 0..0,
     mono_mains: &[],
@@ -2049,9 +2041,9 @@ static XENYX1204: ProfileSpec = ProfileSpec {
     sends_on: true,
     send_tap: -1,
     tap_point: crate::strip::tap::PFL as i32,
-    factory: Some(xenyx1204_factory),
-    factory_name: Some(xenyx1204_name),
-    factory_outputs: Some(xenyx1204_factory_outputs),
+    factory: Some(xenyx1202_factory),
+    factory_name: Some(xenyx1202_name),
+    factory_outputs: Some(xenyx1202_factory_outputs),
     dca_names: None,
     dca_fader_db: 0.0,
     fx_factory: &[],
@@ -2948,8 +2940,8 @@ mod tests {
                 assert_eq!(s.fader, FaderLaw::DM2000);
                 continue;
             }
-            if p == Profile::Xenyx1204 {
-                assert_eq!(s.fader, FaderLaw::XENYX1204);
+            if p == Profile::Xenyx1202 {
+                assert_eq!(s.fader, FaderLaw::XENYX1202_LEVEL);
                 continue;
             }
             if p == Profile::MidasPro2 {

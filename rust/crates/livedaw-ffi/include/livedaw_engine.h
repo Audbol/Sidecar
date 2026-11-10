@@ -198,7 +198,7 @@ enum ProfileId : int32_t
     kProfileDLive = 7, // ABI 55: the Allen & Heath dLive (its FoH template); its effects, MIDI and surface follow
     kProfileDm2000 = 8, // ABI 57: the Yamaha DM2000 (Version 2); its surface and MIDI follow
     kProfileMidasPro2 = 9, // the Midas PRO2: its processing and profile; its surface follows
-    kProfileXenyx1204 = 10 // the XENYX 1204USB: its blocks, routing and surface
+    kProfileXenyx1202 = 10 // the XENYX Q1202USB: its blocks, routing and surface
 };
 
 enum StripKindId : int32_t
@@ -1971,6 +1971,14 @@ extern "C"
         panel): a change on one side goes to the other, for what /config/linkcfg
         shares; a pair just linked takes its odd strip's values. */
     void ld_x32_follow_links (LdX32*);
+
+    // Remote control of a real X32 (message thread): connect reads the console into the
+    // engine (the X32 profile) first and sends nothing that sets a value until then.
+    bool ld_x32c_connect (LdX32*, const char* ip, size_t ipLen, int32_t port); // port <= 0: 10023
+    void ld_x32c_disconnect (LdX32*);
+    int32_t ld_x32c_state (const LdX32*); // 0 offline, 1 connecting, 2 connected, 3 lost
+    /** Lines: name, model, firmware, error, then "readDone readTotal sent received"; null when offline. */
+    LdString* ld_x32c_info (const LdX32*);
 
     // ABI 53: the Allen & Heath SQ-5's MIDI (livedaw-sq), over the engine (message
     // thread; destroy it before the engine). Does nothing unless the engine is an SQ-5.

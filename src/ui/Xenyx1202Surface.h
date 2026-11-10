@@ -14,15 +14,15 @@
 namespace livedaw::ui
 {
 
-class Xenyx1204Surface;
+class Xenyx1202Surface;
 
-/** The 1204USB's panel: a straight-on render's, drawn from its shapes and colours (no maker's
-    artwork or logo). Its processing is `livedaw_dsp::xenyx1204`; its routing is the profile's.
+/** The Q1202USB's panel: the owner's console photographed straight on, drawn from its shapes and
+    colours (no maker's name, artwork or logo). Its processing is `livedaw_dsp::xenyx1202`; its routing is the profile's.
     Sidecar's own additions are the console tape under each channel and the scenes bar over the
     panel; neither is on the mixer. */
 namespace xy
 {
-    /** The panel's look: dark charcoal, black rubber keys, white-lined fader caps. */
+    /** The panel's look: charcoal, grey plastic knobs with coloured caps and white pointers. */
     const hw::Look& look();
 
     /** Anything on the panel that follows the engine. */
@@ -32,7 +32,7 @@ namespace xy
         virtual void refresh() = 0;
     };
 
-    /** A knob with a coloured cap (blue COMP, navy EQ, red AUX 1, orange AUX 2, grey PAN). */
+    /** A knob with a coloured cap (light-blue COMP, navy EQ, red FX, dark PAN and BAL, white LEVEL). */
     class Knob final : public Control
     {
     public:
@@ -52,7 +52,7 @@ namespace xy
         float shown = -1.0f, dragStart = 0.0f;
     };
 
-    /** A rubber key; `face` colours its cap (the red source and 2-TR keys), `lit` is its LED. */
+    /** A push switch; `face` colours its cap (the red PHANTOM key), `led` is its lamp. */
     class Key final : public Control
     {
     public:
@@ -69,7 +69,7 @@ namespace xy
         bool shownOn = false, down = false;
     };
 
-    /** A fader on the 1204USB's 60 mm travel, its cap on the engine's fader law. */
+    /** The MAIN MIX fader: horizontal, -oo at the left to +10 dB at the right, on the main's law. */
     class Fader final : public Control
     {
     public:
@@ -83,7 +83,7 @@ namespace xy
         void mouseDoubleClick (const juce::MouseEvent&) override;
         void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
         /** Where the cap's centre sits for a position 0..1, in this component. */
-        float capY (float position) const noexcept;
+        float capX (float position) const noexcept;
 
     private:
         juce::Colour cap;
@@ -104,12 +104,12 @@ namespace xy
     };
 } // namespace xy
 
-class Xenyx1204Surface final : public Skin,
+class Xenyx1202Surface final : public Skin,
                                private juce::Timer
 {
 public:
-    explicit Xenyx1204Surface (UiContext&);
-    ~Xenyx1204Surface() override;
+    explicit Xenyx1202Surface (UiContext&);
+    ~Xenyx1202Surface() override;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -118,14 +118,14 @@ public:
 
     static constexpr int kDesignWidth = 1920, kDesignHeight = 1080;
     /** The panel's own space (a render's pixels) and the bar over it, in this component's pixels. */
-    static constexpr int kPanelWidth = 1536, kPanelHeight = 1870, kBarHeight = 52;
-    static constexpr int kChannels = 6;
+    static constexpr int kPanelWidth = 1380, kPanelHeight = 1410, kBarHeight = 52;
+    static constexpr int kChannels = 8;
 
     /** The panel's drawing (the panel component calls it). */
     void paintPanel (juce::Graphics&);
 
     /** The panel holding every control, in the render's pixels (tests find controls by component ID:
-        "CH1 GAIN", "CH3 ALT", "ALT FADER", "SOURCE ALT"...). */
+        "CH1 GAIN", "CH3 FX", "CH5 LEVEL", "MAIN FADER", "USB TO MAIN"...). */
     juce::Component& getPanel() noexcept;
     xy::Control* findControl (const juce::String& id);
     ConsoleTape& getTape (int channel) { return *tapes[(size_t) channel]; }
@@ -147,6 +147,9 @@ private:
     Strip* channel (int i) const;
     Strip* aux (int i) const;
     Strip* bus (int i) const;
+    /** Where a channel sits on the panel: its row, and whether it is the right-hand one of a stereo pair. */
+    static int rowOf (int channel) noexcept;
+    static bool rightOf (int channel) noexcept;
     Strip* main() const;
     xy::Knob& knob (const juce::String& id, juce::Colour cap, juce::Rectangle<int>);
     xy::Key& key (const juce::String& id, juce::Colour face, juce::Colour led, juce::Rectangle<int>);
@@ -157,7 +160,6 @@ private:
     std::vector<xy::Control*> controls;
     std::array<std::unique_ptr<ConsoleTape>, kChannels> tapes;
     std::array<xy::Hotspot, 4> micJacks, lineJacks;
-    std::array<xy::Hotspot, kChannels> soloKeys;
     juce::TextButton prevKey { "PREV" }, nextKey { "NEXT" }, storeKey { "STORE" }, newKey { "NEW" };
     juce::ComboBox sceneBox;
     juce::Label sceneTitle { {}, "SCENES" };

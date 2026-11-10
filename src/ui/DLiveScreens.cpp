@@ -903,6 +903,11 @@ void EqGraph::paint (juce::Graphics& g)
 void EqGraph::mouseDown (const juce::MouseEvent& e)
 {
     dragging = -1;
+    if (! handles && onTap)
+    {
+        onTap();
+        return;
+    }
     if (! handles || strip == nullptr || ! hasBands)
         return;
     float best = 900.0f;
@@ -1211,6 +1216,7 @@ ProcessingScreen::ProcessingScreen (UiContext& c, Desk& d)
     }
     addAndMakeVisible (graph);
     wideCurve.handles = false;
+    wideCurve.onTap = [this] { showTab (Tab::Peq); }; // the curve opens the EQ page
     addAndMakeVisible (wideCurve);
     addChildComponent (bandPanels);
     addChildComponent (faders);

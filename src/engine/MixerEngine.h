@@ -10,6 +10,7 @@
 #include "engine/ProMix.h"
 #include "engine/Yamaha01V.h"
 #include "engine/Yamaha02R.h"
+#include "engine/RemoteSession.h"
 #include "engine/WingRemote.h"
 
 #include <juce_audio_devices/juce_audio_devices.h>
@@ -185,8 +186,15 @@ public:
     /** The USB recorder / player (RECORDER outputs, USB PLAYER sources). */
     UsbRecorder& getUsbRecorder() noexcept { return *usbRecorder; }
 
+    /** While a real console is under remote control it does the audio: Sidecar's device callback
+        outputs silence and runs no processing (see processDeviceBlock). */
+    void setRemoteControlled (bool on) noexcept { remoteControlled.store (on, std::memory_order_relaxed); }
+    bool isRemoteControlled() const noexcept { return remoteControlled.load (std::memory_order_relaxed); }
+
     /** The WING remote protocols and WING snapshot files. */
     WingRemote& getWing() noexcept { return *wing; }
+    /** The remote control of a real console (the X32's so far). */
+    RemoteSession& getRemoteSession() noexcept { return *remoteSession; }
 
     /** The ProMix 01's own state, program libraries and MIDI (Phase 5; inert
         while the console isn't a ProMix 01). */
@@ -615,6 +623,7 @@ private:
     std::unique_ptr<Recorder> recorder = std::make_unique<Recorder> (engine);
     std::unique_ptr<UsbRecorder> usbRecorder = std::make_unique<UsbRecorder> (engine);
     std::unique_ptr<WingRemote> wing = std::make_unique<WingRemote> (*this);
+    std::unique_ptr<RemoteSession> remoteSession = std::make_unique<X32RemoteSession> (*wing);
     std::unique_ptr<ProMix> promix = std::make_unique<ProMix> (engine);
     std::unique_ptr<Yamaha02R> y02r = std::make_unique<Yamaha02R> (engine);
     std::unique_ptr<Yamaha01V> y01v = std::make_unique<Yamaha01V> (engine);
@@ -637,6 +646,7 @@ private:
     void preparePatch (int maxBlock);
     std::atomic<juce::uint32> lastCallbackMs { 0 };
     std::atomic<bool> deviceRunning { false };
+    std::atomic<bool> remoteControlled { false };
     std::shared_ptr<bool> aliveFlag = std::make_shared<bool> (true);
 
     // Console level: the source table, the talk keys' press times.

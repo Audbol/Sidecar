@@ -586,6 +586,15 @@ void MixerEngine::preparePatch (int maxBlock)
 
 void MixerEngine::processDeviceBlock (const float* const* ins, int numIns, float* const* outs, int numOuts, int numSamples) noexcept
 {
+    // A real console under remote control does the audio: nothing is processed or passed here.
+    if (remoteControlled.load (std::memory_order_relaxed))
+    {
+        lastCallbackMs.store (juce::Time::getMillisecondCounter(), std::memory_order_relaxed);
+        for (int o = 0; o < numOuts; ++o)
+            if (outs[o] != nullptr)
+                std::fill_n (outs[o], numSamples, 0.0f);
+        return;
+    }
     // Straight through (the default), or no room prepared: the device's channels are the ports.
     if (interfacePatch.isStraight() || numSamples > patchCapacity || portInPointers.empty())
     {

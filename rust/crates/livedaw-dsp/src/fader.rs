@@ -85,13 +85,22 @@ impl FaderLaw {
         steps: 1024,
     };
 
-    /// The XENYX 1204USB's: continuous (analog 60 mm faders), +10 dB at the top. The
-    /// published manual gives no law, so the breakpoints are where the panel prints its
-    /// scale (10, 0, 10, 15, 20, 25, 30, 40, 60, -oo), measured on a straight-on render
+    /// The XENYX Q1202USB's LEVEL knobs (channels, 5/6 to 11/12 and the 2-TR/USB
+    /// strip): continuous, -oo at the bottom, +15 dB at the top (the panel's print).
+    /// The knob's taper is not published: unity a little past the middle, then a
+    /// gentle roll-off to -oo (Sidecar's reading; to be measured on a mixer).
+    pub const XENYX1202_LEVEL: FaderLaw = FaderLaw {
+        points: &[(0.0, -90.0), (0.06, -60.0), (0.15, -40.0), (0.3, -20.0), (0.5, -8.0), (0.65, -2.0), (0.7, 0.0), (1.0, 15.0)],
+        steps: 0,
+    };
+
+    /// The XENYX Q1202USB's MAIN MIX (a horizontal fader), +10 dB at its end. The
+    /// breakpoints are where the panel prints its scale (10, 0, 10, 15, 20, 25, 30,
+    /// 40, 60, -oo), measured on a straight-on render
     /// of the panel (November 2026); the -90 dB end and the -60 dB mark's place are
     /// Sidecar's. A law holds eight points, so -25 and -15 dB fall on the lines between their
     /// neighbours (within a pixel of the render). To be measured on a mixer.
-    pub const XENYX1204: FaderLaw = FaderLaw {
+    pub const XENYX1202: FaderLaw = FaderLaw {
         points: &[
             (0.0, -90.0),
             (0.05, -60.0),
