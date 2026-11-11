@@ -20,6 +20,8 @@ struct Layer
     juce::String name; // "CH 1-12", "BUS 1-16", "MAIN 1-4 · MTX 1-8", a user layer's name
     std::vector<state::FaderRef> faders; // blank slots are FaderRef::blank()
     bool user = false;
+    /** A user layer's colour (0: none). */
+    juce::uint32 colour = 0;
 };
 
 /** Fixed-slot editing of a layer's faders, as on the WING: slot `i` is
@@ -214,6 +216,11 @@ public:
     void removeUserLayer (const juce::String& id);
     void renameUserLayer (const juce::String& id, const juce::String& name);
     void moveUserLayer (const juce::String& id, int delta);
+    void setUserLayerColour (const juce::String& id, juce::uint32 argb);
+    /** Every user layer as a file's text; importUserLayers adds the layers of such text
+        (new ids, after the ones here) and returns how many it added (0: not a layer file). */
+    juce::String exportUserLayers() const;
+    int importUserLayers (const juce::String& text);
     /** Into the first blank slot or after the last (another copy when the
         layer already holds it); false when the layer is full. */
     bool addToUserLayer (const juce::String& layerId, const state::FaderRef&);

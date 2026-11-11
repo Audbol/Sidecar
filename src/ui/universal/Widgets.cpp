@@ -187,8 +187,14 @@ bool isTouchInput()
 
 juce::LookAndFeel& lookAndFeelFor (const Theme& theme)
 {
-    static ThemedLookAndFeel charcoal (Theme::charcoal()), light (Theme::light()), classic (Theme::dark());
-    return theme.isLight ? light : (theme.isCharcoal ? charcoal : classic);
+    static ThemedLookAndFeel classic (Theme::dark());
+    static std::map<const Theme*, std::unique_ptr<ThemedLookAndFeel>> looks;
+    if (&theme == &Theme::dark() || (! theme.isCharcoal && ! theme.isLight && theme.look == Theme::Look::FlagshipBlack))
+        return classic;
+    auto& made = looks[&Theme::of (theme.look)];
+    if (made == nullptr)
+        made = std::make_unique<ThemedLookAndFeel> (Theme::of (theme.look));
+    return *made;
 }
 
 void drawKnob (juce::Graphics& g, juce::Rectangle<float> area, float position, bool fromCentre, const Theme& theme, bool enabled)
@@ -294,8 +300,29 @@ juce::Rectangle<float> FaderControl::track() const noexcept
     return getLocalBounds().toFloat().reduced (0.0f, look != nullptr && look->cap == hw::Look::Cap::Ribbed ? 33.0f : look != nullptr && look->cap == hw::Look::Cap::Waisted ? 30.0f : look != nullptr ? kTrackInset : kCapInset);
 }
 
+void FaderControl::setKnobMode (bool knob)
+{
+    if (knob != knobMode)
+    {
+        knobMode = knob;
+        repaint();
+    }
+}
+
 void FaderControl::paint (juce::Graphics& g)
 {
+    if (knobMode)
+    {
+        const float size = juce::jlimit (56.0f, 76.0f, (float) juce::jmin (getWidth() - 8, getHeight()));
+        const auto area = juce::Rectangle<float> (size, size).withCentre (getLocalBounds().toFloat().getCentre());
+        drawKnob (g, area, (float) position, false, theme, isEnabled());
+        if (emphasised)
+        {
+            g.setColour (theme.accent);
+            g.drawEllipse (area.expanded (2.0f), 1.5f);
+        }
+        return;
+    }
     const auto t = track();
     const float groove = t.getRight() - grooveFromRight; // the groove's centre
     const auto yAt = [&t] (float pos) { return t.getBottom() - t.getHeight() * pos; };
@@ -464,7 +491,7 @@ void FaderControl::mouseDrag (const juce::MouseEvent& e)
     // fader to the side (the Universal Mixer's: a console's surface moves as its fader does).
     const double off = look != nullptr ? 0.0 : (double) juce::jmax (0, std::abs (e.x - getWidth() / 2) - getWidth() / 2);
     const double scale = (e.mods.isShiftDown() ? 0.25 : 1.0) * juce::jmax (0.1, 1.0 / (1.0 + off / 40.0));
-    const double travel = (double) -(dragged - lastDragY) / juce::jmax (1.0, (double) track().getHeight());
+    const double travel = (double) -(dragged - lastDragY) / (knobMode ? 150.0 : juce::jmax (1.0, (double) track().getHeight()));
     lastDragY = dragged;
     setPositionFromUser (position + travel * scale);
 }

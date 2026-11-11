@@ -328,6 +328,36 @@ void ResponseView::refresh()
     }
 }
 
+void ResponseView::setRta (const Analysis::Bands* bands)
+{
+    if (bands == nullptr)
+    {
+        if (rtaShown)
+        {
+            rtaShown = false;
+            repaint();
+        }
+        return;
+    }
+    for (int k = 0; k < kRtaBins; ++k)
+    {
+        const float lo = 20.0f * std::pow (2.0f, ((float) k - 0.5f) / 6.0f), hi = 20.0f * std::pow (2.0f, ((float) k + 0.5f) / 6.0f);
+        float level = -120.0f;
+        for (int b = 0; b < Analysis::numBands; ++b)
+        {
+            const float hz = Analysis::bandHz (b);
+            if (hz >= lo && hz < hi)
+                level = juce::jmax (level, bands->levels[(size_t) b]);
+        }
+        auto& shown = rtaLevels[(size_t) k];
+        if (! rtaShown)
+            shown = level;
+        shown += (level - shown) * (level > shown ? 0.55f : 0.12f);
+    }
+    rtaShown = true;
+    repaint();
+}
+
 juce::Rectangle<float> ResponseView::plotArea() const { return getLocalBounds().toFloat().reduced (1.0f); }
 
 float ResponseView::xAt (double hz) const
@@ -378,7 +408,11 @@ int ResponseView::handleAt (juce::Point<float> pos) const
     return best;
 }
 
-void ResponseView::mouseDown (const juce::MouseEvent& e) { dragging = handleAt (e.position); }
+void ResponseView::mouseDown (const juce::MouseEvent& e)
+{
+    dragging = handleAt (e.position);
+    scrollHold.set (*this, dragging >= 0);
+}
 
 void ResponseView::mouseDrag (const juce::MouseEvent& e)
 {
@@ -393,7 +427,11 @@ void ResponseView::mouseDrag (const juce::MouseEvent& e)
         onEdited();
 }
 
-void ResponseView::mouseUp (const juce::MouseEvent&) { dragging = -1; }
+void ResponseView::mouseUp (const juce::MouseEvent&)
+{
+    dragging = -1;
+    scrollHold.set (*this, false);
+}
 
 void ResponseView::mouseDoubleClick (const juce::MouseEvent& e)
 {
@@ -452,6 +490,17 @@ void ResponseView::paint (juce::Graphics& g)
             continue;
         g.drawText (label, r, juce::Justification::centredLeft);
         lastRight = r.getRight();
+    }
+
+    if (rtaShown)
+    {
+        g.setColour (theme.accent.withAlpha (0.28f));
+        for (int k = 0; k < kRtaBins; ++k)
+        {
+            const float x0 = xAt (20.0 * std::pow (2.0, ((double) k - 0.5) / 6.0)), x1 = xAt (20.0 * std::pow (2.0, ((double) k + 0.5) / 6.0));
+            const float top = area.getBottom() - area.getHeight() * 0.8f * juce::jlimit (0.0f, 1.0f, (rtaLevels[(size_t) k] + 80.0f) / 80.0f);
+            g.fillRect (x0 + 0.5f, top, juce::jmax (1.0f, x1 - x0 - 1.0f), area.getBottom() - top);
+        }
     }
 
     if (! curve.empty())
@@ -601,8 +650,11 @@ juce::Point<float> TransferView::handlePosition (int which) const
         return {};
     if (which == 0 && thrIndex >= 0)
     {
+        // On the 1:1 line at the threshold: the curve itself can jump there (a gate's
+        // output falls by its range at the threshold), which moved the handle up and
+        // down under the pointer while it was held.
         const float thr = params->values[thrIndex].load();
-        return { xAt (thr), yAt (outAt (thr)) };
+        return { xAt (thr), yAt (thr) };
     }
     if (which == 1 && slopeIndex >= 0)
     {
@@ -620,6 +672,7 @@ juce::Point<float> TransferView::handlePosition (int which) const
 void TransferView::mouseDown (const juce::MouseEvent& e)
 {
     dragging = -1;
+    scrollHold.set (*this, false);
     float best = 18.0f;
     for (int which : { 0, 1 })
         if (const auto c = handlePosition (which); ! c.isOrigin())
@@ -638,6 +691,8 @@ void TransferView::mouseDown (const juce::MouseEvent& e)
         dragStartPos = p.isStepped() && n > 1 ? v / (float) (n - 1) : p.toNormalised (v);
         dragStartY = e.position.y;
     }
+    if (dragging >= 0)
+        scrollHold.set (*this, true);
 }
 
 void TransferView::mouseDrag (const juce::MouseEvent& e)
@@ -664,7 +719,12 @@ void TransferView::mouseDrag (const juce::MouseEvent& e)
         onEdited();
 }
 
-void TransferView::mouseUp (const juce::MouseEvent&) { dragging = -1; }
+void TransferView::mouseUp (const juce::MouseEvent&)
+{
+    dragging = -1;
+    scrollHold.set (*this, false);
+    repaint();
+}
 
 void TransferView::paint (juce::Graphics& g)
 {
@@ -690,14 +750,23 @@ void TransferView::paint (juce::Graphics& g)
 
     if (! outDb.empty())
     {
+        // Where the output is below the graph's floor nothing is drawn (a gate's closed
+        // part would run as a line along the bottom).
         juce::Path p;
+        bool open = false;
         for (size_t i = 0; i < inDb.size(); ++i)
         {
+            if (outDb[i] <= -59.9f)
+            {
+                open = false;
+                continue;
+            }
             const juce::Point<float> pt (xAt (inDb[i]), yAt (outDb[i]));
-            if (i == 0)
+            if (! open)
                 p.startNewSubPath (pt);
             else
                 p.lineTo (pt);
+            open = true;
         }
         g.setColour (theme.accent);
         g.strokePath (p, juce::PathStrokeType (2.0f));

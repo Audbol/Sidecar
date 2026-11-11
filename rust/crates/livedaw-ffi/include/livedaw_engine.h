@@ -1752,6 +1752,10 @@ extern "C"
     void ld_layers_remove_user (LayerSet*, const char* id, size_t len);
     void ld_layers_rename_user (LayerSet*, const char* id, size_t len, const char* name, size_t nameLen);
     void ld_layers_move_user (LayerSet*, const char* id, size_t len, int32_t delta);
+    uint32_t ld_layer_list_colour (const LayerList*, int32_t i);
+    void ld_layers_set_user_colour (LayerSet*, const char* id, size_t len, uint32_t colour);
+    LdString* ld_layers_export_user (LayerSet*);
+    int32_t ld_layers_import_user (LayerSet*, const char* text, size_t len);
     /** Another copy when the layer already holds `ref`; false when it is full. */
     bool ld_layers_add_to_user (LayerSet*, const char* id, size_t len, FaderRefC ref);
     /** Blanks slot `index` if it holds `ref` (-1: the first slot holding it); other copies stay (ABI 15). */

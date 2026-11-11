@@ -117,6 +117,9 @@ public:
     juce::Colour tint;
     /** The selected strip's: the cap's index line in the accent. */
     bool emphasised = false;
+    /** Too little room for a fader: the level is a rotary knob (vertical drag, wheel, double-click to 0 dB). */
+    void setKnobMode (bool knob);
+    bool isKnobMode() const noexcept { return knobMode; }
     /** Drawn as a console's fader (a console surface's hardware look: its slot,
         its moulded cap, its silkscreen scale); null: the Universal Mixer's. */
     const hw::Look* look = nullptr;
@@ -128,6 +131,7 @@ private:
     std::atomic<float>* value = nullptr;
     double position = 0.0;
     int lastDragY = 0;
+    bool knobMode = false;
     TouchGesture gesture;
     float linearMin = 0.0f, linearMax = 0.0f; // equal: the fader law
     double toPosition (float value) const noexcept;

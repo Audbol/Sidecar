@@ -2554,3 +2554,32 @@ fn a_recall_outside_the_show_can_be_undone() {
     show.undo_recall(&engine, &mut b);
     assert_eq!(a.params.fader_db.load(), -9.0);
 }
+
+#[test]
+fn user_layers_keep_colour_save_load_and_export_import() {
+    use livedaw_session::layers::{FaderRef, LayerSet};
+    let mut set = LayerSet::default();
+    let id = set.add_user_layer("Band", vec![FaderRef::Dca(1), FaderRef::Empty, FaderRef::Dca(1)]);
+    set.set_user_layer_colour(&id, 0xff5a8fe0);
+    set.add_user_layer("Plain", vec![]);
+    assert_eq!(set.user_layer(&id).unwrap().colour, 0xff5a8fe0);
+
+    // Saved and loaded: the colour, the spacer and a strip held twice stay.
+    let mut loaded = LayerSet::default();
+    loaded.from_xml(&set.to_xml());
+    let l = loaded.user_layer(&id).unwrap();
+    assert_eq!((l.colour, l.faders.len()), (0xff5a8fe0, 3));
+    assert!(l.faders[1].is_empty() && l.faders[0] == l.faders[2]);
+    assert_eq!(loaded.user_layers()[1].colour, 0);
+
+    // Exported and imported into another set: new ids, after the ones there.
+    let text = set.export_user_layers();
+    let mut other = LayerSet::default();
+    other.add_user_layer("Mine", vec![]);
+    assert_eq!(other.import_user_layers(&text), 2);
+    assert_eq!(other.user_layers().len(), 3);
+    let copy = &other.user_layers()[1];
+    assert_eq!((copy.name.as_str(), copy.colour, copy.faders.len()), ("Band", 0xff5a8fe0, 3));
+    assert_ne!(copy.id, id);
+    assert_eq!(other.import_user_layers("not a layer file"), 0);
+}

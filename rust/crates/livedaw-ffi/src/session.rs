@@ -1711,6 +1711,31 @@ pub unsafe extern "C" fn ld_layers_move_user(l: *mut LayerSet, id: *const u8, le
     }
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn ld_layer_list_colour(list: *const LdLayerList, i: i32) -> u32 {
+    layer_at(list, i).map_or(0, |l| l.colour)
+}
+
+/// A user layer's colour (0xAARRGGBB, 0: none).
+#[no_mangle]
+pub unsafe extern "C" fn ld_layers_set_user_colour(l: *mut LayerSet, id: *const u8, len: usize, colour: u32) {
+    if let Some(l) = layers(l) {
+        l.set_user_layer_colour(&str_arg(id, len), colour);
+    }
+}
+
+/// Every user layer as a file's text.
+#[no_mangle]
+pub unsafe extern "C" fn ld_layers_export_user(l: *mut LayerSet) -> *mut LdString {
+    LdString::new(layers(l).map(|l| l.export_user_layers()).unwrap_or_default())
+}
+
+/// Adds the layers of an exported file; how many were added.
+#[no_mangle]
+pub unsafe extern "C" fn ld_layers_import_user(l: *mut LayerSet, text: *const u8, len: usize) -> i32 {
+    layers(l).map_or(0, |l| l.import_user_layers(&str_arg(text, len)) as i32)
+}
+
 /// Adds `r` to a user layer's first blank slot or after its last (another
 /// copy when the layer already holds it); false when the layer is full.
 #[no_mangle]

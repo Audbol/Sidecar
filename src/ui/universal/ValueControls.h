@@ -1,5 +1,7 @@
 #pragma once
+#include <optional>
 
+#include "engine/Analysis.h"
 #include "engine/Models.h"
 #include "engine/Parameters.h"
 #include "ui/universal/Widgets.h"
@@ -117,6 +119,27 @@ private:
     std::function<void (int)> chosen;
 };
 
+/** Keeps a scrolling parent from taking over a drag that grabbed a handle. */
+struct ScrollHold
+{
+    void set (juce::Component& c, bool hold)
+    {
+        if (auto* vp = c.findParentComponentOfClass<juce::Viewport>())
+        {
+            if (hold && ! saved.has_value())
+                saved = vp->getScrollOnDragMode();
+            if (hold)
+                vp->setScrollOnDragMode (juce::Viewport::ScrollOnDragMode::never);
+            else if (saved.has_value())
+            {
+                vp->setScrollOnDragMode (*saved);
+                saved.reset();
+            }
+        }
+    }
+    std::optional<juce::Viewport::ScrollOnDragMode> saved;
+};
+
 /** A frequency response, 20 Hz to 20 kHz over +-`rangeDb`, from `response` (dB
     at the frequencies asked), with handles to set it right on the curve: an EQ's
     bands (drag: frequency and gain; the wheel: Q; a double tap: back to its
@@ -157,6 +180,14 @@ public:
     juce::Point<float> handlePosition (int i) const;
     void refresh();
 
+    /** The RTA behind the curve: soft bars in the accent, one per 1/6 octave from 20 Hz (the
+        analyser semitone bands, the loudest of the ones in each), rising fast and falling slowly.
+        Each call takes the analyser newest bands; nullptr takes the bars away. */
+    static constexpr int kRtaBins = 61;
+    void setRta (const Analysis::Bands*);
+    bool hasRta() const noexcept { return rtaShown; }
+    const std::array<float, kRtaBins>& getRtaLevels() const noexcept { return rtaLevels; }
+
     void paint (juce::Graphics&) override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
@@ -165,6 +196,8 @@ public:
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
 private:
+    std::array<float, kRtaBins> rtaLevels {};
+    bool rtaShown = false;
     juce::Rectangle<float> plotArea() const;
     float xAt (double hz) const;
     float yAt (double db) const;
@@ -177,6 +210,7 @@ private:
     std::vector<double> freqs, curve;
     std::vector<Handle> handles;
     juce::String shownActive;
+    ScrollHold scrollHold;
     int dragging = -1;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ResponseView)
@@ -222,6 +256,7 @@ private:
     const models::Param* slopeParam() const;
     std::vector<float> inDb, outDb;
     float reduction = 0.0f;
+    ScrollHold scrollHold;
     int dragging = -1;
     float dragStartY = 0.0f, dragStartPos = 0.0f;
     std::vector<float> shownValues;

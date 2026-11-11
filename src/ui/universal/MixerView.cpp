@@ -10,7 +10,7 @@ namespace livedaw::ui::universal
 //==============================================================================
 int StripLayout::defaultBlockHeight (const ChainStep& s) noexcept
 {
-    return s.kind == ld::kStepEq ? 84 : s.kind == ld::kStepFilter ? 58 : s.kind == ld::kStepGate || s.kind == ld::kStepDynamics ? 48 : 30;
+    return s.kind == ld::kStepEq ? 84 : s.kind == ld::kStepFilter ? 58 : s.kind == ld::kStepGate || s.kind == ld::kStepDynamics ? 84 : s.kind == ld::kStepInput ? 56 : 52;
 }
 
 int StripLayout::blockHeight (const ChainStep& s) const
@@ -150,19 +150,30 @@ void StripBody::refresh()
         model = model.toUpperCase().replace ("WING ", "");
         changed = changed || model != b.model;
         b.model = model;
-        if (curves && b.target.response && b.target.dynamics == nullptr)
-        {
-            std::vector<double> db (freqs.size(), 0.0);
-            if (b.target.response (freqs.data(), db.data(), (int) freqs.size()) && db != b.curve)
-            {
-                b.curve = std::move (db);
-                changed = true;
-            }
-        }
+        if (curves || ! same)
+            changed = b.picture.update (ctx, b.target, freqs) || changed;
     }
     if (changed)
         repaint();
 }
+
+namespace
+{
+Theme::BlockHue hueOf (BlockTarget::Kind kind, const juce::String& n)
+{
+    switch (kind)
+    {
+        case BlockTarget::Kind::Input:    return Theme::BlockHue::Input;
+        case BlockTarget::Kind::Filter:   return Theme::BlockHue::Filter;
+        case BlockTarget::Kind::Eq:       return Theme::BlockHue::Eq;
+        case BlockTarget::Kind::Insert:   return n.contains ("FX") || n.contains ("EFFECT") ? Theme::BlockHue::Fx : Theme::BlockHue::Insert;
+        case BlockTarget::Kind::Delay:    return Theme::BlockHue::Delay;
+        case BlockTarget::Kind::Dynamics: return n.contains ("GATE") || n.contains ("EXP") ? Theme::BlockHue::Gate : Theme::BlockHue::Dynamics;
+        default: break;
+    }
+    return Theme::BlockHue::Fx;
+}
+} // namespace
 
 void StripBody::paint (juce::Graphics& g)
 {
@@ -174,11 +185,16 @@ void StripBody::paint (juce::Graphics& g)
         if (y + h > 0 && y < getHeight())
         {
             drawPlate (g, juce::Rectangle<float> (0.0f, (float) y, w, (float) h), theme.hw.plateTop, theme.hw.plateBottom, theme);
+            const auto hue = theme.blockColour (hueOf (b.target.kind, b.name));
+            g.setColour (hue.withAlpha (theme.isLight ? 0.10f : 0.08f));
+            g.fillRect (0.0f, (float) y, w, (float) h);
+            g.setColour (hue);
+            g.fillRect (0.0f, (float) y, 3.0f, (float) h);
             auto r = juce::Rectangle<float> (0.0f, (float) y, w, (float) h).reduced (4.0f, 2.0f);
             // The line of the block: its LED, its name, the console it comes from.
             auto line = r.removeFromTop (14.0f);
             const auto led = juce::Rectangle<float> (5.0f, 5.0f).withCentre ({ line.getX() + 3.0f, line.getCentreY() });
-            g.setColour (b.on ? theme.hw.ledOk : theme.well);
+            g.setColour (b.on ? hue : theme.well);
             g.fillEllipse (led);
             g.setColour (theme.hw.capEdge);
             g.drawEllipse (led, 0.6f);
@@ -194,51 +210,8 @@ void StripBody::paint (juce::Graphics& g)
                     if (b.model.isNotEmpty())
                         drawEngraved (g, b.model, second, juce::Justification::centredLeft, theme, false);
                 }
-                if (! b.curve.empty() && r.getHeight() >= 14.0f)
-                {
-                    // A filled response on a grid, for display.
-                    g.setColour (theme.well);
-                    g.fillRect (r);
-                    g.setColour (theme.outline);
-                    for (float f : { 0.25f, 0.5f, 0.75f })
-                        g.fillRect (r.getX() + r.getWidth() * f, r.getY(), 1.0f, r.getHeight());
-                    g.fillRect (r.getX(), r.getCentreY(), r.getWidth(), 1.0f);
-                    juce::Path line2, fill;
-                    fill.startNewSubPath (r.getX(), r.getCentreY());
-                    for (size_t i = 0; i < b.curve.size(); ++i)
-                    {
-                        const float px = r.getX() + r.getWidth() * (float) i / (float) (b.curve.size() - 1);
-                        const float py = r.getCentreY() - r.getHeight() * 0.45f * (float) juce::jlimit (-1.0, 1.0, b.curve[i] / 18.0);
-                        fill.lineTo (px, py);
-                        if (i == 0)
-                            line2.startNewSubPath (px, py);
-                        else
-                            line2.lineTo (px, py);
-                    }
-                    fill.lineTo (r.getRight(), r.getCentreY());
-                    fill.closeSubPath();
-                    const auto colour = b.on ? theme.hw.pointer : theme.hw.tick;
-                    g.setColour (colour.withAlpha (0.3f));
-                    g.fillPath (fill);
-                    g.setColour (colour);
-                    g.strokePath (line2, juce::PathStrokeType (1.5f));
-                }
-                else if (b.target.reductionDb && r.getHeight() >= 6.0f)
-                {
-                    // Gain reduction over 24 dB, from the right, as LEDs in a dark window, with its value.
-                    auto display = r.reduced (0.0f, 1.0f);
-                    g.setColour (theme.well);
-                    g.fillRect (display);
-                    g.setFont (type::font (type::kCaption));
-                    drawGlowText (g, b.reduction > 0.05f ? "-" + juce::String (b.reduction, 1) : juce::String ("0.0"), display.removeFromRight (34.0f), juce::Justification::centred, theme.hw.ledWarn, theme);
-                    const auto bar = display.reduced (2.0f, 3.0f);
-                    const float cut = bar.getRight() - bar.getWidth() * juce::jlimit (0.0f, 1.0f, b.reduction / 24.0f);
-                    for (float x = bar.getRight() - 3.0f; x >= bar.getX(); x -= 3.0f)
-                    {
-                        g.setColour (x >= cut ? theme.hw.ledWarn : theme.hw.ledWarn.withAlpha (0.1f));
-                        g.fillRect (x, bar.getY(), 2.0f, bar.getHeight());
-                    }
-                }
+                if (r.getHeight() >= 12.0f)
+                    b.picture.paint (g, r.reduced (0.0f, 1.0f), b.target, theme, b.on, b.reduction);
             }
             // The grip of its lower edge.
             const float bottom = (float) (y + h) - 1.0f;
@@ -534,12 +507,33 @@ void StripColumn::paint (juce::Graphics& g)
     const auto w = (float) getWidth();
     const auto& hw = theme.hw;
     // The meter bridge, dark and running across the strips.
-    g.setColour (theme.well);
+    g.setGradientFill (juce::ColourGradient (theme.well.darker (0.25f), 0.0f, (float) sections[StripLayout::Meters].getY(), theme.well.brighter (0.08f), 0.0f, (float) sections[StripLayout::Meters].getBottom(), false));
     g.fillRect (sections[StripLayout::Meters]);
+    // The channel number and name, under the meter bridge, on the strip's colour.
+    if (labelArea.getHeight() > 0)
+    {
+        const auto base = consoleColour (colour);
+        auto lr = labelArea.toFloat();
+        g.setGradientFill (juce::ColourGradient (base.brighter (0.15f), 0.0f, lr.getY(), base.darker (0.2f), 0.0f, lr.getBottom(), false));
+        g.fillRect (lr);
+        g.setColour (juce::Colours::black.withAlpha (0.35f));
+        g.fillRect (lr.removeFromBottom (1.0f));
+        const auto ink = Theme::textOn (base);
+        auto inner = lr.reduced (4.0f, 1.0f);
+        g.setColour (ink);
+        g.setFont (type::font (type::kTitle, true));
+        g.drawFittedText (strip.getLabel(), inner.removeFromTop (24.0f).toNearestInt(), juce::Justification::centred, 1, 0.6f);
+        g.setFont (type::font (type::kCaption, true));
+        g.drawFittedText (name, inner.toNearestInt(), juce::Justification::centred, 1, 0.7f);
+    }
     // The plate carrying the strip's blocks, and the tray with its fader under the name tab.
-    drawPlate (g, juce::Rectangle<float> (0.0f, (float) sections[StripLayout::Meters].getBottom(), w, (float) (nameArea.getY() - sections[StripLayout::Meters].getBottom())),
-               hw.plateTop, hw.plateBottom, theme);
+    const auto plateTop = (float) (labelArea.getHeight() > 0 ? labelArea.getBottom() : sections[StripLayout::Meters].getBottom());
+    drawPlate (g, juce::Rectangle<float> (0.0f, plateTop, w, (float) nameArea.getY() - plateTop), hw.plateTop, hw.plateBottom, theme);
+    g.setGradientFill (juce::ColourGradient (juce::Colours::black.withAlpha (theme.isLight ? 0.10f : 0.22f), 0.0f, plateTop, juce::Colours::transparentBlack, 0.0f, plateTop + 40.0f, false));
+    g.fillRect (0.0f, plateTop, w, 40.0f);
     drawPlate (g, trayArea.toFloat().withX (0.0f).withWidth (w), hw.trayTop, hw.trayBottom, theme);
+    g.setGradientFill (juce::ColourGradient (juce::Colours::black.withAlpha (theme.isLight ? 0.08f : 0.18f), 0.0f, (float) trayArea.getY(), juce::Colours::transparentBlack, 0.0f, (float) trayArea.getY() + 40.0f, false));
+    g.fillRect (0.0f, (float) trayArea.getY(), w, 40.0f);
     for (int s = 0; s < StripLayout::kNumSections; ++s)
         if (sections[(size_t) s].getHeight() <= StripLayout::kCollapsed)
             drawEngraved (g, "METERS", sections[(size_t) s].toFloat(), juce::Justification::centred, theme);
@@ -573,13 +567,14 @@ void StripColumn::paint (juce::Graphics& g)
 
 void StripColumn::resized()
 {
-    constexpr int kName = 30, kKeys = sizes::kTouch * 2 + sizes::kGap, kReadout = 24, kPan = 44, kSide = 4;
+    constexpr int kName = 30, kKeys = sizes::kTouch * 2 + sizes::kGap, kReadout = 24, kPan = 44, kSide = 4, kLabel = 40;
     // The fader comes first: nearly half the strip, 320 px where there's room for it.
     const int kFaderMin = juce::jlimit (100, 320, getHeight() * 44 / 100);
     auto area = getLocalBounds();
     const auto& l = *layout;
     int metersH = l.heights[StripLayout::Meters];
-    int space = area.getHeight() - kName - kKeys - kReadout - kPan - 3 * sizes::kGapSmall - (faderShown ? kFaderMin : 0);
+    const int labelH = area.getHeight() >= 380 ? kLabel : 0;
+    int space = area.getHeight() - labelH - kName - kKeys - kReadout - kPan - 3 * sizes::kGapSmall - (faderShown ? kFaderMin : 0);
     // The blocks are the strip's body: the others give way first.
     constexpr int kBodyLeast = 90;
     if (metersH + kBodyLeast > space)
@@ -590,6 +585,7 @@ void StripColumn::resized()
     sections[StripLayout::Meters] = area.removeFromTop (metersH);
     meter.setBounds (sections[StripLayout::Meters].reduced (kSide, 0));
     meter.setVisible (metersH > StripLayout::kCollapsed);
+    labelArea = area.removeFromTop (labelH);
     body.setBounds (area.removeFromTop (bodyH));
     panArea = area.removeFromTop (kPan);
     pan.setBounds (panArea.reduced (kSide, 0));
@@ -603,6 +599,7 @@ void StripColumn::resized()
     area.removeFromTop (sizes::kGap);
     fader.grooveFromRight = (float) juce::jmax (22, juce::roundToInt ((float) area.getWidth() * 0.38f));
     fader.setBounds (area);
+    fader.setKnobMode (area.getHeight() < 140);
     for (int s = 0; s < StripLayout::kNumSections; ++s)
     {
         const auto& r = sections[(size_t) s];
@@ -895,7 +892,7 @@ private:
 
 //==============================================================================
 MixerView::MixerView (UiContext& c, const Theme& t)
-    : ctx (c), theme (t), fadersKey ("FADERS", t.accent, t), channelKey ("CHANNEL", t.accent, t), sofKey ("SOF", t.accent, t), jumpKey ("JUMP", t.accent, t), filterMenuKey ("FILTER", t.accent, t), bankKey ("BANK", t.accent, t),
+    : ctx (c), theme (t), fadersKey ("FADERS", t.accent, t), channelKey ("CHANNEL", t.accent, t), sofKey ("SOF", t.accent, t), jumpKey ("JUMP", t.accent, t), filterMenuKey ("FILTER", t.accent, t), bankKey ("BANK", t.accent, t), layerMenuKey ("LAYER", t.accent, t), layerEditKey ("LAYERS", t.accent, t),
       channel (c, t), bankBar (std::make_unique<BankBar> (*this))
 {
     layout.fromString (c.settings.getValue (StripLayout::kSetting));
@@ -912,6 +909,17 @@ MixerView::MixerView (UiContext& c, const Theme& t)
     bankKey.setTooltip ("Go to a bank of strips (Page Up and Page Down step through them)");
     addChildComponent (bankKey);
     addChildComponent (*bankBar);
+    layerMenuKey.onClick = [this] { showLayerMenu(); };
+    layerMenuKey.isOn = [this] { return layerId.isNotEmpty(); };
+    layerMenuKey.setTooltip ("Show the strips of one of the show's layers");
+    addChildComponent (layerMenuKey);
+    layerEditKey.onClick = [this] { setLayerEditorShown (! isLayerEditorShown()); };
+    layerEditKey.isOn = [this] { return isLayerEditorShown(); };
+    layerEditKey.setTooltip ("Make and edit the show's layers (the WING's user layers)");
+    addAndMakeVisible (layerEditKey);
+    layerEditor = std::make_unique<LayerEditor> (ctx, theme);
+    layerEditor->onChanged = [this] { updateLayers (false); };
+    addChildComponent (*layerEditor);
     // CHANNEL shows or hides the selected strip's panel across the top; an app setting.
     channelShown = ctx.settings.getBoolValue (uiprefs::universalChannel, true);
     channelKey.isOn = [this] { return channelShown; };
@@ -937,6 +945,7 @@ MixerView::MixerView (UiContext& c, const Theme& t)
     sofKey.onClick = [this] { showSofMenu(); };
     sofKey.setTooltip ("Sends on fader: put a bus, main or matrix on the faders");
     addAndMakeVisible (sofKey);
+    channel.onSendsOnFader = [this] { showSofMenu(); };
     channel.onOpenStep = [this] (int kind, int uid)
     {
         if (onOpenStep && channel.getStrip() != nullptr)
@@ -1380,7 +1389,48 @@ void MixerView::rebuild()
     muteGroups.reset();
     if (filter == kSpill && spillDca >= ctx.engine.getNumDcas())
         filter = -1; // the DCA went (a smaller console)
-    for (int k = 0; k < kNumStripKinds; ++k)
+    const auto* layer = filter != kSpill && layerId.isNotEmpty() ? ctx.show.layers.getUserLayer (layerId) : nullptr;
+    if (layer == nullptr && filter != kSpill)
+        layerId = {}; // the layer went
+    const bool inLayer = layer != nullptr;
+    layerOrder.clear();
+    const auto addStrip = [this] (Strip& s)
+    {
+        columns.push_back (std::make_unique<StripColumn> (ctx, s, theme));
+        connect (*columns.back());
+        content.addAndMakeVisible (*columns.back());
+        return columns.back().get();
+    };
+    const auto addDca = [this] (int d)
+    {
+        dcaColumns.push_back (std::make_unique<DcaColumn> (ctx, d, theme));
+        dcaColumns.back()->onSpill = [safe = juce::Component::SafePointer<MixerView> (this)] (int dca)
+        {
+            // After the menu's callback has let go of the column.
+            juce::MessageManager::callAsync ([safe, dca]
+            {
+                if (safe != nullptr)
+                    safe->setDcaSpill (dca);
+            });
+        };
+        content.addAndMakeVisible (*dcaColumns.back());
+        return dcaColumns.back().get();
+    };
+    if (inLayer)
+    {
+        // Exactly the layer's entries, in its order; the filter keeps the kinds it names.
+        for (auto& f : layer->faders)
+        {
+            if (f.empty)
+                layerOrder.push_back ({});
+            else if (f.dca && (filter < 0 || filter == kDcas) && juce::isPositiveAndBelow (f.dcaIndex, ctx.engine.getNumDcas()))
+                layerOrder.push_back ({ nullptr, addDca (f.dcaIndex) });
+            else if (f.isStrip())
+                if (auto* s = state::findStrip (ctx.engine, f.strip); s != nullptr && (filter < 0 || filter == (int) s->getKind()))
+                    layerOrder.push_back ({ addStrip (*s), nullptr });
+        }
+    }
+    for (int k = 0; k < kNumStripKinds && ! inLayer; ++k)
     {
         if (filter >= 0 && filter != k && filter != kSpill)
             continue;
@@ -1388,29 +1438,17 @@ void MixerView::rebuild()
         {
             if (filter == kSpill && ! s->params.dcaMask.contains (spillDca))
                 continue;
-            columns.push_back (std::make_unique<StripColumn> (ctx, *s, theme));
-            connect (*columns.back());
-            content.addAndMakeVisible (*columns.back());
+            addStrip (*s);
         }
     }
     // The DCAs and the mute groups after the strips (ALL), or alone (DCAS); a spill's DCA after its strips.
-    if (filter < 0 || filter == kDcas || filter == kSpill)
+    if (! inLayer && (filter < 0 || filter == kDcas || filter == kSpill))
     {
         for (int d = 0; d < ctx.engine.getNumDcas(); ++d)
         {
             if (filter == kSpill && d != spillDca)
                 continue;
-            dcaColumns.push_back (std::make_unique<DcaColumn> (ctx, d, theme));
-            dcaColumns.back()->onSpill = [safe = juce::Component::SafePointer<MixerView> (this)] (int dca)
-            {
-                // After the menu's callback has let go of the column.
-                juce::MessageManager::callAsync ([safe, dca]
-                {
-                    if (safe != nullptr)
-                        safe->setDcaSpill (dca);
-                });
-            };
-            content.addAndMakeVisible (*dcaColumns.back());
+            addDca (d);
         }
         if (ctx.engine.getNumMuteGroups() > 0 && filter != kSpill)
         {
@@ -1419,7 +1457,7 @@ void MixerView::rebuild()
         }
     }
     // The first main in view whatever is scrolled (unless MAINS shows them all anyway).
-    if (filter != (int) StripKind::Main && ! ctx.engine.getMains().empty())
+    if (! inLayer && filter != (int) StripKind::Main && ! ctx.engine.getMains().empty())
     {
         auto* main = ctx.engine.getMains().front().get();
         for (auto& c : columns)
@@ -1473,6 +1511,7 @@ void MixerView::refresh()
         rebuild();
         return;
     }
+    updateLayers (false); // a layer made or edited on the WING surface
     // The panel's curves ten times a second (the columns' meters take all thirty).
     if (channelShown && ++ticks % 3 == 0)
     {
@@ -1519,7 +1558,7 @@ void MixerView::resized()
     // key stays lit and the panel comes back when the window is tall enough).
     channel.setVisible (channelShown && getHeight() >= 760 && ctx.getSelectedStrip && ctx.getSelectedStrip() != nullptr);
     if (channel.isVisible())
-        channel.setBounds (area.removeFromTop (216));
+        channel.setBounds (area.removeFromTop (264));
     // The columns, under the bank keys when they don't all fit (laid out without them first, to know).
     const auto place = [this, area] (bool withBanks)
     {
@@ -1534,6 +1573,10 @@ void MixerView::resized()
     };
     place (false); // the banks are a key in the header (bankKey), not a row
     bankBar->setVisible (false);
+    if (layerEditor != nullptr && layerEditor->isVisible())
+        layerEditor->setBounds (juce::Rectangle<int> (juce::jmin (620, getWidth() - 2 * sizes::kGap), juce::jmin (440, getHeight() - 2 * sizes::kGap))
+                                    .withRightX (getWidth() - sizes::kGap)
+                                    .withY (sizes::kGap));
     if (jumpList != nullptr)
     {
         // Under JUMP, over the columns.
@@ -1551,8 +1594,10 @@ std::vector<juce::Component*> MixerView::getHeaderParts()
     std::vector<juce::Component*> parts;
     for (auto& k : filterKeys)
         parts.push_back (k.get());
-    for (auto* k : { &filterMenuKey, &bankKey, &jumpKey, &sofKey, &channelKey, &fadersKey })
+    for (auto* k : { &filterMenuKey, &bankKey, &layerMenuKey, &layerEditKey, &jumpKey, &sofKey, &channelKey, &fadersKey })
         parts.push_back (k);
+    for (auto& k : layerKeys)
+        parts.push_back (k.get());
     return parts;
 }
 
@@ -1569,6 +1614,12 @@ void MixerView::layoutHeader (juce::Rectangle<int> area, bool visible)
     fromRight (sofKey, 72);
     if (banks)
         fromRight (bankKey, 112);
+    // The layers' keys next to BANK: a key each while there are few, else one menu key.
+    fromRight (layerEditKey, 84);
+    for (int i = (int) layerKeys.size() - 1; i >= 0; --i)
+        fromRight (*layerKeys[(size_t) i], 88);
+    if (layersInMenu)
+        fromRight (layerMenuKey, 150);
     fromRight (jumpKey, 72);
     area.removeFromRight (sizes::kGap);
     const int n = juce::jmax (1, (int) filterKeys.size());
@@ -1584,7 +1635,12 @@ void MixerView::layoutHeader (juce::Rectangle<int> area, bool visible)
     filterMenuKey.setButtonText (filter == kSpill ? "SPILL DCA " + juce::String (spillDca + 1) : "FILTER: " + juce::String (filterName (filter)));
     filterMenuKey.setVisible (visible && ! inline_);
     bankKey.setVisible (visible && banks);
-    for (auto* k : { &jumpKey, &sofKey, &channelKey, &fadersKey })
+    layerMenuKey.setVisible (visible && layersInMenu);
+    for (auto& k : layerKeys)
+        k->setVisible (visible);
+    if (! visible)
+        setLayerEditorShown (false);
+    for (auto* k : { &layerEditKey, &jumpKey, &sofKey, &channelKey, &fadersKey })
         k->setVisible (visible);
     updateBankKey();
 }
@@ -1617,6 +1673,81 @@ void MixerView::showBankMenu()
                         });
 }
 
+void MixerView::showLayerMenu()
+{
+    juce::PopupMenu menu;
+    menu.setLookAndFeel (&lookAndFeelFor (theme));
+    menu.addItem (1, "ALL STRIPS (no layer)", true, layerId.isEmpty());
+    const auto& all = ctx.show.layers.getUserLayers();
+    for (int i = 0; i < (int) all.size(); ++i)
+        menu.addItem (i + 2, all[(size_t) i].name, true, all[(size_t) i].id == layerId);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&layerMenuKey).withStandardItemHeight (sizes::kTouch - 8),
+                        [safe = juce::Component::SafePointer<MixerView> (this)] (int item)
+                        {
+                            if (safe == nullptr || item <= 0)
+                                return;
+                            const auto& layers = safe->ctx.show.layers.getUserLayers();
+                            safe->setLayer (item == 1 || item - 2 >= (int) layers.size() ? juce::String() : layers[(size_t) (item - 2)].id);
+                        });
+}
+
+void MixerView::setLayer (juce::String id)
+{
+    const auto wanted = ctx.show.layers.getUserLayer (id) != nullptr ? id : juce::String();
+    if (wanted == layerId && filter != kSpill)
+        return;
+    layerId = wanted;
+    if (filter == kSpill)
+        filter = -1;
+    rebuild();
+}
+
+void MixerView::setLayerEditorShown (bool shown)
+{
+    if (shown == isLayerEditorShown())
+        return;
+    layerEditor->setVisible (shown);
+    if (shown)
+    {
+        layerEditor->selectLayer (layerId);
+        layerEditor->toFront (false);
+    }
+    resized();
+}
+
+void MixerView::updateLayers (bool force)
+{
+    // The keys follow the show's layers (a layer made or changed on the WING surface too).
+    juce::String signature;
+    for (auto& l : ctx.show.layers.getUserLayers())
+        signature << l.id << '|' << l.name << '|' << (int) l.colour << ';';
+    const bool same = signature == layersSignature;
+    if (same && ! force)
+        return;
+    layersSignature = signature;
+    const auto& all = ctx.show.layers.getUserLayers();
+    layersInMenu = (int) all.size() > 3;
+    layerKeys.clear();
+    if (! layersInMenu)
+        for (auto& l : all)
+        {
+            auto key = std::make_unique<ToggleKey> (l.name.toUpperCase(), l.colour != 0 ? juce::Colour (l.colour) : theme.accent, theme);
+            key->onClick = [this, id = l.id] { setLayer (layerId == id ? juce::String() : id); };
+            key->isOn = [this, id = l.id] { return layerId == id; };
+            key->setTooltip ("Show only the strips of this layer");
+            addChildComponent (*key);
+            layerKeys.push_back (std::move (key));
+        }
+    const auto* shown = layerId.isNotEmpty() ? ctx.show.layers.getUserLayer (layerId) : nullptr;
+    layerMenuKey.setButtonText (shown != nullptr ? "LAYER: " + shown->name : juce::String ("LAYER"));
+    if (layerId.isNotEmpty() && shown == nullptr)
+        setLayer ({}); // deleted
+    else if (layerId.isNotEmpty())
+        rebuild(); // its entries or name changed
+    if (onHeaderChanged)
+        onHeaderChanged();
+}
+
 void MixerView::updateBankKey()
 {
     if (const auto* b = getBank (getCurrentBank()); b != nullptr && banks.size() > 1)
@@ -1627,6 +1758,21 @@ void MixerView::layoutColumns()
 {
     const int height = juce::jmax (0, viewport.getHeight() - viewport.getScrollBarThickness());
     int x = sizes::kGapSmall;
+    if (layerId.isNotEmpty() && pinnedMain == nullptr && ! layerOrder.empty())
+    {
+        // A layer: its entries one after another, a spacer a blank column.
+        for (auto& p : layerOrder)
+        {
+            if (p.strip != nullptr)
+                p.strip->setBounds (x, 0, layout.columnWidth(), height);
+            else if (p.dca != nullptr)
+                p.dca->setBounds (x, 0, layout.columnWidth(), height);
+            x += layout.columnWidth();
+        }
+        content.setSize (x + sizes::kGapSmall, height);
+        buildBanks();
+        return;
+    }
     int lastKind = -1;
     for (auto& c : columns)
     {

@@ -105,11 +105,14 @@ public:
     /** Keeps the theme in the app settings and has the window make the skin again in it
         (a view takes its theme when it is made). */
     void setLightTheme (bool light);
+    /** Keeps `look` in the app settings and, if it is another one, has the window make the skin again. */
+    void setLook (universal::Theme::Look look);
     /** MENU's items. 1-4 are the SHOW menu's. */
     enum MenuItem
     {
-        kMenuThemeDark = 10,
-        kMenuThemeLight = 11,
+        kMenuTheme = 10, // + the look (Theme::Look): 10 to 15
+        kMenuThemeDark = 10,  // Flagship Black
+        kMenuThemeLight = 11, // Brushed Silver
         kMenuView = 20, // + the view (View)
         kMenuPreviousScene = 40,
         kMenuNextScene = 41,

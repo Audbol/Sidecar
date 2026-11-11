@@ -2523,7 +2523,9 @@ mod dlive_tests {
         let token = |i: usize| models[e.controls.fx[i].model_index_in(models)].token;
         assert_eq!([token(0), token(1), token(2), token(3)], ["DLVSMRH", "DLVSMRE", "DLVTAP", "DLVCHOR"]);
         assert_eq!(token(4), "NONE");
-        assert!(models.iter().all(|m| m.token == "NONE" || m.token == "EXT" || m.token.starts_with("DLV")));
+        // Its own table is the dLive's; other consoles' models follow it (foreign blocks).
+        let own = e.profile().spec().models.fx;
+        assert!(own.iter().all(|m| m.token == "NONE" || m.token == "EXT" || m.token.starts_with("DLV")));
     }
 
     #[test]

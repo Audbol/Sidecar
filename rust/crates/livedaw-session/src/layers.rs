@@ -258,6 +258,8 @@ pub struct Layer {
     pub name: String,
     pub faders: Vec<FaderRef>,
     pub user: bool,
+    /// A user layer's colour (0xAARRGGBB; 0: none). Only user layers have one.
+    pub colour: u32,
 }
 
 pub const NUM_SECTIONS: usize = 3;
@@ -571,6 +573,7 @@ fn layer(id: &str, faders: &[Labelled], fallback_name: &str) -> Layer {
         name: if faders.is_empty() { fallback_name.into() } else { bank_name(faders) },
         faders: faders.iter().map(|l| l.fader).collect(),
         user: false,
+        colour: 0,
     }
 }
 
@@ -658,7 +661,13 @@ impl LayerSet {
     pub fn virtual_layer(&self, index: usize) -> Option<Layer> {
         let id = VIRTUAL_KEYS.get(index)?;
         let faders = self.overrides.iter().find(|o| o.section == VIRTUAL_SECTION && o.id == *id).map(|o| o.faders.clone());
-        Some(Layer { id: (*id).into(), name: self.virtual_names[index].clone(), faders: faders.unwrap_or_default(), user: false })
+        Some(Layer {
+            id: (*id).into(),
+            name: self.virtual_names[index].clone(),
+            faders: faders.unwrap_or_default(),
+            user: false,
+            colour: 0,
+        })
     }
 
     /// The section's layer keys, top to bottom (see the module docs).
@@ -714,6 +723,7 @@ impl LayerSet {
                 name: user.map_or_else(|| format!("USER {}", i + 1), |l| l.name.clone()),
                 faders: user.map(|l| l.faders.clone()).unwrap_or_default(),
                 user: false,
+                colour: user.map_or(0, |l| l.colour),
             });
         }
         layers
@@ -745,7 +755,7 @@ impl LayerSet {
         if id == SPILL_ID {
             // Without an engine the spill has no faders; find_layer fills them in.
             if let Some(kind) = self.spill(section) {
-                return Layer { id: SPILL_ID.into(), name: spill_name(&kind), faders: Vec::new(), user: false };
+                return Layer { id: SPILL_ID.into(), name: spill_name(&kind), faders: Vec::new(), user: false, colour: 0 };
             }
         }
         let mut layers = self.default_layers_for(section, console);
@@ -853,7 +863,7 @@ impl LayerSet {
     /// The spill layer a section shows, if it spills.
     pub fn spill_layer(&self, engine: &Engine, section: usize) -> Option<Layer> {
         let kind = self.spill(section)?;
-        Some(Layer { id: SPILL_ID.into(), name: spill_name(&kind), faders: spill_faders(engine, &kind), user: false })
+        Some(Layer { id: SPILL_ID.into(), name: spill_name(&kind), faders: spill_faders(engine, &kind), user: false, colour: 0 })
     }
 
     // ---- user layers ---------------------------------------------------------------
@@ -874,7 +884,7 @@ impl LayerSet {
     pub fn add_user_layer(&mut self, name: &str, mut faders: Vec<FaderRef>) -> String {
         slots::trim(&mut faders);
         let id = format!("user-{}", new_uuid());
-        self.user_layers.push(Layer { id: id.clone(), name: name.into(), faders, user: true });
+        self.user_layers.push(Layer { id: id.clone(), name: name.into(), faders, user: true, colour: 0 });
         id
     }
 
@@ -889,6 +899,46 @@ impl LayerSet {
         } else if let Some(l) = self.user_layer_mut(id) {
             l.name = name.into();
         }
+    }
+
+    /// Sets a user layer's colour (0xAARRGGBB; 0 clears it).
+    pub fn set_user_layer_colour(&mut self, id: &str, colour: u32) {
+        if let Some(l) = self.user_layer_mut(id) {
+            l.colour = colour;
+        }
+    }
+
+    /// Every user layer as a file's text (the layers shared between shows).
+    pub fn export_user_layers(&self) -> String {
+        let mut xml = Element::new("SidecarLayers");
+        for l in &self.user_layers {
+            let e = xml.add_new("Layer");
+            e.set("name", &l.name).set("faders", faders_to_string(&l.faders));
+            if l.colour != 0 {
+                e.set("colour", l.colour);
+            }
+        }
+        xml.to_document()
+    }
+
+    /// Adds the layers of an exported file (new ids, after the ones here);
+    /// how many were added, 0 for text that isn't one.
+    pub fn import_user_layers(&mut self, text: &str) -> usize {
+        let Ok(xml) = crate::xml::parse(text) else { return 0 };
+        if !xml.has_tag("SidecarLayers") {
+            return 0;
+        }
+        let mut added = 0;
+        for e in xml.children_named("Layer") {
+            let mut faders = faders_from_string(e.str_or("faders", ""));
+            faders.truncate(MAX_SLOTS);
+            slots::trim(&mut faders);
+            let colour = u32::try_from(e.double_or("colour", 0.0) as i64).unwrap_or(0);
+            let id = format!("user-{}", new_uuid());
+            self.user_layers.push(Layer { id, name: e.str_or("name", "User").to_owned(), faders, user: true, colour });
+            added += 1;
+        }
+        added
     }
 
     pub fn move_user_layer(&mut self, id: &str, delta: i32) {
@@ -1012,7 +1062,11 @@ impl LayerSet {
             .set("center", self.selected(CENTER))
             .set("right", self.selected(RIGHT));
         for l in &self.user_layers {
-            xml.add_new("Layer").set("id", &l.id).set("name", &l.name).set("faders", faders_to_string(&l.faders));
+            let e = xml.add_new("Layer");
+            e.set("id", &l.id).set("name", &l.name).set("faders", faders_to_string(&l.faders));
+            if l.colour != 0 {
+                e.set("colour", l.colour);
+            }
         }
         for o in &self.overrides {
             xml.add_new("Override").set("section", o.section).set("id", &o.id).set("faders", faders_to_string(&o.faders));
@@ -1043,7 +1097,8 @@ impl LayerSet {
             let mut faders = faders_from_string(e.str_or("faders", ""));
             faders.truncate(MAX_SLOTS);
             slots::trim(&mut faders);
-            self.user_layers.push(Layer { id, name: e.str_or("name", "User").to_owned(), faders, user: true });
+            let colour = u32::try_from(e.double_or("colour", 0.0) as i64).unwrap_or(0);
+            self.user_layers.push(Layer { id, name: e.str_or("name", "User").to_owned(), faders, user: true, colour });
         }
         for e in xml.children_named("Override") {
             let section = usize::try_from(parse_int_prefix(e.str_or("section", "-1"))).unwrap_or(NUM_SECTIONS);

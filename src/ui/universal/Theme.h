@@ -28,6 +28,9 @@ struct Theme
     bool isLight = false;
     /** The Universal Mixer's calm charcoal (its kinds' tints are the quieter ones). */
     bool isCharcoal = false;
+    /** The six themes the Universal Mixer offers (Theme::all(), in this order). */
+    enum class Look { FlagshipBlack, BrushedSilver, MidnightBlue, VintageWarm, Daylight, HighContrast, StudioSlate, StudioGraphite, StudioOlive };
+    Look look = Look::FlagshipBlack;
 
     /** The physical parts' finish: a look is another set of these. */
     struct Hardware
@@ -48,6 +51,12 @@ struct Theme
     /** The shadow under a cap or a knob. */
     juce::Colour capShadow() const noexcept { return juce::Colours::black.withAlpha (isLight ? 0.22f : 0.55f); }
 
+    /** The kinds of block on a strip, each with its own colour (same on every strip and console). */
+    enum class BlockHue { Input, Filter, Gate, Eq, Dynamics, Insert, Delay, Fx };
+    juce::Colour blockColour (BlockHue) const noexcept;
+    /** Black or white, whichever reads better on `background`. */
+    static juce::Colour textOn (juce::Colour background) noexcept;
+
     /** A strip kind's tint (its column's label). */
     juce::Colour kindColour (StripKind kind) const noexcept;
     /** `colour` a step towards the text: brighter on the dark theme, darker on the light one
@@ -60,11 +69,25 @@ struct Theme
         drawn with tokens: it stays as it is so that a design pass here doesn't move them. */
     static const Theme& dark();
     static const Theme& light();
-    /** "light": the light theme; anything else: the dark one (charcoal). */
+    static const Theme& midnightBlue();
+    static const Theme& vintageWarm();
+    static const Theme& daylight();
+    static const Theme& highContrast();
+    static const Theme& studioSlate();
+    static const Theme& studioGraphite();
+    static const Theme& studioOlive();
+    static constexpr int kNumLooks = 9;
+    /** The theme of a look. */
+    static const Theme& of (Look);
+    /** A look's id (what the setting keeps) and its name in the menu. */
+    static const char* idOf (Look);
+    static const char* titleOf (Look);
+    /** An id ("flagship", "silver", "midnight", "vintage", "daylight", "contrast", "slate", "graphite", "olive"), or the old
+        "dark" (Flagship Black) or "light" (Brushed Silver); anything else: Flagship Black. */
     static const Theme& named (const juce::String& name);
-    /** "dark" or "light". */
-    juce::String getName() const { return isLight ? "light" : "dark"; }
-    /** The app setting that keeps the Universal Mixer's theme ("dark", the default, or "light"). */
+    juce::String getName() const { return idOf (look); }
+    juce::String getTitle() const { return titleOf (look); }
+    /** The app setting that keeps the Universal Mixer's theme (a look's id; "dark" and "light" from before are the first two). */
     static constexpr const char* kSetting = "ui.universalTheme";
     /** The theme the app settings name. */
     static const Theme& fromSettings (juce::PropertiesFile&);

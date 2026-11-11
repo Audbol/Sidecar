@@ -129,6 +129,7 @@ std::vector<Layer> LayerSet::list (const MixerEngine* engine, Section section, i
         layer.id = takeString (ld::ld_layer_list_id (l, i));
         layer.name = takeString (ld::ld_layer_list_name (l, i));
         layer.user = ld::ld_layer_list_is_user (l, i);
+        layer.colour = ld::ld_layer_list_colour (l, i);
 
         refs.resize ((size_t) ld::ld_layer_list_faders (l, i, nullptr, 0));
         ld::ld_layer_list_faders (l, i, refs.data(), (int32_t) refs.size());
@@ -290,6 +291,23 @@ void LayerSet::clearUserLayerSlot (const juce::String& layerId, int index)
 {
     const Utf8 u (layerId);
     ld::ld_layers_clear_user_slot (handle, u.data, u.size, index);
+}
+
+void LayerSet::setUserLayerColour (const juce::String& id, juce::uint32 argb)
+{
+    const Utf8 u (id);
+    ld::ld_layers_set_user_colour (handle, u.data, u.size, argb);
+}
+
+juce::String LayerSet::exportUserLayers() const
+{
+    return takeString (ld::ld_layers_export_user (handle));
+}
+
+int LayerSet::importUserLayers (const juce::String& text)
+{
+    const Utf8 u (text);
+    return ld::ld_layers_import_user (handle, u.data, u.size);
 }
 
 void LayerSet::swapUserLayerSlots (const juce::String& layerId, int a, int b)

@@ -174,8 +174,13 @@ UniversalSkin::UniversalSkin (UiContext& c)
 
 void UniversalSkin::setLightTheme (bool light)
 {
-    ctx.settings.setValue (Theme::kSetting, light ? "light" : "dark");
-    if (light == theme.isLight || ! ctx.setInterface)
+    setLook (light ? Theme::Look::BrushedSilver : Theme::Look::FlagshipBlack);
+}
+
+void UniversalSkin::setLook (Theme::Look look)
+{
+    ctx.settings.setValue (Theme::kSetting, Theme::idOf (look));
+    if (look == theme.look || ! ctx.setInterface)
         return;
     // The views took their theme when they were made: the window makes the skin again. It only does
     // so for another interface than the one it shows, so it is told it shows none of ours first.
@@ -197,8 +202,8 @@ juce::PopupMenu UniversalSkin::buildMenu()
     menu.addItem (kMenuUndo, "Undo mix change   Ctrl+Z", history.canUndo());
     menu.addItem (kMenuRedo, "Redo mix change   Ctrl+Y", history.canRedo());
     menu.addSeparator();
-    themes.addItem (kMenuThemeDark, "Dark", true, ! theme.isLight);
-    themes.addItem (kMenuThemeLight, "Light", true, theme.isLight);
+    for (int i = 0; i < Theme::kNumLooks; ++i)
+        themes.addItem (kMenuTheme + i, Theme::titleOf ((Theme::Look) i), true, theme.look == (Theme::Look) i);
     menu.addSubMenu ("Theme", themes);
     const std::pair<const char*, View> names[] = { { "Mixer", View::Mixer },           { "Routing", View::Routing }, { "FX rack", View::Fx },
                                                    { "Monitoring", View::Monitoring }, { "Scenes", View::Scenes },   { "Library", View::Library },
@@ -240,8 +245,8 @@ void UniversalSkin::runMenuCommand (int item)
 {
     if (item >= 1 && item <= 4)
         runShowCommand (item);
-    else if (item == kMenuThemeDark || item == kMenuThemeLight)
-        setLightTheme (item == kMenuThemeLight);
+    else if (item >= kMenuTheme && item < kMenuTheme + Theme::kNumLooks)
+        setLook ((Theme::Look) (item - kMenuTheme));
     else if (item >= kMenuView && item <= kMenuView + (int) View::Controls)
         showView (static_cast<View> (item - kMenuView));
     else if (item == kMenuPreviousScene)

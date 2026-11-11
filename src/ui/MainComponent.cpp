@@ -1048,6 +1048,13 @@ void MainComponent::showMixerChooser (bool canContinue, std::function<void()> be
         if (showFile != juce::File())
             options.continueText << ", " << showFile.getFileNameWithoutExtension();
     }
+    // Only the console that is running has its surface (the others need their own engine): a plain tile for the rest.
+    options.picture = [this] (InterfaceKind kind, int maxWidth) -> juce::Image
+    {
+        if (skin == nullptr || kind != ctx.interfaceKind || skin->getWidth() <= 0)
+            return {};
+        return skin->createComponentSnapshot (skin->getLocalBounds(), true, (float) maxWidth / (float) skin->getWidth());
+    };
     options.onContinue = close;
     options.onMixer = [this, beforeFresh, close] (InterfaceKind kind)
     {

@@ -3,9 +3,11 @@
 #include "ui/UiContext.h"
 #include "ui/universal/ChannelPanel.h"
 #include "ui/universal/Groups.h"
+#include "ui/universal/LayerEditor.h"
 #include "ui/universal/Widgets.h"
 
 #include "ui/universal/BlockEditor.h"
+#include "ui/universal/BlockPicture.h"
 
 #include <array>
 #include <map>
@@ -74,7 +76,7 @@ private:
         BlockTarget target;
         juce::String name, model;
         int key = 0;
-        std::vector<double> curve;
+        BlockPicture picture;
         float reduction = 0.0f;
         bool on = false;
     };
@@ -147,7 +149,7 @@ private:
     std::array<juce::Rectangle<int>, StripLayout::kNumSections> sections;
     std::array<std::unique_ptr<Divider>, StripLayout::kNumSections> dividers;
     const StripLayout* layout = nullptr;
-    juce::Rectangle<int> nameArea, readoutArea, trayArea, panArea;
+    juce::Rectangle<int> labelArea, nameArea, readoutArea, trayArea, panArea;
 
     UiContext& ctx;
     Strip& strip;
@@ -200,6 +202,18 @@ public:
     /** -1: every kind; a StripKind; or kDcas. */
     void setFilter (int kind);
     static constexpr int kDcas = kNumStripKinds;
+    /** Shows only the strips of the show's user layer `id`, in its order (a spacer is a gap the width of a column);
+        the filter keys and ALL work within it. Empty (or an id that is gone): every strip again. The layers are the
+        WING surface's user layers (ctx.show.layers). */
+    void setLayer (juce::String id); // by value: the caller may pass a reference into the layers snapshot
+    const juce::String& getLayer() const noexcept { return layerId; }
+    /** The layers' editor, over the columns. */
+    void setLayerEditorShown (bool);
+    bool isLayerEditorShown() const noexcept { return layerEditor != nullptr && layerEditor->isVisible(); }
+    LayerEditor* getLayerEditor() const noexcept { return layerEditor.get(); }
+    /** The header's keys for the layers: how many layer keys show, or true when they folded into one menu key. */
+    int getNumLayerKeys() const noexcept { return (int) layerKeys.size(); }
+    bool areLayersInMenu() const noexcept { return layersInMenu; }
     /** Only DCA `dca`'s members and its fader (a filter key goes back). */
     void setDcaSpill (int dca);
     /** The DCA being spilled, or -1. */
@@ -221,6 +235,7 @@ public:
     void setChannelShown (bool);
     bool isChannelShown() const noexcept { return channelShown; }
     ChannelPanel& getChannelPanel() noexcept { return channel; }
+    void visibilityChanged() override { channel.updateRta(); }
     int getFilter() const noexcept { return filter; }
     /** The strips changed (the view also notices by itself). */
     void rebuild();
@@ -307,6 +322,21 @@ private:
     ToggleKey fadersKey, channelKey, sofKey, jumpKey, filterMenuKey, bankKey;
     void showFilterMenu();
     void showBankMenu();
+    void showLayerMenu();
+    /** The layer keys again when the show's layers changed (compared by a signature). */
+    void updateLayers (bool force);
+    juce::String layerId, layersSignature;
+    bool layersInMenu = false;
+    ToggleKey layerMenuKey, layerEditKey;
+    std::vector<std::unique_ptr<ToggleKey>> layerKeys;
+    std::unique_ptr<LayerEditor> layerEditor;
+    /** The columns in a layer's order (a spacer: both null). */
+    struct Placed
+    {
+        StripColumn* strip = nullptr;
+        DcaColumn* dca = nullptr;
+    };
+    std::vector<Placed> layerOrder;
     void updateBankKey();
     StripColumn* pinnedMain = nullptr;
     /** The pinned main when the filter leaves it out of the columns. */

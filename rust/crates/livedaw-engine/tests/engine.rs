@@ -465,12 +465,14 @@ fn an_x32s_fx_rack_runs_its_table_and_takes_premium_devices_in_fx_1_to_4() {
     rig.engine.configure(&ConsoleConfig { profile: Profile::X32, counts: Counts::X32 });
     let e = &rig.engine;
     assert_eq!(&e.fx_models()[..Profile::X32.spec().models.fx.len()], Profile::X32.spec().models.fx, "its own first");
-    assert_eq!(e.fx_models()[hall(e)].token, "X32HALL", "its own models");
+    // Its own hall comes first in its list (foreign models follow its own).
+    let own_hall = model_index(e.fx_models(), "X32HALL").unwrap();
+    assert!(own_hall < Profile::X32.spec().models.fx.len(), "its own models");
     let geq = model_index(e.fx_models(), "X32GEQ2").unwrap();
     assert!(e.set_fx_model(4, geq, true), "an insert model in FX 5");
-    assert!(e.set_fx_model(3, hall(e), true));
-    assert!(!e.set_fx_model(4, hall(e), true), "an X32's FX 5-8 are insert slots");
-    assert_eq!(e.fx(3).unwrap().device_info().map(|(m, _)| m), Some(hall(e)));
+    assert!(e.set_fx_model(3, own_hall, true));
+    assert!(!e.set_fx_model(4, own_hall, true), "an X32's FX 5-8 are insert slots");
+    assert_eq!(e.fx(3).unwrap().device_info().map(|(m, _)| m), Some(own_hall));
     assert!(std::ptr::eq(e.fx(3).unwrap().device_table().unwrap(), e.fx_models()));
 }
 

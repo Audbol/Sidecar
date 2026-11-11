@@ -351,6 +351,8 @@ set(LIVEDAW_UI_SOURCES
     src/ui/universal/ChannelPanel.cpp
     src/ui/universal/ValueControls.cpp
     src/ui/universal/BlockEditor.cpp
+    src/ui/universal/BlockPicture.cpp
+    src/ui/universal/LayerEditor.cpp
     src/ui/universal/ChainList.cpp
     src/ui/universal/SendsPanel.cpp
     src/ui/universal/Groups.cpp
@@ -385,7 +387,18 @@ juce_add_binary_data(LiveDAWResources SOURCES
     resources/fonts/BarlowSemiCondensed-Medium.ttf
     resources/fonts/BarlowSemiCondensed-SemiBold.ttf
     resources/fonts/PatrickHand-Regular.ttf
-    resources/icon/sidecar-256.png)   # the window icon on Linux
+    resources/chooser/wing.png
+    resources/chooser/universal.png
+    resources/chooser/x32.png
+    resources/chooser/promix.png
+    resources/chooser/y02r.png
+    resources/chooser/sq5.png
+    resources/chooser/y01v.png
+    resources/chooser/dlive.png
+    resources/chooser/dm2000.png
+    resources/chooser/pro2.png
+    resources/chooser/xenyx1202.png
+    resources/icon/sidecar-256.png)   # the window icon on Linux; chooser/: the start-up tiles (scripts/make_chooser_pictures.py)
 target_link_libraries(LiveDAW PRIVATE LiveDAWResources)
 
 #-------------------------------------------------------------------------------
