@@ -296,6 +296,16 @@ void ChannelPanel::mouseDoubleClick (const juce::MouseEvent& e)
         setMaximised (! maximised);
 }
 
+bool ChannelPanel::isLive (const Strip* s) const
+{
+    // Addresses are only compared here, never dereferenced.
+    for (int k = 0; k < kNumStripKinds; ++k)
+        for (auto& live : ctx.engine.getStrips (static_cast<StripKind> (k)))
+            if (live.get() == s)
+                return true;
+    return false;
+}
+
 void ChannelPanel::dropStaleStrip()
 {
     const int version = ctx.engine.getStructureVersion();
@@ -319,6 +329,8 @@ void ChannelPanel::dropStaleStrip()
 void ChannelPanel::setStrip (Strip* s)
 {
     dropStaleStrip();
+    if (s != nullptr && ! isLive (s))
+        s = nullptr; // a strip the engine removed (a show cleared or loaded): never dereferenced
     if (s == strip)
         return;
     strip = s;

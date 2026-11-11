@@ -81,6 +81,7 @@ public:
     void setStrip (Strip*);
     Strip* getStrip() const noexcept { return strip; }
     /** Lets go of the strip if the engine has removed it since (a show loaded, a channel deleted). */
+    bool isLive (const Strip* s) const;
     void dropStaleStrip();
     /** Takes the strip's values, curves and meters again (the view's timer). */
     void refresh();

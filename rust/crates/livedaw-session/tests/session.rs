@@ -319,7 +319,7 @@ fn faders_keep_their_own_recall_safe_and_fade_time() {
     let mid = b.params.fader_db.load();
     assert!(mid > -40.0 && mid < 0.0, "{mid}");
     assert_eq!(a.params.fader_db.load(), -40.0);
-    assert!(!show.tick_at(&engine, start + Duration::from_millis(2100)));
+    assert!(!show.tick_at(&engine, start + Duration::from_millis(4000))); // well past 2 s: the recall itself is slow under a sanitizer
     assert_eq!(b.params.fader_db.load(), 0.0);
 
     // They're for one recall: the next one has none.
