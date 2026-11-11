@@ -1,6 +1,7 @@
 #include "ui/universal/BlockEditor.h"
 
 #include "ui/Faceplate.h"
+#include "ui/universal/PluginBlockCard.h"
 
 #include "ui/DelayUnits.h"
 
@@ -211,6 +212,12 @@ BlockTarget BlockTarget::of (UiContext& ctx, Strip& strip, const ChainStep& step
                     t.delayOn = &block.delay()->on;
                     t.delayMode = &block.delay()->mode;
                     t.delay = &block.delay()->delay;
+                    break;
+                case BlockKind::Plugin:
+                    t.kind = Kind::Plugin;
+                    t.title = "PLUG-IN BLOCK";
+                    t.pluginOn = block.plugin();
+                    t.strip = &strip;
                     break;
             }
             break;
@@ -513,6 +520,13 @@ void BlockEditor::build()
             b.text = [&mode] (float v) { return delayText (v, juce::jlimit (0, 3, (int) mode.load())); };
             b.defaultValue = msToDelay (delayToMs (kMinDelayM, 0, (float) sr), juce::jlimit (0, 3, (int) mode.load()), (float) sr);
             addBar (std::move (b));
+            break;
+        }
+        case BlockTarget::Kind::Plugin:
+        {
+            auto card = std::make_unique<PluginBlockCard> (ctx, theme);
+            card->setBlock (target.strip, target.uid, target.pluginOn);
+            add (std::move (card), 150);
             break;
         }
         case BlockTarget::Kind::None:

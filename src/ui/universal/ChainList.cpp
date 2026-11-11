@@ -1,5 +1,7 @@
 #include "ui/universal/ChainList.h"
 
+#include "engine/Models.h"
+
 #include "ui/ChainSummary.h"
 #include "ui/universal/BlockEditor.h"
 
@@ -183,6 +185,9 @@ ChainList::ChainList (UiContext& c, const Theme& t)
         for (auto kind : { BlockKind::Filter, BlockKind::Eq, BlockKind::Dynamics, BlockKind::Insert, BlockKind::Delay })
             menu.addItem (id++, stepName ({ ld::kStepBlock, (int) kind }));
         menu.addSeparator();
+        // A hosted plugin (VST3, AU, LV2), not in an FX slot; a real console under remote control runs its own processing.
+        if (! models::remoteHeld())
+            menu.addItem (101, "PLUG-IN...");
         menu.addItem (100, "USER TAP (for sends)");
         juce::Component::SafePointer<ChainList> safe (this);
         menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&addKey).withStandardItemHeight (sizes::kTouch).withMinimumWidth (220),
@@ -190,7 +195,9 @@ ChainList::ChainList (UiContext& c, const Theme& t)
                             {
                                 if (safe == nullptr || result <= 0)
                                     return;
-                                if (result == 100)
+                                if (result == 101)
+                                    safe->choosePlugin();
+                                else if (result == 100)
                                     safe->add (std::nullopt);
                                 else
                                     safe->add (static_cast<BlockKind> (result - 1));
@@ -352,6 +359,7 @@ std::atomic<bool>* ChainList::switchOf (const ChainStep& s) const
                 case BlockKind::Dynamics: return &block.dynamics()->on;
                 case BlockKind::Insert:   return &block.insert()->on;
                 case BlockKind::Delay:    return &block.delay()->on;
+                case BlockKind::Plugin:   return block.plugin();
                 case BlockKind::Filter:   break;
             }
             return nullptr;
@@ -385,10 +393,8 @@ void ChainList::selectStep (std::function<bool (const ChainStep&)> match)
         }
 }
 
-bool ChainList::add (std::optional<BlockKind> kind)
+int ChainList::insertionPoint() const
 {
-    if (strip == nullptr)
-        return false;
     int at = -1;
     if (juce::isPositiveAndBelow (selected, (int) rows.size()))
         at = rows[(size_t) selected].stepIndex + 1;
@@ -396,6 +402,51 @@ bool ChainList::add (std::optional<BlockKind> kind)
         for (const auto& r : rows)
             if (r.step.kind == ld::kStepPfl)
                 at = r.stepIndex;
+    return at;
+}
+
+void ChainList::choosePlugin()
+{
+    if (strip == nullptr || models::remoteHeld())
+        return;
+    juce::Component::SafePointer<ChainList> safe (this);
+    auto menu = pluginTypesMenu (ctx, [safe] (const juce::PluginDescription& desc)
+    {
+        if (safe != nullptr)
+            safe->addPlugin (desc);
+    });
+    if (menu.getNumItems() == 0)
+        menu.addItem ("Scan for plugins...", [this] { if (ctx.showPluginScanner) ctx.showPluginScanner(); });
+    menu.setLookAndFeel (&lookAndFeelFor (theme));
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&addKey).withStandardItemHeight (sizes::kTouch));
+}
+
+bool ChainList::addPlugin (const juce::PluginDescription& desc)
+{
+    if (strip == nullptr)
+        return false;
+    const int uid = strip->insertBlock (BlockKind::Plugin, insertionPoint());
+    if (uid < 0)
+        return false;
+    const int slot = FxSlots::blockSlotOf (strip->getHandle(), uid);
+    if (slot < 0 || ! loadPluginIntoFx (ctx, slot, desc))
+    {
+        strip->removeBlock (uid); // nothing was loaded into it: no editor to close
+        refresh();
+        return false;
+    }
+    refresh();
+    selectStep ([uid] (const ChainStep& s) { return s.isBlock() && s.uid == uid; });
+    if (ctx.openPluginEditor)
+        ctx.openPluginEditor (slot);
+    return true;
+}
+
+bool ChainList::add (std::optional<BlockKind> kind)
+{
+    if (strip == nullptr)
+        return false;
+    const int at = insertionPoint();
 
     if (kind)
     {
@@ -437,6 +488,10 @@ bool ChainList::removeRow (int row)
     const auto step = rows[(size_t) row].step;
     // Nothing may hold the block when it goes: deselect first (the editor lets go of it).
     selectRow (-1);
+    // A plugin block: its plugin's window closes before the engine lets the plugin go.
+    if (step.isBlock() && step.getBlockKind() == BlockKind::Plugin && ctx.pluginRemoved)
+        if (auto* plugin = ctx.engine.getFx().getPlugin (FxSlots::blockSlotOf (strip->getHandle(), step.uid)))
+            ctx.pluginRemoved (plugin);
     const bool removed = step.isBlock() ? strip->removeBlock (step.uid) : strip->removeTap (step.arg);
     refresh();
     return removed;

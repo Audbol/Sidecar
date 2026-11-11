@@ -53,7 +53,7 @@
 use crate::amm::{AmmParams, AmmState};
 use crate::analyser::{rta_tap, Analyser, Probes};
 use crate::atomic::AtomicF32;
-use crate::blocks::{Block, BlockKind, Step, MAX_EXTRA_BLOCKS};
+use crate::blocks::{Block, BlockKind, BlockParams, Step, MAX_EXTRA_BLOCKS};
 use crate::chain::Node;
 use crate::config::{ConsoleConfig, Counts, MAX_AUX};
 use crate::denormals::ScopedNoDenormals;
@@ -1159,9 +1159,57 @@ impl Engine {
             return None;
         }
         let block = Arc::new(Block::new(uid, kind, strip.kind().is_output(), st.device.sample_rate, strip.spec().run_models()));
+        if let BlockParams::Plugin(p) = &block.params {
+            if p.pid() == 0 {
+                return None; // every plug-in block id is taken
+            }
+            block.prepare_block_size(st.device.block_size);
+        }
         steps.insert(at.min(steps.len()), Step::Block(block.clone()));
         strip.set_layout(steps, &self.garbage);
         Some(block)
+    }
+
+    /// Message thread: the plug-in block with host id `pid` and its strip.
+    pub fn plugin_block(&self, pid: u32) -> Option<(Arc<Strip>, Arc<Block>)> {
+        let st = self.lock();
+        let found = st.all().find_map(|s| {
+            s.blocks()
+                .into_iter()
+                .find(|b| matches!(&b.params, BlockParams::Plugin(p) if p.pid() == pid && pid != 0))
+                .map(|b| (s.clone(), b))
+        });
+        found
+    }
+
+    /// Message thread: installs (None: clears) the processor of plug-in block
+    /// `pid`; `keep_fault` for a chain rearranged (as `replace_fx_plugin`).
+    pub fn set_plugin_block(&self, pid: u32, cb: Option<InsertCallbacks>, keep_fault: bool) -> bool {
+        let Some((_, b)) = self.plugin_block(pid) else {
+            // The block is gone: the host must free what it made.
+            if let Some(release) = cb.and_then(|c| c.release) {
+                // SAFETY: host contract: callable on the message thread once never called by the engine.
+                unsafe { release(cb.map_or(std::ptr::null_mut(), |c| c.ctx)) };
+            }
+            return false;
+        };
+        let BlockParams::Plugin(p) = &b.params else { return false };
+        p.set(cb, keep_fault, &self.garbage);
+        true
+    }
+
+    /// Message thread: the host ids of the plug-in blocks that hold a plug-in.
+    pub fn plugin_block_pids(&self) -> Vec<u32> {
+        let st = self.lock();
+        let pids = st
+            .all()
+            .flat_map(|s| s.blocks())
+            .filter_map(|b| match &b.params {
+                BlockParams::Plugin(p) if p.is_loaded() => Some(p.pid()),
+                _ => None,
+            })
+            .collect();
+        pids
     }
 
     /// Message thread: takes block `uid` out of `strip`'s chain.
@@ -1680,7 +1728,7 @@ impl Engine {
         let add = |own: [u32; pdc_tap::COUNT], base: u32| own.map(|l| l.saturating_add(base));
 
         for s in st.channels.iter().chain(&st.auxes) {
-            s.pdc.set(s.own_latency(&fx), 0);
+            s.pdc.set(s.own_latency(&fx, enabled), 0);
         }
         // The buses in the order the audio thread runs them (the buses
         // feeding a bus first; a send closing a loop is a block late and
@@ -1695,7 +1743,7 @@ impl Engine {
         let feeds_of = |dst: &Strip| pdc_feeds(&st, &buses, &schedule, dst);
         for dst in &summing {
             let target = feeds_of(dst).iter().map(|(s, tap)| s.pdc.latency(*tap)).max().unwrap_or(0);
-            dst.pdc.set(add(dst.own_latency(&fx), target), target);
+            dst.pdc.set(add(dst.own_latency(&fx, enabled), target), target);
         }
 
         // The rings the plan reads from, and what it can't make up.

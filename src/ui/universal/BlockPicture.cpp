@@ -273,6 +273,14 @@ bool BlockPicture::update (UiContext& ctx, const BlockTarget& t, const std::vect
             if (t.input != nullptr)
                 newLive = { t.input->trimDb.load(), t.input->balanceDb.load(), t.input->invert.load() ? 1.0f : 0.0f };
             break;
+        case BlockTarget::Kind::Plugin:
+            if (t.pluginOn != nullptr && t.strip != nullptr)
+            {
+                const auto info = ctx.engine.getFx().describeBlock (t.strip->getHandle(), t.uid);
+                newName = (info.name.isNotEmpty() ? info.name : juce::String ("PLUG-IN")).toUpperCase() + (info.missing ? " (MISSING)" : juce::String());
+                newLive = { t.pluginOn->load() ? 1.0f : 0.0f };
+            }
+            break;
         case BlockTarget::Kind::Delay:
             if (t.delay != nullptr && t.delayMode != nullptr && t.delayOn != nullptr)
             {

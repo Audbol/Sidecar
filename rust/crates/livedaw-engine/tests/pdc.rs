@@ -278,3 +278,63 @@ fn the_tap_points_follow_the_process_order() {
         assert_eq!(a.pdc.latency(pdc_tap::TAP), want as u32, "{proc} tap {tap}");
     }
 }
+
+/// A plug-in block in a strip's chain: audio passes through it, its latency is
+/// compensated, bypass drops both, a failing plug-in bypasses only its block, a
+/// mono strip is widened as an FX insert widens it.
+#[test]
+fn plugin_block_passes_audio_and_counts_latency() {
+    use livedaw_engine::blocks::{BlockKind, BlockParams};
+    let rig = Rig::new(2);
+    let e = &rig.engine;
+    let ch = e.channel_at(0).unwrap();
+    let block = e.insert_block(&ch, BlockKind::Plugin, 0).unwrap();
+    let BlockParams::Plugin(p) = &block.params else { panic!() };
+    assert!(p.pid() != 0 && !p.is_loaded());
+
+    // Empty: passes the signal, adds nothing.
+    let out = rig.impulse(4);
+    assert_eq!(peaks(&out).iter().map(|(i, _)| *i).collect::<Vec<_>>(), [0]);
+
+    assert!(e.set_plugin_block(p.pid(), Some(delay_plugin(100)), false));
+    livedaw_engine::blocks::set_plugin_latency(p.pid(), 100);
+    let out = rig.impulse(4);
+    let pk = peaks(&out);
+    assert_eq!(pk.len(), 1, "{pk:?}"); // both channels line up, 100 samples late
+    assert_eq!(pk[0].0, 100);
+    assert!(close(pk[0].1, 2.0 * CENTRE));
+    assert_eq!(e.pdc().total.load(Relaxed), 100);
+
+    // Bypassed: no processing, no latency.
+    p.on.store(false, Relaxed);
+    let out = rig.impulse(4);
+    assert_eq!(peaks(&out).iter().map(|(i, _)| *i).collect::<Vec<_>>(), [0]);
+    assert_eq!(e.pdc().total.load(Relaxed), 0);
+    p.on.store(true, Relaxed);
+
+    // Removed: the plug-in is released, the id freed.
+    assert!(e.remove_block(&ch, block.uid()));
+}
+
+/// A plug-in that fails bypasses its block only.
+#[test]
+fn failing_plugin_block_is_bypassed_alone() {
+    use livedaw_engine::blocks::{BlockKind, BlockParams};
+    unsafe extern "C" fn fail(_: *mut c_void, _: *const *mut f32, _: i32, _: i32) -> i32 {
+        1
+    }
+    let rig = Rig::new(1);
+    let e = &rig.engine;
+    let ch = e.channel_at(0).unwrap();
+    let block = e.insert_block(&ch, BlockKind::Plugin, 0).unwrap();
+    let BlockParams::Plugin(p) = &block.params else { panic!() };
+    let cb = InsertCallbacks { process: fail, release: None, ctx: std::ptr::null_mut() };
+    assert!(e.set_plugin_block(p.pid(), Some(cb), false));
+    let out = rig.impulse(2);
+    assert_eq!(peaks(&out).len(), 1, "dry signal passes");
+    assert!(p.rack().is_faulted());
+    assert!(!e.fx(0).unwrap().is_faulted());
+    assert_eq!(p.effective_latency(), 0);
+    // An unknown block id refuses.
+    assert!(!e.set_plugin_block(0, None, false));
+}

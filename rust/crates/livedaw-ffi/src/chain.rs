@@ -12,7 +12,7 @@ use crate::{engine, guard, models, strip};
 use livedaw_engine::blocks::{Block, BlockKind, BlockMeters, BlockParams, Step};
 use livedaw_engine::chain::Node;
 use livedaw_engine::profile::DynSlot;
-use livedaw_engine::{Engine, Strip};
+use livedaw_engine::{Engine, InsertCallbacks, Strip};
 use std::ffi::c_void;
 
 /// Step kinds (`LdChainStep::kind`): the nodes of a strip's template, then
@@ -113,10 +113,11 @@ pub unsafe extern "C" fn ld_strip_chain(s: *const Strip, out: *mut LdChainStep, 
 #[derive(Debug)]
 pub struct LdBlock {
     pub uid: i32,
-    /// `BlockKind` index: 0 filter, 1 EQ, 2 dynamics, 3 insert, 4 delay.
+    /// `BlockKind` index: 0 filter, 1 EQ, 2 dynamics, 3 insert, 4 delay, 5 plug-in.
     pub kind: i32,
     /// Its parameters, by kind: `FilterParams`, `EqBlockParams`,
-    /// `DynSlotParams`, `InsertParams` or `blocks::DelayParams`.
+    /// `DynSlotParams`, `InsertParams`, `blocks::DelayParams` or `blocks::PluginParams` (opaque:
+    /// use the `ld_plugin_block_*` calls).
     pub params: *const c_void,
     pub meters: *const BlockMeters,
 }
@@ -143,6 +144,7 @@ pub unsafe extern "C" fn ld_strip_block(s: *const Strip, uid: i32, out: *mut LdB
         BlockParams::Dynamics(p) => p as *const _ as *const c_void,
         BlockParams::Insert(p) => p as *const _ as *const c_void,
         BlockParams::Delay(p) => p as *const _ as *const c_void,
+        BlockParams::Plugin(p) => p as *const _ as *const c_void,
     };
     *out = LdBlock { uid, kind: b.kind().index() as i32, params, meters: &b.meters };
     true
@@ -189,7 +191,7 @@ pub unsafe extern "C" fn ld_strip_set_block_model(s: *const Strip, uid: i32, mod
             p.set_tool_model(m);
             true
         }
-        BlockParams::Insert(_) | BlockParams::Delay(_) => false,
+        BlockParams::Insert(_) | BlockParams::Delay(_) | BlockParams::Plugin(_) => false,
     })
 }
 
@@ -243,6 +245,124 @@ pub unsafe extern "C" fn ld_engine_move_block(e: *const Engine, s: *const Strip,
 pub unsafe extern "C" fn ld_engine_remove_block(e: *const Engine, s: *const Strip, uid: i32) -> bool {
     let (Some(e), Some(s), Ok(uid)) = (engine(e), strip(s), u32::try_from(uid)) else { return false };
     guard(false, || e.remove_block(s, uid))
+}
+
+/// The host id of plug-in block `uid` (what the `ld_plugin_block_*` calls and the
+/// show's plug-in bridge name it by); 0 for any other block.
+#[no_mangle]
+pub unsafe extern "C" fn ld_plugin_block_pid(s: *const Strip, uid: i32) -> u32 {
+    let Some(s) = strip(s) else { return 0 };
+    match find(s, uid).map(|b| &b.params) {
+        Some(BlockParams::Plugin(p)) => p.pid(),
+        _ => 0,
+    }
+}
+
+/// Message thread: installs the plug-in processor of plug-in block `pid` (null
+/// clears it), as `ld_fx_set` does for a slot; `keep_fault` as `ld_fx_replace`.
+/// False if the block is gone: the callbacks' `release` has then been called.
+#[no_mangle]
+pub unsafe extern "C" fn ld_plugin_block_set(
+    e: *const Engine,
+    pid: u32,
+    callbacks: *const InsertCallbacks,
+    keep_fault: bool,
+) -> bool {
+    let Some(e) = engine(e) else { return false };
+    guard(false, || e.set_plugin_block(pid, callbacks.as_ref().copied(), keep_fault))
+}
+
+/// Message thread: the host context of plug-in block `pid` (null if empty).
+#[no_mangle]
+pub unsafe extern "C" fn ld_plugin_block_ctx(e: *const Engine, pid: u32) -> *mut c_void {
+    let Some(e) = engine(e) else { return std::ptr::null_mut() };
+    guard(std::ptr::null_mut(), || match e.plugin_block(pid).map(|(_, b)| b) {
+        Some(b) => match &b.params {
+            BlockParams::Plugin(p) => p.rack().ctx(),
+            _ => std::ptr::null_mut(),
+        },
+        None => std::ptr::null_mut(),
+    })
+}
+
+/// Message thread: a plug-in block's state. what: 0 = a plug-in is loaded, 1 =
+/// faulted (auto-bypassed), 2 = bypassed, 3 = its latency in samples (what it
+/// reported), 4 = the latency it adds now (0 while bypassed or faulted). -1 if
+/// the block is gone.
+#[no_mangle]
+pub unsafe extern "C" fn ld_plugin_block_state(e: *const Engine, pid: u32, what: i32) -> i32 {
+    let Some(e) = engine(e) else { return -1 };
+    guard(-1, || match e.plugin_block(pid).map(|(_, b)| b) {
+        Some(b) => match &b.params {
+            BlockParams::Plugin(p) => match what {
+                0 => p.is_loaded() as i32,
+                1 => p.rack().is_faulted() as i32,
+                2 => !p.on.load(std::sync::atomic::Ordering::Relaxed) as i32,
+                3 => p.latency() as i32,
+                4 => p.effective_latency() as i32,
+                _ => -1,
+            },
+            _ => -1,
+        },
+        None => -1,
+    })
+}
+
+/// Message thread: bypasses plug-in block `pid` (a bypass also clears its fault).
+#[no_mangle]
+pub unsafe extern "C" fn ld_plugin_block_set_bypass(e: *const Engine, pid: u32, bypass: bool) {
+    let Some(e) = engine(e) else { return };
+    guard((), || {
+        if let Some((_, b)) = e.plugin_block(pid) {
+            if let BlockParams::Plugin(p) = &b.params {
+                p.on.store(!bypass, std::sync::atomic::Ordering::Relaxed);
+                p.rack().clear_fault();
+            }
+        }
+    });
+}
+
+/// Message thread: clears the fault of plug-in block `pid`.
+#[no_mangle]
+pub unsafe extern "C" fn ld_plugin_block_clear_fault(e: *const Engine, pid: u32) {
+    let Some(e) = engine(e) else { return };
+    guard((), || {
+        if let Some((_, b)) = e.plugin_block(pid) {
+            if let BlockParams::Plugin(p) = &b.params {
+                p.rack().clear_fault();
+            }
+        }
+    });
+}
+
+/// Message thread: the host ids of the plug-in blocks holding a plug-in, up to
+/// `max` into `out`; returns how many there are.
+#[no_mangle]
+pub unsafe extern "C" fn ld_plugin_block_list(e: *const Engine, out: *mut u32, max: i32) -> i32 {
+    let Some(e) = engine(e) else { return 0 };
+    let pids = guard(Vec::new(), || e.plugin_block_pids());
+    if !out.is_null() && max > 0 {
+        let out = std::slice::from_raw_parts_mut(out, (max as usize).min(pids.len()));
+        out.copy_from_slice(&pids[..out.len()]);
+    }
+    pids.len() as i32
+}
+
+/// Any thread: the latency in samples the host reports for plug-in block `pid`.
+#[no_mangle]
+pub extern "C" fn ld_plugin_block_set_latency(pid: u32, samples: i32) {
+    livedaw_engine::blocks::set_plugin_latency(pid, samples.max(0) as u32);
+}
+
+/// Message thread: the saved `<PLUGIN>` description of the plug-in block's
+/// plug-in that could not be loaded (a show's), or an empty string.
+#[no_mangle]
+pub unsafe extern "C" fn ld_plugin_block_missing(e: *const Engine, pid: u32) -> *mut crate::session::LdString {
+    let saved = engine(e).and_then(|e| e.plugin_block(pid)).and_then(|(_, b)| match &b.params {
+        BlockParams::Plugin(p) => p.missing().map(|m| m.0),
+        _ => None,
+    });
+    crate::session::LdString::new(saved.unwrap_or_default())
 }
 
 /// Back to the strip's template: no extra blocks, no user taps.
@@ -374,7 +494,7 @@ mod tests {
             let delay = ld_engine_insert_block(e, ch, BlockKind::Delay.index() as i32, 0);
             let dp = &*(block(ch, delay).params as *const DelayParams);
             dp.delay.store(12.0);
-            assert_eq!(ld_engine_insert_block(e, ch, 5, 0), -1);
+            assert_eq!(ld_engine_insert_block(e, ch, 6, 0), -1);
             assert_eq!(ld_engine_insert_block(e, std::ptr::null(), 0, 0), -1);
             assert!(!ld_strip_block(ch, 999, &mut LdBlock::default()));
             assert_eq!(chain(ch).iter().filter(|s| s.kind == step::BLOCK).count(), 4);

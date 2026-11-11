@@ -55,6 +55,11 @@ public:
         row (before PRE-FADER with none) and selects it; false if the strip has
         no room. */
     bool add (std::optional<BlockKind> kind);
+    /** Offers the scanned plugins; the one picked goes into a new PLUG-IN block (its editor opens). */
+    void choosePlugin();
+    /** A new PLUG-IN block holding `desc`; false (no block left behind) if it could not be loaded or
+        a real console is under remote control. */
+    bool addPlugin (const juce::PluginDescription& desc);
     /** Moves movable row `row` to before row `before` (the end: getRows().size()). */
     bool moveRow (int row, int before);
     bool removeRow (int row);
@@ -66,6 +71,8 @@ public:
 
 private:
     class Rows;
+    /** The step index a new block goes in: after the selected row, else before PRE-FADER, else last. */
+    int insertionPoint() const;
     void rebuild (const std::vector<ChainStep>& chain);
     static bool sameChain (const std::vector<ChainStep>&, const std::vector<ChainStep>&);
     bool isOn (const ChainStep&) const;

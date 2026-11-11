@@ -1,6 +1,8 @@
 #include "engine/FxSlots.h"
 #include "engine/Models.h"
 #include "engine/MonoBuses.h"
+#include "engine/PluginHost.h"
+#include "engine/RustStrings.h"
 #include "engine/SandboxedPlugin.h"
 
 namespace livedaw
@@ -9,6 +11,8 @@ namespace livedaw
 struct FxSlots::Holder final : private juce::AudioProcessorListener
 {
     Holder (ld::Engine* e, int s) : engine (e), slot (s) {}
+
+    bool isBlock() const noexcept { return FxSlots::isBlockSlot (slot); }
 
     ld::Engine* engine;
     int slot;
@@ -95,7 +99,11 @@ struct FxSlots::Holder final : private juce::AudioProcessorListener
     /** Any thread (a plugin may change its latency inside processBlock): an atomic store. */
     void reportLatency()
     {
-        if (installed.load())
+        if (! installed.load())
+            return;
+        if (isBlock())
+            ld::ld_plugin_block_set_latency (FxSlots::blockPid (slot), plugin->getLatencySamples());
+        else
             ld::ld_fx_set_latency (engine, slot, plugin->getLatencySamples());
     }
 
@@ -112,12 +120,72 @@ private:
 FxSlots::Holder* FxSlots::holderAt (int slot) const noexcept
 {
     // Every slot context registered with the engine is a Holder (see setPlugin).
+    if (isBlockSlot (slot))
+        return static_cast<Holder*> (ld::ld_plugin_block_ctx (engine, blockPid (slot)));
     return juce::isPositiveAndBelow (slot, kMaxFx) ? static_cast<Holder*> (ld::ld_fx_ctx (engine, slot)) : nullptr;
+}
+
+FxSlots::BlockInfo FxSlots::describeBlock (const ld::Strip* strip, int uid) const
+{
+    BlockInfo info;
+    const int slot = blockSlotOf (strip, uid);
+    if (slot < 0)
+        return info;
+    info.bypassed = isBlockBypassed (slot);
+    if (auto* plugin = getPlugin (slot))
+    {
+        info.loaded = true;
+        info.faulted = isFaulted (slot) || getNumFaultedChainMembers (slot) > 0;
+        info.latency = getLatency (slot);
+        if (auto* chain = getChain (slot); chain != nullptr && chain->size() > 1)
+        {
+            info.name = chain->describeMembers();
+            info.vendor = juce::String (chain->size()) + " plugins";
+        }
+        else
+        {
+            const auto description = PluginHost::describe (*getChainMember (slot, 0));
+            info.name = description.name;
+            info.vendor = description.manufacturerName;
+        }
+        return info;
+    }
+    if (const auto xml = juce::parseXML (takeString (ld::ld_plugin_block_missing (engine, blockPid (slot)))))
+    {
+        juce::PluginDescription description;
+        info.missing = true;
+        if (xml->hasTagName (PluginChain::kXmlTag))
+            info.name = xml->getStringAttribute ("name", "plugin chain");
+        else if (description.loadFromXml (*xml))
+        {
+            info.name = description.name;
+            info.vendor = description.manufacturerName;
+        }
+    }
+    return info;
+}
+
+std::vector<int> FxSlots::blockSlots() const
+{
+    std::vector<uint32_t> pids (64);
+    int n = ld::ld_plugin_block_list (engine, pids.data(), (int) pids.size());
+    if (n > (int) pids.size())
+    {
+        pids.resize ((size_t) n);
+        n = ld::ld_plugin_block_list (engine, pids.data(), (int) pids.size());
+    }
+    std::vector<int> slots;
+    for (int i = 0; i < juce::jmin (n, (int) pids.size()); ++i)
+        slots.push_back (blockSlot (pids[(size_t) i]));
+    return slots;
 }
 
 void FxSlots::prepare (double sampleRate, int maxBlockSize)
 {
+    auto slots = blockSlots();
     for (int slot = 0; slot < kMaxFx; ++slot)
+        slots.push_back (slot);
+    for (const int slot : slots)
     {
         if (auto* h = holderAt (slot))
         {
@@ -135,7 +203,7 @@ void FxSlots::setPlugin (int slot, std::unique_ptr<juce::AudioPluginInstance> pl
 
 void FxSlots::install (int slot, std::shared_ptr<juce::AudioPluginInstance> plugin, bool rearranged)
 {
-    if (! juce::isPositiveAndBelow (slot, kMaxFx))
+    if (! juce::isPositiveAndBelow (slot, kMaxFx) && ! isBlockSlot (slot))
         return;
 
     if (auto* old = holderAt (slot))
@@ -143,7 +211,10 @@ void FxSlots::install (int slot, std::shared_ptr<juce::AudioPluginInstance> plug
 
     if (plugin == nullptr)
     {
-        ld::ld_fx_set (engine, slot, nullptr);
+        if (isBlockSlot (slot))
+            ld::ld_plugin_block_set (engine, blockPid (slot), nullptr, false);
+        else
+            ld::ld_fx_set (engine, slot, nullptr);
         return;
     }
 
@@ -154,7 +225,13 @@ void FxSlots::install (int slot, std::shared_ptr<juce::AudioPluginInstance> plug
     holder->prepare (ld::ld_engine_sample_rate (engine), ld::ld_engine_block_size (engine));
 
     const ld::InsertCallbacks callbacks { &Holder::process, &Holder::release, holder };
-    if (rearranged)
+    if (isBlockSlot (slot))
+    {
+        // A block that is gone has released the plugin already (and the holder with it).
+        if (! ld::ld_plugin_block_set (engine, blockPid (slot), &callbacks, rearranged))
+            return;
+    }
+    else if (rearranged)
         ld::ld_fx_replace (engine, slot, &callbacks); // the slot's plugins rearranged: a faulted slot stays bypassed
     else
         ld::ld_fx_set (engine, slot, &callbacks);
@@ -164,7 +241,10 @@ void FxSlots::install (int slot, std::shared_ptr<juce::AudioPluginInstance> plug
 bool FxSlots::updateLatencies()
 {
     bool changed = false;
+    auto slots = blockSlots();
     for (int slot = 0; slot < kMaxFx; ++slot)
+        slots.push_back (slot);
+    for (const int slot : slots)
     {
         auto* h = holderAt (slot);
         if (h != nullptr && h->chain != nullptr)
@@ -261,7 +341,10 @@ int FxSlots::getNumFaultedChainMembers (int slot) const noexcept
 
 void FxSlots::clearFlags (int slot)
 {
-    ld::ld_fx_clear_flags (engine, slot);
+    if (isBlockSlot (slot))
+        ld::ld_plugin_block_clear_fault (engine, blockPid (slot));
+    else
+        ld::ld_fx_clear_flags (engine, slot);
     if (auto* chain = getChain (slot))
         for (int i = 0; i < chain->size(); ++i)
             if (chain->isFaulted (i))
@@ -371,6 +454,8 @@ juce::String FxSlots::returnLabel (int slot) const
 
 juce::String FxSlots::describe (int slot) const
 {
+    if (isBlockSlot (slot))
+        return "PLUG-IN" + (getPlugin (slot) != nullptr ? ": " + getPlugin (slot)->getName() : juce::String());
     juce::String s ("FX " + juce::String (slot + 1));
     if (auto* p = getPlugin (slot))
         s << ": " << p->getName();

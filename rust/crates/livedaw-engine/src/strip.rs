@@ -673,7 +673,7 @@ impl Strip {
     /// relative to its input, given the latency of every FX slot: INS 1 counts
     /// from the pre-fader point on (and at the TAP point when that follows
     /// INS 1 in the process order), INS 2 after the fader.
-    pub(crate) fn own_latency(&self, fx_latency: &[u32]) -> [u32; pdc_tap::COUNT] {
+    pub(crate) fn own_latency(&self, fx_latency: &[u32], plugin_blocks: bool) -> [u32; pdc_tap::COUNT] {
         let p = &self.params;
         let slot = |fx: i32| usize::try_from(fx).ok().and_then(|i| fx_latency.get(i)).copied().unwrap_or(0);
         let insert = |ins: &InsertParams| if ins.on.load(Relaxed) { slot(ins.fx.load(Relaxed)) } else { 0 };
@@ -686,11 +686,11 @@ impl Strip {
             (Some(Node::Tap(t)), _) if t as usize == tap_point => tap_l = at,
             (Some(Node::Pfl), _) => pfl = at,
             (Some(Node::Post), _) => post = at,
-            (None, Some(b)) => {
-                if let BlockParams::Insert(ins) = &b.params {
-                    at += insert(ins);
-                }
-            }
+            (None, Some(b)) => match &b.params {
+                BlockParams::Insert(ins) => at += insert(ins),
+                BlockParams::Plugin(p) if plugin_blocks => at += p.effective_latency(),
+                _ => {}
+            },
             _ => {}
         };
         let resolve = |node: Node| match node {
@@ -818,6 +818,7 @@ impl Strip {
         if let Some(layout) = self.layout() {
             for b in layout.blocks() {
                 b.dsp_mut().prepare(sample_rate);
+                b.prepare_block_size(mb);
             }
         }
     }
@@ -1230,6 +1231,21 @@ impl Strip {
                 b.meters.active.store(on && status.active, Relaxed);
             }
             (BlockParams::Insert(p), _) => self.run_insert_params(d, ctx, n, p),
+            (BlockParams::Plugin(p), _) => {
+                if !p.on.load(Relaxed) || !p.is_loaded() || p.rack().is_faulted() {
+                    return;
+                }
+                // As an FX insert: a mono strip feeds both inputs and carries the stereo output on.
+                if d.num_channels == 1 {
+                    let [w0, w1] = &mut d.work;
+                    w1[..n].copy_from_slice(&w0[..n]);
+                    d.num_channels = 2;
+                    d.widened = true;
+                }
+                let [w0, w1] = &mut d.work;
+                let mut chans: [&mut [f32]; 2] = [&mut w0[..n], &mut w1[..n]];
+                p.rack().process_plain(&mut chans, d.sample_rate);
+            }
             (BlockParams::Delay(p), BlockDsp::Delay(line)) if p.on.load(Relaxed) => {
                 let samples = delay_samples(p.delay.load(), p.mode.load(Relaxed).clamp(0, 3) as usize, d.sample_rate);
                 let [w0, w1] = &mut d.work;

@@ -27,7 +27,10 @@ struct FakeHost {
 impl FakeHost {
     fn load(&mut self, engine: &Engine, slot: usize, name: &str, state: &str) {
         let cb = InsertCallbacks { process: pass_through, release: None, ctx: std::ptr::null_mut() };
-        engine.set_fx_plugin(slot, Some(cb));
+        match slot.checked_sub(console::PLUGIN_BLOCK_SLOT_BASE) {
+            Some(pid) => assert!(engine.set_plugin_block(pid as u32, Some(cb), false)),
+            None => engine.set_fx_plugin(slot, Some(cb)),
+        }
         self.plugins.insert(slot, (name.into(), state.into()));
     }
 }
@@ -68,7 +71,10 @@ impl PluginBridge for Bridge<'_> {
 
     fn clear_fx(&mut self, slot: usize) {
         self.host.plugins.remove(&slot);
-        self.engine.set_fx_plugin(slot, None);
+        match slot.checked_sub(console::PLUGIN_BLOCK_SLOT_BASE) {
+            Some(pid) => drop(self.engine.set_plugin_block(pid as u32, None, false)),
+            None => self.engine.set_fx_plugin(slot, None),
+        }
     }
 }
 
@@ -1153,6 +1159,55 @@ fn extra_blocks_survive_a_show_and_recall_with_their_sections() {
     let (e3, _) = round_trip(&e2, &Show::new());
     assert!(ch(&e3, 0).layout().is_none());
     assert!(!Show::new().to_xml(&e2, &mut NoPlugins).to_document().contains("<Chain"));
+}
+
+#[test]
+fn plugin_blocks_survive_a_show_and_a_missing_plugin_stays_bypassed() {
+    use livedaw_engine::blocks::{BlockKind, BlockParams};
+    let engine = Engine::new(0);
+    set_channels(&engine, 1);
+    let c = ch(&engine, 0);
+    let b = engine.insert_block(&c, BlockKind::Plugin, 2).unwrap();
+    let BlockParams::Plugin(p) = &b.params else { panic!() };
+    let mut host = FakeHost::default();
+    host.load(&engine, console::PLUGIN_BLOCK_SLOT_BASE + p.pid() as usize, "Reverb", "state-1");
+    livedaw_engine::blocks::set_plugin_latency(p.pid(), 64);
+    p.on.store(false, Relaxed);
+    let show = Show::new();
+    let text = show.to_xml(&engine, &mut Bridge { host: &mut host, engine: &engine }).to_document();
+    assert!(text.contains("kind=\"plug\"") && text.contains("Reverb"));
+
+    // Loaded with the plug-in available: same block, bypass and state.
+    let load = |fail: &[&str]| {
+        let e2 = Engine::new(0);
+        let mut h2 = FakeHost { fail_to_create: fail.iter().map(|s| s.to_string()).collect(), ..Default::default() };
+        let mut s2 = Show::new();
+        let r = s2.load_from_text(&e2, &mut Bridge { host: &mut h2, engine: &e2 }, &text, true);
+        (e2, h2, r)
+    };
+    let (e2, h2, _) = load(&[]);
+    let blocks = ch(&e2, 0).blocks();
+    assert_eq!(blocks.len(), 1);
+    let BlockParams::Plugin(p2) = &blocks[0].params else { panic!() };
+    assert!(p2.is_loaded() && !p2.on.load(Relaxed));
+    assert_eq!(h2.plugins[&(console::PLUGIN_BLOCK_SLOT_BASE + p2.pid() as usize)], ("Reverb".into(), "state-1".into()));
+
+    // The plug-in is gone: the block stays, bypassed, its identity kept and saved again.
+    let (e3, mut h3, _) = load(&["Reverb"]);
+    let blocks = ch(&e3, 0).blocks();
+    let BlockParams::Plugin(p3) = &blocks[0].params else { panic!() };
+    assert!(!p3.is_loaded() && !p3.on.load(Relaxed));
+    assert!(p3.missing().unwrap().0.contains("Reverb"));
+    let again = Show::new().to_xml(&e3, &mut Bridge { host: &mut h3, engine: &e3 }).to_document();
+    assert!(again.contains("Reverb") && again.contains("state-1"));
+
+    // An old show without plug-in blocks loads as before (no <Chain> at all).
+    let (e4, _) = round_trip(&Engine::new(0), &Show::new());
+    assert!(ch_or_none(&e4));
+}
+
+fn ch_or_none(e: &Engine) -> bool {
+    e.channel_at(0).is_none_or(|c| c.blocks().is_empty())
 }
 
 #[test]

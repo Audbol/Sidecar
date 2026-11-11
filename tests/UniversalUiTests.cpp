@@ -1629,6 +1629,205 @@ public:
             expect (! panel.isVisible() && view.getColumn (0)->getHeight() > columnHeight + 150);
         }
 
+        beginTest ("Every console's EQ has handles on the panel; a drag moves a band's frequency and gain; dynamics have threshold handles");
+        {
+            const ld::ProfileId profiles[] = { ld::kProfileUniversal, ld::kProfileWing, ld::kProfileX32, ld::kProfileProMix01, ld::kProfileYamaha02R,
+                                               ld::kProfileSq5, ld::kProfileYamaha01V, ld::kProfileDLive, ld::kProfileDm2000, ld::kProfileMidasPro2,
+                                               ld::kProfileXenyx1202 };
+            for (const ld::ProfileId profile : profiles)
+            {
+                MixerEngine engine (0);
+                engine.configureProfile (profile);
+                setShownProfile (profile);
+                setShownSlots (engine.getHandle());
+                UiRig rig (engine);
+                auto* strip = engine.getChannels()[0].get();
+                if (strip == nullptr)
+                    continue;
+                auto panelOwner = std::make_unique<ChannelPanel> (rig.ctx, Theme::charcoal());
+                auto& panel = *panelOwner;
+                panel.setSize (1920, 300);
+                panel.setStrip (strip);
+                panel.refresh();
+                auto& view = panel.getEqView();
+                const auto& handles = view.getHandles();
+                const auto name = "profile " + juce::String ((int) profile);
+                if (handles.empty())
+                {
+                    // A console whose strip has no EQ of its own (the XENYX's fixed 3 bands have none to show).
+                    expect (profile == ld::kProfileXenyx1202 || ! view.isVisible(), name + ": EQ handles");
+                    continue;
+                }
+                int band = -1;
+                for (int i = 0; i < (int) handles.size() && band < 0; ++i)
+                    if (handles[(size_t) i].gain != nullptr)
+                        band = i;
+                expect (band >= 0, name + ": a band with gain");
+                if (band < 0)
+                    continue;
+                const auto h = handles[(size_t) band];
+                const float f0 = h.freq->load(), g0 = h.gain->load();
+                const auto from = view.handlePosition (band);
+                view.mouseDown (mouseEvent (view, from, from));
+                view.mouseDrag (mouseEvent (view, from + juce::Point<float> (40.0f, 25.0f), from));
+                view.mouseUp (mouseEvent (view, from + juce::Point<float> (40.0f, 25.0f), from));
+                expect (h.freq->load() != f0 && h.gain->load() != g0, name + ": the drag moved frequency and gain");
+            }
+            setShownProfile (ld::kProfileWing);
+        }
+
+        beginTest ("An EQ added to a strip shows a card at once, named in signal order; removing it takes the card away");
+        {
+            MixerEngine engine (0);
+            test::setChannels (engine, 2);
+            UiRig rig (engine);
+            auto* strip = engine.getChannels()[0].get();
+            auto panelOwner = std::make_unique<ChannelPanel> (rig.ctx, Theme::charcoal());
+            auto& panel = *panelOwner;
+            panel.setSize (1920, 300);
+            panel.setStrip (strip);
+            expectEquals (panel.numExtraCards(), 0);
+            const int first = strip->insertBlock (BlockKind::Eq, -1);
+            panel.refresh();
+            expectEquals (panel.numExtraCards(), 1);
+            expect (panel.numExtraCards() == 1 && panel.extraCardName (0) == "EQ 2" && panel.getExtraEqView (0) != nullptr && panel.getExtraEqView (0)->getWidth() > 100);
+            strip->insertBlock (BlockKind::Eq, -1);
+            panel.refresh();
+            expectEquals (panel.numExtraCards(), 2);
+            expect (panel.numExtraCards() == 2 && panel.extraCardName (1) == "EQ 3");
+            strip->removeBlock (first);
+            panel.refresh();
+            expectEquals (panel.numExtraCards(), 1);
+        }
+
+        beginTest ("A plug-in block shows a card in the CHANNEL panel (name, vendor, latency, EDIT, bypass), is offered in the add-block list and is refused under remote control");
+        {
+            MixerEngine engine (0);
+            test::setChannels (engine, 2);
+            UiRig rig (engine);
+            auto* strip = engine.getChannels()[0].get();
+            auto panelOwner = std::make_unique<ChannelPanel> (rig.ctx, Theme::charcoal());
+            auto& panel = *panelOwner;
+            panel.setSize (1920, 300);
+            panel.setStrip (strip);
+
+            ChainList list (rig.ctx, Theme::charcoal());
+            list.setSize (320, 400);
+            list.setStrip (strip);
+            panel.refresh();
+            expectEquals (panel.numExtraCards(), 0);
+
+            const int uid = strip->insertBlock (BlockKind::Plugin, -1);
+            expect (uid >= 0);
+            const int slot = FxSlots::blockSlotOf (strip->getHandle(), uid);
+            auto* fake = new test::FakePlugin (1.0f, test::FakePlugin::Mode::Gain, "Hall Reverb");
+            fake->setLatencySamples (128);
+            engine.getFx().setPlugin (slot, std::unique_ptr<juce::AudioPluginInstance> (fake));
+            panel.refresh();
+            expectEquals (panel.numExtraCards(), 1);
+            auto* card = panel.numExtraCards() == 1 ? panel.getExtraPluginCard (0) : nullptr;
+            expect (card != nullptr && card->getWidth() > 100 && panel.extraCardName (0) == "PLUG-IN 1");
+            if (card != nullptr)
+            {
+                card->setBlock (strip, uid, strip->getBlock (uid).plugin()); // refreshes what it shows
+                expectEquals (card->info().name, juce::String ("Fake Hall Reverb"));
+                expectEquals (card->info().vendor, juce::String ("Tests"));
+                expectEquals (card->info().latency, 128);
+                expect (card->info().loaded && ! card->info().bypassed);
+                // The EDIT key opens the plugin's window by its block's slot.
+                int opened = -1;
+                rig.ctx.openPluginEditor = [&opened] (int s) { opened = s; };
+                card->openEditor();
+                expectEquals (opened, slot);
+                engine.getFx().setBlockBypassed (slot, true);
+                card->setBlock (strip, uid, strip->getBlock (uid).plugin());
+                expect (card->info().bypassed);
+                engine.getFx().setBlockBypassed (slot, false);
+            }
+            expect (ui::stepName (*strip, strip->getChain()[strip->getChain().size() - 1]).isNotEmpty());
+
+            // The shown file for the docs: LIVEDAW_SCREENSHOTS names the folder.
+            const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {});
+            if (folder.isNotEmpty())
+            {
+                panel.setSize (1920, 300);
+                card->setBlock (strip, uid, strip->getBlock (uid).plugin()); // not bypassed now
+                panel.refresh();
+                const auto image = panel.createComponentSnapshot (panel.getLocalBounds(), true, 1.0f);
+                const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile ("plugin-block.png");
+                file.getParentDirectory().createDirectory();
+                file.deleteFile();
+                juce::FileOutputStream out (file);
+                expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out), file.getFullPathName());
+                logMessage ("wrote " + file.getFullPathName());
+            }
+
+            // Under remote control of a real console the block isn't offered or added.
+            models::setRemoteHeld (true);
+            expect (strip->insertBlock (BlockKind::Plugin, -1) < 0);
+            models::setRemoteHeld (false);
+
+            // Removing the block takes the card away and lets the plugin go.
+            list.refresh();
+            bool removed = false;
+            for (int i = 0; i < (int) list.getRows().size() && ! removed; ++i)
+                if (list.getRows()[(size_t) i].step.isBlock() && list.getRows()[(size_t) i].step.uid == uid)
+                    removed = list.removeRow (i);
+            expect (removed);
+            panel.refresh();
+            expectEquals (panel.numExtraCards(), 0);
+            engine.getGarbage().collectAllNow();
+        }
+
+        beginTest ("The panel's drag bar sizes it, MAXIMISE fills the view and a double tap restores; the height is saved");
+        {
+            MixerEngine engine (0);
+            test::setChannels (engine, 4);
+            UiRig rig (engine);
+            auto viewOwner = std::make_unique<MixerView> (rig.ctx, Theme::charcoal());
+            auto& view = *viewOwner;
+            view.setSize (1920, 1000);
+            view.setChannelShown (true);
+            rig.selected = engine.getChannels()[1].get();
+            view.selectionChanged();
+            view.refresh();
+            auto& panel = view.getChannelPanel();
+            const int normal = panel.getHeight();
+            expect (normal == ChannelPanel::kDefaultHeight && panel.getDragBar().getHeight() >= 32);
+            const auto from = panel.getDragBar().getCentre().toFloat();
+            panel.mouseDown (mouseEvent (panel, from, from));
+            panel.mouseDrag (mouseEvent (panel, from + juce::Point<float> (0.0f, 80.0f), from));
+            panel.mouseUp (mouseEvent (panel, from + juce::Point<float> (0.0f, 80.0f), from));
+            expect (panel.getHeight() == normal + 80 && rig.settings.getIntValue (ChannelPanel::kHeightSetting, 0) == normal + 80, "dragged taller, saved");
+            panel.getMaximiseKey().onClick();
+            expect (panel.isMaximised() && panel.getHeight() == 1000 - ChannelPanel::kCompactFaders, "maximised: most of the view");
+            expect (view.getColumn (0)->getHeight() > 0 && panel.getBottom() <= view.getColumn (0)->getY() + 1 + view.getHeight(), "faders stay below");
+            panel.mouseDoubleClick (mouseEvent (panel, panel.getDragBar().getCentre().toFloat(), panel.getDragBar().getCentre().toFloat()));
+            expect (! panel.isMaximised() && panel.getHeight() == normal + 80, "a double tap on the bar restores");
+        }
+
+        beginTest ("The maximised panel on a ProMix and an X32 (pictures)");
+        for (const ld::ProfileId profile : { ld::kProfileProMix01, ld::kProfileX32 })
+        {
+            MixerEngine engine (0);
+            engine.configureProfile (profile);
+            setShownProfile (profile);
+            setShownSlots (engine.getHandle());
+            UiRig rig (engine);
+            auto viewOwner = std::make_unique<MixerView> (rig.ctx, Theme::charcoal());
+            auto& view = *viewOwner;
+            view.setSize (1920, 1000);
+            view.setChannelShown (true);
+            rig.selected = engine.getChannels()[0].get();
+            view.selectionChanged();
+            view.refresh();
+            view.getChannelPanel().setMaximised (true);
+            expect (view.getChannelPanel().getEqView().getHandles().size() > 0, "EQ handles");
+            expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds(), true, 1.0f),
+                                 profile == ld::kProfileX32 ? "channel-panel-maximised-x32.png" : "channel-panel-maximised-promix.png"));
+            setShownProfile (ld::kProfileWing);
+        }
+
         beginTest ("A model or device is chosen by its picture: a grid of the front panels, a tap chooses");
         {
             juce::StringArray names { "One", "Two", "Three", "Four", "Five", "Six", "Seven" };

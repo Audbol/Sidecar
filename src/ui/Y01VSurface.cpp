@@ -5292,6 +5292,16 @@ Y01VSurface::Y01VSurface (UiContext& c)
     }
     masterFader = std::make_unique<Fader> (kCapRed, juce::Colour (0xff1e1d1c), true, ctx.engine.getFaderLaw ((int) StripKind::Main));
     addAndMakeVisible (*masterFader);
+    for (int i = 0; i <= kStrips; ++i)
+    {
+        tapes.push_back (std::make_unique<ConsoleTape> (i + 1));
+        auto& t = *tapes.back();
+        t.setComponentID ("TAPE" + juce::String (i + 1));
+        const auto strip = [this, i] { return i < kStrips ? stripAt (i) : masterStrip(); };
+        t.getText = [strip] { auto* s = strip(); return s != nullptr ? s->getOwnName() : juce::String(); };
+        t.setText = [strip] (const juce::String& n) { if (auto* s = strip()) s->setName (n); };
+        addAndMakeVisible (t);
+    }
 
     // The strips' keys.
     for (int i = 0; i < kStrips; ++i)
@@ -5747,6 +5757,8 @@ void Y01VSurface::timerCallback()
     for (auto& f : faders)
         f->refresh();
     masterFader->refresh();
+    for (auto& t : tapes)
+        t->refresh();
     for (auto& [name, k] : keys)
         k->refresh();
     for (auto& [name, k] : knobs)
@@ -5782,6 +5794,8 @@ void Y01VSurface::resized()
     for (int i = 0; i < kStrips; ++i)
         faders[(size_t) i]->setBounds (stripCx (i) - 44, kFaderY, 88, kFaderBottom - kFaderY);
     masterFader->setBounds (kMasterCx - 44, kFaderY, 88, kFaderBottom - kFaderY);
+    for (int i = 0; i <= kStrips; ++i) // the tape under each fader, on the bare panel below it
+        tapes[(size_t) i]->setBounds ((i < kStrips ? stripCx (i) : kMasterCx) - 42, kFaderBottom + 6, 84, 30);
 
     for (auto* child : getChildren())
         child->setTransform (design);

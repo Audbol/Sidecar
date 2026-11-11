@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ui/ConsoleTape.h"
 #include "ui/Knobs.h"
 #include "ui/Skin.h"
 #include "ui/UiContext.h"
@@ -380,6 +381,7 @@ public:
 
     /** For tests and the screenshots. */
     y02r::Display& getDisplay() noexcept { return display; }
+    ConsoleTape& getTape (int i) { return *tapes[(size_t) juce::jlimit (0, kNumFaders - 1, i)]; }
     y02r::Fader& getFader (int i) { return *faders[(size_t) juce::jlimit (0, kNumFaders - 1, i)]; }
     void pressFunction (y02r::Function);
     void pressSel (int strip);
@@ -420,6 +422,7 @@ private:
     universal::ToggleKey universalKey, flipKey;
     y02r::Display display;
     std::array<std::unique_ptr<y02r::Fader>, kNumFaders> faders;
+    std::array<std::unique_ptr<ConsoleTape>, kNumFaders> tapes; // Sidecar's console tape over each fader
     std::array<std::unique_ptr<universal::ToggleKey>, kNumFaders> selKeys, onKeys;
     std::array<std::unique_ptr<y02r::Encoder>, kNumEncoders> encoders;
     std::array<std::unique_ptr<universal::ToggleKey>, kNumEncoders> encSelKeys, encOnKeys;

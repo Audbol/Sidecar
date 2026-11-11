@@ -149,7 +149,7 @@ private:
     std::array<juce::Rectangle<int>, StripLayout::kNumSections> sections;
     std::array<std::unique_ptr<Divider>, StripLayout::kNumSections> dividers;
     const StripLayout* layout = nullptr;
-    juce::Rectangle<int> labelArea, nameArea, readoutArea, trayArea, panArea;
+    juce::Rectangle<int> nameArea, readoutArea, trayArea, panArea;
 
     UiContext& ctx;
     Strip& strip;

@@ -3,6 +3,7 @@
 #include "ui/Knobs.h"
 
 #include <cmath>
+#include <map>
 
 namespace livedaw::ui::universal
 {
@@ -268,6 +269,45 @@ ResponseView::ResponseView (const Theme& t) : theme (t)
         freqs.push_back (20.0 * std::pow (1000.0, (double) i / (double) (n - 1)));
 }
 
+namespace
+{
+float hzOf (const ResponseView::Handle& h)
+{
+    const float v = h.freq->load();
+    if (h.freqHz.empty())
+        return v;
+    return h.freqHz[(size_t) juce::jlimit (0, (int) h.freqHz.size() - 1, juce::roundToInt (v - h.minFreq))];
+}
+
+void setHz (ResponseView::Handle& h, double hz)
+{
+    if (h.freqHz.empty())
+    {
+        h.freq->store ((float) juce::jlimit ((double) h.minFreq, (double) h.maxFreq, hz));
+        return;
+    }
+    int best = 0;
+    for (int i = 1; i < (int) h.freqHz.size(); ++i)
+        if (std::abs (std::log (h.freqHz[(size_t) i] / hz)) < std::abs (std::log (h.freqHz[(size_t) best] / hz)))
+            best = i;
+    h.freq->store (h.minFreq + (float) best);
+}
+
+/** The Hz of each step of a listed-frequency parameter, from the text the model shows for it. */
+const std::vector<float>& stepHz (const models::Param& p)
+{
+    static std::map<std::array<int, 3>, std::vector<float>> cache;
+    auto& hz = cache[{ p.table, p.model, p.index }];
+    if (hz.empty())
+        for (int v = juce::roundToInt (p.min); v <= juce::roundToInt (p.max); ++v)
+        {
+            const auto text = p.display ((float) v);
+            hz.push_back (juce::jmax (1.0f, text.getFloatValue() * (text.containsChar ('k') ? 1000.0f : 1.0f)));
+        }
+    return hz;
+}
+} // namespace
+
 std::vector<ResponseView::Handle> ResponseView::eqHandles (const models::Model& m, std::atomic<float>* values)
 {
     std::vector<Handle> out;
@@ -276,29 +316,34 @@ std::vector<ResponseView::Handle> ResponseView::eqHandles (const models::Model& 
     for (int i = 0; i < (int) m.params.size(); ++i)
     {
         const auto& p = m.params[(size_t) i];
-        if (p.id.length() < 2 || ! p.id.endsWithChar ('f') || p.kind != models::ParamKind::Log)
+        const bool listed = p.kind == models::ParamKind::Values;
+        if (p.id.length() < 2 || ! p.id.endsWithChar ('f') || (p.kind != models::ParamKind::Log && ! listed))
             continue;
         const auto band = p.id.dropLastCharacters (1);
-        const int gi = m.find (band + "g");
-        if (gi < 0)
-            continue; // a band without gain (a cut) has no point on the curve to hold
-        const auto& gp = m.params[(size_t) gi];
         Handle h;
         h.label = band.toUpperCase();
         h.freq = &values[i];
         h.minFreq = p.min;
         h.maxFreq = p.max;
         h.defaultFreq = p.defaultValue;
-        h.gain = &values[gi];
-        h.minGain = gp.min;
-        h.maxGain = gp.max;
-        h.defaultGain = gp.defaultValue;
-        if (const int qi = m.find (band + "q"); qi >= 0 && m.params[(size_t) qi].isContinuous())
+        if (listed)
+            h.freqHz = stepHz (p);
+        if (const int gi = m.find (band + "g"); gi >= 0) // a band without gain (a cut) moves sideways only
+        {
+            const auto& gp = m.params[(size_t) gi];
+            h.gain = &values[gi];
+            h.minGain = gp.min;
+            h.maxGain = gp.max;
+            h.defaultGain = gp.defaultValue;
+        }
+        if (const int qi = m.find (band + "q"); qi >= 0)
         {
             const auto& qp = m.params[(size_t) qi];
             h.q = &values[qi];
-            h.minQ = qp.min;
-            h.maxQ = qp.max;
+            h.qStepped = ! qp.isContinuous();
+            h.qIsWidth = qp.unit == "oct";
+            h.minQ = juce::jmin (qp.min, qp.max);
+            h.maxQ = juce::jmax (qp.min, qp.max);
             h.defaultQ = qp.defaultValue;
         }
         out.push_back (h);
@@ -391,7 +436,7 @@ juce::Point<float> ResponseView::handlePosition (int i) const
     if (! juce::isPositiveAndBelow (i, (int) handles.size()))
         return {};
     const auto& h = handles[(size_t) i];
-    return { xAt (h.freq->load()), h.gain != nullptr ? yAt (h.gain->load()) : yAt (0.0) };
+    return { xAt (hzOf (h)), h.gain != nullptr ? yAt (h.gain->load()) : yAt (0.0) };
 }
 
 int ResponseView::handleAt (juce::Point<float> pos) const
@@ -411,6 +456,8 @@ int ResponseView::handleAt (juce::Point<float> pos) const
 void ResponseView::mouseDown (const juce::MouseEvent& e)
 {
     dragging = handleAt (e.position);
+    if (dragging >= 0)
+        focus = dragging;
     scrollHold.set (*this, dragging >= 0);
 }
 
@@ -419,7 +466,7 @@ void ResponseView::mouseDrag (const juce::MouseEvent& e)
     if (! juce::isPositiveAndBelow (dragging, (int) handles.size()))
         return;
     auto& h = handles[(size_t) dragging];
-    h.freq->store ((float) juce::jlimit ((double) h.minFreq, (double) h.maxFreq, hzAt (e.position.x)));
+    setHz (h, hzAt (e.position.x));
     if (h.gain != nullptr)
         h.gain->store ((float) juce::jlimit ((double) h.minGain, (double) h.maxGain, dbAt (e.position.y)));
     refresh();
@@ -449,6 +496,26 @@ void ResponseView::mouseDoubleClick (const juce::MouseEvent& e)
         onEdited();
 }
 
+void ResponseView::changeQ (Handle& h, float factor)
+{
+    if (h.q == nullptr || factor == 1.0f)
+        return;
+    const bool up = factor > 1.0f; // more Q: narrower
+    if (h.qStepped)
+        h.q->store (juce::jlimit (h.minQ, h.maxQ, h.q->load() + (up ? 1.0f : -1.0f)));
+    else
+        h.q->store (juce::jlimit (h.minQ, h.maxQ, h.q->load() * (h.qIsWidth ? 1.0f / factor : factor)));
+    refresh();
+    if (onEdited)
+        onEdited();
+}
+
+void ResponseView::mouseMove (const juce::MouseEvent& e)
+{
+    if (const int i = handleAt (e.position); i >= 0)
+        focus = i;
+}
+
 void ResponseView::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& wheel)
 {
     const int i = handleAt (e.position);
@@ -457,12 +524,16 @@ void ResponseView::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseW
         juce::Component::mouseWheelMove (e, wheel);
         return;
     }
-    auto& h = handles[(size_t) i];
-    const float factor = wheel.deltaY > 0 ? 1.12f : (wheel.deltaY < 0 ? 1.0f / 1.12f : 1.0f);
-    h.q->store (juce::jlimit (h.minQ, h.maxQ, h.q->load() * factor));
-    refresh();
-    if (onEdited)
-        onEdited();
+    changeQ (handles[(size_t) i], wheel.deltaY > 0 ? 1.12f : (wheel.deltaY < 0 ? 1.0f / 1.12f : 1.0f));
+}
+
+void ResponseView::mouseMagnify (const juce::MouseEvent& e, float scaleFactor)
+{
+    int i = handleAt (e.position);
+    if (i < 0 && juce::isPositiveAndBelow (focus, (int) handles.size()) && isActive (handles[(size_t) focus]))
+        i = focus;
+    if (i >= 0 && handles[(size_t) i].q != nullptr)
+        changeQ (handles[(size_t) i], handles[(size_t) i].qStepped ? (scaleFactor > 1.02f ? 1.1f : scaleFactor < 0.98f ? 0.9f : 1.0f) : scaleFactor);
 }
 
 void ResponseView::paint (juce::Graphics& g)
@@ -597,6 +668,8 @@ void TransferView::computeCurve()
     curveModel = model;
     const auto& spec = models::model (models::Dynamics, model);
     thrIndex = spec.find ("thr");
+    if (thrIndex < 0)
+        thrIndex = spec.find ("threshold");
     slopeIndex = spec.find ("ratio");
     if (slopeIndex < 0)
         slopeIndex = spec.find ("range");

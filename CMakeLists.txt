@@ -354,6 +354,7 @@ set(LIVEDAW_UI_SOURCES
     src/ui/universal/BlockPicture.cpp
     src/ui/universal/LayerEditor.cpp
     src/ui/universal/ChainList.cpp
+    src/ui/universal/PluginBlockCard.cpp
     src/ui/universal/SendsPanel.cpp
     src/ui/universal/Groups.cpp
     src/ui/universal/StripPanel.cpp

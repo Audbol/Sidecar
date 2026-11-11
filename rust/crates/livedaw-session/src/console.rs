@@ -13,7 +13,7 @@ use livedaw_dsp::wing::FILTER_TOOLS;
 use livedaw_engine::amm::{AmmStripParams, MAX_AMMS};
 use livedaw_engine::analyser::RtaViewSettings;
 use livedaw_engine::atomic::AtomicF32;
-use livedaw_engine::blocks::{BlockKind, BlockParams, Step};
+use livedaw_engine::blocks::{BlockKind, BlockParams, PluginParams, Step};
 use livedaw_engine::chain::Node;
 use livedaw_engine::dlive::DLiveStripParams;
 use livedaw_engine::params::mix_source;
@@ -363,14 +363,14 @@ pub fn block_section(kind: BlockKind) -> u32 {
         BlockKind::Filter | BlockKind::Delay => section::PREAMP,
         BlockKind::Eq => section::EQ,
         BlockKind::Dynamics => section::DYNAMICS,
-        BlockKind::Insert => section::INSERTS,
+        BlockKind::Insert | BlockKind::Plugin => section::INSERTS,
     }
 }
 
 /// `<Chain>`: the strip's extra blocks (`uid`, `kind`, `at`: the step they sit
 /// at), each with its settings when its section is captured. Not written for a
 /// strip running its template.
-fn capture_chain(s: &Strip, sections: u32, e: &mut Element) {
+fn capture_chain(s: &Strip, sections: u32, e: &mut Element, bridge: &mut dyn PluginBridge) {
     let steps = s.steps();
     if s.layout().is_none() {
         return;
@@ -398,6 +398,59 @@ fn capture_chain(s: &Strip, sections: u32, e: &mut Element) {
                 put_b(x, "on", &d.on);
                 put_i(x, "mode", &d.mode);
                 put_f(x, "dly", &d.delay);
+            }
+            BlockParams::Plugin(p) => put_plugin_block(x, p, bridge),
+        }
+    }
+}
+
+/// The bridge's slot number of a plug-in block (FX slots are below it).
+pub const PLUGIN_BLOCK_SLOT_BASE: usize = 1 << 20;
+
+/// A plug-in block: bypass, and the plug-in's description and state (as a
+/// `<Slot>` holds them), or those of one that could not be loaded.
+fn put_plugin_block(x: &mut Element, p: &PluginParams, bridge: &mut dyn PluginBridge) {
+    x.set("byp", !p.on.load(Relaxed));
+    let captured = if p.is_loaded() {
+        bridge.capture_fx(PLUGIN_BLOCK_SLOT_BASE + p.pid() as usize)
+    } else {
+        p.missing().map(|(description, state)| CapturedInsert { description, state })
+    };
+    let Some(captured) = captured else { return };
+    if let Ok(desc) = parse(&captured.description) {
+        x.add(desc);
+    }
+    x.add_new("State").add_text(captured.state);
+}
+
+/// What `apply_strip` needs to bring plug-in blocks back.
+pub(crate) struct PluginRestore<'a> {
+    pub bridge: &'a mut dyn PluginBridge,
+    /// None: plug-ins are left alone (safe mode).
+    pub mode: Option<InsertMode>,
+}
+
+/// Restores a plug-in block from its `<B>`: a recall puts state into the same
+/// plug-in already loaded; a show load creates it, and a plug-in that can't be
+/// created leaves the block bypassed with its saved identity (and name) kept.
+fn get_plugin_block(x: &Element, p: &PluginParams, plug: &mut PluginRestore, warnings: &mut Vec<String>) {
+    if let Some(b) = x.attr("byp") {
+        p.on.store(!(b == "1" || b == "true"), Relaxed);
+    }
+    let (Some(mode), Some(desc)) = (plug.mode, plugin_element(x)) else { return };
+    let name = desc.str_or("name", "plug-in").to_string();
+    let state = x.child("State").map(Element::text).unwrap_or_default();
+    let slot = PLUGIN_BLOCK_SLOT_BASE + p.pid() as usize;
+    match plug.bridge.restore_fx(slot, mode, &desc.to_compact(), &state) {
+        Ok(()) => {}
+        Err(RestoreError::Mismatch) => {
+            warnings.push(format!("Plug-in block: expected {name}, not recalled"));
+        }
+        Err(RestoreError::Failed(msg)) => {
+            warnings.push(format!("Plug-in block: {name} ({msg})"));
+            if mode == InsertMode::Instantiate {
+                p.set_missing(Some((desc.to_compact(), state)));
+                p.on.store(false, Relaxed);
             }
         }
     }
@@ -439,7 +492,7 @@ fn restore_chain(engine: &Engine, s: &Strip, e: &Element) {
 }
 
 /// The settings of the strip's extra blocks in `<Chain>`, by id, within `sections`.
-fn apply_chain(s: &Strip, e: &Element, sections: u32) {
+fn apply_chain(s: &Strip, e: &Element, sections: u32, plug: &mut PluginRestore, warnings: &mut Vec<String>) {
     let Some(c) = e.child("Chain") else { return };
     let blocks = s.blocks();
     for x in c.children_named("B") {
@@ -458,6 +511,7 @@ fn apply_chain(s: &Strip, e: &Element, sections: u32) {
                 get_i(x, "mode", &d.mode);
                 get_f(x, "dly", &d.delay);
             }
+            BlockParams::Plugin(p) => get_plugin_block(x, p, plug, warnings),
         }
     }
 }
@@ -519,7 +573,14 @@ fn contains(only: Option<&[StripRef]>, r: &StripRef) -> bool {
 // ---- capture --------------------------------------------------------------------------
 
 /// `mains`, `matrices`: the console's (the strip's sends to each are saved).
-fn capture_strip(s: &Strip, sections: u32, slots: &[usize], mains: usize, matrices: usize) -> Element {
+fn capture_strip(
+    s: &Strip,
+    sections: u32,
+    slots: &[usize],
+    mains: usize,
+    matrices: usize,
+    bridge: &mut dyn PluginBridge,
+) -> Element {
     use section::*;
     let p = &s.params;
     let kind = s.kind();
@@ -689,7 +750,7 @@ fn capture_strip(s: &Strip, sections: u32, slots: &[usize], mains: usize, matric
             g.set("tags", tags);
         }
     }
-    capture_chain(s, sections, &mut e);
+    capture_chain(s, sections, &mut e, bridge);
     e
 }
 
@@ -1379,7 +1440,7 @@ pub fn capture(engine: &Engine, sections: u32, only: Option<&[StripRef]>, bridge
 
     for s in &index.strips {
         if contains(only, &StripRef::of(s)) {
-            state.add(capture_strip(s, sections, &slots, mains, matrices));
+            state.add(capture_strip(s, sections, &slots, mains, matrices, bridge));
         }
     }
     if only.is_none() {
@@ -1437,6 +1498,7 @@ fn apply_strip(
     requested: u32,
     fades: &mut Option<&mut Vec<FadeTarget>>,
     result: &mut ApplyResult,
+    plug: &mut PluginRestore,
 ) {
     use section::*;
     // Only touch what was both captured and requested.
@@ -1508,7 +1570,7 @@ fn apply_strip(
     if let Some(d) = e.child("Dyn").filter(|_| sections & DYNAMICS != 0) {
         get_dyn_slot(d, p.dynamics());
     }
-    apply_chain(s, e, sections);
+    apply_chain(s, e, sections, plug, &mut result.warnings);
     if let Some(ins) = e.child("Ins").filter(|_| sections & INSERTS != 0) {
         get_i(ins, "proc", &p.process_order);
         get_i(ins, "tap", &p.tap);
@@ -1628,7 +1690,15 @@ pub fn apply(
             result.strips_skipped_safe += 1;
             continue;
         }
-        apply_strip(engine, strip, e, sections, &mut fades, &mut result);
+        apply_strip(
+            engine,
+            strip,
+            e,
+            sections,
+            &mut fades,
+            &mut result,
+            &mut PluginRestore { bridge: &mut *bridge, mode: Some(InsertMode::StateOnly) },
+        );
     }
 
     if only.is_none() && effective & CONSOLE_STATE_SECTIONS != 0 {
@@ -1750,7 +1820,7 @@ pub fn save_console(engine: &Engine, bridge: &mut dyn PluginBridge) -> Element {
     for (kind, tag) in LISTS {
         let list = console.add_new(tag);
         for s in index.strips.iter().filter(|s| s.kind() == kind) {
-            let mut e = capture_strip(s, section::ALL, &slots, mains, matrices);
+            let mut e = capture_strip(s, section::ALL, &slots, mains, matrices, bridge);
             e.set("id", s.id()).set_bool("recallSafe", s.params.recall_safe.load(Relaxed));
             list.add(e);
         }
@@ -1934,7 +2004,15 @@ pub fn load_console(engine: &Engine, console: &Element, bridge: &mut dyn PluginB
     }
     for (s, e) in loaded {
         restore_chain(engine, &s, e);
-        apply_strip(engine, &s, e, section::ALL, &mut None, &mut result);
+        apply_strip(
+            engine,
+            &s,
+            e,
+            section::ALL,
+            &mut None,
+            &mut result,
+            &mut PluginRestore { bridge: &mut *bridge, mode: load_plugins.then_some(InsertMode::Instantiate) },
+        );
         s.params.recall_safe.store(e.bool_or("recallSafe", false), Relaxed);
     }
     // A show from before a dLive had them, and a channel a Mixer Config put back on its defaults.

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/FaderLaw.h"
+#include "ui/ConsoleTape.h"
 #include "ui/Knobs.h"
 #include "ui/Skin.h"
 #include "ui/UiContext.h"
@@ -529,6 +530,7 @@ public:
     int getEqBand() const noexcept { return eqBand; }
 
     y01v::Display& getDisplay() noexcept { return display; }
+    ConsoleTape& getTape (int i) { return *tapes[(size_t) juce::jlimit (0, kStrips, i)]; }
     y01v::Fader& getFader (int i) { return *faders[(size_t) juce::jlimit (0, kStrips - 1, i)]; }
     y01v::Fader& getMasterFader() noexcept { return *masterFader; }
     y01v::Key* findKey (const juce::String& name) const;
@@ -561,6 +563,7 @@ private:
     y01v::Wheel wheel;
 
     std::vector<std::unique_ptr<y01v::Fader>> faders;
+    std::vector<std::unique_ptr<ConsoleTape>> tapes; // Sidecar's console tape under each fader; the last is the master's
     std::unique_ptr<y01v::Fader> masterFader;
     std::vector<std::pair<juce::String, std::unique_ptr<y01v::Key>>> keys;
     std::vector<std::pair<juce::String, std::unique_ptr<y01v::Knob>>> knobs;

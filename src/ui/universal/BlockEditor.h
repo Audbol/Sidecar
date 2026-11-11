@@ -18,7 +18,8 @@ struct BlockTarget
         Eq,
         Dynamics,
         Insert,
-        Delay
+        Delay,
+        Plugin
     };
 
     Kind kind = Kind::None;
@@ -39,6 +40,9 @@ struct BlockTarget
     std::atomic<bool>* delayOn = nullptr;
     std::atomic<int32_t>* delayMode = nullptr;
     std::atomic<float>* delay = nullptr;
+    /** A plugin block's ON flag (the plugin itself is FxSlots': strip + uid). */
+    std::atomic<bool>* pluginOn = nullptr;
+    Strip* strip = nullptr;
 
     /** Its model table and how to load a model with its defaults (EQ, dynamics, the filter's tool). */
     models::Table table = models::Dynamics;

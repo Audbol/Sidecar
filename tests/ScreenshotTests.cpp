@@ -85,6 +85,8 @@ public:
         engine.configure (&counts);
         ShotRig rig (engine);
         setUpBand (engine, rig.show);
+        for (size_t i = 0; i < engine.getChannels().size(); ++i)
+            engine.getChannels()[i]->setColourIndex ((int) (i % 7) + 1); // the strips' own colours, on the name tabs
 
         // Levels as a band plays.
         for (size_t i = 0; i < engine.getChannels().size(); ++i)
@@ -402,6 +404,18 @@ public:
 
         ui::Y01VSurface skin (rig.ctx);
         skin.setSize (1920, 1080);
+        skin.refreshAll();
+        // Console tape (Sidecar's addition): the strips' names, as the tape shows them, and editing one renames its strip.
+        for (int i = 0; i < 12; ++i)
+            channels[(size_t) i]->setName (juce::String ("Name ") + juce::String (i + 1));
+        skin.refreshAll();
+        for (int i = 0; i < 12; ++i)
+            expectEquals (skin.getTape (i).getText(), juce::String ("Name ") + juce::String (i + 1), "the tape shows the strip's name");
+        skin.getTape (2).beginEdit();
+        skin.getTape (2).getEditor().setText ("TAPED");
+        skin.getTape (2).endEdit (true);
+        expectEquals (channels[2]->getOwnName(), juce::String ("TAPED"));
+        channels[2]->setName ("Name 3");
         skin.refreshAll();
         const auto shot = [this, &skin] (const juce::String& fileName)
         {
@@ -2760,6 +2774,18 @@ public:
         ui::Y02RSurface skin (rig.ctx);
         skin.setSize (1920, 1080);
         skin.refreshAll();
+        // Console tape (Sidecar's addition): the strips' names, as the tape shows them, and editing one renames its strip.
+        for (int i = 0; i < 16; ++i)
+            channels[(size_t) i]->setName (juce::String ("Name ") + juce::String (i + 1));
+        skin.refreshAll();
+        for (int i = 0; i < 16; ++i)
+            expectEquals (skin.getTape (i).getText(), juce::String ("Name ") + juce::String (i + 1), "the tape shows the strip's name");
+        skin.getTape (2).beginEdit();
+        skin.getTape (2).getEditor().setText ("TAPED");
+        skin.getTape (2).endEdit (true);
+        expectEquals (channels[2]->getOwnName(), juce::String ("TAPED"));
+        channels[2]->setName ("Name 3");
+        skin.refreshAll();
         using F = ui::y02r::Function;
         // The faders: MIC 1-16, LINE, STEREO; FLIP puts TAPE 1-16 on them.
         expectEquals (skin.getFader (0).getAddress(), 0);
@@ -3175,6 +3201,18 @@ private:
 
         ui::ProMixSurface skin (rig.ctx);
         skin.setSize (1920, 1080);
+        skin.refreshAll();
+        // Console tape (Sidecar's addition): the strips' names, as the tape shows them, and editing one renames its strip.
+        for (int i = 0; i < 16; ++i)
+            channels[(size_t) i]->setName (juce::String ("Name ") + juce::String (i + 1));
+        skin.refreshAll();
+        for (int i = 0; i < 16; ++i)
+            expectEquals (skin.getTape (i).getText(), juce::String ("Name ") + juce::String (i + 1), "the tape shows the strip's name");
+        skin.getTape (2).beginEdit();
+        skin.getTape (2).getEditor().setText ("TAPED");
+        skin.getTape (2).endEdit (true);
+        expectEquals (channels[2]->getOwnName(), juce::String ("TAPED"));
+        channels[2]->setName ("Name 3");
         skin.refreshAll();
         using F = ui::promix::Function;
         // The faders: the channels' levels, then in SEND1 their sends to it, RTN1 on RTN / SEND.

@@ -2897,6 +2897,11 @@ Y02RSurface::Y02RSurface (UiContext& c)
     {
         faders[(size_t) i] = std::make_unique<y02r::Fader> (ctx, theme);
         addAndMakeVisible (*faders[(size_t) i]);
+        tapes[(size_t) i] = std::make_unique<ConsoleTape> (i + 1);
+        tapes[(size_t) i]->setComponentID ("TAPE" + juce::String (i + 1));
+        tapes[(size_t) i]->getText = [this, i] { auto* s = engineStrip (faderStrip (i)); return s != nullptr ? s->getOwnName() : juce::String(); };
+        tapes[(size_t) i]->setText = [this, i] (const juce::String& t) { if (auto* s = engineStrip (faderStrip (i))) s->setName (t); };
+        addAndMakeVisible (*tapes[(size_t) i]);
         auto& sel = selKeys[(size_t) i];
         sel = std::make_unique<ToggleKey> ("SEL", kSelLed, theme);
         sel->onClick = [this, i] { pressSel (faderStrip (i)); };
@@ -3482,6 +3487,7 @@ void Y02RSurface::timerCallback()
     for (int i = 0; i < kNumFaders; ++i)
     {
         faders[(size_t) i]->refresh();
+        tapes[(size_t) i]->refresh();
         selKeys[(size_t) i]->refresh();
         onKeys[(size_t) i]->refresh();
     }
@@ -4113,7 +4119,8 @@ void Y02RSurface::resized()
         selKeys[(size_t) i]->setBounds (col.removeFromTop (32).reduced (6 + (i == 20 ? colW / 2 : 0), 1));
         col.removeFromTop (2);
         onKeys[(size_t) i]->setBounds (col.removeFromTop (32).reduced (6 + (i == 20 ? colW / 2 : 0), 1));
-        col.removeFromTop (20); // the grey band
+        const auto band = col.removeFromTop (20); // the grey band: the tape is stuck on it
+        tapes[(size_t) i]->setBounds (band.withTrimmedTop (-2).withHeight (24).reduced (0, 0));
         faders[(size_t) i]->setBounds (col);
     }
 

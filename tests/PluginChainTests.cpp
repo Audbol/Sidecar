@@ -1455,3 +1455,186 @@ public:
 };
 
 static MonkeyTests monkeyTests;
+
+
+//==============================================================================
+/** The PLUG-IN block of a strip's chain: a hosted plugin outside the FX slots. */
+class PluginBlockTests final : public juce::UnitTest
+{
+public:
+    PluginBlockTests() : juce::UnitTest ("Plug-in blocks", "LiveDAW") {}
+
+    /** The step a new block goes in to run before the fader (the add-block key's place: before PRE-FADER). */
+    static int beforeFader (const Strip& s)
+    {
+        const auto chain = s.getChain();
+        for (size_t i = 0; i < chain.size(); ++i)
+            if (chain[i].kind == ld::kStepPfl)
+                return (int) i;
+        return -1;
+    }
+
+    void runTest() override
+    {
+        beginTest ("A plug-in block passes audio through its plugin; bypass, latency and removal");
+        {
+            MixerEngine engine (0);
+            OfflineRig rig (engine, 1, 2);
+            engine.outputProtection = false;
+            test::setChannels (engine, 1);
+            auto& strip = *engine.getChannels()[0];
+            auto& fx = engine.getFx();
+            rig.setInput (0, 0.25f);
+
+            const int uid = strip.insertBlock (BlockKind::Plugin, beforeFader (strip));
+            expect (uid >= 0);
+            const int slot = FxSlots::blockSlotOf (strip.getHandle(), uid);
+            expect (FxSlots::isBlockSlot (slot));
+            expect (strip.getBlock (uid).plugin() != nullptr && strip.getBlock (uid).plugin()->load());
+            expect (! fx.hasPlugin (slot));
+            rig.run (4);
+            expectWithinAbsoluteError (rig.out (0), 0.25f * kCentre, 1.0e-5f); // empty: passes
+
+            auto* plugin = new AffinePlugin ("Double", 2.0f, 0.0f);
+            plugin->setLatencySamples (96);
+            fx.setPlugin (slot, std::unique_ptr<juce::AudioPluginInstance> (plugin));
+            expect (fx.hasPlugin (slot) && ! fx.isFaulted (slot));
+            expectEquals (fx.getLatency (slot), 96);
+            expectEquals (fx.describeBlock (strip.getHandle(), uid).name, juce::String ("Double"));
+            rig.run (4);
+            expectWithinAbsoluteError (rig.out (0), 0.5f * kCentre, 1.0e-5f);
+            engine.getGarbage().collect(); // the delay compensation plan
+            expectEquals (engine.getTotalCompensation(), 96);
+
+            // Bypassed: the signal passes and the latency is not counted.
+            fx.setBlockBypassed (slot, true);
+            expect (! strip.getBlock (uid).plugin()->load());
+            rig.run (4);
+            expectWithinAbsoluteError (rig.out (0), 0.25f * kCentre, 1.0e-5f);
+            engine.getGarbage().collect();
+            expectEquals (engine.getTotalCompensation(), 0);
+            fx.setBlockBypassed (slot, false);
+
+            // A chain of plugins in the block, as an FX slot's.
+            expect (fx.addToChain (slot, std::make_unique<AffinePlugin> ("Offset", 1.0f, 0.5f)));
+            rig.run (4);
+            expectWithinAbsoluteError (rig.out (0), 1.0f * kCentre, 1.0e-5f);
+            expectEquals (fx.getNumChainMembers (slot), 2);
+
+            // Removing the block lets the plugins go; the FX slots are untouched.
+            expect (strip.removeBlock (uid));
+            engine.getGarbage().collectAllNow();
+            expect (fx.blockSlots().empty());
+        }
+
+        beginTest ("A plugin that fails bypasses only its block");
+        {
+            MixerEngine engine (0);
+            OfflineRig rig (engine, 1, 2);
+            engine.outputProtection = false;
+            test::setChannels (engine, 1);
+            auto& strip = *engine.getChannels()[0];
+            auto& fx = engine.getFx();
+            rig.setInput (0, 0.25f);
+            const int uid = strip.insertBlock (BlockKind::Plugin, beforeFader (strip));
+            const int slot = FxSlots::blockSlotOf (strip.getHandle(), uid);
+            fx.setPlugin (slot, std::make_unique<FakePlugin> (1.0f, FakePlugin::Mode::EmitNaN, "bad"));
+            rig.run (4);
+            expect (fx.isFaulted (slot));
+            expectWithinAbsoluteError (rig.out (0), 0.25f * kCentre, 1.0e-5f); // the dry signal
+            for (int i = 0; i < 16; ++i)
+                expect (! fx.isFaulted (i));
+            fx.clearFlags (slot);
+            expect (! fx.isFaulted (slot));
+            fx.setPlugin (slot, nullptr);
+            engine.getGarbage().collectAllNow();
+        }
+
+        beginTest ("A plug-in block survives a show save and load; a missing plugin leaves it bypassed with its name");
+        {
+            PluginHost host (nullptr);
+            host.getFormatManager().addFormat (std::make_unique<TestPluginFormat>());
+            MixerEngine engine (0);
+            OfflineRig rig (engine, 1, 2);
+            test::setChannels (engine, 1);
+            Show show (engine, host);
+            auto& strip = *engine.getChannels()[0];
+            const int before = strip.insertBlock (BlockKind::Eq, -1);
+            const int uid = strip.insertBlock (BlockKind::Plugin, -1);
+            expect (before >= 0 && uid >= 0);
+            const int slot = FxSlots::blockSlotOf (strip.getHandle(), uid);
+            auto gain = TestPluginFormat::create (TestPluginFormat::Kind::gain);
+            gain->getParameters()[0]->setValue (0.37f);
+            engine.getFx().setPlugin (slot, std::move (gain));
+            engine.getFx().setBlockBypassed (slot, true);
+            const auto xml = show.toXml();
+
+            // Scenes recall the plugin's state and bypass into the same plugin.
+            show.addScene ("Block");
+            engine.getFx().getPlugin (slot)->getParameters()[0]->setValue (0.9f);
+            engine.getFx().setBlockBypassed (slot, false);
+            expectEquals ((int) show.recallScene (0).warnings.size(), 0);
+            expectWithinAbsoluteError (param (*engine.getFx().getPlugin (slot), 0), 0.37f, 1.0e-6f);
+            expect (engine.getFx().isBlockBypassed (slot));
+
+            const auto pluginBlockOf = [] (Strip& s)
+            {
+                for (const auto& step : s.getChain())
+                    if (step.isBlock() && step.getBlockKind() == BlockKind::Plugin)
+                        return step.uid;
+                return -1;
+            };
+            {
+                MixerEngine engine2 (0);
+                OfflineRig rig2 (engine2, 1, 2);
+                Show loaded (engine2, host);
+                const auto result = loaded.loadFromXml (*xml);
+                expect (result.wasOk(), result.getErrorMessage());
+                auto& strip2 = *engine2.getChannels()[0];
+                const int found = pluginBlockOf (strip2);
+                expect (found >= 0);
+                const int slot2 = FxSlots::blockSlotOf (strip2.getHandle(), found);
+                expect (slot2 >= 0 && engine2.getFx().hasPlugin (slot2) && engine2.getFx().isBlockBypassed (slot2));
+                expectWithinAbsoluteError (param (*engine2.getFx().getPlugin (slot2), 0), 0.37f, 1.0e-6f);
+                engine2.getFx().setPlugin (slot2, nullptr);
+                engine2.getGarbage().collectAllNow();
+            }
+
+            // The plugin is not installed: the block stays, bypassed, and names the plugin.
+            {
+                PluginHost bare (nullptr); // no format knows it
+                MixerEngine engine3 (0);
+                OfflineRig rig3 (engine3, 1, 2);
+                Show loaded (engine3, bare);
+                const auto result = loaded.loadFromXml (*xml);
+                expect (result.getErrorMessage().startsWith ("Some plugins"), result.getErrorMessage());
+                auto& strip3 = *engine3.getChannels()[0];
+                const int found = pluginBlockOf (strip3);
+                expect (found >= 0);
+                const auto info = engine3.getFx().describeBlock (strip3.getHandle(), found);
+                expect (! info.loaded && info.missing && info.name == "Sidecar Test gain", info.name);
+                expect (! strip3.getBlock (found).plugin()->load());
+                // Saved again, it still names the plugin.
+                expect (loaded.toXml()->toString().contains ("Sidecar Test gain"));
+            }
+
+            engine.getFx().setPlugin (slot, nullptr);
+            engine.getGarbage().collectAllNow();
+        }
+
+        beginTest ("A real console under remote control refuses plug-in blocks");
+        {
+            MixerEngine engine (0);
+            test::setChannels (engine, 1);
+            auto& strip = *engine.getChannels()[0];
+            models::setRemoteHeld (true);
+            expectEquals (strip.insertBlock (BlockKind::Plugin, -1), -1);
+            expect (strip.insertBlock (BlockKind::Eq, -1) >= 0); // the others are the console's business
+            models::setRemoteHeld (false);
+            expect (strip.insertBlock (BlockKind::Plugin, -1) >= 0);
+            engine.getGarbage().collectAllNow();
+        }
+    }
+};
+
+static PluginBlockTests pluginBlockTests;

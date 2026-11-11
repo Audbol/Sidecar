@@ -10,6 +10,12 @@
 namespace livedaw
 {
 
+namespace models
+{
+    /** A real console is under remote control (Models.h). */
+    bool remoteHeld() noexcept;
+}
+
 /** The WING's strip types. */
 enum class StripKind
 {
@@ -119,7 +125,8 @@ enum class BlockKind : int32_t
     Eq = ld::kBlockEq,             // a new one is off
     Dynamics = ld::kBlockDynamics, // a new one is off (COMP)
     Insert = ld::kBlockInsert,
-    Delay = ld::kBlockDelay
+    Delay = ld::kBlockDelay,
+    Plugin = ld::kBlockPlugin // a hosted VST3/AU/LV2 plugin (or chain): FxSlots' slot number, blockSlotOf
 };
 
 /** A step of a strip's chain (Strip::getChain), in processing order. */
@@ -159,6 +166,8 @@ public:
     DynSlotParams* dynamics() const noexcept { return as<DynSlotParams> (BlockKind::Dynamics); }
     InsertParams* insert() const noexcept { return as<InsertParams> (BlockKind::Insert); }
     DelayBlockParams* delay() const noexcept { return as<DelayBlockParams> (BlockKind::Delay); }
+    /** A plugin block's ON flag (off = bypassed); the plugin itself is FxSlots'. */
+    std::atomic<bool>* plugin() const noexcept { return as<std::atomic<bool>> (BlockKind::Plugin); }
 
     /** What it measures (nullptr when not valid). */
     BlockMeters* getMeters() const noexcept { return meters; }
@@ -389,6 +398,8 @@ public:
         holds ld::kMaxExtraBlocks already. */
     int insertBlock (BlockKind blockKind, int at) const noexcept
     {
+        if (blockKind == BlockKind::Plugin && models::remoteHeld())
+            return -1; // a real console under remote control does its own processing
         return ld::ld_engine_insert_block (engineHandle, handle, static_cast<int32_t> (blockKind), at);
     }
     /** Moves block `uid` to step `at` of the chain without it (it keeps its settings and state). */

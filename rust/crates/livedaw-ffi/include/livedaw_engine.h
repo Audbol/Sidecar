@@ -149,6 +149,8 @@ constexpr uint32_t kWingSurfaceControls = 2;
 /** ABI 28, a strip's chain: up to kMaxExtraBlocks extra blocks, and user taps with
     the ids kFirstUserTap .. kFirstUserTap + kMaxUserTaps - 1 (the WING's taps are 0-9). */
 constexpr int kMaxExtraBlocks = 32;
+/** The plugin bridge's slot number of a plugin block (and FxSlots'): kPluginBlockSlotBase + its host id. */
+constexpr int kPluginBlockSlotBase = 1 << 20;
 constexpr int kFirstUserTap = 16;
 constexpr int kMaxUserTaps = 32;
 
@@ -182,7 +184,8 @@ enum ChainBlockKind : int32_t
     kBlockEq = 1,       // EqBlockParams (a new one is off)
     kBlockDynamics = 2, // DynSlotParams (a new one is off: COMP)
     kBlockInsert = 3,   // InsertParams
-    kBlockDelay = 4     // DelayBlockParams
+    kBlockDelay = 4,    // DelayBlockParams
+    kBlockPlugin = 5    // a hosted plugin: params point at its std::atomic<bool> "on" (else opaque: ld_plugin_block_*)
 };
 
 /// ABI 30: the console a configuration emulates (ld_engine_profile).
@@ -1346,6 +1349,24 @@ extern "C"
     /** As ld_fx_set with a processor holding the same plugins (a chain rearranged): a faulted slot stays faulted. */
     void ld_fx_replace (const Engine*, int32_t slot, const InsertCallbacks* callbacks);
     void* ld_fx_ctx (const Engine*, int32_t slot);
+
+    // Plug-in blocks (kBlockPlugin): a block of a strip's chain hosting a plugin through the same
+    // InsertCallbacks as an FX slot. A block is named by its host id (ld_plugin_block_pid), also the
+    // number the show's plugin bridge calls it by (kPluginBlockSlotBase + pid).
+    uint32_t ld_plugin_block_pid (const Strip*, int32_t uid);
+    /** Installs the processor (nullptr clears); keepFault as ld_fx_replace. False (release already called) if the block is gone. */
+    bool ld_plugin_block_set (const Engine*, uint32_t pid, const InsertCallbacks* callbacks, bool keepFault);
+    void* ld_plugin_block_ctx (const Engine*, uint32_t pid);
+    /** what: 0 = loaded, 1 = faulted, 2 = bypassed, 3 = reported latency (samples), 4 = latency it adds now. -1: gone. */
+    int32_t ld_plugin_block_state (const Engine*, uint32_t pid, int32_t what);
+    void ld_plugin_block_set_bypass (const Engine*, uint32_t pid, bool bypass);
+    void ld_plugin_block_clear_fault (const Engine*, uint32_t pid);
+    /** The host ids of the plugin blocks holding a plugin (up to max into out); returns how many there are. */
+    int32_t ld_plugin_block_list (const Engine*, uint32_t* out, int32_t max);
+    /** Any thread: only an atomic store. */
+    void ld_plugin_block_set_latency (uint32_t pid, int32_t samples);
+    /** The saved <PLUGIN> description of a plugin that could not be loaded (empty if none). */
+    LdString* ld_plugin_block_missing (const Engine*, uint32_t pid);
     /** what: 0 = a plugin is loaded, 1 = faulted (auto-bypassed), 2 = double-assigned,
         3 = a built-in device is running, 4 = an outboard insert (EXT, SOURCE OUTBOARD,
         no plugin), 5 = an outboard insert with a RETURN. */

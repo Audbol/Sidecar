@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ui/ConsoleTape.h"
 #include "ui/Skin.h"
 #include "ui/UiContext.h"
 #include "ui/universal/Widgets.h"
@@ -317,6 +318,7 @@ public:
 
     /** For tests and the screenshots. */
     promix::Display& getDisplay() noexcept { return display; }
+    ConsoleTape& getTape (int i) { return *tapes[(size_t) juce::jlimit (0, kNumFaders - 1, i)]; }
     promix::Fader& getFader (int i) { return *faders[(size_t) juce::jlimit (0, kNumFaders - 1, i)]; }
     void pressFunction (promix::Function);
     void pressSel (int fader);
@@ -357,6 +359,7 @@ private:
     universal::ToggleKey universalKey;
     promix::Display display;
     std::array<std::unique_ptr<promix::Fader>, kNumFaders> faders;
+    std::array<std::unique_ptr<ConsoleTape>, kNumFaders> tapes; // Sidecar's console tape under each fader
     std::array<std::unique_ptr<universal::ToggleKey>, kNumFaders> selKeys, onKeys;
     std::vector<std::pair<promix::Function, std::unique_ptr<universal::ToggleKey>>> functionKeys;
     std::vector<std::unique_ptr<universal::ToggleKey>> panelKeys; // STORE, RECALL, INC, DEC, cursors, ENTER

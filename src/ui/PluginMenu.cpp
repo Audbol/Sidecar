@@ -33,6 +33,12 @@ void drawStripIcon (juce::Graphics& g, const Strip& s, juce::Rectangle<float> ar
         drawIcon (g, stripIcon (s.getKind()), area, colour);
 }
 
+/** "FX 3", or "the plug-in block" for a plugin block's slot number. */
+static juce::String slotLabel (int slot)
+{
+    return FxSlots::isBlockSlot (slot) ? juce::String ("the plug-in block") : "FX " + juce::String (slot + 1);
+}
+
 bool loadPluginIntoFx (UiContext& ctx, int slot, const juce::PluginDescription& desc)
 {
     juce::String error;
@@ -40,7 +46,7 @@ bool loadPluginIntoFx (UiContext& ctx, int slot, const juce::PluginDescription& 
 
     if (instance == nullptr)
     {
-        ctx.log.warning ("Could not load " + desc.name + " into FX " + juce::String (slot + 1) + ": " + error);
+        ctx.log.warning ("Could not load " + desc.name + " into " + slotLabel (slot) + ": " + error);
         juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
                                                 "Could not load plugin", desc.name + "\n" + error);
         return false;
@@ -53,7 +59,7 @@ bool loadPluginIntoFx (UiContext& ctx, int slot, const juce::PluginDescription& 
 
     fx.setPlugin (slot, std::move (instance));
     fx.clearFlags (slot);
-    ctx.log.info ("Loaded " + desc.name + " into FX " + juce::String (slot + 1));
+    ctx.log.info ("Loaded " + desc.name + " into " + slotLabel (slot));
     return true;
 }
 
@@ -67,7 +73,7 @@ bool addPluginToChain (UiContext& ctx, int slot, const juce::PluginDescription& 
     auto instance = ctx.host.createInstance (desc, ctx.engine.getSampleRate(), ctx.engine.getBlockSize(), error);
     if (instance == nullptr)
     {
-        ctx.log.warning ("Could not add " + desc.name + " to FX " + juce::String (slot + 1) + ": " + error);
+        ctx.log.warning ("Could not add " + desc.name + " to " + slotLabel (slot) + ": " + error);
         juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
                                                 "Could not load plugin", desc.name + "\n" + error);
         return false;
@@ -77,7 +83,7 @@ bool addPluginToChain (UiContext& ctx, int slot, const juce::PluginDescription& 
         fx.setPlugin (slot, std::move (instance)); // the first one
     else if (! fx.addToChain (slot, std::move (instance)))
         return false;
-    ctx.log.info ("Added " + desc.name + " to FX " + juce::String (slot + 1) + " (" + juce::String (fx.getNumChainMembers (slot))
+    ctx.log.info ("Added " + desc.name + " to " + slotLabel (slot) + " (" + juce::String (fx.getNumChainMembers (slot))
                   + (fx.getNumChainMembers (slot) == 1 ? " plugin)" : " plugins in its chain)"));
     return true;
 }
@@ -98,7 +104,7 @@ void removePluginFromChain (UiContext& ctx, int slot, int index)
     if (ctx.pluginRemoved)
         ctx.pluginRemoved (plugin); // its editor goes first
     fx.removeFromChain (slot, index);
-    ctx.log.info ("Removed " + name + " from FX " + juce::String (slot + 1));
+    ctx.log.info ("Removed " + name + " from " + slotLabel (slot));
 }
 
 juce::PopupMenu pluginTypesMenu (UiContext& ctx, std::function<void (const juce::PluginDescription&)> chosen)

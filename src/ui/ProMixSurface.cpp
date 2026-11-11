@@ -3328,6 +3328,11 @@ ProMixSurface::ProMixSurface (UiContext& c)
         if (i < 16)
             faders[(size_t) i]->onLocal = [this, i] (int v) { display.localMoved (i, v); };
         addAndMakeVisible (*faders[(size_t) i]);
+        tapes[(size_t) i] = std::make_unique<ConsoleTape> (i + 1);
+        tapes[(size_t) i]->setComponentID ("TAPE" + juce::String (i + 1));
+        tapes[(size_t) i]->getText = [this, i] { auto* s = stripOf (i); return s != nullptr ? s->getOwnName() : juce::String(); };
+        tapes[(size_t) i]->setText = [this, i] (const juce::String& t) { if (auto* s = stripOf (i)) s->setName (t); };
+        addAndMakeVisible (*tapes[(size_t) i]);
         auto& sel = selKeys[(size_t) i];
         sel = std::make_unique<ToggleKey> ("SEL", kSelLed, theme);
         sel->labelAbove = true;
@@ -3695,6 +3700,7 @@ void ProMixSurface::timerCallback()
     for (int i = 0; i < kNumFaders; ++i)
     {
         faders[(size_t) i]->refresh();
+        tapes[(size_t) i]->refresh();
         selKeys[(size_t) i]->refresh();
         onKeys[(size_t) i]->refresh();
     }
@@ -4105,7 +4111,9 @@ void ProMixSurface::resized()
         col.removeFromTop (8);
         grilles[(size_t) i] = col.removeFromTop (50).reduced (4, 0);
         col.removeFromTop (4);
+        const auto tapeRow = col.removeFromBottom (28); // Sidecar's tape, under the printed number
         faders[(size_t) i]->setBounds (col);
+        tapes[(size_t) i]->setBounds (tapeRow.withTrimmedTop (24).withHeight (26).reduced (2, 0).translated (0, 0));
         x += w;
     }
 }

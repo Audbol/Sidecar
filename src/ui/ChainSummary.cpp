@@ -1,5 +1,6 @@
 #include "ui/ChainSummary.h"
 
+#include "engine/FxSlots.h"
 #include "engine/Models.h"
 #include "ui/DelayUnits.h"
 
@@ -14,6 +15,12 @@ namespace
 
 juce::String stepName (const Strip& strip, const ChainStep& s)
 {
+    if (s.isBlock() && s.getBlockKind() == BlockKind::Plugin)
+    {
+        // The plugin's name (a plugin that could not be loaded keeps the one it was saved with).
+        const auto info = FxSlots (strip.getEngineHandle()).describeBlock (strip.getHandle(), s.uid);
+        return info.name.isNotEmpty() ? "PLUG-IN: " + info.name.toUpperCase() : stepName (s);
+    }
     return s.isBlock() && s.uid == ld::ld_strip_preamp_block (strip.getHandle()) ? juce::String ("PREAMP") : stepName (s);
 }
 
@@ -43,6 +50,7 @@ juce::String stepName (const ChainStep& s)
                 case BlockKind::Dynamics: return "DYNAMICS BLOCK";
                 case BlockKind::Insert:   return "INSERT BLOCK";
                 case BlockKind::Delay:    return "DELAY BLOCK";
+                case BlockKind::Plugin:   return "PLUG-IN BLOCK";
             }
             break;
         case ld::kStepSlot:
@@ -77,6 +85,8 @@ bool stepOn (const Strip& strip, const ChainStep& s)
                 return insertOn (*i);
             if (auto* d = b.delay())
                 return d->on.load();
+            if (auto* p = b.plugin())
+                return p->load();
             return false;
         }
         case ld::kStepInput:

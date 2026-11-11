@@ -3,6 +3,7 @@
 #include "ui/UiContext.h"
 #include "ui/universal/BlockEditor.h"
 #include "ui/universal/BlockPicture.h"
+#include "ui/universal/PluginBlockCard.h"
 #include "ui/universal/SendsPanel.h"
 #include "ui/universal/ValueControls.h"
 #include "ui/universal/Widgets.h"
@@ -47,6 +48,30 @@ public:
     };
     /** The header height, over the cards. */
     static constexpr int kHeader = 44;
+
+    /** The panel's height: dragged on the bar along its bottom edge (kept in the settings under
+        kHeightSetting), or the MAXIMISE key / a double tap on the bar: most of the view, one compact
+        row of faders left under it. `onSizeChanged` asks the view to lay out again. */
+    static constexpr const char* kHeightSetting = "ui.universalChannelHeight";
+    static constexpr int kDefaultHeight = 300, kMinHeight = 220, kBarHeight = 32, kCompactFaders = 230;
+    std::function<void()> onSizeChanged;
+    /** The view's height (the panel takes what it may of it). */
+    void setViewHeight (int h) noexcept { viewHeight = h; }
+    int getPanelHeight() const;
+    bool isMaximised() const noexcept { return maximised; }
+    void setMaximised (bool);
+    void setPanelHeight (int);
+    juce::Rectangle<int> getDragBar() const { return getLocalBounds().removeFromBottom (kBarHeight); }
+    ToggleKey& getMaximiseKey() noexcept { return maxKey; }
+
+    /** The extra EQ and dynamics blocks of the strip's chain as cards of their own, in signal order
+        ("EQ 2", "DYNAMICS 2"...), rebuilt as the chain changes. */
+    int numExtraCards() const noexcept { return (int) extras.size(); }
+    juce::String extraCardName (int i) const { return extras[(size_t) i]->name; }
+    /** Extra card `i` as a plug-in block's (nullptr: an EQ or dynamics card). */
+    PluginBlockCard* getExtraPluginCard (int i) const noexcept { return extras[(size_t) i]->plugin.get(); }
+    ResponseView* getExtraEqView (int i) { return extras[(size_t) i]->eqView.get(); }
+    TransferView* getExtraDynamicsView (int i) { return extras[(size_t) i]->dynView.get(); }
     ToggleKey& getMuteKey() noexcept { return muteKey; }
     ToggleKey& getSoloKey() noexcept { return soloKey; }
     ToggleKey& getCopyKey() noexcept { return copyKey; }
@@ -75,9 +100,28 @@ public:
     void updateRta();
     void paint (juce::Graphics&) override;
     void resized() override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
 
 private:
+    struct ExtraCard
+    {
+        ChainStep step;
+        BlockTarget target;
+        juce::String name;
+        std::unique_ptr<ToggleKey> onKey;
+        std::unique_ptr<ResponseView> eqView;
+        std::unique_ptr<TransferView> dynView;
+        std::unique_ptr<PluginBlockCard> plugin; // a plug-in block's card (no ON key or curve)
+        juce::Rectangle<int> area;
+    };
+    std::vector<std::unique_ptr<ExtraCard>> extras;
+    void rebuildExtras();
+    int viewHeight = 1000, height = kDefaultHeight, dragStartHeight = 0, dragStartY = 0;
+    bool maximised = false, draggingBar = false;
+    ToggleKey maxKey;
     void timerCallback() override;
     juce::Colour cardColour (int section) const;
     int expanded = -1, shownExpanded = -1;

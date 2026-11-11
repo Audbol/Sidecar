@@ -21,7 +21,7 @@ namespace
 ChannelPanel::ChannelPanel (UiContext& c, const Theme& t)
     : ctx (c), theme (t), trim (t), balance (t), delay (t), invert ("INVERT", t.accent, t), delayOn ("DELAY", t.accent, t),
       lowCut ("LOW CUT", t.accent, t), highCut ("HIGH CUT", t.accent, t), muteKey ("MUTE", t.mute, t), soloKey ("SOLO", t.solo, t), sofKey ("SOF", t.accent, t), copyKey ("COPY", t.accent, t),
-      pasteKey ("PASTE", t.accent, t), editKey ("EDIT", t.accent, t), rtaKey ("RTA", t.accent, t), routeKey ("SOURCE / ROUTING", t.accent, t),
+      pasteKey ("PASTE", t.accent, t), maxKey ("MAXIMISE", t.accent, t), editKey ("EDIT", t.accent, t), rtaKey ("RTA", t.accent, t), routeKey ("SOURCE / ROUTING", t.accent, t),
       gateOn ("ON", t.accent, t), eqOn ("ON", t.accent, t),
       dynOn ("ON", t.accent, t), filterView (t), eqView (t), gateView (t), dynView (t), sends (c, t)
 {
@@ -31,9 +31,12 @@ ChannelPanel::ChannelPanel (UiContext& c, const Theme& t)
                                    (juce::Component*) &filterView, (juce::Component*) &eqView, (juce::Component*) &gateView,
                                    (juce::Component*) &dynView, (juce::Component*) &sends, (juce::Component*) &muteKey,
                                    (juce::Component*) &soloKey, (juce::Component*) &sofKey, (juce::Component*) &copyKey,
-                                   (juce::Component*) &pasteKey, (juce::Component*) &editKey, (juce::Component*) &routeKey, (juce::Component*) &rtaKey })
+                                   (juce::Component*) &pasteKey, (juce::Component*) &maxKey, (juce::Component*) &editKey, (juce::Component*) &routeKey, (juce::Component*) &rtaKey })
         addChildComponent (comp);
     eqView.rangeDb = 15.0f;
+    height = juce::jlimit (kMinHeight, 4000, ctx.settings.getIntValue (kHeightSetting, kDefaultHeight));
+    maxKey.isOn = [this] { return maximised; };
+    maxKey.onClick = [this] { setMaximised (! maximised); };
     rtaKey.isOn = [this] { return ctx.settings.getBoolValue (kRtaSetting, true); };
     rtaKey.onClick = [this]
     {
@@ -242,6 +245,50 @@ double ChannelPanel::sampleRate() const
     return sr > 0.0 ? sr : 48000.0;
 }
 
+int ChannelPanel::getPanelHeight() const
+{
+    const int most = juce::jmax (kMinHeight, viewHeight - kCompactFaders);
+    return maximised ? most : juce::jlimit (kMinHeight, most, height);
+}
+
+void ChannelPanel::setMaximised (bool on)
+{
+    maximised = on;
+    maxKey.setButtonText (on ? "RESTORE" : "MAXIMISE");
+    maxKey.repaint();
+    if (onSizeChanged)
+        onSizeChanged();
+}
+
+void ChannelPanel::setPanelHeight (int h)
+{
+    maximised = false;
+    maxKey.setButtonText ("MAXIMISE");
+    height = juce::jlimit (kMinHeight, 4000, h);
+    ctx.settings.setValue (kHeightSetting, height);
+    if (onSizeChanged)
+        onSizeChanged();
+}
+
+void ChannelPanel::mouseDown (const juce::MouseEvent& e)
+{
+    draggingBar = getDragBar().contains (e.getPosition());
+    dragStartY = e.getScreenY();
+    dragStartHeight = getHeight();
+}
+
+void ChannelPanel::mouseDrag (const juce::MouseEvent& e)
+{
+    if (draggingBar)
+        setPanelHeight (dragStartHeight + e.getScreenY() - dragStartY);
+}
+
+void ChannelPanel::mouseDoubleClick (const juce::MouseEvent& e)
+{
+    if (getDragBar().contains (e.getPosition()))
+        setMaximised (! maximised);
+}
+
 void ChannelPanel::setStrip (Strip* s)
 {
     if (s == strip)
@@ -256,9 +303,12 @@ void ChannelPanel::setStrip (Strip* s)
 void ChannelPanel::bindStrip()
 {
     thumbs.clear();
+    extras.clear();
     const bool shown = strip != nullptr;
     for (auto* c : getChildren())
         c->setVisible (shown && c != &editKey);
+    if (shown)
+        rebuildExtras();
     if (strip == nullptr)
     {
         trim.unbind();
@@ -304,6 +354,16 @@ void ChannelPanel::refresh()
     gateView.refresh();
     dynView.refresh();
     sends.refresh();
+    rebuildExtras();
+    for (auto& x : extras)
+    {
+        if (x->eqView != nullptr)
+            x->eqView->refresh();
+        if (x->dynView != nullptr)
+            x->dynView->refresh();
+        if (x->onKey != nullptr)
+            x->onKey->repaint();
+    }
     updateThumbs();
     repaint (areas[ChainSection]);
 }
@@ -311,38 +371,56 @@ void ChannelPanel::refresh()
 void ChannelPanel::resized()
 {
     auto all = getLocalBounds().reduced (sizes::kGap, sizes::kGapSmall);
+    all.removeFromBottom (kBarHeight - sizes::kGapSmall); // the drag bar's
     {
         // The header: the strip name is painted at the left, its keys at the right.
         auto head = all.removeFromTop (kHeader);
         all.removeFromTop (sizes::kGapSmall);
         const int w = juce::jmax (60, juce::jmin (96, head.getWidth() / 12));
-        for (auto* key : { &pasteKey, &copyKey, &sofKey, &invert, &soloKey, &muteKey })
+        for (auto* key : { &maxKey, &pasteKey, &copyKey, &sofKey, &invert, &soloKey, &muteKey })
             key->setBounds (head.removeFromRight (key == &pasteKey ? w + 40 : w).reduced (2, 0));
     }
     auto area = all;
     const bool slim = area.getWidth() < kSlimBelow;
-    // Cards share the row by weight; the one opened takes most of it (slim: the five).
-    const int count = slim ? (int) ChainSection : (int) NumSections;
-    float weights[NumSections] = {};
-    float sum = 0.0f;
-    for (int s = 0; s < count; ++s)
+    // Cards share the row by weight; the one opened takes most of it (slim: the five). The strip's
+    // extra EQ and dynamics blocks follow its own dynamics card.
+    struct Slot
     {
-        weights[s] = s < (int) std::size (kWidths) ? (float) kWidths[s] : 480.0f;
-        if (s == shownExpanded)
-            weights[s] *= 1.0f + 3.0f * expandAmount;
-        else if (shownExpanded >= 0)
-            weights[s] *= 1.0f - 0.45f * expandAmount;
-        sum += weights[s];
+        int section;
+        int extra;
+        float weight = 0.0f;
+    };
+    std::vector<Slot> slots;
+    for (int s = 0; s < (slim ? (int) ChainSection : (int) NumSections); ++s)
+    {
+        slots.push_back ({ s, -1 });
+        if (s == DynamicsSection)
+            for (int i = 0; i < (int) extras.size(); ++i)
+                slots.push_back ({ -1, i });
     }
-    const float usable = (float) (area.getWidth() - (count - 1) * sizes::kGapSmall);
-    for (int s = 0; s < NumSections; ++s)
+    float sum = 0.0f;
+    for (auto& slot : slots)
     {
-        if (s >= count)
+        if (slot.section < 0)
+            slot.weight = 300.0f;
+        else
         {
-            areas[(size_t) s] = {};
-            continue;
+            const int s = slot.section;
+            slot.weight = s < (int) std::size (kWidths) ? (float) kWidths[s] : 480.0f;
+            if (s == shownExpanded)
+                slot.weight *= 1.0f + 3.0f * expandAmount;
+            else if (shownExpanded >= 0)
+                slot.weight *= 1.0f - 0.45f * expandAmount;
         }
-        areas[(size_t) s] = s == count - 1 ? area : area.removeFromLeft (juce::roundToInt (usable * weights[s] / sum));
+        sum += slot.weight;
+    }
+    const float usable = (float) (area.getWidth() - ((int) slots.size() - 1) * sizes::kGapSmall);
+    for (auto& a : areas)
+        a = {};
+    for (size_t k = 0; k < slots.size(); ++k)
+    {
+        const auto r = k + 1 == slots.size() ? area : area.removeFromLeft (juce::roundToInt (usable * slots[k].weight / sum));
+        (slots[k].section >= 0 ? areas[(size_t) slots[k].section] : extras[(size_t) slots[k].extra]->area) = r;
         area.removeFromLeft (sizes::kGapSmall);
     }
     sends.setVisible (strip != nullptr && ! slim);
@@ -374,11 +452,90 @@ void ChannelPanel::resized()
             rtaKey.setBounds (keyRow.withTrimmedLeft (juce::jmin (120, keyRow.getWidth()) + sizes::kGapSmall).withWidth (juce::jmax (0, juce::jmin (72, keyRow.getWidth() - 124))));
         view->setBounds (b.withTrimmedBottom (sizes::kGapSmall));
     }
+    for (auto& x : extras)
+    {
+        auto b = x->area.withTrimmedTop (kTitle).reduced (sizes::kGapSmall);
+        if (x->plugin != nullptr)
+        {
+            x->plugin->setBounds (b);
+            continue;
+        }
+        auto keyRow = b.removeFromBottom (kKeys);
+        x->onKey->setBounds (keyRow.withWidth (juce::jmin (120, keyRow.getWidth())));
+        auto* view = x->eqView != nullptr ? (juce::Component*) x->eqView.get() : (juce::Component*) x->dynView.get();
+        view->setBounds (b.withTrimmedBottom (sizes::kGapSmall));
+    }
+    sends.setCompact (getHeight() < 420);
     editKey.setVisible (strip != nullptr && shownExpanded >= 0 && expandAmount > 0.9f);
     if (shownExpanded >= 0)
         editKey.setBounds (areas[(size_t) shownExpanded].withHeight (kTitle).removeFromRight (64).reduced (0, 2));
     chainList = body (ChainSection);
     sends.setBounds (body (SendsSection));
+}
+
+void ChannelPanel::rebuildExtras()
+{
+    // The extra EQ and dynamics blocks, in signal order; the chain changing (add, remove, reorder) rebuilds.
+    std::vector<ChainStep> want;
+    if (strip != nullptr)
+        for (const auto& step : strip->getChain())
+            if (step.isBlock() && (step.getBlockKind() == BlockKind::Eq || step.getBlockKind() == BlockKind::Dynamics || step.getBlockKind() == BlockKind::Plugin))
+                want.push_back (step);
+    const bool same = want.size() == extras.size() && std::equal (want.begin(), want.end(), extras.begin(), [] (const ChainStep& a, const std::unique_ptr<ExtraCard>& b)
+    {
+        return a.uid == b->step.uid && a.arg == b->step.arg;
+    });
+    if (same)
+        return;
+    extras.clear();
+    int eqCount = 1, dynCount = 1, plugCount = 0; // the strip's own is the first of its kind
+    for (const auto& step : want)
+    {
+        auto x = std::make_unique<ExtraCard>();
+        x->step = step;
+        x->target = BlockTarget::of (ctx, *strip, step);
+        if (x->target.kind == BlockTarget::Kind::Plugin)
+        {
+            // A hosted plugin: its name, vendor, latency and the keys ON, EDIT and PLUG-IN.
+            x->name = "PLUG-IN " + juce::String (++plugCount);
+            x->plugin = std::make_unique<PluginBlockCard> (ctx, theme);
+            x->plugin->setBlock (strip, step.uid, x->target.pluginOn);
+            addAndMakeVisible (*x->plugin);
+            extras.push_back (std::move (x));
+            continue;
+        }
+        if (x->target.kind != BlockTarget::Kind::Eq && x->target.kind != BlockTarget::Kind::Dynamics)
+            continue;
+        const bool isEq = x->target.kind == BlockTarget::Kind::Eq;
+        x->name = isEq ? "EQ " + juce::String (++eqCount) : "DYNAMICS " + juce::String (++dynCount);
+        x->onKey = std::make_unique<ToggleKey> ("ON", theme.accent, theme);
+        auto& target = x->target;
+        auto* on = isEq ? &target.eq->on : &target.dynamics->on;
+        x->onKey->isOn = [on] { return on->load(); };
+        x->onKey->onClick = [on] { *on = ! on->load(); };
+        addAndMakeVisible (*x->onKey);
+        if (isEq)
+        {
+            x->eqView = std::make_unique<ResponseView> (theme);
+            x->eqView->rangeDb = 15.0f;
+            x->eqView->response = target.response;
+            x->eqView->handleSource = [t = &target]
+            {
+                return ResponseView::eqHandles (models::model (t->table, t->eq->model.load()), t->eq->values);
+            };
+            addAndMakeVisible (*x->eqView);
+        }
+        else
+        {
+            x->dynView = std::make_unique<TransferView> (theme);
+            x->dynView->reductionDb = target.reductionDb;
+            x->dynView->bind (target.dynamics);
+            addAndMakeVisible (*x->dynView);
+        }
+        extras.push_back (std::move (x));
+    }
+    resized();
+    repaint();
 }
 
 void ChannelPanel::updateThumbs()
@@ -419,7 +576,9 @@ std::vector<ChainStep> ChannelPanel::shownSteps() const
 
 void ChannelPanel::mouseUp (const juce::MouseEvent& e)
 {
-    if (strip == nullptr || e.mouseWasDraggedSinceMouseDown())
+    const bool wasBar = draggingBar;
+    draggingBar = false;
+    if (wasBar || strip == nullptr || e.mouseWasDraggedSinceMouseDown())
         return;
     if (chainList.contains (e.getPosition()) && onOpenStep)
     {
@@ -430,6 +589,12 @@ void ChannelPanel::mouseUp (const juce::MouseEvent& e)
             onOpenStep (steps[(size_t) i].kind, steps[(size_t) i].isBlock() ? steps[(size_t) i].uid : -1);
         return;
     }
+    for (const auto& x : extras)
+        if (x->area.withHeight (kTitle).contains (e.getPosition()) && onOpenStep)
+        {
+            onOpenStep (x->step.kind, x->step.uid);
+            return;
+        }
     // A card title: it opens in place (again: closes); EDIT in it opens the block in the inspector.
     for (int s = 0; s < (int) ChainSection; ++s)
         if (areas[(size_t) s].withHeight (kTitle).contains (e.getPosition()))
@@ -512,6 +677,26 @@ void ChannelPanel::paint (juce::Graphics& g)
         }
     }
 
+    for (const auto& x : extras)
+    {
+        const auto r = x->area.toFloat();
+        const auto hue = x->plugin != nullptr ? theme.blockColour (Theme::BlockHue::Fx) : cardColour (x->eqView != nullptr ? (int) EqSection : (int) DynamicsSection);
+        g.setColour (theme.panel);
+        g.fillRoundedRectangle (r, sizes::kRadius);
+        g.setColour (hue.withAlpha (0.09f));
+        g.fillRoundedRectangle (r, sizes::kRadius);
+        g.setColour (hue);
+        g.fillRoundedRectangle (r.withHeight (4.0f), 2.0f);
+        g.setColour (theme.text);
+        g.setFont (type::font (type::kCaption, true));
+        g.drawFittedText (x->name, r.withHeight ((float) kTitle).reduced ((float) sizes::kGap, 0.0f).toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
+    }
+    {
+        // The drag bar: a grip along the bottom edge.
+        const auto bar = getDragBar().toFloat();
+        g.setColour (theme.outline);
+        g.fillRoundedRectangle (bar.withSizeKeepingCentre (96.0f, 6.0f), 3.0f);
+    }
     if (areas[ChainSection].isEmpty())
         return;
     // CHAIN: the strip's processing in order; the Universal core's own in the accent.

@@ -500,6 +500,42 @@ impl FxRack {
         self.double_assigned.load(Relaxed)
     }
 
+    /// Audio thread: runs the processor over `channels` (1 or 2) as a plug-in
+    /// block does: nothing without one or while it is faulted; a processor that
+    /// fails or emits NaN/inf leaves the dry signal and faults only this rack.
+    ///
+    /// # Safety
+    /// As `process`: one task at a time; `channels` no longer than the prepared block.
+    pub(crate) unsafe fn process_plain(&self, channels: &mut [&mut [f32]], sample_rate: f64) {
+        let plugin = self.slot.load(Acquire);
+        let n = channels.first().map_or(0, |c| c.len());
+        if plugin.is_null() || n == 0 || self.faulted.load(Relaxed) {
+            return;
+        }
+        let dry = &mut *self.dry.get();
+        if dry[0].len() < n {
+            return;
+        }
+        let start = Instant::now();
+        for (c, data) in channels.iter().enumerate().take(2) {
+            dry[c][..n].copy_from_slice(data);
+        }
+        let cb = (*plugin).cb;
+        let mut ptrs: [*mut f32; 2] = [std::ptr::null_mut(); 2];
+        for (c, data) in channels.iter_mut().enumerate().take(2) {
+            ptrs[c] = data.as_mut_ptr();
+        }
+        let status = (cb.process)(cb.ctx, ptrs.as_ptr(), channels.len().min(2) as i32, n as i32);
+        if status != 0 || !channels.iter().all(|c| all_finite(c)) {
+            for (c, data) in channels.iter_mut().enumerate().take(2) {
+                data.copy_from_slice(&dry[c][..n]);
+            }
+            self.faulted.store(true, Relaxed);
+        }
+        let load = (start.elapsed().as_secs_f64() * sample_rate / n as f64) as f32;
+        self.load.store(0.9 * self.load.load() + 0.1 * load);
+    }
+
     /// Audio thread: runs the slot's device (or, for EXT, its plugin) over
     /// `channels` with the slot's settings. `block` identifies the audio block
     /// (for double-assignment detection).

@@ -162,6 +162,10 @@ public:
         float minFreq = 20.0f, maxFreq = 20000.0f, defaultFreq = 1000.0f;
         float minGain = -15.0f, maxGain = 15.0f, defaultGain = 0.0f;
         float minQ = 0.4f, maxQ = 10.0f, defaultQ = 1.0f;
+        /** A stepped frequency (a model that lists its Hz): the Hz of each step; the value held is the step. */
+        std::vector<float> freqHz;
+        /** The Q parameter is a width (bigger is wider) or a list of steps (the wheel moves one step). */
+        bool qIsWidth = false, qStepped = false;
         /** Shown and movable (a cut that is on); always when unset. */
         std::function<bool()> active;
     };
@@ -170,7 +174,9 @@ public:
     /** Called after a handle moved something. */
     std::function<void()> onEdited;
 
-    /** The handles of an EQ model's bands: its <band>f, <band>g and <band>q parameters. */
+    /** The handles of an EQ model's bands, from its parameter table: each <band>f (Log or a listed
+        Hz), with the band's <band>g (none for a cut: sideways only) and <band>q (a Q, a width or
+        a choice). Any console's EQ. */
     static std::vector<Handle> eqHandles (const models::Model&, std::atomic<float>* values);
 
     /** The curve's dB at its points (empty without a response). */
@@ -194,8 +200,12 @@ public:
     void mouseUp (const juce::MouseEvent&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+    void mouseMagnify (const juce::MouseEvent&, float scaleFactor) override;
+    void mouseMove (const juce::MouseEvent&) override;
 
 private:
+    void changeQ (Handle&, float factor);
+    int focus = -1;
     std::array<float, kRtaBins> rtaLevels {};
     bool rtaShown = false;
     juce::Rectangle<float> plotArea() const;

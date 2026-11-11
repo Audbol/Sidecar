@@ -40,11 +40,43 @@ namespace livedaw
     faulted on its own (passed through) and the slot keeps running; see
     PluginChain.
 
+    A plugin block of a strip's chain (ld::kBlockPlugin) is hosted by the same code: its slot
+    number is kBlockSlotBase + its host id (blockSlotOf), and every call that takes a slot
+    (setPlugin, getPlugin, the chain members, the show's plugin bridge, the plugin window)
+    treats it like an FX slot's plugin. The engine counts its latency in the strip's
+    delay compensation; a failing plugin bypasses only its block.
+
     Stateless view: any number of FxSlots may view one engine. */
 class FxSlots
 {
 public:
     explicit FxSlots (ld::Engine* e) noexcept : engine (e) {}
+
+    /** Slot numbers from here on are plugin blocks (ld::kPluginBlockSlotBase + the block's host id). */
+    static constexpr int kBlockSlotBase = ld::kPluginBlockSlotBase;
+    static bool isBlockSlot (int slot) noexcept { return slot >= kBlockSlotBase; }
+    static uint32_t blockPid (int slot) noexcept { return (uint32_t) (slot - kBlockSlotBase); }
+    static int blockSlot (uint32_t pid) noexcept { return kBlockSlotBase + (int) pid; }
+    /** The slot number of plugin block `uid` of `strip` (-1: not a plugin block). */
+    static int blockSlotOf (const ld::Strip* strip, int uid) noexcept
+    {
+        const auto pid = ld::ld_plugin_block_pid (strip, uid);
+        return pid != 0 ? blockSlot (pid) : -1;
+    }
+    /** What a plugin block shows: the plugin's (or chain's) name and vendor, its latency; a plugin that
+        could not be loaded keeps the name it was saved with (`missing`, the block bypassed). */
+    struct BlockInfo
+    {
+        juce::String name, vendor;
+        bool loaded = false, missing = false, faulted = false, bypassed = false;
+        int latency = 0;
+    };
+    BlockInfo describeBlock (const ld::Strip* strip, int uid) const;
+    /** The slot numbers of the plugin blocks that hold a plugin. */
+    std::vector<int> blockSlots() const;
+    /** A plugin block's bypass (the whole block; a plugin of its chain bypasses with setChainMemberBypassed). */
+    bool isBlockBypassed (int slot) const noexcept { return ld::ld_plugin_block_state (engine, blockPid (slot), 2) == 1; }
+    void setBlockBypassed (int slot, bool bypassed) { ld::ld_plugin_block_set_bypass (engine, blockPid (slot), bypassed); }
 
     /** The slots in use: the WING's 16 (kWingFx) to kMaxFx (SETUP > GENERAL > FX
         SLOTS). The screens list these; the engine holds kMaxFx. */
@@ -55,7 +87,7 @@ public:
     int setNumSlots (int count) { return ld::ld_engine_set_num_fx (engine, count); }
     /** Message thread: the slot holds something (a device, plugin or outboard
         insert) or a strip's insert is assigned to it. */
-    bool isInUse (int slot) const noexcept { return ld::ld_engine_fx_in_use (engine, slot); }
+    bool isInUse (int slot) const noexcept { return ! isBlockSlot (slot) && ld::ld_engine_fx_in_use (engine, slot); }
 
     /** Message thread, device stopped: re-prepares the loaded plugins. */
     void prepare (double sampleRate, int maxBlockSize);
@@ -100,7 +132,7 @@ public:
     bool moveInChain (int slot, int from, int to);
 
     /** The slot's model (index into model table 4: kFxNone, kFxExt or a device). */
-    int getModel (int slot) const noexcept { return params (slot).model.load(); }
+    int getModel (int slot) const noexcept { return isBlockSlot (slot) ? ld::kFxExt : params (slot).model.load(); }
     /** Selects a built-in device (removing a plugin first). False if not allowed in the slot. */
     bool setModel (int slot, int model);
 
@@ -113,9 +145,9 @@ public:
 
     /** EXT with SOURCE OUTBOARD (removing a plugin first; the EXT settings stay). */
     void setOutboard (int slot);
-    bool isOutboard (int slot) const noexcept { return ld::ld_fx_state (engine, slot, 4); }
+    bool isOutboard (int slot) const noexcept { return ! isBlockSlot (slot) && ld::ld_fx_state (engine, slot, 4); }
     /** An outboard insert with a RETURN (it runs; without one it passes through). */
-    bool hasReturn (int slot) const noexcept { return ld::ld_fx_state (engine, slot, 5); }
+    bool hasReturn (int slot) const noexcept { return ! isBlockSlot (slot) && ld::ld_fx_state (engine, slot, 5); }
     /** The RETURN as the console shows it: "LCL 3/4", "A 5", "OFF". */
     juce::String returnLabel (int slot) const;
     /** Whether `model` may run in `slot` (premium devices need slots 1-8). */
@@ -123,8 +155,8 @@ public:
 
     /** The slot is in use (a plugin, an outboard insert or a built-in device). */
     bool isLoaded (int slot) const noexcept { return hasPlugin (slot) || isOutboard (slot) || getModel (slot) > ld::kFxExt; }
-    bool hasPlugin (int slot) const noexcept { return ld::ld_fx_state (engine, slot, 0); }
-    bool hasDevice (int slot) const noexcept { return ld::ld_fx_state (engine, slot, 3); }
+    bool hasPlugin (int slot) const noexcept { return isBlockSlot (slot) ? ld::ld_plugin_block_state (engine, blockPid (slot), 0) == 1 : ld::ld_fx_state (engine, slot, 0); }
+    bool hasDevice (int slot) const noexcept { return ! isBlockSlot (slot) && ld::ld_fx_state (engine, slot, 3); }
     /** Gain reduction of the slot's device (dB, <= 0). */
     float getMeter (int slot) const noexcept { return ld::ld_fx_meter (engine, slot); }
     /** Live gain of a dynamic band of the slot's device (dB, signed). */
@@ -134,23 +166,24 @@ public:
         linear, falling at 60 dB/s), then ld::kFxReadouts readouts of its device (laid out
         per device, FxAlgo::readouts; 0 = idle). Any thread. */
     int getReadouts (int slot, float* out, int n) const noexcept { return ld::ld_fx_readouts (engine, slot, out, n); }
-    bool isFaulted (int slot) const noexcept { return ld::ld_fx_state (engine, slot, 1); }
-    bool isDoubleAssigned (int slot) const noexcept { return ld::ld_fx_state (engine, slot, 2); }
+    bool isFaulted (int slot) const noexcept { return isBlockSlot (slot) ? ld::ld_plugin_block_state (engine, blockPid (slot), 1) == 1 : ld::ld_fx_state (engine, slot, 1); }
+    bool isDoubleAssigned (int slot) const noexcept { return ! isBlockSlot (slot) && ld::ld_fx_state (engine, slot, 2); }
     /** Clears the slot's fault and double assignment, and its chain's faulted plugins. */
     void clearFlags (int slot);
     /** Share of the block time the plugin took (smoothed). */
-    float getLoad (int slot) const noexcept { return ld::ld_fx_load (engine, slot); }
+    float getLoad (int slot) const noexcept { return isBlockSlot (slot) ? 0.0f : ld::ld_fx_load (engine, slot); }
     /** Number of strip inserts using the slot. */
-    int getNumUsers (int slot) const noexcept { return ld::ld_fx_num_users (engine, slot); }
+    int getNumUsers (int slot) const noexcept { return isBlockSlot (slot) ? 0 : ld::ld_fx_num_users (engine, slot); }
     /** The slot's latency in samples: its plugin's, its outboard insert's, or its built-in
         device's (the PRECISION LIMITER's look-ahead; 0 otherwise). */
-    int getLatency (int slot) const noexcept { return ld::ld_fx_latency (engine, slot); }
+    int getLatency (int slot) const noexcept { return isBlockSlot (slot) ? juce::jmax (0, ld::ld_plugin_block_state (engine, blockPid (slot), 3)) : ld::ld_fx_latency (engine, slot); }
 
     /** Message thread: passes every plugin's current latency to the engine (a
         safety net for plugins that change it without telling their host).
         Returns true if one changed. */
     bool updateLatencies();
 
+    /** An FX slot's settings (never a plugin block's: they have none). */
     FxParams& params (int slot) const noexcept { return ld::ld_engine_controls (engine)->fx[juce::jlimit (0, kMaxFx - 1, slot)]; }
 
     /** "FX 3: Hall Reverb", "FX 3: TAL-Reverb" or "FX 3" for an empty slot. */

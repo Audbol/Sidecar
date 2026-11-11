@@ -509,25 +509,8 @@ void StripColumn::paint (juce::Graphics& g)
     // The meter bridge, dark and running across the strips.
     g.setGradientFill (juce::ColourGradient (theme.well.darker (0.25f), 0.0f, (float) sections[StripLayout::Meters].getY(), theme.well.brighter (0.08f), 0.0f, (float) sections[StripLayout::Meters].getBottom(), false));
     g.fillRect (sections[StripLayout::Meters]);
-    // The channel number and name, under the meter bridge, on the strip's colour.
-    if (labelArea.getHeight() > 0)
-    {
-        const auto base = consoleColour (colour);
-        auto lr = labelArea.toFloat();
-        g.setGradientFill (juce::ColourGradient (base.brighter (0.15f), 0.0f, lr.getY(), base.darker (0.2f), 0.0f, lr.getBottom(), false));
-        g.fillRect (lr);
-        g.setColour (juce::Colours::black.withAlpha (0.35f));
-        g.fillRect (lr.removeFromBottom (1.0f));
-        const auto ink = Theme::textOn (base);
-        auto inner = lr.reduced (4.0f, 1.0f);
-        g.setColour (ink);
-        g.setFont (type::font (type::kTitle, true));
-        g.drawFittedText (strip.getLabel(), inner.removeFromTop (24.0f).toNearestInt(), juce::Justification::centred, 1, 0.6f);
-        g.setFont (type::font (type::kCaption, true));
-        g.drawFittedText (name, inner.toNearestInt(), juce::Justification::centred, 1, 0.7f);
-    }
     // The plate carrying the strip's blocks, and the tray with its fader under the name tab.
-    const auto plateTop = (float) (labelArea.getHeight() > 0 ? labelArea.getBottom() : sections[StripLayout::Meters].getBottom());
+    const auto plateTop = (float) sections[StripLayout::Meters].getBottom();
     drawPlate (g, juce::Rectangle<float> (0.0f, plateTop, w, (float) nameArea.getY() - plateTop), hw.plateTop, hw.plateBottom, theme);
     g.setGradientFill (juce::ColourGradient (juce::Colours::black.withAlpha (theme.isLight ? 0.10f : 0.22f), 0.0f, plateTop, juce::Colours::transparentBlack, 0.0f, plateTop + 40.0f, false));
     g.fillRect (0.0f, plateTop, w, 40.0f);
@@ -542,17 +525,18 @@ void StripColumn::paint (juce::Graphics& g)
 
     // The name tab between them: the strip's colour, its label (by kind) and its name.
     auto h = nameArea.toFloat();
-    g.setColour (hw.nameTab);
+    const auto base = consoleColour (colour);
+    g.setGradientFill (juce::ColourGradient (base.brighter (0.12f), 0.0f, h.getY(), base.darker (0.15f), 0.0f, h.getBottom(), false));
     g.fillRect (h);
-    g.setColour (consoleColour (colour));
-    g.fillRect (h.removeFromLeft (4.0f));
-    g.setColour (theme.isLight ? hw.nameText : theme.kindColour (strip.getKind()));
+    g.setColour (juce::Colours::black.withAlpha (0.35f));
+    g.fillRect (h.removeFromBottom (1.0f));
+    const auto ink = Theme::textOn (base);
+    g.setColour (ink);
     g.setFont (type::font (type::kMicro, true));
-    auto labelArea = h.reduced (4.0f, 1.0f);
-    g.drawText (strip.getLabel(), labelArea.removeFromTop (12.0f), juce::Justification::centredLeft);
-    g.setColour (hw.nameText);
+    auto tabText = h.reduced (4.0f, 1.0f);
+    g.drawText (strip.getLabel(), tabText.removeFromTop (12.0f), juce::Justification::centredLeft);
     g.setFont (type::font (type::kCaption, true));
-    g.drawFittedText (name, labelArea.toNearestInt(), juce::Justification::centredLeft, 1, 0.75f);
+    g.drawFittedText (name, tabText.toNearestInt(), juce::Justification::centredLeft, 1, 0.75f);
     if (selected)
     {
         g.setColour (theme.accent);
@@ -567,14 +551,13 @@ void StripColumn::paint (juce::Graphics& g)
 
 void StripColumn::resized()
 {
-    constexpr int kName = 30, kKeys = sizes::kTouch * 2 + sizes::kGap, kReadout = 24, kPan = 44, kSide = 4, kLabel = 40;
+    constexpr int kName = 30, kKeys = sizes::kTouch * 2 + sizes::kGap, kReadout = 24, kPan = 44, kSide = 4;
     // The fader comes first: nearly half the strip, 320 px where there's room for it.
     const int kFaderMin = juce::jlimit (100, 320, getHeight() * 44 / 100);
     auto area = getLocalBounds();
     const auto& l = *layout;
     int metersH = l.heights[StripLayout::Meters];
-    const int labelH = area.getHeight() >= 380 ? kLabel : 0;
-    int space = area.getHeight() - labelH - kName - kKeys - kReadout - kPan - 3 * sizes::kGapSmall - (faderShown ? kFaderMin : 0);
+    int space = area.getHeight() - kName - kKeys - kReadout - kPan - 3 * sizes::kGapSmall - (faderShown ? kFaderMin : 0);
     // The blocks are the strip's body: the others give way first.
     constexpr int kBodyLeast = 90;
     if (metersH + kBodyLeast > space)
@@ -585,7 +568,6 @@ void StripColumn::resized()
     sections[StripLayout::Meters] = area.removeFromTop (metersH);
     meter.setBounds (sections[StripLayout::Meters].reduced (kSide, 0));
     meter.setVisible (metersH > StripLayout::kCollapsed);
-    labelArea = area.removeFromTop (labelH);
     body.setBounds (area.removeFromTop (bodyH));
     panArea = area.removeFromTop (kPan);
     pan.setBounds (panArea.reduced (kSide, 0));
@@ -946,6 +928,7 @@ MixerView::MixerView (UiContext& c, const Theme& t)
     sofKey.setTooltip ("Sends on fader: put a bus, main or matrix on the faders");
     addAndMakeVisible (sofKey);
     channel.onSendsOnFader = [this] { showSofMenu(); };
+    channel.onSizeChanged = [this] { resized(); };
     channel.onOpenStep = [this] (int kind, int uid)
     {
         if (onOpenStep && channel.getStrip() != nullptr)
@@ -1558,7 +1541,10 @@ void MixerView::resized()
     // key stays lit and the panel comes back when the window is tall enough).
     channel.setVisible (channelShown && getHeight() >= 760 && ctx.getSelectedStrip && ctx.getSelectedStrip() != nullptr);
     if (channel.isVisible())
-        channel.setBounds (area.removeFromTop (264));
+    {
+        channel.setViewHeight (getHeight());
+        channel.setBounds (area.removeFromTop (channel.getPanelHeight()));
+    }
     // The columns, under the bank keys when they don't all fit (laid out without them first, to know).
     const auto place = [this, area] (bool withBanks)
     {
