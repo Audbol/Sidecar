@@ -124,6 +124,7 @@ set(LIVEDAW_ENGINE_SOURCES
     src/engine/ConsoleState.cpp
     src/engine/Layers.cpp
     src/engine/Show.cpp
+    src/engine/Benchmark.cpp
     src/engine/AudioFileFormat.cpp
     src/engine/Recorder.cpp
     src/engine/UsbRecorder.cpp
@@ -370,6 +371,7 @@ set(LIVEDAW_UI_SOURCES
     src/ui/universal/LibraryView.cpp
     src/ui/universal/RecorderView.cpp
     src/ui/universal/SetupView.cpp
+    src/ui/universal/BenchmarkPanel.cpp
     src/ui/universal/MixerConfigPanel.cpp
     src/ui/MidiRemoteUi.cpp
     src/ui/DawSurface.cpp)
@@ -522,6 +524,7 @@ if(LIVEDAW_BUILD_TESTS)
     # The Universal Mixer's interface (src/ui/universal).
     target_sources(LiveDAWTests PRIVATE
         tests/UniversalUiTests.cpp
+        tests/BenchmarkTests.cpp
         tests/ScreenshotTests.cpp)
 
     # The surface's scribble strip LCDs.

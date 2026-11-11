@@ -260,6 +260,8 @@ pub struct Layer {
     pub user: bool,
     /// A user layer's colour (0xAARRGGBB; 0: none). Only user layers have one.
     pub colour: u32,
+    /// The console banks a user layer occupies, "console=bank;console=bank" (sq5=2;c3500=0.1); empty: none. Opaque here.
+    pub bank: String,
 }
 
 pub const NUM_SECTIONS: usize = 3;
@@ -574,6 +576,7 @@ fn layer(id: &str, faders: &[Labelled], fallback_name: &str) -> Layer {
         faders: faders.iter().map(|l| l.fader).collect(),
         user: false,
         colour: 0,
+        bank: String::new(),
     }
 }
 
@@ -667,6 +670,7 @@ impl LayerSet {
             faders: faders.unwrap_or_default(),
             user: false,
             colour: 0,
+            bank: String::new(),
         })
     }
 
@@ -724,6 +728,7 @@ impl LayerSet {
                 faders: user.map(|l| l.faders.clone()).unwrap_or_default(),
                 user: false,
                 colour: user.map_or(0, |l| l.colour),
+                bank: user.map_or_else(String::new, |l| l.bank.clone()),
             });
         }
         layers
@@ -755,7 +760,14 @@ impl LayerSet {
         if id == SPILL_ID {
             // Without an engine the spill has no faders; find_layer fills them in.
             if let Some(kind) = self.spill(section) {
-                return Layer { id: SPILL_ID.into(), name: spill_name(&kind), faders: Vec::new(), user: false, colour: 0 };
+                return Layer {
+                    id: SPILL_ID.into(),
+                    name: spill_name(&kind),
+                    faders: Vec::new(),
+                    user: false,
+                    colour: 0,
+                    bank: String::new(),
+                };
             }
         }
         let mut layers = self.default_layers_for(section, console);
@@ -863,7 +875,14 @@ impl LayerSet {
     /// The spill layer a section shows, if it spills.
     pub fn spill_layer(&self, engine: &Engine, section: usize) -> Option<Layer> {
         let kind = self.spill(section)?;
-        Some(Layer { id: SPILL_ID.into(), name: spill_name(&kind), faders: spill_faders(engine, &kind), user: false, colour: 0 })
+        Some(Layer {
+            id: SPILL_ID.into(),
+            name: spill_name(&kind),
+            faders: spill_faders(engine, &kind),
+            user: false,
+            colour: 0,
+            bank: String::new(),
+        })
     }
 
     // ---- user layers ---------------------------------------------------------------
@@ -884,7 +903,7 @@ impl LayerSet {
     pub fn add_user_layer(&mut self, name: &str, mut faders: Vec<FaderRef>) -> String {
         slots::trim(&mut faders);
         let id = format!("user-{}", new_uuid());
-        self.user_layers.push(Layer { id: id.clone(), name: name.into(), faders, user: true, colour: 0 });
+        self.user_layers.push(Layer { id: id.clone(), name: name.into(), faders, user: true, colour: 0, bank: String::new() });
         id
     }
 
@@ -908,6 +927,13 @@ impl LayerSet {
         }
     }
 
+    /// Sets which console banks a user layer occupies (see `Layer::bank`).
+    pub fn set_user_layer_bank(&mut self, id: &str, bank: &str) {
+        if let Some(l) = self.user_layer_mut(id) {
+            bank.clone_into(&mut l.bank);
+        }
+    }
+
     /// Every user layer as a file's text (the layers shared between shows).
     pub fn export_user_layers(&self) -> String {
         let mut xml = Element::new("SidecarLayers");
@@ -916,6 +942,9 @@ impl LayerSet {
             e.set("name", &l.name).set("faders", faders_to_string(&l.faders));
             if l.colour != 0 {
                 e.set("colour", l.colour);
+            }
+            if !l.bank.is_empty() {
+                e.set("bank", &l.bank);
             }
         }
         xml.to_document()
@@ -935,7 +964,14 @@ impl LayerSet {
             slots::trim(&mut faders);
             let colour = u32::try_from(e.double_or("colour", 0.0) as i64).unwrap_or(0);
             let id = format!("user-{}", new_uuid());
-            self.user_layers.push(Layer { id, name: e.str_or("name", "User").to_owned(), faders, user: true, colour });
+            self.user_layers.push(Layer {
+                id,
+                name: e.str_or("name", "User").to_owned(),
+                faders,
+                user: true,
+                colour,
+                bank: e.str_or("bank", "").to_owned(),
+            });
             added += 1;
         }
         added
@@ -1067,6 +1103,9 @@ impl LayerSet {
             if l.colour != 0 {
                 e.set("colour", l.colour);
             }
+            if !l.bank.is_empty() {
+                e.set("bank", &l.bank);
+            }
         }
         for o in &self.overrides {
             xml.add_new("Override").set("section", o.section).set("id", &o.id).set("faders", faders_to_string(&o.faders));
@@ -1098,7 +1137,14 @@ impl LayerSet {
             faders.truncate(MAX_SLOTS);
             slots::trim(&mut faders);
             let colour = u32::try_from(e.double_or("colour", 0.0) as i64).unwrap_or(0);
-            self.user_layers.push(Layer { id, name: e.str_or("name", "User").to_owned(), faders, user: true, colour });
+            self.user_layers.push(Layer {
+                id,
+                name: e.str_or("name", "User").to_owned(),
+                faders,
+                user: true,
+                colour,
+                bank: e.str_or("bank", "").to_owned(),
+            });
         }
         for e in xml.children_named("Override") {
             let section = usize::try_from(parse_int_prefix(e.str_or("section", "-1"))).unwrap_or(NUM_SECTIONS);

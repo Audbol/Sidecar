@@ -5,6 +5,7 @@
 
 #include <juce_core/juce_core.h>
 
+#include <functional>
 #include <optional>
 #include <vector>
 
@@ -22,6 +23,8 @@ struct Layer
     bool user = false;
     /** A user layer's colour (0: none). */
     juce::uint32 colour = 0;
+    /** The console banks it occupies, "console=bank;console=bank" (see layerlink). */
+    juce::String bank;
 };
 
 /** Fixed-slot editing of a layer's faders, as on the WING: slot `i` is
@@ -70,6 +73,10 @@ namespace layerslots
         blank one); between two slots it's inserted there and its old slot
         turns blank (next to itself nothing changes). False when refused. */
     bool dropSlot (std::vector<state::FaderRef>&, int from, DropTarget target);
+    /** Drag editing: the entry in slot `from` dragged to between slots `to - 1` and `to` (`to` counts the slots
+        as they are before the move, 0 to size); the entries after it close up and nothing turns blank. False
+        when `from` holds nothing (or is outside the layer). */
+    bool moveEntry (std::vector<state::FaderRef>&, int from, int to);
 } // namespace layerslots
 
 /** The WING's three fader sections and their layer keys (implemented in Rust,
@@ -217,6 +224,8 @@ public:
     void renameUserLayer (const juce::String& id, const juce::String& name);
     void moveUserLayer (const juce::String& id, int delta);
     void setUserLayerColour (const juce::String& id, juce::uint32 argb);
+    /** Which console banks the layer occupies (layerlink writes it). */
+    void setUserLayerBank (const juce::String& id, const juce::String& banks);
     /** Every user layer as a file's text; importUserLayers adds the layers of such text
         (new ids, after the ones here) and returns how many it added (0: not a layer file). */
     juce::String exportUserLayers() const;
@@ -258,5 +267,59 @@ private:
 
     JUCE_DECLARE_NON_COPYABLE (LayerSet)
 };
+
+/** A show layer as a console's own layer: the same layers seen on a console surface that has user or
+    custom layers (the SQ-5's A-F, the dLive's Strip Assign layers; the WING's USER keys take layers
+    directly). A layer's `bank` names the console bank it occupies, one per console. */
+namespace layerlink
+{
+    /** The consoles' keys: sq5 (bank "0".."5" for A-F), c1500 (layer "0".."n"), c3500 ("bank.layer"). */
+    juce::String bankOf (const juce::String& banks, const juce::String& console);
+    juce::String withBank (const juce::String& banks, const juce::String& console, const juce::String& bank);
+    /** The first user layer occupying `bank` of `console`, or nullptr. */
+    const Layer* layerFor (const std::vector<Layer>&, const juce::String& console, const juce::String& bank);
+    /** `layerId` occupies `bank` of `console` (an empty bank: none); any other layer holding that bank lets it go. */
+    void assign (LayerSet&, const juce::String& layerId, const juce::String& console, const juce::String& bank);
+    /** The layer's first `n` slots, blank-padded. */
+    std::vector<state::FaderRef> pull (const Layer&, int n);
+    /** The layer after the surface changed its first slots to `slots` (blank: none): the layer's own tail stays,
+        and a fader the surface cannot show (`shows` false) stays where the surface shows none. */
+    std::vector<state::FaderRef> merge (const std::vector<state::FaderRef>& layer, const std::vector<state::FaderRef>& slots,
+                                        const std::function<bool (const state::FaderRef&)>& shows);
+    /** A short label of the occupied banks for the editor: "SQ-5 C, C3500 1.D". */
+    juce::String describe (const juce::String& banks);
+
+    /** For a surface whose slots are `Slot` (a kind and an index; a default Slot is "none"). `toSlot` turns a
+        fader into a slot (a default Slot for one the surface cannot show), `toFader` the reverse (blank for
+        none). pullInto: the layer's faders into the surface's slots; true when any slot changed. */
+    template <typename Slot, typename ToSlot>
+    bool pullInto (const Layer& layer, std::vector<Slot>& slots, ToSlot toSlot)
+    {
+        const auto want = pull (layer, (int) slots.size());
+        bool changed = false;
+        for (size_t i = 0; i < slots.size(); ++i)
+        {
+            const Slot s = want[i].isEmpty() ? Slot {} : toSlot (want[i]);
+            if (s.kind != slots[i].kind || s.index != slots[i].index)
+            {
+                slots[i] = s;
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    /** The surface's slots back into the layer (only when they differ from it). */
+    template <typename Slot, typename ToFader, typename ToSlot>
+    void pushFrom (LayerSet& set, const Layer& layer, const std::vector<Slot>& slots, ToFader toFader, ToSlot toSlot)
+    {
+        std::vector<state::FaderRef> fs;
+        for (auto& s : slots)
+            fs.push_back (toFader (s));
+        const auto merged = merge (layer.faders, fs, [&toSlot] (const state::FaderRef& f) { return toSlot (f).kind != Slot {}.kind; });
+        if (merged != layer.faders)
+            set.setUserLayerFaders (layer.id, merged);
+    }
+} // namespace layerlink
 
 } // namespace livedaw

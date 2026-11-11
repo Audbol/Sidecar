@@ -101,14 +101,14 @@ private:
 };
 
 SetupView::SetupView (UiContext& c, const Theme& t)
-    : consoleTab ("CONSOLE", t.accent, t), audioTab ("AUDIO", t.accent, t), remoteTab ("REMOTE", t.accent, t), prefsTab ("PREFERENCES", t.accent, t),
+    : consoleTab ("CONSOLE", t.accent, t), audioTab ("AUDIO", t.accent, t), remoteTab ("REMOTE", t.accent, t), prefsTab ("PREFERENCES", t.accent, t), benchmarkTab ("BENCHMARK", t.accent, t),
       applyKey ("APPLY", t.accent, t), revertKey ("REVERT", t.accent, t), interfaceChoice (t), compensationKey ("DELAY COMPENSATION", t.accent, t),
-      protectionKey ("OUTPUT PROTECTION", t.accent, t), remote (c, t), mixerConfig (c, t), ctx (c), theme (t)
+      protectionKey ("OUTPUT PROTECTION", t.accent, t), remote (c, t), benchmark (c, t), mixerConfig (c, t), ctx (c), theme (t)
 {
-    for (auto* k : { &consoleTab, &audioTab, &remoteTab, &prefsTab })
+    for (auto* k : { &consoleTab, &audioTab, &remoteTab, &prefsTab, &benchmarkTab })
         k->tab = true;
     const std::pair<ToggleKey*, Page> tabs[] = { { &consoleTab, Page::Console }, { &audioTab, Page::Audio }, { &remoteTab, Page::Remote },
-                                                 { &prefsTab, Page::Preferences } };
+                                                 { &prefsTab, Page::Preferences }, { &benchmarkTab, Page::Benchmark } };
     for (auto [key, target] : tabs)
     {
         key->isOn = [this, p = target] { return page == p; };
@@ -180,6 +180,7 @@ SetupView::SetupView (UiContext& c, const Theme& t)
         addChildComponent (child);
 
     addChildComponent (remote);
+    addChildComponent (benchmark);
     addChildComponent (mixerConfig);
     device = std::make_unique<juce::AudioDeviceSelectorComponent> (ctx.deviceManager, 0, 256, 0, 256, false, false, false, false);
     addChildComponent (*device);
@@ -199,6 +200,7 @@ void SetupView::showPage (Page p)
     showConsolePage();
     device->setVisible (p == Page::Audio);
     remote.setVisible (p == Page::Remote);
+    benchmark.setVisible (p == Page::Benchmark);
     for (auto* c : std::initializer_list<juce::Component*> { &interfaceChoice, &compensationKey, &protectionKey })
         c->setVisible (p == Page::Preferences);
     refresh();
@@ -291,7 +293,7 @@ void SetupView::revert()
 
 void SetupView::refresh()
 {
-    for (auto* k : { &consoleTab, &audioTab, &remoteTab, &prefsTab, &compensationKey, &protectionKey })
+    for (auto* k : { &consoleTab, &audioTab, &remoteTab, &prefsTab, &benchmarkTab, &compensationKey, &protectionKey })
         k->refresh();
     interfaceChoice.refresh();
     showConsolePage(); // the console may have become a dLive, or stopped being one
@@ -323,7 +325,7 @@ void SetupView::resized()
 {
     auto area = getLocalBounds().reduced (sizes::kGap, sizes::kGapSmall);
     auto tabs = area.removeFromTop (sizes::kTouch);
-    for (auto* k : { &consoleTab, &audioTab, &remoteTab, &prefsTab })
+    for (auto* k : { &consoleTab, &audioTab, &remoteTab, &prefsTab, &benchmarkTab })
     {
         k->setBounds (tabs.removeFromLeft (170));
         tabs.removeFromLeft (sizes::kGapSmall);
@@ -344,6 +346,7 @@ void SetupView::resized()
 
     device->setBounds (area.withWidth (juce::jmin (area.getWidth(), 700)));
     remote.setBounds (area);
+    benchmark.setBounds (area);
     auto prefs = area.withWidth (juce::jmin (area.getWidth(), 600));
     layoutRows (prefs, { { &interfaceChoice, 40 }, { &compensationKey, sizes::kTouch }, { &protectionKey, sizes::kTouch } }, sizes::kGapSmall);
 }

@@ -1,6 +1,7 @@
 #include "ui/DLiveSurface.h"
 #include "ui/DLiveScreens.h"
 
+#include "engine/Layers.h"
 #include "engine/MixerEngine.h"
 #include "engine/Models.h"
 #include "engine/Show.h"
@@ -480,9 +481,91 @@ namespace dl
         changed();
     }
 
+    namespace
+    {
+        Slot dlSlotOf (MixerEngine& e, const state::FaderRef& f)
+        {
+            if (f.dca)
+                return { Slot::Dca, f.dcaIndex };
+            if (! f.isStrip())
+                return {};
+            auto* strip = state::findStrip (e, f.strip);
+            if (strip == nullptr)
+                return {};
+            for (int k = Slot::Channel; k <= Slot::Matrix; ++k)
+                for (int i = 0; i < 200; ++i)
+                    if (stripOf (e, { (Slot::Kind) k, i }) == strip)
+                        return { (Slot::Kind) k, i };
+            return {};
+        }
+
+        state::FaderRef dlFaderOf (MixerEngine& e, const Slot& s)
+        {
+            if (s.kind == Slot::Dca)
+                return state::FaderRef::ofDca (s.index);
+            if (auto* strip = stripOf (e, s))
+                return state::FaderRef::of (state::StripRef::of (*strip));
+            return state::FaderRef::blank();
+        }
+    } // namespace
+
+    void SurfaceSetup::linkTo (MixerEngine& e, LayerSet& set, const juce::String& console)
+    {
+        linkedEngine = &e;
+        linkedLayers = &set;
+        linkedConsole = console;
+        pullShowLayers (false); // the surface is still being built
+    }
+
+    bool SurfaceSetup::pullShowLayers (bool notify)
+    {
+        if (linkedLayers == nullptr)
+            return false;
+        bool any = false;
+        pulling = true;
+        for (int b = 0; b < banks; ++b)
+            for (int l = 0; l < layers; ++l)
+                if (const auto* u = layerlink::layerFor (linkedLayers->getUserLayers(), linkedConsole, bankKey (b, l)))
+                {
+                    std::vector<Slot> now ((size_t) strips);
+                    for (int s = 0; s < strips; ++s)
+                        now[(size_t) s] = getSlot (b, l, s);
+                    if (layerlink::pullInto (*u, now, [this] (const state::FaderRef& f) { return dlSlotOf (*linkedEngine, f); }))
+                    {
+                        for (int s = 0; s < strips; ++s)
+                            slots[(size_t) cell (b, l, s)] = now[(size_t) s];
+                        any = true;
+                    }
+                }
+        pulling = false;
+        if (any && notify)
+            changed();
+        else if (any)
+            save();
+        return any;
+    }
+
+    void SurfaceSetup::pushShowLayers()
+    {
+        if (linkedLayers == nullptr || pulling)
+            return;
+        for (int b = 0; b < banks; ++b)
+            for (int l = 0; l < layers; ++l)
+                if (const auto* u = layerlink::layerFor (linkedLayers->getUserLayers(), linkedConsole, bankKey (b, l)))
+                {
+                    const auto copy = *u; // the setter refreshes the snapshot
+                    std::vector<Slot> now ((size_t) strips);
+                    for (int s = 0; s < strips; ++s)
+                        now[(size_t) s] = getSlot (b, l, s);
+                    layerlink::pushFrom (*linkedLayers, copy, now, [this] (const Slot& s) { return dlFaderOf (*linkedEngine, s); },
+                                         [this] (const state::FaderRef& f) { return dlSlotOf (*linkedEngine, f); });
+                }
+    }
+
     void SurfaceSetup::changed()
     {
         save();
+        pushShowLayers();
         if (onChanged)
             onChanged();
     }
@@ -1321,6 +1404,7 @@ DLiveSurface::DLiveSurface (UiContext& c)
 {
     using Shape = dl::Key::Shape;
     assignments.onChanged = [this] { bindStrips(); };
+    assignments.linkTo (ctx.engine, ctx.show.layers, "c1500");
     assignSoftKey = [this] (int i, juce::Component* t) { dl::showSoftKeyMenu (ctx, assignments, i, t); };
     assignRotary = [this] (int i, juce::Component* t) { dl::showCustomRotaryMenu (assignments, i, t); };
 
@@ -1800,6 +1884,8 @@ void DLiveSurface::showChanged()
 
 void DLiveSurface::timerCallback()
 {
+    if (++linkTick % 5 == 0)
+        assignments.pullShowLayers(); // a layer made or edited in the Universal Mixer or on another surface
     for (auto& s : strips)
         s->refresh();
     for (auto& [name, k] : keys)

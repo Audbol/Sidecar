@@ -120,6 +120,7 @@ DLiveC3500Surface::DLiveC3500Surface (UiContext& c)
 {
     using Shape = dl::Key::Shape;
     assignments.onChanged = [this] { bindStrips(); };
+    assignments.linkTo (ctx.engine, ctx.show.layers, "c3500");
     assignSoftKey = [this] (int i, juce::Component* t) { dl::showSoftKeyMenu (ctx, assignments, i, t); };
     assignRotary = [this] (int i, juce::Component* t) { dl::showCustomRotaryMenu (assignments, i, t); };
 
@@ -671,6 +672,8 @@ void DLiveC3500Surface::showChanged()
 
 void DLiveC3500Surface::timerCallback()
 {
+    if (++linkTick % 5 == 0)
+        assignments.pullShowLayers(); // a layer made or edited in the Universal Mixer or on another surface
     for (auto& s : strips)
         s->refresh();
     for (auto& [name, k] : keys)

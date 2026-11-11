@@ -117,6 +117,7 @@ private:
     const universal::Theme& theme;
     universal::ToggleKey universalKey, c1500Key;
     dl::SurfaceSetup assignments;
+    int linkTick = 0;
     juce::Component leftHost, rightHost;
     dl::ProcessingScreen processing;
     dl::SceneScreen scenes;

@@ -134,6 +134,8 @@ public:
     DisplayKnob& getKnob (const juce::String& name);
 
     /** The strips' layers, as they are (Setup's Strip Assign changes them). */
+    /** Takes the show's layers that occupy a layer A-F into the slots now (the timer does it a few times a second). */
+    bool syncShowLayers() { return pullShowLayers(); }
     const std::vector<sq5::Slot>& getLayerSlots (int l) const { return layers[(size_t) juce::jlimit (0, kLayers - 1, l)]; }
 
 private:
@@ -155,6 +157,11 @@ private:
     bool applyClipboard (Strip& strip);
     void saveLayers();
     void loadLayers();
+    /** The show's user layers that occupy a layer A-F (bank "sq5=0".."sq5=5") are the same layers: pullShowLayers
+        takes their faders into the slots (true: a slot changed), pushShowLayer gives a layer's slots back. */
+    bool pullShowLayers();
+    void pushShowLayer (int l);
+    int linkTick = 0;
 
     struct Silk
     {

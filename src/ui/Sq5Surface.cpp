@@ -2,6 +2,7 @@
 
 #include "daw/Session.h"
 #include "engine/MidiRemote.h"
+#include "engine/Layers.h"
 #include "engine/MixerEngine.h"
 #include "engine/Models.h"
 #include "engine/SqMidi.h"
@@ -379,9 +380,11 @@ Sq5Surface::Sq5Surface (UiContext& c)
     {
         layers[(size_t) l][(size_t) i] = s;
         saveLayers();
+        pushShowLayer (l);
         bindStrips();
     };
     loadLayers();
+    pullShowLayers();
 
     for (int i = 0; i < kStrips; ++i)
     {
@@ -1067,6 +1070,54 @@ void Sq5Surface::loadLayers()
     }
 }
 
+namespace
+{
+    sq5::Slot sq5SlotOf (MixerEngine& e, const state::FaderRef& f)
+    {
+        if (f.dca)
+            return { sq5::Slot::Dca, f.dcaIndex };
+        if (! f.isStrip())
+            return {};
+        auto* strip = state::findStrip (e, f.strip);
+        if (strip == nullptr)
+            return {};
+        const auto s = sq5::slotOf (e, strip);
+        return sq5::stripOf (e, s) == strip ? s : sq5::Slot {}; // a main past the first has no slot
+    }
+
+    state::FaderRef sq5FaderOf (MixerEngine& e, const sq5::Slot& s)
+    {
+        if (s.kind == sq5::Slot::None)
+            return state::FaderRef::blank();
+        if (s.kind == sq5::Slot::Dca)
+            return state::FaderRef::ofDca (s.index);
+        if (auto* strip = sq5::stripOf (e, s))
+            return state::FaderRef::of (state::StripRef::of (*strip));
+        return state::FaderRef::blank();
+    }
+} // namespace
+
+bool Sq5Surface::pullShowLayers()
+{
+    bool changed = false;
+    for (int l = 0; l < kLayers; ++l)
+        if (const auto* u = layerlink::layerFor (ctx.show.layers.getUserLayers(), "sq5", juce::String (l)))
+            changed |= layerlink::pullInto (*u, layers[(size_t) l], [this] (const state::FaderRef& f) { return sq5SlotOf (ctx.engine, f); });
+    if (changed)
+        saveLayers();
+    return changed;
+}
+
+void Sq5Surface::pushShowLayer (int l)
+{
+    if (const auto* u = layerlink::layerFor (ctx.show.layers.getUserLayers(), "sq5", juce::String (l)))
+    {
+        const auto copy = *u; // the setter refreshes the snapshot
+        layerlink::pushFrom (ctx.show.layers, copy, layers[(size_t) l], [this] (const sq5::Slot& s) { return sq5FaderOf (ctx.engine, s); },
+                             [this] (const state::FaderRef& f) { return sq5SlotOf (ctx.engine, f); });
+    }
+}
+
 void Sq5Surface::setAssignMode (bool on)
 {
     assignMode = on;
@@ -1179,6 +1230,11 @@ void Sq5Surface::timerCallback()
 {
     if (isCovered())
         return;
+    if (++linkTick % 4 == 0 && pullShowLayers()) // a layer made or edited in the Universal Mixer or on another surface
+    {
+        if (display.onSurfaceChanged)
+            display.onSurfaceChanged(); // rebinds the strips and knobs
+    }
     for (auto& s : strips)
         s->refresh();
     master->refresh();

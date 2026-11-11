@@ -196,6 +196,7 @@ public:
         universalOnEveryConsole();
         y02rSurface();
         sq5Surface();
+        consoleLayers();
         y01vSurface();
         groupsAndPairsInShows();
         dliveSurface();
@@ -2244,6 +2245,87 @@ public:
         expectEquals (skin.getBottomBand().getView(), 0);
         expect (! skin.getBottomBand().isVisible());
         setShownProfile (ld::kProfileWing);
+    }
+
+    /** The show's user layers on the consoles that have layers of their own: a layer that occupies a bank shows
+        there, and a slot edited on the console comes back to the layer. */
+    void consoleLayers()
+    {
+        beginTest ("User layers on the SQ-5 and the dLive: the show's layers fill their banks, edits there come back");
+        const auto ref = [] (Strip& s) { return state::FaderRef::of (state::StripRef::of (s)); };
+        {
+            MixerEngine engine (0);
+            engine.configureProfile (ld::kProfileSq5);
+            ShotRig rig (engine);
+            setShownProfile (ld::kProfileSq5);
+            auto& layers = rig.show.layers;
+            auto& ch = engine.getChannels();
+            // A spacer, a DCA, and a send the SQ-5's strips cannot show.
+            const auto id = layers.addUserLayer ("Band", { ref (*ch[4]), state::FaderRef::blank(), ref (*ch[0]), state::FaderRef::ofDca (1), state::FaderRef::ofFxParam (0, 0) });
+            layerlink::assign (layers, id, "sq5", "2");
+            expectEquals (layerlink::describe (layers.getUserLayer (id)->bank), juce::String ("SQ-5 C"));
+            ui::Sq5Surface skin (rig.ctx);
+            using Slot = ui::sq5::Slot;
+            const auto& c = skin.getLayerSlots (2);
+            expect (c[0].kind == Slot::Input && c[0].index == 4 && c[1].kind == Slot::None && c[2].kind == Slot::Input && c[2].index == 0, "SQ-5 C holds the layer");
+            expect (c[3].kind == Slot::Dca && c[3].index == 1 && c[4].kind == Slot::None, "a DCA, and no slot for a send");
+            expect (skin.getLayerSlots (0)[0].kind != Slot::Input || skin.getLayerSlots (0)[0].index == 0, "another layer is its own");
+
+            // Edited in the Universal Mixer: the surface follows.
+            auto edited = layers.getUserLayer (id)->faders;
+            edited[0] = ref (*ch[9]);
+            layers.setUserLayerFaders (id, edited);
+            expect (skin.syncShowLayers(), "the surface notices");
+            expect (skin.getLayerSlots (2)[0].index == 9, "SQ-5 C follows the layer");
+            expect (! skin.syncShowLayers(), "nothing more to take");
+
+            // Edited on the surface (Strip Assign): the layer follows; what the surface cannot show stays.
+            skin.getDisplay().assignSlot (2, 5, { Slot::Input, 7 });
+            const auto back = layers.getUserLayer (id)->faders;
+            expect (back.size() == 6 && back[5] == ref (*ch[7]) && back[0] == ref (*ch[9]), "an assigned slot is in the layer");
+            expect (back[4] == state::FaderRef::ofFxParam (0, 0), "the send stays");
+            skin.getDisplay().assignSlot (2, 0, {});
+            expect (layers.getUserLayer (id)->faders[0].isEmpty(), "a cleared slot is a spacer in the layer");
+
+            // The bank can be given to another layer: the first lets it go.
+            const auto other = layers.addUserLayer ("Other", { ref (*ch[2]) });
+            layerlink::assign (layers, other, "sq5", "2");
+            expect (layerlink::bankOf (layers.getUserLayer (id)->bank, "sq5").isEmpty() && layerlink::bankOf (layers.getUserLayer (other)->bank, "sq5") == "2", "one layer per bank");
+            expect (skin.syncShowLayers() && skin.getLayerSlots (2)[0].index == 2, "the other layer fills it");
+            setShownProfile (ld::kProfileWing);
+        }
+        {
+            MixerEngine engine (0);
+            engine.configureProfile (ld::kProfileDLive);
+            ShotRig rig (engine);
+            setShownProfile (ld::kProfileDLive);
+            auto& layers = rig.show.layers;
+            auto& ch = engine.getChannels();
+            using Slot = ui::dl::Slot;
+            const auto id = layers.addUserLayer ("Drums", { ref (*ch[3]), state::FaderRef::ofDca (0), ref (*ch[1]) });
+            layerlink::assign (layers, id, "c1500", "1");
+            layerlink::assign (layers, id, "c3500", "1.2");
+            expectEquals (layerlink::describe (layers.getUserLayer (id)->bank), juce::String ("C1500 B, C3500 2.C"));
+            {
+                ui::DLiveSurface skin (rig.ctx);
+                auto& setup = skin.getSetup();
+                expect (setup.getSlot (0, 1, 0).kind == Slot::Channel && setup.getSlot (0, 1, 0).index == 3 && setup.getSlot (0, 1, 1).kind == Slot::Dca
+                            && setup.getSlot (0, 1, 2).index == 1,
+                        "the C1500's layer B holds the layer");
+                setup.setSlot (0, 1, 4, { Slot::Channel, 8 });
+                expect (layers.getUserLayer (id)->faders.size() == 5 && layers.getUserLayer (id)->faders[4] == ref (*ch[8]), "Strip Assign comes back to the layer");
+                layers.setUserLayerFaders (id, { ref (*ch[0]) });
+                expect (setup.pullShowLayers() && setup.getSlot (0, 1, 0).index == 0 && setup.getSlot (0, 1, 4).kind == Slot::None, "the layer's edits arrive");
+            }
+            {
+                ui::DLiveC3500Surface skin (rig.ctx);
+                auto& setup = skin.getSetup();
+                expect (setup.getSlot (1, 2, 0).kind == Slot::Channel && setup.getSlot (1, 2, 0).index == 0, "the C3500's bank 2, layer C holds it too");
+                setup.setSlot (1, 2, 1, { Slot::Dca, 3 });
+                expect (layers.getUserLayer (id)->faders.size() == 2 && layers.getUserLayer (id)->faders[1] == state::FaderRef::ofDca (3), "and edits there come back");
+            }
+            setShownProfile (ld::kProfileWing);
+        }
     }
 
     /** The SQ-5's surface and touchscreen, at 1920x1080. */

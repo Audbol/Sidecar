@@ -97,6 +97,19 @@ namespace layerslots
         faders = std::move (out);
         return true;
     }
+
+    bool moveEntry (std::vector<state::FaderRef>& faders, int from, int to)
+    {
+        if (! juce::isPositiveAndBelow (from, (int) faders.size()) || faders[(size_t) from].isEmpty())
+            return false;
+        to = juce::jlimit (0, (int) faders.size(), to);
+        if (to == from || to == from + 1)
+            return true; // next to itself: it stays
+        const auto item = faders[(size_t) from];
+        faders.erase (faders.begin() + from);
+        faders.insert (faders.begin() + (to > from ? to - 1 : to), item);
+        return true;
+    }
 } // namespace layerslots
 
 std::optional<state::FaderRef> LayerSet::surfaceTarget (const Layer& layer, int index)
@@ -130,6 +143,7 @@ std::vector<Layer> LayerSet::list (const MixerEngine* engine, Section section, i
         layer.name = takeString (ld::ld_layer_list_name (l, i));
         layer.user = ld::ld_layer_list_is_user (l, i);
         layer.colour = ld::ld_layer_list_colour (l, i);
+        layer.bank = takeString (ld::ld_layer_list_bank (l, i));
 
         refs.resize ((size_t) ld::ld_layer_list_faders (l, i, nullptr, 0));
         ld::ld_layer_list_faders (l, i, refs.data(), (int32_t) refs.size());
@@ -299,6 +313,12 @@ void LayerSet::setUserLayerColour (const juce::String& id, juce::uint32 argb)
     ld::ld_layers_set_user_colour (handle, u.data, u.size, argb);
 }
 
+void LayerSet::setUserLayerBank (const juce::String& id, const juce::String& banks)
+{
+    const Utf8 u (id), b (banks);
+    ld::ld_layers_set_user_bank (handle, u.data, u.size, b.data, b.size);
+}
+
 juce::String LayerSet::exportUserLayers() const
 {
     return takeString (ld::ld_layers_export_user (handle));
@@ -345,5 +365,91 @@ bool LayerSet::hasDefaultOverride (Section s, const juce::String& id) const
     const Utf8 u (id);
     return ld::ld_layers_has_override (handle, s, u.data, u.size);
 }
+
+namespace layerlink
+{
+    juce::String bankOf (const juce::String& banks, const juce::String& console)
+    {
+        for (auto& part : juce::StringArray::fromTokens (banks, ";", {}))
+            if (part.upToFirstOccurrenceOf ("=", false, false) == console)
+                return part.fromFirstOccurrenceOf ("=", false, false);
+        return {};
+    }
+
+    juce::String withBank (const juce::String& banks, const juce::String& console, const juce::String& bank)
+    {
+        juce::StringArray out;
+        for (auto& part : juce::StringArray::fromTokens (banks, ";", {}))
+            if (part.isNotEmpty() && part.upToFirstOccurrenceOf ("=", false, false) != console)
+                out.add (part);
+        if (bank.isNotEmpty())
+            out.add (console + "=" + bank);
+        return out.joinIntoString (";");
+    }
+
+    const Layer* layerFor (const std::vector<Layer>& layers, const juce::String& console, const juce::String& bank)
+    {
+        for (auto& l : layers)
+            if (l.user && bank.isNotEmpty() && bankOf (l.bank, console) == bank)
+                return &l;
+        return nullptr;
+    }
+
+    void assign (LayerSet& set, const juce::String& layerId, const juce::String& console, const juce::String& bank)
+    {
+        const auto all = set.getUserLayers(); // a copy: the setters refresh the snapshot
+        for (auto& l : all)
+        {
+            if (l.id == layerId)
+                set.setUserLayerBank (l.id, withBank (l.bank, console, bank));
+            else if (bank.isNotEmpty() && bankOf (l.bank, console) == bank)
+                set.setUserLayerBank (l.id, withBank (l.bank, console, {}));
+        }
+    }
+
+    std::vector<state::FaderRef> pull (const Layer& layer, int n)
+    {
+        std::vector<state::FaderRef> out ((size_t) juce::jmax (0, n), state::FaderRef::blank());
+        for (size_t i = 0; i < out.size() && i < layer.faders.size(); ++i)
+            out[i] = layer.faders[i];
+        return out;
+    }
+
+    std::vector<state::FaderRef> merge (const std::vector<state::FaderRef>& layer, const std::vector<state::FaderRef>& slots,
+                                        const std::function<bool (const state::FaderRef&)>& shows)
+    {
+        auto out = layer;
+        if (out.size() < slots.size())
+            out.resize (slots.size(), state::FaderRef::blank());
+        for (size_t i = 0; i < slots.size(); ++i)
+        {
+            const bool keep = slots[i].isEmpty() && ! out[i].isEmpty() && ! shows (out[i]); // the surface cannot show it
+            if (! keep)
+                out[i] = slots[i];
+        }
+        layerslots::trim (out);
+        return out;
+    }
+
+    juce::String describe (const juce::String& banks)
+    {
+        const std::pair<const char*, const char*> names[] = { { "sq5", "SQ-5" }, { "c1500", "C1500" }, { "c3500", "C3500" } };
+        juce::StringArray out;
+        for (auto& [key, label] : names)
+        {
+            auto b = bankOf (banks, key);
+            if (b.isEmpty())
+                continue;
+            if (juce::String (key) == "sq5")
+                b = juce::String::charToString ((juce::juce_wchar) ('A' + b.getIntValue()));
+            else if (b.contains ("."))
+                b = juce::String (b.upToFirstOccurrenceOf (".", false, false).getIntValue() + 1) + "." + juce::String::charToString ((juce::juce_wchar) ('A' + b.fromFirstOccurrenceOf (".", false, false).getIntValue()));
+            else
+                b = juce::String::charToString ((juce::juce_wchar) ('A' + b.getIntValue()));
+            out.add (juce::String (label) + " " + b);
+        }
+        return out.joinIntoString (", ");
+    }
+} // namespace layerlink
 
 } // namespace livedaw

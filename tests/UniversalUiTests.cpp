@@ -1972,6 +1972,112 @@ public:
             expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds()), "user-layer.png"));
         }
 
+        beginTest ("Drag editing of the layers: reorder, add to a layer's key, drag out, in the view and in the editor; DCAs too");
+        {
+            MixerEngine engine (0);
+            const Counts counts { 8, 2, 4, 1, 2, 6, 3, 8 };
+            engine.configure (&counts);
+            UiRig rig (engine);
+            auto viewOwner = std::make_unique<MixerView> (rig.ctx, Theme::charcoal());
+            auto& view = *viewOwner;
+            view.setSize (1400, 800);
+            auto& layers = rig.ctx.show.layers;
+            const auto ref = [] (Strip& s) { return state::FaderRef::of (state::StripRef::of (s)); };
+            auto& ch = engine.getChannels();
+            const auto a = layers.addUserLayer ("A", { ref (*ch[0]), ref (*ch[1]), ref (*ch[2]), state::FaderRef::blank(), ref (*ch[3]) });
+            const auto b = layers.addUserLayer ("B", { ref (*ch[5]) });
+            view.refresh();
+            view.setLayer (a);
+            const auto order = [&layers, &a]
+            {
+                juce::String s;
+                for (auto& f : layers.getUserLayer (a)->faders)
+                    s << (f.empty ? "-" : f.dca ? "d" + juce::String (f.dcaIndex) : juce::String (f.strip.id - 1)) << ' '; // ids count from 1
+                return s.trim();
+            };
+            expectEquals (order(), juce::String ("0 1 2 - 3"));
+
+            // Pointer: pick up entry 2 (channel 3), drop before entry 0 (view coordinates, between the columns).
+            const auto before = [&view] (int slot) { return juce::Point<int> (view.getLayerEntryBounds (slot).getX() + 3, view.getLayerEntryBounds (slot).getCentreY()); };
+            view.beginDrag (ref (*ch[2]), 2, "CH 3", before (2));
+            expect (view.isDragging(), "L-drag started");
+            view.moveDrag (before (0));
+            expect (view.endDrag (before (0)) && ! view.isDragging(), "L-drag dropped");
+            expectEquals (order(), juce::String ("2 0 1 - 3"));
+            // Drop past the last column: to the end; a spacer is a gap that can be skipped over.
+            view.beginDrag (ref (*ch[2]), 0, "CH 3", {});
+            const auto last = view.getLayerEntryBounds (4);
+            expect (view.endDrag ({ last.getRight() - 4, last.getCentreY() }), "L-drag to the end");
+            expectEquals (order(), juce::String ("0 1 - 3 2"));
+            expect (view.dragMoveEntry (0, 3), "a move by slot numbers");
+            expectEquals (order(), juce::String ("1 - 0 3 2"));
+            expect (! view.dragMoveEntry (1, 0), "a spacer is not picked up");
+            expect (view.dragMoveEntry (2, 2) && order() == "1 - 0 3 2", "next to itself: stays");
+
+            // Drag out: dropped outside the columns the entry leaves the layer (the entries close up).
+            view.beginDrag (ref (*ch[3]), 3, "CH 4", {});
+            expect (view.endDrag ({ -30, -30 }), "L-drag out"); // outside the columns
+            expectEquals (order(), juce::String ("1 - 0 2"));
+            expectEquals (view.getNumColumns(), 3);
+
+            // Add: from ALL, a drop on a layer's key; a DCA too; not twice.
+            view.setLayer ({});
+            expectEquals (view.getNumLayerKeys(), 2);
+            auto* keyB = view.getLayerKey (b);
+            expect (keyB != nullptr, "B has a key");
+            if (keyB != nullptr)
+            {
+                keyB->setBounds (900, 8, 88, 34); // the window places the header's keys; here by hand
+                keyB->setVisible (true);
+            }
+            const auto onKey = keyB != nullptr ? keyB->getBounds().getCentre() : juce::Point<int>();
+            view.beginDrag (ref (*ch[6]), -1, "CH 7", {});
+            expect (view.endDrag (onKey), "L-drag onto a key");
+            expectEquals ((int) layers.getUserLayer (b)->faders.size(), 2);
+            expect (layers.getUserLayer (b)->faders[1] == ref (*ch[6]), "added at the end");
+            view.beginDrag (state::FaderRef::ofDca (2), -1, "DCA 3", {});
+            if (auto* k = view.getLayerKey (b)) // the keys were made again with the layer's change
+            {
+                k->setBounds (900, 8, 88, 34);
+                k->setVisible (true);
+            }
+            expect (view.endDrag (onKey), "a DCA onto a key");
+            expect (layers.getUserLayer (b)->faders[2] == state::FaderRef::ofDca (2), "the DCA is in");
+            expect (! view.dragAddToLayer (ref (*ch[6]), b), "not twice");
+            view.beginDrag (ref (*ch[6]), -1, "CH 7", {});
+            expect (! view.endDrag ({ -30, -30 }), "dropped elsewhere in ALL: nothing");
+            expectEquals ((int) layers.getUserLayer (b)->faders.size(), 3);
+            view.setLayer (b);
+            expectEquals (view.getNumColumns(), 2);
+            expectEquals (view.getNumDcaColumns(), 1);
+
+            // The editor: ADD DCA, drag to reorder, onto another layer, out.
+            auto* editor = view.getLayerEditor();
+            editor->selectLayer (b);
+            expect (editor->addDca (4) && editor->getNumEntries() == 4, "ADD DCA");
+            expect (editor->entryText (3).startsWith ("DCA 5"), "L-dca");
+            expect (! editor->addDca (99), "no such DCA");
+            expect (editor->moveEntryTo (3, 0), "editor: drag to the top");
+            expect (editor->entryText (0).startsWith ("DCA 5"), "L-top");
+            expect (editor->addEntryToLayer (1, a), "editor: drop on another layer");
+            const auto la = *layers.getUserLayer (a), lb = *layers.getUserLayer (b);
+            expect (la.faders.back() == lb.faders[1], "copied there, at the end");
+            expect (! editor->addEntryToLayer (1, a), "not twice");
+            expect (! editor->addEntryToLayer (1, b), "not onto itself");
+            expect (editor->removeEntryAt (0) && editor->getNumEntries() == 3, "editor: drag out");
+            // The pointer's way: pick up row 0, drop outside the editor.
+            editor->setBounds (0, 0, 620, 440);
+            editor->beginDrag (0, { 300, 200 });
+            expect (editor->isDragging(), "L-edrag");
+            expect (editor->endDrag ({ 700, 500 }) && editor->getNumEntries() == 2, "dropped outside: out");
+            // Which console bank a layer occupies is marked on the layer.
+            editor->setSelectedBank ("sq5", "3");
+            expectEquals (layerlink::describe (layers.getUserLayer (b)->bank), juce::String ("SQ-5 D"));
+            editor->selectLayer (a);
+            editor->setSelectedBank ("sq5", "3");
+            expect (layerlink::bankOf (layers.getUserLayer (b)->bank, "sq5").isEmpty(), "the bank moved to A");
+        }
+
         beginTest ("DCAs and mute groups in the MIXER view: a column per DCA and the mute groups' keys, after the strips or alone (DCAS)");
         {
             MixerEngine engine (0);

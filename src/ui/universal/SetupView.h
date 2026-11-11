@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui/UiContext.h"
+#include "ui/universal/BenchmarkPanel.h"
 #include "ui/universal/MixerConfigPanel.h"
 #include "ui/universal/RemotePanel.h"
 #include "ui/universal/ValueControls.h"
@@ -34,7 +35,8 @@ public:
         Console,
         Audio,
         Remote,
-        Preferences
+        Preferences,
+        Benchmark
     };
     void showPage (Page);
     Page getPage() const noexcept { return page; }
@@ -65,10 +67,11 @@ public:
     const juce::String& getStatus() const noexcept { return status; }
     void refresh();
 
-    ToggleKey consoleTab, audioTab, remoteTab, prefsTab, applyKey, revertKey;
+    ToggleKey consoleTab, audioTab, remoteTab, prefsTab, benchmarkTab, applyKey, revertKey;
     ChoiceBar interfaceChoice;
     ToggleKey compensationKey, protectionKey;
     RemotePanel remote;
+    BenchmarkPanel benchmark;
     MixerConfigPanel mixerConfig;
 
     void paint (juce::Graphics&) override;

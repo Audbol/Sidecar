@@ -2616,6 +2616,7 @@ fn user_layers_keep_colour_save_load_and_export_import() {
     let mut set = LayerSet::default();
     let id = set.add_user_layer("Band", vec![FaderRef::Dca(1), FaderRef::Empty, FaderRef::Dca(1)]);
     set.set_user_layer_colour(&id, 0xff5a8fe0);
+    set.set_user_layer_bank(&id, "sq5=2;c3500=0.1");
     set.add_user_layer("Plain", vec![]);
     assert_eq!(set.user_layer(&id).unwrap().colour, 0xff5a8fe0);
 
@@ -2624,6 +2625,7 @@ fn user_layers_keep_colour_save_load_and_export_import() {
     loaded.from_xml(&set.to_xml());
     let l = loaded.user_layer(&id).unwrap();
     assert_eq!((l.colour, l.faders.len()), (0xff5a8fe0, 3));
+    assert_eq!(l.bank, "sq5=2;c3500=0.1");
     assert!(l.faders[1].is_empty() && l.faders[0] == l.faders[2]);
     assert_eq!(loaded.user_layers()[1].colour, 0);
 
@@ -2636,5 +2638,6 @@ fn user_layers_keep_colour_save_load_and_export_import() {
     let copy = &other.user_layers()[1];
     assert_eq!((copy.name.as_str(), copy.colour, copy.faders.len()), ("Band", 0xff5a8fe0, 3));
     assert_ne!(copy.id, id);
+    assert_eq!(copy.bank, "sq5=2;c3500=0.1");
     assert_eq!(other.import_user_layers("not a layer file"), 0);
 }

@@ -1775,6 +1775,8 @@ extern "C"
     void ld_layers_move_user (LayerSet*, const char* id, size_t len, int32_t delta);
     uint32_t ld_layer_list_colour (const LayerList*, int32_t i);
     void ld_layers_set_user_colour (LayerSet*, const char* id, size_t len, uint32_t colour);
+    LdString* ld_layer_list_bank (const LayerList*, int32_t i);
+    void ld_layers_set_user_bank (LayerSet*, const char* id, size_t len, const char* bank, size_t bankLen);
     LdString* ld_layers_export_user (LayerSet*);
     int32_t ld_layers_import_user (LayerSet*, const char* text, size_t len);
     /** Another copy when the layer already holds `ref`; false when it is full. */

@@ -3,6 +3,7 @@
 #include "ui/UiContext.h"
 #include "ui/universal/ChannelPanel.h"
 #include "ui/universal/Groups.h"
+#include "ui/universal/LayerDrag.h"
 #include "ui/universal/LayerEditor.h"
 #include "ui/universal/Widgets.h"
 
@@ -214,6 +215,28 @@ public:
     /** The header's keys for the layers: how many layer keys show, or true when they folded into one menu key. */
     int getNumLayerKeys() const noexcept { return (int) layerKeys.size(); }
     bool areLayersInMenu() const noexcept { return layersInMenu; }
+
+    //==============================================================================
+    // Drag editing of the layers, on the view itself. A long press (or, with a mouse, a drag) on a strip's or
+    // DCA's name tab picks it up: dropped between two columns of the shown layer it moves there, on a layer's
+    // key (or, with the keys folded into the menu, on LAYER) it is added to that layer, anywhere else (in a
+    // layer) it is taken out. Everything goes through the show's layers, so the other surfaces follow.
+    /** Moves the shown layer's entry `from` to between entries `to - 1` and `to` (slot numbers of the layer). */
+    bool dragMoveEntry (int from, int to);
+    /** Adds a strip or DCA to a layer (not when it already holds it). */
+    bool dragAddToLayer (const state::FaderRef&, const juce::String& layerId);
+    /** Takes the shown layer's entry `slot` out of it (the entries after it close up). */
+    bool dragRemoveEntry (int slot);
+    /** The pointer's drag as the gestures make it: pick up (a layer's entry `slot`, or -1 from ALL), move, drop;
+        points are in the view's coordinates. endDrag returns whether anything was edited. */
+    void beginDrag (const state::FaderRef&, int slot, const juce::String& label, juce::Point<int> at);
+    void moveDrag (juce::Point<int> at);
+    bool endDrag (juce::Point<int> at);
+    bool isDragging() const noexcept { return drag.active; }
+    /** Where the layer's entry `slot` is shown (view coordinates; empty when it isn't, or no layer is). */
+    juce::Rectangle<int> getLayerEntryBounds (int slot) const;
+    /** The key of the user layer `id` (nullptr: none shown, or folded into the menu). */
+    ToggleKey* getLayerKey (const juce::String& id) const;
     /** Only DCA `dca`'s members and its fader (a filter key goes back). */
     void setDcaSpill (int dca);
     /** The DCA being spilled, or -1. */
@@ -294,6 +317,7 @@ public:
     /** The view's keys (see above); true if used. */
     bool handleKey (const juce::KeyPress&);
     ToggleKey& getJumpKey() noexcept { return jumpKey; }
+    void paintOverChildren (juce::Graphics&) override;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -326,6 +350,32 @@ private:
     /** The layer keys again when the show's layers changed (compared by a signature). */
     void updateLayers (bool force);
     juce::String layerId, layersSignature;
+    std::vector<juce::String> layerKeyIds;
+    struct Drag
+    {
+        bool active = false;
+        state::FaderRef ref;
+        int slot = -1;
+        juce::String label;
+        juce::Point<int> at;
+    } drag;
+    struct Drop
+    {
+        enum Kind
+        {
+            None,
+            Reorder,
+            Add,
+            Remove,
+            Menu
+        } kind = None;
+        int to = -1;
+        juce::String layerId;
+    };
+    Drop dropFor (juce::Point<int>) const;
+    void showAddMenu (const state::FaderRef&);
+    DragPickup pickup;
+    void makePickable (juce::Component&);
     bool layersInMenu = false;
     ToggleKey layerMenuKey, layerEditKey;
     std::vector<std::unique_ptr<ToggleKey>> layerKeys;
@@ -335,6 +385,7 @@ private:
     {
         StripColumn* strip = nullptr;
         DcaColumn* dca = nullptr;
+        int slot = -1; // its place in the layer's faders
     };
     std::vector<Placed> layerOrder;
     void updateBankKey();

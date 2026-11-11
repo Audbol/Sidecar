@@ -168,11 +168,25 @@ namespace dl
         /** Something moved (the surface rebinds its strips). */
         std::function<void()> onChanged;
 
+        /** The show's user layers that occupy a layer here (bank "c1500=<layer>" or "c3500=<bank>.<layer>") are the
+            same layers: a slot edited here goes back to the layer (changed()), and pullShowLayers() takes a layer's
+            faders into the slots (true: something changed; onChanged follows). */
+        void linkTo (MixerEngine&, LayerSet&, const juce::String& console);
+        bool pullShowLayers (bool notify = true);
+
     private:
         void load();
         void save() const;
         void changed();
         int cell (int bank, int layer, int strip) const noexcept;
+
+        juce::String bankKey (int bank, int layer) const { return banks == 1 ? juce::String (layer) : juce::String (bank) + "." + juce::String (layer); }
+        void pushShowLayers();
+
+        MixerEngine* linkedEngine = nullptr;
+        LayerSet* linkedLayers = nullptr;
+        juce::String linkedConsole;
+        bool pulling = false;
 
         juce::PropertiesFile& settings;
         juce::String key;
@@ -471,6 +485,7 @@ private:
     const universal::Theme& theme;
     universal::ToggleKey universalKey, c3500Key;
     dl::SurfaceSetup assignments;
+    int linkTick = 0;
     juce::Component screenHost;
     std::unique_ptr<dl::ProcessingScreen> processing;
     std::unique_ptr<dl::SceneScreen> scenes;

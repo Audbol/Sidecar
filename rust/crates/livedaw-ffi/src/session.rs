@@ -1724,6 +1724,19 @@ pub unsafe extern "C" fn ld_layers_set_user_colour(l: *mut LayerSet, id: *const 
     }
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn ld_layer_list_bank(list: *const LdLayerList, i: i32) -> *mut LdString {
+    LdString::new(layer_at(list, i).map(|l| l.bank.clone()).unwrap_or_default())
+}
+
+/// The console banks a user layer occupies ("console=bank;...").
+#[no_mangle]
+pub unsafe extern "C" fn ld_layers_set_user_bank(l: *mut LayerSet, id: *const u8, len: usize, bank: *const u8, bank_len: usize) {
+    if let Some(l) = layers(l) {
+        l.set_user_layer_bank(&str_arg(id, len), &str_arg(bank, bank_len));
+    }
+}
+
 /// Every user layer as a file's text.
 #[no_mangle]
 pub unsafe extern "C" fn ld_layers_export_user(l: *mut LayerSet) -> *mut LdString {
