@@ -4,6 +4,8 @@ All notable changes to Sidecar are listed here. Versions follow
 [semantic versioning](https://semver.org); 0.x releases are betas.
 
 ## [Unreleased]
+
+## [0.3.0] - 2026-11-11
 - Benchmark: SETUP > BENCHMARK (the Universal Mixer's and the dLive's SETUP) measures this PC offline, on a low-priority thread with engines of its own (no sound, the audio interface and the live engine untouched), at the current sample rate and buffer size plus any other sizes chosen: each block model per console and every effect device (mean, 99th percentile and worst block time as a percentage of the block's budget), how many channels of each console's processing fit under 70% (and with all its effects), the show's plug-ins (optional, with a warning), how many tracks the recording folder's disk sustains, and the interface's frame rate. It shows the running test, a live graph of block times against the budget, a log and a CANCEL key, then a plain summary, recommendations and every number in tables; runs are saved (Benchmarks folder in the app data) and can be compared side by side, exported as text or CSV. A full run takes about a minute; QUICK TEST a few seconds.
 - Plug-in block: any strip's chain takes a PLUG-IN block (the ADD key in the Universal Mixer's inspector, not offered while a real console is under remote control) that hosts a VST3, AU or LV2 plug-in or a chain of them without an FX slot. It reuses the FX slots' hosting (the sandbox setting, crash handling that bypasses only the block, latency counted in the strip's delay compensation); a CHANNEL panel card shows its name, vendor, latency, ON, EDIT and PLUG-IN keys. Shows and scenes save the plug-in and its state; one that is missing leaves the block bypassed with its name. Console surfaces list it by name only.
 - Universal Mixer CHANNEL panel: EQ handles on every console (frequency and gain by dragging, Q by wheel or pinch, a cut moves sideways only; listed-Hz EQs like the ProMix, 02R and 01V too), the panel follows the chain (an added EQ or dynamics block gets its own card, "EQ 2"), a drag bar and a MAXIMISE key (double tap restores) size it, height remembered.
@@ -154,7 +156,6 @@ All notable changes to Sidecar are listed here. Versions follow
   16th can now feed outputs, channels and effects. C ABI 55. Mixer Config, its own effects,
   its 12-band EQ, its MIDI over TCP and its surface follow.
 
-## [0.3.0] - beta
 
 Three more consoles on the Universal Mixer's core, each a preview: the **Behringer
 X32**, the **Yamaha ProMix 01** and the **Yamaha 02R**. A console's profile (the

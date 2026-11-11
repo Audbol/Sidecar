@@ -5381,7 +5381,7 @@ void Display::assignRtaEncoders()
     mode.label = "DISPLAY";
     mode.get = [spec] { return spec() ? 1.0f : 0.0f; };
     mode.set = [this] (float v) { x32Run (v >= 0.5f ? "/-prefs/rta/mode SPEC" : "/-prefs/rta/mode BAR"); };
-    mode.text = [spec] { return spec() ? juce::String ("Spectrograph") : juce::String ("Bargraph"); };
+    mode.text = [spec] { return spec() ? juce::String ("Spectro") : juce::String ("Bars"); };
     mode.steps = 2.0f;
     encoders[1] = encoder (mode, "SPECTROGRAPH", [this, spec] { x32Run (spec() ? "/-prefs/rta/mode BAR" : "/-prefs/rta/mode SPEC"); }, spec);
 

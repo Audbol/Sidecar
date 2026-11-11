@@ -327,16 +327,17 @@ void LayerEditor::showBankMenu()
         int banks, layers;
     };
     const Console consoles[] = { { "sq5", "SQ-5", 1, 6 }, { "c1500", "dLive C1500", 1, 6 }, { "c3500", "dLive C3500", 2, 6 } };
-    const auto* l = ctx.show.layers.getUserLayer (layerId);
-    if (l == nullptr)
+    const auto* l0 = ctx.show.layers.getUserLayer (layerId);
+    if (l0 == nullptr)
         return;
+    const auto layerBank = l0->bank; // a copy: getUserLayers() below refreshes the snapshot
     juce::PopupMenu menu;
     menu.setLookAndFeel (&lookAndFeelFor (theme));
     std::vector<std::pair<juce::String, juce::String>> choices; // console, bank; item = index + 1
     for (auto& c : consoles)
     {
         juce::PopupMenu sub;
-        sub.addItem ((int) choices.size() + 1, "Not on this console", true, layerlink::bankOf (l->bank, c.key).isEmpty());
+        sub.addItem ((int) choices.size() + 1, "Not on this console", true, layerlink::bankOf (layerBank, c.key).isEmpty());
         choices.push_back ({ c.key, {} });
         for (int b = 0; b < c.banks; ++b)
             for (int i = 0; i < c.layers; ++i)
@@ -345,7 +346,7 @@ void LayerEditor::showBankMenu()
                 const auto taken = layerlink::layerFor (ctx.show.layers.getUserLayers(), c.key, bank);
                 const auto name = (c.banks == 1 ? juce::String() : "Bank " + juce::String (b + 1) + " ") + "Layer " + juce::String::charToString ((juce::juce_wchar) ('A' + i))
                                   + (taken != nullptr && taken->id != layerId ? "  (now " + taken->name + ")" : juce::String());
-                sub.addItem ((int) choices.size() + 1, name, true, layerlink::bankOf (l->bank, c.key) == bank);
+                sub.addItem ((int) choices.size() + 1, name, true, layerlink::bankOf (layerBank, c.key) == bank);
                 choices.push_back ({ c.key, bank });
             }
         menu.addSubMenu (c.label, sub);

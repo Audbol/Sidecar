@@ -208,6 +208,7 @@ public:
         dm2000Surface();
         xenyx1202Surface();
         customControlScribbles();
+        promoPictures();
     }
 
     /** The Q1202USB's surface at 1920x1080: some levels, EQ, names on the console tape and a scene. */
@@ -4446,6 +4447,88 @@ private:
 
     /** A band on the demo console: names, colours, faders, pans, dynamics and EQs,
         buses, FX devices on inserts, scenes. */
+    /** Pictures for the README and the release: the WING and WING COMPACT, and the MIXER in Studio Slate. */
+    void promoPictures()
+    {
+        const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {});
+        const auto save = [this, &folder] (const juce::Image& image, const juce::String& fileName)
+        {
+            expect (image.isValid() && image.getWidth() == 1920, fileName);
+            if (folder.isEmpty())
+                return;
+            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile (fileName);
+            file.deleteFile();
+            juce::FileOutputStream out (file);
+            expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out), file.getFullPathName());
+        };
+
+        beginTest ("The WING and the WING COMPACT surfaces, with a band on them");
+        for (const auto model : { ConsoleModel::Full, ConsoleModel::Compact })
+        {
+            MixerEngine engine (0);
+            engine.setNumChannels (40);
+            ShotRig rig (engine);
+            setShownProfile (ld::kProfileWing);
+            rig.ctx.interfaceKind = ui::InterfaceKind::Wing;
+            rig.ctx.consoleModel = model;
+            rig.show.layers.setModel (model);
+            setUpBand (engine, rig.show);
+            ui::ConsoleLookAndFeel look;
+            juce::LookAndFeel::setDefaultLookAndFeel (&look);
+            daw::Session recording (engine.getRecorder(), &rig.settings);
+            rig.ctx.recording = &recording;
+            ui::cc::Assignments assignments (rig.show);
+            rig.ctx.customControls = &assignments;
+            auto& channels = engine.getChannels();
+            for (size_t i = 0; i < 24; ++i)
+            {
+                auto& m = channels[i]->meters;
+                m.trimPeak[0] = m.outputPeak[0] = 0.15f + 0.6f * (float) ((i * 37) % 11) / 10.0f;
+                m.trimPeak[1] = m.outputPeak[1] = m.outputPeak[0] * 0.9f;
+            }
+            engine.monitorPeak[0] = 0.3f;
+            engine.monitorPeak[1] = 0.28f;
+            rig.meters.advance (0.01f);
+            rig.selected = channels[18].get();
+            ui::WingSurface skin (rig.ctx);
+            skin.setSize (1920, 1080);
+            skin.selectionChanged();
+            skin.refreshAll();
+            test::pumpMessages (150);
+            save (skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f), model == ConsoleModel::Full ? "wing-full.png" : "wing-compact.png");
+            juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+        }
+
+        beginTest ("The MIXER in Studio Slate");
+        {
+            MixerEngine engine (0);
+            const Counts counts { 32, 4, 16, 4, 6, 16, 8, 16 };
+            engine.configure (&counts);
+            ShotRig rig (engine);
+            rig.settings.setValue (Theme::kSetting, Theme::idOf (Theme::Look::StudioSlate));
+            setUpBand (engine, rig.show);
+            for (size_t i = 0; i < engine.getChannels().size(); ++i)
+            {
+                auto& m = engine.getChannels()[i]->meters;
+                const float level = 0.12f + 0.55f * (float) ((i * 37) % 11) / 10.0f;
+                m.trimPeak[0] = level;
+                m.trimPeak[1] = level * 0.9f;
+                m.outputPeak[0] = level * 0.8f;
+                m.outputPeak[1] = level * 0.75f;
+            }
+            engine.monitorPeak[0] = 0.3f;
+            engine.monitorPeak[1] = 0.28f;
+            rig.meters.advance (0.01f);
+            ui::UniversalSkin skin (rig.ctx);
+            skin.setSize (1920, 1080);
+            rig.selected = engine.getChannels()[18].get();
+            skin.selectionChanged();
+            skin.getMixer().refresh();
+            skin.getMixer().getChannelPanel().refresh();
+            save (skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f), "universal-mixer-slate.png");
+        }
+    }
+
     void setUpBand (MixerEngine& engine, Show& show)
     {
         struct Ch

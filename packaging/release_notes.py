@@ -41,6 +41,14 @@ def main():
     version = tag[1:] if tag[:1] in "vV" else tag
     built = f", built and tested by CI from {commit}" if commit else ""
 
+    # A short hand-written file for the version (docs/release-notes-<version>.md) is the whole notes:
+    # it carries its own download list and disclaimer.
+    for name in (version, version.split("-")[0]):
+        brief = ROOT / "docs" / f"release-notes-{name}.md"
+        if brief.is_file():
+            print(brief.read_text(encoding="utf-8").strip().replace("{version}", name))
+            return
+
     # A test build or release candidate (0.3.0-test.3, 0.3.0-rc.1) is the version it leads to.
     intro = changelog_section(version) or changelog_section(version.split("-")[0]) or (
         f"Sidecar {version}{built}: a live mixing console for Windows, macOS and Linux "

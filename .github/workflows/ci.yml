@@ -98,7 +98,7 @@ jobs:
         include: >-
           ${{ fromJSON(((startsWith(github.ref, 'refs/tags/v') && contains(github.ref_name, '-test.')) || contains(inputs.release_tag, '-test.'))
           && '[{"name":"Windows (ASIO + WASAPI)","os":"windows-2022","artifact":"Sidecar-Windows","parallel":4}]'
-          || '[{"name":"Windows (ASIO + WASAPI)","os":"windows-2022","artifact":"Sidecar-Windows","parallel":4},{"name":"macOS (CoreAudio)","os":"macos-15","artifact":"Sidecar-macOS","parallel":4},{"name":"Linux (ALSA + JACK)","os":"ubuntu-24.04","artifact":"Sidecar-Linux","parallel":2}]') }}
+          || '[{"name":"Windows (ASIO + WASAPI)","os":"windows-2022","artifact":"Sidecar-Windows","parallel":4},{"name":"macOS (CoreAudio)","os":"macos-15","artifact":"Sidecar-macOS","parallel":4},{"name":"Linux (ALSA + JACK)","os":"ubuntu-24.04","artifact":"Sidecar-Linux","parallel":2},{"name":"Linux arm64 (Raspberry Pi)","os":"ubuntu-24.04-arm","artifact":"Sidecar-Linux-arm64","parallel":2}]') }}
 
     env:
       # Set for a release (workflow_dispatch with release_tag, or a v* tag push).
@@ -177,8 +177,13 @@ jobs:
           bash packaging/package-macos.sh build/LiveDAW_artefacts/Release/Sidecar.app \
             build-x64/LiveDAW_artefacts/Release/Sidecar.app "$SIDECAR_VERSION" dist
 
+      # Linux arm64 (a Raspberry Pi 4 or 5 on 64-bit Raspberry Pi OS): the tar.gz only.
+      - name: Package (Linux arm64)
+        if: runner.os == 'Linux' && runner.arch == 'ARM64'
+        run: bash packaging/package-linux.sh build "$SIDECAR_VERSION" dist
+
       - name: Package (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && runner.arch != 'ARM64'
         env:
           # Pinned AppImage tools, checked against these SHA-256 sums.
           APPIMAGETOOL_URL: https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
@@ -241,7 +246,7 @@ jobs:
         run: ./build/LiveDAWTests_artefacts/Debug/LiveDAWTests
 
   # Running the workflow by hand with a release_tag (or pushing a v* tag) publishes
-  # the tested packages of all three platforms as a GitHub release. A test build's
+  # the tested packages of all the platforms (Windows, macOS, Linux and Linux arm64) as a GitHub release. A test build's
   # (Windows only) is a draft release, never public.
   release:
     name: Publish release

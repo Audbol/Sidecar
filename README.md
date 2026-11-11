@@ -40,7 +40,7 @@ and please [report what you find](#reporting-problems).
 | **SQ-5** | Its surface and touchscreen, MIDI and MIDI over TCP |
 | **dLive** | C3500 and C1500 surfaces and touchscreens, MIDI over TCP |
 | **PRO2** | Its processing and effects, on the Universal Mixer until it has a surface |
-| **Q1202USB** | An analog mixer: its panel, routing and blocks, plus console tape and scenes |
+| **XENYX Q1202USB** | An analog mixer: its panel, routing and blocks, plus console tape and scenes |
 | **Universal Mixer** | Sidecar's own touch-friendly interface, for any size of console |
 
 Under all of them is one mixer core without any one console's limits. A console's size is a
@@ -80,20 +80,32 @@ relying on it at a show (see [Known limitations](#known-limitations)).
 
 ## Screenshots
 
+Every picture is one of Sidecar's own drawings, rendered at 1920 x 1080.
+
 | | |
 |---|---|
-| ![The WING COMPACT model: the black surface with one 12-fader section, the main display, the BUS / DCA / MAIN MATRIX / USER keys and the monitoring section](docs/images/compact.png) | ![The METERS screen: channels, buses, DCAs, mains and matrices metering a signal](docs/images/meters.png) |
-| **WING COMPACT**: SETUP > SIDECAR > CONSOLE MODEL | **METERS**: every strip at a glance |
-| ![The EFFECTS rack: reverbs, delay and chorus in the premium slots, COMBINATOR, PSYCHO BASS, MASTER and LIMITER in the standard slots, two of them inserted on channels](docs/images/fx-rack.png) | ![PSYCHO BASS on its faceplate, inserted on the bass DI, its VU needles moving with the signal](docs/images/effects.png) |
-| **EFFECTS**: the WING's 16-slot rack | **Faceplates** with live meters |
-| ![The recorder screen recording 40 channels, with the input levels and the tracks armed](docs/images/recorder.png) | ![The multitrack editor with the recording: one track per channel, waveforms in the channels' colours](docs/images/editor.png) |
-| **Recorder**: RECORD ALL CHANNELS | **Multitrack editor** (Ctrl+E) |
-| ![The Universal Mixer's MIXER view: a band on a 32-channel console, each strip with its pan, MUTE, SOLO, overview of its processing and fader](docs/images/universal-mixer.png) | ![The Universal Mixer's inspector: the lead vocal's chain with an extra EQ block, and the block's editor](docs/images/universal-inspector.png) |
-| **Universal Mixer** (preview): a console of any size | **Inspector**: a strip's chain, blocks and sends |
-| ![The X32 surface: the channel strip section and the X32's display along the top, 16 input faders, 8 DCAs and the main LR below](docs/images/x32-surface.png) | ![The ProMix 01 surface: the LCD and its function keys along the top, the 16 channel faders, ST IN, RTN / SEND and ST OUT below](docs/images/promix-surface.png) |
-| **X32 surface** (preview): an X32's faders, channel strip and display | **ProMix 01 surface** (preview): its faders, LCD and scene memory |
-| ![The 02R surface: the display and its function keys, the SELECTED CHANNEL section and the scene memory along the top, the TAPE and EFF encoders, the 21 faders below](docs/images/y02r-surface.png) | |
-| **02R surface** (preview): its faders, encoders, display and SELECTED CHANNEL section | |
+| ![**Universal Mixer, Flagship Black:** a band on a 32-channel console](docs/images/universal-mixer.png) | ![**Studio Slate:** the same console in another of the nine themes](docs/images/universal-mixer-slate.png) |
+| **Universal Mixer, Flagship Black:** a band on a 32-channel console | **Studio Slate:** the same console in another of the nine themes |
+| ![**CHANNEL panel, maximised:** EQ handles, RTA and the dynamics curves](docs/images/channel-panel-maximised.png) | ![**Foreign blocks:** a WING EQ on a ProMix 01 strip](docs/images/foreign-blocks.png) |
+| **CHANNEL panel, maximised:** EQ handles, RTA and the dynamics curves | **Foreign blocks:** a WING EQ on a ProMix 01 strip |
+| ![**User layers:** a layer of your own, with its editor](docs/images/user-layers.png) | ![**Start-up tile picker:** every console as a picture](docs/images/console-picker.png) |
+| **User layers:** a layer of your own, with its editor | **Start-up tile picker:** every console as a picture |
+| ![**Benchmark:** what this PC can run](docs/images/benchmark-results.png) | ![**Plug-in block:** a VST3, AU or LV2 plug-in in a strip's chain](docs/images/plugin-block.png) |
+| **Benchmark:** what this PC can run | **Plug-in block:** a VST3, AU or LV2 plug-in in a strip's chain |
+| ![**WING**](docs/images/console.png) | ![**WING COMPACT**](docs/images/compact.png) |
+| **WING** | **WING COMPACT** |
+| ![**WING RACK**](docs/images/wing-rack.png) | ![**X32**](docs/images/x32-surface.png) |
+| **WING RACK** | **X32** |
+| ![**ProMix 01**](docs/images/promix-surface.png) | ![**02R**](docs/images/y02r-surface.png) |
+| **ProMix 01** | **02R** |
+| ![**01V**](docs/images/y01v-surface.png) | ![**SQ-5**](docs/images/sq5-surface.png) |
+| **01V** | **SQ-5** |
+| ![**dLive C3500**](docs/images/dlive-c3500.png) | ![**dLive C1500**](docs/images/dlive-c1500.png) |
+| **dLive C3500** | **dLive C1500** |
+| ![**DM2000**](docs/images/dm2000.png) | ![**PRO2**](docs/images/pro2.png) |
+| **DM2000** | **PRO2** |
+| ![**XENYX Q1202USB**](docs/images/q1202usb.png) | ![**WING METERS screen**](docs/images/meters.png) |
+| **XENYX Q1202USB** | **WING METERS screen** |
 
 ## What it does
 
@@ -147,6 +159,24 @@ This section describes the WING, the most complete console. The others share its
   the audio thread, plugin faults contained, an audio device watchdog, autosave
   every 30 s and a safe mode after a crash.
 
+### The Universal Mixer
+
+Sidecar's own interface, for a console of any size. It is touch friendly and sets up fast.
+
+- **Themes:** nine, from Flagship Black to Studio Slate and High Contrast, under MENU > Theme.
+- **Block swapping between consoles:** put a WING EQ on a ProMix 01 strip, or a DM2000
+  compressor on an X32. Shows and scenes keep the swap.
+- **User layers:** make your own layers, drag strips into them, and share them with the
+  consoles' surfaces.
+- **CHANNEL panel:** one strip whole, with EQ handles you drag, an RTA behind the curve and
+  a cards-in-signal-order view of the chain. It can fill the window.
+- **Plug-in blocks:** a VST3, AU or LV2 plug-in as a block in any strip's chain.
+- **Benchmark:** SETUP > BENCHMARK measures what this PC can run, per block and per effect.
+- **Remote control of a real X32:** CONNECT to its IP address and Sidecar mirrors it and drives it.
+- **Analog mixers:** the XENYX Q1202USB, plus console tape (name strips) and scenes on
+  the ProMix 01, 02R and 01V.
+- **Start-up tile picker:** pick a console from pictures of their front panels.
+
 The [user guide](docs/USER_GUIDE.md) describes every part in detail.
 
 ## System requirements
@@ -178,6 +208,8 @@ for the files of each version.
   newer: open it once, then *System Settings > Privacy & Security > Open Anyway*).
   Allow microphone access when asked: that is how macOS lets Sidecar read your audio
   interface's inputs.
+- **Linux arm64** (a Raspberry Pi 4 or 5 on 64-bit Raspberry Pi OS): unpack the
+  `Linux-aarch64` tarball and run `Sidecar`. Experimental, and untested on a Pi so far.
 - **Linux** (x86_64, glibc 2.38 or newer: Ubuntu 24.04+, Debian 13+, Fedora 39+ and
   similar): run the AppImage (`chmod +x Sidecar-*.AppImage`; it needs FUSE, or start
   it with `--appimage-extract-and-run`), or extract the tarball and run `Sidecar`;

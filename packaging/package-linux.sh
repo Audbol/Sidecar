@@ -21,7 +21,8 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 exe="$build/LiveDAW_artefacts/Release/Sidecar"
 # The plugin sandbox helper; the build copies it next to the app.
 helper="$build/LiveDAW_artefacts/Release/SidecarPluginHost"
-name="Sidecar-$version-Linux-x86_64"
+arch=$(uname -m) # x86_64, or aarch64 on a Raspberry Pi 4 or 5
+name="Sidecar-$version-Linux-$arch"
 
 [ -x "$exe" ] || { echo "no Release build at $exe" >&2; exit 1; }
 [ -x "$helper" ] || { echo "no plugin sandbox helper at $helper" >&2; exit 1; }

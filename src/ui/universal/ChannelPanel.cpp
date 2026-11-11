@@ -647,7 +647,16 @@ void ChannelPanel::paint (juce::Graphics& g)
         // the name keeps clear of it in a slim section); a dynamics block's model after its name.
         const bool tagged = s == FilterSection || s == GateSection || s == EqSection || s == DynamicsSection;
         if (tagged)
-            title.removeFromRight (drawDeviceTag (g, title, devices::shown(), theme) + (float) sizes::kGapSmall);
+        {
+            // A gate or dynamics model of another console names that console (as the editor's tag does).
+            auto tag = devices::shown();
+            if (s == GateSection || s == DynamicsSection)
+            {
+                const auto& m = models::model (models::Dynamics, (s == GateSection ? strip->params.gate() : strip->params.dynamics()).model.load());
+                tag = devices::of (m.token, m.foreign, tag);
+            }
+            title.removeFromRight (drawDeviceTag (g, title, tag, theme) + (float) sizes::kGapSmall);
+        }
         g.setColour (theme.text);
         g.setFont (type::font (type::kCaption, true));
         g.drawFittedText (text, title.toNearestInt(), juce::Justification::centredLeft, 1, 0.7f);
@@ -662,7 +671,7 @@ void ChannelPanel::paint (juce::Graphics& g)
                 // readable; left out where it doesn't fit (the editor names it).
                 const auto modelName = models::model (models::Dynamics, slot.model.load()).name.toUpperCase().replace ("WING ", "");
                 const auto modelFont = type::font (type::kMicro, true);
-                if (juce::GlyphArrangement::getStringWidth (modelFont, modelName) <= title.getWidth())
+                if (modelName != text && juce::GlyphArrangement::getStringWidth (modelFont, modelName) <= title.getWidth()) // not "GATE GATE"
                 {
                     g.setColour (theme.text);
                     g.setFont (modelFont);

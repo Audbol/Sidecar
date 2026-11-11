@@ -1825,6 +1825,16 @@ public:
             expect (view.getChannelPanel().getEqView().getHandles().size() > 0, "EQ handles");
             expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds(), true, 1.0f),
                                  profile == ld::kProfileX32 ? "channel-panel-maximised-x32.png" : "channel-panel-maximised-promix.png"));
+            if (profile == ld::kProfileProMix01) // a WING EQ on a ProMix: the same panel, a foreign block
+            {
+                const auto& all = models::tableAll (models::ChannelEq);
+                for (size_t i = 0; i < all.size(); ++i)
+                    if (all[i].token == "STD")
+                        rig.selected->setModel (ModelBlock::Eq, (int) i);
+                view.selectionChanged();
+                view.refresh();
+                expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds(), true, 1.0f), "channel-panel-foreign-promix.png"));
+            }
             setShownProfile (ld::kProfileWing);
         }
 

@@ -1074,6 +1074,84 @@ compensation and output protection.
 
 ![SETUP > CONSOLE: the configuration, the buses about to go from 16 to 24](images/universal-setup.png)
 
+### Themes
+
+MENU > Theme offers nine looks: Flagship Black, Brushed Silver, Midnight Blue, Vintage Warm,
+Daylight, High Contrast, Studio Slate, Studio Graphite and Studio Olive. The change applies
+at once and is remembered. Every theme is checked for readable text; High Contrast goes
+furthest. Pick the one that suits your room and your screen.
+
+![The MIXER view in Studio Slate](images/universal-mixer-slate.png)
+
+### The CHANNEL panel
+
+Select a strip and press CHANNEL in the header to see it whole. The panel has a header
+(number, name and colour, MUTE, SOLO, polarity, SOF, COPY and PASTE) over one card per
+block, in signal order. Tap a card's title to open it large in place; EDIT opens the inspector.
+
+- **EQ handles:** on every console's EQ, drag a band's handle for frequency and gain.
+  Turn the wheel (or pinch) for Q. A cut filter's handle moves sideways only.
+- **RTA:** a live analyser of the strip sits behind the EQ curve. The RTA key on the card
+  turns it off. It only runs while the panel is shown.
+- **Dynamics:** drag the threshold handle on the curve.
+- **Size:** drag the bar at the panel's edge to size it. MAXIMISE fills the view, and a
+  double tap restores it. The height is remembered.
+
+![The CHANNEL panel maximised, with EQ handles and an RTA](images/channel-panel-maximised.png)
+
+### Swapping blocks between consoles
+
+Any console's blocks can go on any console's strips. In the inspector, a block's model list
+shows the strip's own console first, then the others. Pick a WING EQ for a ProMix 01 strip,
+or a DM2000 compressor for an X32 strip. The block's tag names its console. Shows and scenes
+keep the swap. A console's own surface shows a foreign block by its console (for example
+"WING EQ") and never offers one itself. While a real console is under remote control no
+foreign block is offered, so the real console never gets one.
+
+![A WING EQ on a ProMix 01 strip](images/foreign-blocks.png)
+
+### User layers and drag editing
+
+LAYERS in the header opens the layer editor: NEW, RENAME, COLOUR, DELETE, DUPLICATE, EXPORT
+and IMPORT, and for the strips ADD SELECTED, SPACER, REMOVE, UP and DOWN. Each layer gets a
+key in the header (one menu key when there are more than three). A layer shows exactly its
+strips in order, with a spacer as a gap, and the filters and ALL work inside it.
+
+You can also drag. Long-press a strip's or DCA's name tab (or drag with the mouse) to pick it
+up. In a layer, drop it between columns to reorder. Drop it on a layer's key to add it.
+Drop it anywhere else to take it out. From ALL, drop it on a key to add it. The editor
+drags the same way. These are the show's own user layers, so the consoles' surfaces share
+them, and they are saved with the show.
+
+![A user layer with its editor](images/user-layers.png)
+
+### Knob mode
+
+When the window is short, or the FADERS key in the header hides the faders, a strip's fader
+turns into a knob. Drag it up and down to set the level. Use it to fit more strips on a
+small screen.
+
+### Plug-in blocks
+
+A strip's chain takes a PLUG-IN block: press ADD in the inspector and choose it. It hosts a
+VST3, AU or LV2 plug-in, or a chain of them, without using an FX slot. A faulty plug-in
+bypasses only its own block. Its latency is counted in the strip's delay compensation. The
+CHANNEL panel shows a card with the plug-in's name, vendor and latency, an EDIT key and a bypass
+key. Plug-in blocks are not offered while a real console is under remote control.
+
+![A plug-in block's card](images/plugin-block.png)
+
+### Benchmark
+
+SETUP > BENCHMARK measures what this PC can run. It works offline on a low-priority
+thread with engines of its own: there is no sound, and your audio interface and live
+engine are left alone. It reports each block model of each console and every effect, as
+a share of the audio block's time budget (mean, 99th percentile and worst), at the
+current sample rate and buffer size and any others you choose. Use it to find how many
+strips of a heavy model your machine can carry before a show.
+
+![The benchmark's results](images/benchmark-results.png)
+
 ### Still on the WING surface
 
 Custom controls are on the WING surface for now, and so are the LIBRARY's other
@@ -1422,6 +1500,86 @@ Not there yet:
 
 The fader steps, part of the Q table, the dynamics' time tables and the effects'
 algorithms are Sidecar's reading of the User's Guides, not measured on a console.
+
+## More consoles (0.3)
+
+Each of these consoles has its own surface, and all share the Universal Mixer's core. Choose
+one in SETUP > SIDECAR > INTERFACE, or in the start-up picker. Each is a preview: some
+pages and details are still missing, and the start-up notice gives a rough completion
+figure for each.
+
+### The start-up tile picker
+
+When Sidecar starts it shows every console as a tile, with a picture of its front panel.
+Click or tap a tile, or use the arrow keys and Enter. CONTINUE (or Esc) keeps the console
+you were last using, with its show. Starting a new console clears the show and its scenes,
+so the window says so first. The grid scrolls by wheel or finger when it is long.
+
+![The start-up tile picker](images/console-picker.png)
+
+### WING COMPACT and WING RACK
+
+Both are models of the WING surface (SETUP > SIDECAR > CONSOLE MODEL). The COMPACT has one
+12-fader section. The RACK is a front panel in one row: the display, four level encoders, the
+four-channel section and its keys.
+
+### 01V
+
+The 01V's surface and LCD are matched to photographs of a real console. It has the EQ,
+dynamics, effects, routing, pan, memory, MIDI, SETUP, OPTION and REMOTE pages, with fader
+groups, pairs and libraries. Groups and pairs are saved in shows and scenes.
+
+### SQ-5
+
+The SQ-5's surface and touchscreen with its pages (processing, routing, meters, FX, scenes,
+setup, utility and I/O), MIDI and MIDI over TCP.
+
+### dLive (C3500 and C1500)
+
+Two surfaces with their touchscreens: the C3500 is the default, with the C1500 as another
+choice. They have the processing, scenes, meters, I/O, FX and softkeys, MIDI over TCP and
+the RackUltra effects.
+
+### DM2000
+
+Its surface and dot-matrix LCD pages, with MIDI. Fader groups and pairs are saved in shows.
+
+### PRO2
+
+Its own surface (a first pass): the bays, the channel strip detail areas, outputs, scene keys and
+its screen.
+
+### XENYX Q1202USB
+
+An analog mixer with its panel drawn as the real top view: channels as rows (4 mono with
+GAIN, low cut, a one-knob compressor, 3-band EQ, FX, PAN and LEVEL; 4 stereo pairs), then the
+main section with the FX send, PHONES and CTRL ROOM, the USB and 2-TRACK keys and +48 V.
+
+### Console tape
+
+The ProMix 01, 02R and 01V have no name displays. Sidecar shows a strip of tape at each
+fader, following the layer. Tap the tape to write the strip's name. The Universal Mixer does the
+same: the name tab above each fader is the strip's label, in the strip's colour.
+
+### Remote control of a real X32
+
+Sidecar can drive a real X32 over the network (OSC on UDP port 10023) and mirror it.
+
+1. Put the computer and the X32 on the same network, and find the X32's IP address.
+2. Choose the X32 as the console, in the surface or in the Universal Mixer.
+3. Press CONNECT in the top bar (the Universal Mixer's header, or the X32 surface's top bar)
+   and enter the IP address. Sidecar remembers it.
+4. The status reads OFFLINE, CONNECTING, CONNECTED or LOST. DISCONNECT ends the link.
+
+What happens: on connect Sidecar reads the console first and the console wins, so nothing
+of yours is pushed to it. After that your changes send only the address you touched, and the
+console's changes come back to you. Scene recall is followed too.
+
+What is safe: connecting only reads. Fader, mute, EQ, dynamics and routing changes you make
+afterwards go to the real console as if you touched it, so mind the show. While you are
+connected, other consoles' blocks and plug-in blocks are not offered, because the real X32
+cannot take them. This is new and has not been tested on every X32 setup or every page, so
+try it first on a console that is not in use.
 
 ## Multitrack recording
 

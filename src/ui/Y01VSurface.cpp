@@ -3630,9 +3630,16 @@ namespace y01v
         header ("GROUP");
         for (int i = 0; i < 14; ++i)
         {
-            const auto name = i < 12 ? juce::String (i + 1) : juce::String (13 + 2 * (i - 12)) + "-" + juce::String (14 + 2 * (i - 12));
-            const bool tiny = name.length() > 1;
-            text (kGroupCx[i] - textWidth (name, tiny) / 2, tiny ? 3 : 2, name, tiny);
+            if (i < 12)
+            {
+                const auto name = juce::String (i + 1);
+                text (kGroupCx[i] - textWidth (name, false) / 2, 2, name, false);
+                continue;
+            }
+            // A channel pair, its two numbers stacked so that neighbours don't run together.
+            const auto a = juce::String (13 + 2 * (i - 12)), c = juce::String (14 + 2 * (i - 12));
+            text (kGroupCx[i] - textWidth (a, true) / 2, 0, a, true);
+            text (kGroupCx[i] - textWidth (c, true) / 2, 6, c, true);
         }
         text (267, 3, "ENABLE", true);
         box ({ 58, 19, 36, 10 });
