@@ -938,6 +938,17 @@ public:
             expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out), file.getFullPathName());
         };
         shot ("dlive-surface.png");
+        {
+            // The layout is aligned as a C1500's: the PEQ pairs sit under the screen, within its width; the screen keys sit right of it.
+            const int screenLeft = 114 + 512, screenRight = screenLeft + 580; // the cluster is centred on the panel, 512 right of its layout
+            for (int b = 0; b < 4; ++b)
+                for (const bool freq : { false, true })
+                {
+                    const auto r = skin.getPeqRotary (b, freq).getBounds();
+                    expect (r.getY() >= 56 + 400 && r.getX() >= screenLeft && r.getRight() <= screenRight, "PEQ rotary under the screen");
+                }
+            expect (skin.findKey ("Page Meters") != nullptr && skin.findKey ("Page Meters")->getX() >= screenRight, "screen keys right of the screen");
+        }
 
         using Page = ui::DLiveSurface::Page;
         // Bank A: the first 12 channels on the faders.

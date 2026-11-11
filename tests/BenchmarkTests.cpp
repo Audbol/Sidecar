@@ -93,6 +93,41 @@ public:
             expect (panel.exportTo (out, true) && out.loadFileAsString().contains ("WING"));
             out.deleteFile();
             snapshot (panel, "benchmark-results.png");
+            expect (r.score.valid() && r.score.estimate && r.score.dsp > 0 && r.score.effects > 0 && r.score.recording > 0 && r.score.interface > 0);
+            logMessage ("Mark " + juce::String (r.score.mark, 0) + " (DSP " + juce::String (r.score.dsp, 0) + ", effects " + juce::String (r.score.effects, 0) + ", recording "
+                        + juce::String (r.score.recording, 0) + ", interface " + juce::String (r.score.interface, 0) + ") raw " + juce::String (r.score.raw[0], 1) + " " + juce::String (r.score.raw[1], 1)
+                        + " " + juce::String (r.score.raw[2], 1) + " " + juce::String (r.score.raw[3], 1));
+            expectEquals (juce::roundToInt (panel.getSaved()[0].score.mark), juce::roundToInt (r.score.mark));
+            expect (r.toText().contains ("SIDECAR MARK") && r.toCsv().contains ("Sidecar Mark"));
+            const auto shots = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_UI_SNAPSHOTS", {});
+            if (shots.isNotEmpty())
+                snapshot (panel, "benchmark-score.png");
+        }
+
+        beginTest ("The Sidecar Mark rises with a faster result");
+        {
+            auto fake = [] (double channels, double effectMs, double tracks, double fps)
+            {
+                bench::Result f;
+                f.settings.sampleRate = 48000.0;
+                f.settings.blockSize = 128;
+                bench::Measure c, e, rec, ui;
+                c.group = "Console"; c.name = "WING"; c.blockSize = 128; c.value = channels;
+                e.group = "Effect"; e.name = "Reverb"; e.blockSize = 128; e.meanMs = effectMs;
+                rec.group = "Recording"; rec.name = "8 tracks"; rec.value = tracks;
+                ui.group = "Interface"; ui.name = "Universal Mixer 1280x720"; ui.value = fps;
+                for (auto& m : { c, e, rec, ui })
+                    f.add (m);
+                f.finish();
+                return f;
+            };
+            const auto slow = fake (30, 0.2, 16, 30), fast = fake (120, 0.05, 64, 120);
+            expect (slow.score.valid() && fast.score.valid());
+            expect (fast.score.mark > slow.score.mark && fast.score.dsp > slow.score.dsp && fast.score.effects > slow.score.effects);
+            expect (fast.score.recording > slow.score.recording && fast.score.interface > slow.score.interface);
+            expect (! slow.score.estimate && slow.score.rating().isNotEmpty());
+            const auto back = bench::Result::fromVar (juce::JSON::parse (juce::JSON::toString (fast.toVar())));
+            expectEquals (juce::roundToInt (back.score.mark), juce::roundToInt (fast.score.mark));
         }
 
         beginTest ("A run can be cancelled; what finished is kept, and it is not saved");

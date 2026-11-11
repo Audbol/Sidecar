@@ -52,12 +52,28 @@ struct Settings
     double limitPct = 70.0;            // the 99th percentile a console may reach
     int firstChannels = 8;
     int recordMaxTracks = 64;
+    bool quick = false;                // the QUICK TEST: the Mark is only an estimate
     double recordSeconds = 2.0;
     juce::File recordFolder;
     std::vector<PluginUnderTest> plugins;
     juce::String deviceInfo;           // the audio device's settings, for the report
     ld::ProfileId restoreShownProfile = ld::kProfileUniversal;
 };
+
+/** The Sidecar Mark: one number, higher is better, about 1000 for a typical mid-range PC.
+    A weighted geometric mean of each part's measured figure against a fixed reference. The
+    DSP part is always taken at 128 samples and 48 kHz, whatever the user's settings. */
+struct Score
+{
+    double mark = 0, dsp = 0, effects = 0, recording = 0, interface = 0; // each 0 when not measured
+    double raw[4] = { 0, 0, 0, 0 }; // the measured figures: channels, effects per second of audio, tracks, frames per second
+    bool estimate = false;          // from the QUICK TEST
+    bool valid() const noexcept { return mark > 0; }
+    juce::String rating() const;
+};
+
+struct Result;
+Score computeScore (const Result&);
 
 struct Result
 {
@@ -68,6 +84,7 @@ struct Result
     juce::StringArray summary, recommendations;
     bool cancelled = false;
     double seconds = 0;
+    Score score;
 
     void add (Measure m) { measures.push_back (std::move (m)); }
     const Measure* find (const juce::String& group, const juce::String& name, int blockSize) const;

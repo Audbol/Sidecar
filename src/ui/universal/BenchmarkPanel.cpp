@@ -22,7 +22,7 @@ class BenchmarkPanel::Body final : public juce::Component
 public:
     struct Row
     {
-        int kind = 0; // 0 heading, 1 paragraph, 2 table head, 3 table row
+        int kind = 0; // 0 heading, 1 paragraph, 2 table head, 3 table row, 4 the Mark, 5 the part scores
         juce::StringArray cols;
     };
     explicit Body (const Theme& t) : theme (t) {}
@@ -31,6 +31,17 @@ public:
     {
         rows.clear();
         auto head = [&] (const juce::String& s) { rows.push_back ({ 0, { s } }); };
+        if (r.score.valid())
+        {
+            const auto& sc = r.score;
+            const bool vs = other != nullptr && other->score.valid();
+            rows.push_back ({ 4, { juce::String (juce::roundToInt (sc.mark)), sc.estimate ? "SIDECAR MARK (ESTIMATE, FROM THE QUICK TEST)" : "SIDECAR MARK", sc.rating(),
+                                   vs ? "VS " + juce::String (juce::roundToInt (other->score.mark)) + " on " + other->when.formatted ("%d %b %H:%M") : juce::String() } });
+            auto part = [&] (const char* n, double v, double o) { return juce::String (n) + "  " + (v > 0 ? juce::String (juce::roundToInt (v)) : juce::String ("-"))
+                                                                          + (vs && o > 0 && v > 0 ? "  (" + juce::String (juce::roundToInt (o)) + ")" : juce::String()); };
+            rows.push_back ({ 5, { part ("DSP", sc.dsp, vs ? other->score.dsp : 0), part ("EFFECTS", sc.effects, vs ? other->score.effects : 0),
+                                   part ("RECORDING", sc.recording, vs ? other->score.recording : 0), part ("INTERFACE", sc.interface, vs ? other->score.interface : 0) } });
+        }
         head ("SUMMARY");
         for (const auto& s : r.summary)
             rows.push_back ({ 1, { s } });
@@ -73,6 +84,32 @@ public:
                 g.setFont (type::font (type::kHeading, true));
                 g.drawText (row.cols[0], 8, y + 6, w - 16, 20, juce::Justification::centredLeft);
             }
+            else if (row.kind == 4)
+            {
+                g.setColour (theme.accent);
+                g.setFont (type::font (56.0f, true));
+                g.drawText (row.cols[0], 8, y + 4, 230, h - 8, juce::Justification::centredLeft);
+                g.setColour (theme.textDim);
+                g.setFont (type::font (type::kCaption, true));
+                g.drawText (row.cols[1], 250, y + 14, w - 258, 18, juce::Justification::centredLeft);
+                g.setColour (theme.text);
+                g.setFont (type::font (type::kHeading, true));
+                g.drawText (row.cols[2], 250, y + 36, w - 258, 24, juce::Justification::centredLeft);
+                if (row.cols[3].isNotEmpty())
+                {
+                    g.setColour (theme.textDim);
+                    g.setFont (type::font (type::kCaption));
+                    g.drawText (row.cols[3], 250, y + 62, w - 258, 18, juce::Justification::centredLeft);
+                }
+            }
+            else if (row.kind == 5)
+            {
+                g.setColour (theme.text);
+                g.setFont (type::font (type::kLabel, true));
+                const int cw = (w - 16) / 4;
+                for (int c = 0; c < 4; ++c)
+                    g.drawText (row.cols[c], 8 + c * cw, y, cw - 8, h, juce::Justification::centredLeft, true);
+            }
             else if (row.kind == 1)
             {
                 g.setColour (theme.text);
@@ -98,7 +135,7 @@ public:
         }
     }
 
-    static int heightOf (const Row& r) { return r.kind == 0 ? 30 : r.kind == 1 ? 38 : kRowH; }
+    static int heightOf (const Row& r) { return r.kind == 0 ? 30 : r.kind == 1 ? 38 : r.kind == 4 ? 88 : r.kind == 5 ? 30 : kRowH; }
     std::vector<Row> rows;
 
 private:
@@ -210,12 +247,13 @@ bench::Settings BenchmarkPanel::buildSettings() const
     s.recordFolder = daw::Session::getDefaultFolder();
     if (quick)
     {
-        s.blocks = 30;
-        s.warmup = 4;
+        s.blocks = 80;
+        s.warmup = 10;
         s.modelSamples = 1;
-        s.maxChannels = 32;
+        s.maxChannels = 128;
+        s.quick = true;
         s.recordSeconds = 0.3;
-        s.recordMaxTracks = 16;
+        s.recordMaxTracks = 64;
         s.extraSizes.resize (juce::jmin<size_t> (s.extraSizes.size(), 1));
     }
     return s;

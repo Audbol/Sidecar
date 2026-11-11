@@ -24,4 +24,4 @@ Work list for 0.3.1, in three batches.
 - [x] PRO2: the channel strip knobs jiggle when changing channels.
 
 ## C. Benchmark
-- [ ] A single score, like PassMark's, to compare computers.
+- [x] A single score, like PassMark's, to compare computers.

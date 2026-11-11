@@ -7,6 +7,8 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [0.3.0] - 2026-11-11
 
+- Benchmark: a single Sidecar Mark (higher is better, about 1000 for a mid-range PC) with DSP, Effects, Recording and Interface scores and a rating, taken at 128 samples and 48 kHz so PCs compare; it is saved with each run, shown in COMPARE and in the text and CSV exports, and the QUICK TEST gives an estimate.
+- dLive C1500: the surface is laid out as the real console, top to bottom: the PEQ and its four Gain/Freq pairs under the screen, the screen keys, PAFL meters, Assign and Talk right of it, USB sockets and Phones top right, the Display Function keys left of the strips, and no empty gap above them; the top section is centred on the panel, with Phones and the SoftKeys at the right edge.
 - Surfaces: no console's fader caps cover the numbers printed beside the scale (the legend moves clear of a wide cap, a narrow strip gets a narrower cap: dLive, X32, SQ-5, 01V, ProMix, 02R, DM2000)
 - dLive C1500 surface: SoftKey 11 sits below the seam of the upper panel, as on the console; the top bar's name no longer runs into the notice
 - Q1202USB: a ROUTING page (the interface's inputs to the channels, the stereo pairs and 2-TRACK; MAIN, CTRL ROOM, PHONES and FX SEND to the interface's outputs) and an UNIVERSAL MIXER key in the top bar

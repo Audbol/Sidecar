@@ -21,12 +21,16 @@ using dl::look;
 namespace
 {
     constexpr int kTopBar = 48;
-    constexpr int kStripW = 118, kStripsX = 178, kStripsY = 500, kStripH = 576, kGroupGap = 14;
+    constexpr int kStripW = 118, kStripsX = 178, kStripsY = 556, kStripH = 520, kGroupGap = 14;
     int stripX (int i) { return kStripsX + i * kStripW + (i / 4) * kGroupGap; }
 
     // The touchscreen: the screens' 1000 by 690 at this scale, close to the proportions of a C1500's.
-    constexpr int kScreenX = 114, kScreenY = 60;
-    constexpr float kScreenScale = 0.625f;
+    constexpr int kScreenX = 114, kScreenY = 56;
+    // The upper panel's cluster (left keys to Assign and Talk) is laid out from x = 18 to 878, then moved
+    // right by this much so it sits centred on the panel; Phones, USB and the SoftKeys stay at the right edge.
+    constexpr int kTopShift = 1920 / 2 - (18 + 878) / 2;
+    constexpr int kTopClusterRight = 1690; // things laid out right of this are not part of the cluster
+    constexpr float kScreenScale = 0.58f;
 
     // The keys' colours, idle and lit (photographs of a C1500).
     const juce::Colour kMuteIdle (0xffcbc9c2), kMuteLit (0xfff2526c), kSelIdle (0xff2fa897), kSelLit (0xff36e0b2), kMixIdle (0xff4497df), kMixLit (0xff0c4fe6),
@@ -1499,18 +1503,18 @@ DLiveSurface::DLiveSurface (UiContext& c)
     int row = 0;
     for (auto [name, p] : pages)
     {
-        const int y = 56 + row * 38;
-        silks.push_back ({ { 750.0f, (float) y - 2.0f, 80.0f, 13.0f }, name, 10.0f, juce::Justification::centred, false });
-        auto& k = pageKey (juce::String ("Page ") + name, p, { 758, y + 11, 64, 25 }, row == 8 ? juce::Colour (0xff1ea898) : row == 9 ? juce::Colour (0xff17b06a) : kPale, kPaleLit);
+        const int y = 58 + row * 38;
+        silks.push_back ({ { 706.0f, (float) y - 2.0f, 80.0f, 13.0f }, name, 10.0f, juce::Justification::centred, false });
+        auto& k = pageKey (juce::String ("Page ") + name, p, { 714, y + 11, 64, 25 }, row == 8 ? juce::Colour (0xff1ea898) : row == 9 ? juce::Colour (0xff17b06a) : kPale, kPaleLit);
         k.setButtonText ({});
         ++row;
     }
 
     // PAFL's meters, Clear; Assign and Talk.
-    silks.push_back ({ { 840.0f, 60.0f, 76.0f, 12.0f }, "L    R    M", 10.5f, juce::Justification::centred, false });
-    silks.push_back ({ { 840.0f, 300.0f, 76.0f, 12.0f }, "PAFL", 10.5f, juce::Justification::centred, false });
+    silks.push_back ({ { 796.0f, 60.0f, 76.0f, 12.0f }, "L    R    M", 10.5f, juce::Justification::centred, false });
+    silks.push_back ({ { 796.0f, 300.0f, 76.0f, 12.0f }, "PAFL", 10.5f, juce::Justification::centred, false });
     {
-        auto& clear = key ("Clear", kPaflIdle, kPaflLit, { 850, 314, 56, 28 }, Shape::Oval);
+        auto& clear = key ("Clear", kPaflIdle, kPaflLit, { 806, 314, 56, 28 }, Shape::Oval);
         clear.onClick = [this] { clearPafl (ctx); };
         clear.isOn = [this]
         {
@@ -1521,21 +1525,21 @@ DLiveSurface::DLiveSurface (UiContext& c)
             return false;
         };
     }
-    silks.push_back ({ { 928.0f, 150.0f, 76.0f, 12.0f }, "+Mix", 10.0f, juce::Justification::centred, true });
-    silks.push_back ({ { 922.0f, 188.0f, 88.0f, 12.0f }, "Talk Active", 10.0f, juce::Justification::centred, false });
+    silks.push_back ({ { 794.0f, 391.0f, 80.0f, 11.0f }, "+Mix", 10.0f, juce::Justification::centred, true });
+    silks.push_back ({ { 792.0f, 413.0f, 84.0f, 12.0f }, "Talk Active", 10.0f, juce::Justification::centred, false });
     {
-        auto& assign = key ("Assign Talk", kBlueIdle, kBlueLit, { 938, 116, 56, 30 }, Shape::Oval);
+        auto& assign = key ("Assign Talk", kBlueIdle, kBlueLit, { 806, 362, 56, 28 }, Shape::Oval);
         assign.setButtonText ("Assign");
-        auto& talk = key ("Talk", kPale, kPaleLit, { 934, 208, 64, 36 });
+        auto& talk = key ("Talk", kPale, kPaleLit, { 800, 428, 68, 30 });
         talk.isOn = [this] { return ctx.engine.isTalkOn (0); };
         talk.onClick = [this] { ctx.engine.talk.paths[0].on = ! ctx.engine.talk.paths[0].on.load(); };
     }
 
     // Under the screen on the real thing, beside it here: the PEQ.
-    silks.push_back ({ { 1062.0f, 60.0f, 60.0f, 18.0f }, "PEQ", 16.0f, juce::Justification::centred, false });
-    silks.push_back ({ { 1062.0f, 80.0f, 60.0f, 12.0f }, "Pk!", 9.0f, juce::Justification::centred, true });
+    silks.push_back ({ { 18.0f, 470.0f, 86.0f, 16.0f }, "PEQ", 14.0f, juce::Justification::centred, false });
+    silks.push_back ({ { 18.0f, 485.0f, 86.0f, 11.0f }, "Pk!", 9.0f, juce::Justification::centred, true });
     {
-        auto& in = key ("PEQ In", kSelIdle, kPaleLit, { 1068, 118, 48, 30 }, Shape::Oval);
+        auto& in = key ("PEQ In", kSelIdle, kPaleLit, { 33, 498, 56, 24 }, Shape::Oval);
         in.setButtonText ("In");
         in.isOn = [this]
         {
@@ -1547,7 +1551,7 @@ DLiveSurface::DLiveSurface (UiContext& c)
             if (auto* s = ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr)
                 s->params.eq().on = ! s->params.eq().on.load();
         };
-        auto& width = key ("Width", kAmberKey, kAmberLit, { 1122, 112, 44, 44 }, Shape::Oval, false);
+        auto& width = key ("Width", kAmberKey, kAmberLit, { 33, 524, 56, 24 }, Shape::Oval, false);
         width.isOn = [this] { return widthMode; };
         width.onClick = [this]
         {
@@ -1557,13 +1561,13 @@ DLiveSurface::DLiveSurface (UiContext& c)
     }
     for (int band = 0; band < 4; ++band)
     {
-        const int x = 1184 + band * 100;
-        silks.push_back ({ { (float) x + 4.0f, 62.0f, 34.0f, 12.0f }, "Gain", 9.5f, juce::Justification::centred, false });
-        silks.push_back ({ { (float) x + 46.0f, 62.0f, 36.0f, 12.0f }, "Freq", 9.5f, juce::Justification::centred, false });
+        const int x = kScreenX + band * 145;
+        silks.push_back ({ { (float) x + 6.0f, 470.0f, 34.0f, 12.0f }, "Gain", 9.5f, juce::Justification::centred, false });
+        silks.push_back ({ { (float) x + 92.0f, 470.0f, 36.0f, 12.0f }, "Freq", 9.5f, juce::Justification::centred, false });
         auto gain = std::make_unique<dl::Rotary> (juce::Colour (0xffff3030));
         auto freq = std::make_unique<dl::Rotary> (juce::Colour (0xff30e060));
-        gain->setBounds (x + 2, 130, 44, 44);
-        freq->setBounds (x + 44, 78, 44, 44);
+        gain->setBounds (x + 14, 500, 40, 40);
+        freq->setBounds (x + 84, 484, 40, 40);
         addAndMakeVisible (*gain);
         addAndMakeVisible (*freq);
         peq[(size_t) band * 2] = std::move (gain);
@@ -1572,10 +1576,10 @@ DLiveSurface::DLiveSurface (UiContext& c)
 
     // View, Help and the data rotary; Phones.
     {
-        auto& view = key ("View", kPale, kPaleLit, { 1250, 212, 66, 32 });
+        auto& view = key ("View", kPale, kPaleLit, { 708, 470, 60, 26 });
         view.isOn = [this] { return processing->getView() != 1; };
         view.onClick = [this] { processing->toggleView(); };
-        auto& h = key ("Help", kPale, kPaleLit, { 1350, 212, 66, 32 });
+        auto& h = key ("Help", kPale, kPaleLit, { 772, 470, 60, 26 });
         h.isOn = [this] { return help->isVisible(); };
         h.onClick = [this]
         {
@@ -1587,13 +1591,13 @@ DLiveSurface::DLiveSurface (UiContext& c)
     }
     dataRotary = std::make_unique<dl::Rotary> (juce::Colour (0xfff5b83a));
     dataRotary->alwaysLit = true;
-    dataRotary->setBounds (1292, 260, 84, 84);
+    dataRotary->setBounds (742, 498, 52, 52);
     addAndMakeVisible (*dataRotary);
     phones = std::make_unique<dl::Rotary> (juce::Colour (0xffe0e0e0));
     phones->setBinding (bindFader ("Phones", ctx.engine.phones.levelDb));
-    phones->setBounds (1666, 262, 56, 56);
+    phones->setBounds (1722, 132, 48, 48);
     addAndMakeVisible (*phones);
-    silks.push_back ({ { 1650.0f, 326.0f, 88.0f, 14.0f }, "Phones", 11.0f, juce::Justification::centred, false });
+    silks.push_back ({ { 1700.0f, 182.0f, 92.0f, 14.0f }, "Phones", 11.0f, juce::Justification::centred, false });
 
     // SoftKeys 1-10, 11-16 and 17-19 (Setup held and a key assigns it; or the Surface page).
     const auto softKey = [this] (int n, juce::Rectangle<int> r)
@@ -1604,11 +1608,22 @@ DLiveSurface::DLiveSurface (UiContext& c)
         k.onClick = [this, n] { softKeyPressed (n - 1); };
     };
     for (int i = 0; i < 10; ++i)
-        softKey (i + 1, { 1812, 56 + i * 38, 76, 32 });
+        softKey (i + 1, { 1812, 134 + i * 40, 76, 32 });
     for (int i = 0; i < 6; ++i)
-        softKey (11 + i, { 1812, 516 + i * 44, 76, 36 }); // below the seam of the upper panel, as the photographs have 11
+        softKey (11 + i, { 1812, 566 + i * 44, 76, 36 }); // below the seam of the upper panel, as the photographs have 11
     for (int i = 0; i < 3; ++i)
         softKey (17 + i, { 1812, 900 + i * 50, 76, 40 });
+
+    // Centre the upper panel's cluster: everything laid out above the strips and left of Phones.
+    for (auto* c : getChildren())
+    {
+        const auto b = c->getBounds();
+        if (c != &screenHost && b.getY() >= kTopBar && b.getBottom() <= kStripsY && b.getRight() < kTopClusterRight)
+            c->setTopLeftPosition (b.getX() + kTopShift, b.getY());
+    }
+    for (auto& s : silks)
+        if (s.area.getY() >= (float) kTopBar && s.area.getBottom() <= (float) kStripsY && s.area.getRight() < (float) kTopClusterRight)
+            s.area.translate ((float) kTopShift, 0.0f);
 
     // The strips.
     for (int i = 0; i < kStrips; ++i)
@@ -1619,13 +1634,13 @@ DLiveSurface::DLiveSurface (UiContext& c)
     }
 
     // Left of the strips: the LCDs' and the rotaries' functions; Copy to GEQ.
-    silks.push_back ({ { 10.0f, 666.0f, 84.0f, 26.0f }, "Display\nFunction", 10.0f, juce::Justification::centred, false });
+    silks.push_back ({ { 10.0f, 698.0f, 84.0f, 26.0f }, "Display\nFunction", 10.0f, juce::Justification::centred, false });
     {
         const std::pair<const char*, DisplayFunction> displayKeys[] = { { "Name", DisplayFunction::Name }, { "dB", DisplayFunction::Db }, { "I/O", DisplayFunction::Io }, { "Chan", DisplayFunction::Chan } };
         int r = 0;
         for (auto [name, f] : displayKeys)
         {
-            auto& k = key (name, kPale, kPaleLit, { 20, 506 + r * 39, 66, 34 });
+            auto& k = key (name, kPale, kPaleLit, { 20, 562 + r * 34, 66, 30 });
             k.isOn = [this, target = f] { return displayFunction == target; };
             k.onClick = [this, target = f] { setDisplayFunction (target); };
             ++r;
@@ -1637,7 +1652,7 @@ DLiveSurface::DLiveSurface (UiContext& c)
         for (auto [name, f] : rotaryKeys)
         {
             const juce::Colour lit = f == RotaryFunction::Sends ? kBlueLit : kMuteLit;
-            auto& k = key (juce::String ("Rotary ") + name, f == RotaryFunction::Sends ? kSoft : kPale, lit, { 20, 700 + r * 42, 66, 36 });
+            auto& k = key (juce::String ("Rotary ") + name, f == RotaryFunction::Sends ? kSoft : kPale, lit, { 20, 732 + r * 38, 66, 32 });
             k.setButtonText (name);
             k.isOn = [this, target = f] { return rotaryFunction == target; };
             k.onClick = [this, target = f, custom = (r >= 2 && r <= 5) ? r - 2 : -1, keyPtr = &k]
@@ -1659,13 +1674,13 @@ DLiveSurface::DLiveSurface (UiContext& c)
         k.isOn = [this, l] { return getLatch() == l; };
         k.onClick = [this, l] { toggleLatch (l); };
     };
-    latchKey ("Copy", Latch::Copy, kTeal, kPaleLit, { 100, 862, 62, 30 });
-    latchKey ("Paste", Latch::Paste, kPink, kMuteLit, { 100, 898, 62, 30 });
-    latchKey ("Reset", Latch::Reset, kRed, kMuteLit, { 100, 934, 62, 30 });
-    latchKey ("Safes", Latch::Safes, kBlueIdle, kBlueLit, { 100, 970, 62, 30 });
-    latchKey ("Freeze", Latch::Freeze, kBlueIdle, kBlueLit, { 100, 1006, 62, 30 });
+    latchKey ("Copy", Latch::Copy, kTeal, kPaleLit, { 100, 868, 62, 30 });
+    latchKey ("Paste", Latch::Paste, kPink, kMuteLit, { 100, 904, 62, 30 });
+    latchKey ("Reset", Latch::Reset, kRed, kMuteLit, { 100, 940, 62, 30 });
+    latchKey ("Safes", Latch::Safes, kBlueIdle, kBlueLit, { 100, 976, 62, 30 });
+    latchKey ("Freeze", Latch::Freeze, kBlueIdle, kBlueLit, { 100, 1012, 62, 30 });
     {
-        auto& geq = key ("GEQ", kTeal, kPaleLit, { 100, 1042, 62, 30 }, Shape::Oval);
+        auto& geq = key ("GEQ", kTeal, kPaleLit, { 100, 1048, 62, 30 }, Shape::Oval);
         geq.isOn = [this] { return getGeq() != nullptr; };
         geq.onClick = [this]
         {
@@ -1676,22 +1691,22 @@ DLiveSurface::DLiveSurface (UiContext& c)
 
     // Right of the strips: Pre and Assign, the banks.
     {
-        auto& pre = key ("Pre", kSelIdle, kSelLit, { 1648, 510, 60, 32 }, Shape::Oval);
+        auto& pre = key ("Pre", kSelIdle, kSelLit, { 1648, 566, 60, 32 }, Shape::Oval);
         pre.isOn = [this] { return isPreMode(); };
         pre.onClick = [this] { toggleLatch (Latch::Pre); };
-        silks.push_back ({ { 1642.0f, 543.0f, 72.0f, 11.0f }, "+Sel", 9.5f, juce::Justification::centred, true });
-        auto& assign = key ("Assign", kBlueIdle, kBlueLit, { 1648, 560, 60, 32 }, Shape::Oval);
+        silks.push_back ({ { 1642.0f, 599.0f, 72.0f, 11.0f }, "+Sel", 9.5f, juce::Justification::centred, true });
+        auto& assign = key ("Assign", kBlueIdle, kBlueLit, { 1648, 616, 60, 32 }, Shape::Oval);
         assign.isOn = [this] { return isAssignMode(); };
         assign.onClick = [this] { toggleLatch (Latch::Assign); };
-        silks.push_back ({ { 1642.0f, 593.0f, 72.0f, 11.0f }, "+Mix", 9.5f, juce::Justification::centred, true });
+        silks.push_back ({ { 1642.0f, 649.0f, 72.0f, 11.0f }, "+Mix", 9.5f, juce::Justification::centred, true });
     }
-    silks.push_back ({ { 1648.0f, 622.0f, 110.0f, 16.0f }, "Bank 1", 12.0f, juce::Justification::centredLeft, false });
+    silks.push_back ({ { 1648.0f, 672.0f, 110.0f, 16.0f }, "Bank 1", 12.0f, juce::Justification::centredLeft, false });
     for (int b = 0; b < kBanks; ++b)
     {
-        auto& k = key (juce::String::charToString ((juce::juce_wchar) ('A' + b)), kPale, kPaleLit, { 1648, 642 + b * 52, 66, 40 });
+        auto& k = key (juce::String::charToString ((juce::juce_wchar) ('A' + b)), kPale, kPaleLit, { 1648, 692 + b * 50, 66, 40 });
         k.isOn = [this, b] { return bank == b; };
         k.onClick = [this, b] { setBank (b); };
-        silks.push_back ({ { 1718.0f, 656.0f + (float) b * 52.0f, 32.0f, 12.0f }, "Pk!", 9.0f, juce::Justification::centredLeft, true });
+        silks.push_back ({ { 1718.0f, 706.0f + (float) b * 50.0f, 32.0f, 12.0f }, "Pk!", 9.0f, juce::Justification::centredLeft, true });
     }
 
     bindStrips();
@@ -1899,9 +1914,10 @@ void DLiveSurface::timerCallback()
     if ((ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr) != boundStrip)
         selectionChanged();
     // PAFL's meters, the Assigned light, the banks' peak lights.
-    repaint (juce::Rectangle<float> (834.0f, 72.0f, 90.0f, 230.0f).transformedBy (design).getSmallestIntegerContainer());
-    repaint (juce::Rectangle<float> (50.0f, 140.0f, 24.0f, 14.0f).transformedBy (design).getSmallestIntegerContainer());
-    repaint (juce::Rectangle<float> (960.0f, 168.0f, 16.0f, 16.0f).transformedBy (design).getSmallestIntegerContainer());
+    const auto shifted = [] (float x, float y, float w, float h) { return juce::Rectangle<float> (x + (float) kTopShift, y, w, h); };
+    repaint (shifted (796.0f, 72.0f, 76.0f, 230.0f).transformedBy (design).getSmallestIntegerContainer());
+    repaint (shifted (50.0f, 140.0f, 24.0f, 14.0f).transformedBy (design).getSmallestIntegerContainer());
+    repaint (shifted (826.0f, 398.0f, 16.0f, 16.0f).transformedBy (design).getSmallestIntegerContainer());
     repaint (juce::Rectangle<float> (1744.0f, 650.0f, 16.0f, 320.0f).transformedBy (design).getSmallestIntegerContainer());
 }
 
@@ -1930,6 +1946,10 @@ void DLiveSurface::paint (juce::Graphics& g)
     g.setColour (juce::Colours::white.withAlpha (0.14f));
     g.fillRect (0.0f, upper.getBottom(), (float) kDesignWidth, 1.5f);
 
+    // The upper panel's cluster, drawn in its laid-out place and moved to the centre.
+    g.saveState();
+    g.addTransform (juce::AffineTransform::translation ((float) kTopShift, 0.0f));
+
     // The screen's silver bezel.
     {
         const juce::Rectangle<float> bezel ((float) kScreenX - 5.0f, (float) kScreenY - 5.0f, (float) dl::kTouchW * kScreenScale + 10.0f, (float) dl::kTouchH * kScreenScale + 10.0f);
@@ -1947,16 +1967,17 @@ void DLiveSurface::paint (juce::Graphics& g)
     };
     outline ({ 18.0f, 122.0f, 86.0f, 78.0f });
     outline ({ 18.0f, 204.0f, 86.0f, 144.0f });
-    outline ({ 750.0f, 52.0f, 80.0f, 386.0f });
-    outline ({ 836.0f, 54.0f, 84.0f, 296.0f });
-    outline ({ 926.0f, 104.0f, 84.0f, 152.0f });
-    outline ({ 1060.0f, 54.0f, 64.0f, 110.0f });
+    outline ({ 706.0f, 54.0f, 80.0f, 392.0f });
+    outline ({ 792.0f, 54.0f, 84.0f, 296.0f });
+    outline ({ 792.0f, 356.0f, 84.0f, 106.0f });
+    outline ({ 18.0f, 468.0f, 86.0f, 86.0f });
     for (int band = 0; band < 4; ++band)
-        outline ({ 1180.0f + (float) band * 100.0f, 58.0f, 96.0f, 122.0f });
+        outline ({ (float) kScreenX + (float) band * 145.0f, 468.0f, 143.0f, 84.0f });
+    outline ({ 706.0f, 466.0f, 130.0f, 88.0f });
 
     // PAFL's three meters.
     {
-        const float x[] = { 845.0f, 870.0f, 895.0f };
+        const float x[] = { 801.0f, 826.0f, 851.0f };
         const float marks[] = { 12.0f, 6.0f, 3.0f, 0.0f, -3.0f, -6.0f, -9.0f, -12.0f, -16.0f, -20.0f, -40.0f };
         for (int m = 0; m < 3; ++m)
         {
@@ -1985,22 +2006,19 @@ void DLiveSurface::paint (juce::Graphics& g)
         g.fillEllipse (57.0f, 143.0f, 8.0f, 8.0f);
     }
     g.setColour (ctx.engine.isTalkOn (0) ? juce::Colour (0xffff4040) : juce::Colour (0xff3a2020));
-    g.fillEllipse (964.0f, 172.0f, 8.0f, 8.0f); // Talk Active
+    g.fillEllipse (830.0f, 402.0f, 8.0f, 8.0f); // Talk Active
+    g.restoreState();
 
-    // The two USB sockets, drawn.
+    // The two USB sockets, drawn, top right.
+    for (int i = 0; i < 2; ++i)
     {
-        const char* names[] = { "Record/Playback", "Data" };
-        for (int i = 0; i < 2; ++i)
-        {
-            const juce::Rectangle<float> r (1640.0f, 60.0f + (float) i * 88.0f, 108.0f, 82.0f);
-            g.setColour (juce::Colour (0xff3c3f46));
-            g.fillRoundedRectangle (r, 6.0f);
-            hw::silk (g, r.withHeight (14.0f).translated (0.0f, 3.0f), names[i], l, 8.5f, juce::Justification::centred, false);
-            g.setColour (juce::Colour (0xff0d0e10));
-            g.fillRoundedRectangle (juce::Rectangle<float> (46.0f, 24.0f).withCentre (r.getCentre().translated (0.0f, 8.0f)), 2.0f);
-            g.setColour (juce::Colour (0xff4c74c0));
-            g.fillRect (juce::Rectangle<float> (40.0f, 8.0f).withCentre (r.getCentre().translated (0.0f, 8.0f)));
-        }
+        const juce::Rectangle<float> r (1700.0f + (float) i * 100.0f, 54.0f, 92.0f, 66.0f);
+        g.setColour (juce::Colour (0xff3c3f46));
+        g.fillRoundedRectangle (r, 6.0f);
+        g.setColour (juce::Colour (0xff0d0e10));
+        g.fillRoundedRectangle (juce::Rectangle<float> (46.0f, 24.0f).withCentre (r.getCentre()), 2.0f);
+        g.setColour (juce::Colour (0xff4c74c0));
+        g.fillRect (juce::Rectangle<float> (40.0f, 8.0f).withCentre (r.getCentre()));
     }
 
     // The banks' peak lights.
@@ -2013,7 +2031,7 @@ void DLiveSurface::paint (juce::Graphics& g)
             peak = st != nullptr && juce::Decibels::gainToDecibels (ctx.meters.get (st, st->isInput() ? MeterPoint::Trim : MeterPoint::Output, 0), -100.0f) > -5.0f;
         }
         g.setColour (peak ? juce::Colour (0xffff3030) : juce::Colour (0xff3a2020));
-        g.fillEllipse (1749.0f, 658.0f + (float) b * 52.0f, 7.0f, 7.0f);
+        g.fillEllipse (1749.0f, 708.0f + (float) b * 50.0f, 7.0f, 7.0f);
     }
 
     // The strips' groups: the outlines above the faders, the LCD windows.
@@ -2050,7 +2068,7 @@ void DLiveSurface::resized()
     universalKey.setBounds (bar.removeFromRight (190).reduced (sizes::kGap, 7));
     c3500Key.setBounds (bar.removeFromRight (190).reduced (sizes::kGap, 7));
     screenHost.setBounds (0, 0, dl::kTouchW, dl::kTouchH);
-    screenHost.setTransform (juce::AffineTransform::scale (kScreenScale).translated ((float) kScreenX, (float) kScreenY).followedBy (design));
+    screenHost.setTransform (juce::AffineTransform::scale (kScreenScale).translated ((float) (kScreenX + kTopShift), (float) kScreenY).followedBy (design));
     maximiser.layout();
 }
 

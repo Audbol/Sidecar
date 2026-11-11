@@ -108,8 +108,78 @@ juce::String Result::title() const
     return when.formatted ("%Y-%m-%d %H:%M") + "  " + juce::String (juce::roundToInt (settings.sampleRate)) + " Hz / " + juce::String (settings.blockSize);
 }
 
+namespace
+{
+    // The reference figures: a full run on the development PC (Intel i5-9600K, 6 cores, 32 GB, Windows 11), which counts as 1000.
+    constexpr double kRefChannels = 73.5;     // channels of processing at 128 samples / 48 kHz, geometric mean over the consoles
+    constexpr double kRefEffects = 196.3;     // one effect's cost as a share of the block budget, inverted: how many fit (geometric mean over the effects tested)
+    constexpr double kRefTracks = 64.0;       // tracks recorded at once
+    constexpr double kRefFps = 34.7;           // interface frames per second
+    constexpr double kWeights[4] = { 0.6, 0.2, 0.1, 0.1 }; // DSP, effects, recording, interface
+}
+
+juce::String Score::rating() const
+{
+    if (! valid())
+        return {};
+    return mark >= 1200 ? "Plenty for a large show" : mark >= 500 ? "Fine for small to medium shows" : "Use larger buffers";
+}
+
+Score computeScore (const Result& r)
+{
+    Score s;
+    s.estimate = r.settings.quick;
+    const double rateScale = r.settings.sampleRate / 48000.0; // a higher rate leaves less time per block
+    double logSum = 0;
+    int n = 0;
+    for (const auto& m : r.measures)
+        if (m.group == "Console" && m.blockSize == 128 && m.value > 0)
+        {
+            logSum += std::log (m.value);
+            ++n;
+        }
+    if (n > 0)
+        s.raw[0] = std::exp (logSum / n) * rateScale;
+    logSum = 0;
+    n = 0;
+    for (const auto& m : r.measures)
+        if (m.group == "Effect" && m.blockSize > 0 && m.meanMs > 0)
+        {
+            logSum += std::log (m.blockSize / r.settings.sampleRate * 1000.0 / m.meanMs);
+            ++n;
+        }
+    if (n > 0)
+        s.raw[1] = std::exp (logSum / n) * rateScale;
+    for (const auto& m : r.measures)
+    {
+        if (m.group == "Recording")
+            s.raw[2] = juce::jmax (s.raw[2], m.value);
+        if (m.group == "Interface" && m.name.startsWith ("Universal"))
+            s.raw[3] = m.value;
+    }
+    const double ref[4] = { kRefChannels, kRefEffects, kRefTracks, kRefFps };
+    double part[4] = { 0, 0, 0, 0 };
+    double weighted = 0, weights = 0;
+    for (int i = 0; i < 4; ++i)
+        if (s.raw[i] > 0)
+        {
+            const auto ratio = juce::jlimit (0.001, 1000.0, s.raw[i] / ref[i]);
+            part[i] = 1000.0 * ratio;
+            weighted += kWeights[i] * std::log (ratio);
+            weights += kWeights[i];
+        }
+    s.dsp = part[0];
+    s.effects = part[1];
+    s.recording = part[2];
+    s.interface = part[3];
+    if (s.dsp > 0) // without the DSP part there is no Mark
+        s.mark = 1000.0 * std::exp (weighted / weights);
+    return s;
+}
+
 void Result::finish()
 {
+    score = computeScore (*this);
     summary.clear();
     recommendations.clear();
     const auto bs = settings.blockSize;
@@ -217,6 +287,10 @@ juce::String Result::toText() const
     t << "Sample rate " << settings.sampleRate << " Hz, buffer " << settings.blockSize << " samples, run took " << fixed (seconds, 0) << " s\n\n";
     for (int i = 0; i < machine.size(); ++i)
         t << machine.getAllKeys()[i] << ": " << machine.getAllValues()[i] << "\n";
+    if (score.valid())
+        t << "\nSIDECAR MARK" << (score.estimate ? " (estimate, from the quick test)" : "") << ": " << juce::roundToInt (score.mark) << "  (" << score.rating() << ")\n"
+          << "DSP " << juce::roundToInt (score.dsp) << ", Effects " << juce::roundToInt (score.effects) << ", Recording " << juce::roundToInt (score.recording)
+          << ", Interface " << juce::roundToInt (score.interface) << "\n";
     t << "\nSUMMARY\n";
     for (const auto& s : summary)
         t << s << "\n";
@@ -238,6 +312,13 @@ juce::String Result::toText() const
 juce::String Result::toCsv() const
 {
     juce::String c = "group,name,block_size,strips,mean_pct,p99_pct,worst_pct,mean_ms,value,note\n";
+    if (score.valid())
+    {
+        c << "\"Score\",\"Sidecar Mark" << (score.estimate ? " (estimate)" : "") << "\",0,1,0,0,0,0," << juce::roundToInt (score.mark) << ",\"" << score.rating() << "\"\n";
+        const std::pair<const char*, double> parts[] = { { "DSP", score.dsp }, { "Effects", score.effects }, { "Recording", score.recording }, { "Interface", score.interface } };
+        for (auto& p : parts)
+            c << "\"Score\",\"" << p.first << "\",0,1,0,0,0,0," << juce::roundToInt (p.second) << ",\"\"\n";
+    }
     for (const auto& m : measures)
         c << "\"" << m.group << "\",\"" << m.name.replace ("\"", "'") << "\"," << m.blockSize << "," << m.count << "," << m.meanPct << "," << m.p99Pct << "," << m.worstPct << "," << m.meanMs
           << "," << m.value << ",\"" << m.note.replace ("\"", "'") << "\"\n";
@@ -255,6 +336,7 @@ juce::var Result::toVar() const
     o->setProperty ("deviceInfo", settings.deviceInfo);
     o->setProperty ("cancelled", cancelled);
     o->setProperty ("seconds", seconds);
+    o->setProperty ("score", juce::Array<juce::var> { score.mark, score.dsp, score.effects, score.recording, score.interface, score.estimate, score.raw[0], score.raw[1], score.raw[2], score.raw[3] });
     juce::Array<juce::var> mach, ms, sum, rec;
     for (int i = 0; i < machine.size(); ++i)
         mach.add (juce::StringArray { machine.getAllKeys()[i], machine.getAllValues()[i] }.joinIntoString ("\t"));
@@ -295,6 +377,17 @@ Result Result::fromVar (const juce::var& v)
     r.settings.deviceInfo = v.getProperty ("deviceInfo", {}).toString();
     r.cancelled = v.getProperty ("cancelled", false);
     r.seconds = v.getProperty ("seconds", 0.0);
+    if (auto* a = v.getProperty ("score", {}).getArray(); a != nullptr && a->size() == 10)
+    {
+        r.score.mark = (*a)[0];
+        r.score.dsp = (*a)[1];
+        r.score.effects = (*a)[2];
+        r.score.recording = (*a)[3];
+        r.score.interface = (*a)[4];
+        r.score.estimate = (bool) (*a)[5];
+        for (int i = 0; i < 4; ++i)
+            r.score.raw[i] = (*a)[6 + i];
+    }
     if (auto* a = v.getProperty ("machine", {}).getArray())
         for (auto& s : *a)
         {
@@ -808,10 +901,13 @@ void Runner::run()
             tasks.push_back ([this, p] { effectTests (p); });
     if (settings.doConsoles)
     {
+        // Every console at 128 samples whatever the buffer: that is what the Sidecar Mark is taken from.
         for (auto p : settings.profiles)
-            tasks.push_back ([this, p] { consoleTests (p, settings.blockSize, p == settings.currentProfile); });
+            tasks.push_back ([this, p] { consoleTests (p, 128, p == settings.currentProfile && settings.blockSize == 128); });
+        if (settings.blockSize != 128)
+            tasks.push_back ([this, cur] { consoleTests (cur, settings.blockSize, true); });
         for (int size : settings.extraSizes)
-            if (size != settings.blockSize)
+            if (size != settings.blockSize && size != 128)
                 tasks.push_back ([this, size, cur] { consoleTests (cur, size, true); });
     }
     if (settings.doPlugins && ! settings.plugins.empty())

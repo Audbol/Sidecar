@@ -14,7 +14,8 @@ you drag together, and plug-in blocks (VST3, AU, LV2) in any strip's chain.
 **Remote control:** drive a real X32 over the network. Only partly tested so far.
 
 **Also new:** a start-up tile picker, console tape for channel names on the consoles without
-name displays, and a benchmark in SETUP that shows what your PC can run.
+name displays, and a benchmark in SETUP that shows what your PC can run, with one Sidecar Mark
+score to compare computers.
 
 **Polish:** a theme for each console, a full-screen view for every console's display, fader caps that keep their scales readable, and a routing page on the Q1202USB.
 
