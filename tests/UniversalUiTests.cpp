@@ -14,6 +14,8 @@
 #include "ui/HomeScreens.h"
 #include "ui/MixerChooser.h"
 #include "ui/UniversalSkin.h"
+#include "ui/Pro2Surface.h"
+#include "ui/ScreenMaximiser.h"
 #include "ui/Xenyx1202Surface.h"
 #include "ui/StripCustomize.h"
 #include "ui/universal/StripPanel.h"
@@ -2976,9 +2978,103 @@ public:
             // The values from before.
             expect (&Theme::named ("dark") == &Theme::of (Theme::Look::FlagshipBlack) && &Theme::named ("light") == &Theme::of (Theme::Look::BrushedSilver));
             rig.settings.setValue (Theme::kSetting, "light");
-            expect (std::make_unique<ui::UniversalSkin> (rig.ctx)->getTheme().look == Theme::Look::BrushedSilver, "the old 'light' is Brushed Silver");
+            expect (Theme::forConsole (rig.settings, ld::kProfileUniversal).look == Theme::Look::BrushedSilver, "the old 'light' is Brushed Silver");
             rig.settings.setValue (Theme::kSetting, "dark");
-            expect (std::make_unique<ui::UniversalSkin> (rig.ctx)->getTheme().look == Theme::Look::FlagshipBlack, "the old 'dark' is Flagship Black");
+            expect (Theme::forConsole (rig.settings, ld::kProfileUniversal).look == Theme::Look::FlagshipBlack, "the old 'dark' is Flagship Black");
+        }
+
+        beginTest ("Batch A of the 0.3.1 notes: fill contrast on every theme, a theme per console, the FADERS cycle, SETUP's interface list");
+        {
+            for (int i = 0; i < Theme::kNumLooks + Theme::kNumConsoleLooks; ++i)
+            {
+                const auto look = (Theme::Look) i;
+                const auto& t = Theme::of (look);
+                const juce::String title = Theme::titleOf (look);
+                expect (t.look == look, title + " knows its look");
+                expectGreaterOrEqual (contrastRatio (t.fill(), t.panel), 3.0f, title + " a level's fill on the panel");
+                expectGreaterOrEqual (contrastRatio (t.fill(), t.well), 3.0f, title + " a level's fill on its well");
+                if (i >= Theme::kNumLooks)
+                {
+                    expectGreaterOrEqual (contrastRatio (t.text, t.background), 7.0f, title);
+                    expectGreaterOrEqual (contrastRatio (t.text, t.raised), 7.0f, title);
+                    expectGreaterOrEqual (contrastRatio (t.textDim, t.panel), 4.5f, title);
+                    for (auto role : { t.accent, t.mute, t.solo })
+                        expectGreaterOrEqual (contrastRatio (t.textOnAccent, role), 4.5f, title + " text on a lit key");
+                    expectGreaterOrEqual (contrastRatio (t.accent, t.panel), 4.5f, title + " the accent as text");
+                    for (int k = 0; k < kNumStripKinds; ++k)
+                        expectGreaterOrEqual (contrastRatio (t.kindColour (static_cast<StripKind> (k)), t.raised), 4.5f, title + " a strip kind's label");
+                    for (int h = 0; h < 8; ++h)
+                        expectGreaterOrEqual (contrastRatio (t.blockColour (static_cast<Theme::BlockHue> (h)), t.raised), 4.5f, title + " a block's colour");
+                }
+            }
+            expect (! Theme::consoleLook (ld::kProfileUniversal).has_value());
+            expect (Theme::consoleLook (ld::kProfileWing) == Theme::Look::ConsoleWing && Theme::consoleLook (ld::kProfileXenyx1202) == Theme::Look::ConsoleXenyx);
+            expect (&Theme::named ("c-pro2") == &Theme::of (Theme::Look::ConsolePro2));
+
+            MixerEngine engine (0);
+            test::setChannels (engine, 2);
+            UiRig rig (engine);
+            expect (&Theme::forConsole (rig.settings, ld::kProfileSq5) == &Theme::of (Theme::Look::ConsoleSq5), "the console's own theme by default");
+            rig.settings.setValue (Theme::consoleSetting (ld::kProfileSq5), Theme::idOf (Theme::Look::Daylight));
+            expect (&Theme::forConsole (rig.settings, ld::kProfileSq5) == &Theme::of (Theme::Look::Daylight), "the user's choice wins");
+            expect (&Theme::forConsole (rig.settings, ld::kProfileX32) == &Theme::of (Theme::Look::ConsoleX32), "and is kept per console");
+
+            auto viewOwner = std::make_unique<MixerView> (rig.ctx, Theme::charcoal());
+            auto& view = *viewOwner;
+            view.setSize (1400, 800);
+            view.setFaderMode (1);
+            expect (view.areFadersShown() && view.areKnobsShown(), "knobs");
+            expect (view.getColumn (0)->fader.isKnobMode(), "a column's fader is a knob");
+            view.setFaderMode (2);
+            expect (! view.areFadersShown() && ! view.getColumn (0)->fader.isVisible(), "none");
+            view.setFaderMode (0);
+            expect (view.areFadersShown() && ! view.areKnobsShown() && ! view.getColumn (0)->fader.isKnobMode(), "faders again");
+
+            expectEquals (ui::mixerChooser::mixers().size(), (size_t) ((int) ui::InterfaceKind::Xenyx1202 + 1), "SETUP lists every InterfaceKind");
+        }
+
+        beginTest ("The gate and the EQ cards: EDIT opens the block, a disabled EQ keeps its grey fill, the dynamics handles are apart");
+        {
+            MixerEngine engine (0);
+            test::setChannels (engine, 2);
+            UiRig rig (engine);
+            auto* strip = engine.getChannels()[0].get();
+            auto panel = std::make_unique<ChannelPanel> (rig.ctx, Theme::charcoal());
+            panel->setSize (1400, 420);
+            panel->setStrip (strip);
+            int openedKind = -2;
+            panel->onOpenStep = [&openedKind] (int kind, int) { openedKind = kind; };
+            panel->setExpanded (ChannelPanel::EqSection, false);
+            ToggleKey* edit = nullptr;
+            for (auto* c : panel->getChildren())
+                if (auto* k = dynamic_cast<ToggleKey*> (c); k != nullptr && k->getButtonText() == "EDIT" && k->isVisible())
+                    edit = k;
+            expect (edit != nullptr, "EDIT is shown on the open EQ card");
+            if (edit != nullptr)
+            {
+                edit->onClick(); // triggerClick() only posts the click for later
+                expectEquals (openedKind, (int) ld::kStepEq, "EDIT opens the EQ's block editor");
+            }
+            strip->params.eq().on = true;
+            panel->refresh();
+            keepPicture (panel->createComponentSnapshot (panel->getLocalBounds(), true, 1.0f), "universal-eq-on.png");
+            strip->params.eq().on = false;
+            panel->refresh();
+            keepPicture (panel->createComponentSnapshot (panel->getLocalBounds(), true, 1.0f), "universal-eq-off.png");
+
+            panel->setExpanded (ChannelPanel::GateSection, false);
+            strip->params.gate().on = true;
+            panel->refresh();
+            expect (keepPicture (panel->createComponentSnapshot (panel->getLocalBounds(), true, 1.0f), "universal-gate-eq.png"));
+
+            TransferView transfer (Theme::charcoal());
+            transfer.setSize (300, 200);
+            transfer.bind (&strip->params.dynamics());
+            const auto a = transfer.handlePosition (0), c = transfer.handlePosition (1);
+            expect (a.getDistanceFrom (c) > 16.0f, "the threshold's and the ratio's handles don't overlap");
+            transfer.bind (&strip->params.gate());
+            const auto g = transfer.handlePosition (1);
+            expect (g.y < 200.0f - 6.0f, "the gate's range handle stays above the graph's floor");
         }
 
         beginTest ("The EQ card's RTA runs only while the panel is shown, draws under the curve, and its key turns it off and is saved");
@@ -3810,4 +3906,141 @@ public:
     }
 };
 
+/** The console surfaces' extras: a test class of its own, as UniversalUiTests::runTest's frame leaves no stack for an engine. */
+class SurfaceExtrasTests final : public juce::UnitTest
+{
+public:
+    SurfaceExtrasTests() : juce::UnitTest ("Console surface extras", "LiveDAW") {}
+
+    void runTest() override
+    {
+        beginTest ("The Q1202USB has a routing page and a key to the Universal Mixer; PRO2 SOURCE / ROUTING opens the input block");
+        {
+            auto engineOwner = std::make_unique<MixerEngine> (0);
+            auto& engine = *engineOwner;
+            engine.configureProfile (ld::kProfileXenyx1202);
+            setShownProfile (ld::kProfileXenyx1202);
+            ui::fader::setLaw (engine.getFaderLaw());
+            auto rigOwner = std::make_unique<UiRig> (engine);
+            auto& rig = *rigOwner;
+            auto skinOwner = std::make_unique<ui::Xenyx1202Surface> (rig.ctx);
+            auto& skin = *skinOwner;
+            skin.setSize (1920, 1080);
+            expect (! skin.isRoutingShown());
+            auto& inputs = skin.getRoutingGrid (false);
+            expect (skin.isRoutingShown() && skin.getRoutingPage()->getBounds().getWidth() > 1000, "the overlay covers the panel");
+            expectEquals (inputs.getNumRows(), 9); // 8 channels and 2-TRACK
+            expect (inputs.getNumColumns() >= 2);
+            auto& ch1 = engine.getChannels()[0]->params;
+            inputs.tap (0, 1);
+            expect (ch1.inputLeft.load() >= 0 && inputs.getState (0, 1) == ui::universal::PatchGrid::On);
+            inputs.tap (0, 1);
+            expectEquals (ch1.inputLeft.load(), -1);
+            auto& aux = engine.getAux()[0]->params;
+            inputs.tap (8, 2);
+            expect (aux.stereo.load() && aux.inputRight.load() == aux.inputLeft.load() + 1, "2-TRACK takes a pair");
+            auto& outputs = skin.getRoutingGrid (true);
+            expect (outputs.getNumRows() >= 2 && outputs.getNumColumns() >= 6);
+            outputs.tap (1, 0);
+            expect (outputs.getState (1, 0) == ui::universal::PatchGrid::On);
+            skin.showRouting (false);
+            expect (! skin.isRoutingShown());
+
+            // PRO2: SOURCE / ROUTING opens the INPUT block's editor though its chain has no INPUT row.
+            auto pro2Owner = std::make_unique<MixerEngine> (0);
+            auto& pro2 = *pro2Owner;
+            pro2.configureProfile (ld::kProfileMidasPro2);
+            setShownProfile (ld::kProfileMidasPro2);
+            auto pro2RigOwner = std::make_unique<UiRig> (pro2);
+            auto& pro2Rig = *pro2RigOwner;
+            auto inspectorOwner = std::make_unique<Inspector> (pro2Rig.ctx, Theme::charcoal());
+            auto& inspector = *inspectorOwner;
+            inspector.setSize (440, 900);
+            inspector.setStrip (pro2.getChannels()[0].get());
+            inspector.openStep (ld::kStepInput);
+            expect (inspector.getPage() == Inspector::Page::Chain);
+            expect (inspector.editor.getTarget().kind == BlockTarget::Kind::Input, "the input block's editor");
+            setShownProfile (ld::kProfileUniversal);
+        }
+
+        beginTest ("A console's display maximises with F10 or a double-click and restores; the PRO2's trackball moves a cursor and clicks; its knobs jump to a new binding");
+        {
+            // The helper on a plain host.
+            struct Host final : juce::Component
+            {
+                void resized() override
+                {
+                    if (maximiser != nullptr)
+                        maximiser->layout();
+                }
+                ui::ScreenMaximiser* maximiser = nullptr;
+            } host;
+            juce::Component screen, other;
+            host.addAndMakeVisible (screen);
+            host.addAndMakeVisible (other);
+            host.setSize (800, 600);
+            screen.setBounds (10, 10, 200, 100);
+            other.setBounds (300, 300, 50, 50);
+            ui::ScreenMaximiser maximiser (host, { &screen });
+            host.maximiser = &maximiser;
+            maximiser.toggle();
+            expect (maximiser.isOn() && screen.isVisible() && ! other.isVisible(), "only the display shows");
+            expectEquals (host.getLocalArea (&screen, screen.getLocalBounds()).getWidth(), 800);
+            expect (maximiser.keyPressed (juce::KeyPress (juce::KeyPress::escapeKey)));
+            expect (! maximiser.isOn() && other.isVisible(), "Esc restores");
+            expect (maximiser.keyPressed (juce::KeyPress (juce::KeyPress::F10Key)) && maximiser.isOn());
+            expect (maximiser.keyPressed (juce::KeyPress (juce::KeyPress::F10Key)) && ! maximiser.isOn(), "F10 again restores");
+
+            // The PRO2's surface.
+            auto engineOwner = std::make_unique<MixerEngine> (0);
+            auto& engine = *engineOwner;
+            engine.configureProfile (ld::kProfileMidasPro2);
+            setShownProfile (ld::kProfileMidasPro2);
+            ui::fader::setLaw (engine.getFaderLaw());
+            auto rigOwner = std::make_unique<UiRig> (engine);
+            auto& rig = *rigOwner;
+            rig.selected = engine.getChannels()[0].get();
+            auto skinOwner = std::make_unique<ui::Pro2Surface> (rig.ctx);
+            auto& skin = *skinOwner;
+            skin.setSize (1920, 1080);
+            skin.refreshAll();
+            const auto screenArea = [&skin] { return skin.getLocalArea (&skin.getScreen(), skin.getScreen().getLocalBounds()); };
+            const int normalWidth = screenArea().getWidth();
+            expect (skin.skinKeyPressed (juce::KeyPress (juce::KeyPress::F10Key)));
+            expect (screenArea().getWidth() > normalWidth * 2 && skin.getLocalBounds().expanded (2).contains (screenArea()), "the screen fills the window");
+            expect (skin.skinKeyPressed (juce::KeyPress (juce::KeyPress::escapeKey)));
+            expectEquals (screenArea().getWidth(), normalWidth);
+
+            auto& pro2Screen = skin.getScreen();
+            const auto start = pro2Screen.getCursor();
+            pro2Screen.moveCursor (30.0f, -20.0f);
+            expectWithinAbsoluteError (pro2Screen.getCursor().x, start.x + 30.0f, 0.01f);
+            expectWithinAbsoluteError (pro2Screen.getCursor().y, start.y - 20.0f, 0.01f);
+            pro2Screen.moveCursor (5000.0f, 5000.0f);
+            expect (pro2Screen.getCursor().x < 1024.0f && pro2Screen.getCursor().y < 768.0f, "the cursor stays on the screen");
+            for (int i = 0; i < pro2Screen.getNumSpots(); ++i)
+                if (const auto& spot = pro2Screen.getSpot (i); spot.binding.isValid() && spot.binding.set && spot.absolute)
+                {
+                    pro2Screen.setCursor ({ spot.area.getCentreX(), spot.area.getY() + spot.area.getHeight() * 0.25f });
+                    pro2Screen.cursorDown();
+                    expect (pro2Screen.isCursorDown());
+                    expectWithinAbsoluteError (spot.binding.get(), 0.75f, 0.02f);
+                    pro2Screen.cursorUp();
+                    expect (! pro2Screen.isCursorDown());
+                    break;
+                }
+
+            // A knob given a binding shows its value at once (it drew the centre until the next refresh).
+            ui::pro2::Knob knob (juce::Colours::white);
+            ui::KnobBinding binding;
+            binding.get = [] { return 0.9f; };
+            binding.set = [] (float) {};
+            knob.setBinding (binding);
+            expectWithinAbsoluteError (knob.getShown(), 0.9f, 0.001f);
+            setShownProfile (ld::kProfileUniversal);
+        }
+    }
+};
+
 static UniversalUiTests universalUiTests;
+static SurfaceExtrasTests surfaceExtrasTests;

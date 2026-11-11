@@ -333,6 +333,11 @@ void FaderControl::paint (juce::Graphics& g)
         // A console's fader: its silkscreen scale (the X32's: 10 to -60, signed,
         // with -50), the slot, the moulded cap.
         static constexpr float consoleMarks[] = { 10.0f, 5.0f, 0.0f, -5.0f, -10.0f, -20.0f, -30.0f, -40.0f, -50.0f, -60.0f, fader::kMinDb };
+        // The cap never covers the printed numbers: the legend ends where the cap's edge begins (a wide cap
+        // moves it out), and a strip too narrow for both gets a narrower cap.
+        const float capRatio = look->cap == hw::Look::Cap::Ribbed ? 0.85f : 0.5f; // the cap's half width to its `width`
+        const float capWidth = juce::jlimit (14.0f, look->cap == hw::Look::Cap::Metal ? 26.0f : 28.0f, (groove - 20.0f) / capRatio);
+        const float legendRight = juce::jmin (groove - 12.0f, groove - capWidth * capRatio - 3.0f);
         for (float db : consoleMarks)
         {
             if (db > fader::maxDb() + 0.01f || (look->shortScale && (db == -50.0f || db == -60.0f)))
@@ -340,7 +345,7 @@ void FaderControl::paint (juce::Graphics& g)
             const float y = yAt (fader::dbToPos (db));
             const auto label = db <= fader::kMinDb ? juce::String::fromUTF8 (look->shortScale ? "\xe2\x88\x9e" : "-\xe2\x88\x9e")
                                                    : juce::String ((int) (look->shortScale ? std::abs (db) : db));
-            hw::silk (g, juce::Rectangle<float> (-2.0f, y - 7.0f, groove - 12.0f, 14.0f), label, *look, 9.0f, juce::Justification::centredRight,
+            hw::silk (g, juce::Rectangle<float> (-2.0f, y - 7.0f, legendRight + 2.0f, 14.0f), label, *look, 9.0f, juce::Justification::centredRight,
                       db != 0.0f);
             g.setColour (look->silkDim.withAlpha (0.6f));
             g.fillRect (groove - 13.0f, y - 0.5f, 6.0f, 1.0f);
@@ -365,7 +370,7 @@ void FaderControl::paint (juce::Graphics& g)
         }
         hw::faderSlot (g, groove, t.getY(), t.getBottom(), *look);
         if (isEnabled())
-            hw::faderCap (g, groove, yAt ((float) position), look->cap == hw::Look::Cap::Metal ? 26.0f : 28.0f, *look); // the X32's: narrow and tall
+            hw::faderCap (g, groove, yAt ((float) position), capWidth, *look); // the X32's: narrow and tall
         return;
     }
     g.setFont (type::font (type::kMicro));

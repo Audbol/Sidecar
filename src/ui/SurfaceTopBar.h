@@ -23,7 +23,7 @@ namespace surfacetopbar
         g.setColour (theme.textDim);
         g.setFont (universal::type::font (universal::type::kCaption));
         g.drawText ("Not affiliated with or endorsed by any console maker; product names are their owners' trademarks.",
-                    top.reduced ((float) universal::sizes::kGapLarge, 0.0f).withTrimmedLeft (150.0f).withTrimmedRight (210.0f), juce::Justification::centredLeft);
+                    top.reduced ((float) universal::sizes::kGapLarge, 0.0f).withTrimmedLeft (juce::jmax (150.0f, (float) name.length() * 17.0f + 40.0f)).withTrimmedRight (210.0f), juce::Justification::centredLeft);
     }
 
     inline void place (juce::Component& key, int width)

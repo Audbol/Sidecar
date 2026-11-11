@@ -307,6 +307,7 @@ namespace uiprefs
     constexpr const char* interfaceKind = "ui.interface";           // "wing" (default) or "universal": the window's skin
     constexpr const char* universalChannel = "ui.universalChannel"; // bool, default true: the MIXER view shows the selected strip's panel
     constexpr const char* universalHeader = "ui.universalHeader";   // bool, default true: the Universal Mixer's header shows its second row
+    constexpr const char* universalKnobs = "ui.universalKnobs";     // bool, default false: with the faders shown, as knobs (FADERS key)
     constexpr const char* universalFaders = "ui.universalFaders";   // bool, default true: the Universal MIXER view shows its faders
     constexpr const char* fullScreen = "ui.fullScreen";             // bool: the window covers the screen (F11)
     constexpr const char* noticeDismissed = "ui.noticeDismissedFor"; // the app version the start-up notice was turned off for

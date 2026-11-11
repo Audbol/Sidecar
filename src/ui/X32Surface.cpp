@@ -676,6 +676,7 @@ void X32Surface::resized()
     layerKeys (midColumn, groupLayerKeys);
     sendsOnFaderKey.setBounds (midColumn.withHeight (x32::kKeyHeight + 6).reduced (2, 0));
     remoteKey.setBounds (leftColumn.withHeight (x32::kKeyHeight + 16).reduced (2, 0));
+    maximiser.layout();
 }
 
 } // namespace livedaw::ui

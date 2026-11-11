@@ -6,9 +6,26 @@
 namespace livedaw::ui::universal
 {
 
+namespace
+{
+    // The same colour, lightened or darkened (hue kept) until it reads on `bg`.
+    juce::Colour readableOn (juce::Colour c, juce::Colour bg) noexcept
+    {
+        const auto toward = contrastRatio (juce::Colours::white, bg) >= contrastRatio (juce::Colours::black, bg) ? juce::Colours::white : juce::Colours::black;
+        for (int i = 0; i < 20 && contrastRatio (c, bg) < 4.5f; ++i)
+            c = c.interpolatedWith (toward, 0.08f);
+        return c;
+    }
+}
+
 juce::Colour Theme::kindColour (StripKind kind) const noexcept
 {
-    if (look != Look::FlagshipBlack && look != Look::BrushedSilver)
+    return readableOn (rawKindColour (kind), raised);
+}
+
+juce::Colour Theme::rawKindColour (StripKind kind) const noexcept
+{
+    if (look >= Look::MidnightBlue && look <= Look::StudioOlive)
     {
         // Channel, aux, bus, main, matrix: bright on the dark looks, dark on Daylight.
         static const juce::uint32 tints[7][5] = {
@@ -60,6 +77,11 @@ juce::Colour Theme::kindColour (StripKind kind) const noexcept
 
 juce::Colour Theme::blockColour (BlockHue h) const noexcept
 {
+    return readableOn (rawBlockColour (h), raised);
+}
+
+juce::Colour Theme::rawBlockColour (BlockHue h) const noexcept
+{
     static const juce::uint32 others[7][8] = {
         { 0xffffd060, 0xff5fe0d0, 0xffff8a70, 0xff7fb8ff, 0xffb49cff, 0xffff8ab4, 0xffa0e070, 0xffd6b8ff },  // Midnight Blue
         { 0xffffc040, 0xff8fcfa0, 0xffff8a6a, 0xff8fb8d8, 0xffc8a0e0, 0xffe890a8, 0xffb4d870, 0xffe0b8f0 },  // Vintage Warm
@@ -68,11 +90,22 @@ juce::Colour Theme::blockColour (BlockHue h) const noexcept
         { 0xfff8d466, 0xff90ecd6, 0xffffaa92, 0xff9fd2ff, 0xffccb8ff, 0xffffaccc, 0xffb8ec90, 0xffe6d2ff },  // Studio Slate
         { 0xffffc548, 0xff86d8c0, 0xffff9a80, 0xff8fc0f0, 0xffc4a8f0, 0xffff9cbc, 0xffaadc80, 0xffdcc4f4 },  // Studio Graphite
         { 0xfff0cc60, 0xff94ecd6, 0xffffaa92, 0xffa0d0ff, 0xffd4b8ff, 0xffffaccc, 0xffbcec90, 0xffe8d4ff } }; // Studio Olive
-    if (look != Look::FlagshipBlack && look != Look::BrushedSilver)
+    if (look >= Look::MidnightBlue && look <= Look::StudioOlive)
         return juce::Colour (others[(int) look - (int) Look::MidnightBlue][(size_t) h]);
     static const juce::uint32 dark[] = { 0xffe8b84a, 0xff4fc3b5, 0xffe07a5f, 0xff5b9bff, 0xff9b7bea, 0xffe0709a, 0xff8bc46a, 0xffc9a0ff };
     static const juce::uint32 light[] = { 0xff9a6b00, 0xff0b7a6e, 0xffb23a1f, 0xff2456c4, 0xff6a3fc0, 0xffb02060, 0xff3f7a1f, 0xff7a3fa8 };
     return juce::Colour ((isLight ? light : dark)[(size_t) h]);
+}
+
+juce::Colour Theme::fill() const noexcept
+{
+    for (float amount = 0.5f; amount < 1.0f; amount += 0.1f)
+    {
+        const auto c = well.interpolatedWith (accent, amount);
+        if (contrastRatio (c, panel) >= 3.0f && contrastRatio (c, well) >= 3.0f)
+            return c;
+    }
+    return accent;
 }
 
 juce::Colour Theme::textOn (juce::Colour c) noexcept
@@ -481,8 +514,72 @@ const Theme& Theme::studioOlive()
     return theme;
 }
 
+namespace
+{
+    /** A console's theme: the dark (or, for a light console, the silver) base with the console's surface colours. */
+    Theme consoleTheme (Theme::Look look, bool light, juce::uint32 background, juce::uint32 panel, juce::uint32 raised, juce::uint32 well, juce::uint32 outline,
+                        juce::uint32 accent)
+    {
+        Theme t = light ? Theme::light() : Theme::charcoal();
+        t.look = look;
+        t.isLight = light;
+        t.isCharcoal = ! light;
+        t.background = juce::Colour (background);
+        t.panel = juce::Colour (panel);
+        t.raised = juce::Colour (raised);
+        t.well = juce::Colour (well);
+        t.outline = juce::Colour (outline);
+        // The console's colour, moved (towards white on a dark theme, black on a light one) until it reads as text on the panel and the raised surface.
+        auto a = juce::Colour (accent);
+        for (int i = 0; i < 20 && (contrastRatio (a, t.panel) < 4.5f || contrastRatio (a, t.raised) < 4.5f); ++i)
+            a = light ? a.darker (0.15f) : a.brighter (0.15f);
+        t.accent = a;
+        t.textOnAccent = Theme::textOn (a);
+        t.hw.plateTop = t.raised;
+        t.hw.plateBottom = t.panel;
+        t.hw.trayTop = t.panel;
+        t.hw.trayBottom = t.background;
+        t.hw.pointer = a;
+        t.hw.capLine = a;
+        return t;
+    }
+} // namespace
+
+std::optional<Theme::Look> Theme::consoleLook (int profile) noexcept
+{
+    if (profile < 1 || profile > kNumConsoleLooks)
+        return std::nullopt;
+    return (Look) ((int) Look::ConsoleWing + profile - 1);
+}
+
+const Theme& Theme::forConsole (juce::PropertiesFile& settings, int profile)
+{
+    if (const auto kept = settings.getValue (consoleSetting (profile)); kept.isNotEmpty())
+        return named (kept);
+    if (const auto look = consoleLook (profile))
+        return of (*look);
+    return fromSettings (settings);
+}
+
 const Theme& Theme::of (Look l)
 {
+    if (l >= Look::ConsoleWing)
+    {
+        // The colours of each console's surface (src/ui/*Surface.cpp).
+        static const Theme consoles[kNumConsoleLooks] = {
+            consoleTheme (Look::ConsoleWing, false, 0xff0a0a0b, 0xff16171a, 0xff26282c, 0xff060607, 0xff33363b, 0xff3fb6e8),
+            consoleTheme (Look::ConsoleX32, false, 0xff17191c, 0xff1f2226, 0xff2e3237, 0xff0f1113, 0xff3a3d42, 0xffff9a3c),
+            consoleTheme (Look::ConsoleProMix, false, 0xff1b1a19, 0xff242220, 0xff35322f, 0xff121110, 0xff45413d, 0xffe89030),
+            consoleTheme (Look::Console02R, false, 0xff131415, 0xff1c1d1f, 0xff2c2e31, 0xff0d0e0f, 0xff46484b, 0xffebe5cd),
+            consoleTheme (Look::ConsoleSq5, false, 0xff0b0b0c, 0xff17181a, 0xff27292c, 0xff070708, 0xff35383c, 0xffffa52e),
+            consoleTheme (Look::Console01V, false, 0xff141413, 0xff1e1d1c, 0xff2f2d2b, 0xff0d0d0c, 0xff434140, 0xff4ef07a),
+            consoleTheme (Look::ConsoleDLive, false, 0xff0b0b0c, 0xff1a1315, 0xff2b2023, 0xff070708, 0xff3a2020, 0xffff5a50),
+            consoleTheme (Look::ConsoleDm2000, false, 0xff0d0e12, 0xff1c1710, 0xff2c241a, 0xff08090b, 0xff3a2a14, 0xffffc83a),
+            consoleTheme (Look::ConsolePro2, false, 0xff0d0e12, 0xff181a1f, 0xff282b31, 0xff08090b, 0xff3a3d42, 0xff2a86c8),
+            consoleTheme (Look::ConsoleXenyx, true, 0xffe8e9e6, 0xffd2d4d0, 0xffe5e6e3, 0xfff4f4f4, 0xffb4b5b3, 0xffe5352c)
+        };
+        return consoles[(int) l - (int) Look::ConsoleWing];
+    }
     switch (l)
     {
         case Look::BrushedSilver: return light();
@@ -500,13 +597,15 @@ const Theme& Theme::of (Look l)
 
 const char* Theme::idOf (Look l)
 {
-    static const char* ids[] = { "flagship", "silver", "midnight", "vintage", "daylight", "contrast", "slate", "graphite", "olive" };
+    static const char* ids[] = { "flagship", "silver", "midnight", "vintage", "daylight", "contrast", "slate", "graphite", "olive",
+                                 "c-wing", "c-x32", "c-promix", "c-02r", "c-sq5", "c-01v", "c-dlive", "c-dm2000", "c-pro2", "c-xenyx" };
     return ids[(int) l];
 }
 
 const char* Theme::titleOf (Look l)
 {
-    static const char* titles[] = { "Flagship Black", "Brushed Silver", "Midnight Blue", "Vintage Warm", "Daylight", "High Contrast", "Studio Slate", "Studio Graphite", "Studio Olive" };
+    static const char* titles[] = { "Flagship Black", "Brushed Silver", "Midnight Blue", "Vintage Warm", "Daylight", "High Contrast", "Studio Slate", "Studio Graphite", "Studio Olive",
+                                    "WING", "X32", "ProMix 01", "02R", "SQ-5", "01V", "dLive", "DM2000", "PRO2", "Q1202USB" };
     return titles[(int) l];
 }
 
@@ -515,7 +614,7 @@ const Theme& Theme::named (const juce::String& name)
     const auto id = name.trim();
     if (id.equalsIgnoreCase ("light"))
         return light();
-    for (int i = 0; i < kNumLooks; ++i)
+    for (int i = 0; i < kNumLooks + kNumConsoleLooks; ++i)
         if (id.equalsIgnoreCase (idOf ((Look) i)))
             return of ((Look) i);
     return charcoal();

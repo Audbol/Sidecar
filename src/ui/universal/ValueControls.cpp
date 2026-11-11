@@ -115,9 +115,9 @@ void ValueBar::paint (juce::Graphics& g)
     g.fillRoundedRectangle (area, sizes::kRadius);
     if (isEnabled())
     {
-        // The level in the raised neutral, its end in the accent: a page of these stays calm.
+        // The level in the fill colour, its end in the accent: a page of these stays calm.
         const float w = juce::jmax (sizes::kRadius * 2.0f, area.getWidth() * position);
-        g.setColour (theme.raised);
+        g.setColour (theme.fill());
         g.fillRoundedRectangle (area.withWidth (w), sizes::kRadius);
         g.setColour (theme.accent);
         g.fillRect (area.getX() + w - 2.0f, area.getY() + 3.0f, 2.0f, area.getHeight() - 6.0f);
@@ -336,6 +336,8 @@ std::vector<ResponseView::Handle> ResponseView::eqHandles (const models::Model& 
             h.maxGain = gp.max;
             h.defaultGain = gp.defaultValue;
         }
+        if (const int oi = m.find (band + "on"); oi >= 0 && m.params[(size_t) oi].kind == models::ParamKind::Toggle) // a band with its own switch
+            h.active = [v = &values[oi]] { return v->load() > 0.5f; };
         if (const int qi = m.find (band + "q"); qi >= 0)
         {
             const auto& qp = m.params[(size_t) qi];
@@ -585,9 +587,48 @@ void ResponseView::paint (juce::Graphics& g)
             else
                 p.lineTo (pt);
         }
-        g.setColour (theme.accent);
+        // The fill between the curve and 0 dB: the accent's while the EQ is on, grey while it is off.
+        const bool on = ! enabled || enabled();
+        const auto tone = on ? theme.accent : theme.textDim;
+        juce::Path fill (p);
+        fill.lineTo (xAt (freqs.back()), yAt (0.0));
+        fill.lineTo (xAt (freqs.front()), yAt (0.0));
+        fill.closeSubPath();
+        g.setColour (tone.withAlpha (on ? 0.28f : 0.22f));
+        g.fillPath (fill);
+        g.setColour (tone);
         g.strokePath (p, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved));
     }
+
+    // A band that is switched off: its own bell, in grey (with its handle), not a dot alone.
+    for (const auto& h : handles)
+        if (h.freq != nullptr && h.gain != nullptr && h.active && ! h.active())
+        {
+            const double f0 = juce::jmax (1.0f, h.freq->load()), gain = h.gain->load();
+            const double q = h.q != nullptr ? juce::jmax (0.1f, h.q->load()) : 1.0;
+            const double sigma = juce::jmax (0.05, (h.qIsWidth ? q : 1.0 / q) / 2.0); // octaves
+            juce::Path bell;
+            const int n = 64;
+            for (int i = 0; i <= n; ++i)
+            {
+                const float x = area.getX() + area.getWidth() * (float) i / (float) n;
+                const double oct = std::log2 (hzAt (x) / f0);
+                const juce::Point<float> pt (x, yAt (gain * std::exp (-0.5 * oct * oct / (sigma * sigma))));
+                if (i == 0)
+                    bell.startNewSubPath (pt);
+                else
+                    bell.lineTo (pt);
+            }
+            bell.lineTo (area.getRight(), yAt (0.0));
+            bell.lineTo (area.getX(), yAt (0.0));
+            bell.closeSubPath();
+            g.setColour (theme.textDim.withAlpha (0.22f));
+            g.fillPath (bell);
+            const float r = juce::jlimit (6.0f, 16.0f, area.getHeight() * 0.06f);
+            const auto ring = juce::Rectangle<float> (r * 2.0f, r * 2.0f).withCentre ({ xAt (f0), yAt (gain) });
+            g.setColour (theme.textDim);
+            g.drawEllipse (ring, 1.5f);
+        }
 
     // The handles: a ring with the band's name; the one held, filled.
     const float r = juce::jlimit (6.0f, 16.0f, area.getHeight() * 0.06f);
@@ -597,9 +638,10 @@ void ResponseView::paint (juce::Graphics& g)
             continue;
         const auto c = handlePosition (i);
         const auto ring = juce::Rectangle<float> (r * 2.0f, r * 2.0f).withCentre (c);
-        g.setColour (theme.accent.withAlpha (i == dragging ? 0.9f : 0.25f));
+        const auto tone = (! enabled || enabled()) ? theme.accent : theme.textDim;
+        g.setColour (tone.withAlpha (i == dragging ? 0.9f : 0.25f));
         g.fillEllipse (ring);
-        g.setColour (theme.accent);
+        g.setColour (tone);
         g.drawEllipse (ring, 1.5f);
         g.setColour (i == dragging ? theme.background : theme.text);
         g.setFont (type::font (juce::jmin (type::kCaption, r * 1.2f), true));
@@ -736,8 +778,12 @@ juce::Point<float> TransferView::handlePosition (int which) const
         if (p == nullptr)
             return {};
         const bool range = p->id == "range";
-        const float at = range ? -54.0f : 0.0f;
-        return { xAt (at), yAt (outAt (at)) };
+        const float thr = thrIndex >= 0 ? params->values[thrIndex].load() : -30.0f;
+        // Well clear of the threshold's handle: 10 dB below it on a gate, 20 dB above on a compressor.
+        const float at = range ? juce::jmax (-56.0f, thr - 10.0f) : juce::jmin (0.0f, thr + 20.0f);
+        const auto a = plotArea();
+        // (A gate's closed part is deeper than the graph: the handle stays above its floor.)
+        return { xAt (at), juce::jmin (yAt (outAt (at)), a.getBottom() - 8.0f) };
     }
     return {};
 }
@@ -746,14 +792,13 @@ void TransferView::mouseDown (const juce::MouseEvent& e)
 {
     dragging = -1;
     scrollHold.set (*this, false);
-    float best = 18.0f;
+    // The threshold has priority: the ratio's handle is taken only where it is not within reach of it.
     for (int which : { 0, 1 })
-        if (const auto c = handlePosition (which); ! c.isOrigin())
-            if (const float d = c.getDistanceFrom (e.position); d < best)
-            {
-                best = d;
-                dragging = which;
-            }
+        if (const auto c = handlePosition (which); ! c.isOrigin() && c.getDistanceFrom (e.position) <= 18.0f)
+        {
+            dragging = which;
+            break;
+        }
     if (dragging == 1 && slopeParam() == nullptr)
         dragging = -1;
     if (dragging == 1)
@@ -823,17 +868,11 @@ void TransferView::paint (juce::Graphics& g)
 
     if (! outDb.empty())
     {
-        // Where the output is below the graph's floor nothing is drawn (a gate's closed
-        // part would run as a line along the bottom).
+        // A gate's closed part runs along the graph's floor (its depth is the range handle).
         juce::Path p;
         bool open = false;
         for (size_t i = 0; i < inDb.size(); ++i)
         {
-            if (outDb[i] <= -59.9f)
-            {
-                open = false;
-                continue;
-            }
             const juce::Point<float> pt (xAt (inDb[i]), yAt (outDb[i]));
             if (! open)
                 p.startNewSubPath (pt);

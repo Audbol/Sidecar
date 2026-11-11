@@ -179,15 +179,52 @@ void Screen::paint (juce::Graphics& graphics)
     g = &graphics;
     render();
     g = nullptr;
+    // The trackball's cursor, an arrow, on top.
+    juce::Path arrow;
+    arrow.startNewSubPath (0.0f, 0.0f);
+    for (const auto p : { juce::Point<float> (0.0f, 19.0f), { 4.5f, 14.5f }, { 8.0f, 22.0f }, { 11.0f, 20.5f }, { 7.5f, 13.5f }, { 13.5f, 13.5f } })
+        arrow.lineTo (p);
+    arrow.closeSubPath();
+    const auto at = juce::AffineTransform::translation (cursor.x, cursor.y);
+    graphics.setColour (cursorHeld ? juce::Colour (0xffffd84a) : juce::Colours::white);
+    graphics.fillPath (arrow, at);
+    graphics.setColour (juce::Colours::black);
+    graphics.strokePath (arrow, juce::PathStrokeType (1.4f), at);
 }
 
-void Screen::mouseDown (const juce::MouseEvent& e)
+void Screen::setCursor (juce::Point<float> p)
+{
+    cursor = { juce::jlimit (0.0f, (float) kWidth - 1.0f, p.x), juce::jlimit (0.0f, (float) kHeight - 1.0f, p.y) };
+    if (cursorHeld)
+        pointerDrag (cursor, cursor.y - cursorPressedAt.y);
+    repaint();
+}
+
+void Screen::moveCursor (float dx, float dy) { setCursor (cursor.translated (dx, dy)); }
+
+void Screen::cursorDown()
+{
+    cursorHeld = true;
+    cursorPressedAt = cursor;
+    pointerDown (cursor);
+    repaint();
+}
+
+void Screen::cursorUp()
+{
+    cursorHeld = false;
+    repaint();
+}
+
+void Screen::mouseDown (const juce::MouseEvent& e) { pointerDown (e.position); }
+
+void Screen::pointerDown (juce::Point<float> position)
 {
     dragged = {};
     for (int i = (int) spots.size(); --i >= 0;)
     {
         const auto& s = spots[(size_t) i];
-        if (! s.area.contains (e.position))
+        if (! s.area.contains (position))
             continue;
         if (s.binding.isValid() && s.binding.set)
         {
@@ -196,7 +233,7 @@ void Screen::mouseDown (const juce::MouseEvent& e)
             draggedArea = s.area;
             dragStart = dragged.get();
             if (draggedAbsolute)
-                mouseDrag (e);
+                pointerDrag (position, 0.0f);
         }
         else if (s.press)
         {
@@ -207,12 +244,14 @@ void Screen::mouseDown (const juce::MouseEvent& e)
     }
 }
 
-void Screen::mouseDrag (const juce::MouseEvent& e)
+void Screen::mouseDrag (const juce::MouseEvent& e) { pointerDrag (e.position, (float) e.getDistanceFromDragStartY()); }
+
+void Screen::pointerDrag (juce::Point<float> position, float distanceY)
 {
     if (! dragged.isValid())
         return;
-    const float v = draggedAbsolute ? (draggedArea.getBottom() - e.position.y) / juce::jmax (1.0f, draggedArea.getHeight())
-                                    : dragStart - (float) e.getDistanceFromDragStartY() / 200.0f;
+    const float v = draggedAbsolute ? (draggedArea.getBottom() - position.y) / juce::jmax (1.0f, draggedArea.getHeight())
+                                    : dragStart - distanceY / 200.0f;
     dragged.set (juce::jlimit (0.0f, 1.0f, v));
     repaint();
 }

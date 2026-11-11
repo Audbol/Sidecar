@@ -505,6 +505,10 @@ if(LIVEDAW_BUILD_TESTS)
     target_link_libraries(LiveDAWTests PRIVATE LiveDAWResources) # the screen fonts (the plugin chain view)
     # Symbols, so the stack a crash prints (tests/TestMain.cpp) names the functions.
     livedaw_add_symbols(LiveDAWTests)
+    if(MSVC)
+        # UniversalUiTests::runTest is one very long function: its frame wants more than the default 1 MB
+        target_link_options(LiveDAWTests PRIVATE /STACK:16777216)
+    endif()
 
     # The sandbox tests start the real helper (with its test plugins).
     add_dependencies(LiveDAWTests SidecarPluginHost)

@@ -222,7 +222,9 @@ namespace y02r
         if (addr < 0)
             return;
         const float y = t.getBottom() - t.getHeight() * (float) step / 127.0f;
-        hw::ribbedFaderCap (g, cx, y, 24.0f, 36.0f, 18.0f, capColour.isTransparent() ? juce::Colour (0xffe9e2c8) : capColour);
+        // Never over the printed numbers (they end 20 px from the strip's edge): a narrower cap on a narrow strip.
+        const float capHalf = juce::jlimit (10.0f, 24.0f, cx - 23.0f);
+        hw::ribbedFaderCap (g, cx, y, capHalf, 36.0f, 18.0f * capHalf / 24.0f, capColour.isTransparent() ? juce::Colour (0xffe9e2c8) : capColour);
     }
 
     void Fader::mouseDown (const juce::MouseEvent&)
@@ -4143,6 +4145,7 @@ void Y02RSurface::resized()
     panelKeys[6]->setBounds (cx + 36, cy + 72, 40, 32);  // down
     right.removeFromTop (4);
     panelKeys[8]->setBounds (right.removeFromTop (46).withWidth (70)); // ENTER
+    maximiser.layout();
 }
 
 } // namespace livedaw::ui

@@ -278,13 +278,16 @@ void WingSurface::paint (juce::Graphics& g)
 
 void WingSurface::paintSurface (juce::Graphics& g)
 {
-    if (isRack() && ! screenMaximized)
+    if ((isRack() || isCompact()) && ! screenMaximized)
     {
         // The RACK's panel in a rack: the window around it dark, a rack ear
         // with two slots either side where there is room (Sidecar's drawing).
+        // The COMPACT's: its panel alone, the window around it dark.
         g.fillAll (juce::Colour (0xff0a0a0b));
         g.setColour (surfaceColours().surface);
         g.fillRect (rackPanel);
+        if (! isRack())
+            return;
         const int ear = juce::jmin (36, (getWidth() - rackPanel.getWidth()) / 2);
         if (ear >= 14)
             for (const int x : { rackPanel.getX() - ear, rackPanel.getRight() })
@@ -410,6 +413,15 @@ void WingSurface::layoutCompact()
 {
     const int topH = topRowHeight();
     const auto plan = layout::compact::plan (bodyArea(), topH, MainDisplay::preferredWidth (topH));
+    // The panel is as wide as the plan's (its splitter spans it): the window shows nothing beside it.
+    auto panelBounds = plan.splitter;
+    panelBounds.setY (bodyArea().getY());
+    panelBounds.setBottom (bodyArea().getBottom());
+    if (panelBounds != rackPanel)
+    {
+        rackPanel = panelBounds;
+        repaint();
+    }
     monitor->setBounds (plan.panel);
     splitter.setBounds (plan.splitter);
     placeDisplay (plan.display);

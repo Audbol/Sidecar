@@ -486,6 +486,14 @@ void StripColumn::setFaderShown (bool shown)
     resized();
 }
 
+void StripColumn::setKnobsForced (bool forced)
+{
+    if (forced == knobsForced)
+        return;
+    knobsForced = forced;
+    resized();
+}
+
 void StripColumn::setSelected (bool shouldBeSelected)
 {
     if (selected != shouldBeSelected)
@@ -581,7 +589,7 @@ void StripColumn::resized()
     area.removeFromTop (sizes::kGap);
     fader.grooveFromRight = (float) juce::jmax (22, juce::roundToInt ((float) area.getWidth() * 0.38f));
     fader.setBounds (area);
-    fader.setKnobMode (area.getHeight() < 140);
+    fader.setKnobMode (knobsForced || area.getHeight() < 140);
     for (int s = 0; s < StripLayout::kNumSections; ++s)
     {
         const auto& r = sections[(size_t) s];
@@ -941,11 +949,17 @@ MixerView::MixerView (UiContext& c, const Theme& t)
     channel.setVisible (channelShown);
     // FADERS shows or hides the faders at any moment (the overviews then take the columns); an app setting.
     fadersShown = ctx.settings.getBoolValue (uiprefs::universalFaders, true);
+    knobsShown = ctx.settings.getBoolValue (uiprefs::universalKnobs, false);
     fadersKey.isOn = [this] { return fadersShown; };
+    // FADERS cycles faders, knobs, none.
     fadersKey.onClick = [this]
     {
-        setFadersShown (! fadersShown);
+        if (! fadersShown)
+            setFaderMode (0);
+        else
+            setFaderMode (knobsShown ? 2 : 1);
         ctx.settings.setValue (uiprefs::universalFaders, fadersShown);
+        ctx.settings.setValue (uiprefs::universalKnobs, knobsShown);
     };
     addAndMakeVisible (fadersKey);
     // SOF: a bus, main or matrix on the faders.
@@ -1088,7 +1102,7 @@ MixerView::Drop MixerView::dropFor (juce::Point<int> p) const
             }
             return d;
         }
-    if (layersInMenu && layerMenuKey.isVisible() && layerMenuKey.getBounds().contains (p))
+    if ((layersInMenu || layersFolded) && layerMenuKey.isVisible() && layerMenuKey.getBounds().contains (p))
     {
         d.kind = Drop::Menu;
         return d;
@@ -1189,7 +1203,18 @@ void MixerView::setFadersShown (bool shown)
         c->setFaderShown (shown);
     if (extraPinned != nullptr)
         extraPinned->setFaderShown (shown);
+    fadersKey.setButtonText (shown && knobsShown ? "KNOBS" : "FADERS");
     fadersKey.refresh();
+}
+
+void MixerView::setFaderMode (int mode)
+{
+    knobsShown = mode == 1;
+    for (auto& c : columns)
+        c->setKnobsForced (knobsShown);
+    if (extraPinned != nullptr)
+        extraPinned->setKnobsForced (knobsShown);
+    setFadersShown (mode != 2);
 }
 
 void MixerView::setDcaSpill (int dca)
@@ -1235,6 +1260,7 @@ void MixerView::connect (StripColumn& column)
             onOpenStep (s, kind, uid);
     };
     column.setFaderShown (fadersShown);
+    column.setKnobsForced (knobsShown);
 }
 
 Strip* MixerView::getSofDestination() const
@@ -1589,6 +1615,19 @@ void MixerView::setFilter (int kind)
 void MixerView::rebuild()
 {
     structureVersion = ctx.engine.getStructureVersion();
+    // Strips removed by the change are gone: let go of ours (addresses only compared).
+    const auto stillThere = [this] (Strip*& held)
+    {
+        if (held == nullptr)
+            return;
+        for (int k = 0; k < kNumStripKinds; ++k)
+            for (auto& s : ctx.engine.getStrips (static_cast<StripKind> (k)))
+                if (s.get() == held)
+                    return;
+        held = nullptr;
+    };
+    stillThere (appliedSof);
+    stillThere (revealed);
     pinnedMain = nullptr;
     extraPinned.reset();
     columns.clear();
@@ -1830,11 +1869,15 @@ void MixerView::layoutHeader (juce::Rectangle<int> area, bool visible)
     fromRight (sofKey, 72);
     if (banks)
         fromRight (bankKey, 112);
-    // The layers' keys next to BANK: a key each while there are few, else one menu key.
+    // The layers' keys next to BANK: a key each while there are few and there is room for them
+    // (the filter keys keep at least 200 px), else one menu key.
     fromRight (layerEditKey, 84);
-    for (int i = (int) layerKeys.size() - 1; i >= 0; --i)
-        fromRight (*layerKeys[(size_t) i], 88);
-    if (layersInMenu)
+    const int keysWidth = (int) layerKeys.size() * (88 + sizes::kGapSmall);
+    layersFolded = ! layerKeys.empty() && area.getWidth() - keysWidth - 72 - sizes::kGapSmall - sizes::kGap < 200;
+    if (! layersFolded)
+        for (int i = (int) layerKeys.size() - 1; i >= 0; --i)
+            fromRight (*layerKeys[(size_t) i], 88);
+    if (layersInMenu || layersFolded)
         fromRight (layerMenuKey, 150);
     fromRight (jumpKey, 72);
     area.removeFromRight (sizes::kGap);
@@ -1851,9 +1894,9 @@ void MixerView::layoutHeader (juce::Rectangle<int> area, bool visible)
     filterMenuKey.setButtonText (filter == kSpill ? "SPILL DCA " + juce::String (spillDca + 1) : "FILTER: " + juce::String (filterName (filter)));
     filterMenuKey.setVisible (visible && ! inline_);
     bankKey.setVisible (visible && banks);
-    layerMenuKey.setVisible (visible && layersInMenu);
+    layerMenuKey.setVisible (visible && (layersInMenu || layersFolded));
     for (auto& k : layerKeys)
-        k->setVisible (visible);
+        k->setVisible (visible && ! layersFolded);
     if (! visible)
         setLayerEditorShown (false);
     for (auto* k : { &layerEditKey, &jumpKey, &sofKey, &channelKey, &fadersKey })

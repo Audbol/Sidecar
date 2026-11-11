@@ -5806,6 +5806,7 @@ void Y01VSurface::resized()
 
     for (auto* child : getChildren())
         child->setTransform (design);
+    maximiser.layout();
 }
 
 void Y01VSurface::paint (juce::Graphics& g)

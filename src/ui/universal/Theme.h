@@ -3,6 +3,7 @@
 #include "engine/Strip.h"
 
 #include <juce_data_structures/juce_data_structures.h>
+#include <optional>
 #include <juce_gui_basics/juce_gui_basics.h>
 
 namespace livedaw::ui::universal
@@ -29,7 +30,9 @@ struct Theme
     /** The Universal Mixer's calm charcoal (its kinds' tints are the quieter ones). */
     bool isCharcoal = false;
     /** The six themes the Universal Mixer offers (Theme::all(), in this order). */
-    enum class Look { FlagshipBlack, BrushedSilver, MidnightBlue, VintageWarm, Daylight, HighContrast, StudioSlate, StudioGraphite, StudioOlive };
+    enum class Look { FlagshipBlack, BrushedSilver, MidnightBlue, VintageWarm, Daylight, HighContrast, StudioSlate, StudioGraphite, StudioOlive,
+                      /** A theme per console (consoleLook()), in the order of the profiles from the WING on. */
+                      ConsoleWing, ConsoleX32, ConsoleProMix, Console02R, ConsoleSq5, Console01V, ConsoleDLive, ConsoleDm2000, ConsolePro2, ConsoleXenyx };
     Look look = Look::FlagshipBlack;
 
     /** The physical parts' finish: a look is another set of these. */
@@ -54,11 +57,16 @@ struct Theme
     /** The kinds of block on a strip, each with its own colour (same on every strip and console). */
     enum class BlockHue { Input, Filter, Gate, Eq, Dynamics, Insert, Delay, Fx };
     juce::Colour blockColour (BlockHue) const noexcept;
+    /** The colour of a level's fill (a send's bar): the accent toned down towards the well, but
+        at least 3:1 against both the panel and the well it sits on, on every theme. */
+    juce::Colour fill() const noexcept;
     /** Black or white, whichever reads better on `background`. */
     static juce::Colour textOn (juce::Colour background) noexcept;
 
     /** A strip kind's tint (its column's label). */
     juce::Colour kindColour (StripKind kind) const noexcept;
+    juce::Colour rawKindColour (StripKind kind) const noexcept;
+    juce::Colour rawBlockColour (BlockHue) const noexcept;
     /** `colour` a step towards the text: brighter on the dark theme, darker on the light one
         (a pressed key, a selected row, a hovered outline). */
     juce::Colour lifted (juce::Colour colour, float amount) const noexcept;
@@ -77,6 +85,14 @@ struct Theme
     static const Theme& studioGraphite();
     static const Theme& studioOlive();
     static constexpr int kNumLooks = 9;
+    /** The consoles' themes (Look::ConsoleWing on). */
+    static constexpr int kNumConsoleLooks = 10;
+    /** The theme a console takes when it is loaded (a profile id: 1 WING ... 10 XENYX Q1202USB); none for the Universal profile. */
+    static std::optional<Look> consoleLook (int profile) noexcept;
+    /** The theme for a console: the user's choice kept for it (consoleSetting), else its own theme, else (Universal) the app's choice. */
+    static const Theme& forConsole (juce::PropertiesFile&, int profile);
+    /** The setting that keeps the choice made while `profile` is loaded. */
+    static juce::String consoleSetting (int profile) { return juce::String (kSetting) + ".console" + juce::String (profile); }
     /** The theme of a look. */
     static const Theme& of (Look);
     /** A look's id (what the setting keeps) and its name in the menu. */

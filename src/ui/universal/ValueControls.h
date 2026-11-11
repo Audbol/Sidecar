@@ -151,6 +151,8 @@ public:
 
     std::function<bool (const double* freqs, double* outDb, int count)> response;
     float rangeDb = 18.0f;
+    /** Whether the block the curve belongs to is on (null: it is): off, the curve and its fill are grey. */
+    std::function<bool()> enabled;
 
     /** A handle on the curve: an EQ band or a filter's cut (no gain: sideways only). */
     struct Handle

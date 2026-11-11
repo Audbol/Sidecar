@@ -202,6 +202,16 @@ void SendsPanel::refresh()
     // Another console (a show load, a bus added): other destinations.
     if (ctx.engine.getStructureVersion() != structureVersion)
     {
+        // The strip itself may be what went (addresses are only compared).
+        if (strip != nullptr)
+        {
+            bool found = false;
+            for (int k = 0; k < kNumStripKinds && ! found; ++k)
+                for (auto& s : ctx.engine.getStrips (static_cast<StripKind> (k)))
+                    found = found || s.get() == strip;
+            if (! found)
+                strip = nullptr;
+        }
         rebuild();
         return;
     }

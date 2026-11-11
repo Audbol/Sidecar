@@ -50,6 +50,16 @@ public:
 
     void runTest() override
     {
+        // The designs are the WING's: whatever console an earlier test left shown
+        // (the order tests run in differs between platforms), these read the WING's.
+        const auto previouslyShown = shownProfile();
+        setShownProfile (ld::kProfileWing);
+        struct Restore
+        {
+            ld::ProfileId p;
+            ~Restore() { setShownProfile (p); }
+        } restoreShown { previouslyShown };
+
         const auto snapshots = juce::SystemStats::getEnvironmentVariable ("SIDECAR_FACEPLATE_SNAPSHOT_DIR", {});
         std::unique_ptr<ui::ConsoleLookAndFeel> look;
         if (snapshots.isNotEmpty())

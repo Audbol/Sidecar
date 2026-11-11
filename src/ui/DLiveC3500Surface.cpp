@@ -871,6 +871,7 @@ void DLiveC3500Surface::resized()
         host->setBounds (0, 0, dl::kTouchW, dl::kTouchH);
         host->setTransform (juce::AffineTransform::scale (kScreenScale).translated ((float) x, (float) kScreenY).followedBy (design));
     }
+    maximiser.layout();
 }
 
 } // namespace livedaw::ui

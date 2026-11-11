@@ -11,7 +11,7 @@ namespace
     /** The theme the app settings name: the skin's, from its first member on. */
     const Theme& themeOf (UiContext& c)
     {
-        return Theme::fromSettings (c.settings);
+        return Theme::forConsole (c.settings, (int) c.engine.getProfile());
     }
 
     /** The surface a console's profile returns to: one table for the back key, its tooltip and the swap. */
@@ -179,7 +179,10 @@ void UniversalSkin::setLightTheme (bool light)
 
 void UniversalSkin::setLook (Theme::Look look)
 {
-    ctx.settings.setValue (Theme::kSetting, Theme::idOf (look));
+    // Kept for the console that is loaded (and, as before, as the app's own choice).
+    ctx.settings.setValue (Theme::consoleSetting ((int) ctx.engine.getProfile()), Theme::idOf (look));
+    if (look < Theme::Look::ConsoleWing)
+        ctx.settings.setValue (Theme::kSetting, Theme::idOf (look));
     if (look == theme.look || ! ctx.setInterface)
         return;
     // The views took their theme when they were made: the window makes the skin again. It only does
@@ -204,6 +207,13 @@ juce::PopupMenu UniversalSkin::buildMenu()
     menu.addSeparator();
     for (int i = 0; i < Theme::kNumLooks; ++i)
         themes.addItem (kMenuTheme + i, Theme::titleOf ((Theme::Look) i), true, theme.look == (Theme::Look) i);
+    themes.addSeparator();
+    themes.addSectionHeader ("Console themes");
+    for (int i = 0; i < Theme::kNumConsoleLooks; ++i)
+    {
+        const auto look = (Theme::Look) ((int) Theme::Look::ConsoleWing + i);
+        themes.addItem (kMenuConsoleTheme + i, Theme::titleOf (look), true, theme.look == look);
+    }
     menu.addSubMenu ("Theme", themes);
     const std::pair<const char*, View> names[] = { { "Mixer", View::Mixer },           { "Routing", View::Routing }, { "FX rack", View::Fx },
                                                    { "Monitoring", View::Monitoring }, { "Scenes", View::Scenes },   { "Library", View::Library },
@@ -245,6 +255,8 @@ void UniversalSkin::runMenuCommand (int item)
 {
     if (item >= 1 && item <= 4)
         runShowCommand (item);
+    else if (item >= kMenuConsoleTheme && item < kMenuConsoleTheme + Theme::kNumConsoleLooks)
+        setLook ((Theme::Look) ((int) Theme::Look::ConsoleWing + item - kMenuConsoleTheme));
     else if (item >= kMenuTheme && item < kMenuTheme + Theme::kNumLooks)
         setLook ((Theme::Look) (item - kMenuTheme));
     else if (item >= kMenuView && item <= kMenuView + (int) View::Controls)

@@ -5,6 +5,8 @@
 #include "ui/Knobs.h"
 #include "ui/Skin.h"
 #include "ui/UiContext.h"
+#include "ui/universal/PatchGrid.h"
+#include "ui/universal/Widgets.h"
 
 #include <array>
 #include <functional>
@@ -130,6 +132,12 @@ public:
     xy::Control* findControl (const juce::String& id);
     ConsoleTape& getTape (int channel) { return *tapes[(size_t) channel]; }
     juce::ComboBox& getSceneBox() noexcept { return sceneBox; }
+    /** The routing page (the interface's inputs to the channels, the outputs to the interface): shown over the panel. */
+    void showRouting (bool shown);
+    bool isRoutingShown() const noexcept;
+    juce::Component* getRoutingPage() noexcept;
+    /** The routing page's patch grid: the inputs' or the outputs' (shows the page if it is not up yet). */
+    universal::PatchGrid& getRoutingGrid (bool outputs);
 
     /** The scenes bar: STORE writes the current scene (or a new one), NEW adds one. */
     void storeScene();
@@ -138,6 +146,7 @@ public:
 
 private:
     class Panel;
+    class RoutingOverlay;
 
     void timerCallback() override;
     void build();
@@ -156,7 +165,10 @@ private:
     xy::Fader& fader (const juce::String& id, juce::Colour cap, juce::Rectangle<int>);
 
     UiContext& ctx;
+    universal::Theme theme;
+    universal::ToggleKey universalKey, routingKey;
     std::unique_ptr<Panel> panel;
+    std::unique_ptr<RoutingOverlay> routingOverlay;
     std::vector<xy::Control*> controls;
     std::array<std::unique_ptr<ConsoleTape>, kChannels> tapes;
     std::array<xy::Hotspot, 4> micJacks, lineJacks;

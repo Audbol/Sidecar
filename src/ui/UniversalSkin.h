@@ -113,6 +113,7 @@ public:
         kMenuTheme = 10, // + the look (Theme::Look): 10 to 15
         kMenuThemeDark = 10,  // Flagship Black
         kMenuThemeLight = 11, // Brushed Silver
+        kMenuConsoleTheme = 100, // + the console's look (0 to 9)
         kMenuView = 20, // + the view (View)
         kMenuPreviousScene = 40,
         kMenuNextScene = 41,

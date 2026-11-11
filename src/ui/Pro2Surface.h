@@ -3,6 +3,7 @@
 #include "engine/FaderLaw.h"
 #include "ui/Knobs.h"
 #include "ui/Skin.h"
+#include "ui/ScreenMaximiser.h"
 #include "ui/UiContext.h"
 #include "ui/universal/Widgets.h"
 
@@ -126,6 +127,8 @@ namespace pro2
         const KnobBinding& getBinding() const noexcept { return binding; }
         std::function<void()> onTouch;
         void refresh();
+        /** The position drawn (-1: none yet). */
+        float getShown() const noexcept { return shown; }
 
         void paint (juce::Graphics&) override;
         void mouseDown (const juce::MouseEvent&) override;
@@ -187,6 +190,26 @@ namespace pro2
 
     /** The GUI screen (pp.38-39): the status bar, the main area and the detail area. Sidecar's own
         drawing of what the manual's pictures show, in vectors on a 1024 x 768 page. */
+    /** The trackball and its two keys on the surface: a drag on the ball moves the screen's cursor; the keys click
+        (a drag with a key held moves it as a drag on the screen does). */
+    class Screen;
+    class Trackball final : public juce::Component, public juce::SettableTooltipClient
+    {
+    public:
+        enum class Part { Ball, LeftKey, RightKey };
+        Trackball (Screen&, Part);
+        void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+        void mouseDrag (const juce::MouseEvent&) override;
+        void mouseUp (const juce::MouseEvent&) override;
+        bool hitTest (int x, int y) override;
+        const Part part;
+
+    private:
+        Screen& screen;
+        juce::Point<float> last;
+    };
+
     class Screen final : public juce::Component
     {
     public:
@@ -236,7 +259,21 @@ namespace pro2
         void mouseDrag (const juce::MouseEvent&) override;
         void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
+        /** The trackball's cursor (p.12: the trackball moves a cursor on the GUI, its keys click): its place
+            in the screen's own pixels, moved by a distance, a key down (a press, and a drag while it is held)
+            and up. */
+        juce::Point<float> getCursor() const noexcept { return cursor; }
+        void setCursor (juce::Point<float>);
+        void moveCursor (float dx, float dy);
+        void cursorDown();
+        void cursorUp();
+        bool isCursorDown() const noexcept { return cursorHeld; }
+
     private:
+        void pointerDown (juce::Point<float>);
+        void pointerDrag (juce::Point<float>, float distanceY);
+        juce::Point<float> cursor { 512.0f, 384.0f }, cursorPressedAt;
+        bool cursorHeld = false;
         // Everything is laid out by one pass that draws when `g` is set and always notes the spots.
         void render();
         void statusBar();
@@ -338,6 +375,7 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void refreshAll() override;
+    bool skinKeyPressed (const juce::KeyPress& key) override { return maximiser.keyPressed (key); }
     void selectionChanged() override;
     void showChanged() override;
 
@@ -464,6 +502,8 @@ private:
     const universal::Theme& theme;
     universal::ToggleKey universalKey;
     pro2::Screen screen;
+    pro2::Trackball trackBall { screen, pro2::Trackball::Part::Ball }, trackLeft { screen, pro2::Trackball::Part::LeftKey },
+                    trackRight { screen, pro2::Trackball::Part::RightKey };
     std::array<std::vector<std::unique_ptr<pro2::Fader>>, 4> faders;
     std::unique_ptr<pro2::Fader> monitorFader;
     std::vector<std::pair<juce::String, std::unique_ptr<pro2::Key>>> keys;
@@ -483,6 +523,9 @@ private:
     juce::AffineTransform design;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Pro2Surface)
+private:
+    /** Maximise display: F10 or a double-click on the display; Esc returns. */
+    ScreenMaximiser maximiser { *this, { &screen } };
 };
 
 } // namespace livedaw::ui

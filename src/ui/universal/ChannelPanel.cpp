@@ -34,6 +34,7 @@ ChannelPanel::ChannelPanel (UiContext& c, const Theme& t)
                                    (juce::Component*) &pasteKey, (juce::Component*) &maxKey, (juce::Component*) &editKey, (juce::Component*) &routeKey, (juce::Component*) &rtaKey })
         addChildComponent (comp);
     eqView.rangeDb = 15.0f;
+    eqView.enabled = [this] { return strip == nullptr || strip->params.eq().on.load(); };
     height = juce::jlimit (kMinHeight, 4000, ctx.settings.getIntValue (kHeightSetting, kDefaultHeight));
     maxKey.isOn = [this] { return maximised; };
     maxKey.onClick = [this] { setMaximised (! maximised); };
@@ -142,8 +143,10 @@ ChannelPanel::ChannelPanel (UiContext& c, const Theme& t)
     editKey.onClick = [this]
     {
         const int kinds[] = { ld::kStepInput, ld::kStepFilter, ld::kStepGate, ld::kStepEq, ld::kStepDynamics };
-        if (onOpenStep && juce::isPositiveAndBelow (expanded, 5))
-            onOpenStep (kinds[expanded], -1);
+        // The card on show (the one being closed still is, for a moment).
+        const int card = expanded >= 0 ? expanded : shownExpanded;
+        if (onOpenStep && juce::isPositiveAndBelow (card, 5))
+            onOpenStep (kinds[card], -1);
     };
     routeKey.onClick = [this]
     {
@@ -169,6 +172,7 @@ void ChannelPanel::visibilityChanged()
 
 void ChannelPanel::updateRta()
 {
+    dropStaleStrip();
     // The analyser runs only while this panel can be seen, a strip is picked and the RTA key is on.
     bool seen = strip != nullptr && eqView.isVisible();
     for (auto* c = (juce::Component*) this; seen && c != nullptr; c = c->getParentComponent())
@@ -212,6 +216,7 @@ void ChannelPanel::setExpanded (int section, bool animate)
 
 void ChannelPanel::timerCallback()
 {
+    dropStaleStrip();
     // A smooth open and close: eased towards where it is going.
     const float target = expanded >= 0 ? 1.0f : 0.0f;
     expandAmount += (target - expandAmount) * 0.3f;
@@ -272,6 +277,7 @@ void ChannelPanel::setPanelHeight (int h)
 
 void ChannelPanel::mouseDown (const juce::MouseEvent& e)
 {
+    dropStaleStrip();
     draggingBar = getDragBar().contains (e.getPosition());
     dragStartY = e.getScreenY();
     dragStartHeight = getHeight();
@@ -285,12 +291,34 @@ void ChannelPanel::mouseDrag (const juce::MouseEvent& e)
 
 void ChannelPanel::mouseDoubleClick (const juce::MouseEvent& e)
 {
+    dropStaleStrip();
     if (getDragBar().contains (e.getPosition()))
         setMaximised (! maximised);
 }
 
+void ChannelPanel::dropStaleStrip()
+{
+    const int version = ctx.engine.getStructureVersion();
+    if (version == seenStructureVersion)
+        return;
+    seenStructureVersion = version;
+    if (strip == nullptr)
+        return;
+    // Addresses are only compared here, never dereferenced.
+    for (int k = 0; k < kNumStripKinds; ++k)
+        for (auto& s : ctx.engine.getStrips (static_cast<StripKind> (k)))
+            if (s.get() == strip)
+                return;
+    strip = nullptr;
+    rtaRunning = false;
+    bindStrip();
+    resized();
+    repaint();
+}
+
 void ChannelPanel::setStrip (Strip* s)
 {
+    dropStaleStrip();
     if (s == strip)
         return;
     strip = s;
@@ -339,6 +367,7 @@ void ChannelPanel::bindStrip()
 
 void ChannelPanel::refresh()
 {
+    dropStaleStrip();
     updateRta();
     if (strip == nullptr)
         return;
@@ -370,6 +399,7 @@ void ChannelPanel::refresh()
 
 void ChannelPanel::resized()
 {
+    dropStaleStrip();
     auto all = getLocalBounds().reduced (sizes::kGap, sizes::kGapSmall);
     all.removeFromBottom (kBarHeight - sizes::kGapSmall); // the drag bar's
     {
@@ -518,6 +548,7 @@ void ChannelPanel::rebuildExtras()
         {
             x->eqView = std::make_unique<ResponseView> (theme);
             x->eqView->rangeDb = 15.0f;
+            x->eqView->enabled = [t = &target] { return t->eq->on.load(); };
             x->eqView->response = target.response;
             x->eqView->handleSource = [t = &target]
             {
@@ -576,6 +607,7 @@ std::vector<ChainStep> ChannelPanel::shownSteps() const
 
 void ChannelPanel::mouseUp (const juce::MouseEvent& e)
 {
+    dropStaleStrip();
     const bool wasBar = draggingBar;
     draggingBar = false;
     if (wasBar || strip == nullptr || e.mouseWasDraggedSinceMouseDown())
@@ -603,6 +635,7 @@ void ChannelPanel::mouseUp (const juce::MouseEvent& e)
 
 void ChannelPanel::paint (juce::Graphics& g)
 {
+    dropStaleStrip();
     g.fillAll (theme.background);
     if (strip == nullptr)
     {

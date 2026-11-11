@@ -2,6 +2,7 @@
 
 #include "ui/DLiveScreens.h"
 #include "ui/DLiveSurface.h"
+#include "ui/ScreenMaximiser.h"
 
 #include <array>
 #include <memory>
@@ -27,6 +28,7 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void refreshAll() override;
+    bool skinKeyPressed (const juce::KeyPress& key) override { return maximiser.keyPressed (key); }
     void selectionChanged() override;
     void showChanged() override;
 
@@ -149,6 +151,9 @@ private:
     Strip* boundStrip = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (DLiveC3500Surface)
+private:
+    /** Maximise display: F10 or a double-click on the display; Esc returns. */
+    ScreenMaximiser maximiser { *this, { &leftHost, &rightHost } };
 };
 
 } // namespace livedaw::ui

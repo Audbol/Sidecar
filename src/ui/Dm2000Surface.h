@@ -3,6 +3,7 @@
 #include "engine/FaderLaw.h"
 #include "ui/Knobs.h"
 #include "ui/Skin.h"
+#include "ui/ScreenMaximiser.h"
 #include "ui/UiContext.h"
 #include "ui/universal/Widgets.h"
 
@@ -680,6 +681,7 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void refreshAll() override;
+    bool skinKeyPressed (const juce::KeyPress& key) override { return maximiser.keyPressed (key); }
     void selectionChanged() override;
     void showChanged() override;
 
@@ -793,6 +795,9 @@ private:
     juce::AffineTransform design;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Dm2000Surface)
+private:
+    /** Maximise display: F10 or a double-click on the display; Esc returns. */
+    ScreenMaximiser maximiser { *this, { &display } };
 };
 
 } // namespace livedaw::ui

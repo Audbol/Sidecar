@@ -360,6 +360,8 @@ void BlockEditor::addResponse (std::function<std::vector<ResponseView::Handle>()
     auto view = std::make_unique<ResponseView> (theme);
     view->response = target.response;
     view->handleSource = std::move (handles);
+    if (target.kind == BlockTarget::Kind::Eq && target.eq != nullptr)
+        view->enabled = [eq = target.eq] { return eq->on.load(); };
     view->onEdited = [this] { refresh(); }; // the bars follow a handle
     response = view.get();
     add (std::move (view), height);

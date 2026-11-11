@@ -1296,6 +1296,7 @@ void Sq5Surface::resized()
 
     for (auto* child : getChildren())
         child->setTransform (design);
+    maximiser.layout();
 }
 
 juce::Path Sq5Surface::podOutline() const

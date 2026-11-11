@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ui/ScreenMaximiser.h"
 #include "ui/Skin.h"
 #include "ui/UiContext.h"
 #include "ui/universal/Widgets.h"
@@ -453,6 +454,7 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void refreshAll() override;
+    bool skinKeyPressed (const juce::KeyPress& key) override { return maximiser.keyPressed (key); }
     void selectionChanged() override;
     void showChanged() override { display.refreshStrip(); }
 
@@ -546,6 +548,9 @@ private:
     juce::Rectangle<int> displayArea, channelArea, fadersArea, scenesArea, muteGroupsArea, palmRest, grille;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (X32Surface)
+private:
+    /** Maximise display: F10 or a double-click on the display; Esc returns. */
+    ScreenMaximiser maximiser { *this, { &display } };
 };
 
 } // namespace livedaw::ui

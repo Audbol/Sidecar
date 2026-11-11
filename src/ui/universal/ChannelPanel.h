@@ -80,6 +80,8 @@ public:
     /** The strip it shows (nullptr: none, a hint instead). */
     void setStrip (Strip*);
     Strip* getStrip() const noexcept { return strip; }
+    /** Lets go of the strip if the engine has removed it since (a show loaded, a channel deleted). */
+    void dropStaleStrip();
     /** Takes the strip's values, curves and meters again (the view's timer). */
     void refresh();
 
@@ -138,6 +140,7 @@ private:
     UiContext& ctx;
     const Theme& theme;
     Strip* strip = nullptr;
+    int seenStructureVersion = -1;
 
     ValueBar trim, balance, delay;
     ToggleKey invert, delayOn, lowCut, highCut, gateOn, eqOn, dynOn;

@@ -110,6 +110,8 @@ public:
     StripColumn (UiContext&, Strip&, const Theme&);
     /** Shows or hides the fader (the blocks take its room). */
     void setFaderShown (bool);
+    /** The fader drawn as a knob whatever its room (FADERS' second step). */
+    void setKnobsForced (bool);
     bool isFaderShown() const noexcept { return faderShown; }
 
     Strip& getStrip() const noexcept { return strip; }
@@ -158,7 +160,7 @@ private:
     juce::String name;
     int colour = 0;
     float shownDb = 0.0f;
-    bool selected = false, faderShown = true;
+    bool selected = false, faderShown = true, knobsForced = false;
     Strip* sendDestination = nullptr;
     std::atomic<float>* sendLevel = nullptr;
     std::atomic<bool>* sendOn = nullptr;
@@ -253,6 +255,9 @@ public:
     std::function<void (Strip&, int stepKind, int uid)> onOpenStep;
     /** The FADERS key: the columns show their faders, or only their overviews. */
     void setFadersShown (bool);
+    /** 0: faders, 1: knobs, 2: none (the FADERS key's cycle). */
+    void setFaderMode (int);
+    bool areKnobsShown() const noexcept { return knobsShown && fadersShown; }
     bool areFadersShown() const noexcept { return fadersShown; }
     /** The CHANNEL key: the selected strip's panel (ChannelPanel) across the top. */
     void setChannelShown (bool);
@@ -395,7 +400,9 @@ private:
     juce::Rectangle<int> pinnedArea;
     Strip* appliedSof = nullptr;
     Strip* revealed = nullptr;
-    bool fadersShown = true, channelShown = true;
+    bool fadersShown = true, channelShown = true, knobsShown = false;
+    /** The layers' keys don't fit the header's row: they fold into the LAYER menu (layoutHeader). */
+    bool layersFolded = false;
     ChannelPanel channel;
     int ticks = 0;
     juce::Viewport viewport;

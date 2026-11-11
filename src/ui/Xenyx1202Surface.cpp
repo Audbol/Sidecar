@@ -1,6 +1,9 @@
 #include "ui/Xenyx1202Surface.h"
 
 #include "engine/FaderLaw.h"
+#include "ui/RoutingGroups.h"
+#include "ui/universal/PatchGrid.h"
+#include "ui/universal/RoutingView.h"
 
 #include <cmath>
 
@@ -262,9 +265,24 @@ private:
     Xenyx1202Surface& owner;
 };
 
-Xenyx1202Surface::Xenyx1202Surface (UiContext& c) : ctx (c)
+Xenyx1202Surface::Xenyx1202Surface (UiContext& c)
+    : ctx (c), theme (universal::Theme::dark()), universalKey ("UNIVERSAL MIXER", theme.accent, theme), routingKey ("ROUTING", theme.accent, theme)
 {
     setOpaque (true);
+    universalKey.onClick = [&context = ctx]
+    {
+        juce::MessageManager::callAsync ([&context]
+        {
+            if (context.setInterface)
+                context.setInterface (InterfaceKind::Universal);
+        });
+    };
+    universalKey.setTooltip ("The Universal Mixer");
+    addAndMakeVisible (universalKey);
+    routingKey.isOn = [this] { return isRoutingShown(); };
+    routingKey.onClick = [this] { showRouting (! isRoutingShown()); };
+    routingKey.setTooltip ("The routing: the interface's inputs to the channels, the outputs to the interface");
+    addAndMakeVisible (routingKey);
     panel = std::make_unique<Panel> (*this);
     addAndMakeVisible (*panel);
     build();
@@ -290,6 +308,197 @@ Xenyx1202Surface::Xenyx1202Surface (UiContext& c) : ctx (c)
 }
 
 Xenyx1202Surface::~Xenyx1202Surface() { stopTimer(); }
+
+/** The routing page: two patch grids in the panel's colours. INPUTS: the interface's inputs (across) to the
+    channels, the stereo pairs and 2-TRACK (down); OUTPUTS: the interface's outputs (down) fed by MAIN OUT,
+    CTRL ROOM, PHONES and FX SEND (across). */
+class Xenyx1202Surface::RoutingOverlay final : public juce::Component
+{
+public:
+    RoutingOverlay (Xenyx1202Surface& o, const universal::Theme& t)
+        : owner (o), theme (t), inputsKey ("INPUTS", t.accent, t), outputsKey ("OUTPUTS", t.accent, t), inGrid (t), outGrid (t)
+    {
+        inputsKey.isOn = [this] { return ! outputs; };
+        outputsKey.isOn = [this] { return outputs; };
+        inputsKey.onClick = [this] { showOutputs (false); };
+        outputsKey.onClick = [this] { showOutputs (true); };
+        for (auto* k : { &inputsKey, &outputsKey })
+            addAndMakeVisible (*k);
+        addAndMakeVisible (inGrid);
+        addChildComponent (outGrid);
+        build();
+    }
+
+    void showOutputs (bool shown)
+    {
+        outputs = shown;
+        inGrid.setVisible (! shown);
+        outGrid.setVisible (shown);
+        inputsKey.refresh();
+        outputsKey.refresh();
+        repaint();
+    }
+
+    bool showsOutputs() const noexcept { return outputs; }
+    universal::PatchGrid& inputsGrid() noexcept { return inGrid; }
+    universal::PatchGrid& outputsGrid() noexcept { return outGrid; }
+
+    void build()
+    {
+        auto& e = owner.ctx.engine;
+        rows.clear();
+        for (int i = 0; i < kChannels; ++i)
+            if (auto* s = owner.channel (i))
+                rows.push_back (s);
+        if (auto* s = owner.aux (0))
+            rows.push_back (s); // 2-TRACK
+        sources.clear();
+        for (int i = 0; i < routing::tileCount (routing::Group::LocalIn, e.getHardwareInputNames().size()); ++i)
+            if (const int src = routing::sourceAt (routing::Group::LocalIn, i); src >= 0)
+                sources.push_back (src);
+        ports.clear();
+        for (int i = 0; i < routing::tileCount (routing::Group::LocalOut, e.getHardwareOutputNames().size()); ++i)
+            if (const int port = routing::outputAt (routing::Group::LocalOut, i); port >= 0)
+                ports.push_back (port);
+        signals.clear();
+        if (auto* m = owner.main())
+        {
+            signals.push_back ({ "MAIN L", &m->params.outputLeft });
+            signals.push_back ({ "MAIN R", &m->params.outputRight });
+        }
+        signals.push_back ({ "CTRL L", &e.monitorOutputLeft });
+        signals.push_back ({ "CTRL R", &e.monitorOutputRight });
+        signals.push_back ({ "PHONES L", &e.phones.outputLeft });
+        signals.push_back ({ "PHONES R", &e.phones.outputRight });
+        if (auto* b = owner.bus (0))
+            signals.push_back ({ "FX SEND", &b->params.outputLeft });
+
+        universal::PatchGrid::Model in;
+        in.numRows = [this] { return (int) rows.size(); };
+        in.numColumns = [this] { return (int) sources.size(); };
+        in.rowName = [this] (int r) { return isTwoTrack (r) ? juce::String ("2-TRACK") : rows[(size_t) r]->getLabel(); };
+        in.columnName = [this] (int c) { return routing::sourceLabel (sources[(size_t) c]); };
+        in.state = [this] (int r, int c)
+        {
+            const auto& p = rows[(size_t) r]->params;
+            const int src = sources[(size_t) c], left = p.inputLeft.load(), right = p.inputRight.load();
+            if (left == src)
+                return universal::PatchGrid::On;
+            return p.stereo.load() && left >= 0 && (right == src || (right < 0 && src == left + 1)) ? universal::PatchGrid::Pair
+                                                                                                    : universal::PatchGrid::Off;
+        };
+        in.toggle = [this] (int r, int c)
+        {
+            auto& p = rows[(size_t) r]->params;
+            if (p.inputLeft.load() == sources[(size_t) c])
+            {
+                p.inputLeft = -1;
+                p.inputRight = -1;
+                return;
+            }
+            p.inputLeft = sources[(size_t) c];
+            p.inputRight = isTwoTrack (r) ? sources[(size_t) c] + 1 : -1; // 2-TRACK is a stereo return
+            if (isTwoTrack (r))
+                p.stereo = true;
+        };
+        inGrid.setModel (std::move (in));
+
+        universal::PatchGrid::Model out;
+        out.numRows = [this] { return (int) ports.size(); };
+        out.numColumns = [this] { return (int) signals.size(); };
+        out.rowName = [this] (int r) { return universal::outputPortName (ports[(size_t) r]); };
+        out.columnName = [this] (int c) { return signals[(size_t) c].name; };
+        out.state = [this] (int r, int c)
+        {
+            return signals[(size_t) c].out->load() == ports[(size_t) r] ? universal::PatchGrid::On : universal::PatchGrid::Off;
+        };
+        out.toggle = [this] (int r, int c)
+        {
+            auto* o = signals[(size_t) c].out;
+            if (o->load() == ports[(size_t) r])
+            {
+                o->store (-1);
+                return;
+            }
+            owner.ctx.engine.clearOutput (ports[(size_t) r]); // one signal per port
+            o->store (ports[(size_t) r]);
+        };
+        outGrid.setModel (std::move (out));
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        g.fillAll (juce::Colour (0xff151618));
+        g.setColour (juce::Colour (0xff3b3e42));
+        g.drawRect (getLocalBounds());
+        const auto head = getLocalBounds().removeFromTop (46).withTrimmedLeft (16);
+        g.setColour (theme.text);
+        g.setFont (universal::type::font (universal::type::kTitle, true));
+        g.drawText ("ROUTING", head, juce::Justification::centredLeft);
+        g.setColour (theme.textDim);
+        g.setFont (universal::type::font (universal::type::kCaption));
+        g.drawText (outputs ? "The interface's outputs (down) fed by the mixer's (across)"
+                            : "The interface's inputs (across) to the channels, the stereo pairs and 2-TRACK (down)",
+                    head.withTrimmedLeft (120).withTrimmedRight (270), juce::Justification::centredLeft);
+    }
+
+    void resized() override
+    {
+        auto r = getLocalBounds().reduced (12);
+        auto head = r.removeFromTop (34);
+        outputsKey.setBounds (head.removeFromRight (120).reduced (2));
+        inputsKey.setBounds (head.removeFromRight (120).reduced (2));
+        r.removeFromTop (8);
+        inGrid.setBounds (r);
+        outGrid.setBounds (r);
+    }
+
+private:
+    struct Sig
+    {
+        juce::String name;
+        std::atomic<int32_t>* out;
+    };
+    bool isTwoTrack (int row) const { return rows[(size_t) row] == owner.aux (0); }
+
+    Xenyx1202Surface& owner;
+    const universal::Theme& theme;
+    universal::ToggleKey inputsKey, outputsKey;
+    universal::PatchGrid inGrid, outGrid;
+    std::vector<Strip*> rows;
+    std::vector<int> sources, ports;
+    std::vector<Sig> signals;
+    bool outputs = false;
+};
+
+void Xenyx1202Surface::showRouting (bool shown)
+{
+    if (shown && routingOverlay == nullptr)
+    {
+        routingOverlay = std::make_unique<RoutingOverlay> (*this, theme);
+        addChildComponent (*routingOverlay);
+    }
+    if (routingOverlay != nullptr)
+    {
+        if (shown)
+            routingOverlay->build();
+        routingOverlay->setVisible (shown);
+        if (shown)
+            routingOverlay->toFront (false);
+    }
+    routingKey.refresh();
+    resized();
+}
+
+bool Xenyx1202Surface::isRoutingShown() const noexcept { return routingOverlay != nullptr && routingOverlay->isVisible(); }
+juce::Component* Xenyx1202Surface::getRoutingPage() noexcept { return routingOverlay.get(); }
+
+universal::PatchGrid& Xenyx1202Surface::getRoutingGrid (bool outputs)
+{
+    if (routingOverlay == nullptr)
+        showRouting (true);
+    return outputs ? routingOverlay->outputsGrid() : routingOverlay->inputsGrid();
+}
 
 int Xenyx1202Surface::rowOf (int ch) noexcept { return ch < 4 ? ch : 4 + (ch - 4) / 2; }
 bool Xenyx1202Surface::rightOf (int ch) noexcept { return ch >= 4 && ch % 2 == 0; }
@@ -622,6 +831,10 @@ void Xenyx1202Surface::resized()
     storeKey.setBounds (bar.removeFromLeft (80));
     bar.removeFromLeft (6);
     newKey.setBounds (bar.removeFromLeft (70));
+    universalKey.setBounds (getLocalBounds().removeFromTop (kBarHeight).removeFromRight (190).reduced (universal::sizes::kGap, 7));
+    routingKey.setBounds (getLocalBounds().removeFromTop (kBarHeight).withTrimmedRight (190).removeFromRight (110).reduced (universal::sizes::kGap, 7));
+    if (routingOverlay != nullptr)
+        routingOverlay->setBounds (getLocalBounds().withTrimmedTop (kBarHeight).reduced (8));
 
     const auto area = getLocalBounds().withTrimmedTop (kBarHeight).reduced (8).toFloat();
     const float s = juce::jmin (area.getWidth() / (float) kPanelWidth, area.getHeight() / (float) kPanelHeight);

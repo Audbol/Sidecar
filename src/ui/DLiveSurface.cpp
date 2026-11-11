@@ -1606,7 +1606,7 @@ DLiveSurface::DLiveSurface (UiContext& c)
     for (int i = 0; i < 10; ++i)
         softKey (i + 1, { 1812, 56 + i * 38, 76, 32 });
     for (int i = 0; i < 6; ++i)
-        softKey (11 + i, { 1812, 456 + i * 44, 76, 36 });
+        softKey (11 + i, { 1812, 516 + i * 44, 76, 36 }); // below the seam of the upper panel, as the photographs have 11
     for (int i = 0; i < 3; ++i)
         softKey (17 + i, { 1812, 900 + i * 50, 76, 40 });
 
@@ -2051,6 +2051,7 @@ void DLiveSurface::resized()
     c3500Key.setBounds (bar.removeFromRight (190).reduced (sizes::kGap, 7));
     screenHost.setBounds (0, 0, dl::kTouchW, dl::kTouchH);
     screenHost.setTransform (juce::AffineTransform::scale (kScreenScale).translated ((float) kScreenX, (float) kScreenY).followedBy (design));
+    maximiser.layout();
 }
 
 } // namespace livedaw::ui

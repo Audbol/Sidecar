@@ -1,4 +1,5 @@
 #include "ui/universal/SetupView.h"
+#include "ui/MixerChooser.h"
 
 namespace livedaw::ui::universal
 {
@@ -154,7 +155,7 @@ SetupView::SetupView (UiContext& c, const Theme& t)
     addChildComponent (revertKey);
 
     interfaceChoice.caption = "INTERFACE";
-    interfaceChoice.items = [] { return juce::StringArray { "WING", "UNIVERSAL", "X32", "PROMIX 01", "02R", "SQ-5", "01V", "DLIVE" }; };
+    interfaceChoice.items = [] { juce::StringArray names; for (const auto& m : mixerChooser::mixers()) names.add (m.name); return names; };
     interfaceChoice.current = [this] { return (int) ctx.interfaceKind; };
     interfaceChoice.choose = [this] (int i)
     {

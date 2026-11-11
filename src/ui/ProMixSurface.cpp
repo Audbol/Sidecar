@@ -477,7 +477,9 @@ namespace promix
         const auto capColour = param == 16 ? juce::Colour (0xff9fb3d6)
                              : param >= 17 && param <= 20 ? juce::Colour (0xffe8a294)
                              : param == 21 ? juce::Colour (0xff55585c) : juce::Colour (0xffe0d6ba);
-        hw::ribbedFaderCap (g, cx, yOf (step), 22.0f, 46.0f, 18.0f, capColour);
+        // Never over the printed numbers (they end 22 px from the strip's edge): a narrower cap on a narrow strip.
+        const float capHalf = juce::jlimit (10.0f, 22.0f, cx - 28.0f);
+        hw::ribbedFaderCap (g, cx, yOf (step), capHalf, 46.0f, 18.0f * capHalf / 22.0f, capColour);
     }
 
     void Fader::mouseDown (const juce::MouseEvent&)
@@ -4116,6 +4118,7 @@ void ProMixSurface::resized()
         tapes[(size_t) i]->setBounds (tapeRow.withTrimmedTop (24).withHeight (26).reduced (2, 0).translated (0, 0));
         x += w;
     }
+    maximiser.layout();
 }
 
 } // namespace livedaw::ui

@@ -383,11 +383,11 @@ namespace dm2k
         g.setColour (juce::Colour (0xff08090b));
         g.fillRoundedRectangle (juce::Rectangle<float> (cx - 2.5f, t.getY() - 6.0f, 5.0f, t.getHeight() + 14.0f), 2.0f);
         const float y = t.getBottom() - t.getHeight() * (float) position;
-        hw::ribbedFaderCap (g, cx, y, 13.0f, 17.0f, 9.0f, juce::Colour (0xffb4b7bb));
+        hw::ribbedFaderCap (g, cx, y, 10.5f, 17.0f, 7.0f, juce::Colour (0xffb4b7bb)); // narrow: the legends either side stay clear
         g.setColour (juce::Colour (0xfff1f1ec));
-        g.fillRoundedRectangle (juce::Rectangle<float> (cx - 13.0f, y + 7.0f, 26.0f, 9.0f), 1.5f);
+        g.fillRoundedRectangle (juce::Rectangle<float> (cx - 10.5f, y + 7.0f, 21.0f, 9.0f), 1.5f);
         g.setColour (juce::Colours::black.withAlpha (0.25f));
-        g.fillRect (cx - 13.0f, y - 0.5f, 26.0f, 1.0f);
+        g.fillRect (cx - 10.5f, y - 0.5f, 21.0f, 1.0f);
     }
 
     void Fader::mouseDown (const juce::MouseEvent&) { dragStart = position; }
@@ -1960,6 +1960,7 @@ void Dm2000Surface::resized()
     universalKey.setBounds (juce::Rectangle<int> (kDesignWidth - 190, 0, 190, kTopBar).reduced (sizes::kGap, 5));
     display.setBounds (0, 0, Display::kWidth, Display::kHeight);
     display.setTransform (juce::AffineTransform::scale ((float) kLcdW / (float) Display::kWidth).translated ((float) kLcdX, (float) kLcdY).followedBy (design));
+    maximiser.layout();
 }
 
 } // namespace livedaw::ui

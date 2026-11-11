@@ -202,7 +202,8 @@ namespace pro2
     void Knob::setBinding (KnobBinding b)
     {
         binding = std::move (b);
-        shown = -1.0f;
+        // At the new strip's value at once (-1 drew it at the centre until the next refresh: a jiggle).
+        shown = binding.isValid() ? binding.get() : -1.0f;
         repaint();
     }
 
@@ -571,6 +572,45 @@ namespace pro2
             return input[juce::jlimit (0, 3, band)];
         return "band " + juce::String (6 - juce::jlimit (0, 5, band));
     }
+    // ---- the trackball -----------------------------------------------------------------------------
+
+    Trackball::Trackball (Screen& s, Part p) : part (p), screen (s)
+    {
+        setMouseCursor (p == Part::Ball ? juce::MouseCursor::DraggingHandCursor : juce::MouseCursor::PointingHandCursor);
+        setTooltip (p == Part::Ball ? "The trackball: drag to move the cursor on the screen"
+                                    : p == Part::LeftKey ? "Trackball key: click at the cursor (hold and drag to turn a control)"
+                                                         : "Trackball key: click at the cursor");
+    }
+
+    bool Trackball::hitTest (int x, int y)
+    {
+        // The ball is round.
+        const auto c = getLocalBounds().toFloat().getCentre();
+        return part != Part::Ball || c.getDistanceFrom ({ (float) x, (float) y }) <= (float) getWidth() * 0.5f;
+    }
+
+    void Trackball::paint (juce::Graphics&) {} // drawn in the surface's own paint
+
+    void Trackball::mouseDown (const juce::MouseEvent& e)
+    {
+        last = e.position;
+        if (part != Part::Ball)
+            screen.cursorDown();
+    }
+
+    void Trackball::mouseDrag (const juce::MouseEvent& e)
+    {
+        // A ball turns the cursor 2.2 screen pixels to a surface pixel; the keys take a drag as the ball does.
+        const auto d = e.position - last;
+        last = e.position;
+        screen.moveCursor (d.x * 2.2f, d.y * 2.2f);
+    }
+
+    void Trackball::mouseUp (const juce::MouseEvent&)
+    {
+        if (part != Part::Ball)
+            screen.cursorUp();
+    }
 } // namespace pro2
 
 //==============================================================================
@@ -648,6 +688,8 @@ Pro2Surface::Pro2Surface (UiContext& c)
     universalKey.setTooltip ("The Universal Mixer");
     addAndMakeVisible (universalKey);
     addAndMakeVisible (screen);
+    for (auto* t : { &trackBall, &trackLeft, &trackRight })
+        addAndMakeVisible (*t);
 
     // The bays: LCD select, MUTE, SOLO, the meter and the fader of each strip.
     for (int i = 0; i < 8; ++i)
@@ -2229,6 +2271,10 @@ void Pro2Surface::resized()
     universalKey.setBounds (juce::Rectangle<int> (kDesignWidth - 190, 0, 190, kTopBar).reduced (sizes::kGap, 5));
     screen.setBounds (0, 0, pro2::Screen::kWidth, pro2::Screen::kHeight);
     screen.setTransform (juce::AffineTransform::scale ((float) kScreenW / (float) pro2::Screen::kWidth).translated ((float) kScreenX, (float) kScreenY).followedBy (design));
+    trackBall.setBounds (juce::Rectangle<int> (104, 104).withCentre ({ 1086, 996 }));
+    trackLeft.setBounds (1036, 896, 42, 26);
+    trackRight.setBounds (1094, 896, 42, 26);
+    maximiser.layout();
 }
 
 } // namespace livedaw::ui

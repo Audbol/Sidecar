@@ -263,6 +263,13 @@ public:
             file.deleteFile();
             juce::FileOutputStream out (file);
             expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out), file.getFullPathName());
+            // The routing page over the panel (inputs, then outputs).
+            skin.showRouting (true);
+            const auto routing = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
+            const auto routingFile = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile ("xenyxq1202-routing.png");
+            routingFile.deleteFile();
+            juce::FileOutputStream routingOut (routingFile);
+            expect (routingOut.openedOk() && juce::PNGImageFormat().writeImageToStream (routing, routingOut), routingFile.getFullPathName());
         }
     }
 

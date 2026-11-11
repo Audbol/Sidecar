@@ -99,7 +99,19 @@ void Inspector::openStep (int stepKind, int uid)
         return;
     }
     showPage (Page::Chain);
-    chain.selectKind (stepKind, uid);
+    if (chain.selectKind (stepKind, uid))
+        return;
+    // A console whose chain has no INPUT row (a PRO2): SOURCE / ROUTING opens the input block's own
+    // editor (source, trim, delay, routing) without a row, rather than a neighbour's block.
+    if (stepKind == ld::kStepInput && strip != nullptr)
+    {
+        ChainStep input;
+        input.kind = ld::kStepInput;
+        editor.setTarget (BlockTarget::of (ctx, *strip, input));
+        return;
+    }
+    if (uid >= 0)
+        chain.selectKind (stepKind);
 }
 
 void Inspector::stepStrip (int delta)
