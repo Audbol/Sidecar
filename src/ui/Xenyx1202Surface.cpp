@@ -307,7 +307,14 @@ Xenyx1202Surface::Xenyx1202Surface (UiContext& c)
     startTimerHz (30);
 }
 
-Xenyx1202Surface::~Xenyx1202Surface() { stopTimer(); }
+Xenyx1202Surface::~Xenyx1202Surface()
+{
+    stopTimer();
+    // The panel's controls are made with new and only parented to it (a component does not own its children).
+    for (auto* c : controls)
+        delete c;
+    controls.clear();
+}
 
 /** The routing page: two patch grids in the panel's colours. INPUTS: the interface's inputs (across) to the
     channels, the stereo pairs and 2-TRACK (down); OUTPUTS: the interface's outputs (down) fed by MAIN OUT,
