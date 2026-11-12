@@ -340,6 +340,10 @@ set(LIVEDAW_UI_SOURCES
     src/ui/Pro2Screen.cpp
     src/ui/Dm2000Surface.cpp
     src/ui/Xenyx1202Surface.cpp
+    src/ui/PluginHostSurface.cpp
+    src/ui/PluginHostRack.cpp
+    src/ui/PluginHostRouting.cpp
+    src/ui/PluginHostScenes.cpp
     src/ui/ConsoleTape.cpp
     src/ui/Dm2000Display.cpp
     src/ui/Sq5Surface.cpp
@@ -529,6 +533,7 @@ if(LIVEDAW_BUILD_TESTS)
     # The Universal Mixer's interface (src/ui/universal).
     target_sources(LiveDAWTests PRIVATE
         tests/UniversalUiTests.cpp
+        tests/PluginHostTests.cpp
         tests/BenchmarkTests.cpp
         tests/ScreenshotTests.cpp)
 

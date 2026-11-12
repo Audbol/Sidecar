@@ -86,6 +86,9 @@ pub trait PluginBridge {
     fn restore_fx(&mut self, slot: usize, mode: InsertMode, description: &str, state: &str) -> Result<(), RestoreError>;
     /// Show load: empties a slot (before restoring the saved processors).
     fn clear_fx(&mut self, _slot: usize) {}
+    /// A scene recall is about to run: plug-ins that can glide take `glide_seconds` to reach the scene's
+    /// parameter values (0: they snap). Called again with 0 once the recall is done.
+    fn begin_recall(&mut self, _glide_seconds: f64) {}
 }
 
 /// For sessions without plugin hosting (tests, safe tools).
@@ -386,6 +389,9 @@ fn capture_chain(s: &Strip, sections: u32, e: &mut Element, bridge: &mut dyn Plu
         let Step::Block(b) = step else { continue };
         let x = c.add_new("B");
         x.set("uid", b.uid()).set("kind", b.kind().as_str()).set("at", at);
+        if b.safe() {
+            x.set("safe", true);
+        }
         if sections & block_section(b.kind()) == 0 {
             continue;
         }
@@ -428,6 +434,10 @@ pub(crate) struct PluginRestore<'a> {
     pub bridge: &'a mut dyn PluginBridge,
     /// None: plug-ins are left alone (safe mode).
     pub mode: Option<InsertMode>,
+    /// The plug-in host's recall: the strip's blocks become the scene's (see `recall_structure`).
+    pub structure: bool,
+    /// SAFE blocks are left alone (a scene recall; a RESTORE and a show load do not keep them).
+    pub keep_safe: bool,
 }
 
 /// Restores a plug-in block from its `<B>`: a recall puts state into the same
@@ -456,6 +466,47 @@ fn get_plugin_block(x: &Element, p: &PluginParams, plug: &mut PluginRestore, war
     }
 }
 
+/// The plug-in host's scene recall: the strip's blocks become the scene's. The blocks the scene lacks
+/// go (a plug-in is closed first), the ones it has and the strip lacks come back empty (their settings
+/// and plug-ins follow in `apply_chain`, the host creating a plug-in from its saved description), and
+/// they take the scene's order. A SAFE block stays as it is, present and in its place.
+fn recall_structure(engine: &Engine, s: &Strip, e: &Element, plug: &mut PluginRestore) {
+    let mut wanted: Vec<(u32, BlockKind, usize)> = e
+        .child("Chain")
+        .map(|c| {
+            c.children_named("B")
+                .filter_map(|x| {
+                    let kind = BlockKind::parse(x.str_or("kind", ""))?;
+                    Some((u32::try_from(x.int_or("uid", -1)).ok()?, kind, usize::try_from(x.int_or("at", -1)).ok()?))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    wanted.sort_by_key(|w| w.2);
+    for b in s.blocks() {
+        if (plug.keep_safe && b.safe()) || wanted.iter().any(|w| w.0 == b.uid()) {
+            continue;
+        }
+        if let BlockParams::Plugin(p) = &b.params {
+            plug.bridge.clear_fx(PLUGIN_BLOCK_SLOT_BASE + p.pid() as usize);
+        }
+        engine.remove_block(s, b.uid());
+    }
+    for &(uid, kind, at) in &wanted {
+        if !s.blocks().iter().any(|b| b.uid() == uid) {
+            engine.restore_block(s, uid, kind, at);
+        }
+    }
+    for &(uid, _, at) in &wanted {
+        let blocks = s.blocks();
+        let Some(b) = blocks.iter().find(|b| b.uid() == uid) else { continue };
+        if (plug.keep_safe && b.safe()) || matches!(s.steps().get(at), Some(Step::Block(x)) if x.uid() == uid) {
+            continue;
+        }
+        engine.move_block(s, uid, at);
+    }
+}
+
 /// Console load: rebuilds the strip's extra blocks from `<Chain>` (none
 /// without one: the template); their settings come with `apply_chain`.
 fn restore_chain(engine: &Engine, s: &Strip, e: &Element) {
@@ -463,7 +514,7 @@ fn restore_chain(engine: &Engine, s: &Strip, e: &Element) {
     let Some(c) = e.child("Chain") else { return };
     // Blocks and user taps, each put back at its step (in step order).
     enum Item {
-        Block(u32, BlockKind),
+        Block(u32, BlockKind, bool),
         Tap(u8),
     }
     let mut items: Vec<(usize, Item)> = c
@@ -471,7 +522,7 @@ fn restore_chain(engine: &Engine, s: &Strip, e: &Element) {
         .filter_map(|x| {
             let at = usize::try_from(x.int_or("at", -1)).ok()?;
             let item = match x.name.as_str() {
-                "B" => Item::Block(u32::try_from(x.int_or("uid", -1)).ok()?, BlockKind::parse(x.str_or("kind", ""))?),
+                "B" => Item::Block(u32::try_from(x.int_or("uid", -1)).ok()?, BlockKind::parse(x.str_or("kind", ""))?, x.bool_or("safe", false)),
                 "T" => Item::Tap(u8::try_from(x.int_or("id", -1)).ok()?),
                 _ => return None,
             };
@@ -481,8 +532,10 @@ fn restore_chain(engine: &Engine, s: &Strip, e: &Element) {
     items.sort_by_key(|i| i.0);
     for (at, item) in items {
         match item {
-            Item::Block(uid, kind) => {
-                engine.restore_block(s, uid, kind, at);
+            Item::Block(uid, kind, safe) => {
+                if let Some(b) = engine.restore_block(s, uid, kind, at) {
+                    b.set_safe(safe);
+                }
             }
             Item::Tap(id) => {
                 engine.restore_tap(s, id, at);
@@ -498,6 +551,9 @@ fn apply_chain(s: &Strip, e: &Element, sections: u32, plug: &mut PluginRestore, 
     for x in c.children_named("B") {
         let uid = x.int_or("uid", -1);
         let Some(b) = blocks.iter().find(|b| b.uid() as i64 == i64::from(uid)) else { continue };
+        if plug.keep_safe && b.safe() {
+            continue;
+        }
         if sections & block_section(b.kind()) == 0 || x.str_or("kind", "") != b.kind().as_str() {
             continue;
         }
@@ -1572,6 +1628,9 @@ fn apply_strip(
     if let Some(d) = e.child("Dyn").filter(|_| sections & DYNAMICS != 0) {
         get_dyn_slot(d, p.dynamics());
     }
+    if plug.structure && sections & INSERTS != 0 && matches!(s.profile(), Profile::PluginHost(_)) {
+        recall_structure(engine, s, e, plug);
+    }
     apply_chain(s, e, sections, plug, &mut result.warnings);
     if let Some(ins) = e.child("Ins").filter(|_| sections & INSERTS != 0) {
         get_i(ins, "proc", &p.process_order);
@@ -1699,7 +1758,7 @@ pub fn apply(
             sections,
             &mut fades,
             &mut result,
-            &mut PluginRestore { bridge: &mut *bridge, mode: Some(InsertMode::StateOnly) },
+            &mut PluginRestore { bridge: &mut *bridge, mode: Some(InsertMode::StateOnly), structure: true, keep_safe: respect_recall_safe },
         );
     }
 
@@ -2018,7 +2077,7 @@ pub fn load_console(engine: &Engine, console: &Element, bridge: &mut dyn PluginB
             section::ALL,
             &mut None,
             &mut result,
-            &mut PluginRestore { bridge: &mut *bridge, mode: load_plugins.then_some(InsertMode::Instantiate) },
+            &mut PluginRestore { bridge: &mut *bridge, mode: load_plugins.then_some(InsertMode::Instantiate), structure: false, keep_safe: false },
         );
         s.params.recall_safe.store(e.bool_or("recallSafe", false), Relaxed);
     }

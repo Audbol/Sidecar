@@ -241,6 +241,19 @@ pub unsafe extern "C" fn ld_engine_move_block(e: *const Engine, s: *const Strip,
     guard(false, || e.move_block(s, uid, at(at_step)))
 }
 
+/// Whether block `uid` is SAFE (a scene recall leaves it alone).
+#[no_mangle]
+pub unsafe extern "C" fn ld_strip_block_safe(s: *const Strip, uid: i32) -> bool {
+    let (Some(s), Ok(uid)) = (strip(s), u32::try_from(uid)) else { return false };
+    guard(false, || s.blocks().iter().any(|b| b.uid() == uid && b.safe()))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn ld_strip_set_block_safe(s: *const Strip, uid: i32, safe: bool) {
+    let (Some(s), Ok(uid)) = (strip(s), u32::try_from(uid)) else { return };
+    guard((), || s.blocks().iter().filter(|b| b.uid() == uid).for_each(|b| b.set_safe(safe)));
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn ld_engine_remove_block(e: *const Engine, s: *const Strip, uid: i32) -> bool {
     let (Some(e), Some(s), Ok(uid)) = (engine(e), strip(s), u32::try_from(uid)) else { return false };
@@ -305,6 +318,32 @@ pub unsafe extern "C" fn ld_plugin_block_state(e: *const Engine, pid: u32, what:
             _ => -1,
         },
         None => -1,
+    })
+}
+
+/// Message thread: keys the side chain of plug-in block `pid` from input channel `channel` (0-based;
+/// negative: none), before that channel's chain or (`post`) after it. False when refused: a gone
+/// block, an unknown channel, or the block's own channel after its chain. The host's process call
+/// then carries the key as a third, mono channel (`InsertCallbacks`).
+#[no_mangle]
+pub unsafe extern "C" fn ld_plugin_block_set_key(e: *const Engine, pid: u32, channel: i32, post: bool) -> bool {
+    let Some(e) = engine(e) else { return false };
+    guard(false, || e.set_plugin_block_key(pid, channel, post))
+}
+
+/// Message thread: the key of plug-in block `pid`: its channel (0-based, -1 none), and with `post`
+/// whether it is taken after the channel's chain. Returns -2 if the block is gone.
+#[no_mangle]
+pub unsafe extern "C" fn ld_plugin_block_key(e: *const Engine, pid: u32, post: *mut bool) -> i32 {
+    let Some(e) = engine(e) else { return -2 };
+    guard(-2, || match e.plugin_block_key(pid) {
+        Some((channel, is_post)) => {
+            if !post.is_null() {
+                *post = is_post;
+            }
+            channel
+        }
+        None => -2,
     })
 }
 

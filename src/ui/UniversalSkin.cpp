@@ -32,7 +32,7 @@ namespace
         if (profile == ld::kProfileSq5)       return { InterfaceKind::Sq5, "SQ-5 SURFACE", "SQ-5" };
         if (profile == ld::kProfileYamaha01V) return { InterfaceKind::Yamaha01V, "01V SURFACE", "01V" };
         if (profile == ld::kProfileDLive)     return { InterfaceKind::DLive, "DLIVE SURFACE", "dLive" };
-        if (profile == ld::kProfilePluginHost) return { InterfaceKind::PluginHost, "PLUGIN HOST", "PLUGIN HOST" }; // no surface yet: no way back
+        if (profile == ld::kProfilePluginHost) return { InterfaceKind::PluginHost, "PLUGIN HOST SURFACE", "PLUGIN HOST" };
         return { InterfaceKind::Wing, "WING SURFACE", "WING" };
     }
 } // namespace
@@ -68,7 +68,7 @@ UniversalSkin::UniversalSkin (UiContext& c)
             context.setInterface (kind);
     });
     addChildComponent (wingKey);
-    wingKey.setVisible (ctx.engine.getProfile() != ld::kProfilePluginHost);
+    wingKey.setVisible (true);
     // The show: NEW, OPEN, SAVE and SAVE AS (the shell's, as the WING's LIBRARY uses them).
     showKey.onClick = [this]
     {

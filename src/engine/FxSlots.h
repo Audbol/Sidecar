@@ -108,6 +108,8 @@ public:
     /** Plugins in the slot: 0, 1 for a plugin on its own, else the chain's size. */
     int getNumChainMembers (int slot) const noexcept;
     juce::AudioPluginInstance* getChainMember (int slot, int index) const noexcept;
+    /** The same plugin, shared: whoever holds it keeps it alive (a scene's glide, see Show). */
+    std::shared_ptr<juce::AudioPluginInstance> getChainMemberShared (int slot, int index) const noexcept;
     bool isChainMemberBypassed (int slot, int index) const noexcept;
     /** No latency while bypassed. Bypassing a plugin on its own makes it a chain
         of one. Bypassing on or off clears the plugin's fault. */
@@ -122,6 +124,16 @@ public:
     PluginChain::View getChainMemberView (int slot, int index) const noexcept;
     /** A view other than the default for a plugin on its own makes it a chain of one. */
     void setChainMemberView (int slot, int index, PluginChain::View);
+    /** Whether the plugin can take a key (PLUGIN HOST): it is in a plugin block, runs in this process
+        (a sandboxed plugin's buses are stereo only) and has a side-chain input bus. */
+    bool chainMemberHasSidechain (int slot, int index) const noexcept;
+    PluginChain::Key getChainMemberKey (int slot, int index) const noexcept;
+    /** Keys the plugin's side chain from a channel's input or output (none: Key{}). A block has one key,
+        so every plugin of its chain that has a side chain takes it. A plugin on its own becomes a chain
+        of one. False when refused: the plugin has no side chain, or the channel would key itself after
+        its own chain (the key then stays as it was). The engine delays the key of a channel that is
+        processed after the keyed one by a block (see PluginChain). */
+    bool setChainMemberKey (int slot, int index, PluginChain::Key);
     /** Inserts `plugin` at `index` (-1: the end). False (and `plugin` dropped) if
         the slot has no plugin yet or its chain is full. */
     bool addToChain (int slot, std::unique_ptr<juce::AudioPluginInstance> plugin, int index = -1);
@@ -192,6 +204,8 @@ public:
 private:
     struct Holder;
     Holder* holderAt (int slot) const noexcept;
+    /** Tells the engine the key of the plugin block `slot` holds now (its chain's; none otherwise). */
+    void syncKey (int slot);
     /** `rearranged`: `plugin` is a chain of the slot's plugins (added to, moved, removed from), so
         a faulted (auto-bypassed) slot stays faulted until the fault is cleared. */
     void install (int slot, std::shared_ptr<juce::AudioPluginInstance> plugin, bool rearranged = false);

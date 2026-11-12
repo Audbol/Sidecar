@@ -44,7 +44,18 @@ class SandboxedPlugin;
     The state (getStateInformation, createXml) is every member's description,
     bypass, state and chain window view (zoom, collapsed) as a <PLUGINCHAIN>
     element, which shows store in place of a single <PLUGIN>. Faults aren't
-    saved. */
+    saved.
+
+    Side chains: a member that runs in this process and has a second input bus
+    (hasSidechain) can be keyed from the input or the output of any channel of
+    the PLUGIN HOST (Key; message thread, saved with the member). The engine
+    cuts the key channel's signal at that point and the block's Holder hands it
+    over with setKeyInput() just before processBlock(); the member gets it on
+    its side-chain channels (a mono key on every one of them). The key of a
+    channel processed after the keyed one is one block late (the engine orders
+    the channels so that this happens only for cycles and long chains: see
+    keytap.rs). A member without a key hears silence there. A sandboxed plugin
+    has no side-chain bus (its buses are stereo only), so it offers no key. */
 class PluginChain final : public juce::AudioPluginInstance
 {
 public:
@@ -73,6 +84,18 @@ public:
     /** The nearest step to `percent`. */
     static int snapZoom (int percent) noexcept;
 
+    /** What a member's side chain listens to: a channel of the PLUGIN HOST (0-based; -1 none),
+        its input before its rack (`post` false) or its output after it. */
+    struct Key
+    {
+        int channel = -1;
+        bool post = false;
+
+        bool isNone() const noexcept { return channel < 0; }
+        bool operator== (const Key& o) const noexcept { return isNone() ? o.isNone() : (channel == o.channel && post == o.post); }
+        bool operator!= (const Key& o) const noexcept { return ! operator== (o); }
+    };
+
     /** A plugin in a chain, shared by the chains that hold it. */
     struct Member final : private juce::AudioProcessorListener
     {
@@ -89,6 +112,10 @@ public:
         std::atomic<FaultKind> fault { FaultKind::none };
         std::atomic<bool> faultUnreported { false };
         View view; // message thread
+        Key key;   // message thread; only a member with hasSidechain() keeps one
+
+        /** The plugin runs in this process and has a side-chain input bus. */
+        bool hasSidechain() const noexcept { return sandboxed == nullptr && numChannels > 2; }
 
         // Message thread: what it was prepared for (0: not prepared).
         double preparedRate = 0.0;
@@ -138,6 +165,20 @@ public:
 
     bool hasSandboxedMember() const noexcept;
 
+    /** Whether member `index` has a side-chain input bus (so it can take a key). */
+    bool hasSidechain (int index) const noexcept { return members[(size_t) index]->hasSidechain(); }
+    Key getKey (int index) const noexcept { return members[(size_t) index]->key; }
+    /** Message thread: the key of a member that has a side chain (ignored for the others). Only
+        FxSlots::setChainMemberKey tells the engine. */
+    void setKey (int index, Key);
+    /** Any member keyed (shows must store the chain format). */
+    bool hasKeys() const noexcept;
+    /** The key the block asks the engine for: that of the first keyed member. */
+    Key getBlockKey() const noexcept;
+    /** Audio thread, just before processBlock(): the key's block of audio (mono, `n` samples; nullptr:
+        none) for the members that have a key. The pointer is read in that call only. */
+    void setKeyInput (const float* mono) noexcept { keyInput = mono; }
+
     /** Any thread: works the latency out again (the members' latencies may have
         changed without telling their host) and reports a change. */
     void updateLatency();
@@ -161,9 +202,10 @@ public:
     /** "output NaN/Inf", "threw an exception"... */
     static juce::String describeFault (FaultKind);
 
-    /** The chain as <PLUGINCHAIN name=.. views=1><MEMBER bypass=.. zoom=.. collapsed=..><PLUGIN ../><STATE>base64</STATE></MEMBER>..</PLUGINCHAIN>
+    /** The chain as <PLUGINCHAIN name=.. views=1><MEMBER bypass=.. zoom=.. collapsed=.. keyChannel=.. keyPost=..><PLUGIN ../><STATE>base64</STATE></MEMBER>..</PLUGINCHAIN>
         (zoom and collapsed only when not the default; `views` says every member's
-        view is stored, so a missing one is the default). A member that throws
+        view is stored, so a missing one is the default; the key attributes only on
+        a keyed member, and `keys` says keys are stored, so a missing one is none). A member that throws
         while saving its state is stored without one. */
     std::unique_ptr<juce::XmlElement> createXml() const;
     /** The attribute a single plugin's <PLUGIN> description carries when it was
@@ -179,6 +221,9 @@ public:
         /** Whether `view` was saved (scenes and shows from before it weren't:
             a recall then keeps the current view). */
         bool hasView = false;
+        Key key;
+        /** Whether `key` was saved (older shows and scenes have none: a recall keeps the current key). */
+        bool hasKey = false;
         juce::MemoryBlock state;
     };
     /** Reads a <PLUGINCHAIN> element; false if it isn't one or a member's description is unreadable. */
@@ -218,6 +263,7 @@ private:
     // Audio thread.
     juce::AudioBuffer<float> scratch;
     juce::AudioBuffer<float> dry; // a member's input, put back if it fails
+    const float* keyInput = nullptr;
     int maxChannels = 2;
     bool lastBlockFailed = false;
 

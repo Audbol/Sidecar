@@ -84,6 +84,9 @@ pub type RestoreFxFn = unsafe extern "C" fn(
 /// Empties FX slot `slot` (show load, before the saved plugins are created).
 pub type ClearFxFn = unsafe extern "C" fn(ctx: *mut c_void, slot: i32);
 
+/// A scene recall is about to run (or is done: 0): the seconds its plug-ins take to glide to the scene's values.
+pub type BeginRecallFn = unsafe extern "C" fn(ctx: *mut c_void, glide_seconds: f64);
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct LdPluginBridge {
@@ -91,6 +94,7 @@ pub struct LdPluginBridge {
     pub capture: Option<CaptureFxFn>,
     pub restore: Option<RestoreFxFn>,
     pub clear: Option<ClearFxFn>,
+    pub begin_recall: Option<BeginRecallFn>,
 }
 
 impl PluginBridge for LdPluginBridge {
@@ -121,6 +125,13 @@ impl PluginBridge for LdPluginBridge {
         if let Some(f) = self.clear {
             // SAFETY: host contract (see ClearFxFn).
             unsafe { f(self.ctx, slot as i32) };
+        }
+    }
+
+    fn begin_recall(&mut self, glide_seconds: f64) {
+        if let Some(f) = self.begin_recall {
+            // SAFETY: host contract (see BeginRecallFn).
+            unsafe { f(self.ctx, glide_seconds) };
         }
     }
 }
@@ -311,6 +322,7 @@ pub unsafe extern "C" fn ld_show_create(bridge: *const LdPluginBridge) -> *mut L
         capture: None,
         restore: None,
         clear: None,
+        begin_recall: None,
     });
     guard(std::ptr::null_mut(), || Box::into_raw(Box::new(LdShow { show: Show::new(), bridge })))
 }
@@ -534,6 +546,18 @@ pub unsafe extern "C" fn ld_scene_set_scope(s: *mut LdShow, scene: i32, scope: u
 pub unsafe extern "C" fn ld_scene_set_fade_seconds(s: *mut LdShow, scene: i32, seconds: f64) {
     if let Some(sc) = show(s).and_then(|s| s.show.scene_mut(scene)) {
         sc.fade_seconds = if seconds.is_finite() { seconds.clamp(0.0, livedaw_session::show::MAX_FADE_SECONDS) } else { 0.0 };
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn ld_scene_glide(s: *mut LdShow, scene: i32) -> bool {
+    show(s).and_then(|s| s.show.scene(scene)).is_some_and(|sc| sc.glide)
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn ld_scene_set_glide(s: *mut LdShow, scene: i32, glide: bool) {
+    if let Some(sc) = show(s).and_then(|s| s.show.scene_mut(scene)) {
+        sc.glide = glide;
     }
 }
 

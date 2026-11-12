@@ -5,9 +5,9 @@ namespace livedaw
 
 namespace
 {
-    ld::Show* createShow (Show* owner, ld::CaptureFxFn capture, ld::RestoreFxFn restore, ld::ClearFxFn clear)
+    ld::Show* createShow (Show* owner, ld::CaptureFxFn capture, ld::RestoreFxFn restore, ld::ClearFxFn clear, ld::BeginRecallFn begin)
     {
-        const ld::PluginBridge bridge { owner, capture, restore, clear };
+        const ld::PluginBridge bridge { owner, capture, restore, clear, begin };
         auto* s = ld::ld_show_create (&bridge);
         if (s == nullptr)
             std::abort();
@@ -27,6 +27,7 @@ namespace
         if (! single.description.loadFromXml (*xml))
             return false;
         single.hasView = xml->getStringAttribute (PluginChain::kDefaultViewAttribute) == "default"; // the default view (else from before views)
+        single.hasKey = single.hasView; // saved with the keys: a plugin on its own has none
         if (state.isNotEmpty())
             single.state.fromBase64Encoding (state);
         saved = { std::move (single) };
@@ -43,7 +44,7 @@ namespace
 Show::Show (MixerEngine& e, PluginHost& h)
     : engine (e),
       host (h),
-      handle (createShow (this, &Show::captureFx, &Show::restoreFx, &Show::clearFx)),
+      handle (createShow (this, &Show::captureFx, &Show::restoreFx, &Show::clearFx, &Show::beginRecall)),
       layers (ld::ld_show_layers (handle))
 {
 }
@@ -125,63 +126,46 @@ int32_t Show::restoreFx (void* ctx, int32_t slot, int32_t mode, const char* desc
         if (mode == 0) // recall: only into the same plugins already loaded, in the same order
         {
             const int n = fx.getNumChainMembers (slot);
-            if (n != (int) saved.size())
-                return 1;
-            for (int i = 0; i < n; ++i)
-                if (PluginHost::describe (*fx.getChainMember (slot, i)).createIdentifierString()
-                    != PluginHost::resolveDescription (saved[(size_t) i].description).createIdentifierString())
+            bool same = n == (int) saved.size();
+            for (int i = 0; same && i < n; ++i)
+                same = PluginHost::describe (*fx.getChainMember (slot, i)).createIdentifierString()
+                       == PluginHost::resolveDescription (saved[(size_t) i].description).createIdentifierString();
+
+            if (! same)
+            {
+                if (! FxSlots::isBlockSlot (slot) || self.engine.getProfile() != ld::kProfilePluginHost)
                     return 1;
+                // The PLUGIN HOST: the scene's plug-ins are made again from their descriptions.
+                juce::String message;
+                const int status = self.recreateBlock (slot, saved, message);
+                if (message.isNotEmpty())
+                    appendTo (error, message);
+                return status;
+            }
 
             for (int i = 0; i < n; ++i)
             {
                 const auto& s = saved[(size_t) i];
-                restoreState (*fx.getChainMember (slot, i), s.state);
+                self.applyState (slot, i, s.state);
                 if (s.bypassed != fx.isChainMemberBypassed (slot, i))
                     fx.setChainMemberBypassed (slot, i, s.bypassed);
                 // The plugin window's zoom and collapse go with the scene (older ones keep the current view).
                 if (s.hasView && s.view != fx.getChainMemberView (slot, i))
                     fx.setChainMemberView (slot, i, s.view);
+                // So does its side-chain key (older ones keep the current key).
+                if (s.hasKey && s.key != fx.getChainMemberKey (slot, i))
+                    fx.setChainMemberKey (slot, i, s.key);
             }
             return 0;
         }
 
         // Show load: create the plugins (each recorded for the crash blacklist,
         // or in the sandbox). One that can't be created is left out and reported.
-        std::vector<std::pair<std::unique_ptr<juce::AudioPluginInstance>, const PluginChain::Saved*>> created;
-        juce::StringArray failures;
-        for (const auto& s : saved)
-        {
-            juce::String message;
-            auto instance = self.host.createInstance (s.description, self.engine.getSampleRate(), self.engine.getBlockSize(), message);
-            if (instance == nullptr)
-            {
-                failures.add ((saved.size() > 1 ? s.description.name + ": " : juce::String())
-                              + (message.isNotEmpty() ? message : juce::String ("could not be created")));
-                continue;
-            }
-            restoreState (*instance, s.state);
-            created.emplace_back (std::move (instance), &s);
-        }
-
-        if (created.size() == 1 && ! created.front().second->bypassed && created.front().second->view.isDefault())
-        {
-            fx.setPlugin (slot, std::move (created.front().first)); // a plugin on its own
-        }
-        else if (! created.empty())
-        {
-            std::vector<PluginChain::MemberPtr> members;
-            for (auto& [instance, s] : created)
-            {
-                members.push_back (PluginChain::makeMember (std::move (instance), s->bypassed));
-                members.back()->view = s->view;
-            }
-            fx.setPlugin (slot, std::make_unique<PluginChain> (std::move (members)));
-        }
-
-        if (failures.isEmpty())
-            return 0;
-        appendTo (error, failures.joinIntoString ("; "));
-        return 2;
+        juce::String message;
+        const int status = self.recreateBlock (slot, saved, message);
+        if (message.isNotEmpty())
+            appendTo (error, message);
+        return status;
     }
     catch (const std::exception& e)
     {
@@ -192,6 +176,140 @@ int32_t Show::restoreFx (void* ctx, int32_t slot, int32_t mode, const char* desc
         appendTo (error, "the plugin threw an exception");
     }
     return 2;
+}
+
+int32_t Show::recreateBlock (int slot, const std::vector<PluginChain::Saved>& saved, juce::String& error)
+{
+    auto& fx = engine.getFx();
+    std::vector<std::pair<std::unique_ptr<juce::AudioPluginInstance>, const PluginChain::Saved*>> created;
+    juce::StringArray failures;
+    for (const auto& s : saved)
+    {
+        juce::String message;
+        auto instance = host.createInstance (s.description, engine.getSampleRate(), engine.getBlockSize(), message);
+        if (instance == nullptr)
+        {
+            failures.add ((saved.size() > 1 ? s.description.name + ": " : juce::String())
+                          + (message.isNotEmpty() ? message : juce::String ("could not be created")));
+            continue;
+        }
+        restoreState (*instance, s.state);
+        created.emplace_back (std::move (instance), &s);
+    }
+
+    if (! created.empty() && onFxCleared)
+        onFxCleared (slot); // the plugins it had are replaced: their editors go first
+    glides.erase (std::remove_if (glides.begin(), glides.end(), [slot] (const Glide& g) { return g.slot == slot; }), glides.end());
+
+    if (created.size() == 1 && ! created.front().second->bypassed && created.front().second->view.isDefault()
+        && created.front().second->key.isNone())
+    {
+        fx.setPlugin (slot, std::move (created.front().first)); // a plugin on its own
+    }
+    else if (! created.empty())
+    {
+        std::vector<PluginChain::MemberPtr> members;
+        for (auto& [instance, s] : created)
+        {
+            members.push_back (PluginChain::makeMember (std::move (instance), s->bypassed));
+            members.back()->view = s->view;
+            if (members.back()->hasSidechain())
+                members.back()->key = s->key;
+        }
+        fx.setPlugin (slot, std::make_unique<PluginChain> (std::move (members)));
+    }
+
+    if (failures.isEmpty())
+        return 0;
+    error = failures.joinIntoString ("; ");
+    return 2;
+}
+
+void Show::beginRecall (void* ctx, double seconds)
+{
+    static_cast<Show*> (ctx)->glideSeconds = seconds;
+}
+
+void Show::applyState (int slot, int index, const juce::MemoryBlock& state)
+{
+    auto& fx = engine.getFx();
+    auto plugin = fx.getChainMemberShared (slot, index);
+    if (plugin == nullptr || state.getSize() == 0)
+        return;
+
+    // Whatever was gliding in this plugin ends here: this state is the one that counts.
+    glides.erase (std::remove_if (glides.begin(), glides.end(), [&] (const Glide& g) { return g.plugin == plugin; }), glides.end());
+
+    // GLIDE: the continuous parameters move to the scene's values, the others take theirs now. The scene's values
+    // are read from a second copy of the plugin that has taken the state (a live plugin would jump to them for a
+    // moment). A plugin in the sandbox, one that can't be copied and one without parameters snap.
+    if (glideSeconds > 0.0 && dynamic_cast<SandboxedPlugin*> (plugin.get()) == nullptr)
+    {
+        juce::String message;
+        std::unique_ptr<juce::AudioPluginInstance> probe;
+        try
+        {
+            probe = host.createInstance (PluginHost::describe (*plugin), engine.getSampleRate(), engine.getBlockSize(), message);
+            if (probe != nullptr)
+                restoreState (*probe, state);
+        }
+        catch (...)
+        {
+            probe.reset();
+        }
+
+        const auto& now = plugin->getParameters();
+        if (probe != nullptr && probe->getParameters().size() == now.size() && now.size() > 0)
+        {
+            Glide g;
+            g.slot = slot;
+            g.index = index;
+            g.plugin = plugin;
+            g.state = state;
+            g.start = juce::Time::getMillisecondCounterHiRes() * 0.001;
+            g.seconds = glideSeconds;
+            for (int i = 0; i < now.size(); ++i)
+            {
+                auto* p = now[i];
+                const float from = p->getValue(), to = probe->getParameters()[i]->getValue();
+                if (std::abs (from - to) < 1.0e-6f)
+                    continue;
+                if (p->isDiscrete() || p->getNumSteps() != juce::AudioProcessor::getDefaultNumParameterSteps())
+                    p->setValue (to); // a stepped parameter does not glide
+                else
+                    g.params.push_back ({ p, from, to });
+            }
+            if (! g.params.empty())
+            {
+                glides.push_back (std::move (g));
+                return;
+            }
+        }
+    }
+    restoreState (*plugin, state);
+}
+
+bool Show::advanceGlides()
+{
+    const double now = juce::Time::getMillisecondCounterHiRes() * 0.001;
+    auto& fx = engine.getFx();
+    for (auto it = glides.begin(); it != glides.end();)
+    {
+        auto& g = *it;
+        const bool installed = fx.getChainMember (g.slot, g.index) == g.plugin.get();
+        const float t = (float) juce::jlimit (0.0, 1.0, (now - g.start) / juce::jmax (1.0e-3, g.seconds));
+        if (installed && t < 1.0f)
+        {
+            for (auto& p : g.params)
+                p.parameter->setValue (p.from + (p.to - p.from) * t);
+            ++it;
+            continue;
+        }
+        if (installed)
+            restoreState (*g.plugin, g.state); // the end: the whole state, not only its parameters
+        it = glides.erase (it);
+    }
+    return ! glides.empty();
 }
 
 void Show::clearFx (void* ctx, int32_t slot)
@@ -213,6 +331,7 @@ const std::optional<Show::Scene> Show::getScene (int index) const
     s.notes = takeString (ld::ld_scene_notes (handle, index));
     s.scope = ld::ld_scene_scope (handle, index);
     s.fadeSeconds = ld::ld_scene_fade_seconds (handle, index);
+    s.glide = ld::ld_scene_glide (handle, index);
     s.numSnippets = ld::ld_scene_num_snippets (handle, index);
     s.tag = ld::ld_scene_tag (handle, index);
     s.skip = ld::ld_scene_skip (handle, index);
@@ -368,10 +487,18 @@ void Show::setSceneFadeSeconds (int index, double seconds)
     ld::ld_scene_set_fade_seconds (handle, index, seconds);
 }
 
+void Show::setSceneGlide (int index, bool glide)
+{
+    ld::ld_scene_set_glide (handle, index, glide);
+}
+
 int Show::addScene (const juce::String& sceneName, int index)
 {
     const Utf8 u (sceneName);
     const int result = ld::ld_show_add_scene (handle, engine.getHandle(), u.data, u.size, index);
+    // The PLUGIN HOST's scenes hold its whole rack and patch (the others leave the routing out).
+    if (result >= 0 && engine.getProfile() == ld::kProfilePluginHost)
+        ld::ld_scene_set_scope (handle, result, state::AllSections);
     changed();
     return result;
 }
@@ -449,7 +576,8 @@ state::ApplyResult Show::afterRecall (ld::ApplyResultC& r)
             result.warnings.add ("The clip " + clip.getFullPathName() + " is missing");
     }
 
-    if (isFading())
+    glideSeconds = 0.0;
+    if (isFading() || isGliding())
         startTimerHz (60);
     else
         stopTimer();
@@ -772,7 +900,9 @@ void Show::cancelFade()
 
 void Show::timerCallback()
 {
-    if (! ld::ld_show_tick (handle, engine.getHandle()))
+    const bool fading = ld::ld_show_tick (handle, engine.getHandle());
+    const bool gliding = advanceGlides();
+    if (! fading && ! gliding)
         stopTimer();
 }
 

@@ -44,15 +44,21 @@ struct FxSlots::Holder final : private juce::AudioProcessorListener
     }
 
     /** Audio thread (called by the engine). Returns non-zero if the plugin threw. */
-    static int32_t process (void* ctx, float* const* channels, int32_t numChannels, int32_t numSamples)
+    static int32_t process (void* ctx, float* const* channels, int32_t numChannelsIn, int32_t numSamples)
     {
         auto& h = *static_cast<Holder*> (ctx);
+        const bool keyed = numChannelsIn >= 3;
+        const int numChannels = juce::jmin ((int) numChannelsIn, 2);
 
         try
         {
             for (int start = 0; start < numSamples; start += h.blockSize)
             {
                 const int n = juce::jmin (h.blockSize, numSamples - start);
+
+                // A keyed plug-in block (ld_plugin_block_set_key) has the key as a third, mono channel.
+                if (h.chain != nullptr)
+                    h.chain->setKeyInput (keyed ? channels[2] + start : nullptr);
 
                 h.scratch.copyFrom (0, 0, channels[0] + start, n);
                 h.scratch.copyFrom (1, 0, channels[numChannels > 1 ? 1 : 0] + start, n);
@@ -64,6 +70,8 @@ struct FxSlots::Holder final : private juce::AudioProcessorListener
                 h.mono.beforeProcessing (view);
                 h.plugin->processBlock (view, h.midi);
                 h.mono.afterProcessing (view);
+                if (h.chain != nullptr)
+                    h.chain->setKeyInput (nullptr);
                 if (h.sandboxed != nullptr && h.sandboxed->didLastBlockFail())
                     return 1; // timed out or the helper is gone: same as a plugin error
                 if (h.chain != nullptr && h.chain->didLastBlockFail())
@@ -75,6 +83,8 @@ struct FxSlots::Holder final : private juce::AudioProcessorListener
         }
         catch (...)
         {
+            if (h.chain != nullptr)
+                h.chain->setKeyInput (nullptr);
             return 1; // the engine restores the dry signal and bypasses the slot
         }
 
@@ -212,7 +222,10 @@ void FxSlots::install (int slot, std::shared_ptr<juce::AudioPluginInstance> plug
     if (plugin == nullptr)
     {
         if (isBlockSlot (slot))
+        {
             ld::ld_plugin_block_set (engine, blockPid (slot), nullptr, false);
+            ld::ld_plugin_block_set_key (engine, blockPid (slot), -1, false);
+        }
         else
             ld::ld_fx_set (engine, slot, nullptr);
         return;
@@ -236,6 +249,19 @@ void FxSlots::install (int slot, std::shared_ptr<juce::AudioPluginInstance> plug
     else
         ld::ld_fx_set (engine, slot, &callbacks);
     holder->listen(); // after ld_fx_set, which resets the slot's latency
+    if (isBlockSlot (slot))
+        syncKey (slot); // the block's key is the new chain's (none for a plugin on its own)
+}
+
+void FxSlots::syncKey (int slot)
+{
+    if (! isBlockSlot (slot))
+        return;
+    auto* chain = getChain (slot);
+    const auto key = chain != nullptr ? chain->getBlockKey() : PluginChain::Key {};
+    // A refused key (a channel keying itself after its chain) leaves the block unkeyed.
+    if (! ld::ld_plugin_block_set_key (engine, blockPid (slot), key.channel, key.post) && ! key.isNone())
+        ld::ld_plugin_block_set_key (engine, blockPid (slot), -1, false);
 }
 
 bool FxSlots::updateLatencies()
@@ -289,6 +315,14 @@ juce::AudioPluginInstance* FxSlots::getChainMember (int slot, int index) const n
     if (h == nullptr || ! juce::isPositiveAndBelow (index, getNumChainMembers (slot)))
         return nullptr;
     return h->chain != nullptr ? &h->chain->getMember (index) : h->plugin.get();
+}
+
+std::shared_ptr<juce::AudioPluginInstance> FxSlots::getChainMemberShared (int slot, int index) const noexcept
+{
+    auto* h = holderAt (slot);
+    if (h == nullptr || ! juce::isPositiveAndBelow (index, getNumChainMembers (slot)))
+        return nullptr;
+    return h->chain != nullptr ? h->chain->getMembers()[(size_t) index]->plugin : h->plugin;
 }
 
 bool FxSlots::isChainMemberBypassed (int slot, int index) const noexcept
@@ -368,6 +402,53 @@ void FxSlots::setChainMemberView (int slot, int index, PluginChain::View view)
         install (slot, std::make_shared<PluginChain> (members (slot)), true);
     }
     getChain (slot)->setView (index, view);
+}
+
+bool FxSlots::chainMemberHasSidechain (int slot, int index) const noexcept
+{
+    if (! isBlockSlot (slot))
+        return false; // only the plugin blocks of a PLUGIN HOST channel take a key
+    auto* chain = getChain (slot);
+    if (chain != nullptr)
+        return juce::isPositiveAndBelow (index, chain->size()) && chain->hasSidechain (index);
+    auto* h = holderAt (slot);
+    if (h == nullptr || index != 0)
+        return false;
+    // A plugin on its own: the same test as a member's.
+    return dynamic_cast<SandboxedPlugin*> (h->plugin.get()) == nullptr
+           && juce::jmax (2, h->plugin->getTotalNumInputChannels(), h->plugin->getTotalNumOutputChannels()) > 2;
+}
+
+PluginChain::Key FxSlots::getChainMemberKey (int slot, int index) const noexcept
+{
+    auto* chain = getChain (slot);
+    return chain != nullptr && juce::isPositiveAndBelow (index, chain->size()) ? chain->getKey (index) : PluginChain::Key {};
+}
+
+bool FxSlots::setChainMemberKey (int slot, int index, PluginChain::Key key)
+{
+    if (! chainMemberHasSidechain (slot, index))
+        return false;
+    if (getChain (slot) == nullptr)
+    {
+        if (key.isNone())
+            return true;
+        install (slot, std::make_shared<PluginChain> (members (slot)), true);
+    }
+    auto* chain = getChain (slot);
+    if (chain == nullptr)
+        return false;
+    // One key per block: the engine hands a block's plugins a single side-chain signal.
+    const auto before = chain->getBlockKey();
+    for (int i = 0; i < chain->size(); ++i)
+        chain->setKey (i, key);
+    if (! ld::ld_plugin_block_set_key (engine, blockPid (slot), key.channel, key.post))
+    {
+        for (int i = 0; i < chain->size(); ++i)
+            chain->setKey (i, before); // refused (a channel cannot key itself after its chain)
+        return false;
+    }
+    return true;
 }
 
 bool FxSlots::addToChain (int slot, std::unique_ptr<juce::AudioPluginInstance> plugin, int index)

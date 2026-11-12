@@ -21,6 +21,7 @@
 #include "engine/Dm2000Midi.h"
 #include "ui/Dm2000Surface.h"
 #include "ui/Xenyx1202Surface.h"
+#include "ui/PluginHostSurface.h"
 #include "ui/Y02RSurface.h"
 #include "engine/ProMixMidi.h"
 #include "engine/Y02RMidi.h"
@@ -207,8 +208,117 @@ public:
         dm2000OnUniversal();
         dm2000Surface();
         xenyx1202Surface();
+        pluginHostSurface();
         customControlScribbles();
         promoPictures();
+    }
+
+    /** The PLUGIN HOST's surface at 1920x1080: 16 channels, a few blocks on channel 1 (selected) and its RACK page. */
+    void pluginHostSurface()
+    {
+        beginTest ("The PLUGIN HOST surface");
+        MixerEngine engine (0);
+        engine.configurePluginHost (16);
+        ShotRig rig (engine);
+        setShownProfile (ld::kProfilePluginHost);
+        ui::PluginHostSurface skin (rig.ctx);
+        skin.setSize (1920, 1080);
+        const auto& channels = engine.getChannels();
+        const char* names[] = { "KICK", "SNARE", "HAT", "TOM 1", "TOM 2", "OH L", "OH R", "BASS" };
+        for (size_t i = 0; i < 8; ++i)
+        {
+            channels[i]->setName (names[i]);
+            channels[i]->meters.inputPeak[0] = 0.02f + 0.11f * (float) i;
+        }
+        channels[2]->params.input.bypass = true;
+        auto* strip = channels[0].get();
+        const int eq = strip->insertBlock (BlockKind::Eq, -1);
+        const int dyn = strip->insertBlock (BlockKind::Dynamics, -1);
+        const int plug = strip->insertBlock (BlockKind::Plugin, -1);
+        expect (eq >= 0 && dyn >= 0 && plug >= 0);
+        if (auto block = strip->getBlock (eq); block.isValid())
+            block.eq()->on = true;
+        if (auto block = strip->getBlock (dyn); block.isValid())
+        {
+            block.dynamics()->on = true;
+            block.getMeters()->reductionDb = 6.0f;
+        }
+        auto* fake = new test::FakePlugin (1.0f, test::FakePlugin::Mode::Gain, "Hall Reverb");
+        fake->setLatencySamples (128);
+        engine.getFx().setPlugin (FxSlots::blockSlotOf (strip->getHandle(), plug), std::unique_ptr<juce::AudioPluginInstance> (fake));
+        rig.show.addScene ("Verse", -1);
+        rig.show.addScene ("Chorus", -1);
+        skin.showChanged();
+        skin.refreshAll();
+        skin.selectChannel (0);
+        skin.getRack().selectTile (2);
+        rig.meters.advance (0.02f);
+        for (int i = 0; i < 8; ++i)
+            skin.getStrip (i).refresh();
+        const auto image = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
+        expect (image.isValid());
+        const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {});
+        if (folder.isNotEmpty())
+        {
+            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile ("pluginhost-surface.png");
+            file.getParentDirectory().createDirectory();
+            file.deleteFile();
+            juce::FileOutputStream out (file);
+            expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (image, out), file.getFullPathName());
+        }
+
+        // The ROUTING page: the patch grid with a few channels moved, and the KEYS of a channel with a keyed plug-in.
+        const auto save = [&] (const juce::String& name)
+        {
+            const auto shot = skin.createComponentSnapshot (skin.getLocalBounds(), true, 1.0f);
+            expect (shot.isValid());
+            if (folder.isEmpty())
+                return;
+            const auto png = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile (name);
+            png.deleteFile();
+            juce::FileOutputStream stream (png);
+            expect (stream.openedOk() && juce::PNGImageFormat().writeImageToStream (shot, stream), png.getFullPathName());
+        };
+        skin.getRack().getDock().dropEditorFor (nullptr);
+        {
+            auto& keyed = *channels[3];
+            const int keyUid = keyed.insertBlock (BlockKind::Plugin, -1);
+            engine.getFx().setPlugin (FxSlots::blockSlotOf (keyed.getHandle(), keyUid), std::make_unique<test::SidechainPlugin>());
+            const int slot = FxSlots::blockSlotOf (keyed.getHandle(), keyUid);
+            expect (engine.getFx().setChainMemberKey (slot, 0, PluginChain::Key { 0, true }));
+            auto& routing = skin.getRouting();
+            channels[1]->params.inputLeft = 5;
+            channels[2]->params.inputLeft = 6;
+            channels[7]->params.inputLeft = 1;
+            engine.routeOutputSource (0, DirectOut { StripKind::Channel, 4, 0, true }.code());
+            skin.getTab (ui::PluginHostSurface::Page::Routing).onClick();
+            routing.showView (ui::ph::RoutingPage::View::Inputs);
+            routing.refresh();
+            save ("pluginhost-routing.png");
+            skin.selectChannel (3);
+            routing.showView (ui::ph::RoutingPage::View::Keys);
+            save ("pluginhost-routing-keys.png");
+        }
+
+        // The SCENES page: a list with fade modes and times (one active, one cued) and the safes.
+        {
+            for (const char* name : { "Bridge", "Solo", "Outro", "Walk-out" })
+                rig.show.addScene (name, -1);
+            rig.show.setSceneName (0, "Verse");
+            rig.show.setSceneGlide (1, true);
+            rig.show.setSceneFadeSeconds (1, 2.0);
+            rig.show.setSceneFadeSeconds (2, 0.5);
+            rig.show.setSceneGlide (3, true);
+            rig.show.setSceneFadeSeconds (3, 5.0);
+            skin.refreshAll();
+            skin.setCue (1);
+            channels[0]->setBlockSafe (plug, true);
+            channels[5]->params.recallSafe = true;
+            skin.getTab (ui::PluginHostSurface::Page::Scenes).onClick();
+            skin.getScenes().refresh();
+            save ("pluginhost-scenes.png");
+        }
+        setShownProfile (ld::kProfileUniversal);
     }
 
     /** The Q1202USB's surface at 1920x1080: some levels, EQ, names on the console tape and a scene. */

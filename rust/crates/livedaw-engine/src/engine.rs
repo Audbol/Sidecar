@@ -1182,6 +1182,33 @@ impl Engine {
         found
     }
 
+    /// Message thread: keys the side chain of plug-in block `pid` from input channel `channel`
+    /// (0-based; negative: no key), before that channel's chain or, with `post`, after it. A
+    /// channel cannot key its own plug-ins after its chain (the signal would feed itself): that, an
+    /// unknown channel and a gone block are refused (false, the key unchanged).
+    pub fn set_plugin_block_key(&self, pid: u32, channel: i32, post: bool) -> bool {
+        let Some((strip, b)) = self.plugin_block(pid) else { return false };
+        let BlockParams::Plugin(p) = &b.params else { return false };
+        if channel >= 0 {
+            let st = self.lock();
+            let Some(source) = st.channels.get(channel as usize) else { return false };
+            if post && Arc::ptr_eq(source, &strip) {
+                return false;
+            }
+        }
+        p.set_key(channel, post);
+        self.update_keys();
+        true
+    }
+
+    /// Message thread: the key of plug-in block `pid`: the channel (0-based, -1 none) and whether it
+    /// is taken after the channel's chain.
+    pub fn plugin_block_key(&self, pid: u32) -> Option<(i32, bool)> {
+        let (_, b) = self.plugin_block(pid)?;
+        let BlockParams::Plugin(p) = &b.params else { return None };
+        Some(p.key().map_or((-1, false), |(c, t)| (c as i32, t == crate::strip::tap::POST)))
+    }
+
     /// Message thread: installs (None: clears) the processor of plug-in block
     /// `pid`; `keep_fault` for a chain rearranged (as `replace_fx_plugin`).
     pub fn set_plugin_block(&self, pid: u32, cb: Option<InsertCallbacks>, keep_fault: bool) -> bool {
@@ -1794,6 +1821,16 @@ impl Engine {
                 }
             }
         }
+        // The side chains of plug-in blocks (`PluginParams::key`).
+        for s in st.all() {
+            if let Some(layout) = s.layout() {
+                for (channel, tap) in layout.blocks().filter_map(|b| crate::keytap::plugin_key(b)) {
+                    if let Some(m) = st.channels.get(channel).and_then(|src| masks.iter_mut().find(|(t, _)| Arc::ptr_eq(t, src))) {
+                        m.1 |= 1 << tap;
+                    }
+                }
+            }
+        }
         // The FX engines' key sources (`ufx.rs`).
         for key in self.ufx.keys.iter() {
             let (source, buffer) = key.get();
@@ -2152,7 +2189,7 @@ impl Engine {
         let stage1 = |i: usize| if i < num_ch { &topo.channels[i] } else { &topo.auxes[i - num_ch] };
         (*topo.key_schedule.get()).compute(num_ch, |i| {
             let s = stage1(i);
-            key_sources(&s.params, s.kind() == StripKind::Channel, &self.ufx.keys)
+            key_sources(s, s.kind() == StripKind::Channel, &self.ufx.keys)
         });
         let schedule = &*topo.key_schedule.get();
         let ctx_of = |hw, wave| self.context(topo, hw, playback.get(), &groups, block, probes, schedule.waves(), wave);

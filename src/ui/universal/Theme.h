@@ -32,7 +32,7 @@ struct Theme
     /** The six themes the Universal Mixer offers (Theme::all(), in this order). */
     enum class Look { FlagshipBlack, BrushedSilver, MidnightBlue, VintageWarm, Daylight, HighContrast, StudioSlate, StudioGraphite, StudioOlive,
                       /** A theme per console (consoleLook()), in the order of the profiles from the WING on. */
-                      ConsoleWing, ConsoleX32, ConsoleProMix, Console02R, ConsoleSq5, Console01V, ConsoleDLive, ConsoleDm2000, ConsolePro2, ConsoleXenyx };
+                      ConsoleWing, ConsoleX32, ConsoleProMix, Console02R, ConsoleSq5, Console01V, ConsoleDLive, ConsoleDm2000, ConsolePro2, ConsoleXenyx, ConsolePluginHost };
     Look look = Look::FlagshipBlack;
 
     /** The physical parts' finish: a look is another set of these. */
@@ -86,8 +86,8 @@ struct Theme
     static const Theme& studioOlive();
     static constexpr int kNumLooks = 9;
     /** The consoles' themes (Look::ConsoleWing on). */
-    static constexpr int kNumConsoleLooks = 10;
-    /** The theme a console takes when it is loaded (a profile id: 1 WING ... 10 XENYX Q1202USB); none for the Universal profile. */
+    static constexpr int kNumConsoleLooks = 11;
+    /** The theme a console takes when it is loaded (a profile id: 1 WING ... 10 XENYX Q1202USB, 11 PLUGIN HOST); none for the Universal profile. */
     static std::optional<Look> consoleLook (int profile) noexcept;
     /** The theme for a console: the user's choice kept for it (consoleSetting), else its own theme, else (Universal) the app's choice. */
     static const Theme& forConsole (juce::PropertiesFile&, int profile);

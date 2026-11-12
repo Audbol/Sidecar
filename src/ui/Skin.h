@@ -2,6 +2,11 @@
 
 #include <juce_gui_basics/juce_gui_basics.h>
 
+namespace juce
+{
+class AudioProcessor;
+}
+
 namespace livedaw::ui
 {
 
@@ -30,6 +35,8 @@ public:
     virtual juce::Component& popupHost() { return *this; }
     /** The skin's own keys, offered after the window's; true if used. */
     virtual bool skinKeyPressed (const juce::KeyPress&) { return false; }
+    /** A plug-in (nullptr: every plug-in) is about to go: a skin that docks plug-in editors drops them. */
+    virtual void dropPluginEditors (juce::AudioProcessor*) {}
     /** The multitrack editor covers the window (the skin keeps its state underneath). */
     virtual void setCovered (bool shouldBeCovered) { covered = shouldBeCovered; }
     bool isCovered() const noexcept { return covered; }

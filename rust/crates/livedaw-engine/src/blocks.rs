@@ -107,6 +107,10 @@ pub struct PluginParams {
     pub on: AtomicBool,
     pid: u32,
     rack: FxRack,
+    /// The channel (0-based) the plug-in's side chain is keyed from, -1 for none, and the tap
+    /// point it takes (`strip::tap::IN`: before the channel's chain, `POST`: after it).
+    key_channel: AtomicI32,
+    key_tap: AtomicI32,
     /// The saved identity of a plug-in that could not be loaded (a show's
     /// `<PLUGIN>` description and state), kept so the block saves it again.
     missing: std::sync::Mutex<Option<(String, String)>>,
@@ -125,7 +129,14 @@ impl PluginParams {
         if pid != 0 {
             PLUGIN_LATENCY[pid as usize - 1].store(0, Relaxed);
         }
-        Self { on: AtomicBool::new(true), pid, rack: FxRack::default(), missing: std::sync::Mutex::new(None) }
+        Self {
+            on: AtomicBool::new(true),
+            pid,
+            rack: FxRack::default(),
+            key_channel: AtomicI32::new(-1),
+            key_tap: AtomicI32::new(crate::strip::tap::IN as i32),
+            missing: std::sync::Mutex::new(None),
+        }
     }
 
     /// The block's host id (0: no id was left, the block can't hold a plug-in).
@@ -135,6 +146,22 @@ impl PluginParams {
 
     pub fn rack(&self) -> &FxRack {
         &self.rack
+    }
+
+    /// The key the plug-in's side chain takes: the input channel (0-based) and the tap point
+    /// (`strip::tap::IN` or `POST`), or None. The host hands the block's plug-in this signal as
+    /// a third, mono channel of its process call (see `FxRack::process_plain`).
+    pub fn key(&self) -> Option<(usize, usize)> {
+        let channel = usize::try_from(self.key_channel.load(Relaxed)).ok()?;
+        Some((channel, self.key_tap.load(Relaxed).clamp(0, 7) as usize))
+    }
+
+    /// Message thread: keys the side chain from `channel` (0-based; negative: none), before the
+    /// channel's chain or (`post`) after it. The caller refuses a channel keying itself post-chain.
+    pub fn set_key(&self, channel: i32, post: bool) {
+        let tap = if post { crate::strip::tap::POST } else { crate::strip::tap::IN };
+        self.key_tap.store(tap as i32, Relaxed);
+        self.key_channel.store(channel.max(-1), Relaxed);
     }
 
     pub fn is_loaded(&self) -> bool {
@@ -295,6 +322,8 @@ pub struct Block {
     uid: u32,
     pub params: BlockParams,
     pub meters: BlockMeters,
+    /// SAFE (the plug-in host's scenes): a recall leaves the block as it is, present and in its place.
+    safe: AtomicBool,
     dsp: UnsafeCell<BlockDsp>,
 }
 
@@ -309,13 +338,13 @@ impl Block {
     pub fn new(uid: u32, kind: BlockKind, bus: bool, sample_rate: f64, models: &'static ModelTables) -> Self {
         let mut dsp = BlockDsp::new(kind);
         dsp.prepare(sample_rate);
-        Self { uid, params: BlockParams::new_in(kind, bus, models), meters: BlockMeters::default(), dsp: UnsafeCell::new(dsp) }
+        Self { uid, params: BlockParams::new_in(kind, bus, models), meters: BlockMeters::default(), safe: AtomicBool::new(false), dsp: UnsafeCell::new(dsp) }
     }
 
     /// One of the strip's own blocks (`params::OwnBlocks`, id 0), prepared
     /// with the strip (`Strip::prepare`).
     pub(crate) fn own(params: BlockParams) -> Self {
-        Self { uid: 0, dsp: UnsafeCell::new(BlockDsp::new(params.kind())), params, meters: BlockMeters::default() }
+        Self { uid: 0, dsp: UnsafeCell::new(BlockDsp::new(params.kind())), params, meters: BlockMeters::default(), safe: AtomicBool::new(false) }
     }
 
     /// Message thread, audio stopped or the block unpublished: sizes a plug-in block's buffers.
@@ -334,6 +363,15 @@ impl Block {
 
     pub fn kind(&self) -> BlockKind {
         self.params.kind()
+    }
+
+    /// SAFE: a scene recall leaves the block alone (its state, its presence and its place).
+    pub fn safe(&self) -> bool {
+        self.safe.load(Relaxed)
+    }
+
+    pub fn set_safe(&self, safe: bool) {
+        self.safe.store(safe, Relaxed);
     }
 
     /// # Safety

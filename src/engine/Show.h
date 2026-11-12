@@ -2,6 +2,7 @@
 
 #include "engine/ConsoleState.h"
 #include "engine/Layers.h"
+#include "engine/PluginChain.h"
 #include "engine/PluginHost.h"
 
 #include <juce_events/juce_events.h>
@@ -63,6 +64,7 @@ public:
         juce::String name, notes;
         juce::uint32 scope = 0;
         double fadeSeconds = 0.0;
+        bool glide = false;    // GLIDE (PLUGIN HOST): plug-ins reach the scene's parameter values over the fade time; else SNAP
         int numSnippets = 0;
         int tag = 0;           // EDIT TAG #1..#128 (0 = none)
         bool skip = false;     // SKIP: GO PREV/NEXT and recalls pass over it
@@ -107,6 +109,12 @@ public:
     void setSceneNotes (int index, const juce::String&);
     void setSceneScope (int index, juce::uint32 scope);
     void setSceneFadeSeconds (int index, double seconds);
+    /** PLUGIN HOST: how a recall brings a plug-in's state in. SNAP (the default) applies it at once. GLIDE
+        moves the plug-ins' continuous parameters (those that are not stepped; plug-ins in the sandbox have
+        none that can) from where they are to the scene's values over the scene's fade time, and applies the
+        whole state at the end; stepped parameters take the scene's value when the recall starts. Needs a fade
+        time above 0 and plug-ins that run in this process. Stays on the message thread (see advanceGlides). */
+    void setSceneGlide (int index, bool glide);
     /** 1..128; anything else clears the tag. */
     void setSceneTag (int index, int tag);
     void setSceneSkip (int index, bool skip);
@@ -300,6 +308,11 @@ public:
 
     //==============================================================================
     bool isFading() const noexcept { return ld::ld_show_is_fading (handle); }
+    /** Plug-ins still gliding to a scene's values (PLUGIN HOST). */
+    bool isGliding() const noexcept { return ! glides.empty(); }
+    /** Moves every glide on and ends those that are due; true while some are left. The show's timer calls it at 60 Hz
+        while any runs. */
+    bool advanceGlides();
     void cancelFade();
 
     //==============================================================================
@@ -366,7 +379,31 @@ private:
     static int32_t restoreFx (void* ctx, int32_t slot, int32_t mode, const char* description, size_t descriptionLen,
                               const char* state, size_t stateLen, ld::LdSink* error);
     static void clearFx (void* ctx, int32_t slot);
+    static void beginRecall (void* ctx, double glideSeconds);
 
+    /** The PLUGIN HOST's recall of a block: its plug-ins made again from the scene's descriptions (message thread). */
+    int32_t recreateBlock (int slot, const std::vector<PluginChain::Saved>& saved, juce::String& error);
+    /** A plug-in's state brought in by a recall: at once, or (glide seconds above 0) as a glide. */
+    void applyState (int slot, int index, const juce::MemoryBlock& state);
+
+    /** One plug-in on its way to a scene's state: the continuous parameters move from `from` to `to`, then
+        the whole state is applied. */
+    struct Glide
+    {
+        int slot = 0;
+        int index = 0;
+        std::shared_ptr<juce::AudioPluginInstance> plugin; // keeps it alive until the glide ends
+        juce::MemoryBlock state;
+        struct Param
+        {
+            juce::AudioProcessorParameter* parameter;
+            float from, to;
+        };
+        std::vector<Param> params;
+        double start = 0.0, seconds = 0.0;
+    };
+    std::vector<Glide> glides;
+    double glideSeconds = 0.0; // the recall in progress: 0 snaps
     JUCE_DECLARE_NON_COPYABLE (Show)
 };
 

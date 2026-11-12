@@ -12,6 +12,7 @@
 #include "ui/Dm2000Surface.h"
 #include "ui/Pro2Surface.h"
 #include "ui/Xenyx1202Surface.h"
+#include "ui/PluginHostSurface.h"
 #include "ui/X32Surface.h"
 #include "ui/PluginChainWindow.h"
 #include "ui/PluginOverviewWindow.h"
@@ -421,7 +422,7 @@ void MainComponent::refreshAll()
                   : dm2000 ? "This console is a DM2000: the DM2000 surface shows it"
                   : pro2   ? "This console is a PRO2: the PRO2 surface shows it"
                   : xenyx  ? "This console is a XENYX Q1202USB: its surface shows it"
-                  : host   ? "This console is a PLUGIN HOST: the Universal Mixer shows it"
+                  : host   ? "This console is a PLUGIN HOST: its surface shows it"
                            : "This console isn't a WING: the Universal Mixer shows it (SETUP > GENERAL > INTERFACE)");
         setInterface (x32 ? InterfaceKind::X32 : promix ? InterfaceKind::ProMix : y02r ? InterfaceKind::Yamaha02R : sq5 ? InterfaceKind::Sq5 : y01v ? InterfaceKind::Yamaha01V : dlive ? InterfaceKind::DLive : dm2000 ? InterfaceKind::Dm2000 : pro2 ? InterfaceKind::Pro2 : xenyx ? InterfaceKind::Xenyx1202 : host ? InterfaceKind::PluginHost : InterfaceKind::Universal, false);
     }
@@ -710,6 +711,8 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
         skin = std::make_unique<Pro2Surface> (ctx);
     else if (kind == InterfaceKind::Xenyx1202)
         skin = std::make_unique<Xenyx1202Surface> (ctx);
+    else if (kind == InterfaceKind::PluginHost)
+        skin = std::make_unique<PluginHostSurface> (ctx);
     else
         skin = std::make_unique<UniversalSkin> (ctx);
     addChildComponent (*skin, 0); // under the editor and anything over the window
@@ -729,7 +732,7 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                   : kind == InterfaceKind::Dm2000  ? "Interface: the DM2000 surface"
                   : kind == InterfaceKind::Pro2    ? "Interface: the PRO2 surface"
                   : kind == InterfaceKind::Xenyx1202 ? "Interface: the XENYX Q1202USB surface"
-                  : kind == InterfaceKind::PluginHost ? "Interface: the Universal Mixer (the PLUGIN HOST)"
+                  : kind == InterfaceKind::PluginHost ? "Interface: the PLUGIN HOST surface"
                                                    : "Interface: the WING surface");
     }
 }
@@ -968,6 +971,8 @@ void MainComponent::openPluginEditor (int slot)
 
 void MainComponent::closePluginWindowsFor (juce::AudioProcessor* p)
 {
+    if (skin != nullptr)
+        skin->dropPluginEditors (p); // a surface that docks plug-in editors
     // The slot's plugin (or chain) closes its window; a plugin of a chain only its editor.
     for (int i = pluginWindows.size(); --i >= 0;)
     {
@@ -982,6 +987,8 @@ void MainComponent::closePluginWindowsFor (juce::AudioProcessor* p)
 
 void MainComponent::closeAllPluginWindows()
 {
+    if (skin != nullptr)
+        skin->dropPluginEditors (nullptr);
     pluginWindows.clear();
 }
 

@@ -188,6 +188,12 @@ void PatchGrid::refresh()
         points->repaint();
 }
 
+void PatchGrid::relabel()
+{
+    rows = columns = -1;
+    refresh();
+}
+
 void PatchGrid::tap (int row, int column)
 {
     if (juce::isPositiveAndBelow (row, rows) && juce::isPositiveAndBelow (column, columns) && model.toggle)

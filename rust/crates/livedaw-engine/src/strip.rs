@@ -21,7 +21,7 @@
 use crate::amm::{AmmChannel, AmmParams, AmmStripParams};
 use crate::analyser::{listen_mode, rta_tap, Probes, StripProbe};
 use crate::atomic::AtomicF32;
-use crate::blocks::{Block, BlockDsp, BlockParams, ChainLayout, Step};
+use crate::blocks::{Block, BlockDsp, BlockParams, ChainLayout, PluginParams, Step};
 use crate::chain::{self, Node};
 use crate::fx::{FxExtras, FxInputs, FxRack};
 use crate::garbage::Garbage;
@@ -1245,9 +1245,10 @@ impl Strip {
                     d.num_channels = 2;
                     d.widened = true;
                 }
+                let keyed = self.read_plugin_key(d, ctx, p, n);
                 let [w0, w1] = &mut d.work;
                 let mut chans: [&mut [f32]; 2] = [&mut w0[..n], &mut w1[..n]];
-                p.rack().process_plain(&mut chans, d.sample_rate);
+                p.rack().process_plain(&mut chans, keyed.then(|| &d.key[..n]), d.sample_rate);
             }
             (BlockParams::Delay(p), BlockDsp::Delay(line)) if p.on.load(Relaxed) => {
                 let samples = delay_samples(p.delay.load(), p.mode.load(Relaxed).clamp(0, 3) as usize, d.sample_rate);
@@ -1541,6 +1542,22 @@ impl Strip {
         match ptr {
             Some(src) => d.key[..n].copy_from_slice(std::slice::from_raw_parts(src, n)),
             None => d.key[..n].fill(0.0),
+        }
+        true
+    }
+
+    /// The key of a plug-in block into `d.key` (false: it has none): the input channel's signal
+    /// before its chain (tap IN) or after it (POST). From a channel that ran in an earlier wave it
+    /// is this block's, else the previous block's (one block late); a channel's own input tap is
+    /// this block's, since it was written earlier in this task. A tap without a buffer yet
+    /// (`Engine::update_keys`) is silence.
+    unsafe fn read_plugin_key(&self, d: &mut StripDsp, ctx: &ProcessContext, p: &PluginParams, n: usize) -> bool {
+        let Some((channel, point)) = p.key() else { return false };
+        let Some(source) = ctx.channels.get(channel) else { return false };
+        let own = std::ptr::eq(&**source, self);
+        let current = (own && point == tap::IN) || (!own && ctx.key_is_current(channel));
+        if !source.keys.read(point, ctx.block, current, &mut d.key[..n]) {
+            d.key[..n].fill(0.0);
         }
         true
     }

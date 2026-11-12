@@ -32,7 +32,8 @@
 //! half a reader in the same wave takes.
 
 use crate::garbage::Garbage;
-use crate::params::{StripKind, StripParams};
+use crate::params::StripKind;
+use crate::strip::Strip;
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicPtr, Ordering::*};
 
@@ -294,7 +295,8 @@ impl Drop for StripKeyTaps {
 /// Then those the FX engines of its INS 1 and INS 2 are keyed from (`fx_keys`:
 /// `ufx::UfxState::keys`), so an insert's key is of this block too. (An insert
 /// block's engine isn't counted: its key may be a block late.)
-pub(crate) fn key_sources(p: &StripParams, has_gate: bool, fx_keys: &[crate::ufx::FxKey]) -> [i32; 4] {
+pub(crate) fn key_sources(s: &Strip, has_gate: bool, fx_keys: &[crate::ufx::FxKey]) -> [i32; 4 + PLUGIN_KEY_SLOTS] {
+    let p = &s.params;
     let src = |s: &crate::params::DynSlotParams| match KeySource::from_code(s.sc_source.load(Relaxed)) {
         KeySource::Channel(n) => n as i32,
         _ => -1,
@@ -303,7 +305,33 @@ pub(crate) fn key_sources(p: &StripParams, has_gate: bool, fx_keys: &[crate::ufx
         let slot = if ins.on.load(Relaxed) { ins.fx.load(Relaxed) } else { -1 };
         usize::try_from(slot).ok().and_then(|i| fx_keys.get(i)).map_or(-1, |k| k.channel())
     };
-    [if has_gate { src(p.gate()) } else { -1 }, src(p.dynamics()), insert(p.pre_insert()), insert(p.post_insert())]
+    let mut out = [-1; 4 + PLUGIN_KEY_SLOTS];
+    out[..4].copy_from_slice(&[
+        if has_gate { src(p.gate()) } else { -1 },
+        src(p.dynamics()),
+        insert(p.pre_insert()),
+        insert(p.post_insert()),
+    ]);
+    // The side chains of its plug-in blocks (the first PLUGIN_KEY_SLOTS of them; the others
+    // key from the previous block unless their source happens to run first).
+    if let Some(layout) = s.layout() {
+        let keys = layout.blocks().filter_map(|b| plugin_key(b)).map(|(channel, _)| channel as i32);
+        for (slot, channel) in out[4..].iter_mut().zip(keys) {
+            *slot = channel;
+        }
+    }
+    out
+}
+
+/// The most plug-in block keys that order a strip's wave.
+pub const PLUGIN_KEY_SLOTS: usize = 4;
+
+/// A plug-in block's key: the input channel and tap point (`PluginParams::key`).
+pub(crate) fn plugin_key(b: &crate::blocks::Block) -> Option<(usize, usize)> {
+    match &b.params {
+        crate::blocks::BlockParams::Plugin(p) => p.key(),
+        _ => None,
+    }
 }
 
 /// A slot's key source and the tap buffer its key takes.

@@ -9,6 +9,7 @@ SOURCES = {  # tile name: picture (the folder, else docs/images)
     "wing": "console.png", "universal": "universal-mixer.png", "x32": "x32-surface.png", "promix": "promix-surface.png",
     "y02r": "y02r-surface.png", "sq5": "sq5-home.png", "y01v": "y01v-surface.png", "dlive": "dlive-surface.png",
     "dm2000": "dm2000.png", "pro2": "pro2.png", "xenyx1202": "xenyxq1202.png",
+    "pluginhost": "pluginhost-surface.png",
 }
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 folder = sys.argv[1]

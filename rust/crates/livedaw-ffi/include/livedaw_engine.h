@@ -1186,6 +1186,8 @@ using RestoreFxFn = int32_t (*) (void* ctx, int32_t slot, int32_t mode, const ch
                                  const char* state, size_t stateLen, LdSink* error);
 /** Empties FX slot `slot` (show load). */
 using ClearFxFn = void (*) (void* ctx, int32_t slot);
+/** A scene recall is about to run (and, with 0, is done): the seconds its plug-ins take to glide to the scene's values. */
+using BeginRecallFn = void (*) (void* ctx, double glideSeconds);
 
 struct PluginBridge
 {
@@ -1193,6 +1195,7 @@ struct PluginBridge
     CaptureFxFn capture;
     RestoreFxFn restore;
     ClearFxFn clear;
+    BeginRecallFn beginRecall;
 };
 
 // Recorder (ld_rec_*)
@@ -1363,6 +1366,12 @@ extern "C"
     void* ld_plugin_block_ctx (const Engine*, uint32_t pid);
     /** what: 0 = loaded, 1 = faulted, 2 = bypassed, 3 = reported latency (samples), 4 = latency it adds now. -1: gone. */
     int32_t ld_plugin_block_state (const Engine*, uint32_t pid, int32_t what);
+    /** Keys the plugin's side chain from input channel `channel` (0-based; negative: none), before that channel's
+        chain or (post) after it; the processor is then called with 3 channels, the third the key (mono, read only).
+        False if refused: a gone block, an unknown channel, or the block's own channel after its chain. */
+    bool ld_plugin_block_set_key (const Engine*, uint32_t pid, int32_t channel, bool post);
+    /** The block's key channel (-1 none; -2 the block is gone); `post` (may be null) gets whether it is taken after the chain. */
+    int32_t ld_plugin_block_key (const Engine*, uint32_t pid, bool* post);
     void ld_plugin_block_set_bypass (const Engine*, uint32_t pid, bool bypass);
     void ld_plugin_block_clear_fault (const Engine*, uint32_t pid);
     /** The host ids of the plugin blocks holding a plugin (up to max into out); returns how many there are. */
@@ -1511,6 +1520,9 @@ extern "C"
     /** Moves block `uid` to step `at` of the chain without it (it keeps its settings and state). */
     bool ld_engine_move_block (const Engine*, const Strip*, int32_t uid, int32_t at);
     bool ld_engine_remove_block (const Engine*, const Strip*, int32_t uid);
+    /** SAFE (the plug-in host's scenes): a scene recall leaves block `uid` as it is, present and in its place. */
+    bool ld_strip_block_safe (const Strip*, int32_t uid);
+    void ld_strip_set_block_safe (const Strip*, int32_t uid, bool safe);
     /** Back to the strip's template: no extra blocks, no user taps. */
     void ld_engine_clear_chain (const Engine*, const Strip*);
     /** Places a user tap at step `at` (< 0 or past the end: last); returns its id, or -1 when all are placed. */
@@ -1616,6 +1628,9 @@ extern "C"
     void ld_scene_set_notes (Show*, int32_t scene, const char* utf8, size_t len);
     void ld_scene_set_scope (Show*, int32_t scene, uint32_t scope);
     void ld_scene_set_fade_seconds (Show*, int32_t scene, double seconds);
+    /** GLIDE (the plug-in host): plug-ins reach the scene's parameter values over the fade time (else they snap). */
+    bool ld_scene_glide (Show*, int32_t scene);
+    void ld_scene_set_glide (Show*, int32_t scene, bool glide);
     /** EDIT TAG #1..#128 (0 = none; out-of-range values clear it), SKIP, LINK (to the scene below). */
     int32_t ld_scene_tag (Show*, int32_t scene);
     bool ld_scene_skip (Show*, int32_t scene);

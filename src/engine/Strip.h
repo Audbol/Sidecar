@@ -405,6 +405,9 @@ public:
     /** Moves block `uid` to step `at` of the chain without it (it keeps its settings and state). */
     bool moveBlock (int uid, int at) const noexcept { return ld::ld_engine_move_block (engineHandle, handle, uid, at); }
     bool removeBlock (int uid) const noexcept { return ld::ld_engine_remove_block (engineHandle, handle, uid); }
+    /** SAFE (the PLUGIN HOST's scenes): a scene recall leaves block `uid` as it is, present and in its place. */
+    bool isBlockSafe (int uid) const noexcept { return ld::ld_strip_block_safe (handle, uid); }
+    void setBlockSafe (int uid, bool safe) const noexcept { ld::ld_strip_set_block_safe (handle, uid, safe); }
     /** Back to the WING template: no extra blocks, no user taps. */
     void clearChain() const noexcept { ld::ld_engine_clear_chain (engineHandle, handle); }
     /** Selects a model for an EQ or dynamics block (a filter block: its tool) and loads its defaults. */

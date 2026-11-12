@@ -63,8 +63,9 @@ use std::ffi::c_void;
 use std::sync::atomic::{AtomicBool, AtomicPtr, AtomicU32, AtomicU64, Ordering::*};
 use std::time::Instant;
 
-/// Processes `num_channels` (1 or 2) channels of `num_samples` in place.
-/// Returns 0 on success, non-zero if the processor failed (e.g. threw).
+/// Processes `num_channels` (1 or 2) channels of `num_samples` in place. A plug-in block with a
+/// key (`PluginParams::key`) is called with `num_channels` 3: the third is the key, a mono signal
+/// the host only reads. Returns 0 on success, non-zero if the processor failed (e.g. threw).
 pub type ProcessFn =
     unsafe extern "C" fn(ctx: *mut c_void, channels: *const *mut f32, num_channels: i32, num_samples: i32) -> i32;
 /// Called on the message thread once the engine can no longer call `process`.
@@ -506,7 +507,7 @@ impl FxRack {
     ///
     /// # Safety
     /// As `process`: one task at a time; `channels` no longer than the prepared block.
-    pub(crate) unsafe fn process_plain(&self, channels: &mut [&mut [f32]], sample_rate: f64) {
+    pub(crate) unsafe fn process_plain(&self, channels: &mut [&mut [f32]], key: Option<&[f32]>, sample_rate: f64) {
         let plugin = self.slot.load(Acquire);
         let n = channels.first().map_or(0, |c| c.len());
         if plugin.is_null() || n == 0 || self.faulted.load(Relaxed) {
@@ -521,11 +522,17 @@ impl FxRack {
             dry[c][..n].copy_from_slice(data);
         }
         let cb = (*plugin).cb;
-        let mut ptrs: [*mut f32; 2] = [std::ptr::null_mut(); 2];
+        let mut ptrs: [*mut f32; 3] = [std::ptr::null_mut(); 3];
         for (c, data) in channels.iter_mut().enumerate().take(2) {
             ptrs[c] = data.as_mut_ptr();
         }
-        let status = (cb.process)(cb.ctx, ptrs.as_ptr(), channels.len().min(2) as i32, n as i32);
+        let mut num = channels.len().min(2);
+        if let Some(key) = key.filter(|k| k.len() >= n && num == 2) {
+            // The key rides as a third channel; the host reads it and never writes it.
+            ptrs[2] = key.as_ptr() as *mut f32;
+            num = 3;
+        }
+        let status = (cb.process)(cb.ctx, ptrs.as_ptr(), num as i32, n as i32);
         if status != 0 || !channels.iter().all(|c| all_finite(c)) {
             for (c, data) in channels.iter_mut().enumerate().take(2) {
                 data.copy_from_slice(&dry[c][..n]);

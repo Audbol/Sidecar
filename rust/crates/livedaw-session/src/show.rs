@@ -235,6 +235,9 @@ pub struct Scene {
     pub scope_fx: u64,
     pub scope_console: bool,
     pub fade_seconds: f64,
+    /// GLIDE (the plug-in host): plug-ins with continuous parameters reach the scene's values over the
+    /// fade time; otherwise (SNAP) their states apply at once.
+    pub glide: bool,
     /// EDIT TAG: #1..#128, 0 = none.
     pub tag: i32,
     /// SKIP: GO PREV/NEXT and recalls ignore the scene.
@@ -266,6 +269,7 @@ impl Default for Scene {
             scope_fx: scope::ALL_FX,
             scope_console: true,
             fade_seconds: 0.0,
+            glide: false,
             tag: 0,
             skip: false,
             link_next: false,
@@ -765,6 +769,7 @@ impl Show {
         }
         let Some(state) = scene.state.clone() else { return result };
         let (scope, fade_seconds) = (scene.recall_scope(), scene.fade_seconds);
+        let glide_seconds = if scene.glide { fade_seconds } else { 0.0 };
         let snippets: Vec<Snippet> = scene.snippets.iter().filter(|s| s.fire_with_scene && s.state.is_some()).cloned().collect();
 
         self.cancel_fade(engine);
@@ -775,7 +780,9 @@ impl Show {
         let safe = self.global_safe.clone();
         let kept: Vec<(Arc<Strip>, f32)> =
             self.fader_recall.iter().filter(|f| f.safe).map(|f| (f.strip.clone(), f.strip.params.fader_db.load())).collect();
+        bridge.begin_recall(glide_seconds);
         result = scope::apply_scoped(engine, &state, &scope, Some(&safe), true, fade.then_some(&mut targets), bridge);
+        bridge.begin_recall(0.0);
         // Recall-safe faders keep their level (before the snippets, which ignore safes).
         for (strip, db) in &kept {
             strip.params.fader_db.store(*db);
@@ -1462,6 +1469,9 @@ pub(crate) fn scene_to_xml(scene: &Scene) -> Element {
     sx.set("name", &scene.name).set("notes", &scene.notes);
     scene.recall_scope().write_attrs(&mut sx, "scope");
     sx.set("fade", scene.fade_seconds).set("tag", scene.tag).set_bool("skip", scene.skip).set_bool("link", scene.link_next);
+    if scene.glide {
+        sx.set_bool("glide", true);
+    }
     if !scene.midi.is_empty() {
         sx.set("midi", &scene.midi);
     }
@@ -1519,6 +1529,7 @@ pub(crate) fn read_scene(
         scope_fx: recall.fx,
         scope_console: recall.console,
         fade_seconds: sx.double_or("fade", 0.0).clamp(0.0, MAX_FADE_SECONDS),
+        glide: sx.bool_or("glide", false),
         tag: clamp_scene_tag(sx.int_or("tag", 0)),
         skip: sx.bool_or("skip", false),
         link_next: sx.bool_or("link", false),

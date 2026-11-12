@@ -130,6 +130,120 @@ struct OfflineRig
 
 inline constexpr float kCentre = 1.0f; // a mono channel at pan centre: unity on each side (the WING pan law)
 inline constexpr float kEdge = 1.41421356f; // a mono channel panned hard: +3 dB on the near side
+
+/** A plug-in with a side-chain input bus: it passes its main input and records how loud its side chain was in
+    its last block (a DC key's level). */
+class SidechainPlugin final : public juce::AudioPluginInstance
+{
+public:
+    SidechainPlugin()
+        : juce::AudioPluginInstance (BusesProperties()
+                                         .withInput ("In", juce::AudioChannelSet::stereo())
+                                         .withInput ("Sidechain", juce::AudioChannelSet::stereo())
+                                         .withOutput ("Out", juce::AudioChannelSet::stereo()))
+    {
+    }
+
+    std::atomic<float> keyLevel { 0.0f };
+
+    void fillInPluginDescription (juce::PluginDescription& d) const override
+    {
+        d.name = "Fake Keyed";
+        d.pluginFormatName = "Fake";
+        d.fileOrIdentifier = "fake-keyed";
+        d.uniqueId = d.deprecatedUid = juce::String ("fake-keyed").hashCode();
+        d.manufacturerName = "Tests";
+        d.numInputChannels = 4;
+        d.numOutputChannels = 2;
+    }
+
+    const juce::String getName() const override { return "Fake Keyed"; }
+    void prepareToPlay (double, int) override {}
+    void releaseResources() override {}
+    using juce::AudioPluginInstance::processBlock;
+    void processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override
+    {
+        keyLevel = buffer.getNumChannels() > 2 ? buffer.getMagnitude (2, 0, buffer.getNumSamples()) : -1.0f;
+    }
+    bool isBusesLayoutSupported (const BusesLayout& l) const override
+    {
+        return l.getMainInputChannelSet() == juce::AudioChannelSet::stereo() && l.getMainOutputChannelSet() == juce::AudioChannelSet::stereo()
+               && (l.inputBuses.size() < 2 || l.inputBuses[1].isDisabled() || l.inputBuses[1] == juce::AudioChannelSet::stereo());
+    }
+    double getTailLengthSeconds() const override { return 0.0; }
+    bool acceptsMidi() const override { return false; }
+    bool producesMidi() const override { return false; }
+    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
+    bool hasEditor() const override { return false; }
+    int getNumPrograms() override { return 1; }
+    int getCurrentProgram() override { return 0; }
+    void setCurrentProgram (int) override {}
+    const juce::String getProgramName (int) override { return {}; }
+    void changeProgramName (int, const juce::String&) override {}
+    void getStateInformation (juce::MemoryBlock&) override {}
+    void setStateInformation (const void*, int) override {}
+};
+
+/** A plug-in with parameters and a state of its own: a continuous LEVEL, a stepped MODE (three choices) and a
+    TAG that only its state holds. Its state is the three values, so a scene recall that applies it sets all of them. */
+class ParameterPlugin final : public juce::AudioPluginInstance
+{
+public:
+    ParameterPlugin()
+        : juce::AudioPluginInstance (BusesProperties()
+                                         .withInput ("In", juce::AudioChannelSet::stereo())
+                                         .withOutput ("Out", juce::AudioChannelSet::stereo()))
+    {
+        juce::AudioProcessor::addParameter (level = new juce::AudioParameterFloat (juce::ParameterID { "level", 1 }, "Level", 0.0f, 1.0f, 0.5f));
+        juce::AudioProcessor::addParameter (mode = new juce::AudioParameterChoice (juce::ParameterID { "mode", 1 }, "Mode", juce::StringArray { "A", "B", "C" }, 0));
+    }
+
+    juce::AudioParameterFloat* level = nullptr;
+    juce::AudioParameterChoice* mode = nullptr;
+    std::atomic<int> tag { 0 };
+
+    void fillInPluginDescription (juce::PluginDescription& d) const override
+    {
+        d.name = "Fake Params";
+        d.pluginFormatName = "Fake";
+        d.fileOrIdentifier = "fake-params";
+        d.uniqueId = d.deprecatedUid = juce::String ("fake-params").hashCode();
+        d.manufacturerName = "Tests";
+        d.numInputChannels = d.numOutputChannels = 2;
+    }
+
+    const juce::String getName() const override { return "Fake Params"; }
+    void prepareToPlay (double, int) override {}
+    void releaseResources() override {}
+    using juce::AudioPluginInstance::processBlock;
+    void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override {}
+    double getTailLengthSeconds() const override { return 0.0; }
+    bool acceptsMidi() const override { return false; }
+    bool producesMidi() const override { return false; }
+    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
+    bool hasEditor() const override { return false; }
+    int getNumPrograms() override { return 1; }
+    int getCurrentProgram() override { return 0; }
+    void setCurrentProgram (int) override {}
+    const juce::String getProgramName (int) override { return {}; }
+    void changeProgramName (int, const juce::String&) override {}
+
+    void getStateInformation (juce::MemoryBlock& data) override
+    {
+        const float values[3] = { level->get(), (float) mode->getIndex(), (float) tag.load() };
+        data.replaceAll (values, sizeof (values));
+    }
+
+    void setStateInformation (const void* data, int size) override
+    {
+        if (size != 3 * (int) sizeof (float))
+            return;
+        const auto* values = static_cast<const float*> (data);
+        *level = values[0];
+        *mode = (int) values[1];
+        tag = (int) values[2];
+    }
+};
 } // namespace livedaw::test
 
 #include <juce_events/juce_events.h>

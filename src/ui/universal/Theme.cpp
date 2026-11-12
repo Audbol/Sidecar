@@ -576,7 +576,8 @@ const Theme& Theme::of (Look l)
             consoleTheme (Look::ConsoleDLive, false, 0xff0b0b0c, 0xff1a1315, 0xff2b2023, 0xff070708, 0xff3a2020, 0xffff5a50),
             consoleTheme (Look::ConsoleDm2000, false, 0xff0d0e12, 0xff1c1710, 0xff2c241a, 0xff08090b, 0xff3a2a14, 0xffffc83a),
             consoleTheme (Look::ConsolePro2, false, 0xff0d0e12, 0xff181a1f, 0xff282b31, 0xff08090b, 0xff3a3d42, 0xff2a86c8),
-            consoleTheme (Look::ConsoleXenyx, true, 0xffe8e9e6, 0xffd2d4d0, 0xffe5e6e3, 0xfff4f4f4, 0xffb4b5b3, 0xffe5352c)
+            consoleTheme (Look::ConsoleXenyx, true, 0xffe8e9e6, 0xffd2d4d0, 0xffe5e6e3, 0xfff4f4f4, 0xffb4b5b3, 0xffe5352c),
+            consoleTheme (Look::ConsolePluginHost, false, 0xff0c0e11, 0xff15181c, 0xff222730, 0xff08090b, 0xff323945, 0xff39d0c8)
         };
         return consoles[(int) l - (int) Look::ConsoleWing];
     }
@@ -598,14 +599,14 @@ const Theme& Theme::of (Look l)
 const char* Theme::idOf (Look l)
 {
     static const char* ids[] = { "flagship", "silver", "midnight", "vintage", "daylight", "contrast", "slate", "graphite", "olive",
-                                 "c-wing", "c-x32", "c-promix", "c-02r", "c-sq5", "c-01v", "c-dlive", "c-dm2000", "c-pro2", "c-xenyx" };
+                                 "c-wing", "c-x32", "c-promix", "c-02r", "c-sq5", "c-01v", "c-dlive", "c-dm2000", "c-pro2", "c-xenyx", "c-pluginhost" };
     return ids[(int) l];
 }
 
 const char* Theme::titleOf (Look l)
 {
     static const char* titles[] = { "Flagship Black", "Brushed Silver", "Midnight Blue", "Vintage Warm", "Daylight", "High Contrast", "Studio Slate", "Studio Graphite", "Studio Olive",
-                                    "WING", "X32", "ProMix 01", "02R", "SQ-5", "01V", "dLive", "DM2000", "PRO2", "Q1202USB" };
+                                    "WING", "X32", "ProMix 01", "02R", "SQ-5", "01V", "dLive", "DM2000", "PRO2", "Q1202USB", "PLUGIN HOST" };
     return titles[(int) l];
 }
 

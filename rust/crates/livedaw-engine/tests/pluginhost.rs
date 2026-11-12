@@ -160,3 +160,129 @@ fn an_input_is_patchable_too() {
     assert!(near(peaks[0], level(8)), "{}", peaks[0]);
     assert!(near(peaks[8], level(8)), "channel 9 still hears its own");
 }
+
+// ---- Side chains: a plug-in block keyed from a channel's input or output. ----
+
+use livedaw_engine::blocks::{BlockKind, BlockParams};
+use livedaw_engine::InsertCallbacks;
+use std::ffi::c_void;
+use std::sync::atomic::{AtomicI32, AtomicU32};
+
+/// A plug-in that passes its audio and records what it was given: the channel count of its last
+/// call and the peak of the key (its third channel) over that call.
+#[derive(Default)]
+struct Recorder {
+    channels: AtomicI32,
+    key_peak: AtomicU32,
+}
+
+unsafe extern "C" fn record(ctx: *mut c_void, channels: *const *mut f32, num: i32, n: i32) -> i32 {
+    let r = &*(ctx as *const Recorder);
+    r.channels.store(num, Relaxed);
+    let peak = if num >= 3 {
+        std::slice::from_raw_parts(*channels.add(2), n as usize).iter().fold(0.0f32, |m, x| m.max(x.abs()))
+    } else {
+        0.0
+    };
+    r.key_peak.store(peak.to_bits(), Relaxed);
+    0
+}
+
+impl Recorder {
+    fn install(rig: &Rig, channel: usize) -> (std::sync::Arc<Recorder>, u32) {
+        let rec = std::sync::Arc::new(Recorder::default());
+        let ch = rig.channel(channel);
+        // Where the RACK page puts it: after the input's trim and tap, before the level.
+        let block = rig.engine.insert_block(&ch, BlockKind::Plugin, 3).unwrap();
+        let BlockParams::Plugin(p) = &block.params else { panic!() };
+        let cb = InsertCallbacks { process: record, release: None, ctx: std::sync::Arc::as_ptr(&rec) as *mut c_void };
+        assert!(rig.engine.set_plugin_block(p.pid(), Some(cb), false));
+        (rec, p.pid())
+    }
+
+    fn peak(&self) -> f32 {
+        f32::from_bits(self.key_peak.load(Relaxed))
+    }
+}
+
+#[test]
+fn a_keyed_plugin_block_gets_the_key_as_a_third_channel() {
+    let mut rig = Rig::new(HostSize::Ch16);
+    let (rec, pid) = Recorder::install(&rig, 2);
+    rig.run(10);
+    assert_eq!(rec.channels.load(Relaxed), 2, "no key: the plug-in's two channels only");
+    assert!(rig.engine.set_plugin_block_key(pid, 5, false));
+    assert_eq!(rig.engine.plugin_block_key(pid), Some((5, false)));
+    rig.run(10);
+    assert_eq!(rec.channels.load(Relaxed), 3);
+    assert!(near(rec.peak(), level(5)), "the key is channel 6's input: {} vs {}", rec.peak(), level(5));
+    // The audio itself is untouched by the key.
+    let peaks = rig.run(10);
+    assert!(near(peaks[2], level(2)), "{}", peaks[2]);
+    // No key again.
+    assert!(rig.engine.set_plugin_block_key(pid, -1, false));
+    rig.run(10);
+    assert_eq!(rec.channels.load(Relaxed), 2);
+}
+
+#[test]
+fn the_key_is_taken_before_or_after_the_keying_channels_chain() {
+    let mut rig = Rig::new(HostSize::Ch16);
+    // Channel 6 is 20 dB down at its output; its input is not.
+    rig.channel(5).params.fader_db.store(-20.0);
+    let (rec, pid) = Recorder::install(&rig, 2);
+    assert!(rig.engine.set_plugin_block_key(pid, 5, false));
+    rig.run(40);
+    let pre = rec.peak();
+    assert!(near(pre, level(5)), "pre-chain: {pre}");
+    assert!(rig.engine.set_plugin_block_key(pid, 5, true));
+    rig.run(40);
+    let post = rec.peak();
+    assert!(near(post, level(5) * 0.1), "post-chain: {post} vs {}", level(5) * 0.1);
+}
+
+#[test]
+fn the_key_is_this_blocks_whichever_channel_runs_first() {
+    // The keying channel is processed before the keyed one in a wave of its own: no block of delay.
+    for (keyed, source) in [(2usize, 9usize), (9, 2)] {
+        let mut rig = Rig::new(HostSize::Ch16);
+        let (rec, pid) = Recorder::install(&rig, keyed);
+        assert!(rig.engine.set_plugin_block_key(pid, source as i32, true));
+        rig.run(1);
+        assert!(near(rec.peak(), level(source)), "{keyed} keyed from {source}, first block: {}", rec.peak());
+    }
+    // Two channels keying each other form a cycle: one of them gets the previous block's key, and
+    // from the second block on both hear it.
+    let mut rig = Rig::new(HostSize::Ch16);
+    let (a, pa) = Recorder::install(&rig, 1);
+    let (b, pb) = Recorder::install(&rig, 4);
+    assert!(rig.engine.set_plugin_block_key(pa, 4, true));
+    assert!(rig.engine.set_plugin_block_key(pb, 1, true));
+    rig.run(1);
+    assert!(a.peak() == 0.0 || b.peak() == 0.0, "one of the two is a block late");
+    rig.run(3);
+    assert!(near(a.peak(), level(4)) && near(b.peak(), level(1)), "{} {}", a.peak(), b.peak());
+}
+
+#[test]
+fn a_channel_cannot_key_itself_after_its_chain() {
+    let rig = Rig::new(HostSize::Ch16);
+    let (_rec, pid) = Recorder::install(&rig, 3);
+    assert!(!rig.engine.set_plugin_block_key(pid, 3, true), "its own output feeding itself is refused");
+    assert_eq!(rig.engine.plugin_block_key(pid), Some((-1, false)), "and nothing changed");
+    assert!(rig.engine.set_plugin_block_key(pid, 3, false), "its own input is fine");
+    assert_eq!(rig.engine.plugin_block_key(pid), Some((3, false)));
+    assert!(!rig.engine.set_plugin_block_key(pid, 16, false), "no such channel");
+    assert!(!rig.engine.set_plugin_block_key(pid + 100, 0, false), "no such block");
+    assert_eq!(rig.engine.plugin_block_key(pid + 100), None);
+    assert_eq!(rig.engine.plugin_block_key(pid), Some((3, false)));
+}
+
+#[test]
+fn a_self_keyed_plugin_hears_its_own_input_this_block() {
+    let mut rig = Rig::new(HostSize::Ch16);
+    let (rec, pid) = Recorder::install(&rig, 4);
+    assert!(rig.engine.set_plugin_block_key(pid, 4, false));
+    rig.run(1);
+    assert!(near(rec.peak(), level(4)), "{}", rec.peak());
+}

@@ -53,6 +53,8 @@ public:
 
     /** Takes the points again (and the rows and columns when their number changed). */
     void refresh();
+    /** As refresh, with the row and column names read again (for rows that changed but not in number). */
+    void relabel();
     /** As a tap on point (row, column) does. */
     void tap (int row, int column);
     State getState (int row, int column) const noexcept;

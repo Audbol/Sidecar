@@ -149,7 +149,28 @@ void PluginChain::setView (int index, View view)
 
 bool PluginChain::needsChainFormat() const noexcept
 {
-    return size() > 1 || members.front()->bypassed.load() || ! members.front()->view.isDefault();
+    return size() > 1 || members.front()->bypassed.load() || ! members.front()->view.isDefault() || hasKeys();
+}
+
+void PluginChain::setKey (int index, Key key)
+{
+    if (juce::isPositiveAndBelow (index, size()) && members[(size_t) index]->hasSidechain())
+        members[(size_t) index]->key = key;
+}
+
+bool PluginChain::hasKeys() const noexcept
+{
+    return std::any_of (members.begin(), members.end(), [] (auto& m) { return ! m->key.isNone(); });
+}
+
+PluginChain::Key PluginChain::getBlockKey() const noexcept
+{
+    // The engine hands a block one key, so the members that have a side chain are kept on the same
+    // one (FxSlots::setChainMemberKey); a show that disagrees gets the first.
+    for (auto& m : members)
+        if (! m->key.isNone())
+            return m->key;
+    return {};
 }
 
 bool PluginChain::hasSandboxedMember() const noexcept
@@ -300,8 +321,14 @@ void PluginChain::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuff
         if (isolate)
             for (int ch = 0; ch < 2; ++ch)
                 dry.copyFrom (ch, 0, scratch, ch, 0, n);
+        // The side-chain inputs hear the key (a mono signal on each of them), or silence without one.
         for (int ch = 2; ch < m.numChannels; ++ch)
-            scratch.clear (ch, 0, n); // side-chain inputs are silent
+        {
+            if (keyInput != nullptr && ! m.key.isNone() && m.hasSidechain())
+                scratch.copyFrom (ch, 0, keyInput, n);
+            else
+                scratch.clear (ch, 0, n);
+        }
         juce::AudioBuffer<float> view (scratch.getArrayOfWritePointers(), m.numChannels, n);
         midi.clear();
         m.mono.beforeProcessing (view);
@@ -346,6 +373,7 @@ std::unique_ptr<juce::XmlElement> PluginChain::createXml() const
     auto xml = std::make_unique<juce::XmlElement> (kXmlTag);
     xml->setAttribute ("name", describeMembers());
     xml->setAttribute ("views", 1);
+    xml->setAttribute ("keys", 1);
     for (auto& m : members)
     {
         auto* e = xml->createNewChildElement ("MEMBER");
@@ -354,6 +382,12 @@ std::unique_ptr<juce::XmlElement> PluginChain::createXml() const
             e->setAttribute ("zoom", m->view.zoom);
         if (m->view.collapsed)
             e->setAttribute ("collapsed", 1);
+        if (! m->key.isNone())
+        {
+            e->setAttribute ("keyChannel", m->key.channel);
+            if (m->key.post)
+                e->setAttribute ("keyPost", 1);
+        }
         e->addChildElement (PluginHost::describe (*m->plugin).createXml().release());
 
         juce::MemoryBlock data;
@@ -386,6 +420,9 @@ bool PluginChain::parseXml (const juce::XmlElement& xml, std::vector<Saved>& sav
         s.view.collapsed = e->getBoolAttribute ("collapsed");
         // Chains from before `views` stored only views other than the default.
         s.hasView = xml.getBoolAttribute ("views") || e->hasAttribute ("zoom") || e->hasAttribute ("collapsed");
+        s.hasKey = xml.getBoolAttribute ("keys"); // from before side-chain keys: the recall keeps the current one
+        s.key.channel = e->getIntAttribute ("keyChannel", -1);
+        s.key.post = s.key.channel >= 0 && e->getBoolAttribute ("keyPost");
         if (auto* state = e->getChildByName ("STATE"))
             if (const auto text = state->getAllSubText().trim(); text.isNotEmpty())
                 s.state.fromBase64Encoding (text);
@@ -410,6 +447,8 @@ bool PluginChain::restore (const std::vector<Saved>& saved)
         members[(size_t) i]->bypassed = s.bypassed;
         if (s.hasView)
             members[(size_t) i]->view = s.view;
+        if (s.hasKey)
+            setKey (i, s.key); // the engine is told by FxSlots::setChainMemberKey, not from here
     }
     updateLatency();
     return true;
