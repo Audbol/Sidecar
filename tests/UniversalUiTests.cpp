@@ -313,6 +313,7 @@ public:
             expectEquals (ui::mixerChooser::label (ui::InterfaceKind::Dm2000), juce::String ("DM2000"));
             expectEquals (ui::mixerChooser::label (ui::InterfaceKind::Pro2), juce::String ("PRO2"));
             expectEquals (ui::mixerChooser::label (ui::InterfaceKind::Xenyx1202), juce::String ("XENYX Q1202USB"));
+            expectEquals (ui::mixerChooser::label (ui::InterfaceKind::PluginHost), juce::String ("PLUGIN HOST"));
             expectEquals (ui::mixerChooser::label (ui::InterfaceKind::Universal), juce::String ("UNIVERSAL"));
             // The SETUP keys are in ui::InterfaceKind's order: a key's index is its kind.
             const auto keys = ui::mixerChooser::keyLabels();
@@ -362,7 +363,7 @@ public:
             auto first = open ({}); // nothing to continue
             expect (keyNamed (*first, "CONTINUE") == nullptr);
             expectEquals (first->getNumChildComponents(), 1); // the grid
-            expectEquals (gridOf (*first).getViewedComponent()->getNumChildComponents(), 11);
+            expectEquals (gridOf (*first).getViewedComponent()->getNumChildComponents(), 12);
             expectEquals (columnsOf (*first), 4, "4 across at 1600 x 900");
             first->setSize (700, 900);
             expectEquals (columnsOf (*first), 2);
@@ -3030,7 +3031,7 @@ public:
             view.setFaderMode (0);
             expect (view.areFadersShown() && ! view.areKnobsShown() && ! view.getColumn (0)->fader.isKnobMode(), "faders again");
 
-            expectEquals (ui::mixerChooser::mixers().size(), (size_t) ((int) ui::InterfaceKind::Xenyx1202 + 1), "SETUP lists every InterfaceKind");
+            expectEquals (ui::mixerChooser::mixers().size(), (size_t) ((int) ui::InterfaceKind::PluginHost + 1), "SETUP lists every InterfaceKind");
         }
 
         beginTest ("The gate and the EQ cards: EDIT opens the block, a disabled EQ keeps its grey fill, the dynamics handles are apart");
@@ -3783,6 +3784,26 @@ public:
                     expect (keepPicture (skin.createComponentSnapshot (skin.getLocalBounds()), prefix + "mixer-jump" + (inspector ? "-inspector" : "") + ".png"));
                     skin.getMixer().setJumpListShown (false);
                 }
+            }
+        }
+
+        beginTest ("The PLUGIN HOST: the Universal Mixer shows a strip for each channel and no bus or main");
+        {
+            for (const int channels : { 16, 32, 64 })
+            {
+                MixerEngine engine (0);
+                engine.configurePluginHost (channels);
+                setShownProfile (ld::kProfilePluginHost);
+                expect (engine.getProfile() == ld::kProfilePluginHost, "the profile is kept");
+                expectEquals ((int) engine.getChannels().size(), channels);
+                UiRig rig (engine);
+                auto viewOwner = std::make_unique<MixerView> (rig.ctx, Theme::charcoal()); // on the heap: the test function's frame is big
+                auto& view = *viewOwner;
+                view.setSize (1400, 800);
+                expectEquals (view.getNumColumns(), channels);
+                expect (view.getPinnedMain() == nullptr, "no main kept in view");
+                for (int i = 0; i < view.getNumColumns(); ++i)
+                    expect (view.getColumn (i)->getStrip().getKind() == StripKind::Channel, "only channels");
             }
         }
 

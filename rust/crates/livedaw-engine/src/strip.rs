@@ -1142,9 +1142,12 @@ impl Strip {
         }
         match self.layout() {
             Some(layout) => {
+                // A bypassed channel (the plug-in host's) skips its blocks.
+                let bypass = self.params.input.bypass.load(Relaxed);
                 for step in layout.steps() {
                     match step {
                         Step::Node(node) => self.run_template_node(*node, d, ctx, &probe, &mut listened, n),
+                        Step::Block(_) if bypass => {}
                         Step::Block(b) => self.run_block(b, d, ctx, n),
                     }
                 }
@@ -1304,9 +1307,9 @@ impl Strip {
                     d.last_image_width = width;
                 }
                 // INPUT: trim, balance, polarity
-                let polarity = if p.input.invert.load(Relaxed) { -1.0 } else { 1.0 };
+                let polarity = if p.input.invert.load(Relaxed) && !p.input.bypass.load(Relaxed) { -1.0 } else { 1.0 };
                 // A console with its attenuator further down leaves it to that node.
-                let trim = if self.spec.attenuator { 1.0 } else { db_to_gain(p.input.trim_db.load()) } * polarity;
+                let trim = if self.spec.attenuator || p.input.bypass.load(Relaxed) { 1.0 } else { db_to_gain(p.input.trim_db.load()) } * polarity;
                 // [Manual 6.1 p. 69] BALANCE: a positive value takes the left down and
                 // brings the right up by the same amount, a negative one the opposite.
                 let bal = if nc == 2 { p.input.balance_db.load() } else { 0.0 };

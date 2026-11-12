@@ -312,6 +312,7 @@ MainComponent::MainComponent (juce::AudioDeviceManager& dm, MixerEngine& e, Plug
                   : savedKind == "dm2000"  ? InterfaceKind::Dm2000
                   : savedKind == "pro2"    ? InterfaceKind::Pro2
                   : savedKind == "xenyx1202" ? InterfaceKind::Xenyx1202
+                  : savedKind == "pluginhost" ? InterfaceKind::PluginHost
                                            : InterfaceKind::Wing,
                   false);
     setWantsKeyboardFocus (true);
@@ -407,7 +408,8 @@ void MainComponent::refreshAll()
                y02r = engine.getProfile() == ld::kProfileYamaha02R, sq5 = engine.getProfile() == ld::kProfileSq5,
                y01v = engine.getProfile() == ld::kProfileYamaha01V, dlive = engine.getProfile() == ld::kProfileDLive,
                dm2000 = engine.getProfile() == ld::kProfileDm2000,
-               pro2 = engine.getProfile() == ld::kProfileMidasPro2, xenyx = engine.getProfile() == ld::kProfileXenyx1202;
+               pro2 = engine.getProfile() == ld::kProfileMidasPro2, xenyx = engine.getProfile() == ld::kProfileXenyx1202,
+               host = engine.getProfile() == ld::kProfilePluginHost;
     if (ctx.interfaceKind == InterfaceKind::Wing && ! isWingConsole())
     {
         log.info (x32      ? "This console is an X32: the X32 surface shows it"
@@ -419,14 +421,16 @@ void MainComponent::refreshAll()
                   : dm2000 ? "This console is a DM2000: the DM2000 surface shows it"
                   : pro2   ? "This console is a PRO2: the PRO2 surface shows it"
                   : xenyx  ? "This console is a XENYX Q1202USB: its surface shows it"
+                  : host   ? "This console is a PLUGIN HOST: the Universal Mixer shows it"
                            : "This console isn't a WING: the Universal Mixer shows it (SETUP > GENERAL > INTERFACE)");
-        setInterface (x32 ? InterfaceKind::X32 : promix ? InterfaceKind::ProMix : y02r ? InterfaceKind::Yamaha02R : sq5 ? InterfaceKind::Sq5 : y01v ? InterfaceKind::Yamaha01V : dlive ? InterfaceKind::DLive : dm2000 ? InterfaceKind::Dm2000 : pro2 ? InterfaceKind::Pro2 : xenyx ? InterfaceKind::Xenyx1202 : InterfaceKind::Universal, false);
+        setInterface (x32 ? InterfaceKind::X32 : promix ? InterfaceKind::ProMix : y02r ? InterfaceKind::Yamaha02R : sq5 ? InterfaceKind::Sq5 : y01v ? InterfaceKind::Yamaha01V : dlive ? InterfaceKind::DLive : dm2000 ? InterfaceKind::Dm2000 : pro2 ? InterfaceKind::Pro2 : xenyx ? InterfaceKind::Xenyx1202 : host ? InterfaceKind::PluginHost : InterfaceKind::Universal, false);
     }
     else if ((ctx.interfaceKind == InterfaceKind::X32 && ! x32) || (ctx.interfaceKind == InterfaceKind::ProMix && ! promix)
              || (ctx.interfaceKind == InterfaceKind::Yamaha02R && ! y02r) || (ctx.interfaceKind == InterfaceKind::Sq5 && ! sq5)
              || (ctx.interfaceKind == InterfaceKind::Yamaha01V && ! y01v) || (ctx.interfaceKind == InterfaceKind::DLive && ! dlive)
              || (ctx.interfaceKind == InterfaceKind::Dm2000 && ! dm2000)
-             || (ctx.interfaceKind == InterfaceKind::Pro2 && ! pro2) || (ctx.interfaceKind == InterfaceKind::Xenyx1202 && ! xenyx))
+             || (ctx.interfaceKind == InterfaceKind::Pro2 && ! pro2) || (ctx.interfaceKind == InterfaceKind::Xenyx1202 && ! xenyx)
+             || (ctx.interfaceKind == InterfaceKind::PluginHost && ! host))
         setInterface (InterfaceKind::Universal, false);
     syncRemotes();
     skin->refreshAll();
@@ -616,6 +620,25 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                          }, true);
         return;
     }
+    if (kind == InterfaceKind::PluginHost && skin != nullptr && engine.getProfile() != ld::kProfilePluginHost)
+    {
+        popups::confirm (skin->popupHost(), "PLUGIN HOST",
+                         "This console isn't a PLUGIN HOST. Clear the console and make it a fresh one (each channel takes an interface "
+                         "input through its plug-ins to an interface output; 16, 32 or 64 channels)?",
+                         "MAKE IT A PLUGIN HOST",
+                         [this, save]
+                         {
+                             choosePluginHostSize ([this, save] (int channels)
+                                                   {
+                                                       closeAllPluginWindows();
+                                                       engine.configurePluginHost (channels);
+                                                       setInterface (InterfaceKind::PluginHost, save);
+                                                       refreshAll();
+                                                       log.info ("The console is a PLUGIN HOST of " + juce::String (channels) + " channels");
+                                                   });
+                         }, true);
+        return;
+    }
     if (kind == InterfaceKind::Pro2 && skin != nullptr && engine.getProfile() != ld::kProfileMidasPro2)
     {
         popups::confirm (skin->popupHost(), "PRO2",
@@ -643,6 +666,7 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                                                    : kind == InterfaceKind::Dm2000  ? "dm2000"
                                                    : kind == InterfaceKind::Pro2    ? "pro2"
                                                    : kind == InterfaceKind::Xenyx1202 ? "xenyx1202"
+                                                   : kind == InterfaceKind::PluginHost ? "pluginhost"
                                                                                     : "wing");
     if (skin != nullptr && kind == ctx.interfaceKind)
         return;
@@ -658,6 +682,7 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
         || (kind == InterfaceKind::DLive && engine.getProfile() != ld::kProfileDLive)
         || (kind == InterfaceKind::Dm2000 && engine.getProfile() != ld::kProfileDm2000)
         || (kind == InterfaceKind::Xenyx1202 && engine.getProfile() != ld::kProfileXenyx1202)
+        || (kind == InterfaceKind::PluginHost && engine.getProfile() != ld::kProfilePluginHost)
         || (kind == InterfaceKind::Pro2 && engine.getProfile() != ld::kProfileMidasPro2))
         kind = ctx.interfaceKind = InterfaceKind::Universal; // a console's surface shows that console only
     if (kind == InterfaceKind::Wing)
@@ -704,6 +729,7 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                   : kind == InterfaceKind::Dm2000  ? "Interface: the DM2000 surface"
                   : kind == InterfaceKind::Pro2    ? "Interface: the PRO2 surface"
                   : kind == InterfaceKind::Xenyx1202 ? "Interface: the XENYX Q1202USB surface"
+                  : kind == InterfaceKind::PluginHost ? "Interface: the Universal Mixer (the PLUGIN HOST)"
                                                    : "Interface: the WING surface");
     }
 }
@@ -1058,10 +1084,17 @@ void MainComponent::showMixerChooser (bool canContinue, std::function<void()> be
     options.onContinue = close;
     options.onMixer = [this, beforeFresh, close] (InterfaceKind kind)
     {
-        if (beforeFresh)
-            beforeFresh();
-        startFresh (kind);
-        close();
+        const auto fresh = [this, beforeFresh, close, kind] (int hostChannels)
+        {
+            if (beforeFresh)
+                beforeFresh();
+            startFresh (kind, hostChannels);
+            close();
+        };
+        if (kind == InterfaceKind::PluginHost)
+            choosePluginHostSize (fresh); // its size first
+        else
+            fresh (16);
     };
     mixerChooserWindow = mixerChooser::create (std::move (options));
     addChildComponent (*mixerChooserWindow);
@@ -1069,7 +1102,13 @@ void MainComponent::showMixerChooser (bool canContinue, std::function<void()> be
     mixerChooserWindow->setVisible (true);
 }
 
-void MainComponent::startFresh (InterfaceKind kind)
+void MainComponent::choosePluginHostSize (std::function<void (int)> then)
+{
+    popups::chooseFrom (*this, { "16 CHANNELS", "32 CHANNELS", "64 CHANNELS" }, 0,
+                        [then = std::move (then)] (int row) { then (16 << juce::jlimit (0, 2, row)); });
+}
+
+void MainComponent::startFresh (InterfaceKind kind, int hostChannels)
 {
     if (refuseWhileRemote ("NEW CONSOLE"))
         return;
@@ -1079,6 +1118,8 @@ void MainComponent::startFresh (InterfaceKind kind)
     // The profile first: a console's surface shows only that console.
     if (kind == InterfaceKind::Wing)
         engine.configure (nullptr);
+    else if (kind == InterfaceKind::PluginHost)
+        engine.configurePluginHost (hostChannels);
     else
         engine.configureProfile (kind == InterfaceKind::X32         ? ld::kProfileX32
                                  : kind == InterfaceKind::ProMix    ? ld::kProfileProMix01

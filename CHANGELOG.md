@@ -5,6 +5,8 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+- PLUGIN HOST (first step): a console of Sidecar's own for hosting plug-ins on a real console's inserts. 16, 32 or 64 channels; each takes one interface input through its plug-in chain to one interface output (both patchable; input N to output N at first), with a BYPASS that passes the input straight through. It mixes nothing: no buses, aux, matrices, sends or mains. It is a tile in the start-up chooser and in SETUP > PREFERENCES > INTERFACE, and the Universal Mixer shows it until its own surface is drawn.
+
 ## [0.3.0] - 2026-11-11
 
 - Benchmark: a single Sidecar Mark (higher is better, about 1000 for a mid-range PC) with DSP, Effects, Recording and Interface scores and a rating, taken at 128 samples and 48 kHz so PCs compare; it is saved with each run, shown in COMPARE and in the text and CSV exports, and the QUICK TEST gives an estimate.

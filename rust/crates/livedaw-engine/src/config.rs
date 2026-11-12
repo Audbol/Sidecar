@@ -99,6 +99,12 @@ impl Counts {
     /// no matrices.
     pub const XENYX1202: Counts = Counts { channels: 8, aux: 1, buses: 1, mains: 1, matrices: 0, dcas: 0, mute_groups: 0, fx: 0 };
 
+    /// The plug-in host's: `channels` channels (16, 32 or 64) and nothing else but the one main
+    /// the engine needs, which nothing feeds and the interface hides.
+    pub const fn plugin_host(channels: usize) -> Counts {
+        Counts { channels, aux: 0, buses: 0, mains: 1, matrices: 0, dcas: 0, mute_groups: 0, fx: 0 }
+    }
+
     /// The Allen & Heath SQ-5's (Reference Guide V1.6.0, section 18): 48 input
     /// channels, 8 aux (its stereo FX returns), 16 buses (12 mixes, then the 4 FX
     /// sends), 1 main (LR), 3 stereo matrices, 8 DCAs, 8 mute groups, 8 FX slots.

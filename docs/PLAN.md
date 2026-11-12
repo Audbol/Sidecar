@@ -162,6 +162,10 @@ The owner wants a lot of work done here; what comes first is theirs to say.
 - [ ] With every update: review each console's completion percentage in `src/ui/StartupNotice.cpp`.
 - [ ] v0.3.0, once the above is as far as we want it for that release.
       Release notes: brief, an overview of what changed and what was added (owner).
+- [ ] 0.3.1: the plug-in host console, planned in `docs/PLUGIN_HOST.md`.
+- [ ] Raspberry Pi: build the Linux arm64 package on Debian Bookworm (a container on the arm runner), so it
+      runs on Raspberry Pi OS Bookworm. 0.3.0's needs glibc 2.38, GLIBCXX 3.4.32 and ALSA 1.2.10 (a user's
+      Pi 5 could not start it); Raspberry Pi OS Trixie has them.
 
 ## 8. Consoles after these
 

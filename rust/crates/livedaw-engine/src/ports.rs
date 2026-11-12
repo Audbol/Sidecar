@@ -321,6 +321,21 @@ pub static XENYX1202_PORT_GROUPS: &[PortGroup] = &[
     PortGroup::new("PHONES", "PH", OUT, Some(xenyx1202_ports::PHONES_OUT), 2),
 ];
 
+/// The plug-in host's port groups: the interface's inputs and outputs, one pair per channel
+/// (the engine's own numbering, ports 1 to the channel count).
+macro_rules! plugin_host_groups {
+    ($n:expr) => {
+        &[
+            PortGroup::new("INTERFACE IN", "IN", IN, Some(0), $n),
+            PortGroup::new("INTERFACE OUT", "OUT", OUT, Some(0), $n),
+        ]
+    };
+}
+
+pub static PLUGINHOST16_PORT_GROUPS: &[PortGroup] = plugin_host_groups!(16);
+pub static PLUGINHOST32_PORT_GROUPS: &[PortGroup] = plugin_host_groups!(32);
+pub static PLUGINHOST64_PORT_GROUPS: &[PortGroup] = plugin_host_groups!(64);
+
 /// The Midas PRO2's port groups, in the WING's order: its stage box, surface inputs
 /// and AES3 in; the talk oscillator's sources; the 16 aux sends, the masters and
 /// matrices as sources; the master, DL251 and surface outputs.

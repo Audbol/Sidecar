@@ -53,8 +53,11 @@ public:
         replaces the console; `done` when the window has closed. */
     void showMixerChooser (bool canContinue, std::function<void()> beforeFresh, std::function<void()> done);
 
-    /** A fresh console of `kind`: the console and scenes cleared, its surface shown. */
-    void startFresh (InterfaceKind kind);
+    /** A fresh console of `kind`: the console and scenes cleared, its surface shown. A plug-in host has
+        `hostChannels` channels (16, 32 or 64). */
+    void startFresh (InterfaceKind kind, int hostChannels = 16);
+    /** The plug-in host's size: a list of 16, 32 and 64 channels, then `then` gets the one chosen. */
+    void choosePluginHostSize (std::function<void (int)> then);
 
     /** Full screen (F11): the window covers the screen without its title bar
         (kiosk mode). Works together with the screen-only mode (F10). */

@@ -20,7 +20,7 @@ use livedaw_engine::params::mix_source;
 use livedaw_engine::params::{
     ext, DynSlotParams, EqBlockParams, FilterParams, InsertParams, MatrixSendParams, StripParams, FX_EXT, FX_NONE, MAX_FX,
 };
-use livedaw_engine::profile::DLiveLayout;
+use livedaw_engine::profile::{DLiveLayout, HostSize};
 use livedaw_engine::routing::{bus_feeds_bus, matrix_direct, MATRIX_DIRECT_INPUTS};
 use livedaw_engine::taps::FIRST_USER_TAP;
 use livedaw_engine::ufx::DYN8_FX_BASE;
@@ -619,6 +619,7 @@ fn capture_strip(
         put_f(i, "bal", &p.input.balance_db);
         put_b(i, "inv", &p.input.invert);
         put_b(i, "dlyon", &p.input.delay_on);
+        put_b(i, "bypass", &p.input.bypass);
         put_i(i, "dlymode", &p.input.delay_mode);
         put_f(i, "dly", &p.input.delay);
         if kind == StripKind::Channel {
@@ -1554,6 +1555,7 @@ fn apply_strip(
             get_f(i, "bal", &p.input.balance_db);
             get_b(i, "inv", &p.input.invert);
             get_b(i, "dlyon", &p.input.delay_on);
+            get_b(i, "bypass", &p.input.bypass);
             get_i(i, "dlymode", &p.input.delay_mode);
             get_f(i, "dly", &p.input.delay);
         }
@@ -1947,6 +1949,11 @@ fn read_config(console: &Element, warnings: &mut Vec<String>) -> ConsoleConfig {
         // A dLive's FX are its engines, whatever the show says: one saved before its
         // RackUltra engines (FX 17-24) says 16, and is the same console still.
         fx: if matches!(profile, Profile::AhDLive(_)) { w.fx } else { n("fx", w.fx) },
+    };
+    // A plug-in host's size is its channel count.
+    let profile = match profile {
+        Profile::PluginHost(_) => HostSize::from_channels(counts.channels).map_or(profile, Profile::PluginHost),
+        p => p,
     };
     ConsoleConfig { profile: profile.or_universal(&counts), counts }
 }

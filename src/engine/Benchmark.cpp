@@ -474,7 +474,7 @@ void Runner::start (const Settings& s)
     settings = s;
     blockSize = s.blockSize;
     if (settings.profiles.empty())
-        for (int p = 1; p <= (int) ld::kProfileXenyx1202; ++p)
+        for (int p = 1; p <= (int) ld::kProfilePluginHost; ++p)
             settings.profiles.push_back ((ld::ProfileId) p);
     result = Result();
     result.when = juce::Time::getCurrentTime();

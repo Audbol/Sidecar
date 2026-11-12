@@ -201,7 +201,8 @@ enum ProfileId : int32_t
     kProfileDLive = 7, // ABI 55: the Allen & Heath dLive (its FoH template); its effects, MIDI and surface follow
     kProfileDm2000 = 8, // ABI 57: the Yamaha DM2000 (Version 2); its surface and MIDI follow
     kProfileMidasPro2 = 9, // the Midas PRO2: its processing and profile; its surface follows
-    kProfileXenyx1202 = 10 // the XENYX Q1202USB: its blocks, routing and surface
+    kProfileXenyx1202 = 10, // the XENYX Q1202USB: its blocks, routing and surface
+    kProfilePluginHost = 11 // the plug-in host: input, plug-in chain, output; 16, 32 or 64 channels
 };
 
 enum StripKindId : int32_t
@@ -342,7 +343,7 @@ static_assert (sizeof (std::atomic<uint64_t>) == 8 && std::atomic<uint64_t>::is_
 struct InputParams
 {
     std::atomic<float> trimDb, balanceDb;
-    std::atomic<bool> invert, delayOn;
+    std::atomic<bool> invert, delayOn, bypass; // bypass: the plug-in host's whole channel
     std::atomic<int32_t> delayMode; // list 5: M, FT, MS, SMP
     std::atomic<float> delay;
 };
@@ -1277,6 +1278,9 @@ extern "C"
     /** ABI 35: makes the engine a fresh console of `profile` (ProfileId; an unknown one:
         the WING) with that console's counts. */
     void ld_engine_configure_profile (const Engine*, int32_t profile);
+    /** Makes the engine a fresh plug-in host (kProfilePluginHost) of `channels` channels: 16, 32 or 64
+        (any other: 16). */
+    void ld_engine_configure_plugin_host (const Engine*, int32_t channels);
     /** ABI 37: the model calls (ld_model_*) describe `profile`'s models (ProfileId; the
         console the app shows; an unknown one: the WING's). */
     void ld_models_show_profile (int32_t profile);

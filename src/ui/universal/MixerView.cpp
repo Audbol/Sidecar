@@ -1311,7 +1311,7 @@ void MixerView::showSofMenu()
     menu.addItem (1, "Off", ctx.sendsOnFader, ! ctx.sendsOnFader);
     for (auto kind : { StripKind::Bus, StripKind::Main, StripKind::Matrix })
     {
-        if (ctx.engine.getStrips (kind).empty())
+        if (ctx.engine.getStrips (kind).empty() || (kind == StripKind::Main && ctx.engine.getProfile() == ld::kProfilePluginHost))
             continue;
         menu.addSeparator();
         for (auto& s : ctx.engine.getStrips (kind))
@@ -1682,9 +1682,11 @@ void MixerView::rebuild()
             ++slot;
         }
     }
+    // The plug-in host's one main is the engine's, fed by nothing: the mixer doesn't show it.
+    const bool hideMain = ctx.engine.getProfile() == ld::kProfilePluginHost;
     for (int k = 0; k < kNumStripKinds && ! inLayer; ++k)
     {
-        if (filter >= 0 && filter != k && filter != kSpill)
+        if ((filter >= 0 && filter != k && filter != kSpill) || (hideMain && k == (int) StripKind::Main))
             continue;
         for (auto& s : ctx.engine.getStrips (static_cast<StripKind> (k)))
         {
@@ -1709,7 +1711,7 @@ void MixerView::rebuild()
         }
     }
     // The first main in view whatever is scrolled (unless MAINS shows them all anyway).
-    if (! inLayer && filter != (int) StripKind::Main && ! ctx.engine.getMains().empty())
+    if (! inLayer && ! hideMain && filter != (int) StripKind::Main && ! ctx.engine.getMains().empty())
     {
         auto* main = ctx.engine.getMains().front().get();
         for (auto& c : columns)

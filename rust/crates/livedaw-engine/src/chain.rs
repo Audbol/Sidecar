@@ -851,6 +851,13 @@ pub(crate) const XENYX1202_ORDERS: &[&str] = &["GDE"];
 /// Its outputs have no blocks.
 pub(crate) const XENYX1202_OUTPUT_ORDERS: &[&str] = &["---"];
 
+/// The plug-in host's channels: the input's trim and polarity, then whatever blocks the user
+/// puts in the chain (the plug-ins), then the level. Its mains, which nothing feeds, run the same.
+pub(crate) const PLUGINHOST_CHANNEL: &[Node] = XENYX1202_PLAIN;
+
+/// Its channels' process order (unused: it has no blocks of its own). Its outputs have none.
+pub(crate) const PLUGINHOST_ORDERS: &[&str] = &["---"];
+
 #[cfg(test)]
 mod tests {
     use super::*;

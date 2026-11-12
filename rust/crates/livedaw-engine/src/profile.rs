@@ -11,7 +11,7 @@ use crate::config::Counts;
 use crate::params::{StripKind, DEFAULT_COLOUR, WING_BUSES, WING_COLOURS, WING_COLOUR_GRID};
 use crate::ports::{
     dlive_ports, dm2000_ports, pro2_ports, xenyx1202_ports, PortGroup, DLIVE_PORT_GROUPS, DM2000_PORT_GROUPS, PRO2_PORT_GROUPS,
-    PROMIX01_PORT_GROUPS, SQ5_PORT_GROUPS, WING_PORT_GROUPS, X32_PORT_GROUPS, XENYX1202_PORT_GROUPS, Y01V_PORT_GROUPS,
+    PLUGINHOST16_PORT_GROUPS, PLUGINHOST32_PORT_GROUPS, PLUGINHOST64_PORT_GROUPS, PROMIX01_PORT_GROUPS, SQ5_PORT_GROUPS, WING_PORT_GROUPS, X32_PORT_GROUPS, XENYX1202_PORT_GROUPS, Y01V_PORT_GROUPS,
     Y02R_PORT_GROUPS,
 };
 use livedaw_dsp::fader::FaderLaw;
@@ -57,10 +57,39 @@ pub enum Profile {
     /// The Behringer XENYX Q1202USB, Sidecar's first analog mixer: its blocks, routing
     /// and surface; no remote protocol.
     Xenyx1202,
+    /// The plug-in host: an insert host for a real console. Each channel takes one interface
+    /// input through its plug-ins to one interface output; no mixing. 16, 32 or 64 channels.
+    PluginHost(HostSize),
+}
+
+/// How many channels a plug-in host has.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum HostSize {
+    #[default]
+    Ch16,
+    Ch32,
+    Ch64,
+}
+
+impl HostSize {
+    pub const ALL: [HostSize; 3] = [HostSize::Ch16, HostSize::Ch32, HostSize::Ch64];
+
+    pub const fn channels(self) -> usize {
+        match self {
+            HostSize::Ch16 => 16,
+            HostSize::Ch32 => 32,
+            HostSize::Ch64 => 64,
+        }
+    }
+
+    /// The size with `channels` channels, if there is one.
+    pub fn from_channels(channels: usize) -> Option<HostSize> {
+        Self::ALL.into_iter().find(|s| s.channels() == channels)
+    }
 }
 
 impl Profile {
-    pub const ALL: [Profile; 11] = [
+    pub const ALL: [Profile; 12] = [
         Profile::Universal,
         Profile::Wing,
         Profile::X32,
@@ -72,6 +101,7 @@ impl Profile {
         Profile::Dm2000,
         Profile::MidasPro2,
         Profile::Xenyx1202,
+        Profile::PluginHost(HostSize::Ch16),
     ];
 
     /// The id shows store (`<Console profile="...">`).
@@ -88,6 +118,7 @@ impl Profile {
             Profile::Dm2000 => "dm2000",
             Profile::MidasPro2 => "pro2",
             Profile::Xenyx1202 => "xenyx1202",
+            Profile::PluginHost(_) => "pluginhost",
         }
     }
 
@@ -109,6 +140,7 @@ impl Profile {
             Profile::Dm2000 => &DM2000,
             Profile::MidasPro2 => &PRO2,
             Profile::Xenyx1202 => &XENYX1202,
+            Profile::PluginHost(size) => plugin_host_spec(size),
         }
     }
 
@@ -132,7 +164,8 @@ impl Profile {
             | Profile::AhDLive(_)
             | Profile::Dm2000
             | Profile::MidasPro2
-            | Profile::Xenyx1202 => *counts == self.spec().counts,
+            | Profile::Xenyx1202
+            | Profile::PluginHost(_) => *counts == self.spec().counts,
             Profile::Wing => {
                 let w = self.spec().counts;
                 counts.aux == w.aux
@@ -333,6 +366,10 @@ impl Palette {
     /// The XENYX Q1202USB's: no strip colours on the panel (the surface has console tape),
     /// so the ProMix 01's eight, every strip white (Sidecar's).
     pub const XENYX1202: Palette =
+        Palette { colours: &PROMIX01_COLOURS, grid: &[1, 2, 3, 4, 5, 6, 7, 8], default: 8, factory: Some(|_s, _k, _n| 8) };
+
+    /// The plug-in host's: the ProMix 01's eight, every strip white (Sidecar's).
+    pub const PLUGINHOST: Palette =
         Palette { colours: &PROMIX01_COLOURS, grid: &[1, 2, 3, 4, 5, 6, 7, 8], default: 8, factory: Some(|_s, _k, _n| 8) };
 
     /// The PRO2's: the input name fields start green (Owner's Manual p.243), and the
@@ -2075,6 +2112,93 @@ static XENYX1202: ProfileSpec = ProfileSpec {
     fx_send_buses: &[],
 };
 
+/// What a new plug-in host starts as: channel N mono on interface input N, at unity, feeding
+/// no main (it mixes nothing); every channel white.
+fn plugin_host_factory(_spec: &ProfileSpec, p: &crate::params::StripParams, kind: StripKind, slot: usize) {
+    use std::sync::atomic::Ordering::Relaxed;
+    if kind == StripKind::Channel {
+        p.stereo.store(false, Relaxed);
+        p.input_left.store(slot as i32, Relaxed);
+        p.fader_db.store(0.0);
+    }
+}
+
+/// A new plug-in host's output patch: interface output N plays channel N, after its chain
+/// (its direct out, post fader, left: a mono channel gives its signal on both sides).
+fn plugin_host_factory_outputs(spec: &ProfileSpec, patch: &crate::routing::OutputPatch) {
+    use crate::routing::DirectSource;
+    for n in 0..spec.counts.channels {
+        let source = DirectSource { kind: StripKind::Channel, number: n as i32 + 1, side: 0, post: true };
+        patch.set(n as i32, source.code());
+    }
+}
+
+/// A plug-in host's strips are named by their number alone.
+fn plugin_host_name(_spec: &ProfileSpec, kind: StripKind, slot: usize) -> Option<String> {
+    (kind == StripKind::Channel).then(|| format!("{}", slot + 1))
+}
+
+/// The plug-in host of `size`: Sidecar's own console, an insert host. Each channel is an
+/// interface input, the user's chain of plug-in blocks and an interface output; no buses, aux,
+/// matrices or sends, and its one main (the engine needs it) is fed by nothing. Models are the
+/// Universal Mixer's, so blocks can be added as on any console.
+const fn plugin_host_build(size: HostSize) -> ProfileSpec {
+    ProfileSpec {
+        profile: Profile::PluginHost(size),
+        name: "PLUGIN HOST",
+        counts: Counts::plugin_host(size.channels()),
+        templates: [chain::PLUGINHOST_CHANNEL, chain::XENYX1202_PLAIN, chain::XENYX1202_PLAIN],
+        process_orders: chain::PLUGINHOST_ORDERS,
+        aux_order: b"",
+        output_orders: chain::XENYX1202_OUTPUT_ORDERS,
+        fader: FaderLaw::WING,
+        main_fader: None,
+        bus_fader: None,
+        pan: PanLaw::WING,
+        port_groups: match size {
+            HostSize::Ch16 => PLUGINHOST16_PORT_GROUPS,
+            HostSize::Ch32 => PLUGINHOST32_PORT_GROUPS,
+            HostSize::Ch64 => PLUGINHOST64_PORT_GROUPS,
+        },
+        models: &livedaw_dsp::universal::MODELS,
+        remotes: Remotes { midi: None, network: &[] },
+        palette: Palette::PLUGINHOST,
+        labels: ["CH", "RTN", "BUS", "MAIN", "MTX"],
+        slots: &[],
+        buses_to_main: 0..0,
+        mono_mains: &[],
+        source_link: false,
+        sends_on: false,
+        send_tap: -1,
+        tap_point: crate::strip::tap::PFL as i32,
+        factory: Some(plugin_host_factory),
+        factory_name: Some(plugin_host_name),
+        factory_outputs: Some(plugin_host_factory_outputs),
+        dca_names: None,
+        dca_fader_db: livedaw_dsp::fader::FADER_MIN,
+        fx_factory: &[],
+        factory_eq_block: None,
+        factory_eq_after: false,
+        factory_preamp_block: None,
+        dlive_layout: None,
+        attenuator: false,
+        delay_samples: None,
+        fx_send_buses: &[],
+    }
+}
+
+static PLUGINHOST16: ProfileSpec = plugin_host_build(HostSize::Ch16);
+static PLUGINHOST32: ProfileSpec = plugin_host_build(HostSize::Ch32);
+static PLUGINHOST64: ProfileSpec = plugin_host_build(HostSize::Ch64);
+
+fn plugin_host_spec(size: HostSize) -> &'static ProfileSpec {
+    match size {
+        HostSize::Ch16 => &PLUGINHOST16,
+        HostSize::Ch32 => &PLUGINHOST32,
+        HostSize::Ch64 => &PLUGINHOST64,
+    }
+}
+
 /// What a PRO2 starts as: its Normal (FOH) navigation mode's default state, the
 /// safe scene (Owner's Manual pp.210-211). Channels mono; 1-48 on DL251's inputs;
 /// 49-56, which the manual leaves unpatched, on the surface's 8 inputs (Sidecar's
@@ -2963,6 +3087,10 @@ mod tests {
             }
             if p == Profile::Xenyx1202 {
                 assert_eq!(s.fader, FaderLaw::XENYX1202_LEVEL);
+                continue;
+            }
+            if matches!(p, Profile::PluginHost(_)) {
+                assert_eq!(s.fader, FaderLaw::WING);
                 continue;
             }
             if p == Profile::MidasPro2 {

@@ -401,6 +401,7 @@ juce_add_binary_data(LiveDAWResources SOURCES
     resources/chooser/dm2000.png
     resources/chooser/pro2.png
     resources/chooser/xenyx1202.png
+    resources/chooser/pluginhost.png
     resources/icon/sidecar-256.png)   # the window icon on Linux; chooser/: the start-up tiles (scripts/make_chooser_pictures.py)
 target_link_libraries(LiveDAW PRIVATE LiveDAWResources)
 

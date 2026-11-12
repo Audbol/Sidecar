@@ -7,9 +7,9 @@
 namespace livedaw::ui::mixerChooser
 {
 
-const std::array<Mixer, 11>& mixers()
+const std::array<Mixer, 12>& mixers()
 {
-    static const std::array<Mixer, 11> list { { { InterfaceKind::Wing, "WING", "" },
+    static const std::array<Mixer, 12> list { { { InterfaceKind::Wing, "WING", "" },
                                                { InterfaceKind::Universal, "UNIVERSAL", "" },
                                                { InterfaceKind::X32, "X32", "" },
                                                { InterfaceKind::ProMix, "PROMIX 01", "" },
@@ -19,7 +19,8 @@ const std::array<Mixer, 11>& mixers()
                                                { InterfaceKind::DLive, "DLIVE", "" },
                                                { InterfaceKind::Dm2000, "DM2000", "" },
                                                { InterfaceKind::Pro2, "PRO2", "" },
-                                               { InterfaceKind::Xenyx1202, "XENYX Q1202USB", "" } } };
+                                               { InterfaceKind::Xenyx1202, "XENYX Q1202USB", "" },
+                                               { InterfaceKind::PluginHost, "PLUGIN HOST", "" } } };
     return list;
 }
 
@@ -58,6 +59,7 @@ namespace
             case InterfaceKind::Dm2000:    return load (BinaryData::dm2000_png, BinaryData::dm2000_pngSize);
             case InterfaceKind::Pro2:      return load (BinaryData::pro2_png, BinaryData::pro2_pngSize);
             case InterfaceKind::Xenyx1202: return load (BinaryData::xenyx1202_png, BinaryData::xenyx1202_pngSize);
+            case InterfaceKind::PluginHost: return load (BinaryData::pluginhost_png, BinaryData::pluginhost_pngSize);
             default:                       return {};
         }
     }

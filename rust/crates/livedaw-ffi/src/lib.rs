@@ -678,6 +678,7 @@ fn profile_id(p: Profile) -> i32 {
         Profile::Dm2000 => 8,
         Profile::MidasPro2 => 9,
         Profile::Xenyx1202 => 10,
+        Profile::PluginHost(_) => 11,
     }
 }
 
@@ -944,6 +945,16 @@ unsafe fn write_port_groups(p: Profile, out: *mut LdPortGroup, max: i32) -> i32 
 pub unsafe extern "C" fn ld_engine_configure_profile(e: *const Engine, profile: i32) {
     if let Some(e) = engine(e) {
         let profile = profile_of(profile);
+        guard((), || e.configure(&livedaw_engine::config::ConsoleConfig { profile, counts: profile.spec().counts }));
+    }
+}
+
+/// Makes the engine a fresh plug-in host of `channels` channels (16, 32 or 64; any other: 16).
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_configure_plugin_host(e: *const Engine, channels: i32) {
+    if let Some(e) = engine(e) {
+        let size = usize::try_from(channels).ok().and_then(livedaw_engine::profile::HostSize::from_channels).unwrap_or_default();
+        let profile = Profile::PluginHost(size);
         guard((), || e.configure(&livedaw_engine::config::ConsoleConfig { profile, counts: profile.spec().counts }));
     }
 }

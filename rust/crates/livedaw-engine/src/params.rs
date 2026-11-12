@@ -194,6 +194,9 @@ pub struct InputParams {
     pub balance_db: AtomicF32,
     pub invert: AtomicBool,
     pub delay_on: AtomicBool,
+    /// The plug-in host's channel BYPASS: the chain's blocks are skipped and the input passes
+    /// straight through.
+    pub bypass: AtomicBool,
     /// Index into `livedaw_dsp::delay::DELAY_MODES` (M, FT, MS, SMP).
     pub delay_mode: AtomicI32,
     /// In `delay_mode` units (0.1 m .. 150 m as the WING's DIST, in any unit).
@@ -212,6 +215,7 @@ impl Default for InputParams {
             balance_db: AtomicF32::new(0.0),
             invert: AtomicBool::new(false),
             delay_on: AtomicBool::new(false),
+            bypass: AtomicBool::new(false),
             delay_mode: AtomicI32::new(0),
             delay: AtomicF32::new(DELAY_MIN_M),
         }
@@ -533,7 +537,10 @@ impl BankItem for MainSendParams {
     /// the console's `buses_to_main` (a factory-set WING's buses 9-16) feed
     /// Main 1 (`StripParams::new_in_slot`).
     fn factory(spec: &ProfileSpec, kind: StripKind, slot: usize, index: usize) -> Self {
-        let main1 = index == 0 && (kind.is_input() || (kind == StripKind::Bus && spec.buses_to_main.contains(&slot)));
+        // A plug-in host mixes nothing: its channels feed no main.
+        let main1 = index == 0
+            && !matches!(spec.profile, crate::profile::Profile::PluginHost(_))
+            && (kind.is_input() || (kind == StripKind::Bus && spec.buses_to_main.contains(&slot)));
         // A mono main's send (an X32's M/C level) starts at -oo.
         let level = if spec.mono_mains.contains(&index) { livedaw_dsp::fader::FADER_MIN } else { 0.0 };
         Self {

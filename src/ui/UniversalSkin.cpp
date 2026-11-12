@@ -32,6 +32,7 @@ namespace
         if (profile == ld::kProfileSq5)       return { InterfaceKind::Sq5, "SQ-5 SURFACE", "SQ-5" };
         if (profile == ld::kProfileYamaha01V) return { InterfaceKind::Yamaha01V, "01V SURFACE", "01V" };
         if (profile == ld::kProfileDLive)     return { InterfaceKind::DLive, "DLIVE SURFACE", "dLive" };
+        if (profile == ld::kProfilePluginHost) return { InterfaceKind::PluginHost, "PLUGIN HOST", "PLUGIN HOST" }; // no surface yet: no way back
         return { InterfaceKind::Wing, "WING SURFACE", "WING" };
     }
 } // namespace
@@ -67,7 +68,7 @@ UniversalSkin::UniversalSkin (UiContext& c)
             context.setInterface (kind);
     });
     addChildComponent (wingKey);
-    wingKey.setVisible (true);
+    wingKey.setVisible (ctx.engine.getProfile() != ld::kProfilePluginHost);
     // The show: NEW, OPEN, SAVE and SAVE AS (the shell's, as the WING's LIBRARY uses them).
     showKey.onClick = [this]
     {
@@ -561,7 +562,8 @@ void UniversalSkin::resized()
     headerKey.setTooltip (row2Shown ? "Hide the second header row for more strip height" : "Show the second header row");
     fromRight (bar, headerKey, 64);
     fromRight (bar, menuKey, 84);
-    fromRight (bar, wingKey, 160);
+    if (wingKey.isVisible())
+        fromRight (bar, wingKey, 160);
     fromRight (bar, connectKey, 110);
     const bool showShown = w >= 1500;
     showKey.setVisible (showShown);

@@ -133,6 +133,8 @@ public:
     /** Makes the engine a fresh console of `profile` with its counts (an X32: 32 channels...);
         rebuilds the strip views. */
     void configureProfile (ld::ProfileId profile) { ld::ld_engine_configure_profile (engine, profile); syncStrips(); }
+    /** A fresh plug-in host of 16, 32 or 64 channels. */
+    void configurePluginHost (int channels) { ld::ld_engine_configure_plugin_host (engine, channels); syncStrips(); }
     /** Makes the engine a fresh console of `counts` (nullptr: the WING); rebuilds the strip views. */
     void configure (const Counts* counts) { ld::ld_engine_configure (engine, counts); syncStrips(); }
     /** The number of strips of `kind` changed without a reset (the configuration

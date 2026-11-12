@@ -82,7 +82,9 @@ enum class InterfaceKind
     /** A Midas PRO2 console: its own surface. */
     Pro2,
     /** A XENYX Q1202USB: its own surface. */
-    Xenyx1202
+    Xenyx1202,
+    /** The plug-in host: the Universal Mixer shows it until it has a surface of its own. */
+    PluginHost
 };
 
 /** The HOME screen's tabs for the selected strip: the overview group
