@@ -420,6 +420,9 @@ void LayerEditor::beginRename()
 void LayerEditor::showMenu (juce::PopupMenu menu, juce::Rectangle<int> screenArea, std::function<void (int)> chosen)
 {
     ++menusShown;
+    // With no display at all (a headless test machine) JUCE can't place a menu and would crash.
+    if (juce::Desktop::getInstance().getDisplays().displays.isEmpty())
+        return;
     menu.setLookAndFeel (&lookAndFeelFor (theme));
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea (screenArea).withStandardItemHeight (sizes::kTouch).withMinimumWidth (200),
                         [safe = juce::Component::SafePointer<LayerEditor> (this), chosen = std::move (chosen)] (int item)

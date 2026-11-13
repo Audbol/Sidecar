@@ -178,6 +178,7 @@ namespace
                 content->addAndMakeVisible (*tile);
                 tiles.push_back (std::move (tile));
             }
+            pictured.assign (tiles.size(), false);
             tiles[0]->selected = true;
             viewport.setViewedComponent (content, true);
             viewport.setScrollBarsShown (true, false);
@@ -308,7 +309,7 @@ namespace
         std::unique_ptr<Row> continueRow;
         juce::Viewport viewport;
         std::vector<std::unique_ptr<Tile>> tiles;
-        std::array<bool, 11> pictured {};
+        std::vector<bool> pictured; // one per tile: its picture has been drawn
         juce::Rectangle<int> window, titleBar, panel, captionArea;
         float cap = 12.0f;
         int columns = 1, sel = 0, tileGap = 8;
