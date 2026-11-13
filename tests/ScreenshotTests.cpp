@@ -22,6 +22,8 @@
 #include "ui/Dm2000Surface.h"
 #include "ui/Xenyx1202Surface.h"
 #include "ui/PluginHostSurface.h"
+#include "ui/universal/HostRackPanel.h"
+#include "ui/universal/MixerView.h"
 #include "engine/Benchmark.h"
 #include "engine/PluginScanner.h"
 #include "ui/Y02RSurface.h"
@@ -211,6 +213,7 @@ public:
         dm2000Surface();
         xenyx1202Surface();
         pluginHostSurface();
+        universalPluginHostRack();
         customControlScribbles();
         promoPictures();
     }
@@ -225,6 +228,87 @@ public:
                 at = i;
         const int uid = strip.insertBlock (BlockKind::Plugin, at);
         engine.getFx().setPlugin (FxSlots::blockSlotOf (strip.getHandle(), uid), std::move (plugin));
+    }
+
+    /** The Universal Mixer on a WING: a strip with a PLUGIN HOST rack, its card in the CHANNEL panel (names, latency, two hot
+        knobs), and the rack's panel opened over the mixer (the picture holds the two, one above the other). */
+    void universalPluginHostRack()
+    {
+        beginTest ("The Universal Mixer's PLUGIN HOST rack on a WING strip");
+        MixerEngine engine (0);
+        engine.configureProfile (ld::kProfileWing);
+        setShownProfile (ld::kProfileWing);
+        setShownSlots (engine.getHandle());
+        ShotRig rig (engine);
+        const char* names[] = { "KICK", "SNARE", "HAT", "TOM 1", "VOCAL", "BASS", "GUITAR", "KEYS" };
+        for (size_t i = 0; i < 8; ++i)
+        {
+            auto& s = *engine.getChannels()[i];
+            s.setName (names[i]);
+            s.meters.trimPeak[0] = 0.15f + 0.07f * (float) i;
+            s.meters.outputPeak[0] = 0.12f + 0.06f * (float) i;
+        }
+        auto& strip = *engine.getChannels()[4];
+        auto& fx = engine.getFx();
+        const int uid = strip.insertBlock (BlockKind::Plugin, -1);
+        const int slot = FxSlots::blockSlotOf (strip.getHandle(), uid);
+        strip.setBlockHostRack (uid, true);
+        auto* params = new test::ParameterPlugin();
+        fx.setPlugin (slot, std::unique_ptr<juce::AudioPluginInstance> (params));
+        auto* plate = new test::FakePlugin (1.0f, test::FakePlugin::Mode::Gain, "Plate Reverb");
+        plate->setLatencySamples (256);
+        expect (fx.addToChain (slot, std::unique_ptr<juce::AudioPluginInstance> (plate)));
+        expect (fx.addToChain (slot, std::make_unique<test::SidechainPlugin>()));
+        PluginChain::Control control;
+        control.hot[0] = PluginChain::ParamRef::of (*params, 0);
+        control.hot[1] = PluginChain::ParamRef::of (*params, 1);
+        fx.setChainMemberControl (slot, 0, control);
+        expect (fx.setChainMemberKey (slot, 2, PluginChain::Key { 0, false }));
+        params->level->setValueNotifyingHost (0.7f);
+
+        MixerView view (rig.ctx, Theme::charcoal());
+        view.setSize (1920, 1000);
+        view.setChannelShown (true);
+        rig.selected = &strip;
+        view.selectionChanged();
+        view.refresh();
+        view.getChannelPanel().refresh();
+        rig.meters.advance (0.02f);
+        const auto card = view.createComponentSnapshot (view.getLocalBounds(), true, 1.0f).getClippedImage (view.getChannelPanel().getBounds());
+        expect (card.isValid());
+
+        auto* pluginCard = view.getChannelPanel().numExtraCards() > 0 ? view.getChannelPanel().getExtraPluginCard (0) : nullptr;
+        expect (pluginCard != nullptr && pluginCard->isRack());
+        if (pluginCard == nullptr)
+            return;
+        pluginCard->getOpenKey().onClick();
+        expect (view.isHostRackShown());
+        auto& panel = *view.getHostRack();
+        panel.getRack().getDock().refresh();
+        panel.refresh();
+        const auto opened = panel.createComponentSnapshot (panel.getLocalBounds(), true, 1.0f);
+        expect (opened.isValid());
+
+        juce::Image both (juce::Image::RGB, 1920, card.getHeight() + opened.getHeight(), true);
+        {
+            juce::Graphics g (both);
+            g.fillAll (juce::Colours::black);
+            g.drawImageAt (card, 0, 0);
+            g.drawImageAt (opened, 0, card.getHeight());
+        }
+        const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {});
+        if (folder.isNotEmpty())
+        {
+            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile ("universal-pluginhost-rack.png");
+            file.getParentDirectory().createDirectory();
+            file.deleteFile();
+            juce::FileOutputStream out (file);
+            expect (out.openedOk() && juce::PNGImageFormat().writeImageToStream (both, out), file.getFullPathName());
+            logMessage ("wrote " + file.getFullPathName());
+        }
+        panel.getCloseKey().onClick();
+        engine.getGarbage().collectAllNow();
+        setShownProfile (ld::kProfileUniversal);
     }
 
     /** The PLUGIN HOST's surface at 1920x1080: 16 channels, a few blocks on channel 1 (selected) and its RACK page. */

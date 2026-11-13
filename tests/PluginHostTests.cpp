@@ -8,6 +8,9 @@
 #include "engine/PluginScanner.h"
 #include "engine/Show.h"
 #include "ui/PluginHostSurface.h"
+#include "ui/universal/ChainList.h"
+#include "ui/universal/HostRackPanel.h"
+#include "ui/universal/MixerView.h"
 
 using namespace livedaw;
 
@@ -2075,6 +2078,222 @@ public:
             expect (! system.isAudioOpen());
             expect (system.describeDevice().isNotEmpty());
             folder.deleteRecursively();
+            engine.getGarbage().collectAllNow();
+            setShownProfile (ld::kProfileUniversal);
+        }
+
+        beginTest ("The Universal Mixer offers a PLUGIN HOST RACK on a WING, an X32 and a Q1202USB: a plug-in block marked as a host rack, with a card and the rack's panel; refused under remote control");
+        for (const ld::ProfileId profile : { ld::kProfileWing, ld::kProfileX32, ld::kProfileXenyx1202 })
+        {
+            using namespace ui::universal;
+            MixerEngine engine (0);
+            engine.configureProfile (profile);
+            setShownProfile (profile);
+            setShownSlots (engine.getHandle());
+            HostRig rig (engine);
+            auto& strip = *engine.getChannels()[1];
+            ChainList list (rig.ctx, Theme::charcoal());
+            list.setSize (320, 400);
+            list.setStrip (&strip);
+            const auto offered = [&list]
+            {
+                juce::StringArray names;
+                auto menu = list.buildAddMenu();
+                for (juce::PopupMenu::MenuItemIterator it (menu); it.next();)
+                    names.add (it.getItem().text);
+                return names;
+            };
+            expect (offered().contains ("PLUGIN HOST RACK") && offered().contains ("PLUG-IN..."), "the entry is offered on " + devices::shown());
+            expect (list.addHostRack(), "added on " + devices::shown());
+            int uid = -1;
+            for (const auto& step : strip.getChain())
+                if (step.isBlock() && step.getBlockKind() == BlockKind::Plugin)
+                    uid = step.uid;
+            expect (uid >= 0 && strip.isBlockHostRack (uid), "a plug-in block marked as a host rack");
+            bool tagged = false;
+            for (const auto& row : list.getRows())
+                if (row.step.isBlock() && row.step.uid == uid)
+                    tagged = row.device == "PLUGIN HOST" && row.name == "PLUGIN HOST RACK";
+            expect (tagged, "the chain list names it");
+
+            // Plug-ins go into it (a chain of two); its card in the CHANNEL panel shows them.
+            auto& fx = engine.getFx();
+            const int slot = FxSlots::blockSlotOf (strip.getHandle(), uid);
+            auto* params = new test::ParameterPlugin();
+            fx.setPlugin (slot, std::unique_ptr<juce::AudioPluginInstance> (params));
+            auto* delayed = new test::FakePlugin (1.0f, test::FakePlugin::Mode::Gain, "Delay Line");
+            delayed->setLatencySamples (128);
+            expect (fx.addToChain (slot, std::unique_ptr<juce::AudioPluginInstance> (delayed)));
+            PluginChain::Control control;
+            control.hot[0] = PluginChain::ParamRef::of (*params, 0);
+            control.hot[1] = PluginChain::ParamRef::of (*params, 1);
+            fx.setChainMemberControl (slot, 0, control);
+            const int plain = addFakePlugin (engine, strip, "Plain"); // an ordinary plug-in block after it
+
+            MixerView view (rig.ctx, Theme::charcoal());
+            view.setSize (1920, 1000);
+            view.setChannelShown (true);
+            rig.selected = &strip;
+            view.selectionChanged();
+            view.refresh();
+            auto& panel = view.getChannelPanel();
+            expectEquals (panel.numExtraCards(), 2);
+            auto* card = panel.numExtraCards() == 2 ? panel.getExtraPluginCard (0) : nullptr;
+            auto* plainCard = panel.numExtraCards() == 2 ? panel.getExtraPluginCard (1) : nullptr;
+            expect (card != nullptr && plainCard != nullptr && card->isRack() && ! plainCard->isRack(), "only the marked block shows a rack");
+            if (card == nullptr || plainCard == nullptr)
+                continue;
+            expect (card->getRackNames() == juce::StringArray (PluginHost::describe (*params).name, PluginHost::describe (*delayed).name), card->getRackNames().joinIntoString (","));
+            expectEquals (card->info().latency, 128, "the rack's total latency");
+            expect (card->getHot (0).assigned && card->getHot (0).name == "LEVEL" && card->getHot (1).assigned && card->getHot (1).name == "MODE");
+            expect (card->getHotBounds (0).getWidth() > 20 && card->getHotBounds (1).getX() > card->getHotBounds (0).getX(), "two small knobs");
+            expectWithinAbsoluteError (card->getHot (0).value, 0.5f, 0.001f);
+            expect (card->turnHot (0, 0.25f));
+            expectWithinAbsoluteError (params->level->get(), 0.75f, 0.002f, "a hot knob turns the parameter it follows");
+            expect (card->turnHot (1, 0.5f) && params->mode->getIndex() == 1, "a stepped one moves a step");
+            expect (! plainCard->turnHot (0, 0.1f));
+
+            // OPEN: the rack's panel over the view, for that block.
+            expect (card->getOpenKey().getButtonText() == "OPEN" && card->getOpenKey().isEnabled());
+            card->getOpenKey().onClick();
+            expect (view.isHostRackShown() && view.getHostRack() != nullptr && view.getHostRack()->getBounds().getWidth() > 1000);
+            auto* host = view.getHostRack();
+            auto& page = host->getRack();
+            expect (page.getFixedStrip() == &strip && page.getSelectedUid() == uid, "the rack page shows this strip, this block");
+            expectEquals (page.getNumTiles(), 2);
+            expect (page.getTile (0).uid == uid && page.getTile (1).uid == plain);
+            expectEquals (page.getDock().getUid(), uid);
+            expect (page.getDock().getContent() == ui::ph::RackDock::Content::Generic && page.getDock().getNumMemberKeys() == 2);
+
+            // A reorder there changes the strip's chain.
+            const auto before = blockUids (strip);
+            expect (page.moveTile (0, page.getNumTiles()));
+            expect (blockUids (strip) != before && blockUids (strip).back() == uid, "the rack moved to the end of the chain");
+            expect (page.moveTile (1, 0) && blockUids (strip) == before);
+
+            // A hot knob is assigned in the dock: MODE on knob 1 leaves LEVEL.
+            auto& dock = page.getDock();
+            dock.getHotKey (0).onClick();
+            expectEquals (dock.getAssigning(), 0);
+            dock.parameterTouched (1);
+            auto now = fx.getChainMemberControl (slot, 0);
+            expect (now.hot[0].index == 1 && ! now.hot[1].isSet(), "the parameter is on one knob only");
+            card->setBlock (&strip, uid, strip.getBlock (uid).plugin());
+            expect (card->getHot (0).name == "MODE" && ! card->getHot (1).assigned);
+
+            // A plug-in added in the panel goes into a marked block too.
+            expect (page.addBlock (BlockKind::Plugin) && strip.isBlockHostRack (page.getSelectedUid()));
+            host->getCloseKey().onClick();
+            expect (! view.isHostRackShown());
+
+            // Under remote control of a real console the entry and the block are refused.
+            models::setRemoteHeld (true);
+            expect (! offered().contains ("PLUGIN HOST RACK") && ! list.addHostRack(), "refused under remote control");
+            models::setRemoteHeld (false);
+            engine.getGarbage().collectAllNow();
+        }
+        setShownProfile (ld::kProfileUniversal);
+
+        beginTest ("A host rack's sidechain keys on a WING are that console's channels, IN or OUT; the choice is hidden for a plug-in with no sidechain; a key reaches the plug-in");
+        {
+            using namespace ui::universal;
+            MixerEngine engine (0);
+            engine.configureProfile (ld::kProfileWing);
+            setShownProfile (ld::kProfileWing);
+            setShownSlots (engine.getHandle());
+            HostRig rig (engine);
+            auto& strip = *engine.getChannels()[2];
+            auto& fx = engine.getFx();
+            ChainList list (rig.ctx, Theme::charcoal());
+            list.setStrip (&strip);
+            expect (list.addHostRack());
+            const int uid = pluginUids (strip).back();
+            const int slot = FxSlots::blockSlotOf (strip.getHandle(), uid);
+            auto* keyed = new test::SidechainPlugin();
+            fx.setPlugin (slot, std::unique_ptr<juce::AudioPluginInstance> (keyed));
+            const int plain = addFakePlugin (engine, strip, "Plain");
+
+            HostRackPanel panel (rig.ctx, Theme::charcoal());
+            panel.setSize (1600, 900);
+            panel.show (strip, uid);
+            expect (panel.isKeyAvailable() && panel.getKeyKey().isVisible(), "a plug-in with a sidechain gets the choice");
+            const auto choices = panel.getKeyChoices();
+            expectEquals ((int) choices.size(), 1 + 2 * (int) engine.getChannels().size(), "NONE and every channel's IN and OUT");
+            expect (choices[0].text == "NONE" && choices[1].text == "CH 1 IN" && choices[2].text == "CH 1 OUT");
+            expect (choices[1 + 2 * 2].allowed && ! choices[1 + 2 * 2 + 1].allowed, "a channel cannot key its own plug-ins from its output");
+            expect (! panel.setKey ({ 2, true }) && panel.getKey().isNone());
+
+            for (int i : { 1, 2, 5 })
+                engine.getChannels()[(size_t) i]->params.inputLeft = i;
+            test::OfflineRig audio (engine, 40, 40);
+            audio.setInput (1, 0.04f);
+            audio.setInput (2, 0.06f);
+            audio.setInput (5, 0.12f);
+            audio.run (30);
+            expectWithinAbsoluteError (keyed->keyLevel.load(), 0.0f, 1.0e-6f, "no key: silence on the sidechain");
+            expect (panel.setKey ({ 5, false }) && fx.getChainMemberKey (slot, 0) == PluginChain::Key { 5, false });
+            audio.run (30);
+            const float high = keyed->keyLevel.load();
+            expect (high > 0.01f, "channel 6's input reaches the plug-in's sidechain");
+            expect (panel.setKey ({ 1, false }));
+            audio.run (30);
+            const float low = keyed->keyLevel.load();
+            expect (low > 0.003f && std::abs (high / low - 3.0f) < 0.4f, "and channel 2's is a third of it: " + juce::String (high) + " / " + juce::String (low));
+            expect (panel.setKey ({ 5, true }) && panel.getKey() == PluginChain::Key { 5, true });
+            expect (panel.setKey ({}) && panel.getKey().isNone());
+            expect (panel.getKeyKey().getButtonText() == "KEY: NONE");
+
+            // A plug-in without a sidechain: no choice.
+            for (int i = 0; i < panel.getRack().getNumTiles(); ++i)
+                if (panel.getRack().getTile (i).uid == plain)
+                    panel.getRack().selectTile (i);
+            panel.refresh();
+            expect (! panel.isKeyAvailable() && ! panel.getKeyKey().isVisible() && ! panel.setKey ({ 5, false }), "hidden where the plug-in has no sidechain");
+            engine.getGarbage().collectAllNow();
+            setShownProfile (ld::kProfileUniversal);
+        }
+
+        beginTest ("A host rack block survives a show round trip with its flags, key and hot parameters");
+        {
+            MixerEngine engine (0);
+            engine.configureProfile (ld::kProfileWing);
+            setShownProfile (ld::kProfileWing);
+            setShownSlots (engine.getHandle());
+            HostRig rig (engine);
+            auto& strip = *engine.getChannels()[2];
+            auto& fx = engine.getFx();
+            const int uid = strip.insertBlock (BlockKind::Plugin, -1);
+            const int slot = FxSlots::blockSlotOf (strip.getHandle(), uid);
+            strip.setBlockHostRack (uid, true);
+            strip.setBlockSafe (uid, true);
+            auto* params = new test::ParameterPlugin();
+            fx.setPlugin (slot, std::unique_ptr<juce::AudioPluginInstance> (params));
+            expect (fx.addToChain (slot, std::make_unique<test::SidechainPlugin>()));
+            PluginChain::Control control;
+            control.hot[0] = PluginChain::ParamRef::of (*params, 0);
+            control.hot[1] = PluginChain::ParamRef::of (*params, 1);
+            fx.setChainMemberControl (slot, 0, control);
+            expect (fx.setChainMemberKey (slot, 1, PluginChain::Key { 5, true }));
+            const int plain = strip.insertBlock (BlockKind::Plugin, -1); // a plain, empty plug-in block beside it
+            expect (plain >= 0 && ! strip.isBlockHostRack (plain));
+
+            const auto xml = rig.show.toXml();
+            expect (xml != nullptr, "the show saves");
+            MixerEngine other (0);
+            HostRig rig2 (other);
+            const auto result = rig2.show.loadFromXml (*xml);
+            expect (result.wasOk(), result.getErrorMessage());
+            expectEquals ((int) other.getChannels().size(), (int) engine.getChannels().size());
+            auto& strip2 = *other.getChannels()[2];
+            expect (strip2.isBlockHostRack (uid) && strip2.isBlockSafe (uid), "the rack flag and SAFE come back");
+            expect (! strip2.isBlockHostRack (plain) && ! strip2.isBlockSafe (plain), "a plain block stays plain");
+            auto& fx2 = other.getFx();
+            const int slot2 = FxSlots::blockSlotOf (strip2.getHandle(), uid);
+            expectEquals (fx2.getNumChainMembers (slot2), 2);
+            expect (fx2.getChainMemberKey (slot2, 1) == PluginChain::Key { 5, true }, "the key");
+            const auto control2 = fx2.getChainMemberControl (slot2, 0);
+            expect (control2.hot[0].index == 0 && control2.hot[0].name == "Level" && control2.hot[1].index == 1 && control2.hot[1].name == "Mode", "the hot parameters");
+            other.getGarbage().collectAllNow();
             engine.getGarbage().collectAllNow();
             setShownProfile (ld::kProfileUniversal);
         }

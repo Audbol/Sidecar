@@ -61,6 +61,9 @@ public:
 
     /** Shows block `uid` of channel `channel` (0-based; uid < 0: nothing), unless the dock is pinned. */
     void follow (int channel, int uid);
+    /** The dock follows one strip (a PLUGIN HOST rack of the Universal Mixer: any console's strip) instead of the
+        channels: its blocks are then shown with channel -1. nullptr: the channels again. */
+    void setStrip (Strip* s) { fixedStrip = s; }
     int getChannel() const noexcept { return channel; }
     int getUid() const noexcept { return uid; }
     Content getContent() const noexcept { return content; }
@@ -105,6 +108,7 @@ private:
     UiContext& ctx;
     const universal::Theme& theme;
     int channel = -1, uid = -1, member = 0;
+    Strip* fixedStrip = nullptr;
     bool pinned = false;
     Content content = Content::Empty;
     juce::String message, detail, signature;
@@ -140,6 +144,11 @@ public:
     /** The channel shown (0-based). */
     void setChannel (int index);
     int getChannel() const noexcept { return channel; }
+    /** Shows one strip's blocks instead of a channel's (a PLUGIN HOST rack of the Universal Mixer: any console's strip),
+        with block `uid` selected (-1: the first plug-in). A plug-in block added here is marked as a host rack. nullptr:
+        the channels again. */
+    void setStrip (Strip* s, int uid = -1);
+    Strip* getFixedStrip() const noexcept { return fixedStrip; }
     /** The tile selected (its block's uid; -1 none): what the hot knobs follow while this channel is the selected one. */
     int getSelectedUid() const noexcept { return selectedUid; }
     /** The selected plug-in as the hot knobs see it: the shown channel, the selected block, the dock's plug-in in it. */
@@ -185,6 +194,7 @@ public:
     void showTileMenu (int index);
 
     RackDock& getDock() noexcept { return dock; }
+    const RackDock& getDock() const noexcept { return dock; }
     /** What takes the touches (for the tests). */
     juce::Component& getCanvas() noexcept;
 
@@ -212,6 +222,10 @@ private:
     UiContext& ctx;
     const universal::Theme& theme;
     int channel = 0, selected = -1, selectedUid = -1;
+    Strip* fixedStrip = nullptr;
+    int leftWidth() const noexcept;
+    /** Marks a new plug-in block as a host rack when the page shows one strip (setStrip). */
+    void markNew (Strip&, int uid) const;
     std::map<int, int> lastUid; // the block last selected on each channel
     std::vector<ChainStep> tiles;
     std::vector<TileInfo> infos;

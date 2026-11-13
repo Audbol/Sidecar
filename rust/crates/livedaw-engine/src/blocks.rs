@@ -324,6 +324,9 @@ pub struct Block {
     pub meters: BlockMeters,
     /// SAFE (the plug-in host's scenes): a recall leaves the block as it is, present and in its place.
     safe: AtomicBool,
+    /// A PLUGIN HOST rack (the Universal Mixer's device): a plug-in block that gets the host's features
+    /// (tiles, docked editors, keys, hot knobs, SAFE per plug-in). Saved with the show.
+    host_rack: AtomicBool,
     dsp: UnsafeCell<BlockDsp>,
 }
 
@@ -338,13 +341,13 @@ impl Block {
     pub fn new(uid: u32, kind: BlockKind, bus: bool, sample_rate: f64, models: &'static ModelTables) -> Self {
         let mut dsp = BlockDsp::new(kind);
         dsp.prepare(sample_rate);
-        Self { uid, params: BlockParams::new_in(kind, bus, models), meters: BlockMeters::default(), safe: AtomicBool::new(false), dsp: UnsafeCell::new(dsp) }
+        Self { uid, params: BlockParams::new_in(kind, bus, models), meters: BlockMeters::default(), safe: AtomicBool::new(false), host_rack: AtomicBool::new(false), dsp: UnsafeCell::new(dsp) }
     }
 
     /// One of the strip's own blocks (`params::OwnBlocks`, id 0), prepared
     /// with the strip (`Strip::prepare`).
     pub(crate) fn own(params: BlockParams) -> Self {
-        Self { uid: 0, dsp: UnsafeCell::new(BlockDsp::new(params.kind())), params, meters: BlockMeters::default(), safe: AtomicBool::new(false) }
+        Self { uid: 0, dsp: UnsafeCell::new(BlockDsp::new(params.kind())), params, meters: BlockMeters::default(), safe: AtomicBool::new(false), host_rack: AtomicBool::new(false) }
     }
 
     /// Message thread, audio stopped or the block unpublished: sizes a plug-in block's buffers.
@@ -372,6 +375,15 @@ impl Block {
 
     pub fn set_safe(&self, safe: bool) {
         self.safe.store(safe, Relaxed);
+    }
+
+    /// Whether this plug-in block is a PLUGIN HOST rack.
+    pub fn host_rack(&self) -> bool {
+        self.host_rack.load(Relaxed)
+    }
+
+    pub fn set_host_rack(&self, rack: bool) {
+        self.host_rack.store(rack, Relaxed);
     }
 
     /// # Safety

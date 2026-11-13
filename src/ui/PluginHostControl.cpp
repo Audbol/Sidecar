@@ -121,7 +121,7 @@ std::vector<PluginRef> Control::pluginsOf (int channel) const
 
 int Control::slotOf (const PluginRef& ref) const
 {
-    auto* s = stripAt (ref.channel);
+    auto* s = ref.strip != nullptr ? ref.strip : stripAt (ref.channel);
     return s != nullptr && ref.uid >= 0 ? FxSlots::blockSlotOf (s->getHandle(), ref.uid) : -1;
 }
 

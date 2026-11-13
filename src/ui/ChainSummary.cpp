@@ -19,6 +19,8 @@ juce::String stepName (const Strip& strip, const ChainStep& s)
     {
         // The plugin's name (a plugin that could not be loaded keeps the one it was saved with).
         const auto info = FxSlots (strip.getEngineHandle()).describeBlock (strip.getHandle(), s.uid);
+        if (strip.isBlockHostRack (s.uid)) // a PLUGIN HOST rack (the Universal Mixer's device)
+            return info.name.isNotEmpty() ? "RACK: " + info.name.toUpperCase() : juce::String ("PLUGIN HOST RACK");
         return info.name.isNotEmpty() ? "PLUG-IN: " + info.name.toUpperCase() : stepName (s);
     }
     return s.isBlock() && s.uid == ld::ld_strip_preamp_block (strip.getHandle()) ? juce::String ("PREAMP") : stepName (s);

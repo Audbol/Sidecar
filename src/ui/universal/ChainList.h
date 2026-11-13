@@ -55,11 +55,17 @@ public:
         row (before PRE-FADER with none) and selects it; false if the strip has
         no room. */
     bool add (std::optional<BlockKind> kind);
+    /** The ADD key's menu: the blocks, PLUG-IN... and PLUGIN HOST RACK (both left out under remote control), USER TAP. */
+    juce::PopupMenu buildAddMenu() const;
     /** Offers the scanned plugins; the one picked goes into a new PLUG-IN block (its editor opens). */
     void choosePlugin();
     /** A new PLUG-IN block holding `desc`; false (no block left behind) if it could not be loaded or
         a real console is under remote control. */
     bool addPlugin (const juce::PluginDescription& desc);
+    /** A new, empty PLUG-IN block marked as a PLUGIN HOST rack (Strip::isBlockHostRack) and selects it: its card
+        shows the rack, and the rack's panel is where plug-ins go in. False if the strip has no room, or a real
+        console is under remote control. */
+    bool addHostRack();
     /** Moves movable row `row` to before row `before` (the end: getRows().size()). */
     bool moveRow (int row, int before);
     bool removeRow (int row);

@@ -1526,6 +1526,9 @@ extern "C"
     /** SAFE (the plug-in host's scenes): a scene recall leaves block `uid` as it is, present and in its place. */
     bool ld_strip_block_safe (const Strip*, int32_t uid);
     void ld_strip_set_block_safe (const Strip*, int32_t uid, bool safe);
+    /** A plug-in block marked as a PLUGIN HOST rack (the Universal Mixer's device); saved with the show. */
+    bool ld_strip_block_host_rack (const Strip*, int32_t uid);
+    void ld_strip_set_block_host_rack (const Strip*, int32_t uid, bool rack);
     /** Back to the strip's template: no extra blocks, no user taps. */
     void ld_engine_clear_chain (const Engine*, const Strip*);
     /** Places a user tap at step `at` (< 0 or past the end: last); returns its id, or -1 when all are placed. */

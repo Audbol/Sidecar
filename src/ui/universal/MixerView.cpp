@@ -886,6 +886,7 @@ MixerView::MixerView (UiContext& c, const Theme& t)
       channel (c, t), bankBar (std::make_unique<BankBar> (*this))
 {
     layout.fromString (c.settings.getValue (StripLayout::kSetting));
+    c.openHostRack = [this] (Strip& s, int uid) { showHostRack (s, uid); };
     // JUMP: the list of every strip, to go to one by its number, label or name.
     jumpKey.isOn = [this] { return isJumpListShown(); };
     jumpKey.onClick = [this] { setJumpListShown (! isJumpListShown()); };
@@ -996,6 +997,37 @@ MixerView::MixerView (UiContext& c, const Theme& t)
 MixerView::~MixerView()
 {
     stopTimer();
+    ctx.openHostRack = nullptr;
+}
+
+void MixerView::showHostRack (Strip& strip, int uid)
+{
+    if (hostRack == nullptr)
+    {
+        hostRack = std::make_unique<HostRackPanel> (ctx, theme);
+        hostRack->onClose = [this] { closeHostRack(); };
+        addChildComponent (*hostRack);
+    }
+    hostRack->show (strip, uid);
+    hostRack->setVisible (true);
+    hostRack->toFront (false);
+    resized();
+}
+
+void MixerView::closeHostRack()
+{
+    if (hostRack == nullptr || ! hostRack->isVisible())
+        return;
+    hostRack->setVisible (false);
+    // The strips' cards read the racks again (the panel may have added plug-ins or reordered blocks).
+    refresh();
+    // The panel (and the plug-in editor its dock holds) goes once the key that closed it has returned.
+    juce::Component::SafePointer<MixerView> safe (this);
+    juce::MessageManager::callAsync ([safe]
+    {
+        if (safe != nullptr && ! safe->isHostRackShown())
+            safe->hostRack.reset();
+    });
 }
 
 //==============================================================================
@@ -1834,6 +1866,8 @@ void MixerView::resized()
         layerEditor->setBounds (juce::Rectangle<int> (juce::jmin (620, getWidth() - 2 * sizes::kGap), juce::jmin (440, getHeight() - 2 * sizes::kGap))
                                     .withRightX (getWidth() - sizes::kGap)
                                     .withY (sizes::kGap));
+    if (hostRack != nullptr && hostRack->isVisible())
+        hostRack->setBounds (getLocalBounds().reduced (sizes::kGap));
     if (jumpList != nullptr)
     {
         // Under JUMP, over the columns.

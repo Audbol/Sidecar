@@ -187,6 +187,33 @@ key, and the key, hot knob and BYPASS mappings of those channels are deleted (a 
 the show's other data keep what they hold; a recall finds that channels no longer exist, as it does on the other
 consoles. So nothing of a remaining channel is lost; what is lost is only what belonged to a channel that goes.
 
+## On any console's strip (the Universal Mixer)
+
+The Universal Mixer offers a rack as a device on any console's strip (the WING, X32, 01V and the rest, the Q1202USB too).
+
+- **The entry.** ADD in the chain list has a PLUGIN HOST RACK entry beside PLUG-IN (neither is offered, and neither block is made,
+  while a real console is under remote control). It adds a plug-in block (the existing block and `PluginChain`, no new DSP block
+  type) and marks it: `Block::host_rack` in the engine (`ld_strip_block_host_rack`, `Strip::isBlockHostRack`), saved as
+  `rack="1"` on the block's `<B>` in the console state, so the show and the scenes keep it (a scene recall that makes the block
+  again marks it). The chain list tags it PLUGIN HOST and names it RACK: and the first plug-in's name.
+- **The card** (CHANNEL panel, and the block editor: `PluginBlockCard` in rack mode). It lists the plug-ins' names (a bypassed
+  one dim), the rack's total latency, ON (bypass) and PLUG-IN (the existing menu), and the two hot knobs of the rack's first
+  plug-in that has any (the same rule as the PLUGIN HOST's knobs without a focus) as small knobs: a vertical drag turns the
+  parameter they follow (200 px for the whole range; a stepped one moves a step at a time). OPEN replaces EDIT.
+- **The panel.** OPEN asks the Universal Mixer's view (`UiContext::openHostRack`) for a large panel over it (`HostRackPanel`, with
+  CLOSE): the RACK page (`ph::RackPage` with `ph::RackDock`) shown for one strip instead of a PLUGIN HOST channel
+  (`RackPage::setStrip`; the page scales down in a narrower window). It shows the strip's blocks as tiles with that block selected;
+  drag to reorder (the strip's chain changes), hold for the menu, "+" for a plug-in or a built-in block (a plug-in block added here
+  is marked as a rack too), the docked editor, SAFE as on the PLUGIN HOST, and ASSIGN HOT 1 and 2 (`PluginRef` can name a strip
+  that is not one of the host's channels, so `ph::Control` assigns on it).
+- **Sidechain keys.** KEY in the panel's header, shown while the selected plug-in has a sidechain input (and is not in the
+  sandbox): NONE, or any channel of the console, its input (before its blocks) or its output (after its whole chain), the same
+  taps and `FxSlots::setChainMemberKey` as the KEYS page. A channel cannot key a plug-in of its own strip from its output. The
+  choice is hidden where there is nothing to key from (an engine with no channels).
+- **Not here: MIDI learn.** `ph::Control`'s learn and its mappings are keyed by the host's channels and kept with the host's
+  show data, so they stay on the PLUGIN HOST's own surface; the Universal Mixer has the hot knobs (assigned in the dock, turned on
+  the card) only.
+
 ## Latency
 
 The thing that matters most on inserts. Each channel shows its round trip (converter plus buffer plus
@@ -246,5 +273,5 @@ warning. With no benchmark saved the guard suggests running one (the notice, and
 4. SCENES: whole states, safes, crossfade. (Done.)
 5. CONTROL: MIDI learn, hot knobs. (Done.)
 6. OVERVIEW, BROWSER, SYSTEM; latency alignment; the CPU guard. (Done.)
-7. The Universal Mixer: PLUGIN HOST racks offered on any console's strips.
+7. The Universal Mixer: PLUGIN HOST racks offered on any console's strips. (Done; see below. MIDI learn stays on the surface.)
 8. Screenshots, user guide, start-up tile, completion percentage.

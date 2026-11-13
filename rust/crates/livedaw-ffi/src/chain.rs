@@ -254,6 +254,19 @@ pub unsafe extern "C" fn ld_strip_set_block_safe(s: *const Strip, uid: i32, safe
     guard((), || s.blocks().iter().filter(|b| b.uid() == uid).for_each(|b| b.set_safe(safe)));
 }
 
+/// Whether block `uid` is a PLUGIN HOST rack (a plug-in block the Universal Mixer offers as a device).
+#[no_mangle]
+pub unsafe extern "C" fn ld_strip_block_host_rack(s: *const Strip, uid: i32) -> bool {
+    let (Some(s), Ok(uid)) = (strip(s), u32::try_from(uid)) else { return false };
+    guard(false, || s.blocks().iter().any(|b| b.uid() == uid && b.host_rack()))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn ld_strip_set_block_host_rack(s: *const Strip, uid: i32, rack: bool) {
+    let (Some(s), Ok(uid)) = (strip(s), u32::try_from(uid)) else { return };
+    guard((), || s.blocks().iter().filter(|b| b.uid() == uid).for_each(|b| b.set_host_rack(rack)));
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn ld_engine_remove_block(e: *const Engine, s: *const Strip, uid: i32) -> bool {
     let (Some(e), Some(s), Ok(uid)) = (engine(e), strip(s), u32::try_from(uid)) else { return false };

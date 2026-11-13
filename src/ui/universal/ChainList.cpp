@@ -179,16 +179,7 @@ ChainList::ChainList (UiContext& c, const Theme& t)
 
     addKey.onClick = [this]
     {
-        juce::PopupMenu menu;
-        menu.setLookAndFeel (&lookAndFeelFor (theme));
-        int id = 1;
-        for (auto kind : { BlockKind::Filter, BlockKind::Eq, BlockKind::Dynamics, BlockKind::Insert, BlockKind::Delay })
-            menu.addItem (id++, stepName ({ ld::kStepBlock, (int) kind }));
-        menu.addSeparator();
-        // A hosted plugin (VST3, AU, LV2), not in an FX slot; a real console under remote control runs its own processing.
-        if (! models::remoteHeld())
-            menu.addItem (101, "PLUG-IN...");
-        menu.addItem (100, "USER TAP (for sends)");
+        auto menu = buildAddMenu();
         juce::Component::SafePointer<ChainList> safe (this);
         menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&addKey).withStandardItemHeight (sizes::kTouch).withMinimumWidth (220),
                             [safe] (int result)
@@ -197,6 +188,8 @@ ChainList::ChainList (UiContext& c, const Theme& t)
                                     return;
                                 if (result == 101)
                                     safe->choosePlugin();
+                                else if (result == 102)
+                                    safe->addHostRack();
                                 else if (result == 100)
                                     safe->add (std::nullopt);
                                 else
@@ -209,6 +202,26 @@ ChainList::ChainList (UiContext& c, const Theme& t)
 }
 
 ChainList::~ChainList() = default;
+
+juce::PopupMenu ChainList::buildAddMenu() const
+{
+    juce::PopupMenu menu;
+    menu.setLookAndFeel (&lookAndFeelFor (theme));
+    int id = 1;
+    for (auto kind : { BlockKind::Filter, BlockKind::Eq, BlockKind::Dynamics, BlockKind::Insert, BlockKind::Delay })
+        menu.addItem (id++, stepName ({ ld::kStepBlock, (int) kind }));
+    menu.addSeparator();
+    // A hosted plugin (VST3, AU, LV2), not in an FX slot; a real console under remote control runs its own processing.
+    if (! models::remoteHeld())
+    {
+        menu.addItem (101, "PLUG-IN...");
+        // The PLUGIN HOST's rack as a device of this console's strip: the host's tiles, docked editors,
+        // sidechain keys and hot knobs, on a plug-in block.
+        menu.addItem (102, "PLUGIN HOST RACK");
+    }
+    menu.addItem (100, "USER TAP (for sends)");
+    return menu;
+}
 
 void ChainList::setStrip (Strip* s)
 {
@@ -236,6 +249,8 @@ bool ChainList::isOn (const ChainStep& s) const
 
 juce::String ChainList::deviceOf (const ChainStep& s, bool own) const
 {
+    if (strip != nullptr && s.isBlock() && s.getBlockKind() == BlockKind::Plugin && strip->isBlockHostRack (s.uid))
+        return "PLUGIN HOST";
     const bool holdsModel = s.isBlock() || s.kind == ld::kStepGate || s.kind == ld::kStepEq || s.kind == ld::kStepDynamics;
     if (strip != nullptr && holdsModel)
         return BlockTarget::of (ctx, *strip, s).tag();
@@ -439,6 +454,19 @@ bool ChainList::addPlugin (const juce::PluginDescription& desc)
     selectStep ([uid] (const ChainStep& s) { return s.isBlock() && s.uid == uid; });
     if (ctx.openPluginEditor)
         ctx.openPluginEditor (slot);
+    return true;
+}
+
+bool ChainList::addHostRack()
+{
+    if (strip == nullptr)
+        return false;
+    const int uid = strip->insertBlock (BlockKind::Plugin, insertionPoint()); // refused under remote control
+    if (uid < 0)
+        return false;
+    strip->setBlockHostRack (uid, true);
+    refresh();
+    selectStep ([uid] (const ChainStep& s) { return s.isBlock() && s.uid == uid; });
     return true;
 }
 

@@ -149,6 +149,9 @@ struct UiContext
     /** ROUTING's CHANNELS (0), SOURCES (1) or OUTPUTS (2) tab (a GLOBAL PAGE key). */
     std::function<void (int tab)> showRoutingTab;
     std::function<void (juce::AudioProcessor*)> pluginRemoved;
+    /** Opens the PLUGIN HOST rack of plug-in block `uid` of a strip as a panel over the Universal Mixer (set by the
+        Universal Mixer's view; empty while none is shown). */
+    std::function<void (Strip&, int uid)> openHostRack;
     std::function<void()> showPluginScanner;
     /** The plugin overview window (every FX slot's plugins, PluginOverviewWindow): opens it, or brings it to the front. */
     std::function<void()> showPluginOverview;

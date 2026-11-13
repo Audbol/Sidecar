@@ -162,7 +162,7 @@ void RackDock::parameterTouched (int paramIndex)
     const int s = slot();
     if (control == nullptr || plugin == nullptr || s < 0)
         return;
-    const PluginRef ref { channel, uid, member };
+    const PluginRef ref { channel, uid, member, fixedStrip };
     const auto param = PluginChain::ParamRef::of (*plugin, paramIndex);
     if (! param.isSet())
         return;
@@ -188,7 +188,7 @@ void RackDock::refreshHotKeys()
         {
             if (assigning == k)
                 text = "TOUCH A CONTROL";
-            else if (const auto c = control->controlOf ({ channel, uid, member }); c.hot[(size_t) k].isSet())
+            else if (const auto c = control->controlOf ({ channel, uid, member, fixedStrip }); c.hot[(size_t) k].isSet())
                 text = "HOT " + juce::String (k + 1) + ": " + c.hot[(size_t) k].name.toUpperCase();
         }
         key.setButtonText (text);
@@ -199,6 +199,8 @@ void RackDock::refreshHotKeys()
 
 Strip* RackDock::strip() const
 {
+    if (fixedStrip != nullptr)
+        return fixedStrip;
     const auto& list = ctx.engine.getChannels();
     return juce::isPositiveAndBelow (channel, (int) list.size()) ? list[(size_t) channel].get() : nullptr;
 }
@@ -218,7 +220,7 @@ juce::String RackDock::title() const
     for (const auto& step : s->getChain())
         if (step.isBlock() && step.uid == uid)
             name = stepName (*s, step);
-    return "CH " + juce::String (channel + 1) + "  " + name;
+    return (fixedStrip != nullptr ? s->getLabel().toUpperCase() : "CH " + juce::String (channel + 1)) + "  " + name;
 }
 
 void RackDock::follow (int ch, int blockUid)
@@ -796,6 +798,8 @@ juce::Component& RackPage::getCanvas() noexcept
 
 Strip* RackPage::strip() const
 {
+    if (fixedStrip != nullptr)
+        return fixedStrip;
     const auto& list = ctx.engine.getChannels();
     return juce::isPositiveAndBelow (channel, (int) list.size()) ? list[(size_t) channel].get() : nullptr;
 }
@@ -823,7 +827,7 @@ PluginRef RackPage::getFocus() const
 {
     if (selectedUid < 0)
         return {};
-    return { channel, selectedUid, dock.getChannel() == channel && dock.getUid() == selectedUid ? dock.getMember() : 0 };
+    return { channel, selectedUid, dock.getChannel() == channel && dock.getUid() == selectedUid ? dock.getMember() : 0, fixedStrip };
 }
 
 RackPage::TileInfo RackPage::describe (const ChainStep& step) const
@@ -881,7 +885,7 @@ void RackPage::rebuildTiles()
     signature = tileSignature (channel, dock.getChannel(), dock.getUid(), selectedUid, infos);
     canvas->setSize (juce::jmax (1, viewport.getWidth() - viewport.getScrollBarThickness()), juce::jmax (viewport.getHeight(), canvas->totalHeight()));
     canvas->repaint();
-    repaint (0, 0, kLeftWidth, kHead);
+    repaint (0, 0, leftWidth(), kHead);
 }
 
 void RackPage::refresh()
@@ -908,8 +912,53 @@ void RackPage::timerCallback()
     refresh();
 }
 
+int RackPage::leftWidth() const noexcept
+{
+    return fixedStrip != nullptr ? juce::jmin (kLeftWidth, juce::roundToInt ((float) getWidth() * 0.6f)) : kLeftWidth;
+}
+
+void RackPage::markNew (Strip& s, int uid) const
+{
+    if (fixedStrip != nullptr)
+        s.setBlockHostRack (uid, true);
+}
+
+void RackPage::setStrip (Strip* s, int uid)
+{
+    fixedStrip = s;
+    dock.setStrip (s);
+    if (s == nullptr)
+    {
+        setChannel (channel < 0 ? 0 : channel);
+        return;
+    }
+    channel = -1;
+    selectedUid = -1;
+    const auto chain = blocks();
+    int pick = -1;
+    for (const auto& step : chain)
+        if (step.uid == uid)
+            pick = uid;
+    for (const auto& step : chain)
+        if (pick < 0 && step.getBlockKind() == BlockKind::Plugin)
+            pick = step.uid;
+    if (pick < 0 && ! chain.empty())
+        pick = chain.front().uid;
+    selectedUid = pick;
+    resized();
+    rebuildTiles();
+    followSelection();
+    rebuildTiles();
+    repaint();
+}
+
 void RackPage::setChannel (int index)
 {
+    if (fixedStrip != nullptr)
+    {
+        fixedStrip = nullptr;
+        dock.setStrip (nullptr);
+    }
     index = juce::jlimit (0, juce::jmax (0, (int) ctx.engine.getChannels().size() - 1), index);
     if (selectedUid >= 0)
         lastUid[channel] = selectedUid;
@@ -1061,6 +1110,8 @@ bool RackPage::addBlock (BlockKind kind)
     const int uid = s->insertBlock (kind, insertionPoint());
     if (uid < 0)
         return false;
+    if (kind == BlockKind::Plugin)
+        markNew (*s, uid);
     reselect (uid);
     return true;
 }
@@ -1075,6 +1126,7 @@ bool RackPage::addPlugin (const juce::PluginDescription& desc)
     const int uid = s->insertBlock (BlockKind::Plugin, insertionPoint());
     if (uid < 0)
         return false;
+    markNew (*s, uid);
     const int slot = FxSlots::blockSlotOf (s->getHandle(), uid);
     if (slot < 0 || ! loadPluginIntoFx (ctx, slot, desc))
     {
@@ -1121,6 +1173,7 @@ bool RackPage::pasteTile()
         return false;
     if (clip.kind == BlockKind::Plugin)
     {
+        markNew (*s, uid);
         auto& fx = ctx.engine.getFx();
         const int slot = FxSlots::blockSlotOf (s->getHandle(), uid);
         for (size_t i = 0; i < clip.members.size(); ++i)
@@ -1207,14 +1260,14 @@ void RackPage::showTileMenu (int index)
 void RackPage::paint (juce::Graphics& g)
 {
     g.fillAll (theme.background);
-    auto head = juce::Rectangle<int> (0, 0, kLeftWidth, kHead).reduced (sizes::kGapLarge, 0);
+    auto head = juce::Rectangle<int> (0, 0, leftWidth(), kHead).reduced (sizes::kGapLarge, 0);
     g.setColour (theme.text);
     g.setFont (type::font (type::kHeading, true));
-    juce::String name = "CH " + juce::String (channel + 1);
+    juce::String name = fixedStrip != nullptr ? fixedStrip->getLabel().toUpperCase() : "CH " + juce::String (channel + 1);
     if (auto* s = strip())
     {
         const auto own = s->getOwnName();
-        if (own.isNotEmpty() && own != juce::String (channel + 1))
+        if (own.isNotEmpty() && own != juce::String (channel + 1) && own != s->getLabel())
             name << "  " << own;
     }
     g.drawText (name, head.removeFromLeft (head.getWidth() / 2), juce::Justification::centredLeft);
@@ -1222,13 +1275,13 @@ void RackPage::paint (juce::Graphics& g)
     g.setFont (type::font (type::kCaption, true));
     g.drawText ("INPUT  >  CHAIN  >  OUTPUT      DRAG TO REORDER   -   HOLD FOR MENU", head, juce::Justification::centredRight);
     g.setColour (theme.outline);
-    g.drawHorizontalLine (kHead - 1, 0.0f, (float) kLeftWidth);
+    g.drawHorizontalLine (kHead - 1, 0.0f, (float) leftWidth());
 }
 
 void RackPage::resized()
 {
     auto area = getLocalBounds();
-    dock.setBounds (area.removeFromRight (area.getWidth() - kLeftWidth));
+    dock.setBounds (area.removeFromRight (area.getWidth() - leftWidth()));
     viewport.setBounds (area.withTrimmedTop (kHead));
     canvas->setSize (juce::jmax (1, viewport.getWidth() - viewport.getScrollBarThickness()), juce::jmax (viewport.getHeight(), canvas->totalHeight()));
 }

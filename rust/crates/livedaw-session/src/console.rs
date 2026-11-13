@@ -392,6 +392,9 @@ fn capture_chain(s: &Strip, sections: u32, e: &mut Element, bridge: &mut dyn Plu
         if b.safe() {
             x.set("safe", true);
         }
+        if b.host_rack() {
+            x.set("rack", true);
+        }
         if sections & block_section(b.kind()) == 0 {
             continue;
         }
@@ -471,13 +474,13 @@ fn get_plugin_block(x: &Element, p: &PluginParams, plug: &mut PluginRestore, war
 /// and plug-ins follow in `apply_chain`, the host creating a plug-in from its saved description), and
 /// they take the scene's order. A SAFE block stays as it is, present and in its place.
 fn recall_structure(engine: &Engine, s: &Strip, e: &Element, plug: &mut PluginRestore) {
-    let mut wanted: Vec<(u32, BlockKind, usize)> = e
+    let mut wanted: Vec<(u32, BlockKind, usize, bool)> = e
         .child("Chain")
         .map(|c| {
             c.children_named("B")
                 .filter_map(|x| {
                     let kind = BlockKind::parse(x.str_or("kind", ""))?;
-                    Some((u32::try_from(x.int_or("uid", -1)).ok()?, kind, usize::try_from(x.int_or("at", -1)).ok()?))
+                    Some((u32::try_from(x.int_or("uid", -1)).ok()?, kind, usize::try_from(x.int_or("at", -1)).ok()?, x.bool_or("rack", false)))
                 })
                 .collect()
         })
@@ -492,12 +495,14 @@ fn recall_structure(engine: &Engine, s: &Strip, e: &Element, plug: &mut PluginRe
         }
         engine.remove_block(s, b.uid());
     }
-    for &(uid, kind, at) in &wanted {
+    for &(uid, kind, at, rack) in &wanted {
         if !s.blocks().iter().any(|b| b.uid() == uid) {
-            engine.restore_block(s, uid, kind, at);
+            if let Some(b) = engine.restore_block(s, uid, kind, at) {
+                b.set_host_rack(rack);
+            }
         }
     }
-    for &(uid, _, at) in &wanted {
+    for &(uid, _, at, _) in &wanted {
         let blocks = s.blocks();
         let Some(b) = blocks.iter().find(|b| b.uid() == uid) else { continue };
         if (plug.keep_safe && b.safe()) || matches!(s.steps().get(at), Some(Step::Block(x)) if x.uid() == uid) {
@@ -514,7 +519,7 @@ fn restore_chain(engine: &Engine, s: &Strip, e: &Element) {
     let Some(c) = e.child("Chain") else { return };
     // Blocks and user taps, each put back at its step (in step order).
     enum Item {
-        Block(u32, BlockKind, bool),
+        Block(u32, BlockKind, bool, bool),
         Tap(u8),
     }
     let mut items: Vec<(usize, Item)> = c
@@ -522,7 +527,7 @@ fn restore_chain(engine: &Engine, s: &Strip, e: &Element) {
         .filter_map(|x| {
             let at = usize::try_from(x.int_or("at", -1)).ok()?;
             let item = match x.name.as_str() {
-                "B" => Item::Block(u32::try_from(x.int_or("uid", -1)).ok()?, BlockKind::parse(x.str_or("kind", ""))?, x.bool_or("safe", false)),
+                "B" => Item::Block(u32::try_from(x.int_or("uid", -1)).ok()?, BlockKind::parse(x.str_or("kind", ""))?, x.bool_or("safe", false), x.bool_or("rack", false)),
                 "T" => Item::Tap(u8::try_from(x.int_or("id", -1)).ok()?),
                 _ => return None,
             };
@@ -532,9 +537,10 @@ fn restore_chain(engine: &Engine, s: &Strip, e: &Element) {
     items.sort_by_key(|i| i.0);
     for (at, item) in items {
         match item {
-            Item::Block(uid, kind, safe) => {
+            Item::Block(uid, kind, safe, rack) => {
                 if let Some(b) = engine.restore_block(s, uid, kind, at) {
                     b.set_safe(safe);
+                    b.set_host_rack(rack);
                 }
             }
             Item::Tap(id) => {

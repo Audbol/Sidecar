@@ -21,9 +21,11 @@ struct PluginRef
     int channel = -1; // 0-based
     int uid = -1;
     int member = 0;
+    /** A strip that is not one of the channels (a PLUGIN HOST rack of the Universal Mixer): it takes the place of `channel`. */
+    Strip* strip = nullptr;
 
-    bool isValid() const noexcept { return channel >= 0 && uid >= 0; }
-    bool operator== (const PluginRef& o) const noexcept { return channel == o.channel && uid == o.uid && member == o.member; }
+    bool isValid() const noexcept { return (channel >= 0 || strip != nullptr) && uid >= 0; }
+    bool operator== (const PluginRef& o) const noexcept { return channel == o.channel && uid == o.uid && member == o.member && strip == o.strip; }
 };
 
 /** What a MIDI learn, or a mapping, aims at. */

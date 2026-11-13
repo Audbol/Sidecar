@@ -180,4 +180,33 @@ mod rack_recall {
         show.recall_scene(&engine, &mut host, scene);
         assert_eq!(host.glide, vec![2.5, 0.0], "the bridge hears the glide time, then zero");
     }
+
+    #[test]
+    fn a_host_rack_mark_is_saved_with_the_console_and_comes_back_with_a_scene_recall() {
+        let engine = host_engine();
+        let mut host = Recorder::default();
+        let a = add(&engine, &mut host, 1, "A", "a1");
+        let b = add(&engine, &mut host, 2, "B", "b1");
+        let strip = engine.strips(StripKind::Channel)[0].clone();
+        strip.blocks().iter().find(|x| x.uid() == a).unwrap().set_host_rack(true);
+        let saved = xml::parse(&save_console(&engine, &mut host).to_document()).unwrap();
+
+        let other = host_engine();
+        let mut host2 = Recorder::default();
+        load_console(&other, &saved, &mut host2, true);
+        let blocks = other.strips(StripKind::Channel)[0].blocks();
+        assert_eq!(blocks.len(), 2);
+        assert!(blocks.iter().find(|x| x.uid() == a).unwrap().host_rack(), "the rack stays a rack");
+        assert!(!blocks.iter().find(|x| x.uid() == b).unwrap().host_rack(), "a plain plug-in block stays plain");
+
+        // A scene that holds the rack puts it back marked when the block was taken out.
+        let mut show = Show::new();
+        let scene = show.add_scene(&engine, &mut host, "Racks", -1);
+        let x = engine.strips(StripKind::Channel)[0].clone();
+        engine.remove_block(&x, a);
+        assert_eq!(uids(&engine), vec![b]);
+        show.recall_scene(&engine, &mut host, scene);
+        let blocks = engine.strips(StripKind::Channel)[0].blocks();
+        assert!(blocks.iter().find(|y| y.uid() == a).unwrap().host_rack());
+    }
 }

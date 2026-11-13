@@ -408,6 +408,10 @@ public:
     /** SAFE (the PLUGIN HOST's scenes): a scene recall leaves block `uid` as it is, present and in its place. */
     bool isBlockSafe (int uid) const noexcept { return ld::ld_strip_block_safe (handle, uid); }
     void setBlockSafe (int uid, bool safe) const noexcept { ld::ld_strip_set_block_safe (handle, uid, safe); }
+    /** A PLUGIN HOST rack (the Universal Mixer's device): plug-in block `uid` gets the host's features (tiles, docked
+        editors, sidechain keys, hot knobs, SAFE per plug-in). Saved with the show and the scenes. */
+    bool isBlockHostRack (int uid) const noexcept { return ld::ld_strip_block_host_rack (handle, uid); }
+    void setBlockHostRack (int uid, bool rack) const noexcept { ld::ld_strip_set_block_host_rack (handle, uid, rack); }
     /** Back to the WING template: no extra blocks, no user taps. */
     void clearChain() const noexcept { ld::ld_engine_clear_chain (engineHandle, handle); }
     /** Selects a model for an EQ or dynamics block (a filter block: its tool) and loads its defaults. */

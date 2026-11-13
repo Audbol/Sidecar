@@ -3,6 +3,7 @@
 #include "ui/UiContext.h"
 #include "ui/universal/ChannelPanel.h"
 #include "ui/universal/Groups.h"
+#include "ui/universal/HostRackPanel.h"
 #include "ui/universal/LayerDrag.h"
 #include "ui/universal/LayerEditor.h"
 #include "ui/universal/Widgets.h"
@@ -195,6 +196,12 @@ public:
     /** The strips' controls (the filter, JUMP, BANK, SOF, CHANNEL, FADERS) as the window's header shows them:
         the owner makes them its children (the header is the window's), places them with layoutHeader. */
     std::vector<juce::Component*> getHeaderParts();
+    /** The PLUGIN HOST rack of a strip's plug-in block (any console's: the block is marked, Strip::isBlockHostRack) as a
+        large panel over the view, with CLOSE (a plug-in block's card OPEN asks for it through UiContext::openHostRack). */
+    void showHostRack (Strip&, int uid);
+    void closeHostRack();
+    bool isHostRackShown() const noexcept { return hostRack != nullptr && hostRack->isVisible(); }
+    HostRackPanel* getHostRack() const noexcept { return hostRack.get(); }
     /** Places the header's controls in `area` (the owner's coordinates), the filter as keys where they fit,
         else as one menu key; `visible` false hides them (another view is shown). */
     void layoutHeader (juce::Rectangle<int> area, bool visible);
@@ -385,6 +392,7 @@ private:
     ToggleKey layerMenuKey, layerEditKey;
     std::vector<std::unique_ptr<ToggleKey>> layerKeys;
     std::unique_ptr<LayerEditor> layerEditor;
+    std::unique_ptr<HostRackPanel> hostRack;
     /** The columns in a layer's order (a spacer: both null). */
     struct Placed
     {
