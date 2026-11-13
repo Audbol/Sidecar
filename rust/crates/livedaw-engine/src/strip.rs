@@ -1310,7 +1310,9 @@ impl Strip {
                 // INPUT: trim, balance, polarity
                 let polarity = if p.input.invert.load(Relaxed) && !p.input.bypass.load(Relaxed) { -1.0 } else { 1.0 };
                 // A console with its attenuator further down leaves it to that node.
-                let trim = if self.spec.attenuator || p.input.bypass.load(Relaxed) { 1.0 } else { db_to_gain(p.input.trim_db.load()) } * polarity;
+                let trim =
+                    if self.spec.attenuator || p.input.bypass.load(Relaxed) { 1.0 } else { db_to_gain(p.input.trim_db.load()) }
+                        * polarity;
                 // [Manual 6.1 p. 69] BALANCE: a positive value takes the left down and
                 // brings the right up by the same amount, a negative one the opposite.
                 let bal = if nc == 2 { p.input.balance_db.load() } else { 0.0 };

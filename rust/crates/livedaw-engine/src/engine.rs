@@ -830,7 +830,9 @@ impl Engine {
         let gone: Vec<usize> = self
             .output_patch
             .patched()
-            .filter(|&(_, source)| DirectSource::from_code(source).is_some_and(|d| d.kind == StripKind::Channel && d.number as usize > new))
+            .filter(|&(_, source)| {
+                DirectSource::from_code(source).is_some_and(|d| d.kind == StripKind::Channel && d.number as usize > new)
+            })
             .map(|(port, _)| port)
             .collect();
         for port in gone {
@@ -1861,7 +1863,8 @@ impl Engine {
         for s in st.all() {
             if let Some(layout) = s.layout() {
                 for (channel, tap) in layout.blocks().filter_map(|b| crate::keytap::plugin_key(b)) {
-                    if let Some(m) = st.channels.get(channel).and_then(|src| masks.iter_mut().find(|(t, _)| Arc::ptr_eq(t, src))) {
+                    if let Some(m) = st.channels.get(channel).and_then(|src| masks.iter_mut().find(|(t, _)| Arc::ptr_eq(t, src)))
+                    {
                         m.1 |= 1 << tap;
                     }
                 }

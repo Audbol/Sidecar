@@ -341,13 +341,27 @@ impl Block {
     pub fn new(uid: u32, kind: BlockKind, bus: bool, sample_rate: f64, models: &'static ModelTables) -> Self {
         let mut dsp = BlockDsp::new(kind);
         dsp.prepare(sample_rate);
-        Self { uid, params: BlockParams::new_in(kind, bus, models), meters: BlockMeters::default(), safe: AtomicBool::new(false), host_rack: AtomicBool::new(false), dsp: UnsafeCell::new(dsp) }
+        Self {
+            uid,
+            params: BlockParams::new_in(kind, bus, models),
+            meters: BlockMeters::default(),
+            safe: AtomicBool::new(false),
+            host_rack: AtomicBool::new(false),
+            dsp: UnsafeCell::new(dsp),
+        }
     }
 
     /// One of the strip's own blocks (`params::OwnBlocks`, id 0), prepared
     /// with the strip (`Strip::prepare`).
     pub(crate) fn own(params: BlockParams) -> Self {
-        Self { uid: 0, dsp: UnsafeCell::new(BlockDsp::new(params.kind())), params, meters: BlockMeters::default(), safe: AtomicBool::new(false), host_rack: AtomicBool::new(false) }
+        Self {
+            uid: 0,
+            dsp: UnsafeCell::new(BlockDsp::new(params.kind())),
+            params,
+            meters: BlockMeters::default(),
+            safe: AtomicBool::new(false),
+            host_rack: AtomicBool::new(false),
+        }
     }
 
     /// Message thread, audio stopped or the block unpublished: sizes a plug-in block's buffers.

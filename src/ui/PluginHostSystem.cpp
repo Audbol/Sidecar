@@ -2,6 +2,8 @@
 
 #include "engine/FxSlots.h"
 
+#include <juce_audio_utils/juce_audio_utils.h> // AudioDeviceSelectorComponent
+
 #include <set>
 
 namespace livedaw::ui::ph

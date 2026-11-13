@@ -325,10 +325,7 @@ pub static XENYX1202_PORT_GROUPS: &[PortGroup] = &[
 /// (the engine's own numbering, ports 1 to the channel count).
 macro_rules! plugin_host_groups {
     ($n:expr) => {
-        &[
-            PortGroup::new("INTERFACE IN", "IN", IN, Some(0), $n),
-            PortGroup::new("INTERFACE OUT", "OUT", OUT, Some(0), $n),
-        ]
+        &[PortGroup::new("INTERFACE IN", "IN", IN, Some(0), $n), PortGroup::new("INTERFACE OUT", "OUT", OUT, Some(0), $n)]
     };
 }
 

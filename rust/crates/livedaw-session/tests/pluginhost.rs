@@ -121,7 +121,8 @@ mod rack_recall {
     fn a_recall_brings_back_the_racks_blocks_in_their_order_and_leaves_safe_ones() {
         let engine = host_engine();
         let mut host = Recorder::default();
-        let (a, b, c) = (add(&engine, &mut host, 1, "A", "a1"), add(&engine, &mut host, 2, "B", "b1"), add(&engine, &mut host, 3, "C", "c1"));
+        let (a, b, c) =
+            (add(&engine, &mut host, 1, "A", "a1"), add(&engine, &mut host, 2, "B", "b1"), add(&engine, &mut host, 3, "C", "c1"));
         let mut show = Show::new();
         let scene = show.add_scene(&engine, &mut host, "Verse", -1);
         assert_eq!(uids(&engine), vec![a, b, c]);

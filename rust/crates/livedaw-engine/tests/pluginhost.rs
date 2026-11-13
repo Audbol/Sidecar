@@ -83,7 +83,7 @@ fn each_size_has_its_channels_and_nothing_to_mix() {
         assert_eq!(rig.engine.strips(StripKind::Main).len(), 1, "the engine's one main, fed by nothing");
         for n in [0, channels - 1] {
             let ch = rig.channel(n);
-            assert!(ch.main_send(0).map_or(true, |m| !m.on.load(Relaxed)), "channel {} feeds no main", n + 1);
+            assert!(ch.main_send(0).is_none_or(|m| !m.on.load(Relaxed)), "channel {} feeds no main", n + 1);
             assert!(ch.blocks().is_empty(), "no blocks by default");
         }
     }
@@ -106,8 +106,8 @@ fn an_empty_chain_takes_input_n_to_output_n_and_nothing_else() {
     for size in HostSize::ALL {
         let mut rig = Rig::new(size);
         let peaks = rig.run(40);
-        for n in 0..size.channels() {
-            assert!(near(peaks[n], level(n)), "size {size:?}: output {} hears {} not {}", n + 1, peaks[n], level(n));
+        for (n, &peak) in peaks.iter().enumerate().take(size.channels()) {
+            assert!(near(peak, level(n)), "size {size:?}: output {} hears {} not {}", n + 1, peak, level(n));
         }
         // The interface's spare ports hear nothing.
         for (n, peak) in peaks.iter().enumerate().skip(size.channels()) {

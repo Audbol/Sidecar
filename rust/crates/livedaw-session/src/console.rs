@@ -480,7 +480,12 @@ fn recall_structure(engine: &Engine, s: &Strip, e: &Element, plug: &mut PluginRe
             c.children_named("B")
                 .filter_map(|x| {
                     let kind = BlockKind::parse(x.str_or("kind", ""))?;
-                    Some((u32::try_from(x.int_or("uid", -1)).ok()?, kind, usize::try_from(x.int_or("at", -1)).ok()?, x.bool_or("rack", false)))
+                    Some((
+                        u32::try_from(x.int_or("uid", -1)).ok()?,
+                        kind,
+                        usize::try_from(x.int_or("at", -1)).ok()?,
+                        x.bool_or("rack", false),
+                    ))
                 })
                 .collect()
         })
@@ -527,7 +532,12 @@ fn restore_chain(engine: &Engine, s: &Strip, e: &Element) {
         .filter_map(|x| {
             let at = usize::try_from(x.int_or("at", -1)).ok()?;
             let item = match x.name.as_str() {
-                "B" => Item::Block(u32::try_from(x.int_or("uid", -1)).ok()?, BlockKind::parse(x.str_or("kind", ""))?, x.bool_or("safe", false), x.bool_or("rack", false)),
+                "B" => Item::Block(
+                    u32::try_from(x.int_or("uid", -1)).ok()?,
+                    BlockKind::parse(x.str_or("kind", ""))?,
+                    x.bool_or("safe", false),
+                    x.bool_or("rack", false),
+                ),
                 "T" => Item::Tap(u8::try_from(x.int_or("id", -1)).ok()?),
                 _ => return None,
             };
@@ -1764,7 +1774,12 @@ pub fn apply(
             sections,
             &mut fades,
             &mut result,
-            &mut PluginRestore { bridge: &mut *bridge, mode: Some(InsertMode::StateOnly), structure: true, keep_safe: respect_recall_safe },
+            &mut PluginRestore {
+                bridge: &mut *bridge,
+                mode: Some(InsertMode::StateOnly),
+                structure: true,
+                keep_safe: respect_recall_safe,
+            },
         );
     }
 
@@ -2083,7 +2098,12 @@ pub fn load_console(engine: &Engine, console: &Element, bridge: &mut dyn PluginB
             section::ALL,
             &mut None,
             &mut result,
-            &mut PluginRestore { bridge: &mut *bridge, mode: load_plugins.then_some(InsertMode::Instantiate), structure: false, keep_safe: false },
+            &mut PluginRestore {
+                bridge: &mut *bridge,
+                mode: load_plugins.then_some(InsertMode::Instantiate),
+                structure: false,
+                keep_safe: false,
+            },
         );
         s.params.recall_safe.store(e.bool_or("recallSafe", false), Relaxed);
     }

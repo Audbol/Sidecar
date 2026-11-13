@@ -964,7 +964,9 @@ pub unsafe extern "C" fn ld_engine_configure_plugin_host(e: *const Engine, chann
 #[no_mangle]
 pub unsafe extern "C" fn ld_engine_resize_plugin_host(e: *const Engine, channels: i32) -> bool {
     let Some(e) = engine(e) else { return false };
-    let Some(size) = usize::try_from(channels).ok().and_then(livedaw_engine::profile::HostSize::from_channels) else { return false };
+    let Some(size) = usize::try_from(channels).ok().and_then(livedaw_engine::profile::HostSize::from_channels) else {
+        return false;
+    };
     guard(false, || e.resize_plugin_host(size))
 }
 
