@@ -1271,14 +1271,14 @@ void ProcessingScreen::rebuildTabs()
                      { T::InsA, "Ins A" }, { T::Peq, "PEQ" }, { T::Comp, "Comp" }, { T::InsB, "Ins B" }, { T::Delay, "Delay" }, { T::Routing, "Routing" } };
             break;
         case StripKind::Aux: // photographed on a C1500
-            list = { { T::Bank, "Bank" }, { T::FxUnit, "FX Unit" }, { T::Peq, "PEQ" } };
+            list = { { T::Bank, "Bank" }, { T::FxUnit, "FX Unit" }, { T::Peq, "PEQ" }, { T::Ufx, "UFX" } };
             break;
         default: // a mix's tabs as the guide's picture of Ext In (1.6) has them, and Ins B
             list = { { T::Bank, "Bank" }, { T::Overview, "Overview" }, { T::ExtIn, "Ext In" }, { T::InsA, "Ins A" }, { T::Peq, "PEQ" }, { T::Geq, "GEQ" }, { T::Comp, "Comp" }, { T::InsB, "Ins B" },
                      { T::Delay, "Delay" }, { T::Routing, "Routing" } };
             break;
     }
-    if (! hasTab (tab))
+    if (! hasTab (tab) && tab != T::Ufx) // the UFX page is the console's, reached from Overview too
     {
         bool found = false;
         for (auto& [t, n] : list)
@@ -1472,6 +1472,7 @@ juce::String ProcessingScreen::helpKey() const
         case Tab::Delay:    name = "Delay"; break;
         case Tab::ExtIn:    name = "ExtIn"; break;
         case Tab::Routing:  name = "Routing"; break;
+        case Tab::Ufx:      name = "Ufx"; break;
     }
     return juce::String ("Processing/") + name;
 }
@@ -1543,6 +1544,7 @@ void ProcessingScreen::buildTab()
             case Tab::Geq:      buildGeq (*strip); break;
             case Tab::ExtIn:    buildExtIn (*strip); break;
             case Tab::Routing:  buildRouting (*strip); break;
+            case Tab::Ufx:      buildUfx(); break;
             case Tab::FxUnit:
                 addButton ({ 380, 220, 240, 64 }, "Open this FX unit", kCyan, [this] { if (onFxUnit) onFxUnit(); });
                 break;
@@ -1723,6 +1725,14 @@ void ProcessingScreen::setAbcdPatch (int which, int socket)
         bindFixed();
         buildTab();
     }
+}
+
+Touchable* ProcessingScreen::findBox (const juce::String& label) const
+{
+    for (auto& i : items)
+        if (auto* box = dynamic_cast<Touchable*> (i.get()); box != nullptr && box->getBinding().label == label)
+            return box;
+    return nullptr;
 }
 
 ScreenButton* ProcessingScreen::findButton (const juce::String& name) const
@@ -1987,9 +1997,350 @@ void ProcessingScreen::buildFilter (Strip& s)
 
 void ProcessingScreen::buildInsert (ld::InsertParams& ins)
 {
+    auto* e = ctx.engine.getHandle();
+    const bool post = strip != nullptr && &ins == &strip->params.postInsert();
     addToggle ({ 170, 70, 90, 44 }, "In", kGreen, ins.on);
     const int fx = ins.fx.load();
-    addButton ({ 280, 70, 240, 44 }, fx >= 0 ? "FX Unit " + juce::String (fx + 1) : juce::String ("Unassigned"), kCyan, [this] { if (onFxUnit) onFxUnit(); });
+    shownInsertFx = fx;
+    const int dyn = fx >= ld::kDyn8FxBase ? fx - ld::kDyn8FxBase : -1;
+    // A Dyn8 engine's list: 64 engines in four menus of 16; one another insert has is dimmed.
+    const auto pickDyn8 = [this, post, e] (juce::Component& anchor)
+    {
+        const int now = strip != nullptr ? (post ? strip->params.postInsert() : strip->params.preInsert()).fx.load() - ld::kDyn8FxBase : -1;
+        const auto used = ld::ld_dyn8_in_use (e);
+        juce::PopupMenu menu;
+        menu.addItem (1, "Unassign", now >= 0);
+        for (int group = 0; group < ld::kNumDyn8 / 16; ++group)
+        {
+            juce::PopupMenu sub;
+            for (int i = 0; i < 16; ++i)
+            {
+                const int n = group * 16 + i;
+                const bool taken = ((used >> n) & 1) != 0 && n != now;
+                sub.addItem (n + 2, "Dyn8 " + juce::String (n + 1) + (taken ? " (in use)" : ""), ! taken, n == now);
+            }
+            menu.addSubMenu ("Dyn8 " + juce::String (group * 16 + 1) + "-" + juce::String (group * 16 + 16), sub);
+        }
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&anchor),
+                            [safe = juce::Component::SafePointer<ProcessingScreen> (this), post] (int r)
+                            {
+                                if (safe != nullptr && r > 0)
+                                    safe->chooseDyn8 (post, r - 2);
+                            });
+    };
+    if (dyn >= 0)
+    {
+        auto& target = addButton ({ 280, 70, 240, 44 }, "Dyn8 " + juce::String (dyn + 1), kCyan, {});
+        target.dropdown = true;
+        target.onClick = [pickDyn8, &target] { pickDyn8 (target); };
+    }
+    else
+        addButton ({ 280, 70, 240, 44 }, fx >= 0 ? "FX Unit " + juce::String (fx + 1) : juce::String ("Unassigned"), kCyan, [this] { if (onFxUnit) onFxUnit(); });
+    if (! ld::ld_engine_has_ufx (e))
+        return;
+    if (dyn < 0)
+    {
+        auto& pick = addButton ({ 540, 70, 190, 44 }, "Pick Dyn8", kCyan, {});
+        pick.dropdown = true;
+        pick.onClick = [pickDyn8, &pick] { pickDyn8 (pick); };
+        return;
+    }
+    buildDyn8Panel (dyn);
+}
+
+bool ProcessingScreen::chooseDyn8 (bool post, int engine)
+{
+    auto* e = ctx.engine.getHandle();
+    if (strip == nullptr || engine >= ld::kNumDyn8 || ! ld::ld_engine_has_ufx (e))
+        return false;
+    auto& ins = post ? strip->params.postInsert() : strip->params.preInsert();
+    if (engine >= 0)
+    {
+        const int now = ins.fx.load() - ld::kDyn8FxBase;
+        if (((ld::ld_dyn8_in_use (e) >> engine) & 1) != 0 && engine != now)
+            return false; // another insert has it
+    }
+    ins.fx = engine >= 0 ? ld::kDyn8FxBase + engine : -1;
+    if (tab == Tab::InsA || tab == Tab::InsB)
+        buildTab();
+    return true;
+}
+
+void ProcessingScreen::setDyn8Page (int page)
+{
+    dyn8Page = juce::jlimit (0, 1, page);
+    if (tab == Tab::InsA || tab == Tab::InsB)
+        buildTab();
+}
+
+void ProcessingScreen::buildDyn8Panel (int engine)
+{
+    // Sidecar's layout (the console's own Dyn8 pictures aren't public here): the key source on top, a
+    // page for the multiband (the common controls, then a row per band) and one for the dynamic EQ.
+    auto* e = ctx.engine.getHandle();
+    const int slot = ld::kDyn8FxBase + engine;
+    auto* params = const_cast<ld::FxParams*> (ld::ld_fx_params (e, slot));
+    const int m = models::findModel (models::Fx, "DLVDYN8");
+    if (params == nullptr || m < 0)
+        return;
+    const auto& model = models::model (models::Fx, m);
+    addKeyControls (slot, { 140, 124, 190, 40 }, { 340, 124, 130, 40 });
+    for (int page = 0; page < 2; ++page)
+    {
+        auto& k = addButton ({ 500 + page * 180, 124, 170, 40 }, page == 0 ? "Multiband" : "Dynamic EQ", kCyan, [this, page] { setDyn8Page (page); });
+        k.isOn = [this, page] { return dyn8Page == page; };
+        k.litFill = kCyan.darker (0.45f);
+    }
+    // The values: 7 common and 4 x 7 multiband, then 4 x 7 dynamic EQ.
+    if (dyn8Page == 0)
+        addModelBoxes (model, params->values, 0, 35, 176, 68, 62);
+    else
+        addModelBoxes (model, params->values, 35, 28, 176, 68, 62);
+}
+
+void ProcessingScreen::addModelBoxes (const models::Model& model, std::atomic<float>* values, int first, int n, int y, int pitch, int height)
+{
+    for (int i = 0; i < n && first + i < (int) model.params.size(); ++i)
+    {
+        const auto& p = model.params[(size_t) (first + i)];
+        addBox ({ 140 + (i % 7) * 103, y + (i / 7) * pitch, 99, height }, bindModelParam (values[first + i], p), p.isContinuous() ? kCyan : kTeal, p.label);
+    }
+}
+
+void ProcessingScreen::addKeyControls (int fxSlot, juce::Rectangle<int> at, juce::Rectangle<int> tapAt)
+{
+    // Sidecar's reading of the key source list: an input, a mix, a main or a matrix, as a gate's KEY SOURCE.
+    auto* e = ctx.engine.getHandle();
+    const int source = ld::ld_fx_key_source (e, fxSlot);
+    const int tap = ld::ld_fx_key_tap (e, fxSlot);
+    static const char* const kinds[] = { "Input", "Aux", "Mix", "Main", "Matrix" };
+    const auto nameOfKey = [] (int code) -> juce::String
+    {
+        if (code < 0)
+            return "Self";
+        if (code < ld::kKeyStripBase)
+            return "Input " + juce::String (code + 1);
+        const int kind = code / ld::kKeyStripBase;
+        return (kind > 0 && kind < 5 ? juce::String (kinds[kind]) : juce::String ("Strip")) + " " + juce::String (code % ld::kKeyStripBase + 1);
+    };
+    auto& src = addButton (at, "Key: " + nameOfKey (source), kCyan, {});
+    src.dropdown = true;
+    src.onClick = [this, fxSlot, &src]
+    {
+        auto* eng = ctx.engine.getHandle();
+        const int now = ld::ld_fx_key_source (eng, fxSlot);
+        juce::PopupMenu menu;
+        menu.addItem (1, "Self (none)", true, now < 0);
+        struct Group
+        {
+            const char* name;
+            StripKind kind;
+            int base;
+        };
+        for (const auto& g : { Group { "Inputs", StripKind::Channel, 100 }, Group { "Mixes", StripKind::Bus, 1000 }, Group { "Mains", StripKind::Main, 2000 }, Group { "Matrices", StripKind::Matrix, 3000 } })
+        {
+            const auto& list = ctx.engine.getStrips (g.kind);
+            const int count = (int) list.size();
+            if (count == 0)
+                continue;
+            juce::PopupMenu sub;
+            for (int first = 0; first < count; first += 16)
+            {
+                juce::PopupMenu part;
+                for (int i = first; i < juce::jmin (count, first + 16); ++i)
+                {
+                    const int code = g.kind == StripKind::Channel ? i : ld::kKeyStripBase * (int) g.kind + i;
+                    part.addItem (g.base + i, nameOf (*list[(size_t) i]), true, code == now);
+                }
+                if (count > 16)
+                    sub.addSubMenu (juce::String (first + 1) + "-" + juce::String (juce::jmin (count, first + 16)), part);
+                else
+                    sub = part;
+            }
+            menu.addSubMenu (g.name, sub);
+        }
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&src),
+                            [safe = juce::Component::SafePointer<ProcessingScreen> (this), fxSlot] (int r)
+                            {
+                                if (safe == nullptr || r <= 0)
+                                    return;
+                                int code = -1;
+                                if (r >= 3000)
+                                    code = ld::kKeyStripBase * (int) StripKind::Matrix + r - 3000;
+                                else if (r >= 2000)
+                                    code = ld::kKeyStripBase * (int) StripKind::Main + r - 2000;
+                                else if (r >= 1000)
+                                    code = ld::kKeyStripBase * (int) StripKind::Bus + r - 1000;
+                                else if (r >= 100)
+                                    code = r - 100;
+                                const int taps = code >= 0 && code < ld::kKeyStripBase ? 8 : ld::kNumOutputKeyTaps;
+                                safe->setKeySource (fxSlot, code, juce::jlimit (0, taps - 1, (int) ld::ld_fx_key_tap (safe->ctx.engine.getHandle(), fxSlot)));
+                            });
+    };
+    static const char* const channelTaps[] = { "Input", "Filter", "Tap 3", "Tap 4", "Tap 5", "Pre Fader", "Post Fader", "Post Proc" };
+    static const char* const outputTaps[] = { "Bus", "Dyn", "Pre Fdr", "Post Fdr", "EQ", "Ins 2" };
+    const bool fromChannel = source >= 0 && source < ld::kKeyStripBase;
+    const int taps = fromChannel ? 8 : ld::kNumOutputKeyTaps;
+    const int shownTap = juce::jlimit (0, taps - 1, tap);
+    auto& tapKey = addButton (tapAt, source < 0 ? juce::String ("Tap") : juce::String (fromChannel ? channelTaps[shownTap] : outputTaps[shownTap]), kCyan, {});
+    tapKey.dropdown = true;
+    tapKey.setEnabled (source >= 0);
+    tapKey.onClick = [this, fxSlot, source, taps, fromChannel, shownTap, &tapKey]
+    {
+        juce::PopupMenu menu;
+        for (int i = 0; i < taps; ++i)
+            menu.addItem (i + 1, fromChannel ? channelTaps[i] : outputTaps[i], true, i == shownTap);
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&tapKey),
+                            [safe = juce::Component::SafePointer<ProcessingScreen> (this), fxSlot, source] (int r)
+                            {
+                                if (safe != nullptr && r > 0)
+                                    safe->setKeySource (fxSlot, source, r - 1);
+                            });
+    };
+}
+
+void ProcessingScreen::setKeySource (int fxSlot, int source, int tap)
+{
+    ld::ld_fx_set_key (ctx.engine.getHandle(), fxSlot, source, tap);
+    if (tab == Tab::InsA || tab == Tab::InsB || tab == Tab::Ufx)
+        buildTab();
+}
+
+void ProcessingScreen::chooseUfxSlot (int fxSlot)
+{
+    ufxSlot = juce::jlimit ((int) ld::kUfxFirst, ld::kUfxFirst + ld::kNumUfx - 1, fxSlot);
+    if (tab == Tab::Ufx)
+        buildTab();
+}
+
+void ProcessingScreen::setUfxPage (int section)
+{
+    ufxPage = juce::jlimit (0, 4, section);
+    if (tab == Tab::Ufx)
+        buildTab();
+}
+
+bool ProcessingScreen::chooseUfxModel (int model)
+{
+    const bool ok = ld::ld_fx_set_model (ctx.engine.getHandle(), ufxSlot, model, true);
+    if (ok && tab == Tab::Ufx)
+        buildTab();
+    return ok;
+}
+
+void ProcessingScreen::setGlobalKey (int key, int scale)
+{
+    ld::ld_engine_set_global_key (ctx.engine.getHandle(), juce::jlimit (0, 11, key), juce::jlimit (0, 2, scale));
+    if (tab == Tab::Ufx)
+        buildTab();
+}
+
+void ProcessingScreen::playUfxNote (int note, int velocity)
+{
+    ld::ld_fx_midi_note (ctx.engine.getHandle(), note, velocity);
+}
+
+void ProcessingScreen::buildUfx()
+{
+    // Sidecar's layout: the console's own RackUltra pages aren't public here. The engines along the top, the
+    // device, its key source and the Global Key under them, then the strip's five sections and note keys.
+    auto* e = ctx.engine.getHandle();
+    if (! ld::ld_engine_has_ufx (e))
+        return;
+    ufxSlot = juce::jlimit ((int) ld::kUfxFirst, ld::kUfxFirst + ld::kNumUfx - 1, ufxSlot);
+    auto* params = const_cast<ld::FxParams*> (ld::ld_fx_params (e, ufxSlot));
+    if (params == nullptr)
+        return;
+    for (int i = 0; i < ld::kNumUfx; ++i)
+    {
+        const int slot = ld::kUfxFirst + i;
+        auto& k = addButton ({ 140 + i * 90, 62, 86, 40 }, "UFX " + juce::String (i + 1), kCyan, [this, slot] { chooseUfxSlot (slot); });
+        k.isOn = [this, slot] { return ufxSlot == slot; };
+        k.litFill = kCyan.darker (0.45f);
+    }
+    shownUfxModel = params->model.load();
+    auto& device = addButton ({ 140, 110, 280, 40 }, models::model (models::Fx, shownUfxModel).name, kCyan, {});
+    device.dropdown = true;
+    device.onClick = [this, &device]
+    {
+        juce::PopupMenu menu;
+        const auto& list = models::table (models::Fx);
+        for (int i = 0; i < (int) list.size(); ++i)
+            if (ld::ld_model_fx_allowed (i, ufxSlot))
+                menu.addItem (i + 1, list[(size_t) i].name, true, i == shownUfxModel);
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&device),
+                            [safe = juce::Component::SafePointer<ProcessingScreen> (this)] (int r)
+                            {
+                                if (safe != nullptr && r > 0)
+                                    safe->chooseUfxModel (r - 1);
+                            });
+    };
+    addToggle ({ 430, 110, 100, 40 }, "Bypass", kRed, params->bypass);
+    addButton ({ 540, 110, 150, 40 }, "Reset Strip", juce::Colours::white, [e, slot = ufxSlot] { ld::ld_ufx_strip_reset (e, slot); });
+    addButton ({ 700, 110, 150, 40 }, "Open FX Unit", kCyan, [this] { if (onFxUnit) onFxUnit(); });
+
+    addKeyControls (ufxSlot, { 140, 158, 190, 40 }, { 340, 158, 130, 40 });
+    static const char* const notes[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+    static const char* const scales[] = { "Major", "Minor", "Chromatic" };
+    const int key = ld::ld_engine_global_key (e, 0), scale = ld::ld_engine_global_key (e, 1);
+    auto& keyKey = addButton ({ 510, 158, 150, 40 }, juce::String ("Global Key ") + notes[juce::jlimit (0, 11, key)], kYellow, {});
+    keyKey.dropdown = true;
+    keyKey.onClick = [this, &keyKey, key, scale]
+    {
+        juce::PopupMenu menu;
+        for (int i = 0; i < 12; ++i)
+            menu.addItem (i + 1, notes[i], true, i == key);
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&keyKey),
+                            [safe = juce::Component::SafePointer<ProcessingScreen> (this), scale] (int r)
+                            {
+                                if (safe != nullptr && r > 0)
+                                    safe->setGlobalKey (r - 1, scale);
+                            });
+    };
+    auto& scaleKey = addButton ({ 670, 158, 180, 40 }, scales[juce::jlimit (0, 2, scale)], kYellow, {});
+    scaleKey.dropdown = true;
+    scaleKey.onClick = [this, &scaleKey, key, scale]
+    {
+        juce::PopupMenu menu;
+        for (int i = 0; i < 3; ++i)
+            menu.addItem (i + 1, scales[i], true, i == scale);
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&scaleKey),
+                            [safe = juce::Component::SafePointer<ProcessingScreen> (this), key] (int r)
+                            {
+                                if (safe != nullptr && r > 0)
+                                    safe->setGlobalKey (key, r - 1);
+                            });
+    };
+
+    static const char* const sections[] = { "Pre PEQ", "Pre Dyn", "Post Dyn", "Post PEQ", "Width" };
+    for (int i = 0; i < 5; ++i)
+    {
+        auto& k = addButton ({ 140 + i * 108, 208, 104, 36 }, sections[i], kCyan, [this, i] { setUfxPage (i); });
+        k.isOn = [this, i] { return ufxPage == i; };
+        k.litFill = kCyan.darker (0.45f);
+    }
+    auto* values = const_cast<std::atomic<float>*> (ld::ld_ufx_strip_values (e, ufxSlot));
+    if (values != nullptr)
+    {
+        const auto& model = models::model (models::UfxStrip, 0);
+        const int first = ld::ld_ufx_strip_section (ufxPage);
+        const int next = ufxPage < 4 ? ld::ld_ufx_strip_section (ufxPage + 1) : (int) model.params.size();
+        if (first >= 0 && next > first)
+            addModelBoxes (model, values, first, next - first, 252, 76, 70);
+    }
+    for (int i = 0; i < 12; ++i)
+    {
+        const int note = 60 + i;
+        const bool black = std::strlen (notes[i]) > 1;
+        auto& k = addButton ({ 140 + i * 60, 486, 56, 34 }, juce::String (notes[i]) + "4", black ? kTeal : juce::Colours::white, {});
+        k.pale = ! black;
+        k.fontSize = 13.0f;
+        k.onClick = [this, note]
+        {
+            playUfxNote (note, 100);
+            juce::Timer::callAfterDelay (300, [safe = juce::Component::SafePointer<ProcessingScreen> (this), note] { if (safe != nullptr) safe->playUfxNote (note, 0); });
+        };
+    }
 }
 
 void ProcessingScreen::buildDelay (Strip& s)
@@ -2027,6 +2378,8 @@ void ProcessingScreen::buildOverview (Strip& s)
     tiles.push_back ({ "Ins B", Tab::InsB, &p.postInsert().on });
     tiles.push_back ({ "Delay", Tab::Delay, &p.input.delayOn });
     tiles.push_back ({ "Routing", Tab::Routing, nullptr });
+    if (ld::ld_engine_has_ufx (ctx.engine.getHandle()))
+        tiles.push_back ({ "UFX", Tab::Ufx, nullptr });
     int n = 0;
     for (const auto& t : tiles)
     {
@@ -2129,6 +2482,19 @@ void ProcessingScreen::timerCallback()
         // Patched from somewhere else (a scene, the strip panel): the page takes it.
         loadExtIn();
         buildTab();
+    }
+    if (strip != nullptr && hostedPage == nullptr && (tab == Tab::InsA || tab == Tab::InsB))
+    {
+        // Another insert took the engine, or a scene recall moved it.
+        const int fx = (tab == Tab::InsA ? strip->params.preInsert() : strip->params.postInsert()).fx.load();
+        if (fx != shownInsertFx)
+            buildTab();
+    }
+    if (hostedPage == nullptr && tab == Tab::Ufx)
+    {
+        if (auto* params = ld::ld_fx_params (ctx.engine.getHandle(), ufxSlot); params != nullptr && params->model.load() != shownUfxModel)
+            buildTab();
+        repaint (124, 200, 742, 50);
     }
     if (transfer.isVisible())
         transfer.repaint();
@@ -2263,6 +2629,19 @@ void ProcessingScreen::paint (juce::Graphics& g)
             titledArea (g, { 132.0f, 56.0f, 360.0f, 106.0f }, "Mix Source");
             if (strip->params.stereo.load() && strip->getKind() != StripKind::Main)
                 titledArea (g, { 500.0f, 56.0f, 360.0f, 106.0f }, "Follow Main Pan");
+        }
+    }
+    else if (hostedPage == nullptr && tab == Tab::Ufx)
+    {
+        auto* e = ctx.engine.getHandle();
+        if (! ld::ld_engine_has_ufx (e))
+            text (g, { 124.0f, 200.0f, 742.0f, 40.0f }, "This console has no RackUltra engines", 22.0f, juce::Colours::white, juce::Justification::centred);
+        else
+        {
+            // The two dynamics sections' gain reduction.
+            text (g, { 700.0f, 204.0f, 160.0f, 22.0f }, "GR pre " + juce::String (ld::ld_ufx_strip_meter (e, ufxSlot, 0), 1) + " dB", 12.5f, juce::Colours::white);
+            text (g, { 700.0f, 224.0f, 160.0f, 22.0f }, "GR post " + juce::String (ld::ld_ufx_strip_meter (e, ufxSlot, 1), 1) + " dB", 12.5f, juce::Colours::white);
+            text (g, { 140.0f, 466.0f, 400.0f, 18.0f }, "MIDI notes for the Harmoniser and the Tuner", 11.5f, juce::Colours::white.withAlpha (0.8f));
         }
     }
     else if (strip != nullptr && hostedPage == nullptr && tab == Tab::Preamp && strip->getKind() == StripKind::Channel)
@@ -5774,7 +6153,8 @@ juce::String screenHelp (const juce::String& key)
         { "Processing/Preamp", "The socket the strip listens to, its gain and 48V, the digital trim and polarity. Gain and 48V belong to the socket, so they follow it, not the strip. With ABCD on, the channel plays one of four sockets: A to D choose, the keys under them patch." },
         { "Processing/Filter", "The high-pass and low-pass filters. Each has its own In." },
         { "Processing/Gate", "The gate or expander. The curve shows input to output; the soft widget's meters show the signal and how much is being cut. Change the type at the top." },
-        { "Processing/Insert", "Sends the strip through an FX unit at this point. Assign the unit on the FX page first." },
+        { "Processing/Insert", "Sends the strip through an FX unit or a Dyn8 engine at this point. Assign an FX unit on the FX page first; pick a Dyn8 here (an engine another insert uses is dimmed) to see its multiband and dynamic EQ pages and its key source." },
+        { "Processing/Ufx", "The RackUltra engines: pick one, its device, its channel strip (pre and post PEQ and dynamics, Width), its key source and the Global Key every engine shares. The note keys play the devices that follow MIDI notes." },
         { "Processing/Peq", "Four bands with their own response; the outer bands can be shelf, bell or filter. Width on the panel makes the Freq rotaries set width. View changes what's along the bottom." },
         { "Processing/Geq", "The graphic EQ on this mix. The GEQ key puts it on the faders instead, the mix's own master on the last strip." },
         { "Processing/Comp", "The compressor. Choose its type at the top. The curve follows the settings; Gain makes up what it takes away." },

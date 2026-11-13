@@ -1461,7 +1461,7 @@ Started guides and the datasheets (kept outside the repository). Blocks first:
     `keyTap` and `<Ufx>`; `<Dyn8 i=..>` for the engines inserted or changed), recalled with the FX. Sidecar's reading: the
     strip is out while the slot is bypassed or empty; every engine hears every MIDI note (no MIDI channel per engine); a
     Dyn8 band set to External with no key source keys itself. Not done: the card's own 8 stereo send mixes and 8 return
-    channels as strips (an engine is fed from any mix and returns on any channel), and every screen for these.
+    channels as strips (an engine is fed from any mix and returns on any channel). Their screens are in `DLiveScreens` (Ins A and B for Dyn8, the UFX page): Sidecar's layout.
 
 Not yet: the screens for Group to Group's source point and a channel's 5.1 panning, the rest of its surface.
 

@@ -295,6 +295,9 @@ void MidiRemote::handleMessage (int port, const juce::MidiMessage& m)
         daw.handleMessage (unit, m);
         return;
     }
+    // A dLive's FX devices follow the MIDI notes of any input (the MIDI Harmoniser, the Vocal Tuner's note snap).
+    if (m.isNoteOnOrOff() && ld::ld_engine_has_ufx (engine.getHandle()))
+        ld::ld_fx_midi_note (engine.getHandle(), m.getNoteNumber(), m.isNoteOn() ? m.getVelocity() : 0);
     if (m.isSysEx())
     {
         if (routed (SysexControl, port))

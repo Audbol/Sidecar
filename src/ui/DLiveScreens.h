@@ -293,7 +293,9 @@ public:
         ExtIn,
         /** What the console's Routing screen has and Sidecar's routing page hasn't: a channel's
             Direct Out, a mix's Mix Source and Follow Main Pan. */
-        Routing
+        Routing,
+        /** The RackUltra (UFX) engines: their strip, key source and the Global Key. */
+        Ufx
     };
 
     /** Ext In's Source Select: what kind of source, then which of them. */
@@ -354,6 +356,30 @@ public:
     void setAbcdPatch (int which, int socket);
     /** A key of the tab showing, by its text (nullptr: none). */
     ScreenButton* findButton (const juce::String& text) const;
+    /** A knob box of the tab showing, by its label (nullptr: none). */
+    Touchable* findBox (const juce::String& label) const;
+
+    /** Insert A or B: assigns Dyn8 engine `engine` (0-63; -1 none) to the strip's insert. False,
+        and nothing changes, when another insert already uses that engine. */
+    bool chooseDyn8 (bool post, int engine);
+    /** The Dyn8 panel's page: 0 the multiband's, 1 the dynamic EQ's. */
+    void setDyn8Page (int page);
+    int getDyn8Page() const noexcept { return dyn8Page; }
+    /** An FX engine's key source (Dyn8's, a UFX strip's EXTERNAL, the Harmoniser's side chain), as
+        DynSlotParams::scSource holds it (an input's index, `kKeyStripBase * kind + index`, -1 none)
+        and a tap. `fxSlot` is an FX slot or kDyn8FxBase + a Dyn8 engine. */
+    void setKeySource (int fxSlot, int source, int tap);
+    /** The UFX tab: the engine shown (an FX slot, kUfxFirst..), its strip's section (0 pre PEQ, 1 pre
+        dynamics, 2 post dynamics, 3 post PEQ, 4 Width), the device in the engine. */
+    void chooseUfxSlot (int fxSlot);
+    int getUfxSlot() const noexcept { return ufxSlot; }
+    void setUfxPage (int section);
+    int getUfxPage() const noexcept { return ufxPage; }
+    bool chooseUfxModel (int model);
+    /** The console-wide Global Key (0 C .. 11 B; scale 0 Major, 1 Minor, 2 Chromatic). */
+    void setGlobalKey (int key, int scale);
+    /** A note on the on-screen keys: the FX devices that follow MIDI notes hear it. */
+    void playUfxNote (int note, int velocity);
 
     /** Touch & Turn: what the data rotary turns now. */
     std::function<void (const KnobBinding&)> onTouchTurn;
@@ -375,6 +401,12 @@ private:
     void buildPreamp (Strip&);
     void buildFilter (Strip&);
     void buildInsert (ld::InsertParams&);
+    void buildDyn8Panel (int engine);
+    void buildUfx();
+    /** The key source and tap keys of FX engine `fxSlot`, at `at` and `tapAt`. */
+    void addKeyControls (int fxSlot, juce::Rectangle<int> at, juce::Rectangle<int> tapAt);
+    /** A strip model's controls `first` .. `first + n - 1` in rows of seven from `y`. */
+    void addModelBoxes (const models::Model&, std::atomic<float>* values, int first, int n, int y, int pitch, int height);
     void buildDelay (Strip&);
     void buildOverview (Strip&);
     void buildBank();
@@ -417,6 +449,7 @@ private:
     int gateModel = -1, compModel = -1;
     ExtType extType = ExtType::None;
     int extNumber = 0, extShown = -2;
+    int dyn8Page = 0, ufxSlot = ld::kUfxFirst, ufxPage = 0, shownInsertFx = -2, shownUfxModel = -2;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ProcessingScreen)
 };

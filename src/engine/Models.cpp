@@ -121,8 +121,8 @@ static const std::vector<Model>& tableOf (Table t, bool all)
     struct Set
     {
         bool built = false;
-        std::array<std::vector<Model>, 5> tables;
-        std::array<std::vector<Model>, 5> all; // with the other consoles' models after
+        std::array<std::vector<Model>, 6> tables;
+        std::array<std::vector<Model>, 6> all; // with the other consoles' models after
     };
     static std::map<int, Set> sets;
     auto& set = sets[(int) shownProfile()];
@@ -131,11 +131,12 @@ static const std::vector<Model>& tableOf (Table t, bool all)
         for (int i = 0; i < (int) set.tables.size(); ++i)
         {
             set.tables[(size_t) i] = build ((Table) i);
-            set.all[(size_t) i] = shownProfile() == ld::kProfileUniversal ? set.tables[(size_t) i] : build ((Table) i, true);
+            // The strip's table is the same on every console: no foreign models follow it.
+            set.all[(size_t) i] = shownProfile() == ld::kProfileUniversal || i == UfxStrip ? set.tables[(size_t) i] : build ((Table) i, true);
         }
         set.built = true;
     }
-    return (all ? set.all : set.tables)[(size_t) juce::jlimit (0, 4, (int) t)];
+    return (all ? set.all : set.tables)[(size_t) juce::jlimit (0, 5, (int) t)];
 }
 
 const std::vector<Model>& table (Table t)

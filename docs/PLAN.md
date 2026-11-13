@@ -43,8 +43,9 @@ Processing:
 - [x] Dyn8's DSP and model (`DLVDYN8`, `dlive_fx`), on Universal.
 - [x] A dLive's 64 Dyn8 engines in the signal path (engine side, `livedaw_engine::ufx`): an array of their own,
       an insert names Dyn8 n as FX `64 + n`; each with a key source; in shows and scenes.
-- [ ] Screens for the Dyn8 engines: picking one on an insert, its panel and key source (FFI: `ld_fx_params`,
-      `ld_fx_set_key`, `ld_dyn8_in_use`; an insert's `fx` = `kDyn8FxBase + n`).
+- [x] Screens for the Dyn8 engines: Ins A and Ins B pick one (an engine another insert has is dimmed), with its panel
+      (a multiband page and a dynamic EQ page) and key source; on both surfaces. The layout is Sidecar's: no public picture
+      of the console's own Dyn8 page.
 - [x] The two preamp models.
 - [x] AMM, NOM and D-Classic.
 
@@ -54,8 +55,9 @@ Effects:
 - [x] The RackUltra models and channel strip DSP (`dlive_fx/ultra`), the 11 models on Universal.
 - [x] A dLive's 8 UFX engines in the engine: FX 17-24 (a dLive has 24 FX now), their strip around the device, sends and
       returns (24 FX returns), the Global Key, MIDI notes and key sources; in shows and scenes.
-- [ ] Screens for the UFX strip, the key source and the Global Key (FFI: `ld_ufx_strip_*`, model table 5,
-      `ld_fx_set_key`, `ld_engine_set_global_key`), and MIDI notes fed from the MIDI inputs (`ld_fx_midi_note`).
+- [x] Screens for the UFX strip, the key source and the Global Key: a UFX page on the Processing screen (an Aux strip's
+      UFX tab, or the Overview's UFX tile) with the engine, its device, the strip's five sections, the key source, the
+      Global Key and note keys; MIDI notes from the MIDI inputs reach the devices. Sidecar's layout, not the console's.
 - [ ] The RackUltra card's 8 extra stereo send mixes and 8 return channels as strips of their own: for now a UFX
       engine is fed from any mix and returns on any channel or FX return.
 

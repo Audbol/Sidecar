@@ -2381,6 +2381,145 @@ public:
             processing.showTab (Tab::Peq);
         }
 
+        // Dyn8: an insert picks an engine, and one another insert has isn't offered twice.
+        {
+            const int base = ld::kDyn8FxBase;
+            auto& insA = channels[5]->params.preInsert();
+            auto& insB = channels[5]->params.postInsert();
+            auto& taken = channels[2]->params.preInsert();
+            const int wasA = insA.fx.load(), wasB = insB.fx.load(), wasTaken = taken.fx.load();
+            insA.fx = insB.fx = taken.fx = -1;
+            expect (ld::ld_engine_has_ufx (engineHandle));
+            processing.showTab (Tab::InsA);
+            expect (processing.findButton ("Pick Dyn8") != nullptr && processing.findButton ("Dyn8 4") == nullptr);
+            expect (processing.chooseDyn8 (false, 3));
+            expectEquals (insA.fx.load(), base + 3);
+            expectEquals ((int) (ld::ld_dyn8_in_use (engineHandle) & 0xff), 1 << 3);
+            expect (processing.findButton ("Dyn8 4") != nullptr && processing.findButton ("Pick Dyn8") == nullptr, "the panel for the engine");
+            taken.fx = base + 7;
+            expect (! processing.chooseDyn8 (true, 7), "an engine in use isn't offered twice");
+            expect (! processing.chooseDyn8 (true, 3));
+            expectEquals (insB.fx.load(), -1);
+            expect (processing.chooseDyn8 (true, 8));
+            expectEquals (insB.fx.load(), base + 8);
+            expect (processing.chooseDyn8 (false, 3), "its own engine again");
+            expect (! processing.chooseDyn8 (false, ld::kNumDyn8));
+
+            // Its parameters and its key source reach the engine's.
+            auto* dynParams = ld::ld_fx_params (engineHandle, base + 3);
+            expect (dynParams != nullptr);
+            const auto& dyn8 = models::model (models::Fx, models::findModel (models::Fx, "DLVDYN8"));
+            expectEquals ((int) dyn8.params.size(), 63);
+            const auto indexOf = [&dyn8] (const juce::String& label)
+            {
+                for (int i = 0; i < (int) dyn8.params.size(); ++i)
+                    if (dyn8.params[(size_t) i].label == label)
+                        return i;
+                return -1;
+            };
+            const int thrAt = indexOf ("LF THRESHOLD");
+            expect (thrAt >= 0);
+            auto* thr = processing.findBox ("LF THRESHOLD");
+            expect (thr != nullptr && processing.findBox ("LF FREQ") == nullptr, "the multiband's page");
+            if (thr != nullptr)
+                thr->getBinding().set (0.25f);
+            expectWithinAbsoluteError (dynParams->values[thrAt].load(), dyn8.params[(size_t) thrAt].fromNormalised (0.25f), 0.001f);
+            processing.setDyn8Page (1);
+            expect (processing.findBox ("LF THRESHOLD") == nullptr);
+            const int freqAt = indexOf ("HM FREQ");
+            auto* freq = processing.findBox ("HM FREQ");
+            expect (freqAt >= 0 && freq != nullptr);
+            if (freq != nullptr)
+                freq->getBinding().set (0.8f);
+            expectWithinAbsoluteError (dynParams->values[freqAt].load(), dyn8.params[(size_t) freqAt].fromNormalised (0.8f), 0.01f);
+            processing.setDyn8Page (0);
+            expectEquals (ld::ld_fx_key_source (engineHandle, base + 3), -1);
+            processing.setKeySource (base + 3, 7, 2);
+            expectEquals (ld::ld_fx_key_source (engineHandle, base + 3), 7);
+            expectEquals (ld::ld_fx_key_tap (engineHandle, base + 3), 2);
+            expect (processing.findButton ("Key: Input 8") != nullptr);
+            const int mixKey = ld::kKeyStripBase * (int) StripKind::Bus + 1;
+            processing.setKeySource (base + 3, mixKey, 3);
+            expectEquals (ld::ld_fx_key_source (engineHandle, base + 3), mixKey);
+            expect (processing.findButton ("Key: Mix 2") != nullptr && processing.findButton ("Post Fdr") != nullptr);
+            processing.setKeySource (base + 3, 4, 5);
+            shot ("dlive-dyn8.png");
+            processing.setKeySource (base + 3, -1, 0);
+            expectEquals (ld::ld_fx_key_source (engineHandle, base + 3), -1);
+
+            // Unassigned, the engine is free for the other insert.
+            expect (processing.chooseDyn8 (false, -1));
+            expectEquals (insA.fx.load(), -1);
+            expect (processing.chooseDyn8 (true, 3));
+            insA.fx = wasA;
+            insB.fx = wasB;
+            taken.fx = wasTaken;
+            processing.showTab (Tab::Peq);
+        }
+
+        // UFX: the strip around a RackUltra engine, its key source, the Global Key and MIDI notes.
+        {
+            const int slot = ld::kUfxFirst + 2;
+            processing.showTab (Tab::Overview);
+            expect (processing.findButton ("UFX") != nullptr);
+            processing.showTab (Tab::Ufx);
+            expect (processing.getTab() == Tab::Ufx && processing.findButton ("UFX 8") != nullptr);
+            processing.chooseUfxSlot (slot);
+            expectEquals (processing.getUfxSlot(), slot);
+            expect (ld::ld_ufx_is_strip (engineHandle, slot));
+            const auto& strip = models::model (models::UfxStrip, 0);
+            expectEquals ((int) strip.params.size(), ld::kUfxStripParams);
+            auto* values = ld::ld_ufx_strip_values (engineHandle, slot);
+            expect (values != nullptr);
+            ld::ld_ufx_strip_reset (engineHandle, slot);
+            // Each section's page: a control of it reaches the strip's value.
+            for (int section = 0; section < 5; ++section)
+            {
+                processing.setUfxPage (section);
+                const int at = ld::ld_ufx_strip_section (section) + (section == 4 ? 0 : 1);
+                const auto& p = strip.params[(size_t) at];
+                auto* box = processing.findBox (p.label);
+                expect (box != nullptr, p.label);
+                if (box == nullptr)
+                    continue;
+                box->getBinding().set (0.3f);
+                expectWithinAbsoluteError (values[at].load(), p.fromNormalised (0.3f), 0.01f, p.label);
+            }
+            processing.setUfxPage (1);
+            // The device in the engine.
+            const int space = models::findModel (models::Fx, "DLVSPACE");
+            expect (space >= 0 && processing.chooseUfxModel (space));
+            expectEquals (ld::ld_fx_params (engineHandle, slot)->model.load(), space);
+            expect (processing.findButton ("Spaces Reverb Designer") != nullptr);
+            expect (! processing.chooseUfxModel (models::findModel (models::Fx, "DLVDYN8")), "a Dyn8 is no UFX device");
+            // Its key source.
+            processing.setKeySource (slot, 11, 1);
+            expectEquals (ld::ld_fx_key_source (engineHandle, slot), 11);
+            expectEquals (ld::ld_fx_key_tap (engineHandle, slot), 1);
+            expect (processing.findButton ("Key: Input 12") != nullptr);
+            // The engine's bypass key, and Reset Strip.
+            expect (processing.findButton ("Bypass") != nullptr);
+            if (auto* key = processing.findButton ("Reset Strip"))
+                key->onClick();
+            expectEquals (values[ld::ld_ufx_strip_section (4)].load(), 100.0f);
+            // The Global Key and its scale are the console's.
+            processing.setGlobalKey (9, 1);
+            expectEquals (ld::ld_engine_global_key (engineHandle, 0), 9);
+            expectEquals (ld::ld_engine_global_key (engineHandle, 1), 1);
+            expect (processing.findButton ("Global Key A") != nullptr && processing.findButton ("Minor") != nullptr);
+            processing.playUfxNote (60, 100);
+            processing.playUfxNote (60, 0);
+            if (auto* key = processing.findButton ("C4"))
+                key->onClick();
+            processing.setUfxPage (0);
+            processing.setKeySource (slot, 5, 0);
+            shot ("dlive-ufx.png");
+            processing.setKeySource (slot, -1, 0);
+            processing.setGlobalKey (0, 0);
+            processing.chooseUfxModel (0);
+            processing.showTab (Tab::Peq);
+        }
+
         // The soft rotaries: Gate and Comp on layer 1, sends on layer 2.
         expect (skin.getSoftRotary (1).getBinding().isValid() && skin.getSoftRotary (3).getBinding().isValid());
         expect (! skin.getSoftRotary (0).getBinding().isValid());
