@@ -88,20 +88,20 @@ AddressSanitizer, UndefinedBehaviorSanitizer and ThreadSanitizer.
 - Rust: `rustfmt` with the repository's `rust/rustfmt.toml`, clippy clean, no new
   third-party crates without discussing it first. C++: follow the surrounding style
   (JUCE style, C++20).
-- Follow the WING: screens, names and behaviour should match the console. Where
+- Follow the real console: screens, names and behaviour should match it. Where
   Sidecar must differ, say so in the user guide or the known limitations.
 - Keep the docs in step: `README.md`, `docs/USER_GUIDE.md`, `docs/ARCHITECTURE.md`
   and, for limitations, the start-up notice (`src/ui/StartupNotice.cpp`).
 
 ## Clean-room rule
 
-Sidecar emulates the WING from public information only: the WING's manuals and
+Sidecar emulates each console from public information only: its manuals and
 protocol documents as references, open-source projects (with their licences
 respected and credited in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)), and
 observing the console's behaviour.
 
-- **Never add Behringer or Music Tribe firmware, binaries, software (such as WING
-  Edit), decompiled or disassembled code, manual pages, screenshots, logos or other
+- **Never add any console maker's firmware, binaries, software (such as editor or
+  remote apps), decompiled or disassembled code, manual pages, screenshots, logos or other
   artwork** to the repository, and don't base code on them.
 - Parameter names, paths and ranges needed for interoperability are fine; say where
   they come from.

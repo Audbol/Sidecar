@@ -1,5 +1,5 @@
 name: Feature request
-description: Suggest something Sidecar should do (or do more like the WING)
+description: Suggest something Sidecar should do (or do more like a real console)
 labels: [enhancement]
 body:
   - type: textarea
@@ -10,10 +10,10 @@ body:
     validations:
       required: true
   - type: textarea
-    id: wing
+    id: console
     attributes:
-      label: How does the WING do it?
-      description: If this is WING behaviour Sidecar lacks or does differently, describe how the console behaves (firmware version, screen, manual section). Please don't attach copies of Behringer's manuals or software.
+      label: How does the real console do it?
+      description: If this is console behaviour Sidecar lacks or does differently, name the console and describe how it behaves (firmware version, screen, manual section). Please don't attach copies of any maker's manuals or software.
   - type: textarea
     id: alternatives
     attributes:

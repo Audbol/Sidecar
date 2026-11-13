@@ -60,7 +60,7 @@ body:
     id: extras
     attributes:
       label: Plugins, MIDI controllers or remote apps involved
-      description: VST3 / AU / LV2 plugins, MIDI or DAW controllers, WING remote apps (with versions), if any.
+      description: VST3 / AU / LV2 plugins, MIDI or DAW controllers, remote apps or consoles (with versions), if any.
   - type: textarea
     id: log
     attributes:

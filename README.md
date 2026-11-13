@@ -53,22 +53,26 @@ points, including those of any other console emulated here.
 
 - **A console for small shows and rehearsals.** A laptop and a multichannel audio
   interface become a full mixer: a band's rehearsal room, a church service, a school
-  play, a conference room or a club night, with the WING's processing on every
-  channel and its effects rack.
-- **Learning the WING, and training a team.** The screens, layers, keys and workflow
-  are the WING's, full-size or COMPACT, so engineers and volunteers can practise on
-  any computer, with the **Virtual (no hardware)** device and the WING's oscillator
-  when there is no interface at hand.
-- **Preparing a show before the gig.** Patch, name, colour, set up processing,
-  effects, scenes and custom controls at home; WING Edit and other WING remote apps
-  connect to Sidecar as they would to the console.
+  play, a conference room or a club night, with the processing and effects of the
+  console you choose on every channel.
+- **Learning a console, and training a team.** Each console's surface, screens, layers
+  and keys are drawn as on the real one: the WING, X32, dLive, SQ-5, DM2000, 01V and the
+  others. Engineers and volunteers can practise on any computer, with the **Virtual (no
+  hardware)** device and an oscillator when there is no interface at hand.
+- **Preparing a show before the gig.** Patch, name, colour, set up processing, effects
+  and scenes at home. Remote apps and protocols connect to Sidecar as they would to the
+  console: the WING's apps, the X32's protocol, MIDI and MIDI over TCP.
 - **A second mixer next to the main console.** Monitors, a broadcast or livestream
   mix, an overflow room or a recording mix, fed from a split of the stage inputs.
+- **Plug-ins on a real console's inserts.** The PLUGIN HOST console runs a rack of
+  plug-ins on each channel, with sidechains, scenes, hot knobs and MIDI learn.
+- **Controlling a real console.** The Universal Mixer can connect to a real X32 and
+  mirror it, with more consoles to follow.
 - **Multitrack recording and virtual soundcheck.** Record every channel of a show,
   play it back through the console the next day to refine the mix without the band,
   and edit, import and export the tracks in the built-in multitrack editor.
 - **Mixing with your plugins and your outboard gear.** VST3, AU and LV2 plugins sit
-  in the FX rack next to the WING's effects, and the EXTERNAL effect puts a hardware
+  in the FX rack and in any strip's chain, and an external effect puts a hardware
   compressor or reverb on an insert through the interface's outputs and inputs. The
   plugin overview keeps every plugin (its picture, state, meters, CPU) in view in a
   window of its own, on a second screen if you like.
@@ -112,55 +116,59 @@ Every picture is one of Sidecar's own drawings, rendered at 1920 x 1080.
 
 ## What it does
 
-This section describes the WING, the most complete console. The others share its mixer core, recorder and plugin hosting; each has its own surface, processing and remote protocol, as in the table at the top.
+Every console runs on one mixer core, with the same recorder, plugin hosting, shows
+and scenes. Each console brings its own surface, processing, effects and remote
+protocol, as in the table at the top; the [user guide](docs/USER_GUIDE.md) has a
+chapter for each.
 
-- **A WING console:** 40 input channels, 8 aux, 16 stereo buses, 4 stereo mains,
-  8 matrices, 16 DCAs, 8 mute groups and 16 FX slots. More channels, buses and FX
-  slots (up to 64) can be added; the limit is your CPU. Channels and buses have
-  direct outs, PRE or POST FADER.
-- **Two console models:** the full-size WING (grey or black) and the **WING COMPACT**
-  (one 12-fader section with its own BUS, DCA, MAIN / MATRIX and USER keys, the
-  VIRTUAL section and its custom control sets), chosen in SETUP > SIDECAR.
-- **The WING's processing**, in its order and with its process orders: input (trim,
-  polarity, delay), filters, a gate and a dynamics slot with the WING's 32 dynamics
-  models, the WING EQ and its analog EQ models, two inserts and sends with all of the
-  WING's tap points.
-- **An FX rack** with the WING's devices: 26 premium effects (reverbs, delays,
-  chorus, pitch...), 32 standard effects (EQs, dynamics, amps, modulation...), 5
-  channel strips, VST3, AU (macOS) and LV2 (Linux) plugins, and the WING's EXTERNAL
-  effect: outboard gear inserted through your interface's outputs and inputs. Each
-  device has its faceplate, and its meters, needles, gain reduction and spectrum move
-  with the signal.
-- **The WING surface on screen:** three fader sections with layers, user layers and
-  spill (DCA, bus, main and matrix), the main display with the WING's screens (HOME,
-  EFFECTS, METERS, ROUTING, SETUP, LIBRARY, VIEW, UTILITY), the channel strip,
-  monitoring, 4-Channel and custom control sections, with the WING's meter ballistics.
-  It resizes to any screen; the display can be shown on its own.
-- **The WING's routing:** any source to any channel or output, inputs straight to
-  outputs, buses, mains and matrices as channel sources, user signals and user
-  patches, bus to bus, and live meters on the ROUTING tiles.
+- **Each console's size and processing:** its channels, buses, mains, matrices, DCAs
+  and mute groups, and its processing in its own order: preamp, filters, gate,
+  dynamics, EQ and inserts, with its own models. Sizes can grow beyond the real
+  console's (up to 64 FX slots, 256 DCAs and mute groups); the limit is your CPU.
+- **Each console's surface on screen:** its faders, layers, keys, meters and display
+  pages (touchscreens, LCDs, dot-matrix pages), resized to any screen. Displays can be
+  shown on their own (F10).
+- **Effects:** each console's effects in an FX rack, with faceplates whose meters and
+  gain reduction move with the signal, plus VST3, AU (macOS) and LV2 (Linux) plugins,
+  and an external effect for outboard gear through your interface.
+- **Routing:** any input to any channel, any signal to any output, direct outs, and
+  each console's own routing and patch pages.
 - **Shows, scenes and snippets** with recall scope, recall safes, global safes, fades,
   presets and STARTUP files; scenes and snippets can be exported to files and imported
-  into another show.
+  into another show. Analog mixers get a scenes bar of their own.
 - **Multitrack recording** of up to 64 tracks, playback into the console (virtual
-  soundcheck) and a built-in multitrack editor that imports audio files (copied into
-  the project or kept where they are) and exports its tracks as audio files; the WING's
-  **2/4-track USB recorder and player** using a folder on disk.
+  soundcheck) and a built-in multitrack editor that imports and exports audio files; a
+  2/4-track recorder and player using a folder on disk.
 - **Monitoring and talkback:** phones and speakers paths with their own sources, EQ,
-  delay and limiter, and two talk keys. The WING's **oscillator** (sine, pink and white
-  noise) is a source group to patch to channels for line checks.
-- **Custom controls** with the WING's functions (fader start, inserts, DAW layer,
-  tap tempo, mute groups, scenes, the recorders...), **MIDI remote control** and **DAW
-  remote control** (Mackie Control / HUI) as on the WING.
-- **WING remote apps and files (experimental):** Sidecar answers the WING's network
-  protocols (discovery, OSC and the native protocol) and reports itself as a full-size
-  WING or a COMPACT, so WING remote software such as WING Edit can find and drive it;
-  it imports and exports WING snapshots.
-- **Web remote:** open the console's screen in a browser on a tablet, phone or another
-  computer on the network and control it from there (optional PIN).
+  delay and limiter, talk keys, and an oscillator for line checks.
+- **Remote control:** MIDI, Mackie Control / HUI, each console's own protocol where
+  it is public (the WING's network protocols, the X32's OSC, MIDI over TCP for the SQ-5
+  and dLive, the Yamaha consoles' MIDI), and a web remote for a tablet, phone or another
+  computer (optional PIN).
 - **Built for stability:** a realtime engine in Rust with no allocations or locks on
   the audio thread, plugin faults contained, an audio device watchdog, autosave
   every 30 s and a safe mode after a crash.
+
+### The WING
+
+The most complete console so far.
+
+- **Three models:** the full-size WING (grey or black), the **WING COMPACT** (one
+  12-fader section with its own BUS, DCA, MAIN / MATRIX and USER keys and the VIRTUAL
+  section) and the **WING RACK**.
+- **Its size and processing:** 40 input channels, 8 aux, 16 stereo buses, 4 stereo
+  mains, 8 matrices, 16 DCAs, 8 mute groups and 16 FX slots; its 32 dynamics models,
+  the WING EQ and its analog EQ models, two inserts and all of its tap points.
+- **Its FX rack:** 26 premium effects, 32 standard effects, 5 channel strips and the
+  EXTERNAL effect.
+- **Its surface and screens:** three fader sections with layers, user layers and spill,
+  the main display's screens (HOME, EFFECTS, METERS, ROUTING, SETUP, LIBRARY, VIEW,
+  UTILITY), the channel strip, monitoring, 4-Channel and custom control sections.
+- **Custom controls** with its functions (fader start, inserts, DAW layer, tap tempo,
+  mute groups, scenes, the recorders).
+- **Remote apps and files (experimental):** Sidecar answers the WING's network
+  protocols (discovery, OSC and the native protocol), so WING remote software such as
+  WING Edit can find and drive it; it imports and exports WING snapshots.
 
 ### The Universal Mixer
 
@@ -224,6 +232,10 @@ for the files of each version.
 
 ## First steps
 
+Pick a console in the start-up tile picker. The steps below use the WING's keys; every
+other console has the same functions on its own pages, as the [user guide](docs/USER_GUIDE.md)
+describes.
+
 1. **Choose the audio device:** on the main display, press **SETUP**, then **SIDECAR**.
    The **DEVICE** field opens the driver (ASIO, WASAPI, CoreAudio, ALSA, JACK...),
    the device and the buffer size; **CLOCK RATE** (SETUP > AUDIO) sets the sample rate. On Windows,
@@ -245,7 +257,8 @@ for the files of each version.
    TRANSP custom-control layer) starts recording into
    `Documents/Sidecar/Recordings`. **VIRTUAL SOUNDCHECK** plays the recording back
    through the console. `Ctrl+E` opens the multitrack editor.
-6. **Connect WING apps (optional, experimental):** **SETUP > REMOTE > WING REMOTE >
+6. **Connect remote apps (optional, experimental):** each console's remote protocol is
+   set up in its own SETUP or MIDI pages (see the user guide). On the WING, **SETUP > REMOTE > WING REMOTE >
    ENABLE** starts the WING network servers (UDP 2222 discovery, UDP 2223 OSC, TCP
    2222 native). Remote apps on the same network can then discover Sidecar under its
    console name. Allow Sidecar through your firewall. Tested with the WING
@@ -290,11 +303,11 @@ see the [user guide](docs/USER_GUIDE.md#multitrack-recording)).
 This list matches the notice Sidecar shows at start-up.
 
 - **Sound:** the channel processing and FX models recreate each unit's controls and
-  character from the WING's parameter set, not the maker's exact algorithms.
+  character from each console's published parameters, not the makers' exact algorithms.
 - **Hardware:** your audio interface's inputs and outputs take the place of the
-  WING's. There is no StageConnect, AES50 or Dante, and no remote preamp control
+  console's. There is no StageConnect, AES50 or Dante, and no remote preamp control
   (HA REMOTE): source GAIN is digital and +48V is only stored.
-- **Recording:** instead of the WING-LIVE SD cards, a multitrack recorder writes to a
+- **Recording:** instead of a console's own recorder (SD cards or USB), a multitrack recorder writes to a
   folder on disk (with an editor); the USB recorder uses a folder of your choice
   instead of a USB stick. The MP3 encoder is basic (constant bit rate, a simple
   masking model).
@@ -308,9 +321,9 @@ This list matches the notice Sidecar shows at start-up.
   matrices up to 8192 samples; solo, monitoring, direct outs and recorder taps are
   not compensated.
 - **The Universal Mixer** (SETUP > SIDECAR > INTERFACE: UNIVERSAL) is a preview: custom
-  controls are still on the WING surface, and on a console bigger than a WING
-  the WING surface and the WING remote apps reach its first 40 channels, 16 buses, 4
-  mains and 8 matrices.
+  controls are still on each console's own surface, and a console's own surface and
+  remote apps reach only as many channels, buses, mains and matrices as the real
+  console has.
 - **WING remote apps:** the WING network protocols answer every parameter of the
   WING 3.1 tree but one; 93.2 % drive the engine or Sidecar's settings (of 79,326,
   counting every processing model's parameters and every custom control mode's
@@ -322,7 +335,7 @@ This list matches the notice Sidecar shows at start-up.
   snapshots have not been loaded into a console.
 - **MIDI and DAW remote control** (MCU / HUI) have not been tested with real hardware.
 - **LIBRARY:** scene and snippet files are Sidecar's own (.lsnap / .lsnip), not the
-  WING's .snap / .snip, and the CLIP tab plays its clip on the USB player.
+  consoles' own files (WING snapshots and X32 scenes import and export), and the CLIP tab plays its clip on the USB player.
 - **Drawn but disabled:** the GPIO and SD functions of the custom controls (there is
   no GPIO socket or SD card), and settings that only make sense on the hardware.
 
@@ -353,7 +366,7 @@ JUCE app as a static library through [Corrosion](https://github.com/corrosion-rs
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release --parallel
-ctest --test-dir build -C Release --output-on-failure   # C++ tests (engine, shows, stability, plugins, WING)
+ctest --test-dir build -C Release --output-on-failure   # C++ tests (engine, shows, stability, plugins, every console)
 
 cd rust && cargo test --workspace                       # Rust tests
 ```
@@ -437,15 +450,15 @@ cd rust && RUSTFLAGS=-Zsanitizer=thread cargo +nightly test -Zbuild-std --target
 ## Project layout
 
 ```
-rust/crates/livedaw-dsp/      DSP: the WING models (filters, EQ models, 32 dynamics models), FX rack devices
+rust/crates/livedaw-dsp/      DSP: every console's processing models and FX rack devices
 rust/crates/livedaw-engine/   Realtime engine: the console's configuration (the WING's by default), strips and their chains (extra blocks, taps), sends, DCAs, mute groups, FX slots, solo, worker pool
 rust/crates/livedaw-session/  Sessions: console state, Show > Scene > Snippet, fades, fader banks, show files
 rust/crates/livedaw-wing/     WING parameter tree, its mapping onto the engine, the WING remote protocols, .snap/.show files
 rust/crates/livedaw-recorder/ Multitrack recorder and the USB recorder / player (WAV, FLAC, AIFF, MP3 codecs, disk threads)
 rust/crates/livedaw-ffi/      C ABI over the engine and model tables + C++ header (include/livedaw_engine.h)
-src/engine/   C++ side: facades over the Rust code, audio devices, plugin hosting, MIDI and WING remote
+src/engine/   C++ side: facades over the Rust code, audio devices, plugin hosting, MIDI and the consoles' remote protocols
 src/daw/      Multitrack projects: tracks, clips, markers, undo, import / export
-src/ui/       JUCE UI: the WING surface (fader sections, main display screens, channel strip, monitoring)
+src/ui/       JUCE UI: every console's surface and screens, the Universal Mixer and the PLUGIN HOST
 src/ui/daw/   The multitrack editor and the recorder screen
 resources/    Barlow fonts (SIL Open Font License)
 tools/wing/   Generators for the WING data, libwing test tools
