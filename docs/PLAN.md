@@ -5,10 +5,10 @@ they land. The detail behind each console is in `UNIVERSAL_MIXER.md` and `DLIVE_
 
 ## 1. Save and try what exists
 
-- [ ] Commit the 01V, dLive and fast-build work. It's all uncommitted on one PC.
+- [x] Commit the 01V, dLive and fast-build work.
 - [x] XENYX Q1202USB: blocks, routing, panel, console tape and scenes (first analog mixer). Still to do: measure a real mixer (compressor law, EQ widths, soft clip, fader law); the FX SEND and CTRL ROOM jack outputs on the panel.
-- [ ] Push the commits. Pushing needs a sign-in as Audbol on this PC.
-- [ ] Try test.6 by hand: the 01V's surface first, then the dLive.
+- [x] Push the commits (gh is signed in as Audbol on this PC).
+- [x] Try test.6 by hand: the 01V's surface first, then the dLive.
 
 ## 2. Finish the 01V (while the console is on hand)
 
@@ -99,12 +99,10 @@ Console features:
 - [ ] The right screen's other pages in the console's own style; they host the Universal pages for now.
 - [x] Scenes' other tabs and the I/O page from photos. Update stores into chosen scenes; Global Safes works by
       whole rows and columns; Outputs and Inputs patch for real.
-- [ ] dLive routing and I/O grids: click and drag the page to move around and reach the whole matrix (owner).
-- [ ] Scene Manager: Undo Go works (`Show::undoRecall`); still to do: Lock, Copy and
-      Paste, Copy Filter, Embedded Recall, Custom MIDI, Actions. Cue lists, Import from a show, Tie Lines
+- [x] dLive routing grid: drag the page to move around the whole matrix (owner), on both surfaces. The I/O page's grids still to check.
+- [ ] Scene Manager: Undo Go, Lock and Copy/Paste work; still to do: Copy Filter, Embedded Recall, Custom MIDI, Actions. Cue lists, Import from a show, Tie Lines
       and Virtual SoundCheck are drawn only; Update's Auto Tracking and Relative too.
 - [ ] The RTA on the PEQ graph. Help.
-- [ ] The rest of the surface: SoftKeys, assigning the custom rotaries, Strip Assign.
 
 ## 4. Bring the older surfaces up to the 01V's standard
 
@@ -152,17 +150,19 @@ The owner wants a lot of work done here; what comes first is theirs to say.
       and PFL / AFL act as LR. Kept for remotes only (`/-prefs`): lamp, card mode, network fields, iQ, most of config.
 - [x] X32: measured corrections recovered from the original session (real X32 Compact, firmware 4.09), with tools and tables in `tools/x32`.
 
-## 7. Release
+## 7. Releases
 
 - [x] 01V and DM2000: fader groups, mute groups and pairs save with scenes (owner checked a real 01V: they do).
 - [x] First run: the start-up window asks which console (it already does: with nothing to continue, a console must be chosen).
 - [ ] Analog mixers: reuse the Q1202USB's console tape and scene bar as the template.
 - [ ] Consoles: controls Sidecar cannot back stay drawn but dim.
-- [ ] Regenerate the README screenshots after the Universal Mixer design pass, before v0.3.0.
-- [ ] With every update: review each console's completion percentage in `src/ui/StartupNotice.cpp`.
-- [ ] v0.3.0, once the above is as far as we want it for that release.
+- [x] Regenerate the README screenshots after the Universal Mixer design pass, before v0.3.0.
+- With every update: review each console's completion percentage in `src/ui/StartupNotice.cpp`.
+- [x] v0.3.0, published November 2026 for Windows, macOS, Linux and Linux arm64.
       Release notes: brief, an overview of what changed and what was added (owner).
-- [x] 0.3.1: the plug-in host console, planned in `docs/PLUGIN_HOST.md`. Built in eight steps; still to try with real plug-ins and a real MIDI controller.
+- [x] 0.3.1: the PLUGIN HOST console, planned in `docs/PLUGIN_HOST.md`. Built in eight steps; still to try with real plug-ins and a real MIDI controller.
+- [ ] 0.3.1: a private test build for the owner to try PLUGIN HOST, then the release.
+- [ ] MIDI remote control of the owner's 01V, ProMix 01 and DM2000, in a session on the computer they are connected to (prompt ready).
 - [ ] Raspberry Pi: build the Linux arm64 package on Debian Bookworm (a container on the arm runner), so it
       runs on Raspberry Pi OS Bookworm. 0.3.0's needs glibc 2.38, GLIBCXX 3.4.32 and ALSA 1.2.10 (a user's
       Pi 5 could not start it); Raspberry Pi OS Trixie has them.
