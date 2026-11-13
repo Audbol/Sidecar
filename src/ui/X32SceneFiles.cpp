@@ -103,6 +103,74 @@ void SceneFiles::exportChannel (const juce::String& strip, const juce::String& n
                           });
 }
 
+namespace
+{
+    const char* extensionOf (WingRemote::X32Library kind) { return kind == WingRemote::X32Library::Effect ? "efx" : "rou"; }
+    const char* whatOf (WingRemote::X32Library kind) { return kind == WingRemote::X32Library::Effect ? "effect" : "routing"; }
+}
+
+juce::String SceneFiles::importLibraryFile (WingRemote::X32Library kind, const juce::File& file, const juce::String& slot)
+{
+    juce::String text;
+    if (! file.existsAsFile() || (text = file.loadFileAsString()).isEmpty())
+        return "Couldn't read " + file.getFileName();
+    const auto read = ctx.engine.getWing().readX32Library (kind, slot, text);
+    if (! read.ok)
+        return "The console isn't an X32";
+    if (read.applied == 0)
+        return file.getFileName() + " has nothing an X32 " + whatOf (kind) + " preset has";
+    juce::String status = "Loaded " + file.getFileName();
+    if (kind == WingRemote::X32Library::Effect)
+        status << " into FX " << slot.fromLastOccurrenceOf ("/", false, false);
+    if (read.skipped > 0)
+        status << "; " << read.skipped << " line(s) Sidecar doesn't emulate were skipped";
+    ctx.log.info (juce::String ("X32 ") + whatOf (kind) + " preset: " + status);
+    return status;
+}
+
+juce::String SceneFiles::exportLibraryFile (WingRemote::X32Library kind, const juce::File& file, const juce::String& slot, const juce::String& name)
+{
+    const auto text = ctx.engine.getWing().writeX32Library (kind, slot, name);
+    if (text.isEmpty())
+        return "The console isn't an X32";
+    if (! file.replaceWithText (text, false, false, "\n"))
+        return "Couldn't write " + file.getFullPathName();
+    ctx.log.info (juce::String ("X32 ") + whatOf (kind) + " preset exported: " + file.getFullPathName());
+    return "Exported " + file.getFileName();
+}
+
+void SceneFiles::importLibrary (WingRemote::X32Library kind, const juce::String& slot, std::function<void (const juce::String&)> done)
+{
+    chooser = std::make_unique<juce::FileChooser> (juce::String ("Import an X32 ") + whatOf (kind) + " preset",
+                                                   juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),
+                                                   juce::String ("*.") + extensionOf (kind));
+    chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                          [this, kind, slot, done] (const juce::FileChooser& fc)
+                          {
+                              const auto file = fc.getResult();
+                              if (file != juce::File() && done)
+                                  done (importLibraryFile (kind, file, slot));
+                          });
+}
+
+void SceneFiles::exportLibrary (WingRemote::X32Library kind, const juce::String& slot, const juce::String& name,
+                                std::function<void (const juce::String&)> done)
+{
+    const auto fileName = juce::File::createLegalFileName (name.isNotEmpty() ? name : juce::String (kind == WingRemote::X32Library::Effect ? "Effect" : "Routing"));
+    chooser = std::make_unique<juce::FileChooser> (juce::String ("Export an X32 ") + whatOf (kind) + " preset",
+                                                   juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
+                                                       .getChildFile (fileName + "." + extensionOf (kind)),
+                                                   juce::String ("*.") + extensionOf (kind));
+    chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                              | juce::FileBrowserComponent::warnAboutOverwriting,
+                          [this, kind, slot, name, done] (const juce::FileChooser& fc)
+                          {
+                              const auto file = fc.getResult();
+                              if (file != juce::File() && done)
+                                  done (exportLibraryFile (kind, file.withFileExtension (extensionOf (kind)), slot, name));
+                          });
+}
+
 void SceneFiles::importScene (std::function<void (const juce::String&)> done)
 {
     chooser = std::make_unique<juce::FileChooser> ("Import an X32 scene", juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),

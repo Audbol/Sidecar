@@ -5022,7 +5022,14 @@ private:
             display.getEncoder (0).turn.set (0.0f);
             // Dimmed items: drawn, inert.
             display.showScreen (S::Setup, 0);
-            expect (display.getEncoder (4).dimmed && display.getEncoder (4).push == nullptr, "the time is the computer's");
+            expect (! display.getEncoder (4).dimmed && display.getEncoder (4).push == nullptr, "the date is the computer's, a readout");
+            expectEquals (display.getEncoder (3).turn.text(), juce::Time::getCurrentTime().formatted ("%H:%M"), "the time");
+            expectEquals (display.getEncoder (4).turn.text(), juce::Time::getCurrentTime().formatted ("%d.%m.%Y"), "the date");
+            expectEquals (display.getEncoder (4).turn.label, juce::String ("Date"));
+            display.showScreen (S::Setup, 1);
+            expectEquals (display.getEncoder (2).turn.label, juce::String ("SYNC"));
+            expect (! display.getEncoder (2).dimmed && display.getEncoder (2).turn.text() == "Internal", "the interface's clock is the sync");
+            display.showScreen (S::Setup, 0);
         }
 
         // MONITOR's talk tabs: the sixth encoder picks the talkback channel.
@@ -5055,6 +5062,92 @@ private:
             expect (files.exportChannelFile (file, "/main/st", "Main").startsWith ("Exported"));
             expect (file.loadFileAsString().contains ("\n/mix "));
             file.deleteFile();
+        }
+        // X32 effect and routing presets: slot 2 exported, loaded into slot 6's neighbour, the routing too.
+        {
+            using S = ui::x32::Display::Screen;
+            using Kind = WingRemote::X32Library;
+            ui::x32::SceneFiles files (rig.ctx);
+            int set = 0;
+            auto& wing = engine.getWing();
+            wing.runX32Text ("/fx/2 PLAT", set);
+            wing.runX32Text ("/fx/2/par 0.25 0.5", set);
+            const auto efx = juce::File::createTempFile (".efx");
+            expect (files.exportLibraryFile (Kind::Effect, efx, "/fx/2", "Plate").startsWith ("Exported"));
+            const auto text = efx.loadFileAsString();
+            expect (text.startsWith ("#2.1# \"Plate\" ") && text.contains ("\n/fx PLAT\n") && ! text.contains ("/fx/2"), text.substring (0, 60));
+            const auto parBefore = wing.runX32Text ("/fx/2/par", set);
+            wing.runX32Text ("/fx/3 HALL", set);
+            const auto status = files.importLibraryFile (Kind::Effect, efx, "/fx/3");
+            expect (status.startsWith ("Loaded") && status.endsWith ("into FX 3"), status);
+            expectEquals (wing.runX32Text ("/fx/3/par", set), parBefore.replace ("/fx/2/", "/fx/3/"));
+            expectEquals (wing.runX32Text ("/fx/3/type", set), juce::String ("/fx/3/type PLAT"));
+            expect (files.importLibraryFile (Kind::Effect, efx, "/fx/9").startsWith ("The console isn't"), "no such slot");
+            efx.deleteFile();
+
+            const auto rou = juce::File::createTempFile (".rou");
+            const auto xlr = [&wing, &set] { return wing.runX32Text ("/config/routing/OUT/1-4", set); };
+            const auto xlrBefore = xlr();
+            const juce::String other = xlrBefore.endsWith ("AN9-12") ? "AN1-4" : "AN9-12";
+            expect (files.exportLibraryFile (Kind::Routing, rou, {}, "Stage").startsWith ("Exported"));
+            expect (rou.loadFileAsString().startsWith ("#2.1# \"Stage\" "));
+            wing.runX32Text ("/config/routing/OUT/1-4 " + other, set);
+            expect (xlr() != xlrBefore);
+            expect (files.importLibraryFile (Kind::Routing, rou, {}).startsWith ("Loaded"));
+            expectEquals (xlr(), xlrBefore);
+            rou.deleteFile();
+            // The LIBRARY's effects and routing tabs have the pair on their fifth and sixth encoders.
+            for (int tab : { 1, 2 })
+            {
+                display.showScreen (S::Library, tab);
+                expect (display.getEncoder (4).pushLabel == "IMPORT" && ! display.getEncoder (4).dimmed && display.getEncoder (4).push != nullptr);
+                expect (display.getEncoder (5).pushLabel == "EXPORT" && ! display.getEncoder (5).dimmed && display.getEncoder (5).push != nullptr);
+            }
+        }
+        // SETUP > remote: the DAW protocol and port reach the settings.
+        {
+            using S = ui::x32::Display::Screen;
+            auto daw = [&rig] { return MidiRemote::Settings::load (rig.ctx.settings).daw; };
+            display.showScreen (S::Setup, 2);
+            display.setLayer (1);
+            expectEquals (display.getEncoder (1).turn.label, juce::String ("PROTOCOL"));
+            expect (! display.getEncoder (1).dimmed && ! display.getEncoder (4).dimmed);
+            display.getEncoder (1).turn.set (0.5f);
+            expect (daw().enabled && daw().emulation == DawRemote::Emulation::Mcu);
+            expectEquals (display.getEncoder (1).turn.text(), juce::String ("MACKIE MCU"));
+            display.getEncoder (1).turn.set (1.0f);
+            expect (daw().enabled && daw().emulation == DawRemote::Emulation::Hui);
+            display.pushEncoder (4); // the port: USB to DIN
+            expect (! daw().usb);
+            expectEquals (display.getEncoder (4).turn.text(), juce::String ("DIN"));
+            display.pushEncoder (4);
+            expect (daw().usb);
+            display.getEncoder (1).turn.set (0.0f);
+            expect (! daw().enabled);
+            display.setLayer (0);
+        }
+        // MONITOR's source list: LR+C/M adds the mono bus, LR P / LR A keep LR under a solo.
+        {
+            using S = ui::x32::Display::Screen;
+            auto& direct = engine.monitorPath (false);
+            const int mono = MixerEngine::directSourceIndex (StripKind::Main, 1);
+            const bool afl = engine.soloAfl.load();
+            display.showScreen (S::Monitor, 0);
+            display.getEncoder (5).turn.set (2.0f / 6.0f);
+            display.pushEncoder (5);
+            expect (direct.directSource.load() == mono && direct.directLevelDb.load() == 0.0f, "the mono bus beside LR");
+            expect (engine.speakers.source.load() == MixerEngine::monitorSourceIndex (StripKind::Main, 0));
+            display.getEncoder (5).turn.set (4.0f / 6.0f); // LR A
+            display.pushEncoder (5);
+            expect (direct.directSource.load() == -1, "LR alone again");
+            expect (engine.soloAfl.load() && engine.speakers.sourceMixDb.load() > -100.0f, "LR stays under a solo, AFL");
+            display.getEncoder (5).turn.set (3.0f / 6.0f); // LR P
+            display.pushEncoder (5);
+            expect (! engine.soloAfl.load());
+            display.getEncoder (5).turn.set (1.0f / 6.0f); // LR
+            display.pushEncoder (5);
+            expect (engine.speakers.sourceMixDb.load() < -100.0f);
+            engine.soloAfl = afl;
         }
         // EQ on faders, a bus's matrix sends, the DCAs' names, kept preferences.
         {

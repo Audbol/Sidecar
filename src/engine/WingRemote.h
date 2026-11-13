@@ -102,6 +102,17 @@ public:
         `note` stays empty). */
     juce::String writeX32Channel (const juce::String& strip, const juce::String& name) const;
     X32SceneRead readX32Channel (const juce::String& strip, const juce::String& text);
+    /** X32 library presets: an effect preset (`.efx`) from the slot at "/fx/1"-"/fx/8", a
+        routing preset (`.rou`) from the routing (empty if the console isn't an X32 or the
+        address isn't a slot), and each read back (`note` stays empty; `ok` is false for
+        the same reasons). */
+    enum class X32Library
+    {
+        Effect = 1,
+        Routing = 2
+    };
+    juce::String writeX32Library (X32Library kind, const juce::String& slot, const juce::String& name) const;
+    X32SceneRead readX32Library (X32Library kind, const juce::String& slot, const juce::String& text);
     /** INIT: that strip back to an X32's factory values (its source stays); false if
         the console isn't an X32 or that isn't a strip. */
     bool initX32Channel (const juce::String& strip);

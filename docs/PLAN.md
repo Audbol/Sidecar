@@ -147,9 +147,14 @@ The owner wants a lot of work done here; what comes first is theirs to say.
 - [ ] WING RACK, still open: look at it in a render (never built or drawn yet); the FADERS screen's left toolbar (manual 5.1
       p. 30, Fig. 72); the RACK's key combinations of chapter 10 (UTILITY, SETUP and CLR SOLO stand in for the blank key);
       `/$ctl/layer/RCK` for remote clients; its completion figure in `src/ui/StartupNotice.cpp`.
-- [ ] X32 display menus, still open (drawn dimmed for now): SETUP's system controls, sync, time; the DAW protocol
-      of SETUP > remote; LIBRARY's .efx / .rou import and export; USB's recorder trim. The Monitor Source list's LR+C/M
-      and PFL / AFL act as LR. Kept for remotes only (`/-prefs`): lamp, card mode, network fields, iQ, most of config.
+- [ ] X32 display menus, narrowed (November 2026): done are SETUP's time and date (the computer's, readouts), sync (the
+      interface's clock, a readout), the DAW protocol and port of SETUP > remote (OFF, MCU or HUI; USB or DIN, the DAW
+      remote's settings), LIBRARY's .efx / .rou import and export (`livedaw_x32::library`, `ld_x32_library_*`; the format
+      is from public descriptions, not compared with a file a console wrote) and the Monitor Source's LR+C/M (LR plus
+      Main 2 on the speakers' DIRECT IN) and LR P / LR A (LR kept under a solo, the channel solo's tap set). Still dimmed:
+      USB's recorder trim (the recorder has no input trim; it needs an engine field and a C ABI call), SYS CONTROL's
+      shutdown, reboot and firmware update, and editing the time. Kept for remotes only (`/-prefs`): lamp, card mode,
+      network fields, iQ, most of config.
 - [x] X32: measured corrections recovered from the original session (real X32 Compact, firmware 4.09), with tools and tables in `tools/x32`.
 
 ## 7. Releases

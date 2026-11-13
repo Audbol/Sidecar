@@ -11,7 +11,7 @@ use livedaw_engine::{Engine, Profile};
 use livedaw_wing::server::{EngineHandle, EnginePtr};
 use livedaw_x32::map::State;
 use livedaw_x32::sysex::{self, Done};
-use livedaw_x32::{chn, scn, Config, Console, Identity, LinkFollower, X32Client, X32Server};
+use livedaw_x32::{chn, library, scn, Config, Console, Identity, LinkFollower, X32Client, X32Server};
 use std::sync::Arc;
 
 pub struct LdX32 {
@@ -221,6 +221,80 @@ pub unsafe extern "C" fn ld_x32_channel_read(
     let (strip, text) = (str_arg(strip, strip_len), str_arg(text, len));
     guard(false, || {
         let Some(r) = x.with_console(|c| chn::read(c, &strip, &text)).flatten() else { return false };
+        if let Some(out) = out.as_mut() {
+            *out = LdX32SceneRead {
+                applied: i32::try_from(r.applied).unwrap_or(i32::MAX),
+                skipped: i32::try_from(r.skipped).unwrap_or(i32::MAX),
+                name: LdString::new(r.name),
+                note: std::ptr::null_mut(),
+            };
+        }
+        true
+    })
+}
+
+/// An X32 library preset kind: `.efx` (1) or `.rou` (2).
+const LIBRARY_EFX: i32 = 1;
+const LIBRARY_ROU: i32 = 2;
+
+/// The effect in the slot at `target` (`/fx/1`-`/fx/8`) as an X32 effect preset
+/// (`.efx`, kind 1), or the routing as a routing preset (`.rou`, kind 2;
+/// `target` is ignored); null if the console isn't an X32, the kind is
+/// unknown or the target isn't a slot.
+///
+/// # Safety
+/// `x` is from `ld_x32_create` (or null); the strings hold their lengths in UTF-8 bytes.
+#[no_mangle]
+pub unsafe extern "C" fn ld_x32_library_write(
+    x: *const LdX32,
+    kind: i32,
+    target: *const u8,
+    target_len: usize,
+    name: *const u8,
+    name_len: usize,
+) -> *mut LdString {
+    let Some(x) = x.as_ref() else { return std::ptr::null_mut() };
+    let (target, name) = (str_arg(target, target_len), str_arg(name, name_len));
+    guard(std::ptr::null_mut(), || {
+        x.with_console(|c| match kind {
+            LIBRARY_EFX => library::efx_write(c, &target, &name),
+            LIBRARY_ROU => Some(library::rou_write(c, &name)),
+            _ => None,
+        })
+        .flatten()
+        .map(LdString::new)
+        .unwrap_or(std::ptr::null_mut())
+    })
+}
+
+/// Sets a slot or the routing from an X32 library preset's text (see
+/// `ld_x32_library_write`); false if the console isn't an X32, the kind is
+/// unknown or the target isn't a slot.
+///
+/// # Safety
+/// `x` is from `ld_x32_create` (or null); the strings hold their lengths in
+/// UTF-8 bytes; `out` is null or writable.
+#[no_mangle]
+pub unsafe extern "C" fn ld_x32_library_read(
+    x: *const LdX32,
+    kind: i32,
+    target: *const u8,
+    target_len: usize,
+    text: *const u8,
+    len: usize,
+    out: *mut LdX32SceneRead,
+) -> bool {
+    let Some(x) = x.as_ref() else { return false };
+    let (target, text) = (str_arg(target, target_len), str_arg(text, len));
+    guard(false, || {
+        let read = x
+            .with_console(|c| match kind {
+                LIBRARY_EFX => library::efx_read(c, &target, &text),
+                LIBRARY_ROU => Some(library::rou_read(c, &text)),
+                _ => None,
+            })
+            .flatten();
+        let Some(r) = read else { return false };
         if let Some(out) = out.as_mut() {
             *out = LdX32SceneRead {
                 applied: i32::try_from(r.applied).unwrap_or(i32::MAX),

@@ -21,6 +21,7 @@
 
 pub mod chn;
 pub mod client;
+pub mod library;
 pub mod map;
 pub mod meters;
 pub mod oscillator;

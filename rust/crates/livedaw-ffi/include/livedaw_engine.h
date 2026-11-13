@@ -2019,6 +2019,13 @@ extern "C"
     /** ABI 52: sets the strip at `strip` from a channel preset's text (its source
         stays); false if it isn't an X32 or a strip. `out->note` is null. */
     bool ld_x32_channel_read (const LdX32*, const char* strip, size_t stripLen, const char* text, size_t len, LdX32SceneRead* out);
+    /** X32 library presets: kind 1 the effect in the slot at `target` ("/fx/1" to "/fx/8")
+        as an effect preset (.efx), kind 2 the routing as a routing preset (.rou, `target`
+        ignored); null if it isn't an X32, the kind is unknown or `target` isn't a slot. */
+    LdString* ld_x32_library_write (const LdX32*, int32_t kind, const char* target, size_t targetLen, const char* name, size_t nameLen);
+    /** Sets that slot or the routing from a library preset's text; false if it isn't an
+        X32, the kind is unknown or `target` isn't a slot. `out->note` is null. */
+    bool ld_x32_library_read (const LdX32*, int32_t kind, const char* target, size_t targetLen, const char* text, size_t len, LdX32SceneRead* out);
     /** ABI 52: INIT, that strip back to an X32's factory values (its source stays):
         the lines set, -1 if it isn't an X32 or a strip. */
     int32_t ld_x32_channel_init (const LdX32*, const char* strip, size_t stripLen);

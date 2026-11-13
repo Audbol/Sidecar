@@ -1,5 +1,6 @@
 #pragma once
 
+#include "engine/WingRemote.h"
 #include "ui/UiContext.h"
 
 #include <memory>
@@ -32,6 +33,14 @@ public:
     void exportChannel (const juce::String& strip, const juce::String& name, std::function<void (const juce::String&)> done);
     juce::String importChannelFile (const juce::File&, const juce::String& strip);
     juce::String exportChannelFile (const juce::File&, const juce::String& strip, const juce::String& name);
+
+    /** X32 effect presets (`.efx`) and routing presets (`.rou`) for the LIBRARY's effects
+        and routing tabs: IMPORT sets the FX slot at "/fx/1"-"/fx/8" (or the routing) from
+        one, EXPORT writes that slot (or the routing) as one, named `name`. */
+    void importLibrary (WingRemote::X32Library kind, const juce::String& slot, std::function<void (const juce::String&)> done);
+    void exportLibrary (WingRemote::X32Library kind, const juce::String& slot, const juce::String& name, std::function<void (const juce::String&)> done);
+    juce::String importLibraryFile (WingRemote::X32Library kind, const juce::File&, const juce::String& slot);
+    juce::String exportLibraryFile (WingRemote::X32Library kind, const juce::File&, const juce::String& slot, const juce::String& name);
 
 private:
     UiContext& ctx;

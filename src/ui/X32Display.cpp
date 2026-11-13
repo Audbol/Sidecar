@@ -13,6 +13,7 @@
 #include "ui/ShowPanel.h"
 #include "ui/X32AssignSection.h"
 #include "ui/MeterBank.h"
+#include "ui/MidiRemoteUi.h"
 
 namespace livedaw::ui::x32
 {
@@ -403,6 +404,17 @@ namespace
         return { std::move (turn), pushLabel, std::move (push), std::move (on) };
     }
 
+    /** A value the console shows that Sidecar takes from elsewhere (the computer, the device): turning it does nothing. */
+    KnobBinding readout (const juce::String& label, std::function<juce::String()> text)
+    {
+        KnobBinding k;
+        k.label = label;
+        k.get = [] { return 0.0f; };
+        k.set = [] (float) {};
+        k.text = std::move (text);
+        return k;
+    }
+
     template <typename Atomic>
     std::function<void()> toggle (Atomic& a)
     {
@@ -721,27 +733,34 @@ void Display::assignLibraryPresetEncoders()
         assignEncoders();
         repaint();
     });
+    const juce::Component::SafePointer<Display> safe (this);
+    auto said = [safe] (const juce::String& status)
+    {
+        if (safe == nullptr)
+            return;
+        safe->libraryStatus = status;
+        safe->refreshStrip();
+        safe->repaint();
+    };
+    KnobBinding drive;
+    drive.label = "USB DRIVE";
     if (tab != 0)
     {
-        // The X32's .efx and .rou files: Sidecar reads and writes only .chn.
-        encoders[4] = dimmedEncoder ("USB DRIVE", {}, "IMPORT");
-        encoders[5] = dimmedEncoder ("USB DRIVE", {}, "EXPORT");
+        // The X32's .efx (the effect in the slot shown) and .rou (the routing) files:
+        // IMPORT sets from one, EXPORT writes one.
+        const auto kind = tab == 1 ? WingRemote::X32Library::Effect : WingRemote::X32Library::Routing;
+        const auto slot = [this, kind] { return kind == WingRemote::X32Library::Effect ? "/fx/" + juce::String (presetSlot + 1) : juce::String(); };
+        encoders[4] = encoder (drive, "IMPORT", [this, said, kind, slot] { sceneFiles.importLibrary (kind, slot(), said); });
+        encoders[5] = encoder (drive, "EXPORT", [this, said, kind, slot]
+        {
+            const auto name = kind == WingRemote::X32Library::Effect ? "FX" + juce::String (presetSlot + 1) : juce::String ("Routing");
+            sceneFiles.exportLibrary (kind, slot(), name, said);
+        });
     }
     else
     {
         // The X32's own channel preset files (.chn): IMPORT loads one onto the
         // selected strip (its source stays), EXPORT writes the strip as one.
-        const juce::Component::SafePointer<Display> safe (this);
-        auto said = [safe] (const juce::String& status)
-        {
-            if (safe == nullptr)
-                return;
-            safe->libraryStatus = status;
-            safe->refreshStrip();
-            safe->repaint();
-        };
-        KnobBinding drive;
-        drive.label = "USB DRIVE";
         encoders[4] = encoder (drive, "IMPORT", [this, said]
         {
             auto* st = selected();
@@ -2237,7 +2256,8 @@ void Display::assignEncoders()
         static const juce::StringArray showControl { "CUES", "SCENES", "SNIPPETS" };
         encoders[5] = encoder (enumKnob ("SHOW CONTROL", "/-prefs/show_control", showControl));
         // 3 the word clock: the audio interface's own (no AES50 or card to lock to).
-        encoders[2] = dimmedEncoder ("SYNC", "Internal", {});
+        // The interface's clock is the only one: shown from the device, nothing to choose.
+        encoders[2] = encoder (readout ("SYNC", [] { return juce::String ("Internal"); }));
         KnobBinding bus;
         bus.label = "BUS CONFIG";
         bus.get = [this] { return (float) configBus / 4.0f; };
@@ -2577,11 +2597,28 @@ void Display::assignEncoders()
         source.steps = 7.0f;
         encoders[5] = encoder (source, "SET", [this, &engine, run]
         {
-            // The list's LR choices and the two aux pairs reach the engine; the rest
-            // of the list is kept with `/config/solo/source`.
+            // The list's choices reach the engine: LR; LR+C/M as LR with the mono bus (Main 2)
+            // added on the path's DIRECT IN; LR P and LR A as LR kept audible under a solo
+            // (it replaces LR otherwise), with the channel solo's tap (PFL or AFL) set to match;
+            // the two aux pairs.
             run ("/config/solo/source " + sourceCodes[monitorSourcePick]);
             const float trimDb = x32Value ("/config/solo/sourcetrim").getFloatValue();
             engine.speakers.sourceLevelDb = monitorSourcePick == 0 ? -144.0f : trimDb;
+            engine.speakers.sourceMixDb = monitorSourcePick == 3 || monitorSourcePick == 4 ? trimDb : -144.0f;
+            auto& direct = engine.monitorPath (false);
+            const int mono = MixerEngine::directSourceIndex (StripKind::Main, 1);
+            if (monitorSourcePick == 2)
+            {
+                direct.directSource = mono;
+                direct.directLevelDb = 0.0f;
+            }
+            else if (direct.directSource.load() == mono)
+                direct.directSource = -1;
+            if (monitorSourcePick == 3 || monitorSourcePick == 4)
+            {
+                engine.soloAfl = monitorSourcePick == 4;
+                run (juce::String ("/config/solo/chmode ") + (monitorSourcePick == 4 ? "AFL" : "PFL"));
+            }
             if (monitorSourcePick == 5 || monitorSourcePick == 6)
                 engine.speakers.source = MixerEngine::monitorSourceIndex (StripKind::Aux, monitorSourcePick == 5 ? 4 : 6);
             else if (monitorSourcePick != 0)
@@ -5031,8 +5068,46 @@ void Display::assignRemoteEncoders()
     b.text = [sysexOn] { return sysexOn() ? juce::String ("ON") : juce::String ("OFF"); };
     b.steps = 2.0f;
     encoders[0] = encoder (b, "SYSEX", [sysexOn, setSysex] { setSysex (! sysexOn()); }, sysexOn);
-    encoders[1] = dimmedEncoder ("PROTOCOL", "Mackie / HUI", "REMOTE");
-    encoders[4] = dimmedEncoder ("PORT", "MIDI / USB", "SET");
+    // 2 the DAW protocol Sidecar's DAW remote speaks (OFF, MCU or HUI), 5 the port it
+    // uses (USB's three MIDI DAW ports, or the DIN socket's one).
+    auto midi = [this] { return ctx.midi != nullptr ? ctx.midi->getSettings() : MidiRemote::Settings::load (ctx.settings); };
+    auto change = [this, midi] (const std::function<void (MidiRemote::Settings&)>& edit)
+    {
+        auto s = midi();
+        edit (s);
+        midiui::applySettings (ctx, s);
+        assignEncoders();
+        repaint();
+    };
+    const auto protocol = [midi]
+    {
+        const auto s = midi();
+        return ! s.daw.enabled ? 0 : s.daw.emulation == DawRemote::Emulation::Hui ? 2 : 1;
+    };
+    const auto setProtocol = [change] (int p)
+    {
+        change ([p] (MidiRemote::Settings& s)
+        {
+            s.daw.enabled = p != 0;
+            if (p != 0)
+                s.daw.emulation = p == 2 ? DawRemote::Emulation::Hui : DawRemote::Emulation::Mcu;
+        });
+    };
+    KnobBinding proto;
+    proto.label = "PROTOCOL";
+    proto.get = [protocol] { return (float) protocol() / 2.0f; };
+    proto.set = [setProtocol] (float v) { setProtocol (juce::roundToInt (v * 2.0f)); };
+    proto.text = [protocol] { return juce::StringArray { "OFF", "MACKIE MCU", "HUI" }[protocol()]; };
+    proto.steps = 3.0f;
+    encoders[1] = encoder (proto, "REMOTE", [protocol, setProtocol] { setProtocol ((protocol() + 1) % 3); }, [protocol] { return protocol() != 0; });
+    KnobBinding port;
+    port.label = "PORT";
+    port.get = [midi] { return midi().daw.usb ? 1.0f : 0.0f; };
+    port.set = [change] (float v) { change ([v] (MidiRemote::Settings& s) { s.daw.usb = v >= 0.5f; }); };
+    port.text = [midi] { return midi().daw.usb ? juce::String ("USB") : juce::String ("DIN"); };
+    port.steps = 2.0f;
+    encoders[4] = encoder (port, "SET", [midi, change] { change ([usb = midi().daw.usb] (MidiRemote::Settings& s) { s.daw.usb = ! usb; }); },
+                           [midi] { return midi().daw.usb; });
     encoders[5] = encoder ({}, "SEND ALL", [this]
     {
         if (ctx.consoleMidi != nullptr)
@@ -5059,15 +5134,17 @@ void Display::paintRemote (juce::Graphics& g, juce::Rectangle<int> r)
             return "NOT FOUND: " + shown;
         return shown + ((input ? status.inputOpen : status.outputOpen) ? "" : " (CLOSED)");
     };
+    const auto daw = (ctx.midi != nullptr ? ctx.midi->getSettings() : MidiRemote::Settings::load (settings)).daw;
     auto mode = [bits] (int rx)
     {
         const bool in = (bits & rx) != 0, out = (bits & (rx << 1)) != 0;
         return in && out ? juce::String ("RX + TX") : in ? juce::String ("RX") : out ? juce::String ("TX") : juce::String ("OFF");
     };
     paintRows (g, r, { "MIDI IN", "MIDI OUT", "RECEIVED / SENT", "SCENES, SNIPPETS (PC, CH 1, 2)", "FADERS (CC, CH 1)",
-                       "MUTES, MUTE GROUPS (CC, CH 2)", "PANS (CC, CH 3)", "OSC OVER SYSEX" },
+                       "MUTES, MUTE GROUPS (CC, CH 2)", "PANS (CC, CH 3)", "OSC OVER SYSEX", "DAW PROTOCOL", "DAW PORT" },
                { device (true), device (false), juce::String (status.received) + " / " + juce::String (status.sent), mode (X32Midi::RxProgram),
-                 mode (X32Midi::RxFader), mode (X32Midi::RxMute), mode (X32Midi::RxPan), (bits & X32Midi::SysEx) != 0 ? "ON" : "OFF" });
+                 mode (X32Midi::RxFader), mode (X32Midi::RxMute), mode (X32Midi::RxPan), (bits & X32Midi::SysEx) != 0 ? "ON" : "OFF",
+                 ! daw.enabled ? "OFF" : daw.emulation == DawRemote::Emulation::Hui ? "HUI" : "MACKIE MCU", daw.usb ? "USB" : "DIN" });
 }
 
 //==============================================================================
@@ -5717,8 +5794,9 @@ void Display::assignSetupGlobalEncoders()
     init.text = [this] { return initItems[initItem]; };
     init.steps = 4.0f;
     encoders[2] = encoder (init, "SELECT", [this] { initialize (initItem); }, [this] { return initArmedItem == initItem; });
-    encoders[3] = dimmedEncoder ("Edit", juce::Time::getCurrentTime().formatted ("%H:%M"), "SELECT");
-    encoders[4] = dimmedEncoder ("Edit", juce::Time::getCurrentTime().formatted ("%d.%m.%Y"), "SELECT");
+    // The clock is the computer's: a readout, nothing to set.
+    encoders[3] = encoder (readout ("Time", [] { return juce::Time::getCurrentTime().formatted ("%H:%M"); }));
+    encoders[4] = encoder (readout ("Date", [] { return juce::Time::getCurrentTime().formatted ("%d.%m.%Y"); }));
     const auto path = [this] { return juce::String (brightnessLed ? "/-prefs/ledbright" : "/-prefs/bright"); };
     KnobBinding bright;
     bright.label = "Bright";
