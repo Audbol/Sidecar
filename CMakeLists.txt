@@ -339,6 +339,7 @@ set(LIVEDAW_UI_SOURCES
     src/ui/Pro2Surface.cpp
     src/ui/Pro2Screen.cpp
     src/ui/Dm2000Surface.cpp
+    src/ui/AnalogSurface.cpp
     src/ui/Xenyx1202Surface.cpp
     src/ui/PluginHostSurface.cpp
     src/ui/PluginHostRack.cpp

@@ -161,7 +161,7 @@ The owner wants a lot of work done here; what comes first is theirs to say.
 
 - [x] 01V and DM2000: fader groups, mute groups and pairs save with scenes (owner checked a real 01V: they do).
 - [x] First run: the start-up window asks which console (it already does: with nothing to continue, a console must be chosen).
-- [ ] Analog mixers: reuse the Q1202USB's console tape and scene bar as the template.
+- [x] Analog mixers: reuse the Q1202USB's console tape and scene bar as the template (`AnalogSurface`, `docs/ANALOG_MIXERS.md`).
 - [ ] Consoles: controls Sidecar cannot back stay drawn but dim.
 - [x] Regenerate the README screenshots after the Universal Mixer design pass, before v0.3.0.
 - With every update: review each console's completion percentage in `src/ui/StartupNotice.cpp`.

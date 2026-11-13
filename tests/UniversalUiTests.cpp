@@ -16,6 +16,7 @@
 #include "ui/UniversalSkin.h"
 #include "ui/Pro2Surface.h"
 #include "ui/ScreenMaximiser.h"
+#include "ui/AnalogSurface.h"
 #include "ui/Xenyx1202Surface.h"
 #include "ui/StripCustomize.h"
 #include "ui/universal/StripPanel.h"
@@ -57,6 +58,51 @@ struct UiRig
     ui::MeterBank meters;
     ui::UiContext ctx;
     Strip* selected = nullptr;
+};
+
+/** The smallest analog mixer surface: two channels, a LEVEL knob and a fader each. It checks that
+    `AnalogSurface` gives it the scenes bar, the console tape, the routing page and findControl. */
+class TinyAnalogSurface final : public ui::AnalogSurface
+{
+public:
+    explicit TinyAnalogSurface (ui::UiContext& c) : AnalogSurface (c, 400, 300)
+    {
+        for (int i = 0; i < 2; ++i)
+        {
+            const juce::String ch = "T" + juce::String (i + 1) + " ";
+            addKnob (ch + "LEVEL", juce::Colours::white, { 20 + 120 * i, 20, 60, 60 });
+            addFader (ch + "FADER", juce::Colours::grey, { 20 + 120 * i, 100, 200, 50 });
+            addTape (i, i + 1, ch + "TAPE", { 20 + 120 * i, 200, 80, 30 });
+        }
+        start();
+    }
+    ~TinyAnalogSurface() override { stopRefresh(); }
+
+    void paintPanel (juce::Graphics& g) override { g.fillAll (juce::Colours::black); }
+
+private:
+    void bindControls() override
+    {
+        for (int i = 0; i < 2; ++i)
+        {
+            ui::KnobBinding b;
+            b.label = "LEVEL";
+            b.get = [this, i] { auto* s = channel (i); return s != nullptr ? juce::jlimit (0.0f, 1.0f, (s->params.faderDb.load() + 60.0f) / 70.0f) : 0.0f; };
+            b.set = [this, i] (float p) { if (auto* s = channel (i)) s->params.faderDb = p * 70.0f - 60.0f; };
+            static_cast<ui::analog::Knob*> (findControl ("T" + juce::String (i + 1) + " LEVEL"))->setBinding (b);
+        }
+    }
+    ui::AnalogRoutingSpec routingSpec() override
+    {
+        ui::AnalogRoutingSpec spec;
+        for (int i = 0; i < 2; ++i)
+            spec.rows.push_back ({ channel (i), {}, false });
+        if (auto* m = main())
+            spec.signals.push_back ({ "MAIN L", &m->params.outputLeft });
+        spec.inputsHint = "inputs";
+        spec.outputsHint = "outputs";
+        return spec;
+    }
 };
 
 /** LIVEDAW_UI_SNAPSHOTS=<folder> keeps a test's picture there (to look at, or for the docs). */
@@ -3935,6 +3981,53 @@ public:
 
     void runTest() override
     {
+        beginTest ("AnalogSurface: a two-channel test surface gets the scenes bar, console tape, routing page and findControl");
+        {
+            MixerEngine engine (0);
+            engine.configureProfile (ld::kProfileXenyx1202);
+            setShownProfile (ld::kProfileXenyx1202);
+            ui::fader::setLaw (engine.getFaderLaw());
+            UiRig rig (engine);
+            auto skinOwner = std::make_unique<TinyAnalogSurface> (rig.ctx);
+            auto& skin = *skinOwner;
+            skin.setSize (800, 600);
+            expectEquals (skin.getPanel().getNumChildComponents(), 6); // two knobs, two faders, two tapes
+            expect (dynamic_cast<ui::analog::Knob*> (skin.findControl ("T2 LEVEL")) != nullptr && dynamic_cast<ui::analog::Fader*> (skin.findControl ("T1 FADER")) != nullptr, "findControl finds a knob and a fader");
+            expect (skin.findControl ("T3 LEVEL") == nullptr, "no such control");
+
+            // The knob follows the engine through its binding.
+            engine.getChannels()[1]->params.faderDb = -25.0f;
+            skin.refreshAll();
+            const auto* knob = static_cast<ui::analog::Knob*> (skin.findControl ("T2 LEVEL"));
+            expectWithinAbsoluteError (knob->getBinding().get(), 0.5f, 0.001f);
+            engine.getChannels()[1]->setName ("KEYS");
+            skin.refreshAll();
+            expectEquals (skin.getTape (1).getText(), juce::String ("KEYS"));
+            skin.getTape (0).setText ("KICK");
+            expectEquals (engine.getChannels()[0]->getOwnName(), juce::String ("KICK"));
+
+            // The panel is scaled to fit under the scenes bar.
+            const auto where = skin.getLocalArea (&skin.getPanel(), skin.getPanel().getLocalBounds());
+            expect (skin.getLocalBounds().withTrimmedTop (ui::AnalogSurface::kBarHeight).expanded (1).contains (where), "the panel fits under the bar");
+
+            // The scenes bar stores and recalls.
+            skin.newScene();
+            expectEquals (rig.show.getNumScenes(), 1);
+            expectEquals (skin.getSceneBox().getNumItems(), 1);
+
+            // The routing page: the surface's rows (two) and columns (its signals).
+            expect (! skin.isRoutingShown(), "routing starts hidden");
+            auto& inputs = skin.getRoutingGrid (false);
+            expect (skin.isRoutingShown(), "the routing page is up");
+            expectEquals (inputs.getNumRows(), 2);
+            inputs.tap (0, 1);
+            expect (inputs.getState (0, 1) == ui::universal::PatchGrid::On, "a tap patches");
+            auto& outputs = skin.getRoutingGrid (true);
+            expectEquals (outputs.getNumColumns(), 1);
+            skin.showRouting (false);
+            expect (! skin.isRoutingShown());
+        }
+
         beginTest ("The Q1202USB has a routing page and a key to the Universal Mixer; PRO2 SOURCE / ROUTING opens the input block");
         {
             auto engineOwner = std::make_unique<MixerEngine> (0);
@@ -3947,7 +4040,7 @@ public:
             auto skinOwner = std::make_unique<ui::Xenyx1202Surface> (rig.ctx);
             auto& skin = *skinOwner;
             skin.setSize (1920, 1080);
-            expect (! skin.isRoutingShown());
+            expect (! skin.isRoutingShown(), "routing starts hidden");
             auto& inputs = skin.getRoutingGrid (false);
             expect (skin.isRoutingShown() && skin.getRoutingPage()->getBounds().getWidth() > 1000, "the overlay covers the panel");
             expectEquals (inputs.getNumRows(), 9); // 8 channels and 2-TRACK

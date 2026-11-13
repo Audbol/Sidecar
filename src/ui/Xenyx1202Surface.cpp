@@ -98,7 +98,6 @@ namespace
     const juce::Colour kMeterColour[4] = { juce::Colour (0xff53bf3a), juce::Colour (0xff53bf3a), juce::Colour (0xffe2b21a), juce::Colour (0xffe5352c) };
     constexpr float kMeterX0 = 660.0f, kMeterDx = 27.0f, kMeterY0 = 1508.0f, kMeterDy = 54.0f;
 } // namespace
-
 namespace xy
 {
     const hw::Look& look()
@@ -133,441 +132,48 @@ namespace xy
         }();
         return l;
     }
-
-    // ---- Knob -----------------------------------------------------------------------------
-
-    Knob::Knob (juce::Colour c, KnobBinding b) : cap (c), binding (std::move (b)) {}
-    void Knob::setBinding (KnobBinding b) { binding = std::move (b); shown = -1.0f; repaint(); }
-
-    void Knob::refresh()
-    {
-        const float now = binding.isValid() ? binding.get() : 0.0f;
-        if (now != shown)
-        {
-            shown = now;
-            repaint();
-        }
-    }
-
-    void Knob::paint (juce::Graphics& g)
-    {
-        hw::knob (g, getLocalBounds().toFloat().reduced (1.0f), binding.isValid() ? binding.get() : 0.0f, look(), hw::Look::Knob::Plain, cap);
-    }
-
-    void Knob::mouseDown (const juce::MouseEvent&) { dragStart = binding.isValid() ? binding.get() : 0.0f; }
-    void Knob::mouseDrag (const juce::MouseEvent& e)
-    {
-        if (binding.isValid())
-            binding.set (juce::jlimit (0.0f, 1.0f, dragStart - (float) e.getDistanceFromDragStartY() / 160.0f));
-    }
-    void Knob::mouseDoubleClick (const juce::MouseEvent&) { if (binding.reset) binding.reset(); }
-    void Knob::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& w)
-    {
-        if (binding.isValid())
-            binding.set (juce::jlimit (0.0f, 1.0f, binding.get() + w.deltaY * 0.15f));
-    }
-
-    // ---- Key ------------------------------------------------------------------------------
-
-    Key::Key (juce::Colour f, juce::Colour l) : face (f), led (l) {}
-
-    void Key::refresh()
-    {
-        const bool now = isOn && isOn();
-        if (now != shownOn)
-        {
-            shownOn = now;
-            repaint();
-        }
-    }
-
-    void Key::paint (juce::Graphics& g)
-    {
-        hw::key (g, getLocalBounds().toFloat().reduced (1.0f), {}, shownOn, down, led, look(), face, true);
-    }
-
-    void Key::mouseDown (const juce::MouseEvent&) { down = true; repaint(); }
-    void Key::mouseUp (const juce::MouseEvent& e)
-    {
-        down = false;
-        repaint();
-        if (getLocalBounds().contains (e.getPosition()) && onClick)
-            onClick();
-    }
-
-    // ---- Fader (the MAIN MIX's, horizontal) -----------------------------------------------
-
-    Fader::Fader (juce::Colour c, KnobBinding b) : cap (c), binding (std::move (b)) {}
-    void Fader::setBinding (KnobBinding b) { binding = std::move (b); shown = -1.0f; repaint(); }
-
-    float Fader::capX (float position) const noexcept
-    {
-        constexpr float half = 44.0f;
-        return half + juce::jlimit (0.0f, 1.0f, position) * ((float) juce::jmax (getWidth(), getHeight()) - 2.0f * half);
-    }
-
-    void Fader::refresh()
-    {
-        const float now = binding.isValid() ? binding.get() : 0.0f;
-        if (now != shown)
-        {
-            shown = now;
-            repaint();
-        }
-    }
-
-    void Fader::paint (juce::Graphics& g)
-    {
-        // Drawn lying down in a space L long and T wide; stood up (the panel's fader runs front to back), -oo at the bottom.
-        const float L = (float) juce::jmax (getWidth(), getHeight()), T = (float) juce::jmin (getWidth(), getHeight());
-        if (getHeight() > getWidth())
-            g.addTransform (juce::AffineTransform (0.0f, 1.0f, 0.0f, -1.0f, 0.0f, L));
-        const float y = T * 0.5f;
-        g.setColour (juce::Colour (0xff0b0b0b));
-        g.fillRoundedRectangle (4.0f, y - 5.0f, L - 8.0f, 10.0f, 5.0f);
-        g.setColour (juce::Colour (0xff3a3a3a));
-        g.drawRoundedRectangle (4.0f, y - 5.0f, L - 8.0f, 10.0f, 5.0f, 1.0f);
-        const float x = capX (binding.isValid() ? binding.get() : 0.0f);
-        const juce::Rectangle<float> r (x - 44.0f, y - 25.0f, 88.0f, 50.0f);
-        g.setGradientFill (juce::ColourGradient (cap.brighter (0.25f), r.getX(), r.getY(), cap.darker (0.3f), r.getX(), r.getBottom(), false));
-        g.fillRoundedRectangle (r, 5.0f);
-        g.setColour (juce::Colours::black.withAlpha (0.35f));
-        for (int i = 1; i < 10; ++i)
-            g.drawVerticalLine ((int) (r.getX() + 8.0f * (float) i + 4.0f), r.getY() + 4.0f, r.getBottom() - 4.0f);
-        g.setColour (juce::Colours::white.withAlpha (0.55f));
-        g.drawVerticalLine ((int) x, r.getY() + 2.0f, r.getBottom() - 2.0f);
-        g.setColour (juce::Colours::black.withAlpha (0.6f));
-        g.drawRoundedRectangle (r, 5.0f, 1.0f);
-    }
-
-    void Fader::mouseDown (const juce::MouseEvent& e)
-    {
-        const float along = getHeight() > getWidth() ? (float) getHeight() - e.position.y : e.position.x;
-        if (binding.isValid())
-            binding.set ((along - capX (0.0f)) / (capX (1.0f) - capX (0.0f)));
-    }
-    void Fader::mouseDrag (const juce::MouseEvent& e) { mouseDown (e); }
-    void Fader::mouseDoubleClick (const juce::MouseEvent&) { if (binding.reset) binding.reset(); }
-    void Fader::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& w)
-    {
-        if (binding.isValid())
-            binding.set (juce::jlimit (0.0f, 1.0f, binding.get() + w.deltaY * 0.1f));
-    }
 } // namespace xy
 
-class Xenyx1202Surface::Panel final : public juce::Component
-{
-public:
-    explicit Panel (Xenyx1202Surface& s) : owner (s) {}
-    void paint (juce::Graphics& g) override { owner.paintPanel (g); }
 
-private:
-    Xenyx1202Surface& owner;
-};
-
-Xenyx1202Surface::Xenyx1202Surface (UiContext& c)
-    : ctx (c), theme (universal::Theme::dark()), universalKey ("UNIVERSAL MIXER", theme.accent, theme), routingKey ("ROUTING", theme.accent, theme)
+Xenyx1202Surface::Xenyx1202Surface (UiContext& c) : AnalogSurface (c, kPanelWidth, kPanelHeight)
 {
-    setOpaque (true);
-    universalKey.onClick = [&context = ctx]
-    {
-        juce::MessageManager::callAsync ([&context]
-        {
-            if (context.setInterface)
-                context.setInterface (InterfaceKind::Universal);
-        });
-    };
-    universalKey.setTooltip ("The Universal Mixer");
-    addAndMakeVisible (universalKey);
-    routingKey.isOn = [this] { return isRoutingShown(); };
-    routingKey.onClick = [this] { showRouting (! isRoutingShown()); };
-    routingKey.setTooltip ("The routing: the interface's inputs to the channels, the outputs to the interface");
-    addAndMakeVisible (routingKey);
-    panel = std::make_unique<Panel> (*this);
-    addAndMakeVisible (*panel);
     build();
-    for (auto* b : { &prevKey, &nextKey, &storeKey, &newKey })
-        addAndMakeVisible (*b);
-    addAndMakeVisible (sceneBox);
-    addAndMakeVisible (sceneTitle);
-    sceneTitle.setColour (juce::Label::textColourId, juce::Colour (0xffb8bcc2));
-    sceneTitle.setFont (juce::FontOptions (13.0f, juce::Font::bold));
-    sceneBox.setTextWhenNothingSelected ("no scene");
-    sceneBox.setTooltip ("A scene of the show: choosing one recalls it");
-    prevKey.setTooltip ("Recall the previous scene");
-    nextKey.setTooltip ("Recall the next scene");
-    storeKey.setTooltip ("Store the console in the current scene (a new one if there is none)");
-    newKey.setTooltip ("Add the console to the show as a new scene");
-    prevKey.onClick = [this] { ctx.show.recallPrevious(); fillScenes(); };
-    nextKey.onClick = [this] { ctx.show.recallNext(); fillScenes(); };
-    storeKey.onClick = [this] { storeScene(); };
-    newKey.onClick = [this] { newScene(); };
-    sceneBox.onChange = [this] { recallSelected(); };
-    refreshAll();
-    startTimerHz (30);
+    start();
 }
 
-Xenyx1202Surface::~Xenyx1202Surface()
+Xenyx1202Surface::~Xenyx1202Surface() { stopRefresh(); }
+
+const hw::Look& Xenyx1202Surface::panelLook() const { return xy::look(); }
+
+/** The routing page: INPUTS are the interface's inputs (across) to the channels, the stereo pairs and 2-TRACK
+    (down); OUTPUTS are the interface's outputs (down) fed by MAIN OUT, CTRL ROOM, PHONES and FX SEND (across). */
+AnalogRoutingSpec Xenyx1202Surface::routingSpec()
 {
-    stopTimer();
-    // The panel's controls are made with new and only parented to it (a component does not own its children).
-    for (auto* c : controls)
-        delete c;
-    controls.clear();
-}
-
-/** The routing page: two patch grids in the panel's colours. INPUTS: the interface's inputs (across) to the
-    channels, the stereo pairs and 2-TRACK (down); OUTPUTS: the interface's outputs (down) fed by MAIN OUT,
-    CTRL ROOM, PHONES and FX SEND (across). */
-class Xenyx1202Surface::RoutingOverlay final : public juce::Component
-{
-public:
-    RoutingOverlay (Xenyx1202Surface& o, const universal::Theme& t)
-        : owner (o), theme (t), inputsKey ("INPUTS", t.accent, t), outputsKey ("OUTPUTS", t.accent, t), inGrid (t), outGrid (t)
+    auto& e = ctx.engine;
+    AnalogRoutingSpec spec;
+    for (int i = 0; i < kChannels; ++i)
+        if (auto* s = channel (i))
+            spec.rows.push_back ({ s, {}, false });
+    if (auto* s = aux (0))
+        spec.rows.push_back ({ s, "2-TRACK", true });
+    if (auto* m = main())
     {
-        inputsKey.isOn = [this] { return ! outputs; };
-        outputsKey.isOn = [this] { return outputs; };
-        inputsKey.onClick = [this] { showOutputs (false); };
-        outputsKey.onClick = [this] { showOutputs (true); };
-        for (auto* k : { &inputsKey, &outputsKey })
-            addAndMakeVisible (*k);
-        addAndMakeVisible (inGrid);
-        addChildComponent (outGrid);
-        build();
+        spec.signals.push_back ({ "MAIN L", &m->params.outputLeft });
+        spec.signals.push_back ({ "MAIN R", &m->params.outputRight });
     }
-
-    void showOutputs (bool shown)
-    {
-        outputs = shown;
-        inGrid.setVisible (! shown);
-        outGrid.setVisible (shown);
-        inputsKey.refresh();
-        outputsKey.refresh();
-        repaint();
-    }
-
-    bool showsOutputs() const noexcept { return outputs; }
-    universal::PatchGrid& inputsGrid() noexcept { return inGrid; }
-    universal::PatchGrid& outputsGrid() noexcept { return outGrid; }
-
-    void build()
-    {
-        auto& e = owner.ctx.engine;
-        rows.clear();
-        for (int i = 0; i < kChannels; ++i)
-            if (auto* s = owner.channel (i))
-                rows.push_back (s);
-        if (auto* s = owner.aux (0))
-            rows.push_back (s); // 2-TRACK
-        sources.clear();
-        for (int i = 0; i < routing::tileCount (routing::Group::LocalIn, e.getHardwareInputNames().size()); ++i)
-            if (const int src = routing::sourceAt (routing::Group::LocalIn, i); src >= 0)
-                sources.push_back (src);
-        ports.clear();
-        for (int i = 0; i < routing::tileCount (routing::Group::LocalOut, e.getHardwareOutputNames().size()); ++i)
-            if (const int port = routing::outputAt (routing::Group::LocalOut, i); port >= 0)
-                ports.push_back (port);
-        signals.clear();
-        if (auto* m = owner.main())
-        {
-            signals.push_back ({ "MAIN L", &m->params.outputLeft });
-            signals.push_back ({ "MAIN R", &m->params.outputRight });
-        }
-        signals.push_back ({ "CTRL L", &e.monitorOutputLeft });
-        signals.push_back ({ "CTRL R", &e.monitorOutputRight });
-        signals.push_back ({ "PHONES L", &e.phones.outputLeft });
-        signals.push_back ({ "PHONES R", &e.phones.outputRight });
-        if (auto* b = owner.bus (0))
-            signals.push_back ({ "FX SEND", &b->params.outputLeft });
-
-        universal::PatchGrid::Model in;
-        in.numRows = [this] { return (int) rows.size(); };
-        in.numColumns = [this] { return (int) sources.size(); };
-        in.rowName = [this] (int r) { return isTwoTrack (r) ? juce::String ("2-TRACK") : rows[(size_t) r]->getLabel(); };
-        in.columnName = [this] (int c) { return routing::sourceLabel (sources[(size_t) c]); };
-        in.state = [this] (int r, int c)
-        {
-            const auto& p = rows[(size_t) r]->params;
-            const int src = sources[(size_t) c], left = p.inputLeft.load(), right = p.inputRight.load();
-            if (left == src)
-                return universal::PatchGrid::On;
-            return p.stereo.load() && left >= 0 && (right == src || (right < 0 && src == left + 1)) ? universal::PatchGrid::Pair
-                                                                                                    : universal::PatchGrid::Off;
-        };
-        in.toggle = [this] (int r, int c)
-        {
-            auto& p = rows[(size_t) r]->params;
-            if (p.inputLeft.load() == sources[(size_t) c])
-            {
-                p.inputLeft = -1;
-                p.inputRight = -1;
-                return;
-            }
-            p.inputLeft = sources[(size_t) c];
-            p.inputRight = isTwoTrack (r) ? sources[(size_t) c] + 1 : -1; // 2-TRACK is a stereo return
-            if (isTwoTrack (r))
-                p.stereo = true;
-        };
-        inGrid.setModel (std::move (in));
-
-        universal::PatchGrid::Model out;
-        out.numRows = [this] { return (int) ports.size(); };
-        out.numColumns = [this] { return (int) signals.size(); };
-        out.rowName = [this] (int r) { return universal::outputPortName (ports[(size_t) r]); };
-        out.columnName = [this] (int c) { return signals[(size_t) c].name; };
-        out.state = [this] (int r, int c)
-        {
-            return signals[(size_t) c].out->load() == ports[(size_t) r] ? universal::PatchGrid::On : universal::PatchGrid::Off;
-        };
-        out.toggle = [this] (int r, int c)
-        {
-            auto* o = signals[(size_t) c].out;
-            if (o->load() == ports[(size_t) r])
-            {
-                o->store (-1);
-                return;
-            }
-            owner.ctx.engine.clearOutput (ports[(size_t) r]); // one signal per port
-            o->store (ports[(size_t) r]);
-        };
-        outGrid.setModel (std::move (out));
-    }
-
-    void paint (juce::Graphics& g) override
-    {
-        g.fillAll (juce::Colour (0xff151618));
-        g.setColour (juce::Colour (0xff3b3e42));
-        g.drawRect (getLocalBounds());
-        const auto head = getLocalBounds().removeFromTop (46).withTrimmedLeft (16);
-        g.setColour (theme.text);
-        g.setFont (universal::type::font (universal::type::kTitle, true));
-        g.drawText ("ROUTING", head, juce::Justification::centredLeft);
-        g.setColour (theme.textDim);
-        g.setFont (universal::type::font (universal::type::kCaption));
-        g.drawText (outputs ? "The interface's outputs (down) fed by the mixer's (across)"
-                            : "The interface's inputs (across) to the channels, the stereo pairs and 2-TRACK (down)",
-                    head.withTrimmedLeft (120).withTrimmedRight (270), juce::Justification::centredLeft);
-    }
-
-    void resized() override
-    {
-        auto r = getLocalBounds().reduced (12);
-        auto head = r.removeFromTop (34);
-        outputsKey.setBounds (head.removeFromRight (120).reduced (2));
-        inputsKey.setBounds (head.removeFromRight (120).reduced (2));
-        r.removeFromTop (8);
-        inGrid.setBounds (r);
-        outGrid.setBounds (r);
-    }
-
-private:
-    struct Sig
-    {
-        juce::String name;
-        std::atomic<int32_t>* out;
-    };
-    bool isTwoTrack (int row) const { return rows[(size_t) row] == owner.aux (0); }
-
-    Xenyx1202Surface& owner;
-    const universal::Theme& theme;
-    universal::ToggleKey inputsKey, outputsKey;
-    universal::PatchGrid inGrid, outGrid;
-    std::vector<Strip*> rows;
-    std::vector<int> sources, ports;
-    std::vector<Sig> signals;
-    bool outputs = false;
-};
-
-void Xenyx1202Surface::showRouting (bool shown)
-{
-    if (shown && routingOverlay == nullptr)
-    {
-        routingOverlay = std::make_unique<RoutingOverlay> (*this, theme);
-        addChildComponent (*routingOverlay);
-    }
-    if (routingOverlay != nullptr)
-    {
-        if (shown)
-            routingOverlay->build();
-        routingOverlay->setVisible (shown);
-        if (shown)
-            routingOverlay->toFront (false);
-    }
-    routingKey.refresh();
-    resized();
-}
-
-bool Xenyx1202Surface::isRoutingShown() const noexcept { return routingOverlay != nullptr && routingOverlay->isVisible(); }
-juce::Component* Xenyx1202Surface::getRoutingPage() noexcept { return routingOverlay.get(); }
-
-universal::PatchGrid& Xenyx1202Surface::getRoutingGrid (bool outputs)
-{
-    if (routingOverlay == nullptr)
-        showRouting (true);
-    return outputs ? routingOverlay->outputsGrid() : routingOverlay->inputsGrid();
+    spec.signals.push_back ({ "CTRL L", &e.monitorOutputLeft });
+    spec.signals.push_back ({ "CTRL R", &e.monitorOutputRight });
+    spec.signals.push_back ({ "PHONES L", &e.phones.outputLeft });
+    spec.signals.push_back ({ "PHONES R", &e.phones.outputRight });
+    if (auto* b = bus (0))
+        spec.signals.push_back ({ "FX SEND", &b->params.outputLeft });
+    spec.inputsHint = "The interface's inputs (across) to the channels, the stereo pairs and 2-TRACK (down)";
+    spec.outputsHint = "The interface's outputs (down) fed by the mixer's (across)";
+    return spec;
 }
 
 int Xenyx1202Surface::rowOf (int ch) noexcept { return ch < 4 ? ch : 4 + (ch - 4) / 2; }
 bool Xenyx1202Surface::rightOf (int ch) noexcept { return ch >= 4 && ch % 2 == 0; }
-
-Strip* Xenyx1202Surface::channel (int i) const
-{
-    const auto& l = ctx.engine.getChannels();
-    return i >= 0 && i < (int) l.size() ? l[(size_t) i].get() : nullptr;
-}
-Strip* Xenyx1202Surface::aux (int i) const
-{
-    const auto& l = ctx.engine.getAux();
-    return i >= 0 && i < (int) l.size() ? l[(size_t) i].get() : nullptr;
-}
-Strip* Xenyx1202Surface::bus (int i) const
-{
-    const auto& l = ctx.engine.getBuses();
-    return i >= 0 && i < (int) l.size() ? l[(size_t) i].get() : nullptr;
-}
-Strip* Xenyx1202Surface::main() const
-{
-    const auto& l = ctx.engine.getMains();
-    return l.empty() ? nullptr : l[0].get();
-}
-
-xy::Knob& Xenyx1202Surface::knob (const juce::String& id, juce::Colour cap, juce::Rectangle<int> r)
-{
-    auto* k = new xy::Knob (cap, {});
-    k->setComponentID (id);
-    k->setBounds (r);
-    panel->addAndMakeVisible (k);
-    controls.push_back (k);
-    return *k;
-}
-xy::Key& Xenyx1202Surface::key (const juce::String& id, juce::Colour face, juce::Colour led, juce::Rectangle<int> r)
-{
-    auto* k = new xy::Key (face, led);
-    k->setComponentID (id);
-    k->setBounds (r);
-    panel->addAndMakeVisible (k);
-    controls.push_back (k);
-    return *k;
-}
-xy::Fader& Xenyx1202Surface::fader (const juce::String& id, juce::Colour cap, juce::Rectangle<int> r)
-{
-    auto* f = new xy::Fader (cap, {});
-    f->setComponentID (id);
-    f->setBounds (r);
-    panel->addAndMakeVisible (f);
-    controls.push_back (f);
-    return *f;
-}
-
-juce::Component& Xenyx1202Surface::getPanel() noexcept { return *panel; }
-
-xy::Control* Xenyx1202Surface::findControl (const juce::String& id)
-{
-    for (auto* c : controls)
-        if (c->getComponentID() == id)
-            return c;
-    return nullptr;
-}
 
 /** Makes every control, in the panel's pixels (the photograph's, turned upright by kOy, kTop). What they do is `bindControls`. */
 void Xenyx1202Surface::build()
@@ -579,47 +185,44 @@ void Xenyx1202Surface::build()
         const int row = rowOf (i), cy = rowCy (row);
         // x of the LEVEL knob, then the others, from it: a mono row's, a stereo row's left channel and its right.
         const int lx = i < 4 ? 248 : rightOf (i) ? 592 : 244;
-        knob (ch + "LEVEL", kWhite, centred (lx, cy - (i < 4 ? 8 : 6), 86, 86));
+        addKnob (ch + "LEVEL", kWhite, centred (lx, cy - (i < 4 ? 8 : 6), 86, 86));
         if (i < 4)
         {
-            knob (ch + "PAN", kPan, centred (338, cy - 6, 76, 76));
-            knob (ch + "FX", kRed, centred (440, cy, 72, 72));
-            knob (ch + "LOW", kNavy, centred (575, cy - 4, 72, 72));
-            knob (ch + "MID", kNavy, centred (695, cy - 4, 72, 72));
-            knob (ch + "HIGH", kNavy, centred (810, cy - 4, 72, 72));
-            knob (ch + "COMP", kBlue, centred (893, cy - 4, 72, 72));
-            key (ch + "LOWCUT", juce::Colour (0xffb4b5b3), {}, centred (545, cy + 48, 32, 32));
+            addKnob (ch + "PAN", kPan, centred (338, cy - 6, 76, 76));
+            addKnob (ch + "FX", kRed, centred (440, cy, 72, 72));
+            addKnob (ch + "LOW", kNavy, centred (575, cy - 4, 72, 72));
+            addKnob (ch + "MID", kNavy, centred (695, cy - 4, 72, 72));
+            addKnob (ch + "HIGH", kNavy, centred (810, cy - 4, 72, 72));
+            addKnob (ch + "COMP", kBlue, centred (893, cy - 4, 72, 72));
+            addKey (ch + "LOWCUT", juce::Colour (0xffb4b5b3), {}, centred (545, cy + 48, 32, 32));
             // The jack panel: GAIN, the line jack and the XLR.
-            knob (ch + "GAIN", kBlack, centred (1105, cy, 76, 76));
+            addKnob (ch + "GAIN", kBlack, centred (1105, cy, 76, 76));
             micJacks[(size_t) i].setComponentID (ch + "MIC");
             micJacks[(size_t) i].setBounds (centred (1335, cy, 124, 124));
             lineJacks[(size_t) i].setComponentID (ch + "LINE");
             lineJacks[(size_t) i].setBounds (centred (1205, cy, 68, 68));
-            panel->addAndMakeVisible (micJacks[(size_t) i]);
-            panel->addAndMakeVisible (lineJacks[(size_t) i]);
+            getPanel().addAndMakeVisible (micJacks[(size_t) i]);
+            getPanel().addAndMakeVisible (lineJacks[(size_t) i]);
         }
         else
         {
             const int bx = rightOf (i) ? 680 : 335, fx = rightOf (i) ? 780 : 440, kx = rightOf (i) ? 745 : 410;
-            knob (ch + "BAL", kPan, centred (bx, cy - 6, 70, 70));
-            knob (ch + "FX", kRed, centred (fx, cy - 4, 66, 66));
-            key (ch + "PAD", juce::Colour (0xffb4b5b3), {}, centred (kx, cy + 46, 32, 32));
+            addKnob (ch + "BAL", kPan, centred (bx, cy - 6, 70, 70));
+            addKnob (ch + "FX", kRed, centred (fx, cy - 4, 66, 66));
+            addKey (ch + "PAD", juce::Colour (0xffb4b5b3), {}, centred (kx, cy + 46, 32, 32));
         }
-        tapes[(size_t) i] = std::make_unique<ConsoleTape> (i + 1);
-        tapes[(size_t) i]->setComponentID (ch + "TAPE");
-        tapes[(size_t) i]->setBounds (centred (lx - 58, cy - 14, 84, 30));
-        panel->addAndMakeVisible (*tapes[(size_t) i]);
+        addTape (i, i + 1, ch + "TAPE", centred (lx - 58, cy - 14, 84, 30));
     }
     juce::ignoreUnused (lamp);
 
     // The main section.
-    knob ("PHONES LEVEL", kWhite, centred (230, 1388, 90, 90));
-    key ("FX TO CTRL", juce::Colour (0xffb4b5b3), {}, centred (365, 1392, 56, 44));
-    key ("USB TO MAIN", juce::Colour (0xffb4b5b3), {}, centred (470, 1392, 56, 44));
-    key ("USB TO PHONES", juce::Colour (0xffb4b5b3), {}, centred (572, 1392, 56, 44));
-    knob ("FX SEND", kRed, centred (680, 1390, 90, 90));
-    key ("PHANTOM", kPhantom, juce::Colour (0xffff5a4a), centred (797, 1384, 50, 58));
-    fader ("MAIN FADER", juce::Colour (0xff9fa3a5), centred (418, 1540, 64, 420));
+    addKnob ("PHONES LEVEL", kWhite, centred (230, 1388, 90, 90));
+    addKey ("FX TO CTRL", juce::Colour (0xffb4b5b3), {}, centred (365, 1392, 56, 44));
+    addKey ("USB TO MAIN", juce::Colour (0xffb4b5b3), {}, centred (470, 1392, 56, 44));
+    addKey ("USB TO PHONES", juce::Colour (0xffb4b5b3), {}, centred (572, 1392, 56, 44));
+    addKnob ("FX SEND", kRed, centred (680, 1390, 90, 90));
+    addKey ("PHANTOM", kPhantom, juce::Colour (0xffff5a4a), centred (797, 1384, 50, 58));
+    addFader ("MAIN FADER", juce::Colour (0xff9fa3a5), centred (418, 1540, 64, 420));
 
     for (int i = 0; i < 4; ++i)
     {
@@ -633,6 +236,7 @@ void Xenyx1202Surface::build()
     leaves the control idle). */
 void Xenyx1202Surface::bindControls()
 {
+    ensureRouting();
     const auto knobOf = [this] (const juce::String& id) { return static_cast<xy::Knob*> (findControl (id)); };
     const auto keyOf = [this] (const juce::String& id) { return static_cast<xy::Key*> (findControl (id)); };
     for (int i = 0; i < kChannels; ++i)
@@ -706,11 +310,10 @@ void Xenyx1202Surface::bindControls()
 
     static_cast<xy::Fader*> (findControl ("MAIN FADER"))->setBinding (mainBinding ("MAIN MIX", [this] { auto* s = main(); return s != nullptr ? &s->params.faderDb : nullptr; }));
 
-    for (int i = 0; i < kChannels; ++i)
-    {
-        tapes[(size_t) i]->getText = [this, i] { auto* s = channel (i); return s != nullptr ? s->getOwnName() : juce::String(); };
-        tapes[(size_t) i]->setText = [this, i] (const juce::String& t) { if (auto* s = channel (i)) s->setName (t); };
-    }
+    phantom = false;
+    for (int i = 0; i < 4; ++i)
+        if (auto* src = ctx.engine.getSource (i); src != nullptr && src->phantom.load())
+            phantom = true;
 }
 
 /** What the panel assumes of the routing, set once on a new console (the engine's strips know nothing of
@@ -749,116 +352,19 @@ void Xenyx1202Surface::ensureRouting()
     }
 }
 
-void Xenyx1202Surface::refreshAll()
+/** The LEDs and meters move on their own. */
+void Xenyx1202Surface::repaintLive()
 {
-    ensureRouting();
-    bindControls();
-    phantom = false;
-    for (int i = 0; i < 4; ++i)
-        if (auto* src = ctx.engine.getSource (i); src != nullptr && src->phantom.load())
-            phantom = true;
-    fillScenes();
-    for (auto* c : controls)
-        c->refresh();
-    for (auto& t : tapes)
-        t->refresh();
-    repaint();
-}
-
-void Xenyx1202Surface::showChanged() { fillScenes(); }
-
-void Xenyx1202Surface::fillScenes()
-{
-    const int n = ctx.show.getNumScenes();
-    shownScenes = n;
-    sceneBox.clear (juce::dontSendNotification);
-    for (int i = 0; i < n; ++i)
-        if (const auto s = ctx.show.getScene (i))
-            sceneBox.addItem (juce::String (i + 1) + "  " + s->name, i + 1);
-    const int current = ctx.show.getCurrentSceneIndex();
-    sceneBox.setSelectedId (current >= 0 && current < n ? current + 1 : 0, juce::dontSendNotification);
-}
-
-void Xenyx1202Surface::recallSelected()
-{
-    const int index = sceneBox.getSelectedId() - 1;
-    if (index < 0)
-        return;
-    ctx.show.recallScene (index);
-    ctx.log.info ("Recalled scene " + juce::String (index + 1));
-    refreshAll();
-}
-
-void Xenyx1202Surface::newScene()
-{
-    const int index = ctx.show.addScene ("Scene " + juce::String (ctx.show.getNumScenes() + 1));
-    ctx.log.info ("Stored the console as scene " + juce::String (index + 1));
-    fillScenes();
-}
-
-void Xenyx1202Surface::storeScene()
-{
-    const int current = ctx.show.getCurrentSceneIndex();
-    if (current < 0 || current >= ctx.show.getNumScenes())
-        return newScene();
-    ctx.show.storeScene (current);
-    ctx.log.info ("Stored the console in scene " + juce::String (current + 1));
-    fillScenes();
-}
-
-void Xenyx1202Surface::timerCallback()
-{
-    if (ctx.show.getNumScenes() != shownScenes)
-        fillScenes();
-    for (auto* c : controls)
-        c->refresh();
-    for (auto& t : tapes)
-        t->refresh();
-    // The LEDs and meters move on their own.
     const auto area = [] (int px, int py, int w, int hh) { return juce::Rectangle<int> (py - kOy, kTop - (px + w), hh, w); };
-    panel->repaint (area (640, 1480, 170, 110));
+    getPanel().repaint (area (640, 1480, 170, 110));
     for (int i = 0; i < 4; ++i)
     {
         const int cy = rowCy (i);
-        panel->repaint (area (320, cy + 70, 40, 24));
-        panel->repaint (area (873, cy + 70, 40, 24));
+        getPanel().repaint (area (320, cy + 70, 40, 24));
+        getPanel().repaint (area (873, cy + 70, 40, 24));
     }
 }
 
-void Xenyx1202Surface::resized()
-{
-    auto bar = getLocalBounds().removeFromTop (kBarHeight).reduced (10, 9);
-    sceneTitle.setBounds (bar.removeFromLeft (80));
-    prevKey.setBounds (bar.removeFromLeft (70));
-    bar.removeFromLeft (6);
-    sceneBox.setBounds (bar.removeFromLeft (320));
-    bar.removeFromLeft (6);
-    nextKey.setBounds (bar.removeFromLeft (70));
-    bar.removeFromLeft (18);
-    storeKey.setBounds (bar.removeFromLeft (80));
-    bar.removeFromLeft (6);
-    newKey.setBounds (bar.removeFromLeft (70));
-    universalKey.setBounds (getLocalBounds().removeFromTop (kBarHeight).removeFromRight (190).reduced (universal::sizes::kGap, 7));
-    routingKey.setBounds (getLocalBounds().removeFromTop (kBarHeight).withTrimmedRight (190).removeFromRight (110).reduced (universal::sizes::kGap, 7));
-    if (routingOverlay != nullptr)
-        routingOverlay->setBounds (getLocalBounds().withTrimmedTop (kBarHeight).reduced (8));
-
-    const auto area = getLocalBounds().withTrimmedTop (kBarHeight).reduced (8).toFloat();
-    const float s = juce::jmin (area.getWidth() / (float) kPanelWidth, area.getHeight() / (float) kPanelHeight);
-    panel->setBounds (0, 0, kPanelWidth, kPanelHeight);
-    panel->setTransform (juce::AffineTransform::scale (s).translated (area.getCentreX() - (float) kPanelWidth * s * 0.5f,
-                                                                      area.getCentreY() - (float) kPanelHeight * s * 0.5f));
-}
-
-void Xenyx1202Surface::paint (juce::Graphics& g)
-{
-    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff1b1c1e), 0.0f, 0.0f, juce::Colour (0xff101112), 0.0f, (float) getHeight(), false));
-    g.fillAll();
-    g.setColour (juce::Colour (0xff2a2c2f));
-    g.fillRect (0, 0, getWidth(), kBarHeight);
-    g.setColour (juce::Colour (0xff3b3e42));
-    g.drawHorizontalLine (kBarHeight - 1, 0.0f, (float) getWidth());
-}
 
 // ---- the panel's drawing ----------------------------------------------------------------------------
 
