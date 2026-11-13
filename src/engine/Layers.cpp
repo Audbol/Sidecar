@@ -228,7 +228,10 @@ void LayerSet::setSelectedLayerId (Section s, const juce::String& id)
 //==============================================================================
 const std::vector<Layer>& LayerSet::getUserLayers() const
 {
-    userSnapshot = list (nullptr, Left, 2);
+    // Keep the same storage while nothing changed, so references the callers hold (a layer, its id) stay valid.
+    auto fresh = list (nullptr, Left, 2);
+    if (! (fresh == userSnapshot))
+        userSnapshot = std::move (fresh);
     return userSnapshot;
 }
 

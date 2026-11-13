@@ -90,7 +90,7 @@ public:
     void beginRename();
     /** The menu of a layer (a right-click or a long press on its key or row): it is selected, then RENAME,
         COLOUR, DUPLICATE, DELETE and BANK. `screenArea` is what the menu opens beside. */
-    void showLayerMenu (const juce::String& id, juce::Rectangle<int> screenArea);
+    void showLayerMenu (juce::String id, juce::Rectangle<int> screenArea); // the id by value: callers pass one from a layer list that a lookup may rebuild
     /** The menu of an entry: SPACER before and after, UP, DOWN, REMOVE. */
     void showEntryMenu (int row, juce::Rectangle<int> screenArea);
     /** The colours as a grid of swatches in a call-out beside `screenArea`. */

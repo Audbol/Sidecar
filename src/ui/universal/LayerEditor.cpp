@@ -432,7 +432,7 @@ void LayerEditor::showMenu (juce::PopupMenu menu, juce::Rectangle<int> screenAre
                         });
 }
 
-void LayerEditor::showLayerMenu (const juce::String& id, juce::Rectangle<int> area)
+void LayerEditor::showLayerMenu (juce::String id, juce::Rectangle<int> area)
 {
     if (ctx.show.layers.getUserLayer (id) == nullptr)
         return;

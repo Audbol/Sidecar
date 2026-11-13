@@ -25,6 +25,11 @@ struct Layer
     juce::uint32 colour = 0;
     /** The console banks it occupies, "console=bank;console=bank" (see layerlink). */
     juce::String bank;
+
+    bool operator== (const Layer& o) const
+    {
+        return id == o.id && name == o.name && faders == o.faders && user == o.user && colour == o.colour && bank == o.bank;
+    }
 };
 
 /** Fixed-slot editing of a layer's faders, as on the WING: slot `i` is
