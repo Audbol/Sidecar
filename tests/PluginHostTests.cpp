@@ -1,9 +1,11 @@
-// The PLUGIN HOST's surface and its RACK page (src/ui/PluginHostSurface.*, PluginHostRack.*; docs/PLUGIN_HOST.md, step 2).
+// The PLUGIN HOST's surface and its pages (src/ui/PluginHost*.*; docs/PLUGIN_HOST.md).
 
 #include "TestHelpers.h"
 #include "engine/DirectOut.h"
 #include "engine/EventLog.h"
+#include "engine/Benchmark.h"
 #include "engine/PluginHost.h"
+#include "engine/PluginScanner.h"
 #include "engine/Show.h"
 #include "ui/PluginHostSurface.h"
 
@@ -179,6 +181,19 @@ struct Bench
     std::unique_ptr<HostRig> rig;
     std::unique_ptr<ui::PluginHostSurface> skin;
 };
+
+/** A scanned plug-in's description, for the BROWSER (the fake format makes the plug-in from its identifier). */
+juce::PluginDescription fakeDescription (const juce::String& name, const juce::String& maker, const juce::String& id, int uid)
+{
+    juce::PluginDescription d;
+    d.name = name;
+    d.manufacturerName = maker;
+    d.pluginFormatName = "Fake";
+    d.fileOrIdentifier = id;
+    d.uniqueId = d.deprecatedUid = uid;
+    d.numInputChannels = d.numOutputChannels = 2;
+    return d;
+}
 
 juce::MidiMessage cc (int channel, int number, int value)
 {
@@ -407,7 +422,7 @@ public:
             setShownProfile (ld::kProfileUniversal);
         }
 
-        beginTest ("The screen's pages: RACK, ROUTING, SCENES and CONTROL are built, the others say so; F10 maximises the screen; the scene keys cue and recall; the readout shows latency and CPU");
+        beginTest ("The screen's pages: each tab shows its own page (all seven are built); F10 maximises the screen; the scene keys cue and recall; the readout shows latency and CPU");
         {
             MixerEngine engine (0);
             engine.configurePluginHost (16);
@@ -416,18 +431,20 @@ public:
             ui::PluginHostSurface skin (rig.ctx);
             skin.setSize (1920, 1080);
             using Page = ui::PluginHostSurface::Page;
-            expect (skin.getPage() == Page::Rack && skin.getRack().isVisible() && skin.getComingSoon() != nullptr && ! skin.getComingSoon()->isVisible());
+            expect (skin.getPage() == Page::Rack && skin.getRack().isVisible() && ! skin.getOverview().isVisible() && ! skin.getBrowser().isVisible() && ! skin.getSystem().isVisible());
             expectEquals (juce::String (ui::PluginHostSurface::nameOf (Page::System)), juce::String ("SYSTEM"));
             for (int p = 1; p < 7; ++p)
             {
                 skin.getTab ((Page) p).onClick();
-                const bool built = (Page) p == Page::Routing || (Page) p == Page::Scenes || (Page) p == Page::Control;
-                expect (skin.getPage() == (Page) p && ! skin.getRack().isVisible()
-                            && (skin.getRouting().isVisible() || skin.getScenes().isVisible() || skin.getControlPage().isVisible()) == built && skin.getComingSoon()->isVisible() == ! built,
-                        juce::String (ui::PluginHostSurface::nameOf ((Page) p)) + (built ? " shows its page" : " shows the coming-soon panel"));
+                const int shown = (int) skin.getOverview().isVisible() + (int) skin.getRouting().isVisible() + (int) skin.getScenes().isVisible()
+                                  + (int) skin.getControlPage().isVisible() + (int) skin.getBrowser().isVisible() + (int) skin.getSystem().isVisible();
+                const bool own = (Page) p == Page::Overview ? skin.getOverview().isVisible() : (Page) p == Page::Routing ? skin.getRouting().isVisible()
+                               : (Page) p == Page::Scenes   ? skin.getScenes().isVisible()   : (Page) p == Page::Control ? skin.getControlPage().isVisible()
+                               : (Page) p == Page::Browser  ? skin.getBrowser().isVisible()  : skin.getSystem().isVisible();
+                expect (skin.getPage() == (Page) p && ! skin.getRack().isVisible() && own && shown == 1, juce::String (ui::PluginHostSurface::nameOf ((Page) p)) + " shows its page");
             }
             skin.getTab (Page::Rack).onClick();
-            expect (skin.getRack().isVisible() && ! skin.getComingSoon()->isVisible() && ! skin.getRouting().isVisible());
+            expect (skin.getRack().isVisible() && ! skin.getRouting().isVisible() && ! skin.getSystem().isVisible());
 
             // The unit's parts are in the design space, at least 44 px high and inside it.
             const auto in = [&] (juce::Component& c) { return juce::Rectangle<int> (0, 0, 1920, 1080).contains (c.getBounds()); };
@@ -508,7 +525,7 @@ public:
             using Page = ui::PluginHostSurface::Page;
             skin.getTab (Page::Routing).onClick();
             auto& routing = skin.getRouting();
-            expect (routing.isVisible() && ! skin.getComingSoon()->isVisible() && ! skin.getRack().isVisible());
+            expect (routing.isVisible() && ! skin.getRack().isVisible());
             expect (routing.getView() == ui::ph::RoutingPage::View::Inputs && routing.getInputsGrid().isVisible() && ! routing.getOutputsGrid().isVisible());
             test::OfflineRig audio (engine, 16, 16, false);
             for (int i = 0; i < 16; ++i)
@@ -923,7 +940,7 @@ public:
             auto& page = skin.getScenes();
             auto& show = rig.show;
             skin.getTab (Page::Scenes).onClick();
-            expect (page.isVisible() && ! skin.getComingSoon()->isVisible() && ! skin.getRack().isVisible());
+            expect (page.isVisible() && ! skin.getRack().isVisible());
             expectEquals (page.getNumScenes(), 0);
             expect (! page.getRecallKey().isEnabled() && page.getStoreKey().isEnabled());
 
@@ -1405,7 +1422,7 @@ public:
             using Page = ui::PluginHostSurface::Page;
             const auto ref = b.ref (0);
             skin.getTab (Page::Control).onClick();
-            expect (page.isVisible() && ! skin.getComingSoon()->isVisible() && ! skin.getRack().isVisible());
+            expect (page.isVisible() && ! skin.getRack().isVisible());
             expectEquals (page.getNumMappings(), 0);
 
             b.learn (ui::ph::Target::of (ui::ph::Target::Kind::Bypass, 0), cc (1, 30, 1));
@@ -1483,6 +1500,583 @@ public:
             page.toggleDevice (row);
             expect (! control.isInputEnabled ("Test MIDI input") && b.rig->settings.getValue (ui::ph::Control::inputsKey).isEmpty());
             juce::ignoreUnused (plugin);
+        }
+
+        beginTest ("OVERVIEW: a column per channel with a tile per block (name, latency, bypass), a tap selects the channel and plug-in and jumps to RACK, and 32 channels scroll sideways");
+        {
+            MixerEngine engine (0);
+            engine.configurePluginHost (32);
+            setShownProfile (ld::kProfilePluginHost);
+            HostRig rig (engine);
+            ui::PluginHostSurface skin (rig.ctx);
+            skin.setSize (1920, 1080);
+            using Page = ui::PluginHostSurface::Page;
+            auto& rack = skin.getRack();
+            skin.selectChannel (3);
+            expect (rack.addBlock (BlockKind::Eq));
+            auto& strip3 = *engine.getChannels()[3];
+            const int plugUid = addFakePlugin (engine, strip3, "Hall Reverb");
+            auto& strip9 = *engine.getChannels()[9];
+            std::vector<int> longChain;
+            for (int i = 0; i < 9; ++i)
+                longChain.push_back (addFakePlugin (engine, strip9, "Unit " + juce::String (i + 1)));
+            strip3.params.input.bypass = true;
+            skin.refreshAll();
+            skin.getTab (Page::Overview).onClick();
+            auto& overview = skin.getOverview();
+            expect (overview.isVisible() && ! rack.isVisible());
+            expectEquals (overview.getNumColumns(), 32);
+            for (const int ch : { 0, 3, 9, 31 })
+            {
+                const auto uids = blockUids (*engine.getChannels()[(size_t) ch]);
+                const auto& col = overview.getColumn (ch);
+                expectEquals (col.channel, ch);
+                expectEquals ((int) col.tiles.size(), (int) uids.size(), "channel " + juce::String (ch + 1) + "'s tiles are its blocks");
+                for (size_t i = 0; i < uids.size() && i < col.tiles.size(); ++i)
+                    expectEquals (col.tiles[i].uid, uids[i], "channel " + juce::String (ch + 1) + " tile " + juce::String ((int) i + 1) + " is the chain's block");
+            }
+            const auto& col3 = overview.getColumn (3);
+            expect (col3.bypassed && ! overview.getColumn (0).bypassed, "the column shows the channel's BYPASS");
+            expectEquals (col3.tiles[0].name, juce::String ("EQ BLOCK"));
+            expectEquals (col3.tiles[1].name, juce::String ("Fake Hall Reverb"));
+            expectEquals (col3.tiles[1].latency, 128);
+            expectEquals (col3.latency, 128);
+            engine.getFx().setBlockBypassed (FxSlots::blockSlotOf (strip3.getHandle(), plugUid), true);
+            overview.refresh();
+            expect (overview.getColumn (3).tiles[1].bypassed, "a bypassed block shows it");
+            expectEquals (overview.getColumn (3).latency, 0, "and adds no latency");
+
+            // It scrolls sideways: 32 columns do not fit, the head and the tiles are touch sized.
+            expect (overview.getCanvas().getWidth() > overview.getViewport().getWidth(), "32 channels scroll");
+            expect (overview.getHeadBounds (0).getHeight() >= 44 && overview.getTileBounds (3, 0).getHeight() >= 44 && ui::ph::OverviewPage::kColumnWidth >= 44);
+            expect (overview.getTileBounds (3, 1).getY() > overview.getHeadBounds (3).getBottom() - 1, "the tiles are under the head");
+
+            // A long chain shows 6 tiles and "+3 MORE".
+            expectEquals (ui::ph::OverviewPage::shownTiles ((int) longChain.size()), 6);
+            expect (ui::ph::OverviewPage::hasMore ((int) longChain.size()) && ! ui::ph::OverviewPage::hasMore (7) && ui::ph::OverviewPage::shownTiles (7) == 7);
+
+            // A tap on a tile selects its channel and that plug-in, and shows RACK.
+            skin.selectChannel (0);
+            skin.getTab (Page::Overview).onClick();
+            overview.tapTile (3, 1);
+            expect (skin.getPage() == Page::Rack && rack.isVisible() && ! overview.isVisible());
+            expectEquals (skin.getSelectedChannel(), 3);
+            expectEquals (rack.getChannel(), 3);
+            expectEquals (rack.getSelectedUid(), plugUid);
+
+            // The same from a touch on the canvas.
+            skin.getTab (Page::Overview).onClick();
+            auto& canvas = overview.getCanvas();
+            const auto at = overview.getTileBounds (9, 2).getCentre().toFloat();
+            canvas.mouseDown (mouseEvent (canvas, at, at));
+            canvas.mouseUp (mouseEvent (canvas, at, at));
+            expect (skin.getPage() == Page::Rack, "a tap jumps");
+            expectEquals (skin.getSelectedChannel(), 9);
+            expectEquals (rack.getSelectedUid(), longChain[2]);
+            // A drag (to scroll) is not a tap.
+            skin.getTab (Page::Overview).onClick();
+            const auto to = at + juce::Point<float> (40.0f, 0.0f);
+            canvas.mouseDown (mouseEvent (canvas, at, at));
+            canvas.mouseDrag (mouseEvent (canvas, to, at));
+            canvas.mouseUp (mouseEvent (canvas, to, at));
+            expect (skin.getPage() == Page::Overview, "a drag does not jump");
+            // The head selects the channel only; "+3 MORE" the first block it hides.
+            overview.tapTile (9, ui::ph::OverviewPage::shownTiles ((int) longChain.size()));
+            expectEquals (rack.getSelectedUid(), longChain[6], "+N MORE takes the first block that is not shown");
+            skin.getTab (Page::Overview).onClick();
+            overview.tapHead (20);
+            expect (skin.getPage() == Page::Rack);
+            expectEquals (skin.getSelectedChannel(), 20);
+            engine.getGarbage().collectAllNow();
+            setShownProfile (ld::kProfileUniversal);
+        }
+
+        beginTest ("OVERVIEW: 16 channels fit the screen without scrolling");
+        {
+            MixerEngine engine (0);
+            engine.configurePluginHost (16);
+            setShownProfile (ld::kProfilePluginHost);
+            HostRig rig (engine);
+            ui::PluginHostSurface skin (rig.ctx);
+            skin.setSize (1920, 1080);
+            skin.getTab (ui::PluginHostSurface::Page::Overview).onClick();
+            expectEquals (skin.getOverview().getNumColumns(), 16);
+            expect (skin.getOverview().getCanvas().getWidth() <= skin.getOverview().getViewport().getWidth(), "no sideways scrolling");
+            setShownProfile (ld::kProfileUniversal);
+        }
+
+        beginTest ("BROWSER: search, favourites, tags and recent (kept in the app settings), a tap adds the plug-in to the selected channel's rack");
+        {
+            MixerEngine engine (0);
+            engine.configurePluginHost (16);
+            setShownProfile (ld::kProfilePluginHost);
+            HostRig rig (engine);
+            auto& known = rig.host.getKnownPlugins();
+            const auto hall = fakeDescription ("Hall Reverb", "Acme", "fake-hall", 1), comp = fakeDescription ("Tight Comp", "Beta", "fake-comp", 2),
+                       warm = fakeDescription ("Warm EQ", "Acme", "fake-warm", 3);
+            for (const auto& d : { warm, hall, comp })
+                known.addType (d);
+            ui::PluginHostSurface skin (rig.ctx);
+            skin.setSize (1920, 1080);
+            skin.getTab (ui::PluginHostSurface::Page::Browser).onClick();
+            auto& browser = skin.getBrowser();
+            expect (browser.isVisible());
+            expectEquals (browser.getNumPlugins(), 3);
+            expectEquals (browser.getNumRows(), 3);
+            expectEquals (browser.getRow (0).description.name, juce::String ("Hall Reverb"), "sorted by name");
+            expectEquals (browser.getRow (2).description.name, juce::String ("Warm EQ"));
+
+            // Search: every word, in the name, maker, format or a tag.
+            browser.setSearch ("acme");
+            expectEquals (browser.getNumRows(), 2);
+            browser.setSearch ("warm ACME");
+            expectEquals (browser.getNumRows(), 1);
+            expectEquals (browser.getRow (0).description.name, juce::String ("Warm EQ"));
+            browser.setSearch ("fake");
+            expectEquals (browser.getNumRows(), 3, "the format is searched too");
+            browser.setSearch ("nothing like it");
+            expectEquals (browser.getNumRows(), 0);
+            browser.setSearch ({});
+            expectEquals (browser.getNumRows(), 3);
+
+            // Favourites: a star, a filter, kept in the settings.
+            const auto compId = ui::ph::Library::idOf (comp);
+            expect (! browser.getRow (1).favourite);
+            browser.toggleFavourite (1);
+            expectEquals (browser.getRow (1).description.name, juce::String ("Tight Comp"));
+            expect (browser.getRow (1).favourite);
+            browser.getFilterKey (ui::ph::BrowserPage::Filter::Favourites).onClick();
+            expectEquals (browser.getNumRows(), 1);
+            expectEquals (browser.getRow (0).id, compId);
+            expect (browser.getFilterKey (ui::ph::BrowserPage::Filter::Favourites).isOn());
+            browser.getFilterKey (ui::ph::BrowserPage::Filter::All).onClick();
+            expectEquals (browser.getNumRows(), 3);
+
+            // Tags: typed words, trimmed and without repeats; searched; kept.
+            expectEquals (ui::ph::Library::parseTags (" drums, Bus ,, drums ,x,Reverb").joinIntoString ("|"), juce::String ("drums|Bus|x|Reverb"));
+            expectEquals (ui::ph::Library::parseTags ("a,b,c,d,e,f,g,h,i,j").size(), ui::ph::Library::kMaxTags);
+            browser.setTags (0, "reverb, space");
+            expectEquals (browser.getRow (0).tags.joinIntoString ("|"), juce::String ("reverb|space"));
+            browser.setSearch ("space");
+            expectEquals (browser.getNumRows(), 1);
+            expectEquals (browser.getRow (0).description.name, juce::String ("Hall Reverb"));
+            browser.setSearch ({});
+
+            // Kept as app settings: a second reader of the same file sees them.
+            rig.settings.saveIfNeeded();
+            {
+                juce::PropertiesFile again (rig.settingsFile, {});
+                ui::ph::Library other (again);
+                expect (other.isFavourite (compId) && ! other.isFavourite (ui::ph::Library::idOf (hall)), "the favourite is in the settings");
+                expectEquals (other.getTags (ui::ph::Library::idOf (hall)).joinIntoString ("|"), juce::String ("reverb|space"));
+            }
+            expect (! rig.show.getHostControlXml().contains ("fake-comp"), "and not in the show");
+
+            // A tap on a row adds the plug-in to the selected channel's rack (and it is the newest in RECENT).
+            skin.selectChannel (2);
+            auto& strip2 = *engine.getChannels()[2];
+            expect (pluginUids (strip2).empty());
+            expect (browser.addRow (0));
+            expectEquals ((int) pluginUids (strip2).size(), 1);
+            expectEquals (skin.getRack().getTile (0).name, juce::String ("Fake fake-hall"));
+            expect (browser.getMessage().contains ("ADDED HALL REVERB TO CH 3"), browser.getMessage());
+            skin.selectChannel (5);
+            expect (browser.addRow (2)); // Warm EQ, on channel 6
+            expectEquals ((int) pluginUids (*engine.getChannels()[5]).size(), 1);
+            expectEquals ((int) pluginUids (strip2).size(), 1, "only the selected channel");
+            expect (browser.addRow (0)); // Hall Reverb again, on channel 6
+            expectEquals (skin.getLibrary().getRecent().size(), 2);
+            expectEquals (skin.getLibrary().getRecent()[0], ui::ph::Library::idOf (hall), "adding one again moves it to the front");
+            browser.getFilterKey (ui::ph::BrowserPage::Filter::Recent).onClick();
+            expectEquals (browser.getNumRows(), 2);
+            expectEquals (browser.getRow (0).description.name, juce::String ("Hall Reverb"));
+            expectEquals (browser.getRow (1).description.name, juce::String ("Warm EQ"));
+            // Only the last 10.
+            auto& library = skin.getLibrary();
+            for (int i = 0; i < 12; ++i)
+                library.addRecent ("Fake-" + juce::String (i));
+            expectEquals (library.getRecent().size(), ui::ph::Library::kMaxRecent);
+            expectEquals (library.getRecent()[0], juce::String ("Fake-11"));
+            expect (! library.getRecent().contains (ui::ph::Library::idOf (hall)), "the oldest went");
+            browser.getFilterKey (ui::ph::BrowserPage::Filter::All).onClick();
+
+            // A touch: the star, TAGS and the rest of the row.
+            browser.setSearch ({});
+            auto touch = [&] (juce::Point<int> p)
+            {
+                const auto f = p.toFloat();
+                browser.mouseDown (mouseEvent (browser, f, f));
+                browser.mouseUp (mouseEvent (browser, f, f));
+            };
+            const bool before = browser.getRow (2).favourite;
+            touch (browser.getStarBounds (2).getCentre());
+            expect (browser.getRow (2).favourite != before, "a tap on the star toggles it");
+            skin.selectChannel (7);
+            touch ({ browser.getRowBounds (1).getX() + 300, browser.getRowBounds (1).getCentreY() });
+            expectEquals ((int) pluginUids (*engine.getChannels()[7]).size(), 1, "a tap on the row adds the plug-in");
+            expect (browser.getRowBounds (0).getHeight() >= 44 && browser.getStarBounds (0).getWidth() >= 44 && browser.getTagsBounds (0).getWidth() >= 44);
+            for (auto k : { &browser.getSearchKey(), &browser.getClearKey(), &browser.getScanKey(), &browser.getRescanKey() })
+                expect (k->getHeight() >= 44, k->getButtonText());
+            engine.getGarbage().collectAllNow();
+            setShownProfile (ld::kProfileUniversal);
+        }
+
+        beginTest ("BROWSER: the scan report lists the plug-ins that failed and why; SCAN and RESCAN open the scanner, RESCAN forgetting the failures first");
+        {
+            MixerEngine engine (0);
+            engine.configurePluginHost (16);
+            setShownProfile (ld::kProfilePluginHost);
+            HostRig rig (engine);
+            int opened = 0;
+            rig.ctx.showPluginScanner = [&] { ++opened; };
+            ui::PluginHostSurface skin (rig.ctx);
+            skin.setSize (1920, 1080);
+            auto& browser = skin.getBrowser();
+            expect (browser.getFailures().empty());
+            auto& known = rig.host.getKnownPlugins();
+            known.addToBlacklist ("C:/Plugins/Bad Plug.vst3");
+            known.addToBlacklist ("C:/Plugins/Old One.vst3");
+            livedaw::ScanFailures::record ("C:/Plugins/Bad Plug.vst3", "it crashed while it was scanned");
+            browser.refresh();
+            expectEquals ((int) browser.getFailures().size(), 2);
+            if (browser.getFailures().size() == 2)
+            {
+                expectEquals (browser.getFailures()[0].name, juce::String ("Bad Plug"));
+                expectEquals (browser.getFailures()[0].reason, juce::String ("it crashed while it was scanned"));
+                expectEquals (browser.getFailures()[1].name, juce::String ("Old One"));
+                expect (browser.getFailures()[1].reason.contains ("no reason was kept"), browser.getFailures()[1].reason);
+            }
+            browser.getScanKey().onClick();
+            expectEquals (opened, 1);
+            expectEquals ((int) browser.getFailures().size(), 2, "SCAN leaves the failures");
+            browser.getRescanKey().onClick();
+            expectEquals (opened, 2);
+            expect (browser.getFailures().empty(), "RESCAN forgets them so that they are tried again");
+            expect (livedaw::ScanFailures::reasonFor ("C:/Plugins/Bad Plug.vst3").isEmpty());
+            expect (browser.getMessage().contains ("2 PLUG-INS THAT FAILED WILL BE TRIED AGAIN"), browser.getMessage());
+            setShownProfile (ld::kProfileUniversal);
+        }
+
+        beginTest ("SYSTEM: the channel count changes with a confirm and keeps what remains: racks, plug-ins, settings, patch and mappings of the channels that stay");
+        {
+            MixerEngine engine (0);
+            engine.configurePluginHost (16);
+            setShownProfile (ld::kProfilePluginHost);
+            HostRig rig (engine);
+            ui::PluginHostSurface skin (rig.ctx);
+            skin.setSize (1920, 1080);
+            skin.getTab (ui::PluginHostSurface::Page::System).onClick();
+            auto& system = skin.getSystem();
+            auto& control = skin.getControl();
+            auto* params = new test::ParameterPlugin();
+            const int uid2 = addRackPlugin (engine, *engine.getChannels()[2], std::unique_ptr<juce::AudioPluginInstance> (params));
+            const int uid13 = addRackPlugin (engine, *engine.getChannels()[13], std::make_unique<test::FakePlugin> (1.0f, test::FakePlugin::Mode::Gain, "keep-me"));
+            engine.getChannels()[2]->params.faderDb = -4.0f;
+            engine.getChannels()[13]->params.inputLeft = 5;
+            skin.refreshAll();
+            const auto mapKey = [&] (int ch, int number)
+            {
+                control.setLearning (true);
+                expect (control.captureTarget (ui::ph::Target::of (ui::ph::Target::Kind::Select, ch)));
+                control.handleMidi (cc (1, number, 64));
+            };
+            mapKey (2, 20);
+            mapKey (13, 21);
+            expectEquals (control.getNumMappings(), 2);
+            expectEquals (system.getSizeKey (0).getButtonText(), juce::String ("16"));
+            expect (system.getSizeKey (0).isOn() && ! system.getSizeKey (1).isOn());
+
+            // The first press asks, the second does it.
+            system.getSizeKey (1).onClick();
+            expectEquals (system.getArmedSize(), 32);
+            expectEquals (system.getSizeKey (1).getButtonText(), juce::String ("CONFIRM"));
+            expectEquals ((int) engine.getChannels().size(), 16, "nothing changed yet");
+            expect (system.describeResize (32).contains ("KEEP THEIR RACKS"), system.describeResize (32));
+            system.getSizeKey (2).onClick(); // another size takes the arm
+            expectEquals (system.getArmedSize(), 64);
+            expectEquals (system.getSizeKey (1).getButtonText(), juce::String ("32"));
+            system.getSizeKey (1).onClick();
+            expectEquals (system.getArmedSize(), 32);
+            system.getSizeKey (1).onClick();
+            expectEquals ((int) engine.getChannels().size(), 32);
+            expectEquals (system.getArmedSize(), 0);
+            expect (engine.getProfile() == ld::kProfilePluginHost && engine.getConfiguredCounts().channels == 32);
+            expectEquals (skin.getNumBanks(), 4);
+            expect (system.getSizeKey (1).isOn() && system.getSizeKey (1).getButtonText() == "32");
+            expect (blockUids (*engine.getChannels()[2]) == std::vector<int> { uid2 } && blockUids (*engine.getChannels()[13]) == std::vector<int> { uid13 }, "the racks stay");
+            expect (engine.getFx().getPlugin (FxSlots::blockSlotOf (engine.getChannels()[2]->getHandle(), uid2)) == params, "the same plug-in instance");
+            expectEquals (engine.getChannels()[2]->params.faderDb.load(), -4.0f);
+            expectEquals (engine.getChannels()[13]->params.inputLeft.load(), 5);
+            expectEquals (control.getNumMappings(), 2, "the mappings stay");
+            expect (engine.getChannels()[20]->getChain().size() > 0 && blockUids (*engine.getChannels()[20]).empty(), "a new channel has an empty rack");
+            expectEquals (engine.getChannels()[20]->params.inputLeft.load(), 20);
+            skin.getTab (ui::PluginHostSurface::Page::Overview).onClick();
+            expectEquals (skin.getOverview().getNumColumns(), 32);
+
+            // Down again: the channels that remain keep everything, the ones that go take their rack and mappings.
+            addRackPlugin (engine, *engine.getChannels()[20], std::make_unique<test::FakePlugin> (1.0f, test::FakePlugin::Mode::Gain, "goes"));
+            mapKey (20, 22);
+            skin.selectChannel (20);
+            skin.getTab (ui::PluginHostSurface::Page::System).onClick();
+            expect (system.describeResize (16).contains ("GO WITH THEIR RACKS (1 PLUG-IN)"), system.describeResize (16));
+            system.getSizeKey (0).onClick();
+            system.getSizeKey (0).onClick();
+            expectEquals ((int) engine.getChannels().size(), 16);
+            expect (engine.getProfile() == ld::kProfilePluginHost && engine.getConfiguredCounts().channels == 16);
+            expectEquals (skin.getNumBanks(), 2);
+            expect (blockUids (*engine.getChannels()[2]) == std::vector<int> { uid2 } && blockUids (*engine.getChannels()[13]) == std::vector<int> { uid13 }, "the racks of the channels that stay");
+            expect (engine.getFx().getPlugin (FxSlots::blockSlotOf (engine.getChannels()[2]->getHandle(), uid2)) == params);
+            expectEquals (engine.getChannels()[2]->params.faderDb.load(), -4.0f);
+            expectEquals (control.getNumMappings(), 2, "the mapping of the channel that went is gone");
+            expectEquals (skin.getSelectedChannel(), 15, "the selection left the channel that went");
+            expectEquals (skin.getRack().getChannel(), 15);
+            // The same size is nothing to do, and a size that is not offered is refused.
+            system.pressSize (16);
+            expectEquals (system.getArmedSize(), 0);
+            system.pressSize (48);
+            expectEquals (system.getArmedSize(), 0);
+            expect (system.getSizeKey (0).getHeight() >= 44);
+            engine.getGarbage().collectAllNow();
+            setShownProfile (ld::kProfileUniversal);
+        }
+
+        beginTest ("SYSTEM: ALIGNED delays every channel to the longest rack and follows a change; AS IS switches it off; an opted-out channel is left alone");
+        {
+            MixerEngine engine (0);
+            engine.configurePluginHost (16);
+            setShownProfile (ld::kProfilePluginHost);
+            HostRig rig (engine);
+            ui::PluginHostSurface skin (rig.ctx);
+            skin.setSize (1920, 1080);
+            auto& latency = skin.getLatency();
+            auto& system = skin.getSystem();
+            const auto plugin = [&] (int ch, int samples)
+            {
+                juce::AudioPluginInstance* p = nullptr;
+                const int uid = addFakePlugin (engine, *engine.getChannels()[(size_t) ch], "L" + juce::String (ch), &p);
+                p->setLatencySamples (samples);
+                // The plug-in's latency reaches the engine through its listener as it changes.
+                juce::ignoreUnused (uid);
+                return p;
+            };
+            plugin (0, 128);
+            auto* ch1 = plugin (1, 64);
+            plugin (3, 256);
+            skin.refreshAll();
+            const auto in = [&] (int ch) -> ld::InputParams& { return engine.getChannels()[(size_t) ch]->params.input; };
+
+            // AS IS (the default): nothing is delayed.
+            expect (latency.getMode() == ui::ph::Latency::Mode::AsIs && system.getModeKey (false).isOn() && ! system.getModeKey (true).isOn());
+            expectEquals (latency.getRackLatency (0), 128);
+            expectEquals (latency.getRackLatency (2), 0);
+            expectEquals (latency.getLongest(), 256);
+            for (int ch = 0; ch < 16; ++ch)
+                expect (! in (ch).delayOn.load() && latency.getDelay (ch) == 0, "AS IS: no delay on channel " + juce::String (ch + 1));
+            expectEquals (latency.getTotal (1), 64);
+
+            // ALIGNED: each channel is delayed by what it lacks.
+            system.getModeKey (true).onClick();
+            expect (latency.getMode() == ui::ph::Latency::Mode::Aligned && system.getModeKey (true).isOn());
+            expectEquals (rig.settings.getValue (ui::ph::Latency::modeKey), juce::String ("aligned"));
+            const int expected[] = { 128, 192, 256, 0 };
+            for (int ch = 0; ch < 4; ++ch)
+            {
+                expectEquals (latency.getDelay (ch), expected[ch], "channel " + juce::String (ch + 1) + "'s delay");
+                expectEquals (juce::roundToInt (in (ch).delay.load()), expected[ch]);
+                expect (in (ch).delayOn.load() == (expected[ch] > 0));
+                expectEquals (latency.getTotal (ch), 256, "channel " + juce::String (ch + 1) + "'s total is the longest");
+            }
+            expectEquals (in (0).delayMode.load(), 3, "in samples");
+            expectEquals (latency.getDelay (7), 256, "an empty channel is delayed to the longest too");
+            expect (! latency.update(), "nothing to change when nothing changed");
+
+            // The longest rack's plug-in changes its latency: the delays follow.
+            auto* longest = engine.getFx().getPlugin (FxSlots::blockSlotOf (engine.getChannels()[3]->getHandle(), blockUids (*engine.getChannels()[3])[0]));
+            expect (longest != nullptr);
+            longest->setLatencySamples (100);
+            expect (latency.update());
+            expectEquals (latency.getLongest(), 128);
+            const int after[] = { 0, 64, 128, 28 };
+            for (int ch = 0; ch < 4; ++ch)
+            {
+                expectEquals (latency.getDelay (ch), after[ch], "after the change: channel " + juce::String (ch + 1));
+                expectEquals (latency.getTotal (ch), 128);
+            }
+            ch1->setLatencySamples (500); // a shorter rack becomes the longest
+            latency.update();
+            expectEquals (latency.getLongest(), 500);
+            expectEquals (latency.getDelay (1), 0);
+            expectEquals (latency.getDelay (0), 372);
+            ch1->setLatencySamples (64);
+            latency.update();
+
+            // A channel that opts out is left alone (and still counts for the longest).
+            latency.setOptedOut (2, true);
+            expect (latency.isOptedOut (2) && ! latency.isOptedOut (1));
+            expectEquals (rig.settings.getValue (ui::ph::Latency::optOutKey), juce::String ("3"));
+            expect (! in (2).delayOn.load() && latency.getDelay (2) == 0, "the opted-out channel has no delay");
+            expectEquals (latency.getTotal (2), 0);
+            expectEquals (latency.getDelay (1), 64, "the others still align");
+            latency.setOptedOut (3, true); // the channel with the longest rack opts out: the others still align to it
+            expectEquals (latency.getDelay (0), 0 + (latency.getLongest() - 128));
+            latency.setOptedOut (3, false);
+            skin.refreshAll();
+            expect (latency.isOptedOut (2), "kept through a refresh");
+            system.toggleOptOut (2);
+            expect (! latency.isOptedOut (2) && latency.getDelay (2) == 128, "the OUT key on the page toggles it");
+            expectEquals (system.getRow (2).delay, 128);
+            expectEquals (system.getRow (2).total, 128);
+
+            // A channel's BYPASS passes the input straight through: its racks' latency is gone, the delay makes it up.
+            engine.getChannels()[0]->params.input.bypass = true;
+            latency.update();
+            expectEquals (latency.getRackLatency (0), 0);
+            expectEquals (latency.getLongest(), 100, "channel 4's 100 smp is the longest now");
+            expectEquals (latency.getDelay (0), 100, "bypassed it is as late as the rest");
+            expectEquals (latency.getTotal (0), 100);
+            engine.getChannels()[0]->params.input.bypass = false;
+            // A plug-in's own bypass leaves its latency out as well.
+            engine.getFx().setBlockBypassed (FxSlots::blockSlotOf (engine.getChannels()[0]->getHandle(), blockUids (*engine.getChannels()[0])[0]), true);
+            expectEquals (latency.getRackLatency (0), 0);
+            engine.getFx().setBlockBypassed (FxSlots::blockSlotOf (engine.getChannels()[0]->getHandle(), blockUids (*engine.getChannels()[0])[0]), false);
+
+            // The readout of the selected channel counts the delay.
+            skin.selectChannel (2);
+            latency.update();
+            skin.getReadout().refresh();
+            expect (skin.getReadout().shown()[1].contains ("128 smp"), skin.getReadout().shown()[1]);
+
+            // Beyond what the engine can delay: capped, and said so.
+            longest->setLatencySamples (10000);
+            latency.update();
+            expect (latency.isLimited());
+            expectEquals (latency.getDelay (1), MixerEngine::kMaxCompensation);
+            longest->setLatencySamples (100);
+
+            // AS IS again switches every delay off, and the mode is kept.
+            system.getModeKey (false).onClick();
+            for (int ch = 0; ch < 16; ++ch)
+                expect (! in (ch).delayOn.load(), "AS IS: delay off on channel " + juce::String (ch + 1));
+            expectEquals (rig.settings.getValue (ui::ph::Latency::modeKey), juce::String ("asis"));
+            // The page lists every channel with its latency.
+            expectEquals (system.getNumRows(), 16);
+            expect (system.getRowBounds (0).getHeight() >= 44 && system.getOptOutBounds (0).getHeight() >= 44 && system.getOptOutBounds (0).getWidth() >= 44);
+            engine.getGarbage().collectAllNow();
+            setShownProfile (ld::kProfileUniversal);
+        }
+
+        beginTest ("SYSTEM: the CPU guard warns above the threshold (70 % at first, settable) and never blocks; with no benchmark it suggests running one");
+        {
+            MixerEngine engine (0);
+            engine.configurePluginHost (16);
+            setShownProfile (ld::kProfilePluginHost);
+            HostRig rig (engine);
+            const auto folder = juce::File::createTempFile ("benchmarks");
+            folder.createDirectory();
+            const auto hall = fakeDescription ("Hall Reverb", "Acme", "fake-hall", 1);
+            rig.host.getKnownPlugins().addType (hall);
+            ui::PluginHostSurface skin (rig.ctx);
+            skin.setSize (1920, 1080);
+            auto& guard = skin.getGuard();
+            auto& system = skin.getSystem();
+            guard.runsFolder = folder;
+            guard.reloadBenchmark();
+            double cpu = 0.5;
+            guard.getCpu = [&] { return cpu; };
+            expectEquals (guard.getThreshold(), 70);
+            expect (guard.getBenchmark() == nullptr && guard.describeBenchmark().contains ("NO BENCHMARK"));
+
+            // Below the threshold: nothing to warn of, but no benchmark is saved.
+            auto advice = guard.check (hall);
+            expect (! advice.overThreshold && advice.noBenchmark);
+            expect (advice.text.contains ("RUN ONE") && ! advice.text.contains ("OVER THE GUARD"), advice.text);
+            // Above it: a warning that says the CPU, the threshold and the plug-in.
+            cpu = 0.82;
+            advice = guard.check (hall);
+            expect (advice.overThreshold, "82 % is over 70 %");
+            expect (advice.text.contains ("82 %") && advice.text.contains ("70 %") && advice.text.contains ("HALL REVERB"), advice.text);
+            cpu = 0.70;
+            expect (! guard.check (hall).overThreshold, "70 % is not above 70 %");
+            cpu = 0.71;
+            expect (guard.check (hall).overThreshold);
+
+            // Adding warns and adds anyway.
+            cpu = 0.82;
+            skin.getTab (ui::PluginHostSurface::Page::Browser).onClick();
+            skin.selectChannel (4);
+            auto& browser = skin.getBrowser();
+            expect (guard.getNotice().isEmpty());
+            expect (browser.addRow (0), "a warning is not a block");
+            expectEquals ((int) pluginUids (*engine.getChannels()[4]).size(), 1);
+            expect (guard.getNotice().contains ("OVER THE GUARD'S 70 %"), guard.getNotice());
+            expect (browser.getMessage().contains ("OVER THE GUARD'S 70 %") && browser.getMessage().contains ("ADDED"), "the BROWSER page shows it");
+            cpu = 0.3;
+            expect (browser.addRow (0));
+            expect (! guard.getNotice().contains ("OVER THE GUARD"), "the notice is for the last add");
+            expect (guard.getNotice().contains ("RUN ONE"), "with no benchmark saved the guard suggests one");
+            // From the RACK page's own add, too.
+            cpu = 0.9;
+            expect (skin.getRack().addPlugin (hall));
+            expect (guard.getNotice().contains ("OVER THE GUARD"));
+
+            // The threshold: keys, limits, kept.
+            skin.getTab (ui::PluginHostSurface::Page::System).onClick();
+            system.getThresholdKey (true).onClick();
+            expectEquals (guard.getThreshold(), 75);
+            system.getThresholdKey (false).onClick();
+            system.getThresholdKey (false).onClick();
+            expectEquals (guard.getThreshold(), 65);
+            expectEquals (rig.settings.getIntValue (ui::ph::Guard::thresholdKey), 65);
+            guard.setThreshold (95);
+            cpu = 0.9;
+            expect (! guard.check (hall).overThreshold, "a higher threshold: no warning at 90 %");
+            guard.setThreshold (0);
+            expectEquals (guard.getThreshold(), ui::ph::Guard::kMinThreshold);
+            guard.setThreshold (500);
+            expectEquals (guard.getThreshold(), ui::ph::Guard::kMaxThreshold);
+            guard.setThreshold (70);
+            expect (system.getThresholdKey (true).getHeight() >= 44 && system.getThresholdKey (false).getWidth() >= 44);
+
+            // A saved benchmark: the guard reads the newest, names a plug-in it measured, and stops suggesting one.
+            bench::Result older, newer;
+            older.when = juce::Time (2026, 9, 1, 10, 0); // months count from 0
+            older.score.mark = 800;
+            newer.when = juce::Time (2026, 10, 1, 10, 0);
+            newer.settings.blockSize = 256;
+            newer.score.mark = 1020;
+            bench::Measure m;
+            m.group = "Plug-in";
+            m.name = "Hall Reverb";
+            m.blockSize = 256;
+            m.meanPct = 12.0;
+            newer.add (m);
+            expect (bench::save (older, folder) != juce::File() && bench::save (newer, folder) != juce::File());
+            guard.reloadBenchmark();
+            expect (guard.getBenchmark() != nullptr);
+            expect (guard.describeBenchmark().contains ("MARK 1020") && guard.describeBenchmark().contains ("2026-11-01") && guard.describeBenchmark().contains ("256 smp"), guard.describeBenchmark());
+            cpu = 0.82;
+            advice = guard.check (hall);
+            expect (advice.overThreshold && ! advice.noBenchmark && ! advice.text.contains ("RUN ONE"), advice.text);
+            expect (advice.text.contains ("ABOUT 12 %"), "the benchmark's figure for the plug-in is named: " + advice.text);
+            expect (guard.check (fakeDescription ("Other", "X", "fake-other", 9)).text.contains ("ABOUT") == false);
+
+            // BENCHMARK opens the existing benchmark panel over the page; CLOSE returns.
+            expect (! system.isBenchmarkOpen() && system.getBenchmarkPanel() == nullptr);
+            system.getBenchmarkKey().onClick();
+            expect (system.isBenchmarkOpen() && system.getBenchmarkPanel() != nullptr && system.getPanel() != nullptr && system.getPanel()->isVisible());
+            expect (system.getBenchmarkPanel()->getState() == ui::universal::BenchmarkPanel::State::Idle);
+            system.closePanel();
+            expect (! system.isBenchmarkOpen() && ! system.getPanel());
+            expect (system.getBenchmarkKey().getHeight() >= 44 && system.getAudioKey().getHeight() >= 44);
+            // AUDIO SETTINGS opens the audio settings.
+            system.getAudioKey().onClick();
+            expect (system.isAudioOpen() && system.getPanel() != nullptr && system.getPanel()->isVisible());
+            system.closePanel();
+            expect (! system.isAudioOpen());
+            expect (system.describeDevice().isNotEmpty());
+            folder.deleteRecursively();
+            engine.getGarbage().collectAllNow();
+            setShownProfile (ld::kProfileUniversal);
         }
 
         beginTest ("The PLUGIN HOST has its own console theme");

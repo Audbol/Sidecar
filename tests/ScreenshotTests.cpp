@@ -22,6 +22,8 @@
 #include "ui/Dm2000Surface.h"
 #include "ui/Xenyx1202Surface.h"
 #include "ui/PluginHostSurface.h"
+#include "engine/Benchmark.h"
+#include "engine/PluginScanner.h"
 #include "ui/Y02RSurface.h"
 #include "engine/ProMixMidi.h"
 #include "engine/Y02RMidi.h"
@@ -409,6 +411,96 @@ public:
             control.setLearning (false);
             control.setInputEnabled ("USB MIDI Controller", false);
         }
+
+        // The OVERVIEW page: racks of different lengths, a bypassed channel, a bypassed plug-in, a long chain with "+N MORE".
+        {
+            const auto fake = [&] (int ch, const char* name, int latency)
+            {
+                auto* p = new test::FakePlugin (1.0f, test::FakePlugin::Mode::Gain, name);
+                p->setLatencySamples (latency);
+                addPluginBlockFor (engine, *channels[(size_t) ch], std::unique_ptr<juce::AudioPluginInstance> (p));
+            };
+            fake (1, "Tight Comp", 48);
+            fake (4, "Room Verb", 256);
+            fake (4, "De-Esser", 0);
+            fake (5, "Tape Echo", 512);
+            fake (7, "Bass Amp", 96);
+            fake (8, "Pitch Fix", 1024);
+            for (int i = 0; i < 9; ++i)
+                fake (10, ("Fx " + juce::String (i + 1)).toRawUTF8(), 16 * i);
+            channels[7]->params.input.bypass = true;
+            int lastUid = -1;
+            for (const auto& step : channels[4]->getChain())
+                if (step.isBlock() && step.getBlockKind() == BlockKind::Plugin)
+                    lastUid = step.uid;
+            engine.getFx().setBlockBypassed (FxSlots::blockSlotOf (channels[4]->getHandle(), lastUid), true);
+            for (int i = 8; i < 16; ++i)
+                channels[(size_t) i]->setName (juce::String ("CH " + juce::String (i + 1)).toRawUTF8());
+            skin.refreshAll();
+            skin.getTab (ui::PluginHostSurface::Page::Rack).onClick();
+            skin.selectChannel (4);
+            skin.getRack().selectTile (0);
+            skin.getTab (ui::PluginHostSurface::Page::Overview).onClick();
+            skin.getOverview().refresh();
+            save ("pluginhost-overview.png");
+        }
+
+        // The BROWSER page: scanned plug-ins with stars, tags and a search, the scan report with two failures.
+        {
+            struct Entry { const char* name; const char* maker; const char* format; const char* tags; bool favourite; };
+            const Entry entries[] = { { "Hall Reverb", "Acme Audio", "VST3", "reverb, space", true }, { "Tight Comp", "Beta Labs", "VST3", "dynamics, drums", true },
+                                      { "Warm EQ", "Acme Audio", "VST3", "eq", false },           { "Tape Echo", "Gamma", "VST3", "delay", false },
+                                      { "Room Verb", "Gamma", "AudioUnit", "reverb", false },       { "De-Esser", "Beta Labs", "VST3", "vocal", true },
+                                      { "Bass Amp", "Delta", "VST3", "bass", false },              { "Pitch Fix", "Delta", "LV2", "vocal, tuning", false },
+                                      { "Gate One", "Acme Audio", "VST3", "drums", false } };
+            int uid = 100;
+            for (const auto& e : entries)
+            {
+                juce::PluginDescription d;
+                d.name = e.name;
+                d.manufacturerName = e.maker;
+                d.pluginFormatName = e.format;
+                d.fileOrIdentifier = juce::String ("C:/Plugins/") + e.name + ".vst3";
+                d.uniqueId = d.deprecatedUid = uid++;
+                d.numInputChannels = d.numOutputChannels = 2;
+                rig.host.getKnownPlugins().addType (d);
+                skin.getLibrary().setFavourite (ui::ph::Library::idOf (d), e.favourite);
+                skin.getLibrary().setTags (ui::ph::Library::idOf (d), ui::ph::Library::parseTags (e.tags));
+            }
+            skin.getLibrary().addRecent (ui::ph::Library::idOf (rig.host.getKnownPlugins().getTypes()[2]));
+            rig.host.getKnownPlugins().addToBlacklist ("C:/Plugins/Old Synth.vst3");
+            rig.host.getKnownPlugins().addToBlacklist ("C:/Plugins/Crashy Verb.vst3");
+            livedaw::ScanFailures::record ("C:/Plugins/Crashy Verb.vst3", "it crashed while it was scanned");
+            skin.getTab (ui::PluginHostSurface::Page::Browser).onClick();
+            skin.getBrowser().refresh();
+            save ("pluginhost-browser.png");
+            livedaw::ScanFailures::forget ("C:/Plugins/Crashy Verb.vst3");
+            rig.host.getKnownPlugins().clearBlacklistedFiles();
+        }
+
+        // The SYSTEM page: ALIGNED with the delays it sets, a channel opted out, the CPU guard over its threshold, and a saved benchmark.
+        {
+            const auto folder = juce::File::createTempFile ("shot-benchmarks");
+            folder.createDirectory();
+            bench::Result run;
+            run.when = juce::Time (2026, 10, 28, 20, 15);
+            run.settings.blockSize = 128;
+            run.score.mark = 1020;
+            bench::save (run, folder);
+            auto& guard = skin.getGuard();
+            guard.runsFolder = folder;
+            guard.reloadBenchmark();
+            guard.getCpu = [] { return 0.78; };
+            guard.noteAdd ([] { juce::PluginDescription d; d.name = "Pitch Fix"; return d; }());
+            skin.getLatency().setOptedOut (2, true);
+            skin.getLatency().setMode (ui::ph::Latency::Mode::Aligned);
+            skin.getTab (ui::PluginHostSurface::Page::System).onClick();
+            skin.getSystem().refresh();
+            save ("pluginhost-system.png");
+            skin.getLatency().setMode (ui::ph::Latency::Mode::AsIs);
+            folder.deleteRecursively();
+        }
+        engine.getGarbage().collectAllNow();
         setShownProfile (ld::kProfileUniversal);
     }
 

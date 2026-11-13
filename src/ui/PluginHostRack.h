@@ -157,6 +157,8 @@ public:
         int latency = 0;
         bool loaded = false, missing = false, faulted = false, bypassed = false, canBypass = false;
     };
+    /** What a tile shows for `step` of `strip`'s chain (the OVERVIEW page uses it too). */
+    static TileInfo describeTile (UiContext&, Strip& strip, const ChainStep& step);
     int getNumTiles() const noexcept { return (int) tiles.size(); }
     TileInfo getTile (int index) const;
     /** The tile's place on the canvas (the "+" tile is index getNumTiles()). */
@@ -174,7 +176,11 @@ public:
     void copyTile (int index);
     bool hasCopy() const noexcept { return clip.valid; }
     bool pasteTile();
-    /** The "+" tile's menu (the plug-in browser and the block kinds), and a tile's menu. */
+    /** The "+" tile's menu offers the BROWSER page (the surface sets this to show it). */
+    std::function<void()> openBrowser;
+    /** Around adding a plug-in (addPlugin): before it is made, and after it was added. */
+    std::function<void (const juce::PluginDescription&)> beforeAddPlugin, pluginAdded;
+    /** A tile's menu, and the "+" tile's (the BROWSER page, a built-in block). */
     void showAddMenu();
     void showTileMenu (int index);
 

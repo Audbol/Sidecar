@@ -828,15 +828,22 @@ PluginRef RackPage::getFocus() const
 
 RackPage::TileInfo RackPage::describe (const ChainStep& step) const
 {
+    if (auto* s = strip())
+        return describeTile (ctx, *s, step);
     TileInfo t;
     t.uid = step.uid;
     t.kind = step.getBlockKind();
-    auto* s = strip();
-    if (s == nullptr)
-        return t;
+    return t;
+}
+
+RackPage::TileInfo RackPage::describeTile (UiContext& ctx, Strip& s, const ChainStep& step)
+{
+    TileInfo t;
+    t.uid = step.uid;
+    t.kind = step.getBlockKind();
     if (t.kind == BlockKind::Plugin)
     {
-        const auto info = ctx.engine.getFx().describeBlock (s->getHandle(), step.uid);
+        const auto info = ctx.engine.getFx().describeBlock (s.getHandle(), step.uid);
         t.name = info.name.isNotEmpty() ? info.name : juce::String (info.missing ? "plug-in" : "EMPTY PLUG-IN BLOCK");
         t.maker = info.vendor;
         t.loaded = info.loaded;
@@ -851,7 +858,8 @@ RackPage::TileInfo RackPage::describe (const ChainStep& step) const
         t.name = stepName (ChainStep { ld::kStepBlock, (int) t.kind });
         t.maker = "Built-in";
         t.loaded = true;
-        auto* on = switchOf (step.uid);
+        const auto block = s.getBlock (step.uid);
+        auto* on = block.isValid() ? switchOfBlock (block) : nullptr;
         t.canBypass = on != nullptr;
         t.bypassed = on != nullptr && ! on->load();
     }
@@ -1062,6 +1070,8 @@ bool RackPage::addPlugin (const juce::PluginDescription& desc)
     auto* s = strip();
     if (s == nullptr)
         return false;
+    if (beforeAddPlugin)
+        beforeAddPlugin (desc); // the CPU guard warns here; it never stops the add
     const int uid = s->insertBlock (BlockKind::Plugin, insertionPoint());
     if (uid < 0)
         return false;
@@ -1073,6 +1083,8 @@ bool RackPage::addPlugin (const juce::PluginDescription& desc)
         return false;
     }
     reselect (uid);
+    if (pluginAdded)
+        pluginAdded (desc);
     return true;
 }
 
@@ -1138,12 +1150,17 @@ void RackPage::showAddMenu()
     juce::Component::SafePointer<RackPage> safe (this);
     juce::PopupMenu menu;
     menu.setLookAndFeel (&lookAndFeelFor (theme));
-    auto browser = pluginTypesMenu (ctx, [safe] (const juce::PluginDescription& desc)
+    if (openBrowser)
+        menu.addItem ("PLUG-IN BROWSER...", ! models::remoteHeld(), false, [safe] { if (safe != nullptr && safe->openBrowser) safe->openBrowser(); });
+    else
     {
-        if (safe != nullptr)
-            safe->addPlugin (desc);
-    });
-    menu.addSubMenu ("PLUG-IN (BROWSER)", browser, browser.getNumItems() > 0 && ! models::remoteHeld());
+        auto browser = pluginTypesMenu (ctx, [safe] (const juce::PluginDescription& desc)
+        {
+            if (safe != nullptr)
+                safe->addPlugin (desc);
+        });
+        menu.addSubMenu ("PLUG-IN (BROWSER)", browser, browser.getNumItems() > 0 && ! models::remoteHeld());
+    }
     menu.addItem ("Scan for plug-ins...", [this] { if (ctx.showPluginScanner) ctx.showPluginScanner(); });
     menu.addSeparator();
     for (auto kind : kBuiltIn)

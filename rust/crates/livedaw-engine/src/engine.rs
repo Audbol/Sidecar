@@ -67,7 +67,7 @@ use crate::oscillator::ConsoleOscillator;
 use crate::params::*;
 use crate::pdc::{pdc_tap, PdcState, MAX_PDC};
 use crate::pool::WorkerPool;
-use crate::profile::{MainMode, Profile};
+use crate::profile::{HostSize, MainMode, Profile};
 use crate::routing::{bus_feeds_bus, matrix_direct_pair, return_tap, strip_source, BusSchedule, OutputPatch, ReturnClock};
 use crate::routing::{DirectSource, ReturnRing, DIRECT_SOURCE_BASE, NUM_PATCH_OUTPUTS, NUM_STRIP_SOURCES, STRIP_SOURCE_BASE};
 use crate::sends::{send_mode, MAX_BUSES};
@@ -802,6 +802,42 @@ impl Engine {
             p.source_right.store(input, Relaxed);
         }
         self.add_factory_eq_blocks(&[StripKind::Bus, StripKind::Main, StripKind::Matrix]);
+    }
+
+    /// Message thread: makes a plug-in host of another size without a reset. The channels that
+    /// remain keep everything (their racks and plug-ins, settings, input patch, and the output
+    /// patch of their ports); channels past the new count go with their racks, new ones come at the
+    /// end on the factory settings with their own input and output. An output that played a channel
+    /// that went is left unpatched, a plug-in keyed from one hears no key. False (and nothing
+    /// changed) when the console is not a plug-in host.
+    pub fn resize_plugin_host(&self, size: HostSize) -> bool {
+        let old = {
+            let mut st = self.lock();
+            if !matches!(st.profile, Profile::PluginHost(_)) {
+                return false;
+            }
+            let old = st.counts.channels;
+            st.profile = Profile::PluginHost(size);
+            st.counts.channels = size.channels();
+            old
+        };
+        self.set_num_channels(size.channels());
+        let new = size.channels();
+        for port in old..new {
+            let source = DirectSource { kind: StripKind::Channel, number: port as i32 + 1, side: 0, post: true };
+            self.output_patch.set(port as i32, source.code());
+        }
+        let gone: Vec<usize> = self
+            .output_patch
+            .patched()
+            .filter(|&(_, source)| DirectSource::from_code(source).is_some_and(|d| d.kind == StripKind::Channel && d.number as usize > new))
+            .map(|(port, _)| port)
+            .collect();
+        for port in gone {
+            self.output_patch.set(port as i32, -1);
+        }
+        self.update_keys();
+        true
     }
 
     /// A console's own preamp block, off, on each of its input channels that lacks

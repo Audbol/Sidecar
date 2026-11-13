@@ -2182,7 +2182,8 @@ const fn plugin_host_build(size: HostSize) -> ProfileSpec {
         factory_preamp_block: None,
         dlive_layout: None,
         attenuator: false,
-        delay_samples: None,
+        // The delay is in samples from 0, up to what the engine's compensation allows.
+        delay_samples: Some((0, crate::pdc::MAX_PDC as u32)),
         fx_send_buses: &[],
     }
 }

@@ -959,6 +959,15 @@ pub unsafe extern "C" fn ld_engine_configure_plugin_host(e: *const Engine, chann
     }
 }
 
+/// Gives a plug-in host `channels` channels (16, 32 or 64) without a reset: the channels that remain
+/// keep their racks and settings. False: not a plug-in host, or not one of those sizes.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_resize_plugin_host(e: *const Engine, channels: i32) -> bool {
+    let Some(e) = engine(e) else { return false };
+    let Some(size) = usize::try_from(channels).ok().and_then(livedaw_engine::profile::HostSize::from_channels) else { return false };
+    guard(false, || e.resize_plugin_host(size))
+}
+
 /// Makes the engine a fresh console of `counts` (null: the WING).
 #[no_mangle]
 pub unsafe extern "C" fn ld_engine_configure(e: *const Engine, counts: *const LdCounts) {

@@ -428,47 +428,6 @@ namespace ph
 
 //==============================================================================
 
-/** What a page that is not built yet shows. */
-class PluginHostSurface::ComingSoon final : public juce::Component
-{
-public:
-    explicit ComingSoon (const Theme& t) : theme (t) {}
-
-    void setPage (Page p)
-    {
-        page = p;
-        repaint();
-    }
-
-    void paint (juce::Graphics& g) override
-    {
-        g.fillAll (theme.background);
-        static const std::pair<Page, const char*> notes[] = {
-            { Page::Overview, "Every channel as a column of small tiles: a glance at all racks, tap to jump." },
-            { Page::Browser, "Search, favourites, tags and recent plug-ins, and the scan report." },
-            { Page::System, "Audio device and buffer, latency alignment, the CPU guard and the benchmark." }
-        };
-        juce::String note;
-        for (const auto& [p, text] : notes)
-            if (p == page)
-                note = text;
-        auto area = getLocalBounds().reduced (60, 0).withSizeKeepingCentre (getWidth() - 120, 200);
-        g.setColour (theme.text);
-        g.setFont (type::font (28.0f, true));
-        g.drawText (juce::String (nameOf (page)) + "  -  COMING SOON", area.removeFromTop (48), juce::Justification::centred);
-        g.setColour (theme.textDim);
-        g.setFont (type::font (type::kValue));
-        g.drawFittedText (note, area.removeFromTop (60), juce::Justification::centredTop, 2);
-        g.setColour (theme.accent);
-        g.setFont (type::font (type::kLabel, true));
-        g.drawText ("The RACK, ROUTING, SCENES and CONTROL pages are ready.", area.removeFromTop (30), juce::Justification::centred);
-    }
-
-private:
-    const Theme& theme;
-    Page page = Page::Overview;
-};
-
 //==============================================================================
 
 PluginHostSurface::PluginHostSurface (UiContext& c)
@@ -522,8 +481,28 @@ PluginHostSurface::PluginHostSurface (UiContext& c)
         if (controlPage != nullptr)
             controlPage->refresh();
     };
-    comingSoon = std::make_unique<ComingSoon> (theme);
-    screenHost.addChildComponent (*comingSoon);
+    library = std::make_unique<ph::Library> (c.settings);
+    latency = std::make_unique<ph::Latency> (c);
+    guard = std::make_unique<ph::Guard> (c);
+    overview = std::make_unique<ph::OverviewPage> (c, theme);
+    overview->onJump = [this] (int channel, int uid) { jumpToRack (channel, uid); };
+    overview->getSelectedUid = [this] { return rack->getSelectedUid(); };
+    screenHost.addChildComponent (*overview);
+    browser = std::make_unique<ph::BrowserPage> (c, theme, *library, *guard);
+    browser->onAdd = [this] (const juce::PluginDescription& d) { return rack->addPlugin (d); };
+    browser->getChannel = [this] { return getSelectedChannel(); };
+    screenHost.addChildComponent (*browser);
+    system = std::make_unique<ph::SystemPage> (c, theme, *latency, *guard);
+    system->resize = [this] (int channels) { return resizeHost (channels); };
+    screenHost.addChildComponent (*system);
+    // A plug-in added to a rack, from the BROWSER or the RACK page's menu: the CPU guard warns first, the library remembers it.
+    rack->beforeAddPlugin = [this] (const juce::PluginDescription& d) { guard->noteAdd (d); };
+    rack->pluginAdded = [this] (const juce::PluginDescription& d)
+    {
+        library->addRecent (ph::Library::idOf (d));
+        browser->refresh();
+    };
+    rack->openBrowser = [this] { showPage (Page::Browser); };
 
     for (int i = 0; i < kStrips; ++i)
     {
@@ -581,7 +560,7 @@ PluginHostSurface::PluginHostSurface (UiContext& c)
     {
         const int ch = getSelectedChannel();
         auto* s = channelStrip (ch);
-        const int samples = s != nullptr ? s->getLatency() : 0;
+        const int samples = s != nullptr ? latency->getTotal (ch) : 0; // the rack's plug-ins and the delay ALIGNED adds
         const double rate = ctx.engine.getSampleRate();
         const auto ms = rate > 0.0 ? juce::String (1000.0 * samples / rate, 1) + " ms" : juce::String ("- ms");
         return juce::StringArray { "LATENCY  CH " + juce::String (ch + 1), juce::String (samples) + " smp   " + ms,
@@ -600,11 +579,6 @@ PluginHostSurface::PluginHostSurface (UiContext& c)
 PluginHostSurface::~PluginHostSurface()
 {
     stopTimer();
-}
-
-juce::Component* PluginHostSurface::getComingSoon() noexcept
-{
-    return comingSoon.get();
 }
 
 const char* PluginHostSurface::nameOf (Page p)
@@ -669,6 +643,56 @@ void PluginHostSurface::selectChannel (int index)
     selectionChanged(); // the window tells the skin too; this keeps it right where it doesn't
 }
 
+void PluginHostSurface::jumpToRack (int channel, int uid)
+{
+    selectChannel (channel);
+    if (uid >= 0 && rack->getChannel() == getSelectedChannel())
+        for (int i = 0; i < rack->getNumTiles(); ++i)
+            if (rack->getTile (i).uid == uid)
+            {
+                rack->selectTile (i);
+                break;
+            }
+    showPage (Page::Rack);
+}
+
+bool PluginHostSurface::resizeHost (int channels)
+{
+    const int now = (int) ctx.engine.getChannels().size();
+    if (channels == now)
+        return true;
+    if (channels < now)
+    {
+        // The plug-ins of the channels that go: their editors close before the engine lets them go.
+        for (int ch = channels; ch < now; ++ch)
+            if (auto* s = channelStrip (ch))
+                for (const auto& step : s->getChain())
+                    if (step.isBlock() && step.getBlockKind() == BlockKind::Plugin)
+                        if (auto* plugin = ctx.engine.getFx().getPlugin (FxSlots::blockSlotOf (s->getHandle(), step.uid)))
+                        {
+                            rack->getDock().dropEditorFor (plugin);
+                            if (ctx.pluginRemoved)
+                                ctx.pluginRemoved (plugin);
+                        }
+        if (getSelectedChannel() >= channels)
+            selectChannel (channels - 1); // never leave the selection on a strip that is about to go
+    }
+    if (! ctx.engine.resizePluginHost (channels))
+        return false;
+    // The mappings of keys and hot knobs of the channels that went (a plug-in's go with it).
+    for (int row = control->getNumMappings() - 1; row >= 0; --row)
+    {
+        const auto target = control->getMappings()[(size_t) row].target;
+        if (target.kind != Target::Kind::Param && target.channel >= channels)
+            control->deleteMapping (row);
+    }
+    bank = juce::jlimit (0, getNumBanks() - 1, bank);
+    refreshAll();
+    if (ctx.structureChanged)
+        ctx.structureChanged();
+    return true;
+}
+
 void PluginHostSurface::selectionChanged()
 {
     if (selecting)
@@ -697,6 +721,8 @@ void PluginHostSurface::showChanged()
     shownScenes = -1; // the timer reads them again
     control->loadFromShow(); // a show that was loaded brings its own mappings
     controlPage->refresh();
+    latency->update(); // and its own delays: the mode is the app's
+    overview->refresh();
 }
 
 void PluginHostSurface::sceneStep (int delta)
@@ -752,6 +778,10 @@ void PluginHostSurface::refreshAll()
     routing->setChannel (getSelectedChannel());
     routing->refresh();
     controlPage->setChannel (getSelectedChannel());
+    latency->update();
+    overview->refresh();
+    browser->refresh();
+    system->refresh();
     shownScenes = ctx.show.getNumScenes();
     if (cue < 0 || cue >= shownScenes)
         cue = juce::jmax (-1, ctx.show.getCurrentSceneIndex() >= 0 ? ctx.show.getCurrentSceneIndex() : (shownScenes > 0 ? 0 : -1));
@@ -778,8 +808,15 @@ void PluginHostSurface::showPage (Page p)
     controlPage->setVisible (p == Page::Control);
     if (p == Page::Control)
         controlPage->refresh();
-    comingSoon->setVisible (p != Page::Rack && p != Page::Routing && p != Page::Scenes && p != Page::Control);
-    comingSoon->setPage (p);
+    overview->setVisible (p == Page::Overview);
+    if (p == Page::Overview)
+        overview->refresh();
+    browser->setVisible (p == Page::Browser);
+    if (p == Page::Browser)
+        browser->refresh();
+    system->setVisible (p == Page::System);
+    if (p == Page::System)
+        system->refresh();
     for (auto& t : tabs)
         t->refresh();
     repaint();
@@ -802,6 +839,9 @@ void PluginHostSurface::timerCallback()
     for (auto& s : strips)
         s->refresh();
     sceneGoKey.refresh();
+    // The racks' latencies are read about 4 times a second: ALIGNED follows a plug-in that changes its latency, a bypass, an add or a remove.
+    if (++ticks % 8 == 0)
+        latency->update();
     updateReadouts();
 }
 
@@ -864,7 +904,9 @@ void PluginHostSurface::resized()
     routing->setBounds (content);
     scenes->setBounds (content);
     controlPage->setBounds (content);
-    comingSoon->setBounds (content);
+    overview->setBounds (content);
+    browser->setBounds (content);
+    system->setBounds (content);
 
     for (int i = 0; i < kStrips; ++i)
         strips[(size_t) i]->setBounds (kScreenX + i * (ph::StripUnit::kWidth + 6), 720, ph::StripUnit::kWidth, ph::StripUnit::kHeight);

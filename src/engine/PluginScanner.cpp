@@ -1,6 +1,7 @@
 #include "engine/PluginScanner.h"
 
 #include <condition_variable>
+#include <map>
 #include <mutex>
 #include <queue>
 
@@ -8,6 +9,35 @@ namespace livedaw
 {
 
 static constexpr const char* kScannerProcessId = "livedawpluginscanner";
+
+namespace
+{
+    std::mutex failureLock;
+    std::map<juce::String, juce::String>& failures()
+    {
+        static std::map<juce::String, juce::String> list;
+        return list;
+    }
+} // namespace
+
+void ScanFailures::record (const juce::String& fileOrIdentifier, const juce::String& reason)
+{
+    const std::lock_guard<std::mutex> lock (failureLock);
+    failures()[fileOrIdentifier] = reason;
+}
+
+juce::String ScanFailures::reasonFor (const juce::String& fileOrIdentifier)
+{
+    const std::lock_guard<std::mutex> lock (failureLock);
+    const auto found = failures().find (fileOrIdentifier);
+    return found != failures().end() ? found->second : juce::String();
+}
+
+void ScanFailures::forget (const juce::String& fileOrIdentifier)
+{
+    const std::lock_guard<std::mutex> lock (failureLock);
+    failures().erase (fileOrIdentifier);
+}
 
 //==============================================================================
 class OutOfProcessScanner::Coordinator final : private juce::ChildProcessCoordinator
@@ -97,6 +127,7 @@ bool OutOfProcessScanner::findPluginTypesFor (juce::AudioPluginFormat& format,
     if (! coordinator->sendMessageToWorker (block))
     {
         coordinator.reset();
+        ScanFailures::record (fileOrIdentifier, "the scanner process could not be reached");
         return false;
     }
 
@@ -117,6 +148,7 @@ bool OutOfProcessScanner::findPluginTypesFor (juce::AudioPluginFormat& format,
             // The scanner hung on this plugin. Dropping the connection ends the
             // scanner (see Worker::handleConnectionLost); report it as failed.
             coordinator.reset();
+            ScanFailures::record (fileOrIdentifier, "it hung while it was scanned (no answer in " + juce::String (scanTimeoutMs / 1000) + " s)");
             return false;
         }
 
@@ -135,6 +167,7 @@ bool OutOfProcessScanner::findPluginTypesFor (juce::AudioPluginFormat& format,
 
         // The scanner died on this plugin: report it as failed and restart the scanner.
         coordinator.reset();
+        ScanFailures::record (fileOrIdentifier, "it crashed while it was scanned");
         return false;
     }
 }

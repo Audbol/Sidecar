@@ -135,6 +135,16 @@ public:
     void configureProfile (ld::ProfileId profile) { ld::ld_engine_configure_profile (engine, profile); syncStrips(); }
     /** A fresh plug-in host of 16, 32 or 64 channels. */
     void configurePluginHost (int channels) { ld::ld_engine_configure_plugin_host (engine, channels); syncStrips(); }
+    /** A plug-in host of another size (16, 32 or 64) without a reset: the channels that remain keep their racks and
+        settings. False (nothing changed) when the console is not a plug-in host. The caller closes the editors of the
+        plug-ins of channels that go first. */
+    bool resizePluginHost (int channels)
+    {
+        const bool done = ld::ld_engine_resize_plugin_host (engine, channels);
+        if (done)
+            syncStrips();
+        return done;
+    }
     /** Makes the engine a fresh console of `counts` (nullptr: the WING); rebuilds the strip views. */
     void configure (const Counts* counts) { ld::ld_engine_configure (engine, counts); syncStrips(); }
     /** The number of strips of `kind` changed without a reset (the configuration

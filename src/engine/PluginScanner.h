@@ -29,6 +29,18 @@ private:
     int scanTimeoutMs;
 };
 
+/** Why plug-ins failed to scan, as far as the scanner knows: the file or identifier and a plain
+    sentence. It is kept for this run only (JUCE's own blacklist, which is saved, holds the files
+    without a reason). Any thread. */
+struct ScanFailures
+{
+    static void record (const juce::String& fileOrIdentifier, const juce::String& reason);
+    /** The reason recorded for it this run (empty: none). */
+    static juce::String reasonFor (const juce::String& fileOrIdentifier);
+    /** Forgets the reason (the plug-in is tried again). */
+    static void forget (const juce::String& fileOrIdentifier);
+};
+
 /** The child-process side. Call tryToStart() first thing in initialise(): if the
     app was launched as a scanner it returns an object to keep alive (and the app
     should do nothing else); otherwise it returns nullptr. addFormats, if given,

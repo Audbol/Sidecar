@@ -106,6 +106,7 @@ juce::String PluginHost::checkForCrashDuringPluginLoad()
         return {};
 
     knownPlugins.addToBlacklist (identifier);
+    ScanFailures::record (identifier, "it crashed while it was being loaded last time");
     return lines[1].isNotEmpty() ? lines[1] : identifier;
 }
 

@@ -27,7 +27,7 @@ namespace
         { "DM2000", 70 },
         { "PRO2", 35 },
         { "Q1202USB", 40 },
-        { "PLUGIN HOST", 75 },
+        { "PLUGIN HOST", 85 },
     };
 } // namespace
 
@@ -87,7 +87,7 @@ juce::String text()
          "- DM2000: its processing, most of its effects, its surface and the LCD's most-used pages exist; its Automix (faders and ON only), recorder arming and locator exist; remote layers, surround and Bulk are not built.\n"
          "- PRO2: its processing, most of its effects and a first surface with its screen exist; MCA and SIS, direct outs and the safes are drawn but not built.\n"
          "- Q1202USB: the first analog mixer: its routing, blocks and surface follow the owner's photographs of the panel and the quick-start guide; its sound is " << app << "'s reading, nothing was measured. Console tape and scenes are " << app << "'s own additions.\n"
-         "- PLUGIN HOST: " << app << "'s own insert host for a real console (16, 32 or 64 channels: input, plug-ins, output). The engine and its own surface exist (a touchscreen with the RACK page and docked plug-in windows, the ROUTING page's patch grids and sidechain keys, the SCENES page with whole-rack scenes, safes and GLIDE, the CONTROL page with MIDI learn for plug-in parameters, keys and scene keys, and two hot knobs per channel strip that follow the focused plug-in's assigned parameters, eight channel strips and banks); its other pages (OVERVIEW, BROWSER, SYSTEM) are still to come.\n"
+         "- PLUGIN HOST: " << app << "'s own insert host for a real console (16, 32 or 64 channels: input, plug-ins, output). The engine and its own surface exist, with all seven pages: the RACK page's tiles and docked plug-in windows, the OVERVIEW of every channel's rack, the ROUTING page's patch grids and sidechain keys, the SCENES page with whole-rack scenes, safes and GLIDE, the CONTROL page with MIDI learn and two hot knobs per channel strip, the BROWSER (search, favourites, tags, recent, the scan report) and the SYSTEM page (audio settings, the channel count, latency alignment, the CPU guard, the benchmark); eight channel strips and banks. Still to come: PLUGIN HOST racks on any console's strips in the Universal Mixer.\n"
          "- Universal Mixer: " << app << "'s own interface for a console of any size.\n"
          "\n"
          "## Trademarks\n"

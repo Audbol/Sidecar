@@ -852,8 +852,22 @@ pub(crate) const XENYX1202_ORDERS: &[&str] = &["GDE"];
 pub(crate) const XENYX1202_OUTPUT_ORDERS: &[&str] = &["---"];
 
 /// The plug-in host's channels: the input's trim and polarity, then whatever blocks the user
-/// puts in the chain (the plug-ins), then the level. Its mains, which nothing feeds, run the same.
-pub(crate) const PLUGINHOST_CHANNEL: &[Node] = XENYX1202_PLAIN;
+/// puts in the chain (the plug-ins), then the level, then the channel's delay (the host's latency
+/// alignment sets it in samples: it makes every channel as late as the longest rack). Its mains,
+/// which nothing feeds, run `XENYX1202_PLAIN`.
+pub(crate) const PLUGINHOST_CHANNEL: &[Node] = &[
+    rta(rta_tap::IN),
+    Node::Input,
+    t(tap::IN),
+    Node::Pfl,
+    t(tap::PFL),
+    Node::Fader,
+    t(tap::AFL),
+    rta(rta_tap::POST_FADER),
+    Node::Delay,
+    Node::Post,
+    t(tap::POST),
+];
 
 /// Its channels' process order (unused: it has no blocks of its own). Its outputs have none.
 pub(crate) const PLUGINHOST_ORDERS: &[&str] = &["---"];

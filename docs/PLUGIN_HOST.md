@@ -147,17 +147,84 @@ offering no parameters).
 NOT FOUND), MAPPINGS (source -> target, LEARN, MODE, DELETE, CLEAR ALL asking twice, a line saying what LEARN waits for)
 and HOT KNOBS. Rows are 48 px, keys 52 px in the design space.
 
+## The OVERVIEW, BROWSER and SYSTEM pages
+
+**OVERVIEW** (`ph::OverviewPage`). One column per channel, 110 px wide: the channel's number and name, a BYPASS
+pill (lit while the channel is bypassed) and a tile (60 px) per block of its chain, in signal order: the block's
+name, its latency (a plug-in's; "BUILT-IN" for the others) and BYP, FAULT, MISSING or EMPTY where it applies. Bypassed
+blocks and channels are dim. A column holds 7 tiles; a longer chain shows 6 and a "+N MORE" tile. A tap on a tile
+selects its channel and that plug-in and jumps to RACK (`PluginHostSurface::jumpToRack`); a tap on the head, or on
+"+N MORE" (which takes the first block that is not shown), selects the channel. 16 columns fit the screen; 32 and 64
+scroll sideways (a drag scrolls and is not a tap). The tiles are described by the same code as the RACK page's
+(`RackPage::describeTile`).
+
+**BROWSER** (`ph::BrowserPage`, `ph::Library`). The list has every scanned plug-in (the host's `KnownPluginList`):
+a star, the name, maker and format, its tags and a TAGS key that opens the on-screen keyboard (`popups::editText`;
+tags are comma separated, at most 8 of 20 characters). SEARCH (the keyboard) matches every word against the name,
+maker, format and tags; ALL, FAVOURITES and RECENT choose the list. A tap on a row adds the plug-in to the selected
+channel's rack (`RackPage::addPlugin`, so the RACK page's own "+" does the same: its menu now offers the BROWSER).
+Favourites, tags and recent are app settings (`pluginhost.browser.favourites`, `.tags`, `.recent`), keyed by the
+plug-in's identifier string, never part of the show; RECENT keeps the last 10 added, newest first. SCAN opens the
+existing plug-in scanner; RESCAN forgets the plug-ins that failed (JUCE's blacklist) and then opens it, so they are
+tried again. The scan report lists what failed: the blacklist (saved) gives the files, and the scanner now keeps, for
+this run, why (`ScanFailures`: it crashed, it hung past the timeout, or the scanner process could not be reached; a
+plug-in that crashed while it was being loaded says so). A failure from an earlier run says that no reason was kept.
+
+**SYSTEM** (`ph::SystemPage`). Left: the audio device, rate and buffer, and AUDIO SETTINGS, which opens the same
+`AudioDeviceSelectorComponent` as the Universal Mixer's SETUP over the page (CLOSE returns); CHANNELS (below);
+BENCHMARK, which opens the existing `BenchmarkPanel` over the page (it keeps running while the panel is closed).
+Middle: LATENCY COMPENSATION and the CPU GUARD. Right: a row per channel with its rack latency, delay and total, and an
+OUT / IN key that opts the channel out of ALIGNED. Rows are 48 px and keys 52 px.
+
+**The channel count.** 16, 32 or 64 keys; a tap on another size arms it (the key reads CONFIRM for a few seconds,
+and the page says what the change does), a second tap does it. The engine resizes the host in place
+(`Engine::resize_plugin_host`, `ld_engine_resize_plugin_host`): the profile becomes `PluginHost(size)` and the channel
+count changes without a reset, so the **channels that remain keep their racks, plug-ins (the same instances),
+settings, input patch and the output patch of their ports**. New channels come at the end on the factory settings
+(input N, an empty rack) with output N patched to them. Channels past the new count go with their racks (the surface
+closes their plug-in editors first); an output that played one is left unpatched, a plug-in keyed from one hears no
+key, and the key, hot knob and BYPASS mappings of those channels are deleted (a plug-in's own go with it). Scenes and
+the show's other data keep what they hold; a recall finds that channels no longer exist, as it does on the other
+consoles. So nothing of a remaining channel is lost; what is lost is only what belonged to a channel that goes.
+
 ## Latency
 
 The thing that matters most on inserts. Each channel shows its round trip (converter plus buffer plus
 plug-ins). Two modes: **as is** (each channel only its own delay, the default) and **aligned** (every
 channel delayed to the longest, for phase-related sources such as drum mics), with per-channel opt-out.
 
+How it works (`ph::Latency`, SYSTEM page; the mode and the opt-outs are app settings, `pluginhost.latency.mode` and
+`.optout`):
+
+- A channel's own latency is the sum of the latencies its loaded plug-ins report, leaving out a plug-in that is
+  bypassed or faulted, and nothing at all while the channel's BYPASS is on (the input passes straight through, no
+  plug-in runs). It does not depend on the engine's delay compensation setting (which is for buses and mains).
+- ALIGNED sets each channel's delay to `longest - own`, where the longest is taken over every channel (an opted-out
+  channel counts for the longest, but is not delayed itself). A channel whose delay is 0 has it switched off. AS IS
+  switches every delay off. The delay is capped at the engine's compensation limit (8192 samples); a longer rack is
+  said to stay late by the rest.
+- The delay is the engine's own strip delay stage (`InputParams.delay`, in samples). The host's channels had none, so
+  their template gained `Node::Delay` after the level, and the profile gives it a range in samples from 0 (the strip
+  delay's usual minimum is 16 samples, too coarse for this). No other mechanism was added; the engine's delay
+  compensation (`pdc.rs`) aligns the sources of buses, mains and matrices, which the host does not have.
+- It follows changes: the surface reads the racks about four times a second, and again after a refresh or a show
+  load, so a plug-in that reports a new latency, a bypass, a plug-in added or removed, or a channel opting out all
+  update the delays within a fraction of a second. (A delay changes in one step, so the audio jumps when it does; it
+  is a latency change.) While another interface is shown nothing updates the delays, they stay as they were.
+- Each channel's total latency (rack plus delay) is on the SYSTEM page, and the surface's readout shows the selected
+  channel's.
+
 ## Safety
 
-Every plug-in sandboxed (exists); a crash bypasses only that plug-in and it comes back (exists). A CPU
-guard from the benchmark's figures warns before a rack is added that would overrun the buffer. A
-channel's BYPASS passes the input straight through, always.
+Every plug-in sandboxed (exists); a crash bypasses only that plug-in and it comes back (exists). A channel's BYPASS
+passes the input straight through, always.
+
+The **CPU guard** (`ph::Guard`, SYSTEM page): before a plug-in is added (from the BROWSER or the RACK page) the
+engine's CPU (the audio device's) is compared with a threshold (an app setting, 70 % at first, 10 to 100 in steps of 5
+with the - and + keys); above it a warning is shown on the BROWSER and SYSTEM pages and written to the event log. It is
+only a warning: the plug-in is added anyway. The newest saved run of the benchmark (`bench::loadAll`) is read for the
+page's line about this computer (its date, Mark and rating); when it measured the plug-in, its figure is named in the
+warning. With no benchmark saved the guard suggests running one (the notice, and the line on the page).
 
 ## What exists and what is new
 
@@ -168,7 +235,7 @@ channel's BYPASS passes the input straight through, always.
 | scenes with fade times and safes | per-plug-in safes, whole-rack recall, GLIDE |
 | MIDI ports for console controls (`MidiPorts`) | MIDI learn for plug-in parameters, hot knobs |
 | user layers, Universal Mixer cards | the drawn unit and its seven pages |
-| benchmark | the CPU guard; latency alignment |
+| benchmark | the CPU guard; latency alignment (the host channels' delay stage) |
 
 ## Steps
 
@@ -178,6 +245,6 @@ channel's BYPASS passes the input straight through, always.
 3. ROUTING and sidechains (the engine's key inputs, then the page).
 4. SCENES: whole states, safes, crossfade. (Done.)
 5. CONTROL: MIDI learn, hot knobs. (Done.)
-6. OVERVIEW, BROWSER, SYSTEM; latency alignment; the CPU guard.
+6. OVERVIEW, BROWSER, SYSTEM; latency alignment; the CPU guard. (Done.)
 7. The Universal Mixer: PLUGIN HOST racks offered on any console's strips.
 8. Screenshots, user guide, start-up tile, completion percentage.

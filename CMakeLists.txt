@@ -346,6 +346,9 @@ set(LIVEDAW_UI_SOURCES
     src/ui/PluginHostScenes.cpp
     src/ui/PluginHostControl.cpp
     src/ui/PluginHostControlPage.cpp
+    src/ui/PluginHostOverview.cpp
+    src/ui/PluginHostBrowser.cpp
+    src/ui/PluginHostSystem.cpp
     src/ui/ConsoleTape.cpp
     src/ui/Dm2000Display.cpp
     src/ui/Sq5Surface.cpp

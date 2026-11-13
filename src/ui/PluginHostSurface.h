@@ -1,11 +1,14 @@
 #pragma once
 
 #include "ui/HardwareLook.h"
+#include "ui/PluginHostBrowser.h"
 #include "ui/PluginHostControl.h"
 #include "ui/PluginHostControlPage.h"
+#include "ui/PluginHostOverview.h"
 #include "ui/PluginHostRack.h"
 #include "ui/PluginHostRouting.h"
 #include "ui/PluginHostScenes.h"
+#include "ui/PluginHostSystem.h"
 #include "ui/ScreenMaximiser.h"
 #include "ui/Skin.h"
 #include "ui/UiContext.h"
@@ -163,8 +166,9 @@ namespace ph
 
 /** The PLUGIN HOST's surface (docs/PLUGIN_HOST.md): a large touchscreen across the top, eight channel strips under
     it, and at the right the bank, scene, data wheel and latency / CPU readout. Drawn in a 1920 x 1080 design space
-    scaled to fit, like the dLive's. The screen has seven pages; RACK, ROUTING, SCENES and CONTROL are built (the
-    others say so). It owns the Control (hot knobs, MIDI learn) that the strips, the keys and the pages share. */
+    scaled to fit, like the dLive's. The screen has seven pages, all built. It owns what the strips, the keys and the
+    pages share: the Control (hot knobs, MIDI learn), the browser's Library (favourites, tags, recent), the Latency
+    compensation and the CPU Guard. */
 class PluginHostSurface final : public Skin,
                                 private juce::Timer
 {
@@ -221,7 +225,18 @@ public:
     ph::RoutingPage& getRouting() noexcept { return *routing; }
     ph::ScenesPage& getScenes() noexcept { return *scenes; }
     ph::ControlPage& getControlPage() noexcept { return *controlPage; }
+    ph::OverviewPage& getOverview() noexcept { return *overview; }
+    ph::BrowserPage& getBrowser() noexcept { return *browser; }
+    ph::SystemPage& getSystem() noexcept { return *system; }
+    ph::Library& getLibrary() noexcept { return *library; }
+    ph::Latency& getLatency() noexcept { return *latency; }
+    ph::Guard& getGuard() noexcept { return *guard; }
     ph::Control& getControl() noexcept { return *control; }
+    /** The OVERVIEW's tap: selects the channel (0-based) and block `uid` (-1: only the channel) and shows the RACK page. */
+    void jumpToRack (int channel, int uid);
+    /** SYSTEM's channel count: 16, 32 or 64, without a reset (MixerEngine::resizePluginHost). The editors of the plug-ins that go
+        close first and the key and hot knob mappings of channels that go are deleted. False: it could not be done. */
+    bool resizeHost (int channels);
     /** What LEARN is waiting for was tapped: taken by LEARN (true), or LEARN is off and the key acts as usual. */
     bool offerTarget (const ph::Target& t) { return control->captureTarget (t); }
     ph::DataWheel& getWheel() noexcept { return wheel; }
@@ -231,14 +246,11 @@ public:
     ph::Lcd& getBankLcd() noexcept { return bankLcd; }
     ph::Lcd& getSceneLcd() noexcept { return sceneLcd; }
     ph::Lcd& getReadout() noexcept { return readout; }
-    juce::Component* getComingSoon() noexcept;
     /** The page tab keys, in order (RACK ... SYSTEM). */
     universal::ToggleKey& getTab (Page p) { return *tabs[(size_t) p]; }
     universal::ToggleKey& getUniversalKey() noexcept { return universalKey; }
 
 private:
-    class ComingSoon;
-
     void timerCallback() override;
     void bindStrips();
     void updateReadouts();
@@ -255,13 +267,18 @@ private:
     std::unique_ptr<ph::RoutingPage> routing;
     std::unique_ptr<ph::ScenesPage> scenes;
     std::unique_ptr<ph::ControlPage> controlPage;
-    std::unique_ptr<ComingSoon> comingSoon;
+    std::unique_ptr<ph::Library> library;
+    std::unique_ptr<ph::Latency> latency;
+    std::unique_ptr<ph::Guard> guard;
+    std::unique_ptr<ph::OverviewPage> overview;
+    std::unique_ptr<ph::BrowserPage> browser;
+    std::unique_ptr<ph::SystemPage> system;
     std::array<std::unique_ptr<ph::StripUnit>, kStrips> strips;
     ph::Key bankPrev, bankNext, scenePrev, sceneGoKey, sceneNext;
     ph::Lcd bankLcd, sceneLcd, readout;
     ph::DataWheel wheel;
     Page page = Page::Rack;
-    int bank = 0, cue = -1, shownScenes = -1;
+    int bank = 0, cue = -1, shownScenes = -1, ticks = 0;
     bool selecting = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginHostSurface)

@@ -1284,6 +1284,9 @@ extern "C"
     /** Makes the engine a fresh plug-in host (kProfilePluginHost) of `channels` channels: 16, 32 or 64
         (any other: 16). */
     void ld_engine_configure_plugin_host (const Engine*, int32_t channels);
+    /** Gives a plug-in host `channels` channels (16, 32 or 64) without a reset: the channels that remain keep their
+        racks and settings, new ones come on the factory settings. False: not a plug-in host, or not those sizes. */
+    bool ld_engine_resize_plugin_host (const Engine*, int32_t channels);
     /** ABI 37: the model calls (ld_model_*) describe `profile`'s models (ProfileId; the
         console the app shows; an unknown one: the WING's). */
     void ld_models_show_profile (int32_t profile);

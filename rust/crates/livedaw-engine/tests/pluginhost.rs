@@ -286,3 +286,75 @@ fn a_self_keyed_plugin_hears_its_own_input_this_block() {
     rig.run(1);
     assert!(near(rec.peak(), level(4)), "{}", rec.peak());
 }
+
+// ---- The channel's delay: the latency alignment's mechanism. ----
+
+#[test]
+fn a_channels_delay_is_in_samples_from_zero() {
+    let mut rig = Rig::new(HostSize::Ch16);
+    let ch = rig.channel(1);
+    assert!(ch.chain().contains(&livedaw_engine::chain::Node::Delay), "the host's channels have a delay stage");
+    ch.params.input.delay.store(37.0);
+    ch.params.input.delay_on.store(true, Relaxed);
+    rig.run(40);
+    let at = |t: usize, delay: usize| level(1) * (TAU * 1000.0 * (t - delay) as f32 / 48000.0).sin();
+    let last = rig.t - 1;
+    assert!((rig.outputs[1][BLOCK - 1] - at(last, 37)).abs() < 1e-3, "37 samples late");
+    // A short delay is allowed (the strip delay's own minimum is 16), and 0 is the input as it came.
+    ch.params.input.delay.store(5.0);
+    rig.run(40);
+    let last = rig.t - 1;
+    assert!((rig.outputs[1][BLOCK - 1] - at(last, 5)).abs() < 1e-3, "5 samples late");
+    ch.params.input.delay_on.store(false, Relaxed);
+    rig.run(40);
+    let last = rig.t - 1;
+    assert!((rig.outputs[1][BLOCK - 1] - at(last, 0)).abs() < 1e-3, "no delay");
+    // The neighbour never had one.
+    assert!((rig.outputs[2][BLOCK - 1] - level(2) * (TAU * 1000.0 * last as f32 / 48000.0).sin()).abs() < 1e-3);
+}
+
+// ---- A host of another size, keeping what it can. ----
+
+#[test]
+fn a_host_changes_size_and_keeps_its_remaining_channels() {
+    let mut rig = Rig::new(HostSize::Ch16);
+    let block = rig.engine.insert_block(&rig.channel(2), BlockKind::Plugin, 3).unwrap();
+    let uid = block.uid();
+    rig.channel(2).params.fader_db.store(-6.0);
+    rig.channel(2).params.input_left.store(9, Relaxed);
+    rig.channel(15).params.fader_db.store(-3.0);
+    assert!(rig.engine.route_output_source(0, DirectSource { kind: StripKind::Channel, number: 6, side: 0, post: true }.code()));
+
+    // 16 -> 32: everything stays, the new channels are factory fresh and play their own outputs.
+    assert!(rig.engine.resize_plugin_host(HostSize::Ch32));
+    assert_eq!(rig.engine.profile(), Profile::PluginHost(HostSize::Ch32));
+    assert_eq!(rig.engine.strips(StripKind::Channel).len(), 32);
+    assert!(rig.engine.config().counts == Counts::plugin_host(32));
+    let kept = rig.channel(2);
+    assert!(kept.blocks().iter().any(|b| b.uid() == uid), "the rack of channel 3 is still there");
+    assert_eq!(kept.params.fader_db.load(), -6.0);
+    assert_eq!(kept.params.input_left.load(Relaxed), 9);
+    assert_eq!(rig.channel(15).params.fader_db.load(), -3.0);
+    assert_eq!(rig.channel(20).params.input_left.load(Relaxed), 20);
+    assert!(rig.channel(20).blocks().is_empty());
+    let patch = rig.engine.output_patch();
+    assert_eq!(DirectSource::from_code(patch.get(0)).map(|d| d.number), Some(6), "a changed patch stays");
+    assert_eq!(DirectSource::from_code(patch.get(20)).map(|d| d.number), Some(21), "new outputs play their channels");
+
+    // 32 -> 16 again: channel 3's rack survives, what played a channel that went is left unpatched.
+    assert!(rig.engine.route_output_source(1, DirectSource { kind: StripKind::Channel, number: 25, side: 0, post: true }.code()));
+    assert!(rig.engine.resize_plugin_host(HostSize::Ch16));
+    assert_eq!(rig.engine.strips(StripKind::Channel).len(), 16);
+    assert!(rig.channel(2).blocks().iter().any(|b| b.uid() == uid));
+    let patch = rig.engine.output_patch();
+    assert_eq!(patch.get(1), -1, "output 2 played channel 25, which is gone");
+    assert_eq!(DirectSource::from_code(patch.get(0)).map(|d| d.number), Some(6));
+    assert_eq!(patch.get(20), -1);
+    // The same size again, and a console that is not a host, change nothing.
+    assert!(rig.engine.resize_plugin_host(HostSize::Ch16));
+    let wing = Engine::new(0);
+    wing.configure(&ConsoleConfig::default());
+    assert!(!wing.resize_plugin_host(HostSize::Ch32));
+    assert_eq!(wing.strips(StripKind::Channel).len(), Counts::WING.channels);
+    rig.run(10); // and it still runs
+}
