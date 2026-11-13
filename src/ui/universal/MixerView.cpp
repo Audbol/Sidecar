@@ -909,7 +909,8 @@ MixerView::MixerView (UiContext& c, const Theme& t)
     layerEditKey.setTooltip ("Make and edit the show's layers (the WING's user layers)");
     addAndMakeVisible (layerEditKey);
     pickup.canPick = [this] (const juce::MouseEvent&) { return ! ctx.show.layers.getUserLayers().empty() && filter != kSpill; };
-    pickup.onPick = [this] (const juce::MouseEvent& e)
+    // What a press on a column picks up (a strip or a DCA, in a layer or from ALL), if anything.
+    const auto pickedBy = [this] (const juce::MouseEvent& e) -> std::optional<Drag>
     {
         const auto* src = e.eventComponent;
         const auto at = e.getEventRelativeTo (this).getPosition();
@@ -919,21 +920,49 @@ MixerView::MixerView (UiContext& c, const Theme& t)
             if (c != nullptr && c == src && layerId.isNotEmpty())
             {
                 if (p.strip != nullptr)
-                    beginDrag (state::FaderRef::of (state::StripRef::of (p.strip->getStrip())), p.slot, p.strip->getStrip().getLabel() + " " + p.strip->getStrip().getName(), at);
-                else
-                    beginDrag (state::FaderRef::ofDca (p.dca->getDca()), p.slot, "DCA " + juce::String (p.dca->getDca() + 1), at);
-                return;
+                    return Drag { true, state::FaderRef::of (state::StripRef::of (p.strip->getStrip())), p.slot, p.strip->getStrip().getLabel() + " " + p.strip->getStrip().getName(), at };
+                return Drag { true, state::FaderRef::ofDca (p.dca->getDca()), p.slot, "DCA " + juce::String (p.dca->getDca() + 1), at };
             }
         }
         for (auto& c : columns)
             if (c.get() == src)
-                return beginDrag (state::FaderRef::of (state::StripRef::of (c->getStrip())), -1, c->getStrip().getLabel() + " " + c->getStrip().getName(), at);
+                return Drag { true, state::FaderRef::of (state::StripRef::of (c->getStrip())), -1, c->getStrip().getLabel() + " " + c->getStrip().getName(), at };
         for (auto& d : dcaColumns)
             if (d.get() == src)
-                return beginDrag (state::FaderRef::ofDca (d->getDca()), -1, "DCA " + juce::String (d->getDca() + 1), at);
+                return Drag { true, state::FaderRef::ofDca (d->getDca()), -1, "DCA " + juce::String (d->getDca() + 1), at };
+        return std::nullopt;
+    };
+    pickup.onPick = [this, pickedBy] (const juce::MouseEvent& e)
+    {
+        if (const auto d = pickedBy (e))
+            beginDrag (d->ref, d->slot, d->label, d->at);
     };
     pickup.onMove = [this] (const juce::MouseEvent& e) { moveDrag (e.getEventRelativeTo (this).getPosition()); };
     pickup.onDrop = [this] (const juce::MouseEvent& e) { endDrag (e.getEventRelativeTo (this).getPosition()); };
+    // A right-click, or a long press lifted without a drag: the strip's menu.
+    pickup.onMenu = [this, pickedBy] (const juce::MouseEvent& e)
+    {
+        drag = {};
+        edgeScroll.stop();
+        repaint();
+        if (const auto d = pickedBy (e))
+        {
+            const auto at = e.getScreenPosition();
+            showStripMenu (d->ref, d->slot, { (int) at.x, (int) at.y, 1, 1 });
+        }
+    };
+    edgeScroll.scrollBy = [this] (int dx)
+    {
+        viewport.setViewPosition (viewport.getViewPositionX() + dx, viewport.getViewPositionY());
+        repaint();
+    };
+    layerPress.onPress = [this] (const juce::MouseEvent& e)
+    {
+        // A long press on a layer's key: the layer's menu (RENAME, COLOUR, ...), from the editor.
+        for (size_t i = 0; i < layerKeys.size() && i < layerKeyIds.size(); ++i)
+            if (layerKeys[i].get() == e.eventComponent)
+                layerEditor->showLayerMenu (layerKeyIds[i], layerKeys[i]->getScreenBounds());
+    };
     layerEditor = std::make_unique<LayerEditor> (ctx, theme);
     layerEditor->onChanged = [this] { updateLayers (false); };
     addChildComponent (*layerEditor);
@@ -1109,6 +1138,7 @@ bool MixerView::dragRemoveEntry (int slot)
 void MixerView::beginDrag (const state::FaderRef& ref, int slot, const juce::String& label, juce::Point<int> at)
 {
     drag = { true, ref, slot, label, at };
+    updateEdgeScroll();
     repaint();
 }
 
@@ -1117,7 +1147,17 @@ void MixerView::moveDrag (juce::Point<int> at)
     if (! drag.active)
         return;
     drag.at = at;
+    updateEdgeScroll();
     repaint();
+}
+
+void MixerView::updateEdgeScroll()
+{
+    // Held near the left or right edge of the columns, they scroll.
+    if (drag.active && drag.at.y >= viewport.getY() && drag.at.y < viewport.getBottom())
+        edgeScroll.update (drag.at.x, viewport.getX(), viewport.getRight());
+    else
+        edgeScroll.stop();
 }
 
 MixerView::Drop MixerView::dropFor (juce::Point<int> p) const
@@ -1164,6 +1204,7 @@ bool MixerView::endDrag (juce::Point<int> at)
     const auto d = dropFor (at);
     const auto picked = drag;
     drag = {};
+    edgeScroll.stop();
     repaint();
     switch (d.kind)
     {
@@ -1183,12 +1224,56 @@ void MixerView::showAddMenu (const state::FaderRef& ref)
     const auto layers = ctx.show.layers.getUserLayers();
     for (int i = 0; i < (int) layers.size(); ++i)
         menu.addItem (i + 1, "Add to " + layers[(size_t) i].name, layers[(size_t) i].id != layerId);
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&layerMenuKey).withStandardItemHeight (sizes::kTouch - 8),
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&layerMenuKey).withStandardItemHeight (sizes::kTouch).withMinimumWidth (220),
                         [safe = juce::Component::SafePointer<MixerView> (this), ref, layers] (int item)
                         {
                             if (safe != nullptr && item > 0)
                                 safe->dragAddToLayer (ref, layers[(size_t) (item - 1)].id);
                         });
+}
+
+void MixerView::showStripMenu (const state::FaderRef& ref, int slot, juce::Rectangle<int> screenArea)
+{
+    // What a right-click or a long press on a strip's name opens: the layers it can be added to, and in a layer, taking it out and a gap before it.
+    const auto layers = ctx.show.layers.getUserLayers();
+    constexpr int kRemove = 1000, kSpacer = 1001;
+    juce::PopupMenu menu;
+    menu.setLookAndFeel (&lookAndFeelFor (theme));
+    for (int i = 0; i < (int) layers.size(); ++i)
+    {
+        const auto& have = layers[(size_t) i].faders;
+        menu.addItem (i + 1, "Add to " + layers[(size_t) i].name, std::find (have.begin(), have.end(), ref) == have.end());
+    }
+    if (slot >= 0 && layerId.isNotEmpty())
+    {
+        menu.addSeparator();
+        menu.addItem (kSpacer, "Spacer before");
+        menu.addItem (kRemove, "Remove from this layer");
+    }
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea (screenArea).withStandardItemHeight (sizes::kTouch).withMinimumWidth (220),
+                        [safe = juce::Component::SafePointer<MixerView> (this), ref, slot, layers] (int item)
+                        {
+                            if (safe == nullptr || item <= 0)
+                                return;
+                            if (item == kRemove)
+                                safe->dragRemoveEntry (slot);
+                            else if (item == kSpacer)
+                                safe->dragAddSpacer (slot);
+                            else if (item <= (int) layers.size())
+                                safe->dragAddToLayer (ref, layers[(size_t) (item - 1)].id);
+                        });
+}
+
+bool MixerView::dragAddSpacer (int slot)
+{
+    const auto* l = layerId.isNotEmpty() ? ctx.show.layers.getUserLayer (layerId) : nullptr;
+    if (l == nullptr || ! juce::isPositiveAndBelow (slot, (int) l->faders.size()) || (int) l->faders.size() >= layerslots::maxSlots())
+        return false;
+    ctx.show.layers.insertUserLayerSlots (layerId, slot, { state::FaderRef::blank() });
+    updateLayers (false);
+    if (layerEditor != nullptr)
+        layerEditor->refresh();
+    return true;
 }
 
 void MixerView::paintOverChildren (juce::Graphics& g)
@@ -1198,7 +1283,7 @@ void MixerView::paintOverChildren (juce::Graphics& g)
     const auto d = dropFor (drag.at);
     if (d.kind == Drop::Reorder)
     {
-        // The insertion line between the columns.
+        // The insertion line between the columns, with an arrow at each end so that it shows past a finger.
         const int x = viewport.getX() - viewport.getViewPositionX() + sizes::kGapSmall;
         int at = (int) layerOrder.size();
         for (size_t k = 0; k < layerOrder.size(); ++k)
@@ -1208,7 +1293,17 @@ void MixerView::paintOverChildren (juce::Graphics& g)
                 break;
             }
         g.setColour (theme.accent);
-        g.fillRect (x + at * layout.columnWidth() - 2, viewport.getY(), 4, viewport.getHeight());
+        const int lineX = juce::jlimit (viewport.getX() + 2, viewport.getRight() - 2, x + at * layout.columnWidth());
+        g.fillRect (lineX - 2, viewport.getY(), 4, viewport.getHeight());
+        juce::Path arrows;
+        arrows.addTriangle ((float) lineX - 9.0f, (float) viewport.getY(), (float) lineX + 9.0f, (float) viewport.getY(), (float) lineX, (float) viewport.getY() + 12.0f);
+        arrows.addTriangle ((float) lineX - 9.0f, (float) viewport.getBottom(), (float) lineX + 9.0f, (float) viewport.getBottom(), (float) lineX, (float) viewport.getBottom() - 12.0f);
+        g.fillPath (arrows);
+    }
+    else if (d.kind == Drop::Menu)
+    {
+        g.setColour (theme.accent);
+        g.drawRoundedRectangle (layerMenuKey.getBounds().toFloat().expanded (2.0f), sizes::kRadius, 3.0f);
     }
     else if (d.kind == Drop::Add)
     {
@@ -1221,7 +1316,8 @@ void MixerView::paintOverChildren (juce::Graphics& g)
     const auto label = d.kind == Drop::Remove ? "REMOVE  " + drag.label : drag.label;
     g.setFont (type::font (type::kValue, true));
     const int w = juce::jmax (80, juce::GlyphArrangement::getStringWidthInt (g.getCurrentFont(), label) + 20);
-    const juce::Rectangle<int> ghost (drag.at.x - w / 2, drag.at.y - 16, w, 32);
+    // The label rides above the finger, not under it.
+    const juce::Rectangle<int> ghost (drag.at.x - w / 2, drag.at.y - 32 - sizes::kTouch / 2, w, 32);
     g.setColour ((d.kind == Drop::Remove ? juce::Colour (0xffd04040) : theme.accent).withAlpha (0.85f));
     g.fillRoundedRectangle (ghost.toFloat(), sizes::kRadius);
     g.setColour (juce::Colours::white);
@@ -1863,7 +1959,7 @@ void MixerView::resized()
     place (false); // the banks are a key in the header (bankKey), not a row
     bankBar->setVisible (false);
     if (layerEditor != nullptr && layerEditor->isVisible())
-        layerEditor->setBounds (juce::Rectangle<int> (juce::jmin (620, getWidth() - 2 * sizes::kGap), juce::jmin (440, getHeight() - 2 * sizes::kGap))
+        layerEditor->setBounds (juce::Rectangle<int> (juce::jmin (720, getWidth() - 2 * sizes::kGap), juce::jmin (600, getHeight() - 2 * sizes::kGap))
                                     .withRightX (getWidth() - sizes::kGap)
                                     .withY (sizes::kGap));
     if (hostRack != nullptr && hostRack->isVisible())
@@ -1897,7 +1993,10 @@ void MixerView::layoutHeader (juce::Rectangle<int> area, bool visible)
     const bool banks = isBankBarShown();
     const auto fromRight = [&area] (juce::Component& key, int w)
     {
-        key.setBounds (area.removeFromRight (w));
+        auto r = area.removeFromRight (w);
+        if (r.getHeight() < sizes::kTouch) // a touch target tall, whatever the row
+            r = r.withSizeKeepingCentre (r.getWidth(), sizes::kTouch);
+        key.setBounds (r);
         area.removeFromRight (sizes::kGapSmall);
     };
     fromRight (fadersKey, 96);
@@ -1976,7 +2075,7 @@ void MixerView::showLayerMenu()
     const auto& all = ctx.show.layers.getUserLayers();
     for (int i = 0; i < (int) all.size(); ++i)
         menu.addItem (i + 2, all[(size_t) i].name, true, all[(size_t) i].id == layerId);
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&layerMenuKey).withStandardItemHeight (sizes::kTouch - 8),
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&layerMenuKey).withStandardItemHeight (sizes::kTouch).withMinimumWidth (220),
                         [safe = juce::Component::SafePointer<MixerView> (this)] (int item)
                         {
                             if (safe == nullptr || item <= 0)
@@ -2033,9 +2132,14 @@ void MixerView::updateLayers (bool force)
         for (auto& l : all)
         {
             auto key = std::make_unique<ToggleKey> (l.name.toUpperCase(), l.colour != 0 ? juce::Colour (l.colour) : theme.accent, theme);
-            key->onClick = [this, id = l.id] { setLayer (layerId == id ? juce::String() : id); };
+            key->onClick = [this, id = l.id]
+            {
+                if (! layerPress.wasFired()) // not the press that opened the key's menu
+                    setLayer (layerId == id ? juce::String() : id);
+            };
+            key->addMouseListener (&layerPress, false);
             key->isOn = [this, id = l.id] { return layerId == id; };
-            key->setTooltip ("Show only the strips of this layer");
+            key->setTooltip ("Show only the strips of this layer (hold for its menu)");
             addChildComponent (*key);
             layerKeys.push_back (std::move (key));
             layerKeyIds.push_back (l.id);

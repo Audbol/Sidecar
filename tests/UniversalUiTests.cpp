@@ -29,6 +29,7 @@
 #include "ui/universal/ControlsView.h"
 #include "ui/universal/ValueControls.h"
 #include "ui/universal/Widgets.h"
+#include "ui/WingPopups.h"
 
 #include <optional>
 #include <typeinfo>
@@ -2135,6 +2136,348 @@ public:
             editor->selectLayer (a);
             editor->setSelectedBank ("sq5", "3");
             expect (layerlink::bankOf (layers.getUserLayer (b)->bank, "sq5").isEmpty(), "the bank moved to A");
+        }
+
+        beginTest ("Layers by touch alone: targets, long press, a tap that stays a tap, one-finger drag, edge scroll, the on-screen keyboard, swatches, the overflow key");
+        {
+            MixerEngine engine (0);
+            const Counts counts { 8, 2, 4, 1, 2, 6, 3, 8 };
+            engine.configure (&counts);
+            UiRig rig (engine);
+            auto viewOwner = std::make_unique<MixerView> (rig.ctx, Theme::charcoal());
+            auto& view = *viewOwner;
+            view.setSize (1280, 800);
+            auto& layers = rig.ctx.show.layers;
+            const auto ref = [] (Strip& s) { return state::FaderRef::of (state::StripRef::of (s)); };
+            auto& ch = engine.getChannels();
+            const auto pump = [] (int ms) { test::pumpMessages (ms); };
+            // Mouse events of one finger (the test's pointer is a mouse: there is no way to make a touch source).
+            const auto at = [] (juce::Component& c, juce::Point<int> p, juce::Point<int> down, juce::ModifierKeys mods = {})
+            { return mouseEvent (c, p.toFloat(), down.toFloat(), mods); };
+            const auto fits = [this] (juce::Rectangle<int> r, const juce::String& what)
+            {
+                expect (r.getWidth() >= sizes::kTouch && r.getHeight() >= sizes::kTouch, what + " is a touch target: " + r.toString());
+            };
+
+            std::vector<state::FaderRef> many;
+            for (int i = 0; i < 8; ++i)
+                many.push_back (ref (*ch[(size_t) i]));
+            for (int d = 0; d < 8; ++d)
+                many.push_back (state::FaderRef::ofDca (d));
+            const auto a = layers.addUserLayer ("A", many);
+            const auto b = layers.addUserLayer ("B", { ref (*ch[5]) });
+            view.refresh();
+            view.setLayer (a);
+            view.setLayerEditorShown (true);
+            auto* editor = view.getLayerEditor();
+            editor->selectLayer (a);
+            const auto order = [&layers, &a]
+            {
+                juce::String s;
+                for (auto& f : layers.getUserLayer (a)->faders)
+                    s << (f.empty ? "-" : f.dca ? "d" + juce::String (f.dcaIndex) : juce::String (f.strip.id - 1)) << ' ';
+                return s.trim();
+            };
+
+            // 1. Targets: every key, row and handle of the editor, and the header's keys, at least 44 px, with a gap between them.
+            const auto keyBounds = editor->getKeyBounds();
+            expectEquals ((int) keyBounds.size(), 14);
+            for (size_t i = 0; i < keyBounds.size(); ++i)
+            {
+                fits (keyBounds[i], "editor key " + juce::String ((int) i));
+                for (size_t j = i + 1; j < keyBounds.size(); ++j)
+                    expect (! keyBounds[i].expanded (sizes::kGapSmall - 1).intersects (keyBounds[j]), "editor keys " + juce::String ((int) i) + " and " + juce::String ((int) j) + " have a gap");
+            }
+            for (int row = 0; row < 2; ++row)
+                fits (editor->getLayerRowBounds (row), "layer row");
+            fits (editor->getEntryRowBounds (0), "entry row");
+            fits (editor->getEntryHandleBounds (0), "entry handle");
+            expect (editor->getEntryRowBounds (1).getY() - editor->getEntryRowBounds (0).getBottom() >= 0, "rows don't overlap");
+            expect (editor->getLayerRowBounds (0).getBottom() <= editor->getLayerRowBounds (1).getY() + 1, "layer rows don't overlap");
+            expect (editor->getBounds().getHeight() >= 500 && view.getBounds().contains (editor->getBounds()), "the editor is big enough and inside the view");
+            view.layoutHeader ({ 0, 0, 1280, 52 }, true);
+            const auto parts = view.getHeaderParts();
+            for (auto* p : parts)
+                if (p->isVisible())
+                    fits (p->getBounds(), "header key " + p->getName());
+            for (size_t i = 0; i < parts.size(); ++i)
+                for (size_t j = i + 1; j < parts.size(); ++j)
+                    if (parts[i]->isVisible() && parts[j]->isVisible())
+                        expect (! parts[i]->getBounds().expanded (sizes::kGapSmall - 1).intersects (parts[j]->getBounds()), "header keys have a gap");
+            expect (view.getLayerKey (b) != nullptr && view.getLayerKey (b)->isVisible(), "the layers' keys are in the header");
+
+            // 2. A long press opens the menu (the header's layer key, an entry row, a layer row), a right-click at once; the click that follows a long press does nothing.
+            auto* keyB = view.getLayerKey (b);
+            int seen = 0; // menus the editor has shown, as the test has counted them
+            const auto opened = [editor, &seen]
+            {
+                const bool o = editor->getMenusShown() > seen;
+                seen = editor->getMenusShown();
+                return o;
+            };
+            const auto none = [this, &opened] { expect (! opened(), "no menu opened"); };
+            none();
+            view.getLayerPress().mouseDown (at (*keyB, { 20, 20 }, { 20, 20 }));
+            pump (150);
+            none(); // not yet
+            expect (! view.getLayerPress().wasFired(), "not yet held");
+            pump (520);
+            expect (opened(), "a long press on a layer key opens its menu");
+            expect (view.getLayerPress().wasFired(), "the key's click is held back");
+            expectEquals (editor->getSelectedLayer(), b, "the layer is selected for its menu");
+            view.getLayerPress().mouseUp (at (*keyB, { 20, 20 }, { 20, 20 }));
+            expect (! view.getLayerPress().wasFired(), "and let go again");
+            juce::PopupMenu::dismissAllActiveMenus();
+            pump (80);
+            none();
+            // A press that moves is a scroll or a swipe, not a long press.
+            view.getLayerPress().mouseDown (at (*keyB, { 20, 20 }, { 20, 20 }));
+            view.getLayerPress().mouseDrag (at (*keyB, { 60, 20 }, { 20, 20 }));
+            pump (650);
+            none();
+            view.getLayerPress().mouseUp (at (*keyB, { 60, 20 }, { 20, 20 }));
+            // The right-click is the same menu.
+            view.getLayerPress().mouseDown (at (*keyB, { 20, 20 }, { 20, 20 }, juce::ModifierKeys::rightButtonModifier));
+            expect (opened(), "a right-click on a layer key opens its menu");
+            view.getLayerPress().mouseUp (at (*keyB, { 20, 20 }, { 20, 20 }));
+            juce::PopupMenu::dismissAllActiveMenus();
+            pump (80);
+            none();
+            editor->selectLayer (a);
+
+            // A long press on an entry row, lifted without a drag, opens the entry's menu (a spacer's too); on a layer row, the layer's.
+            const auto rowPoint = [editor] (int row) { return editor->getEntryRowBounds (row).getCentre(); };
+            editor->addSpacerAt (1);
+            expectEquals (editor->entryText (1), juce::String ("(spacer)"));
+            editor->getPickup().mouseDown (at (*editor, rowPoint (1), rowPoint (1)));
+            pump (650);
+            expect (! editor->isDragging(), "a spacer is not picked up");
+            editor->getPickup().mouseUp (at (*editor, rowPoint (1), rowPoint (1)));
+            expect (opened(), "a long press on a spacer opens its menu");
+            juce::PopupMenu::dismissAllActiveMenus();
+            pump (80);
+            editor->getPickup().mouseDown (at (*editor, rowPoint (2), rowPoint (2)));
+            pump (650);
+            expect (editor->isDragging(), "held, an entry is picked up");
+            editor->getPickup().mouseUp (at (*editor, rowPoint (2), rowPoint (2)));
+            expect (! editor->isDragging() && opened(), "lifted where it was: its menu, not a drop");
+            expectEquals (order(), juce::String ("0 - 1 2 3 4 5 6 7 d0 d1 d2 d3 d4 d5 d6 d7"));
+            juce::PopupMenu::dismissAllActiveMenus();
+            pump (80);
+            editor->getPickup().mouseDown (at (*editor, rowPoint (2), rowPoint (2), juce::ModifierKeys::rightButtonModifier));
+            expect (opened(), "a right-click on an entry opens its menu");
+            juce::PopupMenu::dismissAllActiveMenus();
+            pump (80);
+            // A spacer is added and taken out by touch (the menu's actions; the keys do the same).
+            expect (editor->removeEntryAt (1) && order().startsWith ("0 1 2"), "spacer taken out");
+            editor->selectEntry (2);
+            editor->addSpacer();
+            expectEquals (editor->entryText (2), juce::String ("(spacer)"));
+            editor->selectEntry (2);
+            editor->removeEntry();
+            expectEquals (order(), juce::String ("0 1 2 3 4 5 6 7 d0 d1 d2 d3 d4 d5 d6 d7"));
+            const auto layerRow = editor->getLayerRowBounds (0).getCentre();
+            editor->getLayerPress().mouseDown (at (*editor, layerRow, layerRow));
+            pump (650);
+            expect (opened(), "a long press on a layer row opens its menu");
+            editor->getLayerPress().mouseUp (at (*editor, layerRow, layerRow));
+            juce::PopupMenu::dismissAllActiveMenus();
+            pump (80);
+            editor->selectLayer (a);
+
+            // 3. A tap stays a tap; a finger that moves on the handle drags (one finger: down, move, up).
+            const auto handle = [editor] (int row) { return editor->getEntryHandleBounds (row).getCentre(); };
+            editor->getPickup().mouseDown (at (*editor, handle (3), handle (3)));
+            editor->getPickup().mouseDrag (at (*editor, handle (3) + juce::Point<int> (0, 4), handle (3)));
+            expect (! editor->isDragging(), "a few pixels are not a drag");
+            editor->getPickup().mouseUp (at (*editor, handle (3) + juce::Point<int> (0, 4), handle (3)));
+            expect (! editor->isDragging() && ! editor->getPickup().isDragging(), "a tap picks nothing up");
+            expectEquals (order(), juce::String ("0 1 2 3 4 5 6 7 d0 d1 d2 d3 d4 d5 d6 d7"));
+            // The same on a strip's name in the view: a tap or a small move leaves the layer alone.
+            if (auto* col = view.getColumn (0))
+            {
+                const auto p = juce::Point<int> (10, 10);
+                view.getPickup().mouseDown (at (*col, p, p));
+                view.getPickup().mouseDrag (at (*col, p + juce::Point<int> (3, 0), p));
+                view.getPickup().mouseUp (at (*col, p + juce::Point<int> (3, 0), p));
+                expect (! view.isDragging(), "a tap on a strip is not a drag");
+                expectEquals (order(), juce::String ("0 1 2 3 4 5 6 7 d0 d1 d2 d3 d4 d5 d6 d7"));
+            }
+            else
+                expect (false, "the view has columns");
+
+            // One finger reorders: entry 3 dragged up to between entries 0 and 1.
+            const auto gap01 = juce::Point<int> (handle (0).x, editor->getEntryRowBounds (1).getY() + 2);
+            editor->getPickup().mouseDown (at (*editor, handle (3), handle (3)));
+            editor->getPickup().mouseDrag (at (*editor, handle (3) + juce::Point<int> (0, -20), handle (3)));
+            expect (editor->isDragging(), "moved far enough: the drag starts");
+            editor->getPickup().mouseDrag (at (*editor, gap01, handle (3)));
+            editor->getPickup().mouseUp (at (*editor, gap01, handle (3)));
+            expect (! editor->isDragging(), "dropped");
+            expectEquals (order(), juce::String ("0 3 1 2 4 5 6 7 d0 d1 d2 d3 d4 d5 d6 d7"));
+            // And onto another layer's row: it is added there.
+            const auto onB = editor->getLayerRowBounds (1).getCentre();
+            expectEquals (layers.getUserLayer (b)->faders.size(), (size_t) 1);
+            editor->getPickup().mouseDown (at (*editor, handle (4), handle (4)));
+            editor->getPickup().mouseDrag (at (*editor, handle (4) + juce::Point<int> (-30, 0), handle (4)));
+            editor->getPickup().mouseDrag (at (*editor, onB, handle (4)));
+            editor->getPickup().mouseUp (at (*editor, onB, handle (4)));
+            expectEquals (layers.getUserLayer (b)->faders.size(), (size_t) 2);
+            expect (layers.getUserLayer (b)->faders[1] == ref (*ch[4]), "the strip is in B too, at the end");
+            // A strip is added to a layer from the view the same way: picked up, dropped on the layer's key.
+            view.layoutHeader ({ 0, 0, 1280, 52 }, true); // the keys were made again with the layers' change
+            keyB = view.getLayerKey (b);
+            if (keyB != nullptr)
+            {
+                view.beginDrag (ref (*ch[2]), -1, "CH 3", {});
+                view.moveDrag (keyB->getBounds().getCentre());
+                expect (view.endDrag (keyB->getBounds().getCentre()), "dropped on the layer's key");
+                expectEquals (layers.getUserLayer (b)->faders.size(), (size_t) 3);
+            }
+            // Dragged out of the list: taken out of the layer.
+            editor->selectLayer (a);
+            const auto before = (int) layers.getUserLayer (a)->faders.size();
+            editor->getPickup().mouseDown (at (*editor, handle (1), handle (1)));
+            editor->getPickup().mouseDrag (at (*editor, handle (1) + juce::Point<int> (0, 15), handle (1)));
+            const juce::Point<int> out (editor->getWidth() + 40, 100);
+            editor->getPickup().mouseDrag (at (*editor, out, handle (1)));
+            editor->getPickup().mouseUp (at (*editor, out, handle (1)));
+            expectEquals ((int) layers.getUserLayer (a)->faders.size(), before - 1);
+
+            // 3b. Held near the list's edge, a drag scrolls it.
+            expectEquals (editor->getEntriesScroll(), 0);
+            const auto bottom = editor->getEntryRowBounds (0).getX() + 100;
+            editor->beginDrag (0, { bottom, editor->getBounds().getHeight() / 2 });
+            const int listBottom = editor->getHeight() - sizes::kGap - 2 * (sizes::kTouch + sizes::kGap) - 4; // inside the list's bottom edge
+            editor->moveDrag ({ bottom, listBottom });
+            editor->scrollTick();
+            editor->scrollTick();
+            expect (editor->getEntriesScroll() > 0, "the list scrolled while the finger was held at its bottom edge");
+            editor->endDrag ({ bottom, listBottom });
+            editor->scrollTick();
+            const int stopped = editor->getEntriesScroll();
+            editor->scrollTick();
+            expectEquals (editor->getEntriesScroll(), stopped, "but no more once it is dropped");
+
+            // 4. Naming a layer goes through the on-screen keyboard.
+            editor->selectLayer (b);
+            editor->beginRename();
+            std::function<ui::popups::WingKeyboard* (juce::Component&)> findKeyboard = [&findKeyboard] (juce::Component& c) -> ui::popups::WingKeyboard*
+            {
+                if (auto* k = dynamic_cast<ui::popups::WingKeyboard*> (&c))
+                    return k;
+                for (auto* child : c.getChildren())
+                    if (auto* k = findKeyboard (*child))
+                        return k;
+                return nullptr;
+            };
+            auto* keyboard = findKeyboard (view);
+            expect (keyboard != nullptr, "RENAME opens the on-screen keyboard");
+            if (keyboard != nullptr)
+            {
+                expectEquals (keyboard->getText(), juce::String ("B"));
+                keyboard->setText ("Stage left");
+                keyboard->onAction (keyboard->getText());
+                pump (100);
+                expectEquals (layers.getUserLayer (b)->name, juce::String ("Stage left"));
+                expectEquals (view.getLayerKey (b)->getButtonText(), juce::String ("STAGE LEFT"));
+                expect (findKeyboard (view) == nullptr, "the keyboard closed");
+            }
+
+            // 5. A tapped key says what it does, where it can be read (a tooltip needs a hover).
+            juce::Button* spacerKey = nullptr;
+            for (auto* child : editor->getChildren())
+                if (auto* button = dynamic_cast<juce::Button*> (child); button != nullptr && button->getButtonText() == "SPACER")
+                    spacerKey = button;
+            expect (spacerKey != nullptr, "the SPACER key");
+            if (spacerKey != nullptr)
+            {
+                expect (editor->getHint().isEmpty(), "nothing said before a key is touched");
+                static_cast<juce::Component*> (spacerKey)->mouseDown (at (*spacerKey, { 10, 10 }, { 10, 10 }));
+                expect (editor->getHint().isNotEmpty() && editor->getHint() == spacerKey->getTooltip(), "a touched key shows its tooltip in the title bar");
+                static_cast<juce::Component*> (spacerKey)->mouseUp (at (*spacerKey, { 10, 10 }, { 10, 10 }));
+            }
+
+            // 6. The colour: a grid of swatches big enough for a finger.
+            editor->selectLayer (b);
+            editor->showColourMenu ({ 100, 100, 100, 44 });
+            pump (50);
+            std::function<ColourGrid* (juce::Component&)> findGrid = [&findGrid] (juce::Component& c) -> ColourGrid*
+            {
+                if (auto* g = dynamic_cast<ColourGrid*> (&c))
+                    return g;
+                for (auto* child : c.getChildren())
+                    if (auto* g = findGrid (*child))
+                        return g;
+                return nullptr;
+            };
+            auto* grid = findGrid (view);
+            expect (grid != nullptr, "COLOUR shows a grid of swatches");
+            if (grid != nullptr)
+            {
+                expectEquals (grid->getNumColours(), 9);
+                for (int i = 0; i < grid->getNumColours(); ++i)
+                {
+                    fits (grid->getSwatchBounds (i), "swatch " + juce::String (i));
+                    for (int j = i + 1; j < grid->getNumColours(); ++j)
+                        expect (! grid->getSwatchBounds (i).expanded (sizes::kGapSmall - 1).intersects (grid->getSwatchBounds (j)), "swatches have a gap");
+                }
+                const auto p = grid->getSwatchBounds (6).getCentre();
+                grid->mouseUp (at (*grid, p, p));
+                expect (layers.getUserLayer (b)->colour == ColourGrid::colourAt (6), "a tap on a swatch sets the colour");
+                pump (80);
+                expect (findGrid (view) == nullptr, "the grid closed");
+            }
+
+            // 7. Many layers fold into one key: it is a touch target too, and its menu is as tall as a finger needs.
+            for (int i = 0; i < 4; ++i)
+                editor->newLayer();
+            expect (view.areLayersInMenu(), "more than three layers fold into one menu key");
+            view.layoutHeader ({ 0, 0, 1280, 52 }, true);
+            bool menuKeyFound = false;
+            for (auto* p : view.getHeaderParts())
+                if (p->isVisible() && p->getName().startsWith ("LAYER") && p->getName() != "LAYERS")
+                {
+                    menuKeyFound = true;
+                    fits (p->getBounds(), "the overflow key");
+                }
+            expect (menuKeyFound, "the overflow key is shown");
+            // Narrow, with one key per layer: they fold, and nothing is smaller than a finger.
+            while ((int) layers.getUserLayers().size() > 2)
+            {
+                const auto last = layers.getUserLayers().back().id;
+                layers.removeUserLayer (last);
+            }
+            view.refresh();
+            view.layoutHeader ({ 0, 0, 420, 52 }, true);
+            for (auto* p : view.getHeaderParts())
+                if (p->isVisible())
+                    expect (p->getHeight() >= sizes::kTouch, "narrow header key " + p->getName() + " is tall enough");
+
+            // The picture: the editor open over the layer, a finger holding an entry over the list.
+            while (! layers.getUserLayers().empty())
+            {
+                const auto last = layers.getUserLayers().back().id;
+                layers.removeUserLayer (last);
+            }
+            std::vector<state::FaderRef> show;
+            for (int i = 0; i < 6; ++i)
+                show.push_back (ref (*ch[(size_t) i]));
+            show.insert (show.begin() + 3, state::FaderRef::blank());
+            const auto stage = layers.addUserLayer ("Stage", show);
+            layers.setUserLayerColour (stage, 0xff5a8fe0);
+            const auto fx = layers.addUserLayer ("Drums", { ref (*ch[0]), ref (*ch[1]) });
+            layers.setUserLayerColour (fx, 0xffe0953c);
+            layers.addUserLayer ("Playback", { state::FaderRef::ofDca (0) });
+            view.refresh();
+            view.setLayer (stage);
+            editor->selectLayer (stage);
+            editor->selectEntry (2);
+            view.layoutHeader ({ 0, 0, 540, 52 }, true); // the header's keys beside the editor
+            editor->beginDrag (4, editor->getEntryRowBounds (4).getCentre());
+            editor->moveDrag ({ editor->getEntryRowBounds (1).getX() + 160, editor->getEntryRowBounds (1).getY() + 2 });
+            expect (keepPicture (view.createComponentSnapshot (view.getLocalBounds(), true, 1.0f), "universal-layers-touch.png"));
+            editor->endDrag ({ -50, -50 });
         }
 
         beginTest ("DCAs and mute groups in the MIXER view: a column per DCA and the mute groups' keys, after the strips or alone (DCAS)");

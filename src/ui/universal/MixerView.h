@@ -236,6 +236,8 @@ public:
     bool dragAddToLayer (const state::FaderRef&, const juce::String& layerId);
     /** Takes the shown layer's entry `slot` out of it (the entries after it close up). */
     bool dragRemoveEntry (int slot);
+    /** A gap before the shown layer's entry `slot`. */
+    bool dragAddSpacer (int slot);
     /** The pointer's drag as the gestures make it: pick up (a layer's entry `slot`, or -1 from ALL), move, drop;
         points are in the view's coordinates. endDrag returns whether anything was edited. */
     void beginDrag (const state::FaderRef&, int slot, const juce::String& label, juce::Point<int> at);
@@ -244,6 +246,9 @@ public:
     bool isDragging() const noexcept { return drag.active; }
     /** Where the layer's entry `slot` is shown (view coordinates; empty when it isn't, or no layer is). */
     juce::Rectangle<int> getLayerEntryBounds (int slot) const;
+    /** The gestures' listeners (a press on a strip's name, on a layer's key), for the tests to feed events to. */
+    DragPickup& getPickup() noexcept { return pickup; }
+    LongPress& getLayerPress() noexcept { return layerPress; }
     /** The key of the user layer `id` (nullptr: none shown, or folded into the menu). */
     ToggleKey* getLayerKey (const juce::String& id) const;
     /** Only DCA `dca`'s members and its fader (a filter key goes back). */
@@ -386,7 +391,12 @@ private:
     };
     Drop dropFor (juce::Point<int>) const;
     void showAddMenu (const state::FaderRef&);
+    /** The menu of a strip's or DCA's name (right-click, or a long press lifted without a drag). */
+    void showStripMenu (const state::FaderRef&, int slot, juce::Rectangle<int> screenArea);
+    void updateEdgeScroll();
     DragPickup pickup;
+    LongPress layerPress;
+    EdgeScroll edgeScroll;
     void makePickable (juce::Component&);
     bool layersInMenu = false;
     ToggleKey layerMenuKey, layerEditKey;
