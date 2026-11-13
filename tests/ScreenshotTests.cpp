@@ -1584,8 +1584,100 @@ public:
             save (lcd.createComponentSnapshot (lcd.getLocalBounds(), true, 1.0f), fileName);
         };
 
+        // The panel without its meter bridge (the bridge is on by default, the owner's console has one).
+        expect (skin.isMeterBridgeShown() && skin.getMeterBridge().isVisible(), "the meter bridge is on by default");
+        skin.setMeterBridgeShown (false);
+        expect (! skin.isMeterBridgeShown() && ! skin.getMeterBridge().isVisible());
+        expect (! rig.settings.getBoolValue ("dm2000.meterBridge", true), "the choice is kept");
+        expectEquals (skin.getDesignHeight(), 1080);
         skin.timerCallbackForTest();
         shot ("dm2000.png");
+
+        // The meter bridge: shown and hidden, its bars following the engine's meters.
+        {
+            auto& bridge = skin.getMeterBridge();
+            skin.setMeterBridgeShown (true);
+            expect (bridge.isVisible() && rig.settings.getBoolValue ("dm2000.meterBridge", false));
+            expectEquals (skin.getDesignHeight(), 1080 + ui::dm2k::MeterBridge::kHeight);
+            skin.setSize (1920, skin.getDesignHeight());
+            const auto where = [&skin] (juce::Component& c) { return c.getBounds().transformedBy (c.getTransform()); };
+            for (const auto size : { juce::Point<int> (1920, 1230), { 1366, 768 }, { 1280, 720 } })
+            {
+                skin.setSize (size.x, size.y);
+                const auto bar = where (bridge), panel = where (*skin.findKey ("DISPLAY MATRIX"));
+                expect (skin.getLocalBounds().contains (bar), "the bridge fits at " + size.toString());
+                expect (bar.getBottom() <= panel.getY(), "the bridge doesn't reach the panel at " + size.toString());
+                expect (bar.getY() > 0, "the top bar stays above the bridge at " + size.toString());
+                expect (skin.getLocalBounds().contains (where (*skin.findKey ("ENTER"))), "the panel fits at " + size.toString());
+            }
+            skin.setSize (1920, skin.getDesignHeight());
+
+            // Its bars read MeterBank's levels at the chosen point of the signal path (first let the meters fall silent).
+            rig.meters.advance (3.0f);
+            for (size_t i = 0; i < 24; ++i)
+            {
+                channels[i]->meters.outputPeak[0] = 0.04f + 0.04f * (float) i;
+                channels[i]->meters.outputPeak[1] = 0.03f * (float) i;
+                if (i < 20)
+                    engine.getBuses()[i]->meters.outputPeak[0] = 0.9f - 0.035f * (float) i;
+            }
+            channels[24]->meters.outputPeak[0] = 0.05f;
+            engine.getMains()[0]->meters.outputPeak[0] = 0.6f;
+            engine.getMains()[0]->meters.outputPeak[1] = 0.3f;
+            rig.meters.advance (0.01f);
+            bridge.setPosition (false, ui::dm2k::MeterBridge::Position::PostFader);
+            skin.timerCallbackForTest();
+            expectWithinAbsoluteError (bridge.getLevelDb (0, false), juce::Decibels::gainToDecibels (0.04f), 0.5f);
+            expectWithinAbsoluteError (bridge.getLevelDb (23, false), juce::Decibels::gainToDecibels (0.96f), 0.5f);
+            expect (bridge.getLit (23, false) > bridge.getLit (0, false), "a louder channel lights more lamps");
+            expect (bridge.stripAt (20, true) == engine.getMatrices()[0].get() && bridge.stripAt (3, true) == engine.getBuses()[3].get(), "BUS, AUX and MATRIX");
+            expectWithinAbsoluteError (bridge.getLevelDb (0, true), juce::Decibels::gainToDecibels (0.9f), 0.5f);
+            expectWithinAbsoluteError (bridge.getStereoDb (0), juce::Decibels::gainToDecibels (0.6f), 0.5f);
+            expectWithinAbsoluteError (bridge.getStereoDb (1), juce::Decibels::gainToDecibels (0.3f), 0.5f);
+            // A louder signal moves its bar up on the next tick.
+            const int quiet = bridge.getLit (5, false);
+            channels[5]->meters.outputPeak[0] = 1.0f;
+            rig.meters.advance (0.01f);
+            skin.timerCallbackForTest();
+            expect (bridge.getLit (5, false) > quiet && bridge.getLit (5, false) == ui::dm2k::MeterBridge::kSegments);
+            // PRE EQ reads the post-trim point, which the test's peaks leave silent.
+            bridge.setPosition (false, ui::dm2k::MeterBridge::Position::PreEq);
+            expect (bridge.getLevelDb (5, false) < -90.0f, "PRE EQ reads another point");
+            bridge.findKey ("BRIDGE INPUT POSITION")->onClick();
+            expect (bridge.getPosition (false) == ui::dm2k::MeterBridge::Position::PreFader);
+            bridge.setPosition (false, ui::dm2k::MeterBridge::Position::PostFader);
+            // The layer keys choose which channels the columns read.
+            expect (bridge.stripAt (0, false) == channels[0].get());
+            bridge.findKey ("BRIDGE LAYER 2")->onClick();
+            expectEquals (bridge.getLayer(), 1);
+            expect (bridge.stripAt (0, false) == channels[24].get());
+            rig.meters.advance (0.01f);
+            skin.timerCallbackForTest();
+            expectWithinAbsoluteError (bridge.getLevelDb (0, false), juce::Decibels::gainToDecibels (0.05f), 2.0f);
+            bridge.setLayer (0);
+            bridge.findKey ("BRIDGE PEAK HOLD")->onClick();
+            expect (bridge.isPeakHold());
+            expectEquals (bridge.getTimeCode().getText(), juce::String ("00.00.00.00"));
+            for (int i = 0; i < 4; ++i)
+                bridge.setPosition (false, ui::dm2k::MeterBridge::Position::PostFader);
+            rig.meters.advance (0.01f);
+            skin.timerCallbackForTest();
+            skin.refreshAll();
+            shot ("dm2000-meterbridge.png");
+
+            // Hidden again: the panel's own size, the bars quiet.
+            bridge.setPeakHold (false);
+            skin.setMeterBridgeShown (false);
+            expect (! bridge.isVisible());
+            skin.setSize (1920, 1080);
+            for (auto* list : { &engine.getChannels(), &engine.getBuses(), &engine.getMains(), &engine.getMatrices() })
+                for (const auto& st : *list)
+                {
+                    st->meters.outputPeak[0] = 0.4f;
+                    st->meters.outputPeak[1] = 0.32f;
+                }
+            rig.meters.advance (0.01f);
+        }
 
         // The layers (p.58): CH 25-48 on the strips; the Master Layer's BUS, AUX, MATRIX.
         expect (skin.stripAt (0) == channels[0].get());

@@ -649,6 +649,65 @@ namespace dm2k
         float dragStart = 0.0f;
     };
 
+    /** The optional meter bridge above the panel: two bars of lamps for each of the 24 columns (an input
+        channel of the chosen layer, and an output: BUS 1-8, AUX 1-12, MATRIX 1-4), the Stereo Bus's pair,
+        a time code, and the keys that choose the layer and the point on the signal path the meters read.
+        The levels are MeterBank's, the ones the LCD's meters read. */
+    class MeterBridge final : public juce::Component
+    {
+    public:
+        static constexpr int kColumns = 24, kSegments = 12, kWidth = 1920, kHeight = 150;
+        /** Where on the signal path a group of meters reads. */
+        enum class Position
+        {
+            PreEq,
+            PreFader,
+            PostFader
+        };
+
+        explicit MeterBridge (UiContext&);
+
+        void setLayer (int layer);
+        int getLayer() const noexcept { return layer; }
+        void setPosition (bool output, Position);
+        Position getPosition (bool output) const noexcept { return output ? outputPosition : inputPosition; }
+        void setPeakHold (bool on);
+        bool isPeakHold() const noexcept { return peakHold; }
+
+        /** The strip a column's input or output bar reads (nullptr: none). */
+        Strip* stripAt (int column, bool output) const;
+        /** A bar's level in dB as the bridge last read it (-100: silent). */
+        float getLevelDb (int column, bool output) const;
+        /** The Stereo Bus's left (0) or right (1) bar. */
+        float getStereoDb (int channel) const;
+        /** The lamps lit on a column's bar, 0 to kSegments. */
+        int getLit (int column, bool output) const;
+        Key* findKey (const juce::String& name) const;
+        Readout& getTimeCode() noexcept { return timeCode; }
+
+        /** Reads the meters again and repaints if a lamp changed. */
+        void refresh();
+        void paint (juce::Graphics&) override;
+
+    private:
+        static int litOf (float db) noexcept;
+        static float columnX (int column) noexcept;
+        MeterPoint pointOf (Position) const noexcept;
+        juce::Rectangle<float> barArea (int column, bool output) const noexcept;
+
+        UiContext& ctx;
+        int layer = 0;
+        Position inputPosition = Position::PreEq, outputPosition = Position::PostFader;
+        bool peakHold = false;
+        std::array<float, (size_t) kColumns * 2> levels {}, holds {};
+        std::array<float, 2> stereo {};
+        std::array<int, (size_t) kColumns * 2 + 2> shownLit {}, shownHold {};
+        std::vector<std::pair<juce::String, std::unique_ptr<Key>>> keys;
+        Readout timeCode { 8 };
+        Knob dimmer { juce::Colour (0xff2f3136), juce::Colour (0xff565a60) };
+        juce::String shownTime;
+    };
+
     /** ENCODER MODE ASSIGN's parameters Sidecar has (p.63). */
     const juce::StringArray& assignNames();
     /** Encoder binding of assign item `item` on `strip` (invalid: the encoder is inactive on it). */
@@ -741,6 +800,13 @@ public:
     dm2k::Key* findKey (const juce::String& name) const;
     dm2k::Knob* findKnob (const juce::String& name) const;
     dm2k::Readout* findReadout (const juce::String& name) const;
+    /** The meter bridge (the MB2000 option) above the panel. The owner's console has one, so it is on
+        unless turned off; the setting is kept in the app settings. The panel scales to fit it. */
+    bool isMeterBridgeShown() const;
+    void setMeterBridgeShown (bool);
+    dm2k::MeterBridge& getMeterBridge() noexcept { return bridge; }
+    /** The panel's design height with the bridge as it is now. */
+    int getDesignHeight() const noexcept;
     /** One tick of the timer that moves the faders, keys and displays (the screenshots). */
     void timerCallbackForTest() { timerCallback(); }
 
@@ -771,7 +837,8 @@ private:
 
     UiContext& ctx;
     const universal::Theme& theme;
-    universal::ToggleKey universalKey;
+    universal::ToggleKey universalKey, bridgeKey;
+    dm2k::MeterBridge bridge;
     dm2k::Display display;
     dm2k::Wheel wheel;
     std::vector<std::unique_ptr<dm2k::Fader>> faders;
@@ -792,7 +859,7 @@ private:
     std::array<juce::uint32, 4> eqGainMoved {};
     std::array<juce::uint32, kStrips> movedAt {};
     std::array<float, kStrips> lastFaderDb {};
-    juce::AffineTransform design;
+    juce::AffineTransform design, panelDesign;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Dm2000Surface)
 private:

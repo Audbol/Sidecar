@@ -24,12 +24,12 @@ using namespace dm2k;
 namespace
 {
     // The panel's colours, from the photographs.
-    const juce::Colour kPanel (0xff232a3a), kPanelLow (0xff1d2331), kBlack (0xff17181c), kBlueTop (0xff2c5cb0), kBlueLow (0xff24509a), kGrey (0xff8c94a1), kGreyDark (0xff757d8a), kLine (0xff5c677a);
+    const juce::Colour kPanel (0xff384255), kPanelLow (0xff303a4c), kBlack (0xff1d1f24), kBlueTop (0xff3f66ae), kBlueLow (0xff375b9d), kGrey (0xff9aa5b4), kGreyDark (0xff818c9b), kLine (0xff6b778c);
     const juce::Colour kSilk (0xffdde2ea), kSilkDim (0xff9aa3b2), kSilkDark (0xff14161b), kWood (0xff5d3320), kWoodLight (0xff7d4a30);
     const juce::Colour kVfdGlass (0xff2a1014), kVfdGlassEdge (0xff120708), kWriteStrip (0xffe8e4d6);
-    const juce::Colour kKeySel (0xffbfd1d4), kKeySolo (0xff8a8f94), kKeyOn (0xffcfc6a8), kKeyDark (0xff3b3d43), kKeyGrey (0xff9b9f9f), kDiamond (0xffc4b896), kKeyCream (0xffc9c0a6);
+    const juce::Colour kKeySel (0xffbcc4ac), kKeySolo (0xff5d6066), kKeyOn (0xffcfc6a8), kKeyDark (0xff3b3d43), kKeyGrey (0xff9b9f9f), kDiamond (0xffc4b896), kKeyCream (0xffc9c0a6);
     const juce::Colour kLedYellow (0xffffe23a), kLedGreen (0xff6dff4a), kLedOrange (0xffffa52c), kLedRed (0xffff4030), kLedClear (0x00000000);
-    const juce::Colour kSkirtTaupe (0xff8d866f), kTopTaupe (0xffaba490), kSkirtDark (0xff2f3136), kTopDark (0xff565a60), kSkirtTeal (0xff37433f), kTopTeal (0xff6fa79a), kRingTeal (0xff5cc0ad), kSkirtEnc (0xff3f4d4d), kTopEnc (0xff8aa4a6);
+    const juce::Colour kSkirtTaupe (0xff7f8264), kTopTaupe (0xffa9a98c), kSkirtDark (0xff2f3136), kTopDark (0xff565a60), kSkirtTeal (0xff30352f), kTopTeal (0xff8aa672), kRingTeal (0xff9bb67c), kSkirtEnc (0xff3f4d4d), kTopEnc (0xff8aa4a6);
 
     constexpr int kTopBar = 40;
     constexpr int kHaTop = 40, kCenterTop = 146, kCenterBottom = 520, kVfdY = 704, kVfdH = 62, kWriteY = 774, kFaderY = 792, kFaderH = 284;
@@ -379,15 +379,12 @@ namespace dm2k
             legend (false, true, kSilk.withAlpha (0.9f), 8.5f, true);
         }
 
-        // The slot, then the cap: chromed, with its finger ledge white.
+        // The slot, then the cap.
         g.setColour (juce::Colour (0xff08090b));
         g.fillRoundedRectangle (juce::Rectangle<float> (cx - 2.5f, t.getY() - 6.0f, 5.0f, t.getHeight() + 14.0f), 2.0f);
         const float y = t.getBottom() - t.getHeight() * (float) position;
-        hw::ribbedFaderCap (g, cx, y, 10.5f, 17.0f, 7.0f, juce::Colour (0xffb4b7bb)); // narrow: the legends either side stay clear
-        g.setColour (juce::Colour (0xfff1f1ec));
-        g.fillRoundedRectangle (juce::Rectangle<float> (cx - 10.5f, y + 7.0f, 21.0f, 9.0f), 1.5f);
-        g.setColour (juce::Colours::black.withAlpha (0.25f));
-        g.fillRect (cx - 10.5f, y - 0.5f, 21.0f, 1.0f);
+        // A plain ribbed cap in grey metal, as wide as the legends beside the slot allow.
+        hw::ribbedFaderCap (g, cx, y, 11.0f, 17.0f, 9.0f, juce::Colour (0xffaeb0ad));
     }
 
     void Fader::mouseDown (const juce::MouseEvent&) { dragStart = position; }
@@ -542,6 +539,276 @@ namespace dm2k
             }
         }
     }
+
+    //==========================================================================
+    namespace
+    {
+        // Where each lamp of a bar lights, in dB, from the bottom up: the scale printed beside the bars
+        // (OVER, 0, -3 ... -48).
+        constexpr std::array<float, MeterBridge::kSegments> kLampDb { -48.0f, -36.0f, -30.0f, -24.0f, -18.0f, -15.0f, -12.0f, -9.0f, -6.0f, -3.0f, -1.0f, -0.1f };
+        constexpr float kBarTop = 78.0f, kLamp = 4.5f;
+        const juce::Colour kLampGreen (0xff4fd36a), kLampAmber (0xffffb02e), kLampRed (0xffff3b30), kLampOff (0xff2c3238);
+        float lampDbOf (float linear) noexcept { return juce::Decibels::gainToDecibels (linear, -100.0f); }
+    } // namespace
+
+    MeterBridge::MeterBridge (UiContext& c) : ctx (c)
+    {
+        const auto add = [this] (const juce::String& name, juce::Rectangle<int> r, std::function<void()> click, std::function<bool()> on)
+        {
+            auto k = std::make_unique<Key> (name, kKeyDark, kLedGreen, Key::Shape::Square);
+            k->setBounds (r);
+            k->onClick = std::move (click);
+            k->isOn = std::move (on);
+            addAndMakeVisible (*k);
+            keys.emplace_back (name, std::move (k));
+        };
+        const auto next = [this] (bool output)
+        {
+            setPosition (output, (Position) (((int) getPosition (output) + 1) % 3));
+        };
+        add ("BRIDGE INPUT POSITION", { 640, 9, 20, 13 }, [next] { next (false); }, [] { return false; });
+        add ("BRIDGE OUTPUT POSITION", { 936, 9, 20, 13 }, [next] { next (true); }, [] { return false; });
+        add ("BRIDGE PEAK HOLD", { 1300, 9, 22, 13 }, [this] { setPeakHold (! peakHold); }, [this] { return peakHold; });
+        for (int i = 0; i < 4; ++i)
+            add ("BRIDGE LAYER " + juce::String (i + 1), { 1488 + (i % 2) * 46, 36 + (i / 2) * 38, 32, 16 }, [this, i] { setLayer (i); }, [this, i] { return layer == i; });
+
+        timeCode.setBounds (1620, 34, 250, 44);
+        timeCode.text = [this]
+        {
+            if (ctx.recording == nullptr)
+                return juce::String ("00.00.00.00");
+            const auto rate = ctx.recording->getRecorder().getSampleRate();
+            const auto frames = rate > 0.0 ? (juce::int64) ((double) ctx.recording->getPosition() / rate * 30.0) : (juce::int64) 0;
+            const auto two = [] (juce::int64 v) { return juce::String (v % 100).paddedLeft ('0', 2); };
+            return two (frames / (30 * 3600)) + "." + two (frames / (30 * 60) % 60) + "." + two (frames / 30 % 60) + "." + two (frames % 30);
+        };
+        addAndMakeVisible (timeCode);
+        dimmer.setBounds (1832, 116, 26, 26);
+        addAndMakeVisible (dimmer);
+        setOpaque (true);
+    }
+
+    float MeterBridge::columnX (int column) noexcept { return 108.0f + 53.6f * (float) column; }
+
+    MeterPoint MeterBridge::pointOf (Position p) const noexcept
+    {
+        return p == Position::PreEq ? MeterPoint::Trim : p == Position::PreFader ? MeterPoint::PreFader : MeterPoint::Output;
+    }
+
+    int MeterBridge::litOf (float db) noexcept
+    {
+        int n = 0;
+        for (const auto t : kLampDb)
+            n += db >= t ? 1 : 0;
+        return n;
+    }
+
+    juce::Rectangle<float> MeterBridge::barArea (int column, bool output) const noexcept
+    {
+        const float cx = columnX (column);
+        return { cx + (output ? 4.0f : -14.0f), kBarTop, 10.0f, kLamp * (float) kSegments };
+    }
+
+    void MeterBridge::setLayer (int l)
+    {
+        layer = juce::jlimit (0, 3, l);
+        refresh();
+        repaint();
+    }
+
+    void MeterBridge::setPosition (bool output, Position p)
+    {
+        (output ? outputPosition : inputPosition) = p;
+        refresh();
+        repaint();
+    }
+
+    void MeterBridge::setPeakHold (bool on)
+    {
+        peakHold = on;
+        refresh();
+        repaint();
+    }
+
+    Strip* MeterBridge::stripAt (int column, bool output) const
+    {
+        if (! juce::isPositiveAndBelow (column, kColumns))
+            return nullptr;
+        if (! output)
+        {
+            const auto& c = ctx.engine.getChannels();
+            const auto n = (size_t) (layer * kColumns + column);
+            return n < c.size() ? c[n].get() : nullptr;
+        }
+        const auto& b = ctx.engine.getBuses();
+        if ((size_t) column < b.size())
+            return b[(size_t) column].get();
+        const auto& m = ctx.engine.getMatrices();
+        const auto n = (size_t) column - b.size();
+        return n < m.size() ? m[n].get() : nullptr;
+    }
+
+    float MeterBridge::getLevelDb (int column, bool output) const
+    {
+        return juce::isPositiveAndBelow (column, kColumns) ? levels[(size_t) (column * 2 + (output ? 1 : 0))] : -100.0f;
+    }
+
+    float MeterBridge::getStereoDb (int channel) const { return stereo[(size_t) juce::jlimit (0, 1, channel)]; }
+
+    int MeterBridge::getLit (int column, bool output) const { return litOf (getLevelDb (column, output)); }
+
+    Key* MeterBridge::findKey (const juce::String& name) const
+    {
+        for (const auto& [n, k] : keys)
+            if (n == name)
+                return k.get();
+        return nullptr;
+    }
+
+    void MeterBridge::refresh()
+    {
+        bool changed = false;
+        const auto read = [this] (const Strip* s, MeterPoint point, bool hold)
+        {
+            float best = -100.0f;
+            if (s != nullptr)
+                for (int ch = 0; ch < 2; ++ch)
+                    best = juce::jmax (best, lampDbOf (hold ? ctx.meters.getHold (s, point, ch) : ctx.meters.get (s, point, ch)));
+            return best;
+        };
+        for (int column = 0; column < kColumns; ++column)
+            for (int output = 0; output < 2; ++output)
+            {
+                const auto* s = stripAt (column, output != 0);
+                const auto point = pointOf (getPosition (output != 0));
+                const auto i = (size_t) (column * 2 + output);
+                levels[i] = read (s, point, false);
+                holds[i] = peakHold ? read (s, point, true) : -100.0f;
+                const int lit = litOf (levels[i]), hold = peakHold ? litOf (holds[i]) : 0;
+                changed = changed || lit != shownLit[i] || hold != shownHold[i];
+                shownLit[i] = lit;
+                shownHold[i] = hold;
+            }
+        const auto& mains = ctx.engine.getMains();
+        for (int ch = 0; ch < 2; ++ch)
+        {
+            stereo[(size_t) ch] = mains.empty() ? -100.0f : lampDbOf (ctx.meters.get (mains[0].get(), MeterPoint::Output, ch));
+            const auto i = (size_t) kColumns * 2 + (size_t) ch;
+            const int lit = litOf (stereo[(size_t) ch]);
+            changed = changed || lit != shownLit[i];
+            shownLit[i] = lit;
+        }
+        timeCode.refresh();
+        for (auto& [n, k] : keys)
+            k->refresh();
+        if (changed)
+            repaint();
+    }
+
+    void MeterBridge::paint (juce::Graphics& g)
+    {
+        const auto area = getLocalBounds().toFloat();
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff2b303a), 0.0f, 0.0f, juce::Colour (0xff1a1d23), 0.0f, area.getBottom(), false));
+        g.fillRect (area);
+        g.setColour (juce::Colour (0xff3a4150));
+        g.fillRect (0.0f, 0.0f, area.getWidth(), 2.0f);
+        g.setColour (juce::Colour (0xff0e0f12));
+        g.fillRect (0.0f, area.getBottom() - 6.0f, area.getWidth(), 6.0f);
+
+        const auto text = [&g] (juce::Rectangle<float> r, const juce::String& s, float size, juce::Colour c, juce::Justification j = juce::Justification::centred, bool bold = false)
+        {
+            g.setColour (c);
+            g.setFont (type::font (size, bold));
+            g.drawText (s, r, j, false);
+        };
+        const auto dot = [&g] (float x, float y, bool on, juce::Colour c)
+        {
+            g.setColour (on ? c : juce::Colour (0xff1c3a22));
+            g.fillEllipse (x, y, 5.0f, 5.0f);
+        };
+
+        // The metering positions: a key and the three points it steps through.
+        static const char* const names[] = { "PRE EQ", "PRE FADER", "POST FADER" };
+        static const float widths[] = { 44.0f, 56.0f, 62.0f };
+        text ({ 440.0f, 9.0f, 194.0f, 13.0f }, "INPUT METERING POSITION", 6.5f, kSilk, juce::Justification::centredRight);
+        text ({ 736.0f, 9.0f, 196.0f, 13.0f }, "OUTPUT METERING POSITION", 6.5f, kSilk, juce::Justification::centredRight);
+        for (int output = 0; output < 2; ++output)
+        {
+            float x = output != 0 ? 972.0f : 676.0f;
+            for (int p = 0; p < 3; ++p)
+            {
+                dot (x - 8.0f, 12.0f, (int) getPosition (output != 0) == p, kLedGreen);
+                text ({ x, 9.0f, widths[p], 13.0f }, names[p], 6.5f, kSilkDim, juce::Justification::centredLeft);
+                x += widths[p] + 12.0f;
+            }
+        }
+        text ({ 1328.0f, 9.0f, 50.0f, 13.0f }, "PEAK HOLD", 6.5f, kSilk, juce::Justification::centredLeft);
+
+        // The numbers of the four layers' channels over each column; the chosen layer's row is bright.
+        for (int row = 0; row < 4; ++row)
+        {
+            const float y = 28.0f + (float) row * 9.0f;
+            dot (68.0f, y + 2.0f, row == layer, kLedGreen);
+            for (int column = 0; column < kColumns; ++column)
+                text ({ columnX (column) - 14.0f, y, 28.0f, 9.0f }, juce::String (row * kColumns + column + 1), 7.0f, row == layer ? kSilk : kSilkDim.withAlpha (0.75f));
+        }
+        for (int column = 0; column < kColumns; ++column)
+        {
+            const auto label = column < 8 ? "BUS " + juce::String (column + 1) : column < 20 ? "AUX " + juce::String (column - 7) : "MATRIX " + juce::String (column - 19);
+            text ({ columnX (column) - 26.0f, 65.0f, 52.0f, 10.0f }, label, 6.5f, kSilk, juce::Justification::centred, true);
+        }
+        g.setColour (kLine.withAlpha (0.4f));
+        for (int i = 0; i <= kColumns; ++i)
+            g.fillRect (columnX (i) - 26.8f, 28.0f, i % 8 == 0 ? 2.0f : 1.0f, 110.0f);
+
+        // The bars: lamps from the bottom up, green, amber, then red at the top.
+        const auto bar = [&] (juce::Rectangle<float> r, int lit, int hold)
+        {
+            g.setColour (juce::Colour (0xff0b0c0f));
+            g.fillRect (r.expanded (1.5f));
+            for (int k = 0; k < kSegments; ++k)
+            {
+                const auto lamp = juce::Rectangle<float> (r.getX(), r.getBottom() - (float) (k + 1) * kLamp + 0.5f, r.getWidth(), kLamp - 1.0f);
+                const auto on = juce::Colour (k >= kSegments - 1 ? kLampRed : k >= kSegments - 3 ? kLampAmber : kLampGreen);
+                g.setColour (k < lit ? on : (hold > 0 && k == hold - 1 ? on.brighter (0.4f) : kLampOff));
+                g.fillRect (lamp);
+            }
+        };
+        for (int column = 0; column < kColumns; ++column)
+            for (int output = 0; output < 2; ++output)
+            {
+                const auto i = (size_t) (column * 2 + output);
+                bar (barArea (column, output != 0), shownLit[i], shownHold[i]);
+            }
+
+        // The scale at the end of the columns, and the Stereo Bus's pair.
+        static const char* const scale[] = { "-48", "", "-30", "", "-18", "", "-12", "", "-6", "", "0", "" };
+        text ({ 1370.0f, kBarTop - 10.0f, 32.0f, 8.0f }, "OVER", 6.0f, kSilk, juce::Justification::centredLeft);
+        for (int k = 0; k < kSegments; ++k)
+            text ({ 1370.0f, kBarTop + kLamp * (float) (kSegments - 1 - k) - 2.0f, 32.0f, kLamp + 4.0f }, scale[k], 6.2f, kSilk, juce::Justification::centredLeft);
+        for (int ch = 0; ch < 2; ++ch)
+            bar ({ 1414.0f + (float) ch * 16.0f, kBarTop, 10.0f, kLamp * (float) kSegments }, shownLit[(size_t) kColumns * 2 + (size_t) ch], 0);
+        text ({ 1404.0f, 134.0f, 50.0f, 9.0f }, "L  STEREO  R", 6.0f, kSilk);
+
+        // The layer keys' legends.
+        text ({ 1480.0f, 12.0f, 90.0f, 10.0f }, "LAYER", 7.5f, kSilk, juce::Justification::centred, true);
+        static const char* const layers[] = { "1-24", "25-48", "49-72", "73-96" };
+        for (int i = 0; i < 4; ++i)
+            text ({ 1478.0f + (float) (i % 2) * 46.0f, 53.0f + (float) (i / 2) * 38.0f, 52.0f, 9.0f }, layers[i], 6.5f, kSilk);
+
+        // The time code's window.
+        const juce::Rectangle<float> window (1600.0f, 8.0f, 290.0f, 106.0f);
+        g.setColour (juce::Colour (0xff0b0c0f));
+        g.fillRoundedRectangle (window, 3.0f);
+        g.setColour (kLine.withAlpha (0.6f));
+        g.drawRoundedRectangle (window, 3.0f, 1.0f);
+        text ({ 1610.0f, 12.0f, 100.0f, 10.0f }, "TIME CODE", 6.5f, kSilk, juce::Justification::centredLeft);
+        static const char* const units[] = { "HOURS", "MINUTES", "SECONDS", "FRAMES" };
+        for (int i = 0; i < 4; ++i)
+            text ({ 1620.0f + 31.25f + 62.5f * (float) i - 31.0f, 80.0f, 62.0f, 9.0f }, units[i], 5.8f, kSilkDim);
+        text ({ 1610.0f, 98.0f, 150.0f, 12.0f }, "METER BRIDGE", 8.0f, kSilk, juce::Justification::centredLeft, true);
+        text ({ 1740.0f, 124.0f, 86.0f, 9.0f }, "LAMP DIMMER", 6.0f, kSilk, juce::Justification::centredRight);
+    }
 } // namespace dm2k
 
 //==============================================================================
@@ -607,7 +874,7 @@ void Dm2000Surface::drawnKeys (juce::Rectangle<int> first, int cols, int rows, i
 }
 
 Dm2000Surface::Dm2000Surface (UiContext& c)
-    : ctx (c), theme (Theme::dark()), universalKey ("UNIVERSAL MIXER", theme.accent, theme), display (c)
+    : ctx (c), theme (Theme::dark()), universalKey ("UNIVERSAL MIXER", theme.accent, theme), bridgeKey ("METER BRIDGE", theme.accent, theme), bridge (c), display (c)
 {
     using Shape = Key::Shape;
     // A panel key that does something: dark, with an orange lamp.
@@ -629,6 +896,12 @@ Dm2000Surface::Dm2000Surface (UiContext& c)
     };
     universalKey.setTooltip ("The Universal Mixer");
     addAndMakeVisible (universalKey);
+    bridgeKey.isOn = [this] { return isMeterBridgeShown(); };
+    bridgeKey.onClick = [this] { setMeterBridgeShown (! isMeterBridgeShown()); };
+    bridgeKey.setTooltip ("Show or hide the meter bridge above the panel");
+    addAndMakeVisible (bridgeKey);
+    addChildComponent (bridge);
+    bridge.setVisible (isMeterBridgeShown());
 
     addAndMakeVisible (display);
     display.changed = [this]
@@ -650,7 +923,7 @@ Dm2000Surface::Dm2000Surface (UiContext& c)
         silk ((float) cx + 1.0f, 46.0f, 25.0f, 15.0f, "+48V", 7.5f, kSilkDim, juce::Justification::centredLeft);
         auto& pad = key ("PAD " + juce::String (i + 1), kKeyDark, kLedClear, Shape::Square, centred (cx - 16, 70, 14, 13));
         juce::ignoreUnused (pad);
-        auto& gain = knob ("GAIN " + juce::String (i + 1), kSkirtTaupe, kTopTaupe, centred (cx + 3, 66, 34, 34));
+        auto& gain = knob ("GAIN " + juce::String (i + 1), kSkirtDark, kTopDark, centred (cx + 3, 66, 34, 34));
         if (src != nullptr)
         {
             auto b = bindLinear ("GAIN", src->gainDb, 0.0f, 60.0f, " dB", 0, 16.0f);
@@ -661,16 +934,18 @@ Dm2000Surface::Dm2000Surface (UiContext& c)
         silk ((float) cx - 24.0f, 124.0f, 48.0f, 8.0f, "INSERT", 7.0f, kSilkDim);
     }
     {
-        auto& talk = knob ("TALKBACK LEVEL", kSkirtTaupe, kTopTaupe, { 1500, 46, 30, 30 });
+        auto& talk = knob ("TALKBACK LEVEL", kSkirtDark, kTopDark, { 1500, 46, 30, 30 });
         juce::ignoreUnused (talk);
         silk (1480.0f, 78.0f, 70.0f, 9.0f, "TALKBACK LEVEL", 7.5f, kSilkDim);
-        auto& studio = knob ("STUDIO LEVEL", kSkirtTaupe, kTopTaupe, { 1620, 60, 34, 34 });
+        auto& studio = knob ("STUDIO LEVEL", kSkirtDark, kTopDark, { 1620, 60, 34, 34 });
         juce::ignoreUnused (studio);
         silk (1596.0f, 96.0f, 82.0f, 9.0f, "STUDIO LEVEL", 7.5f, kSilkDim);
-        knob ("PHONES LEVEL", kSkirtTaupe, kTopTaupe, { 1710, 60, 34, 34 }).setBinding (bindFader ("PHONES", ctx.engine.phones.levelDb));
+        knob ("PHONES LEVEL", kSkirtDark, kTopDark, { 1710, 60, 34, 34 }).setBinding (bindFader ("PHONES", ctx.engine.phones.levelDb));
         silk (1686.0f, 96.0f, 82.0f, 9.0f, "PHONES LEVEL", 7.5f, kSilkDim);
-        knob ("SMALL TRIM", kSkirtTaupe, kTopTaupe, { 1540, 94, 30, 30 });
+        knob ("SMALL TRIM", kSkirtDark, kTopDark, { 1540, 94, 30, 30 });
         silk (1520.0f, 124.0f, 70.0f, 9.0f, "SMALL TRIM", 7.5f, kSilkDim);
+        silk (1640.0f, 118.0f, 150.0f, 8.0f, "DIGITAL PRODUCTION CONSOLE", 6.0f, kSilkDim, juce::Justification::centredRight);
+        silk (1796.0f, 108.0f, 80.0f, 20.0f, "DM2000", 15.0f, kSilk, juce::Justification::centredLeft, true);
     }
 
     // The strips: encoder, AUTO, SEL, SOLO, ON, its number, its display, its fader.
@@ -1315,7 +1590,7 @@ Dm2000Surface::Dm2000Surface (UiContext& c)
         for (int i = 0; i < 4; ++i)
             silk ((float) x + 2.0f + (float) (i % 2) * 42.0f, 202.0f + (float) (i / 2) * 22.0f, 42.0f, 7.0f, top[i], 5.8f, kSilkDark);
         silk ((float) x, 232.0f, (float) w, 10.0f, "SOLO", 7.5f, kSilkDark, juce::Justification::centred, true);
-        knob ("SOLO CONTRAST", kSkirtTaupe, kTopTaupe, centred (x + w / 2, 243, 28, 28));
+        knob ("SOLO CONTRAST", kSkirtDark, kTopDark, centred (x + w / 2, 243, 28, 28));
         silk ((float) x, 271.0f, (float) w, 8.0f, "SOLO CONTRAST", 6.0f, kSilkDark);
         auto& clear = key ("SOLO CLEAR", kKeyDark, kLedYellow, Shape::Square, centred (x + w / 2, 281, 24, 15));
         clear.onClick = [this]
@@ -1356,7 +1631,7 @@ Dm2000Surface::Dm2000Surface (UiContext& c)
         silk ((float) x + 44.0f, 542.0f, 42.0f, 7.0f, "DIMMER", 5.8f, kSilkDark);
         drawnKeys ({ x + 10, 554, 24, 15 }, 1, 1, 0, 0);
         silk ((float) x + 2.0f, 570.0f, 42.0f, 7.0f, "SMALL", 5.8f, kSilkDark);
-        knob ("CONTROL ROOM LEVEL", kSkirtTaupe, juce::Colour (0xffc7c0a8), centred (x + w / 2, 584, 40, 40)).setBinding (bindFader ("CR", ctx.engine.monitorLevelDb));
+        knob ("CONTROL ROOM LEVEL", kSkirtDark, kTopDark, centred (x + w / 2, 584, 40, 40)).setBinding (bindFader ("CR", ctx.engine.monitorLevelDb));
         silk ((float) x, 626.0f, (float) w, 14.0f, "CONTROL ROOM\nLEVEL", 5.8f, kSilkDark);
         silk ((float) x, 646.0f, (float) w, 10.0f, "TALKBACK", 7.5f, kSilkDark, juce::Justification::centred, true);
         drawnKeys ({ x + 30, 660, 28, 15 }, 1, 1, 0, 0);
@@ -1734,11 +2009,30 @@ void Dm2000Surface::timerCallback()
     refreshNames();
     display.refresh();
     universalKey.refresh();
+    bridgeKey.refresh();
+    if (bridge.isVisible())
+        bridge.refresh();
+}
+
+bool Dm2000Surface::isMeterBridgeShown() const { return ctx.settings.getBoolValue ("dm2000.meterBridge", true); }
+
+int Dm2000Surface::getDesignHeight() const noexcept { return kDesignHeight + (bridge.isVisible() ? dm2k::MeterBridge::kHeight : 0); }
+
+void Dm2000Surface::setMeterBridgeShown (bool on)
+{
+    ctx.settings.setValue ("dm2000.meterBridge", on);
+    bridge.setVisible (on);
+    if (on)
+        bridge.refresh();
+    resized();
+    repaint();
 }
 
 void Dm2000Surface::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colour (0xff0d0e12));
+    // The top bar, then (below it) the meter bridge, then the panel.
+    g.saveState();
     g.addTransform (design);
 
     const auto top = juce::Rectangle<float> (0.0f, 0.0f, (float) kDesignWidth, (float) kTopBar);
@@ -1749,7 +2043,9 @@ void Dm2000Surface::paint (juce::Graphics& g)
     g.drawText ("DM2000", top.reduced ((float) sizes::kGapLarge, 0.0f), juce::Justification::centredLeft);
     g.setColour (theme.textDim);
     g.setFont (type::font (type::kCaption));
-    g.drawText ("Not affiliated with or endorsed by any console maker; product names are their owners' trademarks.", top.reduced ((float) sizes::kGapLarge, 0.0f).withTrimmedLeft (120.0f).withTrimmedRight (260.0f), juce::Justification::centredLeft);
+    g.drawText ("Not affiliated with or endorsed by any console maker; product names are their owners' trademarks.", top.reduced ((float) sizes::kGapLarge, 0.0f).withTrimmedLeft (120.0f).withTrimmedRight (440.0f), juce::Justification::centredLeft);
+    g.restoreState();
+    g.addTransform (panelDesign);
 
     // The panel: blue-black, with wooden cheeks.
     const juce::Rectangle<float> body (0.0f, (float) kTopBar, (float) kDesignWidth, (float) (kDesignHeight - kTopBar));
@@ -1790,6 +2086,12 @@ void Dm2000Surface::paint (juce::Graphics& g)
         g.fillRoundedRectangle (slot, 3.0f);
         g.setColour (kLine);
         g.drawRoundedRectangle (slot, 3.0f, 1.0f);
+        // The card's door: a grey flap, split by a dark line, in the recess.
+        const auto door = slot.reduced (24.0f, 7.0f);
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff4a4e55), 0.0f, door.getY(), juce::Colour (0xff23252a), 0.0f, door.getBottom(), false));
+        g.fillRoundedRectangle (door, 4.0f);
+        g.setColour (juce::Colour (0xff08090b));
+        g.fillRect (door.getX() + 2.0f, door.getCentreY() - 1.0f, door.getWidth() - 4.0f, 2.0f);
         g.setColour (kSilkDim);
         g.setFont (type::font (8.0f));
         g.drawText ("3.3V CARD", slot.withTrimmedTop (44.0f).withHeight (10.0f), juce::Justification::centred, false);
@@ -1810,6 +2112,11 @@ void Dm2000Surface::paint (juce::Graphics& g)
     g.fillRect (sel.getX(), 300.0f, sel.getWidth(), 3.0f);
     g.fillRect (sel.getX(), 351.0f, sel.getWidth(), 3.0f);
     g.fillRect (sel.getX(), 396.0f, sel.getWidth(), 3.0f);
+    // Each section's name sits on a black bar.
+    g.setColour (kBlack);
+    for (const auto& bar : { juce::Rectangle<float> (40.0f, 159.0f, 98.0f, 14.0f), { 198.0f, 159.0f, 124.0f, 14.0f }, { 366.0f, 159.0f, 68.0f, 14.0f }, { 196.0f, 201.0f, 130.0f, 14.0f },
+                             { 40.0f, 302.0f, 100.0f, 14.0f }, { 44.0f, 351.0f, 120.0f, 14.0f }, { 44.0f, 397.0f, 120.0f, 13.0f } })
+        g.fillRect (bar.translated ((float) kSelX, 0.0f));
     // The bars the AUX bank's and GATE/COMP's legends sit on.
     {
         g.setColour (juce::Colour (0xffb6bcc4).withAlpha (0.65f));
@@ -1877,7 +2184,13 @@ void Dm2000Surface::paint (juce::Graphics& g)
     // The LCD's rim: black housing, its bright cyan margin.
     {
         const juce::Rectangle<float> rim ((float) kLcdX - 8.0f, (float) kLcdY - 8.0f, (float) kLcdW + 16.0f, (float) kLcdH + 16.0f);
-        g.setColour (juce::Colour (0xff25262a));
+        // The hood is navy with a bevelled lip, the screen sunk in black.
+        const auto hood = rim.expanded (12.0f, 6.0f);
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff3b4660), hood.getX(), hood.getY(), juce::Colour (0xff222a3c), hood.getX(), hood.getBottom(), false));
+        g.fillRoundedRectangle (hood, 5.0f);
+        g.setColour (juce::Colour (0xff4e5b7a).withAlpha (0.8f));
+        g.fillRect (hood.getX() + 4.0f, hood.getY() + 1.0f, hood.getWidth() - 8.0f, 1.5f);
+        g.setColour (juce::Colour (0xff0d0e11));
         g.fillRoundedRectangle (rim.expanded (6.0f), 4.0f);
         g.setColour (juce::Colour (0xff35c8d8));
         g.fillRect (rim);
@@ -1930,11 +2243,10 @@ void Dm2000Surface::paint (juce::Graphics& g)
         g.fillRect (w);
         g.setColour (juce::Colours::black);
         g.drawRect (w, 1.0f);
+        // A write-on strip for each fader, a gap between.
         g.setColour (kWriteStrip);
-        g.fillRect (x0 + 2.0f, (float) kWriteY, x1 - x0 - 4.0f, 16.0f);
-        g.setColour (kSilkDim.withAlpha (0.8f));
-        for (int i = 1; i < 8; ++i)
-            g.fillRect (x0 + (float) i * 49.0f - 0.5f, (float) kWriteY, 1.0f, 16.0f);
+        for (int i = 0; i < 8; ++i)
+            g.fillRect (x0 + (float) i * 49.0f + 1.0f, (float) kWriteY, 46.0f, 16.0f);
     }
 
     for (const auto& s : silks)
@@ -1952,14 +2264,21 @@ void Dm2000Surface::paint (juce::Graphics& g)
 
 void Dm2000Surface::resized()
 {
-    const float s = juce::jmin ((float) getWidth() / (float) kDesignWidth, (float) getHeight() / (float) kDesignHeight);
-    design = s > 0.0f ? juce::AffineTransform::scale (s).translated (((float) getWidth() - (float) kDesignWidth * s) * 0.5f, ((float) getHeight() - (float) kDesignHeight * s) * 0.5f)
-                      : juce::AffineTransform();
+    // The panel is 1920 x 1080; the meter bridge, when shown, sits above it, so the design is taller
+    // and the panel's own transform starts below the bridge.
+    const int bridgeHeight = bridge.isVisible() ? dm2k::MeterBridge::kHeight : 0;
+    const float total = (float) (kDesignHeight + bridgeHeight);
+    const float s = juce::jmin ((float) getWidth() / (float) kDesignWidth, (float) getHeight() / total);
+    const float ox = ((float) getWidth() - (float) kDesignWidth * s) * 0.5f, oy = ((float) getHeight() - total * s) * 0.5f;
+    design = s > 0.0f ? juce::AffineTransform::scale (s).translated (ox, oy) : juce::AffineTransform();
+    panelDesign = design.translated (0.0f, (float) bridgeHeight * s);
     for (auto* c : getChildren())
-        c->setTransform (design);
+        c->setTransform (c == &universalKey || c == &bridgeKey || c == &bridge ? design : panelDesign);
+    bridge.setBounds (0, kTopBar, dm2k::MeterBridge::kWidth, dm2k::MeterBridge::kHeight);
     universalKey.setBounds (juce::Rectangle<int> (kDesignWidth - 190, 0, 190, kTopBar).reduced (sizes::kGap, 5));
+    bridgeKey.setBounds (juce::Rectangle<int> (kDesignWidth - 190 - 170, 0, 170, kTopBar).reduced (sizes::kGap, 5));
     display.setBounds (0, 0, Display::kWidth, Display::kHeight);
-    display.setTransform (juce::AffineTransform::scale ((float) kLcdW / (float) Display::kWidth).translated ((float) kLcdX, (float) kLcdY).followedBy (design));
+    display.setTransform (juce::AffineTransform::scale ((float) kLcdW / (float) Display::kWidth).translated ((float) kLcdX, (float) kLcdY).followedBy (panelDesign));
     maximiser.layout();
 }
 

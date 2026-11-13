@@ -24,7 +24,7 @@ namespace
         { "SQ-5", 70 },
         { "dLive", 63 },
         { "Universal Mixer", 65 },
-        { "DM2000", 70 },
+        { "DM2000", 73 },
         { "PRO2", 35 },
         { "Q1202USB", 40 },
         { "PLUGIN HOST", 95 },
@@ -84,7 +84,7 @@ juce::String text()
          "- SQ-5: the add-on effects and DEEP models are the dLive's under the guide's names; several Setup and Utility pages are still dim.\n"
          "- dLive: a C3500 surface by default and a C1500 one, from photographs of real consoles. Many effect ranges and "
          "the automatic mic mixer are " << app << "'s reading of the published material; the Dyn8 and RackUltra screens are Sidecar's own layout, not the console's.\n"
-         "- DM2000: its processing, most of its effects, its surface and the LCD's most-used pages exist; its Automix (faders and ON only), recorder arming and locator exist; remote layers, surround and Bulk are not built.\n"
+         "- DM2000: its processing, most of its effects, its surface (checked against photographs of a real console, with its optional meter bridge) and the LCD's most-used pages exist; its Automix (faders and ON only), recorder arming and locator exist; remote layers, surround and Bulk are not built.\n"
          "- PRO2: its processing, most of its effects and a first surface with its screen exist; MCA and SIS, direct outs and the safes are drawn but not built.\n"
          "- Q1202USB: the first analog mixer: its routing, blocks and surface follow the owner's photographs of the panel and the quick-start guide; its sound is " << app << "'s reading, nothing was measured. Console tape and scenes are " << app << "'s own additions.\n"
          "- PLUGIN HOST: " << app << "'s own insert host for a real console (16, 32 or 64 channels: input, plug-ins, output). The engine and its own surface exist, with all seven pages: the RACK page's tiles and docked plug-in windows, the OVERVIEW of every channel's rack, the ROUTING page's patch grids and sidechain keys, the SCENES page with whole-rack scenes, safes and GLIDE, the CONTROL page with MIDI learn and two hot knobs per channel strip, the BROWSER (search, favourites, tags, recent, the scan report) and the SYSTEM page (audio settings, the channel count, latency alignment, the CPU guard, the benchmark); eight channel strips and banks. The Universal Mixer offers a PLUGIN HOST RACK on any console's strip (a plug-in block with tiles, docked editors, sidechain keys and hot knobs, and a card in the CHANNEL panel; MIDI learn stays on the PLUGIN HOST's own surface).\n"
