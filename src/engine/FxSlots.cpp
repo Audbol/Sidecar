@@ -404,6 +404,25 @@ void FxSlots::setChainMemberView (int slot, int index, PluginChain::View view)
     getChain (slot)->setView (index, view);
 }
 
+PluginChain::Control FxSlots::getChainMemberControl (int slot, int index) const noexcept
+{
+    auto* chain = getChain (slot);
+    return chain != nullptr && juce::isPositiveAndBelow (index, chain->size()) ? chain->getControl (index) : PluginChain::Control {};
+}
+
+void FxSlots::setChainMemberControl (int slot, int index, PluginChain::Control control)
+{
+    if (! juce::isPositiveAndBelow (index, getNumChainMembers (slot)))
+        return;
+    if (getChain (slot) == nullptr)
+    {
+        if (control.isEmpty())
+            return;
+        install (slot, std::make_shared<PluginChain> (members (slot)), true);
+    }
+    getChain (slot)->setControl (index, std::move (control));
+}
+
 bool FxSlots::chainMemberHasSidechain (int slot, int index) const noexcept
 {
     if (! isBlockSlot (slot))

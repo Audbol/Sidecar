@@ -1435,6 +1435,30 @@ pub unsafe extern "C" fn ld_show_set_custom_controls(s: *mut LdShow, utf8: *cons
     }
 }
 
+/// The PLUGIN HOST's MIDI mappings as a `<PluginHostControl>` element (empty: none).
+#[no_mangle]
+pub unsafe extern "C" fn ld_show_host_control(s: *mut LdShow) -> *mut LdString {
+    LdString::new(show(s).map(|s| s.show.host_control.clone()).unwrap_or_default())
+}
+
+/// Replaces the PLUGIN HOST's MIDI mappings (false: not a `<PluginHostControl>` element; empty text clears them).
+#[no_mangle]
+pub unsafe extern "C" fn ld_show_set_host_control(s: *mut LdShow, utf8: *const u8, len: usize) -> bool {
+    let Some(s) = show(s) else { return false };
+    let text = str_arg(utf8, len);
+    if text.trim().is_empty() {
+        s.show.host_control.clear();
+        return true;
+    }
+    match livedaw_session::xml::parse(&text) {
+        Ok(xml) if xml.has_tag("PluginHostControl") => {
+            s.show.host_control = xml.to_compact();
+            true
+        }
+        _ => false,
+    }
+}
+
 /// The show's own layer set (valid as long as the show).
 #[no_mangle]
 pub unsafe extern "C" fn ld_show_layers(s: *mut LdShow) -> *mut LayerSet {

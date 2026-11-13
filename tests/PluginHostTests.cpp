@@ -137,6 +137,57 @@ bool waitFor (Show& show, Done&& done, int ms)
     }
     return done();
 }
+/** A PLUGIN HOST of 16 channels with its surface, for the CONTROL page's tests. */
+struct Bench
+{
+    Bench() : engine (0)
+    {
+        engine.configurePluginHost (16);
+        setShownProfile (ld::kProfilePluginHost);
+        rig = std::make_unique<HostRig> (engine);
+        skin = std::make_unique<ui::PluginHostSurface> (rig->ctx);
+        skin->setSize (1920, 1080);
+    }
+    ~Bench()
+    {
+        skin.reset();
+        rig.reset();
+        engine.getGarbage().collectAllNow();
+        setShownProfile (ld::kProfileUniversal);
+    }
+
+    /** A plug-in with parameters (LEVEL, MODE) in a block of channel `ch`. */
+    test::ParameterPlugin* add (int ch)
+    {
+        auto* plugin = new test::ParameterPlugin();
+        addRackPlugin (engine, *engine.getChannels()[(size_t) ch], std::unique_ptr<juce::AudioPluginInstance> (plugin));
+        skin->refreshAll();
+        return plugin;
+    }
+    ui::ph::Control& control() { return skin->getControl(); }
+    ui::ph::PluginRef ref (int ch, int index = 0) { return control().pluginsOf (ch)[(size_t) index]; }
+    ui::ph::ParamRef param (const ui::ph::PluginRef& r, int index) { return ui::ph::ParamRef::of (*control().pluginOf (r), index); }
+    /** LEARN, the target, then a MIDI message. */
+    void learn (const ui::ph::Target& target, const juce::MidiMessage& message)
+    {
+        control().setLearning (true);
+        control().captureTarget (target);
+        control().handleMidi (message);
+    }
+
+    MixerEngine engine;
+    std::unique_ptr<HostRig> rig;
+    std::unique_ptr<ui::PluginHostSurface> skin;
+};
+
+juce::MidiMessage cc (int channel, int number, int value)
+{
+    return juce::MidiMessage::controllerEvent (channel, number, value);
+}
+juce::MidiMessage note (int channel, int number)
+{
+    return juce::MidiMessage::noteOn (channel, number, (juce::uint8) 100);
+}
 } // namespace
 
 class PluginHostTests final : public juce::UnitTest
@@ -356,7 +407,7 @@ public:
             setShownProfile (ld::kProfileUniversal);
         }
 
-        beginTest ("The screen's pages: RACK and ROUTING are built, the others say so; F10 maximises the screen; the scene keys cue and recall; the readout shows latency and CPU");
+        beginTest ("The screen's pages: RACK, ROUTING, SCENES and CONTROL are built, the others say so; F10 maximises the screen; the scene keys cue and recall; the readout shows latency and CPU");
         {
             MixerEngine engine (0);
             engine.configurePluginHost (16);
@@ -370,8 +421,9 @@ public:
             for (int p = 1; p < 7; ++p)
             {
                 skin.getTab ((Page) p).onClick();
-                const bool built = (Page) p == Page::Routing || (Page) p == Page::Scenes;
-                expect (skin.getPage() == (Page) p && ! skin.getRack().isVisible() && (skin.getRouting().isVisible() || skin.getScenes().isVisible()) == built && skin.getComingSoon()->isVisible() == ! built,
+                const bool built = (Page) p == Page::Routing || (Page) p == Page::Scenes || (Page) p == Page::Control;
+                expect (skin.getPage() == (Page) p && ! skin.getRack().isVisible()
+                            && (skin.getRouting().isVisible() || skin.getScenes().isVisible() || skin.getControlPage().isVisible()) == built && skin.getComingSoon()->isVisible() == ! built,
                         juce::String (ui::PluginHostSurface::nameOf ((Page) p)) + (built ? " shows its page" : " shows the coming-soon panel"));
             }
             skin.getTab (Page::Rack).onClick();
@@ -984,6 +1036,453 @@ public:
             expect (! page.getRecallKey().isEnabled() && ! page.getDeleteKey().isEnabled());
             engine.getGarbage().collectAllNow();
             setShownProfile (ld::kProfileUniversal);
+        }
+
+        beginTest ("Hot knobs: ASSIGN HOT takes the parameter that is touched, a knob turns it, the ring follows and the LCD names it");
+        {
+            Bench b;
+            auto* plugin = b.add (0);
+            auto& control = b.control();
+            auto& rack = b.skin->getRack();
+            auto& dock = rack.getDock();
+            auto& strip = b.skin->getStrip (0);
+            rack.selectTile (0);
+            expect (dock.getContent() == ui::ph::RackDock::Content::Generic);
+            expect (dock.getHotKey (0).isVisible() && dock.getHotKey (1).isVisible() && dock.getHotKey (0).getHeight() >= 44);
+            strip.refresh();
+            expect (! strip.getKnob (0).isAssigned() && ! strip.getKnob (1).isAssigned(), "unassigned knobs are dim");
+            const auto ref = b.ref (0);
+
+            dock.getHotKey (0).onClick();
+            expectEquals (dock.getAssigning(), 0);
+            expectEquals (dock.getHotKey (0).getButtonText(), juce::String ("TOUCH A CONTROL"));
+            plugin->level->beginChangeGesture(); // what the plug-in's editor, or a tap on a generic slider, does
+            plugin->level->endChangeGesture();
+            expectEquals (dock.getAssigning(), -1);
+            expectEquals (control.controlOf (ref).hot[0].name, juce::String ("Level"));
+            dock.getHotKey (1).onClick();
+            plugin->mode->beginChangeGesture();
+            plugin->mode->endChangeGesture();
+            expectEquals (control.controlOf (ref).hot[1].name, juce::String ("Mode"));
+            expectEquals (dock.getHotKey (0).getButtonText(), juce::String ("HOT 1: LEVEL"));
+            plugin->level->beginChangeGesture(); // not assigning: a touch does nothing
+            plugin->level->endChangeGesture();
+            expect (control.controlOf (ref).hot[0].name == "Level" && ! control.isLearning());
+
+            strip.refresh();
+            expect (strip.getKnob (0).isAssigned() && strip.getKnob (1).isAssigned());
+            expectWithinAbsoluteError (strip.getKnob (0).getValue(), 0.5f, 0.01f);
+            strip.getKnob (0).onTurn (0.2f);
+            expectWithinAbsoluteError (plugin->level->get(), 0.7f, 0.01f, "a turn sets the parameter");
+            expectWithinAbsoluteError (strip.getKnob (0).getValue(), 0.7f, 0.01f, "and the ring follows");
+            strip.getKnob (0).onTurn (-1.0f);
+            expectWithinAbsoluteError (plugin->level->get(), 0.0f, 1.0e-6f, "it stops at the end");
+            strip.getKnob (1).onTurn (0.1f);
+            expectEquals (plugin->mode->getIndex(), 0, "a stepped parameter waits until the turns add up to a step");
+            strip.getKnob (1).onTurn (0.2f);
+            expectEquals (plugin->mode->getIndex(), 1);
+            expectWithinAbsoluteError (strip.getKnob (1).getValue(), 0.5f, 0.01f);
+
+            strip.getKnob (0).onTouch (false);
+            strip.getLcd().refresh();
+            expectEquals (strip.getLcd().shown()[0], juce::String ("LEVEL"), "the LCD names the parameter that is touched");
+            expect (strip.getKnob (0).getHeight() >= 44);
+
+            // A parameter is on one knob only.
+            expect (control.assignHot (ref, 1, b.param (ref, 0)));
+            expect (! control.controlOf (ref).hot[0].isSet() && control.controlOf (ref).hot[1].name == "Level");
+            control.clearHot (ref, 1);
+            strip.refresh();
+            expect (! control.controlOf (ref).hasHot() && ! strip.getKnob (1).isAssigned());
+        }
+
+        beginTest ("The focused plug-in: the one selected on RACK for the shown channel, else the first that has hot parameters");
+        {
+            Bench b;
+            auto* a = b.add (0);
+            auto* bb = b.add (0);
+            addRackPlugin (b.engine, *b.engine.getChannels()[0], std::make_unique<test::FakePlugin> (1.0f, test::FakePlugin::Mode::Gain, "Plain"));
+            b.add (1);
+            auto& control = b.control();
+            auto& rack = b.skin->getRack();
+            juce::ignoreUnused (a, bb);
+            expectEquals ((int) control.pluginsOf (0).size(), 3);
+            const auto refA = b.ref (0, 0), refB = b.ref (0, 1), refD = b.ref (1, 0);
+            expect (control.assignHot (refA, 0, b.param (refA, 0)));
+            expect (control.assignHot (refB, 1, b.param (refB, 1)));
+            expect (control.assignHot (refD, 0, b.param (refD, 0)));
+
+            rack.selectTile (1);
+            expect (control.knobPlugin (0) == refB, "the plug-in selected on RACK");
+            b.skin->getStrip (0).refresh();
+            expect (! b.skin->getStrip (0).getKnob (0).isAssigned() && b.skin->getStrip (0).getKnob (1).isAssigned(), "its knobs: only the one it has");
+            rack.selectTile (0);
+            expect (control.knobPlugin (0) == refA);
+            rack.selectTile (2);
+            expect (control.knobPlugin (0) == refA, "a selected plug-in without hot parameters gives way to the first that has");
+            expect (control.knobPlugin (1) == refD, "another channel: its first plug-in with hot parameters");
+            rack.selectTile (1);
+            b.skin->selectChannel (1);
+            expect (control.knobPlugin (0) == refA, "a channel that is not the one RACK shows: the first, not the old selection");
+            expect (control.knobPlugin (1) == refD);
+            expect (! control.knobPlugin (5).isValid(), "a channel without any");
+            expect (! control.getHots (5)[0].assigned);
+        }
+
+        beginTest ("Hot knob assignments are saved with the show and stay through a scene recall");
+        {
+            Bench b;
+            auto* plugin = b.add (0);
+            auto& control = b.control();
+            const auto ref = b.ref (0);
+            const int uid = ref.uid;
+            auto& fx = b.engine.getFx();
+            expect (control.assignHot (ref, 0, b.param (ref, 0)));
+            expect (control.assignHot (ref, 1, b.param (ref, 1)));
+            *plugin->level = 0.9f;
+            b.learn (ui::ph::Target::ofParam (ref, b.param (ref, 0)), cc (1, 21, 10));
+            const auto xml = b.rig->show.toXml();
+            expect (xml != nullptr);
+
+            MixerEngine engine2 (0);
+            HostRig rig2 (engine2);
+            expect (rig2.show.loadFromXml (*xml, true).wasOk());
+            auto& ch2 = *engine2.getChannels()[0];
+            const int slot2 = FxSlots::blockSlotOf (ch2.getHandle(), uid);
+            const auto back = engine2.getFx().getChainMemberControl (slot2, 0);
+            expect (engine2.getFx().getChain (slot2) != nullptr, "a plug-in with hot knobs is stored as a chain of one");
+            expectEquals (back.hot[0].name, juce::String ("Level"));
+            expectEquals (back.hot[1].name, juce::String ("Mode"));
+            expectEquals (back.hot[1].index, 1);
+            engine2.getGarbage().collectAllNow();
+
+            // A scene recall of the same plug-in leaves the assignments as they are.
+            const int scene = b.rig->show.addScene ("A", -1);
+            control.clearHot (ref, 1);
+            b.rig->show.recallScene (scene);
+            expectEquals (control.controlOf (ref).hot[0].name, juce::String ("Level"));
+            expect (! control.controlOf (ref).hot[1].isSet(), "the scene does not give hot knob 2 back");
+            expectEquals ((int) control.controlOf (ref).maps.size(), 1);
+
+            // A plug-in a scene makes again comes back with the assignments the scene was stored with.
+            expect (control.assignHot (ref, 1, b.param (ref, 1)));
+            const int scene2 = b.rig->show.addScene ("B", -1);
+            expect (ctxRemove (*b.rig, b.engine, *b.engine.getChannels()[0], uid));
+            expect (pluginUids (*b.engine.getChannels()[0]).empty());
+            const auto result = b.rig->show.recallScene (scene2);
+            expect (result.warnings.isEmpty(), result.warnings.joinIntoString (" | "));
+            const int slot = FxSlots::blockSlotOf (b.engine.getChannels()[0]->getHandle(), uid);
+            const auto again = fx.getChainMemberControl (slot, 0);
+            expect (again.hot[0].name == "Level" && again.hot[1].name == "Mode" && again.maps.size() == 1, "hot knobs and the map came back with the plug-in");
+        }
+
+        beginTest ("MIDI learn: tap a parameter, move a control: a mapping is made; a CC sets the parameter, a relative one steps it, a note toggles");
+        {
+            Bench b;
+            auto* plugin = b.add (0);
+            auto& control = b.control();
+            auto& rack = b.skin->getRack();
+            const auto ref = b.ref (0);
+            expect (! control.isLearning());
+            control.handleMidi (cc (1, 21, 127));
+            expectWithinAbsoluteError (plugin->level->get(), 0.5f, 1.0e-6f, "nothing is mapped yet");
+
+            control.setLearning (true);
+            expect (control.getLearn() == ui::ph::Control::Learn::WaitTarget && control.describeLearn().isNotEmpty());
+            rack.selectTile (0);
+            plugin->level->beginChangeGesture(); // a touch of the parameter in the dock
+            plugin->level->endChangeGesture();
+            expect (control.getLearn() == ui::ph::Control::Learn::WaitMidi);
+            expect (control.getLearnTarget().kind == ui::ph::Target::Kind::Param && control.getLearnTarget().param.name == "Level");
+            control.handleMidi (cc (1, 21, 100));
+            expect (! control.isLearning());
+            expectEquals (control.getNumMappings(), 1);
+            expectEquals (control.getMappings()[0].sourceText, juce::String ("CC 21  CH 1"));
+            expect (control.getMappings()[0].targetText.contains ("Level") && control.getMappings()[0].targetText.contains ("Fake Params"));
+
+            control.handleMidi (cc (1, 21, 127));
+            expectWithinAbsoluteError (plugin->level->get(), 1.0f, 1.0e-6f, "a CC sets the parameter");
+            control.handleMidi (cc (1, 21, 0));
+            expectWithinAbsoluteError (plugin->level->get(), 0.0f, 1.0e-6f);
+            control.handleMidi (cc (1, 21, 64));
+            expectWithinAbsoluteError (plugin->level->get(), 0.5f, 0.01f);
+            control.handleMidi (cc (2, 21, 127));
+            expectWithinAbsoluteError (plugin->level->get(), 0.5f, 0.01f, "another MIDI channel is another control");
+
+            // An endless encoder: 1..63 up, 65..127 down.
+            expect (control.setMappingMode (0, ui::ph::MidiSource::Mode::Relative));
+            expectEquals (control.getMappings()[0].sourceText, juce::String ("CC 21  CH 1  REL"));
+            const float before = plugin->level->get();
+            control.handleMidi (cc (1, 21, 5));
+            expectWithinAbsoluteError (plugin->level->get(), before + 0.05f, 1.0e-3f);
+            control.handleMidi (cc (1, 21, 125));
+            expectWithinAbsoluteError (plugin->level->get(), before + 0.02f, 1.0e-3f);
+
+            // A note toggles (a stepped parameter goes between its ends).
+            b.learn (ui::ph::Target::ofParam (ref, b.param (ref, 1)), note (1, 60));
+            expectEquals (control.getNumMappings(), 2);
+            control.handleMidi (note (1, 60));
+            expectEquals (plugin->mode->getIndex(), 2);
+            control.handleMidi (note (1, 60));
+            expectEquals (plugin->mode->getIndex(), 0);
+            control.handleMidi (juce::MidiMessage::noteOff (1, 60));
+            expectEquals (plugin->mode->getIndex(), 0, "a note off does nothing");
+
+            // One control, one target: learning the same control for another parameter moves it.
+            b.learn (ui::ph::Target::ofParam (ref, b.param (ref, 1)), cc (1, 21, 0));
+            expectEquals (control.getNumMappings(), 1, "the note's mapping and the CC's went; one mapping is left");
+            expect (control.getMappings()[0].source.kind == ui::ph::MidiSource::Kind::Cc && control.getMappings()[0].targetText.contains ("Mode"));
+        }
+
+        beginTest ("MIDI learn also takes a hot knob, a channel's SELECT and BYPASS and the scene keys (which then do not act)");
+        {
+            Bench b;
+            auto* plugin = b.add (0);
+            auto& control = b.control();
+            auto& skin = *b.skin;
+            const auto ref = b.ref (0);
+            expect (control.assignHot (ref, 0, b.param (ref, 0)));
+            b.rig->show.addScene ("A", -1);
+            b.rig->show.addScene ("B", -1);
+            skin.showChanged();
+            skin.refreshAll();
+
+            control.setLearning (true);
+            skin.getStrip (0).getKnob (0).onClick(); // a tap on the knob
+            expect (control.getLearnTarget().kind == ui::ph::Target::Kind::Hot && control.getLearnTarget().channel == 0);
+            control.handleMidi (cc (1, 22, 5));
+            control.handleMidi (cc (1, 22, 127));
+            expectWithinAbsoluteError (plugin->level->get(), 1.0f, 1.0e-6f, "the hot knob's parameter follows the CC");
+            control.handleMidi (cc (1, 22, 0));
+            expectWithinAbsoluteError (plugin->level->get(), 0.0f, 1.0e-6f);
+
+            control.setLearning (true);
+            skin.getStrip (0).getBypassKey().onClick();
+            expect (! b.engine.getChannels()[0]->params.input.bypass.load(), "BYPASS did not act: LEARN took the tap");
+            control.handleMidi (note (1, 40)); // the control being learned
+            expect (! b.engine.getChannels()[0]->params.input.bypass.load());
+            control.handleMidi (note (1, 40));
+            expect (b.engine.getChannels()[0]->params.input.bypass.load(), "a note toggles the channel's BYPASS");
+            control.handleMidi (note (1, 40));
+            expect (! b.engine.getChannels()[0]->params.input.bypass.load());
+            control.handleMidi (cc (1, 22, 64)); // another control: no effect on BYPASS
+
+            control.setLearning (true);
+            skin.getStrip (3).getSelectKey().onClick();
+            control.handleMidi (cc (1, 30, 127));
+            expectEquals (skin.getSelectedChannel(), 0, "SELECT did not act while learning");
+            control.handleMidi (cc (1, 30, 0));
+            control.handleMidi (cc (1, 30, 127));
+            expectEquals (skin.getSelectedChannel(), 3, "a CC (on its rising edge) selects the channel");
+
+            skin.setCue (0);
+            control.setLearning (true);
+            skin.getSceneKey (0).click();
+            expect (control.getLearnTarget().kind == ui::ph::Target::Kind::SceneGo);
+            control.handleMidi (note (1, 36));
+            control.setLearning (true);
+            skin.getSceneKey (1).click();
+            control.handleMidi (note (1, 37));
+            control.setLearning (true);
+            skin.getSceneKey (-1).click();
+            control.handleMidi (note (1, 35));
+            expectEquals (control.getNumMappings(), 6);
+            skin.setCue (0);
+            control.handleMidi (note (1, 37));
+            expectEquals (skin.getCue(), 1, "NEXT");
+            control.handleMidi (note (1, 35));
+            expectEquals (skin.getCue(), 0, "PREV");
+            control.handleMidi (note (1, 37));
+            control.handleMidi (note (1, 36));
+            expectEquals (b.rig->show.getCurrentSceneIndex(), 1, "GO recalls the cued scene");
+        }
+
+        beginTest ("A mapping follows its plug-in when the rack is reordered and goes, with a note, when the plug-in is removed");
+        {
+            Bench b;
+            auto* one = b.add (0);
+            auto* two = b.add (0);
+            auto& control = b.control();
+            auto& rack = b.skin->getRack();
+            auto& fx = b.engine.getFx();
+            auto& ch = *b.engine.getChannels()[0];
+            b.learn (ui::ph::Target::ofParam (b.ref (0, 0), b.param (b.ref (0, 0), 0)), cc (1, 21, 1));
+            b.learn (ui::ph::Target::ofParam (b.ref (0, 1), b.param (b.ref (0, 1), 0)), cc (1, 22, 1));
+            expectEquals (control.getNumMappings(), 2);
+
+            expect (rack.moveTile (0, 2)); // plug-in one is now second in the rack
+            expect (control.pluginOf (b.ref (0, 1)) == one);
+            control.handleMidi (cc (1, 21, 127));
+            expectWithinAbsoluteError (one->level->get(), 1.0f, 1.0e-6f);
+            expectWithinAbsoluteError (two->level->get(), 0.5f, 1.0e-6f, "the other one is left alone");
+            expect (control.getMappings()[0].targetText.contains ("Level") && control.getMappings()[1].targetText.contains ("Level"));
+
+            // Inside a block of several plug-ins: the chain is rebuilt on a move, the plug-ins keep their maps.
+            const int slot = FxSlots::blockSlotOf (ch.getHandle(), b.ref (0, 0).uid);
+            auto* three = new test::ParameterPlugin();
+            expect (fx.addToChain (slot, std::unique_ptr<juce::AudioPluginInstance> (three)));
+            b.skin->refreshAll();
+            const auto refThree = b.ref (0, 1);
+            expect (control.pluginOf (refThree) == three);
+            b.learn (ui::ph::Target::ofParam (refThree, b.param (refThree, 0)), cc (1, 23, 1));
+            expect (fx.moveInChain (slot, 1, 0));
+            control.handleMidi (cc (1, 23, 127));
+            expectWithinAbsoluteError (three->level->get(), 1.0f, 1.0e-6f, "the map went with its plug-in to the front of the chain");
+            expectWithinAbsoluteError (two->level->get(), 0.5f, 1.0e-6f);
+            expectEquals (control.getNumMappings(), 3);
+
+            // Removing a plug-in removes its mappings, and says so.
+            control.clearNote(); // what the last LEARN said
+            control.poll();
+            expect (control.getNote().isEmpty(), "a plug-in that is still there takes nothing away");
+            expect (ctxRemove (*b.rig, b.engine, ch, b.ref (0, 2).uid));
+            b.skin->refreshAll();
+            control.poll();
+            expectEquals (control.getNumMappings(), 2);
+            expect (control.getNote().contains ("went with") && control.getNote().contains ("Fake Params"), control.getNote());
+            control.handleMidi (cc (1, 22, 127)); // the removed plug-in's control is harmless
+        }
+
+        beginTest ("Mappings are saved with the show: a plug-in's, and the keys' and hot knobs'");
+        {
+            Bench b;
+            auto* plugin = b.add (0);
+            auto& control = b.control();
+            const auto ref = b.ref (0);
+            expect (control.assignHot (ref, 0, b.param (ref, 0)));
+            b.learn (ui::ph::Target::ofParam (ref, b.param (ref, 0)), cc (1, 21, 1));
+            b.learn (ui::ph::Target::ofHot (0, 0), cc (1, 22, 1));
+            expect (control.setMappingMode (0, ui::ph::MidiSource::Mode::Relative));
+            b.learn (ui::ph::Target::of (ui::ph::Target::Kind::Bypass, 2), note (3, 40));
+            b.learn (ui::ph::Target::of (ui::ph::Target::Kind::SceneGo), note (1, 36));
+            expectEquals (control.getNumMappings(), 4);
+            expect (b.rig->show.getHostControlXml().contains ("PluginHostControl"));
+            const auto xml = b.rig->show.toXml();
+            expect (xml != nullptr && xml->getChildByName ("PluginHostControl") != nullptr);
+            const auto before = control.getMappings();
+
+            MixerEngine engine2 (0);
+            engine2.configurePluginHost (16);
+            HostRig rig2 (engine2);
+            expect (rig2.show.loadFromXml (*xml, true).wasOk());
+            {
+                ui::PluginHostSurface skin2 (rig2.ctx);
+                skin2.setSize (1920, 1080);
+                auto& control2 = skin2.getControl();
+                const auto after = control2.getMappings();
+                expectEquals ((int) after.size(), 4);
+                for (size_t i = 0; i < before.size() && i < after.size(); ++i)
+                    expect (after[i].sourceText == before[i].sourceText && after[i].targetText == before[i].targetText && after[i].source == before[i].source,
+                            "mapping " + juce::String ((int) i + 1) + " is the same: " + after[i].sourceText + " -> " + after[i].targetText);
+                expect (after[0].source.mode == ui::ph::MidiSource::Mode::Relative);
+                control2.handleMidi (note (3, 40));
+                expect (engine2.getChannels()[2]->params.input.bypass.load(), "the restored mapping works");
+                const auto refBack = control2.pluginsOf (0)[0];
+                auto* back = dynamic_cast<test::ParameterPlugin*> (control2.pluginOf (refBack));
+                expect (back != nullptr);
+                if (back != nullptr)
+                {
+                    control2.handleMidi (cc (1, 21, 127));
+                    expectWithinAbsoluteError (back->level->get(), 1.0f, 1.0e-6f, "and so does the plug-in's");
+                }
+
+                // A show without mappings takes them away when the skin is told it was loaded.
+                rig2.show.setHostControlXml ({});
+                skin2.showChanged();
+                expectEquals (control2.getNumMappings(), 1, "the plug-in's stay with the plug-in, the show's are gone");
+            }
+            engine2.getGarbage().collectAllNow();
+            juce::ignoreUnused (plugin);
+        }
+
+        beginTest ("CONTROL page: the mappings as a list, DELETE, CLEAR ALL (asks twice), LEARN, the hot knobs' picker and the MIDI devices");
+        {
+            Bench b;
+            auto* plugin = b.add (0);
+            auto& control = b.control();
+            auto& skin = *b.skin;
+            auto& page = skin.getControlPage();
+            using Page = ui::PluginHostSurface::Page;
+            const auto ref = b.ref (0);
+            skin.getTab (Page::Control).onClick();
+            expect (page.isVisible() && ! skin.getComingSoon()->isVisible() && ! skin.getRack().isVisible());
+            expectEquals (page.getNumMappings(), 0);
+
+            b.learn (ui::ph::Target::of (ui::ph::Target::Kind::Bypass, 0), cc (1, 30, 1));
+            b.learn (ui::ph::Target::ofParam (ref, b.param (ref, 0)), cc (1, 21, 1));
+            b.learn (ui::ph::Target::ofParam (ref, b.param (ref, 1)), note (1, 60));
+            page.refresh();
+            expectEquals (page.getNumMappings(), 3);
+            expectEquals (page.getMapping (0).sourceText, juce::String ("CC 30  CH 1"));
+            expectEquals (page.getMapping (0).targetText, juce::String ("CH 1  BYPASS"));
+            expect (page.getMapping (1).targetText.contains ("Level") && page.getMapping (2).sourceText.startsWith ("NOTE"));
+
+            // Touch-sized: the rows, the keys and the hot keys.
+            for (auto* key : { &page.getLearnKey(), &page.getModeKey(), &page.getDeleteKey(), &page.getClearKey() })
+                expect (key->getHeight() >= 44 && key->getWidth() >= 44);
+            expect (page.getMappingRowBounds (0).getHeight() >= 44 && page.getMappingRowBounds (1).getY() >= page.getMappingRowBounds (0).getBottom());
+
+            page.selectMapping (1);
+            expectEquals (page.getSelectedMapping(), 1);
+            page.getModeKey().onClick();
+            expect (page.getMapping (1).source.mode == ui::ph::MidiSource::Mode::Relative, "MODE turns the controller relative");
+            page.getModeKey().onClick();
+            expect (page.getMapping (1).source.mode == ui::ph::MidiSource::Mode::Absolute);
+            page.getDeleteKey().onClick();
+            expectEquals (page.getNumMappings(), 2);
+            expectEquals ((int) control.controlOf (ref).maps.size(), 1, "the plug-in's map is gone from the plug-in");
+            expect (page.getMapping (0).targetText.contains ("BYPASS") && page.getMapping (1).sourceText.startsWith ("NOTE"));
+
+            page.getClearKey().onClick();
+            expect (page.isClearArmed() && page.getNumMappings() == 2, "the first press arms it");
+            expectEquals (page.getClearKey().getButtonText(), juce::String ("CONFIRM"));
+            page.selectMapping (0);
+            expect (! page.isClearArmed(), "touching something else lets go");
+            page.getClearKey().onClick();
+            page.getClearKey().onClick();
+            expectEquals (page.getNumMappings(), 0);
+            expect (! page.isClearArmed() && control.controlOf (ref).maps.empty() && b.rig->show.getHostControlXml().isEmpty());
+
+            page.getLearnKey().onClick();
+            expect (control.isLearning() && page.getLearnKey().isOn());
+            page.getLearnKey().onClick();
+            expect (! control.isLearning());
+
+            // HOT KNOBS: the selected channel's plug-ins, and the picker's choice.
+            expectEquals (page.getNumHotRows(), 1);
+            expectEquals (page.getHotRow (0).name, juce::String ("Fake Params"));
+            expectEquals (page.getHotRow (0).numParameters, 2);
+            expect (page.getHotRow (0).hot[0].isEmpty() && page.getHotKeyBounds (0, 0).getHeight() >= 44 && page.getHotKeyBounds (0, 1).getX() > page.getHotKeyBounds (0, 0).getRight() - 1);
+            page.chooseHot (0, 0, 1);
+            page.chooseHot (0, 1, 0);
+            expectEquals (page.getHotRow (0).hot[0], juce::String ("Mode"));
+            expectEquals (page.getHotRow (0).hot[1], juce::String ("Level"));
+            b.skin->getStrip (0).refresh();
+            expect (b.skin->getStrip (0).getKnob (0).isAssigned() && b.skin->getStrip (0).getKnob (1).isAssigned());
+            page.chooseHot (0, 1, -1);
+            expect (page.getHotRow (0).hot[1].isEmpty() && page.getHotRow (0).hot[0] == "Mode");
+            control.setLearning (true); // while LEARN waits, the picker offers the parameter to it
+            page.chooseHot (0, 0, 0);
+            expect (control.getLearn() == ui::ph::Control::Learn::WaitMidi && control.getLearnTarget().param.name == "Level");
+            expectEquals (page.getHotRow (0).hot[0], juce::String ("Mode"), "and does not assign it");
+            control.setLearning (false);
+            skin.selectChannel (4);
+            expectEquals (page.getNumHotRows(), 0, "the panel follows the selected channel");
+            skin.selectChannel (0);
+
+            // The MIDI devices: an input that is switched on stays listed, even when it is not there.
+            control.setInputEnabled ("Test MIDI input", true);
+            page.refresh();
+            int row = -1;
+            for (int i = 0; i < page.getNumDevices(); ++i)
+                if (page.getDeviceName (i) == "Test MIDI input")
+                    row = i;
+            expect (row >= 0 && page.isDeviceOn (row) && ! control.isInputOpen ("Test MIDI input"));
+            expectEquals (b.rig->settings.getValue (ui::ph::Control::inputsKey), juce::String ("Test MIDI input"));
+            expect (page.getDeviceRowBounds (juce::jmax (0, row)).getHeight() >= 44);
+            page.toggleDevice (row);
+            expect (! control.isInputEnabled ("Test MIDI input") && b.rig->settings.getValue (ui::ph::Control::inputsKey).isEmpty());
+            juce::ignoreUnused (plugin);
         }
 
         beginTest ("The PLUGIN HOST has its own console theme");

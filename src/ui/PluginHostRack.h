@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ui/PluginHostControl.h"
 #include "ui/UiContext.h"
 #include "ui/universal/BlockEditor.h"
 #include "ui/universal/Widgets.h"
@@ -25,12 +26,26 @@ namespace livedaw::ui::ph
     - A built-in block (EQ, dynamics...) shows the Universal Mixer's block editor.
     - A block with several plug-ins (a chain) shows a key per plug-in.
     PIN keeps the dock on its block while the channel and the tile selection change. POP OUT opens the
-    block's floating plug-in window (the Universal Mixer's EDIT). Message thread only. */
+    block's floating plug-in window (the Universal Mixer's EDIT).
+
+    ASSIGN HOT 1 and ASSIGN HOT 2 (PLUGIN HOST hot knobs): tap one, then touch or move a control of the plug-in
+    shown (its own editor, or the generic controls: a tap on a slider is enough); the parameter that was touched
+    becomes the hot knob's. It listens to the plug-in's parameter gestures (the callbacks a plug-in makes when
+    its editor starts a change), so it works for a plug-in's own editor, the generic controls and the sandbox's.
+    While MIDI LEARN waits for a target the touched parameter is offered to it instead. Message thread only. */
 class RackDock final : public juce::Component, private juce::Timer
 {
 public:
     RackDock (UiContext&, const universal::Theme&);
     ~RackDock() override;
+
+    /** The hot knobs and MIDI learn (set by the surface). */
+    void setControl (Control* c) { control = c; }
+    /** Parameter `paramIndex` of the shown plug-in was touched (the plug-in's gesture callback; the tests). */
+    void parameterTouched (int paramIndex);
+    /** The hot knob being assigned (0, 1; -1: none), and its keys. */
+    int getAssigning() const noexcept { return assigning; }
+    universal::ToggleKey& getHotKey (int knob) noexcept { return knob == 0 ? hot1Key : hot2Key; }
 
     /** What the dock shows now. */
     enum class Content
@@ -72,7 +87,7 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
-    static constexpr int kHeader = 48;
+    static constexpr int kHeader = 48, kHotKeyWidth = 148;
 
 private:
     void timerCallback() override;
@@ -80,6 +95,9 @@ private:
     void dropEditor();
     void place();
     void openSandboxWindow();
+    void refreshHotKeys();
+    void watch (juce::AudioProcessor*);
+    void unwatch();
     Strip* strip() const;
     int slot() const;
     juce::String title() const;
@@ -93,7 +111,12 @@ private:
     juce::AudioPluginInstance* shownPlugin = nullptr;
     int shownSlot = -1;
 
-    universal::ToggleKey pinKey, popKey, openKey, chooseKey;
+    universal::ToggleKey pinKey, popKey, openKey, chooseKey, hot1Key, hot2Key;
+    Control* control = nullptr;
+    int assigning = -1;
+    class Watcher;
+    std::unique_ptr<Watcher> watcher;
+    juce::AudioProcessor* watched = nullptr;
     std::vector<std::unique_ptr<universal::ToggleKey>> memberKeys;
     juce::Component holder;
     juce::Viewport viewport;
@@ -117,6 +140,11 @@ public:
     /** The channel shown (0-based). */
     void setChannel (int index);
     int getChannel() const noexcept { return channel; }
+    /** The tile selected (its block's uid; -1 none): what the hot knobs follow while this channel is the selected one. */
+    int getSelectedUid() const noexcept { return selectedUid; }
+    /** The selected plug-in as the hot knobs see it: the shown channel, the selected block, the dock's plug-in in it. */
+    PluginRef getFocus() const;
+    void setControl (Control* c) { dock.setControl (c); }
     /** Reads the chain again (the timer does this too). */
     void refresh();
 

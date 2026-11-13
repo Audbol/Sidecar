@@ -213,6 +213,18 @@ public:
         promoPictures();
     }
 
+    /** A plug-in block on `strip` after its input's tap, holding `plugin` (as the RACK page's "+" puts one). */
+    static void addPluginBlockFor (MixerEngine& engine, Strip& strip, std::unique_ptr<juce::AudioPluginInstance> plugin)
+    {
+        int at = -1;
+        const auto chain = strip.getChain();
+        for (int i = 0; i < (int) chain.size(); ++i)
+            if (chain[(size_t) i].kind == ld::kStepPfl)
+                at = i;
+        const int uid = strip.insertBlock (BlockKind::Plugin, at);
+        engine.getFx().setPlugin (FxSlots::blockSlotOf (strip.getHandle(), uid), std::move (plugin));
+    }
+
     /** The PLUGIN HOST's surface at 1920x1080: 16 channels, a few blocks on channel 1 (selected) and its RACK page. */
     void pluginHostSurface()
     {
@@ -317,6 +329,85 @@ public:
             skin.getTab (ui::PluginHostSurface::Page::Scenes).onClick();
             skin.getScenes().refresh();
             save ("pluginhost-scenes.png");
+        }
+
+        // The hot knobs: three channels with a plug-in whose parameters the two knobs follow (rings lit to the values),
+        // on the RACK page with the plug-in selected and its ASSIGN HOT keys in the dock.
+        auto& control = skin.getControl();
+        {
+            skin.getRack().getDock().dropEditorFor (nullptr);
+            const int values[] = { 0, 1, 3 };
+            const auto paramsOf = [&] (int ch)
+            {
+                for (const auto& r : control.pluginsOf (ch))
+                    if (control.nameOf (r) == "Fake Params")
+                        return r;
+                return ui::ph::PluginRef();
+            };
+            for (int v = 0; v < 3; ++v)
+            {
+                auto& ch = *channels[(size_t) values[v]];
+                auto* params = new test::ParameterPlugin();
+                *params->level = 0.25f + 0.3f * (float) v;
+                *params->mode = v;
+                addPluginBlockFor (engine, ch, std::unique_ptr<juce::AudioPluginInstance> (params));
+            }
+            skin.refreshAll();
+            for (int v = 0; v < 3; ++v)
+            {
+                const auto ref = paramsOf (values[v]);
+                expect (ref.isValid());
+                if (! ref.isValid())
+                    continue;
+                auto* plugin = control.pluginOf (ref);
+                expect (control.assignHot (ref, 0, ui::ph::ParamRef::of (*plugin, 0)));
+                expect (control.assignHot (ref, 1, ui::ph::ParamRef::of (*plugin, 1)));
+            }
+            skin.getTab (ui::PluginHostSurface::Page::Rack).onClick();
+            skin.selectChannel (0);
+            const auto ref0 = paramsOf (0);
+            for (int i = 0; i < skin.getRack().getNumTiles(); ++i)
+                if (skin.getRack().getTile (i).uid == ref0.uid)
+                    skin.getRack().selectTile (i);
+            skin.getRack().getDock().refresh();
+            skin.getRack().getDock().getHotKey (1).onClick(); // ASSIGN HOT 2 is waiting for a control
+            for (int i = 0; i < 8; ++i)
+                skin.getStrip (i).refresh();
+            save ("pluginhost-hotknobs.png");
+            skin.getRack().getDock().getHotKey (1).onClick();
+        }
+
+        // The CONTROL page: a MIDI input switched on, a few mappings, and the selected channel's hot knobs.
+        {
+            ui::ph::PluginRef ref0;
+            for (const auto& r : control.pluginsOf (0))
+                if (control.nameOf (r) == "Fake Params")
+                    ref0 = r;
+            auto* plugin = control.pluginOf (ref0);
+            control.setInputEnabled ("USB MIDI Controller", true);
+            const auto learn = [&] (const ui::ph::Target& target, const juce::MidiMessage& message)
+            {
+                control.setLearning (true);
+                expect (control.captureTarget (target));
+                control.handleMidi (message);
+            };
+            learn (ui::ph::Target::ofParam (ref0, ui::ph::ParamRef::of (*plugin, 0)), juce::MidiMessage::controllerEvent (1, 21, 64));
+            learn (ui::ph::Target::ofParam (ref0, ui::ph::ParamRef::of (*plugin, 1)), juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100));
+            learn (ui::ph::Target::ofHot (0, 0), juce::MidiMessage::controllerEvent (1, 74, 64));
+            learn (ui::ph::Target::of (ui::ph::Target::Kind::Bypass, 0), juce::MidiMessage::controllerEvent (2, 30, 127));
+            learn (ui::ph::Target::of (ui::ph::Target::Kind::SceneGo), juce::MidiMessage::noteOn (1, 36, (juce::uint8) 100));
+            learn (ui::ph::Target::of (ui::ph::Target::Kind::SceneNext), juce::MidiMessage::noteOn (1, 37, (juce::uint8) 100));
+            control.setMappingMode (0, ui::ph::MidiSource::Mode::Relative); // the hot knob's: an endless encoder
+            skin.getTab (ui::PluginHostSurface::Page::Control).onClick();
+            auto& page = skin.getControlPage();
+            page.refresh();
+            page.selectMapping (0);
+            control.setLearning (true);
+            expect (control.captureTarget (ui::ph::Target::ofHot (1, 1))); // LEARN waiting for a MIDI control
+            page.refresh();
+            save ("pluginhost-control.png");
+            control.setLearning (false);
+            control.setInputEnabled ("USB MIDI Controller", false);
         }
         setShownProfile (ld::kProfileUniversal);
     }

@@ -1746,6 +1746,22 @@ fn global_safes_beyond_strips() {
 }
 
 #[test]
+fn host_control_is_saved_with_the_show() {
+    let engine = Engine::new(0);
+    set_channels(&engine, 2);
+    let mut show = Show::new();
+    assert!(show.host_control.is_empty());
+    show.host_control = r#"<PluginHostControl><MAP kind="note" ch="1" num="36" target="go"/></PluginHostControl>"#.into();
+    let (_, loaded) = round_trip(&engine, &show);
+    assert!(loaded.host_control.contains("PluginHostControl") && loaded.host_control.contains(r#"num="36""#));
+    let (_, plain) = round_trip(&engine, &Show::new());
+    assert!(plain.host_control.is_empty(), "a show without mappings has none");
+    let mut cleared = loaded;
+    cleared.clear(&engine, 2);
+    assert!(cleared.host_control.is_empty());
+}
+
+#[test]
 fn partial_load_and_update_keep_their_scope() {
     let engine = Engine::new(0);
     let mut np = NoPlugins;

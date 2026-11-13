@@ -100,6 +100,53 @@ SAFES panel lists every channel and, under it, every plug-in of its rack, each w
 surface's: PREV and NEXT move it, a tap on a row cues the scene, GO and RECALL recall it, and a store, a delete
 or a move leaves it on the scene concerned.
 
+## Hot knobs and MIDI learn
+
+**Hot knobs.** A plug-in has up to two parameters assigned as its hot knobs (`PluginChain::Control`, kept on the
+chain's member beside the sidechain key: `hot1`, `hot1Name`, `hot2`, `hot2Name` on the `MEMBER`, so a plug-in with
+any is stored as a chain of one). A parameter is kept by its index in the plug-in and its name, so a reload finds
+it again. The two knobs of a channel strip control the hot parameters of the channel's *focused* plug-in: the one
+selected on RACK while that channel is the one RACK shows; otherwise (another channel, or the selected plug-in has
+none) the first plug-in of the chain that has hot parameters. The ring shows the parameter's value (dim and at rest
+for an unassigned knob), and the strip's LCD shows its short name and value while the knob is touched and for a
+moment after. A drag turns a knob (200 px for the whole range), the wheel in fine steps; a stepped parameter moves
+a step once the turns add up to half of one.
+
+Assigning: on RACK, the dock's header has ASSIGN HOT 1 and ASSIGN HOT 2. Tap one (it reads TOUCH A CONTROL), then
+touch or move a control of the plug-in; the dock listens to the plug-in's parameter *gestures* (what its editor, a
+generic slider, or a sandboxed plug-in's generic control starts on a touch), so one tap on a slider is enough. A
+plug-in whose editor changes values without a gesture is not caught; use the parameter list. The CONTROL page's HOT
+KNOBS panel lists the selected channel's plug-ins, each with its two hot parameters; a tap opens the plug-in's
+parameter list (and NONE). A parameter is on one knob only. A scene recall of the same plug-ins leaves the
+assignments as they are; a plug-in a scene makes again takes the assignments it was stored with.
+
+**MIDI.** Sidecar's existing MIDI layer is `MidiPorts` (every console's remote uses it): the devices' callbacks only
+queue messages, which arrive on the message thread. The PLUGIN HOST adds no second stack: `ph::Control` owns a
+`MidiPorts` (up to eight inputs, chosen on the CONTROL page, an app setting `pluginhost.midi.inputs`) and everything
+runs on the message thread; parameters are set with `setValueNotifyingHost` there, never from the MIDI thread.
+The console remotes have no learn and no relative or 14-bit controllers (only the ProMix 01 and the SQ's NRPNs), so
+learn is new: a controller (absolute, 7-bit; relative, an endless encoder: 1-63 up, 65-127 down, set per mapping with
+MODE) or a note (each note on toggles; a note off does nothing). 14-bit pairs are not supported.
+
+LEARN: tap LEARN, tap or move a plug-in parameter (in the dock, or choose one in the CONTROL page's picker), or tap a
+hot knob, a channel's SELECT or BYPASS, or the scene PREV, GO or NEXT keys (a key tapped while LEARN waits is taken
+and does not act), then move a MIDI control. One control has one target, and a target one control: learning again
+replaces. What a mapping does: a parameter is set (a note toggles it between its ends); a hot knob moves the
+parameter its knob follows; SELECT and the scene keys fire on a note or on a controller crossing 64 upwards; BYPASS
+follows a controller (64 and over is on) or toggles on a note.
+
+Where mappings live. A parameter's mapping is kept with the plug-in (`MAP` children of the `MEMBER`): it follows
+the plug-in when the rack is reordered, is saved with the show, and goes with the plug-in when it is removed or
+replaced (the CONTROL page says "N mappings went with ..."). The mappings of hot knobs, SELECT, BYPASS and the scene
+keys are kept in the show (`<PluginHostControl>` in the show file; `Show::getHostControlXml`). Scenes don't change
+any of them. Plug-ins in the sandbox expose their parameters mirrored from the helper, and `setValueNotifyingHost`
+reaches the helper through them, so they map like the others (a sandboxed plug-in that exposes none is listed as
+offering no parameters).
+
+**The CONTROL page.** Three panels: MIDI DEVICES (the inputs, a tap switches one on; one that is on but missing says
+NOT FOUND), MAPPINGS (source -> target, LEARN, MODE, DELETE, CLEAR ALL asking twice, a line saying what LEARN waits for)
+and HOT KNOBS. Rows are 48 px, keys 52 px in the design space.
+
 ## Latency
 
 The thing that matters most on inserts. Each channel shows its round trip (converter plus buffer plus
@@ -119,7 +166,7 @@ channel's BYPASS passes the input straight through, always.
 | `PluginChain` (chains, state, latency, sandbox) | the profile and its engine shape (inputs and outputs only) |
 | plug-in block, scanner, browser list | sidechain inputs to plug-ins |
 | scenes with fade times and safes | per-plug-in safes, whole-rack recall, GLIDE |
-| MIDI for console controls | MIDI learn for plug-in parameters, hot knobs |
+| MIDI ports for console controls (`MidiPorts`) | MIDI learn for plug-in parameters, hot knobs |
 | user layers, Universal Mixer cards | the drawn unit and its seven pages |
 | benchmark | the CPU guard; latency alignment |
 
@@ -130,7 +177,7 @@ channel's BYPASS passes the input straight through, always.
 2. The drawn unit and the RACK page with docked windows.
 3. ROUTING and sidechains (the engine's key inputs, then the page).
 4. SCENES: whole states, safes, crossfade. (Done.)
-5. CONTROL: MIDI learn, hot knobs.
+5. CONTROL: MIDI learn, hot knobs. (Done.)
 6. OVERVIEW, BROWSER, SYSTEM; latency alignment; the CPU guard.
 7. The Universal Mixer: PLUGIN HOST racks offered on any console's strips.
 8. Screenshots, user guide, start-up tile, completion percentage.

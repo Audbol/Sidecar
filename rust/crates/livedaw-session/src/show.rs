@@ -458,6 +458,9 @@ pub struct Show {
     pub layers: LayerSet,
     /// The CUSTOM CONTROLS assignments (CC EDIT).
     pub custom: CustomControls,
+    /// The PLUGIN HOST's MIDI mappings of its keys and hot knobs, as a `<PluginHostControl>` element
+    /// in text (kept as the application wrote it; empty: none).
+    pub host_control: String,
     /// GLOBAL safes beyond the strips' recall safe.
     pub global_safe: GlobalSafe,
     /// The scope PARTIAL LOAD and PARTIAL UPDATE last used (they keep it, 3.0).
@@ -485,6 +488,7 @@ impl Default for Show {
             name: "Untitled show".into(),
             layers: LayerSet::default(),
             custom: CustomControls::default(),
+            host_control: String::new(),
             global_safe: GlobalSafe::default(),
             partial_scope: Scope::default(),
             scenes: Vec::new(),
@@ -1313,6 +1317,11 @@ impl Show {
         root.add(console::save_console(engine, bridge));
         root.add(self.layers.to_xml());
         root.add(self.custom.to_xml());
+        if let Ok(control) = crate::xml::parse(&self.host_control) {
+            if control.has_tag("PluginHostControl") {
+                root.add(control);
+            }
+        }
         if !self.global_safe.is_empty() {
             root.add(self.global_safe.to_xml());
         }
@@ -1381,6 +1390,7 @@ impl Show {
             Some(c) => self.custom.from_xml(c),
             None => self.custom = CustomControls::legacy(),
         }
+        self.host_control = xml.child("PluginHostControl").map(|c| c.to_compact()).unwrap_or_default();
         self.global_safe = xml.child("GlobalSafe").map(GlobalSafe::from_xml).unwrap_or_default();
         self.partial_scope =
             xml.child("PartialScope").map_or_else(Scope::default, |p| Scope::read_attrs(p, "sections", &Scope::default()));
@@ -1455,6 +1465,7 @@ impl Show {
         self.name = "Untitled show".into();
         self.layers.reset();
         self.custom.reset();
+        self.host_control.clear();
         self.global_safe = GlobalSafe::default();
         self.partial_scope = Scope::default();
         self.clear_recording();

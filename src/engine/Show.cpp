@@ -28,6 +28,7 @@ namespace
             return false;
         single.hasView = xml->getStringAttribute (PluginChain::kDefaultViewAttribute) == "default"; // the default view (else from before views)
         single.hasKey = single.hasView; // saved with the keys: a plugin on its own has none
+        single.hasControl = single.hasView; // and with the hot knobs and maps: a plugin on its own has none
         if (state.isNotEmpty())
             single.state.fromBase64Encoding (state);
         saved = { std::move (single) };
@@ -202,7 +203,7 @@ int32_t Show::recreateBlock (int slot, const std::vector<PluginChain::Saved>& sa
     glides.erase (std::remove_if (glides.begin(), glides.end(), [slot] (const Glide& g) { return g.slot == slot; }), glides.end());
 
     if (created.size() == 1 && ! created.front().second->bypassed && created.front().second->view.isDefault()
-        && created.front().second->key.isNone())
+        && created.front().second->key.isNone() && created.front().second->control.isEmpty())
     {
         fx.setPlugin (slot, std::move (created.front().first)); // a plugin on its own
     }
@@ -215,6 +216,7 @@ int32_t Show::recreateBlock (int slot, const std::vector<PluginChain::Saved>& sa
             members.back()->view = s->view;
             if (members.back()->hasSidechain())
                 members.back()->key = s->key;
+            members.back()->control = s->control;
         }
         fx.setPlugin (slot, std::make_unique<PluginChain> (std::move (members)));
     }
@@ -916,6 +918,17 @@ bool Show::setCustomControlsXml (const juce::String& xml)
 {
     const Utf8 u (xml);
     return ld::ld_show_set_custom_controls (handle, u.data, u.size);
+}
+
+juce::String Show::getHostControlXml() const
+{
+    return takeString (ld::ld_show_host_control (handle));
+}
+
+bool Show::setHostControlXml (const juce::String& xml)
+{
+    const Utf8 u (xml);
+    return ld::ld_show_set_host_control (handle, u.data, u.size);
 }
 
 //==============================================================================

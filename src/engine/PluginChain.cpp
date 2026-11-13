@@ -149,7 +149,78 @@ void PluginChain::setView (int index, View view)
 
 bool PluginChain::needsChainFormat() const noexcept
 {
-    return size() > 1 || members.front()->bypassed.load() || ! members.front()->view.isDefault() || hasKeys();
+    return size() > 1 || members.front()->bypassed.load() || ! members.front()->view.isDefault() || hasKeys() || hasControls();
+}
+
+//==============================================================================
+PluginChain::ParamRef PluginChain::ParamRef::of (juce::AudioProcessor& plugin, int index)
+{
+    const auto& list = plugin.getParameters();
+    if (! juce::isPositiveAndBelow (index, list.size()))
+        return {};
+    return { index, list[index]->getName (128) };
+}
+
+juce::AudioProcessorParameter* PluginChain::ParamRef::find (juce::AudioProcessor& plugin) const
+{
+    if (index < 0)
+        return nullptr;
+    const auto& list = plugin.getParameters();
+    if (juce::isPositiveAndBelow (index, list.size()) && list[index]->getName (128) == name)
+        return list[index];
+    for (auto* p : list)
+        if (p->getName (128) == name)
+            return p;
+    return nullptr;
+}
+
+juce::String PluginChain::MidiSource::describe() const
+{
+    juce::String text = kind == Kind::Cc ? "CC " + juce::String (number) : "NOTE " + juce::MidiMessage::getMidiNoteName (number, true, true, 3);
+    text << "  CH " << channel;
+    if (kind == Kind::Cc && mode == Mode::Relative)
+        text << "  REL";
+    return text;
+}
+
+void PluginChain::MidiSource::writeTo (juce::XmlElement& e) const
+{
+    e.setAttribute ("kind", kind == Kind::Cc ? "cc" : "note");
+    e.setAttribute ("ch", channel);
+    e.setAttribute ("num", number);
+    if (mode == Mode::Relative)
+        e.setAttribute ("rel", 1);
+}
+
+PluginChain::MidiSource PluginChain::MidiSource::readFrom (const juce::XmlElement& e)
+{
+    MidiSource s;
+    s.kind = e.getStringAttribute ("kind") == "note" ? Kind::Note : Kind::Cc;
+    s.channel = juce::jlimit (1, 16, e.getIntAttribute ("ch", 1));
+    s.number = juce::jlimit (0, 127, e.getIntAttribute ("num"));
+    s.mode = s.kind == Kind::Cc && e.getBoolAttribute ("rel") ? Mode::Relative : Mode::Absolute;
+    return s;
+}
+
+bool PluginChain::Control::operator== (const Control& o) const noexcept
+{
+    if (hot != o.hot || maps.size() != o.maps.size())
+        return false;
+    for (size_t i = 0; i < maps.size(); ++i)
+        if (maps[i].source != o.maps[i].source || maps[i].param != o.maps[i].param)
+            return false;
+    return true;
+}
+
+void PluginChain::setControl (int index, Control control)
+{
+    if (juce::isPositiveAndBelow (index, size()))
+        members[(size_t) index]->control = std::move (control);
+}
+
+bool PluginChain::hasControls() const noexcept
+{
+    return std::any_of (members.begin(), members.end(), [] (auto& m) { return ! m->control.isEmpty(); });
 }
 
 void PluginChain::setKey (int index, Key key)
@@ -374,6 +445,7 @@ std::unique_ptr<juce::XmlElement> PluginChain::createXml() const
     xml->setAttribute ("name", describeMembers());
     xml->setAttribute ("views", 1);
     xml->setAttribute ("keys", 1);
+    xml->setAttribute ("controls", 1);
     for (auto& m : members)
     {
         auto* e = xml->createNewChildElement ("MEMBER");
@@ -387,6 +459,19 @@ std::unique_ptr<juce::XmlElement> PluginChain::createXml() const
             e->setAttribute ("keyChannel", m->key.channel);
             if (m->key.post)
                 e->setAttribute ("keyPost", 1);
+        }
+        for (int k = 0; k < 2; ++k)
+            if (m->control.hot[(size_t) k].isSet())
+            {
+                e->setAttribute ("hot" + juce::String (k + 1), m->control.hot[(size_t) k].index);
+                e->setAttribute ("hot" + juce::String (k + 1) + "Name", m->control.hot[(size_t) k].name);
+            }
+        for (auto& map : m->control.maps)
+        {
+            auto* c = e->createNewChildElement ("MAP");
+            map.source.writeTo (*c);
+            c->setAttribute ("param", map.param.index);
+            c->setAttribute ("paramName", map.param.name);
         }
         e->addChildElement (PluginHost::describe (*m->plugin).createXml().release());
 
@@ -423,6 +508,12 @@ bool PluginChain::parseXml (const juce::XmlElement& xml, std::vector<Saved>& sav
         s.hasKey = xml.getBoolAttribute ("keys"); // from before side-chain keys: the recall keeps the current one
         s.key.channel = e->getIntAttribute ("keyChannel", -1);
         s.key.post = s.key.channel >= 0 && e->getBoolAttribute ("keyPost");
+        s.hasControl = xml.getBoolAttribute ("controls");
+        for (int k = 0; k < 2; ++k)
+            if (e->hasAttribute ("hot" + juce::String (k + 1)))
+                s.control.hot[(size_t) k] = { e->getIntAttribute ("hot" + juce::String (k + 1)), e->getStringAttribute ("hot" + juce::String (k + 1) + "Name") };
+        for (auto* c : e->getChildWithTagNameIterator ("MAP"))
+            s.control.maps.push_back ({ MidiSource::readFrom (*c), { c->getIntAttribute ("param", -1), c->getStringAttribute ("paramName") } });
         if (auto* state = e->getChildByName ("STATE"))
             if (const auto text = state->getAllSubText().trim(); text.isNotEmpty())
                 s.state.fromBase64Encoding (text);

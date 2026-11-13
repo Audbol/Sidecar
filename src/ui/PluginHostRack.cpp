@@ -59,10 +59,40 @@ namespace
 //==============================================================================
 // RackDock
 
+/** Listens to the shown plug-in: a parameter gesture (what its editor, or a generic slider, starts when it is touched). */
+class RackDock::Watcher final : public juce::AudioProcessorListener
+{
+public:
+    explicit Watcher (RackDock& d) : dock (d) {}
+    void audioProcessorParameterChanged (juce::AudioProcessor*, int, float) override {}
+    void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override {}
+    void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int index) override
+    {
+        if (juce::MessageManager::getInstance()->isThisTheMessageThread())
+            dock.parameterTouched (index);
+    }
+
+private:
+    RackDock& dock;
+};
+
 RackDock::RackDock (UiContext& c, const Theme& t)
     : ctx (c), theme (t), pinKey ("PIN", t.accent, t), popKey ("POP OUT", t.accent, t), openKey ("OPEN EDITOR WINDOW", t.accent, t),
-      chooseKey ("CHOOSE PLUG-IN", t.accent, t), blockEditor (c, t)
+      chooseKey ("CHOOSE PLUG-IN", t.accent, t), hot1Key ("ASSIGN HOT 1", t.accent, t), hot2Key ("ASSIGN HOT 2", t.accent, t), watcher (std::make_unique<Watcher> (*this)),
+      blockEditor (c, t)
 {
+    for (int k = 0; k < 2; ++k)
+    {
+        auto& key = getHotKey (k);
+        key.isOn = [this, k] { return assigning == k; };
+        key.onClick = [this, k]
+        {
+            assigning = assigning == k ? -1 : k;
+            refreshHotKeys();
+        };
+        key.setTooltip ("Tap, then touch or move a control of the plug-in: that parameter becomes this hot knob's");
+        addChildComponent (key);
+    }
     pinKey.isOn = [this] { return pinned; };
     pinKey.onClick = [this] { setPinned (! pinned); };
     pinKey.setTooltip ("Keep the dock on this plug-in while the channel changes");
@@ -106,6 +136,65 @@ RackDock::~RackDock()
 {
     stopTimer();
     dropEditor();
+    unwatch();
+}
+
+void RackDock::watch (juce::AudioProcessor* p)
+{
+    unwatch();
+    if (p != nullptr)
+    {
+        p->addListener (watcher.get());
+        watched = p;
+    }
+}
+
+void RackDock::unwatch()
+{
+    if (watched != nullptr)
+        watched->removeListener (watcher.get());
+    watched = nullptr;
+}
+
+void RackDock::parameterTouched (int paramIndex)
+{
+    auto* plugin = shownPlugin;
+    const int s = slot();
+    if (control == nullptr || plugin == nullptr || s < 0)
+        return;
+    const PluginRef ref { channel, uid, member };
+    const auto param = PluginChain::ParamRef::of (*plugin, paramIndex);
+    if (! param.isSet())
+        return;
+    if (assigning >= 0)
+    {
+        const int knob = assigning;
+        assigning = -1;
+        control->assignHot (ref, knob, param);
+        refreshHotKeys();
+    }
+    else if (control->isLearning())
+        control->captureTarget (Target::ofParam (ref, param));
+}
+
+void RackDock::refreshHotKeys()
+{
+    const bool usable = control != nullptr && shownPlugin != nullptr && (content == Content::Editor || content == Content::Generic || content == Content::Sandbox || content == Content::TooLarge);
+    for (int k = 0; k < 2; ++k)
+    {
+        auto& key = getHotKey (k);
+        juce::String text = "ASSIGN HOT " + juce::String (k + 1);
+        if (usable)
+        {
+            if (assigning == k)
+                text = "TOUCH A CONTROL";
+            else if (const auto c = control->controlOf ({ channel, uid, member }); c.hot[(size_t) k].isSet())
+                text = "HOT " + juce::String (k + 1) + ": " + c.hot[(size_t) k].name.toUpperCase();
+        }
+        key.setButtonText (text);
+        key.setVisible (usable);
+        key.refresh();
+    }
 }
 
 Strip* RackDock::strip() const
@@ -159,6 +248,7 @@ void RackDock::showMember (int index)
 
 void RackDock::dropEditor()
 {
+    unwatch();
     if (editor != nullptr)
     {
         if (shownPlugin != nullptr)
@@ -238,6 +328,7 @@ void RackDock::timerCallback()
     }
     else if (content == Content::Sandbox || content == Content::NoPlugin)
         repaint (body);
+    refreshHotKeys();
 }
 
 void RackDock::rebuild()
@@ -249,6 +340,7 @@ void RackDock::rebuild()
     detail.clear();
     shownPlugin = nullptr;
     shownSlot = -1;
+    assigning = -1;
     blockEditor.setVisible (false);
 
     auto* s = strip();
@@ -323,10 +415,12 @@ void RackDock::rebuild()
                     editor = std::make_unique<juce::GenericAudioProcessorEditor> (*shownPlugin);
                     viewport.setViewedComponent (editor.get(), false);
                 }
+                watch (shownPlugin);
             }
         }
     }
     place();
+    refreshHotKeys();
     repaint();
 }
 
@@ -343,6 +437,8 @@ void RackDock::place()
     auto head = area.removeFromTop (kHeader).reduced (sizes::kGap, 2);
     popKey.setBounds (head.removeFromRight (132).reduced (2, 0));
     pinKey.setBounds (head.removeFromRight (84).reduced (2, 0));
+    hot2Key.setBounds (head.removeFromRight (kHotKeyWidth).reduced (2, 0));
+    hot1Key.setBounds (head.removeFromRight (kHotKeyWidth).reduced (2, 0));
     const bool hasPlugin = shownSlot >= 0 && content != Content::NoPlugin && content != Content::Empty;
     popKey.setVisible (hasPlugin && ctx.openPluginEditor != nullptr);
     pinKey.setVisible (uid >= 0);
@@ -426,7 +522,7 @@ void RackDock::paint (juce::Graphics& g)
     g.setColour (theme.outline);
     g.drawVerticalLine (0, 0.0f, (float) getHeight());
     auto head = getLocalBounds().removeFromTop (kHeader).reduced (sizes::kGapLarge, 0);
-    head.removeFromRight (84 + 132 + 8);
+    head.removeFromRight (84 + 132 + 8 + 2 * kHotKeyWidth);
     g.setColour (theme.text);
     g.setFont (type::font (type::kHeading, true));
     g.drawFittedText ((pinned ? "PINNED   " : juce::String()) + title(), head, juce::Justification::centredLeft, 1, 0.8f);
@@ -721,6 +817,13 @@ std::atomic<bool>* RackPage::switchOf (int uid) const
         return nullptr;
     const auto block = s->getBlock (uid);
     return block.isValid() ? switchOfBlock (block) : nullptr;
+}
+
+PluginRef RackPage::getFocus() const
+{
+    if (selectedUid < 0)
+        return {};
+    return { channel, selectedUid, dock.getChannel() == channel && dock.getUid() == selectedUid ? dock.getMember() : 0 };
 }
 
 RackPage::TileInfo RackPage::describe (const ChainStep& step) const

@@ -27,7 +27,7 @@ namespace
         { "DM2000", 70 },
         { "PRO2", 35 },
         { "Q1202USB", 40 },
-        { "PLUGIN HOST", 60 },
+        { "PLUGIN HOST", 75 },
     };
 } // namespace
 
@@ -87,7 +87,7 @@ juce::String text()
          "- DM2000: its processing, most of its effects, its surface and the LCD's most-used pages exist; its Automix (faders and ON only), recorder arming and locator exist; remote layers, surround and Bulk are not built.\n"
          "- PRO2: its processing, most of its effects and a first surface with its screen exist; MCA and SIS, direct outs and the safes are drawn but not built.\n"
          "- Q1202USB: the first analog mixer: its routing, blocks and surface follow the owner's photographs of the panel and the quick-start guide; its sound is " << app << "'s reading, nothing was measured. Console tape and scenes are " << app << "'s own additions.\n"
-         "- PLUGIN HOST: " << app << "'s own insert host for a real console (16, 32 or 64 channels: input, plug-ins, output). The engine and its own surface exist (a touchscreen with the RACK page and docked plug-in windows, the ROUTING page's patch grids and sidechain keys, the SCENES page with whole-rack scenes, safes and GLIDE, eight channel strips and banks); its other pages (OVERVIEW, CONTROL, BROWSER, SYSTEM) and the hot knobs' assignments are still to come.\n"
+         "- PLUGIN HOST: " << app << "'s own insert host for a real console (16, 32 or 64 channels: input, plug-ins, output). The engine and its own surface exist (a touchscreen with the RACK page and docked plug-in windows, the ROUTING page's patch grids and sidechain keys, the SCENES page with whole-rack scenes, safes and GLIDE, the CONTROL page with MIDI learn for plug-in parameters, keys and scene keys, and two hot knobs per channel strip that follow the focused plug-in's assigned parameters, eight channel strips and banks); its other pages (OVERVIEW, BROWSER, SYSTEM) are still to come.\n"
          "- Universal Mixer: " << app << "'s own interface for a console of any size.\n"
          "\n"
          "## Trademarks\n"

@@ -248,6 +248,10 @@ public:
     // saved with the show (the UI interprets the functions).
     juce::String getCustomControlsXml() const;
     bool setCustomControlsXml (const juce::String&);
+    /** The PLUGIN HOST's MIDI mappings of its keys and hot knobs (a <PluginHostControl> element; empty: none),
+        saved with the show. Empty text clears them. */
+    juce::String getHostControlXml() const;
+    bool setHostControlXml (const juce::String&);
 
     //==============================================================================
     // LIBRARY presets: an FX slot's device (FX tab) or a strip's settings (CHAN tab) as files.

@@ -1753,6 +1753,9 @@ extern "C"
     /** The CUSTOM CONTROLS assignments as a <CustomControls> element, and back. */
     LdString* ld_show_custom_controls (Show*);
     bool ld_show_set_custom_controls (Show*, const char* utf8, size_t len);
+    /** The PLUGIN HOST's MIDI mappings as a <PluginHostControl> element (empty: none), and back (empty text clears). */
+    LdString* ld_show_host_control (Show*);
+    bool ld_show_set_host_control (Show*, const char* utf8, size_t len);
 
     // Layers (message thread). Sections: 0 = left (12 faders), 1 = center (8), 2 = right (4).
     LayerSet* ld_show_layers (Show*);

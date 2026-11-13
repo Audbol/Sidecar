@@ -4,6 +4,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 
+#include <array>
 #include <atomic>
 #include <memory>
 #include <vector>
@@ -96,6 +97,71 @@ public:
         bool operator!= (const Key& o) const noexcept { return ! operator== (o); }
     };
 
+    /** A plug-in parameter: its index in getParameters() and its name (the name checks, after the plug-in
+        is loaded again, that the index still means the same parameter). */
+    struct ParamRef
+    {
+        int index = -1;
+        juce::String name;
+
+        bool isSet() const noexcept { return index >= 0; }
+        bool operator== (const ParamRef& o) const noexcept { return index == o.index && name == o.name; }
+        bool operator!= (const ParamRef& o) const noexcept { return ! operator== (o); }
+        /** The reference to parameter `index` of `plugin`. */
+        static ParamRef of (juce::AudioProcessor& plugin, int index);
+        /** The parameter of `plugin` this means, or nullptr: the one at the index if it has the name, else the
+            first with the name. */
+        juce::AudioProcessorParameter* find (juce::AudioProcessor& plugin) const;
+    };
+
+    /** A MIDI control that is mapped (PLUGIN HOST, CONTROL page): a controller (absolute, or an endless
+        encoder sending relative values) or a note (each note on toggles). */
+    struct MidiSource
+    {
+        enum class Kind
+        {
+            Cc,
+            Note
+        };
+        enum class Mode
+        {
+            Absolute, // CC value 0..127 is the parameter's 0..1
+            Relative  // 1..63 up and 65..127 down (two's complement): an endless encoder
+        };
+        Kind kind = Kind::Cc;
+        int channel = 1; // MIDI channel 1-16
+        int number = 0;  // controller or note number
+        Mode mode = Mode::Absolute;
+
+        bool sameControl (const MidiSource& o) const noexcept { return kind == o.kind && channel == o.channel && number == o.number; }
+        bool operator== (const MidiSource& o) const noexcept { return sameControl (o) && mode == o.mode; }
+        bool operator!= (const MidiSource& o) const noexcept { return ! operator== (o); }
+        /** "CC 21  CH 1" or "NOTE C3  CH 1" (REL after a relative one). */
+        juce::String describe() const;
+        void writeTo (juce::XmlElement&) const;
+        static MidiSource readFrom (const juce::XmlElement&);
+    };
+
+    /** A MIDI control mapped to one parameter of a plug-in. */
+    struct ParamMap
+    {
+        MidiSource source;
+        ParamRef param;
+    };
+
+    /** What a plug-in's owner has set up on it (PLUGIN HOST): its two hot knobs' parameters and the MIDI controls
+        mapped to its parameters. Saved with the plug-in, so a reorder takes it along and a remove drops it. */
+    struct Control
+    {
+        std::array<ParamRef, 2> hot;
+        std::vector<ParamMap> maps;
+
+        bool isEmpty() const noexcept { return ! hot[0].isSet() && ! hot[1].isSet() && maps.empty(); }
+        bool hasHot() const noexcept { return hot[0].isSet() || hot[1].isSet(); }
+        bool operator== (const Control& o) const noexcept;
+        bool operator!= (const Control& o) const noexcept { return ! operator== (o); }
+    };
+
     /** A plugin in a chain, shared by the chains that hold it. */
     struct Member final : private juce::AudioProcessorListener
     {
@@ -113,6 +179,7 @@ public:
         std::atomic<bool> faultUnreported { false };
         View view; // message thread
         Key key;   // message thread; only a member with hasSidechain() keeps one
+        Control control; // message thread: hot knobs and MIDI maps
 
         /** The plugin runs in this process and has a side-chain input bus. */
         bool hasSidechain() const noexcept { return sandboxed == nullptr && numChannels > 2; }
@@ -179,6 +246,13 @@ public:
         none) for the members that have a key. The pointer is read in that call only. */
     void setKeyInput (const float* mono) noexcept { keyInput = mono; }
 
+    /** The member's hot knobs and MIDI maps (message thread; saved with the show and the scenes' chains). A scene
+        recall of the same plug-ins leaves them as they are; a plug-in made again from a scene takes the scene's. */
+    const Control& getControl (int index) const noexcept { return members[(size_t) index]->control; }
+    void setControl (int index, Control);
+    /** Any member has hot knobs or maps (shows must store the chain format). */
+    bool hasControls() const noexcept;
+
     /** Any thread: works the latency out again (the members' latencies may have
         changed without telling their host) and reports a change. */
     void updateLatency();
@@ -202,10 +276,10 @@ public:
     /** "output NaN/Inf", "threw an exception"... */
     static juce::String describeFault (FaultKind);
 
-    /** The chain as <PLUGINCHAIN name=.. views=1><MEMBER bypass=.. zoom=.. collapsed=.. keyChannel=.. keyPost=..><PLUGIN ../><STATE>base64</STATE></MEMBER>..</PLUGINCHAIN>
+    /** The chain as <PLUGINCHAIN name=.. views=1><MEMBER bypass=.. zoom=.. collapsed=.. keyChannel=.. keyPost=.. hot1=.. hot1Name=.. hot2=.. hot2Name=..><MAP ../><PLUGIN ../><STATE>base64</STATE></MEMBER>..</PLUGINCHAIN>
         (zoom and collapsed only when not the default; `views` says every member's
         view is stored, so a missing one is the default; the key attributes only on
-        a keyed member, and `keys` says keys are stored, so a missing one is none). A member that throws
+        a keyed member; the hot and MAP entries only where there are any, and `controls` says they are stored, so a scene without it leaves them alone; and `keys` says keys are stored, so a missing one is none). A member that throws
         while saving its state is stored without one. */
     std::unique_ptr<juce::XmlElement> createXml() const;
     /** The attribute a single plugin's <PLUGIN> description carries when it was
@@ -224,6 +298,9 @@ public:
         Key key;
         /** Whether `key` was saved (older shows and scenes have none: a recall keeps the current key). */
         bool hasKey = false;
+        Control control;
+        /** Whether `control` was saved (older shows and scenes have none: it then stays as it is). */
+        bool hasControl = false;
         juce::MemoryBlock state;
     };
     /** Reads a <PLUGINCHAIN> element; false if it isn't one or a member's description is unreadable. */

@@ -1,6 +1,8 @@
 #pragma once
 
 #include "ui/HardwareLook.h"
+#include "ui/PluginHostControl.h"
+#include "ui/PluginHostControlPage.h"
 #include "ui/PluginHostRack.h"
 #include "ui/PluginHostRouting.h"
 #include "ui/PluginHostScenes.h"
@@ -71,14 +73,31 @@ namespace ph
         juce::StringArray lines;
     };
 
-    /** An endless knob with an LED ring. Not assigned yet (step 5 of docs/PLUGIN_HOST.md): drawn with a dim ring. */
+    /** An endless knob with an LED ring (a hot knob: it follows a parameter of the channel's focused plug-in).
+        A drag turns it (200 px for the whole range), the mouse wheel in fine steps; the ring shows the
+        parameter's value and is dim and at rest when the knob has none. */
     class HotKnob final : public juce::Component, public juce::SettableTooltipClient
     {
     public:
         HotKnob();
+        /** A tap that was not a drag. */
         std::function<void()> onClick;
+        /** A turn, in 0..1 of the range; and a touch beginning or ending. */
+        std::function<void (float delta)> onTurn;
+        std::function<void (bool touched)> onTouch;
+        /** The ring: whether a parameter is assigned, and its value 0..1. */
+        void setState (bool assigned, float value);
+        bool isAssigned() const noexcept { return assignedNow; }
+        float getValue() const noexcept { return valueNow; }
         void paint (juce::Graphics&) override;
+        void mouseDown (const juce::MouseEvent&) override;
+        void mouseDrag (const juce::MouseEvent&) override;
         void mouseUp (const juce::MouseEvent&) override;
+        void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+
+    private:
+        bool assignedNow = false;
+        float valueNow = 0.0f, lastY = 0.0f;
     };
 
     /** The data wheel: a drag or the mouse wheel turns it, one step per notch. */
@@ -112,6 +131,8 @@ namespace ph
         Key& getBypassKey() noexcept { return bypassKey; }
         Lcd& getLcd() noexcept { return lcd; }
         HotKnob& getKnob (int i) noexcept { return knobs[(size_t) i]; }
+        /** The knob under a finger (-1: none): the LCD shows its parameter's short name and value, and a moment after. */
+        int getTouchedKnob() const noexcept { return touchedKnob; }
         /** The meters' levels now, 0..1 (the tests). */
         float getInputLevel() const noexcept { return inLevel; }
         float getReduction() const noexcept { return grDb; }
@@ -135,12 +156,15 @@ namespace ph
         std::array<HotKnob, 2> knobs;
         float inLevel = 0.0f, grDb = 0.0f;
         bool grAvailable = false, selectedNow = false, bypassedNow = false;
+        int touchedKnob = -1;
+        juce::uint32 touchUntil = 0;
     };
 } // namespace ph
 
 /** The PLUGIN HOST's surface (docs/PLUGIN_HOST.md): a large touchscreen across the top, eight channel strips under
     it, and at the right the bank, scene, data wheel and latency / CPU readout. Drawn in a 1920 x 1080 design space
-    scaled to fit, like the dLive's. The screen has seven pages; RACK, ROUTING and SCENES are built (the others say so). */
+    scaled to fit, like the dLive's. The screen has seven pages; RACK, ROUTING, SCENES and CONTROL are built (the
+    others say so). It owns the Control (hot knobs, MIDI learn) that the strips, the keys and the pages share. */
 class PluginHostSurface final : public Skin,
                                 private juce::Timer
 {
@@ -196,6 +220,10 @@ public:
     ph::RackPage& getRack() noexcept { return *rack; }
     ph::RoutingPage& getRouting() noexcept { return *routing; }
     ph::ScenesPage& getScenes() noexcept { return *scenes; }
+    ph::ControlPage& getControlPage() noexcept { return *controlPage; }
+    ph::Control& getControl() noexcept { return *control; }
+    /** What LEARN is waiting for was tapped: taken by LEARN (true), or LEARN is off and the key acts as usual. */
+    bool offerTarget (const ph::Target& t) { return control->captureTarget (t); }
     ph::DataWheel& getWheel() noexcept { return wheel; }
     juce::Component& getScreen() noexcept { return screenHost; }
     ph::Key& getBankKey (bool next) noexcept { return next ? bankNext : bankPrev; }
@@ -222,9 +250,11 @@ private:
     universal::ToggleKey universalKey;
     juce::Component screenHost;
     std::array<std::unique_ptr<universal::ToggleKey>, 7> tabs;
+    std::unique_ptr<ph::Control> control;
     std::unique_ptr<ph::RackPage> rack;
     std::unique_ptr<ph::RoutingPage> routing;
     std::unique_ptr<ph::ScenesPage> scenes;
+    std::unique_ptr<ph::ControlPage> controlPage;
     std::unique_ptr<ComingSoon> comingSoon;
     std::array<std::unique_ptr<ph::StripUnit>, kStrips> strips;
     ph::Key bankPrev, bankNext, scenePrev, sceneGoKey, sceneNext;

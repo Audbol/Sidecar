@@ -8,6 +8,7 @@
 namespace livedaw::ui
 {
 using namespace universal;
+using ph::Target;
 
 namespace
 {
@@ -162,18 +163,56 @@ namespace ph
 
     // ---- HotKnob --------------------------------------------------------------------------
 
-    HotKnob::HotKnob() { setTooltip ("A hot knob: it takes the parameter you assign to it (CONTROL page, not built yet)"); }
+    HotKnob::HotKnob() { setTooltip ("A hot knob: it turns a parameter of this channel's focused plug-in. Give it one with ASSIGN HOT on the RACK page, or on the CONTROL page."); }
+
+    void HotKnob::setState (bool assigned, float value)
+    {
+        value = juce::jlimit (0.0f, 1.0f, value);
+        if (assigned != assignedNow || std::abs (value - valueNow) > 0.002f)
+        {
+            assignedNow = assigned;
+            valueNow = value;
+            repaint();
+        }
+    }
 
     void HotKnob::paint (juce::Graphics& g)
     {
-        // Not assigned: a dim ring, resting at its start.
-        hw::knob (g, getLocalBounds().toFloat().reduced (1.0f), 0.0f, look(), hw::Look::Knob::Dome, look().knob, look().knobRing.withAlpha (0.5f), false);
+        // Not assigned: a dim ring, resting at its start. Assigned: the ring lights up to the parameter's value.
+        const auto lit = Theme::of (Theme::Look::ConsolePluginHost).accent;
+        hw::knob (g, getLocalBounds().toFloat().reduced (1.0f), assignedNow ? valueNow : 0.0f, look(), hw::Look::Knob::Dome, look().knob,
+                  assignedNow ? lit : look().knobRing.withAlpha (0.5f), false);
+    }
+
+    void HotKnob::mouseDown (const juce::MouseEvent& e)
+    {
+        lastY = e.position.y;
+        if (onTouch)
+            onTouch (true);
+    }
+
+    void HotKnob::mouseDrag (const juce::MouseEvent& e)
+    {
+        // Up turns it up: 200 px for the whole range.
+        const float delta = (lastY - e.position.y) / 200.0f;
+        lastY = e.position.y;
+        if (delta != 0.0f && onTurn)
+            onTurn (delta);
     }
 
     void HotKnob::mouseUp (const juce::MouseEvent& e)
     {
+        if (onTouch)
+            onTouch (false);
         if (e.mouseWasClicked() && onClick)
             onClick();
+    }
+
+    void HotKnob::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& w)
+    {
+        const float d = w.deltaY != 0.0f ? w.deltaY : w.deltaX;
+        if (d != 0.0f && onTurn)
+            onTurn (d > 0.0f ? 0.02f : -0.02f);
     }
 
     // ---- DataWheel ------------------------------------------------------------------------
@@ -230,7 +269,7 @@ namespace ph
         selectKey.isOn = [this] { return channel >= 0 && owner.getSelectedChannel() == channel; };
         selectKey.onClick = [this]
         {
-            if (channel >= 0)
+            if (channel >= 0 && ! owner.offerTarget (Target::of (Target::Kind::Select, channel)))
                 owner.selectChannel (channel);
         };
         bypassKey.isOn = [this]
@@ -240,7 +279,7 @@ namespace ph
         };
         bypassKey.onClick = [this]
         {
-            if (auto* s = strip())
+            if (auto* s = strip(); s != nullptr && ! owner.offerTarget (Target::of (Target::Kind::Bypass, channel)))
                 s->params.input.bypass = ! s->params.input.bypass.load();
         };
         selectKey.setTooltip ("Select this channel: its chain shows on the RACK page");
@@ -254,6 +293,17 @@ namespace ph
             auto* s = strip();
             if (s == nullptr)
                 return lines;
+            // A knob under a finger (and a moment after): its parameter's short name and value.
+            if (touchedKnob >= 0 && (knobs[(size_t) touchedKnob].isMouseButtonDown() || juce::Time::getMillisecondCounter() < touchUntil))
+            {
+                const auto hot = owner.getControl().getHot (channel, touchedKnob);
+                if (hot.assigned)
+                {
+                    lines.add (hot.name);
+                    lines.add (hot.text);
+                    return lines;
+                }
+            }
             lines.add (juce::String (channel + 1).paddedLeft ('0', 2));
             const auto name = s->getOwnName();
             lines.add (name == juce::String (channel + 1) ? juce::String() : name);
@@ -263,8 +313,28 @@ namespace ph
         addAndMakeVisible (selectKey);
         addAndMakeVisible (bypassKey);
         addAndMakeVisible (lcd);
-        for (auto& k : knobs)
-            addAndMakeVisible (k);
+        for (int k = 0; k < 2; ++k)
+        {
+            auto& knob = knobs[(size_t) k];
+            knob.onTurn = [this, k] (float delta)
+            {
+                if (channel >= 0)
+                    owner.getControl().turnHot (channel, k, delta);
+                refresh();
+            };
+            knob.onTouch = [this, k] (bool touched)
+            {
+                touchedKnob = k;
+                touchUntil = juce::Time::getMillisecondCounter() + (touched ? 0u : 1200u);
+                lcd.refresh();
+            };
+            knob.onClick = [this, k]
+            {
+                if (channel >= 0)
+                    owner.offerTarget (Target::ofHot (channel, k));
+            };
+            addAndMakeVisible (knob);
+        }
     }
 
     Strip* StripUnit::strip() const
@@ -285,6 +355,15 @@ namespace ph
         selectKey.refresh();
         bypassKey.refresh();
         lcd.refresh();
+        if (channel >= 0)
+        {
+            const auto hots = owner.getControl().getHots (channel);
+            for (size_t k = 0; k < 2; ++k)
+                knobs[k].setState (hots[k].assigned, hots[k].value);
+        }
+        else
+            for (auto& k : knobs)
+                k.setState (false, 0.0f);
         auto* s = strip();
         float in = 0.0f, gr = 0.0f;
         bool available = false;
@@ -366,7 +445,6 @@ public:
         g.fillAll (theme.background);
         static const std::pair<Page, const char*> notes[] = {
             { Page::Overview, "Every channel as a column of small tiles: a glance at all racks, tap to jump." },
-            { Page::Control, "MIDI learn for plug-in parameters, and what the hot knobs control." },
             { Page::Browser, "Search, favourites, tags and recent plug-ins, and the scan report." },
             { Page::System, "Audio device and buffer, latency alignment, the CPU guard and the benchmark." }
         };
@@ -383,7 +461,7 @@ public:
         g.drawFittedText (note, area.removeFromTop (60), juce::Justification::centredTop, 2);
         g.setColour (theme.accent);
         g.setFont (type::font (type::kLabel, true));
-        g.drawText ("The RACK, ROUTING and SCENES pages are ready.", area.removeFromTop (30), juce::Justification::centred);
+        g.drawText ("The RACK, ROUTING, SCENES and CONTROL pages are ready.", area.removeFromTop (30), juce::Justification::centred);
     }
 
 private:
@@ -422,7 +500,13 @@ PluginHostSurface::PluginHostSurface (UiContext& c)
         screenHost.addAndMakeVisible (*key);
         tabs[(size_t) i] = std::move (key);
     }
+    control = std::make_unique<ph::Control> (c);
+    control->getFocus = [this] { return rack != nullptr ? rack->getFocus() : ph::PluginRef(); };
+    control->selectChannel = [this] (int ch) { selectChannel (ch); };
+    control->sceneStep = [this] (int delta) { sceneStep (delta); };
+    control->sceneGo = [this] { sceneGo(); };
     rack = std::make_unique<ph::RackPage> (c, theme);
+    rack->setControl (control.get());
     screenHost.addAndMakeVisible (*rack);
     routing = std::make_unique<ph::RoutingPage> (c, theme);
     screenHost.addChildComponent (*routing);
@@ -431,6 +515,13 @@ PluginHostSurface::PluginHostSurface (UiContext& c)
     scenes->setCue = [this] (int index) { setCue (index); };
     scenes->go = [this] { sceneGo(); };
     screenHost.addChildComponent (*scenes);
+    controlPage = std::make_unique<ph::ControlPage> (c, theme, *control);
+    screenHost.addChildComponent (*controlPage);
+    control->onChanged = [this]
+    {
+        if (controlPage != nullptr)
+            controlPage->refresh();
+    };
     comingSoon = std::make_unique<ComingSoon> (theme);
     screenHost.addChildComponent (*comingSoon);
 
@@ -462,9 +553,9 @@ PluginHostSurface::PluginHostSurface (UiContext& c)
     bankLcd.setInterceptsMouseClicks (false, false);
 
     // Scenes: PREV and NEXT cue, GO recalls the cue.
-    scenePrev.onClick = [this] { sceneStep (-1); };
-    sceneNext.onClick = [this] { sceneStep (1); };
-    sceneGoKey.onClick = [this] { sceneGo(); };
+    scenePrev.onClick = [this] { if (! offerTarget (ph::Target::of (ph::Target::Kind::ScenePrev))) sceneStep (-1); };
+    sceneNext.onClick = [this] { if (! offerTarget (ph::Target::of (ph::Target::Kind::SceneNext))) sceneStep (1); };
+    sceneGoKey.onClick = [this] { if (! offerTarget (ph::Target::of (ph::Target::Kind::SceneGo))) sceneGo(); };
     scenePrev.setTooltip ("Cue the previous scene");
     sceneNext.setTooltip ("Cue the next scene");
     sceneGoKey.setTooltip ("Recall the cued scene");
@@ -590,6 +681,7 @@ void PluginHostSurface::selectionChanged()
     if (rack->getChannel() != ch)
         rack->setChannel (ch);
     routing->setChannel (ch);
+    controlPage->setChannel (ch);
     for (auto& s : strips)
         s->refresh();
     updateReadouts();
@@ -603,6 +695,8 @@ void PluginHostSurface::dropPluginEditors (juce::AudioProcessor* p)
 void PluginHostSurface::showChanged()
 {
     shownScenes = -1; // the timer reads them again
+    control->loadFromShow(); // a show that was loaded brings its own mappings
+    controlPage->refresh();
 }
 
 void PluginHostSurface::sceneStep (int delta)
@@ -657,6 +751,7 @@ void PluginHostSurface::refreshAll()
     rack->refresh();
     routing->setChannel (getSelectedChannel());
     routing->refresh();
+    controlPage->setChannel (getSelectedChannel());
     shownScenes = ctx.show.getNumScenes();
     if (cue < 0 || cue >= shownScenes)
         cue = juce::jmax (-1, ctx.show.getCurrentSceneIndex() >= 0 ? ctx.show.getCurrentSceneIndex() : (shownScenes > 0 ? 0 : -1));
@@ -680,7 +775,10 @@ void PluginHostSurface::showPage (Page p)
     scenes->setVisible (p == Page::Scenes);
     if (p == Page::Scenes)
         scenes->refresh();
-    comingSoon->setVisible (p != Page::Rack && p != Page::Routing && p != Page::Scenes);
+    controlPage->setVisible (p == Page::Control);
+    if (p == Page::Control)
+        controlPage->refresh();
+    comingSoon->setVisible (p != Page::Rack && p != Page::Routing && p != Page::Scenes && p != Page::Control);
     comingSoon->setPage (p);
     for (auto& t : tabs)
         t->refresh();
@@ -765,6 +863,7 @@ void PluginHostSurface::resized()
     rack->setBounds (content);
     routing->setBounds (content);
     scenes->setBounds (content);
+    controlPage->setBounds (content);
     comingSoon->setBounds (content);
 
     for (int i = 0; i < kStrips; ++i)

@@ -134,6 +134,10 @@ public:
         its own chain (the key then stays as it was). The engine delays the key of a channel that is
         processed after the keyed one by a block (see PluginChain). */
     bool setChainMemberKey (int slot, int index, PluginChain::Key);
+    /** The plugin's hot knobs and MIDI maps (PLUGIN HOST; saved with it). */
+    PluginChain::Control getChainMemberControl (int slot, int index) const noexcept;
+    /** A plugin on its own that gets any becomes a chain of one. */
+    void setChainMemberControl (int slot, int index, PluginChain::Control);
     /** Inserts `plugin` at `index` (-1: the end). False (and `plugin` dropped) if
         the slot has no plugin yet or its chain is full. */
     bool addToChain (int slot, std::unique_ptr<juce::AudioPluginInstance> plugin, int index = -1);
