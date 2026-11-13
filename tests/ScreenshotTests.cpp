@@ -254,11 +254,18 @@ public:
         const int slot = FxSlots::blockSlotOf (strip.getHandle(), uid);
         strip.setBlockHostRack (uid, true);
         auto* params = new test::ParameterPlugin();
+        params->shownName = "Vocal Comp";
+        params->shownMaker = "Generic Audio";
         fx.setPlugin (slot, std::unique_ptr<juce::AudioPluginInstance> (params));
         auto* plate = new test::FakePlugin (1.0f, test::FakePlugin::Mode::Gain, "Plate Reverb");
+        plate->shownName = "Plate Reverb";
+        plate->shownMaker = "Generic Audio";
         plate->setLatencySamples (256);
         expect (fx.addToChain (slot, std::unique_ptr<juce::AudioPluginInstance> (plate)));
-        expect (fx.addToChain (slot, std::make_unique<test::SidechainPlugin>()));
+        auto deEsser = std::make_unique<test::SidechainPlugin>();
+        deEsser->shownName = "De-Esser";
+        deEsser->shownMaker = "Generic Audio";
+        expect (fx.addToChain (slot, std::move (deEsser)));
         PluginChain::Control control;
         control.hot[0] = PluginChain::ParamRef::of (*params, 0);
         control.hot[1] = PluginChain::ParamRef::of (*params, 1);
@@ -279,6 +286,7 @@ public:
 
         auto* pluginCard = view.getChannelPanel().numExtraCards() > 0 ? view.getChannelPanel().getExtraPluginCard (0) : nullptr;
         expect (pluginCard != nullptr && pluginCard->isRack());
+        expectEquals (view.getChannelPanel().extraCardName (0), juce::String ("PLUGIN HOST RACK"));
         if (pluginCard == nullptr)
             return;
         pluginCard->getOpenKey().onClick();
@@ -342,6 +350,8 @@ public:
             block.getMeters()->reductionDb = 6.0f;
         }
         auto* fake = new test::FakePlugin (1.0f, test::FakePlugin::Mode::Gain, "Hall Reverb");
+        fake->shownName = "Plate Reverb";
+        fake->shownMaker = "Generic Audio";
         fake->setLatencySamples (128);
         engine.getFx().setPlugin (FxSlots::blockSlotOf (strip->getHandle(), plug), std::unique_ptr<juce::AudioPluginInstance> (fake));
         rig.show.addScene ("Verse", -1);
@@ -358,7 +368,7 @@ public:
         const auto folder = juce::SystemStats::getEnvironmentVariable ("LIVEDAW_SCREENSHOTS", {});
         if (folder.isNotEmpty())
         {
-            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile ("pluginhost-surface.png");
+            const auto file = juce::File::getCurrentWorkingDirectory().getChildFile (folder).getChildFile ("pluginhost-rack.png");
             file.getParentDirectory().createDirectory();
             file.deleteFile();
             juce::FileOutputStream out (file);
@@ -381,7 +391,10 @@ public:
         {
             auto& keyed = *channels[3];
             const int keyUid = keyed.insertBlock (BlockKind::Plugin, -1);
-            engine.getFx().setPlugin (FxSlots::blockSlotOf (keyed.getHandle(), keyUid), std::make_unique<test::SidechainPlugin>());
+            auto ducker = std::make_unique<test::SidechainPlugin>();
+            ducker->shownName = "Ducker";
+            ducker->shownMaker = "Generic Audio";
+            engine.getFx().setPlugin (FxSlots::blockSlotOf (keyed.getHandle(), keyUid), std::move (ducker));
             const int slot = FxSlots::blockSlotOf (keyed.getHandle(), keyUid);
             expect (engine.getFx().setChainMemberKey (slot, 0, PluginChain::Key { 0, true }));
             auto& routing = skin.getRouting();
@@ -423,10 +436,11 @@ public:
         {
             skin.getRack().getDock().dropEditorFor (nullptr);
             const int values[] = { 0, 1, 3 };
+            const char* hotNames[] = { "Vocal Comp", "Tight Comp", "Warm EQ" };
             const auto paramsOf = [&] (int ch)
             {
                 for (const auto& r : control.pluginsOf (ch))
-                    if (control.nameOf (r) == "Fake Params")
+                    if (control.nameOf (r).contains ("Comp") || control.nameOf (r) == "Warm EQ")
                         return r;
                 return ui::ph::PluginRef();
             };
@@ -434,6 +448,8 @@ public:
             {
                 auto& ch = *channels[(size_t) values[v]];
                 auto* params = new test::ParameterPlugin();
+                params->shownName = hotNames[v];
+                params->shownMaker = "Generic Audio";
                 *params->level = 0.25f + 0.3f * (float) v;
                 *params->mode = v;
                 addPluginBlockFor (engine, ch, std::unique_ptr<juce::AudioPluginInstance> (params));
@@ -467,7 +483,7 @@ public:
         {
             ui::ph::PluginRef ref0;
             for (const auto& r : control.pluginsOf (0))
-                if (control.nameOf (r) == "Fake Params")
+                if (control.nameOf (r).contains ("Comp") || control.nameOf (r) == "Warm EQ")
                     ref0 = r;
             auto* plugin = control.pluginOf (ref0);
             control.setInputEnabled ("USB MIDI Controller", true);
@@ -501,6 +517,8 @@ public:
             const auto fake = [&] (int ch, const char* name, int latency)
             {
                 auto* p = new test::FakePlugin (1.0f, test::FakePlugin::Mode::Gain, name);
+                p->shownName = name;
+                p->shownMaker = "Generic Audio";
                 p->setLatencySamples (latency);
                 addPluginBlockFor (engine, *channels[(size_t) ch], std::unique_ptr<juce::AudioPluginInstance> (p));
             };
@@ -510,8 +528,9 @@ public:
             fake (5, "Tape Echo", 512);
             fake (7, "Bass Amp", 96);
             fake (8, "Pitch Fix", 1024);
+            const char* longChain[] = { "Gate One", "Warm EQ", "Tube Sat", "Bus Comp", "Wide Chorus", "Slap Delay", "Air Lift", "Limiter", "Meter" };
             for (int i = 0; i < 9; ++i)
-                fake (10, ("Fx " + juce::String (i + 1)).toRawUTF8(), 16 * i);
+                fake (10, longChain[i], 16 * i);
             channels[7]->params.input.bypass = true;
             int lastUid = -1;
             for (const auto& step : channels[4]->getChain())

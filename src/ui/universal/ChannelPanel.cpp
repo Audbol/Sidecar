@@ -539,9 +539,9 @@ void ChannelPanel::rebuildExtras()
         if (x->target.kind == BlockTarget::Kind::Plugin)
         {
             // A hosted plugin: its name, vendor, latency and the keys ON, EDIT and PLUG-IN.
-            x->name = "PLUG-IN " + juce::String (++plugCount);
             x->plugin = std::make_unique<PluginBlockCard> (ctx, theme);
             x->plugin->setBlock (strip, step.uid, x->target.pluginOn);
+            x->name = x->plugin->isRack() ? juce::String ("PLUGIN HOST RACK") : "PLUG-IN " + juce::String (++plugCount);
             addAndMakeVisible (*x->plugin);
             extras.push_back (std::move (x));
             continue;

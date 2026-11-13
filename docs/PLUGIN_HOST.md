@@ -1,4 +1,4 @@
-# The plug-in host console (plan, for 0.3.1)
+# The plug-in host console (for 0.3.1)
 
 A console of Sidecar's own design, not modelled on any maker's: a touch-first unit that hosts plug-ins
 on a real console's inserts. Named **PLUGIN HOST**. Profile 11, `kProfileHost`.
@@ -274,4 +274,16 @@ warning. With no benchmark saved the guard suggests running one (the notice, and
 5. CONTROL: MIDI learn, hot knobs. (Done.)
 6. OVERVIEW, BROWSER, SYSTEM; latency alignment; the CPU guard. (Done.)
 7. The Universal Mixer: PLUGIN HOST racks offered on any console's strips. (Done; see below. MIDI learn stays on the surface.)
-8. Screenshots, user guide, start-up tile, completion percentage.
+8. Screenshots, user guide, start-up tile, completion percentage. (Done: images in `docs/images` from the screenshot tests, the user guide's PLUGIN HOST chapter, completion 95 %.)
+
+The plan is done. What is left is testing it on real hardware.
+
+## Not yet tested on real hardware
+
+- Real VST3, AU and LV2 plug-ins: docking their editor windows, their sidechain buses, the latency they report, a GLIDE on their parameters. The tests use fake plug-ins.
+- A real MIDI controller: learning a controller, an endless encoder (relative mode) and notes. The tests send MIDI messages by hand.
+- A real console on its inserts: the round trip through an audio interface, and whether ALIGNED matches the real delays. ALIGNED counts plug-in latency only, not the converters or the buffer.
+- 64 channels of real plug-ins: the CPU guard's threshold and the benchmark's figure for plug-ins.
+- Plug-ins in the sandbox on a PLUGIN HOST: crash recovery, the mirrored parameters for MIDI learn.
+- A touch screen: the long press, the drags and the on-screen keyboard.
+

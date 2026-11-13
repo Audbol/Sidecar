@@ -27,7 +27,7 @@ namespace
         { "DM2000", 70 },
         { "PRO2", 35 },
         { "Q1202USB", 40 },
-        { "PLUGIN HOST", 90 },
+        { "PLUGIN HOST", 95 },
     };
 } // namespace
 

@@ -41,6 +41,7 @@ and please [report what you find](#reporting-problems).
 | **dLive** | C3500 and C1500 surfaces and touchscreens, MIDI over TCP |
 | **PRO2** | Its processing and effects, on the Universal Mixer until it has a surface |
 | **XENYX Q1202USB** | An analog mixer: its panel, routing and blocks, plus console tape and scenes |
+| **PLUGIN HOST** | Sidecar's own insert host for a real console: a rack of plug-ins per channel, sidechains, scenes, hot knobs and MIDI learn |
 | **Universal Mixer** | Sidecar's own touch-friendly interface, for any size of console |
 
 Under all of them is one mixer core without any one console's limits. A console's size is a
@@ -106,6 +107,8 @@ Every picture is one of Sidecar's own drawings, rendered at 1920 x 1080.
 | **DM2000** | **PRO2** |
 | ![**XENYX Q1202USB**](docs/images/q1202usb.png) | ![**WING METERS screen**](docs/images/meters.png) |
 | **XENYX Q1202USB** | **WING METERS screen** |
+| ![**PLUGIN HOST**](docs/images/pluginhost-rack.png) | ![**PLUGIN HOST ROUTING:** the patch grid](docs/images/pluginhost-routing.png) |
+| **PLUGIN HOST:** a rack of plug-ins | **PLUGIN HOST ROUTING:** the patch grid |
 
 ## What it does
 
@@ -171,6 +174,7 @@ Sidecar's own interface, for a console of any size. It is touch friendly and set
 - **CHANNEL panel:** one strip whole, with EQ handles you drag, an RTA behind the curve and
   a cards-in-signal-order view of the chain. It can fill the window.
 - **Plug-in blocks:** a VST3, AU or LV2 plug-in as a block in any strip's chain.
+- **PLUGIN HOST racks:** a whole rack of plug-ins on any strip, as on the PLUGIN HOST console.
 - **Benchmark:** SETUP > BENCHMARK measures what this PC can run, per block and per effect.
 - **Remote control of a real X32:** CONNECT to its IP address and Sidecar mirrors it and drives it.
 - **Analog mixers:** the XENYX Q1202USB, plus console tape (name strips) and scenes on

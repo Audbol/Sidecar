@@ -14,8 +14,8 @@ Sidecar opens with a window that asks how to start:
 
 - **CONTINUE WHERE YOU LEFT OFF** keeps the console from your last session, as the
   autosave restored it, with the mixer it was on. **Esc** does the same.
-- **A new mixer** starts a fresh console: WING (experimental), UNIVERSAL, X32, PROMIX 01
-  or 02R (very experimental). It clears the console and its scenes. The session you
+- **A new mixer** starts a fresh console: WING (experimental), UNIVERSAL, X32, PROMIX 01,
+  02R (very experimental) or PLUGIN HOST. It clears the console and its scenes. The session you
   left is kept as `autosave-previous.lshow` in Sidecar's data folder (see below).
 
 The window doesn't open in safe mode, or when files in the LIBRARY's STARTUP folder
@@ -1141,6 +1141,27 @@ key. Plug-in blocks are not offered while a real console is under remote control
 
 ![A plug-in block's card](images/plugin-block.png)
 
+### The PLUGIN HOST RACK
+
+A strip can also take a PLUGIN HOST RACK, on any console: press ADD in the inspector and choose
+PLUGIN HOST RACK, next to PLUG-IN. It is a plug-in block with the PLUGIN HOST's rack on top
+of it, so a WING, an X32 or a Q1202USB strip can hold a whole chain of plug-ins that you can see at a
+glance. Like a plug-in block it is not offered while a real console is under remote control.
+
+The CHANNEL panel's card, titled PLUGIN HOST RACK, lists the plug-ins' names (a bypassed one is
+dim) and the rack's total latency. It has the ON and PLUG-IN keys and two small knobs, the hot
+knobs of the rack's first plug-in that has any: drag one up or down to turn the parameter it
+follows. OPEN opens the RACK page over the mixer, with CLOSE to go back. It works as on the
+PLUGIN HOST (see below): drag the tiles to reorder, hold one for its menu, tap + to add a plug-in
+or a built-in block, and the plug-in's window docks beside the tiles. SAFE, and ASSIGN HOT 1 and 2,
+are there too. KEY, shown when the selected plug-in has a sidechain input, keys it from any of
+the console's channels, before or after its blocks.
+
+![A PLUGIN HOST RACK on a WING strip: the CHANNEL panel's card above, the opened RACK page below](images/universal-pluginhost-rack.png)
+
+What is not here: MIDI learn. It stays on the PLUGIN HOST's own surface. A plug-in in the
+sandbox does not dock here either, and has no key.
+
 ### Benchmark
 
 SETUP > BENCHMARK measures what this PC can run. It works offline on a low-priority
@@ -1555,6 +1576,10 @@ An analog mixer with its panel drawn as the real top view: channels as rows (4 m
 GAIN, low cut, a one-knob compressor, 3-band EQ, FX, PAN and LEVEL; 4 stereo pairs), then the
 main section with the FX send, PHONES and CTRL ROOM, the USB and 2-TRACK keys and +48 V.
 
+### PLUGIN HOST
+
+An insert host for a real console, with its own surface. It has its own chapter, below.
+
 ### Console tape
 
 The ProMix 01, 02R and 01V have no name displays. Sidecar shows a strip of tape at each
@@ -1580,6 +1605,148 @@ afterwards go to the real console as if you touched it, so mind the show. While 
 connected, other consoles' blocks and plug-in blocks are not offered, because the real X32
 cannot take them. This is new and has not been tested on every X32 setup or every page, so
 try it first on a console that is not in use.
+
+## The PLUGIN HOST console (preview)
+
+PLUGIN HOST is Sidecar's own console, not a copy of a maker's. It is an insert host for a
+real console: audio comes in from the console's inserts, goes through plug-ins, and goes back
+out. It is not a mixer. It has no buses, mains, sends or faders, and it mixes nothing. Each
+channel takes one interface input through its own rack of plug-ins to one interface output. A
+channel's BYPASS passes its input straight through.
+
+Choose it in the start-up picker or in SETUP > PREFERENCES > INTERFACE. The screen is drawn as a
+touchscreen on a rack unit, with eight channel strips under it. Each strip has a SELECT key, a name,
+an input meter, a gain-reduction meter, BYPASS and two hot knobs (endless, with LED rings). The
+BANK keys move the strips through the channels. To the right are a data wheel, the SCENE keys
+(PREV and NEXT cue, GO recalls) and a readout of the selected channel's latency and the CPU.
+F10 or a double-click on the screen enlarges it.
+
+![The PLUGIN HOST: the RACK page](images/pluginhost-rack.png)
+
+### 16, 32 or 64 channels
+
+The size is chosen in SYSTEM, in the CHANNELS panel. Tap the new size, then tap it again to
+confirm. The channels that stay keep their racks, plug-ins, settings and patch. New channels
+come at the end, empty. Channels past the new count go with their racks, and so do the MIDI
+mappings that pointed at them. Nothing else is lost.
+
+### RACK
+
+The home page. The selected channel's chain is a row of large tiles in signal order: name,
+maker, latency and bypass. Drag a tile to reorder. Tap + to add a plug-in (it opens the BROWSER) or a
+built-in block. Hold a tile for its menu: replace, copy, paste, save preset and SAFE.
+
+The plug-in's own window docks on the right of the tiles. PIN keeps it up while you change
+channel. A faulty plug-in bypasses only itself. ASSIGN HOT 1 and 2 in the dock's header give the
+channel strip's knobs a parameter (see CONTROL).
+
+A plug-in that runs in the sandbox does not dock, because its window belongs to another process. It
+shows generic controls and an OPEN key instead.
+
+### OVERVIEW
+
+Every channel as a column of small tiles, so you can see all the racks at once: the channel's number,
+name and BYPASS, then a tile for each block with its name, its latency and BYP, FAULT, MISSING
+or EMPTY where that applies. A long chain shows "+N MORE". Tap a tile to select that channel
+and plug-in and jump to RACK. With 32 or 64 channels the page scrolls sideways.
+
+![OVERVIEW](images/pluginhost-overview.png)
+
+### ROUTING
+
+INPUTS and OUTPUTS are patch grids. In INPUTS the interface's inputs run across and the channels
+down. A tap patches one input to a channel, one input per channel. In OUTPUTS the channels run
+across and the interface's outputs down. RESET 1:1 puts input N on channel N again, and asks
+to be pressed twice.
+
+![ROUTING](images/pluginhost-routing.png)
+
+KEYS is for sidechains. It lists the selected channel's plug-ins that have a sidechain input, and
+keys each from any channel's input (before its plug-ins) or its output (after them). A channel
+cannot key itself from its own output. The key is saved with the show and the scenes. If the keying
+channel is processed after the keyed one, the key arrives one block late.
+
+A plug-in that runs in the sandbox has no sidechain input, so no key is offered for it.
+
+![KEYS: a sidechain from another channel](images/pluginhost-routing-keys.png)
+
+### SCENES
+
+A scene recalls whole racks, not just levels: each plug-in's full state and bypass, the rack's order
+and which plug-ins are there, the sidechain keys and the patch. A plug-in the scene lacks is taken
+out. One it has is made again.
+
+![SCENES](images/pluginhost-scenes.png)
+
+The list shows each scene's number, name, mode and fade time, with a mark on the active one and the
+cued one. A tap cues a scene. RECALL or GO recalls it. STORE NEW, OVERWRITE and DELETE each ask
+twice: the key turns to CONFIRM for a few seconds. RENAME opens the on-screen keyboard.
+
+- **SNAP** (the default) applies the plug-ins' states at once.
+- **GLIDE** moves a plug-in's continuous parameters from where they are to the scene's values over the
+  fade time, then applies the whole state. Stepped parameters, and plug-ins in the sandbox, snap
+  at the start. A GLIDE makes one extra copy of each plug-in for as long as it runs.
+
+**SAFE** keeps something out of a recall. The SAFES panel lists every channel and, under it, every
+plug-in. A safe channel is left alone completely. A safe plug-in keeps its state, bypass, key and
+place, and stays even if the scene lacks it. RESTORE ignores the safes.
+
+### CONTROL
+
+Two ways to put a plug-in under your hands.
+
+**Hot knobs.** Each plug-in has up to two hot parameters. A channel strip's two knobs turn those of the
+channel's focused plug-in: the one selected on RACK while that channel is shown, otherwise the first
+plug-in in the chain that has any. The ring shows the value and the strip's LCD names the parameter
+while you touch the knob. Assign them with ASSIGN HOT 1 and 2 on RACK (tap, then touch a control in
+the plug-in), or from the HOT KNOBS panel, which lists the plug-ins' parameters.
+
+**MIDI learn.** MIDI DEVICES switches the MIDI inputs on. Tap LEARN, tap or touch what you want to
+control, then move a MIDI control. The target can be a plug-in's parameter, a hot knob, a channel's
+SELECT or BYPASS, or the scene PREV, GO and NEXT keys. A control can be absolute, relative
+(an endless encoder) or a note that toggles; set it with MODE. One control has one target. MAPPINGS lists them
+with DELETE, and CLEAR ALL asks twice. 14-bit controllers are not supported. A plug-in's mappings are saved with
+it, so they follow it when the rack is reordered and go with it when it is removed. Scenes leave
+the mappings alone.
+
+![CONTROL](images/pluginhost-control.png)
+
+### BROWSER
+
+Every scanned plug-in, with a star for favourites, your own tags and a search (it uses the on-screen
+keyboard). ALL, FAVOURITES and RECENT choose the list. A tap on a plug-in adds it to the selected
+channel's rack. SCAN opens the plug-in scanner. RESCAN forgets the plug-ins that failed first, then scans
+again. The scan report lists what failed and, for this run, why. Favourites, tags and recent belong to
+the app, not the show.
+
+![BROWSER](images/pluginhost-browser.png)
+
+### SYSTEM
+
+The audio device, sample rate and buffer, with AUDIO SETTINGS and the BENCHMARK, the channel count (see
+above), latency and the CPU guard.
+
+![SYSTEM](images/pluginhost-system.png)
+
+**Latency.** Each channel's latency is the sum of what its plug-ins report. Two modes:
+
+- **AS IS** (the default): each channel has only its own delay.
+- **ALIGNED**: every channel is delayed to match the longest, so phase-related sources such as drum mics stay
+  together. The OUT / IN key on a channel's row leaves it out. The delay follows changes within a fraction of a
+  second, and jumps in one step when it changes.
+
+ALIGNED counts plug-in latency only. It does not count the audio interface's converters or buffer, and it
+does not align anything outside Sidecar.
+
+**CPU guard.** Before a plug-in is added, the CPU is compared with a threshold (70 % at first, set with - and +).
+Above it, a warning shows on BROWSER and SYSTEM and goes in the event log. It only warns: the plug-in is
+added anyway. If you have saved a benchmark, the page uses it too. Without one it suggests running the BENCHMARK.
+
+### What is not tested yet
+
+PLUGIN HOST has been tried with test plug-ins and a pretend MIDI controller, not with real
+plug-ins or a real MIDI controller. Try it on a console that is not in use first. The start-up
+notice gives its completion figure.
 
 ## Multitrack recording
 

@@ -145,19 +145,20 @@ public:
     }
 
     std::atomic<float> keyLevel { 0.0f };
+    juce::String shownName, shownMaker; // the screenshots give their plug-ins real-looking names
 
     void fillInPluginDescription (juce::PluginDescription& d) const override
     {
-        d.name = "Fake Keyed";
+        d.name = getName();
         d.pluginFormatName = "Fake";
         d.fileOrIdentifier = "fake-keyed";
         d.uniqueId = d.deprecatedUid = juce::String ("fake-keyed").hashCode();
-        d.manufacturerName = "Tests";
+        d.manufacturerName = shownMaker.isNotEmpty() ? shownMaker : juce::String ("Tests");
         d.numInputChannels = 4;
         d.numOutputChannels = 2;
     }
 
-    const juce::String getName() const override { return "Fake Keyed"; }
+    const juce::String getName() const override { return shownName.isNotEmpty() ? shownName : juce::String ("Fake Keyed"); }
     void prepareToPlay (double, int) override {}
     void releaseResources() override {}
     using juce::AudioPluginInstance::processBlock;
@@ -201,18 +202,19 @@ public:
     juce::AudioParameterFloat* level = nullptr;
     juce::AudioParameterChoice* mode = nullptr;
     std::atomic<int> tag { 0 };
+    juce::String shownName, shownMaker; // the screenshots give their plug-ins real-looking names
 
     void fillInPluginDescription (juce::PluginDescription& d) const override
     {
-        d.name = "Fake Params";
+        d.name = getName();
         d.pluginFormatName = "Fake";
         d.fileOrIdentifier = "fake-params";
         d.uniqueId = d.deprecatedUid = juce::String ("fake-params").hashCode();
-        d.manufacturerName = "Tests";
+        d.manufacturerName = shownMaker.isNotEmpty() ? shownMaker : juce::String ("Tests");
         d.numInputChannels = d.numOutputChannels = 2;
     }
 
-    const juce::String getName() const override { return "Fake Params"; }
+    const juce::String getName() const override { return shownName.isNotEmpty() ? shownName : juce::String ("Fake Params"); }
     void prepareToPlay (double, int) override {}
     void releaseResources() override {}
     using juce::AudioPluginInstance::processBlock;
@@ -313,18 +315,19 @@ public:
 
     std::atomic<float> gain;
     std::atomic<Mode> mode;
+    juce::String shownName, shownMaker; // the screenshots give their plug-ins real-looking names
 
     void fillInPluginDescription (juce::PluginDescription& d) const override
     {
-        d.name = "Fake " + identifier;
+        d.name = getName();
         d.pluginFormatName = "Fake";
         d.fileOrIdentifier = identifier;
         d.uniqueId = d.deprecatedUid = identifier.hashCode();
-        d.manufacturerName = "Tests";
+        d.manufacturerName = shownMaker.isNotEmpty() ? shownMaker : juce::String ("Tests");
         d.numInputChannels = d.numOutputChannels = 2;
     }
 
-    const juce::String getName() const override { return "Fake " + identifier; }
+    const juce::String getName() const override { return shownName.isNotEmpty() ? shownName : "Fake " + identifier; }
     void prepareToPlay (double, int) override {}
     void releaseResources() override {}
 
