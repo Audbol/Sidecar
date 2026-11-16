@@ -766,9 +766,7 @@ impl WingEq {
             let g1 = self.target_out_gain;
             for (ch, data) in chans.iter_mut().enumerate() {
                 let block = &mut data[start..start + len];
-                for s in &mut self.sections[..self.len] {
-                    s.process(block, ch);
-                }
+                Biquad::process_cascade(&mut self.sections[..self.len], block, ch);
                 if (g0 - 1.0).abs() > 1e-6 || (g1 - 1.0).abs() > 1e-6 {
                     crate::util::apply_gain_ramp(block, g0, g1);
                 }

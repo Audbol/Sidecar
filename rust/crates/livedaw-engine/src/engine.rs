@@ -222,7 +222,7 @@ struct AudioState {
     /// PHONES L/R, SPEAKERS L/R, the solo bus L/R; which pairs are written.
     monitor_returns: ReturnRing,
     monitor_returns_live: [bool; 3],
-    /// A send effect's external key of this block (`ufx.rs`).
+    /// The send effects' external keys of this block (`ufx.rs`), a block's worth for each slot.
     fx_key: Vec<f32>,
 }
 
@@ -256,6 +256,18 @@ struct GroupState<'a> {
     main_link_db: f32,
     /// SOURCE SOLO: the host strip and the soloed source's ports.
     source_solo: Option<(&'a Strip, SoloPatch)>,
+}
+
+/// Shares a pointer with the parallel tasks, each of which touches its own part of what it points to.
+struct SharedMut<T>(*mut T);
+// SAFETY: the tasks that get one divide the memory among themselves (see each use).
+unsafe impl<T> Sync for SharedMut<T> {}
+
+impl<T> SharedMut<T> {
+    // A method (not field access) so closures capture the Sync wrapper as a whole.
+    fn get(&self) -> *mut T {
+        self.0
+    }
 }
 
 /// Shares raw pointers with the parallel tasks (they are only read).
@@ -398,7 +410,7 @@ impl Engine {
                 monitor_returns_live: [false; 3],
                 direct_gain: vec![0.0; NUM_PATCH_OUTPUTS],
                 direct_scratch: Vec::new(),
-                fx_key: vec![0.0; DEFAULT_BLOCK],
+                fx_key: vec![0.0; DEFAULT_BLOCK * NUM_SEND_FX],
             }),
             controls: EngineControls::default(),
             amm: AmmParams::default(),
@@ -2014,7 +2026,7 @@ impl Engine {
         a.sample_rate = sample_rate;
         a.block_size = block_size;
         a.direct_scratch = vec![0.0; block_size];
-        a.fx_key = vec![0.0; block_size];
+        a.fx_key = vec![0.0; block_size * NUM_SEND_FX];
         a.hw_in_to_active = in_map.to_vec();
         a.hw_out_to_active = out_map.to_vec();
         a.hw_in_ptrs = vec![std::ptr::null(); in_map.len()];
@@ -2438,15 +2450,29 @@ impl Engine {
             a.sources.fx_return_live(slot, live(slot));
         }
         let block = a.block_counter;
-        let sources = &mut a.sources;
+        // The live slots and their return buffers (nothing is allocated: at most NUM_SEND_FX).
+        let mut jobs = [(0usize, [std::ptr::null_mut::<f32>(); 2]); NUM_SEND_FX];
+        let mut num_jobs = 0;
         for slot in (0..count).filter(|&s| live(s)) {
-            let Some(bufs) = sources.fx_return_ptrs(slot, n) else { continue };
+            if let Some(bufs) = a.sources.fx_return_ptrs(slot, n) {
+                jobs[num_jobs] = (slot, bufs);
+                num_jobs += 1;
+            }
+        }
+        // Each slot has a key buffer of its own: the slots run side by side.
+        let key_stride = a.fx_key.len() / NUM_SEND_FX;
+        let keys = SharedMut(a.fx_key.as_mut_ptr());
+        let jobs = SharedMut(jobs.as_mut_ptr());
+        let (hw, playback) = (SharedPtrs(a.sources.hw_ptrs()), SharedPtrs(a.sources.playback_ptrs()));
+        let (hw, playback, sample_rate) = (&hw, &playback, a.sample_rate);
+        self.pool.parallel_for(num_jobs, &|j| {
+            let (slot, bufs) = *jobs.get().add(j);
             let p = &self.controls.fx[slot];
             let left = p.source_left.load(Relaxed);
             let right = Some(p.source_right.load(Relaxed)).filter(|&r| r >= 0).unwrap_or(left);
-            let (hw, playback) = (sources.hw_ptrs(), sources.playback_ptrs());
-            // SAFETY: the return buffers are only written here; a source is a
-            // bus, main or matrix signal (never a return).
+            let (hw, playback) = (hw.get(), playback.get());
+            // SAFETY: a slot's return buffers and key buffer are only touched by its own task;
+            // a source is a bus, main or matrix signal (never a return).
             let [l, r] = bufs.map(|b| std::slice::from_raw_parts_mut(b, n));
             for (buf, input) in [(&mut *l, left), (&mut *r, right)] {
                 match source_ptr(hw, playback, input).filter(|_| strip_source(input).is_some()) {
@@ -2462,10 +2488,11 @@ impl Engine {
                 KeySource::Channel(i) => topo.channels.get(i),
                 KeySource::Strip(kind, i) => topo.by_number(kind, i as i32 + 1),
             };
-            let keyed = a.fx_key.len() >= n && key_strip.is_some_and(|s| s.keys.read(buffer, block, false, &mut a.fx_key[..n]));
-            let extras = FxExtras { key: keyed.then(|| &a.fx_key[..n]), ufx: self.ufx.strip_of(slot) };
-            self.fx[slot].process(&mut chans, a.sample_rate, p, &FxInputs { hw, playback }, &extras, block);
-        }
+            let key = std::slice::from_raw_parts_mut(keys.get().add(slot * key_stride), key_stride);
+            let keyed = key_stride >= n && key_strip.is_some_and(|s| s.keys.read(buffer, block, false, &mut key[..n]));
+            let extras = FxExtras { key: keyed.then(|| &key[..n]), ufx: self.ufx.strip_of(slot) };
+            self.fx[slot].process(&mut chans, sample_rate, p, &FxInputs { hw, playback }, &extras, block);
+        });
     }
 
     /// The user signals (USR 1-24): each routed one copies its strip's tap

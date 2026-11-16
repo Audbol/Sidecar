@@ -674,6 +674,21 @@ Channels and aux run in more than one fork/join (waves) only when keys come from
 other channels (*KEY TAP* above), buses only when buses send to buses (*Bus to
 bus* above).
 Automix, the user signals, the monitor and writing the outputs run on the audio thread.
+The send effects (the FX slots a bus feeds) run side by side, one task each, ahead of the
+channels, each with a key buffer of its own.
+
+### Measuring the CPU use
+`cargo run --release -p livedaw-engine --example bench_blocks` times the audio callback
+headless at 48 kHz and 128 samples on the WING (40 channels, gate, dynamics, EQ and filters
+on, sends to every bus and matrix), the X32, a dLive at its full size and the PLUG-IN HOST
+with 64 channels, and prints the mean, the median, the 99th percentile and the worst time
+per block, the thread's CPU cycles per block and the realtime load (`--workers N` lends the
+engine N worker threads; with none the engine runs on one thread, the cleanest measure of
+the work). The consoles and their fixed input are `tests/common/rigs.rs`, shared with
+`tests/null_render.rs`: that test renders the same signal through the same four consoles and
+compares every output sample's bits with a checksum made before the CPU work (`null_reference.txt`),
+so an optimisation that changes the sound fails it. `NULL_DUMP=<dir>` writes the raw output
+and `NULL_COMPARE=<dir>` reports how far a build is from such a dump.
 
 ## Recorder
 

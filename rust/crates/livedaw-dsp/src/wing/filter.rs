@@ -161,9 +161,7 @@ impl WingFilter {
             let len = SUB_BLOCK.min(n - start);
             self.step(target);
             for (ch, data) in chans.iter_mut().enumerate() {
-                for s in &mut self.sections[..self.len] {
-                    s.process(&mut data[start..start + len], ch);
-                }
+                Biquad::process_cascade(&mut self.sections[..self.len], &mut data[start..start + len], ch);
             }
             start += len;
         }

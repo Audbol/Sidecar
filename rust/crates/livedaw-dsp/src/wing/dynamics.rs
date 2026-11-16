@@ -16,7 +16,7 @@
 use super::fx::amp::oversample::Oversampler4;
 use super::{colour, dial_log, ModelSpec, Params, DYN_MODELS, MAX_DYN_PARAMS};
 use crate::biquad::{Biquad, BiquadCoeffs};
-use crate::util::{db_to_gain, gain_to_db};
+use crate::util::{db_to_gain, gain_to_db, DbToGainMemo, GainToDbMemo};
 
 pub const SC_FILTERS: [&str; 5] = ["OFF", "LP12", "HP12", "BP", "NOTCH"];
 pub const XOVER_TYPES: [&str; 6] = ["OFF", "LO", "HI", "S6", "S12", "PEAK"];
@@ -1693,6 +1693,11 @@ struct CompState {
     pre_s: f32,
     post_s: f32,
     primed: bool,
+    /// The conversions that often repeat their last answer (`util::DbToGainMemo`).
+    pre_gain: DbToGainMemo,
+    out_gain: DbToGainMemo,
+    lim_gain: DbToGainMemo,
+    peak_db: GainToDbMemo,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -1702,6 +1707,9 @@ struct GateState {
     hold: u32,
     open: bool,
     accent: f32,
+    env_db: GainToDbMemo,
+    gain_db: GainToDbMemo,
+    next_gain: DbToGainMemo,
 }
 
 /// Fixed per-sample-rate coefficients (no exp() per sample for these).
@@ -1807,6 +1815,8 @@ pub struct WingDynamics {
     mix_s: f32,
     makeup_s: f32,
     primed: bool,
+    /// The gain `process_slot` applies for the dB a gate or wave shaper asks for.
+    slot_gain: DbToGainMemo,
 }
 
 impl Default for WingDynamics {
@@ -1842,6 +1852,7 @@ impl Default for WingDynamics {
             mix_s: 1.0,
             makeup_s: 1.0,
             primed: false,
+            slot_gain: DbToGainMemo::default(),
         };
         d.prepare(48000.0);
         d
@@ -2135,7 +2146,7 @@ impl WingDynamics {
             let (mut yl, mut yr) = (outs[0], outs[1]);
             if let Some(g) = gain_db {
                 let g = if use_xo { g.clamp(-depth, depth) } else { g };
-                let gl = db_to_gain(g);
+                let gl = self.slot_gain.get(g);
                 if use_xo {
                     let bl = self.xo.tick(yl, 0);
                     yl += (gl - 1.0) * bl;
@@ -2407,7 +2418,7 @@ impl WingDynamics {
         } else {
             // Fast peak follower: instant attack, 5 ms decay.
             s.env = v.max(s.env * k.gate_peak);
-            gain_to_db(s.env + 1e-9)
+            s.env_db.get(s.env + 1e-9)
         };
 
         let target = if duck {
@@ -2447,11 +2458,11 @@ impl WingDynamics {
 
         // Gate: opening (gain rising) uses ATTACK, closing uses RELEASE.
         // Ducker: ducking (gain falling) uses ATTACK, recovering uses RELEASE.
-        let current = gain_to_db(s.gain.max(1e-6));
+        let current = s.gain_db.get(s.gain.max(1e-6));
         let rising = target > current;
         let c = if rising != duck { g.att } else { g.rel };
         let next = c * current + (1.0 - c) * target;
-        s.gain = db_to_gain(next);
+        s.gain = s.next_gain.get(next);
         let accent = s.accent;
         s.accent *= k.accent;
         (next + accent, lvl)
@@ -2465,7 +2476,7 @@ impl WingDynamics {
         let k = self.k;
         let s = &mut self.gate;
         s.env = key.abs().max(s.env * k.wing_peak);
-        let lvl = gain_to_db(s.env + 1e-9);
+        let lvl = s.env_db.get(s.env + 1e-9);
         if lvl >= g.thr {
             s.open = true;
             s.hold = g.hold;
@@ -2496,7 +2507,7 @@ impl WingDynamics {
         };
         let c = if (target > s.gain) != duck { x.att } else { x.rel };
         s.gain = target + (s.gain - target) * c;
-        (gain_to_db(s.gain), lvl)
+        (s.gain_db.get(s.gain), lvl)
     }
 
     /// The WING GATE (gain in dB, detector level). Above the threshold it
@@ -2510,7 +2521,7 @@ impl WingDynamics {
         let k = self.k;
         let s = &mut self.gate;
         s.env = key.abs().max(s.env * k.wing_peak);
-        let lvl = gain_to_db(s.env + 1e-9);
+        let lvl = s.env_db.get(s.env + 1e-9);
         let was_open = s.open;
         if lvl >= g.thr {
             s.open = true;
@@ -2550,7 +2561,7 @@ impl WingDynamics {
         };
         let accent = s.accent;
         s.accent *= k.accent;
-        (gain_to_db(s.gain) + accent, lvl)
+        (s.gain_db.get(s.gain) + accent, lvl)
     }
 
     /// The WING COMP's / EXP's next reduction (dB) from `gr` toward `target`.
@@ -2654,7 +2665,7 @@ impl WingDynamics {
         }
         s.pre_s = k.param * s.pre_s + (1.0 - k.param) * c.pre_db;
         s.post_s = k.param * s.post_s + (1.0 - k.param) * c.post_db;
-        let pre = db_to_gain(s.pre_s);
+        let pre = s.pre_gain.get(s.pre_s);
         let mut det = if c.feedback { s.last_out } else { key * pre };
         if c.det_tilt > 0.0 {
             s.tilt_lp += k.tilt * (det - s.tilt_lp);
@@ -2667,7 +2678,7 @@ impl WingDynamics {
         } else {
             let decay = if c.wing.is_some() { k.wing_peak } else { k.model_peak };
             s.wing_peak = det.abs().max(s.wing_peak * decay);
-            gain_to_db(s.wing_peak + 1e-9)
+            s.peak_db.get(s.wing_peak + 1e-9)
         };
         let lvl = lvl.min(c.max_level);
         // The level dot: what the detector sees, on the input scale (a feedback
@@ -2758,7 +2769,7 @@ impl WingDynamics {
 
         // The input gain only drives the detector and the colouration; the level
         // after the stage is set by `post_db` (models with input/output knobs).
-        let g = db_to_gain(if band { post } else { gr + post });
+        let g = s.out_gain.get(if band { post } else { gr + post });
         let y_l = if c.colour > 0.0 { colour(x[0] * pre, c.colour) / pre } else { x[0] };
         let y_r = if c.colour > 0.0 { colour(x[1] * pre, c.colour) / pre } else { x[1] };
         let mut y = [y_l * g, y_r * g];
@@ -2780,7 +2791,7 @@ impl WingDynamics {
             let t = -over;
             s.lim_gr = if t < s.lim_gr { t } else { lrel * s.lim_gr + (1.0 - lrel) * t };
             if !band {
-                let lg = db_to_gain(s.lim_gr);
+                let lg = s.lim_gain.get(s.lim_gr);
                 y = [y[0] * lg, y[1] * lg];
             }
             total += s.lim_gr;

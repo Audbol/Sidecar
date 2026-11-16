@@ -359,12 +359,85 @@ impl Biquad {
         self.z1[ch] = z1;
         self.z2[ch] = z2;
     }
+
+    /// Runs `data` through `sections` in series. The result is bit for bit that of calling
+    /// [`process`](Self::process) on each section in turn (each section's output is rounded to
+    /// f32 before the next takes it), but a few sections advance together sample by sample:
+    /// a section's state depends on its last sample, so one section alone waits on its own
+    /// arithmetic, and the others' work fits into that wait.
+    pub fn process_cascade(sections: &mut [Biquad], data: &mut [f32], channel: usize) {
+        // Three sections keep their state in registers; more spill to the stack and run slower.
+        const GROUP: usize = 3;
+        let ch = channel.min(1);
+        let mut rest = sections;
+        while !rest.is_empty() {
+            let take = rest.len().min(GROUP);
+            let (group, tail) = rest.split_at_mut(take);
+            match take {
+                1 => group[0].process(data, ch),
+                2 => Self::run_group::<2>(group, data, ch),
+                _ => Self::run_group::<GROUP>(group, data, ch),
+            }
+            rest = tail;
+        }
+    }
+
+    #[inline]
+    fn run_group<const N: usize>(group: &mut [Biquad], data: &mut [f32], ch: usize) {
+        let c: [BiquadCoeffs; N] = std::array::from_fn(|i| group[i].coeffs);
+        let mut z1: [f64; N] = std::array::from_fn(|i| group[i].z1[ch]);
+        let mut z2: [f64; N] = std::array::from_fn(|i| group[i].z2[ch]);
+        for x in data.iter_mut() {
+            let mut v = *x;
+            for i in 0..N {
+                let input = v as f64;
+                let out = c[i].b0 * input + z1[i];
+                z1[i] = c[i].b1 * input - c[i].a1 * out + z2[i];
+                z2[i] = c[i].b2 * input - c[i].a2 * out;
+                v = out as f32;
+            }
+            *x = v;
+        }
+        for (i, s) in group.iter_mut().enumerate() {
+            s.z1[ch] = z1[i];
+            s.z2[ch] = z2[i];
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::util::gain_to_db;
+
+    #[test]
+    fn a_cascade_is_the_sections_one_after_another() {
+        let mk = |n: usize| -> Vec<Biquad> {
+            (0..n)
+                .map(|i| {
+                    let mut b = Biquad::default();
+                    b.set_coefficients(BiquadCoeffs::peak(48000.0, 200.0 * (i + 1) as f64, 1.3, 4.0 - i as f64));
+                    b
+                })
+                .collect()
+        };
+        let signal: Vec<f32> = (0..300).map(|i| ((i * 37 % 101) as f32 - 50.0) / 60.0).collect();
+        for n in 1..=11 {
+            let (mut a, mut b) = (mk(n), mk(n));
+            let (mut x, mut y) = (signal.clone(), signal.clone());
+            for ch in 0..2 {
+                for chunk in 0..3 {
+                    let r = chunk * 100..chunk * 100 + 100;
+                    for s in &mut a {
+                        s.process(&mut x[r.clone()], ch);
+                    }
+                    Biquad::process_cascade(&mut b, &mut y[r], ch);
+                }
+            }
+            assert!(x.iter().zip(&y).all(|(p, q)| p.to_bits() == q.to_bits()), "{n} sections");
+            assert!(a.iter().zip(&b).all(|(p, q)| p.z1 == q.z1 && p.z2 == q.z2), "{n} sections' state");
+        }
+    }
 
     #[test]
     fn designs_hit_requested_gain() {
