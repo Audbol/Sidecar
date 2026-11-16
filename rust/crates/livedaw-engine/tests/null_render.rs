@@ -58,6 +58,21 @@ fn line(name: &str, r: &Render) -> String {
     s
 }
 
+/// Two reference lines whose ports, peaks and energies agree to within 1e-4 (relative).
+fn close(want: &str, now: &str) -> bool {
+    let fields = |l: &str| -> Vec<f64> {
+        l.split_whitespace()
+            .skip(3)
+            .flat_map(|pe| pe.split('/').map(|v| v.parse::<f64>().unwrap_or(f64::NAN)).collect::<Vec<_>>())
+            .collect()
+    };
+    let (a, b) = (fields(want), fields(now));
+    let ports = |l: &str| l.split_whitespace().nth(1).map(str::to_owned);
+    ports(want) == ports(now)
+        && a.len() == b.len()
+        && a.iter().zip(&b).all(|(x, y)| (x - y).abs() <= 1e-4 * x.abs().max(y.abs()) + 1e-12)
+}
+
 fn file_name(c: Console) -> String {
     c.name().replace(' ', "_")
 }
@@ -100,7 +115,10 @@ fn consoles_render_what_they_always_did() {
             );
         }
         let want = reference.lines().find(|l| l.starts_with(&format!("{} ", file_name(console))));
-        if want != Some(now.as_str()) {
+        // Bit for bit where the reference was made (Windows). Elsewhere the C library's powf and
+        // log10f may round the last bit differently, so each output's peak and energy must match closely.
+        let same = if cfg!(windows) { want == Some(now.as_str()) } else { want.is_some_and(|w| close(w, &now)) };
+        if !same {
             failures.push(console.name());
         }
         fresh.push_str(&now);
