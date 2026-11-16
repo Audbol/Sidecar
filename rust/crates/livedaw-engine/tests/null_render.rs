@@ -115,9 +115,9 @@ fn consoles_render_what_they_always_did() {
             );
         }
         let want = reference.lines().find(|l| l.starts_with(&format!("{} ", file_name(console))));
-        // Bit for bit where the reference was made (Windows). Elsewhere the C library's powf and
-        // log10f may round the last bit differently, so each output's peak and energy must match closely.
-        let same = if cfg!(windows) { want == Some(now.as_str()) } else { want.is_some_and(|w| close(w, &now)) };
+        // Bit for bit on the machine that made the reference. Another CPU or C library may round the
+        // last bit of powf and log10f differently, so each output's peak and energy must then match closely.
+        let same = want == Some(now.as_str()) || want.is_some_and(|w| close(w, &now));
         if !same {
             failures.push(console.name());
         }
