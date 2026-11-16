@@ -8,6 +8,7 @@
 #include "ui/PluginHostRack.h"
 #include "ui/PluginHostRouting.h"
 #include "ui/PluginHostScenes.h"
+#include "ui/PaintCache.h"
 #include "ui/PluginHostSystem.h"
 #include "ui/ScreenMaximiser.h"
 #include "ui/Skin.h"
@@ -148,6 +149,8 @@ namespace ph
         static constexpr int kWidth = 164, kHeight = 352;
 
     private:
+        juce::Rectangle<int> inMeterArea() const;
+        juce::Rectangle<int> grMeterArea() const;
         Strip* strip() const;
 
         PluginHostSurface& owner;
@@ -252,6 +255,8 @@ public:
 
 private:
     void timerCallback() override;
+    void paintArtwork (juce::Graphics&);
+    PaintCache artwork;
     void bindStrips();
     void updateReadouts();
     Strip* channelStrip (int index) const;

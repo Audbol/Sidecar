@@ -2,6 +2,7 @@
 
 #include "ui/DLiveScreens.h"
 #include "ui/DLiveSurface.h"
+#include "ui/PaintCache.h"
 #include "ui/ScreenMaximiser.h"
 
 #include <array>
@@ -97,6 +98,10 @@ public:
 
 private:
     void timerCallback() override;
+    void paintUnder (juce::Graphics&);
+    void paintLive (juce::Graphics&);
+    void paintOver (juce::Graphics&);
+    PaintCache under, over;
     void bindStrips();
     void bindPeq();
     void bindSoft();

@@ -667,7 +667,6 @@ namespace dm2k
 
     void MeterBridge::refresh()
     {
-        bool changed = false;
         const auto read = [this] (const Strip* s, MeterPoint point, bool hold)
         {
             float best = -100.0f;
@@ -685,7 +684,8 @@ namespace dm2k
                 levels[i] = read (s, point, false);
                 holds[i] = peakHold ? read (s, point, true) : -100.0f;
                 const int lit = litOf (levels[i]), hold = peakHold ? litOf (holds[i]) : 0;
-                changed = changed || lit != shownLit[i] || hold != shownHold[i];
+                if (lit != shownLit[i] || hold != shownHold[i])
+                    repaint (barArea (column, output != 0).expanded (2.0f).getSmallestIntegerContainer());
                 shownLit[i] = lit;
                 shownHold[i] = hold;
             }
@@ -695,14 +695,13 @@ namespace dm2k
             stereo[(size_t) ch] = mains.empty() ? -100.0f : lampDbOf (ctx.meters.get (mains[0].get(), MeterPoint::Output, ch));
             const auto i = (size_t) kColumns * 2 + (size_t) ch;
             const int lit = litOf (stereo[(size_t) ch]);
-            changed = changed || lit != shownLit[i];
+            if (lit != shownLit[i])
+                repaint (juce::Rectangle<float> (1414.0f + (float) ch * 16.0f, kBarTop, 10.0f, kLamp * (float) kSegments).expanded (2.0f).getSmallestIntegerContainer());
             shownLit[i] = lit;
         }
         timeCode.refresh();
         for (auto& [n, k] : keys)
             k->refresh();
-        if (changed)
-            repaint();
     }
 
     void MeterBridge::paint (juce::Graphics& g)
@@ -2029,6 +2028,16 @@ void Dm2000Surface::setMeterBridgeShown (bool on)
 }
 
 void Dm2000Surface::paint (juce::Graphics& g)
+{
+    // The panel is artwork: drawn once, then copied, until a lamp on it, the bridge or the size changes.
+    const auto* selectedStrip = selected();
+    const int panLit = selectedStrip != nullptr ? juce::roundToInt ((selectedStrip->params.pan.load() + 100.0f) / 200.0f * 12.0f) : 6;
+    const auto key = PaintCache::key (auxBank, showComp, panLit, bridge.isVisible(), display.isFreqNotQ (0), display.isFreqNotQ (1),
+                                      display.isFreqNotQ (2), display.isFreqNotQ (3), silks.size(), dummyKeys.size());
+    artwork.paint (g, *this, key, [this] (juce::Graphics& ag) { paintArtwork (ag); });
+}
+
+void Dm2000Surface::paintArtwork (juce::Graphics& g)
 {
     g.fillAll (juce::Colour (0xff0d0e12));
     // The top bar, then (below it) the meter bridge, then the panel.

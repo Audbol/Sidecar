@@ -386,15 +386,28 @@ namespace ph
         const bool bypassed = s != nullptr && s->params.input.bypass.load();
         const auto db = in > 1.0e-6f ? 20.0f * std::log10 (in) : -120.0f;
         const float level = juce::jlimit (0.0f, 1.0f, (db + 60.0f) / 60.0f);
-        const bool changed = std::abs (level - inLevel) > 0.01f || std::abs (gr - grDb) > 0.1f || available != grAvailable || selected != selectedNow || bypassed != bypassedNow;
+        const bool inMoved = std::abs (level - inLevel) > 0.01f, grMoved = std::abs (gr - grDb) > 0.1f;
+        const bool changed = available != grAvailable || selected != selectedNow || bypassed != bypassedNow;
         inLevel = level;
         grDb = gr;
         grAvailable = available;
         selectedNow = selected;
         bypassedNow = bypassed;
+        // The whole unit when its look changed; only the meter that moved otherwise.
         if (changed)
             repaint();
+        else
+        {
+            if (inMoved)
+                repaint (inMeterArea());
+            if (grMoved)
+                repaint (grMeterArea());
+        }
     }
+
+    juce::Rectangle<int> StripUnit::inMeterArea() const { return juce::Rectangle<float> (36.0f, 130.0f, 22.0f, 76.0f).expanded (3.0f).getSmallestIntegerContainer(); }
+
+    juce::Rectangle<int> StripUnit::grMeterArea() const { return juce::Rectangle<float> ((float) kWidth - 58.0f, 130.0f, 22.0f, 76.0f).expanded (3.0f).getSmallestIntegerContainer(); }
 
     void StripUnit::resized()
     {
@@ -846,6 +859,12 @@ void PluginHostSurface::timerCallback()
 }
 
 void PluginHostSurface::paint (juce::Graphics& g)
+{
+    // The panel is artwork: drawn once, then copied, until the channel count or the size changes.
+    artwork.paint (g, *this, PaintCache::key (ctx.engine.getChannels().size()), [this] (juce::Graphics& ag) { paintArtwork (ag); });
+}
+
+void PluginHostSurface::paintArtwork (juce::Graphics& g)
 {
     g.fillAll (juce::Colour (0xff090a0c));
     g.addTransform (design);

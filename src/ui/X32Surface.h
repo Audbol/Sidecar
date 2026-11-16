@@ -6,6 +6,7 @@
 #include "ui/universal/Widgets.h"
 #include "ui/Icons.h"
 #include "ui/MeterBank.h"
+#include "ui/PaintCache.h"
 #include "ui/X32ChannelSection.h"
 #include "ui/X32Display.h"
 #include "ui/X32AssignSection.h"
@@ -505,6 +506,9 @@ public:
 
 private:
     void timerCallback() override;
+    void paintArtwork (juce::Graphics&);
+    PaintCache artwork;
+    bool shownComp = false;
     void assignBanks();
     void buildInputLayerKeys();
     juce::Rectangle<int> channelSectionArea() const;

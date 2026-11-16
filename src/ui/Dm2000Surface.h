@@ -2,6 +2,7 @@
 
 #include "engine/FaderLaw.h"
 #include "ui/Knobs.h"
+#include "ui/PaintCache.h"
 #include "ui/Skin.h"
 #include "ui/ScreenMaximiser.h"
 #include "ui/UiContext.h"
@@ -819,6 +820,7 @@ private:
     void autoShow (dm2k::Group);
     void autoSelect (int strip);
     Strip* selected() const { return ctx.getSelectedStrip ? ctx.getSelectedStrip() : nullptr; }
+    void paintArtwork (juce::Graphics&);
     dm2k::Key& key (const juce::String& name, juce::Colour face, juce::Colour led, dm2k::Key::Shape, juce::Rectangle<int>);
     dm2k::Knob& knob (const juce::String& name, juce::Colour skirt, juce::Colour top, juce::Rectangle<int>, juce::Colour ring = {});
     dm2k::Key& displayKey (const juce::String& name, dm2k::Group, juce::Rectangle<int>);
@@ -848,6 +850,7 @@ private:
     std::vector<std::pair<juce::String, std::unique_ptr<dm2k::Key>>> keys;
     std::vector<std::pair<juce::String, std::unique_ptr<dm2k::Knob>>> knobs;
     std::vector<std::pair<juce::String, std::unique_ptr<dm2k::Readout>>> readouts;
+    PaintCache artwork;
     std::vector<Silk> silks;
     std::vector<juce::Rectangle<float>> dummyKeys;
 

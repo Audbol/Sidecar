@@ -441,7 +441,13 @@ void X32Surface::timerCallback()
     for (auto& k : muteGroupKeys)
         k->refresh();
     // The main strip's COMP LED.
-    repaintDesign (main->getBounds().withHeight (main->getMeterArea().getY() + 8));
+    auto* mainStrip = main->getStrip();
+    const bool comp = mainStrip != nullptr && std::abs (mainStrip->meters.dynReductionDb.load()) >= 0.5f;
+    if (comp != shownComp)
+    {
+        shownComp = comp;
+        repaintDesign (main->getBounds().withHeight (main->getMeterArea().getY() + 8));
+    }
 }
 
 void X32Surface::clearSolos()
@@ -461,6 +467,19 @@ juce::Rectangle<int> X32Surface::channelSectionArea() const
 }
 
 void X32Surface::paint (juce::Graphics& g)
+{
+    // The panel is artwork: drawn once, then copied, until what it shows changes (the remote's
+    // status, the main's COMP lamp, the layout).
+    const auto remote = remotebar::infoOf (ctx);
+    const bool live = remote.state != RemoteSession::State::Offline;
+    auto* m = main->getStrip();
+    const bool comp = m != nullptr && std::abs (m->meters.dynReductionDb.load()) >= 0.5f;
+    const auto key = PaintCache::key (PaintCache::layoutKey (*this), (int) remote.state, live ? remotebar::caption (remote, "X32") : juce::String(), comp,
+                                      displayArea.getX(), displayArea.getBottom(), grille.getX(), palmRest.getX(), fadersArea.getY());
+    artwork.paint (g, *this, key, [this] (juce::Graphics& ag) { paintArtwork (ag); });
+}
+
+void X32Surface::paintArtwork (juce::Graphics& g)
 {
     // The console: its dark grey top, the sections on black panels, its
     // silkscreen (the X32's own look, drawn by Sidecar).

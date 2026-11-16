@@ -698,6 +698,20 @@ void DLiveC3500Surface::timerCallback()
 
 void DLiveC3500Surface::paint (juce::Graphics& g)
 {
+    // The panel is artwork, drawn once and copied: what is under the live parts (the meters and
+    // lamps, drawn here every time), and what is over them.
+    const auto key = PaintCache::key (silks.size());
+    under.paint (g, *this, key, [this] (juce::Graphics& ag) { paintUnder (ag); });
+    {
+        const juce::Graphics::ScopedSaveState state (g);
+        g.addTransform (design);
+        paintLive (g);
+    }
+    over.paint (g, *this, key, [this] (juce::Graphics& ag) { paintOver (ag); }, false);
+}
+
+void DLiveC3500Surface::paintUnder (juce::Graphics& g)
+{
     g.fillAll (juce::Colour (0xff0b0b0c));
     g.addTransform (design);
     const auto& l = look();
@@ -772,6 +786,10 @@ void DLiveC3500Surface::paint (juce::Graphics& g)
             bracket (1822.0f, 964.0f + (float) i * 36.0f, 996.0f + (float) i * 36.0f, red);
     }
 
+}
+
+void DLiveC3500Surface::paintLive (juce::Graphics& g)
+{
     // PAFL's three meters.
     {
         const float x[] = { 1720.0f, 1742.0f, 1764.0f };
@@ -814,7 +832,18 @@ void DLiveC3500Surface::paint (juce::Graphics& g)
             g.fillEllipse ((b == 0 ? 971.0f : 1879.0f), 804.0f + (float) layer * 28.0f, 7.0f, 7.0f);
         }
 
-    // The two USB sockets and the Talk Active light.
+    // The Talk Active light.
+    g.setColour (ctx.engine.isTalkOn (0) ? juce::Colour (0xffff4040) : juce::Colour (0xff3a2020));
+    g.fillEllipse (1746.0f, 317.0f, 8.0f, 8.0f);
+
+}
+
+void DLiveC3500Surface::paintOver (juce::Graphics& g)
+{
+    g.addTransform (design);
+    const auto& l = look();
+
+    // The two USB sockets.
     for (int i = 0; i < 2; ++i)
     {
         const juce::Rectangle<float> r (1800.0f, 48.0f + (float) i * 42.0f, 104.0f, 38.0f);
@@ -825,8 +854,6 @@ void DLiveC3500Surface::paint (juce::Graphics& g)
         g.setColour (juce::Colour (0xff4c74c0));
         g.fillRect (juce::Rectangle<float> (36.0f, 7.0f).withCentre (r.getCentre()));
     }
-    g.setColour (ctx.engine.isTalkOn (0) ? juce::Colour (0xffff4040) : juce::Colour (0xff3a2020));
-    g.fillEllipse (1746.0f, 317.0f, 8.0f, 8.0f);
 
     // The strips' groups: the LCD windows, the lines between them, the GEQ's marks.
     for (int group = 0; group < 6; ++group)

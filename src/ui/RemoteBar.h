@@ -56,7 +56,7 @@ namespace remotebar
     {
         const auto s = infoOf (c).state;
         key.setButtonText (s == State::Offline ? "CONNECT" : "DISCONNECT");
-        key.repaint();
+        key.refresh();
         const bool changed = s != shown;
         shown = s;
         return changed;
