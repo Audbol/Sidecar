@@ -410,6 +410,42 @@ fn osc_surface_layers_and_custom_controls() {
     assert_eq!(seen, [true; 2], "MIDI key value and selection not pushed");
 }
 
+/// A custom control column written as wxfade writes it (issue #22): the
+/// encoder's name and the two keys' names land on their own nodes, and the
+/// functions behind them follow their modes.
+#[test]
+fn native_custom_control_column_keeps_its_names() {
+    let engine = Arc::new(Engine::new(0));
+    engine.set_num_channels(40);
+    let state = Arc::new(WingState::default());
+    let config =
+        Config { bind: IpAddr::V4(Ipv4Addr::LOCALHOST), discovery_port: 0, osc_port: 0, native_port: 0, ..Config::default() };
+    let handle: Arc<dyn EngineHandle> = Arc::new(engine.clone());
+    let server = WingServer::start(handle, state.clone(), &config);
+    let (mut layers, mut custom) = (LayerSet::default(), CustomControls::default());
+    surface::sync(&state, &engine, &mut layers, &mut custom, 0);
+    let hex = concat!(
+        "d7047215c8875363656e653a2031d7b37d84ab864d494449434350d7c9fc8dda8353617665d751402d6a864d494449434350",
+        "d70596515486526573746f7265d7ec10ea2985434320313a30d74841177e85434320313a30d792c6ed0d01d79ca1759600",
+        "d7e40b5e2b00d7206da3c201d77071bc4100d7c028f4ec00"
+    );
+    let bytes: Vec<u8> = (0..hex.len()).step_by(2).map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap()).collect();
+    let mut a = Native::connect(&server);
+    std::thread::sleep(Duration::from_millis(150));
+    a.send(&bytes);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < deadline && custom.control(0, 0).is_some_and(|c| c.name.is_empty()) {
+        surface::sync(&state, &engine, &mut layers, &mut custom, 0);
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let col = custom.control(0, 0).unwrap();
+    assert_eq!(col.name, "Scene: 1");
+    assert_eq!((col.upper_name.as_str(), col.lower_name.as_str()), ("Save", "Restore"));
+    // Both keys are MIDI CC (push) keys, and the names did not land on each other's functions.
+    assert_eq!((col.upper.category, col.lower.category), (14, 14));
+    assert!(custom.control(1, 0).unwrap().name.is_empty());
+}
+
 // ---- Native ------------------------------------------------------------------------
 
 struct Native {
@@ -820,6 +856,58 @@ fn osc_and_native_reach_sources_outputs_safes_and_settings() {
     req.push(0xdc);
     a.send(&req);
     assert!(a.read_until_ends(1).contains(&Tok::Data(vol, livedaw_wing::Value::str("NO DRIVE"))));
+}
+
+/// `/play/$songs` lists the queued songs, in play order, as the items of its
+/// list: wplayer reads them from the node's definition, over OSC (`?`) and
+/// over Native (`d7 <id> dd`).
+#[test]
+fn play_songs_lists_the_playlist() {
+    let (engine, server) = start();
+    let c = Osc::new(&server);
+    let text = |m: Message| match m.args.first() {
+        Some(Arg::Str(s)) => s.clone(),
+        other => panic!("{other:?}"),
+    };
+    let describe = || {
+        c.send(&Message::new("/play/$songs", vec![Arg::Str("?".into())]));
+        (0..6).find_map(|_| c.recv()).map(text).expect("no description")
+    };
+    // Nothing queued: an empty list.
+    assert!(describe().ends_with("list []"), "{}", describe());
+    {
+        let mut q = engine.usb().queue();
+        for name in ["USB/Opening.wav", "USB/Take Two.flac", "USB/Closing.mp3"] {
+            q.add(std::path::Path::new(name));
+        }
+    }
+    assert!(describe().ends_with("list [Opening, Take Two, Closing]"), "{}", describe());
+
+    let mut a = Native::connect(&server);
+    std::thread::sleep(Duration::from_millis(150));
+    let songs = id("/play/$songs");
+    assert_eq!(songs, 0xe96e_a488);
+    let mut req = Native::select(songs);
+    req.push(0xdd);
+    a.send(&req);
+    let toks = a.read_until_ends(1);
+    let Some(Tok::Def(def)) = toks.iter().find(|t| matches!(t, Tok::Def(_))) else { panic!("{toks:?}") };
+    // parent, id, index, name and long name, the flags, then the item count and the items.
+    let mut i = 10;
+    for _ in 0..2 {
+        i += 1 + def[i] as usize;
+    }
+    i += 2;
+    assert_eq!(u16::from_be_bytes([def[i], def[i + 1]]), 3);
+    i += 2;
+    let mut names = Vec::new();
+    for _ in 0..3 {
+        names.push(String::from_utf8(def[i + 1..i + 1 + def[i] as usize].to_vec()).unwrap());
+        i += 1 + def[i] as usize;
+        i += 1 + def[i] as usize; // the long item
+    }
+    assert_eq!(names, ["Opening", "Take Two", "Closing"]);
+    assert_eq!(i, def.len());
 }
 
 /// A web page's way in (WING-Q is one, in an Android WebView): the Native

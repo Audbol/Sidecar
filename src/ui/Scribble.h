@@ -36,6 +36,8 @@ struct ScribbleInfo
         then a row for each key ("|word" inverts a row, as on the name). */
     bool controlRows = false;
     juce::String controlTop, controlUpper, controlLower;
+    /** The encoder's value, at the right of its name's row (see splitControlName). */
+    juce::String controlTopRight;
     float backlight = 1.0f, contrast = 1.0f; // SETUP > GENERAL: SCRIBBLE and SCR CONT
 
     bool isEmpty() const noexcept
@@ -44,6 +46,17 @@ struct ScribbleInfo
                && line3.isEmpty() && footer.isEmpty() && strip == nullptr && wingIcon == 0 && ! icon.has_value();
     }
 };
+
+/** A client writes an encoder's name and value as one text ("Scene: 1"); the
+    LCD sets the name at the left of its row and the value at the right. The
+    text splits after the first ": "; a name without one stays whole. */
+inline std::pair<juce::String, juce::String> splitControlName (const juce::String& text)
+{
+    const int colon = text.indexOf (": ");
+    if (colon <= 0 || text.substring (colon + 2).trim().isEmpty())
+        return { text, {} };
+    return { text.substring (0, colon + 1), text.substring (colon + 2).trim() };
+}
 
 /** What a strip with nothing to control shows (a blank layer slot, a strip
     past the end of a layer, a target that's gone, a DAW strip without a

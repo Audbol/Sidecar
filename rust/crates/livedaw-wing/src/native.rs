@@ -132,7 +132,7 @@ pub fn encode_def(out: &mut Vec<u8>, c: &Console, node: Node) {
     push_short(&mut body, def.long_name);
     let flags = ((def.ty.wire() as u16) << 4) | (def.unit as u16 & 0x0f) | if def.read_only { 1 << 9 } else { 0 };
     body.extend_from_slice(&flags.to_be_bytes());
-    def_payload(&mut body, def);
+    def_payload(&mut body, def, c.song_names(node).as_deref());
     out.push(0xdf);
     match u16::try_from(body.len()) {
         Ok(n) if n > 0 => out.extend_from_slice(&n.to_be_bytes()),
@@ -144,7 +144,8 @@ pub fn encode_def(out: &mut Vec<u8>, c: &Console, node: Node) {
     out.extend_from_slice(&body);
 }
 
-fn def_payload(body: &mut Vec<u8>, def: &Def) {
+/// `songs` replaces the items of a list the console fills at run time.
+fn def_payload(body: &mut Vec<u8>, def: &Def, songs: Option<&[String]>) {
     match def.ty {
         NodeType::Node => {}
         NodeType::LinFloat | NodeType::LogFloat | NodeType::Fader => {
@@ -155,6 +156,15 @@ fn def_payload(body: &mut Vec<u8>, def: &Def) {
         NodeType::Int => {
             body.extend_from_slice(&def.min_int.to_be_bytes());
             body.extend_from_slice(&def.max_int.to_be_bytes());
+        }
+        NodeType::StrEnum if songs.is_some() => {
+            let names = songs.unwrap_or_default();
+            let n = names.len().min(usize::from(u16::MAX));
+            body.extend_from_slice(&(n as u16).to_be_bytes());
+            for name in &names[..n] {
+                push_short(body, name);
+                push_short(body, "");
+            }
         }
         NodeType::StrEnum => {
             let items = def.items();

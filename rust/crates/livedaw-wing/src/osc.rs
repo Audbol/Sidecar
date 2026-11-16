@@ -251,7 +251,10 @@ pub(crate) fn describe_line(c: &Console, node: Node, with_value: bool) -> String
         NodeType::Fader => line.push_str(" fader [-oo .. 10.0 dB], 1024 steps"),
         NodeType::Int => line.push_str(&format!(" int [{} .. {}{us}]", def.min_int, def.max_int)),
         NodeType::StrEnum => {
-            let items: Vec<&str> = def.items().iter().map(|i| i.item).collect();
+            let items: Vec<String> = match c.song_names(node) {
+                Some(names) => names,
+                None => def.items().iter().map(|i| i.item.to_owned()).collect(),
+            };
             line.push_str(&format!(" list [{}]", items.join(", ")));
         }
         NodeType::FloatEnum => {

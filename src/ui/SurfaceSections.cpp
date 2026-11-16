@@ -10,6 +10,8 @@
 #include "ui/ResponseGraph.h"
 #include "ui/UsbRecorderPage.h"
 
+#include <tuple>
+
 namespace livedaw::ui
 {
 
@@ -1691,6 +1693,39 @@ void CustomControlSection::paintMuteGroupLcd (juce::Graphics& g, juce::Rectangle
     drawScribbleFrame (g, lcd, true, true, backlight);
 }
 
+ScribbleInfo CustomControlSection::controlScribble (int ccLayer, int column) const
+{
+    // As on the console: the encoder's name above a rule, then each key's own
+    // name, a part with none showing its function. A name starting with '*'
+    // adds the encoder's value; "|word" inverts a row; "name: value" puts the
+    // value at the right of the name's row.
+    const auto control = ctx.customControls != nullptr ? ctx.customControls->get (ccLayer, column) : cc::Control {};
+    const bool hasEncoder = ccLayer < cc::kNumLayers;
+    const auto partText = [&] (cc::Slot part, const cc::Function& function)
+    {
+        const auto& own = control.nameOf (part, hasEncoder);
+        return own.isNotEmpty() ? own : cc::describe (ctx, part, function);
+    };
+    ScribbleInfo info;
+    info.controlRows = true;
+    info.controlUpper = partText (cc::Slot::Upper, control.upper);
+    info.controlLower = partText (cc::Slot::Lower, control.lower);
+    if (hasEncoder)
+    {
+        info.controlTop = partText (cc::Slot::Encoder, control.encoder);
+        if (control.name.startsWith ("*"))
+        {
+            if (const auto b = cc::bindEncoder (ctx, control.encoder); b.isValid() && b.text)
+                info.controlTop = control.name.removeCharacters ("*") + " " + b.text();
+        }
+        else
+        {
+            std::tie (info.controlTop, info.controlTopRight) = splitControlName (info.controlTop);
+        }
+    }
+    return info;
+}
+
 void CustomControlSection::paintLcd (juce::Graphics& g, juce::Rectangle<int> area, bool colourBars, bool upper)
 {
     g.setColour (juce::Colours::black);
@@ -1740,25 +1775,12 @@ void CustomControlSection::paintLcd (juce::Graphics& g, juce::Rectangle<int> are
         info.contrast = uiprefs::brightness (ctx.settings, "scrCont", 50);
         if (upper || lowerCcLayer() >= 0)
         {
-            // As on the console (Issue 22): the encoder's name above a rule, then
-            // each key's own name, a part with none showing its function. A name
-            // starting with '*' adds the encoder's value; "|word" inverts a row.
-            const bool hasEncoder = ccLayer < cc::kNumLayers;
-            const auto partText = [&] (cc::Slot part, const cc::Function& function)
-            {
-                const auto& own = control.nameOf (part, hasEncoder);
-                return own.isNotEmpty() ? own : cc::describe (ctx, part, function);
-            };
-            info.controlRows = true;
-            info.controlUpper = partText (cc::Slot::Upper, control.upper);
-            info.controlLower = partText (cc::Slot::Lower, control.lower);
-            if (hasEncoder)
-            {
-                info.controlTop = partText (cc::Slot::Encoder, control.encoder);
-                if (control.name.startsWith ("*"))
-                    if (const auto b = cc::bindEncoder (ctx, control.encoder); b.isValid() && b.text)
-                        info.controlTop = control.name.removeCharacters ("*") + " " + b.text();
-            }
+            const auto shown = controlScribble (ccLayer, i);
+            info.controlRows = shown.controlRows;
+            info.controlTop = shown.controlTop;
+            info.controlTopRight = shown.controlTopRight;
+            info.controlUpper = shown.controlUpper;
+            info.controlLower = shown.controlLower;
         }
         else if (lowerLayer == ShowControl)
         {

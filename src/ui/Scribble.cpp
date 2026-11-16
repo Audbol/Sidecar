@@ -167,7 +167,22 @@ void drawScribble (juce::Graphics& g, juce::Rectangle<float> lcd, const Scribble
         if (info.controlTop.isNotEmpty())
         {
             auto top = r.removeFromTop (std::round (H * 0.36f));
-            row (info.controlTop, top, juce::jmax (6.0f, top.getHeight() * 0.56f));
+            const float size = juce::jmax (6.0f, top.getHeight() * 0.56f);
+            if (info.controlTopRight.isEmpty())
+            {
+                row (info.controlTop, top, size);
+            }
+            else
+            {
+                // The name at the left, its value at the right.
+                g.setFont (lcdFont (size, WingWeight::Medium));
+                top = top.reduced (pad * 0.5f, 0.0f);
+                const float valueWidth = juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), info.controlTopRight);
+                const auto value = top.removeFromRight (juce::jmin (top.getWidth() * 0.6f, valueWidth + pad));
+                g.setColour (ink);
+                lcdText (g, info.controlTopRight, value.reduced (1.0f, 0.0f), juce::Justification::centredRight);
+                lcdText (g, info.controlTop, top.reduced (1.0f, 0.0f), juce::Justification::centredLeft);
+            }
             g.setColour (ink.withMultipliedAlpha (0.85f));
             g.fillRect (juce::Rectangle<float> (lcd.getX(), std::round (top.getBottom()), lcd.getWidth(), 1.0f));
             r.removeFromTop (1.0f);

@@ -543,6 +543,37 @@ public:
             }
         }
 
+        beginTest ("A custom control's LCD shows the names a client wrote: the encoder's, then each key's (issue #22)");
+        {
+            MixerEngine engine (0);
+            engine.setNumChannels (40);
+            RackRig rig (engine);
+            ui::cc::Assignments assignments (rig.show);
+            rig.ctx.customControls = &assignments;
+            // wxfade's layer 2, column 1, as the Native message sets it.
+            ui::cc::Control control;
+            control.name = "Scene: 1";
+            control.upperName = "Save";
+            control.lowerName = "Restore";
+            assignments.set (1, 0, control);
+            ui::CustomControlSection controls (rig.ctx);
+            const auto shown = controls.controlScribble (1, 0);
+            expect (shown.controlRows);
+            expectEquals (shown.controlTop, juce::String ("Scene:"));
+            expectEquals (shown.controlTopRight, juce::String ("1"));
+            expectEquals (shown.controlUpper, juce::String ("Save"));
+            expectEquals (shown.controlLower, juce::String ("Restore"));
+            // A name without a value stays whole, and a column with no names shows its functions.
+            control.name = "Fade";
+            control.upperName = "|GO!";
+            assignments.set (1, 1, control);
+            const auto fade = controls.controlScribble (1, 1);
+            expectEquals (fade.controlTop, juce::String ("Fade"));
+            expect (fade.controlTopRight.isEmpty());
+            expectEquals (fade.controlUpper, juce::String ("|GO!"));
+            expectEquals (controls.controlScribble (1, 2).controlUpper, ui::cc::describe (rig.ctx, ui::cc::Slot::Upper, {}));
+        }
+
         beginTest ("The WING RACK's four-channel section: its layer keys, the shift keys, the layer display and VIEW");
         {
             using Key = ui::RackSection::Key;

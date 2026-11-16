@@ -404,21 +404,29 @@ void FourChannelSection::resized()
     auto b = panel.withTrimmedLeft (12).reduced (4, 4);
     heading = {};
 
-    const int h = b.getHeight();
-    const int keyRowH = juce::jlimit (18, 32, h / 8);
-    keyPanel = b.removeFromTop (keyRowH * 2 + 26);
-    b.removeFromTop (6);
-    b.removeFromTop (6);
-    lcd = b.removeFromTop (juce::jlimit (40, 96, h / 5)).reduced (4, 0);
-    b.removeFromTop (10);
-    knobPanel = b;
+    // As the console's panel is proportioned (photographs of a real WING): the
+    // key deck 0.39 of the section's width tall, the LCD 0.31, the encoder
+    // deck 0.61, a gap of 0.04 between them. A section shorter than that
+    // shrinks them all alike; a taller one leaves the rest of its column blank
+    // instead of stretching the encoders down it.
+    const int bw = b.getWidth();
+    const int natural = juce::roundToInt ((0.39f + 0.04f + 0.31f + 0.04f + 0.61f) * (float) bw);
+    const float scale = juce::jmin (1.0f, (float) b.getHeight() / (float) juce::jmax (1, natural));
+    const auto part = [bw, scale] (float fraction) { return juce::jmax (1, juce::roundToInt (fraction * (float) bw * scale)); };
+    keyPanel = b.removeFromTop (part (0.39f));
+    b.removeFromTop (part (0.04f));
+    lcd = b.removeFromTop (part (0.31f)).reduced (4, 0);
+    b.removeFromTop (part (0.04f));
+    knobPanel = b.removeFromTop (part (0.61f));
 
-    auto keys = keyPanel.reduced (6, 9);
+    auto keys = keyPanel.reduced (6, juce::jmax (4, keyPanel.getHeight() / 12));
+    const int keyGap = juce::jmax (4, keyPanel.getHeight() / 11);
+    const int keyRowH = (keys.getHeight() - keyGap) / 2;
     const int kw = keys.getWidth() / 4;
     for (int i = 0; i < kNumModes; ++i)
     {
         const int row = i / 4, col = i % 4;
-        modeKeys[i]->setBounds (juce::Rectangle<int> (keys.getX() + col * kw, keys.getY() + row * (keyRowH + 8), kw, keyRowH).reduced (3, 0));
+        modeKeys[i]->setBounds (juce::Rectangle<int> (keys.getX() + col * kw, keys.getY() + row * (keyRowH + keyGap), kw, keyRowH).reduced (3, 0));
     }
 
     // Each column: the encoder in the upper part, its square key below.

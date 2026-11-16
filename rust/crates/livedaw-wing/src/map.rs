@@ -859,6 +859,8 @@ pub enum PlayF {
     State,
     File,
     Song,
+    /// The names of the queued songs, as the items of the node's list.
+    Songs,
     List,
     Index,
     PlayFile,
@@ -1359,6 +1361,7 @@ fn play_field(f: &str) -> Option<PlayF> {
         "$actstate" => PlayF::State,
         "$actfile" => PlayF::File,
         "$song" => PlayF::Song,
+        "$songs" => PlayF::Songs,
         "$actlist" => PlayF::List,
         "$actidx" => PlayF::Index,
         "$playfile" => PlayF::PlayFile,
@@ -1369,8 +1372,8 @@ fn play_field(f: &str) -> Option<PlayF> {
         "$rate" => PlayF::Rate,
         "$format" => PlayF::Format,
         "repeat" => PlayF::Repeat,
-        // $songs, $album, $artist (the files' tags, which Sidecar doesn't
-        // read) and $actionidx stay in the shadow store.
+        // $album, $artist (the files' tags, which Sidecar doesn't read) and
+        // $actionidx stay in the shadow store.
         _ => return None,
     })
 }
@@ -2076,6 +2079,18 @@ impl<'a> Console<'a> {
         schema().def(node, self)
     }
 
+    /// The items of `/play/$songs`: the names (without extension, as `$song`)
+    /// of the queued files in play order, which the console lists in the
+    /// node's definition. None for any other node.
+    pub fn song_names(&self, node: Node) -> Option<Vec<String>> {
+        let Node::Row(r) = node else { return None };
+        if bindings()[r as usize] != Binding::Play(PlayF::Songs) {
+            return None;
+        }
+        let q = self.engine.usb().queue();
+        Some(q.entries().iter().filter_map(|e| e.path.file_stem()).map(|s| s.to_string_lossy().into_owned()).collect())
+    }
+
     fn shadow_key(&self, node: Node) -> Option<ShadowKey> {
         match node {
             Node::Root => None,
@@ -2754,6 +2769,11 @@ impl<'a> Console<'a> {
             PlayF::State => item(def, d.player_state() as i32),
             PlayF::File => Value::Str(path.map(|p| usb_path(&self.state.usb_settings().storage, &p)).unwrap_or_default()),
             PlayF::Song => {
+                Value::Str(path.and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned())).unwrap_or_default())
+            }
+            // The list's items are the playlist (see `song_names`); the value
+            // is the song that plays.
+            PlayF::Songs => {
                 Value::Str(path.and_then(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned())).unwrap_or_default())
             }
             PlayF::List => {
@@ -5645,7 +5665,7 @@ mod tests {
         assert_eq!(cov.mapped, 79325, "{}", cov.report());
         // 90 settings: the COMPACT's mfdr, cscmode, autosel_CMPCT, mfdrkeep, busspill, mainspill,
         // mtxspill and dcacc, the RACK's autosel_RCK and the surface lock (cnslock) among them.
-        assert_eq!((cov.settings, cov.stored), (90, 5274), "{}", cov.report());
+        assert_eq!((cov.settings, cov.stored), (90, 5273), "{}", cov.report());
         for (g, (m, t)) in &cov.by_group {
             assert!(m == t || g == "/$ctl/daw", "{g}: {m} of {t}");
         }
@@ -5653,7 +5673,7 @@ mod tests {
         // The engine-backed share: everything but the settings and the stored values.
         // (The COMPACT's key sets count here on either model; the routing: every
         // bus to every other bus, USR 1-56 and their user/..., the matrices' dir/in.)
-        assert_eq!(cov.mapped - cov.settings - cov.stored, 73961);
+        assert_eq!(cov.mapped - cov.settings - cov.stored, 73962);
         let b = bindings();
         let row = |p: &str| match schema().resolve(p, &NoModels) {
             Some(Node::Row(r)) => r as usize,
@@ -5688,7 +5708,6 @@ mod tests {
             ("/io/in/$SEND/3/name", "FX SEND 2"),
             ("/io/in/USB/1/name", "USB 1/2"),
             ("/$ctl/lib/$scenes", ""),
-            ("/play/$songs", ""),
             ("/fx/1/$emode", "ST"),
             ("/$ctl/$globals/mousespd", "1.77"),
             ("/$ctl/layer/CMPCT/sel", "1"),

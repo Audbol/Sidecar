@@ -38,6 +38,7 @@
 #include "daw/Session.h"
 
 #include <set>
+#include <tuple>
 #include "ui/X32Surface.h"
 
 using namespace livedaw;
@@ -681,7 +682,7 @@ public:
             {
                 ui::ScribbleInfo info;
                 info.controlRows = true;
-                info.controlTop = rows[i][0];
+                std::tie (info.controlTop, info.controlTopRight) = ui::splitControlName (rows[i][0]);
                 info.controlUpper = rows[i][1];
                 info.controlLower = rows[i][2];
                 expect (! info.isEmpty());

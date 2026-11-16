@@ -3,6 +3,7 @@
 #include "ui/CustomControlsPage.h"
 #include "ui/Knobs.h"
 #include "ui/MeterComponent.h"
+#include "ui/Scribble.h"
 #include "ui/UiContext.h"
 #include "ui/WingWidgets.h"
 
@@ -197,6 +198,10 @@ public:
     void stepLayer (int delta);
     /** The custom control layer of the upper part (CC EDIT edits the same one). */
     int currentLayer() const;
+
+    /** What the LCD shows for custom control `column` (0-3) of layer `ccLayer`:
+        the encoder's name (and value), and each key's name. */
+    ScribbleInfo controlScribble (int ccLayer, int column) const;
 
     void paint (juce::Graphics&) override;
     void resized() override;
