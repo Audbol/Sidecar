@@ -38,7 +38,7 @@ public:
     const bench::Result& getResult() const noexcept { return result; }
     const juce::StringArray& getLog() const noexcept { return log; }
     /** Saved runs, oldest first; where they are kept (tests: a folder of their own). */
-    const std::vector<bench::Result>& getSaved() const noexcept { return saved; }
+    const std::vector<bench::Result>& getSaved() const { return savedRuns(); }
     juce::File runsFolder = bench::runsFolder();
     void reloadSaved();
     /** Compare with the saved run `index` (-1: none); the tables then show its figures beside this run's. */
@@ -68,7 +68,18 @@ private:
     const Theme& theme;
     bench::Runner runner;
     bench::Result result;
-    std::vector<bench::Result> saved;
+    /** The saved runs, read from their folder the first time they are asked for: most visits to the SETUP page never need them. */
+    const std::vector<bench::Result>& savedRuns() const
+    {
+        if (! savedLoaded)
+        {
+            saved = bench::loadAll (runsFolder);
+            savedLoaded = true;
+        }
+        return saved;
+    }
+    mutable std::vector<bench::Result> saved;
+    mutable bool savedLoaded = false;
     int compareIndex = -1;
     State state = State::Idle;
     juce::StringArray log;

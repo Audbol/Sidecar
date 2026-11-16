@@ -91,7 +91,7 @@ public:
     juce::File runsFolder = bench::runsFolder();
     /** Reads the saved runs again; the newest is the one the guard knows. */
     void reloadBenchmark();
-    const bench::Result* getBenchmark() const noexcept { return latest.has_value() ? &*latest : nullptr; }
+    const bench::Result* getBenchmark() const { return latestRun().has_value() ? &*latestRun() : nullptr; }
     /** "2026-11-12 10:30   MARK 1020   FINE FOR SMALL TO MEDIUM SHOWS", or the suggestion to run one. */
     juce::String describeBenchmark() const;
 
@@ -109,7 +109,10 @@ public:
 
 private:
     UiContext& ctx;
-    std::optional<bench::Result> latest;
+    /** The newest saved run, read the first time it is asked for: building the page doesn't need it. */
+    const std::optional<bench::Result>& latestRun() const;
+    mutable std::optional<bench::Result> latest;
+    mutable bool latestLoaded = false;
     juce::String notice;
 };
 

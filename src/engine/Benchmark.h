@@ -8,6 +8,7 @@
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace livedaw::bench
@@ -103,6 +104,8 @@ const char* profileName (ld::ProfileId);
 juce::File runsFolder();
 juce::File save (const Result&, const juce::File& folder = runsFolder());
 std::vector<Result> loadAll (const juce::File& folder = runsFolder());
+/** The newest saved run alone (the last file that reads), without reading the others. */
+std::optional<Result> loadLatest (const juce::File& folder = runsFolder());
 
 /** One run, on a thread of its own. The message thread polls it (nothing here locks
     against the audio thread). */

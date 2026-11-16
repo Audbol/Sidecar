@@ -3,6 +3,7 @@
 #include "engine/RustStrings.h"
 
 #include <algorithm>
+#include <mutex>
 
 namespace livedaw
 {
@@ -109,8 +110,26 @@ WebRemote::Status WebRemote::getStatus() const
 
 juce::StringArray WebRemote::getUrls (int port)
 {
+    // Asking the system for its network interfaces takes milliseconds, and the SETUP screens ask on every tick
+    // while shown: the answer is kept for two seconds.
+    static std::mutex lock;
+    static juce::Array<juce::IPAddress> cached;
+    static juce::uint32 readAt = 0;
+    static bool read = false;
+    juce::Array<juce::IPAddress> addresses;
+    {
+        const std::lock_guard<std::mutex> guard (lock);
+        const auto now = juce::Time::getMillisecondCounter();
+        if (! read || now - readAt > 2000)
+        {
+            cached = juce::IPAddress::getAllAddresses (false);
+            readAt = now;
+            read = true;
+        }
+        addresses = cached;
+    }
     juce::StringArray lan, loopback;
-    for (auto& ip : juce::IPAddress::getAllAddresses (false))
+    for (auto& ip : addresses)
     {
         const auto url = "http://" + ip.toString() + ":" + juce::String (port) + "/";
         (ip.address[0] == 127 ? loopback : lan).addIfNotAlreadyThere (url);

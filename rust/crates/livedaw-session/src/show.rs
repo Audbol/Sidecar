@@ -43,7 +43,7 @@ use crate::legacy::{self, Converter};
 use crate::presets;
 use crate::refs::{refs_from_string, refs_to_string, StripRef};
 use crate::scope::{self, ChangeCounts, GlobalSafe, RecordedChanges, Recording, Scope};
-use crate::xml::{self, Element};
+use crate::xml::{self, Element, Node};
 use livedaw_engine::params::MAX_FX;
 use livedaw_engine::{Engine, GroupSet, Profile, Strip};
 use std::collections::HashMap;
@@ -1451,7 +1451,16 @@ impl Show {
     ) -> Result<Vec<String>, String> {
         let parsed = read_show(path).or_else(|_| read_show(&backup_path(path)));
         match parsed {
-            Ok(xml) => self.load_from_xml(engine, bridge, &xml, load_plugins),
+            Ok(mut xml) => {
+                let states = take_scene_states(&mut xml);
+                let result = self.load_from_xml(engine, bridge, &xml, load_plugins);
+                if result.is_ok() {
+                    for (scene, state) in self.scenes.iter_mut().zip(states) {
+                        scene.state = state;
+                    }
+                }
+                result
+            }
             Err(_) => Err(format!("Could not read {}", path.display())),
         }
     }
@@ -1581,6 +1590,28 @@ pub(crate) fn read_snippet(
         recorded_parameters: usize::try_from(nx.int_or("pars", 0)).unwrap_or(0),
         state: state_of(nx),
     }
+}
+
+/// The console state of each scene of a show, taken out of the tree (None: the scene has none). Reading a scene
+/// copies its state, and in a big show every scene holds a whole console, so a file load moves them over instead.
+/// Empty for a file that isn't of the current layout: the states of an older show are converted as they are read.
+fn take_scene_states(xml: &mut Element) -> Vec<Option<Element>> {
+    if !xml.has_tag("LiveDAWShow") || xml.child("Console").is_none_or(legacy::is_legacy) {
+        return Vec::new();
+    }
+    let Some(scenes) = xml.child_mut("Scenes") else {
+        return Vec::new();
+    };
+    scenes
+        .children_named_mut("Scene")
+        .map(|scene| {
+            let at = scene.children.iter().position(|n| matches!(n, Node::Element(e) if e.name == "State"))?;
+            match scene.children.remove(at) {
+                Node::Element(state) => Some(state),
+                Node::Text(_) => None,
+            }
+        })
+        .collect()
 }
 
 fn read_show(path: &Path) -> Result<Element, String> {

@@ -543,6 +543,7 @@ if(LIVEDAW_BUILD_TESTS)
         tests/PluginHostTests.cpp
         tests/BenchmarkTests.cpp
         tests/PaintBenchTests.cpp
+        tests/StartupBenchTests.cpp
         tests/ScreenshotTests.cpp)
 
     # The surface's scribble strip LCDs.

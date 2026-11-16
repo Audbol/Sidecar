@@ -183,8 +183,6 @@ SetupView::SetupView (UiContext& c, const Theme& t)
     addChildComponent (remote);
     addChildComponent (benchmark);
     addChildComponent (mixerConfig);
-    device = std::make_unique<juce::AudioDeviceSelectorComponent> (ctx.deviceManager, 0, 256, 0, 256, false, false, false, false);
-    addChildComponent (*device);
     revert();
     showPage (Page::Console);
     startTimerHz (5);
@@ -199,7 +197,15 @@ void SetupView::showPage (Page p)
 {
     page = p;
     showConsolePage();
-    device->setVisible (p == Page::Audio);
+    if (p == Page::Audio && device == nullptr)
+    {
+        // The audio device's page lists every driver and device, which costs time a visit to another page never needs.
+        device = std::make_unique<juce::AudioDeviceSelectorComponent> (ctx.deviceManager, 0, 256, 0, 256, false, false, false, false);
+        addChildComponent (*device);
+        resized();
+    }
+    if (device != nullptr)
+        device->setVisible (p == Page::Audio);
     remote.setVisible (p == Page::Remote);
     benchmark.setVisible (p == Page::Benchmark);
     for (auto* c : std::initializer_list<juce::Component*> { &interfaceChoice, &compensationKey, &protectionKey })
@@ -345,7 +351,8 @@ void SetupView::resized()
     keys.removeFromLeft (sizes::kGapSmall);
     revertKey.setBounds (keys.removeFromLeft (170));
 
-    device->setBounds (area.withWidth (juce::jmin (area.getWidth(), 700)));
+    if (device != nullptr)
+        device->setBounds (area.withWidth (juce::jmin (area.getWidth(), 700)));
     remote.setBounds (area);
     benchmark.setBounds (area);
     auto prefs = area.withWidth (juce::jmin (area.getWidth(), 600));

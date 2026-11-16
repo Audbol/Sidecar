@@ -67,13 +67,23 @@ pub struct DelayLine {
     delay: usize,
 }
 
+/// `buf` as `len` zeros. A buffer of another size is replaced by a zeroed allocation, which the
+/// system gives as fresh pages, not written until the line is used: most strips never delay, and
+/// writing every strip's half-second of zeros dominated the time to build a console.
+fn zeroed(buf: &mut Vec<f32>, len: usize) {
+    if buf.len() == len {
+        buf.fill(0.0);
+    } else {
+        *buf = vec![0.0; len];
+    }
+}
+
 impl DelayLine {
     /// Allocates (message thread / device stopped).
     pub fn prepare(&mut self, sample_rate: f64) {
         let len = (MAX_DELAY_MS * 0.001 * sample_rate as f32) as usize + 1;
         for b in &mut self.buf {
-            b.clear();
-            b.resize(len, 0.0);
+            zeroed(b, len);
         }
         self.pos = 0;
         self.delay = 0;
@@ -90,8 +100,7 @@ impl DelayLine {
     pub fn prepare_samples(&mut self, sample_rate: f64, samples: usize) {
         let len = ((MAX_DELAY_MS * 0.001 * sample_rate as f32) as usize).max(samples) + 1;
         for b in &mut self.buf {
-            b.clear();
-            b.resize(len, 0.0);
+            zeroed(b, len);
         }
         self.pos = 0;
         self.delay = 0;

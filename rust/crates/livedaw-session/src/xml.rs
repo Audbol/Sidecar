@@ -514,7 +514,8 @@ impl Parser<'_> {
         if self.i >= self.s.len() {
             return Err(self.err("unterminated attribute value"));
         }
-        let mut out = String::new();
+        // Decoding only shortens the text: one allocation of the raw length does it.
+        let mut out = String::with_capacity(self.i - start);
         self.decode_into(&mut out, start, self.i)?;
         self.i += 1;
         Ok(out)

@@ -447,6 +447,19 @@ std::vector<Result> loadAll (const juce::File& folder)
     return out;
 }
 
+std::optional<Result> loadLatest (const juce::File& folder)
+{
+    auto files = folder.findChildFiles (juce::File::findFiles, false, "*.json");
+    files.sort();
+    for (int i = files.size(); --i >= 0;)
+    {
+        const auto v = juce::JSON::parse (files[i]);
+        if (v.isObject())
+            return Result::fromVar (v);
+    }
+    return std::nullopt;
+}
+
 juce::StringPairArray machineDetails (const juce::String& deviceInfo)
 {
     juce::StringPairArray m;

@@ -2,6 +2,7 @@
 #include "engine/PluginScanner.h"
 
 #include <map>
+#include <memory>
 #include <mutex>
 
 namespace livedaw
@@ -25,11 +26,74 @@ namespace
 
         JUCE_DECLARE_SINGLETON_INLINE (CreatedPlugins, true)
     };
+
+   #if JUCE_INTERNAL_HAS_LV2
+    /** JUCE's LV2 format, made when it is first needed. Making it loads the LV2 folders and writes JUCE's own
+        bundles to a temporary folder, about 0.15 s at every start-up, and a run that doesn't use LV2 never needs it. */
+    class LazyLv2Format final : public juce::AudioPluginFormat
+    {
+    public:
+        juce::String getName() const override { return juce::LV2PluginFormat::getFormatName(); }
+        void findAllTypesForFile (juce::OwnedArray<juce::PluginDescription>& results, const juce::String& id) override { real().findAllTypesForFile (results, id); }
+        bool fileMightContainThisPluginType (const juce::String& id) override { return real().fileMightContainThisPluginType (id); }
+        juce::String getNameOfPluginFromIdentifier (const juce::String& id) override { return real().getNameOfPluginFromIdentifier (id); }
+        bool pluginNeedsRescanning (const juce::PluginDescription& d) override { return real().pluginNeedsRescanning (d); }
+        bool doesPluginStillExist (const juce::PluginDescription& d) override { return real().doesPluginStillExist (d); }
+        bool canScanForPlugins() const override { return real().canScanForPlugins(); }
+        bool isTrivialToScan() const override { return real().isTrivialToScan(); }
+        juce::StringArray searchPathsForPlugins (const juce::FileSearchPath& paths, bool recursive, bool asynchronous) override
+        {
+            return real().searchPathsForPlugins (paths, recursive, asynchronous);
+        }
+        juce::FileSearchPath getDefaultLocationsToSearch() override { return real().getDefaultLocationsToSearch(); }
+        bool requiresUnblockedMessageThreadDuringCreation (const juce::PluginDescription& d) const override
+        {
+            return real().requiresUnblockedMessageThreadDuringCreation (d);
+        }
+
+    private:
+        void createPluginInstance (const juce::PluginDescription& d, double sampleRate, int blockSize, PluginCreationCallback callback) override
+        {
+            juce::String error;
+            auto instance = real().createInstanceFromDescription (d, sampleRate, blockSize, error);
+            callback (std::move (instance), error);
+        }
+
+        juce::AudioPluginFormat& real() const
+        {
+            std::call_once (made, [this] { format = std::make_unique<juce::LV2PluginFormat>(); });
+            return *format;
+        }
+
+        mutable std::once_flag made;
+        mutable std::unique_ptr<juce::AudioPluginFormat> format;
+    };
+   #endif
+
+    /** What juce::addDefaultFormatsToManager adds, with the LV2 format made on first use. */
+    void addFormats (juce::AudioPluginFormatManager& manager)
+    {
+       #if JUCE_INTERNAL_HAS_AU
+        manager.addFormat (std::make_unique<juce::AudioUnitPluginFormat>());
+       #endif
+       #if JUCE_INTERNAL_HAS_VST
+        manager.addFormat (std::make_unique<juce::VSTPluginFormat>());
+       #endif
+       #if JUCE_INTERNAL_HAS_VST3
+        manager.addFormat (std::make_unique<juce::VST3PluginFormat>());
+       #endif
+       #if JUCE_INTERNAL_HAS_LADSPA
+        manager.addFormat (std::make_unique<juce::LADSPAPluginFormat>());
+       #endif
+       #if JUCE_INTERNAL_HAS_LV2
+        manager.addFormat (std::make_unique<LazyLv2Format>());
+       #endif
+    }
 } // namespace
 
 PluginHost::PluginHost (juce::PropertiesFile* s) : settings (s)
 {
-    juce::addDefaultFormatsToManager (formatManager);
+    addFormats (formatManager);
 
     if (settings != nullptr)
         if (auto xml = settings->getXmlValue (kPluginListKey))

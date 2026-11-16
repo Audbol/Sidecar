@@ -690,6 +690,16 @@ compares every output sample's bits with a checksum made before the CPU work (`n
 so an optimisation that changes the sound fails it. `NULL_DUMP=<dir>` writes the raw output
 and `NULL_COMPARE=<dir>` reports how far a build is from such a dump.
 
+### Measuring start-up and loading
+`LiveDAWTests StartupBench` (`tests/StartupBenchTests.cpp`, a category of its own) times, headless and in
+ms, the steps of a start (plug-in host, engine, autosave read, audio device types, main component, first
+paint, the mixer chooser), switching through all twelve consoles (a fresh console, cold first round and
+warm rounds), loading and saving a large WING show (40 processed channels, an effect in each slot, 100
+scenes) and recalling scenes on the WING and the PLUGIN HOST with fake plug-ins. It prints the mean and
+the worst case. `STARTBENCH_PROFILE=startup|switch|load|recall` runs one phase under a sampling profiler
+(`tests/SampleProfiler.h`, Windows) that names the functions the time went in (`STARTBENCH_KIND=<console>`
+narrows `switch` to one console).
+
 ## Recorder
 
 `rust/crates/livedaw-recorder` (no dependencies), owned by the engine; C++ facade

@@ -2151,7 +2151,9 @@ namespace
             if (ctx.web == nullptr)
                 return;
             webStatus.status = ctx.web->getStatus();
-            webStatus.urls = WebRemote::getUrls (webStatus.status.port);
+            // The network interfaces are asked for only while the page is shown (the timer comes back to it then).
+            if (isShowing())
+                webStatus.urls = WebRemote::getUrls (webStatus.status.port);
             webStatus.repaint();
             web.repaint(); // the port's listening state
         }

@@ -159,17 +159,25 @@ void Guard::setThreshold (int percent)
 
 void Guard::reloadBenchmark()
 {
-    auto runs = bench::loadAll (runsFolder);
-    latest.reset();
-    if (! runs.empty())
-        latest = std::move (runs.back());
+    latestLoaded = false;
+    latestRun();
+}
+
+const std::optional<bench::Result>& Guard::latestRun() const
+{
+    if (! latestLoaded)
+    {
+        latest = bench::loadLatest (runsFolder);
+        latestLoaded = true;
+    }
+    return latest;
 }
 
 juce::String Guard::describeBenchmark() const
 {
-    if (! latest.has_value())
+    if (! latestRun().has_value())
         return "NO BENCHMARK IS SAVED. RUN ONE (BENCHMARK) SO THE GUARD KNOWS THIS COMPUTER.";
-    const auto& r = *latest;
+    const auto& r = *latestRun();
     auto text = r.when.formatted ("%Y-%m-%d %H:%M") + "   ";
     if (r.score.valid())
         text << "MARK " << juce::roundToInt (r.score.mark) << (r.score.estimate ? " (ESTIMATE)" : "") << "   " << r.score.rating().toUpperCase();
@@ -184,14 +192,14 @@ Guard::Advice Guard::check (const juce::PluginDescription& description) const
     Advice a;
     const int cpu = getCpuPercent(), threshold = getThreshold();
     a.overThreshold = cpu > threshold;
-    a.noBenchmark = ! latest.has_value();
+    a.noBenchmark = ! latestRun().has_value();
     juce::StringArray parts;
     if (a.overThreshold)
     {
         auto text = "ENGINE CPU IS " + juce::String (cpu) + " %, OVER THE GUARD'S " + juce::String (threshold) + " %. ADDING " + description.name.toUpperCase()
                     + " MAY MAKE THE AUDIO BREAK UP.";
-        if (latest.has_value())
-            if (const auto* m = latest->find ("Plug-in", description.name, 0))
+        if (latestRun().has_value())
+            if (const auto* m = latestRun()->find ("Plug-in", description.name, 0))
                 text << " THE BENCHMARK MEASURED IT AT ABOUT " << juce::roundToInt (m->meanPct) << " % OF A BLOCK.";
         parts.add (text);
     }
@@ -300,7 +308,6 @@ SystemPage::SystemPage (UiContext& c, const Theme& t, Latency& l, Guard& g)
         addAndMakeVisible (*key);
         sizeKeys[(size_t) i] = std::move (key);
     }
-    guard.reloadBenchmark();
     refresh();
     startTimerHz (4);
 }

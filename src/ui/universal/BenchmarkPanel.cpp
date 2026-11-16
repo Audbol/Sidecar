@@ -155,7 +155,7 @@ BenchmarkPanel::BenchmarkPanel (UiContext& c, const Theme& t)
     compareKey.onClick = [this]
     {
         // Cycles through the saved runs before the shown one, then back to none.
-        const int last = (int) saved.size() - (state == State::Done ? 2 : 1);
+        const int last = (int) savedRuns().size() - (state == State::Done ? 2 : 1);
         setCompare (compareIndex >= last ? -1 : compareIndex + 1);
     };
     logKey.isOn = [this] { return showLog; };
@@ -178,7 +178,6 @@ BenchmarkPanel::BenchmarkPanel (UiContext& c, const Theme& t)
     viewport.setViewedComponent (body.get(), false);
     viewport.setScrollBarsShown (true, false);
     addAndMakeVisible (viewport);
-    reloadSaved();
     refreshKeys();
     startTimerHz (15);
 }
@@ -192,11 +191,12 @@ BenchmarkPanel::~BenchmarkPanel()
 void BenchmarkPanel::reloadSaved()
 {
     saved = bench::loadAll (runsFolder);
+    savedLoaded = true;
 }
 
 void BenchmarkPanel::setCompare (int index)
 {
-    compareIndex = index >= 0 && index < (int) saved.size() ? index : -1;
+    compareIndex = index >= 0 && index < (int) savedRuns().size() ? index : -1;
     showBody();
     refreshKeys();
 }
@@ -427,7 +427,7 @@ void BenchmarkPanel::showBody()
     if (state == State::Done)
     {
         // The run just saved is the last one in `saved`; comparing is with another.
-        const bench::Result* other = compareIndex >= 0 && compareIndex < (int) saved.size() ? &saved[(size_t) compareIndex] : nullptr;
+        const bench::Result* other = compareIndex >= 0 && compareIndex < (int) savedRuns().size() ? &savedRuns()[(size_t) compareIndex] : nullptr;
         body->set (result, other);
     }
 }
@@ -445,8 +445,8 @@ void BenchmarkPanel::refreshKeys()
     quickKey.setEnabled (! busy);
     textKey.setEnabled (state == State::Done);
     csvKey.setEnabled (state == State::Done);
-    compareKey.setEnabled (state == State::Done && saved.size() > 1);
-    compareKey.setButtonText (compareIndex >= 0 && compareIndex < (int) saved.size() ? "VS " + saved[(size_t) compareIndex].when.formatted ("%d %b %H:%M") : juce::String ("COMPARE"));
+    compareKey.setEnabled (state == State::Done && savedRuns().size() > 1);
+    compareKey.setButtonText (compareIndex >= 0 && compareIndex < (int) savedRuns().size() ? "VS " + savedRuns()[(size_t) compareIndex].when.formatted ("%d %b %H:%M") : juce::String ("COMPARE"));
     for (auto* k : { &startKey, &cancelKey, &quickKey, &textKey, &csvKey, &compareKey, &logKey })
         k->refresh();
     for (size_t i = 0; i < 6; ++i)

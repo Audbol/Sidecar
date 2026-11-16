@@ -5,6 +5,7 @@
 #include <atomic>
 #include <cstring>
 #include <map>
+#include <optional>
 
 namespace livedaw::models
 {
@@ -117,26 +118,24 @@ static std::vector<Model> build (Table t, bool foreign = false)
 static const std::vector<Model>& tableOf (Table t, bool all)
 {
     // The shown console's models (setShownProfile; the Rust side's model calls
-    // follow it), built once per console profile.
+    // follow it), built once per console profile, and each table only when it is first asked for:
+    // a console's screens mostly use one or two of the six, and the FX table alone has hundreds of models.
     struct Set
     {
-        bool built = false;
-        std::array<std::vector<Model>, 6> tables;
-        std::array<std::vector<Model>, 6> all; // with the other consoles' models after
+        std::array<std::optional<std::vector<Model>>, 6> tables;
+        std::array<std::optional<std::vector<Model>>, 6> all; // with the other consoles' models after
     };
     static std::map<int, Set> sets;
     auto& set = sets[(int) shownProfile()];
-    if (! set.built)
-    {
-        for (int i = 0; i < (int) set.tables.size(); ++i)
-        {
-            set.tables[(size_t) i] = build ((Table) i);
-            // The strip's table is the same on every console: no foreign models follow it.
-            set.all[(size_t) i] = shownProfile() == ld::kProfileUniversal || i == UfxStrip ? set.tables[(size_t) i] : build ((Table) i, true);
-        }
-        set.built = true;
-    }
-    return (all ? set.all : set.tables)[(size_t) juce::jlimit (0, 5, (int) t)];
+    const auto i = (size_t) juce::jlimit (0, 5, (int) t);
+    if (! set.tables[i])
+        set.tables[i] = build ((Table) i);
+    if (! all)
+        return *set.tables[i];
+    if (! set.all[i])
+        // The strip's table is the same on every console: no foreign models follow it.
+        set.all[i] = shownProfile() == ld::kProfileUniversal || i == UfxStrip ? *set.tables[i] : build ((Table) i, true);
+    return *set.all[i];
 }
 
 const std::vector<Model>& table (Table t)
