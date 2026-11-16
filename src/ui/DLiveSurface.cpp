@@ -1037,7 +1037,8 @@ namespace dl
 
     void StripUnit::rebind()
     {
-        shownSignature.clear();
+        shownLcdSignature.clear();
+        shownMeterSignature.clear();
         repaint();
         // The GEQ on the faders: a band each, the mix's master on the last strip.
         if (auto* geq = surface.getGeq())
@@ -1063,7 +1064,8 @@ namespace dl
         {
             fader.bind (nullptr);
             rotary.setBinding ({});
-            shownSignature.clear();
+            shownLcdSignature.clear();
+            shownMeterSignature.clear();
             repaint();
             return;
         }
@@ -1118,7 +1120,8 @@ namespace dl
         }
         rotary.setBinding (b);
         rotary.setLight (light);
-        shownSignature.clear();
+        shownLcdSignature.clear();
+        shownMeterSignature.clear();
         repaint();
     }
 
@@ -1249,15 +1252,26 @@ namespace dl
             k->refresh();
         auto* st = strip();
         const auto& b = rotary.getBinding();
-        const juce::String signature = (st == nullptr && dca() == nullptr) ? juce::String()
-                                                      : getLcdKind() + "|" + getLcdName() + "|" + getLcdValue() + "|" + getLcdAssign() + "|" + backlight().toString() + "|" + juce::String (juce::roundToInt (meterDb() / 3.0f))
-                                                            + "|" + (b.isValid() ? juce::String (juce::roundToInt (b.get() * 40.0f)) : juce::String()) + (st != nullptr && st->params.recallSafe.load() ? "S" : "")
-                                                            + (st != nullptr ? juce::String (juce::roundToInt (st->meters.dynReductionDb.load())) + juce::String (juce::roundToInt (st->meters.gateReductionDb.load())) : juce::String());
-        if (signature != shownSignature)
+        const bool shown = st != nullptr || dca() != nullptr;
+        // The LCD's text and light, and the meters, are told apart: a meter that moves repaints only its own windows.
+        const juce::String lcdSignature = ! shown ? juce::String()
+                                                  : getLcdKind() + "|" + getLcdName() + "|" + getLcdValue() + "|" + getLcdAssign() + "|" + backlight().toString()
+                                                        + "|" + (b.isValid() ? juce::String (juce::roundToInt (b.get() * 40.0f)) : juce::String()) + (st != nullptr && st->params.recallSafe.load() ? "S" : "");
+        const juce::String meterSignature = ! shown ? juce::String()
+                                                    : juce::String (juce::roundToInt (meterDb() / 3.0f))
+                                                          + (st != nullptr ? "|" + juce::String (juce::roundToInt (st->meters.dynReductionDb.load())) + "|" + juce::String (juce::roundToInt (st->meters.gateReductionDb.load())) : juce::String());
+        if (lcdSignature != shownLcdSignature)
         {
-            shownSignature = signature;
+            shownLcdSignature = lcdSignature;
             repaint (0, 0, getWidth(), juce::roundToInt (layout.lcd.getBottom()) + 2);
         }
+        else if (meterSignature != shownMeterSignature)
+        {
+            // The strips' full width, so that the strips side by side make one band to repaint rather than many pieces.
+            const auto band = layout.level.getUnion (layout.compMeter).getUnion (layout.gateMeter).expanded (3.0f).getSmallestIntegerContainer();
+            repaint (0, band.getY(), getWidth(), band.getHeight());
+        }
+        shownMeterSignature = meterSignature;
     }
 
     void StripUnit::paint (juce::Graphics& g)

@@ -400,6 +400,14 @@ void FaderSection::paintOverChildren (juce::Graphics& g)
         return;
     }
 
+    // The printed legends never change but with the layout: drawn once, then copied.
+    const auto& sc = surfaceColours();
+    const auto key = PaintCache::key (PaintCache::layoutKey (*this), strips[0]->getMeterArea().getY(), strips[0]->getMeterArea().getHeight(), sc.silk, sc.surfaceLine);
+    legends.paint (g, *this, key, [this] (juce::Graphics& ag) { paintLegends (ag); }, false);
+}
+
+void FaderSection::paintLegends (juce::Graphics& g)
+{
     // Strips come in modules of four (their LCD and meter panels run across the
     // module), with the meter scale printed between strips.
     const auto meter = strips[0]->getMeterArea();

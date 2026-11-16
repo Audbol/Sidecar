@@ -340,7 +340,16 @@ private:
                     if (skin.getLocalArea (c, c->getLocalBounds()).contains (r))
                         break;
                 }
-                top.push_back ({ (double) count * r.getWidth() * r.getHeight(), rect + " x" + juce::String (count) + " " + owner });
+                double each = 1.0e9;
+                for (int i = 0; i < 3; ++i)
+                {
+                    const auto t0 = juce::Time::getHighResolutionTicks();
+                    juce::Graphics g (image);
+                    g.reduceClipRegion (r);
+                    skin.paintEntireComponent (g, false);
+                    each = juce::jmin (each, ms (t0));
+                }
+                top.push_back ({ each * count, rect + " x" + juce::String (count) + " " + owner + " " + juce::String (each, 2) + " ms each, " + juce::String (each * count / 80.0, 2) + " ms per tick" });
             }
             std::sort (top.begin(), top.end(), [] (const auto& a, const auto& b) { return a.first > b.first; });
             for (size_t i = 0; i < top.size() && i < 8; ++i)

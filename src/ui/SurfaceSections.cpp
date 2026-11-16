@@ -477,6 +477,15 @@ void ChannelStripSection::paint (juce::Graphics& g)
 
     paintPanel (g);
 
+    // The captions and printed lines change with the EQ's page and band only.
+    const auto key = PaintCache::key (PaintCache::layoutKey (*this), surfaceColours().silk, surfaceColours().deck, surfaceColours().plate, shownSlot, eqBand, eqMixShown,
+                                      eqShift, eqPage, eqPages, eqKnobs[0].getBinding().label, eqKnobs[1].getBinding().label, eqKnobs[2].getBinding().label,
+                                      eqKnobs[3].getBinding().label);
+    captions.paint (g, *this, key, [this] (juce::Graphics& ag) { paintCaptions (ag); }, false);
+}
+
+void ChannelStripSection::paintCaptions (juce::Graphics& g)
+{
     drawSilk (g, processingHeading.toFloat(), "CHANNEL PROCESSING", 15.0f);
     drawSilk (g, eqHeading.toFloat(), "CHANNEL EQUALIZER", 15.0f);
 
@@ -539,9 +548,18 @@ void ChannelStripSection::paint (juce::Graphics& g)
 
 void ChannelStripSection::paintPanel (juce::Graphics& g)
 {
+    // The black panel, its printed labels (drawn once and copied), then the LEDs and the screen.
     auto panel = panelArea.toFloat();
     g.setColour (juce::Colours::black);
     g.fillRoundedRectangle (panel, 5.0f);
+    panelStatic.paint (g, *this, PaintCache::key (PaintCache::layoutKey (*this), panelArea.getX(), panelArea.getY(), panelArea.getWidth(), panelArea.getHeight(), surfaceColours().silk),
+                       [this] (juce::Graphics& ag) { paintPanelLayer (ag, true); }, false);
+    paintPanelLayer (g, false);
+}
+
+void ChannelStripSection::paintPanelLayer (juce::Graphics& g, bool statics)
+{
+    auto panel = panelArea.toFloat();
 
     auto r = panel.reduced (8.0f, 5.0f);
     const float titleH = juce::jlimit (11.0f, 16.0f, r.getHeight() * 0.13f);
@@ -553,19 +571,27 @@ void ChannelStripSection::paintPanel (juce::Graphics& g)
     auto rowY = [&] (int row) { return top + rowH * (float) row; };
     auto ledAt = [&] (float x, int row, bool on, juce::Colour colour = Colours::ledGreen)
     {
+        if (statics)
+            return;
         g.setColour (on ? colour : surfaceColours().ledOff);
         g.fillRect (x, rowY (row) + (rowH - led * 0.75f) * 0.5f, led, led * 0.75f);
     };
     auto text = [&] (float x, float w, int row, const juce::String& t, juce::Justification j = juce::Justification::centredLeft)
     {
+        if (! statics)
+            return;
         drawSilk (g, { x, rowY (row), w, rowH }, t, font, j, surfaceColours().silk);
     };
     auto title = [&] (float x, float w, const juce::String& t, juce::Justification j = juce::Justification::centred)
     {
+        if (! statics)
+            return;
         drawSilk (g, { x, r.getY(), w, titleH }, t, titleFont, j, surfaceColours().silk);
     };
     auto rule = [&] (float x)
     {
+        if (! statics)
+            return;
         g.setColour (surfaceColours().silk.withAlpha (0.7f));
         g.fillRect (x, top, 1.5f, rowH * 8.0f);
     };
@@ -627,9 +653,10 @@ void ChannelStripSection::paintPanel (juce::Graphics& g)
 
     // The section's screen.
     screenArea = juce::Rectangle<float> (screen, r.getY() + 1.0f, W * 0.205f, r.getHeight() - 2.0f).toNearestInt();
-    paintScreen (g, screenArea.toFloat());
+    if (! statics)
+        paintScreen (g, screenArea.toFloat());
     // SETUP > GENERAL > BTN LCD: the channel strip screen's brightness.
-    if (const float b = uiprefs::brightness (ctx.settings, "btnLcd", 80); b < 1.0f)
+    if (const float b = uiprefs::brightness (ctx.settings, "btnLcd", 80); ! statics && b < 1.0f)
     {
         g.setColour (juce::Colours::black.withAlpha (juce::jlimit (0.0f, 0.8f, 1.0f - b)));
         g.fillRect (screenArea);
@@ -690,11 +717,13 @@ void ChannelStripSection::paintPanel (juce::Graphics& g)
         const auto dcas = any ? p->dcaMask.load().low() : 0u;
         rowOf (3, 4, [&] (int i) { return ((dcas >> i) | (dcas >> (i + 8))) & 1u; });
         rowOf (4, 4, [&] (int i) { return ((dcas >> (i + 4)) | (dcas >> (i + 12))) & 1u; });
-        drawSilk (g, { labelX, rowY (3), labelW, rowH * 2.0f }, "DCA", font, juce::Justification::centredLeft, surfaceColours().silk);
+        if (statics)
+            drawSilk (g, { labelX, rowY (3), labelW, rowH * 2.0f }, "DCA", font, juce::Justification::centredLeft, surfaceColours().silk);
         const auto mutes = any ? p->muteGroupMask.load().low() : 0u;
         rowOf (6, 4, [&] (int i) { return (mutes >> i) & 1u; });
         rowOf (7, 4, [&] (int i) { return (mutes >> (i + 4)) & 1u; });
-        drawSilk (g, { labelX, rowY (6), labelW, rowH * 2.0f }, "MUTE", font, juce::Justification::centredLeft, surfaceColours().silk);
+        if (statics)
+            drawSilk (g, { labelX, rowY (6), labelW, rowH * 2.0f }, "MUTE", font, juce::Justification::centredLeft, surfaceColours().silk);
     }
 }
 

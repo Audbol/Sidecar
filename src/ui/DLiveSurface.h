@@ -341,7 +341,7 @@ namespace dl
         universal::FaderControl fader;
         Rotary rotary;
         Key mute, sel, mix, pafl;
-        juce::String shownSignature;
+        juce::String shownLcdSignature, shownMeterSignature;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StripUnit)
     };

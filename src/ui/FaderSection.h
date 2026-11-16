@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui/FaderStrip.h"
+#include "ui/PaintCache.h"
 
 namespace livedaw::ui
 {
@@ -56,6 +57,8 @@ public:
 
     void paint (juce::Graphics&) override;
     void paintOverChildren (juce::Graphics&) override;
+    void paintLegends (juce::Graphics&);
+    PaintCache legends;
     void resized() override;
 
 private:

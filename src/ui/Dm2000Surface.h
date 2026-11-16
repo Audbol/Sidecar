@@ -484,7 +484,7 @@ namespace dm2k
         void drawCell (const Cell&, bool focused);
         void drawChrome();
         void drawTabs();
-        void renderImage();
+        void renderImage (int firstRow, int lastRow);
 
         // The pages. `arg` is a layer (0-3) or a source set.
         void buildNone (int);

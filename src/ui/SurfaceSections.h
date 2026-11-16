@@ -3,6 +3,7 @@
 #include "ui/CustomControlsPage.h"
 #include "ui/Knobs.h"
 #include "ui/MeterComponent.h"
+#include "ui/PaintCache.h"
 #include "ui/Scribble.h"
 #include "ui/UiContext.h"
 #include "ui/WingWidgets.h"
@@ -79,6 +80,9 @@ private:
     void toggleSlot (int slot);
     juce::String panelState() const;
     void paintPanel (juce::Graphics&);
+    void paintPanelLayer (juce::Graphics&, bool statics);
+    void paintCaptions (juce::Graphics&);
+    PaintCache panelStatic, captions;
     void paintScreen (juce::Graphics&, juce::Rectangle<float>);
 
     UiContext& ctx;

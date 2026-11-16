@@ -1210,26 +1210,57 @@ void Display::refresh()
     }
     if (dots != shownDots)
     {
+        // Only the dot rows that changed are drawn again (and repainted, with two either side for the scaling's filter).
+        int first = 0, last = kDotsH - 1;
+        if (shownDots.size() == dots.size())
+        {
+            first = kDotsH;
+            last = -1;
+            for (int y = 0; y < kDotsH; ++y)
+                if (! std::equal (dots.begin() + y * kDotsW, dots.begin() + (y + 1) * kDotsW, shownDots.begin() + y * kDotsW))
+                {
+                    first = juce::jmin (first, y);
+                    last = y;
+                }
+        }
         shownDots = dots;
-        renderImage();
-        repaint();
+        renderImage (first, last);
+        const int from = juce::jmax (0, first - 2), to = juce::jmin (kDotsH - 1, last + 2);
+        repaint (0, from * kDot, kWidth, (to - from + 1) * kDot);
     }
 }
 
-void Display::renderImage()
+void Display::renderImage (int firstRow, int lastRow)
 {
-    juce::Image::BitmapData data (image, juce::Image::BitmapData::writeOnly);
-    for (int y = 0; y < kDotsH; ++y)
+    juce::Image::BitmapData data (image, 0, firstRow * kDot, kWidth, (lastRow - firstRow + 1) * kDot, juce::Image::BitmapData::writeOnly);
+    const bool rgb = data.pixelFormat == juce::Image::RGB && data.pixelStride == 3;
+    std::vector<juce::PixelRGB> row ((size_t) kWidth);
+    for (int y = firstRow; y <= lastRow; ++y)
     {
         const auto field = kField.interpolatedWith (kFieldLow, (float) y / (float) kDotsH);
         const auto ink = y < kTitleH ? kInkTitle : kInk;
-        for (int x = 0; x < kDotsW; ++x)
+        if (rgb)
         {
-            const auto colour = dots[(size_t) (y * kDotsW + x)] != 0 ? ink : field;
-            for (int py = 0; py < kDot; ++py)
+            juce::PixelRGB fieldPixel, inkPixel;
+            fieldPixel.set (field.getPixelARGB());
+            inkPixel.set (ink.getPixelARGB());
+            for (int x = 0; x < kDotsW; ++x)
+            {
+                const auto& pixel = dots[(size_t) (y * kDotsW + x)] != 0 ? inkPixel : fieldPixel;
                 for (int px = 0; px < kDot; ++px)
-                    data.setPixelColour (x * kDot + px, y * kDot + py, colour);
+                    row[(size_t) (x * kDot + px)] = pixel;
+            }
+            for (int py = 0; py < kDot; ++py)
+                std::memcpy (data.getLinePointer ((y - firstRow) * kDot + py), row.data(), (size_t) kWidth * 3);
         }
+        else
+            for (int x = 0; x < kDotsW; ++x)
+            {
+                const auto colour = dots[(size_t) (y * kDotsW + x)] != 0 ? ink : field;
+                for (int py = 0; py < kDot; ++py)
+                    for (int px = 0; px < kDot; ++px)
+                        data.setPixelColour (x * kDot + px, (y - firstRow) * kDot + py, colour);
+            }
     }
 }
 
