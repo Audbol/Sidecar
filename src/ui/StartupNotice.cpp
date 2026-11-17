@@ -16,15 +16,15 @@ namespace
         int percent;
     };
     constexpr Completion kCompletion[] = {
-        { "WING", 85 },
+        { "WING", 86 },
         { "ProMix 01", 70 },
         { "02R", 60 },
-        { "X32", 87 },
+        { "X32", 89 },
         { "01V", 75 },
         { "SQ-5", 70 },
-        { "dLive", 63 },
-        { "Universal Mixer", 65 },
-        { "DM2000", 73 },
+        { "dLive", 68 },
+        { "Universal Mixer", 67 },
+        { "DM2000", 77 },
         { "PRO2", 35 },
         { "Q1202USB", 40 },
         { "PLUGIN HOST", 95 },

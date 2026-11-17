@@ -217,11 +217,11 @@ void Xenyx1202Surface::build()
 
     // The main section.
     addKnob ("PHONES LEVEL", kWhite, centred (230, 1388, 90, 90));
-    addKey ("FX TO CTRL", juce::Colour (0xffb4b5b3), {}, centred (365, 1392, 56, 44));
-    addKey ("USB TO MAIN", juce::Colour (0xffb4b5b3), {}, centred (470, 1392, 56, 44));
-    addKey ("USB TO PHONES", juce::Colour (0xffb4b5b3), {}, centred (572, 1392, 56, 44));
-    addKnob ("FX SEND", kRed, centred (680, 1390, 90, 90));
-    addKey ("PHANTOM", kPhantom, juce::Colour (0xffff5a4a), centred (797, 1384, 50, 58));
+    addKey ("FX TO CTRL", juce::Colour (0xffb4b5b3), {}, centred (374, 1392, 50, 34));
+    addKey ("USB TO MAIN", juce::Colour (0xffb4b5b3), {}, centred (494, 1392, 50, 34));
+    addKey ("USB TO PHONES", juce::Colour (0xffb4b5b3), {}, centred (578, 1392, 50, 34));
+    addKnob ("FX SEND", kRed, centred (690, 1390, 70, 70));
+    addKey ("PHANTOM", kPhantom, juce::Colour (0xffff5a4a), centred (812, 1384, 64, 40));
     addFader ("MAIN FADER", juce::Colour (0xff9fa3a5), centred (418, 1540, 64, 420));
 
     for (int i = 0; i < 4; ++i)
@@ -538,7 +538,7 @@ void Xenyx1202Surface::paintPanel (juce::Graphics& g)
             text ("2.5 kHz", 689.0f, cy + 50.0f, 44.0f, 8.0f);
             text ("12 kHz", 804.0f, cy + 50.0f, 44.0f, 8.0f);
             text ("LOW CUT\n75 Hz", 515.0f, cy + 50.0f, 44.0f, 8.0f);
-            text ("EQ", 524.0f, cy - 52.0f, 20.0f, 12.0f);
+            text ("EQ", 831.0f, cy + 50.0f, 24.0f, 11.0f); // over HIGH (the owner's photo)
             text ("COMP", 893.0f, cy + 48.0f, 40.0f, 11.0f);
             const bool reducing = s != nullptr && s->meters.dynReductionDb.load() > 0.5f;
             led (g, 893.0f, cy + 82.0f, 5.0f, juce::Colour (0xffe5352c), reducing);
@@ -568,22 +568,26 @@ void Xenyx1202Surface::paintPanel (juce::Graphics& g)
 
     // ---- the main section -------------------------------------------------------------------------
     box ({ 152.0f, 1318.0f, 690.0f, 300.0f }, kMainCell, 6.0f);
-    box ({ 404.0f, 1324.0f, 204.0f, 140.0f }, kBand, 4.0f);
+    // As the owner's photo: USB/2-TRACK's keys on the light panel, framed, their name on a dark band
+    // under them; FX TO CTRL RM and MAIN SECTION dark; each key's name under it.
     box ({ 614.0f, 1324.0f, 126.0f, 140.0f }, kBand, 4.0f);
+    box ({ 404.0f, 1324.0f, 22.0f, 140.0f }, kBand, 2.0f);
+    box ({ 326.0f, 1334.0f, 72.0f, 118.0f }, kBand, 3.0f);
+    box ({ 158.0f, 1326.0f, 30.0f, 284.0f }, kBand, 3.0f);
     g.setColour (kInk);
-    g.drawRect (326.0f, 1334.0f, 70.0f, 118.0f, 1.2f);
-    g.drawRect (160.0f, 1326.0f, 28.0f, 284.0f, 1.2f);
-    text ("MAIN SECTION", 174.0f, 1470.0f, 200.0f, 12.0f, true, -90.0f);
+    g.drawRect (404.0f, 1324.0f, 204.0f, 140.0f, 1.2f);
+    text ("MAIN SECTION", 173.0f, 1470.0f, 200.0f, 12.0f, false, -90.0f);
     text ("PHONES/\nCTRL ROOM", 290.0f, 1388.0f, 70.0f, 10.0f, true);
     text ("-oo", 200.0f, 1448.0f, 24.0f, 9.0f, true);
-    text ("FX to\nCTRL RM", 410.0f, 1392.0f, 50.0f, 9.0f, true);
-    text ("USB/2-TRACK", 421.0f, 1394.0f, 110.0f, 11.0f, false, -90.0f);
-    text ("TO MAIN\nMIX", 512.0f, 1392.0f, 50.0f, 9.0f);
-    text ("TO PHONES/\nCTRL RM", 614.0f, 1392.0f, 56.0f, 9.0f);
-    text ("FX SEND", 628.0f, 1384.0f, 60.0f, 11.0f, false, -90.0f);
-    text ("-oo", 650.0f, 1450.0f, 24.0f, 9.0f);
-    text ("+15", 712.0f, 1450.0f, 24.0f, 9.0f);
-    text ("PHANTOM", 841.0f, 1384.0f, 56.0f, 10.0f, true);
+    text ("FX TO CTRL RM", 342.0f, 1392.0f, 110.0f, 8.5f);
+    text ("USB/2-TRACK", 415.0f, 1394.0f, 110.0f, 11.0f, false, -90.0f);
+    text ("TO MAIN MIX", 465.0f, 1392.0f, 90.0f, 9.0f, true);
+    text ("TO PHONES/\nCTRL RM", 541.0f, 1392.0f, 90.0f, 9.0f, true);
+    text ("FX SEND", 630.0f, 1390.0f, 60.0f, 11.0f, false, -90.0f);
+    text ("-oo", 648.0f, 1362.0f, 24.0f, 9.0f);
+    text ("+15", 648.0f, 1418.0f, 24.0f, 9.0f);
+    text ("0", 734.0f, 1390.0f, 12.0f, 9.0f);
+    text ("PHANTOM", 776.0f, 1384.0f, 70.0f, 10.0f, true);
     text ("MAIN MIX", 196.0f, 1580.0f, 60.0f, 11.0f, true, -90.0f);
     text ("+48 V", 774.0f, 1562.0f, 40.0f, 9.0f, true);
     text ("POWER", 774.0f, 1508.0f, 40.0f, 9.0f, true);
