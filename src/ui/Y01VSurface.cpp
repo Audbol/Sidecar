@@ -97,6 +97,9 @@ namespace
             s = s.upToFirstOccurrenceOf (".", true, false) + s.fromFirstOccurrenceOf (".", false, false).substring (0, 1) + "k";
         if (s.endsWith ("dB") && s.getFloatValue() > 0.0f && ! s.startsWithChar ('+'))
             s = "+" + s;
+        // A one-figure gain keeps its sign apart: "+ 5.0dB" under "+10.5dB" (the owner's photo).
+        if (s.endsWith ("dB") && (s.startsWithChar ('+') || s.startsWithChar ('-')) && s.substring (1).upToFirstOccurrenceOf (".", false, false).length() == 1)
+            s = s.substring (0, 1) + " " + s.substring (1);
         if (s.length() == 3 && s.startsWith ("0."))
             s << "0";
         return s;
@@ -767,6 +770,32 @@ namespace y01v
             static const uint8_t plainZero[5] = { 0x3E, 0x41, 0x41, 0x41, 0x3E };
             const int index = c >= 32 && c <= 126 ? (int) c - 32 : 0;
             const auto* glyph = c == '0' && scale > 1 ? plainZero : kFont5x7[index];
+            if (scale > 1)
+            {
+                // Large figures are drawn, not blown up: two-dot strokes joining the glyph's dots,
+                // the corners cut on the diagonal, so a 0 is an oval (the owner's photo).
+                const auto set = [glyph] (int col, int row) { return col >= 0 && col < 5 && row >= 0 && row < 7 && ((glyph[col] >> row) & 1); };
+                const auto at = [x, y, scale] (int col, int row) { return juce::Point<int> (x + col * scale + scale / 2, y + row * scale + scale / 2); };
+                for (int col = 0; col < 5; ++col)
+                    for (int row = 0; row < 7; ++row)
+                    {
+                        if (! set (col, row))
+                            continue;
+                        const auto from = at (col, row);
+                        fill ({ from.x, from.y, 2, 2 }, on);
+                        for (auto [dc, dr] : { std::pair { 1, 0 }, { 0, 1 }, { 1, 1 }, { -1, 1 } })
+                        {
+                            if (! set (col + dc, row + dr) || (dc != 0 && dr != 0 && (set (col + dc, row) || set (col, row + dr))))
+                                continue;
+                            const auto to = at (col + dc, row + dr);
+                            const int steps = juce::jmax (std::abs (to.x - from.x), std::abs (to.y - from.y));
+                            for (int i = 1; i <= steps; ++i)
+                                fill ({ from.x + (to.x - from.x) * i / steps, from.y + (to.y - from.y) * i / steps, 2, 2 }, on);
+                        }
+                    }
+                x += 6 * scale;
+                continue;
+            }
             for (int col = 0; col < 5; ++col)
                 for (int row = 0; row < 7; ++row)
                     if ((glyph[col] >> row) & 1)
