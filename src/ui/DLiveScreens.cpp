@@ -4708,6 +4708,9 @@ void MetersScreen::buildRta()
         k->onClick = [this, flag = flag] { this->*flag = ! (this->*flag); };
         ++n;
     }
+    // Show Line, Avg and Pk lit from the start, not only after the next refresh.
+    for (auto& k : rtaKeys)
+        k->refresh();
 }
 
 void MetersScreen::refresh()
@@ -4944,10 +4947,31 @@ void MetersScreen::paintRta (juce::Graphics& g)
     // Under the plot: its Control tab; the two ballistics' boxes (their knobs aren't wired).
     g.setColour (juce::Colours::white.withAlpha (0.45f));
     g.drawHorizontalLine (446, back.getX(), back.getRight());
-    for (auto [x0, name, on] : { std::tuple<float, const char*, bool> { 300.0f, "Control", true }, { 372.0f, "Source", false }, { 444.0f, "SigGen", false } })
+    // Three tabs, Control raised, under a notch with a down arrow (photographed).
     {
-        juce::Rectangle<float> t (x0, 448.0f, 70.0f, 14.0f);
-        text (g, t, name, 12.5f, on ? juce::Colours::white : juce::Colours::white.withAlpha (0.45f), juce::Justification::centred);
+        juce::Path notch;
+        const float cx = 442.0f;
+        notch.startNewSubPath (cx - 60.0f, 446.0f);
+        notch.lineTo (cx - 36.0f, 432.0f);
+        notch.lineTo (cx + 36.0f, 432.0f);
+        notch.lineTo (cx + 60.0f, 446.0f);
+        g.setColour (juce::Colour (0xff10131c));
+        g.fillPath (notch);
+        g.setColour (juce::Colours::white.withAlpha (0.45f));
+        g.strokePath (notch, juce::PathStrokeType (1.0f));
+        juce::Path arrow;
+        arrow.addTriangle (cx - 6.0f, 436.0f, cx + 6.0f, 436.0f, cx, 442.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.85f));
+        g.fillPath (arrow);
+    }
+    for (auto [x0, name, on] : { std::tuple<float, const char*, bool> { 314.0f, "Control", true }, { 400.0f, "Source", false }, { 486.0f, "SigGen", false } })
+    {
+        const juce::Rectangle<float> t (x0, 447.0f, 84.0f, 14.0f);
+        g.setColour (on ? juce::Colour (0xff2a2f38) : juce::Colour (0xff7d8894));
+        g.fillRect (t);
+        g.setColour (juce::Colours::white.withAlpha (on ? 0.6f : 0.3f));
+        g.drawRect (t, 1.0f);
+        text (g, t, name, 12.0f, juce::Colours::white, juce::Justification::centred);
     }
     for (auto [x, c] : { std::pair<float, juce::Colour> { 332.0f, avg }, { 500.0f, pk } })
     {
