@@ -4004,7 +4004,6 @@ std::vector<Strip*> MixRackScreen::ammMembers (int amm) const
 void MixRackScreen::buildAmm()
 {
     auto* amm = ld::ld_engine_amm (ctx.engine.getHandle());
-    addLabel (at (395, 325, 560, 385), "AMM", 22.0f);
     addKey (at (1218, 315, 1365, 355), "Input Assign", kTeal, {}).setEnabled (false);
     addKey (at (1380, 315, 1525, 355), "Setup", kTeal, [this] { if (onOpenSetup) onOpenSetup(); });
 
@@ -4016,7 +4015,7 @@ void MixRackScreen::buildAmm()
         const float x = left + (float) a * (boxW + gap);
         ammBoxes.push_back (at (x, 388, x + boxW, 568).toFloat());
         const float cx = x + boxW * 0.42f;
-        auto& in = addDim (at (cx - 44, 548, cx + 44, 584), "IN", kKnobGreen);
+        auto& in = addKey (at (cx - 44, 548, cx + 44, 584), "IN", kKnobGreen, {}); // lit green, as photographed
         in.isOn = [] { return true; };
         in.litFill = kGreen;
         in.fontSize = 12.0f;
@@ -4265,6 +4264,15 @@ void MixRackScreen::paint (juce::Graphics& g)
     else if (sub == Sub::Amm)
     {
         auto* amm = ld::ld_engine_amm (ctx.engine.getHandle());
+        // A dark band behind the logo, mode and keys (photographed).
+        g.setColour (juce::Colour (0xff1c3550));
+        g.fillRect (at (425, 312, 1550, 378).toFloat());
+        {
+            const auto logo = at (440, 320, 545, 370).toFloat();
+            g.setColour (juce::Colours::white.withAlpha (0.8f));
+            g.drawRect (logo, 1.4f);
+            text (g, logo, "AMM", 20.0f, juce::Colours::white, juce::Justification::centred, true);
+        }
         const auto mode = at (590, 322, 800, 372).toFloat();
         text (g, mode.withWidth (50.0f), "Mode:", 14.0f, juce::Colours::white, juce::Justification::centredLeft, true);
         text (g, mode.withTrimmedLeft (50.0f), amm->mode.load() == 0 ? "NOM" : "D-Classic", 24.0f, juce::Colours::white);
