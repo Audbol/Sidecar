@@ -4608,24 +4608,41 @@ void MetersScreen::rebuild()
             if (! g.empty())
                 groups.push_back (std::move (g));
         }
-        const float pitch = 34.5f, h = 222.0f, gap = 16.0f, right = 862.0f;
-        float x = 50.0f, y = 69.0f;
-        scales.push_back ({ 20.0f, y, h });
+        // The first row starts at the left; later rows sit centred, each with a scale
+        // on both sides (photographed).
+        const float pitch = 32.0f, h = 222.0f, gap = 30.0f, left = 50.0f, right = 832.0f;
+        std::vector<std::vector<std::pair<Cell, float>>> rows (1);
+        float x = left;
         for (auto& g : groups)
         {
-            for (size_t i = 0; i < g.size(); ++i)
+            for (auto& c : g)
             {
                 if (x + pitch > right)
                 {
-                    x = 50.0f;
-                    y += h + 6.0f;
-                    scales.push_back ({ 20.0f, y, h });
+                    rows.emplace_back();
+                    x = left;
                 }
-                g[i].r = { x, y, pitch - 2.5f, h };
-                cells.push_back (g[i]);
+                rows.back().push_back ({ c, x });
                 x += pitch;
             }
             x += gap;
+        }
+        float y = 69.0f;
+        for (size_t r = 0; r < rows.size(); ++r)
+        {
+            auto& row = rows[r];
+            if (row.empty())
+                continue;
+            const float start = row.front().second, end = row.back().second + pitch - 2.5f;
+            const float shift = r == 0 ? 0.0f : std::floor (((left + right) - (start + end)) * 0.5f);
+            scales.push_back ({ start + shift - 30.0f, y, h });
+            scales.push_back ({ end + shift + 6.0f, y, h });
+            for (auto& [c, cx] : row)
+            {
+                c.r = { cx + shift, y, pitch - 2.5f, h };
+                cells.push_back (c);
+            }
+            y += h + 6.0f;
         }
     }
     else if (tab == Rta1 || tab == Rta2)
