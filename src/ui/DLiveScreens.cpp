@@ -4747,11 +4747,14 @@ void MetersScreen::paintCell (juce::Graphics& g, const Cell& c) const
         juce::Graphics::ScopedSaveState state (g);
         g.reduceClipRegion (b.toNearestInt());
         const float red = b.getY() + b.getHeight() * y1, amber = b.getY() + b.getHeight() * y0;
-        g.setColour (kMeterRed.withAlpha (0.38f));
+        // Unlit, the scale still shows dimly on black (photographed).
+        g.setColour (juce::Colour (0xff0b0c12));
+        g.fillRect (b);
+        g.setColour (kMeterRed.withAlpha (0.42f));
         g.fillRect (b.withBottom (red));
-        g.setColour (kMeterAmber.withAlpha (0.38f));
+        g.setColour (kMeterAmber.withAlpha (0.42f));
         g.fillRect (b.withTop (red).withBottom (amber));
-        g.setColour (kMeterGreen.withAlpha (0.38f));
+        g.setColour (kMeterGreen.withAlpha (0.42f));
         g.fillRect (b.withTop (amber));
         g.reduceClipRegion (b.withTop (b.getBottom() - b.getHeight() * level).toNearestInt());
         g.setColour (kMeterRed);
@@ -4772,14 +4775,22 @@ void MetersScreen::paintCell (juce::Graphics& g, const Cell& c) const
     }
     else
     {
-        const float w = well.getWidth() * 0.62f;
+        // A narrow bar on the left, the gain reduction in a slimmer one on the right
+        // with a small lamp under it (photographed).
+        const float w = well.getWidth() * 0.44f;
         bar (well.withWidth (w), c.strip != nullptr ? ctx.meters.get (c.strip, point, 0) : 0.0f);
-        // The gain reduction beside it, down from the top.
-        const auto side = juce::Rectangle<float> (well.getRight() - 4.0f, well.getY() + well.getHeight() * 0.32f, 3.5f, well.getHeight() * 0.62f);
+        const auto side = juce::Rectangle<float> (well.getRight() - 6.0f, well.getY() + well.getHeight() * 0.36f, 4.0f, well.getHeight() * 0.58f);
         g.setColour (juce::Colour (0xff0b0c12));
         g.fillRect (side);
+        g.setColour (juce::Colours::white.withAlpha (0.5f));
+        g.drawRect (side, 0.8f);
         g.setColour (kMeterAmber);
         g.fillRect (side.withHeight (side.getHeight() * juce::jlimit (0.0f, 1.0f, -gr / 24.0f)));
+        const auto lamp = juce::Rectangle<float> (side.getX(), side.getBottom() + 2.0f, 4.0f, 4.0f);
+        g.setColour (juce::Colour (0xff3a4048));
+        g.fillRect (lamp);
+        g.setColour (juce::Colours::white.withAlpha (0.6f));
+        g.drawRect (lamp, 0.8f);
     }
 
     auto label = juce::Rectangle<float> (r.getX() - 3.0f, well.getBottom() + 2.0f, r.getWidth() + 6.0f, r.getHeight() * 0.14f);
@@ -4794,9 +4805,10 @@ void MetersScreen::paintCell (juce::Graphics& g, const Cell& c) const
     const auto key = juce::Rectangle<float> (r.getX() + 2.0f, r.getBottom() - r.getHeight() * 0.255f, r.getWidth() - 4.0f, r.getHeight() * 0.255f - 3.0f);
     const bool muted = c.strip != nullptr && c.strip->getMuteState() != 0;
     const bool main = c.key == "LR";
-    g.setColour (c.strip == nullptr ? juce::Colour (0xff5d7488) : muted ? kCellMuted : main ? juce::Colour (0xff1b2038) : c.body.darker (0.55f));
+    // Unmuted keys are slate with a cyan edge; muted ones go salmon (photographed).
+    g.setColour (c.strip == nullptr ? juce::Colour (0xff5d7488) : muted ? kCellMuted : main ? juce::Colour (0xff1b2038) : juce::Colour (0xff4c6688));
     g.fillRoundedRectangle (key, 3.0f);
-    g.setColour (main ? kYellow : juce::Colours::white.withAlpha (0.55f));
+    g.setColour (main ? kYellow : muted || c.strip == nullptr ? juce::Colours::white.withAlpha (0.55f) : juce::Colour (0xff6fe0d8));
     g.drawRoundedRectangle (key, 3.0f, 1.0f);
     juce::Graphics::ScopedSaveState state (g);
     g.addTransform (juce::AffineTransform::rotation (-juce::MathConstants<float>::halfPi, key.getCentreX(), key.getCentreY()));
