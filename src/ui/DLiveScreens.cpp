@@ -4834,9 +4834,10 @@ void MetersScreen::paintCell (juce::Graphics& g, const Cell& c) const
     const bool muted = c.strip != nullptr && c.strip->getMuteState() != 0;
     const bool main = c.key == "LR";
     // Unmuted keys are slate with a cyan edge; muted ones go salmon (photographed).
-    g.setColour (c.strip == nullptr ? juce::Colour (0xff5d7488) : muted ? kCellMuted : main ? juce::Colour (0xff1b2038) : juce::Colour (0xff4c6688));
+    // Keys without a strip of ours (the UFX units) look unmuted too (photographed).
+    g.setColour (muted ? kCellMuted : main ? juce::Colour (0xff1b2038) : juce::Colour (0xff4c6688));
     g.fillRoundedRectangle (key, 3.0f);
-    g.setColour (main ? kYellow : muted || c.strip == nullptr ? juce::Colours::white.withAlpha (0.55f) : juce::Colour (0xff6fe0d8));
+    g.setColour (main ? kYellow : muted ? juce::Colours::white.withAlpha (0.55f) : juce::Colour (0xff6fe0d8));
     g.drawRoundedRectangle (key, 3.0f, 1.0f);
     juce::Graphics::ScopedSaveState state (g);
     g.addTransform (juce::AffineTransform::rotation (-juce::MathConstants<float>::halfPi, key.getCentreX(), key.getCentreY()));
