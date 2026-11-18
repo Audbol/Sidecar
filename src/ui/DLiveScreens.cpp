@@ -4522,7 +4522,12 @@ void MetersScreen::rebuild()
             {
                 juce::String kind, number;
                 if (splitName (b->getName(), kind, number) && (kind == "FX" || kind == "StFX"))
-                    sendsRow.push_back (cellOf (*b, kind, number, number, cyan));
+                {
+                    auto c = cellOf (*b, kind, number, number, cyan);
+                    c.bars = 1;
+                    c.reduction = false;
+                    sendsRow.push_back (c);
+                }
             }
             int n = 0;
             for (const auto& a : e.getAux())
@@ -4789,6 +4794,12 @@ void MetersScreen::paintCell (juce::Graphics& g, const Cell& c) const
         const float w = (well.getWidth() - 2.0f) * 0.5f;
         bar (well.withWidth (w), c.strip != nullptr ? ctx.meters.get (c.strip, point, 0) : 0.0f);
         bar (well.withTrimmedLeft (w + 2.0f), c.strip != nullptr ? ctx.meters.get (c.strip, point, 1) : 0.0f);
+    }
+    else if (! c.reduction)
+    {
+        // One narrow bar in the middle (photographed FX sends).
+        const float w = well.getWidth() * 0.44f;
+        bar (well.withSizeKeepingCentre (w, well.getHeight()), c.strip != nullptr ? ctx.meters.get (c.strip, point, 0) : 0.0f);
     }
     else
     {

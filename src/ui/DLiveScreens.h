@@ -644,6 +644,7 @@ private:
         juce::Rectangle<float> r;
         juce::Colour body;
         int bars = 1;
+        bool reduction = true; // FX sends have no dynamics, so no gain-reduction bar
         bool withKey = true;
     };
     struct Scale
