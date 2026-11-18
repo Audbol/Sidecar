@@ -491,7 +491,7 @@ Not downloaded. Owner to decide.
 | --- | --- | --- | --- |
 | Unofficial X32 OSC Protocol (Maillot, June 2021) | https://drive.google.com/file/d/1Yt_S1mpPt3CAzeq3Dnpe_IqctQ-1GlTz/view?usp=drive_link | Not shown | A personal Drive, not a maker's site or library. The standard X32 protocol reference, with the fader law at p.132 |
 | X32 OSC Remote Protocol (Behringer) | http://www.behringer.com/assets/X32_OSC_Remote_Protocol.pdf | Not shown | Old forum link, not checked. Maker's own protocol document, if it still exists |
-| OSC Remote Control Documentation for WING (Maillot, 2020) | No working URL found | Not shown | Named in search results only |
+| OSC Remote Control Documentation for WING (Maillot, 2020) | https://drive.google.com/file/d/1-iptgd2Uxw4qPEbmegG2Sqccf8AbRRfk/view | Not shown | Named in search results only |
 | VSS3 TDM manual (TC Electronic; sibling of WING's VSS3) | https://service-tcgroup.tcelectronic.com/media/VSS3_TDM_US.pdf | Not shown | Host didn't resolve from here. May show the original's preset names |
 | ProMix 01 Service Manual | https://www.emanuals.com/yamaha-pro-mix-01-service-manual.html | Not shown | Paid storefront, unverified |
 | dLive Firmware Reference Guide V2.1 (third-party copy) | https://manuals.plus/m/36e4e47b9bec34063dbe44a6efc3a6e00f4434016d5566daa6d6fb9cce10cd75 | Not shown | Not confirmed official, and refuses automated reading. Would help the dLive defaults search |
