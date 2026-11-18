@@ -734,7 +734,7 @@ private:
     ScreenButton& addKey (juce::Rectangle<int>, const juce::String&, juce::Colour, std::function<void()>, bool pale = false);
     juce::Rectangle<float> gridArea() const noexcept;
     float cellSize() const noexcept { return 18.0f * zoom; }
-    int rowLabelWidth() const noexcept { return tab == Inputs || tab == SoundCheck ? 118 : 138; }
+    int rowLabelWidth() const noexcept { return tab == TieLines ? 26 : tab == Inputs || tab == SoundCheck ? 118 : 138; } // Tie Lines: numbers only (photographed)
     std::vector<routing::Group> sideGroups() const;
 
     UiContext& ctx;

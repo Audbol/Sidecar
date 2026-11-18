@@ -5532,8 +5532,10 @@ void IoScreen::rebuild()
         const char* const socketNames[] = { "MixRack", "Surface" };
         for (int s = 0; s < 2; ++s)
         {
-            auto& k = addKey ({ 26 + (1 - s) * 88, 54, 84, 34 }, juce::String (socketNames[s]) + (tab == Outputs ? "\nOutput Sockets" : "\nInput Sockets"), juce::Colours::white, [this, s] { setSide (s); });
-            k.fontSize = 11.5f;
+            // Inputs show Surface first, Outputs MixRack first (both photographed).
+            const int at = tab == Inputs ? 1 - s : s;
+            auto& k = addKey ({ 26 + at * 88, 54, 84, 34 }, juce::String (socketNames[s]) + (tab == Outputs ? "\nOutput Sockets" : "\nInput Sockets"), juce::Colours::white, [this, s] { setSide (s); });
+            k.fontSize = tab == Outputs ? 10.5f : 11.5f;
             k.isOn = [this, s] { return side == s; };
             k.litFill = lit;
             k.refresh();
@@ -5718,7 +5720,7 @@ void IoScreen::resized()
 
 juce::Rectangle<float> IoScreen::gridArea() const noexcept
 {
-    const float left = tab == TieLines ? 200.0f : 70.0f;
+    const float left = tab == TieLines ? 150.0f : tab == SoundCheck ? 70.0f : 78.0f; // room for the rows' bracket
     return { left + (float) rowLabelWidth(), tab == SoundCheck ? 132.0f : 128.0f, 862.0f - (left + (float) rowLabelWidth()), tab == SoundCheck ? 330.0f : 368.0f };
 }
 
@@ -5748,18 +5750,25 @@ void IoScreen::paint (juce::Graphics& g)
     }
     else if (tab == TieLines)
     {
-        const char* const groups[] = { "MixRack\nInput Sockets", "Local", "DX 1/2", "DX 3/4", "I/O Port 1", "I/O Port 2", "I/O Port 3" };
-        for (int i = 0; i < 7; ++i)
+        // Output sockets across the top, input sockets down the left; MixRack Local lit on both (photographed).
+        const auto key = [&g] (juce::Rectangle<float> r, const char* name, bool on, float size)
         {
-            const juce::Rectangle<float> r (40.0f, 100.0f + (float) i * 50.0f, 140.0f, 44.0f);
-            g.setColour (i <= 1 ? kTabOn : kNavy);
+            g.setColour (on ? kTabOn : kNavy);
             g.fillRoundedRectangle (r, 5.0f);
             g.setColour (juce::Colours::white.withAlpha (0.55f));
             g.drawRoundedRectangle (r, 5.0f, 1.2f);
-            g.setColour (juce::Colours::white.withAlpha (i <= 1 ? 1.0f : 0.5f));
-            g.setFont (type::font (13.0f));
-            g.drawFittedText (groups[i], r.toNearestInt(), juce::Justification::centred, 2);
-        }
+            g.setColour (juce::Colours::white.withAlpha (on ? 1.0f : 0.75f));
+            g.setFont (type::font (size));
+            g.drawFittedText (name, r.toNearestInt(), juce::Justification::centred, 2);
+        };
+        key ({ 26.0f, 54.0f, 80.0f, 34.0f }, "Surface\nOutput Sockets", false, 10.5f);
+        key ({ 110.0f, 54.0f, 80.0f, 34.0f }, "MixRack\nOutput Sockets", true, 10.5f);
+        const char* const top[] = { "Local", "DX 1/2", "DX 3/4", "ME", "I/O Port\n1", "I/O Port\n2", "I/O Port\n3" };
+        for (int i = 0; i < 7; ++i)
+            key ({ 196.0f + (float) i * 60.0f, 54.0f, 56.0f, 34.0f }, top[i], i == 0, 12.0f);
+        const char* const left[] = { "Surface\nInput Sockets", "MixRack\nInput Sockets", "Local", "DX 1/2", "DX 3/4", "I/O Port 1", "I/O Port 2", "I/O Port 3" };
+        for (int i = 0; i < 8; ++i)
+            key ({ 26.0f, 100.0f + (float) i * 40.0f, 92.0f, 34.0f }, left[i], i == 1 || i == 2, i < 2 ? 10.5f : 12.5f);
     }
 
     const auto area = gridArea();
@@ -5778,16 +5787,16 @@ void IoScreen::paint (juce::Graphics& g)
             text (g, head, juce::String (firstColumn + c + 1), cell < 16.0f ? 8.5f : 10.0f, juce::Colours::white.withAlpha (0.7f), juce::Justification::centred);
         }
         const float labelX = area.getX() - (float) rowLabelWidth();
-        if (tab == Inputs && visibleRows > 0)
+        if ((tab == Inputs || tab == Outputs || tab == TieLines) && visibleRows > 0)
         {
-            // The rows are the inputs' A sources: a bracket down their left, labelled (photographed).
+            // A bracket down the rows' left, labelled with their kind (photographed).
             const float top = area.getY(), bottom = area.getY() + (float) visibleRows * cell - 1.0f;
             g.setColour (juce::Colours::white.withAlpha (0.55f));
             g.drawVerticalLine ((int) labelX - 4, top, bottom);
             juce::Graphics::ScopedSaveState turn (g);
-            const juce::Rectangle<float> at (labelX - 18.0f, top, 13.0f, bottom - top);
+            const juce::Rectangle<float> at (labelX - 17.0f, top, 12.0f, bottom - top);
             g.addTransform (juce::AffineTransform::rotation (-juce::MathConstants<float>::halfPi, at.getCentreX(), at.getCentreY()));
-            text (g, juce::Rectangle<float> (at.getHeight(), at.getWidth()).withCentre (at.getCentre()), "Input A", 12.5f, juce::Colours::white, juce::Justification::centred);
+            text (g, juce::Rectangle<float> (at.getHeight(), at.getWidth()).withCentre (at.getCentre()), tab == Inputs ? "Input A" : tab == Outputs ? "Mix Out" : "MixRack Local Inputs", 12.5f, juce::Colours::white, juce::Justification::centred);
         }
         for (int r = 0; r < visibleRows; ++r)
         {
