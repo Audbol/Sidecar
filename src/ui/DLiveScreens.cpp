@@ -5720,7 +5720,7 @@ void IoScreen::resized()
 
 juce::Rectangle<float> IoScreen::gridArea() const noexcept
 {
-    const float left = tab == TieLines ? 150.0f : tab == SoundCheck ? 70.0f : 78.0f; // room for the rows' bracket
+    const float left = tab == TieLines ? 150.0f : 78.0f; // room for the rows' bracket
     return { left + (float) rowLabelWidth(), tab == SoundCheck ? 132.0f : 128.0f, 862.0f - (left + (float) rowLabelWidth()), tab == SoundCheck ? 330.0f : 368.0f };
 }
 
@@ -5787,7 +5787,7 @@ void IoScreen::paint (juce::Graphics& g)
             text (g, head, juce::String (firstColumn + c + 1), cell < 16.0f ? 8.5f : 10.0f, juce::Colours::white.withAlpha (0.7f), juce::Justification::centred);
         }
         const float labelX = area.getX() - (float) rowLabelWidth();
-        if ((tab == Inputs || tab == Outputs || tab == TieLines) && visibleRows > 0)
+        if (visibleRows > 0)
         {
             // A bracket down the rows' left, labelled with their kind (photographed).
             const float top = area.getY(), bottom = area.getY() + (float) visibleRows * cell - 1.0f;
@@ -5796,7 +5796,7 @@ void IoScreen::paint (juce::Graphics& g)
             juce::Graphics::ScopedSaveState turn (g);
             const juce::Rectangle<float> at (labelX - 17.0f, top, 12.0f, bottom - top);
             g.addTransform (juce::AffineTransform::rotation (-juce::MathConstants<float>::halfPi, at.getCentreX(), at.getCentreY()));
-            text (g, juce::Rectangle<float> (at.getHeight(), at.getWidth()).withCentre (at.getCentre()), tab == Inputs ? "Input A" : tab == Outputs ? "Mix Out" : "MixRack Local Inputs", 12.5f, juce::Colours::white, juce::Justification::centred);
+            text (g, juce::Rectangle<float> (at.getHeight(), at.getWidth()).withCentre (at.getCentre()), tab == Inputs ? "Input A" : tab == Outputs ? "Mix Out" : tab == TieLines ? "MixRack Local Inputs" : "Input Channels", 12.5f, juce::Colours::white, juce::Justification::centred);
         }
         for (int r = 0; r < visibleRows; ++r)
         {
