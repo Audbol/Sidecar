@@ -5532,7 +5532,7 @@ void IoScreen::rebuild()
         const char* const socketNames[] = { "MixRack", "Surface" };
         for (int s = 0; s < 2; ++s)
         {
-            auto& k = addKey ({ 26 + s * 88, 54, 84, 34 }, juce::String (socketNames[s]) + (tab == Outputs ? "\nOutput Sockets" : "\nInput Sockets"), juce::Colours::white, [this, s] { setSide (s); });
+            auto& k = addKey ({ 26 + (1 - s) * 88, 54, 84, 34 }, juce::String (socketNames[s]) + (tab == Outputs ? "\nOutput Sockets" : "\nInput Sockets"), juce::Colours::white, [this, s] { setSide (s); });
             k.fontSize = 11.5f;
             k.isOn = [this, s] { return side == s; };
             k.litFill = lit;
@@ -5778,6 +5778,17 @@ void IoScreen::paint (juce::Graphics& g)
             text (g, head, juce::String (firstColumn + c + 1), cell < 16.0f ? 8.5f : 10.0f, juce::Colours::white.withAlpha (0.7f), juce::Justification::centred);
         }
         const float labelX = area.getX() - (float) rowLabelWidth();
+        if (tab == Inputs && visibleRows > 0)
+        {
+            // The rows are the inputs' A sources: a bracket down their left, labelled (photographed).
+            const float top = area.getY(), bottom = area.getY() + (float) visibleRows * cell - 1.0f;
+            g.setColour (juce::Colours::white.withAlpha (0.55f));
+            g.drawVerticalLine ((int) labelX - 4, top, bottom);
+            juce::Graphics::ScopedSaveState turn (g);
+            const juce::Rectangle<float> at (labelX - 18.0f, top, 13.0f, bottom - top);
+            g.addTransform (juce::AffineTransform::rotation (-juce::MathConstants<float>::halfPi, at.getCentreX(), at.getCentreY()));
+            text (g, juce::Rectangle<float> (at.getHeight(), at.getWidth()).withCentre (at.getCentre()), "Input A", 12.5f, juce::Colours::white, juce::Justification::centred);
+        }
         for (int r = 0; r < visibleRows; ++r)
         {
             const auto& row = rows[(size_t) (firstRow + r)];
