@@ -586,6 +586,7 @@ private:
     MiniFaders faders;
     juce::Component::SafePointer<Touchable> touchedNow;
     ScreenButton* applyKey = nullptr;
+    ScreenButton* cancelKey = nullptr;
     ScreenButton* midiApply = nullptr;
     juce::TextEditor* nameField = nullptr;
     std::vector<juce::Rectangle<float>> ammBoxes, colourDots;

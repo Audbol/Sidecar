@@ -3341,7 +3341,7 @@ void MixRackScreen::addApplyCancel (float x0, float x1, float gap, float y0, flo
     {
         popups::confirm (*this, "APPLY", "Lay the mixes out like this? The mixes reset; everything else stays.", "APPLY", [this] { config.apply(); rebuild(); }, true);
     };
-    addKey (at (x0 + w + gap, y0, x1, y1), "Cancel", juce::Colours::white, [this] { config.revert(); rebuild(); });
+    cancelKey = &addKey (at (x0 + w + gap, y0, x1, y1), "Cancel", juce::Colours::white, [this] { config.revert(); rebuild(); });
     applyKey = &apply;
 }
 
@@ -3365,6 +3365,7 @@ void MixRackScreen::rebuild()
     ammBoxes.clear();
     colourDots.clear();
     applyKey = nullptr;
+    cancelKey = nullptr;
     midiApply = nullptr;
     nameField = nullptr;
 
@@ -3490,7 +3491,7 @@ void MixRackScreen::buildInputStereos()
         const int pair = pairFirst + i;
         const float x = 470.0f + (float) (i % 8) * 126.0f, y = 395.0f + (float) (i / 8) * 145.0f;
         addLabel (at (x - 60, y - 16, x + 60, y + 16), juce::String (pair * 2 + 1) + " / " + juce::String (pair * 2 + 2), 14.0f);
-        auto& k = addKey (at (x - 40, y + 22, x + 40, y + 62), "Mono", kCyan, {});
+        auto& k = addKey (at (x - 40, y + 22, x + 40, y + 62), "Mono", juce::Colour (0xffc8d6e0), {}); // pale-edged (photographed)
         k.pale = true;
         k.isOn = [this, pair] { return config.isStereoPending (pair); };
         k.litFill = kTabOn;
@@ -3709,21 +3710,23 @@ void MixRackScreen::buildUsers()
 void MixRackScreen::buildSync()
 {
     areas.push_back ({ at (385, 340, 1570, 1085).toFloat(), {} });
+    // Sidecar runs on its own clock, so these only show it; they are drawn live, as photographed.
+    const auto shown = [this] (juce::Rectangle<int> r, const juce::String& name, juce::Colour edge) -> ScreenButton& { return addKey (r, name, edge, {}); };
     const juce::String rate = juce::String (juce::roundToInt (ctx.engine.getSampleRate() / 1000.0)) + "kHz";
     addLabel (at (650, 360, 1170, 396), "Audio Clock Source", 15.0f);
-    addDim (at (650, 400, 1170, 450), "Internal (" + rate + ")").dropdown = true;
+    shown (at (650, 400, 1170, 450), "Internal (" + rate + ")", kCyan).dropdown = true;
     addLabel (at (1190, 355, 1500, 392), "Audio Sync Lock", 15.0f);
     addLabel (at (650, 505, 1400, 540), "Audio Sync Jitter Tolerance", 15.0f);
-    auto& low = addDim (at (915, 560, 995, 600), "Low", kTeal);
+    auto& low = shown (at (915, 560, 995, 600), "Low", kTeal);
     low.isOn = [] { return true; };
     low.litFill = kTabOnText;
-    addDim (at (1040, 560, 1120, 600), "High", juce::Colours::white).pale = true;
+    shown (at (1040, 560, 1120, 600), "High", juce::Colours::white).pale = true;
     addLabel (at (800, 700, 1250, 770), "MixRack BNC Wordclock\nSocket", 15.0f);
-    auto& in = addDim (at (980, 780, 1060, 820), "In", kTeal);
+    auto& in = shown (at (980, 780, 1060, 820), "In", kTeal);
     in.isOn = [] { return true; };
     in.litFill = kTabOnText;
     addLabel (at (800, 850, 1250, 920), "BNC Wordclock Out\n(MixRack & Surface)", 15.0f);
-    addDim (at (895, 935, 1145, 985), rate).dropdown = true;
+    shown (at (895, 935, 1145, 985), rate, kCyan).dropdown = true;
 }
 
 std::vector<Strip*> MixRackScreen::selectorSources() const
@@ -4052,6 +4055,8 @@ void MixRackScreen::refresh()
 {
     if (applyKey != nullptr)
         applyKey->setEnabled (config.hasChanges() && config.fits());
+    if (cancelKey != nullptr)
+        cancelKey->setEnabled (config.hasChanges()); // dimmed with nothing to undo (photographed)
     if (midiApply != nullptr)
         midiApply->setEnabled (pendingMidi != getMidiChannel());
     if (sub == Sub::SourceSelector && selectorShown != selectorSignature (ctx.engine, selector))
@@ -4211,11 +4216,14 @@ void MixRackScreen::paint (juce::Graphics& g)
             if (st == nullptr && selectorMixes)
                 continue; // the inputs' page keeps its empty cells (photographed), the mixes' ends
             const auto colour = st != nullptr ? st->getColour().interpolatedWith (kFrameLight, 0.35f) : kPanelDeep;
+            // The whole key in the source's colour, its name in an inset dark box (photographed).
             g.setColour (colour);
-            g.fillRoundedRectangle (cell.withHeight (cell.getHeight() * 0.42f + 6.0f), 3.0f);
-            const auto lower = cell.withTrimmedTop (cell.getHeight() * 0.42f);
-            g.setColour (juce::Colour (0xff6f8ea2));
-            g.fillRoundedRectangle (lower, 3.0f);
+            g.fillRoundedRectangle (cell, 3.0f);
+            const auto lower = cell.withTrimmedTop (cell.getHeight() * 0.42f).reduced (3.0f, 0.0f).withTrimmedBottom (3.0f);
+            g.setColour (juce::Colour (0xff3d5466));
+            g.fillRoundedRectangle (lower, 2.5f);
+            g.setColour (juce::Colours::white.withAlpha (0.55f));
+            g.drawRoundedRectangle (lower, 2.5f, 1.0f);
             g.setColour (colour.brighter (0.3f));
             g.drawRoundedRectangle (cell, 3.0f, 1.2f);
             const auto kind = st == nullptr || st->getKind() == StripKind::Channel ? juce::String ("Ip") : st->getKind() == StripKind::Main ? juce::String ("Main") : juce::String ("Mix");
@@ -4244,6 +4252,8 @@ void MixRackScreen::paint (juce::Graphics& g)
             const auto head = slot.withHeight (slot.getHeight() * 0.36f);
             g.setColour (st != nullptr && m == active ? kGreen : juce::Colour (0xff35485a));
             g.fillRect (head);
+            g.setColour (juce::Colour (0xffc8d6e0)); // each slot outlined pale (photographed)
+            g.drawRoundedRectangle (slot, 2.5f, 1.2f);
             if (st == nullptr)
                 continue;
             text (g, head, st->getKind() == StripKind::Channel ? "Ip " + juce::String (st->getNumber()) : st->getLabel(), 10.5f, juce::Colours::white, juce::Justification::centred);
