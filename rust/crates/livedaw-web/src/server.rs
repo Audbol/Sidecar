@@ -425,7 +425,9 @@ fn read_loop(shared: &Shared, client: &Client, stream: TcpStream) {
                     continue;
                 }
                 match input::decode(&data, client.id) {
-                    Some(Decoded::Input(e)) if !shared.view_only => lock(&shared.input).push(input::Event { local: client.local, ..e }),
+                    Some(Decoded::Input(e)) if !shared.view_only => {
+                        lock(&shared.input).push(input::Event { local: client.local, ..e })
+                    }
                     Some(Decoded::Ack(_)) => {
                         let mut o = lock(&client.outbox);
                         o.in_flight = o.in_flight.saturating_sub(1);

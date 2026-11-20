@@ -26,7 +26,7 @@ matrices, and anything can be sent to any hardware output. It runs on Windows, m
 > completion figure for each console. Don't rely on Sidecar for a critical live show without
 > testing it thoroughly first.
 
-**Status: v0.3.0 beta.** Choose a console under SETUP > SIDECAR > INTERFACE. Expect rough edges,
+**Status: v0.3.1 beta.** Choose a console under SETUP > SIDECAR > INTERFACE. Expect rough edges,
 and please [report what you find](#reporting-problems).
 
 | Console | How it appears in Sidecar |

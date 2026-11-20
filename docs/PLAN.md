@@ -166,6 +166,7 @@ The owner wants a lot of work done here; what comes first is theirs to say.
 - [x] Regenerate the README screenshots after the Universal Mixer design pass, before v0.3.0.
 - With every update: review each console's completion percentage in `src/ui/StartupNotice.cpp`.
 - [x] v0.3.0, published November 2026 for Windows, macOS, Linux and Linux arm64.
+- [x] v0.3.1, published 20 November 2026 for the same platforms.
       Release notes: brief, an overview of what changed and what was added (owner).
 - [x] 0.3.1: the PLUGIN HOST console, planned in `docs/PLUGIN_HOST.md`. Built in eight steps; still to try with real plug-ins and a real MIDI controller.
 - [ ] 0.3.1: a private test build for the owner to try PLUGIN HOST, then the release.
