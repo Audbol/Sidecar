@@ -2062,6 +2062,29 @@ fn pitch_fix_keys_from_older_files_keep_their_notes() {
 }
 
 #[test]
+fn a_channel_preset_keeps_the_targets_own_fx_slots() {
+    // Issue #26: a preset saved from a bus with FX 3 on its PRE insert, loaded onto a
+    // main, put FX 3 on the main too (one effect on two inserts, "double assigned").
+    use livedaw_session::presets;
+    let engine = Engine::new(0);
+    let mut np = NoPlugins;
+    let bus = engine.strip_at(StripKind::Bus, 0).unwrap();
+    let main = engine.strip_at(StripKind::Main, 0).unwrap();
+    bus.params.pre_insert().fx.store(2, Relaxed);
+    bus.params.pre_insert().on.store(true, Relaxed);
+    bus.params.post_insert().fx.store(5, Relaxed);
+    main.params.pre_insert().fx.store(-1, Relaxed);
+    main.params.post_insert().fx.store(7, Relaxed);
+
+    let preset = presets::capture_channel(&engine, &mut np, &StripRef::of(&bus), section::INSERTS, "Verb bus").unwrap();
+    presets::apply_channel(&engine, &mut np, &preset, &StripRef::of(&main), None).unwrap();
+    assert_eq!(main.params.pre_insert().fx.load(Relaxed), -1, "the main keeps its own (no) slot");
+    assert_eq!(main.params.post_insert().fx.load(Relaxed), 7, "and its own POST slot");
+    assert!(main.params.pre_insert().on.load(Relaxed), "the rest of the insert loads");
+    assert_eq!(bus.params.pre_insert().fx.load(Relaxed), 2, "the bus keeps its effect");
+}
+
+#[test]
 fn channel_presets_load_onto_other_strips_within_their_scope() {
     use livedaw_session::presets;
     let engine = Engine::new(0);

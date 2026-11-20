@@ -172,6 +172,7 @@ pub fn apply_channel(
     }
     let mut strip = preset.child("Strip").ok_or("The preset holds no strip")?.clone();
     strip.set("ref", target);
+    keep_own_fx_slots(&mut strip);
     let mut state = Element::new("State");
     state.set("version", console::CONSOLE_VERSION).set("sections", CHANNEL_SECTIONS);
     state.add(strip);
@@ -181,6 +182,25 @@ pub fn apply_channel(
         return Err(format!("{target} doesn't exist"));
     }
     Ok(result)
+}
+
+/// A preset's inserts name the FX slots of the strip it was saved from: loaded onto
+/// another strip, those would share one effect with it (the second passes its signal
+/// through, issue #26). The target keeps its own slot; the rest of the insert loads.
+fn keep_own_fx_slots(strip: &mut Element) {
+    let unslot = |e: &mut Element| e.attrs.retain(|(k, _)| k != "fx");
+    if let Some(ins) = strip.child_mut("Ins") {
+        for name in ["Pre", "Post"] {
+            if let Some(x) = ins.child_mut(name) {
+                unslot(x);
+            }
+        }
+    }
+    if let Some(chain) = strip.child_mut("Chain") {
+        for b in chain.children_named_mut("B") {
+            unslot(b);
+        }
+    }
 }
 
 // ---- files -------------------------------------------------------------------------------
