@@ -77,6 +77,22 @@ else()
         GIT_SHALLOW    TRUE)
     FetchContent_MakeAvailable(JUCE)
 endif()
+if(WIN32)
+    # The web remote's clicks reach a covered or minimised window (cmake/PatchJuce.cmake).
+    # A local JUCE checkout is left as it is unless it already has the change.
+    include(cmake/PatchJuce.cmake)
+    if(LIVEDAW_JUCE_DIR)
+        file(STRINGS "${LIVEDAW_JUCE_DIR}/modules/juce_gui_basics/native/juce_Windowing_windows.cpp" sidecar_marker REGEX "sidecarIgnoreWindowOverlap")
+        if(sidecar_marker)
+            set(LIVEDAW_JUCE_OVERLAP_PATCH TRUE)
+        endif()
+    else()
+        sidecar_patch_juce("${juce_SOURCE_DIR}" LIVEDAW_JUCE_OVERLAP_PATCH)
+    endif()
+    if(LIVEDAW_JUCE_OVERLAP_PATCH)
+        add_compile_definitions(LIVEDAW_JUCE_OVERLAP_PATCH=1)
+    endif()
+endif()
 
 #-------------------------------------------------------------------------------
 # Rust engine (rust/): DSP, mixing, routing and stability core, linked as a

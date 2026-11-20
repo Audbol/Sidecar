@@ -6,6 +6,13 @@
 #include <cmath>
 #include <map>
 
+#if LIVEDAW_JUCE_OVERLAP_PATCH
+namespace juce
+{
+extern bool sidecarIgnoreWindowOverlap; // cmake/PatchJuce.cmake
+}
+#endif
+
 namespace livedaw::ui
 {
 
@@ -483,6 +490,15 @@ void WebMirror::playInput()
 
 void WebMirror::play (const ld::LdWebInput& e)
 {
+#if LIVEDAW_JUCE_OVERLAP_PATCH
+    // A browser's click lands even while this window is covered or minimised: JUCE
+    // would otherwise ask the system which window is on top there and drop it.
+    struct Overlap
+    {
+        Overlap() { juce::sidecarIgnoreWindowOverlap = true; }
+        ~Overlap() { juce::sidecarIgnoreWindowOverlap = false; }
+    } overlap;
+#endif
     const auto mods = modifiers (e.mods, e.buttons);
     const auto time = juce::Time::currentTimeMillis();
 
