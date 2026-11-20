@@ -1,5 +1,10 @@
 #include "engine/MixerEngine.h"
 
+#if JUCE_LINUX || JUCE_BSD
+ #include <pthread.h>
+ #include <sched.h>
+#endif
+
 // OscParams has no LayoutInfo entry: livedaw-ffi checks its size too.
 static_assert (sizeof (ld::OscParams) == 12);
 
@@ -32,6 +37,25 @@ private:
     ld::Engine* engine;
     int index;
 };
+
+#if JUCE_LINUX || JUCE_BSD
+/** JUCE runs its ALSA thread at normal priority, where the screen's redraws (meters,
+    faders) delay its wake-ups and the audio drops out. The callback thread raises
+    itself to realtime once, just above the DSP workers (RealtimeOptions priority 9).
+    Returns MixerEngine::callbackPriority's codes. */
+static int raiseCallbackThread() noexcept
+{
+    int policy = 0;
+    sched_param param {};
+    if (pthread_getschedparam (pthread_self(), &policy, &param) != 0)
+        return 3;
+    if (policy == SCHED_FIFO || policy == SCHED_RR)
+        return 1; // JACK's thread, or one already raised
+    const int lo = juce::jmax (0, sched_get_priority_min (SCHED_RR)), hi = juce::jmax (1, sched_get_priority_max (SCHED_RR));
+    param.sched_priority = juce::jmin (hi, juce::jmap (9, 0, 10, lo, hi) + 1);
+    return pthread_setschedparam (pthread_self(), SCHED_RR, &param) == 0 ? 2 : 3;
+}
+#endif
 
 //==============================================================================
 static ld::Engine* createEngine (int numWorkerThreads)
@@ -521,6 +545,25 @@ void MixerEngine::audioDeviceAboutToStart (juce::AudioIODevice* device)
     deviceRunning = true;
     garbage.setDeviceRunning (true);
 
+#if JUCE_LINUX || JUCE_BSD
+    // The device's thread may be a new one: its first block raises it again, and the log says how it went.
+    callbackPriority.store (0, std::memory_order_relaxed);
+    juce::Timer::callAfterDelay (3000, [this, alive = std::weak_ptr<bool> (aliveFlag)]
+    {
+        if (alive.lock() == nullptr)
+            return;
+        switch (callbackPriority.load (std::memory_order_relaxed))
+        {
+            case 2: juce::Logger::writeToLog ("Audio thread raised to realtime priority"); break;
+            case 3:
+                juce::Logger::writeToLog ("Audio thread could not get realtime priority (no rights): expect dropouts while the screen redraws."
+                                          " Add the user to the audio group with an rtprio limit (/etc/security/limits.d) and log in again.");
+                break;
+            default: break;
+        }
+    });
+#endif
+
     juce::MessageManager::callAsync ([this, alive = std::weak_ptr<bool> (aliveFlag)]
     {
         if (alive.lock() != nullptr && onDeviceChanged)
@@ -569,6 +612,10 @@ void MixerEngine::audioDeviceIOCallbackWithContext (const float* const* inputCha
                                                     int numSamples,
                                                     const juce::AudioIODeviceCallbackContext&)
 {
+#if JUCE_LINUX || JUCE_BSD
+    if (callbackPriority.load (std::memory_order_relaxed) == 0)
+        callbackPriority.store (raiseCallbackThread(), std::memory_order_relaxed); // once per device start
+#endif
     processDeviceBlock (inputChannelData, numInputChannels, outputChannelData, numOutputChannels, numSamples);
 }
 

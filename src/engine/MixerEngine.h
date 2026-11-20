@@ -657,6 +657,9 @@ private:
     int patchCapacity = 0;
     void preparePatch (int maxBlock);
     std::atomic<juce::uint32> lastCallbackMs { 0 };
+    /** Linux: what the first block did to its thread's priority (0 not yet, 1 was already
+        realtime, 2 raised to realtime, 3 refused: no realtime rights). */
+    std::atomic<int> callbackPriority { 0 };
     std::atomic<bool> deviceRunning { false };
     std::atomic<bool> remoteControlled { false };
     std::shared_ptr<bool> aliveFlag = std::make_shared<bool> (true);
