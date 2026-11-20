@@ -46,6 +46,8 @@ pub struct Event {
     pub mods: u32,
     /// Which browser (to tell pointers apart).
     pub client: u32,
+    /// The browser runs on this computer: its pointer is the one the host would move.
+    pub local: bool,
 }
 
 /// What a binary message from the page asks for.

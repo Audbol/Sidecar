@@ -119,7 +119,7 @@ use std::sync::Arc;
 // (Not a bump: the PRO2 profile is 9, a new value of the same enum.)
 // ABI 56, among others: a dLive input channel's preamp block (ld_strip_preamp_block),
 // which dynamics models a slot may hold (ld_dyn_model_allowed).
-pub const LD_ABI_VERSION: i32 = 57;
+pub const LD_ABI_VERSION: i32 = 58;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(default)

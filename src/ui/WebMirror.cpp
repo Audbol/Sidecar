@@ -535,8 +535,10 @@ void WebMirror::play (const ld::LdWebInput& e)
 
     // Leaving the page: the pointer moves off the window.
     const auto where = e.kind == 3 ? juce::Point<float> (-100000.0f, -100000.0f) : pos - offset;
-    if (e.kind == 1 && ! warped)
+    if (e.kind == 1 && ! warped && ! e.local)
     {
+        // (Not for a browser on this computer: its pointer is this one, and moving it
+        // away while its button is held turns the click into a drag elsewhere.)
         // A press first moves this computer's pointer there, as what asks for
         // the mouse position (a menu opening at the mouse) reads the real
         // pointer. The press waits for the next round, after the system's own

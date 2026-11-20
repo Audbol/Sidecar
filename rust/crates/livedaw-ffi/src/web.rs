@@ -34,6 +34,8 @@ pub struct LdWebInput {
     /// 1 shift, 2 ctrl, 4 alt, 8 meta.
     pub mods: u32,
     pub client: u32,
+    /// The browser runs on this computer (its pointer is this computer's).
+    pub local: bool,
 }
 
 unsafe fn web<'a>(w: *mut LdWeb) -> Option<&'a mut LdWeb> {
@@ -196,8 +198,8 @@ pub unsafe extern "C" fn ld_web_publish(w: *mut LdWeb) {
 pub unsafe extern "C" fn ld_web_take_input(w: *mut LdWeb, out: *mut LdWebInput) -> bool {
     let (Some(s), Some(out)) = (running(w), out.as_mut()) else { return false };
     guard(false, || {
-        let Some(Event { kind, x, y, dx, dy, buttons, key, mods, client }) = s.take_input() else { return false };
-        *out = LdWebInput { kind, x, y, dx, dy, buttons, key, mods, client };
+        let Some(Event { kind, x, y, dx, dy, buttons, key, mods, client, local }) = s.take_input() else { return false };
+        *out = LdWebInput { kind, x, y, dx, dy, buttons, key, mods, client, local };
         true
     })
 }

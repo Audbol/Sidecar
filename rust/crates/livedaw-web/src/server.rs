@@ -93,6 +93,8 @@ struct Outbox {
 struct Client {
     id: u32,
     addr: SocketAddr,
+    /// Connected from this computer (to its own address, loopback or not).
+    local: bool,
     since: Instant,
     watching: AtomicBool,
     stream: TcpStream,
@@ -365,6 +367,7 @@ fn websocket(shared: &Arc<Shared>, stream: TcpStream, peer: SocketAddr) {
     let client = Arc::new(Client {
         id: shared.next_id.fetch_add(1, Ordering::Relaxed),
         addr: peer,
+        local: peer.ip().is_loopback() || stream.local_addr().is_ok_and(|a| a.ip() == peer.ip()),
         since: Instant::now(),
         watching: AtomicBool::new(!needs_pin),
         stream,
@@ -422,7 +425,7 @@ fn read_loop(shared: &Shared, client: &Client, stream: TcpStream) {
                     continue;
                 }
                 match input::decode(&data, client.id) {
-                    Some(Decoded::Input(e)) if !shared.view_only => lock(&shared.input).push(e),
+                    Some(Decoded::Input(e)) if !shared.view_only => lock(&shared.input).push(input::Event { local: client.local, ..e }),
                     Some(Decoded::Ack(_)) => {
                         let mut o = lock(&client.outbox);
                         o.in_flight = o.in_flight.saturating_sub(1);
@@ -668,6 +671,7 @@ mod tests {
         });
         let e = got.unwrap();
         assert_eq!((e.kind, e.x, e.y, e.buttons), (input::KIND_DOWN, 0.5, 0.25, 1));
+        assert!(e.local, "a browser on this computer is marked local");
 
         assert!(s.status().bytes_sent > 0 && s.status().frames_sent == 3);
         b.send(8, &[]);
