@@ -59,8 +59,8 @@ fn an_neq12_block_keeps_its_model_and_every_value_through_a_show() {
     eq.mix.store(87.5);
     let spec = eq.model_spec().unwrap();
     assert_eq!(spec.params.len(), 51);
-    for i in 0..spec.params.len() {
-        eq.values[i].store(distinct_value(spec, i));
+    for (i, v) in eq.values.iter().enumerate().take(spec.params.len()) {
+        v.store(distinct_value(spec, i));
     }
 
     let saved = save_console(&engine, &mut NoPlugins);
@@ -93,8 +93,8 @@ fn a_mix_geq_saved_before_the_neq12_loads_as_it_was() {
     eq.set_model(model_index(eq.table(), "DLVGEQH").unwrap());
     let spec = eq.model_spec().unwrap();
     assert_eq!(spec.params.len(), 28);
-    for i in 0..spec.params.len() {
-        eq.values[i].store(i as f32 / 2.0 - 7.0);
+    for (i, v) in eq.values.iter().enumerate().take(spec.params.len()) {
+        v.store(i as f32 / 2.0 - 7.0);
     }
     let strip_ref = StripRef::of(&engine.strip_at(StripKind::Bus, dlive::AUX).unwrap()).to_string();
 
@@ -129,8 +129,8 @@ fn a_wing_shows_eq_comes_back_value_for_value_with_nothing_spare_written() {
     let eq = strip.params.eq();
     let spec = eq.model_spec().unwrap();
     assert!(spec.params.len() <= 32, "a model every older show held: {}", spec.params.len());
-    for i in 0..spec.params.len() {
-        eq.values[i].store(distinct_value(spec, i));
+    for (i, v) in eq.values.iter().enumerate().take(spec.params.len()) {
+        v.store(distinct_value(spec, i));
     }
     let saved = save_console(&engine, &mut NoPlugins);
     let other = Engine::new(0);

@@ -199,8 +199,8 @@ fn a_dlive_runs_with_every_block_off_and_its_mixes_patched() {
     for ch in rig.engine.strips(StripKind::Channel) {
         ch.params.mute.store(false, Relaxed);
     }
-    for slot in 0..64 {
-        rig.inputs[slot].fill(0.01);
+    for input in rig.inputs.iter_mut().take(64) {
+        input.fill(0.01);
     }
     let peaks = rig.run(100);
     assert!(peaks.iter().all(|p| p.is_finite()));

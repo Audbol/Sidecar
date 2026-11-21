@@ -1005,8 +1005,8 @@ impl Strip {
         d.num_channels = 2;
         d.widened = false;
         self.meters.current_width.store(2, Relaxed);
-        for ch in 0..2 {
-            d.work[ch][..n].fill(0.0);
+        for work in d.work.iter_mut().take(2) {
+            work[..n].fill(0.0);
         }
     }
 
@@ -1755,8 +1755,8 @@ impl Strip {
                 apply_gain_ramp(&mut d.tap[ch][..n], last, gain);
             }
         }
-        for ch in 0..2 {
-            apply_gain_ramp(&mut d.out[ch][..n], last, gain);
+        for out in d.out.iter_mut().take(2) {
+            apply_gain_ramp(&mut out[..n], last, gain);
         }
     }
 

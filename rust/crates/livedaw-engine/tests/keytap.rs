@@ -148,8 +148,8 @@ fn the_in_tap_is_after_the_input_trim() {
 fn a_key_from_a_later_channel_reads_this_block() {
     let mut rig = Rig::new(2, 4, 2);
     set_channels(&rig.engine, 4);
-    for i in 0..3 {
-        rig.inputs[i].fill(0.5);
+    for input in rig.inputs.iter_mut().take(3) {
+        input.fill(0.5);
     }
     // Channel 1 keys from channel 3 (processed later in console order), and
     // channel 2 from channel 1 (a chain): each runs after its source.

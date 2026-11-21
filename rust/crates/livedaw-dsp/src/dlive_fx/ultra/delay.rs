@@ -211,9 +211,9 @@ impl FxAlgo for RhythmDelay {
         let mut n = 0;
         if advanced {
             let tapped = self.ntaps;
-            for r in 0..REPEATS {
+            for (r, &tap_at) in self.taps.iter().enumerate() {
                 let ids = r_ids(r);
-                let at = if r < tapped { self.taps[r] } else { pct(p.f(ids[0])) };
+                let at = if r < tapped { tap_at } else { pct(p.f(ids[0])) };
                 let (gl, gr) = gains(p.f(ids[2]) * 0.01);
                 let g = 10f32.powf(p.f(ids[1]) * 0.05);
                 reps[n] = Repeat { pos: (at * bar).clamp(1.0, cap), gl: gl * g, gr: gr * g };

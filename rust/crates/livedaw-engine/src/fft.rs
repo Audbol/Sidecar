@@ -36,8 +36,8 @@ impl Fft {
     pub fn forward(&self, re: &mut [f32], im: &mut [f32]) {
         let n = self.n;
         assert!(re.len() >= n && im.len() >= n);
-        for i in 0..n {
-            let j = self.reversed[i] as usize;
+        for (i, &rev) in self.reversed.iter().enumerate().take(n) {
+            let j = rev as usize;
             if j > i {
                 re.swap(i, j);
                 im.swap(i, j);
