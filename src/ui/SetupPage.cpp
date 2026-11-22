@@ -2534,6 +2534,18 @@ namespace
                                                               repaint();
                                                           }),
                                  1.3f);
+            // An app setting (MainComponent applies it at start-up): inputs already through a real preamp.
+            compensation.addRow ("GAIN BYPASS (INPUTS ALREADY PREAMPED)",
+                                 std::make_unique<OnKey> ([this] { return ctx.engine.isGainBypassOn(); },
+                                                          [this] (bool on)
+                                                          {
+                                                              ctx.engine.setGainBypass (on);
+                                                              ctx.settings.setValue (uiprefs::gainBypass, on);
+                                                              ctx.log.info (on ? "Gain bypass on: the inputs' GAIN counts as 0 dB, TRIM still works"
+                                                                               : "Gain bypass off: the inputs' GAIN applies again");
+                                                              repaint();
+                                                          }),
+                                 1.3f);
             // Saved by PluginHost; applies to plugins loaded from now on.
             compensation.addRow ("RUN PLUGINS IN SANDBOX (EXPERIMENTAL)",
                                  std::make_unique<OnKey> ([this] { return ctx.host.isSandboxEnabled(); },

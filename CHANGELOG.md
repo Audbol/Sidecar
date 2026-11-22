@@ -5,6 +5,8 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+- GAIN BYPASS, an app setting for inputs that have already been through a real preamp (an audio interface, or a console's multitrack recording played back): every input's GAIN counts as 0 dB, so a scene recalled from the recording console gives the same balance; TRIM, mute and polarity still work, and the GAIN values stay stored for when it is off. In SETUP > SIDECAR > PLUGINS on the WING and in the Universal Mixer's SETUP > PREFERENCES; it applies to every console (#28).
+
 - Safe mode after an unclean exit also starts with the audio interface off (on the device with no hardware behind it), so an audio driver that freezes or crashes Sidecar can't do it again on every start. The recovery question offers TURN EVERYTHING BACK ON, AUDIO ONLY or STAY IN SAFE MODE; a device chosen in the audio settings meanwhile is kept. While a device is opened or restarted Sidecar leaves a note naming it, so a driver that never answers is named in safe mode on the next start (#29).
 - The event log is also written to `event-log.txt` in Sidecar's data folder as it happens, and the previous run's to `event-log-previous.txt`, so a freeze or crash leaves its log for a bug report; the safe-mode question gives its path.
 

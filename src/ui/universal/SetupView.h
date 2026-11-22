@@ -69,7 +69,7 @@ public:
 
     ToggleKey consoleTab, audioTab, remoteTab, prefsTab, benchmarkTab, applyKey, revertKey;
     ChoiceBar interfaceChoice;
-    ToggleKey compensationKey, protectionKey;
+    ToggleKey compensationKey, protectionKey, gainBypassKey;
     RemotePanel remote;
     BenchmarkPanel benchmark;
     MixerConfigPanel mixerConfig;

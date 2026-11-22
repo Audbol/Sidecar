@@ -1465,6 +1465,9 @@ extern "C"
     /** DELAY COMPENSATION on / off (default on). */
     void ld_engine_set_pdc (const Engine*, bool on);
     bool ld_engine_pdc (const Engine*);
+    // GAIN BYPASS: every source's GAIN counts as 0 dB (TRIM, mute and polarity still apply).
+    void ld_engine_set_gain_bypass (const Engine*, bool on);
+    bool ld_engine_gain_bypass (const Engine*);
     /** Message thread: works out the plan now (ld_engine_collect also does). */
     void ld_engine_update_pdc (const Engine*);
     /** The longest path latency (samples) the plan aligns to. */

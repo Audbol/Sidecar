@@ -397,6 +397,7 @@ namespace uiprefs
 
     // PLUGINS (SETUP > PLUGINS).
     constexpr const char* latencyCompensation = "engine.latencyCompensation"; // bool, default true: plugin delay compensation
+    constexpr const char* gainBypass = "engine.gainBypass"; // bool, default false: the sources' GAIN counts as 0 dB (#28)
 
     /** How long the faders take to travel to a new position (FADER SPEED). */
     inline int faderGlideMs (juce::PropertiesFile& s)

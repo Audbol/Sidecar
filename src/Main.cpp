@@ -597,6 +597,8 @@ private:
                 return;
 
             safeMode = false;
+            if (! getAutosaveFile().existsAsFile())
+                return; // nothing saved yet: no plugins to bring back
             const auto loadResult = mainComponent->reloadShow (getAutosaveFile(), true);
             log.info ("Left safe mode: plugins reloaded");
             if (loadResult.failed())

@@ -434,11 +434,12 @@ impl SourceParams {
     }
 
     /// The gain the source applies (mute, mute groups, gain in `range`, polarity).
-    fn gain(&self, range: GainRange, mute_groups: &GroupSet) -> f32 {
+    /// With `gain_bypass` the GAIN counts as 0 dB (mute and polarity still apply).
+    fn gain(&self, range: GainRange, mute_groups: &GroupSet, gain_bypass: bool) -> f32 {
         if self.is_muted(mute_groups) {
             return 0.0;
         }
-        let g = db_to_gain(range.clamp(self.gain_db.load()));
+        let g = if gain_bypass { 1.0 } else { db_to_gain(range.clamp(self.gain_db.load())) };
         if self.invert.load(Relaxed) {
             -g
         } else {
@@ -496,6 +497,10 @@ pub struct SourceTable {
     /// USR 1-24 and USR 25-56: what each copies.
     user_signals: [UserSignalParams; NUM_USER_SIGNALS],
     user_patches: [UserPatchParams; NUM_USER_PATCHES],
+    /// Sidecar's GAIN BYPASS (an app setting, #28): every source's GAIN counts
+    /// as 0 dB, for inputs that have been through a real preamp already (an
+    /// interface, a console's recording). TRIM, mute and polarity still work.
+    gain_bypass: AtomicBool,
 }
 
 impl Default for SourceTable {
@@ -506,6 +511,7 @@ impl Default for SourceTable {
             osc: Default::default(),
             user_signals: Default::default(),
             user_patches: Default::default(),
+            gain_bypass: AtomicBool::new(false),
         };
         t.reset();
         t
@@ -513,6 +519,15 @@ impl Default for SourceTable {
 }
 
 impl SourceTable {
+    /// GAIN BYPASS on or off (any thread).
+    pub fn set_gain_bypass(&self, on: bool) {
+        self.gain_bypass.store(on, Relaxed);
+    }
+
+    pub fn gain_bypass(&self) -> bool {
+        self.gain_bypass.load(Relaxed)
+    }
+
     pub fn params(&self) -> &[SourceParams] {
         &self.params
     }
@@ -944,10 +959,11 @@ impl SourceDsp {
         let mode = p[0].mode.load(Relaxed);
         // A pair shares the first source's settings.
         let range = source_gain_range(index);
+        let bypass = table.gain_bypass();
         let gains = if mode == source_mode::MONO {
-            [p[0].gain(range, mute_groups), p[1].gain(source_gain_range(index + 1), mute_groups)]
+            [p[0].gain(range, mute_groups, bypass), p[1].gain(source_gain_range(index + 1), mute_groups, bypass)]
         } else {
-            [p[0].gain(range, mute_groups); 2]
+            [p[0].gain(range, mute_groups, bypass); 2]
         };
         let matrix = if mode == source_mode::MID_SIDE { MID_SIDE } else { IDENTITY };
         let last = [self.last_gain[slot], self.last_gain[slot + 1]];
@@ -1087,8 +1103,28 @@ mod tests {
         // The audio takes the clamped gain even before that.
         let p = &t.params()[3];
         p.gain_db.store(60.0);
-        assert!((p.gain(source_gain_range(3), &GroupSet::EMPTY) - db_to_gain(45.0)).abs() < 1e-3);
-        assert_eq!(t.params()[NUM_HW_SOURCES + 1].gain(source_gain_range(NUM_HW_SOURCES + 1), &GroupSet::EMPTY), 1.0);
+        assert!((p.gain(source_gain_range(3), &GroupSet::EMPTY, false) - db_to_gain(45.0)).abs() < 1e-3);
+        assert_eq!(t.params()[NUM_HW_SOURCES + 1].gain(source_gain_range(NUM_HW_SOURCES + 1), &GroupSet::EMPTY, false), 1.0);
+    }
+
+    /// GAIN BYPASS (#28): the GAIN counts as 0 dB; mute and polarity still apply.
+    #[test]
+    fn gain_bypass_leaves_out_the_gain_only() {
+        let t = SourceTable::default();
+        assert!(!t.gain_bypass(), "off by default");
+        t.set_gain_bypass(true);
+        assert!(t.gain_bypass());
+        let p = &t.params()[3];
+        let range = source_gain_range(3);
+        p.gain_db.store(30.0);
+        assert!((p.gain(range, &GroupSet::EMPTY, false) - db_to_gain(30.0)).abs() < 1e-3);
+        assert_eq!(p.gain(range, &GroupSet::EMPTY, true), 1.0);
+        p.invert.store(true, Relaxed);
+        assert_eq!(p.gain(range, &GroupSet::EMPTY, true), -1.0);
+        p.mute.store(true, Relaxed);
+        assert_eq!(p.gain(range, &GroupSet::EMPTY, true), 0.0);
+        // The setting is the table's, not the source's: the stored GAIN is kept for when it's off.
+        assert_eq!(p.gain_db.load(), 30.0);
     }
 
     #[test]

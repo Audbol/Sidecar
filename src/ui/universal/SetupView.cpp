@@ -104,7 +104,7 @@ private:
 SetupView::SetupView (UiContext& c, const Theme& t)
     : consoleTab ("CONSOLE", t.accent, t), audioTab ("AUDIO", t.accent, t), remoteTab ("REMOTE", t.accent, t), prefsTab ("PREFERENCES", t.accent, t), benchmarkTab ("BENCHMARK", t.accent, t),
       applyKey ("APPLY", t.accent, t), revertKey ("REVERT", t.accent, t), interfaceChoice (t), compensationKey ("DELAY COMPENSATION", t.accent, t),
-      protectionKey ("OUTPUT PROTECTION", t.accent, t), remote (c, t), benchmark (c, t), mixerConfig (c, t), ctx (c), theme (t)
+      protectionKey ("OUTPUT PROTECTION", t.accent, t), gainBypassKey ("GAIN BYPASS (INPUTS ALREADY PREAMPED)", t.accent, t), remote (c, t), benchmark (c, t), mixerConfig (c, t), ctx (c), theme (t)
 {
     for (auto* k : { &consoleTab, &audioTab, &remoteTab, &prefsTab, &benchmarkTab })
         k->tab = true;
@@ -177,7 +177,19 @@ SetupView::SetupView (UiContext& c, const Theme& t)
     };
     protectionKey.isOn = [this] { return ctx.engine.outputProtection.load(); };
     protectionKey.onClick = [this] { ctx.engine.outputProtection = ! ctx.engine.outputProtection.load(); };
-    for (auto* child : std::initializer_list<juce::Component*> { &interfaceChoice, &compensationKey, &protectionKey })
+    // An app setting (MainComponent applies it at start-up), as on the WING's SETUP.
+    gainBypassKey.isOn = [this] { return ctx.engine.isGainBypassOn(); };
+    gainBypassKey.onClick = [this]
+    {
+        const bool on = ! ctx.engine.isGainBypassOn();
+        ctx.engine.setGainBypass (on);
+        ctx.settings.setValue (uiprefs::gainBypass, on);
+        ctx.log.info (on ? "Gain bypass on: the inputs' GAIN counts as 0 dB, TRIM still works"
+                         : "Gain bypass off: the inputs' GAIN applies again");
+    };
+    gainBypassKey.setTooltip ("For inputs already through a real preamp (an interface, a console's recording): "
+                              "the GAIN counts as 0 dB, TRIM still works. Applies to every console.");
+    for (auto* child : std::initializer_list<juce::Component*> { &interfaceChoice, &compensationKey, &protectionKey, &gainBypassKey })
         addChildComponent (child);
 
     addChildComponent (remote);
@@ -208,7 +220,7 @@ void SetupView::showPage (Page p)
         device->setVisible (p == Page::Audio);
     remote.setVisible (p == Page::Remote);
     benchmark.setVisible (p == Page::Benchmark);
-    for (auto* c : std::initializer_list<juce::Component*> { &interfaceChoice, &compensationKey, &protectionKey })
+    for (auto* c : std::initializer_list<juce::Component*> { &interfaceChoice, &compensationKey, &protectionKey, &gainBypassKey })
         c->setVisible (p == Page::Preferences);
     refresh();
     repaint();
@@ -300,7 +312,7 @@ void SetupView::revert()
 
 void SetupView::refresh()
 {
-    for (auto* k : { &consoleTab, &audioTab, &remoteTab, &prefsTab, &benchmarkTab, &compensationKey, &protectionKey })
+    for (auto* k : { &consoleTab, &audioTab, &remoteTab, &prefsTab, &benchmarkTab, &compensationKey, &protectionKey, &gainBypassKey })
         k->refresh();
     interfaceChoice.refresh();
     showConsolePage(); // the console may have become a dLive, or stopped being one
@@ -356,7 +368,7 @@ void SetupView::resized()
     remote.setBounds (area);
     benchmark.setBounds (area);
     auto prefs = area.withWidth (juce::jmin (area.getWidth(), 600));
-    layoutRows (prefs, { { &interfaceChoice, 40 }, { &compensationKey, sizes::kTouch }, { &protectionKey, sizes::kTouch } }, sizes::kGapSmall);
+    layoutRows (prefs, { { &interfaceChoice, 40 }, { &compensationKey, sizes::kTouch }, { &protectionKey, sizes::kTouch }, { &gainBypassKey, sizes::kTouch } }, sizes::kGapSmall);
 }
 
 } // namespace livedaw::ui::universal

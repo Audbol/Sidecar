@@ -1289,6 +1289,20 @@ pub unsafe extern "C" fn ld_engine_pdc(e: *const Engine) -> bool {
     engine(e).is_some_and(|e| e.pdc().enabled.load(std::sync::atomic::Ordering::Relaxed))
 }
 
+/// GAIN BYPASS (#28): every source's GAIN counts as 0 dB; TRIM, mute and
+/// polarity still apply. An app setting, not part of the show.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_set_gain_bypass(e: *const Engine, on: bool) {
+    if let Some(e) = engine(e) {
+        e.sources().set_gain_bypass(on);
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_gain_bypass(e: *const Engine) -> bool {
+    engine(e).is_some_and(|e| e.sources().gain_bypass())
+}
+
 /// Message thread: works out the compensation plan now (`ld_engine_collect`
 /// also does).
 #[no_mangle]

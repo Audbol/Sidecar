@@ -127,6 +127,8 @@ MainComponent::MainComponent (juce::AudioDeviceManager& dm, MixerEngine& e, Plug
 
     // Plugin delay compensation (SETUP > SIDECAR > PLUGINS) is an app setting, on by default.
     engine.setLatencyCompensation (settings.getBoolValue (uiprefs::latencyCompensation, true));
+    // GAIN BYPASS (SETUP > SIDECAR > PLUGINS, Universal PREFERENCES) is an app setting, off by default.
+    engine.setGainBypass (settings.getBoolValue (uiprefs::gainBypass, false));
     engine.onPluginWarning = [this] (const juce::String& text) { log.warning (text); };
 
     ctx.selectStrip = [this] (Strip* strip) { selectStrip (strip); };

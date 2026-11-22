@@ -227,6 +227,10 @@ public:
     static constexpr int kMaxCompensation = ld::kMaxPdc;
     void setLatencyCompensation (bool on) noexcept { ld::ld_engine_set_pdc (engine, on); }
     bool isLatencyCompensationOn() const noexcept { return ld::ld_engine_pdc (engine); }
+    /** GAIN BYPASS (#28): the sources' preamp GAIN counts as 0 dB, for inputs
+        already through a real preamp; TRIM, mute and polarity still apply. */
+    void setGainBypass (bool on) noexcept { ld::ld_engine_set_gain_bypass (engine, on); }
+    bool isGainBypassOn() const noexcept { return ld::ld_engine_gain_bypass (engine); }
     /** Message thread: reads the plugins' latencies and works out the
         compensation now (the engine's timer does this 10 times a second). */
     void updateLatencyCompensation();
