@@ -26,8 +26,10 @@ constexpr int kMaxDeviceChannels = 256;
 class DeviceWatchdog final : private juce::Timer, private juce::ChangeListener
 {
 public:
-    DeviceWatchdog (juce::AudioDeviceManager& dm, MixerEngine& e, EventLog& l)
-        : deviceManager (dm), engine (e), log (l)
+    /** `driverMarker` names the device while a restart waits on its driver
+        (left behind, that driver hung or crashed: the next start says so). */
+    DeviceWatchdog (juce::AudioDeviceManager& dm, MixerEngine& e, EventLog& l, juce::File driverMarker)
+        : deviceManager (dm), engine (e), log (l), marker (std::move (driverMarker))
     {
         deviceManager.addChangeListener (this);
         engine.onDeviceError = [this] (const juce::String& message)
@@ -90,6 +92,7 @@ private:
         log.warning ("Restarting audio device (attempt " + juce::String (attempts) + ")");
 
         juce::String error;
+        marker.replaceWithText (lastDescription.isNotEmpty() ? lastDescription : lastGoodSetup.outputDeviceName);
         if (device != nullptr)
         {
             deviceManager.closeAudioDevice();
@@ -99,6 +102,7 @@ private:
         {
             error = deviceManager.setAudioDeviceSetup (lastGoodSetup, true);
         }
+        marker.deleteFile();
 
         if (deviceManager.getCurrentAudioDevice() != nullptr && error.isEmpty())
         {
@@ -117,6 +121,7 @@ private:
     juce::AudioDeviceManager& deviceManager;
     MixerEngine& engine;
     EventLog& log;
+    juce::File marker;
     juce::AudioDeviceManager::AudioDeviceSetup lastGoodSetup;
     bool haveGoodSetup = false, restartPending = false;
     int attempts = 0;
@@ -199,9 +204,17 @@ public:
         }
 
         getDataDirectory().createDirectory();
+        log.setLogFile (getLogFile(), getPreviousLogFile());
 
         // Did the previous run end without a clean shutdown?
         const bool crashedLastTime = getRunningMarker().existsAsFile();
+        // Did it hang or crash inside the audio driver? The marker names the device.
+        if (const auto marker = getDriverMarker(); marker.existsAsFile())
+        {
+            stuckDriver = marker.loadFileAsString().trim();
+            marker.deleteFile();
+            log.error ("The audio driver did not respond last time: " + stuckDriver);
+        }
         getRunningMarker().replaceWithText (juce::String (juce::Time::getCurrentTime().toMilliseconds()));
 
         pluginHost = std::make_unique<PluginHost> (&settings);
@@ -278,18 +291,23 @@ public:
         deviceManager.getAvailableDeviceTypes();
         deviceManager.addAudioDeviceType (std::make_unique<VirtualAudioIODeviceType>());
 
-        // First launch: open a low-latency driver (ASIO on Windows, JACK on Linux)
-        // directly, instead of trying the OS default device first.
-        auto savedDevice = settings.getXmlValue ("audioDevice");
-        if (savedDevice == nullptr)
-            savedDevice = makePreferredDeviceState();
-
-        const auto error = deviceManager.initialise (kMaxDeviceChannels, kMaxDeviceChannels, savedDevice.get(), true);
-        if (error.isNotEmpty())
-            log.error ("Audio device: " + error);
+        // Safe mode also starts without the audio interface (on the device with
+        // no hardware behind it): a driver that hangs or crashes Sidecar would
+        // otherwise do it again on every start. The recovery question turns it
+        // back on.
+        audioHeldBack = safeMode;
+        if (audioHeldBack)
+        {
+            log.warning ("Safe mode: the audio interface is off until you turn it back on");
+            openVirtualDevice();
+        }
+        else
+        {
+            openSavedDevice();
+        }
 
         deviceManager.addAudioCallback (engine.get());
-        watchdog = std::make_unique<DeviceWatchdog> (deviceManager, *engine, log);
+        watchdog = std::make_unique<DeviceWatchdog> (deviceManager, *engine, log, getDriverMarker());
 
         auto* main = new ui::MainComponent (deviceManager, *engine, *pluginHost, *show, log, settings);
         mainComponent = main;
@@ -452,6 +470,14 @@ private:
 
     static juce::File getRunningMarker() { return getDataDirectory().getChildFile ("running.lock"); }
 
+    /** Exists while Sidecar waits on the audio driver to open or restart a
+        device, and names it: left behind, that driver hung or crashed. */
+    static juce::File getDriverMarker() { return getDataDirectory().getChildFile ("audio-driver.lock"); }
+
+    /** This run's event log, and the one before (for a bug report after a freeze or crash). */
+    static juce::File getLogFile() { return getDataDirectory().getChildFile ("event-log.txt"); }
+    static juce::File getPreviousLogFile() { return getDataDirectory().getChildFile ("event-log-previous.txt"); }
+
     /** The autosave restored at startup (always the full one, with plugins). */
     static juce::File getAutosaveFile() { return getDataDirectory().getChildFile ("autosave.lshow"); }
 
@@ -491,21 +517,83 @@ private:
         return nullptr;
     }
 
+    /** Calls into the audio driver with the driver marker in place, so a
+        driver that never returns (or crashes) is named on the next start. */
+    template <typename Fn>
+    void callDriver (const juce::String& what, Fn&& fn)
+    {
+        getDriverMarker().replaceWithText (what);
+        fn();
+        getDriverMarker().deleteFile();
+    }
+
+    static juce::String describeSetup (const juce::XmlElement* xml)
+    {
+        if (xml == nullptr)
+            return "the default audio device";
+        return xml->getStringAttribute ("deviceType") + " / " + xml->getStringAttribute ("audioOutputDeviceName");
+    }
+
+    /** The audio device of the last run (the first ASIO or JACK device on a first start). */
+    void openSavedDevice()
+    {
+        // First launch: open a low-latency driver (ASIO on Windows, JACK on Linux)
+        // directly, instead of trying the OS default device first.
+        auto savedDevice = properties.getUserSettings()->getXmlValue ("audioDevice");
+        if (savedDevice == nullptr)
+            savedDevice = makePreferredDeviceState();
+
+        juce::String error;
+        callDriver (describeSetup (savedDevice.get()),
+                    [&] { error = deviceManager.initialise (kMaxDeviceChannels, kMaxDeviceChannels, savedDevice.get(), true); });
+        if (error.isNotEmpty())
+            log.error ("Audio device: " + error);
+    }
+
+    void openVirtualDevice()
+    {
+        juce::XmlElement xml ("DEVICESETUP");
+        xml.setAttribute ("deviceType", VirtualAudioIODeviceType::kTypeName);
+        xml.setAttribute ("audioOutputDeviceName", VirtualAudioIODeviceType::kDeviceName);
+        xml.setAttribute ("audioInputDeviceName", VirtualAudioIODeviceType::kDeviceName);
+        const auto error = deviceManager.initialise (kMaxDeviceChannels, kMaxDeviceChannels, &xml, false);
+        if (error.isNotEmpty())
+            log.error ("Audio device: " + error);
+    }
+
+    void restoreAudio()
+    {
+        if (! audioHeldBack)
+            return;
+        audioHeldBack = false;
+        openSavedDevice();
+        log.info ("Left safe mode: audio interface turned back on");
+    }
+
     void offerSafeModeRecovery (const juce::String& crashedPlugin)
     {
         juce::String message = "Sidecar did not shut down cleanly last time.\n\n"
-                               "The console has been restored in SAFE MODE, without any plugins.";
+                               "The console has been restored in SAFE MODE, without any plugins and "
+                               "with the audio interface off.";
+        if (stuckDriver.isNotEmpty())
+            message << "\n\nThe audio driver stopped responding while opening \"" << stuckDriver
+                    << "\". Keep the audio off and choose another device or driver in the audio settings.";
         if (crashedPlugin.isNotEmpty())
             message << "\n\n\"" << crashedPlugin << "\" crashed while loading and has been blacklisted.";
+        message << "\n\nThe last run's event log, for a bug report:\n" << getPreviousLogFile().getFullPathName();
 
         log.warning ("Started in safe mode (previous run did not exit cleanly)");
 
-        juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::WarningIcon, "Safe mode", message,
-                                            "Reload with plugins", "Stay in safe mode", nullptr,
-                                            juce::ModalCallbackFunction::create ([this] (int result)
+        juce::AlertWindow::showYesNoCancelBox (juce::MessageBoxIconType::WarningIcon, "Safe mode", message,
+                                               "Turn everything back on", "Audio only", "Stay in safe mode", nullptr,
+                                               juce::ModalCallbackFunction::create ([this] (int result)
         {
             showStartupNotice();
             if (result == 0 || mainComponent == nullptr)
+                return;
+
+            restoreAudio();
+            if (result != 1)
                 return;
 
             safeMode = false;
@@ -531,8 +619,12 @@ private:
             return;
 
         auto& settings = *properties.getUserSettings();
-        if (auto xml = deviceManager.createStateXml())
-            settings.setValue ("audioDevice", xml.get());
+        // While safe mode holds the interface back (still on the device with no
+        // hardware), keep the last run's choice.
+        const auto* current = deviceManager.getCurrentAudioDevice();
+        if (! (audioHeldBack && current != nullptr && current->getTypeName() == VirtualAudioIODeviceType::kTypeName))
+            if (auto xml = deviceManager.createStateXml())
+                settings.setValue ("audioDevice", xml.get());
         if (mainComponent != nullptr)
             settings.setValue ("lastShowFile", mainComponent->getShowFile().getFullPathName());
         if (mainWindow != nullptr)
@@ -575,6 +667,8 @@ private:
     std::unique_ptr<juce::Timer> autosaveTimer;
     std::unique_ptr<SignalQuitter> signalQuitter;
     bool safeMode = false;
+    bool audioHeldBack = false; // safe mode: on the device with no hardware until turned back on
+    juce::String stuckDriver;   // the device whose driver hung or crashed last run
 };
 
 } // namespace livedaw
