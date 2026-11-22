@@ -1,4 +1,5 @@
 #include "engine/SandboxedPlugin.h"
+#include "engine/PluginText.h"
 #include "sandbox/SandboxShared.h"
 
 #include <condition_variable>
@@ -464,7 +465,7 @@ bool SandboxedPlugin::loadInHelper (double sampleRate, int newBlockSize, bool fi
     {
         out.writeString (shared->name);
         out.writeString (shared->name);
-        out.writeString (descXml);
+        writeExactString (out, descXml); // the plugin's name as it reports it (PluginText.h)
         out.writeDouble (sampleRate);
         out.writeInt (exchanged);
     }, options->loadTimeoutMs, [this] { return isHelperRunning(); });
@@ -484,10 +485,23 @@ bool SandboxedPlugin::loadInHelper (double sampleRate, int newBlockSize, bool fi
     in.readBool(); // hasEditor: the sandbox's editor is always there
     const int numPrograms = in.readInt();
     const int program = in.readInt();
+    // A reply read out of step (a helper of another build) must not be trusted for counts.
+    if (! juce::isPositiveAndNotGreaterThan (numPrograms, 1024))
+    {
+        error = "the plugin host's reply was garbled";
+        killHelper();
+        return false;
+    }
     juce::StringArray programs;
     for (int i = 0; i < numPrograms; ++i)
         programs.add (in.readString());
     const int numParams = in.readInt();
+    if (! juce::isPositiveAndNotGreaterThan (numParams, sandbox::kMaxParams) || in.isExhausted() != (numParams == 0))
+    {
+        error = "the plugin host's reply was garbled";
+        killHelper();
+        return false;
+    }
 
     if (firstLoad)
     {

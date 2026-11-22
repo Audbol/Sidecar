@@ -5,6 +5,7 @@
 #include "engine/EventLog.h"
 #include "engine/Benchmark.h"
 #include "engine/PluginHost.h"
+#include "engine/PluginText.h"
 #include "engine/PluginScanner.h"
 #include "engine/Show.h"
 #include "ui/PluginHostSurface.h"
@@ -2318,3 +2319,42 @@ private:
 };
 
 static PluginHostTests pluginHostTests;
+
+//==============================================================================
+/** A plugin's name in the Windows code page (an MSVC build without /utf-8)
+    becomes proper text, and valid text is left alone. */
+class PluginTextTests final : public juce::UnitTest
+{
+public:
+    PluginTextTests() : juce::UnitTest ("Plugin text", "LiveDAW") {}
+
+    void runTest() override
+    {
+        beginTest ("valid UTF-8 is kept as it is");
+        const auto good = juce::String (juce::CharPointer_UTF8 ("Tr\xc3\xb8kk"));
+        expectEquals (livedaw::cleanPluginText (good), good);
+        expectEquals (livedaw::cleanPluginText ("Kurve"), juce::String ("Kurve"));
+
+        beginTest ("Windows-1252 bytes become their letters, and the length agrees with the bytes written");
+        // What juce::String (const char*) keeps of an MSVC "Tr\xf8kk" literal.
+        const char rawName[] = { 'T', 'r', (char) 0xf8, 'k', 'k', 0 };
+        const juce::String fromBytes { juce::CharPointer_UTF8 (rawName) };
+        const auto clean = livedaw::cleanPluginText (fromBytes);
+        expectEquals (clean, good);
+        expect (juce::CharPointer_UTF8::isValidString (clean.toRawUTF8(), (int) clean.getNumBytesAsUTF8()));
+
+        // Written and read back through a stream, as the sandbox and the scanner do.
+        juce::MemoryOutputStream out;
+        out.writeString (clean);
+        out.writeInt (1234);
+        juce::MemoryInputStream in (out.getData(), out.getDataSize(), false);
+        expectEquals (in.readString(), good);
+        expectEquals (in.readInt(), 1234);
+
+        const char quotes[] = { (char) 0x93, 'A', (char) 0x94, 0 };
+        expectEquals (livedaw::cleanPluginText (juce::String (juce::CharPointer_UTF8 (quotes))),
+                      juce::String (juce::CharPointer_UTF8 ("\xe2\x80\x9c" "A" "\xe2\x80\x9d")));
+    }
+};
+
+static PluginTextTests pluginTextTests;

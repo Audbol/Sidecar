@@ -4,6 +4,7 @@
 // window. If the plugin crashes or hangs, only this process is lost.
 
 #include "engine/MonoBuses.h"
+#include "engine/PluginText.h"
 #include "sandbox/SandboxShared.h"
 #include "sandbox/TestPlugins.h"
 
@@ -105,7 +106,7 @@ private:
 
     void replyError (int id, const juce::String& error)
     {
-        reply (id, false, [&] (auto& out) { out.writeString (error); });
+        reply (id, false, [&] (auto& out) { out.writeString (livedaw::cleanPluginText (error)); });
     }
 
     void handle (const juce::MemoryBlock& message)
@@ -181,7 +182,7 @@ private:
         reply (id, true, [this] (juce::MemoryOutputStream& out)
         {
             out.writeInt (currentProcessId());
-            out.writeString (plugin->getName());
+            out.writeString (livedaw::cleanPluginText (plugin->getName()));
             out.writeInt (plugin->getLatencySamples());
             out.writeDouble (plugin->getTailLengthSeconds());
             // Sidecar doesn't use it (the sandbox's panel is always there), and asking
@@ -191,15 +192,15 @@ private:
             out.writeInt (numPrograms);
             out.writeInt (plugin->getCurrentProgram());
             for (int i = 0; i < numPrograms; ++i)
-                out.writeString (plugin->getProgramName (i));
+                out.writeString (livedaw::cleanPluginText (plugin->getProgramName (i)));
 
             out.writeInt ((int) params.size());
             for (auto* p : params)
             {
                 auto* hosted = dynamic_cast<juce::HostedAudioProcessorParameter*> (p);
-                out.writeString (hosted != nullptr ? hosted->getParameterID() : juce::String (p->getParameterIndex()));
-                out.writeString (p->getName (256));
-                out.writeString (p->getLabel());
+                out.writeString (livedaw::cleanPluginText (hosted != nullptr ? hosted->getParameterID() : juce::String (p->getParameterIndex())));
+                out.writeString (livedaw::cleanPluginText (p->getName (256)));
+                out.writeString (livedaw::cleanPluginText (p->getLabel()));
                 out.writeFloat (p->getDefaultValue());
                 out.writeFloat (p->getValue());
                 out.writeInt (p->getNumSteps());
@@ -270,7 +271,7 @@ private:
         if (! juce::isPositiveAndBelow (index, (int) params.size()))
             return replyError (id, "bad parameter");
         const auto text = params[(size_t) index]->getText (value, 1024);
-        reply (id, true, [&] (auto& out) { out.writeString (text); });
+        reply (id, true, [&] (auto& out) { out.writeString (livedaw::cleanPluginText (text)); });
     }
 
     void paramFromText (int id, juce::MemoryInputStream& in)

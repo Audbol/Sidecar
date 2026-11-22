@@ -1,4 +1,5 @@
 #include "engine/PluginHost.h"
+#include "engine/PluginText.h"
 #include "engine/PluginScanner.h"
 
 #include <map>
@@ -233,7 +234,8 @@ juce::PluginDescription PluginHost::describe (const juce::AudioPluginInstance& p
         const std::lock_guard<std::mutex> l (created->lock);
         if (const auto it = created->descriptions.find (&plugin); it != created->descriptions.end())
         {
-            if (it->second.name == plugin.getName())
+            // A sandboxed plugin reports its name cleaned (PluginText.h).
+            if (it->second.name == plugin.getName() || cleanPluginText (it->second.name) == plugin.getName())
                 return it->second;
             created->descriptions.erase (it); // another plugin now lives there
         }

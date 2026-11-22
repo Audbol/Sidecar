@@ -1,5 +1,6 @@
 #include "TestHelpers.h"
 #include "engine/PluginHost.h"
+#include "engine/PluginText.h"
 #include "engine/SandboxedPlugin.h"
 #include "engine/Show.h"
 #include "ui/PluginChainView.h"
@@ -814,3 +815,176 @@ private:
 };
 
 static RealPluginTests realPluginTests;
+
+//==============================================================================
+/** Bundled third-party plug-ins (the Ljom Audio ones, docs/PLAN.md) through
+    Sidecar's own path: the out-of-process scanner, a channel insert in-process
+    and in the plug-in sandbox, slot bypass, a show saved and loaded, the
+    editor, and taking the plug-in out again (its module unloads: a plug-in
+    that hangs there hangs this test). Runs only when SIDECAR_LJOM_VST3_DIR
+    names a folder of their .vst3 bundles: `LiveDAWTests "Bundled plugins"`. */
+class BundledPluginTests final : public juce::UnitTest
+{
+public:
+    BundledPluginTests() : juce::UnitTest ("Bundled plugins", "LiveDAW") {}
+
+    void runTest() override
+    {
+        const juce::File dir (juce::SystemStats::getEnvironmentVariable ("SIDECAR_LJOM_VST3_DIR", {}));
+        if (! dir.isDirectory())
+        {
+            beginTest ("Bundled plugins");
+            logMessage ("SIDECAR_LJOM_VST3_DIR isn't set: skipping");
+            expect (true);
+            return;
+        }
+
+        PluginHost host (nullptr);
+        juce::AudioPluginFormat* vst3 = nullptr;
+        for (auto* f : host.getFormatManager().getFormats())
+            if (f->getName() == "VST3")
+                vst3 = f;
+        if (vst3 == nullptr)
+            return;
+
+        beginTest ("the out-of-process scanner finds each bundled plugin");
+        juce::OwnedArray<juce::PluginDescription> types;
+        auto bundles = dir.findChildFiles (juce::File::findDirectories, false, "*.vst3");
+        bundles.sort();
+        for (const auto& b : bundles)
+        {
+            const int before = types.size();
+            host.getKnownPlugins().scanAndAddFile (b.getFullPathName(), false, types, *vst3);
+            expectEquals (types.size() - before, 1, b.getFileName() + " should hold one plugin");
+            if (types.size() > before)
+                logMessage ("  " + types.getLast()->name + " by " + types.getLast()->manufacturerName + ", "
+                            + juce::String (types.getLast()->numInputChannels) + " in / "
+                            + juce::String (types.getLast()->numOutputChannels) + " out, " + types.getLast()->category);
+        }
+
+        for (const bool sandboxed : { false, true })
+        {
+            if (sandboxed && ! juce::File (LIVEDAW_TEST_PLUGIN_HOST).existsAsFile())
+                continue;
+            auto options = host.getSandboxOptions();
+            options.helper = juce::File (LIVEDAW_TEST_PLUGIN_HOST);
+            options.minWaitMs = 2000.0;
+            host.setSandboxOptions (options);
+            host.setSandboxEnabled (sandboxed);
+            for (auto* d : types)
+                runOne (host, *d, sandboxed);
+        }
+        host.setSandboxEnabled (false);
+    }
+
+private:
+    void runOne (PluginHost& host, const juce::PluginDescription& d, bool sandboxed)
+    {
+        const auto tag = d.name + (sandboxed ? " (sandbox): " : " (in-process): ");
+        beginTest (tag + "on a channel insert");
+
+        ToneRig rig;
+        rig.tones = { { 1000.0, 0.25f } };
+        rig.run (60);
+        const float dryL = rig.toneDb (1000.0), dryR = rig.toneDb (1000.0, true);
+
+        juce::String error;
+        auto plugin = host.createInstance (d, kRate, kBlock, error);
+        expect (plugin != nullptr, tag + "could not create: " + error);
+        if (plugin == nullptr)
+            return;
+        auto& fx = rig.engine.getFx();
+        const auto start = juce::Time::getMillisecondCounterHiRes();
+        fx.setPlugin (0, std::move (plugin));
+        rig.insert (0, 0);
+        expect (fx.isSandboxed (0) == sandboxed);
+        rig.run (400);
+        pumpMessages (100);
+        rig.run (100);
+        const double ms = juce::Time::getMillisecondCounterHiRes() - start;
+        const float wetL = rig.toneDb (1000.0) - dryL, wetR = rig.toneDb (1000.0, true) - dryR;
+        logMessage (tag + "1 kHz at -12 dBFS: left " + juce::String (wetL, 2) + " dB, right " + juce::String (wetR, 2)
+                    + " dB; latency " + juce::String (fx.getLatency (0)) + " samples; "
+                    + juce::String (fx.getPlugin (0)->getTotalNumInputChannels()) + " in / "
+                    + juce::String (fx.getPlugin (0)->getTotalNumOutputChannels()) + " out (" + juce::String (ms, 0) + " ms for 500 blocks)");
+        expect (rig.allFinite(), tag + "non-finite output");
+        expect (! fx.isFaulted (0), tag + "the slot faulted");
+        expectGreaterThan (rig.toneDb (1000.0), -70.0f, tag + "no signal on the left");
+        expectGreaterThan (rig.toneDb (1000.0, true), -70.0f, tag + "no signal on the right");
+
+        beginTest (tag + "slot bypass gives back the dry level");
+        fx.params (0).bypass = true;
+        rig.engine.updateLatencyCompensation();
+        rig.run (100);
+        expectWithinAbsoluteError (rig.toneDb (1000.0), dryL, 0.05f);
+        expectWithinAbsoluteError (rig.toneDb (1000.0, true), dryR, 0.05f);
+        fx.params (0).bypass = false;
+        rig.engine.updateLatencyCompensation();
+        rig.run (200);
+        const float levelBefore = rig.toneDb (1000.0);
+
+        beginTest (tag + "a show keeps it");
+        Show show (rig.engine, host);
+        const auto xml = show.toXml();
+        juce::MemoryBlock stateBefore;
+        fx.getPlugin (0)->getStateInformation (stateBefore);
+
+        beginTest (tag + "its editor opens and closes");
+        if (test::hasDisplay() && ! sandboxed)
+        {
+            auto* p = fx.getPlugin (0);
+            expect (p->hasEditor());
+            std::unique_ptr<juce::AudioProcessorEditor> editor (p->createEditorAndMakeActive());
+            expect (editor != nullptr, tag + "no editor");
+            if (editor != nullptr)
+            {
+                logMessage (tag + "editor " + juce::String (editor->getWidth()) + " x " + juce::String (editor->getHeight())
+                            + (editor->isResizable() ? ", resizable" : ", fixed size"));
+                juce::DocumentWindow window (d.name, juce::Colours::black, 0);
+                window.setContentNonOwned (editor.get(), true);
+                window.setVisible (true);
+                pumpMessages (500);
+                window.setVisible (false);
+                window.clearContentComponent();
+                p->editorBeingDeleted (editor.get());
+                editor.reset();
+                pumpMessages (50);
+            }
+        }
+
+        beginTest (tag + "taking it out unloads it");
+        const auto out = juce::Time::getMillisecondCounterHiRes();
+        fx.setPlugin (0, nullptr);
+        rig.engine.getGarbage().collectAllNow();
+        pumpMessages (50);
+        logMessage (tag + "removed in " + juce::String (juce::Time::getMillisecondCounterHiRes() - out, 0) + " ms");
+
+        beginTest (tag + "loading the show brings it back as it was");
+        ToneRig rig2;
+        rig2.tones = rig.tones;
+        Show loaded (rig2.engine, host);
+        const auto result = loaded.loadFromXml (*xml);
+        expect (result.wasOk(), result.getErrorMessage());
+        auto* back = rig2.engine.getFx().getPlugin (0);
+        expect (back != nullptr, tag + "not loaded");
+        if (back == nullptr)
+            return;
+        // The sandbox reports a name in the Windows code page cleaned (PluginText.h), the scan as JUCE read it.
+        auto ascii = [] (const juce::String& t) { juce::String r; for (auto c : t) if (c < 128) r << juce::String::charToString (c); return r; };
+        expectEquals (ascii (back->getName()), ascii (d.name));
+        rig2.run (400);
+        pumpMessages (200);
+        rig2.run (100);
+        juce::MemoryBlock stateAfter;
+        back->getStateInformation (stateAfter);
+        logMessage (tag + "after a show save and load: 1 kHz " + juce::String (rig2.toneDb (1000.0) - dryL, 2) + " dB (before "
+                    + juce::String (levelBefore - dryL, 2) + " dB), state " + juce::String ((int) stateBefore.getSize()) + " -> "
+                    + juce::String ((int) stateAfter.getSize()) + " bytes");
+        expectWithinAbsoluteError (rig2.toneDb (1000.0), levelBefore, 0.2f);
+        rig2.engine.getFx().setPlugin (0, nullptr);
+        rig2.engine.getGarbage().collectAllNow();
+        pumpMessages (50);
+    }
+};
+
+static BundledPluginTests bundledPluginTests;

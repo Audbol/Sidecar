@@ -1,4 +1,5 @@
 #include "engine/PluginScanner.h"
+#include "engine/PluginText.h"
 
 #include <condition_variable>
 #include <map>
@@ -263,8 +264,10 @@ namespace
             for (auto* desc : results)
                 xml.addChildElement (desc->createXml().release());
 
+            // The exact bytes: a name in the Windows code page (PluginText.h) must
+            // arrive as the plugin reports it, or the plugin can't be found by it.
             const auto text = xml.toString();
-            sendMessageToCoordinator ({ text.toRawUTF8(), text.getNumBytesAsUTF8() });
+            sendMessageToCoordinator ({ text.toRawUTF8(), std::strlen (text.toRawUTF8()) });
         }
 
         std::mutex mutex;
