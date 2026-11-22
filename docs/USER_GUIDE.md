@@ -816,6 +816,20 @@ window has room: the current scene with **PREV** and **GO NEXT**, **CLR SOLO** (
 while anything is soloed), and on a wide window **DIM**, **TALK A** and **TALK B**.
 The top bar also shows the DSP load and the time.
 
+### Windows on other screens
+
+Any view but **MIXER**, and the inspector (the **CHANNEL STRIP**), can have a window
+of its own, to put on another screen: right-click or hold its view key and choose
+**In a window of its own**, use **MENU > Windows**, or press **Shift** with its
+function key (**Shift+F2** to **Shift+F9**). The first time, the window fills most of
+another screen if there is one. Its view key then shows a thin line, and a tap on it
+brings the window forward; the main window keeps the **MIXER** (with the inspector in
+its own window, the strips take its place). **F11** in a section's window makes it
+full screen on its screen. Closing the window, or **MENU > Windows > Every window back
+into this one**, puts the view back. Sidecar remembers which windows are open and
+where, so they come back after a restart (a window whose screen is gone comes back on
+one that is there).
+
 Every control works the same way. A drag moves it by how far your finger or the mouse
 travels, so touching a fader never makes it jump; Shift makes the move finer. A
 double tap sets its default (0 dB for a fader, centre for a pan), and the mouse

@@ -828,7 +828,13 @@ void ToggleKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
             g.setColour (colour);
             g.fillRect (area.getX(), area.getBottom() - 3.0f, area.getWidth(), 3.0f);
         }
-        g.setColour (lit ? theme.text : theme.textDim);
+        else if (halfLit)
+        {
+            // Half on: a thin line (a view in a window of its own).
+            g.setColour (colour.withAlpha (0.7f));
+            g.fillRect (area.getX(), area.getBottom() - 1.0f, area.getWidth(), 1.0f);
+        }
+        g.setColour (lit || halfLit ? theme.text : theme.textDim);
     }
     else
     {

@@ -13,6 +13,9 @@
 #include "ui/universal/ScenesView.h"
 #include "ui/universal/SetupView.h"
 
+#include <array>
+#include <optional>
+
 namespace livedaw::ui
 {
 
@@ -30,7 +33,15 @@ namespace livedaw::ui
     The keyboard (skinKeyPressed): Ctrl+J opens the MIXER view's JUMP list from
     any view; in the MIXER view / opens it too, Page Up / Page Down step
     through the banks, Home / End go to the first and last, Left / Right
-    select the strip before or after the selected one. */
+    select the strip before or after the selected one.
+
+    Section windows (issue #25): every view but the MIXER, and the inspector,
+    can be put in a window of its own, to place on another screen (a view
+    key's right-click or long press, MENU > Windows, Shift+F2 to F9). Its key
+    then brings that window forward; closing the window puts the view back.
+    Where each window is, and that it is open, are app settings: the windows
+    come back with the skin (after a theme change, a swap of interface, a
+    restart). */
 class UniversalSkin final : public Skin, private juce::Timer
 {
 public:
@@ -75,6 +86,30 @@ public:
     };
     void showView (View);
     View getView() const noexcept { return view; }
+
+    /** The parts that can have a window of their own: every view but the MIXER, and the inspector. */
+    enum class Section
+    {
+        Routing,
+        Fx,
+        Monitoring,
+        Scenes,
+        Library,
+        Recorder,
+        Controls,
+        Setup,
+        Inspector
+    };
+    static constexpr int kNumSections = (int) Section::Inspector + 1;
+    /** The section a view is (none for the MIXER). */
+    static std::optional<Section> sectionOf (View) noexcept;
+    static juce::String sectionTitle (Section);
+    bool isDetached (Section s) const noexcept { return sectionWindows[(size_t) s] != nullptr; }
+    /** Puts the section in a window of its own (on another screen, the first time, if there is
+        one; else where it was last), or back into this one. */
+    void setDetached (Section, bool detached);
+    /** Its window while it has one. */
+    juce::DocumentWindow* getSectionWindow (Section s) const noexcept;
 
     universal::MixerView& getMixer() noexcept { return mixer; }
     universal::RoutingView& getRouting() noexcept { return routingView; }
@@ -126,7 +161,9 @@ public:
         kMenuStripWidth = 54, // + 0 narrow, 1 normal, 2 wide
         kMenuResetStrips = 57,
         kMenuHeader = 58,
-        kMenuSurface = 60
+        kMenuSurface = 60,
+        kMenuWindow = 70, // + the section (Section): 70 to 78
+        kMenuDockAll = 80
     };
     juce::PopupMenu buildMenu();
     void runMenuCommand (int item);
@@ -142,6 +179,13 @@ public:
     juce::String getSceneReadout() const;
 
 private:
+    class SectionWindow;
+    juce::Component& sectionComponent (Section) noexcept;
+    /** The settings key holding a section's window (its place and size; absent: not open). */
+    static juce::String sectionSetting (Section);
+    /** A view key's right-click or long press: its window. */
+    void showSectionMenu (Section, juce::Component& target);
+    juce::uint32 sectionMenuAt = 0; // when the window menu opened: the key's click that follows is the menu's
     void timerCallback() override;
     juce::String shownScene, shownStatus;
     juce::Rectangle<int> sceneArea, statusArea;
@@ -155,6 +199,8 @@ private:
     Connection connection;
     bool row2Shown = true;
     juce::Rectangle<int> titleArea, infoArea, mixerKeysArea;
+    // Before the keys, so they outlive them: the keys' right-click and long press (section windows).
+    std::vector<std::unique_ptr<juce::MouseListener>> keyGestures;
     std::vector<std::unique_ptr<universal::ToggleKey>> viewKeys;
     universal::MixerView mixer;
     universal::RoutingView routingView;
@@ -171,6 +217,8 @@ private:
     universal::MixerHistory history;
     bool inspectorOpen = false;
     juce::String summary, summaryShort;
+    // Last, so they go before the views they hold.
+    std::array<std::unique_ptr<SectionWindow>, kNumSections> sectionWindows;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (UniversalSkin)
 };

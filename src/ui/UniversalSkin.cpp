@@ -37,6 +37,165 @@ namespace
     }
 } // namespace
 
+//==============================================================================
+/** A section in a window of its own (issue #25). The window holds the skin's own
+    view (moved into it, not a copy), in the skin's theme, and passes on the keys
+    the view doesn't use, so the console's shortcuts work from it. Its place and
+    size are kept in the app settings while it is open; closing it puts the view
+    back. */
+class UniversalSkin::SectionWindow final : public juce::DocumentWindow
+{
+public:
+    SectionWindow (UniversalSkin& s, Section sec)
+        : juce::DocumentWindow ("Sidecar - " + sectionTitle (sec), s.theme.background, juce::DocumentWindow::allButtons),
+          skin (s), section (sec), holder (s, s.sectionComponent (sec), sec == Section::Inspector)
+    {
+        setUsingNativeTitleBar (true);
+        setContentNonOwned (&holder, false);
+        setResizable (true, false);
+        setResizeLimits (480, 320, 32768, 32768);
+        place();
+        setVisible (true);
+        placed = true;
+        keepState();
+    }
+
+    ~SectionWindow() override { clearContentComponent(); }
+
+    void closeButtonPressed() override
+    {
+        // The window goes with this call: after it has returned.
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<UniversalSkin> (&skin), s = section]
+        {
+            if (safe != nullptr)
+                safe->setDetached (s, false);
+        });
+    }
+
+    void moved() override
+    {
+        juce::DocumentWindow::moved();
+        keepState();
+    }
+
+    void resized() override
+    {
+        juce::DocumentWindow::resized();
+        keepState();
+    }
+
+    /** Shows what the section has (the inspector: a strip, or what to do for one). */
+    void refreshContent() { holder.refreshContent(); }
+
+private:
+    /** The content: the view, the skin's look, and the keys it leaves. */
+    struct Holder final : public juce::Component
+    {
+        Holder (UniversalSkin& s, juce::Component& c, bool inspector) : skin (s), content (c), isInspector (inspector)
+        {
+            setLookAndFeel (&universal::lookAndFeelFor (skin.theme));
+            setWantsKeyboardFocus (true);
+            addChildComponent (content);
+            refreshContent();
+        }
+
+        ~Holder() override
+        {
+            removeChildComponent (&content);
+            setLookAndFeel (nullptr);
+        }
+
+        void refreshContent()
+        {
+            // The inspector shows a strip or nothing: then a line saying how to pick one.
+            content.setVisible (! isInspector || skin.inspector.getStrip() != nullptr);
+            repaint();
+        }
+
+        void paint (juce::Graphics& g) override
+        {
+            g.fillAll (skin.theme.background);
+            if (! content.isVisible())
+            {
+                g.setColour (skin.theme.textDim);
+                g.setFont (universal::type::font (universal::type::kLabel, true));
+                g.drawText ("SELECT A STRIP IN THE MIXER", getLocalBounds(), juce::Justification::centred);
+            }
+        }
+
+        void resized() override { content.setBounds (getLocalBounds()); }
+
+        bool keyPressed (const juce::KeyPress& key) override
+        {
+            // F11: this window full screen (on its own screen), as F11 does the main one.
+            if (key.getKeyCode() == juce::KeyPress::F11Key && ! key.getModifiers().isAnyModifierKeyDown())
+                if (auto* window = dynamic_cast<juce::DocumentWindow*> (getTopLevelComponent()))
+                {
+                    window->setFullScreen (! window->isFullScreen());
+                    return true;
+                }
+            // The main window's keys (the skin's, and the app's: save...).
+            if (auto* main = skin.getParentComponent())
+                return main->keyPressed (key);
+            return skin.skinKeyPressed (key);
+        }
+
+        UniversalSkin& skin;
+        juce::Component& content;
+        const bool isInspector;
+    };
+
+    /** Where it was last, if that is still on a screen; the first time, filling most of a
+        screen other than the main window's if there is one. */
+    void place()
+    {
+        const auto& displays = juce::Desktop::getInstance().getDisplays();
+        const auto saved = skin.ctx.settings.getValue (sectionSetting (section));
+        if (saved.isNotEmpty() && restoreWindowStateFromString (saved))
+        {
+            bool onScreen = false;
+            for (const auto& d : displays.displays)
+                onScreen = onScreen || d.userBounds.toNearestInt().intersects (getScreenBounds().withHeight (40)); // its title bar
+            if (onScreen)
+                return;
+        }
+        const auto* mainDisplay = skin.getTopLevelComponent() != nullptr && skin.isShowing()
+                                      ? displays.getDisplayForRect (skin.getTopLevelComponent()->getScreenBounds())
+                                      : displays.getPrimaryDisplay();
+        const juce::Displays::Display* target = nullptr;
+        for (const auto& d : displays.displays)
+            if (mainDisplay == nullptr || d.userBounds != mainDisplay->userBounds)
+            {
+                target = &d;
+                break;
+            }
+        if (target != nullptr)
+        {
+            setBounds (target->userBounds.toNearestInt().reduced (target->userBounds.toNearestInt().getWidth() / 12,
+                                                                target->userBounds.toNearestInt().getHeight() / 12));
+            return;
+        }
+        // One screen: a window of a good size, offset from the main one's middle.
+        const auto area = mainDisplay != nullptr ? mainDisplay->userBounds.toNearestInt() : juce::Rectangle<int> (0, 0, 1280, 800);
+        const int w = juce::jmin (section == Section::Inspector ? 520 : 1200, area.getWidth() - 80);
+        const int h = juce::jmin (900, area.getHeight() - 80);
+        setBounds (juce::Rectangle<int> (w, h).withCentre (area.getCentre().translated (40 * ((int) section % 4), 30 * ((int) section % 4))));
+    }
+
+    void keepState()
+    {
+        if (placed)
+            skin.ctx.settings.setValue (sectionSetting (section), getWindowStateAsString());
+    }
+
+    UniversalSkin& skin;
+    const Section section;
+    Holder holder;
+    bool placed = false;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SectionWindow)
+};
+
 UniversalSkin::UniversalSkin (UiContext& c)
     : prevSceneKey ("PREV", themeOf (c).accent, themeOf (c)), nextSceneKey ("GO NEXT", themeOf (c).accent, themeOf (c)), clearSoloKey ("CLR SOLO", themeOf (c).solo, themeOf (c)),
       dimKey ("DIM", themeOf (c).solo, themeOf (c)), talkAKey ("TALK A", themeOf (c).solo, themeOf (c)), talkBKey ("TALK B", themeOf (c).solo, themeOf (c)),
@@ -55,7 +214,50 @@ UniversalSkin::UniversalSkin (UiContext& c)
         auto key = std::make_unique<ToggleKey> (name, theme.accent, theme);
         key->tab = true;
         key->isOn = [this, v = target] { return view == v; };
-        key->onClick = [this, v = target] { showView (v); };
+        key->onClick = [this, v = target]
+        {
+            // The click that ends a right-click or a long press belongs to the window menu.
+            if (sectionMenuAt != 0 && juce::Time::getMillisecondCounter() - sectionMenuAt < 1500)
+            {
+                sectionMenuAt = 0;
+                return;
+            }
+            showView (v);
+        };
+        if (const auto section = sectionOf (target))
+        {
+            key->isHalfOn = [this, s = *section] { return isDetached (s); };
+            // A right-click or a long press: the view in a window of its own, or back.
+            struct WindowGesture final : juce::MouseListener
+            {
+                WindowGesture (UniversalSkin& o, Section s) : owner (o), section (s) {}
+                void mouseDown (const juce::MouseEvent& e) override
+                {
+                    if (e.mods.isPopupMenu())
+                    {
+                        owner.showSectionMenu (section, *e.eventComponent);
+                        return;
+                    }
+                    const auto started = ++presses;
+                    juce::Component::SafePointer<juce::Component> key (e.eventComponent);
+                    juce::Timer::callAfterDelay (600, [this, key, started]
+                    {
+                        if (key != nullptr && started == presses && key->isMouseButtonDown())
+                        {
+                            owner.showSectionMenu (section, *key);
+                        }
+                    });
+                }
+                void mouseUp (const juce::MouseEvent&) override { ++presses; }
+                UniversalSkin& owner;
+                const Section section;
+                int presses = 0;
+            };
+            auto gesture = std::make_unique<WindowGesture> (*this, *section);
+            key->addMouseListener (gesture.get(), false);
+            keyGestures.push_back (std::move (gesture));
+            key->setTooltip ("Right-click or hold: " + sectionTitle (*section) + " in a window of its own (another screen)");
+        }
         addAndMakeVisible (*key);
         viewKeys.push_back (std::move (key));
     }
@@ -161,6 +363,10 @@ UniversalSkin::UniversalSkin (UiContext& c)
         resized();
     };
     refreshAll();
+    // The sections that were in windows of their own (before a theme change, a swap, a restart).
+    for (int s = 0; s < kNumSections; ++s)
+        if (ctx.settings.containsKey (sectionSetting ((Section) s)))
+            setDetached ((Section) s, true);
     // Back from a console's surface: the view and the strips' filter and scroll where they were
     // (the selected strip is the window's, so it stays across the swap).
     if (const auto m = ctx.universalMemory; m.view >= 0 && m.view <= (int) View::Controls)
@@ -229,6 +435,16 @@ juce::PopupMenu UniversalSkin::buildMenu()
     width.addItem (kMenuStripWidth + 1, "Normal", true, mixer.getStripLayout().widthMode == 1);
     width.addItem (kMenuStripWidth + 2, "Wide", true, mixer.getStripLayout().widthMode == 2);
     menu.addSubMenu ("Strip width", width);
+    juce::PopupMenu windows;
+    bool anyDetached = false;
+    for (int s = 0; s < kNumSections; ++s)
+    {
+        windows.addItem (kMenuWindow + s, sectionTitle ((Section) s) + " in its own window", true, isDetached ((Section) s));
+        anyDetached = anyDetached || isDetached ((Section) s);
+    }
+    windows.addSeparator();
+    windows.addItem (kMenuDockAll, "Every window back into this one", anyDetached);
+    menu.addSubMenu ("Windows (other screens)", windows);
     menu.addItem (kMenuResetStrips, "Reset the strips' sections");
     menu.addItem (kMenuHeader, "Second header row", true, row2Shown);
     menu.addSeparator();
@@ -293,6 +509,11 @@ void UniversalSkin::runMenuCommand (int item)
         setSecondRowShown (! row2Shown);
     else if (item == kMenuShortcuts)
         showShortcuts();
+    else if (item >= kMenuWindow && item < kMenuWindow + kNumSections)
+        setDetached ((Section) (item - kMenuWindow), ! isDetached ((Section) (item - kMenuWindow)));
+    else if (item == kMenuDockAll)
+        for (int s = 0; s < kNumSections; ++s)
+            setDetached ((Section) s, false);
     else if (item == kMenuSurface && wingKey.isVisible())
         wingKey.triggerClick();
 }
@@ -314,12 +535,24 @@ bool UniversalSkin::skinKeyPressed (const juce::KeyPress& key)
         const bool redo = c == 'y' || k == 'y' || key.getModifiers().isShiftDown();
         return redo ? history.redo() : history.undo();
     }
-    // F1 to F9: the views, in their order on the row.
-    if (const int code = key.getKeyCode(); code >= juce::KeyPress::F1Key && code <= juce::KeyPress::F9Key && ! key.getModifiers().isAnyModifierKeyDown())
+    // F1 to F9: the views, in their order on the row; with Shift, F2 to F9: that view in a window
+    // of its own, or back.
+    if (const int code = key.getKeyCode(); code >= juce::KeyPress::F1Key && code <= juce::KeyPress::F9Key)
     {
         static constexpr View order[] = { View::Mixer, View::Routing, View::Fx, View::Monitoring, View::Scenes, View::Library, View::Recorder, View::Controls, View::Setup };
-        showView (order[code - juce::KeyPress::F1Key]);
-        return true;
+        const auto v = order[code - juce::KeyPress::F1Key];
+        const auto mods = key.getModifiers();
+        if (! mods.isAnyModifierKeyDown())
+        {
+            showView (v);
+            return true;
+        }
+        if (mods == juce::ModifierKeys::shiftModifier)
+            if (const auto section = sectionOf (v))
+            {
+                setDetached (*section, ! isDetached (*section));
+                return true;
+            }
     }
     return view == View::Mixer && mixer.handleKey (key);
 }
@@ -328,6 +561,7 @@ void UniversalSkin::showShortcuts()
 {
     const juce::StringArray lines { "Ctrl+Z  /  Ctrl+Y (or Ctrl+Shift+Z)      Undo / redo a mix change",
                                     "F1 to F9      The views, in their order",
+                                    "Shift+F2 to F9      That view in a window of its own (another screen), or back",
                                     "Ctrl+J  or  /      Jump to a strip",
                                     "Left  /  Right      Select the previous / next strip",
                                     "Page Up  /  Page Down      Previous / next bank",
@@ -343,18 +577,24 @@ void UniversalSkin::showShortcuts()
 
 void UniversalSkin::showView (View v)
 {
+    // A view in a window of its own: that window comes forward, this one stays as it is.
+    if (const auto section = sectionOf (v); section && isDetached (*section))
+    {
+        auto* window = getSectionWindow (*section);
+        window->setMinimised (false);
+        window->toFront (true);
+        return;
+    }
     view = v;
     if (v != View::Mixer)
         mixer.setJumpListShown (false);
     mixer.setVisible (v == View::Mixer);
-    routingView.setVisible (v == View::Routing);
-    fxRack.setVisible (v == View::Fx);
-    monitoring.setVisible (v == View::Monitoring);
-    scenes.setVisible (v == View::Scenes);
-    library.setVisible (v == View::Library);
-    recorder.setVisible (v == View::Recorder);
-    setup.setVisible (v == View::Setup);
-    controls.setVisible (v == View::Controls);
+    const std::pair<juce::Component*, View> views[] = { { &routingView, View::Routing }, { &fxRack, View::Fx },       { &monitoring, View::Monitoring },
+                                                        { &scenes, View::Scenes },       { &library, View::Library }, { &recorder, View::Recorder },
+                                                        { &setup, View::Setup },         { &controls, View::Controls } };
+    for (const auto& [component, own] : views)
+        if (! isDetached (*sectionOf (own)))
+            component->setVisible (v == own);
     for (auto& key : viewKeys)
         key->refresh();
     if (getWidth() > 0)
@@ -383,6 +623,9 @@ juce::String UniversalSkin::getSceneReadout() const
 
 UniversalSkin::~UniversalSkin()
 {
+    // The windows go with the skin (their settings stay: they come back with the next one).
+    for (auto& w : sectionWindows)
+        w.reset();
     const int filter = mixer.getFilter();
     ctx.universalMemory = { (int) view, filter > universal::MixerView::kDcas ? -1 : filter, mixer.getScrollX() };
 }
@@ -469,6 +712,8 @@ void UniversalSkin::selectionChanged()
     if (selected != inspector.getStrip())
         inspector.setStrip (selected);
     inspectorOpen = selected != nullptr;
+    if (auto& w = sectionWindows[(size_t) Section::Inspector])
+        w->refreshContent();
     resized();
 }
 
@@ -626,13 +871,145 @@ void UniversalSkin::resized()
     }
     layoutSecondRow();
 
-    const bool showInspector = inspectorOpen && inspector.getStrip() != nullptr;
-    inspector.setVisible (showInspector);
-    if (showInspector)
-        inspector.setBounds (area.removeFromRight (juce::jmin (460, area.getWidth() / 2)));
-    for (auto* v : std::initializer_list<juce::Component*> { &mixer, &routingView, &fxRack, &monitoring, &scenes, &library, &recorder, &setup, &controls })
-        v->setBounds (area);
+    if (! isDetached (Section::Inspector))
+    {
+        const bool showInspector = inspectorOpen && inspector.getStrip() != nullptr;
+        inspector.setVisible (showInspector);
+        if (showInspector)
+            inspector.setBounds (area.removeFromRight (juce::jmin (460, area.getWidth() / 2)));
+    }
+    mixer.setBounds (area);
+    for (int s = 0; s < kNumSections; ++s)
+        if (s != (int) Section::Inspector && ! isDetached ((Section) s))
+            sectionComponent ((Section) s).setBounds (area);
     repaint (getLocalBounds().removeFromTop (headerHeight()));
+}
+
+//==============================================================================
+std::optional<UniversalSkin::Section> UniversalSkin::sectionOf (View v) noexcept
+{
+    switch (v)
+    {
+        case View::Routing:    return Section::Routing;
+        case View::Fx:         return Section::Fx;
+        case View::Monitoring: return Section::Monitoring;
+        case View::Scenes:     return Section::Scenes;
+        case View::Library:    return Section::Library;
+        case View::Recorder:   return Section::Recorder;
+        case View::Controls:   return Section::Controls;
+        case View::Setup:      return Section::Setup;
+        case View::Mixer:      break;
+    }
+    return std::nullopt;
+}
+
+juce::String UniversalSkin::sectionTitle (Section s)
+{
+    static const char* const titles[] = { "ROUTING", "FX RACK", "MONITORING", "SCENES", "LIBRARY", "RECORDER", "CONTROLS", "SETUP", "CHANNEL STRIP" };
+    return titles[juce::jlimit (0, kNumSections - 1, (int) s)];
+}
+
+juce::String UniversalSkin::sectionSetting (Section s)
+{
+    static const char* const ids[] = { "routing", "fx", "monitoring", "scenes", "library", "recorder", "controls", "setup", "inspector" };
+    return juce::String ("ui.universal.window.") + ids[juce::jlimit (0, kNumSections - 1, (int) s)];
+}
+
+juce::Component& UniversalSkin::sectionComponent (Section s) noexcept
+{
+    switch (s)
+    {
+        case Section::Routing:    return routingView;
+        case Section::Fx:         return fxRack;
+        case Section::Monitoring: return monitoring;
+        case Section::Scenes:     return scenes;
+        case Section::Library:    return library;
+        case Section::Recorder:   return recorder;
+        case Section::Controls:   return controls;
+        case Section::Setup:      return setup;
+        case Section::Inspector:  break;
+    }
+    return inspector;
+}
+
+juce::DocumentWindow* UniversalSkin::getSectionWindow (Section s) const noexcept
+{
+    return sectionWindows[(size_t) s].get();
+}
+
+void UniversalSkin::setDetached (Section s, bool detached)
+{
+    auto& window = sectionWindows[(size_t) s];
+    if (detached == (window != nullptr))
+    {
+        if (window != nullptr)
+            window->toFront (true);
+        return;
+    }
+    auto& component = sectionComponent (s);
+    if (detached)
+    {
+        // The view shown here goes to its window: this one shows the MIXER.
+        if (const auto shown = sectionOf (view); shown && *shown == s)
+            showView (View::Mixer);
+        if (s == Section::Inspector)
+            inspector.closeKey.setVisible (false); // it closes with its window
+        window = std::make_unique<SectionWindow> (*this, s);
+        component.setVisible (s != Section::Inspector || inspector.getStrip() != nullptr);
+        ctx.log.info (sectionTitle (s) + " in a window of its own");
+    }
+    else
+    {
+        window.reset();
+        ctx.settings.removeValue (sectionSetting (s));
+        addChildComponent (component); // back in this window, hidden until shown
+        if (s == Section::Inspector)
+            inspector.closeKey.setVisible (true);
+        else
+            component.setVisible (false);
+        ctx.log.info (sectionTitle (s) + " back in the main window");
+    }
+    for (auto& key : viewKeys)
+        key->refresh();
+    if (getWidth() > 0)
+        resized();
+    // The view takes the console at once wherever it is now.
+    switch (s)
+    {
+        case Section::Routing:    routingView.refresh(); break;
+        case Section::Fx:         fxRack.refresh(); break;
+        case Section::Monitoring: monitoring.refresh(); break;
+        case Section::Scenes:     scenes.refresh(); break;
+        case Section::Library:    library.refresh(); break;
+        case Section::Setup:      setup.refresh(); break;
+        case Section::Controls:   controls.refresh(); break;
+        case Section::Inspector:  inspector.refresh(); break;
+        case Section::Recorder:   break;
+    }
+}
+
+void UniversalSkin::showSectionMenu (Section s, juce::Component& target)
+{
+    sectionMenuAt = juce::jmax<juce::uint32> (1, juce::Time::getMillisecondCounter());
+    juce::PopupMenu menu;
+    menu.setLookAndFeel (&universal::lookAndFeelFor (theme));
+    menu.addSectionHeader (sectionTitle (s));
+    menu.addItem (1, isDetached (s) ? "Back into the main window" : "In a window of its own (another screen)");
+    if (isDetached (s))
+        menu.addItem (2, "Bring its window forward");
+    juce::Component::SafePointer<UniversalSkin> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&target).withStandardItemHeight (sizes::kTouch - 8), [safe, s] (int item)
+    {
+        if (safe == nullptr || item == 0)
+            return;
+        if (item == 1)
+            safe->setDetached (s, ! safe->isDetached (s));
+        else if (auto* w = safe->getSectionWindow (s))
+        {
+            w->setMinimised (false);
+            w->toFront (true);
+        }
+    });
 }
 
 } // namespace livedaw::ui

@@ -4501,3 +4501,111 @@ public:
 
 static UniversalUiTests universalUiTests;
 static SurfaceExtrasTests surfaceExtrasTests;
+
+//==============================================================================
+/** Section windows (issue #25): a view or the inspector in a window of its own, for another screen. */
+class SectionWindowTests final : public juce::UnitTest
+{
+public:
+    SectionWindowTests() : juce::UnitTest ("Universal Mixer section windows", "LiveDAW") {}
+
+    void runTest() override
+    {
+        using Skin = ui::UniversalSkin;
+        beginTest ("A view goes to a window of its own, its key brings it forward, and closing it puts it back");
+        if (! test::hasDisplay())
+        {
+            logMessage ("No display: skipping the windows");
+            expect (true);
+            return;
+        }
+        MixerEngine engine (0);
+        test::setChannels (engine, 8);
+        UiRig rig (engine);
+        juce::DocumentWindow main ("Sidecar test", juce::Colours::black, 0);
+        auto skin = std::make_unique<Skin> (rig.ctx);
+        main.setContentNonOwned (skin.get(), false);
+        main.setBounds (40, 40, 1600, 900);
+        main.setVisible (true);
+        test::pumpMessages (50);
+
+        skin->showView (Skin::View::Scenes);
+        expect (skin->getView() == Skin::View::Scenes);
+        skin->setDetached (Skin::Section::Scenes, true);
+        auto* window = skin->getSectionWindow (Skin::Section::Scenes);
+        expect (window != nullptr && skin->isDetached (Skin::Section::Scenes));
+        expect (skin->getView() == Skin::View::Mixer, "the main window shows the MIXER when its view leaves");
+        expect (skin->getScenes().getTopLevelComponent() == window, "the SCENES view is in its window");
+        test::pumpMessages (50);
+        expect (skin->getScenes().isShowing() && skin->getMixer().isShowing());
+        expect (skin->getScenes().getWidth() > 400 && skin->getScenes().getHeight() > 300);
+        expect (rig.settings.containsKey ("ui.universal.window.scenes"), "its window is remembered");
+
+        // Its key (and F5) brings the window forward; this window keeps the MIXER.
+        skin->showView (Skin::View::Scenes);
+        expect (skin->getView() == Skin::View::Mixer && skin->getMixer().isVisible());
+        // Another view is still shown here, as before.
+        skin->showView (Skin::View::Routing);
+        expect (skin->getRouting().isVisible() && skin->getScenes().isVisible());
+        skin->showView (Skin::View::Mixer);
+        expect (skin->getScenes().isVisible(), "a view in its own window stays shown");
+
+        beginTest ("The inspector in a window of its own leaves the strips the whole width");
+        rig.selected = engine.getChannels()[2].get();
+        skin->selectionChanged();
+        test::pumpMessages (20);
+        const int narrow = skin->getMixer().getWidth();
+        skin->setDetached (Skin::Section::Inspector, true);
+        test::pumpMessages (50);
+        expect (skin->getInspector().getTopLevelComponent() == skin->getSectionWindow (Skin::Section::Inspector));
+        expect (skin->getInspector().isShowing() && skin->getInspector().getStrip() == engine.getChannels()[2].get());
+        expect (skin->getMixer().getWidth() > narrow, "the strips take the inspector's place");
+        expect (! skin->getInspector().closeKey.isVisible(), "it closes with its window");
+        // Another strip selected: the window follows.
+        rig.selected = engine.getChannels()[5].get();
+        skin->selectionChanged();
+        expect (skin->getInspector().getStrip() == engine.getChannels()[5].get());
+        test::pumpMessages (50);
+        expect (keepPicture (skin->createComponentSnapshot (skin->getLocalBounds(), true, 1.0f), "universal-sections-main.png"));
+        for (auto [section, name] : { std::pair { Skin::Section::Scenes, "universal-sections-scenes.png" }, std::pair { Skin::Section::Inspector, "universal-sections-inspector.png" } })
+            if (auto* content = skin->getSectionWindow (section)->getContentComponent())
+                expect (keepPicture (content->createComponentSnapshot (content->getLocalBounds(), true, 1.0f), name));
+
+        beginTest ("The windows come back with the next skin (a theme change, a restart)");
+        main.clearContentComponent();
+        skin.reset();
+        expect (rig.settings.containsKey ("ui.universal.window.scenes") && rig.settings.containsKey ("ui.universal.window.inspector"));
+        skin = std::make_unique<Skin> (rig.ctx);
+        main.setContentNonOwned (skin.get(), false);
+        test::pumpMessages (50);
+        expect (skin->isDetached (Skin::Section::Scenes) && skin->isDetached (Skin::Section::Inspector));
+        expect (! skin->isDetached (Skin::Section::Routing));
+        expect (skin->getScenes().isShowing());
+
+        beginTest ("Shift+F5 and MENU > Windows put a view back, or in its window");
+        expect (skin->skinKeyPressed (juce::KeyPress (juce::KeyPress::F5Key, juce::ModifierKeys::shiftModifier, 0)));
+        expect (! skin->isDetached (Skin::Section::Scenes));
+        expect (skin->getScenes().getParentComponent() == skin.get(), "back in the main window");
+        expect (! skin->getScenes().isVisible(), "hidden until its key shows it");
+        expect (! rig.settings.containsKey ("ui.universal.window.scenes"), "forgotten once back");
+        skin->showView (Skin::View::Scenes);
+        expect (skin->getScenes().isVisible() && ! skin->getMixer().isVisible());
+        skin->runMenuCommand (Skin::kMenuWindow + (int) Skin::Section::Monitoring);
+        expect (skin->isDetached (Skin::Section::Monitoring));
+        skin->runMenuCommand (Skin::kMenuDockAll);
+        for (int s = 0; s < Skin::kNumSections; ++s)
+            expect (! skin->isDetached ((Skin::Section) s));
+        expect (skin->getInspector().closeKey.isVisible());
+
+        beginTest ("Closing a section's window puts it back");
+        skin->setDetached (Skin::Section::Fx, true);
+        skin->getSectionWindow (Skin::Section::Fx)->closeButtonPressed();
+        test::pumpMessages (50);
+        expect (! skin->isDetached (Skin::Section::Fx) && skin->getFxRack().getParentComponent() == skin.get());
+
+        main.clearContentComponent();
+        skin.reset();
+    }
+};
+
+static SectionWindowTests sectionWindowTests;
