@@ -1,5 +1,6 @@
 #include "engine/EventLog.h"
 #include "engine/AppPaths.h"
+#include "engine/AudioWatch.h"
 #include "engine/MixerEngine.h"
 #include "engine/PluginHost.h"
 #include "engine/PluginScanner.h"
@@ -47,6 +48,9 @@ public:
         deviceManager.removeChangeListener (this);
     }
 
+    /** A device that opened but hasn't sent any audio (its name), once per start. */
+    std::function<void (const juce::String&)> onSilentDevice;
+
 private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override
     {
@@ -74,14 +78,29 @@ private:
         const auto now = juce::Time::getMillisecondCounter();
         auto* device = deviceManager.getCurrentAudioDevice();
 
-        const bool stalled = device != nullptr && device->isPlaying() && engine.isDeviceRunning()
-                             && now - engine.getLastCallbackTime() > 2000;
+        const auto callbacks = audiowatch::check (device != nullptr && device->isPlaying() && engine.isDeviceRunning(),
+                                                  engine.hasCalledBackSinceStart(), now,
+                                                  engine.getDeviceStartTime(), engine.getLastCallbackTime());
 
-        if (stalled && ! restartPending)
+        if (callbacks == audiowatch::Callbacks::stalled && ! restartPending)
         {
             log.error ("Audio callbacks stalled for more than 2 s");
             restartPending = true;
         }
+
+        // A driver that opened but never sent a block isn't restarted: closing
+        // one like that can hang (issue #29), and opening it again rarely helps.
+        // It stays open, silent, until another device is chosen.
+        if (callbacks == audiowatch::Callbacks::silent && ! silentReported)
+        {
+            silentReported = true;
+            log.error ("The audio device opened but sends no audio: " + lastDescription
+                       + ". Choose another device or driver in the audio settings.");
+            if (onSilentDevice != nullptr)
+                onSilentDevice (device->getName());
+        }
+        if (callbacks != audiowatch::Callbacks::silent)
+            silentReported = false;
 
         const bool lost = device == nullptr && haveGoodSetup;
 
@@ -123,7 +142,7 @@ private:
     EventLog& log;
     juce::File marker;
     juce::AudioDeviceManager::AudioDeviceSetup lastGoodSetup;
-    bool haveGoodSetup = false, restartPending = false;
+    bool haveGoodSetup = false, restartPending = false, silentReported = false;
     int attempts = 0;
     juce::uint32 nextAttemptMs = 0;
     juce::String lastDescription;
@@ -308,6 +327,13 @@ public:
 
         deviceManager.addAudioCallback (engine.get());
         watchdog = std::make_unique<DeviceWatchdog> (deviceManager, *engine, log, getDriverMarker());
+        watchdog->onSilentDevice = [] (const juce::String& name)
+        {
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "No audio",
+                                                    "The audio device \"" + name + "\" opened but isn't sending any audio, "
+                                                    "so the console is silent.\n\nChoose another device or driver in the "
+                                                    "audio settings.");
+        };
 
         auto* main = new ui::MainComponent (deviceManager, *engine, *pluginHost, *show, log, settings);
         mainComponent = main;
@@ -489,7 +515,10 @@ private:
     }
 
     /** Device state selecting the first ASIO (or JACK) device, or nullptr to use
-        the OS default. Uses the same format as AudioDeviceManager::createStateXml(). */
+        the OS default. Drivers that come with the computer's own sound rather than
+        with an audio interface are passed over (audiowatch::isStandInDriver): with
+        only those, the OS default it is. Uses the same format as
+        AudioDeviceManager::createStateXml(). */
     std::unique_ptr<juce::XmlElement> makePreferredDeviceState()
     {
         for (const auto* typeName : { "ASIO", "JACK" })
@@ -501,15 +530,19 @@ private:
 
                 type->scanForDevices();
                 const auto devices = type->getDeviceNames (false);
-                if (devices.isEmpty())
+                const int index = audiowatch::firstStartDevice (devices);
+                for (int i = 0; i < (index < 0 ? devices.size() : index); ++i)
+                    log.info (juce::String (typeName) + " driver passed over on a first start (it comes with the "
+                              "computer's own sound or other software, not an audio interface): " + devices[i]);
+                if (index < 0)
                     continue;
 
-                log.info (juce::String (typeName) + " driver found: " + devices[0]);
+                log.info (juce::String (typeName) + " driver found: " + devices[index]);
                 auto xml = std::make_unique<juce::XmlElement> ("DEVICESETUP");
                 xml->setAttribute ("deviceType", typeName);
-                xml->setAttribute ("audioOutputDeviceName", devices[0]);
+                xml->setAttribute ("audioOutputDeviceName", devices[index]);
                 xml->setAttribute ("audioInputDeviceName",
-                                   type->hasSeparateInputsAndOutputs() ? type->getDeviceNames (true)[0] : devices[0]);
+                                   type->hasSeparateInputsAndOutputs() ? type->getDeviceNames (true)[0] : devices[index]);
                 return xml;
             }
         }

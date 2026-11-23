@@ -542,6 +542,8 @@ void MixerEngine::audioDeviceAboutToStart (juce::AudioIODevice* device)
     ld::ld_engine_set_io_latency (engine, juce::jmax (0, device->getInputLatencyInSamples())
                                               + juce::jmax (0, device->getOutputLatencyInSamples()));
 
+    deviceStartMs.store (juce::Time::getMillisecondCounter(), std::memory_order_relaxed);
+    calledBack.store (false, std::memory_order_relaxed);
     deviceRunning = true;
     garbage.setDeviceRunning (true);
 
@@ -637,6 +639,7 @@ void MixerEngine::processDeviceBlock (const float* const* ins, int numIns, float
     if (remoteControlled.load (std::memory_order_relaxed))
     {
         lastCallbackMs.store (juce::Time::getMillisecondCounter(), std::memory_order_relaxed);
+        calledBack.store (true, std::memory_order_relaxed);
         for (int o = 0; o < numOuts; ++o)
             if (outs[o] != nullptr)
                 std::fill_n (outs[o], numSamples, 0.0f);
@@ -672,6 +675,7 @@ void MixerEngine::processBlock (const float* const* ins, int numIns,
                                 float* const* outs, int numOuts, int numSamples) noexcept
 {
     lastCallbackMs.store (juce::Time::getMillisecondCounter(), std::memory_order_relaxed);
+    calledBack.store (true, std::memory_order_relaxed);
     ld::ld_engine_process (engine, ins, numIns, outs, numOuts, numSamples);
 }
 

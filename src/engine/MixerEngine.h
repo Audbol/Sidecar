@@ -554,6 +554,11 @@ public:
     /** Millisecond counter (juce::Time::getMillisecondCounter) of the last audio callback. */
     juce::uint32 getLastCallbackTime() const noexcept { return lastCallbackMs.load (std::memory_order_relaxed); }
     bool isDeviceRunning() const noexcept { return deviceRunning.load(); }
+    /** When the device last started (the millisecond counter), and whether it has
+        sent a block since: a driver that opens but never starts shows as one that
+        hasn't (see audiowatch::check). */
+    juce::uint32 getDeviceStartTime() const noexcept { return deviceStartMs.load (std::memory_order_relaxed); }
+    bool hasCalledBackSinceStart() const noexcept { return calledBack.load (std::memory_order_relaxed); }
 
     /** Sum of the NaN/inf faults caught on all strips and the number of auto-bypassed FX slots. */
     int getTotalDspFaults() const;
@@ -661,6 +666,8 @@ private:
     int patchCapacity = 0;
     void preparePatch (int maxBlock);
     std::atomic<juce::uint32> lastCallbackMs { 0 };
+    std::atomic<juce::uint32> deviceStartMs { 0 };
+    std::atomic<bool> calledBack { false };
     /** Linux: what the first block did to its thread's priority (0 not yet, 1 was already
         realtime, 2 raised to realtime, 3 refused: no realtime rights). */
     std::atomic<int> callbackPriority { 0 };
