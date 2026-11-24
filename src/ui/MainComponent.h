@@ -59,6 +59,15 @@ public:
     /** The plug-in host's size: a list of 16, 32 and 64 channels, then `then` gets the one chosen. */
     void choosePluginHostSize (std::function<void (int)> then);
 
+    /** Where `kind`'s setup is kept while Sidecar runs another console (issue #25). */
+    static juce::File keptConsoleFile (InterfaceKind kind);
+    /** The console the engine is now (the Universal Mixer's for its own profile). */
+    InterfaceKind runningConsole() const;
+    /** Keeps the running console's setup, for when it's picked again. */
+    void keepConsole();
+    /** Keeps the running console and brings back `kind`'s kept setup, its surface shown. */
+    void pickUpConsole (InterfaceKind kind, bool save);
+
     /** Full screen (F11): the window covers the screen without its title bar
         (kiosk mode). Works together with the screen-only mode (F10). */
     void setFullScreen (bool);
@@ -68,6 +77,11 @@ public:
 
 private:
     class SoloWatcher;
+
+    /** setInterface skips offering a kept console (A FRESH one was chosen). */
+    bool makingFreshConsole = false;
+    /** keepConsole does nothing (nothing is running that should be kept). */
+    bool consoleKeptAlready = false;
 
     void selectStrip (Strip*);
     Strip* getSelectedStrip() const;

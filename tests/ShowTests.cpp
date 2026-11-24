@@ -793,6 +793,31 @@ public:
             expectEquals (engine.getDca (0).faderDb.load(), -8.0f);
         }
 
+        beginTest ("A kept console's file brings that console back over another one (issue #25)");
+        {
+            MixerEngine engine (0);
+            PluginHost host (nullptr);
+            Show show (engine, host);
+            engine.configureProfile (ld::kProfileX32);
+            engine.getChannels()[0]->params.faderDb = -7.0f;
+            show.addScene ("X32 scene");
+            const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                                  .getChildFile ("LiveDAWKeptConsoleTest").getChildFile (juce::String ("X32") + Show::fileExtension);
+            file.getParentDirectory().createDirectory();
+            expect (show.saveToFile (file).wasOk());
+
+            // Another console runs meanwhile.
+            engine.configureProfile (ld::kProfileDm2000);
+            show.clear (engine.getConfiguredCounts().channels);
+            expect (engine.getProfile() == ld::kProfileDm2000);
+
+            expect (show.loadFromFile (file, false).wasOk());
+            expect (engine.getProfile() == ld::kProfileX32);
+            expectEquals (engine.getChannels()[0]->params.faderDb.load(), -7.0f);
+            expectEquals (show.getNumScenes(), 1);
+            file.getParentDirectory().deleteRecursively();
+        }
+
         beginTest ("The WING's LIBRARY: snap files without a show, a show of links, CREATE / OPEN / CLOSE leave the console (issue #31)");
         {
             MixerEngine engine (0);

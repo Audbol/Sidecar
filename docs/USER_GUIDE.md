@@ -1200,6 +1200,16 @@ surface addresses the WING's ranges: a console with other aux, main, matrix, DCA
 mute group counts opens in the Universal Mixer, and choosing the WING surface offers to
 make it a WING first.
 
+### Each console keeps its own setup
+
+Sidecar runs one console at a time, but it doesn't forget the others. Whenever it turns the
+console into another one (choosing another console's surface on SETUP, or another mixer in the
+start-up window), it keeps the running console's whole setup first: channels, routing, FX,
+scenes and the show file it came from. Choosing that console again later offers
+**PICK UP THE ... WHERE YOU LEFT IT** or **A FRESH ...**. So a WING set up for a theatre show
+and a PRO2 set up for a band can live side by side. The kept setups are in the `consoles`
+folder of Sidecar's data folder, one file per console.
+
 ## The X32 surface (preview)
 
 Sidecar also emulates a Behringer X32: an X32 console has the X32's 32 channels, 8 aux

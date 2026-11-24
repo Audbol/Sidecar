@@ -484,14 +484,30 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
         refuseWhileRemote ("SURFACE");
         return;
     }
+    // Another console with a kept setup: pick it up where it was left, or make a fresh one (issue #25).
+    const bool otherConsole = kind != InterfaceKind::Universal && kind != runningConsole();
+    if (skin != nullptr && otherConsole && ! makingFreshConsole && keptConsoleFile (kind).existsAsFile())
+    {
+        const auto name = mixerChooser::label (kind);
+        popups::chooseFrom (*this, { "PICK UP THE " + name.toUpperCase() + " WHERE YOU LEFT IT", "A FRESH " + name.toUpperCase() }, 0,
+                            [this, kind, save] (int row)
+                            {
+                                if (row == 0)
+                                    return pickUpConsole (kind, save);
+                                const juce::ScopedValueSetter<bool> fresh (makingFreshConsole, true);
+                                setInterface (kind, save);
+                            });
+        return;
+    }
     if (kind == InterfaceKind::Wing && skin != nullptr && ! isWingConsole())
     {
         // The WING surface addresses the WING's buses, mains and matrices: offer
         // to make this a fresh WING console (scenes stay; the console is cleared).
         popups::confirm (skin->popupHost(), "WING SURFACE",
-                         "This console isn't a WING. The WING surface shows a WING: clear the console and make it a fresh 40 channel WING?", "MAKE IT A WING",
+                         "This console isn't a WING. The WING surface shows a WING: clear the console and make it a fresh 40 channel WING? This console's setup is kept for when you pick it again.", "MAKE IT A WING",
                          [this, save]
                          {
+                             keepConsole();
                              closeAllPluginWindows();
                              engine.configure (nullptr);
                              setInterface (InterfaceKind::Wing, save);
@@ -505,10 +521,11 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
         // Likewise the X32 surface: an X32's 32 channels, 16 buses, 6 matrices.
         popups::confirm (skin->popupHost(), "X32 SURFACE",
                          "This console isn't an X32. The X32 surface shows an X32: clear the console and make it a fresh X32 (32 channels, 8 aux, "
-                         "8 FX returns, 16 buses, 6 matrices)?",
+                         "8 FX returns, 16 buses, 6 matrices)? This console's setup is kept for when you pick it again.",
                          "MAKE IT AN X32",
                          [this, save]
                          {
+                             keepConsole();
                              closeAllPluginWindows();
                              engine.configureProfile (ld::kProfileX32);
                              setInterface (InterfaceKind::X32, save);
@@ -522,10 +539,11 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
         // Likewise the ProMix surface: a ProMix 01's 16 channels, 4 sends, 2 effects.
         popups::confirm (skin->popupHost(), "PROMIX SURFACE",
                          "This console isn't a ProMix 01. The ProMix surface shows a ProMix 01: clear the console and make it a fresh "
-                         "ProMix 01 (16 channels, ST IN, two effects and their returns, SEND1-4, ST OUT)?",
+                         "ProMix 01 (16 channels, ST IN, two effects and their returns, SEND1-4, ST OUT)? This console's setup is kept for when you pick it again.",
                          "MAKE IT A PROMIX 01",
                          [this, save]
                          {
+                             keepConsole();
                              closeAllPluginWindows();
                              engine.configureProfile (ld::kProfileProMix01);
                              setInterface (InterfaceKind::ProMix, save);
@@ -539,10 +557,11 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
         // Likewise the 02R surface: an 02R's 24 inputs, 16 tape returns, 8 buses, 8 aux.
         popups::confirm (skin->popupHost(), "02R SURFACE",
                          "This console isn't an 02R. The 02R surface shows an 02R: clear the console and make it a fresh "
-                         "02R (MIC/LINE 1-16, LINE 17-24, TAPE 1-16, two effects and their returns, BUS 1-8, AUX 1-8, STEREO)?",
+                         "02R (MIC/LINE 1-16, LINE 17-24, TAPE 1-16, two effects and their returns, BUS 1-8, AUX 1-8, STEREO)? This console's setup is kept for when you pick it again.",
                          "MAKE IT AN 02R",
                          [this, save]
                          {
+                             keepConsole();
                              closeAllPluginWindows();
                              engine.configureProfile (ld::kProfileYamaha02R);
                              setInterface (InterfaceKind::Yamaha02R, save);
@@ -556,10 +575,11 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
         // Likewise an SQ-5: its 48 inputs, 12 mixes and 4 FX sends.
         popups::confirm (skin->popupHost(), "SQ-5",
                          "This console isn't an SQ-5. Clear the console and make it a fresh SQ-5 (48 inputs, 12 mixes, "
-                         "4 FX sends, 8 FX and their returns, LR, 3 matrices, 8 DCAs, 8 mute groups)?",
+                         "4 FX sends, 8 FX and their returns, LR, 3 matrices, 8 DCAs, 8 mute groups)? This console's setup is kept for when you pick it again.",
                          "MAKE IT AN SQ-5",
                          [this, save]
                          {
+                             keepConsole();
                              closeAllPluginWindows();
                              engine.configureProfile (ld::kProfileSq5);
                              setInterface (InterfaceKind::Sq5, save);
@@ -573,10 +593,11 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
         // Likewise a 01V: its 24 inputs, 4 auxes, 4 buses and 2 effects.
         popups::confirm (skin->popupHost(), "01V",
                          "This console isn't a 01V. Clear the console and make it a fresh 01V (24 inputs on 22 channels, "
-                         "4 auxes, 4 buses, 2 effect sends and returns, STEREO)?",
+                         "4 auxes, 4 buses, 2 effect sends and returns, STEREO)? This console's setup is kept for when you pick it again.",
                          "MAKE IT A 01V",
                          [this, save]
                          {
+                             keepConsole();
                              closeAllPluginWindows();
                              engine.configureProfile (ld::kProfileYamaha01V);
                              setInterface (InterfaceKind::Yamaha01V, save);
@@ -590,10 +611,11 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
         // Likewise a dLive, as its FoH template lays out its mixes.
         popups::confirm (skin->popupHost(), "DLIVE",
                          "This console isn't a dLive. Clear the console and make it a fresh dLive (128 inputs on 124 channels, "
-                         "8 groups, 16 auxes, 8 FX sends, 16 FX, LR, 8 matrices, 24 DCAs)?",
+                         "8 groups, 16 auxes, 8 FX sends, 16 FX, LR, 8 matrices, 24 DCAs)? This console's setup is kept for when you pick it again.",
                          "MAKE IT A DLIVE",
                          [this, save]
                          {
+                             keepConsole();
                              closeAllPluginWindows();
                              engine.configureProfile (ld::kProfileDLive);
                              setInterface (InterfaceKind::DLive, save);
@@ -606,10 +628,11 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
     {
         popups::confirm (skin->popupHost(), "DM2000",
                          "This console isn't a DM2000. Clear the console and make it a fresh DM2000 (96 channels, 8 buses, 12 auxes, "
-                         "4 stereo matrices, stereo, 8 effects, 12 fader groups)?",
+                         "4 stereo matrices, stereo, 8 effects, 12 fader groups)? This console's setup is kept for when you pick it again.",
                          "MAKE IT A DM2000",
                          [this, save]
                          {
+                             keepConsole();
                              closeAllPluginWindows();
                              engine.configureProfile (ld::kProfileDm2000);
                              setInterface (InterfaceKind::Dm2000, save);
@@ -622,10 +645,11 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
     {
         popups::confirm (skin->popupHost(), "XENYX Q1202USB",
                          "This console isn't a XENYX Q1202USB. Clear the console and make it a fresh one (4 mono and 4 stereo channels, "
-                         "the FX send, MAIN MIX)?",
+                         "the FX send, MAIN MIX)? This console's setup is kept for when you pick it again.",
                          "MAKE IT A Q1202USB",
                          [this, save]
                          {
+                             keepConsole();
                              closeAllPluginWindows();
                              engine.configureProfile (ld::kProfileXenyx1202);
                              setInterface (InterfaceKind::Xenyx1202, save);
@@ -638,12 +662,13 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
     {
         popups::confirm (skin->popupHost(), "PLUGIN HOST",
                          "This console isn't a PLUGIN HOST. Clear the console and make it a fresh one (each channel takes an interface "
-                         "input through its plug-ins to an interface output; 16, 32 or 64 channels)?",
+                         "input through its plug-ins to an interface output; 16, 32 or 64 channels)? This console's setup is kept for when you pick it again.",
                          "MAKE IT A PLUGIN HOST",
                          [this, save]
                          {
                              choosePluginHostSize ([this, save] (int channels)
                                                    {
+                                                       keepConsole();
                                                        closeAllPluginWindows();
                                                        engine.configurePluginHost (channels);
                                                        setInterface (InterfaceKind::PluginHost, save);
@@ -657,10 +682,11 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
     {
         popups::confirm (skin->popupHost(), "PRO2",
                          "This console isn't a PRO2. Clear the console and make it a fresh Midas PRO2 (56 channels, 8 aux returns, 16 aux sends, "
-                         "8 matrices, stereo and mono masters, 8 VCAs, 6 effects)?",
+                         "8 matrices, stereo and mono masters, 8 VCAs, 6 effects)? This console's setup is kept for when you pick it again.",
                          "MAKE IT A PRO2",
                          [this, save]
                          {
+                             keepConsole();
                              closeAllPluginWindows();
                              engine.configureProfile (ld::kProfileMidasPro2);
                              setInterface (InterfaceKind::Pro2, save);
@@ -1102,24 +1128,116 @@ void MainComponent::showMixerChooser (bool canContinue, std::function<void()> be
         return skin->createComponentSnapshot (skin->getLocalBounds(), true, (float) maxWidth / (float) skin->getWidth());
     };
     options.onContinue = close;
-    options.onMixer = [this, beforeFresh, close] (InterfaceKind kind)
+    options.onMixer = [this, beforeFresh, close, canContinue] (InterfaceKind kind)
     {
-        const auto fresh = [this, beforeFresh, close, kind] (int hostChannels)
+        const auto fresh = [this, beforeFresh, close, kind, canContinue] (int hostChannels)
         {
+            if (canContinue)
+                keepConsole(); // the console the autosave brought back
             if (beforeFresh)
                 beforeFresh();
             startFresh (kind, hostChannels);
             close();
         };
-        if (kind == InterfaceKind::PluginHost)
-            choosePluginHostSize (fresh); // its size first
-        else
-            fresh (16);
+        const auto freshOne = [this, kind, fresh]
+        {
+            if (kind == InterfaceKind::PluginHost)
+                choosePluginHostSize (fresh); // its size first
+            else
+                fresh (16);
+        };
+        // A console used before: pick it up where it was left (issue #25).
+        if (keptConsoleFile (kind).existsAsFile() && ! (canContinue && kind == runningConsole()))
+        {
+            const auto name = mixerChooser::label (kind).toUpperCase();
+            popups::chooseFrom (*this, { "PICK UP THE " + name + " WHERE YOU LEFT IT", "A FRESH " + name }, 0,
+                                [this, kind, beforeFresh, close, freshOne, canContinue] (int row)
+                                {
+                                    if (row != 0)
+                                        return freshOne();
+                                    if (! canContinue)
+                                        consoleKeptAlready = true; // nothing was running to keep
+                                    if (beforeFresh)
+                                        beforeFresh();
+                                    pickUpConsole (kind, true);
+                                    consoleKeptAlready = false;
+                                    close();
+                                });
+            return;
+        }
+        freshOne();
     };
     mixerChooserWindow = mixerChooser::create (std::move (options));
     addChildComponent (*mixerChooserWindow);
     mixerChooserWindow->setBounds (getLocalBounds());
     mixerChooserWindow->setVisible (true);
+}
+
+juce::File MainComponent::keptConsoleFile (InterfaceKind kind)
+{
+    return paths::appData().getChildFile ("consoles")
+        .getChildFile (juce::File::createLegalFileName (mixerChooser::label (kind)) + Show::fileExtension);
+}
+
+InterfaceKind MainComponent::runningConsole() const
+{
+    switch (engine.getProfile())
+    {
+        case ld::kProfileWing:       return InterfaceKind::Wing;
+        case ld::kProfileX32:        return InterfaceKind::X32;
+        case ld::kProfileProMix01:   return InterfaceKind::ProMix;
+        case ld::kProfileYamaha02R:  return InterfaceKind::Yamaha02R;
+        case ld::kProfileSq5:        return InterfaceKind::Sq5;
+        case ld::kProfileYamaha01V:  return InterfaceKind::Yamaha01V;
+        case ld::kProfileDLive:      return InterfaceKind::DLive;
+        case ld::kProfileDm2000:     return InterfaceKind::Dm2000;
+        case ld::kProfileMidasPro2:  return InterfaceKind::Pro2;
+        case ld::kProfileXenyx1202:  return InterfaceKind::Xenyx1202;
+        case ld::kProfilePluginHost: return InterfaceKind::PluginHost;
+        default:                     return isWingConsole() ? InterfaceKind::Wing : InterfaceKind::Universal;
+    }
+}
+
+void MainComponent::keepConsole()
+{
+    if (consoleKeptAlready)
+        return;
+    const auto kind = runningConsole();
+    const auto file = keptConsoleFile (kind);
+    file.getParentDirectory().createDirectory();
+    if (const auto result = show.saveToFile (file); result.failed())
+    {
+        log.warning ("Could not keep the " + mixerChooser::label (kind) + "'s setup: " + result.getErrorMessage());
+        return;
+    }
+    settings.setValue ("keptShowFile." + file.getFileNameWithoutExtension(), showFile.getFullPathName());
+    log.info ("Kept the " + mixerChooser::label (kind) + "'s setup for when it's picked again");
+}
+
+void MainComponent::pickUpConsole (InterfaceKind kind, bool save)
+{
+    if (refuseWhileRemote ("CONSOLE"))
+        return;
+    const auto file = keptConsoleFile (kind);
+    keepConsole();
+    closeAllPluginWindows();
+    const auto result = show.loadFromFile (file, true);
+    if (result.failed() || runningConsole() != kind)
+    {
+        const auto why = result.failed() ? result.getErrorMessage() : juce::String ("it holds another console");
+        log.warning ("Could not pick up the " + mixerChooser::label (kind) + ": " + why);
+        refreshAll();
+        if (skin != nullptr)
+            popups::warn (skin->popupHost(), "CONSOLE", "Could not pick up the " + mixerChooser::label (kind) + ": " + why);
+        return;
+    }
+    const juce::File last (settings.getValue ("keptShowFile." + file.getFileNameWithoutExtension()));
+    showFile = last.existsAsFile() ? last : juce::File();
+    hasSelection = false;
+    setInterface (kind, save);
+    refreshAll();
+    updateTitle();
+    log.info ("Picked up the " + mixerChooser::label (kind) + " where it was left");
 }
 
 void MainComponent::choosePluginHostSize (std::function<void (int)> then)

@@ -5,6 +5,7 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+- Each console keeps its own setup (#25). When Sidecar turns the console into another one (a console's surface on SETUP, or another mixer in the start-up window), the running console's whole setup is kept, show file and scenes included. Picking that console again offers **PICK UP THE ... WHERE YOU LEFT IT** or **A FRESH ...**. Kept setups are in the `consoles` folder of Sidecar's data folder, one per console.
 - WING surface, LIBRARY: shows and snaps work as on a WING (#31).
   - Snaps are files. With INT or USB shown, the SNAP tab saves, updates, scopes and loads snap files (`.lsnap`) in that folder with no show at all: SAVE, SAVE +SCOPE, UPDATE, PARTIAL UPDATE, EDIT SCOPE, LOAD, PARTIAL LOAD and RESTORE. SAVE used to add a scene to the show, creating one if needed. On the SNIP tab, SAVE writes a snippet file there and LOAD loads the selected one.
   - A show is a list of scenes, not a console state. CREATE makes an empty show file in the folder shown, OPEN takes a show's scenes and recalls nothing, and CLOSE closes the show. None of them resets the console; CREATE and CLOSE used to clear it.
