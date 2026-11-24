@@ -2414,6 +2414,10 @@ extern "C"
     /** The MIDI keys' and knobs' values for their VALUE nodes (/$ctl/user/.../val): cc and
         notes each 16 channels of 128 (notes 127 on, 0 off); null: none. */
     void ld_wing_set_midi_values (LdWing*, const uint8_t* cc, const uint8_t* notes);
+    /** A MIDI key's or knob's value a client set, once: true with *index into the values
+        above (notes from 16 * 128, then channel * 128 + the CC or note number) and *value
+        (0-127), for the host's own values to follow. */
+    bool ld_wing_take_midi_value (LdWing*, int32_t* index, int32_t* value);
     /** Surface control (/$ctl/layer, /$ctl/user): applies the layer and custom control changes
         clients made to the show, then publishes its layers and custom controls with the upper
         custom control layer ccBank (0-15). Returns kWingSurface* flags; *requestedBank is the

@@ -351,6 +351,32 @@ public:
             expect (show.getCustomControlsXml().contains ("bu=\"11,0,17\""), show.getCustomControlsXml());
             expect (ask (sock, port, oscGet ("/$ctl/user/1/2/bu/other")).contains ("DAWSW"));
 
+            // A MIDI knob's VALUE a client sets stays, and the console's MIDI values follow
+            // it (wxfade's GO TO went back to the old value at once, issue #30).
+            std::array<juce::uint8, 16 * 128> ccValues {};
+            juce::Array<int> taken;
+            wing.setConsoleCallbacks ({}, {},
+                                      [&] (juce::uint8* cc, juce::uint8*) { std::copy (ccValues.begin(), ccValues.end(), cc); },
+                                      [&] (bool isNote, int channel, int number, int value)
+                                      {
+                                          taken.add (isNote ? -1 : channel * 1000 + number);
+                                          if (! isNote)
+                                              ccValues[(size_t) ((channel - 1) * 128 + number)] = (juce::uint8) value;
+                                      });
+            send (oscText ("/$ctl/user/1/3/enc/mode", "MIDICC"));
+            send (oscInt ("/$ctl/user/1/3/enc/ch", 2));
+            send (oscInt ("/$ctl/user/1/3/enc/cc", 20));
+            expect (ask (sock, port, oscGet ("/$ctl/user/1/3/enc/mode")).contains ("MIDICC"));
+            wing.syncSurface();
+            wing.pumpConsole();
+            send (oscInt ("/$ctl/user/1/3/enc/val", 77));
+            expect (ask (sock, port, oscGet ("/$ctl/user/1/3/enc/val")).contains ("77"), "it reads so at once");
+            wing.pumpConsole();
+            expect (taken == juce::Array<int> { 2020 }, "the console took it: CC 20 on channel 2");
+            expectEquals ((int) ccValues[128 + 20], 77);
+            expect (ask (sock, port, oscGet ("/$ctl/user/1/3/enc/val")).contains ("77"), "and it stays");
+            wing.setConsoleCallbacks ({}, {}, {});
+
             // Changes on the console reach clients.
             show.layers.addUserLayer ("Drums");
             wing.syncSurface();

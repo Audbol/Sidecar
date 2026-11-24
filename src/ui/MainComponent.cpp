@@ -261,6 +261,14 @@ MainComponent::MainComponent (juce::AudioDeviceManager& dm, MixerEngine& e, Plug
                                           {
                                               if (ctx.midi != nullptr)
                                                   ctx.midi->getExternalValues (cc, notes);
+                                          },
+                                          [this] (bool isNote, int channel, int number, int value)
+                                          {
+                                              if (ctx.midi == nullptr)
+                                                  return;
+                                              if (! isNote)
+                                                  ctx.midi->setExternalCc (channel, number, value);
+                                              ctx.midi->setExternalToggle (channel, number, isNote, value != 0);
                                           });
     // ... and SETUP's options that are WING parameters (metering, surface, solo, MIDI, DAW).
     engine.getWing().setHostSettings (&settings,

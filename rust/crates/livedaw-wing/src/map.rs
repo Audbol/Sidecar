@@ -227,6 +227,10 @@ pub struct WingState {
     /// The MIDI keys' and knobs' values the host published (see
     /// [`surface::MIDI_VALUES`]; empty: none).
     pub(crate) midi_values: Mutex<Vec<u8>>,
+    /// MIDI keys' and knobs' values clients set (an index into the MIDI
+    /// values, the value), for the host to take; they hold over the host's
+    /// values until it has. Locked after `midi_values`.
+    midi_requests: Mutex<VecDeque<(usize, u8)>>,
     /// The host's settings that are WING parameters (see [`crate::host`]).
     pub(crate) host: Mutex<crate::host::HostValues>,
     /// The console model and whether the full-size console is black (the
@@ -255,9 +259,37 @@ impl WingState {
         let mut m = self.midi_values.lock().unwrap_or_else(|e| e.into_inner());
         if values.len() != surface::MIDI_VALUES {
             m.clear();
-        } else if m.as_slice() != values {
-            *m = values.to_vec();
+            return;
         }
+        m.clear();
+        m.extend_from_slice(values);
+        // A client's value the host hasn't taken yet still holds.
+        for &(i, v) in self.midi_requests.lock().unwrap_or_else(|e| e.into_inner()).iter() {
+            m[i] = v;
+        }
+    }
+
+    /// A client sets a MIDI key's or knob's VALUE (`/$ctl/user/.../val`;
+    /// `index` into the MIDI values): it reads so at once, and the host
+    /// takes it ([`WingState::take_midi_value`]) so its own values follow
+    /// (issue #30: it went back to the host's).
+    pub(crate) fn set_client_midi_value(&self, index: usize, value: u8) {
+        if index >= surface::MIDI_VALUES {
+            return;
+        }
+        let mut m = self.midi_values.lock().unwrap_or_else(|e| e.into_inner());
+        let mut requests = self.midi_requests.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(v) = m.get_mut(index) {
+            *v = value;
+        }
+        requests.retain(|&(i, _)| i != index);
+        requests.push_back((index, value));
+    }
+
+    /// Host: a MIDI key's or knob's value a client set, once (the index into
+    /// the MIDI values: notes from 16 * 128, then channel * 128 + the number).
+    pub fn take_midi_value(&self) -> Option<(usize, u8)> {
+        self.midi_requests.lock().unwrap_or_else(|e| e.into_inner()).pop_front()
     }
 
     pub fn library(&self) -> Library {
@@ -2968,8 +3000,13 @@ impl<'a> Console<'a> {
             Node::Param { slot, index } => match (self.cc_param(slot), self.engine_param(slot, index)) {
                 (Some((l, c, cs)), _) => {
                     let mut sf = self.state.surface();
+                    let midi = if index == 3 { sf.cc_midi_index(l, c, cs) } else { None };
                     if !sf.attached {
                         false
+                    } else if let Some(i) = midi {
+                        // A MIDI key's or knob's VALUE: the value it now has.
+                        self.state.set_client_midi_value(i, cv.as_i32().unwrap_or(0).clamp(0, 127) as u8);
+                        true
                     } else if let Some(edit) = sf.set_cc_param(l, c, cs, index, &cv)? {
                         self.state.push_surface_edit(edit);
                         true
@@ -5250,6 +5287,30 @@ mod tests {
         assert_eq!(get("/$ctl/user/5/2/bd/val"), Value::Int(0), "the note off");
         assert_eq!(get("/$ctl/user/5/2/bd/ch"), Value::Int(3));
         assert_eq!(get("/$ctl/user/5/2/bd/note"), Value::Int(60));
+
+        // A client sets a VALUE (wxfade's GO TO, issue #30): it stays, the
+        // host's values not yet following, and the host takes it.
+        c.set(node(&c, "/$ctl/user/5/2/enc/val"), &Value::Int(3)).unwrap();
+        assert_eq!(get("/$ctl/user/5/2/enc/val"), Value::Int(3));
+        st.set_midi_values(&midi);
+        assert_eq!(get("/$ctl/user/5/2/enc/val"), Value::Int(3), "the host's 64 until it takes the 3");
+        c.set(node(&c, "/$ctl/user/5/2/bd/val"), &Value::Int(127)).unwrap();
+        assert_eq!(st.take_midi_value(), Some((7, 3)));
+        assert_eq!(st.take_midi_value(), Some((16 * 128 + 2 * 128 + 60, 127)));
+        assert_eq!(st.take_midi_value(), None);
+        midi[7] = 3;
+        midi[16 * 128 + 2 * 128 + 60] = 127;
+        st.set_midi_values(&midi);
+        assert_eq!(get("/$ctl/user/5/2/enc/val"), Value::Int(3));
+        midi[7] = 9; // then the knob turns
+        st.set_midi_values(&midi);
+        assert_eq!(get("/$ctl/user/5/2/enc/val"), Value::Int(9));
+        c.set(node(&c, "/$ctl/user/5/2/enc/val"), &Value::Int(1)).unwrap();
+        c.set(node(&c, "/$ctl/user/5/2/enc/val"), &Value::Int(0)).unwrap();
+        assert_eq!(st.take_midi_value(), Some((7, 0)), "the last of a client's values");
+        assert_eq!(st.take_midi_value(), None);
+        midi[7] = 0;
+        st.set_midi_values(&midi);
 
         // A client assigns: a new function starts at its first target.
         let f = |p: &str, v: Value| c.set(node(&c, p), &v);

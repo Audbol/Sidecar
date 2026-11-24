@@ -715,6 +715,14 @@ impl Surface {
         }
     }
 
+    /// Where the VALUE (position 3) of `slot` of control `c` of layer `l`
+    /// sits in the MIDI values, when it is a MIDI key or knob.
+    pub fn cc_midi_index(&self, l: u8, c: u8, slot: CcSlot) -> Option<usize> {
+        let control = self.controls.get(l as usize)?.get(c as usize)?;
+        let i = cc_slot_index(slot);
+        midi_index(control.modes[i], &control.functions[i])
+    }
+
     /// A client sets a custom control function node (`v` coerced): the
     /// function's new target or option. Ok(None): kept as a value only.
     pub fn set_cc_param(&mut self, l: u8, c: u8, slot: CcSlot, index: u8, v: &Value) -> Result<Option<SurfaceEdit>, SetError> {
@@ -737,9 +745,9 @@ impl Surface {
 /// (127 on, 0 off).
 pub const MIDI_VALUES: usize = 2 * 16 * 128;
 
-/// A MIDI key's or knob's value: its CC's or note's in `midi` (None: not a
-/// MIDI function, or no values published).
-fn midi_value(mode: &str, f: &CcFunction, midi: &[u8]) -> Option<Value> {
+/// Where a MIDI key's or knob's value sits in the MIDI values (None: not a
+/// MIDI function).
+fn midi_index(mode: &str, f: &CcFunction) -> Option<usize> {
     // A key's target is its type * 16 + the channel (0-15), a knob's the channel.
     let (note, channel) = match mode {
         "MIDICCT" | "MIDICCP" => (false, f.target % 16),
@@ -747,8 +755,13 @@ fn midi_value(mode: &str, f: &CcFunction, midi: &[u8]) -> Option<Value> {
         "MIDICC" => (false, f.target),
         _ => return None,
     };
-    let i = usize::from(note) * 16 * 128 + channel.clamp(0, 15) as usize * 128 + f.option.clamp(0, 127) as usize;
-    midi.get(i).map(|&v| Value::Int(i32::from(v)))
+    Some(usize::from(note) * 16 * 128 + channel.clamp(0, 15) as usize * 128 + f.option.clamp(0, 127) as usize)
+}
+
+/// A MIDI key's or knob's value: its CC's or note's in `midi` (None: not a
+/// MIDI function, or no values published).
+fn midi_value(mode: &str, f: &CcFunction, midi: &[u8]) -> Option<Value> {
+    midi.get(midi_index(mode, f)?).map(|&v| Value::Int(i32::from(v)))
 }
 
 /// The selected strip's WING number (`/$ctl/$stat/selidx`, 1-76; 1 when

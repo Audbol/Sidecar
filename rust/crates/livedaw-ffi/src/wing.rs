@@ -503,6 +503,23 @@ pub unsafe extern "C" fn ld_wing_set_midi_values(w: *mut LdWing, cc: *const u8, 
     guard((), || w.state.set_midi_values(&values));
 }
 
+/// A MIDI key's or knob's value a client set (`/$ctl/user/.../val`), once:
+/// true with `index` into the values `ld_wing_set_midi_values` takes (notes
+/// from 16 * 128, then channel * 128 + the CC or note number) and `value`
+/// (0-127), for the host's own values to follow.
+#[no_mangle]
+pub unsafe extern "C" fn ld_wing_take_midi_value(w: *mut LdWing, index: *mut i32, value: *mut i32) -> bool {
+    let Some(w) = wing(w) else { return false };
+    let Some((i, v)) = guard(None, || w.state.take_midi_value()) else { return false };
+    if let Some(out) = index.as_mut() {
+        *out = i as i32;
+    }
+    if let Some(out) = value.as_mut() {
+        *out = i32::from(v);
+    }
+    true
+}
+
 /// No host for the settings any more (they read Sidecar's defaults again).
 #[no_mangle]
 pub unsafe extern "C" fn ld_wing_clear_host_settings(w: *mut LdWing) {

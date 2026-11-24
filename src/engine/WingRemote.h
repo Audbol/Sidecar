@@ -199,9 +199,12 @@ public:
         strip (/$ctl/$stat/selidx; nullptr none), `onSelect` selects the strip
         a client chose there, and `midiValues` fills the values of the 16 x 128
         CCs and of the 16 x 128 notes (127 on, 0 off) that the MIDI keys' and
-        knobs' VALUE (/$ctl/user/.../val) shows. Empty functions detach. */
+        knobs' VALUE (/$ctl/user/.../val) shows; `setMidiValue` takes a value a
+        client set there (a CC or note number on channel 1-16, 0-127), so those
+        values follow it (issue #30). Empty functions detach. */
     void setConsoleCallbacks (std::function<Strip*()> selected, std::function<void (Strip&)> onSelect,
-                              std::function<void (juce::uint8* cc, juce::uint8* notes)> midiValues);
+                              std::function<void (juce::uint8* cc, juce::uint8* notes)> midiValues,
+                              std::function<void (bool isNote, int channel, int number, int value)> setMidiValue = {});
     /** Runs the selection and MIDI value exchange now (the timer does it). */
     void pumpConsole();
 
@@ -254,6 +257,7 @@ private:
     std::function<Strip*()> selectedStrip;
     std::function<void (Strip&)> onSelect;
     std::function<void (juce::uint8*, juce::uint8*)> midiValues;
+    std::function<void (bool, int, int, int)> setMidiValue;
 
     JUCE_DECLARE_NON_COPYABLE (WingRemote)
 };

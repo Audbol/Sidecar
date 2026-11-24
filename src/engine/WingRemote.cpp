@@ -503,11 +503,13 @@ void WingRemote::syncSurface()
 }
 
 void WingRemote::setConsoleCallbacks (std::function<Strip*()> selected, std::function<void (Strip&)> select,
-                                      std::function<void (juce::uint8*, juce::uint8*)> values)
+                                      std::function<void (juce::uint8*, juce::uint8*)> values,
+                                      std::function<void (bool, int, int, int)> setValue)
 {
     selectedStrip = std::move (selected);
     onSelect = std::move (select);
     midiValues = std::move (values);
+    setMidiValue = std::move (setValue);
     if (! selectedStrip)
         ld::ld_wing_set_selection (handle, { -1, 0 });
     if (! midiValues)
@@ -527,6 +529,11 @@ void WingRemote::pumpConsole()
         auto* strip = selectedStrip();
         ld::ld_wing_set_selection (handle, strip != nullptr ? state::StripRef::of (*strip).toC() : ld::StripRefC { -1, 0 });
     }
+    // A MIDI key's or knob's value a client set, before the values go out again.
+    int32_t index = 0, value = 0;
+    while (ld::ld_wing_take_midi_value (handle, &index, &value))
+        if (setMidiValue)
+            setMidiValue (index >= 16 * 128, (index % (16 * 128)) / 128 + 1, index % 128, value);
     if (midiValues)
     {
         std::array<juce::uint8, 16 * 128> cc {}, notes {};
