@@ -1734,6 +1734,33 @@ extern "C"
     /** STARTUP: a scene or snippet file loaded onto the console without joining the show. */
     bool ld_show_apply_library (Show*, const Engine*, const char* path, size_t len, ApplyResultC* out, LdString** message);
 
+    /** The WING's LIBRARY (issue #31): snaps are files on INT or USB, saved, updated and loaded
+        without a show, and a show's scenes can be links to them. False with *message on failure. */
+    /** SAVE / SAVE +SCOPE at INT or USB: the console as a scene file (scope null: a scene's default). */
+    bool ld_show_save_scene_file (Show*, const Engine*, const char* path, size_t pathLen, const char* name, size_t nameLen,
+                                  const ScopeC* scope, LdString** message);
+    /** UPDATE (partial null) or PARTIAL UPDATE of a scene file; scenes linked to it follow. */
+    bool ld_show_update_scene_file (Show*, const Engine*, const char* path, size_t pathLen, const ScopeC* partial, LdString** message);
+    /** A scene file's recall scope; returns the number of strips (0 with allStrips). */
+    int32_t ld_scene_file_get_scope (const char* path, size_t pathLen, ScopeC* out, StripRefC* strips, int32_t capacity);
+    /** EDIT SCOPE of a scene file; scenes linked to it follow. */
+    bool ld_show_set_scene_file_scope (Show*, const char* path, size_t pathLen, const ScopeC* scope, LdString** message);
+    /** LOAD (partial null, restore false), PARTIAL LOAD (ignoreSafes: NO GLOB) or RESTORE of a scene file. */
+    bool ld_show_recall_scene_file (Show*, const Engine*, const char* path, size_t pathLen, const ScopeC* partial, bool ignoreSafes,
+                                    bool restore, ApplyResultC* out, LdString** message);
+    /** SAVE on SNIP at INT or USB: the snippet (the recording within scope with `recorded`, else what
+        scope covers) as a snippet file. 1 saved, 0 nothing to save, -1 failed (with *message). */
+    int32_t ld_show_save_snippet_file (Show*, const Engine*, const char* path, size_t pathLen, const char* name, size_t nameLen,
+                                       const ScopeC* scope, bool recorded, LdString** message);
+    /** The scene file a scene links to (empty: none). */
+    LdString* ld_scene_file (Show*, int32_t index);
+    /** Links a scene to a scene file (empty: no link) and writes the scene there. */
+    bool ld_show_link_scene_file (Show*, int32_t index, const char* path, size_t pathLen, LdString** message);
+    /** CREATE / CLOSE: no scenes, named `name`; the console stays as it is. */
+    void ld_show_clear_scenes (Show*, const Engine*, const char* name, size_t nameLen);
+    /** OPEN: the name and scenes of a show file; the console stays and nothing is recalled. */
+    bool ld_show_load_scenes (Show*, const Engine*, const char* path, size_t pathLen, LdString** message);
+
     bool ld_show_is_fading (Show*);
     void ld_show_cancel_fade (Show*, const Engine*);
     bool ld_show_tick (Show*, const Engine*);

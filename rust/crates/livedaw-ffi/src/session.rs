@@ -537,8 +537,10 @@ pub unsafe extern "C" fn ld_scene_set_midi(s: *mut LdShow, scene: i32, utf8: *co
 
 #[no_mangle]
 pub unsafe extern "C" fn ld_scene_set_scope(s: *mut LdShow, scene: i32, scope: u32) {
-    if let Some(sc) = show(s).and_then(|s| s.show.scene_mut(scene)) {
+    let Some(s) = show(s) else { return };
+    if let Some(sc) = s.show.scene_mut(scene) {
         sc.scope = scope & livedaw_session::section::ALL;
+        let _ = s.show.write_linked(scene);
     }
 }
 
@@ -731,8 +733,10 @@ pub unsafe extern "C" fn ld_scene_get_scope(
 
 #[no_mangle]
 pub unsafe extern "C" fn ld_scene_set_recall_scope(s: *mut LdShow, scene: i32, scope: *const LdScope) {
-    if let (Some(sc), Some(scope)) = (show(s).and_then(|s| s.show.scene_mut(scene)), scope_arg(scope)) {
+    let (Some(s), Some(scope)) = (show(s), scope_arg(scope)) else { return };
+    if let Some(sc) = s.show.scene_mut(scene) {
         sc.set_recall_scope(&scope);
+        let _ = s.show.write_linked(scene);
     }
 }
 
@@ -1410,6 +1414,197 @@ pub unsafe extern "C" fn ld_show_apply_library(
             false
         }
     }
+}
+
+// ---- scene files and the scenes linked to them (the WING's LIBRARY, issue #31) ----------
+
+/// Ok, or false with `message` the error.
+unsafe fn file_result(r: Result<(), String>, message: *mut *mut LdString) -> bool {
+    match r {
+        Ok(()) => true,
+        Err(msg) => {
+            write_string(message, msg);
+            false
+        }
+    }
+}
+
+/// SAVE / SAVE +SCOPE at INT or USB: the console as a scene file named `name`
+/// at `path`, with `scope` (null: a scene's default). The show is not touched.
+#[no_mangle]
+pub unsafe extern "C" fn ld_show_save_scene_file(
+    s: *mut LdShow,
+    e: *const Engine,
+    path: *const u8,
+    path_len: usize,
+    name: *const u8,
+    name_len: usize,
+    scope: *const LdScope,
+    message: *mut *mut LdString,
+) -> bool {
+    let (Some(s), Some(e)) = (show(s), eng(e)) else { return false };
+    let path = PathBuf::from(str_arg(path, path_len).into_owned());
+    let name = str_arg(name, name_len).into_owned();
+    let scope = scope_arg(scope);
+    let r = guard(Err("internal error".into()), || s.show.save_scene_file(e, &mut s.bridge, &path, &name, scope.as_ref()));
+    file_result(r, message)
+}
+
+/// UPDATE (`partial` null) or PARTIAL UPDATE of the scene file at `path`; the
+/// show's scenes linked to it follow.
+#[no_mangle]
+pub unsafe extern "C" fn ld_show_update_scene_file(
+    s: *mut LdShow,
+    e: *const Engine,
+    path: *const u8,
+    path_len: usize,
+    partial: *const LdScope,
+    message: *mut *mut LdString,
+) -> bool {
+    let (Some(s), Some(e)) = (show(s), eng(e)) else { return false };
+    let path = PathBuf::from(str_arg(path, path_len).into_owned());
+    let partial = scope_arg(partial);
+    let r = guard(Err("internal error".into()), || s.show.update_scene_file(e, &mut s.bridge, &path, partial.as_ref()));
+    file_result(r, message)
+}
+
+/// The recall scope of the scene file at `path` (a scene's default if it can't
+/// be read); returns the number of strips (0 with all_strips).
+#[no_mangle]
+pub unsafe extern "C" fn ld_scene_file_get_scope(
+    path: *const u8,
+    path_len: usize,
+    out: *mut LdScope,
+    strips: *mut LdStripRef,
+    capacity: i32,
+) -> i32 {
+    let path = PathBuf::from(str_arg(path, path_len).into_owned());
+    let scope = guard(None, || library::read_scene_file(&path).ok().map(|sc| sc.recall_scope()))
+        .unwrap_or_else(|| Scene::default().recall_scope());
+    scope_out(&scope, out, strips, capacity)
+}
+
+/// EDIT SCOPE of the scene file at `path`; the show's scenes linked to it follow.
+#[no_mangle]
+pub unsafe extern "C" fn ld_show_set_scene_file_scope(
+    s: *mut LdShow,
+    path: *const u8,
+    path_len: usize,
+    scope: *const LdScope,
+    message: *mut *mut LdString,
+) -> bool {
+    let (Some(s), Some(scope)) = (show(s), scope_arg(scope)) else { return false };
+    let path = PathBuf::from(str_arg(path, path_len).into_owned());
+    file_result(guard(Err("internal error".into()), || s.show.set_scene_file_scope(&path, &scope)), message)
+}
+
+/// LOAD (`partial` null, `restore` false), PARTIAL LOAD (`ignore_safes`: NO
+/// GLOB) or RESTORE of the scene file at `path`; the show's scenes are not
+/// touched. False with `message` if the file can't be read.
+#[no_mangle]
+pub unsafe extern "C" fn ld_show_recall_scene_file(
+    s: *mut LdShow,
+    e: *const Engine,
+    path: *const u8,
+    path_len: usize,
+    partial: *const LdScope,
+    ignore_safes: bool,
+    restore: bool,
+    out: *mut LdApplyResult,
+    message: *mut *mut LdString,
+) -> bool {
+    let (Some(s), Some(e)) = (show(s), eng(e)) else { return false };
+    let path = PathBuf::from(str_arg(path, path_len).into_owned());
+    let partial = scope_arg(partial);
+    let r = guard(Err("internal error".into()), || {
+        s.show.recall_scene_file(e, &mut s.bridge, &path, partial.as_ref(), ignore_safes, restore)
+    });
+    match r {
+        Ok(result) => {
+            write_result(out, result);
+            true
+        }
+        Err(msg) => {
+            write_result(out, ApplyResult::default());
+            write_string(message, msg);
+            false
+        }
+    }
+}
+
+/// SAVE on SNIP at INT or USB: the snippet (REC / STOP's recording within
+/// `scope` with `recorded`, else what `scope` covers) as a snippet file at
+/// `path`. 1 saved, 0 nothing to save, -1 failed (with `message`).
+#[no_mangle]
+pub unsafe extern "C" fn ld_show_save_snippet_file(
+    s: *mut LdShow,
+    e: *const Engine,
+    path: *const u8,
+    path_len: usize,
+    name: *const u8,
+    name_len: usize,
+    scope: *const LdScope,
+    recorded: bool,
+    message: *mut *mut LdString,
+) -> i32 {
+    let (Some(s), Some(e)) = (show(s), eng(e)) else { return -1 };
+    let path = PathBuf::from(str_arg(path, path_len).into_owned());
+    let name = str_arg(name, name_len).into_owned();
+    let scope = scope_arg(scope);
+    match guard(Err("internal error".into()), || s.show.save_snippet_file(e, &mut s.bridge, &path, &name, scope.as_ref(), recorded)) {
+        Ok(saved) => i32::from(saved),
+        Err(msg) => {
+            write_string(message, msg);
+            -1
+        }
+    }
+}
+
+/// The scene file scene `index` links to (empty: none).
+#[no_mangle]
+pub unsafe extern "C" fn ld_scene_file(s: *mut LdShow, index: i32) -> *mut LdString {
+    let path = show(s).and_then(|s| s.show.scene(index)).and_then(|sc| sc.file.clone());
+    LdString::new(path.map(|p| p.to_string_lossy().into_owned()).unwrap_or_default())
+}
+
+/// Links scene `index` to the scene file `path` (empty: no link) and writes
+/// the scene there; false with `message` if it couldn't be written.
+#[no_mangle]
+pub unsafe extern "C" fn ld_show_link_scene_file(
+    s: *mut LdShow,
+    index: i32,
+    path: *const u8,
+    path_len: usize,
+    message: *mut *mut LdString,
+) -> bool {
+    let Some(s) = show(s) else { return false };
+    let path = str_arg(path, path_len).into_owned();
+    s.show.set_scene_file(index, (!path.is_empty()).then(|| PathBuf::from(path)));
+    file_result(guard(Err("internal error".into()), || s.show.write_linked(index)), message)
+}
+
+/// CREATE and CLOSE on the WING's LIBRARY: no scenes, named `name`; the console stays.
+#[no_mangle]
+pub unsafe extern "C" fn ld_show_clear_scenes(s: *mut LdShow, e: *const Engine, name: *const u8, name_len: usize) {
+    if let (Some(s), Some(e)) = (show(s), eng(e)) {
+        let name = str_arg(name, name_len).into_owned();
+        guard((), || s.show.clear_scenes(e, &name));
+    }
+}
+
+/// OPEN on the WING's LIBRARY: the name and scenes of the show file at `path`;
+/// the console stays and nothing is recalled. False with `message` on failure.
+#[no_mangle]
+pub unsafe extern "C" fn ld_show_load_scenes(
+    s: *mut LdShow,
+    e: *const Engine,
+    path: *const u8,
+    path_len: usize,
+    message: *mut *mut LdString,
+) -> bool {
+    let (Some(s), Some(e)) = (show(s), eng(e)) else { return false };
+    let path = PathBuf::from(str_arg(path, path_len).into_owned());
+    file_result(guard(Err("internal error".into()), || s.show.load_scenes_from_file(e, &path)), message)
 }
 
 // ---- layers ------------------------------------------------------------------------------

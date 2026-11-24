@@ -39,6 +39,7 @@
 use crate::console::{self, section, ApplyResult, FadeParam, FadeTarget, PluginBridge};
 use crate::custom::CustomControls;
 use crate::layers::LayerSet;
+use crate::library;
 use crate::legacy::{self, Converter};
 use crate::presets;
 use crate::refs::{refs_from_string, refs_to_string, StripRef};
@@ -255,6 +256,13 @@ pub struct Scene {
     /// The name of the file an item came from: shown with its file type once
     /// the scene is renamed (RENAME, manual 5.6 p. 53).
     pub origin: String,
+    /// The scene file (`.lsnap`) the scene is a link to: on the WING a show
+    /// lists files on INT or USB rather than holding them. The show keeps a
+    /// copy (used while the file is missing): it takes the file's console
+    /// state and scope when the show opens or the file is saved at INT / USB,
+    /// and UPDATE, PARTIAL UPDATE and EDIT SCOPE write them to the file too.
+    /// The name, tag, SKIP, LINK, MIDI, fade and snippets are the show's.
+    pub file: Option<PathBuf>,
 }
 
 impl Default for Scene {
@@ -278,6 +286,7 @@ impl Default for Scene {
             snippets: Vec::new(),
             item: None,
             origin: String::new(),
+            file: None,
         }
     }
 }
@@ -576,6 +585,7 @@ impl Show {
                 scene.state = Some(state);
             }
             self.current_scene = index;
+            let _ = self.write_linked(index);
         }
     }
 
@@ -594,6 +604,175 @@ impl Show {
         }
         self.partial_scope = scope.clone();
         self.current_scene = index;
+        let _ = self.write_linked(index);
+    }
+
+    // ---- scene files on their own, and scenes linked to them -----------------------------
+    //
+    // On the WING a snap is a file on INT or USB, saved, updated and loaded
+    // without any show; a show is a list of links to such files (manual 5.6).
+
+    /// Writes scene `index` to the file it links to, if it does. A file that
+    /// can't be written keeps what it had; the show's copy has the change.
+    pub fn write_linked(&self, index: i32) -> Result<(), String> {
+        match self.scene(index) {
+            Some(scene) if scene.item.is_none() => match &scene.file {
+                Some(path) => library::write_scene_file(path, scene),
+                None => Ok(()),
+            },
+            _ => Ok(()),
+        }
+    }
+
+    /// The scenes linked to `path` (all linked ones: None) take their
+    /// file's console state and scope. A file that's missing or not a scene
+    /// file leaves the copy the show has. Returns how many changed.
+    pub fn refresh_linked(&mut self, path: Option<&Path>) -> usize {
+        let mut changed = 0;
+        for scene in self.scenes.iter_mut().filter(|s| s.item.is_none()) {
+            let Some(file) = scene.file.clone() else { continue };
+            if path.is_some_and(|p| p != file.as_path()) {
+                continue;
+            }
+            let Ok(from) = library::read_scene_file(&file) else { continue };
+            scene.set_recall_scope(&from.recall_scope());
+            scene.state = from.state;
+            changed += 1;
+        }
+        changed
+    }
+
+    /// Links scene `index` to the scene file `path` (None: no link).
+    pub fn set_scene_file(&mut self, index: i32, path: Option<PathBuf>) {
+        if let Some(scene) = self.scene_mut(index).filter(|s| s.item.is_none()) {
+            scene.file = path;
+        }
+    }
+
+    /// SAVE / SAVE +SCOPE at INT or USB: the console as a scene file named
+    /// `name` at `path`, with `scope` (None: a scene's default). The show
+    /// is not touched.
+    pub fn save_scene_file(
+        &self,
+        engine: &Engine,
+        bridge: &mut dyn PluginBridge,
+        path: &Path,
+        name: &str,
+        scope: Option<&Scope>,
+    ) -> Result<(), String> {
+        let mut scene =
+            Scene { name: name.into(), state: Some(console::capture(engine, section::ALL, None, bridge)), ..Scene::default() };
+        if let Some(scope) = scope {
+            scene.set_recall_scope(scope);
+        }
+        library::write_scene_file(path, &scene)
+    }
+
+    /// UPDATE (`partial` None) or PARTIAL UPDATE of the scene file at `path`:
+    /// the console stored into it, the rest of the file kept. The show's
+    /// scenes linked to it follow.
+    pub fn update_scene_file(
+        &mut self,
+        engine: &Engine,
+        bridge: &mut dyn PluginBridge,
+        path: &Path,
+        partial: Option<&Scope>,
+    ) -> Result<(), String> {
+        let mut scene = library::read_scene_file(path)?;
+        match partial {
+            None => scene.state = Some(console::capture(engine, section::ALL, None, bridge)),
+            Some(scope) => {
+                let part = scope::capture_scoped(engine, scope, bridge);
+                match &mut scene.state {
+                    Some(state) => scope::merge_state(state, &part),
+                    None => scene.state = Some(part),
+                }
+                self.partial_scope = scope.clone();
+            }
+        }
+        library::write_scene_file(path, &scene)?;
+        self.refresh_linked(Some(path));
+        Ok(())
+    }
+
+    /// EDIT SCOPE of the scene file at `path`. The show's scenes linked to it follow.
+    pub fn set_scene_file_scope(&mut self, path: &Path, scope: &Scope) -> Result<(), String> {
+        let mut scene = library::read_scene_file(path)?;
+        scene.set_recall_scope(scope);
+        library::write_scene_file(path, &scene)?;
+        self.refresh_linked(Some(path));
+        Ok(())
+    }
+
+    /// LOAD (`partial` None: its scope and auto-fire snippets, the GLOBAL
+    /// safes respected), PARTIAL LOAD (`ignore_safes`: NO GLOB) or RESTORE
+    /// (`restore`: all of it, safes included) of the scene file at `path`,
+    /// as for a scene of the show; the show's scenes are not touched.
+    pub fn recall_scene_file(
+        &mut self,
+        engine: &Engine,
+        bridge: &mut dyn PluginBridge,
+        path: &Path,
+        partial: Option<&Scope>,
+        ignore_safes: bool,
+        restore: bool,
+    ) -> Result<ApplyResult, String> {
+        let scene = library::read_scene_file(path)?;
+        if !restore && partial.is_none() {
+            return Ok(self.apply_scene(engine, bridge, &scene));
+        }
+        let Some(state) = scene.state else { return Ok(ApplyResult::default()) };
+        self.cancel_fade(engine);
+        let safe = self.global_safe.clone();
+        Ok(match partial.filter(|_| !restore) {
+            Some(scope) => {
+                self.partial_scope = scope.clone();
+                scope::apply_scoped(engine, &state, scope, (!ignore_safes).then_some(&safe), !ignore_safes, None, bridge)
+            }
+            None => scope::apply_scoped(engine, &state, &Scope::console(section::ALL), None, false, None, bridge),
+        })
+    }
+
+    /// CREATE and CLOSE on the WING's LIBRARY: a show with no scenes, named
+    /// `name`; the console stays as it is (a WING show is a list of scenes,
+    /// not a console state).
+    pub fn clear_scenes(&mut self, engine: &Engine, name: &str) {
+        self.cancel_fade(engine);
+        self.scenes.clear();
+        self.recall_undo = None;
+        self.current_scene = -1;
+        self.name = name.into();
+    }
+
+    /// OPEN on the WING's LIBRARY: the name and scenes of the show file at
+    /// `path`, its linked scenes from their files; the console stays as it is
+    /// and nothing is recalled.
+    pub fn load_scenes_from_file(&mut self, engine: &Engine, path: &Path) -> Result<(), String> {
+        let mut xml = read_show(path).or_else(|_| read_show(&backup_path(path)))?;
+        if !xml.has_tag("LiveDAWShow") {
+            return Err("Not a Sidecar show file".into());
+        }
+        if xml.int_or("version", 0) > SHOW_VERSION {
+            return Err("This show was saved by a newer version of Sidecar".into());
+        }
+        if xml.child("Console").is_some_and(legacy::is_legacy) {
+            return Err("A show from an older version of Sidecar: open it with OPEN SHOW in the menu".into());
+        }
+        let states = take_scene_states(&mut xml);
+        let mut scenes = Vec::new();
+        if let Some(list) = xml.child("Scenes") {
+            let mut state_of = |e: &Element| e.child("State").cloned();
+            for sx in list.children_named("Scene") {
+                scenes.push(read_scene(sx, &mut state_of, &|s: &str| refs_from_string(s)));
+            }
+        }
+        for (scene, state) in scenes.iter_mut().zip(states) {
+            scene.state = state;
+        }
+        self.clear_scenes(engine, xml.str_or("name", "Untitled show"));
+        self.scenes = scenes;
+        self.refresh_linked(None);
+        Ok(())
     }
 
     pub fn remove_scene(&mut self, index: i32) {
@@ -987,8 +1166,24 @@ impl Show {
         recorded: bool,
         index: i32,
     ) -> i32 {
-        let sn = if recorded {
-            let Some(changes) = self.recorded_changes(scope).filter(|c| !c.is_empty()) else { return -1 };
+        match self.make_snippet(engine, bridge, name, scope, recorded) {
+            Some(sn) => self.add_item(SceneItem::Snippet(sn), name, index),
+            None => -1,
+        }
+    }
+
+    /// A snippet of what REC / STOP recorded within `scope` (`recorded`; the
+    /// recording is used up), else of what `scope` covers. None: nothing.
+    fn make_snippet(
+        &mut self,
+        engine: &Engine,
+        bridge: &mut dyn PluginBridge,
+        name: &str,
+        scope: Option<&Scope>,
+        recorded: bool,
+    ) -> Option<Snippet> {
+        if recorded {
+            let changes = self.recorded_changes(scope).filter(|c| !c.is_empty())?;
             let mut sn = Snippet {
                 name: name.into(),
                 state: Some(changes.capture(engine, bridge)),
@@ -997,12 +1192,26 @@ impl Show {
             };
             sn.set_scope(&changes.scope());
             self.recorded = None;
-            sn
+            Some(sn)
         } else {
-            let Some(scope) = scope else { return -1 };
-            Self::capture_snippet(engine, bridge, name, scope)
-        };
-        self.add_item(SceneItem::Snippet(sn), name, index)
+            Some(Self::capture_snippet(engine, bridge, name, scope?))
+        }
+    }
+
+    /// SAVE on SNIP at INT or USB (the WING's, issue #31): the snippet as a
+    /// snippet file at `path`, no show needed. Ok(false): nothing to save.
+    pub fn save_snippet_file(
+        &mut self,
+        engine: &Engine,
+        bridge: &mut dyn PluginBridge,
+        path: &Path,
+        name: &str,
+        scope: Option<&Scope>,
+        recorded: bool,
+    ) -> Result<bool, String> {
+        let Some(sn) = self.make_snippet(engine, bridge, name, scope, recorded) else { return Ok(false) };
+        library::write_snippet_file(path, &sn)?;
+        Ok(true)
     }
 
     /// UPDATE: captures the snippet's parameters again (each strip only the
@@ -1458,6 +1667,7 @@ impl Show {
                     for (scene, state) in self.scenes.iter_mut().zip(states) {
                         scene.state = state;
                     }
+                    self.refresh_linked(None);
                 }
                 result
             }
@@ -1500,6 +1710,9 @@ pub(crate) fn scene_to_xml(scene: &Scene) -> Element {
     }
     if let Some(item) = &scene.item {
         sx.add(item.to_xml(&scene.origin));
+    }
+    if let Some(file) = &scene.file {
+        sx.set("file", file.display());
     }
     let snippets = sx.add_new("Snippets");
     for sn in &scene.snippets {
@@ -1558,6 +1771,7 @@ pub(crate) fn read_scene(
         snippets: Vec::new(),
         item: None,
         origin: String::new(),
+        file: Some(sx.str_or("file", "")).filter(|f| !f.is_empty()).map(PathBuf::from),
     };
     if let Some(x) = sx.child("Item") {
         scene.item = SceneItem::read(x, state_of, refs_of);

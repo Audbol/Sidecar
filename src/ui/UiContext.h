@@ -172,6 +172,11 @@ struct UiContext
     std::function<juce::File()> getShowFile;
     /** The LIBRARY's file list: open a show file, save the show as a file. */
     std::function<void (const juce::File&)> openShowFile, saveShowTo;
+    /** The WING's LIBRARY (issue #31), where a show is a list of scenes, not a console state:
+        CREATE a show file with no scenes, OPEN a show file's scenes, CLOSE the show. Each
+        leaves the console as it is. */
+    std::function<void (const juce::File&)> createShow, openShowScenes;
+    std::function<void()> closeShow;
     /** A show file was renamed in the LIBRARY (the open show follows it). */
     std::function<void (const juce::File& from, const juce::File& to)> showFileRenamed;
 

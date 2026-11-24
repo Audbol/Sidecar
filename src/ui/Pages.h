@@ -442,6 +442,13 @@ private:
     void importFile (const juce::File&);
     /** The WING snapshot (.snap) selected at INT / USB, if any. */
     juce::File selectedWingSnapshot() const;
+    /** The snap file (Sidecar's .lsnap) selected at INT / USB, if any: the SNAP keys work on it
+        with no show needed, as on the WING (issue #31). */
+    juce::File selectedSnapFile() const;
+    /** The log line for a snap file saved or changed (`what` "Saved", "Updated" ...). */
+    void logFile (const juce::File&, const juce::String& what, const juce::Result&);
+    /** The log line for a snap file loaded (`how` "", "part of ", "all of "). */
+    void logFileRecall (const juce::File&, const juce::String& how, const state::ApplyResult&, const juce::String& error);
     /** ADD ITEM TO SHOW (and the status bar's ADD, manual 5.6 p. 52): the file
         selected at INT / USB goes into the show after the selected scene. */
     void addItemToShow();

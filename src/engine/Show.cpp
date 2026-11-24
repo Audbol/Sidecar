@@ -1148,6 +1148,144 @@ juce::uint32 Show::syncWingSurface (ld::LdWing* wing, int ccBank, int& requested
     return changes;
 }
 
+//==============================================================================
+namespace
+{
+    juce::Result fileResult (bool ok, ld::LdString* message)
+    {
+        const auto text = takeString (message);
+        return ok ? juce::Result::ok() : juce::Result::fail (text.isNotEmpty() ? text : juce::String ("failed"));
+    }
+} // namespace
+
+juce::Result Show::saveSceneFile (const juce::File& file, const juce::String& sceneName, const state::Scope* scope)
+{
+    const Utf8 p (file.getFullPathName()), n (sceneName);
+    const auto refs = scope != nullptr ? state::toC (scope->strips) : std::vector<ld::StripRefC> {};
+    const auto c = scope != nullptr ? scope->toC (refs) : ld::ScopeC {};
+    ld::LdString* message = nullptr;
+    const bool ok = ld::ld_show_save_scene_file (handle, engine.getHandle(), p.data, p.size, n.data, n.size,
+                                                 scope != nullptr ? &c : nullptr, &message);
+    return fileResult (ok, message);
+}
+
+juce::Result Show::updateSceneFile (const juce::File& file, const state::Scope* partial)
+{
+    const Utf8 p (file.getFullPathName());
+    const auto refs = partial != nullptr ? state::toC (partial->strips) : std::vector<ld::StripRefC> {};
+    const auto c = partial != nullptr ? partial->toC (refs) : ld::ScopeC {};
+    ld::LdString* message = nullptr;
+    const bool ok = ld::ld_show_update_scene_file (handle, engine.getHandle(), p.data, p.size, partial != nullptr ? &c : nullptr, &message);
+    if (ok)
+        changed(); // the scenes linked to it
+    return fileResult (ok, message);
+}
+
+state::Scope Show::getSceneFileScope (const juce::File& file)
+{
+    const Utf8 p (file.getFullPathName());
+    return readScope ([&] (ld::ScopeC* out, ld::StripRefC* strips, int32_t cap) { return ld::ld_scene_file_get_scope (p.data, p.size, out, strips, cap); });
+}
+
+juce::Result Show::setSceneFileScope (const juce::File& file, const state::Scope& scope)
+{
+    const Utf8 p (file.getFullPathName());
+    const auto refs = state::toC (scope.strips);
+    const auto c = scope.toC (refs);
+    ld::LdString* message = nullptr;
+    const bool ok = ld::ld_show_set_scene_file_scope (handle, p.data, p.size, &c, &message);
+    if (ok)
+        changed();
+    return fileResult (ok, message);
+}
+
+namespace
+{
+    state::ApplyResult recallFile (ld::Show* handle, MixerEngine& engine, const juce::File& file, const state::Scope* partial, bool noGlobal,
+                                   bool restore, juce::String& error, std::function<state::ApplyResult (ld::ApplyResultC&)> after)
+    {
+        const Utf8 p (file.getFullPathName());
+        const auto refs = partial != nullptr ? state::toC (partial->strips) : std::vector<ld::StripRefC> {};
+        const auto c = partial != nullptr ? partial->toC (refs) : ld::ScopeC {};
+        ld::ApplyResultC r {};
+        ld::LdString* message = nullptr;
+        const bool ok = ld::ld_show_recall_scene_file (handle, engine.getHandle(), p.data, p.size, partial != nullptr ? &c : nullptr,
+                                                       noGlobal, restore, &r, &message);
+        error = takeString (message);
+        auto result = after (r);
+        if (! ok && error.isEmpty())
+            error = "could not be loaded";
+        return result;
+    }
+} // namespace
+
+state::ApplyResult Show::recallSceneFile (const juce::File& file, juce::String& error)
+{
+    if (recallLocked.load())
+        return lockedResult();
+    return recallFile (handle, engine, file, nullptr, false, false, error, [this] (ld::ApplyResultC& r) { return afterRecall (r); });
+}
+
+state::ApplyResult Show::recallSceneFilePartial (const juce::File& file, const state::Scope& scope, bool noGlobal, juce::String& error)
+{
+    if (recallLocked.load())
+        return lockedResult();
+    return recallFile (handle, engine, file, &scope, noGlobal, false, error, [this] (ld::ApplyResultC& r) { return afterRecall (r); });
+}
+
+state::ApplyResult Show::restoreSceneFile (const juce::File& file, juce::String& error)
+{
+    if (recallLocked.load())
+        return lockedResult();
+    return recallFile (handle, engine, file, nullptr, true, true, error, [this] (ld::ApplyResultC& r) { return afterRecall (r); });
+}
+
+bool Show::saveSnippetFile (const juce::File& file, const juce::String& snippetName, const state::Scope* scope, bool recorded,
+                            juce::String& error)
+{
+    const Utf8 p (file.getFullPathName()), n (snippetName);
+    const auto refs = scope != nullptr ? state::toC (scope->strips) : std::vector<ld::StripRefC> {};
+    const auto c = scope != nullptr ? scope->toC (refs) : ld::ScopeC {};
+    ld::LdString* message = nullptr;
+    const int r = ld::ld_show_save_snippet_file (handle, engine.getHandle(), p.data, p.size, n.data, n.size, scope != nullptr ? &c : nullptr,
+                                                 recorded, &message);
+    error = takeString (message);
+    if (r < 0 && error.isEmpty())
+        error = "could not be saved";
+    return r > 0;
+}
+
+juce::File Show::getSceneFile (int index) const
+{
+    const auto path = takeString (ld::ld_scene_file (handle, index));
+    return path.isNotEmpty() ? juce::File (path) : juce::File();
+}
+
+juce::Result Show::linkSceneFile (int index, const juce::File& file)
+{
+    const Utf8 p (file != juce::File() ? file.getFullPathName() : juce::String());
+    ld::LdString* message = nullptr;
+    const bool ok = ld::ld_show_link_scene_file (handle, index, p.data, p.size, &message);
+    return fileResult (ok, message);
+}
+
+void Show::clearScenes (const juce::String& showName)
+{
+    const Utf8 n (showName);
+    ld::ld_show_clear_scenes (handle, engine.getHandle(), n.data, n.size);
+    changed();
+}
+
+juce::Result Show::loadScenesFromFile (const juce::File& file)
+{
+    const Utf8 p (file.getFullPathName());
+    ld::LdString* message = nullptr;
+    const bool ok = ld::ld_show_load_scenes (handle, engine.getHandle(), p.data, p.size, &message);
+    if (ok)
+        changed();
+    return fileResult (ok, message);
+}
+
 void Show::clear (int numChannels)
 {
     stopTimer();

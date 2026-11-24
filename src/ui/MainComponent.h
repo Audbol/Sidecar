@@ -107,6 +107,10 @@ private:
     void newShow();
     void openShow();
     void openShowFile (const juce::File&);
+    /** The WING's LIBRARY: CREATE, OPEN (the scenes only) and CLOSE, the console left as it is. */
+    void createShow (const juce::File&);
+    void openShowScenes (const juce::File&);
+    void closeShow();
     void saveShowTo (juce::File);
     void saveShow (bool saveAs);
     void updateTitle();

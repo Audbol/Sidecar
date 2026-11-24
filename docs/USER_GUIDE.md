@@ -1972,6 +1972,40 @@ the USB key on the screen to choose another folder).
   4-band EQ and compressor become the GATE, WING EQ and COMP models, and each strip's
   plugins move to FX slots on its inserts.
 
+### The WING surface's LIBRARY: snaps are files, a show is a list
+
+On the WING surface's LIBRARY, shows and snaps work as on a WING (manual 5.6):
+
+- **Snaps and snips without a show.** With INT or USB shown in the file list, the SNAP
+  tab's keys work on snap files (`.lsnap`) in that folder, and no show is needed:
+  - **SAVE** and **SAVE +SCOPE** write the console to a new file there (you name it).
+  - **UPDATE** and **PARTIAL UPDATE** store the console into the file selected.
+  - **EDIT SCOPE** changes what that file recalls.
+  - **LOAD**, **PARTIAL LOAD** (with NO GLOB) and **RESTORE** load it.
+
+  On the SNIP tab, **SAVE** writes the snippet (what REC / STOP recorded, or the REC
+  FOCUS) to a snippet file (`.lsnip`) there, and **LOAD** loads the one selected.
+- **A show is a list of scenes, not the console.** On the SHOW tab:
+  - **CREATE** makes a show file with no scenes in the folder shown at INT or USB.
+  - **OPEN** opens the show selected there (or chosen in a file dialog). It takes the
+    show's scenes and recalls nothing.
+  - **CLOSE** closes the show.
+
+  None of the three changes the console: no reset, no channels lost. The app's own
+  **New show** and **Open show** (the menus, the other surfaces) still start or load a
+  whole console.
+- **The show's scenes are links to snap files.**
+  - Once the show has a file, **SAVE** on the SNAP tab with SHOW shown saves the new scene
+    as a snap file of its own, in a folder named after the show beside the show file,
+    and adds a link to it.
+  - **ADD ITEM TO SHOW** with a snap file selected adds a link to that file.
+  - **UPDATE**, **PARTIAL UPDATE** and **EDIT SCOPE** on a linked scene also write to its
+    file.
+  - Saving that file at INT or USB updates the scene in the open show.
+  - Opening a show takes each linked scene from its file as the file is now.
+  - The show keeps a copy of each scene, used while a file is missing. The scene's name,
+    tag, SKIP, LINK, MIDI, fade and snippets belong to the show.
+
 ### Scene and snippet files, clips
 
 On the WING, LIBRARY saves single scenes and snippets to a USB stick and loads them

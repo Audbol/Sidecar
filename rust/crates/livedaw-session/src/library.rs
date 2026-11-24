@@ -193,6 +193,26 @@ pub fn read_file(file: &Element) -> Result<Result<Scene, Snippet>, String> {
     }
 }
 
+/// The scene of the scene file at `path`.
+pub fn read_scene_file(path: &Path) -> Result<Scene, String> {
+    match read_file(&load(path)?)? {
+        Ok(scene) => Ok(scene),
+        Err(_) => Err(format!("{} is a snippet file, not a scene file", path.display())),
+    }
+}
+
+/// Writes `snippet` as a snippet file at `path`.
+pub fn write_snippet_file(path: &Path, snippet: &Snippet) -> Result<(), String> {
+    save(path, &snippet_root(snippet))
+}
+
+/// Writes `scene` as a scene file at `path` (without a show's link to it).
+pub fn write_scene_file(path: &Path, scene: &Scene) -> Result<(), String> {
+    let mut scene = scene.clone();
+    scene.file = None;
+    save(path, &scene_root(&scene))
+}
+
 // ---- files -------------------------------------------------------------------------------
 
 pub fn save(path: &Path, file: &Element) -> Result<(), String> {

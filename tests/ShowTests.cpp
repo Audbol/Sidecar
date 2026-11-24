@@ -793,6 +793,82 @@ public:
             expectEquals (engine.getDca (0).faderDb.load(), -8.0f);
         }
 
+        beginTest ("The WING's LIBRARY: snap files without a show, a show of links, CREATE / OPEN / CLOSE leave the console (issue #31)");
+        {
+            MixerEngine engine (0);
+            PluginHost host (nullptr);
+            Show show (engine, host);
+            test::setChannels (engine, 2);
+            auto& a = *engine.getChannels()[0];
+            const auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("LiveDAWWingLibraryTest");
+            dir.deleteRecursively();
+            const auto snap = dir.getChildFile ("USB").getChildFile (juce::String ("Verse") + Show::sceneFileExtension);
+
+            // SAVE at USB: a file; the show gets nothing.
+            a.params.faderDb = -9.0f;
+            expect (show.saveSceneFile (snap, "Verse").wasOk());
+            expect (snap.existsAsFile());
+            expectEquals (show.getNumScenes(), 0);
+            // LOAD, UPDATE, EDIT SCOPE, PARTIAL LOAD and RESTORE of the file.
+            juce::String error;
+            a.params.faderDb = 0.0f;
+            show.recallSceneFile (snap, error);
+            expect (error.isEmpty(), error);
+            expectEquals (a.params.faderDb.load(), -9.0f);
+            a.params.faderDb = -4.0f;
+            expect (show.updateSceneFile (snap).wasOk());
+            expect (show.setSceneFileScope (snap, state::Scope::none()).wasOk());
+            expect (Show::getSceneFileScope (snap).sections == 0);
+            a.params.faderDb = 0.0f;
+            show.recallSceneFile (snap, error);
+            expectEquals (a.params.faderDb.load(), 0.0f, "nothing in its scope");
+            show.recallSceneFilePartial (snap, state::Scope::only (state::Fader, { state::StripRef::of (a) }), false, error);
+            expectEquals (a.params.faderDb.load(), -4.0f);
+            a.params.faderDb = 0.0f;
+            show.restoreSceneFile (snap, error);
+            expectEquals (a.params.faderDb.load(), -4.0f);
+            show.recallSceneFile (dir.getChildFile ("missing.lsnap"), error);
+            expect (error.isNotEmpty());
+
+            // SAVE on SNIP at USB: a snippet file of the REC FOCUS; LOAD of it.
+            const auto snip = dir.getChildFile ("USB").getChildFile (juce::String ("Lead") + Show::snippetFileExtension);
+            const auto focus = state::Scope::only (state::Fader, { state::StripRef::of (a) });
+            a.params.faderDb = -6.0f;
+            error = {};
+            expect (show.saveSnippetFile (snip, "Lead", &focus, false, error), error);
+            expect (snip.existsAsFile() && show.getNumScenes() == 0);
+            expect (Show::readLibraryFile (snip).kind == Show::LibraryFileInfo::Kind::Snippet);
+            a.params.faderDb = 0.0f;
+            show.applyLibraryFile (snip, error);
+            expectEquals (a.params.faderDb.load(), -6.0f);
+            expect (! show.saveSnippetFile (snip, "Lead", nullptr, true, error) && error.isEmpty(), "no recording: nothing to save");
+
+            // CREATE: no scenes, the console kept; a scene linked to the file; OPEN takes it back.
+            a.params.faderDb = -12.0f;
+            show.clearScenes ("CONCERT");
+            expectEquals (show.getName(), juce::String ("CONCERT"));
+            expectEquals (a.params.faderDb.load(), -12.0f);
+            expectEquals (engine.getChannels().size(), (size_t) 2);
+            const int index = show.addScene ("Intro");
+            const auto linked = dir.getChildFile ("CONCERT").getChildFile (juce::String ("Intro") + Show::sceneFileExtension);
+            expect (show.linkSceneFile (index, linked).wasOk());
+            expect (linked.existsAsFile() && show.getSceneFile (index) == linked);
+            const auto showFile = dir.getChildFile (juce::String ("CONCERT") + Show::fileExtension);
+            expect (show.saveToFile (showFile).wasOk());
+            a.params.faderDb = -2.0f;
+            expect (show.updateSceneFile (linked).wasOk()); // at INT: the show's scene follows
+            show.clearScenes ("Untitled show");             // CLOSE
+            expectEquals (show.getNumScenes(), 0);
+            a.params.faderDb = 3.0f;
+            expect (show.loadScenesFromFile (showFile).wasOk());
+            expectEquals (a.params.faderDb.load(), 3.0f, "OPEN recalls nothing");
+            expectEquals (show.getNumScenes(), 1);
+            expect (show.getSceneFile (0) == linked);
+            show.recallScene (0);
+            expectEquals (a.params.faderDb.load(), -2.0f, "the scene from its file");
+            dir.deleteRecursively();
+        }
+
         beginTest ("LIBRARY scene and snippet files");
         {
             MixerEngine engine (0);

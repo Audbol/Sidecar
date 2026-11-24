@@ -181,6 +181,9 @@ MainComponent::MainComponent (juce::AudioDeviceManager& dm, MixerEngine& e, Plug
     ctx.getShowFile = [this] { return showFile; };
     ctx.openShowFile = [this] (const juce::File& file) { openShowFile (file); };
     ctx.saveShowTo = [this] (const juce::File& file) { saveShowTo (file); };
+    ctx.createShow = [this] (const juce::File& file) { createShow (file); };
+    ctx.openShowScenes = [this] (const juce::File& file) { openShowScenes (file); };
+    ctx.closeShow = [this] { closeShow(); };
     ctx.showFileRenamed = [this] (const juce::File& from, const juce::File& to)
     {
         // The open show's file: SAVE writes the new one, and the show takes its name.
@@ -1343,6 +1346,41 @@ void MainComponent::openShowFile (const juce::File& file)
         log.warning (result.getErrorMessage());
         popups::warn (skin->popupHost(), "OPEN SHOW", result.getErrorMessage());
     }
+}
+
+void MainComponent::createShow (const juce::File& file)
+{
+    if (refuseWhileRemote ("CREATE"))
+        return;
+    show.clearScenes (file.getFileNameWithoutExtension());
+    saveShowTo (file);
+    log.info ("Created show " + file.getFileNameWithoutExtension() + " (the console is as it was)");
+}
+
+void MainComponent::openShowScenes (const juce::File& file)
+{
+    if (refuseWhileRemote ("OPEN SHOW"))
+        return;
+    const auto result = show.loadScenesFromFile (file);
+    if (result.failed())
+    {
+        log.warning (file.getFileName() + ": " + result.getErrorMessage());
+        popups::warn (skin->popupHost(), "OPEN SHOW", result.getErrorMessage());
+        return;
+    }
+    showFile = file;
+    updateTitle();
+    log.info ("Opened show " + file.getFileName() + " (" + juce::String (show.getNumScenes()) + " scenes; the console is as it was)");
+}
+
+void MainComponent::closeShow()
+{
+    if (refuseWhileRemote ("CLOSE"))
+        return;
+    show.clearScenes ("Untitled show");
+    showFile = juce::File();
+    updateTitle();
+    log.info ("Closed the show (the console is as it was)");
 }
 
 void MainComponent::saveShowTo (juce::File file)

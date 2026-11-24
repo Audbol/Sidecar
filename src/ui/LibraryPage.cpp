@@ -126,19 +126,40 @@ public:
     explicit ShowTab (LibraryPage& p) : page (p)
     {
         auto& context = page.ctx;
+        // As on the WING a show is a list of scenes (links to snap files), not a console state:
+        // OPEN, CREATE and CLOSE leave the console as it is (issue #31).
         // OPEN: the show selected at INT / USB, else a file dialog.
         makeKey (keys, *this, "OPEN", Icon::OpenOut)->onClick = [this]
         {
             auto& c = page.ctx;
             const auto file = page.list->getSelectedFile();
-            if (file.hasFileExtension (Show::fileExtension) && c.openShowFile)
-                page.confirmLoad ("the show \"" + file.getFileNameWithoutExtension() + "\"", [&c, file] { c.openShowFile (file); });
-            else if (c.openShow)
-                c.openShow();
+            if (file.hasFileExtension (Show::fileExtension) && c.openShowScenes)
+            {
+                c.openShowScenes (file);
+                return;
+            }
+            page.chooser = std::make_unique<juce::FileChooser> ("Open a show", page.list->getFolder(), juce::String ("*") + Show::fileExtension);
+            juce::Component::SafePointer<LibraryPage> safe (&page);
+            page.chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                       [safe] (const juce::FileChooser& fc)
+                                       {
+                                           if (safe != nullptr && fc.getResult() != juce::File() && safe->ctx.openShowScenes)
+                                               safe->ctx.openShowScenes (fc.getResult());
+                                       });
         };
-        makeKey (keys, *this, "CREATE", Icon::Edit)->onClick = [&context] { if (context.newShow) context.newShow(); };
+        // CREATE: a show with no scenes, in the folder shown at INT / USB (else INT).
+        makeKey (keys, *this, "CREATE", Icon::Edit)->onClick = [this]
+        {
+            const auto folder = page.list->getLocation() != ShowPanel::Location::Show ? page.list->getFolder() : ShowPanel::libraryFolder();
+            savePresetAs (page, "CREATE SHOW", "New show", folder, Show::fileExtension, [this] (const juce::File& file, const juce::String&)
+            {
+                if (page.ctx.createShow)
+                    page.ctx.createShow (file);
+                page.list->refresh();
+            });
+        };
         makeKey (keys, *this, "SAVE", Icon::SaveTray)->onClick = [&context] { if (context.saveShow) context.saveShow (false); };
-        makeKey (keys, *this, "CLOSE", Icon::CloseIn)->onClick = [&context] { if (context.newShow) context.newShow(); };
+        makeKey (keys, *this, "CLOSE", Icon::CloseIn)->onClick = [&context] { if (context.closeShow) context.closeShow(); };
         // SAVE AS: into the folder shown at INT / USB, else a file dialog.
         makeKey (keys, *this, "SAVE AS", Icon::SaveTray)->onClick = [this]
         {
@@ -321,10 +342,19 @@ public:
         importKey->onClick = [this] { page.importSelected (false); };
         exportKey->onClick = [this] { page.exportSelected (false); };
 
-        save->onClick = [this] { addScene (false); };
-        saveScope->onClick = [this] { addScene (true); };
+        // At INT / USB the keys work on snap files, with no show needed (issue #31); at SHOW on the
+        // show's scenes, which are links to snap files once the show has been saved.
+        save->onClick = [this] { if (atFolder()) saveFile (false); else addScene (false); };
+        saveScope->onClick = [this] { if (atFolder()) saveFile (true); else addScene (true); };
         update->onClick = [this]
         {
+            if (atFolder())
+            {
+                if (const auto file = page.selectedSnapFile(); file != juce::File())
+                    popups::confirm (page, "UPDATE", "Overwrite \"" + file.getFileNameWithoutExtension() + "\" with the current console?", "UPDATE",
+                                     [this, file] { page.logFile (file, "Updated", page.ctx.show.updateSceneFile (file)); });
+                return;
+            }
             const int index = page.selectedScene();
             if (const auto scene = page.ctx.show.getScene (index))
                 popups::confirm (page, "UPDATE", "Overwrite \"" + scene->name + "\" with the current console?", "UPDATE", [this, index]
@@ -336,6 +366,13 @@ public:
         // PARTIAL UPDATE: a scope window; only its selection is stored (the scope is kept for next time).
         partialUpdate->onClick = [this]
         {
+            if (const auto file = page.selectedSnapFile(); file != juce::File())
+            {
+                page.openScope ((int) ScopeWindow::Mode::PartialUpdate, "PARTIAL UPDATE: " + file.getFileNameWithoutExtension().toUpperCase(),
+                                page.ctx.show.getPartialScope(), [this, file] (const state::Scope& chosen, bool)
+                                { page.logFile (file, "Updated part of", page.ctx.show.updateSceneFile (file, &chosen)); });
+                return;
+            }
             const int index = page.selectedScene();
             const auto scene = page.ctx.show.getScene (index);
             if (! scene)
@@ -347,18 +384,43 @@ public:
                                 page.ctx.log.info ("Updated part of scene " + juce::String (index + 1));
                             });
         };
-        editScope->onClick = [this] { openScope (page.selectedScene()); };
-        // LOAD: the selected scene, or (as on the WING) a WING snapshot selected at INT / USB.
+        editScope->onClick = [this]
+        {
+            if (const auto file = page.selectedSnapFile(); file != juce::File())
+                page.openScope ((int) ScopeWindow::Mode::SceneScope, "EDIT SCOPE: " + file.getFileNameWithoutExtension().toUpperCase(),
+                                Show::getSceneFileScope (file), [this, file] (const state::Scope& chosen, bool)
+                                { page.logFile (file, "Changed the scope of", page.ctx.show.setSceneFileScope (file, chosen)); });
+            else if (! atFolder())
+                openScope (page.selectedScene());
+        };
+        // LOAD: the selected scene, or a snap file (Sidecar's, or a WING snapshot) selected at INT / USB.
         loadKey->onClick = [this]
         {
             if (const auto snap = page.selectedWingSnapshot(); snap != juce::File())
                 page.confirmLoad ("the WING snapshot \"" + snap.getFileNameWithoutExtension() + "\"", [this, snap] { page.applyWingFile (snap); });
-            else if (page.selectedScene() >= 0)
+            else if (const auto file = page.selectedSnapFile(); file != juce::File())
+                page.confirmLoad ("\"" + file.getFileNameWithoutExtension() + "\"", [this, file]
+                {
+                    juce::String error;
+                    page.logFileRecall (file, "", page.ctx.show.recallSceneFile (file, error), error);
+                });
+            else if (! atFolder() && page.selectedScene() >= 0)
                 page.load ({ page.selectedScene(), -1 });
         };
         // PARTIAL LOAD: a scope window; NO GLOB ignores the GLOBAL safes for this load.
         partialLoad->onClick = [this]
         {
+            if (const auto file = page.selectedSnapFile(); file != juce::File())
+            {
+                page.openScope ((int) ScopeWindow::Mode::PartialLoad, "PARTIAL LOAD: " + file.getFileNameWithoutExtension().toUpperCase(),
+                                page.ctx.show.getPartialScope(), [this, file] (const state::Scope& chosen, bool noGlobal)
+                                {
+                                    juce::String error;
+                                    page.logFileRecall (file, noGlobal ? "part of (NO GLOB) " : "part of ",
+                                                        page.ctx.show.recallSceneFilePartial (file, chosen, noGlobal, error), error);
+                                });
+                return;
+            }
             const int index = page.selectedScene();
             const auto scene = page.ctx.show.getScene (index);
             if (! scene)
@@ -374,6 +436,17 @@ public:
         // RESTORE: the whole scene regardless of its scope, GLOBAL safes included (a red question).
         restore->onClick = [this]
         {
+            if (const auto file = page.selectedSnapFile(); file != juce::File())
+            {
+                popups::confirm (page, "RESTORE", "Restore all of \"" + file.getFileNameWithoutExtension() + "\", ignoring its scope and the GLOBAL safes?",
+                                 "RESTORE", [this, file]
+                                 {
+                                     juce::String error;
+                                     page.logFileRecall (file, "all of ", page.ctx.show.restoreSceneFile (file, error), error);
+                                 },
+                                 true);
+                return;
+            }
             const int index = page.selectedScene();
             if (const auto scene = page.ctx.show.getScene (index))
                 popups::confirm (page, "RESTORE", "Restore all of \"" + scene->name + "\", ignoring its scope and the GLOBAL safes?", "RESTORE",
@@ -415,14 +488,14 @@ public:
 
     void refresh()
     {
-        const auto scene = page.ctx.show.getScene (page.selectedScene());
+        const auto scene = page.ctx.show.getScene (atFolder() ? -1 : page.selectedScene());
         // A file added to the show has no snapshot to update and no scope (RESTORE loads it again).
         const bool snapshot = scene.has_value() && scene->item == Show::ItemKind::Snapshot;
-        for (auto* k : { update, partialUpdate, editScope, partialLoad })
-            enableKey (*k, snapshot);
-        for (auto* k : { restore, exportKey })
-            enableKey (*k, scene.has_value());
-        enableKey (*loadKey, scene.has_value() || page.selectedWingSnapshot() != juce::File());
+        const bool file = page.selectedSnapFile() != juce::File();
+        for (auto* k : { update, partialUpdate, editScope, partialLoad, restore })
+            enableKey (*k, snapshot || file || (k == restore && scene.has_value()));
+        enableKey (*exportKey, scene.has_value());
+        enableKey (*loadKey, scene.has_value() || file || page.selectedWingSnapshot() != juce::File());
         fade.setEnabled (scene.has_value());
         notes.setEnabled (scene.has_value());
         if (! fade.isMouseButtonDown())
@@ -464,16 +537,57 @@ public:
 private:
     void timerCallback() override { refresh(); }
 
+    bool atFolder() const { return page.list->getLocation() != ShowPanel::Location::Show; }
+
+    /** SAVE + ADD: a new scene in the show. Once the show has a file, the scene is a snap file
+        of its own in the show's folder (beside the show file, named after it), linked. */
     void addScene (bool withScope)
     {
         auto& show = page.ctx.show;
         const int at = page.selectedScene() >= 0 ? page.selectedScene() + 1 : show.getNumScenes();
-        const int index = show.addScene ("Scene " + juce::String (show.getNumScenes() + 1), at);
+        const auto name = "Scene " + juce::String (show.getNumScenes() + 1);
+        const int index = show.addScene (name, at);
+        if (const auto showFile = page.ctx.getShowFile ? page.ctx.getShowFile() : juce::File(); showFile.existsAsFile())
+        {
+            const auto file = showFile.getSiblingFile (showFile.getFileNameWithoutExtension())
+                                  .getNonexistentChildFile (juce::File::createLegalFileName (name), Show::sceneFileExtension, false);
+            const auto r = show.linkSceneFile (index, file);
+            if (r.failed())
+                page.ctx.log.error ("SAVE: " + r.getErrorMessage() + " (the scene stays in the show)");
+            else
+                page.ctx.log.info ("Saved " + name + " as " + file.getFullPathName());
+        }
         page.list->refresh();
         page.list->select ({ index, -1 });
         if (withScope)
             openScope (index);
     }
+
+    /** SAVE / SAVE +SCOPE at INT / USB: a snap file in the folder shown; no show needed. */
+    void saveFile (bool withScope)
+    {
+        auto save = [this] (std::optional<state::Scope> scope)
+        {
+            const auto folder = page.list->getFolder();
+            const int n = folder.getNumberOfChildFiles (juce::File::findFiles, juce::String ("*") + Show::sceneFileExtension);
+            savePresetAs (page, withScopeTitle (scope.has_value()), "Scene " + juce::String (n + 1), folder, Show::sceneFileExtension,
+                          [this, scope] (const juce::File& file, const juce::String& name)
+                          {
+                              page.logFile (file, "Saved", page.ctx.show.saveSceneFile (file, name, scope ? &*scope : nullptr));
+                              page.list->selectFile (file);
+                          });
+        };
+        if (! withScope)
+        {
+            save (std::nullopt);
+            return;
+        }
+        // A new snap's scope starts as a scene's default (what a file that can't be read gives).
+        page.openScope ((int) ScopeWindow::Mode::SceneScope, "SAVE +SCOPE", Show::getSceneFileScope (juce::File()),
+                        [save] (const state::Scope& chosen, bool) { save (chosen); });
+    }
+
+    static juce::String withScopeTitle (bool scope) { return scope ? "SAVE SNAP +SCOPE" : "SAVE SNAP"; }
 
     /** EDIT SCOPE: what the scene recalls (strips, DCAs, mute groups, FX, console settings, contents). */
     void openScope (int index)
@@ -528,7 +642,15 @@ public:
         exportKey->onClick = [this] { page.exportSelected (true); };
         importKey->onClick = [this] { page.importSelected (true); };
 
-        save->onClick = [this] { addSnippet(); };
+        // At INT / USB, SAVE writes a snippet file there and LOAD loads the one selected, with no
+        // show needed, as on the WING (issue #31).
+        save->onClick = [this]
+        {
+            if (page.list->getLocation() != ShowPanel::Location::Show)
+                saveFile();
+            else
+                addSnippet();
+        };
         // SAVE + ADD (manual 5.6 p. 52): the snippet as a scene of its own, after the selected scene.
         saveAdd->onClick = [this] { addSnippetScene(); };
         update->onClick = [this]
@@ -552,6 +674,15 @@ public:
         };
         loadKey->onClick = [this]
         {
+            if (const auto file = selectedFile(); file != juce::File())
+            {
+                page.confirmLoad ("\"" + file.getFileNameWithoutExtension() + "\"", [this, file]
+                {
+                    juce::String error;
+                    page.logFileRecall (file, "", page.ctx.show.applyLibraryFile (file, error), error);
+                });
+                return;
+            }
             const auto item = page.list->getSelected();
             if (item.isSnippet())
                 page.load (item);
@@ -625,10 +756,14 @@ public:
         // Snippets go into a snapshot scene (a file added to the show holds none).
         const auto scene = show.getScene (item.scene);
         const bool snapshot = scene.has_value() && scene->item == Show::ItemKind::Snapshot;
-        enableKey (*save, snapshot && ! recording);
+        // At INT / USB a snippet file is saved there (no show needed) and the one selected loads.
+        const bool atFolder = page.list->getLocation() != ShowPanel::Location::Show;
+        enableKey (*save, (snapshot || atFolder) && ! recording);
         enableKey (*saveAdd, ! recording);
         for (auto* k : { update, loadFocus, loadKey, partialLoad, addItems, removeItems, exportKey })
             enableKey (*k, snippet && ! recording);
+        if (selectedFile() != juce::File())
+            enableKey (*loadKey, ! recording);
         enableKey (*importKey, snapshot && ! recording);
         enableKey (*stop, recording); // REC stays lit (red) while recording
         enableKey (*clearAll, snippet || recording || recorded);
@@ -706,6 +841,40 @@ private:
             index = show.addSnippet (item.scene, name, currentFocus());
         page.list->refresh();
         page.list->select ({ item.scene, index });
+    }
+
+    /** The snippet file (.lsnip) selected at INT / USB, if any. */
+    juce::File selectedFile() const
+    {
+        if (page.list->getLocation() == ShowPanel::Location::Show)
+            return {};
+        const auto file = page.list->getSelectedFile();
+        return file.hasFileExtension (Show::snippetFileExtension) ? file : juce::File();
+    }
+
+    /** SAVE at INT / USB: the recording (within REC FOCUS once edited), else the REC FOCUS, as a
+        snippet file in the folder shown. */
+    void saveFile()
+    {
+        const auto folder = page.list->getFolder();
+        const int n = folder.getNumberOfChildFiles (juce::File::findFiles, juce::String ("*") + Show::snippetFileExtension);
+        savePresetAs (page, "SAVE SNIP", "Snippet " + juce::String (n + 1), folder, Show::snippetFileExtension,
+                      [this] (const juce::File& file, const juce::String& name)
+                      {
+                          auto& show = page.ctx.show;
+                          const auto snippetFocus = currentFocus();
+                          const bool recorded = show.hasRecordedSnippet();
+                          juce::String error;
+                          if (show.saveSnippetFile (file, name, recorded && ! page.focusEdited ? nullptr : &snippetFocus, recorded, error))
+                          {
+                              page.ctx.log.info ("Saved " + file.getFullPathName());
+                              page.list->refresh();
+                              page.list->selectFile (file);
+                          }
+                          else
+                              page.ctx.log.warning ("SAVE: " + (error.isNotEmpty() ? error : juce::String ("nothing to save")));
+                          refresh();
+                      });
     }
 
     void addSnippetScene()
@@ -1742,6 +1911,33 @@ juce::File LibraryPage::selectedWingSnapshot() const
     return file.hasFileExtension ("snap") ? file : juce::File();
 }
 
+juce::File LibraryPage::selectedSnapFile() const
+{
+    if (list->getLocation() == ShowPanel::Location::Show)
+        return {};
+    const auto file = list->getSelectedFile();
+    return file.hasFileExtension (Show::sceneFileExtension) ? file : juce::File();
+}
+
+void LibraryPage::logFile (const juce::File& file, const juce::String& what, const juce::Result& result)
+{
+    if (result.failed())
+        ctx.log.error (file.getFileName() + ": " + result.getErrorMessage());
+    else
+        ctx.log.info (what + " " + file.getFullPathName());
+    list->refresh();
+}
+
+void LibraryPage::logFileRecall (const juce::File& file, const juce::String& how, const state::ApplyResult& result, const juce::String& error)
+{
+    if (error.isNotEmpty())
+    {
+        ctx.log.error (file.getFileName() + ": " + error);
+        return;
+    }
+    logRecall (ctx, how + "\"" + file.getFileNameWithoutExtension() + "\"", result);
+}
+
 int LibraryPage::insertionIndex() const
 {
     return selectedScene() >= 0 ? selectedScene() + 1 : -1;
@@ -1771,6 +1967,10 @@ void LibraryPage::addToShow (const juce::File& file, int fxSlot, std::optional<s
         ctx.log.error (file.getFileName() + ": " + error);
         return;
     }
+    // A snap file joins the show as a link to it, as on the WING (issue #31).
+    if (file.hasFileExtension (Show::sceneFileExtension))
+        if (const auto r = ctx.show.linkSceneFile (index, file); r.failed())
+            ctx.log.warning (file.getFileName() + ": " + r.getErrorMessage() + " (the scene stays in the show)");
     const auto scene = ctx.show.getScene (index);
     juce::String where;
     if (scene && scene->item == Show::ItemKind::Fx)

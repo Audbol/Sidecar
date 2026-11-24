@@ -311,6 +311,35 @@ public:
     int importSnippet (const juce::File&, int sceneIndex, juce::String& error);
 
     //==============================================================================
+    // The WING's LIBRARY (manual 5.6, issue #31): a snap is a file on INT or USB, saved,
+    // updated and loaded without any show, and a show's scenes are links to such files
+    // (the show keeps a copy, used while a file is missing). CREATE, OPEN and CLOSE leave
+    // the console as it is.
+    /** SAVE / SAVE +SCOPE at INT or USB: the console as a scene file (no scope: a scene's default). */
+    juce::Result saveSceneFile (const juce::File&, const juce::String& sceneName, const state::Scope* scope = nullptr);
+    /** UPDATE (no scope) or PARTIAL UPDATE of a scene file; the show's scenes linked to it follow. */
+    juce::Result updateSceneFile (const juce::File&, const state::Scope* partial = nullptr);
+    static state::Scope getSceneFileScope (const juce::File&);
+    /** EDIT SCOPE of a scene file; the show's scenes linked to it follow. */
+    juce::Result setSceneFileScope (const juce::File&, const state::Scope&);
+    /** LOAD (no scope), PARTIAL LOAD (noGlobal: NO GLOB) or RESTORE of a scene file. */
+    state::ApplyResult recallSceneFile (const juce::File&, juce::String& error);
+    state::ApplyResult recallSceneFilePartial (const juce::File&, const state::Scope&, bool noGlobal, juce::String& error);
+    state::ApplyResult restoreSceneFile (const juce::File&, juce::String& error);
+    /** SAVE on SNIP at INT or USB: the snippet (REC / STOP's recording within `scope` when
+        `recorded`, nullptr all of it; else what `scope` covers) as a snippet file. False with
+        `error` empty: nothing to save. */
+    bool saveSnippetFile (const juce::File&, const juce::String& snippetName, const state::Scope* scope, bool recorded, juce::String& error);
+    /** The scene file scene `index` links to (none: juce::File()). */
+    juce::File getSceneFile (int index) const;
+    /** Links scene `index` to `file` (juce::File(): no link) and writes the scene there. */
+    juce::Result linkSceneFile (int index, const juce::File&);
+    /** CREATE / CLOSE: a show with no scenes named `showName`; the console stays as it is. */
+    void clearScenes (const juce::String& showName);
+    /** OPEN: the name and scenes of a show file; the console stays and nothing is recalled. */
+    juce::Result loadScenesFromFile (const juce::File&);
+
+    //==============================================================================
     bool isFading() const noexcept { return ld::ld_show_is_fading (handle); }
     /** Plug-ins still gliding to a scene's values (PLUGIN HOST). */
     bool isGliding() const noexcept { return ! glides.empty(); }
