@@ -104,7 +104,8 @@ Console features:
 - [x] dLive routing grid: drag the page to move around the whole matrix (owner), on both surfaces. The I/O page's grids still to check.
 - [ ] Scene Manager: Undo Go, Lock and Copy/Paste work; still to do: Copy Filter, Embedded Recall, Custom MIDI, Actions. Cue lists, Import from a show, Tie Lines
       and Virtual SoundCheck are drawn only; Update's Auto Tracking and Relative too.
-- [ ] The RTA on the PEQ graph. Help.
+- [x] The RTA on the PEQ graph (PEQ+RTA1, purple with its peaks).
+- [ ] Help.
 
 ## 4. Bring the older surfaces up to the 01V's standard
 

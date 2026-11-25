@@ -5,6 +5,7 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+- An insert's FX picker no longer lets two inserts share one FX slot by accident (#26). Picking a slot that's on another insert asks to **MOVE IT HERE**; the other insert gets no effect. The picker now shows how many inserts use a slot ("BUS 3 +1"). Sidecar's own behaviour: a WING's isn't documented.
 - Each console keeps its own setup (#25). When Sidecar turns the console into another one (a console's surface on SETUP, or another mixer in the start-up window), the running console's whole setup is kept, show file and scenes included. Picking that console again offers **PICK UP THE ... WHERE YOU LEFT IT** or **A FRESH ...**. Kept setups are in the `consoles` folder of Sidecar's data folder, one per console.
 - WING surface, LIBRARY: shows and snaps work as on a WING (#31).
   - Snaps are files. With INT or USB shown, the SNAP tab saves, updates, scopes and loads snap files (`.lsnap`) in that folder with no show at all: SAVE, SAVE +SCOPE, UPDATE, PARTIAL UPDATE, EDIT SCOPE, LOAD, PARTIAL LOAD and RESTORE. SAVE used to add a scene to the show, creating one if needed. On the SNIP tab, SAVE writes a snippet file there and LOAD loads the selected one.

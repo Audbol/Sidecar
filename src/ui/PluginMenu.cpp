@@ -279,9 +279,24 @@ void showFxDeviceMenu (UiContext& ctx, int slot, juce::Component* target, std::f
                               });
 }
 
+/** The strips whose PRE insert, or POST insert in FX mode, has FX slot `slot`, with true for POST. */
+static std::vector<std::pair<const Strip*, bool>> insertUsers (UiContext& ctx, int slot)
+{
+    std::vector<std::pair<const Strip*, bool>> users;
+    for (auto kind : { StripKind::Channel, StripKind::Aux, StripKind::Bus, StripKind::Main, StripKind::Matrix })
+        for (auto& s : ctx.engine.getStrips (kind))
+        {
+            if (s->params.preInsert().fx.load() == slot)
+                users.push_back ({ s.get(), false });
+            if (s->params.postInsert().fx.load() == slot && s->params.postInsert().mode.load() == 0)
+                users.push_back ({ s.get(), true });
+        }
+    return users;
+}
+
 void showFxProcessorWindow (UiContext& ctx, juce::Component& over, int current, std::function<void (int)> chosen)
 {
-    // Each slot: who uses it (the first strip with it on an insert), its
+    // Each slot: who uses it (the first strip with it on an insert, "+n" for more), its
     // device, or "- FREE -".
     auto& fx = ctx.engine.getFx();
     std::vector<popups::RackSlot> slots;
@@ -289,21 +304,17 @@ void showFxProcessorWindow (UiContext& ctx, juce::Component& over, int current, 
     for (int i = 0; i < fx.getNumSlots(); ++i)
     {
         popups::RackSlot slot { "- FREE -", {}, {} };
-        const Strip* user = nullptr;
-        bool post = false;
-        for (auto kind : { StripKind::Channel, StripKind::Aux, StripKind::Bus, StripKind::Main, StripKind::Matrix })
-            for (auto& s : ctx.engine.getStrips (kind))
-                if (user == nullptr && (s->params.preInsert().fx.load() == i || (s->params.postInsert().fx.load() == i && s->params.postInsert().mode.load() == 0)))
-                {
-                    user = s.get();
-                    post = s->params.preInsert().fx.load() != i;
-                }
-        if (user != nullptr)
+        const auto users = insertUsers (ctx, i);
+        if (! users.empty())
         {
+            const auto& [user, post] = users.front();
             slot.source = user->getLabel();
+            if (users.size() > 1)
+                slot.source << " +" << (int) users.size() - 1;
             slot.sourceColour = stripDisplayColour (*user);
             slot.caption = post ? "INSERT POST" : "INSERT PRE";
         }
+        const Strip* user = users.empty() ? nullptr : users.front().first;
         if (auto* plugin = fx.getPlugin (i))
             slot.caption = plugin->getName().toUpperCase();
         else if (fx.isOutboard (i))
@@ -331,7 +342,35 @@ void showFxProcessorWindow (UiContext& ctx, juce::Component& over, int current, 
             return true;
         },
         [icons] (juce::Graphics& g, juce::Rectangle<float> r, int i) { drawWingIcon (g, icons[(size_t) i], r, juce::Colours::white); },
-        std::move (chosen));
+        [&ctx, safeOver = juce::Component::SafePointer<juce::Component> (&over), current, chosen = std::move (chosen)] (int slot)
+        {
+            // A slot on another insert would be shared: one of the two would pass its signal
+            // through ("double assigned", issue #26). Offer to move it here instead.
+            const auto users = slot >= 0 && slot != current ? insertUsers (ctx, slot) : std::vector<std::pair<const Strip*, bool>> {};
+            if (users.empty() || safeOver == nullptr)
+                return chosen (slot);
+            juce::StringArray names;
+            for (const auto& [user, post] : users)
+                names.add (user->getLabel() + (post ? " (INSERT POST)" : " (INSERT PRE)"));
+            popups::confirm (*safeOver, "FX " + juce::String (slot + 1) + " IS IN USE",
+                             "FX " + juce::String (slot + 1) + " is on " + names.joinIntoString (", ")
+                                 + ". One effect can't run on two inserts. Move it here? The insert it leaves gets no effect (NONE).",
+                             "MOVE IT HERE",
+                             [&ctx, slot, chosen]
+                             {
+                                 for (auto& [user, post] : insertUsers (ctx, slot))
+                                 {
+                                     auto& p = const_cast<Strip*> (user)->params;
+                                     if (p.preInsert().fx.load() == slot)
+                                         p.preInsert().fx = -1;
+                                     if (p.postInsert().fx.load() == slot)
+                                         p.postInsert().fx = -1;
+                                     ctx.log.info ("Moved FX " + juce::String (slot + 1) + " off " + user->getLabel() + "'s insert");
+                                 }
+                                 ctx.engine.getFx().clearFlags (slot);
+                                 chosen (slot);
+                             });
+        });
 }
 
 void clickFxSlot (UiContext& ctx, int slot, juce::Component* target)
