@@ -7,6 +7,7 @@
 //! [`console::PluginBridge`].
 
 pub mod console;
+pub mod copy;
 pub mod custom;
 pub mod globals;
 pub mod layers;
