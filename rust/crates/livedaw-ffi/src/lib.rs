@@ -374,10 +374,27 @@ pub unsafe extern "C" fn ld_layout_info(out: *mut LdLayoutInfo) {
 
 // ---- engine lifetime ----------------------------------------------------------
 
+/// Panics are caught (the audio thread and its workers pass the block through), but the
+/// default hook formats and prints each one: a bug that panics every block would print a
+/// thousand times a second from the audio thread. The first few still print.
+fn quiet_repeated_panics() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        let previous = std::panic::take_hook();
+        static PRINTED: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        std::panic::set_hook(Box::new(move |info| {
+            if PRINTED.fetch_add(1, std::sync::atomic::Ordering::Relaxed) < 20 {
+                previous(info);
+            }
+        }));
+    });
+}
+
 /// Creates an engine. `num_workers` < 0 picks a default for this machine.
 #[no_mangle]
 pub extern "C" fn ld_engine_create(num_workers: i32) -> *mut Engine {
     guard(std::ptr::null_mut(), || {
+        quiet_repeated_panics();
         let n = if num_workers < 0 { Engine::default_num_workers() } else { num_workers as usize };
         let e = Engine::new(n);
         e.set_console_hook(Some(console_hook));

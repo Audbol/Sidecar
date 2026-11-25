@@ -20,11 +20,16 @@ pub struct EqDesign {
     pub sections: [BiquadCoeffs; MAX_SECTIONS],
     pub len: usize,
     pub out_gain_db: f32,
+    /// Each section's place in the design (the how-manyth push, flat bands counted): a
+    /// band keeps its tag while bands before it turn on or off, so its filter state
+    /// follows it (`WingEq::redesign`).
+    pub tags: [u16; MAX_SECTIONS],
+    next_tag: u16,
 }
 
 impl Default for EqDesign {
     fn default() -> Self {
-        Self { sections: [BiquadCoeffs::identity(); MAX_SECTIONS], len: 0, out_gain_db: 0.0 }
+        Self { sections: [BiquadCoeffs::identity(); MAX_SECTIONS], len: 0, out_gain_db: 0.0, tags: [0; MAX_SECTIONS], next_tag: 0 }
     }
 }
 
@@ -32,8 +37,15 @@ impl EqDesign {
     pub(crate) fn push(&mut self, c: BiquadCoeffs) {
         if self.len < MAX_SECTIONS {
             self.sections[self.len] = c;
+            self.tags[self.len] = self.next_tag;
             self.len += 1;
         }
+        self.next_tag = self.next_tag.wrapping_add(1);
+    }
+
+    /// A band left out while it is flat: it keeps its place (tag) in the design.
+    pub(crate) fn skip(&mut self) {
+        self.next_tag = self.next_tag.wrapping_add(1);
     }
 
     /// Combined response in dB at `freq`.
@@ -97,6 +109,8 @@ fn high_shelf(sr: f64, f: f32, q: f32, g: f32) -> BiquadCoeffs {
 fn push_gain(d: &mut EqDesign, g: f32, c: impl FnOnce() -> BiquadCoeffs) {
     if g.abs() > 1e-3 {
         d.push(c());
+    } else {
+        d.skip();
     }
 }
 
@@ -688,11 +702,16 @@ pub struct WingEq {
     sr: f64,
     sections: [Biquad; MAX_SECTIONS],
     len: usize,
+    /// The design's tag of each section (`EqDesign::tags`).
+    tags: [u16; MAX_SECTIONS],
     model: Option<(usize, usize)>,
     smoothed: [f32; MAX_EQ_PARAMS],
     scale: f32,
     out_gain: f32,
     target_out_gain: f32,
+    /// How far a sub-block glides toward its target: 0.3 at 48 kHz, the same glide in
+    /// time at any rate.
+    glide: f32,
 }
 
 impl Default for WingEq {
@@ -701,11 +720,13 @@ impl Default for WingEq {
             sr: 48000.0,
             sections: std::array::from_fn(|_| Biquad::default()),
             len: 0,
+            tags: [0; MAX_SECTIONS],
             model: None,
             smoothed: [0.0; MAX_EQ_PARAMS],
             scale: 0.0,
             out_gain: 1.0,
             target_out_gain: 1.0,
+            glide: 0.3,
         }
     }
 }
@@ -713,6 +734,7 @@ impl Default for WingEq {
 impl WingEq {
     pub fn prepare(&mut self, sample_rate: f64) {
         self.sr = sample_rate;
+        self.glide = 1.0 - 0.7f32.powf((48000.0 / sample_rate.max(1.0)) as f32);
         self.reset();
     }
 
@@ -778,7 +800,7 @@ impl WingEq {
 
     /// Moves smoothed values toward their targets; true if the design changed.
     fn step_smoothing(&mut self, spec: &ModelSpec, values: &[f32], target_scale: f32) -> bool {
-        const K: f32 = 0.3;
+        let k = self.glide;
         let mut changed = false;
         for (i, p) in spec.params.iter().enumerate() {
             let target = p.sanitise(values.get(i).copied().unwrap_or(p.default));
@@ -789,7 +811,7 @@ impl WingEq {
             changed = true;
             self.smoothed[i] = match p.kind {
                 ParamKind::Linear => {
-                    let next = cur + (target - cur) * K;
+                    let next = cur + (target - cur) * k;
                     if (next - target).abs() < 1e-3 {
                         target
                     } else {
@@ -797,7 +819,7 @@ impl WingEq {
                     }
                 }
                 ParamKind::Log if cur > 0.0 && target > 0.0 => {
-                    let next = cur * (target / cur).powf(K);
+                    let next = cur * (target / cur).powf(k);
                     if (next / target - 1.0).abs() < 1e-4 {
                         target
                     } else {
@@ -809,7 +831,7 @@ impl WingEq {
         }
         if self.scale != target_scale {
             changed = true;
-            let next = self.scale + (target_scale - self.scale) * K;
+            let next = self.scale + (target_scale - self.scale) * k;
             self.scale = if (next - target_scale).abs() < 1e-3 { target_scale } else { next };
         }
         changed
@@ -817,11 +839,17 @@ impl WingEq {
 
     fn redesign(&mut self, spec: &ModelSpec) {
         let d = design(spec, &self.smoothed[..spec.params.len()], self.sr, self.scale);
-        if d.len != self.len {
-            // The structure changed (a band turned on/off): new sections start clean.
-            for s in &mut self.sections[self.len.min(d.len)..] {
-                s.reset();
+        if d.len != self.len || d.tags[..d.len] != self.tags[..self.len] {
+            // A band turned on or off: each band takes its own filter state along (the bands
+            // after it would otherwise run on their neighbour's and click); a new band starts clean.
+            let old = self.sections.clone();
+            for (i, tag) in d.tags[..d.len].iter().enumerate() {
+                match self.tags[..self.len].iter().position(|t| t == tag) {
+                    Some(j) => self.sections[i] = old[j].clone(),
+                    None => self.sections[i].reset(),
+                }
             }
+            self.tags = d.tags;
         }
         for (s, c) in self.sections.iter_mut().zip(&d.sections[..d.len]) {
             s.set_coefficients(*c);
@@ -1080,5 +1108,38 @@ mod tests {
         eq2.prepare(48000.0);
         eq2.process(&mut [&mut off[..]], EQ_MODELS_CH, m, false, 100.0, &v);
         assert_eq!(off, tone);
+    }
+
+    #[test]
+    fn a_band_turning_off_leaves_the_others_running_smoothly() {
+        // Band 2 glides to 0 dB and drops out of the design: bands 3 and 4 after it keep
+        // their own filter state (they used to take over their neighbour's and click).
+        let (m, mut v) = defaults(EQ_MODELS_CH, "STD");
+        for (id, x) in [("2g", 9.0), ("2f", 80.0), ("3g", -12.0), ("3f", 3000.0), ("4g", 12.0), ("4f", 9000.0)] {
+            set(EQ_MODELS_CH, m, &mut v, id, x);
+        }
+        let mut eq = WingEq::default();
+        eq.prepare(48000.0);
+        let tone = |i: usize| {
+            let t = i as f32 / 48000.0;
+            0.3 * (t * 2.0 * std::f32::consts::PI * 80.0).sin() + 0.05 * (t * 2.0 * std::f32::consts::PI * 3000.0).sin()
+        };
+        let mut i = 0;
+        let mut run = |eq: &mut WingEq, v: &[f32], blocks: usize| {
+            let mut out = Vec::new();
+            for _ in 0..blocks {
+                let mut buf: Vec<f32> = (i..i + 64).map(tone).collect();
+                i += 64;
+                eq.process(&mut [&mut buf[..]], EQ_MODELS_CH, m, true, 100.0, v);
+                out.extend(buf);
+            }
+            out
+        };
+        let steady = run(&mut eq, &v, 400);
+        let step = |x: &[f32]| x.windows(2).fold(0.0f32, |a, w| a.max((w[1] - w[0]).abs()));
+        let normal = step(&steady[steady.len() / 2..]);
+        set(EQ_MODELS_CH, m, &mut v, "2g", 0.0);
+        let after = run(&mut eq, &v, 400);
+        assert!(step(&after) < 1.3 * normal, "a jump of {} (normal {normal})", step(&after));
     }
 }

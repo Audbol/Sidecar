@@ -154,6 +154,14 @@ impl WingFilter {
         self.current = None;
     }
 
+    /// The filter is switched off: once, it forgets its state, so switching it back on
+    /// starts clean instead of from the moment it stopped.
+    pub fn idle(&mut self) {
+        if self.current.is_some() {
+            self.reset();
+        }
+    }
+
     pub fn process(&mut self, chans: &mut [&mut [f32]], target: &FilterSettings) {
         let n = chans.iter().map(|c| c.len()).min().unwrap_or(0);
         let mut start = 0;

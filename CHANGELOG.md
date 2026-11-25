@@ -5,6 +5,16 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+- Fixes from a review of the whole code base:
+  - Audio: a built-in effect that hits an internal error now faults its FX slot (shown, cleared as usual) instead of leaving it passed through and "double assigned" until restart. Clearing an effect's fault resets it, so a reverb or delay that blew up doesn't fault again at once.
+  - Audio: an EQ band turning on or off (a gain through 0 dB, or the EQ switched off) no longer clicks: the bands after it kept running on their neighbour's filter state.
+  - Audio: a channel whose processing goes wrong (not a number) no longer passes that through its tap sends or direct outs.
+  - Audio: a channel's delay that is switched back on, or a mono channel made stereo again, starts from silence instead of playing audio from minutes before; the low and high cut likewise start clean when switched back on. The delay line is also cheaper to run.
+  - Audio: the EQ glides to a new setting at the same speed at any sample rate (it was twice as fast at 96 kHz).
+  - Audio interface patch: with some of the interface's channels switched off in the audio settings, a patched input or output played the wrong channel.
+  - Plug-ins: a plug-in's window closes before the plug-in goes, however its FX slot changes (a remote or MIDI changing the slot's model used to leave it open on a freed plug-in, a likely crash). A sandboxed plug-in that was faulted when the audio device restarted recovers instead of staying bypassed until reloaded.
+  - Remotes: one network packet of WING data requests could run the app out of memory; the reply is now limited. A WING node string with a misspelt part no longer sets a parameter. An A&H MIDI client sending thousands of scene recalls no longer holds up the app. X32 meter subscriptions and the web remote's queued replies are limited.
+  - Shows and scenes: a damaged show file can't create more channels than any console has. PARTIAL UPDATE of some mute groups no longer changes the others' on/off state, and a partial routing update back to the default mix input sticks. UNDO RECALL still goes to the right scene after a scene is added before it. Scenes linked to the same snap file stay the same when one is updated.
 - An insert's FX picker no longer lets two inserts share one FX slot by accident (#26). Picking a slot that's on another insert asks to **MOVE IT HERE**; the other insert gets no effect. The picker now shows how many inserts use a slot ("BUS 3 +1"). Sidecar's own behaviour: a WING's isn't documented.
 - Each console keeps its own setup (#25). When Sidecar turns the console into another one (a console's surface on SETUP, or another mixer in the start-up window), the running console's whole setup is kept, show file and scenes included. Picking that console again offers **PICK UP THE ... WHERE YOU LEFT IT** or **A FRESH ...**. Kept setups are in the `consoles` folder of Sidecar's data folder, one per console.
 - WING surface, LIBRARY: shows and snaps work as on a WING (#31).

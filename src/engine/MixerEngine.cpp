@@ -517,6 +517,13 @@ void MixerEngine::prepare (double sampleRate, int blockSize, const juce::BigInte
 
     const auto inMap = build (activeIns, inputNames.size());
     const auto outMap = build (activeOuts, outputNames.size());
+    // The patch's numbering (the hardware's) to the callback's (enabled channels only).
+    inActive.assign (inMap.begin(), inMap.end());
+    outActive.assign (outMap.begin(), outMap.end());
+    outHardware.assign ((size_t) InterfacePatch::kMaxChannels, -1);
+    for (size_t hw = 0; hw < outMap.size(); ++hw)
+        if (juce::isPositiveAndBelow (outMap[hw], InterfacePatch::kMaxChannels))
+            outHardware[(size_t) outMap[hw]] = (int) hw;
 
     ld::ld_engine_prepare (engine, sampleRate, blockSize, inMap.data(), (int32_t) inMap.size(),
                            outMap.data(), (int32_t) outMap.size());
@@ -625,12 +632,14 @@ void MixerEngine::preparePatch (int maxBlock)
 {
     // Message thread, before the device runs: the callback never allocates.
     patchCapacity = maxBlock;
-    portOutputs.assign ((size_t) InterfacePatch::kPorts, std::vector<float> ((size_t) maxBlock, 0.0f));
+    // Indexed like the callback's channels (enabled ones), up to the interface's most.
+    constexpr auto n = (size_t) InterfacePatch::kMaxChannels;
+    portOutputs.assign (n, std::vector<float> ((size_t) maxBlock, 0.0f));
     silence.assign ((size_t) maxBlock, 0.0f);
-    portInPointers.assign ((size_t) InterfacePatch::kPorts, nullptr);
-    portOutPointers.assign ((size_t) InterfacePatch::kPorts, nullptr);
-    for (int p = 0; p < InterfacePatch::kPorts; ++p)
-        portOutPointers[(size_t) p] = portOutputs[(size_t) p].data();
+    portInPointers.assign (n, nullptr);
+    portOutPointers.assign (n, nullptr);
+    for (size_t c = 0; c < n; ++c)
+        portOutPointers[c] = portOutputs[c].data();
 }
 
 void MixerEngine::processDeviceBlock (const float* const* ins, int numIns, float* const* outs, int numOuts, int numSamples) noexcept
@@ -646,26 +655,39 @@ void MixerEngine::processDeviceBlock (const float* const* ins, int numIns, float
         return;
     }
     // Straight through (the default), or no room prepared: the device's channels are the ports.
-    if (interfacePatch.isStraight() || numSamples > patchCapacity || portInPointers.empty())
+    if (interfacePatch.isStraight() || numSamples > patchCapacity || portInPointers.empty()
+        || numIns > InterfacePatch::kMaxChannels || numOuts > InterfacePatch::kMaxChannels)
     {
         processBlock (ins, numIns, outs, numOuts, numSamples);
         return;
     }
-    // Each console input port reads the interface input patched to it (or silence) ...
-    for (int p = 0; p < InterfacePatch::kPorts; ++p)
+    // The engine reads console input port p from the callback's channel inActive[p]; the patch
+    // names interface inputs by their hardware number. So channel inActive[p] gets the input
+    // patched to port p (or silence). (Only ports up to the interface's channel count exist.)
+    const int hwIns = (int) inActive.size(), hwOuts = (int) outActive.size();
+    const auto enabledIn = [&] (int hw) { return juce::isPositiveAndBelow (hw, hwIns) ? inActive[(size_t) hw] : -1; };
+    for (int c = 0; c < numIns; ++c)
+        portInPointers[(size_t) c] = silence.data();
+    for (int p = 0; p < juce::jmin (hwIns, InterfacePatch::kPorts); ++p)
     {
-        const int in = interfacePatch.inputFor (p);
-        portInPointers[(size_t) p] = juce::isPositiveAndBelow (in, numIns) && ins[in] != nullptr ? ins[in] : silence.data();
+        const int to = inActive[(size_t) p];
+        if (! juce::isPositiveAndBelow (to, numIns))
+            continue;
+        const int from = enabledIn (interfacePatch.inputFor (p));
+        portInPointers[(size_t) to] = juce::isPositiveAndBelow (from, numIns) && ins[from] != nullptr ? ins[from] : silence.data();
     }
-    processBlock (portInPointers.data(), InterfacePatch::kPorts, portOutPointers.data(), InterfacePatch::kPorts, numSamples);
-    // ... and each interface output plays the console output port patched to it.
+    processBlock (portInPointers.data(), numIns, portOutPointers.data(), numOuts, numSamples);
+    // ... and each interface output plays the console output port patched to it, which the
+    // engine wrote at channel outActive[port].
     for (int o = 0; o < numOuts; ++o)
     {
         if (outs[o] == nullptr)
             continue;
-        const int port = interfacePatch.outputSource (o);
-        if (juce::isPositiveAndBelow (port, InterfacePatch::kPorts))
-            std::copy_n (portOutputs[(size_t) port].data(), numSamples, outs[o]);
+        const int hw = outHardware[(size_t) o];
+        const int port = hw >= 0 ? interfacePatch.outputSource (hw) : -1;
+        const int from = juce::isPositiveAndBelow (port, hwOuts) ? outActive[(size_t) port] : -1;
+        if (juce::isPositiveAndBelow (from, numOuts))
+            std::copy_n (portOutputs[(size_t) from].data(), numSamples, outs[o]);
         else
             std::fill_n (outs[o], numSamples, 0.0f);
     }

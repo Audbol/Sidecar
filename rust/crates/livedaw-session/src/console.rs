@@ -2069,8 +2069,13 @@ pub fn load_console(engine: &Engine, console: &Element, bridge: &mut dyn PluginB
     let mut loaded = Vec::new();
     for (kind, tag) in LISTS {
         let Some(list) = console.child(tag) else { continue };
-        for e in list.children_named("Strip") {
+        for (index, e) in list.children_named("Strip").enumerate() {
             let id = e.int_or("id", -1);
+            if kind == StripKind::Channel && index >= livedaw_engine::config::MAX_CHANNELS {
+                // A damaged file: more channels than any console has.
+                result.warnings.push(format!("Only the first {} channels were loaded", livedaw_engine::config::MAX_CHANNELS));
+                break;
+            }
             let strip = match kind {
                 StripKind::Channel => Some(engine.add_channel(id)),
                 StripKind::Bus => {

@@ -32,6 +32,9 @@ pub const XREMOTE_LIFE: Duration = Duration::from_secs(10);
 pub const MAX_XREMOTE: usize = 4;
 /// A meter request runs for 10 s.
 pub const METER_LIFE: Duration = Duration::from_secs(10);
+/// Meter subscriptions held for one address, and in all.
+const MAX_METER_SUBS_PER_ADDRESS: usize = 16;
+const MAX_METER_SUBS: usize = 64;
 /// Meters go out every 50 ms times the request's time factor.
 const TICK: Duration = Duration::from_millis(50);
 /// Changes from elsewhere (the interface, scenes) are looked for this often (in ticks).
@@ -257,6 +260,17 @@ impl Shared {
         let every = ints.get(n).copied().filter(|t| (1..=99).contains(t)).unwrap_or(1) as u64;
         let mut subs = lock(&self.meters);
         subs.retain(|s| !(s.dest == dest && s.name == name && s.params == params));
+        // Each subscription sends a packet every 50 ms for 10 s: without a limit a few
+        // packets (from many ports, or a forged sender) would turn the app into a flood.
+        // The oldest go first; real remote apps use a handful.
+        if subs.iter().filter(|s| s.dest.ip() == dest.ip()).count() >= MAX_METER_SUBS_PER_ADDRESS {
+            if let Some(i) = subs.iter().position(|s| s.dest.ip() == dest.ip()) {
+                subs.remove(i);
+            }
+        }
+        if subs.len() >= MAX_METER_SUBS {
+            subs.remove(0);
+        }
         subs.push(MeterSub { dest, name, id, params, every, next: 0, expires: Instant::now() + self.meter_life });
     }
 

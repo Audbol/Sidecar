@@ -559,6 +559,10 @@ impl Show {
         let index = if (0..=n).contains(&index) { index } else { n };
         self.scenes.insert(index as usize, scene);
         self.current_scene = index;
+        // UNDO RECALL goes back to the scene it was at, wherever that moved.
+        if let Some(undo) = self.recall_undo.as_mut().filter(|u| u.scene >= index) {
+            undo.scene += 1;
+        }
         index
     }
 
@@ -585,7 +589,7 @@ impl Show {
                 scene.state = Some(state);
             }
             self.current_scene = index;
-            let _ = self.write_linked(index);
+            self.share_linked(index);
         }
     }
 
@@ -604,7 +608,7 @@ impl Show {
         }
         self.partial_scope = scope.clone();
         self.current_scene = index;
-        let _ = self.write_linked(index);
+        self.share_linked(index);
     }
 
     // ---- scene files on their own, and scenes linked to them -----------------------------
@@ -621,6 +625,16 @@ impl Show {
                 None => Ok(()),
             },
             _ => Ok(()),
+        }
+    }
+
+    /// Writes scene `index` to the file it links to, and the show's other scenes
+    /// linked to that file take the change too (they'd recall the old state, and
+    /// overwrite the file with it when stored).
+    pub fn share_linked(&mut self, index: i32) {
+        let file = self.scene(index).and_then(|s| s.file.clone());
+        if let (Some(file), Ok(())) = (file, self.write_linked(index)) {
+            self.refresh_linked(Some(&file));
         }
     }
 

@@ -724,8 +724,10 @@ void SandboxedPlugin::prepareToPlay (double sampleRate, int maximumExpectedSampl
     const bool caughtUp = block.doneSeq.load() == block.requestSeq.load();
     resetPipeline();
     status = r.ok && caughtUp && previous == Status::running ? Status::running : Status::faulted;
-    if (! r.ok || ! caughtUp)
-        faultReason = 1; // supervise() recovers it
+    // supervise() recovers it, also one faulted before (resetPipeline cleared its reason:
+    // without one it would stay faulted until reloaded).
+    if (! r.ok || ! caughtUp || previous != Status::running)
+        faultReason = 1;
 }
 
 bool SandboxedPlugin::isBusesLayoutSupported (const BusesLayout& layout) const

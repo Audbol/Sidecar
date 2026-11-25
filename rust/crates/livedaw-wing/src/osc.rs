@@ -301,14 +301,21 @@ fn node_set(shared: &Shared, base: Node, text: &str, origin: Origin) -> Result<(
             continue;
         };
         let c = shared.console();
+        // A part that isn't there skips the whole element (setting the leaf under the
+        // last part that was would change another parameter).
+        let mut found = true;
         for p in parts {
             match s.child(cur, p, &c) {
                 Some(n) => cur = n,
                 None => {
-                    result = Err("NODE NOT FOUND");
-                    continue;
+                    found = false;
+                    break;
                 }
             }
+        }
+        if !found {
+            result = Err("NODE NOT FOUND");
+            continue;
         }
         let Some(node) = s.child(cur, leaf, &c) else {
             result = Err("NODE NOT FOUND");
@@ -452,6 +459,23 @@ mod tests {
         // The compliant empty-tag form.
         assert_eq!(decode(b"/?\0\0,\0\0\0"), Some(Message::new("/?", vec![])));
         assert_eq!(reply_port("/%10027/ch/1/mute"), (Some(10027), "/ch/1/mute"));
+    }
+
+    #[test]
+    fn a_node_string_with_a_wrong_part_sets_nothing() {
+        use crate::map::WingState;
+        use crate::server::{EngineHandle, Shared};
+        use std::sync::Arc;
+        let engine = Arc::new(livedaw_engine::Engine::new(0));
+        engine.set_num_channels(40);
+        let handle: Arc<dyn EngineHandle> = Arc::new(engine.clone());
+        let sh = Shared::new(handle, Arc::new(WingState::default()));
+        let mute = || engine.strip_at(livedaw_engine::StripKind::Channel, 0).unwrap().params.mute.load(std::sync::atomic::Ordering::Relaxed);
+        assert!(!mute());
+        assert_eq!(node_set(&sh, Node::Root, "/ch.1.xyz.mute=1", Origin::None), Err("NODE NOT FOUND"));
+        assert!(!mute(), "the misspelt path changed channel 1");
+        assert_eq!(node_set(&sh, Node::Root, "/ch.1.mute=1", Origin::None), Ok(()));
+        assert!(mute());
     }
 
     #[test]

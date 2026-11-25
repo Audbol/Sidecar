@@ -30,6 +30,8 @@ pub const SURFACE_PORT: u16 = 51328;
 pub const MAX_CLIENTS: usize = 8;
 /// A client's queue of unread bytes before it's dropped as gone.
 const MAX_BACKLOG: usize = 1 << 20;
+/// Scene recalls waiting for the message thread, from all clients.
+const MAX_PENDING_RECALLS: usize = 8;
 /// Console changes are looked for this often.
 pub const POLL: Duration = Duration::from_millis(50);
 /// A connection's sleep when nothing's happening.
@@ -163,6 +165,7 @@ struct Shared {
     clients: Mutex<Vec<Arc<Client>>>,
     next_id: AtomicU64,
     /// Scene recalls clients asked for, and who asked.
+    /// At most `MAX_PENDING_RECALLS`, the oldest dropped.
     requests: Mutex<VecDeque<(u16, u64)>>,
     /// The request taken last: its client isn't told of the recall.
     taken: Mutex<Option<(u16, u64)>>,
@@ -336,7 +339,14 @@ fn session(sh: &Shared, mut stream: TcpStream, surface: bool, kind: Kind, client
             Err(_) => return, // reset
         }
         while let Some(Event::RecallScene(n)) = proto.take_event() {
-            lock(&sh.requests).push_back((n, client.id));
+            // Each recall is a whole console recall on the message thread: a client sending
+            // thousands (running status makes every data byte one) would hold it up for good.
+            // The last ones win anyway.
+            let mut requests = lock(&sh.requests);
+            if requests.len() >= MAX_PENDING_RECALLS {
+                requests.pop_front();
+            }
+            requests.push_back((n, client.id));
         }
         let scenes: Vec<u16> = lock(&client.scenes).drain(..).collect();
         for n in scenes {

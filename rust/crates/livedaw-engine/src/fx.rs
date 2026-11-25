@@ -169,6 +169,9 @@ pub struct FxRack {
     /// The installed device's latency in samples (fixed per instance).
     device_latency: AtomicU32,
     faulted: AtomicBool,
+    /// A cleared fault: the audio thread resets the device before it runs again
+    /// (a device that blew up may still hold NaN in its feedback lines).
+    reset_pending: AtomicBool,
     load: AtomicF32,
     /// Set while a strip is running the processor.
     busy: AtomicBool,
@@ -193,6 +196,22 @@ pub struct FxRack {
     key_given: AtomicU32,
 }
 
+/// A slot's claim by the task running it: dropped at the end of `FxRack::process`, or
+/// while unwinding from a panic, which faults the slot.
+struct Claim<'a> {
+    busy: &'a AtomicBool,
+    faulted: &'a AtomicBool,
+}
+
+impl Drop for Claim<'_> {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            self.faulted.store(true, Relaxed);
+        }
+        self.busy.store(false, Release);
+    }
+}
+
 // SAFETY: `dry` is only used by the task that holds `busy`; everything else is atomic.
 unsafe impl Sync for FxRack {}
 unsafe impl Send for FxRack {}
@@ -209,6 +228,7 @@ impl Default for FxRack {
             readouts_live: AtomicBool::new(false),
             device_latency: AtomicU32::new(0),
             faulted: AtomicBool::new(false),
+            reset_pending: AtomicBool::new(false),
             load: AtomicF32::new(0.0),
             busy: AtomicBool::new(false),
             claims: AtomicU64::new(0),
@@ -488,7 +508,9 @@ impl FxRack {
     }
 
     pub fn clear_fault(&self) {
-        self.faulted.store(false, Relaxed);
+        if self.faulted.swap(false, Relaxed) {
+            self.reset_pending.store(true, Relaxed);
+        }
     }
 
     /// Smoothed processing time as a fraction of the block duration.
@@ -593,11 +615,16 @@ impl FxRack {
             self.double_assigned.store(true, Relaxed);
             return;
         }
+        // Released however this ends: a device that panics (caught by the pool) faults
+        // the slot instead of leaving it claimed, "double assigned", for good.
+        let _claim = Claim { busy: &self.busy, faulted: &self.faulted };
 
         let dry = &mut *self.dry.get();
         if dry[0].len() < n {
-            self.busy.store(false, Release);
             return;
+        }
+        if self.reset_pending.swap(false, Relaxed) && !device.is_null() && model != FX_EXT as i32 {
+            (*device).reset();
         }
         let start = Instant::now();
         for (c, data) in channels.iter().enumerate().take(2) {
@@ -701,7 +728,6 @@ impl FxRack {
 
         let load = (start.elapsed().as_secs_f64() * sample_rate / n as f64) as f32;
         self.load.store(0.9 * self.load.load() + 0.1 * load);
-        self.busy.store(false, Release);
     }
 
     /// The outboard insert (claiming task): sends `channels` at TRIM in FX
@@ -781,5 +807,27 @@ impl Drop for FxRack {
             // SAFETY: created by Box::into_raw in set_device(); the engine is being destroyed.
             drop(unsafe { Box::from_raw(d) });
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_panicking_device_faults_its_slot_instead_of_keeping_it_claimed() {
+        let rack = FxRack::default();
+        rack.busy.store(true, Relaxed);
+        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _claim = Claim { busy: &rack.busy, faulted: &rack.faulted };
+            panic!("a device bug");
+        }));
+        assert!(caught.is_err());
+        assert!(!rack.busy.load(Relaxed), "free for the next block");
+        assert!(rack.is_faulted(), "and passed through until the fault is cleared");
+
+        rack.clear_fault();
+        assert!(!rack.is_faulted());
+        assert!(rack.reset_pending.load(Relaxed), "the device is reset before it runs again");
     }
 }

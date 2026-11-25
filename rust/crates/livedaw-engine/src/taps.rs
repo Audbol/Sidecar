@@ -69,6 +69,17 @@ impl StripTaps {
         buf.stamp.store(block + 1, Release);
     }
 
+    /// Audio thread, the task running the strip: takes back the taps written in
+    /// `block` (its processing went non-finite), so no later stage reads them.
+    pub(crate) fn withdraw(&self, block: u64) {
+        for b in &self.bufs {
+            // SAFETY: a non-null buffer stays alive until retired and collected.
+            if let Some(buf) = unsafe { b.load(Acquire).as_ref() } {
+                let _ = buf.stamp.compare_exchange(block + 1, 0, AcqRel, Relaxed);
+            }
+        }
+    }
+
     /// Audio thread, a later stage: side `ch` of tap `id` as written this
     /// block (None: not read, not in the chain, or not run yet).
     pub(crate) unsafe fn read(&self, id: usize, block: u64, ch: usize, n: usize) -> Option<&[f32]> {
@@ -145,6 +156,11 @@ mod tests {
             assert_eq!(taps.read(20, 4, 1, 8).unwrap()[0], 0.5);
             taps.write(21, 4, [&l, &r], 2, 8); // not planned: nothing
             assert!(taps.read(21, 4, 0, 8).is_none());
+            // A strip whose block went non-finite takes its taps back.
+            taps.withdraw(3); // another block's: no effect
+            assert!(taps.read(20, 4, 0, 8).is_some());
+            taps.withdraw(4);
+            assert!(taps.read(20, 4, 0, 8).is_none());
         }
         assert_eq!(send_tap(-1), None);
         assert_eq!(send_tap(1), Some(1), "a tap point of the strip's own (FILT)");

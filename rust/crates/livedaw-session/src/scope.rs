@@ -340,7 +340,11 @@ pub fn capture_scoped(engine: &Engine, scope: &Scope, bridge: &mut dyn PluginBri
                 out.add(keep_indexed(c, "Dca", in_set(scope.dcas)));
             }
             "MuteGroups" if !scope.mute_groups.is_empty() => {
-                out.add(keep_indexed(c, "G", in_set(scope.mute_groups)));
+                // `on` holds every group's state: the groups in scope go along, so a merge
+                // changes only theirs.
+                let mut groups = keep_indexed(c, "G", in_set(scope.mute_groups));
+                groups.set(SCOPE_ATTR, scope.mute_groups.to_attr());
+                out.add(groups);
             }
             "Fx" if scope.fx != 0 => {
                 out.add(keep_indexed(c, "Slot", in_mask(scope.fx)));
@@ -361,6 +365,27 @@ fn child_index_mut<'a>(e: &'a mut Element, name: &str, key: &str, value: &str) -
     })
 }
 
+/// The groups a partial capture's `MuteGroups` covers (its `on` holds them all).
+const SCOPE_ATTR: &str = "scope";
+
+/// As `merge_attrs` for a scoped `MuteGroups`: of `on`, only the groups in scope.
+fn merge_group_attrs(into: &mut Element, from: &Element) {
+    let scope = groups_attr(from, SCOPE_ATTR, GroupSet::EMPTY);
+    for (k, v) in &from.attrs {
+        match k.as_str() {
+            SCOPE_ATTR => {}
+            "on" => {
+                let kept = groups_attr(into, "on", GroupSet::EMPTY) & !scope;
+                let taken = groups_attr(from, "on", GroupSet::EMPTY) & scope;
+                into.set("on", (kept | taken).to_attr());
+            }
+            _ => {
+                into.set(k, v);
+            }
+        }
+    }
+}
+
 fn merge_attrs(into: &mut Element, from: &Element) {
     for (k, v) in &from.attrs {
         into.set(k, v);
@@ -376,6 +401,11 @@ fn merge_strip(into: &mut Element, from: &Element) {
         }
     }
     into.set("sections", sections);
+    // A capture leaves these routing parts out at their defaults (a missing one recalls
+    // the default): with ROUTING updated, stored ones the console no longer has go.
+    if from.int_or("sections", 0) as u32 & section::ROUTING != 0 {
+        into.children.retain(|x| !matches!(x, Node::Element(e) if e.name == "MixInput" || e.name == "DLive"));
+    }
     for c in from.elements() {
         into.children.retain(|x| !matches!(x, Node::Element(e) if e.name == c.name));
         into.add(c.clone());
@@ -408,7 +438,10 @@ pub fn merge_state(stored: &mut Element, partial: &Element) {
                 }) else {
                     continue;
                 };
-                merge_attrs(target, c);
+                match c.has_attr(SCOPE_ATTR) {
+                    true => merge_group_attrs(target, c),
+                    false => merge_attrs(target, c),
+                }
                 for x in c.children_named(item) {
                     let i = x.str_or("i", "");
                     match child_index_mut(target, item, "i", i) {

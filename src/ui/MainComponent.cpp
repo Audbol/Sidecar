@@ -144,6 +144,7 @@ MainComponent::MainComponent (juce::AudioDeviceManager& dm, MixerEngine& e, Plug
         // A chain's plugins go with it: once it is gone, forget theirs too.
         juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainComponent> (this)] { if (safe != nullptr) safe->prunePluginPictures(); });
     };
+    FxSlots::onRemoving = ctx.pluginRemoved; // however a plugin leaves its slot
     ctx.pluginPictures = &pluginPictures;
     ctx.capturePluginPictures = [this] (std::function<void (int, int)> progress)
     {
@@ -338,6 +339,7 @@ MainComponent::MainComponent (juce::AudioDeviceManager& dm, MixerEngine& e, Plug
 
 MainComponent::~MainComponent()
 {
+    FxSlots::onRemoving = nullptr; // its windows go with this
     // The web remote stops watching the window and closes its browsers.
     ctx.web = nullptr;
     webMirror.reset();

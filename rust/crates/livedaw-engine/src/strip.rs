@@ -1067,7 +1067,9 @@ impl Strip {
         self.run_chain(d, ctx, n);
 
         // Never let NaN/inf escape a strip: it would poison every bus it feeds.
-        let finite = (0..d.num_channels).all(|ch| all_finite(&d.work[ch][..n]) && all_finite(&d.post[ch][..n]));
+        // The TAP copy and the user taps other strips' sends read count too.
+        let finite = (0..d.num_channels)
+            .all(|ch| all_finite(&d.work[ch][..n]) && all_finite(&d.post[ch][..n]) && all_finite(&d.tap[ch][..n]));
         if !finite {
             for buffers in d.buffers_mut() {
                 buffers.iter_mut().for_each(|b| b[..n].fill(0.0));
@@ -1075,6 +1077,7 @@ impl Strip {
             d.reset_dsp();
             self.reset_blocks();
             self.keys.clear(ctx.block, n);
+            self.taps.withdraw(ctx.block);
             self.meters.dsp_faults.fetch_add(1, Relaxed);
         }
 
@@ -1345,6 +1348,8 @@ impl Strip {
                     if let BlockDsp::Filter(f) = self.params.own_block(OwnBlocks::FILTER).dsp_mut() {
                         f.process(&mut chans[..nc], &settings);
                     }
+                } else if let BlockDsp::Filter(f) = self.params.own_block(OwnBlocks::FILTER).dsp_mut() {
+                    f.idle();
                 }
             }
             Node::Gate => {
@@ -1498,6 +1503,7 @@ impl Strip {
     fn apply_delay(&self, d: &mut StripDsp, n: usize) {
         let p = &self.params.input;
         if !p.delay_on.load(Relaxed) {
+            d.delay.pause();
             return;
         }
         let samples = match self.spec.delay_samples {

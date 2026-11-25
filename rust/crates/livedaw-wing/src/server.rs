@@ -1373,6 +1373,18 @@ mod tests {
         assert!(sh.apply_set(n, &Value::Int(0), Origin::None).is_ok(), "the console itself");
     }
 
+    /// A blob of nothing but data requests at the root (each a dump of the whole console)
+    /// gets a bounded reply instead of running the app out of memory.
+    #[test]
+    fn a_flood_of_data_requests_gets_a_bounded_reply() {
+        let engine: Arc<dyn EngineHandle> = Arc::new(Arc::new(Engine::new(0)));
+        let sh = Shared::new(engine, Arc::new(WingState::default()));
+        let one = crate::native::run_blob(&sh, Node::Root, &[0xdc], Origin::None).len();
+        assert!(one > 1000, "a dump of the console");
+        let flood = crate::native::run_blob(&sh, Node::Root, &[0xdc; 2000], Origin::None).len();
+        assert!(flood < (4 << 20) + 2 * one, "{flood} bytes");
+    }
+
     /// A burst for several OSC subscribers (of different formats) is queued
     /// in turns, so the last subscriber doesn't wait for everyone else's.
     #[test]

@@ -390,6 +390,9 @@ impl Session {
     }
 
     fn data_request(&mut self, shared: &Shared) {
+        if self.out.len() >= MAX_REPLY {
+            return; // see MAX_REPLY
+        }
         if let Cursor::Node(n) = self.cursor {
             let c = shared.console();
             let s = schema();
@@ -411,6 +414,9 @@ impl Session {
     }
 
     fn def_request(&mut self, shared: &Shared) {
+        if self.out.len() >= MAX_REPLY {
+            return; // see MAX_REPLY
+        }
         if let Cursor::Node(n) = self.cursor {
             let c = shared.console();
             let s = schema();
@@ -504,6 +510,11 @@ fn decode_meters(raw: &[u8]) -> Vec<Meter> {
     }
     out
 }
+
+/// The most a session's pending replies grow to from data and definition requests (a dump
+/// of the whole console is about 228 KB). Each request at the root dumps it all, so a
+/// packet of nothing but requests could otherwise run the app out of memory.
+const MAX_REPLY: usize = 4 << 20;
 
 /// Runs Native tokens sent in an OSC blob from `node`; returns the response tokens.
 pub fn run_blob(shared: &Shared, node: Node, data: &[u8], origin: Origin) -> Vec<u8> {

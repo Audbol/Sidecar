@@ -78,6 +78,9 @@ pub struct Status {
     pub frames_sent: u64,
 }
 
+/// Control and text messages waiting for a browser before it is let go.
+const MAX_QUEUED_MESSAGES: usize = 256;
+
 /// What a browser's writer thread waits for.
 #[derive(Default)]
 struct Outbox {
@@ -104,7 +107,16 @@ struct Client {
 
 impl Client {
     fn send(&self, opcode: Opcode, payload: Vec<u8>) {
-        lock(&self.outbox).messages.push_back((opcode, payload));
+        let mut outbox = lock(&self.outbox);
+        if outbox.messages.len() >= MAX_QUEUED_MESSAGES {
+            // A browser that sends (pings, say) but never reads: it goes, rather than the
+            // queue growing for as long as it keeps sending.
+            drop(outbox);
+            self.close();
+            return;
+        }
+        outbox.messages.push_back((opcode, payload));
+        drop(outbox);
         self.wake.notify_one();
     }
 

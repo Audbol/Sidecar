@@ -540,7 +540,7 @@ pub unsafe extern "C" fn ld_scene_set_scope(s: *mut LdShow, scene: i32, scope: u
     let Some(s) = show(s) else { return };
     if let Some(sc) = s.show.scene_mut(scene) {
         sc.scope = scope & livedaw_session::section::ALL;
-        let _ = s.show.write_linked(scene);
+        s.show.share_linked(scene);
     }
 }
 
@@ -736,7 +736,7 @@ pub unsafe extern "C" fn ld_scene_set_recall_scope(s: *mut LdShow, scene: i32, s
     let (Some(s), Some(scope)) = (show(s), scope_arg(scope)) else { return };
     if let Some(sc) = s.show.scene_mut(scene) {
         sc.set_recall_scope(&scope);
-        let _ = s.show.write_linked(scene);
+        s.show.share_linked(scene);
     }
 }
 

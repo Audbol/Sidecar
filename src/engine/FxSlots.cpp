@@ -216,6 +216,20 @@ void FxSlots::install (int slot, std::shared_ptr<juce::AudioPluginInstance> plug
     if (! juce::isPositiveAndBelow (slot, kMaxFx) && ! isBlockSlot (slot))
         return;
 
+    // The plugin going (not rearranged into a chain that keeps it): its windows and
+    // editors close first, whoever replaces it (a remote changing the slot's model,
+    // a scene...). They would outlive it otherwise.
+    if (! rearranged && onRemoving)
+    {
+        if (auto* old = getPlugin (slot); old != nullptr && old != plugin.get())
+        {
+            for (int i = getNumChainMembers (slot); --i >= 0;)
+                if (auto* member = getChainMember (slot, i); member != nullptr && member != old)
+                    onRemoving (member);
+            onRemoving (old);
+        }
+    }
+
     if (auto* old = holderAt (slot))
         old->installed = false;
 

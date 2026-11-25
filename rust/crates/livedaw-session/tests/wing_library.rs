@@ -138,3 +138,24 @@ fn a_show_links_to_snap_files() {
     assert_eq!(fader(&e), -3.0);
     assert_eq!(e.channels().len(), 2);
 }
+
+#[test]
+fn scenes_linked_to_one_file_stay_together() {
+    let dir = TempDir::new("shared");
+    let e = engine_with_channels(2);
+    let mut show = Show::new();
+    let snap = dir.0.join("Chorus.lsnap");
+    set_fader(&e, -10.0);
+    for name in ["Chorus", "Chorus again"] {
+        let index = show.add_scene(&e, &mut NoPlugins, name, -1);
+        show.set_scene_file(index, Some(snap.clone()));
+    }
+    show.write_linked(0).unwrap();
+
+    // UPDATE of the first: the second, linked to the same file, follows.
+    set_fader(&e, -4.0);
+    show.store_scene(&e, &mut NoPlugins, 0);
+    set_fader(&e, 0.0);
+    show.recall_scene(&e, &mut NoPlugins, 1);
+    assert_eq!(fader(&e), -4.0);
+}

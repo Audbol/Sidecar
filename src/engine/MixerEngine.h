@@ -658,11 +658,14 @@ private:
     juce::StringArray inputNames, outputNames;
     juce::String deviceTypeName, deviceName;
     InterfacePatch interfacePatch;
-    /** The console's ports while a patch is in use (sized when the device starts). */
+    /** The console's ports while a patch is in use (sized when the device starts). The
+        engine numbers the device's channels by those enabled (`inActive`: hardware index to
+        enabled index, -1 when off); the patch by the hardware's. */
     std::vector<std::vector<float>> portOutputs;
     std::vector<float> silence;
     std::vector<const float*> portInPointers;
     std::vector<float*> portOutPointers;
+    std::vector<int> inActive, outActive, outHardware;
     int patchCapacity = 0;
     void preparePatch (int maxBlock);
     std::atomic<juce::uint32> lastCallbackMs { 0 };

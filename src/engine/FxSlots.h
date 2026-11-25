@@ -52,6 +52,11 @@ class FxSlots
 public:
     explicit FxSlots (ld::Engine* e) noexcept : engine (e) {}
 
+    /** Message thread: called with a plugin (and with each plugin of its chain) just before
+        it leaves its slot, so its windows close before it is destroyed. One for the app
+        (the main window sets it). */
+    static inline std::function<void (juce::AudioProcessor*)> onRemoving;
+
     /** Slot numbers from here on are plugin blocks (ld::kPluginBlockSlotBase + the block's host id). */
     static constexpr int kBlockSlotBase = ld::kPluginBlockSlotBase;
     static bool isBlockSlot (int slot) noexcept { return slot >= kBlockSlotBase; }

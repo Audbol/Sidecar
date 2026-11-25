@@ -65,6 +65,11 @@ pub struct DelayLine {
     buf: [Vec<f32>; 2],
     pos: usize,
     delay: usize,
+    /// Sides written last block: a side joining (mono to stereo) starts from silence,
+    /// not from what it held when it last ran.
+    channels: usize,
+    /// Not run since `pause`: the line starts from silence again.
+    paused: bool,
 }
 
 /// `buf` as `len` zeros. A buffer of another size is replaced by a zeroed allocation, which the
@@ -95,6 +100,12 @@ impl DelayLine {
         }
     }
 
+    /// The delay was switched off: when it runs again it starts from silence, not from
+    /// the audio it held then.
+    pub fn pause(&mut self) {
+        self.paused = true;
+    }
+
     /// As [`Self::prepare`], with room for at least `samples` (a console whose
     /// longest delay is more than the 500 ms of [`MAX_DELAY_MS`] at some rate).
     pub fn prepare_samples(&mut self, sample_rate: f64, samples: usize) {
@@ -117,15 +128,32 @@ impl DelayLine {
             self.delay = samples;
         }
         let n = chans.iter().map(|c| c.len()).min().unwrap_or(0);
+        let nc = chans.len().min(2);
+        if self.paused {
+            self.reset();
+            self.paused = false;
+        } else if nc > self.channels {
+            for b in &mut self.buf[self.channels..nc] {
+                b.fill(0.0);
+            }
+        }
+        self.channels = nc;
         let start = self.pos;
         for (ch, data) in chans.iter_mut().enumerate().take(2) {
             let buf = &mut self.buf[ch];
             let mut w = start;
+            let mut r = if start >= samples { start - samples } else { start + len - samples };
             for x in data[..n].iter_mut() {
                 buf[w] = *x;
-                let r = (w + len - samples) % len;
                 *x = buf[r];
-                w = (w + 1) % len;
+                w += 1;
+                if w == len {
+                    w = 0;
+                }
+                r += 1;
+                if r == len {
+                    r = 0;
+                }
             }
         }
         self.pos = (start + n) % len;
@@ -147,6 +175,31 @@ mod tests {
         assert_eq!(a[..10], [0.0; 10]);
         assert!((delay_to_ms(3.0, 0, 48000.0) - 10.0).abs() < 1e-3);
         assert!((delay_to_ms(480.0, 3, 48000.0) - 10.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn a_side_joining_or_a_delay_switched_back_on_starts_from_silence() {
+        let mut d = DelayLine::default();
+        d.prepare(48000.0);
+        let block = |v: f32| vec![v; 64];
+        // Stereo, then mono for a while: the right side keeps its last audio.
+        let (mut l, mut r) = (block(1.0), block(1.0));
+        d.process(&mut [&mut l[..], &mut r[..]], 100);
+        d.process(&mut [&mut block(1.0)[..], &mut block(1.0)[..]], 100);
+        for _ in 0..10 {
+            d.process(&mut [&mut block(2.0)[..]], 100);
+        }
+        let (mut l, mut r) = (block(3.0), block(3.0));
+        d.process(&mut [&mut l[..], &mut r[..]], 100);
+        assert_eq!(l[0], 2.0, "the left side runs on");
+        assert_eq!(r[0], 0.0, "the right side doesn't play its old audio");
+
+        // Switched off and on again: nothing from before.
+        d.pause();
+        let mut x = block(4.0);
+        d.process(&mut [&mut x[..]], 10);
+        assert_eq!(x[..10], [0.0; 10]);
+        assert_eq!(x[10], 4.0);
     }
 
     /// As the WING's DELAY panel: 0.1 m reads 0.3 ft, 0.3 ms and 16 samples
