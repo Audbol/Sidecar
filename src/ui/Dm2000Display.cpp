@@ -1662,6 +1662,8 @@ void Display::buildEq (int)
     const auto typeButton = [this, s] (int type, int y)
     {
         auto typeParam = bindEq (*s, "type", {});
+        if (! typeParam.isValid())
+            return; // an EQ without TYPE I/II (another console's)
         KnobBinding b;
         const auto get = typeParam.get;
         b.get = [get, type] { return juce::roundToInt (get()) == type ? 1.0f : 0.0f; };

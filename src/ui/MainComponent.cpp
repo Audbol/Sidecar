@@ -504,17 +504,13 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
     if (kind == InterfaceKind::Wing && skin != nullptr && ! isWingConsole())
     {
         // The WING surface addresses the WING's buses, mains and matrices: offer
-        // to make this a fresh WING console (scenes stay; the console is cleared).
+        // to make this a fresh WING console (the running one is kept, issue #25).
         popups::confirm (skin->popupHost(), "WING SURFACE",
                          "This console isn't a WING. The WING surface shows a WING: clear the console and make it a fresh 40 channel WING? This console's setup is kept for when you pick it again.", "MAKE IT A WING",
-                         [this, save]
+                         [this]
                          {
-                             keepConsole();
-                             closeAllPluginWindows();
-                             engine.configure (nullptr);
-                             setInterface (InterfaceKind::Wing, save);
-                             refreshAll();
-                             log.info ("The console is a WING again");
+                             keepConsole(); // the console that was running, for when it is picked again
+                             startFresh (InterfaceKind::Wing);
                          }, true);
         return;
     }
@@ -525,14 +521,10 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                          "This console isn't an X32. The X32 surface shows an X32: clear the console and make it a fresh X32 (32 channels, 8 aux, "
                          "8 FX returns, 16 buses, 6 matrices)? This console's setup is kept for when you pick it again.",
                          "MAKE IT AN X32",
-                         [this, save]
+                         [this]
                          {
-                             keepConsole();
-                             closeAllPluginWindows();
-                             engine.configureProfile (ld::kProfileX32);
-                             setInterface (InterfaceKind::X32, save);
-                             refreshAll();
-                             log.info ("The console is an X32");
+                             keepConsole(); // the console that was running, for when it is picked again
+                             startFresh (InterfaceKind::X32);
                          }, true);
         return;
     }
@@ -543,14 +535,10 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                          "This console isn't a ProMix 01. The ProMix surface shows a ProMix 01: clear the console and make it a fresh "
                          "ProMix 01 (16 channels, ST IN, two effects and their returns, SEND1-4, ST OUT)? This console's setup is kept for when you pick it again.",
                          "MAKE IT A PROMIX 01",
-                         [this, save]
+                         [this]
                          {
-                             keepConsole();
-                             closeAllPluginWindows();
-                             engine.configureProfile (ld::kProfileProMix01);
-                             setInterface (InterfaceKind::ProMix, save);
-                             refreshAll();
-                             log.info ("The console is a ProMix 01");
+                             keepConsole(); // the console that was running, for when it is picked again
+                             startFresh (InterfaceKind::ProMix);
                          }, true);
         return;
     }
@@ -561,14 +549,10 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                          "This console isn't an 02R. The 02R surface shows an 02R: clear the console and make it a fresh "
                          "02R (MIC/LINE 1-16, LINE 17-24, TAPE 1-16, two effects and their returns, BUS 1-8, AUX 1-8, STEREO)? This console's setup is kept for when you pick it again.",
                          "MAKE IT AN 02R",
-                         [this, save]
+                         [this]
                          {
-                             keepConsole();
-                             closeAllPluginWindows();
-                             engine.configureProfile (ld::kProfileYamaha02R);
-                             setInterface (InterfaceKind::Yamaha02R, save);
-                             refreshAll();
-                             log.info ("The console is an 02R");
+                             keepConsole(); // the console that was running, for when it is picked again
+                             startFresh (InterfaceKind::Yamaha02R);
                          }, true);
         return;
     }
@@ -579,14 +563,10 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                          "This console isn't an SQ-5. Clear the console and make it a fresh SQ-5 (48 inputs, 12 mixes, "
                          "4 FX sends, 8 FX and their returns, LR, 3 matrices, 8 DCAs, 8 mute groups)? This console's setup is kept for when you pick it again.",
                          "MAKE IT AN SQ-5",
-                         [this, save]
+                         [this]
                          {
-                             keepConsole();
-                             closeAllPluginWindows();
-                             engine.configureProfile (ld::kProfileSq5);
-                             setInterface (InterfaceKind::Sq5, save);
-                             refreshAll();
-                             log.info ("The console is an SQ-5");
+                             keepConsole(); // the console that was running, for when it is picked again
+                             startFresh (InterfaceKind::Sq5);
                          }, true);
         return;
     }
@@ -597,14 +577,10 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                          "This console isn't a 01V. Clear the console and make it a fresh 01V (24 inputs on 22 channels, "
                          "4 auxes, 4 buses, 2 effect sends and returns, STEREO)? This console's setup is kept for when you pick it again.",
                          "MAKE IT A 01V",
-                         [this, save]
+                         [this]
                          {
-                             keepConsole();
-                             closeAllPluginWindows();
-                             engine.configureProfile (ld::kProfileYamaha01V);
-                             setInterface (InterfaceKind::Yamaha01V, save);
-                             refreshAll();
-                             log.info ("The console is a 01V");
+                             keepConsole(); // the console that was running, for when it is picked again
+                             startFresh (InterfaceKind::Yamaha01V);
                          }, true);
         return;
     }
@@ -615,14 +591,10 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                          "This console isn't a dLive. Clear the console and make it a fresh dLive (128 inputs on 124 channels, "
                          "8 groups, 16 auxes, 8 FX sends, 16 FX, LR, 8 matrices, 24 DCAs)? This console's setup is kept for when you pick it again.",
                          "MAKE IT A DLIVE",
-                         [this, save]
+                         [this]
                          {
-                             keepConsole();
-                             closeAllPluginWindows();
-                             engine.configureProfile (ld::kProfileDLive);
-                             setInterface (InterfaceKind::DLive, save);
-                             refreshAll();
-                             log.info ("The console is a dLive");
+                             keepConsole(); // the console that was running, for when it is picked again
+                             startFresh (InterfaceKind::DLive);
                          }, true);
         return;
     }
@@ -632,14 +604,10 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                          "This console isn't a DM2000. Clear the console and make it a fresh DM2000 (96 channels, 8 buses, 12 auxes, "
                          "4 stereo matrices, stereo, 8 effects, 12 fader groups)? This console's setup is kept for when you pick it again.",
                          "MAKE IT A DM2000",
-                         [this, save]
+                         [this]
                          {
-                             keepConsole();
-                             closeAllPluginWindows();
-                             engine.configureProfile (ld::kProfileDm2000);
-                             setInterface (InterfaceKind::Dm2000, save);
-                             refreshAll();
-                             log.info ("The console is a DM2000");
+                             keepConsole(); // the console that was running, for when it is picked again
+                             startFresh (InterfaceKind::Dm2000);
                          }, true);
         return;
     }
@@ -649,14 +617,10 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                          "This console isn't a XENYX Q1202USB. Clear the console and make it a fresh one (4 mono and 4 stereo channels, "
                          "the FX send, MAIN MIX)? This console's setup is kept for when you pick it again.",
                          "MAKE IT A Q1202USB",
-                         [this, save]
+                         [this]
                          {
-                             keepConsole();
-                             closeAllPluginWindows();
-                             engine.configureProfile (ld::kProfileXenyx1202);
-                             setInterface (InterfaceKind::Xenyx1202, save);
-                             refreshAll();
-                             log.info ("The console is a XENYX Q1202USB");
+                             keepConsole(); // the console that was running, for when it is picked again
+                             startFresh (InterfaceKind::Xenyx1202);
                          }, true);
         return;
     }
@@ -666,16 +630,12 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                          "This console isn't a PLUGIN HOST. Clear the console and make it a fresh one (each channel takes an interface "
                          "input through its plug-ins to an interface output; 16, 32 or 64 channels)? This console's setup is kept for when you pick it again.",
                          "MAKE IT A PLUGIN HOST",
-                         [this, save]
+                         [this]
                          {
-                             choosePluginHostSize ([this, save] (int channels)
+                             choosePluginHostSize ([this] (int channels)
                                                    {
                                                        keepConsole();
-                                                       closeAllPluginWindows();
-                                                       engine.configurePluginHost (channels);
-                                                       setInterface (InterfaceKind::PluginHost, save);
-                                                       refreshAll();
-                                                       log.info ("The console is a PLUGIN HOST of " + juce::String (channels) + " channels");
+                                                       startFresh (InterfaceKind::PluginHost, channels);
                                                    });
                          }, true);
         return;
@@ -686,14 +646,10 @@ void MainComponent::setInterface (InterfaceKind kind, bool save)
                          "This console isn't a PRO2. Clear the console and make it a fresh Midas PRO2 (56 channels, 8 aux returns, 16 aux sends, "
                          "8 matrices, stereo and mono masters, 8 VCAs, 6 effects)? This console's setup is kept for when you pick it again.",
                          "MAKE IT A PRO2",
-                         [this, save]
+                         [this]
                          {
-                             keepConsole();
-                             closeAllPluginWindows();
-                             engine.configureProfile (ld::kProfileMidasPro2);
-                             setInterface (InterfaceKind::Pro2, save);
-                             refreshAll();
-                             log.info ("The console is a Midas PRO2");
+                             keepConsole(); // the console that was running, for when it is picked again
+                             startFresh (InterfaceKind::Pro2);
                          }, true);
         return;
     }
