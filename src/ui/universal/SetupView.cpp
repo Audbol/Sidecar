@@ -461,25 +461,31 @@ void SetupView::chooseCopyWhat (const juce::File& source)
         if (safe == nullptr || ! juce::isPositiveAndBelow (item - 1, (int) std::size (choices)))
             return;
         const auto& c = choices[item - 1];
-        juce::AlertWindow::showAsync (juce::MessageBoxOptions()
-                                          .withTitle ("COPY FROM")
-                                          .withMessage ("Copy " + juce::String (c.text).toLowerCase() + " from " + source.getFileNameWithoutExtension()
-                                                        + " into this console?\n\nEach channel, bus, main and matrix goes onto the one with the same number here. "
-                                                          "Effects and scenes stay as they are. UNDO COPY takes it back.")
-                                          .withButton ("COPY")
-                                          .withButton ("CANCEL")
-                                          .withAssociatedComponent (safe.getComponent()),
-                                      [safe, source, sections = c.sections, what = juce::String (c.text).toLowerCase()] (int result)
+        juce::String text ("Copy " + juce::String (c.text).toLowerCase() + " from " + source.getFileNameWithoutExtension()
+                           + " into this console?\n\nEach channel, bus, main and matrix goes onto the one with the same number here. "
+                             "Effects and scenes stay as they are. UNDO COPY takes it back.");
+        auto options = juce::MessageBoxOptions().withTitle ("COPY FROM").withButton ("COPY");
+        const bool eq = (c.sections & state::Eq) != 0;
+        if (eq)
+        {
+            // FIT TO THIS CONSOLE (COPY) or KEEP THEIRS.
+            text << "\n\nAn EQ this console doesn't have is set on its own EQ, as close to the other console's curve as it gets. "
+                    "KEEP THEIR EQ keeps the other console's instead: exact, but only the Universal Mixer can edit it.";
+            options = options.withButton ("COPY, KEEP THEIR EQ");
+        }
+        // CANCEL last: it is also what Escape gives (0).
+        juce::AlertWindow::showAsync (options.withMessage (text).withButton ("CANCEL").withAssociatedComponent (safe.getComponent()),
+                                      [safe, source, eq, sections = c.sections, what = juce::String (c.text).toLowerCase()] (int result)
                                       {
-                                          if (safe != nullptr && result == 1)
-                                              safe->copyFrom (source, sections, what);
+                                          if (safe != nullptr && (result == 1 || (eq && result == 2)))
+                                              safe->copyFrom (source, sections, what, result == 2);
                                       });
     });
 }
 
-void SetupView::copyFrom (const juce::File& source, juce::uint32 sections, const juce::String& what)
+void SetupView::copyFrom (const juce::File& source, juce::uint32 sections, const juce::String& what, bool keepTheirEq)
 {
-    const auto r = ctx.show.copyFrom (source, sections, 0x1fu);
+    const auto r = ctx.show.copyFrom (source, sections, 0x1fu | (keepTheirEq ? Show::copyKeepTheirEq : 0u));
     if (r.strips < 0)
     {
         notice (*this, "COPY FROM", "Nothing was copied: " + r.error);
@@ -491,9 +497,13 @@ void SetupView::copyFrom (const juce::File& source, juce::uint32 sections, const
     ctx.log.info ("Copied " + what + " from " + r.source + " (" + source.getFileName() + ") onto " + juce::String (r.strips) + " strips");
     for (const auto& line : r.leftOut)
         ctx.log.info ("COPY FROM left out: " + line);
+    for (const auto& line : r.notes)
+        ctx.log.info ("COPY FROM: " + line);
 
     juce::String text;
     text << "Copied " << what << " from the " << r.source << " onto " << r.strips << " strips.";
+    if (! r.notes.isEmpty())
+        text << "\n\n" << r.notes.joinIntoString ("\n");
     if (! r.leftOut.isEmpty())
         text << "\n\nLeft out, with no place in this console:\n" << r.leftOut.joinIntoString ("\n");
     juce::Component::SafePointer<SetupView> safe (this);

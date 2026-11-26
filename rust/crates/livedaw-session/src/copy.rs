@@ -7,14 +7,18 @@
 //! buses, mains and matrices this console has. What has no place here is left out and
 //! named in the report. Scenes, effects and a strip's extra blocks are never copied.
 //!
-//! EQ, gate and dynamics come across as they were (the other console's own models, which
-//! any console runs: KEEP THEIRS). One whose model this console can't run is left as it was.
+//! An EQ of a model that isn't this console's own is fitted to this console's own EQ: set to
+//! the curve that comes closest to the other console's (`livedaw_dsp::eq_fit`; FIT TO THIS
+//! CONSOLE), or, asked for, kept as the other console's model (KEEP THEIRS, which the
+//! Universal Mixer can show but the console's own pages can't edit). Gate and dynamics come
+//! across as they were; one whose model this console can't run is left as it was.
 
 use crate::console::{self, section, NoPlugins, PluginBridge};
 use crate::refs::StripRef;
 use crate::show::Show;
 use crate::xml::{Element, Node};
-use livedaw_dsp::model::model_index;
+use livedaw_dsp::eq_fit;
+use livedaw_dsp::model::{model_index, ModelSpec};
 use livedaw_engine::{Engine, Strip, StripKind};
 use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
@@ -40,11 +44,14 @@ pub struct CopyPlan {
     pub kinds: Vec<StripKind>,
     /// Only these channels (1-based numbers, both included); `None`: all of them.
     pub channels: Option<(usize, usize)>,
+    /// FIT TO THIS CONSOLE: an EQ of another console's model becomes this console's own EQ,
+    /// set to the closest curve. Off: KEEP THEIRS, the other console's model as it was.
+    pub fit_eq: bool,
 }
 
 impl Default for CopyPlan {
     fn default() -> Self {
-        Self { sections: DEFAULT_SECTIONS, kinds: KINDS.to_vec(), channels: None }
+        Self { sections: DEFAULT_SECTIONS, kinds: KINDS.to_vec(), channels: None, fit_eq: true }
     }
 }
 
@@ -57,6 +64,9 @@ pub struct CopyReport {
     pub strips: usize,
     /// What had no place in this console, one line each ("Channels 41-48: this console has 40").
     pub left_out: Vec<String>,
+    /// How the copy was fitted to this console ("EQ fitted to this console's own: within
+    /// 0.4 dB of the original").
+    pub notes: Vec<String>,
     /// Loading the other console's file.
     pub warnings: Vec<String>,
 }
@@ -132,6 +142,7 @@ pub fn copy_console(engine: &Engine, source: &Engine, plan: &CopyPlan, bridge: &
     let bus_slots: BTreeSet<usize> = engine.strips(StripKind::Bus).iter().filter_map(|b| usize::try_from(b.id()).ok()).collect();
     let (mains, matrices) = (engine.num_strips(StripKind::Main), engine.num_strips(StripKind::Matrix));
 
+    let own = engine.profile().spec().models;
     let captured = console::capture(source, sections, None, &mut NoPlugins);
     let mut state = Element::new("State");
     state.attrs = captured.attrs.clone();
@@ -158,8 +169,26 @@ pub fn copy_console(engine: &Engine, source: &Engine, plan: &CopyPlan, bridge: &
         keep_sends(&mut e, "Sends", "slot", |slot| bus_slots.contains(&slot), &mut left.buses);
         keep_sends(&mut e, "Mains", "i", |i| i < mains, &mut left.mains);
         keep_sends(&mut e, "Mtx", "i", |i| i < matrices, &mut left.matrices);
-        // A model this console can't run: that block is left as it was.
+        // An EQ of another console's model: fitted to this console's own.
         let p = &target.strip.params;
+        let eq_at = e.children.iter().position(|n| matches!(n, Node::Element(c) if c.name == "Eq"));
+        // (The Universal Mixer edits any console's EQ: there it is kept as it was.)
+        let universal = std::ptr::eq(own, &livedaw_dsp::universal::MODELS);
+        if let (true, false, Some(i)) = (plan.fit_eq, universal, eq_at) {
+            let Node::Element(eq) = &e.children[i] else { unreachable!() };
+            let mdl = eq.attr("mdl").unwrap_or("");
+            let foreign = !livedaw_dsp::universal::is_own(own, mdl);
+            let from = target.from.params.eq().table().iter().find(|m| m.token == mdl);
+            if let (true, Some(from)) = (foreign, from) {
+                let mine: Vec<&'static ModelSpec> =
+                    p.eq().table().iter().filter(|m| livedaw_dsp::universal::is_own(own, m.token)).collect();
+                let current = p.eq().model_spec().filter(|m| livedaw_dsp::universal::is_own(own, m.token));
+                let (fitted, worst) = fit_eq(eq, from, &mine, current);
+                left.fitted = Some(left.fitted.map_or(worst, |w: f64| w.max(worst)));
+                e.children[i] = Node::Element(fitted);
+            }
+        }
+        // A model this console can't run: that block is left as it was.
         for (tag, table, what) in
             [("Eq", p.eq().table(), "EQ"), ("Gate", p.gate().table(), "gate"), ("Dyn", p.dynamics().table(), "dynamics")]
         {
@@ -175,7 +204,42 @@ pub fn copy_console(engine: &Engine, source: &Engine, plan: &CopyPlan, bridge: &
     let result = console::apply(engine, &state, sections, None, false, None, bridge);
     report.strips = usize::try_from(result.strips_applied).unwrap_or(0);
     report.left_out = left.lines();
+    if let Some(worst) = left.fitted {
+        report.notes.push(format!("EQ fitted to this console's own: within {worst:.1} dB of the original"));
+    }
     report
+}
+
+/// The other console's EQ block `eq` (model `from`) as one of `table`'s models set to the
+/// closest curve, with how close it came in dB. The strip's own model and the console's
+/// first (its standard EQ) are tried, and the closer kept.
+fn fit_eq(eq: &Element, from: &ModelSpec, table: &[&'static ModelSpec], current: Option<&'static ModelSpec>) -> (Element, f64) {
+    let mut values = vec![0.0f32; livedaw_dsp::wing::MAX_EQ_PARAMS];
+    from.defaults_into(&mut values);
+    for p in eq.children_named("P") {
+        if let (Some(i), Some(v)) = (from.param_index(p.str_or("n", "")), p.attr("v")) {
+            values[i] = from.params[i].sanitise(crate::xml::parse_double_prefix(v) as f32);
+        }
+    }
+    let wanted = eq_fit::curve(from, &values, eq.double_or("mix", 100.0) as f32);
+    let mut best: Option<(&ModelSpec, eq_fit::Fit)> = None;
+    for spec in current.into_iter().chain(table.first().copied()) {
+        if best.as_ref().is_some_and(|(b, _)| b.token == spec.token) {
+            continue;
+        }
+        let f = eq_fit::fit(spec, &wanted);
+        if best.as_ref().is_none_or(|(_, b)| f.worst_db < b.worst_db) {
+            best = Some((spec, f));
+        }
+    }
+    let mut out = Element::new("Eq");
+    out.set_bool("on", eq.bool_or("on", true));
+    let Some((spec, f)) = best else { return (out, 0.0) };
+    out.set("mdl", spec.token).set("mix", 100);
+    for (p, v) in spec.params.iter().zip(&f.values) {
+        out.add_new("P").set("n", p.id).set("v", crate::xml::fmt_f32(*v));
+    }
+    (out, f.worst_db)
 }
 
 struct Strip2 {
@@ -231,6 +295,8 @@ struct LeftOut {
     mains: BTreeSet<usize>,
     matrices: BTreeSet<usize>,
     models: BTreeSet<&'static str>,
+    /// The worst EQ fit, in dB, when any EQ was fitted.
+    fitted: Option<f64>,
 }
 
 impl LeftOut {

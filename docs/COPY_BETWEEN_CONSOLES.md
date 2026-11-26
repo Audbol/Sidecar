@@ -67,10 +67,16 @@ The pieces already exist; COPY FROM joins them.
 2. **App.** FFI and `Show::copyFrom`; the SETUP page's COPY FROM window (source, checklist, strip
    range, EQ choice, report); the undo point; refused under remote control. CHANGELOG and
    USER_GUIDE.
-3. **EQ fitting.** The curve fit in `livedaw-dsp`, with tests that fit every console's channel EQ
-   to every other's on a few typical curves (a low shelf and two peaks; a high-pass and a
-   presence lift). The test passes when the worst error stays within an agreed limit, about
-   1 dB where the target has enough bands. FIT TO THIS CONSOLE becomes the default.
+3. **EQ fitting (done).** `livedaw_dsp::eq_fit`: 40 points from 20 Hz to 20 kHz; every parameter
+   in turn, a coarse scan of its range then a finer search, switches and lists value by value.
+   An EQ whose model isn't the console's own is fitted to the strip's own model and to the
+   console's first, and the closer kept (not on the Universal Mixer, which edits any). The test
+   fits every console's channel EQ to three typical curves (a low shelf and two peaks; a mud cut
+   and a presence lift; a bright top): within 1 dB on every full parametric EQ (most within
+   0.2 dB), the ProMix 01 within 1.6 dB, the 1202's fixed three bands within 4.5 dB and always
+   closer than flat. A WING EQ copied onto a DM2000 lands within 0.2 dB. FIT TO THIS CONSOLE is
+   the default; COPY, KEEP THEIR EQ in the confirm window keeps theirs. A fit takes a few
+   milliseconds.
 4. **Dynamics and gate mapping.** Label matching and unit conversion across the consoles'
    dynamics and gate models; a test per console pair checks that threshold, ratio and timing land
    where expected.

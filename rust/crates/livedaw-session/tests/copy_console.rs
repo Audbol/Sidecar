@@ -163,3 +163,35 @@ fn a_kept_consoles_file_is_copied_from() {
     assert_eq!(report.source, Profile::Wing.spec().name);
     assert!(copy_from_file(&dm, std::path::Path::new("no such file.lshow"), &CopyPlan::default(), &mut NoPlugins).is_err());
 }
+
+/// A strip's EQ curve, as the fit compares them.
+fn eq_curve(s: &livedaw_engine::Strip) -> livedaw_dsp::eq_fit::Curve {
+    let eq = s.params.eq();
+    let mut v = [0.0; livedaw_dsp::wing::MAX_EQ_PARAMS];
+    eq.values_snapshot(&mut v);
+    livedaw_dsp::eq_fit::curve(eq.model_spec().unwrap(), &v, eq.mix.load())
+}
+
+#[test]
+fn a_wing_eq_is_fitted_to_the_dm2000s_own() {
+    let (wing, dm) = (console(Profile::Wing), console(Profile::Dm2000));
+    let vocal = channel(&wing, 1);
+    let eq = vocal.params.eq();
+    for (id, v) in [("lg", -3.0), ("lf", 120.0), ("2g", 5.0), ("2f", 2500.0), ("2q", 1.5), ("hg", 3.0), ("hf", 9000.0)] {
+        eq.param(id).unwrap_or_else(|| panic!("{id}")).store(v);
+    }
+    let wanted = eq_curve(&vocal);
+    assert!(!livedaw_dsp::eq_fit::is_flat(&wanted));
+
+    let report = copy_console(&dm, &wing, &CopyPlan::default(), &mut NoPlugins);
+
+    let to = channel(&dm, 1);
+    assert_eq!(to.params.eq().model_spec().unwrap().token, "DMEQ", "the DM2000's own EQ");
+    let off = livedaw_dsp::eq_fit::worst_db(&eq_curve(&to), &wanted);
+    assert!(off < 1.0, "within 1 dB: {off:.2}");
+    let line = report.notes.iter().find(|l| l.starts_with("EQ fitted")).expect("the fit is reported");
+    assert!(!report.left_out.iter().any(|l| l.starts_with("Some EQ")), "{:?}", report.left_out);
+    println!("{line}");
+    // A flat EQ stays flat.
+    assert!(livedaw_dsp::eq_fit::is_flat(&eq_curve(&channel(&dm, 2))));
+}

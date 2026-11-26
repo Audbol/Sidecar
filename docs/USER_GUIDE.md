@@ -1095,8 +1095,12 @@ and dynamics only, or faders and sends only. Each channel, bus, main and matrix 
 the one with the same number here; a name shown from the other console's input source comes
 across as the strip's own. Effects and scenes stay as they are. A report then says what had
 no place here (channels past this console's count, sends to buses it doesn't have), and its
-**UNDO COPY** puts the console back as it was. EQ, gate and dynamics come across as the
-other console's own (they sound as they did; this console's own pages don't edit them yet).
+**UNDO COPY** puts the console back as it was. An EQ this console doesn't have is set on
+this console's own EQ, as close to the other console's curve as it gets; the report says how
+close ("within 0.2 dB of the original"). A console with fewer or fixed bands gets as near as
+its knobs allow. **COPY, KEEP THEIR EQ** keeps the other console's EQ instead: exact, but only
+the Universal Mixer edits it. Gate and dynamics come across as the other console's own (they
+sound as they did; this console's own pages don't edit them yet).
 Not offered while a real console is under remote control.
 
 ![SETUP > CONSOLE: the configuration, the buses about to go from 16 to 24](images/universal-setup.png)

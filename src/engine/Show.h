@@ -166,7 +166,11 @@ public:
         juce::String source, error;
         /** What had no place in this console, one line each. */
         juce::StringArray leftOut;
+        /** How the copy was fitted to this console ("EQ fitted to this console's own: within 0.4 dB of the original"). */
+        juce::StringArray notes;
     };
+    /** `copyFrom`'s `kinds` bit for KEEP THEIRS: another console's EQ model kept as it was, not fitted to this console's own. */
+    static constexpr uint32_t copyKeepTheirEq = 1u << 8;
     /** Copies `sections` (state::Section bits) of the console in the show file `file`; `kinds` bit i
         is the i-th of channels, aux channels, buses, mains, matrices; channels `firstChannel` to
         `lastChannel` only when `firstChannel` > 0. UNDO (undoRecall) takes it back. */

@@ -75,7 +75,7 @@ public:
     /** COPY FROM's steps: the source (a kept console or a show file), what to copy, the copy and its report. */
     void chooseCopySource();
     void chooseCopyWhat (const juce::File& source);
-    void copyFrom (const juce::File& source, juce::uint32 sections, const juce::String& what);
+    void copyFrom (const juce::File& source, juce::uint32 sections, const juce::String& what, bool keepTheirEq);
     RemotePanel remote;
     BenchmarkPanel benchmark;
     MixerConfigPanel mixerConfig;

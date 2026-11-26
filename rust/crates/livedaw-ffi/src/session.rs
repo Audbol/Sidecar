@@ -1609,9 +1609,11 @@ pub unsafe extern "C" fn ld_show_load_scenes(
 
 /// COPY FROM (`docs/COPY_BETWEEN_CONSOLES.md`): the `sections` (`console::section` bits) of the
 /// console in the show file at `path` copied into this one, strip kinds by `kinds` (bit i: the
-/// i-th of channels, aux, buses, mains, matrices), channels `first`..=`last` only when
+/// i-th of channels, aux, buses, mains, matrices; bit 8: KEEP THEIRS, another console's EQ
+/// model kept rather than fitted to this console's own), channels `first`..=`last` only when
 /// `first` > 0. Sets the step back for UNDO first. Returns the strips copied, with `message`
-/// the other console's name and then one line per thing left out; -1 with `message` the
+/// the other console's name and then one line per thing left out, then one per note on how
+/// it was fitted, after "~ "; -1 with `message` the
 /// error (nothing changed).
 #[no_mangle]
 pub unsafe extern "C" fn ld_show_copy_from(
@@ -1632,6 +1634,7 @@ pub unsafe extern "C" fn ld_show_copy_from(
         sections,
         kinds: KINDS.iter().enumerate().filter(|(i, _)| kinds & (1 << i) != 0).map(|(_, k)| *k).collect(),
         channels: (first > 0).then(|| (first as usize, last.max(first) as usize)),
+        fit_eq: kinds & (1 << 8) == 0,
     };
     let LdShow { show: sh, bridge } = s;
     match guard(Err("internal error".into()), || copy_into_show(sh, e, &path, &plan, bridge)) {
@@ -1639,6 +1642,10 @@ pub unsafe extern "C" fn ld_show_copy_from(
             let mut text = report.source;
             for line in report.left_out {
                 text.push('\n');
+                text.push_str(&line);
+            }
+            for line in report.notes {
+                text.push_str("\n~ ");
                 text.push_str(&line);
             }
             write_string(message, text);

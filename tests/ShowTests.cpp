@@ -818,7 +818,7 @@ public:
             file.getParentDirectory().deleteRecursively();
         }
 
-        beginTest ("COPY FROM: a kept WING's names and faders onto a DM2000, the report, and UNDO COPY");
+        beginTest ("COPY FROM: a kept WING's names, faders and EQ (fitted) onto a DM2000, the report, and UNDO COPY");
         {
             MixerEngine engine (0);
             PluginHost host (nullptr);
@@ -828,6 +828,8 @@ public:
             engine.getChannels()[0]->params.custLink = false; // its own name shows, not its source's
             engine.getChannels()[0]->setName ("Kick");
             engine.getChannels()[0]->params.faderDb = -9.0f;
+            engine.getChannels()[0]->params.eq().values[7] = 5.0f;    // the WING EQ's band 2: +5 dB
+            engine.getChannels()[0]->params.eq().values[8] = 2500.0f; // at 2.5 kHz
             const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory)
                                   .getChildFile ("LiveDAWCopyFromTest").getChildFile (juce::String ("WING") + Show::fileExtension);
             file.getParentDirectory().createDirectory();
@@ -842,8 +844,12 @@ public:
             expect (missing.error.isNotEmpty(), "error text");
             expect (engine.getChannels()[0]->getName() == "Mine", "nothing changed");
 
-            const auto r = show.copyFrom (file, state::Name | state::Fader, 0x1fu);
+            const auto r = show.copyFrom (file, state::Name | state::Fader | state::Eq, 0x1fu);
             expect (r.strips > 0, "strips " + juce::String (r.strips));
+            // The WING's EQ, fitted to the DM2000's own (its first model), named in the notes.
+            expectEquals (engine.getChannels()[0]->params.eq().model.load(), 0);
+            expect (r.notes.size() == 1 && r.notes[0].startsWith ("EQ fitted"), r.notes.joinIntoString ("|"));
+            expect (! r.leftOut.joinIntoString ("|").contains ("EQ"), r.leftOut.joinIntoString ("|"));
             expect (r.source.isNotEmpty(), "source");
             expect (engine.getProfile() == ld::kProfileDm2000, "still a DM2000");
             expect (engine.getChannels()[0]->getName() == "Kick", "name " + engine.getChannels()[0]->getName());

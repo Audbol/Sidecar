@@ -673,6 +673,12 @@ Show::CopyResult Show::copyFrom (const juce::File& file, uint32_t sections, uint
     r.source = r.leftOut[0];
     r.leftOut.remove (0);
     r.leftOut.removeEmptyStrings();
+    for (int i = r.leftOut.size(); --i >= 0;)
+        if (r.leftOut[i].startsWith ("~ "))
+        {
+            r.notes.insert (0, r.leftOut[i].substring (2));
+            r.leftOut.remove (i);
+        }
     engine.syncStrips();
     changed();
     return r;

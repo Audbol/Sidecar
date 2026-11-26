@@ -11,6 +11,7 @@ pub mod denormals;
 pub mod dlive;
 pub mod dlive_fx;
 pub mod dm2000;
+pub mod eq_fit;
 pub mod fader;
 pub mod generator;
 pub mod midas_pro;
