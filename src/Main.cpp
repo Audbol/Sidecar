@@ -195,6 +195,19 @@ public:
             return;
         }
 
+        // One Sidecar at a time: a second would fight the first over the audio device, the
+        // autosave and the settings (the plugin scanner above is the one exception).
+        instanceLock = std::make_unique<juce::InterProcessLock> ("Sidecar-console");
+        if (! instanceLock->enter (0))
+        {
+            instanceLock.reset();
+            juce::NativeMessageBox::showAsync (juce::MessageBoxOptions::makeOptionsOk (juce::MessageBoxIconType::InfoIcon, "Sidecar",
+                                                                                       "Sidecar is already open. Its window may be on another "
+                                                                                       "screen or minimised."),
+                                               [] (int) { quit(); });
+            return;
+        }
+
         juce::PropertiesFile::Options options;
         options.applicationName = livedaw::kAppName;
         options.filenameSuffix = "settings";
@@ -435,8 +448,31 @@ private:
             {
                 keepOnScreen();
             }
+            moveToPointersDisplay();
 
             setVisible (true);
+        }
+
+        /** Opens on the display Sidecar was started from (where the mouse is), not the one it was
+            last on: with a second screen (a laptop or a Steam Deck on an external monitor) the
+            window and its questions would otherwise sit on a screen nobody is looking at.
+            Its size and maximised state stay as they were. */
+        void moveToPointersDisplay()
+        {
+            auto& displays = juce::Desktop::getInstance().getDisplays();
+            const auto* to = displays.getDisplayForPoint (juce::Desktop::getMousePosition());
+            const auto* from = displays.getDisplayForRect (getScreenBounds());
+            if (to == nullptr || from == nullptr || to == from)
+                return;
+            const bool maximised = isFullScreen();
+            if (maximised)
+                setFullScreen (false);
+            const auto area = contentArea (*to);
+            auto bounds = getBounds();
+            bounds.setSize (juce::jmin (bounds.getWidth(), area.getWidth()), juce::jmin (bounds.getHeight(), area.getHeight()));
+            setBounds (bounds.withCentre (area.getCentre()).constrainedWithin (area));
+            if (maximised)
+                setFullScreen (true);
         }
 
         /** A display's work area less this window's frame (the title bar and
@@ -701,6 +737,8 @@ private:
     juce::Component::SafePointer<ui::MainComponent> mainComponent;
     std::unique_ptr<juce::Timer> autosaveTimer;
     std::unique_ptr<SignalQuitter> signalQuitter;
+    /** Held while this Sidecar runs: one at a time. Released last, when the process ends. */
+    std::unique_ptr<juce::InterProcessLock> instanceLock;
     bool safeMode = false;
     bool audioHeldBack = false; // safe mode: on the device with no hardware until turned back on
     juce::String stuckDriver;   // the device whose driver hung or crashed last run

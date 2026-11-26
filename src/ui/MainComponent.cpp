@@ -1081,9 +1081,21 @@ void MainComponent::showMixerChooser (bool canContinue, std::function<void()> be
     // Only the console that is running has its surface (the others need their own engine): a plain tile for the rest.
     options.picture = [this] (InterfaceKind kind, int maxWidth) -> juce::Image
     {
-        if (skin == nullptr || kind != ctx.interfaceKind || skin->getWidth() <= 0)
+        // Not while the console isn't laid out on screen yet (at start-up on Linux the window
+        // maps later): the tile keeps its stock picture then.
+        if (skin == nullptr || kind != ctx.interfaceKind || ! skin->isShowing() || skin->getWidth() < 640 || skin->getHeight() < 320)
             return {};
-        return skin->createComponentSnapshot (skin->getLocalBounds(), true, (float) maxWidth / (float) skin->getWidth());
+        auto shot = skin->createComponentSnapshot (skin->getLocalBounds(), true, (float) maxWidth / (float) skin->getWidth());
+        // A snapshot of one colour (nothing drawn yet) isn't a picture of the console.
+        if (shot.isValid())
+        {
+            const auto first = shot.getPixelAt (0, 0);
+            for (int y = 0; y < shot.getHeight(); y += juce::jmax (1, shot.getHeight() / 12))
+                for (int x = 0; x < shot.getWidth(); x += juce::jmax (1, shot.getWidth() / 12))
+                    if (shot.getPixelAt (x, y) != first)
+                        return shot;
+        }
+        return {};
     };
     options.onContinue = close;
     options.onMixer = [this, beforeFresh, close, canContinue] (InterfaceKind kind)

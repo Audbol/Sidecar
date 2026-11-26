@@ -5,6 +5,9 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+- Sidecar opens on the screen it was started from (where the mouse is), keeping its size, rather than the screen it was last on: with a second screen, such as a Steam Deck on an external monitor, the window and its questions (including QUIT's) opened on a screen nobody was looking at, so Sidecar seemed not to start or not to quit.
+- Starting Sidecar while it is already open says so instead of running a second copy, which fought the first over the audio device and the settings and showed an empty window.
+- The start page's picture of the console that was open last no longer comes out blank when the console hadn't been drawn yet (seen on Linux): it shows the stock picture then.
 - **COPY FROM ANOTHER CONSOLE...** on the Universal Mixer's SETUP > PREFERENCES copies another console's names, preamp, gate, EQ, dynamics, sends and faders (or a chosen part of them) into the running one, from a console Sidecar ran before or any show file. Each strip goes onto the one with the same number; a report names what had no place, and **UNDO COPY** takes it back. An EQ this console doesn't have is set on this console's own EQ to the closest curve (within 1 dB of the original on a full parametric EQ; the report says how close), or kept as the other console's with **COPY, KEEP THEIR EQ**. Gate and dynamics come across as the other console's own for now.
 - Making the console another one from a surface or the Universal Mixer's SETUP (**MAKE IT A DM2000** and the like) now gives a fresh console, as it says, like the start-up window does: it only changed the console's type, leaving the old console's channels and settings in it. Going from a WING to a DM2000 that way crashed (the DM2000's EQ screen met a WING channel's EQ). The console that was running is kept, as before.
 - Fixes from a review of the whole code base:
