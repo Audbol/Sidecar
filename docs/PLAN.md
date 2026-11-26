@@ -137,7 +137,7 @@ The owner wants a lot of work done here; what comes first is theirs to say.
 - [ ] COPY FROM (owner, November 2026): copy a kept console's (or a show file's) names, preamp, EQ, dynamics, faders and sends
       into the running console, the EQ fitted to this console's own EQ. Plan in `COPY_BETWEEN_CONSOLES.md`: 1 session layer,
       2 the SETUP window, 3 EQ fitting (all done: presets of what to copy, UNDO COPY in the report, FIT TO THIS
-      CONSOLE or KEEP THEIR EQ, `livedaw_dsp::eq_fit`), 4 dynamics mapping;
+      CONSOLE or KEEP THEIRS, `livedaw_dsp::eq_fit`), 4 dynamics mapping (done: `livedaw_dsp::dyn_map`);
       still open from 2: a channel range and a tick-list in the window.
 
 ## 6. The other consoles

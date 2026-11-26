@@ -1098,9 +1098,13 @@ no place here (channels past this console's count, sends to buses it doesn't hav
 **UNDO COPY** puts the console back as it was. An EQ this console doesn't have is set on
 this console's own EQ, as close to the other console's curve as it gets; the report says how
 close ("within 0.2 dB of the original"). A console with fewer or fixed bands gets as near as
-its knobs allow. **COPY, KEEP THEIR EQ** keeps the other console's EQ instead: exact, but only
-the Universal Mixer edits it. Gate and dynamics come across as the other console's own (they
-sound as they did; this console's own pages don't edit them yet).
+its knobs allow. A gate or compressor goes onto this console's own model of its kind (an
+expander onto an expander, a ducker onto a ducker), its threshold, ratio, attack, hold,
+release, range, knee and make-up gain carried over in this console's units and steps; a
+setting this console has no control for is named in the report. A vintage compressor whose
+knobs have no units can't be matched and stays the other console's. **COPY, KEEP THEIRS**
+keeps the other console's EQ, gate and compressor instead: exact, but only the Universal
+Mixer edits them.
 Not offered while a real console is under remote control.
 
 ![SETUP > CONSOLE: the configuration, the buses about to go from 16 to 24](images/universal-setup.png)

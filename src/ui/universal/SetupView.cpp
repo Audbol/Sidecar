@@ -465,13 +465,14 @@ void SetupView::chooseCopyWhat (const juce::File& source)
                            + " into this console?\n\nEach channel, bus, main and matrix goes onto the one with the same number here. "
                              "Effects and scenes stay as they are. UNDO COPY takes it back.");
         auto options = juce::MessageBoxOptions().withTitle ("COPY FROM").withButton ("COPY");
-        const bool eq = (c.sections & state::Eq) != 0;
+        const bool eq = (c.sections & (state::Eq | state::Gate | state::Dynamics)) != 0;
         if (eq)
         {
             // FIT TO THIS CONSOLE (COPY) or KEEP THEIRS.
-            text << "\n\nAn EQ this console doesn't have is set on its own EQ, as close to the other console's curve as it gets. "
-                    "KEEP THEIR EQ keeps the other console's instead: exact, but only the Universal Mixer can edit it.";
-            options = options.withButton ("COPY, KEEP THEIR EQ");
+            text << "\n\nAn EQ, gate or compressor this console doesn't have is set on its own: the EQ as close to the other "
+                    "console's curve as it gets, the gate and compressor with their threshold, ratio and times. "
+                    "KEEP THEIRS keeps the other console's instead: exact, but only the Universal Mixer can edit them.";
+            options = options.withButton ("COPY, KEEP THEIRS");
         }
         // CANCEL last: it is also what Escape gives (0).
         juce::AlertWindow::showAsync (options.withMessage (text).withButton ("CANCEL").withAssociatedComponent (safe.getComponent()),
@@ -483,9 +484,9 @@ void SetupView::chooseCopyWhat (const juce::File& source)
     });
 }
 
-void SetupView::copyFrom (const juce::File& source, juce::uint32 sections, const juce::String& what, bool keepTheirEq)
+void SetupView::copyFrom (const juce::File& source, juce::uint32 sections, const juce::String& what, bool keepTheirs)
 {
-    const auto r = ctx.show.copyFrom (source, sections, 0x1fu | (keepTheirEq ? Show::copyKeepTheirEq : 0u));
+    const auto r = ctx.show.copyFrom (source, sections, 0x1fu | (keepTheirs ? Show::copyKeepTheirs : 0u));
     if (r.strips < 0)
     {
         notice (*this, "COPY FROM", "Nothing was copied: " + r.error);

@@ -75,11 +75,23 @@ The pieces already exist; COPY FROM joins them.
    and a presence lift; a bright top): within 1 dB on every full parametric EQ (most within
    0.2 dB), the ProMix 01 within 1.6 dB, the 1202's fixed three bands within 4.5 dB and always
    closer than flat. A WING EQ copied onto a DM2000 lands within 0.2 dB. FIT TO THIS CONSOLE is
-   the default; COPY, KEEP THEIR EQ in the confirm window keeps theirs. A fit takes a few
+   the default; COPY, KEEP THEIRS in the confirm window keeps theirs. A fit takes a few
    milliseconds.
-4. **Dynamics and gate mapping.** Label matching and unit conversion across the consoles'
-   dynamics and gate models; a test per console pair checks that threshold, ratio and timing land
-   where expected.
+4. **Dynamics and gate mapping (done).** `livedaw_dsp::dyn_map`: each parameter gets a role from
+   its label and unit (threshold, ratio, attack, hold, release, range, knee, make-up gain,
+   detector), is read in plain units (dB, ms, a ratio as a number, a knee 0 hard to 1 softest)
+   and written to the target's parameter of the same role: seconds to ms, a value list's or a
+   text list's nearest entry (by proportion for times and ratios), a range's sign as the target
+   counts it, held to the target's range. The target model is this console's own of the same
+   kind (gate or compressor) and flavour (expander, ducker) with the most roles in common, the
+   strip's own model and the console's default first on a tie, and only one the slot may hold.
+   A model without a threshold in dB (a vintage compressor's unitless knobs) isn't matched and
+   stays the other console's; the report names it, and the roles that found no control. Tests:
+   the default compressor and gate of every console onto every other's (threshold lands, held
+   to the target's range), a WING COMP onto a DM2000 (threshold, ratio 4:1, attack, the nearest
+   release step, knee), a DM2000 gate onto a WING (range counting up), the ProMix's seconds to
+   the X32's ms, expander and ducker kept as such, and the session copy with KEEP THEIRS.
+   A PRO2's thresholds are in dBu and are taken as the same number of dB.
 5. **Later, if wanted:** a strip offset, copying a single channel from another console from the
    strip's own menu, and COPY FROM on the consoles' own SETUP pages.
 

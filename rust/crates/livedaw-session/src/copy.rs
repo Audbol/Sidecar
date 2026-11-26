@@ -10,15 +10,18 @@
 //! An EQ of a model that isn't this console's own is fitted to this console's own EQ: set to
 //! the curve that comes closest to the other console's (`livedaw_dsp::eq_fit`; FIT TO THIS
 //! CONSOLE), or, asked for, kept as the other console's model (KEEP THEIRS, which the
-//! Universal Mixer can show but the console's own pages can't edit). Gate and dynamics come
-//! across as they were; one whose model this console can't run is left as it was.
+//! Universal Mixer can show but the console's own pages can't edit). A gate or compressor
+//! likewise goes onto this console's own model of its kind, its settings matched by meaning
+//! (`livedaw_dsp::dyn_map`); one without settings to match (a vintage model's unitless knobs)
+//! stays the other console's. A block whose model this console can't run is left as it was.
 
 use crate::console::{self, section, NoPlugins, PluginBridge};
 use crate::refs::StripRef;
 use crate::show::Show;
 use crate::xml::{Element, Node};
-use livedaw_dsp::eq_fit;
 use livedaw_dsp::model::{model_index, ModelSpec};
+use livedaw_dsp::{dyn_map, eq_fit};
+use livedaw_engine::profile::DynSlot;
 use livedaw_engine::{Engine, Strip, StripKind};
 use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
@@ -45,13 +48,14 @@ pub struct CopyPlan {
     /// Only these channels (1-based numbers, both included); `None`: all of them.
     pub channels: Option<(usize, usize)>,
     /// FIT TO THIS CONSOLE: an EQ of another console's model becomes this console's own EQ,
-    /// set to the closest curve. Off: KEEP THEIRS, the other console's model as it was.
-    pub fit_eq: bool,
+    /// set to the closest curve, and a gate or compressor this console's own of its kind.
+    /// Off: KEEP THEIRS, the other console's models as they were.
+    pub fit: bool,
 }
 
 impl Default for CopyPlan {
     fn default() -> Self {
-        Self { sections: DEFAULT_SECTIONS, kinds: KINDS.to_vec(), channels: None, fit_eq: true }
+        Self { sections: DEFAULT_SECTIONS, kinds: KINDS.to_vec(), channels: None, fit: true }
     }
 }
 
@@ -174,7 +178,7 @@ pub fn copy_console(engine: &Engine, source: &Engine, plan: &CopyPlan, bridge: &
         let eq_at = e.children.iter().position(|n| matches!(n, Node::Element(c) if c.name == "Eq"));
         // (The Universal Mixer edits any console's EQ: there it is kept as it was.)
         let universal = std::ptr::eq(own, &livedaw_dsp::universal::MODELS);
-        if let (true, false, Some(i)) = (plan.fit_eq, universal, eq_at) {
+        if let (true, false, Some(i)) = (plan.fit, universal, eq_at) {
             let Node::Element(eq) = &e.children[i] else { unreachable!() };
             let mdl = eq.attr("mdl").unwrap_or("");
             let foreign = !livedaw_dsp::universal::is_own(own, mdl);
@@ -186,6 +190,37 @@ pub fn copy_console(engine: &Engine, source: &Engine, plan: &CopyPlan, bridge: &
                 let (fitted, worst) = fit_eq(eq, from, &mine, current);
                 left.fitted = Some(left.fitted.map_or(worst, |w: f64| w.max(worst)));
                 e.children[i] = Node::Element(fitted);
+            }
+        }
+        // A gate or compressor of another console's model: this console's own of its kind.
+        if plan.fit && !universal {
+            let spec = engine.profile().spec();
+            for (tag, slot, theirs, mine, default) in [
+                ("Gate", DynSlot::Gate, target.from.params.gate(), p.gate(), own.gate_default),
+                ("Dyn", DynSlot::Dynamics, target.from.params.dynamics(), p.dynamics(), own.comp_default),
+            ] {
+                let Some(i) = e.children.iter().position(|n| matches!(n, Node::Element(c) if c.name == tag)) else { continue };
+                let Node::Element(block) = &e.children[i] else { unreachable!() };
+                let mdl = block.attr("mdl").unwrap_or("");
+                if livedaw_dsp::universal::is_own(own, mdl) {
+                    continue;
+                }
+                let Some(from) = theirs.table().iter().find(|m| m.token == mdl) else { continue };
+                let kind = target.strip.kind();
+                let candidates: Vec<&'static ModelSpec> =
+                    own.dynamics.iter().filter(|m| spec.may_hold_on(kind, slot, m.token)).collect();
+                let current = mine.model_spec().filter(|m| livedaw_dsp::universal::is_own(own, m.token));
+                let preferred: Vec<&str> = current.map(|m| m.token).into_iter().chain([default]).collect();
+                match fit_dynamics(block, from, &candidates, &preferred) {
+                    Some((fitted, unmatched)) => {
+                        left.dyn_fitted += 1;
+                        left.dyn_unmatched.extend(unmatched);
+                        e.children[i] = Node::Element(fitted);
+                    }
+                    None => {
+                        left.dyn_kept.insert(from.name);
+                    }
+                }
             }
         }
         // A model this console can't run: that block is left as it was.
@@ -206,6 +241,18 @@ pub fn copy_console(engine: &Engine, source: &Engine, plan: &CopyPlan, bridge: &
     report.left_out = left.lines();
     if let Some(worst) = left.fitted {
         report.notes.push(format!("EQ fitted to this console's own: within {worst:.1} dB of the original"));
+    }
+    if left.dyn_fitted > 0 {
+        let mut line = String::from("Gate and dynamics set on this console's own models");
+        if !left.dyn_unmatched.is_empty() {
+            let names: Vec<&str> = left.dyn_unmatched.iter().map(|r| r.name()).collect();
+            line += &format!("; no control here for their {}", names.join(", "));
+        }
+        report.notes.push(line);
+    }
+    if !left.dyn_kept.is_empty() {
+        let names: Vec<&str> = left.dyn_kept.iter().copied().collect();
+        report.notes.push(format!("Kept as the other console's (no settings to match): {}", names.join(", ")));
     }
     report
 }
@@ -240,6 +287,32 @@ fn fit_eq(eq: &Element, from: &ModelSpec, table: &[&'static ModelSpec], current:
         out.add_new("P").set("n", p.id).set("v", crate::xml::fmt_f32(*v));
     }
     (out, f.worst_db)
+}
+
+/// The other console's gate or dynamics block `block` (model `from`) on the best of
+/// `candidates` with its settings matched, and the settings that found no control there;
+/// `None` when nothing can be matched.
+fn fit_dynamics(
+    block: &Element,
+    from: &ModelSpec,
+    candidates: &[&'static ModelSpec],
+    preferred: &[&str],
+) -> Option<(Element, Vec<dyn_map::Role>)> {
+    let to = dyn_map::choose(from, candidates, preferred)?;
+    let mut values: Vec<f32> = from.params.iter().map(|p| p.default).collect();
+    for p in block.children_named("P") {
+        if let (Some(i), Some(v)) = (from.param_index(p.str_or("n", "")), p.attr("v")) {
+            values[i] = from.params[i].sanitise(crate::xml::parse_double_prefix(v) as f32);
+        }
+    }
+    let mapped = dyn_map::map(from, &values, to)?;
+    let mut out = block.clone(); // on, mix, side chain and the rest stay
+    out.children.retain(|n| !matches!(n, Node::Element(c) if c.name == "P"));
+    out.set("mdl", to.token);
+    for (p, v) in to.params.iter().zip(&mapped.values) {
+        out.add_new("P").set("n", p.id).set("v", crate::xml::fmt_f32(*v));
+    }
+    Some((out, mapped.unmatched))
 }
 
 struct Strip2 {
@@ -297,6 +370,11 @@ struct LeftOut {
     models: BTreeSet<&'static str>,
     /// The worst EQ fit, in dB, when any EQ was fitted.
     fitted: Option<f64>,
+    /// Gate and dynamics blocks set on this console's own models, the settings that found no
+    /// control, and the models kept as they were (nothing to match).
+    dyn_fitted: usize,
+    dyn_unmatched: BTreeSet<dyn_map::Role>,
+    dyn_kept: BTreeSet<&'static str>,
 }
 
 impl LeftOut {

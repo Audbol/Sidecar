@@ -195,3 +195,41 @@ fn a_wing_eq_is_fitted_to_the_dm2000s_own() {
     // A flat EQ stays flat.
     assert!(livedaw_dsp::eq_fit::is_flat(&eq_curve(&channel(&dm, 2))));
 }
+
+#[test]
+fn a_wing_compressor_and_gate_go_onto_the_dm2000s_own() {
+    let (wing, dm) = (console(Profile::Wing), console(Profile::Dm2000));
+    let set = |slot: &livedaw_engine::params::DynSlotParams, token: &str, pairs: &[(&str, f32)]| {
+        slot.set_model(livedaw_dsp::model::model_index(slot.table(), token).unwrap());
+        for (id, v) in pairs {
+            slot.param(id).unwrap_or_else(|| panic!("{id}")).store(*v);
+        }
+        slot.on.store(true, Relaxed);
+    };
+    let vocal = channel(&wing, 1);
+    set(vocal.params.dynamics(), "COMP", &[("thr", -18.0), ("att", 15.0), ("rel", 300.0)]);
+    set(vocal.params.gate(), "GATE", &[("thr", -45.0), ("range", 30.0)]);
+    // A vintage model's knobs have no units: nothing to match.
+    set(channel(&wing, 2).params.dynamics(), "LA", &[]);
+
+    let report = copy_console(&dm, &wing, &CopyPlan::default(), &mut NoPlugins);
+
+    let to = channel(&dm, 1);
+    let comp = to.params.dynamics();
+    assert_eq!(comp.model_spec().unwrap().token, "DMCMP");
+    assert_eq!(comp.param("thr").unwrap().load(), -18.0);
+    assert_eq!(comp.param("att").unwrap().load(), 15.0);
+    assert!(comp.on.load(Relaxed));
+    let gate = to.params.gate();
+    assert_eq!(gate.model_spec().unwrap().token, "DMGAT");
+    assert_eq!(gate.param("thr").unwrap().load(), -45.0);
+    assert_eq!(gate.param("range").unwrap().load(), -30.0, "the DM2000's range counts down");
+    assert_eq!(channel(&dm, 2).params.dynamics().model_spec().unwrap().token, "LA", "kept as the WING's");
+    assert!(report.notes.iter().any(|l| l.starts_with("Gate and dynamics set on this console's own")), "{:?}", report.notes);
+    assert!(report.notes.iter().any(|l| l.contains("no settings to match") && l.contains("LA")), "{:?}", report.notes);
+
+    // KEEP THEIRS: the WING's models as they were.
+    let dm2 = console(Profile::Dm2000);
+    copy_console(&dm2, &wing, &CopyPlan { fit: false, ..CopyPlan::default() }, &mut NoPlugins);
+    assert_eq!(channel(&dm2, 1).params.dynamics().model_spec().unwrap().token, "COMP");
+}
