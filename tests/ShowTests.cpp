@@ -818,6 +818,43 @@ public:
             file.getParentDirectory().deleteRecursively();
         }
 
+        beginTest ("COPY FROM: a kept WING's names and faders onto a DM2000, the report, and UNDO COPY");
+        {
+            MixerEngine engine (0);
+            PluginHost host (nullptr);
+            Show show (engine, host);
+            engine.configure (nullptr); // a WING
+            show.clear (engine.getConfiguredCounts().channels);
+            engine.getChannels()[0]->params.custLink = false; // its own name shows, not its source's
+            engine.getChannels()[0]->setName ("Kick");
+            engine.getChannels()[0]->params.faderDb = -9.0f;
+            const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                                  .getChildFile ("LiveDAWCopyFromTest").getChildFile (juce::String ("WING") + Show::fileExtension);
+            file.getParentDirectory().createDirectory();
+            expect (show.saveToFile (file).wasOk());
+
+            engine.configureProfile (ld::kProfileDm2000);
+            show.clear (engine.getConfiguredCounts().channels);
+            engine.getChannels()[0]->setName ("Mine");
+
+            const auto missing = show.copyFrom (file.getSiblingFile ("none.lshow"), state::AllSections, 0x1fu);
+            expectEquals (missing.strips, -1);
+            expect (missing.error.isNotEmpty(), "error text");
+            expect (engine.getChannels()[0]->getName() == "Mine", "nothing changed");
+
+            const auto r = show.copyFrom (file, state::Name | state::Fader, 0x1fu);
+            expect (r.strips > 0, "strips " + juce::String (r.strips));
+            expect (r.source.isNotEmpty(), "source");
+            expect (engine.getProfile() == ld::kProfileDm2000, "still a DM2000");
+            expect (engine.getChannels()[0]->getName() == "Kick", "name " + engine.getChannels()[0]->getName());
+            expectEquals (engine.getChannels()[0]->params.faderDb.load(), -9.0f);
+
+            expect (show.canUndoRecall(), "can undo");
+            show.undoRecall();
+            expect (engine.getChannels()[0]->getName() == "Mine", "UNDO COPY: " + engine.getChannels()[0]->getName());
+            file.getParentDirectory().deleteRecursively();
+        }
+
         beginTest ("The WING's LIBRARY: snap files without a show, a show of links, CREATE / OPEN / CLOSE leave the console (issue #31)");
         {
             MixerEngine engine (0);

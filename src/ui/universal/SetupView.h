@@ -70,6 +70,12 @@ public:
     ToggleKey consoleTab, audioTab, remoteTab, prefsTab, benchmarkTab, applyKey, revertKey;
     ChoiceBar interfaceChoice;
     ToggleKey compensationKey, protectionKey, gainBypassKey;
+    /** COPY FROM (docs/COPY_BETWEEN_CONSOLES.md): another console's settings into this one. */
+    ToggleKey copyFromKey;
+    /** COPY FROM's steps: the source (a kept console or a show file), what to copy, the copy and its report. */
+    void chooseCopySource();
+    void chooseCopyWhat (const juce::File& source);
+    void copyFrom (const juce::File& source, juce::uint32 sections, const juce::String& what);
     RemotePanel remote;
     BenchmarkPanel benchmark;
     MixerConfigPanel mixerConfig;
@@ -93,6 +99,7 @@ private:
     std::array<int, NumKinds> pending {};
     std::vector<std::unique_ptr<Row>> rows;
     std::unique_ptr<juce::AudioDeviceSelectorComponent> device;
+    std::unique_ptr<juce::FileChooser> copyChooser;
     juce::String status;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SetupView)

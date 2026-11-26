@@ -24,7 +24,9 @@ The Universal Mixer's SETUP page gets **COPY FROM** next to the console choice:
 5. **COPY**, then a short report: what was copied, and what had no place (channels past this
    console's count, sends to buses it doesn't have, settings it has no control for).
 
-COPY sets an undo point, so the recall UNDO brings the console back as it was. It is refused while
+COPY sets an undo point (the recall undo), and the report's **UNDO COPY** brings the console
+back as it was (the Universal Mixer has no UNDO RECALL key of its own). A name the other console
+showed from its input source (LINK CUSTOMIZATION TO SOURCE) comes across as the strip's own. It is refused while
 a real console is under remote control, like the other console changes. Scenes and effects are
 never copied: they belong to the console they were made on.
 

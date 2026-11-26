@@ -15,18 +15,24 @@ fn channel(e: &Engine, number: usize) -> std::sync::Arc<livedaw_engine::Strip> {
     e.strip_at(StripKind::Channel, number - 1).unwrap()
 }
 
+/// A name of the strip's own, shown (unlinked from its source), as when renamed on the console.
+fn own_name(s: &livedaw_engine::Strip, name: &str) {
+    s.params.cust_link.store(false, Relaxed);
+    s.set_name(name);
+}
+
 #[test]
 fn a_wings_channels_come_across_to_a_dm2000() {
     let (wing, dm) = (console(Profile::Wing), console(Profile::Dm2000));
     let kick = channel(&wing, 1);
-    kick.set_name("Kick");
+    own_name(&kick, "Kick");
     kick.params.fader_db.store(-5.0);
     kick.params.input.trim_db.store(6.0);
     kick.params.mute.store(true, Relaxed);
     let send = kick.sends.get_or_create(2).unwrap();
     send.enabled.store(true, Relaxed);
     send.level_db.store(-3.0);
-    channel(&wing, 40).set_name("Spare");
+    own_name(&channel(&wing, 40), "Spare");
 
     let report = copy_console(&dm, &wing, &CopyPlan::default(), &mut NoPlugins);
 
@@ -47,8 +53,8 @@ fn a_wings_channels_come_across_to_a_dm2000() {
 #[test]
 fn channels_the_console_lacks_are_reported_not_copied() {
     let (dm, wing) = (console(Profile::Dm2000), console(Profile::Wing));
-    channel(&dm, 1).set_name("Vocal");
-    channel(&dm, 96).set_name("Last");
+    own_name(&channel(&dm, 1), "Vocal");
+    own_name(&channel(&dm, 96), "Last");
 
     let report = copy_console(&wing, &dm, &CopyPlan::default(), &mut NoPlugins);
 
@@ -82,7 +88,7 @@ fn sends_to_a_bus_the_console_lacks_are_left_out() {
 fn a_range_copies_only_those_channels_and_routing_stays_unless_chosen() {
     let (a, b) = (console(Profile::Wing), console(Profile::Wing));
     for n in 1..=10 {
-        channel(&a, n).set_name(&format!("A{n}"));
+        own_name(&channel(&a, n), &format!("A{n}"));
         channel(&a, n).params.input_left.store(30 + n as i32, Relaxed);
     }
     let before = channel(&b, 3).params.input_left.load(Relaxed);
@@ -99,9 +105,51 @@ fn a_range_copies_only_those_channels_and_routing_stays_unless_chosen() {
 }
 
 #[test]
+fn a_name_shown_from_the_source_comes_across_as_the_strips_own() {
+    let (wing, dm) = (console(Profile::Wing), console(Profile::Dm2000));
+    let ch = channel(&wing, 1);
+    let index = livedaw_engine::sources::source_index(ch.params.input_left.load(Relaxed)).expect("channel 1 has a source");
+    wing.sources().set_name(index, "Lead vox");
+    assert!(ch.params.cust_link.load(Relaxed), "a WING channel shows its source's name");
+
+    copy_console(&dm, &wing, &CopyPlan::default(), &mut NoPlugins);
+
+    let to = channel(&dm, 1);
+    assert_eq!(to.name(), "Lead vox");
+    assert!(!to.params.cust_link.load(Relaxed), "shown as the strip's own, not this console's source name");
+}
+
+#[test]
+fn undo_takes_a_copy_back() {
+    let wing = console(Profile::Wing);
+    own_name(&channel(&wing, 1), "Kick");
+    channel(&wing, 1).params.fader_db.store(-12.0);
+    let path = std::env::temp_dir().join(format!("sidecar-copy-undo-{}.lshow", std::process::id()));
+    Show::new().save_to_file(&wing, &mut NoPlugins, &path).unwrap();
+
+    let dm = console(Profile::Dm2000);
+    own_name(&channel(&dm, 1), "Mine");
+    channel(&dm, 1).params.fader_db.store(0.0);
+    let mut show = Show::new();
+    let missing = std::path::Path::new("no such file.lshow");
+    assert!(copy::copy_into_show(&mut show, &dm, missing, &CopyPlan::default(), &mut NoPlugins).is_err());
+    assert!(!show.can_undo_recall(&dm), "a file that couldn't be read sets no step back");
+
+    copy::copy_into_show(&mut show, &dm, &path, &CopyPlan::default(), &mut NoPlugins).unwrap();
+    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(path.with_extension("lshow.bak"));
+    assert_eq!(channel(&dm, 1).name(), "Kick");
+
+    assert!(show.can_undo_recall(&dm));
+    show.undo_recall(&dm, &mut NoPlugins);
+    assert_eq!(channel(&dm, 1).name(), "Mine");
+    assert_eq!(channel(&dm, 1).params.fader_db.load(), 0.0);
+}
+
+#[test]
 fn a_kept_consoles_file_is_copied_from() {
     let wing = console(Profile::Wing);
-    channel(&wing, 2).set_name("Snare");
+    own_name(&channel(&wing, 2), "Snare");
     let path = std::env::temp_dir().join(format!("sidecar-copy-{}.lshow", std::process::id()));
     Show::new().save_to_file(&wing, &mut NoPlugins, &path).unwrap();
 

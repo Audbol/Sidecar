@@ -657,6 +657,27 @@ void Show::markRecallUndo()
     ld::ld_show_mark_recall_undo (handle, engine.getHandle());
 }
 
+Show::CopyResult Show::copyFrom (const juce::File& file, uint32_t sections, uint32_t kinds, int firstChannel, int lastChannel)
+{
+    const Utf8 p (file.getFullPathName());
+    ld::LdString* message = nullptr;
+    CopyResult r;
+    r.strips = ld::ld_show_copy_from (handle, engine.getHandle(), p.data, p.size, sections, kinds, firstChannel, lastChannel, &message);
+    const auto text = takeString (message);
+    if (r.strips < 0)
+    {
+        r.error = text.isNotEmpty() ? text : juce::String ("Could not read " + file.getFullPathName());
+        return r;
+    }
+    r.leftOut.addLines (text);
+    r.source = r.leftOut[0];
+    r.leftOut.remove (0);
+    r.leftOut.removeEmptyStrings();
+    engine.syncStrips();
+    changed();
+    return r;
+}
+
 //==============================================================================
 namespace
 {

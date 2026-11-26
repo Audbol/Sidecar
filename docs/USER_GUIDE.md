@@ -1086,6 +1086,19 @@ REMOTE and DAW (kept in the app settings and applied at once):
 **PREFERENCES** has the interface, delay
 compensation and output protection.
 
+**COPY FROM ANOTHER CONSOLE...** (on PREFERENCES, under the interface) copies another
+console's settings into this one, for a mix made on one console and wanted on another.
+Choose where from: a console Sidecar ran before (it keeps each one when it turns into
+another) or **A SHOW FILE...**. Then choose what: names, preamp, gate, EQ, dynamics, sends
+and faders (the usual choice), all of that with routing and groups, names only, gate, EQ
+and dynamics only, or faders and sends only. Each channel, bus, main and matrix goes onto
+the one with the same number here; a name shown from the other console's input source comes
+across as the strip's own. Effects and scenes stay as they are. A report then says what had
+no place here (channels past this console's count, sends to buses it doesn't have), and its
+**UNDO COPY** puts the console back as it was. EQ, gate and dynamics come across as the
+other console's own (they sound as they did; this console's own pages don't edit them yet).
+Not offered while a real console is under remote control.
+
 ![SETUP > CONSOLE: the configuration, the buses about to go from 16 to 24](images/universal-setup.png)
 
 ### Themes

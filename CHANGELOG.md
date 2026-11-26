@@ -5,6 +5,7 @@ All notable changes to Sidecar are listed here. Versions follow
 
 ## [Unreleased]
 
+- **COPY FROM ANOTHER CONSOLE...** on the Universal Mixer's SETUP > PREFERENCES copies another console's names, preamp, gate, EQ, dynamics, sends and faders (or a chosen part of them) into the running one, from a console Sidecar ran before or any show file. Each strip goes onto the one with the same number; a report names what had no place, and **UNDO COPY** takes it back. EQ and dynamics come across as the other console's own for now; fitting them to this console's own EQ comes next.
 - Making the console another one from a surface or the Universal Mixer's SETUP (**MAKE IT A DM2000** and the like) now gives a fresh console, as it says, like the start-up window does: it only changed the console's type, leaving the old console's channels and settings in it. Going from a WING to a DM2000 that way crashed (the DM2000's EQ screen met a WING channel's EQ). The console that was running is kept, as before.
 - Fixes from a review of the whole code base:
   - Audio: a built-in effect that hits an internal error now faults its FX slot (shown, cleared as usual) instead of leaving it passed through and "double assigned" until restart. Clearing an effect's fault resets it, so a reverb or delay that blew up doesn't fault again at once.

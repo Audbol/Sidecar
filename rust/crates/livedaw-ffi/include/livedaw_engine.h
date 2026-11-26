@@ -1760,6 +1760,12 @@ extern "C"
     void ld_show_clear_scenes (Show*, const Engine*, const char* name, size_t nameLen);
     /** OPEN: the name and scenes of a show file; the console stays and nothing is recalled. */
     bool ld_show_load_scenes (Show*, const Engine*, const char* path, size_t pathLen, LdString** message);
+    /** COPY FROM: `sections` of the console in the show file at `path` copied into this one; `kinds`
+        bit i the i-th of channels, aux, buses, mains, matrices; channels first..last when first > 0.
+        Sets the step back for UNDO. The strips copied, with `message` the other console's name and
+        a line per thing left out; -1 with `message` the error (nothing changed). */
+    int32_t ld_show_copy_from (Show*, const Engine*, const char* path, size_t pathLen, uint32_t sections, uint32_t kinds,
+                               int32_t first, int32_t last, LdString** message);
 
     bool ld_show_is_fading (Show*);
     void ld_show_cancel_fade (Show*, const Engine*);

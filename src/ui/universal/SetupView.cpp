@@ -1,5 +1,9 @@
 #include "ui/universal/SetupView.h"
+#include "engine/AppPaths.h"
+#include "engine/ConsoleState.h"
+#include "engine/Show.h"
 #include "ui/MixerChooser.h"
+#include "ui/universal/Widgets.h"
 
 namespace livedaw::ui::universal
 {
@@ -104,7 +108,8 @@ private:
 SetupView::SetupView (UiContext& c, const Theme& t)
     : consoleTab ("CONSOLE", t.accent, t), audioTab ("AUDIO", t.accent, t), remoteTab ("REMOTE", t.accent, t), prefsTab ("PREFERENCES", t.accent, t), benchmarkTab ("BENCHMARK", t.accent, t),
       applyKey ("APPLY", t.accent, t), revertKey ("REVERT", t.accent, t), interfaceChoice (t), compensationKey ("DELAY COMPENSATION", t.accent, t),
-      protectionKey ("OUTPUT PROTECTION", t.accent, t), gainBypassKey ("GAIN BYPASS (INPUTS ALREADY PREAMPED)", t.accent, t), remote (c, t), benchmark (c, t), mixerConfig (c, t), ctx (c), theme (t)
+      protectionKey ("OUTPUT PROTECTION", t.accent, t), gainBypassKey ("GAIN BYPASS (INPUTS ALREADY PREAMPED)", t.accent, t),
+      copyFromKey ("COPY FROM ANOTHER CONSOLE...", t.accent, t), remote (c, t), benchmark (c, t), mixerConfig (c, t), ctx (c), theme (t)
 {
     for (auto* k : { &consoleTab, &audioTab, &remoteTab, &prefsTab, &benchmarkTab })
         k->tab = true;
@@ -189,7 +194,10 @@ SetupView::SetupView (UiContext& c, const Theme& t)
     };
     gainBypassKey.setTooltip ("For inputs already through a real preamp (an interface, a console's recording): "
                               "the GAIN counts as 0 dB, TRIM still works. Applies to every console.");
-    for (auto* child : std::initializer_list<juce::Component*> { &interfaceChoice, &compensationKey, &protectionKey, &gainBypassKey })
+    copyFromKey.onClick = [this] { chooseCopySource(); };
+    copyFromKey.setTooltip ("Copy another console's names, preamp, EQ, dynamics, sends and faders into this one "
+                            "(a console Sidecar ran before, or a show file)");
+    for (auto* child : std::initializer_list<juce::Component*> { &interfaceChoice, &copyFromKey, &compensationKey, &protectionKey, &gainBypassKey })
         addChildComponent (child);
 
     addChildComponent (remote);
@@ -220,7 +228,7 @@ void SetupView::showPage (Page p)
         device->setVisible (p == Page::Audio);
     remote.setVisible (p == Page::Remote);
     benchmark.setVisible (p == Page::Benchmark);
-    for (auto* c : std::initializer_list<juce::Component*> { &interfaceChoice, &compensationKey, &protectionKey, &gainBypassKey })
+    for (auto* c : std::initializer_list<juce::Component*> { &interfaceChoice, &copyFromKey, &compensationKey, &protectionKey, &gainBypassKey })
         c->setVisible (p == Page::Preferences);
     refresh();
     repaint();
@@ -368,7 +376,142 @@ void SetupView::resized()
     remote.setBounds (area);
     benchmark.setBounds (area);
     auto prefs = area.withWidth (juce::jmin (area.getWidth(), 600));
-    layoutRows (prefs, { { &interfaceChoice, 40 }, { &compensationKey, sizes::kTouch }, { &protectionKey, sizes::kTouch }, { &gainBypassKey, sizes::kTouch } }, sizes::kGapSmall);
+    layoutRows (prefs, { { &interfaceChoice, 40 }, { &copyFromKey, sizes::kTouch }, { &compensationKey, sizes::kTouch }, { &protectionKey, sizes::kTouch }, { &gainBypassKey, sizes::kTouch } }, sizes::kGapSmall);
+}
+
+//==============================================================================
+// COPY FROM (docs/COPY_BETWEEN_CONSOLES.md)
+
+namespace
+{
+    /** A notice over `host` with an OK key. */
+    void notice (juce::Component& host, const juce::String& title, const juce::String& text)
+    {
+        juce::AlertWindow::showAsync (juce::MessageBoxOptions().withTitle (title).withMessage (text).withButton ("OK").withAssociatedComponent (&host), nullptr);
+    }
+}
+
+void SetupView::chooseCopySource()
+{
+    if (ctx.engine.isRemoteControlled())
+    {
+        notice (*this, "COPY FROM", "Not while a real console is under remote control: its own settings are the ones that count.");
+        return;
+    }
+    // The consoles Sidecar ran before, as kept when it turned into another (issue #25).
+    auto kept = paths::appData().getChildFile ("consoles").findChildFiles (juce::File::findFiles, false, juce::String ("*") + Show::fileExtension);
+    std::sort (kept.begin(), kept.end(), [] (const juce::File& a, const juce::File& b) { return a.getFileName() < b.getFileName(); });
+
+    juce::PopupMenu menu;
+    menu.setLookAndFeel (&lookAndFeelFor (theme));
+    menu.addSectionHeader ("COPY FROM");
+    for (int i = 0; i < kept.size(); ++i)
+        menu.addItem (i + 1, "THE " + kept[i].getFileNameWithoutExtension().toUpperCase() + " (AS LEFT "
+                                 + kept[i].getLastModificationTime().formatted ("%d %b %H:%M").toUpperCase() + ")");
+    if (kept.isEmpty())
+        menu.addItem (-1, "NO OTHER CONSOLE YET: ONE IS KEPT WHEN SIDECAR TURNS INTO ANOTHER", false, false);
+    menu.addSeparator();
+    constexpr int showFileItem = 10000;
+    menu.addItem (showFileItem, "A SHOW FILE...");
+
+    juce::Component::SafePointer<SetupView> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&copyFromKey), [safe, kept] (int item)
+    {
+        if (safe == nullptr || item == 0)
+            return;
+        if (item != showFileItem)
+        {
+            if (juce::isPositiveAndBelow (item - 1, kept.size()))
+                safe->chooseCopyWhat (kept[item - 1]);
+            return;
+        }
+        safe->copyChooser = std::make_unique<juce::FileChooser> ("Copy from a show", paths::documents(), juce::String ("*") + Show::fileExtension);
+        safe->copyChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles, [safe] (const juce::FileChooser& fc)
+        {
+            if (safe != nullptr && fc.getResult().existsAsFile())
+                safe->chooseCopyWhat (fc.getResult());
+        });
+    });
+}
+
+void SetupView::chooseCopyWhat (const juce::File& source)
+{
+    using namespace state;
+    struct Choice
+    {
+        const char* text;
+        juce::uint32 sections;
+    };
+    static const Choice choices[] = {
+        { "NAMES, PREAMP, GATE, EQ, DYNAMICS, SENDS AND FADERS", Name | Preamp | Gate | Eq | Dynamics | Sends | Fader },
+        { "ALL OF THAT, WITH ROUTING AND GROUPS", AllSections & ~(juce::uint32) Inserts },
+        { "NAMES ONLY", Name },
+        { "GATE, EQ AND DYNAMICS ONLY", Gate | Eq | Dynamics },
+        { "FADERS AND SENDS ONLY", Fader | Sends },
+    };
+    juce::PopupMenu menu;
+    menu.setLookAndFeel (&lookAndFeelFor (theme));
+    menu.addSectionHeader ("COPY WHAT FROM " + source.getFileNameWithoutExtension().toUpperCase());
+    for (int i = 0; i < (int) std::size (choices); ++i)
+        menu.addItem (i + 1, choices[i].text);
+
+    juce::Component::SafePointer<SetupView> safe (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&copyFromKey), [safe, source] (int item)
+    {
+        if (safe == nullptr || ! juce::isPositiveAndBelow (item - 1, (int) std::size (choices)))
+            return;
+        const auto& c = choices[item - 1];
+        juce::AlertWindow::showAsync (juce::MessageBoxOptions()
+                                          .withTitle ("COPY FROM")
+                                          .withMessage ("Copy " + juce::String (c.text).toLowerCase() + " from " + source.getFileNameWithoutExtension()
+                                                        + " into this console?\n\nEach channel, bus, main and matrix goes onto the one with the same number here. "
+                                                          "Effects and scenes stay as they are. UNDO COPY takes it back.")
+                                          .withButton ("COPY")
+                                          .withButton ("CANCEL")
+                                          .withAssociatedComponent (safe.getComponent()),
+                                      [safe, source, sections = c.sections, what = juce::String (c.text).toLowerCase()] (int result)
+                                      {
+                                          if (safe != nullptr && result == 1)
+                                              safe->copyFrom (source, sections, what);
+                                      });
+    });
+}
+
+void SetupView::copyFrom (const juce::File& source, juce::uint32 sections, const juce::String& what)
+{
+    const auto r = ctx.show.copyFrom (source, sections, 0x1fu);
+    if (r.strips < 0)
+    {
+        notice (*this, "COPY FROM", "Nothing was copied: " + r.error);
+        ctx.log.warning ("COPY FROM " + source.getFileName() + ": " + r.error);
+        return;
+    }
+    if (ctx.structureChanged)
+        ctx.structureChanged();
+    ctx.log.info ("Copied " + what + " from " + r.source + " (" + source.getFileName() + ") onto " + juce::String (r.strips) + " strips");
+    for (const auto& line : r.leftOut)
+        ctx.log.info ("COPY FROM left out: " + line);
+
+    juce::String text;
+    text << "Copied " << what << " from the " << r.source << " onto " << r.strips << " strips.";
+    if (! r.leftOut.isEmpty())
+        text << "\n\nLeft out, with no place in this console:\n" << r.leftOut.joinIntoString ("\n");
+    juce::Component::SafePointer<SetupView> safe (this);
+    // UNDO COPY first: the last key (OK) is also what Escape gives (0).
+    juce::AlertWindow::showAsync (juce::MessageBoxOptions().withTitle ("COPY FROM").withMessage (text).withButton ("UNDO COPY").withButton ("OK").withAssociatedComponent (this),
+                                  [safe] (int result)
+                                  {
+                                      if (safe == nullptr || result != 1)
+                                          return;
+                                      // UNDO COPY (the copy set the step back first).
+                                      if (safe->ctx.show.canUndoRecall())
+                                      {
+                                          safe->ctx.show.undoRecall();
+                                          if (safe->ctx.structureChanged)
+                                              safe->ctx.structureChanged();
+                                          safe->ctx.log.info ("COPY FROM undone");
+                                      }
+                                  });
 }
 
 } // namespace livedaw::ui::universal

@@ -157,6 +157,21 @@ public:
     /** Takes that step back for a recall done outside the show's scenes (the 01V's scene 00), just before it. */
     void markRecallUndo();
 
+    /** COPY FROM (docs/COPY_BETWEEN_CONSOLES.md): another console's settings copied into this one. */
+    struct CopyResult
+    {
+        /** Strips copied onto; -1: the file couldn't be read (`error`), nothing changed. */
+        int strips = -1;
+        /** The other console's name. */
+        juce::String source, error;
+        /** What had no place in this console, one line each. */
+        juce::StringArray leftOut;
+    };
+    /** Copies `sections` (state::Section bits) of the console in the show file `file`; `kinds` bit i
+        is the i-th of channels, aux channels, buses, mains, matrices; channels `firstChannel` to
+        `lastChannel` only when `firstChannel` > 0. UNDO (undoRecall) takes it back. */
+    CopyResult copyFrom (const juce::File& file, uint32_t sections, uint32_t kinds, int firstChannel = 0, int lastChannel = 0);
+
     //==============================================================================
     // Show items (manual 5.6 p. 52): ADD ITEM TO SHOW and SAVE + ADD
 

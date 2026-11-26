@@ -1607,6 +1607,50 @@ pub unsafe extern "C" fn ld_show_load_scenes(
     file_result(guard(Err("internal error".into()), || s.show.load_scenes_from_file(e, &path)), message)
 }
 
+/// COPY FROM (`docs/COPY_BETWEEN_CONSOLES.md`): the `sections` (`console::section` bits) of the
+/// console in the show file at `path` copied into this one, strip kinds by `kinds` (bit i: the
+/// i-th of channels, aux, buses, mains, matrices), channels `first`..=`last` only when
+/// `first` > 0. Sets the step back for UNDO first. Returns the strips copied, with `message`
+/// the other console's name and then one line per thing left out; -1 with `message` the
+/// error (nothing changed).
+#[no_mangle]
+pub unsafe extern "C" fn ld_show_copy_from(
+    s: *mut LdShow,
+    e: *const Engine,
+    path: *const u8,
+    path_len: usize,
+    sections: u32,
+    kinds: u32,
+    first: i32,
+    last: i32,
+    message: *mut *mut LdString,
+) -> i32 {
+    use livedaw_session::copy::{copy_into_show, CopyPlan, KINDS};
+    let (Some(s), Some(e)) = (show(s), eng(e)) else { return -1 };
+    let path = PathBuf::from(str_arg(path, path_len).into_owned());
+    let plan = CopyPlan {
+        sections,
+        kinds: KINDS.iter().enumerate().filter(|(i, _)| kinds & (1 << i) != 0).map(|(_, k)| *k).collect(),
+        channels: (first > 0).then(|| (first as usize, last.max(first) as usize)),
+    };
+    let LdShow { show: sh, bridge } = s;
+    match guard(Err("internal error".into()), || copy_into_show(sh, e, &path, &plan, bridge)) {
+        Ok(report) => {
+            let mut text = report.source;
+            for line in report.left_out {
+                text.push('\n');
+                text.push_str(&line);
+            }
+            write_string(message, text);
+            i32::try_from(report.strips).unwrap_or(i32::MAX)
+        }
+        Err(msg) => {
+            write_string(message, msg);
+            -1
+        }
+    }
+}
+
 // ---- layers ------------------------------------------------------------------------------
 
 /// The show's custom control assignments as a `<CustomControls>` element

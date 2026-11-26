@@ -69,11 +69,33 @@ pub fn copy_from_file(
     plan: &CopyPlan,
     bridge: &mut dyn PluginBridge,
 ) -> Result<CopyReport, String> {
-    let source = Engine::new(0);
-    let warnings = Show::new().load_from_file(&source, &mut NoPlugins, path, false)?;
+    let (source, warnings) = load_source(path)?;
     let mut report = copy_console(engine, &source, plan, bridge);
     report.warnings = warnings;
     Ok(report)
+}
+
+/// COPY FROM as the app does it: the file read first, then the step back for UNDO set
+/// (`Show::mark_recall_undo`), then the copy. A file that can't be read changes nothing.
+pub fn copy_into_show(
+    show: &mut Show,
+    engine: &Engine,
+    path: &Path,
+    plan: &CopyPlan,
+    bridge: &mut dyn PluginBridge,
+) -> Result<CopyReport, String> {
+    let (source, warnings) = load_source(path)?;
+    show.mark_recall_undo(engine, bridge);
+    let mut report = copy_console(engine, &source, plan, bridge);
+    report.warnings = warnings;
+    Ok(report)
+}
+
+/// The console of a show file, in an engine of its own (no audio, no plug-ins).
+fn load_source(path: &Path) -> Result<(Engine, Vec<String>), String> {
+    let source = Engine::new(0);
+    let warnings = Show::new().load_from_file(&source, &mut NoPlugins, path, false)?;
+    Ok((source, warnings))
 }
 
 /// Copies `plan` from the console in `source` (an engine of its own) into `engine`.
@@ -94,7 +116,7 @@ pub fn copy_console(engine: &Engine, source: &Engine, plan: &CopyPlan, bridge: &
             }
             match to.get(i) {
                 Some(t) => {
-                    targets.insert(StripRef::of(s), Strip2 { to: StripRef::of(t), strip: t.clone() });
+                    targets.insert(StripRef::of(s), Strip2 { to: StripRef::of(t), strip: t.clone(), from: s.clone() });
                 }
                 None => {
                     left.strips.entry(kind_index(kind)).or_default().insert(number);
@@ -122,6 +144,15 @@ pub fn copy_console(engine: &Engine, source: &Engine, plan: &CopyPlan, bridge: &
         let Some(target) = targets.get(&StripRef::parse(e.str_or("ref", ""))) else { continue };
         let mut e = e.clone();
         e.set("ref", target.to);
+        if sections & section::NAME != 0 && target.from.kind().is_input() {
+            // The name, colour and icon as the other console showed them (a strip linked to its
+            // source shows the source's), kept as the strip's own here: linked, it would show
+            // this console's source names instead.
+            if let Some((name, colour, icon)) = shown_look(source, &target.from) {
+                e.set("name", name).set("colour", colour).set("icon", icon);
+            }
+            e.set_bool("clink", false);
+        }
         // A strip's extra blocks are matched by id, which means nothing on another console.
         e.children.retain(|n| !matches!(n, Node::Element(c) if c.name == "Chain"));
         keep_sends(&mut e, "Sends", "slot", |slot| bus_slots.contains(&slot), &mut left.buses);
@@ -150,6 +181,21 @@ pub fn copy_console(engine: &Engine, source: &Engine, plan: &CopyPlan, bridge: &
 struct Strip2 {
     to: StripRef,
     strip: std::sync::Arc<Strip>,
+    from: std::sync::Arc<Strip>,
+}
+
+/// The name, colour and icon of the source an input strip is linked to (LINK CUSTOMIZATION
+/// TO SOURCE), as the strip shows them; `None` when it isn't linked to one.
+fn shown_look(engine: &Engine, s: &Strip) -> Option<(String, i32, i32)> {
+    use std::sync::atomic::Ordering::Relaxed;
+    let p = &s.params;
+    if !s.kind().is_input() || !p.cust_link.load(Relaxed) {
+        return None;
+    }
+    let port = if s.uses_alt_input() { p.alt_input_left.load(Relaxed) } else { p.input_left.load(Relaxed) };
+    let index = livedaw_engine::sources::source_index(port)?;
+    let source = engine.sources().get(index)?;
+    Some((engine.sources().name(index), source.colour.load(Relaxed), source.icon.load(Relaxed)))
 }
 
 fn kind_index(kind: StripKind) -> usize {
