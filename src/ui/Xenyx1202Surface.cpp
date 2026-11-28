@@ -127,7 +127,7 @@ namespace xy
             k.ledHeight = 3.0f;
             k.keyBar = false;
             k.cap = hw::Look::Cap::Block;
-            k.knobStyle = hw::Look::Knob::Plain;
+            k.knobStyle = hw::Look::Knob::Skirt; // grey knurled skirts under coloured caps (the owner's photos)
             return k;
         }();
         return l;

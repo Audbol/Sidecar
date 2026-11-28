@@ -323,6 +323,8 @@ Display::Display (UiContext& c, const Theme& t) : ctx (c), theme (t)
 
 Display::~Display()
 {
+    if (rtaShowing)
+        Analysis (ctx.engine.getHandle()).hideRta();
     // Off with the surface: another console's surface uses it its own way.
     ld::ld_engine_console_osc_set (ctx.engine.getHandle(), false, ld::kOscSine, 1000.0f, -96.0f, false, false);
 }
@@ -362,6 +364,7 @@ void Display::showScreen (Screen s)
 void Display::showBlock (Block b)
 {
     libraryOpen = false;
+    keyPicking = false;
     if (b != Block::Bank)
         screen = b == Block::DirOut || b == Block::MixSettings || b == Block::DcaMute || b == Block::Sends ? Screen::Routing : Screen::Processing;
     block = b;
@@ -552,7 +555,9 @@ void Display::rebuild()
             buildHome();
             break;
         case Screen::Processing:
-            if (block == Block::Bank)
+            if (block == Block::Bank && libraryOpen && selectedStrip() != nullptr)
+                buildChannelLibrary (*selectedStrip());
+            else if (block == Block::Bank)
                 buildBank();
             else
                 buildDetail();
@@ -679,6 +684,12 @@ void Display::buildDetail()
         buildLibrary (*s);
         return;
     }
+    if (keyPicking && (block == Block::Gate || block == Block::Comp))
+    {
+        buildKeyPicker (*s);
+        return;
+    }
+    keyPicking = false;
     switch (block)
     {
         case Block::DirOut:      buildDirOut (*s); break;
@@ -833,17 +844,92 @@ void Display::buildGate (Strip& s)
     auto& g = s.params.gate();
     const auto table = models::Dynamics;
     const int m = g.model.load();
-    add (Field::Header, { 92, 40, 100, 18 }, "Side Chain");
-    add (Field::Button, { 98, 62, 88, 28 }, "Self Keyed").enabled = false;
-    add (Field::Button, { 112, 110, 60, 32 }, "HPF").enabled = false;      // the key filter: not modelled here
-    add (Field::Value, { 100, 146, 84, 40 }, "Freq").enabled = false;
-    add (Field::InKey, { 120, 210, 40, 40 }, "Filter In").enabled = false;
+    addSideChain (g);
     addValue ({ 256, 38, 74, 48 }, "Attack", bindParam (table, m, g.values, "att", "Attack"));
     addValue ({ 350, 38, 74, 48 }, "Hold", bindParam (table, m, g.values, "hld", "Hold"));
     addValue ({ 444, 38, 74, 48 }, "Release", bindParam (table, m, g.values, "rel", "Release"));
     addValue ({ 592, 100, 80, 48 }, "Threshold", bindParam (table, m, g.values, "thr", "Threshold"));
     addValue ({ 592, 160, 80, 48 }, "Depth", bindParam (table, m, g.values, "range", "Depth"));
     addToggle (Field::InKey, { 604, 326, 44, 44 }, "In", g.on);
+}
+
+void Display::addSideChain (ld::DynSlotParams& slot)
+{
+    // As p.35: Self Keyed or a channel; the filter's type (HPF, BPF, LPF, a dot each), its
+    // frequency and its In key. Another channel keys after all its processing, post delay
+    // (the engine's PFL tap). The engine's HPF and LPF are 12 dB/octave and its BPF has
+    // the key filter's Q: the guide gives neither (Sidecar's reading).
+    auto* p = &slot;
+    add (Field::Header, { 92, 40, 100, 18 }, "Side Chain");
+    auto& source = add (Field::Button, { 98, 62, 88, 28 }, "Self Keyed");
+    source.colour = juce::Colours::white;
+    source.live = [this, p]
+    {
+        const int at = p->scSource.load();
+        const auto& channels = ctx.engine.getChannels();
+        return at >= 0 && at < (int) channels.size() ? channels[(size_t) at]->getName() : juce::String ("Self Keyed");
+    };
+    source.press = [this]
+    {
+        keyPicking = true;
+        rebuild();
+    };
+    // 1 LPF, 2 HPF, 3 BPF (ld scFilter); while Filter In is off, the type is kept here.
+    const auto type = [this, p] { const int f = p->scFilter.load(); return f >= 1 && f <= 3 ? f : keyFilterType.count (p) > 0 ? keyFilterType[p] : 2; };
+    const auto range = [] (int f) { return f == 2 ? juce::Range<float> (20.0f, 5000.0f) : f == 3 ? juce::Range<float> (120.0f, 10000.0f) : juce::Range<float> (120.0f, 20000.0f); };
+    auto& kind = add (Field::Button, { 112, 102, 60, 30 }, "Key Filter Type");
+    kind.colour = juce::Colours::white;
+    kind.live = [type] { const int f = type(); return juce::String (f == 2 ? "HPF" : f == 3 ? "BPF" : "LPF"); };
+    kind.press = [this, p, type, range]
+    {
+        // HPF, then BPF, then LPF, as the dots under it (p.35).
+        const int f = type(), next = f == 2 ? 3 : f == 3 ? 1 : 2;
+        keyFilterType[p] = next;
+        if (p->scFilter.load() > 0)
+            p->scFilter = next;
+        p->scFreq = range (next).clipValue (p->scFreq.load());
+        rebuild();
+    };
+    const auto r = range (type());
+    auto freq = bindFreq ("Freq", p->scFreq, r.getStart(), r.getEnd(), 1000.0f);
+    freq.text = [text_ = freq.text] { return text_() + " Hz"; };
+    addValue ({ 100, 150, 84, 40 }, "Freq", std::move (freq));
+    auto& in = add (Field::InKey, { 120, 210, 40, 40 }, "Filter In");
+    in.lit = [p] { return p->scFilter.load() > 0; };
+    in.press = [this, p, type]
+    {
+        const int f = type();
+        keyFilterType[p] = f;
+        p->scFilter = p->scFilter.load() > 0 ? 0 : f;
+    };
+}
+
+void Display::buildKeyPicker (Strip& s)
+{
+    // The side chain's source (pp.35, 41): Self Keyed or another input channel, eight to
+    // a row (the list's layout is Sidecar's).
+    auto* p = block == Block::Gate ? &s.params.gate() : &s.params.dynamics();
+    add (Field::Header, { 92, 40, 580, 20 }, "Side Chain Source");
+    const auto& channels = ctx.engine.getChannels();
+    const int count = (int) channels.size() + 1;
+    constexpr int kAcross = 8;
+    const float cw = 580.0f / kAcross, ch = juce::jmin (40.0f, 330.0f / (float) ((count + kAcross - 1) / kAcross));
+    for (int i = 0; i < count; ++i)
+    {
+        const int source = i - 1;
+        auto& f = add (Field::Button, { 92.0f + (float) (i % kAcross) * cw + 2.0f, 66.0f + (float) (i / kAcross) * ch + 2.0f, cw - 4.0f, ch - 4.0f },
+                       source < 0 ? juce::String ("Self Keyed") : "Key Ip" + juce::String (i));
+        f.caption = source < 0 ? juce::String ("Self Keyed") : channels[(size_t) source]->getName();
+        f.colour = juce::Colours::white;
+        f.lit = [p, source] { return p->scSource.load() == source; };
+        f.press = [this, p, source]
+        {
+            p->scSource = source;
+            p->scTap = ld::kTapPfl; // after all the channel's processing, post delay
+            keyPicking = false;
+            rebuild();
+        };
+    }
 }
 
 void Display::buildInsert (Strip& s)
@@ -931,7 +1017,12 @@ void Display::buildPeq (Strip& s)
     };
     modeKeys ("lm", "LF Mode", 110, 1, 3);
     modeKeys ("hm", "HF Mode", 556, 4, 5);
-    add (Field::Button, { 628, 274, 44, 34 }, "RTA").enabled = false;
+    // The channel RTA over the graph (p.56): the selected channel's, scaled to its loudest
+    // band. Its settings page is Sidecar's to leave out.
+    auto& rta = add (Field::Button, { 628, 274, 44, 34 }, "RTA");
+    rta.colour = juce::Colours::white;
+    rta.lit = [this] { return peqRta; };
+    rta.press = [this] { peqRta = ! peqRta; };
     addToggle (Field::InKey, { 628, 334, 44, 44 }, "In", eq.on);
 }
 
@@ -956,11 +1047,7 @@ void Display::buildComp (Strip& s)
         addToggle (Field::InKey, { 604, 326, 44, 44 }, "In", d.on);
         return;
     }
-    add (Field::Header, { 92, 40, 100, 18 }, "Side Chain");
-    add (Field::Button, { 98, 62, 88, 28 }, "Self Keyed").enabled = false;
-    add (Field::Button, { 112, 110, 60, 32 }, "HPF").enabled = false;
-    add (Field::Value, { 100, 146, 84, 40 }, "Freq").enabled = false;
-    add (Field::InKey, { 120, 210, 40, 40 }, "Filter In").enabled = false;
+    addSideChain (d);
     if (auto det = bindParam (table, m, d.values, "det", "Mode"); det.isValid())
     {
         auto& rms = add (Field::Tab, { 262, 44, 52, 20 }, "RMS");
@@ -1002,6 +1089,7 @@ void Display::timerCallback()
         || ! juce::approximatelyEqual (sigFreq.load(), sigShown.freq) || ! juce::approximatelyEqual (sigLevel.load(), sigShown.level))
         applySigGen();
     gangFollower.follow (ctx.engine, gangSet);
+    updateRta();
     // The history under the gate's and compressor's graphs.
     if (screen == Screen::Processing && (block == Block::Gate || block == Block::Comp))
         if (auto* s = selectedStrip())
@@ -1550,8 +1638,98 @@ void Display::paintLevel (juce::Graphics& g, juce::Rectangle<float> r, Strip& s)
     levelBar (g, r.withTrimmedLeft (6.0f).withWidth (5.0f), ctx.meters.get (&s, MeterPoint::Trim, 1));
 }
 
+void Display::updateRta()
+{
+    const bool meters = screen == Screen::Meters && meterTab == 4;
+    const bool peq = screen == Screen::Processing && block == Block::Peq && peqRta && ! libraryOpen;
+    Analysis analysis (ctx.engine.getHandle());
+    const auto off = [&]
+    {
+        if (rtaShowing)
+            analysis.hideRta();
+        rtaShowing = false;
+    };
+    if (! meters && ! peq)
+        return off();
+    if (meters && rtaSource == 0)
+    {
+        // PAFL: what the monitor paths play (Sidecar's PAFL bus).
+        if (! rtaShowing || ! analysis.isAnalysingMonitor (0) || ! analysis.controls.rtaOn.load())
+            analysis.showMonitorRta (0);
+    }
+    else
+    {
+        auto* s = meters ? stripOf (ctx.engine, soft::channelAt (rtaSource - 1)) : selectedStrip();
+        if (s == nullptr)
+            return off();
+        if (! rtaShowing || ! analysis.isAnalysed (*s) || ! analysis.controls.rtaOn.load() || analysis.controls.view.load() != ld::kRtaViewEq)
+            analysis.showRta (s, ld::kRtaViewEq);
+    }
+    rtaShowing = true;
+    analysis.read (rtaBands);
+}
+
+void Display::paintRta (juce::Graphics& g, juce::Rectangle<float> r, int per, bool relative, float alpha)
+{
+    if (! rtaShowing)
+        return;
+    const int bars = ld::kRtaBands / per;
+    std::array<float, ld::kRtaBands> level {};
+    float top = -200.0f;
+    int loudest = -1;
+    for (int b = 0; b < bars; ++b)
+    {
+        // A bar's power is its bands' together.
+        double power = 0.0;
+        for (int k = b * per; k < (b + 1) * per; ++k)
+            power += std::pow (10.0, rtaBands.levels[(size_t) k] / 10.0);
+        level[(size_t) b] = (float) (10.0 * std::log10 (juce::jmax (1.0e-20, power)));
+        if (level[(size_t) b] > top)
+        {
+            top = level[(size_t) b];
+            loudest = b;
+        }
+    }
+    const float range = relative ? 48.0f : 84.0f, ceiling = relative ? top : 0.0f;
+    const float w = r.getWidth() / (float) bars;
+    for (int b = 0; b < bars; ++b)
+    {
+        const float h = r.getHeight() * juce::jlimit (0.0f, 1.0f, (level[(size_t) b] - (ceiling - range)) / range);
+        g.setColour ((b == loudest && top > -90.0f ? juce::Colour (0xffff3b30) : juce::Colour (0xff7ee02e)).withAlpha (alpha));
+        g.fillRect (r.getX() + (float) b * w + 0.5f, r.getBottom() - h, juce::jmax (1.0f, w - 1.0f), h);
+    }
+    if (! relative && loudest >= 0 && top > -90.0f)
+    {
+        // The most prominent frequency, in red (p.55).
+        const float hz = Analysis::bandHz (loudest * per + per / 2);
+        text (g, r.withHeight (16.0f).withTrimmedLeft (r.getWidth() - 120.0f), (hz >= 1000.0f ? juce::String (hz / 1000.0f, 1) + "kHz" : juce::String (juce::roundToInt (hz)) + "Hz"),
+              12.0f, juce::Colour (0xffff3b30), juce::Justification::centredRight, true);
+    }
+}
+
+void Display::paintKeyDots (juce::Graphics& g, ld::DynSlotParams& d)
+{
+    // The side chain filter key's three dots (p.35), under it here: HPF, BPF, LPF, the one
+    // in use filled.
+    const int f = d.scFilter.load();
+    const auto kept = keyFilterType.find (&d);
+    const int type = f >= 1 && f <= 3 ? f : kept != keyFilterType.end() ? kept->second : 2;
+    const int at = type == 2 ? 0 : type == 3 ? 1 : 2;
+    for (int i = 0; i < 3; ++i)
+    {
+        const juce::Rectangle<float> dot (131.0f + (float) i * 9.0f, 136.0f, 5.0f, 5.0f);
+        g.setColour (juce::Colours::white);
+        if (i == at)
+            g.fillEllipse (dot);
+        else
+            g.drawEllipse (dot, 0.8f);
+    }
+}
+
 void Display::paintGraph (juce::Graphics& g)
 {
+    if (keyPicking && (block == Block::Gate || block == Block::Comp))
+        return; // the side chain's source list covers the page
     if (block == Block::Comp)
         if (auto* strip = selectedStrip(); strip != nullptr && strip->params.dynamics().model.load() >= kFirstDeepComp)
             return; // a DEEP model's page is its controls
@@ -1581,17 +1759,22 @@ void Display::paintGraph (juce::Graphics& g)
             break;
         case Block::Gate:
             paintTransfer (g, { 240.0f, 100.0f, 290.0f, 180.0f }, p.gate());
-            paintLevel (g, { 225.0f, 100.0f, 12.0f, 180.0f }, *s);
+            // The side chain's level, at the graph's left (p.36).
+            levelBar (g, { 225.0f, 100.0f, 11.0f, 180.0f }, juce::Decibels::decibelsToGain (s->meters.gateKeyDb.load(), -120.0f));
+            paintKeyDots (g, p.gate());
             paintHistory (g, { 240.0f, 312.0f, 290.0f, 76.0f }, true);
             break;
         case Block::Comp:
             paintTransfer (g, { 240.0f, 100.0f, 290.0f, 180.0f }, p.dynamics());
-            paintLevel (g, { 225.0f, 100.0f, 12.0f, 180.0f }, *s);
+            levelBar (g, { 225.0f, 100.0f, 11.0f, 180.0f }, juce::Decibels::decibelsToGain (s->meters.dynKeyDb.load(), -120.0f));
+            paintKeyDots (g, p.dynamics());
             paintHistory (g, { 240.0f, 312.0f, 290.0f, 76.0f }, false);
             break;
         case Block::Peq:
         {
             paintResponse (g, { 92.0f, 36.0f, 546.0f, 206.0f }, *s, 1);
+            if (peqRta)
+                paintRta (g, { 92.0f, 36.0f, 546.0f, 206.0f }, 2, true, 0.4f);
             paintLevel (g, { 646.0f, 36.0f, 12.0f, 206.0f }, *s);
             // The bands' panels and coloured names, under the graph (p.40).
             const struct { const char* name; float x, w; juce::Colour c; } panels[] = {
@@ -1676,14 +1859,17 @@ void Display::paint (juce::Graphics& g)
             paintHome (g);
             break;
         case Screen::Processing:
-            if (block == Block::Bank)
+            if (block == Block::Bank && ! libraryOpen)
                 paintBank (g);
-            else
+            else if (block != Block::Bank)
                 paintDetail (g);
             break;
         case Screen::Routing:
+            // A detail keeps the channel's routing column at the left (p.46).
             if (block == Block::Bank)
                 paintRoutingBank (g);
+            else
+                paintDetail (g);
             break;
         case Screen::Meters:
             paintMeters (g);

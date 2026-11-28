@@ -58,6 +58,40 @@ use std::time::Instant;
 /// 4: the Universal core's (the console's `<Config>`); 3: the WING layout.
 pub const SHOW_VERSION: i32 = 4;
 pub const MAX_FADE_SECONDS: f64 = 60.0;
+
+/// EMBEDDED RECALL's longest delay (a dLive's: four minutes, Firmware Reference Guide 7.3).
+pub const MAX_EMBEDDED_DELAY_MS: u32 = 240_000;
+/// The most embedded recalls a scene holds (Sidecar's limit; the guide gives none).
+pub const MAX_EMBEDDED: usize = 32;
+
+/// EMBEDDED RECALL (a dLive's, Firmware Reference Guide 7.3): another scene of the show recalled a
+/// while after the scene that holds it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EmbeddedRecall {
+    /// The scene recalled (an index into the show's scenes: it follows a move, and drops out
+    /// when that scene is removed).
+    pub scene: i32,
+    /// How long after the host scene's recall, 0 to [`MAX_EMBEDDED_DELAY_MS`].
+    pub delay_ms: u32,
+}
+
+/// Embedded recalls as a scene's `embedded` attribute: "scene:delay,..." (milliseconds).
+fn embedded_to_attr(list: &[EmbeddedRecall]) -> String {
+    list.iter().map(|e| format!("{}:{}", e.scene, e.delay_ms)).collect::<Vec<_>>().join(",")
+}
+
+fn embedded_from_attr(text: &str) -> Vec<EmbeddedRecall> {
+    text.split(',')
+        .filter_map(|item| {
+            let (scene, delay) = item.trim().split_once(':')?;
+            let scene = scene.trim().parse::<i32>().ok().filter(|s| *s >= 0)?;
+            let delay_ms = delay.trim().parse::<u32>().ok()?.min(MAX_EMBEDDED_DELAY_MS);
+            Some(EmbeddedRecall { scene, delay_ms })
+        })
+        .take(MAX_EMBEDDED)
+        .collect()
+}
+
 /// Scene tags are #1..#128 (0 = no tag).
 pub const MAX_SCENE_TAG: i32 = 128;
 
@@ -249,6 +283,9 @@ pub struct Scene {
     /// console's EDIT MIDI TEXT STRING has it (hexadecimal bytes, "U:" / "D:"
     /// for the USB / DIN port; the application parses and sends it).
     pub midi: String,
+    /// EMBEDDED RECALL: other scenes recalled after this one, each after its delay (the
+    /// application keeps the time).
+    pub embedded: Vec<EmbeddedRecall>,
     pub state: Option<Element>,
     pub snippets: Vec<Snippet>,
     /// A file added to the show instead of a snapshot (no state, no snippets).
@@ -282,6 +319,7 @@ impl Default for Scene {
             skip: false,
             link_next: false,
             midi: String::new(),
+            embedded: Vec::new(),
             state: None,
             snippets: Vec::new(),
             item: None,
@@ -480,6 +518,8 @@ pub struct Show {
     current_scene: i32,
     /// SEND MIDI of the scenes the last recall recalled, in order.
     pending_midi: Vec<String>,
+    /// EMBEDDED RECALL of the scenes the last recall recalled, in order.
+    pending_embedded: Vec<EmbeddedRecall>,
     /// Clips of the clip scenes the last recall recalled, for the host to play.
     pending_clips: Vec<PathBuf>,
     fades: Vec<Fade>,
@@ -505,6 +545,7 @@ impl Default for Show {
             recorded: None,
             current_scene: -1,
             pending_midi: Vec::new(),
+            pending_embedded: Vec::new(),
             pending_clips: Vec::new(),
             fades: Vec::new(),
             fade_start: Instant::now(),
@@ -557,6 +598,7 @@ impl Show {
             Scene { name: name.into(), state: Some(console::capture(engine, section::ALL, None, bridge)), ..Scene::default() };
         let n = self.scenes.len() as i32;
         let index = if (0..=n).contains(&index) { index } else { n };
+        self.remap_embedded(|s| Some(if s >= index { s + 1 } else { s }));
         self.scenes.insert(index as usize, scene);
         self.current_scene = index;
         // UNDO RECALL goes back to the scene it was at, wherever that moved.
@@ -571,6 +613,7 @@ impl Show {
     pub fn insert_scene(&mut self, scene: Scene, index: i32) -> i32 {
         let n = self.scenes.len() as i32;
         let index = if (0..=n).contains(&index) { index } else { n };
+        self.remap_embedded(|s| Some(if s >= index { s + 1 } else { s }));
         self.scenes.insert(index as usize, scene);
         if self.current_scene >= index {
             self.current_scene += 1;
@@ -762,31 +805,39 @@ impl Show {
     /// `path`, its linked scenes from their files; the console stays as it is
     /// and nothing is recalled.
     pub fn load_scenes_from_file(&mut self, engine: &Engine, path: &Path) -> Result<(), String> {
-        let mut xml = read_show(path).or_else(|_| read_show(&backup_path(path)))?;
-        if !xml.has_tag("LiveDAWShow") {
-            return Err("Not a Sidecar show file".into());
-        }
-        if xml.int_or("version", 0) > SHOW_VERSION {
-            return Err("This show was saved by a newer version of Sidecar".into());
-        }
-        if xml.child("Console").is_some_and(legacy::is_legacy) {
-            return Err("A show from an older version of Sidecar: open it with OPEN SHOW in the menu".into());
-        }
-        let states = take_scene_states(&mut xml);
-        let mut scenes = Vec::new();
-        if let Some(list) = xml.child("Scenes") {
-            let mut state_of = |e: &Element| e.child("State").cloned();
-            for sx in list.children_named("Scene") {
-                scenes.push(read_scene(sx, &mut state_of, &|s: &str| refs_from_string(s)));
-            }
-        }
-        for (scene, state) in scenes.iter_mut().zip(states) {
-            scene.state = state;
-        }
-        self.clear_scenes(engine, xml.str_or("name", "Untitled show"));
-        self.scenes = scenes;
+        let file = read_show_scenes(path)?;
+        self.clear_scenes(engine, &file.name);
+        self.scenes = file.scenes;
         self.refresh_linked(None);
         Ok(())
+    }
+
+    /// Scene Import (a dLive's, Firmware Reference Guide 7.6): scenes `which` (indices, in that
+    /// order) of the show file at `path` inserted at `index` (appended when out of range), the
+    /// console left as it is. A scene's embedded recalls stay behind: they name scenes of the
+    /// other show. Only a show of this console (`engine`'s) can give its scenes. Returns the
+    /// index of the first scene imported (and as many follow as `which` names that exist).
+    pub fn import_show_scenes(&mut self, engine: &Engine, path: &Path, which: &[i32], index: i32) -> Result<i32, String> {
+        let file = read_show_scenes(path)?;
+        if file.profile.as_deref().is_some_and(|p| p != engine.profile().id()) {
+            return Err(
+                "That show is another console's: its scenes can't be imported here (COPY FROM copies between consoles)".into()
+            );
+        }
+        let picked: Vec<Scene> = which
+            .iter()
+            .filter_map(|&i| usize::try_from(i).ok().and_then(|i| file.scenes.get(i)))
+            .map(|s| Scene { embedded: Vec::new(), ..s.clone() })
+            .collect();
+        if picked.is_empty() {
+            return Err("No scenes chosen".into());
+        }
+        let n = self.scenes.len() as i32;
+        let first = if (0..=n).contains(&index) { index } else { n };
+        for (k, scene) in picked.into_iter().enumerate() {
+            self.insert_scene(scene, first + k as i32);
+        }
+        Ok(first)
     }
 
     pub fn remove_scene(&mut self, index: i32) {
@@ -794,6 +845,10 @@ impl Show {
             return;
         }
         self.scenes.remove(index as usize);
+        self.remap_embedded(|s| match scene_after_remove(s, index) {
+            -1 => None,
+            s => Some(s),
+        });
         self.current_scene = scene_after_remove(self.current_scene, index);
         if let Some(undo) = &mut self.recall_undo {
             undo.scene = scene_after_remove(undo.scene, index);
@@ -807,6 +862,7 @@ impl Show {
         }
         let scene = self.scenes.remove(from as usize);
         self.scenes.insert(to as usize, scene);
+        self.remap_embedded(|s| Some(scene_after_move(s, from, to)));
         self.current_scene = scene_after_move(self.current_scene, from, to);
         if let Some(undo) = &mut self.recall_undo {
             undo.scene = scene_after_move(undo.scene, from, to);
@@ -821,6 +877,7 @@ impl Show {
     pub fn recall_scene(&mut self, engine: &Engine, bridge: &mut dyn PluginBridge, index: i32) -> ApplyResult {
         let mut result = ApplyResult::default();
         self.pending_midi.clear();
+        self.pending_embedded.clear();
         self.pending_clips.clear();
         let chain = self.recall_chain(index);
         let parts = chain.iter().flat_map(|&i| self.recall_parts(engine, i)).collect();
@@ -902,6 +959,7 @@ impl Show {
         let Some(mut undo) = self.recall_undo.take() else { return ApplyResult::default() };
         self.cancel_fade(engine);
         self.pending_midi.clear();
+        self.pending_embedded.clear();
         self.pending_clips.clear();
         let now = console::capture(engine, undo.sections, None, bridge);
         let kept: Vec<f32> = undo.kept_faders.iter().map(|s| s.params.fader_db.load()).collect();
@@ -932,6 +990,34 @@ impl Show {
         std::mem::take(&mut self.pending_midi)
     }
 
+    /// EMBEDDED RECALL of the scenes the last recall (`recall_scene`, GO NEXT / PREV, by tag)
+    /// recalled, linked ones included, in order; taking them clears them. The application
+    /// recalls each scene once its delay has passed.
+    pub fn take_pending_embedded(&mut self) -> Vec<EmbeddedRecall> {
+        std::mem::take(&mut self.pending_embedded)
+    }
+
+    /// Sets a scene's embedded recalls: delays held to four minutes, at most [`MAX_EMBEDDED`],
+    /// none of the scene itself.
+    pub fn set_scene_embedded(&mut self, index: i32, list: &[EmbeddedRecall]) {
+        let Some(scene) = self.scene_mut(index) else { return };
+        scene.embedded = list
+            .iter()
+            .filter(|e| e.scene >= 0 && e.scene != index)
+            .map(|e| EmbeddedRecall { scene: e.scene, delay_ms: e.delay_ms.min(MAX_EMBEDDED_DELAY_MS) })
+            .take(MAX_EMBEDDED)
+            .collect();
+    }
+
+    /// Every scene's embedded recalls, after scene indices moved: `map` gives an old index's new
+    /// one (None: the scene is gone, and so are the recalls of it).
+    fn remap_embedded(&mut self, map: impl Fn(i32) -> Option<i32>) {
+        for scene in &mut self.scenes {
+            scene.embedded =
+                scene.embedded.iter().filter_map(|e| map(e.scene).map(|s| EmbeddedRecall { scene: s, ..*e })).collect();
+        }
+    }
+
     /// The clips of the clip scenes the last recall recalled (linked ones
     /// included), for the host to play on the USB player; taking them clears them.
     pub fn take_pending_clips(&mut self) -> Vec<PathBuf> {
@@ -958,6 +1044,10 @@ impl Show {
         let mut result = ApplyResult::default();
         if let Some(midi) = self.scene(index).map(|s| s.midi.clone()).filter(|m| !m.trim().is_empty()) {
             self.pending_midi.push(midi);
+        }
+        if let Some(scene) = self.scene(index) {
+            let embedded = scene.embedded.clone();
+            self.pending_embedded.extend(embedded);
         }
         let Some(scene) = self.scene(index) else { return result };
         if let Some(item) = scene.item.clone() {
@@ -1719,6 +1809,9 @@ pub(crate) fn scene_to_xml(scene: &Scene) -> Element {
     if !scene.midi.is_empty() {
         sx.set("midi", &scene.midi);
     }
+    if !scene.embedded.is_empty() {
+        sx.set("embedded", embedded_to_attr(&scene.embedded));
+    }
     if let Some(st) = &scene.state {
         sx.add(st.clone());
     }
@@ -1781,6 +1874,7 @@ pub(crate) fn read_scene(
         skip: sx.bool_or("skip", false),
         link_next: sx.bool_or("link", false),
         midi: sx.str_or("midi", "").to_owned(),
+        embedded: embedded_from_attr(sx.str_or("embedded", "")),
         state: state_of(sx),
         snippets: Vec::new(),
         item: None,
@@ -1840,6 +1934,42 @@ fn take_scene_states(xml: &mut Element) -> Vec<Option<Element>> {
             }
         })
         .collect()
+}
+
+/// What [`read_show_scenes`] reads of a show file.
+pub struct ShowScenes {
+    pub name: String,
+    /// The console the show is for (its profile's id; None: an older show, a WING's).
+    pub profile: Option<String>,
+    pub scenes: Vec<Scene>,
+}
+
+/// The name, console and scenes (console states included) of the show file at `path` (its
+/// backup if the file can't be read), without opening it.
+pub fn read_show_scenes(path: &Path) -> Result<ShowScenes, String> {
+    let mut xml = read_show(path).or_else(|_| read_show(&backup_path(path)))?;
+    if !xml.has_tag("LiveDAWShow") {
+        return Err("Not a Sidecar show file".into());
+    }
+    if xml.int_or("version", 0) > SHOW_VERSION {
+        return Err("This show was saved by a newer version of Sidecar".into());
+    }
+    if xml.child("Console").is_some_and(legacy::is_legacy) {
+        return Err("A show from an older version of Sidecar: open it with OPEN SHOW in the menu".into());
+    }
+    let profile = xml.child("Console").and_then(|c| c.attr("profile")).map(str::to_owned);
+    let states = take_scene_states(&mut xml);
+    let mut scenes = Vec::new();
+    if let Some(list) = xml.child("Scenes") {
+        let mut state_of = |e: &Element| e.child("State").cloned();
+        for sx in list.children_named("Scene") {
+            scenes.push(read_scene(sx, &mut state_of, &|s: &str| refs_from_string(s)));
+        }
+    }
+    for (scene, state) in scenes.iter_mut().zip(states) {
+        scene.state = state;
+    }
+    Ok(ShowScenes { name: xml.str_or("name", "Untitled show").to_owned(), profile, scenes })
 }
 
 fn read_show(path: &Path) -> Result<Element, String> {

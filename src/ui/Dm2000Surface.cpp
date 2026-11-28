@@ -387,7 +387,18 @@ namespace dm2k
         hw::ribbedFaderCap (g, cx, y, 11.0f, 17.0f, 9.0f, juce::Colour (0xffaeb0ad));
     }
 
-    void Fader::mouseDown (const juce::MouseEvent&) { dragStart = position; }
+    void Fader::mouseDown (const juce::MouseEvent&)
+    {
+        dragStart = position;
+        if (onHold)
+            onHold (true);
+    }
+
+    void Fader::mouseUp (const juce::MouseEvent&)
+    {
+        if (onHold)
+            onHold (false);
+    }
 
     void Fader::mouseDrag (const juce::MouseEvent& e)
     {
@@ -1001,6 +1012,13 @@ Dm2000Surface::Dm2000Surface (UiContext& c)
             movedAt[(size_t) i] = juce::Time::getMillisecondCounter();
             autoSelect (i);
         };
+        // Fader Touch Sense: an Input Channel's knob held punches it in (AUTOMIX TOUCH SENSE).
+        f->onHold = [this, i] (bool held)
+        {
+            // Only while the faders are the channels' (not FADER MODE's AUX/MTRX).
+            if (auto* s = stripAt (i); s != nullptr && s->getKind() == StripKind::Channel && (! held || faderMode == FaderMode::Fader))
+                display.automixHold (s->getNumber() - 1, held);
+        };
         addAndMakeVisible (*f);
         faders.push_back (std::move (f));
     }
@@ -1295,8 +1313,18 @@ Dm2000Surface::Dm2000Surface (UiContext& c)
         silk ((float) sx + 368.0f, 192.0f, 40.0f, 8.0f, "ON", 6.5f, kSilk);
         knob ("DELAY TIME", kSkirtTaupe, kTopTaupe, { sx + 420, 161, 34, 34 });
         silk ((float) sx + 417.0f, 196.0f, 40.0f, 8.0f, "TIME", 6.5f, kSilk);
-        knob ("DELAY MIX", kSkirtTaupe, kTopTaupe, { sx + 480, 161, 34, 34 });
-        silk ((float) sx + 465.0f, 196.0f, 70.0f, 8.0f, "MIX    FB", 6.5f, kSilk);
+        // FB/MIX (p.29): its push switch picks Feedback Gain or Feedback Mix, an Input Channel's;
+        // the FB and MIX lamps beside it say which.
+        knob ("DELAY FB/MIX", kSkirtTaupe, kTopTaupe, { sx + 480, 161, 34, 34 }).onPress = [this]
+        {
+            if (auto* s = selected(); s != nullptr && s->isInput())
+            {
+                setDelayKnobShowsFb (! delayFb);
+                autoShow (Group::Delay);
+            }
+        };
+        silk ((float) sx + 452.0f, 165.0f, 15.0f, 8.0f, "FB", 6.0f, kSilk, juce::Justification::centredRight);
+        silk ((float) sx + 452.0f, 177.0f, 15.0f, 8.0f, "MIX", 6.0f, kSilk, juce::Justification::centredRight);
     }
 
     // AUX / MATRIX SEND.
@@ -1377,22 +1405,35 @@ Dm2000Surface::Dm2000Surface (UiContext& c)
     silk ((float) sx + 2.0f, 385.0f, 36.0f, 8.0f, "DISPLAY", 6.5f, kSilk);
     silk ((float) sx + 44.0f, 353.0f, 120.0f, 11.0f, "PAN / SURROUND", 8.5f, kSilk, juce::Justification::centred, true);
     {
-        // [L] and [R] (p.31): the odd and the even channel of the selected one's horizontal pair.
+        // [L] and [R] (p.31): the left and the right channel of the selected one's partners: the odd and
+        // the even one of a horizontal pair, or in a half in VERTICAL pair mode, the channel on the
+        // upper layer (1-24, 49-72) and its counterpart on the next (Sidecar's reading of which is left).
+        const auto partners = [this] (const Strip& s)
+        {
+            const int index = s.getNumber() - 1;
+            if (s.getKind() == StripKind::Channel && juce::isPositiveAndBelow (index, 96))
+                return display.inputPairChannels (display.inputPairOf (index));
+            return std::pair { index / 2 * 2, index / 2 * 2 + 1 };
+        };
         for (int right = 0; right < 2; ++right)
         {
             auto& k = bluekey (right != 0 ? "PAN R" : "PAN L", { sx + 54 + right * 34, 368, 26, 16 });
-            k.isOn = [this, right]
+            k.isOn = [this, right, partners]
             {
                 auto* s = selected();
-                return s != nullptr && (s->getKind() == StripKind::Channel || s->getKind() == StripKind::Bus) && (s->getNumber() % 2 == 0) == (right != 0);
+                if (s == nullptr || (s->getKind() != StripKind::Channel && s->getKind() != StripKind::Bus))
+                    return false;
+                const auto [left, rightOne] = partners (*s);
+                return s->getNumber() - 1 == (right != 0 ? rightOne : left);
             };
-            k.onClick = [this, right]
+            k.onClick = [this, right, partners]
             {
                 auto* s = selected();
                 if (s == nullptr || ! ctx.selectStrip || (s->getKind() != StripKind::Channel && s->getKind() != StripKind::Bus))
                     return;
                 const auto& list = s->getKind() == StripKind::Channel ? ctx.engine.getChannels() : ctx.engine.getBuses();
-                const int index = (s->getNumber() - 1) / 2 * 2 + right;
+                const auto [left, rightOne] = partners (*s);
+                const int index = right != 0 ? rightOne : left;
                 if (juce::isPositiveAndBelow (index, (int) list.size()))
                     ctx.selectStrip (list[(size_t) index].get());
             };
@@ -1519,11 +1560,12 @@ Dm2000Surface::Dm2000Surface (UiContext& c)
         silk ((float) x + 34.0f, 373.0f, 120.0f, 11.0f, "AUTOMIX", 8.5f, kSilk, juce::Justification::centredLeft, true);
         const char* autos[] = { "ENABLE", "REC", "ABORT/UNDO", "AUTO-REC", "RETURN", "RELATIVE", "TOUCH SENSE" };
         using AK = Display::AutomixKey;
-        const AK autoKeys[] = { AK::Enable, AK::Rec, AK::Undo };
-        const char* autoNames[] = { "AUTOMIX ENABLE", "AUTOMIX REC", "AUTOMIX ABORT/UNDO" };
-        for (int i = 0; i < 3; ++i)
+        // RETURN: the Edit Out mode RETURN or OFF; RELATIVE: the Fader Edit mode; TOUCH SENSE: the
+        // page's TOUCH or LATCH, whichever was chosen last (pp.195-196).
+        const AK autoKeys[] = { AK::Enable, AK::Rec, AK::Undo, AK::AutoRec, AK::Return, AK::Relative, AK::TouchSense };
+        const char* autoNames[] = { "AUTOMIX ENABLE", "AUTOMIX REC", "AUTOMIX ABORT/UNDO", "AUTOMIX AUTO-REC", "AUTOMIX RETURN", "AUTOMIX RELATIVE", "AUTOMIX TOUCH SENSE" };
+        for (int i = 0; i < 7; ++i)
             live (autoNames[i], { x + 8 + i * 32, 392, 22, 16 }, [this, k = autoKeys[i]] { display.automixPress (k); }, [this, k = autoKeys[i]] { return display.automixIs (k); });
-        drawnKeys ({ x + 8 + 3 * 32, 392, 22, 16 }, 4, 1, 32, 0);
         for (int i = 0; i < 7; ++i)
             silk ((float) x + 8.0f + (float) i * 32.0f - 8.0f, 409.0f, 38.0f, 12.0f, autos[i], 5.8f, kSilk);
         silk ((float) x + 60.0f, 422.0f, 120.0f, 10.0f, "OVERWRITE", 8.0f, kSilk, juce::Justification::centred, true);
@@ -1551,7 +1593,14 @@ Dm2000Surface::Dm2000Surface (UiContext& c)
             live ("LOCATE " + juce::String (i + 1), { x + 12 + i * 27, 598, 22, 16 }, [this, i] { display.locateMemory (i); });
         for (int i = 0; i < 8; ++i)
             silk ((float) x + 12.0f + (float) i * 27.0f, 614.0f, 22.0f, 8.0f, juce::String (i + 1), 6.5f, kSilk);
-        drawnKeys ({ x + 12, 636, 22, 16 }, 7, 1, 27, 0);
+        // AUDITION, PRE, POST and MTR are drawn only; IN and OUT are the recorder's loop points, SET
+        // stores the next one.
+        drawnKeys ({ x + 12, 636, 22, 16 }, 2, 1, 27, 0);
+        live ("LOCATE IN", { x + 66, 636, 22, 16 }, [this] { display.locatePoint (false); });
+        live ("LOCATE OUT", { x + 93, 636, 22, 16 }, [this] { display.locatePoint (true); });
+        drawnKeys ({ x + 120, 636, 22, 16 }, 1, 1, 0, 0);
+        live ("LOCATE SET", { x + 147, 636, 22, 16 }, [this] { display.pressLocateSet(); }, [this] { return display.isLocateSet(); });
+        drawnKeys ({ x + 174, 636, 22, 16 }, 1, 1, 0, 0);
         drawnKeys ({ x + 12, 678, 22, 16 }, 7, 1, 27, 0);
         live ("RETURN TO ZERO", { x + 12, 722, 22, 16 }, [this] { if (ctx.recording != nullptr) ctx.recording->locate (0); });
         live ("LOCATE END", { x + 39, 722, 22, 16 }, [this] { if (ctx.recording != nullptr) ctx.recording->locate (ctx.recording->getProject().getLength()); });
@@ -1575,16 +1624,26 @@ Dm2000Surface::Dm2000Surface (UiContext& c)
         displayKey ("DISPLAY MONITOR", Group::Monitor, { x + 4, 150, 22, 22 });
         silk ((float) x + 26.0f, 151.0f, 60.0f, 10.0f, "MONITOR", 8.0f, kSilkDark, juce::Justification::centredLeft, true);
         silk ((float) x, 174.0f, (float) w, 10.0f, "STUDIO", 7.5f, kSilkDark, juce::Justification::centred, true);
-        // The studio path (PHONES) listens to the Stereo Bus or an Aux; CONTROL ROOM has nothing to follow here.
-        const auto sourceKey = [this, &live] (const juce::String& name, juce::Rectangle<int> r, ld::MonitorSourceParams& path, StripKind kind, int number)
+        // The studio path (PHONES) listens to the control room's source, the Stereo Out, AUX 11 or AUX 12
+        // (p.159); AUX 11 and 12 are Bus Outs here, in slots 18 and 19.
+        const auto studioKey = [this, &live] (const juce::String& name, juce::Rectangle<int> r, StripKind kind, int number)
         {
             const int index = MixerEngine::monitorSourceIndex (kind, number);
-            live (name, r, [&path, index] { if (index >= 0) path.source = index; }, [&path, index] { return index >= 0 && path.source.load() == index; });
+            auto& path = ctx.engine.phones.source;
+            live (
+                name, r,
+                [this, &path, index]
+                {
+                    display.setStudioFollowsControlRoom (false);
+                    if (index >= 0)
+                        path.source = index;
+                },
+                [this, &path, index] { return ! display.isStudioFollowingControlRoom() && index >= 0 && path.source.load() == index; });
         };
-        drawnKeys ({ x + 10, 186, 24, 15 }, 1, 1, 0, 0);
-        sourceKey ("STUDIO STEREO", { x + 50, 186, 24, 15 }, ctx.engine.phones.source, StripKind::Main, 0);
-        sourceKey ("STUDIO AUX 11", { x + 10, 208, 24, 15 }, ctx.engine.phones.source, StripKind::Aux, 10);
-        sourceKey ("STUDIO AUX 12", { x + 50, 208, 24, 15 }, ctx.engine.phones.source, StripKind::Aux, 11);
+        live ("STUDIO CONTROL ROOM", { x + 10, 186, 24, 15 }, [this] { display.setStudioFollowsControlRoom (true); }, [this] { return display.isStudioFollowingControlRoom(); });
+        studioKey ("STUDIO STEREO", { x + 50, 186, 24, 15 }, StripKind::Main, 0);
+        studioKey ("STUDIO AUX 11", { x + 10, 208, 24, 15 }, StripKind::Bus, kAuxSlot + 10);
+        studioKey ("STUDIO AUX 12", { x + 50, 208, 24, 15 }, StripKind::Bus, kAuxSlot + 11);
         const char* top[] = { "CONTROL ROOM", "STEREO", "AUX 11", "AUX 12" };
         for (int i = 0; i < 4; ++i)
             silk ((float) x + 2.0f + (float) (i % 2) * 42.0f, 202.0f + (float) (i / 2) * 22.0f, 42.0f, 7.0f, top[i], 5.8f, kSilkDark);
@@ -1608,10 +1667,17 @@ Dm2000Surface::Dm2000Surface (UiContext& c)
         };
         silk ((float) x, 296.0f, (float) w, 7.0f, "CLEAR", 6.0f, kSilkDark);
         silk ((float) x, 306.0f, (float) w, 10.0f, "CONTROL ROOM", 7.5f, kSilkDark, juce::Justification::centred, true);
-        drawnKeys ({ x + 10, 320, 24, 15 }, 2, 2, 40, 25);
-        drawnKeys ({ x + 10, 370, 24, 15 }, 1, 1, 0, 0);
-        sourceKey ("CR STEREO", { x + 50, 370, 24, 15 }, ctx.engine.speakers, StripKind::Main, 0);
-        drawnKeys ({ x + 10, 395, 24, 15 }, 2, 1, 40, 0);
+        // CONTROL ROOM (p.158): the 2TR inputs, STEREO, and the Output Channels on ASSIGN 1 and 2.
+        {
+            using CR = Display::CrSource;
+            const std::pair<const char*, CR> crKeys[] = { { "CR 2TR D1", CR::TwoTrackD1 }, { "CR 2TR A1", CR::TwoTrackA1 }, { "CR 2TR D2", CR::TwoTrackD2 }, { "CR 2TR A2", CR::TwoTrackA2 },
+                                                          { "CR 2TR D3", CR::TwoTrackD3 }, { "CR STEREO", CR::Stereo },     { "CR ASSIGN 1", CR::Assign1 }, { "CR ASSIGN 2", CR::Assign2 } };
+            for (int i = 0; i < 8; ++i)
+            {
+                const auto source = crKeys[i].second;
+                live (crKeys[i].first, { x + 10 + (i % 2) * 40, 320 + (i / 2) * 25, 24, 15 }, [this, source] { display.selectCrSource (source); }, [this, source] { return display.isCrSource (source); });
+            }
+        }
         const char* crs[] = { "2TR D1", "2TR A1", "2TR D2", "2TR A2", "2TR D3", "STEREO", "ASSIGN 1", "ASSIGN 2" };
         for (int i = 0; i < 8; ++i)
             silk ((float) x + 2.0f + (float) (i % 2) * 42.0f, 336.0f + (float) (i / 2) * 25.0f, 42.0f, 7.0f, crs[i], 5.8f, kSilkDark);
@@ -1784,6 +1850,13 @@ void Dm2000Surface::setDynamicsShowsComp (bool c)
     repaint();
 }
 
+void Dm2000Surface::setDelayKnobShowsFb (bool fb)
+{
+    delayFb = fb;
+    bindSelected();
+    repaint();
+}
+
 void Dm2000Surface::bindStrips()
 {
     const auto inputLaw = ctx.engine.getFaderLaw ((int) StripKind::Channel);
@@ -1855,12 +1928,13 @@ void Dm2000Surface::bindSelected()
 
     if (s == nullptr)
     {
-        for (const auto* name : { "DELAY TIME", "ATT", "PAN" })
+        for (const auto* name : { "DELAY TIME", "DELAY FB/MIX", "ATT", "PAN" })
             set (name, {});
         return;
     }
     auto& p = s->params;
     set ("DELAY TIME", autoGroup (bindDelay (*s), Group::Delay));
+    set ("DELAY FB/MIX", s->isInput() ? autoGroup (delayFb ? bindDelayFb (*s) : bindDelayMix (*s), Group::Delay) : KnobBinding {});
     set ("ATT", autoGroup (bindAttenuator (*s), Group::Equalizer));
     set ("PAN", s->isInput() ? autoGroup (bindPanYamaha (*s), Group::Pan) : KnobBinding {});
 
@@ -1994,6 +2068,7 @@ void Dm2000Surface::timerCallback()
         selectionChanged();
     display.automixTick();
     display.followPairs();
+    display.followControlRoom();
     for (auto& f : faders)
         f->refresh();
     stereoFader->refresh();
@@ -2032,7 +2107,7 @@ void Dm2000Surface::paint (juce::Graphics& g)
     // The panel is artwork: drawn once, then copied, until a lamp on it, the bridge or the size changes.
     const auto* selectedStrip = selected();
     const int panLit = selectedStrip != nullptr ? juce::roundToInt ((selectedStrip->params.pan.load() + 100.0f) / 200.0f * 12.0f) : 6;
-    const auto key = PaintCache::key (auxBank, showComp, panLit, bridge.isVisible(), display.isFreqNotQ (0), display.isFreqNotQ (1),
+    const auto key = PaintCache::key (auxBank, showComp, delayFb, panLit, bridge.isVisible(), display.isFreqNotQ (0), display.isFreqNotQ (1),
                                       display.isFreqNotQ (2), display.isFreqNotQ (3), silks.size(), dummyKeys.size());
     artwork.paint (g, *this, key, [this] (juce::Graphics& ag) { paintArtwork (ag); });
 }
@@ -2140,6 +2215,11 @@ void Dm2000Surface::paintArtwork (juce::Graphics& g)
         g.fillEllipse ((float) kSelX + 186.0f, 337.0f, 5.0f, 5.0f);
         g.setColour (showComp ? kLedOrange : juce::Colour (0xff3a2a14));
         g.fillEllipse ((float) kSelX + 186.0f, 346.0f, 5.0f, 5.0f);
+        // DELAY's FB and MIX lamps.
+        g.setColour (delayFb ? kLedOrange : juce::Colour (0xff3a2a14));
+        g.fillEllipse ((float) kSelX + 469.0f, 166.5f, 5.0f, 5.0f);
+        g.setColour (delayFb ? juce::Colour (0xff3a2a14) : kLedOrange);
+        g.fillEllipse ((float) kSelX + 469.0f, 178.5f, 5.0f, 5.0f);
     }
     // PAN's LED bar.
     {

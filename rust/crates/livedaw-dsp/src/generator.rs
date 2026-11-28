@@ -7,7 +7,12 @@
 //! noise filters it with Paul Kellet's refined filter (public domain, -3 dB per
 //! octave within +-0.05 dB from 10 Hz at 44.1 kHz), its poles moved for the
 //! sample rate, and normalised to the RMS its response gives.
+//!
+//! A console oscillator also has band-pass noise (an Allen & Heath SQ's, Reference Guide
+//! p.97): the white noise through a band-pass at the frequency, normalised to the white
+//! noise's RMS. The guide gives no bandwidth: Sidecar's is a third of an octave.
 
+use crate::biquad::{Biquad, BiquadCoeffs};
 use crate::util::db_to_gain;
 use std::f64::consts::TAU;
 
@@ -18,7 +23,12 @@ pub mod generator_mode {
     pub const SINE: i32 = 0;
     pub const PINK: i32 = 1;
     pub const WHITE: i32 = 2;
+    /// Band-pass noise at the frequency (a console oscillator's; not in [`super::GENERATOR_MODES`]).
+    pub const BAND_PASS: i32 = 3;
 }
+
+/// Band-pass noise's Q: a third of an octave (Sidecar's reading).
+pub const BAND_PASS_Q: f64 = 4.318;
 
 /// LEVEL range in dBFS, and FREQ in Hz (the WING's).
 pub const GENERATOR_LEVEL_MIN_DB: f32 = -40.0;
@@ -55,6 +65,11 @@ pub struct SignalGenerator {
     pink_norm: f32,
     /// The amplitude of the last block (ramped to the new one).
     gain: f32,
+    /// Band-pass noise: its filter, the frequency it is set for and its gain to the white
+    /// noise's RMS.
+    band: Biquad,
+    band_freq: f32,
+    band_norm: f32,
 }
 
 impl SignalGenerator {
@@ -69,6 +84,9 @@ impl SignalGenerator {
             last_white: 0.0,
             pink_norm: 1.0,
             gain: 0.0,
+            band: Biquad::default(),
+            band_freq: 0.0,
+            band_norm: 1.0,
         };
         g.prepare(sample_rate);
         g
@@ -108,6 +126,8 @@ impl SignalGenerator {
         self.pink = [0.0; 6];
         self.last_white = 0.0;
         self.gain = 0.0;
+        self.band.reset();
+        self.band_freq = 0.0;
     }
 
     pub fn phase(&self) -> f64 {
@@ -130,6 +150,21 @@ impl SignalGenerator {
         (x as i32) as f32 * (1.0 / 2_147_483_648.0)
     }
 
+    /// Band-pass noise's filter at `freq_hz` (realtime: a few coefficients when it moves).
+    /// White noise through a constant-peak band-pass keeps about pi f / (2 Q) Hz of its
+    /// fs / 2, so the gain back to its RMS is the root of the inverse of that share.
+    fn set_band(&mut self, freq_hz: f32) {
+        let nyquist = (self.sample_rate * 0.45) as f32;
+        let f = freq_hz.clamp(GENERATOR_FREQ_MIN_HZ, GENERATOR_FREQ_MAX_HZ.min(nyquist));
+        if f == self.band_freq {
+            return;
+        }
+        self.band_freq = f;
+        self.band.set_coefficients(BiquadCoeffs::band_pass(self.sample_rate, f as f64, BAND_PASS_Q));
+        let share = std::f64::consts::PI * f as f64 / BAND_PASS_Q / self.sample_rate;
+        self.band_norm = (1.0 / share.min(1.0)).sqrt() as f32;
+    }
+
     /// Fills `out` with `mode` (generator_mode) at `freq_hz` and `level_db`.
     /// The amplitude ramps from the last block's; the sine's phase runs on
     /// across blocks and frequency changes.
@@ -145,7 +180,7 @@ impl SignalGenerator {
         }
         // The noises at the sine's RMS (peak / sqrt 2); uniform noise's RMS is 1 / sqrt 3.
         let target = match mode {
-            generator_mode::PINK | generator_mode::WHITE => peak * (1.5f32).sqrt(),
+            generator_mode::PINK | generator_mode::WHITE | generator_mode::BAND_PASS => peak * (1.5f32).sqrt(),
             _ => peak,
         };
         let step = (target - self.gain) / out.len() as f32;
@@ -170,6 +205,15 @@ impl SignalGenerator {
                 for x in out.iter_mut() {
                     gain += step;
                     *x = self.white() * gain;
+                }
+            }
+            generator_mode::BAND_PASS => {
+                self.set_band(freq_hz);
+                let norm = self.band_norm;
+                for x in out.iter_mut() {
+                    let w = self.white();
+                    gain += step;
+                    *x = self.band.tick(w, 0) * norm * gain;
                 }
             }
             _ => {
@@ -239,6 +283,19 @@ mod tests {
                 let level = db(rms(&x[4800..]));
                 assert!((level - (-23.0103)).abs() < 0.3, "mode {mode} at {sr}: {level} dB RMS");
             }
+        }
+    }
+
+    #[test]
+    fn band_pass_noise_keeps_the_sine_rms_around_its_frequency() {
+        for (freq, sr) in [(250.0f32, 48000.0), (1000.0, 48000.0), (4000.0, 96000.0)] {
+            let mut g = SignalGenerator::new(sr, 5);
+            let x = render(&mut g, generator_mode::BAND_PASS, freq, -20.0, sr as usize * 8);
+            let level = db(rms(&x[4800..]));
+            assert!((level - (-23.0103)).abs() < 0.5, "{freq} Hz at {sr}: {level} dB RMS");
+            // Two octaves away it is far below the band.
+            let b = octave_bands(&x, sr, &[freq as f64 / 4.0, freq as f64, freq as f64 * 4.0]);
+            assert!(b[1] - b[0] > 8.0 && b[1] - b[2] > 8.0, "{freq} Hz: bands {b:?}");
         }
     }
 

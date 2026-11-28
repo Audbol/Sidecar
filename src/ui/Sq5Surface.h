@@ -111,6 +111,8 @@ public:
     void pressFootswitch (int which, bool down);
     /** Whether the SoftKey's function is on now (its LED). */
     bool isSoftKeyLit (int key) const;
+    /** A SoftKey's lit colour, by what it does (p.89's table). */
+    juce::Colour softKeyColour (int key) const;
     /** A PAFL key (Setup > Audio > PAFL's options, p.94). */
     void pressPafl (const sq5::Slot&);
     /** Tap: FX unit `slot`'s delay time, or every unit's (-1, Global Tap Tempo). */

@@ -171,6 +171,36 @@ Gate/Dynamics/EQ/Pan), Layer and Scene sections, Automix and Locator on the righ
 3. Studio Manager protocol and display layouts (LCD pages only appear as small drawings in the manual).
 4. Straight-on, lit top-panel photo and section close-ups. Not obtained.
 5. The internals of VCM Add-On models. Proprietary, not in the public documents.
+6. Readings Sidecar made where OM-V2 is silent, to check on the owner's console:
+   - The Input Channel delay's MIX and FB.GAIN (p.142; SPEC `kInDelayMix` -100 to +100, initial +100;
+     `kInDelayFBGain` -99 to +99, initial 0): Sidecar outputs `(1 - |mix|) dry + mix delayed` and feeds
+     `fb` times the delayed signal back into the line. Whether a negative MIX reverses the delayed signal
+     (Sidecar) or the dry one is not stated.
+   - The FB/MIX knob's push switch starts on FB (the manual gives no initial state).
+   - VERTICAL pairs (p.145): [L] selects the channel on the upper layer (1-24, 49-72), [R] its partner;
+     changing a half's PAIR MODE releases its pairs (Sidecar asks first).
+   - CONTROL ROOM [ASSIGN 1] and [ASSIGN 2] start on BUS 1 and BUS 2 (p.159 gives no initial data).
+   - A Direct Out PRE EQ leaves before the attenuator (the block diagram, p.399, has the attenuator
+     beside the EQ; the Direct Out's place between them is not drawn).
+   - DELAY SCALE (p.142 lists the units only): meters and feet at 340 m/s (the DM1000 V2 manual's
+     "about 340 m/sec at 15 degrees"); frames at 30 a second (the Automix Time Reference's FRAMES may set
+     them on the console); beats as the effects reckon (p.331: a NOTE lasts NOTE x 4 x 60 / TEMPO s),
+     with the NOTE (1/16 to 1/2, a quarter at first) and a BPM of 25-300 (120 at first) beside the scale
+     buttons, as the DM1000 V2 manual describes. How many decimals the console shows is a guess.
+   - Delay GANG on the Output Delay page gangs the Bus and Aux pairs too; a change to both channels of a
+     pair at once (a scene recall) is not followed.
+   - Pan MODE GANG sets the partner's pan to the same position and INVERSE GANG to the mirror of it
+     (p.96's pictures: R14/R14 and L21/R21), rather than moving it by the same amount.
+   - The Input Patch pages are four of 24 channels here (the console has two of 48), so VERTICAL mode
+     shows CH1-12 with CH25-36 on the first page and CH13-24 with CH37-48 on the second.
+   - Automix (pp.194-200): RELATIVE adds the fader's move in dB to the existing fader data (-oo stays
+     -oo); Edit Out RETURN's TIME starts at 1.0 s (only the range, 0-30 s, is given); turning REC off while
+     running is a punch out for every channel being recorded; Edit Out applies to faders only; UNDO
+     swaps the take with the one before (so a second UNDO redoes). The [RETURN] key toggles RETURN and
+     OFF; [TOUCH SENSE] turns on whichever of TOUCH and LATCH was chosen last (TOUCH at first). A pass
+     records the faders and ONs; PAN, SURROUND, AUX, AUX ON and EQ are not recorded yet.
+   - LOCATOR IN and OUT (p.258) are the multitrack recorder's loop start and end; [SET] is held on the
+     console, a latch for the next [IN] or [OUT] here.
 
 ---
 
@@ -240,6 +270,39 @@ appear in PRO2 manual Appendix B (printed pp. 295-304: mono input, returns, mast
 - GPIO on the DL351/DL451 boxes (p. 131) [Maker]. KVM switch for external computers, external video, USB and Ethernet tunnelling through the network (pp. 24-25) [Maker].
 - **Remote control server** for Midas's iPad app (MIXTENDER on PRO2C page): enable in Preferences, set IP or DHCP; 192.168.20.x is reserved for console internals (PRO2 manual p. 213) [Maker]. **No protocol is published in these documents.** A web search found no HiQnet, OSC, RS232 or API documentation for the PRO family either (absence of evidence only).
 - A keyword search of the PRO X manual found no Mackie or HUI emulation [Maker].
+
+### PRO2 mixes, MCAs, direct outputs and SIS (built: `livedaw-engine` `pro2.rs`)
+
+From the PRO2 Owner's Manual (DOC02-DL2) [Maker]; what it leaves open is marked as Sidecar's reading.
+
+- **Mix modes** (pp.77, 260): each aux send is a mix (ON, PRE, level to +6 dB), a group (ON alone, the input's
+  fader level, and its pan on a stereo group) or mix minus (as a group, but every input is routed on entry and the
+  switch, labelled minus, takes it out). Matrices are mixes. A mono mix post fader takes the signal before the pan.
+  Sidecar's reading: a stereo mix post fader takes the channel as panned and the send's pan balances it; a stereo
+  source into a mono mix gives its two sides at half each.
+- **Linked pairs** (p.78): adjacent mixes of the same colour (1-2, 3-4...); the odd mix's mode is used on both; in stereo
+  mix mode the top knob is pan, the bottom level. Normal (FOH) mode makes aux sends 9-16 stereo groups routed to the stereo
+  masters (p.211). Sidecar's reading: a linked pair reaches the stereo master as its two sides, odd left, even right.
+- **MCA groups** (p.44; Quick Start Guide p.30): eight per mix (24 mixes: 192), named and populated as the VCAs; the fader
+  adds its level on top of the members' own contributions to the selected mix. Several VCAs add, as VCAs do.
+- **Direct output** (pp.248-249, 341): MUTE, MODE ("Post-fade and mute", "Pre-mute, pre-processing", "Pre-mute,
+  post-processing"), level -oo to +10 dB, a destination patched on the Dir. Out tab; not delay compensated (p.219).
+  The default mode is Sidecar's reading (post processing); 0 dB is what "Set All Dir Out Gains to 0dB" sets (p.207).
+- **SIS** (pp.98-99, 261-262): an LCR master enable over ST and MON; the mono level knob becomes the image, anti-clockwise
+  stereo, clockwise full LCR (centre pan to C alone), centred equal power to all three at centre pan. Sidecar's reading:
+  each output's power is blended between the two laws by the knob.
+- **Channel safes** (pp.174-175, Appendix H pp.385-430; built: `livedaw-session` `pro2_safes.rs`): EQ, DYN, MIC, AUTO,
+  MUTE and FADER per channel, "intended for emergency use only", not scope; they keep controls from being recalled with
+  a scene. Aux returns have no DYN safe; VCAs have MUTE and FADER safes. AUTO covers every parameter but solo, the
+  safes and LINK. Appendix H's lists, per kind: EQ the EQ, its shelf modes, the filters (and the inputs' C/O); DYN the
+  compressor and gate; MIC an input's head amp gain, 48V, 30 Hz filter, trim, delay, phase, direct output level, mode
+  and dest and insert in/out, an output's direct input and insert in/out; MUTE the mute (and an input's direct output
+  mute); FADER the fader, ST, MON, SIS and pan, and on aux sends and matrices the bus trim, delay and (aux sends) bus
+  mode. Sidecar's readings: an output's bus trim and delay are its INPUT block; an output's direct input is its
+  external input or a matrix's direct in; the 30 Hz filter and the returns' input zone are not in Sidecar; the safes
+  keep a MIC-safe input's sources and the ports its direct output is patched to, as they were before the recall; a
+  RESTORE and a NO GLOB load ignore them, as they ignore AUTO (the strip's recall safe). Not built: the VCAs' safes
+  and the GUI's Hardware Safe screen (the channel strips' configuration area has the six).
 
 ### What an emulation still needs (PRO series)
 

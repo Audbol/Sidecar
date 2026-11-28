@@ -308,6 +308,8 @@ pub struct Strip {
     pub mix_input: crate::params::MixInputParams,
     /// What only a dLive uses (`dlive.rs`).
     pub dlive: crate::dlive::DLiveStripParams,
+    /// What only a PRO2 uses (`pro2.rs`).
+    pub pro2: crate::pro2::Pro2StripParams,
     /// What a Source Selector leaves of its sends (`dlive::selector_destination`): 1 for
     /// the sends no selector holds, written by the audio thread.
     pub(crate) selector_gain: [crate::atomic::AtomicF32; crate::dlive::NUM_SELECTOR_DESTINATIONS],
@@ -450,6 +452,7 @@ impl Strip {
             console: StripConsole::default(),
             mix_input: Default::default(),
             dlive: Default::default(),
+            pro2: crate::pro2::Pro2StripParams::factory(spec, kind, slot),
             selector_gain: std::array::from_fn(|_| crate::atomic::AtomicF32::new(1.0)),
             amm: AmmStripParams::default(),
             pdc: StripPdc::default(),
@@ -1515,7 +1518,9 @@ impl Strip {
         let nc = d.num_channels;
         let [w0, w1] = &mut d.work;
         let mut chans: [&mut [f32]; 2] = [&mut w0[..n], &mut w1[..n]];
-        d.delay.process(&mut chans[..nc], samples);
+        // MIX and FB.GAIN (a DM2000 Input Channel's; 100 % and 0 % elsewhere: a plain delay).
+        let (mix, fb) = (p.delay_mix.load() * 0.01, p.delay_fb.load() * 0.01);
+        d.delay.process_mix(&mut chans[..nc], samples, mix, fb);
     }
 
     /// Key signal for a dynamics slot into `d.key`: another channel's signal

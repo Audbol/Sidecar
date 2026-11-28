@@ -1272,13 +1272,49 @@ strips and on any Universal strip from the start:
    SoftKey type of p.89, the two Surface Prefs that act), Mixer Config (Input Stereo: the odd
    channel takes both sockets and the even strip goes off the surface; Bus Config; Role, with
    Reset Mix Settings and Master Fader Mode), Utility's MIDI with MMC, Add-ons and the AMM
-   (the engine's D-Classic), Mix Stereo (the engine's mono output), Ganging (the display copies a linked change to the gang's other members), Data (shows and scenes in the Library folder), SQ-Drive and its SoftKeys (the USB and multitrack recorders) and the Footswitch's assignments are real. Drawn dim until they have something to run: Direct
-   Out's settings, the Pad, side chains, the Cue List and Global Filter,
-   Ext In, PAFL's source point and delay, band-pass noise,
-   Digital I/O's choices, I/O Port, Network's address settings, Users' permissions, Sync, USB Format,
-   Calibration, RTAs, channel libraries, Soft Keys' DAW Control (without the app's DAW remote), the mix keys'
-   magenta for a Group, SoftKey colours by function. Talkback's source is a channel (the
-   SQ-5's Talk socket isn't a port here). Its HPF is dim: the guide's is talkback's own.
+   (the engine's D-Classic), Mix Stereo (the engine's mono output), Ganging (the display copies a linked change to the gang's other members; Direct Out links the direct out levels), Data (shows and scenes in the Library folder), SQ-Drive and its SoftKeys (the USB and multitrack recorders) and the Footswitch's assignments are real.
+   Also real (November 2026):
+   - The gate's and compressor's **side chains** (pp.35, 41): Self Keyed or any input channel,
+     keyed after all its processing and its delay (the engine's PFL tap, `chain::SQ_CHANNEL`);
+     the filter's type key (HPF, BPF, LPF, its dots under it), frequency (the guide's three
+     ranges) and Filter In, on the engine's key filter. Its HPF and LPF are 12 dB per octave
+     and the BPF has the key filter's Q: the guide gives neither. The filter's type while
+     Filter In is off is kept by the screen, not in a show. The meter at the graph's left is
+     the side chain's level.
+   - **Direct Out** (p.46): each channel's level and the global source point and follows run
+     on the dLive's Direct Outs (`dlive_direct_out`; the SQ's chain has the dLive's taps, after
+     the gate and after the insert return), with the SQ's Follow DCA Fader, Follow DCA Mute
+     and Follow Mute Group added. A new SQ starts as the guide's picture: Post Compressor,
+     Follow Mute on (Sidecar's reading of the factory state). I/O's Outputs patch the 48
+     direct outs (a stereo pair's even channel is its odd channel's right side).
+   - **PAFL's source point and delay** (p.94): Post Preamp (after the trim, the engine's first
+     tap), Post PEQ, Post Compressor or Post Delay/AMM for the input channels' PFL; the delay,
+     0 to 682.6 ms, is both monitor paths' delay (their line now runs that long).
+   - **Band-pass noise** (p.97): white noise through a band-pass at the frequency, a third of
+     an octave wide (the width is Sidecar's reading), at the white noise's level.
+   - **RTAs** (pp.55-57): the Meters RTA, from PAFL (the monitor path) or a fixed channel, in
+     the mono 1/6th-octave view with its most prominent frequency in red; the PEQ's RTA key
+     lays the selected channel's RTA over the graph, scaled to its loudest band. Both are the
+     engine's analysis; their settings pages (trim, ballistics, LF Damping, opacity) aren't
+     drawn.
+   - **Channel libraries** (pp.78-79): the Library key on Processing's overview opens the Input
+     Channel or Mix Channel library: Recall, Store New, Overwrite and Delete (touched twice) on
+     Sidecar's channel presets in the data folder, an item holding the processing and the name
+     and colour, recalled as the Name and Colour option says. No factory items; the Preamp
+     option is dim (a socket's gain, pad and 48V aren't a channel's here).
+   - The **mix keys** light blue for an Aux and magenta for a Group (p.87); LR is red at all
+     times in Listen Level mode (p.103). The **SoftKeys** light in p.89's colour for their type
+     (where it gives two or three: Mix Select by the mix, DCA Spill green for Spill On Sel and
+     magenta for a DCA, SQ Drive green to start, red to arm or record, blue otherwise:
+     Sidecar's reading).
+
+   Drawn dim until they have something to run: the Pad (the engine's sources have no pad, and
+   their gain stops at -2.5 dB), the Cue List, the Global Filter (it blocks a kind of setting
+   on one type of channel; the show's global safes block a section on every strip), Ext In,
+   Digital I/O's choices, I/O Port, Network's address settings, Users' permissions, Sync, USB
+   Format, Calibration, the RTA settings pages, Soft Keys' DAW Control (without the app's DAW
+   remote). Talkback's source is a channel (the SQ-5's Talk socket isn't a port here). Its HPF
+   is dim: the guide's is talkback's own.
 
 Sidecar's reading until measured on a console: the compressor's ratio steps, the soft
 knee's width, the ducker's controls, the PEQ's filter slopes, every default value, the
@@ -1539,9 +1575,20 @@ apart. The profile is V2's: 96 channels, surround, cascade as the V2 manual.
 **Its surface** (`src/ui/Dm2000Surface.*`, `Dm2000Display.cpp`): 24 strips and STEREO at 1920 x 1080
 from a straight-on photograph and the manual's pp.20-44; LAYER, FADER and ENCODER MODE, the Selected
 Channel, Display Access, the channel strip displays (p.55), and the 320 x 240 LCD drawn as dots with
-the title bar, F1-F4's tabs and their pages. The panel's own: the sections it has keys for are shown; its
-transport, Track Arming, Automix, User Defined Keys, Locator and the Monitor source keys are drawn and do
-nothing yet; so are INSERT's patch, DELAY's MIX and FB, and the +48V/GAIN row beyond CH 24's AD inputs. The
+the title bar, F1-F4's tabs and their pages. The panel's own: the sections it has keys for are shown; INSERT's
+patch, PAN/SURROUND's LINK, GRAB and EFFECT, the SURROUND monitor keys and
+the +48V/GAIN row beyond CH 24's AD inputs are drawn and do nothing yet. DELAY's FB/MIX knob sets an Input
+Channel's FB.GAIN or MIX (`InputParams::delay_mix`, `delay_fb`: the delay line's `process_mix`); the PAIR
+pages pair vertically as well; a Direct Out PRE EQ is a `routing::DirectTap` on the channel's tap 2; the
+CONTROL ROOM keys play the 2TR inputs as a monitor SOURCE of their own (`params::PORT_SOURCE_BASE`), STEREO
+or the Output Channels on ASSIGN 1 and 2. AUTOMIX's takes are `livedaw_dm2000::automix` (tested in Rust,
+reached by `ld_dm2000_automix_*`): AUTO-REC, TOUCH SENSE by TOUCH or LATCH, the Fader Edit modes ABSOLUTE and
+RELATIVE (a dB offset on the existing data), and the Edit Out modes OFF, TAKEOVER and RETURN with its TIME.
+The Delay pages' DELAY SCALE shows meters, feet (340 m/s), samples, beats (a NOTE at a BPM, the effects'
+NOTE x 4 x 60 / TEMPO) or frames (30 a second); their GANG moves a pair's delays by the same amount, and the
+pan page's MODE pans pairs alike (GANG) or mirrored (INVERSE GANG), both followed on the surface's timer like
+the pairs. In VERTICAL pair mode the Input Patch pages show the partners side by side. LOCATOR IN and OUT
+are the recorder's loop points (SET, a latch here, stores the next one). The
 ASSIGN keys' initial assignments are Sidecar's (Attenuator, Delay, EQ On, Comp On) rather than the manual's
 Input Patch, Direct Out, Surr LFE, Pan Wheel, which aren't encoder parameters here. A GEQ is an EQ block
 added after the strip's PEQ, one of six in all, rather than a GEQ patched at an insert point.
@@ -1552,8 +1599,7 @@ Not yet: bulk dumps (their bodies are not published), NRPN mode's numbers
 (unpublished: only the setting is there), the effects' 32 parameters by MIDI (their tables aren't published),
 fade times, a channel's PAN and DIRECT routing switches, surround parameters and the Control Change table's SURROUND
 assignments, GEQ assignment by six units (a strip's EQ block holds one
-here), the 12-channel key-in groups, the rotary attenuator's bit-shift parameter, the Direct Outs'
-destination patch.
+here), the 12-channel key-in groups, the rotary attenuator's bit-shift parameter.
 
 **The Midas PRO series** (the PRO2; started, November 2026). From the PRO2 Owner's Manual (DOC02-DL2,
 October 2011, "OM"), its functional block diagrams (pp.296-303, read off the rendered pages) and, where

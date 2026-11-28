@@ -256,13 +256,14 @@ fn apply_sources(engine: &Engine, parent: &Element) {
 /// A scene's sources (from [`capture_sources`]): the listed ones take their
 /// settings and name, the others go back to the factory's. With
 /// `respect_safes`, safe sources (GLOBAL SAFE's SOURCE groups) are left alone
-/// (manual 5.6 p. 54-55: global safes protect them from a LOAD). Scenes
-/// saved before they held the sources change none.
-pub(crate) fn apply_scene_sources(engine: &Engine, parent: &Element, respect_safes: bool) {
+/// (manual 5.6 p. 54-55: global safes protect them from a LOAD), and so are
+/// `also_kept` (a PRO2's MIC-safe inputs'). Scenes saved before they held the
+/// sources change none.
+pub(crate) fn apply_scene_sources(engine: &Engine, parent: &Element, respect_safes: bool, also_kept: &[usize]) {
     let Some(e) = parent.child("Sources") else { return };
     let table = engine.sources();
     let safes = &engine.io_safes().sources;
-    let kept = |i: usize| respect_safes && safes.get(i);
+    let kept = |i: usize| respect_safes && (safes.get(i) || also_kept.contains(&i));
     let mut listed = vec![None; NUM_SOURCES];
     for x in e.children_named("Source") {
         if let Some(slot) = usize::try_from(x.int_or("i", -1)).ok().and_then(|i| listed.get_mut(i)) {

@@ -124,9 +124,12 @@ namespace
     constexpr int kSetupValues = 28;
 
     // The surface's own settings (the app settings: they are the console's, not a show's).
-    constexpr const char* kPairsKey = "dm2000.pairs";       // the input pairs and the output pairs, in hex
+    constexpr const char* kPairsKey = "dm2000.pairs";       // the input pairs, the output pairs and the vertical halves, in hex
     constexpr const char* kUserKeysKey = "dm2000.userkeys"; // sixteen of userKeyNames()
     constexpr const char* kCopyKey = "dm2000.copy";         // Channel Copy Parameter's bits
+    constexpr const char* kCrAssignKey = "dm2000.crAssign"; // CONTROL ROOM [ASSIGN 1] and [ASSIGN 2]
+    constexpr const char* kDelayPanKey = "dm2000.delayPan"; // DELAY SCALE, GANG, the beat's NOTE and BPM, pan MODE
+    constexpr int kBpmMin = 25, kBpmMax = 300;               // the beat scale's BPM: the effects' TEMPO range
 
     /** PREFER1's preferences, in Display::Pref's order, by the manual's names (p.274). The Auto ...
         Display ones of the SELECTED CHANNEL's knobs start on, as the surface was before it had this page. */
@@ -217,6 +220,32 @@ KnobBinding bindDelay (Strip& s)
     return b;
 }
 
+namespace
+{
+    /** A whole percentage from `lo` to `hi`, the LCD's "+100%" (p.56: these parameters show
+        their sign). */
+    KnobBinding bindPercent (const char* label, std::atomic<float>& v, float lo, float hi, float initial)
+    {
+        KnobBinding b;
+        b.label = label;
+        b.get = [&v, lo, hi] { return juce::jlimit (0.0f, 1.0f, (v.load() - lo) / (hi - lo)); };
+        b.set = [&v, lo, hi] (float x) { v = (float) juce::roundToInt (lo + juce::jlimit (0.0f, 1.0f, x) * (hi - lo)); };
+        b.text = [&v]
+        {
+            const int n = juce::roundToInt (v.load());
+            return (n > 0 ? "+" : "") + juce::String (n) + "%";
+        };
+        b.reset = [&v, initial] { v = initial; };
+        b.bipolar = true;
+        b.steps = hi - lo + 1.0f;
+        return b;
+    }
+} // namespace
+
+KnobBinding bindDelayMix (Strip& s) { return bindPercent ("MIX", s.params.input.delayMix, -100.0f, 100.0f, 100.0f); }
+
+KnobBinding bindDelayFb (Strip& s) { return bindPercent ("FB.GAIN", s.params.input.delayFb, -99.0f, 99.0f, 0.0f); }
+
 KnobBinding bindPanYamaha (Strip& s)
 {
     KnobBinding b;
@@ -252,7 +281,9 @@ void stepBy (const KnobBinding& b, int delta)
 
 const juce::StringArray& assignNames()
 {
-    static const juce::StringArray names { "No Assign", "Attenuator", "Delay Time", "EQ On", "Comp On", "Gate On", "Insert On", "Phase", "EQ Type", "Pan", "Comp Threshold", "Gate Threshold" };
+    // In the order Sidecar added them (a key's choice is kept by its number), not the manual's.
+    static const juce::StringArray names { "No Assign", "Attenuator", "Delay Time", "EQ On", "Comp On", "Gate On", "Insert On", "Phase", "EQ Type", "Pan", "Comp Threshold", "Gate Threshold",
+                                           "Delay On", "Delay FB.Gain", "Delay Mix" };
     return names;
 }
 
@@ -272,6 +303,9 @@ KnobBinding bindAssign (UiContext&, Strip& s, int item)
         case 9:  return s.isInput() ? bindPanYamaha (s) : KnobBinding {};
         case 10: return bindId (models::Dynamics, p.dynamics().model.load(), p.dynamics().values, "thr", "COMP TH.");
         case 11: return s.isInput() ? bindId (models::Dynamics, p.gate().model.load(), p.gate().values, "thr", "GATE TH.") : KnobBinding {};
+        case 12: return bindBool ("DELAY", p.input.delayOn);
+        case 13: return s.isInput() ? bindDelayFb (s) : KnobBinding {};
+        case 14: return s.isInput() ? bindDelayMix (s) : KnobBinding {};
         default: return {};
     }
 }
@@ -334,10 +368,12 @@ Display::Display (UiContext& c) : ctx (c), dots ((size_t) (kDotsW * kDotsH), 0),
     juce::StringArray pairs, keys;
     pairs.addTokens (ctx.settings.getValue (kPairsKey), " ", "");
     pairs.removeEmptyStrings();
-    if (pairs.size() == 2)
+    if (pairs.size() == 2 || pairs.size() == 3)
     {
         inputPairs = (uint64_t) pairs[0].getHexValue64() & ((uint64_t (1) << 48) - 1);
         outputPairs = (uint32_t) pairs[1].getHexValue32() & 0x3ffu;
+        for (int half = 0; half < 2; ++half)
+            verticalPairs[(size_t) half] = ((pairs[2].getHexValue32() >> half) & 1) != 0;
     }
     if (const auto text = ctx.engine.getConsoleText(); text.isEmpty() || ! adoptPairsText (text))
         seenConsole = ctx.engine.setConsoleText (pairsText());
@@ -347,6 +383,25 @@ Display::Display (UiContext& c) : ctx (c), dots ((size_t) (kDotsW * kDotsH), 0),
     keys.removeEmptyStrings();
     for (int k = 0; k < 16; ++k)
         userKeys[(size_t) k] = keys.size() == 16 ? juce::jlimit (0, kKeyCount - 1, keys[k].getIntValue()) : kKeyScene + k;
+    // CONTROL ROOM [ASSIGN 1] and [ASSIGN 2]: BUS 1 and BUS 2 at first (Sidecar's choice: p.159 gives none).
+    juce::StringArray assigns;
+    assigns.addTokens (ctx.settings.getValue (kCrAssignKey), " ", "");
+    assigns.removeEmptyStrings();
+    if (assigns.size() == 2)
+        for (int k = 0; k < 2; ++k)
+            crAssign[(size_t) k] = juce::jlimit (0, kNumCrAssigns - 1, assigns[k].getIntValue());
+    juce::StringArray delayPan;
+    delayPan.addTokens (ctx.settings.getValue (kDelayPanKey), " ", "");
+    delayPan.removeEmptyStrings();
+    if (delayPan.size() == 5)
+    {
+        delayScale = (DelayScale) juce::jlimit (0, 4, delayPan[0].getIntValue());
+        delayGang = delayPan[1].getIntValue() != 0;
+        beatNote = juce::jlimit (0, beatNoteNames().size() - 1, delayPan[2].getIntValue());
+        beatBpm = juce::jlimit (kBpmMin, kBpmMax, delayPan[3].getIntValue());
+        panMode = (PanMode) juce::jlimit (0, 2, delayPan[4].getIntValue());
+    }
+    followGangs (false);
     rebuild();
 }
 
@@ -789,7 +844,7 @@ void Display::turn (int delta)
 {
     if (! juce::isPositiveAndBelow (focus, (int) cells.size()))
         return;
-    const auto& c = cells[(size_t) focus];
+    const auto c = cells[(size_t) focus]; // a change may rebuild the page (a confirmation)
     if (c.binding.isValid())
         stepBy (c.binding, delta);
     refresh();
@@ -1172,11 +1227,7 @@ void Display::doRecallScene()
     if (memory >= 1 && memory - 1 < ctx.show.getNumScenes())
     {
         ctx.show.recallScene (memory - 1);
-        if (amSceneClock && amRun)
-        {
-            amStart = juce::Time::getMillisecondCounterHiRes() * 0.001;
-            amNext = 0;
-        }
+        ld::ld_dm2000_automix_scene_recalled (automix.get(), juce::Time::getMillisecondCounterHiRes() * 0.001);
         refresh();
     }
 }
@@ -1311,110 +1362,53 @@ namespace
     }
 }
 
-bool Display::automixIs (AutomixKey k) const
+namespace
 {
-    switch (k)
-    {
-        case AutomixKey::Enable: return amEnable;
-        case AutomixKey::Rec: return amRec;
-        case AutomixKey::Run: return amRun;
-        case AutomixKey::Clock: return amSceneClock;
-        case AutomixKey::Fader: return amFaders;
-        case AutomixKey::On: return amOns;
-        default: return false;
-    }
+    double automixClock() { return juce::Time::getMillisecondCounterHiRes() * 0.001; }
 }
+
+bool Display::automixIs (AutomixKey k) const { return ld::ld_dm2000_automix_is (automix.get(), (int32_t) k); }
 
 void Display::automixPress (AutomixKey k)
 {
-    const auto& channels = ctx.engine.getChannels();
-    switch (k)
-    {
-        case AutomixKey::Enable: amEnable = ! amEnable; break;
-        case AutomixKey::Fader: amFaders = ! amFaders; break;
-        case AutomixKey::On: amOns = ! amOns; break;
-        case AutomixKey::Clock: amSceneClock = ! amSceneClock; break;
-        case AutomixKey::Clear: amEvents.clear(); amNext = 0; break;
-        case AutomixKey::Undo:
-            amEvents = amBackup;
-            amNext = amEvents.size();
-            break;
-        case AutomixKey::Rec:
-            amRec = ! amRec;
-            if (amRec)
-            {
-                // The take replaces what was there from here on, in the kinds being recorded; UNDO restores it.
-                amBackup = amEvents;
-                amEvents.erase (std::remove_if (amEvents.begin(), amEvents.end(), [this] (const AutomixEvent& e) { return e.t >= amNow && (e.on ? amOns : amFaders); }), amEvents.end());
-                if (! amRun)
-                    automixPress (AutomixKey::Run);
-            }
-            break;
-        case AutomixKey::Run:
-            amRun = ! amRun;
-            if (amRun)
-            {
-                amStart = juce::Time::getMillisecondCounterHiRes() * 0.001;
-                amNow = 0.0;
-                amNext = 0;
-                amFader.assign (channels.size(), 0.0f);
-                amOn.assign (channels.size(), 0);
-                for (size_t i = 0; i < channels.size(); ++i)
-                {
-                    amFader[i] = channels[i]->params.faderDb.load();
-                    amOn[i] = ! channels[i]->params.mute.load();
-                }
-            }
-            else
-                amRec = false;
-            break;
-    }
+    ld::ld_dm2000_automix_press (automix.get(), (int32_t) k, automixClock());
+    // A run that starts takes the faders as they are now.
+    automixTick();
     refresh();
 }
 
+void Display::automixHold (int channel, bool held) { ld::ld_dm2000_automix_hold (automix.get(), channel, held); }
+
+float Display::getAutomixReturnTime() const { return ld::ld_dm2000_automix_return_time (automix.get()); }
+
+void Display::setAutomixReturnTime (float seconds) { ld::ld_dm2000_automix_set_return_time (automix.get(), seconds); }
+
+int Display::getAutomixEvents() const { return ld::ld_dm2000_automix_events (automix.get()); }
+
 void Display::automixTick()
 {
-    if (! amRun)
+    if (! automixIs (AutomixKey::Run))
         return;
     const auto& channels = ctx.engine.getChannels();
-    amNow = juce::Time::getMillisecondCounterHiRes() * 0.001 - amStart;
-    if (amFader.size() != channels.size())
-        return;
-    if (amRec)
+    const size_t n = juce::jmin (channels.size(), (size_t) 96);
+    std::array<float, 96> faders {}, wasFader {};
+    std::array<uint8_t, 96> ons {}, wasOn {};
+    for (size_t i = 0; i < n; ++i)
     {
-        for (size_t i = 0; i < channels.size(); ++i)
-        {
-            auto& p = channels[i]->params;
-            const float f = p.faderDb.load();
-            const char on = ! p.mute.load();
-            if (amFaders && std::abs (f - amFader[i]) > 0.05f)
-                amEvents.push_back ({ amNow, (int) i, false, f });
-            if (amOns && on != amOn[i])
-                amEvents.push_back ({ amNow, (int) i, true, on ? 1.0f : 0.0f });
-            amFader[i] = f;
-            amOn[i] = on;
-        }
-        amNext = amEvents.size();
+        faders[i] = channels[i]->params.faderDb.load();
+        ons[i] = channels[i]->params.mute.load() ? 0 : 1;
     }
-    else if (amEnable)
+    wasFader = faders;
+    wasOn = ons;
+    if (! ld::ld_dm2000_automix_tick (automix.get(), automixClock(), faders.data(), ons.data(), n))
+        return;
+    for (size_t i = 0; i < n; ++i)
     {
-        for (; amNext < amEvents.size() && amEvents[amNext].t <= amNow; ++amNext)
-        {
-            const auto& e = amEvents[amNext];
-            if (! juce::isPositiveAndBelow (e.strip, (int) channels.size()))
-                continue;
-            auto& p = channels[(size_t) e.strip]->params;
-            if (e.on)
-            {
-                p.mute = e.value < 0.5f;
-                amOn[(size_t) e.strip] = e.value >= 0.5f;
-            }
-            else
-            {
-                p.faderDb = e.value;
-                amFader[(size_t) e.strip] = e.value;
-            }
-        }
+        auto& p = channels[i]->params;
+        if (faders[i] != wasFader[i])
+            p.faderDb = faders[i];
+        if (ons[i] != wasOn[i])
+            p.mute = ons[i] == 0;
     }
 }
 
@@ -1430,18 +1424,42 @@ void Display::buildAutomix (int)
     flag (AutomixKey::Clock, { 194, 44, 118, 14 }, "SCENE CLOCK");
     flag (AutomixKey::Fader, { 8, 92, 56, 14 }, "FADER");
     flag (AutomixKey::On, { 70, 92, 56, 14 }, "ON");
-    button ({ 8, 130, 56, 14 }, "UNDO", [this] { automixPress (AutomixKey::Undo); });
-    button ({ 70, 130, 56, 14 }, "CLEAR", [this] { automixPress (AutomixKey::Clear); });
+    flag (AutomixKey::Touch, { 140, 92, 56, 14 }, "TOUCH");
+    flag (AutomixKey::Latch, { 200, 92, 56, 14 }, "LATCH");
+    flag (AutomixKey::AutoRec, { 262, 92, 54, 14 }, "AUTO REC");
+    flag (AutomixKey::Absolute, { 8, 126, 56, 14 }, "ABSOLUTE");
+    flag (AutomixKey::Relative, { 70, 126, 56, 14 }, "RELATIVE");
+    flag (AutomixKey::Takeover, { 140, 126, 52, 14 }, "TAKEOVER");
+    flag (AutomixKey::Return, { 196, 126, 48, 14 }, "RETURN");
+    // RETURN's TIME (p.200): 0.0 to 30.0 seconds in 0.1 second steps.
+    KnobBinding time;
+    time.label = "TIME";
+    time.get = [this] { return getAutomixReturnTime() / 30.0f; };
+    time.set = [this] (float v) { setAutomixReturnTime (juce::jlimit (0.0f, 1.0f, v) * 30.0f); };
+    time.text = [this] { return juce::String (getAutomixReturnTime(), 1) + "s"; };
+    time.reset = [this] { setAutomixReturnTime (1.0f); };
+    time.steps = 301.0f;
+    auto& t = add (Cell::Text, { 268, 128, 44, 11 }, std::move (time), "TIME");
+    t.dotted = true;
+    button ({ 8, 154, 56, 14 }, "UNDO", [this] { automixPress (AutomixKey::Undo); });
+    button ({ 70, 154, 56, 14 }, "CLEAR", [this] { automixPress (AutomixKey::Clear); });
 }
 
 void Display::drawAutomix (int)
 {
-    pageTitle ("AUTOMIX", amRec ? "RECORDING" : amRun ? "RUNNING" : "STOPPED");
-    text (8, 68, "TIME " + clockText (amNow));
-    text (8, 80, "EVENTS " + juce::String ((int) amEvents.size()) + "  CLOCK " + juce::String (amSceneClock ? "SCENE" : "INTERNAL"), true);
+    pageTitle ("AUTOMIX", automixIs (AutomixKey::Rec) ? "RECORDING" : automixIs (AutomixKey::Run) ? "RUNNING" : "STOPPED");
+    text (8, 62, "TIME " + clockText (ld::ld_dm2000_automix_time (automix.get())));
+    text (8, 73, "EVENTS " + juce::String (getAutomixEvents()) + "  CLOCK " + juce::String (automixIs (AutomixKey::Clock) ? "SCENE" : "INTERNAL"), true);
     frame ({ 4, 84, 130, 26 }, "OVERWRITE");
-    text (8, 154, "Channel faders and ON keys; a take replaces what", true);
-    text (8, 164, "follows it. UNDO restores the last take.", true);
+    frame ({ 136, 84, 124, 26 }, "TOUCH SENSE");
+    frame ({ 4, 118, 130, 26 }, "FADER EDIT");
+    frame ({ 136, 118, 180, 26 }, "EDIT OUT");
+    text (249, 131, "TIME", true);
+    text (8, 176, "Channel faders and ON keys. A take replaces what it passes", true);
+    text (8, 186, "or with RELATIVE moves it by as much as the fader moved.", true);
+    text (8, 196, "TOUCH: a held fader records. LATCH: a touched one to the end.", true);
+    text (8, 206, "At a punch out RETURN glides the fader back over TIME.", true);
+    text (8, 216, "TAKEOVER records until the old take meets the fader.", true);
 }
 
 //==============================================================================
@@ -1504,6 +1522,30 @@ void Display::locateMemory (int n)
         ctx.recording->addMarkerAtPosition();
         showMessage ("Stored in LOCATE MEMORY.");
     }
+    refresh();
+}
+
+void Display::pressLocateSet()
+{
+    locateSet = ! locateSet;
+    refresh();
+}
+
+void Display::locatePoint (bool out)
+{
+    if (ctx.recording == nullptr)
+        return;
+    auto& project = ctx.recording->getProject();
+    if (std::exchange (locateSet, false))
+    {
+        // [SET] then [IN] or [OUT]: the in or out point (the loop's start or end) is here now.
+        const auto here = ctx.recording->getPosition();
+        project.beginEdit (out ? "Set out point" : "Set in point");
+        project.setLoop (out ? project.getLoopStart() : here, out ? here : project.getLoopEnd());
+        showMessage (out ? "OUT point stored." : "IN point stored.");
+    }
+    else
+        ctx.recording->locate (out ? project.getLoopEnd() : project.getLoopStart());
     refresh();
 }
 
@@ -1973,28 +2015,149 @@ void Display::drawInsert (int)
     (void) i;
 }
 
+namespace
+{
+    // The Input Channel Delay page (p.141): DELAY SCALE and GANG on top, then three blocks of eight
+    // channels, each a column of ON, the time in msec and in the scale's units, MIX and FB.GAIN.
+    constexpr int kDelayScaleY = 28, kDelayBlockY = 40, kDelayBlockH = 62, kDelayColX = 38, kDelayColW = 35;
+    juce::Point<int> delayColumn (int i) { return { kDelayColX + (i % 8) * kDelayColW, kDelayBlockY + (i / 8) * kDelayBlockH }; }
+    const char* const kDelayScales[] = { "meter", "feet", "sample", "beat", "frame" };
+    // The unit rows' names, as "[ msec]" is written.
+    const char* const kDelayUnitRows[] = { "[ meter]", "[  feet]", "[sample]", "[  beat]", "[ frame]" };
+    // The beat scale's notes, in quarter notes (the effects' NOTE x 4: p.331's DELAY = NOTE x 4 x 60 / TEMPO).
+    constexpr double kBeatQuarters[] = { 0.25, 0.5, 0.75, 1.0, 1.5, 2.0 };
+    // Sound's speed for meters and feet: about 340 m/s, at 15 degrees (the DM1000 V2 manual's tip on the
+    // same page); timecode frames at 30 a second (Sidecar has no Time Reference page to choose others).
+    constexpr double kSoundMetres = 340.0, kMetresPerFoot = 0.3048, kFramesPerSecond = 30.0;
+    constexpr float kDelayMaxSamples = 43400.0f;
+
+    // Five characters at most, as a value box holds.
+    juce::String unitsText (double v)
+    {
+        const auto a = std::abs (v);
+        return juce::String (v, a < 100.0 ? 2 : a < 1000.0 ? 1 : 0);
+    }
+} // namespace
+
+const juce::StringArray& Display::beatNoteNames()
+{
+    static const juce::StringArray names { "1/16", "1/8", "1/8.", "1/4", "1/4.", "1/2" };
+    return names;
+}
+
+void Display::saveDelayPan() const
+{
+    ctx.settings.setValue (kDelayPanKey, juce::String ((int) delayScale) + " " + juce::String (delayGang ? 1 : 0) + " " + juce::String (beatNote) + " " + juce::String (beatBpm) + " " + juce::String ((int) panMode));
+}
+
+void Display::setDelayScale (DelayScale s)
+{
+    delayScale = (DelayScale) juce::jlimit (0, 4, (int) s);
+    saveDelayPan();
+    // The beat's NOTE and BPM come and go (not from inside the cell that was pressed).
+    if (group == Group::Delay)
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<Display> (this)] { if (safe != nullptr) safe->rebuild(); });
+    refresh();
+}
+
+void Display::setDelayGang (bool on)
+{
+    delayGang = on;
+    saveDelayPan();
+    refresh();
+}
+
+void Display::setBeatNote (int n)
+{
+    beatNote = juce::jlimit (0, beatNoteNames().size() - 1, n);
+    saveDelayPan();
+    refresh();
+}
+
+void Display::setBeatBpm (int bpm)
+{
+    beatBpm = juce::jlimit (kBpmMin, kBpmMax, bpm);
+    saveDelayPan();
+    refresh();
+}
+
+void Display::setPanMode (PanMode m)
+{
+    panMode = (PanMode) juce::jlimit (0, 2, (int) m);
+    saveDelayPan();
+    refresh();
+}
+
+juce::String Display::delayInUnits (float samples) const
+{
+    const double seconds = samples / juce::jmax (1.0, ctx.engine.getSampleRate());
+    switch (delayScale)
+    {
+        case DelayScale::Meter: return unitsText (seconds * kSoundMetres);
+        case DelayScale::Feet: return unitsText (seconds * kSoundMetres / kMetresPerFoot);
+        case DelayScale::Beat: return unitsText (seconds / (kBeatQuarters[(size_t) beatNote] * 60.0 / beatBpm));
+        case DelayScale::Frame: return unitsText (seconds * kFramesPerSecond);
+        case DelayScale::Sample: break;
+    }
+    return juce::String (juce::roundToInt (samples));
+}
+
+KnobBinding Display::bindDelayUnits (Strip& s)
+{
+    auto b = bindDelay (s);
+    auto& delay = s.params.input.delay;
+    b.text = [this, &delay] { return delayInUnits (delay.load()); };
+    return b;
+}
+
 void Display::buildDelay (int arg)
 {
-    std::vector<Strip*> strips;
+    // DELAY SCALE and GANG (p.142); a beat's NOTE and BPM beside them.
+    {
+        int x = 48;
+        for (int u = 0; u < 5; ++u)
+        {
+            const int w = textWidth (kDelayScales[u], true) + 6;
+            add (Cell::Toggle, { x, kDelayScaleY, w, 10 }, flagBinding ([this, u] { return (int) delayScale == u; }, [this, u] { setDelayScale ((DelayScale) u); }), kDelayScales[u]);
+            x += w + 2;
+        }
+        if (delayScale == DelayScale::Beat)
+        {
+            auto& note = add (Cell::Text, { x + 2, kDelayScaleY, 26, 10 }, bindInt ("NOTE", [this] { return beatNote; }, [this] (int v) { setBeatNote (v); }, 0, beatNoteNames().size() - 1, [] (int v) { return beatNoteNames()[v]; }), "NOTE");
+            note.dotted = true;
+            auto& bpm = add (Cell::Text, { x + 30, kDelayScaleY, 20, 10 }, bindInt ("BPM", [this] { return beatBpm; }, [this] (int v) { setBeatBpm (v); }, kBpmMin, kBpmMax, [] (int v) { return juce::String (v); }), "BPM");
+            bpm.dotted = true;
+        }
+        add (Cell::Toggle, { 290, kDelayScaleY, 28, 10 }, flagBinding ([this] { return delayGang; }, [this] { setDelayGang (! delayGang); }), "GANG");
+    }
     if (arg < 4)
     {
         for (int i = 0; i < kChannelsPerPage; ++i)
-            strips.push_back (layerStrip (arg, i));
+            if (auto* s = layerStrip (arg, i))
+            {
+                const auto at = delayColumn (i);
+                const auto caption = juce::String (s->getNumber());
+                // ON or OFF, as the page writes it; the values without boxes.
+                add (Cell::Toggle, { at.x + 5, at.y + 8, 24, 9 }, bindBool ("ON", s->params.input.delayOn));
+                const auto field = [this, at, &caption] (int dy, KnobBinding b) { add (Cell::Text, { at.x, at.y + dy, kDelayColW - 2, 9 }, std::move (b), caption); };
+                field (26, bindDelayUnits (*s));
+                field (36, bindDelayMix (*s));
+                field (46, bindDelayFb (*s));
+            }
+        return;
     }
-    else
-    {
-        for (const auto* l : { &ctx.engine.getBuses(), &ctx.engine.getMatrices(), &ctx.engine.getMains() })
-            for (const auto& s : *l)
-                strips.push_back (s.get());
-    }
+    std::vector<Strip*> strips;
+    for (const auto* l : { &ctx.engine.getBuses(), &ctx.engine.getMatrices(), &ctx.engine.getMains() })
+        for (const auto& s : *l)
+            strips.push_back (s.get());
     int i = 0;
     for (auto* s : strips)
     {
         if (s == nullptr)
             continue;
         const int col = i % 3, row = i / 3;
-        add (Cell::Toggle, { 42 + col * 96, 36 + row * 22, 16, 9 }, bindBool ("ON", s->params.input.delayOn), "ON");
-        auto& c = add (Cell::Text, { 62 + col * 96, 35 + row * 22, 40, 11 }, bindDelay (*s), s->isInput() ? juce::String (s->getNumber()) : idOf (s));
+        add (Cell::Toggle, { 42 + col * 96, 44 + row * 20, 16, 9 }, bindBool ("ON", s->params.input.delayOn), "ON");
+        auto& c = add (Cell::Text, { 62 + col * 96, 43 + row * 20, 40, 11 }, bindDelayUnits (*s), idOf (s));
         c.dotted = true;
         ++i;
     }
@@ -2002,19 +2165,52 @@ void Display::buildDelay (int arg)
 
 void Display::drawDelay (int arg)
 {
-    pageTitle ((arg < 4 ? "CH" + rangeName (arg) : juce::String ("OUTPUT")) + " DELAY", selected() != nullptr ? selected()->getName() : juce::String());
-    int i = 0;
-    for (size_t c = 1; c < cells.size(); c += 2)
+    pageTitle ((arg < 4 ? "INPUT CH" + rangeName (arg) : juce::String ("OUTPUT")) + " DELAY", selected() != nullptr ? selected()->getName() : juce::String());
+    text (2, kDelayScaleY + 2, "DELAY SCALE", true);
+    for (const auto& c : cells)
+        if (c.caption == "BPM")
+            text (c.area.getRight() + 3, kDelayScaleY + 2, "BPM", true);
+    const auto unitRow = juce::String (kDelayUnitRows[(size_t) delayScale]);
+    if (arg < 4)
     {
-        const int col = i % 3, row = i / 3;
-        text (6 + col * 96, 37 + row * 22, cells[c].caption);
-        ++i;
+        const double rate = juce::jmax (1.0, ctx.engine.getSampleRate());
+        for (int block = 0; block < 3; ++block)
+        {
+            const int y = kDelayBlockY + block * kDelayBlockH;
+            text (2, y + 19, "[ msec]", true);
+            text (2, y + 28, unitRow, true);
+            text (14, y + 38, "MIX", true);
+            text (2, y + 48, "FB.GAIN", true);
+            if (block < 2)
+                dottedH (2, kDotsW - 3, y + kDelayBlockH - 5);
+        }
+        for (int i = 0; i < kChannelsPerPage; ++i)
+            if (auto* s = layerStrip (arg, i))
+            {
+                const auto at = delayColumn (i);
+                textCentred ({ at.x, at.y + 1, kDelayColW - 2, 6 }, juce::String (s->getNumber()), true);
+                // A horizontal pair: a heart between its two numbers (p.146).
+                if (i % 2 == 0 && ! isVerticalPairs ((s->getNumber() - 1) / 48) && isPaired (false, inputPairOf (s->getNumber() - 1)))
+                    heart (at.x + kDelayColW - 1, at.y + 3, true);
+                if (i % 8 != 0)
+                    dottedV (at.x - 2, at.y + 8, at.y + 55);
+                const float ms = (float) (s->params.input.delay.load() * 1000.0 / rate);
+                textCentred ({ at.x, at.y + 18, kDelayColW - 2, 6 }, juce::String (ms, 1), true);
+            }
+        return;
     }
-    text (8, 220, "smp (0-43400)", true);
+    for (const auto& c : cells)
+        if (c.kind == Cell::Text && c.dotted && c.area.getY() > kDelayScaleY)
+            text (c.area.getX() - 56, c.area.getY() + 2, c.caption);
+    text (8, 220, unitRow.removeCharacters ("[ ]") + (delayScale == DelayScale::Sample ? " (0-43400)" : ""), true);
 }
 
 void Display::buildPan (int arg)
 {
+    // MODE (p.96): INDIVIDUAL, GANG or INVERSE GANG, for every pair.
+    static const char* const modes[] = { "INDIVIDUAL", "GANG", "INV GANG" };
+    auto& mode = add (Cell::Text, { 226, 27, 92, 10 }, bindInt ("MODE", [this] { return (int) panMode; }, [this] (int v) { setPanMode ((PanMode) v); }, 0, 2, [] (int v) { return juce::String (modes[juce::jlimit (0, 2, v)]); }), "MODE");
+    mode.boxed = true;
     for (int i = 0; i < kChannelsPerPage; ++i)
         if (auto* s = layerStrip (arg, i))
         {
@@ -2026,8 +2222,28 @@ void Display::buildPan (int arg)
 void Display::drawPan (int arg)
 {
     pageTitle ("CH" + rangeName (arg) + " PAN", selected() != nullptr ? selected()->getName() : juce::String());
-    for (const auto& c : cells)
+    text (196, 29, "MODE =", true);
+    const auto dials = [this] { std::vector<const Cell*> v; for (const auto& c : cells) if (c.kind == Cell::Dial) v.push_back (&c); return v; }();
+    for (size_t i = 0; i < dials.size(); ++i)
+    {
+        const auto& c = *dials[i];
         textCentred ({ c.area.getX(), c.area.getY() - 9, c.area.getWidth(), 8 }, c.caption, true);
+        // A horizontal pair (p.96): a heart between the numbers; GANG a dotted link between the knobs,
+        // INVERSE GANG a cross.
+        const int channel = c.caption.getIntValue() - 1;
+        if (i % 2 != 0 || i + 1 >= dials.size() || isVerticalPairs (channel / 48) || ! isPaired (false, inputPairOf (channel)))
+            continue;
+        const int x0 = c.area.getCentreX() + c.radius + 2, x1 = dials[i + 1]->area.getCentreX() - c.radius - 2, y = c.area.getY() + c.radius;
+        heart ((c.area.getRight() + dials[i + 1]->area.getX()) / 2, c.area.getY() - 6, true);
+        if (panMode == PanMode::Gang)
+            dottedH (x0, x1, y);
+        else if (panMode == PanMode::InverseGang)
+            for (int k = 0; k <= 6; ++k)
+            {
+                dot ((x0 + x1) / 2 - 3 + k, y - 3 + k);
+                dot ((x0 + x1) / 2 - 3 + k, y + 3 - k);
+            }
+    }
 }
 
 void Display::buildRouting (int arg)
@@ -2638,11 +2854,23 @@ void Display::drawScene (int)
     }
 }
 
+int Display::patchChannel (int page, int i) const
+{
+    page = juce::jlimit (0, 3, page);
+    const int half = page / 2;
+    if (! isVerticalPairs (half))
+        return firstOf (page) + i;
+    // VERTICAL (p.77): CH1, CH25, CH2, CH26 and so on; this page holds twelve of the half's pairs.
+    return half * 48 + (page % 2) * 12 + i / 2 + (i % 2) * 24;
+}
+
 void Display::buildPatch (int arg)
 {
+    const auto& channels = ctx.engine.getChannels();
     for (int i = 0; i < kChannelsPerPage; ++i)
-        if (auto* s = layerStrip (arg, i))
+        if (const int n = patchChannel (arg, i); juce::isPositiveAndBelow (n, (int) channels.size()))
         {
+            auto* s = channels[(size_t) n].get();
             auto b = bindInt (
                 "PATCH", [s] { return s->params.inputLeft.load(); },
                 [s] (int v) { s->params.inputLeft = v; }, -1, ctx.engine.getNumSources() - 1,
@@ -2654,11 +2882,104 @@ void Display::buildPatch (int arg)
 
 void Display::drawPatch (int arg)
 {
-    pageTitle ("INPUT PATCH CH" + rangeName (arg), selected() != nullptr ? selected()->getName() : juce::String());
-    for (const auto& c : cells)
+    auto range = rangeName (arg);
+    if (isVerticalPairs (arg / 2))
+    {
+        const int first = (arg / 2) * 48 + (arg % 2) * 12 + 1;
+        range = juce::String (first) + "-" + juce::String (first + 11) + "," + juce::String (first + 24) + "-" + juce::String (first + 35);
+    }
+    pageTitle ("INPUT PATCH CH" + range, selected() != nullptr ? selected()->getName() : juce::String());
+    for (size_t i = 0; i < cells.size(); ++i)
+    {
+        const auto& c = cells[i];
         textCentred ({ c.area.getX(), c.area.getY() - 9, c.area.getWidth(), 8 }, c.caption, true);
+        // A pair side by side: a heart between the numbers.
+        const int channel = c.caption.getIntValue() - 1;
+        if (i % 2 == 0 && i + 1 < cells.size() && isPaired (false, inputPairOf (channel))
+            && inputPairChannels (inputPairOf (channel)).second == cells[i + 1].caption.getIntValue() - 1)
+            heart ((c.area.getRight() + cells[i + 1].area.getX()) / 2, c.area.getY() - 6, true);
+    }
 }
 
+namespace
+{
+    // The 2TR inputs among the console's ports (livedaw_engine::ports::dm2000_ports): DIGITAL 1-3 and
+    // ANALOG 1-2, each a pair.
+    constexpr int kIn2trDigital = 120, kIn2trAnalog = 126;
+    const char* const kCrNames[] = { "2TR D1", "2TR D2", "2TR D3", "2TR A1", "2TR A2", "STEREO", "ASSIGN 1", "ASSIGN 2" };
+} // namespace
+
+juce::String Display::crAssignName (int o)
+{
+    o = juce::jlimit (0, kNumCrAssigns - 1, o);
+    if (o < 8)
+        return "BUS" + juce::String (o + 1);
+    if (o < 20)
+        return "AUX" + juce::String (o - 7);
+    return "MATRIX" + juce::String (o - 19);
+}
+
+int Display::crSourceIndex (CrSource s) const
+{
+    switch (s)
+    {
+        case CrSource::TwoTrackD1: return ld::kMonitorPortSourceBase + kIn2trDigital;
+        case CrSource::TwoTrackD2: return ld::kMonitorPortSourceBase + kIn2trDigital + 2;
+        case CrSource::TwoTrackD3: return ld::kMonitorPortSourceBase + kIn2trDigital + 4;
+        case CrSource::TwoTrackA1: return ld::kMonitorPortSourceBase + kIn2trAnalog;
+        case CrSource::TwoTrackA2: return ld::kMonitorPortSourceBase + kIn2trAnalog + 2;
+        case CrSource::Stereo:     return MixerEngine::monitorSourceIndex (StripKind::Main, 0);
+        case CrSource::Assign1:
+        case CrSource::Assign2:
+        {
+            // BUS 1-8 and AUX 1-12 are the Bus Outs in slots 0-19; the Matrix Sends their own.
+            const int o = crAssign[s == CrSource::Assign1 ? 0 : 1];
+            return o < 20 ? MixerEngine::monitorSourceIndex (StripKind::Bus, o) : MixerEngine::monitorSourceIndex (StripKind::Matrix, o - 20);
+        }
+    }
+    return -1;
+}
+
+void Display::selectCrSource (CrSource s)
+{
+    if (const int index = crSourceIndex (s); index >= 0)
+        ctx.engine.speakers.source = index;
+    followControlRoom();
+    refresh();
+}
+
+bool Display::isCrSource (CrSource s) const
+{
+    const int index = crSourceIndex (s);
+    return index >= 0 && ctx.engine.speakers.source.load() == index;
+}
+
+void Display::setCrAssign (int key, int output)
+{
+    key = juce::jlimit (0, 1, key);
+    const auto which = key == 0 ? CrSource::Assign1 : CrSource::Assign2;
+    const bool listening = isCrSource (which);
+    crAssign[(size_t) key] = juce::jlimit (0, kNumCrAssigns - 1, output);
+    ctx.settings.setValue (kCrAssignKey, juce::String (crAssign[0]) + " " + juce::String (crAssign[1]));
+    // The control room listening to the key hears the new one.
+    if (listening)
+        selectCrSource (which);
+    refresh();
+}
+
+void Display::setStudioFollowsControlRoom (bool on)
+{
+    studioFollowsCr = on;
+    followControlRoom();
+}
+
+void Display::followControlRoom()
+{
+    if (studioFollowsCr && ctx.engine.phones.source.source.load() != ctx.engine.speakers.source.load())
+        ctx.engine.phones.source.source = ctx.engine.speakers.source.load();
+}
+
+// The Control Room Setup page (p.159): the level, DIMMER, MONO, the ASSIGN keys' Output Channels; and PHONES.
 void Display::buildMonitor (int)
 {
     auto& e = ctx.engine;
@@ -2669,6 +2990,13 @@ void Display::buildMonitor (int)
     add (Cell::Toggle, { 220, 56, 50, 13 }, bindBool ("MUTE", e.monitorMute), "MUTE");
     auto& ph = add (Cell::Dial, { 26, 126, 50, 34 }, bindFader ("PHONES", e.phones.levelDb), "PHONES");
     ph.radius = 14;
+    for (int k = 0; k < 2; ++k)
+    {
+        auto b = bindInt (
+            "ASSIGN", [this, k] { return getCrAssign (k); }, [this, k] (int v) { setCrAssign (k, v); }, 0, kNumCrAssigns - 1, [] (int v) { return crAssignName (v); });
+        auto& c = add (Cell::Text, { 200, 132 + k * 18, 70, 11 }, std::move (b), "ASSIGN " + juce::String (k + 1));
+        c.boxed = true;
+    }
 }
 
 void Display::drawMonitor (int)
@@ -2679,6 +3007,27 @@ void Display::drawMonitor (int)
     text (28, 168, "PHONES", true);
     for (int ch = 0; ch < 2; ++ch)
         levelMeter (280 + ch * 8, 60, 44, toDb (ctx.engine.monitorPeak[ch].load()), 5);
+    // What the control room listens to, by its key.
+    juce::String source ("-");
+    for (int i = 0; i < 8; ++i)
+        if (isCrSource ((CrSource) i))
+            source = kCrNames[i];
+    text (100, 80, "SOURCE " + source, true);
+    // And the studio (p.159): the control room's, the Stereo Out, AUX 11 or AUX 12.
+    juce::String studio ("-");
+    const int studioSource = ctx.engine.phones.source.source.load();
+    if (studioFollowsCr)
+        studio = "CONTROL ROOM";
+    else if (studioSource == MixerEngine::monitorSourceIndex (StripKind::Main, 0))
+        studio = "STEREO";
+    else
+        for (int aux = 11; aux <= 12; ++aux)
+            if (studioSource == MixerEngine::monitorSourceIndex (StripKind::Bus, kAuxSlot + aux - 1))
+                studio = "AUX " + juce::String (aux);
+    text (100, 90, "STUDIO " + studio, true);
+    frame ({ 120, 118, 190, 54 }, "CONTROL ROOM ASSIGN");
+    for (int k = 0; k < 2; ++k)
+        text (134, 135 + k * 18, "ASSIGN " + juce::String (k + 1), true);
 }
 
 //==============================================================================
@@ -3535,6 +3884,21 @@ juce::String Display::directDestinationName (int d)
     return "-";
 }
 
+namespace
+{
+    // PRE EQ takes the Input Channel's tap 2, where its chain has the attenuator and the EQ next
+    // (livedaw_engine::chain::DM2000_CHANNEL).
+    constexpr int kPreEqTap = 2;
+
+    int directCode (int channel, int position)
+    {
+        DirectOut d { StripKind::Channel, channel + 1, 0, position == 2 };
+        if (position == 0)
+            d.tap = kPreEqTap;
+        return d.code();
+    }
+} // namespace
+
 int Display::directPort (int channel) const
 {
     for (int port = kPortOmni; port < kNumPorts; ++port)
@@ -3561,7 +3925,7 @@ void Display::setDirectOut (int channel, int destination)
     directDestination[(size_t) channel] = destination;
     // Auto Direct Out On (p.276): a destination turns the Direct Out on, none turns it off.
     if (const int port = destinationPort (destination); port >= 0)
-        ctx.engine.routeOutputSource (port, DirectOut { StripKind::Channel, channel + 1, 0, directPost }.code());
+        ctx.engine.routeOutputSource (port, directCode (channel, getDirectPosition()));
 }
 
 bool Display::isDirectOn (int channel) const { return juce::isPositiveAndBelow (channel, 96) && directPort (channel) >= 0; }
@@ -3574,7 +3938,7 @@ void Display::setDirectOn (int channel, bool on)
     if (on && port < 0)
     {
         if (const int to = destinationPort (directDestination[(size_t) channel]); to >= 0)
-            ctx.engine.routeOutputSource (to, DirectOut { StripKind::Channel, channel + 1, 0, directPost }.code());
+            ctx.engine.routeOutputSource (to, directCode (channel, getDirectPosition()));
     }
     else if (! on && port >= 0)
     {
@@ -3583,12 +3947,22 @@ void Display::setDirectOn (int channel, bool on)
     }
 }
 
-void Display::setDirectPost (bool post)
+int Display::getDirectPosition() const
 {
-    directPost = post;
+    // A show or a scene brings its Direct Outs with their position.
+    for (int port = kPortOmni; port < kNumPorts; ++port)
+        if (const auto d = DirectOut::fromCode (ctx.engine.getOutputSource (port)); d.has_value() && d->kind == StripKind::Channel)
+            return d->tap >= 0 ? 0 : d->post ? 2 : 1;
+    return directPosition;
+}
+
+void Display::setDirectPosition (int position)
+{
+    directPosition = juce::jlimit (0, 2, position);
     for (int channel = 0; channel < 96; ++channel)
         if (const int port = directPort (channel); port >= 0)
-            ctx.engine.routeOutputSource (port, DirectOut { StripKind::Channel, channel + 1, 0, post }.code());
+            ctx.engine.routeOutputSource (port, directCode (channel, directPosition));
+    refresh();
 }
 
 // The slots' outputs (arg 0-2: two slots a page), OMNI OUT (3) and the 2TR digital outputs (4).
@@ -3669,13 +4043,15 @@ void Display::buildDirectOut (int arg)
         auto& c = add (Cell::Text, { 5 + (i % 8) * 39, 44 + (i / 8) * 26, 35, 11 }, std::move (b), juce::String (channel + 1));
         c.dotted = true;
     }
-    for (int post = 0; post < 2; ++post)
+    const juce::Rectangle<int> places[] = { { 118, 204, 46, 11 }, { 170, 204, 60, 11 }, { 236, 204, 66, 11 } };
+    const char* const names[] = { "PRE EQ", "PRE FADER", "POST FADER" };
+    for (int position = 0; position < 3; ++position)
     {
         KnobBinding b;
-        b.get = [this, post] { return directPost == (post != 0) ? 1.0f : 0.0f; };
-        b.set = [this, post] (float) { setDirectPost (post != 0); };
+        b.get = [this, position] { return getDirectPosition() == position ? 1.0f : 0.0f; };
+        b.set = [this, position] (float) { setDirectPosition (position); };
         b.steps = 2.0f;
-        add (Cell::Toggle, { post == 0 ? 170 : 236, 204, post == 0 ? 60 : 66, 11 }, std::move (b), post == 0 ? "PRE FADER" : "POST FADER");
+        add (Cell::Toggle, places[position], std::move (b), names[position]);
     }
 }
 
@@ -3692,22 +4068,50 @@ void Display::drawDirectOut (int arg)
             hLine (c.area.getX() + 2, c.area.getRight() - 3, c.area.getCentreY());
     }
     text (62, 206, "DIRECT OUT", true);
-    // PRE EQ is on the console; Sidecar's direct outs are pre or post fader.
-    dottedBox ({ 118, 204, 46, 11 });
-    textCentred ({ 118, 204, 46, 11 }, "PRE EQ", true);
-    text (6, 219, "Struck through: kept the Direct Out off ([DIRECT]). PRE EQ is not in Sidecar.", true);
+    text (6, 219, "Struck through: kept the Direct Out off ([DIRECT]).", true);
 }
 
 //==============================================================================
 // PAIR (pp.144-145).
 
+std::pair<int, int> Display::inputPairChannels (int pair) const
+{
+    pair = juce::jlimit (0, 47, pair);
+    const int half = pair / 24, k = pair % 24, first = half * 48;
+    if (isVerticalPairs (half))
+        return { first + k, first + k + 24 };
+    return { first + 2 * k, first + 2 * k + 1 };
+}
+
+int Display::inputPairOf (int channel) const
+{
+    channel = juce::jlimit (0, 95, channel);
+    const int half = channel / 48, k = channel % 48;
+    return half * 24 + (isVerticalPairs (half) ? k % 24 : k / 2);
+}
+
 std::pair<Strip*, Strip*> Display::pairStrips (bool output, int pair) const
 {
     const auto& list = output ? ctx.engine.getBuses() : ctx.engine.getChannels();
-    const int a = pair * 2;
-    if (pair < 0 || pair >= (output ? 10 : 48) || a + 1 >= (int) list.size())
+    if (pair < 0 || pair >= (output ? 10 : 48))
         return { nullptr, nullptr };
-    return { list[(size_t) a].get(), list[(size_t) a + 1].get() };
+    const auto [a, b] = output ? std::pair { pair * 2, pair * 2 + 1 } : inputPairChannels (pair);
+    if (b >= (int) list.size())
+        return { nullptr, nullptr };
+    return { list[(size_t) a].get(), list[(size_t) b].get() };
+}
+
+void Display::setVerticalPairs (int half, bool vertical)
+{
+    half = juce::jlimit (0, 1, half);
+    if (verticalPairs[(size_t) half] == vertical)
+        return;
+    // The half's pairs are released: a channel's partner is another one now.
+    inputPairs &= ~(((uint64_t (1) << 24) - 1) << (half * 24));
+    verticalPairs[(size_t) half] = vertical;
+    followGangs (false);
+    savePairs();
+    refresh();
 }
 
 bool Display::isPaired (bool output, int pair) const
@@ -3719,13 +4123,16 @@ bool Display::isPaired (bool output, int pair) const
 
 void Display::savePairs() const
 {
-    ctx.settings.setValue (kPairsKey, juce::String::toHexString ((juce::int64) inputPairs) + " " + juce::String::toHexString ((int) outputPairs));
+    const int vertical = (verticalPairs[0] ? 1 : 0) | (verticalPairs[1] ? 2 : 0);
+    ctx.settings.setValue (kPairsKey, juce::String::toHexString ((juce::int64) inputPairs) + " " + juce::String::toHexString ((int) outputPairs) + " " + juce::String (vertical));
     seenConsole = ctx.engine.setConsoleText (pairsText());
 }
 
+// Version 2 adds the halves in VERTICAL mode; version 1's are horizontal.
 juce::String Display::pairsText() const
 {
-    return "dm2000pairs1 " + juce::String::toHexString ((juce::int64) inputPairs) + " " + juce::String::toHexString ((int) outputPairs);
+    const int vertical = (verticalPairs[0] ? 1 : 0) | (verticalPairs[1] ? 2 : 0);
+    return "dm2000pairs2 " + juce::String::toHexString ((juce::int64) inputPairs) + " " + juce::String::toHexString ((int) outputPairs) + " " + juce::String (vertical);
 }
 
 bool Display::adoptPairsText (const juce::String& text)
@@ -3733,10 +4140,12 @@ bool Display::adoptPairsText (const juce::String& text)
     juce::StringArray v;
     v.addTokens (text, " ", "");
     v.removeEmptyStrings();
-    if (v.size() != 3 || v[0] != "dm2000pairs1")
+    if (! ((v.size() == 3 && v[0] == "dm2000pairs1") || (v.size() == 4 && v[0] == "dm2000pairs2")))
         return false;
     inputPairs = (uint64_t) v[1].getHexValue64() & ((uint64_t (1) << 48) - 1);
     outputPairs = (uint32_t) v[2].getHexValue32() & 0x3ffu;
+    for (int half = 0; half < 2; ++half)
+        verticalPairs[(size_t) half] = ((v[3].getIntValue() >> half) & 1) != 0;
     return true;
 }
 
@@ -3749,7 +4158,7 @@ void Display::adoptEnginePairs()
         return;
     const auto text = ctx.engine.getConsoleText();
     if (text.isEmpty())
-        inputPairs = 0, outputPairs = 0;
+        inputPairs = 0, outputPairs = 0, verticalPairs = {};
     else if (! adoptPairsText (text))
     {
         seenConsole = version;
@@ -3764,6 +4173,7 @@ void Display::adoptEnginePairs()
             pairSeen[(size_t) i * 2 + 1] = pairHash (*b);
         }
     }
+    followGangs (false);
     savePairs();
     refresh();
 }
@@ -3777,6 +4187,7 @@ void Display::setPaired (bool output, int pair, bool on)
         outputPairs = on ? outputPairs | (1u << pair) : outputPairs & ~(1u << pair);
     else
         inputPairs = on ? inputPairs | (uint64_t (1) << pair) : inputPairs & ~(uint64_t (1) << pair);
+    followGangs (false);
     if (on)
     {
         // The first channel's settings go to the second (p.144).
@@ -3891,9 +4302,53 @@ void Display::pairCopy (Strip& from, Strip& to) const
     d.muteGroupMask.store (s.muteGroupMask.load());
 }
 
+// GANG on the Delay pages (p.142): a paired channel's delay change moves its partner's by as much,
+// so the difference between them stays. Pan MODE (p.96): GANG sets the partner's pan alike, INVERSE
+// GANG the mirror of it (Sidecar's reading of the page's pictures). A change to both sides at once (a
+// scene recall, say) is left as it is. Without `follow` it only notes them (the pairs changed).
+void Display::followGangs (bool follow)
+{
+    for (int i = 0; i < 58; ++i)
+    {
+        const bool output = i >= 48;
+        const int pair = output ? i - 48 : i;
+        const auto [a, b] = pairStrips (output, pair);
+        if (a == nullptr || b == nullptr)
+            continue;
+        const bool paired = follow && isPaired (output, pair);
+        const size_t at = (size_t) i * 2;
+        auto& da = a->params.input.delay;
+        auto& db = b->params.input.delay;
+        const float movedA = da.load() - delaySeen[at], movedB = db.load() - delaySeen[at + 1];
+        if (paired && delayGang && (movedA != 0.0f) != (movedB != 0.0f))
+        {
+            auto& follower = movedA != 0.0f ? db : da;
+            follower = juce::jlimit (0.0f, kDelayMaxSamples, follower.load() + (movedA != 0.0f ? movedA : movedB));
+        }
+        delaySeen[at] = da.load();
+        delaySeen[at + 1] = db.load();
+        if (output)
+            continue;
+        auto& pa = a->params.pan;
+        auto& pb = b->params.pan;
+        const bool panA = pa.load() != panSeen[at], panB = pb.load() != panSeen[at + 1];
+        if (paired && panMode != PanMode::Individual && panA != panB)
+        {
+            const float sign = panMode == PanMode::Gang ? 1.0f : -1.0f;
+            if (panA)
+                pb = sign * pa.load();
+            else
+                pa = sign * pb.load();
+        }
+        panSeen[at] = pa.load();
+        panSeen[at + 1] = pb.load();
+    }
+}
+
 void Display::followPairs()
 {
     adoptEnginePairs();
+    followGangs();
     if (inputPairs == 0 && outputPairs == 0)
         return;
     for (int i = 0; i < 58; ++i)
@@ -3933,6 +4388,23 @@ void Display::buildPair (int arg)
     {
         for (int i = 0; i < 24; ++i)
             toggle (false, arg * 24 + i, { 12 + (i % 4) * 78, 45 + (i / 4) * 31, 42, 11 });
+        // PAIR MODE (p.145): a change releases the half's pairs, so it asks first when there are some.
+        for (int vertical = 0; vertical < 2; ++vertical)
+        {
+            KnobBinding b;
+            b.get = [this, arg, vertical] { return isVerticalPairs (arg) == (vertical != 0) ? 1.0f : 0.0f; };
+            b.set = [this, arg, vertical] (float)
+            {
+                if (isVerticalPairs (arg) == (vertical != 0))
+                    return;
+                if (((inputPairs >> (arg * 24)) & ((uint64_t (1) << 24) - 1)) == 0)
+                    setVerticalPairs (arg, vertical != 0);
+                else
+                    confirm ("Release the pairs of CH" + juce::String (arg * 48 + 1) + "-" + juce::String (arg * 48 + 48) + "?", [this, arg, vertical] { setVerticalPairs (arg, vertical != 0); });
+            };
+            b.steps = 2.0f;
+            add (Cell::Toggle, vertical == 0 ? juce::Rectangle<int> { 192, 16, 62, 10 } : juce::Rectangle<int> { 258, 16, 54, 10 }, std::move (b), vertical == 0 ? "HORIZONTAL" : "VERTICAL");
+        }
         return;
     }
     for (int i = 0; i < 4; ++i)
@@ -3944,10 +4416,10 @@ void Display::buildPair (int arg)
 void Display::drawPair (int arg)
 {
     pageTitle (arg < 2 ? "INPUT CH" + juce::String (arg * 48 + 1) + "-" + juce::String (arg * 48 + 48) + " PAIR" : juce::String ("OUTPUT PAIR"));
-    const auto numbers = [this] (const Cell& c, int first, bool on)
+    const auto numbers = [this] (const Cell& c, int first, int second, bool on)
     {
         const int cx = c.area.getCentreX(), y = c.area.getY() - 9;
-        const auto a = juce::String (first), b = juce::String (first + 1);
+        const auto a = juce::String (first), b = juce::String (second);
         text (cx - 8 - textWidth (a), y, a);
         heart (cx, y + 3, on);
         text (cx + 8, y, b);
@@ -3955,18 +4427,21 @@ void Display::drawPair (int arg)
     if (arg < 2)
     {
         text (150, 19, "PAIR MODE", true);
-        inverseText ({ 192, 16, 62, 10 }, "HORIZONTAL", true);
-        dottedBox ({ 258, 16, 54, 10 });
-        textCentred ({ 258, 16, 54, 10 }, "VERTICAL", true);
         for (int i = 0; i < juce::jmin (24, (int) cells.size()); ++i)
-            numbers (cells[(size_t) i], arg * 48 + i * 2 + 1, isPaired (false, arg * 24 + i));
-        text (6, 221, "Kept alike while this surface shows. No VERTICAL or MS here.", true);
+        {
+            const auto [a, b] = inputPairChannels (arg * 24 + i);
+            numbers (cells[(size_t) i], a + 1, b + 1, isPaired (false, arg * 24 + i));
+        }
+        text (6, 221, "Kept alike while this surface shows. No MS decoding here.", true);
         return;
     }
     frame ({ 6, 44, 308, 44 }, "BUS");
     frame ({ 6, 116, 308, 44 }, "AUX");
     for (int i = 0; i < juce::jmin (10, (int) cells.size()); ++i)
-        numbers (cells[(size_t) i], i < 4 ? i * 2 + 1 : (i - 4) * 2 + 1, isPaired (true, i));
+    {
+        const int first = i < 4 ? i * 2 + 1 : (i - 4) * 2 + 1;
+        numbers (cells[(size_t) i], first, first + 1, isPaired (true, i));
+    }
     text (6, 176, "A pair shares its fader ON EQ compressor groups and sends;", true);
     text (6, 184, "it is kept alike while this surface shows. No surround here.", true);
 }

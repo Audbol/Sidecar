@@ -163,9 +163,16 @@ automatic calibration, it times each fader's full run up and down; the sample sc
 
 ### Couldn't find
 
-- **The 02R's LCD resolution.** Careful: the "320 x 240" often quoted turned out to be the **03D's**
+- **The 02R's LCD resolution, in words.** Careful: the "320 x 240" often quoted turned out to be the **03D's**
   (https://www.soundonsound.com/node/4926100) and the **02R96's**
   (https://www.soundonsound.com/node/4917765), both siblings. The SM pages read don't give it.
+  **Counted instead (November 2026):** SOS96's photo of the scene title page fills its 1000 x 752 frame
+  with the screen; the checkered band round the page repeats every 6.06 pixels (one lit and one dark
+  dot), so a dot is 3.03 pixels and the frame holds about 330 x 248 dots, the screen with a little of
+  its edge: **320 x 240**, 4:3, as the photos' outline shows. Its look from the same photos: a pale cyan
+  field, the dots a clear blue (about #B2DDEF and #0A76BC), the page framed by a checkered band, the
+  encoders' row (16 filled discs, E1 and E2 open) along the bottom, the title bar's scene, function and
+  channel in a tall bold face.
 - The fader taper between its end points (only range and 128 steps are published).
 - EQ filter design, compressor detector type or knee curves. SM p.3 gives only the control values.
 - How the Version 2 panel differs from Version 1, if at all. No photos labelled V2 turned up.

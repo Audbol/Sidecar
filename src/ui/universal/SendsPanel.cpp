@@ -22,6 +22,17 @@ namespace
     }
 } // namespace
 
+int pro2SendIgnored (MixerEngine& engine, const Strip& from, const Strip& mix, int slot)
+{
+    const bool bus = mix.getKind() == StripKind::Bus;
+    if (engine.getProfile() != ld::kProfileMidasPro2 || ! (bus ? from.isInput() : mix.getKind() == StripKind::Matrix))
+        return 0; // an aux send's own sends to the others are as any console's
+    const auto& m = *ld::ld_strip_pro2 (mix.getHandle());
+    if (m.linked.load() && (slot & 1) != 0)
+        return 2;
+    return bus && m.mixMode.load() != 0 ? 1 : 0;
+}
+
 //==============================================================================
 SendsPanel::Row::Row (const Theme& t, const juce::String& dest)
     : on ("ON", t.accent, t), level (t), source (t), destination (dest), theme (t)
@@ -46,9 +57,27 @@ void SendsPanel::Row::paint (juce::Graphics& g)
     }
     auto line = getLocalBounds().removeFromTop (kLine).reduced (sizes::kGap, 0);
     line.removeFromRight (on.getWidth() + source.getWidth() + sizes::kGap * 2);
+    const auto note = why != nullptr && ignored != nullptr && ignored() != 0 ? why() : juce::String();
+    if (note.isNotEmpty())
+    {
+        g.setColour (theme.textDim);
+        g.setFont (type::font (type::kCaption));
+        g.drawFittedText (note, line.removeFromRight (line.getWidth() / 2), juce::Justification::centredRight, 1, 0.8f);
+    }
     g.setColour (theme.text);
     g.setFont (type::font (type::kLabel, true));
     g.drawFittedText (destination, line, juce::Justification::centredLeft, 1, 0.8f);
+}
+
+void SendsPanel::Row::refreshIgnored()
+{
+    const int what = ignored != nullptr ? ignored() : 0;
+    const bool changed = on.isEnabled() != (what < 2) || level.isEnabled() != (what < 1);
+    on.setEnabled (what < 2);
+    level.setEnabled (what < 1);
+    source.setEnabled (what < 1);
+    if (changed)
+        repaint();
 }
 
 void SendsPanel::Row::resized()
@@ -153,6 +182,21 @@ void SendsPanel::rebuild()
             };
         };
 
+        // A PRO2's mixes: what of a send the console ignores is dimmed.
+        const auto pro2Ignored = [this, &s] (Row& row, const Strip& mix, int slot)
+        {
+            if (ctx.engine.getProfile() != ld::kProfileMidasPro2)
+                return;
+            row.ignored = [this, &s, &mix, slot] { return pro2SendIgnored (ctx.engine, s, mix, slot); };
+            row.why = [&mix, slot]
+            {
+                const auto& m = *ld::ld_strip_pro2 (mix.getHandle());
+                if (m.linked.load() && (slot & 1) != 0)
+                    return juce::String ("linked: the odd mix's send");
+                return juce::String (m.mixMode.load() == 2 ? "mix minus: ON takes it out" : "group: follows the fader");
+            };
+        };
+
         if (toBusesAndMains)
             for (const auto& bus : ctx.engine.getStrips (StripKind::Bus))
             {
@@ -165,6 +209,7 @@ void SendsPanel::rebuild()
                 row->level.bind (ValueBar::level (levelCaption, p.levelDb));
                 bindSource (row->source, models::list (models::SendModes), p.tap, [&p] { return (int) p.mode.load(); },
                             [&p] (int m) { p.mode = m; });
+                pro2Ignored (*row, *bus, bus->getId());
                 rows.push_back (std::move (row));
             }
         const juce::StringArray postPre { "POST", "PRE" };
@@ -188,6 +233,7 @@ void SendsPanel::rebuild()
                 row->on.onClick = [&p] { p.on = ! p.on.load(); };
                 row->level.bind (ValueBar::level (levelCaption, p.levelDb));
                 bindSource (row->source, postPre, p.tap, [&p] { return p.pre.load() ? 1 : 0; }, [&p] (int m) { p.pre = m == 1; });
+                pro2Ignored (*row, *ctx.engine.getMatrices()[(size_t) i], i);
                 rows.push_back (std::move (row));
             }
     }
@@ -218,6 +264,7 @@ void SendsPanel::refresh()
     taps = userTaps();
     for (auto& r : rows)
     {
+        r->refreshIgnored();
         r->on.refresh();
         r->level.refresh();
         r->source.refresh();

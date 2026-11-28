@@ -102,8 +102,9 @@ Console features:
 - [x] Scenes' other tabs and the I/O page from photos. Update stores into chosen scenes; Global Safes works by
       whole rows and columns; Outputs and Inputs patch for real.
 - [x] dLive routing grid: drag the page to move around the whole matrix (owner), on both surfaces. The I/O page's grids still to check.
-- [ ] Scene Manager: Undo Go, Lock and Copy/Paste work; still to do: Copy Filter, Embedded Recall, Custom MIDI, Actions. Cue lists, Import from a show, Tie Lines
-      and Virtual SoundCheck are drawn only; Update's Auto Tracking and Relative too.
+- [ ] Scene Manager: Undo Go, Lock, Copy/Paste, Copy Filter To, Embedded Recall, Custom MIDI (MIDI port; not over MIDI over TCP), the list's icons,
+      the Setup preferences, Reset+GO, Import from a show and Update's Range work. Still to do: Actions (no public description), cue lists (drawn
+      only), Update's Auto Tracking and Relative; Tie Lines and Virtual SoundCheck are drawn only.
 - [x] The RTA on the PEQ graph (PEQ+RTA1, purple with its peaks).
 - [ ] Help.
 
@@ -113,11 +114,11 @@ Console features:
 - [x] ProMix 01: METER, PAN, COMP and EQ dot for dot from the owner's LCD photos; panel colours sampled.
 - [ ] ProMix 01: check the other LCD pages against the owner's console.
 - [x] 02R's colours, plates and hood, from public photos (no console to photograph).
-- [ ] 02R: its LCD as dots, once its resolution is known (the manuals and reviews don't say).
+- [x] 02R: its LCD as dots, 320 x 240 (counted from photos of its pages, `CONSOLE_RESEARCH.md`), 4:3, in the photos' look.
 
 - [x] An accuracy pass over the 01V, ProMix 01, 02R, SQ-5 and X32, against photos and manuals.
-- [ ] From that pass, still open: the 02R's LCD is about 2:1 where the real one is 4:3; the SQ-5's knobs should be
-      fluted; 01V D routing, group boxes and KEYIN are drawn only.
+- [x] From that pass: the 02R's LCD is 4:3 now; the SQ-5's knobs are fluted silver with the jewel in the middle.
+- [x] Still open from it: 01V D routing, group boxes and KEYIN work now (D lights with the channel's direct out on an output; VIEW's group switches are the GROUP page's; KEY IN picks SELF or CH 1-16).
 
 ## 5. The Universal Mixer's interface
 
@@ -145,6 +146,12 @@ The owner wants a lot of work done here; what comes first is theirs to say.
 - [x] SQ-5: MIDI over TCP (`livedaw-ahmidi`, TCP 51325), its Get messages.
 - [x] SQ-5: Ganging, Network, Users, Digital I/O, I/O Port, Footswitch, Mix Stereo, Data, USB Utility, SQ-Drive, Calibration and the
       Soft Keys' SQ-Drive types are built; what stays inert is listed in `UNIVERSAL_MIXER.md`. To check in renders.
+- [x] SQ-5: side chains, Direct Out's settings (on the dLive's direct outs, three more follows), PAFL's source point and
+      delay, band-pass noise, the Meters and PEQ RTAs, the Input and Mix Channel libraries, the mix keys' magenta for a
+      Group and the SoftKeys' colours by function.
+- [ ] SQ-5, still dim: the Pad (the engine's sources have none), the Global Filter (needs recall filters per channel
+      type), the Cue List, Ext In, the RTA settings pages; Network, Users, Sync, USB Format, Calibration and DAW Control
+      stay dim by choice.
 - [ ] WING: Mixing Station write coverage, the owner's open questions
       (`UNIVERSAL_MIXER.md`, "Still open from the WING work").
 - [x] WING: page-by-page audit against the manual (`WING_GAPS.md`); BALANCE, REMOTE LOCK and the SD RECORDER keys fixed.
@@ -196,18 +203,28 @@ Research is in `NEW_CONSOLES_RESEARCH.md`; documents and photos are outside the 
         BUS TO ST, AUX and MATRIX SEND, ENCODER ASSIGN, PARAMETER VIEW, FADER VIEW, METER, the fader and
         mute groups, GROUP MASTER, FX EDIT and TYPE, GEQ EDIT (six units), SCENE MEMORY, INPUT PATCH,
         MONITOR (`UNIVERSAL_MIXER.md`).
-  - [ ] Its other pages: the libraries, OUTPUT PATCH, PAIR, MIDI, REMOTE, SETUP, UTILITY, Automix,
-        Locator, Track Arming, User Defined Keys; the plug-in slots. A MIDI SETUP page (its transmit is off by default).
+  - [x] Its other pages: the libraries, OUTPUT PATCH, PAIR, MIDI (SETUP, PGM, CTL), REMOTE 1-4, SETUP (PREFER1-2), UTILITY,
+        Automix, Locator, Track Arming, User Defined Keys, Data; the plug-in cards open Sidecar's plug-in overview. MIDI's BULK
+        tab is empty, and several groups have fewer pages than the console (Automix has one).
   - [x] Its MIDI (`livedaw-dm2000`, from Yamaha's V2 MIDI specification): parameter changes and requests, Control and
         Program Changes, Key Remote, meter data, MMC out. Not done: bulk dumps, NRPN numbers and effect parameter tables (unpublished).
   - [x] Automix (fader and ON takes against a clock or the scene), Track Arming and Locator on the multitrack recorder, Data on shows, monitor source keys, PLUG-INS, CHANNEL INSERTS, Output Insert In patch.
-  - [ ] Still inert: PAN LINK/GRAB/EFFECT, surround, VERTICAL pair, DELAY MIX/FB, PRE EQ direct outs, 2TR monitor sources, Automix touch/relative/auto-rec, Bulk.
+  - [x] DELAY MIX/FB, VERTICAL pairs, Direct Out PRE EQ, the CONTROL ROOM 2TR, ASSIGN and STUDIO keys, Automix AUTO-REC and TOUCH SENSE
+        (readings to check on the owner's console: `NEW_CONSOLES_RESEARCH.md`, DM2000 item 6).
+  - [x] The Delay pages' DELAY SCALE (meter, feet, sample, beat with NOTE and BPM, frame) and GANG; pan MODE (INDIVIDUAL,
+        GANG, INVERSE GANG); the Input Patch pages' vertical order; Automix TOUCH/LATCH, RELATIVE, and Edit Out RETURN (with its
+        TIME) and TAKEOVER, the takes in Rust (`livedaw_dm2000::automix`); LOCATOR IN, OUT and SET (the recorder's loop points).
+  - [ ] Still inert: PAN LINK/GRAB/EFFECT (surround and the joystick), surround, Bulk; Automix's UPDATE TO END, Edit Safe,
+        and its PAN, SURROUND, AUX, AUX ON and EQ overwrites (faders and ONs only); LOCATOR AUDITION, PRE, POST and MTR.
   - [ ] Surround-format effects and monitoring. VCM Add-On effects: proprietary, not planned.
 - [ ] Midas PRO series: the PRO2 first (`midas_pro`, `Profile::MidasPro2`).
   - [x] Its processing blocks and profile, in the Normal (FOH) mode's state, on Universal strips as well.
   - [x] Its effects but SQ1 Dynamics (Delay, Virtual DN780, Flanger, Phaser, Pitch Shifter, 3-Band Compressor, Dynamic EQ).
   - [x] The C++ side of the profile and its surface (`Pro2Surface`, `Pro2Screen`), first pass.
-  - [ ] MCA groups, the direct output, the safes but AUTO, the aux send modes, stereo-linked sends and matrices, SIS panning.
+  - [x] MCA groups, the direct output, the aux send modes, stereo-linked sends and matrices, SIS panning (`livedaw-engine` `pro2.rs`).
+  - [x] The channel safes but AUTO (EQ, DYN, MIC, MUTE, FADER): kept parts of a strip in scene recall (`livedaw-session` `pro2_safes.rs`), on the surface and screen, saved with the show.
+  - [x] PRO2 on the Universal Mixer: a group's or mix minus's send levels and a linked pair's even sends are dimmed (sends panel, sends on faders); the Patching screen's Dir. Out tab.
+  - [ ] Still to do: the VCAs' MUTE and FADER safes, the Hardware Safe screen.
 - [x] DM2000: accuracy pass against the owner's photos (`photos-owner` in the reference folder), and its meter bridge (the owner's console has one: on by default, a METER BRIDGE key in the top bar hides it).
 - [x] Remote control, X32: tried on a real X32 by the owner (test.10, November 2026) and works. Still to do: meters from the console, the 01V and others. Done in code (livedaw-x32 client, RemoteSession, CONNECT keys; tested against Sidecar's own server only; meters from /meters and a check against a real console still to do): Later (owner: for sure): Universal Mixer as a remote for real consoles: audio off, the profile loaded, moves sent to the console and its changes shown, full state read on connect, a clear connected state. Start with the 01V (owner has one), then the X32 and WING, the MIDI Yamahas, partial SQ-5 and dLive. Not the PRO2 (no published protocol) or analog mixers.
 - [ ] Analog mixers: Sidecar will branch out to cover them as well.

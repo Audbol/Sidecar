@@ -145,10 +145,13 @@ namespace dm2k
         double getPosition() const noexcept { return position; }
         void setPositionFromUser (double);
         std::function<void()> onTouch;
+        /** The knob held (true) and let go (false): Fader Touch Sense (p.60). */
+        std::function<void (bool)> onHold;
         void refresh();
 
         void paint (juce::Graphics&) override;
         void mouseDown (const juce::MouseEvent&) override;
+        void mouseUp (const juce::MouseEvent&) override;
         void mouseDrag (const juce::MouseEvent&) override;
         void mouseDoubleClick (const juce::MouseEvent&) override;
         void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
@@ -324,16 +327,52 @@ namespace dm2k
         void setDirectOut (int channel, int destination);
         bool isDirectOn (int channel) const;
         void setDirectOn (int channel, bool);
-        bool isDirectPost() const noexcept { return directPost; }
-        void setDirectPost (bool);
+        /** DIRECT OUT (p.81), every Input Channel's: 0 PRE EQ (before the attenuator and the EQ),
+            1 PRE FADER, 2 POST FADER; as the patched Direct Outs have it. */
+        int getDirectPosition() const;
+        void setDirectPosition (int);
 
         //======================================================================
-        // PAIR (pp.144-145), horizontal pairs: Input Channels 2n+1 and 2n+2 (48 pairs), BUS 1-8
-        // (output pairs 0-3) and AUX 1-12 (4-9). The surface keeps a pair alike while it is shown.
+        // PAIR (pp.144-145): 24 pairs of Input Channels in each half (1-48 and 49-96, pairs 0-23 and
+        // 24-47), horizontal (2n+1 and 2n+2 in the half) or vertical (n and n+24, a channel and its
+        // counterpart on the next layer) by the half's PAIR MODE; BUS 1-8 (output pairs 0-3) and
+        // AUX 1-12 (4-9), horizontal. The surface keeps a pair alike while it is shown.
         bool isPaired (bool output, int pair) const;
         void setPaired (bool output, int pair, bool);
-        /** What changed on one of a pair goes to the other (the surface's timer). */
+        /** The two Input Channels (0-95) of input pair `pair` in its half's mode. */
+        std::pair<int, int> inputPairChannels (int pair) const;
+        /** The input pair Input Channel `channel` (0-95) belongs to in its half's mode. */
+        int inputPairOf (int channel) const;
+        /** PAIR MODE VERTICAL of half `half` (0: CH1-48, 1: CH49-96). Changing it releases that
+            half's pairs. */
+        bool isVerticalPairs (int half) const noexcept { return verticalPairs[(size_t) juce::jlimit (0, 1, half)]; }
+        void setVerticalPairs (int half, bool);
+        /** What changed on one of a pair goes to the other (the surface's timer), and the delay
+            GANG and pan MODE follow too. */
         void followPairs();
+
+        /** The Delay pages' DELAY SCALE (p.142): the units of the value under the msec one. */
+        enum class DelayScale { Meter, Feet, Sample, Beat, Frame };
+        DelayScale getDelayScale() const noexcept { return delayScale; }
+        void setDelayScale (DelayScale);
+        /** A delay `samples` long in the DELAY SCALE's units, as the page writes it. */
+        juce::String delayInUnits (float samples) const;
+        /** GANG: a paired channel's delay change moves its partner's by as much (p.142). */
+        bool isDelayGang() const noexcept { return delayGang; }
+        void setDelayGang (bool);
+        /** The beat scale's NOTE (beatNoteNames()) and BPM: a beat is that note at the tempo. */
+        static const juce::StringArray& beatNoteNames();
+        int getBeatNote() const noexcept { return beatNote; }
+        void setBeatNote (int);
+        int getBeatBpm() const noexcept { return beatBpm; }
+        void setBeatBpm (int);
+        /** Pan MODE (p.96): how paired Input Channels pan. */
+        enum class PanMode { Individual, Gang, InverseGang };
+        PanMode getPanMode() const noexcept { return panMode; }
+        void setPanMode (PanMode);
+        /** The Input Channel (0-95) in cell `i` of Input Patch page `page` (0-3): in VERTICAL pair
+            mode the partners side by side, CH1, CH25, CH2, CH26 and so on (p.77). */
+        int patchChannel (int page, int i) const;
 
         /** CHANNEL COPY and PASTE (p.155), by PREFER2's Channel Copy Parameter. */
         void copyChannel();
@@ -350,16 +389,32 @@ namespace dm2k
         void pressUserKey (int key);
         bool isUserKeyOn (int key) const;
 
-        /** AUTOMIX: fader and ON moves recorded against a running clock (or the scene recall), played back. */
-        enum class AutomixKey { Enable, Rec, Run, Clear, Undo, Clock, Fader, On };
+        /** AUTOMIX: fader and ON moves recorded against a running clock (or the scene recall), played
+            back; the takes are livedaw_dm2000::automix's. AUTO-REC is REC that stays on, so every run
+            records (p.197); with TOUCH SENSE a run with REC records only the faders held (TOUCH) or
+            touched (LATCH), the others playing their take (p.196). RELATIVE shifts the existing data by
+            the fader's move; RETURN and TAKEOVER are what a fader does at its punch out (pp.195-196).
+            The numbers are the Rust Key's. */
+        enum class AutomixKey { Enable, Rec, Run, Clear, Undo, Clock, Fader, On, AutoRec, Touch, Latch, TouchSense, Relative, Absolute, Return, Takeover };
         void automixPress (AutomixKey);
         bool automixIs (AutomixKey) const;
         void automixTick();
+        /** Input Channel `channel`'s (0-95) fader knob held or let go (Touch Sense). */
+        void automixHold (int channel, bool held);
+        /** RETURN's TIME (p.200): 0.0-30.0 seconds. */
+        float getAutomixReturnTime() const;
+        void setAutomixReturnTime (float seconds);
+        int getAutomixEvents() const;
         /** TRACK ARMING / LOCATOR: the multitrack recorder's tracks and markers (LOCATE MEMORY 1-8). */
         int getArmPage() const noexcept { return armPage; }
         bool isTrackArmed (int track) const;
         void toggleTrackArm (int track);
         void locateMemory (int n);
+        /** LOCATOR [IN] and [OUT] (p.258): locate the recorder's loop start or end; after [SET], store
+            the position there instead. [SET] is a latch here, for the next [IN] or [OUT]. */
+        void locatePoint (bool out);
+        void pressLocateSet();
+        bool isLocateSet() const noexcept { return locateSet; }
         void transport (int command);
 
         /** PREFER1's preferences that do something here (p.274). */
@@ -381,6 +436,36 @@ namespace dm2k
         void setPreference (Pref, bool);
         /** Whether a control of `group` brings its page up (the Auto ... Display preferences). */
         bool autoDisplay (Group) const;
+
+        //======================================================================
+        // MONITOR (pp.158-159). The CONTROL ROOM keys choose the monitor's SOURCE: 2TR D1-D3 and A1-A2
+        // (the 2TR inputs as they come in), STEREO, or the Output Channel on [ASSIGN 1] / [ASSIGN 2]
+        // (0-7 BUS 1-8, 8-19 AUX 1-12, 20-23 MATRIX 1-4, kept in the app settings).
+        enum class CrSource
+        {
+            TwoTrackD1,
+            TwoTrackD2,
+            TwoTrackD3,
+            TwoTrackA1,
+            TwoTrackA2,
+            Stereo,
+            Assign1,
+            Assign2
+        };
+        /** The engine's monitor SOURCE index a key selects (-1: none). */
+        int crSourceIndex (CrSource) const;
+        void selectCrSource (CrSource);
+        bool isCrSource (CrSource) const;
+        static constexpr int kNumCrAssigns = 24;
+        static juce::String crAssignName (int output);
+        int getCrAssign (int key) const noexcept { return crAssign[(size_t) juce::jlimit (0, 1, key)]; }
+        void setCrAssign (int key, int output);
+        /** STUDIO [CONTROL ROOM] (p.159): the studio monitor (PHONES) plays what the control room
+            does, following it; the other STUDIO keys end it. */
+        void setStudioFollowsControlRoom (bool);
+        bool isStudioFollowingControlRoom() const noexcept { return studioFollowsCr; }
+        /** The surface's timer: the studio monitor follows the control room's source. */
+        void followControlRoom();
 
         /** The oscillator (p.279): waveform 0 SINE 100Hz, 1 SINE 1kHz, 2 SINE 10kHz, 3 PINK NOISE,
             4 BURST NOISE; assignment 0-7 BUS, 8-19 AUX, 20-27 MATRIX 1L-4R, 28-29 STEREO L, R. */
@@ -581,13 +666,20 @@ namespace dm2k
         juce::Array<int> fxTypes() const;
         juce::String sceneTitle (int m) const;
         void doRecallScene();
-        struct AutomixEvent { double t; int strip; bool on; float value; };
-        std::vector<AutomixEvent> amEvents, amBackup;
-        std::vector<float> amFader;
-        std::vector<char> amOn;
-        bool amEnable = true, amRec = false, amRun = false, amSceneClock = false, amFaders = true, amOns = true;
-        double amStart = 0.0, amNow = 0.0;
-        size_t amNext = 0;
+        struct AutomixDeleter
+        {
+            void operator() (ld::LdDm2000Automix* p) const { ld::ld_dm2000_automix_destroy (p); }
+        };
+        std::unique_ptr<ld::LdDm2000Automix, AutomixDeleter> automix { ld::ld_dm2000_automix_create() };
+        DelayScale delayScale = DelayScale::Sample;
+        bool delayGang = false, locateSet = false;
+        int beatNote = 3, beatBpm = 120;
+        PanMode panMode = PanMode::Individual;
+        /** The delays and pans of the pairs' two sides as last seen (followGangs). */
+        std::array<float, 116> delaySeen {}, panSeen {};
+        void followGangs (bool follow = true);
+        void saveDelayPan() const;
+        KnobBinding bindDelayUnits (Strip&);
         int armPage = 0, dataRow = 0;
         juce::StringArray midiTokens (bool pcTable) const;
         void setMidiTokens (bool pcTable, const juce::StringArray&);
@@ -619,9 +711,10 @@ namespace dm2k
         };
         mutable std::array<LibraryFiles, (size_t) Library::kCount> libraryFiles;
         std::array<int, 96> directDestination {};
-        bool directPost = true;
+        int directPosition = 2;
         uint64_t inputPairs = 0;
         uint32_t outputPairs = 0;
+        std::array<bool, 2> verticalPairs {};
         // The pairs go with the show and its scenes (the fader and [ON] groups are the engine's
         // own masks, which they already do): the engine's console text.
         juce::String pairsText() const;
@@ -633,6 +726,8 @@ namespace dm2k
         StripKind copiedKind = StripKind::Channel;
         int copiedNumber = 0;
         std::array<int, 16> userKeys {};
+        std::array<int, 2> crAssign { 0, 1 };
+        bool studioFollowsCr = false;
         bool oscOn = false;
         int oscWave = 1;
         float oscLevelDb = -20.0f;
@@ -720,6 +815,9 @@ namespace dm2k
     KnobBinding bindAttenuator (Strip&);
     /** A strip's delay in samples, 0-43400 (p.342). */
     KnobBinding bindDelay (Strip&);
+    /** An Input Channel's delay MIX, -100 to +100 %, and FB.GAIN, -99 to +99 % (p.142). */
+    KnobBinding bindDelayMix (Strip&);
+    KnobBinding bindDelayFb (Strip&);
     /** PAN, L63 - C - R63 (p.96). */
     KnobBinding bindPanYamaha (Strip&);
     /** A value as the LCD prints it: "125", "1.00k", "-1.9". */
@@ -785,6 +883,10 @@ public:
     int getAuxBank() const noexcept { return auxBank; }
     void setDynamicsShowsComp (bool);
     bool dynamicsShowsComp() const noexcept { return showComp; }
+    /** DELAY's FB/MIX knob (p.29): Feedback Gain (its FB lamp) or Feedback Mix (MIX), as its push
+        switch chooses; an Input Channel's only. */
+    void setDelayKnobShowsFb (bool);
+    bool delayKnobShowsFb() const noexcept { return delayFb; }
     /** A transport key: its MMC command goes out on the console's MIDI (false: there is none). */
     bool sendMmc (int command);
 
@@ -857,7 +959,7 @@ private:
     int layer = Layer1, auxBank = 0;
     FaderMode faderMode = FaderMode::Fader;
     EncoderMode encoderMode = EncoderMode::Pan;
-    bool showComp = false;
+    bool showComp = false, delayFb = true;
     Strip* boundStrip = nullptr;
     std::array<juce::uint32, 4> eqGainMoved {};
     std::array<juce::uint32, kStrips> movedAt {};

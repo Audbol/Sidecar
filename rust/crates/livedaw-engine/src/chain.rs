@@ -494,7 +494,9 @@ pub(crate) const Y02R_STEREO: &[Node] = &[
 ];
 
 /// The SQ's input channels (Reference Guide p.126): trim and polarity, HPF,
-/// gate, insert, PEQ, compressor, delay, then mute and fader.
+/// gate, insert, PEQ, compressor, delay, then mute and fader. Its Direct Out
+/// source points (p.46) are the dLive's taps: after the gate, after the insert
+/// return (2), the PEQ (3), the compressor (4) and the delay (PFL).
 pub(crate) const SQ_CHANNEL: &[Node] = &[
     rta(rta_tap::IN),
     Node::Input,
@@ -504,8 +506,9 @@ pub(crate) const SQ_CHANNEL: &[Node] = &[
     t(tap::FILT),
     rta(rta_tap::POST_FILTER),
     Node::Gate,
-    t(2),
+    t(crate::dlive::TAP_POST_GATE),
     Node::PreInsert,
+    t(2),
     Node::Eq,
     t(3),
     Node::Dynamics,

@@ -156,6 +156,7 @@ DLiveC3500Surface::DLiveC3500Surface (UiContext& c)
     helpRight.setBounds (140, 70, 720, 400);
     processing.onTouchTurn = [this] (const KnobBinding& b) { dataLeft->setBinding (b); };
     scenes.onTouchTurn = [this] (const KnobBinding& b) { dataRight->setBinding (b); };
+    scenes.isSetupHeld = [this] { return litPageKey == "Setup"; };
     mixRack.onTouchTurn = [this] (const KnobBinding& b) { dataRight->setBinding (b); };
     metersScreen.onTouchTurn = [this] (const KnobBinding& b) { dataRight->setBinding (b); };
     ioScreen.onTouchTurn = [this] (const KnobBinding& b) { dataRight->setBinding (b); };
@@ -365,9 +366,9 @@ DLiveC3500Surface::DLiveC3500Surface (UiContext& c)
 
     silk (1560.0f, 460.0f, 74.0f, 16.0f, "Scene", 13.0f);
     silk (1544.0f, 512.0f, 106.0f, 12.0f, "Reset for Undo", 8.5f, juce::Justification::centred, true);
-    key ("Prev", kBlueIdle, kBlueLit, { 1486, 462, 48, 26 }, Shape::Oval, false).onClick = [this] { scenes.stepNext (-1); };
-    key ("Next", kBlueIdle, kBlueLit, { 1486, 498, 48, 26 }, Shape::Oval, false).onClick = [this] { scenes.stepNext (1); };
-    key ("GO", kSelIdle, kSelLit, { 1566, 478, 62, 32 }, Shape::Oval, false).onClick = [this] { scenes.goNext(); };
+    key ("Prev", kBlueIdle, kBlueLit, { 1486, 462, 48, 26 }, Shape::Oval, false).onClick = [this] { scenes.panelStep (-1); };
+    key ("Next", kBlueIdle, kBlueLit, { 1486, 498, 48, 26 }, Shape::Oval, false).onClick = [this] { scenes.panelStep (1); };
+    key ("GO", kSelIdle, kSelLit, { 1566, 478, 62, 32 }, Shape::Oval, false).onClick = [this] { scenes.panelGo(); };
 
     // The phones and the SoftKeys (Setup held and a key assigns it; or the Surface page).
     phones = std::make_unique<dl::Rotary> (juce::Colour (0xffe0e0e0));

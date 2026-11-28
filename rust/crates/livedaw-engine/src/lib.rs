@@ -26,6 +26,7 @@ pub mod params;
 pub mod pdc;
 pub mod pool;
 pub mod ports;
+pub mod pro2;
 pub mod profile;
 pub mod routing;
 pub mod sends;

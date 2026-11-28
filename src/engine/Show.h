@@ -55,6 +55,15 @@ public:
         Channel
     };
 
+    /** EMBEDDED RECALL (a dLive's, Firmware Reference Guide 7.3): another scene recalled a while
+        after the one that holds it. */
+    struct Embedded
+    {
+        int scene = 0;   // an index into the show's scenes (it follows moves; a removed one drops out)
+        int delayMs = 0; // 0 to kMaxEmbeddedDelayMs
+    };
+    static constexpr int kMaxEmbeddedDelayMs = 240000;
+
     /** A copy of a scene's settings (change them with the setters below). */
     struct Scene
     {
@@ -70,6 +79,7 @@ public:
         bool skip = false;     // SKIP: GO PREV/NEXT and recalls pass over it
         bool linkNext = false; // LINK: recalling it also recalls the scene below
         juce::String midi;     // SEND MIDI: MIDI data sent when it's recalled (see MidiRemote::parseMidiText)
+        std::vector<Embedded> embedded; // EMBEDDED RECALL
     };
 
     static constexpr int maxSceneTag = 128;
@@ -122,6 +132,16 @@ public:
     void setSceneLink (int index, bool linkNext);
     /** SEND MIDI (the EDIT MIDI TEXT STRING window). */
     void setSceneMidi (int index, const juce::String&);
+    /** EMBEDDED RECALL: after a recall of the scene, each of these is recalled once its delay has
+        passed (the show's timer keeps the time). A recall of a scene, GO NEXT / PREV, by tag or
+        Undo drops the ones still waiting from the recall before; an embedded recall doesn't set
+        off its own scene's (so that two scenes can't recall each other for ever). */
+    void setSceneEmbedded (int index, const std::vector<Embedded>&);
+    /** Embedded recalls waiting for their time. */
+    int getNumPendingEmbedded() const noexcept { return (int) embeddedDue.size(); }
+    /** Recalls those due at `nowMs` (juce::Time::getMillisecondCounterHiRes); true while some wait. */
+    bool fireDueEmbedded (double nowMs);
+    void cancelPendingEmbedded() { embeddedDue.clear(); }
     /** The first scene tagged `tag` that isn't skipped, or -1. */
     int findSceneByTag (int tag) const noexcept { return ld::ld_show_find_scene_by_tag (handle, tag); }
 
@@ -357,6 +377,12 @@ public:
     void clearScenes (const juce::String& showName);
     /** OPEN: the name and scenes of a show file; the console stays and nothing is recalled. */
     juce::Result loadScenesFromFile (const juce::File&);
+    /** Scene Import (a dLive's, Firmware Reference Guide 7.6): the scene names of a show file, without
+        opening it (false, with `error`: it can't be read). */
+    static bool readShowFileSceneNames (const juce::File&, juce::StringArray& names, juce::String& error);
+    /** Scene Import: scenes `which` of a show file (of this console) inserted at `index` (appended when
+        out of range), in that order; the console stays as it is. The first one's index, or -1 with `error`. */
+    int importShowScenes (const juce::File&, const std::vector<int>& which, int index, juce::String& error);
 
     //==============================================================================
     bool isFading() const noexcept { return ld::ld_show_is_fading (handle); }
@@ -422,6 +448,16 @@ private:
     void timerCallback() override;
     void changed();
     state::ApplyResult afterRecall (ld::ApplyResultC&);
+    /** A scene recall (not a partial one, nor a snippet): the embedded recalls it hands over replace
+        the ones waiting (an embedded recall's own are dropped). */
+    state::ApplyResult afterSceneRecall (ld::ApplyResultC&);
+    struct DueRecall
+    {
+        int scene;
+        double dueMs;
+    };
+    std::vector<DueRecall> embeddedDue;
+    bool firingEmbedded = false;
     /** ld_show_recall_scene (`which`: 0 a scene, 1 next, 2 previous, 3 by tag), with
         an 02R's fader recall safe and fade times around it. */
     ld::ApplyResultC runRecall (int which, int index);

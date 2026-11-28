@@ -190,6 +190,8 @@ enum Field {
     EqSwitch(u8),
     DelayOn,
     DelayTime,
+    DelayMix,
+    DelayFb,
     RouteStereo,
     RouteBus(u8),
     AuxOn(u8),
@@ -344,6 +346,8 @@ fn field_of(d: &Def) -> Option<(Group, Field)> {
             "kEQLPFOn" => EqSwitch(14),
             "kInDelayOn" | "kOutDelayOn" => DelayOn,
             "kInDelayTime" | "kOutDelayTime" => DelayTime,
+            "kInDelayMix" => DelayMix,
+            "kInDelayFBGain" => DelayFb,
             "kRoutingStereo" => RouteStereo,
             "kBusToStereoOn" => ToStereoOn,
             "kBusToStereoLevel" => ToStereoLevel,
@@ -1041,6 +1045,8 @@ impl Midi {
             EqSwitch(i) => p.eq().values[i as usize].load().round() as i32,
             DelayOn => on(p.input.delay_on.load(Relaxed)),
             DelayTime => p.input.delay.load().round() as i32,
+            DelayMix => p.input.delay_mix.load().round() as i32,
+            DelayFb => p.input.delay_fb.load().round() as i32,
             RouteStereo => on(s.main_send(0)?.on.load(Relaxed)),
             RouteBus(i) => on(s.sends.find(c.bus_slot(i as usize)?).is_some_and(|x| x.enabled.load(Relaxed))),
             AuxOn(i) => on(s.sends.find(c.aux_slot(i as usize)?).is_none_or(|x| x.enabled.load(Relaxed))),
@@ -1180,6 +1186,8 @@ impl Midi {
             EqSwitch(i) => p.eq().values[i as usize].store(v as f32),
             DelayOn => p.input.delay_on.store(v != 0, Relaxed),
             DelayTime => p.input.delay.store(v as f32),
+            DelayMix => p.input.delay_mix.store(v as f32),
+            DelayFb => p.input.delay_fb.store(v as f32),
             RouteStereo | ToStereoOn => {
                 if let Some(m) = s.main_send(0) {
                     m.on.store(v != 0, Relaxed);

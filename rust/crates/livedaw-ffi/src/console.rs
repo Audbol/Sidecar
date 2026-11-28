@@ -165,6 +165,33 @@ pub unsafe extern "C" fn ld_strip_dlive(s: *const Strip) -> *const livedaw_engin
     &(*s).dlive
 }
 
+/// A strip's PRO2 settings (`livedaw_engine::pro2`; ignored on other consoles).
+///
+/// # Safety
+/// `s` is a valid strip; the result lives as long as it does.
+#[no_mangle]
+pub unsafe extern "C" fn ld_strip_pro2(s: *const Strip) -> *const livedaw_engine::pro2::Pro2StripParams {
+    &(*s).pro2
+}
+
+/// A PRO2 mix (aux send or matrix) linked with its neighbour or not (`Engine::pro2_set_linked`).
+///
+/// # Safety
+/// `e` and `s` are valid.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_pro2_set_linked(e: *const Engine, s: *const Strip, on: bool) -> bool {
+    (*e).pro2_set_linked(&*s, on)
+}
+
+/// A PRO2 aux send's mix mode (`Engine::pro2_set_mix_mode`).
+///
+/// # Safety
+/// `e` and `s` are valid.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_pro2_set_mix_mode(e: *const Engine, s: *const Strip, mode: i32) {
+    (*e).pro2_set_mix_mode(&*s, mode)
+}
+
 /// A dLive's Direct Out settings: source (`dlive::direct_source`), Follow Fader, Follow
 /// Mute, Follow All. Each getter and setter works on one value of the four.
 ///
@@ -182,7 +209,8 @@ pub unsafe extern "C" fn ld_engine_dlive_set_direct_source(e: *const Engine, sou
     (*e).dlive.direct_source.store(source.clamp(0, 7), Relaxed);
 }
 
-/// Bits: 1 Follow Fader, 2 Follow Mute, 4 Follow All.
+/// Bits: 1 Follow Fader, 2 Follow Mute, 4 Follow All; an SQ's 8 Follow DCA Fader,
+/// 16 Follow DCA Mute, 32 Follow Mute Group.
 ///
 /// # Safety
 /// `e` is a valid engine.
@@ -192,6 +220,9 @@ pub unsafe extern "C" fn ld_engine_dlive_direct_follow(e: *const Engine) -> i32 
     i32::from(c.direct_follow_fader.load(Relaxed))
         | i32::from(c.direct_follow_mute.load(Relaxed)) << 1
         | i32::from(c.direct_follow_all.load(Relaxed)) << 2
+        | i32::from(c.direct_follow_dca_fader.load(Relaxed)) << 3
+        | i32::from(c.direct_follow_dca_mute.load(Relaxed)) << 4
+        | i32::from(c.direct_follow_mute_group.load(Relaxed)) << 5
 }
 
 /// # Safety
@@ -202,6 +233,26 @@ pub unsafe extern "C" fn ld_engine_dlive_set_direct_follow(e: *const Engine, bit
     c.direct_follow_fader.store(bits & 1 != 0, Relaxed);
     c.direct_follow_mute.store(bits & 2 != 0, Relaxed);
     c.direct_follow_all.store(bits & 4 != 0, Relaxed);
+    c.direct_follow_dca_fader.store(bits & 8 != 0, Relaxed);
+    c.direct_follow_dca_mute.store(bits & 16 != 0, Relaxed);
+    c.direct_follow_mute_group.store(bits & 32 != 0, Relaxed);
+}
+
+/// An SQ's Input to PAFL Source Point (`dlive::pafl_source`: 0 Post Preamp, 1 Post PEQ,
+/// 2 Post Compressor, 3 Post Delay).
+///
+/// # Safety
+/// `e` is a valid engine.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_sq_pafl_source(e: *const Engine) -> i32 {
+    (*e).dlive.pafl_source.load(Relaxed)
+}
+
+/// # Safety
+/// `e` is a valid engine.
+#[no_mangle]
+pub unsafe extern "C" fn ld_engine_sq_set_pafl_source(e: *const Engine, point: i32) {
+    (*e).dlive.pafl_source.store(point.clamp(0, 3), Relaxed);
 }
 
 /// A stereo mix's Follow Main Pan and Invert (`Engine::set_follow_main_pan`).

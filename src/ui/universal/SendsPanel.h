@@ -9,6 +9,12 @@
 namespace livedaw::ui::universal
 {
 
+/** What a PRO2 ignores of `from`'s send to mix `mix` (an aux send or a matrix) in `slot` (its
+    pro2.rs): 0 nothing, 1 the level and FROM (an input's send to an aux send in group or mix
+    minus mode: ON alone counts), 2 all of it (a linked pair's even mix takes the odd one's
+    sends). Always 0 on another console. */
+int pro2SendIgnored (MixerEngine&, const Strip& from, const Strip& mix, int slot);
+
 /** A strip's sends, a row per destination it can send to on this console:
     the buses (from channels, aux and other buses), the mains (from channels,
     aux and buses) and the matrices (from all but matrices). A row has the
@@ -36,6 +42,13 @@ public:
         ChoiceBar source;
         juce::String destination;
         bool compact = false;
+        /** What of the send the console ignores (a PRO2's group or linked pair): 0 nothing,
+            1 the level and FROM (ON alone counts), 2 all of it. Its controls are dimmed, and
+            `why` says so beside the name. Unset: nothing. */
+        std::function<int()> ignored;
+        std::function<juce::String()> why;
+        /** Dims what `ignored` says the console ignores. */
+        void refreshIgnored();
 
         void paint (juce::Graphics&) override;
         void resized() override;

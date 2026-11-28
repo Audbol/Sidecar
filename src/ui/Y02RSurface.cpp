@@ -5,6 +5,7 @@
 #include "engine/Show.h"
 #include "engine/Y02RMidi.h"
 #include "engine/Yamaha02R.h"
+#include "ui/DotFont.h"
 #include "ui/DynamicsGraph.h"
 #include "ui/HardwareLook.h"
 #include "ui/MeterBank.h"
@@ -41,14 +42,13 @@ namespace
     // The keys' colours (the same photographs).
     const juce::Colour kKeyDark (0xff2b2c2e), kKeyWhite (0xffebe5cd), kKeyCream (0xffebe5cd), kKeyOrange (0xffe8922e), kKeyBlue (0xffa9bde0),
                        kKeyTeal (0xff74b79f), kKeyRed (0xffd2382c);
-    const juce::Colour kLcd = hw::Look::y02r().lcd, kLcdFrame = hw::Look::y02r().lcd.darker (0.18f),
-                       kPixel = hw::Look::y02r().lcdPixel, kPixelDim = hw::Look::y02r().lcdDim;
+    // The LCD's field and dots (the SOS photos of its pages: a pale cyan, the dots a clear blue).
+    const juce::Colour kLcdField (0xffb2ddef), kLcdFieldLow (0xffa8d4e8), kLcdInk (0xff0a76bc);
     /** A table row's columns (DELAY's), as fractions of its width: the number,
         Smpl, mSEC, ON. */
     constexpr float kRowSamples = 0.2f, kRowMs = 0.5f, kRowOn = 0.8f;
     /** A row of a number and one value: where the value starts. */
     constexpr float kRowCompact = 0.4f;
-    constexpr float kSmall = 10.0f;
     // Its LEDs: SEL orange, ON red.
     const juce::Colour kSelLed (0xffffa030), kOnLed (0xffff3b30);
 
@@ -1733,13 +1733,15 @@ namespace y02r
             }
             spots.push_back (at);
         }
+        // The frames start a little above the knobs: room for their names.
+        constexpr float frameTop = top - 0.035f;
         for (int k = 0; k < 4; ++k)
-            marks.push_back ({ Mark::Frame, { left + bandW * (float) k + 0.004f, top, bandW - 0.008f, 1.0f - top - 0.01f }, bands[k] });
+            marks.push_back ({ Mark::Frame, { left + bandW * (float) k + 0.004f, frameTop, bandW - 0.008f, 1.0f - frameTop - 0.01f }, bands[k] });
         const char* rowNames[] = { "Q", "F", "G" };
         for (int r = 0; r < 3; ++r)
             marks.push_back ({ Mark::Caption, { left - 0.03f, top + rowH * (float) r, 0.03f, rowH * 0.6f }, rowNames[r] });
         marks.push_back ({ Mark::Caption, { 0.02f, 0.91f, 0.14f, 0.06f }, "EQ ON" });
-        marks.push_back ({ Mark::Frame, { 0.0f, top, left - 0.035f, 1.0f - top - 0.01f }, {} });
+        marks.push_back ({ Mark::Frame, { 0.0f, frameTop, left - 0.035f, 1.0f - frameTop - 0.01f }, {} });
     }
 
     void Display::layoutDynamics()
@@ -1920,28 +1922,6 @@ namespace y02r
         marks.push_back ({ Mark::Frame, { 0.0f, 0.0f, 1.0f, 1.0f }, {} });
     }
 
-    void Display::paintViewSends (juce::Graphics& g, juce::Rectangle<float> r) const
-    {
-        // AUX 1-8: each send's knob, PRE or POST, its name (two columns of four).
-        const int m = memberOf (strip);
-        if (m < 0)
-            return;
-        for (int aux = 0; aux < 8; ++aux)
-        {
-            const auto cell = juce::Rectangle<float> (r.getX() + r.getWidth() * 0.5f * (float) (aux % 2), r.getY() + r.getHeight() * 0.25f * (float) (aux / 2),
-                                                      r.getWidth() * 0.5f, r.getHeight() * 0.25f).reduced (2.0f);
-            auto c = cell;
-            g.setColour (kPixel);
-            g.setFont (type::font (kSmall, true));
-            g.drawText ("AUX" + juce::String (aux + 1), c.removeFromBottom (12.0f), juce::Justification::centred);
-            const bool pre = ((y.get (sendAddress (m, 9)) >> aux) & 1) != 0, on = ((y.get (sendAddress (m, 8)) >> aux) & 1) != 0;
-            chip (g, fitted (c.removeFromBottom (12.0f), "POST"), pre ? "PRE" : "POST", pre);
-            knob (g, c.reduced (2.0f), (float) juce::jmax (0, y.get (sendAddress (m, aux))) / 127.0f);
-            if (! on)
-                g.drawText ("OFF", c.removeFromRight (c.getWidth() * 0.3f), juce::Justification::centred);
-        }
-    }
-
     void Display::layoutDigitalIo()
     {
         // Word clock and inputs (V2 MAN pp.188-190): Sidecar's are its audio
@@ -1955,79 +1935,6 @@ namespace y02r
             ++row;
         }
         marks.push_back ({ Mark::Frame, { 0.0f, 0.1f, 1.0f, 0.86f }, {} });
-    }
-
-    void Display::paintChannelMeter (juce::Graphics& g, juce::Rectangle<float> r, bool reduction) const
-    {
-        auto& e = ctx.engine;
-        auto pick = [] (const MixerEngine::StripList& l, int k) -> Strip* { return juce::isPositiveAndBelow (k, (int) l.size()) ? l[(size_t) k].get() : nullptr; };
-        const int s = strip;
-        Strip* st = s < kEff ? pick (e.getChannels(), s) : s < kBus ? pick (e.getAux(), s - kEff) : s < kStereo ? pick (e.getBuses(), s - kBus) : pick (e.getMains(), 0);
-        const bool stereo = isStereoStrip (s) || s == kStereo;
-        g.setFont (type::font (8.5f, true));
-        const float marksDb[] = { 0.0f, -6.0f, -12.0f, -18.0f, -30.0f, -48.0f };
-        const char* names[] = { "CLIP", "-6", "-12", "-18", "-30", "-48" };
-        const auto scale = r.reduced (0.0f, 4.0f).withTrimmedBottom (10.0f);
-        const auto yOf = [&scale] (float db) { return scale.getY() + scale.getHeight() * (-db / 48.0f); };
-        const auto bars = scale.withTrimmedRight (30.0f).withTrimmedLeft (reduction ? 30.0f : 4.0f);
-        for (int k = 0; k < 6; ++k)
-        {
-            const float yy = yOf (marksDb[k]);
-            g.setColour (kPixel);
-            g.drawText (names[k], juce::Rectangle<float> (scale.getRight() - 28.0f, yy - 5.0f, 28.0f, 10.0f), juce::Justification::centredRight);
-            g.setColour (kPixelDim);
-            for (float x = bars.getX(); x < bars.getRight(); x += 4.0f)
-                g.fillRect (x, yy, 1.0f, 1.0f);
-        }
-        const int n = stereo ? 2 : 1;
-        const float w = bars.getWidth() / (float) n;
-        for (int c = 0; c < n; ++c)
-        {
-            const float db = st != nullptr ? juce::Decibels::gainToDecibels (ctx.meters.get (st, MeterPoint::PreFader, c), -48.0f) : -48.0f;
-            const auto bar = juce::Rectangle<float> (bars.getX() + w * (float) c, scale.getY(), w, scale.getHeight()).withSizeKeepingCentre (juce::jmin (10.0f, w * 0.5f), scale.getHeight());
-            g.setColour (kPixel);
-            g.drawRect (bar, 0.5f);
-            g.fillRect (bar.withTop (yOf (juce::jmax (-48.0f, db))));
-            g.drawText (juce::String (c + 1), bar.withY (scale.getBottom()).withHeight (10.0f).expanded (6.0f, 0.0f), juce::Justification::centred);
-        }
-        if (reduction)
-        {
-            // GR: down from the top, 0 to -18 dB.
-            const float gr = st != nullptr ? std::abs (st->meters.dynReductionDb.load()) : 0.0f;
-            const auto bar = juce::Rectangle<float> (scale.getX() + 8.0f, scale.getY(), 10.0f, scale.getHeight());
-            g.setColour (kPixel);
-            g.drawRect (bar, 0.5f);
-            g.fillRect (bar.withHeight (bar.getHeight() * juce::jlimit (0.0f, 1.0f, gr / 18.0f)));
-            g.drawText ("GR", bar.withY (scale.getBottom()).withHeight (10.0f).expanded (6.0f, 0.0f), juce::Justification::centred);
-        }
-    }
-
-    void Display::paintTransfer (juce::Graphics& g, juce::Rectangle<float> r) const
-    {
-        const auto box = r.withSizeKeepingCentre (juce::jmin (r.getWidth(), r.getHeight()), juce::jmin (r.getWidth(), r.getHeight()));
-        g.setColour (kPixel);
-        g.drawRect (box, 1.0f);
-        const int type = juce::jlimit (0, 5, y.get (address (strip, kDynType)));
-        const int model = models::findModel (models::Dynamics, kDynTokens[type]);
-        if (model < 0)
-            return;
-        const auto& m = models::model (models::Dynamics, model);
-        std::vector<float> values;
-        for (int k = 0; k < (int) m.params.size(); ++k)
-            values.push_back (stepValue (m.params[(size_t) k], juce::jmax (0, k < 6 ? y.get (address (strip, kDynParam + k)) : 0)));
-        constexpr int n = 48;
-        const auto curve = transferCurve (model, values.data(), n);
-        if ((int) curve.size() < n)
-            return;
-        const float range = transferRangeDb (model);
-        juce::Path p;
-        for (int k = 0; k < n; ++k)
-        {
-            const float x = box.getX() + box.getWidth() * (float) k / (float) (n - 1);
-            const float yy = box.getBottom() - box.getHeight() * (juce::jlimit (-range, 0.0f, curve[(size_t) k]) + range) / range;
-            k == 0 ? p.startNewSubPath (x, yy) : p.lineTo (x, yy);
-        }
-        g.strokePath (p, juce::PathStrokeType (1.5f));
     }
 
     void Display::focusField (int i, bool firstDigit)
@@ -2129,9 +2036,266 @@ namespace y02r
         repaint();
     }
 
-    juce::Rectangle<float> Display::pageArea() const
+    //==============================================================================
+    // The dots.
+
+    namespace
     {
-        return getLocalBounds().toFloat().reduced (14.0f).withTrimmedTop (30.0f).withTrimmedBottom (26.0f);
+        // The 5 x 7 font's extras: the infinity sign and phi (O with its stroke is the slashed zero).
+        const uint8_t kInfinity[5] = { 0x08, 0x14, 0x08, 0x14, 0x08 };
+        const uint8_t kPhi[5] = { 0x1C, 0x22, 0x7F, 0x22, 0x1C };
+
+        const uint8_t* glyph5x7 (juce::juce_wchar c)
+        {
+            if (c == 0x221e)
+                return kInfinity;
+            if (c == 0x3a6 || c == 0x3c6)
+                return kPhi;
+            if (c == 0xd8 || c == 0xf8)
+                return dots::kFont5x7['0' - 32];
+            return dots::kFont5x7[c >= 32 && c <= 126 ? (int) c - 32 : 0];
+        }
+
+        /** A rectangle's edges on whole dots. */
+        juce::Rectangle<int> snap (juce::Rectangle<float> r)
+        {
+            return juce::Rectangle<int>::leftTopRightBottom (juce::roundToInt (r.getX()), juce::roundToInt (r.getY()), juce::roundToInt (r.getRight()),
+                                                             juce::roundToInt (r.getBottom()));
+        }
+    } // namespace
+
+    void Dots::clear() { std::fill (on.begin(), on.end(), (uint8_t) 0); }
+
+    void Dots::set (int x, int y, bool lit)
+    {
+        if (juce::isPositiveAndBelow (x, kW) && juce::isPositiveAndBelow (y, kH))
+            on[(size_t) (y * kW + x)] = lit ? 1 : 0;
+    }
+
+    bool Dots::get (int x, int y) const noexcept { return juce::isPositiveAndBelow (x, kW) && juce::isPositiveAndBelow (y, kH) && on[(size_t) (y * kW + x)] != 0; }
+
+    void Dots::hLine (int x0, int x1, int y, bool lit)
+    {
+        for (int x = juce::jmin (x0, x1); x <= juce::jmax (x0, x1); ++x)
+            set (x, y, lit);
+    }
+
+    void Dots::vLine (int x, int y0, int y1, bool lit)
+    {
+        for (int y = juce::jmin (y0, y1); y <= juce::jmax (y0, y1); ++y)
+            set (x, y, lit);
+    }
+
+    void Dots::line (juce::Point<float> a, juce::Point<float> b, bool lit)
+    {
+        // Bresenham's.
+        int x0 = juce::roundToInt (a.x), y0 = juce::roundToInt (a.y);
+        const int x1 = juce::roundToInt (b.x), y1 = juce::roundToInt (b.y);
+        const int dx = std::abs (x1 - x0), dy = -std::abs (y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+        for (int err = dx + dy, n = 0; n < 2 * (kW + kH); ++n)
+        {
+            set (x0, y0, lit);
+            if (x0 == x1 && y0 == y1)
+                break;
+            const int e2 = 2 * err;
+            if (e2 >= dy)
+                err += dy, x0 += sx;
+            if (e2 <= dx)
+                err += dx, y0 += sy;
+        }
+    }
+
+    void Dots::box (juce::Rectangle<int> r, bool lit)
+    {
+        if (r.isEmpty())
+            return;
+        hLine (r.getX(), r.getRight() - 1, r.getY(), lit);
+        hLine (r.getX(), r.getRight() - 1, r.getBottom() - 1, lit);
+        vLine (r.getX(), r.getY(), r.getBottom() - 1, lit);
+        vLine (r.getRight() - 1, r.getY(), r.getBottom() - 1, lit);
+    }
+
+    void Dots::fill (juce::Rectangle<int> r, bool lit)
+    {
+        for (int y = r.getY(); y < r.getBottom(); ++y)
+            for (int x = r.getX(); x < r.getRight(); ++x)
+                set (x, y, lit);
+    }
+
+    void Dots::checker (juce::Rectangle<int> r)
+    {
+        for (int y = r.getY(); y < r.getBottom(); ++y)
+            for (int x = r.getX(); x < r.getRight(); ++x)
+                set (x, y, ((x + y) & 1) == 0);
+    }
+
+    void Dots::dottedH (int x0, int x1, int y, int step)
+    {
+        for (int x = x0; x <= x1; x += juce::jmax (1, step))
+            set (x, y);
+    }
+
+    void Dots::dottedV (int x, int y0, int y1, int step)
+    {
+        for (int y = y0; y <= y1; y += juce::jmax (1, step))
+            set (x, y);
+    }
+
+    void Dots::circle (int cx, int cy, int r, bool lit)
+    {
+        // The midpoint circle.
+        int x = r, y = 0, err = 1 - r;
+        while (x >= y)
+        {
+            for (auto [dx, dy] : { std::pair { x, y }, std::pair { y, x } })
+            {
+                set (cx + dx, cy + dy, lit);
+                set (cx - dx, cy + dy, lit);
+                set (cx + dx, cy - dy, lit);
+                set (cx - dx, cy - dy, lit);
+            }
+            ++y;
+            if (err < 0)
+                err += 2 * y + 1;
+            else
+            {
+                --x;
+                err += 2 * (y - x) + 1;
+            }
+        }
+    }
+
+    void Dots::disc (int cx, int cy, int r, bool lit)
+    {
+        for (int y = -r; y <= r; ++y)
+            for (int x = -r; x <= r; ++x)
+                if (x * x + y * y <= r * r + r / 2)
+                    set (cx + x, cy + y, lit);
+    }
+
+    void Dots::fillPath (const juce::Path& p, bool lit)
+    {
+        const auto b = p.getBounds().getSmallestIntegerContainer();
+        for (int y = b.getY(); y < b.getBottom(); ++y)
+            for (int x = b.getX(); x < b.getRight(); ++x)
+                if (p.contains ((float) x + 0.5f, (float) y + 0.5f))
+                    set (x, y, lit);
+    }
+
+    int Dots::width (const juce::String& s, Face f)
+    {
+        const int n = s.length();
+        return n == 0 ? 0 : n * (f == Face::Tiny ? 4 : f == Face::Tall ? 7 : 6) - 1;
+    }
+
+    int Dots::height (Face f) { return f == Face::Tiny ? 5 : f == Face::Tall ? 10 : 7; }
+
+    void Dots::text (int x, int y, const juce::String& s, Face f, bool lit)
+    {
+        static const int repeat[7] = { 2, 1, 2, 1, 2, 1, 1 }; // the tall face's rows, seven to ten
+        for (auto p = s.getCharPointer(); ! p.isEmpty();)
+        {
+            const auto c = p.getAndAdvance();
+            if (f == Face::Tiny)
+            {
+                if (const auto* glyph = dots::tinyGlyph (c))
+                    for (int col = 0; col < 3; ++col)
+                        for (int row = 0; row < 5; ++row)
+                            if ((glyph[col] >> row) & 1)
+                                set (x + col, y + row, lit);
+                x += 4;
+                continue;
+            }
+            const auto* glyph = glyph5x7 (c);
+            for (int col = 0; col < 5; ++col)
+                for (int row = 0, yy = y; row < 7; ++row)
+                    for (int k = 0; k < (f == Face::Tall ? repeat[row] : 1); ++k, ++yy)
+                        if ((glyph[col] >> row) & 1)
+                        {
+                            set (x + col, yy, lit);
+                            if (f == Face::Tall)
+                                set (x + col + 1, yy, lit);
+                        }
+            x += f == Face::Tall ? 7 : 6;
+        }
+    }
+
+    void Dots::type (juce::Rectangle<float> r, const juce::String& s, juce::Justification j, bool lit, Face f)
+    {
+        auto shown = s;
+        const auto fits = [&r] (const juce::String& t, Face face) { return (float) width (t, face) <= r.getWidth() + 1.0f; };
+        if (f != Face::Tiny && ! fits (shown, f))
+            f = f == Face::Tall && fits (shown, Face::Small) ? Face::Small : Face::Tiny;
+        while (shown.isNotEmpty() && ! fits (shown, f))
+            shown = shown.dropLastCharacters (1);
+        const int w = width (shown, f), h = height (f);
+        const int x = j.testFlags (juce::Justification::left)    ? juce::roundToInt (r.getX())
+                    : j.testFlags (juce::Justification::right)   ? juce::roundToInt (r.getRight()) - w
+                                                                 : juce::roundToInt (r.getCentreX() - (float) w * 0.5f);
+        const int y = j.testFlags (juce::Justification::top)    ? juce::roundToInt (r.getY())
+                    : j.testFlags (juce::Justification::bottom) ? juce::roundToInt (r.getBottom()) - h
+                                                                : juce::roundToInt (r.getCentreY() - (float) h * 0.5f);
+        text (x, y, shown, f, lit);
+    }
+
+    //==============================================================================
+    // The screen: the title bar, the page in its checkered frame, the encoders' row (the photos).
+
+    namespace
+    {
+        using Face = Dots::Face;
+        constexpr float kTagH = 9.0f, kNumberH = 10.0f, kValueH = 9.0f;
+        const juce::Rectangle<int> kTitleBar (2, 1, 316, 19), kBand (2, 21, 316, 191), kPageFrame (6, 25, 308, 183), kEncoderRow (2, 214, 316, 25);
+
+        /** A word in a box: lit (inverted) or outlined. */
+        void chip (Dots& d, juce::Rectangle<float> r, const juce::String& text, bool lit)
+        {
+            const auto b = snap (r);
+            if (lit)
+                d.fill (b);
+            else
+                d.box (b);
+            d.type (b.toFloat().reduced (1.0f, 0.0f), text, juce::Justification::centred, ! lit);
+        }
+
+        /** A word, inverted when lit. */
+        void label (Dots& d, juce::Rectangle<float> r, const juce::String& text, bool lit, Face face = Face::Small)
+        {
+            if (lit)
+                d.fill (snap (r));
+            d.type (r, text, juce::Justification::centred, ! lit, face);
+        }
+
+        /** A box as wide as its word (and a margin), centred in `r`. */
+        juce::Rectangle<float> fitted (juce::Rectangle<float> r, const juce::String& text, float margin)
+        {
+            const float w = (float) Dots::width (text, Face::Small) + margin;
+            return r.withSizeKeepingCentre (juce::jmin (r.getWidth(), juce::jmax (w, r.getHeight() + 2.0f)), r.getHeight());
+        }
+
+        /** A rotary knob: its circle and the pointer at `frac` of its travel (7 o'clock to 5). */
+        void knob (Dots& d, juce::Rectangle<float> r, float frac)
+        {
+            const int rad = juce::jmax (2, (int) (juce::jmin (r.getWidth(), r.getHeight(), 17.0f) * 0.5f));
+            const auto c = r.getCentre().roundToInt();
+            d.circle (c.x, c.y, rad);
+            const float a = (-0.75f + 1.5f * juce::jlimit (0.0f, 1.0f, frac)) * juce::MathConstants<float>::pi;
+            d.line (c.toFloat(), { (float) c.x + std::sin (a) * (float) rad, (float) c.y - std::cos (a) * (float) rad });
+        }
+
+        /** A line through `points`. */
+        void polyline (Dots& d, const std::vector<juce::Point<float>>& points)
+        {
+            for (size_t k = 1; k < points.size(); ++k)
+                d.line (points[k - 1], points[k]);
+        }
+    } // namespace
+
+    juce::Rectangle<float> Display::pageArea() const { return kPageFrame.reduced (3).toFloat(); }
+
+    juce::Point<float> Display::toDots (juce::Point<float> p) const
+    {
+        return { p.x * (float) Dots::kW / (float) juce::jmax (1, getWidth()), p.y * (float) Dots::kH / (float) juce::jmax (1, getHeight()) };
     }
 
     juce::Rectangle<float> Display::toPage (juce::Rectangle<float> unit) const
@@ -2143,58 +2307,17 @@ namespace y02r
     juce::Rectangle<float> Display::fieldBox (int i) const
     {
         if (juce::isPositiveAndBelow (i, (int) spots.size()))
-            return toPage (spots[(size_t) i]).reduced (1.0f);
+            return toPage (spots[(size_t) i]).reduced (0.5f);
         auto area = pageArea();
         const bool graph = surroundGraph();
         if (graph)
-            area = area.withTrimmedRight (area.getHeight() + 20.0f); // the square pan graph at the right
+            area = area.withTrimmedRight (area.getHeight() + 6.0f); // the square pan graph at the right
         const int n = (int) fields.size();
         const int cols = graph ? 3 : function == Function::Eq || n <= 16 ? 4 : n <= 24 ? 6 : 8; // EQ beside its curve: four
         const int rows = juce::jmax (4, (n + cols - 1) / cols);
-        const float w = area.getWidth() / cols, h = juce::jmin (52.0f, area.getHeight() / (float) rows);
-        return { area.getX() + w * (float) (i % cols), area.getY() + h * (float) (i / cols), w - 6.0f, h - 6.0f };
+        const float w = area.getWidth() / (float) cols, h = juce::jmin (30.0f, area.getHeight() / (float) rows);
+        return { area.getX() + w * (float) (i % cols), area.getY() + h * (float) (i / cols), w - 3.0f, h - 3.0f };
     }
-
-    namespace
-    {
-        constexpr float kTagH = 12.0f, kNumberH = 13.0f, kValueH = 12.0f;
-
-        /** A word in a box: lit (inverted) or outlined. */
-        void chip (juce::Graphics& g, juce::Rectangle<float> r, const juce::String& text, bool lit)
-        {
-            if (lit)
-            {
-                g.setColour (kPixel);
-                g.fillRect (r);
-            }
-            else
-            {
-                g.setColour (kPixel);
-                g.drawRect (r, 1.0f);
-            }
-            g.setColour (lit ? kLcd : kPixel);
-            g.setFont (type::font (kSmall, true));
-            g.drawFittedText (text, r.toNearestInt(), juce::Justification::centred, 1, 0.8f);
-        }
-
-        /** A box as wide as its word (and a margin), centred in `r`. */
-        juce::Rectangle<float> fitted (juce::Rectangle<float> r, const juce::String& text, float margin)
-        {
-            const float w = juce::GlyphArrangement::getStringWidth (type::font (kSmall, true), text) + margin;
-            return r.withSizeKeepingCentre (juce::jmin (r.getWidth(), juce::jmax (w, r.getHeight() + 2.0f)), r.getHeight());
-        }
-
-        /** A rotary knob: its circle and the pointer at `frac` of its travel (7 o'clock to 5). */
-        void knob (juce::Graphics& g, juce::Rectangle<float> r, float frac, float thickness)
-        {
-            const float d = juce::jmin (r.getWidth(), r.getHeight(), 30.0f);
-            const auto c = r.getCentre();
-            g.setColour (kPixel);
-            g.drawEllipse (juce::Rectangle<float> (d, d).withCentre (c), thickness);
-            const float a = (-0.75f + 1.5f * juce::jlimit (0.0f, 1.0f, frac)) * juce::MathConstants<float>::pi;
-            g.drawLine (c.x, c.y, c.x + std::sin (a) * d * 0.5f, c.y - std::cos (a) * d * 0.5f, thickness + 0.4f);
-        }
-    } // namespace
 
     juce::Rectangle<float> Display::valueBox (int i) const
     {
@@ -2213,7 +2336,7 @@ namespace y02r
             case Field::Look::Row:
             {
                 const float w = r.getWidth();
-                r = r.withHeight (juce::jmin (r.getHeight(), 22.0f));
+                r = r.withHeight (juce::jmin (r.getHeight(), 11.0f));
                 const auto at = [&r, w] (float from, float to) { return r.withX (r.getX() + from * w).withWidth ((to - from) * w); };
                 if (! f.note && ! f.tag)
                     return at (kRowCompact, 1.0f); // a number and its value (FADE TIME's)
@@ -2232,8 +2355,9 @@ namespace y02r
         return r;
     }
 
-    void Display::paintField (juce::Graphics& g, int i) const
+    void Display::paintField (int i) const
     {
+        auto& d = lcd;
         const auto& f = fields[(size_t) i];
         const auto box = fieldBox (i);
         const bool focused = i == focus;
@@ -2244,11 +2368,12 @@ namespace y02r
         switch (f.look)
         {
             case Field::Look::Tile:
-                g.setColour (focused ? kPixel : kLcdFrame);
-                g.fillRoundedRectangle (box, 3.0f);
-                g.setColour (focused ? kLcd : kPixelDim);
-                g.setFont (type::font (type::kCaption, true));
-                g.drawText (f.label, box.withHeight (box.getHeight() * 0.42f), juce::Justification::centred);
+                // A box, its name over its value; the cursor's lit.
+                if (focused)
+                    d.fill (snap (box));
+                else
+                    d.box (snap (box));
+                d.type (box.withHeight (box.getHeight() * 0.42f).withTrimmedTop (1.0f), f.label, juce::Justification::centred, ! focused, Face::Tiny);
                 invertValue = focused;
                 break;
             case Field::Look::Knob:
@@ -2256,16 +2381,16 @@ namespace y02r
                 // Its switch, knob, value and number (the number lit under the cursor).
                 auto r = box;
                 if (f.tag && f.tagAbove)
-                    chip (g, fitted (r.removeFromTop (kTagH), "REV"), f.tag(), f.tagOn && f.tagOn());
+                    chip (d, fitted (r.removeFromTop (kTagH), "REV", 4.0f), f.tag(), f.tagOn && f.tagOn());
                 if (! f.noNumber)
-                    chip (g, fitted (r.removeFromBottom (kNumberH).reduced (0.0f, 1.0f), f.label), f.label, focused);
+                    chip (d, fitted (r.removeFromBottom (kNumberH).reduced (0.0f, 0.5f), f.label, 4.0f), f.label, focused);
                 else if (f.strip >= 0)
                     r.removeFromBottom (kNumberH);
                 if (f.tag && ! f.tagAbove)
-                    chip (g, fitted (r.removeFromBottom (kTagH).reduced (0.0f, 1.0f), "POST"), f.tag(), f.tagOn && f.tagOn());
+                    chip (d, fitted (r.removeFromBottom (kTagH).reduced (0.0f, 0.5f), "POST", 4.0f), f.tag(), f.tagOn && f.tagOn());
                 r.removeFromBottom (kValueH);
                 const float span = (float) juce::jmax (1, f.hi - f.lo);
-                knob (g, r.reduced (0.0f, 2.0f), (float) (v - f.lo) / span);
+                knob (d, r.reduced (0.0f, 1.0f), (float) (v - f.lo) / span);
                 invertValue = focused && f.noNumber;
                 break;
             }
@@ -2273,77 +2398,63 @@ namespace y02r
             {
                 // Its number (a stereo pair's as tall as its two rows), the two readings, ON.
                 const float w = box.getWidth();
-                const auto line = box.withHeight (juce::jmin (box.getHeight(), 22.0f));
+                const auto line = box.withHeight (juce::jmin (box.getHeight(), 11.0f));
                 const auto at = [&line, w] (float from, float to) { return line.withX (line.getX() + from * w).withWidth ((to - from) * w); };
-                auto number = box.withWidth (w * (! f.note && ! f.tag ? kRowCompact : kRowSamples)).reduced (3.0f, 3.0f);
-                number = number.withSizeKeepingCentre (juce::jmin (number.getWidth(), juce::GlyphArrangement::getStringWidth (type::font (kSmall, true), f.label) + 8.0f),
-                                                        juce::jmin (number.getHeight(), box.getHeight() > 30.0f ? 34.0f : 15.0f))
+                auto number = box.withWidth (w * (! f.note && ! f.tag ? kRowCompact : kRowSamples)).reduced (1.0f, 1.0f);
+                // As wide as its number in the small face, or at least the tiny (a pair's "17/18").
+                const float wanted = (float) Dots::width (f.label, Face::Small) + 5.0f, least = (float) Dots::width (f.label, Face::Tiny) + 4.0f;
+                number = number.withSizeKeepingCentre (juce::jmin (wanted, juce::jmax (number.getWidth(), least)),
+                                                        juce::jmin (number.getHeight(), box.getHeight() > 20.0f ? 21.0f : 9.0f))
                              .withX (number.getX());
-                chip (g, number, f.label, focused);
+                chip (d, number, f.label, focused);
                 if (f.tag)
-                    chip (g, at (kRowOn, 1.0f).reduced (3.0f, 4.0f), f.tag(), f.tagOn && f.tagOn());
+                    chip (d, at (kRowOn, 1.0f).reduced (2.0f, 1.0f), f.tag(), f.tagOn && f.tagOn());
                 if (f.note)
-                {
-                    g.setColour (kPixelDim);
-                    g.setFont (type::font (kSmall + 1.0f, true));
-                    g.drawText (f.note(), f.noteFirst ? at (kRowSamples, kRowMs) : at (kRowMs, kRowOn), juce::Justification::centred);
-                }
+                    d.type (f.noteFirst ? at (kRowSamples, kRowMs) : at (kRowMs, kRowOn), f.note());
                 break;
             }
             case Field::Look::Heart:
             {
                 // Whole (filled) when paired, broken when not.
-                const float d = juce::jmin (box.getWidth() * 0.6f, box.getHeight() * 0.9f);
-                const auto h = juce::Rectangle<float> (d, d * 0.9f).withCentre (box.getCentre());
+                const float s = juce::jmin (box.getWidth() * 0.6f, box.getHeight() * 0.9f);
+                const auto h = juce::Rectangle<float> (s, s * 0.9f).withCentre (box.getCentre());
                 juce::Path p;
                 p.startNewSubPath (h.getCentreX(), h.getBottom());
-                p.cubicTo (h.getX() - d * 0.1f, h.getY() + d * 0.5f, h.getX() + d * 0.05f, h.getY() - d * 0.1f, h.getCentreX(), h.getY() + d * 0.22f);
-                p.cubicTo (h.getRight() - d * 0.05f, h.getY() - d * 0.1f, h.getRight() + d * 0.1f, h.getY() + d * 0.5f, h.getCentreX(), h.getBottom());
+                p.cubicTo (h.getX() - s * 0.1f, h.getY() + s * 0.5f, h.getX() + s * 0.05f, h.getY() - s * 0.1f, h.getCentreX(), h.getY() + s * 0.22f);
+                p.cubicTo (h.getRight() - s * 0.05f, h.getY() - s * 0.1f, h.getRight() + s * 0.1f, h.getY() + s * 0.5f, h.getCentreX(), h.getBottom());
                 p.closeSubPath();
-                g.setColour (kPixel);
-                g.fillPath (p);
+                d.fillPath (p);
                 if (v == 0)
                 {
-                    // The crack down its middle.
-                    juce::Path crack;
+                    // The crack down its middle, two dots wide.
                     const float cx = h.getCentreX();
-                    crack.startNewSubPath (cx, h.getY() + d * 0.2f);
-                    crack.lineTo (cx - d * 0.12f, h.getY() + d * 0.4f);
-                    crack.lineTo (cx + d * 0.1f, h.getY() + d * 0.58f);
-                    crack.lineTo (cx - d * 0.06f, h.getY() + d * 0.75f);
-                    crack.lineTo (cx, h.getBottom());
-                    g.setColour (kLcd);
-                    g.strokePath (crack, juce::PathStrokeType (2.5f));
+                    const std::vector<juce::Point<float>> crack { { cx, h.getY() + s * 0.2f }, { cx - s * 0.12f, h.getY() + s * 0.4f },
+                                                                  { cx + s * 0.1f, h.getY() + s * 0.58f }, { cx - s * 0.06f, h.getY() + s * 0.75f },
+                                                                  { cx, h.getBottom() } };
+                    for (const float dx : { 0.0f, 1.0f })
+                        for (size_t k = 1; k < crack.size(); ++k)
+                            d.line (crack[k - 1].translated (dx, 0.0f), crack[k].translated (dx, 0.0f), false);
                 }
                 if (focused)
-                {
-                    g.setColour (kPixel);
-                    g.drawRect (box.reduced (1.0f), 1.5f);
-                }
+                    d.box (snap (box));
                 return;
             }
             case Field::Look::Check:
             case Field::Look::Choices:
             {
                 // A box crossed when on (or the chosen one of a row of them), its name after it.
-                const auto mark = [&g] (juce::Rectangle<float> r, const juce::String& name, bool on, bool lit)
+                const auto mark = [&d] (juce::Rectangle<float> r, const juce::String& name, bool on, bool lit)
                 {
-                    const auto b = juce::Rectangle<float> (r.getX() + 2.0f, r.getCentreY() - 5.0f, 10.0f, 10.0f);
-                    g.setColour (kPixel);
-                    g.drawRect (b, 1.0f);
+                    const juce::Rectangle<int> b (juce::roundToInt (r.getX()) + 1, juce::roundToInt (r.getCentreY()) - 3, 7, 7);
+                    d.box (b);
                     if (on)
                     {
-                        g.drawLine (b.getX() + 2.0f, b.getY() + 2.0f, b.getRight() - 2.0f, b.getBottom() - 2.0f, 1.4f);
-                        g.drawLine (b.getRight() - 2.0f, b.getY() + 2.0f, b.getX() + 2.0f, b.getBottom() - 2.0f, 1.4f);
+                        d.line ({ (float) b.getX() + 1.0f, (float) b.getY() + 1.0f }, { (float) b.getRight() - 2.0f, (float) b.getBottom() - 2.0f });
+                        d.line ({ (float) b.getRight() - 2.0f, (float) b.getY() + 1.0f }, { (float) b.getX() + 1.0f, (float) b.getBottom() - 2.0f });
                     }
-                    g.setFont (type::font (kSmall + 1.0f, true));
-                    const auto t = r.withTrimmedLeft (16.0f).withWidth (juce::jmin (r.getWidth() - 16.0f, juce::GlyphArrangement::getStringWidth (g.getCurrentFont(), name) + 6.0f));
-                    if (lit)
-                    {
-                        g.fillRect (t);
-                        g.setColour (kLcd);
-                    }
-                    g.drawText (name, t, juce::Justification::centred);
+                    const auto t = r.withTrimmedLeft (10.0f).withWidth (juce::jmin (r.getWidth() - 10.0f, (float) Dots::width (name, Face::Small) + 4.0f))
+                                       .withSizeKeepingCentre (juce::jmin (r.getWidth() - 10.0f, (float) Dots::width (name, Face::Small) + 4.0f), 9.0f);
+                    label (d, t, name, lit);
                 };
                 if (f.look == Field::Look::Check)
                     mark (box, f.label, v != 0, focused);
@@ -2367,38 +2478,27 @@ namespace y02r
                 {
                     const auto r = across ? box.withWidth (box.getWidth() / (float) n).translated (box.getWidth() / (float) n * (float) k, 0.0f)
                                           : box.withHeight (box.getHeight() / (float) n).translated (0.0f, box.getHeight() / (float) n * (float) k);
-                    chip (g, r.reduced (3.0f, 2.0f), choices[k], choices[k] == text);
+                    chip (d, r.reduced (2.0f, 1.0f), choices[k], choices[k] == text);
                 }
                 if (focused)
-                {
-                    g.setColour (kPixel);
-                    g.drawRect (box.expanded (1.0f), 1.5f);
-                }
+                    d.box (snap (box.expanded (1.0f)));
                 return;
             }
             case Field::Look::Cell:
             case Field::Look::Button:
             {
-                // A box lit when on; the cursor's a double line round it.
+                // A box lit when on; the cursor's a second line round it.
                 const bool on = v != 0;
-                chip (g, box.reduced (1.0f), f.look == Field::Look::Cell ? f.label : text, on);
+                chip (d, box.reduced (1.0f), f.look == Field::Look::Cell ? f.label : text, on);
                 if (focused)
-                {
-                    g.setColour (kPixel);
-                    g.drawRect (box.expanded (1.0f), 1.5f);
-                }
+                    d.box (snap (box.expanded (1.0f)));
                 return;
             }
         }
+        const auto shown = f.look == Field::Look::Tile ? value : fitted (value, text, 4.0f);
         if (invertValue)
-        {
-            g.setColour (kPixel);
-            g.fillRect (f.look == Field::Look::Tile ? value : fitted (value, text, 6.0f));
-        }
-        g.setColour (invertValue ? kLcd : kPixel);
-        const auto font = f.look == Field::Look::Tile ? type::font (type::kLabel, true) : type::font (kSmall + 1.0f, true);
-        g.setFont (font);
-        g.drawText (text, value, juce::Justification::centred);
+            d.fill (snap (shown));
+        d.type (value, text, juce::Justification::centred, ! invertValue);
         if (focused && f.digits > 0)
         {
             // The digit the wheel moves, underlined: the `digit`th of the text's first digits.
@@ -2411,217 +2511,245 @@ namespace y02r
                 }
             if (at >= 0)
             {
-                const float x0 = value.getCentreX() - juce::GlyphArrangement::getStringWidth (font, text) * 0.5f;
-                const float x = x0 + juce::GlyphArrangement::getStringWidth (font, text.substring (0, at));
-                const float w = juce::GlyphArrangement::getStringWidth (font, text.substring (at, at + 1));
-                g.setColour (invertValue ? kLcd : kPixel);
-                g.fillRect (juce::Rectangle<float> (x, value.getCentreY() + font.getHeight() * 0.5f, w, 2.0f));
+                const int x = juce::roundToInt (value.getCentreX() - (float) Dots::width (text, Face::Small) * 0.5f) + 6 * at;
+                const int yy = juce::roundToInt (value.getCentreY() - 3.5f) + 8;
+                d.hLine (x, x + 4, yy, ! invertValue);
             }
         }
     }
 
-    void Display::paintEncoderRow (juce::Graphics& g, juce::Rectangle<float> row) const
+    void Display::paintEncoderRow (juce::Rectangle<int> row) const
     {
-        // Sixteen knobs numbered under them, a gap, E1 and E2: the encoders over the faders.
-        g.setColour (kPixel);
-        g.drawRect (row, 1.0f);
-        auto r = row.reduced (6.0f, 2.0f);
-        const float cell = r.getWidth() / 19.0f;
-        g.setFont (type::font (8.5f, true));
+        // Sixteen discs numbered under them, a gap, E1 and E2 open: the encoders over the faders.
+        auto& d = lcd;
+        d.box (row);
+        const float cell = (float) (row.getWidth() - 4) / 19.0f;
+        const int cy = row.getY() + 8;
         for (int k = 0; k < 18; ++k)
         {
-            const float x = r.getX() + cell * (float) (k < 16 ? k : k + 1);
-            const auto c = juce::Rectangle<float> (x, r.getY(), cell, r.getHeight());
-            const float d = juce::jmin (cell - 6.0f, r.getHeight() - 9.0f);
-            const auto rect = juce::Rectangle<float> (d, d).withCentre ({ c.getCentreX(), c.getY() + d * 0.5f + 1.0f });
-            const auto mid = rect.getCentre();
+            const int cx = juce::roundToInt ((float) row.getX() + 2.0f + cell * ((float) (k < 16 ? k : k + 1) + 0.5f));
             if (k < 16)
             {
                 // 1-16: solid discs with a pale pointer; E1 and E2: open, the pointer dark (the photos).
-                g.fillEllipse (rect);
-                g.setColour (kLcd);
-                g.drawLine (mid.x, mid.y, mid.x + d * 0.34f, mid.y + d * 0.34f, 1.6f);
-                g.setColour (kPixel);
+                d.disc (cx, cy, 6);
+                d.line ({ (float) cx, (float) cy }, { (float) cx + 4.0f, (float) cy + 4.0f }, false);
             }
             else
             {
-                g.drawEllipse (rect.reduced (0.5f), 1.2f);
-                g.drawLine (mid.x, mid.y, mid.x + d * 0.5f, mid.y, 1.4f);
+                d.circle (cx, cy, 6);
+                d.hLine (cx, cx + 6, cy);
             }
-            g.drawText (k < 16 ? juce::String (k + 1) : "E" + juce::String (k - 15), c.withTrimmedTop (d + 1.0f), juce::Justification::centred);
+            d.type (juce::Rectangle<float> ((float) cx - cell * 0.5f, (float) cy + 8.0f, cell, 7.0f), k < 16 ? juce::String (k + 1) : "E" + juce::String (k - 15));
         }
     }
 
-    void Display::paint (juce::Graphics& g)
+    void Display::draw() const
     {
-        auto b = getLocalBounds().toFloat();
-        hw::lcd (g, b, look());
-        // The title bar (V2 MAN p.20): the scene memory at the left, the page's
-        // name and number boxed, the channel boxed at the right.
-        auto top = b.reduced (14.0f, 0.0f).withTrimmedTop (12.0f).removeFromTop (22.0f);
-        g.setColour (kPixel);
-        g.drawRect (top, 1.0f);
-        g.setFont (type::font (type::kLabel, true));
-        const auto channel = top.removeFromRight (juce::jmax (90.0f, top.getWidth() * 0.16f));
-        g.drawRect (channel, 1.5f);
-        g.drawText (strip >= kEff && strip < kBus ? stripName (strip) + " RTN" : stripName (strip), channel, juce::Justification::centred); // "EFF1 RTN" (p.206)
-        const auto name = title();
-        const auto titleBox = top.removeFromRight (juce::jmax (150.0f, juce::GlyphArrangement::getStringWidth (type::font (type::kLabel, true), name) + 24.0f));
-        g.drawRect (titleBox, 1.5f);
-        g.drawText (name, titleBox, juce::Justification::centred);
-        g.drawText (memoryText ? memoryText() : juce::String(), top.reduced (10.0f, 0.0f), juce::Justification::centredLeft);
-        paintEncoderRow (g, b.reduced (14.0f, 0.0f).withTrimmedBottom (6.0f).removeFromBottom (28.0f));
+        auto& d = lcd;
+        d.clear();
+
+        // The title bar (V2 MAN p.20, the photos): the scene's number (tall) and title,
+        // the function and its page, the channel; boxed, the three parted by lines.
+        d.box (kTitleBar);
         {
-            // The dithered bands under the title bar and over the encoders (the scene and automix photos).
-            g.setColour (kPixelDim);
-            const auto w = b.reduced (14.0f, 0.0f);
-            for (const float y0 : { 35.0f, b.getBottom() - 39.0f })
-                for (int row = 0; row < 2; ++row)
-                    for (float x = w.getX() + (float) row * 2.0f; x < w.getRight(); x += 4.0f)
-                        g.fillRect (x, y0 + (float) row * 2.0f, 2.0f, 2.0f);
-            g.setColour (kPixel);
+            auto rest = kTitleBar;
+            const auto channel = rest.removeFromRight (76);
+            const auto name = title();
+            const auto nameBox = rest.removeFromRight (juce::jlimit (80, 150, Dots::width (name, Face::Tall) + 10));
+            d.vLine (channel.getX(), kTitleBar.getY(), kTitleBar.getBottom() - 1);
+            d.vLine (nameBox.getX(), kTitleBar.getY(), kTitleBar.getBottom() - 1);
+            d.type (channel.toFloat(), strip >= kEff && strip < kBus ? stripName (strip) + " RTN" : stripName (strip), juce::Justification::centred, true,
+                    Face::Tall); // "EFF1 RTN" (p.206)
+            d.type (nameBox.toFloat(), name, juce::Justification::centred, true, Face::Tall);
+            const auto memory = memoryText ? memoryText() : juce::String();
+            const auto number = memory.upToFirstOccurrenceOf (" ", false, false);
+            auto left = rest.toFloat().reduced (5.0f, 0.0f);
+            d.type (left, number, juce::Justification::centredLeft, true, Face::Tall);
+            d.type (left.withTrimmedLeft ((float) Dots::width (number, Face::Tall) + 10.0f), memory.fromFirstOccurrenceOf (" ", false, false),
+                    juce::Justification::centredLeft);
         }
+        // The page in its frame, in a checkered band; the encoders' row under it.
+        d.checker (kBand);
+        d.fill (kPageFrame, false);
+        d.box (kPageFrame);
+        paintEncoderRow (kEncoderRow);
 
         // A picture's lines, frames and words.
         for (const auto& m : marks)
         {
             const auto r = toPage (m.at);
-            g.setColour (kPixel);
             if (m.kind == Mark::Rule)
-                g.drawLine (r.getX(), r.getY(), r.getRight(), r.getBottom(), 1.0f);
+                d.line (r.getTopLeft(), r.getBottomRight());
             else if (m.kind == Mark::Frame)
             {
-                g.drawRect (r, 1.0f);
+                d.box (snap (r));
                 if (m.text.isNotEmpty())
                 {
                     // Its title on its top line.
-                    g.setFont (type::font (kSmall, true));
-                    const auto cap = fitted (juce::Rectangle<float> (r.getX(), r.getY() - 6.0f, r.getWidth(), 12.0f), m.text, 10.0f);
-                    g.setColour (kLcd);
-                    g.fillRect (cap);
-                    g.setColour (kPixel);
-                    g.drawText (m.text, cap, juce::Justification::centred);
+                    const auto cap = fitted (juce::Rectangle<float> (r.getX(), r.getY() - 4.0f, r.getWidth(), 9.0f), m.text, 4.0f);
+                    d.fill (snap (cap), false);
+                    d.type (cap, m.text);
                 }
             }
             else if (m.kind == Mark::Box)
-                chip (g, fitted (r.reduced (1.0f), m.text, 4.0f), m.text, m.lit);
+                chip (d, fitted (r.reduced (0.5f), m.text, 4.0f), m.text, m.lit);
             else
-            {
-                g.setFont (type::font (kSmall, true));
-                g.drawText (m.text, r, juce::Justification::centred);
-            }
+                d.type (r, m.text);
         }
         if (! spots.empty() && numPages() > 1)
         {
             // The page arrows: the next at the bottom right, the one before at the left.
-            const auto a = toPage ({ arrowAt.x, arrowAt.y, 0.0f, 0.0f }).getPosition();
+            const auto a = toPage ({ arrowAt.x, arrowAt.y, 0.0f, 0.0f }).getPosition().roundToInt();
+            const auto arrow = [&d] (juce::Rectangle<int> r, bool right)
+            {
+                d.box (r);
+                for (int k = 0; k < 3; ++k)
+                    d.vLine (right ? r.getX() + 3 + k : r.getRight() - 4 - k, r.getCentreY() - 2 + k, r.getCentreY() + 2 - k);
+            };
             if (page < numPages() - 1)
-                chip (g, juce::Rectangle<float> (a.x - 16.0f, a.y - 13.0f, 16.0f, 13.0f), utf8 ("\xe2\x96\xb6"), false);
+                arrow ({ a.x - 9, a.y - 9, 9, 9 }, true);
             if (page > 0)
-                chip (g, juce::Rectangle<float> (a.x - 36.0f, a.y - 13.0f, 16.0f, 13.0f), utf8 ("\xe2\x97\x80"), false);
+                arrow ({ a.x - 20, a.y - 9, 9, 9 }, false);
         }
 
         if (function == Function::Meter)
-            paintMeters (g, pageArea());
+            paintMeters (pageArea());
         if (function == Function::Eq && ! spots.empty())
         {
-            paintEq (g, toPage ({ 0.21f, 0.02f, 0.53f, 0.36f }));
-            paintChannelMeter (g, toPage ({ 0.77f, 0.02f, 0.23f, 0.36f }), false);
+            paintEq (toPage ({ 0.21f, 0.02f, 0.53f, 0.36f }));
+            paintChannelMeter (toPage ({ 0.77f, 0.02f, 0.23f, 0.36f }), false);
         }
         if (function == Function::View && page == 0 && ! spots.empty())
         {
-            paintChannelMeter (g, toPage ({ 0.16f, 0.0f, 0.18f, 0.52f }), false);
-            paintViewSends (g, toPage ({ 0.36f, 0.0f, 0.28f, 1.0f }));
+            paintChannelMeter (toPage ({ 0.16f, 0.0f, 0.18f, 0.52f }), false);
+            paintViewSends (toPage ({ 0.36f, 0.0f, 0.28f, 1.0f }));
             if (hasEq (strip))
-                paintEq (g, toPage ({ 0.67f, 0.06f, 0.32f, 0.34f }));
+                paintEq (toPage ({ 0.67f, 0.06f, 0.32f, 0.34f }));
             if (hasDynamics (strip))
-                paintTransfer (g, toPage ({ 0.67f, 0.48f, 0.16f, 0.32f }));
+                paintTransfer (toPage ({ 0.67f, 0.48f, 0.16f, 0.32f }));
         }
         if (function == Function::Dynamics && ! spots.empty())
         {
-            paintTransfer (g, toPage ({ 0.5f, 0.02f, 0.2f, 0.36f }));
-            paintChannelMeter (g, toPage ({ 0.74f, 0.02f, 0.26f, 0.36f }), true);
+            paintTransfer (toPage ({ 0.5f, 0.02f, 0.2f, 0.36f }));
+            paintChannelMeter (toPage ({ 0.74f, 0.02f, 0.26f, 0.36f }), true);
         }
         if (fields.empty())
-        {
-            g.setColour (kPixelDim);
-            g.drawText (stripName (strip) + " has no " + title(), b, juce::Justification::centred);
-        }
+            d.type (pageArea(), stripName (strip) + " has no " + title());
         if (surroundGraph())
         {
             const auto area = pageArea();
-            paintSurround (g, area.withLeft (area.getRight() - area.getHeight()));
+            paintSurround (area.withLeft (area.getRight() - area.getHeight()));
         }
         if (function == Function::View && page == 1 && fields.size() > 1)
-            paintPrograms (g, pageArea().withTop (fieldBox (0).getBottom() + 10.0f));
+            paintPrograms (pageArea().withTop (fieldBox (0).getBottom() + 5.0f));
         for (int i = 0; i < (int) fields.size(); ++i)
-            paintField (g, i);
+            paintField (i);
         if (confirmGo != nullptr)
         {
             // The confirmation dialog over the page (V2 MAN p.126): "Please Confirm."
             // over its question ("Store to Scene 1?"), CANCEL and EXECUTE.
-            auto box = b.withSizeKeepingCentre (b.getWidth() * 0.6f, 140.0f);
-            g.setColour (kLcd.withAlpha (1.0f).brighter (0.08f)); // opaque: the page under it hidden
-            g.fillRect (box);
-            g.setColour (kPixel);
-            g.drawRect (box, 2.0f);
-            g.setFont (type::font (type::kLabel + 2.0f, true));
-            g.drawText ("Please Confirm.", box.removeFromTop (40.0f).reduced (10.0f, 0.0f), juce::Justification::centred);
-            g.setFont (type::font (type::kLabel, true));
-            g.drawText (confirmText, box.removeFromTop (40.0f).reduced (10.0f, 0.0f), juce::Justification::centred);
-            auto row = box.reduced (20.0f, 14.0f);
+            const juce::Rectangle<int> box (50, 66, 220, 96);
+            d.fill (box.expanded (2), false);
+            d.box (box);
+            d.box (box.reduced (1));
+            d.type (juce::Rectangle<float> ((float) box.getX(), (float) box.getY() + 10.0f, (float) box.getWidth(), 12.0f), "Please Confirm.",
+                    juce::Justification::centred, true, Face::Tall);
+            d.type (juce::Rectangle<float> ((float) box.getX() + 6.0f, (float) box.getY() + 36.0f, (float) box.getWidth() - 12.0f, 10.0f), confirmText);
             for (int k = 0; k < 2; ++k)
             {
-                const auto key = (k == 0 ? row.removeFromLeft (row.getWidth() * 0.5f) : row).reduced (10.0f, 0.0f);
-                g.setColour (k == confirmChoice ? kPixel : kLcdFrame);
-                g.fillRoundedRectangle (key, 3.0f);
-                g.setColour (k == confirmChoice ? kLcd : kPixel);
-                g.drawText (k == 0 ? "CANCEL" : "EXECUTE", key, juce::Justification::centred);
+                const juce::Rectangle<int> key (box.getX() + 22 + k * 96, box.getY() + 62, 80, 17);
+                if (k == confirmChoice)
+                    d.fill (key);
+                else
+                    d.box (key);
+                d.type (key.toFloat(), k == 0 ? "CANCEL" : "EXECUTE", juce::Justification::centred, k != confirmChoice);
             }
         }
     }
 
+    void Display::renderRows (int first, int last)
+    {
+        // Each dot a block of kDot pixels, its last row and column a little lighter (the gaps between dots).
+        const auto ink = kLcdInk, inkEdge = kLcdInk.interpolatedWith (kLcdField, 0.3f);
+        juce::Image::BitmapData data (screen, 0, first * kDot, Dots::kW * kDot, (last - first + 1) * kDot, juce::Image::BitmapData::writeOnly);
+        for (int row = first; row <= last; ++row)
+        {
+            const auto field = kLcdField.interpolatedWith (kLcdFieldLow, (float) row / (float) Dots::kH), grid = field.darker (0.03f);
+            for (int col = 0; col < Dots::kW; ++col)
+            {
+                const bool on = lcd.get (col, row);
+                for (int py = 0; py < kDot; ++py)
+                    for (int px = 0; px < kDot; ++px)
+                    {
+                        const bool edge = px == kDot - 1 || py == kDot - 1;
+                        data.setPixelColour (col * kDot + px, (row - first) * kDot + py, on ? (edge ? inkEdge : ink) : (edge ? grid : field));
+                    }
+            }
+        }
+    }
+
+    void Display::paint (juce::Graphics& g)
+    {
+        draw();
+        if (screen.isNull())
+        {
+            screen = juce::Image (juce::Image::RGB, Dots::kW * kDot, Dots::kH * kDot, false);
+            shownDots.clear();
+        }
+        // Only the rows that changed onto the image.
+        int first = -1, last = -1;
+        for (int row = 0; row < Dots::kH; ++row)
+        {
+            const auto from = (size_t) (row * Dots::kW);
+            if (shownDots.size() != lcd.on.size() || ! std::equal (lcd.on.begin() + (std::ptrdiff_t) from, lcd.on.begin() + (std::ptrdiff_t) (from + Dots::kW), shownDots.begin() + (std::ptrdiff_t) from))
+            {
+                first = first < 0 ? row : first;
+                last = row;
+            }
+        }
+        if (first >= 0)
+        {
+            renderRows (first, last);
+            shownDots = lcd.on;
+        }
+        g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
+        g.drawImage (screen, getLocalBounds().toFloat());
+    }
+
     bool Display::surroundGraph() const { return function == Function::Routing && page >= 2 && memberOf (strip) >= 0; }
 
-    void Display::paintSurround (juce::Graphics& g, juce::Rectangle<float> area) const
+    void Display::paintSurround (juce::Rectangle<float> area) const
     {
         // The pan graph (V2 MAN p.67): front at the top; the mode's speakers
         // around it; the places of the selected channel's group (MIC, LINE and
         // the effect returns, or TAPE), the selected one filled; on 4/4 its
         // trajectory.
+        auto& d = lcd;
         const int mode = juce::jlimit (1, 3, y.getState (Yamaha02R::Surround, 0));
-        const auto graph = area.reduced (14.0f);
+        const auto graph = area.reduced (8.0f);
         const auto at = [graph] (float x, float yy) { return juce::Point<float> (graph.getX() + (x + 1.0f) * 0.5f * graph.getWidth(), graph.getY() + (1.0f - yy) * 0.5f * graph.getHeight()); };
-        g.setColour (kLcdFrame);
-        g.fillRect (graph);
-        g.setColour (kPixelDim);
-        g.drawRect (graph, 1.0f);
-        g.drawLine (graph.getCentreX(), graph.getY(), graph.getCentreX(), graph.getBottom(), 0.5f);
-        g.drawLine (graph.getX(), graph.getCentreY(), graph.getRight(), graph.getCentreY(), 0.5f);
+        d.box (snap (graph));
+        d.dottedV (juce::roundToInt (graph.getCentreX()), juce::roundToInt (graph.getY()), juce::roundToInt (graph.getBottom()));
+        d.dottedH (juce::roundToInt (graph.getX()), juce::roundToInt (graph.getRight()), juce::roundToInt (graph.getCentreY()));
         static const float places[3][5][2] = { { { -1, 1 }, { 1, 1 }, { -1, -1 }, { 1, -1 } },
                                                { { -1, 1 }, { 1, 1 }, { 0, 1 }, { 0, -1 } },
                                                { { -1, 1 }, { 1, 1 }, { -1, -1 }, { 1, -1 }, { 0, 1 } } };
         static const char* names[3][5] = { { "FL", "FR", "RL", "RR" }, { "L", "R", "C", "S" }, { "FL", "FR", "RL", "RR", "FC" } };
-        g.setFont (type::font (9.0f, true));
         for (int k = 0; k < (mode == 3 ? 5 : 4); ++k)
         {
             const auto p = at (places[mode - 1][k][0], places[mode - 1][k][1]);
-            const auto box = juce::Rectangle<float> (16.0f, 10.0f).withCentre ({ p.x, p.y + (places[mode - 1][k][1] > 0 ? -9.0f : 9.0f) });
-            g.setColour (kPixel);
-            g.fillRect (box);
-            g.setColour (kLcd);
-            g.drawText (names[mode - 1][k], box, juce::Justification::centred);
+            const auto box = juce::Rectangle<float> (13.0f, 9.0f).withCentre ({ p.x, p.y + (places[mode - 1][k][1] > 0 ? -6.0f : 6.0f) });
+            label (d, box, names[mode - 1][k], true, Face::Tiny);
             // 4/4: each speaker's bus out level beside it (V2 MAN p.69), inwards.
             if (page == 3)
-                speakerMeter (g, places[mode - 1][k][0] > 0 ? box.translated (-30.0f, 0.0f).withWidth (26.0f) : box.withX (box.getRight() + 4.0f).withWidth (26.0f), k);
+                speakerMeter (places[mode - 1][k][0] > 0 ? box.translated (-19.0f, 0.0f).withWidth (16.0f) : box.withX (box.getRight() + 3.0f).withWidth (16.0f), k);
         }
         if (mode == 3)
         {
-            g.setColour (kPixel);
-            const auto sw = juce::Rectangle<float> (24.0f, 10.0f).withCentre ({ graph.getCentreX(), area.getBottom() - 5.0f });
-            g.drawText ("SW", sw, juce::Justification::centred);
+            const auto sw = juce::Rectangle<float> (15.0f, 7.0f).withCentre ({ graph.getCentreX(), area.getBottom() - 4.0f });
+            d.type (sw, "SW", juce::Justification::centred, true, Face::Tiny);
             if (page == 3)
-                speakerMeter (g, sw.withX (sw.getRight() + 2.0f).withWidth (26.0f), 5);
+                speakerMeter (sw.withX (sw.getRight() + 2.0f).withWidth (16.0f), 5);
         }
         const auto value = [this] (int member, int field) { return (float) (y.getState (Yamaha02R::SurroundPan, member * Yamaha02R::kSurFields + field) - 32) / 32.0f; };
         const int sel = memberOf (strip);
@@ -2630,10 +2758,10 @@ namespace y02r
             // The trajectory, as `livedaw_dsp::surround::Trajectory::at`.
             const int traj = y.getState (Yamaha02R::SurroundPan, sel * Yamaha02R::kSurFields + Yamaha02R::SurTraj);
             const float w = (float) y.getState (Yamaha02R::SurroundPan, sel * Yamaha02R::kSurFields + Yamaha02R::SurWidth) / 32.0f;
-            const float d = (float) y.getState (Yamaha02R::SurroundPan, sel * Yamaha02R::kSurFields + Yamaha02R::SurDepth) / 32.0f;
+            const float dp = (float) y.getState (Yamaha02R::SurroundPan, sel * Yamaha02R::kSurFields + Yamaha02R::SurDepth) / 32.0f;
             const float ox = value (sel, Yamaha02R::SurOffsetX), oy = value (sel, Yamaha02R::SurOffsetY);
             const float pi = juce::MathConstants<float>::pi;
-            juce::Path path;
+            std::vector<juce::Point<float>> path;
             for (int k = 0; k <= 64; ++k)
             {
                 const float t = (float) k / 64.0f, s = 2.0f * t - 1.0f;
@@ -2641,18 +2769,16 @@ namespace y02r
                 switch (traj)
                 {
                     case 0: x = s * w; break;
-                    case 1: yy = -s * d; break;
-                    case 2: x = s * w; yy = s * d; break;
-                    case 3: x = s * w; yy = -s * d; break;
-                    case 4: x = -std::cos (pi * t) * w; yy = std::sin (pi * t) * d; break;
-                    case 5: x = -std::sin (pi * t) * w; yy = std::cos (pi * t) * d; break;
-                    default: x = std::sin (2.0f * pi * t) * w; yy = std::cos (2.0f * pi * t) * d; break;
+                    case 1: yy = -s * dp; break;
+                    case 2: x = s * w; yy = s * dp; break;
+                    case 3: x = s * w; yy = -s * dp; break;
+                    case 4: x = -std::cos (pi * t) * w; yy = std::sin (pi * t) * dp; break;
+                    case 5: x = -std::sin (pi * t) * w; yy = std::cos (pi * t) * dp; break;
+                    default: x = std::sin (2.0f * pi * t) * w; yy = std::cos (2.0f * pi * t) * dp; break;
                 }
-                const auto p = at (juce::jlimit (-1.0f, 1.0f, x + ox), juce::jlimit (-1.0f, 1.0f, yy + oy));
-                k == 0 ? path.startNewSubPath (p) : path.lineTo (p);
+                path.push_back (at (juce::jlimit (-1.0f, 1.0f, x + ox), juce::jlimit (-1.0f, 1.0f, yy + oy)));
             }
-            g.setColour (kPixel);
-            g.strokePath (path, juce::PathStrokeType (1.0f, juce::PathStrokeType::curved), juce::AffineTransform());
+            polyline (d, path);
         }
         // The group's places.
         const int first = sel < 16 ? 0 : sel < kTape ? 16 : sel < kEff ? kTape : 16;
@@ -2663,35 +2789,29 @@ namespace y02r
             group.insert (group.end(), { kEff, kEff + 1 });
         for (int m : group)
         {
-            const auto p = at (value (m, Yamaha02R::SurX), value (m, Yamaha02R::SurY));
-            const bool selected = m == sel;
-            const float r = selected ? 7.0f : 5.0f;
-            g.setColour (kPixel);
-            if (selected)
-                g.fillEllipse (p.x - r, p.y - r, 2 * r, 2 * r);
-            else
-                g.drawEllipse (p.x - r, p.y - r, 2 * r, 2 * r, 1.0f);
-            if (! selected)
+            const auto p = at (value (m, Yamaha02R::SurX), value (m, Yamaha02R::SurY)).roundToInt();
+            if (m != sel)
+            {
+                d.circle (p.x, p.y, 3);
                 continue;
-            g.setFont (type::font (9.0f, true));
-            g.drawText (stripName (m), juce::Rectangle<float> (60.0f, 10.0f).withCentre ({ p.x, p.y + 13.0f }), juce::Justification::centred);
+            }
+            d.disc (p.x, p.y, 4);
+            d.type (juce::Rectangle<float> (50.0f, 7.0f).withCentre ({ (float) p.x, (float) p.y + 9.0f }), stripName (m), juce::Justification::centred, true, Face::Tiny);
         }
     }
 
-    void Display::speakerMeter (juce::Graphics& g, juce::Rectangle<float> box, int bus) const
+    void Display::speakerMeter (juce::Rectangle<float> box, int bus) const
     {
         // A short bar, -60 dB to 0, of the bus's output.
         const auto& buses = ctx.engine.getBuses();
         Strip* st = juce::isPositiveAndBelow (bus, (int) buses.size()) ? buses[(size_t) bus].get() : nullptr;
         const float level = st != nullptr ? juce::Decibels::gainToDecibels (ctx.meters.get (st, MeterPoint::Output, 0), -60.0f) : -60.0f;
-        const auto bar = box.withSizeKeepingCentre (box.getWidth(), 4.0f);
-        g.setColour (kPixelDim);
-        g.drawRect (bar, 0.5f);
-        g.setColour (kPixel);
-        g.fillRect (bar.withWidth (bar.getWidth() * (level + 60.0f) / 60.0f));
+        const auto bar = box.withSizeKeepingCentre (box.getWidth(), 3.0f);
+        lcd.box (snap (bar));
+        lcd.fill (snap (bar.withWidth (bar.getWidth() * (level + 60.0f) / 60.0f)));
     }
 
-    void Display::paintPrograms (juce::Graphics& g, juce::Rectangle<float> area) const
+    void Display::paintPrograms (juce::Rectangle<float> area) const
     {
         // The CHANNEL LIBRARY's scrolling list (V2 MAN p.48): the programs around
         // the one RECALL, STORE or CLEAR has chosen (RECALL's past 64 the UNDO).
@@ -2700,26 +2820,22 @@ namespace y02r
         constexpr int kLines = 7;
         const float h = area.getHeight() / (float) kLines;
         const int first = juce::jlimit (0, juce::jmax (0, f.hi - kLines + 1), chosen - kLines / 2);
-        g.setFont (type::font (type::kLabel, true));
         for (int k = 0; k < kLines && first + k <= f.hi; ++k)
         {
             const int n = first + k;
-            const auto line = juce::Rectangle<float> (area.getX(), area.getY() + h * (float) k, area.getWidth(), h - 2.0f);
+            const auto line = juce::Rectangle<float> (area.getX(), area.getY() + h * (float) k, area.getWidth(), h - 1.0f);
             if (n == chosen)
-            {
-                g.setColour (kPixel);
-                g.fillRect (line);
-            }
-            g.setColour (n == chosen ? kLcd : kPixel);
-            g.drawText (f.text ? f.text (n) : juce::String (n + 1), line.reduced (10.0f, 0.0f), juce::Justification::centredLeft);
+                lcd.fill (snap (line));
+            lcd.type (line.reduced (4.0f, 0.0f), f.text ? f.text (n) : juce::String (n + 1), juce::Justification::centredLeft, n != chosen);
         }
     }
 
-    void Display::paintMeters (juce::Graphics& g, juce::Rectangle<float> area) const
+    void Display::paintMeters (juce::Rectangle<float> area) const
     {
         // METER (V2 MAN pp.41-43): 1/3 MIC 1-16 over LINE 17/18-23/24, 2/3 TAPE
         // 1-16 over EFF 1-2, 3/3 BUS, AUX and STEREO; each group on a scale from
         // CLIP to -48 dB, its numbers under it.
+        auto& d = lcd;
         const auto levelOf = [this] (int s)
         {
             auto& e = ctx.engine;
@@ -2737,21 +2853,17 @@ namespace y02r
         const auto group = [&] (juce::Rectangle<float> r, const std::vector<int>& strips, const juce::StringArray& captions, const std::vector<int>& splits)
         {
             // The scale both sides, a dotted line at each mark; the bars; their numbers; the captions under brackets.
-            g.setFont (type::font (8.5f, true));
-            const auto scale = r.withTrimmedBottom (30.0f);
-            const auto bars = scale.reduced (30.0f, 0.0f);
+            const auto scale = r.withTrimmedBottom (captions.isEmpty() ? 10.0f : 18.0f);
+            const auto bars = scale.reduced (16.0f, 0.0f);
             const float marksDb[] = { 0.0f, -6.0f, -12.0f, -18.0f, -30.0f, -48.0f };
             const char* names[] = { "CLIP", "-6", "-12", "-18", "-30", "-48" };
-            const auto yOf = [&scale] (float db) { return scale.getY() + 4.0f + (scale.getHeight() - 8.0f) * (-db / 48.0f); };
+            const auto yOf = [&scale] (float db) { return scale.getY() + 3.0f + (scale.getHeight() - 6.0f) * (-db / 48.0f); };
             for (int k = 0; k < 6; ++k)
             {
                 const float yy = yOf (marksDb[k]);
-                g.setColour (kPixel);
-                g.drawText (names[k], juce::Rectangle<float> (scale.getX(), yy - 5.0f, 28.0f, 10.0f), juce::Justification::centredLeft);
-                g.drawText (names[k], juce::Rectangle<float> (scale.getRight() - 28.0f, yy - 5.0f, 28.0f, 10.0f), juce::Justification::centredRight);
-                g.setColour (kPixelDim);
-                for (float x = bars.getX(); x < bars.getRight(); x += 4.0f)
-                    g.fillRect (x, yy, 1.0f, 1.0f);
+                d.type ({ scale.getX(), yy - 3.0f, 15.0f, 6.0f }, names[k], juce::Justification::centredLeft, true, Face::Tiny);
+                d.type ({ scale.getRight() - 15.0f, yy - 3.0f, 15.0f, 6.0f }, names[k], juce::Justification::centredRight, true, Face::Tiny);
+                d.dottedH (juce::roundToInt (bars.getX()), juce::roundToInt (bars.getRight()), juce::roundToInt (yy));
             }
             const int n = (int) strips.size();
             const float w = bars.getWidth() / (float) n;
@@ -2759,25 +2871,22 @@ namespace y02r
             {
                 const float level = levelOf (strips[(size_t) k]);
                 const auto cell = juce::Rectangle<float> (bars.getX() + w * (float) k, yOf (0.0f), w, yOf (-48.0f) - yOf (0.0f));
-                const auto bar = cell.withSizeKeepingCentre (juce::jmax (2.0f, w * 0.45f), cell.getHeight());
-                g.setColour (kPixel);
-                g.fillRect (bar.withTop (yOf (juce::jmax (-48.0f, level))));
-                chip (g, fitted (juce::Rectangle<float> (cell.getX(), scale.getBottom() + 2.0f, w, 12.0f).reduced (1.0f, 0.0f), numberOf (strips[(size_t) k]), 4.0f),
-                      numberOf (strips[(size_t) k]), strips[(size_t) k] == strip);
+                const auto bar = cell.withSizeKeepingCentre (juce::jmax (1.0f, std::floor (w * 0.45f)), cell.getHeight());
+                d.fill (snap (bar.withTop (yOf (juce::jmax (-48.0f, level)))));
+                const auto number = numberOf (strips[(size_t) k]);
+                label (d, fitted (juce::Rectangle<float> (cell.getX(), scale.getBottom() + 1.0f, w, 8.0f), number, 2.0f), number, strips[(size_t) k] == strip,
+                       (float) Dots::width (number, Face::Small) + 1.0f <= w ? Face::Small : Face::Tiny);
             }
             for (int c = 0; c < captions.size(); ++c)
             {
                 const float x0 = bars.getX() + w * (float) splits[(size_t) c] + 2.0f, x1 = bars.getX() + w * (float) splits[(size_t) c + 1] - 2.0f;
-                const float yy = scale.getBottom() + 18.0f;
-                g.setColour (kPixel);
-                g.drawLine (x0, yy, x1, yy, 1.0f);
-                g.drawLine (x0, yy - 3.0f, x0, yy, 1.0f);
-                g.drawLine (x1, yy - 3.0f, x1, yy, 1.0f);
-                const auto cap = fitted (juce::Rectangle<float> (x0, yy - 1.0f, x1 - x0, 11.0f), captions[c], 10.0f);
-                g.setColour (kLcd);
-                g.fillRect (cap);
-                g.setColour (kPixel);
-                g.drawText (captions[c], cap, juce::Justification::centred);
+                const int yy = juce::roundToInt (scale.getBottom() + 13.0f);
+                d.hLine (juce::roundToInt (x0), juce::roundToInt (x1), yy);
+                d.vLine (juce::roundToInt (x0), yy - 2, yy);
+                d.vLine (juce::roundToInt (x1), yy - 2, yy);
+                const auto cap = fitted (juce::Rectangle<float> (x0, (float) yy - 4.0f, x1 - x0, 9.0f), captions[c], 6.0f);
+                d.fill (snap (cap), false);
+                d.type (cap, captions[c]);
             }
         };
         std::vector<int> top, bottom;
@@ -2796,22 +2905,20 @@ namespace y02r
         group (area.withTrimmedTop (area.getHeight() * 0.6f).withWidth (area.getWidth() * (page == 0 ? 0.48f : 0.3f)), bottom, {}, {});
     }
 
-    void Display::paintEq (juce::Graphics& g, juce::Rectangle<float> area) const
+    void Display::paintEq (juce::Rectangle<float> area) const
     {
         // The curve of the strip's four bands (bells and shelves as the DSP's;
         // a filter as a 12 dB/oct slope).
-        g.setColour (kPixel);
-        g.drawRect (area, 1.0f);
-        g.setFont (type::font (8.5f, true));
+        auto& d = lcd;
+        const auto frame = snap (area);
+        d.box (frame);
         for (const auto& [hz, name] : { std::pair<float, const char*> { 100.0f, "100" }, { 1000.0f, "1.0K" }, { 10000.0f, "10K" } })
         {
-            const float x = area.getX() + area.getWidth() * std::log10 (hz / 20.0f) / 3.0f;
-            g.setColour (kPixelDim);
-            for (float yy = area.getY() + 2.0f; yy < area.getBottom() - 10.0f; yy += 3.0f)
-                g.fillRect (x, yy, 1.0f, 1.0f);
-            g.setColour (kPixel);
-            g.drawText (name, juce::Rectangle<float> (x - 15.0f, area.getBottom() - 10.0f, 30.0f, 9.0f), juce::Justification::centred);
+            const int x = juce::roundToInt (area.getX() + area.getWidth() * std::log10 (hz / 20.0f) / 3.0f);
+            d.dottedV (x, frame.getY() + 2, frame.getBottom() - 9);
+            d.type ({ (float) x - 10.0f, (float) frame.getBottom() - 7.0f, 20.0f, 5.0f }, name, juce::Justification::centred, true, Face::Tiny);
         }
+        d.dottedH (frame.getX() + 1, frame.getRight() - 2, juce::roundToInt (area.getCentreY()));
         const int eqModel = models::findModel (models::ChannelEq, "Y2EQ");
         if (eqModel < 0)
             return;
@@ -2830,41 +2937,34 @@ namespace y02r
             freqs[i] = 20.0f * std::pow (1000.0f, (float) i / (float) (n - 1));
         if (! models::modelResponse (models::ChannelEq, eqModel, values.data(), (int) values.size(), freqs, db, n))
             return;
-        juce::Path p;
+        std::vector<juce::Point<float>> curve;
         for (int i = 0; i < n; ++i)
-        {
-            const float x = area.getX() + area.getWidth() * (float) i / (float) (n - 1);
-            const float yy = area.getCentreY() - juce::jlimit (-18.0f, 18.0f, db[i]) / 18.0f * area.getHeight() * 0.45f;
-            i == 0 ? p.startNewSubPath (x, yy) : p.lineTo (x, yy);
-        }
-        g.setColour (kPixelDim);
-        g.drawHorizontalLine ((int) area.getCentreY(), area.getX(), area.getRight());
-        g.setColour (kPixel);
-        g.strokePath (p, juce::PathStrokeType (1.6f));
+            curve.push_back ({ area.getX() + 1.0f + (area.getWidth() - 3.0f) * (float) i / (float) (n - 1),
+                               area.getCentreY() - juce::jlimit (-18.0f, 18.0f, db[i]) / 18.0f * area.getHeight() * 0.42f });
+        polyline (d, curve);
     }
 
     void Display::mouseDown (const juce::MouseEvent& e)
     {
+        const auto at = toDots (e.position);
         for (int i = 0; i < (int) fields.size(); ++i)
-            if (fieldBox (i).contains (e.position))
+            if (fieldBox (i).contains (at))
             {
                 focusField (i, false);
                 // A tap on a digit puts the cursor on it.
                 if (const auto& f = fields[(size_t) i]; f.digits > 0 && f.get)
                 {
                     const auto text = f.text ? f.text (f.get()) : juce::String (f.get());
-                    const auto font = f.look == Field::Look::Tile ? type::font (type::kLabel, true) : type::font (kSmall + 1.0f, true);
-                    float x = valueBox (i).getCentreX() - juce::GlyphArrangement::getStringWidth (font, text) * 0.5f;
+                    float x = valueBox (i).getCentreX() - (float) Dots::width (text, Face::Small) * 0.5f;
                     for (int c = 0, seen = 0; c < text.length() && seen < f.digits; ++c)
                     {
-                        const float w = juce::GlyphArrangement::getStringWidth (font, text.substring (c, c + 1));
                         if (juce::CharacterFunctions::isDigit (text[c]))
                         {
-                            if (e.position.x >= x - 1.0f)
+                            if (at.x >= x - 0.5f)
                                 digit = seen;
                             ++seen;
                         }
-                        x += w;
+                        x += 6.0f;
                     }
                 }
                 if (e.getNumberOfClicks() > 1)
@@ -2886,6 +2986,91 @@ namespace y02r
     }
 
     void Display::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& w) { turn (w.deltaY > 0 ? 1 : -1); }
+
+    void Display::paintViewSends (juce::Rectangle<float> r) const
+    {
+        // AUX 1-8: each send's knob, PRE or POST, its name (two columns of four).
+        const int m = memberOf (strip);
+        if (m < 0)
+            return;
+        auto& d = lcd;
+        for (int aux = 0; aux < 8; ++aux)
+        {
+            const auto cell = juce::Rectangle<float> (r.getX() + r.getWidth() * 0.5f * (float) (aux % 2), r.getY() + r.getHeight() * 0.25f * (float) (aux / 2),
+                                                      r.getWidth() * 0.5f, r.getHeight() * 0.25f).reduced (1.0f);
+            auto c = cell;
+            d.type (c.removeFromBottom (6.0f), "AUX" + juce::String (aux + 1), juce::Justification::centred, true, Face::Tiny);
+            const bool pre = ((y.get (sendAddress (m, 9)) >> aux) & 1) != 0, on = ((y.get (sendAddress (m, 8)) >> aux) & 1) != 0;
+            label (d, fitted (c.removeFromBottom (7.0f), "POST", 2.0f), pre ? "PRE" : "POST", pre, Face::Tiny);
+            knob (d, c.reduced (1.0f), (float) juce::jmax (0, y.get (sendAddress (m, aux))) / 127.0f);
+            if (! on)
+                d.type (c.removeFromRight (c.getWidth() * 0.3f), "OFF", juce::Justification::centred, true, Face::Tiny);
+        }
+    }
+
+    void Display::paintChannelMeter (juce::Rectangle<float> r, bool reduction) const
+    {
+        auto& e = ctx.engine;
+        auto& d = lcd;
+        auto pick = [] (const MixerEngine::StripList& l, int k) -> Strip* { return juce::isPositiveAndBelow (k, (int) l.size()) ? l[(size_t) k].get() : nullptr; };
+        const int s = strip;
+        Strip* st = s < kEff ? pick (e.getChannels(), s) : s < kBus ? pick (e.getAux(), s - kEff) : s < kStereo ? pick (e.getBuses(), s - kBus) : pick (e.getMains(), 0);
+        const bool stereo = isStereoStrip (s) || s == kStereo;
+        const float marksDb[] = { 0.0f, -6.0f, -12.0f, -18.0f, -30.0f, -48.0f };
+        const char* names[] = { "CLIP", "-6", "-12", "-18", "-30", "-48" };
+        const auto scale = r.withTrimmedTop (5.0f).withTrimmedBottom (9.0f);
+        const auto yOf = [&scale] (float db) { return scale.getY() + scale.getHeight() * (-db / 48.0f); };
+        const auto bars = scale.withTrimmedRight (16.0f).withTrimmedLeft (reduction ? 12.0f : 2.0f);
+        for (int k = 0; k < 6; ++k)
+        {
+            const float yy = yOf (marksDb[k]);
+            d.type ({ scale.getRight() - 15.0f, yy - 3.0f, 15.0f, 6.0f }, names[k], juce::Justification::centredRight, true, Face::Tiny);
+            d.dottedH (juce::roundToInt (bars.getX()), juce::roundToInt (bars.getRight()), juce::roundToInt (yy), 3);
+        }
+        const int n = stereo ? 2 : 1;
+        const float w = bars.getWidth() / (float) n;
+        for (int c = 0; c < n; ++c)
+        {
+            const float db = st != nullptr ? juce::Decibels::gainToDecibels (ctx.meters.get (st, MeterPoint::PreFader, c), -48.0f) : -48.0f;
+            const auto bar = juce::Rectangle<float> (bars.getX() + w * (float) c, scale.getY(), w, scale.getHeight()).withSizeKeepingCentre (juce::jmin (5.0f, w * 0.5f), scale.getHeight());
+            d.box (snap (bar));
+            d.fill (snap (bar.withTop (yOf (juce::jmax (-48.0f, db)))));
+            d.type (bar.withY (scale.getBottom() + 1.0f).withHeight (5.0f).expanded (4.0f, 0.0f), juce::String (c + 1), juce::Justification::centred, true, Face::Tiny);
+        }
+        if (reduction)
+        {
+            // GR: down from the top, 0 to -18 dB.
+            const float gr = st != nullptr ? std::abs (st->meters.dynReductionDb.load()) : 0.0f;
+            const auto bar = juce::Rectangle<float> (scale.getX() + 3.0f, scale.getY(), 5.0f, scale.getHeight());
+            d.box (snap (bar));
+            d.fill (snap (bar.withHeight (bar.getHeight() * juce::jlimit (0.0f, 1.0f, gr / 18.0f))));
+            d.type (bar.withY (scale.getBottom() + 1.0f).withHeight (5.0f).expanded (4.0f, 0.0f), "GR", juce::Justification::centred, true, Face::Tiny);
+        }
+    }
+
+    void Display::paintTransfer (juce::Rectangle<float> r) const
+    {
+        const auto box = r.withSizeKeepingCentre (juce::jmin (r.getWidth(), r.getHeight()), juce::jmin (r.getWidth(), r.getHeight()));
+        lcd.box (snap (box));
+        const int type = juce::jlimit (0, 5, y.get (address (strip, kDynType)));
+        const int model = models::findModel (models::Dynamics, kDynTokens[type]);
+        if (model < 0)
+            return;
+        const auto& m = models::model (models::Dynamics, model);
+        std::vector<float> values;
+        for (int k = 0; k < (int) m.params.size(); ++k)
+            values.push_back (stepValue (m.params[(size_t) k], juce::jmax (0, k < 6 ? y.get (address (strip, kDynParam + k)) : 0)));
+        constexpr int n = 48;
+        const auto curve = transferCurve (model, values.data(), n);
+        if ((int) curve.size() < n)
+            return;
+        const float range = transferRangeDb (model);
+        std::vector<juce::Point<float>> points;
+        for (int k = 0; k < n; ++k)
+            points.push_back ({ box.getX() + 1.0f + (box.getWidth() - 3.0f) * (float) k / (float) (n - 1),
+                                box.getBottom() - 2.0f - (box.getHeight() - 3.0f) * (juce::jlimit (-range, 0.0f, curve[(size_t) k]) + range) / range });
+        polyline (lcd, points);
+    }
 } // namespace y02r
 
 //==============================================================================
@@ -4036,7 +4221,8 @@ void Y02RSurface::resized()
         contrastKnob = meterColumn.removeFromBottom (50).withSizeKeepingCentre (26, 26).translated (0, -6);
         meterRect = meterColumn.reduced (2, 2);
         bz.removeFromRight (8);
-        display.setBounds (bz);
+        // The LCD is 4:3 (320 x 240 dots), in the middle of the glass (the photos).
+        display.setBounds (bz.withSizeKeepingCentre (juce::jmin (bz.getWidth(), bz.getHeight() * 4 / 3), bz.getHeight()));
     }
     middle.removeFromLeft (16);
 

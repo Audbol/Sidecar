@@ -339,6 +339,14 @@ const std::optional<Show::Scene> Show::getScene (int index) const
     s.skip = ld::ld_scene_skip (handle, index);
     s.linkNext = ld::ld_scene_link (handle, index);
     s.midi = takeString (ld::ld_scene_midi (handle, index));
+    if (const int n = ld::ld_scene_embedded (handle, index, nullptr, nullptr, 0); n > 0)
+    {
+        std::vector<int32_t> scenes ((size_t) n);
+        std::vector<uint32_t> delays ((size_t) n);
+        ld::ld_scene_embedded (handle, index, scenes.data(), delays.data(), n);
+        for (size_t i = 0; i < (size_t) n; ++i)
+            s.embedded.push_back ({ scenes[i], (int) delays[i] });
+    }
     s.item = static_cast<ItemKind> (juce::jlimit (0, 4, ld::ld_scene_item_kind (handle, index)));
     if (s.item != ItemKind::Snapshot)
     {
@@ -467,6 +475,52 @@ void Show::setSceneMidi (int index, const juce::String& text)
     ld::ld_scene_set_midi (handle, index, u.data, u.size);
 }
 
+void Show::setSceneEmbedded (int index, const std::vector<Embedded>& list)
+{
+    std::vector<int32_t> scenes;
+    std::vector<uint32_t> delays;
+    for (const auto& e : list)
+    {
+        scenes.push_back (e.scene);
+        delays.push_back ((uint32_t) juce::jlimit (0, kMaxEmbeddedDelayMs, e.delayMs));
+    }
+    ld::ld_scene_set_embedded (handle, index, scenes.data(), delays.data(), (int32_t) scenes.size());
+}
+
+state::ApplyResult Show::afterSceneRecall (ld::ApplyResultC& r)
+{
+    std::array<int32_t, 64> scenes {};
+    std::array<uint32_t, 64> delays {};
+    const int n = juce::jmin ((int) scenes.size(), (int) ld::ld_show_take_embedded (handle, scenes.data(), delays.data(), (int32_t) scenes.size()));
+    if (! firingEmbedded)
+    {
+        embeddedDue.clear();
+        const double now = juce::Time::getMillisecondCounterHiRes();
+        for (size_t i = 0; i < (size_t) n; ++i)
+            embeddedDue.push_back ({ scenes[i], now + (double) delays[i] });
+    }
+    return afterRecall (r);
+}
+
+bool Show::fireDueEmbedded (double nowMs)
+{
+    // The due ones in order of their time; one recalled here leaves the others waiting.
+    while (! embeddedDue.empty())
+    {
+        const auto next = std::min_element (embeddedDue.begin(), embeddedDue.end(), [] (const DueRecall& a, const DueRecall& b) { return a.dueMs < b.dueMs; });
+        if (next->dueMs > nowMs)
+            break;
+        const int scene = next->scene;
+        embeddedDue.erase (next);
+        if (scene < 0 || scene >= getNumScenes() || recallLocked.load())
+            continue;
+        const juce::ScopedValueSetter<bool> firing (firingEmbedded, true);
+        auto r = runRecall (0, scene);
+        afterSceneRecall (r);
+    }
+    return ! embeddedDue.empty();
+}
+
 void Show::setSceneName (int index, const juce::String& text)
 {
     const Utf8 u (text);
@@ -579,7 +633,7 @@ state::ApplyResult Show::afterRecall (ld::ApplyResultC& r)
     }
 
     glideSeconds = 0.0;
-    if (isFading() || isGliding())
+    if (isFading() || isGliding() || ! embeddedDue.empty())
         startTimerHz (60);
     else
         stopTimer();
@@ -611,7 +665,7 @@ state::ApplyResult Show::recallScene (int index)
     if (recallLocked.load())
         return lockedResult();
     auto r = runRecall (0, index);
-    return afterRecall (r);
+    return afterSceneRecall (r);
 }
 
 state::ApplyResult Show::recallNext()
@@ -619,7 +673,7 @@ state::ApplyResult Show::recallNext()
     if (recallLocked.load())
         return lockedResult();
     auto r = runRecall (1, 0);
-    return afterRecall (r);
+    return afterSceneRecall (r);
 }
 
 state::ApplyResult Show::recallPrevious()
@@ -627,7 +681,7 @@ state::ApplyResult Show::recallPrevious()
     if (recallLocked.load())
         return lockedResult();
     auto r = runRecall (2, 0);
-    return afterRecall (r);
+    return afterSceneRecall (r);
 }
 
 state::ApplyResult Show::recallSceneByTag (int tag)
@@ -635,7 +689,7 @@ state::ApplyResult Show::recallSceneByTag (int tag)
     if (recallLocked.load())
         return lockedResult();
     auto r = runRecall (3, tag);
-    return afterRecall (r);
+    return afterSceneRecall (r);
 }
 
 state::ApplyResult Show::undoRecall()
@@ -644,6 +698,7 @@ state::ApplyResult Show::undoRecall()
         return lockedResult();
     ld::ApplyResultC r {};
     ld::ld_show_undo_recall (handle, engine.getHandle(), &r);
+    embeddedDue.clear(); // what waited belonged to the recall undone
     return afterRecall (r);
 }
 
@@ -931,7 +986,9 @@ void Show::timerCallback()
 {
     const bool fading = ld::ld_show_tick (handle, engine.getHandle());
     const bool gliding = advanceGlides();
-    if (! fading && ! gliding)
+    // An embedded recall due now may start a fade of its own.
+    const bool waiting = fireDueEmbedded (juce::Time::getMillisecondCounterHiRes());
+    if (! fading && ! gliding && ! waiting && ! isFading() && ! isGliding())
         stopTimer();
 }
 
@@ -1102,6 +1159,7 @@ juce::Result Show::afterLoad (bool ok, ld::LdString* message)
 {
     const auto text = takeString (message);
     stopTimer();
+    embeddedDue.clear();
     engine.syncStrips();
     changed();
 
@@ -1300,7 +1358,38 @@ void Show::clearScenes (const juce::String& showName)
 {
     const Utf8 n (showName);
     ld::ld_show_clear_scenes (handle, engine.getHandle(), n.data, n.size);
+    embeddedDue.clear();
     changed();
+}
+
+bool Show::readShowFileSceneNames (const juce::File& file, juce::StringArray& names, juce::String& error)
+{
+    const Utf8 p (file.getFullPathName());
+    ld::LdString* text = nullptr;
+    const bool ok = ld::ld_show_file_scene_names (p.data, p.size, &text);
+    names.clear();
+    error.clear();
+    if (! ok)
+    {
+        error = takeString (text);
+        return false;
+    }
+    // One per line; a show without scenes has no text at all.
+    if (const auto all = takeString (text); all.isNotEmpty())
+        names.addLines (all);
+    return true;
+}
+
+int Show::importShowScenes (const juce::File& file, const std::vector<int>& which, int index, juce::String& error)
+{
+    const Utf8 p (file.getFullPathName());
+    ld::LdString* message = nullptr;
+    const std::vector<int32_t> picked (which.begin(), which.end());
+    const int first = ld::ld_show_import_show_scenes (handle, engine.getHandle(), p.data, p.size, picked.data(), (int32_t) picked.size(), index, &message);
+    error = takeString (message);
+    if (first >= 0)
+        changed();
+    return first;
 }
 
 juce::Result Show::loadScenesFromFile (const juce::File& file)
@@ -1316,6 +1405,7 @@ juce::Result Show::loadScenesFromFile (const juce::File& file)
 void Show::clear (int numChannels)
 {
     stopTimer();
+    embeddedDue.clear();
     ld::ld_show_clear (handle, engine.getHandle(), numChannels);
     engine.syncStrips();
     changed();

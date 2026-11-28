@@ -165,6 +165,7 @@ private:
     Strip* sendDestination = nullptr;
     std::atomic<float>* sendLevel = nullptr;
     std::atomic<bool>* sendOn = nullptr;
+    int sendSlot = -1; // an aux send's or a matrix's: what a PRO2 ignores of the send (pro2SendIgnored)
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (StripColumn)
 };

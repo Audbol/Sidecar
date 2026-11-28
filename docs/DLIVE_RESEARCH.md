@@ -259,6 +259,30 @@ delayed (one block, like every signal read back from a later stage); how a 5.0 p
 control, equal power); the fades' shape (linear in gain); that Invert without Follow copies the mirrored pans once; that
 turning ABCD on gives A the channel's patch if it has none.
 
+## Scenes (Reference Guide V1.9, chapter 7)
+
+From the guide: 500 scenes; the list's icons (stored, last recalled, embedded recall, crossfade
+time, recall filters, locked, 7.1); Copy Filter To... onto one scene, a range or all of them;
+Embedded Recall (7.3): other scenes, of this unit or another on the network, each with a delay of
+0 to 4 minutes, a list with Add and Remove; Custom MIDI, hexadecimal bytes sent over TCP/IP on
+recall after the standard messages; Scene Import (7.6): another show's scenes dragged into Local
+Scenes. The owner's photographs show a newer firmware's Scene Manager (Scene Status and All Scenes
+filters, an Actions key, a Cues side tab, a Cue List Editor with indents and spacers); the guide
+doesn't cover those.
+
+Sidecar's reading, because the guide doesn't say: what happens to embedded recalls still waiting
+when another scene is recalled (Sidecar drops them, so a jump in the running order can't be
+followed by a stale one; Undo Go drops them too); whether an embedded scene's own embedded recalls
+run (not in Sidecar, so two scenes can't recall each other for ever); the most a scene holds
+(32); whether an imported scene keeps its embedded recalls (no: they name the other show's
+scenes); where a dropped scene goes in a list without fixed slots (it is put in at that row and
+the rest move down). Custom MIDI goes out of Sidecar's MIDI port, as SEND MIDI does, not over
+MIDI over TCP. The windows' layout follows the guide's picture of Embedded Recall; Copy Filter
+To, Custom MIDI, Select Range and the preferences have no picture and are Sidecar's. The
+preferences behind Setup (7.1) are kept in Sidecar's settings for the computer rather than per
+Surface; Auto Increment is on and Scene Overwrite Confirmation on unless changed (the guide gives
+no defaults); MixRack Startup Scene isn't offered (Sidecar's STARTUP folder does that job).
+
 ## Not published anywhere we could find
 
 These need a real console, or stay Sidecar's reading:

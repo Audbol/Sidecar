@@ -207,6 +207,53 @@ fn the_delay_runs_in_samples_from_zero_to_43400() {
 }
 
 #[test]
+fn an_input_channels_delay_has_its_mix_and_feedback() {
+    // The 1 kHz tone has 48 samples a period: half a period's delay against the dry signal.
+    let peak = |delay: f32, mix: f32, fb: f32| {
+        let mut rig = Rig::new();
+        let ch = rig.channel(0);
+        ch.params.fader_db.store(0.0);
+        let i = &ch.params.input;
+        assert_eq!((i.delay_mix.load(), i.delay_fb.load()), (100.0, 0.0), "the initial data");
+        i.delay_on.store(true, Relaxed);
+        i.delay.store(delay);
+        i.delay_mix.store(mix);
+        i.delay_fb.store(fb);
+        rig.run(200)[0]
+    };
+    let plain = peak(24.0, 100.0, 0.0);
+    assert!(plain > 0.15, "{plain}");
+    let near = |x: f32, want: f32| (x - want).abs() < plain * 0.03;
+    assert!(near(peak(24.0, 0.0, 0.0), plain), "0 %: the dry signal");
+    assert!(peak(24.0, 50.0, 0.0) < plain * 0.03, "half each, half a period apart: nothing");
+    assert!(near(peak(24.0, -50.0, 0.0), plain), "minus reverses the delayed half: in phase again");
+    // Feedback a period long: the repeats add up to 1 / (1 - FB).
+    assert!(near(peak(48.0, 100.0, 50.0), 2.0 * plain), "+50 %");
+    assert!(near(peak(48.0, 100.0, -50.0), plain / 1.5), "-50 %");
+}
+
+/// A Direct Out PRE EQ (p.102) leaves before the attenuator and the EQ; PRE FADER after them.
+#[test]
+fn a_direct_out_pre_eq_leaves_before_the_attenuator() {
+    use livedaw_engine::ports::dm2000_ports::OMNI;
+    use livedaw_engine::routing::{DirectSource, DirectTap};
+    let mut rig = Rig::new();
+    let ch = rig.channel(0);
+    ch.params.input.trim_db.store(-20.0);
+    let port = OMNI as usize;
+    let pre_eq = DirectTap { kind: StripKind::Channel, number: 1, side: 0, tap: 2 }.code();
+    assert!(rig.engine.route_output_source(OMNI, pre_eq));
+    rig.engine.collect(); // plans the tap
+    let at_pre_eq = rig.run(40)[port];
+    assert!(at_pre_eq > 0.2, "PRE EQ: the tone as it comes in: {at_pre_eq}");
+    let pre_fader = DirectSource { kind: StripKind::Channel, number: 1, side: 0, post: false }.code();
+    assert!(rig.engine.route_output_source(OMNI, pre_fader));
+    rig.engine.collect();
+    let attenuated = rig.run(40)[port];
+    assert!((attenuated - at_pre_eq * 0.1).abs() < at_pre_eq * 0.02, "PRE FADER: 20 dB down: {attenuated} of {at_pre_eq}");
+}
+
+#[test]
 fn the_fader_laws_are_yamahas_tables() {
     let spec = Profile::Dm2000.spec();
     let (fader, main, bus) =

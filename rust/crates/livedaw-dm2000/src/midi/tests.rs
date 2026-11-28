@@ -74,7 +74,7 @@ fn the_generated_tables_are_yamahas() {
 fn every_generated_row_has_a_field_or_is_known_not_to() {
     let m = Midi::default();
     let unmapped: Vec<&str> = DEFS.iter().enumerate().filter(|(i, _)| m.fields[*i].is_none()).map(|(_, d)| d.name).collect();
-    // Things the engine doesn't have (fade times, keying, delay mix, routing's PAN
+    // Things the engine doesn't have (fade times, keying, routing's PAN
     // and DIRECT, surround, ...), known one by one so a typo in `field_of` shows.
     let expected_prefixes = [
         "kFadeTime",
@@ -82,8 +82,6 @@ fn every_generated_row_has_a_field_or_is_known_not_to() {
         "kGateLink",
         "kGateKey",
         "kCompLink",
-        "kInDelayMix",
-        "kInDelayFB",
         "kRoutingPan",
         "kRoutingDirect",
         "kInGroupDynamics",
@@ -198,6 +196,17 @@ fn a_change_moves_the_console_and_a_request_reads_it() {
     m.setup.omni[PRM] = true;
     m.receive(&e, &other);
     assert!(ch(7).params.mute.load(Relaxed), "OMNI");
+    // An Input Channel delay's MIX (-100 to 100, `01 21 01`) and FB.GAIN (-99 to 99, `01 21 02`).
+    let (tt, ee, pp) = address("kInputDelay", "kInDelayMix");
+    assert_eq!((tt, ee, pp), (0x01, 0x21, 0x01));
+    m.receive(&e, &change(tt, ee, pp, 9, -50));
+    assert_eq!(ch(9).params.input.delay_mix.load(), -50.0);
+    let (tt, ee, pp) = address("kInputDelay", "kInDelayFBGain");
+    m.receive(&e, &change(tt, ee, pp, 9, 120));
+    assert_eq!(ch(9).params.input.delay_fb.load(), 99.0, "clamped");
+    while m.take_out().is_some() {}
+    m.receive(&e, &request(tt, ee, pp, 9));
+    assert_eq!(value_of(&m.take_out().unwrap()), 99);
 }
 
 #[test]

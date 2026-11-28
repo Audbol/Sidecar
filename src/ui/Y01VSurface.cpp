@@ -1221,6 +1221,24 @@ namespace y01v
     {
         auto& dyn = s.params.dynamics();
         add (Cell::Switch, { 57, 21, 34, 12 }, bindBool ("COMP", dyn.on));
+        if (s.isInput())
+        {
+            // KEY IN (p.169): SELF, or another input channel's signal triggers it. CH 13-16 are
+            // the two stereo channels, each keying from its pair.
+            KnobBinding key;
+            key.label = "KEYIN";
+            key.steps = 15.0f;
+            key.get = [&dyn] { return (float) (juce::jlimit (-1, 13, (int) dyn.scSource.load()) + 1) / 14.0f; };
+            key.set = [&dyn] (float v) { dyn.scSource = juce::roundToInt (juce::jlimit (0.0f, 1.0f, v) * 14.0f) - 1; };
+            key.text = [&dyn]
+            {
+                const int k = dyn.scSource.load();
+                return k < 0 ? juce::String ("SELF") : k < 12 ? "CH" + juce::String (k + 1) : juce::String (k == 12 ? "CH13/14" : "CH15/16");
+            };
+            auto& cell = add (Cell::Text, { 127, 28, 56, 10 }, std::move (key)); // its dotted box where the page draws it
+            cell.dotted = true;
+            cell.centred = true;
+        }
         const auto& m = models::model (models::Dynamics, dyn.model.load());
         // The columns read THRESHOLD/ATTACK, OUT GAIN/RELEASE, KNEE/RATIO (p.163).
         static const char* const order[] = { "THRESHOLD", "ATTACK", "OUT GAIN", "RELEASE", "KNEE", "RATIO" };
@@ -1249,13 +1267,7 @@ namespace y01v
         textCentred ({ 126, 12, 58, 13 }, m.name.toUpperCase().replace ("COMPRESSOR", "COMP").substring (0, 9));
         if (s.isInput())
         {
-            text (94, 33, "KEYIN");
-            const juce::Rectangle<int> key (126, 27, 58, 12);
-            dottedH (key.getX(), key.getRight() - 1, key.getY());
-            dottedH (key.getX(), key.getRight() - 1, key.getBottom() - 1);
-            dottedV (key.getX(), key.getY(), key.getBottom() - 1);
-            dottedV (key.getRight() - 1, key.getY(), key.getBottom() - 1);
-            text (130, 29, "SELF");
+            text (94, 33, "KEYIN"); // its source is a cell (buildDynamics)
         }
         // The transfer curve.
         const juce::Rectangle<int> graph (187, 1, 41, 40);
@@ -1477,6 +1489,26 @@ namespace y01v
             add (Cell::Switch, { 138, 33, 10, 9 }, bindBool ("ST", s.mains[0].on, "ST", "ST"));
             add (Cell::Dial, { 135, 58, 30, 22 }, bindPan01V ("PAN", p.pan));
             add (Cell::Switch, { 214, 7, 16, 9 }, bindBool ("PHASE", in.invert, "R", "N"));
+            // FADER GROUP A-C and MUTE GROUP D-F (pp.53-56): the GROUP page's, switched here too;
+            // a channel is in one of each at most.
+            if (const int fader = faderOf (s); fader >= 0)
+                for (int m = 0; m < 2; ++m)
+                    for (int i = 0; i < 3; ++i)
+                    {
+                        KnobBinding b;
+                        b.label = juce::String (m == 0 ? "FADER GROUP " : "MUTE GROUP ") + juce::String::charToString ((juce::juce_wchar) ('A' + m * 3 + i));
+                        b.steps = 2.0f;
+                        b.get = [this, fader, m, i] { return getGroup (fader, m == 1) == i + 1 ? 1.0f : 0.0f; };
+                        b.set = [this, fader, m, i] (float v)
+                        {
+                            if (v >= 0.5f)
+                                setGroup (fader, m == 1, i + 1);
+                            else if (getGroup (fader, m == 1) == i + 1)
+                                setGroup (fader, m == 1, 0);
+                        };
+                        b.text = [m, i] { return juce::String::charToString ((juce::juce_wchar) ('A' + m * 3 + i)); };
+                        add (Cell::Switch, { 91 + i * 12, (m == 0 ? 40 : 53) + 2, 9, 8 }, std::move (b)).raw = true;
+                    }
         }
         add (Cell::Switch, { 173, 33, 16, 9 }, bindBool ("DYNA", p.dynamics().on));
         add (Cell::Switch, { 175, 64, 16, 9 }, bindBool ("EQ", p.eq().on));
@@ -1533,25 +1565,13 @@ namespace y01v
         if (s.isInput())
             text (60, 29, delayUnitLabel(), true);
         hLine (55, 129, 37);
-        // The groups and the pair: printed as the page has them; not kept here.
-        const auto group = [this] (const char* upper, int y, const char* letters)
-        {
-            text (60, y, upper, true);
-            text (60, y + 6, "GROUP", true);
-            for (int i = 0; i < 3; ++i)
-            {
-                const juce::Rectangle<int> r (91 + i * 12, y + 2, 9, 8);
-                box (r);
-                hLine (r.getX() + 1, r.getRight(), r.getBottom());
-                vLine (r.getRight(), r.getY() + 1, r.getBottom());
-                textCentred (r, juce::String::charToString (letters[i]), true);
-            }
-        };
+        // The groups' names; their switches are cells (buildView). The pair is printed as the page has it.
         if (s.isInput())
-        {
-            group ("FADER", 40, "ABC");
-            group ("MUTE", 53, "DEF");
-        }
+            for (const auto& [upper, top] : { std::pair { "FADER", 40 }, std::pair { "MUTE", 53 } })
+            {
+                text (60, top, upper, true);
+                text (60, top + 6, "GROUP", true);
+            }
         text (60, 69, "PAIR", true);
         box ({ 90, 67, 33, 10 });
         textCentred ({ 90, 67, 33, 10 }, "MONOx2", true);
@@ -1560,10 +1580,13 @@ namespace y01v
         textCentred ({ 133, 1, 32, 9 }, "ROUTE");
         box ({ 138, 46, 22, 9 });
         textCentred ({ 138, 46, 22, 9 }, "PAN");
-        if (s.isInput())
+        if (const int ch = faderOf (s); s.isInput() && ch >= 0)
         {
-            box ({ 150, 33, 10, 9 });
-            textCentred ({ 150, 33, 10, 9 }, "D", true);
+            // D: lit while its direct out is on an OMNI or OPTION output (p.49).
+            const juce::Rectangle<int> r (150, 33, 10, 9);
+            const bool on = isDirectOut (ch);
+            on ? fill (r) : box (r);
+            textCentred (r, "D", true, ! on);
         }
         vLine (167, 0, 79);
         box ({ 169, 1, 27, 9 });
@@ -2633,14 +2656,21 @@ namespace y01v
             const bool tiny = name.length() > 4;
             const int x = 61 + (i % 8) * 29, row = i / 8;
             text (x + 11 - textWidth (name, tiny) / 2, row * 40, name, tiny);
-            // CH 1-12's direct-out switch: set by OPTION's output assignment on the console (p.49).
+            // CH 1-12's direct-out switch: set by OPTION's output assignment on the console (p.49),
+            // lit while the channel's direct out is on an output.
             if (i < 12)
             {
                 const juce::Rectangle<int> r (x + 12, 7 + row * 40 + 22, 10, 9);
-                box (r);
-                hLine (r.getX() + 1, r.getRight(), r.getBottom());
-                vLine (r.getRight(), r.getY() + 1, r.getBottom());
-                textCentred (r, "D", true);
+                const bool on = isDirectOut (i);
+                if (on)
+                    fill (r);
+                else
+                {
+                    box (r);
+                    hLine (r.getX() + 1, r.getRight(), r.getBottom());
+                    vLine (r.getRight(), r.getY() + 1, r.getBottom());
+                }
+                textCentred (r, "D", true, ! on);
             }
         }
         for (int c = 0; c < 7; ++c)
@@ -3842,6 +3872,32 @@ namespace y01v
         return -1;
     }
 
+    bool Display::isDirectOut (int channel) const
+    {
+        // The output choices CH1-16: 13/14 and 15/16 are the two sides of the stereo channels.
+        const auto mine = [channel] (int choice)
+        {
+            const int ch = choice - 10;
+            return ch >= 0 && (ch < 12 ? ch == channel : 12 + (ch - 12) / 2 == channel);
+        };
+        for (int i = 0; i < 4; ++i)
+            if (mine (outputChoice (kOmniPort + i)))
+                return true;
+        for (int i = 0; i < 8; ++i)
+            if (mine (outputChoice (kOptionPort + i)))
+                return true;
+        return false;
+    }
+
+    int Display::faderOf (const Strip& s) const
+    {
+        const auto& channels = ctx.engine.getChannels();
+        for (int i = 0; i < juce::jmin (14, (int) channels.size()); ++i)
+            if (channels[(size_t) i].get() == &s)
+                return i;
+        return -1;
+    }
+
     void Display::setOutputChoice (int port, int choice)
     {
         ctx.engine.clearOutput (port);
@@ -4803,6 +4859,21 @@ namespace y01v
     juce::String Display::getFocusText() const
     {
         return juce::isPositiveAndBelow (focus, (int) cells.size()) ? lcdValue (cells[(size_t) focus].binding) : juce::String();
+    }
+
+    int Display::findField (const juce::String& label) const
+    {
+        for (int i = 0; i < (int) cells.size(); ++i)
+            if (cells[(size_t) i].binding.label == label)
+                return i;
+        return -1;
+    }
+
+    void Display::focusField (int i)
+    {
+        if (juce::isPositiveAndBelow (i, (int) cells.size()))
+            focus = i;
+        refresh();
     }
 
     void Display::drawLeft()

@@ -159,6 +159,33 @@ fn direct_in_mixes_any_strip_into_one_path() {
     assert!(close(rig.last(PH), 0.25 + 0.25, 1e-4), "PFL of channel 1 + direct in: {}", rig.last(PH));
 }
 
+/// A pair of inputs as the SOURCE, as a DM2000's CONTROL ROOM [2TR D1] has its 2TR input:
+/// heard as it comes in, without a channel.
+#[test]
+fn a_pair_of_inputs_is_a_monitor_source() {
+    use livedaw_engine::params::{
+        monitor_port_source, monitor_source, monitor_source_index, monitor_source_name, PORT_SOURCE_BASE,
+    };
+    let mut rig = Rig::new(4);
+    rig.dc(2, 0.5);
+    rig.dc(3, 0.25);
+    let src = PORT_SOURCE_BASE + 2;
+    assert_eq!(monitor_port_source(src), Some(2));
+    assert_eq!((monitor_port_source(monitor_source_index(StripKind::Main, 0)), monitor_source(src)), (None, None));
+    assert_eq!(monitor_source_name(src), "IN.3/4");
+    rig.engine.controls.speakers.source.store(src, Relaxed);
+    rig.run(16, SPK);
+    assert!(close(rig.last(SPK), 0.5, 1e-4) && close(rig.last(SPK + 1), 0.25, 1e-4), "{} {}", rig.last(SPK), rig.last(SPK + 1));
+    // MAIN.1 again: the inputs fade out of the speakers (the channels' faders are down).
+    rig.engine.controls.speakers.source.store(monitor_source_index(StripKind::Main, 0), Relaxed);
+    rig.run(16, SPK);
+    assert!(rig.last(SPK).abs() < 1e-6, "{}", rig.last(SPK));
+    // An input the device hasn't: silence, not a fault.
+    rig.engine.controls.speakers.source.store(PORT_SOURCE_BASE + 100, Relaxed);
+    rig.run(4, SPK);
+    assert!(rig.last(SPK).abs() < 1e-6);
+}
+
 #[test]
 fn a_universal_consoles_buses_past_the_wings_16_are_sources_and_direct_inputs() {
     use livedaw_engine::params::{monitor_source_index, EXTENDED_SOURCE_BASE};

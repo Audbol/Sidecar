@@ -1,6 +1,7 @@
 #include "ui/DLiveScreens.h"
 
 #include "engine/Models.h"
+#include "engine/MidiRemote.h"
 #include "engine/Show.h"
 #include "ui/MeterBank.h"
 #include "ui/WingPopups.h"
@@ -2651,6 +2652,58 @@ void ProcessingScreen::paint (juce::Graphics& g)
 }
 
 //==============================================================================
+ScreenWindow::ScreenWindow (const juce::String& t, juce::Rectangle<int> f) : closeKey ("Close", kRed), title (t), frame (f)
+{
+    closeKey.fontSize = 15.0f;
+    closeKey.setBounds (frame.getRight() - 112, frame.getY() + 7, 100, 28);
+    closeKey.onClick = [this]
+    {
+        if (onClose)
+            onClose();
+    };
+    addAndMakeVisible (closeKey);
+}
+
+void ScreenWindow::setTitle (const juce::String& t)
+{
+    title = t;
+    repaint();
+}
+
+void ScreenWindow::addPane (juce::Rectangle<float> r, const juce::String& paneTitle)
+{
+    panes.emplace_back (r, paneTitle);
+    repaint();
+}
+
+void ScreenWindow::paint (juce::Graphics& g)
+{
+    // The page behind, dimmed; the window's frame and its title bar (the guide's picture, 7.3).
+    g.fillAll (juce::Colours::black.withAlpha (0.55f));
+    const auto f = frame.toFloat();
+    g.setColour (juce::Colours::black.withAlpha (0.5f));
+    g.fillRoundedRectangle (f.translated (3.0f, 4.0f), 8.0f);
+    panel (g, f, kSteelTop, kSteel, 8.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.7f));
+    g.drawRoundedRectangle (f, 8.0f, 1.6f);
+    text (g, f.withHeight (42.0f), title, 18.0f, juce::Colours::white, juce::Justification::centred);
+    for (const auto& [r, paneTitle] : panes)
+    {
+        panel (g, r, kPanel.withMultipliedSaturation (0.7f), kPanelDeep.withMultipliedSaturation (0.7f));
+        text (g, r.withHeight (28.0f), paneTitle, 14.5f, juce::Colours::white, juce::Justification::centred);
+    }
+    if (paintBody)
+        paintBody (g);
+}
+
+void ScreenWindow::mouseDown (const juce::MouseEvent& e)
+{
+    // The page under the window takes no touch while it is open.
+    if (frame.contains (e.getPosition()) && onMouseDown)
+        onMouseDown (e);
+}
+
+//==============================================================================
 SceneScreen::SceneScreen (UiContext& c, Desk& d)
     : goKey ("Go", kTeal), undoKey ("Undo Go", kTeal), storeKey ("Store", kYellow), deleteKey ("Delete", kRed), filterKey ("Recall Filter", kCyan), lockKey ("Lock", juce::Colours::white),
       copyFilterKey ("Copy Filter To...", kCyan), embeddedKey ("Embedded Recall", kTeal), midiKey ("Custom MIDI", kTeal), actionsKey ("Actions", kTeal), copyKey ("Copy", juce::Colours::white),
@@ -2670,9 +2723,11 @@ SceneScreen::SceneScreen (UiContext& c, Desk& d)
 
     for (auto* k : { &goKey, &undoKey, &storeKey, &deleteKey, &filterKey, &lockKey, &copyFilterKey, &embeddedKey, &midiKey, &actionsKey, &copyKey, &pasteKey })
         addAndMakeVisible (k);
-    // What Sidecar's shows can't do yet.
-    for (auto* k : { &copyFilterKey, &embeddedKey, &midiKey, &actionsKey })
-        k->setEnabled (false);
+    // What Sidecar's shows can't do yet: no public description of the console's Actions.
+    actionsKey.setEnabled (false);
+    copyFilterKey.onClick = [this] { openCopyFilter(); };
+    embeddedKey.onClick = [this] { openEmbedded(); };
+    midiKey.onClick = [this] { openCustomMidi(); };
     undoKey.setEnabled (ctx.show.canUndoRecall());
     undoKey.onClick = [this] { undoGo(); };
     lockKey.isOn = [this] { return isLocked (selected); };
@@ -2680,12 +2735,18 @@ SceneScreen::SceneScreen (UiContext& c, Desk& d)
     lockKey.onClick = [this] { toggleLock(); };
     copyKey.onClick = [this] { copyScene(); };
     pasteKey.onClick = [this] { pasteScene(); };
-    goKey.onClick = [this] { go(); };
+    goKey.onClick = [this]
+    {
+        if (getPref (RecallConfirm) && selected < ctx.show.getNumScenes())
+            popups::confirm (*this, "GO", "Recall scene " + juce::String (selected + 1) + "?", "GO", [this] { go(); }, false);
+        else
+            go();
+    };
     storeKey.onClick = [this]
     {
         if (isLocked (selected))
             return;
-        if (selected >= ctx.show.getNumScenes())
+        if (selected >= ctx.show.getNumScenes() || ! getPref (OverwriteConfirm))
         {
             store();
             return;
@@ -2745,18 +2806,9 @@ SceneScreen::SceneScreen (UiContext& c, Desk& d)
     };
     fade.setBinding (std::move (crossfade));
     addAndMakeVisible (fade);
-    const auto touch = [this] (Touchable& t)
-    {
-        if (touchedNow != nullptr && touchedNow.getComponent() != &t)
-            touchedNow->setTouched (false);
-        touchedNow = &t;
-        t.setTouched (true);
-        if (onTouchTurn)
-            onTouchTurn (t.getBinding());
-    };
-    fade.onTouched = touch;
+    fade.onTouched = [this] (Touchable& t) { touchBox (t); };
     addAndMakeVisible (sends);
-    sends.onTouched = touch;
+    sends.onTouched = [this] (Touchable& t) { touchBox (t); };
     sends.onLayerTapped = [this] (int l) { setSoftLayer (l); };
     addAndMakeVisible (faders);
     loadEditors();
@@ -2767,6 +2819,16 @@ SceneScreen::SceneScreen (UiContext& c, Desk& d)
 SceneScreen::~SceneScreen()
 {
     copied.deleteFile();
+}
+
+void SceneScreen::touchBox (Touchable& t)
+{
+    if (touchedNow != nullptr && touchedNow.getComponent() != &t)
+        touchedNow->setTouched (false);
+    touchedNow = &t;
+    t.setTouched (true);
+    if (onTouchTurn)
+        onTouchTurn (t.getBinding());
 }
 
 bool SceneScreen::isLocked (int row) const
@@ -2808,6 +2870,10 @@ void SceneScreen::pasteScene()
         return;
     const int count = ctx.show.getNumScenes();
     const auto old = selected < count ? ctx.show.getScene (selected) : std::nullopt;
+    // The scenes' embedded recalls, which the insert and the removal below would move about.
+    std::vector<std::vector<Show::Embedded>> embedded;
+    for (int i = 0; i < count; ++i)
+        embedded.push_back (ctx.show.getScene (i)->embedded);
     juce::String error;
     const int added = ctx.show.importScene (copied, juce::jmin (selected, count), error);
     if (added < 0)
@@ -2815,9 +2881,12 @@ void SceneScreen::pasteScene()
     if (old.has_value())
     {
         // Pasted over a scene: it keeps its place, name and description.
+        const auto pastedEmbedded = ctx.show.getScene (added)->embedded;
         ctx.show.removeScene (added + 1);
         ctx.show.setSceneName (added, old->name);
         ctx.show.setSceneNotes (added, old->notes);
+        for (int i = 0; i < count; ++i)
+            ctx.show.setSceneEmbedded (i, i == added ? pastedEmbedded : embedded[(size_t) i]);
     }
     else
     {
@@ -2866,14 +2935,51 @@ void SceneScreen::stepNext (int delta)
     repaint();
 }
 
+void SceneScreen::recallRow (int row)
+{
+    const int count = ctx.show.getNumScenes();
+    if (row >= count)
+        return;
+    // Auto Store: the console goes into the last recalled scene first (the guide's soundcheck use).
+    const int current = ctx.show.getCurrentSceneIndex();
+    if (getPref (AutoStore) && current >= 0 && current < count && ! isLocked (current))
+        ctx.show.storeScene (current);
+    ctx.show.recallScene (row);
+    next = getPref (AutoIncrement) ? juce::jmin (row + 1, juce::jmax (0, count - 1)) : row;
+}
+
 void SceneScreen::go()
 {
     if (selected < ctx.show.getNumScenes())
     {
-        ctx.show.recallScene (selected);
-        next = juce::jmin (selected + 1, juce::jmax (0, ctx.show.getNumScenes() - 1));
+        recallRow (selected);
         repaint();
     }
+}
+
+void SceneScreen::panelStep (int delta)
+{
+    if (! getPref (DisableSurfaceControls))
+        stepNext (delta);
+}
+
+void SceneScreen::panelGo()
+{
+    if (getPref (DisableSurfaceControls))
+        return;
+    // Reset held and GO: Undo Go (7.1; "Reset for Undo" under the key).
+    if (desk.getLatch() == Desk::Latch::Reset)
+    {
+        desk.setLatch (Desk::Latch::None);
+        undoGo();
+        return;
+    }
+    if (next >= ctx.show.getNumScenes())
+        return;
+    if (getPref (RecallConfirm))
+        popups::confirm (*this, "GO", "Recall scene " + juce::String (next + 1) + "?", "GO", [this] { goNext(); }, false);
+    else
+        goNext();
 }
 
 void SceneScreen::undoGo()
@@ -2889,10 +2995,9 @@ void SceneScreen::goNext()
 {
     if (next < ctx.show.getNumScenes())
     {
-        ctx.show.recallScene (next);
         selected = next;
+        recallRow (selected);
         loadEditors();
-        next = juce::jmin (next + 1, juce::jmax (0, ctx.show.getNumScenes() - 1));
         firstMain = juce::jlimit (0, kSlots - kMainRows, selected - kMainRows / 2);
         firstLeft = juce::jlimit (0, kSlots - kLeftRows, selected - kLeftRows / 2);
         repaint();
@@ -2980,6 +3085,14 @@ void SceneScreen::refresh()
     const int current = ctx.show.getCurrentSceneIndex();
     if (current != lastRecalled)
     {
+        // Track Embedded: the selected (yellow) scene follows a scene the last one embedded.
+        if (const auto before = ctx.show.getScene (lastRecalled); before.has_value() && current >= 0 && getPref (TrackEmbedded)
+            && std::any_of (before->embedded.begin(), before->embedded.end(), [current] (const Show::Embedded& e) { return e.scene == current; }))
+        {
+            selected = current;
+            next = getPref (AutoIncrement) ? juce::jmin (current + 1, juce::jmax (0, ctx.show.getNumScenes() - 1)) : current;
+            loadEditors();
+        }
         lastRecalled = current;
         if (current >= 0)
             lastTime = juce::Time::getCurrentTime().formatted ("%H:%M:%S");
@@ -2996,6 +3109,8 @@ void SceneScreen::refresh()
     lockedScenes.erase (std::remove_if (lockedScenes.begin(), lockedScenes.end(), [sceneCount] (int r) { return r >= sceneCount; }), lockedScenes.end());
     lockKey.setEnabled (selected < sceneCount);
     copyKey.setEnabled (selected < sceneCount);
+    for (auto* k : { &copyFilterKey, &embeddedKey, &midiKey })
+        k->setEnabled (selected < sceneCount);
     pasteKey.setEnabled (hasCopiedScene() && ! isLocked (selected));
 
     juce::String signature;
@@ -3015,6 +3130,15 @@ void SceneScreen::refresh()
     sends.refresh();
     for (auto* k : { &goKey, &undoKey, &storeKey, &deleteKey, &lockKey })
         k->refresh();
+    for (auto& item : windowItems)
+    {
+        if (auto* t = dynamic_cast<Touchable*> (item.get()))
+            t->refresh();
+        else if (auto* b = dynamic_cast<ScreenButton*> (item.get()))
+            b->refresh();
+    }
+    if (window != nullptr)
+        window->repaint(); // the names under its boxes follow the rotary
 }
 
 void SceneScreen::resized()
@@ -3045,6 +3169,8 @@ void SceneScreen::resized()
 
     sends.setBounds (878, 62, 120, 468);
     faders.setBounds (0, 535, kTouchW, kTouchH - 535);
+    if (window != nullptr)
+        window->setBounds (getLocalBounds());
 }
 
 void SceneScreen::paint (juce::Graphics& g)
@@ -3058,14 +3184,19 @@ void SceneScreen::paint (juce::Graphics& g)
     const int count = ctx.show.getNumScenes();
 
     // Selected and Next.
-    const auto named = [&] (juce::Rectangle<float> r, const char* what, int row)
+    const auto named = [&] (juce::Rectangle<float> r, const char* what, int row, juce::Colour nameColour)
     {
-        const auto s = row < count ? ctx.show.getScene (row) : std::nullopt;
+        const auto s = row >= 0 && row < count ? ctx.show.getScene (row) : std::nullopt;
         text (g, r.removeFromTop (r.getHeight() * 0.5f), what, 14.0f, juce::Colours::white, juce::Justification::centred, true);
-        text (g, r, s.has_value() ? s->name : juce::String(), 15.0f, juce::Colour (0xfff0e0a0), juce::Justification::centred, true);
+        text (g, r, s.has_value() ? s->name : juce::String(), 15.0f, nameColour, juce::Justification::centred, true);
     };
-    named ({ 11.0f, 14.0f, 103.0f, 42.0f }, "Selected", selected);
-    named ({ 872.0f, 8.0f, 120.0f, 46.0f }, "Next", next);
+    // Display Last Recalled: the last recalled scene in blue, where the selected one was.
+    if (getPref (DisplayLastRecalled))
+        named ({ 11.0f, 14.0f, 103.0f, 42.0f }, "Last Recalled", lastRecalled, kKnobBlue.brighter (0.4f));
+    else
+        named ({ 11.0f, 14.0f, 103.0f, 42.0f }, "Selected", selected, juce::Colour (0xfff0e0a0));
+    const auto selectedFill = getPref (GoOnTouch) ? kOrange : kYellow; // orange in Go on Touch (7.1)
+    named ({ 872.0f, 8.0f, 120.0f, 46.0f }, "Next", next, juce::Colour (0xfff0e0a0));
 
     panel (g, { 117.0f, 40.0f, 758.0f, 490.0f }, kFrameLight, kFrame, 7.0f);
     panel (g, { 128.0f, 56.0f, 330.0f, 464.0f }, kPanel, kPanelDeep);
@@ -3076,7 +3207,7 @@ void SceneScreen::paint (juce::Graphics& g)
     {
         const int row = firstLeft + i;
         const juce::Rectangle<float> r (15.0f, 70.0f + (float) i * 30.7f, 91.0f, 27.5f);
-        g.setColour (row == selected ? kYellow : kNavy);
+        g.setColour (row == selected ? selectedFill : kNavy);
         g.fillRoundedRectangle (r, 3.0f);
         g.setColour (juce::Colours::white.withAlpha (0.65f));
         g.drawRoundedRectangle (r, 3.0f, 1.2f);
@@ -3101,23 +3232,12 @@ void SceneScreen::paint (juce::Graphics& g)
         const int row = firstMain + i;
         const juce::Rectangle<float> r (141.0f, 113.0f + (float) i * 33.0f, 291.0f, 31.0f);
         const bool sel = row == selected;
-        g.setColour (sel ? kYellow : kNavy);
+        g.setColour (sel ? selectedFill : kNavy);
         g.fillRoundedRectangle (r, 3.0f);
         g.setColour (kTeal.withAlpha (0.9f));
         g.drawRoundedRectangle (r, 3.0f, 1.3f);
         text (g, r.reduced (8.0f, 0.0f), rowName (row), 16.5f, sel ? juce::Colour (0xff8a8a10) : row == next ? kKnobGreen : juce::Colours::white);
-        if (row < count && isLocked (row))
-            text (g, r.reduced (8.0f, 0.0f), "Locked", 13.0f, sel ? juce::Colour (0xff6e7a10) : kOrange, juce::Justification::centredRight);
-        else if (row < count)
-        {
-            juce::Path tick;
-            const float x = r.getRight() - 26.0f, y = r.getCentreY();
-            tick.startNewSubPath (x, y);
-            tick.lineTo (x + 5.0f, y + 6.0f);
-            tick.lineTo (x + 16.0f, y - 8.0f);
-            g.setColour (sel ? juce::Colour (0xff6e7a10) : juce::Colour (0xffb6e23c));
-            g.strokePath (tick, juce::PathStrokeType (2.6f));
-        }
+        paintIcons (g, r, row, sel);
     }
     const auto last = lastRecalled >= 0 ? rowName (lastRecalled) : juce::String();
     text (g, { 135.0f, 484.0f, 300.0f, 16.0f }, "Last Scene: " + last, 13.0f, juce::Colours::white);
@@ -3189,28 +3309,53 @@ void SceneScreen::mouseDown (const juce::MouseEvent& e)
             }
         return;
     }
+    if (sub == 3)
+    {
+        // A scene of the other show: a tap chooses it (mouseUp), a drag takes the chosen ones.
+        draggingImport = false;
+        dragAt = e.getPosition();
+        return;
+    }
     if (sub != 0)
         return;
+    // Setup held and a touch anywhere on the page: its preferences (7.1).
+    if (wantsAssign (isSetupHeld && isSetupHeld()))
+    {
+        openPreferences();
+        return;
+    }
+    int row = -1;
     for (int i = 0; i < kMainRows; ++i)
         if (juce::Rectangle<int> (141, 113 + i * 33, 291, 32).contains (e.getPosition()))
         {
-            selected = firstMain + i;
+            selected = row = firstMain + i;
             next = selected;
             loadEditors();
             repaint();
-            return;
         }
-    for (int i = 0; i < kLeftRows; ++i)
+    for (int i = 0; i < kLeftRows && row < 0; ++i)
         if (juce::Rectangle<int> (15, 70 + (int) ((float) i * 30.7f), 91, 28).contains (e.getPosition()))
         {
-            select (firstLeft + i);
-            return;
+            row = firstLeft + i;
+            select (row);
         }
+    // Go on Touch: the touch recalls it, without asking.
+    if (row >= 0 && getPref (GoOnTouch))
+    {
+        recallRow (row);
+        repaint();
+    }
 }
 
 void SceneScreen::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWheelDetails& w)
 {
     const int step = w.deltaY > 0 ? -1 : 1;
+    if (sub == 3 && e.x >= 576)
+    {
+        importFirst = juce::jlimit (0, juce::jmax (0, importNames.size() - 13), importFirst + step);
+        repaint();
+        return;
+    }
     if (sub != 0)
     {
         firstSubRow = juce::jmax (0, firstSubRow + step);
@@ -3222,6 +3367,578 @@ void SceneScreen::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWh
     else
         firstMain = juce::jlimit (0, kSlots - kMainRows, firstMain + step);
     repaint();
+}
+
+juce::Rectangle<float> SceneScreen::importRow (int i) const noexcept
+{
+    return { 584.0f, 94.0f + (float) i * 33.0f, 272.0f, 30.0f };
+}
+
+juce::Rectangle<float> SceneScreen::localImportRow (int i) const noexcept
+{
+    return { 30.0f, 90.0f + (float) i * 33.0f, 412.0f, 30.0f };
+}
+
+void SceneScreen::mouseDrag (const juce::MouseEvent& e)
+{
+    if (sub != 3 || importNames.isEmpty())
+        return;
+    const auto start = e.getMouseDownPosition().toFloat();
+    int pressed = -1;
+    for (int i = 0; i < 13; ++i)
+        if (importRow (i).contains (start) && importFirst + i < importNames.size())
+            pressed = importFirst + i;
+    if (pressed < 0)
+        return;
+    if (! draggingImport && e.getDistanceFromDragStart() > 8)
+    {
+        draggingImport = true;
+        if (! isImportChosen (pressed))
+            importChosen.push_back (pressed);
+    }
+    if (draggingImport)
+    {
+        dragAt = e.getPosition();
+        dropRow = -1;
+        for (int i = 0; i < 13; ++i)
+            if (localImportRow (i).expanded (0.0f, 1.5f).contains (e.position))
+                dropRow = juce::jmin (firstSubRow + i, ctx.show.getNumScenes());
+        repaint();
+    }
+}
+
+void SceneScreen::mouseUp (const juce::MouseEvent& e)
+{
+    if (sub != 3)
+        return;
+    if (draggingImport)
+    {
+        const int row = dropRow;
+        draggingImport = false;
+        dropRow = -1;
+        if (row >= 0)
+            importChosenAt (row);
+        repaint();
+        return;
+    }
+    if (e.mouseWasDraggedSinceMouseDown())
+        return;
+    for (int i = 0; i < 13; ++i)
+        if (importRow (i).contains (e.position) && importFirst + i < importNames.size())
+            toggleImportScene (importFirst + i);
+}
+
+bool SceneScreen::isUpdateScene (int row) const
+{
+    return std::find (updateRows.begin(), updateRows.end(), row) != updateRows.end();
+}
+
+namespace
+{
+    /** Scene Manager's preferences in Sidecar's settings (SceneScreen::Pref's order), their defaults and names. */
+    const char* const kScenePrefKeys[] = { "ui.dliveScene.overwriteConfirm", "ui.dliveScene.recallConfirm", "ui.dliveScene.displayLastRecalled", "ui.dliveScene.disableSurface",
+                                           "ui.dliveScene.autoStore", "ui.dliveScene.trackEmbedded", "ui.dliveScene.autoIncrement", "ui.dliveScene.goOnTouch" };
+    constexpr bool kScenePrefDefaults[] = { true, false, false, false, false, false, true, false };
+    const char* const kScenePrefNames[] = { "Scene Overwrite Confirmation", "Scene Recall Confirmation", "Display Last Recalled", "Disable Surface Controls",
+                                            "Auto Store", "Track Embedded", "Auto Increment", "Go on Touch" };
+}
+
+bool SceneScreen::getPref (int p) const
+{
+    return juce::isPositiveAndBelow (p, (int) NumPrefs) && ctx.settings.getBoolValue (kScenePrefKeys[p], kScenePrefDefaults[p]);
+}
+
+void SceneScreen::setPref (int p, bool on)
+{
+    if (! juce::isPositiveAndBelow (p, (int) NumPrefs))
+        return;
+    ctx.settings.setValue (kScenePrefKeys[p], on);
+    for (auto& item : windowItems)
+        if (auto* b = dynamic_cast<ScreenButton*> (item.get()))
+            b->refresh();
+    repaint();
+}
+
+void SceneScreen::openPreferences()
+{
+    auto& w = makeWindow (Window::Preferences, "Scene Manager Preferences", { 160, 96, 680, 390 });
+    const auto f = w.getFrame();
+    w.addPane (f.toFloat().reduced (12.0f).withTrimmedTop (36.0f), {});
+    for (int p = 0; p < NumPrefs; ++p)
+    {
+        const juce::Rectangle<int> r (f.getX() + 40 + (p / 4) * 310, f.getY() + 70 + (p % 4) * 62, 290, 40);
+        auto& k = addWindowKey (r, kScenePrefNames[p], juce::Colours::white, [this, p] { setPref (p, ! getPref (p)); });
+        k.pale = true;
+        k.litFill = kTabOn;
+        k.isOn = [this, p] { return getPref (p); };
+        k.refresh();
+    }
+    w.paintBody = [f] (juce::Graphics& g)
+    {
+        g.setColour (juce::Colours::white.withAlpha (0.8f));
+        g.setFont (type::font (12.5f));
+        g.drawFittedText ("Go on Touch recalls a scene at a touch, without asking. Disable Surface Controls stops the panel's Prev, Next and GO. "
+                          "Auto Store stores the console into the last recalled scene before each recall.",
+                          juce::Rectangle<int> (f.getX() + 30, f.getBottom() - 66, f.getWidth() - 60, 44), juce::Justification::centredLeft, 3);
+    };
+}
+
+//==============================================================================
+// The windows over the Scene Manager.
+
+ScreenWindow& SceneScreen::makeWindow (Window kind, const juce::String& title, juce::Rectangle<int> frame)
+{
+    closeWindow();
+    windowKind = kind;
+    windowStatus.clear();
+    window = std::make_unique<ScreenWindow> (title, frame);
+    window->setBounds (getLocalBounds());
+    window->onClose = [this] { closeWindow(); };
+    addAndMakeVisible (*window);
+    window->toFront (false);
+    return *window;
+}
+
+void SceneScreen::closeWindow()
+{
+    if (window == nullptr)
+        return;
+    if (touchedNow != nullptr && window->isParentOf (touchedNow.getComponent()))
+    {
+        touchedNow->setTouched (false);
+        touchedNow = nullptr;
+    }
+    // A key of the window may be the one whose click closes it: it goes at the next tick.
+    window->setVisible (false);
+    removeChildComponent (window.get());
+    for (auto& item : windowItems)
+        retired.push_back (std::move (item));
+    retired.push_back (std::move (window));
+    windowItems.clear();
+    midiField = nullptr;
+    windowKind = Window::None;
+    repaint();
+}
+
+ScreenButton& SceneScreen::addWindowKey (juce::Rectangle<int> r, const juce::String& name, juce::Colour edge, std::function<void()> click)
+{
+    auto b = std::make_unique<ScreenButton> (name, edge);
+    b->setBounds (r);
+    b->onClick = std::move (click);
+    b->fontSize = 15.0f;
+    window->addAndMakeVisible (*b);
+    auto& ref = *b;
+    windowItems.push_back (std::move (b));
+    return ref;
+}
+
+ParamBox& SceneScreen::addWindowBox (juce::Rectangle<int> r, KnobBinding binding, juce::Colour edge, const juce::String& caption)
+{
+    auto b = std::make_unique<ParamBox> (edge, caption);
+    b->setBounds (r);
+    b->setBinding (std::move (binding));
+    b->onTouched = [this] (Touchable& t) { touchBox (t); };
+    window->addAndMakeVisible (*b);
+    auto& ref = *b;
+    windowItems.push_back (std::move (b));
+    return ref;
+}
+
+KnobBinding SceneScreen::sceneNumber (const juce::String& label, int& value, std::function<int()> count)
+{
+    KnobBinding b;
+    b.label = label;
+    b.get = [&value, count] { return count() > 1 ? (float) value / (float) (count() - 1) : 0.0f; };
+    b.set = [this, &value, count] (float v)
+    {
+        value = juce::jlimit (0, juce::jmax (0, count() - 1), juce::roundToInt (v * (float) (count() - 1)));
+        if (window != nullptr)
+            window->repaint();
+    };
+    b.text = [&value] { return juce::String (value + 1); };
+    b.steps = (float) juce::jmax (2, count());
+    return b;
+}
+
+namespace
+{
+    /** Embedded Recall's delay: 0 to 240 s, finer near 0 (tenths up to 10 s, then whole seconds). */
+    double delayOf (float v) { const double s = 240.0 * std::pow ((double) v, 3.0); return s < 10.0 ? std::round (s * 10.0) / 10.0 : std::round (s); }
+    float delayPosition (double seconds) { return (float) std::cbrt (juce::jlimit (0.0, 240.0, seconds) / 240.0); }
+    juce::String delayText (double seconds)
+    {
+        if (seconds < 60.0)
+            return juce::String (seconds, seconds < 10.0 ? 1 : 0) + " s";
+        const int whole = juce::roundToInt (seconds);
+        return juce::String (whole / 60) + " m " + juce::String (whole % 60).paddedLeft ('0', 2) + " s";
+    }
+}
+
+void SceneScreen::openEmbedded()
+{
+    const int count = ctx.show.getNumScenes();
+    if (selected >= count)
+        return;
+    auto& w = makeWindow (Window::Embedded, "Embedded Recall", { 150, 84, 700, 412 });
+    const auto f = w.getFrame().toFloat();
+    const juce::Rectangle<float> left (f.getX() + 12.0f, f.getY() + 48.0f, 330.0f, f.getHeight() - 60.0f);
+    const juce::Rectangle<float> right (left.getRight() + 12.0f, left.getY(), f.getRight() - left.getRight() - 24.0f, left.getHeight());
+    w.addPane (left, "Add New Embedded Recall");
+    w.addPane (right, "Scene " + juce::String (selected + 1) + " - Current Embedded Recalls");
+    if (embedScene == selected || embedScene >= count)
+        embedScene = selected + 1 < count ? selected + 1 : 0;
+
+    // Sidecar has one unit: this console (the console lists the others on its network).
+    auto& unit = addWindowKey ({ (int) left.getX() + 40, (int) left.getY() + 66, 250, 34 }, "Local Unit", kCyan, {});
+    unit.dropdown = true;
+    unit.setInterceptsMouseClicks (false, false);
+
+    addWindowBox ({ (int) left.getX() + 30, (int) left.getY() + 132, 120, 58 }, sceneNumber ("Scene Number", embedScene, [this] { return ctx.show.getNumScenes(); }), kCyan, "Scene Number");
+    KnobBinding delay;
+    delay.label = "Delay";
+    delay.get = [this] { return delayPosition (embedDelay); };
+    delay.set = [this] (float v) { embedDelay = delayOf (v); };
+    delay.text = [this] { return delayText (embedDelay); };
+    delay.reset = [this] { embedDelay = 0.0; };
+    addWindowBox ({ (int) left.getX() + 180, (int) left.getY() + 132, 120, 58 }, std::move (delay), kOrange, "Delay");
+    addWindowKey ({ (int) left.getCentreX() - 65, (int) left.getBottom() - 52, 130, 32 }, "Add", kGreen.brighter (0.4f), [this] { addEmbedded(); });
+    addWindowKey ({ (int) right.getCentreX() - 65, (int) right.getBottom() - 52, 130, 32 }, "Remove", kRed, [this] { removeEmbedded(); });
+
+    w.paintBody = [this, left, right] (juce::Graphics& g)
+    {
+        text (g, { left.getX(), left.getY() + 40.0f, left.getWidth(), 22.0f }, "Unit Name", 14.0f, juce::Colours::white, juce::Justification::centred);
+        const auto target = ctx.show.getScene (embedScene);
+        text (g, { left.getX() + 20.0f, left.getY() + 194.0f, 150.0f, 20.0f }, target.has_value() ? target->name : juce::String(), 13.5f, juce::Colour (0xfff0e0a0), juce::Justification::centred);
+        if (windowStatus.isNotEmpty())
+            text (g, { left.getX() + 10.0f, left.getY() + 226.0f, left.getWidth() - 20.0f, 40.0f }, windowStatus, 13.0f, kOrange, juce::Justification::centred);
+        const juce::Rectangle<float> box (right.getX() + 10.0f, right.getY() + 34.0f, right.getWidth() - 20.0f, right.getHeight() - 100.0f);
+        g.setColour (juce::Colours::black);
+        g.fillRoundedRectangle (box, 4.0f);
+        g.setColour (juce::Colours::white.withAlpha (0.5f));
+        g.drawRoundedRectangle (box, 4.0f, 1.2f);
+        const auto s = ctx.show.getScene (selected);
+        if (! s.has_value())
+            return;
+        for (size_t i = 0; i < s->embedded.size() && i < 9; ++i)
+        {
+            const auto& e = s->embedded[i];
+            const juce::Rectangle<float> line (box.getX() + 4.0f, box.getY() + 4.0f + (float) i * 28.0f, box.getWidth() - 8.0f, 25.0f);
+            g.setColour (kNavy);
+            g.fillRoundedRectangle (line, 3.0f);
+            g.setColour ((int) i == embedLine ? juce::Colours::white : kTeal.withAlpha (0.6f));
+            g.drawRoundedRectangle (line, 3.0f, (int) i == embedLine ? 2.0f : 1.0f);
+            text (g, line, "Local Unit - Scene " + juce::String (e.scene + 1) + " - Delay " + delayText (e.delayMs / 1000.0).removeCharacters (" "), 13.5f, juce::Colours::white, juce::Justification::centred);
+        }
+    };
+    w.onMouseDown = [this, right] (const juce::MouseEvent& e)
+    {
+        const float top = right.getY() + 38.0f;
+        if (e.position.x > right.getX() + 10.0f && e.position.x < right.getRight() - 10.0f && e.position.y >= top)
+            chooseEmbedded ((int) ((e.position.y - top) / 28.0f));
+    };
+}
+
+void SceneScreen::setEmbedTarget (int scene, double delaySeconds)
+{
+    embedScene = juce::jmax (0, scene);
+    embedDelay = juce::jlimit (0.0, 240.0, delaySeconds);
+    if (window != nullptr)
+        window->repaint();
+}
+
+bool SceneScreen::addEmbedded()
+{
+    auto s = ctx.show.getScene (selected);
+    if (! s.has_value() || isLocked (selected))
+        return false;
+    windowStatus.clear();
+    if (embedScene == selected || embedScene >= ctx.show.getNumScenes())
+        windowStatus = "A scene can't embed itself";
+    else if ((int) s->embedded.size() >= 32)
+        windowStatus = "A scene holds 32 at most";
+    if (windowStatus.isNotEmpty())
+    {
+        if (window != nullptr)
+            window->repaint();
+        return false;
+    }
+    auto list = s->embedded;
+    list.push_back ({ embedScene, juce::roundToInt (embedDelay * 1000.0) });
+    ctx.show.setSceneEmbedded (selected, list);
+    embedLine = (int) list.size() - 1;
+    if (window != nullptr)
+        window->repaint();
+    repaint();
+    return true;
+}
+
+void SceneScreen::chooseEmbedded (int line)
+{
+    const auto s = ctx.show.getScene (selected);
+    embedLine = s.has_value() && juce::isPositiveAndBelow (line, (int) s->embedded.size()) ? line : -1;
+    if (window != nullptr)
+        window->repaint();
+}
+
+void SceneScreen::removeEmbedded()
+{
+    auto s = ctx.show.getScene (selected);
+    if (! s.has_value() || isLocked (selected) || ! juce::isPositiveAndBelow (embedLine, (int) s->embedded.size()))
+        return;
+    auto list = s->embedded;
+    list.erase (list.begin() + embedLine);
+    ctx.show.setSceneEmbedded (selected, list);
+    embedLine = juce::jmin (embedLine, (int) list.size() - 1);
+    if (window != nullptr)
+        window->repaint();
+    repaint();
+}
+
+void SceneScreen::openCopyFilter()
+{
+    const int count = ctx.show.getNumScenes();
+    if (selected >= count)
+        return;
+    auto& w = makeWindow (Window::CopyFilter, "Copy Filter To...", { 190, 110, 620, 330 });
+    const auto f = w.getFrame();
+    w.addPane (f.toFloat().reduced (12.0f).withTrimmedTop (36.0f), "Recall Filter of Scene " + juce::String (selected + 1));
+    copyFirst = copyLast = selected + 1 < count ? selected + 1 : 0;
+    const char* const modes[] = { "Single Scene", "Range", "All Scenes" };
+    for (int i = 0; i < 3; ++i)
+    {
+        auto& k = addWindowKey ({ f.getX() + 40 + i * 185, f.getY() + 92, 170, 32 }, modes[i], kYellow, [this, i] { setCopyMode (i); });
+        k.isOn = [this, i] { return copyMode == i; };
+        k.litFill = kTabOnText;
+        k.refresh();
+    }
+    auto& from = addWindowBox ({ f.getX() + 140, f.getY() + 144, 120, 58 }, sceneNumber ("From", copyFirst, [this] { return ctx.show.getNumScenes(); }), kCyan, "Scene");
+    auto& to = addWindowBox ({ f.getX() + 360, f.getY() + 144, 120, 58 }, sceneNumber ("To", copyLast, [this] { return ctx.show.getNumScenes(); }), kCyan, "To");
+    from.setName ("from");
+    to.setName ("to");
+    addWindowKey ({ f.getCentreX() - 70, f.getBottom() - 56, 140, 34 }, "Copy", kGreen.brighter (0.4f), [this]
+    {
+        const int n = ctx.show.getNumScenes();
+        const int first = copyMode == 2 ? 0 : copyFirst, last = copyMode == 2 ? n - 1 : copyMode == 1 ? copyLast : copyFirst;
+        const int done = copyFilterTo (juce::jmin (first, last), juce::jmax (first, last));
+        windowStatus = "Copied to " + juce::String (done) + (done == 1 ? " scene" : " scenes");
+        if (window != nullptr)
+            window->repaint();
+    });
+    setCopyMode (copyMode);
+    w.paintBody = [this, f] (juce::Graphics& g)
+    {
+        for (auto [box, value] : { std::pair<int, int> { 140, copyFirst }, std::pair<int, int> { 360, copyLast } })
+        {
+            const auto s = ctx.show.getScene (value);
+            const bool shown = box == 140 ? copyMode != 2 : copyMode == 1;
+            if (shown && s.has_value())
+                text (g, { (float) f.getX() + (float) box - 20.0f, (float) f.getY() + 206.0f, 160.0f, 20.0f }, s->name, 13.5f, juce::Colour (0xfff0e0a0), juce::Justification::centred);
+        }
+        text (g, { (float) f.getX() + 20.0f, (float) f.getY() + 232.0f, (float) f.getWidth() - 40.0f, 22.0f },
+              windowStatus.isNotEmpty() ? windowStatus : juce::String ("Locked scenes keep their own"), 13.5f, windowStatus.isNotEmpty() ? kKnobGreen : juce::Colours::white.withAlpha (0.7f), juce::Justification::centred);
+    };
+}
+
+void SceneScreen::setCopyMode (int mode)
+{
+    copyMode = juce::jlimit (0, 2, mode);
+    for (auto& item : windowItems)
+    {
+        if (auto* b = dynamic_cast<ScreenButton*> (item.get()))
+            b->refresh();
+        else if (item->getName() == "from")
+            item->setEnabled (copyMode != 2);
+        else if (item->getName() == "to")
+            item->setEnabled (copyMode == 1);
+        item->setAlpha (item->isEnabled() ? 1.0f : 0.35f);
+    }
+    if (window != nullptr)
+        window->repaint();
+}
+
+void SceneScreen::setCopyRange (int first, int last)
+{
+    copyFirst = juce::jmax (0, first);
+    copyLast = juce::jmax (0, last);
+}
+
+int SceneScreen::copyFilterTo (int first, int last)
+{
+    const int count = ctx.show.getNumScenes();
+    if (selected >= count)
+        return 0;
+    const auto filter = ctx.show.getSceneRecallScope (selected);
+    int done = 0;
+    for (int i = juce::jmax (0, first); i <= juce::jmin (last, count - 1); ++i)
+        if (i != selected && ! isLocked (i))
+        {
+            ctx.show.setSceneRecallScope (i, filter);
+            ++done;
+        }
+    repaint();
+    return done;
+}
+
+void SceneScreen::openCustomMidi()
+{
+    const auto s = ctx.show.getScene (selected);
+    if (! s.has_value())
+        return;
+    auto& w = makeWindow (Window::CustomMidi, "Custom MIDI", { 170, 110, 660, 330 });
+    const auto f = w.getFrame();
+    w.addPane (f.toFloat().reduced (12.0f).withTrimmedTop (36.0f), "Scene " + juce::String (selected + 1) + " - MIDI Sent on Recall");
+    auto field = std::make_unique<juce::TextEditor>();
+    field->setColour (juce::TextEditor::backgroundColourId, juce::Colours::black);
+    field->setColour (juce::TextEditor::outlineColourId, kCyan);
+    field->setColour (juce::TextEditor::focusedOutlineColourId, juce::Colours::white);
+    field->setColour (juce::TextEditor::textColourId, juce::Colours::white);
+    field->setFont (type::font (19.0f));
+    field->setInputRestrictions (256, "0123456789abcdefABCDEF ,UuDd:");
+    field->setText (s->midi, false);
+    field->setBounds (f.getX() + 36, f.getY() + 106, f.getWidth() - 72, 40);
+    field->setReadOnly (isLocked (selected));
+    midiField = field.get();
+    w.addAndMakeVisible (*field);
+    windowItems.push_back (std::move (field));
+    const auto apply = [this]
+    {
+        juce::String error;
+        if (midiField != nullptr && setCustomMidi (midiField->getText(), error))
+            windowStatus = midiField->getText().trim().isEmpty() ? juce::String ("No MIDI with this scene") : juce::String ("Sent with each recall of this scene");
+        else
+            windowStatus = error;
+        if (window != nullptr)
+            window->repaint();
+    };
+    midiField->onReturnKey = apply;
+    addWindowKey ({ f.getCentreX() - 160, f.getBottom() - 56, 140, 34 }, "Clear", juce::Colours::white, [this, apply]
+    {
+        if (midiField != nullptr && ! midiField->isReadOnly())
+        {
+            midiField->clear();
+            apply();
+        }
+    });
+    addWindowKey ({ f.getCentreX() + 20, f.getBottom() - 56, 140, 34 }, "Apply", kGreen.brighter (0.4f), apply);
+    w.paintBody = [this, f] (juce::Graphics& g)
+    {
+        text (g, { (float) f.getX() + 36.0f, (float) f.getY() + 82.0f, 500.0f, 20.0f }, "Hexadecimal bytes, a message after another (B0 07 64)", 13.5f, juce::Colours::white);
+        text (g, { (float) f.getX() + 36.0f, (float) f.getY() + 152.0f, (float) f.getWidth() - 72.0f, 40.0f },
+              "Sidecar sends them from its MIDI out, after the scene's own messages. U: and D: send to the USB or DIN port.", 12.5f, juce::Colours::white.withAlpha (0.75f));
+        if (windowStatus.isNotEmpty())
+            text (g, { (float) f.getX() + 36.0f, (float) f.getY() + 196.0f, (float) f.getWidth() - 72.0f, 22.0f }, windowStatus, 14.0f,
+                  windowStatus.startsWith ("Sent") || windowStatus.startsWith ("No MIDI") ? kKnobGreen : kOrange, juce::Justification::centred);
+    };
+}
+
+bool SceneScreen::setCustomMidi (const juce::String& hex, juce::String& error)
+{
+    error.clear();
+    if (selected >= ctx.show.getNumScenes() || isLocked (selected))
+    {
+        error = "The scene is locked";
+        return false;
+    }
+    std::vector<MidiRemote::PortMessage> messages;
+    if (hex.trim().isNotEmpty() && ! MidiRemote::parseMidiText (hex, messages, error))
+    {
+        error = error.substring (0, 1) + error.substring (1).toLowerCase();
+        return false;
+    }
+    ctx.show.setSceneMidi (selected, hex.trim());
+    if (midiField != nullptr && midiField->getText() != hex)
+        midiField->setText (hex, false);
+    return true;
+}
+
+void SceneScreen::openRange()
+{
+    const bool import = sub == 3;
+    const int count = import ? importNames.size() : ctx.show.getNumScenes();
+    if (count == 0)
+        return;
+    auto& w = makeWindow (Window::Range, "Select Range", { 260, 140, 480, 270 });
+    const auto f = w.getFrame();
+    rangeFirst = 0;
+    rangeLast = count - 1;
+    const auto counted = [this, import] { return import ? importNames.size() : ctx.show.getNumScenes(); };
+    addWindowBox ({ f.getX() + 60, f.getY() + 80, 140, 58 }, sceneNumber ("From", rangeFirst, counted), kYellow, "From");
+    addWindowBox ({ f.getRight() - 200, f.getY() + 80, 140, 58 }, sceneNumber ("To", rangeLast, counted), kYellow, "To");
+    addWindowKey ({ f.getCentreX() - 70, f.getBottom() - 60, 140, 34 }, "Select", kGreen.brighter (0.4f), [this]
+    {
+        selectRange (juce::jmin (rangeFirst, rangeLast), juce::jmax (rangeFirst, rangeLast));
+        closeWindow();
+    });
+}
+
+void SceneScreen::selectRange (int first, int last)
+{
+    auto& chosen = sub == 3 ? importChosen : updateRows;
+    const int count = sub == 3 ? importNames.size() : ctx.show.getNumScenes();
+    chosen.clear();
+    for (int i = juce::jmax (0, first); i <= juce::jmin (last, count - 1); ++i)
+        chosen.push_back (i);
+    repaint();
+}
+
+bool SceneScreen::loadImportShow (const juce::File& file)
+{
+    importFile = file;
+    importChosen.clear();
+    importFirst = 0;
+    juce::StringArray names;
+    if (! Show::readShowFileSceneNames (file, names, importError))
+        importNames.clear();
+    else
+        importNames = names;
+    if (sub == 3)
+        rebuildSub();
+    repaint();
+    return importError.isEmpty();
+}
+
+void SceneScreen::toggleImportScene (int index)
+{
+    if (! juce::isPositiveAndBelow (index, importNames.size()))
+        return;
+    const auto it = std::find (importChosen.begin(), importChosen.end(), index);
+    if (it != importChosen.end())
+        importChosen.erase (it);
+    else
+        importChosen.push_back (index);
+    repaint();
+}
+
+bool SceneScreen::isImportChosen (int index) const
+{
+    return std::find (importChosen.begin(), importChosen.end(), index) != importChosen.end();
+}
+
+int SceneScreen::importChosenAt (int row)
+{
+    if (importChosen.empty() || ! importFile.existsAsFile())
+        return -1;
+    // In the other show's order, whatever order they were chosen in.
+    auto which = importChosen;
+    std::sort (which.begin(), which.end());
+    const int at = juce::jlimit (0, ctx.show.getNumScenes(), row);
+    const int first = ctx.show.importShowScenes (importFile, which, at, importError);
+    if (first < 0)
+    {
+        repaint();
+        return -1;
+    }
+    importError.clear();
+    // Locks stay with their scenes, which moved down.
+    for (auto& locked : lockedScenes)
+        if (locked >= first)
+            locked += (int) which.size();
+    importChosen.clear();
+    selected = next = first;
+    loadEditors();
+    refresh();
+    repaint();
+    return first;
 }
 
 //==============================================================================
@@ -5078,8 +5795,12 @@ void MetersScreen::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWhe
 
 void SceneScreen::showSub (int s)
 {
+    closeWindow();
     sub = juce::jlimit (0, 4, s);
     firstSubRow = 0;
+    importFirst = 0;
+    draggingImport = false;
+    dropRow = -1;
     rebuildSub();
     if (onSubChanged)
         onSubChanged();
@@ -5117,7 +5838,7 @@ void SceneScreen::rebuildSub()
             repaint();
         });
         addSubKey ({ 680, 72, 160, 30 }, "None", kYellow, [this] { updateRows.clear(); repaint(); });
-        addSubKey ({ 578, 150, 160, 30 }, "Range", kYellow, {}, false);
+        addSubKey ({ 578, 150, 160, 30 }, "Range", kYellow, [this] { openRange(); });
         auto& manualKey = addSubKey ({ 478, 280, 160, 34 }, "Manual", white, {});
         manualKey.pale = true;
         manualKey.isOn = [this] { return updateManual; };
@@ -5170,10 +5891,26 @@ void SceneScreen::rebuildSub()
     }
     else if (sub == 3)
     {
-        addSubKey ({ 452, 252, 118, 32 }, "Select Show", kYellow, {}, false);
-        const char* const keys[] = { "Select All", "Deselect All", "Select Range" };
-        for (int i = 0; i < 3; ++i)
-            addSubKey ({ 452, 342 + i * 40, 118, 32 }, keys[i], kYellow, {}, false);
+        addSubKey ({ 452, 252, 118, 32 }, "Select Show", kYellow, [this]
+        {
+            chooser = std::make_unique<juce::FileChooser> ("Select Show", importFile.existsAsFile() ? importFile.getParentDirectory() : juce::File(), juce::String ("*") + Show::fileExtension);
+            chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+                                  [safe = juce::Component::SafePointer<SceneScreen> (this)] (const juce::FileChooser& c)
+                                  {
+                                      if (safe != nullptr && c.getResult().existsAsFile())
+                                          safe->loadImportShow (c.getResult());
+                                  });
+        });
+        const bool any = ! importNames.isEmpty();
+        addSubKey ({ 452, 342, 118, 32 }, "Select All", kYellow, [this]
+        {
+            importChosen.clear();
+            for (int i = 0; i < importNames.size(); ++i)
+                importChosen.push_back (i);
+            repaint();
+        }, any);
+        addSubKey ({ 452, 382, 118, 32 }, "Deselect All", kYellow, [this] { importChosen.clear(); repaint(); }, any);
+        addSubKey ({ 452, 422, 118, 32 }, "Select Range", kYellow, [this] { openRange(); }, any);
     }
     else if (sub == 4)
     {
@@ -5295,26 +6032,76 @@ void SceneScreen::paintRows (juce::Graphics& g, juce::Rectangle<float> first, fl
         g.drawRoundedRectangle (r, 3.0f, 1.3f);
         text (g, r.reduced (8.0f, 0.0f), rowName (row), 15.5f, juce::Colours::white);
         if (row < scenes && marks)
+            paintIcons (g, r, row, false);
+        if (sub == 3 && row == dropRow)
         {
-            float x = r.getRight() - 54.0f;
-            const float y = r.getCentreY();
-            juce::Path funnel;
-            funnel.addTriangle (x, y - 7.0f, x + 13.0f, y - 7.0f, x + 6.5f, y + 2.0f);
-            funnel.addRectangle (x + 5.0f, y, 3.0f, 8.0f);
-            g.setColour (kCyan);
-            g.fillPath (funnel);
-            x += 18.0f;
-            g.setColour (juce::Colours::white);
-            g.fillRoundedRectangle (x, y - 2.0f, 10.0f, 9.0f, 1.5f);
-            g.drawEllipse (x + 2.0f, y - 8.0f, 6.0f, 9.0f, 1.3f);
-            juce::Path tick;
-            x += 14.0f;
-            tick.startNewSubPath (x, y);
-            tick.lineTo (x + 4.0f, y + 5.0f);
-            tick.lineTo (x + 13.0f, y - 7.0f);
-            g.setColour (juce::Colour (0xffb6e23c));
-            g.strokePath (tick, juce::PathStrokeType (2.4f));
+            // Where a drag from the other show puts its scenes.
+            g.setColour (kYellow);
+            g.fillRect (r.getX(), r.getY() - 2.5f, r.getWidth(), 3.0f);
         }
+    }
+}
+
+void SceneScreen::paintIcons (juce::Graphics& g, juce::Rectangle<float> r, int row, bool sel) const
+{
+    const auto s = ctx.show.getScene (row);
+    if (! s.has_value())
+        return;
+    // Right to left, as the guide's list has them (7.1): stored, lock, filter, crossfade, embedded, last recalled.
+    const float y = r.getCentreY();
+    float x = r.getRight() - 24.0f;
+    const auto dim = [sel] (juce::Colour c) { return sel ? c.darker (0.6f) : c; };
+    juce::Path tick;
+    tick.startNewSubPath (x, y);
+    tick.lineTo (x + 4.5f, y + 5.5f);
+    tick.lineTo (x + 15.0f, y - 7.5f);
+    g.setColour (dim (juce::Colour (0xffb6e23c)));
+    g.strokePath (tick, juce::PathStrokeType (2.5f));
+    x -= 19.0f;
+    if (isLocked (row))
+    {
+        g.setColour (dim (juce::Colours::white));
+        g.fillRoundedRectangle (x, y - 2.0f, 11.0f, 9.0f, 1.5f);
+        g.drawEllipse (x + 2.5f, y - 8.5f, 6.0f, 9.0f, 1.4f);
+        x -= 18.0f;
+    }
+    if ((s->scope | (juce::uint32) state::Routing) != (juce::uint32) state::AllSections)
+    {
+        juce::Path funnel;
+        funnel.addTriangle (x, y - 7.0f, x + 13.0f, y - 7.0f, x + 6.5f, y + 2.0f);
+        funnel.addRectangle (x + 5.0f, y, 3.0f, 8.0f);
+        g.setColour (dim (kCyan));
+        g.fillPath (funnel);
+        x -= 18.0f;
+    }
+    if (s->fadeSeconds > 0.0)
+    {
+        // A crossfade time: a small clock.
+        const juce::Rectangle<float> face (x, y - 7.0f, 14.0f, 14.0f);
+        g.setColour (dim (juce::Colour (0xffe8e8e8)));
+        g.drawEllipse (face, 1.6f);
+        g.drawLine (face.getCentreX(), face.getCentreY(), face.getCentreX(), face.getY() + 3.0f, 1.5f);
+        g.drawLine (face.getCentreX(), face.getCentreY(), face.getRight() - 3.5f, face.getCentreY(), 1.5f);
+        x -= 19.0f;
+    }
+    if (! s->embedded.empty())
+    {
+        // Embedded recalls: a green disc with an arrow.
+        const juce::Rectangle<float> disc (x, y - 7.0f, 15.0f, 14.0f);
+        g.setColour (dim (kGreen.brighter (0.3f)));
+        g.fillRoundedRectangle (disc, 4.0f);
+        juce::Path arrow;
+        arrow.addTriangle (disc.getCentreX() - 2.0f, disc.getY() + 3.0f, disc.getCentreX() - 2.0f, disc.getBottom() - 3.0f, disc.getRight() - 3.0f, disc.getCentreY());
+        g.setColour (juce::Colours::white);
+        g.fillPath (arrow);
+        x -= 19.0f;
+    }
+    if (row == lastRecalled)
+    {
+        juce::Path play;
+        play.addTriangle (x + 2.0f, y - 7.0f, x + 2.0f, y + 7.0f, x + 14.0f, y);
+        g.setColour (dim (kKnobBlue));
+        g.fillPath (play);
     }
 }
 
@@ -5372,14 +6159,47 @@ void SceneScreen::paintSub (juce::Graphics& g)
     {
         panel (g, field, kPanel, kPanelDeep);
         text (g, { 30.0f, 56.0f, 410.0f, 28.0f }, "Local Scenes", 19.0f, juce::Colours::white, juce::Justification::centred);
-        text (g, { 580.0f, 56.0f, 280.0f, 28.0f }, "No Show Selected", 19.0f, juce::Colours::white, juce::Justification::centred);
-        paintRows (g, { 30.0f, 90.0f, 412.0f, 30.0f }, 33.0f, 13, firstSubRow, true);
+        const bool loaded = importFile.existsAsFile() && importError.isEmpty();
+        const auto heading = loaded ? importFile.getFileNameWithoutExtension() : juce::String ("No Show Selected");
+        text (g, { 580.0f, 56.0f, 280.0f, 28.0f }, heading, 19.0f, juce::Colours::white, juce::Justification::centred);
+        paintRows (g, localImportRow (0), 33.0f, 13, firstSubRow, true);
         const juce::Rectangle<float> other (580.0f, 90.0f, 280.0f, 428.0f);
         g.setColour (juce::Colour (0xff121622));
         g.fillRoundedRectangle (other, 4.0f);
         g.setColour (juce::Colours::white.withAlpha (0.5f));
         g.drawRoundedRectangle (other, 4.0f, 1.4f);
-        text (g, other, "No Show Selected", 19.0f, juce::Colours::white.withAlpha (0.8f), juce::Justification::centred);
+        if (! loaded)
+            text (g, other.reduced (12.0f), importError.isNotEmpty() ? importError : heading, importError.isNotEmpty() ? 15.0f : 19.0f, juce::Colours::white.withAlpha (0.8f), juce::Justification::centred);
+        else if (importNames.isEmpty())
+            text (g, other, "No Scenes", 19.0f, juce::Colours::white.withAlpha (0.8f), juce::Justification::centred);
+        else
+        {
+            // The other show's scenes: those chosen lit, to be dragged into Local Scenes.
+            juce::Graphics::ScopedSaveState clip (g);
+            g.reduceClipRegion (other.toNearestInt());
+            for (int i = 0; i < 13 && importFirst + i < importNames.size(); ++i)
+            {
+                const int row = importFirst + i;
+                const auto r = importRow (i);
+                const bool chosen = isImportChosen (row);
+                g.setColour (chosen ? kTabOnText : kNavy);
+                g.fillRoundedRectangle (r, 3.0f);
+                g.setColour ((chosen ? kYellow : kTeal).withAlpha (0.9f));
+                g.drawRoundedRectangle (r, 3.0f, chosen ? 2.0f : 1.3f);
+                text (g, r.reduced (8.0f, 0.0f), juce::String (row + 1) + ") " + importNames[row], 15.5f, juce::Colours::white);
+            }
+        }
+        if (draggingImport)
+        {
+            // What a drag carries, under the finger.
+            const juce::Rectangle<float> ghost ((float) dragAt.x - 70.0f, (float) dragAt.y - 15.0f, 140.0f, 30.0f);
+            g.setColour (kTabOnText.withAlpha (0.85f));
+            g.fillRoundedRectangle (ghost, 4.0f);
+            g.setColour (kYellow);
+            g.drawRoundedRectangle (ghost, 4.0f, 2.0f);
+            const int n = (int) importChosen.size();
+            text (g, ghost, juce::String (n) + (n == 1 ? " Scene" : " Scenes"), 15.0f, juce::Colours::white, juce::Justification::centred);
+        }
     }
     else if (sub == 4)
     {
@@ -6268,10 +7088,10 @@ juce::String screenHelp (const juce::String& key)
         { "Meters", "The levels of every input, FX, mix and an RTA for the selected strip. A strip's coloured key mutes it, its meter selects it. The mouse wheel moves on through the inputs." },
         { "Fx", "The FX units and what's patched to them." },
         { "Io", "Patch sockets. Patch mode must be on before a touch changes anything; in Navigate mode dragging moves the grid." },
-        { "Scenes", "Store and recall scenes. Go recalls the highlighted scene, the green one is next. Lock stops a scene being changed (until the show is closed). Copy and Paste take a scene's content and recall filter, not its name." },
-        { "Scenes/Update", "Store the console into several scenes at once: pick them, then Apply." },
+        { "Scenes", "Store and recall scenes. Go recalls the highlighted scene, the green one is next. Lock stops a scene being changed (until the show is closed). Copy and Paste take a scene's content and recall filter, not its name. Copy Filter To gives the scene's recall filter to one scene, a range or all of them. Embedded Recall recalls other scenes a while after this one (up to four minutes); a recall of another scene drops those still waiting. Custom MIDI is sent from Sidecar's MIDI out each time the scene is recalled. The icons: stored, locked, filtered, crossfade, embedded, last recalled. Setup held (or a right-click) and a touch on the page opens its preferences: confirmations, Go on Touch, Auto Store, Auto Increment and others. Reset held and GO is Undo Go." },
+        { "Scenes/Update", "Store the console into several scenes at once: pick them (Range picks a run of them), then Apply." },
         { "Scenes/Cue", "Drawn from the console; Sidecar has no cue lists yet." },
-        { "Scenes/Import", "Drawn from the console; use Sidecar's show import instead for now." },
+        { "Scenes/Import", "Select Show opens another show of this console. Touch its scenes to choose them, then drag them into Local Scenes: they go in where they are dropped, and the scenes there move down. The console stays as it is." },
         { "Scenes/Safes", "Make kinds of settings, or whole strips, safe from every scene recall. The ALL column's rows make a whole strip safe." },
         { "Ganging", "Groups of strips that move together. For now this opens Sidecar's own setup page." },
         { "MixRack", "How the console is laid out: mixes and stereos (Apply resets the mixes only), names and colours, AMM. Network has the MIDI channel of MIDI over TCP and who is connected. Audio's Source Selector: touch a source to put it in the selector or take it out, touch a member to play it (the others fade out) and turn its on-level; Off plays none. Dimmed parts have nothing behind them yet." },

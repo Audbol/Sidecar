@@ -22,8 +22,10 @@ const Look& Look::x32()
         Look l;
         // As the console photographs: a neutral dark grey top, its sections and
         // the faders' strips on black, white silkscreen, mid-grey rubber keys.
-        l.panelTop = c (0xff4a4b4c);
-        l.panelBottom = c (0xff3a3b3c);
+        // The grey about twice the black sections' light (Behringer's top-down
+        // render and SOS's close-ups), lighter than it was.
+        l.panelTop = c (0xff5a5c5e);
+        l.panelBottom = c (0xff4a4c4e);
         l.frame = c (0xff1e1f20);
         l.section = c (0xff161718);
         l.sectionLine = c (0xff9a9c9e);
@@ -35,8 +37,8 @@ const Look& Look::x32()
         l.blackSections = true;
         l.backlit = true;
         l.slot = c (0xff0d0e0e);
-        l.capTop = c (0xffd7d9d8);
-        l.capBottom = c (0xff9fa3a2);
+        l.capTop = c (0xffcfd2da); // satin silver, a little blue (the close-ups)
+        l.capBottom = c (0xff8e929c);
         l.capLine = c (0xff202222);
         l.knob = c (0xff1d1f1f);
         l.knobLine = c (0xffff3a22); // the pots' pointers lit red, as photographed
@@ -541,32 +543,65 @@ void knob (juce::Graphics& g, juce::Rectangle<float> area, float fraction, const
         }
         case Look::Knob::Jewel:
         {
-            juce::Path gear;
-            constexpr int points = 72, teeth = 10;
+            // The SQ's (the photos): a tapered aluminium knob seen from above, its
+            // skirt in twelve flutes (turning with the value), a brushed silver top,
+            // the jewel in its middle. An endless encoder: no pointer.
+            juce::Path skirt;
+            constexpr int points = 96, flutes = 12;
             for (int k = 0; k < points; ++k)
             {
                 const float a = juce::MathConstants<float>::twoPi * (float) k / (float) points;
-                const float r = radius * (0.88f + 0.12f * std::cos ((float) teeth * (a + angle)));
+                const float r = radius * (0.965f + 0.035f * std::cos ((float) flutes * (a + angle)));
                 const juce::Point<float> at (cc.x + r * std::cos (a), cc.y + r * std::sin (a));
                 if (k == 0)
-                    gear.startNewSubPath (at);
+                    skirt.startNewSubPath (at);
                 else
-                    gear.lineTo (at);
+                    skirt.lineTo (at);
             }
-            gear.closeSubPath();
-            g.setGradientFill (juce::ColourGradient (c (0xfff0f2f4), outer.getX(), outer.getY(), c (0xff7d8186), outer.getRight(), outer.getBottom(), false));
-            g.fillPath (gear);
-            const float capR = radius * 0.68f;
-            g.setGradientFill (juce::ColourGradient (c (0xff33353a), cc.x, cc.y - capR, c (0xff08090a), cc.x, cc.y + capR, false));
-            g.fillEllipse (juce::Rectangle<float> (capR * 2.0f, capR * 2.0f).withCentre (cc));
-            pointer (radius * 0.42f, radius * 0.68f, 2.0f, juce::Colours::white);
+            skirt.closeSubPath();
+            g.setGradientFill (juce::ColourGradient (c (0xffeef0f2), outer.getX(), outer.getY(), c (0xff73787e), outer.getRight(), outer.getBottom(), false));
+            g.fillPath (skirt);
+            // Each flute's ridge catching the light and its groove in shade.
+            const float topR = radius * 0.64f;
+            for (int k = 0; k < flutes * 2; ++k)
+            {
+                const float a = juce::MathConstants<float>::pi * (float) k / (float) flutes - angle;
+                g.setColour (k % 2 == 0 ? juce::Colours::white.withAlpha (0.3f) : juce::Colours::black.withAlpha (0.22f));
+                g.drawLine (cc.x + topR * std::cos (a), cc.y + topR * std::sin (a), cc.x + radius * 0.95f * std::cos (a), cc.y + radius * 0.95f * std::sin (a),
+                            juce::jmax (1.0f, radius * 0.07f));
+            }
+            g.setColour (juce::Colours::black.withAlpha (0.2f));
+            g.strokePath (skirt, juce::PathStrokeType (1.0f));
+            const auto top = juce::Rectangle<float> (topR * 2.0f, topR * 2.0f).withCentre (cc);
+            g.setGradientFill (juce::ColourGradient (c (0xffeceef0), top.getX(), top.getY(), c (0xff9da2a8), top.getRight(), top.getBottom(), false));
+            g.fillEllipse (top);
+            g.setColour (juce::Colours::black.withAlpha (0.28f));
+            g.drawEllipse (top, 1.0f);
             // The jewel: the control's colour, lit when it has something to do.
-            const float jewel = radius * 0.32f;
+            const float jewel = radius * 0.27f;
             const auto lit = colour.isTransparent() ? c (0xff55585e) : colour;
             g.setColour (lit.withAlpha (0.35f));
             g.fillEllipse (juce::Rectangle<float> (jewel * 3.0f, jewel * 3.0f).withCentre (cc));
             g.setGradientFill (juce::ColourGradient (lit.brighter (0.8f), cc.x, cc.y, lit, cc.x + jewel, cc.y + jewel, true));
             g.fillEllipse (juce::Rectangle<float> (jewel * 2.0f, jewel * 2.0f).withCentre (cc));
+            break;
+        }
+        case Look::Knob::Skirt:
+        {
+            // A grey knurled skirt (the look's knob colour), the cap of the control's
+            // colour on it, a white line from the middle to the skirt's edge (the photos).
+            const auto skirt = l.knob;
+            g.setGradientFill (juce::ColourGradient (skirt.brighter (0.45f), outer.getX(), outer.getY(), skirt.darker (0.45f), outer.getRight(), outer.getBottom(), false));
+            g.fillEllipse (outer);
+            knurl (36, 0.62f, 0.16f, 1.0f);
+            g.setColour (juce::Colours::black.withAlpha (0.35f));
+            g.drawEllipse (outer.reduced (0.5f), 1.0f);
+            auto top = outer.reduced (outer.getWidth() * 0.21f);
+            g.setColour (juce::Colours::black.withAlpha (0.3f));
+            g.fillEllipse (top.translated (0.0f, 1.5f));
+            g.setGradientFill (juce::ColourGradient (base.brighter (0.4f), top.getX(), top.getY(), base.darker (0.25f), top.getRight(), top.getBottom(), false));
+            g.fillEllipse (top);
+            pointer (0.0f, radius * 0.94f, juce::jmax (1.6f, radius * 0.07f), l.knobLine);
             break;
         }
         case Look::Knob::Plain:

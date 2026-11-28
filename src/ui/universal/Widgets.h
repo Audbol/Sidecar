@@ -206,6 +206,9 @@ public:
     ToggleKey (const juce::String& label, juce::Colour onColour, const Theme&);
 
     std::function<bool()> isOn, isHalfOn;
+    /** Its lit colour, if it changes with what the key does (an SQ's SoftKeys and mix keys);
+        null: the colour it was made with. */
+    std::function<juce::Colour()> onColour;
     /** The console the key's page comes from (devices::shown()), as a tag in its corner. */
     juce::String device;
     /** A page tab (the Universal Mixer's): no key face, the name dim, a line under it while on. */

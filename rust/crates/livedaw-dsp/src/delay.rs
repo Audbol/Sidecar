@@ -70,6 +70,8 @@ pub struct DelayLine {
     channels: usize,
     /// Not run since `pause`: the line starts from silence again.
     paused: bool,
+    /// The MIX and feedback the last block of [`Self::process_mix`] ended on.
+    last_mix_fb: Option<(f32, f32)>,
 }
 
 /// `buf` as `len` zeros. A buffer of another size is replaced by a zeroed allocation, which the
@@ -158,6 +160,65 @@ impl DelayLine {
         }
         self.pos = (start + n) % len;
     }
+
+    /// As [`Self::process`], with a MIX and a feedback (a DM2000 Input Channel's delay,
+    /// V2 Owner's Manual p.142): `d` the delayed signal, each side gives `(1 - |mix|) x +
+    /// mix d` and the line takes `x + fb d`. `mix` (-1 .. 1: minus reverses the delayed
+    /// signal) and `fb` (-0.99 .. 0.99) move from the last block's values over this one.
+    /// The manual says only that MIX "sets the mix of dry and wet signals" and FB.GAIN "the
+    /// amount of feedback": the sums are Sidecar's reading. At no delay there is nothing
+    /// to feed back. `mix` 1 and `fb` 0, as on every other console, is [`Self::process`].
+    pub fn process_mix(&mut self, chans: &mut [&mut [f32]], samples: usize, mix: f32, fb: f32) {
+        let mix = if mix.is_finite() { mix.clamp(-1.0, 1.0) } else { 1.0 };
+        let fb = if fb.is_finite() { fb.clamp(-0.99, 0.99) } else { 0.0 };
+        let (mix0, fb0) = self.last_mix_fb.unwrap_or((mix, fb));
+        self.last_mix_fb = Some((mix, fb));
+        if mix0 == 1.0 && mix == 1.0 && fb0 == 0.0 && fb == 0.0 {
+            self.process(chans, samples);
+            return;
+        }
+        let len = self.buf[0].len();
+        if len < 2 {
+            return;
+        }
+        let samples = samples.min(len - 1);
+        self.delay = samples;
+        let n = chans.iter().map(|c| c.len()).min().unwrap_or(0);
+        let nc = chans.len().min(2);
+        if self.paused {
+            self.reset();
+            self.paused = false;
+        } else if nc > self.channels {
+            for b in &mut self.buf[self.channels..nc] {
+                b.fill(0.0);
+            }
+        }
+        self.channels = nc;
+        let start = self.pos;
+        let step = 1.0 / n.max(1) as f32;
+        for (ch, data) in chans.iter_mut().enumerate().take(2) {
+            let buf = &mut self.buf[ch];
+            let mut w = start;
+            let mut r = if start >= samples { start - samples } else { start + len - samples };
+            for (i, x) in data[..n].iter_mut().enumerate() {
+                let t = (i + 1) as f32 * step;
+                let (m, f) = (mix0 + (mix - mix0) * t, fb0 + (fb - fb0) * t);
+                let dry = *x;
+                let wet = if samples == 0 { dry } else { buf[r] };
+                buf[w] = if samples == 0 { dry } else { dry + f * wet };
+                *x = (1.0 - m.abs()) * dry + m * wet;
+                w += 1;
+                if w == len {
+                    w = 0;
+                }
+                r += 1;
+                if r == len {
+                    r = 0;
+                }
+            }
+        }
+        self.pos = (start + n) % len;
+    }
 }
 
 #[cfg(test)]
@@ -200,6 +261,57 @@ mod tests {
         d.process(&mut [&mut x[..]], 10);
         assert_eq!(x[..10], [0.0; 10]);
         assert_eq!(x[10], 4.0);
+    }
+
+    /// MIX and FB.GAIN: 100 % and 0 % is the plain delay; 0 % MIX the dry signal; a
+    /// negative MIX reverses the delayed signal; feedback repeats it, each time by FB.
+    #[test]
+    fn mix_and_feedback() {
+        let impulse = |mix: f32, fb: f32, samples: usize| {
+            let mut d = DelayLine::default();
+            d.prepare(48000.0);
+            let mut x = vec![0.0f32; 64];
+            x[0] = 1.0;
+            d.process_mix(&mut [&mut x[..]], samples, mix, fb);
+            x
+        };
+        let plain = impulse(1.0, 0.0, 10);
+        assert_eq!((plain[0], plain[10]), (0.0, 1.0));
+        let dry = impulse(0.0, 0.0, 10);
+        assert_eq!((dry[0], dry[10]), (1.0, 0.0));
+        let half = impulse(0.5, 0.0, 10);
+        assert_eq!((half[0], half[10]), (0.5, 0.5));
+        let reversed = impulse(-1.0, 0.0, 10);
+        assert_eq!((reversed[0], reversed[10]), (0.0, -1.0));
+        // Feedback: the repeats every 10 samples, each FB times the last.
+        let echo = impulse(1.0, 0.5, 10);
+        assert_eq!((echo[10], echo[20], echo[30], echo[15]), (1.0, 0.5, 0.25, 0.0));
+        let inverted = impulse(1.0, -0.5, 10);
+        assert_eq!((inverted[20], inverted[30]), (-0.5, 0.25));
+        // Clamped to the ranges; no delay, nothing fed back.
+        let held = impulse(1.0, 5.0, 10);
+        assert!((held[20] - 0.99).abs() < 1e-6);
+        let none = impulse(1.0, 0.5, 0);
+        assert_eq!((none[0], none[1]), (1.0, 0.0));
+    }
+
+    /// A change of MIX moves over a block, not in a step; back at 100 % and 0 % the line
+    /// runs as a plain delay again.
+    #[test]
+    fn mix_changes_ramp() {
+        let mut d = DelayLine::default();
+        d.prepare(48000.0);
+        let mut x = vec![1.0f32; 100];
+        d.process_mix(&mut [&mut x[..]], 0, 1.0, 0.0);
+        let mut x = vec![1.0f32; 100];
+        d.process_mix(&mut [&mut x[..]], 0, -1.0, 0.0);
+        assert!(x[0] > 0.9 && x[99] < -0.99, "{} .. {}", x[0], x[99]);
+        assert!(x.windows(2).all(|w| w[1] <= w[0]));
+        let mut x = vec![1.0f32; 100];
+        d.process_mix(&mut [&mut x[..]], 0, 1.0, 0.0);
+        let mut y = vec![1.0f32; 100];
+        d.process_mix(&mut [&mut y[..]], 0, 1.0, 0.0);
+        assert_eq!(y, vec![1.0f32; 100]);
     }
 
     /// As the WING's DELAY panel: 0.1 m reads 0.3 ft, 0.3 ms and 16 samples

@@ -203,6 +203,9 @@ namespace y01v
         int getFocus() const noexcept { return focus; }
         /** The focused field's value text. */
         juce::String getFocusText() const;
+        /** The first field whose binding is labelled `label` (-1: none), and the cursor onto field `i`: for the tests. */
+        int findField (const juce::String& label) const;
+        void focusField (int i);
         /** The dots, for the tests. */
         bool isDotOn (int x, int y) const noexcept;
 
@@ -407,6 +410,11 @@ namespace y01v
         Strip* outputStrip (int port, int& side) const;
         /** An output's source as OMNI OUT SELECT counts them: AUX 1-4, BUS 1-4, ST L, ST R, CH 1-16 (-1: another). */
         int outputChoice (int port) const;
+        /** Whether input channel `channel` (the engine's list: 12 and 13 the stereo pairs) has its direct
+            out on an OMNI or OPTION output: the D its ROUTING and VIEW pages light (p.49). */
+        bool isDirectOut (int channel) const;
+        /** The fader (0-13) of strip `s`, or -1. */
+        int faderOf (const Strip& s) const;
         void setOutputChoice (int port, int choice);
         void swapInputs (int channel);
         bool isSwapped (int channel) const;

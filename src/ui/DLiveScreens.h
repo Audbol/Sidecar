@@ -866,6 +866,32 @@ private:
 /** Help's note: "Scenes", "Meters", "Processing/Gate"... (a key it doesn't know gets a general one). */
 juce::String screenHelp (const juce::String& key);
 
+/** A window over a screen's page, as the console opens them (the Firmware Reference Guide's
+    picture of Embedded Recall, 7.3): the page dimmed around it, a title bar with Close. It covers
+    its parent; its keys and boxes are its children, `paintBody` draws the rest. */
+class ScreenWindow final : public juce::Component
+{
+public:
+    ScreenWindow (const juce::String& title, juce::Rectangle<int> frame);
+    void setTitle (const juce::String&);
+    const juce::String& getTitle() const noexcept { return title; }
+    juce::Rectangle<int> getFrame() const noexcept { return frame; }
+    /** A titled pane inside the frame (drawn under the children). */
+    void addPane (juce::Rectangle<float>, const juce::String& title);
+    std::function<void (juce::Graphics&)> paintBody;
+    std::function<void (const juce::MouseEvent&)> onMouseDown;
+    std::function<void()> onClose;
+    ScreenButton closeKey;
+
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+
+private:
+    juce::String title;
+    juce::Rectangle<int> frame;
+    std::vector<std::pair<juce::Rectangle<float>, juce::String>> panes;
+};
+
 /** The right screen's Scenes page: Scene Manager. */
 class SceneScreen final : public juce::Component, private juce::Timer
 {
@@ -913,7 +939,82 @@ public:
     void setAllSafe (bool);
     void toggleUpdateScene (int row);
     int getNumUpdateScenes() const noexcept { return (int) updateRows.size(); }
+    bool isUpdateScene (int row) const;
     void applyUpdate();
+
+    /** The windows Scene Manager's keys open over the page (one at a time). */
+    enum class Window
+    {
+        None,
+        Embedded,
+        CopyFilter,
+        CustomMidi,
+        Range,
+        Preferences
+    };
+
+    /** Scene Manager's preferences (7.1; Setup held and a touch on the page, or a right-click, opens
+        them), kept in Sidecar's settings. */
+    enum Pref
+    {
+        OverwriteConfirm,
+        RecallConfirm,
+        DisplayLastRecalled,
+        DisableSurfaceControls,
+        AutoStore,
+        TrackEmbedded,
+        AutoIncrement,
+        GoOnTouch,
+        NumPrefs
+    };
+    bool getPref (int) const;
+    void setPref (int, bool);
+    void openPreferences();
+    /** The panel's scene keys: nothing while Disable Surface Controls is on; GO asks first with Scene
+        Recall Confirmation. */
+    void panelStep (int delta);
+    void panelGo();
+    /** Set by the surface: whether its Setup key is held (lit). */
+    std::function<bool()> isSetupHeld;
+    Window getWindow() const noexcept { return windowKind; }
+    ScreenWindow* getWindowComponent() const noexcept { return window.get(); }
+    void closeWindow();
+
+    /** Embedded Recall (Firmware Reference Guide 7.3): the selected scene's list. The window's Scene
+        Number and Delay say what Add adds (a scene of this show, 0 to 240 s after); Remove takes the
+        chosen line out. */
+    void openEmbedded();
+    void setEmbedTarget (int scene, double delaySeconds);
+    bool addEmbedded();
+    void chooseEmbedded (int line);
+    void removeEmbedded();
+    /** Copy Filter To... (7.1): the selected scene's recall filter onto scene `first` to `last`
+        (0-based, both included; locked scenes and the scene itself are passed over). The window
+        chooses one scene, a range or all of them. Returns how many took it. */
+    void openCopyFilter();
+    /** 0 one scene, 1 a range, 2 all scenes. */
+    void setCopyMode (int mode);
+    int getCopyMode() const noexcept { return copyMode; }
+    void setCopyRange (int first, int last);
+    int copyFilterTo (int first, int last);
+    /** Custom MIDI (7.1): hexadecimal MIDI bytes the selected scene sends each time it is recalled
+        (Sidecar sends them from its MIDI out, as SEND MIDI does). False, with `error`: not MIDI. */
+    void openCustomMidi();
+    bool setCustomMidi (const juce::String& hex, juce::String& error);
+    /** Select Range (Update, Import): scenes `first` to `last` (0-based) chosen. */
+    void openRange();
+    void selectRange (int first, int last);
+
+    /** Import (7.6): the scenes of another show of this console. Its scenes are chosen on the right,
+        then dragged into Local Scenes: they are put in where they are dropped (the scenes there
+        move down). */
+    bool loadImportShow (const juce::File&);
+    const juce::StringArray& getImportNames() const noexcept { return importNames; }
+    void toggleImportScene (int index);
+    bool isImportChosen (int index) const;
+    int getNumImportChosen() const noexcept { return (int) importChosen.size(); }
+    /** Puts the chosen scenes in at local row `row`; the first one's index, or -1. */
+    int importChosenAt (int row);
 
     void undoGo();
     ScreenButton goKey, undoKey, storeKey, deleteKey, filterKey, lockKey, copyFilterKey, embeddedKey, midiKey, actionsKey, copyKey, pasteKey;
@@ -924,14 +1025,34 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
 private:
-    void timerCallback() override { if (isVisible()) refresh(); }
+    void timerCallback() override
+    {
+        retired.clear();
+        if (isVisible())
+            refresh();
+    }
     void buildSends();
     void showRecallFilter();
     void loadEditors();
     juce::String rowName (int row) const;
+    void touchBox (Touchable&);
+    /** Where Go, GO and Go on Touch recall: Auto Store first, Auto Increment after. */
+    void recallRow (int row);
+    /** A new window of `kind` over the page (any other closes first). */
+    ScreenWindow& makeWindow (Window kind, const juce::String& title, juce::Rectangle<int> frame);
+    ScreenButton& addWindowKey (juce::Rectangle<int>, const juce::String&, juce::Colour, std::function<void()>);
+    ParamBox& addWindowBox (juce::Rectangle<int>, KnobBinding, juce::Colour, const juce::String& caption);
+    /** A scene number box over 1 .. `count` (at least 1), reading and writing `value` (0-based). */
+    KnobBinding sceneNumber (const juce::String& label, int& value, std::function<int()> count);
+    /** The scene list's icons right of a row: last recalled, embedded, crossfade, filter, lock, stored. */
+    void paintIcons (juce::Graphics&, juce::Rectangle<float> row, int scene, bool selectedRow) const;
+    juce::Rectangle<float> importRow (int i) const noexcept;
+    juce::Rectangle<float> localImportRow (int i) const noexcept;
 
     static constexpr int kMainRows = 11, kLeftRows = 15, kSlots = 500;
     void rebuildSub();
@@ -956,6 +1077,25 @@ private:
     std::vector<int> lockedScenes;
     juce::File copied;
     juce::Component::SafePointer<Touchable> touchedNow;
+
+    std::unique_ptr<ScreenWindow> window;
+    Window windowKind = Window::None;
+    std::vector<std::unique_ptr<juce::Component>> windowItems;
+    /** A closed window, kept until the next tick: its key may be the one whose click closed it. */
+    std::vector<std::unique_ptr<juce::Component>> retired;
+    juce::TextEditor* midiField = nullptr;
+    juce::String windowStatus;
+    int embedScene = 0, embedLine = -1, copyMode = 0, copyFirst = 0, copyLast = 0, rangeFirst = 0, rangeLast = 0;
+    double embedDelay = 0.0;
+
+    juce::File importFile;
+    juce::StringArray importNames;
+    std::vector<int> importChosen;
+    juce::String importError;
+    int importFirst = 0, dropRow = -1;
+    bool draggingImport = false;
+    juce::Point<int> dragAt;
+    std::unique_ptr<juce::FileChooser> chooser;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SceneScreen)
 };

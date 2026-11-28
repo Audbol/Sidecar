@@ -344,7 +344,7 @@ namespace pro2
         g.setColour (kSilk.withAlpha (0.9f));
         g.drawText (ch (0x221e), juce::Rectangle<float> (w - 17.0f, t.getBottom() - 6.0f, 16.0f, 12.0f), juce::Justification::centredLeft, false);
 
-        // The slot with its screws, then the cap: black, a band of its colour across it.
+        // The slot with its screws, then the cap: black, an oval of its colour in it.
         g.setColour (juce::Colour (0xff070809));
         g.fillRoundedRectangle (juce::Rectangle<float> (cx - 2.5f, t.getY() - 10.0f, 5.0f, t.getHeight() + 20.0f), 2.0f);
         for (float y : { t.getY() - 16.0f, t.getBottom() + 16.0f })
@@ -364,8 +364,9 @@ namespace pro2
         g.setColour (juce::Colours::white.withAlpha (0.1f));
         for (float dy : { -14.0f, -10.5f, 10.5f, 14.0f })
             g.fillRect (cap.getX() + 2.0f, y + dy - 0.5f, cap.getWidth() - 4.0f, 1.0f);
+        // The insert an oval nearly the cap's width (the photos), its line across it.
         g.setColour (band);
-        g.fillRoundedRectangle (juce::Rectangle<float> (cap.getX() + 2.0f, y - 5.0f, cap.getWidth() - 4.0f, 10.0f), 4.5f);
+        g.fillEllipse (juce::Rectangle<float> (cap.getX() + 2.0f, y - 6.5f, cap.getWidth() - 4.0f, 13.0f));
         g.setColour (juce::Colours::black.withAlpha (0.55f));
         g.fillRect (cap.getX() + 3.0f, y - 0.6f, cap.getWidth() - 6.0f, 1.2f);
     }
@@ -427,8 +428,6 @@ namespace pro2
         return preFlag != nullptr ? preFlag->load() : mode != nullptr && mode->load() == (int32_t) SendMode::Pre;
     }
 
-    bool MixSend::isGroup() const noexcept { return mode != nullptr && mode->load() == (int32_t) SendMode::Group; }
-
     void MixSend::setPre (bool pre) const noexcept
     {
         if (preFlag != nullptr)
@@ -440,23 +439,140 @@ namespace pro2
     MixSend sendTo (Strip& from, Strip& mix)
     {
         MixSend s;
-        if (&from == &mix || from.getKind() == StripKind::Matrix)
+        if (&from == &mix || from.getKind() == StripKind::Matrix || mix.getId() < 0)
             return s;
+        const auto& p = pro2Of (mix);
+        s.linked = p.linked.load();
+        s.side = s.linked ? mix.getId() % 2 : 0;
+        const auto leader = (size_t) (s.linked ? mix.getId() & ~1 : mix.getId());
         if (mix.getKind() == StripKind::Bus && from.isInput())
         {
-            auto& send = from.sends[(size_t) mix.getId()];
+            auto& send = from.sends[leader];
             s.on = &send.enabled;
             s.mode = &send.mode;
             s.level = &send.levelDb;
+            s.pan = &send.pan;
+            s.mixMode = juce::jlimit (kMix, kMixMinus, (int) p.mixMode.load());
         }
         else if (mix.getKind() == StripKind::Matrix)
         {
-            auto& send = from.matrix[(size_t) mix.getId()];
+            auto& send = from.matrix[leader];
             s.on = &send.on;
             s.preFlag = &send.pre;
             s.level = &send.levelDb;
+            s.pan = &send.pan;
         }
+        if (! s.linked)
+            s.pan = nullptr;
         return s;
+    }
+
+    ld::Pro2StripParams& pro2Of (const Strip& s) { return *ld::ld_strip_pro2 (s.getHandle()); }
+
+    namespace
+    {
+        constexpr int32_t kSafeBits[kNumSafes] = { ld::kPro2SafeEq, ld::kPro2SafeDyn, ld::kPro2SafeMic, 0, ld::kPro2SafeMute, ld::kPro2SafeFader };
+    }
+
+    const char* safeName (int safe)
+    {
+        const char* names[kNumSafes] = { "EQ", "DYN", "MIC", "AUTO", "MUTE", "FADER" };
+        return names[juce::jlimit (0, kNumSafes - 1, safe)];
+    }
+
+    bool hasSafe (const Strip& s, int safe)
+    {
+        return safe >= 0 && safe < kNumSafes && ! (safe == 1 && s.getKind() == StripKind::Aux);
+    }
+
+    bool isSafe (const Strip& s, int safe)
+    {
+        if (! hasSafe (s, safe))
+            return false;
+        if (safe == kAutoSafe)
+            return s.params.recallSafe.load();
+        return (pro2Of (s).safes.load() & kSafeBits[safe]) != 0;
+    }
+
+    void toggleSafe (Strip& s, int safe)
+    {
+        if (! hasSafe (s, safe))
+            return;
+        if (safe == kAutoSafe)
+            s.params.recallSafe = ! s.params.recallSafe.load();
+        else
+            pro2Of (s).safes.fetch_xor (kSafeBits[safe]);
+    }
+
+    juce::String mixModeName (int mode) { return mode == kGroup ? "group" : mode == kMixMinus ? "mix minus" : "mix"; }
+
+    void cycleMixMode (MixerEngine& engine, Strip& bus)
+    {
+        if (bus.getKind() == StripKind::Bus)
+            ld::ld_engine_pro2_set_mix_mode (engine.getHandle(), bus.getHandle(), (pro2Of (bus).mixMode.load() + 1) % 3);
+    }
+
+    bool setLinked (MixerEngine& engine, Strip& mix, bool linked) { return ld::ld_engine_pro2_set_linked (engine.getHandle(), mix.getHandle(), linked); }
+
+    juce::String directModeName (int mode)
+    {
+        // The MODE switch's three (p.341).
+        return mode == 0 ? "post fade" : mode == 1 ? "pre proc." : "post proc.";
+    }
+
+    KnobBinding bindDirectLevel (Strip& s)
+    {
+        // -oo to +10 dB (p.249), on the fader's taper.
+        auto& level = pro2Of (s).directDb;
+        KnobBinding b;
+        b.label = "DIRECT";
+        b.get = [&level] { return fader::dbToPos (juce::jmin (10.0f, level.load())); };
+        b.set = [&level] (float v)
+        {
+            const float db = fader::posToDb (juce::jlimit (0.0f, 1.0f, v));
+            level = v <= 0.0f || db <= fader::kMinDb ? FaderLaw::silenceDb : juce::jmin (10.0f, db);
+        };
+        b.text = [&level] { return fader::text (level.load()); };
+        b.reset = [&level] { level = 0.0f; };
+        return b;
+    }
+
+    void cycleDirectMode (Strip& s)
+    {
+        auto& mode = pro2Of (s).directMode;
+        mode = (mode.load() + 1) % 3;
+    }
+
+    KnobBinding bindSisImage (Strip& s) { return bindLinear ("IMAGE", pro2Of (s).sisImage, 0.0f, 100.0f, " %", 0, 50.0f); }
+
+    KnobBinding bindMca (Strip& mix, int vca, MixerEngine& engine)
+    {
+        // The pair's even mix keeps the odd one's levels (the engine reads each mix's own).
+        const int v = juce::jlimit (0, 7, vca);
+        auto& level = pro2Of (mix).mcaDb[v];
+        std::atomic<float>* other = nullptr;
+        if (pro2Of (mix).linked.load())
+            for (auto& m : engine.getStrips (mix.getKind()))
+                if (m->getId() == (mix.getId() ^ 1))
+                    other = &pro2Of (*m).mcaDb[v];
+        // On the console's fader law, as a fader of the mix bay.
+        KnobBinding b;
+        b.label = "MCA " + juce::String (v + 1);
+        b.get = [&level, law = engine.getFaderLaw()] { return law.toPosition (level.load()); };
+        b.set = [&level, other, law = engine.getFaderLaw()] (float pos)
+        {
+            level = law.toDb (juce::jlimit (0.0f, 1.0f, pos));
+            if (other != nullptr)
+                *other = level.load();
+        };
+        b.text = [&level] { return fader::text (level.load()); };
+        b.reset = [&level, other]
+        {
+            level = 0.0f;
+            if (other != nullptr)
+                *other = 0.0f;
+        };
+        return b;
     }
 
     KnobBinding bindHighPass (Strip& s) { return bindFreq ("HIGH PASS", s.params.filter().lowCutFreq, 10.0f, 400.0f, 80.0f); }
@@ -734,9 +850,11 @@ void Pro2Surface::buildStrip (Bay bay, int i, int cx, bool withMeter)
     const bool master = bay == Bay::Master;
     auto& lcd = key ("LCD " + tag, kLcdBody, Key::Shape::Lcd, centred (cx, kLcdY, master ? 48 : 50, 38));
     auto* lcdKey = &lcd;
-    lcd.legend = [this, bay, i]() -> juce::String
+    // The MCAs have the VCAs' names and members (p.44).
+    const auto groupsShown = [this, bay] { return bay == Bay::Mix && (mixMode == MixMode::Vca || mixMode == MixMode::Mca); };
+    lcd.legend = [this, bay, i, groupsShown]() -> juce::String
     {
-        if (bay == Bay::Mix && mixMode == MixMode::Vca)
+        if (groupsShown())
             return groupName (i);
         if (bay == Bay::Mix && mixMode == MixMode::Geq)
         {
@@ -750,18 +868,18 @@ void Pro2Surface::buildStrip (Bay bay, int i, int cx, bool withMeter)
         auto* s = stripAt (bay, i);
         return s != nullptr ? s->getName() : juce::String();
     };
-    lcd.backlight = [this, bay, i]() -> juce::Colour
+    lcd.backlight = [this, bay, i, groupsShown]() -> juce::Colour
     {
-        if (bay == Bay::Mix && mixMode == MixMode::Vca)
+        if (groupsShown())
             return consoleColour (ctx.engine.getDca (i).colour.load());
         if (bay == Bay::Mix && mixMode == MixMode::Geq)
             return selectedMix() != nullptr && hasGeq (*selectedMix()) ? juce::Colour (0xff9fd2ff) : juce::Colour();
         auto* s = stripAt (bay, i);
         return s != nullptr ? stripDisplayColour (*s) : juce::Colour();
     };
-    lcd.isOn = [this, bay, i]
+    lcd.isOn = [this, bay, i, groupsShown]
     {
-        if (bay == Bay::Mix && mixMode == MixMode::Vca)
+        if (groupsShown())
             return assigning == i ? blink() : group == i;
         auto* s = stripAt (bay, i);
         if (s == nullptr)
@@ -770,10 +888,10 @@ void Pro2Surface::buildStrip (Bay bay, int i, int cx, bool withMeter)
             return isMember (assigning, *s);
         return s == selected() || (bay == Bay::Master && s == selectedMix());
     };
-    lcd.onClick = [this, bay, i, lcdKey]
+    lcd.onClick = [this, bay, i, lcdKey, groupsShown]
     {
         const bool held = lcdKey->takeHeld();
-        if (bay == Bay::Mix && mixMode == MixMode::Vca)
+        if (groupsShown())
         {
             // Held: the group's members are set with the channels' LCD buttons, until it is pressed again (p.74).
             if (held || assigning == i)
@@ -862,23 +980,29 @@ void Pro2Surface::buildDetail()
         k.onClick = [this, a] { setArea (area == a ? Area::Overview : a); };
     };
 
-    // direct, channel safes (pp.244, 248). The direct output's level and the safes but AUTO have no engine yet.
+    // direct, channel safes (pp.244, 248). The direct output's MODE and level are on the screen.
     outline ({ fx (0), 58.0f, 38.0f, 38.0f });
-    key ("DIRECT MUTE", kRed, Shape::Cap, { ax + 5, 63, 28, 14 }, "MUTE");
+    auto& directMute = key ("DIRECT MUTE", kRed, Shape::Cap, { ax + 5, 63, 28, 14 }, "MUTE");
+    directMute.isOn = ifSelected ([] (Strip& s) { return s.getKind() == StripKind::Channel && pro2Of (s).directMute.load(); });
+    directMute.onClick = onSelected ([] (Strip& s)
+    {
+        if (s.getKind() == StripKind::Channel)
+            pro2Of (s).directMute = ! pro2Of (s).directMute.load();
+    });
     silk (fx (0), 80.0f, 38.0f, 9.0f, "direct", 7.0f, kSilk);
     outline ({ fx (42), 58.0f, 172.0f, 38.0f });
     silk (fx (42), 59.0f, 172.0f, 8.0f, "channel safes", 7.0f, kSilk, juce::Justification::centred, true);
     {
-        const char* names[] = { "EQ", "DYN", "MIC", "AUTO", "MUTE", "FADER" };
         const juce::Colour faces[] = { kRed, kBlue, juce::Colour (0xff50555a), kYellow, kRed, kGreen };
-        for (int i = 0; i < 6; ++i)
+        for (int i = 0; i < kNumSafes; ++i)
         {
-            auto& k = key (juce::String ("SAFE ") + names[i], faces[i], Shape::Cap, { ax + 50 + (i % 3) * 54, 68 + (i / 3) * 14, 32, 11 }, names[i]);
-            if (i == 3)
+            auto& k = key (juce::String ("SAFE ") + safeName (i), faces[i], Shape::Cap, { ax + 50 + (i % 3) * 54, 68 + (i / 3) * 14, 32, 11 }, safeName (i));
+            k.isOn = ifSelected ([i] (Strip& s) { return isSafe (s, i); });
+            k.onClick = onSelected ([this, i] (Strip& s)
             {
-                k.isOn = ifSelected ([] (Strip& s) { return s.params.recallSafe.load(); });
-                k.onClick = onSelected ([] (Strip& s) { s.params.recallSafe = ! s.params.recallSafe.load(); });
-            }
+                toggleSafe (s, i);
+                screen.rebuild();
+            });
         }
     }
 
@@ -1062,12 +1186,21 @@ void Pro2Surface::buildDetail()
     eqDown.isOn = ifSelected ([this] (Strip& s) { return s.isOutput() && eqBand == 4; }); // band 2
     eqDown.onClick = [this] { setEqBand (eqBand + 1); };
 
-    // masters (pp.261-262). SIS has no engine (the pan is two-way).
+    // masters (pp.261-262): SIS, the LCR master enable over ST and MON; with it the mono level knob is the image.
     outline ({ fx (0), 480.0f, 38.0f, 74.0f });
     quick ("QA MASTERS", { ax + 12, 510, 14, 14 }, Area::Masters);
     outline ({ fx (42), 480.0f, 172.0f, 74.0f });
     silk (fx (84), 481.0f, 60.0f, 9.0f, "masters", 7.5f, kSilk, juce::Justification::centred, true);
-    key ("SIS", kOrange, Shape::Cap, { ax + 50, 492, 28, 13 }, "SIS");
+    auto& sis = key ("SIS", kOrange, Shape::Cap, { ax + 50, 492, 28, 13 }, "SIS");
+    sis.isOn = ifSelected ([] (Strip& s) { return s.isInput() && pro2Of (s).sis.load(); });
+    sis.onClick = onSelected ([this] (Strip& s)
+    {
+        if (! s.isInput())
+            return;
+        pro2Of (s).sis = ! pro2Of (s).sis.load();
+        bindSelected();
+        screen.rebuild();
+    });
     auto& st = key ("ST", kRed, Shape::Cap, { ax + 104, 492, 28, 13 }, "ST");
     st.isOn = ifSelected ([] (Strip& s) { return s.getKind() != StripKind::Main && s.getKind() != StripKind::Matrix && s.mains[0].on.load(); });
     st.onClick = onSelected ([] (Strip& s)
@@ -1184,7 +1317,7 @@ void Pro2Surface::buildOutputs()
         }
     }
 
-    // Advanced navigation (p.44). MCA groups have no engine.
+    // Advanced navigation (p.44).
     outline ({ (float) kBx, 500.0f, 174.0f, 54.0f });
     silk ((float) kBx, 501.0f, 174.0f, 9.0f, "advanced channel navigation", 7.0f, kSilk, juce::Justification::centred, true);
     auto& flipKey = key ("FLIP", kCream, Shape::Cap, { kBx + 8, 522, 34, 18 }, "FLIP");
@@ -1201,7 +1334,10 @@ void Pro2Surface::buildOutputs()
     geqKey.isOn = [this] { return mixMode == MixMode::Geq; };
     geqKey.onClick = [this] { setMixMode (mixMode == MixMode::Geq ? MixMode::Vca : MixMode::Geq); };
     silk ((float) kBx + 222.0f, 520.0f, 46.0f, 22.0f, "access with\noutput select", 6.0f, kSilk);
-    key ("MCA", kCream, Shape::Cap, { kBx + 272, 522, 34, 18 }, "MCA");
+    // MCA: the selected mix's eight MCAs on the mix bay's faders (p.44; Quick Start Guide p.30).
+    auto& mcaKey = key ("MCA", kCream, Shape::Cap, { kBx + 272, 522, 34, 18 }, "MCA");
+    mcaKey.isOn = [this] { return mixMode == MixMode::Mca; };
+    mcaKey.onClick = [this] { setMixMode (mixMode == MixMode::Mca ? MixMode::Vca : MixMode::Mca); };
     silk ((float) kBx + 308.0f, 520.0f, 44.0f, 22.0f, "access with\noutput select", 6.0f, kSilk);
 }
 
@@ -1912,6 +2048,13 @@ void Pro2Surface::bindFaders()
                     f.bind (nullptr, e.getFaderLaw());
                 continue;
             }
+            if (bay == Bay::Mix && mixMode == MixMode::Mca)
+            {
+                // Each adds its level on top of its VCA's members' contributions to the selected mix.
+                const bool mixes = mix != nullptr && (mix->getKind() == StripKind::Bus || mix->getKind() == StripKind::Matrix);
+                f.bind (mixes && i < e.getNumDcas() ? bindMca (*mix, i, e) : KnobBinding {});
+                continue;
+            }
             if (bay == Bay::Mix && mixMode == MixMode::Geq)
             {
                 KnobBinding b;
@@ -1995,10 +2138,9 @@ void Pro2Surface::bindSelected()
         set ("EQ WIDTH", id.isNotEmpty() ? bindEqParam (*s, id + "w") : KnobBinding {});
     }
 
-    // masters: pan, and the level to the mono master.
+    // masters: pan, and the level to the mono master (with SIS, the image; below).
     const bool toMasters = s->getKind() != StripKind::Main && s->getKind() != StripKind::Matrix;
     set ("PAN", toMasters ? bindPan ("PAN", p.pan) : KnobBinding {});
-    set ("MONO LEVEL", toMasters && ctx.engine.getMains().size() > 1 ? bindSendLevel ("MONO", s->mains[1].levelDb) : KnobBinding {});
 
     // mix: the eight of the bank.
     for (int k = 0; k < 8; ++k)
@@ -2006,8 +2148,14 @@ void Pro2Surface::bindSelected()
         auto* mix = mixBank < 2 ? ctx.engine.getBusInSlot (mixBank * 8 + k)
                                 : k < (int) ctx.engine.getMatrices().size() ? ctx.engine.getMatrices()[(size_t) k].get() : nullptr;
         const auto send = mix != nullptr ? sendTo (*s, *mix) : MixSend {};
-        set ("MIX " + juce::String (k + 1), send.isValid() && ! send.isGroup() ? bindSendLevel (mix->getName(), *send.level) : KnobBinding {});
+        // A stereo mix: the odd mix's knob is the pan, the even one's the level (p.78).
+        if (send.isValid() && ! send.isGroup() && send.pan != nullptr && send.side == 0)
+            set ("MIX " + juce::String (k + 1), bindPan ("PAN", *send.pan));
+        else
+            set ("MIX " + juce::String (k + 1), send.isValid() && ! send.isGroup() ? bindSendLevel (mix->getName(), *send.level) : KnobBinding {});
     }
+    set ("MONO LEVEL", toMasters && s->isInput() && pro2Of (*s).sis.load() ? bindSisImage (*s)
+                       : toMasters && ctx.engine.getMains().size() > 1 ? bindSendLevel ("MONO", s->mains[1].levelDb) : KnobBinding {});
 }
 
 void Pro2Surface::bindAssignable()
@@ -2196,10 +2344,10 @@ void Pro2Surface::paint (juce::Graphics& g)
         g.setColour (juce::Colour (0xff6b5a1c));
         g.fillEllipse ((float) kAx + 15.0f, 231.0f, 8.0f, 8.0f);
         g.fillEllipse ((float) kAx + 15.0f, 297.0f, 8.0f, 8.0f);
-        // The safes' lamps: AUTO's follows the strip's recall safe.
-        for (int i = 0; i < 6; ++i)
+        // The safes' lamps.
+        for (int i = 0; i < kNumSafes; ++i)
         {
-            const bool on = i == 3 && s != nullptr && s->params.recallSafe.load();
+            const bool on = s != nullptr && isSafe (*s, i);
             g.setColour (on ? juce::Colour (0xffffd84a) : juce::Colour (0xff27384a));
             g.fillEllipse ((float) kAx + 85.0f + (float) (i % 3) * 54.0f, 70.0f + (float) (i / 3) * 14.0f, 6.0f, 6.0f);
         }
@@ -2243,7 +2391,12 @@ void Pro2Surface::paint (juce::Graphics& g)
     {
         g.setColour (kSilk);
         g.setFont (type::font (7.0f, true));
-        const auto what = mixMode == MixMode::Vca ? juce::String ("vca groups") : mixMode == MixMode::Geq ? juce::String ("graphic eq") : mixMode == MixMode::Extend ? juce::String ("channels") : bankName (kInputBanks + 1 + outputBank).toLowerCase();
+        auto* mca = mixMode == MixMode::Mca ? selectedMix() : nullptr;
+        if (mca != nullptr && mca->getKind() == StripKind::Main)
+            mca = nullptr;
+        const auto what = mixMode == MixMode::Vca ? juce::String ("vca groups")
+                          : mixMode == MixMode::Mca ? (mca != nullptr ? "mca groups: " + mca->getName().toLowerCase() : juce::String ("mca groups: select a mix"))
+                          : mixMode == MixMode::Geq ? juce::String ("graphic eq") : mixMode == MixMode::Extend ? juce::String ("channels") : bankName (kInputBanks + 1 + outputBank).toLowerCase();
         g.drawText (what, juce::Rectangle<float> (1180.0f, (float) kLcdY - 10.0f, 430.0f, 9.0f), juce::Justification::centred, false);
         g.drawText (group >= 0 && ! isAreaB (group) ? groupName (group) : bankName (banks[0]).toLowerCase(), juce::Rectangle<float> (57.0f, (float) kLcdY - 10.0f, 432.0f, 9.0f), juce::Justification::centred, false);
     }

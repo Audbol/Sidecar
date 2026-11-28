@@ -4725,6 +4725,8 @@ void copyStripParams (MixerEngine& engine, const Strip& src, const Strip& dst, j
         d.input.delayOn = s.input.delayOn.load();
         d.input.delayMode = s.input.delayMode.load();
         d.input.delay = s.input.delay.load();
+        d.input.delayMix = s.input.delayMix.load();
+        d.input.delayFb = s.input.delayFb.load();
     }
     if (has (Pre))
         copyInsert (s.preInsert(), d.preInsert(), false);

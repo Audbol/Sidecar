@@ -764,6 +764,48 @@ public:
             expectEquals (ch.matrix[0].tap.load(), tap);
         }
 
+        beginTest ("A PRO2's sends panel dims what the console ignores: a group's level, a linked pair's even mix");
+        {
+            auto engineOwner = std::make_unique<MixerEngine> (0);
+            auto& engine = *engineOwner;
+            engine.configureProfile (ld::kProfileMidasPro2);
+            UiRig rig (engine);
+            SendsPanel panel (rig.ctx, Theme::charcoal());
+            panel.setSize (420, 600);
+            auto& ch = *engine.getChannels()[0];
+            panel.setStrip (&ch);
+            const auto& buses = engine.getStrips (StripKind::Bus);
+            const auto ignored = [&] (int row) { return pro2SendIgnored (engine, ch, *buses[(size_t) row], buses[(size_t) row]->getId()); };
+            expectEquals (ignored (0), 0, "aux 1: a mix");
+            expectEquals (ignored (8), 1, "aux 9: the odd one of a stereo group");
+            expectEquals (ignored (9), 2, "aux 10: the even one");
+            expect (panel.getRow (0)->level.isEnabled() && panel.getRow (0)->on.isEnabled());
+            expect (! panel.getRow (8)->level.isEnabled() && ! panel.getRow (8)->source.isEnabled() && panel.getRow (8)->on.isEnabled());
+            expect (! panel.getRow (9)->on.isEnabled() && ! panel.getRow (9)->level.isEnabled());
+            // Aux 1 into group mode, then mix minus: its level goes dim, ON stays.
+            ui::pro2::cycleMixMode (engine, *buses[0]);
+            panel.refresh();
+            expect (! panel.getRow (0)->level.isEnabled() && panel.getRow (0)->on.isEnabled());
+            ui::pro2::cycleMixMode (engine, *buses[0]);
+            ui::pro2::cycleMixMode (engine, *buses[0]);
+            panel.refresh();
+            expect (panel.getRow (0)->level.isEnabled(), "a mix again");
+            // Matrices 1-2 linked: MTX 2's send is MTX 1's.
+            auto& mtx2 = *engine.getMatrices()[1];
+            expect (ui::pro2::setLinked (engine, mtx2, true));
+            expectEquals (pro2SendIgnored (engine, ch, mtx2, 1), 2);
+            expectEquals (pro2SendIgnored (engine, ch, *engine.getMatrices()[0], 0), 0);
+            // An aux send's own sends to the matrices: the pair's even one too; to the other aux sends nothing.
+            expectEquals (pro2SendIgnored (engine, *buses[0], mtx2, 1), 2);
+            expectEquals (pro2SendIgnored (engine, *buses[0], *buses[9], buses[9]->getId()), 0);
+            ui::pro2::setLinked (engine, mtx2, false);
+            // Another console: nothing.
+            MixerEngine wing (0);
+            const Counts counts { 2, 1, 4, 2, 3, 8, 4, 16 };
+            wing.configure (&counts);
+            expectEquals (pro2SendIgnored (wing, *wing.getChannels()[0], *wing.getStrips (StripKind::Bus)[1], 1), 0);
+        }
+
         beginTest ("The inspector opens on the selected strip: its chain with the selected block's editor, its sends");
         {
             MixerEngine engine (0);

@@ -29,6 +29,8 @@ namespace
     const juce::Colour kJewelRed (0xffff3a30), kJewelGreen (0xff4cf08a), kJewelOrange (0xffff9a2a), kJewelYellow (0xffffe05a), kJewelOff (0xff4a4d52);
 
     const juce::Colour kLedRed (0xffff3a30), kLedOrange (0xffffa52e), kLedGreen (0xff55e66e);
+    /** A Group's mix key and a DCA Spill SoftKey (pp.88-89): magenta. */
+    const juce::Colour kMagenta (0xffee6af2);
 
     constexpr int kStripWidth = 94, kStripsX = 138, kGroupGap = 4;
     constexpr int kStripTop = 480, kStripBottom = 1072;
@@ -508,6 +510,7 @@ Sq5Surface::Sq5Surface (UiContext& c)
             pressSoftKey (i, false);
         };
         k.isOn = [this, i] { return isSoftKeyLit (i); };
+        k.onColour = [this, i] { return softKeyColour (i); };
     }
 
     // The left column: View; Pre Fade, Assign, CH to All Mix; Copy, Paste, Reset; Layers.
@@ -550,13 +553,17 @@ Sq5Surface::Sq5Surface (UiContext& c)
         silks.push_back ({ juce::Rectangle<int> (1806, 286 + f * 44, 24, 26).toFloat(), juce::String (f + 1), 12.0f, juce::Justification::centred });
     }
     auto& lr = panelKey ("LR", kBlue, { 1687, 498, 52, 24 }, true, kFaceBlue);
-    lr.isOn = [this] { return mix == 0; };
+    // In Listen Level mode it is red at all times (p.103).
+    lr.isOn = [this] { return mix == 0 || isListenMode(); };
+    lr.onColour = [this] { return isListenMode() ? kLedRed : kBlue; };
     lr.onClick = [this] { setMix (0); };
     const auto mixY = [] (int m) { return m < 4 ? 552 + m * 40 : m < 8 ? 720 + (m - 4) * 44 : 900 + (m - 8) * 40; };
     for (int m = 0; m < sq5::kMixes; ++m)
     {
         auto& k = panelKey ("Mix " + juce::String (m + 1), kBlue, { 1832, mixY (m), 56, 26 }, false, m < 4 ? kFaceMixA : m < 8 ? kFaceMixB : kFaceBlue);
         k.isOn = [this, m] { return mix == 1 + m; };
+        // An Aux's key lights blue, a Group's magenta (p.87).
+        k.onColour = [m] { return sq5::isGroupMix (m) ? kMagenta : kBlue; };
         k.onClick = [this, m] { setMix (1 + m); };
         silks.push_back ({ juce::Rectangle<int> (1806, mixY (m), 24, 26).toFloat(), juce::String (m + 1), 12.0f, juce::Justification::centred });
     }
@@ -755,6 +762,37 @@ bool Sq5Surface::isSoftKeyLit (int key) const
         case soft::DriveRecord:
             return a.option2 == 1 ? e.getUsbRecorder().getRecState() == UsbRecorder::RecState::Recording : a.option2 >= 2 && e.getUsbRecorder().isRecording();
         default:              return false;
+    }
+}
+
+juce::Colour Sq5Surface::softKeyColour (int key) const
+{
+    // p.89's Colour column. Where it gives two or three: Mix Select blue for an Aux and the
+    // FX and LR mixes, magenta for a Group; DCA Spill green for Spill On Sel, magenta for a
+    // DCA; SQ Drive green to start, red to arm or record, blue for the rest (Sidecar's
+    // reading of which is which).
+    using namespace sq5;
+    const auto a = soft::get (ctx.settings, key);
+    switch (a.type)
+    {
+        case soft::AmmChannel:
+        case soft::AmmInOut:
+        case soft::Select:
+        case soft::Talk:
+            return kLedGreen;
+        case soft::ChannelPafl:
+        case soft::DcaPafl:
+        case soft::TapTempo:
+        case soft::GlobalTap:
+            return kJewelYellow;
+        case soft::DcaSpill:  return a.option2 == 0 ? kLedGreen : kMagenta;
+        case soft::MixSelect: return a.option2 >= 1 && a.option2 <= kMixes && isGroupMix (a.option2 - 1) ? kMagenta : kBlue;
+        case soft::DriveMultitrack:
+        case soft::DrivePlay:
+        case soft::DriveRecord:
+            return a.option2 == 2 ? kLedGreen : a.option2 == 3 || a.option2 == 5 ? kMute : kBlue;
+        default:
+            return kMute;
     }
 }
 

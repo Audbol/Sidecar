@@ -1,9 +1,11 @@
 //! The DM2000 for the host (`livedaw-dm2000`): its MIDI protocol over the
 //! engine. The app's `Dm2000Midi` holds one. An `LdDm2000` borrows the engine
 //! it was made with: the host destroys it before the engine. Every call does
-//! nothing (or answers none) while the engine isn't a DM2000.
+//! nothing (or answers none) while the engine isn't a DM2000. Its Automix is an
+//! `LdDm2000Automix` of its own.
 
 use super::guard;
+use livedaw_dm2000::automix::{Automix, Key};
 use livedaw_dm2000::{Event, Midi, Setup, SETUP_BYTES};
 use livedaw_engine::Engine;
 
@@ -193,9 +195,171 @@ pub extern "C" fn ld_dm2000_cc_initial(table: i32, cc: i32) -> i32 {
     livedaw_dm2000::tables::CC_INITIAL.get(t).and_then(|row| row.get(n)).map_or(0, |a| a.kind as i32 * 256 + a.target as i32)
 }
 
+/// The DM2000's Automix (`livedaw_dm2000::automix`): the takes of the Input
+/// Channels' faders and ONs, for the app's AUTOMIX page and keys. It holds no
+/// engine: the host passes the faders and ONs to each tick.
+pub struct LdDm2000Automix(Automix);
+
+#[no_mangle]
+pub extern "C" fn ld_dm2000_automix_create() -> *mut LdDm2000Automix {
+    guard(std::ptr::null_mut(), || Box::into_raw(Box::new(LdDm2000Automix(Automix::default()))))
+}
+
+/// # Safety
+/// `p` is from `ld_dm2000_automix_create` (or null), and isn't used after.
+#[no_mangle]
+pub unsafe extern "C" fn ld_dm2000_automix_destroy(p: *mut LdDm2000Automix) {
+    if !p.is_null() {
+        drop(Box::from_raw(p));
+    }
+}
+
+/// Key `key` (`automix::Key`'s number) pressed at `now` (seconds, a steady clock).
+///
+/// # Safety
+/// `p` is from `ld_dm2000_automix_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_dm2000_automix_press(p: *mut LdDm2000Automix, key: i32, now: f64) {
+    if let (Some(p), Some(key)) = (p.as_mut(), Key::from_i32(key)) {
+        guard((), || p.0.press(key, now));
+    }
+}
+
+/// Whether key `key` is lit.
+///
+/// # Safety
+/// `p` is from `ld_dm2000_automix_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_dm2000_automix_is(p: *const LdDm2000Automix, key: i32) -> bool {
+    match (p.as_ref(), Key::from_i32(key)) {
+        (Some(p), Some(key)) => p.0.is(key),
+        _ => false,
+    }
+}
+
+/// Input Channel `channel`'s (0-95) fader knob held or let go.
+///
+/// # Safety
+/// `p` is from `ld_dm2000_automix_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_dm2000_automix_hold(p: *mut LdDm2000Automix, channel: i32, held: bool) {
+    if let (Some(p), Ok(channel)) = (p.as_mut(), usize::try_from(channel)) {
+        p.0.hold(channel, held);
+    }
+}
+
+/// Runs the clock to `now`: `faders` (dB) and `ons` (0 off) are the first `n`
+/// Input Channels'; what playback sets is written back. True when it set any.
+///
+/// # Safety
+/// `p` is from `ld_dm2000_automix_create` (or null); `faders` and `ons` hold `n` values.
+#[no_mangle]
+pub unsafe extern "C" fn ld_dm2000_automix_tick(
+    p: *mut LdDm2000Automix,
+    now: f64,
+    faders: *mut f32,
+    ons: *mut u8,
+    n: usize,
+) -> bool {
+    let Some(p) = p.as_mut() else { return false };
+    if faders.is_null() || ons.is_null() || n == 0 {
+        return false;
+    }
+    let faders = std::slice::from_raw_parts_mut(faders, n);
+    let ons = std::slice::from_raw_parts_mut(ons, n);
+    guard(false, || {
+        let mut on: Vec<bool> = ons.iter().map(|&o| o != 0).collect();
+        let wrote = p.0.tick(now, faders, &mut on);
+        for (o, v) in ons.iter_mut().zip(on) {
+            *o = v as u8;
+        }
+        wrote
+    })
+}
+
+/// A scene was recalled at `now`: with SCENE CLOCK the clock starts again.
+///
+/// # Safety
+/// `p` is from `ld_dm2000_automix_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_dm2000_automix_scene_recalled(p: *mut LdDm2000Automix, now: f64) {
+    if let Some(p) = p.as_mut() {
+        p.0.scene_recalled(now);
+    }
+}
+
+/// How many moves the Automix holds.
+///
+/// # Safety
+/// `p` is from `ld_dm2000_automix_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_dm2000_automix_events(p: *const LdDm2000Automix) -> i32 {
+    p.as_ref().map_or(0, |p| p.0.moves().len().min(i32::MAX as usize) as i32)
+}
+
+/// The clock, in seconds since the run started.
+///
+/// # Safety
+/// `p` is from `ld_dm2000_automix_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_dm2000_automix_time(p: *const LdDm2000Automix) -> f64 {
+    p.as_ref().map_or(0.0, |p| p.0.time())
+}
+
+/// RETURN's TIME, 0.0 to 30.0 seconds.
+///
+/// # Safety
+/// `p` is from `ld_dm2000_automix_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_dm2000_automix_return_time(p: *const LdDm2000Automix) -> f32 {
+    p.as_ref().map_or(0.0, |p| p.0.return_time())
+}
+
+/// # Safety
+/// `p` is from `ld_dm2000_automix_create` (or null).
+#[no_mangle]
+pub unsafe extern "C" fn ld_dm2000_automix_set_return_time(p: *mut LdDm2000Automix, seconds: f32) {
+    if let Some(p) = p.as_mut() {
+        p.0.set_return_time(seconds);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_automix_takes_and_plays_through_the_c_calls() {
+        unsafe {
+            let p = ld_dm2000_automix_create();
+            let mut faders = [0.0f32; 2];
+            let mut ons = [1u8; 2];
+            let tick = |p, t, f: &mut [f32; 2], o: &mut [u8; 2]| ld_dm2000_automix_tick(p, t, f.as_mut_ptr(), o.as_mut_ptr(), 2);
+            ld_dm2000_automix_press(p, Key::Rec as i32, 0.0);
+            assert!(!tick(p, 0.0, &mut faders, &mut ons));
+            assert!(ld_dm2000_automix_is(p, Key::Rec as i32) && ld_dm2000_automix_is(p, Key::Run as i32));
+            faders[1] = -6.0;
+            ons[0] = 0;
+            tick(p, 1.0, &mut faders, &mut ons);
+            assert_eq!(ld_dm2000_automix_events(p), 2);
+            ld_dm2000_automix_press(p, Key::Run as i32, 2.0);
+            faders = [0.0; 2];
+            ons = [1; 2];
+            ld_dm2000_automix_press(p, Key::Run as i32, 10.0);
+            tick(p, 10.0, &mut faders, &mut ons);
+            assert!(tick(p, 11.5, &mut faders, &mut ons));
+            assert_eq!((faders, ons), ([0.0, -6.0], [0, 1]));
+            assert!((ld_dm2000_automix_time(p) - 1.5).abs() < 1e-9);
+            ld_dm2000_automix_set_return_time(p, 4.44);
+            assert_eq!(ld_dm2000_automix_return_time(p), 4.4);
+            // Unknown keys and null handles do nothing.
+            ld_dm2000_automix_press(p, 99, 12.0);
+            assert!(!ld_dm2000_automix_is(p, 99));
+            ld_dm2000_automix_press(std::ptr::null_mut(), 0, 0.0);
+            assert_eq!(ld_dm2000_automix_events(std::ptr::null()), 0);
+            ld_dm2000_automix_destroy(p);
+        }
+    }
 
     #[test]
     fn the_initial_control_change_table_reads_out() {

@@ -31,7 +31,7 @@ namespace analog
 
     void Knob::paint (juce::Graphics& g)
     {
-        hw::knob (g, getLocalBounds().toFloat().reduced (1.0f), binding.isValid() ? binding.get() : 0.0f, getLook(), hw::Look::Knob::Plain, cap);
+        hw::knob (g, getLocalBounds().toFloat().reduced (1.0f), binding.isValid() ? binding.get() : 0.0f, getLook(), getLook().knobStyle, cap);
     }
 
     void Knob::mouseDown (const juce::MouseEvent&) { dragStart = binding.isValid() ? binding.get() : 0.0f; }

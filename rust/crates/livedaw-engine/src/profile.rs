@@ -2205,8 +2205,9 @@ fn plugin_host_spec(size: HostSize) -> &'static ProfileSpec {
 /// 49-56, which the manual leaves unpatched, on the surface's 8 inputs (Sidecar's
 /// reading, as the engine gives any unpatched channel its own input). Aux returns 1-8 on FX 1-4's stereo
 /// outputs, panned odd left and even right. AUX 1-8 mono mixes; AUX 9-16 the
-/// groups, routed to the stereo masters, at 0 dB, odd left and even right
-/// (`buses_to_main`). Delays in milliseconds, compressors on the outputs' model.
+/// stereo groups (`pro2::Pro2StripParams`: linked pairs, odd left and even right),
+/// routed to the stereo masters, at 0 dB (`buses_to_main`). Delays in milliseconds,
+/// compressors on the outputs' model.
 /// Filter slopes on their switches' off positions (p.245: 12 and 6 dB/oct).
 fn pro2_factory(_spec: &ProfileSpec, p: &crate::params::StripParams, kind: StripKind, slot: usize) {
     use std::sync::atomic::Ordering::Relaxed;
@@ -2225,13 +2226,7 @@ fn pro2_factory(_spec: &ProfileSpec, p: &crate::params::StripParams, kind: Strip
             p.input_left.store(crate::sources::FX_RETURN_SOURCE_BASE + slot as i32, Relaxed);
             p.pan.store(if slot % 2 == 0 { -100.0 } else { 100.0 });
         }
-        StripKind::Bus => {
-            p.stereo.store(false, Relaxed);
-            if slot >= pro2::GROUPS {
-                p.pan.store(if slot % 2 == 0 { -100.0 } else { 100.0 });
-            }
-        }
-        StripKind::Matrix => p.stereo.store(false, Relaxed),
+        StripKind::Bus | StripKind::Matrix => p.stereo.store(false, Relaxed),
         StripKind::Main => {}
     }
     if kind.is_output() {

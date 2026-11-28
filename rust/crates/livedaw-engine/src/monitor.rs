@@ -62,6 +62,9 @@ const SHELF_Q: f32 = 0.7;
 pub const MONITOR_WIDTH_RANGE: f32 = 150.0;
 /// DELAY distance (`dly/m`), meters.
 pub const MONITOR_DELAY_RANGE_M: (f32, f32) = (0.1, 100.0);
+/// The longest delay a path runs, ms: an SQ's PAFL delay (Reference Guide p.94), past the
+/// WING's 100 m.
+pub const MONITOR_DELAY_MAX_MS: f32 = 682.6;
 /// LIMITER threshold, dB.
 pub const MONITOR_LIMITER_RANGE_DB: (f32, f32) = (-40.0, 0.0);
 /// BAND SOLO boost (`eqbdtrim`), dB.
@@ -420,7 +423,7 @@ struct MonitorDelay {
 
 impl MonitorDelay {
     fn prepare(&mut self, sample_rate: f64, block: usize) {
-        let max = (delay_ms(MONITOR_DELAY_RANGE_M.1) as f64 * 0.001 * sample_rate).ceil() as usize;
+        let max = (MONITOR_DELAY_MAX_MS as f64 * 0.001 * sample_rate).ceil() as usize;
         let len = max + block.max(1) + 2;
         for b in &mut self.buf {
             b.clear();
@@ -602,8 +605,8 @@ impl MonitorPathDsp {
 
         let samples = if p.delay_on.load(Relaxed) {
             let m = p.delay_m.load();
-            let m = if m.is_finite() { m } else { 0.0 }.clamp(MONITOR_DELAY_RANGE_M.0, MONITOR_DELAY_RANGE_M.1);
-            (delay_ms(m) as f64 * 0.001 * self.sr).round() as usize
+            let m = if m.is_finite() { m } else { 0.0 }.max(MONITOR_DELAY_RANGE_M.0);
+            (delay_ms(m).min(MONITOR_DELAY_MAX_MS) as f64 * 0.001 * self.sr).round() as usize
         } else {
             0
         };

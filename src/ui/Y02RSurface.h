@@ -159,15 +159,54 @@ namespace y02r
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Encoder)
     };
 
-    /** The 02R's 320x240 display (MAN pp.20-21), in Sidecar's style: the
-        scene, the function and the selected channel along the top, and the
-        function's page: its values as fields, one with the cursor; the cursor
-        keys move it, the wheel changes its value, ENTER recalls (a library
-        program) or switches. A tap puts the cursor on a field, a drag turns
-        the wheel. */
+    /** The 02R's LCD as its dots: 320 x 240 (a checker's period in the SOS
+        photos of its pages counts them), what the display's pages draw on. */
+    struct Dots
+    {
+        static constexpr int kW = 320, kH = 240;
+        /** The 5 x 7 font, the 3 x 5 one and the title bar's (the 5 x 7 drawn ten
+            dots tall and struck twice). */
+        enum class Face { Small, Tiny, Tall };
+        std::vector<uint8_t> on = std::vector<uint8_t> ((size_t) (kW * kH));
+
+        void clear();
+        void set (int x, int y, bool lit = true);
+        bool get (int x, int y) const noexcept;
+        void hLine (int x0, int x1, int y, bool lit = true);
+        void vLine (int x, int y0, int y1, bool lit = true);
+        void line (juce::Point<float>, juce::Point<float>, bool lit = true);
+        void box (juce::Rectangle<int>, bool lit = true);
+        void fill (juce::Rectangle<int>, bool lit = true);
+        /** Every other dot lit: the bands round the page (the photos). */
+        void checker (juce::Rectangle<int>);
+        void dottedH (int x0, int x1, int y, int step = 2);
+        void dottedV (int x, int y0, int y1, int step = 2);
+        void circle (int cx, int cy, int r, bool lit = true);
+        void disc (int cx, int cy, int r, bool lit = true);
+        /** The dots whose centres are inside `p`. */
+        void fillPath (const juce::Path& p, bool lit = true);
+        static int width (const juce::String&, Face);
+        static int height (Face);
+        void text (int x, int y, const juce::String&, Face = Face::Small, bool lit = true);
+        /** `s` placed in `r` by `j`: the tiny face when it doesn't fit, cut short when that doesn't either. */
+        void type (juce::Rectangle<float> r, const juce::String& s, juce::Justification j = juce::Justification::centred, bool lit = true,
+                   Face = Face::Small);
+    };
+
+    /** The 02R's 320 x 240 dot display (MAN pp.20-21; the dots and their look
+        from the SOS photos of its pages): the scene, the function and the
+        selected channel along the top, the function's page in its checkered
+        frame, the encoders' row under it: its values as fields, one with the
+        cursor; the cursor keys move it, the wheel changes its value, ENTER
+        recalls (a library program) or switches. A tap puts the cursor on a
+        field, a drag turns the wheel. */
     class Display final : public juce::Component
     {
     public:
+        /** Each dot's pixels on the screen image (the last row and column its edge). */
+        static constexpr int kDot = 3;
+        /** The dots, for the tests. */
+        bool isDotOn (int col, int row) const noexcept { return lcd.get (col, row); }
         Display (UiContext&, const Theme&);
 
         void setFunction (Function);
@@ -259,11 +298,17 @@ namespace y02r
         juce::Rectangle<float> fieldBox (int i) const;
         /** Where field `i`'s value is drawn (and its digits tapped). */
         juce::Rectangle<float> valueBox (int i) const;
-        /** The page under the title bar and over the encoders' row. */
+        /** The page under the title bar and over the encoders' row, in dots. */
         juce::Rectangle<float> pageArea() const;
-        void paintField (juce::Graphics&, int i) const;
+        /** A point on the component in dots. */
+        juce::Point<float> toDots (juce::Point<float>) const;
+        /** The whole screen into `lcd`. */
+        void draw() const;
+        /** `lcd`'s rows `first` to `last` onto `screen`. */
+        void renderRows (int first, int last);
+        void paintField (int i) const;
         /** The 16 encoders and E1, E2 under every page (V2 MAN p.20). */
-        void paintEncoderRow (juce::Graphics&, juce::Rectangle<float>) const;
+        void paintEncoderRow (juce::Rectangle<int>) const;
         /** The all-channel knob pages (PHASE / ATT, PAN, AUX) and DELAY's table
             as the pictures (V2 MAN pp.33-38, 107): each field's place. */
         void layoutChannels();
@@ -282,12 +327,12 @@ namespace y02r
         /** VIEW 1/2 as the picture (V2 MAN p.44): ATT and PAN at the left, the
             meter and fader, the sends, the EQ and dynamics thumbnails, LIB. */
         void layoutView();
-        void paintViewSends (juce::Graphics&, juce::Rectangle<float>) const;
+        void paintViewSends (juce::Rectangle<float>) const;
         /** The selected channel's meter (both sides of a stereo one) on its scale;
             DYNAMICS' gain reduction beside it. */
-        void paintChannelMeter (juce::Graphics&, juce::Rectangle<float>, bool reduction) const;
+        void paintChannelMeter (juce::Rectangle<float>, bool reduction) const;
         /** DYNAMICS' transfer curve (input across, output up, -60 to 0 dB). */
-        void paintTransfer (juce::Graphics&, juce::Rectangle<float>) const;
+        void paintTransfer (juce::Rectangle<float>) const;
         /** A picture's lines, frames and words, in the page area's units (0-1). */
         struct Mark
         {
@@ -305,11 +350,11 @@ namespace y02r
         /** Where the page arrows go (their bottom right, in the page area's units). */
         juce::Point<float> arrowAt { 1.0f, 1.0f };
         juce::String title() const;
-        void paintMeters (juce::Graphics&, juce::Rectangle<float>) const;
-        void paintEq (juce::Graphics&, juce::Rectangle<float>) const;
-        void paintPrograms (juce::Graphics&, juce::Rectangle<float>) const;
+        void paintMeters (juce::Rectangle<float>) const;
+        void paintEq (juce::Rectangle<float>) const;
+        void paintPrograms (juce::Rectangle<float>) const;
         /** ROUTING 3/4 and 4/4's pan graph: the speakers, the group's places, the trajectory. */
-        void paintSurround (juce::Graphics&, juce::Rectangle<float>) const;
+        void paintSurround (juce::Rectangle<float>) const;
         bool surroundGraph() const;
 
         UiContext& ctx;
@@ -330,7 +375,7 @@ namespace y02r
         /** Focus on field `i`, its digit the first (from the left) or the last. */
         void focusField (int i, bool firstDigit);
         /** Bus `bus`'s output level as a bar in `box` (ROUTING 4/4's speakers). */
-        void speakerMeter (juce::Graphics& g, juce::Rectangle<float> box, int bus) const;
+        void speakerMeter (juce::Rectangle<float> box, int bus) const;
         /** METER's meter point: 0 PRE EQ (an output's PRE FADER), 1 POST EQ, 2 POST FADER. */
         int meterPoint = 2;
         std::array<int, 16> nameChars {};
@@ -342,6 +387,10 @@ namespace y02r
         void editTitle (int library, int n, int target);
         std::vector<Field> fields;
         float dragY = 0.0f;
+        /** The page's dots (drawn at every paint), those on `screen`, and the image. */
+        mutable Dots lcd;
+        std::vector<uint8_t> shownDots;
+        juce::Image screen;
 
         JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Display)
     };

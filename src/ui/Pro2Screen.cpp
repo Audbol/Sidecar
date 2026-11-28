@@ -6,11 +6,13 @@
 
 #include "ui/Pro2Surface.h"
 
+#include "engine/DirectOut.h"
 #include "engine/MixerEngine.h"
 #include "engine/Models.h"
 #include "engine/Show.h"
 #include "ui/MeterBank.h"
 
+#include <algorithm>
 #include <cmath>
 
 namespace livedaw::ui::pro2
@@ -154,6 +156,37 @@ void Screen::setPatchScroll (int first)
 {
     patchScroll = juce::jlimit (0, juce::jmax (0, (int) ctx.engine.getChannels().size() - 28), first);
     rebuild();
+}
+
+void Screen::setPatchFrom (PatchFrom tab)
+{
+    patchFrom = tab;
+    rebuild();
+}
+
+int Screen::directPort (int number) const
+{
+    const int numPorts = ctx.engine.getHardwareOutputNames().size();
+    for (int port = 0; port < numPorts; ++port)
+        if (const auto d = DirectOut::fromCode (ctx.engine.getOutputSource (port)); d && d->kind == StripKind::Channel && d->number == number)
+            return port;
+    return -1;
+}
+
+KnobBinding Screen::bindDirectDest (int number, const juce::String& prefix)
+{
+    const int numPorts = ctx.engine.getHardwareOutputNames().size();
+    return bindInt ([this, number] { return directPort (number); }, [this, number] (int port)
+    {
+        for (int old = directPort (number); old >= 0; old = directPort (number))
+            ctx.engine.clearOutput (old);
+        if (port >= 0)
+            ctx.engine.routeOutputSource (port, DirectOut { StripKind::Channel, number, 0, false }.code());
+    }, -1, numPorts - 1, [this, prefix] (int port)
+    {
+        const auto& names = ctx.engine.getHardwareOutputNames();
+        return prefix + (port < 0 ? juce::String ("Unassigned") : juce::isPositiveAndBelow (port, names.size()) ? names[port] : "Out " + juce::String (port + 1));
+    });
 }
 
 int Screen::findSpot (const juce::String& name) const
@@ -677,11 +710,18 @@ void Screen::fastStrip (Strip& s, juce::Rectangle<float> r, int index)
         text ({ a.getX(), a.getY() + 62.0f, a.getWidth(), 11.0f }, juce::String (p.input.trimDb.load(), 1) + " dB", kDim, 9.5f);
         button ({ a.getX() + 3.0f, a.getBottom() - 15.0f, 30.0f, 12.0f }, tag + "phase", juce::String::charToString ((juce::juce_wchar) 0xd8), p.input.invert.load(), kBlue, [strip] { toggle (strip->params.input.invert); });
     }
-    // dir out: nothing to switch yet.
+    // dir out: its MUTE and tap-off point (p.239); the rest is in the configuration area.
     {
         const auto a = take (20.0f);
-        fill (a, kTile, 2.0f);
-        text (a.reduced (5.0f, 0.0f), "dir out", kDim.withAlpha (0.6f), 10.0f, juce::Justification::centredRight);
+        section (a, "dir out", Area::Config, kTile);
+        if (channel)
+        {
+            auto& d = pro2Of (s);
+            button ({ a.getX() + 3.0f, a.getY() + 3.0f, 30.0f, 12.0f }, tag + "dir MUTE", "MUTE", d.directMute.load(), kRed, [&d] { toggle (d.directMute); });
+            text (a.withTrimmedLeft (36.0f).reduced (3.0f, 0.0f), directModeName (d.directMode.load()), kDim, 9.0f, juce::Justification::centredRight);
+        }
+        else
+            text (a.reduced (5.0f, 0.0f), "dir out", kDim.withAlpha (0.6f), 10.0f, juce::Justification::centredRight);
     }
     // The compressor and the gate: ON, the threshold, the graph (p.239).
     for (int isGate = 0; isGate < 2; ++isGate)
@@ -737,10 +777,11 @@ void Screen::fastStrip (Strip& s, juce::Rectangle<float> r, int index)
             }
             const bool on = send.on->load();
             if (send.isGroup())
-                fill (row.withTrimmedLeft (12.0f).withTrimmedRight (22.0f), on ? c.withAlpha (0.8f) : juce::Colour (0xff04050f));
+                fill (row.withTrimmedLeft (12.0f).withTrimmedRight (22.0f), send.isRouted() ? c.withAlpha (0.8f) : juce::Colour (0xff04050f));
             else
                 bar (row.withTrimmedLeft (12.0f).withTrimmedRight (22.0f), tag + "mix " + juce::String (k + 1), bindSendLevel (mix->getName(), *send.level), on ? c : c.darker (0.7f));
-            button (row.withLeft (row.getRight() - 20.0f), tag + "mix ON " + juce::String (k + 1), send.isGroup() ? "" : send.isPre() ? "pr" : "", on, c, [send] { toggle (*send.on); });
+            // A mix minus's switch reads "minus" (p.260).
+            button (row.withLeft (row.getRight() - 20.0f), tag + "mix ON " + juce::String (k + 1), send.isMinus() ? "-" : send.isGroup() ? "" : send.isPre() ? "pr" : "", on, c, [send] { toggle (*send.on); });
         }
     }
     // The masters: ST, MON, the mono level and pan, MUTE, SOLO, the fader and its meter (pp.261-263).
@@ -748,14 +789,18 @@ void Screen::fastStrip (Strip& s, juce::Rectangle<float> r, int index)
         const juce::Rectangle<float> a (r.getX() + 2.0f, y + 1.0f, r.getWidth() - 4.0f, r.getBottom() - y - 2.0f);
         section (a, "masters", Area::Masters, isSelected ? kStripSel.darker (0.2f) : kTile);
         const bool toMasters = s.getKind() != StripKind::Main && s.getKind() != StripKind::Matrix;
-        button ({ a.getX() + 3.0f, a.getY() + 4.0f, 28.0f, 13.0f }, {}, "SIS", false, kOrange, {});
+        auto& d = pro2Of (s);
+        const bool sis = s.isInput() && d.sis.load();
+        if (s.isInput())
+            button ({ a.getX() + 3.0f, a.getY() + 4.0f, 28.0f, 13.0f }, tag + "SIS", "SIS", sis, kOrange, [&d] { toggle (d.sis); });
         if (toMasters)
         {
             button ({ a.getRight() - 33.0f, a.getY() + 4.0f, 30.0f, 13.0f }, tag + "ST", "ST", s.mains[0].on.load(), kRed, [strip] { toggle (strip->mains[0].on); });
             if (ctx.engine.getMains().size() > 1)
             {
                 button ({ a.getRight() - 37.0f, a.getY() + 34.0f, 34.0f, 13.0f }, tag + "MON", "MON", s.mains[1].on.load(), kYellow, [strip] { toggle (strip->mains[1].on); });
-                dial ({ a.getX() + 2.0f, a.getY() + 22.0f, 38.0f, 38.0f }, tag + "mono level", bindSendLevel ("MONO", s.mains[1].levelDb), kOrange, false);
+                // With SIS on, the mono level knob is the SIS image (p.262).
+                dial ({ a.getX() + 2.0f, a.getY() + 22.0f, 38.0f, 38.0f }, tag + "mono level", sis ? bindSisImage (s) : bindSendLevel ("MONO", s.mains[1].levelDb), kOrange, false);
             }
             dial ({ a.getX() + 2.0f, a.getY() + 64.0f, 46.0f, 46.0f }, tag + "pan", bindPan ("PAN", p.pan), kRed, false);
         }
@@ -792,7 +837,16 @@ void Screen::detailGroup (juce::Rectangle<float> r)
     fill (r, kTile, 3.0f);
     frame (r, kLilac, 3.0f);
     text (r.withHeight (16.0f), surface.groupName (group), kText, 12.0f, juce::Justification::centred, true);
-    if (group < kVcas)
+    auto* mix = surface.selectedMix();
+    if (group < kVcas && surface.getMixMode() == MixMode::Mca && mix != nullptr && mix->getKind() != StripKind::Main)
+    {
+        // With the MCAs on the mix bay: the group's MCA level on the selected mix (p.146).
+        auto b = bindMca (*mix, group, ctx.engine);
+        text ({ r.getX(), r.getY() + 18.0f, r.getWidth() * 0.5f, 14.0f }, b.text ? b.text() : juce::String(), kYellow, 12.0f, juce::Justification::centred, true);
+        text ({ r.getX(), r.getY() + 32.0f, r.getWidth() * 0.5f, 12.0f }, "MCA: " + mix->getName(), kDim, 9.0f, juce::Justification::centred);
+        dial ({ r.getCentreX(), r.getY() + 16.0f, r.getWidth() * 0.5f, r.getHeight() - 18.0f }, "mca level", std::move (b), kOrange, false);
+    }
+    else if (group < kVcas)
     {
         auto& d = ctx.engine.getDca (group);
         auto b = bindFader ("VCA", d.faderDb);
@@ -914,13 +968,67 @@ void Screen::detailArea (juce::Rectangle<float> r)
                 button (filters.removeFromLeft (w).reduced (1.0f), "LP IN", "lp in", p.filter().highCut.load(), kBlue, [strip] { toggle (strip->params.filter().highCut); });
                 button (filters.reduced (1.0f), "LP SLOPE", steepSlope (*s, true) ? "12 dB" : "6 dB", steepSlope (*s, true), kBlue, [strip] { setSteepSlope (*strip, true, ! steepSlope (*strip, true)); });
             }
+            auto& extra = pro2Of (*s);
+            if (channel)
+            {
+                // The direct output: MUTE, MODE's tap-off point and the level (pp.248-249); its
+                // destination is patched on the Patching screen's Dir. Out tab.
+                title ("direct output");
+                auto row2 = top (60.0f);
+                button ({ row2.getX(), row2.getY() + 2.0f, 46.0f, 16.0f }, "DIR MUTE", "MUTE", extra.directMute.load(), kRed, [&extra] { toggle (extra.directMute); });
+                button ({ row2.getX(), row2.getY() + 24.0f, 70.0f, 16.0f }, "DIR MODE", directModeName (extra.directMode.load()), true, juce::Colour (0xffc9ccd8), [strip] { cycleDirectMode (*strip); });
+                auto level = bindDirectLevel (*s);
+                text ({ row2.getX() + 74.0f, row2.getY() + 22.0f, 60.0f, 14.0f }, level.text(), kYellow, 11.0f, juce::Justification::centred, true);
+                dial ({ row2.getRight() - 60.0f, row2.getY(), 58.0f, 58.0f }, "DIR LEVEL", std::move (level), juce::Colour (0xff8a8f9c), false);
+                // dest: the output it is patched to (the Patching screen's Dir. Out tab, p.50).
+                const auto& chans = ctx.engine.getChannels();
+                const auto at = std::find_if (chans.begin(), chans.end(), [s] (const auto& c) { return c.get() == s; });
+                const int number = (int) std::distance (chans.begin(), at) + 1;
+                auto dest = bindDirectDest (number, "dest: ");
+                auto field = top (22.0f);
+                fill (field, juce::Colour (0xff04050f), 2.0f);
+                text (field.reduced (6.0f, 0.0f), dest.text(), directPort (number) >= 0 ? kText : kDim, 11.0f, juce::Justification::centredLeft);
+                spot ("DIR DEST", field, {}, std::move (dest));
+            }
+            if (s->getKind() == StripKind::Bus || s->getKind() == StripKind::Matrix)
+            {
+                // An aux send's mix mode (p.77) and a mix's stereo link with its neighbour (p.78).
+                title (s->getKind() == StripKind::Bus ? "mix mode" : "stereo link");
+                auto row2 = top (22.0f);
+                if (s->getKind() == StripKind::Bus)
+                    button (row2.removeFromLeft (90.0f).reduced (1.0f), "MIX MODE", mixModeName (extra.mixMode.load()), extra.mixMode.load() != kMix, kBlue, [this, strip]
+                    {
+                        cycleMixMode (ctx.engine, *strip);
+                        surface.selectionChanged();
+                    });
+                const bool hasPartner = ctx.engine.getStrips (s->getKind()).size() > (size_t) (s->getId() | 1);
+                if (hasPartner)
+                    button (row2.removeFromLeft (90.0f).reduced (1.0f), "LINK", extra.linked.load() ? "linked" : "LINK", extra.linked.load(), kOrange, [this, strip]
+                    {
+                        setLinked (ctx.engine, *strip, ! pro2Of (*strip).linked.load());
+                        surface.selectionChanged();
+                    });
+            }
             title ("processing order");
             const bool dynFirst = p.processOrder.load() == 1;
             button (top (22.0f), "C/O", dyn ? (dynFirst ? "Dyn.  >  Ins.  >  EQ" : "EQ  >  Ins.  >  Dyn.") : "EQ  >  Ins.", dynFirst, kBlue, [strip]
             {
                 strip->params.processOrder = strip->params.processOrder.load() == 1 ? 0 : 1;
             });
-            button (top (20.0f), "SAFE", "automation safe", p.recallSafe.load(), kYellow, [strip] { toggle (strip->params.recallSafe); });
+            // The channel safes (pp.174-175): what a scene recall leaves; AUTO is all of it. The
+            // GUI's short names (Appendix H: [AUT], [MTE], [FDR]).
+            title ("channel safes");
+            {
+                static const char* const shortNames[kNumSafes] = { "EQ", "DYN", "MIC", "AUT", "MTE", "FDR" };
+                auto row = top (20.0f);
+                const float w = row.getWidth() / (float) kNumSafes;
+                for (int i = 0; i < kNumSafes; ++i)
+                {
+                    const auto cell = row.removeFromLeft (w).reduced (1.0f, 0.0f);
+                    if (hasSafe (*s, i))
+                        button (cell, juce::String ("SAFE ") + safeName (i), shortNames[i], isSafe (*s, i), kYellow, [strip, i] { toggleSafe (*strip, i); });
+                }
+            }
             break;
         }
         case Area::Comp:
@@ -1070,16 +1178,18 @@ void Screen::detailArea (juce::Rectangle<float> r)
                 text ({ row.getX() + 4.0f, row.getY() + 2.0f, 90.0f, 13.0f }, kindId (*mix) + "  " + mix->getName(), kText, 10.0f, juce::Justification::centredLeft, true);
                 if (! send.isValid())
                     continue;
-                button ({ row.getX() + 4.0f, row.getY() + 18.0f, 40.0f, 16.0f }, "ON " + n, send.isGroup() ? "ON" : "ON", send.on->load(), kBlue, [send] { toggle (*send.on); });
+                button ({ row.getX() + 4.0f, row.getY() + 18.0f, 40.0f, 16.0f }, "ON " + n, send.isMinus() ? "minus" : "ON", send.on->load(), kBlue, [send] { toggle (*send.on); });
                 if (! send.isGroup())
                 {
                     button ({ row.getX() + 4.0f, row.getY() + 40.0f, 40.0f, 16.0f }, "PRE " + n, "PRE", send.isPre(), juce::Colour (0xffc9ccd8), [send] { send.setPre (! send.isPre()); });
-                    auto b = bindSendLevel ("level", *send.level);
+                    // A stereo mix: the odd mix's control is its pan, the even one's its level (p.78).
+                    const bool panKnob = send.pan != nullptr && send.side == 0;
+                    auto b = panKnob ? bindPan ("pan", *send.pan) : bindSendLevel ("level", *send.level);
                     text ({ row.getX() + 50.0f, row.getY() + 24.0f, 70.0f, 14.0f }, b.text(), kYellow, 11.0f, juce::Justification::centred, true);
-                    dial ({ row.getRight() - 64.0f, row.getY() + 3.0f, 56.0f, 56.0f }, "level " + n, std::move (b), k < 2 ? kRed : k < 4 ? kGreen : k < 6 ? kYellow : kBlue, false);
+                    dial ({ row.getRight() - 64.0f, row.getY() + 3.0f, 56.0f, 56.0f }, (panKnob ? "pan " : "level ") + n, std::move (b), k < 2 ? kRed : k < 4 ? kGreen : k < 6 ? kYellow : kBlue, false);
                 }
                 else
-                    text ({ row.getX() + 50.0f, row.getY() + 24.0f, 120.0f, 14.0f }, "group: follows the fader", kDim, 10.0f, juce::Justification::centredLeft);
+                    text ({ row.getX() + 50.0f, row.getY() + 24.0f, 120.0f, 14.0f }, send.isMinus() ? "mix minus: follows the fader" : "group: follows the fader", kDim, 10.0f, juce::Justification::centredLeft);
             }
             auto row = top (22.0f);
             button (row.removeFromLeft (60.0f).reduced (1.0f), "MIX UP", "UP", false, juce::Colour (0xffc9ccd8), [this] { surface.setMixBank (surface.getMixBank() - 1); });
@@ -1091,14 +1201,24 @@ void Screen::detailArea (juce::Rectangle<float> r)
             title ("masters");
             const bool toMasters = s->getKind() != StripKind::Main && s->getKind() != StripKind::Matrix;
             auto row = top (22.0f);
-            button (row.removeFromLeft (50.0f).reduced (1.0f), {}, "SIS", false, kOrange, {});
+            auto& extra = pro2Of (*s);
+            const bool sis = s->isInput() && extra.sis.load();
+            if (s->isInput())
+                button (row.removeFromLeft (50.0f).reduced (1.0f), "SIS", "SIS", sis, kOrange, [this, &extra]
+                {
+                    toggle (extra.sis);
+                    surface.selectionChanged();
+                });
             if (toMasters)
             {
                 button (row.removeFromLeft (50.0f).reduced (1.0f), "ST", "ST", s->mains[0].on.load(), kRed, [strip] { toggle (strip->mains[0].on); });
                 if (ctx.engine.getMains().size() > 1)
                     button (row.removeFromLeft (50.0f).reduced (1.0f), "MON", "MON", s->mains[1].on.load(), kYellow, [strip] { toggle (strip->mains[1].on); });
+                // SIS: the LCR master enable over ST and MON, the mono level knob its image (pp.261-262).
                 std::vector<KnobBinding> list { bindPan ("pan", p.pan) };
-                if (ctx.engine.getMains().size() > 1)
+                if (sis)
+                    list.push_back (bindSisImage (*s));
+                else if (ctx.engine.getMains().size() > 1)
                     list.push_back (bindSendLevel ("mono level", s->mains[1].levelDb));
                 dialGrid (top (84.0f), std::move (list), 2, 84.0f, kRed);
             }
@@ -1419,7 +1539,13 @@ void Screen::pagePatching()
     fill (from.withHeight (24.0f), juce::Colour (0xff2c3aa8), 4.0f);
     fill (to.withHeight (24.0f), juce::Colour (0xff2c3aa8), 4.0f);
     text (from.withHeight (24.0f).reduced (8.0f, 0.0f), "To: Inputs   (drag a field to choose its source)", kText, 12.0f, juce::Justification::centredLeft, true);
-    text (to.withHeight (24.0f).reduced (8.0f, 0.0f), "From: Busses", kText, 12.0f, juce::Justification::centredLeft, true);
+    {
+        // The From section's tabs (pp.50-51): the outputs' patch, or the input channels' direct outputs.
+        auto tabs = to.withHeight (24.0f).reduced (4.0f, 3.0f);
+        text (tabs.removeFromLeft (46.0f), "From:", kText, 12.0f, juce::Justification::centredLeft, true);
+        button (tabs.removeFromLeft (80.0f).reduced (1.0f, 0.0f), "FROM Busses", "Busses", patchFrom == PatchFrom::Busses, kLilac, [this] { setPatchFrom (PatchFrom::Busses); });
+        button (tabs.removeFromLeft (80.0f).reduced (1.0f, 0.0f), "FROM Dir. Out", "Dir. Out", patchFrom == PatchFrom::DirOut, kLilac, [this] { setPatchFrom (PatchFrom::DirOut); });
+    }
     const int numSources = ctx.engine.getNumSources();
     for (int i = 0; i < 56 && patchScroll + i < (int) channels.size(); ++i)
     {
@@ -1436,6 +1562,25 @@ void Screen::pagePatching()
         });
         text (field.reduced (5.0f, 0.0f), b.text(), s->getInputLeft() >= 0 ? kText : kDim, 11.0f, juce::Justification::centredLeft);
         spot ("source " + juce::String (patchScroll + i + 1), field, {}, std::move (b));
+    }
+    if (patchFrom == PatchFrom::DirOut)
+    {
+        // Dir. Out (p.51): each input channel's direct output and the output it is patched to (its dest).
+        for (int i = 0; i < 56 && patchScroll + i < (int) channels.size(); ++i)
+        {
+            auto* s = channels[(size_t) (patchScroll + i)].get();
+            const int number = patchScroll + i + 1;
+            const juce::Rectangle<float> r (to.getX() + 6.0f + (float) (i / 28) * 196.0f, to.getY() + 30.0f + (float) (i % 28) * 24.0f, 190.0f, 22.0f);
+            const auto c = stripDisplayColour (*s);
+            fill (r.withWidth (56.0f), c);
+            text (r.withWidth (56.0f).reduced (4.0f, 0.0f), kindId (*s), textOn (c), 11.0f, juce::Justification::centredLeft, true);
+            const auto field = r.withTrimmedLeft (60.0f);
+            fill (field, juce::Colour (0xff04050f));
+            auto b = bindDirectDest (number, {});
+            text (field.reduced (5.0f, 0.0f), b.text(), directPort (number) >= 0 ? kText : kDim, 11.0f, juce::Justification::centredLeft);
+            spot ("dir out " + juce::String (number), field, {}, std::move (b));
+        }
+        return;
     }
     const auto& names = ctx.engine.getHardwareOutputNames();
     std::vector<Strip*> outs;

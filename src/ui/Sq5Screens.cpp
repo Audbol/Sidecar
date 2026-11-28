@@ -5,6 +5,7 @@
 #include "ui/Sq5Display.h"
 
 #include "daw/Session.h"
+#include "engine/DirectOut.h"
 #include "engine/MixerEngine.h"
 #include "engine/Models.h"
 #include "engine/SqMidi.h"
@@ -25,9 +26,26 @@ namespace
     const juce::Colour kWell (0xff071019), kLine (0xff8fbcd9), kColumn (0xff3f82b3), kColumnSelected (0xff4aa56f), kPink (0xffe05cc8), kGreenBar (0xff7ee02e),
         kCurrent (0xff8fd14f), kNext (0xffb4c24a), kOffCell (0xff3a5a82), kOnCell (0xffe4ebf2);
     constexpr float kTabWidth = 70.0f;
-    /** I/O's Outputs: LR's sides, then Mix 1-12 (their first side). */
-    constexpr int outputRows = 2 + kMixes;
-    int outputRowSource (int row) { return row < 2 ? MixerEngine::stripSource (StripKind::Main, 0, row) : MixerEngine::stripSource (StripKind::Bus, row - 2, 0); }
+    /** I/O's Outputs: LR's sides, Mix 1-12 (their first side), then the 48 input channels'
+        Direct Outs (p.23). */
+    constexpr int kDirectOutRows = 48;
+    constexpr int outputRows = 2 + kMixes + kDirectOutRows;
+    int outputRowSource (MixerEngine& e, int row)
+    {
+        if (row < 2 + kMixes)
+            return row < 2 ? MixerEngine::stripSource (StripKind::Main, 0, row) : MixerEngine::stripSource (StripKind::Bus, row - 2, 0);
+        // A stereo pair's even channel is its odd channel's right side (Input Stereo, p.86).
+        const int ch = row - 2 - kMixes;
+        const auto& channels = e.getChannels();
+        const bool right = ch % 2 == 1 && ch - 1 < (int) channels.size() && channels[(size_t) (ch - 1)]->params.stereo.load();
+        return DirectOut { StripKind::Channel, (right ? ch - 1 : ch) + 1, right ? 1 : 0, false }.code();
+    }
+    juce::String outputRowName (MixerEngine& e, int row)
+    {
+        if (row >= 2 + kMixes)
+            return "Ip" + juce::String (row - 1 - kMixes) + " DO";
+        return row < 2 ? juce::String (row == 0 ? "LR L" : "LR R") : e.getBuses()[(size_t) (row - 2)]->getName();
+    }
 
     void text (juce::Graphics& g, juce::Rectangle<float> r, const juce::String& t, float size, juce::Colour c,
                juce::Justification j = juce::Justification::centred, bool bold = false)
@@ -118,7 +136,7 @@ namespace
         }
     };
 
-    /** What a gang links of a channel (p.105's list; Direct Out has nothing here). */
+    /** What a gang links of a channel (p.105's list; Direct Out: its level). */
     void collectLinked (Strip& s, int attributes, std::vector<Linked>& out)
     {
         auto& p = s.params;
@@ -172,6 +190,9 @@ namespace
         }
         if (has (gangs::Fader))
             value (p.faderDb);
+        if (has (gangs::DirectOut))
+            if (auto* d = ld::ld_strip_dlive (s.getHandle()))
+                value (d->directDb);
         if (has (gangs::Mute))
             flag (p.mute);
         if (has (gangs::Pan))
@@ -366,7 +387,7 @@ namespace gangs
         return names[juce::jlimit (0, kNumAttributes - 1, attribute)];
     }
 
-    bool isModelled (int attribute) { return attribute != DirectOut; }
+    bool isModelled (int attribute) { return juce::isPositiveAndBelow (attribute, (int) kNumAttributes); }
 
     int gangOf (const Set& set, int channel)
     {
@@ -630,18 +651,39 @@ void Display::paintRoutingColumn (juce::Graphics& g, juce::Rectangle<float> col,
 void Display::buildDirOut (Strip& s)
 {
     // As p.46: the channel's own level in a box at the left, the global settings in a
-    // panel, all Sidecar's fixed (no direct out modelled yet).
-    juce::ignoreUnused (s);
+    // panel: the source point, then what the direct outs follow. The engine runs them as a
+    // dLive's (ld_engine_dlive_*), patched on I/O's Outputs.
     add (Field::Header, { 120, 164, 90, 18 }, "Direct Out");
-    add (Field::Value, { 124, 186, 82, 48 }, "Level").enabled = false;
+    if (auto* d = ld::ld_strip_dlive (s.getHandle()))
+        addValue ({ 124, 186, 82, 48 }, "Level", bindFader ("Level", d->directDb));
     add (Field::Header, { 230, 56, 416, 20 }, "Global Direct Out Settings");
-    add (Field::Button, { 312, 106, 136, 32 }, "Post Compressor").enabled = false;
-    for (auto [title, x, y] : { std::tuple ("Follow Fader", 288, 186), std::tuple ("Follow Mute", 413, 186), std::tuple ("Follow DCA Fader", 288, 252),
-                                std::tuple ("Follow DCA Mute", 413, 252), std::tuple ("Follow Mute Group", 413, 318) })
+    const auto* e = ctx.engine.getHandle();
+    // The guide's points in its order (the dLive's codes; its Insert B, 6, has no SQ place).
+    static constexpr int points[] = { 0, 1, 2, 3, 4, 5, 7 };
+    static const char* const names[] = { "Post Preamp", "Post HPF", "Post Gate", "Post Insert Return", "Post PEQ", "Post Compressor", "Post Delay" };
+    auto& source = addValue ({ 312, 104, 136, 36 }, "Direct Out Source",
+                             choiceBinding ("Direct Out Source", 7,
+                                            [e]
+                                            {
+                                                const int code = ld::ld_engine_dlive_direct_source (e);
+                                                for (int i = 0; i < 7; ++i)
+                                                    if (points[i] == code)
+                                                        return i;
+                                                return 6;
+                                            },
+                                            [e] (int i) { ld::ld_engine_dlive_set_direct_source (e, points[juce::jlimit (0, 6, i)]); },
+                                            [] (int i) { return juce::String (names[juce::jlimit (0, 6, i)]); }));
+    source.hideTitle = true;
+    for (auto [title, x, y, bit] : { std::tuple ("Follow Fader", 288, 186, 1), std::tuple ("Follow Mute", 413, 186, 2), std::tuple ("Follow DCA Fader", 288, 252, 8),
+                                     std::tuple ("Follow DCA Mute", 413, 252, 16), std::tuple ("Follow Mute Group", 413, 318, 32) })
     {
         auto& f = add (Field::Button, { (float) x, (float) y, 60, 26 }, title);
-        f.enabled = false;
-        f.caption = "Off";
+        f.caption = "On";
+        f.captionOff = "Off";
+        f.colour = juce::Colours::white;
+        f.lit = [e, bit] { return (ld::ld_engine_dlive_direct_follow (e) & bit) != 0; };
+        // Follow All is a dLive's: an SQ's five say it all.
+        f.press = [e, bit] { ld::ld_engine_dlive_set_direct_follow (e, (ld::ld_engine_dlive_direct_follow (e) & ~4) ^ bit); };
     }
 }
 
@@ -758,8 +800,25 @@ void Display::buildSends (Strip& s)
 void Display::buildMeters()
 {
     addSideTabs ({ "Input Meters", "FX Meters", "Mix Meters", "USB Meters", "RTA", "Channel Meters" }, meterTab);
-    for (int i = 3; i < 6; ++i)
-        fields[(size_t) i].enabled = false; // USB, RTA and the chromatic thresholds: not yet
+    for (int i : { 3, 5 })
+        fields[(size_t) i].enabled = false; // USB and the chromatic thresholds: not yet
+    if (meterTab == 4)
+    {
+        // As p.55: the Source, PAFL or a fixed channel (any input or mix), over the bars.
+        // Sidecar's is the mono 1/6th octave view; Trim, the ballistics and LF Damping are
+        // the engine's RTA settings, not shown here.
+        const auto body = bodyArea();
+        addValue ({ body.getX(), body.getY(), 180, 44 }, "RTA Source",
+                  choiceBinding ("RTA Source", 1 + soft::kChannels, [this] { return rtaSource; }, [this] (int v) { rtaSource = v; },
+                                 [this] (int v)
+                                 {
+                                     if (v <= 0)
+                                         return juce::String ("PAFL");
+                                     auto* s = stripOf (ctx.engine, soft::channelAt (v - 1));
+                                     return s != nullptr ? s->getName() : juce::String ("-");
+                                 }));
+        return;
+    }
     // The meter source point, for Input and Mix (p.53): Post Compressor is what's drawn.
     if (meterTab == 0 || meterTab == 2)
     {
@@ -771,6 +830,26 @@ void Display::buildMeters()
 void Display::paintMeters (juce::Graphics& g)
 {
     auto body = bodyArea();
+    if (meterTab == 4)
+    {
+        // The bars from 20 Hz to 20 kHz, its octaves marked under them (p.55).
+        auto area = body.withTrimmedTop (52.0f);
+        auto scale = area.removeFromBottom (16.0f);
+        g.setColour (kWell);
+        g.fillRect (area);
+        // The bars run evenly in semitones from the engine's first band.
+        const float first = Analysis::bandHz (0);
+        for (auto [hz, name] : { std::pair (31.5f, "31.5"), std::pair (63.0f, "63"), std::pair (125.0f, "125"), std::pair (250.0f, "250"), std::pair (500.0f, "500"),
+                                 std::pair (1000.0f, "1k"), std::pair (2000.0f, "2k"), std::pair (4000.0f, "4k"), std::pair (8000.0f, "8k"), std::pair (16000.0f, "16k") })
+        {
+            const float x = area.getX() + area.getWidth() * (12.0f * std::log2 (hz / first) + 0.5f) / (float) ld::kRtaBands;
+            g.setColour (kLine.withAlpha (0.25f));
+            g.drawVerticalLine ((int) x, area.getY(), area.getBottom());
+            text (g, { x - 24.0f, scale.getY(), 48.0f, 14.0f }, name, 9.0f, juce::Colours::white.withAlpha (0.8f));
+        }
+        paintRta (g, area.reduced (2.0f, 2.0f), 2, false, 0.95f);
+        return;
+    }
     if (meterTab == 0 || meterTab == 2)
         text (g, body.removeFromTop (28.0f).removeFromLeft (62.0f), meterTab == 0 ? "Input Meter Source" : "Mix Meter Source", 8.5f, juce::Colours::white, juce::Justification::centredLeft, true);
     const std::vector<Strip*> list = [this]
@@ -850,6 +929,7 @@ void Display::pressLibrary()
     if (hasLibrary())
     {
         libraryOpen = ! libraryOpen;
+        channelLibraryDeleteArmed = false;
         rebuild();
     }
 }
@@ -863,7 +943,85 @@ bool Display::hasLibrary() const noexcept
     if (block == Block::Comp || block == Block::Geq)
         return true;
     auto* strip = selectedStrip();
+    // The overview's Input Channel and Mix Channel libraries (p.79).
+    if (block == Block::Bank)
+        return strip != nullptr && (strip->getKind() == StripKind::Channel || strip->isOutput());
     return block == Block::Preamp && strip != nullptr && ld::ld_strip_preamp_block (strip->getHandle()) >= 0;
+}
+
+juce::File Display::channelLibraryFolder (const Strip& s) const
+{
+    return getDataFolder().getChildFile (s.getKind() == StripKind::Channel ? "SQ Input Channel Library" : "SQ Mix Channel Library");
+}
+
+juce::Array<juce::File> Display::channelLibraryFiles (const Strip& s) const
+{
+    auto files = channelLibraryFolder (s).findChildFiles (juce::File::findFiles, false, juce::String ("*") + Show::channelPresetExtension);
+    files.sort();
+    return files;
+}
+
+void Display::buildChannelLibrary (Strip& s)
+{
+    // As p.78: the items at the left, recall and storage at the right. Sidecar has the User
+    // library alone (no factory channel presets); an item holds the channel's processing
+    // (trim, HPF, gate, insert, PEQ, compressor, delay) and its name and colour, which
+    // Recall takes as the Name and Colour option says. The Preamp option (the socket's
+    // gain, pad and 48V) is dim: a socket isn't a channel's here.
+    const bool input = s.getKind() == StripKind::Channel;
+    const auto body = bodyArea().withX (8.0f).withWidth ((float) kWidth - 16.0f);
+    add (Field::Header, { body.getX(), body.getY(), body.getWidth(), 20 }, input ? "Input Channel Library" : "Mix Channel Library");
+    const auto files = channelLibraryFiles (s);
+    const int count = files.size();
+    const auto listArea = juce::Rectangle<float> (body.getX(), body.getY() + 26.0f, 400.0f, body.getHeight() - 26.0f);
+    addList (listArea, "Library Item ", count, channelLibraryFirst, channelLibraryPicked,
+             [files] (int i) { return Show::readPreset (files[i]).name; });
+    const auto picked = count > 0 ? files[channelLibraryPicked] : juce::File();
+    constexpr juce::uint32 processing = (juce::uint32) state::Preamp | (juce::uint32) state::Gate | (juce::uint32) state::Eq | (juce::uint32) state::Dynamics | (juce::uint32) state::Inserts;
+    const float x = listArea.getRight() + 16.0f;
+    auto* strip = &s;
+    auto& recall = add (Field::Button, { x, body.getY() + 34, 110, 34 }, "Recall");
+    recall.enabled = count > 0;
+    recall.press = [this, strip, picked]
+    {
+        ctx.show.loadChannelPreset (state::StripRef::of (*strip), picked, processing | (channelLibraryNames ? (juce::uint32) state::Name : 0u));
+        libraryOpen = false;
+        rebuild();
+    };
+    const auto store = [this, strip] (juce::File file)
+    {
+        const auto folder = channelLibraryFolder (*strip);
+        if (! folder.createDirectory().wasOk())
+            return;
+        const auto name = strip->getName();
+        if (file == juce::File())
+            file = folder.getNonexistentChildFile (juce::File::createLegalFileName (name.isNotEmpty() ? name : juce::String ("Channel")), Show::channelPresetExtension, false);
+        ctx.show.saveChannelPreset (state::StripRef::of (*strip), processing | (juce::uint32) state::Name, file, name);
+        rebuild();
+    };
+    add (Field::Button, { x + 124, body.getY() + 34, 110, 34 }, "Store New").press = [store] { store ({}); };
+    auto& overwrite = add (Field::Button, { x + 124, body.getY() + 80, 110, 34 }, "Overwrite");
+    overwrite.enabled = count > 0;
+    overwrite.press = [store, picked] { store (picked); };
+    auto& del = add (Field::Button, { x + 124, body.getY() + 126, 110, 34 }, "Delete");
+    del.enabled = count > 0;
+    del.caption = channelLibraryDeleteArmed ? "Confirm" : "Delete";
+    del.colour = juce::Colours::red;
+    del.lit = [this] { return channelLibraryDeleteArmed; };
+    del.press = [this, picked]
+    {
+        // Touched again to confirm (p.79).
+        if (channelLibraryDeleteArmed)
+            picked.deleteFile();
+        channelLibraryDeleteArmed = ! channelLibraryDeleteArmed;
+        rebuild();
+    };
+    add (Field::Header, { x, body.getY() + 190, 234, 18 }, "Recall Options");
+    auto& names = add (Field::Button, { x, body.getY() + 216, 110, 34 }, "Name and Colour");
+    names.colour = juce::Colours::white;
+    names.lit = [this] { return channelLibraryNames; };
+    names.press = [this] { channelLibraryNames = ! channelLibraryNames; };
+    add (Field::Button, { x + 124, body.getY() + 216, 110, 34 }, input ? "Preamp" : "Ext In Preamp").enabled = false;
 }
 
 void Display::stepSceneSelection (int delta)
@@ -1234,14 +1392,38 @@ void Display::buildAudioSetup()
         add (Field::Value, { px + pw * 0.5f + 40, top + 84, 74, 44 }, "Trim").enabled = false;
 
         const float y = body.getBottom() - 56.0f, w = pw / 4.0f;
-        add (Field::Value, { px, y, w * 1.4f - 2.0f, 48 }, "Input to PAFL Source").enabled = false; // the engine's PFL point is fixed
+        const auto* h = e.getHandle();
+        addValue ({ px, y, w * 1.4f - 2.0f, 48 }, "Input to PAFL Source",
+                  choiceBinding ("Input to PAFL Source", 4, [h] { return (int) ld::ld_engine_sq_pafl_source (h); },
+                                 [h] (int v) { ld::ld_engine_sq_set_pafl_source (h, v); },
+                                 [] (int v) { return juce::StringArray ({ "Post Preamp", "Post PEQ", "Post Compressor", "Post Delay/AMM" })[juce::jlimit (0, 3, v)]; }));
         KnobBinding trim;
         trim.label = "PFL Trim";
         trim.get = [&e] { return (24.0f - e.speakers.pflDimDb.load()) / 24.0f; };
         trim.set = [&e] (float v) { const float dim = 24.0f * (1.0f - v); e.speakers.pflDimDb = dim; e.phones.source.pflDimDb = dim; };
         trim.text = [&e] { return juce::String (-e.speakers.pflDimDb.load(), 1) + " dB"; };
         addValue ({ px + w * 1.4f, y, w * 0.8f - 2.0f, 48 }, "PFL Trim", std::move (trim));
-        add (Field::Value, { px + w * 2.2f, y, w * 0.8f - 2.0f, 48 }, "Delay").enabled = false;
+        {
+            // The PAFL bus delay, 0 to 682.6 ms (p.94): both monitor paths' delay (the
+            // engine's in metres), on above 0.
+            KnobBinding delay;
+            delay.label = "Delay";
+            delay.steps = 6827.0f;
+            const auto ms = [&e] { auto& m = e.monitorPath (false); return m.delayOn.load() ? ld::ld_monitor_delay_ms (m.delayM.load()) : 0.0f; };
+            delay.get = [ms] { return ms() / 682.6f; };
+            delay.set = [&e] (float v)
+            {
+                const float to = juce::jlimit (0.0f, 682.6f, v * 682.6f);
+                for (const bool phones : { false, true })
+                {
+                    auto& m = e.monitorPath (phones);
+                    m.delayOn = to > 0.0f;
+                    m.delayM = juce::jmax (0.1f, to / ld::ld_monitor_delay_ms (1.0f));
+                }
+            };
+            delay.text = [ms] { return juce::String (ms(), 1) + " ms"; };
+            addValue ({ px + w * 2.2f, y, w * 0.8f - 2.0f, 48 }, "Delay", std::move (delay));
+        }
         addValue ({ px + w * 3.0f, y, w - 2.0f, 48 }, "Listen Level", bindFader ("Listen Level", e.monitorLevelDb));
         return;
     }
@@ -1319,11 +1501,12 @@ void Display::buildAudioSetup()
     }
     if (audioTab == 2)
     {
-        // As p.97. Band-pass noise has no oscillator here: the list has the other three.
+        // As p.97. Band-pass noise is white noise a third of an octave wide around the
+        // frequency (its width is Sidecar's reading).
         const float px = body.getX() + 40.0f;
-        addValue ({ px, top + 22, 180, 44 }, "Signal Type", bindChoice ("Signal Type", sigType, { "Sine", "White noise", "Pink noise" }, 0));
+        addValue ({ px, top + 22, 180, 44 }, "Signal Type", bindChoice ("Signal Type", sigType, { "Sine", "White noise", "Pink noise", "Band-pass noise" }, 0));
         addToggle (Field::Button, { px + 50, top + 96, 80, 36 }, "Mute", sigMute).colour = juce::Colours::red;
-        addValue ({ px, top + 190, 86, 48 }, "Frequency", bindFreq ("Frequency", sigFreq, 20.0f, 20000.0f, 1000.0f)).enabled = sigType.load() == 0;
+        addValue ({ px, top + 190, 86, 48 }, "Frequency", bindFreq ("Frequency", sigFreq, 20.0f, 20000.0f, 1000.0f)).enabled = sigType.load() == 0 || sigType.load() == 3;
         addValue ({ px + 96, top + 190, 86, 48 }, "Level", bindLinear ("Level", sigLevel, -72.0f, 18.0f, " dB", 1, 0.0f));
         addMixGrid ({ body.getX() + 344.0f, top, right - body.getX() - 344.0f, body.getBottom() - top },
                     [this] (int c) { return (sigAssign.load() >> c & 1) != 0; },
@@ -2116,7 +2299,7 @@ void Display::applySigGen()
         ld::ld_engine_console_osc_assign (e, (int) StripKind::Matrix, m, g, g);
     }
     const int type = sigType.load();
-    ld::ld_engine_console_osc_set (e, ! sigMute.load(), type == 0 ? ld::kOscSine : type == 1 ? ld::kOscWhite : ld::kOscPink, sigFreq.load(), sigLevel.load(), false, false);
+    ld::ld_engine_console_osc_set (e, ! sigMute.load(), type == 0 ? ld::kOscSine : type == 1 ? ld::kOscWhite : type == 2 ? ld::kOscPink : ld::kOscBandPass, sigFreq.load(), sigLevel.load(), false, false);
     sigShown = { type, sigMute.load() ? 1.0f : 0.0f, sigFreq.load(), sigLevel.load(), mask };
     ctx.settings.setValue ("sq5.siggen", juce::String (type) + " " + juce::String (sigMute.load() ? 1 : 0) + " " + juce::String (sigFreq.load()) + " " + juce::String (sigLevel.load()) + " " + juce::String (mask));
 }
@@ -2126,7 +2309,7 @@ void Display::loadSigGen()
     const auto v = juce::StringArray::fromTokens (ctx.settings.getValue ("sq5.siggen"), " ", {});
     if (v.size() >= 5)
     {
-        sigType = juce::jlimit (0, 2, v[0].getIntValue());
+        sigType = juce::jlimit (0, 3, v[0].getIntValue());
         sigMute = v[1].getIntValue() != 0;
         sigFreq = juce::jlimit (20.0f, 20000.0f, v[2].getFloatValue());
         sigLevel = juce::jlimit (-72.0f, 18.0f, v[3].getFloatValue());
@@ -3206,7 +3389,7 @@ void Display::buildIo()
                 }
                 else
                 {
-                    const int source = outputRowSource (y);
+                    const int source = outputRowSource (ctx.engine, y);
                     if (ctx.engine.getOutputSource (x) == source)
                         ctx.engine.clearOutput (x);
                     else
@@ -3257,9 +3440,9 @@ void Display::paintIo (juce::Graphics& g)
         juce::Rectangle<float> label (body.getX(), r.getY() + (float) row * ch, 74.0f, ch);
         g.setColour (juce::Colour (0xff7d96bf));
         g.fillRect (label.reduced (0.0f, 0.6f));
-        const auto name = ioTab == 0 ? ctx.engine.getChannels()[(size_t) y]->getName() : y < 2 ? juce::String (y == 0 ? "LR L" : "LR R") : ctx.engine.getBuses()[(size_t) (y - 2)]->getName();
+        const auto name = ioTab == 0 ? ctx.engine.getChannels()[(size_t) y]->getName() : outputRowName (ctx.engine, y);
         text (g, label, name, 11.0f, juce::Colours::white, juce::Justification::centred, true);
-        const int source = ioTab == 1 ? outputRowSource (y) : -1;
+        const int source = ioTab == 1 ? outputRowSource (ctx.engine, y) : -1;
         for (int col = 0; col < kIoCols && ioSocketFirst + col < cols; ++col)
         {
             const int x = ioSocketFirst + col;

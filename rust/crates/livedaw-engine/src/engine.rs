@@ -69,7 +69,9 @@ use crate::pdc::{pdc_tap, PdcState, MAX_PDC};
 use crate::pool::WorkerPool;
 use crate::profile::{HostSize, MainMode, Profile};
 use crate::routing::{bus_feeds_bus, matrix_direct_pair, return_tap, strip_source, BusSchedule, OutputPatch, ReturnClock};
-use crate::routing::{DirectSource, ReturnRing, DIRECT_SOURCE_BASE, NUM_PATCH_OUTPUTS, NUM_STRIP_SOURCES, STRIP_SOURCE_BASE};
+use crate::routing::{
+    DirectSource, DirectTap, ReturnRing, DIRECT_SOURCE_BASE, NUM_PATCH_OUTPUTS, NUM_STRIP_SOURCES, STRIP_SOURCE_BASE,
+};
 use crate::sends::{send_mode, MAX_BUSES};
 use crate::solo::{self, solo_mode, SoloBlock};
 use crate::sources::{user_side, SourceDsp, SourceTable, UserSignalParams, NUM_SEND_FX};
@@ -748,7 +750,11 @@ impl Engine {
         self.num_mute_groups.store(st.counts.mute_groups, Relaxed);
         self.controls.reset();
         self.amm.reset();
-        self.dlive.reset();
+        if st.profile == Profile::AhSq5 {
+            self.dlive.reset_sq(); // its Direct Out and PAFL settings are the dLive's
+        } else {
+            self.dlive.reset();
+        }
         // A dLive's RackUltra strips and Dyn8 engines (none on another console).
         let fx_table = st.profile.spec().run_models().fx;
         let dyn8 =
@@ -1364,10 +1370,31 @@ impl Engine {
     }
 
     /// Message thread: the user tap buffers every strip writes: the taps its
-    /// own sends (to buses, mains, matrices) take. Called by `collect`.
+    /// own sends (to buses, mains, matrices) take, and its direct outs at a tap
+    /// point on an output or a RECORDER port. Called by `collect`.
     pub fn update_taps(&self) {
         let st = self.lock();
         let bus_slots: Vec<usize> = st.buses.iter().map(|b| b.id() as usize).collect();
+        // The strips whose direct outs at a tap point are patched, and the taps.
+        let recorded = (0..USB_CHANNELS).filter_map(|port| match self.usb.rec_tap(port) {
+            RecTap::Direct(code) => Some(code),
+            _ => None,
+        });
+        let direct_taps: Vec<(*const Strip, usize)> = self
+            .output_patch
+            .patched()
+            .map(|(_, source)| source)
+            .chain(recorded)
+            .filter_map(DirectTap::from_code)
+            .filter_map(|t| {
+                let i = usize::try_from(t.number - 1).ok()?;
+                let s = match t.kind {
+                    StripKind::Bus => st.buses.iter().find(|b| b.id() as usize == i),
+                    kind => st.list(kind).get(i),
+                }?;
+                Some((Arc::as_ptr(s), t.tap))
+            })
+            .collect();
         for s in st.all() {
             let mut wanted = [false; NUM_TAP_IDS];
             let mut want = |tap: i32| {
@@ -1402,6 +1429,24 @@ impl Engine {
                 };
                 for &id in ids {
                     wanted[id] = true;
+                }
+            }
+            // A PRO2 channel's direct output can be switched to pre-processing at any moment.
+            if s.profile() == Profile::MidasPro2 && s.kind() == StripKind::Channel {
+                wanted[crate::strip::tap::IN] = true;
+            }
+            // So can an SQ channel's Direct Out source and its PAFL source point (the
+            // dLive's taps, `chain::SQ_CHANNEL`).
+            if s.profile() == Profile::AhSq5 && s.kind() == StripKind::Channel {
+                use crate::strip::tap;
+                for id in [tap::IN, tap::FILT, crate::dlive::TAP_POST_GATE, 2, 3, 4, tap::PFL] {
+                    wanted[id] = true;
+                }
+            }
+            // A direct out at a tap point (a DM2000's PRE EQ ones) on an output.
+            for &(strip, tap) in &direct_taps {
+                if std::ptr::eq(strip, Arc::as_ptr(s)) {
+                    wanted[tap] = true;
                 }
             }
             s.taps.plan(&wanted, st.device.block_size, &self.garbage);
@@ -1607,13 +1652,14 @@ impl Engine {
     /// take it; -1 none) straight to hardware output `port`, replacing what
     /// fed it (manual 5.4 OUTPUTS). A bus, main or matrix signal goes to the
     /// strip's own output instead. A direct out ([`DirectSource`]: a channel,
-    /// aux or bus PRE or POST FADER) is patched like a source. False when
-    /// `port` can't be patched or `source` is no direct out it knows.
+    /// aux or bus PRE or POST FADER; [`DirectTap`]: at one of its tap points) is
+    /// patched like a source. False when `port` can't be patched or `source` is no
+    /// direct out it knows.
     pub fn route_output_source(&self, port: i32, source: i32) -> bool {
         if usize::try_from(port).map_or(true, |p| p >= NUM_PATCH_OUTPUTS) {
             return false;
         }
-        if source >= DIRECT_SOURCE_BASE && DirectSource::from_code(source).is_none() {
+        if source >= DIRECT_SOURCE_BASE && DirectSource::from_code(source).is_none() && DirectTap::from_code(source).is_none() {
             return false;
         }
         self.clear_output(port);
@@ -2593,7 +2639,10 @@ impl Engine {
                 RecTap::Strip { kind, number, channel } => StripKind::from_i32(kind)
                     .and_then(|k| topo.by_number(k, number))
                     .map(|s| if s.kind().is_input() { s.dsp().pfl(channel, n) } else { s.dsp().out(channel, n) }),
-                RecTap::Direct(code) => DirectSource::from_code(code).and_then(|d| direct_signal(topo, d, n)),
+                RecTap::Direct(code) => match DirectTap::from_code(code) {
+                    Some(t) => direct_tap_signal(topo, t, a.block_counter, n),
+                    None => DirectSource::from_code(code).and_then(|d| direct_signal(topo, d, n)),
+                },
             };
             self.usb.write_rec(port, src, n);
         }
@@ -2672,6 +2721,10 @@ impl Engine {
             };
             solo_paths |= route;
             let is_afl = afl[s.kind() as usize];
+            // An SQ input channel's PFL leaves it at its Input to PAFL Source Point.
+            let pfl_tap = (!is_afl && s.profile() == Profile::AhSq5 && s.kind() == StripKind::Channel)
+                .then(|| crate::dlive::sq_pafl_tap(self.dlive.pafl_source.load(Relaxed)))
+                .flatten();
             for (path, bus) in a.monitor.iter_mut().enumerate() {
                 let target = if route & (1 << path) == 0 {
                     0.0
@@ -2683,8 +2736,9 @@ impl Engine {
                 let last = if path == 0 { *s.last_solo() } else { s.console.solo_ramp_b.load() };
                 if target != 0.0 || last != 0.0 {
                     let [l, r] = bus;
-                    add_with_gain_ramp(&mut l[..n], solo_tap(s, is_afl, 0, n), last, target);
-                    add_with_gain_ramp(&mut r[..n], solo_tap(s, is_afl, 1, n), last, target);
+                    let tapped = |ch| pfl_tap.and_then(|id| s.taps.read(id, a.block_counter, ch, n));
+                    add_with_gain_ramp(&mut l[..n], tapped(0).unwrap_or_else(|| solo_tap(s, is_afl, 0, n)), last, target);
+                    add_with_gain_ramp(&mut r[..n], tapped(1).unwrap_or_else(|| solo_tap(s, is_afl, 1, n)), last, target);
                 }
                 if path == 0 {
                     *s.last_solo() = target;
@@ -2726,12 +2780,13 @@ impl Engine {
             }
             let r = &mut a.monitor_ramps[path];
             let bus = &mut a.monitor[path];
+            let hw = a.sources.hw_ptrs();
             if index != r.source_index {
-                add_monitor_source(topo, bus, r.source_index, r.source, 0.0, n);
+                add_monitor_source(topo, hw, bus, r.source_index, r.source, 0.0, n);
                 r.source = 0.0;
                 r.source_index = index;
             }
-            add_monitor_source(topo, bus, index, r.source, target, n);
+            add_monitor_source(topo, hw, bus, index, r.source, target, n);
             r.source = target;
         }
 
@@ -2863,16 +2918,21 @@ impl Engine {
                 continue;
             }
             if let Some(direct) = DirectSource::from_code(source) {
-                let dlive = topo
-                    .by_number(direct.kind, direct.number)
-                    .filter(|s| s.kind() == StripKind::Channel && s.spec().dlive_layout.is_some());
-                if let Some(s) = dlive {
+                let channel = topo.by_number(direct.kind, direct.number).filter(|s| s.kind() == StripKind::Channel);
+                // An SQ's Direct Outs work as a dLive's (Reference Guide p.46).
+                let dlive = channel.filter(|s| s.spec().dlive_layout.is_some() || s.profile() == Profile::AhSq5);
+                if let Some(s) = channel.filter(|s| s.profile() == Profile::MidasPro2) {
+                    let last = &mut a.direct_gain[port];
+                    let signal = pro2_direct_out(s, direct.side, last, &mut a.direct_scratch, a.block_counter, n);
+                    add_to(port as i32, signal);
+                } else if let Some(s) = dlive {
                     let last = &mut a.direct_gain[port];
                     let signal = dlive_direct_out(
                         s,
                         direct.side,
                         &self.dlive,
                         &self.controls.dcas,
+                        &self.controls.mute_groups.load(),
                         last,
                         &mut a.direct_scratch,
                         a.block_counter,
@@ -2880,6 +2940,10 @@ impl Engine {
                     );
                     add_to(port as i32, signal);
                 } else if let Some(signal) = direct_signal(topo, direct, n) {
+                    add_to(port as i32, signal);
+                }
+            } else if let Some(t) = DirectTap::from_code(source) {
+                if let Some(signal) = direct_tap_signal(topo, t, a.block_counter, n) {
                     add_to(port as i32, signal);
                 }
             } else if let Some((kind, number, side)) = strip_source(source) {
@@ -2957,10 +3021,26 @@ unsafe fn solo_tap(s: &Strip, afl: bool, ch: usize, n: usize) -> &[f32] {
     }
 }
 
-/// Adds monitor SOURCE `index` (a main, matrix, bus or aux output) to a
-/// monitor path with a ramped gain.
-unsafe fn add_monitor_source(topo: &Topology, bus: &mut [Vec<f32>; 2], index: i32, last: f32, target: f32, n: usize) {
+/// Adds monitor SOURCE `index` (a main, matrix, bus or aux output, or a pair of the
+/// inputs `hw`, as the channels take them) to a monitor path with a ramped gain.
+unsafe fn add_monitor_source(
+    topo: &Topology,
+    hw: &[*const f32],
+    bus: &mut [Vec<f32>; 2],
+    index: i32,
+    last: f32,
+    target: f32,
+    n: usize,
+) {
     if last == 0.0 && target == 0.0 {
+        return;
+    }
+    if let Some(port) = monitor_port_source(index) {
+        for (side, out) in bus.iter_mut().enumerate() {
+            if let Some(&p) = hw.get(port + side).filter(|p| !p.is_null()) {
+                add_with_gain_ramp(&mut out[..n], std::slice::from_raw_parts(p, n), last, target);
+            }
+        }
         return;
     }
     let strip = match monitor_source(index) {
@@ -3175,6 +3255,12 @@ fn pdc_feeds<'a>(
                 me.is_some_and(|me| *a != me && !schedule.is_late(*a, me)) && bus_feeds_bus(b.id() as usize, index)
             });
             for s in inputs.chain(feeding.map(|(_, b)| b)) {
+                if let Some(feed) = pro2_mix_feed(dst, s, index) {
+                    if feed.on {
+                        feeds.push((s, feed.tap));
+                    }
+                    continue;
+                }
                 let Some(send) = s.sends.find(index).filter(|send| send.enabled.load(Relaxed)) else { continue };
                 let tap = match send.mode.load(Relaxed) {
                     send_mode::PRE => pdc_tap::TAP,
@@ -3186,6 +3272,10 @@ fn pdc_feeds<'a>(
         }
         StripKind::Main => {
             for s in inputs.chain(&st.buses) {
+                if pro2_sis(dst, index, s) {
+                    feeds.push((s, pdc_tap::POST));
+                    continue;
+                }
                 let mode = dst.spec().dlive_layout.map_or(MainMode::Lr, |l| l.main);
                 let control = if mode.shares_lr_send(index) { 0 } else { index };
                 let Some(send) = s.main_send(control) else { continue };
@@ -3199,6 +3289,12 @@ fn pdc_feeds<'a>(
         StripKind::Matrix => {
             for s in inputs.chain(&st.buses).chain(&st.mains) {
                 let Some(send) = s.matrix_send(index) else { continue };
+                if let Some(feed) = pro2_mix_feed(dst, s, index) {
+                    if feed.on {
+                        feeds.push((s, feed.tap));
+                    }
+                    continue;
+                }
                 if send.on.load(Relaxed) {
                     feeds.push((s, matrix_send_route(s, dst, send).0));
                 }
@@ -3260,11 +3356,171 @@ fn mix_source_tap(bus: &Strip, s: &Strip, mode: i32) -> Option<usize> {
     }
 }
 
+/// How a strip feeds a PRO2's aux send or matrix this block (`pro2_mix_feed`).
+struct Pro2Feed {
+    on: bool,
+    /// Where it is taken (`pdc_tap`).
+    tap: usize,
+    /// The gain, with the level and the MCAs.
+    gain: f32,
+    /// A stereo pair's send pan (-1..1): by the pan law (true: the signal is not panned
+    /// yet), or a balance.
+    pan: Option<(f32, bool)>,
+    /// Before the fader: cut by the source's mute, unless the send ignores it.
+    pre: bool,
+    ignore_mute: bool,
+    /// The side of a linked pair it takes (0 the odd mix, 1 the even); None, a mono mix,
+    /// which takes a mono source's signal as it is and a stereo one's sides at half each
+    /// (Sidecar's reading).
+    side: Option<usize>,
+}
+
+/// How `s` feeds mix `mix`, an aux send (from an input) or a matrix (from an input, an
+/// aux send or a master), in `slot`, on a PRO2 (OM pp.76-78, 259-260). A linked pair's
+/// sends are the odd mix's (`pro2::leader_slot`); a mix takes its signal on both of its
+/// sides, as a mono bus.
+///
+/// - **Mix** (a matrix always): ON, PRE, the level and, from an input, the MCAs of its
+///   VCAs. A mono mix takes the signal before the pan (pre or post fader); a stereo one
+///   takes it, pre fader, panned by the send's pan, post fader, as the source's pan left
+///   it, balanced by the send's (p.260: "affected by the main fader and pan controls";
+///   the balance is Sidecar's reading).
+/// - **Group** and **mix minus** (aux sends): post fader at the fader's level, no MCA; a
+///   stereo pair as panned, a mono bus before the pan. Mix minus's switch works the other
+///   way round (p.260: "when it is on the audio is not sent to the bus").
+///
+/// None: not a PRO2's mix, a source it doesn't take this way, or a send taking a user
+/// tap (the usual path).
+fn pro2_mix_feed(mix: &Strip, s: &Strip, slot: usize) -> Option<Pro2Feed> {
+    use crate::pro2::{leader_slot, mix_mode};
+    if mix.profile() != Profile::MidasPro2 {
+        return None;
+    }
+    let p = &mix.pro2;
+    let linked = p.linked.load(Relaxed);
+    let leader = leader_slot(slot, linked);
+    let side = linked.then_some(slot % 2);
+    let input = s.kind().is_input();
+    let (enabled, pre, level_db, pan, ignore_mute, tap) = match mix.kind() {
+        StripKind::Bus if input => {
+            let send = s.sends.find(leader)?;
+            let mode = p.mix_mode.load(Relaxed);
+            if mode == mix_mode::GROUP || mode == mix_mode::MIX_MINUS {
+                let tap = if linked { pdc_tap::OUT } else { pdc_tap::POST };
+                let on = send.enabled.load(Relaxed) != (mode == mix_mode::MIX_MINUS);
+                return Some(Pro2Feed { on, tap, gain: 1.0, pan: None, pre: false, ignore_mute: false, side });
+            }
+            let pre = send.mode.load(Relaxed) == send_mode::PRE;
+            (
+                send.enabled.load(Relaxed),
+                pre,
+                send.level_db.load(),
+                send.pan.load(),
+                send.ignore_mute.load(Relaxed),
+                send.tap.load(Relaxed),
+            )
+        }
+        StripKind::Matrix if s.kind() != StripKind::Matrix => {
+            let send = s.matrix_send(leader)?;
+            let pre = send.pre.load(Relaxed);
+            (
+                send.on.load(Relaxed),
+                pre,
+                send.level_db.load(),
+                send.pan.load(),
+                send.ignore_mute.load(Relaxed),
+                send.tap.load(Relaxed),
+            )
+        }
+        _ => return None,
+    };
+    if send_tap(tap).is_some() {
+        return None;
+    }
+    let mca = if input { p.mca_offset_db(&s.params) } else { 0.0 };
+    let tap = match (pre, input && linked) {
+        (true, _) => pdc_tap::TAP,
+        (false, true) => pdc_tap::OUT,
+        (false, false) => pdc_tap::POST,
+    };
+    let pan = linked.then_some((pan / 100.0, pre && input));
+    Some(Pro2Feed { on: enabled, tap, gain: db_to_gain(level_db + mca), pan, pre, ignore_mute, side })
+}
+
+/// Adds `s`'s feed to PRO2 mix `mix` (`pro2_mix_feed`), on both of its sides, ramped
+/// from `last` (the send's own to this mix).
+///
+/// # Safety
+/// The mix's task only, after the stages feeding it.
+unsafe fn add_pro2_feed(mix: &Strip, s: &Strip, feed: &Pro2Feed, last: &mut [f32; 2], scale: f32, target: u32, n: usize) {
+    let muted = feed.pre && tap_send_muted(s, feed.ignore_mute);
+    let side = feed.side.unwrap_or(0);
+    let pan = match feed.pan {
+        Some((p, true)) => {
+            let (l, r) = s.spec().pan.gains(s.dsp().mono_source(), p);
+            if side == 0 {
+                l
+            } else {
+                r
+            }
+        }
+        Some((p, false)) => {
+            let (l, r) = stereo_balance(p);
+            if side == 0 {
+                l
+            } else {
+                r
+            }
+        }
+        None => 1.0,
+    };
+    let level = if feed.on && !muted { feed.gain * pan * scale } else { 0.0 };
+    if level == 0.0 && *last == [0.0, 0.0] {
+        return;
+    }
+    if s.dsp().idle() {
+        *last = [0.0, 0.0];
+        return;
+    }
+    let x = tap_at(s, feed.tap, target, side, n);
+    if feed.side.is_none() && s.dsp().channels() > 1 {
+        let y = tap_at(s, feed.tap, target, 1, n);
+        let d = mix.dsp_mut();
+        for (ch, from) in last.iter().enumerate() {
+            add_with_gain_ramp(d.work_mut(ch, n), x, from * 0.5, level * 0.5);
+            add_with_gain_ramp(d.work_mut(ch, n), y, from * 0.5, level * 0.5);
+        }
+        *last = [level, level];
+    } else {
+        add_pair(mix, n, x, x, last, [level, level]);
+    }
+}
+
+/// A PRO2's linked aux sends reach the stereo master as their two sides, the odd one
+/// left and the even one right (OM p.211: aux sends 9-16 "configured as stereo groups
+/// and routed to the stereo masters"); anything else as its pan sends it.
+fn pro2_master_sides(main: &Strip, index: usize, s: &Strip) -> [f32; 2] {
+    if index != 0 || main.profile() != Profile::MidasPro2 || s.kind() != StripKind::Bus || !s.pro2.linked.load(Relaxed) {
+        return [1.0, 1.0];
+    }
+    if s.id() % 2 == 0 {
+        [1.0, 0.0]
+    } else {
+        [0.0, 1.0]
+    }
+}
+
 /// Adds strip `s`'s send to bus slot `slot` into `bus`. `late`: the send
 /// closes a loop and reads `s`'s previous block at that return clock
 /// position (its output, or its tap for PRE; the send's own pan balances it,
 /// and it follows `s`'s own MUTE), never `s`'s buffers, which may be running.
 unsafe fn add_bus_send(bus: &Strip, s: &Strip, slot: usize, target: u32, late: Option<usize>, block: u64, n: usize) {
+    if let Some(feed) = pro2_mix_feed(bus, s, slot) {
+        if let Some(own) = s.sends.find(slot) {
+            add_pro2_feed(bus, s, &feed, &mut *own.last_gain.get(), selector_scale(s, StripKind::Bus, slot), target, n);
+        }
+        return;
+    }
     let Some(send) = s.sends.find(slot) else { return };
     let scale = selector_scale(s, StripKind::Bus, slot);
     let own_pan = match (send.pan_link.load(Relaxed), send.pan_reversed.load(Relaxed)) {
@@ -3408,6 +3664,7 @@ unsafe fn dlive_direct_out<'a>(
     side: usize,
     c: &crate::dlive::DLiveControls,
     dcas: &[DcaParams],
+    mute_groups: &GroupSet,
     last: &mut f32,
     scratch: &'a mut [f32],
     block: u64,
@@ -3415,7 +3672,8 @@ unsafe fn dlive_direct_out<'a>(
 ) -> &'a [f32] {
     use crate::dlive::{direct_source as src, TAP_POST_GATE, TAP_POST_INSERT_B};
     use crate::strip::tap;
-    let eq_first = s.eq_first();
+    // An SQ's PEQ always runs before its compressor (its one process order, "GED").
+    let eq_first = s.eq_first() || s.profile() == Profile::AhSq5;
     let id = match c.direct_source.load(Relaxed) {
         src::POST_PREAMP => tap::IN,
         src::POST_LPF => tap::FILT,
@@ -3439,13 +3697,21 @@ unsafe fn dlive_direct_out<'a>(
         _ => tap::PFL,
     };
     let all = c.direct_follow_all.load(Relaxed);
-    let muted = if all { s.dsp().muted() } else { c.direct_follow_mute.load(Relaxed) && s.params.mute.load(Relaxed) };
+    let muted = if all {
+        s.dsp().muted()
+    } else {
+        // The SQ's DCA Mute and Mute Group follows (p.46) besides the channel's mute.
+        let p = &s.params;
+        (c.direct_follow_mute.load(Relaxed) && p.mute.load(Relaxed))
+            || (c.direct_follow_dca_mute.load(Relaxed)
+                && p.dca_mask.load().iter().map_while(|i| dcas.get(i)).any(|d| d.mute.load(Relaxed)))
+            || (c.direct_follow_mute_group.load(Relaxed) && p.mute_group_mask.load().intersects(mute_groups))
+    };
     let fader_db = if all {
         s.params.fader_db.load() + s.dca_offset_db(dcas)
-    } else if c.direct_follow_fader.load(Relaxed) {
-        s.params.fader_db.load()
     } else {
-        0.0
+        let own = if c.direct_follow_fader.load(Relaxed) { s.params.fader_db.load() } else { 0.0 };
+        own + if c.direct_follow_dca_fader.load(Relaxed) { s.dca_offset_db(dcas) } else { 0.0 }
     };
     let gain = if muted { 0.0 } else { db_to_gain(s.dlive.direct_db.load() + fader_db) };
     let out = &mut scratch[..n];
@@ -3455,6 +3721,47 @@ unsafe fn dlive_direct_out<'a>(
         *last = gain;
     } else {
         *last = 0.0;
+    }
+    out
+}
+
+/// Mono input `s` feeds a PRO2's master `index` (0 stereo, 1 mono) by SIS (`pro2::sis_gains`).
+/// A stereo strip (Sidecar's own: the console pairs mono channels) pans as it would.
+fn pro2_sis(main: &Strip, index: usize, s: &Strip) -> bool {
+    index < 2
+        && main.profile() == Profile::MidasPro2
+        && s.kind().is_input()
+        && s.pro2.sis.load(Relaxed)
+        && !s.params.stereo.load(Relaxed)
+}
+
+/// A PRO2 input channel's direct output this block (OM pp.248-249, 341): from its
+/// tap-off point (`pro2::direct_mode`: post fade and mute; pre mute, before or after the
+/// processing), at its level, cut by its MUTE alone (p.248: not by the channel's mute
+/// safe or the auto-mutes, unless taken after the channel's mute). Into `scratch`, the
+/// ramp in `last`. Like the WING's direct outs it isn't delay compensated (p.219).
+///
+/// # Safety
+/// Audio thread, after every stage.
+unsafe fn pro2_direct_out<'a>(s: &Strip, side: usize, last: &mut f32, scratch: &'a mut [f32], block: u64, n: usize) -> &'a [f32] {
+    use crate::pro2::{direct_mode, DIRECT_MAX_DB};
+    let p = &s.pro2;
+    let gain = if p.direct_mute.load(Relaxed) { 0.0 } else { db_to_gain(p.direct_db.load().min(DIRECT_MAX_DB)) };
+    let out = &mut scratch[..n];
+    out.fill(0.0);
+    let d = s.dsp();
+    let signal = match p.direct_mode.load(Relaxed) {
+        _ if d.idle() => None,
+        direct_mode::POST_FADE => Some(d.post(side, n)),
+        direct_mode::PRE_PROCESSING => s.taps.read(crate::strip::tap::IN, block, side, n),
+        _ => Some(d.pfl(side, n)),
+    };
+    match signal {
+        Some(x) => {
+            add_with_gain_ramp(out, x, *last, gain);
+            *last = gain;
+        }
+        None => *last = 0.0,
     }
     out
 }
@@ -3470,6 +3777,21 @@ unsafe fn sum_main<'a>(main: &Strip, index: usize, sources: impl Iterator<Item =
     let target = main.pdc.target();
     let control = if mode.shares_lr_send(index) { 0 } else { index };
     for s in sources {
+        if pro2_sis(main, index, s) {
+            // SIS (OM p.261): the LCR master bus enable, over ST and MON: the stereo
+            // master is L and R, the mono master C, post fader, by the pan and the image.
+            let Some(own) = s.main_send(index) else { continue };
+            let last = own.last();
+            if s.dsp().idle() {
+                *last = [0.0, 0.0];
+                continue;
+            }
+            let p = &s.pro2;
+            let (l, c, r) = crate::pro2::sis_gains(s.spec().pan.mono, s.params.pan.load() / 100.0, p.sis_image.load() / 100.0);
+            let x = tap_at(s, pdc_tap::POST, target, 0, n);
+            add_pair(main, n, x, x, last, if index == 0 { [l, r] } else { [c, c] });
+            continue;
+        }
         let (Some(send), Some(own)) = (s.main_send(control), s.main_send(index)) else { continue };
         let is_pre = send.pre.load(Relaxed);
         let mode_id = if is_pre { send_mode::PRE } else { send_mode::POST };
@@ -3502,13 +3824,14 @@ unsafe fn sum_main<'a>(main: &Strip, index: usize, sources: impl Iterator<Item =
             add_pair(main, n, l, r, last, [level * g[0], level * g[1]]);
             continue;
         }
+        let sides = pro2_master_sides(main, index, s);
         if pre {
             let g = pre_gains(s, None);
             let (l, r) = (tap_at(s, pdc_tap::TAP, target, 0, n), tap_at(s, pdc_tap::TAP, target, 1, n));
-            add_pair(main, n, l, r, last, [level * g[0], level * g[1]]);
+            add_pair(main, n, l, r, last, [level * g[0] * sides[0], level * g[1] * sides[1]]);
         } else {
             let (l, r) = (tap_at(s, pdc_tap::OUT, target, 0, n), tap_at(s, pdc_tap::OUT, target, 1, n));
-            add_pair(main, n, l, r, last, [level, level]);
+            add_pair(main, n, l, r, last, [level * sides[0], level * sides[1]]);
         }
     }
 }
@@ -3521,6 +3844,10 @@ unsafe fn sum_matrix(mtx: &Strip, index: usize, topo: &Topology, monitor: &[*con
     for s in topo.active().iter().chain(topo.buses()).chain(&topo.mains) {
         let Some(send) = s.matrix_send(index) else { continue };
         let scale = selector_scale(s, StripKind::Matrix, index);
+        if let Some(feed) = pro2_mix_feed(mtx, s, index) {
+            add_pro2_feed(mtx, s, &feed, send.last(), scale, target, n);
+            continue;
+        }
         let mode_id = if send.pre.load(Relaxed) { send_mode::PRE } else { send_mode::POST };
         if let Some(id) = send_tap(send.tap.load(Relaxed)).or_else(|| mix_source_tap(mtx, s, mode_id)) {
             let pan = (!send.pan_link.load(Relaxed)).then(|| send.pan.load() / 100.0);
@@ -3599,6 +3926,20 @@ unsafe fn direct_signal(topo: &Topology, direct: DirectSource, n: usize) -> Opti
         return None;
     }
     Some(if direct.post { d.post(direct.side, n) } else { d.pfl(direct.side, n) })
+}
+
+/// A direct out at a tap point this block (`DirectTap`: the strip ran and wrote the tap,
+/// which the output patch had planned). None when the strip doesn't exist, is idle or
+/// hasn't the tap yet.
+///
+/// # Safety
+/// Audio thread, after every stage.
+unsafe fn direct_tap_signal(topo: &Topology, direct: DirectTap, block: u64, n: usize) -> Option<&[f32]> {
+    let s = topo.by_number(direct.kind, direct.number)?;
+    if s.dsp().idle() {
+        return None;
+    }
+    s.taps.read(direct.tap, block, direct.side, n)
 }
 
 unsafe fn copy_user_signal(s: &Strip, u: &UserSignalParams, buf: &mut [f32], n: usize) {

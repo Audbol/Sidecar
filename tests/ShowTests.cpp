@@ -670,6 +670,83 @@ public:
             expectEquals (loaded.getScene (3)->tag, 42);
         }
 
+        beginTest ("Embedded Recall: other scenes recalled after their delay; another recall drops those waiting");
+        {
+            MixerEngine engine (0);
+            PluginHost host (nullptr);
+            Show show (engine, host);
+            test::setChannels (engine, 1);
+            auto& fader = engine.getChannels()[0]->params.faderDb;
+            for (int i = 0; i < 4; ++i)
+            {
+                fader = -1.0f - (float) i;
+                show.addScene ("S" + juce::String (i));
+            }
+            show.setSceneEmbedded (0, { { 2, 0 }, { 3, 1500 } });
+            show.setSceneEmbedded (2, { { 1, 0 } });
+            expectEquals ((int) show.getScene (0)->embedded.size(), 2);
+            expectEquals (show.getScene (0)->embedded[1].delayMs, 1500);
+
+            const double now = juce::Time::getMillisecondCounterHiRes();
+            show.recallScene (0);
+            expectEquals (show.getNumPendingEmbedded(), 2);
+            expectEquals (show.getCurrentSceneIndex(), 0);
+            // Scene 2 at once; it doesn't set off its own (scene 1). Scene 3 after a second and a half.
+            expect (show.fireDueEmbedded (now + 500.0));
+            expectEquals (show.getCurrentSceneIndex(), 2);
+            expectEquals (fader.load(), -3.0f);
+            expectEquals (show.getNumPendingEmbedded(), 1);
+            expect (! show.fireDueEmbedded (now + 60000.0));
+            expectEquals (show.getCurrentSceneIndex(), 3);
+            expectEquals (fader.load(), -4.0f);
+
+            // A recall of another scene, or Undo, drops what waits.
+            show.recallScene (0);
+            show.recallScene (1);
+            expectEquals (show.getNumPendingEmbedded(), 0);
+            show.recallScene (0);
+            show.undoRecall();
+            expectEquals (show.getNumPendingEmbedded(), 0);
+
+            // Saved with the show; a removed scene drops out of the list.
+            show.removeScene (2);
+            expectEquals ((int) show.getScene (0)->embedded.size(), 1);
+            expectEquals (show.getScene (0)->embedded[0].scene, 2);
+            auto xml = show.toXml();
+            MixerEngine e2 (0);
+            Show loaded (e2, host);
+            expect (loaded.loadFromXml (*xml).wasOk());
+            expectEquals (loaded.getScene (0)->embedded[0].delayMs, 1500);
+            expectEquals (loaded.getNumPendingEmbedded(), 0);
+        }
+
+        beginTest ("Scene Import: the scene names of another show, and chosen scenes put in where asked");
+        {
+            MixerEngine engine (0);
+            PluginHost host (nullptr);
+            Show guest (engine, host);
+            test::setChannels (engine, 1);
+            for (auto name : { "Band A", "Band B", "Band C" })
+                guest.addScene (name);
+            const auto file = juce::File::getSpecialLocation (juce::File::tempDirectory).getNonexistentChildFile ("sidecar-import", Show::fileExtension);
+            expect (guest.saveToFile (file).wasOk());
+
+            juce::StringArray names;
+            juce::String error;
+            expect (Show::readShowFileSceneNames (file, names, error));
+            expect (names.joinIntoString ("|") == "Band A|Band B|Band C");
+            expect (! Show::readShowFileSceneNames (file.getSiblingFile ("missing.lshow"), names, error) && error.isNotEmpty());
+
+            Show host2 (engine, host);
+            host2.addScene ("Ours");
+            expectEquals (host2.importShowScenes (file, { 2, 0 }, 0, error), 0);
+            expectEquals (host2.getNumScenes(), 3);
+            expect (host2.getScene (0)->name == "Band C" && host2.getScene (1)->name == "Band A" && host2.getScene (2)->name == "Ours");
+            expectEquals (host2.importShowScenes (file, {}, 0, error), -1);
+            expect (error.isNotEmpty());
+            file.deleteFile();
+        }
+
         beginTest ("WING console settings are saved with the show");
         {
             MixerEngine engine (0);

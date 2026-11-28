@@ -121,6 +121,8 @@ fn console_survives_a_show_round_trip() {
     p.process_order.store(5, Relaxed);
     p.stereo.store(true, Relaxed);
     p.recall_safe.store(true, Relaxed);
+    p.input.delay_mix.store(-40.0);
+    p.input.delay_fb.store(25.0);
     kick.main_send(1).unwrap().on.store(true, Relaxed);
     kick.matrix_send(3).unwrap().level_db.store(-7.0);
     p.dca_mask.store(GroupSet::from_mask(0b100));
@@ -187,6 +189,7 @@ fn console_survives_a_show_round_trip() {
     assert_eq!(p.process_order.load(Relaxed), 5);
     assert!(p.stereo.load(Relaxed));
     assert!(p.recall_safe.load(Relaxed));
+    assert_eq!((p.input.delay_mix.load(), p.input.delay_fb.load()), (-40.0, 25.0), "the delay's MIX and FB.GAIN");
     assert!(k.main_send(0).unwrap().on.load(Relaxed) && k.main_send(1).unwrap().on.load(Relaxed));
     assert_eq!(k.matrix_send(3).unwrap().level_db.load(), -7.0);
     assert_eq!((p.dca_mask.load().low(), p.mute_group_mask.load().low()), (0b100, 0b10));
@@ -711,6 +714,7 @@ fn legacy_v2_show_converts_to_the_wing_layout() {
     assert_eq!(p.colour.load(Relaxed), 5, "green");
     assert_eq!((p.fader_db.load(), p.pan.load()), (-4.0, 50.0));
     assert_eq!(p.input.trim_db.load(), 3.0);
+    assert_eq!((p.input.delay_mix.load(), p.input.delay_fb.load()), (100.0, 0.0), "a plain delay");
     assert!(p.filter().low_cut.load(Relaxed));
     assert_eq!(p.filter().low_cut_freq.load(), 70.0);
     assert!(p.gate().on.load(Relaxed));

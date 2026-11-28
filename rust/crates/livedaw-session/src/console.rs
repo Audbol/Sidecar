@@ -18,8 +18,10 @@ use livedaw_engine::chain::Node;
 use livedaw_engine::dlive::DLiveStripParams;
 use livedaw_engine::params::mix_source;
 use livedaw_engine::params::{
-    ext, DynSlotParams, EqBlockParams, FilterParams, InsertParams, MatrixSendParams, StripParams, FX_EXT, FX_NONE, MAX_FX,
+    ext, DynSlotParams, EqBlockParams, FilterParams, InsertParams, MatrixSendParams, StripParams, DELAY_FB_DEFAULT,
+    DELAY_MIX_DEFAULT, FX_EXT, FX_NONE, MAX_FX,
 };
+use livedaw_engine::pro2::Pro2StripParams;
 use livedaw_engine::profile::{DLiveLayout, HostSize};
 use livedaw_engine::routing::{bus_feeds_bus, matrix_direct, MATRIX_DIRECT_INPUTS};
 use livedaw_engine::taps::FIRST_USER_TAP;
@@ -624,7 +626,7 @@ impl StripIndex {
         self.by_ref.get(r)
     }
 
-    fn bus_slots(&self) -> Vec<usize> {
+    pub(crate) fn bus_slots(&self) -> Vec<usize> {
         self.strips.iter().filter(|s| s.kind() == StripKind::Bus).map(|b| b.id() as usize).collect()
     }
 }
@@ -645,7 +647,7 @@ fn contains(only: Option<&[StripRef]>, r: &StripRef) -> bool {
 // ---- capture --------------------------------------------------------------------------
 
 /// `mains`, `matrices`: the console's (the strip's sends to each are saved).
-fn capture_strip(
+pub(crate) fn capture_strip(
     s: &Strip,
     sections: u32,
     slots: &[usize],
@@ -694,6 +696,8 @@ fn capture_strip(
         put_b(i, "bypass", &p.input.bypass);
         put_i(i, "dlymode", &p.input.delay_mode);
         put_f(i, "dly", &p.input.delay);
+        put_f(i, "dlymix", &p.input.delay_mix);
+        put_f(i, "dlyfb", &p.input.delay_fb);
         if kind == StripKind::Channel {
             put_filter(e.add_new("Flt"), p.filter());
         }
@@ -733,6 +737,11 @@ fn capture_strip(
     }
     if sections & ROUTING != 0 && !s.dlive.is_default() {
         put_strip_dlive(e.add_new("DLive"), &s.dlive);
+    }
+    // A PRO2's mix modes, links, MCAs, direct output and SIS: always on its own strips,
+    // elsewhere when set.
+    if sections & SENDS != 0 && (s.profile() == Profile::MidasPro2 || !s.pro2.is_factory(s.spec(), kind, strip_slot(s))) {
+        put_strip_pro2(e.add_new("Pro2"), &s.pro2);
     }
     if sections & SENDS != 0 {
         if kind != StripKind::Matrix {
@@ -1104,6 +1113,42 @@ fn put_strip_dlive(x: &mut Element, d: &DLiveStripParams) {
     put_i(x, "groupSource", &d.group_source);
 }
 
+/// The slot a strip's factory settings are those of: a channel's id is 1-based.
+fn strip_slot(s: &Strip) -> usize {
+    let id = usize::try_from(s.id()).unwrap_or(0);
+    if s.kind() == StripKind::Channel {
+        id.saturating_sub(1)
+    } else {
+        id
+    }
+}
+
+fn put_strip_pro2(x: &mut Element, p: &Pro2StripParams) {
+    put_i(x, "mode", &p.mix_mode);
+    put_b(x, "link", &p.linked);
+    put_b(x, "sis", &p.sis);
+    put_f(x, "image", &p.sis_image);
+    put_i(x, "dirMode", &p.direct_mode);
+    put_f(x, "dir", &p.direct_db);
+    put_b(x, "dirMute", &p.direct_mute);
+    for (i, m) in p.mca_db.iter().enumerate() {
+        put_f(x, format!("mca{i}").as_str(), m);
+    }
+}
+
+fn get_strip_pro2(x: &Element, p: &Pro2StripParams) {
+    get_i(x, "mode", &p.mix_mode);
+    get_b(x, "link", &p.linked);
+    get_b(x, "sis", &p.sis);
+    get_f(x, "image", &p.sis_image);
+    get_i(x, "dirMode", &p.direct_mode);
+    get_f(x, "dir", &p.direct_db);
+    get_b(x, "dirMute", &p.direct_mute);
+    for (i, m) in p.mca_db.iter().enumerate() {
+        get_f(x, format!("mca{i}").as_str(), m);
+    }
+}
+
 fn get_strip_dlive(x: &Element, d: &DLiveStripParams) {
     get_i(x, "image", &d.stereo_image);
     get_f(x, "width", &d.image_width);
@@ -1124,9 +1169,10 @@ fn get_strip_dlive(x: &Element, d: &DLiveStripParams) {
     get_i(x, "groupSource", &d.group_source);
 }
 
-/// A dLive's Direct Out settings and Source Selectors.
+/// A dLive's Direct Out settings and Source Selectors; an SQ's Direct Out settings (the
+/// dLive's, with its three more follows) and Input to PAFL Source Point.
 fn capture_dlive(engine: &Engine, parent: &mut Element) {
-    if !matches!(engine.profile(), Profile::AhDLive(_)) {
+    if !matches!(engine.profile(), Profile::AhDLive(_) | Profile::AhSq5) {
         return;
     }
     let c = &engine.dlive;
@@ -1135,6 +1181,12 @@ fn capture_dlive(engine: &Engine, parent: &mut Element) {
     put_b(x, "directFader", &c.direct_follow_fader);
     put_b(x, "directMute", &c.direct_follow_mute);
     put_b(x, "directAll", &c.direct_follow_all);
+    if engine.profile() == Profile::AhSq5 {
+        put_b(x, "directDcaFader", &c.direct_follow_dca_fader);
+        put_b(x, "directDcaMute", &c.direct_follow_dca_mute);
+        put_b(x, "directMuteGroup", &c.direct_follow_mute_group);
+        put_i(x, "paflSource", &c.pafl_source);
+    }
     for (i, sel) in c.selectors.iter().enumerate().filter(|(_, s)| !s.is_default()) {
         let e = x.add_new("Selector");
         e.set("i", i);
@@ -1160,6 +1212,10 @@ fn apply_dlive(engine: &Engine, parent: &Element) {
     get_b(x, "directFader", &c.direct_follow_fader);
     get_b(x, "directMute", &c.direct_follow_mute);
     get_b(x, "directAll", &c.direct_follow_all);
+    get_b(x, "directDcaFader", &c.direct_follow_dca_fader);
+    get_b(x, "directDcaMute", &c.direct_follow_dca_mute);
+    get_b(x, "directMuteGroup", &c.direct_follow_mute_group);
+    get_i(x, "paflSource", &c.pafl_source);
     for e in x.children_named("Selector") {
         let Some(sel) = usize::try_from(e.int_or("i", -1)).ok().and_then(|i| c.selectors.get(i)) else { continue };
         get_i(e, "outKind", &sel.output_kind);
@@ -1630,6 +1686,11 @@ fn apply_strip(
             get_b(i, "bypass", &p.input.bypass);
             get_i(i, "dlymode", &p.input.delay_mode);
             get_f(i, "dly", &p.input.delay);
+            // Shows from before the delay's MIX and FB.GAIN: a plain delay.
+            p.input.delay_mix.store(DELAY_MIX_DEFAULT);
+            p.input.delay_fb.store(DELAY_FB_DEFAULT);
+            get_f(i, "dlymix", &p.input.delay_mix);
+            get_f(i, "dlyfb", &p.input.delay_fb);
         }
         if let Some(f) = e.child("Flt") {
             get_filter(f, p.filter());
@@ -1662,6 +1723,10 @@ fn apply_strip(
         }
     }
     if sections & SENDS != 0 {
+        s.pro2.reset(s.spec(), kind, strip_slot(s));
+        if let Some(x) = e.child("Pro2") {
+            get_strip_pro2(x, &s.pro2);
+        }
         if let Some(m) = e.child("Mtx") {
             for x in m.children_named("S") {
                 let Ok(i) = usize::try_from(x.int_or("i", -1)) else { continue };
@@ -1753,6 +1818,12 @@ pub fn apply(
     let effective = sections & captured;
     // Safe outputs keep their patch (GLOBAL SAFE, G5.6.3).
     let outputs_before = (respect_recall_safe && engine.io_safes().outputs.any()).then(|| output_patches(engine, &index));
+    // A PRO2's MIC safes keep the sources and direct output patch their inputs had.
+    let (mic_sources, direct_patch) = if respect_recall_safe {
+        (crate::pro2_safes::mic_sources(engine), crate::pro2_safes::DirectPatch::before(engine))
+    } else {
+        (Vec::new(), None)
+    };
 
     for e in state.children_named("Strip") {
         let r = StripRef::parse(e.str_or("ref", ""));
@@ -1767,10 +1838,15 @@ pub fn apply(
             result.strips_skipped_safe += 1;
             continue;
         }
+        // A PRO2's channel safes but AUTO keep their parts as they are.
+        let kept = match crate::pro2_safes::safes_of(strip) {
+            safes if respect_recall_safe && safes != 0 => Some(crate::pro2_safes::keep(engine, &index, strip, e, safes)),
+            _ => None,
+        };
         apply_strip(
             engine,
             strip,
-            e,
+            kept.as_ref().unwrap_or(e),
             sections,
             &mut fades,
             &mut result,
@@ -1794,8 +1870,11 @@ pub fn apply(
         }
         if effective & section::ROUTING != 0 {
             apply_input_select(engine, state);
-            crate::globals::apply_scene_sources(engine, state, respect_recall_safe);
+            crate::globals::apply_scene_sources(engine, state, respect_recall_safe, &mic_sources);
             crate::globals::apply_routing(engine, state);
+            if let Some(d) = &direct_patch {
+                d.restore(engine);
+            }
         }
         if effective & section::FADER != 0 {
             apply_dcas(engine, state, &mut fades);
@@ -1904,6 +1983,9 @@ pub fn save_console(engine: &Engine, bridge: &mut dyn PluginBridge) -> Element {
         for s in index.strips.iter().filter(|s| s.kind() == kind) {
             let mut e = capture_strip(s, section::ALL, &slots, mains, matrices, bridge);
             e.set("id", s.id()).set_bool("recallSafe", s.params.recall_safe.load(Relaxed));
+            if s.pro2.safes.load(Relaxed) != 0 {
+                e.set("pro2Safes", s.pro2.safes.load(Relaxed)); // a PRO2's channel safes but AUTO
+            }
             list.add(e);
         }
     }
@@ -2111,6 +2193,7 @@ pub fn load_console(engine: &Engine, console: &Element, bridge: &mut dyn PluginB
             },
         );
         s.params.recall_safe.store(e.bool_or("recallSafe", false), Relaxed);
+        s.pro2.safes.store(e.int_or("pro2Safes", 0) & livedaw_engine::pro2::safe::ALL, Relaxed);
     }
     // A show from before a dLive had them, and a channel a Mixer Config put back on its defaults.
     engine.add_factory_preamp_blocks();

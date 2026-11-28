@@ -35,7 +35,8 @@ namespace pro2
         Vca,    // the eight VCA groups (the VCA key)
         Output, // outputs, scrolled by eight (the OUTPUT key)
         Extend, // the input channels after the channel bay's (EXTEND)
-        Geq     // the selected output's GEQ, eight bands (GEQ)
+        Geq,    // the selected output's GEQ, eight bands (GEQ)
+        Mca     // the selected mix's eight MCA levels, one per VCA (MCA, p.44)
     };
 
     /** The channel strip's detail areas (p.240, Figure 22). */
@@ -236,6 +237,10 @@ namespace pro2
         void setCue (int);
         int getCue() const noexcept { return cue; }
         void setPatchScroll (int);
+        /** The Patching screen's From tab: Busses or Dir. Out (p.51). */
+        enum class PatchFrom { Busses, DirOut };
+        void setPatchFrom (PatchFrom);
+        PatchFrom getPatchFrom() const noexcept { return patchFrom; }
 
         /** The page's controls: a place, what a press does, what a drag turns. */
         struct Spot
@@ -284,6 +289,10 @@ namespace pro2
         void pageGeq();
         void pagePatching();
         void pageGroups();
+        /** The output input channel `number` (CH 1 = 1)'s direct output is patched to (its dest), or -1;
+            choosing one moves it there (-1 unpatches it). */
+        int directPort (int number) const;
+        KnobBinding bindDirectDest (int number, const juce::String& prefix);
         void fastStrip (Strip&, juce::Rectangle<float>, int index);
         void detailArea (juce::Rectangle<float>);
         void detailGroup (juce::Rectangle<float>);
@@ -309,28 +318,64 @@ namespace pro2
         std::vector<Spot> spots;
         juce::Graphics* g = nullptr;
         int fxUnit = 0, cue = 0, patchScroll = 0;
+        PatchFrom patchFrom = PatchFrom::Busses;
         KnobBinding dragged;
         bool draggedAbsolute = false;
         juce::Rectangle<float> draggedArea;
         float dragStart = 0.0f;
     };
 
-    /** A strip's contribution to a mix: an aux send or a matrix send (p.259). */
+    /** A strip's contribution to a mix: an aux send or a matrix send (p.259). A linked pair's
+        sends are the odd mix's (p.78), so both of the pair give the same one. */
     struct MixSend
     {
         std::atomic<bool>* on = nullptr;
         std::atomic<bool>* preFlag = nullptr;   // a matrix send's
-        std::atomic<int32_t>* mode = nullptr;   // an aux send's (SendMode)
+        std::atomic<int32_t>* mode = nullptr;   // an aux send's (SendMode: PRE, else post)
         std::atomic<float>* level = nullptr;
+        std::atomic<float>* pan = nullptr;      // a linked pair's send pan
+        int mixMode = 0;                        // the aux send's (kMix, kGroup, kMixMinus)
+        bool linked = false;
+        int side = 0;                           // of a linked pair: 0 the odd mix, 1 the even
 
         bool isValid() const noexcept { return level != nullptr; }
         bool isPre() const noexcept;
-        /** A group's send has no level and no PRE (p.260). */
-        bool isGroup() const noexcept;
+        /** A group's or mix minus's send has no level and no PRE (p.260). */
+        bool isGroup() const noexcept { return mixMode != 0; }
+        /** Mix minus: the switch, "minus", takes the input out (p.260). */
+        bool isMinus() const noexcept { return mixMode == 2; }
+        /** The input reaches the mix. */
+        bool isRouted() const noexcept { return on != nullptr && on->load() != isMinus(); }
         void setPre (bool) const noexcept;
     };
     /** `from`'s send to `mix` (an aux send or a matrix); not valid when it has none. */
     MixSend sendTo (Strip& from, Strip& mix);
+
+    // What only the PRO2 has (the engine's pro2.rs): mix modes, links, MCAs, direct outputs, SIS.
+    constexpr int kMix = 0, kGroup = 1, kMixMinus = 2;
+    ld::Pro2StripParams& pro2Of (const Strip&);
+    /** An aux send's mix mode name: "mix", "group", "mix minus" (p.77). */
+    juce::String mixModeName (int mode);
+    /** MODE: the next of the three, on both of a linked pair (into mix minus, every input routed). */
+    void cycleMixMode (MixerEngine&, Strip& bus);
+    /** LINK (p.78): an aux send or matrix paired with its neighbour, odd with even. */
+    bool setLinked (MixerEngine&, Strip& mix, bool linked);
+    /** The direct output's tap-off point (p.249), its level (-oo to +10 dB) and the MODE switch's cycle. */
+    juce::String directModeName (int mode);
+    KnobBinding bindDirectLevel (Strip&);
+    void cycleDirectMode (Strip&);
+    /** SIS's image: 0 stereo to 100 % LCR (p.98). */
+    KnobBinding bindSisImage (Strip&);
+    /** The channel safes (pp.174-175, Appendix H), in the channel safes section's order: EQ, DYN,
+        MIC, AUTO, MUTE, FADER. AUTO is the strip's recall safe; the others are ld::kPro2Safe* bits
+        that a scene recall leaves as they are. An aux return has no DYN safe. */
+    constexpr int kNumSafes = 6, kAutoSafe = 3;
+    const char* safeName (int safe);
+    bool hasSafe (const Strip&, int safe);
+    bool isSafe (const Strip&, int safe);
+    void toggleSafe (Strip&, int safe);
+    /** The MCA level of VCA `vca` on mix `mix` (on both of a linked pair). */
+    KnobBinding bindMca (Strip& mix, int vca, MixerEngine&);
 
     // The PRO2's ranges, as its profile has them (Owner's Manual pp.243-262, 281).
     /** The high pass, 10 Hz to 400 Hz (p.246). */

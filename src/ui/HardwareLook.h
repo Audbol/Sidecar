@@ -53,8 +53,11 @@ struct Look
         Plain,
         Dome,
         Wheel,
-        /** The SQ's: a silver knurled gear around a black cap, a lit jewel in its centre. */
-        Jewel
+        /** The SQ's: a fluted silver knob, a lit jewel in the middle of its top. */
+        Jewel,
+        /** The small analog mixers' (the owner's Q1202USB): a grey knurled skirt under a smaller
+            cap of the control's colour, the pointer line across both. */
+        Skirt
     };
     Knob knobStyle = Knob::Plain;
     /** The fader scale printed 10, 5, 0, 5, 10, 20, 30, 40, oo with no signs (the SQ's). */

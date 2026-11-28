@@ -1,4 +1,5 @@
 #include "ui/universal/MixerView.h"
+#include "ui/universal/SendsPanel.h"
 
 #include "dsp/DspUtils.h"
 #include "ui/ChainSummary.h"
@@ -412,6 +413,7 @@ void StripColumn::setSendDestination (Strip* destination)
     sendDestination = destination;
     sendLevel = nullptr;
     sendOn = nullptr;
+    sendSlot = -1;
     if (destination != nullptr && destination != &strip)
     {
         const auto kind = strip.getKind();
@@ -428,6 +430,7 @@ void StripColumn::setSendDestination (Strip* destination)
             auto& p = strip.sends[(size_t) destination->getId()];
             sendLevel = &p.levelDb;
             sendOn = &p.enabled;
+            sendSlot = destination->getId();
         }
         else if (destination->getKind() == StripKind::Main && toBusesAndMains)
         {
@@ -440,9 +443,11 @@ void StripColumn::setSendDestination (Strip* destination)
             auto& p = strip.matrix[indexIn (ctx.engine.getMatrices())];
             sendLevel = &p.levelDb;
             sendOn = &p.on;
+            sendSlot = (int) indexIn (ctx.engine.getMatrices());
         }
     }
     fader.bind (destination == nullptr ? &strip.params.faderDb : sendLevel);
+    sendKey.setEnabled (true);
     fader.tint = destination != nullptr ? theme.kindColour (destination->getKind()).withAlpha (0.7f) : juce::Colour();
     sendKey.setButtonText (destination != nullptr ? destination->getLabel() : juce::String ("SEND"));
     sendKey.setVisible (sendOn != nullptr);
@@ -459,6 +464,13 @@ void StripColumn::refresh()
     soloKey.refresh();
     pan.refresh();
     meter.refresh();
+    if (sendSlot >= 0 && sendDestination != nullptr)
+    {
+        // A PRO2's group, mix minus or linked pair's even mix: what it ignores is dimmed.
+        const int ignored = pro2SendIgnored (ctx.engine, strip, *sendDestination, sendSlot);
+        fader.setEnabled (ignored == 0);
+        sendKey.setEnabled (ignored < 2);
+    }
     if (faderShown)
         fader.refresh();
     if (sendKey.isVisible())

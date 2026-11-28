@@ -116,10 +116,13 @@ use std::sync::Arc;
 // ABI 55: the dLive profile (7); strip sources for buses 17-64; 16 FX returns.
 // ABI 57: the DM2000 profile (8). Its MIDI (ld_dm2000_*, RemotesC::midi 6) adds
 // functions only.
+// ABI 59: InputParams::delay_mix and delay_fb (a DM2000 Input Channel's delay MIX and FB.GAIN).
 // (Not a bump: the PRO2 profile is 9, a new value of the same enum.)
+// (Not a bump either: Pro2StripParams, ld_strip_pro2 and ld_engine_pro2_* are new; nothing changed.)
+// (Nor the DM2000's Automix, ld_dm2000_automix_*: new functions only.)
 // ABI 56, among others: a dLive input channel's preamp block (ld_strip_preamp_block),
 // which dynamics models a slot may hold (ld_dyn_model_allowed).
-pub const LD_ABI_VERSION: i32 = 58;
+pub const LD_ABI_VERSION: i32 = 59;
 
 fn guard<T>(default: T, f: impl FnOnce() -> T) -> T {
     catch_unwind(AssertUnwindSafe(f)).unwrap_or(default)

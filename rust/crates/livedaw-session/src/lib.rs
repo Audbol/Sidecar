@@ -15,6 +15,7 @@ pub mod legacy;
 pub mod library;
 pub mod model;
 pub mod presets;
+pub mod pro2_safes;
 pub mod refs;
 pub mod scope;
 pub mod show;

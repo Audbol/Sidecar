@@ -10,6 +10,7 @@ use livedaw_session::console::{CapturedInsert, InsertMode, PluginBridge, Restore
 use livedaw_session::layers::{FaderRef, Layer, LayerSet, SpillKind};
 use livedaw_session::library::{self, FileType};
 use livedaw_session::presets::{self, PresetType};
+use livedaw_session::show::{read_show_scenes, EmbeddedRecall};
 use livedaw_session::{ApplyResult, ConsoleModel, GlobalSafe, Scene, Scope, Show, StripRef};
 use std::borrow::Cow;
 use std::ffi::c_void;
@@ -532,6 +533,99 @@ pub unsafe extern "C" fn ld_scene_set_notes(s: *mut LdShow, scene: i32, utf8: *c
 pub unsafe extern "C" fn ld_scene_set_midi(s: *mut LdShow, scene: i32, utf8: *const u8, len: usize) {
     if let Some(sc) = show(s).and_then(|s| s.show.scene_mut(scene)) {
         sc.midi = str_arg(utf8, len).trim().to_owned();
+    }
+}
+
+/// Embedded recalls into `scenes` and `delays_ms` (up to `capacity` of each).
+unsafe fn write_embedded(list: &[EmbeddedRecall], scenes: *mut i32, delays_ms: *mut u32, capacity: i32) -> i32 {
+    let n = list.len().min(usize::try_from(capacity).unwrap_or(0));
+    if n > 0 && !scenes.is_null() && !delays_ms.is_null() {
+        for (i, e) in list.iter().take(n).enumerate() {
+            *scenes.add(i) = e.scene;
+            *delays_ms.add(i) = e.delay_ms;
+        }
+    }
+    i32::try_from(list.len()).unwrap_or(i32::MAX)
+}
+
+/// EMBEDDED RECALL: the scene's other scenes and their delays (ms), up to `capacity`; returns how
+/// many it has.
+#[no_mangle]
+pub unsafe extern "C" fn ld_scene_embedded(
+    s: *mut LdShow,
+    scene: i32,
+    scenes: *mut i32,
+    delays_ms: *mut u32,
+    capacity: i32,
+) -> i32 {
+    let Some(sc) = show(s).and_then(|s| s.show.scene(scene)) else { return 0 };
+    write_embedded(&sc.embedded, scenes, delays_ms, capacity)
+}
+
+/// Sets the scene's embedded recalls (`n` of each; delays held to four minutes).
+#[no_mangle]
+pub unsafe extern "C" fn ld_scene_set_embedded(s: *mut LdShow, scene: i32, scenes: *const i32, delays_ms: *const u32, n: i32) {
+    let Some(s) = show(s) else { return };
+    let n = usize::try_from(n).unwrap_or(0);
+    let list: Vec<EmbeddedRecall> = if n == 0 || scenes.is_null() || delays_ms.is_null() {
+        Vec::new()
+    } else {
+        let (scenes, delays) = (std::slice::from_raw_parts(scenes, n), std::slice::from_raw_parts(delays_ms, n));
+        scenes.iter().zip(delays).map(|(&scene, &delay_ms)| EmbeddedRecall { scene, delay_ms }).collect()
+    };
+    s.show.set_scene_embedded(scene, &list);
+}
+
+/// EMBEDDED RECALL of the scenes the last ld_show_recall_scene recalled (up to `capacity`);
+/// taking them clears them. Returns how many there were.
+#[no_mangle]
+pub unsafe extern "C" fn ld_show_take_embedded(s: *mut LdShow, scenes: *mut i32, delays_ms: *mut u32, capacity: i32) -> i32 {
+    let Some(s) = show(s) else { return 0 };
+    write_embedded(&s.show.take_pending_embedded(), scenes, delays_ms, capacity)
+}
+
+/// Scene Import: the names of the scenes in the show file at `path`, one per line, into `names`
+/// (false: `names` gets why it can't be read).
+#[no_mangle]
+pub unsafe extern "C" fn ld_show_file_scene_names(path: *const u8, path_len: usize, names: *mut *mut LdString) -> bool {
+    let path = PathBuf::from(str_arg(path, path_len).into_owned());
+    match guard(Err("internal error".into()), || read_show_scenes(&path)) {
+        Ok(file) => {
+            let lines: Vec<String> = file.scenes.iter().map(|sc| sc.name.replace(['\n', '\r'], " ")).collect();
+            write_string(names, lines.join("\n"));
+            true
+        }
+        Err(msg) => {
+            write_string(names, msg);
+            false
+        }
+    }
+}
+
+/// Scene Import: scenes `which` (`n` indices, in order) of the show file at `path` inserted at
+/// `index` (appended when out of range); the console stays as it is. Returns the first one's
+/// index, or -1 with `message` the error.
+#[no_mangle]
+pub unsafe extern "C" fn ld_show_import_show_scenes(
+    s: *mut LdShow,
+    e: *const Engine,
+    path: *const u8,
+    path_len: usize,
+    which: *const i32,
+    n: i32,
+    index: i32,
+    message: *mut *mut LdString,
+) -> i32 {
+    let (Some(s), Some(e)) = (show(s), eng(e)) else { return -1 };
+    let path = PathBuf::from(str_arg(path, path_len).into_owned());
+    let n = usize::try_from(n).unwrap_or(0);
+    let which: Vec<i32> = if n == 0 || which.is_null() { Vec::new() } else { std::slice::from_raw_parts(which, n).to_vec() };
+    match guard(Err("internal error".into()), || s.show.import_show_scenes(e, &path, &which, index)) {
+        Ok(first) => first,
+        Err(msg) => {
+            write_string(message, msg);
+            -1
+        }
     }
 }
 

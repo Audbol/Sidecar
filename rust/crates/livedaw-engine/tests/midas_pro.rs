@@ -36,6 +36,7 @@ impl Rig {
     fn run(&mut self, blocks: usize) -> Vec<f32> {
         let ins: Vec<*const f32> = self.inputs.iter().map(|v| v.as_ptr()).collect();
         let outs: Vec<*mut f32> = self.outputs.iter_mut().map(|v| v.as_mut_ptr()).collect();
+        self.engine.collect(); // as the app's timer does: the taps a direct output reads
         for _ in 0..blocks {
             for (i, x) in self.inputs[0].iter_mut().enumerate() {
                 *x = 0.25 * (TAU * 1000.0 * (self.t + i) as f32 / 48000.0).sin();
@@ -113,7 +114,9 @@ fn the_normal_foh_state_is_the_manuals() {
     assert!(bus[8].main_send(0).unwrap().on.load(Relaxed));
     assert!(!bus[7].main_send(0).unwrap().on.load(Relaxed));
     assert_eq!(bus[8].params.fader_db.load(), 0.0);
-    assert_eq!((bus[8].params.pan.load(), bus[9].params.pan.load()), (-100.0, 100.0));
+    // ... as stereo groups: linked pairs, the odd left and the even right (p.211).
+    assert!(bus[8].pro2.linked.load(Relaxed) && bus[9].pro2.linked.load(Relaxed) && !bus[7].pro2.linked.load(Relaxed));
+    assert_eq!(bus[8].pro2.mix_mode.load(Relaxed), livedaw_engine::pro2::mix_mode::GROUP);
     // The rack and what feeds it (matrices 1-4).
     let fx = &e.controls.fx;
     let models = e.fx_models();
@@ -193,6 +196,259 @@ fn the_fader_law_prints_the_panels_scale() {
         let pos = (1141.0 - y) / 480.0;
         assert!((fader.to_db(pos) - db).abs() < 2.5, "{db}: {}", fader.to_db(pos));
     }
+}
+
+/// Output ports for what a test listens to: the surface's outputs (unpatched on a new console).
+const LISTEN: i32 = livedaw_engine::ports::pro2_ports::SURFACE_OUT;
+/// DL251 output `n` (1-based): Aux Sends 1-8 on 1-8, the masters on 14-16.
+fn dl251(n: i32) -> usize {
+    (livedaw_engine::ports::pro2_ports::DL251_OUT + n - 1) as usize
+}
+
+impl Rig {
+    /// CH1 at 0 dB, the aux sends' and the masters' faders at 0 dB.
+    fn ready() -> Self {
+        let rig = Self::new();
+        rig.channel(0).params.fader_db.store(0.0);
+        for kind in [StripKind::Bus, StripKind::Matrix, StripKind::Main] {
+            for s in rig.engine.strips(kind) {
+                s.params.fader_db.store(0.0);
+            }
+        }
+        rig
+    }
+
+    fn bus(&self, n: usize) -> Arc<Strip> {
+        self.engine.strips(StripKind::Bus)[n].clone()
+    }
+
+    /// Bus or matrix `kind` `n` (0-based), side `side`, heard on LISTEN + `port`.
+    fn listen(&self, port: i32, kind: StripKind, n: usize, side: usize) {
+        self.engine.output_patch().set(LISTEN + port, strip_source_input(kind, n, side));
+    }
+}
+
+fn near(a: f32, b: f32) -> bool {
+    (a - b).abs() < 0.02 * b.max(0.01)
+}
+
+#[test]
+fn an_aux_send_is_a_mix_a_group_or_a_mix_minus() {
+    use livedaw_engine::pro2::mix_mode;
+    use livedaw_engine::sends::send_mode;
+    let mut rig = Rig::ready();
+    let ch = rig.channel(0);
+    let aux1 = rig.bus(0);
+    let send = ch.sends.get_or_create(0).unwrap();
+    send.enabled.store(true, Relaxed);
+    send.level_db.store(-6.0206);
+    assert_eq!(aux1.pro2.mix_mode.load(Relaxed), mix_mode::MIX);
+    let peak = |rig: &mut Rig| rig.run(40)[dl251(1)];
+    assert!(near(peak(&mut rig), 0.125), "a mix: the send's level, {}", peak(&mut rig));
+    // Pre fader, the fader doesn't count; post, it does, before the pan (a mono mix).
+    ch.params.fader_db.store(-6.0206);
+    ch.params.pan.store(100.0);
+    assert!(near(peak(&mut rig), 0.125));
+    send.mode.store(send_mode::POST, Relaxed);
+    assert!(near(peak(&mut rig), 0.0625), "post fader: {}", peak(&mut rig));
+
+    // A group: the fader's level, not the send's (OM p.260).
+    rig.engine.pro2_set_mix_mode(&aux1, mix_mode::GROUP);
+    assert!(near(peak(&mut rig), 0.125), "a group: {}", peak(&mut rig));
+    send.enabled.store(false, Relaxed);
+    assert!(peak(&mut rig) < 1e-4, "ON off");
+
+    // Mix minus: every input routed; its switch takes it out.
+    let ch2 = rig.channel(1);
+    let other = ch2.sends.get_or_create(0).unwrap();
+    other.enabled.store(true, Relaxed);
+    rig.engine.pro2_set_mix_mode(&aux1, mix_mode::MIX_MINUS);
+    assert!(!send.enabled.load(Relaxed) && !other.enabled.load(Relaxed), "all routed (p.77)");
+    assert!(near(peak(&mut rig), 0.125), "routed: {}", peak(&mut rig));
+    send.enabled.store(true, Relaxed);
+    assert!(peak(&mut rig) < 1e-4, "minus: out of the mix");
+    // Back to a mix: the switches are as they were left, the level the send's again.
+    rig.engine.pro2_set_mix_mode(&aux1, mix_mode::MIX);
+    send.mode.store(send_mode::PRE, Relaxed);
+    assert!(near(peak(&mut rig), 0.125));
+}
+
+#[test]
+fn a_linked_pair_is_a_stereo_mix_from_the_odd_ones_sends() {
+    use livedaw_engine::sends::send_mode;
+    let mut rig = Rig::ready();
+    let ch = rig.channel(0);
+    let (aux3, aux4) = (rig.bus(2), rig.bus(3));
+    assert!(rig.engine.pro2_set_linked(&aux4, true), "either of the pair links it");
+    assert!(aux3.pro2.linked.load(Relaxed) && aux4.pro2.linked.load(Relaxed));
+    let send = ch.sends.get_or_create(2).unwrap();
+    send.enabled.store(true, Relaxed);
+    send.level_db.store(0.0);
+    send.pan_link.store(false, Relaxed);
+    send.pan.store(-100.0);
+    // The even bus's own send isn't used.
+    let even = ch.sends.get_or_create(3).unwrap();
+    even.enabled.store(true, Relaxed);
+    even.level_db.store(6.0);
+    let peaks = rig.run(40);
+    let hard = 0.25 * std::f32::consts::SQRT_2; // the pan law's +3 dB
+    assert!(near(peaks[dl251(3)], hard), "left: {}", peaks[dl251(3)]);
+    assert!(peaks[dl251(4)] < 1e-4, "right: {}", peaks[dl251(4)]);
+    send.pan.store(0.0);
+    let peaks = rig.run(40);
+    assert!(near(peaks[dl251(3)], 0.25) && near(peaks[dl251(4)], 0.25), "centre: {:?}", &peaks[dl251(3)..=dl251(4)]);
+    // Post fader, the channel's pan counts too.
+    send.mode.store(send_mode::POST, Relaxed);
+    ch.params.pan.store(100.0);
+    let peaks = rig.run(40);
+    assert!(peaks[dl251(3)] < 1e-4 && near(peaks[dl251(4)], hard), "{:?}", &peaks[dl251(3)..=dl251(4)]);
+    // Unlinked, each is a mono mix of its own send again.
+    assert!(rig.engine.pro2_set_linked(&aux3, false));
+    let peaks = rig.run(40);
+    assert!(near(peaks[dl251(4)], 0.5), "aux 4 at +6 dB, pre fader: {}", peaks[dl251(4)]);
+}
+
+#[test]
+fn aux_sends_9_to_16_start_as_stereo_groups() {
+    let mut rig = Rig::ready();
+    let ch = rig.channel(0);
+    let (aux9, aux10) = (rig.bus(8), rig.bus(9));
+    assert!(aux9.pro2.linked.load(Relaxed) && aux10.pro2.linked.load(Relaxed));
+    rig.listen(0, StripKind::Bus, 8, 0);
+    rig.listen(1, StripKind::Bus, 9, 0);
+    ch.sends.get_or_create(8).unwrap().enabled.store(true, Relaxed);
+    ch.params.pan.store(-100.0);
+    let peaks = rig.run(40);
+    let hard = 0.25 * std::f32::consts::SQRT_2;
+    assert!(near(peaks[LISTEN as usize], hard) && peaks[LISTEN as usize + 1] < 1e-4, "{:?}", &peaks[18..20]);
+    // The pair reaches the stereo master as its two sides.
+    ch.main_send(0).unwrap().on.store(false, Relaxed);
+    let peaks = rig.run(40);
+    assert!(near(peaks[dl251(14)], hard) && peaks[dl251(15)] < 1e-4, "{:?}", &peaks[dl251(14)..=dl251(15)]);
+    ch.params.pan.store(0.0);
+    ch.params.fader_db.store(-6.0206);
+    let peaks = rig.run(40);
+    assert!(near(peaks[LISTEN as usize], 0.125) && near(peaks[LISTEN as usize + 1], 0.125), "{:?}", &peaks[18..20]);
+    assert!(near(peaks[dl251(14)], 0.125) && near(peaks[dl251(15)], 0.125));
+}
+
+#[test]
+fn a_linked_matrix_pair_is_stereo_too() {
+    let mut rig = Rig::ready();
+    let ch = rig.channel(0);
+    let mtx6 = rig.engine.strips(StripKind::Matrix)[5].clone();
+    assert!(rig.engine.pro2_set_linked(&mtx6, true));
+    rig.listen(0, StripKind::Matrix, 5, 0);
+    let send = ch.matrix_send(4).unwrap();
+    send.on.store(true, Relaxed);
+    send.pre.store(true, Relaxed);
+    send.level_db.store(0.0);
+    send.pan.store(100.0);
+    let peaks = rig.run(40);
+    let hard = 0.25 * std::f32::consts::SQRT_2;
+    assert!(peaks[dl251(13)] < 1e-4 && near(peaks[LISTEN as usize], hard), "{} {}", peaks[dl251(13)], peaks[LISTEN as usize]);
+    // Unlinked, a mono matrix: the channel before its pan, whatever the send's pan.
+    rig.engine.pro2_set_linked(&mtx6, false);
+    ch.params.pan.store(100.0);
+    send.pre.store(false, Relaxed);
+    assert!(near(rig.run(40)[dl251(13)], 0.25));
+}
+
+#[test]
+fn mca_levels_sit_on_top_of_a_vcas_members_sends() {
+    let mut rig = Rig::ready();
+    let ch = rig.channel(0);
+    let aux1 = rig.bus(0);
+    let mtx1 = rig.engine.strips(StripKind::Matrix)[0].clone();
+    rig.listen(0, StripKind::Matrix, 0, 0);
+    let send = ch.sends.get_or_create(0).unwrap();
+    send.enabled.store(true, Relaxed);
+    send.level_db.store(0.0);
+    let ms = ch.matrix_send(0).unwrap();
+    ms.on.store(true, Relaxed);
+    ms.pre.store(true, Relaxed);
+    ms.level_db.store(0.0);
+    aux1.pro2.mca_db[2].store(-6.0206);
+    mtx1.pro2.mca_db[2].store(-12.0412);
+    let peaks = rig.run(40);
+    assert!(near(peaks[dl251(1)], 0.25) && near(peaks[LISTEN as usize], 0.25), "not in VCA 3");
+    ch.params.dca_mask.set(2, true);
+    rig.engine.controls.dcas[2].fader_db.store(0.0);
+    let peaks = rig.run(40);
+    assert!(near(peaks[dl251(1)], 0.125), "aux 1's MCA 3: {}", peaks[dl251(1)]);
+    assert!(near(peaks[LISTEN as usize], 0.0625), "matrix 1's MCA 3: {}", peaks[LISTEN as usize]);
+    // A group has no level of its own for an MCA to trim (p.260).
+    rig.engine.pro2_set_mix_mode(&aux1, livedaw_engine::pro2::mix_mode::GROUP);
+    let group = rig.run(40)[dl251(1)];
+    assert!(near(group, 0.25), "a group: {group}");
+}
+
+#[test]
+fn a_direct_output_takes_its_tap_off_point_level_and_mute() {
+    use livedaw_engine::pro2::direct_mode;
+    use livedaw_engine::routing::DirectSource;
+    let mut rig = Rig::new();
+    let ch = rig.channel(0);
+    let code = DirectSource { kind: StripKind::Channel, number: 1, side: 0, post: false }.code();
+    rig.engine.output_patch().set(LISTEN, code);
+    let peak = |rig: &mut Rig| rig.run(40)[LISTEN as usize];
+    // A new channel: fader at -oo, the direct output after the processing at 0 dB.
+    assert_eq!(ch.pro2.direct_mode.load(Relaxed), direct_mode::POST_PROCESSING);
+    assert!(near(peak(&mut rig), 0.25), "pre fader: {}", peak(&mut rig));
+    ch.params.mute.store(true, Relaxed);
+    assert!(near(peak(&mut rig), 0.25), "pre mute");
+    ch.pro2.direct_db.store(-6.0206);
+    assert!(near(peak(&mut rig), 0.125), "its level");
+    ch.pro2.direct_db.store(20.0);
+    assert!(near(peak(&mut rig), 0.25 * 3.1623), "up to +10 dB: {}", peak(&mut rig));
+    ch.pro2.direct_db.store(0.0);
+    // Post fade and mute.
+    ch.pro2.direct_mode.store(direct_mode::POST_FADE, Relaxed);
+    assert!(peak(&mut rig) < 1e-4, "muted");
+    ch.params.mute.store(false, Relaxed);
+    ch.params.fader_db.store(-6.0206);
+    assert!(near(peak(&mut rig), 0.125), "the fader: {}", peak(&mut rig));
+    // A closed gate: after the processing it's gone, before, it isn't.
+    let gate = ch.params.gate();
+    gate.on.store(true, Relaxed);
+    gate.param("thr").unwrap().store(25.0);
+    gate.param("range").unwrap().store(-100.0);
+    ch.pro2.direct_mode.store(direct_mode::POST_PROCESSING, Relaxed);
+    rig.run(200); // the gate's release
+    assert!(peak(&mut rig) < 1e-3, "post processing, gated: {}", peak(&mut rig));
+    ch.pro2.direct_mode.store(direct_mode::PRE_PROCESSING, Relaxed);
+    assert!(near(peak(&mut rig), 0.25), "pre processing: {}", peak(&mut rig));
+    // Its own MUTE.
+    ch.pro2.direct_mute.store(true, Relaxed);
+    assert!(peak(&mut rig) < 1e-4);
+}
+
+#[test]
+fn sis_feeds_left_centre_and_right_over_st_and_mon() {
+    use livedaw_engine::pro2::sis_gains;
+    let mut rig = Rig::ready();
+    let ch = rig.channel(0);
+    let mono = dl251(16);
+    ch.pro2.sis.store(true, Relaxed);
+    // SIS overrides the ST and MON switches (OM p.261).
+    ch.main_send(0).unwrap().on.store(false, Relaxed);
+    ch.main_send(1).unwrap().on.store(false, Relaxed);
+    ch.pro2.sis_image.store(100.0);
+    let peaks = rig.run(40);
+    assert!(peaks[dl251(14)] < 1e-4 && peaks[dl251(15)] < 1e-4, "full LCR, centre pan: no L or R");
+    assert!(near(peaks[mono], 0.25), "all in C: {}", peaks[mono]);
+    ch.pro2.sis_image.store(0.0);
+    let peaks = rig.run(40);
+    assert!(near(peaks[dl251(14)], 0.25) && near(peaks[dl251(15)], 0.25) && peaks[mono] < 1e-4, "stereo");
+    ch.pro2.sis_image.store(50.0);
+    ch.params.pan.store(-40.0);
+    let peaks = rig.run(40);
+    let (l, c, r) = sis_gains(livedaw_dsp::util::wing_mono_pan, -0.4, 0.5);
+    assert!(near(peaks[dl251(14)], 0.25 * l) && near(peaks[mono], 0.25 * c) && near(peaks[dl251(15)], 0.25 * r));
+    // SIS off: ST and MON again.
+    ch.pro2.sis.store(false, Relaxed);
+    let peaks = rig.run(40);
+    assert!(peaks[dl251(14)] < 1e-4 && peaks[mono] < 1e-4);
 }
 
 #[test]

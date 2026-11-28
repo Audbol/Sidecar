@@ -29,7 +29,11 @@ static_assert (sizeof (std::atomic<float>) == 4 && std::atomic<float>::is_always
 static_assert (sizeof (std::atomic<bool>) == 1 && std::atomic<bool>::is_always_lock_free);
 static_assert (sizeof (std::atomic<int32_t>) == 4 && std::atomic<int32_t>::is_always_lock_free);
 
-constexpr int kAbiVersion = 58;
+constexpr int kAbiVersion = 59;
+/** ABI 59: a monitor SOURCE that plays hardware input `port` and `port + 1` as they come in (a
+    DM2000's 2TR inputs on its CONTROL ROOM keys): kMonitorPortSourceBase + port
+    (Rust: livedaw_engine::params::PORT_SOURCE_BASE). */
+constexpr int32_t kMonitorPortSourceBase = 0x20000;
 /** ABI 23: ld_fx_readouts gives the slot levels (in L, in R, out L, out R) then the device's readouts. */
 constexpr int kFxLevels = 4;
 constexpr int kFxReadouts = 48;
@@ -136,6 +140,10 @@ constexpr int32_t kUsbTapStripBase = 0x01000000;
     ((kind * 0x10000 + number - 1) * 2 + side) * 2 + (POST FADER ? 1 : 0), for input channels, aux
     and buses (Rust: routing::DirectSource). As an output's source or a RECORDER tap. */
 constexpr int32_t kDirectSourceBase = 0x03000000;
+/** ABI 59: direct outs at one of the strip's tap points (0-15; a DM2000's PRE EQ ones take tap 2):
+    kDirectSourceBase + kDirectTapOffset + ((kind * 0x10000 + number - 1) * 2 + side) * 16 + tap
+    (Rust: routing::DirectTap). The engine plans the tap while an output or RECORDER port has it. */
+constexpr int32_t kDirectTapOffset = 0x00800000;
 constexpr int kSamplesPerPeak = 256;
 /** The longest plugin delay compensation (samples); paths needing more stay late by the rest. */
 constexpr int kMaxPdc = 8192;
@@ -346,6 +354,9 @@ struct InputParams
     std::atomic<bool> invert, delayOn, bypass; // bypass: the plug-in host's whole channel
     std::atomic<int32_t> delayMode; // list 5: M, FT, MS, SMP
     std::atomic<float> delay;
+    // ABI 59: the delay's MIX (-100 .. 100 %, 100 the delayed signal alone) and FB.GAIN
+    // (-99 .. 99 %, 0 none): a DM2000 Input Channel's (V2 Owner's Manual p.142).
+    std::atomic<float> delayMix, delayFb;
 };
 
 /** ABI 56: a mix's Ext In and Mix Source (ld_strip_mix_input). extSource: an input
@@ -379,6 +390,26 @@ struct DLiveStripParams
     std::atomic<int32_t> abcdLeft[4], abcdRight[4];
     std::atomic<int32_t> groupSource;
 };
+
+/** A strip's PRO2 settings (ld_strip_pro2; ignored on other consoles). mixMode: an aux send's,
+    0 mix, 1 group, 2 mix minus (through ld_engine_pro2_set_mix_mode). linked: an aux send or
+    matrix paired with its neighbour, odd with even, set on both (ld_engine_pro2_set_linked).
+    sis, sisImage: an input channel's SIS and its image, 0 stereo to 100 LCR %. directMode: the
+    direct output's tap-off point, 0 post fade and mute, 1 pre mute pre processing, 2 pre mute
+    post processing; directDb (-oo to +10), directMute. mcaDb: a mix's MCA levels, one per VCA.
+    safes: the channel safes but AUTO (that is recallSafe), kPro2Safe* bits: what a scene recall
+    leaves as it is; not part of a scene, saved with the show. */
+struct Pro2StripParams
+{
+    std::atomic<int32_t> mixMode;
+    std::atomic<bool> linked, sis, directMute;
+    std::atomic<int32_t> directMode;
+    std::atomic<float> directDb, sisImage;
+    std::atomic<float> mcaDb[8];
+    std::atomic<int32_t> safes;
+};
+static_assert (sizeof (Pro2StripParams) == 56 && offsetof (Pro2StripParams, directMode) == 8 && offsetof (Pro2StripParams, safes) == 52);
+constexpr int32_t kPro2SafeEq = 1, kPro2SafeDyn = 2, kPro2SafeMic = 4, kPro2SafeMute = 8, kPro2SafeFader = 16;
 
 /** ABI 56: a dLive channel's Automatic Mic Mixer (ld_strip_amm). The settings are ignored on
     any other strip. gainDb and open are read-back, written by the audio thread each block. */
@@ -733,7 +764,8 @@ enum OscMode : int32_t
 {
     kOscSine = 0,
     kOscPink = 1,
-    kOscWhite = 2
+    kOscWhite = 2,
+    kOscBandPass = 3 // the console oscillator's alone (an SQ's): white noise, a third of an octave around the frequency
 };
 /** Monitor SOURCE choices: MAIN.1-4, MTX.1-8, BUS.1-16, AUX.1-8. */
 constexpr int kNumMonitorSources = kWingMains + kWingMatrices + kWingBuses + kWingAux;
@@ -1651,6 +1683,18 @@ extern "C"
     /** SEND MIDI: the MIDI data (EDIT MIDI TEXT STRING) the scene sends when recalled. */
     LdString* ld_scene_midi (Show*, int32_t scene);
     void ld_scene_set_midi (Show*, int32_t scene, const char* utf8, size_t len);
+    /** EMBEDDED RECALL (a dLive's): the scene's other scenes and their delays in ms (up to `capacity`
+        of each); returns how many it has. Setting holds delays to four minutes and drops the scene itself. */
+    int32_t ld_scene_embedded (Show*, int32_t scene, int32_t* scenes, uint32_t* delaysMs, int32_t capacity);
+    void ld_scene_set_embedded (Show*, int32_t scene, const int32_t* scenes, const uint32_t* delaysMs, int32_t n);
+    /** The embedded recalls of the scenes the last ld_show_recall_scene recalled (taking clears them). */
+    int32_t ld_show_take_embedded (Show*, int32_t* scenes, uint32_t* delaysMs, int32_t capacity);
+    /** Scene Import: the scene names of a show file, one per line (false: `names` holds the error). */
+    bool ld_show_file_scene_names (const char* path, size_t pathLen, LdString** names);
+    /** Scene Import: scenes `which` of a show file inserted at `index` (appended when out of range), the
+        console left as it is. The first one's index, or -1 with `message`. */
+    int32_t ld_show_import_show_scenes (Show*, const Engine*, const char* path, size_t pathLen, const int32_t* which, int32_t n,
+                                        int32_t index, LdString** message);
 
     int32_t ld_show_add_snippet (Show*, const Engine*, int32_t scene, const char* name, size_t len,
                                  uint32_t sections, const StripRefC* strips, int32_t numStrips);
@@ -2138,6 +2182,31 @@ extern "C"
         MATRIX, 120 STEREO); 0 for none. */
     int32_t ld_dm2000_cc_initial (int32_t table, int32_t cc);
 
+    // The DM2000's Automix (livedaw_dm2000::automix): the takes of the Input Channels' faders and
+    // ONs (message thread). It holds no engine: each tick is handed the faders and ONs. New
+    // functions only, not an ABI bump.
+    struct LdDm2000Automix;
+    LdDm2000Automix* ld_dm2000_automix_create();
+    void ld_dm2000_automix_destroy (LdDm2000Automix*);
+    /** Key `key` pressed at `now` (seconds, a steady clock): 0 ENABLE, 1 REC, 2 RUN, 3 CLEAR, 4 UNDO,
+        5 SCENE CLOCK, 6 OVERWRITE FADER, 7 OVERWRITE ON, 8 AUTO-REC, 9 TOUCH, 10 LATCH, 11 [TOUCH SENSE],
+        12 RELATIVE, 13 ABSOLUTE, 14 RETURN, 15 TAKEOVER. */
+    void ld_dm2000_automix_press (LdDm2000Automix*, int32_t key, double now);
+    bool ld_dm2000_automix_is (const LdDm2000Automix*, int32_t key);
+    /** Input Channel `channel`'s (0-95) fader knob held or let go (Touch Sense). */
+    void ld_dm2000_automix_hold (LdDm2000Automix*, int32_t channel, bool held);
+    /** Runs the clock to `now`: `faders` (dB) and `ons` (0 off) are the first `n` Input Channels';
+        what playback sets is written back. True when it set any. */
+    bool ld_dm2000_automix_tick (LdDm2000Automix*, double now, float* faders, uint8_t* ons, size_t n);
+    /** A scene was recalled at `now`: with SCENE CLOCK the clock starts again. */
+    void ld_dm2000_automix_scene_recalled (LdDm2000Automix*, double now);
+    int32_t ld_dm2000_automix_events (const LdDm2000Automix*);
+    /** The clock, seconds since the run started. */
+    double ld_dm2000_automix_time (const LdDm2000Automix*);
+    /** RETURN's TIME, 0.0-30.0 seconds in 0.1 steps. */
+    float ld_dm2000_automix_return_time (const LdDm2000Automix*);
+    void ld_dm2000_automix_set_return_time (LdDm2000Automix*, float seconds);
+
     // Allen & Heath MIDI over TCP (livedaw-ahmidi): the dLive's and SQ-5's, with the
     // console's profile naming it (RemotesC::network bit 16). Background threads; destroy
     // it before the engine.
@@ -2498,13 +2567,24 @@ extern "C"
     AmmStripParams* ld_strip_amm (const Strip*);
     /** A strip's dLive settings. */
     DLiveStripParams* ld_strip_dlive (const Strip*);
+    /** A strip's PRO2 settings. */
+    Pro2StripParams* ld_strip_pro2 (const Strip*);
+    /** A PRO2 mix linked with its neighbour (odd with even) or not; false: not a mix or no neighbour. */
+    bool ld_engine_pro2_set_linked (const Engine*, const Strip*, bool on);
+    /** A PRO2 aux send's mix mode (both of a linked pair); into mix minus, every input is routed. */
+    void ld_engine_pro2_set_mix_mode (const Engine*, const Strip*, int32_t mode);
     /** A dLive's Global Direct Output Source: 0 Post Preamp, 1 Post LPF, 2 Post Gate, 3 Post Insert A,
         4 Post PEQ, 5 Post Comp, 6 Post Insert B, 7 Post Delay. */
     int32_t ld_engine_dlive_direct_source (const Engine*);
     void ld_engine_dlive_set_direct_source (const Engine*, int32_t source);
-    /** Bits: 1 Follow Fader, 2 Follow Mute, 4 Follow All. */
+    /** Bits: 1 Follow Fader, 2 Follow Mute, 4 Follow All; an SQ's 8 Follow DCA Fader, 16 Follow DCA
+        Mute, 32 Follow Mute Group. An SQ's Direct Outs run as a dLive's (its source: 0, 1 Post HPF,
+        2, 3 Post Insert Return, 4, 5, 7). */
     int32_t ld_engine_dlive_direct_follow (const Engine*);
     void ld_engine_dlive_set_direct_follow (const Engine*, int32_t bits);
+    /** An SQ's Input to PAFL Source Point: 0 Post Preamp, 1 Post PEQ, 2 Post Compressor, 3 Post Delay. */
+    int32_t ld_engine_sq_pafl_source (const Engine*);
+    void ld_engine_sq_set_pafl_source (const Engine*, int32_t point);
     void ld_engine_set_follow_main_pan (const Engine*, const Strip*, bool follow, bool invert);
     void ld_engine_abcd_enable (const Engine*, const Strip*, bool on);
     void ld_engine_abcd_select (const Engine*, const Strip*, int32_t which);

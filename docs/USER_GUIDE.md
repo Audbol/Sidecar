@@ -1600,20 +1600,122 @@ groups, pairs and libraries. Groups and pairs are saved in shows and scenes.
 The SQ-5's surface and touchscreen with its pages (processing, routing, meters, FX, scenes,
 setup, utility and I/O), MIDI and MIDI over TCP.
 
+- **Side chains.** On the Gate and Compressor pages, touch Self Keyed to key the block from
+  another input channel (after all that channel's processing), or back to Self Keyed. The key
+  under it switches the filter between HPF, BPF and LPF; Freq sets it and Filter In switches it
+  in. The meter at the graph's left shows the side chain's level.
+- **Direct Out.** Routing's Dir Out page sets the channel's direct out level and, for all
+  channels, the source point and whether the direct outs follow the fader, mute, DCA fader, DCA
+  mute and mute groups. Patch a channel's direct out on I/O > Outputs, under the mixes.
+- **PAFL.** Setup > Audio > PAFL sets where an input's PFL is taken (Post Preamp, Post PEQ, Post
+  Compressor, Post Delay/AMM) and a delay of up to 682.6 ms on what you listen to.
+- **Signal generator.** Band-pass noise is noise a third of an octave wide around the
+  Frequency.
+- **RTA.** Meters > RTA shows the PAFL signal, or a channel you pick as the RTA Source. The PEQ
+  page's RTA key shows the selected channel's spectrum over the EQ graph.
+- **Channel libraries.** On the Processing overview, press Library: Store New keeps the selected
+  channel's processing with its name and colour, Recall brings it back (with the name and colour
+  if Name and Colour is lit), Overwrite replaces the chosen item and Delete, touched twice,
+  removes it. Input channels and mixes have libraries of their own.
+- **Key colours.** A mix key lights blue for an Aux and magenta for a Group; each SoftKey lights
+  in the colour of what it does.
+
 ### dLive (C3500 and C1500)
 
 Two surfaces with their touchscreens: the C3500 is the default, with the C1500 as another
 choice. They have the processing, scenes, meters, I/O, FX and softkeys, MIDI over TCP and
 the RackUltra effects.
 
+The Scenes page's Scene Manager stores, recalls, locks, copies and pastes scenes. Its other keys:
+
+- **Copy Filter To...** gives the selected scene's recall filter to one other scene, a range of
+  them or all of them. Locked scenes keep their own.
+- **Embedded Recall** recalls other scenes of the show a while after the selected one (0 to 4
+  minutes each). Pick the scene number and the delay, then Add; choose a line and Remove. If you
+  recall another scene, or press Undo Go, the embedded recalls still waiting are dropped. An
+  embedded recall doesn't start its own scene's embedded recalls, so two scenes can't keep
+  recalling each other.
+- **Custom MIDI** holds MIDI bytes in hexadecimal (`B0 07 64`) that Sidecar sends from its MIDI
+  out each time the scene is recalled, the same as SEND MIDI. The console sends them over MIDI
+  over TCP, which Sidecar doesn't do yet.
+- Each scene's row shows icons for stored, locked, filtered, crossfade time, embedded recalls
+  and last recalled.
+- Hold Setup (or right-click) and touch the page for its preferences: Scene Overwrite
+  Confirmation, Scene Recall Confirmation, Display Last Recalled, Disable Surface Controls (the
+  panel's Prev, Next and GO do nothing), Auto Store (the console goes into the last recalled scene
+  before each recall), Track Embedded, Auto Increment and Go on Touch (touching a scene recalls
+  it, without asking; the selected scene turns orange). They are kept in Sidecar's settings.
+- Hold Reset and press GO to undo the last recall, as Undo Go does.
+
+**Import** brings scenes in from another show of the same console. Press Select Show, touch the
+scenes you want (or use Select All or Select Range), then drag them into Local Scenes. They go
+in where you drop them, and the scenes below move down. The console itself doesn't change.
+**Update**'s Range key picks a run of scenes to update.
+
 ### DM2000
 
 Its surface and dot-matrix LCD pages, with MIDI. Fader groups and pairs are saved in shows.
+
+- **Delay MIX and FB.GAIN.** An Input Channel's delay mixes the delayed signal with the dry one
+  and can feed it back. Push the SELECTED CHANNEL's FB/MIX knob to switch between FB.GAIN and MIX
+  (the FB and MIX lamps show which); the Delay pages list both for every channel.
+- **Delay scale and gang.** The Delay pages' DELAY SCALE shows each delay in meters, feet, samples,
+  beats or frames under the msec value, and you can set it in those units. For beats, set the NOTE
+  and BPM beside the scale (a quarter note at 120 BPM is 500 ms). GANG moves a pair's two delays
+  together, keeping the difference between them.
+- **Pan mode.** The Pan pages' MODE sets how paired channels pan: INDIVIDUAL, GANG (both the same)
+  or INV GANG (mirrored, for a stereo width).
+- **Vertical pairs.** On a Pair page, PAIR MODE VERTICAL pairs a channel with its counterpart on the
+  next layer (1 with 25, 49 with 73). Each half (1-48, 49-96) has its own mode; changing it releases
+  that half's pairs. [L] and [R] select the two channels of a pair. The Input Patch pages then show
+  the partners side by side (1, 25, 2, 26 and so on).
+- **Direct Out PRE EQ.** The Direct Out Destination pages offer PRE EQ, PRE FADER and POST FADER for
+  every Input Channel's Direct Out.
+- **Control room sources.** CONTROL ROOM 2TR D1-D3 and A1-A2 play the 2TR inputs as they come in;
+  ASSIGN 1 and ASSIGN 2 play the Bus Out, Aux Send or Matrix Send chosen on the MONITOR page. STUDIO
+  CONTROL ROOM makes the studio monitor follow the control room.
+- **Automix.** AUTO-REC records every run; with TOUCH SENSE a recording pass changes only the faders
+  you hold, and the others play their take. Choose TOUCH or LATCH on the AUTOMIX page: with LATCH a
+  fader you touch keeps recording until the pass stops. RELATIVE moves the existing take up or down by
+  as much as you move the fader, instead of replacing it. RETURN glides a fader you let go back to its
+  take over the page's TIME; TAKEOVER keeps recording it until the take meets it.
+- **Locator in and out points.** LOCATOR IN and OUT locate the recorder's loop start and end. Press
+  SET first and the next IN or OUT stores the current position there instead.
 
 ### PRO2
 
 Its own surface (a first pass): the bays, the channel strip detail areas, outputs, scene keys and
 its screen.
+
+- **Aux send modes.** Select an aux send and open its configuration area (the quick access
+  button by the gain, or the config section of its fast strip): MODE cycles mix, group and mix
+  minus. A group takes each input at its fader's level, with ON alone. In mix minus every input
+  is routed when you switch to it; an input's switch, now called minus, takes it out.
+- **Stereo pairs.** LINK in the same area pairs an aux send or a matrix with its neighbour (1 with
+  2, 3 with 4). A pair is one stereo mix: the odd mix's knob in the mix section becomes the pan,
+  the even one's the level, and the pair takes the odd mix's mode. Aux sends 9-16 start as four
+  stereo groups on the masters, as the console's Normal (FOH) mode sets them.
+- **MCA groups.** Select an aux send or matrix with its output's select key and press MCA: the
+  mix bay's faders are that mix's eight MCAs, named as the VCAs. Each adds its level on top of
+  the sends of its VCA's members to that mix. Groups and mix minus have no level for it to trim.
+- **Direct outputs.** An input's direct MUTE is on the surface; its configuration area has the
+  tap-off point (post fade and mute, pre mute before or after the processing), the level (up to
+  +10 dB) and dest, the output it goes to. The Patching screen's From section has a Dir. Out tab
+  with every input channel's dest; drag a field to choose its output.
+- **Channel safes.** Each channel's safes section has six keys: EQ, DYN, MIC, AUTO, MUTE and
+  FADER (also in its configuration area on the screen). A safe keeps its part of the channel as
+  it is when a scene is recalled: EQ the EQ, the filters and the processing order; DYN the gate
+  and compressor; MIC an input's gain, 48V, trim, phase, delay, insert and direct output (level,
+  mode and dest), or an output's insert and direct input; MUTE the mute (and the direct
+  output's); FADER the fader, pan, ST, MON and SIS, and on an output its trim, delay and mode
+  too. AUTO keeps the whole channel. Aux returns have no DYN safe. The safes are saved with the
+  show; a RESTORE or a NO GLOB load ignores them.
+- **On the Universal Mixer.** A send the PRO2 ignores is dimmed: an input's level and FROM to an
+  aux send in group or mix minus mode (ON alone counts), and every send to the even mix of a
+  linked pair, which takes the odd one's.
+- **SIS.** The SIS key in the masters section feeds the channel to left, centre (the mono master)
+  and right, over ST and MON. Its mono level knob becomes the image: fully down is ordinary
+  stereo panning, fully up full LCR, and half way a centred channel is equal in all three.
 
 ### XENYX Q1202USB
 

@@ -1463,6 +1463,7 @@ DLiveSurface::DLiveSurface (UiContext& c)
     const auto touchTurn = [this] (const KnobBinding& b) { dataRotary->setBinding (b); };
     processing->onTouchTurn = touchTurn;
     scenes->onTouchTurn = touchTurn;
+    scenes->isSetupHeld = [this] { return litPageKey == "Setup"; };
     mixRack->onTouchTurn = touchTurn;
     metersScreen->onTouchTurn = touchTurn;
     ioScreen->onTouchTurn = touchTurn;
@@ -1747,8 +1748,8 @@ void DLiveSurface::softKeyPressed (int index)
         pressSoftKey (ctx, index);
 }
 
-void DLiveSurface::sceneGo() { scenes->goNext(); }
-void DLiveSurface::sceneStep (int delta) { scenes->stepNext (delta); }
+void DLiveSurface::sceneGo() { scenes->panelGo(); }
+void DLiveSurface::sceneStep (int delta) { scenes->panelStep (delta); }
 
 void DLiveSurface::pressHome()
 {

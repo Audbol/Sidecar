@@ -1,11 +1,13 @@
 #pragma once
 
+#include "engine/Analysis.h"
 #include "ui/Knobs.h"
 #include "ui/UiContext.h"
 #include "ui/universal/Theme.h"
 
 #include <array>
 #include <functional>
+#include <map>
 #include <vector>
 
 namespace livedaw::ui::sq5
@@ -174,7 +176,7 @@ namespace gangs
         kNumAttributes
     };
     const char* attributeName (int attribute);
-    /** False for Direct Out: Sidecar's SQ has no direct outs yet. */
+    /** Every attribute is (Direct Out links the channels' direct out levels). */
     bool isModelled (int attribute);
     struct Gang
     {
@@ -399,6 +401,18 @@ private:
     void buildAmm();
     void buildIo();
     void buildLibrary (Strip&);
+    /** The Input Channel and Mix Channel libraries (p.79), on Processing's overview: the
+        user library's items (Sidecar's channel presets) and Recall, Store New, Overwrite
+        and Delete. */
+    void buildChannelLibrary (Strip&);
+    /** The folder of a channel's library: Input Channel or Mix Channel. */
+    juce::File channelLibraryFolder (const Strip&) const;
+    juce::Array<juce::File> channelLibraryFiles (const Strip&) const;
+    /** The gate's and compressor's Side Chain (pp.35, 41): the source, the filter's type,
+        frequency and In key, in the column at the left. */
+    void addSideChain (ld::DynSlotParams&);
+    /** The side chain's source list: Self Keyed and the 48 input channels. */
+    void buildKeyPicker (Strip&);
     /** A row's words and a key (On / Off). */
     void addFlag (juce::Rectangle<float> label, juce::Rectangle<float> key, const juce::String& text, bool enabled, std::function<bool()> get, std::function<void (bool)> set);
     /** The assign-to-mix keys of Talkback and SigGen (pp.96-97). */
@@ -442,6 +456,13 @@ private:
     void paintTransfer (juce::Graphics&, juce::Rectangle<float>, ld::DynSlotParams&);
     void paintHistory (juce::Graphics&, juce::Rectangle<float>, bool gate);
     void paintLevel (juce::Graphics&, juce::Rectangle<float>, Strip&);
+    void paintKeyDots (juce::Graphics&, ld::DynSlotParams&);
+    /** The RTAs (pp.55-57): the engine's analysis on while the Meters RTA or the PEQ's
+        shows, its bands read each tick. */
+    void updateRta();
+    /** The bands as bars, `per` of the engine's semitone bands to a bar (2: the SQ's 1/6th
+        octave), the loudest in red; `relative`: scaled to the loudest (the PEQ's AGC). */
+    void paintRta (juce::Graphics&, juce::Rectangle<float>, int per, bool relative, float alpha);
     Field& add (Field::Kind, juce::Rectangle<float>, const juce::String& title);
     Field& addValue (juce::Rectangle<float>, const juce::String& title, KnobBinding);
     Field& addToggle (Field::Kind, juce::Rectangle<float>, const juce::String& title, std::atomic<bool>&);
@@ -484,6 +505,19 @@ private:
     int assignKind = 0, assignFirst = 0, assignLayer = 0;
     Slot assignChoice;
     bool assignPicked = false, autoIncrement = true, libraryOpen = false;
+    /** The side chain's source list is up in place of the gate's or compressor's page. */
+    bool keyPicking = false;
+    /** The channel library's list, its Name and Colour recall option and an armed Delete. */
+    int channelLibraryFirst = 0, channelLibraryPicked = 0;
+    bool channelLibraryNames = true, channelLibraryDeleteArmed = false;
+    /** The RTAs: the PEQ's overlay on, the Meters RTA's source (0 PAFL, else 1 + an
+        index of soft::channelAt), what the engine analyses now and its last bands. */
+    bool peqRta = false, rtaShowing = false;
+    int rtaSource = 0;
+    Analysis::Bands rtaBands;
+    /** A side chain filter's type (DynSlotParams::scFilter: 1 LPF, 2 HPF, 3 BPF) while its
+        Filter In is off and scFilter says 0; HPF until chosen. Not kept in a show. */
+    std::map<const void*, int> keyFilterType;
     // Setup's Mix Stereo (p.86): 12 mixes, then 3 matrices.
     std::array<bool, kMixes + 3> mixStereoPending {};
     bool mixStereoPendingValid = false;

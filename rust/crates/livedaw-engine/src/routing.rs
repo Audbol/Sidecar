@@ -152,6 +152,53 @@ impl DirectSource {
     }
 }
 
+/// Direct out codes from a tap point start this far past [`DIRECT_SOURCE_BASE`], beyond
+/// every PRE / POST FADER code (which [`DirectSource::from_code`] therefore takes for none).
+pub const DIRECT_TAP_OFFSET: i32 = 0x0080_0000;
+/// Tap ids a direct out can take: the strip's own tap points (`strip::tap`, the chain's
+/// `Node::Tap` ids below the user taps).
+const DIRECT_TAP_IDS: i32 = 16;
+
+/// A direct out that takes one of its strip's tap points instead of PRE or POST FADER: a
+/// DM2000's PRE EQ Direct Outs take its Input Channels' tap 2, before the attenuator and the
+/// EQ (V2 Owner's Manual p.102; the chain `chain::DM2000_CHANNEL`). The tap is read when the
+/// output patch names it (`Engine::update_taps` plans it).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DirectTap {
+    pub kind: StripKind,
+    pub number: i32,
+    /// 0 = left, 1 = right (a mono channel gives its signal on both).
+    pub side: usize,
+    pub tap: usize,
+}
+
+impl DirectTap {
+    /// `DIRECT_SOURCE_BASE + DIRECT_TAP_OFFSET + ((kind * 0x10000 + number - 1) * 2 + side) * 16
+    /// + tap`; -1 for a kind without direct outs, a number, side or tap out of range.
+    pub fn code(self) -> i32 {
+        if !DirectSource::has_direct_outs(self.kind)
+            || !(1..=DIRECT_NUMBERS).contains(&self.number)
+            || self.side > 1
+            || self.tap >= DIRECT_TAP_IDS as usize
+        {
+            return -1;
+        }
+        DIRECT_SOURCE_BASE
+            + DIRECT_TAP_OFFSET
+            + (((self.kind as i32) * DIRECT_NUMBERS + self.number - 1) * 2 + self.side as i32) * DIRECT_TAP_IDS
+            + self.tap as i32
+    }
+
+    pub fn from_code(code: i32) -> Option<Self> {
+        let c = code.checked_sub(DIRECT_SOURCE_BASE + DIRECT_TAP_OFFSET).filter(|c| *c >= 0)?;
+        let tap = (c % DIRECT_TAP_IDS) as usize;
+        let rest = c / DIRECT_TAP_IDS;
+        let strip = rest / 2;
+        let kind = StripKind::from_i32(strip / DIRECT_NUMBERS).filter(|k| DirectSource::has_direct_outs(*k))?;
+        Some(Self { kind, number: strip % DIRECT_NUMBERS + 1, side: (rest % 2) as usize, tap })
+    }
+}
+
 // ---- the output patch ---------------------------------------------------------------
 
 /// Hardware outputs the patch can feed (as many as there are input ports

@@ -201,12 +201,25 @@ pub struct InputParams {
     pub delay_mode: AtomicI32,
     /// In `delay_mode` units (0.1 m .. 150 m as the WING's DIST, in any unit).
     pub delay: AtomicF32,
+    /// The delay's MIX, -100 .. 100 %: how much of the delayed signal comes out against
+    /// the dry one (a Yamaha DM2000's Input Channel delay, V2 Owner's Manual p.142; its
+    /// MIDI's kInDelayMix). 100, the default, is the delayed signal alone, as every other
+    /// console's delay.
+    pub delay_mix: AtomicF32,
+    /// The delay's FB.GAIN, -99 .. 99 %: the delayed signal fed back into the delay
+    /// (minus: reversed). 0, the default, is none.
+    pub delay_fb: AtomicF32,
 }
 
 /// The WING's delay range (`/ch/n/in/set/dly`, 0.1 .. 150 m) and its
 /// factory setting: METERS, 0.1 m (off).
 pub const DELAY_MIN_M: f32 = 0.1;
 pub const DELAY_MAX_M: f32 = 150.0;
+/// The delay's MIX and FB.GAIN ranges (%) and their initial data.
+pub const DELAY_MIX_RANGE: (f32, f32) = (-100.0, 100.0);
+pub const DELAY_FB_RANGE: (f32, f32) = (-99.0, 99.0);
+pub const DELAY_MIX_DEFAULT: f32 = 100.0;
+pub const DELAY_FB_DEFAULT: f32 = 0.0;
 
 impl Default for InputParams {
     fn default() -> Self {
@@ -218,6 +231,8 @@ impl Default for InputParams {
             bypass: AtomicBool::new(false),
             delay_mode: AtomicI32::new(0),
             delay: AtomicF32::new(DELAY_MIN_M),
+            delay_mix: AtomicF32::new(DELAY_MIX_DEFAULT),
+            delay_fb: AtomicF32::new(DELAY_FB_DEFAULT),
         }
     }
 }
@@ -1440,8 +1455,24 @@ pub fn monitor_source(index: i32) -> Option<(StripKind, usize)> {
     None
 }
 
-/// The display name of a monitor SOURCE index ("MAIN.1", "BUS.12").
+/// A pair of hardware inputs as a monitor SOURCE (a DM2000's 2TR inputs on its CONTROL ROOM
+/// keys, V2 Owner's Manual p.158): `PORT_SOURCE_BASE + port` plays input `port` and `port + 1`
+/// as they come in, before any channel. Past the extended choices, so [`monitor_source`] takes
+/// it for none. The C side's `kMonitorPortSourceBase`.
+pub const PORT_SOURCE_BASE: i32 = 0x20000;
+const MAX_PORT_SOURCES: i32 = 0x10000;
+
+/// The first input of a port SOURCE (None for any other index).
+pub fn monitor_port_source(index: i32) -> Option<usize> {
+    let port = index.checked_sub(PORT_SOURCE_BASE).filter(|p| (0..MAX_PORT_SOURCES).contains(p))?;
+    usize::try_from(port).ok()
+}
+
+/// The display name of a monitor SOURCE index ("MAIN.1", "BUS.12", "IN.121/122").
 pub fn monitor_source_name(index: i32) -> String {
+    if let Some(port) = monitor_port_source(index) {
+        return format!("IN.{}/{}", port + 1, port + 2);
+    }
     match monitor_source(index) {
         Some((StripKind::Matrix, i)) => format!("MTX.{}", i + 1),
         Some((kind, i)) => format!("{}.{}", kind.label(), i + 1),

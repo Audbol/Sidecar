@@ -7,7 +7,7 @@
 mod common;
 use common::{set_channels, unity_console};
 use livedaw_engine::params::StripKind;
-use livedaw_engine::routing::{matrix_direct, strip_source_input, DirectSource, DIRECT_SOURCE_BASE};
+use livedaw_engine::routing::{matrix_direct, strip_source_input, DirectSource, DirectTap, DIRECT_SOURCE_BASE};
 use livedaw_engine::sources::{source_mode, user_side, NUM_USER_SIGNALS, OSC_SOURCE_BASE, USR_SOURCE_BASE, USR_SOURCE_INDEX};
 use livedaw_engine::{Engine, Strip};
 use std::cell::Cell;
@@ -423,6 +423,33 @@ fn bus_direct_outs_tap_each_side_pre_or_post_fader() {
     assert!(rig.last_block_matches(3, |t| g * edge * input(1, t), 1e-5));
     // The bus's own outputs are left alone.
     assert_eq!(bus.params.output_left.load(Relaxed), -1);
+}
+
+/// Direct outs at a tap point (a DM2000's PRE EQ ones) have codes of their own, past every
+/// PRE / POST FADER one: neither kind takes the other's.
+#[test]
+fn direct_out_codes_at_a_tap_point_round_trip_apart_from_pre_and_post() {
+    for kind in [StripKind::Channel, StripKind::Aux, StripKind::Bus] {
+        for (number, side, tap) in [(1, 0, 2), (96, 1, 0), (65536, 1, 15)] {
+            let t = DirectTap { kind, number, side, tap };
+            let code = t.code();
+            assert!(code > DIRECT_SOURCE_BASE, "{t:?}");
+            assert_eq!(DirectTap::from_code(code), Some(t));
+            assert_eq!(DirectSource::from_code(code), None, "{t:?}");
+        }
+        let post = DirectSource { kind, number: 65536, side: 1, post: true }.code();
+        assert_eq!(DirectTap::from_code(post), None);
+    }
+    assert_eq!(DirectTap { kind: StripKind::Main, number: 1, side: 0, tap: 2 }.code(), -1);
+    assert_eq!(DirectTap { kind: StripKind::Channel, number: 1, side: 0, tap: 16 }.code(), -1);
+    assert_eq!(DirectTap::from_code(5), None);
+    // CH 3's tap 2, as the C side's DirectOut writes it (kDirectTapOffset).
+    assert_eq!(DirectTap { kind: StripKind::Channel, number: 3, side: 0, tap: 2 }.code(), 0x0380_0042);
+    // The engine takes them on an output.
+    let e = Engine::new(0);
+    let code = DirectTap { kind: StripKind::Channel, number: 3, side: 0, tap: 2 }.code();
+    assert!(e.route_output_source(4, code));
+    assert_eq!(e.output_patch().get(4), code);
 }
 
 #[test]

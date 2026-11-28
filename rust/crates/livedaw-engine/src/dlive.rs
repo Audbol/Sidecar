@@ -274,7 +274,36 @@ pub struct DLiveControls {
     pub direct_follow_mute: AtomicBool,
     /// DCA and mutes, channel fader and mute.
     pub direct_follow_all: AtomicBool,
+    /// An SQ's other three (Reference Guide p.46): the DCAs' faders, their mutes, the
+    /// mute groups.
+    pub direct_follow_dca_fader: AtomicBool,
+    pub direct_follow_dca_mute: AtomicBool,
+    pub direct_follow_mute_group: AtomicBool,
+    /// An SQ's Input to PAFL Source Point (p.94): [`pafl_source`].
+    pub pafl_source: AtomicI32,
     pub selectors: [SourceSelector; NUM_SOURCE_SELECTORS],
+}
+
+/// An SQ's Input to PAFL Source Point (Reference Guide p.94): where an input channel's PFL
+/// leaves it.
+pub mod pafl_source {
+    pub const POST_PREAMP: i32 = 0;
+    /// With the HPF, gate, insert and PEQ.
+    pub const POST_PEQ: i32 = 1;
+    pub const POST_COMP: i32 = 2;
+    /// With the channel delay (and the AMM): the engine's own PFL point.
+    pub const POST_DELAY: i32 = 3;
+}
+
+/// The tap an SQ input channel's PFL takes at `point` ([`pafl_source`]; `chain::SQ_CHANNEL`),
+/// None for its PFL copy (Post Delay). Post Preamp is after the trim, the engine's first tap.
+pub fn sq_pafl_tap(point: i32) -> Option<usize> {
+    match point {
+        pafl_source::POST_PREAMP => Some(crate::strip::tap::IN),
+        pafl_source::POST_PEQ => Some(3),
+        pafl_source::POST_COMP => Some(4),
+        _ => None,
+    }
 }
 
 impl Default for DLiveControls {
@@ -284,6 +313,10 @@ impl Default for DLiveControls {
             direct_follow_fader: AtomicBool::new(false),
             direct_follow_mute: AtomicBool::new(false),
             direct_follow_all: AtomicBool::new(false),
+            direct_follow_dca_fader: AtomicBool::new(false),
+            direct_follow_dca_mute: AtomicBool::new(false),
+            direct_follow_mute_group: AtomicBool::new(false),
+            pafl_source: AtomicI32::new(pafl_source::POST_DELAY),
             selectors: Default::default(),
         }
     }
@@ -295,6 +328,22 @@ impl DLiveControls {
         self.direct_follow_fader.store(false, Relaxed);
         self.direct_follow_mute.store(false, Relaxed);
         self.direct_follow_all.store(false, Relaxed);
+        self.direct_follow_dca_fader.store(false, Relaxed);
+        self.direct_follow_dca_mute.store(false, Relaxed);
+        self.direct_follow_mute_group.store(false, Relaxed);
+        self.pafl_source.store(pafl_source::POST_DELAY, Relaxed);
+        self.reset_selectors();
+    }
+
+    /// As [`Self::reset`], then an SQ's start as the Reference Guide pictures it (p.46):
+    /// Direct Out from Post Compressor, following the channel's mute.
+    pub fn reset_sq(&self) {
+        self.reset();
+        self.direct_source.store(direct_source::POST_COMP, Relaxed);
+        self.direct_follow_mute.store(true, Relaxed);
+    }
+
+    fn reset_selectors(&self) {
         for s in &self.selectors {
             s.output_kind.store(-1, Relaxed);
             s.active.store(-1, Relaxed);

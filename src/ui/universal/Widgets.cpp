@@ -683,10 +683,12 @@ ToggleKey::ToggleKey (const juce::String& label, juce::Colour onColour, const Th
 void ToggleKey::refresh()
 {
     const bool on = isOn && isOn(), half = ! on && isHalfOn && isHalfOn();
-    if (on != lit || half != halfLit)
+    const auto c = onColour ? onColour() : colour;
+    if (on != lit || half != halfLit || c != colour)
     {
         lit = on;
         halfLit = half;
+        colour = c;
         repaint();
     }
 }
@@ -697,6 +699,8 @@ void ToggleKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
     // that only repaints its keys): refresh() alone would leave a key dark until something changed.
     lit = isOn && isOn();
     halfLit = ! lit && isHalfOn && isHalfOn();
+    if (onColour)
+        colour = onColour();
     if (look != nullptr)
     {
         auto area = getLocalBounds().toFloat();
